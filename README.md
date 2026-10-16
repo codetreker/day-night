@@ -11,6 +11,19 @@ The repository contains [product requirements](docs/spec/daynight.md) and a
 `packages/daynight/`. Application code, package manifests, build, tests, and CI
 are not implemented yet. Linux, macOS, and Windows are required platforms.
 
+## Planned usage
+
+```text
+daynight --deamon-review
+```
+
+The CLI reads YAML configuration from `~/.daynight/config.yml` and keeps its
+SQLite database, sessions, lock, logs, cache, temporary files, and PR worktrees
+under `~/.daynight/`. The home directory is resolved for the current OS user;
+repository clone paths come from configuration, with relative paths resolved
+against the configuration directory. This entry point is specified but not yet
+implemented.
+
 ## Working in the repository
 
 Read [AGENTS.md](AGENTS.md) for task scope, shared task worktrees, collaboration,

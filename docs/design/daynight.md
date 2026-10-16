@@ -11,36 +11,38 @@ Daynight 是一个在前台持续运行、直到被停止的 TypeScript CLI，�
 ## 使用方式与配置
 
 ```text
-daynight --config ./daynight.json
+daynight --deamon-review
 ```
 
-CLI 加载配置、打开 SQLite、确保配置中的仓库已克隆到本地，然后持续轮询 GitHub，
-并以普通子进程调用 Copilot。按下 Ctrl+C 后，停止轮询和启动新审查，停止活跃子进程，
+CLI 通过这个参数进入持续审查模式，固定读取当前用户主目录下的
+`~/.daynight/config.yml`。`~` 由程序解析为操作系统当前用户的主目录，再使用平台路径
+操作构造文件位置，不依赖调用者的工作目录或 shell 的路径展开。Windows 同样使用当前
+用户主目录下的 `.daynight` 目录。
+
+CLI 加载 YAML 配置、打开 SQLite、确保配置中的仓库已克隆到本地，然后持续轮询
+GitHub，并以普通子进程调用 Copilot。配置缺失、YAML 语法错误或字段无效时，显示
+配置路径及具体原因并退出。按下 Ctrl+C 后，停止轮询和启动新审查，停止活跃子进程，
 记录未完成工作并退出。整个程序遵循终端中的普通进程生命周期。
 
-建议的 JSON 配置如下：
+`~/.daynight/config.yml` 的建议配置如下：
 
-```json
-{
-  "stateDir": "./.daynight",
-  "pollIntervalMs": 60000,
-  "maxConcurrentReviews": 1,
-  "agentTimeoutMs": 1800000,
-  "maxAttempts": 3,
-  "retryDelayMs": 30000,
-  "repositories": [
-    {
-      "remote": "https://github.com/OWNER/REPO.git",
-      "path": "./repositories/REPO"
-    }
-  ]
-}
+```yaml
+pollIntervalMs: 60000
+maxConcurrentReviews: 1
+agentTimeoutMs: 1800000
+maxAttempts: 3
+retryDelayMs: 30000
+repositories:
+  - remote: https://github.com/OWNER/REPO.git
+    path: ../code/REPO
 ```
 
-这些数值是建议的运行默认值。路径相对于配置文件解析。校验配置字段、正整数限制、
-仓库身份的唯一性，以及克隆路径与状态路径互不重叠。将 HTTPS 或 SSH GitHub 远程地址
-解析为 host/owner/name 和稳定的仓库 ID。地址写法变化或程序重启都不得让同一仓库
-再次初始化。已有克隆与配置不匹配时拒绝使用，不得覆盖；保留其工作文件和分支。
+这些数值是建议的运行默认值。使用 YAML 解析器读取数据，再按配置字段和类型校验。
+仓库相对路径相对于配置文件所在目录解析；示例的 `../code/REPO` 指向用户主目录下的
+`code/REPO`。运行状态目录固定为 `~/.daynight/`。校验正整数限制、仓库身份的唯一性，
+以及克隆路径与状态路径互不重叠。将 HTTPS 或 SSH GitHub 远程地址解析为
+host/owner/name 和稳定的仓库 ID。地址写法变化或程序重启都不得让同一仓库再次初始化。
+已有克隆与配置不匹配时拒绝使用，不得覆盖；保留其工作文件和分支。
 
 使用 pnpm、TypeScript ESM、Node.js 24 LTS 和 `better-sqlite3`。实现包时锁定版本。
 Git、`gh` 和 Copilot CLI 预先安装，`gh` 认证提前准备好。Copilot 还需要受支持的凭据
@@ -81,8 +83,11 @@ SQLite 在程序退出后保留审查进度。可配置的全局上限控制不�
 
 ## 本地数据与 SQLite
 
+配置和全部运行状态统一放在当前用户的 `~/.daynight/` 下：
+
 ```text
-.daynight/
+~/.daynight/
+  config.yml
   state.sqlite
   instance.lock
   copilot/                    # CLI 配置和保留的会话
@@ -93,8 +98,10 @@ SQLite 在程序退出后保留审查进度。可配置的全局上限控制不�
 ```
 
 会话数据和日志放在可清理的 worktree 之外。将 Copilot 的状态、缓存、日志和临时目录
-都设在这个状态目录下。令牌只通过命令继承的环境变量传递，不得写入 SQLite、命令参数
-或日志。
+都设在这个状态目录下。SQLite 的 WAL、SHM 等伴随文件也保留在该目录。启动目录变化
+不会改变数据库、会话或实例锁的位置。令牌只通过命令继承的环境变量传递，不得写入
+SQLite、命令参数或日志。配置与状态位置的选择记录在
+[用户主目录配置决策](../../.agents/notes/implemented/architecture/2026-10-16-user-home-review-configuration.md)。
 
 表结构需要三张表：
 
@@ -280,7 +287,8 @@ SQLite。使用平台常规的进程终止工具处理受管理的后代进程�
 | agent 输出 | 分块 Unicode 与 CRLF、精确末行、错误 PR 编号、stderr 中的标记、代码围栏内的标记、标记后的内容、捕获失败、非零退出 |
 | 会话与重试 | 固定 UUID 后显式恢复、首次启动中断、历史缺失报错、确认既有发布结果、持久化尝试预算 |
 | CLI 生命周期 | 审查期间继续轮询；准备、执行和清理的操作预留；抑制失败修订；并发上限；Ctrl+C；拒绝第二个实例；异常退出后的失效锁和中断状态报告 |
-| 平台 | 含空格或 Unicode 的路径、Windows CLI 命令包装脚本、每个受支持系统上的子进程终止和最终输出 |
+| 配置与目录 | 固定的 `~/.daynight/config.yml`、有效及无效 YAML、缺失配置报错、不同启动目录复用状态、相对仓库路径按配置目录解析；用注入的主目录解析结果隔离测试文件 |
+| 平台 | `daynight --deamon-review`、各平台用户主目录和路径分隔符、含空格或 Unicode 的路径、Windows CLI 命令包装脚本、每个受支持系统上的子进程终止和最终输出 |
 
 需要在获得授权的测试仓库中实际运行 Copilot 与 GitHub，才能证明真实的会话续接、
 行级评论和批准行为。模拟测试无法证明这些效果。本项工作交付设计文档，尚不交付应用
