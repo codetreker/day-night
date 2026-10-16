@@ -1,7 +1,8 @@
 import { lstat, readFile, realpath, stat } from "node:fs/promises";
+import type { BigIntStats } from "node:fs";
 import path from "node:path";
 import { parseDocument } from "yaml";
-import { pathsEqual, pathsOverlap } from "./paths.js";
+import { isFilesystemCaseSensitive, pathsEqual, pathsOverlap } from "./paths.js";
 import type { PathApi, RuntimePaths } from "./paths.js";
 
 export type RepositoryConfiguration = {
@@ -229,10 +230,19 @@ export const parseConfiguration = (
   };
 };
 
-const canonicalPath = async (
+type PhysicalDirectory = {
+  ancestorPath: string;
+  ancestorIdentity: string;
+  missingComponents: string[];
+};
+
+const directoryIdentity = (entry: Pick<BigIntStats, "dev" | "ino">): string =>
+  `${entry.dev}:${entry.ino}`;
+
+const resolvePhysicalDirectory = async (
   target: string,
   missingDescendantError?: Error,
-): Promise<string> => {
+): Promise<PhysicalDirectory> => {
   let resolved: string;
   try {
     resolved = await realpath(target);
@@ -255,15 +265,18 @@ const canonicalPath = async (
     if (parent === target) {
       throw new Error(`Cannot find an existing ancestor of ${target}.`, { cause });
     }
-    const canonicalParent = await canonicalPath(
+    const canonicalParent = await resolvePhysicalDirectory(
       parent,
       missingDescendantError === undefined ? cause : missingDescendantError,
     );
-    return path.join(canonicalParent, path.basename(target));
+    return {
+      ...canonicalParent,
+      missingComponents: [...canonicalParent.missingComponents, path.basename(target)],
+    };
   }
   let entry;
   try {
-    entry = await stat(resolved);
+    entry = await stat(resolved, { bigint: true });
   } catch (cause) {
     throw new Error(`Cannot inspect filesystem directory ${target}.`, { cause });
   }
@@ -272,7 +285,86 @@ const canonicalPath = async (
       cause: missingDescendantError,
     });
   }
-  return resolved;
+  return {
+    ancestorPath: resolved,
+    ancestorIdentity: directoryIdentity(entry),
+    missingComponents: [],
+  };
+};
+
+const ancestorIdentities = async (directory: string): Promise<Set<string>> => {
+  const identities = new Set<string>();
+  let cursor = directory;
+  while (true) {
+    let entry;
+    try {
+      entry = await stat(cursor, { bigint: true });
+    } catch (cause) {
+      throw new Error(`Cannot inspect filesystem ancestor ${cursor}.`, { cause });
+    }
+    if (!entry.isDirectory()) {
+      throw new Error(`Filesystem ancestor ${cursor} is not a directory.`);
+    }
+    identities.add(directoryIdentity(entry));
+    const parent = path.dirname(cursor);
+    if (parent === cursor) {
+      return identities;
+    }
+    cursor = parent;
+  }
+};
+
+const validatePhysicalRepositoryPaths = async (
+  configuration: Configuration,
+  stateDirectory: PhysicalDirectory,
+  repositoryDirectories: readonly PhysicalDirectory[],
+  statePath: string,
+): Promise<void> => {
+  const ancestors = new Map<string, Promise<Set<string>>>();
+  const ancestryOf = (directory: PhysicalDirectory): Promise<Set<string>> => {
+    const cached = ancestors.get(directory.ancestorIdentity);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const result = ancestorIdentities(directory.ancestorPath);
+    ancestors.set(directory.ancestorIdentity, result);
+    return result;
+  };
+  const caseSensitivity = new Map<string, Promise<boolean>>();
+  const caseSensitivityOf = (directory: PhysicalDirectory): Promise<boolean> => {
+    const cached = caseSensitivity.get(directory.ancestorIdentity);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const result = isFilesystemCaseSensitive(directory.ancestorPath);
+    caseSensitivity.set(directory.ancestorIdentity, result);
+    return result;
+  };
+  const stateAncestors = await ancestryOf(stateDirectory);
+  for (const [index, directory] of repositoryDirectories.entries()) {
+    const repositoryAncestors = await ancestryOf(directory);
+    if (
+      repositoryAncestors.has(stateDirectory.ancestorIdentity) ||
+      (directory.missingComponents.length === 0 && stateAncestors.has(directory.ancestorIdentity))
+    ) {
+      throw new Error(`repositories[${index}].path must not overlap the state directory ${statePath}.`);
+    }
+    for (const [previousIndex, previous] of repositoryDirectories.slice(0, index).entries()) {
+      if (directory.ancestorIdentity !== previous.ancestorIdentity) {
+        continue;
+      }
+      const sameComponents = directory.missingComponents.length === previous.missingComponents.length;
+      const exact = sameComponents && directory.missingComponents.every(
+        (component, componentIndex) => component === previous.missingComponents[componentIndex],
+      );
+      const caseVariant = sameComponents && directory.missingComponents.every(
+        (component, componentIndex) => component.toLowerCase() === previous.missingComponents[componentIndex]!.toLowerCase(),
+      );
+      if (exact || (caseVariant && !(await caseSensitivityOf(directory)))) {
+        throw new Error(`repositories[${index}].path resolves to the same location as repositories[${previousIndex}].path (${configuration.repositories[previousIndex]!.coordinate}).`);
+      }
+    }
+  }
 };
 
 export const loadConfiguration = async (
@@ -285,10 +377,10 @@ export const loadConfiguration = async (
     throw new Error(`Cannot read configuration file ${runtimePaths.configFile}.`, { cause });
   }
   const configuration = parseConfiguration(source, runtimePaths);
-  const [stateDirectory, ...repositoryPaths] = await Promise.all([
-    canonicalPath(runtimePaths.stateDirectory),
-    ...configuration.repositories.map((repository) => canonicalPath(repository.path)),
+  const [stateDirectory, ...repositoryDirectories] = await Promise.all([
+    resolvePhysicalDirectory(runtimePaths.stateDirectory),
+    ...configuration.repositories.map((repository) => resolvePhysicalDirectory(repository.path)),
   ]);
-  validateRepositoryPaths(configuration.repositories, repositoryPaths, stateDirectory!, path);
+  await validatePhysicalRepositoryPaths(configuration, stateDirectory!, repositoryDirectories, runtimePaths.stateDirectory);
   return configuration;
 };

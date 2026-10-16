@@ -31,7 +31,9 @@ The pnpm dependency store is local to `.tmp/pnpm-store`.
 
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
 Windows runners. The final `checks` job succeeds only when all platform jobs
-succeed. No live GitHub or Copilot credentials are required by these checks.
+succeed. macOS tests mount temporary case-sensitive and case-insensitive APFS
+images to check path identity against both filesystem behaviors. No live GitHub
+or Copilot credentials are required by these checks.
 
 ## Configuration and current CLI behavior
 
@@ -59,6 +61,10 @@ directory; use an absolute path rather than shell-style tilde expansion.
 Duplicate repository identities, duplicate local paths, paths overlapping the
 retained state directory, and paths with an existing nondirectory component are
 rejected. Missing clone directories remain valid for later repository creation.
+Existing paths are compared by filesystem identity. For missing paths that differ
+only by case under the same existing ancestor, validation temporarily creates an
+empty probe directory there, checks its case behavior, and removes it. Probe
+permission, inspection, or cleanup failures stop validation with an error.
 
 The selected retained-state location is `~/.daynight/` for SQLite, sessions,
 locks, logs, cache, and temporary files. Future PR worktrees belong to each

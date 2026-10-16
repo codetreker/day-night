@@ -21,8 +21,13 @@ YAML parsing is followed by explicit field/type/path validation. Only omitted
 numeric settings use documented defaults; invalid supplied values fail. Existing
 path components must be directories, while missing clone directories remain
 valid. Filesystem errors retain their causes across platform-specific error
-codes. The [configuration design](../../../../docs/design/daynight.md)
-owns the schema and path rules.
+codes. Physical directory identity and ancestry detect existing aliases and
+state overlap. Missing case-variant destinations under one physical ancestor
+use a temporary empty-directory probe of that ancestor's lookup behavior;
+inspection and cleanup failures remain visible. The probe is removed without
+recursive deletion. No operating-system-wide casing assumption is used.
+The [configuration design](../../../../docs/design/daynight.md) owns the schema
+and path rules.
 
 The CLI supports help, version, argument validation, and configuration loading.
 Until the coordinator is integrated, review mode fails explicitly after
@@ -30,7 +35,9 @@ configuration validation and creates no review state. This prevents a successful
 or indefinitely idle invocation from implying that monitoring is operational.
 
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
-Windows. A final `checks` job requires the entire matrix to succeed. Actions are
+Windows. macOS tests mount temporary case-sensitive and case-insensitive APFS
+images and verify their actual lookup behavior before exercising configuration
+validation. A final `checks` job requires the entire matrix to succeed. Actions are
 pinned to the inspected commits:
 [checkout](https://github.com/actions/checkout/tree/3d3c42e5aac5ba805825da76410c181273ba90b1),
 [setup-node](https://github.com/actions/setup-node/tree/949feb2413d6458794dcd2491c4babbbce0c15c1),
@@ -48,12 +55,23 @@ future foreground lifecycle but supplies no monitoring behavior or failure
 signal. An explicit unavailable-coordinator error preserves the entry contract
 without claiming that the review runtime exists.
 
+**Infer path case rules from the operating system or existing names.** macOS
+supports both APFS variants, and a directory's name is looked up in its parent,
+which can be on another volume. Empty destination ancestors provide no names
+for a read-only probe. Conditional temporary probing observes the actual parent
+of the future clone without introducing native helpers or platform commands.
+Node's [filesystem guidance](https://nodejs.org/learn/manipulating-files/working-with-different-filesystems)
+also recommends probing behavior rather than assuming it from the platform.
+
 ## Consequences
 
 All implementation tasks share concrete build and validation commands. Tests
 can inject home resolution and command boundaries without modifying an actual
 user profile. Platform CI provides native process and filesystem evidence as
 features are added; it does not establish live Copilot/GitHub behavior.
+Validation can require write permission on an existing ancestor when ambiguous
+missing destinations require a probe. Failure to create, inspect, or remove it
+is an error; validation never accepts an uncertain case comparison silently.
 
 The current delivery is the CLI/configuration foundation. SQLite, repository
 management, Copilot execution, continuous scheduling and authorized live

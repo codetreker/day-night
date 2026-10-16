@@ -1,9 +1,10 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { configurationDefaults, loadConfiguration, parseConfiguration } from "../src/config.js";
 import { resolveRuntimePaths } from "../src/paths.js";
+import * as filesystemPaths from "../src/paths.js";
 import { formatError } from "../src/cli.js";
 
 const posixPaths = resolveRuntimePaths("/home/Review User 用户", path.posix);
@@ -166,12 +167,13 @@ describe("YAML configuration", () => {
     expect(() => parse(repositoryYaml(undefined, "~/repo"))).toThrow("absolute path or a config-directory-relative path");
   });
 
-  it("uses native Windows config-relative paths and detects case-insensitive collisions", () => {
+  it("uses Windows config-relative paths and rejects exact lexical collisions", () => {
     const windowsPaths = resolveRuntimePaths("C:\\Users\\Review User 用户", path.win32);
     const config = parseConfiguration(repositoryYaml(undefined, "..\\Code\\Repo 用户"), windowsPaths, path.win32);
     expect(config.repositories[0]!.path).toBe("C:\\Users\\Review User 用户\\Code\\Repo 用户");
-    expect(() => parseConfiguration(`${repositoryYaml(undefined, "C:\\Code\\Repo")}  - remote: https://github.com/o/other\n    path: c:/code/repo\n`, windowsPaths, path.win32)).toThrow("same location");
-    expect(() => parseConfiguration(repositoryYaml(undefined, "c:/users/review user 用户/.DAYNIGHT/repo"), windowsPaths, path.win32)).toThrow("must not overlap");
+    expect(() => parseConfiguration(`${repositoryYaml(undefined, "C:\\Code\\Repo")}  - remote: https://github.com/o/other\n    path: C:/Code/Repo\n`, windowsPaths, path.win32)).toThrow("same location");
+    expect(() => parseConfiguration(repositoryYaml(undefined, "C:/Users/Review User 用户/.daynight/repo"), windowsPaths, path.win32)).toThrow("must not overlap");
+    expect(parseConfiguration(`${repositoryYaml(undefined, "C:\\Code\\Repo")}  - remote: https://github.com/o/other\n    path: C:/Code/repo\n`, windowsPaths, path.win32).repositories).toHaveLength(2);
     for (const localPath of ["C:repo", "C:"]) {
       expect(() => parseConfiguration(repositoryYaml(undefined, localPath), windowsPaths, path.win32)).toThrow("drive-relative");
     }
@@ -201,8 +203,15 @@ describe("configuration loading", () => {
     await mkdir(paths.stateDirectory, { recursive: true });
     const source = repositoryYaml();
     await writeFile(paths.configFile, source);
-    const config = await loadConfiguration(paths);
-    expect(config.repositories[0]!.path).toBe(path.join(home, "code", "Repo 用户"));
+    const probe = vi.spyOn(filesystemPaths, "isFilesystemCaseSensitive");
+    try {
+      const config = await loadConfiguration(paths);
+      expect(config.repositories[0]!.path).toBe(path.join(home, "code", "Repo 用户"));
+      expect(probe).not.toHaveBeenCalled();
+      expect(await readdir(home)).toEqual([".daynight"]);
+    } finally {
+      probe.mockRestore();
+    }
     await expect(readFile(paths.databaseFile)).rejects.toMatchObject({ code: "ENOENT" });
     expect(await readFile(paths.configFile, "utf8")).toBe(source);
   });
@@ -225,6 +234,83 @@ describe("configuration loading", () => {
     await symlink(actual, path.join(home, "alias"), "junction");
     await writeFile(paths.configFile, `${repositoryYaml(undefined, "../actual/not-created")}  - remote: https://github.com/o/other\n    path: ../alias/not-created\n`);
     await expect(loadConfiguration(paths)).rejects.toThrow("same location");
+  });
+
+  it("rejects case-variant missing destinations using the physical ancestor's insensitive semantics", async () => {
+    const home = path.join(directory, "insensitive-home");
+    const paths = resolveRuntimePaths(home);
+    const ancestor = path.join(home, "Code");
+    await mkdir(paths.stateDirectory, { recursive: true });
+    await mkdir(ancestor);
+    await writeFile(paths.configFile, `${repositoryYaml(undefined, "../Code/New/Repo")}  - remote: https://github.com/o/other\n    path: ../Code/new/repo\n`);
+    const probe = vi.spyOn(filesystemPaths, "isFilesystemCaseSensitive").mockResolvedValue(false);
+    try {
+      await expect(loadConfiguration(paths)).rejects.toThrow("same location");
+      expect(probe).toHaveBeenCalledExactlyOnceWith(ancestor);
+    } finally {
+      probe.mockRestore();
+    }
+    expect(await readdir(ancestor)).toEqual([]);
+  });
+
+  it("accepts case-distinct missing destinations on a sensitive filesystem and caches its probe", async () => {
+    const home = path.join(directory, "sensitive-home");
+    const paths = resolveRuntimePaths(home);
+    const ancestor = path.join(home, "Code");
+    await mkdir(paths.stateDirectory, { recursive: true });
+    await mkdir(ancestor);
+    await writeFile(paths.configFile, `${repositoryYaml(undefined, "../Code/New/Repo")}  - remote: https://github.com/o/other\n    path: ../Code/new/repo\n  - remote: https://github.com/o/third\n    path: ../Code/NEW/REPO\n`);
+    const probe = vi.spyOn(filesystemPaths, "isFilesystemCaseSensitive").mockResolvedValue(true);
+    try {
+      expect((await loadConfiguration(paths)).repositories).toHaveLength(3);
+      expect(probe).toHaveBeenCalledExactlyOnceWith(ancestor);
+    } finally {
+      probe.mockRestore();
+    }
+    expect(await readdir(ancestor)).toEqual([]);
+  });
+
+  it("uses native filesystem lookup rules for missing destinations and removes its temporary probe", async () => {
+    const home = path.join(directory, "native-case-home 用户");
+    const paths = resolveRuntimePaths(home);
+    await mkdir(paths.stateDirectory, { recursive: true });
+    const reference = path.join(home, "CaseReference");
+    await mkdir(reference);
+    const originalReference = await lstat(reference, { bigint: true });
+    let caseSensitive: boolean;
+    try {
+      const alternate = await lstat(path.join(home, "casereference"), { bigint: true });
+      caseSensitive = originalReference.dev !== alternate.dev || originalReference.ino !== alternate.ino;
+    } catch (error) {
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") {
+        throw error;
+      }
+      caseSensitive = true;
+    }
+    await writeFile(paths.configFile, `${repositoryYaml(undefined, "../New/Repo")}  - remote: https://github.com/o/other\n    path: ../new/repo\n`);
+    const entries = await readdir(home);
+    if (caseSensitive) {
+      expect((await loadConfiguration(paths)).repositories).toHaveLength(2);
+    } else {
+      await expect(loadConfiguration(paths)).rejects.toThrow("same location");
+    }
+    expect(await readdir(home)).toEqual(entries);
+  });
+
+  it("uses physical ancestry for state overlap without probing or creating missing clone directories", async () => {
+    const home = path.join(directory, "physical-state-home");
+    const paths = resolveRuntimePaths(home);
+    await mkdir(paths.stateDirectory, { recursive: true });
+    await symlink(paths.stateDirectory, path.join(home, "STATE-ALIAS"), "junction");
+    await writeFile(paths.configFile, repositoryYaml(undefined, "../STATE-ALIAS/New/Repo"));
+    const probe = vi.spyOn(filesystemPaths, "isFilesystemCaseSensitive");
+    try {
+      await expect(loadConfiguration(paths)).rejects.toThrow("must not overlap");
+      expect(probe).not.toHaveBeenCalled();
+    } finally {
+      probe.mockRestore();
+    }
+    expect(await readdir(paths.stateDirectory)).toEqual(["config.yml"]);
   });
 
   it("exposes filesystem failures rather than treating a file as a missing directory", async () => {
