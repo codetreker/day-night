@@ -61,10 +61,12 @@ directory; use an absolute path rather than shell-style tilde expansion.
 Duplicate repository identities, duplicate local paths, paths overlapping the
 retained state directory, and paths with an existing nondirectory component are
 rejected. Missing clone directories remain valid for later repository creation.
-Existing paths are compared by filesystem identity. For missing paths that differ
-only by case under the same existing ancestor, validation temporarily creates an
-empty probe directory there, checks its case behavior, and removes it. Probe
-permission, inspection, or cleanup failures stop validation with an error.
+Existing paths are compared by filesystem identity. Missing destinations with
+the same existing ancestor and component count are compared by temporarily
+creating one candidate's directory names inside a unique probe directory there
+and looking up the other spelling. This observes actual case and Unicode rules.
+Validation removes only the directories it created, using nonrecursive removal.
+Probe permission, inspection, or cleanup failures stop validation with an error.
 
 The selected retained-state location is `~/.daynight/` for SQLite, sessions,
 locks, logs, cache, and temporary files. Future PR worktrees belong to each

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { isFilesystemCaseSensitive, pathsEqual, pathsOverlap, resolveRuntimePaths } from "../src/paths.js";
+import { missingPathsReferToSameDirectory, pathsEqual, pathsOverlap, resolveRuntimePaths } from "../src/paths.js";
 
 describe("current-user runtime paths", () => {
   it("resolves all state locations from an injected POSIX home", () => {
@@ -43,73 +43,91 @@ describe("path comparison", () => {
   });
 });
 
-describe("filesystem case probe lifecycle", () => {
+describe("filesystem destination probe lifecycle", () => {
   const directory = path.resolve("probe-parent");
-  const probe = path.join(directory, ".daynight-case-unique");
+  const probe = path.join(directory, ".daynight-path-unique");
+  const first = ["New", "café"];
+  const second = ["new", "cafe\u0301"];
+  const parent = path.join(probe, "New");
+  const leaf = path.join(parent, "café");
   const identity = { dev: 1n, ino: 2n };
   const operations = () => ({
     mkdtemp: vi.fn(async () => probe),
+    mkdir: vi.fn(async () => {}),
     lstat: vi.fn(async () => identity),
     rmdir: vi.fn(async () => {}),
   });
 
-  it("detects an insensitive directory and removes its exact empty probe", async () => {
+  it("observes exact candidate spellings and removes only its created directories deepest first", async () => {
     const filesystem = operations();
-    expect(await isFilesystemCaseSensitive(directory, filesystem)).toBe(false);
-    expect(filesystem.mkdtemp).toHaveBeenCalledWith(path.join(directory, ".daynight-case-"));
-    expect(filesystem.lstat).toHaveBeenCalledWith(path.join(directory, ".DAYNIGHT-CASE-unique"));
-    expect(filesystem.rmdir).toHaveBeenCalledExactlyOnceWith(probe);
+    expect(await missingPathsReferToSameDirectory(directory, first, second, filesystem)).toBe(true);
+    expect(filesystem.mkdtemp).toHaveBeenCalledWith(path.join(directory, ".daynight-path-"));
+    expect(filesystem.mkdir.mock.calls).toEqual([[parent], [leaf]]);
+    expect(filesystem.lstat.mock.calls).toEqual([[leaf], [path.join(probe, ...second)]]);
+    expect(filesystem.rmdir.mock.calls).toEqual([[leaf], [parent], [probe]]);
   });
 
-  it("detects a sensitive directory when the alternate spelling is absent", async () => {
+  it("accepts distinct destinations when the alternate spelling does not exist", async () => {
     const filesystem = operations();
     filesystem.lstat.mockResolvedValueOnce(identity).mockRejectedValueOnce(Object.assign(new Error("missing alternate"), { code: "ENOENT" }));
-    expect(await isFilesystemCaseSensitive(directory, filesystem)).toBe(true);
-    expect(filesystem.rmdir).toHaveBeenCalledExactlyOnceWith(probe);
+    expect(await missingPathsReferToSameDirectory(directory, first, second, filesystem)).toBe(false);
+    expect(filesystem.rmdir.mock.calls).toEqual([[leaf], [parent], [probe]]);
   });
 
-  it("treats a distinct alternate entry as sensitive rather than trusting its spelling", async () => {
+  it("uses physical identity rather than assuming an existing alternate spelling is an alias", async () => {
     const filesystem = operations();
     filesystem.lstat.mockResolvedValueOnce(identity).mockResolvedValueOnce({ dev: 1n, ino: 3n });
-    expect(await isFilesystemCaseSensitive(directory, filesystem)).toBe(true);
-    expect(filesystem.rmdir).toHaveBeenCalledExactlyOnceWith(probe);
+    expect(await missingPathsReferToSameDirectory(directory, first, second, filesystem)).toBe(false);
   });
 
-  it("preserves an unexpected lookup failure and still removes its empty probe", async () => {
+  it("cleans up only successfully created directories after a partial mkdir failure", async () => {
+    const filesystem = operations();
+    const denied = Object.assign(new Error("mkdir denied"), { code: "EACCES" });
+    filesystem.mkdir.mockResolvedValueOnce(undefined).mockRejectedValueOnce(denied);
+    await expect(missingPathsReferToSameDirectory(directory, first, second, filesystem)).rejects.toMatchObject({ cause: denied });
+    expect(filesystem.rmdir.mock.calls).toEqual([[parent], [probe]]);
+    expect(filesystem.lstat).not.toHaveBeenCalled();
+  });
+
+  it("preserves unexpected lookup failure and still removes all of its created directories", async () => {
     const filesystem = operations();
     const denied = Object.assign(new Error("lookup denied"), { code: "EACCES" });
     filesystem.lstat.mockRejectedValueOnce(denied);
-    await expect(isFilesystemCaseSensitive(directory, filesystem)).rejects.toMatchObject({ cause: denied });
-    expect(filesystem.rmdir).toHaveBeenCalledExactlyOnceWith(probe);
+    await expect(missingPathsReferToSameDirectory(directory, first, second, filesystem)).rejects.toMatchObject({ cause: denied });
+    expect(filesystem.rmdir.mock.calls).toEqual([[leaf], [parent], [probe]]);
   });
 
-  it("exposes cleanup failure after a successful lookup", async () => {
+  it("reports cleanup failure and continues attempting remaining nonrecursive removals", async () => {
     const filesystem = operations();
     const denied = Object.assign(new Error("cleanup denied"), { code: "EACCES" });
     filesystem.rmdir.mockRejectedValueOnce(denied);
-    await expect(isFilesystemCaseSensitive(directory, filesystem)).rejects.toMatchObject({ message: `Cannot remove temporary filesystem case probe ${probe}.`, cause: denied });
+    await expect(missingPathsReferToSameDirectory(directory, first, second, filesystem)).rejects.toMatchObject({ message: `Cannot remove temporary filesystem path probe directory ${leaf}.`, cause: denied });
+    expect(filesystem.rmdir.mock.calls).toEqual([[leaf], [parent], [probe]]);
   });
 
-  it("retains both lookup and cleanup failures", async () => {
+  it("retains the primary failure together with every cleanup failure", async () => {
     const filesystem = operations();
     const lookup = new Error("lookup failed");
-    const cleanup = new Error("cleanup failed");
+    const cleanup = [new Error("leaf cleanup failed"), new Error("parent cleanup failed"), new Error("sandbox cleanup failed")];
     filesystem.lstat.mockRejectedValueOnce(lookup);
-    filesystem.rmdir.mockRejectedValueOnce(cleanup);
+    for (const error of cleanup) {
+      filesystem.rmdir.mockRejectedValueOnce(error);
+    }
     try {
-      await isFilesystemCaseSensitive(directory, filesystem);
-      expect.unreachable("Both errors must be visible.");
+      await missingPathsReferToSameDirectory(directory, first, second, filesystem);
+      expect.unreachable("Every failure must be visible.");
     } catch (error) {
       expect(error).toBeInstanceOf(AggregateError);
-      expect((error as AggregateError).errors).toMatchObject([{ cause: lookup }, { cause: cleanup }]);
+      expect((error as AggregateError).errors).toMatchObject([{ cause: lookup }, ...cleanup.map((cause) => ({ cause }))]);
     }
+    expect(filesystem.rmdir.mock.calls).toEqual([[leaf], [parent], [probe]]);
   });
 
-  it("reports probe creation permissions without attempting unrelated cleanup", async () => {
+  it("reports sandbox creation permissions without attempting unrelated cleanup", async () => {
     const filesystem = operations();
     const denied = Object.assign(new Error("creation denied"), { code: "EACCES" });
     filesystem.mkdtemp.mockRejectedValueOnce(denied);
-    await expect(isFilesystemCaseSensitive(directory, filesystem)).rejects.toMatchObject({ cause: denied });
+    await expect(missingPathsReferToSameDirectory(directory, first, second, filesystem)).rejects.toMatchObject({ cause: denied });
     expect(filesystem.rmdir).not.toHaveBeenCalled();
   });
 });

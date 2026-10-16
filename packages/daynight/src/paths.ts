@@ -1,5 +1,5 @@
 import path from "node:path";
-import { lstat, mkdtemp, rmdir } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, rmdir } from "node:fs/promises";
 
 export type PathApi = Pick<
   typeof path,
@@ -66,59 +66,66 @@ export const pathsOverlap = (
 ): boolean =>
   containsPath(first, second, pathApi) || containsPath(second, first, pathApi);
 
-type CaseProbeOperations = {
+type PathProbeOperations = {
   mkdtemp: (prefix: string) => Promise<string>;
+  mkdir: (target: string) => Promise<void>;
   lstat: (target: string) => Promise<{ dev: bigint; ino: bigint }>;
   rmdir: (target: string) => Promise<void>;
 };
 
-const caseProbeOperations: CaseProbeOperations = {
+const pathProbeOperations: PathProbeOperations = {
   mkdtemp,
+  mkdir,
   lstat: (target) => lstat(target, { bigint: true }),
   rmdir,
 };
 
-export const isFilesystemCaseSensitive = async (
+export const missingPathsReferToSameDirectory = async (
   directory: string,
-  operations: CaseProbeOperations = caseProbeOperations,
+  first: readonly string[],
+  second: readonly string[],
+  operations: PathProbeOperations = pathProbeOperations,
 ): Promise<boolean> => {
   let probe: string;
   try {
-    probe = await operations.mkdtemp(path.join(directory, ".daynight-case-"));
+    probe = await operations.mkdtemp(path.join(directory, ".daynight-path-"));
   } catch (cause) {
-    throw new Error(`Cannot create a temporary filesystem case probe in ${directory}.`, { cause });
+    throw new Error(`Cannot create a temporary filesystem path probe in ${directory}.`, { cause });
   }
-  let caseSensitive = false;
-  let failure: Error | undefined;
+  const created = [probe];
+  let sameDirectory = false;
+  const failures: Error[] = [];
   try {
-    const original = await operations.lstat(probe);
-    const alternate = path.join(
-      path.dirname(probe),
-      path.basename(probe).replace(".daynight-case-", ".DAYNIGHT-CASE-"),
-    );
+    let firstPath = probe;
+    for (const component of first) {
+      firstPath = path.join(firstPath, component);
+      await operations.mkdir(firstPath);
+      created.push(firstPath);
+    }
+    const original = await operations.lstat(firstPath);
     try {
-      const alternateEntry = await operations.lstat(alternate);
-      caseSensitive = original.dev !== alternateEntry.dev || original.ino !== alternateEntry.ino;
+      const alternate = await operations.lstat(path.join(probe, ...second));
+      sameDirectory = original.dev === alternate.dev && original.ino === alternate.ino;
     } catch (cause) {
       if (!(cause instanceof Error) || !("code" in cause) || cause.code !== "ENOENT") {
         throw cause;
       }
-      caseSensitive = true;
     }
   } catch (cause) {
-    failure = new Error(`Cannot determine filesystem case sensitivity in ${directory}.`, { cause });
+    failures.push(new Error(`Cannot compare filesystem destinations in ${directory}.`, { cause }));
   }
-  try {
-    await operations.rmdir(probe);
-  } catch (cause) {
-    const cleanupFailure = new Error(`Cannot remove temporary filesystem case probe ${probe}.`, { cause });
-    if (failure !== undefined) {
-      throw new AggregateError([failure, cleanupFailure], "Filesystem case probing and probe cleanup both failed.");
+  for (const target of created.reverse()) {
+    try {
+      await operations.rmdir(target);
+    } catch (cause) {
+      failures.push(new Error(`Cannot remove temporary filesystem path probe directory ${target}.`, { cause }));
     }
-    throw cleanupFailure;
   }
-  if (failure !== undefined) {
-    throw failure;
+  if (failures.length === 1) {
+    throw failures[0];
   }
-  return caseSensitive;
+  if (failures.length > 1) {
+    throw new AggregateError(failures, "Filesystem path comparison or probe cleanup failed.");
+  }
+  return sameDirectory;
 };

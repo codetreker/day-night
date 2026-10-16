@@ -2,7 +2,7 @@ import { lstat, readFile, realpath, stat } from "node:fs/promises";
 import type { BigIntStats } from "node:fs";
 import path from "node:path";
 import { parseDocument } from "yaml";
-import { isFilesystemCaseSensitive, pathsEqual, pathsOverlap } from "./paths.js";
+import { missingPathsReferToSameDirectory, pathsEqual, pathsOverlap } from "./paths.js";
 import type { PathApi, RuntimePaths } from "./paths.js";
 
 export type RepositoryConfiguration = {
@@ -330,16 +330,6 @@ const validatePhysicalRepositoryPaths = async (
     ancestors.set(directory.ancestorIdentity, result);
     return result;
   };
-  const caseSensitivity = new Map<string, Promise<boolean>>();
-  const caseSensitivityOf = (directory: PhysicalDirectory): Promise<boolean> => {
-    const cached = caseSensitivity.get(directory.ancestorIdentity);
-    if (cached !== undefined) {
-      return cached;
-    }
-    const result = isFilesystemCaseSensitive(directory.ancestorPath);
-    caseSensitivity.set(directory.ancestorIdentity, result);
-    return result;
-  };
   const stateAncestors = await ancestryOf(stateDirectory);
   for (const [index, directory] of repositoryDirectories.entries()) {
     const repositoryAncestors = await ancestryOf(directory);
@@ -357,10 +347,12 @@ const validatePhysicalRepositoryPaths = async (
       const exact = sameComponents && directory.missingComponents.every(
         (component, componentIndex) => component === previous.missingComponents[componentIndex],
       );
-      const caseVariant = sameComponents && directory.missingComponents.every(
-        (component, componentIndex) => component.toLowerCase() === previous.missingComponents[componentIndex]!.toLowerCase(),
+      const observedSameDirectory = !exact && sameComponents && await missingPathsReferToSameDirectory(
+        directory.ancestorPath,
+        previous.missingComponents,
+        directory.missingComponents,
       );
-      if (exact || (caseVariant && !(await caseSensitivityOf(directory)))) {
+      if (exact || observedSameDirectory) {
         throw new Error(`repositories[${index}].path resolves to the same location as repositories[${previousIndex}].path (${configuration.repositories[previousIndex]!.coordinate}).`);
       }
     }

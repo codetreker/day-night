@@ -203,7 +203,7 @@ describe("configuration loading", () => {
     await mkdir(paths.stateDirectory, { recursive: true });
     const source = repositoryYaml();
     await writeFile(paths.configFile, source);
-    const probe = vi.spyOn(filesystemPaths, "isFilesystemCaseSensitive");
+    const probe = vi.spyOn(filesystemPaths, "missingPathsReferToSameDirectory");
     try {
       const config = await loadConfiguration(paths);
       expect(config.repositories[0]!.path).toBe(path.join(home, "code", "Repo 用户"));
@@ -236,63 +236,65 @@ describe("configuration loading", () => {
     await expect(loadConfiguration(paths)).rejects.toThrow("same location");
   });
 
-  it("rejects case-variant missing destinations using the physical ancestor's insensitive semantics", async () => {
+  it("rejects missing destinations when their actual spellings identify the same directory", async () => {
     const home = path.join(directory, "insensitive-home");
     const paths = resolveRuntimePaths(home);
     const ancestor = path.join(home, "Code");
     await mkdir(paths.stateDirectory, { recursive: true });
     await mkdir(ancestor);
     await writeFile(paths.configFile, `${repositoryYaml(undefined, "../Code/New/Repo")}  - remote: https://github.com/o/other\n    path: ../Code/new/repo\n`);
-    const probe = vi.spyOn(filesystemPaths, "isFilesystemCaseSensitive").mockResolvedValue(false);
+    const probe = vi.spyOn(filesystemPaths, "missingPathsReferToSameDirectory").mockResolvedValue(true);
     try {
       await expect(loadConfiguration(paths)).rejects.toThrow("same location");
-      expect(probe).toHaveBeenCalledExactlyOnceWith(ancestor);
+      expect(probe).toHaveBeenCalledExactlyOnceWith(ancestor, ["New", "Repo"], ["new", "repo"]);
     } finally {
       probe.mockRestore();
     }
     expect(await readdir(ancestor)).toEqual([]);
   });
 
-  it("accepts case-distinct missing destinations on a sensitive filesystem and caches its probe", async () => {
+  it("accepts destinations whose observed pair identities are distinct", async () => {
     const home = path.join(directory, "sensitive-home");
     const paths = resolveRuntimePaths(home);
     const ancestor = path.join(home, "Code");
     await mkdir(paths.stateDirectory, { recursive: true });
     await mkdir(ancestor);
     await writeFile(paths.configFile, `${repositoryYaml(undefined, "../Code/New/Repo")}  - remote: https://github.com/o/other\n    path: ../Code/new/repo\n  - remote: https://github.com/o/third\n    path: ../Code/NEW/REPO\n`);
-    const probe = vi.spyOn(filesystemPaths, "isFilesystemCaseSensitive").mockResolvedValue(true);
+    const probe = vi.spyOn(filesystemPaths, "missingPathsReferToSameDirectory").mockResolvedValue(false);
     try {
       expect((await loadConfiguration(paths)).repositories).toHaveLength(3);
-      expect(probe).toHaveBeenCalledExactlyOnceWith(ancestor);
+      expect(probe).toHaveBeenCalledTimes(3);
     } finally {
       probe.mockRestore();
     }
     expect(await readdir(ancestor)).toEqual([]);
   });
 
-  it("uses native filesystem lookup rules for missing destinations and removes its temporary probe", async () => {
-    const home = path.join(directory, "native-case-home 用户");
+  it.each([
+    { name: "case", first: "New/Repo", second: "new/repo", reference: "CaseReference", alternate: "casereference" },
+    { name: "Unicode normalization", first: "New/café", second: "New/cafe\u0301", reference: "Reference-café", alternate: "Reference-cafe\u0301" },
+  ])("uses native $name lookup rules and removes its temporary sandbox", async ({ name, first, second, reference, alternate }) => {
+    const home = path.join(directory, `native-${name}-home 用户`);
     const paths = resolveRuntimePaths(home);
     await mkdir(paths.stateDirectory, { recursive: true });
-    const reference = path.join(home, "CaseReference");
-    await mkdir(reference);
-    const originalReference = await lstat(reference, { bigint: true });
-    let caseSensitive: boolean;
+    const referencePath = path.join(home, reference);
+    await mkdir(referencePath);
+    const originalReference = await lstat(referencePath, { bigint: true });
+    let sameDirectory = false;
     try {
-      const alternate = await lstat(path.join(home, "casereference"), { bigint: true });
-      caseSensitive = originalReference.dev !== alternate.dev || originalReference.ino !== alternate.ino;
+      const alternateEntry = await lstat(path.join(home, alternate), { bigint: true });
+      sameDirectory = originalReference.dev === alternateEntry.dev && originalReference.ino === alternateEntry.ino;
     } catch (error) {
       if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") {
         throw error;
       }
-      caseSensitive = true;
     }
-    await writeFile(paths.configFile, `${repositoryYaml(undefined, "../New/Repo")}  - remote: https://github.com/o/other\n    path: ../new/repo\n`);
+    await writeFile(paths.configFile, `${repositoryYaml(undefined, `../${first}`)}  - remote: https://github.com/o/other\n    path: ${JSON.stringify(`../${second}`)}\n`);
     const entries = await readdir(home);
-    if (caseSensitive) {
-      expect((await loadConfiguration(paths)).repositories).toHaveLength(2);
-    } else {
+    if (sameDirectory) {
       await expect(loadConfiguration(paths)).rejects.toThrow("same location");
+    } else {
+      expect((await loadConfiguration(paths)).repositories).toHaveLength(2);
     }
     expect(await readdir(home)).toEqual(entries);
   });
@@ -303,7 +305,7 @@ describe("configuration loading", () => {
     await mkdir(paths.stateDirectory, { recursive: true });
     await symlink(paths.stateDirectory, path.join(home, "STATE-ALIAS"), "junction");
     await writeFile(paths.configFile, repositoryYaml(undefined, "../STATE-ALIAS/New/Repo"));
-    const probe = vi.spyOn(filesystemPaths, "isFilesystemCaseSensitive");
+    const probe = vi.spyOn(filesystemPaths, "missingPathsReferToSameDirectory");
     try {
       await expect(loadConfiguration(paths)).rejects.toThrow("must not overlap");
       expect(probe).not.toHaveBeenCalled();

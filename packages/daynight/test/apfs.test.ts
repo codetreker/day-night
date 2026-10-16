@@ -87,5 +87,21 @@ describe.skipIf(process.platform !== "darwin").each(modes)(
         await expect(loadConfiguration(paths)).rejects.toThrow("must not overlap");
       }
     });
+
+    it("rejects missing Unicode spelling aliases using actual APFS lookup", async () => {
+      const paths = resolveRuntimePaths(homeDirectory);
+      const reference = path.join(homeDirectory, "caf\u00e9-reference");
+      await mkdir(reference);
+      expect((await stat(path.join(homeDirectory, "cafe\u0301-reference"))).ino).toBe((await stat(reference)).ino);
+      await writeFile(paths.configFile, JSON.stringify({
+        repositories: [
+          { remote: "https://github.com/owner/first", path: "../New/caf\u00e9" },
+          { remote: "https://github.com/owner/second", path: "../New/cafe\u0301" },
+        ],
+      }));
+      const originalEntries = await readdir(homeDirectory);
+      await expect(loadConfiguration(paths)).rejects.toThrow("same location");
+      expect(await readdir(homeDirectory)).toEqual(originalEntries);
+    });
   },
 );

@@ -22,10 +22,12 @@ numeric settings use documented defaults; invalid supplied values fail. Existing
 path components must be directories, while missing clone directories remain
 valid. Filesystem errors retain their causes across platform-specific error
 codes. Physical directory identity and ancestry detect existing aliases and
-state overlap. Missing case-variant destinations under one physical ancestor
-use a temporary empty-directory probe of that ancestor's lookup behavior;
-inspection and cleanup failures remain visible. The probe is removed without
-recursive deletion. No operating-system-wide casing assumption is used.
+state overlap. Missing destinations under one physical ancestor with equal
+component counts use a temporary candidate-path probe: one spelling is created
+inside an owned sandbox and the other is looked up by the filesystem. Created
+directories are recorded and removed deepest-first without recursive deletion.
+Creation, inspection, and cleanup failures remain visible. No platform casing,
+JavaScript lowercase, or Unicode-normalization rule replaces actual lookup.
 The [configuration design](../../../../docs/design/daynight.md) owns the schema
 and path rules.
 
@@ -58,8 +60,11 @@ without claiming that the review runtime exists.
 **Infer path case rules from the operating system or existing names.** macOS
 supports both APFS variants, and a directory's name is looked up in its parent,
 which can be on another volume. Empty destination ancestors provide no names
-for a read-only probe. Conditional temporary probing observes the actual parent
-of the future clone without introducing native helpers or platform commands.
+for a read-only probe. JavaScript lowercase comparison also misses Unicode
+normalization aliases on APFS, while global normalization would conflate
+distinct Linux filenames. Conditional candidate-path probing observes lookup
+under the actual parent of the future clone without introducing native helpers
+or platform commands.
 Node's [filesystem guidance](https://nodejs.org/learn/manipulating-files/working-with-different-filesystems)
 also recommends probing behavior rather than assuming it from the platform.
 
