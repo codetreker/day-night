@@ -74,4 +74,4 @@
 sync:
     remote: "git+https://github.com/codetreker/day-night"
 export:
-    auto: true
+    auto: false
