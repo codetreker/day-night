@@ -18,10 +18,12 @@ daynight --deamon-review
 ```
 
 The CLI reads YAML configuration from `~/.daynight/config.yml` and keeps its
-SQLite database, sessions, lock, logs, cache, temporary files, and PR worktrees
-under `~/.daynight/`. The home directory is resolved for the current OS user;
+SQLite database, sessions, lock, logs, cache, and temporary files under
+`~/.daynight/`. PR worktrees live under each monitored repository root's
+`.worktrees/` directory. The home directory is resolved for the current OS user;
 repository clone paths come from configuration, with relative paths resolved
-against the configuration directory. This entry point is specified but not yet
+against the configuration directory. `maxConcurrentWorker` limits simultaneous
+PR review workers within the CLI. This entry point is specified but not yet
 implemented.
 
 ## Working in the repository

@@ -17,11 +17,12 @@ flag spelling. Configuration is YAML at `~/.daynight/config.yml`. The program
 resolves the current OS user's home directory on Linux, macOS, and Windows.
 Relative repository paths resolve against the configuration directory.
 
-All runtime state resides under `~/.daynight/`: SQLite and its sidecar files,
-retained Copilot sessions, the instance lock, logs, caches, temporary files, and
-PR worktrees. Repository clones retain their configured paths. Configuration
-errors report the affected file and stop startup. These are recorded design
-decisions; application implementation is pending.
+Configuration and coordination state reside under `~/.daynight/`: SQLite and
+its sidecar files, retained Copilot sessions, the instance lock, logs, caches,
+and temporary files. Repository clones retain their configured paths. PR
+worktrees follow the [repository-local worktree decision](2026-10-16-repository-local-review-worktrees.md).
+Configuration errors report the affected file and stop startup. These are
+recorded design decisions; application implementation is pending.
 
 This location choice complements the
 [foreground CLI decision](2026-10-16-foreground-review-cli.md) without changing
@@ -38,9 +39,14 @@ lock. There is no deployed application data to migrate.
 
 ## Consequences
 
+The original home-layout decision included PR worktrees to centralize runtime
+files. The repository-local worktree decision replaces that part of the layout;
+configuration, coordination state, and retained sessions keep their home location.
+
 Launching from another working directory preserves the same review history and
 session identities. YAML examples and path resolution must agree with the fixed
 layout. Platform tests must cover home-directory resolution and relative clone
 paths; tests inject a temporary home-resolution result rather than write into
-an actual user profile. Runtime files deliberately use the specified home
-location, while development probes remain in the task worktree's `.tmp/`.
+an actual user profile. Configuration and coordination files deliberately use the specified home
+location, while PR worktrees remain with their repositories and development
+probes remain in the task worktree's `.tmp/`.

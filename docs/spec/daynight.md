@@ -25,7 +25,8 @@ PR 需要审查时启动 review agent。daemon 是这个 CLI 进程承担的角�
 配置文件固定为 `~/.daynight/config.yml`，使用 YAML，通过远程地址和本地仓库路径
 指定每个需要监控的 GitHub 仓库。`~` 表示当前操作系统用户的主目录，路径由程序解析；
 从不同工作目录启动都读取同一份配置。仓库路径为相对路径时，相对于配置文件所在目录
-解析。每个配置的仓库分别维护自己的初始化状态和 PR 状态。
+解析。并发审查 Worker 数量的配置项名为 `maxConcurrentWorker`。每个配置的仓库
+分别维护自己的初始化状态和 PR 状态。
 
 ### R3. 本地仓库与认证
 
@@ -79,9 +80,9 @@ CLI 会话。该 PR 的每次后续审查，以及每次确认或重试，都必
 
 ### R9. Worktree 管理职责与生命周期
 
-每个被审查的 PR 使用独立的 Git worktree。daemon 在首次审查时创建 worktree，并在
-该 PR 的后续审查中复用。daemon 负责这些 worktree 的创建、准备、更新和清理；review
-agent 不负责 worktree 管理。
+每个被审查的 PR 使用独立的 Git worktree，放在所属仓库根目录的 `.worktrees/` 下。
+daemon 在首次审查时创建 worktree，并在该 PR 的后续审查中复用。daemon 负责这些
+worktree 的创建、准备、更新和清理；review agent 不负责 worktree 管理。
 
 PR 合并或未合并就被关闭时，daemon 清理其 worktree。deprecated PR 指未合并就被
 关闭的 PR。
@@ -120,12 +121,11 @@ agent 首先判断上次尝试是否已经发布了所需结果。如果已经�
 
 ### R13. 持久化状态与重启
 
-运行状态统一保存在 `~/.daynight/`，SQLite 数据库位于 `~/.daynight/state.sqlite`。
-会话文件、实例锁、日志、缓存、临时文件和 PR worktree 也位于该目录下；仓库克隆位置
-由配置中的本地路径指定。SQLite 保存恢复仓库监控和审查执行所需的持久化状态，包括
-仓库初始化边界、已观察到的 PR 状态、目标分支和 head SHA、已审查版本、CLI 会话标识、
-worktree 标识、执行状态，
-以及确认或重试状态。
+SQLite 数据库位于 `~/.daynight/state.sqlite`。数据库、会话文件、实例锁、日志、缓存
+和临时文件统一保存在 `~/.daynight/`。PR worktree 按 R9 放在所属仓库根目录的
+`.worktrees/` 下，仓库克隆位置由配置中的本地路径指定。SQLite 保存恢复仓库监控和
+审查执行所需的持久化状态，包括仓库初始化边界、已观察到的 PR 状态、目标分支和
+head SHA、已审查版本、CLI 会话标识、worktree 标识、执行状态，以及确认或重试状态。
 
 重启后，daemon 根据这些状态恢复待处理或被中断的工作，同时保留 R4 规定的永久排除
 规则和 R8 规定的单个 PR 会话连续性。不得仅因 daemon 已经重启，就将被中断的尝试视为
@@ -152,6 +152,7 @@ SHA 的尝试，不能满足另一个 head SHA 的待处理审查。同样，完
 | 符合审查资格的 PR 修改目标分支。 | 目标分支变化需要审查。 | R6 |
 | 只有目标分支收到新提交。 | 仅此变化不会安排审查。 | R6 |
 | PR 在审查期间收到新提交。 | 同一 PR 不会同时运行第二个 agent；最新且符合审查资格的版本保持待处理状态。 | R7, R14 |
+| 首次审查符合条件的 PR。 | daemon 在该仓库根目录的 `.worktrees/` 下创建此 PR 的独立 worktree。 | R9 |
 | PR 需要再次审查，或需要从未完成的尝试中恢复。 | 只要 PR 仍然 Open，daemon 就恢复已有的 Copilot CLI 会话，并使用已有的 worktree。 | R8, R9, R12 |
 | 审查发现 Critical 或 Major 问题。 | agent 发布 inline comments，不提交 `REQUEST_CHANGES`。 | R10 |
 | 审查没有发现 Critical 或 Major 问题。 | agent approve 该 PR。 | R10 |

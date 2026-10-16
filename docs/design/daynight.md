@@ -28,7 +28,7 @@ GitHub，并以普通子进程调用 Copilot。配置缺失、YAML 语法错误�
 
 ```yaml
 pollIntervalMs: 60000
-maxConcurrentReviews: 1
+maxConcurrentWorker: 1
 agentTimeoutMs: 1800000
 maxAttempts: 3
 retryDelayMs: 30000
@@ -39,7 +39,7 @@ repositories:
 
 这些数值是建议的运行默认值。使用 YAML 解析器读取数据，再按配置字段和类型校验。
 仓库相对路径相对于配置文件所在目录解析；示例的 `../code/REPO` 指向用户主目录下的
-`code/REPO`。运行状态目录固定为 `~/.daynight/`。校验正整数限制、仓库身份的唯一性，
+`code/REPO`。数据库和会话等状态的目录固定为 `~/.daynight/`。校验正整数限制、仓库身份的唯一性，
 以及克隆路径与状态路径互不重叠。将 HTTPS 或 SSH GitHub 远程地址解析为
 host/owner/name 和稳定的仓库 ID。地址写法变化或程序重启都不得让同一仓库再次初始化。
 已有克隆与配置不匹配时拒绝使用，不得覆盖；保留其工作文件和分支。
@@ -65,8 +65,9 @@ flowchart TD
 轮询与审查调度是在同一个 Node.js 进程内运行的异步任务。轮询器不等待整轮审查结束
 才再次轮询。内存中的映射在每项 PR 操作的第一个异步步骤之前预留该 PR；准备、
 子进程执行和清理共用这个预留，避免轮询为同一个 worktree 启动另一项操作。
-SQLite 在程序退出后保留审查进度。可配置的全局上限控制不同 PR 之间的审查并发数。
-待处理期间发生的多次更新合并处理。
+SQLite 在程序退出后保留审查进度。`maxConcurrentWorker` 控制不同 PR 之间并行执行
+的审查任务数量；这里的 Worker 是 CLI 进程内的一项审查工作。待处理期间发生的多次
+更新合并处理。
 
 | 建议文件 | 职责 |
 |---|---|
@@ -83,7 +84,8 @@ SQLite 在程序退出后保留审查进度。可配置的全局上限控制不�
 
 ## 本地数据与 SQLite
 
-配置和全部运行状态统一放在当前用户的 `~/.daynight/` 下：
+配置、数据库、会话文件、实例锁、日志、缓存和临时文件放在当前用户的
+`~/.daynight/` 下：
 
 ```text
 ~/.daynight/
@@ -94,9 +96,9 @@ SQLite 在程序退出后保留审查进度。可配置的全局上限控制不�
   cache/
   tmp/
   logs/<review-id>/<attempt>/  # stdout 和 stderr
-  worktrees/<repository-id>/<pr-number>/
 ```
 
+PR worktree 位于各受监控仓库根目录的 `.worktrees/` 下，布局见下文的生命周期说明。
 会话数据和日志放在可清理的 worktree 之外。将 Copilot 的状态、缓存、日志和临时目录
 都设在这个状态目录下。SQLite 的 WAL、SHM 等伴随文件也保留在该目录。启动目录变化
 不会改变数据库、会话或实例锁的位置。令牌只通过命令继承的环境变量传递，不得写入
@@ -159,6 +161,19 @@ SQLite、命令参数或日志。配置与状态位置的选择记录在
 
 ## Worktree 生命周期
 
+PR worktree 归属于配置中的本地仓库，放在该仓库根目录的 `.worktrees/` 下：
+
+```text
+<repository>/
+  .worktrees/
+    pr-<number>/
+```
+
+daemon 为每个 PR 使用固定路径 `<repository>/.worktrees/pr-<number>/`，并在 SQLite
+中记录其归属。该目录可能同时容纳其他工具或人工创建的 worktree，daemon 只操作自己
+登记的 PR worktree。位置选择记录在
+[仓库内 worktree 决策](../../.agents/notes/implemented/architecture/2026-10-16-repository-local-review-worktrees.md)。
+
 克隆尚不存在的仓库，并校验已有克隆是否与配置中的远程地址匹配。通过该基础仓库
 获取 PR 的 head，包括来自 fork 的 PR：
 
@@ -171,7 +186,7 @@ git fetch --no-tags origin +refs/pull/N/head:refs/daynight/pr/N/head
 计算差异。目标分支顶端提交用于提供审查上下文，不构成额外触发条件。不得将 GitHub
 生成的合并提交用作 PR head。保留足够的历史以计算差异。
 
-首次审查创建 detached worktree。后续审查复用同一路径，在上一子进程结束后以
+首次审查在上述路径创建 detached worktree。后续审查复用同一路径，在上一子进程结束后以
 detached 状态切换到选定的 head。仅在经过校验且由 daemon 管理的 worktree 内清理
 agent 生成的文件。执行强制操作前校验其规范路径和 Git common directory；保留主工作
 区文件及共享分支。确认目标未变化的失败审查时，保留原 worktree，让会话保有本地
@@ -283,10 +298,10 @@ SQLite。使用平台常规的进程终止工具处理受管理的后代进程�
 |---|---|
 | 轮询 | 初始化覆盖所有分页和 PR 状态；永久边界；扫描失败不得关闭 PR 或将仓库视为空仓库 |
 | 触发条件 | head、目标分支名、ready 状态变化触发；仅 base SHA 变化不触发；Draft 不得启动；旧审查完成后保留待审修订 |
-| Worktree | fork PR 引用、确切的 detached head、脏文件残留、正确的仓库与路径校验、关闭和重新打开时的清理 |
+| Worktree | 所属仓库根目录的 `.worktrees/`、固定 PR 路径、其他 worktree 保留、fork PR 引用、确切的 detached head、脏文件残留、正确的仓库与路径校验、关闭和重新打开时的清理 |
 | agent 输出 | 分块 Unicode 与 CRLF、精确末行、错误 PR 编号、stderr 中的标记、代码围栏内的标记、标记后的内容、捕获失败、非零退出 |
 | 会话与重试 | 固定 UUID 后显式恢复、首次启动中断、历史缺失报错、确认既有发布结果、持久化尝试预算 |
-| CLI 生命周期 | 审查期间继续轮询；准备、执行和清理的操作预留；抑制失败修订；并发上限；Ctrl+C；拒绝第二个实例；异常退出后的失效锁和中断状态报告 |
+| CLI 生命周期 | 审查期间继续轮询；准备、执行和清理的操作预留；抑制失败修订；`maxConcurrentWorker` 并发上限；Ctrl+C；拒绝第二个实例；异常退出后的失效锁和中断状态报告 |
 | 配置与目录 | 固定的 `~/.daynight/config.yml`、有效及无效 YAML、缺失配置报错、不同启动目录复用状态、相对仓库路径按配置目录解析；用注入的主目录解析结果隔离测试文件 |
 | 平台 | `daynight --deamon-review`、各平台用户主目录和路径分隔符、含空格或 Unicode 的路径、Windows CLI 命令包装脚本、每个受支持系统上的子进程终止和最终输出 |
 
