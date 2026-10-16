@@ -21,8 +21,9 @@ Configuration and coordination state reside under `~/.daynight/`: SQLite and
 its sidecar files, retained Copilot sessions, the instance lock, logs, caches,
 and temporary files. Repository clones retain their configured paths. PR
 worktrees follow the [repository-local worktree decision](2026-10-16-repository-local-review-worktrees.md).
-Configuration errors report the affected file and stop startup. These are
-recorded design decisions; application implementation is pending.
+Home-path resolution and configuration loading are implemented by the CLI.
+Configuration failures stop startup and retain their causes. Review execution
+and creation of retained state are pending.
 
 This location choice complements the
 [foreground CLI decision](2026-10-16-foreground-review-cli.md) without changing

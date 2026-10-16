@@ -1,0 +1,15 @@
+{
+  "name": "day-night-workspace",
+  "private": true,
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "pnpm --filter daynight build",
+    "typecheck": "pnpm --filter daynight typecheck",
+    "test": "pnpm --filter daynight test",
+    "check": "pnpm typecheck && pnpm test",
+    "daynight": "pnpm --filter daynight exec node dist/main.js"
+  }
+}
