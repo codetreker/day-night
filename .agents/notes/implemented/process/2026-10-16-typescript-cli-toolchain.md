@@ -18,8 +18,10 @@ probes; the test command builds before running them. The pnpm dependency store
 is local to `.tmp/pnpm-store`.
 
 YAML parsing is followed by explicit field/type/path validation. Only omitted
-numeric settings use documented defaults; invalid supplied values fail. Errors
-retain their causes. The [configuration design](../../../../docs/design/daynight.md)
+numeric settings use documented defaults; invalid supplied values fail. Existing
+path components must be directories, while missing clone directories remain
+valid. Filesystem errors retain their causes across platform-specific error
+codes. The [configuration design](../../../../docs/design/daynight.md)
 owns the schema and path rules.
 
 The CLI supports help, version, argument validation, and configuration loading.

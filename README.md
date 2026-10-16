@@ -56,8 +56,9 @@ when omitted. Explicit invalid values, unsupported fields, duplicate YAML keys,
 malformed documents, and missing configuration files produce nonzero exits with
 useful errors. Repository paths are absolute or relative to the configuration
 directory; use an absolute path rather than shell-style tilde expansion.
-Duplicate repository identities, duplicate local paths, and paths overlapping
-the retained state directory are rejected.
+Duplicate repository identities, duplicate local paths, paths overlapping the
+retained state directory, and paths with an existing nondirectory component are
+rejected. Missing clone directories remain valid for later repository creation.
 
 The selected retained-state location is `~/.daynight/` for SQLite, sessions,
 locks, logs, cache, and temporary files. Future PR worktrees belong to each

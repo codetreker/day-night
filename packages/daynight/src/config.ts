@@ -1,4 +1,4 @@
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { lstat, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { parseDocument } from "yaml";
 import { pathsEqual, pathsOverlap } from "./paths.js";
@@ -229,9 +229,13 @@ export const parseConfiguration = (
   };
 };
 
-const canonicalPath = async (target: string): Promise<string> => {
+const canonicalPath = async (
+  target: string,
+  missingDescendantError?: Error,
+): Promise<string> => {
+  let resolved: string;
   try {
-    return await realpath(target);
+    resolved = await realpath(target);
   } catch (cause) {
     if (!(cause instanceof Error) || !("code" in cause) || cause.code !== "ENOENT") {
       throw new Error(`Cannot resolve filesystem path ${target}.`, { cause });
@@ -251,8 +255,24 @@ const canonicalPath = async (target: string): Promise<string> => {
     if (parent === target) {
       throw new Error(`Cannot find an existing ancestor of ${target}.`, { cause });
     }
-    return path.join(await canonicalPath(parent), path.basename(target));
+    const canonicalParent = await canonicalPath(
+      parent,
+      missingDescendantError === undefined ? cause : missingDescendantError,
+    );
+    return path.join(canonicalParent, path.basename(target));
   }
+  let entry;
+  try {
+    entry = await stat(resolved);
+  } catch (cause) {
+    throw new Error(`Cannot inspect filesystem directory ${target}.`, { cause });
+  }
+  if (!entry.isDirectory()) {
+    throw new Error(`Filesystem path ${target} is not a directory.`, {
+      cause: missingDescendantError,
+    });
+  }
+  return resolved;
 };
 
 export const loadConfiguration = async (

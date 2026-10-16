@@ -233,6 +233,24 @@ describe("configuration loading", () => {
     await mkdir(paths.stateDirectory, { recursive: true });
     await writeFile(path.join(home, "not-directory"), "file");
     await writeFile(paths.configFile, repositoryYaml(undefined, "../not-directory/repo"));
-    await expect(loadConfiguration(paths)).rejects.toMatchObject({ cause: { code: "ENOTDIR" } });
+    try {
+      await loadConfiguration(paths);
+      expect.unreachable("A regular file cannot be a clone directory ancestor.");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect(formatError(error)).toContain(path.join(home, "not-directory"));
+      expect(formatError(error)).toMatch(/not a directory|ENOTDIR/);
+      expect((error as Error).cause).toBeInstanceOf(Error);
+    }
+  });
+
+  it("rejects an existing regular file at the configured clone path", async () => {
+    const home = path.join(directory, "file-target");
+    const paths = resolveRuntimePaths(home);
+    const clonePath = path.join(home, "repo");
+    await mkdir(paths.stateDirectory, { recursive: true });
+    await writeFile(clonePath, "file");
+    await writeFile(paths.configFile, repositoryYaml(undefined, "../repo"));
+    await expect(loadConfiguration(paths)).rejects.toThrow(`Filesystem path ${clonePath} is not a directory.`);
   });
 });
