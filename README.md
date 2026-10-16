@@ -40,8 +40,12 @@ worktrees.
 
 Create documents for authorized work. Keep active facts synchronized, distinguish
 proposals from implementation, and preserve historical decision premises.
-Explicit archives remain immutable. Write documents in English and discuss work
-with the user in Chinese.
+Explicit archives remain immutable. Write new or revised specifications in
+`docs/spec/` and design documents in `docs/design/` in Chinese, including headings
+and explanatory prose. Preserve the required spelling of code, commands,
+identifiers, paths, and API names. Other repository documents, skills, code,
+comments, and commit messages use English unless explicitly instructed otherwise.
+Discuss work with the user in Chinese.
 
 ## Validation
 

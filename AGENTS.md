@@ -6,8 +6,12 @@ take precedence.
 
 ## Scope and communication
 
-- Discuss work with the user in Chinese. Write documents, skills, code,
-  comments, and commit messages in English.
+- Discuss work with the user in Chinese.
+- Write new or revised specifications in `docs/spec/` and design documents in
+  `docs/design/` in Chinese, including headings and explanatory prose. Preserve
+  the required spelling of code, commands, identifiers, paths, and API names.
+- Write other repository documents, skills, code, comments, and commit messages
+  in English unless explicitly instructed otherwise.
 - Use the user's confirmed task and existing requirements to establish scope.
   A request to investigate or discuss remains read-only unless edits are
   authorized. Skills describe workflows and grant no additional permission.
