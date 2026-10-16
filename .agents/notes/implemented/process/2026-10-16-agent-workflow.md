@@ -15,7 +15,9 @@ The repository adapts the four decision and prose skills from the
 [source workflow at its inspected revision](https://github.com/codetreker/remote-fs/tree/ef64c5a73992e388065673a81cf96739c1179f9f/.agents).
 The local skills are `agent-notes`, `scope-cut`, `prose-standard`, and
 `trim-cot-leakage`. Skill names and references use the local, project-independent
-names. Repository documents and note headings are English.
+names. Workflow documents, skills, and Agent Notes remain English. New or
+revised specifications and design documents follow the
+[Chinese document language policy](2026-10-16-chinese-spec-and-design.md).
 
 [AGENTS.md](../../../../AGENTS.md) owns task scope, shared worktree ownership,
 collaboration, verification, and delivery. The
