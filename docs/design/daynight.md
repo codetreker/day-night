@@ -1,25 +1,24 @@
-# Daynight Architecture
+# Daynight 架构设计
 
-Status: proposed design; application implementation is pending.
+状态：设计提案；应用实现尚待完成。
 
-Daynight is one foreground TypeScript CLI that keeps running until stopped. Its
-code belongs in `packages/daynight/`. It supports Linux, macOS, and Windows.
-[Requirements](../spec/daynight.md) own product behavior; the
-[decision note](../../.agents/notes/implemented/architecture/2026-10-16-foreground-review-cli.md)
-records the architectural choices.
+Daynight 是一个在前台持续运行、直到被停止的 TypeScript CLI，代码位于
+`packages/daynight/`，支持 Linux、macOS 和 Windows。
+[需求文档](../spec/daynight.md)定义产品行为；
+[决策记录](../../.agents/notes/implemented/architecture/2026-10-16-foreground-review-cli.md)
+记录架构选择。
 
-## Usage and configuration
+## 使用方式与配置
 
 ```text
 daynight --config ./daynight.json
 ```
 
-The CLI loads configuration, opens SQLite, ensures the configured clones exist,
-then polls GitHub while invoking Copilot as ordinary child processes. Ctrl+C
-stops polling and new reviews, stops active children, records unfinished work,
-and exits. It uses the terminal's normal process lifecycle.
+CLI 加载配置、打开 SQLite、确保配置中的仓库已克隆到本地，然后持续轮询 GitHub，
+并以普通子进程调用 Copilot。按下 Ctrl+C 后，停止轮询和启动新审查，停止活跃子进程，
+记录未完成工作并退出。整个程序遵循终端中的普通进程生命周期。
 
-Proposed JSON configuration:
+建议的 JSON 配置如下：
 
 ```json
 {
@@ -38,170 +37,153 @@ Proposed JSON configuration:
 }
 ```
 
-These numbers are proposed operational defaults. Paths resolve relative to the
-configuration file. Validate fields, positive integer limits, unique repository
-identities, and nonoverlapping clone/state paths. Resolve HTTPS or SSH GitHub
-remotes into host/owner/name and a stable repository ID. Changing a spelling or
-restarting must not initialize the same repository again. Reject a mismatched
-existing clone rather than overwriting it. Preserve its working files/branches.
+这些数值是建议的运行默认值。路径相对于配置文件解析。校验配置字段、正整数限制、
+仓库身份的唯一性，以及克隆路径与状态路径互不重叠。将 HTTPS 或 SSH GitHub 远程地址
+解析为 host/owner/name 和稳定的仓库 ID。地址写法变化或程序重启都不得让同一仓库
+再次初始化。已有克隆与配置不匹配时拒绝使用，不得覆盖；保留其工作文件和分支。
 
-Use pnpm, TypeScript ESM, Node.js 24 LTS, and `better-sqlite3`. Pin versions when
-implementing the package. Git, `gh`, and Copilot CLI are installed beforehand;
-`gh` authentication is already prepared. Copilot also needs supported credentials
-and access to a model. Configuration contains no credentials.
+使用 pnpm、TypeScript ESM、Node.js 24 LTS 和 `better-sqlite3`。实现包时锁定版本。
+Git、`gh` 和 Copilot CLI 预先安装，`gh` 认证提前准备好。Copilot 还需要受支持的凭据
+和可访问的模型。配置文件不包含凭据。
 
-## One process, ordinary modules
+## 单进程与普通模块
 
 ```mermaid
 flowchart TD
-    CLI[daynight CLI] --> Poll[Poll GitHub through gh]
+    CLI[daynight CLI] --> Poll[通过 gh 轮询 GitHub]
     Poll --> DB[(SQLite)]
-    DB --> Queue[Pending PRs in the CLI]
-    Queue --> Git[Prepare PR worktree]
-    Git --> Agent[Copilot child process]
-    Agent --> GitHub[Agent publishes inline comments or approval]
-    Agent --> Marker[Final plain-text completion line]
+    DB --> Queue[CLI 内待处理的 PR]
+    Queue --> Git[准备 PR 的 worktree]
+    Git --> Agent[Copilot 子进程]
+    Agent --> GitHub[agent 发布行级评论或批准]
+    Agent --> Marker[末尾纯文本完成行]
     Marker --> DB
 ```
 
-Polling and review scheduling are asynchronous tasks within the same Node.js
-process. The poller never waits for an entire review before polling again.
-An in-memory map reserves each PR operation before its first asynchronous step.
-Preparation, child execution, and cleanup share that reservation, so polling
-cannot start another operation on the same worktree. SQLite preserves review
-progress after exit. A configurable global limit controls review concurrency
-across PRs. Repeated pending updates coalesce.
+轮询与审查调度是在同一个 Node.js 进程内运行的异步任务。轮询器不等待整轮审查结束
+才再次轮询。内存中的映射在每项 PR 操作的第一个异步步骤之前预留该 PR；准备、
+子进程执行和清理共用这个预留，避免轮询为同一个 worktree 启动另一项操作。
+SQLite 在程序退出后保留审查进度。可配置的全局上限控制不同 PR 之间的审查并发数。
+待处理期间发生的多次更新合并处理。
 
-| Proposed file | Responsibility |
+| 建议文件 | 职责 |
 |---|---|
-| `src/main.ts` | CLI startup, polling loop, pending work, signal handling |
-| `src/config.ts` | Configuration parsing and path resolution |
-| `src/github.ts` | Authenticated API reads and pagination through `gh` |
-| `src/store.ts` | SQLite schema, observations, review progress, retry state |
-| `src/git.ts` | Clone validation, fetch, PR worktree preparation and cleanup |
-| `src/review.ts` | Prompts, session selection, child execution, completion check |
+| `src/main.ts` | CLI 启动、轮询循环、待处理工作和信号处理 |
+| `src/config.ts` | 配置解析与路径解析 |
+| `src/github.ts` | 通过 `gh` 执行经过认证的 API 读取和分页 |
+| `src/store.ts` | SQLite 表结构、观测结果、审查进度和重试状态 |
+| `src/git.ts` | 克隆校验、fetch、PR worktree 准备与清理 |
+| `src/review.ts` | 提示词、会话选择、子进程执行和完成检查 |
 
-Use ordinary functions and concrete types. Inject external commands and time
-where verification needs to control them. All process execution uses argument
-arrays; configuration and branch names are never interpolated into shell code.
-A platform-aware command library handles Windows CLI command shims.
+使用普通函数和具体类型。需要在验证中控制外部命令和时间时，将其作为依赖传入。
+所有进程调用均使用参数数组，配置内容和分支名不得插入 shell 代码。使用能识别平台
+差异的命令库处理 Windows CLI 命令包装脚本。
 
-## Local data and SQLite
+## 本地数据与 SQLite
 
 ```text
 .daynight/
   state.sqlite
   instance.lock
-  copilot/                    # CLI configuration and retained sessions
+  copilot/                    # CLI 配置和保留的会话
   cache/
   tmp/
-  logs/<review-id>/<attempt>/  # stdout and stderr
+  logs/<review-id>/<attempt>/  # stdout 和 stderr
   worktrees/<repository-id>/<pr-number>/
 ```
 
-Keep session data and logs outside disposable worktrees. Set Copilot's state,
-cache, log, and temporary directories under this state directory. Store tokens
-only in inherited command environments, never in SQLite, arguments, or logs.
+会话数据和日志放在可清理的 worktree 之外。将 Copilot 的状态、缓存、日志和临时目录
+都设在这个状态目录下。令牌只通过命令继承的环境变量传递，不得写入 SQLite、命令参数
+或日志。
 
-The schema needs three tables:
+表结构需要三张表：
 
-| Table | Key | Stored state |
+| 表 | 键 | 保存的状态 |
 |---|---|---|
-| `repositories` | Stable repository ID | Host/remote/local path, nullable `start_pr_no`, initialization time, last successful poll/error |
-| `pull_requests` | Repository ID + PR number | Observed open/draft/head/base branch, desired/completed revision, session UUID and established flag, worktree path, cleanup status |
-| `reviews` | Review UUID | PR identity, immutable revision/head/base branch, pinned base SHA, status, attempt count, retry time, child identity, log paths, last error |
+| `repositories` | 稳定的仓库 ID | 主机、远程地址、本地路径、可为空的 `start_pr_no`、初始化时间、最近成功轮询及错误 |
+| `pull_requests` | 仓库 ID + PR 编号 | 观测到的 open/draft/head/base branch、待审及已完成修订序号、会话 UUID 及已建立标记、worktree 路径、清理状态 |
+| `reviews` | 审查 UUID | PR 身份、不可变的修订序号/head/base branch、固定的 base SHA、状态、尝试次数、重试时间、子进程身份、日志路径、最近错误 |
 
-A revision is a local increasing number for observed review triggers. It avoids
-losing a Draft-to-ready or retargeting trigger even when the head SHA is unchanged.
-The desired revision and completed revision are separate. A running review owns
-one captured revision; completing it cannot complete a newer desired revision.
-Review status is `preparing`, `running`, `retry_wait`, `completed`, `failed`,
-`interrupted`, or `superseded`. A unique active-review index covers preparing,
-running, retry-wait, and interrupted rows. Together with the per-PR operation
-reservation, it enforces one current review per PR. Do not add foreign keys for
-these internally owned records.
+修订序号是本地递增的数字，用于表示观测到的审查触发事件。即使 head SHA 未变化，
+它也能避免丢失 Draft 转 ready 或修改目标分支的触发事件。待审修订序号与已完成修订
+序号分开保存。一轮正在执行的审查只持有启动时捕获的修订序号；完成它不得同时将更新
+的待审修订标记为完成。审查状态为 `preparing`、`running`、`retry_wait`、`completed`、
+`failed`、`interrupted` 或 `superseded`。活跃审查的唯一索引覆盖 `preparing`、
+`running`、`retry_wait` 和 `interrupted` 状态的记录，配合每个 PR 的操作预留，
+保证一个 PR 同时只有一轮当前审查。不要为这些由程序内部管理的记录添加外键。
 
-Use short transactions for related state changes. No transaction spans a Git,
-API, or agent call. Enable WAL, `synchronous=FULL`, and a bounded busy timeout;
-keep the database on a local filesystem. Use explicit schema migrations and
-surface their failures. See [SQLite transactions](https://www.sqlite.org/lang_transaction.html)
-and [synchronization](https://www.sqlite.org/pragma.html#pragma_synchronous).
+相关状态变更使用短事务。事务不得跨越 Git、API 或 agent 调用。启用 WAL、
+`synchronous=FULL`，并设置有上限的 busy timeout；数据库保存在本地文件系统。
+使用显式的表结构迁移，并暴露迁移失败。参见
+[SQLite 事务](https://www.sqlite.org/lang_transaction.html)和
+[同步设置](https://www.sqlite.org/pragma.html#pragma_synchronous)。
 
-## Polling and selecting work
+## 轮询与工作选择
 
-1. For each uninitialized repository, enumerate all PR states and all pages,
-   compute the maximum number, and save `Start PR No` in one successful commit.
-   A successful empty scan saves zero; failure leaves initialization incomplete.
-   PRs created during initialization can fall inside this boundary.
-2. On subsequent polls, enumerate open PRs above that permanent cutoff, including
-   Drafts. Read tracked PRs missing from a complete open scan directly before
-   recording closure. A failed/partial response is never evidence of closure.
-3. Update observations and increment the desired revision on first discovery,
-   head SHA change, target branch name change, or observed Draft-to-ready.
-   Changes while Draft are saved but never dispatched. The proposed reopen
-   policy also increments the revision on observed closed-to-open.
-4. Schedule an Open, non-Draft PR whose desired revision exceeds its completed
-   revision, whose revision is not terminally failed, and which has no reserved
-   operation or unresolved interrupted execution. Reuse a due retry row instead
-   of creating another review. Select fairly, respecting concurrency/deadlines.
-5. Reserve the PR synchronously before the first await and persist its selected
-   review as preparing before Git operations. Read current metadata and prepare
-   the worktree against the captured target; changed targets are superseded.
-   Immediately before spawn, check the latest observed eligibility and any local
-   cancellation request. Persist the pinned target and running state, then spawn
-   Copilot. Keep the reservation until child close; cleanup waits for it too.
-   After completion, reconcile metadata so later changes remain pending.
+1. 对每个尚未初始化的仓库，枚举所有状态、所有分页中的 PR，计算最大编号，并在一次
+   成功的数据库提交中保存 `Start PR No`。成功扫描且结果为空时保存零；失败时保持
+   未完成初始化。初始化期间创建的 PR 可能落在这个边界之内。
+2. 后续轮询枚举编号超过永久边界的 Open PR，包括 Draft。完整扫描 Open PR 后，
+   对未出现在扫描结果中的已跟踪 PR 单独读取，确认后才记录关闭。失败或不完整的响应
+   不得作为关闭证据。
+3. 更新观测结果，并在首次发现、head SHA 变化、目标分支名变化或观测到 Draft 转 ready
+   时递增待审修订序号。Draft 期间的变化会被保存，但不调度执行。建议的重新打开策略
+   也会在观测到 closed 转 open 时递增修订序号。
+4. 调度 Open、非 Draft，且待审修订序号大于已完成修订序号的 PR；该修订尚未被标记
+   为最终失败，PR 也不得有已预留的操作或尚未解决的中断执行。已有到期重试记录时复用该
+   记录，不另建一轮审查。公平选择工作，并遵守并发限制和截止时间。
+5. 在第一个 await 之前同步预留该 PR，并在执行 Git 操作前，将选中的审查持久化为
+   `preparing`。读取当前元数据，针对捕获的目标准备 worktree；目标已变化时将旧审查
+   标记为 `superseded`。启动子进程前立即检查最新观测到的执行条件和本地取消请求。
+   持久化固定的目标和 `running` 状态，然后启动 Copilot。预留一直保留到子进程 close；
+   清理也必须等待该预留释放。完成后重新核对元数据，使后续变化继续保持待处理状态。
 
-Compare `head.sha` and `base.ref`; a change to `base.sha` alone does not schedule
-review. Do not use last-seen PR number or `updated_at` as a permanent polling
-cursor. Older included PRs can change indefinitely. A repository's failed scan
-is logged and retried without resetting its cutoff or stopping other repositories.
-Follow GitHub rate-limit delays.
+比较 `head.sha` 和 `base.ref`；只有 `base.sha` 变化不调度审查。不得将最近看到的 PR
+编号或 `updated_at` 用作永久轮询游标，范围内的旧 PR 仍可能不断发生变化。一个仓库
+扫描失败时，记录日志并重试，不重置其边界，也不停止其他仓库。遵守 GitHub 限流要求
+的等待时间。
 
-Polling observes snapshots. A ready/Draft round trip or retarget-and-back
-entirely between polls can be missed. Complete scans and repeated polling converge
-on lasting states; they do not promise a full event history. Sources:
-[list PRs](https://docs.github.com/en/rest/pulls/pulls#list-pull-requests),
-[pagination](https://docs.github.com/en/rest/using-the-rest-api/using-pagination-in-the-rest-api),
-and [API practices](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api).
+轮询只能观测快照。两次轮询之间完整发生的 ready/Draft 往返，或修改目标分支后又改回，
+可能被遗漏。完整扫描和重复轮询能最终观测到持续存在的状态，不保证完整的事件历史。
+资料来源：
+[列出 PR](https://docs.github.com/en/rest/pulls/pulls#list-pull-requests)、
+[分页](https://docs.github.com/en/rest/using-the-rest-api/using-pagination-in-the-rest-api)和
+[API 最佳实践](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)。
 
-## Worktree lifecycle
+## Worktree 生命周期
 
-Clone a missing repository and validate an existing clone against its configured
-remote. Fetch PR heads through that base repository, including fork PRs:
+克隆尚不存在的仓库，并校验已有克隆是否与配置中的远程地址匹配。通过该基础仓库
+获取 PR 的 head，包括来自 fork 的 PR：
 
 ```text
 git fetch --no-tags origin +refs/pull/N/head:refs/daynight/pr/N/head
 ```
 
-Fetch the selected target branch too. Compare the fetched head with current PR
-metadata; refresh/coalesce if it changed. Pin the head and target tip for the
-review and compute their merge-base diff. The target tip provides review context,
-not an additional trigger. Do not use GitHub's generated merge commit as the PR
-head. Keep enough history to compute the diff.
+同时获取选定的目标分支。将获取到的 head 与 PR 当前元数据比较；发生变化时刷新并
+合并待处理更新。固定本轮审查的 head 和目标分支顶端提交，并以它们的 merge-base
+计算差异。目标分支顶端提交用于提供审查上下文，不构成额外触发条件。不得将 GitHub
+生成的合并提交用作 PR head。保留足够的历史以计算差异。
 
-The first review creates a detached worktree. Later reviews reuse the same path,
-switching detached to the chosen head after the previous child has ended. Clean
-agent-generated files only inside the verified, daemon-owned worktree. Validate
-its canonical path and Git common directory before forceful operations; preserve
-primary checkout files and shared branches. Confirmation of an unchanged failed
-review keeps its existing worktree so the session retains its local context.
+首次审查创建 detached worktree。后续审查复用同一路径，在上一子进程结束后以
+detached 状态切换到选定的 head。仅在经过校验且由 daemon 管理的 worktree 内清理
+agent 生成的文件。执行强制操作前校验其规范路径和 Git common directory；保留主工作
+区文件及共享分支。确认目标未变化的失败审查时，保留原 worktree，让会话保有本地
+上下文。
 
-On closure or merge, record cleanup pending and cancel preparation or child
-execution. Acquire the same per-PR operation reservation after that work ends,
-then remove the worktree through Git. Recheck current PR state before
-removal; retain it if the PR reopened. Cleanup failures remain pending for retry.
-Retain the session and PR history. An included reopened PR recreates the worktree
-when ready and resumes the same session. Configuration removal retains stored
-state; it does not authorize deleting a clone or its worktrees.
+PR 关闭或合并时，记录待清理状态，并取消准备操作或子进程执行。等待这些工作结束后，
+获取同一个 PR 操作预留，再通过 Git 删除 worktree。删除前重新检查 PR 当前状态；
+如果 PR 已重新打开则保留 worktree。清理失败继续保持待处理，等待重试。保留会话和
+PR 历史。范围内的 PR 重新打开且 ready 时重建 worktree，并恢复同一个会话。
+从配置移除仓库时保留已存状态；这不构成删除克隆或其 worktree 的授权。
 
-Sources: [PR checkout](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/checking-out-pull-requests-locally),
-[Git worktrees](https://git-scm.com/docs/git-worktree), and
-[Git clean](https://git-scm.com/docs/git-clean).
+资料来源：
+[本地检出 PR](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/checking-out-pull-requests-locally)、
+[Git worktree](https://git-scm.com/docs/git-worktree)和
+[Git clean](https://git-scm.com/docs/git-clean)。
 
-## Copilot session and publication
+## Copilot 会话与结果发布
 
-Generate and save a UUID before a PR's first review. Invoke Copilot directly:
+在每个 PR 首次审查前生成并保存一个 UUID。直接调用 Copilot：
 
 ```text
 copilot -C WORKTREE --session-id UUID -p PROMPT \
@@ -209,127 +191,102 @@ copilot -C WORKTREE --session-id UUID -p PROMPT \
   --no-ask-user --no-auto-update --allow-all-tools
 ```
 
-Later review/confirmation calls use `--resume=FULL_UUID`. Never select the globally
-most recent session. Keep established session history; if it is missing, report
-an error for that PR rather than silently creating another conversation. A crash
-during first session creation requires checking whether that exact UUID was
-actually established before choosing create versus resume. No session JSONL is
-read. Copilot compaction remains its own behavior.
+后续审查或确认调用使用 `--resume=FULL_UUID`。不得选择全局最近的会话。保留已经建立
+的会话历史；历史缺失时报告该 PR 的错误，不得静默创建另一段对话。首次创建会话期间
+发生崩溃时，必须先检查这个确切的 UUID 是否实际建立，再选择创建或恢复。不读取会话
+JSONL。Copilot 的上下文压缩由其自身处理。
 
-The prompt supplies repository/PR, review ID/revision, exact head, target branch,
-pinned diff context, previous incomplete review identity, severity rules, and the
-completion marker. The agent reviews code, checks previous findings, and uses
-`gh` itself to publish. It rechecks Open/non-Draft status and expected head/base
-branch immediately before publication.
+提示词提供仓库与 PR、审查 ID 与修订序号、确切的 head、目标分支、固定的差异上下文、
+上一轮未完成审查的身份、严重程度规则和完成标记。agent 审查代码、检查既有问题，
+并自行使用 `gh` 发布。发布前立即重新检查 PR 是否 Open 且非 Draft，以及 head 和
+目标分支是否符合预期。
 
-Critical/Major findings use inline comments in a `COMMENT` review; clean results
-use `APPROVE`. Include explicit `commit_id` through `gh api` so publication is
-attributed to the reviewed head, and include a stable review ID in the review
-body for agent-side retry reconciliation. Comments are English and identify the
-agent. The daemon never submits reviews or parses their findings.
+Critical/Major 问题以 `COMMENT` review 中的行级评论发布；没有这些问题时使用
+`APPROVE`。通过 `gh api` 显式提供 `commit_id`，使发布结果归属于被审查的 head，
+并在 review 正文中包含稳定的审查 ID，供 agent 在重试时核对既有发布结果。评论使用
+英文，并表明 agent 身份。daemon 不提交 review，也不解析问题内容。
 
-The GitHub API cannot atomically assert that a head stayed unchanged during
-publication. An author also cannot approve their own PR. These conditions must
-not produce a false completion. The marker is the agent's assertion, not
-independent remote proof or a transaction spanning GitHub and SQLite. Sources:
-[Copilot flags](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference),
-[session storage](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference),
-[create review](https://docs.github.com/en/rest/pulls/reviews#create-a-review-for-a-pull-request),
-and [review permissions](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/reviewing-proposed-changes-in-a-pull-request).
+GitHub API 无法原子地断言发布期间 head 一直未变。作者也无法批准自己的 PR。
+这些情况不得导致虚假的完成状态。完成标记是 agent 的声明，不是独立的远程证据，
+也不是跨越 GitHub 和 SQLite 的事务。资料来源：
+[Copilot 命令行参数](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference)、
+[会话存储](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference)、
+[创建 review](https://docs.github.com/en/rest/pulls/reviews#create-a-review-for-a-pull-request)和
+[审查权限](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/reviewing-proposed-changes-in-a-pull-request)。
 
-## Completion, retry, and exit
+## 完成、重试与退出
 
-Capture plain-text stdout and stderr separately, streaming to per-attempt logs.
-Decode UTF-8 incrementally and normalize CRLF. Keep only a bounded last-line
-buffer. Wait for child close and drained output, then require normal exit zero
-and a last nonempty stdout line exactly matching:
+分别捕获纯文本 stdout 和 stderr，以流式方式写入每次尝试各自的日志。增量解码 UTF-8，
+统一 CRLF。仅保留容量有上限的末行缓冲区。等待子进程 close 且输出全部读取完毕，
+要求进程正常退出且退出码为零，并且 stdout 最后一条非空行精确匹配：
 
 ```text
 PR 123 Review Completed
 ```
 
-The expected number comes from the captured review. Reject substrings, formatting,
-stderr markers, trailing nonempty text, failed capture, and nonzero exit. Exit
-status is a transport check, not a structured findings protocol.
+预期 PR 编号来自本轮捕获的审查。拒绝子串匹配、额外格式、stderr 中的标记、标记后的
+非空内容、捕获失败和非零退出。退出状态用于检查进程通信是否正常，不是结构化的问题
+输出协议。
 
-An unchanged review without the marker becomes `retry_wait`; restore the same
-session and ask it to inspect existing GitHub publication, confirm completion,
-or finish remaining work. Use fresh logs each attempt. Proposed policy is three
-total attempts with exponential delay from `retryDelayMs`, capped at ten minutes.
-Exhaustion records `failed` and prints the reason. That revision remains
-suppressed by the dispatcher, including after restart; a later observed trigger
-creates a newer revision that can run. Ordinary polling must not create a new
-review ID to reset the exhausted budget.
+目标未变化且缺少完成标记的审查转入 `retry_wait`；恢复同一会话，要求它检查 GitHub
+上已有的发布结果、确认完成或完成剩余工作。每次尝试使用新的日志。建议策略为最多
+尝试三次，从 `retryDelayMs` 开始指数退避，延迟上限为十分钟。次数耗尽时记录 `failed`
+并输出原因。调度器继续抑制该修订，重启后也一样；后续观测到新的触发事件时，创建
+可执行的更新修订。普通轮询不得通过新建审查 ID 重置已耗尽的尝试预算。
 
-A newer revision supersedes waiting obsolete work. Once the old child has ended,
-review the latest target in the same session, supplying prior incomplete review
-identity and requiring reconciliation of prior effects. Never publish obsolete
-code merely to obtain its old marker. Completing a captured revision leaves a
-later desired revision pending.
+更新的修订取代等待中的过时工作。旧子进程结束后，在同一会话中审查最新目标，提供
+上一轮未完成审查的身份，并要求核对其已有影响。不得仅为获得旧完成标记而发布对过时
+代码的审查。完成已捕获的修订后，更新的待审修订仍保持待处理。
 
-On Draft/close, stop the active review and retain its unresolved result until
-safe retry or cleanup. Ctrl+C stops scheduling and polling, requests child
-termination, waits for close, records unfinished execution, and closes SQLite.
-Use ordinary platform process termination utilities for managed descendants,
-with a bounded grace period and clear error if they remain. Windows command
-shims and signal differences need tests on each supported platform.
+PR 转为 Draft 或关闭时，停止活跃审查，并保留尚未确定的结果，直到可以安全重试或
+清理。Ctrl+C 停止调度和轮询，请求终止子进程，等待 close，记录未完成执行，再关闭
+SQLite。使用平台常规的进程终止工具处理受管理的后代进程，给予有上限的宽限期；
+若仍有进程残留则明确报错。Windows 命令包装脚本和信号差异需要在每个受支持平台上测试。
 
-Only one CLI instance may own a state directory. Use an atomic lock-file creation
-with owner identity; a second instance fails visibly. Remove the lock only on
-ordered exit. After abnormal termination, the lock and saved running reviews
-make the interruption visible: require the previous CLI and agents to have
-stopped before clearing the stale lock and restarting those reviews. Do not
-infer that an old child ended merely because its parent exited or a PID vanished.
-There is no live-agent reattachment or transparent process-tree crash recovery.
-Preserve uncertain work/session/worktree and report it when ownership cannot be
-established. Once that precondition is met, startup moves saved `preparing` or
-`running` rows through `interrupted` to retry/confirmation of their captured
-target; it never marks them completed. A newer target can supersede them under the same session.
-This operational limit keeps abnormal restart honest without adding background
-supervisor processes. Node documents the relevant
-[child-process limitations](https://nodejs.org/api/child_process.html#subprocesskillsignal).
+每个状态目录只能由一个 CLI 实例持有。以原子方式创建包含持有者身份的锁文件；
+第二个实例明确失败。只有有序退出时才删除锁。异常终止后，锁与保存的运行中审查
+使中断状态可见：必须先确保上一 CLI 及其 agent 已停止，才能清除失效锁并重新启动
+这些审查。不得仅凭父进程退出或某个 PID 消失，就推断旧子进程已经结束。不支持重新
+接管仍在运行的 agent，也不提供透明的进程树崩溃恢复。无法确认持有关系时，保留
+状态不确定的工作、会话和 worktree，并报告情况。满足上述前提后，启动流程将保存的
+`preparing` 或 `running` 记录经 `interrupted` 转入针对原捕获目标的重试或确认，
+绝不直接标记完成。更新目标可在同一会话中取代它们。这项运行限制使异常重启的实际
+状态得到准确反映，同时无需增加后台监督进程。Node 文档说明了相关的
+[子进程限制](https://nodejs.org/api/child_process.html#subprocesskillsignal)。
 
-## Errors and observability
+## 错误与可观测性
 
-Log readable events with repository, PR number, revision, review ID, attempt,
-and phase. Pass that context explicitly across poll timers, command callbacks,
-retry timers, and cleanup. Report command exits/timeouts, cause, next retry,
-and affected resource. Repository-wide operations carry repository identity.
-Keep logs and console output free of credentials. Bound output capture and retain
-active attempt evidence until its outcome is recorded.
+记录可读事件，包含仓库、PR 编号、修订序号、审查 ID、尝试次数和阶段。在轮询定时器、
+命令回调、重试定时器和清理操作之间显式传递这些上下文。报告命令退出或超时、原因、
+下次重试时间及受影响的资源。仓库级操作携带仓库身份。日志和控制台输出不得包含凭据。
+限制输出捕获容量，并在记录本次结果之前保留活跃尝试的证据。
 
-For example, console events for `OWNER/REPO PR 123 review=UUID` should show
-selection, child start, final-line acceptance or retry, and cleanup. Operators can
-filter that same identifier to investigate a review. Startup prints cutoff and
-unfinished-state information. Errors are visible and affect the relevant PR or
-repository; invalid configuration/database startup stops the CLI. Detached
-unobserved promises must not hide task failures.
+例如，`OWNER/REPO PR 123 review=UUID` 的控制台事件应显示工作选择、子进程启动、
+末行接受或重试以及清理。运维人员可通过同一个标识筛选事件来调查一轮审查。启动时
+输出初始化边界和未完成状态信息。错误必须可见，并影响相应的 PR 或仓库；配置无效
+或数据库启动失败时停止 CLI。不得让无人观测的游离 Promise 隐藏任务失败。
 
-## Verification and delivery
+## 验证与交付
 
-This repository has no application tooling yet. Implementation must document real
-pnpm typecheck/test/build commands and test on Linux, macOS, and Windows. Use
-real temporary SQLite databases and local Git repositories; use a fake executable
-for controllable child output, delays, and exit behavior.
+仓库目前没有应用工具链。实现时必须记录真实可用的 pnpm 类型检查、测试和构建命令，
+并在 Linux、macOS 和 Windows 上测试。使用真实的临时 SQLite 数据库和本地 Git
+仓库；使用模拟可执行程序控制子进程输出、延迟和退出行为。
 
-| Area | Required observations |
+| 范围 | 必须观测的行为 |
 |---|---|
-| Polling | All pages and PR states at initialization; permanent cutoff; failed scans do not close PRs or become empty repositories |
-| Triggers | Head/base-name/ready changes trigger; base-SHA-only does not; Draft never starts; old completion preserves pending revision |
-| Worktrees | Fork PR refs, exact detached head, dirty artifacts, correct repository/path checks, close/reopen cleanup |
-| Agent output | Chunked Unicode/CRLF, exact final line, wrong PR/stderr/fenced/trailing markers, failed capture, nonzero exit |
-| Sessions/retries | Fixed UUID then explicit resume, first-launch interruption, missing history error, prior publication confirmation, persisted retry budget |
-| CLI lifecycle | Polling continues during review, preparation/execution/cleanup reservation, failed-revision suppression, concurrency bound, Ctrl+C, second-instance refusal, abnormal-exit stale lock and interrupted-state reporting |
-| Platforms | Paths with spaces/Unicode, Windows CLI shims, subprocess termination and final output on each supported OS |
+| 轮询 | 初始化覆盖所有分页和 PR 状态；永久边界；扫描失败不得关闭 PR 或将仓库视为空仓库 |
+| 触发条件 | head、目标分支名、ready 状态变化触发；仅 base SHA 变化不触发；Draft 不得启动；旧审查完成后保留待审修订 |
+| Worktree | fork PR 引用、确切的 detached head、脏文件残留、正确的仓库与路径校验、关闭和重新打开时的清理 |
+| agent 输出 | 分块 Unicode 与 CRLF、精确末行、错误 PR 编号、stderr 中的标记、代码围栏内的标记、标记后的内容、捕获失败、非零退出 |
+| 会话与重试 | 固定 UUID 后显式恢复、首次启动中断、历史缺失报错、确认既有发布结果、持久化尝试预算 |
+| CLI 生命周期 | 审查期间继续轮询；准备、执行和清理的操作预留；抑制失败修订；并发上限；Ctrl+C；拒绝第二个实例；异常退出后的失效锁和中断状态报告 |
+| 平台 | 含空格或 Unicode 的路径、Windows CLI 命令包装脚本、每个受支持系统上的子进程终止和最终输出 |
 
-A live Copilot/GitHub run in an authorized test repository is needed to prove
-actual session continuation and inline/approval behavior. Mock tests cannot
-establish those effects. This task delivers design documents, not an application
-or runtime acceptance evidence.
+需要在获得授权的测试仓库中实际运行 Copilot 与 GitHub，才能证明真实的会话续接、
+行级评论和批准行为。模拟测试无法证明这些效果。本项工作交付设计文档，尚不交付应用
+或运行时验收证据。
 
-No deployed data needs migration. The design includes all confirmed product
-behavior. Webhooks, distributed execution, UI, and additional agent providers are
-separate features. A process-supervision service would change the execution model
-and is outside this CLI design. The single-process model deliberately requires
-operator attention after an ambiguous abnormal exit; it does not pretend to
-recover a still-running child transparently.
+没有已部署的数据需要迁移。本设计涵盖所有已确认的产品行为。Webhook、分布式执行、
+UI 和其他 agent 提供方属于独立功能。进程监督服务会改变执行模型，超出本 CLI 设计的
+范围。单进程模型明确要求运维人员介入处理状态含糊的异常退出，不承诺透明恢复仍在
+运行的子进程。
