@@ -23,9 +23,10 @@ take precedence.
 ## Repository and document ownership
 
 The [README](README.md) owns repository status, documentation conventions, and
-available validation commands. There is currently no application runtime or
-configured build, test, coverage, or CI command. Select technology and add
-tooling only as part of an authorized task.
+available validation commands. Application code belongs in `packages/daynight/`.
+Use Node.js 24 LTS and pnpm 10.34.5; run `pnpm typecheck`, `pnpm test`, and
+`pnpm build` as applicable. The current CLI/configuration foundation does not yet
+run the review coordinator. Add tooling only within an authorized task.
 
 | Location | Owner |
 |---|---|

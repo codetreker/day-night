@@ -1,6 +1,6 @@
 # Daynight 需求
 
-状态：产品范围已确认；尚无实现。
+状态：产品范围已确认。已实现范围和可用命令见[仓库 README](../../README.md)。
 
 Daynight 是一个在前台持续运行的 CLI，负责监控配置的 GitHub 仓库，并在符合条件的
 PR 需要审查时启动 review agent。daemon 是这个 CLI 进程承担的角色。该进程维护仓库
