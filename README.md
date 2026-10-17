@@ -129,8 +129,9 @@ FETCH_HEAD remain untouched by review preparation.
 Each PR uses its fixed repository-local `.worktrees/pr-<number>/` directory.
 Physical root/common-directory checks, validated linked administration and
 backpointers, and a session-labelled Git lock establish ownership before
-destructive reuse or removal. New revisions detach and refresh
-owned content; confirmation retries retain local context. Unrecognized paths and
+destructive reuse or removal. Initial preparation and new revisions provide a
+complete checkout even when the primary uses sparse checkout, preserving its
+patterns, configuration and index. Confirmation retries retain local context. Unrecognized paths and
 linked worktrees and their dependent Git administration are preserved. Cleanup checks remote closure again and retains
 the session/history after removing the worktree.
 

@@ -285,6 +285,14 @@ fetch 还显式禁止递归子模块，以覆盖更具体的用户 fetch 配置�
 可丢弃内容，嵌套 linked worktree 则必须保留，即使它属于另一个 common repository。
 同一捕获目标的确认或重试保留原工作树和本地上下文。
 
+primary 的 sparse checkout 和 sparse index 不限制 PR 的完整代码视图。首次 add 使用
+命令级完整检出设置；未启动审查的已有 leaf 在所有权、依赖和当前目标校验后，仅重建
+自己的 index，再物化完整目标、detach 和清理。普通 checkout 或 read-tree reset
+不足以清除旧 skip-worktree 位，因此需要先清空所属 index。primary 的共享及每工作区
+配置、patterns、index、refs 和文件不改变；已启动后的同目标确认重试保留原 context。
+非敏感 `gitEnvironment` 携带完整视图设置，runner 先清除继承的 Git 仓库/配置选择器，
+再应用这些受控配置和原始对象设置。
+
 递归清理前还检查实际将删除的工作目录和所属 admin 中的 Git 依赖。普通或 bare 嵌套
 仓库，以及位于所属 admin 下的 submodule common，都可能支撑外部 working tree；
 有存续登记、锁定或缺失但可恢复的依赖时必须拒绝删除其管理数据。没有依赖的普通生成

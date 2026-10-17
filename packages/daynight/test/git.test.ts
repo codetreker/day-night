@@ -706,3 +706,115 @@ describe("linked administrative authority and external dependencies", () => {
     expect(f.store.getPullRequest(next)?.cleanupPending).toBe(true);
   }, 60_000);
 });
+
+type SparseMode = { cone: boolean; sparseIndex: boolean; worktreeConfig: boolean };
+const sparseFixture = async (mode: SparseMode) => {
+  const f = fixture();
+  const contents = (value: string): string => rawGit(f.upstream, ["hash-object", "-w", "--stdin"], value);
+  const extra = (value: string, added = false): string => {
+    const hiddenTree = rawGit(f.upstream, ["mktree"], `100644 blob ${contents(value)}\thidden.txt\n${added ? `100644 blob ${contents("new hidden path\n")}\tnew.txt\n` : ""}`);
+    const visibleTree = rawGit(f.upstream, ["mktree"], `100644 blob ${contents("visible\n")}\tvisible.txt\n`);
+    return `100644 blob ${contents(value)}\thidden.txt\n040000 tree ${hiddenTree}\thidden\n040000 tree ${visibleTree}\tvisible\n`;
+  };
+  const base = commit(f.upstream, "base sparse\n", f.base, extra("base hidden\n"));
+  const head = commit(f.upstream, "PR sparse\n", base, extra("initial hidden change\n"));
+  rawGit(f.upstream, ["update-ref", "refs/heads/main", base]); rawGit(f.upstream, ["update-ref", "refs/pull/101/head", head]);
+  f.update({ headSha: head, baseSha: base });
+  const local = await f.manager.ensureRepository(f.configuration);
+  const patterns = mode.cone ? ["visible"] : ["/file.txt", "/.gitattributes", "/visible/"];
+  rawGit(local.root, ["sparse-checkout", "set", mode.cone ? "--cone" : "--no-cone", mode.sparseIndex ? "--sparse-index" : "--no-sparse-index", ...patterns]);
+  if (!mode.worktreeConfig) {
+    rawGit(local.root, ["config", "--local", "core.sparseCheckout", "true"]);
+    rawGit(local.root, ["config", "--local", "core.sparseCheckoutCone", String(mode.cone)]);
+    rawGit(local.root, ["config", "--local", "index.sparse", String(mode.sparseIndex)]);
+    rawGit(local.root, ["config", "--local", "extensions.worktreeConfig", "false"]);
+  }
+  expect(rawGit(local.root, ["config", "--bool", "--get", "index.sparse"])).toBe(String(mode.sparseIndex));
+  if (mode.sparseIndex) expect(rawGit(local.root, ["ls-files", "--sparse", "--stage"]).split("\n").some((entry) => entry.startsWith("040000 "))).toBe(true);
+  const snapshot = () => {
+    const files: Record<string, Buffer> = {}; const directories: string[] = [];
+    const walk = (directory: string): void => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        if (entry.name === ".git" || entry.name === ".worktrees") continue;
+        const target = path.join(directory, entry.name); const relative = path.relative(local.root, target);
+        if (entry.isDirectory()) { directories.push(relative); walk(target); }
+        else files[relative] = readFileSync(target);
+      }
+    };
+    walk(local.root);
+    return { files, directories: directories.sort(), head: readFileSync(path.join(local.commonDirectory, "HEAD")), index: readFileSync(path.join(local.commonDirectory, "index")),
+      skipBits: rawGit(local.root, ["ls-files", "--sparse", "-v"]),
+      refs: rawGit(local.root, ["for-each-ref", "--format=%(refname) %(objectname)", "refs/heads", "refs/remotes", "refs/tags"]),
+      metadata: Object.fromEntries(["config", "config.worktree", path.join("info", "sparse-checkout")].map((name) => {
+        const target = path.join(local.commonDirectory, name); return [name, existsSync(target) ? readFileSync(target) : null];
+      })) };
+  };
+  expect(existsSync(path.join(local.root, "hidden", "hidden.txt"))).toBe(false);
+  return { ...f, local, sparseHead: head, sparseExtra: extra, snapshot };
+};
+
+describe("complete review checkouts from sparse primary worktrees", () => {
+  it.each([
+    { cone: true, sparseIndex: false, worktreeConfig: false },
+    { cone: true, sparseIndex: true, worktreeConfig: false },
+    { cone: false, sparseIndex: false, worktreeConfig: false },
+    { cone: true, sparseIndex: false, worktreeConfig: true },
+    { cone: true, sparseIndex: true, worktreeConfig: true },
+    { cone: false, sparseIndex: false, worktreeConfig: true },
+  ])("materializes hidden changes for cone=$cone sparseIndex=$sparseIndex worktreeConfig=$worktreeConfig", async (mode) => {
+    const f = await sparseFixture(mode); const before = f.snapshot(); const first = f.reserve();
+    const prepared = await f.manager.prepareWorktree(f.store, f.local, first.id, proof);
+    if (prepared.kind !== "prepared") throw new Error("Expected preparation.");
+    expect(readFileSync(path.join(prepared.path, "hidden", "hidden.txt"), "utf8")).toBe("initial hidden change\n");
+    expect(readFileSync(path.join(prepared.path, "hidden.txt"), "utf8")).toBe("initial hidden change\n");
+    expect(f.snapshot()).toEqual(before);
+    const head = commit(f.upstream, "next sparse PR\n", f.sparseHead, f.sparseExtra("next hidden change\n", true));
+    const next = f.nextRevision(first.id, head);
+    const updated = await f.manager.prepareWorktree(f.store, f.local, next.id, proof);
+    if (updated.kind !== "prepared") throw new Error("Expected preparation.");
+    expect(readFileSync(path.join(updated.path, "hidden", "hidden.txt"), "utf8")).toBe("next hidden change\n");
+    expect(readFileSync(path.join(updated.path, "hidden", "new.txt"), "utf8")).toBe("new hidden path\n");
+    const downstream = await executeCommand("git", ["-C", updated.path, "reset", "--hard", "HEAD"], {
+      timeoutMs: 20_000, maxBufferBytes: 1024, environment: updated.gitEnvironment,
+    });
+    expect(downstream.error).toBeNull();
+    expect(readFileSync(path.join(updated.path, "hidden", "new.txt"), "utf8")).toBe("new hidden path\n");
+    expect(f.snapshot()).toEqual(before);
+  }, 60_000);
+
+  it("materializes an existing unlaunched owned sparse index without changing primary sparse state", async () => {
+    const f = await sparseFixture({ cone: true, sparseIndex: true, worktreeConfig: true });
+    const first = f.reserve(); const prepared = await f.manager.prepareWorktree(f.store, f.local, first.id, proof);
+    if (prepared.kind !== "prepared") throw new Error("Expected preparation.");
+    rawGit(prepared.path, ["sparse-checkout", "set", "--cone", "--sparse-index", "visible"]);
+    expect(existsSync(path.join(prepared.path, "hidden", "hidden.txt"))).toBe(false);
+    const before = f.snapshot();
+    expect(await f.manager.prepareWorktree(f.store, f.local, first.id, proof)).toMatchObject({ kind: "prepared" });
+    expect(readFileSync(path.join(prepared.path, "hidden", "hidden.txt"), "utf8")).toBe("initial hidden change\n");
+    expect(rawGit(prepared.path, ["ls-files", "-v"]).split("\n").some((entry) => entry.startsWith("S "))).toBe(false);
+    expect(f.snapshot()).toEqual(before);
+  }, 60_000);
+});
+
+describe("sparse same-target retry context", () => {
+  it("retains a launched attempt's owned sparse index, pattern and local context", async () => {
+    const f = await sparseFixture({ cone: true, sparseIndex: true, worktreeConfig: true });
+    const first = f.reserve(); const prepared = await f.manager.prepareWorktree(f.store, f.local, first.id, proof);
+    if (prepared.kind !== "prepared") throw new Error("Expected preparation.");
+    f.store.startAttempt(first.id, { processOwner: uuid(700), stdoutLogPath: path.join(f.directory, "out"), stderrLogPath: path.join(f.directory, "err") }, 30);
+    rawGit(prepared.path, ["sparse-checkout", "set", "--cone", "--sparse-index", "visible"]);
+    writeFileSync(path.join(prepared.path, "review-context.txt"), "retain context");
+    const admin = rawGit(prepared.path, ["rev-parse", "--absolute-git-dir"]);
+    const ownIndex = readFileSync(path.join(admin, "index")); const pattern = readFileSync(path.join(admin, "info", "sparse-checkout"));
+    const ownConfig = readFileSync(path.join(admin, "config.worktree")); const primary = f.snapshot();
+    f.store.retryReview({ reviewId: first.id, attempt: 1 }, proof, { error: "retry", retryAt: 40 }, 40);
+    f.store.reserveReview(first, { reviewId: uuid(900), sessionId: uuid(901), maxAttempts: 3 }, 40);
+    expect(await f.manager.prepareWorktree(f.store, f.local, first.id, proof)).toMatchObject({ kind: "prepared" });
+    expect(readFileSync(path.join(admin, "index"))).toEqual(ownIndex);
+    expect(readFileSync(path.join(admin, "info", "sparse-checkout"))).toEqual(pattern);
+    expect(readFileSync(path.join(admin, "config.worktree"))).toEqual(ownConfig);
+    expect(readFileSync(path.join(prepared.path, "review-context.txt"), "utf8")).toBe("retain context");
+    expect(existsSync(path.join(prepared.path, "hidden", "hidden.txt"))).toBe(false);
+    expect(f.snapshot()).toEqual(primary);
+  }, 60_000);
+});

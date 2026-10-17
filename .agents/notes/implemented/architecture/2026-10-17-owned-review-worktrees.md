@@ -45,6 +45,19 @@ metadata stays untouched. The prepared result includes noncredential
 view. The cached context keeps its empty hooks/template directory separate from
 the empty graft file and remains valid for the runner's lifetime.
 
+Owned review preparation also uses command-scoped complete-checkout settings.
+Primary sparse patterns and sparse-index choices do not restrict the PR leaf.
+For an unlaunched preparation, dependency and authority guards precede an owned
+index rebuild (`read-tree --empty`, then full target materialization) and detached
+checkout. This clears inherited skip-worktree bits, including unchanged excluded
+files. Primary shared/per-worktree config, patterns, index and files remain
+untouched. Launched same-target retries retain their local context.
+
+The returned noncredential Git environment includes three controlled sparse
+configuration entries. A runner removes inherited repository/config selectors
+before applying these entries and the raw-object settings; user transport
+authentication/trust is retained.
+
 Every Git call disables hooks and fsmonitor through command-scoped settings.
 Clones use an owned empty template. Repository-selector and trace environment
 variables are removed only from children; transport trust settings such as
@@ -127,6 +140,12 @@ registrations while permitting disposable owned content to be refreshed.
 **Deinitialize submodules during refresh.** That modifies shared config. Emptying
 owned working directories preserves shared administration without recursive
 initialization, network fetch, or branch management.
+
+**Honor primary sparse checkout in the PR leaf.** That can hide changed files
+while HEAD still matches the captured target. Forced checkout or ordinary
+read-tree alone retains old skip-worktree bits; changing primary sparse settings
+would alter user state. A guarded rebuild of only the owned index provides a
+complete review without modifying the primary checkout.
 
 **Use CLI clone or named-origin fetch.** CLI clone can reconstruct URLs and drop
 ports; named-origin fetch can update user remote-tracking refs despite private

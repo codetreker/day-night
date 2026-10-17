@@ -103,7 +103,13 @@ export const createGitManager = (options: {
       const graftsFile = path.join(directory, "grafts");
       await mkdir(hooksDirectory);
       await writeFile(graftsFile, "", { flag: "wx" });
-      return { hooksDirectory, gitEnvironment: { GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: graftsFile } };
+      return { hooksDirectory, gitEnvironment: {
+        GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: graftsFile,
+        GIT_CONFIG_COUNT: "3",
+        GIT_CONFIG_KEY_0: "core.sparseCheckout", GIT_CONFIG_VALUE_0: "false",
+        GIT_CONFIG_KEY_1: "core.sparseCheckoutCone", GIT_CONFIG_VALUE_1: "false",
+        GIT_CONFIG_KEY_2: "index.sparse", GIT_CONFIG_VALUE_2: "false",
+      } };
     })();
     return context;
   };
@@ -463,6 +469,12 @@ export const createGitManager = (options: {
       currentPreparation(store, local, reviewId);
       await assertDeletableGitDependencies([owned.target], signal);
       await emptyTrackedSubmodules(owned, signal);
+      currentPreparation(store, local, reviewId);
+      owned = await inspectOwned(local, pullRequest, signal);
+      await ownedGit(owned, ["read-tree", "--empty"], signal);
+      currentPreparation(store, local, reviewId);
+      owned = await inspectOwned(local, pullRequest, signal);
+      await ownedGit(owned, ["read-tree", "--reset", "-u", "--no-sparse-checkout", headSha], signal);
       currentPreparation(store, local, reviewId);
       owned = await inspectOwned(local, pullRequest, signal);
       await ownedGit(owned, ["checkout", "--detach", "--force", headSha], signal);
