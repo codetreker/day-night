@@ -17,11 +17,14 @@ validates safe integer representation, and keeps that identity independent of
 remote-address spelling. The existing store remains the owner of review triggers
 and revision transitions.
 
-Each page is read with an explicit GET and captured HTTP headers. The adapter
-parses a complete response even when `gh` exits nonzero for an HTTP error;
-aborted execution, timeout, overflow, or incomplete capture cannot establish a
-successful response. Calls use argument arrays with bounded capture and request
-time, preserving the prepared GitHub authentication environment.
+Each page is read with an explicit GET and captured HTTP headers. HTTP framing
+and status are processed before body decoding, including nonzero CLI exits for
+HTTP errors. Successful responses require valid JSON. Error status and waiting
+headers remain authoritative when the body is HTML or empty; JSON error messages
+are optional metadata. Aborted execution, timeout, overflow, or incomplete
+capture cannot establish a successful response. Calls use argument arrays with
+bounded capture and request time, preserving the prepared authentication
+environment.
 
 Pagination follows validated next-page links. Accepted links have the expected
 HTTPS API origin, repository path, and scan parameters. Both owner/name and
@@ -86,6 +89,13 @@ failure and pagination boundaries.
 **Use PR number or updated_at as a progress cursor.** Existing in-range PRs can
 change indefinitely, while updated_at also changes for events unrelated to
 review. Complete recurring scans preserve old PR eligibility.
+
+**Decode every response as JSON before checking status.** Successful API bodies
+use JSON, but HTTP error bodies need not. The
+[HTTP 429 specification](https://www.rfc-editor.org/rfc/rfc6585.html#section-4)
+explicitly includes an HTML example with Retry-After. Requiring JSON first loses
+the known status and waiting deadline, allowing a later request to violate the
+server's limit.
 
 **Apply each successful page immediately.** A later response or SQLite failure
 would leave a partial repository pass. Gathering responses first and committing

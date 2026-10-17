@@ -39,7 +39,8 @@ export const executeCommand: CommandExecutor = (file, args, options) => new Prom
   }, (error, stdout, stderr) => resolve({ error, stdout, stderr }));
 });
 
-type HttpResponse = { status: number; headers: Map<string, string[]>; body: unknown };
+type HttpFrame = { status: number; headers: Map<string, string[]>; body: string };
+type HttpResponse = Omit<HttpFrame, "body"> & { body: unknown };
 const object = (value: unknown, subject: string): Record<string, unknown> => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${subject} must be an object.`);
   return value as Record<string, unknown>;
@@ -72,7 +73,7 @@ const observation = (value: unknown): PullRequestObservation => {
   };
 };
 
-const parseResponse = (stdout: string): HttpResponse => {
+const parseHttpFrame = (stdout: string): HttpFrame => {
   const separator = /\r?\n\r?\n/.exec(stdout);
   if (separator === null) throw new Error("GitHub CLI output has no complete HTTP header block.");
   const lines = stdout.slice(0, separator.index).split(/\r?\n/);
@@ -86,7 +87,7 @@ const parseResponse = (stdout: string): HttpResponse => {
     const values = headers.get(key);
     if (values === undefined) headers.set(key, [match[2]!]); else values.push(match[2]!);
   }
-  return { status: Number(statusLine[1]), headers, body: JSON.parse(stdout.slice(separator.index + separator[0].length)) as unknown };
+  return { status: Number(statusLine[1]), headers, body: stdout.slice(separator.index + separator[0].length) };
 };
 const apiBase = (host: string): URL => {
   const origin = new URL(`https://${host}`);
@@ -94,13 +95,21 @@ const apiBase = (host: string): URL => {
   if (origin.host.endsWith(".ghe.com")) return new URL(`https://api.${origin.host}/`);
   return new URL(`https://${origin.host}/api/v3/`);
 };
-const rateLimitRetryAt = (response: HttpResponse, now: number): number | null => {
+const secondaryRateLimit = (body: string): boolean => {
+  let data: unknown;
+  try { data = JSON.parse(body) as unknown; } catch (error) {
+    if (error instanceof SyntaxError) return false;
+    throw error;
+  }
+  return typeof data === "object" && data !== null && !Array.isArray(data) &&
+    "message" in data && typeof data.message === "string" && /rate limit|abuse detection/i.test(data.message);
+};
+const rateLimitRetryAt = (response: HttpFrame, now: number): number | null => {
   if (response.status !== 403 && response.status !== 429) return null;
   const retryAfter = response.headers.get("retry-after") ?? [];
   const remaining = response.headers.get("x-ratelimit-remaining") ?? [];
-  const body = typeof response.body === "object" && response.body !== null ? response.body as Record<string, unknown> : {};
-  const secondary = typeof body.message === "string" && /rate limit|abuse detection/i.test(body.message);
-  if (response.status !== 429 && !remaining.includes("0") && retryAfter.length === 0 && !secondary) return null;
+  const limited = response.status === 429 || remaining.includes("0") || retryAfter.length !== 0 || secondaryRateLimit(response.body);
+  if (!limited) return null;
   const deadlines = [now + 60_000];
   for (const value of retryAfter) {
     const deadline = /^\d+$/.test(value) ? now + Number(value) * 1000 : Date.parse(value);
@@ -294,13 +303,14 @@ export const createGitHubClient = (options: {
         cause: failure === null ? (ported ? sanitizedProcessError(signal?.reason) : signal?.reason) : publicFailure,
       });
     }
-    let response: HttpResponse;
-    try { response = parseResponse(result.stdout); } catch (cause) {
+    let response: HttpFrame;
+    try { response = parseHttpFrame(result.stdout); } catch (cause) {
       const publicCause = ported ? sanitizedProcessError(cause) : cause;
       throw new GitHubApiError(`Cannot parse GitHub response for ${host}/${endpoint}.`, {
         cause: publicFailure === null ? publicCause : new AggregateError([publicFailure, publicCause], "GitHub CLI failed and its response was invalid."),
       });
     }
+    // A 429 may carry HTML: https://www.rfc-editor.org/rfc/rfc6585.html#section-4
     if (response.status < 200 || response.status >= 300) {
       let retryAt: number | null;
       try { retryAt = rateLimitRetryAt(response, now()); } catch (cause) {
@@ -315,7 +325,9 @@ export const createGitHubClient = (options: {
       throw error;
     }
     if (publicFailure !== null) throw new GitHubApiError(`GitHub CLI exited unsuccessfully after HTTP ${response.status} for ${host}/${endpoint}.`, { cause: publicFailure });
-    return response;
+    try { return { ...response, body: JSON.parse(response.body) as unknown }; } catch (cause) {
+      throw new GitHubApiError(`Cannot parse GitHub response for ${host}/${endpoint}.`, { cause: ported ? sanitizedProcessError(cause) : cause });
+    }
   };
   const scan = async <T>(repository: GitHubRepository, state: "all" | "open", project: (item: unknown) => T, signal?: AbortSignal): Promise<T[]> => {
     const base = apiBase(repository.host);

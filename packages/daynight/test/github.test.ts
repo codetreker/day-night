@@ -18,10 +18,12 @@ const link = (state = "open", page = 2, prefix = "repositories/42", host = "http
 const pr = (number: number, changes: Record<string, unknown> = {}): Record<string, unknown> => ({
   number, state: "open", draft: false, merged_at: null, head: { sha: `head-${number}` }, base: { ref: "main", sha: "base-a" }, ...changes,
 });
-const response = (body: unknown, headers: Record<string, string> = {}, status = 200, error: Error | null = null): CommandResult => ({
-  stdout: `HTTP/2.0 ${status} Status\n${Object.entries(headers).map(([name, value]) => `${name}: ${value}\r\n`).join("")}\r\n${JSON.stringify(body)}`,
+const rawResponse = (body: string, headers: Record<string, string> = {}, status = 200, error: Error | null = null): CommandResult => ({
+  stdout: `HTTP/2.0 ${status} Status\n${Object.entries(headers).map(([name, value]) => `${name}: ${value}\r\n`).join("")}\r\n${body}`,
   stderr: "", error,
 });
+const response = (body: unknown, headers: Record<string, string> = {}, status = 200, error: Error | null = null): CommandResult =>
+  rawResponse(`${JSON.stringify(body)}`, headers, status, error);
 const exitError = (code: number | string, other: Record<string, unknown> = {}): Error => Object.assign(new Error("CLI failure"), { code, ...other });
 const queue = (...responses: (CommandResult | Error)[]) => {
   const calls: { file: string; args: readonly string[]; options: CommandOptions }[] = [];
@@ -439,6 +441,19 @@ describe("prepared authentication for repositories with API ports", () => {
     expect(errorText(error)).not.toContain(fakeToken);
   });
 
+  it("retains HTML rate-limit headers without exposing private credential capture", async () => {
+    noEnterpriseEnvironment();
+    const cause = Object.assign(new Error(fakeToken), { code: 1, stdout: fakeToken, stderr: fakeToken });
+    const { client, calls } = queue(credential(), rawResponse(`<html>${fakeToken}</html>`, { "Retry-After": "3600" }, 429, cause));
+    const failure = await client.resolveRepository(target).catch((value: unknown) => value);
+    expect(failure).toMatchObject({ status: 429, retryAt: 3_700_000, cause: { code: 1 } });
+    expect(errorText(failure)).not.toContain(fakeToken);
+    const skipped = await client.resolveRepository(target).catch((value: unknown) => value);
+    expect(skipped).toMatchObject({ status: 429, retryAt: 3_700_000 });
+    expect(errorText(skipped)).not.toContain(fakeToken);
+    expect(calls).toHaveLength(2);
+  });
+
   it("bridges a fake prepared credential through actual child processes without changing parent authentication", async () => {
     noEnterpriseEnvironment();
     const script = path.join(import.meta.dirname, "fixtures", "gh-api.mjs");
@@ -538,5 +553,69 @@ describe("RFC Link parameter parsing", () => {
     await expect(poll(client)).rejects.toThrow("Link header");
     expect(store.getRepository(repository)).toMatchObject({ startPrNumber: null, initializedAt: null, lastPollAt: null, lastPollError: expect.any(String) });
     expect(calls).toHaveLength(2);
+  });
+});
+
+describe("HTTP errors with non-JSON bodies", () => {
+  it.each([
+    [429, "<html>Too many requests</html>", { "Content-Type": "text/html", "Retry-After": "3600" }, 3_700_000],
+    [429, "", { "Retry-After": "3600" }, 3_700_000],
+    [429, "", {}, 160_000],
+    [403, "<html>Primary limit exceeded</html>", { "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "900" }, 900_000],
+    [403, "Please wait", { "Retry-After": new Date(500_000).toUTCString() }, 500_000],
+  ])("preserves HTTP %s cooldowns across batches until their deadline regardless of body format", async (status, body, headers, retryAt) => {
+    const { store } = fixture();
+    const same = { ...configuration, name: "second", coordinate: "github.com/owner/second", path: path.resolve("second") };
+    const other = { ...configuration, host: "git.example", coordinate: "git.example/owner/repo", path: path.resolve("other") };
+    const cause = exitError(1);
+    const queued = queue(response({ id: 42 }), rawResponse(body, headers, status, cause), response({ id: 43 }), response([]), response({ id: 42 }), response([]));
+    let clock = 100_000;
+    const client = createGitHubClient({ execute: queued.execute, now: () => clock });
+    const results = await pollRepositories(store, [configuration, same, other], client, { now: () => clock });
+    expect(results).toMatchObject([
+      { ok: false, error: { status, retryAt, cause } },
+      { ok: false, error: { status, retryAt } },
+      { ok: true, repository: { host: "git.example", githubId: "43", startPrNumber: 0 } },
+    ]);
+    expect(queued.calls).toHaveLength(4);
+    expect(queued.calls.map((call) => call.args.at(-1))).not.toContain("repos/owner/second");
+    expect(store.getRepository(repository)).toMatchObject({ startPrNumber: null, lastPollAt: null, lastPollError: expect.stringContaining(`HTTP ${status}`) });
+    expect(store.getRepository({ host: "git.example", githubId: "43" })?.lastPollAt).toBe(100_000);
+    clock = retryAt - 1;
+    await expect(pollRepository(store, configuration, client, { now: () => clock })).rejects.toMatchObject({ status, retryAt });
+    expect(queued.calls).toHaveLength(4);
+    clock = retryAt;
+    expect(await pollRepository(store, configuration, client, { now: () => clock })).toMatchObject({ startPrNumber: 0, lastPollAt: retryAt, lastPollError: null });
+    expect(queued.calls).toHaveLength(6);
+  });
+
+  it("preserves a non-rate-limit HTML 403 without creating a cooldown", async () => {
+    const cause = exitError(1);
+    const { client, calls } = queue(rawResponse("<html>Forbidden</html>", {}, 403, cause), response({ id: 42 }));
+    await expect(client.resolveRepository(configuration)).rejects.toMatchObject({ status: 403, retryAt: null, cause });
+    expect(await client.resolveRepository(configuration)).toEqual(repository);
+    expect(calls).toHaveLength(2);
+  });
+
+  it.each(["<html>Unexpected success body</html>", "", "plain text"]) ("rejects a non-JSON HTTP 200 without committing observations %s", async (body) => {
+    const { store, initialize, observe, poll } = fixture();
+    initialize(); observe(11);
+    const before = store.listPullRequests(repository);
+    const { client } = queue(response({ id: 42 }), rawResponse(body));
+    await expect(poll(client)).rejects.toMatchObject({ status: null, retryAt: null, cause: expect.any(SyntaxError) });
+    expect(store.listPullRequests(repository)).toEqual(before);
+    expect(store.getRepository(repository)).toMatchObject({ startPrNumber: 10, lastPollAt: 2, lastPollError: expect.stringContaining("Cannot parse GitHub response") });
+  });
+
+  it("recognizes actual native HTTP 429 HTML output before decoding its body", async () => {
+    const script = path.join(import.meta.dirname, "fixtures", "gh-api.mjs");
+    let calls = 0;
+    const client = createGitHubClient({
+      now: () => 100_000,
+      execute: (_file, _args, options) => { calls++; return executeCommand(process.execPath, [script, "rate-limit-html"], options); },
+    });
+    await expect(client.resolveRepository(configuration)).rejects.toMatchObject({ status: 429, retryAt: 3_700_000, cause: { code: 1 } });
+    await expect(client.getPullRequest(repository, 11)).rejects.toMatchObject({ status: 429, retryAt: 3_700_000 });
+    expect(calls).toBe(1);
   });
 });
