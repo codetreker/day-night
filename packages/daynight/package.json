@@ -15,7 +15,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm run build && vitest run"
+    "test": "pnpm run build && vitest run",
+    "acceptance": "pnpm run build && vitest run --config vitest.acceptance.config.ts"
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",

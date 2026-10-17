@@ -9,6 +9,7 @@
     "build": "pnpm --filter daynight build",
     "typecheck": "pnpm --filter daynight typecheck",
     "test": "pnpm --filter daynight test",
+    "acceptance": "pnpm --filter daynight acceptance",
     "check": "pnpm typecheck && pnpm test",
     "daynight": "pnpm --filter daynight exec node dist/main.js"
   }

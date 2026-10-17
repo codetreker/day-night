@@ -21,6 +21,7 @@ pnpm install --frozen-lockfile
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm acceptance
 pnpm daynight --help
 pnpm daynight --version
 ```
@@ -28,7 +29,10 @@ pnpm daynight --version
 `pnpm check` runs type checking and tests. Tests build the package before
 exercising the compiled CLI. `pnpm build` emits the executable
 `packages/daynight/dist/main.js`; the package's `daynight` bin points there.
-The pnpm dependency store is local to `.tmp/pnpm-store`.
+The pnpm dependency store is local to `.tmp/pnpm-store`. `pnpm acceptance`
+separately packs and installs the CLI in a local consumer and requires package-
+registry access. It uses controlled GitHub/Copilot executables with real Git and
+SQLite, creates no global installation and requires no live review credentials.
 
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
 Windows runners. The final `checks` job succeeds only when all platform jobs
@@ -41,7 +45,12 @@ GitHub tests use controlled API responses and subprocess fixtures to verify
 complete scans, HTTP failures, and atomic observation commits.
 Git lifecycle tests use local origin/clone fixtures and real worktrees to check
 captured targets, disposable review artifacts, shared refs, and isolation between
-PR worktrees. Controlled Copilot executables exercise retained sessions, durable
+PR worktrees. The installed acceptance suite additionally verifies the package
+bin, default native command shims, singleton/stale-lock behavior and the complete
+review/re-review/restart/closure lifecycle. Curated environment and scenario
+receipts are uploaded by each native CI job; the
+[acceptance report](docs/research/daynight-acceptance.md) distinguishes those
+receipts from live-service evidence. Controlled Copilot executables exercise retained sessions, durable
 launch intent, stdin prompts and streamed completion/failure handling. These
 checks require no live model invocation or GitHub publication.
 
@@ -227,9 +236,12 @@ English unless explicitly instructed otherwise. Discuss work in Chinese.
 
 ## Validation
 
-Use the development commands above for application changes. Add targeted tests
-for observable behavior and failure paths. Native-platform and live GitHub/Copilot
-acceptance remain separate delivery evidence, as defined by the architecture.
+Use the development commands above for application changes. `pnpm check` covers
+ordinary type/build/test validation; `pnpm acceptance` exercises the installed
+package. The suite uses Git 2.48+ for its relative-worktree fixture. Refer to the
+[acceptance report](docs/research/daynight-acceptance.md) for actual toolchain
+receipts and SQLite platform constraints. Live GitHub/Copilot acceptance remains
+separate delivery evidence with designated repository and reviewer authorization.
 
 For document changes, check relative links, requirement references, status, and
 note lifecycle sections. For workflow changes, also check skill frontmatter and

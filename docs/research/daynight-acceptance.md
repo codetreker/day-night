@@ -1,0 +1,103 @@
+# Daynight Acceptance Evidence
+
+The installed-CLI acceptance suite exercises a packed distribution with real Git
+and SQLite, controlled GitHub CLI responses and a controlled Copilot executable.
+Real Copilot reasoning and GitHub publication require a separately designated
+repository, reviewer identity and authorization.
+
+## Commands and scope
+
+```text
+pnpm check
+pnpm acceptance
+node packages/daynight/scripts/validation-environment.ts
+```
+
+`pnpm check` runs type checking and ordinary tests. `pnpm acceptance` builds the
+package, packs a tarball and installs it into a task-local consumer with the
+normal pnpm installer. This separate command requires package-registry access
+for dependency resolution. It creates no global installation and needs no live
+GitHub or Copilot credentials.
+
+The installed package's own `daynight` bin starts from temporary home and working
+directories containing spaces and Unicode. The test drives its public command
+and reads SQLite through an independent connection. Product scheduling APIs are
+not replaced. Git transport is limited to the local fixture origin.
+
+Twenty scenarios cover the permanent startup cutoff, Draft/head suppression,
+ready review, inline `COMMENT`, missing-marker reconciliation, a clean approval,
+head/force-push changes, base-tip exclusion, base-branch changes, isolated PR
+sessions, normal shutdown, another working directory, singleton refusal, an
+abnormal stop with a retained lock, operator-confirmed restart, and merged or
+unmerged closure cleanup with retained history.
+
+The fixture records six agent invocations and five publications: one inline
+comment review and four approving reviews. The missing-marker attempt publishes
+once; the resumed same-session attempt confirms it without another publication.
+Only the controlled Copilot child may issue the simulated review POST.
+
+## Evidence and verdict
+
+GitHub Actions runs the ordinary and installed suites on native Linux, macOS and
+Windows. Each job uploads only two curated files:
+
+- `validation-environment.json`: checked-out revision, dirty flag, OS,
+  architecture, Node/ABI/Node-API, pnpm, Git, gh and loaded SQLite versions.
+- `e2e-evidence.json`: installed-package lifecycle assertions and scenario
+  receipts, with both live-service flags explicitly false.
+
+The workflow's platform job and final `checks` gate are the validation verdict.
+A scenario receipt describes its assertions; the job also covers process and
+fixture cleanup. Full environment reports, credentials, sessions and raw runtime
+logs are outside the artifact selection.
+
+| Evidence | Observed result |
+|---|---|
+| Local installed suite | Passed all 20 scenarios on Linux x64 |
+| Local tools | Node 24.19.0, pnpm 10.34.5, Git 2.53.0, gh 2.88.1 |
+| Local native SQLite | better-sqlite3 13.0.3, SQLite 3.53.4, Node-API 10 |
+| Local OS | Linux x64, glibc 2.39 |
+| Hosted installed matrix | Awaiting this acceptance change's CI receipts |
+| Real Copilot/GitHub | Awaiting designated repository, distinct author/reviewer identities and write authorization |
+
+The [runtime integration CI](https://github.com/codetreker/day-night/actions/runs/39040002167)
+passed Linux, macOS and Windows before the installed-package suite was added.
+It is component/runtime evidence, not an installed-package or live-model receipt.
+
+## Supported baselines
+
+Development and validation use Node.js 24 and pnpm 10.34.5. The suite requires
+Git 2.48 or newer because its relative-worktree fixture uses
+`git worktree repair --relative-paths`. Git 2.43's failure on that fixture does
+not establish a production runtime defect. The
+[Git 2.48 release notes](https://github.com/git/git/blob/67ad42147a7acc2af6074753ebd03d904476118f/Documentation/RelNotes/2.48.0.adoc#L56-L58)
+record relative worktree linkage support. Production minimum versions beyond the
+named tested environments require their own runtime evidence.
+
+The inspected better-sqlite3 13.0.3 Linux x64 prebuild requires `GLIBC_2.34` and
+`GLIBCXX_3.4.29`. These symbol requirements constrain older distributions; they
+are not a complete compatibility guarantee. The named receipt covers its actual
+OS and architecture. Other distributions, architectures and musl require their
+own native receipt. The [state decision](../../.agents/notes/implemented/architecture/2026-10-17-durable-review-state.md)
+records the packaged binary choice.
+
+## Live acceptance scope
+
+The prepared isolated fixture adds a discount calculation with a confirmed
+100-fold cents-scale defect, then corrects it. Local baseline and corrected
+tests pass; the candidate fails its two amount assertions. It calls no payment
+provider or external service.
+
+Live acceptance needs authorization to create a fixture branch and PR, toggle
+Draft/ready, push the correction, publish inline `COMMENT` and `APPROVE` as a
+non-author reviewer, and close the test PR and remove its branch. The daemon
+must start before the new fixture PR so its permanent cutoff does not exclude it.
+Session UUIDs, reviewed heads, stable review IDs, inline comment locations and
+remote review verdicts form the receipts. Worktree cleanup and restart continuity
+must also be observed. Test authors and reviewers must have the relevant access,
+and Copilot must be entitled to run with the prepared authentication.
+
+The controlled suite already forces missing-marker reconciliation. A live
+missing-marker check must distinguish confirmed remote publication from local
+completion and retain the same Copilot session. None of the controlled receipts
+is presented as evidence that a real model followed that publication protocol.
