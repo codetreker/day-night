@@ -437,7 +437,7 @@ Linux/macOS 为直接子进程建立独立进程组，同时保留引用、pipes
 
 ## 验证与交付
 
-应用工具链提供 `pnpm typecheck`、`pnpm test` 和 `pnpm build`。当前测试覆盖参数、
+应用工具链提供 `pnpm typecheck`、`pnpm test`、`pnpm build` 和独立的 `pnpm acceptance`。当前测试覆盖参数、
 帮助与版本、编译后的入口、严格配置解析和路径校验；GitHub Actions 在 Linux、macOS
 和 Windows 上运行这些检查。SQLite 测试使用真实磁盘数据库，验证迁移、事务回滚、
 连接锁冲突、重开后的边界与预算、修订转换、会话和 worktree 登记。GitHub 测试使用
@@ -452,10 +452,17 @@ fixtures 验证克隆、私有 refs、detached head、dirty 内容、所有权�
 无需真实远程认证。调度器内部失败也会取消仍在等待的轮询，再等待所有已启动操作结束。
 [协调决策](../../.agents/notes/implemented/architecture/2026-10-17-foreground-review-coordination.md)
 记录这些责任和异常恢复前提。
-macOS 检查挂载临时的大小写敏感和不敏感 APFS
-镜像，验证缺失路径的大小写冲突、Unicode 编码别名、状态目录别名及探测目录清理。
-完整执行链仍需以下验收：使用真实的临时 SQLite 数据库和本地 Git 仓库，使用模拟
-可执行程序控制子进程输出、延迟和退出行为。
+macOS 检查挂载临时的大小写敏感和不敏感 APFS 镜像，验证缺失路径的大小写冲突、
+Unicode 编码别名、状态目录别名及探测目录清理。
+
+独立的 `pnpm acceptance` 先打包，再在临时 consumer 中正常安装，驱动实际生成的
+`daynight` bin。真实 SQLite 和本地 Git 配合受控的原生 gh 执行文件及 Copilot 命令
+包装脚本，验证完整的审查、重试、重启和关闭清理流程；测试不替换产品内部依赖。
+该安装步骤需要包注册表访问，不做全局安装，也不需要真实 review 凭据。CI 只上传
+精选的工具版本清单和场景 receipt；[验收报告](../research/daynight-acceptance.md)
+记录实际已测试的平台和真实服务验收范围。
+
+下表中的行为由模块、原生子进程和安装后验收共同验证：
 
 | 范围 | 必须观测的行为 |
 |---|---|
@@ -469,8 +476,8 @@ macOS 检查挂载临时的大小写敏感和不敏感 APFS
 | 平台 | `daynight --deamon-review`、各平台用户主目录和路径分隔符、含空格或 Unicode 的路径、Windows CLI 命令包装脚本、每个受支持系统上的子进程终止和最终输出 |
 
 需要在获得授权的测试仓库中实际运行 Copilot 与 GitHub，才能证明真实的会话续接、
-行级评论和批准行为。模拟测试无法证明这些效果。当前 CLI、配置、状态、观测和 Git 模块的验证
-不构成完整审查流程或真实 GitHub 发布行为的运行证据。
+行级评论和批准行为。受控的完整执行链验证编排、打包及文本/会话协议；真实模型判断、
+认证权限和远程发布效果仍需独立的实际运行证据。
 
 没有已部署的数据需要迁移。本设计涵盖所有已确认的产品行为。Webhook、分布式执行、
 UI 和其他 agent 提供方属于独立功能。进程监督服务会改变执行模型，超出本 CLI 设计的

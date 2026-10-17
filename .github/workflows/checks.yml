@@ -38,8 +38,23 @@ jobs:
           run_install: false
           dest: ${{ github.workspace }}/.tmp/pnpm
       - run: pnpm install --frozen-lockfile --store-dir .tmp/pnpm-store
+      - name: Record native validation environment
+        id: environment
+        run: node packages/daynight/scripts/validation-environment.ts
       - run: pnpm typecheck
       - run: pnpm test
+      - run: pnpm acceptance
+      - name: Upload acceptance evidence
+        if: ${{ always() && steps.environment.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: daynight-acceptance-${{ matrix.os }}
+          path: |
+            .tmp/validation-environment.json
+            .tmp/e2e-evidence.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
 
   checks:
     if: ${{ always() }}
