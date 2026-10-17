@@ -77,5 +77,6 @@ version evidence, not an inferred minimum-version guarantee.
 
 The completion marker remains an agent assertion. GitHub publication and SQLite
 updates are not one transaction, and a closed CLI wrapper does not prove that
-all descendants have stopped. Ambiguous execution retains its recorded state
-for the coordinator's recovery policy.
+all descendants have stopped. The [foreground coordination decision](2026-10-17-foreground-review-coordination.md)
+defines the supported foreground-tools contract, current-tree cancellation and
+operator recovery for ambiguous execution.

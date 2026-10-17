@@ -23,7 +23,7 @@ export type PreparedWorktree = {
   mergeBaseSha: string;
   gitEnvironment: Record<string, string | undefined>;
 };
-class GitCommandError extends Error {
+export class GitCommandError extends Error {
   readonly completed: boolean;
   constructor(message: string, cause: unknown, completed: boolean) {
     super(message, { cause });
@@ -455,9 +455,13 @@ export const createGitManager = (options: {
       store.completeCleanup(identity, owned.target, proof);
       return { kind: "cleaned" };
     } catch (error) {
-      const current = store.getPullRequest(identity);
-      if (current !== null && current.state !== "open" && current.cleanupPending && current.worktreePath === initial.worktreePath) {
-        store.recordCleanupError(identity, initial.worktreePath!, error instanceof Error ? error.message : String(error));
+      try {
+        const current = store.getPullRequest(identity);
+        if (current !== null && current.state !== "open" && current.cleanupPending && current.worktreePath === initial.worktreePath) {
+          store.recordCleanupError(identity, initial.worktreePath!, error instanceof Error ? error.message : String(error));
+        }
+      } catch (recordingError) {
+        throw new AggregateError([error, recordingError], "Worktree cleanup failed and its error could not be recorded.", { cause: error });
       }
       throw error;
     }

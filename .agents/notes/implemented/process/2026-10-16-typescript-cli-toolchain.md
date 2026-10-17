@@ -32,9 +32,9 @@ The [configuration design](../../../../docs/design/daynight.md) owns the schema
 and path rules.
 
 The CLI supports help, version, argument validation, and configuration loading.
-Until the coordinator is integrated, review mode fails explicitly after
-configuration validation and creates no review state. This prevents a successful
-or indefinitely idle invocation from implying that monitoring is operational.
+Review mode acquires the instance lock, opens SQLite and runs the
+[foreground coordinator](../architecture/2026-10-17-foreground-review-coordination.md).
+Configuration failures report their filename and preserve the original cause.
 
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
 Windows. macOS tests mount temporary case-sensitive and case-insensitive APFS
@@ -52,10 +52,11 @@ a test framework dependency but adds test-output layout, cleanup and command
 handling alongside the production build. Vitest provides source-test discovery
 on each platform while subprocess tests still exercise emitted JavaScript.
 
-**Make the incomplete review command wait indefinitely.** This resembles the
-future foreground lifecycle but supplies no monitoring behavior or failure
-signal. An explicit unavailable-coordinator error preserves the entry contract
-without claiming that the review runtime exists.
+**Make the incomplete review command wait indefinitely.** At the original
+configuration-only stage, an idle invocation supplied no monitoring behavior or
+failure signal. An explicit unavailable-coordinator error kept that stage from
+implying a working reviewer. The integrated coordinator now owns the foreground
+lifetime.
 
 **Infer path case rules from the operating system or existing names.** macOS
 supports both APFS variants, and a directory's name is looked up in its parent,
@@ -85,6 +86,6 @@ adds SQLite persistence, and the
 and worktree operations. The
 [Copilot adapter](../architecture/2026-10-17-copilot-session-execution.md) uses
 `cross-spawn` for native and Windows command-shim execution with typed arguments
-and stdin prompts. Continuous scheduling and authorized live acceptance remain
-separate tasks. A task stays in progress through its PR review and closes only
+and stdin prompts. Continuous scheduling is connected through the foreground
+coordinator; authorized live acceptance remains separate evidence. A task stays in progress through its PR review and closes only
 after accepted integration.

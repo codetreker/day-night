@@ -1,6 +1,9 @@
 import { homedir } from "node:os";
+import { formatError } from "./diagnostics.js";
+export { formatError } from "./diagnostics.js";
 import { loadConfiguration } from "./config.js";
 import { resolveRuntimePaths } from "./paths.js";
+import { formatCoordinatorEvent, runForegroundReview } from "./runtime.js";
 import type { Configuration } from "./config.js";
 import type { RuntimePaths } from "./paths.js";
 
@@ -8,6 +11,7 @@ export type CliDependencies = {
   version: string;
   homeDirectory: () => string;
   loadConfiguration: (paths: RuntimePaths) => Promise<Configuration>;
+  runReview: (configuration: Configuration, paths: RuntimePaths) => Promise<void>;
   stdout: (text: string) => void;
   stderr: (text: string) => void;
 };
@@ -15,30 +19,14 @@ export type CliDependencies = {
 const help = `Usage: daynight --deamon-review
 
 Options:
-  --deamon-review  Validate configuration for foreground PR review mode
+  --deamon-review  Run foreground PR review until interrupted
   -h, --help       Show this help
   -v, --version    Show the installed version
 
 Configuration: ~/.daynight/config.yml (current user's home directory)
 Runtime state: ~/.daynight/
-Review execution is not available in this build.
 `;
 
-export const formatError = (error: unknown): string => {
-  if (!(error instanceof Error)) {
-    return String(error);
-  }
-  const details: string[] = [error.message];
-  if (error instanceof AggregateError) {
-    for (const child of error.errors) {
-      details.push(formatError(child));
-    }
-  }
-  if (error.cause !== undefined) {
-    details.push(`Caused by: ${formatError(error.cause)}`);
-  }
-  return details.join("\n");
-};
 
 export const runCli = async (
   args: readonly string[],
@@ -68,9 +56,9 @@ export const runCli = async (
   }
   try {
     const runtimePaths = resolveRuntimePaths(dependencies.homeDirectory());
-    await dependencies.loadConfiguration(runtimePaths);
-    stderr("Configuration is valid. The review coordinator is not implemented; PR review execution is not available.\n");
-    return 1;
+    const configuration = await dependencies.loadConfiguration(runtimePaths);
+    await dependencies.runReview(configuration, runtimePaths);
+    return 0;
   } catch (error) {
     stderr(`${formatError(error)}\n`);
     return 1;
@@ -81,6 +69,9 @@ export const defaultCliDependencies = (version: string): CliDependencies => ({
   version,
   homeDirectory: homedir,
   loadConfiguration,
+  runReview: (configuration, paths) => runForegroundReview(configuration, paths, {
+    log: (event) => { process.stderr.write(`${formatCoordinatorEvent(event)}\n`); },
+  }),
   stdout: (text) => { process.stdout.write(text); },
   stderr: (text) => { process.stderr.write(text); },
 });

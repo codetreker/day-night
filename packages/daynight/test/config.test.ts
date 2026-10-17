@@ -197,6 +197,16 @@ describe("configuration loading", () => {
     });
   });
 
+  it("includes the configuration filename and original cause for invalid values", async () => {
+    const paths = resolveRuntimePaths(path.join(directory, "invalid-values"));
+    await mkdir(paths.stateDirectory, { recursive: true });
+    await writeFile(paths.configFile, "maxConcurrentWorker: 0\nrepositories: [{remote: https://github.com/o/r, path: ../repo}]\n");
+    await expect(loadConfiguration(paths)).rejects.toMatchObject({
+      message: expect.stringContaining(paths.configFile),
+      cause: { message: expect.stringContaining("maxConcurrentWorker must be a positive safe integer") },
+    });
+  });
+
   it("loads a real YAML file without creating a clone or runtime files", async () => {
     const home = path.join(directory, "home with 空格");
     const paths = resolveRuntimePaths(home);

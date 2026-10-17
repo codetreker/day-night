@@ -12,14 +12,15 @@ installation or independent execution infrastructure.
 ## Decision
 
 The repository records the [requirements](../../../../docs/spec/daynight.md) and
-[proposed design](../../../../docs/design/daynight.md) for one foreground
+[design](../../../../docs/design/daynight.md) for one foreground
 TypeScript CLI in `packages/daynight/`. This note records the selected execution
 model. The CLI/configuration foundation and
 [durable state module](2026-10-17-durable-review-state.md) are implemented;
 the [GitHub observation module](2026-10-17-github-observation.md) reads complete
 repository passes. The [Git manager](2026-10-17-owned-review-worktrees.md) owns
 clones and disposable PR worktrees. The [Copilot adapter](2026-10-17-copilot-session-execution.md)
-executes retained sessions; review coordination remains pending. Configuration, entry point, and
+executes retained sessions. The [foreground coordinator](2026-10-17-foreground-review-coordination.md)
+connects these modules to continuous CLI operation. Configuration, entry point, and
 runtime storage follow the [user-home configuration decision](2026-10-16-user-home-review-configuration.md).
 
 Polling, pending work, SQLite updates, worktree management, and direct Copilot
@@ -29,7 +30,8 @@ so an old completion cannot discard a later trigger. Agents publish their own
 GitHub outcomes and report completion through one exact final text line.
 
 The CLI supports Linux, macOS, and Windows using ordinary command execution and
-platform termination behavior. Normal exit stops children. Abnormal termination
+platform termination behavior. Agents obey a foreground-tools contract; runtime
+cancels current managed execution on shutdown. Abnormal termination
 retains unfinished state and requires previous processes to have ended before
 retry; no transparent recovery of a live child is promised.
 

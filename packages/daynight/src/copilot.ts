@@ -40,6 +40,7 @@ export type CopilotRunOptions = {
   signal?: AbortSignal;
   previousReview?: PreviousReview;
   onProcess?: (child: ChildProcess, attempt: AttemptIdentity) => void;
+  stopProcess?: (child: ChildProcess, attempt: AttemptIdentity) => Promise<void>;
 };
 
 const asError = (value: unknown): Error => value instanceof Error ? value : new Error(String(value));
@@ -67,6 +68,7 @@ Publish the review yourself using gh api. Immediately before publication re-read
 Use POST repos/${repository.owner}/${repository.name}/pulls/${review.number}/reviews on host ${review.host}. Explicitly set commit_id to ${review.headSha} and include the stable review identity in the review body. Use English and identify yourself as Copilot in published text.
 Report only actionable Critical or Major problems introduced by this change, using inline comments on the relevant changed lines in a COMMENT review. Never submit REQUEST_CHANGES. If no Critical or Major problem remains, publish APPROVE. Verify the required publication succeeded. Do not treat an existing COMMENT as evidence of approval, and do not claim success when you cannot approve your own PR.
 The repository and worktree are dedicated to this review system. Worktree creation, reset and cleanup belong to daynight; do not perform those lifecycle operations. Keep supplementary clones and temporary resources under the supplied temporary directory.
+Run all tools in the foreground, await and reap them, and stop every service or other tool you started before returning. Do not leave background or detached processes running.
 After the required review result has been published or confirmed, finish stdout with exactly this standalone line, with no text after it:
 PR ${review.number} Review Completed
 `;
@@ -151,7 +153,7 @@ export const createCopilotRunner = (options: CopilotRunnerOptions) => {
       `--${mode === "resume" ? "resume" : "session-id"}=${pr.sessionId}`, "-s", "--output-format", "text", "--stream", "on", "--no-color",
       "--no-ask-user", "--no-auto-update", "--allow-all-tools", "--log-dir", attemptDirectory];
     let child;
-    try { child = crossSpawn(options.command === undefined ? "copilot" : options.command.file, args, { cwd: worktree.path, env: environment, shell: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }); }
+    try { child = crossSpawn(options.command === undefined ? "copilot" : options.command.file, args, { cwd: worktree.path, env: environment, shell: false, windowsHide: true, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] }); }
     catch (error) { errors.push(asError(error)); await Promise.all([stdoutFile.close(), stderrFile.close()]); outcome.directProcessClosed = true; return outcome; }
     const parser = new LastLine(lineLimit);
     let timeout: NodeJS.Timeout | undefined;
@@ -163,6 +165,15 @@ export const createCopilotRunner = (options: CopilotRunnerOptions) => {
     const stop = (): void => {
       if (stopped || outcome.directProcessClosed) return;
       stopped = true;
+      if (input.stopProcess !== undefined && child.pid !== undefined) {
+        void input.stopProcess(child, attempt).catch((error: unknown) => { errors.push(asError(error)); }).finally(() => {
+          if (!outcome.directProcessClosed) {
+            errors.push(new Error("Copilot termination could not confirm its direct process and streams closed; retained state requires operator recovery."));
+            child.stdin!.destroy(); child.stdout!.destroy(); child.stderr!.destroy(); resolveClose();
+          }
+        });
+        return;
+      }
       child.kill("SIGTERM");
       force = setTimeout(() => {
         child.kill("SIGKILL");
