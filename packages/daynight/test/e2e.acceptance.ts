@@ -132,6 +132,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     writeFileSync(path.join(stateDirectory, "config.yml"), `pollIntervalMs: 200\nmaxConcurrentWorker: 1\nagentTimeoutMs: 60000\nmaxAttempts: 3\nretryDelayMs: 100\nrepositories:\n  - remote: https://github.com/fixture/review-project.git\n    path: ${JSON.stringify(repository)}\n`);
     const start = (cwd: string): void => {
       rmSync(path.join(directory, "stop"), { force: true });
+      rmSync(path.join(directory, "crash"), { force: true });
       output = ""; failure = undefined;
       running = crossSpawn(installedBin, ["--deamon-review"], { cwd, env: environment, detached: process.platform !== "win32", windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
       running.stdout!.on("data", (data: Buffer) => { output += data.toString(); });
@@ -153,6 +154,18 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       else process.kill(-running.pid, "SIGKILL");
       await awaitClose("close after its owned process tree was forcibly stopped");
       running = undefined;
+    };
+    const abruptStopWhenQuiescent = async (): Promise<void> => {
+      const lock = JSON.parse(readFileSync(path.join(stateDirectory, "instance.lock"), "utf8")) as { pid: number };
+      writeFileSync(path.join(directory, "crash"), "exit after direct children have closed\n");
+      const code = await awaitClose("exit abruptly after its direct child processes closed");
+      running = undefined;
+      rmSync(path.join(directory, "crash"));
+      expect(code, output).toBe(73);
+      const receipt = JSON.parse(readFileSync(path.join(directory, "crash-receipt.json"), "utf8")) as { pid: number; exitCode: number; resources: string[] };
+      expect(receipt.pid).toBe(lock.pid);
+      expect(receipt.exitCode).toBe(73);
+      expect(receipt.resources).not.toContain("ProcessWrap");
     };
     const refusedStartup = (description: string): void => {
       const result = crossSpawn.sync(installedBin, ["--deamon-review"], { cwd: secondCwd, env: environment, encoding: "utf8", windowsHide: true, timeout: 30_000 });
@@ -179,6 +192,19 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     };
     const scenarios: string[] = [];
     try {
+      execFileSync(process.execPath, ["--input-type=module", "--eval", `
+        import assert from "node:assert/strict";
+        import { spawn } from "node:child_process";
+        import { once } from "node:events";
+        const child = spawn(process.execPath, ["--eval", "process.stdin.resume()"], { stdio: ["pipe", "ignore", "ignore"] });
+        await once(child, "spawn");
+        assert(process.getActiveResourcesInfo().includes("ProcessWrap"));
+        const closed = once(child, "close");
+        child.stdin.end();
+        await closed;
+        do { await new Promise(setImmediate); } while (process.getActiveResourcesInfo().includes("ProcessWrap"));
+        assert(!process.getActiveResourcesInfo().includes("ProcessWrap"));
+      `], { env: environment, timeout: 5_000, stdio: "pipe" });
       // The native fake must run its preload before resolving the absent API main.
       expect(JSON.parse(execFileSync(fakeGh, ["api", "repos/fixture/review-project"], { env: environment, encoding: "utf8" }))).toEqual({ id: 4242 });
       start(directory);
@@ -186,7 +212,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       expect(git(["-C", repository, "config", "--local", "--get", "remote.origin.url"])).toBe("https://github.com/fixture/review-project.git");
       refusedStartup("a second installed CLI must refuse the active instance lock");
       expect(agents()).toHaveLength(0);
-      await forceStopOwnedTree();
+      await abruptStopWhenQuiescent();
       const lockFile = path.join(stateDirectory, "instance.lock");
       expect(existsSync(lockFile)).toBe(true);
       const requestsBeforeStaleStartup = readRecords<Request>("requests").length;
@@ -194,13 +220,13 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       expect(readRecords<Request>("requests")).toHaveLength(requestsBeforeStaleStartup);
       expect(agents()).toHaveLength(0);
       expect(existsSync(lockFile)).toBe(true);
-      // The controlled tree is stopped and no eligible PR or agent has existed.
+      // The CLI exited after its direct children closed; no agent has existed.
       rmSync(lockFile);
       const recoveredVersion = publishState();
       start(secondCwd);
       await observedWithoutReview(recoveredVersion, 0);
       expect(query<{ start_pr_no: number }>("SELECT start_pr_no FROM repositories")?.start_pr_no).toBe(10);
-      scenarios.push("singleton-refusal", "forced-stop-retains-lock", "stale-lock-refusal", "operator-confirmed-lock-recovery");
+      scenarios.push("singleton-refusal", "abrupt-stop-retains-lock", "stale-lock-refusal", "operator-confirmed-lock-recovery");
       pulls.push(current);
       await observedWithoutReview(publishState(), 0);
       current.head.sha = second;
@@ -270,7 +296,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
         liveCopilotExercised: false, liveGitHubExercised: false, scenarios,
         receipts: { agentInvocations: calls.length, publications: publications().length, commentReviews: publications().filter((item) => item.event === "COMMENT").length,
           approvingReviews: publications().filter((item) => item.event === "APPROVE").length, sameSessionAfterRestart: true, cleanShutdowns: 2, cleanedWorktrees: 2,
-          singletonRefusals: 1, forcedStops: 1, staleLockRefusals: 1, operatorConfirmedRestarts: 1 },
+          singletonRefusals: 1, abruptStops: 1, staleLockRefusals: 1, operatorConfirmedRestarts: 1 },
       }, null, 2));
     } finally {
       if (running !== undefined) {

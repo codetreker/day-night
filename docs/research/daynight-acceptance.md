@@ -96,6 +96,34 @@ OS and architecture. Other distributions, architectures and musl require their
 own native receipt. The [state decision](../../.agents/notes/implemented/architecture/2026-10-17-durable-review-state.md)
 records the packaged binary choice.
 
+## Native termination follow-up
+
+The post-merge [runtime check](https://github.com/codetreker/day-night/actions/runs/39044760027)
+observed `kill EPERM` during macOS's signal-zero probe after forced group
+termination. Published [XNU signaling code](https://github.com/apple-oss-distributions/xnu/blob/ac9718fb1af618d5ce8678d0dc6e8a58f252216f/bsd/kern/kern_sig.c#L1703-L1719)
+filters zombies before counting eligible group members, so `EPERM` alone cannot
+establish that executing members remain. That source is release 12377.121.6;
+the recorded runner used 12377.161.14. The log did not capture simultaneous
+process status and does not independently prove a zombie-only group.
+
+The supervisor inspects its existing exact-PGID status after this probe result.
+Absent/all-zombie groups have no executing members; live groups rethrow the
+original denial. Inspection failures remain errors. Deterministic classification
+cases and a real POSIX denied-live-group case preserve these distinctions, while
+the original native cooperative and forced termination tests remain unchanged.
+
+The same post-merge run also reported an unsuccessful Windows `taskkill /T`
+snapshot while fixture tools were exiting. The installed stale-lock scenario
+uses a controlled abrupt CLI exit after all current direct tool handles drain.
+A native child/stdin-close precondition verifies that the public Node resource
+list exposes `ProcessWrap` while the child is active and removes it after close.
+The main preload waits for that resource to disappear, records the actual CLI
+PID, then exits synchronously with code 73 before another scheduling turn.
+The retained lock, refused restart and operator-confirmed recovery assertions
+remain intact. Product cancellation errors are still errors, and the separate
+native Windows process-tree termination tests remain unchanged. See
+[Node active resources](https://nodejs.org/api/process.html#processgetactiveresourcesinfo).
+
 ## Live acceptance scope
 
 The prepared isolated fixture adds a discount calculation with a confirmed

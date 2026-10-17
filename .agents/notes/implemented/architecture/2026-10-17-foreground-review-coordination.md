@@ -56,6 +56,10 @@ before returning. Normal unforced exit with drained streams is evidence under
 that contract, rather than OS containment of arbitrary descendants. POSIX uses
 a referenced child process group with pipes and no `unref`; TERM/KILL targets
 the current group, with zombie-only groups distinguished from executing members.
+A signal-zero probe returning `EPERM` also reaches the existing exact-PGID status
+inspection: only an absent or entirely zombie group has no executing members.
+A live row preserves the original permission denial. Inspection or parse errors
+continue to retain uncertain execution.
 Windows cancellation uses `taskkill /T /F` while the current wrapper is live.
 Canceled roots that disappear before tree termination, failed stops and abandoned
 capture remain uncertain. A definite command-not-found launch is recorded
@@ -68,6 +72,10 @@ The relevant platform contracts are
 [Node close](https://nodejs.org/api/child_process.html#event-close),
 [POSIX kill](https://pubs.opengroup.org/onlinepubs/9799919799/functions/kill.html)
 and [Windows taskkill](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/taskkill).
+Published [Apple XNU group signaling](https://github.com/apple-oss-distributions/xnu/blob/ac9718fb1af618d5ce8678d0dc6e8a58f252216f/bsd/kern/kern_sig.c#L1703-L1719)
+filters zombie members and can return POSIX `EPERM` when no eligible member
+remains. This is published release-family evidence; native tests establish the
+behavior on the actual runner build.
 
 ## Alternatives
 
