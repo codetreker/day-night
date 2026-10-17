@@ -172,7 +172,6 @@ export const createGitManager = (options: {
               if (!(await ordinaryDirectory(reserved.ancestorPath)) || (await existingDirectory(reserved.ancestorPath)).ancestorIdentity !== reserved.ancestorIdentity) {
                 throw new Error("The physical clone destination changed identity.");
               }
-              await assertDeletableGitDependencies([reserved.ancestorPath]);
               await rm(reserved.ancestorPath, { recursive: true });
             }
           } catch (cleanupError) {
@@ -277,66 +276,6 @@ export const createGitManager = (options: {
     if (owned.administrativeDirectory === null || !owned.exists) throw new Error("An existing bound worktree is required for Git worktree operations.");
     return run(["--git-dir", owned.administrativeDirectory, "--work-tree", owned.target, "-C", owned.target, ...args], signal);
   };
-  const assertDeletableGitDependencies = async (targets: readonly string[], signal?: AbortSignal): Promise<void> => {
-    const intended = await Promise.all(targets.map((target) => resolvePhysicalDirectory(target)));
-    const roots = intended.filter((directory) => directory.missingComponents.length === 0);
-    for (const target of targets) await ordinaryDirectory(target);
-    const withinDeletion = async (target: string): Promise<boolean> => {
-      const directory = await resolvePhysicalDirectory(target);
-      const ancestry = await ancestorIdentities(directory.ancestorPath);
-      const canonical = path.join(directory.ancestorPath, ...directory.missingComponents);
-      return intended.some((root) => {
-        if (root.missingComponents.length === 0) return ancestry.has(root.ancestorIdentity);
-        const relative = path.relative(path.join(root.ancestorPath, ...root.missingComponents), canonical);
-        return relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`));
-      });
-    };
-    const visited = new Set<string>();
-    const walk = async (directory: string, ownedRoot: boolean): Promise<void> => {
-      signal?.throwIfAborted();
-      const physical = await existingDirectory(directory);
-      if (visited.has(physical.ancestorIdentity)) return;
-      visited.add(physical.ancestorIdentity);
-      const entries = await readdir(directory, { withFileTypes: true });
-      const names = new Map(entries.map((entry) => [entry.name, entry]));
-      const administrative = names.has("HEAD") && (names.has("objects") || (names.has("commondir") && names.has("gitdir")));
-      if (administrative) {
-        const commonPointer = await readOrdinaryFile(path.join(directory, "commondir"));
-        const common = commonPointer === null ? directory : path.resolve(directory, commonPointer);
-        if (await sameDirectory(directory, common)) {
-          const configuredWorktree = (await run(["--git-dir", directory, "--work-tree", directory, "config", "--default", "", "--get", "core.worktree"], signal)).replace(/\r?\n$/, "");
-          if (configuredWorktree !== "" && !await withinDeletion(path.resolve(directory, configuredWorktree))) {
-            throw new Error(`Nested Git administration ${directory} owns an external worktree; cleanup is blocked.`);
-          }
-          const family = path.join(directory, "worktrees");
-          if (await ordinaryDirectory(family)) {
-            for (const registration of await readdir(family, { withFileTypes: true })) {
-              if (registration.isSymbolicLink()) throw new Error("A symbolic Git worktree registration blocks cleanup.");
-              if (!registration.isDirectory()) continue;
-              const administrativeDirectory = path.join(family, registration.name);
-              const pointer = await readOrdinaryFile(path.join(administrativeDirectory, "gitdir"));
-              if (pointer === null || !await withinDeletion(path.dirname(path.resolve(administrativeDirectory, pointer)))) {
-                throw new Error(`Nested Git administration ${directory} owns an external worktree; cleanup is blocked.`);
-              }
-            }
-          }
-        } else {
-          const pointer = await readOrdinaryFile(path.join(directory, "gitdir"));
-          if (pointer === null || !await withinDeletion(path.dirname(path.resolve(directory, pointer)))) {
-            throw new Error(`Git administration ${directory} belongs to an external worktree; cleanup is blocked.`);
-          }
-        }
-      }
-      const gitPointer = names.get(".git");
-      if (!ownedRoot && gitPointer !== undefined && !gitPointer.isDirectory()) {
-        const gitDirectory = await command(directory, ["rev-parse", "--absolute-git-dir"], signal);
-        const commonDirectory = await command(directory, ["rev-parse", "--path-format=absolute", "--git-common-dir"], signal);
-        if (!await sameDirectory(gitDirectory, commonDirectory)) throw new Error(`Nested linked worktree ${directory} blocks managed worktree cleanup.`);
-      }
-      for (const entry of entries) if (entry.isDirectory() && !entry.isSymbolicLink()) await walk(path.join(directory, entry.name), false);
-    };
-    for (const root of roots) await walk(root.ancestorPath, root.ancestorPath === targets[0]);
-  };
   const emptyTrackedSubmodules = async (owned: OwnedWorktree, signal?: AbortSignal): Promise<void> => {
     const target = owned.target;
     const leaf = await existingDirectory(target);
@@ -373,13 +312,6 @@ export const createGitManager = (options: {
     if (exists) {
       const directories = await rootAndCommon(target, signal);
       if (!(await sameDirectory(directories.commonDirectory, local.commonDirectory))) throw new Error("The managed worktree belongs to a different repository.");
-      const leaf = await existingDirectory(target);
-      for (const other of entries) {
-        if (other === entry) continue;
-        if (await ordinaryDirectory(other.path) && (await ancestorIdentities((await existingDirectory(other.path)).ancestorPath)).has(leaf.ancestorIdentity)) {
-          throw new Error("A nested registered worktree blocks managed worktree cleanup.");
-        }
-      }
     }
     return { target, exists, entry, administrativeDirectory };
   };
@@ -460,14 +392,12 @@ export const createGitManager = (options: {
       store.registerWorktree(pullRequest, owned.target);
       await git(local.root, ["worktree", "add", "--detach", "--lock", "--reason", `daynight:${pullRequest.sessionId}`, "--", owned.target, headSha], signal);
     } else if (!owned.exists) {
-      await assertDeletableGitDependencies([owned.target, ...(owned.administrativeDirectory === null ? [] : [owned.administrativeDirectory])], signal);
       currentPreparation(store, local, reviewId);
       await git(local.root, ["worktree", "remove", "--force", "--force", "--", owned.target], signal);
       currentPreparation(store, local, reviewId);
       await git(local.root, ["worktree", "add", "--detach", "--lock", "--reason", `daynight:${pullRequest.sessionId}`, "--", owned.target, headSha], signal);
     } else if (review.attemptCount === 0) {
       currentPreparation(store, local, reviewId);
-      await assertDeletableGitDependencies([owned.target], signal);
       await emptyTrackedSubmodules(owned, signal);
       currentPreparation(store, local, reviewId);
       owned = await inspectOwned(local, pullRequest, signal);
@@ -480,7 +410,6 @@ export const createGitManager = (options: {
       await ownedGit(owned, ["checkout", "--detach", "--force", headSha], signal);
       currentPreparation(store, local, reviewId);
       owned = await inspectOwned(local, pullRequest, signal);
-      await assertDeletableGitDependencies([owned.target], signal);
       currentPreparation(store, local, reviewId);
       await emptyTrackedSubmodules(owned, signal);
       currentPreparation(store, local, reviewId);
@@ -510,7 +439,6 @@ export const createGitManager = (options: {
       let pr = requireCleanup();
       const owned = await inspectOwned(local, pr, signal);
       pr = requireCleanup();
-      await assertDeletableGitDependencies([owned.target, ...(owned.administrativeDirectory === null ? [] : [owned.administrativeDirectory])], signal);
       requireCleanup();
       if (owned.entry !== null) await git(local.root, ["worktree", "remove", "--force", "--force", "--", owned.target], signal);
       else if (owned.exists) throw new Error("An unregistered worktree cannot be removed.");

@@ -237,10 +237,11 @@ PR worktree 放在实际仓库根目录下：
     pr-<number>/
 ```
 
-目录可能同时容纳人工或其他工具创建的 worktree。daemon 只操作自己登记的固定 PR
-路径。Git 的 `locked daynight:<sessionId>` 标记将持久化会话与实际登记关联；同一 PR
-清理后重新打开时，仍用原会话 UUID。此机制记录在
-[worktree 所有权决策](../../.agents/notes/implemented/architecture/2026-10-17-owned-review-worktrees.md)。
+本地克隆及其 PR worktree 是系统独占的审查环境。daemon 只操作自己登记的固定 PR
+路径，各 PR 的工作目录相互独立。Git 的 `locked daynight:<sessionId>` 标记将持久化
+会话与实际登记关联；同一 PR 清理后重新打开时，仍用原会话 UUID。此机制记录在
+[worktree 所有权决策](../../.agents/notes/implemented/architecture/2026-10-17-owned-review-worktrees.md)，
+环境边界见[专用审查环境决策](../../.agents/notes/implemented/architecture/2026-10-17-exclusive-review-environment.md)。
 
 操作前必须确认配置路径是精确 Git 根目录，并比较物理目录身份。对 PR leaf 同时校验
 精确 top-level、common directory、固定路径、会话锁标记和数据库登记；不能只比较
@@ -260,15 +261,15 @@ git fetch --atomic --refmap= --no-tags --no-write-fetch-head \
   +refs/heads/BASE:refs/daynight/incoming/REVIEW_ID/base
 ```
 
-空 refmap 和显式 URL 避免命名 origin fetch 顺带更新用户的 remote-tracking refs；
-FETCH_HEAD、用户分支和 tags 保持不变。需要时补全浅克隆历史。将获取到的 head 与
+空 refmap 和显式 URL 避免命名 origin fetch 顺带更新共享的 remote-tracking refs；
+FETCH_HEAD、共享分支和 tags 保持不变。需要时补全浅克隆历史。将获取到的 head 与
 捕获目标及当前 PR 元数据核对，目标已变化则交回协调模块处理；仅 base tip 变化不产生
 新的审查触发。为审查 UUID 固定 head、base 和 merge-base 私有 refs，再保存 base SHA，
 使后续 fetch、force push 或相同目标重试不能替换该轮上下文。
 
 受控 Git 命令显式禁止 replacement objects，并使用所属临时目录中的独立空 graft 文件。
-这样，用户的 `refs/replace` 或默认 `info/grafts` 不会在 SHA 不变时替换文件树或父关系，
-这些用户元数据本身保持不变。准备结果中的非敏感 `gitEnvironment` 将相同原始对象视图
+这样，本地 `refs/replace` 或默认 `info/grafts` 不会在 SHA 不变时替换文件树或父关系，
+这些本地元数据本身保持不变。准备结果中的非敏感 `gitEnvironment` 将相同原始对象视图
 提供给后续 agent runner；空 hooks/template 目录与 graft 文件分开，且在 runner 生命周期
 内保持有效。
 
@@ -281,22 +282,21 @@ fetch 还显式禁止递归子模块，以覆盖更具体的用户 fetch 配置�
 后，完全缺失的 leaf 和登记可重试；匹配的带锁登记可校验复用；不明资源不得接管。
 新的修订先 detach，再清理 daemon 拥有的内容，避免附着分支时改写共享分支。
 清理会检查当前和目标 gitlinks，避免新引入的子模块目录残留旧文件；仅清空所属工作
-目录，保留共享管理数据、refs、配置及主工作区中的子模块文件。普通嵌套 clone 属于
-可丢弃内容，嵌套 linked worktree 则必须保留，即使它属于另一个 common repository。
-同一捕获目标的确认或重试保留原工作树和本地上下文。
+目录，保留共享管理数据、refs、配置及基础工作区中的子模块文件。PR leaf 及其所属
+admin 内的嵌套 clone、生成文件和管理数据都属于可丢弃的审查内容。相同捕获目标的
+确认或重试保留原工作树和本地上下文。
 
 primary 的 sparse checkout 和 sparse index 不限制 PR 的完整代码视图。首次 add 使用
-命令级完整检出设置；未启动审查的已有 leaf 在所有权、依赖和当前目标校验后，仅重建
+命令级完整检出设置；未启动审查的已有 leaf 在所有权和当前目标校验后，仅重建
 自己的 index，再物化完整目标、detach 和清理。普通 checkout 或 read-tree reset
 不足以清除旧 skip-worktree 位，因此需要先清空所属 index。primary 的共享及每工作区
 配置、patterns、index、refs 和文件不改变；已启动后的同目标确认重试保留原 context。
 非敏感 `gitEnvironment` 携带完整视图设置，runner 先清除继承的 Git 仓库/配置选择器，
 再应用这些受控配置和原始对象设置。
 
-递归清理前还检查实际将删除的工作目录和所属 admin 中的 Git 依赖。普通或 bare 嵌套
-仓库，以及位于所属 admin 下的 submodule common，都可能支撑外部 working tree；
-有存续登记、锁定或缺失但可恢复的依赖时必须拒绝删除其管理数据。没有依赖的普通生成
-clone 仍可清理，不扫描全局其他仓库。
+更新或删除已校验的 PR 工作区时，使用标准 Git checkout、clean 和 worktree remove
+命令清除所属内容。系统不维护嵌套 Git 仓库的依赖图，也不保护其他用途对这些可丢弃
+管理数据的引用。固定路径、登记和进程排除校验仍是操作前提。
 
 关闭或合并后先记录待清理状态，停止准备和执行，并获取同一个 PR 操作预留。删除前
 再次确认远程关闭状态及数据库中无活跃审查；已重新打开时保留或重建 worktree。
@@ -320,7 +320,7 @@ copilot -C WORKTREE --session-id UUID -p PROMPT \
 ```
 
 agent 子进程继承准备结果中的原始 Git 对象环境，同时清除继承的 Git 仓库选择器，
-避免其自行执行的 diff/log 命令采用另一仓库或用户的 replacement/graft 视图。
+避免其自行执行的 diff/log 命令采用另一仓库或本地的 replacement/graft 视图。
 
 后续审查或确认调用使用 `--resume=FULL_UUID`。不得选择全局最近的会话。保留已经建立
 的会话历史；历史缺失时报告该 PR 的错误，不得静默创建另一段对话。首次创建会话期间
@@ -410,7 +410,7 @@ SQLite。使用平台常规的进程终止工具处理受管理的后代进程�
 连接锁冲突、重开后的边界与预算、修订转换、会话和 worktree 登记。GitHub 测试使用
 受控 API 和子进程验证完整分页、失败保留、限流、关闭确认和观测事务回滚。真实 Git
 fixtures 验证克隆、私有 refs、detached head、dirty 内容、所有权、浅克隆、子模块及
-无关工作区保留。
+其他 PR 工作区保留。
 审查模式现阶段在
 配置校验后明确返回协调模块尚未接入的错误，不创建状态、仓库或审查结果。
 macOS 检查挂载临时的大小写敏感和不敏感 APFS

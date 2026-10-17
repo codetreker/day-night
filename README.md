@@ -41,7 +41,8 @@ locking, and revision/retry transitions on every platform.
 GitHub tests use controlled API responses and subprocess fixtures to verify
 complete scans, HTTP failures, and atomic observation commits.
 Git lifecycle tests use local origin/clone fixtures and real worktrees to check
-captured targets and preservation of user files, refs, and unrelated worktrees.
+captured targets, disposable review artifacts, shared refs, and isolation between
+PR worktrees.
 
 ## Configuration and current CLI behavior
 
@@ -126,14 +127,17 @@ including repositories configured with SSH addresses or API ports. Existing
 checkout files, origin configuration, branches, remote-tracking refs, and
 FETCH_HEAD remain untouched by review preparation.
 
-Each PR uses its fixed repository-local `.worktrees/pr-<number>/` directory.
-Physical root/common-directory checks, validated linked administration and
-backpointers, and a session-labelled Git lock establish ownership before
-destructive reuse or removal. Initial preparation and new revisions provide a
-complete checkout even when the primary uses sparse checkout, preserving its
-patterns, configuration and index. Confirmation retries retain local context. Unrecognized paths and
-linked worktrees and their dependent Git administration are preserved. Cleanup checks remote closure again and retains
-the session/history after removing the worktree.
+Configured clones and their PR worktrees are dedicated to this system. Each PR
+uses its fixed repository-local `.worktrees/pr-<number>/` directory. Physical
+root/common-directory checks, validated linked administration and backpointers,
+and a session-labelled Git lock establish the target before destructive reuse
+or removal. Initial preparation and new revisions provide a complete checkout
+even when the base checkout uses sparse settings. Confirmation retries retain
+local context. Files, nested clones and administration inside the owned PR
+worktree are disposable; cleanup does not inventory their external consumers.
+Other PR worktrees and retained sessions remain separate. Cleanup rechecks remote
+closure before removal. The [exclusive-environment decision](.agents/notes/implemented/architecture/2026-10-17-exclusive-review-environment.md)
+defines this ownership boundary.
 
 See the [worktree ownership decision](.agents/notes/implemented/architecture/2026-10-17-owned-review-worktrees.md)
 for safety and recovery boundaries. The current CLI still does not create clones

@@ -259,24 +259,6 @@ describe("owned worktree lifecycle and destructive-operation guards", () => {
     expect(existsSync(path.join(local.root, ".worktrees", "pr-101"))).toBe(false);
   }, 60_000);
 
-  it("blocks nested linked worktrees with the same or a foreign common directory", async () => {
-    for (const foreign of [false, true]) {
-      const f = fixture(); const local = await f.manager.ensureRepository(f.configuration); const first = f.reserve();
-      const prepared = await f.manager.prepareWorktree(f.store, local, first.id, proof);
-      if (prepared.kind !== "prepared") throw new Error("Expected preparation.");
-      const nested = path.join(prepared.path, "manual-nested");
-      rawGit(foreign ? f.upstream : local.root, ["worktree", "add", "--detach", nested, f.base]);
-      writeFileSync(path.join(nested, "sentinel"), "manual work");
-      const next = f.nextRevision(first.id, commit(f.upstream, "next\n", f.head));
-      await expect(f.manager.prepareWorktree(f.store, local, next.id, proof)).rejects.toThrow(/nested/i);
-      expect(readFileSync(path.join(nested, "sentinel"), "utf8")).toBe("manual work");
-      f.update({ state: "closed" }); f.store.supersedeReview(next.id, proof, 30);
-      await expect(f.manager.cleanupWorktree(f.store, local, first, proof)).rejects.toThrow(/nested/i);
-      expect(f.store.getPullRequest(first)?.cleanupPending).toBe(true);
-      expect(f.store.getPullRequest(first)?.cleanupError).toMatch(/nested/i);
-    }
-  }, 60_000);
-
   it("cleans only closed owned worktrees and keeps review refs, session history and siblings", async () => {
     const f = fixture(); const local = await f.manager.ensureRepository(f.configuration); const review = f.reserve();
     const prepared = await f.manager.prepareWorktree(f.store, local, review.id, proof);
@@ -606,7 +588,7 @@ describe("raw captured commit interpretation", () => {
   }, 60_000);
 });
 
-describe("linked administrative authority and external dependencies", () => {
+describe("linked administrative authority", () => {
   it("rejects pointers to primary or sibling Git administration without changing their HEAD, index, branches or files", async () => {
     for (const redirect of ["primary", "sibling"] as const) {
       const f = fixture(); const local = await f.manager.ensureRepository(f.configuration); const first = f.reserve();
@@ -657,54 +639,7 @@ describe("linked administrative authority and external dependencies", () => {
     }
   }, 60_000);
 
-  it("preserves external linked worktrees owned by nested ordinary or bare Git repositories", async () => {
-    for (const bare of [false, true]) {
-      const f = fixture(); const local = await f.manager.ensureRepository(f.configuration); const first = f.reserve();
-      const prepared = await f.manager.prepareWorktree(f.store, local, first.id, proof);
-      if (prepared.kind !== "prepared") throw new Error("Expected preparation.");
-      const nested = path.join(prepared.path, bare ? "bare-store" : "generated-clone");
-      rawGit(f.directory, ["clone", ...(bare ? ["--bare"] : []), f.upstream, nested]);
-      const external = path.join(f.directory, "external-manual"); rawGit(nested, ["worktree", "add", "--detach", external, f.base]);
-      writeFileSync(path.join(external, "manual.txt"), "external work retained");
-      const externalAdmin = rawGit(external, ["rev-parse", "--absolute-git-dir"]);
-      const before = { head: readFileSync(path.join(externalAdmin, "HEAD")), index: readFileSync(path.join(externalAdmin, "index")),
-        status: rawGit(external, ["status", "--porcelain"]), refs: rawGit(external, ["for-each-ref", "--format=%(refname) %(objectname)"]) };
-      const next = f.nextRevision(first.id, commit(f.upstream, "next external dependency\n", f.head));
-      await expect(f.manager.prepareWorktree(f.store, local, next.id, proof)).rejects.toThrow("external worktree");
-      f.update({ state: "closed" }); f.store.supersedeReview(next.id, proof, 30);
-      await expect(f.manager.cleanupWorktree(f.store, local, next, proof)).rejects.toThrow("external worktree");
-      expect(readFileSync(path.join(externalAdmin, "HEAD"))).toEqual(before.head);
-      expect(readFileSync(path.join(externalAdmin, "index"))).toEqual(before.index);
-      expect(rawGit(external, ["status", "--porcelain"])).toBe(before.status);
-      expect(rawGit(external, ["for-each-ref", "--format=%(refname) %(objectname)"])).toBe(before.refs);
-      expect(readFileSync(path.join(external, "manual.txt"), "utf8")).toBe("external work retained");
-      expect(rawGit(external, ["rev-parse", "HEAD"])).toBe(f.base);
-    }
-  }, 60_000);
 
-  it("protects external worktrees whose common module administration would be removed with the owned admin directory", async () => {
-    const f = fixture();
-    const modulesBlob = rawGit(f.upstream, ["hash-object", "-w", "--stdin"], `[submodule "module"]\n\tpath = module\n\turl = ${pathToFileURL(f.upstream).href}\n`);
-    const extra = `100644 blob ${modulesBlob}\t.gitmodules\n160000 commit ${f.base}\tmodule\n`;
-    const head = commit(f.upstream, "PR module dependency\n", f.head, extra); rawGit(f.upstream, ["update-ref", "refs/pull/101/head", head]); f.update({ headSha: head });
-    const local = await f.manager.ensureRepository(f.configuration); const first = f.reserve();
-    const prepared = await f.manager.prepareWorktree(f.store, local, first.id, proof);
-    if (prepared.kind !== "prepared") throw new Error("Expected preparation.");
-    rawGit(prepared.path, ["-c", "protocol.file.allow=always", "submodule", "update", "--init"]);
-    const module = path.join(prepared.path, "module"); const moduleAdmin = rawGit(module, ["rev-parse", "--absolute-git-dir"]);
-    const external = path.join(f.directory, "external-module-worktree"); rawGit(module, ["worktree", "add", "--detach", external, f.base]);
-    const externalAdmin = rawGit(external, ["rev-parse", "--absolute-git-dir"]); const externalIndex = readFileSync(path.join(externalAdmin, "index"));
-    const next = f.nextRevision(first.id, commit(f.upstream, "next module dependency\n", head, extra));
-    expect(await f.manager.prepareWorktree(f.store, local, next.id, proof)).toMatchObject({ kind: "prepared" });
-    expect(rawGit(external, ["rev-parse", "HEAD"])).toBe(f.base);
-    f.update({ state: "closed" }); f.store.supersedeReview(next.id, proof, 30);
-    await expect(f.manager.cleanupWorktree(f.store, local, next, proof)).rejects.toThrow("external worktree");
-    expect(existsSync(moduleAdmin)).toBe(true); expect(readFileSync(path.join(externalAdmin, "index"))).toEqual(externalIndex);
-    rmSync(prepared.path, { recursive: true });
-    await expect(f.manager.cleanupWorktree(f.store, local, next, proof)).rejects.toThrow("external worktree");
-    expect(rawGit(external, ["rev-parse", "HEAD"])).toBe(f.base); expect(rawGit(external, ["status", "--porcelain"])).toBe("");
-    expect(f.store.getPullRequest(next)?.cleanupPending).toBe(true);
-  }, 60_000);
 });
 
 type SparseMode = { cone: boolean; sparseIndex: boolean; worktreeConfig: boolean };
@@ -816,5 +751,37 @@ describe("sparse same-target retry context", () => {
     expect(readFileSync(path.join(prepared.path, "review-context.txt"), "utf8")).toBe("retain context");
     expect(existsSync(path.join(prepared.path, "hidden", "hidden.txt"))).toBe(false);
     expect(f.snapshot()).toEqual(primary);
+  }, 60_000);
+});
+
+describe("dedicated review environment artifacts", () => {
+  it("discards nested ordinary and bare clone artifacts on refresh and closed-PR cleanup", async () => {
+    const f = fixture(); const local = await f.manager.ensureRepository(f.configuration); const first = f.reserve();
+    const prepared = await f.manager.prepareWorktree(f.store, local, first.id, proof);
+    if (prepared.kind !== "prepared") throw new Error("Expected preparation.");
+    const addArtifacts = () => {
+      const ordinary = path.join(prepared.path, "generated-clone");
+      const bare = path.join(prepared.path, "generated-bare");
+      rawGit(f.directory, ["clone", f.upstream, ordinary]);
+      rawGit(f.directory, ["clone", "--bare", f.upstream, bare]);
+      writeFileSync(path.join(ordinary, "generated.txt"), "disposable generated contents");
+      writeFileSync(path.join(prepared.path, "generated.txt"), "disposable artifact");
+      return { ordinary, bare };
+    };
+    const artifacts = addArtifacts();
+    const head = commit(f.upstream, "next dedicated review\n", f.head); const next = f.nextRevision(first.id, head);
+    expect(await f.manager.prepareWorktree(f.store, local, next.id, proof)).toMatchObject({ kind: "prepared", path: prepared.path, headSha: head });
+    expect(existsSync(artifacts.ordinary)).toBe(false); expect(existsSync(artifacts.bare)).toBe(false);
+    expect(existsSync(path.join(prepared.path, "generated.txt"))).toBe(false);
+    expect(rawGit(prepared.path, ["rev-parse", "HEAD"])).toBe(head);
+    addArtifacts();
+    const admin = rawGit(prepared.path, ["rev-parse", "--absolute-git-dir"]);
+    f.update({ state: "closed" }); f.store.supersedeReview(next.id, proof, 30);
+    expect(await f.manager.cleanupWorktree(f.store, local, next, proof)).toEqual({ kind: "cleaned" });
+    expect(existsSync(prepared.path)).toBe(false); expect(existsSync(admin)).toBe(false);
+    expect(f.store.getPullRequest(next)).toMatchObject({ worktreePath: null, cleanupPending: false, sessionId: uuid(500) });
+    expect(rawGit(local.root, ["rev-parse", `refs/daynight/reviews/${first.id}/head`])).toBe(f.head);
+    expect(rawGit(local.root, ["rev-parse", `refs/daynight/reviews/${next.id}/head`])).toBe(head);
+    expect(rawGit(local.root, ["rev-parse", "HEAD"])).toBe(f.base);
   }, 60_000);
 });

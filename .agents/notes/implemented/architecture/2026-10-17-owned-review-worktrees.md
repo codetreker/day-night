@@ -7,7 +7,7 @@ Status: implemented
 Git worktrees share repository administration and refs. A checkout discovered
 through a parent can have the expected common directory while actually operating
 on the user's primary worktree. Refreshing disposable review files must not reset
-shared branches, remove unrelated linked worktrees, or erase uncertain execution.
+shared branches, remove another PR worktree, or erase uncertain execution.
 
 ## Decision
 
@@ -47,7 +47,7 @@ the empty graft file and remains valid for the runner's lifetime.
 
 Owned review preparation also uses command-scoped complete-checkout settings.
 Primary sparse patterns and sparse-index choices do not restrict the PR leaf.
-For an unlaunched preparation, dependency and authority guards precede an owned
+For an unlaunched preparation, target and authority checks precede an owned
 index rebuild (`read-tree --empty`, then full target materialization) and detached
 checkout. This clears inherited skip-worktree bits, including unchanged excluded
 files. Primary shared/per-worktree config, patterns, index and files remain
@@ -88,17 +88,14 @@ New revisions detach before discarding owned changes. Current and target
 gitlinks are checked so newly introduced submodule paths cannot retain previous
 artifacts. Owned submodule working directories can be emptied while shared
 administration, refs, config, and primary submodule files remain unchanged.
-Ordinary nested clones are disposable inside the leaf. Linked worktrees from
-either the same or another common repository block destructive cleanup.
-Same-target confirmation/retry retains local files and branch context.
+Nested clones and generated administration inside the owned leaf and its linked
+admin are disposable. Same-target confirmation/retry retains local files and
+branch context.
 
-Before deleting working-tree or administrative resources, the manager checks
-the Git metadata that those regions contain. Ordinary and bare nested commons,
-and submodule commons under the owned admin directory, can support other working
-trees outside the disposable leaf. Their registrations and backpointers block
-deletion while those dependencies exist, including missing or locked recovery
-entries. Ordinary generated clones with no such dependencies remain disposable;
-the check does not build a global repository inventory.
+The [exclusive-environment decision](2026-10-17-exclusive-review-environment.md)
+defines configured clones and their PR worktrees as dedicated system resources.
+Standard Git refresh/removal operates on validated owned paths without inspecting
+nested repositories for external consumers.
 
 Cleanup requires no active review, stopped operations, excluded processes, and
 fresh closure evidence. Reopening withdraws eligibility. Git removal precedes
@@ -133,9 +130,13 @@ the user's local history view. See [Git replacement objects](https://git-scm.com
 intent can collide with unrelated resources. A session-labelled Git lock joins
 the database intent to the physical registration.
 
-**Reject every nested Git repository.** Generated clones and initialized modules
-can occur during review. Identifying linked worktrees protects their external
-registrations while permitting disposable owned content to be refreshed.
+**Inspect nested Git dependencies before deletion.** The original policy allowed
+generated clones while trying to preserve their external linked worktrees. A
+separate primary checkout can also depend on administration inside the PR leaf
+without registering a reverse pointer. The later
+[exclusive-environment decision](2026-10-17-exclusive-review-environment.md)
+replaces that policy: generated review content is disposable, and external
+consumers are outside the environment contract.
 
 **Deinitialize submodules during refresh.** That modifies shared config. Emptying
 owned working directories preserves shared administration without recursive
@@ -154,7 +155,7 @@ destinations. Explicit transport and empty refmaps preserve these boundaries.
 ## Consequences
 
 Real Git/SQLite fixtures verify clone identity, detached targets, force pushes,
-shallow history, dirty context, ownership collisions, nested worktrees,
+shallow history, dirty context, ownership collisions, disposable nested clones,
 submodules, missing resources, reopening, and preserved primary files/refs.
 Native CI repeats these checks on Linux, macOS, and Windows.
 

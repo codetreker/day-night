@@ -31,7 +31,8 @@ PR 需要审查时启动 review agent。daemon 是这个 CLI 进程承担的角�
 ### R3. 本地仓库与认证
 
 启动时，daemon 确保每个配置的仓库都已 clone 到指定的本地路径。仓库缺失时，daemon
-负责 clone。GitHub CLI 认证由运行环境在 daemon 启动前准备好。
+负责 clone。本地克隆和 review worktree 是本系统专用的审查环境，不承担人工开发或
+其他工具的用途。GitHub CLI 认证由运行环境在 daemon 启动前准备好。
 
 ### R4. 永久初始化边界
 
@@ -85,7 +86,8 @@ daemon 在首次审查时创建 worktree，并在该 PR 的后续审查中复用
 worktree 的创建、准备、更新和清理；review agent 不负责 worktree 管理。
 
 PR 合并或未合并就被关闭时，daemon 清理其 worktree。deprecated PR 指未合并就被
-关闭的 PR。
+关闭的 PR。worktree 内的文件、嵌套仓库及其所属管理数据均为可丢弃的审查内容；
+新修订准备和关闭清理可以清除这些内容，同一目标的确认或重试保留已有上下文。
 
 ### R10. 审查判断与结果发布
 

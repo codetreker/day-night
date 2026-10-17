@@ -18,8 +18,9 @@ The [requirements](../../../../docs/spec/daynight.md) and
 [design](../../../../docs/design/daynight.md) place PR worktrees under each
 configured repository root's `.worktrees/` directory. The proposed stable path is
 `<repository>/.worktrees/pr-<number>/`. SQLite records ownership, and the CLI only
-prepares or removes its registered worktrees. Existing unrelated worktrees remain
-untouched.
+prepares or removes its registered worktrees. Other PR worktrees remain
+independent. The [exclusive-environment decision](2026-10-17-exclusive-review-environment.md)
+defines configured clones and review content as dedicated system resources.
 
 This replaces only PR worktree placement in the
 [user-home configuration decision](2026-10-16-user-home-review-configuration.md).
