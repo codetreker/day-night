@@ -127,10 +127,11 @@ checkout files, origin configuration, branches, remote-tracking refs, and
 FETCH_HEAD remain untouched by review preparation.
 
 Each PR uses its fixed repository-local `.worktrees/pr-<number>/` directory.
-Physical root/common-directory checks and a session-labelled Git lock establish
-ownership before destructive reuse or removal. New revisions detach and refresh
+Physical root/common-directory checks, validated linked administration and
+backpointers, and a session-labelled Git lock establish ownership before
+destructive reuse or removal. New revisions detach and refresh
 owned content; confirmation retries retain local context. Unrecognized paths and
-linked worktrees are preserved. Cleanup checks remote closure again and retains
+linked worktrees and their dependent Git administration are preserved. Cleanup checks remote closure again and retains
 the session/history after removing the worktree.
 
 See the [worktree ownership decision](.agents/notes/implemented/architecture/2026-10-17-owned-review-worktrees.md)

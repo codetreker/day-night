@@ -59,6 +59,13 @@ top-level/common-directory identities, and have a registration locked with
 marker. Container/leaf symlinks, unregistered directories, and mismatched locks
 are rejected.
 
+The leaf's regular `.git` file must resolve to its own linked administrative
+directory, an immediate physical child of the expected common worktree registry.
+Its session lock and `gitdir` backpointer must identify the same leaf and
+registration. Relative metadata paths retain Git's documented base directories.
+Forced checkout and clean commands explicitly bind this validated Git directory
+and worktree, rather than rediscovering authority from a mutable `.git` pointer.
+
 The database records intent before creation, after collision checks. An intent
 with no leaf or entry can retry; a matching locked entry can be reconciled.
 Unmarked resources remain untouched. Missing owned leaves use targeted locked
@@ -71,6 +78,14 @@ administration, refs, config, and primary submodule files remain unchanged.
 Ordinary nested clones are disposable inside the leaf. Linked worktrees from
 either the same or another common repository block destructive cleanup.
 Same-target confirmation/retry retains local files and branch context.
+
+Before deleting working-tree or administrative resources, the manager checks
+the Git metadata that those regions contain. Ordinary and bare nested commons,
+and submodule commons under the owned admin directory, can support other working
+trees outside the disposable leaf. Their registrations and backpointers block
+deletion while those dependencies exist, including missing or locked recovery
+entries. Ordinary generated clones with no such dependencies remain disposable;
+the check does not build a global repository inventory.
 
 Cleanup requires no active review, stopped operations, excluded processes, and
 fresh closure evidence. Reopening withdraws eligibility. Git removal precedes
@@ -89,6 +104,11 @@ and [worktree locks](https://git-scm.com/docs/git-worktree).
 **Use common-directory equality alone.** A missing leaf `.git` makes Git discover
 the primary repository with the same common directory. Exact physical top-level
 checks prevent forced operations from reaching it.
+
+**Trust a matching top-level path without binding Git administration.** A `.git`
+file redirected to primary or sibling administration can still report the leaf
+as top-level while selecting another HEAD and index. Administrative identity and
+backpointers provide the missing binding before any forced operation.
 
 **Trust the head ID while honoring local replacement history.** Replacement refs
 can redirect the checked-out tree without changing the reported head ID. Grafts

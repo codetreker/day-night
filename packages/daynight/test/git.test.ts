@@ -229,7 +229,7 @@ describe("owned worktree lifecycle and destructive-operation guards", () => {
     rawGit(local.root, ["worktree", "lock", "--reason", `daynight:${uuid(500)}`, prepared.path]);
     rmSync(path.join(prepared.path, ".git"));
     writeFileSync(path.join(prepared.path, "sentinel"), "preserved");
-    await expect(f.manager.prepareWorktree(f.store, local, next.id, proof)).rejects.toThrow("exact Git worktree root");
+    await expect(f.manager.prepareWorktree(f.store, local, next.id, proof)).rejects.toThrow("managed Git pointer");
     expect(readFileSync(path.join(prepared.path, "sentinel"), "utf8")).toBe("preserved");
     expect(rawGit(local.root, ["rev-parse", "HEAD"])).toBe(f.base);
   }, 60_000);
@@ -596,5 +596,98 @@ describe("raw captured commit interpretation", () => {
       timeoutMs: 20_000, maxBufferBytes: 1024, environment: prepared.gitEnvironment,
     });
     expect(downstream.error).toBeNull(); expect(downstream.stdout.trim()).toBe(f.base);
+  }, 60_000);
+});
+
+describe("linked administrative authority and external dependencies", () => {
+  it("rejects pointers to primary or sibling Git administration without changing their HEAD, index, branches or files", async () => {
+    for (const redirect of ["primary", "sibling"] as const) {
+      const f = fixture(); const local = await f.manager.ensureRepository(f.configuration); const first = f.reserve();
+      const prepared = await f.manager.prepareWorktree(f.store, local, first.id, proof);
+      if (prepared.kind !== "prepared") throw new Error("Expected preparation.");
+      const sibling = path.join(f.directory, "manual-sibling"); rawGit(local.root, ["worktree", "add", "-b", "manual-sibling", sibling, f.base]);
+      const snapshot = (root: string) => {
+        const admin = rawGit(root, ["rev-parse", "--absolute-git-dir"]);
+        const status = rawGit(root, ["--no-optional-locks", "status", "--porcelain"]);
+        return { head: readFileSync(path.join(admin, "HEAD")), index: readFileSync(path.join(admin, "index")),
+          refs: rawGit(root, ["for-each-ref", "--format=%(refname) %(objectname)", "refs/heads"]), contents: readFileSync(path.join(root, "file.txt")),
+          status, staged: rawGit(root, ["ls-files", "--stage", "-z"]), commit: rawGit(root, ["rev-parse", "HEAD"]) };
+      };
+      for (const root of [local.root, sibling]) { writeFileSync(path.join(root, "file.txt"), `${root === sibling ? "sibling" : "primary"} staged`); rawGit(root, ["add", "file.txt"]); }
+      const primaryBefore = snapshot(local.root); const siblingBefore = snapshot(sibling);
+      const ownedAdmin = rawGit(prepared.path, ["rev-parse", "--absolute-git-dir"]);
+      const destination = redirect === "primary" ? local.commonDirectory : rawGit(sibling, ["rev-parse", "--absolute-git-dir"]);
+      writeFileSync(path.join(prepared.path, ".git"), `gitdir: ${destination}\n`);
+      const next = f.nextRevision(first.id, commit(f.upstream, "next PR\n", f.head));
+      await expect(f.manager.prepareWorktree(f.store, local, next.id, proof)).rejects.toThrow("own administrative registration");
+      expect(snapshot(local.root)).toEqual(primaryBefore); expect(snapshot(sibling)).toEqual(siblingBefore);
+      f.update({ state: "closed" }); f.store.supersedeReview(next.id, proof, 30);
+      await expect(f.manager.cleanupWorktree(f.store, local, next, proof)).rejects.toThrow("own administrative registration");
+      expect(snapshot(local.root)).toEqual(primaryBefore); expect(snapshot(sibling)).toEqual(siblingBefore);
+      expect(existsSync(ownedAdmin)).toBe(true); expect(existsSync(prepared.path)).toBe(true);
+    }
+  }, 60_000);
+
+  it("accepts a valid relative administrative backpointer and explicitly binds force commands to that administration", async () => {
+    const f = fixture(); const local = await f.manager.ensureRepository(f.configuration); const first = f.reserve();
+    const prepared = await f.manager.prepareWorktree(f.store, local, first.id, proof);
+    if (prepared.kind !== "prepared") throw new Error("Expected preparation.");
+    const admin = rawGit(prepared.path, ["rev-parse", "--absolute-git-dir"]);
+    writeFileSync(path.join(admin, "gitdir"), `${path.relative(admin, path.join(prepared.path, ".git"))}\n`);
+    const next = f.nextRevision(first.id, commit(f.upstream, "new relative PR\n", f.head));
+    expect(await f.manager.prepareWorktree(f.store, local, next.id, proof)).toMatchObject({ kind: "prepared" });
+    for (const call of f.calls.filter((call) => call.args.includes("checkout") || call.args.includes("clean"))) {
+      expect(call.args[call.args.indexOf("--git-dir") + 1]).toBe(admin);
+      expect(call.args[call.args.indexOf("--work-tree") + 1]).toBe(prepared.path);
+    }
+  }, 60_000);
+
+  it("preserves external linked worktrees owned by nested ordinary or bare Git repositories", async () => {
+    for (const bare of [false, true]) {
+      const f = fixture(); const local = await f.manager.ensureRepository(f.configuration); const first = f.reserve();
+      const prepared = await f.manager.prepareWorktree(f.store, local, first.id, proof);
+      if (prepared.kind !== "prepared") throw new Error("Expected preparation.");
+      const nested = path.join(prepared.path, bare ? "bare-store" : "generated-clone");
+      rawGit(f.directory, ["clone", ...(bare ? ["--bare"] : []), f.upstream, nested]);
+      const external = path.join(f.directory, "external-manual"); rawGit(nested, ["worktree", "add", "--detach", external, f.base]);
+      writeFileSync(path.join(external, "manual.txt"), "external work retained");
+      const externalAdmin = rawGit(external, ["rev-parse", "--absolute-git-dir"]);
+      const before = { head: readFileSync(path.join(externalAdmin, "HEAD")), index: readFileSync(path.join(externalAdmin, "index")),
+        status: rawGit(external, ["status", "--porcelain"]), refs: rawGit(external, ["for-each-ref", "--format=%(refname) %(objectname)"]) };
+      const next = f.nextRevision(first.id, commit(f.upstream, "next external dependency\n", f.head));
+      await expect(f.manager.prepareWorktree(f.store, local, next.id, proof)).rejects.toThrow("external worktree");
+      f.update({ state: "closed" }); f.store.supersedeReview(next.id, proof, 30);
+      await expect(f.manager.cleanupWorktree(f.store, local, next, proof)).rejects.toThrow("external worktree");
+      expect(readFileSync(path.join(externalAdmin, "HEAD"))).toEqual(before.head);
+      expect(readFileSync(path.join(externalAdmin, "index"))).toEqual(before.index);
+      expect(rawGit(external, ["status", "--porcelain"])).toBe(before.status);
+      expect(rawGit(external, ["for-each-ref", "--format=%(refname) %(objectname)"])).toBe(before.refs);
+      expect(readFileSync(path.join(external, "manual.txt"), "utf8")).toBe("external work retained");
+      expect(rawGit(external, ["rev-parse", "HEAD"])).toBe(f.base);
+    }
+  }, 60_000);
+
+  it("protects external worktrees whose common module administration would be removed with the owned admin directory", async () => {
+    const f = fixture();
+    const modulesBlob = rawGit(f.upstream, ["hash-object", "-w", "--stdin"], `[submodule "module"]\n\tpath = module\n\turl = ${pathToFileURL(f.upstream).href}\n`);
+    const extra = `100644 blob ${modulesBlob}\t.gitmodules\n160000 commit ${f.base}\tmodule\n`;
+    const head = commit(f.upstream, "PR module dependency\n", f.head, extra); rawGit(f.upstream, ["update-ref", "refs/pull/101/head", head]); f.update({ headSha: head });
+    const local = await f.manager.ensureRepository(f.configuration); const first = f.reserve();
+    const prepared = await f.manager.prepareWorktree(f.store, local, first.id, proof);
+    if (prepared.kind !== "prepared") throw new Error("Expected preparation.");
+    rawGit(prepared.path, ["-c", "protocol.file.allow=always", "submodule", "update", "--init"]);
+    const module = path.join(prepared.path, "module"); const moduleAdmin = rawGit(module, ["rev-parse", "--absolute-git-dir"]);
+    const external = path.join(f.directory, "external-module-worktree"); rawGit(module, ["worktree", "add", "--detach", external, f.base]);
+    const externalAdmin = rawGit(external, ["rev-parse", "--absolute-git-dir"]); const externalIndex = readFileSync(path.join(externalAdmin, "index"));
+    const next = f.nextRevision(first.id, commit(f.upstream, "next module dependency\n", head, extra));
+    expect(await f.manager.prepareWorktree(f.store, local, next.id, proof)).toMatchObject({ kind: "prepared" });
+    expect(rawGit(external, ["rev-parse", "HEAD"])).toBe(f.base);
+    f.update({ state: "closed" }); f.store.supersedeReview(next.id, proof, 30);
+    await expect(f.manager.cleanupWorktree(f.store, local, next, proof)).rejects.toThrow("external worktree");
+    expect(existsSync(moduleAdmin)).toBe(true); expect(readFileSync(path.join(externalAdmin, "index"))).toEqual(externalIndex);
+    rmSync(prepared.path, { recursive: true });
+    await expect(f.manager.cleanupWorktree(f.store, local, next, proof)).rejects.toThrow("external worktree");
+    expect(rawGit(external, ["rev-parse", "HEAD"])).toBe(f.base); expect(rawGit(external, ["status", "--porcelain"])).toBe("");
+    expect(f.store.getPullRequest(next)?.cleanupPending).toBe(true);
   }, 60_000);
 });

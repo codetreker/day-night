@@ -244,7 +244,11 @@ PR worktree 放在实际仓库根目录下：
 
 操作前必须确认配置路径是精确 Git 根目录，并比较物理目录身份。对 PR leaf 同时校验
 精确 top-level、common directory、固定路径、会话锁标记和数据库登记；不能只比较
-common directory，因为缺失的 `.git` 会让 Git 向上发现主仓库。容器和 leaf 的符号链接、
+common directory，因为缺失的 `.git` 会让 Git 向上发现主仓库。leaf 的普通 `.git` 文件还
+必须指向所属 linked Git admin，且该 admin 位于预期 common 的 worktree 登记目录下。
+实际 admin、会话锁标记和 `gitdir` 回指必须对应同一 leaf；相对元数据路径按 Git 规定
+的目录解析。强制 checkout/clean 显式绑定已校验的 git-dir 与 work-tree，避免可变的
+`.git` 指针切换到主仓库或 sibling 的 HEAD/index。容器和 leaf 的符号链接、
 未登记的既有目录，以及不匹配的锁均明确拒绝。
 
 在基础仓库中通过显式 HTTPS URL 取得 PR head，包括 fork PR，而非读取 fork 分支：
@@ -280,6 +284,11 @@ fetch 还显式禁止递归子模块，以覆盖更具体的用户 fetch 配置�
 目录，保留共享管理数据、refs、配置及主工作区中的子模块文件。普通嵌套 clone 属于
 可丢弃内容，嵌套 linked worktree 则必须保留，即使它属于另一个 common repository。
 同一捕获目标的确认或重试保留原工作树和本地上下文。
+
+递归清理前还检查实际将删除的工作目录和所属 admin 中的 Git 依赖。普通或 bare 嵌套
+仓库，以及位于所属 admin 下的 submodule common，都可能支撑外部 working tree；
+有存续登记、锁定或缺失但可恢复的依赖时必须拒绝删除其管理数据。没有依赖的普通生成
+clone 仍可清理，不扫描全局其他仓库。
 
 关闭或合并后先记录待清理状态，停止准备和执行，并获取同一个 PR 操作预留。删除前
 再次确认远程关闭状态及数据库中无活跃审查；已重新打开时保留或重建 worktree。
