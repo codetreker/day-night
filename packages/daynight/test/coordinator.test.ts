@@ -108,7 +108,7 @@ const fixture = (repositoryCount = 1, initialized = true) => {
     const completed = onRun === undefined ? true : await onRun(started, input);
     const outcome: CopilotAttemptOutcome = { attempt: { reviewId: id, attempt: started.attemptCount }, sessionId: state.getPullRequest(started)!.sessionId!, sessionMode: started.attemptCount === 1 ? "create" : "resume",
       stdoutLogPath: started.stdoutLogPath!, stderrLogPath: started.stderrLogPath!, completed, directProcessClosed: true, captureComplete: true,
-      exitCode: 0, signal: null, lastNonemptyLine: completed ? `PR ${started.number} Review Completed` : "incomplete", interruption: null, errors: [] };
+      exitCode: 0, signal: null, lastNonemptyLine: completed ? `PR ${started.number} Review Completed` : "incomplete", interruption: null, launchFailure: null, errors: [] };
     expect(worktree.headSha).toBe(started.headSha);
     return outcome;
   } };

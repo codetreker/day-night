@@ -221,7 +221,7 @@ describe("Copilot persisted sessions and direct attempts", () => {
   it("consumes a failed spawn attempt and permits a new attempt to create the same absent history", async () => {
     const f = fixture();
     const failed = await f.run("success", { command: { file: path.join(f.directory, "missing-executable") } });
-    expect(failed).toMatchObject({ completed: false, directProcessClosed: true, sessionMode: "create" });
+    expect(failed).toMatchObject({ completed: false, directProcessClosed: true, sessionMode: "create", launchFailure: "command-not-found" });
     expect(failed.errors.length).toBeGreaterThan(0);
     expect(f.store.getReview(f.review.id)?.attemptCount).toBe(1);
     f.retry();
@@ -234,7 +234,7 @@ describe("Copilot persisted sessions and direct attempts", () => {
     const outcome = await f.run("success", { command: { file: path.join(f.directory, "missing-supervised-executable") } }, {
       onProcess: processes.onProcess, stopProcess: processes.stop,
     });
-    expect(outcome).toMatchObject({ completed: false, directProcessClosed: true });
+    expect(outcome).toMatchObject({ completed: false, directProcessClosed: true, launchFailure: "command-not-found" });
     await expect(processes.exclude(f.store.getReview(f.review.id)!, outcome)).resolves.toEqual({ processesExcluded: true });
     expect(processes.safeToReleaseLock).toBe(true);
   });

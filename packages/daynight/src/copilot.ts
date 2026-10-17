@@ -24,6 +24,7 @@ export type CopilotAttemptOutcome = {
   signal: NodeJS.Signals | null;
   lastNonemptyLine: string | null;
   interruption: "aborted" | "timeout" | null;
+  launchFailure: "command-not-found" | null;
   errors: Error[];
 };
 export type CopilotRunnerOptions = {
@@ -142,7 +143,7 @@ export const createCopilotRunner = (options: CopilotRunnerOptions) => {
     const attempt = { reviewId: review.id, attempt: launched.attemptCount };
     const errors: Error[] = [];
     const outcome: CopilotAttemptOutcome = { attempt, sessionId: pr.sessionId, sessionMode: mode, stdoutLogPath, stderrLogPath,
-      completed: false, directProcessClosed: false, captureComplete: false, exitCode: null, signal: null, lastNonemptyLine: null, interruption: null, errors };
+      completed: false, directProcessClosed: false, captureComplete: false, exitCode: null, signal: null, lastNonemptyLine: null, interruption: null, launchFailure: null, errors };
     const parentEnvironment = options.environment === undefined ? process.env : options.environment;
     const environment: NodeJS.ProcessEnv = { ...parentEnvironment, ...isolatedGitEnvironment(parentEnvironment, worktree.gitEnvironment),
       COPILOT_HOME: options.paths.copilotDirectory, COPILOT_CACHE_HOME: options.paths.cacheDirectory,
@@ -152,8 +153,9 @@ export const createCopilotRunner = (options: CopilotRunnerOptions) => {
     const args = [...(options.command?.args === undefined ? [] : options.command.args), "-C", worktree.path,
       `--${mode === "resume" ? "resume" : "session-id"}=${pr.sessionId}`, "-s", "--output-format", "text", "--stream", "on", "--no-color",
       "--no-ask-user", "--no-auto-update", "--allow-all-tools", "--log-dir", attemptDirectory];
+    const commandFile = options.command === undefined ? "copilot" : options.command.file;
     let child;
-    try { child = crossSpawn(options.command === undefined ? "copilot" : options.command.file, args, { cwd: worktree.path, env: environment, shell: false, windowsHide: true, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] }); }
+    try { child = crossSpawn(commandFile, args, { cwd: worktree.path, env: environment, shell: false, windowsHide: true, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] }); }
     catch (error) { errors.push(asError(error)); await Promise.all([stdoutFile.close(), stderrFile.close()]); outcome.directProcessClosed = true; return outcome; }
     const parser = new LastLine(lineLimit);
     let timeout: NodeJS.Timeout | undefined;
@@ -163,7 +165,7 @@ export const createCopilotRunner = (options: CopilotRunnerOptions) => {
     let resolveClose: () => void;
     const closed = new Promise<void>((resolve) => { resolveClose = resolve; });
     const stop = (): void => {
-      if (stopped || outcome.directProcessClosed) return;
+      if (stopped || outcome.directProcessClosed || outcome.launchFailure !== null) return;
       stopped = true;
       if (input.stopProcess !== undefined && child.pid !== undefined) {
         void input.stopProcess(child, attempt).catch((error: unknown) => { errors.push(asError(error)); }).finally(() => {
@@ -183,7 +185,17 @@ export const createCopilotRunner = (options: CopilotRunnerOptions) => {
         }, grace);
       }, grace);
     };
-    child.once("error", (error) => { errors.push(error); stop(); });
+    child.once("error", (error) => {
+      errors.push(error);
+      const failed = error as Error & { code?: unknown; syscall?: unknown; path?: unknown; spawnargs?: unknown; errno?: unknown };
+      // cross-spawn reports an unresolved Windows command when its cmd.exe wrapper exits.
+      // https://github.com/moxystudio/node-cross-spawn/blob/77cd97f3ca7b62c904a63a698fc4a79bf41977d0/lib/enoent.js#L6
+      if (failed.code === "ENOENT" && failed.syscall === `spawn ${commandFile}` && failed.path === commandFile &&
+        (child.pid === undefined || (process.platform === "win32" && failed.errno === "ENOENT" && Array.isArray(failed.spawnargs) &&
+          failed.spawnargs.length === args.length && failed.spawnargs.every((argument, index) => argument === args[index])))) {
+        outcome.launchFailure = "command-not-found";
+      } else stop();
+    });
     child.once("spawn", () => {
       try {
         store.recordProcess(attempt, { pid: child.pid!, identity: `${options.processOwner}:${review.id}:${attempt.attempt}` });
@@ -194,11 +206,17 @@ export const createCopilotRunner = (options: CopilotRunnerOptions) => {
     const abort = (): void => { outcome.interruption = "aborted"; stop(); };
     input.signal?.addEventListener("abort", abort, { once: true });
     timeout = setTimeout(() => { outcome.interruption = "timeout"; stop(); }, options.timeoutMs);
-    const capture = async (operation: Promise<void>): Promise<boolean> => {
-      try { await operation; return true; } catch (error) { errors.push(asError(error)); stop(); return false; }
+    const capture = async (operation: Promise<void>, promptInput = false): Promise<boolean> => {
+      try { await operation; return true; } catch (error) {
+        errors.push(asError(error));
+        // A wrapper can close its input before cross-spawn reports that the command was not found.
+        // The process close or configured timeout still bounds a failed prompt delivery.
+        if (!promptInput) stop();
+        return false;
+      }
     };
     const outputs = [capture(pipeline(child.stdout!, parser, stdoutFile.createWriteStream())), capture(pipeline(child.stderr!, stderrFile.createWriteStream())),
-      capture(pipeline(Readable.from([reviewPrompt(launched, worktree, coordinate, input.previousReview)]), child.stdin!))];
+      capture(pipeline(Readable.from([reviewPrompt(launched, worktree, coordinate, input.previousReview)]), child.stdin!), true)];
     if (input.signal?.aborted) abort();
     await closed;
     if (timeout !== undefined) clearTimeout(timeout);

@@ -55,7 +55,10 @@ a referenced child process group with pipes and no `unref`; TERM/KILL targets
 the current group, with zombie-only groups distinguished from executing members.
 Windows cancellation uses `taskkill /T /F` while the current wrapper is live.
 Canceled roots that disappear before tree termination, failed stops and abandoned
-capture remain uncertain. No post-crash tree reconstruction is attempted.
+capture remain uncertain. A definite command-not-found launch is recorded
+separately: the Windows wrapper PID does not imply that an agent started, and
+confirmed wrapper closure permits ordinary retry. No post-crash tree
+reconstruction is attempted.
 
 The relevant platform contracts are
 [Node process groups](https://nodejs.org/api/child_process.html#optionsdetached),

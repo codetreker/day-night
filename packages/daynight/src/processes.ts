@@ -102,6 +102,10 @@ export const createProcessSupervisor = (options: { graceMs?: number; previousPro
       if (outcome !== undefined && !outcome.directProcessClosed) uncertain("The agent launch did not establish direct-process closure.");
       return { processesExcluded: true };
     }
+    if (entry.closed && outcome?.directProcessClosed && outcome.launchFailure === "command-not-found") {
+      managed.delete(attemptKey({ reviewId: review.id, attempt: review.attemptCount }));
+      return { processesExcluded: true };
+    }
     if (entry.stopping !== undefined) await entry.stopping;
     if (!entry.excluded) {
       if (process.platform === "win32") {

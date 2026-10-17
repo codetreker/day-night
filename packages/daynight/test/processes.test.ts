@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import crossSpawn from "cross-spawn";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createProcessSupervisor } from "../src/processes.js";
+import { formatError } from "../src/diagnostics.js";
 import type { CopilotAttemptOutcome } from "../src/copilot.js";
 import type { ReviewState } from "../src/store.js";
 
@@ -13,7 +14,7 @@ const review = (pid: number | null): ReviewState => ({ id: "review", host: "gith
   headSha: "a".repeat(40), baseRef: "main", baseSha: "b".repeat(40), status: "running", attemptCount: 1, maxAttempts: 3,
   retryAt: null, processOwner: "owner", processId: pid, processIdentity: pid === null ? null : "identity", stdoutLogPath: "out", stderrLogPath: "err", lastError: null, createdAt: 1, updatedAt: 1 });
 const outcome = (): CopilotAttemptOutcome => ({ attempt: { reviewId: "review", attempt: 1 }, sessionId: "session", sessionMode: "create", stdoutLogPath: "out", stderrLogPath: "err", completed: false,
-  directProcessClosed: true, captureComplete: true, exitCode: 7, signal: null, lastNonemptyLine: null, interruption: null, errors: [] });
+  directProcessClosed: true, captureComplete: true, exitCode: 7, signal: null, lastNonemptyLine: null, interruption: null, launchFailure: null, errors: [] });
 const waitForFile = async (file: string): Promise<string> => {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
@@ -84,7 +85,9 @@ describe("current-run process supervision", () => {
     await once(child, "close");
     const incomplete = { ...outcome(), captureComplete: false };
     if (process.platform === "win32") {
-      await expect(supervisor.exclude(review(child.pid!), incomplete)).rejects.toThrow("exited before");
+      const result = await supervisor.exclude(review(child.pid!), incomplete).catch((error: unknown) => error);
+      expect(formatError(result)).toContain("Cannot confirm that the current agent and its foreground tools have stopped; execution state was retained.");
+      expect(formatError(result)).toContain("Caused by: The Windows agent exited before its current process tree could be terminated; operator recovery is required.");
       expect(supervisor.safeToReleaseLock).toBe(false);
     } else await expect(supervisor.exclude(review(child.pid!), incomplete)).resolves.toEqual({ processesExcluded: true });
   });
