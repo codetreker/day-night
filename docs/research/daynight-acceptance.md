@@ -57,12 +57,27 @@ logs are outside the artifact selection.
 | Local tools | Node 24.19.0, pnpm 10.34.5, Git 2.53.0, gh 2.88.1 |
 | Local native SQLite | better-sqlite3 13.0.3, SQLite 3.53.4, Node-API 10 |
 | Local OS | Linux x64, glibc 2.39 |
-| Hosted installed matrix | Awaiting this acceptance change's CI receipts |
+| Hosted installed matrix | Passed Linux x64, macOS arm64 and Windows x64; all 20 scenarios on each |
 | Real Copilot/GitHub | Awaiting designated repository, distinct author/reviewer identities and write authorization |
 
 The [runtime integration CI](https://github.com/codetreker/day-night/actions/runs/39040002167)
 passed Linux, macOS and Windows before the installed-package suite was added.
 It is component/runtime evidence, not an installed-package or live-model receipt.
+
+## Hosted installed receipts
+
+[Native installed-package CI](https://github.com/codetreker/day-night/actions/runs/39043517844) passed all three platforms and the final matrix gate on 2026-10-17.
+The curated artifacts agree on clean checkout revision `9df51dbc9ffd16129069519ba7118009dc648b01`.
+Each records six invocations, five publications, preserved restart/session state and two worktree cleanups.
+
+| Platform | OS release | Node | Git | gh |
+|---|---|---|---|---|
+| Linux x64 | `6.17.0-1022-azure` | `v24.21.0` | `git version 2.55.0` | `gh version 2.102.0` |
+| macOS arm64 | `25.6.0` | `v24.21.0` | `git version 2.56.0` | `gh version 2.102.0` |
+| Windows Server 2025 x64 | `10.0.26100` | `v24.21.0` | `git version 2.56.0.windows.2` | `gh version 2.102.0` |
+
+All three used pnpm 10.34.5, Node-API 10, better-sqlite3 13.0.3 and SQLite 3.53.4.
+The Linux receipt reports glibc 2.39. Both live-service flags remain false.
 
 ## Supported baselines
 
