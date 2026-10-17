@@ -78,7 +78,8 @@ Validation can require write permission on an existing ancestor when ambiguous
 missing destinations require a probe. Failure to create, inspect, or remove it
 is an error; validation never accepts an uncertain case comparison silently.
 
-The current delivery is the CLI/configuration foundation. SQLite, repository
-management, Copilot execution, continuous scheduling and authorized live
-acceptance remain separate tasks. A task stays in progress through its PR review
-and closes only after accepted integration.
+The toolchain establishes the CLI/configuration foundation. The
+[durable state module](../architecture/2026-10-17-durable-review-state.md)
+adds SQLite persistence; repository management, Copilot execution, continuous
+scheduling and authorized live acceptance remain separate tasks. A task stays in
+progress through its PR review and closes only after accepted integration.

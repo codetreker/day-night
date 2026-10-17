@@ -14,8 +14,9 @@ installation or independent execution infrastructure.
 The repository records the [requirements](../../../../docs/spec/daynight.md) and
 [proposed design](../../../../docs/design/daynight.md) for one foreground
 TypeScript CLI in `packages/daynight/`. This note records the selected execution
-model. The CLI/configuration foundation is implemented; review coordination
-and execution are pending. Configuration, entry point, and
+model. The CLI/configuration foundation and
+[durable state module](2026-10-17-durable-review-state.md) are implemented;
+review coordination and execution are pending. Configuration, entry point, and
 runtime storage follow the [user-home configuration decision](2026-10-16-user-home-review-configuration.md).
 
 Polling, pending work, SQLite updates, worktree management, and direct Copilot
