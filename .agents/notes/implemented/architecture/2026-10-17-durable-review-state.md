@@ -93,7 +93,7 @@ active uniqueness, rollback, locking, and persisted ownership state independentl
 of network or agent execution. Native CI also exercises the packaged SQLite
 binary on each supported platform.
 
-The CLI still performs configuration validation only. Polling, Git preparation,
-agent invocation, scheduling, and process exclusion must be integrated by their
-own modules. A caller supplies timestamps, IDs, and verified external outcomes;
-the database does not manufacture evidence of successful review publication.
+The [foreground coordinator](2026-10-17-foreground-review-coordination.md) composes
+polling, Git preparation, agent invocation and process evidence around these
+transactions. A caller supplies timestamps, IDs and external outcomes; the
+database does not manufacture evidence of successful review publication.

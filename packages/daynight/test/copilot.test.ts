@@ -2,6 +2,7 @@ import path from "node:path";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCopilotRunner } from "../src/copilot.js";
+import { createProcessSupervisor } from "../src/processes.js";
 import type { CopilotRunOptions, CopilotRunnerOptions } from "../src/copilot.js";
 import type { PreparedWorktree } from "../src/git.js";
 import { resolveRuntimePaths } from "../src/paths.js";
@@ -220,11 +221,22 @@ describe("Copilot persisted sessions and direct attempts", () => {
   it("consumes a failed spawn attempt and permits a new attempt to create the same absent history", async () => {
     const f = fixture();
     const failed = await f.run("success", { command: { file: path.join(f.directory, "missing-executable") } });
-    expect(failed).toMatchObject({ completed: false, directProcessClosed: true, sessionMode: "create" });
+    expect(failed).toMatchObject({ completed: false, directProcessClosed: true, sessionMode: "create", launchFailure: "command-not-found" });
     expect(failed.errors.length).toBeGreaterThan(0);
     expect(f.store.getReview(f.review.id)?.attemptCount).toBe(1);
     f.retry();
     expect(await f.run()).toMatchObject({ completed: true, sessionMode: "create" });
+  });
+
+  it("confirms a supervised failed spawn without creating process uncertainty", async () => {
+    const f = fixture();
+    const processes = createProcessSupervisor({ graceMs: 500 });
+    const outcome = await f.run("success", { command: { file: path.join(f.directory, "missing-supervised-executable") } }, {
+      onProcess: processes.onProcess, stopProcess: processes.stop,
+    });
+    expect(outcome).toMatchObject({ completed: false, directProcessClosed: true, launchFailure: "command-not-found" });
+    await expect(processes.exclude(f.store.getReview(f.review.id)!, outcome)).resolves.toEqual({ processesExcluded: true });
+    expect(processes.safeToReleaseLock).toBe(true);
   });
 
   it("uses fresh log files after a rejected prelaunch intent without consuming the budget", async () => {

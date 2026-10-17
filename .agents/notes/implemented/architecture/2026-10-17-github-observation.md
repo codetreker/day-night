@@ -68,7 +68,7 @@ latest deadline. A recognized secondary limit without an explicit deadline uses
 GitHub's minimum wait. The client keeps a host-level deadline and rejects further
 same-host API calls until it expires, including later repositories in the same
 batch. Other hosts can continue. The module does not sleep or retry internally;
-later coordination reuses this client and schedules another pass. One repository's
+the foreground coordinator reuses this client and schedules another pass. One repository's
 failure remains visible without discarding another repository's result.
 
 The inspected CLI is gh 2.88.1. Its
@@ -113,8 +113,8 @@ Controlled HTTP/process fixtures and real SQLite databases verify pagination,
 initialization, triggers, failure isolation, closure evidence, rate limits, and
 transaction rollback without live review credentials. The
 [Git manager](2026-10-17-owned-review-worktrees.md) reuses the authenticated
-command helpers. CLI wiring, periodic polling, and agent execution remain
-separate work.
+command helpers. The [foreground coordinator](2026-10-17-foreground-review-coordination.md)
+wires recurring passes and retained-session execution into the CLI.
 
 Pagination is not an atomic remote snapshot. Repeated complete scans converge on
 persistent states, but cannot recover a state transition that begins and ends

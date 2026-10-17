@@ -11,8 +11,9 @@ review history and sessions remain independent of checkout cleanup.
 ## Decision
 
 The [owned-worktree implementation](2026-10-17-owned-review-worktrees.md) applies
-this layout with session-labelled Git locks and physical ownership checks. CLI
-coordination and agent execution remain pending.
+this layout with session-labelled Git locks and physical ownership checks. The
+[foreground coordinator](2026-10-17-foreground-review-coordination.md) connects it
+to polling and retained Copilot execution.
 
 The [requirements](../../../../docs/spec/daynight.md) and
 [design](../../../../docs/design/daynight.md) place PR worktrees under each
@@ -30,7 +31,8 @@ reuse, and cleanup ordering remain unchanged.
 
 The global in-process review-worker limit is named `maxConcurrentWorker` in the
 YAML configuration. It limits parallel PR review work without introducing another
-process layer. These are recorded design choices; implementation is pending.
+process layer. The coordinator enforces this capacity across review preparation
+and execution; closure cleanup shares the PR reservation without taking a review slot.
 
 ## Alternatives
 

@@ -1,21 +1,20 @@
 # Day Night
 
-Daynight is a foreground GitHub PR review CLI under development in
-`packages/daynight/`. The CLI entry, argument handling, fixed home paths, and
-strict YAML configuration loader, durable SQLite state, GitHub observations,
-clone/worktree management, and the Copilot execution adapter are implemented.
-The review coordinator and periodic polling are pending. These modules are not
-yet connected to the CLI.
+Daynight is a foreground GitHub PR review CLI in `packages/daynight/`. It polls
+configured repositories, maintains dedicated local clones and PR worktrees, and
+launches Copilot in a retained session for each eligible PR. SQLite preserves
+initialization boundaries, review revisions and retry budgets.
 
 The [Chinese requirements](docs/spec/daynight.md) define the complete product;
 the [architecture](docs/design/daynight.md) describes the selected design. The
-current CLI provides help and version output. Review mode validates configuration
-and exits with an explicit unavailable-coordinator error until that runtime is
-integrated.
+CLI provides help and version output. Review mode loads configuration and runs
+until stopped. Controlled native-platform tests and live Copilot/GitHub acceptance
+provide separate evidence; live acceptance remains outstanding.
 
 ## Development
 
-Use Node.js 24 LTS and pnpm 10.34.5. From the repository root:
+Use Node.js 24 LTS and pnpm 10.34.5 for development. Runtime review also requires
+Git, authenticated GitHub CLI and Copilot CLI on PATH. From the repository root:
 
 ```text
 pnpm install --frozen-lockfile
@@ -46,7 +45,7 @@ PR worktrees. Controlled Copilot executables exercise retained sessions, durable
 launch intent, stdin prompts and streamed completion/failure handling. These
 checks require no live model invocation or GitHub publication.
 
-## Configuration and current CLI behavior
+## Configuration and startup
 
 The selected review-mode entry is:
 
@@ -80,11 +79,12 @@ Validation removes only the directories it created, using nonrecursive removal.
 Probe permission, inspection, or cleanup failures stop validation with an error.
 
 The selected retained-state location is `~/.daynight/` for SQLite, sessions,
-locks, logs, cache, and temporary files. Future PR worktrees belong to each
-monitored repository root's `.worktrees/` directory. `maxConcurrentWorker` is the
-configured in-process review concurrency limit. Current review-mode validation
-creates no state, clones, worktrees, or GitHub reviews; it reports that the review
-coordinator is unavailable in this build.
+locks, logs, cache, and temporary files. PR worktrees belong to each monitored
+repository root's `.worktrees/` directory. `maxConcurrentWorker` limits concurrent
+review preparation and execution. Startup acquires an exclusive instance lock,
+opens SQLite and prepares the configured clones. Each repository is polled
+independently; access failures retain its last complete observation and remain
+visible in diagnostics.
 
 ## Durable review state
 
@@ -102,8 +102,8 @@ does not replace physical Git/worktree or session-history verification.
 
 See the [architecture](docs/design/daynight.md) for transitions and the
 [state decision](.agents/notes/implemented/architecture/2026-10-17-durable-review-state.md)
-for persistence choices. Opening the module is an internal operation; current
-review-mode CLI validation still does not create a database or start monitoring.
+for persistence choices. The coordinator opens this state before scheduling work
+and advances only the revision captured by each completed attempt.
 
 ## GitHub observations
 
@@ -115,11 +115,10 @@ missing tracked PRs individually before recording closure.
 Failed pages, malformed responses, and failed closure confirmations preserve
 the previous repository observation. A completed pass commits its observations
 and success time atomically. Rate-limit failures expose the server's retry
-deadline and block later same-host calls in that client; scheduling another pass
-belongs to the pending coordinator.
+deadline and block later same-host calls in that client; the coordinator schedules
+the next pass after the applicable deadline.
 The [observation decision](.agents/notes/implemented/architecture/2026-10-17-github-observation.md)
-records pagination and failure handling. The current CLI still performs only
-configuration validation.
+records pagination and failure handling.
 
 ## Repository clones and worktrees
 
@@ -142,8 +141,7 @@ closure before removal. The [exclusive-environment decision](.agents/notes/imple
 defines this ownership boundary.
 
 See the [worktree ownership decision](.agents/notes/implemented/architecture/2026-10-17-owned-review-worktrees.md)
-for safety and recovery boundaries. The current CLI still does not create clones
-or worktrees until coordination is integrated.
+for target validation and recovery boundaries.
 
 ## Copilot execution
 
@@ -164,12 +162,38 @@ reconciles prior publication when continuing an incomplete review. The adapter
 streams separate stdout/stderr logs and accepts only normal zero exit, complete
 capture and the exact final nonempty stdout line `PR N Review Completed`.
 Incomplete output, timeout, cancellation and logging errors cannot complete a
-review. Direct-child closure does not establish descendant exclusion; scheduling
-and final state transitions belong to the pending coordinator.
+review. The coordinator owns scheduling and final state transitions; runtime
+process supervision supplies evidence under the foreground execution contract.
 
 The [execution decision](.agents/notes/implemented/architecture/2026-10-17-copilot-session-execution.md)
-records these boundaries. The current CLI does not invoke Copilot yet. Live
-Copilot/GitHub acceptance remains separate from controlled subprocess tests.
+records these boundaries. Live Copilot/GitHub acceptance remains separate from
+controlled subprocess tests.
+
+## Coordination and shutdown
+
+A FIFO pending queue coalesces observations for each PR while preventing a
+frequently updated PR from starving other repositories or PRs. One reservation
+spans preparation, execution and cleanup for each PR. Cleanup does not consume a
+review worker slot, but cannot overlap another operation on the same worktree.
+Draft/closure observations cancel active work; head changes wait for the current
+attempt and remain pending. Failed revisions retain their exhausted budget.
+
+Ctrl+C stops new work and polling, terminates current managed execution, waits
+for operations and closes SQLite before releasing the instance lock. Agents must
+run tools in the foreground and stop their services before returning. Normal
+unforced exit and drained streams are evidence under that contract. POSIX uses
+current process groups; Windows cancels live trees with `taskkill /T /F`.
+Uncertain termination retains the lock and interrupted state.
+
+An existing `~/.daynight/instance.lock` always blocks a second startup. After an
+abnormal exit, confirm the previous CLI and all its agents/tools have stopped
+before manually removing that lock and restarting. Keep SQLite, sessions and
+logs. The next startup reconciles interrupted work with the same captured target
+and session; it never declares a saved running attempt complete. No PID-age
+heuristic removes locks or kills saved process IDs.
+
+The [coordination decision](.agents/notes/implemented/architecture/2026-10-17-foreground-review-coordination.md)
+explains scheduling, recovery and the foreground execution boundary.
 
 ## Working in the repository
 

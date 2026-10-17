@@ -41,7 +41,7 @@ Controlled Git commands disable replacement objects and use an owned empty
 regular graft file. Local `refs/replace` and default `info/grafts` can otherwise
 change a tree or parent graph while the captured object ID still matches. User
 metadata stays untouched. The prepared result includes noncredential
-`gitEnvironment` overrides so the later agent runner can use the same raw-object
+`gitEnvironment` overrides so the Copilot adapter uses the same raw-object
 view. The cached context keeps its empty hooks/template directory separate from
 the empty graft file and remains valid for the runner's lifetime.
 

@@ -283,11 +283,15 @@ export const loadConfiguration = async (
   } catch (cause) {
     throw new Error(`Cannot read configuration file ${runtimePaths.configFile}.`, { cause });
   }
-  const configuration = parseConfiguration(source, runtimePaths);
-  const [stateDirectory, ...repositoryDirectories] = await Promise.all([
-    resolvePhysicalDirectory(runtimePaths.stateDirectory),
-    ...configuration.repositories.map((repository) => resolvePhysicalDirectory(repository.path)),
-  ]);
-  await validatePhysicalRepositoryPaths(configuration, stateDirectory!, repositoryDirectories, runtimePaths.stateDirectory);
-  return configuration;
+  try {
+    const configuration = parseConfiguration(source, runtimePaths);
+    const [stateDirectory, ...repositoryDirectories] = await Promise.all([
+      resolvePhysicalDirectory(runtimePaths.stateDirectory),
+      ...configuration.repositories.map((repository) => resolvePhysicalDirectory(repository.path)),
+    ]);
+    await validatePhysicalRepositoryPaths(configuration, stateDirectory!, repositoryDirectories, runtimePaths.stateDirectory);
+    return configuration;
+  } catch (cause) {
+    throw new Error(`Invalid configuration file ${runtimePaths.configFile}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+  }
 };

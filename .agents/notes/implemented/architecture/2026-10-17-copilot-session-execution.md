@@ -44,14 +44,19 @@ A rejected launch intent cannot occupy the next attempt's paths. Full logs strea
 to disk; the final stdout line uses at most 8,192 UTF-16 code units in memory. Only a normal zero exit, complete output capture and an exact final
 nonempty stdout line `PR N Review Completed` produce a completion assertion.
 Timeout, cancellation, malformed output and logging failure remain incomplete.
-The result reports direct-child evidence; the coordinator supplies process
-exclusion before retry or worktree mutation.
+The result reports direct-child evidence and explicit command-not-found launch
+failure; the coordinator supplies process exclusion before retry or worktree
+mutation. A Windows command wrapper can have a PID even when the requested
+executable never starts. Only an exact structured spawn-ENOENT error identifies
+that failed launch, and its wrapper must still close. Other capture failures
+remain distinct from this launch evidence. See the
+[pinned command-not-found hook](https://github.com/moxystudio/node-cross-spawn/blob/77cd97f3ca7b62c904a63a698fc4a79bf41977d0/lib/enoent.js#L6).
 
 Primary references are the
 [programmatic guide](https://docs.github.com/en/copilot/how-tos/copilot-cli/automate-copilot-cli/run-cli-programmatically),
 [session storage reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference),
 [authentication guide](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli#authenticating-with-github-cli)
-and [cross-spawn implementation](https://github.com/moxystudio/node-cross-spawn/blob/v7.0.6/lib/parse.js).
+and [cross-spawn implementation](https://github.com/moxystudio/node-cross-spawn/blob/77cd97f3ca7b62c904a63a698fc4a79bf41977d0/lib/parse.js).
 
 ## Alternatives
 
@@ -77,5 +82,6 @@ version evidence, not an inferred minimum-version guarantee.
 
 The completion marker remains an agent assertion. GitHub publication and SQLite
 updates are not one transaction, and a closed CLI wrapper does not prove that
-all descendants have stopped. Ambiguous execution retains its recorded state
-for the coordinator's recovery policy.
+all descendants have stopped. The [foreground coordination decision](2026-10-17-foreground-review-coordination.md)
+defines the supported foreground-tools contract, current-tree cancellation and
+operator recovery for ambiguous execution.
