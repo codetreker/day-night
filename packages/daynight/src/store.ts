@@ -19,6 +19,9 @@ export type PullRequestObservation = {
   baseRef: string;
   baseSha: string;
 };
+export type RepositoryPollUpdate =
+  | { kind: "initialize"; startPrNumber: number }
+  | { kind: "snapshot"; observations: readonly PullRequestObservation[] };
 export type PullRequestState = PullRequestIdentity & Omit<PullRequestObservation, "number"> & {
   desiredRevision: number;
   completedRevision: number;
@@ -232,7 +235,7 @@ export const openStore = (databaseFile: string, options: { busyTimeoutMs?: numbe
     return needReview(review.id);
   };
 
-  return {
+  const store = {
     close: (): void => { db.close(); },
     getRepository,
     getPullRequest,
@@ -480,6 +483,31 @@ export const openStore = (databaseFile: string, options: { busyTimeoutMs?: numbe
       return needPullRequest(pullRequest);
     }),
   };
+  const applyRepositoryPoll = (
+    identity: RepositoryIdentity,
+    update: RepositoryPollUpdate,
+    now: number,
+  ): RepositoryState => atomic(() => {
+    if (update.kind === "initialize") {
+      store.initializeRepository(identity, update.startPrNumber, now);
+    } else if (update.kind === "snapshot") {
+      if (needRepository(identity).startPrNumber === null) {
+        throw new Error("Repository initialization has not completed.");
+      }
+      const observedNumbers = new Set<number>();
+      for (const observation of update.observations) {
+        if (observedNumbers.has(observation.number)) {
+          throw new Error(`A repository snapshot contains duplicate PR ${observation.number}.`);
+        }
+        observedNumbers.add(observation.number);
+        store.observePullRequest(identity, observation, now);
+      }
+    } else {
+      throw new Error("Unsupported repository poll update.");
+    }
+    return store.recordPollSuccess(identity, now);
+  });
+  return { ...store, applyRepositoryPoll };
 };
 
 export type Store = ReturnType<typeof openStore>;

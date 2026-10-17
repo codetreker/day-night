@@ -51,6 +51,12 @@ application-owned records. The [architecture](../../../../docs/design/daynight.m
 owns the public transition details. This mechanism implements the persistence
 part of the [foreground CLI decision](2026-10-16-foreground-review-cli.md).
 
+Complete [GitHub observation passes](2026-10-17-github-observation.md) use one
+`applyRepositoryPoll` transaction for their cutoff or deduplicated snapshot and
+successful-poll timestamp. It reuses the same state transitions without exposing
+a general transaction callback. A failure rolls back the whole observation;
+recording the failure itself is a separate operation.
+
 `better-sqlite3` 13.0.3 supplies Node-API binaries and has no install lifecycle
 script. pnpm 10.34.5 nevertheless detects its `binding.gyp` as requiring a build,
 without consulting `gypfile: false`. The workspace explicitly lists the package

@@ -108,6 +108,59 @@ describe("durable SQLite initialization", () => {
   });
 });
 
+describe("atomic repository poll commits", () => {
+  it("rolls back initialization if the successful-poll metadata cannot commit", () => {
+    const { store, file, register } = fixture();
+    register();
+    const sql = connect(file);
+    sql.exec("CREATE TRIGGER reject_poll BEFORE UPDATE OF last_poll_at ON repositories BEGIN SELECT RAISE(ABORT, 'poll rejected'); END");
+    expect(() => store.applyRepositoryPoll(repository, { kind: "initialize", startPrNumber: 0 }, 20)).toThrow("poll rejected");
+    expect(store.getRepository(repository)).toMatchObject({ startPrNumber: null, initializedAt: null, lastPollAt: null });
+    sql.exec("DROP TRIGGER reject_poll");
+    expect(store.applyRepositoryPoll(repository, { kind: "initialize", startPrNumber: 0 }, 21)).toMatchObject({ startPrNumber: 0, initializedAt: 21, lastPollAt: 21 });
+    close(store);
+    expect(open(file).getRepository(repository)).toMatchObject({ startPrNumber: 0, initializedAt: 21, lastPollAt: 21 });
+  });
+
+  it.each(["second observation", "success marker"])("rolls back the entire snapshot when its %s fails", (failure) => {
+    const { store, file, register } = fixture();
+    register();
+    store.applyRepositoryPoll(repository, { kind: "initialize", startPrNumber: 100 }, 10);
+    const observations = (headSha: string): PullRequestObservation[] => [101, 102].map((number) => ({
+      number, state: "open", draft: false, headSha, baseRef: "main", baseSha: "base",
+    }));
+    store.applyRepositoryPoll(repository, { kind: "snapshot", observations: observations("old") }, 20);
+    const sql = connect(file);
+    sql.exec(failure === "second observation"
+      ? "CREATE TRIGGER reject_snapshot BEFORE UPDATE ON pull_requests WHEN NEW.number = 102 BEGIN SELECT RAISE(ABORT, 'snapshot rejected'); END"
+      : "CREATE TRIGGER reject_snapshot BEFORE UPDATE OF last_poll_at ON repositories BEGIN SELECT RAISE(ABORT, 'snapshot rejected'); END");
+    expect(() => store.applyRepositoryPoll(repository, { kind: "snapshot", observations: observations("new") }, 30)).toThrow("snapshot rejected");
+    store.recordPollError(repository, "snapshot rejected");
+    close(store);
+    const reopened = open(file);
+    expect(reopened.listPullRequests(repository).map(({ number, headSha, desiredRevision }) => ({ number, headSha, desiredRevision }))).toEqual([
+      { number: 101, headSha: "old", desiredRevision: 1 },
+      { number: 102, headSha: "old", desiredRevision: 1 },
+    ]);
+    expect(reopened.getRepository(repository)).toMatchObject({ lastPollAt: 20, lastPollError: "snapshot rejected" });
+    sql.exec("DROP TRIGGER reject_snapshot");
+    expect(reopened.applyRepositoryPoll(repository, { kind: "snapshot", observations: observations("new") }, 31)).toMatchObject({ lastPollAt: 31, lastPollError: null });
+    expect(reopened.listPullRequests(repository).map(({ desiredRevision }) => desiredRevision)).toEqual([2, 2]);
+  });
+
+  it("requires initialization and one observation per PR in each snapshot", () => {
+    const { store, register } = fixture();
+    register();
+    expect(() => store.applyRepositoryPoll(repository, { kind: "snapshot", observations: [] }, 1)).toThrow("initialization has not completed");
+    store.applyRepositoryPoll(repository, { kind: "initialize", startPrNumber: 0 }, 2);
+    expect(store.applyRepositoryPoll(repository, { kind: "snapshot", observations: [] }, 3).lastPollAt).toBe(3);
+    const observation: PullRequestObservation = { number: 101, state: "open", draft: false, headSha: "head", baseRef: "main", baseSha: "base" };
+    expect(() => store.applyRepositoryPoll(repository, { kind: "snapshot", observations: [observation, { ...observation, headSha: "changed" }] }, 4)).toThrow("duplicate PR 101");
+    expect(store.listPullRequests(repository)).toEqual([]);
+    expect(store.getRepository(repository)?.lastPollAt).toBe(3);
+  });
+});
+
 describe("repository identity and permanent initialization boundary", () => {
   it("distinguishes uninitialized from an empty repository and preserves a zero boundary across restart", () => {
     const { store, file, register, initialize, observe } = fixture();

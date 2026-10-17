@@ -1,0 +1,110 @@
+# Agent Note: Complete GitHub Observations
+
+Status: implemented
+
+## Problem
+
+A PR list can span several responses and can move while those responses are
+being read. Treating a failed page as an empty result can permanently exclude PRs
+at initialization or incorrectly close tracked work. Persisting half a pass also
+gives later scheduling an inconsistent observation of the repository.
+
+## Decision
+
+The GitHub module performs one authenticated observation pass through `gh api`.
+It resolves a host-qualified repository identity from the REST numeric ID,
+validates safe integer representation, and keeps that identity independent of
+remote-address spelling. The existing store remains the owner of review triggers
+and revision transitions.
+
+Each page is read with an explicit GET and captured HTTP headers. The adapter
+parses a complete response even when `gh` exits nonzero for an HTTP error;
+aborted execution, timeout, overflow, or incomplete capture cannot establish a
+successful response. Calls use argument arrays with bounded capture and request
+time, preserving the prepared GitHub authentication environment.
+
+Pagination follows validated next-page links. Accepted links have the expected
+HTTPS API origin, repository path, and scan parameters. Both owner/name and
+numeric repository pull-list routes are recognized because GitHub can emit the
+latter in its Link header. Relation parameters accept permitted whitespace and
+quoted values; malformed syntax cannot establish that pagination ended.
+Requests use relative endpoints or internally reconstructed, validated absolute
+URLs for configured API ports. Unchecked Link URLs are never passed to `gh`.
+Repeated pages are errors; repeated PR numbers are coalesced so that only the last
+retrieved occurrence is applied.
+
+`gh` rejects ports in `--hostname`. A port request therefore uses a validated
+absolute API URL and the bare hostname flag. Existing enterprise-token
+environment values keep their precedence. Otherwise, the adapter privately
+captures the prepared bare-host credential with `gh auth token` and supplies it
+only as the API child's `GH_ENTERPRISE_TOKEN`. Credential capture and command
+failures expose sanitized diagnostics; token output and environment values never
+enter public errors, logs, configuration, or database records. No global login or
+credential storage is changed. The inspected
+[hostname validation](https://github.com/cli/cli/blob/37800dd56a536e69b20d682b770e983c3829c164/internal/ghinstance/host.go#L35-L42)
+and [request authentication](https://github.com/cli/cli/blob/37800dd56a536e69b20d682b770e983c3829c164/api/http_client.go#L92-L110)
+explain the bridge.
+
+An initial pass reads all states and all pages and commits their maximum PR
+number. A successful empty pass commits zero. Later passes read all open PRs,
+including Draft, without a high-water cursor. Tracked open PRs missing from a
+complete list are fetched individually. A successful direct response determines
+their actual state; a 404 or failed confirmation is an error, not closure proof.
+
+All remote responses are collected and validated before observation writes.
+The store's `applyRepositoryPoll` commits initialization or a deduplicated
+snapshot together with the successful-poll timestamp in one short transaction.
+An API or database failure preserves the previous cutoff, PR observations, and
+success time. Error metadata is recorded separately. No transaction spans a
+network request. The [state decision](2026-10-17-durable-review-state.md) owns the
+underlying revision and execution rules.
+
+Rate-limit failures retain HTTP status and an absolute retry deadline. Retry-After
+delay/date and primary-reset headers are honored; multiple constraints use the
+latest deadline. A recognized secondary limit without an explicit deadline uses
+GitHub's minimum wait. The client keeps a host-level deadline and rejects further
+same-host API calls until it expires, including later repositories in the same
+batch. Other hosts can continue. The module does not sleep or retry internally;
+later coordination reuses this client and schedules another pass. One repository's
+failure remains visible without discarding another repository's result.
+
+The inspected CLI is gh 2.88.1. Its
+[response framing](https://github.com/cli/cli/blob/37800dd56a536e69b20d682b770e983c3829c164/pkg/cmd/api/api.go#L461-L465),
+[HTTP error behavior](https://github.com/cli/cli/blob/37800dd56a536e69b20d682b770e983c3829c164/pkg/cmd/api/api.go#L510-L535),
+and [API host mapping](https://github.com/cli/cli/blob/37800dd56a536e69b20d682b770e983c3829c164/internal/ghinstance/host.go#L59-L69)
+define the adapter assumptions. GitHub's
+[API practices](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)
+describe pagination movement, private-resource 404s, and rate-limit waiting.
+
+## Alternatives
+
+**Let `gh --paginate --slurp` collect everything.** This hides individual page
+status and timing, accumulates response data, and follows Link URLs before the
+module can validate their destination. Explicit page reads preserve transport
+failure and pagination boundaries.
+
+**Use PR number or updated_at as a progress cursor.** Existing in-range PRs can
+change indefinitely, while updated_at also changes for events unrelated to
+review. Complete recurring scans preserve old PR eligibility.
+
+**Apply each successful page immediately.** A later response or SQLite failure
+would leave a partial repository pass. Gathering responses first and committing
+one batch preserves the previous state when any confirmation or write fails.
+
+**Use GraphQL node_id as an interchangeable identity fallback.** Global node-ID
+representations have required migrations. Mixing them with REST IDs can create a
+second initialization identity. Unsafe numeric IDs fail explicitly rather than
+round or switch representation. See GitHub's
+[node-ID migration](https://github.blog/news-insights/product-news/graphql-global-id-migration-update/).
+
+## Consequences
+
+Controlled HTTP/process fixtures and real SQLite databases verify pagination,
+initialization, triggers, failure isolation, closure evidence, rate limits, and
+transaction rollback without live review credentials. CLI wiring, periodic
+polling, Git preparation, and agent execution remain separate work.
+
+Pagination is not an atomic remote snapshot. Repeated complete scans converge on
+persistent states, but cannot recover a state transition that begins and ends
+between observations. Failing one confirmation preserves the entire prior
+repository observation until a later successful pass.
