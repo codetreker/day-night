@@ -2,9 +2,10 @@
 
 Daynight is a foreground GitHub PR review CLI under development in
 `packages/daynight/`. The CLI entry, argument handling, fixed home paths, and
-strict YAML configuration loader and durable SQLite state module are implemented.
-The review coordinator, polling, repository management, and Copilot execution are
-pending. The state module is not yet connected to the CLI.
+strict YAML configuration loader, durable SQLite state module, and GitHub
+observation module are implemented. The review coordinator, periodic polling,
+repository management, and Copilot execution are pending. The state and GitHub
+modules are not yet connected to the CLI.
 
 The [Chinese requirements](docs/spec/daynight.md) define the complete product;
 the [architecture](docs/design/daynight.md) describes the selected design. The
@@ -37,6 +38,8 @@ images to check path identity against both filesystem behaviors. No live GitHub
 or Copilot credentials are required by these checks.
 SQLite tests use real disk databases, including reopen, transaction rollback,
 locking, and revision/retry transitions on every platform.
+GitHub tests use controlled API responses and subprocess fixtures to verify
+complete scans, HTTP failures, and atomic observation commits.
 
 ## Configuration and current CLI behavior
 
@@ -96,6 +99,22 @@ See the [architecture](docs/design/daynight.md) for transitions and the
 [state decision](.agents/notes/implemented/architecture/2026-10-17-durable-review-state.md)
 for persistence choices. Opening the module is an internal operation; current
 review-mode CLI validation still does not create a database or start monitoring.
+
+## GitHub observations
+
+The GitHub module reads one repository pass through authenticated `gh api` GET
+requests. Initialization scans every page and PR state before committing the
+permanent cutoff. Later passes track open PRs, including Draft, and confirm
+missing tracked PRs individually before recording closure.
+
+Failed pages, malformed responses, and failed closure confirmations preserve
+the previous repository observation. A completed pass commits its observations
+and success time atomically. Rate-limit failures expose the server's retry
+deadline and block later same-host calls in that client; scheduling another pass
+belongs to the pending coordinator.
+The [observation decision](.agents/notes/implemented/architecture/2026-10-17-github-observation.md)
+records pagination and failure handling. The current CLI still performs only
+configuration validation.
 
 ## Working in the repository
 
