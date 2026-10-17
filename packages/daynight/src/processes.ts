@@ -12,6 +12,33 @@ const command = (file: string, args: string[], timeout: number): Promise<string>
 type ManagedProcess = { child: ChildProcess; pid: number; closed: boolean; excluded: boolean; stopping?: Promise<void> };
 const attemptKey = (attempt: AttemptIdentity): string => `${attempt.reviewId}:${attempt.attempt}`;
 
+export const processGroupIsExecuting = async (
+  pid: number,
+  operations: { probe: (pid: number) => void; readStatus: () => Promise<string> },
+): Promise<boolean> => {
+  let permissionError: Error | undefined;
+  try { operations.probe(pid); }
+  catch (error) {
+    if (!(error instanceof Error && "code" in error)) throw error;
+    if (error.code === "ESRCH") return false;
+    if (error.code !== "EPERM") throw error;
+    // Darwin can reject a zombie-only group probe; live members must still preserve the denial.
+    // https://github.com/apple-oss-distributions/xnu/blob/ac9718fb1af618d5ce8678d0dc6e8a58f252216f/bsd/kern/kern_sig.c#L1703-L1719
+    permissionError = error;
+  }
+  const output = await operations.readStatus();
+  for (const line of output.split("\n")) {
+    if (line.trim() === "") continue;
+    const match = /^\s*(\d+)\s+(\d+)\s+(\S+)\s*$/.exec(line);
+    if (match === null) throw new Error("Cannot interpret the process-group status returned by ps.");
+    if (Number(match[2]) === pid && !match[3]!.startsWith("Z")) {
+      if (permissionError !== undefined) throw permissionError;
+      return true;
+    }
+  }
+  return false;
+};
+
 /** Supervises only handles launched by this CLI; persisted PIDs are never termination targets. */
 export const createProcessSupervisor = (options: { graceMs?: number; previousProcessesExcluded?: true } = {}) => {
   const grace = options.graceMs === undefined ? 5_000 : options.graceMs;
@@ -39,21 +66,10 @@ export const createProcessSupervisor = (options: { graceMs?: number; previousPro
     while (!entry.closed && Date.now() < deadline) await delay(Math.min(25, grace));
     if (!entry.closed) uncertain("The managed agent did not close its process and streams within the termination grace period.");
   };
-  const liveGroup = async (pid: number): Promise<boolean> => {
-    try { process.kill(-pid, 0); }
-    catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "ESRCH") return false;
-      throw error;
-    }
-    const output = await command("ps", ["-A", "-o", "pid=", "-o", "pgid=", "-o", "stat="], grace);
-    for (const line of output.split("\n")) {
-      if (line.trim() === "") continue;
-      const match = /^\s*(\d+)\s+(\d+)\s+(\S+)\s*$/.exec(line);
-      if (match === null) throw new Error("Cannot interpret the process-group status returned by ps.");
-      if (Number(match[2]) === pid && !match[3]!.startsWith("Z")) return true;
-    }
-    return false;
-  };
+  const liveGroup = (pid: number): Promise<boolean> => processGroupIsExecuting(pid, {
+    probe: (group) => { process.kill(-group, 0); },
+    readStatus: () => command("ps", ["-A", "-o", "pid=", "-o", "pgid=", "-o", "stat="], grace),
+  });
   const signalGroup = (pid: number, signal: NodeJS.Signals): void => {
     try { process.kill(-pid, signal); }
     catch (error) { if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error; }

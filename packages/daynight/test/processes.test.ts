@@ -4,8 +4,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import crossSpawn from "cross-spawn";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createProcessSupervisor } from "../src/processes.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { createProcessSupervisor, processGroupIsExecuting } from "../src/processes.js";
 import { formatError } from "../src/diagnostics.js";
 import type { CopilotAttemptOutcome } from "../src/copilot.js";
 import type { ReviewState } from "../src/store.js";
@@ -31,6 +31,58 @@ beforeAll(async () => {
 afterAll(async () => { await rm(directory, { recursive: true, force: true }); });
 
 describe("current-run process supervision", () => {
+  it.each(["", "12 42 Z\n13 99 S\n", "12 42 Z+\n13 42 Z\n"])("excludes a denied group only when scoped status has no executing members: %j", async (status) => {
+    const denied = Object.assign(new Error("group permission denied"), { code: "EPERM" });
+    const readStatus = vi.fn(async () => status);
+    await expect(processGroupIsExecuting(42, { probe: () => { throw denied; }, readStatus })).resolves.toBe(false);
+    expect(readStatus).toHaveBeenCalledOnce();
+  });
+
+  it.each(["12 42 S\n", "12 42 Z\n13 42 R+\n"])("preserves the original permission denial for an executing group: %j", async (status) => {
+    const denied = Object.assign(new Error("group permission denied"), { code: "EPERM" });
+    await expect(processGroupIsExecuting(42, { probe: () => { throw denied; }, readStatus: async () => status })).rejects.toBe(denied);
+  });
+
+  it("distinguishes an absent group from probe, inspection, and parse failures", async () => {
+    const absent = Object.assign(new Error("absent group"), { code: "ESRCH" });
+    const readStatus = vi.fn(async () => "12 42 S\n");
+    await expect(processGroupIsExecuting(42, { probe: () => { throw absent; }, readStatus })).resolves.toBe(false);
+    expect(readStatus).not.toHaveBeenCalled();
+    const probeFailure = Object.assign(new Error("invalid probe"), { code: "EINVAL" });
+    await expect(processGroupIsExecuting(42, { probe: () => { throw probeFailure; }, readStatus })).rejects.toBe(probeFailure);
+    expect(readStatus).not.toHaveBeenCalled();
+    const denied = Object.assign(new Error("group permission denied"), { code: "EPERM" });
+    const inspectionFailure = new Error("ps failed");
+    await expect(processGroupIsExecuting(42, { probe: () => { throw denied; }, readStatus: async () => { throw inspectionFailure; } })).rejects.toBe(inspectionFailure);
+    await expect(processGroupIsExecuting(42, { probe: () => { throw denied; }, readStatus: async () => "malformed status" })).rejects.toThrow("Cannot interpret");
+  });
+
+  it("retains unsafe execution when a denied probe finds an executing POSIX group", async () => {
+    const denied = Object.assign(new Error("group permission denied"), { code: "EPERM" });
+    await expect(processGroupIsExecuting(42, { probe: () => { throw denied; }, readStatus: async () => "12 42 S\n" })).rejects.toBe(denied);
+    if (process.platform !== "win32") {
+      const supervisor = createProcessSupervisor({ graceMs: 1_000 });
+      const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true, stdio: ["ignore", "pipe", "pipe"] });
+      child.stdout!.resume(); child.stderr!.resume();
+      await once(child, "spawn"); supervisor.onProcess(child, { reviewId: "review", attempt: 1 });
+      const kill = process.kill.bind(process);
+      const closed = once(child, "close");
+      const probe = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+        if (pid === -child.pid! && signal === 0) throw denied;
+        return kill(pid, signal);
+      });
+      try {
+        const result = await supervisor.stop(child, { reviewId: "review", attempt: 1 }).catch((error: unknown) => error);
+        expect(formatError(result)).toContain("Caused by: group permission denied");
+        expect(supervisor.safeToReleaseLock).toBe(false);
+      } finally {
+        probe.mockRestore();
+        kill(-child.pid!, "SIGKILL");
+        await closed;
+      }
+    }
+  });
+
   it("accepts a normal fully drained nonzero foreground exit for retry", async () => {
     const supervisor = createProcessSupervisor({ graceMs: 1_000 });
     const child = spawn(process.execPath, ["-e", "process.stdout.write('done'); process.exitCode = 7"], { detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });

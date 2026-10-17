@@ -52,6 +52,14 @@ if (/^gh(?:\.exe)?$/i.test(path.basename(process.execPath))) {
   process.exit(0);
 } else if (directory !== undefined && path.basename(process.argv[1] ?? "") === "main.js") {
   const timer = setInterval(() => {
+    if (existsSync(path.join(directory, "crash"))) {
+      // This pre-review crash point isolates stale-lock recovery from tool termination.
+      const resources = process.getActiveResourcesInfo();
+      if (resources.includes("ProcessWrap")) return;
+      clearInterval(timer);
+      writeFileSync(path.join(directory, "crash-receipt.json"), JSON.stringify({ pid: process.pid, exitCode: 73, resources }), { flag: "wx" });
+      process.exit(73);
+    }
     if (existsSync(path.join(directory, "stop"))) {
       clearInterval(timer);
       process.emit("SIGINT");
