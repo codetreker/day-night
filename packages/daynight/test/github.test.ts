@@ -338,6 +338,20 @@ describe("durable repository observations", () => {
 });
 
 describe("native child process capture", () => {
+  it("removes inherited repository selectors only from the command environment", async () => {
+    vi.stubEnv("GIT_DIR", "unrelated-repository");
+    vi.stubEnv("GIT_INDEX_FILE", "unrelated-index");
+    const result = await executeCommand(process.execPath, ["-e", "process.stdout.write(JSON.stringify([process.env.GIT_DIR === undefined, process.env.GIT_INDEX_FILE === undefined]))"], {
+      timeoutMs: 5_000,
+      maxBufferBytes: 1_024,
+      environment: { GIT_DIR: undefined, GIT_INDEX_FILE: undefined },
+    });
+    expect(result.error).toBeNull();
+    expect(JSON.parse(result.stdout)).toEqual([true, true]);
+    expect(process.env.GIT_DIR).toBe("unrelated-repository");
+    expect(process.env.GIT_INDEX_FILE).toBe("unrelated-index");
+  });
+
   const script = path.join(import.meta.dirname, "fixtures", "gh-api.mjs");
   const nativeClient = (mode: string, bounds: { timeoutMs?: number; maxBufferBytes?: number } = {}) => createGitHubClient({
     ...bounds, execute: (_file, _args, options) => executeCommand(process.execPath, [script, mode], options),
@@ -474,6 +488,37 @@ describe("prepared authentication for repositories with API ports", () => {
 });
 
 describe("client rate-limit cooldown", () => {
+  it("rechecks a host deadline after asynchronous credential preparation", async () => {
+    vi.stubEnv("GH_ENTERPRISE_TOKEN", "");
+    vi.stubEnv("GITHUB_ENTERPRISE_TOKEN", "");
+    const entered = Promise.withResolvers<void>();
+    const heldAuthentication = Promise.withResolvers<CommandResult>();
+    let authenticationCalls = 0;
+    let apiCalls = 0;
+    const credential: CommandResult = { stdout: "fake-shared-credential\n", stderr: "", error: null };
+    const execute: CommandExecutor = async (_file, args) => {
+      if (args[0] === "auth") {
+        authenticationCalls++;
+        if (authenticationCalls === 1) {
+          entered.resolve();
+          return heldAuthentication.promise;
+        }
+        return credential;
+      }
+      apiCalls++;
+      return response({}, { "Retry-After": "3600" }, 429, exitError(1));
+    };
+    const client = createGitHubClient({ execute, now: () => 100_000 });
+    const target = { ...configuration, host: "git.example:8443" };
+    const pending = client.resolveRepository(target);
+    await entered.promise;
+    await expect(client.resolveRepository({ ...target, name: "second" })).rejects.toMatchObject({ status: 429, retryAt: 3_700_000 });
+    heldAuthentication.resolve(credential);
+    await expect(pending).rejects.toMatchObject({ status: 429, retryAt: 3_700_000 });
+    expect(authenticationCalls).toBe(2);
+    expect(apiCalls).toBe(1);
+  });
+
   it("blocks every same-host API method until the latest deadline and allows other hosts immediately", async () => {
     let clock = 100_000;
     const queued = queue(response({}, { "Retry-After": "3600" }, 429, exitError(1)), response({ id: 43 }), response({ id: 42 }));

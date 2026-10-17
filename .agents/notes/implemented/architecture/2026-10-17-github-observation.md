@@ -111,8 +111,10 @@ round or switch representation. See GitHub's
 
 Controlled HTTP/process fixtures and real SQLite databases verify pagination,
 initialization, triggers, failure isolation, closure evidence, rate limits, and
-transaction rollback without live review credentials. CLI wiring, periodic
-polling, Git preparation, and agent execution remain separate work.
+transaction rollback without live review credentials. The
+[Git manager](2026-10-17-owned-review-worktrees.md) reuses the authenticated
+command helpers. CLI wiring, periodic polling, and agent execution remain
+separate work.
 
 Pagination is not an atomic remote snapshot. Repeated complete scans converge on
 persistent states, but cannot recover a state transition that begins and ends

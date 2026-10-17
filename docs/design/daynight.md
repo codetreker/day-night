@@ -1,7 +1,7 @@
 # Daynight 架构设计
 
-状态：架构已确认。CLI、配置处理、SQLite 状态与 GitHub 观测模块已实现；状态与观测
-模块尚未接入 CLI，其余执行模块待接入，实现范围见
+状态：架构已确认。CLI、配置、SQLite、GitHub 观测与 Git 管理模块已实现；这些模块
+尚未由协调器接入 CLI，agent 执行仍待实现。当前范围见
 [仓库 README](../../README.md)。
 
 Daynight 是一个在前台持续运行、直到被停止的 TypeScript CLI，代码位于
@@ -218,7 +218,18 @@ HTTP 日期，以及主限额重置时间，取最晚约束。客户端在内存
 
 ## Worktree 生命周期
 
-PR worktree 归属于配置中的本地仓库，放在该仓库根目录的 `.worktrees/` 下：
+Git 模块先校验配置中的本地位置。缺失时通过 HTTPS 正常克隆，并显式选择 `origin`；
+SSH 配置地址仍用于仓库身份识别，实际传输复用准备好的 `gh` 认证。已有仓库通过
+local origin 的唯一原始 URL 和稳定 GitHub ID 校验，保留其 origin 配置、文件和分支。
+模块不改全局 Git 或认证配置。带端口 HTTPS 传输复用受控凭据环境；SSH 端口不作为
+API 或 HTTPS 端口。
+
+克隆和首次 Git 检查均使用已验证的物理路径，保留配置别名的身份核对。目录名按所在
+平台 Git 的规则处理，合法的前导和内部空格得到保留。POSIX 支持的尾空格名称可以正常
+准备；Windows Git 保护规则拒绝的名称明确报错，并保留既有父目录和其他数据，不放宽
+这些原生保护来使克隆通过。
+
+PR worktree 放在实际仓库根目录下：
 
 ```text
 <repository>/
@@ -226,39 +237,77 @@ PR worktree 归属于配置中的本地仓库，放在该仓库根目录的 `.wo
     pr-<number>/
 ```
 
-daemon 为每个 PR 使用固定路径 `<repository>/.worktrees/pr-<number>/`，并在 SQLite
-中记录其归属。该目录可能同时容纳其他工具或人工创建的 worktree，daemon 只操作自己
-登记的 PR worktree。位置选择记录在
-[仓库内 worktree 决策](../../.agents/notes/implemented/architecture/2026-10-16-repository-local-review-worktrees.md)。
+本地克隆及其 PR worktree 是系统独占的审查环境。daemon 只操作自己登记的固定 PR
+路径，各 PR 的工作目录相互独立。Git 的 `locked daynight:<sessionId>` 标记将持久化
+会话与实际登记关联；同一 PR 清理后重新打开时，仍用原会话 UUID。此机制记录在
+[worktree 所有权决策](../../.agents/notes/implemented/architecture/2026-10-17-owned-review-worktrees.md)，
+环境边界见[专用审查环境决策](../../.agents/notes/implemented/architecture/2026-10-17-exclusive-review-environment.md)。
 
-克隆尚不存在的仓库，并校验已有克隆是否与配置中的远程地址匹配。通过该基础仓库
-获取 PR 的 head，包括来自 fork 的 PR：
+操作前必须确认配置路径是精确 Git 根目录，并比较物理目录身份。对 PR leaf 同时校验
+精确 top-level、common directory、固定路径、会话锁标记和数据库登记；不能只比较
+common directory，因为缺失的 `.git` 会让 Git 向上发现主仓库。leaf 的普通 `.git` 文件还
+必须指向所属 linked Git admin，且该 admin 位于预期 common 的 worktree 登记目录下。
+实际 admin、会话锁标记和 `gitdir` 回指必须对应同一 leaf；相对元数据路径按 Git 规定
+的目录解析。强制 checkout/clean 显式绑定已校验的 git-dir 与 work-tree，避免可变的
+`.git` 指针切换到主仓库或 sibling 的 HEAD/index。容器和 leaf 的符号链接、
+未登记的既有目录，以及不匹配的锁均明确拒绝。
+
+在基础仓库中通过显式 HTTPS URL 取得 PR head，包括 fork PR，而非读取 fork 分支：
 
 ```text
-git fetch --no-tags origin +refs/pull/N/head:refs/daynight/pr/N/head
+git fetch --atomic --refmap= --no-tags --no-write-fetch-head \
+  --no-auto-maintenance --no-recurse-submodules HTTPS_URL \
+  +refs/pull/N/head:refs/daynight/incoming/REVIEW_ID/head \
+  +refs/heads/BASE:refs/daynight/incoming/REVIEW_ID/base
 ```
 
-同时获取选定的目标分支。将获取到的 head 与 PR 当前元数据比较；发生变化时刷新并
-合并待处理更新。固定本轮审查的 head 和目标分支顶端提交，并以它们的 merge-base
-计算差异。目标分支顶端提交用于提供审查上下文，不构成额外触发条件。不得将 GitHub
-生成的合并提交用作 PR head。保留足够的历史以计算差异。
+空 refmap 和显式 URL 避免命名 origin fetch 顺带更新共享的 remote-tracking refs；
+FETCH_HEAD、共享分支和 tags 保持不变。需要时补全浅克隆历史。将获取到的 head 与
+捕获目标及当前 PR 元数据核对，目标已变化则交回协调模块处理；仅 base tip 变化不产生
+新的审查触发。为审查 UUID 固定 head、base 和 merge-base 私有 refs，再保存 base SHA，
+使后续 fetch、force push 或相同目标重试不能替换该轮上下文。
 
-首次审查在上述路径创建 detached worktree。后续审查复用同一路径，在上一子进程结束后以
-detached 状态切换到选定的 head。仅在经过校验且由 daemon 管理的 worktree 内清理
-agent 生成的文件。执行强制操作前校验其规范路径和 Git common directory；保留主工作
-区文件及共享分支。确认目标未变化的失败审查时，保留原 worktree，让会话保有本地
-上下文。
+受控 Git 命令显式禁止 replacement objects，并使用所属临时目录中的独立空 graft 文件。
+这样，本地 `refs/replace` 或默认 `info/grafts` 不会在 SHA 不变时替换文件树或父关系，
+这些本地元数据本身保持不变。准备结果中的非敏感 `gitEnvironment` 将相同原始对象视图
+提供给后续 agent runner；空 hooks/template 目录与 graft 文件分开，且在 runner 生命周期
+内保持有效。
 
-PR 关闭或合并时，记录待清理状态，并取消准备操作或子进程执行。等待这些工作结束后，
-获取同一个 PR 操作预留，再通过 Git 删除 worktree。删除前重新检查 PR 当前状态；
-如果 PR 已重新打开则保留 worktree。清理失败继续保持待处理，等待重试。保留会话和
-PR 历史。范围内的 PR 重新打开且 ready 时重建 worktree，并恢复同一个会话。
-从配置移除仓库时保留已存状态；这不构成删除克隆或其 worktree 的授权。
+所有 Git 调用按命令禁用 hooks、fsmonitor 和不需要的子模块递归，克隆模板为空目录；
+fetch 还显式禁止递归子模块，以覆盖更具体的用户 fetch 配置。继承的仓库选择器和调试
+环境只对子进程清除，避免 `git -C` 被重定向或认证信息进入输出；保留 HTTPS CA 等
+传输信任设置及全局配置位置，避免破坏已准备好的企业环境。
 
-资料来源：
+首次创建前先排除路径冲突，再保存数据库意图并建立带锁的 detached worktree。中断
+后，完全缺失的 leaf 和登记可重试；匹配的带锁登记可校验复用；不明资源不得接管。
+新的修订先 detach，再清理 daemon 拥有的内容，避免附着分支时改写共享分支。
+清理会检查当前和目标 gitlinks，避免新引入的子模块目录残留旧文件；仅清空所属工作
+目录，保留共享管理数据、refs、配置及基础工作区中的子模块文件。PR leaf 及其所属
+admin 内的嵌套 clone、生成文件和管理数据都属于可丢弃的审查内容。相同捕获目标的
+确认或重试保留原工作树和本地上下文。
+
+primary 的 sparse checkout 和 sparse index 不限制 PR 的完整代码视图。首次 add 使用
+命令级完整检出设置；未启动审查的已有 leaf 在所有权和当前目标校验后，仅重建
+自己的 index，再物化完整目标、detach 和清理。普通 checkout 或 read-tree reset
+不足以清除旧 skip-worktree 位，因此需要先清空所属 index。primary 的共享及每工作区
+配置、patterns、index、refs 和文件不改变；已启动后的同目标确认重试保留原 context。
+非敏感 `gitEnvironment` 携带完整视图设置，runner 先清除继承的 Git 仓库/配置选择器，
+再应用这些受控配置和原始对象设置。
+
+更新或删除已校验的 PR 工作区时，使用标准 Git checkout、clean 和 worktree remove
+命令清除所属内容。系统不维护嵌套 Git 仓库的依赖图，也不保护其他用途对这些可丢弃
+管理数据的引用。固定路径、登记和进程排除校验仍是操作前提。
+
+关闭或合并后先记录待清理状态，停止准备和执行，并获取同一个 PR 操作预留。删除前
+再次确认远程关闭状态及数据库中无活跃审查；已重新打开时保留或重建 worktree。
+只移除匹配所有权标记的具体 Git 登记，不做全局 prune。Git 删除成功后才完成数据库
+清理；会话、审查历史和私有快照 refs 保留。清理失败继续待处理。命令失败可能已经产生
+副作用，取消或进程结果不确定时保留资源并报错，不能据此声明已经安全停止。
+
+从配置移除仓库不构成删除已有克隆或 worktree 的授权。资料来源：
 [本地检出 PR](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/checking-out-pull-requests-locally)、
 [Git worktree](https://git-scm.com/docs/git-worktree)和
-[Git clean](https://git-scm.com/docs/git-clean)。
+[Git fetch](https://git-scm.com/docs/git-fetch)。
 
 ## Copilot 会话与结果发布
 
@@ -269,6 +318,9 @@ copilot -C WORKTREE --session-id UUID -p PROMPT \
   -s --output-format text --stream on --no-color \
   --no-ask-user --no-auto-update --allow-all-tools
 ```
+
+agent 子进程继承准备结果中的原始 Git 对象环境，同时清除继承的 Git 仓库选择器，
+避免其自行执行的 diff/log 命令采用另一仓库或本地的 replacement/graft 视图。
 
 后续审查或确认调用使用 `--resume=FULL_UUID`。不得选择全局最近的会话。保留已经建立
 的会话历史；历史缺失时报告该 PR 的错误，不得静默创建另一段对话。首次创建会话期间
@@ -356,7 +408,9 @@ SQLite。使用平台常规的进程终止工具处理受管理的后代进程�
 帮助与版本、编译后的入口、严格配置解析和路径校验；GitHub Actions 在 Linux、macOS
 和 Windows 上运行这些检查。SQLite 测试使用真实磁盘数据库，验证迁移、事务回滚、
 连接锁冲突、重开后的边界与预算、修订转换、会话和 worktree 登记。GitHub 测试使用
-受控 API 和子进程验证完整分页、失败保留、限流、关闭确认和观测事务回滚。
+受控 API 和子进程验证完整分页、失败保留、限流、关闭确认和观测事务回滚。真实 Git
+fixtures 验证克隆、私有 refs、detached head、dirty 内容、所有权、浅克隆、子模块及
+其他 PR 工作区保留。
 审查模式现阶段在
 配置校验后明确返回协调模块尚未接入的错误，不创建状态、仓库或审查结果。
 macOS 检查挂载临时的大小写敏感和不敏感 APFS
@@ -376,7 +430,7 @@ macOS 检查挂载临时的大小写敏感和不敏感 APFS
 | 平台 | `daynight --deamon-review`、各平台用户主目录和路径分隔符、含空格或 Unicode 的路径、Windows CLI 命令包装脚本、每个受支持系统上的子进程终止和最终输出 |
 
 需要在获得授权的测试仓库中实际运行 Copilot 与 GitHub，才能证明真实的会话续接、
-行级评论和批准行为。模拟测试无法证明这些效果。当前 CLI、配置、状态和观测模块的验证
+行级评论和批准行为。模拟测试无法证明这些效果。当前 CLI、配置、状态、观测和 Git 模块的验证
 不构成完整审查流程或真实 GitHub 发布行为的运行证据。
 
 没有已部署的数据需要迁移。本设计涵盖所有已确认的产品行为。Webhook、分布式执行、

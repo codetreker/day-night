@@ -2,10 +2,10 @@
 
 Daynight is a foreground GitHub PR review CLI under development in
 `packages/daynight/`. The CLI entry, argument handling, fixed home paths, and
-strict YAML configuration loader, durable SQLite state module, and GitHub
-observation module are implemented. The review coordinator, periodic polling,
-repository management, and Copilot execution are pending. The state and GitHub
-modules are not yet connected to the CLI.
+strict YAML configuration loader, durable SQLite state, GitHub observations,
+and clone/worktree management are implemented. The review coordinator, periodic
+polling, and Copilot execution are pending. These modules are not yet connected
+to the CLI.
 
 The [Chinese requirements](docs/spec/daynight.md) define the complete product;
 the [architecture](docs/design/daynight.md) describes the selected design. The
@@ -40,6 +40,9 @@ SQLite tests use real disk databases, including reopen, transaction rollback,
 locking, and revision/retry transitions on every platform.
 GitHub tests use controlled API responses and subprocess fixtures to verify
 complete scans, HTTP failures, and atomic observation commits.
+Git lifecycle tests use local origin/clone fixtures and real worktrees to check
+captured targets, disposable review artifacts, shared refs, and isolation between
+PR worktrees.
 
 ## Configuration and current CLI behavior
 
@@ -115,6 +118,30 @@ belongs to the pending coordinator.
 The [observation decision](.agents/notes/implemented/architecture/2026-10-17-github-observation.md)
 records pagination and failure handling. The current CLI still performs only
 configuration validation.
+
+## Repository clones and worktrees
+
+The Git module creates missing clones and validates existing repository identity.
+Prepared GitHub CLI authentication supplies command-scoped HTTPS credentials,
+including repositories configured with SSH addresses or API ports. Existing
+checkout files, origin configuration, branches, remote-tracking refs, and
+FETCH_HEAD remain untouched by review preparation.
+
+Configured clones and their PR worktrees are dedicated to this system. Each PR
+uses its fixed repository-local `.worktrees/pr-<number>/` directory. Physical
+root/common-directory checks, validated linked administration and backpointers,
+and a session-labelled Git lock establish the target before destructive reuse
+or removal. Initial preparation and new revisions provide a complete checkout
+even when the base checkout uses sparse settings. Confirmation retries retain
+local context. Files, nested clones and administration inside the owned PR
+worktree are disposable; cleanup does not inventory their external consumers.
+Other PR worktrees and retained sessions remain separate. Cleanup rechecks remote
+closure before removal. The [exclusive-environment decision](.agents/notes/implemented/architecture/2026-10-17-exclusive-review-environment.md)
+defines this ownership boundary.
+
+See the [worktree ownership decision](.agents/notes/implemented/architecture/2026-10-17-owned-review-worktrees.md)
+for safety and recovery boundaries. The current CLI still does not create clones
+or worktrees until coordination is integrated.
 
 ## Working in the repository
 
