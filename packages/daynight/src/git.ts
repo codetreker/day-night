@@ -38,6 +38,20 @@ const localGitEnvironment = new Set([
   "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE",
   "GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX", "GIT_SHALLOW_FILE", "GIT_COMMON_DIR",
 ]);
+/** Child overrides: undefined entries erase inherited selectors before prepared settings apply. */
+export const isolatedGitEnvironment = (
+  inherited: Readonly<Record<string, string | undefined>>,
+  prepared: Readonly<Record<string, string | undefined>>,
+): Record<string, string | undefined> => {
+  const environment: Record<string, string | undefined> = {};
+  for (const name of Object.keys(inherited)) {
+    const upper = name.toUpperCase();
+    if (localGitEnvironment.has(upper) || /^GIT_CONFIG_(?:KEY|VALUE)_\d+$/.test(upper) || upper.startsWith("GIT_TRACE") || upper === "GIT_CURL_VERBOSE") {
+      environment[name] = undefined;
+    }
+  }
+  return Object.assign(environment, prepared);
+};
 const isMissing = (error: unknown): boolean => error instanceof Error && "code" in error && error.code === "ENOENT";
 const requireSha = (sha: string): string => {
   if (!/^(?:[a-f\d]{40}|[a-f\d]{64})$/.test(sha)) throw new Error("Git returned an invalid commit object ID.");
@@ -115,15 +129,8 @@ export const createGitManager = (options: {
   };
   const run = async (args: readonly string[], signal?: AbortSignal, host?: string): Promise<string> => {
     signal?.throwIfAborted();
-    const environment: Record<string, string | undefined> = {};
-    for (const name of Object.keys(process.env)) {
-      const upper = name.toUpperCase();
-      if (localGitEnvironment.has(upper) || /^GIT_CONFIG_(?:KEY|VALUE)_\d+$/.test(upper) || upper.startsWith("GIT_TRACE") || upper === "GIT_CURL_VERBOSE") {
-        environment[name] = undefined;
-      }
-    }
     const context = await gitContext();
-    Object.assign(environment, context.gitEnvironment);
+    const environment = isolatedGitEnvironment(process.env, context.gitEnvironment);
     environment.GIT_TERMINAL_PROMPT = "0";
     const prefix = ["-c", `core.hooksPath=${context.hooksDirectory}`, "-c", "core.fsmonitor=false", "-c", "submodule.recurse=false"];
     if (host !== undefined) {

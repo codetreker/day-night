@@ -6,7 +6,9 @@
   "bin": {
     "daynight": "dist/main.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=24.0.0 <25"
   },
@@ -17,10 +19,12 @@
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",
+    "cross-spawn": "7.0.6",
     "yaml": "2.9.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "9.6.0",
+    "@types/cross-spawn": "6.0.6",
     "@types/node": "24.19.2",
     "typescript": "7.0.2",
     "vite": "8.3.4",

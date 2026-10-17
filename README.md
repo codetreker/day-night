@@ -3,9 +3,9 @@
 Daynight is a foreground GitHub PR review CLI under development in
 `packages/daynight/`. The CLI entry, argument handling, fixed home paths, and
 strict YAML configuration loader, durable SQLite state, GitHub observations,
-and clone/worktree management are implemented. The review coordinator, periodic
-polling, and Copilot execution are pending. These modules are not yet connected
-to the CLI.
+clone/worktree management, and the Copilot execution adapter are implemented.
+The review coordinator and periodic polling are pending. These modules are not
+yet connected to the CLI.
 
 The [Chinese requirements](docs/spec/daynight.md) define the complete product;
 the [architecture](docs/design/daynight.md) describes the selected design. The
@@ -42,7 +42,9 @@ GitHub tests use controlled API responses and subprocess fixtures to verify
 complete scans, HTTP failures, and atomic observation commits.
 Git lifecycle tests use local origin/clone fixtures and real worktrees to check
 captured targets, disposable review artifacts, shared refs, and isolation between
-PR worktrees.
+PR worktrees. Controlled Copilot executables exercise retained sessions, durable
+launch intent, stdin prompts and streamed completion/failure handling. These
+checks require no live model invocation or GitHub publication.
 
 ## Configuration and current CLI behavior
 
@@ -142,6 +144,32 @@ defines this ownership boundary.
 See the [worktree ownership decision](.agents/notes/implemented/architecture/2026-10-17-owned-review-worktrees.md)
 for safety and recovery boundaries. The current CLI still does not create clones
 or worktrees until coordination is integrated.
+
+## Copilot execution
+
+The Copilot adapter launches a direct child in the prepared PR worktree. It
+selects the persisted per-PR UUID on first launch and explicitly resumes that
+same session thereafter. An interrupted first launch also resumes existing
+history; missing established history is an error. Only opaque session-directory
+presence is inspected. Copilot history and agent JSONL are not parsed.
+
+Prompts travel through stdin in noninteractive mode. `cross-spawn` handles native
+commands and Windows command shims; prompt text is not embedded in shell code or
+command arguments. Runtime paths contain Copilot state, cache, temporary files
+and per-attempt diagnostics. Existing GitHub CLI authentication remains available
+through Copilot's supported fallback.
+
+The agent publishes inline Critical/Major comments or approval itself and
+reconciles prior publication when continuing an incomplete review. The adapter
+streams separate stdout/stderr logs and accepts only normal zero exit, complete
+capture and the exact final nonempty stdout line `PR N Review Completed`.
+Incomplete output, timeout, cancellation and logging errors cannot complete a
+review. Direct-child closure does not establish descendant exclusion; scheduling
+and final state transitions belong to the pending coordinator.
+
+The [execution decision](.agents/notes/implemented/architecture/2026-10-17-copilot-session-execution.md)
+records these boundaries. The current CLI does not invoke Copilot yet. Live
+Copilot/GitHub acceptance remains separate from controlled subprocess tests.
 
 ## Working in the repository
 
