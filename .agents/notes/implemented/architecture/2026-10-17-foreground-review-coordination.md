@@ -22,7 +22,10 @@ Configured clones remain an [exclusive review environment](2026-10-17-exclusive-
 Each repository has an independent polling lifetime and retry deadline. A FIFO
 pending map holds one latest candidate per PR while preserving its queue position.
 Dispatch removes that entry, so a frequently updated PR's successor joins behind
-work already waiting. A PR reservation is acquired before the first asynchronous
+work already waiting. Each scheduling cycle yields to the Node.js event loop:
+fast polls whose next deadline is already due cannot repeatedly wake only
+microtasks and starve timers or child-process I/O. A PR reservation is acquired
+before the first asynchronous
 operation and spans preparation, agent execution or cleanup. Review preparation
 and execution consume `maxConcurrentWorker`; cleanup uses the PR reservation
 without consuming a review slot.

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { setImmediate } from "node:timers/promises";
 import type { ChildProcess } from "node:child_process";
 import type { Configuration, RepositoryConfiguration } from "./config.js";
 import type { CopilotAttemptOutcome, CopilotRunOptions, createCopilotRunner } from "./copilot.js";
@@ -282,6 +283,8 @@ export const runCoordinator = async (options: CoordinatorOptions): Promise<{ saf
         wake = () => { clearTimeout(timer); wake = undefined; resolve(); };
         if (signal.aborted) wake();
       });
+      // Completed polls can wake only microtasks when their next deadline is already due.
+      await setImmediate();
     }
   } finally {
     lifetime.abort(new Error("The coordinator is stopping."));

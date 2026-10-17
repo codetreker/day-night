@@ -209,6 +209,26 @@ describe("foreground review coordination", () => {
     expect(f.store.getPullRequest(f.pr(3, 1))?.completedRevision).toBe(1);
   });
 
+  it("lets timers progress when every immediately completed poll is already due again", async () => {
+    const f = fixture(); f.configuration.pollIntervalMs = 2;
+    let timerFired = false;
+    let timerProgressAtCap = false;
+    const timer = setTimeout(() => { timerFired = true; }, 0);
+    f.poll(async () => {
+      if (f.polls[0] === 64) {
+        timerProgressAtCap = timerFired;
+        f.runs[0]!.abort.abort();
+      }
+    });
+    let clock = Date.now();
+    const run = f.start({ now: () => clock += 5 });
+    try {
+      await run.completion;
+      expect(f.polls[0]).toBe(64);
+      expect(timerProgressAtCap).toBe(true);
+    } finally { clearTimeout(timer); }
+  });
+
   it("cancels an in-flight poll after an internal fatal error without requiring an external abort", async () => {
     const f = fixture(2);
     const originalCandidates = f.store.listCandidates;
