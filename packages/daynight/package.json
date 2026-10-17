@@ -16,9 +16,11 @@
     "test": "pnpm run build && vitest run"
   },
   "dependencies": {
+    "better-sqlite3": "13.0.3",
     "yaml": "2.9.1"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
     "@types/node": "24.19.2",
     "typescript": "7.0.2",
     "vite": "8.3.4",

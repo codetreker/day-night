@@ -2,8 +2,9 @@
 
 Daynight is a foreground GitHub PR review CLI under development in
 `packages/daynight/`. The CLI entry, argument handling, fixed home paths, and
-strict YAML configuration loader are implemented. The review coordinator,
-SQLite scheduling, repository management, and Copilot execution are pending.
+strict YAML configuration loader and durable SQLite state module are implemented.
+The review coordinator, polling, repository management, and Copilot execution are
+pending. The state module is not yet connected to the CLI.
 
 The [Chinese requirements](docs/spec/daynight.md) define the complete product;
 the [architecture](docs/design/daynight.md) describes the selected design. The
@@ -34,6 +35,8 @@ Windows runners. The final `checks` job succeeds only when all platform jobs
 succeed. macOS tests mount temporary case-sensitive and case-insensitive APFS
 images to check path identity against both filesystem behaviors. No live GitHub
 or Copilot credentials are required by these checks.
+SQLite tests use real disk databases, including reopen, transaction rollback,
+locking, and revision/retry transitions on every platform.
 
 ## Configuration and current CLI behavior
 
@@ -74,6 +77,25 @@ monitored repository root's `.worktrees/` directory. `maxConcurrentWorker` is th
 configured in-process review concurrency limit. Current review-mode validation
 creates no state, clones, worktrees, or GitHub reviews; it reports that the review
 coordinator is unavailable in this build.
+
+## Durable review state
+
+The SQLite module keeps repository identity, the permanent startup PR boundary,
+observed PRs, captured review targets, completion revisions, sessions, worktree
+registration, and retry state. Repository identity includes the GitHub host and
+stable repository ID. Completing a captured revision leaves later observations
+pending; retries retain their original review identity and consumed budget.
+
+Database opening applies explicit schema migrations and enables WAL with FULL
+synchronization and a bounded busy timeout. It does not infer whether an old
+process has stopped or make interrupted reviews executable. The caller must
+confirm process exclusion before resolving uncertain execution. Database state
+does not replace physical Git/worktree or session-history verification.
+
+See the [architecture](docs/design/daynight.md) for transitions and the
+[state decision](.agents/notes/implemented/architecture/2026-10-17-durable-review-state.md)
+for persistence choices. Opening the module is an internal operation; current
+review-mode CLI validation still does not create a database or start monitoring.
 
 ## Working in the repository
 
