@@ -82,6 +82,9 @@ The toolchain establishes the CLI/configuration foundation. The
 [durable state module](../architecture/2026-10-17-durable-review-state.md)
 adds SQLite persistence, and the
 [Git manager](../architecture/2026-10-17-owned-review-worktrees.md) owns repository
-and worktree operations. Copilot execution, continuous scheduling and authorized
-live acceptance remain separate tasks. A task stays in
-progress through its PR review and closes only after accepted integration.
+and worktree operations. The
+[Copilot adapter](../architecture/2026-10-17-copilot-session-execution.md) uses
+`cross-spawn` for native and Windows command-shim execution with typed arguments
+and stdin prompts. Continuous scheduling and authorized live acceptance remain
+separate tasks. A task stays in progress through its PR review and closes only
+after accepted integration.

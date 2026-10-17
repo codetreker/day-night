@@ -98,7 +98,7 @@ SQLite 在程序退出后保留审查进度。`maxConcurrentWorker` 控制不同
 | `src/github.ts` | 通过 `gh` 执行经过认证的 API 读取和分页 |
 | `src/store.ts` | SQLite 表结构、观测结果、审查进度和重试状态 |
 | `src/git.ts` | 克隆校验、fetch、PR worktree 准备与清理 |
-| `src/review.ts` | 提示词、会话选择、子进程执行和完成检查 |
+| `src/copilot.ts` | 提示词、会话选择、子进程执行和完成检查 |
 
 使用普通函数和具体类型。需要在验证中控制外部命令和时间时，将其作为依赖传入。
 所有进程调用均使用参数数组，配置内容和分支名不得插入 shell 代码。使用能识别平台
@@ -117,7 +117,7 @@ SQLite 在程序退出后保留审查进度。`maxConcurrentWorker` 控制不同
   copilot/                    # CLI 配置和保留的会话
   cache/
   tmp/
-  logs/<review-id>/<attempt>/  # stdout 和 stderr
+  logs/<review-id>/<attempt>-<unique>/  # stdout、stderr 和 CLI 诊断
 ```
 
 PR worktree 位于各受监控仓库根目录的 `.worktrees/` 下，布局见下文的生命周期说明。
@@ -314,10 +314,17 @@ primary 的 sparse checkout 和 sparse index 不限制 PR 的完整代码视图�
 在每个 PR 首次审查前生成并保存一个 UUID。直接调用 Copilot：
 
 ```text
-copilot -C WORKTREE --session-id UUID -p PROMPT \
+copilot -C WORKTREE --session-id UUID \
   -s --output-format text --stream on --no-color \
-  --no-ask-user --no-auto-update --allow-all-tools
+  --no-ask-user --no-auto-update --allow-all-tools --log-dir ATTEMPT_LOG_DIR
 ```
+
+提示词通过 stdin 传入并关闭输入。Copilot 将管道输入作为非交互模式处理；不同时提供
+`-p`，避免提示词进入 Windows 命令行并受长度和转义限制。使用 `cross-spawn` 解析
+PATH、PATHEXT 和 Windows 命令包装脚本，调用方传递独立参数并保持 `shell: false`。
+`COPILOT_HOME`、`COPILOT_CACHE_HOME` 及临时目录环境变量指向保留状态目录中的
+对应位置。保留 HOME、GH_CONFIG_DIR、PATH 和已有认证环境；Copilot 可按其认证
+优先级自动使用已登录的 `gh`，daemon 不复制 token 到提示词或日志。
 
 agent 子进程继承准备结果中的原始 Git 对象环境，同时清除继承的 Git 仓库选择器，
 避免其自行执行的 diff/log 命令采用另一仓库或本地的 replacement/graft 视图。
@@ -340,6 +347,8 @@ Critical/Major 问题以 `COMMENT` review 中的行级评论发布；没有这�
 GitHub API 无法原子地断言发布期间 head 一直未变。作者也无法批准自己的 PR。
 这些情况不得导致虚假的完成状态。完成标记是 agent 的声明，不是独立的远程证据，
 也不是跨越 GitHub 和 SQLite 的事务。资料来源：
+[Copilot 非交互调用](https://docs.github.com/en/copilot/how-tos/copilot-cli/automate-copilot-cli/run-cli-programmatically)、
+[GitHub CLI 认证回退](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli#authenticating-with-github-cli)、
 [Copilot 命令行参数](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference)、
 [会话存储](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference)、
 [创建 review](https://docs.github.com/en/rest/pulls/reviews#create-a-review-for-a-pull-request)和
@@ -347,8 +356,11 @@ GitHub API 无法原子地断言发布期间 head 一直未变。作者也无法
 
 ## 完成、重试与退出
 
-分别捕获纯文本 stdout 和 stderr，以流式方式写入每次尝试各自的日志。增量解码 UTF-8，
-统一 CRLF。仅保留容量有上限的末行缓冲区。等待子进程 close 且输出全部读取完毕，
+每次尝试创建带唯一后缀的日志目录，启动意图保存后才拉起进程；启动前取消也不会占用
+下一次尝试的日志路径。分别捕获纯文本 stdout 和 stderr，以流式方式写入各自的日志。
+增量解码 UTF-8，
+统一 CRLF。stdout 末行缓冲区默认最多保存 8192 个 UTF-16 码元，超长末行不能匹配
+完成标记；完整日志通过流写入磁盘，不累计在内存中。等待子进程 close 且输出全部读取完毕，
 要求进程正常退出且退出码为零，并且 stdout 最后一条非空行精确匹配：
 
 ```text
@@ -357,7 +369,7 @@ PR 123 Review Completed
 
 预期 PR 编号来自本轮捕获的审查。拒绝子串匹配、额外格式、stderr 中的标记、标记后的
 非空内容、捕获失败和非零退出。退出状态用于检查进程通信是否正常，不是结构化的问题
-输出协议。
+输出协议。完成检查只比较原始 stdout 的末行，不解释此前输出的 Markdown 结构。
 
 目标未变化且缺少完成标记的审查转入 `retry_wait`；恢复同一会话，要求它检查 GitHub
 上已有的发布结果、确认完成或完成剩余工作。每次尝试使用新的日志。建议策略为最多
@@ -410,7 +422,9 @@ SQLite。使用平台常规的进程终止工具处理受管理的后代进程�
 连接锁冲突、重开后的边界与预算、修订转换、会话和 worktree 登记。GitHub 测试使用
 受控 API 和子进程验证完整分页、失败保留、限流、关闭确认和观测事务回滚。真实 Git
 fixtures 验证克隆、私有 refs、detached head、dirty 内容、所有权、浅克隆、子模块及
-其他 PR 工作区保留。
+其他 PR 工作区保留。Copilot 测试使用受控可执行文件和真实 SQLite，验证会话选择、
+启动意图、stdin 提示词、分流日志、完成标记及异常输出，不调用真实模型或发布 review。
+执行边界见[Copilot 会话执行决策](../../.agents/notes/implemented/architecture/2026-10-17-copilot-session-execution.md)。
 审查模式现阶段在
 配置校验后明确返回协调模块尚未接入的错误，不创建状态、仓库或审查结果。
 macOS 检查挂载临时的大小写敏感和不敏感 APFS
@@ -423,7 +437,7 @@ macOS 检查挂载临时的大小写敏感和不敏感 APFS
 | 轮询 | 初始化覆盖所有分页和 PR 状态；永久边界；扫描失败不得关闭 PR 或将仓库视为空仓库 |
 | 触发条件 | head、目标分支名、ready 状态变化触发；仅 base SHA 变化不触发；Draft 不得启动；旧审查完成后保留待审修订 |
 | Worktree | 所属仓库根目录的 `.worktrees/`、固定 PR 路径、其他 worktree 保留、fork PR 引用、确切的 detached head、脏文件残留、正确的仓库与路径校验、关闭和重新打开时的清理 |
-| agent 输出 | 分块 Unicode 与 CRLF、精确末行、错误 PR 编号、stderr 中的标记、代码围栏内的标记、标记后的内容、捕获失败、非零退出 |
+| agent 输出 | 分块 Unicode 与 CRLF、精确末行、错误 PR 编号、stderr 中的标记、带前后缀或闭合代码围栏的标记、标记后的内容、捕获失败、非零退出 |
 | 会话与重试 | 固定 UUID 后显式恢复、首次启动中断、历史缺失报错、确认既有发布结果、持久化尝试预算 |
 | CLI 生命周期 | 审查期间继续轮询；准备、执行和清理的操作预留；抑制失败修订；`maxConcurrentWorker` 并发上限；Ctrl+C；拒绝第二个实例；异常退出后的失效锁和中断状态报告 |
 | 配置与目录 | 固定的 `~/.daynight/config.yml`、有效及无效 YAML、缺失配置报错、不同启动目录复用状态、相对仓库路径按配置目录解析、按实际文件系统规则检查重复与重叠路径、临时探测目录清理和失败报告；用注入的主目录解析结果隔离测试文件 |
