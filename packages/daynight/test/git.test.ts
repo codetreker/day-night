@@ -1,6 +1,6 @@
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, ftruncateSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitManager } from "../src/git.js";
@@ -18,6 +18,13 @@ const nativeEnvironment = (): NodeJS.ProcessEnv => Object.fromEntries(Object.ent
 const rawGit = (directory: string, args: string[], input?: string): string => execFileSync("git", ["-C", directory, ...args], {
   encoding: "utf8", env: nativeEnvironment(), timeout: 20_000, ...(input === undefined ? {} : { input }), stdio: ["pipe", "pipe", "pipe"],
 }).trim();
+const overwriteExistingFile = (target: string, contents: string): void => {
+  const descriptor = openSync(target, "r+");
+  try {
+    ftruncateSync(descriptor, 0);
+    writeFileSync(descriptor, contents);
+  } finally { closeSync(descriptor); }
+};
 const commit = (bare: string, contents: string, parent?: string, extraTree?: string): string => {
   const blob = rawGit(bare, ["hash-object", "-w", "--stdin"], contents);
   const attributes = rawGit(bare, ["hash-object", "-w", "--stdin"], "* -text\n");
@@ -617,7 +624,7 @@ describe("linked administrative authority and external dependencies", () => {
       const primaryBefore = snapshot(local.root); const siblingBefore = snapshot(sibling);
       const ownedAdmin = rawGit(prepared.path, ["rev-parse", "--absolute-git-dir"]);
       const destination = redirect === "primary" ? local.commonDirectory : rawGit(sibling, ["rev-parse", "--absolute-git-dir"]);
-      writeFileSync(path.join(prepared.path, ".git"), `gitdir: ${destination}\n`);
+      overwriteExistingFile(path.join(prepared.path, ".git"), `gitdir: ${destination.split(path.sep).join("/")}\n`);
       const next = f.nextRevision(first.id, commit(f.upstream, "next PR\n", f.head));
       await expect(f.manager.prepareWorktree(f.store, local, next.id, proof)).rejects.toThrow("own administrative registration");
       expect(snapshot(local.root)).toEqual(primaryBefore); expect(snapshot(sibling)).toEqual(siblingBefore);
@@ -633,7 +640,9 @@ describe("linked administrative authority and external dependencies", () => {
     const prepared = await f.manager.prepareWorktree(f.store, local, first.id, proof);
     if (prepared.kind !== "prepared") throw new Error("Expected preparation.");
     const admin = rawGit(prepared.path, ["rev-parse", "--absolute-git-dir"]);
-    writeFileSync(path.join(admin, "gitdir"), `${path.relative(admin, path.join(prepared.path, ".git"))}\n`);
+    rawGit(local.root, ["worktree", "repair", "--relative-paths", prepared.path]);
+    expect(path.isAbsolute(readFileSync(path.join(admin, "gitdir"), "utf8").trim())).toBe(false);
+    expect(path.isAbsolute(readFileSync(path.join(prepared.path, ".git"), "utf8").trim().slice("gitdir: ".length))).toBe(false);
     const next = f.nextRevision(first.id, commit(f.upstream, "new relative PR\n", f.head));
     expect(await f.manager.prepareWorktree(f.store, local, next.id, proof)).toMatchObject({ kind: "prepared" });
     for (const call of f.calls.filter((call) => call.args.includes("checkout") || call.args.includes("clean"))) {
