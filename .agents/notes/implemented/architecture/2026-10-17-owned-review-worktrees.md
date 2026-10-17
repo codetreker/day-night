@@ -23,6 +23,15 @@ including API ports, reuses the [private credential mechanism](2026-10-17-github
 Existing clones are verified through raw local origin configuration and stable
 GitHub identity; their remotes remain unchanged.
 
+Clone and initial Git inspection use the validated physical path, retaining the
+configured alias for identity checks. Git's native filename protections remain
+enabled. Valid leading/internal spaces are exercised on every platform; POSIX
+trailing-space names are preserved, while protected Windows names must fail
+visibly without removing an existing parent or other user data.
+The inspected [Git for Windows path check](https://github.com/git-for-windows/git/blob/5cf10d74486d1e59b9ae6cedaedb4e26314e1557/compat/mingw.c#L4093-L4112)
+rejects trailing-space/dot components before path conversion while NTFS
+protection is enabled.
+
 Fetch uses an explicit HTTPS URL, empty refmap, atomic private refs, no tags,
 no FETCH_HEAD write, no automatic maintenance, and explicit submodule recursion
 suppression. Shallow clones acquire required history. Immutable review head,

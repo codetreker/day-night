@@ -20,7 +20,8 @@ const rawGit = (directory: string, args: string[], input?: string): string => ex
 }).trim();
 const commit = (bare: string, contents: string, parent?: string, extraTree?: string): string => {
   const blob = rawGit(bare, ["hash-object", "-w", "--stdin"], contents);
-  const tree = rawGit(bare, ["mktree"], `100644 blob ${blob}\tfile.txt\n${extraTree === undefined ? "" : extraTree}`);
+  const attributes = rawGit(bare, ["hash-object", "-w", "--stdin"], "* -text\n");
+  const tree = rawGit(bare, ["mktree"], `100644 blob ${attributes}\t.gitattributes\n100644 blob ${blob}\tfile.txt\n${extraTree === undefined ? "" : extraTree}`);
   return rawGit(bare, ["hash-object", "-t", "commit", "-w", "--stdin"],
     `tree ${tree}\n${parent === undefined ? "" : `parent ${parent}\n`}author Fixture <fixture@example.invalid> 1700000000 +0000\ncommitter Fixture <fixture@example.invalid> 1700000000 +0000\n\n${contents}\n`);
 };
@@ -51,7 +52,9 @@ const fixture = (gitConfiguration: readonly string[] = []) => {
     calls.push({ file, args });
     if (intercept !== undefined) return intercept(file, args, options);
     if (file === "gh") return { stdout: "fixture-secret\n", stderr: "", error: null };
-    return executeCommand(file, [...gitConfiguration, "-c", "protocol.file.allow=always", "-c", `url.${pathToFileURL(upstream).href}.insteadOf=https://${configuration.host}/owner/repo.git`, ...args], options);
+    const result = await executeCommand(file, [...gitConfiguration, "-c", "protocol.file.allow=always", "-c", `url.${pathToFileURL(upstream).href}.insteadOf=https://${configuration.host}/owner/repo.git`, ...args], options);
+    if (result.error !== null && args.includes("clone")) process.stderr.write(`Local Git clone fixture failure: ${result.stderr}\n`);
+    return result;
   };
   const store = openStore(path.join(directory, "state.sqlite"));
   stores.add(store);
@@ -489,14 +492,59 @@ describe("Git configuration and revision-transition regressions", () => {
     for (const variables of observed) expect(variables).toEqual([caFile, caDirectory, globalConfig, "1"]);
   }, 60_000);
 
-  it("preserves valid boundary spaces in native repository directory names", async () => {
+  it("honors committed fixture byte attributes while normal Git autocrlf conversion is enabled", async () => {
+    const f = fixture(["-c", "core.autocrlf=true"]); const local = await f.manager.ensureRepository(f.configuration);
+    expect(readFileSync(path.join(local.root, "file.txt"), "utf8")).toBe("base\n");
+    const prepared = await f.manager.prepareWorktree(f.store, local, f.reserve().id, proof);
+    if (prepared.kind !== "prepared") throw new Error("Expected preparation.");
+    expect(readFileSync(path.join(prepared.path, "file.txt"), "utf8")).toBe("PR\n");
+    expect(rawGit(prepared.path, ["check-attr", "text", "--", "file.txt"])).toBe("file.txt: text: unset");
+  }, 60_000);
+
+  it("passes physical clone and inspection paths to Git and safely removes a failed aliased destination", async () => {
+    const f = fixture(); const physicalParent = path.join(f.directory, "physical"); mkdirSync(physicalParent);
+    const aliasParent = path.join(f.directory, "parent-alias"); symlinkSync(physicalParent, aliasParent, process.platform === "win32" ? "junction" : "dir");
+    const configuration = { ...f.configuration, path: path.join(aliasParent, "checkout") };
+    f.store.registerRepository({ ...f.repository, remote: configuration.remote, localPath: configuration.path });
+    const local = await f.manager.ensureRepository(configuration);
+    const clone = f.calls.find((call) => call.args.includes("clone"));
+    expect(clone?.args.at(-1)).toBe(realpathSync(configuration.path));
+    await f.manager.ensureRepository(configuration);
+    expect(f.calls.filter((call) => call.args.includes("-C")).every((call) => call.args[call.args.indexOf("-C") + 1] === local.root)).toBe(true);
+    const failed = { ...configuration, path: path.join(aliasParent, "failed") };
+    f.setIntercept(async (_file, args) => {
+      expect(args.at(-1)).toBe(realpathSync(failed.path));
+      writeFileSync(path.join(failed.path, "partial"), "partial");
+      return { stdout: "", stderr: "", error: Object.assign(new Error("fixture clone failed"), { code: 128 }) };
+    });
+    await expect(f.manager.ensureRepository(failed)).rejects.toThrow("failed exclusive destination was removed");
+    expect(existsSync(failed.path)).toBe(false); expect(existsSync(aliasParent)).toBe(true); expect(existsSync(local.root)).toBe(true);
+  }, 60_000);
+
+  it("preserves leading boundary spaces and internal spaces on every native platform", async () => {
     const f = fixture();
+    const configuration = { ...f.configuration, path: path.join(f.directory, " checkout boundary", " repo with spaces") };
+    f.store.registerRepository({ ...f.repository, remote: configuration.remote, localPath: configuration.path });
+    const local = await f.manager.ensureRepository(configuration);
+    expect(local.root).toBe(realpathSync(configuration.path));
+    const prepared = await f.manager.prepareWorktree(f.store, local, f.reserve().id, proof);
+    expect(prepared).toMatchObject({ kind: "prepared", path: path.join(local.root, ".worktrees", "pr-101") });
+  }, 60_000);
+
+  it("preserves supported trailing-space paths and rejects protected Windows names without touching existing data", async () => {
+    const f = fixture(["-c", "core.protectNTFS=true"]);
     const directory = path.join(f.directory, " checkout boundary ");
     mkdirSync(directory);
-    // Win32 normalizes trailing dots and spaces; exercise this spelling when the filesystem preserves it.
-    if (path.basename(realpathSync(directory)) !== " checkout boundary ") return;
+    writeFileSync(path.join(directory, "sentinel"), "existing parent contents");
     const configuration = { ...f.configuration, path: path.join(directory, " repo ") };
     f.store.registerRepository({ ...f.repository, remote: configuration.remote, localPath: configuration.path });
+    if (process.platform === "win32" && path.basename(realpathSync(directory)).endsWith(" ")) {
+      await expect(f.manager.ensureRepository(configuration)).rejects.toThrow("Cannot clone repository into");
+      expect(existsSync(configuration.path)).toBe(false);
+      expect(readFileSync(path.join(directory, "sentinel"), "utf8")).toBe("existing parent contents");
+      expect(readdirSync(directory)).toEqual(["sentinel"]);
+      return;
+    }
     const local = await f.manager.ensureRepository(configuration);
     expect(local.root).toBe(realpathSync(configuration.path));
     expect(await f.manager.prepareWorktree(f.store, local, f.reserve().id, proof)).toMatchObject({ kind: "prepared", path: path.join(local.root, ".worktrees", "pr-101") });

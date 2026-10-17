@@ -140,9 +140,9 @@ export const createGitManager = (options: {
   const command = async (root: string, args: readonly string[], signal?: AbortSignal): Promise<string> => (await git(root, args, signal)).replace(/\r?\n$/, "");
   const rootAndCommon = async (root: string, signal?: AbortSignal): Promise<{ root: string; commonDirectory: string }> => {
     const requested = await existingDirectory(root);
-    const top = await command(root, ["rev-parse", "--show-toplevel"], signal);
+    const top = await command(requested.ancestorPath, ["rev-parse", "--show-toplevel"], signal);
     if (!(await sameDirectory(requested.ancestorPath, top))) throw new Error(`Configured repository ${root} is not its exact Git worktree root.`);
-    const common = await command(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"], signal);
+    const common = await command(requested.ancestorPath, ["rev-parse", "--path-format=absolute", "--git-common-dir"], signal);
     return { root: requested.ancestorPath, commonDirectory: (await existingDirectory(common)).ancestorPath };
   };
   const ensureRepository = async (configuration: RepositoryConfiguration, signal?: AbortSignal): Promise<LocalRepository> => {
@@ -155,15 +155,18 @@ export const createGitManager = (options: {
       await mkdir(configuration.path);
       const reserved = await existingDirectory(configuration.path);
       try {
-        await run(["clone", "--origin=origin", "--no-tags", `--template=${(await gitContext()).hooksDirectory}`, "--", `https://${configuration.host}/${configuration.owner}/${configuration.name}.git`, configuration.path], signal, configuration.host);
+        await run(["clone", "--origin=origin", "--no-tags", `--template=${(await gitContext()).hooksDirectory}`, "--", `https://${configuration.host}/${configuration.owner}/${configuration.name}.git`, reserved.ancestorPath], signal, configuration.host);
       } catch (cause) {
         if (cause instanceof GitCommandError && cause.completed) {
           try {
             if (await ordinaryDirectory(configuration.path)) {
               const current = await existingDirectory(configuration.path);
               if (current.ancestorIdentity !== reserved.ancestorIdentity) throw new Error("The reserved clone destination changed identity.");
-              await assertNoNestedLinkedWorktrees(configuration.path);
-              await rm(configuration.path, { recursive: true });
+              if (!(await ordinaryDirectory(reserved.ancestorPath)) || (await existingDirectory(reserved.ancestorPath)).ancestorIdentity !== reserved.ancestorIdentity) {
+                throw new Error("The physical clone destination changed identity.");
+              }
+              await assertNoNestedLinkedWorktrees(reserved.ancestorPath);
+              await rm(reserved.ancestorPath, { recursive: true });
             }
           } catch (cleanupError) {
             throw new AggregateError([cause, cleanupError], `Clone failed and its exclusive destination ${configuration.path} could not be safely removed.`);
