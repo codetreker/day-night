@@ -1,5 +1,6 @@
 import path from "node:path";
-import { lstat, mkdir, mkdtemp, rmdir } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, realpath, rmdir, stat } from "node:fs/promises";
+import type { BigIntStats } from "node:fs";
 
 export type PathApi = Pick<
   typeof path,
@@ -15,6 +16,90 @@ export type RuntimePaths = {
   cacheDirectory: string;
   temporaryDirectory: string;
   logsDirectory: string;
+};
+
+export type PhysicalDirectory = {
+  ancestorPath: string;
+  ancestorIdentity: string;
+  missingComponents: string[];
+};
+
+const directoryIdentity = (entry: Pick<BigIntStats, "dev" | "ino">): string =>
+  `${entry.dev}:${entry.ino}`;
+
+export const resolvePhysicalDirectory = async (
+  target: string,
+  missingDescendantError?: Error,
+): Promise<PhysicalDirectory> => {
+  let resolved: string;
+  try {
+    resolved = await realpath(target);
+  } catch (cause) {
+    if (!(cause instanceof Error) || !("code" in cause) || cause.code !== "ENOENT") {
+      throw new Error(`Cannot resolve filesystem path ${target}.`, { cause });
+    }
+    try {
+      const entry = await lstat(target);
+      if (entry.isSymbolicLink()) {
+        throw new Error(`Cannot resolve symbolic link ${target}.`, { cause });
+      }
+      throw new Error(`Filesystem path changed while resolving ${target}.`, { cause });
+    } catch (inspectionError) {
+      if (!(inspectionError instanceof Error) || !("code" in inspectionError) || inspectionError.code !== "ENOENT") {
+        throw inspectionError;
+      }
+    }
+    const parent = path.dirname(target);
+    if (parent === target) {
+      throw new Error(`Cannot find an existing ancestor of ${target}.`, { cause });
+    }
+    const canonicalParent = await resolvePhysicalDirectory(
+      parent,
+      missingDescendantError === undefined ? cause : missingDescendantError,
+    );
+    return {
+      ...canonicalParent,
+      missingComponents: [...canonicalParent.missingComponents, path.basename(target)],
+    };
+  }
+  let entry;
+  try {
+    entry = await stat(resolved, { bigint: true });
+  } catch (cause) {
+    throw new Error(`Cannot inspect filesystem directory ${target}.`, { cause });
+  }
+  if (!entry.isDirectory()) {
+    throw new Error(`Filesystem path ${target} is not a directory.`, {
+      cause: missingDescendantError,
+    });
+  }
+  return {
+    ancestorPath: resolved,
+    ancestorIdentity: directoryIdentity(entry),
+    missingComponents: [],
+  };
+};
+
+export const ancestorIdentities = async (directory: string): Promise<Set<string>> => {
+  const identities = new Set<string>();
+  let cursor = directory;
+  while (true) {
+    let entry;
+    try {
+      entry = await stat(cursor, { bigint: true });
+    } catch (cause) {
+      throw new Error(`Cannot inspect filesystem ancestor ${cursor}.`, { cause });
+    }
+    if (!entry.isDirectory()) {
+      throw new Error(`Filesystem ancestor ${cursor} is not a directory.`);
+    }
+    identities.add(directoryIdentity(entry));
+    const parent = path.dirname(cursor);
+    if (parent === cursor) {
+      return identities;
+    }
+    cursor = parent;
+  }
 };
 
 export const resolveRuntimePaths = (

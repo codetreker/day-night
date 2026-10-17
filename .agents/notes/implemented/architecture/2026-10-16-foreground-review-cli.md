@@ -17,7 +17,8 @@ TypeScript CLI in `packages/daynight/`. This note records the selected execution
 model. The CLI/configuration foundation and
 [durable state module](2026-10-17-durable-review-state.md) are implemented;
 the [GitHub observation module](2026-10-17-github-observation.md) reads complete
-repository passes. Review coordination and execution are pending. Configuration, entry point, and
+repository passes. The [Git manager](2026-10-17-owned-review-worktrees.md) owns
+clones and disposable PR worktrees. Review coordination and execution are pending. Configuration, entry point, and
 runtime storage follow the [user-home configuration decision](2026-10-16-user-home-review-configuration.md).
 
 Polling, pending work, SQLite updates, worktree management, and direct Copilot

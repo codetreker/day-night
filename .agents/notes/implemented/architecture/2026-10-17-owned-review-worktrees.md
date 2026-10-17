@@ -1,0 +1,116 @@
+# Agent Note: Owned Review Worktrees
+
+Status: implemented
+
+## Problem
+
+Git worktrees share repository administration and refs. A checkout discovered
+through a parent can have the expected common directory while actually operating
+on the user's primary worktree. Refreshing disposable review files must not reset
+shared branches, remove unrelated linked worktrees, or erase uncertain execution.
+
+## Decision
+
+The Git manager maintains ordinary clones and a fixed `.worktrees/pr-<number>/`
+directory beneath each repository root, implementing the
+[repository-local layout](2026-10-16-repository-local-review-worktrees.md).
+The caller owns the PR operation reservation and confirms process exclusion.
+
+Missing repositories use a normal HTTPS clone with explicit origin selection.
+Configured SSH addresses identify the same repository; HTTPS transport uses
+prepared GitHub CLI credentials without requiring an SSH key. Authentication,
+including API ports, reuses the [private credential mechanism](2026-10-17-github-observation.md).
+Existing clones are verified through raw local origin configuration and stable
+GitHub identity; their remotes remain unchanged.
+
+Fetch uses an explicit HTTPS URL, empty refmap, atomic private refs, no tags,
+no FETCH_HEAD write, no automatic maintenance, and explicit submodule recursion
+suppression. Shallow clones acquire required history. Immutable review head,
+base, and merge-base refs retain captured context across later fetches.
+
+Controlled Git commands disable replacement objects and use an owned empty
+regular graft file. Local `refs/replace` and default `info/grafts` can otherwise
+change a tree or parent graph while the captured object ID still matches. User
+metadata stays untouched. The prepared result includes noncredential
+`gitEnvironment` overrides so the later agent runner can use the same raw-object
+view. The cached context keeps its empty hooks/template directory separate from
+the empty graft file and remains valid for the runner's lifetime.
+
+Every Git call disables hooks and fsmonitor through command-scoped settings.
+Clones use an owned empty template. Repository-selector and trace environment
+variables are removed only from children; transport trust settings such as
+GIT_SSL_CAINFO/GIT_SSL_CAPATH and global configuration locations remain inherited.
+Configuration and Git share the same
+physical-directory and remote-identity helpers.
+
+The configured root must physically match Git's exact top-level directory. An
+owned PR leaf must be an ordinary directory at the fixed path, have the expected
+top-level/common-directory identities, and have a registration locked with
+`daynight:<sessionId>`. The persisted session UUID doubles as the ownership
+marker. Container/leaf symlinks, unregistered directories, and mismatched locks
+are rejected.
+
+The database records intent before creation, after collision checks. An intent
+with no leaf or entry can retry; a matching locked entry can be reconciled.
+Unmarked resources remain untouched. Missing owned leaves use targeted locked
+registration removal, never global pruning.
+
+New revisions detach before discarding owned changes. Current and target
+gitlinks are checked so newly introduced submodule paths cannot retain previous
+artifacts. Owned submodule working directories can be emptied while shared
+administration, refs, config, and primary submodule files remain unchanged.
+Ordinary nested clones are disposable inside the leaf. Linked worktrees from
+either the same or another common repository block destructive cleanup.
+Same-target confirmation/retry retains local files and branch context.
+
+Cleanup requires no active review, stopped operations, excluded processes, and
+fresh closure evidence. Reopening withdraws eligibility. Git removal precedes
+database completion. Normal failed cloning can remove only its unchanged,
+exclusively created destination; cancellation or uncertain execution retains
+partial resources for reconciliation.
+
+The inspected Git contracts include
+[private refmaps](https://github.com/git/git/blob/67ad42147a7acc2af6074753ebd03d904476118f/Documentation/fetch-options.adoc#L191-L200),
+[submodule fetch recursion](https://github.com/git/git/blob/67ad42147a7acc2af6074753ebd03d904476118f/Documentation/fetch-options.adoc#L212-L248),
+[clone origin selection](https://github.com/git/git/blob/67ad42147a7acc2af6074753ebd03d904476118f/Documentation/git-clone.adoc#L209-L213),
+and [worktree locks](https://git-scm.com/docs/git-worktree).
+
+## Alternatives
+
+**Use common-directory equality alone.** A missing leaf `.git` makes Git discover
+the primary repository with the same common directory. Exact physical top-level
+checks prevent forced operations from reaching it.
+
+**Trust the head ID while honoring local replacement history.** Replacement refs
+can redirect the checked-out tree without changing the reported head ID. Grafts
+can change merge-base ancestry even when replacement refs are disabled. Explicit
+raw-object interpretation preserves the captured GitHub target without rewriting
+the user's local history view. See [Git replacement objects](https://git-scm.com/docs/git-replace).
+
+**Treat database path registration as complete ownership proof.** Interrupted
+intent can collide with unrelated resources. A session-labelled Git lock joins
+the database intent to the physical registration.
+
+**Reject every nested Git repository.** Generated clones and initialized modules
+can occur during review. Identifying linked worktrees protects their external
+registrations while permitting disposable owned content to be refreshed.
+
+**Deinitialize submodules during refresh.** That modifies shared config. Emptying
+owned working directories preserves shared administration without recursive
+initialization, network fetch, or branch management.
+
+**Use CLI clone or named-origin fetch.** CLI clone can reconstruct URLs and drop
+ports; named-origin fetch can update user remote-tracking refs despite private
+destinations. Explicit transport and empty refmaps preserve these boundaries.
+
+## Consequences
+
+Real Git/SQLite fixtures verify clone identity, detached targets, force pushes,
+shallow history, dirty context, ownership collisions, nested worktrees,
+submodules, missing resources, reopening, and preserved primary files/refs.
+Native CI repeats these checks on Linux, macOS, and Windows.
+
+Private review refs retain captured objects. Sessions and review history remain
+outside disposable worktrees. The manager does not launch agents or establish
+process exclusion; the coordinator supplies that evidence. Ambiguous ownership
+or execution blocks destructive reuse.

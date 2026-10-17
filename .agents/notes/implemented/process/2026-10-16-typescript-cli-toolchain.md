@@ -80,6 +80,8 @@ is an error; validation never accepts an uncertain case comparison silently.
 
 The toolchain establishes the CLI/configuration foundation. The
 [durable state module](../architecture/2026-10-17-durable-review-state.md)
-adds SQLite persistence; repository management, Copilot execution, continuous
-scheduling and authorized live acceptance remain separate tasks. A task stays in
+adds SQLite persistence, and the
+[Git manager](../architecture/2026-10-17-owned-review-worktrees.md) owns repository
+and worktree operations. Copilot execution, continuous scheduling and authorized
+live acceptance remain separate tasks. A task stays in
 progress through its PR review and closes only after accepted integration.

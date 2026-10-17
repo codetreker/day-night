@@ -1,9 +1,8 @@
-import { lstat, readFile, realpath, stat } from "node:fs/promises";
-import type { BigIntStats } from "node:fs";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parseDocument } from "yaml";
-import { missingPathsReferToSameDirectory, pathsEqual, pathsOverlap } from "./paths.js";
-import type { PathApi, RuntimePaths } from "./paths.js";
+import { ancestorIdentities, missingPathsReferToSameDirectory, pathsEqual, pathsOverlap, resolvePhysicalDirectory } from "./paths.js";
+import type { PathApi, PhysicalDirectory, RuntimePaths } from "./paths.js";
 
 export type RepositoryConfiguration = {
   coordinate: string;
@@ -74,7 +73,7 @@ const positiveInteger = (
   return value;
 };
 
-const remoteIdentity = (
+export const remoteIdentity = (
   remote: string,
   field: string,
 ): Pick<RepositoryConfiguration, "coordinate" | "host" | "owner" | "name"> => {
@@ -228,90 +227,6 @@ export const parseConfiguration = (
     retryDelayMs: positiveInteger(mapping, "retryDelayMs"),
     repositories,
   };
-};
-
-type PhysicalDirectory = {
-  ancestorPath: string;
-  ancestorIdentity: string;
-  missingComponents: string[];
-};
-
-const directoryIdentity = (entry: Pick<BigIntStats, "dev" | "ino">): string =>
-  `${entry.dev}:${entry.ino}`;
-
-const resolvePhysicalDirectory = async (
-  target: string,
-  missingDescendantError?: Error,
-): Promise<PhysicalDirectory> => {
-  let resolved: string;
-  try {
-    resolved = await realpath(target);
-  } catch (cause) {
-    if (!(cause instanceof Error) || !("code" in cause) || cause.code !== "ENOENT") {
-      throw new Error(`Cannot resolve filesystem path ${target}.`, { cause });
-    }
-    try {
-      const entry = await lstat(target);
-      if (entry.isSymbolicLink()) {
-        throw new Error(`Cannot resolve symbolic link ${target}.`, { cause });
-      }
-      throw new Error(`Filesystem path changed while resolving ${target}.`, { cause });
-    } catch (inspectionError) {
-      if (!(inspectionError instanceof Error) || !("code" in inspectionError) || inspectionError.code !== "ENOENT") {
-        throw inspectionError;
-      }
-    }
-    const parent = path.dirname(target);
-    if (parent === target) {
-      throw new Error(`Cannot find an existing ancestor of ${target}.`, { cause });
-    }
-    const canonicalParent = await resolvePhysicalDirectory(
-      parent,
-      missingDescendantError === undefined ? cause : missingDescendantError,
-    );
-    return {
-      ...canonicalParent,
-      missingComponents: [...canonicalParent.missingComponents, path.basename(target)],
-    };
-  }
-  let entry;
-  try {
-    entry = await stat(resolved, { bigint: true });
-  } catch (cause) {
-    throw new Error(`Cannot inspect filesystem directory ${target}.`, { cause });
-  }
-  if (!entry.isDirectory()) {
-    throw new Error(`Filesystem path ${target} is not a directory.`, {
-      cause: missingDescendantError,
-    });
-  }
-  return {
-    ancestorPath: resolved,
-    ancestorIdentity: directoryIdentity(entry),
-    missingComponents: [],
-  };
-};
-
-const ancestorIdentities = async (directory: string): Promise<Set<string>> => {
-  const identities = new Set<string>();
-  let cursor = directory;
-  while (true) {
-    let entry;
-    try {
-      entry = await stat(cursor, { bigint: true });
-    } catch (cause) {
-      throw new Error(`Cannot inspect filesystem ancestor ${cursor}.`, { cause });
-    }
-    if (!entry.isDirectory()) {
-      throw new Error(`Filesystem ancestor ${cursor} is not a directory.`);
-    }
-    identities.add(directoryIdentity(entry));
-    const parent = path.dirname(cursor);
-    if (parent === cursor) {
-      return identities;
-    }
-    cursor = parent;
-  }
 };
 
 const validatePhysicalRepositoryPaths = async (

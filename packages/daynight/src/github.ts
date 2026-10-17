@@ -6,7 +6,7 @@ export type CommandOptions = {
   timeoutMs: number;
   maxBufferBytes: number;
   signal?: AbortSignal;
-  environment?: { GH_ENTERPRISE_TOKEN: string };
+  environment?: Record<string, string | undefined>;
 };
 export type CommandResult = { stdout: string; stderr: string; error: Error | null };
 export type CommandExecutor = (file: string, args: readonly string[], options: CommandOptions) => Promise<CommandResult>;
@@ -227,7 +227,7 @@ const nextPage = (response: HttpResponse, current: URL, repository: GitHubReposi
   return next;
 };
 // Credential command errors may contain captured output, so only process metadata is retained.
-const sanitizedProcessError = (error: unknown): Error => {
+export const sanitizedProcessError = (error: unknown): Error => {
   const sanitized = new Error("GitHub CLI did not complete successfully.");
   if (typeof error === "object" && error !== null) {
     const failure = error as Record<string, unknown>;
@@ -236,6 +236,36 @@ const sanitizedProcessError = (error: unknown): Error => {
     if (failure.signal === null || (typeof failure.signal === "string" && /^SIG[A-Z\d]+$/.test(failure.signal))) Object.assign(sanitized, { signal: failure.signal });
   }
   return sanitized;
+};
+
+export type GitHubAuthentication = {
+  hostname: string;
+  environment: Record<string, string | undefined> | undefined;
+  sensitive: boolean;
+};
+
+export const prepareGitHubAuthentication = async (
+  host: string,
+  execute: CommandExecutor,
+  options: Pick<CommandOptions, "timeoutMs" | "maxBufferBytes" | "signal">,
+): Promise<GitHubAuthentication> => {
+  const origin = new URL(`https://${host}`);
+  const sensitive = origin.port !== "";
+  let environment: Record<string, string | undefined> | undefined;
+  if (sensitive && !process.env.GH_ENTERPRISE_TOKEN && !process.env.GITHUB_ENTERPRISE_TOKEN) {
+    let authentication: CommandResult;
+    try {
+      authentication = await execute("gh", ["auth", "token", "--hostname", origin.hostname], options);
+    } catch (cause) {
+      throw new GitHubApiError(`Cannot obtain prepared GitHub authentication for ${origin.hostname}.`, { cause: sanitizedProcessError(cause) });
+    }
+    const token = authentication.stdout.trim();
+    if (authentication.error !== null || options.signal?.aborted || !/^[^\s\0]+$/.test(token)) {
+      throw new GitHubApiError(`Cannot obtain prepared GitHub authentication for ${origin.hostname}.`, { cause: sanitizedProcessError(authentication.error) });
+    }
+    environment = { GH_ENTERPRISE_TOKEN: token };
+  }
+  return { hostname: origin.hostname, environment, sensitive };
 };
 
 export const createGitHubClient = (options: {
@@ -252,17 +282,20 @@ export const createGitHubClient = (options: {
   positiveInteger(maxBufferBytes, "GitHub response size limit");
   if (timeoutMs > 2_147_483_647) throw new Error("GitHub request timeout exceeds the supported timer limit.");
   const cooldowns = new Map<string, { error: GitHubApiError; status: number; retryAt: number }>();
-  const request = async (host: string, endpoint: string, signal?: AbortSignal): Promise<HttpResponse> => {
-    const base = apiBase(host);
-    const cooldown = cooldowns.get(base.origin);
+  const requireAvailableHost = (host: string, origin: string): void => {
+    const cooldown = cooldowns.get(origin);
     if (cooldown !== undefined) {
       if (now() < cooldown.retryAt) {
         throw new GitHubApiError(`GitHub API requests for ${host} are paused until ${cooldown.retryAt}.`, {
           status: cooldown.status, retryAt: cooldown.retryAt, cause: cooldown.error,
         });
       }
-      cooldowns.delete(base.origin);
+      cooldowns.delete(origin);
     }
+  };
+  const request = async (host: string, endpoint: string, signal?: AbortSignal): Promise<HttpResponse> => {
+    const base = apiBase(host);
+    requireAvailableHost(host, base.origin);
     const origin = new URL(`https://${host}`);
     const ported = origin.port !== "";
     let target = endpoint;
@@ -273,26 +306,14 @@ export const createGitHubClient = (options: {
       }
       target = url.href;
     }
-    let credential: string | null = null;
-    if (ported && !process.env.GH_ENTERPRISE_TOKEN && !process.env.GITHUB_ENTERPRISE_TOKEN) {
-      let authentication: CommandResult;
-      try {
-        authentication = await execute("gh", ["auth", "token", "--hostname", origin.hostname],
-          { timeoutMs, maxBufferBytes, ...(signal === undefined ? {} : { signal }) });
-      } catch (cause) {
-        throw new GitHubApiError(`Cannot obtain prepared GitHub authentication for ${origin.hostname}.`, { cause: sanitizedProcessError(cause) });
-      }
-      const token = authentication.stdout.trim();
-      if (authentication.error !== null || signal?.aborted || !/^[^\s\0]+$/.test(token)) {
-        throw new GitHubApiError(`Cannot obtain prepared GitHub authentication for ${origin.hostname}.`, { cause: sanitizedProcessError(authentication.error) });
-      }
-      credential = token;
-    }
+    const authentication = await prepareGitHubAuthentication(host, execute,
+      { timeoutMs, maxBufferBytes, ...(signal === undefined ? {} : { signal }) });
+    requireAvailableHost(host, base.origin);
     let result: CommandResult;
     try {
       result = await execute("gh", ["api", "--include", "--method", "GET", "--hostname", ported ? origin.hostname : host,
         "--header", "Accept: application/vnd.github+json", "--header", "X-GitHub-Api-Version: 2022-11-28", target],
-      { timeoutMs, maxBufferBytes, ...(signal === undefined ? {} : { signal }), ...(credential === null ? {} : { environment: { GH_ENTERPRISE_TOKEN: credential } }) });
+      { timeoutMs, maxBufferBytes, ...(signal === undefined ? {} : { signal }), ...(authentication.environment === undefined ? {} : { environment: authentication.environment }) });
     } catch (cause) {
       throw new GitHubApiError(`GitHub request failed for ${host}/${endpoint}.`, { cause: ported ? sanitizedProcessError(cause) : cause });
     }

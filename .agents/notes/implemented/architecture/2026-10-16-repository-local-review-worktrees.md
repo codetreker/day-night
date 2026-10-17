@@ -10,6 +10,10 @@ review history and sessions remain independent of checkout cleanup.
 
 ## Decision
 
+The [owned-worktree implementation](2026-10-17-owned-review-worktrees.md) applies
+this layout with session-labelled Git locks and physical ownership checks. CLI
+coordination and agent execution remain pending.
+
 The [requirements](../../../../docs/spec/daynight.md) and
 [design](../../../../docs/design/daynight.md) place PR worktrees under each
 configured repository root's `.worktrees/` directory. The proposed stable path is
