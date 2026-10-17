@@ -1,6 +1,6 @@
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { closeSync, existsSync, ftruncateSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, ftruncateSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitManager } from "../src/git.js";
@@ -646,8 +646,14 @@ describe("linked administrative authority and external dependencies", () => {
     const next = f.nextRevision(first.id, commit(f.upstream, "new relative PR\n", f.head));
     expect(await f.manager.prepareWorktree(f.store, local, next.id, proof)).toMatchObject({ kind: "prepared" });
     for (const call of f.calls.filter((call) => call.args.includes("checkout") || call.args.includes("clean"))) {
-      expect(call.args[call.args.indexOf("--git-dir") + 1]).toBe(admin);
-      expect(call.args[call.args.indexOf("--work-tree") + 1]).toBe(prepared.path);
+      for (const [flag, target] of [["--git-dir", admin], ["--work-tree", prepared.path]] as const) {
+        const argument = call.args[call.args.indexOf(flag) + 1]!;
+        expect(path.isAbsolute(argument)).toBe(true);
+        const actual = statSync(argument, { bigint: true });
+        const expected = statSync(target, { bigint: true });
+        expect(actual.isDirectory()).toBe(true);
+        expect([actual.dev, actual.ino]).toEqual([expected.dev, expected.ino]);
+      }
     }
   }, 60_000);
 
