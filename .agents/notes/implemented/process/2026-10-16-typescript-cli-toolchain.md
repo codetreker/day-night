@@ -45,6 +45,32 @@ pinned to the inspected commits:
 [setup-node](https://github.com/actions/setup-node/tree/949feb2413d6458794dcd2491c4babbbce0c15c1),
 and [pnpm setup](https://github.com/pnpm/action-setup/tree/ea17c68df8912ef543352723c149a84f56e3d413).
 
+The Linux verification job checks package version increases before the ordinary
+checks. Release inputs are production source, package manifests, TypeScript build
+configuration, the workspace definition, dependency lock and package-manager
+configuration. The [README](../../../../README.md#package-versions) owns the exact
+scope and local command. Tests, documentation and validation scripts alone do
+not change the shipped application. Conservative manifest and lockfile matching
+keeps dependency and build changes visible without reconstructing a production
+dependency graph.
+
+PR change detection compares merge-base to the explicit event head, while its
+version comparison uses the event's target revision. Target-only changes do not
+become PR changes, and a version already present on the target cannot satisfy a
+new code revision. Main pushes compare the complete before/after range. Full
+checkout history and explicit commit reads avoid synthetic merge versions,
+shallow-history guesses and uncommitted state. The
+[Git diff documentation](https://git-scm.com/docs/git-diff) defines the merge-base
+comparison; the [GitHub event documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request)
+distinguishes the synthetic merge SHA from the PR head.
+
+The directly declared `semver` development dependency validates and orders
+versions, including prereleases. Build metadata alone does not increase version
+precedence. Invalid manifests or missing commits fail instead of bypassing the
+check. An initial main push validates its first version because no predecessor
+exists. The existing required matrix gate includes the Linux result, so version
+check failures block integration through the same required check.
+
 ## Alternatives
 
 **Compile a separate test tree for the built-in Node test runner.** This avoids
@@ -69,7 +95,16 @@ or platform commands.
 Node's [filesystem guidance](https://nodejs.org/learn/manipulating-files/working-with-different-filesystems)
 also recommends probing behavior rather than assuming it from the platform.
 
+**Commit version changes automatically in CI.** This mutates the contributor's
+branch, requires write credentials and chooses release intent without the
+maintainer. A read-only failure keeps the version choice in the reviewed change.
+
 ## Consequences
+
+Every release-affecting PR includes its version decision. Documentation and
+test maintenance stay independent of release numbering. The gate verifies the
+revisions supplied by each CI event; it does not publish packages or schedule
+release tags. Native-platform checks still own application validation.
 
 All implementation tasks share concrete build and validation commands. Tests
 can inject home resolution and command boundaries without modifying an actual

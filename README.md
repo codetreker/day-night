@@ -37,7 +37,11 @@ SQLite, creates no global installation and requires no live review credentials.
 
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
 Windows runners. The final `checks` job succeeds only when all platform jobs
-succeed. macOS tests mount temporary case-sensitive and case-insensitive APFS
+succeed. The Linux job also enforces package version increases before ordinary
+validation. A PR compares its complete source changes with its merge base and
+its package version with the event's target-branch revision. Main pushes compare
+the full event before/after range. The checkout includes the required history.
+macOS tests mount temporary case-sensitive and case-insensitive APFS
 images to check path identity against both filesystem behaviors. No live GitHub
 or Copilot credentials are required by these checks.
 SQLite tests use real disk databases, including reopen, transaction rollback,
@@ -54,6 +58,25 @@ receipts are uploaded by each native CI job; the
 receipts from live-service evidence. Controlled Copilot executables exercise retained sessions, durable
 launch intent, stdin prompts and streamed completion/failure handling. These
 checks require no live model invocation or GitHub publication.
+
+## Package versions
+
+Changes to `packages/daynight/src/`, either package manifest, `pnpm-lock.yaml`,
+`pnpm-workspace.yaml`, `.npmrc`, or either application TypeScript configuration
+require a strictly greater SemVer in `packages/daynight/package.json`. Source
+additions, deletions and moves all count. Unchanged versions, downgrades and
+build-metadata-only changes fail. Tests, fixtures, documentation, CI workflows
+and validation scripts alone do not require a version increase. An initial main
+push with no previous commit validates the starting version without comparing
+against a nonexistent predecessor.
+
+Update the version in the same PR as the code. To check committed revisions
+locally, run `pnpm version:check pull_request <base-sha> <head-sha>` or
+`pnpm version:check push <before-sha> <after-sha>`. The command reads versions
+from those commits; uncommitted files do not affect the result. Missing history,
+unreadable manifests and invalid versions fail visibly. See the
+[toolchain decision](.agents/notes/implemented/process/2026-10-16-typescript-cli-toolchain.md)
+for the comparison and CI ownership rules.
 
 ## Configuration and startup
 
