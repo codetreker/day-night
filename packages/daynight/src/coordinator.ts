@@ -41,7 +41,9 @@ export type CoordinatorOptions = {
 
 type RepositoryWork = { configuration: RepositoryConfiguration; local: LocalRepository | null; polling: boolean; nextPollAt: number; blocked: boolean };
 type Reservation = { kind: "review" | "cleanup"; controller: AbortController; reviewId?: string };
+type CheckAdmission = { target: string; checking: boolean; ready: boolean; nextCheckAt: number; reported: boolean };
 const key = (identity: PullRequestIdentity): string => JSON.stringify([identity.host, identity.githubId, identity.number]);
+const target = (pr: PullRequestState): string => JSON.stringify([pr.desiredRevision, pr.headSha, pr.baseRef]);
 const repositoryKey = (identity: { host: string; githubId: string }): string => JSON.stringify([identity.host, identity.githubId]);
 const message = (error: unknown): string => error instanceof Error ? error.message : String(error);
 const isCurrent = (review: ReviewState, pr: PullRequestState): boolean => pr.state === "open" && !pr.draft && !pr.cleanupPending &&
@@ -67,6 +69,7 @@ export const runCoordinator = async (options: CoordinatorOptions): Promise<{ saf
   const blocked = new Set<string>();
   const cleanupRetryAt = new Map<string, number>();
   const waiting = new Map<string, ReviewCandidate>();
+  const checkAdmissions = new Map<string, CheckAdmission>();
   const pending = new Set<Promise<void>>();
   let workers = 0;
   let safeToReleaseLock = true;
@@ -94,6 +97,28 @@ export const runCoordinator = async (options: CoordinatorOptions): Promise<{ saf
       log({ level: "error", phase: "coordinator", message: "An operation failed while recording its final state; retained state requires inspection.", error });
     }).finally(() => { release(); pending.delete(task); notify(); });
     pending.add(task);
+  };
+  const checksRetryAt = (error?: unknown): number => Math.max(now() + configuration.pollIntervalMs,
+    error instanceof GitHubApiError && error.retryAt !== null ? error.retryAt : 0);
+  const checkCandidate = async (repository: RepositoryWork, pr: PullRequestState, admission: CheckAdmission): Promise<void> => {
+    const prKey = key(pr);
+    try {
+      const checks = await client.getPullRequestChecks(repository.local!.repository, pr.number, signal);
+      const candidate = waiting.get(prKey);
+      if (signal.aborted || checkAdmissions.get(prKey) !== admission || candidate === undefined || target(candidate.pullRequest) !== admission.target) return;
+      const ready = checks.ready && checks.headSha === pr.headSha && checks.baseRef === pr.baseRef;
+      if (!admission.reported || admission.ready !== ready) log({ level: "info", phase: "ci", repository: repository.configuration.coordinate,
+        number: pr.number, revision: pr.desiredRevision, message: ready ? "All CI checks passed for the waiting PR target." : "The PR is waiting for all CI checks to finish and pass." });
+      admission.ready = ready;
+      admission.reported = true;
+      admission.nextCheckAt = checksRetryAt();
+    } catch (error) {
+      if (signal.aborted || checkAdmissions.get(prKey) !== admission) return;
+      admission.ready = false;
+      admission.nextCheckAt = checksRetryAt(error);
+      log({ level: "error", phase: "ci", repository: repository.configuration.coordinate, number: pr.number, revision: pr.desiredRevision,
+        message: "CI checks could not be read; review admission remains closed.", error, retryAt: admission.nextCheckAt });
+    }
   };
   const cancelIneligible = (): void => {
     for (const [prKey, reservation] of reservations) {
@@ -206,6 +231,29 @@ export const runCoordinator = async (options: CoordinatorOptions): Promise<{ saf
         report(review, "superseded", "The captured target is no longer ready immediately before agent launch.");
         return;
       }
+      let checks: Awaited<ReturnType<GitHubClient["getPullRequestChecks"]>>;
+      try { checks = await client.getPullRequestChecks(local.repository, review.number, reservation.controller.signal); }
+      catch (error) {
+        reservation.controller.signal.throwIfAborted();
+        const time = now();
+        const deferred = store.deferPreparation(review.id, stopped, { error: message(error), retryAt: checksRetryAt(error) }, time);
+        report(deferred, "ci", "CI checks could not be revalidated before agent launch; no agent attempt was consumed.", error,
+          deferred.retryAt === null ? undefined : deferred.retryAt);
+        return;
+      }
+      reservation.controller.signal.throwIfAborted();
+      if (!isCurrent(store.getReview(review.id)!, store.getPullRequest(review)!)) {
+        store.supersedeReview(review.id, stopped, now());
+        report(review, "superseded", "The PR target changed while its CI checks were being revalidated.");
+        return;
+      }
+      if (!checks.ready || checks.headSha !== review.headSha || checks.baseRef !== review.baseRef) {
+        const time = now();
+        const deferred = store.deferPreparation(review.id, stopped, { error: "The captured PR target no longer has passing CI checks.", retryAt: checksRetryAt() }, time);
+        report(deferred, "ci", "The PR is waiting for passing CI checks before agent launch; no agent attempt was consumed.", undefined,
+          deferred.retryAt === null ? undefined : deferred.retryAt);
+        return;
+      }
       const previous = store.listReviews(review).filter((item) => item.id !== review.id && item.status !== "completed").at(-1);
       const input: CopilotRunOptions = { signal: reservation.controller.signal, onProcess: processes.onProcess, stopProcess: processes.stop,
         ...(previous === undefined ? {} : { previousReview: previous }) };
@@ -269,12 +317,28 @@ export const runCoordinator = async (options: CoordinatorOptions): Promise<{ saf
         // Updating a waiting target keeps its queue position; successors rejoin after admission.
         waiting.set(prKey, candidate);
       }
-      for (const prKey of waiting.keys()) if (!eligible.has(prKey)) waiting.delete(prKey);
+      for (const prKey of waiting.keys()) if (!eligible.has(prKey)) {
+        waiting.delete(prKey);
+        checkAdmissions.delete(prKey);
+      }
       for (const [prKey, candidate] of waiting) {
         if (signal.aborted || workers >= configuration.maxConcurrentWorker) break;
         const pr = candidate.pullRequest;
         const repository = localRepositories.get(repositoryKey(pr))!;
+        let admission = checkAdmissions.get(prKey);
+        if (admission === undefined || admission.target !== target(pr)) {
+          admission = { target: target(pr), checking: false, ready: false, nextCheckAt: 0, reported: false };
+          checkAdmissions.set(prKey, admission);
+        }
+        if (!admission.checking && admission.nextCheckAt <= time) {
+          const checking = admission;
+          checking.checking = true;
+          checking.ready = false;
+          track(() => checkCandidate(repository, pr, checking), () => { checking.checking = false; });
+        }
+        if (admission.checking || !admission.ready) continue;
         waiting.delete(prKey);
+        checkAdmissions.delete(prKey);
         const review = store.reserveReview(pr, { reviewId: randomUUID(), sessionId: randomUUID(), maxAttempts: configuration.maxAttempts }, time);
         if (review === null) continue;
         const reservation: Reservation = { kind: "review", controller: new AbortController(), reviewId: review.id };
@@ -286,6 +350,9 @@ export const runCoordinator = async (options: CoordinatorOptions): Promise<{ saf
       const deadlines = repositories.filter((repository) => !repository.polling && !repository.blocked).map((repository) => repository.nextPollAt);
       if (workers < configuration.maxConcurrentWorker) for (const review of store.listActiveReviews()) {
         if (review.status === "retry_wait" && review.retryAt !== null && review.retryAt > now() && !blocked.has(key(review))) deadlines.push(review.retryAt);
+      }
+      if (workers < configuration.maxConcurrentWorker) for (const admission of checkAdmissions.values()) {
+        if (!admission.checking) deadlines.push(admission.nextCheckAt);
       }
       for (const [prKey, deadline] of cleanupRetryAt) if (!blocked.has(prKey) && deadline > now()) deadlines.push(deadline);
       const delay = deadlines.length === 0 ? 2_147_483_647 : Math.min(2_147_483_647, Math.max(0, Math.min(...deadlines) - now()));

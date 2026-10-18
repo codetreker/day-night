@@ -18,6 +18,28 @@ const link = (state = "open", page = 2, prefix = "repositories/42", host = "http
 const pr = (number: number, changes: Record<string, unknown> = {}): Record<string, unknown> => ({
   number, state: "open", draft: false, merged_at: null, head: { sha: `head-${number}` }, base: { ref: "main", sha: "base-a" }, ...changes,
 });
+const suites = (nodes: unknown[] = [], cursor: string | null = null, totalCount = nodes.length): Record<string, unknown> => ({
+  totalCount, nodes, pageInfo: { hasNextPage: cursor !== null, endCursor: cursor },
+});
+let suiteId = 0;
+const suite = (changes: Record<string, unknown> = {}): Record<string, unknown> => ({
+  id: `suite-${++suiteId}`, status: "COMPLETED", conclusion: "SUCCESS",
+  workflowRun: { event: "pull_request", runNumber: 1, runAttempt: 1, workflow: { id: "workflow-1" } }, ...changes,
+});
+const checks = (changes: Record<string, unknown> = {}, headRollup: unknown = { state: "SUCCESS" }): Record<string, unknown> => ({
+  data: { repository: { pullRequest: {
+    state: "OPEN", isDraft: false, headRefOid: "head-11", baseRefName: "main",
+    commits: { nodes: [{ commit: { oid: "head-11", statusCheckRollup: headRollup, checkSuites: suites() } }] },
+    potentialMergeCommit: null, ...changes,
+  } } },
+});
+const checksWithSuites = (head: unknown, merge: unknown = null, changes: Record<string, unknown> = {}): Record<string, unknown> => checks({
+  commits: { nodes: [{ commit: { oid: "head-11", statusCheckRollup: { state: "SUCCESS" }, checkSuites: head } }] },
+  potentialMergeCommit: merge === null ? null : { oid: "merge-11", statusCheckRollup: { state: "SUCCESS" }, checkSuites: merge }, ...changes,
+});
+const workflowRun = (runNumber: number, runAttempt = 1, id = "workflow-1", event = "pull_request"): Record<string, unknown> => ({
+  event, runNumber, runAttempt, workflow: { id },
+});
 const rawResponse = (body: string, headers: Record<string, string> = {}, status = 200, error: Error | null = null): CommandResult => ({
   stdout: `HTTP/2.0 ${status} Status\n${Object.entries(headers).map(([name, value]) => `${name}: ${value}\r\n`).join("")}\r\n${body}`,
   stderr: "", error,
@@ -157,6 +179,262 @@ describe("read-only GitHub CLI transport", () => {
 
   it.each([{ timeoutMs: 0 }, { timeoutMs: 2_147_483_648 }, { maxBufferBytes: 0 }])("rejects invalid transport bounds %s", (options) => {
     expect(() => createGitHubClient(options)).toThrow();
+  });
+});
+
+describe("current PR CI readiness", () => {
+  it("reads HEAD and potential merge aggregates in one bounded read-only GraphQL POST", async () => {
+    const { client, calls } = queue(response(checks({ potentialMergeCommit: { oid: "merge-11", statusCheckRollup: { state: "SUCCESS" }, checkSuites: suites() } })));
+    const signal = new AbortController().signal;
+    expect(await client.getPullRequestChecks(repository, 11, signal)).toEqual({ headSha: "head-11", baseRef: "main", ready: true });
+    expect(calls).toHaveLength(1);
+    const call = calls[0]!;
+    expect(call.file).toBe("gh");
+    expect(call.args).toEqual([
+      "api", "--include", "--method", "POST", "--hostname", "github.com",
+      "--header", "Accept: application/vnd.github+json", "--header", "X-GitHub-Api-Version: 2022-11-28",
+      "--raw-field", expect.stringContaining("query=query PullRequestChecks($owner: String!, $name: String!, $number: Int!, $headCursor: String, $mergeCursor: String)"),
+      "--raw-field", "owner=owner", "--raw-field", "name=repo", "--field", "number=11", "--field", "headCursor=null", "--field", "mergeCursor=null", "graphql",
+    ]);
+    expect(call.args.join("\n")).toContain("commits(last: 1) { nodes { commit {");
+    expect(call.args.join("\n")).toContain("checkSuites(first: 100, after: $headCursor)");
+    expect(call.args.join("\n")).toContain("checkSuites(first: 100, after: $mergeCursor)");
+    expect(call.args.join("\n")).not.toContain("mutation");
+    expect(call.options).toEqual({ timeoutMs: 30_000, maxBufferBytes: 16 * 1024 * 1024, signal });
+  });
+
+  it("allows successful, skipped and neutral checks represented by GitHub's SUCCESS aggregate", async () => {
+    const { client } = queue(response(checks()));
+    expect(await client.getPullRequestChecks(repository, 11)).toMatchObject({ ready: true });
+  });
+
+  it.each(["ERROR", "EXPECTED", "FAILURE", "PENDING"])("waits while the HEAD aggregate is %s", async (state) => {
+    const { client } = queue(response(checks({}, { state })));
+    expect(await client.getPullRequestChecks(repository, 11)).toMatchObject({ ready: false });
+  });
+
+  it.each(["ERROR", "EXPECTED", "FAILURE", "PENDING"])("waits while test-merge CI is %s even after HEAD passes", async (state) => {
+    const { client } = queue(response(checks({ potentialMergeCommit: { oid: "merge-11", statusCheckRollup: { state }, checkSuites: suites() } })));
+    expect(await client.getPullRequestChecks(repository, 11)).toMatchObject({ ready: false });
+  });
+
+  it("allows a PR with no checks on either current commit", async () => {
+    const { client } = queue(response(checks({ potentialMergeCommit: { oid: "merge-11", statusCheckRollup: null, checkSuites: suites() } }, null)));
+    expect(await client.getPullRequestChecks(repository, 11)).toMatchObject({ ready: true });
+  });
+
+  it.each(["ACTION_REQUIRED", "TIMED_OUT", "CANCELLED", "FAILURE", "STARTUP_FAILURE", "STALE", null])("blocks a registered jobless suite concluding %s despite a green aggregate", async (conclusion) => {
+    const { client } = queue(response(checksWithSuites(suites([suite({ conclusion })]))));
+    expect(await client.getPullRequestChecks(repository, 11)).toMatchObject({ ready: false });
+  });
+
+  it.each(["REQUESTED", "QUEUED", "IN_PROGRESS", "WAITING", "PENDING"])("blocks a registered jobless suite still %s", async (status) => {
+    const { client } = queue(response(checksWithSuites(suites([suite({ status, conclusion: null })]))));
+    expect(await client.getPullRequestChecks(repository, 11)).toMatchObject({ ready: false });
+  });
+
+  it.each(["SUCCESS", "SKIPPED", "NEUTRAL"])("accepts a completed suite concluding %s", async (conclusion) => {
+    const { client } = queue(response(checksWithSuites(suites([suite({ conclusion })]))));
+    expect(await client.getPullRequestChecks(repository, 11)).toMatchObject({ ready: true });
+  });
+
+  it("ignores superseded failed workflow executions and rerun attempts regardless of page order", async () => {
+    const oldRun = suite({ conclusion: "FAILURE", workflowRun: workflowRun(1) });
+    const oldAttempt = suite({ conclusion: "ACTION_REQUIRED", workflowRun: workflowRun(2, 1) });
+    const current = suite({ workflowRun: workflowRun(2, 2) });
+    const { client } = queue(response(checksWithSuites(suites([oldRun, current], "head-page-2", 3))), response(checksWithSuites(suites([oldAttempt], null, 3))));
+    expect(await client.getPullRequestChecks(repository, 11)).toMatchObject({ ready: true });
+  });
+
+  it.each([
+    workflowRun(2, 1, "other-workflow"), workflowRun(2, 1, "workflow-1", "push"), workflowRun(3),
+  ])("keeps a different or newer failed workflow execution blocking: %s", async (run) => {
+    const { client } = queue(response(checksWithSuites(suites([suite({ workflowRun: workflowRun(2) }), suite({ conclusion: "ACTION_REQUIRED", workflowRun: run })]))));
+    expect(await client.getPullRequestChecks(repository, 11)).toMatchObject({ ready: false });
+  });
+
+  it("does not discard failures without a workflow replacement identity", async () => {
+    const { client } = queue(response(checksWithSuites(suites([
+      suite({ conclusion: "FAILURE", workflowRun: null }), suite({ workflowRun: null }),
+    ]))));
+    expect(await client.getPullRequestChecks(repository, 11)).toMatchObject({ ready: false });
+  });
+
+  it("keeps contradictory summaries for the same latest workflow attempt blocking", async () => {
+    const { client } = queue(response(checksWithSuites(suites([suite(), suite({ conclusion: "FAILURE" })]))));
+    expect(await client.getPullRequestChecks(repository, 11)).toMatchObject({ ready: false });
+  });
+
+  it("reads independent HEAD and merge-suite pages before allowing review", async () => {
+    const headFirst = suite(); const headLast = suite({ workflowRun: workflowRun(2) });
+    const mergeFirst = suite(); const mergeMiddle = suite({ conclusion: "ACTION_REQUIRED", workflowRun: workflowRun(2) });
+    const mergeLast = suite({ workflowRun: workflowRun(3) });
+    const { client, calls } = queue(
+      response(checksWithSuites(suites([headFirst], "head-next", 2), suites([mergeFirst], "merge-next", 3))),
+      response(checksWithSuites(suites([headLast], null, 2), suites([mergeMiddle], "merge-last", 3))),
+      response(checksWithSuites(suites([headLast], null, 2), suites([mergeLast], null, 3))),
+    );
+    expect(await client.getPullRequestChecks(repository, 11)).toMatchObject({ ready: true });
+    expect(calls).toHaveLength(3);
+    expect(calls[1]!.args).toContain("headCursor=head-next");
+    expect(calls[1]!.args).toContain("mergeCursor=merge-next");
+    expect(calls[2]!.args).toContain("mergeCursor=merge-last");
+  });
+
+  it("blocks when a later merge-suite page contains the latest failed workflow", async () => {
+    const { client } = queue(
+      response(checksWithSuites(suites(), suites([suite()], "next", 2))),
+      response(checksWithSuites(suites(), suites([suite({ conclusion: "FAILURE", workflowRun: workflowRun(2) })], null, 2))),
+    );
+    expect(await client.getPullRequestChecks(repository, 11)).toMatchObject({ ready: false });
+  });
+
+  it.each(["head", "merge"])("keeps refreshed blockers from the completed %s side while paging the other side", async (completedSide) => {
+    const initialSuite = suite();
+    const passed = suites([initialSuite]);
+    const waiting = suites([suite({ id: initialSuite.id, status: "WAITING", conclusion: null, workflowRun: workflowRun(1, 2) })]);
+    const paging = suites([suite()], "next", 2);
+    const last = suites([suite()], null, 2);
+    const initial = completedSide === "head" ? checksWithSuites(passed, paging) : checksWithSuites(paging, passed);
+    const refreshed = completedSide === "head" ? checksWithSuites(waiting, last) : checksWithSuites(last, waiting);
+    const { client, calls } = queue(response(initial), response(refreshed));
+    expect(await client.getPullRequestChecks(repository, 11)).toMatchObject({ ready: false });
+    expect(calls).toHaveLength(2);
+  });
+
+  it.each(["head", "merge"])("rejects growth beyond the completed %s collection while the other side finishes", async (completedSide) => {
+    const initialSuite = suite();
+    const passed = suites([initialSuite]);
+    const grown = suites([initialSuite], "unread-page", 2);
+    const paging = suites([suite()], "next", 2);
+    const last = suites([suite()], null, 2);
+    const initial = completedSide === "head" ? checksWithSuites(passed, paging) : checksWithSuites(paging, passed);
+    const refreshed = completedSide === "head" ? checksWithSuites(grown, last) : checksWithSuites(last, grown);
+    const { client, calls } = queue(response(initial), response(refreshed));
+    await expect(client.getPullRequestChecks(repository, 11)).rejects.toThrow("count changed");
+    expect(calls).toHaveLength(2);
+  });
+
+  it("retains a completed multi-page collection when a stable earlier page is refreshed", async () => {
+    const headFirst = Array.from({ length: 100 }, () => suite());
+    const headLast = suite();
+    const { client, calls } = queue(
+      response(checksWithSuites(suites(headFirst, "head-next", 101), suites([suite()], "merge-next", 3))),
+      response(checksWithSuites(suites([headLast], null, 101), suites([suite()], "merge-last", 3))),
+      response(checksWithSuites(suites(headFirst, "head-next", 101), suites([suite()], null, 3))),
+    );
+    expect(await client.getPullRequestChecks(repository, 11)).toMatchObject({ ready: true });
+    expect(calls).toHaveLength(3);
+  });
+
+  it("rejects observable membership replacement in an already completed collection", async () => {
+    const { client } = queue(
+      response(checksWithSuites(suites([suite()]), suites([suite()], "merge-next", 2))),
+      response(checksWithSuites(suites([suite()]), suites([suite()], null, 2))),
+    );
+    await expect(client.getPullRequestChecks(repository, 11)).rejects.toThrow("membership changed");
+  });
+
+  it.each([undefined, -1, 0.5, "1", Number.MAX_SAFE_INTEGER + 1])("rejects invalid collection totalCount %s", async (totalCount) => {
+    const { client } = queue(response(checksWithSuites({ ...suites(), totalCount })));
+    await expect(client.getPullRequestChecks(repository, 11)).rejects.toThrow("check-suite count");
+  });
+
+  it("requires unique collected IDs to cover the advertised totalCount", async () => {
+    const first = suite();
+    const { client } = queue(
+      response(checksWithSuites(suites([first], "next", 2))),
+      response(checksWithSuites(suites([first], null, 2))),
+    );
+    await expect(client.getPullRequestChecks(repository, 11)).rejects.toThrow("repeated a check-suite ID");
+    const incomplete = queue(response(checksWithSuites(suites([suite()], null, 2))));
+    await expect(incomplete.client.getPullRequestChecks(repository, 11)).rejects.toThrow("incomplete check-suite collection");
+  });
+
+  it.each([
+    response({}, {}, 503, exitError(1)), response({ errors: [{ type: "INTERNAL", message: "Partial" }] }),
+    response(checksWithSuites(suites(), null, { baseRefName: "release" })),
+    response(checksWithSuites(suites(), suites())),
+    response(checksWithSuites(suites([suite()], "next", 2))),
+  ])("never approves after a failed, changed or cycling later CI page %s", async (later) => {
+    const { client } = queue(response(checksWithSuites(suites([suite()], "next", 2))), later);
+    await expect(client.getPullRequestChecks(repository, 11)).rejects.toThrow();
+  });
+
+  it("rejects a new matching head snapshot observed during check-suite pagination", async () => {
+    const next = checksWithSuites(suites(), null, {
+      headRefOid: "new-head", commits: { nodes: [{ commit: { oid: "new-head", statusCheckRollup: { state: "SUCCESS" }, checkSuites: suites() } }] },
+    });
+    const { client } = queue(response(checksWithSuites(suites([suite()], "next", 2))), response(next));
+    await expect(client.getPullRequestChecks(repository, 11)).rejects.toThrow("target changed");
+  });
+
+  it.each([
+    null, {}, { totalCount: 1, nodes: [], pageInfo: { hasNextPage: true, endCursor: "next" } },
+    { totalCount: 1, nodes: [suite()], pageInfo: { hasNextPage: true, endCursor: null } },
+    { totalCount: 1, nodes: [suite()], pageInfo: { hasNextPage: false } },
+    suites([suite({ status: "UNKNOWN" })]), suites([suite({ conclusion: "UNKNOWN" })]),
+    suites([suite({ id: undefined })]), suites([suite({ workflowRun: undefined })]),
+    suites([suite({ workflowRun: workflowRun(0) })]), suites([suite({ workflowRun: workflowRun(1, 0) })]),
+  ])("fails closed for an invalid registered-suite response %s", async (page) => {
+    const { client } = queue(response(checksWithSuites(page)));
+    await expect(client.getPullRequestChecks(repository, 11)).rejects.toThrow();
+  });
+
+  it.each([{ state: "CLOSED" }, { state: "MERGED" }, { isDraft: true }])("excludes a PR that is no longer ready for review: %s", async (changes) => {
+    const { client } = queue(response(checks(changes)));
+    expect(await client.getPullRequestChecks(repository, 11)).toMatchObject({ ready: false });
+  });
+
+  it.each([
+    {}, { data: null }, { data: { repository: null } }, { data: { repository: { pullRequest: null } } },
+    checks({ state: "invalid" }), checks({ isDraft: "false" }), checks({ headRefOid: "" }), checks({ baseRefName: null }),
+    checks({ commits: { nodes: [] } }), checks({ commits: { nodes: [null] } }),
+    checks({ commits: { nodes: [{ commit: { oid: "other-head", statusCheckRollup: null } }] } }),
+    checks({ commits: { nodes: [{ commit: { oid: "head-11" } }] } }),
+    checks({ potentialMergeCommit: undefined }), checks({ potentialMergeCommit: { statusCheckRollup: null } }),
+    checks({ potentialMergeCommit: { oid: "merge-11", statusCheckRollup: {} } }),
+    checks({}, { state: "SKIPPED" }), checks({}, { state: "CANCELLED" }), checks({}, { state: undefined }),
+    { ...checks(), errors: null }, { ...checks(), errors: [{ type: "FORBIDDEN", message: "Denied" }] },
+    { ...checks(), errors: [null] },
+  ])("fails closed for malformed or rejected CI observations %s", async (body) => {
+    const { client } = queue(response(body));
+    await expect(client.getPullRequestChecks(repository, 11)).rejects.toThrow();
+  });
+
+  it("retains strict output capture for a GraphQL response", async () => {
+    const { client } = queue(response(checks(), {}, 200, exitError("ERR_CHILD_PROCESS_STDIO_MAXBUFFER")));
+    await expect(client.getPullRequestChecks(repository, 11)).rejects.toMatchObject({ status: null, cause: { code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" } });
+  });
+
+  it.each([undefined, 0, -1, 1.5])("rejects an invalid PR number %s before a request", async (number) => {
+    const { client, calls } = queue();
+    await expect(client.getPullRequestChecks(repository, number as number)).rejects.toThrow("PR number");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("shares HTTP-200 GraphQL RATE_LIMITED cooldowns with REST requests", async () => {
+    const { client, calls } = queue(response({ data: null, errors: [{ type: "RATE_LIMITED", message: "API rate limit exceeded" }] }, { "Retry-After": "100", "X-RateLimit-Reset": "900" }, 200, exitError(1)));
+    await expect(client.getPullRequestChecks(repository, 11)).rejects.toMatchObject({ status: 200, retryAt: 900_000, cause: { code: 1 } });
+    await expect(client.resolveRepository(configuration)).rejects.toMatchObject({ status: 200, retryAt: 900_000 });
+    await expect(client.getPullRequestChecks(repository, 12)).rejects.toMatchObject({ retryAt: 900_000 });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("uses the normal minimum cooldown when GraphQL supplies no rate-limit deadline", async () => {
+    const { client } = queue(response({ errors: [{ type: "RATE_LIMITED", message: "Limited" }] }));
+    await expect(client.getPullRequestChecks(repository, 11)).rejects.toMatchObject({ status: 200, retryAt: 160_000 });
+  });
+
+  it("retains GraphQL process failure when rate-limit metadata is malformed", async () => {
+    const cause = exitError(1);
+    const { client } = queue(response({ errors: [{ type: "RATE_LIMITED", message: "Limited" }] }, { "X-RateLimit-Reset": "invalid" }, 200, cause));
+    await expect(client.getPullRequestChecks(repository, 11)).rejects.toMatchObject({ status: 200, cause: { errors: [cause, expect.any(Error)] } });
+  });
+
+  it("does not infer readiness from partial data accompanying GraphQL errors", async () => {
+    const { client } = queue(response({ ...checks(), errors: [{ type: "INTERNAL", message: "Partial result" }] }, {}, 200, exitError(1)));
+    await expect(client.getPullRequestChecks(repository, 11)).rejects.toMatchObject({ status: 200, retryAt: null, cause: { code: 1 } });
   });
 });
 
@@ -414,6 +692,32 @@ describe("prepared authentication for repositories with API ports", () => {
     expect(process.env.GH_ENTERPRISE_TOKEN).toBe("");
   });
 
+  it("uses the GraphQL port route and the same private bare-host authentication bridge", async () => {
+    noEnterpriseEnvironment();
+    const { client, calls } = queue(credential(), response(checks()));
+    expect(await client.getPullRequestChecks({ ...repository, host: target.host }, 11)).toMatchObject({ ready: true });
+    expect(calls[0]!.args).toEqual(["auth", "token", "--hostname", "git.example"]);
+    expect(calls[1]!.args.at(-1)).toBe("https://git.example:8443/api/graphql");
+    expect(calls[1]!.args).toContain("git.example");
+    expect(calls[1]!.args).toContain("variables[owner]=owner");
+    expect(calls[1]!.args).toContain("variables[name]=repo");
+    expect(calls[1]!.args).toContain("variables[number]=11");
+    expect(calls[1]!.args).not.toContain("owner=owner");
+    expect(calls[1]!.options.environment).toEqual({ GH_ENTERPRISE_TOKEN: fakeToken });
+    expect(JSON.stringify(calls.map((call) => call.args))).not.toContain(fakeToken);
+    expect(process.env.GH_ENTERPRISE_TOKEN).toBe("");
+  });
+
+  it.each(["graphql-error", "rate-limited", "nonzero"])("keeps port credentials out of GraphQL %s diagnostics", async (mode) => {
+    noEnterpriseEnvironment();
+    const cause = Object.assign(new Error(`failure ${fakeToken}`), { code: 1, stdout: fakeToken, stderr: fakeToken });
+    const body = mode === "nonzero" ? checks() : { ...checks(), errors: [{ type: mode === "rate-limited" ? "RATE_LIMITED" : "INTERNAL", message: fakeToken }] };
+    const { client } = queue(credential(), response(body, {}, 200, cause));
+    const error = await client.getPullRequestChecks({ ...repository, host: target.host }, 11).catch((value: unknown) => value);
+    expect(error).toBeInstanceOf(GitHubApiError);
+    expect(errorText(error)).not.toContain(fakeToken);
+  });
+
   it.each(["GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"]) ("respects an inherited %s without reading stored credentials", async (variable) => {
     noEnterpriseEnvironment();
     vi.stubEnv(variable, fakeToken);
@@ -529,6 +833,7 @@ describe("client rate-limit cooldown", () => {
     await expect(client.resolveRepository({ ...configuration, name: "second" })).rejects.toMatchObject({ status: 429, retryAt: 3_700_000 });
     await expect(client.listOpenPullRequests(repository, 10)).rejects.toMatchObject({ retryAt: 3_700_000 });
     await expect(client.getPullRequest(repository, 11)).rejects.toMatchObject({ retryAt: 3_700_000 });
+    await expect(client.getPullRequestChecks(repository, 11)).rejects.toMatchObject({ retryAt: 3_700_000 });
     await expect(client.listPullRequestNumbers(repository)).rejects.toMatchObject({ retryAt: 3_700_000 });
     expect(queued.calls).toHaveLength(1);
     expect(await client.resolveRepository({ ...configuration, host: "git.example" })).toMatchObject({ host: "git.example", githubId: "43" });

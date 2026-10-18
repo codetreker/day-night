@@ -24,7 +24,7 @@ home and working directories containing spaces and Unicode. The test drives its
 public command and reads SQLite through an independent connection. Product
 scheduling APIs are not replaced. Git transport is limited to the local fixture origin.
 
-Twenty-four scenarios cover four configuration-registration cases and the twenty
+Twenty-nine scenarios cover four configuration-registration cases and twenty-five
 review lifecycle cases. Registration drives the installed command before review
 startup and verifies configuration-only operation, working-directory-relative
 paths, the default root, and fixed repository paths after a root change. It checks
@@ -32,7 +32,8 @@ that registration creates no clone, database, runtime lock, agent invocation or
 GitHub request.
 
 The lifecycle cases cover the permanent startup cutoff, Draft/head suppression,
-ready review, inline `COMMENT`, missing-marker reconciliation, a clean approval,
+ready review after pending/failed CI passes, new-head CI waiting, no-CI review,
+inline `COMMENT`, missing-marker reconciliation, a clean approval,
 head/force-push changes, base-tip exclusion, base-branch changes, isolated PR
 sessions, normal shutdown, another working directory, singleton refusal, an
 abnormal stop with a retained lock, automatic dead-owner lock recovery, and
@@ -61,11 +62,11 @@ for their checked-out revision. A scenario receipt describes its assertions; the
 job also covers process and fixture cleanup. Full environment reports,
 credentials, sessions and raw runtime logs are outside the artifact selection.
 
-Local validation of the durable cleanup barrier across reopen and isolation of
-only the affected PR passed `pnpm check`: type checking and 476 ordinary tests,
+Earlier local validation of the durable cleanup barrier across reopen and
+isolation of only the affected PR passed `pnpm check`: type checking and 476 ordinary tests,
 with eight APFS cases skipped on Linux. `pnpm build` and all 24 installed
-acceptance scenarios also passed. Current native-platform validation of that
-repair remains pending.
+acceptance scenarios also passed. Those local receipts describe the cleanup-barrier revision and predate the
+CI-admission additions.
 
 Earlier local validation of package version `0.1.2` passed type checking, 472
 ordinary tests, build and the combined 24-scenario installed suite. Its installed
@@ -75,7 +76,7 @@ and do not establish that repair's behavior.
 
 | Evidence | Observed result |
 |---|---|
-| Current cleanup-barrier repair validation, 2026-10-18 | Linux x64 passed `pnpm check` with 476 tests and eight APFS skips, `pnpm build` and all 24 installed scenarios |
+| Cleanup-barrier repair local validation, 2026-10-18 | Linux x64 passed `pnpm check` with 476 tests and eight APFS skips, `pnpm build` and all 24 installed scenarios |
 | Pre-repair combined local validation, 2026-10-18 | Linux x64 passed `pnpm check`, `pnpm build` and all 24 installed scenarios for package version `0.1.2`, from the integration working tree |
 | Pre-integration stale-lock validation, 2026-10-18 | Linux x64 passed type checking, 421 ordinary tests with eight APFS cases skipped, build and the 20-scenario automatic-recovery installed suite; recorded in commit `38d46d6` before repository-registration and version-policy integration |
 | Prior registration receipt, 2026-10-18 | Linux x64 passed all 24 registration and manual-recovery lifecycle scenarios in 12.41 seconds, from an uncommitted working tree |

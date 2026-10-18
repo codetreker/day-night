@@ -17,7 +17,7 @@ validates safe integer representation, and keeps that identity independent of
 remote-address spelling. The existing store remains the owner of review triggers
 and revision transitions.
 
-Each page is read with an explicit GET and captured HTTP headers. HTTP framing
+Each REST page is read with an explicit GET and captured HTTP headers. HTTP framing
 and status are processed before body decoding, including nonzero CLI exits for
 HTTP errors. Successful responses require valid JSON. Error status and waiting
 headers remain authoritative when the body is HTML or empty; JSON error messages
@@ -54,7 +54,7 @@ including Draft, without a high-water cursor. Tracked open PRs missing from a
 complete list are fetched individually. A successful direct response determines
 their actual state; a 404 or failed confirmation is an error, not closure proof.
 
-All remote responses are collected and validated before observation writes.
+Repository observation responses are collected and validated before writes.
 The store's `applyRepositoryPoll` commits initialization or a deduplicated
 snapshot together with the successful-poll timestamp in one short transaction.
 An API or database failure preserves the previous cutoff, PR observations, and
@@ -78,6 +78,30 @@ and [API host mapping](https://github.com/cli/cli/blob/37800dd56a536e69b20d682b7
 define the adapter assumptions. GitHub's
 [API practices](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)
 describe pagination movement, private-resource 404s, and rate-limit waiting.
+
+CI readiness is a separate read-only GraphQL query bound to the PR head and
+base branch. HEAD and available test-merge rollups cover Check Runs and legacy
+Status Contexts. Paginated Check Suite summaries additionally capture registered
+workflows awaiting approval or jobs. Latest workflow/event run and attempt
+numbers replace older runs; suites without a provable replacement keep their
+blocking result. `SUCCESS`, `SKIPPED` and `NEUTRAL` pass only after completion.
+An empty CI result is permitted; incomplete data or API errors are not empty CI.
+This evidence remains separate from durable review triggers.
+
+The [GraphQL rollup schema](https://docs.github.com/en/graphql/reference/objects#statuscheckrollup)
+defines the combined state. Rollup success alone is insufficient: the official
+CLI repository's [approval-blocked workflow](https://github.com/cli/cli/actions/runs/39044725737)
+has no jobs while other checks on its commit produce a successful rollup.
+Suite summaries retain that known blocker. GitHub documents
+[approval for fork workflows](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/approve-runs-from-forks)
+and [run/attempt numbering](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#github-context).
+
+GraphQL uses a POST containing only a fixed query. Normal endpoints use flat
+CLI variables; ported absolute URLs need explicit nested variables because
+[the CLI groups them only for the literal graphql endpoint](https://github.com/cli/cli/blob/fa92838bef95fe4a29c1587693885d5e9bdb6cf1/pkg/cmd/api/http.go#L16-L55).
+The same bounded capture, private authentication bridge and host cooldown apply.
+HTTP 200 with GraphQL errors still fails, including partial data. Application
+rate-limit errors honor the response deadlines and block later same-host calls.
 
 ## Alternatives
 
@@ -106,6 +130,11 @@ representations have required migrations. Mixing them with REST IDs can create a
 second initialization identity. Unsafe numeric IDs fail explicitly rather than
 round or switch representation. See GitHub's
 [node-ID migration](https://github.blog/news-insights/product-news/graphql-global-id-migration-update/).
+
+**Use only a combined status or rollup.** Legacy combined status omits Check
+Runs. A GraphQL rollup includes both, but can omit a registered workflow with no
+jobs and an action-required conclusion. Suite summaries close that observed
+admission gap without enumerating every job context.
 
 ## Consequences
 

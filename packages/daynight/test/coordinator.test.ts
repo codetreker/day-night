@@ -64,10 +64,12 @@ const fixture = (repositoryCount = 1, initialized = true) => {
   const prepared: ReviewState[] = [];
   const launched: { review: ReviewState; session: string; input: CopilotRunOptions }[] = [];
   const cleaned: number[] = [];
+  const checked: { number: number; headSha: string; baseRef: string }[] = [];
   let onPoll: ((index: number) => Promise<void>) | undefined;
   let onPrepare: ((review: ReviewState, signal: AbortSignal) => Promise<void>) | undefined;
   let onRun: ((review: ReviewState, input: CopilotRunOptions) => Promise<boolean>) | undefined;
   let onCleanup: ((pr: number) => Promise<void>) | undefined;
+  let onChecks: ((pr: PullRequestObservation, signal: AbortSignal) => Promise<{ headSha: string; baseRef: string; ready: boolean }>) | undefined;
   const client: GitHubClient = {
     resolveRepository: async (config) => identities[configurations.findIndex((item) => item.name === config.name)]!,
     listPullRequestNumbers: async () => [],
@@ -78,6 +80,11 @@ const fixture = (repositoryCount = 1, initialized = true) => {
       return [...snapshots[index]!.values()].filter((item) => item.state === "open").map((item) => ({ ...item }));
     },
     getPullRequest: async (repository, number) => ({ ...snapshots[identities.findIndex((item) => item.githubId === repository.githubId)]!.get(number)! }),
+    getPullRequestChecks: async (repository, number, signal) => {
+      const pr = { ...snapshots[identities.findIndex((item) => item.githubId === repository.githubId)]!.get(number)! };
+      checked.push({ number, headSha: pr.headSha, baseRef: pr.baseRef });
+      return onChecks === undefined ? { headSha: pr.headSha, baseRef: pr.baseRef, ready: pr.state === "open" && !pr.draft } : onChecks(pr, signal!);
+    },
   };
   const git: CoordinatorOptions["git"] = {
     ensureRepository: async (config) => locals[configurations.findIndex((item) => item.name === config.name)]!,
@@ -129,8 +136,9 @@ const fixture = (repositoryCount = 1, initialized = true) => {
     snapshots[index]!.set(number, observation(number, { ...snapshots[index]!.get(number), ...change }));
   };
   const pr = (number = 1, index = 0) => ({ ...identities[index]!, number });
-  const result = { directory, paths, store, configurations, identities, snapshots, polls, events, prepared, launched, cleaned, client, git, runner, processes, configuration, start, update, pr, runs,
-    prepare: (handler: typeof onPrepare) => { onPrepare = handler; }, run: (handler: typeof onRun) => { onRun = handler; }, poll: (handler: typeof onPoll) => { onPoll = handler; }, cleanup: (handler: typeof onCleanup) => { onCleanup = handler; } };
+  const result = { directory, paths, store, configurations, identities, snapshots, polls, events, prepared, launched, cleaned, checked, client, git, runner, processes, configuration, start, update, pr, runs,
+    prepare: (handler: typeof onPrepare) => { onPrepare = handler; }, run: (handler: typeof onRun) => { onRun = handler; }, poll: (handler: typeof onPoll) => { onPoll = handler; }, cleanup: (handler: typeof onCleanup) => { onCleanup = handler; },
+    checks: (handler: typeof onChecks) => { onChecks = handler; } };
   fixtures.push(result);
   return result;
 };
@@ -145,6 +153,179 @@ afterEach(async () => {
 });
 
 describe("foreground review coordination", () => {
+  it("waits for CI without reserving resources and admits other ready PRs before CI finishes", async () => {
+    const f = fixture(); f.update(1); f.update(2);
+    const firstCheck = deferred<{ headSha: string; baseRef: string; ready: boolean }>();
+    let ready = false;
+    f.checks(async (pr) => pr.number === 1 && f.checked.filter((item) => item.number === 1).length === 1 ? firstCheck.promise :
+      { headSha: pr.headSha, baseRef: pr.baseRef, ready: pr.number === 2 || ready });
+    f.start();
+    await waitFor(() => f.store.getPullRequest(f.pr(2))?.completedRevision === 1, "other PR during pending CI request");
+    expect(f.prepared.map((review) => review.number)).toEqual([2]);
+    expect(f.store.listReviews(f.pr(1))).toEqual([]);
+    expect(f.store.getPullRequest(f.pr(1))).toMatchObject({ sessionId: null, worktreePath: null, desiredRevision: 1 });
+    firstCheck.resolve({ headSha: "a".repeat(40), baseRef: "main", ready: false });
+    await waitFor(() => f.checked.filter((item) => item.number === 1).length >= 2, "CI refresh without a new commit");
+    expect(f.store.listReviews(f.pr(1))).toEqual([]);
+    ready = true;
+    await waitFor(() => f.store.getPullRequest(f.pr(1))?.completedRevision === 1, "same target after CI passes");
+    expect(f.launched.map((item) => item.review.number)).toEqual([2, 1]);
+    expect(f.store.listReviews(f.pr(1))[0]?.attemptCount).toBe(1);
+    const checks = f.checked.length;
+    const polls = f.polls[0]!;
+    await waitFor(() => f.polls[0]! >= polls + 3, "completed review remains suppressed");
+    expect(f.checked).toHaveLength(checks);
+  });
+
+  it("discards an old CI response when the waiting target advances", async () => {
+    const f = fixture(); f.update(1);
+    const oldCheck = deferred<{ headSha: string; baseRef: string; ready: boolean }>();
+    let ready = false;
+    f.checks(async (pr) => pr.headSha === "a".repeat(40) ? oldCheck.promise : { headSha: pr.headSha, baseRef: pr.baseRef, ready });
+    f.start();
+    await waitFor(() => f.checked.length === 1, "old head check");
+    f.update(1, { headSha: "e".repeat(40), baseRef: "release" });
+    await waitFor(() => f.checked.some((item) => item.headSha === "e".repeat(40)), "new target CI check while old check remains pending");
+    oldCheck.resolve({ headSha: "a".repeat(40), baseRef: "main", ready: true });
+    const polls = f.polls[0]!;
+    await waitFor(() => f.polls[0]! >= polls + 2, "stale check completion");
+    expect(f.prepared).toEqual([]);
+    expect(f.store.listReviews(f.pr())).toEqual([]);
+    ready = true;
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 2, "new target passing CI");
+    expect(f.launched.map((item) => [item.review.headSha, item.review.baseRef])).toEqual([["e".repeat(40), "release"]]);
+  });
+
+  it.each([{ draft: true }, { state: "closed" as const }])("ignores CI success after a waiting PR becomes ineligible: %j", async (change) => {
+    const f = fixture(); f.update(1);
+    const checks = deferred<{ headSha: string; baseRef: string; ready: boolean }>();
+    f.checks(async () => checks.promise);
+    f.start();
+    await waitFor(() => f.checked.length === 1, "pending admission check");
+    f.update(1, change);
+    await waitFor(() => {
+      const pr = f.store.getPullRequest(f.pr());
+      return pr?.draft === true || pr?.state === "closed";
+    }, "ineligible observation");
+    checks.resolve({ headSha: "a".repeat(40), baseRef: "main", ready: true });
+    const polls = f.polls[0]!;
+    await waitFor(() => f.polls[0]! >= polls + 2, "stale ineligible CI completion");
+    expect(f.prepared).toEqual([]);
+    expect(f.store.getPullRequest(f.pr())?.sessionId).toBeNull();
+  });
+
+  it("revalidates CI after worktree preparation and preserves the review budget after a regression", async () => {
+    const f = fixture(); f.update(1);
+    const preparation = deferred();
+    let ready = true;
+    f.checks(async (pr) => ({ headSha: pr.headSha, baseRef: pr.baseRef, ready }));
+    f.prepare(async () => { if (f.prepared.length === 1) await preparation.promise; });
+    f.start();
+    await waitFor(() => f.prepared.length === 1, "initial passing CI reservation");
+    const review = f.store.listReviews(f.pr())[0]!;
+    const session = f.store.getPullRequest(f.pr())!.sessionId;
+    ready = false;
+    preparation.resolve();
+    await waitFor(() => f.store.getReview(review.id)?.status === "retry_wait", "CI regression before agent launch");
+    expect(f.launched).toEqual([]);
+    expect(f.store.getReview(review.id)?.attemptCount).toBe(0);
+    expect(f.events.some((event) => event.phase === "ci" && event.reviewId === review.id)).toBe(true);
+    await waitFor(() => f.checked.length >= 3, "CI admission retry");
+    expect(f.prepared).toHaveLength(1);
+    ready = true;
+    await waitFor(() => f.store.getReview(review.id)?.status === "completed", "passing CI retry");
+    expect(f.launched).toHaveLength(1);
+    expect(f.launched[0]?.session).toBe(session);
+    expect(f.launched[0]?.review.attemptCount).toBe(1);
+  });
+
+  it("rereads the captured target after an asynchronous prelaunch CI check", async () => {
+    const f = fixture(); f.update(1);
+    const prelaunch = deferred<{ headSha: string; baseRef: string; ready: boolean }>();
+    f.checks(async (pr) => f.checked.length === 2 ? prelaunch.promise : { headSha: pr.headSha, baseRef: pr.baseRef, ready: true });
+    f.start();
+    await waitFor(() => f.checked.length === 2, "prelaunch CI query");
+    f.update(1, { headSha: "e".repeat(40) });
+    await waitFor(() => f.store.getPullRequest(f.pr())?.desiredRevision === 2, "head change during prelaunch check");
+    prelaunch.resolve({ headSha: "a".repeat(40), baseRef: "main", ready: true });
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 2, "updated target review");
+    expect(f.launched.map((item) => item.review.headSha)).toEqual(["e".repeat(40)]);
+    expect(f.store.listReviews(f.pr()).map((review) => review.status)).toEqual(["superseded", "completed"]);
+  });
+
+  it("honors CI API cooldown without consuming a worker, reservation, or agent attempt", async () => {
+    const f = fixture(); f.update(1); f.update(2);
+    const cooldown = Date.now() + 180;
+    f.checks(async (pr) => {
+      if (pr.number === 1 && f.checked.filter((item) => item.number === 1).length === 1) throw new GitHubApiError("CI rate limited", { status: 429, retryAt: cooldown });
+      return { headSha: pr.headSha, baseRef: pr.baseRef, ready: true };
+    });
+    f.start();
+    await waitFor(() => f.store.getPullRequest(f.pr(2))?.completedRevision === 1, "ready PR during CI cooldown");
+    expect(f.checked.filter((item) => item.number === 1)).toHaveLength(1);
+    expect(f.store.listReviews(f.pr(1))).toEqual([]);
+    expect(f.events.find((event) => event.phase === "ci" && event.level === "error")?.retryAt).toBe(cooldown);
+    await waitFor(() => f.store.getPullRequest(f.pr(1))?.completedRevision === 1, "CI cooldown expiry");
+    expect(f.launched.map((item) => item.review.number)).toEqual([2, 1]);
+  });
+
+  it("defers prelaunch CI API errors through their cooldown without spending an attempt", async () => {
+    const f = fixture(); f.update(1);
+    let cooldown = 0;
+    f.checks(async (pr) => {
+      if (f.checked.length === 2) {
+        cooldown = Date.now() + 160;
+        throw new GitHubApiError("prelaunch CI rate limited", { status: 429, retryAt: cooldown });
+      }
+      return { headSha: pr.headSha, baseRef: pr.baseRef, ready: true };
+    });
+    f.start();
+    await waitFor(() => f.store.listReviews(f.pr())[0]?.status === "retry_wait", "prelaunch CI API deferral");
+    const review = f.store.listReviews(f.pr())[0]!;
+    expect(review.attemptCount).toBe(0);
+    expect(review.retryAt).toBe(cooldown);
+    expect(f.launched).toEqual([]);
+    await waitFor(() => f.store.getReview(review.id)?.status === "completed", "CI API recovery");
+    expect(f.launched[0]?.review.attemptCount).toBe(1);
+  });
+
+  it("gates an incomplete agent retry on CI while reusing its persisted review and session", async () => {
+    const f = fixture(); f.update(1);
+    let ready = true;
+    f.checks(async (pr) => ({ headSha: pr.headSha, baseRef: pr.baseRef, ready }));
+    f.run(async () => { if (f.launched.length === 1) { ready = false; return false; } return true; });
+    f.start();
+    await waitFor(() => f.store.listReviews(f.pr())[0]?.status === "retry_wait" && f.checked.length >= 3, "incomplete attempt waiting for CI");
+    const review = f.store.listReviews(f.pr())[0]!;
+    expect(f.launched).toHaveLength(1);
+    expect(f.prepared).toHaveLength(1);
+    expect(review.attemptCount).toBe(1);
+    ready = true;
+    await waitFor(() => f.store.getReview(review.id)?.status === "completed", "same session retry after CI passes");
+    expect(f.launched.map((item) => item.review.id)).toEqual([review.id, review.id]);
+    expect(f.launched[1]?.session).toBe(f.launched[0]?.session);
+    expect(f.launched[1]?.review.attemptCount).toBe(2);
+  });
+
+  it("aborts and awaits a pending CI query before releasing coordinator ownership", async () => {
+    const f = fixture(); f.update(1);
+    const released = deferred();
+    let cancelled = false;
+    f.checks(async (_pr, signal) => {
+      try { return await untilAborted(signal); }
+      finally { cancelled = true; await released.promise; }
+    });
+    const run = f.start();
+    await waitFor(() => f.checked.length === 1, "pending CI query");
+    run.abort.abort();
+    await waitFor(() => cancelled, "CI cancellation");
+    let returned = false; void run.completion.then(() => { returned = true; });
+    expect(returned).toBe(false);
+    expect(f.prepared).toEqual([]);
+    released.resolve();
+    await expect(run.completion).resolves.toEqual({ safeToReleaseLock: true });
+  });
+
   it("initializes a permanent all-state cutoff before admitting later PRs", async () => {
     const f = fixture(1, false);
     f.client.listPullRequestNumbers = async () => [2, 9, 4];
