@@ -24,7 +24,14 @@ home and working directories containing spaces and Unicode. The test drives its
 public command and reads SQLite through an independent connection. Product
 scheduling APIs are not replaced. Git transport is limited to the local fixture origin.
 
-Twenty scenarios cover the permanent startup cutoff, Draft/head suppression,
+Twenty-four scenarios cover four configuration-registration cases and the twenty
+review lifecycle cases. Registration drives the installed command before review
+startup and verifies configuration-only operation, working-directory-relative
+paths, the default root, and fixed repository paths after a root change. It checks
+that registration creates no clone, database, runtime lock, agent invocation or
+GitHub request.
+
+The lifecycle cases cover the permanent startup cutoff, Draft/head suppression,
 ready review, inline `COMMENT`, missing-marker reconciliation, a clean approval,
 head/force-push changes, base-tip exclusion, base-branch changes, isolated PR
 sessions, normal shutdown, another working directory, singleton refusal, an
@@ -53,22 +60,31 @@ logs are outside the artifact selection.
 
 | Evidence | Observed result |
 |---|---|
-| Local installed suite | Passed all 20 scenarios on Linux x64 |
-| Local tools | Node 24.19.0, pnpm 10.34.5, Git 2.53.0, gh 2.88.1 |
-| Local native SQLite | better-sqlite3 13.0.3, SQLite 3.53.4, Node-API 10 |
-| Local OS | Linux x64, glibc 2.39 |
-| Hosted installed matrix | Passed Linux x64, macOS arm64 and Windows x64; all 20 scenarios on each |
+| Local installed receipt, 2026-10-18 | Passed all 24 registration and lifecycle scenarios on Linux x64 in 12.41 seconds, from an uncommitted working tree |
+| Original local installed receipt | Passed all 20 lifecycle scenarios on Linux x64 before registration coverage was added |
+| Original local tools | Node 24.19.0, pnpm 10.34.5, Git 2.53.0, gh 2.88.1 |
+| Original local native SQLite | better-sqlite3 13.0.3, SQLite 3.53.4, Node-API 10 |
+| Original local OS | Linux x64, glibc 2.39 |
+| Original hosted installed matrix | Passed Linux x64, macOS arm64 and Windows x64; all 20 lifecycle scenarios on each, before registration coverage was added |
 | Real Copilot/GitHub | Awaiting designated repository, distinct author/reviewer identities and write authorization |
+
+The 2026-10-18 local receipt records `success: true`, six agent invocations,
+five publications (one `COMMENT`, four `APPROVE`), two normal shutdowns, two
+worktree cleanups, one singleton refusal, one abrupt stop, one stale-lock refusal
+and one operator-confirmed restart. Both live-service flags are false. The run
+left no fixture resources behind. This local result covers the four registration
+cases; the original hosted receipts below remain evidence for the twenty
+lifecycle cases only.
 
 The [runtime integration CI](https://github.com/codetreker/day-night/actions/runs/39040002167)
 passed Linux, macOS and Windows before the installed-package suite was added.
 It is component/runtime evidence, not an installed-package or live-model receipt.
 
-## Hosted installed receipts
+## Original hosted installed receipts
 
 [Native installed-package CI](https://github.com/codetreker/day-night/actions/runs/39043517844) passed all three platforms and the final matrix gate on 2026-10-17.
 The curated artifacts agree on clean checkout revision `9df51dbc9ffd16129069519ba7118009dc648b01`.
-Each records six invocations, five publications, preserved restart/session state and two worktree cleanups.
+Each records six invocations, five publications, preserved restart/session state and two worktree cleanups. These receipts predate the four registration cases and do not establish their hosted result.
 
 | Platform | OS release | Node | Git | gh |
 |---|---|---|---|---|

@@ -17,8 +17,8 @@ the shebang-bearing `dist/main.js`. Vitest executes source tests and compiled CL
 probes; the test command builds before running them. The pnpm dependency store
 is local to `.tmp/pnpm-store`.
 
-YAML parsing is followed by explicit field/type/path validation. Only omitted
-numeric settings use documented defaults; invalid supplied values fail. Existing
+YAML parsing is followed by explicit field/type/path validation. Omitted numeric
+settings use documented defaults; invalid supplied values fail. Existing
 path components must be directories, while missing clone directories remain
 valid. Filesystem errors retain their causes across platform-specific error
 codes. Physical directory identity and ancestry detect existing aliases and
@@ -31,7 +31,8 @@ JavaScript lowercase, or Unicode-normalization rule replaces actual lookup.
 The [configuration design](../../../../docs/design/daynight.md) owns the schema
 and path rules.
 
-The CLI supports help, version, argument validation, and configuration loading.
+The CLI supports help, version, argument validation, configuration loading and
+[configuration-only repository registration](../feature/2026-10-18-add-repo-configuration.md).
 Review mode acquires the instance lock, opens SQLite and runs the
 [foreground coordinator](../architecture/2026-10-17-foreground-review-coordination.md).
 Configuration failures report their filename and preserve the original cause.
