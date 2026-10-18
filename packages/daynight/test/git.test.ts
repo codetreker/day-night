@@ -286,10 +286,73 @@ describe("owned worktree lifecycle and destructive-operation guards", () => {
     f.setOnGet(() => f.update({ state: "open" }));
     expect(await f.manager.cleanupWorktree(f.store, local, review, proof)).toEqual({ kind: "reopened" });
     expect(existsSync(prepared.path)).toBe(true);
+    expect(f.store.getPullRequest(review)).toMatchObject({ cleanupPending: false, cleanupError: null, worktreePath: prepared.path, sessionId: uuid(500) });
     f.setOnGet(undefined); f.update({ state: "closed" });
     rawGit(local.root, ["worktree", "remove", "--force", "--force", prepared.path]);
     expect(await f.manager.cleanupWorktree(f.store, local, review, proof)).toEqual({ kind: "cleaned" });
     expect(f.store.getPullRequest(review)?.worktreePath).toBeNull();
+  }, 60_000);
+
+  it("cancels reopened cleanup after inspection without starting worktree removal", async () => {
+    const f = fixture(); const local = await f.manager.ensureRepository(f.configuration); const review = f.reserve();
+    const prepared = await f.manager.prepareWorktree(f.store, local, review.id, proof);
+    if (prepared.kind !== "prepared") throw new Error("Expected preparation.");
+    f.update({ state: "closed" }); f.store.supersedeReview(review.id, proof, 30);
+    f.calls.length = 0;
+    f.setIntercept(async (file, args, options) => {
+      if (args.includes("worktree") && args.includes("list")) {
+        f.update({ state: "open" });
+        expect(f.store.getPullRequest(review)?.cleanupPending).toBe(true);
+      }
+      return executeCommand(file, args, options);
+    });
+    expect(await f.manager.cleanupWorktree(f.store, local, review, proof)).toEqual({ kind: "reopened" });
+    expect(f.calls.some(({ args }) => args.includes("worktree") && args.includes("remove"))).toBe(false);
+    expect(existsSync(prepared.path)).toBe(true);
+    expect(f.store.getPullRequest(review)).toMatchObject({ cleanupPending: false, worktreePath: prepared.path });
+    expect(f.reserve().revision).toBe(2);
+  }, 60_000);
+
+  it.each(["completed", "uncertain"])("retains reopened cleanup while removal is pending and reconciles its %s result", async (outcome) => {
+    const f = fixture(); const local = await f.manager.ensureRepository(f.configuration); const review = f.reserve();
+    const prepared = await f.manager.prepareWorktree(f.store, local, review.id, proof);
+    if (prepared.kind !== "prepared") throw new Error("Expected preparation.");
+    f.update({ state: "closed" }); f.store.supersedeReview(review.id, proof, 30);
+    let started!: () => void;
+    let finish!: () => void;
+    const entered = new Promise<void>((resolve) => { started = resolve; });
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    f.setIntercept(async (file, args, options) => {
+      if (args.includes("worktree") && args.includes("remove")) {
+        started();
+        await pending;
+        if (outcome === "uncertain") return { stdout: "", stderr: "removal interrupted", error: Object.assign(new Error("removal interrupted"), { code: 128, killed: true, signal: "SIGTERM" }) };
+      }
+      return executeCommand(file, args, options);
+    });
+    const cleanup = f.manager.cleanupWorktree(f.store, local, review, proof);
+    await entered;
+    f.update({ state: "open" });
+    expect(f.store.getPullRequest(review)).toMatchObject({ cleanupPending: true, worktreePath: prepared.path, state: "open" });
+    expect(f.store.listCleanupCandidates()).toHaveLength(1);
+    expect(f.store.listCandidates(31)).toEqual([]);
+    finish();
+    if (outcome === "uncertain") {
+      await expect(cleanup).rejects.toMatchObject({ completed: false });
+      expect(f.store.getPullRequest(review)).toMatchObject({ cleanupPending: true, cleanupError: expect.stringContaining("Git operation failed"), worktreePath: prepared.path });
+      expect(f.store.listCandidates(32)).toEqual([]);
+      expect(existsSync(prepared.path)).toBe(true);
+      f.setIntercept(undefined);
+      expect(await f.manager.cleanupWorktree(f.store, local, review, proof)).toEqual({ kind: "reopened" });
+    } else {
+      expect(await cleanup).toEqual({ kind: "reopened" });
+      expect(existsSync(prepared.path)).toBe(false);
+    }
+    expect(f.store.getPullRequest(review)).toMatchObject({ cleanupPending: false, cleanupError: null, worktreePath: prepared.path, sessionId: uuid(500) });
+    f.setIntercept(undefined);
+    const next = f.reserve();
+    expect(await f.manager.prepareWorktree(f.store, local, next.id, proof)).toMatchObject({ kind: "prepared", path: prepared.path });
+    expect(existsSync(prepared.path)).toBe(true);
   }, 60_000);
 
   it("preserves physical root aliases while rejecting symlinked managed containers and leaves", async () => {

@@ -221,8 +221,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       if (result.error) throw result.error;
       expect(result.status, description).toBe(1);
       expect(result.stderr).toContain("Cannot acquire instance lock");
-      expect(result.stderr).toContain("confirm that its CLI and all review agents have stopped");
-      expect(result.stderr).toContain("manually remove the stale lock");
+      expect(result.stderr).toContain("is still running");
     };
     const stop = async (): Promise<void> => {
       writeFileSync(path.join(directory, "stop"), "stop\n");
@@ -264,18 +263,14 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       await abruptStopWhenQuiescent();
       const lockFile = path.join(stateDirectory, "instance.lock");
       expect(existsSync(lockFile)).toBe(true);
-      const requestsBeforeStaleStartup = readRecords<Request>("requests").length;
-      refusedStartup("an installed CLI must retain an abnormal predecessor's stale lock");
-      expect(readRecords<Request>("requests")).toHaveLength(requestsBeforeStaleStartup);
+      const staleOwner = JSON.parse(readFileSync(lockFile, "utf8")) as { owner: string };
       expect(agents()).toHaveLength(0);
-      expect(existsSync(lockFile)).toBe(true);
-      // The CLI exited after its direct children closed; no agent has existed.
-      rmSync(lockFile);
       const recoveredVersion = publishState();
       start(secondCwd);
       await observedWithoutReview(recoveredVersion, 0);
+      expect(JSON.parse(readFileSync(lockFile, "utf8")).owner).not.toBe(staleOwner.owner);
       expect(query<{ start_pr_no: number }>("SELECT start_pr_no FROM repositories")?.start_pr_no).toBe(10);
-      scenarios.push("singleton-refusal", "abrupt-stop-retains-lock", "stale-lock-refusal", "operator-confirmed-lock-recovery");
+      scenarios.push("singleton-refusal", "abrupt-stop-retains-lock", "automatic-stale-lock-recovery", "restart-preserves-initial-cutoff");
       pulls.push(current);
       await observedWithoutReview(publishState(), 0);
       current.head.sha = second;
@@ -345,7 +340,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
         liveCopilotExercised: false, liveGitHubExercised: false, scenarios,
         receipts: { agentInvocations: calls.length, publications: publications().length, commentReviews: publications().filter((item) => item.event === "COMMENT").length,
           approvingReviews: publications().filter((item) => item.event === "APPROVE").length, sameSessionAfterRestart: true, cleanShutdowns: 2, cleanedWorktrees: 2,
-          singletonRefusals: 1, abruptStops: 1, staleLockRefusals: 1, operatorConfirmedRestarts: 1 },
+          singletonRefusals: 1, abruptStops: 1, automaticStaleLockRecoveries: 1 },
       }, null, 2));
     } finally {
       if (running !== undefined) {

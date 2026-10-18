@@ -98,10 +98,15 @@ Standard Git refresh/removal operates on validated owned paths without inspectin
 nested repositories for external consumers.
 
 Cleanup requires no active review, stopped operations, excluded processes, and
-fresh closure evidence. Reopening withdraws eligibility. Git removal precedes
-database completion. Normal failed cloning can remove only its unchanged,
-exclusively created destination; cancellation or uncertain execution retains
-partial resources for reconciliation.
+fresh closure evidence. Reopening withdraws deletion eligibility while retaining
+the durable pending marker and error. Cleanup awaits commands already started;
+only conclusive operation completion and agent exclusion permit cancellation of
+the marker for an open PR. Cancellation retains its worktree path and session,
+and subsequent preparation can rebuild a missing leaf. Uncertain cleanup keeps
+the marker even when a newer observation is open. Git removal precedes database
+completion. Normal failed cloning can remove only its unchanged, exclusively
+created destination; cancellation or uncertain execution retains partial
+resources for reconciliation.
 
 The inspected Git contracts include
 [private refmaps](https://github.com/git/git/blob/67ad42147a7acc2af6074753ebd03d904476118f/Documentation/fetch-options.adoc#L191-L200),

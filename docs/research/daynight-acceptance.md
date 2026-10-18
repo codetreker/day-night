@@ -35,8 +35,11 @@ The lifecycle cases cover the permanent startup cutoff, Draft/head suppression,
 ready review, inline `COMMENT`, missing-marker reconciliation, a clean approval,
 head/force-push changes, base-tip exclusion, base-branch changes, isolated PR
 sessions, normal shutdown, another working directory, singleton refusal, an
-abnormal stop with a retained lock, operator-confirmed restart, and merged or
-unmerged closure cleanup with retained history.
+abnormal stop with a retained lock, automatic dead-owner lock recovery, and
+merged or unmerged closure cleanup with retained history. The automatic recovery
+scenario crashes only after current tool handles drain; it does not establish
+that arbitrary orphan agents or tools have stopped. Uncertain review and cleanup
+recovery has separate module/runtime coverage.
 
 The fixture records six agent invocations and five publications: one inline
 comment review and four approving reviews. The missing-marker attempt publishes
@@ -53,38 +56,67 @@ Windows. Each job uploads only two curated files:
 - `e2e-evidence.json`: installed-package lifecycle assertions and scenario
   receipts, with both live-service flags explicitly false.
 
-The workflow's platform job and final `checks` gate are the validation verdict.
-A scenario receipt describes its assertions; the job also covers process and
-fixture cleanup. Full environment reports, credentials, sessions and raw runtime
-logs are outside the artifact selection.
+The workflow's platform job and final `checks` gate are the validation verdict
+for their checked-out revision. A scenario receipt describes its assertions; the
+job also covers process and fixture cleanup. Full environment reports,
+credentials, sessions and raw runtime logs are outside the artifact selection.
+
+Local validation of the durable cleanup barrier across reopen and isolation of
+only the affected PR passed `pnpm check`: type checking and 476 ordinary tests,
+with eight APFS cases skipped on Linux. `pnpm build` and all 24 installed
+acceptance scenarios also passed. Current native-platform validation of that
+repair remains pending.
+
+Earlier local validation of package version `0.1.2` passed type checking, 472
+ordinary tests, build and the combined 24-scenario installed suite. Its installed
+receipt records six agent invocations, five publications and one automatic
+stale-lock recovery. Those earlier receipts predate the cleanup-barrier repair
+and do not establish that repair's behavior.
 
 | Evidence | Observed result |
 |---|---|
-| Local installed receipt, 2026-10-18 | Passed all 24 registration and lifecycle scenarios on Linux x64 in 12.41 seconds, from an uncommitted working tree |
-| Original local installed receipt | Passed all 20 lifecycle scenarios on Linux x64 before registration coverage was added |
+| Current cleanup-barrier repair validation, 2026-10-18 | Linux x64 passed `pnpm check` with 476 tests and eight APFS skips, `pnpm build` and all 24 installed scenarios |
+| Pre-repair combined local validation, 2026-10-18 | Linux x64 passed `pnpm check`, `pnpm build` and all 24 installed scenarios for package version `0.1.2`, from the integration working tree |
+| Pre-integration stale-lock validation, 2026-10-18 | Linux x64 passed type checking, 421 ordinary tests with eight APFS cases skipped, build and the 20-scenario automatic-recovery installed suite; recorded in commit `38d46d6` before repository-registration and version-policy integration |
+| Prior registration receipt, 2026-10-18 | Linux x64 passed all 24 registration and manual-recovery lifecycle scenarios in 12.41 seconds, from an uncommitted working tree |
+| Original local installed receipt | Passed the 20-scenario manual-recovery suite on Linux x64 before registration coverage was added |
 | Original local tools | Node 24.19.0, pnpm 10.34.5, Git 2.53.0, gh 2.88.1 |
 | Original local native SQLite | better-sqlite3 13.0.3, SQLite 3.53.4, Node-API 10 |
 | Original local OS | Linux x64, glibc 2.39 |
-| Original hosted installed matrix | Passed Linux x64, macOS arm64 and Windows x64; all 20 lifecycle scenarios on each, before registration coverage was added |
+| Original hosted installed matrix | Passed the 20-scenario manual-recovery suite on Linux x64, macOS arm64 and Windows x64 before registration coverage was added |
 | Real Copilot/GitHub | Awaiting designated repository, distinct author/reviewer identities and write authorization |
 
-The 2026-10-18 local receipt records `success: true`, six agent invocations,
-five publications (one `COMMENT`, four `APPROVE`), two normal shutdowns, two
-worktree cleanups, one singleton refusal, one abrupt stop, one stale-lock refusal
-and one operator-confirmed restart. Both live-service flags are false. The run
-left no fixture resources behind. This local result covers the four registration
-cases; the original hosted receipts below remain evidence for the twenty
-lifecycle cases only.
+The pre-integration stale-lock coverage includes a killed compiled CLI, competing
+lock contenders, invalid or ambiguous owners, and repeated unconfirmed
+cleanup/reopen with an independent repository continuing. Its installed recovery
+scenario establishes restart after a quiescent abrupt exit.
+
+The prior 2026-10-18 registration receipt records `success: true`, six agent
+invocations, five publications (one `COMMENT`, four `APPROVE`), two normal
+shutdowns, two worktree cleanups, one singleton refusal, one abrupt stop, one
+stale-lock refusal and one operator-confirmed restart. Both live-service flags
+are false. The run left no fixture resources behind. This local result covers
+the four registration cases and predates automatic dead-owner recovery.
 
 The [runtime integration CI](https://github.com/codetreker/day-night/actions/runs/39040002167)
 passed Linux, macOS and Windows before the installed-package suite was added.
 It is component/runtime evidence, not an installed-package or live-model receipt.
 
-## Original hosted installed receipts
+## Historical hosted installed receipts
+
+[Pre-repair native recovery CI](https://github.com/codetreker/day-night/actions/runs/39131014417)
+passed Linux, macOS and Windows at head `3fee5e61`. It validates automatic owner
+recovery and the guard at that revision, whose uncertain-cleanup policy froze
+the repository. It predates the durable cleanup barrier across reopen and
+isolation of only the affected PR, and does not establish the repair's result.
 
 [Native installed-package CI](https://github.com/codetreker/day-night/actions/runs/39043517844) passed all three platforms and the final matrix gate on 2026-10-17.
 The curated artifacts agree on clean checkout revision `9df51dbc9ffd16129069519ba7118009dc648b01`.
-Each records six invocations, five publications, preserved restart/session state and two worktree cleanups. These receipts predate the four registration cases and do not establish their hosted result.
+Each records six invocations, five publications, preserved restart/session state
+and two worktree cleanups. These receipts cover retained-lock refusal followed
+by operator-confirmed lock removal and restart. They predate both the four
+registration cases and automatic dead-owner recovery, and establish neither
+behavior's hosted result.
 
 | Platform | OS release | Node | Git | gh |
 |---|---|---|---|---|
@@ -135,9 +167,12 @@ A native child/stdin-close precondition verifies that the public Node resource
 list exposes `ProcessWrap` while the child is active and removes it after close.
 The main preload waits for that resource to disappear, records the actual CLI
 PID, then exits synchronously with code 73 before another scheduling turn.
-The retained lock, refused restart and operator-confirmed recovery assertions
-remain intact. Product cancellation errors are still errors, and the separate
-native Windows process-tree termination tests remain unchanged. See
+That fixture gate remains the abrupt-stop precondition. The installed suite now
+asserts retained-lock diagnostics and automatic dead-owner recovery, while
+ordinary singleton refusal uses a live CLI owner. Earlier receipts for refused
+stale-lock restart and operator-confirmed recovery remain historical. Product
+cancellation errors are still errors, and the separate native Windows
+process-tree termination tests remain unchanged. See
 [Node active resources](https://nodejs.org/api/process.html#processgetactiveresourcesinfo).
 
 ## Live acceptance scope

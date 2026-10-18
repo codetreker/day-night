@@ -138,8 +138,8 @@ export const createProcessSupervisor = (options: { graceMs?: number; previousPro
   };
   return {
     onProcess, stop, exclude,
-    // Acquiring a new singleton lock requires the operator to exclude the old CLI and its agents first.
-    recover: async (_review: ReviewState): Promise<{ processesExcluded: true; operationsStopped: true }> => {
+    // Recovering a dead CLI's lock does not exclude its surviving agents or repository operations.
+    recover: async (_review?: ReviewState): Promise<{ processesExcluded: true; operationsStopped: true }> => {
       if (options.previousProcessesExcluded !== true) uncertain("Startup recovery requires the instance-lock owner's confirmation that the previous CLI and agents have stopped.");
       return { processesExcluded: true, operationsStopped: true };
     },

@@ -40,9 +40,13 @@ The coordinator owns operation exclusion; a database assertion records its
 conclusion without independently proving process absence.
 
 Session establishment is monotonic. Worktree registration and cleanup state
-survive reopen; closure requires cleanup, while reopening withdraws cleanup
-eligibility. SQLite registration does not replace Git identity checks, validate
-session files, create directories, or delete a worktree.
+survive reopen. Closure requires cleanup; reopening withdraws deletion eligibility
+without clearing `cleanup_pending` or its error. Cleanup candidates therefore
+include open PRs with unresolved markers. After operations are conclusively
+stopped and agents excluded, `cancelCleanup` clears only that marker and error,
+retaining the path and session. A PR observation cannot establish this proof.
+SQLite registration does not replace Git identity checks, validate session files,
+create directories, or delete a worktree.
 
 The database uses WAL, FULL synchronization, a bounded busy timeout, and explicit
 schema versions. Migration and transition failures propagate. No transaction

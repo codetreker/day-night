@@ -161,10 +161,12 @@ stable repository ID. Completing a captured revision leaves later observations
 pending; retries retain their original review identity and consumed budget.
 
 Database opening applies explicit schema migrations and enables WAL with FULL
-synchronization and a bounded busy timeout. It does not infer whether an old
-process has stopped or make interrupted reviews executable. The caller must
-confirm process exclusion before resolving uncertain execution. Database state
-does not replace physical Git/worktree or session-history verification.
+synchronization and a bounded busy timeout. The instance lock checks whether its
+recorded CLI owner still exists; that check does not establish whether its agents
+or tools have stopped. Interrupted reviews and pending cleanup remain blocked
+after automatic lock recovery until process exclusion is explicitly confirmed.
+Database state does not replace physical Git/worktree or session-history
+verification.
 
 See the [architecture](docs/design/daynight.md) for transitions and the
 [state decision](.agents/notes/implemented/architecture/2026-10-17-durable-review-state.md)
@@ -251,15 +253,33 @@ unforced exit and drained streams are evidence under that contract. POSIX uses
 current process groups; Windows cancels live trees with `taskkill /T /F`.
 Uncertain termination retains the lock and interrupted state.
 
-An existing `~/.daynight/instance.lock` always blocks a second startup. After an
-abnormal exit, confirm the previous CLI and all its agents/tools have stopped
-before manually removing that lock and restarting. Keep SQLite, sessions and
-logs. The next startup reconciles interrupted work with the same captured target
-and session; it never declares a saved running attempt complete. No PID-age
-heuristic removes locks or kills saved process IDs.
+Startup checks the PID in an existing `~/.daynight/instance.lock` with a
+signal-zero probe. A live owner, permission denial, invalid lock metadata or an
+unclassified probe error preserves the lock and stops startup. Only an explicit
+no-such-process result permits automatic replacement of a dead owner's lock.
+Competing starts and releases serialize through `instance.lock.sqlite`; this
+guard database remains in place and must not be deleted while a CLI can use it.
+Lock age never establishes that an owner has stopped. PID reuse conservatively
+blocks startup until the recorded owner can be inspected.
+
+A crash with no unresolved review or cleanup can therefore restart directly.
+When interrupted reviews exist, automatic lock recovery blocks their PRs.
+Pending cleanup remains recorded with its error even if the PR reopens; only
+conclusively stopped cleanup operations and excluded agents allow that state to
+clear. Automatic recovery blocks only each affected PR's cleanup and reuse;
+polling and other PRs in the same repository continue normally, as do other
+repositories. Uncertain
+resources retain the lock on shutdown. After stopping the daemon, confirm that
+the previous CLI and all its agents/tools have stopped, then remove only
+`instance.lock` and restart. Keep `instance.lock.sqlite`, SQLite state, sessions
+and logs. That explicitly confirmed restart reconciles interrupted work with
+the same captured target and session; it never declares a saved running attempt
+complete or kills a saved process ID.
 
 The [coordination decision](.agents/notes/implemented/architecture/2026-10-17-foreground-review-coordination.md)
-explains scheduling, recovery and the foreground execution boundary.
+explains scheduling and the foreground execution boundary. The
+[stale-lock recovery decision](.agents/notes/implemented/bug-fix/2026-10-18-stale-instance-lock-recovery.md)
+records owner-liveness checks and the separate process-exclusion requirement.
 
 ## Working in the repository
 

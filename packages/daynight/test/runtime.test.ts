@@ -1,6 +1,7 @@
+import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { parseConfiguration } from "../src/config.js";
 import { resolveRuntimePaths } from "../src/paths.js";
@@ -27,17 +28,6 @@ const input = (name: string) => {
 };
 
 describe("foreground runtime ownership", () => {
-  it("rejects a second owner and never automatically removes a stale lock", async () => {
-    const lockFile = path.join(directory, "singleton.lock");
-    const lock = await acquireInstanceLock(lockFile, "first");
-    expect(JSON.parse(await readFile(lockFile, "utf8"))).toMatchObject({ owner: "first", pid: process.pid });
-    await expect(acquireInstanceLock(lockFile)).rejects.toThrow("confirm that its CLI and all review agents have stopped");
-    await lock.release();
-    await writeFile(lockFile, JSON.stringify({ owner: "dead", pid: 999999999, startedAt: "2000-01-01" }));
-    await expect(acquireInstanceLock(lockFile)).rejects.toThrow("manually remove the stale lock");
-    expect(JSON.parse(await readFile(lockFile, "utf8"))).toMatchObject({ owner: "dead" });
-  });
-
   it("stays running until its signal stops admission and releases only its own lock after coordinator shutdown", async () => {
     const { configuration, paths } = input("normal");
     const controller = new AbortController();
@@ -64,7 +54,7 @@ describe("foreground runtime ownership", () => {
   it("retains the lock after uncertainty until an operator excludes the previous processes and removes it", async () => {
     const { configuration, paths } = input("uncertain");
     await expect(runForegroundReview(configuration, paths, { dependencies: dependencies(async () => ({ safeToReleaseLock: false })), log: () => {} })).rejects.toThrow("Instance lock");
-    await expect(acquireInstanceLock(paths.lockFile)).rejects.toThrow("stale lock");
+    await expect(acquireInstanceLock(paths.lockFile)).rejects.toThrow("Cannot acquire instance lock");
     await rm(paths.lockFile);
     const coordinate = vi.fn<RuntimeDependencies["coordinate"]>(async ({ processes }) => {
       const proof = await processes.recover({} as Parameters<typeof processes.recover>[0]);
@@ -83,13 +73,99 @@ describe("foreground runtime ownership", () => {
     await expect(readFile(paths.lockFile)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("refuses to unlink an instance lock whose ownership changed", async () => {
-    const file = path.join(directory, "changed.lock");
-    const lock = await acquireInstanceLock(file, "owner");
-    await writeFile(file, "other-owner");
-    await expect(lock.release()).rejects.toThrow("no longer belongs");
-    expect(await readFile(file, "utf8")).toBe("other-owner");
+  it.each(["database", "aborted-signal"])("retains a recovered predecessor's uncertainty when startup fails at %s", async (failure) => {
+    const { configuration, paths } = input(`recovered-startup-${failure}`);
+    await mkdir(paths.stateDirectory, { recursive: true });
+    await writeFile(paths.lockFile, JSON.stringify({ owner: "dead", pid: 2_147_483_647, startedAt: "2000-01-01T00:00:00.000Z" }));
+    const probe = vi.spyOn(process, "kill").mockImplementation(() => { throw Object.assign(new Error("No such process"), { code: "ESRCH" }); });
+    const deps = dependencies(async () => ({ safeToReleaseLock: true }));
+    deps.openStore = vi.fn(() => { throw new Error("broken SQLite"); });
+    const controller = new AbortController();
+    if (failure === "aborted-signal") controller.abort(new Error("Startup cancelled"));
+    try {
+      await expect(runForegroundReview(configuration, paths, { signal: controller.signal, dependencies: deps, log: () => {} }))
+        .rejects.toThrow(failure === "database" ? "broken SQLite" : "Startup cancelled");
+      expect(JSON.parse(await readFile(paths.lockFile, "utf8"))).toMatchObject({ pid: process.pid });
+      if (failure === "aborted-signal") expect(deps.openStore).not.toHaveBeenCalled();
+    } finally { probe.mockRestore(); }
   });
+
+  it("retains interrupted state after automatic lock recovery until the old agents are excluded", async () => {
+    const { configuration, paths } = input("recovered-uncertain");
+    await mkdir(paths.stateDirectory, { recursive: true });
+    await writeFile(paths.lockFile, JSON.stringify({ owner: "dead", pid: 2_147_483_647, startedAt: "2000-01-01T00:00:00.000Z" }));
+    const probe = vi.spyOn(process, "kill").mockImplementation(() => { throw Object.assign(new Error("No such process"), { code: "ESRCH" }); });
+    const deps = dependencies(async ({ processes }) => {
+      await expect(processes.recover()).rejects.toThrow("instance-lock owner's confirmation");
+      return { safeToReleaseLock: true };
+    });
+    deps.createProcesses = vi.fn(createProcessSupervisor);
+    try {
+      await expect(runForegroundReview(configuration, paths, { dependencies: deps, log: () => {} })).rejects.toThrow("Instance lock");
+      expect(deps.createProcesses).toHaveBeenCalledWith({});
+      expect(JSON.parse(await readFile(paths.lockFile, "utf8"))).toMatchObject({ pid: process.pid });
+    } finally { probe.mockRestore(); }
+    await rm(paths.lockFile);
+    const confirmed = dependencies(async ({ processes }) => {
+      await expect(processes.recover()).resolves.toEqual({ processesExcluded: true, operationsStopped: true });
+      return { safeToReleaseLock: true };
+    });
+    await runForegroundReview(configuration, paths, { dependencies: confirmed, log: () => {} });
+    await expect(readFile(paths.lockFile)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("restarts a real CLI after a forced crash and releases the recovered lock after shutdown", async () => {
+    const home = path.join(directory, "crashed-cli");
+    const state = path.join(home, ".daynight");
+    const emptyPath = path.join(home, "empty-path");
+    await mkdir(state, { recursive: true }); await mkdir(emptyPath);
+    await writeFile(path.join(state, "config.yml"), "pollIntervalMs: 50\nrepositories: [{remote: https://github.com/o/r, path: ../repository}]\n");
+    const harness = path.join(home, "control.mjs");
+    await writeFile(harness, "process.on('message', (message) => { if (message === 'shutdown') { process.emit('SIGINT'); process.disconnect(); } });\n");
+    const executable = fileURLToPath(new URL("../dist/main.js", import.meta.url));
+    const launch = () => {
+      const child = spawn(process.execPath, ["--import", pathToFileURL(harness).href, executable, "--daemon-review"], {
+        cwd: home, stdio: ["ignore", "ignore", "pipe", "ipc"],
+        env: { ...process.env, HOME: home, USERPROFILE: home, PATH: emptyPath, Path: emptyPath },
+      });
+      let errors = "";
+      const lifetime = setTimeout(() => { child.kill("SIGKILL"); }, 15_000);
+      const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+        child.once("error", reject);
+        child.once("exit", (code, signal) => { clearTimeout(lifetime); resolve({ code, signal }); });
+      });
+      const started = new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => { reject(new Error(`CLI startup timed out: ${errors}`)); }, 10_000);
+        child.stderr!.on("data", (data: Buffer) => {
+          errors += data.toString();
+          if (errors.includes("Foreground review started")) { clearTimeout(timeout); resolve(); }
+        });
+        void exited.then(() => { clearTimeout(timeout); reject(new Error(`CLI exited before startup: ${errors}`)); }, reject);
+      });
+      return { child, exited, started, errors: () => errors };
+    };
+    const first = launch();
+    let second: ReturnType<typeof launch> | undefined;
+    try {
+      await first.started;
+      const firstRecord = JSON.parse(await readFile(path.join(state, "instance.lock"), "utf8")) as { pid: number; owner: string };
+      expect(firstRecord.pid).toBe(first.child.pid);
+      first.child.kill("SIGKILL");
+      await first.exited;
+      expect(JSON.parse(await readFile(path.join(state, "instance.lock"), "utf8"))).toEqual(firstRecord);
+      second = launch();
+      await second.started;
+      expect(JSON.parse(await readFile(path.join(state, "instance.lock"), "utf8"))).toMatchObject({ pid: second.child.pid });
+      second.child.send("shutdown");
+      expect((await second.exited).code, second.errors()).toBe(0);
+      await expect(readFile(path.join(state, "instance.lock"))).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      for (const running of [first, second]) if (running !== undefined) {
+        if (running.child.exitCode === null && running.child.signalCode === null) running.child.kill("SIGKILL");
+        await running.exited;
+      }
+    }
+  }, 30_000);
 
   it("formats durable execution context and retry time", () => {
     expect(formatCoordinatorEvent({ level: "error", phase: "retry", message: "missing marker", repository: "o/r", number: 4,
