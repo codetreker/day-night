@@ -12,8 +12,8 @@ different database, cutoff, or session history for the same user's repositories.
 
 The [requirements](../../../../docs/spec/daynight.md) and
 [design](../../../../docs/design/daynight.md) specify
-`daynight --deamon-review` as the review-mode entry point, preserving that exact
-flag spelling. Configuration is YAML at `~/.daynight/config.yml`. The program
+`daynight --daemon-review` as the review-mode entry point. Configuration is YAML
+at `~/.daynight/config.yml`. The program
 resolves the current OS user's home directory on Linux, macOS, and Windows.
 Relative repository paths resolve against the configuration directory.
 

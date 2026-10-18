@@ -26,7 +26,7 @@ describe("CLI argument handling", () => {
   it.each(["--help", "-h"])("prints %s without touching configuration or user state", async (argument) => {
     const deps = dependencies();
     expect(await runCli([argument], deps)).toBe(0);
-    expect(deps.output.join("")).toContain("daynight --deamon-review");
+    expect(deps.output.join("")).toContain("daynight --daemon-review");
     expect(deps.errors).toEqual([]);
   });
 
@@ -36,7 +36,7 @@ describe("CLI argument handling", () => {
     expect(deps.output).toEqual(["1.2.3\n"]);
   });
 
-  it.each([{ args: [] }, { args: ["--daemon-review"] }, { args: ["--config", "custom.yml"] }, { args: ["--help", "--deamon-review"] }])("rejects missing, unknown or conflicting arguments", async ({ args }) => {
+  it.each([{ args: [] }, { args: ["--deamon-review"] }, { args: ["--config", "custom.yml"] }, { args: ["--help", "--daemon-review"] }])("rejects missing, unknown or conflicting arguments", async ({ args }) => {
     const deps = dependencies();
     expect(await runCli(args, deps)).toBe(2);
     expect(deps.errors.join("")).toContain("daynight --help");
@@ -48,7 +48,7 @@ describe("CLI argument handling", () => {
     deps.homeDirectory = () => fileURLToPath(new URL("../../../.tmp/CLI User 用户/", import.meta.url));
     deps.loadConfiguration = vi.fn(async (paths) => parseConfiguration("repositories: [{remote: https://github.com/o/r, path: ../repo}]", paths));
     deps.runReview = vi.fn(async () => {});
-    expect(await runCli(["--deamon-review"], deps)).toBe(0);
+    expect(await runCli(["--daemon-review"], deps)).toBe(0);
     expect(deps.loadConfiguration).toHaveBeenCalledOnce();
     expect(deps.runReview).toHaveBeenCalledWith(expect.objectContaining({ maxConcurrentWorker: 1 }), expect.objectContaining({ configFile: expect.stringContaining("config.yml") }));
     expect(deps.errors).toEqual([]);
@@ -59,7 +59,7 @@ describe("CLI argument handling", () => {
     const deps = dependencies();
     deps.homeDirectory = () => fileURLToPath(new URL("../../../.tmp/CLI User 用户/", import.meta.url));
     deps.loadConfiguration = async () => { throw new Error("Cannot read configuration", { cause: new Error("ENOENT: missing config.yml") }); };
-    expect(await runCli(["--deamon-review"], deps)).toBe(1);
+    expect(await runCli(["--daemon-review"], deps)).toBe(1);
     expect(deps.errors.join("")).toContain("Caused by: ENOENT");
     expect(deps.errors.join("")).not.toContain("Configuration is valid");
   });
@@ -69,7 +69,7 @@ describe("CLI argument handling", () => {
     deps.homeDirectory = () => fileURLToPath(new URL("../../../.tmp/CLI User 用户/", import.meta.url));
     deps.loadConfiguration = async (paths) => parseConfiguration("repositories: [{remote: https://github.com/o/r, path: ../repo}]", paths);
     deps.runReview = async () => { throw new Error("Cannot start reviews", { cause: new Error("Instance lock is held") }); };
-    expect(await runCli(["--deamon-review"], deps)).toBe(1);
+    expect(await runCli(["--daemon-review"], deps)).toBe(1);
     expect(deps.errors.join("")).toContain("Cannot start reviews\nCaused by: Instance lock is held");
   });
 
@@ -90,7 +90,7 @@ describe("built executable", () => {
     });
     expect(result.error).toBeUndefined();
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("Usage: daynight --deamon-review");
+    expect(result.stdout).toContain("Usage: daynight --daemon-review");
     expect(result.stderr).toBe("");
   });
 
@@ -103,12 +103,12 @@ describe("built executable", () => {
     expect(result.stderr).toBe("");
   });
 
-  it("returns an actionable nonzero failure for an unknown argument", () => {
-    const result = spawnSync(process.execPath, [executable, "--daemon-review"], { encoding: "utf8", timeout: 10_000 });
+  it("rejects the misspelled review option and shows the supported spelling", () => {
+    const result = spawnSync(process.execPath, [executable, "--deamon-review"], { encoding: "utf8", timeout: 10_000 });
     expect(result.error).toBeUndefined();
     expect(result.status).toBe(2);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("--deamon-review");
+    expect(result.stderr).toContain("--daemon-review");
   });
 
   it("runs the compiled foreground entry with fixed home paths until a shutdown signal", async () => {
@@ -129,7 +129,7 @@ const probe = setInterval(() => {
 }, 10);
 `);
     try {
-      const result = spawnSync(process.execPath, ["--import", pathToFileURL(harness).href, executable, "--deamon-review"], {
+      const result = spawnSync(process.execPath, ["--import", pathToFileURL(harness).href, executable, "--daemon-review"], {
         cwd: directory, encoding: "utf8", timeout: 15_000,
         env: { ...process.env, HOME: directory, USERPROFILE: directory, PATH: emptyPath, Path: emptyPath },
       });
