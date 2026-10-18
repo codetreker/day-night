@@ -1,9 +1,14 @@
 import path from "node:path";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { acquireInstanceLock } from "../src/runtime.js";
 import { openStore, readReviewListingSnapshot, type PullRequestObservation, type ReviewState, type Store } from "../src/store.js";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, lstatSync: vi.fn(actual.lstatSync) };
+});
 
 const fixtureRoot = path.resolve(import.meta.dirname, "../../../.tmp/store-snapshot-tests");
 const directories: string[] = [];
@@ -52,6 +57,7 @@ const fixture = () => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.mocked(lstatSync).mockReset();
   for (const store of stores) store.close();
   stores.clear();
   for (const db of connections) if (db.open) db.close();
@@ -74,6 +80,46 @@ describe("read-only review listing snapshots", () => {
     writeFileSync(file, "occupied");
     expect(() => readReviewListingSnapshot(path.join(file, "state.sqlite"))).toThrow();
     expect(() => readReviewListingSnapshot(location)).toThrow();
+  });
+
+  it("rejects a file ancestor when the host reports Windows-style ENOENT", () => {
+    const location = directory();
+    const file = path.join(location, "file");
+    const databaseFile = path.join(file, "state.sqlite");
+    writeFileSync(file, "occupied");
+    vi.mocked(lstatSync).mockImplementationOnce((target) => {
+      expect(target).toBe(databaseFile);
+      throw Object.assign(new Error("Windows reports a missing path below a file"), { code: "ENOENT" });
+    });
+    expect(() => readReviewListingSnapshot(databaseFile)).toThrow(`ancestor ${file} is not a directory`);
+    expect(vi.mocked(lstatSync).mock.calls.map(([target]) => target)).toEqual([databaseFile, file]);
+  });
+
+  it("distinguishes a missing database through a valid directory link from a broken link", () => {
+    const location = directory();
+    const target = path.join(location, "target");
+    const validLink = path.join(location, "valid-link");
+    const brokenLink = path.join(location, "broken-link");
+    mkdirSync(target);
+    const linkType = process.platform === "win32" ? "junction" : "dir";
+    symlinkSync(target, validLink, linkType);
+    symlinkSync(path.join(location, "absent-target"), brokenLink, linkType);
+    expect(readReviewListingSnapshot(path.join(validLink, "missing", "state.sqlite"))).toBeNull();
+    expect(() => readReviewListingSnapshot(path.join(brokenLink, "state.sqlite"))).toThrow();
+    expect(readdirSync(target)).toEqual([]);
+  });
+
+  it("propagates an unavailable filesystem root and permission errors", () => {
+    const location = directory();
+    const databaseFile = path.join(location, "state.sqlite");
+    const rootError = Object.assign(new Error("filesystem root is unavailable"), { code: "ENOENT" });
+    vi.mocked(lstatSync).mockImplementation(() => { throw rootError; });
+    expect(() => readReviewListingSnapshot(databaseFile)).toThrow(rootError);
+    expect(vi.mocked(lstatSync).mock.calls.at(-1)?.[0]).toBe(path.parse(databaseFile).root);
+    const permissionError = Object.assign(new Error("permission denied"), { code: "EACCES" });
+    vi.mocked(lstatSync).mockImplementation(() => { throw permissionError; });
+    expect(() => readReviewListingSnapshot(databaseFile)).toThrow(permissionError);
+    expect(readdirSync(location)).toEqual([]);
   });
 
   it("includes open drafts, completed and exhausted reviews while omitting closed, merged and cutoff PRs", () => {

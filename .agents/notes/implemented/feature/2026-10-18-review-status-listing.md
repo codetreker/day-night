@@ -51,6 +51,15 @@ same short transaction as its selects. It does not enter runtime startup, acquir
 an instance lock, run commands, access the network, migrate state or recover work.
 An absent database yields uninitialized repositories without file creation. An
 existing empty, corrupt, unreadable or unsupported database fails visibly.
+Absence requires the nearest existing path ancestor to resolve to a directory;
+missing intermediate directories are valid absence. The reader checks ancestors
+after a missing-path result because Node.js 24.21.0's
+[Windows libuv mapping](https://github.com/nodejs/node/blob/955266bfdd854cd280dffd47548673914484e4c0/deps/uv/src/win/error.c#L134-L142)
+translates `ERROR_DIRECTORY`, missing paths and invalid drives to `ENOENT`.
+A nondirectory ancestor, dangling ancestor symlink, permission denial or failed
+root lookup remains an error. The check creates no paths and preserves lookup
+failures.
+
 Normalized configured remotes select stored identities; multiple stored GitHub IDs
 for the same configured coordinate cause an explicit error.
 

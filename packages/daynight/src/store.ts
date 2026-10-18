@@ -1,5 +1,5 @@
 import path from "node:path";
-import { lstatSync } from "node:fs";
+import { lstatSync, statSync } from "node:fs";
 import Database from "better-sqlite3";
 
 export type RepositoryIdentity = { host: string; githubId: string };
@@ -178,14 +178,31 @@ const schema = `
   PRAGMA user_version = 1;
 `;
 
+const reviewDatabaseIsMissing = (databaseFile: string): boolean => {
+  // Windows may report ENOENT for a file ancestor; ordinary absence requires an existing directory.
+  // https://github.com/nodejs/node/blob/955266bfdd854cd280dffd47548673914484e4c0/deps/uv/src/win/error.c#L134-L142
+  let candidate = databaseFile;
+  while (true) {
+    let status;
+    try {
+      status = lstatSync(candidate);
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+      const parent = path.dirname(candidate);
+      if (parent === candidate) throw error;
+      candidate = parent;
+      continue;
+    }
+    if (candidate === databaseFile) return false;
+    const ancestor = status.isSymbolicLink() ? statSync(candidate) : status;
+    if (!ancestor.isDirectory()) throw new Error(`The SQLite database path ancestor ${candidate} is not a directory.`);
+    return true;
+  }
+};
+
 export const readReviewListingSnapshot = (databaseFile: string): ReviewListingSnapshot | null => {
   if (!path.isAbsolute(databaseFile)) throw new Error("The SQLite database path must be absolute.");
-  try {
-    lstatSync(databaseFile);
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
-    throw error;
-  }
+  if (reviewDatabaseIsMissing(databaseFile)) return null;
   const db = new Database(databaseFile, { readonly: true, fileMustExist: true, timeout: 5000 });
   let operationFailed = false;
   let operationError: unknown;

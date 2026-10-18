@@ -73,9 +73,9 @@ for their checked-out revision. A scenario receipt describes its assertions; the
 job also covers process and fixture cleanup. Full environment reports,
 credentials, sessions and raw runtime logs are outside the artifact selection.
 
-Local package `0.2.0` validation passed type checking, 539 ordinary tests with
+Local package `0.2.0` validation passed type checking, 542 ordinary tests with
 eight APFS cases skipped on Linux, and build. The installed suite passed all 28
-scenarios in 10.71 seconds on Linux x64. Its receipt records six agent invocations,
+scenarios in 10.62 seconds on Linux x64. Its receipt records six agent invocations,
 five publications (one `COMMENT`, four `APPROVE`), two normal shutdowns, two
 worktree cleanups and one automatic stale-lock recovery. Both live-service flags
 are false. No fixture directories or processes remained. This is local evidence;
@@ -95,7 +95,7 @@ and do not establish that repair's behavior.
 
 | Evidence | Observed result |
 |---|---|
-| Package `0.2.0` local validation, 2026-10-18 | Linux x64 passed type checking, 539 ordinary tests with eight APFS skips, build and all 28 installed scenarios in 10.71 seconds |
+| Package `0.2.0` local validation, 2026-10-18 | Linux x64 passed type checking, 542 ordinary tests with eight APFS skips, build and all 28 installed scenarios in 10.62 seconds |
 | Cleanup-barrier repair local validation, 2026-10-18 | Linux x64 passed `pnpm check` with 476 tests and eight APFS skips, `pnpm build` and all 24 installed scenarios |
 | Pre-repair combined local validation, 2026-10-18 | Linux x64 passed `pnpm check`, `pnpm build` and all 24 installed scenarios for package version `0.1.2`, from the integration working tree |
 | Pre-integration stale-lock validation, 2026-10-18 | Linux x64 passed type checking, 421 ordinary tests with eight APFS cases skipped, build and the 20-scenario automatic-recovery installed suite; recorded in commit `38d46d6` before repository-registration and version-policy integration |
