@@ -463,8 +463,13 @@ Linux/macOS 为直接子进程建立独立进程组，同时保留引用、pipes
 
 ## 验证与交付
 
-应用工具链提供 `pnpm typecheck`、`pnpm test`、`pnpm build` 和独立的 `pnpm acceptance`。当前测试覆盖参数、
-帮助与版本、编译后的入口、仓库添加、严格配置解析和路径校验；GitHub Actions 在 Linux、macOS
+应用工具链提供 `pnpm typecheck`、`pnpm test`、`pnpm build` 和独立的 `pnpm acceptance`。
+CI 要求源码、包元数据、构建或依赖输入发生变化时升级包版本；具体范围和本地检查命令见
+[README](../../README.md#package-versions)。版本检查在 Linux 任务中运行，其失败会使最终
+必需检查失败。
+
+当前测试覆盖参数、帮助与版本、编译后的入口、仓库添加、严格配置解析和路径校验；
+GitHub Actions 在 Linux、macOS
 和 Windows 上运行这些检查。SQLite 测试使用真实磁盘数据库，验证迁移、事务回滚、
 连接锁冲突、重开后的边界与预算、修订转换、会话和 worktree 登记。GitHub 测试使用
 受控 API 和子进程验证完整分页、失败保留、限流、关闭确认和观测事务回滚。真实 Git
