@@ -51,7 +51,14 @@ GitHub tests use controlled API responses and subprocess fixtures to verify
 complete scans, HTTP failures, and atomic observation commits.
 Git lifecycle tests use local origin/clone fixtures and real worktrees to check
 captured targets, disposable review artifacts, shared refs, and isolation between
-PR worktrees. The installed acceptance suite additionally verifies the package
+PR worktrees. Independent Git suites run in separate Vitest workers. Each suite
+copies its immutable bare-origin seed into private test directories; refs,
+SQLite databases, clones and worktrees remain separate for every case. Tests
+within a file stay sequential so environment changes and cleanup have one owner.
+The [Git test decision](.agents/notes/implemented/testing/2026-10-18-parallel-git-validation.md)
+records the isolation rules, and the
+[CI timing report](docs/research/windows-ci-performance.md) records native
+before/after measurements. The installed acceptance suite additionally verifies the package
 bin, default native command shims, singleton/stale-lock behavior and the complete
 review/re-review/restart/closure lifecycle. Curated environment and scenario
 receipts are uploaded by each native CI job; the
