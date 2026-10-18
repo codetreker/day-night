@@ -22,6 +22,8 @@ export type Configuration = {
   repositories: RepositoryConfiguration[];
 };
 
+export const defaultRepositoryRoot = "~/daynights";
+
 export const configurationDefaults = {
   pollIntervalMs: 60_000,
   maxConcurrentWorker: 1,
@@ -166,11 +168,10 @@ const validateRepositoryPaths = (
   }
 };
 
-export const parseConfiguration = (
+export const parseConfigurationDocument = (
   source: string,
   runtimePaths: RuntimePaths,
-  pathApi: PathApi = path,
-): Configuration => {
+): ReturnType<typeof parseDocument> => {
   const document = parseDocument(source, {
     strict: true,
     uniqueKeys: true,
@@ -183,6 +184,41 @@ export const parseConfiguration = (
       cause: new AggregateError(problems, "YAML configuration was rejected."),
     });
   }
+  return document;
+};
+
+export const resolveRepositoryRoot = (
+  configuredRoot: unknown,
+  runtimePaths: RuntimePaths,
+  homeDirectory: string,
+  pathApi: PathApi = path,
+): string => {
+  const root = validateRepositoryRoot(configuredRoot, pathApi);
+  if (!pathApi.isAbsolute(homeDirectory)) {
+    throw new Error("The current user's home directory must be an absolute path.");
+  }
+  return root === "~" || root.startsWith("~/") || (pathApi.sep === "\\" && root.startsWith("~\\"))
+    ? pathApi.resolve(pathApi.join(homeDirectory, root.slice(2)))
+    : pathApi.resolve(pathApi.dirname(runtimePaths.configFile), root);
+};
+
+const validateRepositoryRoot = (value: unknown, pathApi: PathApi): string => {
+  const root = nonEmptyString(value, "repositoryRoot");
+  if (root.startsWith("~") && root !== "~" && !root.startsWith("~/") && !(pathApi.sep === "\\" && root.startsWith("~\\"))) {
+    throw new Error("repositoryRoot supports only the current user's home directory (~ or ~/), absolute paths, or config-directory-relative paths.");
+  }
+  if (pathApi.sep === "\\" && /^[a-z]:(?![\\/])/i.test(root)) {
+    throw new Error("repositoryRoot must not use a drive-relative Windows path.");
+  }
+  return root;
+};
+
+export const parseConfiguration = (
+  source: string,
+  runtimePaths: RuntimePaths,
+  pathApi: PathApi = path,
+): Configuration => {
+  const document = parseConfigurationDocument(source, runtimePaths);
   let parsed: unknown;
   try {
     parsed = document.toJS();
@@ -190,7 +226,10 @@ export const parseConfiguration = (
     throw new Error(`Cannot decode YAML in ${runtimePaths.configFile}.`, { cause });
   }
   const mapping = asMapping(parsed, "Configuration");
-  validateKeys(mapping, [...Object.keys(configurationDefaults), "repositories"], "Configuration");
+  validateKeys(mapping, [...Object.keys(configurationDefaults), "repositoryRoot", "repositories"], "Configuration");
+  if (Object.hasOwn(mapping, "repositoryRoot")) {
+    validateRepositoryRoot(mapping.repositoryRoot, pathApi);
+  }
   if (!Array.isArray(mapping.repositories) || mapping.repositories.length === 0) {
     throw new Error("repositories must be a nonempty sequence.");
   }
@@ -283,6 +322,13 @@ export const loadConfiguration = async (
   } catch (cause) {
     throw new Error(`Cannot read configuration file ${runtimePaths.configFile}.`, { cause });
   }
+  return validateConfigurationSource(source, runtimePaths);
+};
+
+export const validateConfigurationSource = async (
+  source: string,
+  runtimePaths: RuntimePaths,
+): Promise<Configuration> => {
   try {
     const configuration = parseConfiguration(source, runtimePaths);
     const [stateDirectory, ...repositoryDirectories] = await Promise.all([

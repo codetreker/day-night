@@ -23,9 +23,11 @@ and working directories exercise spaces and Unicode. Git protocols are limited
 to the exact local fixture origin, and live credentials are removed from the
 controlled environment.
 
-The fixture drives triggers, exact session continuation, publication ownership,
-missing-marker reconciliation, installed singleton refusal, abnormal-lock
-diagnostics, restart and worktree cleanup. The abnormal-exit fixture waits for
+The fixture uses the installed command to register repositories, checking explicit
+relative paths, default-root derivation, fixed paths after a root change and
+configuration-only effects before starting review mode. It also drives triggers,
+exact session continuation, publication ownership, missing-marker reconciliation,
+installed singleton refusal, abnormal-lock diagnostics, restart and worktree cleanup. The abnormal-exit fixture waits for
 current direct tool handles to drain, acknowledges the actual CLI PID and exits
 synchronously before the runtime can release its lock. A native child verifies
 the public `ProcessWrap` visibility used by that gate on each platform. This
