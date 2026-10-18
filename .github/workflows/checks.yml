@@ -51,6 +51,8 @@ jobs:
         run: node packages/daynight/scripts/validation-environment.ts
       - run: pnpm typecheck
       - run: pnpm test
+        env:
+          VITEST_MAX_WORKERS: ${{ matrix.os == 'windows-latest' && '6' || '' }}
       - run: pnpm acceptance
       - name: Upload acceptance evidence
         if: ${{ always() && steps.environment.outcome == 'success' }}

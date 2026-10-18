@@ -49,19 +49,53 @@ its [parallelism guide](https://vitest.dev/guide/parallelism.html). Independent
 files expose this work to the existing scheduler. A per-file immutable bare
 seed avoids reconstructing identical starting objects for each case, while
 fresh copies preserve separate mutable origins and all real manager operations.
+Windows ordinary tests set `VITEST_MAX_WORKERS=6` to overlap independent native
+commands. Other platforms and installed acceptance retain their existing worker
+defaults. Vitest 5.0.5's [worker default](https://github.com/vitest-dev/vitest/blob/7a825db43e2beca0b219d2eadaec334cb81af0c7/packages/vitest/src/utils/workers.ts#L3)
+reserves one available CPU, and its
+[configuration resolver](https://github.com/vitest-dev/vitest/blob/7a825db43e2beca0b219d2eadaec334cb81af0c7/packages/vitest/src/node/config/resolveConfig.ts#L710-L713)
+supports the numeric environment override without changing process isolation.
 The [decision note](../../.agents/notes/implemented/testing/2026-10-18-parallel-git-validation.md)
 defines fixture ownership and the alternatives considered.
+
+## Hosted comparison
+
+The first optimized revision `eac0970c55b9dc17baf3e83212ee55ea6466edb0`
+split the files and reused seeds while retaining default worker counts.
+[Run 39135759769](https://github.com/codetreker/day-night/actions/runs/39135759769)
+passed all platforms and the final gate:
+
+| Platform | Job | Ordinary test step | Installed acceptance |
+|---|---:|---:|---:|
+| Windows | 195 | 115 | 36 |
+| Linux | 50 | 17 | 13 |
+| macOS | 90 | 47 | 18 |
+
+Relative to the exact main baseline, this Windows run reduced the ordinary test
+step by 42.8% and the whole job by 30.6%. Its Vitest portion took 110.67 seconds.
+File completion timestamps minus reported file durations establish at most
+three overlapping test files. Their summed duration was 299.181 seconds; the
+last sparse-primary file started about 83 seconds after Vitest began. Individual
+file times include concurrent resource contention and cannot be compared to
+the former single file as isolated speed measurements.
 
 ## Validation boundaries
 
 The unchanged local Linux baseline passed type checking and 476 ordinary tests,
-with eight platform-specific APFS skips, in a 15.63-second Vitest run. The split
-suite passed the same 476 tests and eight skips in 4.35 seconds. Type checking
-and the 24-scenario installed acceptance also passed. Local timings cannot
-establish native Windows speed or filesystem behavior. Hosted validation must
-include all three platforms, the same 48 Git cases and the installed CLI
-lifecycle. Type checking, package build, version checks, artifact capture,
-acceptance scenarios and timeout limits retain their existing rules.
+with eight platform-specific APFS skips, in a 15.63-second Vitest run. The final
+local split suite passed the same 476 tests and eight skips in 4.26 seconds.
+Type checking and the 24-scenario installed acceptance also passed. Independent
+comparison preserved all 48 expanded Git names, assertion callbacks, six sparse
+modes and both cleanup outcomes. A native isolation probe changed a copied
+origin's ref and object bytes, verified sibling and seed objects with `cat-file`,
+and confirmed separate file identities and cleanup.
+
+The first hosted split-suite Windows run retained its 475 passes and nine
+platform skips, and installed acceptance passed on all three platforms. Hosted
+checks, rather than local timings, establish Windows behavior. Type checking,
+package build, version checks, artifact capture, acceptance scenarios and timeout
+limits retain their existing rules. Single-run comparisons are observations,
+not a fixed performance guarantee across runner load and toolchain changes.
 
 This report concerns controlled native validation. Live Copilot and GitHub
 acceptance retain the boundaries in the

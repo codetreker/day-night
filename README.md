@@ -50,7 +50,8 @@ GitHub tests use controlled API responses and subprocess fixtures to verify
 complete scans, HTTP failures, and atomic observation commits.
 Git lifecycle tests use local origin/clone fixtures and real worktrees to check
 captured targets, disposable review artifacts, shared refs, and isolation between
-PR worktrees. Independent Git suites run in separate Vitest workers. Each suite
+PR worktrees. Independent Git suites run in separate Vitest workers; ordinary
+Windows CI tests use six workers to overlap native command and I/O waits. Each suite
 copies its immutable bare-origin seed into private test directories; refs,
 SQLite databases, clones and worktrees remain separate for every case. Tests
 within a file stay sequential so environment changes and cleanup have one owner.
