@@ -24,11 +24,29 @@ pending map holds one latest candidate per PR while preserving its queue positio
 Dispatch removes that entry, so a frequently updated PR's successor joins behind
 work already waiting. Each scheduling cycle yields to the Node.js event loop:
 fast polls whose next deadline is already due cannot repeatedly wake only
-microtasks and starve timers or child-process I/O. A PR reservation is acquired
-before the first asynchronous
-operation and spans preparation, agent execution or cleanup. Review preparation
+microtasks and starve timers or child-process I/O. A PR worktree reservation is acquired before asynchronous preparation and spans
+agent execution or cleanup. Review preparation
 and execution consume `maxConcurrentWorker`; cleanup uses the PR reservation
 without consuming a review slot.
+
+CI admission precedes review reservation. Independent asynchronous checks retain
+FIFO positions and are refreshed at the existing polling interval. Evidence is
+bound to the revision, head SHA and base branch; obsolete responses cannot open
+a newer target. Waiting or failed CI creates no review, session or worktree and
+consumes no review Worker or attempt. API errors close the gate and honor rate
+limits. Restart discards this evidence and queries again, leaving SQLite review
+and revision semantics unchanged.
+
+After worktree preparation, each launch checks the current PR and CI again,
+then rechecks stored target and cancellation after the await. A regression defers
+preparation, releases capacity and preserves the review/session/budget. CI changes
+alone do not create a revision or repeat completed reviews. CI operations share
+the coordinator's cancellation and shutdown ownership. An active agent is not
+canceled merely because new CI is later registered or rerun.
+
+The [requirements](../../../../docs/spec/daynight.md#r5-轮询与审查资格) own pass and
+empty-CI policy. The [GitHub observation decision](2026-10-17-github-observation.md)
+owns complete CI evidence, including approval-blocked workflows without jobs.
 
 Observed Draft/closure cancels the active attempt. New head/target revisions wait
 for current execution and remain pending after its captured revision completes.
@@ -105,6 +123,10 @@ needs a live tree root; closed stdio does not enumerate arbitrary descendants.
 Universal containment would require stronger native process infrastructure.
 The selected foreground contract supports ordinary review tools and keeps
 abnormal execution visible, without changing the single-process CLI design.
+
+**Reserve a review while waiting for CI.** This occupies review capacity and
+creates retained work before it can run. Separate ephemeral admission lets ready
+PRs proceed and keeps CI waiting outside agent attempt accounting.
 
 ## Consequences
 

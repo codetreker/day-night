@@ -23,10 +23,29 @@ if (/^gh(?:\.exe)?$/i.test(path.basename(process.execPath))) {
   if (args[0] !== "api") throw new Error(`Unexpected fake gh command: ${JSON.stringify(args)}`);
   const methodIndex = args.indexOf("--method");
   const method = methodIndex === -1 ? "GET" : args[methodIndex + 1];
-  const endpoint = args.find((argument) => argument.startsWith("repos/"));
+  const endpoint = args.find((argument) => argument.startsWith("repos/") || argument === "graphql");
   if (endpoint === undefined) throw new Error("The fake gh only accepts fixture repository API endpoints.");
   const url = new URL(endpoint, "https://fixture.invalid/");
   const state = JSON.parse(readFileSync(path.join(directory, "api.json"), "utf8"));
+  if (endpoint === "graphql") {
+    if (method !== "POST" || !args.some((argument) => argument.startsWith("query=") && !argument.includes("mutation"))) throw new Error("Only the read-only CI query is permitted.");
+    const owner = args.find((argument) => argument.startsWith("owner="));
+    const name = args.find((argument) => argument.startsWith("name="));
+    const number = Number(args.find((argument) => argument.startsWith("number="))?.slice("number=".length));
+    if (owner !== "owner=fixture" || name !== "name=review-project") throw new Error("Unexpected CI repository.");
+    const pr = state.pulls.find((item) => item.number === number);
+    if (pr === undefined) throw new Error("The fixture CI PR does not exist.");
+    const result = { data: { repository: { pullRequest: {
+      state: pr.state === "open" ? "OPEN" : pr.merged_at === null ? "CLOSED" : "MERGED",
+      isDraft: pr.draft, headRefOid: pr.head.sha, baseRefName: pr.base.ref,
+      commits: { nodes: [{ commit: { oid: pr.head.sha, statusCheckRollup: pr.ci === null ? null : { state: pr.ci },
+        checkSuites: { nodes: [], totalCount: 0, pageInfo: { hasNextPage: false, endCursor: null } } } }] },
+      potentialMergeCommit: null,
+    } } } };
+    record("requests", { version: state.version, endpoint, method, number });
+    writeFileSync(1, `${args.includes("--include") ? "HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n" : ""}${JSON.stringify(result)}\n`);
+    process.exit(0);
+  }
   const match = /^\/repos\/fixture\/review-project(?:\/pulls(?:\/(\d+)(\/reviews)?)?)?$/.exec(url.pathname);
   if (match === null) throw new Error(`Unexpected fake API endpoint: ${endpoint}`);
   let result;

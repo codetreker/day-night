@@ -58,6 +58,7 @@ export const createGitTestFixtures = (name: string) => {
       listPullRequestNumbers: async () => [101],
       listOpenPullRequests: async () => [observation],
       getPullRequest: async () => { onGet?.(); return { ...observation }; },
+      getPullRequestChecks: async () => { throw new Error("Git preparation must not query CI readiness."); },
     };
     const calls: { file: string; args: readonly string[] }[] = [];
     let intercept: CommandExecutor | undefined;

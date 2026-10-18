@@ -244,6 +244,14 @@ the next pass after the applicable deadline.
 The [observation decision](.agents/notes/implemented/architecture/2026-10-17-github-observation.md)
 records pagination and failure handling.
 
+CI admission uses a read-only GraphQL query for the current PR head and
+available test-merge commit. It combines GitHub's check/status rollups with
+registered workflow suites, including approval-blocked workflows without jobs.
+All reported CI must finish successfully; GitHub's `success`, `skipped` and
+`neutral` outcomes pass. No CI allows immediate review. API errors and partial
+results keep the PR waiting. Latest workflow runs replace historical attempts;
+waiting or failing workflows do not consume review capacity.
+
 ## Repository clones and worktrees
 
 The Git module creates missing clones and validates existing repository identity.
@@ -297,9 +305,18 @@ controlled subprocess tests.
 
 A FIFO pending queue coalesces observations for each PR while preventing a
 frequently updated PR from starving other repositories or PRs. One reservation
-spans preparation, execution and cleanup for each PR. Cleanup does not consume a
-review worker slot, but cannot overlap another operation on the same worktree.
-Draft/closure observations cancel active work; head changes wait for the current
+spans preparation, execution and cleanup for each PR. CI admission precedes
+that reservation and is refreshed at `pollIntervalMs`; waiting candidates retain
+their queue position without blocking ready PRs. CI evidence is kept in memory
+for the exact revision, head and base branch and is refreshed after restart.
+Every agent launch rechecks PR state and CI after worktree preparation, including
+retries. A regression defers preparation without consuming an attempt or losing
+the retained session. CI changes alone do not retrigger completed revisions.
+Readiness is a launch-time observation; later CI registration or reruns do not
+automatically cancel an active agent.
+
+Cleanup does not consume a review worker slot, but cannot overlap another
+operation on the same worktree. Draft/closure observations cancel active work; head changes wait for the current
 attempt and remain pending. Failed revisions retain their exhausted budget.
 
 Ctrl+C stops new work and polling, terminates current managed execution, waits

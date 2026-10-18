@@ -24,8 +24,8 @@ home and working directories containing spaces and Unicode. The test drives its
 public command and reads SQLite through an independent connection. Product
 scheduling APIs are not replaced. Git transport is limited to the local fixture origin.
 
-Twenty-eight scenarios cover four configuration-registration cases, four local
-status-listing cases and the twenty review lifecycle cases. Registration drives the
+Thirty-three scenarios cover four configuration-registration cases, four local
+status-listing cases and twenty-five review lifecycle cases. Registration drives the
 installed command before review startup and verifies configuration-only operation, working-directory-relative
 paths, the default root, and fixed repository paths after a root change. It checks
 that registration creates no clone, database, runtime lock, agent invocation or
@@ -44,7 +44,8 @@ two normal shutdowns and two cleanups. The combined suite's recovery receipt use
 only in historical receipts.
 
 The lifecycle cases cover the permanent startup cutoff, Draft/head suppression,
-ready review, inline `COMMENT`, missing-marker reconciliation, a clean approval,
+ready review after pending/failed CI passes, new-head CI waiting, no-CI review,
+inline `COMMENT`, missing-marker reconciliation, a clean approval,
 head/force-push changes, base-tip exclusion, base-branch changes, isolated PR
 sessions, normal shutdown, another working directory, singleton refusal, an
 abnormal stop with a retained lock, automatic dead-owner lock recovery, and
@@ -73,13 +74,21 @@ for their checked-out revision. A scenario receipt describes its assertions; the
 job also covers process and fixture cleanup. Full environment reports,
 credentials, sessions and raw runtime logs are outside the artifact selection.
 
-Local package `0.2.0` validation passed type checking, 552 ordinary tests with
+Local CI-admission validation of package `0.2.1` passed type checking, 662
+ordinary tests with eight APFS cases skipped on Linux, build and all 33 installed
+scenarios. The five added lifecycle cases cover pending and failed CI waiting,
+passing CI admission, new-head CI waiting and direct review without CI. API tests
+also cover jobless blocked workflows, latest attempts, immutable target and
+complete suite pagination, errors and rate limits. Hosted results belong to the
+exact revision's native CI jobs and remain separate from these local receipts.
+
+Earlier local package `0.2.0` validation passed type checking, 552 ordinary tests with
 eight APFS cases skipped on Linux, and build. The installed suite passed all 28
 scenarios in 10.62 seconds on Linux x64. Its receipt records six agent invocations,
 five publications (one `COMMENT`, four `APPROVE`), two normal shutdowns, two
 worktree cleanups and one automatic stale-lock recovery. Both live-service flags
 are false. No fixture directories or processes remained. This is local evidence;
-native hosted status-listing receipts remain pending.
+those receipts predate CI-admission coverage.
 
 Local validation of the durable cleanup barrier across reopen and isolation of
 only the affected PR passed `pnpm check`: type checking and 476 ordinary tests,
@@ -95,6 +104,7 @@ and do not establish that repair's behavior.
 
 | Evidence | Observed result |
 |---|---|
+| Package `0.2.1` CI-admission local validation, 2026-10-18 | Linux x64 passed type checking, 662 ordinary tests with eight APFS skips, build and all 33 installed scenarios |
 | Package `0.2.0` local validation, 2026-10-18 | Linux x64 passed type checking, 552 ordinary tests with eight APFS skips, build and all 28 installed scenarios in 10.62 seconds |
 | Cleanup-barrier repair local validation, 2026-10-18 | Linux x64 passed `pnpm check` with 476 tests and eight APFS skips, `pnpm build` and all 24 installed scenarios |
 | Pre-repair combined local validation, 2026-10-18 | Linux x64 passed `pnpm check`, `pnpm build` and all 24 installed scenarios for package version `0.1.2`, from the integration working tree |
