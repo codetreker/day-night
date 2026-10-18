@@ -4,6 +4,7 @@ export { formatError } from "./diagnostics.js";
 import { loadConfiguration } from "./config.js";
 import { resolveRuntimePaths } from "./paths.js";
 import { addRepository } from "./repositories.js";
+import { listReviews } from "./review-list.js";
 import { formatCoordinatorEvent, runForegroundReview } from "./runtime.js";
 import type { Configuration } from "./config.js";
 import type { RuntimePaths } from "./paths.js";
@@ -14,6 +15,7 @@ export type CliDependencies = {
   homeDirectory: () => string;
   workingDirectory: () => string;
   addRepository: (input: AddRepositoryInput, paths: RuntimePaths, options: AddRepositoryOptions) => Promise<AddRepositoryResult>;
+  listReviews: (paths: RuntimePaths) => Promise<string>;
   loadConfiguration: (paths: RuntimePaths) => Promise<Configuration>;
   runReview: (configuration: Configuration, paths: RuntimePaths) => Promise<void>;
   stdout: (text: string) => void;
@@ -22,9 +24,11 @@ export type CliDependencies = {
 
 const help = `Usage: daynight --daemon-review
        daynight add-repo <remote> [--path <path>]
+       daynight review list|ls
 
 Commands:
   add-repo        Add a repository to configuration for the next review startup
+  review list|ls  List tracked ongoing PRs and recorded review status
 
 Options:
   --daemon-review  Run foreground PR review until interrupted
@@ -49,14 +53,37 @@ The resolved absolute path is saved in ~/.daynight/config.yml.
 Changes take effect the next time daynight --daemon-review starts.
 `;
 
+const reviewHelp = `Usage: daynight review list
+       daynight review ls
+
+Print a local persisted snapshot of configured repositories and tracked open PRs.
+Includes Draft PRs, saved review status, attempts, retry deadlines and errors.
+Last observed identifies the latest successful repository observation.
+Running is a recorded review state and does not establish process liveness.
+
+Options:
+  -h, --help      Show this help
+`;
+
 type Command =
   | { kind: "help"; text: string }
   | { kind: "version" }
   | { kind: "review" }
+  | { kind: "review-list" }
   | { kind: "add-repo"; input: AddRepositoryInput };
 
 const parseCommand = (args: readonly string[]): Command => {
   if (args.length === 0) throw new Error("Choose a command.");
+  if (args[0] === "review") {
+    const remaining = args.slice(1);
+    const isHelp = (value: string | undefined): boolean => value === "--help" || value === "-h";
+    if (remaining.length === 1 && isHelp(remaining[0])) return { kind: "help", text: reviewHelp };
+    if (remaining[0] === "list" || remaining[0] === "ls") {
+      if (remaining.length === 1) return { kind: "review-list" };
+      if (remaining.length === 2 && isHelp(remaining[1])) return { kind: "help", text: reviewHelp };
+    }
+    throw new Error("Expected daynight review list or daynight review ls.");
+  }
   if (args[0] === "add-repo") {
     const remaining = args.slice(1);
     if (remaining.length === 1 && (remaining[0] === "--help" || remaining[0] === "-h")) {
@@ -84,7 +111,7 @@ const parseCommand = (args: readonly string[]): Command => {
     if (remote === undefined) throw new Error("add-repo requires a remote address.");
     return { kind: "add-repo", input: repositoryPath === undefined ? { remote } : { remote, path: repositoryPath } };
   }
-  if (args.length !== 1) throw new Error("Expected exactly one option or an add-repo command.");
+  if (args.length !== 1) throw new Error("Expected a single command. Run daynight --help for supported commands.");
   switch (args[0]) {
     case "--help": case "-h": return { kind: "help", text: help };
     case "--version": case "-v": return { kind: "version" };
@@ -116,6 +143,10 @@ export const runCli = async (
   try {
     const homeDirectory = dependencies.homeDirectory();
     const runtimePaths = resolveRuntimePaths(homeDirectory);
+    if (command.kind === "review-list") {
+      stdout(await dependencies.listReviews(runtimePaths));
+      return 0;
+    }
     if (command.kind === "add-repo") {
       const result = await dependencies.addRepository(command.input, runtimePaths, {
         homeDirectory,
@@ -138,6 +169,7 @@ export const defaultCliDependencies = (version: string): CliDependencies => ({
   homeDirectory: homedir,
   workingDirectory: process.cwd,
   addRepository,
+  listReviews,
   loadConfiguration,
   runReview: (configuration, paths) => runForegroundReview(configuration, paths, {
     log: (event) => { process.stderr.write(`${formatCoordinatorEvent(event)}\n`); },

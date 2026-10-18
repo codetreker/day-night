@@ -33,8 +33,8 @@ and preparation retry policy belong to the coordinator. Retry records retain
 the captured target, session, budget, and latest attempt evidence. Prior log files
 remain under their review and attempt paths.
 
-Opening a database never authorizes recovery. Interrupted records stay active
-until the caller explicitly confirms that previous processes have stopped.
+Opening a runtime database never authorizes recovery. Interrupted records stay
+active until the caller explicitly confirms that previous processes have stopped.
 Preparing and running work cannot be silently displaced by a newer observation.
 The coordinator owns operation exclusion; a database assertion records its
 conclusion without independently proving process absence.
@@ -54,6 +54,17 @@ contains external commands, and no foreign keys are needed for these
 application-owned records. The [architecture](../../../../docs/design/daynight.md)
 owns the public transition details. This mechanism implements the persistence
 part of the [foreground CLI decision](2026-10-16-foreground-review-cli.md).
+
+The [local status listing](../feature/2026-10-18-review-status-listing.md) reads
+repositories, open PRs and their current or older active reviews in one read-only
+transaction. Reopened PRs keep unresolved cleanup barriers visible separately
+from their current and older active review records. The listing reports those
+markers and saved errors without cancelling cleanup. It checks the existing
+schema without migration and returns absent
+state without creating a database. It does not recover records, take the review
+instance lock or establish process liveness. SQLite may still manage WAL/SHM
+coordination sidecars while reading an existing database. Invalid or unsupported
+state remains an error rather than an empty listing.
 
 Complete [GitHub observation passes](2026-10-17-github-observation.md) use one
 `applyRepositoryPoll` transaction for their cutoff or deduplicated snapshot and

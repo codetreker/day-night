@@ -24,12 +24,24 @@ home and working directories containing spaces and Unicode. The test drives its
 public command and reads SQLite through an independent connection. Product
 scheduling APIs are not replaced. Git transport is limited to the local fixture origin.
 
-Twenty-four scenarios cover four configuration-registration cases and the twenty
-review lifecycle cases. Registration drives the installed command before review
-startup and verifies configuration-only operation, working-directory-relative
+Twenty-eight scenarios cover four configuration-registration cases, four local
+status-listing cases and the twenty review lifecycle cases. Registration drives the
+installed command before review startup and verifies configuration-only operation, working-directory-relative
 paths, the default root, and fixed repository paths after a root change. It checks
 that registration creates no clone, database, runtime lock, agent invocation or
 GitHub request.
+
+The listing cases drive both `review list` and `review ls` before initialization,
+while a Draft PR is observed, after a review completes, and after all tracked PRs
+close. They check equivalent output, saved observation time, the permanent tracking
+boundary and the distinction between uninitialized and empty tracked state. Live
+alias comparisons normalize only the last-observed timestamp, which a concurrent
+poll can advance between calls. Listing invocations use a restricted PATH without
+Git, gh or Copilot, and the assertions check that they issue no external requests
+or agent invocation. These cases preserve six agent invocations, five publications,
+two normal shutdowns and two cleanups. The combined suite's recovery receipt uses
+`automaticStaleLockRecoveries: 1`; the replaced manual-recovery counters remain
+only in historical receipts.
 
 The lifecycle cases cover the permanent startup cutoff, Draft/head suppression,
 ready review, inline `COMMENT`, missing-marker reconciliation, a clean approval,
@@ -61,11 +73,19 @@ for their checked-out revision. A scenario receipt describes its assertions; the
 job also covers process and fixture cleanup. Full environment reports,
 credentials, sessions and raw runtime logs are outside the artifact selection.
 
+Local package `0.2.0` validation passed type checking, 552 ordinary tests with
+eight APFS cases skipped on Linux, and build. The installed suite passed all 28
+scenarios in 10.62 seconds on Linux x64. Its receipt records six agent invocations,
+five publications (one `COMMENT`, four `APPROVE`), two normal shutdowns, two
+worktree cleanups and one automatic stale-lock recovery. Both live-service flags
+are false. No fixture directories or processes remained. This is local evidence;
+native hosted status-listing receipts remain pending.
+
 Local validation of the durable cleanup barrier across reopen and isolation of
 only the affected PR passed `pnpm check`: type checking and 476 ordinary tests,
 with eight APFS cases skipped on Linux. `pnpm build` and all 24 installed
-acceptance scenarios also passed. Current native-platform validation of that
-repair remains pending.
+acceptance scenarios also passed. This receipt covers the cleanup-barrier repair;
+it predates status-listing coverage.
 
 Earlier local validation of package version `0.1.2` passed type checking, 472
 ordinary tests, build and the combined 24-scenario installed suite. Its installed
@@ -75,7 +95,8 @@ and do not establish that repair's behavior.
 
 | Evidence | Observed result |
 |---|---|
-| Current cleanup-barrier repair validation, 2026-10-18 | Linux x64 passed `pnpm check` with 476 tests and eight APFS skips, `pnpm build` and all 24 installed scenarios |
+| Package `0.2.0` local validation, 2026-10-18 | Linux x64 passed type checking, 552 ordinary tests with eight APFS skips, build and all 28 installed scenarios in 10.62 seconds |
+| Cleanup-barrier repair local validation, 2026-10-18 | Linux x64 passed `pnpm check` with 476 tests and eight APFS skips, `pnpm build` and all 24 installed scenarios |
 | Pre-repair combined local validation, 2026-10-18 | Linux x64 passed `pnpm check`, `pnpm build` and all 24 installed scenarios for package version `0.1.2`, from the integration working tree |
 | Pre-integration stale-lock validation, 2026-10-18 | Linux x64 passed type checking, 421 ordinary tests with eight APFS cases skipped, build and the 20-scenario automatic-recovery installed suite; recorded in commit `38d46d6` before repository-registration and version-policy integration |
 | Prior registration receipt, 2026-10-18 | Linux x64 passed all 24 registration and manual-recovery lifecycle scenarios in 12.41 seconds, from an uncommitted working tree |
@@ -96,7 +117,8 @@ invocations, five publications (one `COMMENT`, four `APPROVE`), two normal
 shutdowns, two worktree cleanups, one singleton refusal, one abrupt stop, one
 stale-lock refusal and one operator-confirmed restart. Both live-service flags
 are false. The run left no fixture resources behind. This local result covers
-the four registration cases and predates automatic dead-owner recovery.
+the four registration cases and predates automatic dead-owner recovery and the
+four listing cases.
 
 The [runtime integration CI](https://github.com/codetreker/day-night/actions/runs/39040002167)
 passed Linux, macOS and Windows before the installed-package suite was added.

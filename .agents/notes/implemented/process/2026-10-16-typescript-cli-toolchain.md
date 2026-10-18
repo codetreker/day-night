@@ -31,9 +31,13 @@ JavaScript lowercase, or Unicode-normalization rule replaces actual lookup.
 The [configuration design](../../../../docs/design/daynight.md) owns the schema
 and path rules.
 
-The CLI supports help, version, argument validation, configuration loading and
-[configuration-only repository registration](../feature/2026-10-18-add-repo-configuration.md).
-Review mode acquires the instance lock, opens SQLite and runs the
+The CLI supports help, version, argument validation, configuration loading,
+[configuration-only repository registration](../feature/2026-10-18-add-repo-configuration.md)
+and [local persisted status listing](../feature/2026-10-18-review-status-listing.md).
+The listing parses configuration without physical path probes and reads a single
+SQLite transaction without initializing, migrating or recovering application state.
+It requires no review instance lock or external executables. Review mode acquires
+the instance lock, opens SQLite and runs the
 [foreground coordinator](../architecture/2026-10-17-foreground-review-coordination.md).
 Configuration failures report their filename and preserve the original cause.
 
