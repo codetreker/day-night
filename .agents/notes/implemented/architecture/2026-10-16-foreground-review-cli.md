@@ -22,6 +22,8 @@ clones and disposable PR worktrees. The [Copilot adapter](2026-10-17-copilot-ses
 executes retained sessions. The [foreground coordinator](2026-10-17-foreground-review-coordination.md)
 connects these modules to continuous CLI operation. Configuration, entry point, and
 runtime storage follow the [user-home configuration decision](2026-10-16-user-home-review-configuration.md).
+The [local status listing](../feature/2026-10-18-review-status-listing.md) inspects
+persisted progress without entering this execution workflow or taking its lock.
 
 Polling, pending work, SQLite updates, worktree management, and direct Copilot
 child invocation belong to that single process. Each PR retains a session UUID

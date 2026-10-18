@@ -25,9 +25,13 @@ controlled environment.
 
 The fixture uses the installed command to register repositories, checking explicit
 relative paths, default-root derivation, fixed paths after a root change and
-configuration-only effects before starting review mode. It also drives triggers,
-exact session continuation, publication ownership, missing-marker reconciliation,
-installed singleton refusal, abnormal-lock diagnostics, restart and worktree cleanup. The abnormal-exit fixture waits for
+configuration-only effects before starting review mode. It drives both installed
+status-listing aliases before initialization, during Draft and completed states,
+and after closure. Those calls use a restricted PATH without Git, gh or Copilot
+and verify that the listing remains a local state read beside the running reviewer.
+It also drives triggers, exact session continuation, publication ownership,
+missing-marker reconciliation, installed singleton refusal, abnormal-lock diagnostics,
+restart and worktree cleanup. The abnormal-exit fixture waits for
 current direct tool handles to drain, acknowledges the actual CLI PID and exits
 synchronously before the runtime can release its lock. A native child verifies
 the public `ProcessWrap` visibility used by that gate on each platform. This

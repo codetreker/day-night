@@ -31,6 +31,11 @@ without entering review mode. Its separate configuration write lock coordinates
 configuration commands while the review instance lock continues to exclude
 concurrent reviewers. The [foreground coordinator](2026-10-17-foreground-review-coordination.md)
 creates retained state and runs review monitoring under an exclusive instance lock.
+The [local status listing](../feature/2026-10-18-review-status-listing.md) reads the
+same current configuration and existing database without that lock or runtime
+startup. It parses configuration without creating physical path probes and leaves
+a missing database absent. SQLite may manage coordination sidecars while reading
+existing WAL state.
 
 This location choice complements the
 [foreground CLI decision](2026-10-16-foreground-review-cli.md) without changing

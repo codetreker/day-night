@@ -17,6 +17,8 @@ Daynight 是一个在前台持续运行、直到被停止的 TypeScript CLI，�
 daynight add-repo https://github.com/OWNER/REPO.git
 daynight add-repo git@github.com:OWNER/OTHER.git --path ./review-other
 daynight --daemon-review
+daynight review list
+daynight review ls
 ```
 
 CLI 固定使用当前用户主目录下的 `~/.daynight/config.yml`。`~` 由程序解析为操作系统
@@ -62,8 +64,8 @@ repositories:
 数据库和会话等状态目录固定为 `~/.daynight/`。配置解析校验正整数限制、仓库身份的
 唯一性，以及克隆路径与状态路径互不重叠。
 
-配置解析先检查路径的字面结构；加载及添加时通过既有目录的设备号和 inode 识别实际
-位置及祖先关系，处理符号链接和挂载边界。如果两个缺失路径的既有祖先和后续组成部分
+配置解析先检查路径的字面结构；review 启动加载及添加时，通过既有目录的设备号和
+inode 识别实际位置及祖先关系，处理符号链接和挂载边界。如果两个缺失路径的既有祖先和后续组成部分
 数量相同，则在该祖先中临时创建一个唯一的探测目录，在其中逐级建立一个候选路径，再
 查询另一个候选写法是否指向同一目录。判断依据是实际目录身份，不依赖操作系统、小写
 转换或 Unicode 归一化推断，因此可以处理大小写规则和 Unicode 编码别名。仅配置一个
@@ -91,6 +93,48 @@ repositories:
 review 模式需要预先安装 Git、`gh` 和 Copilot CLI，`gh` 认证提前准备好。Copilot 还需要
 受支持的凭据和可访问的模型。配置文件不包含凭据。
 
+## 本地审查状态列表
+
+`review list` 与 `review ls` 分派到同一列表操作。列表读取当前 `config.yml`，使用
+`parseConfiguration` 完成 YAML、字段、仓库身份及路径字面关系校验；它不调用会建立
+文件系统探测目录的运行时配置加载流程，也不要求本地克隆已存在。配置读取或解析
+失败保留具体原因并以非零状态退出。
+
+`readReviewListingSnapshot` 以 `readonly` 和 `fileMustExist` 打开已有数据库，在一个
+短的 deferred 事务内检查表结构版本并读取仓库、Open PR 和相关审查记录。读取路径
+只接受已支持的版本 1，不调用运行时开库、迁移、恢复或日志写入。数据库缺失时返回
+空快照且不创建文件；已有空文件、损坏或版本不匹配均报错。读事务保留仓库、PR 和
+审查状态之间的一致性，允许 daemon 继续提交。连接使用有上限的 busy timeout，读取
+和关闭错误均可见。SQLite 读取已有 WAL 数据库时可能创建或更新 WAL/SHM 协调伴随
+文件；只读连接的保证是没有应用状态写入，不是状态目录的逐字节不变。
+
+列表将配置与已存仓库远程地址都规范化为 host/owner/name，再用持久化的 host 和
+GitHub ID 关联 PR 与审查记录。同一配置身份若对应多个已存 GitHub ID，命令明确
+报错，避免猜测初始化边界。只显示当前配置的仓库，保持配置顺序；Open PR 按编号
+排序。已完成或失败的审查仍可属于 Open PR。关闭 PR 和已移除配置的历史不显示。
+
+输出首先声明本地持久化快照及 `Running` 的记录含义，每个仓库显示 `Last observed`
+的最近成功完整轮询时间，无时间时为 `never`；`Last poll error` 单独显示已保存的
+轮询错误。时间戳不证明最近一次轮询成功或进程仍存活。未登记或未初始化的仓库显示
+`Not initialized.`。初始化完成的仓库显示 `Tracking PRs above #N; earlier PRs
+excluded/not tracked.`；边界以内的 PR 从未逐条保存，无法列为单独排除行。没有已保存
+的范围内 Open PR 时显示 `No tracked ongoing PRs.`。
+
+表格列为 `PR`、`PR STATE`、`REVIEW`、`ATTEMPTS`。Draft 的行状态为 `Paused`，
+已有当前审查时另行显示其保存状态。非 Draft 当前审查映射为 `Preparing`、`Running`、
+`Retry waiting`、`Completed`、`Failed` 或 `Interrupted`；没有当前审查或记录已被
+取代时为 `Pending`。审查按 desired revision、head SHA 和 base ref 同时匹配当前
+目标，base SHA 不参与匹配，以保持仅 base tip 变化不触发审查的规则。
+
+最新目标没有匹配审查而旧版本仍活跃时，当前行显示 `Pending (previous revision
+<state>)`，尝试次数为 `-`；旧版本的修订序号、保存状态和 `attempts: count/max`
+独立显示。当前审查的尝试次数、重试时间和错误只属于当前目标；旧版本的重试时间和
+错误带 `Previous revision` 前缀。错误文本中的终端控制字符被转义，防止破坏表格或
+产生终端控制效果。整个命令不启动 daemon、Git、gh 或 Copilot，不获取实例锁、
+不做认证或网络请求，也不恢复中断状态。
+[列表决策](../../.agents/notes/implemented/feature/2026-10-18-review-status-listing.md)
+记录状态归属和本地快照范围的选择。
+
 ## 单进程与普通模块
 
 ```mermaid
@@ -117,12 +161,13 @@ PR 预留，但不占审查 Worker 容量。待处理期间的多次更新合并
 | 文件 | 职责 |
 |---|---|
 | `src/main.ts` | 可执行入口和退出状态 |
-| `src/cli.ts` | 参数、帮助、版本、仓库添加和 review 模式命令分派 |
+| `src/cli.ts` | 参数、帮助、版本、仓库添加、审查列表和 review 模式命令分派 |
 | `src/paths.ts` | 用户主目录、保留状态路径和仓库路径关系 |
 | `src/config.ts` | YAML 解析、字段及仓库路径校验、配置加载 |
 | `src/repositories.ts` | 添加时的路径生成、幂等判断、配置写锁与原子替换 |
+| `src/review-list.ts` | 当前配置加载、持久化快照归属和状态列表格式化 |
 | `src/github.ts` | 通过 `gh` 执行经过认证的 API 读取和分页 |
-| `src/store.ts` | SQLite 表结构、观测结果、审查进度和重试状态 |
+| `src/store.ts` | SQLite 表结构、观测结果、审查进度、重试状态和只读列表快照 |
 | `src/git.ts` | 克隆校验、fetch、PR worktree 准备与清理 |
 | `src/copilot.ts` | 提示词、会话选择、子进程执行和完成检查 |
 | `src/coordinator.ts` | 仓库轮询、PR 操作预留、并发容量、重试和清理调度 |
@@ -187,7 +232,8 @@ API 请求为兼容 `gh` 的主机名校验，会在受控内存中读取已有�
 重新获得尝试预算。会话 UUID 在启动前保存，已建立标记只向前推进。worktree 登记、
 待清理标记和清理错误也保留在数据库中，但不能替代 Git 身份或会话文件检查。
 
-开库只执行迁移和连接设置，不自动恢复审查。`preparing` 状态可能仍有 Git 操作，
+运行时开库只执行迁移和连接设置，不自动恢复审查；列表使用独立的只读快照入口。
+`preparing` 状态可能仍有 Git 操作，
 `running` 或 `interrupted` 可能仍有子进程；不能只根据状态或 PID 推断它们已经停止。
 取代准备工作或解除中断前，由协调模块明确确认相应操作已结束。数据库保存这项确认
 带来的状态变化，本身不证明外部进程已经停止。状态实现决策见
@@ -468,10 +514,11 @@ CI 要求源码、包元数据、构建或依赖输入发生变化时升级包�
 [README](../../README.md#package-versions)。版本检查在 Linux 任务中运行，其失败会使最终
 必需检查失败。
 
-当前测试覆盖参数、帮助与版本、编译后的入口、仓库添加、严格配置解析和路径校验；
-GitHub Actions 在 Linux、macOS
-和 Windows 上运行这些检查。SQLite 测试使用真实磁盘数据库，验证迁移、事务回滚、
-连接锁冲突、重开后的边界与预算、修订转换、会话和 worktree 登记。GitHub 测试使用
+当前测试覆盖参数、帮助与版本、编译后的入口、仓库添加、审查列表、严格配置解析
+和路径校验；GitHub Actions 在 Linux、macOS 和 Windows 上运行这些检查。SQLite 测试使用真实磁盘数据库，验证迁移、事务回滚、
+连接锁冲突、重开后的边界与预算、修订转换、会话和 worktree 登记。列表验证缺失或无效
+数据库、当前配置过滤、已记录状态与进程存活的区别、最新目标与旧活跃审查的独立归属，
+以及真实 WAL 上并行读事务的一致性。GitHub 测试使用
 受控 API 和子进程验证完整分页、失败保留、限流、关闭确认和观测事务回滚。真实 Git
 fixtures 验证克隆、私有 refs、detached head、dirty 内容、所有权、浅克隆、子模块及
 其他 PR 工作区保留。Copilot 测试使用受控可执行文件和真实 SQLite，验证会话选择、
@@ -488,8 +535,8 @@ Unicode 编码别名、状态目录别名及探测目录清理。
 
 独立的 `pnpm acceptance` 先打包，再在临时 consumer 中正常安装，驱动实际生成的
 `daynight` bin。真实 SQLite 和本地 Git 配合受控的原生 gh 执行文件及 Copilot 命令
-包装脚本，验证配置登记、根目录变更后保留既有路径，以及完整的审查、重试、重启和
-关闭清理流程；测试不替换产品内部依赖。
+包装脚本，验证配置登记、根目录变更后保留既有路径、本地审查列表，以及完整的审查、
+重试、重启和关闭清理流程；测试不替换产品内部依赖。
 该安装步骤需要包注册表访问，不做全局安装，也不需要真实 review 凭据。CI 只上传
 精选的工具版本清单和场景 receipt。异常退出验收在直接工具句柄全部关闭后同步结束
 CLI，检查锁保留及人工恢复；进程树终止保留独立的原生验证。[验收报告](../research/daynight-acceptance.md)
@@ -504,6 +551,7 @@ CLI，检查锁保留及人工恢复；进程树终止保留独立的原生验�
 | Worktree | 所属仓库根目录的 `.worktrees/`、固定 PR 路径、其他 worktree 保留、fork PR 引用、确切的 detached head、脏文件残留、正确的仓库与路径校验、关闭和重新打开时的清理 |
 | agent 输出 | 分块 Unicode 与 CRLF、精确末行、错误 PR 编号、stderr 中的标记、带前后缀或闭合代码围栏的标记、标记后的内容、捕获失败、非零退出 |
 | 会话与重试 | 固定 UUID 后显式恢复、首次启动中断、历史缺失报错、确认既有发布结果、持久化尝试预算 |
+| 审查列表 | `review list` 与 `review ls` 等价、配置仓库顺序和 PR 编号排序、Draft 与仍 Open 的完成或失败记录、明确排除边界、最新修订和旧活跃审查分别归属、重试及错误、最后完整观测时间、缺失状态不创建数据库、无效数据库报错、运行中只读一致快照 |
 | CLI 生命周期 | 审查期间继续轮询；准备、执行和清理的操作预留；抑制失败修订；`maxConcurrentWorker` 并发上限；Ctrl+C；拒绝第二个实例；异常退出后的失效锁和中断状态报告 |
 | 配置与目录 | 固定的 `~/.daynight/config.yml`、严格 YAML、review 启动缺失配置报错、添加时创建配置和保留注释、全局根目录仅在添加时生成固定绝对路径、显式路径按当前目录解析、重复添加幂等及冲突、配置写锁和失败保留、不同启动目录复用状态、手写相对路径按配置目录解析、按实际文件系统规则检查重复与重叠路径、探测目录清理和失败报告；用注入的主目录解析结果隔离测试文件 |
 | 平台 | `daynight --daemon-review`、各平台用户主目录和路径分隔符、含空格或 Unicode 的路径、Windows CLI 命令包装脚本、每个受支持系统上的子进程终止和最终输出 |

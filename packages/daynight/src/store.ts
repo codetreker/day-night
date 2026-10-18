@@ -1,4 +1,5 @@
 import path from "node:path";
+import { lstatSync } from "node:fs";
 import Database from "better-sqlite3";
 
 export type RepositoryIdentity = { host: string; githubId: string };
@@ -53,6 +54,11 @@ export type ReviewState = PullRequestIdentity & {
   updatedAt: number;
 };
 export type ReviewCandidate = { pullRequest: PullRequestState; review: ReviewState | null };
+export type ReviewListingSnapshot = {
+  repositories: RepositoryState[];
+  pullRequests: PullRequestState[];
+  reviews: ReviewState[];
+};
 export type AttemptIdentity = { reviewId: string; attempt: number };
 export type OperationsStopped = { operationsStopped: true };
 export type ProcessesExcluded = { processesExcluded: true };
@@ -171,6 +177,42 @@ const schema = `
   CREATE INDEX reviews_revision ON reviews(host, github_id, number, revision);
   PRAGMA user_version = 1;
 `;
+
+export const readReviewListingSnapshot = (databaseFile: string): ReviewListingSnapshot | null => {
+  if (!path.isAbsolute(databaseFile)) throw new Error("The SQLite database path must be absolute.");
+  try {
+    lstatSync(databaseFile);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+    throw error;
+  }
+  const db = new Database(databaseFile, { readonly: true, fileMustExist: true, timeout: 5000 });
+  let operationFailed = false;
+  let operationError: unknown;
+  try {
+    return db.transaction(() => {
+      const version = db.pragma("user_version", { simple: true }) as number;
+      if (version !== 1) throw new Error(`Review listing requires SQLite schema version 1; found version ${version}.`);
+      const repositories = db.prepare(`SELECT ${repositoryColumns} FROM repositories ORDER BY host, github_id`).all() as RepositoryState[];
+      const pullRequests = (db.prepare(`SELECT ${pullRequestColumns} FROM pull_requests WHERE state = 'open' ORDER BY host, github_id, number`)
+        .all() as PullRequestRow[]).map(asPullRequest);
+      const reviews = db.prepare(`SELECT ${reviewColumns} FROM reviews r
+        WHERE EXISTS(SELECT 1 FROM pull_requests p WHERE p.host = r.host AND p.github_id = r.github_id AND p.number = r.number AND p.state = 'open'
+          AND ((r.revision = p.desired_revision AND r.head_sha = p.head_sha AND r.base_ref = p.base_ref) OR r.status IN (${activeStatuses})))
+        ORDER BY host, github_id, number, created_at, id`).all() as ReviewState[];
+      return { repositories, pullRequests, reviews };
+    }).deferred();
+  } catch (error) {
+    operationFailed = true;
+    operationError = error;
+    throw error;
+  } finally {
+    try { db.close(); } catch (closeError) {
+      if (operationFailed) throw new AggregateError([operationError, closeError], "SQLite review listing and connection cleanup failed.");
+      throw closeError;
+    }
+  }
+};
 
 export const openStore = (databaseFile: string, options: { busyTimeoutMs?: number } = {}) => {
   if (!path.isAbsolute(databaseFile)) throw new Error("The SQLite database path must be absolute.");

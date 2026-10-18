@@ -24,12 +24,22 @@ home and working directories containing spaces and Unicode. The test drives its
 public command and reads SQLite through an independent connection. Product
 scheduling APIs are not replaced. Git transport is limited to the local fixture origin.
 
-Twenty-four scenarios cover four configuration-registration cases and the twenty
-review lifecycle cases. Registration drives the installed command before review
-startup and verifies configuration-only operation, working-directory-relative
+Twenty-eight scenarios cover four configuration-registration cases, four local
+status-listing cases and the twenty review lifecycle cases. Registration drives the
+installed command before review startup and verifies configuration-only operation, working-directory-relative
 paths, the default root, and fixed repository paths after a root change. It checks
 that registration creates no clone, database, runtime lock, agent invocation or
 GitHub request.
+
+The listing cases drive both `review list` and `review ls` before initialization,
+while a Draft PR is observed, after a review completes, and after all tracked PRs
+close. They check equivalent output, saved observation time, the permanent tracking
+boundary and the distinction between uninitialized and empty tracked state. Live
+alias comparisons normalize only the last-observed timestamp, which a concurrent
+poll can advance between calls. Listing invocations use a restricted PATH without
+Git, gh or Copilot, and the assertions check that they issue no external requests
+or agent invocation. These cases preserve the lifecycle's original six agent
+invocations, five publications, two normal shutdowns and two cleanups.
 
 The lifecycle cases cover the permanent startup cutoff, Draft/head suppression,
 ready review, inline `COMMENT`, missing-marker reconciliation, a clean approval,
@@ -60,7 +70,7 @@ logs are outside the artifact selection.
 
 | Evidence | Observed result |
 |---|---|
-| Local installed receipt, 2026-10-18 | Passed all 24 registration and lifecycle scenarios on Linux x64 in 12.41 seconds, from an uncommitted working tree |
+| Registration local installed receipt, 2026-10-18 | Passed all 24 registration and lifecycle scenarios on Linux x64 in 12.41 seconds, from an uncommitted working tree |
 | Original local installed receipt | Passed all 20 lifecycle scenarios on Linux x64 before registration coverage was added |
 | Original local tools | Node 24.19.0, pnpm 10.34.5, Git 2.53.0, gh 2.88.1 |
 | Original local native SQLite | better-sqlite3 13.0.3, SQLite 3.53.4, Node-API 10 |
@@ -68,13 +78,14 @@ logs are outside the artifact selection.
 | Original hosted installed matrix | Passed Linux x64, macOS arm64 and Windows x64; all 20 lifecycle scenarios on each, before registration coverage was added |
 | Real Copilot/GitHub | Awaiting designated repository, distinct author/reviewer identities and write authorization |
 
-The 2026-10-18 local receipt records `success: true`, six agent invocations,
+The 24-scenario registration local receipt from 2026-10-18 records `success: true`,
+six agent invocations,
 five publications (one `COMMENT`, four `APPROVE`), two normal shutdowns, two
 worktree cleanups, one singleton refusal, one abrupt stop, one stale-lock refusal
 and one operator-confirmed restart. Both live-service flags are false. The run
-left no fixture resources behind. This local result covers the four registration
-cases; the original hosted receipts below remain evidence for the twenty
-lifecycle cases only.
+left no fixture resources behind. This historical local result covers the four
+registration cases and predates the four listing cases. The original hosted
+receipts below remain evidence for the twenty lifecycle cases only.
 
 The [runtime integration CI](https://github.com/codetreker/day-night/actions/runs/39040002167)
 passed Linux, macOS and Windows before the installed-package suite was added.
