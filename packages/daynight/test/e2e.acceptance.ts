@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import Database from "better-sqlite3";
@@ -124,6 +124,41 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     expect(existsSync(installedBin)).toBe(true);
     const installed = JSON.parse(readFileSync(path.join(consumer, "node_modules", "@codetreker", "daynight", "package.json"), "utf8")) as { name: string; version: string };
     expect(installed.name).toBe("@codetreker/daynight");
+    expect(installed.version).toBe((JSON.parse(readFileSync(path.join(packageDirectory, "package.json"), "utf8")) as { version: string }).version);
+    const listingExecutables = path.join(directory, "listing executables");
+    mkdirSync(listingExecutables);
+    linkSync(fakeGh, path.join(listingExecutables, process.platform === "win32" ? "node.exe" : "node"));
+    if (process.platform !== "win32") {
+      for (const name of ["dirname", "sed", "uname"]) {
+        const executable = execFileSync("/bin/sh", ["-c", 'command -v "$1"', "listing-launcher", name], { env: environment, encoding: "utf8", timeout: 5_000 }).trim();
+        copyFileSync(executable, path.join(listingExecutables, name));
+      }
+    }
+    const list = (alias: "list" | "ls", listingHome = home): string => {
+      const result = crossSpawn.sync(installedBin, ["review", alias], {
+        cwd: secondCwd, encoding: "utf8", windowsHide: true, timeout: 30_000,
+        env: { ...environment, PATH: listingExecutables, NODE_OPTIONS: "", HOME: listingHome, USERPROFILE: listingHome, XDG_CONFIG_HOME: path.join(listingHome, "config") },
+      });
+      if (result.error) throw result.error;
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stderr).toBe("");
+      return result.stdout;
+    };
+    const databaseSnapshot = (polling = false): unknown => {
+      const database = new Database(databaseFile, { readonly: true, fileMustExist: true });
+      try {
+        return database.transaction(() => {
+          const repositories = database.prepare("SELECT * FROM repositories ORDER BY host, github_id").all() as Record<string, unknown>[];
+          const pullRequests = database.prepare("SELECT * FROM pull_requests ORDER BY host, github_id, number").all() as Record<string, unknown>[];
+          if (polling) {
+            for (const row of repositories) delete row.last_poll_at;
+            for (const row of pullRequests) delete row.observed_at;
+          }
+          return { schema: database.pragma("user_version", { simple: true }), repositories, pullRequests,
+            reviews: database.prepare("SELECT * FROM reviews ORDER BY id").all() };
+        }).deferred();
+      } finally { database.close(); }
+    };
     const register = (args: string[], registrationHome = home): void => {
       const result = crossSpawn.sync(installedBin, ["add-repo", ...args], {
         cwd: directory, env: { ...environment, HOME: registrationHome, USERPROFILE: registrationHome, XDG_CONFIG_HOME: path.join(registrationHome, "config") },
@@ -167,6 +202,16 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     expect(readdirSync(registrationState)).toEqual(["config.yml"]);
     expect(existsSync(path.join(registrationHome, "daynights"))).toBe(false);
     expect(existsSync(changedRoot)).toBe(false);
+    expect(readRecords<Request>("requests")).toHaveLength(0);
+    expect(agents()).toHaveLength(0);
+    expect(publications()).toHaveLength(0);
+    const uninitializedConfiguration = readFileSync(registrationConfigFile, "utf8");
+    const uninitializedListing = list("list", registrationHome);
+    expect(list("ls", registrationHome)).toBe(uninitializedListing);
+    expect(uninitializedListing).toContain("github.com/fixture/default-project\nLast observed: never\nNot initialized.");
+    expect(uninitializedListing).toContain("github.com/fixture/future-project\nLast observed: never\nNot initialized.");
+    expect(readFileSync(registrationConfigFile, "utf8")).toBe(uninitializedConfiguration);
+    expect(readdirSync(registrationState)).toEqual(["config.yml"]);
     expect(readRecords<Request>("requests")).toHaveLength(0);
     expect(agents()).toHaveLength(0);
     expect(publications()).toHaveLength(0);
@@ -238,7 +283,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       await waitFor(() => pr(number)?.completed_revision === revision, `PR ${number} completed revision ${revision}`);
       expect(pr(number)?.desired_revision).toBe(revision);
     };
-    const scenarios: string[] = ["config-only-registration", "relative-registration-path", "default-root-registration", "registration-path-fixed-after-root-change"];
+    const scenarios: string[] = ["config-only-registration", "relative-registration-path", "default-root-registration", "registration-path-fixed-after-root-change", "review-list-before-initialization"];
     try {
       execFileSync(process.execPath, ["--input-type=module", "--eval", `
         import assert from "node:assert/strict";
@@ -277,6 +322,21 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       git(["--git-dir", origin, "update-ref", "refs/pull/11/head", second]);
       await observedWithoutReview(publishState(), 0);
       scenarios.push("initial-cutoff", "draft-and-draft-head-skip");
+      const draftConfiguration = readFileSync(configFile, "utf8");
+      const draftSnapshot = databaseSnapshot(true);
+      const liveLock = readFileSync(path.join(stateDirectory, "instance.lock"), "utf8");
+      const draftListing = list("list");
+      expect(draftListing).toContain("github.com/fixture/review-project\nLast observed: ");
+      expect(draftListing).toContain("Tracking PRs above #10; earlier PRs excluded/not tracked.");
+      expect(draftListing).toMatch(/^#11\s+Draft\s+Paused\s+-$/m);
+      expect(draftListing).not.toMatch(/^#10\s/m);
+      expect(query("SELECT * FROM pull_requests WHERE number = 10")).toBeUndefined();
+      expect(readFileSync(configFile, "utf8")).toBe(draftConfiguration);
+      expect(readFileSync(path.join(stateDirectory, "instance.lock"), "utf8")).toBe(liveLock);
+      expect(databaseSnapshot(true)).toEqual(draftSnapshot);
+      expect(agents()).toHaveLength(0);
+      expect(publications()).toHaveLength(0);
+      scenarios.push("review-list-live-draft");
       current.draft = false; current.ci = "PENDING";
       const pendingCiVersion = publishState();
       await observedWithoutReview(pendingCiVersion, 0);
@@ -333,6 +393,23 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       await completed(1, 12);
       scenarios.push("no-ci-review");
       expect(pr(12)!.session_id).not.toBe(session);
+      const completedConfiguration = readFileSync(configFile, "utf8");
+      const completedSnapshot = databaseSnapshot(true);
+      const completedLock = readFileSync(path.join(stateDirectory, "instance.lock"), "utf8");
+      const completedAgents = agents().length;
+      const completedPublications = publications().length;
+      const completedListing = list("list");
+      const aliasListing = list("ls");
+      const withoutPollTime = (text: string): string => text.replace(/^Last observed: .*$/gm, "Last observed: <daemon poll time>");
+      expect(withoutPollTime(aliasListing)).toBe(withoutPollTime(completedListing));
+      expect(completedListing).toMatch(/^#11\s+Open\s+Completed\s+1$/m);
+      expect(completedListing).toMatch(/^#12\s+Open\s+Completed\s+1$/m);
+      expect(readFileSync(configFile, "utf8")).toBe(completedConfiguration);
+      expect(readFileSync(path.join(stateDirectory, "instance.lock"), "utf8")).toBe(completedLock);
+      expect(databaseSnapshot(true)).toEqual(completedSnapshot);
+      expect(agents()).toHaveLength(completedAgents);
+      expect(publications()).toHaveLength(completedPublications);
+      scenarios.push("review-list-live-completed");
       current.state = "closed"; current.merged_at = "2026-01-01T00:00:00Z";
       additional.state = "closed"; publishState();
       await waitFor(() => pr()!.worktree_path === null && pr(12)!.worktree_path === null, "merged and closed worktree cleanup");
@@ -347,6 +424,20 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       expect(existsSync(path.join(stateDirectory, "copilot/session-state", session))).toBe(true);
       scenarios.push("separate-pr-session", "merged-cleanup", "closed-unmerged-cleanup", "history-retained");
       await stop();
+      const closedConfiguration = readFileSync(configFile, "utf8");
+      const closedSnapshot = databaseSnapshot();
+      const requestsBeforeListing = readRecords<Request>("requests").length;
+      const closedListing = list("list");
+      expect(list("ls")).toBe(closedListing);
+      expect(closedListing).toContain("No tracked ongoing PRs.");
+      expect(closedListing).not.toMatch(/^#(?:10|11|12)\s/m);
+      expect(readFileSync(configFile, "utf8")).toBe(closedConfiguration);
+      expect(databaseSnapshot()).toEqual(closedSnapshot);
+      expect(existsSync(path.join(stateDirectory, "instance.lock"))).toBe(false);
+      expect(readRecords<Request>("requests")).toHaveLength(requestsBeforeListing);
+      expect(agents()).toHaveLength(completedAgents);
+      expect(publications()).toHaveLength(completedPublications);
+      scenarios.push("review-list-closed-snapshot");
       const calls = agents();
       expect(calls.every((item) => item.head === item.target.headSha && item.cwd === path.join(repository, ".worktrees", `pr-${item.target.pullRequest}`))).toBe(true);
       expect(calls.every((item) => item.prompt.includes("Never submit REQUEST_CHANGES") && item.reviewFile.endsWith("\n"))).toBe(true);

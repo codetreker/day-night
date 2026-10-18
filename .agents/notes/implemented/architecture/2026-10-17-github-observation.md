@@ -82,7 +82,10 @@ describe pagination movement, private-resource 404s, and rate-limit waiting.
 CI readiness is a separate read-only GraphQL query bound to the PR head and
 base branch. HEAD and available test-merge rollups cover Check Runs and legacy
 Status Contexts. Paginated Check Suite summaries additionally capture registered
-workflows awaiting approval or jobs. Latest workflow/event run and attempt
+workflows awaiting approval or jobs. Each scan freezes the target and suite
+counts, collects unique suite identities, and requires complete pagination.
+Observable count or membership changes invalidate the result instead of allowing
+an unseen page to authorize review. Latest workflow/event run and attempt
 numbers replace older runs; suites without a provable replacement keep their
 blocking result. `SUCCESS`, `SKIPPED` and `NEUTRAL` pass only after completion.
 An empty CI result is permitted; incomplete data or API errors are not empty CI.

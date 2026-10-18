@@ -8,6 +8,7 @@ import { formatError, runCli } from "../src/cli.js";
 import type { CliDependencies } from "../src/cli.js";
 import { parseConfiguration } from "../src/config.js";
 import { resolveRuntimePaths } from "../src/paths.js";
+import Database from "better-sqlite3";
 
 const dependencies = (): CliDependencies & { output: string[]; errors: string[] } => {
   const output: string[] = [];
@@ -17,6 +18,7 @@ const dependencies = (): CliDependencies & { output: string[]; errors: string[] 
     homeDirectory: () => { throw new Error("Home must not be read for informational commands."); },
     workingDirectory: () => { throw new Error("Working directory must not be read for informational commands."); },
     addRepository: async () => { throw new Error("Repositories must not be added for informational commands."); },
+    listReviews: async () => { throw new Error("Review state must not be read for informational commands."); },
     loadConfiguration: async () => { throw new Error("Configuration must not be loaded for informational commands."); },
     runReview: async () => { throw new Error("Review must not run for informational commands."); },
     stdout: (text) => { output.push(text); },
@@ -46,6 +48,51 @@ describe("CLI argument handling", () => {
     expect(deps.output.join("")).toContain("Usage: daynight add-repo <remote> [--path <path>]");
     expect(deps.output.join("")).toContain("~/daynights");
     expect(deps.errors).toEqual([]);
+  });
+
+  it.each([
+    ["review", "--help"], ["review", "-h"],
+    ["review", "list", "--help"], ["review", "list", "-h"],
+    ["review", "ls", "--help"], ["review", "ls", "-h"],
+  ])("prints review command help for %j without inspecting state", async (...args) => {
+    const deps = dependencies();
+    expect(await runCli(args, deps)).toBe(0);
+    expect(deps.output.join("")).toContain("Usage: daynight review list");
+    expect(deps.output.join("")).toContain("daynight review ls");
+    expect(deps.errors).toEqual([]);
+  });
+
+  it.each([
+    ["review"], ["review", "unknown"], ["review", "list", "extra"],
+    ["review", "ls", "--daemon-review"], ["review", "--help", "list"],
+    ["review", "list", "--help", "extra"],
+  ])("rejects invalid review syntax %j without accessing state", async (...args) => {
+    const deps = dependencies();
+    expect(await runCli(args, deps)).toBe(2);
+    expect(deps.errors.join("")).toContain("daynight review list");
+    expect(deps.errors.join("")).not.toContain("informational commands");
+    expect(deps.output).toEqual([]);
+  });
+
+  it.each(["list", "ls"])("dispatches review %s independently of review startup and configuration mutation", async (alias) => {
+    const deps = dependencies();
+    const home = fileURLToPath(new URL("../../../.tmp/CLI User 用户/", import.meta.url));
+    deps.homeDirectory = () => home;
+    const listing = "Local persisted snapshot\n\ngithub.com/o/r\nNot initialized.\n";
+    deps.listReviews = vi.fn(async () => listing);
+    expect(await runCli(["review", alias], deps)).toBe(0);
+    expect(deps.listReviews).toHaveBeenCalledExactlyOnceWith(resolveRuntimePaths(home));
+    expect(deps.output).toEqual([listing]);
+    expect(deps.errors).toEqual([]);
+  });
+
+  it("reports listing errors with their original cause and no partial table", async () => {
+    const deps = dependencies();
+    deps.homeDirectory = () => path.resolve(".tmp", "listing failure");
+    deps.listReviews = async () => { throw new Error("Cannot read review snapshot", { cause: new Error("Invalid SQLite schema") }); };
+    expect(await runCli(["review", "list"], deps)).toBe(1);
+    expect(deps.output).toEqual([]);
+    expect(deps.errors.join("")).toContain("Cannot read review snapshot\nCaused by: Invalid SQLite schema");
   });
 
   it.each([{ args: [] }, { args: ["--deamon-review"] }, { args: ["--config", "custom.yml"] }, { args: ["--help", "--daemon-review"] }])("rejects missing, unknown or conflicting arguments", async ({ args }) => {
@@ -170,6 +217,65 @@ describe("built executable", () => {
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain("--daemon-review");
   });
+
+  it("lists recorded state through the compiled CLI while exposing missing configuration and invalid databases", async () => {
+    const temporary = fileURLToPath(new URL("../../../.tmp/", import.meta.url));
+    await mkdir(temporary, { recursive: true });
+    const directory = await mkdtemp(path.join(temporary, "review-list CLI 中文-"));
+    const home = path.join(directory, "home");
+    const cwd = path.join(directory, "caller");
+    const emptyPath = path.join(directory, "empty-path");
+    await mkdir(home); await mkdir(cwd); await mkdir(emptyPath);
+    const paths = resolveRuntimePaths(home);
+    const invoke = (alias: string) => spawnSync(process.execPath, [executable, "review", alias], {
+      cwd, encoding: "utf8", timeout: 10_000,
+      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: emptyPath, Path: emptyPath },
+    });
+    try {
+      const missing = invoke("list");
+      expect(missing.error).toBeUndefined();
+      expect(missing.status).toBe(1);
+      expect(missing.stdout).toBe("");
+      expect(missing.stderr).toContain(paths.configFile);
+      expect(await readdir(home)).toEqual([]);
+
+      await mkdir(paths.stateDirectory);
+      await writeFile(path.join(home, "unavailable-clone"), "not a directory");
+      const configuration = "repositories: [{remote: https://github.com/o/r, path: ../unavailable-clone/repo}]\n";
+      await writeFile(paths.configFile, configuration);
+      await writeFile(paths.lockFile, "existing review instance\n");
+      const list = invoke("list");
+      const ls = invoke("ls");
+      expect(list.status, list.stderr).toBe(0);
+      expect(ls.status, ls.stderr).toBe(0);
+      expect(list.stdout).toBe(ls.stdout);
+      expect(list.stdout).toContain("github.com/o/r");
+      expect(list.stdout).toContain("Not initialized.");
+      expect(list.stderr).toBe("");
+      expect((await readdir(paths.stateDirectory)).sort()).toEqual(["config.yml", "instance.lock"]);
+
+      const corrupt = "not a SQLite database";
+      await writeFile(paths.databaseFile, corrupt);
+      const invalid = invoke("ls");
+      expect(invalid.status).toBe(1);
+      expect(invalid.stdout).toBe("");
+      expect(invalid.stderr).toContain("not a database");
+      expect(await readFile(paths.databaseFile, "utf8")).toBe(corrupt);
+      await rm(paths.databaseFile);
+      const database = new Database(paths.databaseFile);
+      database.pragma("user_version = 2");
+      database.close();
+      const original = await readFile(paths.databaseFile);
+      const future = invoke("list");
+      expect(future.status).toBe(1);
+      expect(future.stdout).toBe("");
+      expect(future.stderr).toContain("found version 2");
+      expect(await readFile(paths.databaseFile)).toEqual(original);
+      expect(await readFile(paths.configFile, "utf8")).toBe(configuration);
+      expect(await readFile(paths.lockFile, "utf8")).toBe("existing review instance\n");
+      expect(await readdir(cwd)).toEqual([]);
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  }, 30_000);
 
   it("adds repositories through the compiled CLI without review dependencies or runtime state", async () => {
     const temporary = fileURLToPath(new URL("../../../.tmp/", import.meta.url));

@@ -25,10 +25,13 @@ controlled environment.
 
 The fixture uses the installed command to register repositories, checking explicit
 relative paths, default-root derivation, fixed paths after a root change and
-configuration-only effects before starting review mode. It also drives triggers,
-exact session continuation, publication ownership, missing-marker reconciliation,
-installed live-singleton refusal, abnormal-lock diagnostics, automatic dead-owner
-restart and worktree cleanup. The
+configuration-only effects before starting review mode. It drives both installed
+status-listing aliases before initialization, during Draft and completed states,
+and after closure. Those calls use a restricted PATH without Git, gh or Copilot
+and verify that the listing remains a local state read beside the running reviewer.
+It also drives triggers, exact session continuation, publication ownership,
+missing-marker reconciliation, installed live-singleton refusal, abnormal-lock
+diagnostics, automatic dead-owner restart and worktree cleanup. The
 [stale-lock decision](../bug-fix/2026-10-18-stale-instance-lock-recovery.md)
 keeps uncertain review and cleanup resources blocked after that restart. The
 abnormal-exit fixture waits for current direct tool handles to drain,

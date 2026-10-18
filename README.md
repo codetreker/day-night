@@ -8,8 +8,9 @@ initialization boundaries, review revisions and retry budgets.
 
 The [Chinese requirements](docs/spec/daynight.md) define the complete product;
 the [architecture](docs/design/daynight.md) describes the selected design. The
-CLI provides help, version output and configuration-only repository registration.
-Review mode loads configuration and runs until stopped. Controlled native-platform tests and live Copilot/GitHub acceptance
+CLI provides help, version output, configuration-only repository registration,
+and a local persisted review listing. Review mode loads configuration and runs
+until stopped. Controlled native-platform tests and live Copilot/GitHub acceptance
 provide separate evidence; live acceptance remains outstanding.
 
 ## Development
@@ -50,7 +51,14 @@ GitHub tests use controlled API responses and subprocess fixtures to verify
 complete scans, HTTP failures, and atomic observation commits.
 Git lifecycle tests use local origin/clone fixtures and real worktrees to check
 captured targets, disposable review artifacts, shared refs, and isolation between
-PR worktrees. The installed acceptance suite additionally verifies the package
+PR worktrees. Independent Git suites run in separate Vitest workers. Each suite
+copies its immutable bare-origin seed into private test directories; refs,
+SQLite databases, clones and worktrees remain separate for every case. Tests
+within a file stay sequential so environment changes and cleanup have one owner.
+The [Git test decision](.agents/notes/implemented/testing/2026-10-18-parallel-git-validation.md)
+records the isolation rules, and the
+[CI timing report](docs/research/windows-ci-performance.md) records native
+before/after measurements. The installed acceptance suite additionally verifies the package
 bin, default native command shims, singleton/stale-lock behavior and the complete
 review/re-review/restart/closure lifecycle. Curated environment and scenario
 receipts are uploaded by each native CI job; the
@@ -88,7 +96,7 @@ daynight add-repo git@github.com:OWNER/OTHER.git --path ./review-other
 daynight --daemon-review
 ```
 
-For a local build, prefix the command with `pnpm`. Both commands select
+For a local build, prefix the command with `pnpm`. These commands select
 `~/.daynight/config.yml` using the current OS user's home directory. `add-repo`
 creates the configuration when absent. It reads, validates and saves configuration;
 cloning, authentication checks, GitHub calls, SQLite initialization and PR boundary
@@ -152,6 +160,53 @@ visible in diagnostics. The
 [repository registration decision](.agents/notes/implemented/feature/2026-10-18-add-repo-configuration.md)
 records the fixed-path and configuration-only choices.
 
+## Review status listing
+
+Print the configured repositories' locally tracked open PRs, including Draft PRs:
+
+```text
+daynight review list
+daynight review ls
+```
+
+Both forms use the same persisted-snapshot operation and print repositories in
+configuration order, with PRs ordered numerically. The columns are `PR`,
+`PR STATE`, `REVIEW` and `ATTEMPTS`. Completed or failed reviews remain listed while their PR is open;
+closed PRs and history belonging to removed configuration entries are omitted.
+
+The output identifies its local snapshot source and each repository's
+`Last observed` successful complete poll, saved poll error when present, and
+permanent tracking boundary. PRs at or below that boundary are not stored individually and
+cannot appear in the listing. `No tracked ongoing PRs.` describes an initialized
+repository with no saved open PRs above the boundary; `Not initialized.` describes
+a missing database, an unregistered repository or an incomplete initialization.
+The listing makes no claim about GitHub changes since the saved observation.
+
+Review states are `Preparing`, `Running`, `Pending`, `Retry waiting`, `Completed`,
+`Failed`, `Interrupted` and `Paused` for Draft PRs. `Running` is a saved state,
+not proof that a process remains alive. Retry deadlines and saved errors appear
+under the corresponding row. A newer desired revision remains `Pending` while an
+older revision is active; the older revision's recorded state, attempt budget,
+retry deadline and error are printed separately. The current row's attempt count
+always belongs to its own desired revision, head and target branch. A base-tip
+change alone does not invalidate a completed review.
+
+Pending worktree cleanup is a separate saved resource barrier, including after a
+PR reopens. Such rows show `Worktree cleanup: Pending` and any saved cleanup error.
+With no current review, an open non-Draft row shows `Pending (cleanup blocked)`;
+Draft remains `Paused`. Older active reviews retain their separate details. The
+listing reports the barrier without attempting cleanup or recovery.
+
+The command loads the current configuration and opens an existing SQLite database
+read-only for one consistent transaction. It needs no Git, GitHub CLI or Copilot
+execution, instance lock, clone or review startup. It does not create an absent
+database, migrate a schema, recover interrupted work or update application state.
+SQLite may create or update its WAL coordination sidecar files while reading an
+existing database. Missing or invalid configuration, unreadable or corrupt state,
+and unsupported schema versions fail visibly. The
+[listing decision](.agents/notes/implemented/feature/2026-10-18-review-status-listing.md)
+records status attribution and snapshot limits.
+
 ## Durable review state
 
 The SQLite module keeps repository identity, the permanent startup PR boundary,
@@ -160,8 +215,9 @@ registration, and retry state. Repository identity includes the GitHub host and
 stable repository ID. Completing a captured revision leaves later observations
 pending; retries retain their original review identity and consumed budget.
 
-Database opening applies explicit schema migrations and enables WAL with FULL
-synchronization and a bounded busy timeout. The instance lock checks whether its
+Runtime database opening applies explicit schema migrations and enables WAL with
+FULL synchronization and a bounded busy timeout. The listing reader checks the
+existing schema without applying migrations. The instance lock checks whether its
 recorded CLI owner still exists; that check does not establish whether its agents
 or tools have stopped. Interrupted reviews and pending cleanup remain blocked
 after automatic lock recovery until process exclusion is explicitly confirmed.
