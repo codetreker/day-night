@@ -59,10 +59,10 @@ checks require no live model invocation or GitHub publication.
 The selected review-mode entry is:
 
 ```text
-daynight --deamon-review
+daynight --daemon-review
 ```
 
-For a local build, invoke it with `pnpm daynight --deamon-review`. The CLI reads
+For a local build, invoke it with `pnpm daynight --daemon-review`. The CLI reads
 `~/.daynight/config.yml`, where the program resolves the current OS user's home
 directory. A minimal configuration is:
 

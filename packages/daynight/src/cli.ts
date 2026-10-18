@@ -16,10 +16,10 @@ export type CliDependencies = {
   stderr: (text: string) => void;
 };
 
-const help = `Usage: daynight --deamon-review
+const help = `Usage: daynight --daemon-review
 
 Options:
-  --deamon-review  Run foreground PR review until interrupted
+  --daemon-review  Run foreground PR review until interrupted
   -h, --help       Show this help
   -v, --version    Show the installed version
 
@@ -50,8 +50,8 @@ export const runCli = async (
     stdout(`${dependencies.version}\n`);
     return 0;
   }
-  if (argument !== "--deamon-review") {
-    stderr(`Unknown argument ${JSON.stringify(argument)}. Run daynight --help; review mode uses --deamon-review.\n`);
+  if (argument !== "--daemon-review") {
+    stderr(`Unknown argument ${JSON.stringify(argument)}. Run daynight --help; review mode uses --daemon-review.\n`);
     return 2;
   }
   try {

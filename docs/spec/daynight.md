@@ -14,7 +14,7 @@ PR 需要审查时启动 review agent。daemon 是这个 CLI 进程承担的角�
 ### R1. 包与运行方式
 
 工具名为 `daynight`，应用代码放在 `packages/daynight/`，使用 TypeScript 编写。
-工具在 Linux、macOS 和 Windows 上通过 `daynight --deamon-review` 以单个前台 CLI
+工具在 Linux、macOS 和 Windows 上通过 `daynight --daemon-review` 以单个前台 CLI
 启动，并持续运行直到被停止。CLI 负责轮询、维护 SQLite 状态、管理 worktree，并直接
 将 Copilot 作为子进程启动。
 三个平台必须支持相同的仓库、监控、会话、worktree、完成判定和恢复行为。必须在每个
@@ -144,7 +144,7 @@ SHA 的尝试，不能满足另一个 head SHA 的待处理审查。同样，完
 
 | 场景 | 必需结果 | 对应需求 |
 |---|---|---|
-| 在 Linux、macOS 或 Windows 上执行 `daynight --deamon-review`。 | 前台 CLI 通过直接启动 Copilot 子进程支持所需工作流程，并已验证命令执行、输出处理和正常退出。 | R1 |
+| 在 Linux、macOS 或 Windows 上执行 `daynight --daemon-review`。 | 前台 CLI 通过直接启动 Copilot 子进程支持所需工作流程，并已验证命令执行、输出处理和正常退出。 | R1 |
 | 从不同工作目录执行启动命令。 | 读取同一份 `~/.daynight/config.yml` YAML 配置，使用 `~/.daynight/` 中的同一份运行状态；仓库相对路径按配置目录解析。 | R1, R2, R13 |
 | 启动时，配置的本地仓库不存在。 | daemon 在使用该仓库进行审查前，将其 clone 到配置的路径。 | R2, R3 |
 | 仓库初始化时发现已有 PR 的最大编号为 100，其中包括已关闭和 Draft PR。 | 保存的边界为 100。编号不超过 100 的 PR 永远不会被审查，包括后续发生变化的情况。 | R4 |

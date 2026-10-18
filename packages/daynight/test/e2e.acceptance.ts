@@ -134,7 +134,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       rmSync(path.join(directory, "stop"), { force: true });
       rmSync(path.join(directory, "crash"), { force: true });
       output = ""; failure = undefined;
-      running = crossSpawn(installedBin, ["--deamon-review"], { cwd, env: environment, detached: process.platform !== "win32", windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+      running = crossSpawn(installedBin, ["--daemon-review"], { cwd, env: environment, detached: process.platform !== "win32", windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
       running.stdout!.on("data", (data: Buffer) => { output += data.toString(); });
       running.stderr!.on("data", (data: Buffer) => { output += data.toString(); });
       running.on("error", (error) => { failure = error; });
@@ -168,7 +168,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       expect(receipt.resources).not.toContain("ProcessWrap");
     };
     const refusedStartup = (description: string): void => {
-      const result = crossSpawn.sync(installedBin, ["--deamon-review"], { cwd: secondCwd, env: environment, encoding: "utf8", windowsHide: true, timeout: 30_000 });
+      const result = crossSpawn.sync(installedBin, ["--daemon-review"], { cwd: secondCwd, env: environment, encoding: "utf8", windowsHide: true, timeout: 30_000 });
       if (result.error) throw result.error;
       expect(result.status, description).toBe(1);
       expect(result.stderr).toContain("Cannot acquire instance lock");
