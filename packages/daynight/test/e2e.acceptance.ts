@@ -118,11 +118,12 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     const modules = parse(readFileSync(path.join(workspace, "node_modules/.modules.yaml"), "utf8")) as { storeDir: string };
     const storeDirectory = path.dirname(modules.storeDir);
     pnpm(["pack", "--out", tarball], packageDirectory);
-    writeFileSync(path.join(consumer, "package.json"), JSON.stringify({ name: "daynight-installed-acceptance", private: true, dependencies: { daynight: `file:${tarball.replaceAll("\\", "/")}` } }));
+    writeFileSync(path.join(consumer, "package.json"), JSON.stringify({ name: "daynight-installed-acceptance", private: true, dependencies: { "@codetreker/daynight": `file:${tarball.replaceAll("\\", "/")}` } }));
     pnpm(["install", "--prod", "--ignore-scripts", "--ignore-workspace", "--no-frozen-lockfile", "--store-dir", storeDirectory, "--reporter", "append-only"], consumer);
     const installedBin = path.join(consumer, "node_modules/.bin", process.platform === "win32" ? "daynight.cmd" : "daynight");
     expect(existsSync(installedBin)).toBe(true);
-    const installed = JSON.parse(readFileSync(path.join(consumer, "node_modules/daynight/package.json"), "utf8")) as { version: string };
+    const installed = JSON.parse(readFileSync(path.join(consumer, "node_modules", "@codetreker", "daynight", "package.json"), "utf8")) as { name: string; version: string };
+    expect(installed.name).toBe("@codetreker/daynight");
     const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
     if (process.platform === "win32") writeFileSync(path.join(bin, "copilot.cmd"), `@"${process.execPath}" "${path.join(helpers, "copilot.mjs")}" %*\r\n`);
     else {

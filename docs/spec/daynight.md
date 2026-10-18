@@ -13,7 +13,8 @@ PR 需要审查时启动 review agent。daemon 是这个 CLI 进程承担的角�
 
 ### R1. 包与运行方式
 
-工具名为 `daynight`，应用代码放在 `packages/daynight/`，使用 TypeScript 编写。
+npm 包名为 `@codetreker/daynight`，可执行命令为 `daynight`，应用代码放在
+`packages/daynight/`，使用 TypeScript 编写。
 工具在 Linux、macOS 和 Windows 上通过 `daynight --daemon-review` 以单个前台 CLI
 启动，并持续运行直到被停止。CLI 负责轮询、维护 SQLite 状态、管理 worktree，并直接
 将 Copilot 作为子进程启动。

@@ -19,10 +19,10 @@ normal pnpm installer. This separate command requires package-registry access
 for dependency resolution. It creates no global installation and needs no live
 GitHub or Copilot credentials.
 
-The installed package's own `daynight` bin starts from temporary home and working
-directories containing spaces and Unicode. The test drives its public command
-and reads SQLite through an independent connection. Product scheduling APIs are
-not replaced. Git transport is limited to the local fixture origin.
+The installed `@codetreker/daynight` package's `daynight` bin starts from temporary
+home and working directories containing spaces and Unicode. The test drives its
+public command and reads SQLite through an independent connection. Product
+scheduling APIs are not replaced. Git transport is limited to the local fixture origin.
 
 Twenty scenarios cover the permanent startup cutoff, Draft/head suppression,
 ready review, inline `COMMENT`, missing-marker reconciliation, a clean approval,

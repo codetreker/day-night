@@ -1,5 +1,5 @@
 {
-  "name": "daynight",
+  "name": "@codetreker/daynight",
   "version": "0.1.0",
   "description": "A foreground CLI for GitHub pull request reviews",
   "type": "module",

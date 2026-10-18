@@ -1,7 +1,8 @@
 # Day Night
 
-Daynight is a foreground GitHub PR review CLI in `packages/daynight/`. It polls
-configured repositories, maintains dedicated local clones and PR worktrees, and
+The `@codetreker/daynight` package provides the `daynight` foreground GitHub PR
+review CLI in `packages/daynight/`. It polls configured repositories, maintains
+dedicated local clones and PR worktrees, and
 launches Copilot in a retained session for each eligible PR. SQLite preserves
 initialization boundaries, review revisions and retry budgets.
 
