@@ -15,7 +15,10 @@ The [requirements](../../../../docs/spec/daynight.md) and
 `daynight --daemon-review` as the review-mode entry point. Configuration is YAML
 at `~/.daynight/config.yml`. The program
 resolves the current OS user's home directory on Linux, macOS, and Windows.
-Relative repository paths resolve against the configuration directory.
+Manually written relative repository paths resolve against the configuration
+directory. The [repository registration decision](../feature/2026-10-18-add-repo-configuration.md)
+defines `add-repo`, its addition-only `repositoryRoot` and the absolute repository
+paths it saves. Configuration changes take effect at the next review startup.
 
 Configuration and coordination state reside under `~/.daynight/`: SQLite and
 its sidecar files, retained Copilot sessions, the instance lock, logs, caches,
@@ -23,7 +26,10 @@ and temporary files. Repository clones retain their configured paths. PR
 worktrees follow the [repository-local worktree decision](2026-10-16-repository-local-review-worktrees.md).
 Home-path resolution and configuration loading are implemented by the CLI.
 Configuration failures identify the fixed filename, stop startup and retain
-their causes. The [foreground coordinator](2026-10-17-foreground-review-coordination.md)
+their causes. `add-repo` creates missing configuration and updates existing YAML
+without entering review mode. Its separate configuration write lock coordinates
+configuration commands while the review instance lock continues to exclude
+concurrent reviewers. The [foreground coordinator](2026-10-17-foreground-review-coordination.md)
 creates retained state and runs review monitoring under an exclusive instance lock.
 
 This location choice complements the
