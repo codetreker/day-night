@@ -4,8 +4,9 @@
 受控执行链已实现，真实 GitHub/Copilot 验收仍待完成。当前范围见
 [仓库 README](../../README.md)。
 
-Daynight 是一个在前台持续运行、直到被停止的 TypeScript CLI，代码位于
-`packages/daynight/`，支持 Linux、macOS 和 Windows。
+Daynight 是一个在前台持续运行、直到被停止的 TypeScript CLI，通过 npm 包
+`@codetreker/daynight` 提供 `daynight` 命令，代码位于 `packages/daynight/`，
+支持 Linux、macOS 和 Windows。
 [需求文档](../spec/daynight.md)定义产品行为；
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-16-foreground-review-cli.md)
 记录架构选择。

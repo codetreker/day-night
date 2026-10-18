@@ -6,11 +6,11 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "build": "pnpm --filter daynight build",
-    "typecheck": "pnpm --filter daynight typecheck",
-    "test": "pnpm --filter daynight test",
-    "acceptance": "pnpm --filter daynight acceptance",
+    "build": "pnpm --filter @codetreker/daynight build",
+    "typecheck": "pnpm --filter @codetreker/daynight typecheck",
+    "test": "pnpm --filter @codetreker/daynight test",
+    "acceptance": "pnpm --filter @codetreker/daynight acceptance",
     "check": "pnpm typecheck && pnpm test",
-    "daynight": "pnpm --filter daynight exec node dist/main.js"
+    "daynight": "pnpm --filter @codetreker/daynight exec node dist/main.js"
   }
 }
