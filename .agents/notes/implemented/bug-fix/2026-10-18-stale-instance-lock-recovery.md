@@ -40,14 +40,18 @@ it. SQLite documents that
 can give connections different physical database files.
 
 Automatic reclamation returns `previousProcessesExcluded: false` in the lock
-result; the process supervisor receives no proof that old execution is excluded. Persisted
-`preparing`, `running` and `interrupted` reviews remain interrupted and block
-their PRs. A repository with unresolved `cleanup_pending` is frozen before its
-first poll so a reopened PR cannot erase that marker; another crash still
-retains the uncertainty. Diagnostics identify the required process exclusion.
-Other repositories continue, as do independent PRs in repositories without
-uncertain cleanup. The daemon retains its lock on shutdown while that old work
-remains unconfirmed.
+result; the process supervisor receives no proof that old execution is excluded.
+Persisted `preparing`, `running` and `interrupted` reviews remain interrupted and
+block their PRs. `cleanup_pending` and its error form a durable resource barrier
+independent of the PR's observed open/closed state. A reopened PR stays a cleanup
+candidate until awaited cleanup operations have conclusively stopped and agents
+are excluded. Safe cancellation clears only the marker and error, retaining the
+worktree path and session; uncertain failure keeps the barrier even after reopen.
+Startup blocks only the affected PR's cleanup and reuse before its first poll.
+Reopen observations cannot clear the barrier, so another crash still retains the
+uncertainty. Diagnostics identify the required process exclusion. Polling and
+other PRs in the same repository continue, as do other repositories. The daemon
+retains its lock on shutdown while that old work remains unconfirmed.
 
 A quiescent crash can restart without manual deletion. To resume uncertain
 resources, an operator stops the current daemon, confirms the previous CLI and
@@ -72,6 +76,11 @@ starters can both observe the dead owner and one can remove the other's newly
 acquired lock. A SQLite transaction serializes the ownership decision; atomic
 replacement also avoids an absence window while replacing the stale file.
 
+**Freeze a repository with uncertain cleanup before polling.** This prevents
+reopen observations from erasing uncertainty but also delays unrelated PRs. A
+pending marker that survives every observation preserves the restart barrier
+while allowing precise isolation of the affected PR.
+
 **Use lock age or a stored timestamp to decide staleness.** A long-running CLI
 can own an old lock, and an immediately crashed CLI can leave a recent one.
 Neither observation establishes death, so both can misclassify active ownership.
@@ -85,8 +94,10 @@ file, and process liveness errors remain visible.
 
 CLI liveness and resource exclusion remain separate. Conservative PID reuse
 refusal and blocked resources can still require an operator. Pending cleanup
-freezes the affected repository until exclusion, preserving its marker across
-reopen observations and repeated crashes without adding a schema migration.
+blocks only its PR until exclusion. Clearing its marker requires stopped cleanup
+operations as well as excluded agents; a newer observation alone cannot erase
+uncertainty across reopen and repeated crashes. This uses the
+existing stored marker without adding a schema migration.
 The [acceptance report](../../../../docs/research/daynight-acceptance.md) owns
 actual validation receipts; historical manual-recovery platform results do not
 establish automatic-recovery behavior on those platforms.

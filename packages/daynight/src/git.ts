@@ -434,30 +434,34 @@ export const createGitManager = (options: {
     const requireCleanup = (): PullRequestState => {
       if (identity.host !== local.repository.host || identity.githubId !== local.repository.githubId) throw new Error("Cleanup identity belongs to a different repository.");
       const pr = store.getPullRequest(identity);
-      if (pr === null || pr.state === "open" || !pr.cleanupPending || pr.worktreePath === null) throw new Error("The PR has no closed worktree awaiting cleanup.");
+      if (pr === null || !pr.cleanupPending || pr.worktreePath === null) throw new Error("The PR has no unresolved worktree cleanup.");
       if (store.listActiveReviews().some((review) => review.host === pr.host && review.githubId === pr.githubId && review.number === pr.number)) throw new Error("An active review blocks worktree cleanup.");
       return pr;
     };
     await validateStoredRepository(store, local);
     const initial = requireCleanup();
+    const cancelReopened = (): boolean => {
+      const current = requireCleanup();
+      if (current.state !== "open") return false;
+      store.cancelCleanup(identity, current.worktreePath!, proof);
+      return true;
+    };
     try {
-      const fresh = await refresh(store, local, identity.number, signal);
-      if (fresh.state === "open") return { kind: "reopened" };
-      let pr = requireCleanup();
+      await refresh(store, local, identity.number, signal);
+      if (cancelReopened()) return { kind: "reopened" };
+      const pr = requireCleanup();
       const owned = await inspectOwned(local, pr, signal);
-      pr = requireCleanup();
-      requireCleanup();
+      if (cancelReopened()) return { kind: "reopened" };
       if (owned.entry !== null) await git(local.root, ["worktree", "remove", "--force", "--force", "--", owned.target], signal);
       else if (owned.exists) throw new Error("An unregistered worktree cannot be removed.");
-      pr = store.getPullRequest(identity)!;
-      if (pr.state === "open") return { kind: "reopened" };
+      if (cancelReopened()) return { kind: "reopened" };
       requireCleanup();
       store.completeCleanup(identity, owned.target, proof);
       return { kind: "cleaned" };
     } catch (error) {
       try {
         const current = store.getPullRequest(identity);
-        if (current !== null && current.state !== "open" && current.cleanupPending && current.worktreePath === initial.worktreePath) {
+        if (current !== null && current.cleanupPending && current.worktreePath === initial.worktreePath) {
           store.recordCleanupError(identity, initial.worktreePath!, error instanceof Error ? error.message : String(error));
         }
       } catch (recordingError) {

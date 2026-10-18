@@ -61,16 +61,22 @@ for their checked-out revision. A scenario receipt describes its assertions; the
 job also covers process and fixture cleanup. Full environment reports,
 credentials, sessions and raw runtime logs are outside the artifact selection.
 
-Local validation of package version `0.1.2` passed the combined 24-scenario
-suite, including repository registration and automatic stale-lock recovery.
-`pnpm check` passed type checking and 472 ordinary tests, with eight APFS cases
-skipped on Linux; `pnpm build` also passed. The installed receipt records six
-agent invocations, five publications and one automatic stale-lock recovery.
-Automatic recovery has no hosted native-matrix receipt recorded here yet.
+Local validation of the durable cleanup barrier across reopen and isolation of
+only the affected PR passed `pnpm check`: type checking and 476 ordinary tests,
+with eight APFS cases skipped on Linux. `pnpm build` and all 24 installed
+acceptance scenarios also passed. Current native-platform validation of that
+repair remains pending.
+
+Earlier local validation of package version `0.1.2` passed type checking, 472
+ordinary tests, build and the combined 24-scenario installed suite. Its installed
+receipt records six agent invocations, five publications and one automatic
+stale-lock recovery. Those earlier receipts predate the cleanup-barrier repair
+and do not establish that repair's behavior.
 
 | Evidence | Observed result |
 |---|---|
-| Combined local validation, 2026-10-18 | Linux x64 passed `pnpm check`, `pnpm build` and all 24 installed scenarios for package version `0.1.2`, from the integration working tree |
+| Current cleanup-barrier repair validation, 2026-10-18 | Linux x64 passed `pnpm check` with 476 tests and eight APFS skips, `pnpm build` and all 24 installed scenarios |
+| Pre-repair combined local validation, 2026-10-18 | Linux x64 passed `pnpm check`, `pnpm build` and all 24 installed scenarios for package version `0.1.2`, from the integration working tree |
 | Pre-integration stale-lock validation, 2026-10-18 | Linux x64 passed type checking, 421 ordinary tests with eight APFS cases skipped, build and the 20-scenario automatic-recovery installed suite; recorded in commit `38d46d6` before repository-registration and version-policy integration |
 | Prior registration receipt, 2026-10-18 | Linux x64 passed all 24 registration and manual-recovery lifecycle scenarios in 12.41 seconds, from an uncommitted working tree |
 | Original local installed receipt | Passed the 20-scenario manual-recovery suite on Linux x64 before registration coverage was added |
@@ -97,6 +103,12 @@ passed Linux, macOS and Windows before the installed-package suite was added.
 It is component/runtime evidence, not an installed-package or live-model receipt.
 
 ## Historical hosted installed receipts
+
+[Pre-repair native recovery CI](https://github.com/codetreker/day-night/actions/runs/39131014417)
+passed Linux, macOS and Windows at head `3fee5e61`. It validates automatic owner
+recovery and the guard at that revision, whose uncertain-cleanup policy froze
+the repository. It predates the durable cleanup barrier across reopen and
+isolation of only the affected PR, and does not establish the repair's result.
 
 [Native installed-package CI](https://github.com/codetreker/day-night/actions/runs/39043517844) passed all three platforms and the final matrix gate on 2026-10-17.
 The curated artifacts agree on clean checkout revision `9df51dbc9ffd16129069519ba7118009dc648b01`.

@@ -263,10 +263,12 @@ Lock age never establishes that an owner has stopped. PID reuse conservatively
 blocks startup until the recorded owner can be inspected.
 
 A crash with no unresolved review or cleanup can therefore restart directly.
-When interrupted reviews exist, automatic lock recovery blocks their PRs. A
-repository with pending cleanup is frozen before polling so a reopened PR cannot
-erase its unresolved cleanup state. Other repositories continue normally, and
-other PRs in repositories without uncertain cleanup can proceed. Uncertain
+When interrupted reviews exist, automatic lock recovery blocks their PRs.
+Pending cleanup remains recorded with its error even if the PR reopens; only
+conclusively stopped cleanup operations and excluded agents allow that state to
+clear. Automatic recovery blocks only each affected PR's cleanup and reuse;
+polling and other PRs in the same repository continue normally, as do other
+repositories. Uncertain
 resources retain the lock on shutdown. After stopping the daemon, confirm that
 the previous CLI and all its agents/tools have stopped, then remove only
 `instance.lock` and restart. Keep `instance.lock.sqlite`, SQLite state, sessions

@@ -47,8 +47,11 @@ Startup and release follow the
 [stale-lock recovery decision](../bug-fix/2026-10-18-stale-instance-lock-recovery.md).
 A live or unconfirmed lock owner refuses startup; a confirmed dead CLI owner
 permits automatic lock recovery. That recovery does not exclude old agents or
-tools: interrupted reviews block their PRs, and unresolved pending cleanup
-freezes its repository before polling. Independent work continues. Uncertainty
+tools: interrupted reviews and unresolved pending cleanup block their affected
+PRs. Reopen observations retain the cleanup marker and error until cleanup
+operations conclusively stop and agents are excluded; an open PR cannot erase
+the restart barrier. Polling and other PRs in the same repository continue, as do
+other repositories. Uncertainty
 keeps the lock and recorded state on shutdown. With explicit process exclusion,
 interrupted state reconciles against its original captured target and session;
 saved PIDs are never used as termination targets. Orderly shutdown closes SQLite

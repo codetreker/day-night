@@ -112,16 +112,14 @@ export const runCoordinator = async (options: CoordinatorOptions): Promise<{ saf
     }
   };
 
-  // Keep pending cleanup durable: polling a reopened PR would otherwise erase its cleanup flag.
   for (const pr of store.listCleanupCandidates()) {
     try { await processes.recover(); }
     catch (error) {
       const retainedRepository = store.getRepository(pr)!;
-      const repository = repositories.find((item) => item.configuration.path === retainedRepository.localPath);
-      if (repository !== undefined) repository.blocked = true;
+      blocked.add(key(pr));
       safeToReleaseLock = false;
       log({ level: "error", phase: "recovery", repository: retainedRepository.remote, number: pr.number,
-        message: "Repository polling and work are blocked until the previous cleanup operations and processes are explicitly excluded.", error });
+        message: "The PR's cleanup and worktree reuse are blocked until its previous operations and processes are explicitly excluded.", error });
     }
   }
 
