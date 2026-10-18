@@ -30,9 +30,12 @@ status-listing aliases before initialization, during Draft and completed states,
 and after closure. Those calls use a restricted PATH without Git, gh or Copilot
 and verify that the listing remains a local state read beside the running reviewer.
 It also drives triggers, exact session continuation, publication ownership,
-missing-marker reconciliation, installed singleton refusal, abnormal-lock diagnostics,
-restart and worktree cleanup. The abnormal-exit fixture waits for
-current direct tool handles to drain, acknowledges the actual CLI PID and exits
+missing-marker reconciliation, installed live-singleton refusal, abnormal-lock
+diagnostics, automatic dead-owner restart and worktree cleanup. The
+[stale-lock decision](../bug-fix/2026-10-18-stale-instance-lock-recovery.md)
+keeps uncertain review and cleanup resources blocked after that restart. The
+abnormal-exit fixture waits for current direct tool handles to drain,
+acknowledges the actual CLI PID and exits
 synchronously before the runtime can release its lock. A native child verifies
 the public `ProcessWrap` visibility used by that gate on each platform. This
 is a controlled fault-injection point; ordinary native process-tree cancellation

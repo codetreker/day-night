@@ -25,8 +25,9 @@ not appear.
 The output declares its local persisted source. Each repository shows the last
 successful complete observation, a saved poll error when present and its permanent
 tracking boundary. PRs at or below the boundary were never individually stored,
-so the output identifies that exclusion and states its tracked scope. Uninitialized repositories and initialized
-repositories with no tracked ongoing PRs have distinct messages. Saved `Running`
+so the output identifies that exclusion and states its tracked scope. Uninitialized
+repositories and initialized repositories with no tracked ongoing PRs have distinct
+messages. Saved `Running`
 state does not establish current process liveness.
 
 The current row matches a review by desired revision, head SHA and target branch.
@@ -35,6 +36,14 @@ active review retain separate status, attempt count, retry deadline and error
 attribution. Draft rows are paused and can still disclose their recorded review.
 This preserves the [durable-state decision](../architecture/2026-10-17-durable-review-state.md)
 that captured progress cannot satisfy a newer trigger.
+
+Pending cleanup is a separate resource barrier, including when a PR reopens.
+Rows show its saved pending state and error independently from review progress.
+Without a current review, a non-Draft row is `Pending (cleanup blocked)`; Draft
+remains `Paused`, and older active reviews keep their own details. The listing
+does not remove the barrier, exclude processes or perform cleanup. The
+[stale-lock decision](../bug-fix/2026-10-18-stale-instance-lock-recovery.md)
+owns the recovery prerequisites that keep those resources blocked.
 
 The reader parses configuration without the runtime loader's physical path probes.
 It opens an existing database read-only and checks schema version 1 within the

@@ -349,7 +349,7 @@ describe("owned worktree cleanup and transaction guarantees", () => {
     expect(reopened.getPullRequest(pr)?.sessionId).toBe(uuid(500));
   });
 
-  it("persists cleanup failures for retry and clears them when reopened or successfully cleaned", () => {
+  it("retains cleanup failures through reopening until stopped cleanup is explicitly cancelled", () => {
     const { store, file, initialize, observe, reserve, prepare } = fixture();
     initialize(); observe(); const review = reserve(); prepare(review);
     const worktree = store.getPullRequest(pr)!.worktreePath!;
@@ -363,20 +363,34 @@ describe("owned worktree cleanup and transaction guarantees", () => {
     const reopened = open(file);
     expect(reopened.listCleanupCandidates()[0]).toMatchObject({ cleanupPending: true, cleanupError: "git worktree remove failed" });
     reopened.observePullRequest(repository, { number: 101, state: "open", draft: false, headSha: "head-a", baseRef: "main", baseSha: "base-a" }, 50);
-    expect(reopened.getPullRequest(pr)).toMatchObject({ cleanupPending: false, cleanupError: null });
+    expect(reopened.getPullRequest(pr)).toMatchObject({ cleanupPending: true, cleanupError: "git worktree remove failed" });
+    expect(reopened.listCleanupCandidates().map(({ number }) => number)).toEqual([101]);
+    expect(reopened.listCandidates(55)).toEqual([]);
+    expect(reopened.reserveReview(pr, { reviewId: uuid(9), sessionId: uuid(501), maxAttempts: 3 }, 55)).toBeNull();
+    reopened.recordCleanupError(pr, worktree, "reopened while removal was uncertain");
+    expect(reopened.getPullRequest(pr)?.cleanupError).toBe("reopened while removal was uncertain");
+    expect(() => reopened.cancelCleanup(pr, worktree, { ...stopped, operationsStopped: false } as unknown as typeof stopped)).toThrow("operations have stopped");
+    expect(() => reopened.cancelCleanup(pr, worktree, { ...stopped, processesExcluded: false } as unknown as typeof stopped)).toThrow("exclude any previous agent");
+    expect(() => reopened.cancelCleanup(pr, `${worktree}-other`, stopped)).toThrow("does not match cleanup");
+    expect(reopened.cancelCleanup(pr, worktree, stopped)).toMatchObject({ cleanupPending: false, cleanupError: null, worktreePath: worktree, sessionId: uuid(500) });
     expect(reopened.listCleanupCandidates()).toEqual([]);
     reopened.observePullRequest(repository, { number: 101, state: "closed", draft: false, headSha: "head-a", baseRef: "main", baseSha: "base-a" }, 60);
     reopened.recordCleanupError(pr, worktree, "remove failed again");
     expect(reopened.completeCleanup(pr, worktree, stopped)).toMatchObject({ cleanupPending: false, cleanupError: null });
   });
 
-  it("cancels pending cleanup on reopening and refuses ownership replacement or repository relocation", () => {
+  it("requires exclusion of active reviews before cancelling reopened cleanup and preserves ownership", () => {
     const { store, directory, initialize, observe, reserve, prepare } = fixture();
     initialize(); observe(); const review = reserve(); prepare(review);
     const worktree = store.getPullRequest(pr)!.worktreePath!;
     observe({ state: "closed" }, 45);
-    expect(observe({}, 50)).toMatchObject({ cleanupPending: false, worktreePath: worktree, desiredRevision: 2 });
+    expect(() => store.cancelCleanup(pr, worktree, stopped)).toThrow("Only a reopened PR");
+    expect(observe({}, 50)).toMatchObject({ cleanupPending: true, worktreePath: worktree, desiredRevision: 2 });
     expect(() => store.completeCleanup(pr, worktree, stopped)).toThrow("reopened PR");
+    expect(() => store.cancelCleanup(pr, worktree, stopped)).toThrow("active review blocks");
+    store.supersedeReview(review.id, stopped, 51);
+    expect(store.cancelCleanup(pr, worktree, stopped)).toMatchObject({ cleanupPending: false, worktreePath: worktree, desiredRevision: 2 });
+    expect(() => store.cancelCleanup(pr, worktree, stopped)).toThrow("does not match cleanup");
     expect(() => store.registerWorktree(pr, path.join(directory, "different"))).toThrow("different worktree");
     expect(() => store.registerRepository({ ...repository, remote: "https://github.com/owner/repo.git", localPath: path.join(directory, "elsewhere") })).toThrow("cannot change its local path");
   });

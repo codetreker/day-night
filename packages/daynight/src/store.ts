@@ -288,7 +288,7 @@ export const openStore = (databaseFile: string, options: { busyTimeoutMs?: numbe
     listActiveReviews: (): ReviewState[] =>
       db.prepare(`SELECT ${reviewColumns} FROM reviews WHERE status IN (${activeStatuses}) ORDER BY created_at, id`).all() as ReviewState[],
     listCleanupCandidates: (): PullRequestState[] =>
-      (db.prepare(`SELECT ${pullRequestColumns} FROM pull_requests p WHERE state <> 'open' AND cleanup_pending = 1
+      (db.prepare(`SELECT ${pullRequestColumns} FROM pull_requests p WHERE cleanup_pending = 1
         AND NOT EXISTS(SELECT 1 FROM reviews r WHERE r.host = p.host AND r.github_id = p.github_id AND r.number = p.number AND r.status IN (${activeStatuses}))
         ORDER BY observed_at, host, github_id, number`).all() as PullRequestRow[]).map(asPullRequest),
     listReviews: (identity: PullRequestIdentity): ReviewState[] =>
@@ -344,10 +344,11 @@ export const openStore = (databaseFile: string, options: { busyTimeoutMs?: numbe
         (previous.draft && !observation.draft) || (previous.state !== "open" && observation.state === "open");
       const desiredRevision = previous === null ? 1 : previous.desiredRevision + Number(triggered);
       requireInteger(desiredRevision, "Desired revision", 1);
-      const cleanupPending = observation.state !== "open" && previous !== null && previous.worktreePath !== null;
+      // Observations cannot prove that an earlier cleanup operation has stopped.
+      const cleanupPending = previous !== null && (previous.cleanupPending || (observation.state !== "open" && previous.worktreePath !== null));
       const parameters = { ...key, state: observation.state, draft: Number(observation.draft), headSha: observation.headSha,
         baseRef: observation.baseRef, baseSha: observation.baseSha, desiredRevision, cleanupPending: Number(cleanupPending),
-        cleanupError: observation.state === "open" || previous === null ? null : previous.cleanupError, now };
+        cleanupError: previous === null ? null : previous.cleanupError, now };
       if (previous === null) {
         db.prepare(`INSERT INTO pull_requests(host, github_id, number, state, draft, head_sha, base_ref, base_sha, desired_revision, cleanup_pending, observed_at)
           VALUES(@host, @githubId, @number, @state, @draft, @headSha, @baseRef, @baseSha, @desiredRevision, @cleanupPending, @now)`).run(parameters);
@@ -509,9 +510,19 @@ export const openStore = (databaseFile: string, options: { busyTimeoutMs?: numbe
     recordCleanupError: (identity: PullRequestIdentity, worktreePath: string, error: string): PullRequestState => atomic(() => {
       requireText(error, "Cleanup error");
       const pullRequest = needPullRequest(identity);
-      if (pullRequest.state === "open" || !pullRequest.cleanupPending || pullRequest.worktreePath !== worktreePath) throw new Error("The pending worktree does not match cleanup.");
+      if (!pullRequest.cleanupPending || pullRequest.worktreePath !== worktreePath) throw new Error("The pending worktree does not match cleanup.");
       db.prepare("UPDATE pull_requests SET cleanup_error = @error WHERE host = @host AND github_id = @githubId AND number = @number")
         .run({ ...pullRequestKey(pullRequest), error });
+      return needPullRequest(pullRequest);
+    }),
+    cancelCleanup: (identity: PullRequestIdentity, worktreePath: string, proof: OperationsStopped & ProcessesExcluded): PullRequestState => atomic(() => {
+      requireStopped(proof);
+      requireExcluded(proof);
+      const pullRequest = needPullRequest(identity);
+      if (pullRequest.state !== "open") throw new Error("Only a reopened PR can cancel pending worktree cleanup.");
+      if (!pullRequest.cleanupPending || pullRequest.worktreePath !== worktreePath) throw new Error("The pending worktree does not match cleanup.");
+      if (activeReview(pullRequest) !== null) throw new Error("An active review blocks worktree cleanup cancellation.");
+      db.prepare("UPDATE pull_requests SET cleanup_pending = 0, cleanup_error = NULL WHERE host = @host AND github_id = @githubId AND number = @number").run(pullRequestKey(pullRequest));
       return needPullRequest(pullRequest);
     }),
     completeCleanup: (identity: PullRequestIdentity, worktreePath: string, proof: OperationsStopped & ProcessesExcluded): PullRequestState => atomic(() => {

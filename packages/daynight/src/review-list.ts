@@ -42,11 +42,16 @@ const rowFor = (pullRequest: PullRequestState, reviews: readonly ReviewState[]):
   const previousActive = ordered.filter((review) => !isCurrent(review) && activeStatuses.has(review.status));
   let status = current === undefined ? "Pending" : reviewNames[current.status];
   if (pullRequest.draft) status = "Paused";
+  else if (current === undefined && pullRequest.cleanupPending) status = "Pending (cleanup blocked)";
   else if (current === undefined && previousActive.length > 0) {
     status = `Pending (previous revision ${reviewNames[previousActive.at(-1)!.status].toLowerCase()})`;
   }
   const details = current === undefined ? [] : reviewDetails(current);
   if (pullRequest.draft && current !== undefined) details.unshift(`Recorded review: ${reviewNames[current.status]}`);
+  if (pullRequest.cleanupPending) {
+    details.push("Worktree cleanup: Pending");
+    if (pullRequest.cleanupError !== null) details.push(`Cleanup error: ${terminalSafe(pullRequest.cleanupError)}`);
+  }
   for (const previous of previousActive) {
     details.push(`Previous revision ${previous.revision}: ${reviewNames[previous.status]}; attempts: ${previous.attemptCount}/${previous.maxAttempts}`);
     details.push(...reviewDetails(previous, "Previous revision "));

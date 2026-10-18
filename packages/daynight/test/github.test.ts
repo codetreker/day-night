@@ -287,7 +287,9 @@ describe("durable repository observations", () => {
     expect(store.listPullRequests(repository).map((item) => [item.number, item.state, item.cleanupPending])).toEqual([[11, "open", false], [12, "closed", true], [13, "merged", true]]);
     expect(store.listCleanupCandidates().map((item) => item.number)).toEqual([12, 13]);
     await poll(queue(response({ id: 42 }), response([pr(11), pr(12), pr(13)])).client);
-    expect(store.listPullRequests(repository).every((item) => item.state === "open" && !item.cleanupPending)).toBe(true);
+    expect(store.listPullRequests(repository).map((item) => [item.number, item.state, item.cleanupPending])).toEqual([[11, "open", false], [12, "open", true], [13, "open", true]]);
+    expect(store.listCleanupCandidates().map((item) => item.number)).toEqual([12, 13]);
+    expect(store.listCandidates(200_000).map((item) => item.pullRequest.number)).toEqual([11]);
     expect(store.getPullRequest({ ...repository, number: 12 })?.desiredRevision).toBe(2);
   });
 

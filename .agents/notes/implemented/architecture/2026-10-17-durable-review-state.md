@@ -40,9 +40,13 @@ The coordinator owns operation exclusion; a database assertion records its
 conclusion without independently proving process absence.
 
 Session establishment is monotonic. Worktree registration and cleanup state
-survive reopen; closure requires cleanup, while reopening withdraws cleanup
-eligibility. SQLite registration does not replace Git identity checks, validate
-session files, create directories, or delete a worktree.
+survive reopen. Closure requires cleanup; reopening withdraws deletion eligibility
+without clearing `cleanup_pending` or its error. Cleanup candidates therefore
+include open PRs with unresolved markers. After operations are conclusively
+stopped and agents excluded, `cancelCleanup` clears only that marker and error,
+retaining the path and session. A PR observation cannot establish this proof.
+SQLite registration does not replace Git identity checks, validate session files,
+create directories, or delete a worktree.
 
 The database uses WAL, FULL synchronization, a bounded busy timeout, and explicit
 schema versions. Migration and transition failures propagate. No transaction
@@ -53,7 +57,10 @@ part of the [foreground CLI decision](2026-10-16-foreground-review-cli.md).
 
 The [local status listing](../feature/2026-10-18-review-status-listing.md) reads
 repositories, open PRs and their current or older active reviews in one read-only
-transaction. It checks the existing schema without migration and returns absent
+transaction. Reopened PRs keep unresolved cleanup barriers visible separately
+from their current and older active review records. The listing reports those
+markers and saved errors without cancelling cleanup. It checks the existing
+schema without migration and returns absent
 state without creating a database. It does not recover records, take the review
 instance lock or establish process liveness. SQLite may still manage WAL/SHM
 coordination sidecars while reading an existing database. Invalid or unsupported

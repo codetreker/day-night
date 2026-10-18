@@ -1,41 +1,17 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, unlink } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { formatError } from "./diagnostics.js";
 import { createCopilotRunner } from "./copilot.js";
 import { runCoordinator } from "./coordinator.js";
 import { createGitManager } from "./git.js";
 import { createGitHubClient } from "./github.js";
+import { acquireInstanceLock } from "./instance-lock.js";
 import { createProcessSupervisor } from "./processes.js";
 import { openStore } from "./store.js";
 import type { Configuration } from "./config.js";
 import type { CoordinatorEvent } from "./coordinator.js";
 import type { RuntimePaths } from "./paths.js";
 
-export const acquireInstanceLock = async (lockFile: string, owner: string = randomUUID()) => {
-  let file;
-  try { file = await open(lockFile, "wx", 0o600); }
-  catch (cause) {
-    throw new Error(`Cannot acquire instance lock ${lockFile}. If a previous run stopped abnormally, first confirm that its CLI and all review agents have stopped, then manually remove the stale lock before restarting.`, { cause });
-  }
-  const content = JSON.stringify({ owner, pid: process.pid, startedAt: new Date().toISOString() });
-  try { await file.writeFile(`${content}\n`); await file.sync(); }
-  catch (error) {
-    await file.close();
-    await unlink(lockFile);
-    throw error;
-  }
-  await file.close();
-  let released = false;
-  return {
-    owner,
-    release: async (): Promise<void> => {
-      if (released) return;
-      if ((await readFile(lockFile, "utf8")).trim() !== content) throw new Error(`Instance lock ${lockFile} no longer belongs to this CLI; it was retained.`);
-      await unlink(lockFile);
-      released = true;
-    },
-  };
-};
+export { acquireInstanceLock } from "./instance-lock.js";
 
 export type RuntimeDependencies = {
   openStore: typeof openStore;
@@ -77,11 +53,12 @@ export const runForegroundReview = async (
   try {
     await mkdir(paths.stateDirectory, { recursive: true });
     lock = await acquireInstanceLock(paths.lockFile);
+    safe = lock.previousProcessesExcluded;
     signal.throwIfAborted();
     store = dependencies.openStore(paths.databaseFile);
     const client = dependencies.createClient();
     const git = dependencies.createGit({ temporaryDirectory: paths.temporaryDirectory, client });
-    const processes = dependencies.createProcesses({ previousProcessesExcluded: true });
+    const processes = dependencies.createProcesses(lock.previousProcessesExcluded ? { previousProcessesExcluded: true } : {});
     const runner = dependencies.createRunner({ paths, processOwner: lock.owner, timeoutMs: configuration.agentTimeoutMs });
     log({ level: "info", phase: "startup", message: `Foreground review started; state=${paths.stateDirectory}.` });
     safe = false;

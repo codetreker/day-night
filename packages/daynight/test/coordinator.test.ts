@@ -97,7 +97,10 @@ const fixture = (repositoryCount = 1, initialized = true) => {
       cleaned.push(pr.number);
       await onCleanup?.(pr.number);
       const current = state.getPullRequest(pr)!;
-      if (current.state === "open") return { kind: "reopened" };
+      if (current.state === "open") {
+        state.cancelCleanup(pr, current.worktreePath!, excluded);
+        return { kind: "reopened" };
+      }
       state.completeCleanup(pr, current.worktreePath!, excluded);
       return { kind: "cleaned" };
     },
@@ -429,6 +432,82 @@ describe("foreground review coordination", () => {
     await waitFor(() => f.store.getPullRequest(f.pr())?.worktreePath === null && f.store.getPullRequest(f.pr(2))?.completedRevision === 1, "cleanup retry and independent review");
     expect(f.cleaned).toEqual([1, 1]);
     expect(f.store.getPullRequest(f.pr())?.cleanupError).toBeNull();
+  });
+
+  it("preserves old cleanup across unconfirmed restarts and reopening while other repositories run", async () => {
+    const f = fixture(2);
+    f.store.observePullRequest(f.identities[0]!, observation(1), 1);
+    f.store.registerWorktree(f.pr(), path.join(f.configurations[0]!.path, ".worktrees", "pr-1"));
+    f.store.observePullRequest(f.identities[0]!, observation(1, { state: "closed" }), 2);
+    f.update(1);
+    f.update(3);
+    f.update(2, {}, 1);
+    f.processes.recover = async () => { throw new Error("Old cleanup processes have not been excluded."); };
+    const first = f.start();
+    await waitFor(() => f.store.getPullRequest(f.pr(2, 1))?.completedRevision === 1, "independent repository review");
+    await waitFor(() => f.store.getPullRequest(f.pr(3))?.completedRevision === 1, "independent PR in the same repository");
+    expect(f.polls[0]).toBeGreaterThan(0);
+    expect(f.cleaned).toEqual([]);
+    expect(f.store.getPullRequest(f.pr())?.cleanupPending).toBe(true);
+    expect(f.store.getPullRequest(f.pr())?.state).toBe("open");
+    first.abort.abort();
+    await expect(first.completion).resolves.toEqual({ safeToReleaseLock: false });
+
+    const second = f.start();
+    const previousPolls = f.polls[1]!;
+    await waitFor(() => f.polls[1]! > previousPolls + 1, "polling during another unconfirmed restart");
+    expect(f.prepared.map((review) => review.number).sort()).toEqual([2, 3]);
+    expect(f.store.getPullRequest(f.pr())?.cleanupPending).toBe(true);
+    second.abort.abort();
+    await expect(second.completion).resolves.toEqual({ safeToReleaseLock: false });
+
+    f.processes.recover = async () => proof;
+    const confirmed = f.start();
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 2, "reopened PR after explicit recovery proof");
+    expect(f.cleaned).toEqual([1]);
+    confirmed.abort.abort();
+    await expect(confirmed.completion).resolves.toEqual({ safeToReleaseLock: true });
+  });
+
+  it("retains cleanup uncertainty when a PR reopens before removal fails and blocks reuse after automatic restart", async () => {
+    const f = fixture(2);
+    f.update(1);
+    const removal = deferred();
+    f.cleanup(async () => removal.promise);
+    const original = f.start();
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 1, "review before cleanup");
+    f.update(1, { state: "closed" });
+    await waitFor(() => f.cleaned.length === 1, "in-flight removal");
+    f.update(1, { state: "open" });
+    await waitFor(() => f.store.getPullRequest(f.pr())?.state === "open", "reopening before removal result");
+    expect(f.store.getPullRequest(f.pr())?.cleanupPending).toBe(true);
+    expect(f.launched).toHaveLength(1);
+    removal.reject(new GitCommandError("Removal outcome is uncertain.", new Error("capture abandoned"), false));
+    await waitFor(() => f.events.some((event) => event.phase === "cleanup" && event.level === "error"), "uncertain removal diagnostic");
+    original.abort.abort();
+    await expect(original.completion).resolves.toEqual({ safeToReleaseLock: false });
+    const persisted = openStore(f.paths.databaseFile);
+    try {
+      expect(persisted.getPullRequest(f.pr())).toMatchObject({ state: "open", cleanupPending: true });
+      expect(persisted.listActiveReviews()).toEqual([]);
+      expect(persisted.listCleanupCandidates().map((pr) => pr.number)).toEqual([1]);
+    } finally { persisted.close(); }
+
+    f.update(2, {}, 1);
+    const restarted = f.start({ processes: createProcessSupervisor() });
+    await waitFor(() => f.store.getPullRequest(f.pr(2, 1))?.completedRevision === 1, "independent review after automatic restart");
+    expect(f.prepared.map((review) => review.number)).toEqual([1, 2]);
+    expect(f.cleaned).toEqual([1]);
+    expect(f.store.getPullRequest(f.pr())?.cleanupPending).toBe(true);
+    restarted.abort.abort();
+    await expect(restarted.completion).resolves.toEqual({ safeToReleaseLock: false });
+
+    f.cleanup(undefined);
+    const confirmed = f.start();
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 2, "reopened review after explicit exclusion");
+    expect(f.store.getPullRequest(f.pr())?.cleanupPending).toBe(false);
+    confirmed.abort.abort();
+    await expect(confirmed.completion).resolves.toEqual({ safeToReleaseLock: true });
   });
 
   it("defers an ordinary preparation failure without spending an attempt, but blocks uncertain Git execution", async () => {

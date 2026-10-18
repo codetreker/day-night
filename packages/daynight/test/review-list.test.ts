@@ -142,6 +142,17 @@ describe("persisted review listing projection", () => {
     expect(output).toContain("Previous revision 1: Running; attempts: 1/3");
   });
 
+  it.each([false, true])("shows pending worktree cleanup and its saved error for draft=%s", (draft) => {
+    const output = formatReviewListing(configuration(), snapshot({
+      pullRequests: [pullRequest({ draft, desiredRevision: 2, cleanupPending: true, cleanupError: "Git outcome\u001b[2J\nuncertain" })],
+      reviews: [review({ status: "interrupted", lastError: "child status uncertain" })],
+    }));
+    expect(row(output)).toMatch(draft ? /Draft\s+Paused\s+-$/ : /Open\s+Pending \(cleanup blocked\)\s+-$/);
+    expect(output).toContain("  Worktree cleanup: Pending\n  Cleanup error: Git outcome\\u001b[2J\\u000auncertain");
+    expect(output).toContain("Previous revision 1: Interrupted; attempts: 1/3");
+    expect(output).toContain("Previous revision Error: child status uncertain");
+  });
+
   it("prints retry deadlines and saved diagnostics while escaping terminal controls", () => {
     const output = formatReviewListing(configuration(), snapshot({
       repositories: [repository({ lastPollError: "API\u001b[2J\nerror\u009b1m" })],
@@ -206,6 +217,47 @@ describe("review listing reads", () => {
       for (const filename of [paths.lockFile, paths.logsDirectory, paths.copilotDirectory, paths.temporaryDirectory]) {
         await expect(readFile(filename)).rejects.toMatchObject({ code: "ENOENT" });
       }
+    } finally {
+      store.close();
+    }
+  });
+
+  it("shows reopened PR cleanup blocking until the writer records confirmed cancellation", async () => {
+    const { paths } = await diskFixture();
+    const store = openStore(paths.databaseFile);
+    try {
+      const identity = { host: "github.com", githubId: "42" };
+      const pr = { ...identity, number: 12 };
+      const proof = { operationsStopped: true, processesExcluded: true } as const;
+      const observation = { number: 12, state: "open", draft: false, headSha: "head", baseRef: "main", baseSha: "base" } as const;
+      const worktree = path.join(paths.stateDirectory, "old-clone", ".worktrees", "pr-12");
+      store.registerRepository({ ...identity, remote: "https://github.com/owner/repo.git", localPath: path.join(paths.stateDirectory, "old-clone") });
+      store.initializeRepository(identity, 0, 0);
+      store.observePullRequest(identity, observation, 1_000);
+      const preparing = store.reserveReview(pr, {
+        reviewId: "00000000-0000-4000-8000-000000000001", sessionId: "00000000-0000-4000-8000-000000000002", maxAttempts: 3,
+      }, 1_100)!;
+      store.registerWorktree(pr, worktree);
+      store.observePullRequest(identity, { ...observation, state: "closed" }, 1_200);
+      store.supersedeReview(preparing.id, proof, 1_300);
+      store.recordCleanupError(pr, worktree, "Git cleanup outcome\u001b[2J uncertain");
+      store.observePullRequest(identity, observation, 1_400);
+
+      const pending = store.getPullRequest(pr);
+      expect(pending).toMatchObject({ state: "open", cleanupPending: true, desiredRevision: 2 });
+      expect(store.listCandidates(1_500)).toEqual([]);
+      const blocked = await listReviews(paths);
+      expect(row(blocked, 12)).toMatch(/Open\s+Pending \(cleanup blocked\)\s+-$/);
+      expect(blocked).toContain("  Worktree cleanup: Pending\n  Cleanup error: Git cleanup outcome\\u001b[2J uncertain");
+      expect(store.getPullRequest(pr)).toEqual(pending);
+      expect(store.listCandidates(1_500)).toEqual([]);
+
+      store.cancelCleanup(pr, worktree, proof);
+      expect(store.listCandidates(1_600)).toHaveLength(1);
+      const cleared = await listReviews(paths);
+      expect(row(cleared, 12)).toMatch(/Open\s+Pending\s+-$/);
+      expect(cleared).not.toContain("Worktree cleanup:");
+      expect(cleared).not.toContain("Cleanup error:");
     } finally {
       store.close();
     }

@@ -25,7 +25,7 @@ export type CoordinatorProcesses = {
   onProcess: (child: ChildProcess, attempt: AttemptIdentity) => void;
   stop: (child: ChildProcess, attempt: AttemptIdentity) => Promise<void>;
   exclude: (review: ReviewState, outcome?: CopilotAttemptOutcome) => Promise<ProcessesExcluded>;
-  recover: (review: ReviewState) => Promise<ProcessesExcluded & OperationsStopped>;
+  recover: (review?: ReviewState) => Promise<ProcessesExcluded & OperationsStopped>;
 };
 export type CoordinatorOptions = {
   configuration: Configuration;
@@ -111,6 +111,17 @@ export const runCoordinator = async (options: CoordinatorOptions): Promise<{ saf
       }
     }
   };
+
+  for (const pr of store.listCleanupCandidates()) {
+    try { await processes.recover(); }
+    catch (error) {
+      const retainedRepository = store.getRepository(pr)!;
+      blocked.add(key(pr));
+      safeToReleaseLock = false;
+      log({ level: "error", phase: "recovery", repository: retainedRepository.remote, number: pr.number,
+        message: "The PR's cleanup and worktree reuse are blocked until its previous operations and processes are explicitly excluded.", error });
+    }
+  }
 
   // Persist uncertainty before requesting the runtime's explicit startup recovery proof.
   for (const review of store.listActiveReviews()) {
