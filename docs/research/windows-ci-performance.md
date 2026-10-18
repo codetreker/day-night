@@ -49,12 +49,9 @@ its [parallelism guide](https://vitest.dev/guide/parallelism.html). Independent
 files expose this work to the existing scheduler. A per-file immutable bare
 seed avoids reconstructing identical starting objects for each case, while
 fresh copies preserve separate mutable origins and all real manager operations.
-Windows ordinary tests set `VITEST_MAX_WORKERS=6` to overlap independent native
-commands. Other platforms and installed acceptance retain their existing worker
-defaults. Vitest 5.0.5's [worker default](https://github.com/vitest-dev/vitest/blob/7a825db43e2beca0b219d2eadaec334cb81af0c7/packages/vitest/src/utils/workers.ts#L3)
-reserves one available CPU, and its
-[configuration resolver](https://github.com/vitest-dev/vitest/blob/7a825db43e2beca0b219d2eadaec334cb81af0c7/packages/vitest/src/node/config/resolveConfig.ts#L710-L713)
-supports the numeric environment override without changing process isolation.
+Every platform retains its existing worker defaults. Vitest 5.0.5's
+[worker default](https://github.com/vitest-dev/vitest/blob/7a825db43e2beca0b219d2eadaec334cb81af0c7/packages/vitest/src/utils/workers.ts#L3)
+reserves one available CPU; the measured Windows split run used three workers.
 The [decision note](../../.agents/notes/implemented/testing/2026-10-18-parallel-git-validation.md)
 defines fixture ownership and the alternatives considered.
 
@@ -78,6 +75,27 @@ three overlapping test files. Their summed duration was 299.181 seconds; the
 last sparse-primary file started about 83 seconds after Vitest began. Individual
 file times include concurrent resource contention and cannot be compared to
 the former single file as isolated speed measurements.
+
+## Rejected worker-count experiment
+
+Revision `0f83e217a859000726ade83970fc321f044f9282` set six workers only for
+ordinary Windows tests. The
+[native experiment](https://github.com/codetreker/day-night/actions/runs/39136340958/job/117701497971)
+took 125 seconds for the test step and 120.15 seconds inside Vitest, compared
+with 115 and 110.67 seconds with defaults. Four `check-version.test.ts` cases
+exceeded the existing five-second timeout: semantic prerelease precedence,
+base-only changes, a target-consumed version, and invalid/missing objects or
+manifests. The other 471 cases passed and nine platform cases skipped.
+
+This is a failed experiment, not a complete acceptance receipt: installed
+acceptance was skipped after the ordinary-test failure. At six workers, the version-check file increased from 31.929 to 75.398
+seconds, while ownership scenarios increased from 54.037 to 104.141 seconds.
+These widespread slowdowns support resource contention as an inference; CPU
+and disk counters were not collected. Wall time did not improve. The final
+workflow restores the default worker limit; assertions and timeouts remain
+unchanged. The failed run is retained without rerunning it unchanged. Different
+host load prevents attributing every duration difference solely to worker count,
+but the experiment supplies no basis for shipping that override.
 
 ## Validation boundaries
 

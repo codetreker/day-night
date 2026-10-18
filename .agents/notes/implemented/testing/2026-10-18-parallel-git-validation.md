@@ -17,12 +17,12 @@ the measurements and source revisions.
 Git scenarios are divided into separate test files for repository snapshots and
 failure handling, ownership and cleanup, configuration and submodules,
 administrative authority, and the two sparse-configuration scopes. Vitest's
-isolated file workers schedule these suites in parallel. Cases within each file
-remain sequential. The Windows ordinary-test step sets `VITEST_MAX_WORKERS=6`;
-other platforms retain Vitest's default. In the first native split-suite run,
-the default three Windows workers kept later Git files queued and ordinary
-tests still took 110.67 seconds. Six workers allow more native command and I/O
-waits to overlap while retaining the default `forks` pool and file isolation.
+existing isolated file workers schedule these suites in parallel. Cases within
+each file remain sequential. Every platform retains Vitest's default worker
+limit, `forks` pool and file isolation. The native Windows split-suite run used
+three workers and passed ordinary tests in 110.67 seconds. A six-worker
+experiment took 120.15 seconds and failed four existing five-second version
+checks, so the workflow retains the default limit.
 
 Each file explicitly owns a fixture factory and its lifecycle hooks. The factory
 constructs one bare-origin seed with native Git, then copies it into a unique
@@ -36,8 +36,7 @@ executes real clone, fetch, worktree, sparse-checkout and submodule operations.
 Fixture commands retain their dynamic environment filtering, Unicode and space
 paths, fixed commit identities and committed byte-preservation attributes.
 The three-platform workflow and installed CLI acceptance retain their full
-workload and existing time limits. The worker override applies only to ordinary
-Windows tests; installed acceptance retains its independent execution.
+workload and existing time limits.
 
 ## Alternatives
 
@@ -50,12 +49,14 @@ or remove its active resources. File isolation preserves those ownership rules.
 filesystem identity and persisted registration are test subjects. Copying only
 the initial bare origin removes repeated setup without bypassing those subjects.
 
-**Keep the default Windows worker limit.** Vitest 5.0.5 reserves one available
-CPU in run mode. The first split-suite run used three workers; its files consumed
-299.181 seconds in total across a 110.67-second execution, with sparse-primary
-starting about 83 seconds after the run began. A Windows-only numeric override
-exposes more of this independent work to the scheduler. Its value is bounded
-and retains process isolation.
+**Raise the Windows worker limit to six.** The first split-suite run used three
+workers and kept later Git files queued; six could overlap more native command
+waits. The native experiment instead took 120.15 seconds versus 110.67 and four
+version-gate cases exceeded their unchanged five-second limit. Greater file
+concurrency did not improve that runner's observed throughput. Default worker
+sizing keeps the passing acceptance criteria and avoids the additional resource
+pressure. The [timing report](../../../../docs/research/windows-ci-performance.md)
+retains the failed experiment and its limits.
 
 **Optimize dependency caching or repeated builds first.** The latest baseline
 spent five seconds installing dependencies and 201 seconds running ordinary
@@ -65,10 +66,10 @@ independent optimizations if later measurements make them material.
 ## Consequences
 
 The worker scheduler distributes native Git work across independent cases.
-Additional test files and six Windows workers use more memory and keep more
-private fixtures active than the default. Hosted timings determine whether
-overlapping native commands outweighs CPU and disk contention. CI runner size
-remains unchanged.
+Additional test files create some worker overhead and simultaneously active
+private fixtures. Worker limits and CI runner size remain unchanged; the rejected
+six-worker experiment demonstrates that more concurrency can increase native
+command costs and exhaust existing test deadlines.
 
 Fixture setup still uses native Git once per file, and every case still creates
 its own real repository state. Future scenarios must retain per-case mutable
