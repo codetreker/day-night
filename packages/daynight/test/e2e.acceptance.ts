@@ -6,7 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import Database from "better-sqlite3";
 import crossSpawn from "cross-spawn";
-import { parse } from "yaml";
+import { parse, parseDocument } from "yaml";
 import { expect, it } from "vitest";
 
 const workspace = path.resolve(import.meta.dirname, "../../..");
@@ -124,13 +124,61 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     expect(existsSync(installedBin)).toBe(true);
     const installed = JSON.parse(readFileSync(path.join(consumer, "node_modules", "@codetreker", "daynight", "package.json"), "utf8")) as { name: string; version: string };
     expect(installed.name).toBe("@codetreker/daynight");
+    const register = (args: string[], registrationHome = home): void => {
+      const result = crossSpawn.sync(installedBin, ["add-repo", ...args], {
+        cwd: directory, env: { ...environment, HOME: registrationHome, USERPROFILE: registrationHome, XDG_CONFIG_HOME: path.join(registrationHome, "config") },
+        encoding: "utf8", windowsHide: true, timeout: 30_000,
+      });
+      if (result.error) throw result.error;
+      expect(result.status, result.stderr).toBe(0);
+    };
+    const configFile = path.join(stateDirectory, "config.yml");
+    register(["https://github.com/fixture/review-project.git", "--path", path.relative(directory, repository)]);
+    expect(parse(readFileSync(configFile, "utf8"))).toMatchObject({
+      repositoryRoot: "~/daynights",
+      repositories: [{ remote: "https://github.com/fixture/review-project.git", path: repository }],
+    });
+    expect(readdirSync(stateDirectory)).toEqual(["config.yml"]);
+    expect(existsSync(repository)).toBe(false);
+    expect(readRecords<Request>("requests")).toHaveLength(0);
+    expect(agents()).toHaveLength(0);
+    expect(publications()).toHaveLength(0);
+    const registrationHome = path.join(directory, "registration home 中文");
+    const registrationState = path.join(registrationHome, ".daynight");
+    const registrationConfigFile = path.join(registrationState, "config.yml");
+    const defaultRepository = path.join(registrationHome, "daynights/github.com/fixture/default-project");
+    register(["https://github.com/fixture/default-project.git"], registrationHome);
+    const registrationConfig = parseDocument(readFileSync(registrationConfigFile, "utf8"));
+    expect(registrationConfig.toJS()).toMatchObject({
+      repositoryRoot: "~/daynights",
+      repositories: [{ remote: "https://github.com/fixture/default-project.git", path: defaultRepository }],
+    });
+    const changedRoot = path.join(registrationHome, "future repositories 中文");
+    registrationConfig.set("repositoryRoot", changedRoot);
+    writeFileSync(registrationConfigFile, registrationConfig.toString());
+    register(["https://github.com/fixture/future-project.git"], registrationHome);
+    expect(parse(readFileSync(registrationConfigFile, "utf8"))).toMatchObject({
+      repositoryRoot: changedRoot,
+      repositories: [
+        { remote: "https://github.com/fixture/default-project.git", path: defaultRepository },
+        { remote: "https://github.com/fixture/future-project.git", path: path.join(changedRoot, "github.com/fixture/future-project") },
+      ],
+    });
+    expect(readdirSync(registrationState)).toEqual(["config.yml"]);
+    expect(existsSync(path.join(registrationHome, "daynights"))).toBe(false);
+    expect(existsSync(changedRoot)).toBe(false);
+    expect(readRecords<Request>("requests")).toHaveLength(0);
+    expect(agents()).toHaveLength(0);
+    expect(publications()).toHaveLength(0);
     const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
     if (process.platform === "win32") writeFileSync(path.join(bin, "copilot.cmd"), `@"${process.execPath}" "${path.join(helpers, "copilot.mjs")}" %*\r\n`);
     else {
       writeFileSync(path.join(bin, "copilot"), `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(path.join(helpers, "copilot.mjs"))} "$@"\n`);
       chmodSync(path.join(bin, "copilot"), 0o755);
     }
-    writeFileSync(path.join(stateDirectory, "config.yml"), `pollIntervalMs: 200\nmaxConcurrentWorker: 1\nagentTimeoutMs: 60000\nmaxAttempts: 3\nretryDelayMs: 100\nrepositories:\n  - remote: https://github.com/fixture/review-project.git\n    path: ${JSON.stringify(repository)}\n`);
+    const lifecycleConfig = parseDocument(readFileSync(configFile, "utf8"));
+    for (const [key, value] of Object.entries({ pollIntervalMs: 200, maxConcurrentWorker: 1, agentTimeoutMs: 60000, maxAttempts: 3, retryDelayMs: 100 })) lifecycleConfig.set(key, value);
+    writeFileSync(configFile, lifecycleConfig.toString());
     const start = (cwd: string): void => {
       rmSync(path.join(directory, "stop"), { force: true });
       rmSync(path.join(directory, "crash"), { force: true });
@@ -190,7 +238,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       await waitFor(() => pr(number)?.completed_revision === revision, `PR ${number} completed revision ${revision}`);
       expect(pr(number)?.desired_revision).toBe(revision);
     };
-    const scenarios: string[] = [];
+    const scenarios: string[] = ["config-only-registration", "relative-registration-path", "default-root-registration", "registration-path-fixed-after-root-change"];
     try {
       execFileSync(process.execPath, ["--input-type=module", "--eval", `
         import assert from "node:assert/strict";

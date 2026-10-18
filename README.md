@@ -8,8 +8,8 @@ initialization boundaries, review revisions and retry budgets.
 
 The [Chinese requirements](docs/spec/daynight.md) define the complete product;
 the [architecture](docs/design/daynight.md) describes the selected design. The
-CLI provides help and version output. Review mode loads configuration and runs
-until stopped. Controlled native-platform tests and live Copilot/GitHub acceptance
+CLI provides help, version output and configuration-only repository registration.
+Review mode loads configuration and runs until stopped. Controlled native-platform tests and live Copilot/GitHub acceptance
 provide separate evidence; live acceptance remains outstanding.
 
 ## Development
@@ -37,7 +37,11 @@ SQLite, creates no global installation and requires no live review credentials.
 
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
 Windows runners. The final `checks` job succeeds only when all platform jobs
-succeed. macOS tests mount temporary case-sensitive and case-insensitive APFS
+succeed. The Linux job also enforces package version increases before ordinary
+validation. A PR compares its complete source changes with its merge base and
+its package version with the event's target-branch revision. Main pushes compare
+the full event before/after range. The checkout includes the required history.
+macOS tests mount temporary case-sensitive and case-insensitive APFS
 images to check path identity against both filesystem behaviors. No live GitHub
 or Copilot credentials are required by these checks.
 SQLite tests use real disk databases, including reopen, transaction rollback,
@@ -55,38 +59,88 @@ receipts from live-service evidence. Controlled Copilot executables exercise ret
 launch intent, stdin prompts and streamed completion/failure handling. These
 checks require no live model invocation or GitHub publication.
 
+## Package versions
+
+Changes to `packages/daynight/src/`, either package manifest, `pnpm-lock.yaml`,
+`pnpm-workspace.yaml`, `.npmrc`, or either application TypeScript configuration
+require a strictly greater SemVer in `packages/daynight/package.json`. Source
+additions, deletions and moves all count. Unchanged versions, downgrades and
+build-metadata-only changes fail. Tests, fixtures, documentation, CI workflows
+and validation scripts alone do not require a version increase. An initial main
+push with no previous commit validates the starting version without comparing
+against a nonexistent predecessor.
+
+Update the version in the same PR as the code. To check committed revisions
+locally, run `pnpm version:check pull_request <base-sha> <head-sha>` or
+`pnpm version:check push <before-sha> <after-sha>`. The command reads versions
+from those commits; uncommitted files do not affect the result. Missing history,
+unreadable manifests and invalid versions fail visibly. See the
+[toolchain decision](.agents/notes/implemented/process/2026-10-16-typescript-cli-toolchain.md)
+for the comparison and CI ownership rules.
+
 ## Configuration and startup
 
-The selected review-mode entry is:
+Register a repository before starting review mode:
 
 ```text
+daynight add-repo https://github.com/OWNER/REPO.git
+daynight add-repo git@github.com:OWNER/OTHER.git --path ./review-other
 daynight --daemon-review
 ```
 
-For a local build, invoke it with `pnpm daynight --daemon-review`. The CLI reads
-`~/.daynight/config.yml`, where the program resolves the current OS user's home
-directory. A minimal configuration is:
+For a local build, prefix the command with `pnpm`. Both commands select
+`~/.daynight/config.yml` using the current OS user's home directory. `add-repo`
+creates the configuration when absent. It reads, validates and saves configuration;
+cloning, authentication checks, GitHub calls, SQLite initialization and PR boundary
+selection belong to review startup. An already running reviewer keeps its loaded
+configuration until its next startup.
+
+A configuration with an explicit addition root is:
 
 ```yaml
+repositoryRoot: ~/daynights
 repositories:
   - remote: https://github.com/OWNER/REPO.git
-    path: ../code/REPO
+    path: /home/alice/daynights/github.com/owner/repo
 ```
 
+`repositoryRoot` defaults to `~/daynights`. It is used only when `add-repo` has no
+`--path`: the command derives filesystem-safe components from the normalized
+host/owner/name and saves the resulting absolute repository path. A configured
+root may be absolute, config-directory-relative, or begin with `~` for the current
+OS user's home. Other users' tilde forms are rejected. Changing the root affects
+future additions only. An explicit `--path` resolves against the command's working
+directory and is also saved as an absolute path. Manually written repository paths
+remain absolute or config-directory-relative and do not expand `~`; every repository
+entry requires its own `path`.
+
+Adding an existing normalized repository without `--path` reuses its saved path
+and succeeds without rewriting configuration, even after the root changes.
+An explicit path to the same actual location is also idempotent; an explicit
+different path for that repository is an error.
+Existing YAML settings and comments survive additions. The command validates the
+complete resulting configuration before replacing the file atomically. Validation
+and pre-replacement write failures preserve the original configuration; cleanup
+errors after replacement remain visible. A separate
+`~/.daynight/config.yml.lock` excludes another configuration writer and fails
+clearly when occupied; it is independent of the review instance lock. After an
+abnormal exit, confirm no configuration writer remains before removing this lock.
+Configuration mutation rejects symlinks and nonregular files and preserves an
+existing file's permission mode.
+
 Numeric options use the documented [configuration defaults](docs/design/daynight.md)
-when omitted. Explicit invalid values, unsupported fields, duplicate YAML keys,
-malformed documents, and missing configuration files produce nonzero exits with
-useful errors. Repository paths are absolute or relative to the configuration
-directory; use an absolute path rather than shell-style tilde expansion.
-Duplicate repository identities, duplicate local paths, paths overlapping the
-retained state directory, and paths with an existing nondirectory component are
-rejected. Missing clone directories remain valid for later repository creation.
-Existing paths are compared by filesystem identity. Missing destinations with
-the same existing ancestor and component count are compared by temporarily
-creating one candidate's directory names inside a unique probe directory there
-and looking up the other spelling. This observes actual case and Unicode rules.
-Validation removes only the directories it created, using nonrecursive removal.
-Probe permission, inspection, or cleanup failures stop validation with an error.
+when omitted. Explicit invalid values, unsupported fields, duplicate YAML keys and
+malformed documents produce nonzero exits with useful errors. Review startup also
+fails when the configuration is missing. Duplicate repository identities,
+duplicate local paths, paths overlapping the retained state directory, and paths
+with an existing nondirectory component are rejected. Missing clone directories
+remain valid for later repository creation. Existing paths are compared by
+filesystem identity. Missing destinations with the same existing ancestor and
+component count are compared by temporarily creating one candidate's directory
+names inside a unique probe directory there and looking up the other spelling.
+This observes actual case and Unicode rules. Validation removes only the
+directories it created, using nonrecursive removal. Probe permission, inspection,
+or cleanup failures stop validation with an error.
 
 The selected retained-state location is `~/.daynight/` for SQLite, sessions,
 locks, logs, cache, and temporary files. PR worktrees belong to each monitored
@@ -94,7 +148,9 @@ repository root's `.worktrees/` directory. `maxConcurrentWorker` limits concurre
 review preparation and execution. Startup acquires an exclusive instance lock,
 opens SQLite and prepares the configured clones. Each repository is polled
 independently; access failures retain its last complete observation and remain
-visible in diagnostics.
+visible in diagnostics. The
+[repository registration decision](.agents/notes/implemented/feature/2026-10-18-add-repo-configuration.md)
+records the fixed-path and configuration-only choices.
 
 ## Durable review state
 

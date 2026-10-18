@@ -2,7 +2,7 @@ import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { configurationDefaults, loadConfiguration, parseConfiguration } from "../src/config.js";
+import { configurationDefaults, loadConfiguration, parseConfiguration, resolveRepositoryRoot } from "../src/config.js";
 import { resolveRuntimePaths } from "../src/paths.js";
 import * as filesystemPaths from "../src/paths.js";
 import { formatError } from "../src/cli.js";
@@ -25,6 +25,26 @@ describe("YAML configuration", () => {
         path: "/home/Review User 用户/code/Repo 用户",
       }],
     });
+  });
+
+  it("validates repositoryRoot as addition metadata without changing runtime configuration", () => {
+    for (const root of ["~/daynights", "~", "../clones", "/nonexistent/clones"]) {
+      expect(parse(`repositoryRoot: ${JSON.stringify(root)}\n${repositoryYaml()}`)).toEqual(parse(repositoryYaml()));
+    }
+    for (const root of ["null", "42", "[]", '""', '"~other/clones"', '"\\u0000"']) {
+      expect(() => parse(`repositoryRoot: ${root}\n${repositoryYaml()}`)).toThrow("repositoryRoot");
+    }
+    const windows = resolveRuntimePaths("C:\\Users\\Alice", path.win32);
+    expect(() => parseConfiguration(`repositoryRoot: C:clones\n${repositoryYaml()}`, windows, path.win32)).toThrow("drive-relative");
+  });
+
+  it("resolves repositoryRoot against the injected home or configuration directory", () => {
+    expect(resolveRepositoryRoot("~/daynights", posixPaths, "/injected/home", path.posix)).toBe("/injected/home/daynights");
+    expect(resolveRepositoryRoot("~//clones", posixPaths, "/injected/home", path.posix)).toBe("/injected/home/clones");
+    expect(resolveRepositoryRoot("~", posixPaths, "/injected/home", path.posix)).toBe("/injected/home");
+    expect(resolveRepositoryRoot("../clones", posixPaths, "/injected/home", path.posix)).toBe("/home/Review User 用户/clones");
+    const windows = resolveRuntimePaths("C:\\Users\\Alice", path.win32);
+    expect(resolveRepositoryRoot("~\\clones", windows, "D:\\Home", path.win32)).toBe("D:\\Home\\clones");
   });
 
   it("retains valid explicit values and absolute clone paths", () => {
