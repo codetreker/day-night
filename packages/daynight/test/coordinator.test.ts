@@ -431,6 +431,40 @@ describe("foreground review coordination", () => {
     expect(f.store.getPullRequest(f.pr())?.cleanupError).toBeNull();
   });
 
+  it("preserves old cleanup across unconfirmed restarts and reopening while other repositories run", async () => {
+    const f = fixture(2);
+    f.store.observePullRequest(f.identities[0]!, observation(1), 1);
+    f.store.registerWorktree(f.pr(), path.join(f.configurations[0]!.path, ".worktrees", "pr-1"));
+    f.store.observePullRequest(f.identities[0]!, observation(1, { state: "closed" }), 2);
+    f.update(1);
+    f.update(2, {}, 1);
+    f.processes.recover = async () => { throw new Error("Old cleanup processes have not been excluded."); };
+    const first = f.start();
+    await waitFor(() => f.store.getPullRequest(f.pr(2, 1))?.completedRevision === 1, "independent repository review");
+    expect(f.polls[0]).toBe(0);
+    expect(f.cleaned).toEqual([]);
+    expect(f.store.getPullRequest(f.pr())?.cleanupPending).toBe(true);
+    expect(f.store.getPullRequest(f.pr())?.state).toBe("closed");
+    first.abort.abort();
+    await expect(first.completion).resolves.toEqual({ safeToReleaseLock: false });
+
+    const second = f.start();
+    const previousPolls = f.polls[1]!;
+    await waitFor(() => f.polls[1]! > previousPolls + 1, "polling during another unconfirmed restart");
+    expect(f.polls[0]).toBe(0);
+    expect(f.prepared.map((review) => review.number)).toEqual([2]);
+    expect(f.store.getPullRequest(f.pr())?.cleanupPending).toBe(true);
+    second.abort.abort();
+    await expect(second.completion).resolves.toEqual({ safeToReleaseLock: false });
+
+    f.processes.recover = async () => proof;
+    const confirmed = f.start();
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 2, "reopened PR after explicit recovery proof");
+    expect(f.cleaned).toEqual([]);
+    confirmed.abort.abort();
+    await expect(confirmed.completion).resolves.toEqual({ safeToReleaseLock: true });
+  });
+
   it("defers an ordinary preparation failure without spending an attempt, but blocks uncertain Git execution", async () => {
     const f = fixture(); f.update(1); f.update(2);
     let first = true;

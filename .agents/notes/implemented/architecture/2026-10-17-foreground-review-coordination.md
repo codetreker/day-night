@@ -43,13 +43,23 @@ before awaiting them. Error diagnostics retain repository/PR/review context and
 causes. A failed cleanup diagnostic write preserves both the Git error and the
 database error.
 
-Startup creates `instance.lock` exclusively and never infers staleness from age
-or a missing PID. After an abnormal run, an operator must confirm that the old
-CLI and all agents/tools have stopped before manually removing the lock. A new
-lock then authorizes explicit reconciliation of interrupted state; saved PIDs
-are never used as termination targets. Orderly shutdown closes SQLite and
-releases only its own lock after managed operations are safe. Uncertainty keeps
-the lock and recorded state.
+Startup and release follow the
+[stale-lock recovery decision](../bug-fix/2026-10-18-stale-instance-lock-recovery.md).
+A live or unconfirmed lock owner refuses startup; a confirmed dead CLI owner
+permits automatic lock recovery. That recovery does not exclude old agents or
+tools: interrupted reviews block their PRs, and unresolved pending cleanup
+freezes its repository before polling. Independent work continues. Uncertainty
+keeps the lock and recorded state on shutdown. With explicit process exclusion,
+interrupted state reconciles against its original captured target and session;
+saved PIDs are never used as termination targets. Orderly shutdown closes SQLite
+and releases only its own lock after managed operations are safe.
+
+The original coordination decision required manual lock removal after every
+abnormal run. Its premise remains valid: an absent CLI cannot prove that all
+its agents and tools stopped. The recovery decision separates that resource-use
+uncertainty from the existence of the CLI that owns the instance lock, allowing
+quiescent crashes to restart directly while preserving the original exclusion
+requirement for unresolved work.
 
 Agents obey a foreground-tools contract: finish/reap tools and stop services
 before returning. Normal unforced exit with drained streams is evidence under

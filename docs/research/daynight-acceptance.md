@@ -28,8 +28,11 @@ Twenty scenarios cover the permanent startup cutoff, Draft/head suppression,
 ready review, inline `COMMENT`, missing-marker reconciliation, a clean approval,
 head/force-push changes, base-tip exclusion, base-branch changes, isolated PR
 sessions, normal shutdown, another working directory, singleton refusal, an
-abnormal stop with a retained lock, operator-confirmed restart, and merged or
-unmerged closure cleanup with retained history.
+abnormal stop with a retained lock, automatic dead-owner lock recovery, and
+merged or unmerged closure cleanup with retained history. The automatic recovery
+scenario crashes only after current tool handles drain; it does not establish
+that arbitrary orphan agents or tools have stopped. Uncertain review and cleanup
+recovery has separate module/runtime coverage.
 
 The fixture records six agent invocations and five publications: one inline
 comment review and four approving reviews. The missing-marker attempt publishes
@@ -46,29 +49,42 @@ Windows. Each job uploads only two curated files:
 - `e2e-evidence.json`: installed-package lifecycle assertions and scenario
   receipts, with both live-service flags explicitly false.
 
-The workflow's platform job and final `checks` gate are the validation verdict.
-A scenario receipt describes its assertions; the job also covers process and
-fixture cleanup. Full environment reports, credentials, sessions and raw runtime
-logs are outside the artifact selection.
+The workflow's platform job and final `checks` gate are the validation verdict
+for their checked-out revision. A scenario receipt describes its assertions; the
+job also covers process and fixture cleanup. Full environment reports,
+credentials, sessions and raw runtime logs are outside the artifact selection.
+
+Local stale-lock validation on Linux x64 passed `pnpm typecheck`, `pnpm test`
+(421 passed; eight APFS cases skipped on Linux), `pnpm build` and the installed
+20-scenario `pnpm acceptance` suite. Focused coverage includes a killed compiled
+CLI, competing lock contenders, invalid or ambiguous owners, and repeated
+unconfirmed cleanup/reopen with an independent repository continuing. The
+installed recovery scenario establishes restart after a quiescent abrupt exit.
+
+Automatic recovery has no hosted native-matrix receipt recorded here yet. The
+prior receipts below exercised manual recovery and do not establish automatic
+recovery or its guard behavior on macOS and Windows.
 
 | Evidence | Observed result |
 |---|---|
-| Local installed suite | Passed all 20 scenarios on Linux x64 |
-| Local tools | Node 24.19.0, pnpm 10.34.5, Git 2.53.0, gh 2.88.1 |
-| Local native SQLite | better-sqlite3 13.0.3, SQLite 3.53.4, Node-API 10 |
-| Local OS | Linux x64, glibc 2.39 |
-| Hosted installed matrix | Passed Linux x64, macOS arm64 and Windows x64; all 20 scenarios on each |
+| Prior local installed suite | Passed the 20-scenario manual-recovery suite on Linux x64 |
+| Prior local tools | Node 24.19.0, pnpm 10.34.5, Git 2.53.0, gh 2.88.1 |
+| Prior local native SQLite | better-sqlite3 13.0.3, SQLite 3.53.4, Node-API 10 |
+| Prior local OS | Linux x64, glibc 2.39 |
+| Prior hosted installed matrix | Passed the 20-scenario manual-recovery suite on Linux x64, macOS arm64 and Windows x64 |
 | Real Copilot/GitHub | Awaiting designated repository, distinct author/reviewer identities and write authorization |
 
 The [runtime integration CI](https://github.com/codetreker/day-night/actions/runs/39040002167)
 passed Linux, macOS and Windows before the installed-package suite was added.
 It is component/runtime evidence, not an installed-package or live-model receipt.
 
-## Hosted installed receipts
+## Historical hosted installed receipts
 
 [Native installed-package CI](https://github.com/codetreker/day-night/actions/runs/39043517844) passed all three platforms and the final matrix gate on 2026-10-17.
 The curated artifacts agree on clean checkout revision `9df51dbc9ffd16129069519ba7118009dc648b01`.
 Each records six invocations, five publications, preserved restart/session state and two worktree cleanups.
+These receipts cover retained-lock refusal followed by operator-confirmed lock
+removal and restart. They predate automatic dead-owner recovery.
 
 | Platform | OS release | Node | Git | gh |
 |---|---|---|---|---|
@@ -119,9 +135,12 @@ A native child/stdin-close precondition verifies that the public Node resource
 list exposes `ProcessWrap` while the child is active and removes it after close.
 The main preload waits for that resource to disappear, records the actual CLI
 PID, then exits synchronously with code 73 before another scheduling turn.
-The retained lock, refused restart and operator-confirmed recovery assertions
-remain intact. Product cancellation errors are still errors, and the separate
-native Windows process-tree termination tests remain unchanged. See
+That fixture gate remains the abrupt-stop precondition. The installed suite now
+asserts retained-lock diagnostics and automatic dead-owner recovery, while
+ordinary singleton refusal uses a live CLI owner. Earlier receipts for refused
+stale-lock restart and operator-confirmed recovery remain historical. Product
+cancellation errors are still errors, and the separate native Windows
+process-tree termination tests remain unchanged. See
 [Node active resources](https://nodejs.org/api/process.html#processgetactiveresourcesinfo).
 
 ## Live acceptance scope
