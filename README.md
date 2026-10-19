@@ -1,17 +1,30 @@
 # Day Night
 
-The `@codetreker/daynight` package provides the `daynight` foreground GitHub PR
-review CLI in `packages/daynight/`. It polls configured repositories, maintains
-dedicated local clones and PR worktrees, and
-launches Copilot in a retained session for each eligible PR. SQLite preserves
-initialization boundaries, review revisions and retry budgets.
+Day Night contains a foreground GitHub PR review CLI and an accepted design for
+an independent project and task-management service.
 
-The [Chinese requirements](docs/spec/daynight.md) define the complete product;
-the [architecture](docs/design/daynight.md) describes the selected design. The
-CLI provides help, version output, configuration-only repository registration,
-and a local persisted review listing. Review mode loads configuration and runs
-until stopped. Controlled native-platform tests and live Copilot/GitHub acceptance
-provide separate evidence; live acceptance remains outstanding.
+| Component | Location | Implementation status | Requirements and design |
+|---|---|---|---|
+| `daynight` | `packages/daynight/` | Implemented TypeScript CLI with SQLite review state | [Requirements](docs/spec/daynight.md), [design](docs/design/daynight.md) |
+| `daynight-server` | Planned `packages/daynight-server/` | Accepted Go/PostgreSQL design; service and Go validation tooling are not implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
+
+The `@codetreker/daynight` package provides the `daynight` CLI. It polls configured
+repositories, maintains dedicated local clones and PR worktrees, and launches
+Copilot in a retained session for each eligible PR. SQLite preserves
+initialization boundaries, review revisions and retry budgets. The CLI provides
+help, version output, configuration-only repository registration, and a local
+persisted review listing. Review mode loads configuration and runs until stopped.
+Controlled native-platform tests and live Copilot/GitHub acceptance provide
+separate evidence; live acceptance remains outstanding.
+
+The server design covers repository-linked projects, project-scoped tasks,
+acyclic dependencies and dependency-gated task states through HTTP JSON APIs.
+Its data and runtime are independent of the review CLI. The
+[server design decision](.agents/notes/implemented/architecture/2026-10-19-daynight-server-task-design.md)
+records the adopted scope and concurrency choices. The
+[server task breakdown](docs/design/daynight-server-tasks.md) owns implementation
+scope, dependencies, status and acceptance criteria. The development and runtime
+commands below apply to the implemented CLI.
 
 ## Development
 
@@ -357,7 +370,8 @@ records owner-liveness checks and the separate process-exclusion requirement.
 ## Working in the repository
 
 Read [AGENTS.md](AGENTS.md) for task scope, shared task worktrees, collaboration,
-verification, and delivery. Use Beads for task tracking and the
+verification, and delivery. Keep task breakdowns with their design documents,
+including task status, dependencies, scope and acceptance criteria. Use the
 [repository skills](.agents/skills/) for decision notes, scope choices, and prose.
 
 [Agent Notes](.agents/notes/README.md) preserve decisions and alternatives. The
@@ -373,7 +387,7 @@ record the relevant rationale. `.agents/skills/` is canonical; `CLAUDE.md`,
 |---|---|
 | `README.md` | Purpose, implementation status, prerequisites, commands, and documentation entry points |
 | `docs/spec/` | Required product behavior and observable guarantees |
-| `docs/design/` | Selected structure, mechanisms, rationale, and explicit implementation boundaries |
+| `docs/design/` | Selected structure, mechanisms, rationale, implementation boundaries, and associated task breakdowns |
 | `docs/research/` | Investigations, evidence, sources, and observation conditions |
 | `.agents/notes/` | Decisions, alternatives, consequences, and reconsideration conditions |
 | `docs/plans/` | Local execution plans, ignored by Git |
