@@ -375,22 +375,49 @@ describe("foreground review coordination", () => {
     await waitFor(() => f.launched.length === 2 && f.store.listActiveReviews().length === 0, "both repository reviews");
   });
 
-  it("admits waiting PRs before a continuously advancing PR's next revision", async () => {
-    const f = fixture(2); f.configuration.pollIntervalMs = 2;
+  it.each([[2, 3], [3, 2]])("admits waiting PRs before a continuously advancing PR's next revision (CI response order %i, %i)", async (firstReady, secondReady) => {
+    const f = fixture(2);
     f.update(1); f.update(2); f.update(3, {}, 1);
+    const checks = new Map([2, 3].map((number) => [number, deferred<Awaited<ReturnType<GitHubClient["getPullRequestChecks"]>>>()]));
+    const executions = Array.from({ length: 4 }, () => deferred<boolean>());
+    const passing = { headSha: "a".repeat(40), baseRef: "main", ready: true };
+    f.checks(async (pr) => {
+      if (pr.number !== 1 && f.checked.filter((item) => item.number === pr.number).length === 1) return checks.get(pr.number)!.promise;
+      return { headSha: pr.headSha, baseRef: pr.baseRef, ready: true };
+    });
     let revision = 10;
     f.run(async (review) => {
       if (review.number === 1) f.update(1, { headSha: (++revision).toString(16).padStart(40, "0") });
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      return true;
+      return executions[f.launched.length - 1]!.promise;
     });
-    f.start();
-    await waitFor(() => f.launched.filter((item) => item.review.number === 1).length >= 2, "hot PR successor after waiting PRs");
-    const admitted = f.launched.map((item) => item.review.number);
-    expect(admitted.slice(0, 3)).toEqual([1, 2, 3]);
-    expect(admitted[3]).toBe(1);
-    expect(f.store.getPullRequest(f.pr(2))?.completedRevision).toBe(1);
-    expect(f.store.getPullRequest(f.pr(3, 1))?.completedRevision).toBe(1);
+    let clock = Date.now();
+    const run = f.start({ now: () => clock });
+    try {
+      await waitFor(() => f.launched.length === 1, "first hot PR execution");
+      expect(f.launched[0]?.review.number).toBe(1);
+      clock += f.configuration.pollIntervalMs;
+      await waitFor(() => f.store.getPullRequest(f.pr(1))?.desiredRevision === 2, "hot successor observed before releasing its worker");
+      for (const number of [firstReady, secondReady]) {
+        checks.get(number)!.resolve(passing);
+        await waitFor(() => f.events.some((event) => event.phase === "ci" && event.number === number && event.message === "All CI checks passed for the waiting PR target."), `PR ${number} admission ready`);
+      }
+      for (const [index, number] of [2, 3, 1].entries()) {
+        executions[index]!.resolve(true);
+        await waitFor(() => f.launched.length === index + 2, `PR ${number} execution after releasing the previous worker`);
+        expect(f.launched[index + 1]?.review.number).toBe(number);
+      }
+      expect(f.launched.map((item) => [item.review.number, item.review.revision, item.review.headSha])).toEqual([
+        [1, 1, "a".repeat(40)], [2, 1, "a".repeat(40)], [3, 1, "a".repeat(40)], [1, 2, "b".padStart(40, "0")],
+      ]);
+      expect(f.store.getPullRequest(f.pr(1))?.completedRevision).toBe(1);
+      expect(f.store.getPullRequest(f.pr(2))?.completedRevision).toBe(1);
+      expect(f.store.getPullRequest(f.pr(3, 1))?.completedRevision).toBe(1);
+    } finally {
+      run.abort.abort();
+      for (const check of checks.values()) check.resolve(passing);
+      for (const execution of executions) execution.resolve(true);
+      await run.completion;
+    }
   });
 
   it("lets timers progress when every immediately completed poll is already due again", async () => {
