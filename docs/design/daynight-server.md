@@ -1,7 +1,7 @@
 # Daynight Server 架构设计
 
-状态：Go 运行基础、数据库迁移与事务存储、验证门槛已实现；project/task 用例及
-HTTP 接口按任务拆分继续交付。
+状态：Go 运行基础、数据库迁移与事务存储、project 用例和 HTTP 接口、验证门槛
+已实现；task 用例与接口按任务拆分继续交付。
 
 `daynight-server` 是独立的 Go 服务，为本机 CLI 和内部程序提供 project、task
 及任务依赖管理。行为要求由[需求文档](../spec/daynight-server.md)拥有；架构选择及
@@ -218,12 +218,16 @@ service 返回可识别的领域错误；server 负责唯一的 HTTP 映射。�
 |---|---|---|
 | `invalid_input` | `400` | JSON、字段、分页、地址或依赖引用非法，含自身及重复依赖 |
 | `not_found` | `404` | 指定 project 或其范围内的 task 不存在 |
+| `method_not_allowed` | `405` | 已知路径不支持该方法，`Allow` 提供允许的方法 |
 | `version_conflict` | `409` | PATCH 期望版本过期 |
 | `dependency_cycle` | `409` | 候选依赖产生环 |
 | `dependency_unsatisfied` | `409` | 状态或依赖修改违反前置完成规则 |
 | `internal_error` | `500` | 数据库或其他未分类服务端失败 |
 
-数据库错误不能转换为空列表、成功响应或领域资源不存在。service/store 保留 cause
+HTTP 只映射 service 的类型化业务错误；其他失败统一作为内部错误。读取缺失资源时，
+service 在 snapshot callback 内保留缺失结果但返回成功，待只读事务正常结束后才生成
+`not_found`。如果事务提交或清理失败，内部错误优先，不能因错误链含缺失标记而返回
+`404`。数据库错误不能转换为空列表、成功响应或领域资源不存在。service/store 保留 cause
 链，顶层按错误类别映射；请求取消通过 context 传递，已断开的请求不再尝试写响应。
 事务提交错误必须作为失败暴露，不能宣称写入成功或自动重复整个非幂等创建请求。
 
