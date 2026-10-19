@@ -2,7 +2,10 @@ module github.com/codetreker/daynight/packages/daynight-server
 
 go 1.27.2
 
-require github.com/jackc/pgx/v5 v5.11.0
+require (
+	github.com/google/uuid v1.6.0
+	github.com/jackc/pgx/v5 v5.11.0
+)
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect

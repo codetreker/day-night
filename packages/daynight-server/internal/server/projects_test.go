@@ -1,0 +1,353 @@
+package server
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/codetreker/daynight/packages/daynight-server/api"
+	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
+	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
+	"github.com/codetreker/daynight/packages/daynight-server/internal/service"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+func projectTestStore(t *testing.T) *store.Store {
+	t.Helper()
+	databaseURL := os.Getenv("DAYNIGHT_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Fatal("DAYNIGHT_TEST_DATABASE_URL is required for PostgreSQL tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	admin, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := "http_" + strings.ToLower(rand.Text())
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+pgx.Identifier{schema}.Sanitize()); err != nil {
+		admin.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if _, err := admin.Exec(ctx, "DROP SCHEMA "+pgx.Identifier{schema}.Sanitize()+" CASCADE"); err != nil {
+			t.Error(err)
+		}
+		admin.Close()
+	})
+	parsed, err := url.Parse(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := parsed.Query()
+	query.Set("search_path", schema)
+	query.Set("timezone", "UTC")
+	query.Set("application_name", schema)
+	parsed.RawQuery = query.Encode()
+	database, err := store.Open(ctx, parsed.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(database.Close)
+	return database
+}
+
+func projectTestHandler(database *store.Store, output io.Writer) http.Handler {
+	logger := slog.New(slog.NewJSONHandler(output, nil))
+	return RequestLogging(logger, New(service.NewProjects(database), logger))
+}
+
+func projectRequest(handler http.Handler, method, path, body string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(method, path, strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json; charset=UTF-8")
+	request.Header.Set("X-Request-ID", "project-test")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
+func decodeResponse[T any](t *testing.T, response *httptest.ResponseRecorder, status int) T {
+	t.Helper()
+	if response.Code != status || response.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("unexpected response: %d %s", response.Code, response.Body)
+	}
+	var value T
+	if err := json.Unmarshal(response.Body.Bytes(), &value); err != nil {
+		t.Fatal(err)
+	}
+	return value
+}
+
+func assertProjectError(t *testing.T, response *httptest.ResponseRecorder, status int, code string) {
+	t.Helper()
+	value := decodeResponse[api.ErrorResponse](t, response, status)
+	if value.Error.Code != code || value.Error.Message == "" || value.Error.RequestID != response.Header().Get("X-Request-ID") || value.Error.RequestID != "project-test" {
+		t.Fatalf("unexpected error correlation: %+v", value)
+	}
+}
+
+func TestProjectHTTPCreateReadAndEmptyList(t *testing.T) {
+	database := projectTestStore(t)
+	var logs bytes.Buffer
+	handler := projectTestHandler(database, &logs)
+	empty := projectRequest(handler, http.MethodGet, "/api/v1/projects", "")
+	page := decodeResponse[api.ProjectPage](t, empty, http.StatusOK)
+	if page.Items == nil || len(page.Items) != 0 || page.NextCursor != nil || !strings.Contains(empty.Body.String(), `"items":[]`) || !strings.Contains(empty.Body.String(), `"nextCursor":null`) {
+		t.Fatalf("empty list shape: %s", empty.Body)
+	}
+	response := projectRequest(handler, http.MethodPost, "/api/v1/projects", `{"name":"API work","repoUrl":"git@github.com:example/repository.git"}`)
+	project := decodeResponse[api.Project](t, response, http.StatusCreated)
+	if project.Name != "API work" || project.RepoURL != "git@github.com:example/repository.git" || project.ID == "" || project.CreatedAt.IsZero() || project.CreatedAt.Location() != time.UTC || project.UpdatedAt != project.CreatedAt {
+		t.Fatalf("created project: %+v", project)
+	}
+	if response.Header().Get("Location") != "/api/v1/projects/"+project.ID {
+		t.Fatalf("invalid resource location: %s", response.Header().Get("Location"))
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &fields); err != nil || len(fields) != 5 {
+		t.Fatalf("unexpected project DTO: %s %v", response.Body, err)
+	}
+	for _, key := range []string{"id", "name", "repoUrl", "createdAt", "updatedAt"} {
+		if _, exists := fields[key]; !exists {
+			t.Fatalf("missing DTO field %s: %s", key, response.Body)
+		}
+	}
+	read := decodeResponse[api.Project](t, projectRequest(handler, http.MethodGet, "/api/v1/projects/"+strings.ToUpper(project.ID), ""), http.StatusOK)
+	if read != project {
+		t.Fatalf("read differs from create: %+v %+v", read, project)
+	}
+	page = decodeResponse[api.ProjectPage](t, projectRequest(handler, http.MethodGet, "/api/v1/projects", ""), http.StatusOK)
+	if len(page.Items) != 1 || page.Items[0] != project || page.NextCursor != nil {
+		t.Fatalf("persisted list: %+v", page)
+	}
+	if !strings.Contains(logs.String(), `"project_id":"`+project.ID+`"`) || !strings.Contains(logs.String(), `"route":"POST /api/v1/projects"`) || strings.Contains(logs.String(), project.RepoURL) {
+		t.Fatalf("missing resource correlation or unsafe logs: %s", &logs)
+	}
+}
+
+func TestProjectHTTPRejectsInvalidBodies(t *testing.T) {
+	database := projectTestStore(t)
+	var logs bytes.Buffer
+	handler := projectTestHandler(database, &logs)
+	for _, body := range []string{
+		"", "null", "[]", `"value"`, `true`, `{`, `{"name":`, `{"name"}`, `{"name":"ok"`, `{"name":"ok"]`,
+		`{"name":"ok","repoUrl":"https://github.com/example/repo"} {}`,
+		`{"name":"ok","repoUrl":"https://github.com/example/repo"} trailing`,
+		`{"Name":"ok","repoUrl":"https://github.com/example/repo"}`,
+		`{"name":"one","name":"two","repoUrl":"https://github.com/example/repo"}`,
+		`{"name":"ok","repoUrl":"https://github.com/example/repo","id":"read-only"}`,
+		`{"name":"ok","repoUrl":"https://github.com/example/repo","unknown":"secret-body"}`,
+		`{"name":null,"repoUrl":"https://github.com/example/repo"}`,
+		`{"name":42,"repoUrl":"https://github.com/example/repo"}`,
+		`{"name":true,"repoUrl":"https://github.com/example/repo"}`,
+		`{"name":[],"repoUrl":"https://github.com/example/repo"}`,
+		`{"name":{},"repoUrl":"https://github.com/example/repo"}`,
+		`{"repoUrl":"https://github.com/example/repo"}`,
+		`{"name":"ok"}`, `{"name":"ok","repoUrl":null}`, `{"name":"ok","repoUrl":1}`,
+		`{"name":" ","repoUrl":"https://github.com/example/repo"}`,
+		`{"name":"\u0000","repoUrl":"https://github.com/example/repo"}`,
+		`{"name":"ok","repoUrl":"https://user:password-secret@github.com/example/repo"}`,
+		`{"name":"ok","repoUrl":"not-a-repository"}`,
+		"{\"name\":\"" + string([]byte{0xff}) + "\",\"repoUrl\":\"https://github.com/example/repo\"}",
+		`{"name":"` + strings.Repeat("x", maxJSONBody) + `","repoUrl":"https://github.com/example/repo"}`,
+	} {
+		t.Run(string(body[:min(len(body), 80)]), func(t *testing.T) {
+			assertProjectError(t, projectRequest(handler, http.MethodPost, "/api/v1/projects", body), http.StatusBadRequest, "invalid_input")
+		})
+	}
+	for _, contentType := range []string{"", "text/plain", "application/json; charset=iso-8859-1", "application/json; charset=", "application/json; charset=utf-8; charset=us-ascii"} {
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/projects", strings.NewReader(`{"name":"ok","repoUrl":"https://github.com/example/repo"}`))
+		request.Header.Set("Content-Type", contentType)
+		request.Header.Set("X-Request-ID", "project-test")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		assertProjectError(t, response, http.StatusBadRequest, "invalid_input")
+	}
+	if strings.Contains(logs.String(), "secret") || strings.Contains(logs.String(), "github.com") {
+		t.Fatalf("request content leaked: %s", &logs)
+	}
+	page := decodeResponse[api.ProjectPage](t, projectRequest(handler, http.MethodGet, "/api/v1/projects", ""), http.StatusOK)
+	if len(page.Items) != 0 {
+		t.Fatal("invalid request created a project")
+	}
+}
+
+func TestProjectHTTPPaginationWithTiedTimestamps(t *testing.T) {
+	database := projectTestStore(t)
+	handler := projectTestHandler(database, io.Discard)
+	ids := []string{"00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002", "00000000-0000-4000-8000-000000000003"}
+	for _, id := range ids {
+		if _, err := database.CreateProject(context.Background(), id, "same time", "https://github.com/example/repo"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := database.Pool.Exec(context.Background(), "UPDATE projects SET created_at='2026-01-01T00:00:00Z', updated_at='2026-01-01T00:00:00Z'"); err != nil {
+		t.Fatal(err)
+	}
+	path := "/api/v1/projects?limit=1"
+	for index, id := range ids {
+		page := decodeResponse[api.ProjectPage](t, projectRequest(handler, http.MethodGet, path, ""), http.StatusOK)
+		if len(page.Items) != 1 || page.Items[0].ID != id || (page.NextCursor != nil) != (index < len(ids)-1) {
+			t.Fatalf("incorrect keyset page %d: %+v", index, page)
+		}
+		if page.NextCursor != nil {
+			path = "/api/v1/projects?limit=1&cursor=" + url.QueryEscape(*page.NextCursor)
+			data, err := base64.RawURLEncoding.DecodeString(*page.NextCursor)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wrongScope := strings.Replace(string(data), `"kind":"projects"`, `"kind":"tasks"`, 1)
+			assertProjectError(t, projectRequest(handler, http.MethodGet, "/api/v1/projects?cursor="+base64.RawURLEncoding.EncodeToString([]byte(wrongScope)), ""), http.StatusBadRequest, "invalid_input")
+		}
+	}
+}
+
+func TestProjectHTTPInvalidQueriesAndMissingResources(t *testing.T) {
+	handler := projectTestHandler(projectTestStore(t), io.Discard)
+	for _, query := range []string{
+		"limit=", "limit=0", "limit=101", "limit=-1", "limit=1.5", "limit=invalid", "limit=1&limit=2",
+		"cursor=", "cursor=bad", "cursor=one&cursor=two", "status=todo", "limit=%xx", "limit=1;cursor=x",
+	} {
+		assertProjectError(t, projectRequest(handler, http.MethodGet, "/api/v1/projects?"+query, ""), http.StatusBadRequest, "invalid_input")
+	}
+	for _, path := range []string{"not-a-uuid", "00000000-0000-4000-8000-00000000000z"} {
+		assertProjectError(t, projectRequest(handler, http.MethodGet, "/api/v1/projects/"+path, ""), http.StatusBadRequest, "invalid_input")
+	}
+	assertProjectError(t, projectRequest(handler, http.MethodGet, "/api/v1/projects/00000000-0000-4000-8000-000000000099", ""), http.StatusNotFound, "not_found")
+	assertProjectError(t, projectRequest(handler, http.MethodGet, "/unknown-secret-path?query=secret", ""), http.StatusNotFound, "not_found")
+	for _, path := range []string{"/api/v1/projects", "/api/v1/projects/00000000-0000-4000-8000-000000000099"} {
+		response := projectRequest(handler, http.MethodDelete, path, "")
+		assertProjectError(t, response, http.StatusMethodNotAllowed, "method_not_allowed")
+		if !strings.Contains(response.Header().Get("Allow"), "GET") || strings.Contains(response.Header().Get("Allow"), "POST") != (path == "/api/v1/projects") {
+			t.Fatalf("invalid Allow: %s", response.Header().Get("Allow"))
+		}
+	}
+}
+
+func TestProjectHTTPDatabaseFailuresAreVisibleAndSafe(t *testing.T) {
+	database := projectTestStore(t)
+	var logs bytes.Buffer
+	handler := projectTestHandler(database, &logs)
+	if _, err := database.Pool.Exec(context.Background(), "ALTER TABLE projects RENAME TO private_sql_secret"); err != nil {
+		t.Fatal(err)
+	}
+	for _, request := range []struct{ method, path, body string }{
+		{http.MethodGet, "/api/v1/projects", ""},
+		{http.MethodGet, "/api/v1/projects/00000000-0000-4000-8000-000000000099", ""},
+		{http.MethodPost, "/api/v1/projects", `{"name":"secret-body","repoUrl":"https://github.com/example/private-secret"}`},
+	} {
+		response := projectRequest(handler, request.method, request.path, request.body)
+		assertProjectError(t, response, http.StatusInternalServerError, "internal_error")
+		if strings.Contains(response.Body.String(), "database") || strings.Contains(response.Body.String(), "SQL") || strings.Contains(response.Body.String(), "secret") {
+			t.Fatalf("unsafe server response: %s", response.Body)
+		}
+	}
+	if !strings.Contains(logs.String(), `"cause":"database"`) || !strings.Contains(logs.String(), `"request_id":"project-test"`) || strings.Contains(logs.String(), "secret") || strings.Contains(logs.String(), "relation") {
+		t.Fatalf("unsafe or uncorrelated diagnostics: %s", &logs)
+	}
+}
+
+func TestProjectHTTPCanceledDatabaseRequestDoesNotWrite(t *testing.T) {
+	database := projectTestStore(t)
+	var logs bytes.Buffer
+	handler := projectTestHandler(database, &logs)
+	transaction, err := database.Pool.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transaction.Rollback(context.Background())
+	if _, err := transaction.Exec(context.Background(), "LOCK TABLE projects IN ACCESS EXCLUSIVE MODE"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/projects", nil).WithContext(ctx)
+	request.Header.Set("X-Request-ID", "project-test")
+	response, finished := httptest.NewRecorder(), make(chan struct{})
+	go func() { handler.ServeHTTP(response, request); close(finished) }()
+	for {
+		var waiting bool
+		err := database.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+			WHERE pid <> pg_backend_pid() AND application_name=current_setting('application_name')
+			AND wait_event_type='Lock' AND query LIKE '%FROM projects%')`).Scan(&waiting)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		select {
+		case <-finished:
+			t.Fatal("blocked request completed before cancellation")
+		case <-ctx.Done():
+			t.Fatal("query did not wait for table lock")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	cancel()
+	await(t, finished)
+	if response.Body.Len() != 0 || response.Header().Get("Content-Type") != "" || !strings.Contains(logs.String(), `"cause":"canceled"`) {
+		t.Fatalf("canceled query wrote a response or lost cause: %s %s", response.Body, &logs)
+	}
+}
+
+type failingResponseWriter struct{ header http.Header }
+
+func (w *failingResponseWriter) Header() http.Header { return w.header }
+func (*failingResponseWriter) WriteHeader(int)       {}
+func (*failingResponseWriter) Write([]byte) (int, error) {
+	return 0, errors.New("private-connection-secret")
+}
+
+func TestHTTPErrorMappingAndWriteFailure(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+	for _, err := range []error{
+		errors.Join(core.ErrNotFound, errors.New("private-database-secret")),
+		&service.Fault{Code: "unexpected", Message: "private-service-secret"},
+	} {
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/", nil)
+		request.Header.Set("X-Request-ID", "project-test")
+		RequestLogging(logger, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			writeError(w, request, logger, "get", err)
+		})).ServeHTTP(response, request)
+		assertProjectError(t, response, http.StatusInternalServerError, "internal_error")
+	}
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("X-Request-ID", "project-test")
+	response := httptest.NewRecorder()
+	RequestLogging(logger, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		writeError(w, request, logger, "get", &service.Fault{Code: "invalid_input", Message: "invalid references", TaskIDs: []string{"task-id"}})
+	})).ServeHTTP(response, request)
+	value := decodeResponse[api.ErrorResponse](t, response, http.StatusBadRequest)
+	if value.Error.Details == nil || len(value.Error.Details.TaskIDs) != 1 || value.Error.Details.TaskIDs[0] != "task-id" {
+		t.Fatalf("missing error details: %+v", value)
+	}
+	writeJSON(&failingResponseWriter{header: make(http.Header)}, request, logger, http.StatusOK, api.Project{})
+	ctx, cancel := context.WithCancel(request.Context())
+	cancel()
+	canceled := httptest.NewRecorder()
+	writeJSON(canceled, request.WithContext(ctx), logger, http.StatusOK, api.Project{})
+	if canceled.Body.Len() != 0 || len(canceled.Header()) != 0 {
+		t.Fatalf("already canceled request wrote a response: %s %+v", canceled.Body, canceled.Header())
+	}
+	if strings.Contains(logs.String(), "secret") || !strings.Contains(logs.String(), `"phase":"response"`) {
+		t.Fatalf("write failure not safely diagnosed: %s", &logs)
+	}
+}

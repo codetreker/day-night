@@ -3,11 +3,17 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/codetreker/daynight/packages/daynight-server/api"
 )
 
 func testEnvironment(t *testing.T) map[string]string {
@@ -83,5 +89,71 @@ func TestMainUsesProcessConfigurationAndExitCode(t *testing.T) {
 	main()
 	if code != 1 {
 		t.Fatalf("process exit code %d", code)
+	}
+}
+
+type startupWriter struct {
+	mu      sync.Mutex
+	output  bytes.Buffer
+	started chan string
+}
+
+func (w *startupWriter) Write(value []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	result, err := w.output.Write(value)
+	var event struct {
+		Phase   string `json:"phase"`
+		Address string `json:"address"`
+	}
+	if json.Unmarshal(value, &event) == nil && event.Phase == "listening" {
+		w.started <- event.Address
+	}
+	return result, err
+}
+
+func TestRunServesProjectAPI(t *testing.T) {
+	values := testEnvironment(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	output := &startupWriter{started: make(chan string, 1)}
+	finished := make(chan int, 1)
+	go func() { finished <- run(ctx, func(key string) string { return values[key] }, output) }()
+	var address string
+	select {
+	case address = <-output.started:
+	case code := <-finished:
+		t.Fatalf("process failed during startup: %d", code)
+	case <-time.After(5 * time.Second):
+		t.Fatal("server did not start")
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	response, err := client.Get("http://" + address + "/api/v1/projects")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var page api.ProjectPage
+	err = json.NewDecoder(response.Body).Decode(&page)
+	response.Body.Close()
+	if err != nil || response.StatusCode != http.StatusOK || page.Items == nil || response.Header.Get("X-Request-ID") == "" {
+		t.Fatalf("project API was not wired: %d %+v %v", response.StatusCode, page, err)
+	}
+	response, err = client.Post("http://"+address+"/api/v1/projects", "application/json", strings.NewReader(`{"name":null}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil || response.StatusCode != http.StatusBadRequest || !bytes.Contains(body, []byte(`"code":"invalid_input"`)) {
+		t.Fatalf("project create route was not wired: %d %s %v", response.StatusCode, body, err)
+	}
+	cancel()
+	select {
+	case code := <-finished:
+		if code != 0 {
+			t.Fatalf("process did not stop cleanly: %d", code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("server did not stop")
 	}
 }

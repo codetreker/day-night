@@ -1,6 +1,7 @@
 # daynight-server 任务管理需求
 
-状态：Go 运行基础、迁移与事务存储、验证门槛已实现；project/task 业务行为尚未实现。
+状态：Go 运行基础、迁移与事务存储、project 接口和验证门槛已实现；task 业务行为
+按任务拆分继续交付。
 
 本文定义 `daynight-server` 面向本机 CLI 和内部程序的任务管理行为。
 [技术设计](../design/daynight-server.md)拥有分层、存储和并发机制；
@@ -40,7 +41,8 @@ Project 包含以下字段：
 
 一个 project 关联一个 repo，多个 project 可以关联同一 repo。支持 HTTPS URL、
 SSH URL 和 SCP 风格 SSH 地址，地址必须包含主机和仓库路径；地址登记不验证实际访问权限。
-HTTPS 地址不得包含凭据，SSH 地址允许用户名，但不得包含密码；查询参数和 fragment
+名称必须是无 NUL 的有效 UTF-8 文本。HTTPS 地址不得包含凭据，SSH 地址允许用户名，
+但不得包含密码；查询参数和 fragment
 不属于仓库地址。无效地址作为输入错误拒绝，地址中 SSH 用户名不作为业务身份。
 
 当前接口只提供创建、列表查询和单项读取；创建后 `repoUrl` 不可通过 task 更新改变。
@@ -115,6 +117,10 @@ PATCH 可修改 `title`、`description`、`status`、`dependsOn`，并且必须�
 | `GET` | `/api/v1/projects/{projectId}/tasks/{taskId}` | 返回 task，缺失或不属于该 project 时 `404` |
 | `PATCH` | `/api/v1/projects/{projectId}/tasks/{taskId}` | 原子更新 task，返回 `200` 和资源 |
 
+HTTP 创建请求使用 `Content-Type: application/json`，可附带 UTF-8 charset。请求体
+最多 1 MiB，必须是单个 JSON 对象；拒绝无效 UTF-8、重复 key、字段名大小写不符、
+未知或只读字段、错误类型、必填字段为 `null` 和尾随 JSON。
+
 所有成功读取返回 `200`。Project 不存在时，其 task 子路径必须返回 `404`，
 不能将空 task 列表作为不存在 project 的结果。
 
@@ -140,7 +146,8 @@ Task 更新示例：
 列表使用 `limit`、`cursor`。`limit` 默认 `50`，允许 `1..100`；按
 `createdAt ASC, id ASC` 稳定排序，返回 `items` 和 `nextCursor`，末页后者为 `null`。
 Task 列表额外支持单个 `status` 和布尔 `ready` 筛选，筛选按 AND 组合。
-Cursor 必须绑定列表类型、所属 project 和筛选条件，格式错误或条件不匹配返回输入错误。
+Cursor 必须绑定列表类型、所属 project 和筛选条件，格式错误或条件不匹配返回输入错误。重复 query 参数、显式空值和未知参数也作为
+输入错误拒绝；`limit` 的默认值仅用于未提供该参数。
 单次响应中的 task、依赖和派生字段保持一致；多次翻页不承诺跨请求快照。
 
 错误响应统一包含 `error.code`、`error.message`、`error.requestId`，必要时包含
@@ -150,6 +157,7 @@ Cursor 必须绑定列表类型、所属 project 和筛选条件，格式错误�
 |---|---|---|
 | `400` | `invalid_input` | 格式、字段、分页参数、依赖引用、自身或重复依赖不合法 |
 | `404` | `not_found` | 路径资源缺失或 task 不属于指定 project |
+| `405` | `method_not_allowed` | 已知路径使用不支持的方法，并返回 `Allow` |
 | `409` | `version_conflict` | PATCH 版本过期 |
 | `409` | `dependency_cycle` | 候选依赖图成环 |
 | `409` | `dependency_unsatisfied` | 前置状态或下游状态阻止操作 |

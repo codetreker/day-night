@@ -4,9 +4,9 @@ The Go service owns PostgreSQL-backed project and task management. Its runtime
 foundation is implemented: explicit database configuration, loopback-only HTTP
 binding, connection validation, structured request logs, cancellation, and bounded
 HTTP shutdown. Versioned migrations and transactional storage are implemented;
-project/task APIs follow the
+project create/list/get APIs are implemented and task APIs follow the
 [implementation tasks](../../docs/design/daynight-server-tasks.md); the current
-executable returns HTTP 404 for application routes.
+executable serves project routes; task routes remain pending.
 
 The [requirements](../../docs/spec/daynight-server.md) own observable behavior and
 the [design](../../docs/design/daynight-server.md) owns architecture and concurrency.
@@ -20,8 +20,8 @@ service's database or lifecycle.
 | `cmd/daynight-server/` | Environment, process signals, dependency assembly, exit status |
 | `internal/server/` | HTTP lifecycle, request context, request IDs, structured logs |
 | `internal/core/store/` | PostgreSQL migrations, transactions, scoped writes and consistent reads |
-| `api/` | HTTP request/response contracts, introduced with API operations |
-| `internal/service/` | Business use cases, introduced with project/task operations |
+| `api/` | Project DTOs and common HTTP error envelopes |
+| `internal/service/` | Project use cases, repository/ID validation and scoped cursors |
 | `internal/core/` | Shared project/task models and resource-not-found marker |
 
 HTTP startup creates and verifies one concrete store. The handler factory receives
@@ -134,3 +134,40 @@ Store tests use unique owned schemas and real PostgreSQL sessions. They prove
 multi-migration exclusion, rollback after partial writes, snapshot consistency,
 project-lock serialization, independent projects and cancellation. Rollback and
 advisory unlock use independent bounded contexts and preserve original causes.
+
+## Project API
+
+| Method | Path | Result |
+|---|---|---|
+| `POST` | `/api/v1/projects` | `201`, project and `Location` |
+| `GET` | `/api/v1/projects` | `200`, project page |
+| `GET` | `/api/v1/projects/{projectId}` | `200`, project |
+
+Creation accepts `name` and `repoUrl`. Names preserve accepted text and must be
+nonempty UTF-8 without NUL. Repository addresses accept HTTPS, SSH URL and SCP
+syntax, including SSH aliases and `@` inside repository paths. HTTPS userinfo,
+SSH passwords, controls, query and fragment are refused. Credential-like
+ambiguous SCP forms are rejected; use explicit SSH URL syntax when needed.
+Registration performs no network, Git, clone or CLI-configuration operations.
+Different projects can reference the same repository. UUID IDs are canonicalized
+to hyphenated lowercase; project repository metadata has no update/delete API.
+
+Creation requires `application/json` (optionally UTF-8 charset), one object within
+1 MiB, exact field names and unique keys. Unknown/read-only fields, null required
+fields, wrong types, invalid UTF-8 and trailing JSON return `invalid_input`.
+
+Lists accept `limit` (default 50 only when absent, range 1–100) and opaque
+`cursor`. Empty, repeated, malformed and unknown query parameters fail. Cursors
+bind a version, list kind, project/filter scope and exact `(createdAt, id)`
+position. Responses contain `items: []` for empty lists and `nextCursor: null`
+on the final page. Individual reads use one snapshot; pagination does not retain
+a cross-request snapshot.
+
+Errors use `{"error":{"code":"not_found","message":"...","requestId":"..."}}`:
+input 400, missing
+resource 404, unsupported method 405 with `Allow`, and internal failure 500.
+Responses and logs do not echo submitted URLs, bodies, SQL or driver messages.
+The request ID matches `X-Request-ID`; parsed resource operations log the
+canonical project ID. Database/transaction completion failures take precedence
+over a pending missing-resource result. Already-cancelled requests do not write
+a response.
