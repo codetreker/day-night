@@ -21,7 +21,18 @@ type listCursor struct {
 	ID        string    `json:"id"`
 }
 
+type listScope struct {
+	Kind      string
+	ProjectID string
+	Status    *string
+	Ready     *bool
+}
+
 func projectListPage(request PageRequest) (store.Page, error) {
+	return listPage(request, listScope{Kind: "projects"})
+}
+
+func listPage(request PageRequest, scope listScope) (store.Page, error) {
 	if request.Limit < 1 || request.Limit > 100 {
 		return store.Page{}, invalidInput("Limit must be between 1 and 100.")
 	}
@@ -43,8 +54,9 @@ func projectListPage(request PageRequest) (store.Page, error) {
 		return store.Page{}, invalidInput("Cursor is invalid for this list.")
 	}
 	id, err := CanonicalID(cursor.ID)
-	if err != nil || id != cursor.ID || cursor.Version != 1 || cursor.Kind != "projects" ||
-		cursor.ProjectID != "" || cursor.Status != nil || cursor.Ready != nil || cursor.CreatedAt.IsZero() {
+	if err != nil || id != cursor.ID || cursor.Version != 1 || cursor.Kind != scope.Kind ||
+		cursor.ProjectID != scope.ProjectID || !equalOptional(cursor.Status, scope.Status) ||
+		!equalOptional(cursor.Ready, scope.Ready) || cursor.CreatedAt.IsZero() {
 		return store.Page{}, invalidInput("Cursor is invalid for this list.")
 	}
 	page.After = &store.Position{CreatedAt: cursor.CreatedAt, ID: id}
@@ -52,10 +64,22 @@ func projectListPage(request PageRequest) (store.Page, error) {
 }
 
 func encodeProjectCursor(project core.Project) (string, error) {
-	cursor := listCursor{Version: 1, Kind: "projects", CreatedAt: project.CreatedAt, ID: project.ID}
+	return encodeListCursor(listScope{Kind: "projects"}, project.CreatedAt, project.ID)
+}
+
+func encodeListCursor(scope listScope, createdAt time.Time, id string) (string, error) {
+	cursor := listCursor{Version: 1, Kind: scope.Kind, ProjectID: scope.ProjectID, Status: scope.Status,
+		Ready: scope.Ready, CreatedAt: createdAt, ID: id}
 	data, err := json.Marshal(cursor)
 	if err != nil {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(data), nil
+}
+
+func equalOptional[T comparable](left, right *T) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return *left == *right
 }

@@ -4,7 +4,7 @@ The Go service owns PostgreSQL-backed project and task management. Its runtime
 foundation is implemented: explicit database configuration, loopback-only HTTP
 binding, connection validation, structured request logs, cancellation, and bounded
 HTTP shutdown. Versioned migrations and transactional storage are implemented;
-project create/list/get APIs are implemented and task APIs follow the
+project APIs and task use cases are implemented; task HTTP routes follow the
 [implementation tasks](../../docs/design/daynight-server-tasks.md); the current
 executable serves project routes; task routes remain pending.
 
@@ -21,7 +21,7 @@ service's database or lifecycle.
 | `internal/server/` | HTTP lifecycle, request context, request IDs, structured logs |
 | `internal/core/store/` | PostgreSQL migrations, transactions, scoped writes and consistent reads |
 | `api/` | Project DTOs and common HTTP error envelopes |
-| `internal/service/` | Project use cases, repository/ID validation and scoped cursors |
+| `internal/service/` | Project/task use cases, dependency/state/version policy and scoped cursors |
 | `internal/core/` | Shared project/task models and resource-not-found marker |
 
 HTTP startup creates and verifies one concrete store. The handler factory receives
@@ -171,3 +171,32 @@ The request ID matches `X-Request-ID`; parsed resource operations log the
 canonical project ID. Database/transaction completion failures take precedence
 over a pending missing-resource result. Already-cancelled requests do not write
 a response.
+
+## Task service
+
+`service.NewTasks` exposes `Create`, `Get`, `List` and `Update` over the same
+concrete store. HTTP task routes are delivered separately. Creation uses `todo`;
+updates require a positive expected version and at least one mutable pointer
+field. Nil means omitted, while an empty description or supplied empty dependency
+list clears that value. The task HTTP boundary must reject explicit JSON null
+before constructing these Go parameters.
+
+Dependencies are canonicalized UUIDs, sorted and checked for duplicate identity,
+self-reference, missing/cross-project tasks and cycles. Every update validates
+its complete candidate, including metadata-only updates and semantic no-ops.
+Active/done tasks require done predecessors; reopening a done task is refused
+when a direct dependent is active or done. Fault task IDs are sorted and do not
+include other projects' task content.
+
+Task writes hold the project lock while comparing versions and validating the
+graph. A stale version conflicts even when values match. A matching semantic
+no-op preserves version and update time; any actual change increments once.
+Dependency order/case spelling does not create a change after canonicalization.
+Predecessor changes derive readiness on read without changing downstream status,
+version or timestamps.
+
+Expected refusals are captured before any write and returned only after the
+outer lock-only transaction succeeds; transaction/cleanup failures remain
+operational errors. Lists and reads check project existence and task state
+inside one RR snapshot. Task cursors bind the canonical project and optional
+status/ready filters, preserving the difference between absent and false.

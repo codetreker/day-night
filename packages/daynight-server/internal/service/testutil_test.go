@@ -46,6 +46,7 @@ func serviceDatabaseURL(t *testing.T) string {
 	query := parsed.Query()
 	query.Set("search_path", schema)
 	query.Set("timezone", "UTC")
+	query.Set("application_name", schema)
 	parsed.RawQuery = query.Encode()
 	return parsed.String()
 }
