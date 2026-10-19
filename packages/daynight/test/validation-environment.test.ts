@@ -26,15 +26,19 @@ const fixture = () => {
   const environment: NodeJS.ProcessEnv = {
     ...Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toLowerCase() !== "path")),
     PATH: `${bin}${path.delimiter}${process.env[inheritedPathKey]}`,
+    DAYNIGHT_PROBE_NODE: process.execPath,
   };
   const tool = (name: string, source: string, extension = ".cmd"): string => {
     const script = path.join(bin, `${name}${extension}.cjs`);
     writeFileSync(script, source);
     const executable = path.join(bin, process.platform === "win32" ? `${name}${extension}` : name);
     const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
-    writeFileSync(executable, process.platform === "win32"
-      ? `@echo off\r\n"${process.execPath}" "${script}" %*\r\n`
-      : `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(script)} "$@"\n`);
+    // Keep batch source ASCII; CMD expands the Unicode directory from the invoked shim.
+    const wrapper = process.platform === "win32"
+      ? `@echo off\r\n"%DAYNIGHT_PROBE_NODE%" "%~dp0${path.basename(script)}" %*\r\n`
+      : `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(script)} "$@"\n`;
+    if (process.platform === "win32") expect(wrapper).toMatch(/^[\x00-\x7f]*$/);
+    writeFileSync(executable, wrapper);
     chmodSync(executable, 0o755);
     return executable;
   };
@@ -44,7 +48,18 @@ const fixture = () => {
   const recorder = () => createValidationProbeRecorder({ directory: diagnostics, environment, log: (message) => { log.push(message); } });
   return { directory, bin, environment, tool, diagnostics, read, log, recorder };
 };
-afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
+afterEach(({ task }) => {
+  for (const directory of directories.splice(0)) {
+    try {
+      if (task.result?.state === "fail") {
+        for (const relative of ["evidence/validation-probes.json", ".tmp/validation-probes.json"]) {
+          const diagnostics = path.join(directory, relative);
+          if (existsSync(diagnostics)) process.stderr.write(`Native probe fixture failure (${task.name}): ${readFileSync(diagnostics, "utf8").slice(0, 65_536)}\n`);
+        }
+      }
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  }
+});
 
 describe("native validation environment probes", () => {
   it("persists and streams command identity before launch and completed evidence before returning", () => {

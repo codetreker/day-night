@@ -75,8 +75,13 @@ last preserves the actual validation workload.
 
 The collector has direct child-process tests for success, nonzero exit, missing
 executable, empty version, timeout, bounded partial output and state isolation.
-Windows additionally verifies the selected shim and command launcher. The
-failure artifact can distinguish resolution from process execution and retain
+Windows additionally verifies the selected shim and command launcher. Its batch
+fixtures contain only ASCII source, receive the Node executable through their
+scoped environment, and locate payloads through quoted `%~dp0`; Chinese and
+space-containing directories remain part of the test. This avoids depending on
+the console codepage to decode literal Unicode paths. Failed fixtures print
+bounded probe evidence before cleanup. The failure artifact can distinguish
+resolution from process execution and retain
 the failed command's result.
 
 Native CI remains necessary to validate platform behavior. The historical stall
