@@ -1,7 +1,7 @@
 # Daynight Server 架构设计
 
-状态：Go 运行基础和验证门槛已实现；数据库迁移、project/task 用例及 HTTP 接口
-按任务拆分继续交付。
+状态：Go 运行基础、数据库迁移与事务存储、验证门槛已实现；project/task 用例及
+HTTP 接口按任务拆分继续交付。
 
 `daynight-server` 是独立的 Go 服务，为本机 CLI 和内部程序提供 project、task
 及任务依赖管理。行为要求由[需求文档](../spec/daynight-server.md)拥有；架构选择及
@@ -244,7 +244,8 @@ CLI 和内部程序调用，服务只接受 loopback 监听地址。远程认证
 
 进程启动时创建 `pgxpool` 并验证数据库连接，然后从 pool 获取并固定一条专用
 `pgxpool.Conn`。该连接取得 PostgreSQL session-level advisory migration lock，
-并在同一物理连接上完成版本读取、校验和全部内嵌 SQL 迁移。锁必须跨越整个迁移
+并在同一物理连接上完成版本读取、校验和全部内嵌 SQL 迁移。当前迁移先建立 project，
+再建立 task 与依赖表；应用记录必须是内嵌迁移的有序前缀。锁必须跨越整个迁移
 序列，不能使用会在单个迁移提交时释放的 transaction-level advisory lock，也不能
 通过 pool 的任意连接分别取得和释放锁。
 
@@ -305,4 +306,5 @@ HTTP 测试验证路由、DTO、错误映射、project 范围查找、分页筛�
 覆盖率不替代并发、回滚和调用方行为断言。Go 检查加入现有 CI 汇总门禁，汇总
 成功必须同时要求 Go 服务和原有各平台 CLI 检查通过；Go 检查不能替换或放宽 CLI
 检查。统一验证入口为模块内的 `bash scripts/check.sh`，要求显式设置
-`DAYNIGHT_TEST_DATABASE_URL`。真实业务和跨层验收证据随对应任务交付。
+`DAYNIGHT_TEST_DATABASE_URL`。运行前失效项目内的 Go 测试结果缓存，确保数据库状态
+变化不能被缓存报告掩盖；编译与模块缓存保留。真实业务和跨层验收证据随对应任务交付。

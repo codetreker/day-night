@@ -6,7 +6,7 @@ service runtime for project and task management.
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented TypeScript CLI with SQLite review state | [Requirements](docs/spec/daynight.md), [design](docs/design/daynight.md) |
-| `daynight-server` | `packages/daynight-server/` | Go/PostgreSQL runtime and coverage gates implemented; project/task APIs remain planned | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
+| `daynight-server` | `packages/daynight-server/` | Go/PostgreSQL runtime, transactional storage and coverage gates implemented; project/task APIs remain planned | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 
 The `@codetreker/daynight` package provides the `daynight` CLI. It polls configured
 repositories, maintains dedicated local clones and PR worktrees, and launches

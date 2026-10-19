@@ -1,6 +1,6 @@
 # daynight-server 实现任务
 
-状态：T1 运行基础已完成，后续任务按前置顺序推进。业务接口尚未交付。
+状态：T1 已合并，T2 事务存储已完成，后续任务按前置顺序推进。业务接口尚未交付。
 
 本文拥有实现任务的编号、状态、前置关系、改动范围和完成条件。
 [需求](../spec/daynight-server.md)拥有行为及 V1–V10 验收要求，
@@ -13,7 +13,7 @@
 | 编号 | 任务 | 状态 | 前置 | 主要交付 |
 |---|---|---|---|---|
 | [T1](#t1) | Go 服务运行与验证基础 | 已完成 | 无 | 独立模块、配置、生命周期、数据库测试环境、覆盖率门禁 |
-| [T2](#t2) | PostgreSQL 存储与事务 | 未开始 | T1 | 迁移、表与查询、锁、原子写入、一致读取 |
+| [T2](#t2) | PostgreSQL 存储与事务 | 已完成 | T1 | 迁移、表与查询、锁、原子写入、一致读取 |
 | [T3](#t3) | Project 用例与 HTTP 接口 | 未开始 | T2 | 仓库地址登记、project 创建及查询、公共 HTTP 结构 |
 | [T4](#t4) | Task 领域用例 | 未开始 | T2 | 依赖图、状态规则、版本和原子更新 |
 | [T5](#t5) | Task HTTP 接口 | 未开始 | T3、T4 | task 路由、输入语义、错误、分页与筛选 |
@@ -40,6 +40,9 @@ T3 与 T4 在 T2 完成后可以并行。每项任务交付自身的行为测试
 验证：`bash scripts/check.sh` 通过构建、vet、race 和覆盖率门禁；36 项 Go 测试与
 9 项覆盖率检查测试通过，原始覆盖率为 152/154 条语句（98.70%），没有产品代码
 排除项。Store 与 server package 为 100%，可执行程序 package 为 88.2%。
+[PR #21](https://github.com/codetreker/daynight/pull/21) 已合并，
+[合并后 CI](https://github.com/codetreker/daynight/actions/runs/39230127916) 的
+Go、三个原生 CLI 平台及汇总检查全部通过。
 
 ### 范围与文件归属
 
@@ -75,12 +78,18 @@ T3 与 T4 在 T2 完成后可以并行。每项任务交付自身的行为测试
 <a id="t2"></a>
 ## T2：PostgreSQL 存储与事务
 
-状态：未开始。前置：T1。
+状态：已完成。前置：T1。
+
+验证：完整构建、vet、race 与覆盖率门禁通过；76 项 Go 测试和 9 项覆盖率检查测试
+通过。原始覆盖率为 330/332 条语句（99.40%），store/server package 为 100%。
+真实 PostgreSQL 验证包含迁移、锁与取消、部分写入回滚和交错快照读取。
 
 ### 范围与文件归属
 
 负责 `internal/core/store/` 的具体 PostgreSQL 实现、内嵌 SQL 迁移和该 package
-内的集成测试。提供 T3、T4 所需的事务、查询和持久化操作；领域策略归 service。
+内的集成测试，同时建立存储读写所需的共享 `core.Project`、`core.Task` 数据模型。
+提供 T3、T4 所需的事务、查询和持久化操作；领域策略归 service，后续任务复用这些
+模型并实现对应规则。
 负责迁移与启动的连接处衔接，修改 T1 的生命周期入口时协调共享文件。
 
 ### 实现内容
@@ -116,7 +125,7 @@ T3 与 T4 在 T2 完成后可以并行。每项任务交付自身的行为测试
 
 ### 范围与文件归属
 
-负责 `internal/core/` 的 project 模型、`internal/service/` 的 project 用例、
+复用 T2 的 `core.Project` 模型，负责 `internal/service/` 的 project 用例、
 `api/` 的 project 及公共 DTO、`internal/server/` 的 project 路由与公共 HTTP 处理。
 负责公共错误、request ID、JSON 输入处理和分页编码；与并行的 T4 协调共享声明。
 
@@ -149,7 +158,7 @@ T3 与 T4 在 T2 完成后可以并行。每项任务交付自身的行为测试
 
 ### 范围与文件归属
 
-负责 `internal/core/` 的 task 模型及 `internal/service/` 的 task 创建、列表、读取、
+复用 T2 的 `core.Task` 模型，负责 `internal/service/` 的 task 创建、列表、读取、
 更新用例和所属 package 测试。使用 T2 的具体 store，在 service 内编排事务和校验。
 不修改 T3 负责的公共 HTTP 类型；需要补充查询时与 store 归属协调。
 

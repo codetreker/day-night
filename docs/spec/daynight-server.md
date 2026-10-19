@@ -1,6 +1,6 @@
 # daynight-server 任务管理需求
 
-状态：Go 运行基础和验证门槛已实现；project/task 业务行为尚未实现。
+状态：Go 运行基础、迁移与事务存储、验证门槛已实现；project/task 业务行为尚未实现。
 
 本文定义 `daynight-server` 面向本机 CLI 和内部程序的任务管理行为。
 [技术设计](../design/daynight-server.md)拥有分层、存储和并发机制；

@@ -1,0 +1,25 @@
+package core
+
+import "time"
+
+type TaskStatus string
+
+const (
+	TaskTodo       TaskStatus = "todo"
+	TaskInProgress TaskStatus = "in_progress"
+	TaskDone       TaskStatus = "done"
+)
+
+type Task struct {
+	ID          string
+	ProjectID   string
+	Title       string
+	Description string
+	Status      TaskStatus
+	Version     int64
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	DependsOn   []string
+	BlockedBy   []string
+	Ready       bool
+}

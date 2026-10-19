@@ -18,7 +18,9 @@ service backed by PostgreSQL, located at `packages/daynight-server/`. This note
 records the delivered design baseline. The executable, schema and HTTP endpoints
 are delivered incrementally. The
 [runtime foundation](2026-10-19-server-runtime-foundation.md) implements startup,
-HTTP lifecycle and strict coverage gates; project/task APIs and migrations remain
+HTTP lifecycle and strict coverage gates. The
+[transactional storage](2026-10-19-server-transactional-storage.md) provides
+migrations, scoped writes and snapshot reads; project/task APIs remain
 unimplemented. The
 [task breakdown](../../../../docs/design/daynight-server-tasks.md) owns their
 implementation scope, dependencies, status and acceptance criteria.
