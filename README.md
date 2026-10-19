@@ -6,7 +6,7 @@ service runtime for project and task management.
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented TypeScript CLI with SQLite review state | [Requirements](docs/spec/daynight.md), [design](docs/design/daynight.md) |
-| `daynight-server` | `packages/daynight-server/` | Project/task HTTP APIs, PostgreSQL transactions and coverage gates implemented; complete process acceptance pending | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
+| `daynight-server` | `packages/daynight-server/` | Project/task HTTP APIs, PostgreSQL transactions, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 
 The `@codetreker/daynight` package provides the `daynight` CLI. It polls configured
 repositories, maintains dedicated local clones and PR worktrees, and launches
@@ -96,7 +96,7 @@ Use Go 1.27.2, PostgreSQL 18.6 and Node.js 24 LTS. The
 the isolated database setup and complete validation commands. Its HTTP runtime
 binds only loopback addresses and serves project creation/list/get and task
 create/list/get/update routes. Delivery status and complete process acceptance
-are tracked in the
+are recorded in the
 [task breakdown](docs/design/daynight-server-tasks.md).
 
 From `packages/daynight-server/`, set `DAYNIGHT_TEST_DATABASE_URL` to an isolated
@@ -112,7 +112,10 @@ and function coverage of at least 80%, with critical-block checks enabled. The
 same raw coverage profile supplies an exact strict comparison; exactly 90%
 fails, independently of display rounding. No product files or functions are
 excluded. The CI aggregate requires both this Go job and every existing native
-CLI job to pass. PostgreSQL absence is a failure, not a skipped test.
+CLI job to pass. PostgreSQL absence is a failure, not a skipped test. The
+[server acceptance report](docs/research/daynight-server-acceptance.md) maps
+requirements to tests and describes the CI receipt containing tested source and
+binary identity, scenario results and resource cleanup.
 
 ## Package versions
 

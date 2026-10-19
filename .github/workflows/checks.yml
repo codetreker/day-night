@@ -121,7 +121,19 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - name: Build, vet, race test, and require overall coverage above 90%
+        id: server-validation
         run: bash scripts/check.sh
+      - name: Upload server acceptance and coverage evidence
+        if: ${{ always() && steps.server-validation.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: daynight-server-acceptance
+          path: |
+            packages/daynight-server/.tmp/acceptance-evidence.json
+            packages/daynight-server/.tmp/coverage.out
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
 
   checks:
     if: ${{ always() }}

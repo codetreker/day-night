@@ -1,7 +1,7 @@
 # Daynight Server 架构设计
 
-状态：Go 服务、事务存储、project/task 用例与 HTTP 接口、覆盖率门槛已实现；
-完整进程验收按任务拆分继续交付。
+状态：Go 服务、事务存储、project/task 用例与 HTTP 接口、覆盖率门槛和完整进程
+验收均已实现。
 
 `daynight-server` 是独立的 Go 服务，为本机 CLI 和内部程序提供 project、task
 及任务依赖管理。行为要求由[需求文档](../spec/daynight-server.md)拥有；架构选择及
@@ -315,5 +315,11 @@ HTTP 测试验证路由、DTO、错误映射、project 范围查找、分页筛�
 覆盖率不替代并发、回滚和调用方行为断言。Go 检查加入现有 CI 汇总门禁，汇总
 成功必须同时要求 Go 服务和原有各平台 CLI 检查通过；Go 检查不能替换或放宽 CLI
 检查。统一验证入口为模块内的 `bash scripts/check.sh`，要求显式设置
-`DAYNIGHT_TEST_DATABASE_URL`。运行前失效项目内的 Go 测试结果缓存，确保数据库状态
+`DAYNIGHT_TEST_DATABASE_URL`。命令 package 的 TestMain 每次构建新的 race binary，
+通过真实 HTTP、PostgreSQL、信号和进程重启执行验收，不复用旧的可执行文件。CI
+发布 `.tmp/acceptance-evidence.json` 和同次 `.tmp/coverage.out`；前者记录源版本、
+binary hash、场景及资源清理，CI 要求 checkout 干净且 Git revision 与 `GITHUB_SHA`
+一致。详细归属见[验收报告](../research/daynight-server-acceptance.md)。
+
+运行前失效项目内的 Go 测试结果缓存，确保数据库状态
 变化不能被缓存报告掩盖；编译与模块缓存保留。真实业务和跨层验收证据随对应任务交付。

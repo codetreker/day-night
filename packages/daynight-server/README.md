@@ -4,7 +4,7 @@ The Go service owns PostgreSQL-backed project and task management. Its runtime
 foundation is implemented: explicit database configuration, loopback-only HTTP
 binding, connection validation, structured request logs, cancellation, and bounded
 HTTP shutdown. Versioned migrations and transactional storage are implemented;
-project and task APIs are implemented; complete process acceptance follows the
+project/task APIs and built-process acceptance are implemented; delivery status is in the
 [implementation tasks](../../docs/design/daynight-server-tasks.md); the current
 executable serves project and task routes.
 
@@ -254,3 +254,27 @@ jq 'select(.request_id == "REQUEST_ID")' .tmp/server.jsonl
 
 Capture stderr to that project-local path when starting the process; submitted
 URLs, bodies, SQL and credentials are excluded from logs.
+
+## Built-process acceptance and CI evidence
+
+The same check runs 12 actual-process scenario groups. TestMain freshly builds a
+race-enabled server, starts only owned loopback children against isolated real
+PostgreSQL schemas, and checks HTTP workflows, restart persistence, competing
+mutations, partial-write rollback, cancellation, graceful/forced SIGTERM,
+migration failures and simultaneous startup. This signal acceptance runs in the
+Ubuntu Go CI job. Existing three-platform CLI validation remains separate.
+
+The test process incrementally writes `.tmp/acceptance-evidence.json` with the
+checked-out Git/GitHub SHA, dirty state, Go/PostgreSQL versions, tested binary
+SHA-256, named results and cleanup counts. CI requires a clean checkout and a
+revision matching `GITHUB_SHA`. All children stop before schemas are removed;
+the receipt records reaping, removed schemas and disappearance of owned sessions.
+The temporary tested binary is removed after the run; its hash remains in the
+receipt.
+
+CI uploads `daynight-server-acceptance` after validation, including the JSON
+receipt and raw `.tmp/coverage.out`, even when validation fails. Successful
+package-level coverage and actual process results are separate evidence: binary
+HTTP tests do not replace the store/service/server package tests. The
+[acceptance report](../../docs/research/daynight-server-acceptance.md) owns the
+V1–V10 mapping and receipt interpretation.
