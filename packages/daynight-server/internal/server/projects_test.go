@@ -69,7 +69,7 @@ func projectTestStore(t *testing.T) *store.Store {
 
 func projectTestHandler(database *store.Store, output io.Writer) http.Handler {
 	logger := slog.New(slog.NewJSONHandler(output, nil))
-	return RequestLogging(logger, New(service.NewProjects(database), logger))
+	return RequestLogging(logger, New(service.NewProjects(database), service.NewTasks(database), logger))
 }
 
 func projectRequest(handler http.Handler, method, path, body string) *httptest.ResponseRecorder {
@@ -325,7 +325,7 @@ func TestHTTPErrorMappingAndWriteFailure(t *testing.T) {
 		request := httptest.NewRequest(http.MethodGet, "/", nil)
 		request.Header.Set("X-Request-ID", "project-test")
 		RequestLogging(logger, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-			writeError(w, request, logger, "get", err)
+			writeError(w, request, logger, "project", "get", err)
 		})).ServeHTTP(response, request)
 		assertProjectError(t, response, http.StatusInternalServerError, "internal_error")
 	}
@@ -333,7 +333,7 @@ func TestHTTPErrorMappingAndWriteFailure(t *testing.T) {
 	request.Header.Set("X-Request-ID", "project-test")
 	response := httptest.NewRecorder()
 	RequestLogging(logger, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		writeError(w, request, logger, "get", &service.Fault{Code: "invalid_input", Message: "invalid references", TaskIDs: []string{"task-id"}})
+		writeError(w, request, logger, "project", "get", &service.Fault{Code: "invalid_input", Message: "invalid references", TaskIDs: []string{"task-id"}})
 	})).ServeHTTP(response, request)
 	value := decodeResponse[api.ErrorResponse](t, response, http.StatusBadRequest)
 	if value.Error.Details == nil || len(value.Error.Details.TaskIDs) != 1 || value.Error.Details.TaskIDs[0] != "task-id" {

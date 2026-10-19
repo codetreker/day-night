@@ -4,9 +4,9 @@ The Go service owns PostgreSQL-backed project and task management. Its runtime
 foundation is implemented: explicit database configuration, loopback-only HTTP
 binding, connection validation, structured request logs, cancellation, and bounded
 HTTP shutdown. Versioned migrations and transactional storage are implemented;
-project APIs and task use cases are implemented; task HTTP routes follow the
+project and task APIs are implemented; complete process acceptance follows the
 [implementation tasks](../../docs/design/daynight-server-tasks.md); the current
-executable serves project routes; task routes remain pending.
+executable serves project and task routes.
 
 The [requirements](../../docs/spec/daynight-server.md) own observable behavior and
 the [design](../../docs/design/daynight-server.md) owns architecture and concurrency.
@@ -20,7 +20,7 @@ service's database or lifecycle.
 | `cmd/daynight-server/` | Environment, process signals, dependency assembly, exit status |
 | `internal/server/` | HTTP lifecycle, request context, request IDs, structured logs |
 | `internal/core/store/` | PostgreSQL migrations, transactions, scoped writes and consistent reads |
-| `api/` | Project DTOs and common HTTP error envelopes |
+| `api/` | Project/task DTOs and common HTTP error envelopes |
 | `internal/service/` | Project/task use cases, dependency/state/version policy and scoped cursors |
 | `internal/core/` | Shared project/task models and resource-not-found marker |
 
@@ -175,10 +175,10 @@ a response.
 ## Task service
 
 `service.NewTasks` exposes `Create`, `Get`, `List` and `Update` over the same
-concrete store. HTTP task routes are delivered separately. Creation uses `todo`;
+concrete store. HTTP task routes use the same instance. Creation uses `todo`;
 updates require a positive expected version and at least one mutable pointer
 field. Nil means omitted, while an empty description or supplied empty dependency
-list clears that value. The task HTTP boundary must reject explicit JSON null
+list clears that value. The task HTTP boundary rejects explicit JSON null
 before constructing these Go parameters.
 
 Dependencies are canonicalized UUIDs, sorted and checked for duplicate identity,
@@ -200,3 +200,57 @@ outer lock-only transaction succeeds; transaction/cleanup failures remain
 operational errors. Lists and reads check project existence and task state
 inside one RR snapshot. Task cursors bind the canonical project and optional
 status/ready filters, preserving the difference between absent and false.
+
+## Task HTTP API
+
+| Method | Path | Result |
+|---|---|---|
+| `POST` | `/api/v1/projects/{projectId}/tasks` | `201`, task and `Location` |
+| `GET` | `/api/v1/projects/{projectId}/tasks` | `200`, task page |
+| `GET` | `/api/v1/projects/{projectId}/tasks/{taskId}` | `200`, task |
+| `PATCH` | `/api/v1/projects/{projectId}/tasks/{taskId}` | `200`, updated task |
+
+Creation accepts required `title`, optional `description` and optional
+`dependsOn`; omitted optional values mean empty text and an empty dependency
+set. Status, version and identity are server-owned on creation. PATCH accepts
+a positive integer `version` and at least one of `title`, `description`,
+`status`, `dependsOn`. Omitted fields stay unchanged; explicit null (including
+null dependency elements) fails. Empty description or `dependsOn: []` clears
+that field. Fractions, exponents, strings and out-of-range versions fail.
+
+Task responses contain identity, project, title, description, status, version,
+UTC timestamps, sorted `dependsOn`/`blockedBy` arrays and `ready`. A missing
+project or a task outside the specified project returns 404. The initialized
+empty project returns `items: []`, `nextCursor: null`.
+
+Lists support `limit`, `cursor`, `status` and `ready`, once each. `ready` accepts
+literal `true` or `false`; filters combine with AND and remain bound to the
+cursor's canonical project scope. HTTP input uses the same strict JSON and
+query rules as project operations.
+
+Version conflicts, dependency cycles and unmet dependency/state rules return
+409 with `version_conflict`, `dependency_cycle` or `dependency_unsatisfied`.
+Relevant sorted IDs appear in `error.details.taskIds`. Operational failures
+remain 500, and cancelled requests write neither response body nor creation
+Location. Parsed project/task IDs and the request ID correlate safe logs; known
+refusals use their domain `error_code` and cause instead of an internal label.
+
+For example, after obtaining a project and task ID:
+
+```bash
+curl --header 'Content-Type: application/json' \
+  --data '{"title":"Implement API","dependsOn":[]}' \
+  http://127.0.0.1:8787/api/v1/projects/PROJECT_ID/tasks
+curl --request PATCH --header 'Content-Type: application/json' \
+  --data '{"version":1,"status":"in_progress"}' \
+  http://127.0.0.1:8787/api/v1/projects/PROJECT_ID/tasks/TASK_ID
+```
+
+To inspect a failure, match its response `requestId` with JSON logs on stderr:
+
+```bash
+jq 'select(.request_id == "REQUEST_ID")' .tmp/server.jsonl
+```
+
+Capture stderr to that project-local path when starting the process; submitted
+URLs, bodies, SQL and credentials are excluded from logs.

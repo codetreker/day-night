@@ -30,7 +30,7 @@ func run(ctx context.Context, getenv func(string) string, output io.Writer) int 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	runtime, err := server.Start(ctx, config, logger, func(database *store.Store) http.Handler {
-		return server.New(service.NewProjects(database), logger)
+		return server.New(service.NewProjects(database), service.NewTasks(database), logger)
 	})
 	if err != nil {
 		server.LogFailure(logger, ctx, "server", "startup", err)

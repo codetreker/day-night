@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"log/slog"
 	"mime"
@@ -75,43 +74,91 @@ func containsField(allowed []string, key string) bool {
 }
 
 func requiredString(fields map[string]json.RawMessage, key string) (string, error) {
-	raw, exists := fields[key]
-	if !exists || bytes.Equal(raw, []byte("null")) {
+	value, err := optionalString(fields, key)
+	if err != nil {
+		return "", err
+	}
+	if value == nil {
 		return "", invalidInput(key + " is required and must be a string")
+	}
+	return *value, nil
+}
+
+func optionalString(fields map[string]json.RawMessage, key string) (*string, error) {
+	raw, exists := fields[key]
+	if !exists {
+		return nil, nil
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, invalidInput(key + " must be a string")
 	}
 	var value string
 	if err := json.Unmarshal(raw, &value); err != nil {
-		return "", invalidInput(key + " must be a string")
+		return nil, invalidInput(key + " must be a string")
 	}
-	return value, nil
+	return &value, nil
+}
+
+func optionalStrings(fields map[string]json.RawMessage, key string) (*[]string, error) {
+	raw, exists := fields[key]
+	if !exists {
+		return nil, nil
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, invalidInput(key + " must be an array of strings")
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, invalidInput(key + " must be an array of strings")
+	}
+	values := make([]string, 0, len(items))
+	for _, item := range items {
+		var value string
+		if bytes.Equal(bytes.TrimSpace(item), []byte("null")) || json.Unmarshal(item, &value) != nil {
+			return nil, invalidInput(key + " must be an array of strings")
+		}
+		values = append(values, value)
+	}
+	return &values, nil
+}
+
+func queryValues(request *http.Request, allowed ...string) (url.Values, error) {
+	values, err := url.ParseQuery(request.URL.RawQuery)
+	if err != nil {
+		return nil, invalidInput("query parameters must be valid URL encoding")
+	}
+	for key, entries := range values {
+		if !containsField(allowed, key) {
+			return nil, invalidInput("query contains an unknown parameter")
+		}
+		if len(entries) != 1 || entries[0] == "" {
+			return nil, invalidInput("query parameters must occur once and must not be empty")
+		}
+	}
+	return values, nil
+}
+
+func pageValues(values url.Values) (service.PageRequest, error) {
+	page := service.PageRequest{Limit: 50}
+	if value, exists := values["limit"]; exists {
+		limit, err := strconv.Atoi(value[0])
+		if err != nil || limit < 1 || limit > 100 {
+			return service.PageRequest{}, invalidInput("limit must be an integer from 1 to 100")
+		}
+		page.Limit = limit
+	}
+	if value, exists := values["cursor"]; exists {
+		page.Cursor = &value[0]
+	}
+	return page, nil
 }
 
 func pageRequest(request *http.Request) (service.PageRequest, error) {
-	values, err := url.ParseQuery(request.URL.RawQuery)
+	values, err := queryValues(request, "limit", "cursor")
 	if err != nil {
-		return service.PageRequest{}, invalidInput("query parameters must be valid URL encoding")
+		return service.PageRequest{}, err
 	}
-	page := service.PageRequest{Limit: 50}
-	for key, values := range values {
-		if len(values) != 1 {
-			return service.PageRequest{}, invalidInput("query parameters must occur once")
-		}
-		switch key {
-		case "limit":
-			page.Limit, err = strconv.Atoi(values[0])
-			if err != nil || page.Limit < 1 || page.Limit > 100 {
-				return service.PageRequest{}, invalidInput("limit must be an integer from 1 to 100")
-			}
-		case "cursor":
-			if values[0] == "" {
-				return service.PageRequest{}, invalidInput("cursor must not be empty")
-			}
-			page.Cursor = &values[0]
-		default:
-			return service.PageRequest{}, invalidInput("query contains an unknown parameter")
-		}
-	}
-	return page, nil
+	return pageValues(values)
 }
 
 func writeJSON(w http.ResponseWriter, request *http.Request, logger *slog.Logger, status int, value any) {
@@ -125,20 +172,29 @@ func writeJSON(w http.ResponseWriter, request *http.Request, logger *slog.Logger
 	}
 }
 
-func writeError(w http.ResponseWriter, request *http.Request, logger *slog.Logger, phase string, err error) {
-	LogFailure(logger, request.Context(), "project", phase, err)
+func writeCreated(w http.ResponseWriter, request *http.Request, logger *slog.Logger, location string, value any) {
+	if request.Context().Err() != nil {
+		return
+	}
+	w.Header().Set("Location", location)
+	writeJSON(w, request, logger, http.StatusCreated, value)
+}
+
+func writeError(w http.ResponseWriter, request *http.Request, logger *slog.Logger, component, phase string, err error) {
+	LogFailure(logger, request.Context(), component, phase, err)
 	if request.Context().Err() != nil {
 		return
 	}
 	status := http.StatusInternalServerError
 	response := api.Error{Code: "internal_error", Message: "internal server error", RequestID: RequestID(request.Context())}
-	var fault *service.Fault
-	if errors.As(err, &fault) {
+	if fault, ok := knownFault(err); ok && ErrorKind(err) == fault.Code {
 		switch fault.Code {
 		case "invalid_input":
 			status = http.StatusBadRequest
 		case "not_found":
 			status = http.StatusNotFound
+		case "version_conflict", "dependency_cycle", "dependency_unsatisfied":
+			status = http.StatusConflict
 		}
 		if status != http.StatusInternalServerError {
 			response.Code, response.Message = fault.Code, fault.Message
@@ -148,4 +204,16 @@ func writeError(w http.ResponseWriter, request *http.Request, logger *slog.Logge
 		}
 	}
 	writeJSON(w, request, logger, status, api.ErrorResponse{Error: response})
+}
+
+func methodNotAllowed(logger *slog.Logger, allowed string) http.HandlerFunc {
+	return func(w http.ResponseWriter, request *http.Request) {
+		if request.Context().Err() != nil {
+			return
+		}
+		w.Header().Set("Allow", allowed)
+		writeJSON(w, request, logger, http.StatusMethodNotAllowed, api.ErrorResponse{
+			Error: api.Error{Code: "method_not_allowed", Message: "method not allowed", RequestID: RequestID(request.Context())},
+		})
+	}
 }

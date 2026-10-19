@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
+	"github.com/codetreker/daynight/packages/daynight-server/internal/service"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -49,16 +50,34 @@ func ErrorKind(err error) string {
 	case errors.As(err, &networkError):
 		return "network"
 	default:
+		if fault, ok := knownFault(err); ok {
+			return fault.Code
+		}
 		return "internal"
 	}
 }
 
+func knownFault(err error) (*service.Fault, bool) {
+	var fault *service.Fault
+	if errors.As(err, &fault) {
+		switch fault.Code {
+		case "invalid_input", "not_found", "version_conflict", "dependency_cycle", "dependency_unsatisfied":
+			return fault, true
+		}
+	}
+	return nil, false
+}
+
 func LogFailure(logger *slog.Logger, ctx context.Context, component, phase string, err error) {
 	diagnostic := "operation failed"
+	kind, code := ErrorKind(err), "internal_error"
 	var configurationError *ConfigurationError
 	var databaseError *store.Error
 	var runtimeFailure *runtimeError
+	fault, domainFailure := knownFault(err)
 	switch {
+	case domainFailure && kind == fault.Code:
+		diagnostic, code = fault.Message, fault.Code
 	case errors.As(err, &configurationError):
 		diagnostic = configurationError.Error()
 	case errors.As(err, &databaseError):
@@ -67,7 +86,7 @@ func LogFailure(logger *slog.Logger, ctx context.Context, component, phase strin
 		diagnostic = runtimeFailure.Error()
 	}
 	logger.ErrorContext(ctx, "operation failed", "type", "operation_error", "component", component,
-		"phase", phase, "cause", ErrorKind(err), "diagnostic", diagnostic, "request_id", RequestID(ctx))
+		"phase", phase, "cause", kind, "error_code", code, "diagnostic", diagnostic, "request_id", RequestID(ctx))
 }
 
 type responseRecorder struct {

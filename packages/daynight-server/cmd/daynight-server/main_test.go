@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -14,6 +16,8 @@ import (
 	"time"
 
 	"github.com/codetreker/daynight/packages/daynight-server/api"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func testEnvironment(t *testing.T) map[string]string {
@@ -23,6 +27,39 @@ func testEnvironment(t *testing.T) map[string]string {
 		t.Fatal("DAYNIGHT_TEST_DATABASE_URL is required for PostgreSQL tests")
 	}
 	return map[string]string{"DAYNIGHT_DATABASE_URL": url, "DAYNIGHT_LISTEN_ADDR": "127.0.0.1:0"}
+}
+
+func processAPIEnvironment(t *testing.T) map[string]string {
+	t.Helper()
+	values := testEnvironment(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, values["DAYNIGHT_DATABASE_URL"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := "process_" + strings.ToLower(rand.Text())
+	if _, err := pool.Exec(ctx, "CREATE SCHEMA "+pgx.Identifier{schema}.Sanitize()); err != nil {
+		pool.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if _, err := pool.Exec(ctx, "DROP SCHEMA "+pgx.Identifier{schema}.Sanitize()+" CASCADE"); err != nil {
+			t.Error(err)
+		}
+		pool.Close()
+	})
+	parsed, err := url.Parse(values["DAYNIGHT_DATABASE_URL"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := parsed.Query()
+	query.Set("search_path", schema)
+	parsed.RawQuery = query.Encode()
+	values["DAYNIGHT_DATABASE_URL"] = parsed.String()
+	return values
 }
 
 func TestRunStartupFailures(t *testing.T) {
@@ -112,8 +149,8 @@ func (w *startupWriter) Write(value []byte) (int, error) {
 	return result, err
 }
 
-func TestRunServesProjectAPI(t *testing.T) {
-	values := testEnvironment(t)
+func TestRunServesProjectAndTaskAPI(t *testing.T) {
+	values := processAPIEnvironment(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	output := &startupWriter{started: make(chan string, 1)}
@@ -146,6 +183,51 @@ func TestRunServesProjectAPI(t *testing.T) {
 	response.Body.Close()
 	if err != nil || response.StatusCode != http.StatusBadRequest || !bytes.Contains(body, []byte(`"code":"invalid_input"`)) {
 		t.Fatalf("project create route was not wired: %d %s %v", response.StatusCode, body, err)
+	}
+	response, err = client.Post("http://"+address+"/api/v1/projects", "application/json", strings.NewReader(`{"name":"Process tasks","repoUrl":"https://github.com/example/process"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var project api.Project
+	err = json.NewDecoder(response.Body).Decode(&project)
+	response.Body.Close()
+	if err != nil || response.StatusCode != http.StatusCreated {
+		t.Fatalf("process project create: %d %v", response.StatusCode, err)
+	}
+	tasksURL := "http://" + address + "/api/v1/projects/" + project.ID + "/tasks"
+	response, err = client.Post(tasksURL, "application/json", strings.NewReader(`{"title":"Process task"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var task api.Task
+	err = json.NewDecoder(response.Body).Decode(&task)
+	response.Body.Close()
+	if err != nil || response.StatusCode != http.StatusCreated || task.ProjectID != project.ID || task.Title != "Process task" || !task.Ready || task.Version != 1 {
+		t.Fatalf("process task create: %d %+v %v", response.StatusCode, task, err)
+	}
+	request, err := http.NewRequest(http.MethodPatch, tasksURL+"/"+task.ID, strings.NewReader(`{"version":1,"status":"done"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err = client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = json.NewDecoder(response.Body).Decode(&task)
+	response.Body.Close()
+	if err != nil || response.StatusCode != http.StatusOK || task.Status != "done" || task.Version != 2 {
+		t.Fatalf("process task update: %d %+v %v", response.StatusCode, task, err)
+	}
+	response, err = client.Get(tasksURL + "?status=done&ready=false")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tasks api.TaskPage
+	err = json.NewDecoder(response.Body).Decode(&tasks)
+	response.Body.Close()
+	if err != nil || response.StatusCode != http.StatusOK || len(tasks.Items) != 1 || tasks.Items[0].ID != task.ID {
+		t.Fatalf("process task list: %d %+v %v", response.StatusCode, tasks, err)
 	}
 	cancel()
 	select {
