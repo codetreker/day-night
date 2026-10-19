@@ -1,6 +1,7 @@
 # Daynight Server 架构设计
 
-状态：已接受的设计，服务源码、数据库迁移和验证门槛尚未实现。
+状态：Go 运行基础和验证门槛已实现；数据库迁移、project/task 用例及 HTTP 接口
+按任务拆分继续交付。
 
 `daynight-server` 是独立的 Go 服务，为本机 CLI 和内部程序提供 project、task
 及任务依赖管理。行为要求由[需求文档](../spec/daynight-server.md)拥有；架构选择及
@@ -293,12 +294,15 @@ HTTP 测试验证路由、DTO、错误映射、project 范围查找、分页筛�
 行为；最终交付必须给出需求 V1–V10 的全部验收证据。
 
 实现交付的验证包含 `go vet`、启用 race 的测试及 `go-cov --ci`。覆盖率配置位于 Go
-模块内的 `.go-cov.toml`，总计门槛 90%、每包 85%、每函数 80%，critical 路径保持
-默认阻断。工具固定到提交 `d6caf2759e330b48d69a543695e37002a48feb1d`；该提交包含
+模块内的 `.go-cov.toml`，总计门槛严格大于 90%、每包至少 85%、每函数至少 80%，critical
+路径保持默认阻断。`go-cov` 的 total 配置仍使用 90；同一原始 coverage profile
+再按唯一代码块的语句数执行 `covered * 10 > total * 9` 精确检查，拒绝零语句和
+无效报告。恰好 90% 必须失败，显示为 `90.0%` 但实际高于 90% 的结果按原始值判断。
+工具固定到提交 `d6caf2759e330b48d69a543695e37002a48feb1d`；该提交包含
 排除项分母修正，不能用缺少该修正的 `v0.1.3` 代替。配置及门槛语义见
 [固定版本 README](https://github.com/codetreker/go-cov/blob/d6caf2759e330b48d69a543695e37002a48feb1d/README.md#configuration)。
 
 覆盖率不替代并发、回滚和调用方行为断言。Go 检查加入现有 CI 汇总门禁，汇总
 成功必须同时要求 Go 服务和原有各平台 CLI 检查通过；Go 检查不能替换或放宽 CLI
-检查。服务实现后再接入这些检查；本文不表示 Go 工具链、数据库环境、覆盖率配置
-或 CI job 已经安装或运行。
+检查。统一验证入口为模块内的 `bash scripts/check.sh`，要求显式设置
+`DAYNIGHT_TEST_DATABASE_URL`。真实业务和跨层验收证据随对应任务交付。
