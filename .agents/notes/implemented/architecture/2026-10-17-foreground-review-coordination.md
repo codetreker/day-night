@@ -131,10 +131,13 @@ PRs proceed and keeps CI waiting outside agent attempt accounting.
 ## Consequences
 
 Real SQLite tests exercise admission, revisions, retry budgets, failure isolation,
-recovery and shutdown. A local Git origin plus a controlled Copilot process and
-production process supervisor verifies the combined review/re-review/closure
-lifecycle. Compiled-entry tests verify real state creation, singleton refusal and
-signal cleanup without remote credentials.
+recovery and shutdown. The
+[fairness validation decision](../testing/2026-10-19-deterministic-coordinator-fairness.md)
+uses controlled clock, CI and worker boundaries to distinguish queue ordering
+from independently changing readiness. A local Git origin plus a controlled
+Copilot process and production process supervisor verifies the combined
+review/re-review/closure lifecycle. Compiled-entry tests verify real state
+creation, singleton refusal and signal cleanup without remote credentials.
 
 The CLI is operational after configuration loading. Native CI and designated
 live Copilot/GitHub acceptance remain distinct evidence. Detached services or

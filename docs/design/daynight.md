@@ -582,10 +582,15 @@ fixtures 验证克隆、私有 refs、detached head、dirty 内容、所有权�
 其他 PR 工作区保留。Copilot 测试使用受控可执行文件和真实 SQLite，验证会话选择、
 启动意图、stdin 提示词、分流日志、完成标记及异常输出，不调用真实模型或发布 review。
 执行边界见[Copilot 会话执行决策](../../.agents/notes/implemented/architecture/2026-10-17-copilot-session-execution.md)。
-协调器测试使用真实 SQLite、受控观测、局部延迟和失败注入，验证公平调度、并发容量、
-永久边界、预算抑制、取消、清理及恢复；集成案例组合真实本地 Git、Copilot 受控进程和
-生产进程监督模块。编译后 CLI 测试验证实例锁、状态创建、信号退出和资源释放，
-无需真实远程认证。调度器内部失败也会取消仍在等待的轮询，再等待所有已启动操作结束。
+协调器测试使用真实 SQLite、受控观测和失败注入，验证公平调度、并发容量、永久边界、
+预算抑制、取消、清理及恢复。公平调度案例通过注入时钟及显式控制 CI 响应、执行结束
+来建立先后关系：先确认新修订已持久化，再让两个等待 PR 的 CI 就绪，逐次释放 Worker，
+验证两个等待 PR 均先于持续更新 PR 的后续修订，且就绪候选保持 FIFO。时钟在准入比较
+期间固定，机器负载不会使其中一个候选的 CI 证据先过期；详见
+[公平调度验证决策](../../.agents/notes/implemented/testing/2026-10-19-deterministic-coordinator-fairness.md)。
+集成案例组合真实本地 Git、Copilot 受控进程和生产进程监督模块。编译后 CLI 测试验证
+实例锁、状态创建、信号退出和资源释放，无需真实远程认证。调度器内部失败也会取消
+仍在等待的轮询，再等待所有已启动操作结束。
 [协调决策](../../.agents/notes/implemented/architecture/2026-10-17-foreground-review-coordination.md)
 记录这些责任和异常恢复前提。
 macOS 检查挂载临时的大小写敏感和不敏感 APFS 镜像，验证缺失路径的大小写冲突、
