@@ -1,7 +1,7 @@
 # daynight-server 任务管理需求
 
-状态：Go 运行基础、迁移与事务存储、project 接口和验证门槛已实现；task 业务行为
-按任务拆分继续交付。
+状态：Go 运行基础、事务存储、project 接口、task 业务用例和验证门槛已实现；
+task HTTP 接口与完整进程验收按任务拆分继续交付。
 
 本文定义 `daynight-server` 面向本机 CLI 和内部程序的任务管理行为。
 [技术设计](../design/daynight-server.md)拥有分层、存储和并发机制；
@@ -55,8 +55,8 @@ Task 包含以下持久化字段：
 |---|---|
 | `id` | 服务生成的 UUID |
 | `projectId` | 所属 project，创建后不可变 |
-| `title` | 必填的非空标题 |
-| `description` | 文本描述，省略时为空字符串，允许更新为空字符串 |
+| `title` | 必填的非空 UTF-8 标题，不含 NUL |
+| `description` | 不含 NUL 的 UTF-8 描述，省略时为空字符串，允许更新为空字符串 |
 | `status` | `todo / in_progress / done`，创建时为 `todo` |
 | `version` | 从 `1` 开始的正整数，每次实际变更增加一次 |
 | `createdAt`、`updatedAt` | UTC 创建和最后实际变更时间 |
@@ -151,7 +151,7 @@ Cursor 必须绑定列表类型、所属 project 和筛选条件，格式错误�
 单次响应中的 task、依赖和派生字段保持一致；多次翻页不承诺跨请求快照。
 
 错误响应统一包含 `error.code`、`error.message`、`error.requestId`，必要时包含
-`error.details` 中的阻塞 task ID。HTTP 状态与错误分类如下：
+`error.details.taskIds` 中按 ID 排序的阻塞 task ID。HTTP 状态与错误分类如下：
 
 | HTTP 状态 | `error.code` | 场景 |
 |---|---|---|
