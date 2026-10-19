@@ -55,6 +55,15 @@ succeed. The Linux job also enforces package version increases before ordinary
 validation. A PR compares its complete source changes with its merge base and
 its package version with the event's target-branch revision. Main pushes compare
 the full event before/after range. The checkout includes the required history.
+Native tool discovery records each command's resolved executable, launcher,
+timing, status and bounded output in `.tmp/validation-probes.json`. The `gh`
+version child uses isolated project-local configuration/state and disabled
+telemetry. A separate diagnostic artifact uploads after validation even when
+environment discovery fails; mandatory native versions, the 10-second probe
+limit and 600-second platform gate remain unchanged. The
+[probe isolation decision](.agents/notes/implemented/bug-fix/2026-10-19-native-environment-probe-isolation.md)
+records the failure evidence and remaining limits.
+
 macOS tests mount temporary case-sensitive and case-insensitive APFS
 images to check path identity against both filesystem behaviors. No live GitHub
 or Copilot credentials are required by these checks.
