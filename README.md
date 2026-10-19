@@ -6,7 +6,7 @@ service runtime for project and task management.
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented TypeScript CLI with SQLite review state | [Requirements](docs/spec/daynight.md), [design](docs/design/daynight.md) |
-| `daynight-server` | `packages/daynight-server/` | Go/PostgreSQL runtime, storage, project APIs and task use cases implemented; task HTTP routes remain planned | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
+| `daynight-server` | `packages/daynight-server/` | Project/task HTTP APIs, PostgreSQL transactions and coverage gates implemented; complete process acceptance pending | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 
 The `@codetreker/daynight` package provides the `daynight` CLI. It polls configured
 repositories, maintains dedicated local clones and PR worktrees, and launches
@@ -94,8 +94,9 @@ checks require no live model invocation or GitHub publication.
 Use Go 1.27.2, PostgreSQL 18.6 and Node.js 24 LTS. The
 [server module](packages/daynight-server/README.md) owns configuration, startup,
 the isolated database setup and complete validation commands. Its HTTP runtime
-binds only loopback addresses; project creation/list/get routes are available,
-and task routes are tracked in the
+binds only loopback addresses and serves project creation/list/get and task
+create/list/get/update routes. Delivery status and complete process acceptance
+are tracked in the
 [task breakdown](docs/design/daynight-server-tasks.md).
 
 From `packages/daynight-server/`, set `DAYNIGHT_TEST_DATABASE_URL` to an isolated

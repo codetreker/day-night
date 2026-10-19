@@ -1,7 +1,7 @@
 # daynight-server 任务管理需求
 
-状态：Go 运行基础、事务存储、project 接口、task 业务用例和验证门槛已实现；
-task HTTP 接口与完整进程验收按任务拆分继续交付。
+状态：Go 服务、事务存储、project/task 用例与 HTTP 接口、覆盖率门槛已实现；
+完整进程验收按任务拆分继续交付。
 
 本文定义 `daynight-server` 面向本机 CLI 和内部程序的任务管理行为。
 [技术设计](../design/daynight-server.md)拥有分层、存储和并发机制；

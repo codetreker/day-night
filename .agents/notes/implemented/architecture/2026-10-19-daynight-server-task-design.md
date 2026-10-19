@@ -24,7 +24,10 @@ migrations, scoped writes and snapshot reads. The
 [project API](../feature/2026-10-19-project-management-api.md) implements repository
 registration and project queries. The
 [task policy](../feature/2026-10-19-task-dependency-policy.md) implements dependency,
-state and versioned use cases; task HTTP routes remain unimplemented. The
+state and versioned use cases. The
+[task HTTP boundary](../feature/2026-10-19-task-management-http.md) exposes these
+operations with strict request semantics; complete process acceptance remains
+tracked separately. The
 [task breakdown](../../../../docs/design/daynight-server-tasks.md) owns their
 implementation scope, dependencies, status and acceptance criteria.
 

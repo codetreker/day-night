@@ -1,7 +1,7 @@
 # Daynight Server 架构设计
 
-状态：Go 运行基础、事务存储、project 接口、task 用例和验证门槛已实现；
-task HTTP 接口与完整进程验收按任务拆分继续交付。
+状态：Go 服务、事务存储、project/task 用例与 HTTP 接口、覆盖率门槛已实现；
+完整进程验收按任务拆分继续交付。
 
 `daynight-server` 是独立的 Go 服务，为本机 CLI 和内部程序提供 project、task
 及任务依赖管理。行为要求由[需求文档](../spec/daynight-server.md)拥有；架构选择及
@@ -236,7 +236,9 @@ service 在 snapshot callback 内保留缺失结果但返回成功，待只读�
 
 采用标准库 `slog` 结构化日志，每个请求生成或校验 `requestId`。涉及已解析资源时
 记录 `projectId`、`taskId`，同时记录组件、阶段、错误类型和经脱敏的 cause。
-脱敏必须覆盖数据库连接信息、请求体及仓库地址中的认证材料；不直接记录原始
+已知业务拒绝使用同名 `error_code` 和 cause，例如 `dependency_unsatisfied`；取消、
+数据库和网络失败分类优先，不能被错误链中的业务标记掩盖。脱敏必须覆盖数据库连接
+信息、请求体及仓库地址中的认证材料；不直接记录原始
 driver 错误或完整请求体。成功日志提供方法、路由模板、状态和耗时。
 
 诊断服务失败时，先以响应 `requestId` 定位日志，再沿组件和阶段定位失败；数据库
