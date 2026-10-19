@@ -1,0 +1,184 @@
+# daynight-server 任务管理需求
+
+状态：设计已确认，服务尚未实现。
+
+本文定义 `daynight-server` 面向本机 CLI 和内部程序的任务管理行为。
+[技术设计](../design/daynight-server.md)拥有分层、存储和并发机制；
+[设计决策](../../.agents/notes/implemented/architecture/2026-10-19-daynight-server-task-design.md)
+记录取舍和范围。[任务拆分](../design/daynight-server-tasks.md)记录实现任务、依赖、
+状态与验收条件。
+
+## 目标与交付范围
+
+| 编号 | 要求 |
+|---|---|
+| R1 | 使用 Go 实现独立的 `daynight-server`，使用 PostgreSQL 持久化业务数据 |
+| R2 | 支持创建、列表查询和读取关联一个 repo 地址的 project |
+| R3 | 在 project 内支持创建、列表查询、读取和更新 task |
+| R4 | task 支持同 project 内的依赖关系，任何成功提交都必须保持无环 |
+| R5 | task 状态为 `todo`、`in_progress`、`done`，前置未完成时禁止开始或完成 |
+| R6 | task 更新必须支持版本冲突检测，字段和依赖必须原子提交 |
+| R7 | 通过 HTTP JSON API 提供上述行为，错误和分页具有明确语义 |
+| R8 | 采用 `api / service / server / core` 分层，store 位于 `core` 内 |
+| R9 | 使用真实 PostgreSQL 验证存储与并发行为，通过 `go-cov` 执行覆盖率门禁 |
+| R10 | 服务启动、关闭、请求取消和失败必须可观测，持久化失败不得伪装成成功或空列表 |
+
+服务与现有 TypeScript PR review CLI 分别管理各自的数据和生命周期。创建 project
+只登记 repo 地址，不触发 clone、GitHub 请求、review 启动或 CLI 配置修改。
+现有 CLI 的 [需求](daynight.md)继续由其自身文档定义。
+
+## Project
+
+Project 包含以下字段：
+
+| 字段 | 语义 |
+|---|---|
+| `id` | 服务生成的 UUID，不随名称或 repo 改变 |
+| `name` | 必填的非空名称 |
+| `repoUrl` | 必填的远程 Git repo 地址 |
+| `createdAt`、`updatedAt` | UTC 时间，HTTP 使用 RFC 3339 格式 |
+
+一个 project 关联一个 repo，多个 project 可以关联同一 repo。支持 HTTPS URL、
+SSH URL 和 SCP 风格 SSH 地址，地址必须包含主机和仓库路径；地址登记不验证实际访问权限。
+HTTPS 地址不得包含凭据，SSH 地址允许用户名，但不得包含密码；查询参数和 fragment
+不属于仓库地址。无效地址作为输入错误拒绝，地址中 SSH 用户名不作为业务身份。
+
+当前接口只提供创建、列表查询和单项读取；创建后 `repoUrl` 不可通过 task 更新改变。
+
+## Task 与依赖
+
+Task 包含以下持久化字段：
+
+| 字段 | 语义 |
+|---|---|
+| `id` | 服务生成的 UUID |
+| `projectId` | 所属 project，创建后不可变 |
+| `title` | 必填的非空标题 |
+| `description` | 文本描述，省略时为空字符串，允许更新为空字符串 |
+| `status` | `todo / in_progress / done`，创建时为 `todo` |
+| `version` | 从 `1` 开始的正整数，每次实际变更增加一次 |
+| `createdAt`、`updatedAt` | UTC 创建和最后实际变更时间 |
+
+Task 响应还包含 `dependsOn`、`blockedBy` 和 `ready`：
+
+- `dependsOn` 是全部直接前置 task ID，按 ID 升序返回。
+- `blockedBy` 是其中尚未处于 `done` 的 task ID，按 ID 升序返回。
+- `ready` 当且仅当本 task 为 `todo` 且 `blockedBy` 为空时为 `true`。
+
+这些派生字段来自读取时的一致状态；依赖任务变化不会自动修改本 task 的 `status`、
+`version` 或 `updatedAt`。`ready` 描述可开始条件，不代表已领取或已调度。
+
+依赖 `B dependsOn A` 表示 B 开始或完成前 A 必须完成。以下输入必须拒绝：
+
+1. 依赖自身、重复的依赖 ID、不存在的依赖。
+2. 指向其他 project 的依赖。
+3. 直接或间接形成环的依赖，包括并发请求分别创建反向边的情形。
+
+## 状态与更新规则
+
+`in_progress` 和 `done` 的 task 必须始终满足全部直接前置处于 `done`。
+任何更新都对更新后的完整 task 和依赖集合进行校验，包括标题或描述更新。
+
+| 操作 | 允许条件 |
+|---|---|
+| `todo → in_progress` 或 `todo → done` | 所有前置已完成 |
+| `in_progress → done` | 所有前置已完成 |
+| `in_progress → todo` | 允许；仍按完整候选状态校验 |
+| `done → todo / in_progress` | 所有直接下游均为 `todo`；目标为 `in_progress` 时前置仍须全部完成 |
+| 修改 `in_progress / done` task 的依赖 | 修改后的全部前置已完成 |
+| 保持当前状态并修改字段 | 满足完整依赖与状态约束 |
+
+拒绝操作必须返回可辨识的错误及相关阻塞 task ID，原有字段、依赖、版本和时间戳均保留。
+重开前置与开始下游的并发请求也必须遵守同一规则。
+
+创建 task 可携带 `title`、`description`、`dependsOn`；`description` 省略时为空，
+`dependsOn` 省略时为空集合。新 task 总是 `todo`，`status` 不属于创建输入。
+
+PATCH 可修改 `title`、`description`、`status`、`dependsOn`，并且必须提供读取到的
+`version`。省略字段表示保留，`null` 为无效输入，`dependsOn: []` 表示清空依赖。
+至少提供一个可修改字段；ID、所属 project 和时间戳不可写入。
+未知字段、未知状态和无效字段类型必须拒绝。
+
+版本在事务内比较；过期版本返回冲突，即使请求期望的字段与当前值相同。
+语义无变化且版本匹配的请求返回当前资源，保持版本和 `updatedAt`；
+依赖数组顺序不构成变化。实际更新字段或依赖集合时，版本只增加一次。
+
+## HTTP API
+
+| 方法 | 路径 | 结果 |
+|---|---|---|
+| `POST` | `/api/v1/projects` | 创建 project，返回 `201` 和资源 |
+| `GET` | `/api/v1/projects` | 返回 project 分页列表 |
+| `GET` | `/api/v1/projects/{projectId}` | 返回 project，缺失时 `404` |
+| `POST` | `/api/v1/projects/{projectId}/tasks` | 创建 task，返回 `201` 和资源 |
+| `GET` | `/api/v1/projects/{projectId}/tasks` | 返回 task 分页列表 |
+| `GET` | `/api/v1/projects/{projectId}/tasks/{taskId}` | 返回 task，缺失或不属于该 project 时 `404` |
+| `PATCH` | `/api/v1/projects/{projectId}/tasks/{taskId}` | 原子更新 task，返回 `200` 和资源 |
+
+所有成功读取返回 `200`。Project 不存在时，其 task 子路径必须返回 `404`，
+不能将空 task 列表作为不存在 project 的结果。
+
+Task 创建示例：
+
+```json
+{
+  "title": "Implement task API",
+  "description": "Expose project-scoped task endpoints.",
+  "dependsOn": ["b4163ef9-93b0-4e79-b56f-4cd88f41e61a"]
+}
+```
+
+Task 更新示例：
+
+```json
+{
+  "version": 3,
+  "status": "in_progress"
+}
+```
+
+列表使用 `limit`、`cursor`。`limit` 默认 `50`，允许 `1..100`；按
+`createdAt ASC, id ASC` 稳定排序，返回 `items` 和 `nextCursor`，末页后者为 `null`。
+Task 列表额外支持单个 `status` 和布尔 `ready` 筛选，筛选按 AND 组合。
+Cursor 必须绑定列表类型、所属 project 和筛选条件，格式错误或条件不匹配返回输入错误。
+单次响应中的 task、依赖和派生字段保持一致；多次翻页不承诺跨请求快照。
+
+错误响应统一包含 `error.code`、`error.message`、`error.requestId`，必要时包含
+`error.details` 中的阻塞 task ID。HTTP 状态与错误分类如下：
+
+| HTTP 状态 | `error.code` | 场景 |
+|---|---|---|
+| `400` | `invalid_input` | 格式、字段、分页参数、依赖引用、自身或重复依赖不合法 |
+| `404` | `not_found` | 路径资源缺失或 task 不属于指定 project |
+| `409` | `version_conflict` | PATCH 版本过期 |
+| `409` | `dependency_cycle` | 候选依赖图成环 |
+| `409` | `dependency_unsatisfied` | 前置状态或下游状态阻止操作 |
+| `500` | `internal_error` | 内部或持久化操作失败，响应不泄露数据库连接信息或 SQL |
+
+## 运行与范围
+
+支持的运行边界是本机调用，默认监听 `127.0.0.1`；不提供未认证的远程监听。
+跨机器访问的认证和部署是单独的功能，不能仅通过扩大监听范围绕过。
+服务使用 PostgreSQL 作为业务状态的唯一持久化来源，启动失败必须非零退出。
+关闭时停止接收新请求，在有界期限内排空请求，再关闭数据库连接。
+
+任务管理不包含自动任务执行、PR 关联、review 调度、UI、跨 project 依赖或删除接口。
+后续扩展必须保留现有 task 身份、状态约束、事务原子性和错误语义。
+
+## 验收要求
+
+| 编号 | 必须提供的证据 |
+|---|---|
+| V1 | Project 和 task 的 HTTP 创建、列表、读取、更新可跨服务重启持久化 |
+| V2 | 无效引用、跨 project、自身、重复和间接环被拒绝且无部分写入 |
+| V3 | 同 project 并发反向依赖最多一个成功，不同 project 的写入可独立推进 |
+| V4 | 前置完成、下游开始、前置重开及修改依赖的顺序与并发测试保持状态约束 |
+| V5 | 并发相同版本更新最多一个实际变更成功；过期版本冲突；无变化更新保持版本 |
+| V6 | 分页、筛选、派生字段和错误映射与本文一致，空列表不掩盖读取失败 |
+| V7 | 真实 PostgreSQL 测试覆盖事务回滚、迁移失败、并发写入和一致读取；取消和关闭有明确结果 |
+| V8 | `go vet`、race 测试和 `go-cov --ci` 通过；覆盖率总计至少 90%、每包至少 85%、每函数至少 80%，保留关键代码块检查 |
+| V9 | 覆盖率不足或 PostgreSQL 不可用使必需检查失败；执行 Go 检查的汇总门禁仍要求原有 CLI 检查通过 |
+| V10 | 请求日志可按 request ID 关联业务和存储失败，记录错误类别、组件和阶段，敏感值不进入日志 |
+
+覆盖率是验证门禁，不能替代 V2–V7 的行为证据。测试归属及工具版本固定规则由
+[设计](../design/daynight-server.md)定义。
