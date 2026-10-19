@@ -23,10 +23,14 @@ take precedence.
 ## Repository and document ownership
 
 The [README](README.md) owns repository status, documentation conventions, and
-available validation commands. Application code belongs in `packages/daynight/`.
-Use Node.js 24 LTS and pnpm 10.34.5; run `pnpm typecheck`, `pnpm test`, and
-`pnpm build` as applicable. The current CLI/configuration foundation does not yet
-run the review coordinator. Add tooling only within an authorized task.
+available validation commands. The review CLI belongs in `packages/daynight/`;
+the independent Go service belongs in `packages/daynight-server/`. Use Node.js
+24 LTS and pnpm 10.34.5 for the CLI; run `pnpm typecheck`, `pnpm test`, and
+`pnpm build` as applicable. The server uses Go 1.27.2 and PostgreSQL 18.6. From
+its module, run `bash scripts/check.sh` with `DAYNIGHT_TEST_DATABASE_URL` set to
+an isolated PostgreSQL database. Its required gate includes build, vet, race,
+go-cov and unrounded total statement coverage strictly greater than 90%. Add
+tooling only within an authorized task.
 
 | Location | Owner |
 |---|---|

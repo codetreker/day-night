@@ -1,12 +1,12 @@
 # Day Night
 
-Day Night contains a foreground GitHub PR review CLI and an accepted design for
-an independent project and task-management service.
+Day Night contains a foreground GitHub PR review CLI and an independent Go
+service runtime for project and task management.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented TypeScript CLI with SQLite review state | [Requirements](docs/spec/daynight.md), [design](docs/design/daynight.md) |
-| `daynight-server` | Planned `packages/daynight-server/` | Accepted Go/PostgreSQL design; service and Go validation tooling are not implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
+| `daynight-server` | `packages/daynight-server/` | Go/PostgreSQL runtime and coverage gates implemented; project/task APIs remain planned | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 
 The `@codetreker/daynight` package provides the `daynight` CLI. It polls configured
 repositories, maintains dedicated local clones and PR worktrees, and launches
@@ -24,9 +24,9 @@ Its data and runtime are independent of the review CLI. The
 records the adopted scope and concurrency choices. The
 [server task breakdown](docs/design/daynight-server-tasks.md) owns implementation
 scope, dependencies, status and acceptance criteria. The development and runtime
-commands below apply to the implemented CLI.
+CLI commands below apply to the reviewer; server commands have their own module.
 
-## Development
+## CLI development
 
 Use Node.js 24 LTS and pnpm 10.34.5 for development. Runtime review also requires
 Git, authenticated GitHub CLI and Copilot CLI on PATH. From the repository root:
@@ -79,6 +79,29 @@ receipts are uploaded by each native CI job; the
 receipts from live-service evidence. Controlled Copilot executables exercise retained sessions, durable
 launch intent, stdin prompts and streamed completion/failure handling. These
 checks require no live model invocation or GitHub publication.
+
+## Server development
+
+Use Go 1.27.2, PostgreSQL 18.6 and Node.js 24 LTS. The
+[server module](packages/daynight-server/README.md) owns configuration, startup,
+the isolated database setup and complete validation commands. Its HTTP runtime
+binds only loopback addresses; project/task routes are tracked in the
+[task breakdown](docs/design/daynight-server-tasks.md).
+
+From `packages/daynight-server/`, set `DAYNIGHT_TEST_DATABASE_URL` to an isolated
+PostgreSQL database, then run:
+
+```bash
+bash scripts/check.sh
+```
+
+This builds the binary, runs vet and race-enabled `go-cov`, and enforces total
+statement coverage strictly greater than 90%, package coverage of at least 85%,
+and function coverage of at least 80%, with critical-block checks enabled. The
+same raw coverage profile supplies an exact strict comparison; exactly 90%
+fails, independently of display rounding. No product files or functions are
+excluded. The CI aggregate requires both this Go job and every existing native
+CLI job to pass. PostgreSQL absence is a failure, not a skipped test.
 
 ## Package versions
 

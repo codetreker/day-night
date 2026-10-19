@@ -1,0 +1,23 @@
+project = "daynight-server"
+
+[thresholds]
+total = 90
+package = 85
+function = 80
+print = 90
+
+[test]
+race = true
+timeout = "10m"
+
+[exclude]
+packages = []
+files = []
+funcs = []
+func_suffixes = []
+
+[html]
+enabled = false
+
+[critical_blocks]
+fail = true

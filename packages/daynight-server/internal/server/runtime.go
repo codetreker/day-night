@@ -1,0 +1,95 @@
+package server
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net"
+	"net/http"
+	"time"
+
+	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
+)
+
+type Runtime struct {
+	Store *store.Store
+
+	listener        net.Listener
+	http            *http.Server
+	logger          *slog.Logger
+	shutdownTimeout time.Duration
+	cancelRequests  context.CancelFunc
+}
+
+type runtimeError struct {
+	phase string
+	cause error
+}
+
+func (e *runtimeError) Error() string { return fmt.Sprintf("HTTP %s failed", e.phase) }
+func (e *runtimeError) Unwrap() error { return e.cause }
+
+func Start(ctx context.Context, config Config, logger *slog.Logger, handler func(*store.Store) http.Handler) (*Runtime, error) {
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
+	startup, cancel := context.WithTimeout(ctx, config.StartupTimeout)
+	defer cancel()
+	database, err := store.Open(startup, config.DatabaseURL)
+	if err != nil {
+		return nil, err
+	}
+	listener, err := (&net.ListenConfig{}).Listen(startup, "tcp", config.ListenAddress)
+	if err != nil {
+		database.Close()
+		return nil, &runtimeError{phase: "listen", cause: err}
+	}
+	requests, cancelRequests := context.WithCancel(context.Background())
+	runtime := &Runtime{
+		Store: database, listener: listener, logger: logger, shutdownTimeout: config.ShutdownTimeout,
+		cancelRequests: cancelRequests,
+		http: &http.Server{
+			Handler:           RequestLogging(logger, handler(database)),
+			ReadHeaderTimeout: 5 * time.Second,
+			IdleTimeout:       60 * time.Second,
+			BaseContext:       func(net.Listener) context.Context { return requests },
+		},
+	}
+	return runtime, nil
+}
+
+func (r *Runtime) Address() string { return r.listener.Addr().String() }
+
+func (r *Runtime) Run(ctx context.Context) error {
+	defer r.Store.Close()
+	defer r.cancelRequests()
+	result := make(chan error, 1)
+	go func() { result <- r.http.Serve(r.listener) }()
+	r.logger.InfoContext(ctx, "server started", "type", "lifecycle", "component", "server", "phase", "listening", "address", r.Address())
+	var serveError error
+	serveFinished := false
+	select {
+	case serveError = <-result:
+		serveFinished = true
+	case <-ctx.Done():
+	}
+	shutdown, cancel := context.WithTimeout(context.Background(), r.shutdownTimeout)
+	defer cancel()
+	err := r.http.Shutdown(shutdown)
+	if err != nil {
+		r.cancelRequests()
+		err = errors.Join(err, r.http.Close())
+	}
+	if !serveFinished {
+		serveError = <-result
+	}
+	if !errors.Is(serveError, http.ErrServerClosed) {
+		err = errors.Join(err, serveError)
+	}
+	if err != nil {
+		return &runtimeError{phase: "shutdown", cause: err}
+	}
+	r.logger.InfoContext(ctx, "server stopped", "type", "lifecycle", "component", "server", "phase", "stopped")
+	return nil
+}

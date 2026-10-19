@@ -15,8 +15,11 @@ task database would conflate independent lifecycles.
 The adopted [requirements](../../../../docs/spec/daynight-server.md) and
 [design](../../../../docs/design/daynight-server.md) define an independent Go
 service backed by PostgreSQL, located at `packages/daynight-server/`. This note
-records the delivered design baseline. The executable, schema, HTTP endpoints
-and Go validation tooling are not implemented yet. The
+records the delivered design baseline. The executable, schema and HTTP endpoints
+are delivered incrementally. The
+[runtime foundation](2026-10-19-server-runtime-foundation.md) implements startup,
+HTTP lifecycle and strict coverage gates; project/task APIs and migrations remain
+unimplemented. The
 [task breakdown](../../../../docs/design/daynight-server-tasks.md) owns their
 implementation scope, dependencies, status and acceptance criteria.
 
@@ -40,8 +43,11 @@ add client conflict detection without replacing cross-task exclusion.
 
 Real PostgreSQL tests provide evidence for transaction, migration, cancellation
 and concurrent graph/state behavior. Race-enabled `go-cov --ci` gates total,
-package and function coverage at 90%, 85% and 80%, respectively, with critical
-block checks retained. The design pins a tool revision containing the exclusion
+package and function coverage at strictly greater than 90%, at least 85% and at
+least 80%, respectively, with critical block checks retained. The overall gate
+uses statement counts from the same raw coverage profile so equality and rounded
+display values cannot weaken the requirement. The runtime foundation records
+this stricter replacement of the original inclusive total threshold. The design pins a tool revision containing the exclusion
 denominator fix and keeps tests with the packages whose coverage they must prove.
 The CI aggregate gate must require both the Go service checks and the existing
 native CLI checks.
