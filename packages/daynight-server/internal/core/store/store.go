@@ -29,6 +29,10 @@ func Open(ctx context.Context, databaseURL string) (*Store, error) {
 		pool.Close()
 		return nil, &Error{Phase: "connect", Cause: err}
 	}
+	if err := migrate(ctx, pool, schemaMigrations); err != nil {
+		pool.Close()
+		return nil, &Error{Phase: "migrate", Cause: err}
+	}
 	return &Store{Pool: pool}, nil
 }
 

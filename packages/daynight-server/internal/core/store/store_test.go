@@ -7,6 +7,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func databaseURL(t *testing.T) string {
@@ -21,8 +24,9 @@ func databaseURL(t *testing.T) string {
 func TestOpenAndReuse(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	url := scopedDatabaseURL(t)
 	for range 2 {
-		database, err := Open(ctx, databaseURL(t))
+		database, err := Open(ctx, url)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -54,18 +58,35 @@ func TestOpenFailuresPreserveCauseAndRedact(t *testing.T) {
 }
 
 func TestQueryCancellationReleasesConnection(t *testing.T) {
-	database, err := Open(context.Background(), databaseURL(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
+	database := isolatedStore(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
-	_, err = database.Pool.Exec(ctx, "select pg_sleep(10)")
+	_, err := database.Pool.Exec(ctx, "select pg_sleep(10)")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected deadline: %v", err)
 	}
 	if err := database.Pool.Ping(context.Background()); err != nil {
 		t.Fatalf("pool unusable after cancellation: %v", err)
+	}
+}
+
+func TestOpenMigrationFailurePreservesCauseAndRedacts(t *testing.T) {
+	url := scopedDatabaseURL(t)
+	pool, err := pgxpool.New(context.Background(), url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if _, err := pool.Exec(context.Background(), "CREATE TABLE schema_migrations (version bigint)"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Open(context.Background(), url)
+	var failure *Error
+	var postgres *pgconn.PgError
+	if !errors.As(err, &failure) || failure.Phase != "migrate" || !errors.As(err, &postgres) {
+		t.Fatalf("migration failure chain: %v", err)
+	}
+	if strings.Contains(err.Error(), "schema_migrations") || strings.Contains(err.Error(), "daynight-test") {
+		t.Fatalf("migration diagnostic contains database details: %v", err)
 	}
 }

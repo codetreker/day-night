@@ -3,7 +3,8 @@
 The Go service owns PostgreSQL-backed project and task management. Its runtime
 foundation is implemented: explicit database configuration, loopback-only HTTP
 binding, connection validation, structured request logs, cancellation, and bounded
-HTTP shutdown. Project/task APIs and database migrations follow the
+HTTP shutdown. Versioned migrations and transactional storage are implemented;
+project/task APIs follow the
 [implementation tasks](../../docs/design/daynight-server-tasks.md); the current
 executable returns HTTP 404 for application routes.
 
@@ -18,15 +19,17 @@ service's database or lifecycle.
 |---|---|
 | `cmd/daynight-server/` | Environment, process signals, dependency assembly, exit status |
 | `internal/server/` | HTTP lifecycle, request context, request IDs, structured logs |
-| `internal/core/store/` | Concrete PostgreSQL pool and database error causes |
+| `internal/core/store/` | PostgreSQL migrations, transactions, scoped writes and consistent reads |
 | `api/` | HTTP request/response contracts, introduced with API operations |
 | `internal/service/` | Business use cases, introduced with project/task operations |
-| `internal/core/` | Domain models, introduced with their use cases |
+| `internal/core/` | Shared project/task models and resource-not-found marker |
 
 HTTP startup creates and verifies one concrete store. The handler factory receives
 that store before the listener accepts requests, allowing the composition root to
 assemble services without opening another pool. The runtime owns HTTP shutdown
-and pool closure. No database schema or migration is created by this foundation.
+and pool closure. Startup applies the embedded migrations before accepting requests.
+One pinned connection holds a session advisory lock across version checks and all
+migration transactions; unknown versions, gaps and checksum mismatches stop startup.
 
 ## Build and run
 
@@ -92,7 +95,8 @@ bash scripts/check.sh
 docker rm --force daynight-server-tests
 ```
 
-The check builds the executable, runs `go vet`, and executes race-enabled package
+The check builds the executable, runs `go vet`, expires project-local Go test
+results so database changes cannot be hidden by cached coverage, and executes race-enabled package
 tests through `go-cov` pinned to commit
 `d6caf2759e330b48d69a543695e37002a48feb1d`. The checked-in `.go-cov.toml`
 requires at least 85% coverage per package and 80% per function, with critical
@@ -106,3 +110,27 @@ temporary outputs under this module's `.tmp/`. Both local validation and CI use
 `scripts/check.sh` and the same coverage configuration. The tests cover real
 database connection/query cancellation, HTTP cancellation, graceful and forced
 drain, listener/pool reuse, process configuration/exit status, and log redaction.
+
+## Storage boundaries
+
+`Store.WriteProject` locks one project in a `READ COMMITTED` transaction before
+calling the supplied operation. The operation receives a project-scoped
+`ProjectTx`; its subsequent reads observe commits made while it waited for the
+lock. Returning an error rolls back fields, dependencies, version and timestamps
+together. Only expose a captured resource after the outer call succeeds.
+
+`Store.ReadSnapshot` uses read-only `REPEATABLE READ` for project/task queries and
+derived readiness. Pages use a validated limit and optional `(createdAt, id)`
+position; status/readiness filters run before keyset pagination. Page lookahead
+is returned as `HasMore`; HTTP cursor encoding belongs to the API layer.
+
+The shared `core.Project` and `core.Task` models have one representation across
+storage and service. Store queries report prerequisite/dependent records and
+candidate reachability. The service owns reference validation, DAG/state rules,
+optimistic version comparison and semantic no-ops. There are no foreign keys or
+delete operations. Direct database writers must not bypass these service rules.
+
+Store tests use unique owned schemas and real PostgreSQL sessions. They prove
+multi-migration exclusion, rollback after partial writes, snapshot consistency,
+project-lock serialization, independent projects and cancellation. Rollback and
+advisory unlock use independent bounded contexts and preserve original causes.

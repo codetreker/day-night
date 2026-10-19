@@ -15,6 +15,9 @@ unset COVERPROFILE MODULE_PREFIX PROJECT_NAME HTML_OUT THRESHOLD_FUNC \
 node --test scripts/coverage.test.mts
 go build -o .tmp/daynight-server ./cmd/daynight-server
 go vet ./...
+# Database state is outside Go's test-result cache key.
+# https://github.com/golang/go/blob/go1.27.2/src/cmd/go/internal/test/test.go#L1867-L1869
+go clean -testcache
 go run github.com/codetreker/go-cov/cmd/go-cov@d6caf2759e330b48d69a543695e37002a48feb1d \
   --config .go-cov.toml --ci --coverprofile .tmp/coverage.out
 node scripts/coverage.mts .tmp/coverage.out
