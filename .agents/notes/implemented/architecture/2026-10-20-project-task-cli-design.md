@@ -14,9 +14,9 @@ servers or a changed repository origin.
 
 The adopted [requirements](../../../../docs/spec/daynight-project-task.md) and
 [design](../../../../docs/design/daynight-project-task.md) define independent
-`project` and `task` command modules in the existing client package. This record
-records the adopted design. Shared configuration and the bounded HTTP foundation
-are implemented; repository bindings and command entry points remain pending. The
+`project` and `task` command modules in the existing client package. The design
+is adopted. Shared configuration, bounded HTTP and repository bindings are
+implemented; command entry points remain pending. The
 [task breakdown](../../../../docs/design/daynight-project-task-tasks.md) owns
 implementation status, dependencies, file ownership and completion evidence.
 
@@ -37,7 +37,12 @@ The selected project is saved in ignored `.daynight/project.yml` at the current
 worktree root, together with server origin and repository identity. A validated
 existing binding remains selected if another project later shares the repo.
 Server or repository changes require discovery again. Local persistence and the
-root ignore rule must succeed before a task mutation.
+root ignore rule must succeed before a task mutation. Metadata uses an exclusive
+PID/token lock and verifies its owned file before release. Existing locks fail
+without waiting; stale files require manual removal only after confirming that
+the writer has stopped. A PID check followed by unlink is not an atomic
+compare-delete operation, so it cannot safely reclaim a replaced lock. Shared
+atomic file replacement serves configuration, ignore and metadata writes.
 
 One client normalization function processes both Git origin and server URLs.
 Conventional HTTPS, default-user Git SSH and SCP addresses share a hosted repo
@@ -82,13 +87,20 @@ for a client capability already supported by complete project pagination. The
 client owns one comparison function and preserves explicit ambiguity handling;
 a future server lookup must retain those equality and duplicate semantics.
 
+**Automatically reclaim metadata locks using PID or age checks.** A read/check
+followed by unlink can delete a new writer's replacement lock. A separate
+reclamation guard would itself need manual crash recovery. Retaining existing
+locks matches the configuration writer's fail-fast model and keeps ownership
+errors explicit without loading SQLite or the review runtime.
+
 ## Consequences
 
 The confirmed design is documented separately from shipped CLI behavior. Current
 commands provide review, update and shell completion; project/task entry points
-and their acceptance remain pending. The common configuration and HTTP modules
-are available for the remaining implementation tasks. Future implementation
-updates the status owners and the package version under existing release rules.
+and their acceptance remain pending. The common configuration, HTTP and
+repository modules are available for the remaining command and acceptance tasks.
+Future implementation updates the status owners and the package version under
+existing release rules.
 
 Ordinary commands can infer a repository's project after one complete discovery
 and then validate it by ID. The cache remains disposable and scoped to server,

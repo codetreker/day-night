@@ -7,14 +7,16 @@ This report owns validation scope, evidence interpretation and observed results.
 
 ## Validation command
 
-From `packages/daynight-server/`, configure an isolated PostgreSQL instance and
-run:
+Use Node 24 and pnpm 10.34.5 to run `pnpm install --frozen-lockfile` from the
+repository root. From `packages/daynight-server/`, configure an isolated
+PostgreSQL instance and run:
 
 ```bash
 DAYNIGHT_TEST_DATABASE_URL='postgres://daynight:password@127.0.0.1:PORT/daynight?sslmode=disable' bash scripts/check.sh
 ```
 
-The command builds the normal executable, runs vet, expires Go test results,
+The command runs the shared `pnpm web:build` to validate and publish real embed
+assets, builds the normal executable, runs vet, expires Go test results,
 and runs race-enabled package tests through fixed go-cov. It checks package
 coverage at least 85%, function coverage at least 80%, critical blocks, and total
 statement coverage strictly greater than 90%. The last gate reads the same raw
@@ -66,6 +68,34 @@ query cancellation, operational/transaction-completion precedence, and HTTP
 DTO/query/method/cache/logging behavior. The browser application and new
 built-process graph workflow are separate dashboard tasks; existing process
 scenarios do not claim to exercise the new graph route.
+
+### Embedded dashboard extension
+
+The W-T5 full command passed with 307 Go tests (108 top-level), nine strict
+coverage-checker tests and raw 1153/1155 statement coverage (about 99.83%). The
+webui, store, service and server packages are at 100%; the executable remains
+88.2%. No product exclusions were added. The existing 12 process groups still
+started/reaped 19 children, removed 12 schemas and confirmed no owned sessions.
+The local receipt records the dirty development worktree; it is not clean hosted
+source evidence.
+
+Owning HTTP tests cover actual embedded index/assets, exact root and project
+routes, HEAD, MIME, no-store/immutable cache headers, asset directories/missing
+files/traversal, API JSON 404, method handling and one logging wrapper. Failure
+paths preserve error chains and do not write a second body after a response-writer
+failure. Latest task-detail reads use no-store. Filesystem publication tests
+exercise invalid outputs and replacement/rollback behavior before Go compilation.
+
+The shared Dockerfile built the complete UI/server image without host generated
+assets. Through the isolated dev-ci gateway, actual HTTP checks passed page,
+asset/cache/HEAD, deep-link and API/graph requests, verified the running image ID
+and retained project/task data after whole-stack recreation. Owned resources
+were removed. Concurrent real runs proved distinct ports, volumes and datasets;
+removing one left the other usable and final cleanup succeeded. These HTTP and
+orchestration observations do not claim the full W-T6 production-browser workflow
+or boundary-size performance gate. The
+[web evidence report](daynight-web-acceptance.md) owns the deployment proof's
+scope and remaining requirements.
 
 ## Requirement evidence
 
@@ -119,7 +149,8 @@ partial receipt does not prove acceptance.
 
 The process/signal suite runs in the Ubuntu Go job. Existing Linux, macOS and
 Windows CLI jobs keep their complete workload and acceptance artifacts; the
-aggregate needs all native platforms and the Go job. The
+aggregate needs all native platforms, the dedicated Linux shell completion job,
+the Go job and the web job. The
 [native probe decision](../../.agents/notes/implemented/bug-fix/2026-10-20-gh-cold-start-preparation.md)
 records the separate gh cold-start evidence, selected-file preparation and shared
 10-second deadline. Native versions and complete CLI validation remain required.
@@ -127,8 +158,10 @@ records the separate gh cold-start evidence, selected-file preparation and share
 ## Limits and follow-up
 
 This evidence covers task-management HTTP behavior, PostgreSQL and foreground
-process ownership. Authenticated remote deployment, UI, task execution and PR
-integration remain outside the confirmed service contract. The task document
+process ownership. Authenticated remote deployment, task execution and PR
+integration remain outside the confirmed service contract. The embedded read-only
+UI is implemented; full production-browser and capacity acceptance remains W-T6
+in the separate dashboard task document. The task document
 tracks two nonblocking test-fixture improvements: earlier setup cleanup
 registration and a stronger graceful-signal observation barrier. Neither changes
 the implemented business behavior or the current successful gate's evidence.

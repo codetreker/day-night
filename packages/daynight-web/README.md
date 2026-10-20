@@ -3,16 +3,17 @@
 The private React/TypeScript workspace implements project browsing, cursor
 pagination, request cancellation, runtime API decoding, native browser routing
 and a pure dependency graph model with horizontal layout.
-The project dashboard, task canvas and detail drawer are implemented; embedded
-deployment and complete production acceptance remain tracked in the
-[implementation tasks](../../docs/design/daynight-web-tasks.md). The existing Go
-service still serves JSON APIs; a successful frontend build does not install a
-page into the localhost deployment yet.
+The project dashboard, task canvas and detail drawer are embedded into the Go
+server for single-origin delivery. The [localhost deployment](../../deployment/localhost/README.md)
+starts the full UI/API/database stack; [dev-ci](../../deployment/dev-ci/README.md)
+provides an isolated instance of the same production build. Complete production
+browser and performance acceptance remains tracked in the
+[implementation tasks](../../docs/design/daynight-web-tasks.md).
 
 The [requirements](../../docs/spec/daynight-web.md) own visible behavior and the
 [architecture](../../docs/design/daynight-web.md) owns graph projection, request
-lifecycles and delivery. The offline mockup illustrates the complete planned
-workflow and is separate from this application.
+lifecycles and delivery. The offline mockup illustrates the intended
+workflow with fixture data and is separate from this application.
 
 ## Development
 
@@ -56,11 +57,18 @@ pnpm web:test
 ```
 
 The build typechecks the package and emits production HTML and hashed assets to
-`packages/daynight-web/dist/`. Embedding those assets into the Go binary belongs
-to W-T5. The existing root `build`, `test` and `acceptance` commands retain their
-CLI scope.
+`packages/daynight-web/dist/`. `scripts/publish-assets.mts` validates the index,
+its local asset references and ordinary files, prepares a complete staged copy,
+and replaces `packages/daynight-server/internal/webui/dist/`. Failed validation
+or publication fails the build; a failed swap attempts to restore previous assets
+and reports both causes if rollback also fails.
+The Go binary embeds the published output. Both generated directories are ignored
+by Git, and clean server builds require this explicit build first. The Go
+`scripts/check.sh` invokes the same command before build/vet/race/go-cov.
+The existing root `build`, `test` and `acceptance` commands retain their CLI scope.
 
-`web:test` runs the coverage checker tests, the full Vitest suite with V8 coverage,
+`web:test` runs the coverage checker and asset publication filesystem tests,
+the full Vitest suite with V8 coverage,
 then the exact statement gate. All `src/**/*.ts` and `src/**/*.tsx` files belong
 to the product manifest, including the browser entry. Tests live outside `src`.
 The checker independently compares that manifest against `statementMap` and `s`
@@ -74,12 +82,14 @@ that they have no runtime body. Temporary native compiler inputs and outputs liv
 under this package's `.tmp/` and are removed after classification. Typechecking
 remains a separate mandatory check; classification is not a substitute for it.
 
-CI requires `verify-web` alongside the Go server and every native CLI job. It
-uploads `coverage-final.json` and `summary.json`, which records exact counts and
+CI requires `verify-web` alongside the Go server, every native CLI platform and
+the dedicated Linux shell completion job. The web job also tests the dev-ci runner
+with controlled Docker fixtures. It uploads `coverage-final.json` and `summary.json`, which records exact counts and
 the relative product-source manifest. The [acceptance report](../../docs/research/daynight-web-acceptance.md) records
-local production-bundle checks with a real Go API and PostgreSQL. Complete
-single-service/container and hosted performance acceptance remain later tasks;
-controlled-fetch component tests do not replace them.
+local production-bundle checks with a real Go API and PostgreSQL, embedded
+HTTP/container smoke checks and concurrent dev-ci isolation. Full production
+browser workflows and hosted performance acceptance remain W-T6; controlled-fetch
+component tests and HTTP smoke checks do not replace them.
 
 ## Dependency declarations
 

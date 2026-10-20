@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+test_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+runner="$test_dir/../run.sh"
+repository_dir="$(cd -- "$test_dir/../../.." && pwd)"
+mkdir -p "$repository_dir/.tmp"
+fixture_root="$(mktemp -d "$repository_dir/.tmp/dev-ci-runner-tests.XXXXXX")"
+fixture_pid=''
+cleanup() {
+  if [[ -n $fixture_pid ]]; then kill -TERM "$fixture_pid" 2>/dev/null || true; fi
+  local identity project group
+  for identity in "$fixture_root"/*/callback-group; do
+    [[ -f $identity ]] || continue
+    group="$(< "$identity")"
+    [[ $group =~ ^[0-9]+$ && $group -gt 1 ]] || continue
+    kill -KILL -- "-$group" 2>/dev/null || true
+  done
+  for identity in "$fixture_root"/*/project; do
+    [[ -f $identity ]] || continue
+    project="$(< "$identity")"
+    [[ $project =~ ^daynight-dev-ci-[0-9]{14}-[0-9]+-[0-9]{5}$ ]] || continue
+    rm -rf -- "$repository_dir/.tmp/dev-ci/${project#daynight-dev-ci-}"
+  done
+  rm -rf -- "$fixture_root"
+}
+trap cleanup EXIT
+export PATH="$test_dir:$PATH"
+export COMPOSE_PROJECT_NAME=daynight-localhost
+export COMPOSE_FILE=/not/the/dev-ci/file
+export DAYNIGHT_PORT=8787
+
+assert_contains() {
+  local path=$1 expected=$2 contents
+  contents="$(< "$path")"
+  [[ $contents == *"$expected"* ]] || {
+    printf 'Missing %s in %s\n' "$expected" "$path" >&2
+    exit 1
+  }
+}
+
+manifest_for() {
+  local state=$1 project
+  project="$(< "$state/project")"
+  printf '%s/.tmp/dev-ci/%s/manifest.json' "$repository_dir" "${project#daynight-dev-ci-}"
+}
+
+run_case() {
+  local scenario=$1 expected_status=$2
+  shift 2
+  export FAKE_DOCKER_SCENARIO=$scenario
+  export FAKE_DOCKER_STATE="$fixture_root/$scenario"
+  mkdir "$FAKE_DOCKER_STATE"
+  local status=0
+  bash "$runner" "$@" > "$FAKE_DOCKER_STATE/output" 2>&1 || status=$?
+  [[ $status -eq $expected_status ]] || {
+    cat "$FAKE_DOCKER_STATE/output"
+    printf 'Scenario %s returned %s, expected %s\n' "$scenario" "$status" "$expected_status" >&2
+    exit 1
+  }
+  local manifest
+  manifest="$(manifest_for "$FAKE_DOCKER_STATE")"
+  assert_contains "$manifest" '"schemaVersion":1'
+  assert_contains "$manifest" '"phase":"finished"'
+  if [[ $scenario == cleanup-failure* ]]; then
+    assert_contains "$manifest" '"cleanupResult":"failed"'
+    [[ -f $FAKE_DOCKER_STATE/resources && -f $FAKE_DOCKER_STATE/image ]]
+  else
+    assert_contains "$manifest" '"cleanupResult":"passed"'
+    [[ ! -f $FAKE_DOCKER_STATE/resources && ! -f $FAKE_DOCKER_STATE/image ]]
+  fi
+  [[ $(< "$FAKE_DOCKER_STATE/calls") != *daynight-localhost* ]]
+  printf 'PASS %s\n' "$scenario"
+}
+
+export FAKE_DOCKER_STATE="$fixture_root/guard"
+mkdir "$FAKE_DOCKER_STATE"
+for invalid in '' daynight-localhost ../daynight-localhost 20200101000000-1-12345/..; do
+  status=0
+  bash "$runner" --cleanup "$invalid" > "$FAKE_DOCKER_STATE/output" 2>&1 || status=$?
+  [[ $status -eq 2 && ! -f $FAKE_DOCKER_STATE/calls ]]
+done
+status=0
+bash "$runner" --cleanup 20200101000000-1-12345 > "$FAKE_DOCKER_STATE/output" 2>&1 || status=$?
+[[ $status -eq 2 && ! -f $FAKE_DOCKER_STATE/calls ]]
+printf '%s\n' 'PASS unsafe or unknown recovery identity'
+
+run_case passed 0 bash -c '[[ $DAYNIGHT_BASE_URL == http://127.0.0.1:32777 && $DAYNIGHT_DEV_CI_RUN_ID =~ ^[0-9]{14}-[0-9]+-[0-9]{5}$ ]]'
+assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"result":"passed"'
+assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"imageId":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"'
+assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"containerIds":["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]'
+run_case build-failure 30 true
+run_case partial-startup 31 true
+run_case image-mismatch 1 true
+run_case child-failure 47 bash -c 'exit 47'
+assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"result":"failed"'
+run_case cleanup-failure 1 true
+run_case cleanup-failure-child 47 bash -c 'exit 47'
+
+failed_manifest="$(manifest_for "$FAKE_DOCKER_STATE")"
+project="$(< "$FAKE_DOCKER_STATE/project")"
+export FAKE_DOCKER_SCENARIO=passed
+bash "$runner" --cleanup "${project#daynight-dev-ci-}" > "$FAKE_DOCKER_STATE/recovery-output" 2>&1
+assert_contains "${failed_manifest%manifest.json}recovery-manifest.json" '"cleanupResult":"passed"'
+[[ ! -f $FAKE_DOCKER_STATE/resources && ! -f $FAKE_DOCKER_STATE/image ]]
+assert_contains "$failed_manifest" '"cleanupResult":"failed"'
+printf '%s\n' 'PASS bounded recovery retains original receipt'
+
+for callback_status in 0 49; do
+  run_case "descendant-$callback_status" "$callback_status" bash -c '
+    printf "%s\n" "$$" > "$FAKE_DOCKER_STATE/callback-group"
+    bash -c '\''while :; do printf x >> "$FAKE_DOCKER_STATE/heartbeat"; sleep 0.02; done'\'' &
+    printf "%s\n" "$!" > "$FAKE_DOCKER_STATE/descendant-pid"
+    for ((attempt=0; attempt<100; attempt++)); do
+      [[ ! -s $FAKE_DOCKER_STATE/heartbeat ]] || break
+      sleep 0.01
+    done
+    [[ -s $FAKE_DOCKER_STATE/heartbeat ]] || exit 98
+    exit "$1"
+  ' bash "$callback_status"
+  heartbeat="$(< "$FAKE_DOCKER_STATE/heartbeat")"
+  sleep 0.15
+  [[ $(< "$FAKE_DOCKER_STATE/heartbeat") == "$heartbeat" ]]
+  descendant="$(< "$FAKE_DOCKER_STATE/descendant-pid")"
+  state="$(ps -o stat= -p "$descendant" || true)"
+  [[ -z $state || $state == Z* ]]
+done
+printf '%s\n' 'PASS callback descendants stop after success and failure'
+
+export FAKE_DOCKER_SCENARIO=cancelled
+export FAKE_DOCKER_STATE="$fixture_root/cancelled"
+mkdir "$FAKE_DOCKER_STATE"
+bash "$runner" bash -c 'printf ready > "$FAKE_DOCKER_STATE/child-ready"; sleep 60' > "$FAKE_DOCKER_STATE/output" 2>&1 &
+fixture_pid=$!
+for ((attempt=0; attempt<100; attempt++)); do
+  [[ ! -f $FAKE_DOCKER_STATE/child-ready ]] || break
+  sleep 0.05
+done
+[[ -f $FAKE_DOCKER_STATE/child-ready ]]
+kill -TERM "$fixture_pid"
+status=0
+wait "$fixture_pid" || status=$?
+fixture_pid=''
+[[ $status -eq 143 ]]
+assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"result":"cancelled"'
+assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"cleanupResult":"passed"'
+[[ ! -f $FAKE_DOCKER_STATE/resources && ! -f $FAKE_DOCKER_STATE/image ]]
+printf '%s\n' 'PASS signal cancellation'
+printf '%s\n' 'All dev-ci runner tests passed.'

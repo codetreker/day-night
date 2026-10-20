@@ -21,17 +21,20 @@ demonstrates the intended appearance. This note records a delivered design;
 the complete graph read and [project browsing foundation](2026-10-20-web-project-browsing.md)
 and the [pure graph model and layout](../feature/2026-10-20-task-graph-projection.md)
 are implemented. The [project task dashboard](../feature/2026-10-20-project-task-dashboard.md)
-implements visualization and detail navigation; embedded deployment remains pending.
+implements visualization and detail navigation. The
+[embedded deployment](2026-10-20-embedded-dashboard-deployment.md) implements
+Go asset delivery and the localhost/dev-ci environments. Full production-browser
+and fixed-dataset performance acceptance remains tracked by W-T6.
 
 Use a separate React/TypeScript/Vite package with React Flow and Dagre. Serve
 its built assets from the existing loopback Go origin, embedded into the binary.
 Keep the client review module and its configuration/storage independent. A web build is
 an explicit prerequisite for clean server builds, with a visible error when
-assets are absent. The existing Docker-only localhost path gains a pinned Node
+assets are absent. The Docker-only localhost path uses a pinned Node
 frontend build stage and repository-root build context; the final image remains
 a nonroot Go runtime. Preserve stream forwarding, loopback publication, health
 checks and database persistence. The existing localhost entry point starts the
-complete UI/API/database stack and retains normal user data. A separate planned
+complete UI/API/database stack and retains normal user data. The separate
 `deployment/dev-ci/` uses that same Dockerfile and nginx configuration with a
 unique Compose project, dynamically allocated loopback HTTP port, and disposable
 project-scoped database, volumes and network. Browser acceptance uses that
@@ -69,7 +72,10 @@ The dev-ci runner registers bounded cleanup before creating resources, records
 the built and running image identity, and exports the discovered URL to the test
 command. Cleanup rejects non-test project identities and removes only the current
 run. Failed cleanup fails acceptance without discarding the original test error.
-Test runs never start, rebuild, or remove the daily localhost stack.
+The runner retains ownership of the callback process group after the leader
+exits, so background descendants are stopped before environment cleanup. Recovery
+accepts only an existing run receipt and preserves its original manifest. Test
+runs never start, rebuild, or remove the daily localhost stack.
 
 ## Alternatives
 
@@ -104,15 +110,16 @@ realtime infrastructure. Frontend and backend gain independent coverage gates,
 and clean Go builds gain a documented frontend build prerequisite. Container
 builds need the same frontend sources and command but require no host Node
 installation. The design uses the existing ServeMux and one request-logging
-wrapper for both UI and API requests. Dev-ci gains a second Compose definition
+wrapper for both UI and API requests. Dev-ci has a second Compose definition
 and lifecycle tests; shared build/proxy artifacts and explicit topology checks
 keep that additional configuration aligned. Daily data persists, while each test
 run owns and removes its disposable dataset.
 
 Shared task rows are intentionally non-additive. Boundary markers and explicit
 snapshot freshness are necessary for an honest graph. The protective graph
-limits are product constraints, not measured capacity claims. Implementation
-must validate representative boundary-size graphs before claiming performance.
+limits are product constraints, not measured capacity claims. The single local 1,000-node chain probe does not establish the boundary-size
+performance requirements; W-T6 must validate every required dataset and repeat
+count before claiming that support.
 
 The existing [server task design](2026-10-19-daynight-server-task-design.md)
 remains the owner of the service domain and transaction rules; this decision

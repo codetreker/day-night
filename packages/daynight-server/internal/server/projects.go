@@ -23,6 +23,7 @@ func New(projects *service.Projects, tasks *service.Tasks, logger *slog.Logger) 
 	mux.HandleFunc("/api/v1/projects", methodNotAllowed(logger, "GET, HEAD, POST"))
 	mux.HandleFunc("/api/v1/projects/{projectId}", methodNotAllowed(logger, "GET, HEAD"))
 	taskRoutes(mux, tasks, logger)
+	uiRoutes(mux, logger)
 	mux.HandleFunc("/", func(w http.ResponseWriter, request *http.Request) {
 		writeError(w, request, logger, "server", "route", &service.Fault{Code: "not_found", Message: "resource not found"})
 	})

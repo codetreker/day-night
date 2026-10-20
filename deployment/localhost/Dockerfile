@@ -1,11 +1,24 @@
-FROM golang:1.27.2-bookworm AS build
+FROM node:24-bookworm-slim AS web
 
 WORKDIR /src
-COPY go.mod go.sum ./
+RUN npm install --global pnpm@10.34.5
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY patches ./patches
+COPY packages/daynight/package.json ./packages/daynight/package.json
+COPY packages/daynight-web/package.json ./packages/daynight-web/package.json
+RUN pnpm install --frozen-lockfile --filter @codetreker/daynight-web...
+COPY packages/daynight-web ./packages/daynight-web
+RUN pnpm web:build
+
+FROM golang:1.27.2-bookworm AS build
+
+WORKDIR /src/packages/daynight-server
+COPY packages/daynight-server/go.mod packages/daynight-server/go.sum ./
 RUN go mod download
-COPY api ./api
-COPY cmd ./cmd
-COPY internal ./internal
+COPY packages/daynight-server/api ./api
+COPY packages/daynight-server/cmd ./cmd
+COPY packages/daynight-server/internal ./internal
+COPY --from=web /src/packages/daynight-server/internal/webui/dist ./internal/webui/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/daynight-server ./cmd/daynight-server
 
 FROM alpine:3.24

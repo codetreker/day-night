@@ -64,8 +64,8 @@ capabilities. Server API commands were separate product work in the
 command-composition scope. The adopted
 [project/task CLI design](2026-10-20-project-task-cli-design.md) now defines that
 consumer and its additive configuration and repository binding. Shared
-configuration and the bounded HTTP foundation are implemented; repository
-bindings and the command entry points remain pending. Adding them must preserve
+configuration, bounded HTTP and repository bindings are implemented; command
+entry points remain pending. Adding them must preserve
 per-command loading and ownership so they do not become startup dependencies for
 existing commands.
 Independent server and web lifecycles retain their current owners.

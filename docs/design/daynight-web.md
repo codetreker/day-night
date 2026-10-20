@@ -1,6 +1,6 @@
 # 项目与任务看板设计
 
-状态：完整图 API 与项目任务看板已实现；Go 内嵌交付、localhost/dev-ci 部署和完整生产验收仍待实现。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
+状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；完整生产浏览器与固定性能验收由 W-T6 完成。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
 
 ## 目标与现有基础
 
@@ -11,10 +11,10 @@
 | 事实 | 证据与影响 |
 |---|---|
 | Go 服务已有项目与任务 JSON API | `packages/daynight-server/api/projects.go` 的 `ProjectPage` 返回项目及 `nextCursor`；`api/tasks.go` 的 `Task` 包含 `dependsOn`、`blockedBy`、`ready`。 |
-| 当前没有静态页面 | `packages/daynight-server/internal/server/projects.go` 的 `New` 注册 API，其 `/` handler 返回 JSON 404；需增加静态资源和页面路由。 |
+| 页面与 API 同源 | `internal/server` 在同一 mux 注册精确页面、静态资源及 API 路由；`internal/webui` 内嵌真实构建产物，未知 API 保留 JSON 404。 |
 | 已有一致读取机制 | `packages/daynight-server/internal/core/store/snapshot.go` 的 `ReadSnapshot` 使用只读 `REPEATABLE READ`。 |
 | 分页之间没有共同快照 | [服务端分页约定](../spec/daynight-server.md)明确这一边界；不能用多次 task list 拼成准确的项目全图。 |
-| 工作区没有现成前端框架 | 根 `package.json` 的 build/typecheck/test 只覆盖 CLI；新增 web 包和 CI 检查必须显式接入。 |
+| web 与 CLI 工作区独立 | 私有 React/TypeScript/Vite 包使用显式 `web:*` 命令；根 build/typecheck/test 继续只覆盖 CLI，web 使用独立必选 CI job。 |
 
 ## MVP 范围
 
@@ -209,7 +209,7 @@ flowchart LR
 
 ### Go 路由和静态资源
 
-以下 Go 静态路由由 W-T5 接入；当前 Go 服务仍提供 JSON API，完整页面已可通过 web 开发/构建访问。
+Go 服务在同一 origin 提供 JSON API、页面和真实内嵌资源。
 
 保留 `server.New` 的单一 `http.ServeMux`，继续由 `runtime.Start` 中现有 `RequestLogging` 包裹一次。UI 与 API 共用 request context、requestId、panic 处理和访问日志。
 
@@ -242,13 +242,13 @@ pnpm web:acceptance
 DAYNIGHT_TEST_DATABASE_URL=... bash scripts/check.sh
 ```
 
-`web:dev`、`web:typecheck`、`web:test` 和 `web:build` 已实现；`web:acceptance` 由 W-T6 接入。当前构建输出 web dist，向 Go 发布资源与 Go 检查前置属于 W-T5。`web:test` 执行单元/组件测试与严格覆盖率检查；`web:acceptance` 使用现有隔离 PostgreSQL 验证直接构建的 Go 进程，并通过独立 `deployment/dev-ci` 验证完整容器栈的浏览器路径，需要 Docker 与固定版本的测试浏览器。浏览器本机优先复用，CI 下载及全部临时 profile 放在项目 `.tmp/`。`web:build` 不调用 Go，避免循环依赖。Go `scripts/check.sh` 在执行需要内嵌资源的 Go 命令前，从仓库根调用该命令；Go 测试中重新构建的进程使用同一份真实资源。缺少 pnpm、依赖、index 或资源时明确失败。
+`web:dev`、`web:typecheck`、`web:test` 和 `web:build` 已实现；`web:acceptance` 由 W-T6 接入。共享 `web:build` 调用 Vite 后执行 `scripts/publish-assets.mts`，验证普通文件、index 及其引用，完成整目录暂存与替换，替换失败时尝试恢复先前目录；恢复也失败时保留先前产物并传播两个原因。`web:test` 执行覆盖率检查器、文件系统发布测试、单元/组件测试与严格覆盖率检查。计划的 `web:acceptance` 使用现有隔离 PostgreSQL 验证直接构建的 Go 进程，并通过独立 `deployment/dev-ci` 验证完整容器栈的浏览器路径，需要 Docker 与固定版本的测试浏览器。浏览器本机优先复用，CI 下载及全部临时 profile 放在项目 `.tmp/`。`web:build` 不调用 Go，避免循环依赖。Go `scripts/check.sh` 在执行需要内嵌资源的 Go 命令前，从仓库根调用该命令；Go 测试中重新构建的进程使用同一份真实资源。缺少 pnpm、依赖、index 或资源时明确失败。
 
 开发模式的 Vite 将 `/api` 代理到本机 Go，不引入 CORS 通配配置；生产使用 `http://127.0.0.1:8787/`。运行机器只需要服务二进制与 PostgreSQL；源码构建固定使用 Node 24 与 pnpm 10.34.5。根目录现有 CLI build/test/acceptance 命令的含义保持独立，新增 web 命令显式选择 `@codetreker/daynight-web`。
 
 ### localhost 交付部署
 
-W-T5 直接集成既有 `deployment/localhost/`。继续执行 `bash deployment/localhost/up.sh`，一次构建并启动带页面的 Go 服务、PostgreSQL 和 gateway；完成后同一地址可打开项目页面与 API。镜像加入前端构建阶段，最终运行阶段仍只有非 root Go 二进制，不增加前端容器。日常重建与停止保持现有数据保留语义。
+生产交付直接集成既有 `deployment/localhost/`。继续执行 `bash deployment/localhost/up.sh`，一次构建并启动带页面的 Go 服务、PostgreSQL 和 gateway；完成后同一地址可打开项目页面与 API。镜像加入前端构建阶段，最终运行阶段仍只有非 root Go 二进制，不增加前端容器。日常重建与停止保持现有数据保留语义。
 
 ```text
 仓库根构建上下文
@@ -257,13 +257,13 @@ W-T5 直接集成既有 `deployment/localhost/`。继续执行 `bash deployment/
   → 非 root 运行阶段：仅复制二进制
 ```
 
-`deployment/localhost/compose.yaml` 的现有 build context 仅包含 Go 模块，实施时改为仓库根并显式指定 `deployment/localhost/Dockerfile`。对应 Dockerfile 专属 `.dockerignore` 改为根相对 allowlist，纳入 workspace/root/web/Go manifests、锁文件、`patches/` 声明补丁、实际构建脚本与源码，排除宿主 `node_modules`、`.tmp`、生成 dist 和无关工作区内容。安装层只下载 web 所需依赖；镜像内部执行同一 `web:build`，不依赖宿主预构建产物。
+`deployment/localhost/compose.yaml` 使用仓库根 context 并显式指定 `deployment/localhost/Dockerfile`。Dockerfile 专属 `.dockerignore` 使用根相对 allowlist，纳入 workspace/root/web/Go manifests、锁文件、`patches/` 声明补丁、实际构建脚本与源码，排除宿主 `node_modules`、`.tmp`、生成 dist 和无关工作区内容。安装层只下载 web 所需依赖；镜像内部执行同一 `web:build`，不依赖宿主预构建产物。
 
-保留 nginx stream/TCP 转发、服务与 gateway 共享网络命名空间、服务 loopback 监听、宿主 loopback 端口发布、现有 project API 健康检查和命名卷。nginx 不增加 SPA fallback，HTML、资源和 API 都由同一个 Go mux 处理。正常重建栈继续保留数据库数据。上述现有机制由 `deployment/localhost/README.md` 与本机部署决策记录拥有；实施时同步其中的构建事实。
+保留 nginx stream/TCP 转发、服务与 gateway 共享网络命名空间、服务 loopback 监听、宿主 loopback 端口发布、现有 project API 健康检查和命名卷。nginx 不增加 SPA fallback，HTML、资源和 API 都由同一个 Go mux 处理。正常重建栈继续保留数据库数据。操作细节由 `deployment/localhost/README.md` 拥有，拓扑与内嵌交付选择分别由[本机部署决策](../../.agents/notes/implemented/architecture/2026-10-20-localhost-compose.md)和[内嵌交付决策](../../.agents/notes/implemented/architecture/2026-10-20-embedded-dashboard-deployment.md)拥有。
 
 ### dev-ci 验收部署
 
-新增 `deployment/dev-ci/` 供本机调试和 CI 验收使用。它运行生产构建的完整应用，不提供另一套前端实现；Vite 开发仍使用既有 `web:dev`。
+`deployment/dev-ci/` 供本机调试和 CI 验收使用。它运行生产构建的完整应用，不提供另一套前端实现；Vite 开发仍使用既有 `web:dev`。
 
 ```text
 deployment/
@@ -284,24 +284,24 @@ deployment/
 | 项目 | localhost | dev-ci |
 |---|---|---|
 | 用途 | 日常运行完整应用 | 本机与 CI 的隔离生产验收 |
-| 启动入口 | 现有 `up.sh` | 待新增 `run.sh <command> [args...]` |
+| 启动入口 | `up.sh` | `run.sh <command> [args...]` |
 | Compose 身份 | 现有 `daynight-localhost` | 每次生成 `daynight-dev-ci-<run-id>`，所有操作显式传 `--project-name` |
 | HTTP | 现有 8787 或显式指定端口 | 127.0.0.1 上由 Docker 分配空闲端口，健康后通过 `compose port gateway 80` 发现 |
 | PostgreSQL | 现有命名卷，重建保留 | 独立容器、数据库及项目作用域卷，API 创建测试数据，不发布数据库宿主端口 |
 | 网络与卷 | 现有日常项目资源 | Compose 项目作用域；不设全局资源 name 或 external |
 | 结束 | 保留业务数据 | 只清理当前 run 的容器、卷和网络 |
 
-`run.sh` 在创建任何资源前生成并校验项目名、注册有界清理，固定同一组 file/project-directory/project-name 参数。使用生产 Dockerfile 构建本次唯一镜像标签，记录 image ID，等待数据库及 API 健康后发现 base URL，通过 `DAYNIGHT_BASE_URL` 交给子命令。`pnpm web:acceptance` 调用该入口运行容器浏览器用例，不启动、重建或清理日常 localhost 栈；Go 覆盖率和直接二进制测试继续使用已有独立 PostgreSQL 测试机制。
+`run.sh` 在创建任何资源前生成并校验项目名、注册有界清理，固定同一组 file/project-directory/project-name 参数。使用生产 Dockerfile 构建本次唯一镜像标签，记录 image ID，等待数据库及 API 健康后发现 base URL，通过 `DAYNIGHT_BASE_URL` 交给子命令。W-T6 的 `pnpm web:acceptance` 将调用该入口运行容器浏览器用例，不启动、重建或清理日常 localhost 栈；Go 覆盖率和直接二进制测试继续使用已有独立 PostgreSQL 测试机制。
 
-正常退出、测试失败和信号取消都收集本项目的必要日志及状态，再执行仅针对该项目的 `down --volumes --remove-orphans`。清理拒绝空项目名、非 dev-ci 前缀和 `daynight-localhost`，不执行全局 prune；本次镜像标签也只在确认本次容器退出后移除。取消后的清理采用独立有界步骤，清理失败必须使验收失败并保留原测试失败。run ID、base URL、image ID、资源清单和结果记录在任务 `.tmp/`，诊断不输出环境凭据、原始连接串或任务正文。CI 外层始终执行定向清理步骤，复用已登记的 run 身份；进程被强制终止而无法确认清理时，保留资源清单并报告未完成，不能宣称已回收。
+正常退出、测试失败和信号取消都先终止本次子命令进程组，再收集本项目的必要日志及状态，执行仅针对该项目的 `down --volumes --remove-orphans`。进程组在 leader 退出后仍受管理，避免成功或失败的 callback 留下继续使用资源的后代。清理拒绝空项目名、非 dev-ci 前缀和 `daynight-localhost`，不执行全局 prune；本次镜像标签也只在确认本次容器退出后移除。取消后的清理采用独立有界步骤，清理失败必须使验收失败并保留原测试失败。run ID、base URL、image ID、资源清单和结果记录在任务 `.tmp/`，诊断不输出环境凭据、原始连接串或任务正文。恢复入口 `run.sh --cleanup RUN_ID` 只接受已有本地回执的有效身份，保留原 manifest，另写 recovery-manifest；执行恢复前必须先停止原 runner 与子命令进程组。W-T6 的 CI 外层始终执行定向清理步骤，复用已登记的 run 身份；进程被强制终止而无法确认清理时，保留资源清单并报告未完成，不能宣称已回收。
 
-W-T5 交付两套环境定义与隔离 smoke test；W-T6 接入完整浏览器、性能、失败和清理证据。必须证明运行镜像与记录的生产 image ID 相同，两次并发 dev-ci 运行的端口与数据独立，清理其中一次后另一次仍可用。localhost 的配置与数据不会作为测试前置被修改。
+两套环境定义、隔离 HTTP smoke、运行镜像身份和并发隔离均已本地验证，正常重建保留数据。12 项受控 Docker fixture 验证成功、失败、取消、恢复与遗留子进程清理；它们不代替真实 Docker 故障验收。W-T6 接入完整浏览器、性能和 clean CI 证据，并扩大实际失败/清理路径验证。localhost 的配置与数据不会作为测试前置被修改。
 
 ### CI 构建归属
 
-`verify-web` 已配置固定 pnpm/Node，从锁文件安装依赖并构建真实 UI；`verify-server` 的现有 Go 检查继续独立。W-T5 加入内嵌资源后，两个 job 都从没有 `node_modules` 和生成 dist 的干净 checkout 构建真实 UI。现有 Go job 仅设置 Node，必须补齐 pnpm setup/install 后再调用 `scripts/check.sh`。`verify-server` 继续负责 build/vet/race/go-cov；`verify-web` 负责 web typecheck、严格覆盖率，以及通过 `deployment/dev-ci` 进行的生产浏览器与 Docker 交付验收，前端基础任务建立同一 job，最终验收任务扩展其步骤。两个 job 的真实成功与原生 CLI 各平台检查共同进入 `checks`。
+`verify-web` 和 `verify-server` 都配置固定 Node/pnpm，并在干净 checkout 从锁文件安装依赖、构建真实 UI。Go 检查调用共享构建后继续负责 build/vet/race/go-cov；web job 负责 web typecheck、构建、严格覆盖率及 dev-ci 生命周期 fixture。W-T6 扩展 web job，加入生产浏览器、Docker 与性能验收。两个 job、原生 CLI 各平台和独立 Linux shell completion job 的真实成功共同进入 `checks`。
 
-根 `package.json`、锁文件、共享构建脚本和 `.github/workflows/checks.yml` 的唯一编辑归属按阶段交接：W-T2 建立并负责 web 命令和 `verify-web`；W-T2 验收后由 W-T5 接手构建/Go 工具配置；W-T5 验收后由 W-T6 接手最终生产验收步骤。接收任务在开始时核对前一阶段已通过的命令与 required job 清单，再接管编辑；其他任务只提出所需命令和依赖，不直接并发修改这些文件。W-T6 是最终汇总责任方，验证 `checks.needs` 包含 `verify-server`、`verify-web` 和现有 CLI `verify`，且任何失败或取消都不能被成功汇总。
+根 `package.json`、锁文件、共享构建脚本和 `.github/workflows/checks.yml` 的唯一编辑归属按阶段交接：W-T2 建立并负责 web 命令和 `verify-web`；W-T2 验收后由 W-T5 接手构建/Go 工具配置；W-T5 验收后由 W-T6 接手最终生产验收步骤。接收任务在开始时核对前一阶段已通过的命令与 required job 清单，再接管编辑；其他任务只提出所需命令和依赖，不直接并发修改这些文件。W-T6 是最终汇总责任方，验证 `checks.needs` 包含 `verify-server`、`verify-web`、现有 CLI `verify` 与 `verify-completion`，且任何失败或取消都不能被成功汇总。
 
 ## 完整图 API
 
@@ -429,7 +429,7 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 3. 覆盖率：保留 Go go-cov 和原始 profile 的严格 `covered * 10 > total * 9`。新增 web 必选 job，使用 Vitest V8 provider 输出的 `coverage-final.json`，按产品文件的语句命中表汇总计数并用整数执行同样严格比较。显式设置 `coverage.include` 为 `src/**/*.{ts,tsx}`；检查脚本另行枚举同一源码清单并逐文件核对报告，含未被测试导入的产品文件，缺失即失败。纯类型文件只有在确认没有运行语句时允许零语句；API、图算法和入口没有排除项。拒绝空、畸形报告，测试恰好 90%、舍入、未导入文件和遗漏文件等失败边界。第三方库与构建产物不属于产品源码。
 4. 两个模块分别大于 90%，因此加权总体也大于 90%；不能靠 Go 的高覆盖率掩盖 web 缺口。现有 Go package/function/critical-block 与所有 CLI 原生平台门槛保持。
 5. 浏览器验收使用 Playwright、构建后的真实页面、真实服务与隔离 PostgreSQL。通过 API 建立项目和任务，验证完整点击路径、共享/外部前置、空项目、局部失败与重试、深链接刷新、键盘节点操作，以及侧栏实际焦点进入/Tab 循环/Esc、关闭按钮和关闭后恢复焦点；收集截图、测试 SHA、通过结果和资源清理证据。
-6. 新增必选 web job，并将其纳入 `checks`。Go job 与 web job 各自在干净 checkout 中生成真实 UI 产物，验证内嵌页面可用。依赖变更遵守现有 workspace 与 CLI 版本检查规则。
+6. 必选 web job 纳入 `checks`，与 Go、原生 CLI 和独立 shell completion 检查共同汇总。Go job 与 web job 各自在干净 checkout 中生成真实 UI 产物，验证内嵌页面可用。依赖变更遵守现有 workspace 与 CLI 版本检查规则。
 7. 性能验收使用 Linux CI 的固定 Chromium、生产构建和固定种子图集，覆盖 1,000 节点的单链，以及恰好同时具有 1,000 节点和 5,000 边的分叉合流、多根共享图。每次从折叠状态打开，重复五次，最慢一次从点击到可操作画布不超过 3,000ms；布局后打开详情、缩放或平移的可见反馈不超过 300ms。单独保存布局/渲染耗时和完整测试环境，接口耗时与详情网络时间分开记录。失败必须优化或重新评审支持上限，不能把超时结果当成已支持，也不默认引入后台 worker。
 
 ## 实施与验收边界
