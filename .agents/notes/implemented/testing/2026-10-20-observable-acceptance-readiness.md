@@ -30,8 +30,11 @@ health checks retain their meaning. The
 
 The PTY driver first waits for a new primary-prompt generation and then requests
 a dedicated Readline/ZLE widget acknowledgement for that same generation, an
-empty buffer and cursor zero. Setup, clearing and command execution all return
-through this handshake before another completion scenario is typed. The first
+empty buffer and cursor zero. Setup and actual command execution await the next
+prompt generation. Discarding test input uses a queued editor reset widget that
+clears the buffer and cursor, then acknowledges the same generation. A second
+pipe blocks the capture widget after its marker; a queued reset cannot
+acknowledge until that widget is released. The first
 prompt of each real shell is blocked by an inherited anonymous pipe. A queued
 probe receives no editor acknowledgement during the former 30 ms quiet window;
 after releasing the gate, the real editor must acknowledge it. This proves the
@@ -51,6 +54,12 @@ be silent indefinitely, and scheduler delay changes the relationship between
 elapsed time and readiness. The pipe-gated counterexample retains a quiet window
 while proving that the editor is still unavailable.
 
+**Clear input with an asynchronous terminal interrupt.** A capture marker can
+be printed while its widget is still running. An interrupt delivered in that
+phase does not establish a fresh primary prompt or empty editor. Queuing a reset
+through the editor performs the intended buffer edit after the capture widget
+returns.
+
 **Accept more cancellation errors or retry unchanged failures.** This would let
 the database test pass without observing cancellation of running work and could
 conceal the original phase race. The observation barriers preserve the existing
@@ -66,8 +75,8 @@ cleanup remains possible after a failed readiness assertion.
 The focused race probe passed both database cases across 20 iterations each,
 and the complete server gate passed build, vet, race, critical coverage checks
 and the raw strict comparison at 1153/1155 statements. The three real shells
-passed their 46 existing scenarios each, all three gated readiness proofs and
-the zsh initialization refusal. These local receipts describe their tested
+passed their 46 existing scenarios each, both gated readiness proofs per shell
+and the zsh initialization refusal (145 checks). These local receipts describe their tested
 sources; required hosted checks and review still govern integration.
 
 No runtime behavior, database schema, command grammar or completion candidate
