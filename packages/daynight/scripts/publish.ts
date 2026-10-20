@@ -122,14 +122,24 @@ const defaultServices = (): ReleaseServices => {
     wait: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   };
 };
-const request = async (services: ReleaseServices, url: string, init: RequestInit = {}): Promise<Response> => services.fetch(url, {
-  ...init, signal: init.signal === undefined || init.signal === null ? AbortSignal.timeout(20_000) : AbortSignal.any([init.signal, AbortSignal.timeout(20_000)]),
-});
+const request = async <T>(services: ReleaseServices, url: string, read: (response: Response) => Promise<T>, init: RequestInit = {}): Promise<T> => {
+  const signal = init.signal === undefined || init.signal === null ? AbortSignal.timeout(20_000) : AbortSignal.any([init.signal, AbortSignal.timeout(20_000)]);
+  signal.throwIfAborted();
+  const aborted = Promise.withResolvers<never>();
+  const abort = () => aborted.reject(signal.reason);
+  signal.addEventListener("abort", abort, { once: true });
+  try {
+    return await Promise.race([services.fetch(url, { ...init, signal }).then(read), aborted.promise]);
+  } finally {
+    signal.removeEventListener("abort", abort);
+  }
+};
 const registryMetadata = async (services: ReleaseServices, version: string, signal?: AbortSignal): Promise<RecordValue | undefined> => {
-  const response = await request(services, `${registry}/${encodeURIComponent(packageName)}/${encodeURIComponent(version)}`, { headers: { Accept: "application/json" }, ...(signal === undefined ? {} : { signal }) });
-  if (response.status === 404) return undefined;
-  if (!response.ok) throw new Error(`npm registry lookup for ${version} failed: HTTP ${response.status}.`);
-  return record(await response.json(), `npm metadata for ${version}`);
+  return request(services, `${registry}/${encodeURIComponent(packageName)}/${encodeURIComponent(version)}`, async (response) => {
+    if (response.status === 404) return undefined;
+    if (!response.ok) throw new Error(`npm registry lookup for ${version} failed: HTTP ${response.status}.`);
+    return record(await response.json(), `npm metadata for ${version}`);
+  }, { headers: { Accept: "application/json" }, ...(signal === undefined ? {} : { signal }) });
 };
 const verifyMetadata = (metadata: RecordValue, receipt: ReleaseReceipt): RecordValue => {
   const dist = record(metadata.dist, "npm distribution metadata");
@@ -151,24 +161,65 @@ const compareVersions = (left: string, right: string): number => {
 const tagUrl = (services: ReleaseServices, receipt: ReleaseReceipt): string => `${services.apiUrl}/repos/${repository}/git/ref/tags/${encodeURIComponent(receipt.tag)}`;
 const githubHeaders = (services: ReleaseServices) => ({ Accept: "application/vnd.github+json", Authorization: `Bearer ${services.token}`, "X-GitHub-Api-Version": "2022-11-28" });
 const existingTag = async (services: ReleaseServices, receipt: ReleaseReceipt): Promise<boolean> => {
-  const response = await request(services, tagUrl(services, receipt), { headers: githubHeaders(services) });
-  if (response.status === 404) return false;
-  if (!response.ok) throw new Error(`GitHub tag lookup failed: HTTP ${response.status}.`);
-  const object = record(record(await response.json(), "GitHub tag reference").object, "GitHub tag target");
-  if (object.type !== "commit" || object.sha !== receipt.sourceSha) throw new Error(`Tag ${receipt.tag} already points to a different target.`);
-  return true;
+  return request(services, tagUrl(services, receipt), async (response) => {
+    if (response.status === 404) return false;
+    if (!response.ok) throw new Error(`GitHub tag lookup failed: HTTP ${response.status}.`);
+    const object = record(record(await response.json(), "GitHub tag reference").object, "GitHub tag target");
+    if (object.type !== "commit" || object.sha !== receipt.sourceSha) throw new Error(`Tag ${receipt.tag} already points to a different target.`);
+    return true;
+  }, { headers: githubHeaders(services) });
 };
 const createTag = async (services: ReleaseServices, receipt: ReleaseReceipt): Promise<void> => {
   if (await existingTag(services, receipt)) return;
-  const response = await request(services, `${services.apiUrl}/repos/${repository}/git/refs`, {
+  await request(services, `${services.apiUrl}/repos/${repository}/git/refs`, async (response) => {
+    if (response.status === 422 && await existingTag(services, receipt)) return;
+    if (response.status !== 201) throw new Error(`GitHub tag creation failed: HTTP ${response.status}.`);
+    const result = record(await response.json(), "created GitHub tag reference");
+    const object = record(result.object, "created GitHub tag target");
+    if (result.ref !== `refs/tags/${receipt.tag}` || object.type !== "commit" || object.sha !== receipt.sourceSha) throw new Error("GitHub returned an unexpected release tag target.");
+  }, {
     method: "POST", headers: { ...githubHeaders(services), "Content-Type": "application/json" },
     body: JSON.stringify({ ref: `refs/tags/${receipt.tag}`, sha: receipt.sourceSha }),
   });
-  if (response.status === 422 && await existingTag(services, receipt)) return;
-  if (response.status !== 201) throw new Error(`GitHub tag creation failed: HTTP ${response.status}.`);
-  const result = record(await response.json(), "created GitHub tag reference");
-  const object = record(result.object, "created GitHub tag target");
-  if (result.ref !== `refs/tags/${receipt.tag}` || object.type !== "commit" || object.sha !== receipt.sourceSha) throw new Error("GitHub returned an unexpected release tag target.");
+};
+
+const verifyPublicPackage = async (services: ReleaseServices, receipt: ReleaseReceipt, metadata: RecordValue | undefined): Promise<void> => {
+  const started = Date.now();
+  const deadline = AbortSignal.timeout(publicationWindow);
+  const timeoutMessage = `Timed out waiting for public npm version ${receipt.name}@${receipt.version} and tarball within 10 minutes.`;
+  let tarballUrl: string | undefined;
+  try {
+    for (let attempt = 0; attempt < publicationAttempts; attempt++) {
+      deadline.throwIfAborted();
+      const elapsed = Date.now() - started;
+      console.log(`Waiting for public npm version and tarball ${receipt.name}@${receipt.version}: attempt ${attempt + 1}/${publicationAttempts}, elapsed ${Math.floor(elapsed / 1_000)}s, remaining ${Math.ceil(Math.max(0, publicationWindow - elapsed) / 1_000)}s.`);
+      if (tarballUrl === undefined) {
+        metadata ??= await registryMetadata(services, receipt.version, deadline);
+        if (metadata !== undefined) {
+          const dist = verifyMetadata(metadata, receipt);
+          if (typeof dist.tarball !== "string") throw new Error("Published npm metadata has no tarball URL.");
+          const url = new URL(dist.tarball);
+          if (url.protocol !== "https:" || url.hostname !== "registry.npmjs.org") throw new Error("Published tarball URL must use the public npm registry.");
+          tarballUrl = url.href;
+        }
+      }
+      if (tarballUrl !== undefined) {
+        const verified = await request(services, tarballUrl, async (response) => {
+          if (response.status === 404) return false;
+          if (!response.ok) throw new Error(`Public npm tarball download failed: HTTP ${response.status}.`);
+          if (integrity(new Uint8Array(await response.arrayBuffer())) !== receipt.integrity) throw new Error("Public npm tarball bytes differ from the prepared artifact.");
+          return true;
+        }, { signal: deadline });
+        deadline.throwIfAborted();
+        if (verified) return;
+      }
+      if (attempt + 1 < publicationAttempts) await services.wait(Math.min(publicationInterval, Math.max(0, publicationWindow - (Date.now() - started))));
+    }
+  } catch (error) {
+    if (deadline.aborted) throw new Error(timeoutMessage, { cause: error });
+    throw error;
+  }
+  throw new Error(timeoutMessage);
 };
 
 export const publishRelease = async (sha: string, cwd = process.cwd(), services = defaultServices()): Promise<ReleaseReceipt> => {
@@ -177,39 +228,15 @@ export const publishRelease = async (sha: string, cwd = process.cwd(), services 
   const tarball = path.join(dirs.artifact, receipt.tarball);
   if (integrity(await readFile(tarball)) !== receipt.integrity) throw new Error("Prepared tarball integrity differs from the release receipt.");
   await existingTag(services, receipt);
-  let metadata = await registryMetadata(services, receipt.version);
+  const metadata = await registryMetadata(services, receipt.version);
   if (metadata === undefined) {
     const latest = await registryMetadata(services, "latest");
     if (latest !== undefined && (typeof latest.version !== "string" || compareVersions(latest.version, receipt.version) >= 0)) {
       throw new Error(`Publishing ${receipt.version} would not advance npm latest (${String(latest.version)}).`);
     }
     await services.publish(tarball, dirs.root);
-    const visibilityStarted = Date.now();
-    const visibilityDeadline = AbortSignal.timeout(publicationWindow);
-    const timeoutMessage = `Timed out waiting for public npm version ${receipt.name}@${receipt.version} within 10 minutes after npm accepted publication.`;
-    try {
-      for (let attempt = 0; attempt < publicationAttempts; attempt++) {
-        visibilityDeadline.throwIfAborted();
-        const elapsed = Date.now() - visibilityStarted;
-        const remaining = Math.max(0, publicationWindow - elapsed);
-        console.log(`Waiting for public npm version ${receipt.name}@${receipt.version}: attempt ${attempt + 1}/${publicationAttempts}, elapsed ${Math.floor(elapsed / 1_000)}s, remaining ${Math.ceil(remaining / 1_000)}s.`);
-        metadata = await registryMetadata(services, receipt.version, visibilityDeadline);
-        if (metadata !== undefined) break;
-        if (attempt + 1 < publicationAttempts) await services.wait(Math.min(publicationInterval, Math.max(0, publicationWindow - (Date.now() - visibilityStarted))));
-      }
-    } catch (error) {
-      if (visibilityDeadline.aborted) throw new Error(timeoutMessage, { cause: error });
-      throw error;
-    }
-    if (metadata === undefined) throw new Error(timeoutMessage);
   }
-  const dist = verifyMetadata(metadata, receipt);
-  if (typeof dist.tarball !== "string") throw new Error("Published npm metadata has no tarball URL.");
-  const tarballUrl = new URL(dist.tarball);
-  if (tarballUrl.protocol !== "https:" || tarballUrl.hostname !== "registry.npmjs.org") throw new Error("Published tarball URL must use the public npm registry.");
-  const response = await request(services, tarballUrl.href);
-  if (!response.ok) throw new Error(`Public npm tarball download failed: HTTP ${response.status}.`);
-  if (integrity(new Uint8Array(await response.arrayBuffer())) !== receipt.integrity) throw new Error("Public npm tarball bytes differ from the prepared artifact.");
+  await verifyPublicPackage(services, receipt, metadata);
   await createTag(services, receipt);
   console.log(`Verified ${receipt.name}@${receipt.version}; tag ${receipt.tag} points to ${receipt.sourceSha}.`);
   return receipt;

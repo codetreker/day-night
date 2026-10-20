@@ -20,6 +20,8 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      version: ${{ steps.release.outputs.version }}
     permissions:
       actions: read
       contents: read
@@ -55,7 +57,10 @@ jobs:
       - run: pnpm test
       - run: pnpm acceptance
       - name: Prepare the source-bound publication artifact
-        run: node packages/daynight/scripts/publish.ts prepare "$GITHUB_SHA"
+        id: release
+        run: |
+          node packages/daynight/scripts/publish.ts prepare "$GITHUB_SHA"
+          node -p '"version=" + JSON.parse(require("node:fs").readFileSync(".tmp/npm-release/artifact/release.json", "utf8")).version' >> "$GITHUB_OUTPUT"
       - name: Install and check the publication artifact
         run: |
           mkdir -p .tmp/npm-release/consumer
@@ -73,6 +78,7 @@ jobs:
           retention-days: 30
 
   publish:
+    name: Publish daynight v${{ needs.prepare.outputs.version }}
     needs: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 15

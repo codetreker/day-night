@@ -38,8 +38,8 @@ const metadata = (receipt: ReleaseReceipt): Metadata => ({
 const harness = (receipt: ReleaseReceipt) => {
   const state: {
     metadata: Metadata | undefined; latest: unknown; tag: string | undefined; tarball: Uint8Array;
-    postStatus: number; publicationError: Error | undefined; delay: number;
-  } = { metadata: undefined, latest: { version: "1.2.2" }, tag: undefined, tarball: bytes, postStatus: 201, publicationError: undefined, delay: 0 };
+    postStatus: number; publicationError: Error | undefined; delay: number; tarballDelay: number; tarballStatus: number;
+  } = { metadata: undefined, latest: { version: "1.2.2" }, tag: undefined, tarball: bytes, postStatus: 201, publicationError: undefined, delay: 0, tarballDelay: 0, tarballStatus: 200 };
   const events: string[] = [];
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = String(input);
@@ -57,7 +57,11 @@ const harness = (receipt: ReleaseReceipt) => {
     }
     expect(new Headers(init?.headers).has("Authorization")).toBe(false);
     if (url.endsWith("/latest")) { events.push("registry:latest"); return state.latest === undefined ? json({}, 404) : json(state.latest); }
-    if (url.endsWith(".tgz")) { events.push("tarball:download"); return new Response(Buffer.from(state.tarball)); }
+    if (url.endsWith(".tgz")) {
+      events.push("tarball:download");
+      if (state.tarballDelay > 0) { state.tarballDelay--; return json({}, 404); }
+      return new Response(Buffer.from(state.tarball), { status: state.tarballStatus });
+    }
     events.push("registry:version");
     if (state.delay > 0) { state.delay--; return json({}, 404); }
     return state.metadata === undefined ? json({}, 404) : json(state.metadata);
@@ -73,6 +77,7 @@ const harness = (receipt: ReleaseReceipt) => {
 };
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
@@ -100,6 +105,20 @@ describe("npm release publication", () => {
     expect(h.events).not.toContain("tag:create");
   });
 
+  it.each([false, true])("waits for tarball propagation with existing publication %s, then verifies bytes before tagging", async (existing) => {
+    const f = fixture();
+    const h = harness(f.receipt);
+    if (existing) h.state.metadata = metadata(f.receipt);
+    h.state.tarballDelay = 2;
+    await publishRelease(sourceSha, f.cwd, h.services);
+    expect(h.publish).toHaveBeenCalledTimes(existing ? 0 : 1);
+    expect(h.wait).toHaveBeenCalledTimes(2);
+    expect(h.events.filter((event) => event === "tarball:download")).toHaveLength(3);
+    expect(h.events.lastIndexOf("tarball:download")).toBeLessThan(h.events.indexOf("tag:create"));
+    expect(h.state.tag).toBe(sourceSha);
+    expect(h.events.filter((event) => event === "registry:latest")).toHaveLength(existing ? 0 : 1);
+  });
+
   it("recovers a completed publication after tag creation fails without publishing again or changing npm latest", async () => {
     const f = fixture();
     const h = harness(f.receipt);
@@ -122,6 +141,7 @@ describe("npm release publication", () => {
     else h.state.metadata.dist.integrity = hash(Buffer.from("another package"));
     await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("differs from the prepared source or tarball integrity");
     expect(h.publish).not.toHaveBeenCalled();
+    expect(h.wait).not.toHaveBeenCalled();
     expect(h.events).not.toContain("tag:create");
   });
 
@@ -131,6 +151,19 @@ describe("npm release publication", () => {
     h.state.metadata = metadata(f.receipt);
     h.state.tarball = Buffer.from("wrong public bytes");
     await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("Public npm tarball bytes differ");
+    expect(h.wait).not.toHaveBeenCalled();
+    expect(h.events.filter((event) => event === "tarball:download")).toHaveLength(1);
+    expect(h.events).not.toContain("tag:create");
+  });
+
+  it.each(["not a URL", "http://registry.npmjs.org/package.tgz", "https://example.com/package.tgz"])("rejects invalid tarball URL %s without waiting or tagging", async (url) => {
+    const f = fixture();
+    const h = harness(f.receipt);
+    h.state.metadata = metadata(f.receipt);
+    h.state.metadata.dist.tarball = url;
+    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow();
+    expect(h.wait).not.toHaveBeenCalled();
+    expect(h.events).not.toContain("tarball:download");
     expect(h.events).not.toContain("tag:create");
   });
 
@@ -196,10 +229,108 @@ describe("npm release publication", () => {
     const f = fixture();
     const h = harness(f.receipt);
     h.services.publish = async () => { h.events.push("npm:publish"); };
-    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("within 10 minutes after npm accepted publication");
+    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("and tarball within 10 minutes");
     expect(h.wait).toHaveBeenCalledTimes(120);
     expect(h.wait.mock.calls.reduce((elapsed, [milliseconds]) => elapsed + milliseconds, 0)).toBe(600_000);
     expect(h.events.filter((event) => event === "registry:version")).toHaveLength(122);
+    expect(h.events).not.toContain("tag:create");
+  });
+
+  it("shares one retry budget between metadata and tarball propagation", async () => {
+    const f = fixture();
+    const h = harness(f.receipt);
+    h.state.delay = 61;
+    h.state.tarballDelay = 100;
+    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("and tarball within 10 minutes");
+    expect(h.wait).toHaveBeenCalledTimes(120);
+    expect(h.wait.mock.calls.reduce((elapsed, [milliseconds]) => elapsed + milliseconds, 0)).toBe(600_000);
+    expect(h.events.filter((event) => event === "registry:version")).toHaveLength(62);
+    expect(h.events.filter((event) => event === "tarball:download")).toHaveLength(61);
+    expect(h.events).not.toContain("tag:create");
+  });
+
+  it.each([false, true])("bounds persistent tarball 404 with existing publication %s and never tags", async (existing) => {
+    const f = fixture();
+    const h = harness(f.receipt);
+    if (existing) h.state.metadata = metadata(f.receipt);
+    h.state.tarballStatus = 404;
+    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("and tarball within 10 minutes");
+    expect(h.publish).toHaveBeenCalledTimes(existing ? 0 : 1);
+    expect(h.wait).toHaveBeenCalledTimes(120);
+    expect(h.events.filter((event) => event === "tarball:download")).toHaveLength(121);
+    expect(h.events).not.toContain("tag:create");
+  });
+
+  it.each([401, 429, 500])("exposes tarball HTTP %s immediately after publication", async (status) => {
+    const f = fixture();
+    const h = harness(f.receipt);
+    h.state.tarballStatus = status;
+    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow(`Public npm tarball download failed: HTTP ${status}`);
+    expect(h.publish).toHaveBeenCalledTimes(1);
+    expect(h.wait).not.toHaveBeenCalled();
+    expect(h.events.filter((event) => event === "tarball:download")).toHaveLength(1);
+    expect(h.events).not.toContain("tag:create");
+  });
+
+  it.each(["metadata", "tarball"])("bounds a stalled %s response body with the request deadline", async (body) => {
+    const f = fixture();
+    const h = harness(f.receipt);
+    const expiration = new DOMException("Request deadline expired", "TimeoutError");
+    const requests: AbortController[] = [];
+    const timeout = AbortSignal.timeout;
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      if (milliseconds !== 20_000) return timeout(milliseconds);
+      const controller = new AbortController();
+      requests.push(controller);
+      return controller.signal;
+    });
+    const original = h.services.fetch;
+    h.services.fetch = (async (input, init) => {
+      const response = await original(input, init);
+      const stalled = h.publish.mock.calls.length > 0 && (body === "tarball" ? String(input).endsWith(".tgz") : !String(input).endsWith(".tgz"));
+      if (stalled) {
+        const controller = requests.at(-1)!;
+        const read = vi.fn(() => {
+          controller.abort(expiration);
+          return new Promise<never>(() => {});
+        });
+        if (body === "metadata") vi.spyOn(response, "json").mockImplementation(read);
+        else vi.spyOn(response, "arrayBuffer").mockImplementation(read);
+      }
+      return response;
+    }) as typeof fetch;
+    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toBe(expiration);
+    expect(h.wait).not.toHaveBeenCalled();
+    expect(h.events).not.toContain("tag:create");
+  });
+
+  it("keeps the shared visibility deadline through metadata propagation and a stalled tarball body", async () => {
+    const f = fixture();
+    const h = harness(f.receipt);
+    h.state.delay = 2;
+    const deadline = new AbortController();
+    const expiration = new DOMException("Visibility deadline expired", "TimeoutError");
+    const signals: AbortSignal[] = [];
+    const timeout = AbortSignal.timeout;
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => milliseconds === 600_000 ? deadline.signal : timeout(milliseconds));
+    const original = h.services.fetch;
+    h.services.fetch = (async (input, init) => {
+      const response = await original(input, init);
+      if (h.publish.mock.calls.length > 0 && init?.signal !== undefined && init.signal !== null) signals.push(init.signal);
+      if (String(input).endsWith(".tgz")) {
+        vi.spyOn(response, "arrayBuffer").mockImplementation(() => {
+          deadline.abort(expiration);
+          return new Promise<never>(() => {});
+        });
+      }
+      return response;
+    }) as typeof fetch;
+    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toMatchObject({
+      message: `Timed out waiting for public npm version ${f.receipt.name}@${f.receipt.version} and tarball within 10 minutes.`, cause: expiration,
+    });
+    expect(h.wait).toHaveBeenCalledTimes(1);
+    expect(signals).toHaveLength(3);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
     expect(h.events).not.toContain("tag:create");
   });
 
