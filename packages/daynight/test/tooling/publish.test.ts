@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import path from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { prepareRelease, publishRelease, runNpmPublish } from "../../scripts/publish.js";
+import { preflightRelease, prepareRelease, publishRelease, runNpmPublish } from "../../scripts/publish.js";
 import type { ReleaseReceipt, ReleaseServices } from "../../scripts/publish.js";
 
 const root = path.resolve(import.meta.dirname, "../../../../.tmp/publish-tests");
@@ -30,6 +30,27 @@ const fixture = () => {
   writeFileSync(path.join(artifact, "package.tgz"), bytes);
   return { cwd, artifact, receipt, save };
 };
+const sourceCheckout = (cwd: string): string => {
+  const git = (...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", timeout: 20_000 }).trim();
+  git("init", "--initial-branch=main");
+  const tree = execFileSync("git", ["mktree"], { cwd, input: "", encoding: "utf8" }).trim();
+  const sha = execFileSync("git", ["hash-object", "-t", "commit", "-w", "--stdin"], {
+    cwd, encoding: "utf8", input: `tree ${tree}\nauthor Fixture <fixture@example.invalid> 1700000000 +0000\ncommitter Fixture <fixture@example.invalid> 1700000000 +0000\n\nRelease fixture\n`,
+  }).trim();
+  git("update-ref", "refs/heads/main", sha);
+  return sha;
+};
+const preflightFixture = () => {
+  const f = fixture();
+  const app = path.join(f.cwd, "packages/daynight");
+  mkdirSync(app, { recursive: true });
+  writeFileSync(path.join(app, "package.json"), JSON.stringify({
+    name: f.receipt.name, version: f.receipt.version,
+    repository: { type: "git", url: "git+https://github.com/codetreker/daynight.git", directory: "packages/daynight" },
+  }));
+  rmSync(f.artifact, { recursive: true });
+  return { ...f, sha: sourceCheckout(f.cwd) };
+};
 type Metadata = { name: string; version: string; gitHead: string; dist: { integrity: string; tarball: string } };
 const metadata = (receipt: ReleaseReceipt): Metadata => ({
   name: receipt.name, version: receipt.version, gitHead: receipt.sourceSha,
@@ -37,9 +58,9 @@ const metadata = (receipt: ReleaseReceipt): Metadata => ({
 });
 const harness = (receipt: ReleaseReceipt) => {
   const state: {
-    metadata: Metadata | undefined; latest: unknown; tag: string | undefined; tarball: Uint8Array;
+    metadata: Metadata | undefined; latest: unknown; tag: string | undefined; tagType: string; tarball: Uint8Array;
     postStatus: number; publicationError: Error | undefined; delay: number; tarballDelay: number; tarballStatus: number;
-  } = { metadata: undefined, latest: { version: "1.2.2" }, tag: undefined, tarball: bytes, postStatus: 201, publicationError: undefined, delay: 0, tarballDelay: 0, tarballStatus: 200 };
+  } = { metadata: undefined, latest: { version: "1.2.2" }, tag: undefined, tagType: "commit", tarball: bytes, postStatus: 201, publicationError: undefined, delay: 0, tarballDelay: 0, tarballStatus: 200 };
   const events: string[] = [];
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = String(input);
@@ -53,7 +74,7 @@ const harness = (receipt: ReleaseReceipt) => {
         return json({ ref: `refs/tags/${receipt.tag}`, object: { type: "commit", sha: state.tag } }, 201);
       }
       events.push("tag:lookup");
-      return state.tag === undefined ? json({}, 404) : json({ object: { type: "commit", sha: state.tag } });
+      return state.tag === undefined ? json({}, 404) : json({ ref: `refs/tags/${receipt.tag}`, object: { type: state.tagType, sha: state.tag } });
     }
     expect(new Headers(init?.headers).has("Authorization")).toBe(false);
     if (url.endsWith("/latest")) { events.push("registry:latest"); return state.latest === undefined ? json({}, 404) : json(state.latest); }
@@ -80,6 +101,102 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
+});
+
+describe("release version preflight", () => {
+  it.each([
+    { tag: false, npm: false }, { tag: true, npm: false }, { tag: false, npm: true }, { tag: true, npm: true },
+  ])("skips exactly when a release marker exists ($tag tag, $npm npm)", async ({ tag, npm }) => {
+    const f = preflightFixture();
+    const h = harness(f.receipt);
+    if (tag) h.state.tag = otherSha;
+    if (npm) {
+      h.state.metadata = metadata(f.receipt);
+      h.state.metadata.gitHead = otherSha;
+      h.state.metadata.dist = { integrity: "unrelated content", tarball: "not a URL" };
+    }
+    await expect(preflightRelease(f.sha, f.cwd, h.services)).resolves.toEqual({ version: f.receipt.version, skip: tag || npm });
+    expect(h.events).toEqual(tag ? ["tag:lookup"] : ["tag:lookup", "registry:version"]);
+    expect(h.fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      `https://api.github.com/repos/codetreker/daynight/git/ref/tags/${f.receipt.tag}`,
+      ...(tag ? [] : ["https://registry.npmjs.org/%40codetreker%2Fdaynight/1.2.3"]),
+    ]);
+    expect(h.publish).not.toHaveBeenCalled();
+    expect(h.wait).not.toHaveBeenCalled();
+  });
+
+  it.each(["commit", "tag", "tree", "blob"])("accepts an existing %s tag target without source or package verification", async (type) => {
+    const f = preflightFixture();
+    const h = harness(f.receipt);
+    h.state.tag = otherSha;
+    h.state.tagType = type;
+    await expect(preflightRelease(f.sha, f.cwd, h.services)).resolves.toEqual({ version: "1.2.3", skip: true });
+    expect(h.events).toEqual(["tag:lookup"]);
+  });
+
+  it.each(["tag", "npm"])("exposes %s lookup HTTP and network errors", async (lookup) => {
+    const f = preflightFixture();
+    const h = harness(f.receipt);
+    const original = h.services.fetch;
+    const failure = new Error("lookup connection reset");
+    for (const status of [401, 403, 429, 500, undefined]) {
+      h.services.fetch = (async (input, init) => {
+        expect(init?.signal).toBeInstanceOf(AbortSignal);
+        if (String(input).startsWith(lookup === "tag" ? "https://api.github.com/" : "https://registry.npmjs.org/")) {
+          if (status === undefined) throw failure;
+          return json({}, status);
+        }
+        return original(input, init);
+      }) as typeof fetch;
+      const result = preflightRelease(f.sha, f.cwd, h.services);
+      if (status === undefined) await expect(result).rejects.toBe(failure);
+      else await expect(result).rejects.toThrow(`HTTP ${status}`);
+    }
+    expect(h.publish).not.toHaveBeenCalled();
+    expect(h.wait).not.toHaveBeenCalled();
+    expect(h.events).not.toContain("tag:create");
+  });
+
+  it.each([
+    null, [], {}, { ref: "refs/tags/another", object: { type: "tag", sha: otherSha } },
+    { ref: "refs/tags/daynight-v1.2.3", object: { type: "tag", sha: "invalid" } },
+  ])("rejects malformed successful tag lookup %j", async (response) => {
+    const f = preflightFixture();
+    const h = harness(f.receipt);
+    h.services.fetch = vi.fn(async () => json(response)) as typeof fetch;
+    await expect(preflightRelease(f.sha, f.cwd, h.services)).rejects.toThrow();
+    expect(h.services.fetch).toHaveBeenCalledTimes(1);
+    expect(h.publish).not.toHaveBeenCalled();
+  });
+
+  it.each([null, [], {}, { name: "another", version: "1.2.3" }, { name: "@codetreker/daynight", version: "1.2.4" }])("rejects malformed successful npm lookup %j", async (response) => {
+    const f = preflightFixture();
+    const h = harness(f.receipt);
+    const original = h.services.fetch;
+    h.services.fetch = (async (input, init) => String(input).startsWith("https://registry.npmjs.org/") ? json(response) : original(input, init)) as typeof fetch;
+    await expect(preflightRelease(f.sha, f.cwd, h.services)).rejects.toThrow();
+    expect(h.publish).not.toHaveBeenCalled();
+  });
+
+  it("rejects a different checkout source before external requests", async () => {
+    const f = preflightFixture();
+    const h = harness(f.receipt);
+    await expect(preflightRelease(otherSha, f.cwd, h.services)).rejects.toThrow("differs from release source");
+    expect(h.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("exports a successful skip as Actions outputs without requiring publication artifacts", () => {
+    const f = preflightFixture();
+    const stub = path.join(f.cwd, "fetch.mjs");
+    const output = path.join(f.cwd, "github-output");
+    writeFileSync(stub, `globalThis.fetch = async () => new Response(JSON.stringify({ ref: 'refs/tags/daynight-v1.2.3', object: { type: 'tag', sha: '${otherSha}' } }));\n`);
+    const result = spawnSync(process.execPath, ["--import", stub, script, "preflight", f.sha], {
+      cwd: f.cwd, encoding: "utf8", timeout: 20_000, env: { ...process.env, GH_TOKEN: "fixture-token", GITHUB_TOKEN: "fixture-token", GITHUB_OUTPUT: output },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("Skipping existing release @codetreker/daynight@1.2.3.");
+    expect(readFileSync(output, "utf8")).toBe("version=1.2.3\nskip=true\n");
+  });
 });
 
 describe("npm release publication", () => {
@@ -402,13 +519,7 @@ describe("release preparation and command wrappers", () => {
       repository: { type: "git", url: "git+https://github.com/codetreker/daynight.git", directory: "packages/daynight" },
       scripts: { prepack: "node -e \"process.exit(91)\"" },
     }));
-    const git = (...args: string[]) => execFileSync("git", args, { cwd: f.cwd, encoding: "utf8", timeout: 20_000 }).trim();
-    git("init", "--initial-branch=main");
-    const tree = execFileSync("git", ["mktree"], { cwd: f.cwd, input: "", encoding: "utf8" }).trim();
-    const sha = execFileSync("git", ["hash-object", "-t", "commit", "-w", "--stdin"], {
-      cwd: f.cwd, encoding: "utf8", input: `tree ${tree}\nauthor Fixture <fixture@example.invalid> 1700000000 +0000\ncommitter Fixture <fixture@example.invalid> 1700000000 +0000\n\nRelease fixture\n`,
-    }).trim();
-    git("update-ref", "refs/heads/main", sha);
+    const sha = sourceCheckout(f.cwd);
     await expect(prepareRelease(otherSha, f.cwd)).rejects.toThrow("differs from release source");
     const receipt = await prepareRelease(sha, f.cwd);
     const tarball = readFileSync(path.join(f.artifact, "package.tgz"));

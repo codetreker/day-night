@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const packageName = "@codetreker/daynight";
@@ -33,6 +33,12 @@ export interface ReleaseServices {
   apiUrl: string;
 }
 
+type ReleaseLookupServices = Pick<ReleaseServices, "fetch" | "token" | "apiUrl">;
+export interface ReleasePreflight {
+  version: string;
+  skip: boolean;
+}
+
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown, description: string): RecordValue => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`Invalid ${description}.`);
@@ -40,6 +46,20 @@ const record = (value: unknown, description: string): RecordValue => {
 };
 const source = (sha: string): void => {
   if (!sourcePattern.test(sha) || sha === "0".repeat(40)) throw new Error("A full lowercase 40-character source commit SHA is required.");
+};
+const checkedOutSource = (sha: string, cwd: string): void => {
+  source(sha);
+  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8", timeout: 20_000 }).trim();
+  if (head !== sha) throw new Error(`Checked out HEAD ${head} differs from release source ${sha}.`);
+};
+const packageManifest = async (cwd: string): Promise<RecordValue & { version: string }> => {
+  const manifest = record(JSON.parse(await readFile(path.join(cwd, "packages/daynight/package.json"), "utf8")), "package manifest");
+  const repo = record(manifest.repository, "package repository");
+  if (manifest.name !== packageName || typeof manifest.version !== "string" || !stableVersion.test(manifest.version)
+    || repo.type !== "git" || repo.url !== `git+https://github.com/${repository}.git` || repo.directory !== "packages/daynight") {
+    throw new Error("Package manifest must identify @codetreker/daynight, a stable version, and its codetreker/daynight Git repository and directory.");
+  }
+  return manifest as RecordValue & { version: string };
 };
 const integrity = (bytes: Uint8Array): string => `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
 const locations = (cwd: string) => {
@@ -58,16 +78,9 @@ const checkReceipt = (input: unknown, sha: string): ReleaseReceipt => {
 };
 
 export const prepareRelease = async (sha: string, cwd = process.cwd()): Promise<ReleaseReceipt> => {
-  source(sha);
-  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8", timeout: 20_000 }).trim();
-  if (head !== sha) throw new Error(`Checked out HEAD ${head} differs from release source ${sha}.`);
+  checkedOutSource(sha, cwd);
   const app = path.join(cwd, "packages/daynight");
-  const manifest = record(JSON.parse(await readFile(path.join(app, "package.json"), "utf8")), "package manifest");
-  const repo = record(manifest.repository, "package repository");
-  if (manifest.name !== packageName || typeof manifest.version !== "string" || !stableVersion.test(manifest.version)
-    || repo.type !== "git" || repo.url !== `git+https://github.com/${repository}.git` || repo.directory !== "packages/daynight") {
-    throw new Error("Package manifest must identify @codetreker/daynight, a stable version, and its codetreker/daynight Git repository and directory.");
-  }
+  const manifest = await packageManifest(cwd);
   const dirs = locations(cwd);
   await rm(dirs.root, { recursive: true, force: true });
   await mkdir(dirs.artifact, { recursive: true });
@@ -114,15 +127,18 @@ export const runNpmPublish = async (tarball: string, cwd: string): Promise<void>
   });
 };
 
-const defaultServices = (): ReleaseServices => {
+const defaultLookupServices = (): ReleaseLookupServices => {
   const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
-  if (token === undefined || token.length === 0) throw new Error("GITHUB_TOKEN is required to create the release tag.");
+  if (token === undefined || token.length === 0) throw new Error("GITHUB_TOKEN is required to look up release tags.");
+  return { fetch, token, apiUrl: process.env.GITHUB_API_URL ?? "https://api.github.com" };
+};
+const defaultServices = (): ReleaseServices => {
   return {
-    fetch, publish: runNpmPublish, token, apiUrl: process.env.GITHUB_API_URL ?? "https://api.github.com",
+    ...defaultLookupServices(), publish: runNpmPublish,
     wait: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   };
 };
-const request = async <T>(services: ReleaseServices, url: string, read: (response: Response) => Promise<T>, init: RequestInit = {}): Promise<T> => {
+const request = async <T>(services: ReleaseLookupServices, url: string, read: (response: Response) => Promise<T>, init: RequestInit = {}): Promise<T> => {
   const signal = init.signal === undefined || init.signal === null ? AbortSignal.timeout(20_000) : AbortSignal.any([init.signal, AbortSignal.timeout(20_000)]);
   signal.throwIfAborted();
   const aborted = Promise.withResolvers<never>();
@@ -134,7 +150,7 @@ const request = async <T>(services: ReleaseServices, url: string, read: (respons
     signal.removeEventListener("abort", abort);
   }
 };
-const registryMetadata = async (services: ReleaseServices, version: string, signal?: AbortSignal): Promise<RecordValue | undefined> => {
+const registryMetadata = async (services: ReleaseLookupServices, version: string, signal?: AbortSignal): Promise<RecordValue | undefined> => {
   return request(services, `${registry}/${encodeURIComponent(packageName)}/${encodeURIComponent(version)}`, async (response) => {
     if (response.status === 404) return undefined;
     if (!response.ok) throw new Error(`npm registry lookup for ${version} failed: HTTP ${response.status}.`);
@@ -158,16 +174,36 @@ const compareVersions = (left: string, right: string): number => {
   }
   return 0;
 };
-const tagUrl = (services: ReleaseServices, receipt: ReleaseReceipt): string => `${services.apiUrl}/repos/${repository}/git/ref/tags/${encodeURIComponent(receipt.tag)}`;
-const githubHeaders = (services: ReleaseServices) => ({ Accept: "application/vnd.github+json", Authorization: `Bearer ${services.token}`, "X-GitHub-Api-Version": "2022-11-28" });
-const existingTag = async (services: ReleaseServices, receipt: ReleaseReceipt): Promise<boolean> => {
-  return request(services, tagUrl(services, receipt), async (response) => {
-    if (response.status === 404) return false;
+const githubHeaders = (services: ReleaseLookupServices) => ({ Accept: "application/vnd.github+json", Authorization: `Bearer ${services.token}`, "X-GitHub-Api-Version": "2022-11-28" });
+const tagReference = async (services: ReleaseLookupServices, tag: string): Promise<RecordValue | undefined> => {
+  return request(services, `${services.apiUrl}/repos/${repository}/git/ref/tags/${encodeURIComponent(tag)}`, async (response) => {
+    if (response.status === 404) return undefined;
     if (!response.ok) throw new Error(`GitHub tag lookup failed: HTTP ${response.status}.`);
-    const object = record(record(await response.json(), "GitHub tag reference").object, "GitHub tag target");
-    if (object.type !== "commit" || object.sha !== receipt.sourceSha) throw new Error(`Tag ${receipt.tag} already points to a different target.`);
-    return true;
+    const reference = record(await response.json(), "GitHub tag reference");
+    const object = record(reference.object, "GitHub tag target");
+    if (reference.ref !== `refs/tags/${tag}` || typeof object.type !== "string" || object.type.length === 0
+      || typeof object.sha !== "string" || !sourcePattern.test(object.sha) || object.sha === "0".repeat(40)) {
+      throw new Error("GitHub returned an invalid release tag reference.");
+    }
+    return object;
   }, { headers: githubHeaders(services) });
+};
+const existingTag = async (services: ReleaseServices, receipt: ReleaseReceipt): Promise<boolean> => {
+  const object = await tagReference(services, receipt.tag);
+  if (object === undefined) return false;
+  if (object.type !== "commit" || object.sha !== receipt.sourceSha) throw new Error(`Tag ${receipt.tag} already points to a different target.`);
+  return true;
+};
+
+export const preflightRelease = async (sha: string, cwd = process.cwd(), services = defaultLookupServices()): Promise<ReleasePreflight> => {
+  checkedOutSource(sha, cwd);
+  const { version } = await packageManifest(cwd);
+  if (await tagReference(services, `daynight-v${version}`) !== undefined) return { version, skip: true };
+  const metadata = await registryMetadata(services, version);
+  if (metadata !== undefined && (metadata.name !== packageName || metadata.version !== version)) {
+    throw new Error(`npm registry returned invalid metadata for ${packageName}@${version}.`);
+  }
+  return { version, skip: metadata !== undefined };
 };
 const createTag = async (services: ReleaseServices, receipt: ReleaseReceipt): Promise<void> => {
   if (await existingTag(services, receipt)) return;
@@ -244,9 +280,13 @@ export const publishRelease = async (sha: string, cwd = process.cwd(), services 
 
 if (import.meta.main) {
   const [command, sha, ...extra] = process.argv.slice(2);
-  if ((command !== "prepare" && command !== "publish") || sha === undefined || extra.length !== 0) {
-    throw new Error("Usage: node packages/daynight/scripts/publish.ts <prepare|publish> <source-sha>");
+  if ((command !== "preflight" && command !== "prepare" && command !== "publish") || sha === undefined || extra.length !== 0) {
+    throw new Error("Usage: node packages/daynight/scripts/publish.ts <preflight|prepare|publish> <source-sha>");
   }
-  if (command === "prepare") await prepareRelease(sha);
+  if (command === "preflight") {
+    const result = await preflightRelease(sha);
+    console.log(`${result.skip ? "Skipping existing" : "Preparing new"} release ${packageName}@${result.version}.`);
+    if (process.env.GITHUB_OUTPUT !== undefined) await appendFile(process.env.GITHUB_OUTPUT, `version=${result.version}\nskip=${result.skip}\n`);
+  } else if (command === "prepare") await prepareRelease(sha);
   else await publishRelease(sha);
 }

@@ -26,8 +26,9 @@ neither increments it nor commits changes. Prerelease versions fail because this
 workflow publishes stable releases to `latest`. A previously unpublished version
 must have greater precedence than the registry's current stable `latest` version.
 
-A read-only preparation job waits for the latest main-push `checks.yml` run at
-the captured commit to succeed. A missing or failed matching run stops the
+After the [version preflight](2026-10-21-publication-version-preflight.md) admits
+a new release, a read-only preparation job waits for the latest main-push
+`checks.yml` run at the captured commit to succeed. A missing or failed matching run stops the
 release. Preparation then uses Node.js 24 and pnpm 10.34.5 for a frozen
 install, type checking, tests and installed acceptance. It packs the staged CLI
 with the captured commit in `gitHead`, smoke-installs the resulting tarball, and
@@ -42,8 +43,10 @@ Publishing a tarball does not infer
 the [npm publish implementation](https://github.com/npm/cli/blob/ae98c62586b6fea44114f72e249e246a2981de70/lib/commands/publish.js)
 distinguishes tarball and directory publication.
 
-The publishing job downloads that artifact on a GitHub-hosted Ubuntu runner
-with Node.js 24 and npm 12.2.0. It receives `id-token: write` for npm OIDC and
+After the fresh-publication preflight admits the artifact, the publishing job
+downloads it on a GitHub-hosted Ubuntu runner with Node.js 24 and npm 12.2.0.
+A failed publishing-job retry with the retained artifact uses strict recovery
+without that existence-only preflight. It receives `id-token: write` for npm OIDC and
 `contents: write` for the final tag. It publishes the tarball to the public npm
 registry with `latest`, provenance and lifecycle scripts disabled. No npm token
 is provided. The package repository metadata identifies the GitHub source and
@@ -64,9 +67,11 @@ requires the registry's `gitHead` and SHA-512 integrity to match the receipt,
 downloads the registered tarball, and verifies its bytes. Only then does it
 create the lightweight `daynight-v<version>` tag at the captured source commit.
 The prefix distinguishes CLI releases from the independent server. Existing
-refs are never rewritten. A tag already pointing to the source is accepted;
-a different target fails. An existing npm version is accepted only with the
-same source and artifact, allowing an interrupted run to finish its missing tag.
+refs are never rewritten. During publication and same-run recovery, a tag already
+pointing to the source is accepted; a different target fails. Recovery accepts
+an existing npm version only with the same source and artifact, allowing an
+interrupted run to finish its missing tag. New dispatches use the existence-only
+preflight and skip either existing marker without verifying it.
 
 Public verification uses one loop and one ten-minute deadline for metadata and
 tarball visibility. The deadline starts after npm accepts a fresh publication,
@@ -83,10 +88,13 @@ independent.
 
 Recovery re-runs the failed jobs of the same Actions run, preserving the captured
 source and reusing its validated artifact within the 30-day retention period.
-A separate dispatch at a different commit with the same package version fails
-the source check even if its application files happen to be unchanged. This
-keeps one published version attached to one reviewed commit. Registry errors,
-artifact mismatches and conflicting tags remain visible failures.
+Registry errors, artifact mismatches and conflicting tags remain visible recovery
+failures. The original policy also verified existing markers for a separate
+dispatch, rejecting a different source even when its application files happened
+to be unchanged. That policy tied every accepted dispatch to the published
+source. The [version-preflight decision](2026-10-21-publication-version-preflight.md)
+replaces that admission policy: new dispatches skip existing versions or tags,
+while recovery retains the source and artifact checks described here.
 
 ## Alternatives
 
@@ -127,8 +135,8 @@ deadline covers both resources while retaining a bounded verification period.
 The release uses one validated tarball across preparation, installation,
 publication and public-registry verification. The privileged publishing job
 does not rebuild the package or execute package lifecycle scripts. Tagging is
-ordered after an observable successful publication, and re-runs complete
-interrupted releases without mutating package versions or existing tags.
+ordered after an observable successful publication, and publishing-job retries
+complete interrupted releases without mutating package versions or existing tags.
 The publishing job title follows the artifact version automatically, including
 when failed jobs are re-run with the retained artifact.
 

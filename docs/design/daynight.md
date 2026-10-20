@@ -289,7 +289,11 @@ bundle 复制到 `dist/commands/review/skills/daynight-review/`，由既有 `dis
 缺少源码时同样明确失败。原生矩阵每次解析最新可用的 Node.js 24 patch，使构建行为
 覆盖受支持运行时的当前实现。源码、包元数据、构建或依赖输入变化
 需要更高 SemVer；构建清理脚本也属于发布输入。Linux 版本检查和全部原生检查共同
-构成必需门禁。发布授权、npm OIDC、产物身份及恢复规则继续由
+构成必需门禁。发布在等待 CI 与安装依赖前检查精确版本的 tag 和 npm 记录；任一存在
+则成功跳过新发布。首次使用准备好的产物发布前重复检查，同一次 run 的发布失败重试
+保留严格的源码、字节验证与补齐 tag 能力。
+[版本预检决策](../../.agents/notes/implemented/process/2026-10-21-publication-version-preflight.md)
+维护跳过与重试规则；发布授权、npm OIDC、产物身份及公共验证由
 [发布决策](../../.agents/notes/implemented/process/2026-10-20-npm-trusted-publishing.md)维护。
 
 ## 验证与交付
