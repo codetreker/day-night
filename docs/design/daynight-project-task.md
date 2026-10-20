@@ -1,6 +1,6 @@
 # Project 与 Task 客户端设计
 
-状态：共享配置与 HTTP 基础已实现；仓库关联、命令入口与完整联调待完成。
+状态：共享配置、HTTP 与仓库关联基础已实现；命令入口与完整联调待完成。
 本文描述采用的结构和交付机制，各项状态由任务清单拥有，当前可用命令见
 [仓库 README](../../README.md)。必需行为与编号验收由
 [客户端需求](../spec/daynight-project-task.md)拥有，服务行为由
@@ -32,7 +32,7 @@ server 投影只要求有效 server 地址；review 登记可向 server-only 文
 
 ## 模块与依赖方向
 
-`config/`、`api/` 和既有 review/update 已实现；`repository/`、project/task 命令仍
+`config/`、`api/`、`repository/` 和既有 review/update 已实现；project/task 命令仍
 待实现。职责如下，具体文件可以在保持归属的前提下拆分：
 
 ```text
@@ -99,7 +99,12 @@ HTTP 层只接受 API 规定的成功状态和合法 JSON 结构；缺失字段�
 根目录，并拒绝 bare repository。使用 `git remote get-url origin` 获取默认 fetch
 URL，由 Git 处理 `insteadOf`；不读取 push URL、不自行实现 Git 配置优先级，也不
 解释 SSH config、DNS 或 provider API。Git 命令受同一剩余总期限约束，stderr 进入保留
-原因的错误链。操作不 clone、不 fetch。
+原因的错误链。操作不 clone、不 fetch。每个 Git 子进程最多使用 30 秒与共享总期限剩余值的
+较小者，stdout、stderr 分别最多捕获 1 MiB；超限或取消时终止任务拥有的执行。
+读取索引时以 `-c core.fsmonitor=false` 关闭外部 fsmonitor，避免优化工具继承管道
+或启动后台工作。POSIX 使用并等待独占进程组，Windows 使用系统目录下的
+`taskkill /T /F` 处理所属进程树。终止与管道收尾最多额外占用 2 秒；无法确认时
+保留原始错误并报告进程终止未确认，不能无限等待继承的输出句柄。
 
 repo 正规化对本地 origin、每个列表 repoUrl 和详情 repoUrl 使用同一函数。返回值
 是可持久化的 `repoIdentity` 字符串；它不是替换原始 repoUrl 的提交字段。
@@ -130,7 +135,8 @@ repo 正规化对本地 origin、每个列表 repoUrl 和详情 repoUrl 使用�
    均保留。端口使用十进制规范形式；默认端口可省略，但特殊用户或特殊路径仍保留
    transport 形式。SCP 中的冒号后路径不解释为端口。
 
-普通 hosted 地址是双方约定的等价表达；该规则不证明任意 SSH 服务的路径语义。
+用户名编码保持原样，只有字面用户名 `git` 参与普通 SSH 合并；例如 `%67it`
+仍保留 transport 身份。普通 hosted 地址是双方约定的等价表达；该规则不证明任意 SSH 服务的路径语义。
 需要表达特殊 SSH 用户、根路径或相对路径时，保留形式允许仓库登记与 origin 精确
 对应；若两端写法语义是否等价无法由规则证明，用户可显式 `--project`。
 
@@ -205,16 +211,20 @@ flowchart TD
 的读改写和 project.yml 替换。锁内再次检查当前记录，若其他进程已经保存同一有效
 关联则复用；若保存了不同 project，重新验证其适用性，不能仅因锁外 discovery
 较早开始就覆盖已确定的有效绑定。锁已由有效持有者占用时立即报告竞争失败，既不
-等待也不重试。创建锁前及取得锁后检查取消和剩余总期限；失效锁处理复用现有可
-验证进程所有权思路，仅在证明持有者已经死亡时回收，不以时间猜测进程死亡。
+等待也不重试。创建锁前及取得锁后检查取消和剩余总期限。锁文件记录进程 ID 与
+随机所有权 token，释放前核对文件身份和内容。已有锁均保留并报告；异常退出后的
+残留锁须确认写入者已经停止后人工移除。普通文件的读取与 unlink 不能构成原子
+比较删除，因此不按 PID 或锁年龄自动回收，避免误删并发建立的新锁。
 
 写入先检查根 `.gitignore` 中的 `/.daynight/` 及最终 ignore 结果；需要时以保持
 既有内容和换行风格的方式写入该规则。后续否定规则可能使该目录重新被包含，必须
-在文件末尾确保规则生效并用 Git 检查。已有被跟踪 `.daynight/` 内容不能通过 ignore
+在文件末尾确保规则生效并用 Git 分别检查目录本身和 project.yml；仅 project.yml
+被忽略不足以保护锁文件及后续仓库信息。已有被跟踪 `.daynight/` 内容不能通过 ignore
 隐藏，需报错并提示处理索引。`.gitignore` 不是普通文件、不可写或最终规则仍不
 生效时失败。
 
-元数据序列化到同目录任务拥有的临时文件，完成写入后原子 rename 替换目标，成功
+配置文件、ignore 和元数据共享 `platform/files.ts` 的原子替换原语，各自负责
+锁与输入校验。元数据序列化到同目录任务拥有的临时文件，完成写入后原子 rename 替换目标，成功
 后释放锁。`.gitignore` 也用同目录临时文件替换，避免截断。两个文件没有跨文件
 事务：ignore 成功而 metadata 失败时保留有效 ignore 并报告失败；不回滚期间可能
 已有其他进程修改的文件。metadata 从不先于有效 ignore 落地。
