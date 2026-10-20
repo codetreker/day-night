@@ -177,8 +177,10 @@ export const discoverRepository = async (
   }
   if (finalLine(bare.stdout) === "true") throw new Error("Automatic project discovery requires a Git worktree; the current repository is bare.");
   if (finalLine(bare.stdout) !== "false") throw new Error("Git returned an invalid bare-repository result.");
-  const root = finalLine((await runRepositoryGit(cwd, ["rev-parse", "--show-toplevel"], operation)).stdout);
-  if (root === "") throw new Error("Git returned an empty worktree root.");
+  const gitRoot = finalLine((await runRepositoryGit(cwd, ["rev-parse", "--show-toplevel"], operation)).stdout);
+  if (gitRoot === "") throw new Error("Git returned an empty worktree root.");
+  if (!path.isAbsolute(gitRoot)) throw new Error("Git returned a worktree root that is not an absolute path.");
+  const root = path.normalize(gitRoot);
   let remote: string;
   try { remote = finalLine((await runRepositoryGit(root, ["remote", "get-url", "origin"], operation)).stdout); }
   catch (cause) {

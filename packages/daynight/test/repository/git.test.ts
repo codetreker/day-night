@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOperation, OperationError } from "../../src/api/operation.js";
 import type { Operation } from "../../src/api/operation.js";
 import { discoverRepository, RepositoryGitError, runRepositoryGit } from "../../src/repository/git.js";
+import { formatError } from "../../src/platform/diagnostics.js";
 
 const scratch = path.resolve(import.meta.dirname, "../../../../.tmp/repository-git-tests");
 const directories: string[] = [];
@@ -159,8 +160,44 @@ describe("repository Git discovery", () => {
     const root = await repository();
     const config = path.join(root, "large config");
     await writeFile(config, `[fixture]\nlarge = ${"x".repeat(1_048_577)}\n`);
-    await expect(runRepositoryGit(root, ["config", "--file", config, "--get", "fixture.large"], operation()))
-      .rejects.toThrow("stdout exceeded its 1048576-byte limit");
+    const error: unknown = await runRepositoryGit(root, ["config", "--file", config, "--get", "fixture.large"], operation()).catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(Error);
+    expect(formatError(error)).toContain("stdout exceeded its 1048576-byte limit");
+    if (error instanceof AggregateError) {
+      expect(error.message).toContain("process termination is unconfirmed");
+      expect(error.errors.length).toBeGreaterThan(0);
+      expect(error.cause).toBeInstanceOf(RepositoryGitError);
+    }
+  });
+
+  it("retains an output-limit refusal when process-group cleanup also fails", async () => {
+    if (process.platform === "win32") return;
+    const root = await repository();
+    const config = path.join(root, "large config");
+    await writeFile(config, `[fixture]\nlarge = ${"x".repeat(1_048_577)}\n`);
+    const originalKill = process.kill.bind(process);
+    vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      if (pid < 0) throw Object.assign(new Error("Fixture group termination denied"), { code: "EPERM" });
+      return originalKill(pid, signal);
+    });
+    const error: unknown = await runRepositoryGit(root, ["config", "--file", config, "--get", "fixture.large"], operation()).catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(AggregateError);
+    expect((error as AggregateError).cause).toBeInstanceOf(RepositoryGitError);
+    expect((error as AggregateError).errors).toContainEqual(expect.objectContaining({ code: "EPERM" }));
+    expect(formatError(error)).toContain("stdout exceeded its 1048576-byte limit");
+    expect(formatError(error)).toContain("process termination is unconfirmed");
+  });
+
+  it("retains the output-limit error when the owned process group has already disappeared", async () => {
+    if (process.platform === "win32") return;
+    const root = await repository();
+    const config = path.join(root, "large config");
+    await writeFile(config, `[fixture]\nlarge = ${"x".repeat(1_048_577)}\n`);
+    const originalKill = process.kill.bind(process);
+    vi.spyOn(process, "kill").mockImplementation((pid, signal) => originalKill(pid < 0 ? -2147483647 : pid, signal));
+    const error: unknown = await runRepositoryGit(root, ["config", "--file", config, "--get", "fixture.large"], operation()).catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(RepositoryGitError);
+    expect(formatError(error)).toContain("stdout exceeded its 1048576-byte limit");
   });
 
   it("disables the repository's executable fsmonitor for read-only index queries", async () => {

@@ -98,7 +98,8 @@ HTTP 层只接受 API 规定的成功状态和合法 JSON 结构；缺失字段�
 ## Git 定位与仓库身份
 
 自动选择从调用目录执行 Git，使用 `git rev-parse --show-toplevel` 定位当前 worktree
-根目录，并拒绝 bare repository。使用 `git remote get-url origin` 获取默认 fetch
+根目录，并拒绝 bare repository。根目录必须是非空绝对路径，再转换为平台原生
+路径形式。使用 `git remote get-url origin` 获取默认 fetch
 URL，由 Git 处理 `insteadOf`；不读取 push URL、不自行实现 Git 配置优先级，也不
 解释 SSH config、DNS 或 provider API。Git 命令受同一剩余总期限约束，stderr 进入保留
 原因的错误链。操作不 clone、不 fetch。每个 Git 子进程最多使用 30 秒与共享总期限剩余值的
