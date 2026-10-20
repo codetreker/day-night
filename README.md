@@ -240,8 +240,8 @@ configuration order, with PRs ordered numerically. The columns are `PR`,
 closed PRs and history belonging to removed configuration entries are omitted.
 
 The output identifies its local snapshot source and each repository's
-`Last observed` successful complete poll, saved poll error when present, and
-permanent tracking boundary. PRs at or below that boundary are not stored individually and
+`Last observed` successful complete poll and saved poll error when present.
+PRs at or below the permanent tracking boundary are not stored individually and
 cannot appear in the listing. `No tracked ongoing PRs.` describes an initialized
 repository with no saved open PRs above the boundary; `Not initialized.` describes
 a missing database, an unregistered repository or an incomplete initialization.

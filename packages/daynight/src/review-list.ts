@@ -102,7 +102,6 @@ export const formatReviewListing = (
       lines.push("Not initialized.");
       return lines.join("\n");
     }
-    lines.push(`Tracking PRs above #${repository.startPrNumber}; earlier PRs excluded/not tracked.`);
     const pullRequests = (snapshot?.pullRequests ?? []).filter((pullRequest) =>
       repositoryKey(pullRequest) === repositoryKey(repository) && pullRequest.state === "open" && pullRequest.number > repository.startPrNumber!)
       .sort((first, second) => first.number - second.number);

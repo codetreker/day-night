@@ -327,7 +327,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       const liveLock = readFileSync(path.join(stateDirectory, "instance.lock"), "utf8");
       const draftListing = list("list");
       expect(draftListing).toContain("github.com/fixture/review-project\nLast observed: ");
-      expect(draftListing).toContain("Tracking PRs above #10; earlier PRs excluded/not tracked.");
+      expect(draftListing).not.toContain("Tracking PRs above");
       expect(draftListing).toMatch(/^#11\s+Draft\s+Paused\s+-$/m);
       expect(draftListing).not.toMatch(/^#10\s/m);
       expect(query("SELECT * FROM pull_requests WHERE number = 10")).toBeUndefined();

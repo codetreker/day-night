@@ -23,12 +23,15 @@ while their PR is open. Removed configuration entries and closed PR history do
 not appear.
 
 The output declares its local persisted source. Each repository shows the last
-successful complete observation, a saved poll error when present and its permanent
-tracking boundary. PRs at or below the boundary were never individually stored,
-so the output identifies that exclusion and states its tracked scope. Uninitialized
+successful complete observation and a saved poll error when present. Uninitialized
 repositories and initialized repositories with no tracked ongoing PRs have distinct
-messages. Saved `Running`
-state does not establish current process liveness.
+messages. Saved `Running` state does not establish current process liveness.
+
+The original listing included each repository's permanent tracking boundary to
+explain why excluded PRs could not be enumerated: they had never been individually
+stored. The [cutoff-output simplification](../simplification/2026-10-20-review-list-cutoff-output.md)
+removes that repeated notice while preserving the tracked scope and initialization
+rules.
 
 The current row matches a review by desired revision, head SHA and target branch.
 A base-tip SHA alone does not change that target. Newer pending work and an older
