@@ -1,6 +1,7 @@
 # Project 与 Task CLI 实现任务
 
-状态：PT-T1–PT-T4 已交付；PT-T5 已实现并通过本地验证，交付 PR 的原生 CI 与远端 review 待完成。
+状态：PT-T1–PT-T5 的功能与验收均已完成；集成状态由
+[PR #55](https://github.com/codetreker/daynight/pull/55)记录。
 
 本文拥有任务编号、状态、依赖、文件归属和完成条件。
 [需求](../spec/daynight-project-task.md)拥有 PT1–PT10 的可观察行为，
@@ -16,7 +17,7 @@
 | [PT-T2](#pt-t2) 仓库关联发现 | 已完成 | PT-T1 | Git 定位、地址身份、完整发现、本地记录及忽略规则 | PT3、PT4、PT5 |
 | [PT-T3](#pt-t3) Project 命令 | 已完成 | PT-T1 | create/list/show、命令登记和帮助、输出 | PT1、PT6、PT8 |
 | [PT-T4](#pt-t4) Task 命令 | 已完成 | PT-T2、PT-T3 | create/list/show/update/graph、版本及依赖更新 | PT1、PT4、PT7、PT8、PT9 |
-| [PT-T5](#pt-t5) 安装与服务联调验收 | 已实现 | PT-T3、PT-T4 | 实际 CLI、真实 Git、Go/PostgreSQL 联调和原生证据 | PT1–PT10 |
+| [PT-T5](#pt-t5) 安装与服务联调验收 | 已完成 | PT-T3、PT-T4 | 实际 CLI、真实 Git、Go/PostgreSQL 联调和原生证据 | PT1–PT10 |
 
 PT-T2 与 PT-T3 在 PT-T1 完成后可以并行，分别拥有仓库上下文与 project 命令文件。
 PT-T3 完成登记后，PT-T4 再接管命令登记文件，避免并行改动入口。各任务自身交付有效
@@ -171,7 +172,8 @@ Go 服务持有。
 <a id="pt-t5"></a>
 ## PT-T5：安装与服务联调验收
 
-状态：已实现。前置：PT-T3、PT-T4。交付 PR 的原生 CI 与远端 review 待完成。
+状态：已完成。前置：PT-T3、PT-T4。功能与托管验收已完成；集成状态见
+[PR #55](https://github.com/codetreker/daynight/pull/55)。
 
 本地验证使用 `c19b064b094aae6634ca6d62e943a73d22008262` 上的 dirty 工作树，
 包版本 `0.6.0`，Node `v24.19.0`。`pnpm typecheck`、`pnpm build`、1510 项普通
@@ -195,8 +197,24 @@ session 均为零，预算目录、共享安装目录、所属 PostgreSQL contai
 均已回收。
 
 三个独立源码最终审查未发现 Critical/Major，预算 receipt 与脚本 hash 的独立复核
-通过。上述本地 dirty 证据不能代替交付 PR
-精确 clean head 的原生 CI 与远端 review。验证分层与取舍由
+通过。本地 dirty 证据保留为开发时的观测，托管结果另以干净源码身份记录；
+review 与合并状态由 PR #55 拥有。
+
+[托管 run 39428165296](https://github.com/codetreker/daynight/actions/runs/39428165296)
+对 PR head `e9a634aca23710ffe46723fcdb2cf8e7a75d56bf` 的全部 7 项检查通过；
+实际构建的干净 merge revision 为 `2e7b8da99cf4b5de6da9c8083446f84fd19f1daf`，
+三个原生平台均为 Node `v24.22.0`、包 `0.6.0`，安装 entry SHA-256 一致。Linux
+和 macOS 各通过 10 类、69 请求，Windows 通过 8 类、67 请求；Windows 不计入
+POSIX EACCES 与真实 POSIX SIGINT 两类，八类公共场景仍覆盖 Git、worktree、
+submodule、缓存、锁、原子文件及拒绝路径。三个 receipt 的回收标记均成功且零错误。
+
+托管 Go 使用 `1.27.2`、PostgreSQL `18.6`，raw profile 复核为 `1153/1155`。
+实际 CLI workflow 用时 10348 ms，回收 2/2 个 server、38/38 个 CLI、workspace
+和 1 个 schema，无所属会话；并发 PATCH 为 `200`/`409`。六个生产预算场景全部
+通过：单响应边界及 +1 字节分别 1207/849 ms，累计边界及 +1 字节分别
+1734/1712 ms；请求期限 30148 ms、1 次请求，总期限 300136 ms、1194 次请求。
+成功 stdout 分别为 202/602 字节，拒绝场景均为空，所有 probe 与共享安装回收成功。
+验证分层与取舍由
 [安装联调决策](../../.agents/notes/implemented/testing/2026-10-20-installed-project-task-acceptance.md)拥有，
 可核对的场景、产物身份及预算表由[验收报告](../research/daynight-acceptance.md#projecttask-installed-and-real-service-acceptance)拥有。
 

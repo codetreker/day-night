@@ -1,8 +1,8 @@
 # Project 与 Task 客户端设计
 
 状态：共享配置、HTTP、仓库关联基础及 `project create/list/show` 已实现；
-Task 命令已交付；安装产物、真实 Go/PostgreSQL 联调及默认预算验收已在本地通过，
-交付 PR 的原生 CI 与远端 review 待完成。
+Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已完成，并通过三原生
+平台及 Go 托管验证；集成状态见[PR #55](https://github.com/codetreker/daynight/pull/55)。
 本文描述采用的结构和交付机制，各项状态由任务清单拥有，当前可用命令见
 [仓库 README](../../README.md)。必需行为与编号验收由
 [客户端需求](../spec/daynight-project-task.md)拥有，服务行为由
@@ -403,8 +403,9 @@ project，各页均满足列表协议，失败 stdout 必须为空。
 所有场景共享默认生产预算，不注入更小限制。已有 20 分钟 Go 作业保留其全部 gate。根目录
 `.tmp/project-task-service-evidence.json` 记录共享安装身份、Go 命令/覆盖率结果、
 解码与传输字节、探针结果和进程/socket/目录清理。本地 Linux 安装路径、真实
-Go/PostgreSQL 流程及六个默认预算场景已通过；本地 receipt 记录 `c19b064` 的
-dirty 源码，不能代替交付 PR 的精确 clean head 原生 CI 与远端 review。
+Go/PostgreSQL 流程及六个默认预算场景已通过。本地 receipt 保留 `c19b064` 的
+dirty 源码；托管 receipt 另记录 PR head、干净 build Git SHA 和产物身份，实际结果
+见任务清单与验收报告。review 与合并状态由 PR #55 拥有。
 
 源码、包元数据或构建输入交付时按既有版本策略提升 CLI 包版本，运行
 `pnpm typecheck`、`pnpm test`、`pnpm build` 及相关安装验收。文档变更校验链接、

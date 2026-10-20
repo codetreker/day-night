@@ -3,8 +3,10 @@
 Client acceptance exercises the toolkit through separate installed review
 lifecycle, installed self-update, installed project/task and real-shell completion
 suites. Project/task real-service integration and production-budget validation
-pass locally; exact-head hosted delivery remains pending under the
-[project/task task record](../design/daynight-project-task-tasks.md#pt-t5). The
+pass locally and in hosted validation.
+[PR #55](https://github.com/codetreker/daynight/pull/55) owns review and integration
+status; the [project/task task record](../design/daynight-project-task-tasks.md#pt-t5)
+owns functional completion and its evidence. The
 [client requirements](../spec/daynight.md) own command composition, package
 updates and shell completion; the [review requirements](../spec/daynight-review.md)
 own review execution and retained data. The lifecycle suite uses real Git and SQLite,
@@ -97,9 +99,9 @@ model activation has a separate native Copilot probe.
 
 ## Project/task installed and real-service acceptance
 
-Status: local validation passed; exact-head native CI and remote review for this
-acceptance delivery remain pending. This section separates the implemented paths
-from source-bound observations. The
+Status: local and hosted validation passed.
+[PR #55](https://github.com/codetreker/daynight/pull/55) owns review and integration
+status. This section separates the implemented paths from source-bound observations. The
 [acceptance decision](../../.agents/notes/implemented/testing/2026-10-20-installed-project-task-acceptance.md)
 owns the alternatives and lifecycle costs.
 
@@ -190,9 +192,55 @@ installation. Fixture Git commands disable external fsmonitor per command.
 
 After the Go gate, an independent SQL check found zero owned schemas and
 sessions. Budget directories and the shared installation were absent; the owned
-PostgreSQL container and anonymous volume were removed. These local outcomes
-still require the PR's exact clean head to pass its native matrix, all other
-required CI jobs and remote review before hosted delivery is complete.
+PostgreSQL container and anonymous volume were removed. These observations remain
+tied to the dirty local source; the hosted observations below identify their own
+clean build revision. PR #55 owns review and integration status.
+
+### Observed hosted PT-T5 evidence
+
+[Run 39428165296](https://github.com/codetreker/daynight/actions/runs/39428165296)
+passed all seven required checks for PR head
+`e9a634aca23710ffe46723fcdb2cf8e7a75d56bf`. Its receipts identify the actual clean
+merge build revision `2e7b8da99cf4b5de6da9c8083446f84fd19f1daf`, with
+`dirty=false`, package `0.6.0` and Node `v24.22.0` on every native CLI platform.
+All installed entry hashes match
+`f97d234eb1bdcb56ad2dc1fe86adde5dc88da1bbf5eea93cc22c39d7aa71e552`.
+The local dirty receipt above retains its own source identity.
+
+| Native platform | Project/task cases | Observed cleanup |
+|---|---|---|
+| Linux | Ten scenario families, 69 HTTP requests | Installation removed, children exited, servers closed, zero errors |
+| macOS | Ten scenario families, 69 HTTP requests | Installation removed, children exited, servers closed, zero errors |
+| Windows | Eight scenario families, 67 HTTP requests | Installation removed, children exited, servers closed, zero errors |
+
+Windows excludes the POSIX EACCES and actual POSIX SIGINT cases; those results
+are not claimed on Windows. Its eight common families still establish Git
+root/subdirectory discovery, worktrees and submodules, cache selection, locks,
+atomic files and refusal paths. Review, updater, completion, web and the Go
+workload retain their required checks.
+
+The hosted Go receipt reports Go `1.27.2`, PostgreSQL `18.6` and binary SHA-256
+`837f9dd3a990eb226db287127dc04c3223e5bd8fef5cc15fcf77d2c84dceef72`.
+The downloaded raw profile independently passes the strict check at `1153/1155`.
+The CLI workflow passed in 10,348 ms, with two service and 38 CLI processes
+started/reaped, workspace and schema removed, owned sessions absent, and actual
+concurrent PATCH statuses `200` and `409` with request IDs.
+
+| Hosted default-budget probe | Exit / stdout | Elapsed / requests |
+|---|---|---|
+| Exact 128 MiB single response | `0`, 202 bytes | 1,207 ms / one |
+| Single response plus one byte | `1`, empty | 849 ms / one |
+| Exact 256 MiB cumulative response | `0`, 602 bytes | 1,734 ms / three |
+| Cumulative response plus one byte | `1`, empty | 1,712 ms / three |
+| Request deadline after headers | `1`, empty | 30,148 ms / one |
+| Command deadline with valid progress | `1`, empty | 300,136 ms / 1,194 |
+
+The byte counts and gzip page construction match the local cases. Every hosted
+probe reports passed, child reaped, sockets/server closed and fixture removed;
+the shared installation was removed and the composite failure array is empty.
+These observations establish the tested source and workload. PR #55 owns the
+current review and integration state; this receipt does not assert that the PR
+has merged or extend a pass to a later source revision.
 
 ## Bundled review skill acceptance
 

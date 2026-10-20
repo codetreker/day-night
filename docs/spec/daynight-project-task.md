@@ -1,8 +1,8 @@
 # Project 与 Task 客户端需求
 
 状态：共享配置、HTTP、仓库关联基础及 `project create/list/show` 已实现；
-Task 命令已交付；安装产物、真实 Go/PostgreSQL 联调及默认预算验收已在本地通过，
-交付 PR 的原生 CI 与远端 review 待完成。本文保留完整交付要求，具体任务状态与
+Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已完成，并通过三原生
+平台及 Go 托管验证；集成状态见[PR #55](https://github.com/codetreker/daynight/pull/55)。本文保留完整交付要求，具体任务状态与
 验证证据由[任务清单](../design/daynight-project-task-tasks.md)拥有；当前可用命令见
 [仓库 README](../../README.md)。
 
@@ -249,6 +249,6 @@ HTTP 验证，不能以注入较小预算替代。响应和累计解码字节均
 原生安装结果写入仓库根 `.tmp/project-task-evidence.json`，服务及预算结果写入
 `.tmp/project-task-service-evidence.json`；每份证据标识源码、pack/安装身份、场景
 和清理。Go 原有 receipt 及 raw coverage 保留其归属，CLI 要求编号使用 `PT.V*` 命名
-空间。真实 Go/PostgreSQL 联调及默认预算场景已在本地通过，当前验收交付仍须由
-精确 clean head 的原生 CI 和远端 review 确认；实际结果见任务清单。机制存在及
-受控 HTTP 验证不能替代真实服务证据或原生平台证据。
+空间。真实 Go/PostgreSQL 联调及默认预算场景已通过本地和托管验证，实际结果
+及 tested source 见任务清单；review 与合并状态由 PR #55 拥有。受控 HTTP、真实
+服务与原生平台证据分别证明其对应要求，不能互相替代。

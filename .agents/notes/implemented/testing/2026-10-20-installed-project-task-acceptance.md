@@ -13,8 +13,9 @@ budgets also cannot establish that an installed command enforces its public
 ## Decision
 
 The adopted acceptance design adds two required paths while preserving existing
-review, self-update, completion, Go and web validation. Local implementation and
-validation are complete; hosted acceptance delivery is pending. The [task record](../../../../docs/design/daynight-project-task-tasks.md)
+review, self-update, completion, Go and web validation. Implementation and both
+local and hosted validation are complete. [PR #55](https://github.com/codetreker/daynight/pull/55)
+owns review and integration status. The [task record](../../../../docs/design/daynight-project-task-tasks.md)
 owns observed results and delivery status. This decision adds no production API,
 database schema, test-only CLI flag or reduced resource limit.
 
@@ -107,6 +108,8 @@ still enforce its own decoded-byte budgets. Receipt selection must distinguish
 native and service/budget artifacts and preserve failures and resource cleanup.
 The local Linux receipt covers the three installed suites, real Go/PostgreSQL
 workflow and six default-budget cases. It records package `0.6.0` from the dirty
-`c19b064` development source; native matrix CI and remote review must still prove
-the delivery's exact clean head. Detailed observations belong to the task and
-acceptance report rather than extending this design receipt to later sources.
+`c19b064` development source. Hosted receipts separately identify PR head
+`e9a634aca23710ffe46723fcdb2cf8e7a75d56bf` and clean build revision
+`2e7b8da99cf4b5de6da9c8083446f84fd19f1daf`; the required native matrix and Go
+workload passed in run `39428165296`. Detailed observations belong to the task
+and acceptance report; PR #55 owns current review and integration status.

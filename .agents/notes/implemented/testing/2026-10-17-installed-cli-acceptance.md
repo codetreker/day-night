@@ -14,9 +14,10 @@ actual Copilot reasoning and GitHub effects.
 `pnpm acceptance` builds the application and runs independent review, self-update
 and project/task installed suites. The
 [project/task acceptance decision](2026-10-20-installed-project-task-acceptance.md)
-owns the third native suite and separate real-service path. Local validation
-passes with the original review and self-update workloads retained; exact-head
-hosted acceptance delivery remains pending. The review lifecycle suite
+owns the third native suite and separate real-service path. Local and hosted
+validation pass with the original review and self-update workloads
+retained; [PR #55](https://github.com/codetreker/daynight/pull/55) owns review and
+integration status. The review lifecycle suite
 packs and installs the application into a
 project-local consumer, then drives its installed `daynight` command. It uses
 real Git and SQLite with controlled `gh` and Copilot executables. It injects no

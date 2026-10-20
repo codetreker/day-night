@@ -19,7 +19,8 @@ The adopted [requirements](../../../../docs/spec/daynight-project-task.md) and
 is adopted. Shared configuration, bounded HTTP, repository bindings and
 `project create/list/show`, task create/list/show/update/graph and shared syntax
 integration are delivered. Installed CLI acceptance against the Go service and
-default production-budget probes pass locally; exact-head hosted delivery is pending. The
+default production-budget probes pass locally and in hosted validation.
+[PR #55](https://github.com/codetreker/daynight/pull/55) owns review and integration status. The
 [task breakdown](../../../../docs/design/daynight-project-task-tasks.md) owns
 implementation status, dependencies, file ownership and completion evidence.
 

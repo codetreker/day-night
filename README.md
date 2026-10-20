@@ -8,7 +8,7 @@ work.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion`, shared configuration, server HTTP and repository binding foundations plus project and task commands; installed service/default-budget acceptance locally validated, native CI pending | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
+| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion`, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service/default-budget acceptance verified | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery and strict coverage implemented; full production acceptance pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -33,8 +33,9 @@ confirmed behavior and implementation status. Shared YAML projections, the
 with ignored local bindings are implemented. `project create/list/show` manage
 remote projects through the configured server. Task create/list/show/update/graph
 commands use explicit project selection or the current repository binding;
-installed real-service commands and production-budget acceptance pass local
-validation; the acceptance delivery still requires exact-head native CI and remote review. Controlled native-platform tests and live
+installed real-service commands and production-budget acceptance pass local and
+hosted validation. [PR #55](https://github.com/codetreker/daynight/pull/55) owns
+review and integration status. Controlled native-platform tests and live
 Copilot/GitHub acceptance provide separate evidence; live acceptance remains
 outstanding.
 
@@ -518,8 +519,9 @@ complete API object. Versions remain JSON numbers with full int64 precision.
 Local preparation fails before any task mutation; a lost write response is
 reported as unconfirmed. The [task record](docs/design/daynight-project-task-tasks.md)
 owns validation status. Installed CLI integration with the real Go/PostgreSQL
-service and production-budget probes pass locally; that acceptance delivery still
-requires exact-head native CI and remote review.
+service and production-budget probes pass locally and in hosted validation.
+[PR #55](https://github.com/codetreker/daynight/pull/55) records review and
+integration status.
 
 ## Review configuration and startup
 
