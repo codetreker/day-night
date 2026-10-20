@@ -115,6 +115,8 @@ counts and five repetitions on the same IDs. Their timings are evidence for that
 matrix and environment, not an arbitrary-DAG latency guarantee. Long rank spans
 can enlarge normalized graphs, and longest-path can increase edge lengths. These
 trade-offs and the version-specific runtime patch require exact differential
-regressions when Dagre changes. Complete local browser capacity results pass the
-fixed matrix; clean CI results and delivery approval remain required before the
-task document can mark production acceptance complete.
+regressions when Dagre changes. Layout policy and geometry remain unchanged as
+the canvas moves immutable edges to one static SVG. Earlier local browser
+capacity evidence stays historical. The current static SVG renderer passes its
+own complete local capacity matrix; clean current-source CI and delivery approval
+remain required before production acceptance is complete.

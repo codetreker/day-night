@@ -7,8 +7,9 @@ The project dashboard, task canvas and detail drawer are embedded into the Go
 server for single-origin delivery. The [localhost deployment](../../deployment/localhost/README.md)
 starts the full UI/API/database stack; [dev-ci](../../deployment/dev-ci/README.md)
 provides an isolated instance of the same production build. Production browser
-workflows, the fixed-capacity matrix and real deployment-fault acceptance pass
-locally; clean CI and delivery remain tracked in the
+workflows and the fixed-capacity matrix pass locally with the static SVG edge
+layer. Earlier real Docker lifecycle evidence is retained; current-source clean
+CI and delivery remain tracked in the
 [implementation tasks](../../docs/design/daynight-web-tasks.md).
 
 The [requirements](../../docs/spec/daynight-web.md) own visible behavior and the
@@ -88,10 +89,11 @@ the dedicated Linux shell completion job. The web job also tests the dev-ci runn
 with controlled Docker fixtures. It uploads `coverage-final.json` and `summary.json`, which records exact counts and
 the relative product-source manifest. The [acceptance report](../../docs/research/daynight-web-acceptance.md) records
 local production-bundle checks with a real Go API and PostgreSQL, embedded
-HTTP/container smoke checks and concurrent dev-ci isolation. Full production
-browser workflows now pass for both native and container targets. Clean hosted
-performance/source verification and delivery remain W-T6; the evidence report
-keeps local and hosted receipts distinct. A separate local real-Docker matrix
+HTTP/container smoke checks and concurrent dev-ci isolation. The earlier renderer's
+full native/container browser workflows passed locally. The static SVG renderer
+also passes complete local production/performance acceptance after that hosted
+zoom failure; current-source hosted CI remains required. The report keeps these
+source identities distinct. A separate local real-Docker matrix
 passed startup failure, callback failure, cancellation and cleanup failure/recovery
 while an independent sentinel stack remained healthy. CI repeats the 12 controlled
 lifecycle fixtures and full production-browser suite; that manual fault matrix
@@ -139,9 +141,12 @@ image identity and cleanup outcomes. `CI` requires a clean checkout matching
 `GITHUB_SHA`, Linux and the pinned browser. Playwright uses one worker and no
 retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validation.
 The required web CI job archives `daynight-web-acceptance` separately from raw
-coverage. The complete local run passed 12 native scenarios, eight container scenarios and
-all three graphs’ five timing repetitions, including independent size refusals and
-confirmed cleanup/recovery. Local receipts retain their dirty/browser identity
+coverage. The static SVG renderer's complete local run passed 12 native scenarios,
+eight container scenarios and all three graphs’ five timing repetitions, including
+independent size refusals, actual SVG alignment across pan/zoom/root changes and
+confirmed cleanup/recovery. The largest local opening was 1644.3ms; every local
+detail/zoom/pan measurement was below 300ms. Current-source hosted CI remains
+required. Local receipts retain their dirty/browser identity
 and do not establish clean hosted delivery results.
 
 ### Cleanup and interrupted-run recovery
@@ -209,11 +214,14 @@ summary consistency. It projects root descendants plus direct external
 prerequisites, caches distinct root progress, and marks shared tasks. The Dagre
 adapter returns finite left-to-right node positions and routed edge points for
 220-by-96 cards. The read-only React Flow canvas consumes these results without changing domain
-objects. Fixed public dimensions/handles let edges use known geometry before DOM
-measurement; physical 6px handles and ResizeObserver remain present. Declared
-dimensions/handles satisfy node readiness without waiting for all node DOM bounds,
-while viewport initialization still requires the framework viewport and positive
-measured canvas dimensions. Hidden handle centers do not replace the exact Dagre edge paths.
+objects. React Flow owns fixed task nodes, native ResizeObserver measurement,
+keyboard behavior, viewport and controls. One memoized SVG in its public
+ViewportPortal renders every exact Dagre path, with stable edge identity,
+arrowheads, boundary dashes and accessibility semantics. It shares the viewport's
+transform, so selection/pan/zoom reuse all paths without per-edge reactive state.
+Initial placement uses known layout bounds after the viewport and positive
+measured canvas dimensions are ready. Dependency geometry does not require
+connection-port DOM or per-edge endpoint readiness.
 Ordinary/selected canonical node variants retain unaffected references, and
 memoized collapsed root rows keep a null selection until expanded. New snapshot
 indexes still refresh all rows. The one-time initial viewport policy is separate

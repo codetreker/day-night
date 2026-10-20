@@ -9,7 +9,9 @@ preserves snapshot meaning during navigation, refresh and detail reads. A live
 task detail can differ from a previously loaded graph even when the task's own
 timestamp is unchanged, because prerequisite completion changes readiness.
 Keyboard users also need one reliable node action and a modal lifecycle that
-does not leave background content interactive.
+does not leave background content interactive. At the declared 5,000-edge limit,
+viewport controls must remain responsive while every dependency remains present
+and aligned with its task nodes.
 
 ## Decision
 
@@ -19,21 +21,29 @@ resource cannot render an earlier resource's data. Same-project refresh retains
 the last successful snapshot with an explicit loading/error notice, and replaces
 statistics, indexes and root rows together after success.
 
-Only one root canvas is mounted. React Flow renders immutable layout data while
-editing, connecting, deletion, wrapper focus and interactive-lock controls remain
-disabled. Each node has one native button for pointer, Enter and Space activation.
-Keyboard focus pans offscreen nodes without changing zoom. Routed edges retain
-Dagre's actual points, including noncentral rectangle intersections on branching
-edges. Invisible handles are framework bookkeeping/readiness anchors, not the
-rendered line endpoints. Fixed public node dimensions and `Node.handles` declare
-220-by-96 cards and centered 6-by-6 ports before first measurement. The physical
-DOM handles share the size constant and retain native ResizeObserver measurement.
-Edges can use that known geometry on their first pass. Declared dimensions and
-handle bounds satisfy node readiness with `includeHiddenNodes: true`, while
-initial viewport placement still requires the framework viewport and positive
-measured canvas dimensions. Line paths continue
-to use the exact Dagre points. Changing physical geometry
-requires updating declarations and a real-browser bounds regression together.
+Only one root canvas is mounted. React Flow owns fixed 220-by-96 task nodes,
+native node measurement, keyboard interaction, the viewport and its controls.
+Editing, connection, deletion, wrapper focus and interactive-lock controls remain
+disabled. Each task has one native button for pointer, Enter and Space activation;
+keyboard focus pans offscreen nodes without changing zoom.
+
+One memoized SVG beneath task nodes in the public `ViewportPortal` renders every
+dependency from the
+immutable Dagre layout. It retains exact routed points, stable edge/source/target
+identity, arrowheads, external-prerequisite dashes and accessibility semantics.
+The portal shares the React Flow viewport transform; pan and zoom transform the
+same complete paths without per-edge store subscriptions or endpoint-admission
+work. Selection keeps the edge layer stable. Edges do not intercept pointer
+input, so task buttons and the canvas remain the interaction targets.
+
+The original W-T4 custom-edge integration used invisible framework ports for
+edge admission. That choice preserved Dagre's noncentral rectangle intersections:
+framework port centers never defined the visible line endpoints. The static SVG
+retains that geometry rationale while giving immutable dependency routes their
+own rendering owner. It uses no connection-port DOM or node-handle readiness
+state. Initial placement uses known layout bounds after the framework viewport
+and positive measured canvas dimensions are ready; native ResizeObserver node
+measurement remains enabled.
 
 Initial viewport policy keeps readable zoom. When the graph cannot fit at that
 zoom, the chosen root is placed near the left edge and vertically centered;
@@ -89,6 +99,12 @@ and complete snapshot replacement retain the single-snapshot meaning.
 editing, and wrapper keyboard selection does not open task details. A single
 native button plus explicit read-only props implements the intended actions.
 
+**Represent every immutable dependency as a reactive React Flow edge.** Each
+edge then owns wrapper/SVG/store and endpoint bookkeeping. At 5,000 edges those
+units participate in viewport work even though the route geometry does not
+change. The single public-portal SVG retains every route while the framework
+continues to own nodes, viewport interaction and controls.
+
 **Recreate every node data object on selection.** The selection becomes visible,
 but all task props change and a detail action can rerender the complete
 1,000-node graph. Canonical ordinary/selected variants preserve the immutable
@@ -108,5 +124,8 @@ Project browsing now reaches real statistics, dependency diagrams and task
 details. Controlled component tests cover state/focus transitions, while a local
 production-bundle browser check also uses the real Go API and PostgreSQL. The
 [acceptance report](../../../../docs/research/daynight-web-acceptance.md) distinguishes
-the earlier preview observations from passing local production-browser results
-and pending clean hosted performance/source verification. Dependency upgrades must revisit the declaration patch and type tests.
+the earlier preview and pre-static-SVG local results from the current renderer's
+complete local production pass. PR #52's earlier hosted shared-graph zoom failure
+is retained; current-source hosted acceptance remains required. Actual browser
+checks verify SVG/node alignment and exact route endpoints after zoom, pan and
+root changes. Dependency upgrades must revisit the declaration patch and type tests.

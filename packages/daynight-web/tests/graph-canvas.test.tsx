@@ -5,8 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaskGraph as TaskGraphData } from '../src/api/types';
 import { RootList } from '../src/features/task-graph/RootList';
 import { getInitialTaskViewport, TaskGraph } from '../src/features/task-graph/TaskGraph';
-import { TASK_HANDLE_SIZE } from '../src/features/task-graph/TaskNode';
-import { buildGraphIndex } from '../src/features/task-graph/model';
+import { buildGraphIndex, projectRoot } from '../src/features/task-graph/model';
 import * as layoutModule from '../src/features/task-graph/layout';
 import { installGraphMeasurements } from './graph-measurements';
 
@@ -49,7 +48,7 @@ const ready = async (container: HTMLElement) => {
 beforeEach(installGraphMeasurements);
 
 describe('task dependency canvas', () => {
-  it('renders complete edges before resize measurements while keeping real handles observed', () => {
+  it('renders all dependency paths without endpoint measurements and still observes the task nodes', () => {
     const observed = new Set<Element>();
     vi.stubGlobal('ResizeObserver', class {
       observe(target: Element) { observed.add(target); }
@@ -63,14 +62,8 @@ describe('task dependency canvas', () => {
     expect(edges).toHaveLength(4);
     expect(nodes.every((node) => observed.has(node))).toBe(true);
     expect(edges.every((edge) => edge.getAttribute('marker-end')?.startsWith('url('))).toBe(true);
-    expect(TASK_HANDLE_SIZE).toBe(6);
-    const handles = [...container.querySelectorAll<HTMLElement>('.task-node-handle')];
-    expect(handles).toHaveLength(10);
-    handles.forEach((handle) => {
-      expect(handle.style.width).toBe(`${TASK_HANDLE_SIZE}px`);
-      expect(handle.style.height).toBe(`${TASK_HANDLE_SIZE}px`);
-      expect(handle.classList.contains('connectable')).toBe(false);
-    });
+    expect(container.querySelectorAll('.react-flow__handle')).toHaveLength(0);
+    expect(container.querySelectorAll('svg.task-dependency-edges')).toHaveLength(1);
   });
 
   it('renders complete projected nodes and arrows, preserving status, shared nodes, and external predecessors', async () => {
@@ -93,7 +86,7 @@ describe('task dependency canvas', () => {
     expect(screen.queryByRole('button', { name: /^独立任务，/ })).toBeNull();
   });
 
-  it('uses the exact Dagre point geometry instead of assuming horizontal midpoint handles', async () => {
+  it('uses every exact Dagre point in an accessible noninteractive dependency layer', async () => {
     const expected = layoutModule.layoutGraph({ rootId: 'A', mainIds: new Set(['A', 'C', 'D']), boundaryIds: new Set(['B', 'F']), edges: [
       { source: 'A', target: 'C', external: false }, { source: 'B', target: 'C', external: true },
       { source: 'C', target: 'D', external: false }, { source: 'F', target: 'D', external: true },
@@ -102,6 +95,70 @@ describe('task dependency canvas', () => {
     await waitFor(() => { expect(container.querySelectorAll('.react-flow__edge-path')).toHaveLength(expected.edges.length); });
     const actualPaths = [...container.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'));
     expect(actualPaths).toEqual(expected.edges.map((edge) => edge.points.map((point, position) => `${position === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ')));
+    const svg = container.querySelector('svg.task-dependency-edges')!;
+    expect(svg.parentElement).toHaveClass('react-flow__viewport-portal');
+    expect(svg.closest('.react-flow__viewport')).toBe(viewport(container));
+    expect(svg).toHaveAttribute('width', '100%');
+    expect(svg).toHaveAttribute('height', '100%');
+    expect(svg).not.toHaveAttribute('viewBox');
+    expect(svg).toHaveAttribute('focusable', 'false');
+    expect(svg).toHaveAttribute('role', 'group');
+    expect(svg).toHaveAttribute('aria-label', '任务依赖关系');
+    const marker = svg.querySelector('marker')!;
+    expect(marker).toHaveAttribute('markerWidth', '16');
+    expect(marker).toHaveAttribute('markerHeight', '16');
+    expect(marker).toHaveAttribute('viewBox', '-10 -10 20 20');
+    expect(marker).toHaveAttribute('orient', 'auto-start-reverse');
+    expect(marker).toHaveAttribute('markerUnits', 'strokeWidth');
+    const relations = [...svg.querySelectorAll('g.task-dependency-edge')];
+    expect(relations).toHaveLength(expected.edges.length);
+    relations.forEach((relation, position) => {
+      const edge = expected.edges[position]!;
+      expect(relation).toHaveAttribute('data-id', edge.id);
+      expect(relation).toHaveAttribute('role', 'img');
+      expect(relation).toHaveAttribute('aria-label', `前置任务 ${edge.source} → 后续任务 ${edge.target}`);
+      expect(relation).toHaveAttribute('focusable', 'false');
+      expect(relation).not.toHaveAttribute('tabindex');
+      expect(relation.querySelectorAll('a,button,[tabindex]')).toHaveLength(0);
+      const path = relation.querySelector('path')!;
+      expect(path).toHaveAttribute('data-source', edge.source);
+      expect(path).toHaveAttribute('data-target', edge.target);
+      expect(path).toHaveAttribute('aria-hidden', 'true');
+      expect(path).toHaveAttribute('marker-end', `url(#${marker.id})`);
+    });
+  });
+
+  it('keeps dependency paths in the node viewport during zoom and updates them from new snapshots', async () => {
+    const view = render(<TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
+    await ready(view.container);
+    const svg = view.container.querySelector('svg.task-dependency-edges')!;
+    const paths = [...svg.querySelectorAll('path.react-flow__edge-path')];
+    const initialPaths = paths.map((path) => path.getAttribute('d'));
+    const beforeZoom = viewport(view.container).style.transform;
+    fireEvent.click(screen.getByRole('button', { name: '放大' }));
+    await waitFor(() => { expect(viewport(view.container).style.transform).not.toBe(beforeZoom); });
+    expect(view.container.querySelector('svg.task-dependency-edges')).toBe(svg);
+    paths.forEach((path, position) => { expect(svg.querySelectorAll('path.react-flow__edge-path')[position]).toBe(path); });
+    expect(paths.map((path) => path.getAttribute('d'))).toEqual(initialPaths);
+    expect(svg.closest('.react-flow__viewport')).toBe(viewport(view.container));
+    expect(view.container.querySelector('.react-flow__nodes')!.parentElement).toBe(viewport(view.container));
+
+    const updated = buildGraphIndex({
+      ...graph,
+      tasks: graph.tasks.map((task) => task.id === 'D' ? { ...task, dependsOn: ['C'], blockedBy: ['C'] } : task),
+    });
+    const expected = layoutModule.layoutGraph(projectRoot(updated, 'A'));
+    const retainedPath = svg.querySelector('[data-id="A->C"] path');
+    view.rerender(<TaskGraph index={updated} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
+    await waitFor(() => { expect(svg.querySelectorAll('.react-flow__edge-path')).toHaveLength(3); });
+    expect(view.container.querySelector('svg.task-dependency-edges')).toBe(svg);
+    expect(svg.querySelector('[data-id="A->C"] path')).toBe(retainedPath);
+    expect([...svg.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'))).toEqual(
+      expected.edges.map((edge) => edge.points.map((point, position) => `${position === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ')),
+    );
+    expected.nodes.forEach((node) => {
+      expect(view.container.querySelector<HTMLElement>(`.react-flow__node[data-id="${node.id}"]`)!.style.transform).toBe(`translate(${node.position.x}px,${node.position.y}px)`);
+    });
   });
 
   it('opens each node once using mouse, Enter, or Space and returns the actual native trigger', async () => {

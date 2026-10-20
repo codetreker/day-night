@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { test, expect, createProject, createTask, updateTask, withDependencyFailure, withProjectsFailure } from './fixtures';
+import { parseTaskGraph } from '../../src/api/parse';
+import { buildGraphIndex, projectRoot } from '../../src/features/task-graph/model';
+import { layoutGraph, type CanvasLayout } from '../../src/features/task-graph/layout';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
 const node = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node`);
@@ -131,38 +134,81 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   await expect(page.locator('.task-graph-canvas')).toHaveCount(1);
   await expect(page.locator('.react-flow__node')).toHaveCount(7);
   await expect(page.locator('.react-flow__edge')).toHaveCount(7);
-  await test.step('checks physical handle geometry against the declared fixed node geometry', async () => {
-    const geometry = await page.locator('.react-flow__node').evaluateAll((elements) => elements.map((element) => {
-      const viewport = element.closest('.react-flow__viewport');
-      if (viewport === null) throw new Error('A task node has no graph viewport.');
-      const transform = new DOMMatrixReadOnly(getComputedStyle(viewport).transform);
-      const bounds = element.getBoundingClientRect();
-      return {
-        id: element.getAttribute('data-id'), scaleX: transform.a, scaleY: transform.d,
-        width: bounds.width / transform.a, height: bounds.height / transform.d,
-        handles: [...element.querySelectorAll('.react-flow__handle')].map((handle) => {
-          const handleBounds = handle.getBoundingClientRect();
-          return { position: handle.getAttribute('data-handlepos'),
-            x: (handleBounds.x - bounds.x) / transform.a, y: (handleBounds.y - bounds.y) / transform.d,
-            width: handleBounds.width / transform.a, height: handleBounds.height / transform.d };
-        }),
-      };
-    }));
-    expect(new Set(geometry.map((item) => item.id))).toEqual(new Set([a.id, b.id, c.id, d.id, e.id, f.id, g.id]));
-    for (const item of geometry) {
-      expect(item.scaleX).toBeGreaterThan(0);
-      expect(item.scaleY).toBeCloseTo(item.scaleX, 5);
-      expect(item.width).toBeCloseTo(220, 1);
-      expect(item.height).toBeCloseTo(96, 1);
-      expect(item.handles).toHaveLength(2);
-      expect(new Set(item.handles.map((handle) => handle.position))).toEqual(new Set(['left', 'right']));
-      for (const handle of item.handles) {
-        expect(handle.x).toBeCloseTo(handle.position === 'left' ? -3 : 217, 1);
-        expect(handle.y).toBeCloseTo(45, 1);
-        expect(handle.width).toBeCloseTo(6, 1);
-        expect(handle.height).toBeCloseTo(6, 1);
+  const graphResponse = await request.get(`/api/v1/projects/${project.id}/task-graph`);
+  expect(graphResponse.status()).toBe(200);
+  const graphIndex = buildGraphIndex(parseTaskGraph(await graphResponse.json(), project.id));
+  const checkEdges = async (rootId: string): Promise<void> => {
+    const expected = layoutGraph(projectRoot(graphIndex, rootId));
+    await expect(page.locator('.task-dependency-edges')).toHaveCount(1);
+    await expect(page.locator('.task-dependency-edge')).toHaveCount(expected.edges.length);
+    const diagnostics = await page.evaluate((geometry: CanvasLayout) => {
+      const failures: string[] = [];
+      const svg = document.querySelector<SVGSVGElement>('.task-dependency-edges');
+      const viewport = document.querySelector('.react-flow__viewport');
+      if (svg === null || viewport === null) return ['The dependency layer or viewport is absent.'];
+      if (svg.closest('.react-flow__viewport') !== viewport) failures.push('Dependency SVG uses a different viewport.');
+      if (getComputedStyle(svg).pointerEvents !== 'none') failures.push('Dependency SVG captures pointer input.');
+      if (svg.hasAttribute('viewBox')) failures.push('Dependency SVG rescales the layout coordinates.');
+      if (svg.querySelectorAll('[tabindex]:not([tabindex="-1"])').length !== 0) failures.push('Dependency SVG has a keyboard focus target.');
+      const expectedIds = new Set(geometry.edges.map((edge) => edge.id));
+      const actualIds = [...svg.querySelectorAll('.task-dependency-edge')].map((edge) => edge.getAttribute('data-id'));
+      if (actualIds.length !== expectedIds.size || actualIds.some((id) => id === null || !expectedIds.has(id))) failures.push('Dependency identities differ from the active projection.');
+      const expectedNodeIds = new Set(geometry.nodes.map((node) => node.id));
+      const actualNodeIds = [...viewport.querySelectorAll('.react-flow__node')].map((node) => node.getAttribute('data-id'));
+      if (actualNodeIds.length !== expectedNodeIds.size || actualNodeIds.some((id) => id === null || !expectedNodeIds.has(id))) failures.push('Task identities differ from the active projection.');
+      for (const expectedNode of geometry.nodes) {
+        const element = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${expectedNode.id}"]`);
+        if (element === null || element.closest('.react-flow__viewport') !== viewport) failures.push(`Node ${expectedNode.id} uses a different viewport.`);
       }
-    }
+      const onBorder = (point: DOMPoint, bounds: DOMRect): boolean => {
+        const epsilon = 0.75;
+        return point.x >= bounds.left - epsilon && point.x <= bounds.right + epsilon
+          && point.y >= bounds.top - epsilon && point.y <= bounds.bottom + epsilon
+          && Math.min(Math.abs(point.x - bounds.left), Math.abs(point.x - bounds.right), Math.abs(point.y - bounds.top), Math.abs(point.y - bounds.bottom)) <= epsilon;
+      };
+      for (const edge of geometry.edges) {
+        const group = svg.querySelector<SVGGElement>(`.task-dependency-edge[data-id="${edge.id}"]`);
+        const path = group?.querySelector<SVGPathElement>('path.react-flow__edge-path');
+        const source = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${edge.source}"]`);
+        const target = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${edge.target}"]`);
+        if (group === null || path === undefined || path === null || source === null || target === null) {
+          failures.push(`Dependency ${edge.id} lacks its path or endpoint nodes.`);
+          continue;
+        }
+        if (group.getAttribute('role') !== 'img' || group.getAttribute('focusable') !== 'false' || !(group.getAttribute('aria-label') ?? '').includes(edge.source) || !(group.getAttribute('aria-label') ?? '').includes(edge.target)) failures.push(`Dependency ${edge.id} lost its accessible identity.`);
+        const expectedPath = edge.points.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ');
+        if (path.getAttribute('d') !== expectedPath || path.dataset.source !== edge.source || path.dataset.target !== edge.target) failures.push(`Dependency ${edge.id} lost layout points or endpoint identities.`);
+        if (path.getAttribute('aria-hidden') !== 'true' || getComputedStyle(path).pointerEvents !== 'none') failures.push(`Dependency ${edge.id} is interactive.`);
+        const dashed = getComputedStyle(path).strokeDasharray !== 'none';
+        if (dashed !== edge.external) failures.push(`Dependency ${edge.id} has an incorrect external style.`);
+        const matrix = path.getScreenCTM();
+        const first = edge.points[0]!;
+        const last = edge.points[edge.points.length - 1]!;
+        if (matrix === null || !onBorder(new DOMPoint(first.x, first.y).matrixTransform(matrix), source.getBoundingClientRect()) || !onBorder(new DOMPoint(last.x, last.y).matrixTransform(matrix), target.getBoundingClientRect())) failures.push(`Dependency ${edge.id} does not meet its rendered endpoint boundaries.`);
+        const markerId = /#([^#)]+)\)/.exec(path.getAttribute('marker-end') ?? '')?.[1];
+        if (markerId === undefined || !svg.querySelectorAll('marker').values().some((marker) => marker.id === markerId)) failures.push(`Dependency ${edge.id} has no local arrow marker.`);
+      }
+      return failures;
+    }, expected);
+    expect(diagnostics, 'Every static dependency follows all Dagre points and the actual transformed task boundaries').toEqual([]);
+  };
+  await test.step('keeps every static dependency aligned with task nodes through zoom and pan', async () => {
+    await checkEdges(a.id);
+    const viewport = page.locator('.react-flow__viewport');
+    const beforeZoom = await viewport.getAttribute('style');
+    await page.getByRole('button', { name: '放大', exact: true }).click();
+    await expect.poll(() => viewport.getAttribute('style')).not.toBe(beforeZoom);
+    await checkEdges(a.id);
+    const pane = page.locator('.react-flow__pane');
+    const bounds = await pane.boundingBox();
+    expect(bounds).not.toBeNull();
+    const beforePan = await viewport.getAttribute('style');
+    await page.mouse.move(bounds!.x + 15, bounds!.y + bounds!.height - 15);
+    await page.mouse.down();
+    await page.mouse.move(bounds!.x + 75, bounds!.y + bounds!.height - 50, { steps: 4 });
+    await page.mouse.up();
+    await expect.poll(() => viewport.getAttribute('style')).not.toBe(beforePan);
+    await checkEdges(a.id);
   });
   await expect(page.locator('.task-node-boundary')).toHaveCount(2);
   await expect(page.locator('.task-boundary-label')).toHaveText(['外部前置，上游已省略', '外部前置，上游已省略']);
@@ -177,17 +223,19 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
     expect(from).not.toBeNull(); expect(to).not.toBeNull();
     expect(from!.x + from!.width / 2).toBeLessThan(to!.x + to!.width / 2);
   }
-  const paths = page.locator('.react-flow__edge path.react-flow__edge-path');
+  const paths = page.locator('.task-dependency-edges path.react-flow__edge-path');
   expect(await paths.evaluateAll((items) => items.every((path) => (path.getAttribute('marker-end') ?? '').startsWith('url(')))).toBe(true);
   expect(await paths.evaluateAll((items) => items.filter((path) => getComputedStyle(path).strokeDasharray !== 'none').length)).toBe(2);
   await root(page, b.id).click();
   await expect(root(page, a.id)).toHaveAttribute('aria-expanded', 'false');
   await expect(root(page, b.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(page.locator('.task-graph-canvas')).toHaveCount(1);
+  await checkEdges(b.id);
   await root(page, b.id).click();
   await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
   await root(page, a.id).click();
   await expect(page.locator('.react-flow__node')).toHaveCount(7);
+  await checkEdges(a.id);
   await screenshot(page, info, 'project-graph');
 });
 

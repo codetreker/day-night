@@ -1,6 +1,6 @@
 # 项目与任务看板设计
 
-状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 已实现并通过完整本地生产浏览器与固定性能验收，实际部署故障验收也已通过，等待 clean CI、review 与交付。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
+状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 采用单层静态 SVG 边渲染后已通过完整本地生产与性能验收，等待 PR #52 当前源码的真实 CI、review 与交付；较早 hosted 缩放失败保留于验收报告。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
 
 ## 目标与现有基础
 
@@ -153,23 +153,27 @@ declare const layoutGraph: (projection: RootProjection) => CanvasLayout;
 | 方案 | 成本与适用性 | 选择 |
 |---|---|---|
 | React + React Flow + Dagre | 复用图交互和可访问性；需要明确禁用编辑功能，固定节点尺寸 | 推荐 |
-| React + 自绘 SVG + Dagre | 需要自行实现视口变换、键盘定位、焦点和平移缩放测试 | 交互预览可以使用，产品代码不选 |
+| React + 完全自建 SVG 画布 + Dagre | 需要自行实现视口变换、键盘定位、焦点和平移缩放测试 | 交互预览使用；产品视口与节点交互继续由 React Flow 提供 |
 | Vue + Vue Flow + Dagre | 同样能够实现；仓库没有 Vue 基础，不能减少本次工作 | 保留为可替代方案 |
 
 依据：[React Flow 布局指南](https://reactflow.dev/learn/layouting/layouting)、[Dagre 示例](https://reactflow.dev/examples/layout/dagre)、[可访问性](https://reactflow.dev/learn/advanced-use/accessibility)、[Vue Flow](https://vueflow.dev/guide/)、[Vite 构建](https://vite.dev/guide/build)。Dagre 对外联子图的限制针对嵌套分组；这里每个根条目是独立平面图，不使用嵌套 subflow。
 
 React Flow 固定为 12.12.0，使用单个原生任务按钮处理鼠标/Enter/Space，关闭 wrapper
-焦点与所有编辑入口，控件不提供解锁开关。节点公开 `width`/`height` 与
-`Node.handles` 预先声明 220×96 卡片和左右居中的 6×6 handle，实际 DOM handle
-共享同一尺寸常量，仍保持透明、不可连接并接受原生 ResizeObserver 测量。
-固定几何让初次渲染即可建立完整边，避免先渲染无边图再等待全部节点测量。
-`useNodesInitialized({includeHiddenNodes: true})` 使用已声明尺寸和 handle bounds
-判断节点就绪，无需等待全部节点 DOM bounds；初始视口仍需框架 viewport 初始化及
-实际测得的画布宽高为正，才一次应用既有策略。
-这些 handle 是 React Flow 的端口登记与就绪锚点；`DependencyLine` 始终使用
-Dagre 原始路由点，不能把路由端点改成隐形 handle 中心。改变卡片或 handle 几何
-时必须同步声明和实际 DOM，并通过真实浏览器边界回归；布局、选择和请求仍分别
-归所属模块。
+焦点与所有编辑入口，控件不提供解锁开关。React Flow 拥有 220×96 节点、键盘
+焦点、选择、视口、背景与控件；边由公开 `ViewportPortal` 中一个 memoized SVG
+拥有。SVG 位于任务节点图层下方，使用同一 `CanvasLayout` 的全部 Dagre points，保留每条边的稳定 ID、
+source/target 身份、箭头、外部前置虚线及可访问语义，不在交互期间省略或裁剪边。
+
+`ViewportPortal` 随 React Flow 视口使用相同的 pan/zoom transform，SVG 在图坐标
+中绘制，不自行订阅或重算每条边的视口状态。布局更换才替换静态 SVG 内容；选择、
+平移和缩放复用同一批路径。图中仍有全部任务节点与全部依赖路径，交互目标及焦点
+保持在任务按钮，边不接收指针事件。
+
+初始视口根据已知 Dagre 几何计算，等待 React Flow viewport 初始化且实际测得的
+画布宽高为正后一次应用。节点保留 React Flow 的原生 ResizeObserver；固定尺寸
+与实际 DOM 需通过浏览器边界回归。端点始终是 Dagre 原始矩形交点，分叉边可以
+在侧边非中心位置相交。该只读结构不需要编辑端口或逐边端点就绪登记；布局、选择、
+静态边、视口和请求分别归所属模块。
 
 同一布局及选择回调创建一组不可变节点引用，每个节点只保留普通和选中两个
 canonical variant。选择切换时只替换前后两个节点的引用，关闭只替换原选中节点；
@@ -214,7 +218,8 @@ packages/daynight-server/
 | projects hooks | 列表游标、完整图快照、加载/刷新状态 | 调用 api，交给 model 建索引 |
 | task-graph/model | 根、可达集合、外部前置、统计与共享关系 | 仅依赖 DTO 类型与标准集合 |
 | task-graph/layout | 将投影映射为确定的节点坐标和边 | 依赖 model 与 Dagre |
-| React Flow 组件 | 画布、只读节点、缩放和节点选择 | 接收布局与 onSelectTask，不调用 API |
+| React Flow 组件 | 视口、只读节点、缩放、平移和节点选择 | 接收布局与 onSelectTask，不调用 API |
+| 静态依赖 SVG | 公开 ViewportPortal 内的完整 Dagre 路径、边身份、箭头/虚线与可访问语义 | 接收不可变布局，复用 React Flow 视口变换，不订阅逐边状态 |
 | TaskDrawer | 当前 taskId 的详情、关系跳转、焦点和关闭 | 调用详情 hook；不修改图快照 |
 | Go server | HTTP 解析、响应、路由与方法语义 | 调用 service 或 webui |
 | Go service | 具体 store 的读取事务、领域拒绝、图摘要 | 调用 core/store，返回 core 模型 |
@@ -338,10 +343,10 @@ deployment/
 
 正常退出、测试失败和信号取消都先终止本次子命令进程组，再收集本项目的必要日志及状态，执行仅针对该项目的 `down --volumes --remove-orphans`。进程组在 leader 退出后仍受管理，避免成功或失败的 callback 留下继续使用资源的后代。清理拒绝空项目名、非 dev-ci 前缀和 `daynight-localhost`，不执行全局 prune；本次镜像标签也只在确认本次容器退出后移除。取消后的清理采用独立有界步骤，清理失败必须使验收失败并保留原测试失败。run ID、base URL、image ID、资源清单和结果记录在任务 `.tmp/`，诊断不输出环境凭据、原始连接串或任务正文。恢复入口 `run.sh --cleanup RUN_ID` 只接受已有本地回执的有效身份，保留原 manifest，另写 recovery-manifest；执行恢复前必须先停止原 runner 与子命令进程组。W-T6 的 CI 外层始终执行定向清理步骤，复用已登记的 run 身份；进程被强制终止而无法确认清理时，保留资源清单并报告未完成，不能宣称已回收。
 
-两套环境定义、隔离 HTTP smoke、运行镜像身份和并发隔离均已本地验证，正常重建保留数据。12 项受控 Docker fixture 验证成功、失败、取消、恢复与遗留子进程清理；它们不代替真实 Docker 故障验收。完整本地生产浏览器、性能及实际 Docker 故障矩阵已通过；后者保留独立健康栈，
+两套环境定义、隔离 HTTP smoke、运行镜像身份和并发隔离均已本地验证，正常重建保留数据。12 项受控 Docker fixture 验证成功、失败、取消、恢复与遗留子进程清理；它们不代替真实 Docker 故障验收。较早渲染器的本地生产浏览器/性能与实际 Docker 故障矩阵已有通过记录；后者保留独立健康栈，
 验证启动中途失败、callback 失败、取消及卷清理失败后的定向恢复。CI 运行既有
 12 项受控生命周期 fixture 和完整真实浏览器，不宣称重复这套手工 Docker 故障矩阵。
-clean CI 的源码、镜像及性能回执仍待交付验证。localhost 的配置与数据不会作为测试前置被修改。
+单层静态 SVG 渲染器的完整本地生产、几何与性能已通过，当前源码的 clean CI 源码、镜像及性能回执仍待验证。localhost 的配置与数据不会作为测试前置被修改。
 
 ### CI 构建归属
 
@@ -475,8 +480,9 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 `packages/daynight-web/scripts/acceptance.mts` 拥有新建运行的源码身份、构建、
 原生 PostgreSQL/服务进程、Playwright 与 dev-ci 调用；`scripts/acceptance/` 拥有
 进程控制及回执校验，`tests/e2e/` 拥有功能流程、API 数据和固定图集。实际运行
-结果由[验收报告](../research/daynight-web-acceptance.md)拥有：两个目标和固定性能
-矩阵已本地通过，clean CI 的源码/镜像回执仍待交付验证。
+结果由[验收报告](../research/daynight-web-acceptance.md)拥有：较早渲染器的本地双
+目标与固定性能矩阵通过，但 PR #52 的真实 CI 发现共享图缩放 452.7ms；静态 SVG
+渲染器的完整本地验收已通过，当前源码的 hosted 结果仍待验证。
 
 每次运行先生成真实 UI 与 Go 可执行文件，再启动独立 PostgreSQL 18.6，等待服务
 结构化就绪日志并记录二进制摘要。原生目标运行八个功能场景和四个容量/超限场景；
@@ -540,7 +546,7 @@ CI 无论验收成功、失败或取消都执行恢复与归档；恢复成功�
 ## 风险与重审条件
 
 - 大量共享节点会重复出现在不同根图中；通过去重统计和单展开控制成本。需要同时比较多条图时再重审交互。
-- 1,000/5,000 是明确的保护上限。固定拓扑矩阵已通过本地五次展开和交互门槛；clean CI 尚待验证。布局归一化成本取决于 rank 跨距，不能把这一矩阵的结果宣称为任意 DAG 的相同耗时保证。
+- 1,000/5,000 是明确的保护上限。静态 SVG 渲染器已本地通过固定拓扑的全部五次展开和交互门槛，当前源码的 hosted 验证仍待通过。布局归一化成本取决于 rank 跨距，不能把这一矩阵的结果宣称为任意 DAG 的相同耗时保证。
 - 外部前置必须保留显式标记，否则图会错误暗示前置已完整展示。
 - Node 成为 Go 二进制的构建前置；固定构建顺序与干净 checkout 验证，运行时仍只有 Go 与 PostgreSQL。
 - 只有本机访问需求。出现远程访问要求时必须先补齐身份与授权设计。

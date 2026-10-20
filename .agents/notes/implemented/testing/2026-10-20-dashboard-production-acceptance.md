@@ -81,8 +81,9 @@ memory from the committed patch with published SHA-256 checks. The 23-fixture,
 four-direction, three-ranker matrix compares complete coordinates, edge routes,
 bounds and repeated geometry through both public exports; direct tie/removal and
 usedBias cases protect the ordered scan semantics. Real-browser graph checks also
-keep declared node/handle geometry aligned with physical CSS bounds and verify
-Dagre route points rather than substituting hidden handle centers.
+keep the task-card bounds and the static SVG routes aligned through the public
+viewport portal. Every edge's identity, exact Dagre points, arrow/dash semantics
+and pan/zoom transform remain asserted; native node measurement remains enabled.
 The [layout decision](../feature/2026-10-20-task-graph-projection.md) owns ranking,
 normalization costs and the version-specific redundant-scan patch. Neither the
 pure benchmark matrix nor geometry equivalence establishes arbitrary-DAG browser
@@ -97,7 +98,8 @@ owns delivery status.
 
 ## Alternatives
 
-No separate runtime architecture was reconsidered for this task. The adopted
+No alternative harness target architecture was selected. Rendering alternatives
+belong to the [dashboard decision](../feature/2026-10-20-project-task-dashboard.md). The adopted
 [MVP design](../architecture/2026-10-20-task-dashboard-mvp-design.md) already
 requires real production targets, isolated PostgreSQL and independent strict
 coverage. This decision specifies the evidence checks needed to enforce those
@@ -111,13 +113,22 @@ completion requires their confirmed cleanup. Raw and derived receipts are both
 retained so a rounded percentage, exit code or summary cannot replace the
 underlying measurement.
 
-The complete local run passes both production targets, all fixed datasets and
-repeat counts, independent limit refusals and cleanup/recovery. Its dirty source
-identity is explicit. A separate real-Docker matrix passes startup/test-failure,
+The pre-static-SVG local run passes both production targets, all fixed datasets
+and repeat counts, independent limit refusals and cleanup/recovery. Its dirty
+source identity is explicit. The first hosted shared-graph zoom measurement
+exceeded 300ms; its failed result is retained. The single static edge SVG keeps
+all original graph completeness and timing gates. Its new complete local native
+and container run passes, including all fixed datasets/repetitions, independent
+limits, SVG coordinate/endpoint alignment and cleanup/recovery. Current-source
+hosted acceptance remains required. A separate real-Docker matrix passes
+startup/test-failure,
 cancellation and cleanup-failure/recovery while a second stack retains its
-HTTP/data sentinel. Its final audit confirms no owned resources or processes
-remain. That local manual matrix is distinct from CI's controlled lifecycle and
+HTTP/data sentinel. It predates the SVG change and tests unchanged deployment
+lifecycle code, not the new UI image identity. Its final audit confirms no owned
+resources or processes remain. That local manual matrix is distinct from CI's
+controlled lifecycle and
 production-browser suites. Exact-source hosted CI, independent review and
-approval remain required before W-T6 is complete. Historical
-preview and HTTP smoke evidence remains labeled by its actual scope, and fixed-topology results do not
+approval remain required before W-T6 is complete. Historical preview and HTTP
+smoke evidence remains labeled by its actual scope, and fixed-topology results
+do not
 establish arbitrary-DAG latency.

@@ -93,9 +93,11 @@ and retained project/task data after whole-stack recreation. Owned resources
 were removed. Concurrent real runs proved distinct ports, volumes and datasets;
 removing one left the other usable and final cleanup succeeded. These HTTP and
 W-T5 orchestration observations do not claim the full W-T6 production-browser
-workflow or boundary-size performance gate. The subsequent complete W-T6 local
-run passes both production targets and the fixed capacity matrix; its dirty
-source identity and pending hosted verification are recorded in the web report. The
+workflow or boundary-size performance gate. The subsequent pre-static-SVG W-T6
+local run passed both production targets and the fixed capacity matrix. After
+a hosted zoom-budget failure, the static SVG renderer passed a new complete local
+run. Current-source hosted acceptance remains required; source identities and
+results are recorded in the web report. The
 [web evidence report](daynight-web-acceptance.md) owns the deployment proof's
 scope and remaining requirements.
 
@@ -161,9 +163,10 @@ records its separate historical timeout and diagnostic guarantees.
 This evidence covers task-management HTTP behavior, PostgreSQL and foreground
 process ownership. Authenticated remote deployment, task execution and PR
 integration remain outside the confirmed service contract. The embedded read-only
-UI is implemented. Production-browser and fixed-capacity acceptance passes
-locally, and actual deployment-fault acceptance also passes. W-T6 in the separate
-dashboard task document still requires clean hosted
+UI is implemented. Earlier local production-browser, fixed-capacity and actual
+deployment-fault evidence is preserved. The static SVG renderer passes its new
+complete local production/performance run; W-T6 in the separate dashboard task
+document still requires successful current-source clean hosted
 source/image results and delivery approval. The task document
 tracks two nonblocking test-fixture improvements: earlier setup cleanup
 registration and a stronger graceful-signal observation barrier. Neither changes

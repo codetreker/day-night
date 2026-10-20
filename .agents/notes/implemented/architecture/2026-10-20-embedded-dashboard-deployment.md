@@ -89,10 +89,13 @@ isolation and controlled runner failure/cleanup decisions. Its scope does not
 establish the complete production-browser workflow or fixed five-run performance
 requirements. The subsequent
 [production acceptance harness](../testing/2026-10-20-dashboard-production-acceptance.md)
-records both production targets, source identities and fixed measurements. Both
-targets, the 1,000-node/5,000-edge matrix and cleanup/recovery pass locally;
-actual deployment-fault acceptance also passes with another run retaining its
-HTTP/data sentinel throughout. Clean CI source and image verification remains
+records both production targets, source identities and fixed measurements. The
+earlier renderer's targets, 1,000-node/5,000-edge matrix and cleanup/recovery passed
+locally. The static SVG renderer also passes its own complete local acceptance
+after the hosted zoom-budget failure. Separate actual deployment-fault acceptance
+passed with another run retaining its HTTP/data sentinel throughout; that matrix
+predates the SVG change and tests unchanged deployment lifecycle code, not the
+new UI image identity. Current-source clean CI and image verification remains
 required. W-T6 in the
 [task document](../../../../docs/design/daynight-web-tasks.md) owns delivery status
 and the [acceptance report](../../../../docs/research/daynight-web-acceptance.md)

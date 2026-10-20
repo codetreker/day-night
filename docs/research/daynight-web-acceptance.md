@@ -5,15 +5,15 @@ The [requirements](../spec/daynight-web.md) own W1–W12, the
 [task document](../design/daynight-web-tasks.md) records delivery status.
 This report owns observed validation and its practical limits.
 
-## Local validation
+## Current local validation
 
-Current W-T6 checks passed package typechecking, 296 functional tests and 36
+The static SVG W-T6 source passed package typechecking, 297 functional tests and 36
 Node tool tests with Node 24 and pnpm 10.34.5. The tool cases include the earlier
 coverage/publication checks, browser-report/performance/process identity checks
-and three Dagre differential regressions. The complete production-browser run
-below also passed; its local source identity remains distinct from hosted CI. The raw V8 report contains
-660 covered statements out of 666 across all 18 product TypeScript/TSX files
-(about 99.10%). Exact integer comparison confirms coverage strictly above 90%.
+and three Dagre differential regressions. The current complete production-browser
+run below also passed; its local identity remains distinct from hosted CI. The raw V8 report contains
+653 covered statements out of 659 across all 18 product TypeScript/TSX files
+(about 99.09%). Exact integer comparison confirms coverage strictly above 90%.
 The browser entry, request hooks, canvas and drawer are included; no product
 filename exclusions supply that result.
 
@@ -36,9 +36,85 @@ its named volume were cleared. The earlier W-T5 integration also passed its two
 installed CLI suites and actual Bash 4.2/modern Bash/zsh completion acceptance;
 those historical observations do not establish a new hosted current-head result.
 
-## Complete local production-browser result
+## Current static SVG local production result
 
-Run `20261020103753-bbbed443-8f6c-402c-be61-46b91fe54827` passed both targets,
+Run `20261020113046-15ee88b2-047d-4ec7-b9be-b15003254463` passed all 12 native
+and eight production-container scenarios with the static SVG edge renderer.
+It used Linux x64, Node 24.19.0, pnpm 10.34.5, Playwright 1.64.1 and bundled
+Chromium 156.0.8078.4 (no executable override), with Go 1.27.2/PostgreSQL 18.6.
+
+All three graphs completed five measured expansions. The native target also
+passed independent 1,001-node/0-edge and 1,000-node/5,001-edge 409 refusals without
+partial graph/statistics. Actual browser geometry checks passed SVG CTM and exact
+endpoint/node alignment after zoom, pan and root changes. All functional,
+keyboard, narrow-layout and database-failure/recovery scenarios passed in both
+targets. Original `result` and `cleanup` were `passed`; outer recovery also
+passed separately and preserved the original evidence.
+
+The receipt identifies base `741f2e65593df7b2b95908c350508b59e291eaf6` with
+`dirty: true` and no GitHub SHA. It is a local development result, not clean
+current-source hosted evidence. Native binary SHA-256 is
+`4f33b878e36933b0fbd4a646414be34168710655a6a05ea322d50243e6c26ec2`. Dev-ci run
+`20261020113351-1016268-01884` tested built/running image
+`sha256:5159f1bbe74cb1c295e28d13a7863876300eaf508a6e8445d1a4c75b4dd40f3e`.
+
+### Static SVG capacity measurements
+
+Durations are milliseconds, rounded only for display; raw values enforce every
+gate. Maxima are across five repetitions of the same graph and can come from
+different repetitions. Cold navigation and graph/detail network time are separate
+observations, not a replacement for collapsed-root opening or local feedback.
+
+| Dataset | Nodes/edges | Five collapsed-root open times | Max layout | Max render | Cold navigation | Graph network |
+|---|---|---|---|---|---|---|
+| Chain | 1,000/999 | 491.3, 467.3, 497.2, 470.5, 482.1 | 238.9 | 260.2 | 1508.4 | 13.7 |
+| Merge | 1,000/5,000 | 1342.6, 1339.3, 1346.1, 1323.9, 1290.9 | 999.1 | 388.7 | 2957.3 | 29.1 |
+| Shared roots | 1,000/5,000 | 1420.1, 1535.9, 1644.3, 1528.2, 1609.3 | 1134.9 | 614.9 | 3445.8 | 24.7 |
+
+| Dataset | Max detail local feedback | Max detail network | Max zoom | Max pan |
+|---|---|---|---|---|
+| Chain | 55.3 | 3.638 | 16.5 | 38.7 |
+| Merge | 95.0 | 4.185 | 56.2 | 17.8 |
+| Shared roots | 127.0 | 4.219 | 25.9 | 35.5 |
+
+Every opening stayed below 3,000ms and every local detail/zoom/pan feedback stayed
+below 300ms. These results cover the fixed topology matrix and environment;
+current-source hosted acceptance and arbitrary-DAG timing remain separate claims.
+
+## Earlier hosted zoom failure and required hosted revalidation
+
+[PR #52](https://github.com/codetreker/daynight/pull/52)'s
+[failed web job](https://github.com/codetreker/daynight/actions/runs/39412445956/job/118593266570)
+tested clean merge revision `ea3245ff2ab4687c9d8021c84be1918bff276735`, whose tree
+matched PR head `741f2e65593df7b2b95908c350508b59e291eaf6`. Coverage was 660/666
+and source/cleanup checks passed. Chain and merge completed all five repetitions;
+the shared 1,000-node/5,000-edge graph's second zoom measurement was 452.7ms on the
+trusted browser clock, exceeding the unchanged 300ms requirement. Limit and
+container acceptance were not completed by that failed run.
+
+The original failed run, artifacts and traces remain its evidence; no unchanged
+rerun is used to seek a different result. Coverage success and earlier local
+timings do not replace the failure. New acceptance must test the changed rendering
+source.
+
+The current renderer retains React Flow for nodes, keyboard behavior, viewport
+and controls, while one memoized SVG in the public ViewportPortal owns every
+immutable Dagre edge path. It preserves all nodes/edges, identity, arrows,
+external-prerequisite dashes, accessible semantics and the shared viewport
+transform. Per-edge wrapper/store/endpoint-admission work is removed. Dagre's
+ranking, pinned patch and exact route geometry remain unchanged.
+
+Current-source functional/geometry checks must verify portal alignment across
+actual pan, zoom and fit, every visible Dagre point and edge count, and node
+interaction. All three fixed graphs must still complete five openings under
+3,000ms and every detail/zoom/pan measurement under 300ms. The new complete local
+run above passes those gates; current-source hosted acceptance remains required.
+The earlier passing receipts below are historical pre-static-SVG observations.
+
+## Historical pre-static-SVG production-browser result
+
+Before the static SVG edge layer, run
+`20261020103753-bbbed443-8f6c-402c-be61-46b91fe54827` passed both targets,
 all fixed capacity measurements and cleanup. It ran on Linux x64 with Node
 24.19.0, pnpm 10.34.5, Playwright 1.64.1, its bundled Chromium 156.0.8078.4
 (revision 1248, no executable override), Go 1.27.2 and PostgreSQL 18.6.
@@ -47,7 +123,7 @@ all fixed capacity measurements and cleanup. It ran on Linux x64 with Node
 |---|---|
 | Native production target | 12 scenarios passed; eight functional plus four capacity/limit scenarios |
 | Container production target | All eight functional scenarios passed through the dev-ci stream gateway |
-| Browser geometry | Seven-node real-CSS regression passed physical card/handle bounds and exact Dagre edge-path assertions |
+| Browser geometry | The earlier renderer's seven-node real-CSS regression passed card/port bounds and exact Dagre edge-path assertions |
 | Capacity | Three fixed graphs, five expansions each; all original 3,000ms/300ms budgets passed |
 | Independent node limit | 1,001 nodes/0 edges returned 409 with exact limits and no partial graph/statistics |
 | Independent edge limit | 1,000 nodes/5,001 edges returned 409 with exact limits and no partial graph/statistics |
@@ -110,8 +186,8 @@ suite again through the actual dev-ci production-image gateway. Native acceptanc
 requires 12 stable scenarios; container acceptance requires the same eight
 functional scenarios. Capacity runs only against the native production process.
 Fixtures, including capacity datasets, use the real project/task write APIs.
-Page requests remain GET/HEAD. The complete local run above passed this command;
-clean hosted acceptance remains pending.
+Page requests remain GET/HEAD. The current static SVG local run above passes this
+command; current-source hosted acceptance remains pending.
 
 | Requirement | Production evidence and hosted requirement |
 |---|---|
@@ -179,9 +255,11 @@ recovery. None of these local observations establishes a clean hosted source
 identity; failed exploratory results stay failed and are not reused as passing
 capacity receipts.
 
-## Real Docker deployment-fault matrix
+## Recorded real Docker deployment-fault matrix
 
-The local manual probe `fault-1792493712152-d0ae9b41` passed all four fault cases
+This lifecycle matrix used the earlier UI revision. Deployment lifecycle code is
+unchanged by the static SVG update; the matrix does not claim the new UI image
+identity. The local manual probe `fault-1792493712152-d0ae9b41` passed all four fault cases
 and final cleanup using the unchanged `deployment/dev-ci/run.sh` against a real
 Docker daemon. A separate baseline B stack remained alive throughout. Its UI and
 API returned 200 and the same project sentinel survived after every case and
@@ -316,13 +394,14 @@ Go retains its independent raw-profile gate and native CLI validation remains
 required by the aggregate check.
 
 Embedded Go UI, localhost integration, the isolated dev-ci environment and the
-production-browser harness are implemented, and complete local browser/capacity
-acceptance passes, and the separate real-Docker deployment-fault matrix passes
-with independent resource/process cleanup. W-T6 still requires the delivery PR's
-clean hosted source/image
-evidence, real required-check results, independent review and approval. The
+production-browser harness are implemented. Earlier local browser/capacity and
+real-Docker deployment-fault evidence remains preserved. The static SVG renderer
+passes its new complete local production/performance run and still requires the
+delivery PR's current-source clean hosted evidence, real required-check results,
+independent review and approval. The
 W-T4 preview and W-T5 HTTP smoke observations retain their historical scope; the
-complete local result supplies the separate production-browser measurements.
+pre-static-SVG local result supplies the separate historical production-browser
+measurements.
 
 The required aggregate retains every native CLI platform, the dedicated Linux
 shell completion job, Go and web. Local success does not authorize describing
