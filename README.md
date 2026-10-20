@@ -1,12 +1,14 @@
 # Day Night
 
 Day Night contains a foreground GitHub PR review CLI and an independent Go
-service runtime for project and task management.
+service runtime for project and task management. A read-only browser dashboard
+is designed and awaiting implementation.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented TypeScript CLI with SQLite review state | [Requirements](docs/spec/daynight.md), [design](docs/design/daynight.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task HTTP APIs, PostgreSQL transactions, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
+| `daynight-web` | Planned `packages/daynight-web/` | Read-only dashboard design and interactive preview; application not implemented | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The `@codetreker/daynight` package provides the `daynight` CLI. It polls configured
 repositories, maintains dedicated local clones and PR worktrees, and launches
@@ -25,6 +27,13 @@ records the adopted scope and concurrency choices. The
 [server task breakdown](docs/design/daynight-server-tasks.md) owns implementation
 scope, dependencies, status and acceptance criteria. The development and runtime
 CLI commands below apply to the reviewer; server commands have their own module.
+The planned dashboard presents source-root dependency graphs and project statistics
+from the server. Its [design decision](.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)
+defines the read-only MVP and future single-origin delivery. The standalone HTML
+preview opens directly in a browser and uses fixture data; current server builds
+continue to serve only the implemented JSON APIs. The planned delivery integrates
+the full application into `deployment/localhost/` and provides an isolated
+`deployment/dev-ci/` stack for local and CI acceptance with disposable test data.
 
 ## CLI development
 

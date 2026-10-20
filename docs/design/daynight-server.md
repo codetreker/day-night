@@ -8,6 +8,8 @@
 重新评估条件由[决策记录](../../.agents/notes/implemented/architecture/2026-10-19-daynight-server-task-design.md)
 拥有。决策记录标记的是已采用的设计，不表示服务已经交付。
 [任务拆分](daynight-server-tasks.md)记录执行任务的范围、依赖、状态和验收条件。
+待实现的[只读看板设计](daynight-web.md)定义浏览器页面、完整图快照接口和静态资源
+交付；该扩展保留本文的领域与事务结构，不改变现有分页读取的一致性承诺。
 
 现有 `packages/daynight/` TypeScript CLI、YAML 配置和 SQLite review 状态继续独立
 运行。服务不读取或迁移这些状态；注册 project 也不启动现有 review 协调器。
