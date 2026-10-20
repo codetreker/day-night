@@ -60,6 +60,11 @@ for task updates, dependency rules and the complete HTTP contract.
 
 ## Operate and update
 
+The containers are named `daynight-postgres`,
+`daynight-gateway` and `daynight-server`. These fixed names
+allow one localhost stack per Docker daemon, including when a different Compose
+project name is selected.
+
 Check health and follow logs:
 
 ```bash
