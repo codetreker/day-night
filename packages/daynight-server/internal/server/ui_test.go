@@ -1,0 +1,166 @@
+package server
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"regexp"
+	"strings"
+	"testing"
+
+	"github.com/codetreker/daynight/packages/daynight-server/internal/webui"
+)
+
+func uiTestHandler(output io.Writer) http.Handler {
+	logger := slog.New(slog.NewJSONHandler(output, nil))
+	return RequestLogging(logger, New(nil, nil, logger))
+}
+
+func TestUIExactRoutesAssetsAndSingleRequestLog(t *testing.T) {
+	var logs bytes.Buffer
+	handler := uiTestHandler(&logs)
+	root := projectRequest(handler, http.MethodGet, "/", "")
+	if root.Code != http.StatusOK || root.Header().Get("Content-Type") != "text/html; charset=utf-8" || root.Header().Get("Cache-Control") != "no-store" || !strings.Contains(root.Body.String(), `<div id="root"></div>`) {
+		t.Fatalf("root UI response: %d %+v", root.Code, root.Header())
+	}
+	var entries []map[string]any
+	decoder := json.NewDecoder(&logs)
+	for decoder.More() {
+		var entry map[string]any
+		if err := decoder.Decode(&entry); err != nil {
+			t.Fatal(err)
+		}
+		entries = append(entries, entry)
+	}
+	if len(entries) != 1 || entries[0]["type"] != "http_request" || entries[0]["route"] != "GET /{$}" || entries[0]["request_id"] != "project-test" {
+		t.Fatalf("UI must reuse exactly one request logger: %+v", entries)
+	}
+	for _, projectID := range []string{"00000000-0000-4000-8000-000000000099", "invalid-private-project"} {
+		response := projectRequest(handler, http.MethodGet, "/projects/"+projectID, "")
+		if response.Code != http.StatusOK || !bytes.Equal(response.Body.Bytes(), root.Body.Bytes()) || response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("project deep link did not return actual index: %d", response.Code)
+		}
+	}
+	assets := regexp.MustCompile(`(?:src|href)="(/assets/[^"?#]+)"`).FindAllStringSubmatch(root.Body.String(), -1)
+	if len(assets) < 2 {
+		t.Fatal("no emitted assets in production HTML")
+	}
+	for _, asset := range assets {
+		response := projectRequest(handler, http.MethodGet, asset[1], "")
+		if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" || response.Body.Len() == 0 || response.Header().Get("Content-Type") == "text/html; charset=utf-8" {
+			t.Fatalf("production asset response: %d %+v", response.Code, response.Header())
+		}
+	}
+	for _, target := range []string{"/unknown-private-page", "/projects", "/projects/id/extra", "/api/unknown-private-route", "/api/v1/projects/id/unknown", "/assets/", "/assets/missing-private.js", "/assets/%2e%2e/index.html", "/assets/%2findex.html"} {
+		response := projectRequest(handler, http.MethodGet, target, "")
+		assertProjectError(t, response, http.StatusNotFound, "not_found")
+		if strings.Contains(response.Body.String(), "<html") {
+			t.Fatalf("unknown path returned SPA HTML: %s", target)
+		}
+	}
+	if strings.Contains(logs.String(), "private") {
+		t.Fatalf("UI path leaked to logs: %s", &logs)
+	}
+}
+
+func TestUIHeadAndKnownMethodBoundaries(t *testing.T) {
+	handler := uiTestHandler(io.Discard)
+	index := projectRequest(handler, http.MethodGet, "/", "")
+	asset := regexp.MustCompile(`src="(/assets/[^"?#]+)"`).FindStringSubmatch(index.Body.String())
+	if len(asset) != 2 {
+		t.Fatal("no production script asset")
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	for _, target := range []string{"/", "/projects/00000000-0000-4000-8000-000000000099", asset[1]} {
+		for _, method := range []string{http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions} {
+			response := projectRequest(handler, method, target, "private-body")
+			assertProjectError(t, response, http.StatusMethodNotAllowed, "method_not_allowed")
+			if response.Header().Get("Allow") != "GET, HEAD" {
+				t.Fatalf("wrong UI method Allow: %+v", response.Header())
+			}
+		}
+		request, err := http.NewRequest(http.MethodHead, server.URL+target, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("X-Request-ID", "project-test")
+		response, err := server.Client().Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(response.Body)
+		response.Body.Close()
+		if err != nil || response.StatusCode != http.StatusOK || len(body) != 0 || response.Header.Get("X-Request-ID") != "project-test" || response.Header.Get("Content-Length") == "" {
+			t.Fatalf("HEAD route: %+v %v", response, err)
+		}
+	}
+}
+
+func TestUIRegistrationPreservesAPIResponses(t *testing.T) {
+	database := projectTestStore(t)
+	handler := projectTestHandler(database, io.Discard)
+	project := taskProject(t, handler)
+	task := createHTTPTask(t, handler, project.ID, "Task")
+	for _, target := range []string{"/api/v1/projects", "/api/v1/projects/" + project.ID, taskCollection(project.ID), taskPath(task), graphPath(project.ID)} {
+		response := projectRequest(handler, http.MethodGet, target, "")
+		if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "application/json" || strings.Contains(response.Body.String(), "<html") {
+			t.Fatalf("UI registration changed API response: %s %d %+v", target, response.Code, response.Header())
+		}
+		if (target == taskPath(task) || target == graphPath(project.ID)) && response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("latest task read may be cached: %s %+v", target, response.Header())
+		}
+	}
+}
+
+func TestUIErrorsCancellationAndFailedWriteUseSafeSingleBoundary(t *testing.T) {
+	for _, err := range []error{errors.New("private-resource-path"), webui.ErrNotFound} {
+		var logs bytes.Buffer
+		logger := slog.New(slog.NewJSONHandler(&logs, nil))
+		handler := RequestLogging(logger, uiHandler(logger, func(http.ResponseWriter, *http.Request) error { return err }))
+		response := projectRequest(handler, http.MethodGet, "/", "")
+		status, code := http.StatusInternalServerError, "internal_error"
+		if errors.Is(err, webui.ErrNotFound) {
+			status, code = http.StatusNotFound, "not_found"
+		}
+		assertProjectError(t, response, status, code)
+		if strings.Contains(logs.String(), "private") || strings.Contains(response.Body.String(), "private") || strings.Count(logs.String(), `"type":"operation_error"`) != 1 || strings.Count(logs.String(), `"type":"http_request"`) != 1 {
+			t.Fatalf("unsafe or duplicate UI error log: %s %s", response.Body, &logs)
+		}
+	}
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	request := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+	request.Header.Set("X-Request-ID", "project-test")
+	response := httptest.NewRecorder()
+	RequestLogging(logger, New(nil, nil, logger)).ServeHTTP(response, request)
+	if response.Body.Len() != 0 || response.Header().Get("Content-Type") != "" || !strings.Contains(logs.String(), `"cause":"canceled"`) {
+		t.Fatalf("canceled UI request wrote a response or lost cause: %s %s", response.Body, &logs)
+	}
+	logs.Reset()
+	writer := &countFailedUIWriter{header: make(http.Header)}
+	uiHandler(logger, webui.New().Page)(writer, httptest.NewRequest(http.MethodGet, "/", nil))
+	if writer.writes != 1 || writer.status != http.StatusOK || strings.Contains(logs.String(), "private") || !strings.Contains(logs.String(), `"phase":"response"`) || strings.Count(logs.String(), `"type":"operation_error"`) != 1 {
+		t.Fatalf("failed UI writer attempted a second response or lost safe error: %+v %s", writer, &logs)
+	}
+}
+
+type countFailedUIWriter struct {
+	header http.Header
+	writes int
+	status int
+}
+
+func (w *countFailedUIWriter) Header() http.Header    { return w.header }
+func (w *countFailedUIWriter) WriteHeader(status int) { w.status = status }
+func (w *countFailedUIWriter) Write([]byte) (int, error) {
+	w.writes++
+	return 0, errors.New("private-connection-error")
+}

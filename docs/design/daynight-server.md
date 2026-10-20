@@ -1,14 +1,14 @@
 # Daynight Server 架构设计
 
 状态：Go 服务、事务存储、project/task 用例与 HTTP 接口、覆盖率门槛和完整进程
-验收均已实现。
+验收均已实现；Go 二进制内嵌看板并与 API 同源交付。
 
 `daynight-server` 是独立的 Go 服务，为本机 CLI 和内部程序提供 project、task
 及任务依赖管理。行为要求由[需求文档](../spec/daynight-server.md)拥有；架构选择及
 重新评估条件由[决策记录](../../.agents/notes/implemented/architecture/2026-10-19-daynight-server-task-design.md)
 拥有。决策记录标记的是已采用的设计，不表示服务已经交付。
 [任务拆分](daynight-server-tasks.md)记录执行任务的范围、依赖、状态和验收条件。
-[只读看板设计](daynight-web.md)定义完整图快照接口及待实现的浏览器页面和静态资源
+[只读看板设计](daynight-web.md)定义完整图快照接口、浏览器页面和内嵌静态资源
 交付；图 API 保留本文的领域与事务结构，不改变现有分页读取的一致性承诺。
 
 现有 `packages/daynight/` TypeScript CLI、YAML 配置和 SQLite review 状态继续独立
@@ -39,6 +39,8 @@ packages/daynight-server/
 └── internal/
     ├── server/
     ├── service/
+    ├── webui/
+    │   └── dist/                 生成的真实页面与资源，不提交
     └── core/
         ├── project.go
         ├── task.go
@@ -50,7 +52,10 @@ packages/daynight-server/
 结构；`internal/server` 使用标准库 `net/http` 处理路由、JSON、请求大小限制、
 HTTP 错误映射和服务生命周期。`internal/service` 拥有 project/task 用例、业务
 校验与事务编排。`internal/core` 拥有领域模型；`internal/core/store` 使用具体的
-`pgx`/`pgxpool` 类型实现 PostgreSQL 查询、事务和迁移。
+`pgx`/`pgxpool` 类型实现 PostgreSQL 查询、事务和迁移。`internal/webui` 拥有
+`go:embed` 资源及页面/资源响应，server 在既有 mux 精确注册路由。静态处理不经过
+service/store；请求仍只经过一次现有日志包装。HTML、图及最新详情为 no-store，
+哈希资源为 immutable，缺失资源不回退 HTML。
 
 调用方向为 `server → service → core/store`。传输层将 API DTO 转换为 service
 参数，core 不依赖 HTTP，store 不决定状态转换或依赖规则。事务内查询所需的数据、
@@ -267,7 +272,11 @@ CLI 和内部程序调用，服务只接受 loopback 监听地址。远程认证
 独立设计，当前接口中的 project ID 不作为认证凭据。
 
 [本地 Compose 部署](../../deployment/localhost/README.md)将 PostgreSQL、Go 服务与
-TCP 网关组合启动。网关拥有网络命名空间，Go 服务加入该命名空间并继续监听
+TCP 网关组合启动，Go 服务同时提供内嵌只读看板和 JSON API。生产 Dockerfile 以
+仓库根目录为 context，在 Node 24/pnpm 10.34.5 阶段构建并发布真实 UI，在 Go
+1.27.2 阶段内嵌资源，最终仅复制二进制至非 root Alpine 运行镜像。专属 ignore
+纳入锁文件、workspace manifests、`patches/` 声明补丁和实际源码，排除宿主
+依赖、临时文件及生成资源。网关拥有网络命名空间，Go 服务加入该命名空间并继续监听
 `127.0.0.1:8787`；网关监听容器端口 `80`，仅发布到宿主机 `127.0.0.1`。
 转发不解析 HTTP，响应、请求大小限制和错误语义继续由服务处理。数据库通过内部
 Compose 网络访问，PostgreSQL 18 数据卷挂到 `/var/lib/postgresql`。
@@ -277,7 +286,10 @@ Compose 网络访问，PostgreSQL 18 数据卷挂到 `/var/lib/postgresql`。
 源码更新及转发恢复；数据卷持续保留。网关意外单独重启时，Docker 不会自动重启
 共享命名空间的服务，健康检查会暴露转发失败，需要重新运行脚本恢复。
 [部署决策](../../.agents/notes/implemented/architecture/2026-10-20-localhost-compose.md)
-记录拓扑选择及运行限制。
+记录拓扑选择及运行限制。[内嵌交付决策](../../.agents/notes/implemented/architecture/2026-10-20-embedded-dashboard-deployment.md)
+记录构建与隔离验收结构。独立 `deployment/dev-ci` 复用同一 Dockerfile 和 nginx
+配置，采用唯一项目身份、随机 loopback 端口和专用数据库卷，按 run ID 有界清理，
+日常 localhost 数据与资源不作为测试前置。
 
 进程启动时创建 `pgxpool` 并验证数据库连接，然后从 pool 获取并固定一条专用
 `pgxpool.Conn`。该连接取得 PostgreSQL session-level advisory migration lock，
@@ -343,7 +355,9 @@ HTTP 测试验证路由、DTO、错误映射、project 范围查找、分页筛�
 覆盖率不替代并发、回滚和调用方行为断言。Go 检查加入现有 CI 汇总门禁，汇总
 成功必须同时要求 Go 服务和原有各平台 CLI 检查通过；Go 检查不能替换或放宽 CLI
 检查。统一验证入口为模块内的 `bash scripts/check.sh`，要求显式设置
-`DAYNIGHT_TEST_DATABASE_URL`。命令 package 的 TestMain 每次构建新的 race binary，
+`DAYNIGHT_TEST_DATABASE_URL`。干净 checkout 先从根目录 frozen 安装 Node 24/pnpm
+10.34.5 依赖，Go 检查在任何 build/vet/race 前调用共享 `pnpm web:build` 发布
+资源；缺少工具、依赖或真实产物直接失败。命令 package 的 TestMain 每次构建新的 race binary，
 通过真实 HTTP、PostgreSQL、信号和进程重启执行验收，不复用旧的可执行文件。CI
 发布 `.tmp/acceptance-evidence.json` 和同次 `.tmp/coverage.out`；前者记录源版本、
 binary hash、场景及资源清理，CI 要求 checkout 干净且 Git revision 与 `GITHUB_SHA`
