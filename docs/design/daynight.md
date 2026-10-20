@@ -157,7 +157,10 @@ bundle 复制到 `dist/commands/review/skills/daynight-review/`，由既有 `dis
 
 普通测试先构建包，既验证源码职责，也通过编译产物验证公开命令。`pnpm typecheck`、
 `pnpm test`、`pnpm build` 和独立 `pnpm acceptance` 的实际入口由
-[README](../../README.md#cli-development)维护。源码、包元数据、构建或依赖输入变化
+[README](../../README.md#cli-development)维护。资源复制回归验证从无关工作目录执行实际
+脚本，在隔离包的全新目标下检查完整 bundle；重复排他复制必须失败且保留既有内容，
+缺少源码时同样明确失败。原生矩阵每次解析最新可用的 Node.js 24 patch，使构建行为
+覆盖受支持运行时的当前实现。源码、包元数据、构建或依赖输入变化
 需要更高 SemVer；构建清理脚本也属于发布输入。Linux 版本检查和全部原生检查共同
 构成必需门禁。发布授权、npm OIDC、产物身份及恢复规则继续由
 [发布决策](../../.agents/notes/implemented/process/2026-10-20-npm-trusted-publishing.md)维护。

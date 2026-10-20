@@ -69,7 +69,8 @@ isolated, task-local global prefix with a controlled HTTP registry. Neither suit
 changes the operator's installed CLI or requires live review credentials.
 
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
-Windows runners. The final `checks` job succeeds only when all platform jobs
+Windows runners. Each native job resolves the latest available Node.js 24 patch.
+The final `checks` job succeeds only when all platform jobs
 succeed. The Linux job also enforces package version increases before ordinary
 validation. A PR compares its complete source changes with its merge base and
 its package version with the event's target-branch revision. Main pushes compare

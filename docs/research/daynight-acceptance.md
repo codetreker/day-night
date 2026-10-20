@@ -93,11 +93,13 @@ model activation has a separate native Copilot probe.
 ## Bundled review skill acceptance
 
 Local installed validation on 2026-10-20 used working-tree source package
-`0.3.2`, Linux x64, Node `v24.19.0`, pnpm `10.34.5` and npm `12.0.2`. Type
-checking passed. The ordinary suite passed 858 tests with ten skips across 27
-files: 26 files passed and one was skipped, in 7.63 seconds. Its clean build
-included the complete skill-resource copy. Both installed suites passed in
-15.72 seconds. Their curated lifecycle and update
+`0.3.2`, Linux x64, official Node `v24.22.0`, pnpm `10.34.5` and npm `11.19.1`.
+Type checking passed. The ordinary suite passed 860 tests with ten skips across
+28 files: 27 files passed and one was skipped, in 7.82 seconds. Its clean build
+included the complete skill-resource copy. Real copy-script regression tests
+verify fresh complete copying from an unrelated working directory, repeated
+exclusive-copy rejection without overwriting, and visible missing-source
+failure. Both installed suites passed in 14.49 seconds. Their curated lifecycle and update
 receipts report `success: true`; the lifecycle has forty-five scenarios and the
 real-npm suite has seventeen.
 
@@ -302,7 +304,7 @@ and do not establish that repair's behavior.
 
 | Evidence | Observed result |
 |---|---|
-| Bundled review skill local validation, 2026-10-20 | Working-tree source package `0.3.2` on Linux x64: type checking, clean build and 858 ordinary tests with ten skips in 7.63 seconds; both installed suites passed in 15.72 seconds, with 45 review scenarios, 17 real-npm update scenarios, six discovery children separate from six review children, running-daemon snapshot retention and changed-bundle same-UUID resume |
+| Bundled review skill local validation, 2026-10-20 | Working-tree source package `0.3.2` on Linux x64 with official Node `v24.22.0` and npm `11.19.1`: type checking, clean build and 860 ordinary tests with ten skips in 7.82 seconds; both installed suites passed in 14.49 seconds, with 45 review scenarios, 17 real-npm update scenarios, six discovery children separate from six review children, running-daemon snapshot retention and changed-bundle same-UUID resume |
 | Client composition local validation, 2026-10-20 | Working-tree source package `0.3.0` on Linux x64: type checking, clean build with obsolete-output rejection, 768 ordinary tests with ten skips in 6.11 seconds, and both installed suites in 15.61 seconds; 35 review scenarios plus 14 real-npm update scenarios, including independent existing-schema listing reuse |
 | Self-update focused local validation, 2026-10-20 | Linux x64 passed all fourteen controlled real-npm scenarios from working-tree source package `0.2.4` in 8.03 seconds, using Node `v24.19.0` and npm `12.0.2`; separate from the review lifecycle baseline and native hosted results |
 | Package `0.2.1` CI-admission local validation, 2026-10-18 | Linux x64 passed type checking, 662 ordinary tests with eight APFS skips, build and all 33 installed scenarios |

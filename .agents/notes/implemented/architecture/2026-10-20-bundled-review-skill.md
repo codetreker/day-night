@@ -18,6 +18,15 @@ whole bundle into the matching `dist/commands/review/skills/` directory, and the
 npm package includes it. The stable entry's package directory locates those
 resources; contributor workflows continue to belong to the root `.agents/skills/`.
 
+Resource copying keeps exclusive destination creation. The destination URL has
+no terminal separator: on Node 24.22.0 a separator can cause the filesystem copy
+to create that directory before its exclusive existence check rejects the same
+path. The real copy script is tested against a fresh isolated package, repeat
+copy and missing source. Native CI resolves the latest available Node.js 24
+patch so cached earlier behavior cannot hide this supported-runtime condition.
+See Node's pinned [destination handling](https://github.com/nodejs/node/blob/f14cd3aa7bf9ca8df2cc5b8bb14beb0f335b1d93/src/node_file.cc#L3706-L3710)
+and [exclusive existence check](https://github.com/nodejs/node/blob/f14cd3aa7bf9ca8df2cc5b8bb14beb0f335b1d93/lib/internal/fs/cp/cp-sync.js#L136-L149).
+
 After acquiring its instance lock, the runtime captures and validates the bundle
 once. A generated local plugin wrapper contains `plugin.json` and
 `skills/daynight-review/`. Its fixed manifest names `daynight-review-bundle`
