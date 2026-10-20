@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('baseline', 'utc', 'files')]
+    [ValidateSet('baseline', 'prefetch')]
     [string] $Experiment,
     [switch] $TraceInitialization
 )
@@ -18,64 +18,58 @@ $ghExecutable = $ghCommands[0].Source
 $nodeExecutable = $nodeCommands[0].Source
 $ghFile = Get-Item -LiteralPath $ghExecutable
 $cdbPath = 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe'
-[ordered]@{ experiment = $Experiment } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $directory 'experiment.json') -Encoding utf8
+[ordered]@{ experiment = $Experiment; ghExecutable = $ghExecutable } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $directory 'experiment.json') -Encoding utf8
 $preloadPath = Join-Path $directory 'capture-gh-result.cjs'
 @'
 const childProcess = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { performance } = require("node:perf_hooks");
+const { createHash } = require("node:crypto");
 const original = childProcess.spawnSync;
 const directory = path.resolve(".tmp/gh-startup");
-const { experiment } = JSON.parse(fs.readFileSync(path.join(directory, "experiment.json"), "utf8").replace(/^\uFEFF/, ""));
+const { experiment, ghExecutable } = JSON.parse(fs.readFileSync(path.join(directory, "experiment.json"), "utf8").replace(/^\uFEFF/, ""));
 
 // Preserve the native result before the collector limits diagnostic output to 16 KiB.
 childProcess.spawnSync = function (...args) {
   if (!["gh", "gh.exe"].includes(path.basename(String(args[0])).toLowerCase())) {
     return Reflect.apply(original, this, args);
   }
-  let startedAt;
-  let nativeElapsedMs;
-  const runNative = (nativeArgs) => {
-    startedAt = new Date().toISOString();
-    const started = performance.now();
-    const nativeResult = Reflect.apply(original, this, nativeArgs);
-    nativeElapsedMs = performance.now() - started;
-    return nativeResult;
-  };
-  const nativeStdout = path.join(directory, "gh.native.stdout.log");
-  const nativeStderr = path.join(directory, "gh.native.stderr.log");
-  let result;
-  let outputLimitError;
-  let outputBytes;
-  if (experiment === "files") {
-    const stdoutFd = fs.openSync(nativeStdout, "w");
-    const stderrFd = fs.openSync(nativeStderr, "w");
+  let preparation = null;
+  if (experiment === "prefetch") {
+    const preparationStartedAt = new Date().toISOString();
+    const preparationStarted = performance.now();
+    const executable = path.isAbsolute(String(args[0])) ? String(args[0]) : ghExecutable;
+    const file = fs.openSync(executable, "r");
+    const hash = createHash("sha256");
+    const buffer = Buffer.allocUnsafe(1_048_576);
+    let bytes = 0;
     try {
-      // This experiment isolates Windows pipe handling while retaining the native deadline.
-      result = runNative([args[0], args[1], {
-        ...args[2], stdio: ["ignore", stdoutFd, stderrFd],
-      }]);
+      const expectedBytes = fs.fstatSync(file).size;
+      while (bytes < expectedBytes) {
+        const count = fs.readSync(file, buffer, 0, Math.min(buffer.length, expectedBytes - bytes), null);
+        if (count === 0) throw new Error(`gh executable ended before its recorded file size: ${bytes}/${expectedBytes}.`);
+        hash.update(buffer.subarray(0, count));
+        bytes += count;
+      }
     } finally {
-      fs.closeSync(stdoutFd);
-      fs.closeSync(stderrFd);
+      fs.closeSync(file);
     }
-    const stdoutBytes = fs.statSync(nativeStdout).size;
-    const stderrBytes = fs.statSync(nativeStderr).size;
-    outputBytes = { stdout: stdoutBytes, stderr: stderrBytes };
-    // Regular files need an explicit output check; this is diagnostic-only transport.
-    if (stdoutBytes + stderrBytes > args[2].maxBuffer) {
-      outputLimitError = new Error(`gh output exceeded maxBuffer=${args[2].maxBuffer}: stdout=${stdoutBytes}, stderr=${stderrBytes}.`);
-      outputLimitError.code = "ENOBUFS";
-    } else {
-      result.stdout = fs.readFileSync(nativeStdout, args[2].encoding);
-      result.stderr = fs.readFileSync(nativeStderr, args[2].encoding);
-      result.output[1] = result.stdout;
-      result.output[2] = result.stderr;
-    }
-  } else {
-    result = runNative(args);
+    preparation = {
+      startedAt: preparationStartedAt,
+      capturedAt: new Date().toISOString(),
+      executable,
+      bytes,
+      sha256: hash.digest("hex"),
+      chunkBytes: buffer.length,
+      preparationElapsedMs: performance.now() - preparationStarted,
+    };
+    fs.writeFileSync(path.join(directory, "gh-prefetch.json"), `${JSON.stringify(preparation, null, 2)}\n`);
   }
+  const startedAt = new Date().toISOString();
+  const started = performance.now();
+  const result = Reflect.apply(original, this, args);
+  const nativeElapsedMs = performance.now() - started;
   fs.writeFileSync(path.join(directory, "gh.stdout.log"), result.stdout ?? "");
   fs.writeFileSync(path.join(directory, "gh.stderr.log"), result.stderr ?? "");
   fs.writeFileSync(path.join(directory, "gh-result.json"), `${JSON.stringify({
@@ -89,8 +83,7 @@ childProcess.spawnSync = function (...args) {
     args: args[1],
     timeoutMs: args[2]?.timeout,
     maxBuffer: args[2]?.maxBuffer,
-    outputBytes,
-    outputLimitError: outputLimitError?.message,
+    preparation,
     processId: result.pid,
     status: result.status,
     signal: result.signal,
@@ -101,7 +94,6 @@ childProcess.spawnSync = function (...args) {
     },
   }, null, 2)}\n`);
   if (result.stderr) process.stderr.write(result.stderr);
-  if (outputLimitError) throw outputLimitError;
   return result;
 };
 '@ | Set-Content -LiteralPath $preloadPath -Encoding utf8
@@ -126,6 +118,21 @@ $metadata = [ordered]@{
     runnerArchitecture = $env:RUNNER_ARCH
 }
 $metadata | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $directory 'metadata.json') -Encoding utf8
+$symbolDirectory = Join-Path $directory 'symbols'
+[System.IO.Directory]::CreateDirectory($symbolDirectory) | Out-Null
+$debuggerState = [ordered]@{
+    executable = $cdbPath
+    symbolDirectory = $symbolDirectory
+    targetAliveMilliseconds = 1000
+    state = 'pending'
+}
+if ($TraceInitialization) { $debuggerState.state = 'disabled-for-warm-trace' }
+elseif (-not $metadata.cdbAvailable) { $debuggerState.state = 'unavailable' }
+$writeDebuggerState = {
+    $debuggerState.updatedAt = [DateTimeOffset]::UtcNow.ToString('o')
+    $debuggerState | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $directory 'debugger.json') -Encoding utf8
+}
+& $writeDebuggerState
 
 $writeSample = {
     param($value)
@@ -181,7 +188,6 @@ $streamLogs = {
 
 $collectorEnvironment = @{ GODEBUG = ''; GH_PATH = '' }
 if ($TraceInitialization) { $collectorEnvironment.GODEBUG = 'inittrace=1' }
-if ($Experiment -eq 'utc') { $collectorEnvironment.TZ = 'UTC' }
 $launchedAt = [DateTimeOffset]::UtcNow
 $collector = $null
 $stdoutReader = $null
@@ -191,6 +197,7 @@ $ghProcess = $null
 $ghStartedAt = $null
 $sampleMarksMs = @(0, 2000, 6000, 9000)
 $nextSampleMark = 0
+$debugger = $null
 $exitCode = $null
 try {
     $collector = Start-Process -FilePath $nodeExecutable `
@@ -230,6 +237,28 @@ try {
                 & $sampleProcess $ghProcess
                 $nextSampleMark += 1
             }
+            if (-not $ghProcess.HasExited -and $ghElapsedMs -ge 1000 -and $debuggerState.state -eq 'pending') {
+                $debuggerState.state = 'launching'
+                $debuggerState.targetProcessId = $ghProcess.Id
+                $debuggerState.targetAgeAtLaunchMs = $ghElapsedMs
+                $debuggerState.startedAt = [DateTimeOffset]::UtcNow.ToString('o')
+                $debuggerArguments = @('-pvr', '-p', [string]$ghProcess.Id, '-sins', '-y', ('"{0}"' -f $symbolDirectory), '-c', '"~* k; q"')
+                $debuggerState.arguments = $debuggerArguments
+                try {
+                    $debugger = Start-Process -FilePath $cdbPath -ArgumentList $debuggerArguments `
+                        -WorkingDirectory $repository `
+                        -Environment @{ _NT_SYMBOL_PATH = $symbolDirectory; _NT_ALT_SYMBOL_PATH = '' } `
+                        -RedirectStandardOutput (Join-Path $directory 'debugger.stdout.log') `
+                        -RedirectStandardError (Join-Path $directory 'debugger.stderr.log') `
+                        -NoNewWindow -PassThru
+                    $debuggerState.state = 'running'
+                    $debuggerState.processId = $debugger.Id
+                } catch {
+                    $debuggerState.state = 'launch-failed'
+                    $debuggerState.error = $_.Exception.Message
+                }
+                & $writeDebuggerState
+            }
         }
         if (([DateTimeOffset]::UtcNow - $launchedAt).TotalSeconds -ge 70) {
             throw 'The validation collector exceeded the 70-second diagnostic wrapper deadline.'
@@ -249,6 +278,27 @@ try {
     } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $directory 'result.json') -Encoding utf8
 } finally {
     if ($null -ne $collector -and -not $collector.HasExited) { $collector.Kill($true); $collector.WaitForExit() }
+    if ($null -ne $debugger) {
+        try {
+            if (-not $debugger.WaitForExit(15000)) {
+                $debugger.Kill($true)
+                $debugger.WaitForExit()
+                $debuggerState.state = 'terminated-after-deadline'
+            } else {
+                $debuggerState.state = 'completed'
+            }
+            $debuggerState.exitedAt = [DateTimeOffset]::UtcNow.ToString('o')
+            $debuggerState.exitCode = $debugger.ExitCode
+        } catch {
+            $debuggerState.state = 'cleanup-failed'
+            $debuggerState.error = $_.Exception.Message
+        } finally {
+            $debugger.Dispose()
+        }
+    } elseif ($debuggerState.state -eq 'pending') {
+        $debuggerState.state = 'target-exited-before-trigger'
+    }
+    & $writeDebuggerState
     if ($null -ne $stdoutReader) { $stdoutReader.Dispose() }
     if ($null -ne $stderrReader) { $stderrReader.Dispose() }
     if ($null -ne $ghProcess) { $ghProcess.Dispose() }
