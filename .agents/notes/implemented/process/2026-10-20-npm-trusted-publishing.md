@@ -7,8 +7,9 @@ Status: implemented
 Publishing the CLI requires repeatable package validation and a durable mapping
 from an npm version to its source commit. A release tag must identify a package
 that is available from the public registry. npm can accept a publication before
-its public registry metadata becomes visible. Interrupted publication and tagging
-must be recoverable without replacing an existing version or moving a tag, and
+its public registry metadata or tarball becomes visible, and metadata can appear
+before the corresponding tarball is downloadable. Interrupted publication and
+tagging must be recoverable without replacing an existing version or moving a tag, and
 registry verification must allow that processing time without waiting forever.
 Maintainers also need CI publication without storing a long-lived npm token and
 must be able to identify the target version in the publishing job's title.
@@ -67,11 +68,18 @@ refs are never rewritten. A tag already pointing to the source is accepted;
 a different target fails. An existing npm version is accepted only with the
 same source and artifact, allowing an interrupted run to finish its missing tag.
 
-After `npm publish` returns success, visibility polling shares one ten-minute
-deadline across all attempts, with attempt number, elapsed time and remaining
-time logged for each poll. Individual registry requests retain a 20-second
-limit. The publishing job has a 15-minute limit for setup, publication, visibility
-verification and tagging; ordinary CI validation limits remain independent.
+Public verification uses one loop and one ten-minute deadline for metadata and
+tarball visibility. The deadline starts after npm accepts a fresh publication,
+or when verification begins for an existing version. A 404 for either resource
+means propagation is pending. Validated metadata is retained while waiting for
+the tarball, without resetting the deadline or republishing. Each poll logs its
+attempt number, elapsed time and remaining time. Other HTTP errors, malformed
+metadata or tarball URLs, source mismatches and integrity mismatches fail
+immediately. Individual requests, including response bodies, retain a 20-second
+limit within the shared deadline. Tag creation follows successful public byte
+verification. The publishing job has a 15-minute limit for setup, publication,
+visibility verification and tagging; ordinary CI validation limits remain
+independent.
 
 Recovery re-runs the failed jobs of the same Actions run, preserving the captured
 source and reusing its validated artifact within the 30-day retention period.
@@ -109,6 +117,11 @@ sooner, but the first live publication required longer registry processing after
 npm accepted it. A shared ten-minute deadline permits that processing while
 bounding the complete polling period, even when individual requests are slow.
 
+**Stop visibility polling when metadata appears.** Metadata supplies the source
+and integrity assertion, but the tarball can still return 404 at that point.
+Downloading it only once rejects a normally propagating release. A common
+deadline covers both resources while retaining a bounded verification period.
+
 ## Consequences
 
 The release uses one validated tarball across preparation, installation,
@@ -132,6 +145,15 @@ verified the existing version against the same source and artifact and created
 `daynight-v0.2.3` without republishing. A longer visibility budget keeps this
 processing delay inside the release workflow; exhausted or failed verification
 still prevents tag creation and can use the same recovery path.
+
+The [`0.6.1` publication](https://github.com/codetreker/daynight/actions/runs/39430284042/job/118656438389)
+exposed the separate tarball visibility window. npm accepted it at
+`2026-10-20T13:32:27.899Z`; its public metadata records publication at
+`13:34:07.035Z`, but the job's tarball request returned 404 at `13:34:08.538Z`.
+The public tarball subsequently matched the retained artifact byte for byte,
+including its SHA-512 integrity and source
+`64b69a3ab864f99f6914b9217dbfbebde60345aa`. Waiting for both resources under the
+same deadline handles that propagation order without relaxing artifact identity.
 
 npmjs trusted-publisher configuration is an external prerequisite, and GitHub
 repository rules must permit the workflow token to create the release tag. A

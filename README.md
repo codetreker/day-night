@@ -329,11 +329,14 @@ tarball bytes match the artifact does the workflow create
 immutable: a tag at another commit or an existing package version with different
 source or contents fails the release.
 
-After `npm publish` returns success, public visibility polling shares a
-ten-minute deadline and logs each attempt. Each registry request remains bounded
-to 20 seconds; the publishing job has a 15-minute limit. A visibility timeout
-leaves the tag uncreated and reports failure even if npm has accepted the
-package.
+Public metadata and tarball visibility share one ten-minute verification
+deadline after npm accepts publication, or from verification start when
+recovering an existing version. HTTP 404 responses for either resource are
+polled within that deadline, with each attempt logged. Other HTTP errors and
+source or integrity mismatches fail immediately. Individual requests, including
+response bodies, have a 20-second limit and share the remaining verification
+deadline; the publishing job has a 15-minute limit. A visibility timeout leaves
+the tag uncreated and reports failure even if npm has accepted the package.
 
 If npm accepts the package but registry verification or tag creation fails,
 re-run the failed jobs of the same Actions run while its validated artifact
