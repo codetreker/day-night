@@ -7,7 +7,7 @@ This report owns observed validation and its practical limits.
 
 ## Current local validation
 
-The static SVG W-T6 source passed package typechecking, 297 functional tests and 36
+The diagnostic-source static SVG gate passed typechecking, 302 functional tests and 36
 Node tool tests with Node 24 and pnpm 10.34.5. The tool cases include the earlier
 coverage/publication checks, browser-report/performance/process identity checks
 and three Dagre differential regressions. The current complete production-browser
@@ -35,6 +35,11 @@ were reaped, 12 schemas were removed, and owned sessions, the test container and
 its named volume were cleared. The earlier W-T5 integration also passed its two
 installed CLI suites and actual Bash 4.2/modern Bash/zsh completion acceptance;
 those historical observations do not establish a new hosted current-head result.
+
+The phase/trace diagnostic helper passed typechecking and five focused tests,
+included in the 302-test functional suite. The complete local run below predates those diagnostic fields; it remains
+valid renderer/workflow evidence, while the diagnostic source requires its own
+hosted result.
 
 ## Current static SVG local production result
 
@@ -81,7 +86,68 @@ Every opening stayed below 3,000ms and every local detail/zoom/pan feedback stay
 below 300ms. These results cover the fixed topology matrix and environment;
 current-source hosted acceptance and arbitrary-DAG timing remain separate claims.
 
-## Earlier hosted zoom failure and required hosted revalidation
+## Hosted zoom failures and current investigation
+
+The later [static SVG hosted run](https://github.com/codetreker/daynight/actions/runs/39417274711)
+tested clean merge/source revision `ddfae9677312e488baeb62ce12a9a23e595faa84`, equal
+to its recorded GitHub SHA. Its tree `e41cedd9d1b40f183f966e56eb2737281aae43cc`
+matched PR head `5c5f523efe8e9dc49e0545bb6ddb5a509dd97fd8`. The raw web gate passed
+653/659 statements across the complete 18-file inventory. Chromium was the pinned
+156.0.8078.4 with CI identity and no executable override.
+
+The unchanged 300ms zoom-feedback requirement failed: the shared graph's first
+zoom measured `1056.3000000000466ms` on the trusted browser clock. That repetition
+recorded opening 1018.0ms, layout 719.0ms, rendering 297.2ms, local detail 91.5ms,
+detail network 2.21ms and pan 23.5ms. These measurements locate the failed gate;
+they do not establish its cause. Chain and merge each completed five passing
+repetitions. Native execution had ten passed scenarios (eight functional plus
+chain/merge), one failed and one serial limit scenario not run; container
+acceptance did not start.
+
+The original evidence result is failed, while native/overall cleanup passed;
+the outer recovery step also passed. The other five verification jobs passed;
+the required aggregate failed with the web job, preventing acceptance/delivery. The run retains
+`daynight-web-acceptance` artifact `12261339556` and coverage artifact
+`12261704529`. Its acceptance run ID is
+`20261020114702-8e59be9c-6bc1-4971-8084-fe15ec1a2c64`, with raw `evidence.json`,
+`native/performance.json`, browser identity, Playwright report and traces; coverage
+retains `coverage-final.json` and its matching inventory/summary.
+
+The subsequent [merge-source run](https://github.com/codetreker/daynight/actions/runs/39418729109)
+also failed shared repetition one's zoom gate at 634.7ms. Its clean tested merge
+SHA was `de5e808dd6c52baaa458dbcee3733e31192c89a5`, equal to the recorded GitHub
+SHA with a clean checkout. Tree `95641e697efcc58835cebfd0a8c0c20a73899ac0` matched
+head `d1dd368f5b7ad72ade6e142e916d770b6db2071f`. Opening was 952.7ms, layout
+660.3ms, rendering 290.5ms, detail 91.5ms, detail network 2.031ms and pan 75.9ms. Cleanup and outer
+recovery passed with pinned Chromium 156.0.8078.4; the other five verification
+jobs passed and the aggregate failed with web. Acceptance/coverage artifact IDs are `12262707232` and
+`12263446508`. This additional failed source result does not resolve the earlier
+failure or establish hosted performance success.
+
+The valid local static SVG matrix above remains local evidence. It does not
+override this hosted result. The cause is under investigation with browser phase
+and timeline evidence; no performance resolution or infrastructure cause is
+claimed. Current-source successful hosted validation remains required.
+
+### Diagnostic evidence format
+
+New dataset `feedbackDiagnostics` entries retain interaction kind/repetition,
+trusted input `start`, `capturedAt`, first `conditionAt`, `frame1At`, `frame2At`,
+final `end`, status/error and `phases`. `inputQueueMs`, `conditionMs`,
+`firstFrameMs` and `secondFrameMs` are adjacent milestone differences; unavailable
+milestones stay null. First-condition/frame observations are separate from the
+final accepted end, so these phases are not a replacement partition or a reason
+to deduct time from the measured budget.
+
+Per-repetition `*-chromium-trace.json` attachments record CDP timeline, frame,
+GC and User Timing events without CPU sampling or CDP screenshot capture. Scenario
+PNGs remain separate evidence. Diagnostic writes, trace completion and resource
+closure propagate errors while preserving measurement failures. All total
+measurements, graph/node/edge readiness, five repetitions and original thresholds
+remain unchanged. These additions collect evidence for the unresolved cause;
+no trace-based diagnosis is claimed before observing the new source's artifacts.
+
+### Earlier reactive-edge hosted failure
 
 [PR #52](https://github.com/codetreker/daynight/pull/52)'s
 [failed web job](https://github.com/codetreker/daynight/actions/runs/39412445956/job/118593266570)
@@ -107,8 +173,9 @@ ranking, pinned patch and exact route geometry remain unchanged.
 Current-source functional/geometry checks must verify portal alignment across
 actual pan, zoom and fit, every visible Dagre point and edge count, and node
 interaction. All three fixed graphs must still complete five openings under
-3,000ms and every detail/zoom/pan measurement under 300ms. The new complete local
-run above passes those gates; current-source hosted acceptance remains required.
+3,000ms and every detail/zoom/pan measurement under 300ms. The complete local
+run above passes those gates; the later static SVG hosted failure shows that
+current-source hosted performance remains unresolved.
 The earlier passing receipts below are historical pre-static-SVG observations.
 
 ## Historical pre-static-SVG production-browser result
@@ -398,7 +465,8 @@ production-browser harness are implemented. Earlier local browser/capacity and
 real-Docker deployment-fault evidence remains preserved. The static SVG renderer
 passes its new complete local production/performance run and still requires the
 delivery PR's current-source clean hosted evidence, real required-check results,
-independent review and approval. The
+independent review and approval. Shared-graph hosted zoom remains over budget
+and under investigation; no completion is claimed. The
 W-T4 preview and W-T5 HTTP smoke observations retain their historical scope; the
 pre-static-SVG local result supplies the separate historical production-browser
 measurements.

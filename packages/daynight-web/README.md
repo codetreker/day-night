@@ -8,8 +8,9 @@ server for single-origin delivery. The [localhost deployment](../../deployment/l
 starts the full UI/API/database stack; [dev-ci](../../deployment/dev-ci/README.md)
 provides an isolated instance of the same production build. Production browser
 workflows and the fixed-capacity matrix pass locally with the static SVG edge
-layer. Earlier real Docker lifecycle evidence is retained; current-source clean
-CI and delivery remain tracked in the
+layer. Earlier real Docker lifecycle evidence is retained. Hosted shared-graph
+zoom remains over budget and is under investigation; clean CI and delivery remain
+tracked in the
 [implementation tasks](../../docs/design/daynight-web-tasks.md).
 
 The [requirements](../../docs/spec/daynight-web.md) own visible behavior and the
@@ -92,8 +93,9 @@ local production-bundle checks with a real Go API and PostgreSQL, embedded
 HTTP/container smoke checks and concurrent dev-ci isolation. The earlier renderer's
 full native/container browser workflows passed locally. The static SVG renderer
 also passes complete local production/performance acceptance after that hosted
-zoom failure; current-source hosted CI remains required. The report keeps these
-source identities distinct. A separate local real-Docker matrix
+zoom failure. A later hosted static-SVG zoom measurement also exceeded the
+budget; investigation and successful current-source CI remain required. The
+report keeps these source identities distinct. A separate local real-Docker matrix
 passed startup failure, callback failure, cancellation and cleanup failure/recovery
 while an independent sentinel stack remained healthy. CI repeats the 12 controlled
 lifecycle fixtures and full production-browser suite; that manual fault matrix
@@ -148,6 +150,14 @@ confirmed cleanup/recovery. The largest local opening was 1644.3ms; every local
 detail/zoom/pan measurement was below 300ms. Current-source hosted CI remains
 required. Local receipts retain their dirty/browser identity
 and do not establish clean hosted delivery results.
+
+Capacity receipts also retain per-interaction `feedbackDiagnostics`: input,
+capture, first ready condition, first/second frame and final end timestamps,
+status/error and phase differences. Missing milestones stay null. Each repetition
+attaches `*-chromium-trace.json` from CDP timeline/frame/GC/User Timing events,
+without CPU sampling or CDP screenshots. These diagnostics preserve all original
+total timing/readiness gates; they do not subtract queue/frame time or turn a
+failed measurement into success. Scenario PNG evidence remains independent.
 
 ### Cleanup and interrupted-run recovery
 

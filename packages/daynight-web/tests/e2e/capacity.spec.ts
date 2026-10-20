@@ -3,12 +3,13 @@ import { join } from 'node:path';
 import type { Page, TestInfo } from '@playwright/test';
 import { evidenceDirectory, expect, test, updateTask } from './fixtures';
 import { seedCapacity, seedNodeLimit, type CapacityFixture, type CapacityKind } from './capacity-data';
+import { withCapacityTrace } from './capacity-trace';
 
 type ExpansionMeasurement = { openMs: number; layoutMs: number; renderMs: number };
 type Measurement = ExpansionMeasurement & { detailMs: number; detailNetworkMs: number; zoomMs: number; panMs: number };
 type Dataset = {
   scenario: string; nodes: 1000; edges: number; result: 'running' | 'passed' | 'failed';
-  networkMs?: number; coldOpenMs?: number; measurements: Measurement[]; error?: string;
+  networkMs?: number; coldOpenMs?: number; measurements: Measurement[]; feedbackDiagnostics: FeedbackDiagnostic[]; error?: string;
 };
 type Limit = { status: number; nodeCount: number; edgeCount: number; maxNodes: number; maxEdges: number };
 const receipt: {
@@ -55,13 +56,20 @@ type TimingCondition =
   | { kind: 'zoom' | 'pan'; previousTransform: string };
 type BrowserTiming = {
   status: 'armed' | 'running' | 'finished' | 'failed'; start: number | null;
-  capturedAt: number | null; end: number | null; error: string | null; cleanup: () => void;
+  capturedAt: number | null; conditionAt: number | null; frame1At: number | null; frame2At: number | null;
+  end: number | null; error: string | null; cleanup: () => void;
+};
+type FeedbackDiagnostic = {
+  key: string; kind: TimingCondition['kind']; repetition: number; status: BrowserTiming['status'];
+  start: number | null; capturedAt: number | null; conditionAt: number | null; frame1At: number | null; frame2At: number | null;
+  end: number | null; error: string | null;
+  phases: { inputQueueMs: number | null; conditionMs: number | null; firstFrameMs: number | null; secondFrameMs: number | null };
 };
 type TimingWindow = Window & { __daynightCapacityTiming?: Record<string, BrowserTiming> };
 let timingSequence = 0;
 
-const measureBrowserFeedback = async (page: Page, condition: TimingCondition, action: () => Promise<void>) => {
-  const key = `capacity-input-${++timingSequence}`;
+const measureBrowserFeedback = async (page: Page, condition: TimingCondition, action: () => Promise<void>, dataset: Dataset, repetition: number) => {
+  const key = `${dataset.scenario}:repetition-${repetition}:${condition.kind}:${++timingSequence}`;
   await page.evaluate(({ key, condition }) => {
     const host = window as TimingWindow;
     if (host.__daynightCapacityTiming === undefined) host.__daynightCapacityTiming = {};
@@ -71,7 +79,7 @@ const measureBrowserFeedback = async (page: Page, condition: TimingCondition, ac
     let countsDirty = true;
     let countsReady = false;
     const state: BrowserTiming = {
-      status: 'armed', start: null, capturedAt: null, end: null, error: null,
+      status: 'armed', start: null, capturedAt: null, conditionAt: null, frame1At: null, frame2At: null, end: null, error: null,
       cleanup: () => {
         observer.disconnect();
         document.removeEventListener(eventType, start, true);
@@ -112,13 +120,26 @@ const measureBrowserFeedback = async (page: Page, condition: TimingCondition, ac
       if (state.status !== 'running' || finishing) return;
       try {
         if (!ready()) return;
+        if (state.conditionAt === null) {
+          state.conditionAt = performance.now();
+          performance.mark(`daynight:${key}:condition`, { startTime: state.conditionAt });
+        }
         finishing = true;
         firstFrame = requestAnimationFrame(() => {
+          if (state.frame1At === null) {
+            state.frame1At = performance.now();
+            performance.mark(`daynight:${key}:raf1`, { startTime: state.frame1At });
+          }
           secondFrame = requestAnimationFrame(() => {
+            if (state.frame2At === null) {
+              state.frame2At = performance.now();
+              performance.mark(`daynight:${key}:raf2`, { startTime: state.frame2At });
+            }
             try {
               finishing = false;
               if (!ready()) return;
               state.end = performance.now();
+              performance.mark(`daynight:${key}:end`, { startTime: state.end });
               state.status = 'finished';
               state.cleanup();
             } catch (error) {
@@ -151,6 +172,8 @@ const measureBrowserFeedback = async (page: Page, condition: TimingCondition, ac
       }
       state.start = event.timeStamp;
       state.capturedAt = capturedAt;
+      performance.mark(`daynight:${key}:event`, { startTime: state.start });
+      performance.mark(`daynight:${key}:capture`, { startTime: capturedAt });
       state.status = 'running';
       queueMicrotask(check);
     };
@@ -187,6 +210,21 @@ const measureBrowserFeedback = async (page: Page, condition: TimingCondition, ac
     original = error;
     throw error;
   } finally {
+    let diagnosticsFailure: unknown;
+    try {
+      const diagnostic = await page.evaluate((key) => {
+        const state = (window as TimingWindow).__daynightCapacityTiming![key]!;
+        const difference = (end: number | null, start: number | null): number | null => end === null || start === null ? null : end - start;
+        return {
+          status: state.status, start: state.start, capturedAt: state.capturedAt, conditionAt: state.conditionAt,
+          frame1At: state.frame1At, frame2At: state.frame2At, end: state.end, error: state.error,
+          phases: { inputQueueMs: difference(state.capturedAt, state.start), conditionMs: difference(state.conditionAt, state.capturedAt),
+            firstFrameMs: difference(state.frame1At, state.conditionAt), secondFrameMs: difference(state.frame2At, state.frame1At) },
+        };
+      }, key);
+      dataset.feedbackDiagnostics.push({ key, kind: condition.kind, repetition, ...diagnostic });
+      await persist();
+    } catch (error) { diagnosticsFailure = error; }
     try {
       await page.evaluate((key) => {
         const host = window as TimingWindow;
@@ -194,8 +232,11 @@ const measureBrowserFeedback = async (page: Page, condition: TimingCondition, ac
         delete host.__daynightCapacityTiming?.[key];
       }, key);
     } catch (error) {
-      if (original !== undefined) throw new AggregateError([original, error], 'Browser feedback measurement and observer cleanup failed.');
-      throw error;
+      diagnosticsFailure = diagnosticsFailure === undefined ? error : new AggregateError([diagnosticsFailure, error], 'Browser feedback diagnostics and observer cleanup failed.');
+    }
+    if (diagnosticsFailure !== undefined) {
+      if (original !== undefined) throw new AggregateError([original, diagnosticsFailure], 'Browser feedback measurement and diagnostics failed.');
+      throw diagnosticsFailure;
     }
   }
 };
@@ -230,10 +271,10 @@ const panPoint = (page: Page) => page.evaluate(() => {
   throw new Error('No accessible blank canvas position is available for the pan interaction.');
 });
 
-const measureInteractions = async (page: Page, fixture: CapacityFixture, expansion: ExpansionMeasurement): Promise<Measurement> => {
+const measureInteractions = async (page: Page, fixture: CapacityFixture, expansion: ExpansionMeasurement, dataset: Dataset, repetition: number): Promise<Measurement> => {
   const detailResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/projects/${fixture.project.id}/tasks/${fixture.root.id}`));
   const detail = await measureBrowserFeedback(page, { kind: 'detail', rootId: fixture.root.id }, () =>
-    page.locator(`.react-flow__node[data-id="${fixture.root.id}"] .task-node`).click());
+    page.locator(`.react-flow__node[data-id="${fixture.root.id}"] .task-node`).click(), dataset, repetition);
   await expect(page.getByRole('dialog')).toBeVisible();
   const detailMs = detail.duration;
   const response = await detailResponse;
@@ -247,7 +288,7 @@ const measureInteractions = async (page: Page, fixture: CapacityFixture, expansi
 
   const beforeZoom = await transform(page);
   const zoom = await measureBrowserFeedback(page, { kind: 'zoom', previousTransform: beforeZoom }, () =>
-    page.getByRole('button', { name: '放大', exact: true }).click());
+    page.getByRole('button', { name: '放大', exact: true }).click(), dataset, repetition);
   const zoomMs = zoom.duration;
 
   const point = await panPoint(page);
@@ -257,7 +298,7 @@ const measureInteractions = async (page: Page, fixture: CapacityFixture, expansi
     await page.mouse.down();
     try { await page.mouse.move(point.x + 40, point.y + 24); }
     finally { await page.mouse.up(); }
-  });
+  }, dataset, repetition);
   const panMs = pan.duration;
   return { ...expansion, detailMs, detailNetworkMs, zoomMs, panMs };
 };
@@ -287,7 +328,7 @@ test.describe('fixed capacity and performance @capacity', () => {
     const scenario = `capacity-${kind}`;
     test(`renders and operates the complete ${kind} capacity graph`, { annotation: { type: 'scenario', description: scenario } }, async ({ page, request }, info) => {
       test.setTimeout(240_000);
-      const dataset: Dataset = { scenario, nodes: 1000, edges: kind === 'chain' ? 999 : 5000, result: 'running', measurements: [] };
+      const dataset: Dataset = { scenario, nodes: 1000, edges: kind === 'chain' ? 999 : 5000, result: 'running', measurements: [], feedbackDiagnostics: [] };
       receipt.datasets.push(dataset);
       await persist();
       try {
@@ -327,22 +368,24 @@ test.describe('fixed capacity and performance @capacity', () => {
             await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
             await expect(root).toHaveAttribute('aria-expanded', 'false');
             await root.scrollIntoViewIfNeeded();
-            const opened = await measureBrowserFeedback(page, { kind: 'open', rootId: fixture.root.id, edges: dataset.edges }, () => root.click());
-            const expansion = await page.evaluate(({ rootId, start, paintedTime }) => {
-              const measures = (performance.getEntriesByName('daynight:task-layout', 'measure') as PerformanceMeasure[])
-                .filter((measure) => measure.detail?.rootId === rootId && measure.startTime >= start);
-              if (measures.length !== 1) throw new Error('Expected exactly one layout measurement for this collapsed root expansion.');
-              const measure = measures[0]!;
-              return {
-                openMs: paintedTime - start,
-                layoutMs: measure.duration,
-                renderMs: paintedTime - (measure.startTime + measure.duration),
-              };
-            }, { rootId: fixture.root.id, start: opened.start, paintedTime: opened.end });
-            const measurement = await measureInteractions(page, fixture, expansion);
-            dataset.measurements.push(measurement);
-            await persist();
-            checkMeasurement(measurement);
+            await withCapacityTrace(page, info, `${scenario}-repetition-${repetition}`, async () => {
+              const opened = await measureBrowserFeedback(page, { kind: 'open', rootId: fixture.root.id, edges: dataset.edges }, () => root.click(), dataset, repetition);
+              const expansion = await page.evaluate(({ rootId, start, paintedTime }) => {
+                const measures = (performance.getEntriesByName('daynight:task-layout', 'measure') as PerformanceMeasure[])
+                  .filter((measure) => measure.detail?.rootId === rootId && measure.startTime >= start);
+                if (measures.length !== 1) throw new Error('Expected exactly one layout measurement for this collapsed root expansion.');
+                const measure = measures[0]!;
+                return {
+                  openMs: paintedTime - start,
+                  layoutMs: measure.duration,
+                  renderMs: paintedTime - (measure.startTime + measure.duration),
+                };
+              }, { rootId: fixture.root.id, start: opened.start, paintedTime: opened.end });
+              const measurement = await measureInteractions(page, fixture, expansion, dataset, repetition);
+              dataset.measurements.push(measurement);
+              await persist();
+              checkMeasurement(measurement);
+            });
           }
           expect(graphRequests, 'Collapse and reopen reuse the complete project snapshot').toBe(1);
           page.off('request', trackGraph);

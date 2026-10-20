@@ -126,6 +126,8 @@ production-bundle browser check also uses the real Go API and PostgreSQL. The
 [acceptance report](../../../../docs/research/daynight-web-acceptance.md) distinguishes
 the earlier preview and pre-static-SVG local results from the current renderer's
 complete local production pass. PR #52's earlier hosted shared-graph zoom failure
-is retained; current-source hosted acceptance remains required. Actual browser
+is retained. A later hosted run also exceeded the shared-graph zoom budget;
+phase/timeline investigation and successful current-source acceptance remain
+required. Actual browser
 checks verify SVG/node alignment and exact route endpoints after zoom, pan and
 root changes. Dependency upgrades must revisit the declaration patch and type tests.

@@ -5,14 +5,15 @@ for project and task management. Its read-only browser workspace provides projec
 statistics, task dependency graphs and details from the same Go service origin.
 The static SVG edge renderer passes complete local production-browser and
 fixed-capacity acceptance against the native binary and production container.
-Prior real Docker lifecycle evidence is preserved; current-source hosted CI and
+Prior real Docker lifecycle evidence is preserved. Hosted shared-graph zoom still
+exceeds its budget and is under investigation; successful current-source CI and
 delivery approval remain required.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion`, shared configuration, server HTTP and repository binding foundations; project/task commands pending | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
-| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage implemented; static SVG edge rendering and complete local production/performance acceptance passed; CI delivery pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
+| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage implemented; static SVG local acceptance passed; hosted zoom performance under investigation | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The `@codetreker/daynight` package provides the `daynight` client. Its root entry
 lists commands and reports the package version; each command owns its business

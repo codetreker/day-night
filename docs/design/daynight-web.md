@@ -1,6 +1,6 @@
 # 项目与任务看板设计
 
-状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 采用单层静态 SVG 边渲染后已通过完整本地生产与性能验收，等待 PR #52 当前源码的真实 CI、review 与交付；较早 hosted 缩放失败保留于验收报告。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
+状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 采用单层静态 SVG 边渲染后已通过完整本地生产与性能验收，PR #52 当前 hosted 缩放仍超过门槛，正在定位；需真实 CI、review 与交付，失败和本地回执均保留于验收报告。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
 
 ## 目标与现有基础
 
@@ -509,6 +509,21 @@ Playwright 控制器的 actionability 与截图操作不进入该区间，浏览
 到完整 DOM/根可见并经过两次 animation frame 的 renderMs；两者用于定位耗时，
 完整 openMs 仍受 3,000ms 门槛约束。超限用例分别验证 1,001 节点/0 边和 1,000
 节点/5,001 边的 409 完整拒绝，浏览器不得展示部分统计或部分图。
+
+每个容量 dataset 的 `feedbackDiagnostics` 增量保存每次 open/detail/zoom/pan 的
+`kind`、`repetition`、`start`、`capturedAt`、`conditionAt`、`frame1At`、
+`frame2At`、`end`、`status` 和 `error`。`phases` 分别记录输入时间戳到 capture、
+capture 到首次 ready、首次 ready 到第一帧及第一帧到第二帧的差值；尚未到达的
+时间点与差值保留 null。首次条件/帧里程碑与最终 end 分开保存，不能把阶段差值
+当作总耗时或扣除某一阶段后判断成功。原始 end-start、完整图就绪条件和所有门槛
+保持不变，诊断写入/清理失败继续传播并保留测量失败原因。
+
+`tests/e2e/capacity-trace.ts` 为每个重复保存 `*-chromium-trace.json` 附件，使用
+CDP timeline、User Timing、frame 与 GC 事件关联浏览器内的输入/条件/帧标记。
+它不启用 CPU sampling profiler 或 CDP screenshot category；既有场景 PNG 证据
+保持独立。trace 通过有界完成等待和流式文件写入保存，CDP/文件资源必须关闭。
+这些测试侧诊断用于定位 hosted 超时，不属于产品遥测，也不改变容量、交互或
+成功判定标准。
 
 回执增量写入 `packages/daynight-web/.tmp/acceptance/<run-id>/`，顶层
 `evidence.json` 指向最近一次结果，包含源码、二进制、数据库/浏览器版本、两目标

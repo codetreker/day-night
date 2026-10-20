@@ -62,6 +62,19 @@ snapshot work are excluded. All five repetitions and all original budgets remain
 required. A bounded latest-root User Timing measure separates projection/Dagre
 from subsequent rendering without a growing product telemetry history.
 
+Each capacity dataset incrementally retains `feedbackDiagnostics` for every
+interaction: trusted input, capture, first ready condition, first/second frame and
+final end timestamps, status/error and phase differences. Missing milestones
+remain null. The first condition/frame milestones do not replace the final end;
+phase values are diagnostic observations, never deductions from the total budget.
+Measurement failures and diagnostic/cleanup errors retain their joined causes.
+
+One streamed CDP timeline/User Timing/frame/GC JSON trace per repetition correlates
+those markers with browser work. The trace does not enable CPU sampling or CDP
+screenshots; scenario PNG evidence stays separate. Bounded completion and resource
+closure are required. This is test-side diagnosis for unresolved hosted zoom
+latency, without changing thresholds, complete graph readiness or success rules.
+
 Interrupted-run recovery checks that the original runner, callback/Playwright
 processes and their owned groups have stopped,
 then uses recorded Linux PID/executable/start-time identities, the native binary
@@ -120,7 +133,9 @@ exceeded 300ms; its failed result is retained. The single static edge SVG keeps
 all original graph completeness and timing gates. Its new complete local native
 and container run passes, including all fixed datasets/repetitions, independent
 limits, SVG coordinate/endpoint alignment and cleanup/recovery. Current-source
-hosted acceptance remains required. A separate real-Docker matrix passes
+hosted acceptance remains required: a later static-SVG hosted shared-graph zoom
+measurement also exceeded the budget and is under investigation. A separate
+real-Docker matrix passes
 startup/test-failure,
 cancellation and cleanup-failure/recovery while a second stack retains its
 HTTP/data sentinel. It predates the SVG change and tests unchanged deployment
