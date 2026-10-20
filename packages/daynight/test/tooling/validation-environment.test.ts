@@ -1,8 +1,14 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import crossSpawn from "cross-spawn";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createValidationProbeRecorder } from "../../scripts/validation-environment.js";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const filesystem = await importOriginal<typeof import("node:fs")>();
+  return { ...filesystem, readSync: vi.fn(filesystem.readSync) };
+});
 
 const temporary = path.resolve(import.meta.dirname, "../../../../.tmp/validation-probe-tests");
 const directories: string[] = [];
@@ -10,7 +16,8 @@ type Diagnostics = {
   error: null | { name: string; message: string; code?: string; syscall?: string };
   probes: {
     file: string; args: string[]; state: string; resolvedExecutable: string | null; launcher: string | null;
-    startedAt: string; elapsedMs: number; timeoutMs: number; maxBuffer: number; exitCode: number | null;
+    startedAt: string; elapsedMs: number; timeoutMs: number; executionTimeoutMs: number | null; maxBuffer: number; pid: number | null;
+    preparation: { bytesRead: number; sha256: string | null; elapsedMs: number | null } | null; exitCode: number | null;
     stdout: string; stderr: string; stdoutTruncated: boolean; stderrTruncated: boolean;
     error: null | { name: string; message: string; code?: string; syscall?: string };
   }[];
@@ -49,6 +56,7 @@ const fixture = () => {
   return { directory, bin, environment, tool, diagnostics, read, log, recorder };
 };
 afterEach(({ task }) => {
+  vi.mocked(readSync).mockReset();
   for (const directory of directories.splice(0)) {
     try {
       if (task.result?.state === "fail") {
@@ -90,6 +98,202 @@ describe("native validation environment probes", () => {
     expect(Number.isNaN(Date.parse(f.read().probes[0]!.startedAt))).toBe(false);
   });
 
+  it("prepares the complete selected gh file with one bounded reusable buffer before native launch", () => {
+    const f = fixture();
+    const selected = f.tool("gh", "process.stdout.write('gh version fixture')");
+    // Extra shell comments leave the native fixture executable while crossing multiple read chunks.
+    const comment = process.platform === "win32" ? `rem ${"x".repeat(2_048)}\r\n` : `#${"x".repeat(2_048)}\n`;
+    const contents = `${readFileSync(selected, "utf8")}${comment.repeat(1_100)}`;
+    writeFileSync(selected, contents);
+    const expectedBytes = Buffer.byteLength(contents);
+    let executions = 0;
+    const recorder = createValidationProbeRecorder({ directory: f.diagnostics, environment: f.environment, now: () => 0,
+      log: (message) => { f.log.push(message); },
+      execute: (file, args, options) => {
+        executions += 1;
+        const pending = f.read().probes.at(-1)!;
+        expect(pending).toMatchObject({ state: "running", preparation: {
+          bytesRead: expectedBytes, sha256: createHash("sha256").update(contents).digest("hex"), elapsedMs: 0,
+        }, executionTimeoutMs: 10_000 });
+        expect(options).toMatchObject({ timeout: 10_000, maxBuffer: 1_048_576, shell: false, windowsHide: true, encoding: "utf8" });
+        expect(file).toBe("gh");
+        expect(args).toEqual(["--version"]);
+        return crossSpawn.sync(file, args, options);
+      },
+    });
+    expect(recorder.version("gh")).toBe("gh version fixture");
+    expect(executions).toBe(1);
+    const reads = vi.mocked(readSync).mock.calls;
+    expect(reads).toHaveLength(4);
+    const buffers = reads.map((args) => args[1]);
+    expect(buffers.every((buffer) => buffer === buffers[0])).toBe(true);
+    expect((buffers[0] as Buffer).length).toBe(1_048_576);
+    expect(f.read().probes[0]!.pid).toBeGreaterThan(0);
+    expect(f.log.map((message) => JSON.parse(message.slice("Validation probe: ".length)).state)).toEqual([
+      "resolving", "preparing", "running", "completed",
+    ]);
+    const preparing = JSON.parse(f.log[1]!.slice("Validation probe: ".length));
+    expect(preparing.preparation).toEqual({ bytesRead: 0, sha256: null, elapsedMs: null });
+  });
+
+  it("preserves a preparation read error and never launches gh after preparation fails", () => {
+    const f = fixture();
+    f.tool("gh", "process.stdout.write('gh version fixture')");
+    const originalError = Object.assign(new Error("fixture executable read failure"), { code: "EIO" });
+    vi.mocked(readSync).mockImplementationOnce(() => { throw originalError; });
+    const execute = vi.fn();
+    const recorder = createValidationProbeRecorder({ directory: f.diagnostics, environment: f.environment, log: () => {}, execute });
+    let failure: unknown;
+    try { recorder.version("gh"); } catch (error) { failure = error; }
+    expect(failure).toBe(originalError);
+    expect(execute).not.toHaveBeenCalled();
+    expect(f.read().probes[0]).toMatchObject({ state: "failed", pid: null, executionTimeoutMs: null,
+      preparation: { bytesRead: 0, sha256: null }, error: { code: "EIO" } });
+  });
+
+  it("stops preparation immediately after a read consumes the gh deadline", async () => {
+    const f = fixture();
+    const selected = f.tool("gh", "process.stdout.write('gh version fixture')");
+    writeFileSync(selected, `${readFileSync(selected, "utf8")}#${"x".repeat(2 * 1_048_576)}\n`);
+    let clock = 0;
+    const { readSync: nativeRead } = await vi.importActual<typeof import("node:fs")>("node:fs");
+    vi.mocked(readSync).mockImplementationOnce((...args) => {
+      const bytes = Reflect.apply(nativeRead, undefined, args) as number;
+      clock = 10_000;
+      return bytes;
+    });
+    const execute = vi.fn();
+    const recorder = createValidationProbeRecorder({ directory: f.diagnostics, environment: f.environment, now: () => clock, log: () => {}, execute });
+    expect(() => recorder.version("gh")).toThrow("within 10000ms");
+    expect(readSync).toHaveBeenCalledTimes(1);
+    expect(execute).not.toHaveBeenCalled();
+    expect(f.read().probes[0]).toMatchObject({ state: "failed", elapsedMs: 10_000, executionTimeoutMs: null,
+      preparation: { bytesRead: 1_048_576, sha256: null, elapsedMs: 10_000 }, error: { code: "ETIMEDOUT" } });
+  });
+
+  it("passes only the remaining gh budget and rejects native success after the absolute deadline", () => {
+    const f = fixture();
+    f.tool("gh", "process.stdout.write('partial gh')");
+    let clock = 0;
+    const execute = vi.fn((file, args, options) => {
+      expect(options.timeout).toBe(6_500);
+      const result = crossSpawn.sync(file, args, options);
+      clock = 10_001;
+      return result;
+    });
+    const recorder = createValidationProbeRecorder({ directory: f.diagnostics, environment: f.environment, now: () => clock,
+      log: (message) => {
+        if (JSON.parse(message.slice("Validation probe: ".length)).state === "preparing") clock = 3_500;
+      }, execute,
+    });
+    expect(() => recorder.version("gh")).toThrow("within 10000ms");
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(f.read().probes[0]).toMatchObject({ state: "failed", exitCode: 0, stdout: "partial gh", elapsedMs: 10_001,
+      executionTimeoutMs: 6_500, error: { code: "ETIMEDOUT" } });
+  });
+
+  it("accounts for diagnostic persistence in the gh execution timeout", () => {
+    const f = fixture();
+    f.tool("gh", "process.stdout.write('gh version fixture')");
+    let clock = 0;
+    const recorder = createValidationProbeRecorder({ directory: f.diagnostics, environment: f.environment, now: () => clock,
+      log: (message) => { if (JSON.parse(message.slice("Validation probe: ".length)).state === "running") clock = 3_500.25; },
+      execute: (file, args, options) => {
+        expect(options.timeout).toBe(6_499);
+        return crossSpawn.sync(file, args, options);
+      },
+    });
+    expect(recorder.version("gh")).toBe("gh version fixture");
+    expect(f.read().probes[0]!.executionTimeoutMs).toBe(6_499);
+  });
+
+  it("preserves a native gh timeout and its partial output even after the absolute deadline", () => {
+    const f = fixture();
+    f.tool("gh", "process.stdout.write('gh version fixture')");
+    let clock = 0;
+    let originalError: Error | undefined;
+    const execute = vi.fn((file, args, options) => {
+      expect(file).toBe("gh");
+      expect(args).toEqual(["--version"]);
+      const result = crossSpawn.sync(process.execPath, ["-e", "process.stdout.write('partial gh');process.stderr.write('gh timeout stderr');setInterval(()=>{},1000)"], { ...options, timeout: 2_000 });
+      originalError = result.error;
+      clock = 10_001;
+      return result;
+    });
+    const recorder = createValidationProbeRecorder({ directory: f.diagnostics, environment: f.environment, now: () => clock, log: () => {}, execute });
+    let failure: unknown;
+    try { recorder.version("gh"); } catch (error) { failure = error; }
+    expect(failure).toBe(originalError);
+    expect(originalError).toMatchObject({ code: "ETIMEDOUT" });
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(f.read().probes[0]).toMatchObject({ state: "failed", stdout: "partial gh", stderr: "gh timeout stderr", elapsedMs: 10_001,
+      error: { code: "ETIMEDOUT", syscall: `spawnSync ${process.execPath}` } });
+  }, 10_000);
+
+  it("does not convert a fractional remaining gh budget into an unlimited native timeout", () => {
+    const f = fixture();
+    f.tool("gh", "process.stdout.write('gh version fixture')");
+    let clock = 0;
+    const execute = vi.fn();
+    const recorder = createValidationProbeRecorder({ directory: f.diagnostics, environment: f.environment, now: () => clock,
+      log: (message) => { if (JSON.parse(message.slice("Validation probe: ".length)).state === "running") clock = 9_999.5; }, execute,
+    });
+    expect(() => recorder.version("gh")).toThrow("within 10000ms");
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("records the checked elapsed snapshot when the clock advances after gh completion", () => {
+    const f = fixture();
+    f.tool("gh", "process.stdout.write('gh version fixture')");
+    let clock = 0;
+    let completed = false;
+    let finalClockReads = 0;
+    const recorder = createValidationProbeRecorder({ directory: f.diagnostics, environment: f.environment,
+      now: () => {
+        if (completed) {
+          finalClockReads += 1;
+          clock = finalClockReads === 1 ? 9_999 : 10_000;
+        }
+        return clock;
+      }, log: () => {},
+      execute: (file, args, options) => {
+        const result = crossSpawn.sync(file, args, options);
+        completed = true;
+        return result;
+      },
+    });
+    expect(recorder.version("gh")).toBe("gh version fixture");
+    expect(f.read().probes[0]).toMatchObject({ state: "completed", exitCode: 0, elapsedMs: 9_999, stdout: "gh version fixture", error: null });
+  });
+
+  it("accepts native success completed within the last fractional millisecond of the gh budget", () => {
+    const f = fixture();
+    f.tool("gh", "process.stdout.write('gh version fixture')");
+    let clock = 0;
+    const recorder = createValidationProbeRecorder({ directory: f.diagnostics, environment: f.environment, now: () => clock, log: () => {},
+      execute: (file, args, options) => {
+        const result = crossSpawn.sync(file, args, options);
+        clock = 9_999.5;
+        return result;
+      },
+    });
+    expect(recorder.version("gh")).toBe("gh version fixture");
+    expect(f.read().probes[0]).toMatchObject({ state: "completed", elapsedMs: 9_999.5 });
+  });
+
+  it.each(["resolving", "preparing", "running"])("never launches gh when its budget expires while %s", (state) => {
+    const f = fixture();
+    f.tool("gh", "process.stdout.write('gh version fixture')");
+    let clock = 0;
+    const execute = vi.fn();
+    const recorder = createValidationProbeRecorder({ directory: f.diagnostics, environment: f.environment, now: () => clock,
+      log: (message) => { if (JSON.parse(message.slice("Validation probe: ".length)).state === state) clock = 10_000; }, execute,
+    });
+    expect(() => recorder.version("gh")).toThrow("within 10000ms");
+    expect(execute).not.toHaveBeenCalled();
+    expect(f.read().probes[0]).toMatchObject({ state: "failed", pid: null, error: { code: "ETIMEDOUT" } });
+  });
+
   it("saves nonzero results and both output streams before propagating failure", () => {
     const f = fixture();
     expect(() => f.recorder().command(process.execPath, ["-e", "process.stdout.write('partial out');process.stderr.write('partial err');process.exitCode=7"])).toThrow("exit=7");
@@ -128,6 +332,7 @@ describe("native validation environment probes", () => {
     expect(f.read().probes[0]).toMatchObject({ state: "failed", stdout: "before timeout", stderr: "timeout stderr", resolvedExecutable: process.execPath,
       error: { name: "Error", code: "ETIMEDOUT", syscall: `spawnSync ${process.execPath}` } });
     expect(f.read().error?.code).toBe("ETIMEDOUT");
+    expect(f.read().probes[0]!.preparation).toBeNull();
   }, 10_000);
 
   it("keeps diagnostic output bounded without truncating a successful command's return value", () => {
@@ -151,6 +356,24 @@ describe("native validation environment probes", () => {
     const f = fixture();
     expect(() => f.recorder().version("daynight-tool-that-does-not-exist")).toThrow();
     expect(f.read().probes[0]).toMatchObject({ state: "failed", resolvedExecutable: null, error: { code: "ENOENT" } });
+  });
+
+  it("lets the native launcher report a missing gh without preparing another file", () => {
+    const f = fixture();
+    f.environment.PATH = f.bin;
+    let originalError: Error | undefined;
+    const execute = vi.fn((file, args, options) => {
+      const result = crossSpawn.sync(file, args, options);
+      originalError = result.error;
+      return result;
+    });
+    const recorder = createValidationProbeRecorder({ directory: f.diagnostics, environment: f.environment, log: () => {}, execute });
+    let failure: unknown;
+    try { recorder.version("gh"); } catch (error) { failure = error; }
+    expect(failure).toBe(originalError);
+    expect(originalError).toMatchObject({ code: "ENOENT" });
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(f.read().probes[0]).toMatchObject({ state: "failed", resolvedExecutable: null, preparation: null, error: { code: "ENOENT" } });
   });
 
   it("isolates only the gh child and preserves inherited configuration, credentials, and the parent environment", () => {
@@ -177,6 +400,8 @@ describe("native validation environment probes", () => {
     expect(process.env).toEqual(originalParentEnvironment);
     expect(JSON.stringify(f.read())).not.toContain("fixture-secret-not-for-evidence");
     expect(f.log.join("")).not.toContain("fixture-secret-not-for-evidence");
+    expect(f.read().probes[0]!.preparation?.sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(f.read().probes[1]!.preparation).toBeNull();
   });
 
   it.runIf(process.platform === "win32")("records the PATHEXT-selected shim and its native command interpreter", () => {
