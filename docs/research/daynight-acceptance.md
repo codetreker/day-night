@@ -1,7 +1,9 @@
 # Daynight Acceptance Evidence
 
-Installed-CLI acceptance exercises packed distributions through separate review
-lifecycle and self-update suites. The lifecycle suite uses real Git and SQLite,
+Installed-client acceptance exercises the client command toolkit through separate
+review lifecycle and self-update suites. The [client requirements](../spec/daynight.md)
+own command composition and package updates; the [review requirements](../spec/daynight-review.md)
+own review execution and retained data. The lifecycle suite uses real Git and SQLite,
 controlled GitHub CLI responses and a controlled Copilot executable. Self-update
 uses real npm with a controlled HTTP registry and task-local global prefixes.
 Real Copilot reasoning and GitHub publication require a separately designated
@@ -29,8 +31,20 @@ home and working directories containing spaces and Unicode. The test drives its
 public command and reads SQLite through an independent connection. Product
 scheduling APIs are not replaced. Git transport is limited to the local fixture origin.
 
-The review lifecycle baseline contains thirty-three scenarios covering four
-configuration-registration cases, four local status-listing cases and twenty-five review lifecycle cases. Registration drives the
+The public client commands are root help/version, `update`, and the `review`
+group. Lifecycle registration uses `review add-repo`, monitoring uses `review run`,
+and local status uses `review list` or `review ls`. Current validation must cover
+root/group/operation help without review dependencies, invalid former entry
+forms, the stable `dist/main.js` bin, a clean distribution after module moves,
+and updater package-directory resolution. An independent pre-refactor-format
+YAML/SQLite fixture must establish retained-state reuse without generating its
+baseline through the current store. Historical scenario receipts below describe
+the source and workload observed on their dates; they do not establish these
+command-composition and existing-data checks for current source.
+
+The current review suite contains thirty-five scenarios: two client-composition
+and existing-data cases, four configuration-registration cases, four local
+status-listing cases and twenty-five review lifecycle cases. Registration drives the
 installed command before review startup and verifies configuration-only operation, working-directory-relative
 paths, the default root, and fixed repository paths after a root change. It checks
 that registration creates no clone, database, runtime lock, agent invocation or
@@ -64,6 +78,41 @@ comment review and four approving reviews. The missing-marker attempt publishes
 once; the resumed same-session attempt confirms it without another publication.
 Only the controlled Copilot child may issue the simulated review POST.
 
+## Client composition and existing-data evidence
+
+Local validation on 2026-10-20 used working-tree source package `0.3.0`, Linux
+x64, Node `v24.19.0` and pnpm `10.34.5`. Type checking passed. The ordinary suite
+passed 768 tests with ten skips across 26 files: 25 files passed and one was
+skipped. Its recorded duration was 6.11 seconds. Build validation seeded obsolete
+`dist/cli.js`, `dist/config.js`, `dist/update.js` and `dist/legacy-obsolete.js`;
+the clean build removed all four while retaining `dist/main.js` and the new
+client/review/update outputs.
+
+The two installed suites passed in 15.61 seconds. Both curated receipts report
+`success: true` and source package version `0.3.0`. Installed root, group and
+operation help runs before review configuration or state exists. The review
+suite seeds YAML plus version 1 schema and rows from independent fixture files,
+not the current store implementation. Installed `review list` and `review ls`
+read that existing database and preserve its configuration bytes, schema and
+all rows. The fixture includes a permanent cutoff, desired/completed revisions,
+session and worktree identities, completed/failed/retry/interrupted reviews and
+a cleanup barrier, so listing must retain their distinct ownership.
+
+The full controlled review workflow still records six agent invocations, five
+publications (one `COMMENT`, four `APPROVE`), two clean shutdowns, two worktree
+cleanups and one automatic stale-lock recovery. The separate real-npm suite
+uses npm `12.0.2` and confirms pinned replacement `1.0.0` → `1.0.1` after `latest`
+moves to `1.0.2`, preserved review bytes, no installation for current/ahead
+versions, and exit 1 for metadata and tarball failures. Task-owned fixture
+processes and temporary installations were cleaned after verification.
+
+This is local Linux evidence from the integration working tree. It does not
+establish current-source native macOS or Windows results, real model execution,
+or GitHub publication. The historical native receipts below remain tied to
+their original revisions. Existing-format fixture reuse here establishes the
+installed read path; runtime persistence, recovery and repeated startup retain
+their separate ordinary and full-lifecycle coverage.
+
 ## Coordinator cooldown boundaries
 
 Cooldown scenarios use the production coordinator's injected clock and real
@@ -96,14 +145,15 @@ bytes, current/ahead no-install results, and
 metadata/installation failures. They preserve an unrelated prefix, caller project
 files and user configuration/state. The installed manifest, launcher and fresh
 CLI version establish the replacement result. This evidence is separate from
-the thirty-three review lifecycle scenarios and establishes neither live npm
+the thirty-five review scenarios and establishes neither live npm
 publication nor a running reviewer's restart.
 
 The suite writes `.tmp/update-evidence.json` with the source package version,
 Node/npm versions, platform and architecture, scenarios and replacement result.
-The focused Linux x64 run on 2026-10-20 passed all fourteen scenarios in 8.03
-seconds using working-tree source package `0.2.4`, Node `v24.19.0` and npm
-`12.0.2`. npm returned a singleton JSON array for the queried version. The receipt
+An earlier focused Linux x64 run on 2026-10-20 passed all fourteen scenarios in
+8.03 seconds using working-tree source package `0.2.4`, Node `v24.19.0` and npm
+`12.0.2`; the client-composition receipt above records the later `0.3.0` combined
+run. npm returned a singleton JSON array for the queried version. The receipt
 records successful replacement `1.0.0` → `1.0.1` after `latest` moved to `1.0.2`,
 no installation for current/ahead versions, one successful target-tarball request,
 and status 1 for metadata and tarball HTTP 503 failures. The final installed
@@ -164,6 +214,7 @@ and do not establish that repair's behavior.
 
 | Evidence | Observed result |
 |---|---|
+| Client composition local validation, 2026-10-20 | Working-tree source package `0.3.0` on Linux x64: type checking, clean build with obsolete-output rejection, 768 ordinary tests with ten skips in 6.11 seconds, and both installed suites in 15.61 seconds; 35 review scenarios plus 14 real-npm update scenarios, including independent existing-schema listing reuse |
 | Self-update focused local validation, 2026-10-20 | Linux x64 passed all fourteen controlled real-npm scenarios from working-tree source package `0.2.4` in 8.03 seconds, using Node `v24.19.0` and npm `12.0.2`; separate from the review lifecycle baseline and native hosted results |
 | Package `0.2.1` CI-admission local validation, 2026-10-18 | Linux x64 passed type checking, 662 ordinary tests with eight APFS skips, build and all 33 installed scenarios |
 | Package `0.2.0` local validation, 2026-10-18 | Linux x64 passed type checking, 552 ordinary tests with eight APFS skips, build and all 28 installed scenarios in 10.62 seconds |

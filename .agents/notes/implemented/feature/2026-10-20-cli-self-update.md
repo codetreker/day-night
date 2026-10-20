@@ -14,7 +14,8 @@ layouts and replacement behavior.
 ## Decision
 
 `daynight update` updates only the npm global installation containing the running
-package. It resolves the package's physical directory, confirms its name and bin,
+package. The stable `main.ts` entry supplies the package directory to the nested
+updater; it resolves that physical directory, confirms the package name and bin,
 derives the platform's global prefix and verifies that prefix's npm-owned
 launcher points to the package's `dist/main.js`. A mismatched layout or launcher
 fails with original-package-manager guidance before installation. npm's
@@ -40,11 +41,11 @@ bin and target version, rechecks launcher ownership, then executes the installed
 absolute CLI in a new process and requires an exact `--version` match. Only those
 checks permit an update-success result. Help and argument validation precede the
 operation; update dispatch precedes home resolution, configuration and review
-runtime loading. Listing and review modules load only when those commands run,
+runtime loading. Review operation implementations load only when their selected operations run,
 so the updater itself does not load the SQLite native addon it may replace. No
 review state, sessions or locks are opened.
 
-The [requirements](../../../../docs/spec/daynight.md#r16-自更新) own observable
+The [requirements](../../../../docs/spec/daynight.md#c4-自更新) own observable
 behavior, the [design](../../../../docs/design/daynight.md#npm-全局自更新) owns
 mechanisms, and the [acceptance report](../../../../docs/research/daynight-acceptance.md#controlled-npm-self-update-acceptance)
 owns execution evidence. Package publication remains the independent manual

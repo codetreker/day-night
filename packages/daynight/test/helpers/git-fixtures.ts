@@ -2,11 +2,12 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { createGitManager } from "../../src/git.js";
-import { executeCommand } from "../../src/github.js";
-import type { CommandExecutor, GitHubClient } from "../../src/github.js";
-import { openStore } from "../../src/store.js";
-import type { PullRequestObservation, Store } from "../../src/store.js";
+import { createGitManager } from "../../src/commands/review/adapters/worktrees.js";
+import { executeCommand } from "../../src/commands/review/adapters/github.js";
+import type { CommandExecutor, GitHubClient } from "../../src/commands/review/adapters/github.js";
+import { openStore } from "../../src/commands/review/store.js";
+import type { Store } from "../../src/commands/review/store.js";
+import type { PullRequestObservation } from "../../src/commands/review/model.js";
 
 export const uuid = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 export const proof = { processesExcluded: true, operationsStopped: true } as const;

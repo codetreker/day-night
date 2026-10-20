@@ -82,4 +82,4 @@ unavailable until the startup command recreates the stack. Compose restart
 operations propagate to the dependent server. Health checks expose this failure
 but do not promise unattended availability. The provided credentials and host-loopback
 publication describe local development; authenticated remote deployment remains
-a separate design. The review CLI is not part of this stack.
+a separate design. The client review module is not part of this stack.

@@ -15,8 +15,8 @@ this layout with session-labelled Git locks and physical ownership checks. The
 [foreground coordinator](2026-10-17-foreground-review-coordination.md) connects it
 to polling and retained Copilot execution.
 
-The [requirements](../../../../docs/spec/daynight.md) and
-[design](../../../../docs/design/daynight.md) place PR worktrees under each
+The [requirements](../../../../docs/spec/daynight-review.md) and
+[design](../../../../docs/design/daynight-review.md) place PR worktrees under each
 configured repository root's `.worktrees/` directory. The proposed stable path is
 `<repository>/.worktrees/pr-<number>/`. SQLite records ownership, and the CLI only
 prepares or removes its registered worktrees. Other PR worktrees remain

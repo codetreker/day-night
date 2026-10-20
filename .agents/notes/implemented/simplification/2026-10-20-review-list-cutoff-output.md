@@ -17,7 +17,7 @@ selection remain unchanged.
 
 This partially supersedes the [original listing decision](../feature/2026-10-18-review-status-listing.md),
 which displayed the boundary to explain why older PRs could not be enumerated.
-The [requirements](../../../../docs/spec/daynight.md) own the current visible
+The [requirements](../../../../docs/spec/daynight-review.md) own the current visible
 behavior.
 
 ## Alternatives

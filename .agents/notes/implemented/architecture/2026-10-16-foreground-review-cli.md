@@ -11,16 +11,21 @@ installation or independent execution infrastructure.
 
 ## Decision
 
-The repository records the [requirements](../../../../docs/spec/daynight.md) and
-[design](../../../../docs/design/daynight.md) for one foreground
-TypeScript CLI in `packages/daynight/`. This note records the selected execution
-model. The CLI/configuration foundation and
+The repository records the [requirements](../../../../docs/spec/daynight-review.md) and
+[design](../../../../docs/design/daynight-review.md) for the foreground
+`daynight review run` command in `packages/daynight/`. This note records the
+selected execution model. The
+[client composition decision](2026-10-20-client-command-composition.md) partially
+supersedes the original package-wide review framing: review remains a single
+foreground workflow within a client that composes command modules. The
+CLI/configuration foundation and
 [durable state module](2026-10-17-durable-review-state.md) are implemented;
 the [GitHub observation module](2026-10-17-github-observation.md) reads complete
 repository passes. The [Git manager](2026-10-17-owned-review-worktrees.md) owns
 clones and disposable PR worktrees. The [Copilot adapter](2026-10-17-copilot-session-execution.md)
 executes retained sessions. The [foreground coordinator](2026-10-17-foreground-review-coordination.md)
-connects these modules to continuous CLI operation. Configuration, entry point, and
+connects these modules to continuous review operation. Review configuration, entry point,
+and
 runtime storage follow the [user-home configuration decision](2026-10-16-user-home-review-configuration.md).
 The [local status listing](../feature/2026-10-18-review-status-listing.md) inspects
 persisted progress without entering this execution workflow or taking its lock.
