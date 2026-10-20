@@ -160,7 +160,7 @@ package's npmjs **Settings → Trusted Publisher** before running it:
 | GitHub Actions setting | Value |
 |---|---|
 | Organization or user | `codetreker` |
-| Repository | `day-night` |
+| Repository | `daynight` |
 | Workflow filename | `publish.yml` |
 | Environment name | Leave blank |
 | Allowed actions | Allow direct `npm publish` |

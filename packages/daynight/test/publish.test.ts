@@ -23,7 +23,7 @@ const fixture = () => {
   mkdirSync(artifact, { recursive: true });
   const receipt: ReleaseReceipt = {
     name: "@codetreker/daynight", version: "1.2.3", sourceSha, integrity: hash(bytes),
-    tarball: "package.tgz", tag: "daynight-v1.2.3", repository: "codetreker/day-night",
+    tarball: "package.tgz", tag: "daynight-v1.2.3", repository: "codetreker/daynight",
   };
   const save = () => writeFileSync(path.join(artifact, "release.json"), JSON.stringify(receipt));
   save();
@@ -265,7 +265,7 @@ describe("release preparation and command wrappers", () => {
     writeFileSync(path.join(app, "README.md"), "# Package\n");
     writeFileSync(path.join(app, "package.json"), JSON.stringify({
       name: "@codetreker/daynight", version: "1.2.3", files: ["dist"],
-      repository: { type: "git", url: "git+https://github.com/codetreker/day-night.git", directory: "packages/daynight" },
+      repository: { type: "git", url: "git+https://github.com/codetreker/daynight.git", directory: "packages/daynight" },
       scripts: { prepack: "node -e \"process.exit(91)\"" },
     }));
     const git = (...args: string[]) => execFileSync("git", args, { cwd: f.cwd, encoding: "utf8", timeout: 20_000 }).trim();

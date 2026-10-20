@@ -42,7 +42,7 @@ is provided. The package repository metadata identifies the GitHub source and
 CLI subdirectory, as required for source attribution.
 
 The npm package's trusted publisher identifies GitHub owner `codetreker`,
-repository `day-night`, workflow filename `publish.yml`, and no environment.
+repository `daynight`, workflow filename `publish.yml`, and no environment.
 It must allow direct `npm publish`; the always-allowed staged action does not
 grant that permission. A package owner configures this connection on npmjs.
 The first successful publication must validate a newly created connection within

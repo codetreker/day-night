@@ -4,7 +4,7 @@
   "description": "A foreground CLI for GitHub pull request reviews",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/codetreker/day-night.git",
+    "url": "git+https://github.com/codetreker/daynight.git",
     "directory": "packages/daynight"
   },
   "type": "module",

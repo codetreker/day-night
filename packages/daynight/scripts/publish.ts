@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/pro
 import path from "node:path";
 
 const packageName = "@codetreker/daynight";
-const repository = "codetreker/day-night";
+const repository = "codetreker/daynight";
 const registry = "https://registry.npmjs.org";
 const stableVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const sourcePattern = /^[0-9a-f]{40}$/;
@@ -64,7 +64,7 @@ export const prepareRelease = async (sha: string, cwd = process.cwd()): Promise<
   const repo = record(manifest.repository, "package repository");
   if (manifest.name !== packageName || typeof manifest.version !== "string" || !stableVersion.test(manifest.version)
     || repo.type !== "git" || repo.url !== `git+https://github.com/${repository}.git` || repo.directory !== "packages/daynight") {
-    throw new Error("Package manifest must identify @codetreker/daynight, a stable version, and its codetreker/day-night Git repository and directory.");
+    throw new Error("Package manifest must identify @codetreker/daynight, a stable version, and its codetreker/daynight Git repository and directory.");
   }
   const dirs = locations(cwd);
   await rm(dirs.root, { recursive: true, force: true });
