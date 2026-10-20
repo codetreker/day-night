@@ -1,6 +1,6 @@
 # 项目与任务看板设计
 
-状态：完整图 API、项目浏览、纯图模型与横向布局已实现；项目任务视图和部署仍待实现。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
+状态：完整图 API 与项目任务看板已实现；Go 内嵌交付、localhost/dev-ci 部署和完整生产验收仍待实现。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
 
 ## 目标与现有基础
 
@@ -58,7 +58,7 @@
 - 根条目保留服务端 `(createdAt,id)` 的精确排序；前端不通过 JavaScript 毫秒时间重新排序，以免丢失数据库时间精度。根任务的状态与整条任务链的完成数分开显示。
 - 图节点使用固定尺寸和两行标题；省略内容在详情侧栏中完整展示。
 - 默认从左到右布局，前置在左、后续在右，箭头始终表达执行方向。
-- 图内提供缩放、平移、适应画布，触屏和窄屏可滚动。初始缩放设下限，不能把大图缩成不可读的点；必要时允许画布滚动。
+- 图内提供缩放、平移、适应画布，触屏和窄屏可滚动。初始缩放范围为 0.8–1；若此缩放无法容纳全图，将当前根放在左侧 32px 并垂直居中，避免长链打开在中段。显式适应画布允许缩小至 0.2，保留平移查看。初始化仅执行一次，选择与平移不重新居中或计算布局。
 - 保留 React Flow attribution；禁用节点拖动、连线、重连、删除，保留焦点与选择。
 - 页面展示最近一次成功快照的本机接收时间，不把 project.updatedAt 当作任务图更新时间。
 
@@ -133,6 +133,14 @@ declare const layoutGraph: (projection: RootProjection) => CanvasLayout;
 
 依据：[React Flow 布局指南](https://reactflow.dev/learn/layouting/layouting)、[Dagre 示例](https://reactflow.dev/examples/layout/dagre)、[可访问性](https://reactflow.dev/learn/advanced-use/accessibility)、[Vue Flow](https://vueflow.dev/guide/)、[Vite 构建](https://vite.dev/guide/build)。Dagre 对外联子图的限制针对嵌套分组；这里每个根条目是独立平面图，不使用嵌套 subflow。
 
+React Flow 固定为 12.12.0，使用单个原生任务按钮处理鼠标/Enter/Space，关闭 wrapper
+焦点与所有编辑入口，控件不提供解锁开关。边保留 Dagre 路径点，透明但可测量的
+不可连接 handle 满足框架初始化；布局、选择和请求仍分别归所属模块。
+
+锁定的 `@xyflow/system@0.0.83` 仅声明补丁显式保留 NodeBase 泛型约束，ESM/UMD
+运行时字节不变，`exactOptionalPropertyTypes` 与依赖类型检查继续有效。静态测试
+保护自定义数据与位置字段约束；容器构建必须复制 root patches 作为安装输入。
+
 ## 模块职责与调用方向
 
 ```text
@@ -201,6 +209,8 @@ flowchart LR
 
 ### Go 路由和静态资源
 
+以下 Go 静态路由由 W-T5 接入；当前 Go 服务仍提供 JSON API，完整页面已可通过 web 开发/构建访问。
+
 保留 `server.New` 的单一 `http.ServeMux`，继续由 `runtime.Start` 中现有 `RequestLogging` 包裹一次。UI 与 API 共用 request context、requestId、panic 处理和访问日志。
 
 | 路径 | 行为 |
@@ -247,7 +257,7 @@ W-T5 直接集成既有 `deployment/localhost/`。继续执行 `bash deployment/
   → 非 root 运行阶段：仅复制二进制
 ```
 
-`deployment/localhost/compose.yaml` 的现有 build context 仅包含 Go 模块，实施时改为仓库根并显式指定 `deployment/localhost/Dockerfile`。对应 Dockerfile 专属 `.dockerignore` 改为根相对 allowlist，纳入 workspace/root/web/Go manifests、锁文件、实际构建脚本与源码，排除宿主 `node_modules`、`.tmp`、生成 dist 和无关工作区内容。安装层只下载 web 所需依赖；镜像内部执行同一 `web:build`，不依赖宿主预构建产物。
+`deployment/localhost/compose.yaml` 的现有 build context 仅包含 Go 模块，实施时改为仓库根并显式指定 `deployment/localhost/Dockerfile`。对应 Dockerfile 专属 `.dockerignore` 改为根相对 allowlist，纳入 workspace/root/web/Go manifests、锁文件、`patches/` 声明补丁、实际构建脚本与源码，排除宿主 `node_modules`、`.tmp`、生成 dist 和无关工作区内容。安装层只下载 web 所需依赖；镜像内部执行同一 `web:build`，不依赖宿主预构建产物。
 
 保留 nginx stream/TCP 转发、服务与 gateway 共享网络命名空间、服务 loopback 监听、宿主 loopback 端口发布、现有 project API 健康检查和命名卷。nginx 不增加 SPA fallback，HTML、资源和 API 都由同一个 Go mux 处理。正常重建栈继续保留数据库数据。上述现有机制由 `deployment/localhost/README.md` 与本机部署决策记录拥有；实施时同步其中的构建事实。
 

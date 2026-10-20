@@ -9,7 +9,7 @@ implementation work.
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented TypeScript client command toolkit; `review` and npm global `update` commands | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
-| `daynight-web` | `packages/daynight-web/` | Project browsing, typed API client, graph projection/layout and strict coverage implemented; task view and embedded delivery pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
+| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details and strict coverage implemented; embedded delivery pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The `@codetreker/daynight` package provides the `daynight` client. Its root entry
 lists commands and reports the package version; each command owns its business
@@ -32,7 +32,7 @@ scope, dependencies, status and acceptance criteria. The development and runtime
 CLI commands below apply to the client; server commands have their own module.
 The dashboard architecture presents source-root dependency graphs and project
 statistics from the server. The project list is implemented in the private web
-workspace; task visualization remains pending. Its [design decision](.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)
+workspace, including task visualization and details. Its [design decision](.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)
 defines the read-only MVP and future single-origin delivery. The standalone HTML
 preview opens directly in a browser and uses fixture data; current server builds
 continue to serve only the implemented JSON APIs. The planned delivery integrates
@@ -153,7 +153,8 @@ binary identity, scenario results and resource cleanup.
 ## Web development
 
 The private [web workspace](packages/daynight-web/README.md) implements the project
-list, cursor paging, safe API decoding, cancellation and browser routing. With the
+list, cursor paging, safe API decoding, cancellation, project statistics, task
+graphs and detail drawers. With the
 Go API running on loopback, use:
 
 ```text
@@ -163,8 +164,7 @@ pnpm web:build
 pnpm web:test
 ```
 
-The frontend build emits `packages/daynight-web/dist/`. Project task rendering
-and embedding into the localhost service are tracked in the
+The frontend build emits `packages/daynight-web/dist/`. Embedding into the localhost service and full production acceptance are tracked in the
 [dashboard tasks](docs/design/daynight-web-tasks.md). The web job runs typecheck,
 production build, controlled-fetch UI tests and an exact statement gate strictly
 above 90%. It independently enumerates all product TypeScript/TSX files and
