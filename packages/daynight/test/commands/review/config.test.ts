@@ -27,6 +27,15 @@ describe("YAML configuration", () => {
     });
   });
 
+  it.each(["null", "not-an-origin", "{}", "[]", "42"])("leaves invalid serverUrl values to the server projection: %s", (value) => {
+    expect(parse(`serverUrl: ${value}\n${repositoryYaml()}`)).toEqual(parse(repositoryYaml()));
+  });
+
+  it("explains how to configure review when only server access is configured", () => {
+    expect(() => parse("serverUrl: http://localhost:8787\n")).toThrow("Review repositories are not configured; use daynight review add-repo.");
+    expect(() => parse("serverUrl: http://localhost:8787\nmaxConcurrentWorker: 0\n")).toThrow("maxConcurrentWorker must be a positive safe integer");
+  });
+
   it("validates repositoryRoot as addition metadata without changing runtime configuration", () => {
     for (const root of ["~/daynights", "~", "../clones", "/nonexistent/clones"]) {
       expect(parse(`repositoryRoot: ${JSON.stringify(root)}\n${repositoryYaml()}`)).toEqual(parse(repositoryYaml()));

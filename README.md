@@ -7,7 +7,7 @@ implementation work.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented `review` and npm global `update`; project/task CLI design adopted, implementation pending | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
+| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, shared configuration and server HTTP foundations; project/task commands pending | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, typed API client, graph projection/layout and strict coverage implemented; task view and embedded delivery pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -23,8 +23,9 @@ runtime. The adopted [project/task CLI design](docs/design/daynight-project-task
 adds server-backed commands, automatic Git-origin project discovery and ignored
 repository-local bindings. Its [requirements](docs/spec/daynight-project-task.md)
 and [task breakdown](docs/design/daynight-project-task-tasks.md) describe the
-confirmed behavior and pending implementation; these commands and configuration
-fields are not yet available. Controlled native-platform tests and live
+confirmed behavior and implementation status. Shared YAML projections, the
+`serverUrl` configuration field and the bounded HTTP client are implemented;
+repository discovery and the project/task commands remain pending. Controlled native-platform tests and live
 Copilot/GitHub acceptance provide separate evidence; live acceptance remains
 outstanding.
 
@@ -63,7 +64,7 @@ pnpm daynight --version
 `pnpm check` runs type checking and tests. Tests build the package before
 exercising the compiled CLI. `pnpm build` clears the package's `dist/` before emitting
 `packages/daynight/dist/main.js`; the package's `daynight` bin points there.
-Source tests mirror `cli/`, `commands/` and `platform/` ownership, with build and
+Source tests mirror `cli/`, `config/`, `api/`, `commands/` and `platform/` ownership, with build and
 version-policy tests in `test/tooling/`.
 The pnpm dependency store is local to `.tmp/pnpm-store`. `pnpm acceptance`
 separately packs and installs the CLI in a local consumer and requires package-
@@ -332,6 +333,13 @@ creates the configuration when absent. It reads, validates and saves configurati
 cloning, authentication checks, GitHub calls, SQLite initialization and PR boundary
 selection belong to review startup. An already running reviewer keeps its loaded
 configuration until its next startup.
+
+The same YAML also accepts the server client's `serverUrl` field. Review validates
+its own fields independently of that value, while the server configuration
+projection requires only a valid HTTP(S) origin. The shared parser still rejects
+invalid YAML, duplicate keys and unknown root fields. Registration can add the
+first review repository to a server-only file while preserving its server
+settings and comments.
 
 A configuration with an explicit addition root is:
 

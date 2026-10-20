@@ -1,6 +1,6 @@
 # Project 与 Task CLI 实现任务
 
-状态：方案已确认；PT-T1–PT-T5 均未开始。
+状态：PT-T1 已实现并通过本地验证；PT-T2–PT-T5 未开始。
 
 本文拥有任务编号、状态、依赖、文件归属和完成条件。
 [需求](../spec/daynight-project-task.md)拥有 PT1–PT10 的可观察行为，
@@ -12,7 +12,7 @@
 
 | 编号 | 任务 | 状态 | 前置 | 主要交付 | 对应要求 |
 |---|---|---|---|---|---|
-| [PT-T1](#pt-t1) 服务访问基础 | 未开始 | 无 | 共享 YAML、独立 server 配置、HTTP 客户端和错误/取消 | PT2、PT8、PT9 |
+| [PT-T1](#pt-t1) 服务访问基础 | 已实现 | 无 | 共享 YAML、独立 server 配置、HTTP 客户端和错误/取消 | PT2、PT8、PT9 |
 | [PT-T2](#pt-t2) 仓库关联发现 | 未开始 | PT-T1 | Git 定位、地址身份、完整发现、本地记录及忽略规则 | PT3、PT4、PT5 |
 | [PT-T3](#pt-t3) Project 命令 | 未开始 | PT-T1 | create/list/show、命令登记和帮助、输出 | PT1、PT6、PT8 |
 | [PT-T4](#pt-t4) Task 命令 | 未开始 | PT-T2、PT-T3 | create/list/show/update/graph、版本及依赖更新 | PT1、PT4、PT7、PT8、PT9 |
@@ -35,7 +35,11 @@ PT-T3 完成登记后，PT-T4 再接管命令登记文件，避免并行改动�
 <a id="pt-t1"></a>
 ## PT-T1：服务访问基础
 
-状态：未开始。前置：无。
+状态：已实现。前置：无。
+
+本地验证：`pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm acceptance` 均通过；
+普通测试 900 项通过，10 项平台专属测试在 Linux 上跳过，安装验收 2 项通过。配置
+与 API 独立代码审查均未发现 Critical/Major。原生 CI 与远端 review 通过是交付 PR 的合并条件。
 
 ### 文件归属与范围
 
