@@ -14,8 +14,9 @@ The `@codetreker/daynight` package provides the `daynight` CLI. It polls configu
 repositories, maintains dedicated local clones and PR worktrees, and launches
 Copilot in a retained session for each eligible PR. SQLite preserves
 initialization boundaries, review revisions and retry budgets. The CLI provides
-help, version output, configuration-only repository registration, and a local
-persisted review listing. Review mode loads configuration and runs until stopped.
+help, version output, configuration-only repository registration, a local
+persisted review listing, and self-update for npm global installations. Review
+mode loads configuration and runs until stopped.
 Controlled native-platform tests and live Copilot/GitHub acceptance provide
 separate evidence; live acceptance remains outstanding.
 
@@ -55,8 +56,10 @@ exercising the compiled CLI. `pnpm build` emits the executable
 `packages/daynight/dist/main.js`; the package's `daynight` bin points there.
 The pnpm dependency store is local to `.tmp/pnpm-store`. `pnpm acceptance`
 separately packs and installs the CLI in a local consumer and requires package-
-registry access. It uses controlled GitHub/Copilot executables with real Git and
-SQLite, creates no global installation and requires no live review credentials.
+registry access. The review lifecycle suite uses controlled GitHub/Copilot
+executables with real Git and SQLite. The self-update suite uses real npm and an
+isolated, task-local global prefix with a controlled HTTP registry. Neither suite
+changes the operator's installed CLI or requires live review credentials.
 
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
 Windows runners. The final `checks` job succeeds only when all platform jobs
@@ -91,7 +94,8 @@ records the isolation rules, and the
 [CI timing report](docs/research/windows-ci-performance.md) records native
 before/after measurements. The installed acceptance suite additionally verifies the package
 bin, default native command shims, singleton/stale-lock behavior and the complete
-review/re-review/restart/closure lifecycle. Curated environment and scenario
+review/re-review/restart/closure lifecycle. Separate npm global-prefix acceptance
+checks self-update and installation ownership. Curated environment and scenario
 receipts are uploaded by each native CI job; the
 [acceptance report](docs/research/daynight-acceptance.md) distinguishes those
 receipts from live-service evidence. Controlled Copilot executables exercise retained sessions, durable
@@ -217,6 +221,46 @@ version. The workflow serializes releases, keeps in-progress releases running,
 and reports conflicting or unverified state as failure. The
 [publishing decision](.agents/notes/implemented/process/2026-10-20-npm-trusted-publishing.md)
 owns artifact identity and recovery rationale.
+
+## Install and update
+
+Install the CLI with npm:
+
+```bash
+npm install --global @codetreker/daynight
+daynight --version
+```
+
+Update that npm global installation with:
+
+```bash
+daynight update
+```
+
+The command checks `@codetreker/daynight`'s `latest` version in the configured npm
+registry and installs that exact version only when it is newer. It updates the
+installation that is running, even if npm's current default global prefix has
+changed. An equal or newer installed version succeeds without installation or
+downgrade. User and global npm registry/authentication settings apply; the current
+working directory's project `.npmrc` does not select the update source.
+
+`daynight update --help` explains the command. Self-update requires an npm-owned
+global package and launcher. Source checkouts, local dependencies, `npx`, pnpm and
+`npm link` installations receive guidance to use their original package manager.
+If an update is needed, run the command from outside its installation directory.
+The installer streams its output, enforces the target's Node.js engine requirement
+and reports permission, network and installation errors. It does not request
+administrator privileges automatically. npm owns replacement and recovery; a
+failed installation is not a promise that every original file remains unchanged.
+
+The command verifies the installed manifest, launcher and a fresh invocation's
+version before reporting success. It requires no review configuration and does
+not open SQLite, modify sessions or restart a running reviewer. The next CLI
+invocation uses the installed version. Restart any running reviewer to use it;
+on Windows, a reviewer holding a native addon open can prevent npm from replacing
+that file and cause the update to fail. The
+[self-update decision](.agents/notes/implemented/feature/2026-10-20-cli-self-update.md)
+records installation ownership and verification requirements.
 
 ## Configuration and startup
 

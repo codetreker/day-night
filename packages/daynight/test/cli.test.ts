@@ -15,6 +15,7 @@ const dependencies = (): CliDependencies & { output: string[]; errors: string[] 
   const errors: string[] = [];
   return {
     version: "1.2.3",
+    update: async () => { throw new Error("Installation must not be updated for informational commands."); },
     homeDirectory: () => { throw new Error("Home must not be read for informational commands."); },
     workingDirectory: () => { throw new Error("Working directory must not be read for informational commands."); },
     addRepository: async () => { throw new Error("Repositories must not be added for informational commands."); },
@@ -40,6 +41,44 @@ describe("CLI argument handling", () => {
     const deps = dependencies();
     expect(await runCli([argument], deps)).toBe(0);
     expect(deps.output).toEqual(["1.2.3\n"]);
+  });
+
+  it.each(["--help", "-h"])("prints update %s without inspecting configuration or installation", async (argument) => {
+    const deps = dependencies();
+    expect(await runCli(["update", argument], deps)).toBe(0);
+    expect(deps.output.join("")).toContain("Usage: daynight update");
+    expect(deps.errors).toEqual([]);
+  });
+
+  it.each([
+    ["update", "extra"], ["update", "--version"], ["update", "--help", "extra"],
+  ])("rejects invalid update syntax %j before inspecting state", async (...args) => {
+    const deps = dependencies();
+    expect(await runCli(args, deps)).toBe(2);
+    expect(deps.errors.join("")).toContain("daynight update");
+    expect(deps.errors.join("")).not.toContain("informational commands");
+    expect(deps.output).toEqual([]);
+  });
+
+  it.each([
+    { status: "updated", previousVersion: "1.2.3", targetVersion: "1.2.4", output: "Updated daynight from 1.2.3 to 1.2.4.\nRestart any running reviewer to use the new version.\n" },
+    { status: "current", previousVersion: "1.2.3", targetVersion: "1.2.3", output: "daynight 1.2.3 is already up to date.\n" },
+    { status: "ahead", previousVersion: "1.2.3", targetVersion: "1.2.2", output: "daynight 1.2.3 is newer than latest 1.2.2.\n" },
+  ] as const)("reports an $status update independently of configuration and review startup", async ({ status, previousVersion, targetVersion, output }) => {
+    const deps = dependencies();
+    deps.update = vi.fn(async () => ({ status, previousVersion, targetVersion }));
+    expect(await runCli(["update"], deps)).toBe(0);
+    expect(deps.update).toHaveBeenCalledExactlyOnceWith();
+    expect(deps.output).toEqual([output]);
+    expect(deps.errors).toEqual([]);
+  });
+
+  it("reports update failure with its original cause and no success message", async () => {
+    const deps = dependencies();
+    deps.update = async () => { throw new Error("Cannot update installation", { cause: new Error("npm permission denied") }); };
+    expect(await runCli(["update"], deps)).toBe(1);
+    expect(deps.output).toEqual([]);
+    expect(deps.errors.join("")).toContain("Cannot update installation\nCaused by: npm permission denied");
   });
 
   it.each(["--help", "-h"])("prints add-repo %s without inspecting user directories", async (argument) => {

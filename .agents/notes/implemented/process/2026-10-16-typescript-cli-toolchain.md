@@ -34,8 +34,10 @@ and path rules.
 The CLI supports help, version, argument validation, configuration loading,
 [configuration-only repository registration](../feature/2026-10-18-add-repo-configuration.md)
 and [local persisted status listing](../feature/2026-10-18-review-status-listing.md).
-The listing parses configuration without physical path probes and reads a single
-SQLite transaction without initializing, migrating or recovering application state.
+The [self-update command](../feature/2026-10-20-cli-self-update.md) updates only its
+verified npm global installation before home, configuration or review runtime
+loading. The listing parses configuration without physical path probes and reads
+a single SQLite transaction without initializing, migrating or recovering application state.
 It requires no review instance lock or external executables. Review mode acquires
 the instance lock, opens SQLite and runs the
 [foreground coordinator](../architecture/2026-10-17-foreground-review-coordination.md).
@@ -69,9 +71,9 @@ shallow-history guesses and uncommitted state. The
 comparison; the [GitHub event documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request)
 distinguishes the synthetic merge SHA from the PR head.
 
-The directly declared `semver` development dependency validates and orders
-versions, including prereleases. Build metadata alone does not increase version
-precedence. Invalid manifests or missing commits fail instead of bypassing the
+The directly declared `semver` runtime dependency validates and orders versions
+for self-update and the package-version gate, including prereleases. Build
+metadata alone does not increase version precedence. Invalid manifests or missing commits fail instead of bypassing the
 check. An initial main push validates its first version because no predecessor
 exists. The existing required matrix gate includes the Linux result, so version
 check failures block integration through the same required check.
