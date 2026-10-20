@@ -8,7 +8,9 @@ const repository = "codetreker/daynight";
 const registry = "https://registry.npmjs.org";
 const stableVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const sourcePattern = /^[0-9a-f]{40}$/;
-const publicationAttempts = 25;
+const publicationWindow = 600_000;
+const publicationInterval = 5_000;
+const publicationAttempts = publicationWindow / publicationInterval + 1;
 const npmCommand = (): { command: string; prefix: string[] } => process.platform === "win32"
   ? { command: process.execPath, prefix: [path.join(path.dirname(process.execPath), "node_modules/npm/bin/npm-cli.js")] }
   : { command: "npm", prefix: [] };
@@ -182,13 +184,24 @@ export const publishRelease = async (sha: string, cwd = process.cwd(), services 
       throw new Error(`Publishing ${receipt.version} would not advance npm latest (${String(latest.version)}).`);
     }
     await services.publish(tarball, dirs.root);
-    const visibilityDeadline = AbortSignal.timeout(120_000);
-    for (let attempt = 0; attempt < publicationAttempts; attempt++) {
-      metadata = await registryMetadata(services, receipt.version, visibilityDeadline);
-      if (metadata !== undefined) break;
-      if (attempt + 1 < publicationAttempts) await services.wait(5_000);
+    const visibilityStarted = Date.now();
+    const visibilityDeadline = AbortSignal.timeout(publicationWindow);
+    const timeoutMessage = `Timed out waiting for public npm version ${receipt.name}@${receipt.version} within 10 minutes after npm accepted publication.`;
+    try {
+      for (let attempt = 0; attempt < publicationAttempts; attempt++) {
+        visibilityDeadline.throwIfAborted();
+        const elapsed = Date.now() - visibilityStarted;
+        const remaining = Math.max(0, publicationWindow - elapsed);
+        console.log(`Waiting for public npm version ${receipt.name}@${receipt.version}: attempt ${attempt + 1}/${publicationAttempts}, elapsed ${Math.floor(elapsed / 1_000)}s, remaining ${Math.ceil(remaining / 1_000)}s.`);
+        metadata = await registryMetadata(services, receipt.version, visibilityDeadline);
+        if (metadata !== undefined) break;
+        if (attempt + 1 < publicationAttempts) await services.wait(Math.min(publicationInterval, Math.max(0, publicationWindow - (Date.now() - visibilityStarted))));
+      }
+    } catch (error) {
+      if (visibilityDeadline.aborted) throw new Error(timeoutMessage, { cause: error });
+      throw error;
     }
-    if (metadata === undefined) throw new Error(`Published version ${receipt.version} did not become publicly available within 120 seconds.`);
+    if (metadata === undefined) throw new Error(timeoutMessage);
   }
   const dist = verifyMetadata(metadata, receipt);
   if (typeof dist.tarball !== "string") throw new Error("Published npm metadata has no tarball URL.");
