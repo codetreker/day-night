@@ -261,11 +261,10 @@ Graph requests share the existing request ID and safe error handling. Logs add
 project identity and graph counts without recording task content or repository
 addresses. This endpoint supports the implemented
 [read-only dashboard](../../docs/design/daynight-web.md); the browser application
-and embedded static delivery are implemented. Production browser and fixed-
-dataset performance acceptance passes locally with the long-dashed paint fix,
-with separate earlier real deployment-lifecycle evidence. Clean hosted production-
-browser and fixed-capacity acceptance passed in merged PR #52 and its direct-main
-checks. Delivery is recorded in the dashboard task document.
+and embedded static delivery are implemented. The
+[dashboard implementation tasks](../../docs/design/daynight-web-tasks.md)
+track production-browser, fixed-capacity and deployment-lifecycle validation
+and delivery status.
 From the repository root, `pnpm web:acceptance` builds this executable and runs
 production browser workflows against both a native process and the dev-ci
 container gateway. It owns separate PostgreSQL resources; its prerequisites,
@@ -328,7 +327,8 @@ URLs, bodies, SQL and credentials are excluded from logs.
 
 ## Built-process acceptance and CI evidence
 
-The same check runs 12 actual-process scenario groups. TestMain freshly builds a
+The same check runs 12 actual-process scenario groups and the installed CLI
+project/task workflow. TestMain freshly builds a
 race-enabled server, starts only owned loopback children against isolated real
 PostgreSQL schemas, and checks HTTP workflows, restart persistence, competing
 mutations, partial-write rollback, cancellation, graceful/forced SIGTERM,
@@ -343,9 +343,42 @@ the receipt records reaping, removed schemas and disappearance of owned sessions
 The temporary tested binary is removed after the run; its hash remains in the
 receipt.
 
+The [binary scenarios](cmd/daynight-server/acceptance_test.go) and their
+[process/evidence harness](cmd/daynight-server/acceptance_process_test.go) map to
+the [V1–V10 requirements](../../docs/spec/daynight-server.md) as follows:
+
+| Requirement | Observable evidence |
+|---|---|
+| V1: persistent resources | `workflow_restart_persistence`, `graceful_sigterm_drains_committed_request`, `forced_sigterm_cancels_without_late_write`; complete objects survive process restart and listener reuse |
+| V2: dependency refusal and rollback | `refusals_scopes_filters_and_cursors`, `partial_write_http_failure_rolls_back`; rejected writes preserve complete tasks, with a sequence proving metadata and the first edge changed before the injected failure |
+| V3: concurrency and project independence | `concurrent_reverse_dependencies`, `canceled_request_and_independent_project`; owned backend waiters prove competing requests and independent progress |
+| V4: state gates | Workflow/refusal scenarios and `concurrent_reopen_and_start`; [service tests](internal/service/task_test.go) cover all state pairs and candidate updates |
+| V5: revisions and no-ops | Workflow/refusal scenarios and `concurrent_same_version`; actual changes compete on one version and matching semantic no-ops retain fields/timestamps |
+| V6: listing and HTTP contract | `refusals_scopes_filters_and_cursors`, [HTTP tests](internal/server/tasks_test.go) and service tests cover tied keysets, scoped filters, initialized empty resources, DTOs and error mapping |
+| V7: transactions and lifecycle | Partial-failure, cancellation, graceful/forced-signal, unsupported/failed-migration-history and concurrent-startup scenarios; owning store tests prove finer snapshot and cross-migration interleavings |
+| V8: coverage and race gates | [`scripts/check.sh`](scripts/check.sh), [`.go-cov.toml`](.go-cov.toml), the raw profile and [exact-boundary/malformed-profile tests](scripts/coverage.test.mts) |
+| V9: mandatory infrastructure and complete CI | Missing/unavailable PostgreSQL fails the check; test-result expiration preserves real observations; the [workflow aggregate](../../.github/workflows/checks.yml) requires all native CLI platforms, shell completion, Go and web jobs |
+| V10: correlation and privacy | Workflow/refusal/partial-failure/cancellation/startup scenarios verify HTTP request IDs, canonical resource IDs, structured categories and absence of submitted secret markers from logs |
+
+The installed CLI scenario and its artifact/source validation live in
+[`acceptance_cli_test.go`](cmd/daynight-server/acceptance_cli_test.go).
+Successful package-level coverage and actual process results are separate
+evidence: binary HTTP tests supplement the store/service/server package tests.
+The owning store/service tests retain deterministic snapshot and lock proofs:
+`TestQueriesSnapshotRetainsCompleteOldGraph` in [query tests](internal/core/store/query_test.go),
+`TestTaskSnapshotKeepsProjectAndDerivedTaskStateConsistent` in
+[service failure tests](internal/service/task_failure_test.go), and
+`TestMigrationsSessionLockSpansCommits` in [migration tests](internal/core/store/migrate_test.go).
+
 CI uploads `daynight-server-acceptance` after validation, including the JSON
-receipt and raw `.tmp/coverage.out`, even when validation fails. Successful
-package-level coverage and actual process results are separate evidence: binary
-HTTP tests do not replace the store/service/server package tests. The
-[acceptance report](../../docs/research/daynight-server-acceptance.md) owns the
-V1–V10 mapping and receipt interpretation.
+receipt and raw `.tmp/coverage.out`, even when validation fails. Artifacts are
+retained for 30 days. Inspect the artifact from the exact workflow run: a PR run
+normally tests a merge revision, so the receipt identifies the tested checkout.
+Build and result must be `passed`; all expected scenarios and their cleanup must
+pass; process start/reap counts must agree; every schema/session cleanup must be
+confirmed. Recompute the strict coverage comparison from the accompanying raw
+profile rather than its rounded display. A failed job, partial receipt or local
+pass does not establish successful hosted acceptance for another source revision.
+Durable validation conclusions and delivery links belong in the
+[implementation tasks](../../docs/design/daynight-server-tasks.md) and relevant
+decision or research records.

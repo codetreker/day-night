@@ -67,10 +67,10 @@ installations are removed after their users stop. Cleanup failures preserve the
 original failure and fail acceptance, including when an execution deadline or
 signal interrupts a probe.
 
-The [client acceptance report](../../../../docs/research/daynight-acceptance.md)
-owns commands, current receipt meanings and observed client results. The
-[server report](../../../../docs/research/daynight-server-acceptance.md) owns
-the service receipt and coverage interpretation. Their existing
+The [repository validation guide](../../../../README.md#validation) owns commands and
+client receipt meanings; the [server README](../../../../packages/daynight-server/README.md)
+owns service receipt and coverage interpretation. Source-bound observed results
+belong to the corresponding PR and CI run. The existing
 [installed-client](2026-10-17-installed-cli-acceptance.md) and
 [built-process](2026-10-19-server-process-acceptance.md) decisions retain the
 original lifecycle, updater, service and cleanup rationale.
@@ -111,5 +111,7 @@ workflow and six default-budget cases. It records package `0.6.0` from the dirty
 `c19b064` development source. Hosted receipts separately identify PR head
 `e9a634aca23710ffe46723fcdb2cf8e7a75d56bf` and clean build revision
 `2e7b8da99cf4b5de6da9c8083446f84fd19f1daf`; the required native matrix and Go
-workload passed in run `39428165296`. Detailed observations belong to the task
-and acceptance report; PR #55 owns current review and integration status.
+workload passed in [run 39428165296](https://github.com/codetreker/daynight/actions/runs/39428165296).
+The [task record](../../../../docs/design/daynight-project-task-tasks.md) owns
+delivery status; PR #55 and its source-bound CI artifacts retain detailed
+observations and review history.

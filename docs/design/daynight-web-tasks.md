@@ -1,6 +1,6 @@
 # 项目与任务看板实现任务
 
-状态：W-T1–W-T6 全部完成。PR #52 已在干净 hosted CI 与 approval 后合并，主线全部七项检查通过。
+状态：W-T1–W-T6 全部完成。实现与验收已交付，对应运行结果由交付 PR 与 CI 保存。
 
 本文拥有任务编号、状态、依赖、文件归属和完成条件。
 [需求](../spec/daynight-web.md)拥有 W1–W12 的行为与验收要求，
@@ -181,8 +181,8 @@ LR 布局模块及其测试。模型与布局不依赖 React、DOM 或网络，�
 覆盖率为 648/654（约 99.08%），18 个产品文件全部纳入。两个独立审查及初始视口
 变更复核均无 Critical/Major。生产 bundle 通过真实 Go API 与 PostgreSQL 的六组
 浏览器流程，覆盖依赖过期、全图刷新、焦点、图几何及窄屏；1,000 节点链本地单次
-探针约 1.24s 且根节点初始可见。具体证据与边界由[验收报告](../research/daynight-web-acceptance.md)
-拥有；该单次探针不替代 W-T6 的固定 CI 五次性能门槛。
+探针约 1.24s 且根节点初始可见。该单次本地探针不替代 W-T6 的固定 CI 五次性能门槛；
+验证工具与回执解释见[web 验证说明](../../packages/daynight-web/README.md#production-browser-acceptance)。
 [PR #42](https://github.com/codetreker/daynight/pull/42) 在 CI 与当前 head approval
 通过后合并；[合并后 CI](https://github.com/codetreker/daynight/actions/runs/39391455671)
 的六项检查全部通过。
@@ -237,7 +237,8 @@ LR 布局模块及其测试。模型与布局不依赖 React、DOM 或网络，�
 并发 dev-ci 运行证明端口、卷和数据独立，清理一组后另一组继续可用，最终均清理。
 两套有效 Compose 的构建、转发、网络和存储配置完成核对；未启动或修改日常栈。
 这些本地工作树结果不替代对应 PR 的干净 CI 回执，也不替代 W-T6 的真实浏览器、
-固定 1,000/5,000 图集五次性能和实际故障清理验收；证据归属[验收报告](../research/daynight-web-acceptance.md)。
+固定 1,000/5,000 图集五次性能和实际故障清理验收。对应 PR 与 CI 保存运行结果；
+回执与清理解释见[web 验证说明](../../packages/daynight-web/README.md#production-browser-acceptance)。
 
 ### 文件归属与范围
 
@@ -285,59 +286,21 @@ localhost 的生产 Dockerfile 和 nginx 配置，完成独立资源与生命周
 <a id="w-t6"></a>
 ## W-T6：生产浏览器与 CI 验收
 
-状态：已完成。[PR #52](https://github.com/codetreker/daynight/pull/52) 已于 2026-10-20 13:24:32 UTC 在精确 head 的 approval 与七项 CI 检查通过后合并，主线全部检查通过。长斜线原生 dash 生成造成前一侧栏关闭帧的 raster/commit 阻塞；当前分解保留全部图与视觉语义，门槛不变。全部历史 hosted 失败与本地回执保留。前置：W-T5。
+状态：已完成。前置：W-T5。
 
-已实现：`pnpm web:acceptance` 构建真实 UI 和 Go 二进制，在专用 PostgreSQL 上
-运行原生进程浏览器用例，再经 dev-ci gateway 运行相同的功能用例。固定图集性能
-与超限拒绝在原生目标执行；Playwright 禁止重试，回执检查要求全部指定场景、
-截图和计时数据齐全。焦点恢复修复后的 web 类型检查、314 项功能测试与 36 项原生
-工具测试通过，包含空项目 H1、新根按钮和保留原节点的三个真实组件回归用例。
-19 个产品文件（含 dashes.ts）原始语句覆盖率 718/724（约 99.17%），函数覆盖率
-100%，无产品排除项。[PR #57](https://github.com/codetreker/daynight/pull/57) 及其
-主线检查均通过并已合并。较早 PR #52 的 311 项测试、716/722 覆盖率和 307 项
-Go 测试保留为该源码的历史记录。包含路由装配调整与 APFS 支持修复的最新
-[主线检查](https://github.com/codetreker/daynight/actions/runs/39446442068)全部七项通过，
-当前 Go 为 309 项测试和 9 项检查器，独立原始覆盖率 1154/1156（约 99.83%）。
-13 组服务进程场景通过，21 个服务子进程已回收、13 个 schema 已移除且无遗留会话；
-安装后 CLI 工作流及六项生产预算探针也通过。当前源码、原始 profile、浏览器和
-清理结果由验收报告拥有。
+[PR #52](https://github.com/codetreker/daynight/pull/52) 交付生产浏览器与 CI 验收；
+[PR #57](https://github.com/codetreker/daynight/pull/57) 修复刷新时的侧栏焦点恢复，
+[PR #59](https://github.com/codetreker/daynight/pull/59) 修复必选原生测试的 APFS 清理。
+这些改动均已合并，[对应主线验证](https://github.com/codetreker/daynight/actions/runs/39446442068)
+通过。逐次结果、测试源码身份、覆盖率与清理回执由对应 PR 和 CI 保存。
 
-长虚线绘制完整本地运行 `20261020125755-d98c8daa-5d70-45e3-bba5-786459394568`
-通过 12 项原生和 8 项容器场景，保留全部节点/按钮/canonical 路线/原生箭头，
-新增完整 paint-piece readiness 与逐段 CTM/弧长/相位检查。三个图集各展开五次，
-最大 open 为单链 555.9ms、合流 1359.6ms、共享 1875.1ms；每次详情、缩放、
-平移均小于 300ms。独立超限、故障恢复、键盘、窄屏与全部清理/外层恢复均通过。
-
-回执使用 Linux 上锁定 Chromium 156.0.8078.4，无 executable override，记录
-本地源码为 `451b914` 基础上的 dirty 工作树；不能作为 clean CI 身份。较早
-原生长虚线 SVG 与 reactive-edge 的通过回执只保留为各自源码的历史证据。具体指标、
-二进制/镜像身份及证据边界由[验收报告](../research/daynight-web-acceptance.md)拥有。
-实际 Docker 故障矩阵 `fault-1792493712152-d0ae9b41` 通过：启动时停止本次 PG
-使 runner 返回 1 且不执行 callback；callback 的退出 23 原样保留且遗留后代停止；
-SIGTERM 返回 143/cancelled 并清理进程组；只读 holder 阻止本次卷删除时准确报告
-失败，移除已验证 holder 后按原 run ID 恢复，原失败回执不变。另一组 B 的 UI/API
-及同一项目 sentinel 在每步后和卷繁忙期间保持可用。独立最终审计确认两轮共
-10 个 run、2 个 holder 与 10 组进程均无容器、卷、网络、镜像标签或存活进程残留。
-
-首轮矩阵的额外审计将 Docker 小写 missing-object 响应误判为清理失败，原回执
-保留；修正该临时探针后完整第二轮与独立审计通过，产品 runner 未改。此手工矩阵
-与 CI 的 12 项受控 lifecycle fixture/完整真实浏览器分别记录。部署生命周期代码
-未随 SVG 更新变化，该矩阵不宣称测试当前 UI 镜像。当前渲染器另有完整本地与干净 hosted 通过回执，PR #52 已合并；
-[主线检查](https://github.com/codetreker/daynight/actions/runs/39430138740)全部七项通过，
-验证 PR #52 的干净 merge commit `64b69a3`。该主线运行再次完整通过 12 项原生和 8 项生产网关
-场景、十五次性能及独立超限，web/Go 原始覆盖率仍为 716/722 和 1153/1155，
-清理和外层恢复均通过。
-
-诊断工具保留每次交互的输入/capture/首次条件/帧/end 时间点及阶段差值，逐次归档
-CDP timeline/frame/GC trace；总计时、完整图就绪和 3,000ms/300ms 门槛不变。
-诊断 helper 的 5 项定向测试已纳入完整功能测试，包含诊断的源码也已通过真实 CI。
-
-[PR 检查](https://github.com/codetreker/daynight/actions/runs/39428105688)验证干净
-GitHub merge `e3e9a23`，其 tree 与获批 head `8b500286` 相同。12 项原生及
-8 项生产网关场景均首次通过，无跳过，全部十五次性能、独立超限、几何/相位与
-清理/外层恢复通过；web 原始覆盖率 716/722，Go 为 1153/1155。三图最大
-open 为 484.7/1320.0/1506.8ms，详情、缩放及平移均低于 300ms。
-精确源码、二进制、镜像、产物及完整指标由验收报告拥有。
+`pnpm web:acceptance` 构建真实 UI 和 Go 二进制，在专用 PostgreSQL 上运行原生
+浏览器用例，再经 dev-ci gateway 运行功能用例；固定图集性能与独立超限拒绝在
+原生目标执行。验证命令、要求与场景映射、浏览器身份及回执解释由
+[web 验证说明](../../packages/daynight-web/README.md#production-browser-acceptance)拥有。
+[生产验收决策](../../.agents/notes/implemented/testing/2026-10-20-dashboard-production-acceptance.md)
+保留验证策略、实际部署故障研究的范围与持久证据；本地回执和历史镜像仍保留各自
+源码与环境范围，不能替代新的干净 CI 验证。
 
 ### 文件归属与范围
 

@@ -134,16 +134,21 @@ declaration patch and negative type assertions keep those checks meaningful.
 Project browsing now reaches real statistics, dependency diagrams and task
 details. Controlled component tests cover state/focus transitions, while a local
 production-bundle browser check also uses the real Go API and PostgreSQL. The
-[acceptance report](../../../../docs/research/daynight-web-acceptance.md) distinguishes
-the earlier preview and pre-static-SVG local results from the current renderer's
-complete local production pass. PR #52's earlier hosted shared-graph zoom failure
+[task record](../../../../docs/design/daynight-web-tasks.md) distinguishes earlier
+preview and pre-static-SVG local results from the current renderer's complete
+local production pass. PR #52's earlier hosted shared-graph zoom failure
 is retained. A later hosted run also exceeded the shared-graph zoom budget;
 diagnostics identify prior drawer-close raster/commit backpressure from long
 native dashed routes. A controlled local-coordinate decomposition prototype
 reduces that raster work. The committed helper passes complete local production,
 capacity and independent geometry/phase checks; actual product traces confirm
-the reduced raster. The same decomposition passes clean hosted production and
-fixed-capacity acceptance in merged PR #52; its direct-main checks passed.
-Actual browser
+the reduced raster. Production acceptance is delivered through
+[PR #52](https://github.com/codetreker/daynight/pull/52). Actual browser
 checks verify SVG/node alignment and exact route endpoints after zoom, pan and
 root changes. Dependency upgrades must revisit the declaration patch and type tests.
+
+The historical W-T4 [project screenshot](../../../../docs/research/assets/daynight-web-project.png)
+and [detail screenshot](../../../../docs/research/assets/daynight-web-detail.png)
+use generated fixture data from the earlier production-browser functional check.
+They illustrate that workflow, before the current renderer and capacity
+acceptance, and do not establish current-source performance or hosted delivery.

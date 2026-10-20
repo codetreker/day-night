@@ -61,8 +61,13 @@ The [acceptance decision](../testing/2026-10-20-dashboard-production-acceptance.
 retains all 1,000 task nodes/buttons, exact canonical route counts, complete paint
 piece readiness, five repetitions and unchanged 3,000ms/300ms gates. Modal root
 inertness, focus restoration, native node measurement and tracing stay enabled.
-The [evidence report](../../../../docs/research/daynight-web-acceptance.md) owns
-measured results and source identity.
+The committed [dashed-paint evidence](../../../../docs/research/evidence/daynight-web-dashed-paint.json)
+retains captured graph/resource and investigation-script hashes, the pixel
+comparison, whole-trace and scoped close-frame statistics, and actual product
+trace/source identities. Its provenance distinguishes temporary browser-side
+injection and CPU-sampled replay from the final helper and formal acceptance
+traces. A successful diagnostic probe establishes execution of that probe;
+complete real-service and clean hosted performance remain separate evidence.
 
 ## Alternatives
 
@@ -107,12 +112,8 @@ antialiasing region; this is not byte-identical output. These controlled results
 are distinct from the final helper's verification. The implemented helper now
 passes its complete local native/container workflow, all capacity repetitions,
 independent arc/phase/CTM checks and cleanup. Actual product traces confirm the
-reduced preceding raster work. Clean hosted PR CI also passed all 12 native
-and eight production-gateway scenarios, all fifteen performance repetitions,
-geometry/phase, limits and cleanup/recovery. The five hosted close-frame raster
-maxima are 22.004–29.864ms, with commit waits at most 0.262ms; whole-trace raster
-maxima are at most 32.139ms. PR #52 merged after approval and all required checks;
-its direct-main checks passed. The linked acceptance report owns exact
-source and artifact identities. Pinned-engine evidence explains the mechanism; future
+reduced preceding raster work. Production acceptance is delivered through
+[PR #52](https://github.com/codetreker/daynight/pull/52); its PR and CI retain
+source-bound execution results. Pinned-engine evidence explains the mechanism; future
 browser changes require renewed raster and visual validation without relaxing
 product budgets.

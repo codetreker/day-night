@@ -115,6 +115,6 @@ package build, version checks, artifact capture, acceptance scenarios and timeou
 limits retain their existing rules. Single-run comparisons are observations,
 not a fixed performance guarantee across runner load and toolchain changes.
 
-This report concerns controlled native validation. Live Copilot and GitHub
-acceptance retain the boundaries in the
-[acceptance report](daynight-acceptance.md).
+This report concerns controlled native validation. Live Copilot reasoning and
+GitHub publication require separate authorized service acceptance; see the
+[validation boundaries](../../README.md#validation).

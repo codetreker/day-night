@@ -40,8 +40,10 @@ The incremental JSON receipt records Git/GitHub revision, dirty state, compiler
 and database versions, tested binary hash, named results and cleanup counts.
 CI requires a clean checkout matching its supplied GitHub SHA. The Go job
 uploads that receipt and the exact raw profile after validation, including on
-failure. The [acceptance report](../../../../docs/research/daynight-server-acceptance.md)
-owns requirement mapping, observed results and interpretation.
+failure. The [server README](../../../../packages/daynight-server/README.md)
+owns requirement mapping and receipt interpretation. Observed results belong to
+the tested revision's PR and CI run under the
+[validation evidence decision](../process/2026-10-20-source-bound-validation-evidence.md).
 
 ## Alternatives
 

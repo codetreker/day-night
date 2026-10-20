@@ -244,7 +244,8 @@ Go、三个原生 CLI 平台及汇总检查全部通过。
 测试通过。原始覆盖率为 995/997 条语句（99.80%）。实际 race binary 通过
 12 个场景组，19 个子进程全部回收，12 个 schema 及全部所属 session 清理完成。
 不可用 PostgreSQL 使完整命令以非零状态失败。
-[验收报告](../research/daynight-server-acceptance.md)记录 V1–V10 的证据归属与 CI 产物。
+V1–V10 的证据归属与 CI 产物解释见
+[服务端验证说明](../../packages/daynight-server/README.md#built-process-acceptance-and-ci-evidence)。
 
 ### 范围与文件归属
 

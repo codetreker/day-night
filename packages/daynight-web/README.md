@@ -6,10 +6,8 @@ and a pure dependency graph model with horizontal layout.
 The project dashboard, task canvas and detail drawer are embedded into the Go
 server for single-origin delivery. The [localhost deployment](../../deployment/localhost/README.md)
 starts the full UI/API/database stack; [dev-ci](../../deployment/dev-ci/README.md)
-provides an isolated instance of the same production build. Production browser
-workflows and the fixed-capacity matrix pass in clean hosted CI with the
-long-dashed paint fix and the subsequent focus-restoration repair. PR #52 and
-PR #57 are merged with successful direct-main checks; completion is recorded in the
+provides an isolated instance of the same production build. Production-browser,
+fixed-capacity and real Docker lifecycle validation and delivery status belong in the
 [implementation tasks](../../docs/design/daynight-web-tasks.md).
 
 The [requirements](../../docs/spec/daynight-web.md) own visible behavior and the
@@ -86,19 +84,17 @@ remains a separate mandatory check; classification is not a substitute for it.
 
 CI requires `verify-web` alongside the Go server, every native CLI platform and
 the dedicated Linux shell completion job. The web job also tests the dev-ci runner
-with controlled Docker fixtures. It uploads `coverage-final.json` and `summary.json`, which records exact counts and
-the relative product-source manifest. The [acceptance report](../../docs/research/daynight-web-acceptance.md) records
-local production-bundle checks with a real Go API and PostgreSQL, embedded
-HTTP/container smoke checks and concurrent dev-ci isolation. The earlier renderer's
-full native/container browser workflows passed locally. The static SVG renderer
-also passes complete local production/performance acceptance after that hosted
-zoom failure. Later traces identified long native dashed-path raster work; the
-local-coordinate paint fix passes complete local and clean hosted acceptance.
-The report records the merged PR and keeps these source identities distinct. A separate local real-Docker matrix
-passed startup failure, callback failure, cancellation and cleanup failure/recovery
-while an independent sentinel stack remained healthy. CI repeats the 12 controlled
-lifecycle fixtures and full production-browser suite; that manual fault matrix
-is recorded separately.
+with controlled Docker fixtures. It uploads `coverage-final.json` and
+`summary.json`, which records exact counts and the relative product-source
+manifest. Coverage and acceptance artifacts are retained for 30 days. The
+[implementation tasks](../../docs/design/daynight-web-tasks.md) retain validation
+conclusions and link source-specific delivery evidence. The
+[deployment decision](../../.agents/notes/implemented/architecture/2026-10-20-embedded-dashboard-deployment.md)
+records embedded HTTP/container smoke checks and concurrent dev-ci isolation;
+the [production acceptance decision](../../.agents/notes/implemented/testing/2026-10-20-dashboard-production-acceptance.md)
+records the separate real-Docker fault matrix and its limits. CI repeats the 12
+controlled lifecycle fixtures and full production-browser suite. Manual Docker
+fault testing and controlled fixtures each retain their own evidence scope.
 
 ## Production browser acceptance
 
@@ -134,6 +130,24 @@ opening budget. Independent 1,001-node and 5,001-edge cases require complete
 409 rejection. Full node/edge DOM counts, readable root visibility and painted
 feedback are checked; a successful process exit without complete reports fails.
 
+The [functional scenarios](tests/e2e/workflow.spec.ts),
+[capacity scenarios](tests/e2e/capacity.spec.ts) and
+[acceptance runner](scripts/acceptance.mts) map to the
+[W1–W12 requirements](../../docs/spec/daynight-web.md) as follows. Names are stable
+scenario annotations validated in each target's report.
+
+| Requirement | Production checks |
+|---|---|
+| W1 | `project-list`: more than 50 projects, cursor requests, unique cards and navigation to a later-page project |
+| W2 | `project-graph`, `deep-links`: project entry, direct HTML reload and browser history |
+| W3–W4 | `project-graph`, `refresh-staleness`, `failure-recovery`: exact statistics, distinct root progress, consistent full refresh and retained old snapshot after failure |
+| W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`: complete root projections, shared/external prerequisites, state markers and viewport/node actions |
+| W8 | `detail-navigation`, `refresh-staleness`: complete current content, relation navigation and readiness differences without revising a dependent task |
+| W9 | `failure-recovery`, `deep-links`, `capacity-limits`: owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |
+| W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
+| W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the required CI aggregate |
+| W12 | `keyboard-focus`, `narrow-layout`: modal focus lifecycle, keyboard node activation and 320px page geometry |
+
 Receipts live in `packages/daynight-web/.tmp/acceptance/<run-id>/`, with the
 latest aggregate at `.tmp/acceptance/evidence.json` inside this package. They
 record source identity, native binary SHA-256, PostgreSQL/browser versions, each
@@ -142,15 +156,16 @@ image identity and cleanup outcomes. `CI` requires a clean checkout matching
 `GITHUB_SHA`, Linux and the pinned browser. Playwright uses one worker and no
 retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validation.
 The required web CI job archives `daynight-web-acceptance` separately from raw
-coverage. The static SVG renderer's complete local run passed 12 native scenarios,
-eight container scenarios and all three graphs’ five timing repetitions, including
-independent size refusals, actual SVG alignment across pan/zoom/root changes and
-confirmed cleanup/recovery. The recorded dashed-paint run's largest local opening was 1875.1ms; every local
-detail/zoom/pan measurement was below 300ms. The clean hosted PR #52 run also
-passed every scenario and repetition: maximum openings were 484.7ms, 1320.0ms
-and 1506.8ms for chain, merge and shared graphs. All local feedback was below
-300ms, and original cleanup plus outer recovery passed. The report records the
-clean source, binary and image identities separately from local dirty receipts.
+coverage for 30 days. Inspect the artifact from the exact workflow run and its
+tested checkout identity, which is normally a merge revision for PR runs. A pass
+requires all 12 native and eight container scenarios, every fixed graph's five
+timing repetitions, independent size refusals and confirmed cleanup/recovery.
+Local receipts retain their source and browser identity; they do not establish
+clean hosted delivery results. The
+[implementation tasks](../../docs/design/daynight-web-tasks.md#w-t6) own durable
+validation conclusions and source-specific CI and PR links. The
+[paint decision](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
+retains raster evidence and visual tolerances needed to assess that mechanism.
 
 Capacity receipts also retain per-interaction `feedbackDiagnostics`: input,
 capture, first ready condition, first/second frame and final end timestamps,

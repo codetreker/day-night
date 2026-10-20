@@ -322,5 +322,6 @@ project/task 安装 suite，以受控 HTTP 和真实 Git 证明三个原生平�
 服务验证的编排层只安装一次 CLI，原样执行 Go 覆盖率 gate，再在 Go 默认 10 分钟
 计时器之外运行默认生产预算探针。职责与证据见
 [project/task 设计](daynight-project-task.md#验证与交付证据)，当前状态仍由任务清单拥有。
-[验收报告](../research/daynight-acceptance.md)区分每次已观察到的本地及原生 receipt、
-受控 GitHub/Copilot 行为与真实服务验收；历史通过记录不能代替当前源码的验证结果。
+[仓库验证说明](../../README.md#validation)定义本地及原生 receipt 的源码身份、
+受控 GitHub/Copilot 行为与真实服务验收的证据边界。运行结果随对应 PR 与 CI 保存；
+历史通过记录不能代替当前源码的验证结果。

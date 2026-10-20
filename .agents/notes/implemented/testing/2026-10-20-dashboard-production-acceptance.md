@@ -72,8 +72,8 @@ Measurement failures and diagnostic/cleanup errors retain their joined causes.
 One streamed CDP timeline/User Timing/frame/GC JSON trace per repetition correlates
 those markers with browser work. The trace does not enable CPU sampling or CDP
 screenshots; scenario PNG evidence stays separate. Bounded completion and resource
-closure are required. This is test-side diagnosis for hosted zoom latency,
-without changing thresholds, complete graph readiness or success rules.
+closure are required. This is test-side diagnosis for hosted zoom
+latency, without changing thresholds, complete graph readiness or success rules.
 Hosted traces show that earlier drawer-close raster/commit work can delay later
 zoom frames even when the zoom handler is prompt. The budget still includes any
 backlog visible after trusted input; work is not deducted because an earlier
@@ -81,8 +81,9 @@ interaction initiated it. Controlled raster ablations and pinned-engine evidence
 of long oblique routes. The
 [local-coordinate paint decision](../bug-fix/2026-10-20-long-dashed-dependency-paint.md)
 retains native arrows, modal inertness and all canonical routes while changing
-body paint. Its source passes complete local and clean hosted production
-validation, including the original capacity and feedback budgets.
+body paint. Production acceptance is delivered through
+[PR #52](https://github.com/codetreker/daynight/pull/52); execution results remain
+with the corresponding PR and CI.
 
 Interrupted-run recovery checks that the original runner, callback/Playwright
 processes and their owned groups have stopped,
@@ -119,9 +120,10 @@ latency; the full production gate still owns its fixed capacity verdict.
 The [embedded deployment decision](../architecture/2026-10-20-embedded-dashboard-deployment.md)
 owns production build and dev-ci resource topology. The
 [architecture](../../../../docs/design/daynight-web.md) owns harness structure and
-execution requirements, the [acceptance report](../../../../docs/research/daynight-web-acceptance.md)
-owns measured outcomes, and the [task document](../../../../docs/design/daynight-web-tasks.md)
-owns delivery status.
+execution requirements, and the [task document](../../../../docs/design/daynight-web-tasks.md)
+owns delivery status. Source-bound browser artifacts and the corresponding PR
+and CI run retain measured outcomes under the
+[validation evidence decision](../process/2026-10-20-source-bound-validation-evidence.md).
 
 ## Alternatives
 
@@ -147,8 +149,8 @@ exceeded 300ms; its failed result is retained. The single static edge SVG keeps
 all original graph completeness and timing gates. Its new complete local native
 and container run passes, including all fixed datasets/repetitions, independent
 limits, SVG coordinate/endpoint alignment and cleanup/recovery. Later native-dash
-SVG hosted runs exceeded the budget; the local-coordinate body fix passes its
-own full local and clean hosted gates. A separate
+SVG hosted runs exceeded the budget; the local-coordinate body fix is delivered
+with production acceptance in PR #52. A separate
 real-Docker matrix passes
 startup/test-failure,
 cancellation and cleanup-failure/recovery while a second stack retains its
@@ -156,9 +158,9 @@ HTTP/data sentinel. It predates the SVG change and tests unchanged deployment
 lifecycle code, not the new UI image identity. Its final audit confirms no owned
 resources or processes remain. That local manual matrix is distinct from CI's
 controlled lifecycle and
-production-browser suites. PR #52 merged after exact-source hosted CI and
-approval; its direct-main checks passed. The task document owns completion
-status. Historical preview and HTTP
+production-browser suites. W-T6 is complete; the
+[task document](../../../../docs/design/daynight-web-tasks.md#w-t6) links its
+delivery PRs and source-bound CI verification. Historical preview and HTTP
 smoke evidence remains labeled by its actual scope, and fixed-topology results
 do not
 establish arbitrary-DAG latency.

@@ -124,9 +124,11 @@ must exercise an independently constructed existing-schema fixture, rather than
 create all baseline data through the current store. Native Git, SQLite, process,
 APFS and installed review workloads retain their existing acceptance criteria.
 Self-update must still prove actual installation ownership and fresh-process
-version after its source move. The
-[acceptance report](../../../../docs/research/daynight-acceptance.md) separates
-observed current-source results from historical receipts and live-service gaps.
+version after its source move. Source-bound JSON receipts and their corresponding
+PR or CI run distinguish current-source observations from historical results.
+Controlled process behavior does not establish real Copilot judgment or GitHub
+publication; the [installed acceptance decision](../testing/2026-10-17-installed-cli-acceptance.md)
+retains that separate live-service requirement.
 
 One package still installs the dependencies of all its commands. Lazy loading
 isolates execution and native-addon ownership, not installation size. The shell

@@ -118,5 +118,6 @@ trade-offs and the version-specific runtime patch require exact differential
 regressions when Dagre changes. Layout policy and geometry remain unchanged as
 the canvas moves immutable edges to one static SVG. Earlier local browser
 capacity evidence stays historical. The current local-coordinate dashed-paint
-renderer passes its complete local and clean hosted capacity matrix. PR #52
-merged after approval and all required checks; its direct-main checks passed. The acceptance report retains exact source and performance evidence.
+renderer passes its own complete local capacity matrix. Production acceptance is
+delivered through [PR #52](https://github.com/codetreker/daynight/pull/52), whose
+PR and CI own the source-bound results.

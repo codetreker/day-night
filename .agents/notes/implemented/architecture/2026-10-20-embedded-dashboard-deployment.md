@@ -95,10 +95,16 @@ locally. The current local-coordinate dashed-paint renderer passes its own
 complete local acceptance after the hosted zoom-budget failures. Separate actual deployment-fault acceptance
 passed with another run retaining its HTTP/data sentinel throughout; that matrix
 predates the SVG change and tests unchanged deployment lifecycle code, not the
-new UI image identity. Clean hosted CI separately verifies the delivered
-renderer, native binary and running production image. PR #52 is merged;
-its direct-main checks passed. W-T6 in the
-[task document](../../../../docs/design/daynight-web-tasks.md) owns delivery status
-and the [acceptance report](../../../../docs/research/daynight-web-acceptance.md)
-owns measured results. The [MVP design decision](2026-10-20-task-dashboard-mvp-design.md)
+new UI image identity. Production-browser and image verification is delivered
+through [PR #52](https://github.com/codetreker/daynight/pull/52), with source-bound
+results retained by its PR and CI. W-T6 in the
+[task document](../../../../docs/design/daynight-web-tasks.md) owns delivery status.
+The committed [lifecycle evidence](../../../../docs/research/evidence/daynight-web-lifecycle.json)
+retains the original first report with its failed auxiliary cleanup
+classification, the corrected probe's passed matrix and the independent final
+resource/process audit. Per-case dirty-source/image identities make its scope
+explicit: it is manual real-Docker acceptance against unchanged deployment code,
+not clean CI evidence or a claim that CI repeats the fault matrix. Historical
+loopback origins, run IDs and relative source paths are observed evidence, not
+operator configuration. The [MVP design decision](2026-10-20-task-dashboard-mvp-design.md)
 continues to own read-only scope, graph semantics and deferred capabilities.

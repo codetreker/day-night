@@ -1,6 +1,6 @@
 # 项目与任务看板
 
-状态：完整图 API、只读项目任务看板及 localhost/dev-ci 单服务交付已实现；完整生产与固定性能验收在干净 hosted CI 通过，PR #52 已合并，主线全部检查通过。历史验证结果由[验收报告](../research/daynight-web-acceptance.md)记录。本文定义只读 MVP 的交付要求；[设计](../design/daynight-web.md)说明实现方式与任务顺序，[交互预览](../design/mockups/task-dashboard.html)用于确认视觉与操作，[任务清单](../design/daynight-web-tasks.md)记录实现范围和完成条件。
+状态：完整图 API、只读项目任务看板及 localhost/dev-ci 单服务交付已完成。验证命令、要求与场景映射和回执解释见[web 验证说明](../../packages/daynight-web/README.md#production-browser-acceptance)，运行结果随对应 PR 与 CI 保存。本文定义只读 MVP 的交付要求；[设计](../design/daynight-web.md)说明实现方式与任务顺序，[交互预览](../design/mockups/task-dashboard.html)用于确认视觉与操作，[任务清单](../design/daynight-web-tasks.md)记录实现范围和完成条件。
 
 ## 目标与使用环境
 
@@ -46,7 +46,7 @@ blocked = status 为 todo 且至少一个直接前置未完成的任务数
 
 节点详情是点击时的最新读取，不承诺与此前图快照处于同一时刻。详情的状态、依赖、阻塞或更新时间与画布数据不一致时，提示“任务信息已有变化，刷新任务图”，避免局部更新后产生错误的全图统计。
 
-MVP 支持一个项目最多 1,000 个节点、5,000 条依赖边。这是产品保护上限；长虚线绘制修复已通过固定拓扑的完整本地与干净 hosted 性能矩阵；不能推断任意 DAG 都具有相同耗时。超过任一上限时显示规模和限制，拒绝返回部分图或部分统计。项目及任务仍可通过既有 API 管理。
+MVP 支持一个项目最多 1,000 个节点、5,000 条依赖边。这是产品保护上限；固定拓扑的生产验收不保证任意 DAG 都具有相同耗时。超过任一上限时显示规模和限制，拒绝返回部分图或部分统计。项目及任务仍可通过既有 API 管理。
 
 ## 部署与测试隔离
 
