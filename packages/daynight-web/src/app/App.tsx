@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
 import { ProjectsPage } from '../features/projects/ProjectsPage';
+import { ProjectPage } from '../features/projects/ProjectPage';
 import { navigate, parseRoute } from './router';
 
 const goToProjects = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -16,14 +17,15 @@ export const App = () => {
   useEffect(() => {
     const onNavigate = () => {
       setPathname(window.location.pathname);
-      content.current?.focus();
     };
     window.addEventListener('popstate', onNavigate);
     return () => { window.removeEventListener('popstate', onNavigate); };
   }, []);
 
+  useLayoutEffect(() => { content.current?.focus(); }, [pathname]);
+
   useEffect(() => {
-    document.title = route.kind === 'projects' ? '项目 · Daynight' : '页面不存在 · Daynight';
+    document.title = route.kind === 'projects' ? '项目 · Daynight' : route.kind === 'project' ? '项目任务 · Daynight' : '页面不存在 · Daynight';
   }, [route.kind]);
 
   return (
@@ -35,7 +37,7 @@ export const App = () => {
         </a>
         <nav aria-label="主导航">
           <p className="nav-label">工作空间</p>
-          <a className="nav-button" href="/" onClick={goToProjects} aria-current={route.kind === 'projects' ? 'page' : undefined}>
+          <a className="nav-button" href="/" onClick={goToProjects} aria-current={route.kind === 'notFound' ? undefined : 'page'}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
               <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
               <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
@@ -50,12 +52,12 @@ export const App = () => {
           <nav className="crumb" aria-label="面包屑">
             <a href="/" onClick={goToProjects}>工作空间</a>
             <span aria-hidden="true">/</span>
-            <span className="crumb-current" aria-current="page">{route.kind === 'projects' ? '项目' : '页面不存在'}</span>
+            <span className="crumb-current" aria-current="page">{route.kind === 'projects' ? '项目' : route.kind === 'project' ? '项目任务' : '页面不存在'}</span>
           </nav>
           <span className="local-label">工作空间 · 本地</span>
         </header>
         <main className="content" id="main-content" ref={content} tabIndex={-1}>
-          {route.kind === 'projects' ? <ProjectsPage /> : (
+          {route.kind === 'projects' ? <ProjectsPage /> : route.kind === 'project' ? <ProjectPage key={route.projectId} projectId={route.projectId} /> : (
             <section className="state-box">
               <p className="eyebrow">404</p>
               <h1>页面不存在</h1>

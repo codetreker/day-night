@@ -54,10 +54,13 @@ YAML fields, version 1 SQLite tables, data locations, repository paths, cutoff
 boundaries, revisions, retry budgets, session UUIDs and worktree ownership stay
 unchanged. Source ownership does not partition user data by command. The current
 scope supplies command composition and the existing review/update capabilities.
-Server API commands and additional business commands remain separate product
-work; adding one must preserve per-command loading and ownership so it does not
-become a startup dependency for existing commands. Independent server and web
-lifecycles retain their current owners.
+Server API commands were separate product work in the command-composition
+scope. The adopted [project/task CLI design](2026-10-20-project-task-cli-design.md)
+now defines that consumer and its additive configuration and repository binding.
+Shared configuration and the bounded HTTP foundation are implemented; repository
+bindings and the command entry points remain pending. Adding it must preserve per-command loading
+and ownership so it does not become a startup dependency for existing commands.
+Independent server and web lifecycles retain their current owners.
 
 The [client requirements](../../../../docs/spec/daynight.md) and
 [client design](../../../../docs/design/daynight.md) own the shell and package.

@@ -2,7 +2,9 @@
 
 状态：`packages/daynight/` 是通过 `@codetreker/daynight` 分发的 TypeScript 客户端
 命令工具包，支持 Linux、macOS 和 Windows。`review` 提供 GitHub PR 审查，`update`
-管理当前 npm 全局安装。行为归属见[客户端需求](../spec/daynight.md)及
+管理当前 npm 全局安装。project/task CLI 的共享配置和 HTTP 基础已实现，仓库关联及
+命令待完成；[专属设计](daynight-project-task.md)拥有机制，
+[实现任务](daynight-project-task-tasks.md)拥有交付状态。行为归属见[客户端需求](../spec/daynight.md)及
 [review 需求](../spec/daynight-review.md)，结构选择见
 [命令组合决策](../../.agents/notes/implemented/architecture/2026-10-20-client-command-composition.md)。
 
@@ -23,11 +25,15 @@ daynight review add-repo <remote> [--path <path>]
 业务执行失败退出 1 并保留原因。旧的 `--daemon-review` 和顶层 `add-repo` 不再是
 有效命令。review 操作沿用[review 设计](daynight-review.md)的配置、持久化和运行保证。
 
+以上命令和后文源码树描述当前实现。待实现的 project/task 命令及其模块由
+[专属设计](daynight-project-task.md)拥有。
+
 客户端外壳处理顶层帮助、版本、命令选择及通用退出结果。每个命令模块负责自己的
 参数、帮助、依赖和执行生命周期。`review` 再按配置登记、本地列表、前台运行分派，
 避免查询或配置操作初始化审查运行时。`update` 属于包安装生命周期，不属于 review。
-独立 Go 服务与浏览器应用保持各自的数据和生命周期，客户端不因命令组合结构自动
-获得服务 API 或其他业务命令。
+独立 Go 服务与浏览器应用保持各自的数据和生命周期。已确认的 project/task 设计
+通过独立客户端模块使用现有 HTTP API，业务数据仍由 Go 服务持有；HTTP 客户端已实现，
+仓库上下文和命令入口仍待交付。
 
 ## 源码组织
 
@@ -38,6 +44,18 @@ src/
     application.ts
     commands.ts
     context.ts
+  config/
+    paths.ts
+    document.ts
+    files.ts
+    server.ts
+  api/
+    index.ts
+    types.ts
+    operation.ts
+    json.ts
+    parse.ts
+    client.ts
   commands/
     review/
       command.ts
@@ -79,14 +97,19 @@ src/
 列表加载配置解析与只读快照，`review run` 才加载运行时、信号处理、实例锁和适配器。
 该顺序也使自更新进程不加载待替换的 SQLite 原生 addon。
 
+`config/` 拥有共享配置路径、严格 YAML、已知顶层字段和保留注释的文件保存协议；
+`server.ts` 提供独立 server 字段投影。`api/` 拥有服务 DTO、精确数值 JSON、
+命令级期限和字节预算、HTTP 错误及完整分页，供后续业务命令组合。共享层不导入
+review 或 update；服务器客户端也不依赖 YAML、SQLite 或 Git。
+
 review 的配置和路径类型明确以 `ReviewConfiguration`、`ReviewPaths` 命名。
 `commands/review/model.ts` 持有领域和安全恢复证明类型，store 专注持久化；
 `polling.ts` 组合远端只读观测与本地原子状态提交，GitHub 适配器专注远端查询。
 [review 模块职责表](daynight-review.md#单进程与普通模块)解释具体职责及执行不变量。
 共享的 `platform/` 只承载诊断和文件系统能力；这些函数不导入命令模块。
 
-源码测试按 `test/cli/`、`test/commands/review/`、`test/commands/update/` 和
-`test/platform/` 镜像职责，构建与版本策略测试位于 `test/tooling/`，共享 fixture 与
+源码测试按 `test/cli/`、`test/config/`、`test/api/`、`test/commands/review/`、
+`test/commands/update/` 和 `test/platform/` 镜像职责，构建与版本策略测试位于 `test/tooling/`，共享 fixture 与
 帮助函数保持明确归属。使用普通函数和具体类型；外部命令、时钟与故障点只在有实际
 验证需求的边界注入，不增加通用插件框架或依赖注入容器。
 
@@ -98,6 +121,14 @@ review 的配置仍为 `~/.daynight/config.yml`，SQLite 仍为 `~/.daynight/sta
 迁移。业务模块归属与磁盘目录归属分别管理：源码整理不会改变已保存路径、永久 PR
 边界、修订、会话 UUID、重试预算或 worktree 身份。详细格式、验证、锁及恢复规则由
 [review 设计](daynight-review.md#本地数据与-sqlite)统一定义。
+
+[project/task 配置设计](daynight-project-task.md)定义同一 YAML 中的 `serverUrl`。
+共享解析器识别全部已知顶层字段并保留 YAML 文档，业务投影分别校验值。只有
+server 地址的配置可独立加载；review 不校验该地址，添加首个 review 仓库时保留它。
+
+待实现的 Git worktree 根目录 `.daynight/project.yml` 保存 server、仓库身份和
+project ID 的本地关联。它与主目录下的 review 状态用途不同，读取或写入任务前按
+专属需求校验；其目录、忽略规则和缓存寿命由仓库关联任务交付。
 
 ## npm 全局自更新
 

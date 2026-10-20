@@ -52,6 +52,45 @@ describe("repository registration", () => {
     expect((await loadConfiguration(paths)).pollIntervalMs).toBe(120000);
   });
 
+  it("adds the first review repository to server-only configuration and preserves its YAML and idempotence", async () => {
+    const source = "# Shared connection\nserverUrl: &connection http://localhost:8787/ # keep origin\n";
+    const { paths, options } = await setup("server-only", source);
+    const result = await addRepository({ remote }, paths, options);
+    const updated = await readFile(paths.configFile, "utf8");
+    expect(updated).toContain(source);
+    expect((await loadConfiguration(paths)).repositories).toEqual([result.repository]);
+    expect(await addRepository({ remote: "git@github.com:owner/repo.git" }, paths, options)).toEqual({ ...result, added: false });
+    expect(await readFile(paths.configFile, "utf8")).toBe(updated);
+    expect(await readdir(paths.stateDirectory)).toEqual(["config.yml"]);
+  });
+
+  it("retains anchors and comments while adding the first repository with explicit review metadata", async () => {
+    const root = path.join(directory, "first-aliased-root");
+    const source = `# Review destination\nserverUrl: invalid-for-server\nrepositoryRoot: &cloneRoot ${JSON.stringify(root)} # keep root\n`;
+    const { paths, options } = await setup("server-first-aliased-root", source);
+    const result = await addRepository({ remote }, paths, options);
+    expect(result.repository.path).toBe(path.join(root, "github.com", "owner", "repo"));
+    const updated = await readFile(paths.configFile, "utf8");
+    for (const retained of ["# Review destination", "serverUrl: invalid-for-server", "repositoryRoot: &cloneRoot", "# keep root"]) {
+      expect(updated).toContain(retained);
+    }
+  });
+
+  it.each([
+    "maxConcurrentWorker: 0",
+    "repositoryRoot: null",
+    "repositories: []",
+    "repositories: null",
+    "repositories: false",
+    "repositories: [{remote: https://github.com/o/r}]",
+  ])("does not bootstrap over explicitly malformed review fields: %s", async (field) => {
+    const source = `serverUrl: http://localhost:8787\n${field}\n`;
+    const { paths, options } = await setup(`invalid-bootstrap-${field.split(":")[0]}-${String(field.length)}`, source);
+    await expect(addRepository({ remote }, paths, options)).rejects.toThrow("Invalid configuration file");
+    expect(await readFile(paths.configFile, "utf8")).toBe(source);
+    expect(await readdir(paths.stateDirectory)).toEqual(["config.yml"]);
+  });
+
   it("uses a changed root only for new repositories and keeps repeated addition untouched", async () => {
     const { paths, options } = await setup("changed-root");
     const original = await addRepository({ remote }, paths, options);
@@ -156,6 +195,13 @@ describe("repository registration", () => {
 
   it.skipIf(process.platform === "win32")("preserves existing POSIX configuration permissions", async () => {
     const { paths, options } = await setup("permissions", "repositories: [{remote: https://github.com/o/r, path: ../repo}]\n");
+    await chmod(paths.configFile, 0o640);
+    await addRepository({ remote }, paths, options);
+    expect((await lstat(paths.configFile)).mode & 0o777).toBe(0o640);
+  });
+
+  it.skipIf(process.platform === "win32")("preserves server-only configuration permissions on first registration", async () => {
+    const { paths, options } = await setup("server-only-permissions", "serverUrl: http://localhost:8787\n");
     await chmod(paths.configFile, 0o640);
     await addRepository({ remote }, paths, options);
     expect((await lstat(paths.configFile)).mode & 0o777).toBe(0o640);
