@@ -91,8 +91,8 @@ requirements. The subsequent
 [production acceptance harness](../testing/2026-10-20-dashboard-production-acceptance.md)
 records both production targets, source identities and fixed measurements. The
 earlier renderer's targets, 1,000-node/5,000-edge matrix and cleanup/recovery passed
-locally. The static SVG renderer also passes its own complete local acceptance
-after the hosted zoom-budget failure. Separate actual deployment-fault acceptance
+locally. The current local-coordinate dashed-paint renderer passes its own
+complete local acceptance after the hosted zoom-budget failures. Separate actual deployment-fault acceptance
 passed with another run retaining its HTTP/data sentinel throughout; that matrix
 predates the SVG change and tests unchanged deployment lifecycle code, not the
 new UI image identity. Current-source clean CI and image verification remains

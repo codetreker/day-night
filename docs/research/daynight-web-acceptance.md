@@ -7,13 +7,13 @@ This report owns observed validation and its practical limits.
 
 ## Current local validation
 
-The diagnostic-source static SVG gate passed typechecking, 302 functional tests and 36
+The dashed-paint source passed build/typechecking, 311 functional tests and 36
 Node tool tests with Node 24 and pnpm 10.34.5. The tool cases include the earlier
 coverage/publication checks, browser-report/performance/process identity checks
 and three Dagre differential regressions. The current complete production-browser
 run below also passed; its local identity remains distinct from hosted CI. The raw V8 report contains
-653 covered statements out of 659 across all 18 product TypeScript/TSX files
-(about 99.09%). Exact integer comparison confirms coverage strictly above 90%.
+716 covered statements out of 722 across all 19 product TypeScript/TSX files
+(about 99.17%), with 100% function coverage. The new dashes.ts helper is included. Exact integer comparison confirms coverage strictly above 90%.
 The browser entry, request hooks, canvas and drawer are included; no product
 filename exclusions supply that result.
 
@@ -37,11 +37,64 @@ installed CLI suites and actual Bash 4.2/modern Bash/zsh completion acceptance;
 those historical observations do not establish a new hosted current-head result.
 
 The phase/trace diagnostic helper passed typechecking and five focused tests,
-included in the 302-test functional suite. The complete local run below predates those diagnostic fields; it remains
+included in the complete functional suite. The complete local run below predates those diagnostic fields; it remains
 valid renderer/workflow evidence, while the diagnostic source requires its own
 hosted result.
 
-## Current static SVG local production result
+## Current dashed-paint local production result
+
+Run `20261020125755-d98c8daa-5d70-45e3-bba5-786459394568` passed all 12 native
+and eight production-gateway scenarios, every fixed graph's five repetitions,
+independent node/edge limit refusals and full post-measurement paint-piece
+geometry/phase checks. All 1,000 nodes/buttons, complete canonical routes and
+native arrows remained present. Modal inertness, tracing and original thresholds
+were retained. Original native/container/overall cleanup passed; actual outer
+recovery passed separately and preserved the original result.
+
+The local receipt records base `451b914290d64e550eb0ad9b0d3d725356c0ffcc`,
+`dirty: true` and no GitHub SHA, with bundled Chromium 156.0.8078.4 (revision
+1248, no override). Binary SHA-256 is
+`7cc50449d12a68966bb8e5a7931a9ce6ce462a5b8ddf6ead12898cc35ebdedbb`; the running
+production image is
+`sha256:c669f3ce8e10df646a2ae3daffcff8039e0657352875611b81630b2ea1d49fc8`.
+These identities establish the tested local build, not clean hosted delivery.
+
+| Dataset | Five opening times (ms) | Max layout/render (ms) | Max detail/zoom/pan (ms) |
+|---|---|---|---|
+| Chain, 1,000/999 | 555.9, 527.9, 519.1, 506.1, 484.7 | 278.9 / 280.6 | 61.5 / 50.4 / 13.8 |
+| Merge, 1,000/5,000 | 1359.6, 1300.8, 1303.3, 1266.4, 1279.0 | 969.5 / 386.6 | 106.8 / 25.7 / 20.4 |
+| Shared, 1,000/5,000 | 1669.2, 1875.1, 1841.5, 1702.2, 1719.3 | 1093.8 / 796.3 | 213.6 / 60.7 / 60.9 |
+
+Values are rounded only for display; raw gates use every unrounded observation.
+Columns can have maxima from different repetitions. Cold navigation and network
+readings remain separately recorded, not deducted from local feedback.
+
+The five actual product shared traces independently identify the preceding
+close frames: maximum raster tasks were 20.348/19.979/20.538/20.094/20.214ms and
+close-to-zoom commit waits were at most 0.289ms. Whole-trace raster maxima were
+below 37.8ms, so this observation does not depend on simply scheduling zoom after
+an unchanged second-long raster. Current-source hosted validation and approval
+remain required.
+
+### Durable raster and visual proof
+
+The [dashed-paint evidence](evidence/daynight-web-dashed-paint.json) preserves the
+exact pixel report, captured graph/resource and investigation-script hashes,
+whole-trace and explicitly scoped close-frame factor statistics, and actual
+product trace/source hashes. It distinguishes temporary browser injection from
+the final product helper and separates CPU-sampled replay from the formal
+acceptance trace configuration. No private paths, connection strings, task bodies
+or credentials are stored.
+
+The controlled native-vs-local-coordinate prototype comparison used the same
+1328×445 canvas clip. Of 590,960 pixels, 764 changed (0.1293%); 751 had maximum
+RGB delta one, thirteen exceeded one, three exceeded four, and the maximum was
+seven on a 0–255 scale. Alpha was unchanged; mean absolute RGB channel delta was
+0.0006216. Differences were confined to thin route antialiasing. This is a
+quantified prototype comparison, not byte-identical output or a replacement for
+the final product's independent complete arc/phase/CTM checks.
+
+## Recorded static SVG local result before dashed-paint decomposition
 
 Run `20261020113046-15ee88b2-047d-4ec7-b9be-b15003254463` passed all 12 native
 and eight production-container scenarios with the static SVG edge renderer.
@@ -124,10 +177,61 @@ jobs passed and the aggregate failed with web. Acceptance/coverage artifact IDs 
 `12263446508`. This additional failed source result does not resolve the earlier
 failure or establish hosted performance success.
 
+### Diagnostic hosted raster and commit evidence
+
+The [diagnostic-source run](https://github.com/codetreker/daynight/actions/runs/39420010135)
+tested clean merge `9bdaafe2adb71a4fa6d17417ddd68473d8b36dff`, equal to its recorded
+GitHub SHA. Tree `92dd14465ce6ec09edc6101c0e80f54030862750` matched head
+`844d151033d46d858217bcd74309150b01318550`. Coverage remained 653/659 across all
+18 product files; pinned Chromium 156.0.8078.4 used no override. The shared graph's
+first zoom measured 1238.3ms. Its input queue, condition, first-frame and
+second-frame waits were 12.3/2.7/7.3/1215.9ms. Cleanup, native cleanup and recovery
+passed. Acceptance/coverage artifact IDs are `12262478610` and `12263102944`;
+acceptance run ID is `20261020120947-f986a342-c392-4852-86c3-ac4f0096c985`.
+
+The inspected Chromium trace measured the zoom click handler at 3.308ms. The next
+main frame lasted 1147.19ms, including 1138.619ms in
+`WaitForCommitCompletion`; document and SVG paint recording were 3.383ms and
+1.426ms. The preceding drawer-close frame 43 had a roughly 77ms handler, including
+about 63ms style recalculation across 15,554 elements. Two workers processed four
+raster tasks lasting approximately 1079/1176/831/835ms; that work began about
+867ms before the zoom input. The trace therefore locates the large observed delay
+in completion of earlier frame raster/commit work, rather than in the prompt
+zoom JavaScript handler.
+
+A [later diagnostic run](https://github.com/codetreker/daynight/actions/runs/39421038402)
+tested clean merge `3344fa99755e0132f5952f4aa7f94dc7d229d5dd`, equal to its recorded
+GitHub SHA. Tree `d2470e44a08db79fdf5b29d38633f194cef118a7` matched head
+`ddad203f4761f983d0c8fc8a7a03cb3906167042`. Coverage was again 653/659 across
+18 files. Its shared repetition-one opening/layout/render/detail/detail-network/
+zoom/pan times were 764.0/545.0/216.4/95.6/2.475/706.7/13.0ms. Zoom phases were
+3.3/2.5/8.2/692.7ms. The click handler was 3.101ms; the next main frame lasted
+692.223ms, including 686.7ms commit wait. Native had ten passed scenarios, shared
+failed, limits were not run and container acceptance did not start. The other
+five verification jobs passed; web and aggregate failed. Cleanup/native cleanup
+and recovery passed with the same pinned browser. Acceptance/coverage artifact
+IDs are `12263935614` and `12263369970`, and acceptance run ID is
+`20261020121741-6b16ee19-3939-4cc5-ad91-025cc97edeb6`.
+
+These traces establish input/condition/frame ordering and prior-frame
+backpressure. Exact replay then isolated long oblique native dash generation:
+hiding SVG paint or making bodies solid removed the expensive raster; local
+horizontal pieces with native short joins removed it while preserving all graph
+and visual semantics. The
+[drawing decision](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
+pins the SVG2 phase rule and Chromium/Skia culling mechanism. Marker instancing
+was not the demonstrated cause. Local marker-removal and paint-containment trials still retained about
+1.1 seconds of preceding drawer-close raster work. Their fast zoom occurred when
+input arrived after that work had finished, so they do not demonstrate a causal
+reduction. Marker flattening was not adopted. The actual local-coordinate body fix now has
+its own complete product result above. Modal inertness, complete graph/arrow/dash
+semantics and all original end-to-end gates remain required.
+
 The valid local static SVG matrix above remains local evidence. It does not
-override this hosted result. The cause is under investigation with browser phase
-and timeline evidence; no performance resolution or infrastructure cause is
-claimed. Current-source successful hosted validation remains required.
+override this hosted result. Pinned-engine evidence and controlled replay identify long native dashed-body
+paint as the expensive primitive. The implemented decomposition passes complete
+local product acceptance; successful current-source hosted validation remains
+required, and no infrastructure cause or hosted delivery is claimed. Current-source successful hosted validation remains required.
 
 ### Diagnostic evidence format
 
@@ -465,8 +569,8 @@ production-browser harness are implemented. Earlier local browser/capacity and
 real-Docker deployment-fault evidence remains preserved. The static SVG renderer
 passes its new complete local production/performance run and still requires the
 delivery PR's current-source clean hosted evidence, real required-check results,
-independent review and approval. Shared-graph hosted zoom remains over budget
-and under investigation; no completion is claimed. The
+independent review and approval. Earlier hosted zoom failures remain preserved; the current dashed-paint source
+still requires successful hosted verification before completion. The
 W-T4 preview and W-T5 HTTP smoke observations retain their historical scope; the
 pre-static-SVG local result supplies the separate historical production-browser
 measurements.

@@ -3,17 +3,16 @@
 Day Night contains a client command toolkit and an independent Go service runtime
 for project and task management. Its read-only browser workspace provides project
 statistics, task dependency graphs and details from the same Go service origin.
-The static SVG edge renderer passes complete local production-browser and
-fixed-capacity acceptance against the native binary and production container.
-Prior real Docker lifecycle evidence is preserved. Hosted shared-graph zoom still
-exceeds its budget and is under investigation; successful current-source CI and
-delivery approval remain required.
+The local-coordinate dashed-paint fix passes complete local production-browser
+and fixed-capacity acceptance against the native binary and production container.
+Earlier hosted failures and real Docker lifecycle evidence are preserved;
+successful current-source CI and delivery approval remain required.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion`, shared configuration, server HTTP and repository binding foundations plus project and task commands; full service acceptance pending | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
-| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage implemented; static SVG local acceptance passed; hosted zoom performance under investigation | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
+| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage implemented; long-dashed paint fix passed local acceptance; current-source CI delivery pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The `@codetreker/daynight` package provides the `daynight` client. Its root entry
 lists commands and reports the package version; each command owns its business
@@ -244,7 +243,7 @@ For a disposable full-stack HTTP target, run a command through
 containers, volume, network and image tag after completion, failure or cancellation,
 and records cleanup failures. The [dashboard tasks](docs/design/daynight-web-tasks.md)
 record historical production/deployment results, the earlier hosted zoom failure,
-the current static SVG renderer's local pass and pending hosted delivery.
+the dashed-paint fix's complete local pass and pending hosted delivery.
 
 `pnpm web:acceptance` builds production UI and a native Go executable, creates an
 owned PostgreSQL instance, runs Chromium workflows and fixed capacity cases, then

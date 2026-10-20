@@ -101,9 +101,14 @@ const measureBrowserFeedback = async (page: Page, condition: TimingCondition, ac
       if (viewport === null) return false;
       if (condition.kind !== 'open') return viewport.style.transform !== condition.previousTransform;
       if (countsDirty) {
+        const svg = document.querySelector<SVGSVGElement>('.task-dependency-edges');
+        const expectedPaintPieces = svg?.getAttribute('data-paint-piece-count');
+        const validPaintCount = expectedPaintPieces !== null && expectedPaintPieces !== undefined
+          && /^(0|[1-9]\d*)$/.test(expectedPaintPieces) && Number.isSafeInteger(Number(expectedPaintPieces));
         countsReady = document.querySelectorAll('.react-flow__node').length === 1000
           && document.querySelectorAll('.react-flow__node .task-node').length === 1000
-          && document.querySelectorAll('.react-flow__edge-path').length === condition.edges;
+          && document.querySelectorAll('.react-flow__edge-path').length === condition.edges
+          && validPaintCount && svg!.querySelectorAll('.task-dependency-paint-piece').length === Number(expectedPaintPieces);
         countsDirty = false;
       }
       if (!countsReady) return false;
@@ -246,6 +251,10 @@ const visibleGraph = async (page: Page, rootId: string, edges: number) => {
   await expect(page.locator('.react-flow__node .task-node')).toHaveCount(1000);
   await expect(page.locator('.react-flow__edge-path')).toHaveCount(edges);
   await page.waitForFunction((id) => {
+    const svg = document.querySelector<SVGSVGElement>('.task-dependency-edges');
+    const expectedPaintPieces = svg?.getAttribute('data-paint-piece-count');
+    if (expectedPaintPieces === null || expectedPaintPieces === undefined || !/^(0|[1-9]\d*)$/.test(expectedPaintPieces)
+      || !Number.isSafeInteger(Number(expectedPaintPieces)) || svg!.querySelectorAll('.task-dependency-paint-piece').length !== Number(expectedPaintPieces)) return false;
     const canvas = document.querySelector('.task-graph-canvas');
     const source = document.querySelector(`.react-flow__node[data-id="${id}"] .task-node`);
     if (canvas === null || source === null) return false;
@@ -386,6 +395,75 @@ test.describe('fixed capacity and performance @capacity', () => {
               await persist();
               checkMeasurement(measurement);
             });
+          }
+          if (kind === 'shared') {
+            const diagnostics = await page.evaluate(() => {
+              const svg = document.querySelector<SVGSVGElement>('.task-dependency-edges')!;
+              const pieces = [...svg.querySelectorAll<SVGGraphicsElement>('.task-dependency-paint-piece')];
+              const failures: string[] = [];
+              const expected = svg.getAttribute('data-paint-piece-count');
+              if (expected === null || !/^(0|[1-9]\d*)$/.test(expected) || !Number.isSafeInteger(Number(expected)) || Number(expected) !== pieces.length) failures.push('Shared paint pieces do not match their declared complete count.');
+              if (svg.querySelectorAll('.react-flow__edge-path').length !== 5000 || svg.querySelectorAll('.task-dependency-edge').length !== 5000 || document.querySelectorAll('.react-flow__node').length !== 1000) failures.push('The shared graph lost its complete node or canonical route workload.');
+              if (!pieces.some((piece) => piece instanceof SVGLineElement) || !pieces.some((piece) => piece instanceof SVGPathElement)) failures.push('The shared graph does not exercise both axis lines and native joins.');
+              const svgMatrix = svg.getScreenCTM();
+              if (svgMatrix === null) return ['The shared dependency layer has no viewport geometry.'];
+              for (const group of svg.querySelectorAll<SVGGElement>('.task-dependency-edge')) {
+                const path = group.querySelector<SVGPathElement>('.react-flow__edge-path')!;
+                const body = [...group.querySelectorAll<SVGGraphicsElement>('.task-dependency-paint-piece')];
+                const dashed = getComputedStyle(path).strokeDasharray !== 'none';
+                if (dashed !== (body.length > 0) || dashed && getComputedStyle(path).stroke !== 'none') failures.push('A shared dependency has missing or duplicate external body paint.');
+                if (body.length === 0) continue;
+                const canonical = [...(path.getAttribute('d') ?? '').matchAll(/[ML]([^ML]+)/g)].map((command) => {
+                  const coordinates = command[1]!.trim().split(/[ ,]+/).map(Number);
+                  return { x: coordinates[0]!, y: coordinates[1]! };
+                });
+                let total = 0;
+                const segments = canonical.slice(1).map((point, index) => {
+                  const from = canonical[index]!;
+                  const length = Math.hypot(point.x - from.x, point.y - from.y);
+                  const segment = { from, to: point, length, start: total };
+                  total += length;
+                  return segment;
+                }).filter((segment) => segment.length > 0);
+                const epsilon = 0.05;
+                const position = (point: DOMPoint, minimum: number): number | null => {
+                  for (const segment of segments) {
+                    const dx = segment.to.x - segment.from.x;
+                    const dy = segment.to.y - segment.from.y;
+                    const fraction = ((point.x - segment.from.x) * dx + (point.y - segment.from.y) * dy) / (segment.length * segment.length);
+                    const distance = segment.start + Math.max(0, Math.min(1, fraction)) * segment.length;
+                    if (fraction >= -epsilon / segment.length && fraction <= 1 + epsilon / segment.length && distance >= minimum - epsilon && Math.hypot(point.x - segment.from.x - dx * fraction, point.y - segment.from.y - dy * fraction) <= epsilon) return distance;
+                  }
+                  return null;
+                };
+                let covered = 0;
+                for (const piece of body) {
+                  const matrix = piece.getScreenCTM();
+                  if (matrix === null) { failures.push('A shared body piece has no geometry.'); continue; }
+                  const transform = svgMatrix.inverse().multiply(matrix);
+                  const local = piece instanceof SVGLineElement
+                    ? [{ x: piece.x1.baseVal.value, y: piece.y1.baseVal.value }, { x: piece.x2.baseVal.value, y: piece.y2.baseVal.value }]
+                    : [...(piece.getAttribute('d') ?? '').matchAll(/[ML]([^ML]+)/g)].map((command) => {
+                      const coordinates = command[1]!.trim().split(/[ ,]+/).map(Number);
+                      return { x: coordinates[0]!, y: coordinates[1]! };
+                    });
+                  if (local.length < 2) { failures.push('A shared body piece has no complete route.'); continue; }
+                  if (piece instanceof SVGLineElement && (local[0]!.x !== 0 || local[0]!.y !== 0 || local[1]!.y !== 0 || local[1]!.x <= 0 || Math.abs(Math.hypot(transform.a, transform.b) - 1) > epsilon || Math.abs(transform.a - transform.d) > epsilon || Math.abs(transform.b + transform.c) > epsilon)) failures.push('A shared line is not an unscaled local horizontal stroke.');
+                  const points = local.map((point) => new DOMPoint(point.x, point.y).matrixTransform(transform));
+                  const start = position(points[0]!, covered);
+                  let end = start;
+                  for (const point of points.slice(1)) { if (end !== null) end = position(point, end); }
+                  let length = 0;
+                  for (let index = 1; index < points.length; index++) length += Math.hypot(points[index]!.x - points[index - 1]!.x, points[index]!.y - points[index - 1]!.y);
+                  const phase = start === null ? null : ((start % 9) + 9) % 9;
+                  if (start === null || end === null || Math.abs(start - covered) > epsilon || Math.abs(length - (end - start)) > epsilon || phase === null || Math.abs(Number.parseFloat(getComputedStyle(piece).strokeDashoffset) - phase) > epsilon || start > epsilon && Math.abs(phase - 7) > epsilon) failures.push('A shared paint piece loses route coverage or continuous dash phase.');
+                  if (end !== null) covered = end;
+                }
+                if (Math.abs(covered - total) > epsilon) failures.push('A shared external route has incomplete paint coverage.');
+              }
+              return failures;
+            });
+            expect(diagnostics, 'All shared-graph paint primitives preserve the complete canonical geometry after all five timed samples').toEqual([]);
           }
           expect(graphRequests, 'Collapse and reopen reuse the complete project snapshot').toBe(1);
           page.off('request', trackGraph);

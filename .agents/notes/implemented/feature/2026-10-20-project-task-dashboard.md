@@ -28,9 +28,12 @@ disabled. Each task has one native button for pointer, Enter and Space activatio
 keyboard focus pans offscreen nodes without changing zoom.
 
 One memoized SVG beneath task nodes in the public `ViewportPortal` renders every
-dependency from the
-immutable Dagre layout. It retains exact routed points, stable edge/source/target
-identity, arrowheads, external-prerequisite dashes and accessibility semantics.
+dependency from the immutable Dagre layout. Canonical paths retain all exact
+routed points, stable edge/source/target identity, native arrow markers and
+accessibility semantics. Solid bodies keep native paint. Long dashed bodies use
+immutable locally horizontal lines and short native bend paths, preserving full
+arc length and dash phase through the
+[long-dashed paint decision](../bug-fix/2026-10-20-long-dashed-dependency-paint.md).
 The portal shares the React Flow viewport transform; pan and zoom transform the
 same complete paths without per-edge store subscriptions or endpoint-admission
 work. Selection keeps the edge layer stable. Edges do not intercept pointer
@@ -40,8 +43,11 @@ The original W-T4 custom-edge integration used invisible framework ports for
 edge admission. That choice preserved Dagre's noncentral rectangle intersections:
 framework port centers never defined the visible line endpoints. The static SVG
 retains that geometry rationale while giving immutable dependency routes their
-own rendering owner. It uses no connection-port DOM or node-handle readiness
-state. Initial placement uses known layout bounds after the framework viewport
+own rendering owner. The initial single-SVG implementation used native dashing
+on each full route, preserving direct geometry without per-edge reactive state.
+The long-dashed paint decision partially replaces that body-paint choice after
+pinned-engine raster evidence, while canonical routes and native arrows remain.
+It uses no connection-port DOM or node-handle readiness state. Initial placement uses known layout bounds after the framework viewport
 and positive measured canvas dimensions are ready; native ResizeObserver node
 measurement remains enabled.
 
@@ -127,7 +133,10 @@ production-bundle browser check also uses the real Go API and PostgreSQL. The
 the earlier preview and pre-static-SVG local results from the current renderer's
 complete local production pass. PR #52's earlier hosted shared-graph zoom failure
 is retained. A later hosted run also exceeded the shared-graph zoom budget;
-phase/timeline investigation and successful current-source acceptance remain
-required. Actual browser
+diagnostics identify prior drawer-close raster/commit backpressure from long
+native dashed routes. A controlled local-coordinate decomposition prototype
+reduces that raster work. The committed helper passes complete local production,
+capacity and independent geometry/phase checks; actual product traces confirm
+the reduced raster. Current-source hosted acceptance remains required. Actual browser
 checks verify SVG/node alignment and exact route endpoints after zoom, pan and
 root changes. Dependency upgrades must revisit the declaration patch and type tests.

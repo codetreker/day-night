@@ -1,6 +1,7 @@
 import { memo, useId, useLayoutEffect, useMemo, useRef } from 'react';
 import { Background, BackgroundVariant, Controls, getViewportForBounds, ReactFlow, useReactFlow, useStore, ViewportPortal, type Viewport } from '@xyflow/react';
-import { layoutGraph, TASK_NODE_HEIGHT, TASK_NODE_WIDTH, type CanvasLayout } from './layout';
+import { decomposeDashedRoute, DEPENDENCY_DASH_ARRAY, DEPENDENCY_DASH_PERIOD } from './dashes';
+import { layoutGraph, TASK_NODE_HEIGHT, TASK_NODE_WIDTH, type CanvasLayout, type CanvasPoint } from './layout';
 import { projectRoot, type GraphIndex } from './model';
 import { TaskNode, type TaskFlowNode } from './TaskNode';
 import '@xyflow/react/dist/style.css';
@@ -12,26 +13,45 @@ type TaskGraphProps = {
   onSelectTask: (id: string, trigger: HTMLElement) => void;
 };
 
+const pathData = (points: readonly CanvasPoint[]) => points.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ');
+const dashStyle = {
+  fill: 'none', stroke: '#abb2c7', strokeWidth: 1.5, strokeDasharray: DEPENDENCY_DASH_ARRAY,
+  strokeLinecap: 'butt', strokeLinejoin: 'miter', pointerEvents: 'none',
+} as const;
+
 const DependencyEdges = memo(({ geometry }: { geometry: CanvasLayout }) => {
   const markerId = `task-dependency-arrow-${useId()}`;
+  const routes = useMemo(() => geometry.edges.map((edge) => ({
+    edge, pieces: edge.external ? decomposeDashedRoute(edge.points) : [],
+  })), [geometry]);
   return (
     <ViewportPortal>
-      <svg className="task-dependency-edges" data-testid="task-dependency-edges" width="100%" height="100%" role="group" aria-label="任务依赖关系" focusable="false">
+      <svg className="task-dependency-edges" data-testid="task-dependency-edges" data-paint-piece-count={routes.reduce((count, route) => count + route.pieces.length, 0)} width="100%" height="100%" role="group" aria-label="任务依赖关系" focusable="false">
         <defs>
           <marker id={markerId} markerWidth="16" markerHeight="16" viewBox="-10 -10 20 20" markerUnits="strokeWidth" orient="auto-start-reverse" refX="0" refY="0">
             <polyline className="arrowclosed" points="-5,-4 0,0 -5,4 -5,-4" stroke="#abb2c7" fill="#abb2c7" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
           </marker>
         </defs>
-        {geometry.edges.map((edge) => (
+        {routes.map(({ edge, pieces }) => (
           <g key={edge.id} className="react-flow__edge task-dependency-edge" data-id={edge.id} role="img" aria-label={`前置任务 ${edge.source} → 后续任务 ${edge.target}`} focusable="false">
+            {pieces.map((piece, position) => {
+              const properties = {
+                className: 'task-dependency-paint-piece', 'data-piece-kind': piece.kind,
+                'aria-hidden': true as const, focusable: false as const,
+                style: { ...dashStyle, strokeDashoffset: piece.startDistance % DEPENDENCY_DASH_PERIOD },
+              };
+              return piece.kind === 'line'
+                ? <line key={position} {...properties} x1="0" y1="0" x2={piece.length} y2="0" transform={`matrix(${piece.cosine} ${piece.sine} ${-piece.sine} ${piece.cosine} ${piece.from.x} ${piece.from.y})`} />
+                : <path key={position} {...properties} d={pathData(piece.points)} />;
+            })}
             <path
               className="react-flow__edge-path"
               data-source={edge.source}
               data-target={edge.target}
-              d={edge.points.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ')}
+              d={pathData(edge.points)}
               markerEnd={`url(#${markerId})`}
               aria-hidden="true"
-              style={{ fill: 'none', stroke: '#abb2c7', strokeWidth: 1.5, strokeDasharray: edge.external ? '5 4' : undefined }}
+              style={{ fill: 'none', stroke: edge.external ? 'none' : '#abb2c7', strokeWidth: 1.5, strokeDasharray: edge.external ? DEPENDENCY_DASH_ARRAY : undefined }}
             />
           </g>
         ))}

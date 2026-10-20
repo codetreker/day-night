@@ -120,12 +120,69 @@ describe('task dependency canvas', () => {
       expect(relation).toHaveAttribute('focusable', 'false');
       expect(relation).not.toHaveAttribute('tabindex');
       expect(relation.querySelectorAll('a,button,[tabindex]')).toHaveLength(0);
-      const path = relation.querySelector('path')!;
+      const path = relation.querySelector('path.react-flow__edge-path')!;
       expect(path).toHaveAttribute('data-source', edge.source);
       expect(path).toHaveAttribute('data-target', edge.target);
       expect(path).toHaveAttribute('aria-hidden', 'true');
       expect(path).toHaveAttribute('marker-end', `url(#${marker.id})`);
     });
+  });
+
+  it('paints complete dashed bodies before their canonical native arrow paths without changing solid edges', () => {
+    const geometry = layoutModule.layoutGraph(projectRoot(index, 'A'));
+    const original = geometry.edges.map((edge) => ({
+      ...edge, points: [{ x: 10, y: 20 }, { x: 1010, y: 20 }, { x: 1010, y: 1020 }, { x: 2010, y: 1020 }],
+    }));
+    vi.spyOn(layoutModule, 'layoutGraph').mockReturnValue({ ...geometry, edges: original });
+    const view = render(<TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
+    const svg = view.container.querySelector('svg.task-dependency-edges')!;
+    const allPieces = [...svg.querySelectorAll<SVGElement>('.task-dependency-paint-piece')];
+    expect(Number(svg.getAttribute('data-paint-piece-count'))).toBe(allPieces.length);
+    expect(allPieces.length).toBeGreaterThan(0);
+    for (const edge of original) {
+      const relation = svg.querySelector(`[data-id="${edge.id}"]`)!;
+      const canonical = relation.querySelector<SVGPathElement>('.react-flow__edge-path')!;
+      const pieces = [...relation.querySelectorAll<SVGElement>('.task-dependency-paint-piece')];
+      expect(relation.lastElementChild).toBe(canonical);
+      expect(canonical.getAttribute('d')).toBe('M10,20 L1010,20 L1010,1020 L2010,1020');
+      expect(canonical.style.strokeWidth).toBe('1.5');
+      expect(canonical.style.stroke).toBe(edge.external ? 'none' : 'rgb(171, 178, 199)');
+      expect(canonical.getAttribute('marker-end')).toBe(`url(#${svg.querySelector('marker')!.id})`);
+      if (!edge.external) {
+        expect(pieces).toHaveLength(0);
+        expect(canonical.style.strokeDasharray).toBe('');
+        continue;
+      }
+      expect(canonical.style.strokeDasharray).toBe('5 4');
+      expect(pieces.some((piece) => piece.tagName === 'line')).toBe(true);
+      expect(pieces.some((piece) => piece.tagName === 'path')).toBe(true);
+      for (const piece of pieces) {
+        expect(piece).toHaveAttribute('data-piece-kind', piece.tagName);
+        expect(piece).toHaveAttribute('aria-hidden', 'true');
+        expect(piece).toHaveAttribute('focusable', 'false');
+        expect(piece.style.pointerEvents).toBe('none');
+        expect(piece.style.stroke).toBe('rgb(171, 178, 199)');
+        expect(piece.style.strokeWidth).toBe('1.5');
+        expect(piece.style.strokeDasharray).toBe('5 4');
+        expect(piece.style.strokeLinecap).toBe('butt');
+        expect(piece.style.strokeLinejoin).toBe('miter');
+        expect(piece.style.fill).toBe('none');
+        expect(piece).not.toHaveAttribute('marker-end');
+        expect(piece).not.toHaveAttribute('tabindex');
+        if (piece.tagName === 'line') {
+          expect(piece).toHaveAttribute('x1', '0');
+          expect(piece).toHaveAttribute('y1', '0');
+          expect(piece).toHaveAttribute('y2', '0');
+          expect(Number(piece.getAttribute('x2'))).toBeGreaterThan(0);
+          expect(piece.getAttribute('transform')).toMatch(/^matrix\([^)]*\)$/);
+        } else expect(piece.getAttribute('d')).toMatch(/^M[-\d.,]+(?: L[-\d.,]+)+$/);
+      }
+    }
+    const children = [...svg.querySelectorAll('g.task-dependency-edge > *')];
+    view.rerender(<TaskGraph index={index} rootId="A" selectedTaskId="C" onSelectTask={noop} />);
+    expect(view.container.querySelector('svg.task-dependency-edges')).toBe(svg);
+    expect([...svg.querySelectorAll('g.task-dependency-edge > *')]).toEqual(children);
+    children.forEach((child, position) => { expect(svg.querySelectorAll('g.task-dependency-edge > *')[position]).toBe(child); });
   });
 
   it('keeps dependency paths in the node viewport during zoom and updates them from new snapshots', async () => {

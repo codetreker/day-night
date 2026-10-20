@@ -7,10 +7,9 @@ The project dashboard, task canvas and detail drawer are embedded into the Go
 server for single-origin delivery. The [localhost deployment](../../deployment/localhost/README.md)
 starts the full UI/API/database stack; [dev-ci](../../deployment/dev-ci/README.md)
 provides an isolated instance of the same production build. Production browser
-workflows and the fixed-capacity matrix pass locally with the static SVG edge
-layer. Earlier real Docker lifecycle evidence is retained. Hosted shared-graph
-zoom remains over budget and is under investigation; clean CI and delivery remain
-tracked in the
+workflows and the fixed-capacity matrix pass locally with the long-dashed paint
+fix. Earlier hosted failures and real Docker lifecycle evidence are retained;
+current-source clean CI and delivery remain tracked in the
 [implementation tasks](../../docs/design/daynight-web-tasks.md).
 
 The [requirements](../../docs/spec/daynight-web.md) own visible behavior and the
@@ -93,9 +92,9 @@ local production-bundle checks with a real Go API and PostgreSQL, embedded
 HTTP/container smoke checks and concurrent dev-ci isolation. The earlier renderer's
 full native/container browser workflows passed locally. The static SVG renderer
 also passes complete local production/performance acceptance after that hosted
-zoom failure. A later hosted static-SVG zoom measurement also exceeded the
-budget; investigation and successful current-source CI remain required. The
-report keeps these source identities distinct. A separate local real-Docker matrix
+zoom failure. Later traces identified long native dashed-path raster work; the
+local-coordinate paint fix passes complete local acceptance and still requires
+successful current-source CI. The report keeps these source identities distinct. A separate local real-Docker matrix
 passed startup failure, callback failure, cancellation and cleanup failure/recovery
 while an independent sentinel stack remained healthy. CI repeats the 12 controlled
 lifecycle fixtures and full production-browser suite; that manual fault matrix
@@ -146,7 +145,7 @@ The required web CI job archives `daynight-web-acceptance` separately from raw
 coverage. The static SVG renderer's complete local run passed 12 native scenarios,
 eight container scenarios and all three graphs’ five timing repetitions, including
 independent size refusals, actual SVG alignment across pan/zoom/root changes and
-confirmed cleanup/recovery. The largest local opening was 1644.3ms; every local
+confirmed cleanup/recovery. The current dashed-paint run's largest local opening was 1875.1ms; every local
 detail/zoom/pan measurement was below 300ms. Current-source hosted CI remains
 required. Local receipts retain their dirty/browser identity
 and do not establish clean hosted delivery results.
@@ -228,7 +227,14 @@ objects. React Flow owns fixed task nodes, native ResizeObserver measurement,
 keyboard behavior, viewport and controls. One memoized SVG in its public
 ViewportPortal renders every exact Dagre path, with stable edge identity,
 arrowheads, boundary dashes and accessibility semantics. It shares the viewport's
-transform, so selection/pan/zoom reuse all paths without per-edge reactive state.
+transform, so selection/pan/zoom reuse geometry without per-edge reactive state.
+Canonical routes retain native arrow markers and full Dagre points. Dashed body
+paint uses `dashes.ts` to derive locally horizontal rotated lines and short native
+vertex paths, with the original 5/4 pattern and continuous positive arc-length
+phase. Solid bodies remain native. Pieces are noninteractive and hidden from the
+accessibility tree; canonical edges keep their existing identity/semantics. The
+[paint decision](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
+owns the pinned raster evidence, phase preservation and visual tolerances.
 Initial placement uses known layout bounds after the viewport and positive
 measured canvas dimensions are ready. Dependency geometry does not require
 connection-port DOM or per-edge endpoint readiness.

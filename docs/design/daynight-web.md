@@ -1,6 +1,6 @@
 # 项目与任务看板设计
 
-状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 采用单层静态 SVG 边渲染后已通过完整本地生产与性能验收，PR #52 当前 hosted 缩放仍超过门槛，正在定位；需真实 CI、review 与交付，失败和本地回执均保留于验收报告。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
+状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 已定位长斜线 SVG 虚线绘制造成的 raster/commit 阻塞，采用局部水平线与短原生转角路径分解；当前源码的几何/相位与完整本地生产验收已通过，hosted 验收仍待通过。历史失败与本地回执保留于验收报告。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
 
 ## 目标与现有基础
 
@@ -162,7 +162,24 @@ React Flow 固定为 12.12.0，使用单个原生任务按钮处理鼠标/Enter/
 焦点与所有编辑入口，控件不提供解锁开关。React Flow 拥有 220×96 节点、键盘
 焦点、选择、视口、背景与控件；边由公开 `ViewportPortal` 中一个 memoized SVG
 拥有。SVG 位于任务节点图层下方，使用同一 `CanvasLayout` 的全部 Dagre points，保留每条边的稳定 ID、
-source/target 身份、箭头、外部前置虚线及可访问语义，不在交互期间省略或裁剪边。
+source/target 身份、原生箭头 marker 及可访问语义，不在交互期间省略或裁剪路线。
+实线路线保持原生描边；外部前置的完整 canonical 路线关闭自身 body stroke，保留
+原生 marker 与 1.5 描边宽度，虚线 body 由独立 paint pieces 绘制。
+
+`task-graph/dashes.ts` 的纯函数 `decomposeDashedRoute(points)` 返回只读 `DashPiece`：
+局部水平 `line` 包含 from、length、cosine、sine 和 startDistance，短原生 `path`
+包含 points 和 startDistance。每段沿路线累计弧长，用 5/4、周期 9 的原生虚线；
+内部切点位于相位 7 的 gap 中点，各 piece 使用正 `startDistance % 9` offset。
+转角保留至少 12 单位的原生路径空间，提取后的长直线至少 128 单位，首尾端点
+保持原路线端点；重复零长度段不增加弧长。helper 复用已验证布局的有限坐标，
+空、单点或全零长度路线没有 body paint，不修改 canonical 路线数据。
+
+长段在局部坐标中为 `(0,0) → (length,0)`，通过单位旋转/平移矩阵还原世界坐标。
+Skia 因此可以在局部轴向线上裁剪 dash 生成，短 path 保留原生转角与接合；绘制
+并未删除离屏依赖或改变完整路由。paint pieces 在 canonical marker 路径之前绘制，
+不接受指针、不增加可访问节点。新增[绘制决策](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
+拥有 SVG 相位、固定 Chromium/Skia 证据及替代方案。虚线分解属于布局后的渲染准备，
+其成本计入 renderMs/openMs。
 
 `ViewportPortal` 随 React Flow 视口使用相同的 pan/zoom transform，SVG 在图坐标
 中绘制，不自行订阅或重算每条边的视口状态。布局更换才替换静态 SVG 内容；选择、
@@ -196,7 +213,7 @@ packages/daynight-web/
   src/app/{App,router}.tsx           两个页面的路由与组合
   src/api/{types,client,parse}.ts    DTO、请求、运行时解析与错误
   src/features/projects/           ProjectsPage、ProjectPage、统计卡
-  src/features/task-graph/          model.ts、layout.ts、RootList、TaskGraph、TaskNode
+  src/features/task-graph/          model.ts、layout.ts、dashes.ts、RootList、TaskGraph、TaskNode
   src/features/task-detail/         TaskDrawer 与详情请求 hook
   src/styles/                      设计变量、排版与样式
   scripts/                         构建发布、严格覆盖率、生产验收及布局差分检查
@@ -219,7 +236,8 @@ packages/daynight-server/
 | task-graph/model | 根、可达集合、外部前置、统计与共享关系 | 仅依赖 DTO 类型与标准集合 |
 | task-graph/layout | 将投影映射为确定的节点坐标和边 | 依赖 model 与 Dagre |
 | React Flow 组件 | 视口、只读节点、缩放、平移和节点选择 | 接收布局与 onSelectTask，不调用 API |
-| 静态依赖 SVG | 公开 ViewportPortal 内的完整 Dagre 路径、边身份、箭头/虚线与可访问语义 | 接收不可变布局，复用 React Flow 视口变换，不订阅逐边状态 |
+| 虚线绘制分解 | 保留弧长/相位的局部轴向 line 与短原生转角 path | 只依赖布局坐标类型，不访问 DOM、视口或 API |
+| 静态依赖 SVG | 公开 ViewportPortal 内的完整 canonical 路线、原生箭头、派生 body paint 与可访问语义 | 接收不可变布局，复用 React Flow 视口变换，不订阅逐边状态 |
 | TaskDrawer | 当前 taskId 的详情、关系跳转、焦点和关闭 | 调用详情 hook；不修改图快照 |
 | Go server | HTTP 解析、响应、路由与方法语义 | 调用 service 或 webui |
 | Go service | 具体 store 的读取事务、领域拒绝、图摘要 | 调用 core/store，返回 core 模型 |
@@ -232,7 +250,11 @@ flowchart LR
   Page --> Client[typed API client]
   Page --> Model[纯图模型]
   Model --> Layout[Dagre 布局]
-  Layout --> Canvas[只读 React Flow]
+  Layout --> Canvas[只读 React Flow 节点与视口]
+  Layout --> Paint[虚线局部绘制分解]
+  Layout --> SVG[完整路线与原生箭头]
+  Paint --> SVG
+  Canvas -->|共享视口变换| SVG
   Canvas --> Drawer[详情侧栏]
   Drawer --> Client
   Client --> Mux[Go ServeMux]
@@ -346,7 +368,7 @@ deployment/
 两套环境定义、隔离 HTTP smoke、运行镜像身份和并发隔离均已本地验证，正常重建保留数据。12 项受控 Docker fixture 验证成功、失败、取消、恢复与遗留子进程清理；它们不代替真实 Docker 故障验收。较早渲染器的本地生产浏览器/性能与实际 Docker 故障矩阵已有通过记录；后者保留独立健康栈，
 验证启动中途失败、callback 失败、取消及卷清理失败后的定向恢复。CI 运行既有
 12 项受控生命周期 fixture 和完整真实浏览器，不宣称重复这套手工 Docker 故障矩阵。
-单层静态 SVG 渲染器的完整本地生产、几何与性能已通过，当前源码的 clean CI 源码、镜像及性能回执仍待验证。localhost 的配置与数据不会作为测试前置被修改。
+长虚线分解之前的静态 SVG 本地回执保留；当前绘制源码的完整本地生产、几何/相位与性能已通过，随后验证 clean CI 源码及镜像身份。localhost 的配置与数据不会作为测试前置被修改。
 
 ### CI 构建归属
 
@@ -482,7 +504,7 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 进程控制及回执校验，`tests/e2e/` 拥有功能流程、API 数据和固定图集。实际运行
 结果由[验收报告](../research/daynight-web-acceptance.md)拥有：较早渲染器的本地双
 目标与固定性能矩阵通过，但 PR #52 的真实 CI 发现共享图缩放 452.7ms；静态 SVG
-渲染器的完整本地验收已通过，当前源码的 hosted 结果仍待验证。
+渲染器的原生长虚线绘制仍触发 hosted 超时；采用局部绘制分解后的新源码已完整本地通过，hosted 验证仍待通过。
 
 每次运行先生成真实 UI 与 Go 可执行文件，再启动独立 PostgreSQL 18.6，等待服务
 结构化就绪日志并记录二进制摘要。原生目标运行八个功能场景和四个容量/超限场景；
@@ -525,6 +547,14 @@ CDP timeline、User Timing、frame 与 GC 事件关联浏览器内的输入/条�
 这些测试侧诊断用于定位 hosted 超时，不属于产品遥测，也不改变容量、交互或
 成功判定标准。
 
+绘制分解后，已有 open/初始 readiness 的 countsDirty 检查还要求 SVG 声明的
+`data-paint-piece-count` 为显式非负安全整数，且与实际 `.task-dependency-paint-piece`
+数量一致；1,000 节点/按钮与完整 999/5,000 canonical 路线检查继续保留。独立
+几何检查通过实际 CTM 将全部 pieces 映射回原路线弧长，验证有序覆盖 0 到总长、
+无跳段/重叠、5/4 相位与 gap 中点切缝，以及单位旋转、原生转角和 marker。
+大共享图的完整分解几何检查在五次计时之后执行，close → zoom 区间不增加读回或
+等待；正常 ready/count 判定与全部预算保持原义。
+
 回执增量写入 `packages/daynight-web/.tmp/acceptance/<run-id>/`，顶层
 `evidence.json` 指向最近一次结果，包含源码、二进制、数据库/浏览器版本、两目标
 结果、生产镜像与清理状态。各目标保留原始 Playwright JSON、场景截图和浏览器
@@ -561,7 +591,7 @@ CI 无论验收成功、失败或取消都执行恢复与归档；恢复成功�
 ## 风险与重审条件
 
 - 大量共享节点会重复出现在不同根图中；通过去重统计和单展开控制成本。需要同时比较多条图时再重审交互。
-- 1,000/5,000 是明确的保护上限。静态 SVG 渲染器已本地通过固定拓扑的全部五次展开和交互门槛，当前源码的 hosted 验证仍待通过。布局归一化成本取决于 rank 跨距，不能把这一矩阵的结果宣称为任意 DAG 的相同耗时保证。
+- 1,000/5,000 是明确的保护上限。长虚线绘制分解已通过新源码完整本地生产门槛，hosted 验证仍待通过；旧回执不能替代当前源码的 CI 证据。布局归一化成本取决于 rank 跨距，不能把固定矩阵的结果宣称为任意 DAG 的相同耗时保证。
 - 外部前置必须保留显式标记，否则图会错误暗示前置已完整展示。
 - Node 成为 Go 二进制的构建前置；固定构建顺序与干净 checkout 验证，运行时仍只有 Go 与 PostgreSQL。
 - 只有本机访问需求。出现远程访问要求时必须先补齐身份与授权设计。

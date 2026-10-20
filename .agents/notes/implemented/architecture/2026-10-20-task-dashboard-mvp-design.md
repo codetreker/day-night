@@ -27,8 +27,9 @@ Go asset delivery and the localhost/dev-ci environments. Full production-browser
 and fixed-dataset performance evidence is tracked by the
 [production acceptance harness](../testing/2026-10-20-dashboard-production-acceptance.md).
 The earlier renderer passed local targets but failed the hosted zoom budget. The
-static SVG edge layer now passes complete local targets and the fixed capacity
-matrix. Actual local deployment-fault evidence remains separate and predates the
+static SVG edge layer needed a further
+[long-dashed paint fix](../bug-fix/2026-10-20-long-dashed-dependency-paint.md), which
+passes complete local targets and the fixed capacity matrix. Actual local deployment-fault evidence remains separate and predates the
 SVG update; W-T6 still requires successful current-source CI and delivery approval.
 
 Use a separate React/TypeScript/Vite package with React Flow and Dagre. Serve
