@@ -85,10 +85,10 @@ a future server lookup must retain those equality and duplicate semantics.
 ## Consequences
 
 The confirmed design is documented separately from shipped CLI behavior. Current
-runtime command usage remains review and update until the project/task entry
-points and acceptance complete. The common configuration and HTTP modules are
-available for the remaining implementation tasks. Future implementation updates the status owners and the package
-version under existing release rules.
+commands provide review, update and shell completion; project/task entry points
+and their acceptance remain pending. The common configuration and HTTP modules
+are available for the remaining implementation tasks. Future implementation
+updates the status owners and the package version under existing release rules.
 
 Ordinary commands can infer a repository's project after one complete discovery
 and then validate it by ID. The cache remains disposable and scoped to server,
