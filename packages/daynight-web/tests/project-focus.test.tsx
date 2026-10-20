@@ -1,0 +1,117 @@
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getTask, getTaskGraph } from '../src/api/client';
+import type { GraphTask, TaskGraph } from '../src/api/types';
+import { ProjectPage } from '../src/features/projects/ProjectPage';
+import { projectRoot, type GraphIndex } from '../src/features/task-graph/model';
+
+vi.mock('../src/api/client', async (original) => ({
+  ...await original<typeof import('../src/api/client')>(), getTask: vi.fn(), getTaskGraph: vi.fn(),
+}));
+vi.mock('../src/features/task-graph/TaskGraph', () => ({
+  TaskGraph: ({ index, rootId, onSelectTask }: {
+    index: GraphIndex; rootId: string; onSelectTask: (id: string, trigger: HTMLElement) => void;
+  }) => <div>{[...projectRoot(index, rootId).mainIds].map((id) => (
+    <button key={id} type="button" onClick={(event) => onSelectTask(id, event.currentTarget)}>
+      节点 {index.nodes.get(id)!.titlePreview}
+    </button>
+  ))}</div>,
+}));
+
+const projectId = '10000000-0000-0000-0000-000000000001';
+const rootId = '20000000-0000-0000-0000-000000000001';
+const selectedId = '20000000-0000-0000-0000-000000000002';
+const remainingId = '20000000-0000-0000-0000-000000000003';
+const timestamp = '2026-10-20T12:00:00.123456Z';
+const task = (id: string, titlePreview: string, dependsOn: readonly string[] = []): GraphTask => ({
+  id, titlePreview, titleTruncated: false, status: 'todo', dependsOn, blockedBy: dependsOn,
+  ready: dependsOn.length === 0, createdAt: timestamp, updatedAt: timestamp,
+});
+const remaining = task(remainingId, '保留任务链');
+const graph = (tasks = [task(rootId, '原任务链'), task(selectedId, '所选任务', [rootId]), remaining]): TaskGraph => ({
+  project: { id: projectId, name: '核心项目', repoUrl: '', createdAt: timestamp, updatedAt: timestamp },
+  tasks,
+  summary: {
+    total: tasks.length, todo: tasks.length, done: 0, inProgress: 0,
+    ready: tasks.filter((item) => item.ready).length, blocked: tasks.filter((item) => !item.ready).length,
+  },
+});
+const graphRequest = vi.mocked(getTaskGraph);
+const detailRequest = vi.mocked(getTask);
+let root: HTMLDivElement;
+let previousOverflow: string;
+
+beforeEach(() => {
+  root = document.createElement('div');
+  root.id = 'root';
+  document.body.append(root);
+  previousOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'scroll';
+  graphRequest.mockReset();
+  detailRequest.mockReset();
+  detailRequest.mockImplementation(async (project, id) => ({
+    id, projectId: project, title: '所选任务详情', description: '', status: 'done',
+    dependsOn: [rootId], blockedBy: [], ready: false, createdAt: timestamp, updatedAt: timestamp,
+  }));
+});
+
+afterEach(() => {
+  cleanup();
+  root.remove();
+  document.body.style.overflow = previousOverflow;
+});
+
+const openDrawer = async () => {
+  render(<ProjectPage projectId={projectId} />, { container: root });
+  const trigger = await screen.findByRole('button', { name: '节点 所选任务' });
+  trigger.focus();
+  fireEvent.click(trigger);
+  const dialog = screen.getByRole('dialog', { name: '任务详情' });
+  expect(root.contains(dialog)).toBe(false);
+  expect(root).toHaveAttribute('inert');
+  expect(document.body.style.overflow).toBe('hidden');
+  expect(within(dialog).getByRole('button', { name: '关闭任务详情' })).toHaveFocus();
+  await within(dialog).findByRole('heading', { name: '所选任务详情' });
+  return { trigger, dialog };
+};
+
+const expectModalReleased = () => {
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(root).not.toHaveAttribute('inert');
+  expect(document.body.style.overflow).toBe('scroll');
+};
+
+describe('project drawer focus restoration', () => {
+  it('focuses the page heading after refresh removes the selected chain and every task', async () => {
+    graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([]));
+    const { trigger, dialog } = await openDrawer();
+    fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
+    await screen.findByRole('heading', { name: '还没有任务' });
+    await waitFor(() => expect(screen.getByRole('heading', { name: '核心项目' })).toHaveFocus());
+    expect(trigger.isConnected).toBe(false);
+    expectModalReleased();
+    expect(screen.getByText('所选任务已不在新的任务图中，详情已关闭。')).toBeVisible();
+    expect(within(screen.getByRole('region', { name: '项目任务统计' })).getAllByText('0', { selector: '.stat-number' })).toHaveLength(6);
+    expect(screen.queryByRole('region', { name: '任务依赖链' })).toBeNull();
+  });
+
+  it('focuses the newly expanded root after refresh removes the selected chain', async () => {
+    graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([remaining]));
+    const { trigger, dialog } = await openDrawer();
+    fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
+    const remainingRoot = await screen.findByRole('button', { name: /^保留任务链/ });
+    await waitFor(() => expect(remainingRoot).toHaveFocus());
+    expect(trigger.isConnected).toBe(false);
+    expect(remainingRoot).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('region', { name: '保留任务链 的任务依赖图' })).toBeVisible();
+    expectModalReleased();
+  });
+
+  it('returns focus to a surviving task when the drawer closes normally', async () => {
+    graphRequest.mockResolvedValueOnce(graph());
+    const { trigger, dialog } = await openDrawer();
+    fireEvent.click(within(dialog).getByRole('button', { name: '关闭任务详情' }));
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expectModalReleased();
+  });
+});

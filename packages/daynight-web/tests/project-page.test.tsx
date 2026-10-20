@@ -164,7 +164,7 @@ describe("project dashboard", () => {
     await screen.findByText(`详情 ${B}`);
     fireEvent.click(screen.getByRole("button", { name: "刷新全图" }));
     await screen.findByRole("heading", { name: "还没有任务" });
-    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "核心项目" }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "核心项目" })));
     expect(number("任务总数")).toBe("0");
     expect(screen.queryByTestId("root-list")).toBeNull();
   });

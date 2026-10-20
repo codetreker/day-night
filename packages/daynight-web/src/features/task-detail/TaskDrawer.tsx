@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ApiError } from '../../api/client';
 import type { TaskStatus } from '../../api/types';
@@ -81,9 +81,13 @@ export const TaskDrawer = ({ projectId, taskId, snapshot, onSelectTask, onClose,
       document.removeEventListener('keydown', onKeyDown);
       if (!wasInert) root.removeAttribute('inert');
       document.body.style.overflow = previousOverflow;
-      callbacks.current.onRestoreFocus();
     };
   }, [projectId]);
+
+  useEffect(() => () => {
+    // Restore after sibling DOM removals so a disappearing trigger cannot capture focus.
+    callbacks.current.onRestoreFocus();
+  }, []);
 
   useLayoutEffect(() => {
     if (!dialogRef.current!.contains(document.activeElement)) closeRef.current!.focus();
