@@ -11,8 +11,14 @@ actual Copilot reasoning and GitHub effects.
 
 ## Decision
 
-`pnpm acceptance` builds the application and runs two independent installed
-suites. The review lifecycle suite packs and installs the application into a
+`pnpm acceptance` builds the application and runs independent review, self-update
+and project/task installed suites. The
+[project/task acceptance decision](2026-10-20-installed-project-task-acceptance.md)
+owns the third native suite and separate real-service path. Local and hosted
+validation pass with the original review and self-update workloads
+retained; [PR #55](https://github.com/codetreker/daynight/pull/55) owns review and
+integration status. The review lifecycle suite
+packs and installs the application into a
 project-local consumer, then drives its installed `daynight` command. It uses
 real Git and SQLite with controlled `gh` and Copilot executables. It injects no
 runtime or coordinator dependencies and adds no product test flags. The
@@ -63,7 +69,7 @@ keeps its own unchanged tests. The
 [acceptance report](../../../../docs/research/daynight-acceptance.md) owns the
 scenario receipts, commands, tested baselines and live-service limits.
 
-Both installed suites perform normal registry dependency resolution. The pnpm
+The existing installed suites perform normal registry dependency resolution. The pnpm
 store alone cannot satisfy a fresh consumer's offline metadata lookup after a
 frozen workspace install. The self-update registry controls package versions
 and tarballs while npm installs their real dependencies. The ordinary
@@ -71,7 +77,7 @@ and tarballs while npm installs their real dependencies. The ordinary
 inspected [pnpm resolver](https://github.com/pnpm/pnpm/blob/702ad5f860ffd50d64a3a711d9f8a3da16fc796e/resolving/npm-resolver/src/pickPackage.ts#L143-L179).
 
 Native CI runs the ordinary and installed commands and uploads only the
-environment, review lifecycle and self-update JSON receipts. The environment
+environment, review lifecycle, self-update and project/task JSON receipts. The environment
 manifest selects version and OS fields; it never serializes the full process
 report or environment. Self-update writes `.tmp/update-evidence.json` separately
 from the lifecycle receipt. The

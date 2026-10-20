@@ -33,26 +33,30 @@ the attachment's or matching image's `system-entities` array is extracted as JSO
 The entire inventory is never converted to JSON, so unrelated binary image aliases
 are not part of identity parsing.
 
-Before each detach, `hdiutil info -plist` must match the exact canonical fixture
-image path and its retained whole-image device. This prevents a reused device
-name from authorizing cleanup of another image. When attachment was attempted
-but its result is uncertain, the unique exact-image entry supplies recovery
-identity. Malformed output, ambiguous image or device entries, ownership changes
-and inspection failures remain errors and retain the fixture.
+Setup positively verifies that `hdiutil info -plist` reports the exact canonical
+fixture image and retained GPT root before granting ownership and starting the
+filesystem assertions. Before detach, current inventory must still match that
+image and root. When attachment was attempted but its result is uncertain, a
+unique positive exact-image observation supplies recovery identity; inventory
+absence without prior verified visibility cannot grant ownership. Malformed
+output, ambiguous entries, changed ownership and inspection failures retain the
+fixture.
 
-Cleanup uses at most three ordinary device-targeted detach attempts within the
-existing absolute 30-second budget, including inspection, diagnostics and pauses.
-Only confirmed C-locale `Resource busy` responses permit another attempt. The
-40-second hook, 600-second platform gate and eight APFS assertions remain
-unchanged. Diagnostics retain command status and bounded stdout/stderr, including
-when a mountpoint is no longer a filesystem or later cleanup succeeds. Image
-inspection reports only the fixture path, attached/absent state and device identity.
+The [finalization-window decision](2026-10-20-apfs-finalization-window.md) extends
+this device identity with positive visibility, three explicit image states and
+use of the existing observation deadline. Cleanup retains at most three ordinary
+device-targeted detach attempts within 30 seconds, including every query,
+diagnostic and pause. Only confirmed C-locale `Resource busy` permits another
+attempt. The original eight filesystem assertion bodies, 40-second hook and
+600-second platform gate remain unchanged; one additional same-user file-holder
+case validates real Busy and recovery with the same finalization promise.
 
-A successful detach is followed by inspection proving that the exact fixture
-image is absent. A vanished mountpoint alone cannot authorize directory removal.
-An already-absent image also permits removal when inspection establishes that
-state. Setup that never attempted attachment can remove its directory directly.
-No directory is removed while image ownership or attachment remains uncertain.
+Observation reports `mounted`, `unmounted_attached` or `absent`, scoped to the
+fixture path, retained root and current owned entities. A successful detach must
+be followed by verified exact-image absence; a vanished mountpoint alone cannot
+authorize deletion. Already-absent state permits removal only with previously
+verified ownership. Setup that never attempted attach can remove its directory
+directly. No directory is removed while ownership or attachment is uncertain.
 
 ## Alternatives
 

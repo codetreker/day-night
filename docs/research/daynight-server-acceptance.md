@@ -23,6 +23,83 @@ statement coverage strictly greater than 90%. The last gate reads the same raw
 profile using integer arithmetic, so exactly 90% fails regardless of display
 rounding. No product files, functions or `ForTest` suffixes are excluded.
 
+The [installed project/task extension](../../.agents/notes/implemented/testing/2026-10-20-installed-project-task-acceptance.md)
+passes local validation. The same check entry prepares one packed/installed CLI for Go
+command scenarios, retains the original go-cov arguments and strict profile
+comparison, then runs real default HTTP-budget probes outside Go's ten-minute
+test timer. The 20-minute Go job and its existing workload remain required. CLI
+requirements use `PT.V*` identifiers in the existing server receipt; the separate
+repository-root `.tmp/project-task-service-evidence.json` owns shared install
+identity, Go-phase/coverage result, production-budget probes and cleanup.
+[Client acceptance](daynight-acceptance.md#projecttask-installed-and-real-service-acceptance)
+owns those probe semantics; the [task record](../design/daynight-project-task-tasks.md#pt-t5)
+owns actual delivery and observed results. The local package `0.6.0` source was
+`c19b064` with `dirty=true`, distinct from the clean hosted build reported below.
+The complete gate passed 309 Go tests (109 top-level) and raw `1153/1155`
+statement coverage. Its installed CLI workflow passed with two service and 38 CLI
+processes reaped, its workspace and schema removed, no owned sessions, and an
+actual `200`/`409` concurrent PATCH pair. All six production-budget probes passed,
+including exact decoded limits and plus-one-byte refusals; their precise local
+observations belong to the linked client report. Hosted CI and review for this
+acceptance delivery are recorded by [PR #55](https://github.com/codetreker/daynight/pull/55);
+the hosted receipt below establishes the tested clean build separately.
+
+## Hosted installed CLI acceptance
+
+[Run 39428165296](https://github.com/codetreker/daynight/actions/runs/39428165296)
+passed all seven required checks for PR head
+`e9a634aca23710ffe46723fcdb2cf8e7a75d56bf`. The actual clean build revision in the
+server and installed receipts is `2e7b8da99cf4b5de6da9c8083446f84fd19f1daf`,
+with `dirty=false`. Go `1.27.2` and PostgreSQL `18.6` produced binary SHA-256
+`837f9dd3a990eb226db287127dc04c3223e5bd8fef5cc15fcf77d2c84dceef72`.
+The downloaded raw profile independently passes the strict checker at
+`1153/1155` statements.
+
+`installed_cli_project_task_workflow` passed in 10,348 ms with two service
+processes and 38 CLI processes started/reaped, its workspace and one schema
+removed, and no owned sessions. Competing PATCH requests returned one `200` and
+one `409`, with both request IDs retained. All six installed production-budget
+cases passed; single/cumulative exact decoded limits succeed, their plus-one-byte
+pairs fail with empty stdout, request timeout took 30,148 ms, and the advancing
+cursor workload reached its total limit after 300,136 ms and 1,194 requests.
+Every probe and the shared installation report successful cleanup with no
+composite failures. The [client report](daynight-acceptance.md#observed-hosted-pt-t5-evidence)
+owns the platform matrix and detailed budget table. [PR #55](https://github.com/codetreker/daynight/pull/55)
+owns current review and integration status; these receipts do not claim that it
+has merged or establish results for later revisions.
+
+## Current combined-main validation
+
+The [Go job in run 39446442068](https://github.com/codetreker/daynight/actions/runs/39446442068/job/118710295270)
+passed on direct commit `ec0d8aec9c00127595fe264d3df3bcf0b92db873`, with clean
+`gitSha = githubSha`. The complete mainline workflow passed all seven checks.
+This source includes the server route-assembly refactor from PR #58, installed
+CLI acceptance from PR #55 and the subsequent dashboard/native-test fixes.
+Build, vet, race, all 309 Go tests (109 top-level), nine checker cases and the
+unchanged go-cov gates passed. Independently checked raw coverage is
+**1154/1156 statements (99.8269896%)**, strictly above 90%, with no exclusions.
+Older 1153/1155 profiles below remain evidence for their own revisions.
+
+The [Go artifact](https://github.com/codetreker/daynight/actions/runs/39446442068/artifacts/12275524389)
+contains the raw profile, binary/process and installed-CLI receipts; its artifact
+digest is `436f1ee756f8eface4a3e1339dc5ab516e899824de7379f28484c96b08403175`.
+The binary SHA-256 is
+`7e16ad97369920381105eb7bd80318c5aa59104a4fbbb776c1129dc53ef2c621`;
+the raw profile SHA-256 is
+`28dcc529a383782fc1764480c17faf1c442e4d90a706760ee8c94f955f1603ab`.
+
+All 13 process-scenario groups passed: the original twelve plus the installed
+CLI workflow. All 21 server children were reaped, 13 schemas removed and owned
+sessions cleared. The installed CLI 0.6.1 workflow also reaped 38 CLI children
+and removed its workspace. All six production-budget probes passed: exact
+128/256MiB decoded limits succeed and plus-one-byte cases refuse; the request
+budget ended after 30,114ms with one request, and the command budget after
+300,142ms with 1,194 requests. Expected refusals returned exit 1 with empty
+stdout. Owned processes, sockets, servers and fixtures were cleaned. The
+[client acceptance report](daynight-acceptance.md#projecttask-installed-and-real-service-acceptance)
+owns probe semantics; the [web report](daynight-web-acceptance.md#current-direct-main-browser-result)
+owns the matching native/container browser, image and performance proof.
+
 ## Observed local evidence
 
 ### Service baseline

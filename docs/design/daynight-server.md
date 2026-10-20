@@ -361,7 +361,19 @@ HTTP 测试验证路由、DTO、错误映射、project 范围查找、分页筛�
 `DAYNIGHT_TEST_DATABASE_URL`。干净 checkout 先从根目录 frozen 安装 Node 24/pnpm
 10.34.5 依赖，Go 检查在任何 build/vet/race 前调用共享 `pnpm web:build` 发布
 资源；缺少工具、依赖或真实产物直接失败。命令 package 的 TestMain 每次构建新的 race binary，
-通过真实 HTTP、PostgreSQL、信号和进程重启执行验收，不复用旧的可执行文件。CI
+通过真实 HTTP、PostgreSQL、信号和进程重启执行验收，不复用旧的可执行文件。
+
+PT-T5 的安装 CLI 验收复用此 command-package fixture，新增
+`installed_cli_project_task_workflow` 场景，通过 `PT.V*` 要求编号对应 CLI 的真实
+project/task 操作、依赖推进、重启持久化及版本竞争。Node 编排入口在 Go
+覆盖率 gate 前准备一次安装，将同一产物用于 Go 场景及随后真实预算探针；原有
+go-cov 参数、race、critical 与 strict raw profile 检查保持原义。预算探针运行在
+Go 默认 10 分钟 test timer 之外，使用公开安装命令及默认 30 秒、5 分钟、128 MiB、
+256 MiB 限制；原有 Go 作业仍为 20 分钟。原始服务场景不被 CLI 场景替换，细节见
+[安装联调决策](../../.agents/notes/implemented/testing/2026-10-20-installed-project-task-acceptance.md)及
+[CLI 设计](daynight-project-task.md#验证与交付证据)。根目录
+`.tmp/project-task-service-evidence.json` 记录安装身份、Go/预算结果与清理，实际状态
+仍由 CLI 任务清单拥有。CI
 发布 `.tmp/acceptance-evidence.json` 和同次 `.tmp/coverage.out`；前者记录源版本、
 binary hash、场景及资源清理，CI 要求 checkout 干净且 Git revision 与 `GITHUB_SHA`
 一致。详细归属见[验收报告](../research/daynight-server-acceptance.md)。

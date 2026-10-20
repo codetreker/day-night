@@ -73,8 +73,13 @@ snapshot index refreshes every row and its statistics.
 
 The detail drawer uses a portal outside the application root, background inertness,
 body scroll ownership and a dynamic focus trap. Its lifetime is independent of
-relation selection. Closing restores the original node or the current root/page
-heading when that node is gone. Latest detail data never patches graph statistics.
+relation selection. Layout cleanup synchronously releases the keyboard listener,
+background inertness and scroll ownership. A separate passive unmount cleanup
+calls the latest restoration callback after sibling DOM deletion. It focuses the
+surviving original node, otherwise the current expanded-root button, otherwise
+the project H1. This ordering avoids selecting a still-connected node that the
+same commit will remove; the [focus-restoration decision](../bug-fix/2026-10-20-drawer-focus-restoration.md)
+records the failure and integration evidence. Latest detail data never patches graph statistics.
 Readiness, blocking, dependency, status, preview and timestamp differences produce
 a refresh notice; a new graph revision rereads the selected detail.
 

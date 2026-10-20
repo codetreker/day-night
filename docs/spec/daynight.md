@@ -1,7 +1,8 @@
 # Daynight 客户端需求
 
 状态：客户端入口、review、自更新、shell 补全、project 命令及配置、HTTP、仓库关联基础已实现；
-task 命令已实现并通过本地验证，完整服务验收待完成。
+task 命令、安装产物、真实服务及默认预算验收已完成并通过托管验证；
+集成状态见[PR #55](https://github.com/codetreker/daynight/pull/55)。
 可用命令和验证入口见[仓库 README](../../README.md)，完整交付范围见
 [project/task 需求](daynight-project-task.md)及[任务清单](../design/daynight-project-task-tasks.md)。
 

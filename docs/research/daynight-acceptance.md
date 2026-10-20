@@ -1,7 +1,12 @@
 # Daynight Acceptance Evidence
 
 Client acceptance exercises the toolkit through separate installed review
-lifecycle, installed self-update and real-shell completion suites. The
+lifecycle, installed self-update, installed project/task and real-shell completion
+suites. Project/task real-service integration and production-budget validation
+pass locally and in hosted validation.
+[PR #55](https://github.com/codetreker/daynight/pull/55) owns review and integration
+status; the [project/task task record](../design/daynight-project-task-tasks.md#pt-t5)
+owns functional completion and its evidence. The
 [client requirements](../spec/daynight.md) own command composition, package
 updates and shell completion; the [review requirements](../spec/daynight-review.md)
 own review execution and retained data. The lifecycle suite uses real Git and SQLite,
@@ -20,7 +25,7 @@ node packages/daynight/scripts/validation-environment.ts
 ```
 
 `pnpm check` runs type checking and ordinary tests. `pnpm acceptance` builds the
-package and runs both installed suites. The review lifecycle suite packs a
+package and runs three installed suites. The review lifecycle suite packs a
 tarball and installs it into a task-local consumer with the normal pnpm installer.
 The update suite installs packed fixture versions into isolated npm global
 prefixes inside its temporary directory. Dependency resolution requires package-
@@ -34,7 +39,7 @@ public command and reads SQLite through an independent connection. Product
 scheduling APIs are not replaced. Git transport is limited to the local fixture origin.
 
 The public client commands are root help/version, `update`, `completion` and the
-`review` group. Lifecycle registration uses `review add-repo`, monitoring uses `review run`,
+`review`, `project` and `task` groups. Lifecycle registration uses `review add-repo`, monitoring uses `review run`,
 and local status uses `review list` or `review ls`. Current validation must cover
 root/group/operation help without review dependencies, invalid former entry
 forms, the stable `dist/main.js` bin, a clean distribution after module moves,
@@ -91,6 +96,151 @@ digest and bytes while retaining the same PR session UUID. Six discovery
 children are recorded separately from the six review-agent invocations and five
 publications. These are controlled loading and lifecycle assertions; actual
 model activation has a separate native Copilot probe.
+
+## Project/task installed and real-service acceptance
+
+Status: local and hosted validation passed.
+[PR #55](https://github.com/codetreker/daynight/pull/55) owns review and integration
+status. This section separates the implemented paths from source-bound observations. The
+[acceptance decision](../../.agents/notes/implemented/testing/2026-10-20-installed-project-task-acceptance.md)
+owns the alternatives and lifecycle costs.
+
+The project/task native installed suite joins the existing review and updater suites in
+`pnpm acceptance`. The
+[`installed-cli.ts`](../../packages/daynight/test/fixtures/installed-cli.ts) fixture
+packs the source CLI, installs the tarball
+in an isolated consumer and drives that installation's public command with real
+Git and controlled HTTP. Linux, macOS and Windows must establish repository
+selection, normalization, binding/ignore persistence, locks and atomic replacement,
+complete JSON, refused writes and cleanup. The repository-root
+[`project-task.acceptance.ts`](../../packages/daynight/test/cli/project-task.acceptance.ts)
+writes `.tmp/project-task-evidence.json` to identify source, tarball and installation,
+scenario outcomes and owned resources. Existing review and updater assertions
+remain independent and required.
+
+Real Go/PostgreSQL validation uses the existing server command fixture and runs
+through `bash packages/daynight-server/scripts/check.sh` with an isolated
+`DAYNIGHT_TEST_DATABASE_URL`. The Node orchestrator builds and installs the CLI
+once, shares that installation with Go command scenarios and reuses it for budget
+probes. The Go scenarios use the fresh race binary, PostgreSQL 18.6, actual
+restart and observed database waiters; they verify project/task workflow,
+dependency refusal, full reads, persistence and competing expected versions.
+Their CLI requirement identifiers use the `PT.V*` namespace, distinct from the
+original service requirements. The scenario is
+`installed_cli_project_task_workflow`; the existing server receipt also records
+validated `installedCli` identity, CLI started/reaped counts, workspace removal,
+refusal request IDs and concurrent HTTP status/request IDs.
+
+After the unchanged go-cov/race/critical and strict raw-profile gate, public CLI
+probes run outside Go's default ten-minute timer. The six invocations all use installed
+`project list --json` with production defaults: a unique cursor advancing every
+250 ms until the five-minute total limit, a started response stalled until the
+30-second request limit, and paired decoded-byte boundaries. Valid gzip JSON
+uses whitespace padding so exact 128 MiB single-response and 256 MiB cumulative
+bodies succeed with one and three small unique project resources respectively;
+every continuation page remains protocol-valid. Each boundary plus one byte must
+fail with empty stdout. Probes also require no further pages after rejection,
+attributable errors and closed/reaped resources. Cumulative byte pages are 96, 96
+and 64 MiB, with the rejected case adding one byte only to the final page. Both
+deadline cases run concurrently while the four byte cases run sequentially.
+They do not introduce a product test switch or reduce the production budgets.
+
+The repository-root `.tmp/project-task-service-evidence.json` combines the shared
+installation identity, Go phase and raw-profile result, bounded probe counts and
+wire/decoded bytes, failures and cleanup. The server's existing acceptance receipt
+and raw coverage profile remain distinct. Native and service paths prove
+different requirements; neither controlled HTTP nor a suite's presence proves
+successful hosted validation.
+
+### Observed local PT-T5 evidence
+
+The local source was `c19b064b094aae6634ca6d62e943a73d22008262` with `dirty=true`,
+package `0.6.0` and Node `v24.19.0` on Linux. This identifies an implementation
+worktree, not the future delivery commit's clean source. The shared installed
+artifact recorded tarball SHA-256
+`9b2101ede96604a743d6eba5cce4ffc3b6b2b372c4409ffd5a07ad195c2086a0`
+and entry SHA-256
+`f97d234eb1bdcb56ad2dc1fe86adde5dc88da1bbf5eea93cc22c39d7aa71e552`.
+
+| Validation | Observed result |
+|---|---|
+| Type checking, build and ordinary tests | Passed; 1,510 tests passed and ten platform-specific tests skipped on Linux |
+| Installed suites | Review, updater and project/task all passed |
+| Final project/task native receipt | Ten scenario families, 69 HTTP requests; installation removed, children exited, servers closed, zero cleanup errors |
+| Go build, vet, race, fixed go-cov and strict raw profile | Passed; 309 tests, 109 top-level, `1153/1155` covered statements |
+| Actual service workflow | Go `1.27.2` and PostgreSQL `18.6`; 8,818 ms; workflow, restart, full reads and competing versions passed |
+| Workflow cleanup | Two service processes and 38 CLI processes started/reaped; workspace and one schema removed, owned sessions absent |
+| Concurrent PATCH | One actual HTTP `200`, one `409`; distinct request IDs retained |
+
+The six installed public-command budget outcomes were:
+
+| Probe | Decoded bytes / request count | Exit / stdout | Elapsed |
+|---|---|---|---|
+| Single response at limit | `134217728` bytes | `0`, 202 bytes | 952 ms |
+| Single response plus one byte | `134217729` bytes | `1`, empty | 813 ms |
+| Cumulative responses at limit | `268435456` bytes across `100663296 + 100663296 + 67108864` | `0`, 602 bytes | 1,543 ms |
+| Cumulative responses plus one byte | `268435457` bytes | `1`, empty | 1,540 ms |
+| Request deadline after headers | One request | `1`, empty | 30,104 ms |
+| Command deadline with progress | 1,187 requests, 1,186 completed pages | `1`, empty | 300,103 ms |
+
+Every probe records `passed=true`, `childReaped=true`, `socketsClosed=true`,
+`serverClosed=true` and `fixtureRemoved=true`. The final composite records
+`passed=true`, `installedFixtureRemoved=true` and `failures=[]`. Separate
+cancellation controls cover an already-aborted setup and an active pnpm process
+with a grandchild, preserving the original cancellation reason and removing the
+installation. Fixture Git commands disable external fsmonitor per command.
+
+After the Go gate, an independent SQL check found zero owned schemas and
+sessions. Budget directories and the shared installation were absent; the owned
+PostgreSQL container and anonymous volume were removed. These observations remain
+tied to the dirty local source; the hosted observations below identify their own
+clean build revision. PR #55 owns review and integration status.
+
+### Observed hosted PT-T5 evidence
+
+[Run 39428165296](https://github.com/codetreker/daynight/actions/runs/39428165296)
+passed all seven required checks for PR head
+`e9a634aca23710ffe46723fcdb2cf8e7a75d56bf`. Its receipts identify the actual clean
+merge build revision `2e7b8da99cf4b5de6da9c8083446f84fd19f1daf`, with
+`dirty=false`, package `0.6.0` and Node `v24.22.0` on every native CLI platform.
+All installed entry hashes match
+`f97d234eb1bdcb56ad2dc1fe86adde5dc88da1bbf5eea93cc22c39d7aa71e552`.
+The local dirty receipt above retains its own source identity.
+
+| Native platform | Project/task cases | Observed cleanup |
+|---|---|---|
+| Linux | Ten scenario families, 69 HTTP requests | Installation removed, children exited, servers closed, zero errors |
+| macOS | Ten scenario families, 69 HTTP requests | Installation removed, children exited, servers closed, zero errors |
+| Windows | Eight scenario families, 67 HTTP requests | Installation removed, children exited, servers closed, zero errors |
+
+Windows excludes the POSIX EACCES and actual POSIX SIGINT cases; those results
+are not claimed on Windows. Its eight common families still establish Git
+root/subdirectory discovery, worktrees and submodules, cache selection, locks,
+atomic files and refusal paths. Review, updater, completion, web and the Go
+workload retain their required checks.
+
+The hosted Go receipt reports Go `1.27.2`, PostgreSQL `18.6` and binary SHA-256
+`837f9dd3a990eb226db287127dc04c3223e5bd8fef5cc15fcf77d2c84dceef72`.
+The downloaded raw profile independently passes the strict check at `1153/1155`.
+The CLI workflow passed in 10,348 ms, with two service and 38 CLI processes
+started/reaped, workspace and schema removed, owned sessions absent, and actual
+concurrent PATCH statuses `200` and `409` with request IDs.
+
+| Hosted default-budget probe | Exit / stdout | Elapsed / requests |
+|---|---|---|
+| Exact 128 MiB single response | `0`, 202 bytes | 1,207 ms / one |
+| Single response plus one byte | `1`, empty | 849 ms / one |
+| Exact 256 MiB cumulative response | `0`, 602 bytes | 1,734 ms / three |
+| Cumulative response plus one byte | `1`, empty | 1,712 ms / three |
+| Request deadline after headers | `1`, empty | 30,148 ms / one |
+| Command deadline with valid progress | `1`, empty | 300,136 ms / 1,194 |
+
+The byte counts and gzip page construction match the local cases. Every hosted
+probe reports passed, child reaped, sockets/server closed and fixture removed;
+the shared installation was removed and the composite failure array is empty.
+These observations establish the tested source and workload. PR #55 owns the
+current review and integration state; this receipt does not assert that the PR
+has merged or extend a pass to a later source revision.
 
 ## Bundled review skill acceptance
 
@@ -337,7 +487,8 @@ presence alone is not a pass receipt.
 ## Evidence and verdict
 
 GitHub Actions runs the ordinary and installed suites on native Linux, macOS and
-Windows. Each native CLI job uploads three curated files:
+Windows. Each native CLI job uploads four curated files; the project/task receipt
+does not replace the existing ones:
 
 - `validation-environment.json`: checked-out revision, dirty flag, OS,
   architecture, Node/ABI/Node-API, pnpm, Git, gh and loaded SQLite versions.
@@ -346,6 +497,9 @@ Windows. Each native CLI job uploads three curated files:
 - `update-evidence.json`: controlled npm self-update scenarios, source package
   version and replacement result, distinct from review lifecycle and live-service
   evidence.
+- `project-task-evidence.json`: the new installed project/task suite's source,
+  tarball, installation, controlled HTTP/Git scenarios and cleanup. Its integration
+  and current result are owned by PT-T5.
 
 A separate `validation-probes.json` diagnostic artifact preserves command
 resolution, launcher, PID, timing, bounded output and failures even when complete
@@ -468,25 +622,71 @@ OS and architecture. Other distributions, architectures and musl require their
 own native receipt. The [state decision](../../.agents/notes/implemented/architecture/2026-10-17-durable-review-state.md)
 records the packaged binary choice.
 
-## Native APFS fixture ownership
+## Native APFS fixture finalization
 
 The [macOS job from run 39412445956](https://github.com/codetreker/day-night/actions/runs/39412445956/job/118593266497)
 reported 1,292 passing test cases and then failed APFS fixture finalization. An
-ordinary detach by mountpoint first reported `Resource busy`. The subsequent
-`lsof` command returned after 35 ms saying that the path was not a filesystem;
-`diskutil` returned after 39 ms without finding a disk. After the one-second
-pause, another detach by that same mountpoint failed with `No such file or
-directory`. These observations show that the mountpoint was no longer a usable
-attachment identity. They do not identify a holder, explain what changed the
-mount, or establish that the complete backing image was detached.
+ordinary detach by mountpoint first reported `Resource busy`. `lsof` returned
+after 35 ms saying the path was not a filesystem; `diskutil` returned after 39 ms
+without finding a disk. After one second, detach by the same mountpoint failed
+with `No such file or directory`. The missing mountpoint did not establish that
+the backing image was absent, motivating retained whole-image device identity.
 
-Fixture finalization retains the attached image's device identity and verifies
-the exact fixture image's attachment state before removing its directory. The
-[device-ownership decision](../../.agents/notes/implemented/bug-fix/2026-10-20-apfs-device-ownership.md)
-owns that mechanism. The eight native APFS assertions, ordinary detach policy,
-30-second finalization budget, three-attempt limit, 40-second hook and 600-second
-platform gate remain in force. The failed job remains failure evidence; a native
-pass for the repaired fixture requires a successful job at its tested revision.
+The later [macOS job from run 39431840901](https://github.com/codetreker/day-night/actions/runs/39431840901/job/118658576936)
+passed 1,518 test assertions but failed finalization after three actual Busy
+responses. The mountpoint had disappeared while exact-image inventory still
+reported attachment. Calls and two one-second pauses took about four seconds;
+the 30-second cleanup deadline and 40-second hook had not expired. The receipt
+identifies no holder and establishes no infrastructure cause or queued success.
+
+The [finalization-window decision](../../.agents/notes/implemented/bug-fix/2026-10-20-apfs-finalization-window.md)
+retains positive same-user inventory verification before filesystem assertions,
+explicit mounted/unmounted-attached/absent observations, and ordinary attempts
+distributed within the original deadline. The first Busy samples volume holders
+before refreshing inventory; exact-image root/child/raw-device diagnostics follow.
+A deterministic case charges 1.6 seconds to each inventory/extraction command,
+verifies that holder capture precedes those queries, and recovers in 22.4 seconds.
+Local Linux validation passed type checking, all 33 focused finalizer cases,
+1,524 ordinary CLI tests with eleven platform skips, and all three installed
+acceptance suites. This verifies local scheduling and packaged regression behavior;
+it does not establish native macOS cleanup behavior.
+
+Native validation must run the eight unchanged filesystem assertion bodies plus
+one same-user ordinary-file-holder case. Its receipt requires actual Busy, the
+known child PID in volume `lsof`, release acknowledged at least six seconds after
+Busy, monotonic timings for every detach, at most three ordinary calls, complete
+image absence and child exit. The test and teardown share one finalization
+promise, including rejection. The 120-second setup hook, 40-second teardown hook,
+30-second finalizer and 600-second platform gate remain unchanged. A successful
+controlled holder case establishes that path at the tested revision; it does not
+identify either historical holder or prove native `unmounted_attached` recovery.
+
+### Observed native finalization receipts
+
+[PR #59](https://github.com/codetreker/daynight/pull/59) passed all seven checks in
+[run 39443693696](https://github.com/codetreker/daynight/actions/runs/39443693696)
+and merged after approval of head `7a1c52bbd9f5f7ac56eda6ba5b9091c0c2f19d59`.
+Its actual macOS run passed all nine APFS cases: the original eight filesystem
+bodies and the controlled ordinary-file-holder case. The
+[direct-main macOS job](https://github.com/codetreker/daynight/actions/runs/39446442068/job/118710296375)
+repeated all nine on `ec0d8aec9c00127595fe264d3df3bcf0b92db873`.
+
+| Receipt | Actual holder PID | Release after Busy (ms) | Finalization elapsed (ms) |
+|---|---:|---:|---:|
+| PR #59 | 28409 | 6009.9 | 10645.5 |
+| Direct main `ec0d8ae` | 47878 | 6004.7 | 10315.3 |
+
+Each captured the actual PID in volume lsof, made two ordinary detach calls
+(Busy, success), confirmed exact-image absence and holder exit, and removed both
+owned fixtures. The runs used identical helper/caller blobs
+`5d8c2f824fbaa21d5d5ea6c6686b069dd7ab9f54` /
+`16b86d5c671436bfe653c178fd5bc618eda68e22`. The PR native CLI job passed 1,533
+cases with two platform N/A cases and three installed suites; direct main passed
+1,547 cases with the same two N/A cases and three installed suites, including
+subsequent publishing tests. Values are rounded for display; original monotonic
+receipts retain their precision. These observations establish mounted ordinary-
+file Busy and recovery at those revisions. The historical holders remain unknown;
+raw-device/eject holders and native unmounted-attached recovery are not proved.
 
 ## Native termination follow-up
 

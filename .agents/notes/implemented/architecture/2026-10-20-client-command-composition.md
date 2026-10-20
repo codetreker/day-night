@@ -65,7 +65,7 @@ command-composition scope. The adopted
 [project/task CLI design](2026-10-20-project-task-cli-design.md) now defines that
 consumer and its additive configuration and repository binding. Shared
 configuration, bounded HTTP, repository bindings and project commands are
-implemented; task command composition is implemented and locally validated. Its definition extends
+delivered; task command composition is delivered. Its definition extends
 shared value metadata for empty descriptions, fixed statuses, ordered repeated
 dependencies and inline text assignment. Adding these operations must preserve
 per-command loading and ownership so they do not become startup dependencies for

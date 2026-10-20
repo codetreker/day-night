@@ -1,7 +1,8 @@
 # Project 与 Task 客户端设计
 
 状态：共享配置、HTTP、仓库关联基础及 `project create/list/show` 已实现；
-Task 命令已实现并通过本地验证，完整 Go 服务联调待完成。
+Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已完成，并通过三原生
+平台及 Go 托管验证；集成状态见[PR #55](https://github.com/codetreker/daynight/pull/55)。
 本文描述采用的结构和交付机制，各项状态由任务清单拥有，当前可用命令见
 [仓库 README](../../README.md)。必需行为与编号验收由
 [客户端需求](../spec/daynight-project-task.md)拥有，服务行为由
@@ -366,9 +367,45 @@ Project 命令的实际编译入口已在受控 HTTP 条件下验证创建、完
 详情、原始 JSON、参数及服务错误、取消和依赖隔离。共享 runtime 测试覆盖配置读取
 取消、信号清理、callback 失败后的空 stdout、渲染后的最终期限检查及多请求累计
 预算。Task 的命令、API/仓库组合及完整渲染已通过本地专项和编译入口验证；静态
-补全在三种真实 shell 中通过新增 Task 场景。真实 Go/PostgreSQL CLI 全流程联调
-仍待 PT-T5 交付，原生 CI 和远端 review 结果以
-[任务清单](daynight-project-task-tasks.md)中的实际证据为准。
+补全在三种真实 shell 中通过新增 Task 场景。PT-T5 的真实 Go/PostgreSQL CLI
+全流程联调和默认预算场景已在本地通过，实际结果见[任务清单](daynight-project-task-tasks.md)。安装验证的
+分层、时间边界与替代方案见
+[安装联调决策](../../.agents/notes/implemented/testing/2026-10-20-installed-project-task-acceptance.md)。
+
+PT-T5 的原生路径将 project/task 安装 suite 加入既有 `pnpm acceptance`，三个
+原生平台的必选 suite 使用实际 pack/install 产物、真实 Git 和受控 HTTP 验证配置、自动发现、
+缓存、锁、原子替换、错误及完整 JSON；既有 review/update 两套 suite 保留。可复用
+fixture [`installed-cli.ts`](../../packages/daynight/test/fixtures/installed-cli.ts) 统一
+拥有打包、安装、launcher 身份和任务目录；原生 suite 为
+[`project-task.acceptance.ts`](../../packages/daynight/test/cli/project-task.acceptance.ts)。根目录
+`.tmp/project-task-evidence.json` 记录该路径的来源、场景与清理。
+
+服务路径的 Node 编排入口为
+`node packages/daynight/scripts/project-task-acceptance.ts`，由 Go 检查脚本调用；
+[`project-task-budgets.ts`](../../packages/daynight/scripts/project-task-budgets.ts)
+拥有默认预算场景。
+它构建并安装 CLI 一次，将安装身份传给 Go command-package 验收，复用既有 fresh
+race binary、隔离 PostgreSQL schema、listener、重启和数据库等待屏障。新场景
+`installed_cli_project_task_workflow` 通过要求编号 `PT.V1`、`PT.V3`、`PT.V5`、
+`PT.V6`、`PT.V7`、`PT.V8`、`PT.V9`、`PT.V10` 与 CLI 验收对应，保留原有服务
+场景及所属 package 覆盖率。Go receipt 的 `installedCli` 保存共享 helper 的 schema、
+source、包版本、tarball/entry hash、Node 和 launcher 身份；场景记录 CLI 启停
+数量、workspace 回收、拒绝 request ID 及并发请求的 200/409 结果。
+
+编排层原样执行固定 go-cov 参数及 strict raw coverage 检查，通过后才在 Go 默认
+10 分钟计时器之外运行六个公开安装 CLI 场景：持续推进 cursor 的 5 分钟总期限、
+响应开始后停顿的 30 秒期限，以及两组 gzip 解码字节边界配对。单响应精确
+128 MiB 和分页累计精确 256 MiB 均必须成功，各增加 1 字节必须拒绝。合法 JSON
+以空白补齐字节数；单响应成功结果为一个小型 project，累计成功结果为三个唯一
+project，各页均满足列表协议，失败 stdout 必须为空。
+累计场景的三页分别为 96、96、64 MiB，超限场景只在最后一页增加 1 字节，
+每页均低于单响应上限。两种期限场景并行运行，四个字节边界场景依次执行；
+所有场景共享默认生产预算，不注入更小限制。已有 20 分钟 Go 作业保留其全部 gate。根目录
+`.tmp/project-task-service-evidence.json` 记录共享安装身份、Go 命令/覆盖率结果、
+解码与传输字节、探针结果和进程/socket/目录清理。本地 Linux 安装路径、真实
+Go/PostgreSQL 流程及六个默认预算场景已通过。本地 receipt 保留 `c19b064` 的
+dirty 源码；托管 receipt 另记录 PR head、干净 build Git SHA 和产物身份，实际结果
+见任务清单与验收报告。review 与合并状态由 PR #55 拥有。
 
 源码、包元数据或构建输入交付时按既有版本策略提升 CLI 包版本，运行
 `pnpm typecheck`、`pnpm test`、`pnpm build` 及相关安装验收。文档变更校验链接、

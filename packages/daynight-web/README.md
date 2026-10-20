@@ -8,7 +8,8 @@ server for single-origin delivery. The [localhost deployment](../../deployment/l
 starts the full UI/API/database stack; [dev-ci](../../deployment/dev-ci/README.md)
 provides an isolated instance of the same production build. Production browser
 workflows and the fixed-capacity matrix pass in clean hosted CI with the
-long-dashed paint fix. PR #52 is merged and direct-main checks passed; completion is recorded in the
+long-dashed paint fix and the subsequent focus-restoration repair. PR #52 and
+PR #57 are merged with successful direct-main checks; completion is recorded in the
 [implementation tasks](../../docs/design/daynight-web-tasks.md).
 
 The [requirements](../../docs/spec/daynight-web.md) own visible behavior and the
@@ -144,7 +145,7 @@ The required web CI job archives `daynight-web-acceptance` separately from raw
 coverage. The static SVG renderer's complete local run passed 12 native scenarios,
 eight container scenarios and all three graphs’ five timing repetitions, including
 independent size refusals, actual SVG alignment across pan/zoom/root changes and
-confirmed cleanup/recovery. The current dashed-paint run's largest local opening was 1875.1ms; every local
+confirmed cleanup/recovery. The recorded dashed-paint run's largest local opening was 1875.1ms; every local
 detail/zoom/pan measurement was below 300ms. The clean hosted PR #52 run also
 passed every scenario and repetition: maximum openings were 484.7ms, 1320.0ms
 and 1506.8ms for chain, merge and shared graphs. All local feedback was below

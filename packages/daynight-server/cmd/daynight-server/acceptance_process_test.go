@@ -41,18 +41,24 @@ type acceptanceEvidence struct {
 	Build        string                `json:"build"`
 	Result       string                `json:"result"`
 	Scenarios    []*acceptanceScenario `json:"scenarios"`
+	InstalledCLI *acceptanceCLIReceipt `json:"installedCli,omitempty"`
 }
 
 type acceptanceScenario struct {
-	Name             string   `json:"name"`
-	Requirements     []string `json:"requirements"`
-	Result           string   `json:"result"`
-	DurationMS       int64    `json:"durationMs"`
-	ProcessesStarted int      `json:"processesStarted"`
-	ProcessesReaped  int      `json:"processesReaped"`
-	SchemasRemoved   int      `json:"schemasRemoved"`
-	SessionsRemoved  bool     `json:"sessionsRemoved"`
-	Cleanup          string   `json:"cleanup"`
+	Name                  string                 `json:"name"`
+	Requirements          []string               `json:"requirements"`
+	Result                string                 `json:"result"`
+	DurationMS            int64                  `json:"durationMs"`
+	ProcessesStarted      int                    `json:"processesStarted"`
+	ProcessesReaped       int                    `json:"processesReaped"`
+	CLIProcessesStarted   int                    `json:"cliProcessesStarted,omitempty"`
+	CLIProcessesReaped    int                    `json:"cliProcessesReaped,omitempty"`
+	CLIWorkspaceRemoved   bool                   `json:"cliWorkspaceRemoved,omitempty"`
+	CLIRefusalRequestIDs  []string               `json:"cliRefusalRequestIds,omitempty"`
+	ConcurrentCLIRequests []acceptanceCLIRequest `json:"concurrentCliRequests,omitempty"`
+	SchemasRemoved        int                    `json:"schemasRemoved"`
+	SessionsRemoved       bool                   `json:"sessionsRemoved"`
+	Cleanup               string                 `json:"cleanup"`
 }
 
 var binaryAcceptance *acceptanceEvidence
@@ -207,7 +213,7 @@ func acceptanceCase(t *testing.T, name string, requirements []string, operation 
 				if t.Failed() {
 					scenario.Result = "failed"
 				}
-				if scenario.ProcessesStarted == scenario.ProcessesReaped && scenario.SchemasRemoved > 0 && scenario.SessionsRemoved {
+				if scenario.ProcessesStarted == scenario.ProcessesReaped && scenario.CLIProcessesStarted == scenario.CLIProcessesReaped && (scenario.CLIProcessesStarted == 0 || scenario.CLIWorkspaceRemoved) && scenario.SchemasRemoved > 0 && scenario.SessionsRemoved {
 					scenario.Cleanup = "passed"
 					cleanupPassed = true
 				} else {

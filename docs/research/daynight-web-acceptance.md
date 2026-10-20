@@ -5,7 +5,111 @@ The [requirements](../spec/daynight-web.md) own W1–W12, the
 [task document](../design/daynight-web-tasks.md) records delivery status.
 This report owns observed validation and its practical limits.
 
-## Delivered source validation
+## Current delivered validation
+
+The six dashboard tasks are complete. The production dashboard delivered in
+PR #52 includes the subsequently merged focus-restoration fix from PR #57.
+That runtime passed 314 functional tests and 36 native-tooling cases, with raw
+V8 coverage 718/724 across all 19 product files and 100% functions. The matching
+current Go gate passed 309 tests and nine checker cases with raw 1154/1156
+statements after the route-assembly refactor. Both independent totals are strictly
+above 90%; the [server report](daynight-server-acceptance.md#current-combined-main-validation)
+records its exact profile, binary and cleanup proof. The long-dashed paint
+decomposition, full graph/arrow semantics and original 3,000ms/300ms budgets are
+unchanged.
+
+The complete aggregate also requires native CLI, shell completion and Go.
+[PR #59](https://github.com/codetreker/daynight/pull/59) repaired APFS finalization
+and merged as `ec0d8aec9c00127595fe264d3df3bcf0b92db873` after exact-head approval
+and all seven checks. The combined [direct-main run 39446442068](https://github.com/codetreker/daynight/actions/runs/39446442068)
+passed all six verification jobs and the required aggregate on the actual
+merged commit. Current web/native results follow; earlier source-specific
+successful receipts remain separate.
+
+### Current direct-main browser result
+
+The [web job](https://github.com/codetreker/daynight/actions/runs/39446442068/job/118710295965)
+tested clean direct commit `ec0d8aec9c00127595fe264d3df3bcf0b92db873`, with
+`gitSha = githubSha`, `dirty: false` and tree
+`0efb3bf78c2cab44abe26df1addd05866ee90d91`. Run
+`20261020151625-6d3b9ebd-d614-4a63-92e0-dbdd9f1c4af7` passed all 12 native
+and eight production-gateway scenarios on their first attempt, with no skips,
+retries, flaky or unexpected outcomes. It passed all fifteen capacity observations,
+independent 1,001/0 and 1,000/5,001 complete 409 refusals, geometry/phase and
+focus checks. Both targets used bundled Chromium 156.0.8078.4 with CI identity
+and no executable override. All native/container/aggregate cleanup and separate
+outer recovery passed; the native process was absent and recorded Docker
+resources were removed.
+
+Native binary SHA-256 is
+`5a213b04a5b4ca75e7fc82b13b34f27d642acca2928b25cfc13d47dde4c75a10`;
+the running image is
+`sha256:295cf3981281718ae28019add3ceb4522fe3a3d1f17cf7e517a161aa0b7c5672`.
+The [acceptance artifact](https://github.com/codetreker/daynight/actions/runs/39446442068/artifacts/12276537375)
+contains original reports, 13 native and eight container PNGs, traces, performance,
+image and cleanup/recovery receipts. The
+[coverage artifact](https://github.com/codetreker/daynight/actions/runs/39446442068/artifacts/12275673466)
+records 718/724 statements across all 19 current product files, without exclusions.
+
+| Dataset | Max open (ms) | Max layout/render (ms) | Max detail/zoom/pan (ms) |
+|---|---|---|---|
+| Chain, 1,000/999 | 376.7 | 184.2 / 190.0 | 60.4 / 36.3 / 39.9 |
+| Merge, 1,000/5,000 | 900.3 | 635.3 / 315.9 | 98.1 / 53.5 / 52.9 |
+| Shared, 1,000/5,000 | 1142.0 | 661.6 / 493.0 | 160.3 / 35.3 / 32.6 |
+
+Every dataset expanded five times. All unrounded observations passed the original
+3,000ms/300ms budgets. Network timings remain separate, and column maxima can
+come from different repetitions. Fixed-topology success does not promise the
+same latency for arbitrary DAGs.
+
+### Native CI prerequisite
+
+The earlier documentation run's [macOS failure](https://github.com/codetreker/daynight/actions/runs/39431840901/job/118658576936)
+was preserved and diagnosed. PR #59 passed exact-head approval and all seven
+checks, then its native fix passed the direct-main macOS job. Actual execution
+retained all eight filesystem bodies and added the controlled ninth holder case.
+The [native acceptance owner](daynight-acceptance.md#observed-native-finalization-receipts)
+records both actual PIDs, six-second releases, two ordinary detach calls,
+exact-image absence and holder exit. The original holder remains unknown; the
+controlled mounted regular-file case does not prove raw-device/eject ownership
+or native unmounted-attached recovery.
+
+## Focus-restoration repair validation
+
+The focused repair separates synchronous modal teardown from passive unmount
+focus restoration. The real ProjectPage/RootList/TaskDrawer integration suite
+covers refresh to an empty project/H1, refresh to a new current root, and normal
+close to the surviving trigger; only the canvas is mocked. The empty-project
+case failed before the source fix after the standard waitFor deadline, exposing
+the original layout-cleanup ordering. Earlier isolated drawer mocks used passive
+cleanup and could hide that production ordering. The [decision note](../../.agents/notes/implemented/bug-fix/2026-10-20-drawer-focus-restoration.md)
+records the mechanism and primary React references.
+
+The repaired source passed typechecking, 27 focused cases, all 314 functional
+and 36 native-tooling cases. Raw V8 coverage is 718/724 across all 19 product
+files, with 100% function coverage and no product exclusions. Production run
+`20261020140643-80db109c-7817-46a5-87dc-822d883b4dfd` passed all 12 native
+and eight production-gateway scenarios, every graph's five repetitions,
+independent limits and complete paint-piece geometry/phase checks. Native,
+container and aggregate cleanup passed. Separate outer recovery also passed,
+confirmed the native process absent and owned Docker resources removed, and
+preserved the original result.
+
+Its source is base `d920e4bd2ef29d033cf95b63a533c113de33dc58` with `dirty: true`
+and no GitHub SHA. Bundled Chromium 156.0.8078.4 was used without an executable
+override. Native binary SHA-256 is
+`185a92ae40c321274fd6393c178e10ec6a843159925f09ef59b9bf8119efe9d2`;
+the running production image is
+`sha256:a104f4e9fc04bac525152d9793e60613cfef78d4ccded1df6e24e6493ddfbea0`.
+These are local focused-repair observations. [PR #57](https://github.com/codetreker/daynight/pull/57)
+subsequently passed all seven checks in [run 39438395056](https://github.com/codetreker/daynight/actions/runs/39438395056)
+and merged as `6f2dce3ce23b73e29f51a719da4d774e53c42845`. Its
+[direct-main run 39439839782](https://github.com/codetreker/daynight/actions/runs/39439839782)
+also passed every required check. The three real focus regressions and raw
+718/724 coverage belong to the repaired runtime; the earlier 311-test/716/722
+records below remain qualified by their own source revisions.
+
+## Dashboard delivery source (PR #52)
 
 [PR #52](https://github.com/codetreker/daynight/pull/52) merged as
 `64b69a3ab864f99f6914b9217dbfbebde60345aa` at 2026-10-20 13:24:32 UTC after
@@ -57,7 +161,7 @@ waits no greater than 0.262ms. Whole-trace raster maxima stay at or below
 not merely input scheduled after an unchanged long frame. Earlier failed hosted
 revisions and dirty local receipts below remain distinct evidence.
 
-### Direct-main production validation
+### PR #52 direct-main production validation
 
 [Mainline run 39430138740](https://github.com/codetreker/daynight/actions/runs/39430138740)
 passed all six verification jobs and the aggregate on direct commit
@@ -78,7 +182,7 @@ The [main acceptance artifact](https://github.com/codetreker/daynight/actions/ru
 contains all raw reports, 13 native and eight container PNG attachments,
 performance/traces, exact running-image identity and cleanup receipts.
 The [main coverage artifact](https://github.com/codetreker/daynight/actions/runs/39430138740/artifacts/12267962742)
-again records 716/722 statements across all 19 current product files. The direct-
+again records 716/722 statements across all 19 product files at that revision. The direct-
 main Go gate records 1153/1155 statements and the complete 307-test/nine-checker
 and process-resource result in the [server report](daynight-server-acceptance.md).
 
@@ -94,12 +198,12 @@ native process absent and recorded Docker resources removed, preserving the
 original evidence. These results close W-T6 and the six-task dashboard delivery;
 they do not change the separate project/task CLI acceptance status.
 
-## Recorded local validation
+## Recorded dashed-paint local validation
 
 The dashed-paint source passed build/typechecking, 311 functional tests and 36
 Node tool tests with Node 24 and pnpm 10.34.5. The tool cases include the earlier
 coverage/publication checks, browser-report/performance/process identity checks
-and three Dagre differential regressions. The current complete production-browser
+and three Dagre differential regressions. The recorded complete production-browser
 run below also passed; its local identity remains distinct from hosted CI. The raw V8 report contains
 716 covered statements out of 722 across all 19 product TypeScript/TSX files
 (about 99.17%), with 100% function coverage. The new dashes.ts helper is included. Exact integer comparison confirms coverage strictly above 90%.
@@ -665,4 +769,5 @@ scope. W-T4 preview and W-T5 HTTP smoke evidence remain historical observations;
 they are not substitutes for the delivered-source full hosted result. The
 required aggregate retains every native CLI platform, dedicated Linux shell
 completion, Go and web. Fixed-topology success does not establish arbitrary-DAG
-latency or the separate project/task CLI's remaining acceptance.
+latency. The separately delivered project/task CLI has its own
+[acceptance evidence](daynight-acceptance.md#projecttask-installed-and-real-service-acceptance).
