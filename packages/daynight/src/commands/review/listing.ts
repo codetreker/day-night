@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readConfigurationSource } from "../../config/files.js";
 import { parseConfiguration, remoteIdentity } from "./config.js";
 import { readReviewListingSnapshot } from "./store.js";
 import type { ReviewConfiguration } from "./config.js";
@@ -113,12 +113,7 @@ export const formatReviewListing = (
 };
 
 export const listReviews = async (paths: ReviewPaths): Promise<string> => {
-  let source: string;
-  try {
-    source = await readFile(paths.configFile, "utf8");
-  } catch (cause) {
-    throw new Error(`Cannot read configuration file ${paths.configFile}.`, { cause });
-  }
+  const source = await readConfigurationSource(paths);
   let configuration: ReviewConfiguration;
   try {
     configuration = parseConfiguration(source, paths);

@@ -34,6 +34,11 @@ Copilot 作为子进程启动。
 所在目录解析；每个仓库必须具有 `path`。并发审查 Worker 数量的配置项名为
 `maxConcurrentWorker`。每个配置的仓库分别维护自己的初始化状态和 PR 状态。
 
+同一文件可包含已登记的其他客户端字段，例如 `serverUrl`；review 只校验自己的
+字段值。缺失或无效 server 地址不阻塞 review，YAML 语法、重复键和未知顶层字段
+仍须报错。运行和列表要求已登记 review 仓库；添加命令允许向仅含 server 配置的
+文件登记首个仓库，并保留已有字段、注释及原有 review 字段语义。
+
 `daynight review add-repo <remote> [--path <path>]` 负责读取、校验和保存配置。配置不存在时
 自动创建；已有配置中的其他设置和 YAML 注释须保留。命令不执行 clone、认证检查、
 GitHub 查询、SQLite 初始化或 PR 初始化。运行中的 daemon 在下次启动时读取新配置；

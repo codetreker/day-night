@@ -1,7 +1,7 @@
 # Daynight 客户端需求
 
-状态：客户端入口、review、自更新和 shell 补全已实现；project/task CLI 方案已确认，
-实现未开始。
+状态：客户端入口、review、自更新、shell 补全及 project/task 的配置与 HTTP 基础已实现；
+仓库关联和 project/task 命令待完成。
 可用命令和验证入口见[仓库 README](../../README.md)，待实现范围见
 [project/task 需求](daynight-project-task.md)及[任务清单](../design/daynight-project-task-tasks.md)。
 

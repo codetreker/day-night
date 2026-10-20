@@ -1,6 +1,6 @@
-import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { parseDocument } from "yaml";
+import { parseConfigurationDocument } from "../../config/document.js";
+import { readConfigurationSource } from "../../config/files.js";
 import { ancestorIdentities, missingPathsReferToSameDirectory, pathsEqual, pathsOverlap, resolvePhysicalDirectory } from "../../platform/filesystem.js";
 import type { ReviewPaths } from "./paths.js";
 import type { PathApi, PhysicalDirectory } from "../../platform/filesystem.js";
@@ -169,25 +169,6 @@ const validateRepositoryPaths = (
   }
 };
 
-export const parseConfigurationDocument = (
-  source: string,
-  runtimePaths: ReviewPaths,
-): ReturnType<typeof parseDocument> => {
-  const document = parseDocument(source, {
-    strict: true,
-    uniqueKeys: true,
-    stringKeys: true,
-    prettyErrors: false,
-  });
-  const problems = [...document.errors, ...document.warnings];
-  if (problems.length !== 0) {
-    throw new Error(`Invalid YAML in ${runtimePaths.configFile}.`, {
-      cause: new AggregateError(problems, "YAML configuration was rejected."),
-    });
-  }
-  return document;
-};
-
 export const resolveRepositoryRoot = (
   configuredRoot: unknown,
   runtimePaths: ReviewPaths,
@@ -214,22 +195,28 @@ const validateRepositoryRoot = (value: unknown, pathApi: PathApi): string => {
   return root;
 };
 
-export const parseConfiguration = (
+const parseReviewConfiguration = (
   source: string,
   runtimePaths: ReviewPaths,
-  pathApi: PathApi = path,
+  pathApi: PathApi,
+  allowMissingRepositories: boolean,
 ): ReviewConfiguration => {
-  const document = parseConfigurationDocument(source, runtimePaths);
-  let parsed: unknown;
-  try {
-    parsed = document.toJS();
-  } catch (cause) {
-    throw new Error(`Cannot decode YAML in ${runtimePaths.configFile}.`, { cause });
-  }
-  const mapping = asMapping(parsed, "Configuration");
-  validateKeys(mapping, [...Object.keys(configurationDefaults), "repositoryRoot", "repositories"], "Configuration");
+  const { mapping } = parseConfigurationDocument(source, runtimePaths);
   if (Object.hasOwn(mapping, "repositoryRoot")) {
     validateRepositoryRoot(mapping.repositoryRoot, pathApi);
+  }
+  const settings = {
+    pollIntervalMs: positiveInteger(mapping, "pollIntervalMs"),
+    maxConcurrentWorker: positiveInteger(mapping, "maxConcurrentWorker"),
+    agentTimeoutMs: positiveInteger(mapping, "agentTimeoutMs"),
+    maxAttempts: positiveInteger(mapping, "maxAttempts"),
+    retryDelayMs: positiveInteger(mapping, "retryDelayMs"),
+  };
+  if (!Object.hasOwn(mapping, "repositories")) {
+    if (allowMissingRepositories) {
+      return { ...settings, repositories: [] };
+    }
+    throw new Error("Review repositories are not configured; use daynight review add-repo.");
   }
   if (!Array.isArray(mapping.repositories) || mapping.repositories.length === 0) {
     throw new Error("repositories must be a nonempty sequence.");
@@ -260,14 +247,16 @@ export const parseConfiguration = (
   });
   validateRepositoryPaths(repositories, repositories.map((repository) => repository.path), runtimePaths.stateDirectory, pathApi);
   return {
-    pollIntervalMs: positiveInteger(mapping, "pollIntervalMs"),
-    maxConcurrentWorker: positiveInteger(mapping, "maxConcurrentWorker"),
-    agentTimeoutMs: positiveInteger(mapping, "agentTimeoutMs"),
-    maxAttempts: positiveInteger(mapping, "maxAttempts"),
-    retryDelayMs: positiveInteger(mapping, "retryDelayMs"),
+    ...settings,
     repositories,
   };
 };
+
+export const parseConfiguration = (
+  source: string,
+  runtimePaths: ReviewPaths,
+  pathApi: PathApi = path,
+): ReviewConfiguration => parseReviewConfiguration(source, runtimePaths, pathApi, false);
 
 const validatePhysicalRepositoryPaths = async (
   configuration: ReviewConfiguration,
@@ -317,21 +306,16 @@ const validatePhysicalRepositoryPaths = async (
 export const loadConfiguration = async (
   runtimePaths: ReviewPaths,
 ): Promise<ReviewConfiguration> => {
-  let source: string;
-  try {
-    source = await readFile(runtimePaths.configFile, "utf8");
-  } catch (cause) {
-    throw new Error(`Cannot read configuration file ${runtimePaths.configFile}.`, { cause });
-  }
-  return validateConfigurationSource(source, runtimePaths);
+  return validateConfigurationSource(await readConfigurationSource(runtimePaths), runtimePaths);
 };
 
-export const validateConfigurationSource = async (
+const validateReviewConfigurationSource = async (
   source: string,
   runtimePaths: ReviewPaths,
+  allowMissingRepositories: boolean,
 ): Promise<ReviewConfiguration> => {
   try {
-    const configuration = parseConfiguration(source, runtimePaths);
+    const configuration = parseReviewConfiguration(source, runtimePaths, path, allowMissingRepositories);
     const [stateDirectory, ...repositoryDirectories] = await Promise.all([
       resolvePhysicalDirectory(runtimePaths.stateDirectory),
       ...configuration.repositories.map((repository) => resolvePhysicalDirectory(repository.path)),
@@ -342,3 +326,13 @@ export const validateConfigurationSource = async (
     throw new Error(`Invalid configuration file ${runtimePaths.configFile}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
   }
 };
+
+export const validateConfigurationSource = async (
+  source: string,
+  runtimePaths: ReviewPaths,
+): Promise<ReviewConfiguration> => validateReviewConfigurationSource(source, runtimePaths, false);
+
+export const validateRegistrationConfigurationSource = async (
+  source: string,
+  runtimePaths: ReviewPaths,
+): Promise<ReviewConfiguration> => validateReviewConfigurationSource(source, runtimePaths, true);

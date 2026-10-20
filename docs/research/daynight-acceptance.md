@@ -128,8 +128,8 @@ audit.
 
 Local validation on 2026-10-20 used working-tree source package `0.4.0` on Linux
 x64 with Node `v24.19.0` and pnpm `10.34.5`. Type checking passed. The ordinary
-suite passed 833 tests with ten existing platform skips across 30 files: 29 files
-passed and one was skipped. Its recorded duration was 5.06 seconds. The completion
+suite passed 965 tests with ten existing platform skips across 35 files: 34 files
+passed and one was skipped. Its recorded duration was 6.34 seconds. The completion
 receipt reports `passed: true` for 138 PTY scenarios: 46 each on GNU Bash `4.2.0(2)-release`,
 GNU Bash `5.2.21(1)-release` and zsh `5.9`. The scenarios check actual inserted
 text and resulting argv, including quoted command names, special-character
@@ -145,11 +145,11 @@ toolchain and interactive-shell results. Hosted completion results belong to the
 CI job and artifact for their exact source revision; a local receipt does not
 substitute for that result or establish native macOS or Windows shell behavior.
 
-The installed acceptance suites for source package `0.4.0` passed the packaged
-review lifecycle and real-npm self-update. A focused installed-package check also
-passed completion help and script generation. These installed checks establish
-packaging and generation; the 138-scenario PTY matrix records built-source
-interactive insertion behavior for that local run.
+The two installed acceptance suites for source package `0.4.0` passed in 14.45
+seconds, covering the packaged review lifecycle, real-npm self-update, completion
+help and script generation. These installed checks establish packaging and
+generation; the 138-scenario PTY matrix records built-source interactive insertion
+behavior for that local run.
 
 ## Client composition and existing-data evidence
 
@@ -288,7 +288,7 @@ and do not establish that repair's behavior.
 
 | Evidence | Observed result |
 |---|---|
-| Shell completion local validation, 2026-10-20 | Working-tree source package `0.4.0` on Linux x64: type checking, 833 ordinary tests with ten existing platform skips in 5.06 seconds, both installed suites and focused packaged completion generation; 138 actual Tab scenarios, 46 each on GNU Bash `4.2.0(2)-release`, Bash `5.2.21(1)-release` and zsh `5.9`; clean missing-`compinit` refusal, plus fresh and cached local toolchain preparation; hosted results belong to the exact revision's completion job and artifact |
+| Shell completion local validation, 2026-10-20 | Working-tree source package `0.4.0` on Linux x64: type checking, 965 ordinary tests with ten existing platform skips in 6.34 seconds, both installed suites including packaged completion generation in 14.45 seconds; 138 actual Tab scenarios, 46 each on GNU Bash `4.2.0(2)-release`, Bash `5.2.21(1)-release` and zsh `5.9`; clean missing-`compinit` refusal, plus fresh and cached local toolchain preparation; hosted results belong to the exact revision's completion job and artifact |
 | Client composition local validation, 2026-10-20 | Working-tree source package `0.3.0` on Linux x64: type checking, clean build with obsolete-output rejection, 768 ordinary tests with ten skips in 6.11 seconds, and both installed suites in 15.61 seconds; 35 review scenarios plus 14 real-npm update scenarios, including independent existing-schema listing reuse |
 | Self-update focused local validation, 2026-10-20 | Linux x64 passed all fourteen controlled real-npm scenarios from working-tree source package `0.2.4` in 8.03 seconds, using Node `v24.19.0` and npm `12.0.2`; separate from the review lifecycle baseline and native hosted results |
 | Package `0.2.1` CI-admission local validation, 2026-10-18 | Linux x64 passed type checking, 662 ordinary tests with eight APFS skips, build and all 33 installed scenarios |

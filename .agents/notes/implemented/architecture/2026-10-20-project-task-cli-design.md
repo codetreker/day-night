@@ -15,13 +15,14 @@ servers or a changed repository origin.
 The adopted [requirements](../../../../docs/spec/daynight-project-task.md) and
 [design](../../../../docs/design/daynight-project-task.md) define independent
 `project` and `task` command modules in the existing client package. This record
-delivers the confirmed design; the command implementation remains pending. The
+records the adopted design. Shared configuration and the bounded HTTP foundation
+are implemented; repository bindings and command entry points remain pending. The
 [task breakdown](../../../../docs/design/daynight-project-task-tasks.md) owns
 implementation status, dependencies, file ownership and completion evidence.
 
 The global YAML gains an additive `serverUrl` origin. Shared document reading
 and command-specific validation preserve the existing review fields and state
-locations. Server commands can run with only that field; help, update and review
+locations. The server configuration projection can load only that field; help, update and review
 retain their independent execution requirements. The
 [command composition decision](2026-10-20-client-command-composition.md) remains
 the owner of lazy command dispatch. Its original source reorganization preserved
@@ -50,7 +51,11 @@ resource validation. Request cancellation and failures remain visible; failed
 writes are not automatically retried. Complete paginated JSON is emitted only
 after every page has succeeded. Whole-command deadlines and response-byte
 budgets bound complete scans; reaching a limit fails without partial output,
-while an already-sent write can still have an unconfirmed outcome.
+while an already-sent write can still have an unconfirmed outcome. The HTTP
+foundation uses one disposable operation for shared deadlines and byte counters,
+strict response DTOs and complete opaque-cursor traversal. Task versions use
+`bigint` internally and retain JSON numeric int64 precision on the wire. Bounded
+response cleanup preserves both the original failure and cleanup errors.
 
 ## Alternatives
 
@@ -80,10 +85,10 @@ a future server lookup must retain those equality and duplicate semantics.
 ## Consequences
 
 The confirmed design is documented separately from shipped CLI behavior. Current
-commands provide review, update and shell completion; project/task commands
-remain pending until implementation and acceptance complete. Future
-implementation updates the status owners and the package version under existing
-release rules.
+commands provide review, update and shell completion; project/task entry points
+and their acceptance remain pending. The common configuration and HTTP modules
+are available for the remaining implementation tasks. Future implementation
+updates the status owners and the package version under existing release rules.
 
 Ordinary commands can infer a repository's project after one complete discovery
 and then validate it by ID. The cache remains disposable and scoped to server,
