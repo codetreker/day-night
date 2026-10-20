@@ -31,6 +31,16 @@ and pool closure. Startup applies the embedded migrations before accepting reque
 One pinned connection holds a session advisory lock across version checks and all
 migration transactions; unknown versions, gaps and checksum mismatches stop startup.
 
+## Local Docker deployment
+
+From the repository root, run `bash deployment/localhost/up.sh` to build and
+start this API with PostgreSQL and wait for readiness. Only Docker is required
+on the host. The [deployment guide](../../deployment/localhost/README.md) owns
+prerequisites, API examples, port selection and persistence/teardown commands.
+The gateway publishes host `127.0.0.1:8787` and forwards TCP to the server's
+loopback listener in their shared network namespace; the database has no
+published host port. Startup uses this module's embedded migrations.
+
 ## Build and run
 
 Go **1.27.2** and `pgx/v5` **5.11.0** are pinned. From this directory:
