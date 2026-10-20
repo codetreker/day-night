@@ -46,9 +46,11 @@ so the updater itself does not load the SQLite native addon it may replace. No
 review state, sessions or locks are opened.
 
 The [requirements](../../../../docs/spec/daynight.md#c4-自更新) own observable
-behavior, the [design](../../../../docs/design/daynight.md#npm-全局自更新) owns
-mechanisms, and the [acceptance report](../../../../docs/research/daynight-acceptance.md#controlled-npm-self-update-acceptance)
-owns execution evidence. Package publication remains the independent manual
+behavior, and the [design](../../../../docs/design/daynight.md#npm-全局自更新)
+owns mechanisms. The [repository validation guide](../../../../README.md#validation)
+owns repeatable acceptance commands and receipt meanings; the corresponding PR
+and CI run retain execution evidence for their tested revision. Package
+publication remains the independent manual
 [trusted-publishing workflow](../process/2026-10-20-npm-trusted-publishing.md).
 
 ## Alternatives

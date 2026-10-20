@@ -61,7 +61,12 @@ same production build and gateway with disposable test data.
 ## CLI development
 
 Use Node.js 24 LTS and pnpm 10.34.5 for development. Runtime review also requires
-Git, authenticated GitHub CLI and Copilot CLI on PATH. From the repository root:
+Git, authenticated GitHub CLI and Copilot CLI on PATH. The inspected
+`better-sqlite3` 13.0.3 Linux x64 prebuild requires `GLIBC_2.34` and
+`GLIBCXX_3.4.29`; these observed symbol requirements constrain older distributions
+and do not establish compatibility for other distributions, architectures or
+musl. Native validation must identify its actual operating system and architecture.
+From the repository root:
 
 ```text
 pnpm install --frozen-lockfile
@@ -164,9 +169,8 @@ before/after measurements. The installed acceptance suite additionally verifies 
 bin, default native command shims, singleton/stale-lock behavior and the complete
 review/re-review/restart/closure lifecycle. Separate npm global-prefix acceptance
 checks self-update and installation ownership. Curated environment and scenario
-receipts are uploaded by each native CI job; the
-[acceptance report](docs/research/daynight-acceptance.md) distinguishes those
-receipts from live-service evidence. Controlled Copilot executables exercise retained sessions, durable
+receipts are uploaded by each native CI job; [validation](#validation) describes
+their scope and interpretation. Controlled Copilot executables exercise retained sessions, durable
 launch intent, stdin prompts and streamed completion/failure handling. These
 checks require no live model invocation or GitHub publication.
 
@@ -221,7 +225,7 @@ the 30-second request, five-minute operation, 128 MiB single-response and 256 Mi
 cumulative decoded-response limits. The existing 20-minute Go job and every
 required check remain in place. The [acceptance design](docs/design/daynight-project-task.md#验证与交付证据)
 owns the mechanism and source-bound evidence. The
-[server acceptance report](docs/research/daynight-server-acceptance.md) maps
+[server validation guide](packages/daynight-server/README.md#built-process-acceptance-and-ci-evidence) maps
 requirements to tests and describes the CI receipt containing tested source and
 binary identity, scenario results and resource cleanup.
 
@@ -262,9 +266,9 @@ owned PostgreSQL instance, runs Chromium workflows and fixed capacity cases, the
 runs the functional workflows against a production container through dev-ci. It
 requires Go 1.27.2, Docker, Node 24, pnpm 10.34.5 and Playwright Chromium. The
 [web README](packages/daynight-web/README.md#production-browser-acceptance) owns
-browser setup and receipts. The [acceptance report](docs/research/daynight-web-acceptance.md)
-distinguishes the current renderer's complete local production/performance pass
-from pending current-source hosted results.
+browser setup, required gates and receipt interpretation. The
+[dashboard task record](docs/design/daynight-web-tasks.md#w-t6) identifies the
+source-bound production/performance results and remaining delivery requirements.
 
 ## Package versions
 
@@ -794,8 +798,8 @@ loading, with rationale in the
 [bundled-skill decision](.agents/notes/implemented/architecture/2026-10-20-bundled-review-skill.md).
 Native probes with Copilot CLI 1.0.100 verify actual bundled-skill activation and
 changed-bundle resume with the same UUID, including comma, space and Unicode
-paths. The [acceptance report](docs/research/daynight-acceptance.md#native-skill-activation)
-records the probe's conditions and limits. Live Copilot/GitHub publication acceptance
+paths. The bundled-skill decision records the probe's conditions and limits.
+Live Copilot/GitHub publication acceptance
 remains separate from those probes and controlled subprocess tests.
 
 ## Coordination and shutdown
@@ -877,6 +881,16 @@ record the relevant rationale. `.agents/skills/` is canonical; `CLAUDE.md`,
 | `.agents/notes/` | Decisions, alternatives, consequences, and reconsideration conditions |
 | `docs/plans/` | Local execution plans, ignored by Git |
 
+Validation commands, required gates and receipt interpretation belong to the
+owning README or design. Keep run-specific counts, hashes, timing tables and
+delivery updates with the corresponding PR and CI run. Preserve lasting research
+findings with their methods, source identity and limitations in the existing
+research or decision owner. CI artifacts expire after 30 days; a durable conclusion
+must remain understandable without downloading them. This separation avoids
+rolling acceptance reports that unrelated delivery branches must update. The
+[validation evidence decision](.agents/notes/implemented/process/2026-10-20-source-bound-validation-evidence.md)
+records this ownership and retention trade-off.
+
 Create documents for authorized work. Keep active facts synchronized and preserve
 historical decision premises; explicit archives remain immutable. New or revised
 specifications and designs use Chinese headings and prose. Preserve technical
@@ -887,10 +901,26 @@ English unless explicitly instructed otherwise. Discuss work in Chinese.
 
 Use the development commands above for application changes. `pnpm check` covers
 ordinary type/build/test validation; `pnpm acceptance` exercises the installed
-package. The suite uses Git 2.48+ for its relative-worktree fixture. Refer to the
-[acceptance report](docs/research/daynight-acceptance.md) for actual toolchain
-receipts and SQLite platform constraints. Live GitHub/Copilot acceptance remains
-separate delivery evidence with designated repository and reviewer authorization.
+package. The suite uses Git 2.48+ for its relative-worktree fixture. Each native CI
+job uploads `.tmp/validation-environment.json`, `.tmp/e2e-evidence.json`,
+`.tmp/update-evidence.json` and `.tmp/project-task-evidence.json`, recording the
+tested source and platform, scenario outcomes and owned-resource cleanup. Shell
+completion has a separate `.tmp/completion-evidence.json` receipt. Match each
+receipt to its tested revision and execution scope; local or controlled receipts
+do not establish a successful current-source hosted run. A failed scenario or
+cleanup remains a failure even when other results pass.
+
+The review lifecycle uses controlled GitHub and Copilot processes. Native Copilot
+loading probes establish skill activation under their recorded conditions.
+Live model reasoning and GitHub publication require separate acceptance with a
+designated repository, non-author reviewer identity and authorization. That
+acceptance observes reviewed heads, retained session UUIDs, remote inline reviews
+and approvals, restart continuity and closure cleanup. Missing-marker recovery
+must reconcile confirmed publication while retaining the same session; controlled
+publication receipts do not establish live model behavior. The
+[installed CLI decision](.agents/notes/implemented/testing/2026-10-17-installed-cli-acceptance.md)
+owns the lifecycle rationale; the [bundled-skill decision](.agents/notes/implemented/architecture/2026-10-20-bundled-review-skill.md)
+owns native loading evidence.
 
 For document changes, check relative links, requirement references, status, and
 note lifecycle sections. For workflow changes, also check skill frontmatter and

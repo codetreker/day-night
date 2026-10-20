@@ -405,7 +405,9 @@ project，各页均满足列表协议，失败 stdout 必须为空。
 解码与传输字节、探针结果和进程/socket/目录清理。本地 Linux 安装路径、真实
 Go/PostgreSQL 流程及六个默认预算场景已通过。本地 receipt 保留 `c19b064` 的
 dirty 源码；托管 receipt 另记录 PR head、干净 build Git SHA 和产物身份，实际结果
-见任务清单与验收报告。review 与合并状态由 PR #55 拥有。
+随[PR #55](https://github.com/codetreker/daynight/pull/55)与对应 CI 保存；
+[仓库验证说明](../../README.md#validation)拥有 receipt 解释，
+[任务清单](daynight-project-task-tasks.md#pt-t5)拥有完成条件。review 与合并状态由 PR #55 拥有。
 
 源码、包元数据或构建输入交付时按既有版本策略提升 CLI 包版本，运行
 `pnpm typecheck`、`pnpm test`、`pnpm build` 及相关安装验收。文档变更校验链接、

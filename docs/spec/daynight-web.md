@@ -1,6 +1,6 @@
 # 项目与任务看板
 
-状态：完整图 API、只读项目任务看板及 localhost/dev-ci 单服务交付已实现；保留完整路线与原生箭头的长虚线绘制修复已通过完整本地生产与固定性能验收，待当前源码的真实 CI、review 与交付。历史验证结果由[验收报告](../research/daynight-web-acceptance.md)记录。本文定义只读 MVP 的交付要求；[设计](../design/daynight-web.md)说明实现方式与任务顺序，[交互预览](../design/mockups/task-dashboard.html)用于确认视觉与操作，[任务清单](../design/daynight-web-tasks.md)记录实现范围和完成条件。
+状态：完整图 API、只读项目任务看板及 localhost/dev-ci 单服务交付已实现；保留完整路线与原生箭头的长虚线绘制修复已通过完整本地生产与固定性能验收，待当前源码的真实 CI、review 与交付。验证命令、要求与场景映射和回执解释见[web 验证说明](../../packages/daynight-web/README.md#production-browser-acceptance)，运行结果随对应 PR 与 CI 保存。本文定义只读 MVP 的交付要求；[设计](../design/daynight-web.md)说明实现方式与任务顺序，[交互预览](../design/mockups/task-dashboard.html)用于确认视觉与操作，[任务清单](../design/daynight-web-tasks.md)记录实现范围和完成条件。
 
 ## 目标与使用环境
 

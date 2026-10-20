@@ -1,6 +1,6 @@
 # 项目与任务看板设计
 
-状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 已定位长斜线 SVG 虚线绘制造成的 raster/commit 阻塞，采用局部水平线与短原生转角路径分解；当前源码的几何/相位与完整本地生产验收已通过，hosted 验收仍待通过。历史失败与本地回执保留于验收报告。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
+状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 已定位长斜线 SVG 虚线绘制造成的 raster/commit 阻塞，采用局部水平线与短原生转角路径分解；当前源码的几何/相位与完整本地生产验收已通过，hosted 验收仍待通过。运行结果随对应 PR 与 CI 保存；本地回执不能代替干净 hosted 验证。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
 
 ## 目标与现有基础
 
@@ -503,10 +503,13 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 
 `packages/daynight-web/scripts/acceptance.mts` 拥有新建运行的源码身份、构建、
 原生 PostgreSQL/服务进程、Playwright 与 dev-ci 调用；`scripts/acceptance/` 拥有
-进程控制及回执校验，`tests/e2e/` 拥有功能流程、API 数据和固定图集。实际运行
-结果由[验收报告](../research/daynight-web-acceptance.md)拥有：较早渲染器的本地双
-目标与固定性能矩阵通过，但 PR #52 的真实 CI 发现共享图缩放 452.7ms；静态 SVG
-渲染器的原生长虚线绘制仍触发 hosted 超时；采用局部绘制分解后的新源码已完整本地通过，hosted 验证仍待通过。
+进程控制及回执校验，`tests/e2e/` 拥有功能流程、API 数据和固定图集。
+[web 验证说明](../../packages/daynight-web/README.md#production-browser-acceptance)
+拥有验证命令、要求与场景映射和回执解释。逐次运行结果随对应 PR 与 CI 保存。
+较早渲染器的本地双目标与固定性能矩阵通过，但
+[PR #52](https://github.com/codetreker/daynight/pull/52) 的真实 CI 发现共享图缩放 452.7ms；静态 SVG
+渲染器的原生长虚线绘制仍触发 hosted 超时；采用局部绘制分解后的源码已完整本地通过，
+hosted 验证仍待通过。
 
 每次运行先生成真实 UI 与 Go 可执行文件，再启动独立 PostgreSQL 18.6，等待服务
 结构化就绪日志并记录二进制摘要。原生目标运行八个功能场景和四个容量/超限场景；

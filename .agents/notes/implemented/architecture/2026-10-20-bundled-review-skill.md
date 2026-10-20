@@ -110,13 +110,35 @@ provided; adding another product skill requires its own owning command and
 loading contract.
 
 Native discovery against Copilot CLI 1.0.98 verifies the minimal plugin wrapper
-through a comma-containing path. Copilot CLI 1.0.100 also verifies actual compiled
-skill activation and changed-content resume using one UUID, production snapshot
-preparation and the adapter's activation instructions. The resumed answer
-contains a verification value present only in the new body. Original package
-resources and the earlier snapshot remain unchanged. The
-[acceptance report](../../../../docs/research/daynight-acceptance.md#native-skill-activation)
-owns the probe's conditions and limits.
+through a comma-containing path after plain, backslash-escaped, quoted,
+JSON-array and percent-encoded comma paths through `COPILOT_SKILLS_DIRS` fail to
+discover the skill. A single `--plugin-dir` argument discovers it using the
+modern minimal manifest from GitHub's
+[pinned plugin reference](https://github.com/github/docs/blob/2d0a7bedfba3fec537f96da6e4188165ca25c252/content/copilot/reference/copilot-cli-reference/cli-plugin-reference.md).
+
+A local Copilot CLI 1.0.100 probe uses the actual compiled 0.3.2 skill,
+production `prepareReviewSkill`, and the adapter's exact activation paragraph.
+Its isolated cache path contains a comma, spaces and Unicode; discovery selects
+the exact prepared directory with `source: "plugin"`. The integrated 0.4.1
+package retains those skill bytes, but its installed and ordinary tests are
+separate from this observed 0.3.2 native loading result.
+
+Initial creation and changed-bundle resume both complete the native `skill` tool
+with `source: "plugin"`, retaining one full UUID. The first answer identifies
+the skill's Critical/Major publication scope and final section. A verification
+value exists only in the updated isolated skill body, absent from both prompts;
+the resumed answer returns it. The new snapshot has a different digest while
+the original compiled resource and earlier snapshot retain their bytes. This
+establishes actual current-body loading beyond directory listing or controlled
+prompt inspection.
+
+The probe supplies no PR target and performs no review or GitHub publication.
+Available tools are restricted to `skill` and `view`; shell, write and URL tools,
+built-in MCPs and custom instructions are disabled, with bounded model turns.
+The observation uses `-p` and JSON output. Production stdin and text completion
+retain separate controlled process and installed coverage. Raw sessions, homes,
+caches and checkouts are removed afterward; the sanitized receipt records zero
+remaining probe processes and zero credential occurrences in isolated state.
 
 Same-path resume can retain an old body, so content-addressed paths and explicit
 current-path invocation remain required. Observed-version evidence does not

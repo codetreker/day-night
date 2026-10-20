@@ -2,8 +2,8 @@
 
 状态：review 已接入配置、SQLite、GitHub 观测、Git 管理、Copilot 会话、内置 skill
 和前台协调。
-受控执行链已实现，真实 GitHub/Copilot 验收仍待完成；实际验证记录见
-[验收报告](../research/daynight-acceptance.md)。
+受控执行链已实现，真实 GitHub/Copilot 验收仍待完成。验证命令与 receipt 解释见
+[仓库验证说明](../../README.md#validation)，逐次运行结果随对应 PR 与 CI 保存。
 
 `review` 是 `daynight` 客户端中的完整命令模块。`review run` 在单个前台 Node.js
 进程内持续轮询和管理审查，`review add-repo` 管理配置，`review list` 与 `review ls`
@@ -654,15 +654,15 @@ detach，仅明确的 `Resource busy` 允许继续尝试，并立即保留有界
 该审查生命周期安装步骤需要包注册表访问，使用本地 consumer，也不需要真实 review 凭据。
 客户端的[自更新验收](daynight.md#验证与交付)独立验证真实 npm 全局安装的替换与归属。
 CI 只上传精选的工具版本清单、审查生命周期 receipt 和 `.tmp/update-evidence.json`。
-异常退出验收在直接工具句柄全部关闭后同步结束 CLI，检查锁保留、存活实例拒绝和自动接管失效锁；进程树终止保留独立的原生验证。[验收报告](../research/daynight-acceptance.md)
-记录实际已测试的平台和真实服务验收范围。
+异常退出验收在直接工具句柄全部关闭后同步结束 CLI，检查锁保留、存活实例拒绝和自动接管失效锁；进程树终止保留独立的原生验证。
+[仓库验证说明](../../README.md#validation)定义原生平台 receipt 的源码身份与真实服务验收边界。
 
 独立的既有数据 fixture 直接构造重构前的 YAML 与版本 1 SQLite 表和记录，不使用
 当前 store 创建基线。安装后的列表及运行操作必须复用永久边界、修订、预算、会话和
 worktree 身份，且保留未解决的清理屏障；命令重组不构成重新初始化的理由。
 
-下表定义模块、原生子进程和安装后验收需要观测的行为；实际通过记录及其对应修订见
-验收报告。历史平台 receipt 不构成自动接管失效锁行为的验证：
+下表定义模块、原生子进程和安装后验收需要观测的行为；实际通过记录及其对应修订
+随对应 PR 与 CI 保存。历史平台 receipt 不构成自动接管失效锁行为的验证：
 
 | 范围 | 必须观测的行为 |
 |---|---|
