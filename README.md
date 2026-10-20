@@ -15,7 +15,7 @@ The `@codetreker/daynight` package provides the `daynight` client. Its root entr
 lists commands and reports the package version; each command owns its business
 dependencies and lifecycle. `review` polls configured repositories, maintains
 dedicated local clones and PR worktrees, and launches Copilot in a retained
-session for each eligible PR. SQLite preserves initialization boundaries, review
+session for each eligible PR using a bundled review skill. SQLite preserves initialization boundaries, review
 revisions and retry budgets. The group also provides configuration-only
 repository registration and a local persisted review listing. `update` manages
 the current npm global installation independently of review configuration and
@@ -56,7 +56,9 @@ pnpm daynight --version
 
 `pnpm check` runs type checking and tests. Tests build the package before
 exercising the compiled CLI. `pnpm build` clears the package's `dist/` before emitting
-`packages/daynight/dist/main.js`; the package's `daynight` bin points there.
+`packages/daynight/dist/main.js` and copying the complete built-in review skill
+bundle into `dist/commands/review/skills/`; the package's `daynight` bin points to
+the stable JavaScript entry.
 Source tests mirror `cli/`, `commands/` and `platform/` ownership, with build and
 version-policy tests in `test/tooling/`.
 The pnpm dependency store is local to `.tmp/pnpm-store`. `pnpm acceptance`
@@ -506,8 +508,27 @@ for target validation and recovery boundaries.
 
 ## Copilot execution
 
-The Copilot adapter launches a direct child in the prepared PR worktree. It
-selects the persisted per-PR UUID on first launch and explicitly resumes that
+The review module ships `daynight-review` under its own `skills/` directory.
+After taking the instance lock, the daemon captures the installed bundle once
+and prepares an immutable content-addressed snapshot under
+`~/.daynight/cache/review-skills/`. Package updates cannot replace the content
+used by that running daemon. Snapshots remain available for retained sessions
+and uncertain executions; automatic collection is not provided.
+
+Each attempt first runs native Copilot skill discovery in the prepared PR
+worktree. A single `--plugin-dir=<snapshot root>` argument supplies a generated
+local plugin wrapper containing `plugin.json` and `skills/daynight-review/`.
+This preserves paths containing commas, spaces and Unicode; inherited
+`COPILOT_SKILLS_DIRS` variables are removed from the child environment.
+Exactly one enabled `daynight-review` must resolve to that snapshot's directory;
+a disabled skill, project override or malformed response fails the attempt.
+The review prompt explicitly invokes the skill and identifies its current
+absolute entrypoint and digest on both new sessions and resume. The bundled
+skill owns review methodology; the prompt owns the immutable target, publication
+eligibility, retry reconciliation and completion protocol.
+
+The Copilot adapter then launches the review child in that same worktree and
+environment. It selects the persisted per-PR UUID on first launch and explicitly resumes that
 same session thereafter. An interrupted first launch also resumes existing
 history; missing established history is an error. Only opaque session-directory
 presence is inspected. Copilot history and agent JSONL are not parsed.
@@ -516,7 +537,12 @@ Prompts travel through stdin in noninteractive mode. `cross-spawn` handles nativ
 commands and Windows command shims; prompt text is not embedded in shell code or
 command arguments. Runtime paths contain Copilot state, cache, temporary files
 and per-attempt diagnostics. Existing GitHub CLI authentication remains available
-through Copilot's supported fallback.
+through Copilot's supported fallback. Discovery and review are sequential phases
+of one persisted attempt, sharing one retry budget and timeout deadline. The
+discovery child must be excluded before its exact persisted PID and identity are
+cleared and a review child can start. Cancellation, timeout or uncertain process
+exclusion prevents that next launch. Discovery stdout and stderr stream to
+separate `skill-list` logs and never enter completion-marker parsing.
 
 The agent publishes inline Critical/Major comments or approval itself and
 reconciles prior publication when continuing an incomplete review. The adapter
@@ -527,8 +553,15 @@ review. The coordinator owns scheduling and final state transitions; runtime
 process supervision supplies evidence under the foreground execution contract.
 
 The [execution decision](.agents/notes/implemented/architecture/2026-10-17-copilot-session-execution.md)
-records these boundaries. Live Copilot/GitHub acceptance remains separate from
-controlled subprocess tests.
+records process and publication boundaries. The
+[skill design](docs/design/daynight-review-skill.md) owns packaging, snapshots and
+loading, with rationale in the
+[bundled-skill decision](.agents/notes/implemented/architecture/2026-10-20-bundled-review-skill.md).
+Native probes with Copilot CLI 1.0.100 verify actual bundled-skill activation and
+changed-bundle resume with the same UUID, including comma, space and Unicode
+paths. The [acceptance report](docs/research/daynight-acceptance.md#native-skill-activation)
+records the probe's conditions and limits. Live Copilot/GitHub publication acceptance
+remains separate from those probes and controlled subprocess tests.
 
 ## Coordination and shutdown
 

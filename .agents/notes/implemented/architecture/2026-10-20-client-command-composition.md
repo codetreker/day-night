@@ -45,6 +45,10 @@ directory from that stable entry rather than computing it from its nested
 module location. Builds remove `dist/` before TypeScript compilation so moved
 source modules cannot survive as stale distribution files. The build cleanup
 script is a release input under the existing package-version gate.
+The [bundled review skill](2026-10-20-bundled-review-skill.md) extends the build
+with complete review-owned resource copying and uses the same stable package
+directory to capture runtime instructions. Its resources remain local to the
+selected review command and do not change the root context's business ownership.
 
 YAML fields, version 1 SQLite tables, data locations, repository paths, cutoff
 boundaries, revisions, retry budgets, session UUIDs and worktree ownership stay

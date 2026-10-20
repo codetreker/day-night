@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -14,7 +14,9 @@ const packageDirectory = path.join(workspace, "packages/daynight");
 const helpers = path.resolve(import.meta.dirname, "../fixtures/e2e");
 const existingState = path.resolve(import.meta.dirname, "../fixtures/review-state-v1");
 type Pull = { number: number; state: "open" | "closed"; draft: boolean; merged_at: string | null; head: { sha: string }; base: { ref: string; sha: string }; ci: "PENDING" | "FAILURE" | "SUCCESS" | null };
-type Agent = { session: string; args: string[]; target: { pullRequest: number; reviewId: string; revision: number; headSha: string; baseBranch: string }; head: string; cwd: string; reconciled: boolean; reviewFile: string; prompt: string };
+type Skill = { rootDirectory: string; directory: string; entrypoint: string; digest: string; contents: string; contentSha256: string };
+type Discovery = { args: string[]; cwd: string; skill: Skill };
+type Agent = Discovery & { session: string; target: { pullRequest: number; reviewId: string; revision: number; headSha: string; baseBranch: string }; head: string; reconciled: boolean; reviewFile: string; prompt: string; repositoryStatus: string };
 type Publication = { number: number; event: string; commit_id: string; body: string; publisher: string; comments?: unknown[] };
 type Request = { version: number; endpoint: string; method: string };
 type PullRow = { desired_revision: number; completed_revision: number; session_id: string; cleanup_pending: number; worktree_path: string | null; state: string };
@@ -25,7 +27,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
   rmSync(path.join(temporary, "e2e-evidence.json"), { force: true });
   const directory = mkdtempSync(path.join(temporary, "Installed CLI 中文 "));
   try {
-    const home = path.join(directory, "home 中文");
+    const home = path.join(directory, "home, 中文");
     const stateDirectory = path.join(home, ".daynight");
     const bin = path.join(directory, "executables");
     const consumer = path.join(directory, "consumer install");
@@ -46,6 +48,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       PATH: `${bin}${path.delimiter}${process.env.PATH}`, NODE_OPTIONS: nodeOptions,
       DAYNIGHT_E2E_DIRECTORY: directory, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: path.join(directory, "gitconfig"),
       GIT_TERMINAL_PROMPT: "0", NO_COLOR: "1", GH_PROMPT_DISABLED: "1",
+      COPILOT_SKILLS_DIRS: path.join(directory, "inherited unrelated skills"),
     });
     const git = (args: readonly string[], input?: string): string => execFileSync("git", [...args], {
       cwd: directory, env: environment, encoding: "utf8", timeout: 30_000, ...(input === undefined ? {} : { input }),
@@ -86,6 +89,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       return existsSync(folder) ? readdirSync(folder).filter((file) => file.endsWith(".json")).map((file) => JSON.parse(readFileSync(path.join(folder, file), "utf8")) as T) : [];
     };
     const agents = () => readRecords<Agent>("agents");
+    const discoveries = () => readRecords<Discovery>("discoveries");
     const publications = () => readRecords<Publication>("publications");
     const databaseFile = path.join(stateDirectory, "state.sqlite");
     const query = <T>(sql: string): T | undefined => {
@@ -123,10 +127,25 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     pnpm(["install", "--prod", "--ignore-scripts", "--ignore-workspace", "--no-frozen-lockfile", "--store-dir", storeDirectory, "--reporter", "append-only"], consumer);
     const installedBin = path.join(consumer, "node_modules/.bin", process.platform === "win32" ? "daynight.cmd" : "daynight");
     expect(existsSync(installedBin)).toBe(true);
-    const installed = JSON.parse(readFileSync(path.join(consumer, "node_modules", "@codetreker", "daynight", "package.json"), "utf8")) as { name: string; version: string; bin: { daynight: string } };
+    const installedPackage = path.join(consumer, "node_modules", "@codetreker", "daynight");
+    const installed = JSON.parse(readFileSync(path.join(installedPackage, "package.json"), "utf8")) as { name: string; version: string; bin: { daynight: string } };
     expect(installed.name).toBe("@codetreker/daynight");
     expect(installed.bin.daynight).toBe("dist/main.js");
     expect(installed.version).toBe((JSON.parse(readFileSync(path.join(packageDirectory, "package.json"), "utf8")) as { version: string }).version);
+    const skillRelativeDirectory = "commands/review/skills/daynight-review";
+    const sourceSkillDirectory = path.join(packageDirectory, "src", skillRelativeDirectory);
+    const installedSkillDirectory = path.join(installedPackage, "dist", skillRelativeDirectory);
+    const bundleFiles = (folder: string): Record<string, Buffer> => Object.fromEntries(readdirSync(folder, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile()).map((entry) => {
+        const filename = path.join(entry.parentPath, entry.name);
+        return [path.relative(folder, filename).replaceAll("\\", "/"), readFileSync(filename)];
+      }));
+    const originalBundle = bundleFiles(sourceSkillDirectory);
+    expect(originalBundle["SKILL.md"]).toBeDefined();
+    expect(bundleFiles(installedSkillDirectory)).toEqual(originalBundle);
+    const installedSkillFile = path.join(installedSkillDirectory, "SKILL.md");
+    const originalSkillContents = originalBundle["SKILL.md"]!.toString("utf8");
+    const updatedSkillContents = `${originalSkillContents}\n<!-- Installed acceptance: updated bundle for the next daemon. -->\n`;
     const listingExecutables = path.join(directory, "listing executables");
     mkdirSync(listingExecutables);
     linkSync(fakeGh, path.join(listingExecutables, process.platform === "win32" ? "node.exe" : "node"));
@@ -356,7 +375,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       await waitFor(() => pr(number)?.completed_revision === revision, `PR ${number} completed revision ${revision}`);
       expect(pr(number)?.desired_revision).toBe(revision);
     };
-    const scenarios: string[] = ["client-and-review-help-without-state", "pre-refactor-schema-v1-reuse", "config-only-registration", "relative-registration-path", "default-root-registration", "registration-path-fixed-after-root-change", "review-list-before-initialization"];
+    const scenarios: string[] = ["packed-skill-bundle-exact-bytes", "client-and-review-help-without-state", "pre-refactor-schema-v1-reuse", "config-only-registration", "relative-registration-path", "default-root-registration", "registration-path-fixed-after-root-change", "review-list-before-initialization"];
     try {
       execFileSync(process.execPath, ["--input-type=module", "--eval", `
         import assert from "node:assert/strict";
@@ -431,11 +450,27 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       expect(initialAgents.map((item) => item.session)).toEqual([initialAgents[0]!.session, initialAgents[0]!.session]);
       expect(initialAgents.flatMap((item) => item.args).filter((argument) => argument.startsWith("--session-id="))).toHaveLength(1);
       expect(initialAgents.flatMap((item) => item.args).filter((argument) => argument.startsWith("--resume="))).toHaveLength(1);
+      const initialSkill = initialAgents[0]!.skill;
+      expect(initialSkill.contents).toBe(originalSkillContents);
+      expect(initialAgents[1]!.skill).toEqual(initialSkill);
+      expect(initialSkill.rootDirectory).toBe(path.join(stateDirectory, "cache", "review-skills", initialSkill.digest));
+      expect(initialSkill.digest).toMatch(/^[a-f0-9]{64}$/);
+      expect(initialSkill.rootDirectory).not.toBe(environment.COPILOT_SKILLS_DIRS);
+      expect(initialSkill.entrypoint).toBe(path.join(initialSkill.directory, "SKILL.md"));
+      expect(bundleFiles(initialSkill.directory)).toEqual(originalBundle);
+      expect(initialSkill.directory).toBe(path.join(initialSkill.rootDirectory, "skills", "daynight-review"));
+      expect(JSON.parse(readFileSync(path.join(initialSkill.rootDirectory, "plugin.json"), "utf8"))).toMatchObject({ name: "daynight-review-bundle", version: "1.0.0" });
+      scenarios.push("skill-discovery-before-create-and-resume", "skill-plugin-clears-inherited-custom-directories", "skill-snapshot-outside-reviewed-checkout", "skill-plugin-path-with-comma-spaces-unicode");
       expect(publications()).toHaveLength(1);
       expect(publications()[0]).toMatchObject({ number: 11, event: "COMMENT", commit_id: second });
       expect(publications()[0]!.comments).toHaveLength(1);
       scenarios.push("ready-review", "inline-comment", "missing-marker-session-reconciliation");
       const session = pr()!.session_id;
+      const replacement = path.join(installedSkillDirectory, "SKILL.md.next");
+      writeFileSync(replacement, updatedSkillContents, { flag: "wx" });
+      renameSync(replacement, installedSkillFile);
+      expect(readFileSync(installedSkillFile, "utf8")).toBe(updatedSkillContents);
+      expect(readFileSync(path.join(sourceSkillDirectory, "SKILL.md"), "utf8")).toBe(originalSkillContents);
       current.head.sha = third; current.ci = "PENDING";
       git(["--git-dir", origin, "update-ref", "refs/pull/11/head", third]);
       await observedWithoutReview(publishState(), 2);
@@ -450,6 +485,9 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       current.base = { ref: "release", sha: base }; publishState();
       await completed(5);
       scenarios.push("base-tip-does-not-trigger", "base-branch-triggers");
+      expect(agents()).toHaveLength(4);
+      expect(agents().every((item) => item.skill.digest === initialSkill.digest && item.skill.contents === originalSkillContents)).toBe(true);
+      scenarios.push("running-daemon-retains-captured-skill-after-installed-update");
       await stop();
       expect(pr()!.session_id).toBe(session);
       old.draft = false; old.head.sha = third;
@@ -457,6 +495,14 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       git(["--git-dir", origin, "update-ref", "refs/pull/11/head", second]); publishState();
       start(secondCwd);
       await completed(6);
+      const resumedUpdatedAgent = agents().find((item) => item.target.pullRequest === 11 && item.target.revision === 6)!;
+      expect(resumedUpdatedAgent.session).toBe(session);
+      expect(resumedUpdatedAgent.args).toContain(`--resume=${session}`);
+      expect(resumedUpdatedAgent.skill.contents).toBe(updatedSkillContents);
+      expect(resumedUpdatedAgent.skill.digest).not.toBe(initialSkill.digest);
+      expect(resumedUpdatedAgent.skill.rootDirectory).toBe(path.join(stateDirectory, "cache", "review-skills", resumedUpdatedAgent.skill.digest));
+      expect(bundleFiles(resumedUpdatedAgent.skill.directory)).toEqual({ ...originalBundle, "SKILL.md": Buffer.from(updatedSkillContents) });
+      scenarios.push("same-session-restart-loads-updated-skill-snapshot");
       expect(query<{ start_pr_no: number }>("SELECT start_pr_no FROM repositories")?.start_pr_no).toBe(10);
       expect(pr()!.session_id).toBe(session);
       expect(query("SELECT * FROM pull_requests WHERE number = 10")).toBeUndefined();
@@ -512,6 +558,17 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       expect(publications()).toHaveLength(completedPublications);
       scenarios.push("review-list-closed-snapshot");
       const calls = agents();
+      const discoveryCalls = discoveries();
+      expect(calls).toHaveLength(6);
+      expect(discoveryCalls).toHaveLength(calls.length);
+      expect(discoveryCalls.every((item) => item.args.slice(-3).join(" ") === "skill list --json" && item.args.includes("--no-auto-update") && item.args[item.args.indexOf("-C") + 1] === item.cwd && !item.args.some((argument) => /^--(?:session-id|resume)=/.test(argument)))).toBe(true);
+      expect([...discoveryCalls, ...calls].every((item) => item.args.includes(`--plugin-dir=${item.skill.rootDirectory}`))).toBe(true);
+      expect(discoveryCalls.map((item) => ({ cwd: item.cwd, skill: item.skill })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))))
+        .toEqual(calls.map((item) => ({ cwd: item.cwd, skill: item.skill })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))));
+      expect(calls.every((item) => item.skill.contentSha256 === createHash("sha256").update(item.skill.contents).digest("hex") && item.prompt.includes("/daynight-review") && item.prompt.includes(JSON.stringify(item.skill.entrypoint)) && item.prompt.includes(item.skill.digest))).toBe(true);
+      expect(calls.every((item) => item.repositoryStatus === "")).toBe(true);
+      expect(readFileSync(initialSkill.entrypoint, "utf8")).toBe(originalSkillContents);
+      scenarios.push("per-attempt-discovery-separated-from-review-invocations", "review-create-and-resume-read-current-snapshot", "reviewed-checkout-remains-clean");
       expect(calls.every((item) => item.head === item.target.headSha && item.cwd === path.join(repository, ".worktrees", `pr-${item.target.pullRequest}`))).toBe(true);
       expect(calls.every((item) => item.prompt.includes("Never submit REQUEST_CHANGES") && item.reviewFile.endsWith("\n"))).toBe(true);
       expect(publications().every((item) => item.publisher === "copilot-fixture" && (item.event === "COMMENT" || item.event === "APPROVE"))).toBe(true);
@@ -519,7 +576,10 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
         installedBin: path.relative(directory, installedBin).replaceAll("\\", "/"), packagePacked: true, consumerInstall: "registry",
         sqlite: "real", git: "real-local-origin", github: "controlled-native-executable", copilot: "controlled-default-command-shim",
         liveCopilotExercised: false, liveGitHubExercised: false, scenarios,
-        receipts: { agentInvocations: calls.length, publications: publications().length, commentReviews: publications().filter((item) => item.event === "COMMENT").length,
+        receipts: { agentInvocations: calls.length, skillDiscoveryInvocations: discoveryCalls.length, bundledSkillFiles: Object.keys(originalBundle), skillDigests: [initialSkill.digest, resumedUpdatedAgent.skill.digest],
+          originalSkillSha256: initialSkill.contentSha256, updatedSkillSha256: resumedUpdatedAgent.skill.contentSha256,
+          runningDaemonSkillPreserved: true, sameSessionUpdatedSkillAfterRestart: true, reviewedCheckoutClean: true,
+          publications: publications().length, commentReviews: publications().filter((item) => item.event === "COMMENT").length,
           approvingReviews: publications().filter((item) => item.event === "APPROVE").length, sameSessionAfterRestart: true, cleanShutdowns: 2, cleanedWorktrees: 2,
           singletonRefusals: 1, abruptStops: 1, automaticStaleLockRecoveries: 1 },
       }, null, 2));

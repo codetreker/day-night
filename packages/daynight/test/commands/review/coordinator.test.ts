@@ -2,7 +2,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCoordinator } from "../../../src/commands/review/coordinator.js";
 import type { CoordinatorEvent, CoordinatorOptions } from "../../../src/commands/review/coordinator.js";
 import { createCopilotRunner } from "../../../src/commands/review/adapters/copilot.js";
@@ -114,13 +114,13 @@ const fixture = (repositoryCount = 1, initialized = true, repositoryHost = (_ind
       return { kind: "cleaned" };
     },
   };
-  const runner: CoordinatorOptions["runner"] = { run: async (state, id, worktree, input = {}) => {
+  const runner: CoordinatorOptions["runner"] = { run: async (state, id, worktree, input) => {
     const started = state.startAttempt(id, { processOwner: "fixture", stdoutLogPath: path.join(directory, `${id}-out`), stderrLogPath: path.join(directory, `${id}-err`) }, Date.now());
     launched.push({ review: started, session: state.getPullRequest(started)!.sessionId!, input });
     const completed = onRun === undefined ? true : await onRun(started, input);
     const outcome: CopilotAttemptOutcome = { attempt: { reviewId: id, attempt: started.attemptCount }, sessionId: state.getPullRequest(started)!.sessionId!, sessionMode: started.attemptCount === 1 ? "create" : "resume",
       stdoutLogPath: started.stdoutLogPath!, stderrLogPath: started.stderrLogPath!, completed, directProcessClosed: true, captureComplete: true,
-      exitCode: 0, signal: null, lastNonemptyLine: completed ? `PR ${started.number} Review Completed` : "incomplete", interruption: null, launchFailure: null, errors: [] };
+      exitCode: 0, signal: null, lastNonemptyLine: completed ? `PR ${started.number} Review Completed` : "incomplete", interruption: null, launchFailure: null, processExclusionFailure: null, errors: [] };
     expect(worktree.headSha).toBe(started.headSha);
     return outcome;
   } };
@@ -618,6 +618,27 @@ describe("foreground review coordination", () => {
     await expect(run.completion).resolves.toEqual({ safeToReleaseLock: false });
   });
 
+  it("retains a failed discovery exclusion without retrying exclusion or launching another attempt", async () => {
+    const f = fixture(); f.update(1);
+    const exclusionError = new Error("Discovery execution remains uncertain.");
+    const original = f.runner.run;
+    const exclude = vi.spyOn(f.processes, "exclude");
+    const runner: CoordinatorOptions["runner"] = { run: async (...args) => {
+      const outcome = await original(...args);
+      f.store.recordProcess(outcome.attempt, { pid: 12345, identity: "discovery" });
+      return { ...outcome, completed: false, processExclusionFailure: exclusionError, errors: [exclusionError] };
+    } };
+    const run = f.start({ runner });
+    await waitFor(() => f.store.listReviews(f.pr())[0]?.status === "interrupted", "retained discovery exclusion failure");
+    expect(exclude).not.toHaveBeenCalled();
+    expect(f.store.listReviews(f.pr())[0]).toMatchObject({ attemptCount: 1, processId: 12345, processIdentity: "discovery", lastError: exclusionError.message });
+    f.update(1, { headSha: "d".repeat(40) });
+    await waitFor(() => f.store.getPullRequest(f.pr())?.desiredRevision === 2, "later target under discovery uncertainty");
+    expect(f.launched).toHaveLength(1);
+    run.abort.abort();
+    await expect(run.completion).resolves.toEqual({ safeToReleaseLock: false });
+  });
+
   it("recovers old execution only after explicit proof and uses one advancing-clock recovery timestamp", async () => {
     const f = fixture(); f.update(1);
     f.store.observePullRequest(f.identities[0]!, observation(1), 1);
@@ -873,10 +894,11 @@ describe("coordinator real Git, SQLite and controlled agent lifecycle", () => {
     } });
     const report = path.join(f.directory, "agent-report.jsonl"); const script = path.join(f.directory, "review-agent.mjs");
     writeFileSync(script, `import path from 'node:path';import{mkdirSync,writeFileSync,appendFileSync,readFileSync}from'node:fs';import{execFileSync}from'node:child_process';
-let prompt='';for await(const part of process.stdin)prompt+=part;const args=process.argv.slice(2);const option=args.find(x=>x.startsWith('--session-id=')||x.startsWith('--resume='));const session=option.split('=')[1];
+let prompt='';for await(const part of process.stdin)prompt+=part;const args=process.argv.slice(2);if(args.includes('skill')&&args.includes('list')){process.stdout.write(JSON.stringify([{name:'daynight-review',enabled:true,source:'plugin',path:path.join(args.find(arg=>arg.startsWith('--plugin-dir=')).slice('--plugin-dir='.length),'skills','daynight-review')}]));process.exit(0);}const option=args.find(x=>x.startsWith('--session-id=')||x.startsWith('--resume='));const session=option.split('=')[1];
 mkdirSync(path.join(process.env.COPILOT_HOME,'session-state',session),{recursive:true});writeFileSync(path.join(process.env.COPILOT_HOME,'session-state',session,'opaque.jsonl'),'opaque');
 const sha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();appendFileSync(process.env.FIXTURE_REPORT,JSON.stringify({session,option,sha,contents:readFileSync('file.txt','utf8'),prompt})+'\\n');process.stdout.write('PR 1 Review Completed\\n');`);
-    const runner = createCopilotRunner({ paths: f.paths, processOwner: uuid(900), timeoutMs: 10_000, terminationGraceMs: 100,
+    const skillDirectory = path.join(f.directory, "plugin, skill", "skills", "daynight-review"); mkdirSync(skillDirectory, { recursive: true });
+    const runner = createCopilotRunner({ skill: { name: "daynight-review", digest: "a".repeat(64), rootDirectory: path.dirname(path.dirname(skillDirectory)), directory: skillDirectory, entrypoint: path.join(skillDirectory, "SKILL.md") }, paths: f.paths, processOwner: uuid(900), timeoutMs: 10_000, terminationGraceMs: 100,
       command: { file: process.execPath, args: [script] }, environment: { ...process.env, FIXTURE_REPORT: report } });
     f.start({ git, runner, processes: createProcessSupervisor({ graceMs: 500, previousProcessesExcluded: true }) });
     await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 1, "first real review", 30_000);

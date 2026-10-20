@@ -11,8 +11,10 @@ import { createGitHubClient } from "../../../src/commands/review/adapters/github
 import { createProcessSupervisor } from "../../../src/commands/review/processes.js";
 import { acquireInstanceLock, formatCoordinatorEvent, runForegroundReview } from "../../../src/commands/review/runtime.js";
 import { openStore } from "../../../src/commands/review/store.js";
+import { prepareReviewSkill } from "../../../src/commands/review/skill.js";
 import type { RuntimeDependencies } from "../../../src/commands/review/runtime.js";
 
+const packageDirectory = fileURLToPath(new URL("../../../", import.meta.url));
 let directory: string;
 beforeAll(async () => {
   const temporary = fileURLToPath(new URL("../../../../../.tmp/", import.meta.url));
@@ -20,7 +22,7 @@ beforeAll(async () => {
 });
 afterAll(async () => { await rm(directory, { recursive: true, force: true }); });
 const dependencies = (coordinate: RuntimeDependencies["coordinate"]): RuntimeDependencies => ({
-  openStore, createClient: createGitHubClient, createGit: createGitManager, createRunner: createCopilotRunner, createProcesses: createProcessSupervisor, coordinate,
+  prepareSkill: prepareReviewSkill, openStore, createClient: createGitHubClient, createGit: createGitManager, createRunner: createCopilotRunner, createProcesses: createProcessSupervisor, coordinate,
 });
 const input = (name: string) => {
   const paths = resolveReviewPaths(path.join(directory, name));
@@ -40,8 +42,16 @@ describe("foreground runtime ownership", () => {
       await new Promise<void>((resolve) => { signal.addEventListener("abort", () => { events.push("stopped"); resolve(); }, { once: true }); });
       return { safeToReleaseLock: true };
     };
-    const running = runForegroundReview(configuration, paths, { signal: controller.signal, dependencies: dependencies(coordinate), log: () => {} });
+    const deps = dependencies(coordinate);
+    deps.prepareSkill = vi.fn(prepareReviewSkill);
+    deps.createRunner = vi.fn(createCopilotRunner);
+    const running = runForegroundReview(configuration, paths, { packageDirectory, signal: controller.signal, dependencies: deps, log: () => {} });
     await ready;
+    expect(deps.prepareSkill).toHaveBeenCalledExactlyOnceWith(packageDirectory, paths.cacheDirectory);
+    const skill = await vi.mocked(deps.prepareSkill).mock.results[0]!.value;
+    expect(deps.createRunner).toHaveBeenCalledExactlyOnceWith({
+      paths, skill, processOwner: expect.any(String), timeoutMs: configuration.agentTimeoutMs,
+    });
     expect(JSON.parse(await readFile(paths.lockFile, "utf8"))).toMatchObject({ pid: process.pid });
     await expect(acquireInstanceLock(paths.lockFile)).rejects.toThrow("Cannot acquire instance lock");
     controller.abort();
@@ -53,7 +63,7 @@ describe("foreground runtime ownership", () => {
 
   it("retains the lock after uncertainty until an operator excludes the previous processes and removes it", async () => {
     const { configuration, paths } = input("uncertain");
-    await expect(runForegroundReview(configuration, paths, { dependencies: dependencies(async () => ({ safeToReleaseLock: false })), log: () => {} })).rejects.toThrow("Instance lock");
+    await expect(runForegroundReview(configuration, paths, { packageDirectory, dependencies: dependencies(async () => ({ safeToReleaseLock: false })), log: () => {} })).rejects.toThrow("Instance lock");
     await expect(acquireInstanceLock(paths.lockFile)).rejects.toThrow("Cannot acquire instance lock");
     await rm(paths.lockFile);
     const coordinate = vi.fn<RuntimeDependencies["coordinate"]>(async ({ processes }) => {
@@ -61,7 +71,7 @@ describe("foreground runtime ownership", () => {
       expect(proof).toEqual({ processesExcluded: true, operationsStopped: true });
       return { safeToReleaseLock: true };
     });
-    await runForegroundReview(configuration, paths, { dependencies: dependencies(coordinate), log: () => {} });
+    await runForegroundReview(configuration, paths, { packageDirectory, dependencies: dependencies(coordinate), log: () => {} });
     expect(coordinate).toHaveBeenCalledOnce();
   });
 
@@ -69,24 +79,39 @@ describe("foreground runtime ownership", () => {
     const { configuration, paths } = input("database-failure");
     const deps = dependencies(async () => ({ safeToReleaseLock: true }));
     deps.openStore = () => { throw new Error("broken SQLite"); };
-    await expect(runForegroundReview(configuration, paths, { dependencies: deps, log: () => {} })).rejects.toThrow("broken SQLite");
+    await expect(runForegroundReview(configuration, paths, { packageDirectory, dependencies: deps, log: () => {} })).rejects.toThrow("broken SQLite");
     await expect(readFile(paths.lockFile)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it.each(["database", "aborted-signal"])("retains a recovered predecessor's uncertainty when startup fails at %s", async (failure) => {
+  it("rejects invalid bundled skill resources before opening state and releases its new lock", async () => {
+    const { configuration, paths } = input("skill-failure");
+    const deps = dependencies(async () => ({ safeToReleaseLock: true }));
+    const failure = new Error("The installed skill is missing.");
+    deps.prepareSkill = vi.fn(async () => { throw failure; });
+    deps.openStore = vi.fn(openStore);
+    deps.createRunner = vi.fn(createCopilotRunner);
+    await expect(runForegroundReview(configuration, paths, { packageDirectory, dependencies: deps, log: () => {} })).rejects.toBe(failure);
+    expect(deps.openStore).not.toHaveBeenCalled();
+    expect(deps.createRunner).not.toHaveBeenCalled();
+    await expect(readFile(paths.databaseFile)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(paths.lockFile)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it.each(["database", "skill", "aborted-signal"])("retains a recovered predecessor's uncertainty when startup fails at %s", async (failure) => {
     const { configuration, paths } = input(`recovered-startup-${failure}`);
     await mkdir(paths.stateDirectory, { recursive: true });
     await writeFile(paths.lockFile, JSON.stringify({ owner: "dead", pid: 2_147_483_647, startedAt: "2000-01-01T00:00:00.000Z" }));
     const probe = vi.spyOn(process, "kill").mockImplementation(() => { throw Object.assign(new Error("No such process"), { code: "ESRCH" }); });
     const deps = dependencies(async () => ({ safeToReleaseLock: true }));
     deps.openStore = vi.fn(() => { throw new Error("broken SQLite"); });
+    if (failure === "skill") deps.prepareSkill = vi.fn(async () => { throw new Error("broken skill"); });
     const controller = new AbortController();
     if (failure === "aborted-signal") controller.abort(new Error("Startup cancelled"));
     try {
-      await expect(runForegroundReview(configuration, paths, { signal: controller.signal, dependencies: deps, log: () => {} }))
-        .rejects.toThrow(failure === "database" ? "broken SQLite" : "Startup cancelled");
+      await expect(runForegroundReview(configuration, paths, { packageDirectory, signal: controller.signal, dependencies: deps, log: () => {} }))
+        .rejects.toThrow(failure === "database" ? "broken SQLite" : failure === "skill" ? "broken skill" : "Startup cancelled");
       expect(JSON.parse(await readFile(paths.lockFile, "utf8"))).toMatchObject({ pid: process.pid });
-      if (failure === "aborted-signal") expect(deps.openStore).not.toHaveBeenCalled();
+      if (failure !== "database") expect(deps.openStore).not.toHaveBeenCalled();
     } finally { probe.mockRestore(); }
   });
 
@@ -101,7 +126,7 @@ describe("foreground runtime ownership", () => {
     });
     deps.createProcesses = vi.fn(createProcessSupervisor);
     try {
-      await expect(runForegroundReview(configuration, paths, { dependencies: deps, log: () => {} })).rejects.toThrow("Instance lock");
+      await expect(runForegroundReview(configuration, paths, { packageDirectory, dependencies: deps, log: () => {} })).rejects.toThrow("Instance lock");
       expect(deps.createProcesses).toHaveBeenCalledWith({});
       expect(JSON.parse(await readFile(paths.lockFile, "utf8"))).toMatchObject({ pid: process.pid });
     } finally { probe.mockRestore(); }
@@ -110,7 +135,7 @@ describe("foreground runtime ownership", () => {
       await expect(processes.recover()).resolves.toEqual({ processesExcluded: true, operationsStopped: true });
       return { safeToReleaseLock: true };
     });
-    await runForegroundReview(configuration, paths, { dependencies: confirmed, log: () => {} });
+    await runForegroundReview(configuration, paths, { packageDirectory, dependencies: confirmed, log: () => {} });
     await expect(readFile(paths.lockFile)).rejects.toMatchObject({ code: "ENOENT" });
   });
 

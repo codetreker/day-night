@@ -49,6 +49,10 @@ src/
       polling.ts
       coordinator.ts
       runtime.ts
+      skill.ts
+      skills/
+        daynight-review/
+          SKILL.md
       store.ts
       instance-lock.ts
       processes.ts
@@ -145,8 +149,11 @@ addon 可能阻止替换，npm 失败直接可见。
 
 开发使用 Node.js 24 LTS、pnpm 10.34.5、TypeScript ESM 和固定依赖版本。构建先执行
 `node scripts/clean-dist.ts` 删除包的 `dist/`，再通过 `tsc -p tsconfig.build.json`
-生成产物，防止模块移动后保留旧的可执行文件。清理脚本从自身位置定位目标目录，
-调用者工作目录不会改变清理位置。包的 bin 及发布入口保持 `dist/main.js`。
+生成产物，防止模块移动后保留旧的可执行文件。构建还将 review 的完整内置 skill
+bundle 复制到 `dist/commands/review/skills/daynight-review/`，由既有 `dist` 发布规则
+纳入安装包。清理和资源复制脚本从自身位置定位目录，调用者工作目录不会改变目标。
+包的 bin 及发布入口保持 `dist/main.js`。资源定位沿用稳定入口传入的包目录；
+[review skill 设计](daynight-review-skill.md)定义捕获、快照和加载流程。
 
 普通测试先构建包，既验证源码职责，也通过编译产物验证公开命令。`pnpm typecheck`、
 `pnpm test`、`pnpm build` 和独立 `pnpm acceptance` 的实际入口由

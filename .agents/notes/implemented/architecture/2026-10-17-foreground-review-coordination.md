@@ -55,6 +55,14 @@ revision attribution. Preparation failures do not consume an agent attempt.
 Retry delays grow exponentially to a ten-minute cap. An uncertain Git command or
 agent stop blocks reuse and cleanup of its resources.
 
+The [bundled review skill](2026-10-20-bundled-review-skill.md) adds discovery
+before the review child within the same attempt and overall deadline. The
+supervisor retains one live child per attempt. It must exclude the discovery
+execution before the store can clear that exact PID/identity and register the
+review child. Cancellation between phases launches no new child; uncertain
+discovery exclusion keeps the same resource and lock barriers as an uncertain
+review execution.
+
 The coordinator owns a lifetime cancellation signal in addition to the caller's
 signal. Internal fatal errors cancel pending repository commands and PR work
 before awaiting them. Error diagnostics retain repository/PR/review context and

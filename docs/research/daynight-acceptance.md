@@ -42,9 +42,10 @@ baseline through the current store. Historical scenario receipts below describe
 the source and workload observed on their dates; they do not establish these
 command-composition and existing-data checks for current source.
 
-The current review suite contains thirty-five scenarios: two client-composition
+The current review suite contains forty-five scenarios: two client-composition
 and existing-data cases, four configuration-registration cases, four local
-status-listing cases and twenty-five review lifecycle cases. Registration drives the
+status-listing cases, twenty-five review lifecycle cases and ten bundled-skill
+cases. Registration drives the
 installed command before review startup and verifies configuration-only operation, working-directory-relative
 paths, the default root, and fixed repository paths after a root change. It checks
 that registration creates no clone, database, runtime lock, agent invocation or
@@ -57,7 +58,7 @@ boundary and the distinction between uninitialized and empty tracked state. Live
 alias comparisons normalize only the last-observed timestamp, which a concurrent
 poll can advance between calls. Listing invocations use a restricted PATH without
 Git, gh or Copilot, and the assertions check that they issue no external requests
-or agent invocation. These cases preserve six agent invocations, five publications,
+or agent invocation. These cases preserve six review-agent invocations, five publications,
 two normal shutdowns and two cleanups. The combined suite's recovery receipt uses
 `automaticStaleLockRecoveries: 1`; the replaced manual-recovery counters remain
 only in historical receipts.
@@ -77,6 +78,90 @@ The fixture records six agent invocations and five publications: one inline
 comment review and four approving reviews. The missing-marker attempt publishes
 once; the resumed same-session attempt confirms it without another publication.
 Only the controlled Copilot child may issue the simulated review POST.
+
+The ten bundled-skill cases compare all installed bundle bytes with source,
+check native discovery and the explicit current-snapshot prompt on create and
+resume, clear inherited additional discovery roots, pass the plugin directory as
+one argument through a home path containing commas, spaces and Unicode, and
+preserve the prepared checkout. Replacing the isolated installed asset while the daemon runs must
+leave that daemon's snapshot unchanged. An orderly restart must capture the new
+digest and bytes while retaining the same PR session UUID. Six discovery
+children are recorded separately from the six review-agent invocations and five
+publications. These are controlled loading and lifecycle assertions; actual
+model activation has a separate native Copilot probe.
+
+## Bundled review skill acceptance
+
+Local installed validation on 2026-10-20 used working-tree source package
+`0.3.2`, Linux x64, Node `v24.19.0`, pnpm `10.34.5` and npm `12.0.2`. Type
+checking passed. The ordinary suite passed 858 tests with ten skips across 27
+files: 26 files passed and one was skipped, in 7.63 seconds. Its clean build
+included the complete skill-resource copy. Both installed suites passed in
+15.72 seconds. Their curated lifecycle and update
+receipts report `success: true`; the lifecycle has forty-five scenarios and the
+real-npm suite has seventeen.
+
+The lifecycle compares the complete source bundle with the installed tarball's
+files, then records six native discovery children separately from six review
+children and five publications: one `COMMENT` and four `APPROVE`. Discovery and
+review share the same worktree, plugin snapshot and cleared ambient custom-skill
+environment. The isolated home contains commas, spaces and Unicode, so this
+also exercises single-argument plugin-path transport through installed shims.
+All review prompts identify their current snapshot. Replacing the isolated
+installed skill leaves the running daemon's original bytes intact; orderly
+restart captures a different digest and body while resuming the same UUID.
+The reviewed checkout stays clean. Existing shutdown, cleanup, cutoff, retry,
+publication and state-reuse assertions remain in place, including two clean
+shutdowns and two cleaned worktrees.
+
+The npm suite replaces fixture `1.0.0` with `1.0.1` and verifies distinct bundled
+skill bytes in the actual global installation. Controlled metadata and tarball
+503 failures remain visible as exit 1, preserving the already installed skill
+and invalid review configuration/database fixture bytes. Those failures are
+deliberate acceptance inputs. Task-owned installations and processes were
+cleaned after validation.
+
+These local receipts use controlled Copilot/GitHub responses and have both live
+service flags set to false. They establish installed resources and orchestration,
+including resume input, rather than actual model activation or GitHub effects.
+Native macOS and Windows results must come from the checks for the delivered
+revision; older receipts below remain tied to their own sources.
+
+## Native skill activation
+
+A local loading probe on 2026-10-20 used Copilot CLI `1.0.100`, the actual
+compiled `0.3.2` skill, production `prepareReviewSkill`, and the exact adapter
+activation paragraph. Its isolated cache path contains a comma, spaces and
+Unicode. The deterministic plugin wrapper is discovered at its exact prepared
+directory with `source: "plugin"`.
+
+Both initial creation and changed-bundle resume completed the native `skill`
+tool successfully with `source: "plugin"`, retaining one full UUID. The first
+answer correctly identified the skill's Critical/Major publication scope and
+its final section. For resume, a verification value existed only in the updated
+isolated skill body and was absent from both prompts; the resumed answer returned
+that new value. The original compiled resource and earlier snapshot retained
+their bytes, while the updated snapshot used a different digest. This establishes
+actual current-body loading through the selected transport, beyond directory
+listing or controlled prompt inspection.
+
+The probe supplied no PR target and performed no review or publication. It
+restricted available tools to `skill` and `view`, denied shell/write/URL tools,
+disabled built-in MCPs and custom instructions, and used bounded model turns.
+For observation it passed the loading request with `-p` and selected JSON output;
+the production stdin and text-completion protocol retain their separate
+controlled process and installed coverage. Raw sessions, homes, caches and
+checkouts were removed after the probe. The sanitized receipt records zero
+remaining probe processes and zero credential occurrences in isolated state.
+
+Earlier Copilot CLI `1.0.98` probes established the transport choice: plain,
+backslash-escaped, quoted, JSON-array and percent-encoded comma paths supplied
+through `COPILOT_SKILLS_DIRS` discovered no skill. A single `--plugin-dir` argument
+discovered it with a comma path and the modern minimal manifest. The wrapper
+follows GitHub's [pinned plugin reference](https://github.com/github/docs/blob/2d0a7bedfba3fec537f96da6e4188165ca25c252/content/copilot/reference/copilot-cli-reference/cli-plugin-reference.md).
+These observed versions are evidence, not a declared minimum-version guarantee.
+Production does not parse Copilot transcript events. Real PR reasoning and
+GitHub publication remain a separate live-service acceptance.
 
 ## Client composition and existing-data evidence
 
@@ -137,15 +222,18 @@ advances `1.0.0` to `1.0.1`; `1.0.2` is used for an installation-failure case.
 Calls use the installed absolute CLI and exercise its default updater without
 replacing product dependencies.
 
-Fourteen scenarios cover the npm launcher before and after replacement, a prefix
+Seventeen scenarios cover the npm launcher before and after replacement, a prefix
 with spaces and Unicode, same-installation replacement, configured scoped registry,
 changed default prefix, a target pinned after `latest` moves, conflicting
 caller-project `.npmrc`, help without state, preservation of invalid review-state
 bytes, current/ahead no-install results, and
-metadata/installation failures. They preserve an unrelated prefix, caller project
+metadata/installation failures. Three bundled-resource cases require the packaged
+skill before replacement, the replacement version's exact skill bytes, and
+unchanged installed skill bytes after the controlled failed update. They
+preserve an unrelated prefix, caller project
 files and user configuration/state. The installed manifest, launcher and fresh
 CLI version establish the replacement result. This evidence is separate from
-the thirty-five review scenarios and establishes neither live npm
+the forty-five review scenarios and establishes neither live npm
 publication nor a running reviewer's restart.
 
 The suite writes `.tmp/update-evidence.json` with the source package version,
@@ -214,6 +302,7 @@ and do not establish that repair's behavior.
 
 | Evidence | Observed result |
 |---|---|
+| Bundled review skill local validation, 2026-10-20 | Working-tree source package `0.3.2` on Linux x64: type checking, clean build and 858 ordinary tests with ten skips in 7.63 seconds; both installed suites passed in 15.72 seconds, with 45 review scenarios, 17 real-npm update scenarios, six discovery children separate from six review children, running-daemon snapshot retention and changed-bundle same-UUID resume |
 | Client composition local validation, 2026-10-20 | Working-tree source package `0.3.0` on Linux x64: type checking, clean build with obsolete-output rejection, 768 ordinary tests with ten skips in 6.11 seconds, and both installed suites in 15.61 seconds; 35 review scenarios plus 14 real-npm update scenarios, including independent existing-schema listing reuse |
 | Self-update focused local validation, 2026-10-20 | Linux x64 passed all fourteen controlled real-npm scenarios from working-tree source package `0.2.4` in 8.03 seconds, using Node `v24.19.0` and npm `12.0.2`; separate from the review lifecycle baseline and native hosted results |
 | Package `0.2.1` CI-admission local validation, 2026-10-18 | Linux x64 passed type checking, 662 ordinary tests with eight APFS skips, build and all 33 installed scenarios |

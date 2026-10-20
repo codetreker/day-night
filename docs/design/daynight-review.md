@@ -1,6 +1,7 @@
 # Daynight review 架构设计
 
-状态：review 已接入配置、SQLite、GitHub 观测、Git 管理、Copilot 会话和前台协调。
+状态：review 已接入配置、SQLite、GitHub 观测、Git 管理、Copilot 会话、内置 skill
+和前台协调。
 受控执行链已实现，真实 GitHub/Copilot 验收仍待完成；实际验证记录见
 [验收报告](../research/daynight-acceptance.md)。
 
@@ -178,6 +179,7 @@ PR 预留，但不占审查 Worker 容量。待处理期间的多次更新合并
 | `coordinator.ts` | 轮询调度、PR 操作预留、并发容量、重试和清理调度 |
 | `instance-lock.ts` | 实例锁持有者校验、存活探测与并发接管 |
 | `runtime.ts` | review 模块组装、实例持有关系、信号与有序关闭 |
+| `skill.ts` 与 `skills/daynight-review/` | 发布资源校验、内容寻址快照、发现结果校验，以及内置审查方法 |
 | `processes.ts` | 本次执行的进程组或 Windows 进程树停止与执行证据 |
 | `adapters/github.ts` | 通过 `gh` 读取仓库、PR、分页与当前 CI 完整状态，不登记本地状态 |
 | `adapters/worktrees.ts` | 克隆校验、fetch、PR worktree 准备与清理 |
@@ -205,9 +207,9 @@ review 的领域类型由 `model.ts` 持有，业务模块和适配器不通过 
   instance.lock
   instance.lock.sqlite        # 实例锁操作的持久化串行化数据库
   copilot/                    # CLI 配置和保留的会话
-  cache/
+  cache/review-skills/<digest>/ # plugin.json 与 skills/daynight-review/ 不可变快照
   tmp/
-  logs/<review-id>/<attempt>-<unique>/  # stdout、stderr 和 CLI 诊断
+  logs/<review-id>/<attempt>-<unique>/  # 发现与审查的 stdout、stderr 和 CLI 诊断
 ```
 
 PR worktree 位于各受监控仓库根目录的 `.worktrees/` 下，布局见下文的生命周期说明。
@@ -428,10 +430,22 @@ agent 排除证明后，才能对已重新打开的 PR 调用 `cancelCleanup`，
 
 ## Copilot 会话与结果发布
 
-在每个 PR 首次审查前生成并保存一个 UUID。直接调用 Copilot：
+review 运行时取得实例锁后，从稳定入口传入的安装目录捕获完整内置
+`daynight-review` skill，准备内容寻址的不可变缓存快照。同次运行固定使用这份内容，
+历史快照保留，以容纳已有会话与无法确认已停止的执行。资源无效阻止 daemon 启动；
+配置和 SQLite 格式保持一致。打包、哈希、原子发布及加载流程由
+[skill 设计](daynight-review-skill.md)统一定义。
+
+在每个 PR 首次审查前生成并保存一个 UUID。每次尝试先在相同 worktree 和子环境下
+调用 `copilot -C WORKTREE --plugin-dir=SNAPSHOT --no-auto-update skill list --json`，
+要求发现的唯一已启用 `daynight-review` 实际目录等于本次快照的
+`skills/daynight-review/`。两个阶段都使用单个 `--plugin-dir` 参数传入快照根，
+子环境清除继承的 `COPILOT_SKILLS_DIRS`；同名覆盖或无效发现结果使尝试失败。
+这能保留包含逗号的完整路径。确认发现进程已经排除后，
+才直接调用正式审查：
 
 ```text
-copilot -C WORKTREE --session-id UUID \
+copilot -C WORKTREE --plugin-dir=SNAPSHOT --session-id UUID \
   -s --output-format text --stream on --no-color \
   --no-ask-user --no-auto-update --allow-all-tools --log-dir ATTEMPT_LOG_DIR
 ```
@@ -451,8 +465,10 @@ agent 子进程继承准备结果中的原始 Git 对象环境，同时清除继
 发生崩溃时，必须先检查这个确切的 UUID 是否实际建立，再选择创建或恢复。不读取会话
 JSONL。Copilot 的上下文压缩由其自身处理。
 
-提示词提供仓库与 PR、审查 ID 与修订序号、确切的 head、目标分支、固定的差异上下文、
-上一轮未完成审查的身份、严重程度规则和完成标记。agent 审查代码、检查既有问题，
+提示词显式调用 `/daynight-review`，提供当前快照的绝对 `SKILL.md` 路径和 digest，
+要求恢复会话也加载本次内容。skill 负责审查方法与证据标准。提示词提供仓库与 PR、
+审查 ID 与修订序号、确切的 head、目标分支、固定的差异上下文、上一轮未完成审查的
+身份、严重程度规则和完成标记。agent 审查代码、检查既有问题，
 并自行使用 `gh` 发布。发布前立即重新检查 PR 是否 Open 且非 Draft，以及 head 和
 目标分支是否符合预期。
 
@@ -474,8 +490,18 @@ GitHub API 无法原子地断言发布期间 head 一直未变。作者也无法
 ## 完成、重试与退出
 
 每次尝试创建带唯一后缀的日志目录，启动意图保存后才拉起进程；启动前取消也不会占用
-下一次尝试的日志路径。分别捕获纯文本 stdout 和 stderr，以流式方式写入各自的日志。
-增量解码 UTF-8，
+下一次尝试的日志路径。一次持久化尝试顺序包含 skill 发现和正式审查，预算只消费
+一次，并共用整体 `agentTimeoutMs` 截止时间。发现日志分别写入
+`skill-list.stdout.log` 与 `skill-list.stderr.log`，完整 JSON 另有大小上限；正式
+审查分别流式写入 `stdout.log` 与 `stderr.log`。只有后者参与完成标记解析。
+
+发现进程关闭并完成捕获后，进程监督器必须先返回已排除证明，store 才能在 running
+尝试中按精确 PID 和进程身份清空当前登记，保留尝试预算和其他状态。随后重新检查
+取消、整体截止时间和发现结果，才可登记正式审查进程。同一尝试始终只登记一个子
+进程。排除失败时保留不确定性、PID 和实例锁，不继续启动；阶段间取消也不再启动
+审查。发现不创建或检查 PR 会话历史，正式审查沿用既有会话与退出协议。
+
+正式审查增量解码 UTF-8，
 统一 CRLF。stdout 末行缓冲区默认最多保存 8192 个 UTF-16 码元，超长末行不能匹配
 完成标记；完整日志通过流写入磁盘，不累计在内存中。等待子进程 close 且输出全部读取完毕，
 要求进程正常退出且退出码为零，并且 stdout 最后一条非空行精确匹配：
@@ -587,7 +613,9 @@ review 测试覆盖组与操作参数、帮助、编译后的入口、仓库添�
 受控 API 和子进程验证完整分页、失败保留、限流、关闭确认和观测事务回滚。真实 Git
 fixtures 验证克隆、私有 refs、detached head、dirty 内容、所有权、浅克隆、子模块及
 其他 PR 工作区保留。Copilot 测试使用受控可执行文件和真实 SQLite，验证会话选择、
-启动意图、stdin 提示词、分流日志、完成标记及异常输出，不调用真实模型或发布 review。
+启动意图、stdin 提示词、skill 发现及精确路径选择、分流日志、两阶段的预算/截止时间/
+取消/进程排除、完成标记及异常输出，不调用真实模型或发布 review。skill 资源验证
+覆盖完整 bundle、内容哈希、原子缓存和已有快照损坏；安装验收验证实际发布资源存在。
 执行边界见[Copilot 会话执行决策](../../.agents/notes/implemented/architecture/2026-10-17-copilot-session-execution.md)。
 协调器测试使用真实 SQLite、受控观测和失败注入，验证公平调度、并发容量、永久边界、
 预算抑制、取消、清理及恢复。公平调度案例通过注入时钟及显式控制 CI 响应、执行结束

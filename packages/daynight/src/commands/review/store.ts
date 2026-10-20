@@ -390,6 +390,13 @@ export const openStore = (databaseFile: string, options: { busyTimeoutMs?: numbe
       db.prepare("UPDATE reviews SET process_id = @pid, process_identity = @identity WHERE id = @id").run({ id: review.id, ...input });
       return needReview(review.id);
     }),
+    clearProcess: (identity: AttemptIdentity, expected: { processId: number | null; processIdentity: string | null }, proof: ProcessesExcluded): ReviewState => atomic(() => {
+      requireExcluded(proof);
+      const review = attemptReview(identity);
+      if (review.processId !== expected.processId || review.processIdentity !== expected.processIdentity) throw new Error("The running attempt's process identity changed before exclusion was recorded.");
+      db.prepare("UPDATE reviews SET process_id = NULL, process_identity = NULL WHERE id = @id").run({ id: review.id });
+      return needReview(review.id);
+    }),
     markSessionEstablished: (identity: PullRequestIdentity): PullRequestState => atomic(() => {
       const pullRequest = needPullRequest(identity);
       if (pullRequest.sessionId === null) throw new Error("The PR has no persisted session ID.");

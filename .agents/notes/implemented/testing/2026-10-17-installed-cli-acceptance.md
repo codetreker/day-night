@@ -16,6 +16,13 @@ suites. The review lifecycle suite packs and installs the application into a
 project-local consumer, then drives its installed `daynight` command. It uses
 real Git and SQLite with controlled `gh` and Copilot executables. It injects no
 runtime or coordinator dependencies and adds no product test flags. The
+[bundled review skill](../architecture/2026-10-20-bundled-review-skill.md) is
+loaded from the installed package: the controlled Copilot executable answers
+native discovery and checks that each review receives the immutable snapshot.
+Those discovery calls are separate from the simulated agent invocations and
+publications. Replacing only the isolated installed asset leaves the running
+daemon's captured bytes intact; orderly restart captures the new digest while
+retaining the same PR UUID. The
 [self-update suite](../feature/2026-10-20-cli-self-update.md) uses real npm with
 isolated task-local global prefixes and a controlled scoped HTTP registry; it
 checks replacement of the invoked installation without changing the operator's
