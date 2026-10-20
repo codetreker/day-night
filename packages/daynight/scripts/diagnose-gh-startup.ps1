@@ -1,8 +1,10 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('baseline', 'prefetch')]
+    [ValidateSet('baseline')]
     [string] $Experiment,
-    [switch] $TraceInitialization
+    [switch] $TraceInitialization,
+    [string] $CollectorScript = 'packages/daynight/scripts/validation-environment.ts',
+    [switch] $DisableDebugger
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,53 +20,19 @@ $ghExecutable = $ghCommands[0].Source
 $nodeExecutable = $nodeCommands[0].Source
 $ghFile = Get-Item -LiteralPath $ghExecutable
 $cdbPath = 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe'
-[ordered]@{ experiment = $Experiment; ghExecutable = $ghExecutable } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $directory 'experiment.json') -Encoding utf8
 $preloadPath = Join-Path $directory 'capture-gh-result.cjs'
 @'
 const childProcess = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { performance } = require("node:perf_hooks");
-const { createHash } = require("node:crypto");
 const original = childProcess.spawnSync;
 const directory = path.resolve(".tmp/gh-startup");
-const { experiment, ghExecutable } = JSON.parse(fs.readFileSync(path.join(directory, "experiment.json"), "utf8").replace(/^\uFEFF/, ""));
 
 // Preserve the native result before the collector limits diagnostic output to 16 KiB.
 childProcess.spawnSync = function (...args) {
   if (!["gh", "gh.exe"].includes(path.basename(String(args[0])).toLowerCase())) {
     return Reflect.apply(original, this, args);
-  }
-  let preparation = null;
-  if (experiment === "prefetch") {
-    const preparationStartedAt = new Date().toISOString();
-    const preparationStarted = performance.now();
-    const executable = path.isAbsolute(String(args[0])) ? String(args[0]) : ghExecutable;
-    const file = fs.openSync(executable, "r");
-    const hash = createHash("sha256");
-    const buffer = Buffer.allocUnsafe(1_048_576);
-    let bytes = 0;
-    try {
-      const expectedBytes = fs.fstatSync(file).size;
-      while (bytes < expectedBytes) {
-        const count = fs.readSync(file, buffer, 0, Math.min(buffer.length, expectedBytes - bytes), null);
-        if (count === 0) throw new Error(`gh executable ended before its recorded file size: ${bytes}/${expectedBytes}.`);
-        hash.update(buffer.subarray(0, count));
-        bytes += count;
-      }
-    } finally {
-      fs.closeSync(file);
-    }
-    preparation = {
-      startedAt: preparationStartedAt,
-      capturedAt: new Date().toISOString(),
-      executable,
-      bytes,
-      sha256: hash.digest("hex"),
-      chunkBytes: buffer.length,
-      preparationElapsedMs: performance.now() - preparationStarted,
-    };
-    fs.writeFileSync(path.join(directory, "gh-prefetch.json"), `${JSON.stringify(preparation, null, 2)}\n`);
   }
   const startedAt = new Date().toISOString();
   const started = performance.now();
@@ -75,7 +43,6 @@ childProcess.spawnSync = function (...args) {
   fs.writeFileSync(path.join(directory, "gh-result.json"), `${JSON.stringify({
     startedAt,
     capturedAt: new Date().toISOString(),
-    experiment,
     nativeElapsedMs,
     parentProcessId: process.pid,
     parentExecutable: process.execPath,
@@ -83,7 +50,6 @@ childProcess.spawnSync = function (...args) {
     args: args[1],
     timeoutMs: args[2]?.timeout,
     maxBuffer: args[2]?.maxBuffer,
-    preparation,
     processId: result.pid,
     status: result.status,
     signal: result.signal,
@@ -101,6 +67,8 @@ $metadata = [ordered]@{
     capturedAt = [DateTimeOffset]::UtcNow.ToString('o')
     experiment = $Experiment
     traceInitialization = $TraceInitialization.IsPresent
+    collectorScript = $CollectorScript
+    debuggerDisabled = $DisableDebugger.IsPresent
     wrapperProcessId = $PID
     wrapperExecutable = [System.Environment]::ProcessPath
     ghExecutable = $ghExecutable
@@ -126,7 +94,8 @@ $debuggerState = [ordered]@{
     targetAliveMilliseconds = 1000
     state = 'pending'
 }
-if ($TraceInitialization) { $debuggerState.state = 'disabled-for-warm-trace' }
+if ($DisableDebugger) { $debuggerState.state = 'disabled' }
+elseif ($TraceInitialization) { $debuggerState.state = 'disabled-for-warm-trace' }
 elseif (-not $metadata.cdbAvailable) { $debuggerState.state = 'unavailable' }
 $writeDebuggerState = {
     $debuggerState.updatedAt = [DateTimeOffset]::UtcNow.ToString('o')
@@ -201,7 +170,7 @@ $debugger = $null
 $exitCode = $null
 try {
     $collector = Start-Process -FilePath $nodeExecutable `
-        -ArgumentList @('--require', './.tmp/gh-startup/capture-gh-result.cjs', 'packages/daynight/scripts/validation-environment.ts') `
+        -ArgumentList @('--require', './.tmp/gh-startup/capture-gh-result.cjs', $CollectorScript) `
         -WorkingDirectory $repository -Environment $collectorEnvironment `
         -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath `
         -NoNewWindow -PassThru

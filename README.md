@@ -117,14 +117,17 @@ Linux job also enforces package version increases before ordinary validation. A
 PR compares its complete source changes with its merge base and its package
 version with the event's target-branch revision. Main pushes compare
 the full event before/after range. The checkout includes the required history.
-Native tool discovery records each command's resolved executable, launcher,
-timing, status and bounded output in `.tmp/validation-probes.json`. The `gh`
-version child uses isolated project-local configuration/state and disabled
-telemetry. A separate diagnostic artifact uploads after validation even when
-environment discovery fails; mandatory native versions, the 10-second probe
-limit and 600-second platform gate remain unchanged. The
-[probe isolation decision](.agents/notes/implemented/bug-fix/2026-10-19-native-environment-probe-isolation.md)
-records the failure evidence and remaining limits.
+Native tool discovery records command resolution, launcher, PID, timing, status
+and bounded output in `.tmp/validation-probes.json`. Before executing `gh`, it
+reads the selected file sequentially and records its byte count, SHA-256 and
+preparation duration. Resolution, preparation and native execution share one
+10-second gh budget; expired preparation or an over-budget native result fails
+the probe. The version child uses isolated project-local configuration/state and
+disabled telemetry. A separate diagnostic artifact uploads after validation even
+when environment discovery fails. Every native version, the complete validation
+workload and the 600-second platform gate remain required. The
+[cold-start decision](.agents/notes/implemented/bug-fix/2026-10-20-gh-cold-start-preparation.md)
+records the measurements, deadline semantics and remaining limits.
 
 macOS tests mount temporary case-sensitive and case-insensitive APFS
 images to check path identity against both filesystem behaviors. No live GitHub

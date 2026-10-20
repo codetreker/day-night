@@ -347,6 +347,15 @@ Windows. Each native CLI job uploads three curated files:
   version and replacement result, distinct from review lifecycle and live-service
   evidence.
 
+A separate `validation-probes.json` diagnostic artifact preserves command
+resolution, launcher, PID, timing, bounded output and failures even when complete
+environment collection fails. The gh probe also records selected-file bytes,
+SHA-256 and preparation duration. File preparation and native execution share
+one 10-second budget, and every native version must succeed before the complete
+environment receipt is written. The
+[cold-start decision](../../.agents/notes/implemented/bug-fix/2026-10-20-gh-cold-start-preparation.md)
+owns the measurements and deadline semantics.
+
 The dedicated Linux completion job uploads its shell receipt separately. The
 workflow's required jobs and final `checks` gate are the validation verdict for
 their checked-out revision. A scenario receipt describes its assertions; the

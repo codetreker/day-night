@@ -120,8 +120,9 @@ partial receipt does not prove acceptance.
 The process/signal suite runs in the Ubuntu Go job. Existing Linux, macOS and
 Windows CLI jobs keep their complete workload and acceptance artifacts; the
 aggregate needs all native platforms and the Go job. The
-[native probe decision](../../.agents/notes/implemented/bug-fix/2026-10-19-native-environment-probe-isolation.md)
-records its separate historical timeout and diagnostic guarantees.
+[native probe decision](../../.agents/notes/implemented/bug-fix/2026-10-20-gh-cold-start-preparation.md)
+records the separate gh cold-start evidence, selected-file preparation and shared
+10-second deadline. Native versions and complete CLI validation remain required.
 
 ## Limits and follow-up
 

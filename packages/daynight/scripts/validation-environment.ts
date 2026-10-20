@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { performance } from "node:perf_hooks";
@@ -19,9 +20,10 @@ const maxBuffer = 1_048_576;
 const diagnosticOutputLimit = 16_384;
 type ProbeError = { name: string; message: string; code?: string | number; syscall?: string };
 type Probe = {
-  file: string; args: string[]; startedAt: string; state: "resolving" | "running" | "completed" | "failed";
+  file: string; args: string[]; startedAt: string; state: "resolving" | "preparing" | "running" | "completed" | "failed";
   resolvedExecutable: string | null; launcher: string | null; elapsedMs: number | null;
-  timeoutMs: number; maxBuffer: number; exitCode: number | null; signal: NodeJS.Signals | null;
+  timeoutMs: number; executionTimeoutMs: number | null; maxBuffer: number; pid: number | null;
+  preparation: { bytesRead: number; sha256: string | null; elapsedMs: number | null } | null; exitCode: number | null; signal: NodeJS.Signals | null;
   stdout: string; stderr: string; stdoutTruncated: boolean; stderrTruncated: boolean; error: ProbeError | null;
 };
 const serializeError = (error: unknown): ProbeError => {
@@ -36,11 +38,13 @@ export const createValidationProbeRecorder = (options: {
   directory: string;
   environment: NodeJS.ProcessEnv;
   log?: (message: string) => void;
+  now?: () => number;
   execute?: (file: string, args: string[], options: SpawnSyncOptionsWithStringEncoding) => SpawnSyncReturns<string>;
 }) => {
   const directory = path.resolve(options.directory);
   const log = options.log === undefined ? (message: string): void => { process.stdout.write(message); } : options.log;
   const execute = options.execute === undefined ? crossSpawn.sync : options.execute;
+  const now = options.now === undefined ? () => performance.now() : options.now;
   const probes: Probe[] = [];
   const diagnostics: { capturedAt: string; platform: string; architecture: string; probes: Probe[]; error: ProbeError | null } = {
     capturedAt: new Date().toISOString(), platform: process.platform, architecture: process.arch, probes, error: null,
@@ -49,9 +53,17 @@ export const createValidationProbeRecorder = (options: {
   const persist = (): void => { writeFileSync(path.join(directory, "validation-probes.json"), `${JSON.stringify(diagnostics, null, 2)}\n`); };
   persist();
   const command = (file: string, args: readonly string[], version: boolean): string => {
-    const started = performance.now();
+    const started = now();
+    const deadline = started + timeoutMs;
+    const timeoutError = (): Error => Object.assign(new Error(`Cannot record ${file} ${args.join(" ")} within ${timeoutMs}ms.`), { code: "ETIMEDOUT" });
+    const checkDeadline = (): void => { if (now() >= deadline) throw timeoutError(); };
+    const remainingTime = (): number => {
+      const remaining = Math.floor(deadline - now());
+      if (remaining <= 0) throw timeoutError();
+      return remaining;
+    };
     const probe: Probe = { file, args: [...args], startedAt: new Date().toISOString(), state: "resolving",
-      resolvedExecutable: null, launcher: null, elapsedMs: null, timeoutMs, maxBuffer,
+      resolvedExecutable: null, launcher: null, elapsedMs: null, timeoutMs, executionTimeoutMs: null, maxBuffer, pid: null, preparation: null,
       exitCode: null, signal: null, stdout: "", stderr: "", stdoutTruncated: false, stderrTruncated: false, error: null };
     probes.push(probe);
     const record = (): void => { persist(); log(`Validation probe: ${JSON.stringify(probe)}\n`); };
@@ -70,9 +82,37 @@ export const createValidationProbeRecorder = (options: {
       probe.resolvedExecutable = resolveCommand({ command: file, options: executionOptions }) ?? null;
       const parsed = parseCommand(file, [...args], executionOptions);
       probe.launcher = resolveCommand({ command: parsed.command, options: executionOptions }) ?? null;
+      if (file === "gh" && probe.resolvedExecutable !== null) {
+        probe.state = "preparing";
+        const preparation = { bytesRead: 0, sha256: null as string | null, elapsedMs: null as number | null };
+        probe.preparation = preparation;
+        record();
+        const preparationStarted = now();
+        try {
+          remainingTime();
+          const descriptor = openSync(probe.resolvedExecutable, "r");
+          try {
+            const buffer = Buffer.allocUnsafe(maxBuffer);
+            const hash = createHash("sha256");
+            // Sequential reads reduce measured Windows cold-start cost and capture measured file provenance.
+            for (;;) {
+              const bytesRead = readSync(descriptor, buffer, 0, buffer.length, null);
+              preparation.bytesRead += bytesRead;
+              checkDeadline();
+              if (bytesRead === 0) break;
+              hash.update(buffer.subarray(0, bytesRead));
+            }
+            preparation.sha256 = hash.digest("hex");
+          } finally { closeSync(descriptor); }
+        } finally { preparation.elapsedMs = now() - preparationStarted; }
+      }
+      probe.executionTimeoutMs = file === "gh" ? remainingTime() : timeoutMs;
       probe.state = "running";
       record();
+      if (file === "gh") probe.executionTimeoutMs = remainingTime();
+      executionOptions.timeout = probe.executionTimeoutMs;
       const result = execute(file, [...args], executionOptions);
+      probe.pid = result.pid;
       const stdout = typeof result.stdout === "string" ? result.stdout : "";
       const stderr = typeof result.stderr === "string" ? result.stderr : "";
       probe.exitCode = result.status;
@@ -87,13 +127,15 @@ export const createValidationProbeRecorder = (options: {
       }
       const output = stdout.trim();
       if (version && output === "") throw new Error(`The ${file} version command returned no output.`);
+      const elapsed = now() - started;
+      if (file === "gh" && elapsed >= timeoutMs) throw timeoutError();
       probe.state = "completed";
-      probe.elapsedMs = performance.now() - started;
+      probe.elapsedMs = elapsed;
       record();
       return version ? output.split(/\r?\n/)[0]! : output;
     } catch (error) {
       probe.state = "failed";
-      probe.elapsedMs = performance.now() - started;
+      probe.elapsedMs = now() - started;
       probe.error = serializeError(error);
       diagnostics.error = probe.error;
       record();
