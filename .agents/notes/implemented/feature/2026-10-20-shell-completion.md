@@ -104,7 +104,12 @@ selection remains explicit for other POSIX hosts. Extracted zsh uses a private
 `ZDOTDIR/.zshenv` and native startup ordering so its modules are available before
 ZLE; the fixture excludes inherited completion search paths and subsequent user
 startup files while retaining `compaudit`. Ordinary CLI tests retain native
-Linux, macOS and Windows coverage.
+Linux, macOS and Windows coverage. The PTY driver uses the
+[observable readiness protocol](../testing/2026-10-20-observable-acceptance-readiness.md):
+a fresh primary-prompt generation followed by an actual editor widget
+acknowledgement with an empty buffer and cursor zero. A pipe-gated proof
+exercises a quiet pre-editor transition without changing scenario assertions or
+startup deadlines.
 
 The package's next invocation uses the installed command definitions; existing
 shells keep their loaded definitions until sourced again. Saved generated files

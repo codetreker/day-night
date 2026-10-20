@@ -25,29 +25,38 @@ PACKAGE = Path(__file__).resolve().parents[2]
 ROOT = PACKAGE.parents[1]
 MARKER = "__DAYNIGHT_CAPTURE__"
 READY = "__DAYNIGHT_READY__"
+PROMPT = "__DAYNIGHT_PROMPT_GENERATION__"
+EDITOR_KEY = "\x1b!"
 ARGUMENT = "__DAYNIGHT_ARGUMENT__"
 FINISHED = "__DAYNIGHT_FINISHED__"
 
 
 class Terminal:
     def __init__(self, binary, kind, cwd, environment, setup):
+        gate_reader, self.gate_writer = os.pipe()
+        os.set_inheritable(gate_reader, True)
+        environment = dict(environment, DAYNIGHT_EDITOR_GATE_FD=str(gate_reader))
         self.pid, self.fd = pty.fork()
         if self.pid == 0:
             try:
+                os.close(self.gate_writer)
                 os.chdir(cwd)
                 arguments = [binary, "--noprofile", "--norc", "-i"] if kind == "bash" else [binary, "-d", "-i"]
                 os.execve(binary, arguments, environment)
             except BaseException:
                 os._exit(127)
+        os.close(gate_reader)
         self.transcript = bytearray()
         self.pending = bytearray()
+        self.generation = 0
+        self.editor_ready = False
+        self.readiness_proof = False
         self.calls = cwd / "daynight-invocations.log"
         self.forbidden = cwd / "forbidden-executions.log"
         try:
             fcntl.ioctl(self.fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 240, 0, 0))
             self.send(setup + "\n")
-            self.until(READY + "\r\n")
-            self.drain()
+            self.await_editor(prove_transition=True)
         except BaseException:
             self.close()
             raise
@@ -82,12 +91,42 @@ class Terminal:
         del self.pending[:end]
         return result
 
-    def drain(self):
-        while self.read(0.03):
-            pass
-        self.pending.clear()
+    def acknowledge_editor(self, probe_sent=False):
+        if not probe_sent:
+            self.send(EDITOR_KEY)
+        output = self.until(READY + "END\r\n")
+        match = re.search(READY + r"GEN(\d+)" + READY + r"BUFFER(.*?)" + READY + r"CURSOR(\d+)" + READY + "END", output, re.S)
+        if match is None or int(match.group(1)) != self.generation or match.group(2) != "" or int(match.group(3)) != 0:
+            raise AssertionError(f"The active editor is not empty and ready for generation {self.generation}: {output!r}")
+        self.editor_ready = True
+
+    def await_editor(self, prove_transition=False):
+        output = self.until(PROMPT + "END\r\n")
+        match = re.search(PROMPT + r"(\d+)" + PROMPT + "END", output)
+        if match is None or int(match.group(1)) != self.generation + 1:
+            raise AssertionError(f"Expected the next primary prompt after generation {self.generation}: {output!r}")
+        self.generation = int(match.group(1))
+        self.editor_ready = False
+        self.send(EDITOR_KEY)
+        if prove_transition:
+            # The prompt hook is blocked before editor entry. Quiet output cannot establish readiness.
+            proof_deadline = time.monotonic() + 8
+            while self.read(0.03):
+                if time.monotonic() >= proof_deadline:
+                    raise AssertionError("The blocked editor transition did not become quiet")
+            if (READY + "END").encode() in self.pending:
+                raise AssertionError("The editor acknowledged input before its transition gate was released")
+            os.write(self.gate_writer, b"release\n")
+            os.close(self.gate_writer)
+            self.gate_writer = None
+            self.readiness_proof = True
+        self.acknowledge_editor(probe_sent=True)
 
     def complete(self, keys):
+        if not self.editor_ready:
+            raise AssertionError("A completion scenario requires a fresh empty editor")
+        self.acknowledge_editor()
+        self.editor_ready = False
         calls_before = self.calls.read_bytes() if self.calls.exists() else b""
         self.send(keys + "\x18\x12")
         output = self.until(MARKER + "END\r\n")
@@ -103,14 +142,17 @@ class Terminal:
         self.send("\x05\n")
         output = self.until(FINISHED + "\r\n")
         arguments = re.findall(ARGUMENT + r"(.*?)" + ARGUMENT + "END", output)
-        self.drain()
+        self.await_editor()
         return arguments
 
     def clear(self):
         self.send("\x03")
-        self.drain()
+        self.await_editor()
 
     def close(self):
+        if self.gate_writer is not None:
+            os.close(self.gate_writer)
+            self.gate_writer = None
         try:
             os.killpg(self.pid, signal.SIGTERM)
         except ProcessLookupError:
@@ -128,19 +170,23 @@ class Terminal:
 
 
 def shell_setup(kind, script):
-    common = "PS1='__DAYNIGHT_PROMPT__ '; PS2='__DAYNIGHT_CONTINUE__ '; "
+    common = "PS1='__DAYNIGHT_PROMPT__ '; PS2='__DAYNIGHT_CONTINUE__ '; _daynight_generation=0; "
+    common += "_daynight_prompt() { ((_daynight_generation+=1)); printf '\\n" + PROMPT + "%s" + PROMPT + "END\\n' \"$_daynight_generation\"; if (( _daynight_generation == 1 )); then read -r -u \"$DAYNIGHT_EDITOR_GATE_FD\" _daynight_release; fi; }; "
     if kind == "bash":
         setup = common + "set +o history; bind 'set bell-style none'; bind 'set show-all-if-ambiguous on'; bind 'set completion-query-items 0'; "
         setup += "_daynight_capture() { printf '\\n" + MARKER + "BEGIN%s" + MARKER + "CURSOR%s" + MARKER + "END\\n' \"$READLINE_LINE\" \"$READLINE_POINT\"; }; "
         setup += "bind -x '\"\\C-x\\C-r\":_daynight_capture'; "
+        setup += "_daynight_editor_ready() { printf '\\n" + READY + "GEN%s" + READY + "BUFFER%s" + READY + "CURSOR%s" + READY + "END\\n' \"$_daynight_generation\" \"$READLINE_LINE\" \"$READLINE_POINT\"; }; bind -x '\"\\e!\":_daynight_editor_ready'; "
     else:
         setup = common + "unsetopt BEEP AUTO_MENU MENU_COMPLETE; "
         setup += "autoload -Uz compaudit; compaudit || exit 91; autoload -Uz compinit; compinit -D; bindkey -e; "
         setup += "_daynight_capture() { printf '\\n" + MARKER + "BEGIN%s" + MARKER + "CURSOR%s" + MARKER + "END\\n' \"$BUFFER\" \"$CURSOR\"; zle redisplay; }; zle -N _daynight_capture; bindkey '^X^R' _daynight_capture; "
+        setup += "_daynight_editor_ready() { printf '\\n" + READY + "GEN%s" + READY + "BUFFER%s" + READY + "CURSOR%s" + READY + "END\\n' \"$_daynight_generation\" \"$BUFFER\" \"$CURSOR\"; zle redisplay; }; zle -N _daynight_editor_ready; bindkey '^[!' _daynight_editor_ready; "
     setup += "source " + shlex.quote(str(script)) + " || exit 90; "
     # Completion must not invoke these functions. Enter invokes only this harmless argv recorder.
     setup += "daynight() { printf x >>daynight-invocations.log; printf '\\n'; for _dn_arg in \"$@\"; do printf '" + ARGUMENT + "%s" + ARGUMENT + "END\\n' \"$_dn_arg\"; done; printf '" + FINISHED + "\\n'; }; "
-    setup += "node() { printf x >>forbidden-executions.log; printf '__DAYNIGHT_FORBIDDEN_NODE__\\n'; return 99; }; printf '" + READY + "\\n'"
+    setup += "node() { printf x >>forbidden-executions.log; printf '__DAYNIGHT_FORBIDDEN_NODE__\\n'; return 99; }; "
+    setup += "PROMPT_COMMAND=_daynight_prompt" if kind == "bash" else "precmd_functions+=(_daynight_prompt)"
     return setup
 
 
@@ -250,7 +296,7 @@ def run_shell(label, binary, kind, script, directory, evidence, zsh_root):
     environment.pop("FPATH", None)
     environment.update({"HOME": str(directory / "home"), "ZDOTDIR": str(directory / "home"), "INPUTRC": "/dev/null", "TERM": "xterm", "LC_ALL": "C.UTF-8", "HISTFILE": "/dev/null", "PATH": str(directory / "bin") + os.pathsep + os.environ["PATH"]})
     shell = Terminal(binary, kind, directory, environment, shell_setup(kind, script))
-    receipt = {"shell": label, "binary": binary, "version": version(binary), "scenarios": []}
+    receipt = {"shell": label, "binary": binary, "version": version(binary), "editor_readiness_proof": shell.readiness_proof, "scenarios": []}
     evidence.append(receipt)
     try:
         cases, unchanged = scenarios()
