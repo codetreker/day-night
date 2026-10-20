@@ -188,11 +188,10 @@ PR 已完成审查或审查最终失败，只要仍被观测为 Open，就继续
 当前配置移除的仓库不显示。
 
 每个仓库显示最近成功完整轮询的 `Last observed` 时间和已保存的轮询错误。初始化
-完成后显示永久跟踪边界；编号不超过边界的 PR 未逐条保存，列表必须明确说明这些 PR
-被排除且未跟踪，不能声称列出所有 GitHub Open PR。初始化完成但没有已跟踪的 Open
-PR 时显示 `No tracked ongoing PRs.`；数据库不存在、仓库尚未登记或尚未完成初始化
-时显示 `Not initialized.`。输出代表本地保存的快照，不保证反映此后的远程变化或
-当前 daemon、agent 的存活状态。
+完成但没有已跟踪的 Open PR 时显示 `No tracked ongoing PRs.`；数据库不存在、仓库
+尚未登记或尚未完成初始化时显示 `Not initialized.`。跟踪范围遵循 R4 的永久边界，
+不能声称列出所有 GitHub Open PR。输出代表本地保存的快照，不保证反映此后的远程
+变化或当前 daemon、agent 的存活状态。
 
 表格包含 `PR`、`PR STATE`、`REVIEW` 和 `ATTEMPTS`。审查状态覆盖 `Preparing`、
 `Running`、`Pending`、`Retry waiting`、`Completed`、`Failed`、`Interrupted`，
@@ -224,7 +223,7 @@ Draft 显示 `Paused`。下次重试时间和已保存错误归属到对应审�
 | 重复添加同一仓库，或两个添加命令并发执行。 | 同仓库省略路径时复用已保存路径，显式同实际路径保持幂等，显式不同路径报错；并发写入不会丢失另一项修改，锁冲突明确失败。 | R2 |
 | daemon 运行时添加仓库。 | 当前进程保留已有配置，下次启动后按正常启动流程克隆并初始化新增仓库。 | R2, R3, R4 |
 | 执行 `daynight review list` 或 `daynight review ls`。 | 两者输出相同的本地一致快照，按配置仓库顺序及 PR 编号排列，包含 Draft 与仍然 Open 的已完成或失败审查。 | R15 |
-| 已初始化仓库没有已跟踪的 Open PR，或仓库尚未初始化。 | 分别显示 `No tracked ongoing PRs.` 或 `Not initialized.`，并明确初始化边界以内的 PR 未逐条跟踪。 | R4, R15 |
+| 已初始化仓库没有已跟踪的 Open PR，或仓库尚未初始化。 | 分别显示 `No tracked ongoing PRs.` 或 `Not initialized.`。 | R4, R15 |
 | 较新 head 的待审修订等待旧版本审查结束。 | 最新版本显示待处理，旧版本的保存状态、尝试预算、重试时间及错误单独显示；仅 base tip 变化仍保留已完成状态。 | R6, R14, R15 |
 | PR 重新打开且保留未解决的清理屏障时读取列表。 | 显示待清理状态及保存的错误；没有当前审查时显示 `Pending (cleanup blocked)`，Draft 仍暂停，并保留旧活跃审查的独立详情。 | R13, R15 |
 | daemon 运行中或异常退出后读取列表。 | 不获取实例锁、不启动恢复、不执行 Git 或网络请求；`Running` 仅表示保存的状态，成功轮询时间和已保存错误显示数据时效。 | R13, R15 |

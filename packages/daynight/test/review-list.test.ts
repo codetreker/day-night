@@ -57,7 +57,7 @@ describe("persisted review listing projection", () => {
     expect(output.indexOf("github.com/owner/repo")).toBeLessThan(output.indexOf("github.com/owner/missing"));
     expect(output.indexOf("#102 ")).toBeLessThan(output.indexOf("#111 "));
     expect(output).not.toMatch(/#103 |#104 |#105 |owner\/removed/);
-    expect(output).toContain("github.com/owner/second\nLast observed: 1970-01-01T00:00:01.000Z\nTracking PRs above #100; earlier PRs excluded/not tracked.\nNo tracked ongoing PRs.");
+    expect(output).toContain("github.com/owner/second\nLast observed: 1970-01-01T00:00:01.000Z\nNo tracked ongoing PRs.");
     expect(output).toContain("github.com/owner/missing\nLast observed: never\nNot initialized.");
   });
 
@@ -82,13 +82,13 @@ describe("persisted review listing projection", () => {
     expect(uninitialized).toContain("Last observed: never\nLast poll error: API unavailable\nNot initialized.");
     expect(row(uninitialized)).toBeUndefined();
     const empty = formatReviewListing(configuration(), snapshot({ repositories: [repository({ startPrNumber: 0 })], pullRequests: [] }));
-    expect(empty).toContain("Tracking PRs above #0; earlier PRs excluded/not tracked.\nNo tracked ongoing PRs.");
+    expect(empty).toContain("Last observed: 1970-01-01T00:00:01.000Z\nNo tracked ongoing PRs.");
     expect(empty).not.toContain("Not initialized.");
   });
 
-  it("shows the exclusion range without creating rows below the permanent boundary", () => {
+  it("omits the boundary notice while excluding PRs at or below the permanent boundary", () => {
     const output = formatReviewListing(configuration(), snapshot({ pullRequests: [pullRequest({ number: 99 }), pullRequest({ number: 100 }), pullRequest()] }));
-    expect(output).toContain("Tracking PRs above #100; earlier PRs excluded/not tracked.");
+    expect(output).not.toContain("Tracking PRs above");
     expect(row(output, 99)).toBeUndefined();
     expect(row(output, 100)).toBeUndefined();
     expect(row(output)).toBeDefined();
@@ -209,7 +209,7 @@ describe("review listing reads", () => {
       expect(row(output, 12)).toMatch(/Draft\s+Paused\s+-$/);
       expect(row(output, 13)).toBeUndefined();
       expect(output).toContain("Last poll error: API unavailable");
-      expect(output).toContain("Tracking PRs above #0;");
+      expect(output).not.toContain("Tracking PRs above");
       expect(store.getRepository(identity)).toEqual(previousRepository);
       expect(store.listPullRequests(identity)).toEqual(previousPullRequests);
       expect(store.listReviews({ ...identity, number: 12 })).toEqual([]);
