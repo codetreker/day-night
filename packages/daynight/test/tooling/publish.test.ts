@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { preflightRelease, prepareRelease, publishRelease, runNpmPublish } from "../../scripts/publish.js";
@@ -190,7 +191,7 @@ describe("release version preflight", () => {
     const stub = path.join(f.cwd, "fetch.mjs");
     const output = path.join(f.cwd, "github-output");
     writeFileSync(stub, `globalThis.fetch = async () => new Response(JSON.stringify({ ref: 'refs/tags/daynight-v1.2.3', object: { type: 'tag', sha: '${otherSha}' } }));\n`);
-    const result = spawnSync(process.execPath, ["--import", stub, script, "preflight", f.sha], {
+    const result = spawnSync(process.execPath, ["--import", pathToFileURL(stub).href, script, "preflight", f.sha], {
       cwd: f.cwd, encoding: "utf8", timeout: 20_000, env: { ...process.env, GH_TOKEN: "fixture-token", GITHUB_TOKEN: "fixture-token", GITHUB_OUTPUT: output },
     });
     expect(result.status, result.stderr).toBe(0);
