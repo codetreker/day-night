@@ -25,8 +25,8 @@ React Flow component tests; actual geometry is verified separately in Chromium.
 
 The shared build publishes validated real UI assets into the Go embed directory.
 Publication tests cover index references, nonregular output, complete replacement,
-rollback, failure propagation and the command entry. Current CLI typechecking,
-build and 1,057 tests with ten platform skips passed.
+rollback, failure propagation and the command entry. CLI 0.4.4 typechecking,
+build and 1,284 tests with ten platform skips passed.
 
 The W-T6 Go full gate passed 307 tests (108 top-level), nine checker cases and
 raw 1153/1155 statements (99.8268%), with no product exclusions. Store, service,
