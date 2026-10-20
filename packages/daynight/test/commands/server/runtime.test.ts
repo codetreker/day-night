@@ -185,15 +185,23 @@ describe("shared server command runtime", () => {
     expect(existing).not.toHaveBeenCalled();
   });
 
-  it("retains callback and listener cleanup failures together", async () => {
+  it.each([
+    { platform: "linux" as const, expectedSignals: ["SIGINT", "SIGTERM"] },
+    { platform: "win32" as const, expectedSignals: ["SIGINT", "SIGTERM", "SIGBREAK"] },
+  ])("retains callback and every listener cleanup failure on $platform", async ({ platform, expectedSignals }) => {
     const context = await fixture();
     const signals = new EventEmitter();
     const failure = new Error("Command failed");
     const cleanupFailure = new Error("Listener cleanup failed");
-    vi.spyOn(signals, "off").mockImplementation((event, listener) => { EventEmitter.prototype.off.call(signals, event, listener); throw cleanupFailure; });
-    const result = await runServerCommand(context, async () => { throw failure; }, { signalEmitter: signals }).catch((error: unknown) => error);
+    const added = vi.spyOn(signals, "on");
+    const removed = vi.spyOn(signals, "off").mockImplementation((event, listener) => { EventEmitter.prototype.off.call(signals, event, listener); throw cleanupFailure; });
+    const result = await runServerCommand(context, async () => { throw failure; }, { signalEmitter: signals, platform }).catch((error: unknown) => error);
     expect(result).toBeInstanceOf(AggregateError);
-    expect((result as AggregateError).errors).toEqual([failure, cleanupFailure, cleanupFailure]);
+    expect((result as AggregateError).errors).toEqual(platform === "win32"
+      ? [failure, cleanupFailure, cleanupFailure, cleanupFailure]
+      : [failure, cleanupFailure, cleanupFailure]);
+    expect(added.mock.calls.map(([signal]) => signal)).toEqual(expectedSignals);
+    expect(removed.mock.calls.map(([signal]) => signal)).toEqual(expectedSignals);
     expect(context.stdout).not.toHaveBeenCalled();
     expectReleased(signals);
   });
