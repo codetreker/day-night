@@ -113,6 +113,20 @@ their original revisions. Existing-format fixture reuse here establishes the
 installed read path; runtime persistence, recovery and repeated startup retain
 their separate ordinary and full-lifecycle coverage.
 
+## Coordinator cooldown boundaries
+
+Cooldown scenarios use the production coordinator's injected clock and real
+SQLite. The tests observe completed scans or persisted review state before
+advancing time, require suppression immediately before the deadline, and require
+admission at the deadline. Independent PR/host progress and attempt-budget
+assertions remain explicit. A repository scan that fails after a new open PR was
+listed must retain the complete prior snapshot until a successful retry commits.
+
+The [cooldown validation decision](../../.agents/notes/implemented/bug-fix/2026-10-20-coordinator-cooldown-clock.md)
+records the failed hosted assertion and controlled reproduction. It does not
+claim a particular infrastructure delay; native CI validates the changed tests
+without increasing polling windows, timeouts or acceptance thresholds.
+
 ## Controlled npm self-update acceptance
 
 The separate `update.acceptance.ts` suite uses real npm global installation and
