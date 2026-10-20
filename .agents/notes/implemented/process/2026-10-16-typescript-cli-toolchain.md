@@ -109,7 +109,10 @@ maintainer. A read-only failure keeps the version choice in the reviewed change.
 Every release-affecting PR includes its version decision. Documentation and
 test maintenance stay independent of release numbering. The gate verifies the
 revisions supplied by each CI event; it does not publish packages or schedule
-release tags. Native-platform checks still own application validation.
+release tags. Native-platform checks still own application validation. The
+separate [npm publishing decision](2026-10-20-npm-trusted-publishing.md) owns
+manual release authorization, OIDC, artifact identity, and post-publication tags;
+its workflow consumes successful main-push validation at the selected commit.
 
 All implementation tasks share concrete build and validation commands. Tests
 can inject home resolution and command boundaries without modifying an actual
