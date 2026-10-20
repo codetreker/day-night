@@ -16,6 +16,7 @@
     "web:dev": "pnpm --filter @codetreker/daynight-web dev",
     "web:typecheck": "pnpm --filter @codetreker/daynight-web typecheck",
     "web:test": "pnpm --filter @codetreker/daynight-web test",
-    "web:build": "pnpm --filter @codetreker/daynight-web build"
+    "web:build": "pnpm --filter @codetreker/daynight-web build",
+    "completion:acceptance": "pnpm --filter @codetreker/daynight completion:acceptance"
   }
 }

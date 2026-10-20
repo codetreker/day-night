@@ -161,6 +161,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     expect(rootHelp).toContain("Usage: daynight <command>");
     expect(rootHelp).toMatch(/^  review\s/m);
     expect(rootHelp).toMatch(/^  update\s/m);
+    expect(rootHelp).toMatch(/^  completion\s/m);
     expect(information(["--help"])).toBe(rootHelp);
     expect(information(["--version"])).toBe(`${installed.version}\n`);
     const reviewHelp = information(["review"]);
@@ -168,6 +169,11 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     expect(information(["review", "--help"])).toBe(reviewHelp);
     expect(information(["review", "run", "--help"])).toContain("Usage: daynight review run");
     expect(information(["update", "--help"])).toContain("Usage: daynight update");
+    const completionHelp = information(["completion"]);
+    expect(completionHelp).toContain("Usage: daynight completion <shell>");
+    expect(information(["completion", "--help"])).toBe(completionHelp);
+    expect(information(["completion", "bash"])).toContain("complete -F _daynight_completion 'daynight'");
+    expect(information(["completion", "zsh"])).toContain("compdef _daynight 'daynight'");
     expect(existsSync(helpHome)).toBe(false);
     const existingHome = path.join(directory, "existing client home 中文");
     const existingDirectory = path.join(existingHome, ".daynight");
@@ -356,7 +362,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       await waitFor(() => pr(number)?.completed_revision === revision, `PR ${number} completed revision ${revision}`);
       expect(pr(number)?.desired_revision).toBe(revision);
     };
-    const scenarios: string[] = ["client-and-review-help-without-state", "pre-refactor-schema-v1-reuse", "config-only-registration", "relative-registration-path", "default-root-registration", "registration-path-fixed-after-root-change", "review-list-before-initialization"];
+    const scenarios: string[] = ["client-and-review-help-without-state", "completion-generation-without-state", "pre-refactor-schema-v1-reuse", "config-only-registration", "relative-registration-path", "default-root-registration", "registration-path-fixed-after-root-change", "review-list-before-initialization"];
     try {
       execFileSync(process.execPath, ["--input-type=module", "--eval", `
         import assert from "node:assert/strict";
