@@ -11,8 +11,10 @@ $directory = Join-Path $repository '.tmp/gh-startup'
 $samplesPath = Join-Path $directory 'process-samples.jsonl'
 $stdoutPath = Join-Path $directory 'collector.stdout.log'
 $stderrPath = Join-Path $directory 'collector.stderr.log'
-$ghExecutable = (Get-Command gh.exe -CommandType Application -ErrorAction Stop).Source
-$nodeExecutable = (Get-Command node.exe -CommandType Application -ErrorAction Stop).Source
+$ghCommands = @(Get-Command gh.exe -CommandType Application -ErrorAction Stop)
+$nodeCommands = @(Get-Command node.exe -CommandType Application -ErrorAction Stop)
+$ghExecutable = $ghCommands[0].Source
+$nodeExecutable = $nodeCommands[0].Source
 $ghFile = Get-Item -LiteralPath $ghExecutable
 $preloadPath = Join-Path $directory 'capture-gh-result.cjs'
 @'
@@ -52,10 +54,12 @@ $metadata = [ordered]@{
     capturedAt = [DateTimeOffset]::UtcNow.ToString('o')
     ghPathMode = $GhPathMode
     ghExecutable = $ghExecutable
+    ghCommandCandidates = @($ghCommands | ForEach-Object { $_.Source })
     ghFileVersion = $ghFile.VersionInfo.FileVersion
     ghProductVersion = $ghFile.VersionInfo.ProductVersion
     ghFileBytes = $ghFile.Length
     nodeExecutable = $nodeExecutable
+    nodeCommandCandidates = @($nodeCommands | ForEach-Object { $_.Source })
     imageOS = $env:ImageOS
     imageVersion = $env:ImageVersion
     runnerOS = $env:RUNNER_OS
@@ -122,11 +126,11 @@ $seenGh = [System.Collections.Generic.HashSet[int]]::new()
 $exitCode = $null
 try {
     $collector = Start-Process -FilePath $nodeExecutable `
-        -ArgumentList @('--require', '.tmp/gh-startup/capture-gh-result.cjs', 'packages/daynight/scripts/validation-environment.ts') `
+        -ArgumentList @('--require', './.tmp/gh-startup/capture-gh-result.cjs', 'packages/daynight/scripts/validation-environment.ts') `
         -WorkingDirectory $repository -Environment $collectorEnvironment `
         -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath `
         -NoNewWindow -PassThru
-    [Console]::Out.WriteLine("{0} Collector launched: pid={1}, GH_PATH mode={2}" -f $launchedAt.ToString('o'), $collector.Id, $GhPathMode)
+    [Console]::Out.WriteLine(("{0} Collector launched: pid={1}, GH_PATH mode={2}" -f $launchedAt.ToString('o'), $collector.Id, $GhPathMode))
     & $sampleProcess $collector
     $stdoutReader = & $openLog $stdoutPath
     $stderrReader = & $openLog $stderrPath
@@ -136,7 +140,7 @@ try {
             try {
                 if ($process.StartTime.ToUniversalTime() -lt $launchedAt.UtcDateTime) { continue }
                 if ($seenGh.Add($process.Id)) {
-                    [Console]::Out.WriteLine("{0} gh observed: pid={1}, path={2}" -f [DateTimeOffset]::UtcNow.ToString('o'), $process.Id, $process.Path)
+                    [Console]::Out.WriteLine(("{0} gh observed: pid={1}, path={2}" -f [DateTimeOffset]::UtcNow.ToString('o'), $process.Id, $process.Path))
                 }
                 & $sampleProcess $process
             } catch {
