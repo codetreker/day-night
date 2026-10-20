@@ -7,7 +7,7 @@ implementation work.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented TypeScript client command toolkit; `review` and npm global `update` commands | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md) |
+| `daynight` | `packages/daynight/` | Implemented `review` and npm global `update`; project/task CLI design adopted, implementation pending | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, typed API client, graph projection/layout and strict coverage implemented; task view and embedded delivery pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -19,8 +19,14 @@ session for each eligible PR. SQLite preserves initialization boundaries, review
 revisions and retry budgets. The group also provides configuration-only
 repository registration and a local persisted review listing. `update` manages
 the current npm global installation independently of review configuration and
-runtime. Controlled native-platform tests and live Copilot/GitHub acceptance
-provide separate evidence; live acceptance remains outstanding.
+runtime. The adopted [project/task CLI design](docs/design/daynight-project-task.md)
+adds server-backed commands, automatic Git-origin project discovery and ignored
+repository-local bindings. Its [requirements](docs/spec/daynight-project-task.md)
+and [task breakdown](docs/design/daynight-project-task-tasks.md) describe the
+confirmed behavior and pending implementation; these commands and configuration
+fields are not yet available. Controlled native-platform tests and live
+Copilot/GitHub acceptance provide separate evidence; live acceptance remains
+outstanding.
 
 The server design covers repository-linked projects, project-scoped tasks,
 acyclic dependencies and dependency-gated task states through HTTP JSON APIs.
