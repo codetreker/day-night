@@ -62,6 +62,6 @@ describe("configuration mutation failures", () => {
     expect(await readFile(paths.configFile, "utf8")).toBe(source);
     const entries = await readdir(paths.stateDirectory);
     expect(entries).not.toContain("config.yml.lock");
-    expect(entries.filter((entry) => entry.startsWith(".config-") && entry.endsWith(".tmp"))).toHaveLength(1);
+    expect(entries.filter((entry) => entry.startsWith(".atomic-") && entry.endsWith(".tmp"))).toHaveLength(1);
   });
 });
