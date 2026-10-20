@@ -30,7 +30,12 @@ derives clone paths from the global root. Changing the root affects future
 additions only. Existing hand-written relative repository paths keep their
 configuration-directory-relative meaning.
 
-The command reuses complete configuration and filesystem-identity validation.
+The command reuses review field and filesystem-identity validation. Shared
+`config/` modules own document parsing and the atomic save protocol. A file with
+only server settings can receive its first review repository; existing malformed
+review values still fail, while server values remain unchanged and unvalidated
+by review. The [project/task design](../architecture/2026-10-20-project-task-cli-design.md)
+owns the server projection.
 Adding an existing normalized repository without an explicit path reuses the saved
 path, including after root changes. An explicit path to the same actual location
 also succeeds without a write; an explicit different path is a conflict. An exclusive separate

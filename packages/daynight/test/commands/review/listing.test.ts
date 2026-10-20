@@ -179,6 +179,20 @@ const diskFixture = async () => {
 };
 
 describe("review listing reads", () => {
+  it("does not require a valid server address for persisted review queries", async () => {
+    const { paths, source } = await diskFixture();
+    await writeFile(paths.configFile, `serverUrl: invalid-for-server\n${source}`);
+    expect(await listReviews(paths)).toContain("github.com/owner/repo");
+  });
+
+  it("reports unconfigured review before opening SQLite in server-only configuration", async () => {
+    const { paths } = await diskFixture();
+    await writeFile(paths.configFile, "serverUrl: http://localhost:8787\n");
+    await writeFile(paths.databaseFile, "invalid database");
+    await expect(listReviews(paths)).rejects.toThrow("Review repositories are not configured; use daynight review add-repo.");
+    expect(await readFile(paths.databaseFile, "utf8")).toBe("invalid database");
+  });
+
   it("reads configuration without probing clone paths or creating missing runtime state", async () => {
     const { paths, directory, source } = await diskFixture();
     const physical = vi.spyOn(filesystemPaths, "resolvePhysicalDirectory").mockRejectedValue(new Error("Physical paths must not be probed."));
