@@ -315,7 +315,9 @@ The workflow accepts only `main` and freezes that run's source commit. It waits
 for the latest main-push `checks.yml` run at that exact commit to succeed; a
 missing or failed run stops publication. It then installs frozen dependencies,
 runs type checking, tests and installed acceptance, and smoke-installs the packed
-release tarball. A separate GitHub-hosted job uses
+release tarball. The publishing job is titled `Publish daynight v<version>`,
+using the version from the prepared artifact's release receipt. That separate
+GitHub-hosted job uses
 Node.js 24 and pinned npm 12.2.0 to publish that same artifact publicly with
 provenance and the `latest` dist-tag. No npm token is required. Stable releases
 are supported; prerelease versions are rejected, and a new version must advance

@@ -10,7 +10,8 @@ that is available from the public registry. npm can accept a publication before
 its public registry metadata becomes visible. Interrupted publication and tagging
 must be recoverable without replacing an existing version or moving a tag, and
 registry verification must allow that processing time without waiting forever.
-Maintainers also need CI publication without storing a long-lived npm token.
+Maintainers also need CI publication without storing a long-lived npm token and
+must be able to identify the target version in the publishing job's title.
 
 ## Decision
 
@@ -31,7 +32,11 @@ install, type checking, tests and installed acceptance. It packs the staged CLI
 with the captured commit in `gitHead`, smoke-installs the resulting tarball, and
 uploads `.tmp/npm-release/artifact/package.tgz` together with `release.json` as
 an immutable Actions artifact. The receipt binds package name, version, source,
-tag and SHA-512 integrity to the tarball. Publishing a tarball does not infer
+tag and SHA-512 integrity to the tarball. Preparation exposes the receipt's
+version as a job output; the dependent publishing job uses it in the title
+`Publish daynight v<version>`. This identifies the validated artifact without
+adding a manual version input or another version source.
+Publishing a tarball does not infer
 `gitHead` from the checkout, so the staged manifest supplies it explicitly;
 the [npm publish implementation](https://github.com/npm/cli/blob/ae98c62586b6fea44114f72e249e246a2981de70/lib/commands/publish.js)
 distinguishes tarball and directory publication.
@@ -77,6 +82,13 @@ artifact mismatches and conflicting tags remain visible failures.
 
 ## Alternatives
 
+**Require a version input for the Actions run-list title.** GitHub evaluates
+`run-name` before jobs execute and its
+[context availability rules](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#context-availability)
+do not permit step or job outputs there. An input would enable a versioned run
+title but add a manual assertion to each dispatch. The publishing job title
+meets the visibility requirement while retaining the existing invocation.
+
 **Create a version tag before publishing.** This supplies a tag trigger but
 leaves a release marker when authentication, validation or npm publication
 fails. A tag created only after registry verification preserves the meaning of
@@ -104,6 +116,8 @@ publication and public-registry verification. The privileged publishing job
 does not rebuild the package or execute package lifecycle scripts. Tagging is
 ordered after an observable successful publication, and re-runs complete
 interrupted releases without mutating package versions or existing tags.
+The publishing job title follows the artifact version automatically, including
+when failed jobs are re-run with the retained artifact.
 
 The first live publication validates both the OIDC path and interrupted-run
 recovery. At source `39bdff4bdc6e271cc69a733ecde742cc004dfdf8`,
