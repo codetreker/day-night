@@ -58,7 +58,7 @@ HTTP 错误映射和服务生命周期。`internal/service` 拥有 project/task 
 不为测试另外定义空泛的 `Store` 接口或模拟存储实现。
 
 独立模块允许服务拥有自己的 Go/PostgreSQL 生命周期，避免将数据库事务接入现有
-review CLI。`cmd/` 与 `internal/` 的职责遵循
+客户端的 review 命令。`cmd/` 与 `internal/` 的职责遵循
 [Go 服务项目布局建议](https://go.dev/doc/modules/layout#server-project)。
 
 ## 领域模型与存储结构

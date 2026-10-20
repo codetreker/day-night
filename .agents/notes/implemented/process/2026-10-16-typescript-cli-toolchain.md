@@ -14,7 +14,10 @@ The repository uses a pnpm workspace with application code in
 `packages/daynight/`, Node.js 24 LTS, pinned dependencies, TypeScript ESM with
 NodeNext module resolution, and emitted JavaScript. The package bin points to
 the shebang-bearing `dist/main.js`. Vitest executes source tests and compiled CLI
-probes; the test command builds before running them. The pnpm dependency store
+probes; the test command builds before running them. A script-relative cleanup
+removes `dist/` before compilation so moved modules cannot remain in packed
+artifacts. Source tests follow client, command and platform module ownership;
+tooling tests retain build and version-policy validation. The pnpm dependency store
 is local to `.tmp/pnpm-store`.
 
 YAML parsing is followed by explicit field/type/path validation. Omitted numeric
@@ -28,10 +31,12 @@ inside an owned sandbox and the other is looked up by the filesystem. Created
 directories are recorded and removed deepest-first without recursive deletion.
 Creation, inspection, and cleanup failures remain visible. No platform casing,
 JavaScript lowercase, or Unicode-normalization rule replaces actual lookup.
-The [configuration design](../../../../docs/design/daynight.md) owns the schema
+The [configuration design](../../../../docs/design/daynight-review.md) owns the schema
 and path rules.
 
-The CLI supports help, version, argument validation, configuration loading,
+The [client composition decision](../architecture/2026-10-20-client-command-composition.md)
+assigns root help/version to the client and operation loading to each command.
+The review module supports argument validation, configuration loading,
 [configuration-only repository registration](../feature/2026-10-18-add-repo-configuration.md)
 and [local persisted status listing](../feature/2026-10-18-review-status-listing.md).
 The [self-update command](../feature/2026-10-20-cli-self-update.md) updates only its
@@ -55,7 +60,8 @@ and [pnpm setup](https://github.com/pnpm/action-setup/tree/ea17c68df8912ef543352
 The Linux verification job checks package version increases before the ordinary
 checks. Release inputs are production source, package manifests, TypeScript build
 configuration, the workspace definition, dependency lock and package-manager
-configuration. The [README](../../../../README.md#package-versions) owns the exact
+configuration and the package build-cleanup script. The
+[README](../../../../README.md#package-versions) owns the exact
 scope and local command. Tests, documentation and validation scripts alone do
 not change the shipped application. Conservative manifest and lockfile matching
 keeps dependency and build changes visible without reconstructing a production

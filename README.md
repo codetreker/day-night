@@ -1,33 +1,34 @@
 # Day Night
 
-Day Night contains a foreground GitHub PR review CLI and an independent Go
-service runtime for project and task management. A read-only browser dashboard
+Day Night contains a client command toolkit and an independent Go service runtime
+for project and task management. A read-only browser dashboard
 is designed and awaiting implementation.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented TypeScript CLI with SQLite review state | [Requirements](docs/spec/daynight.md), [design](docs/design/daynight.md) |
+| `daynight` | `packages/daynight/` | Implemented TypeScript client command toolkit; `review` and npm global `update` commands | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | Planned `packages/daynight-web/` | Read-only dashboard design and interactive preview; application not implemented | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
-The `@codetreker/daynight` package provides the `daynight` CLI. It polls configured
-repositories, maintains dedicated local clones and PR worktrees, and launches
-Copilot in a retained session for each eligible PR. SQLite preserves
-initialization boundaries, review revisions and retry budgets. The CLI provides
-help, version output, configuration-only repository registration, a local
-persisted review listing, and self-update for npm global installations. Review
-mode loads configuration and runs until stopped.
-Controlled native-platform tests and live Copilot/GitHub acceptance provide
-separate evidence; live acceptance remains outstanding.
+The `@codetreker/daynight` package provides the `daynight` client. Its root entry
+lists commands and reports the package version; each command owns its business
+dependencies and lifecycle. `review` polls configured repositories, maintains
+dedicated local clones and PR worktrees, and launches Copilot in a retained
+session for each eligible PR. SQLite preserves initialization boundaries, review
+revisions and retry budgets. The group also provides configuration-only
+repository registration and a local persisted review listing. `update` manages
+the current npm global installation independently of review configuration and
+runtime. Controlled native-platform tests and live Copilot/GitHub acceptance
+provide separate evidence; live acceptance remains outstanding.
 
 The server design covers repository-linked projects, project-scoped tasks,
 acyclic dependencies and dependency-gated task states through HTTP JSON APIs.
-Its data and runtime are independent of the review CLI. The
+Its data and runtime are independent of the client review module. The
 [server design decision](.agents/notes/implemented/architecture/2026-10-19-daynight-server-task-design.md)
 records the adopted scope and concurrency choices. The
 [server task breakdown](docs/design/daynight-server-tasks.md) owns implementation
 scope, dependencies, status and acceptance criteria. The development and runtime
-CLI commands below apply to the reviewer; server commands have their own module.
+CLI commands below apply to the client; server commands have their own module.
 The planned dashboard presents source-root dependency graphs and project statistics
 from the server. Its [design decision](.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)
 defines the read-only MVP and future single-origin delivery. The standalone HTML
@@ -52,8 +53,10 @@ pnpm daynight --version
 ```
 
 `pnpm check` runs type checking and tests. Tests build the package before
-exercising the compiled CLI. `pnpm build` emits the executable
+exercising the compiled CLI. `pnpm build` clears the package's `dist/` before emitting
 `packages/daynight/dist/main.js`; the package's `daynight` bin points there.
+Source tests mirror `cli/`, `commands/` and `platform/` ownership, with build and
+version-policy tests in `test/tooling/`.
 The pnpm dependency store is local to `.tmp/pnpm-store`. `pnpm acceptance`
 separately packs and installs the CLI in a local consumer and requires package-
 registry access. The review lifecycle suite uses controlled GitHub/Copilot
@@ -148,8 +151,8 @@ binary identity, scenario results and resource cleanup.
 ## Package versions
 
 Changes to `packages/daynight/src/`, either package manifest, `pnpm-lock.yaml`,
-`pnpm-workspace.yaml`, `.npmrc`, or either application TypeScript configuration
-require a strictly greater SemVer in `packages/daynight/package.json`. Source
+`pnpm-workspace.yaml`, `.npmrc`, either application TypeScript configuration, or
+the package's build-cleanup script require a strictly greater SemVer in `packages/daynight/package.json`. Source
 additions, deletions and moves all count. Unchanged versions, downgrades and
 build-metadata-only changes fail. Tests, fixtures, documentation, CI workflows
 and validation scripts alone do not require a version increase. An initial main
@@ -262,18 +265,40 @@ that file and cause the update to fail. The
 [self-update decision](.agents/notes/implemented/feature/2026-10-20-cli-self-update.md)
 records installation ownership and verification requirements.
 
-## Configuration and startup
+## Client commands
+
+```text
+daynight                            # Show root help
+daynight --help                      # Also -h
+daynight --version                   # Also -v
+daynight update
+daynight review                     # Show review help
+daynight review run
+daynight review list                 # Also review ls
+daynight review add-repo <remote> [--path <path>]
+```
+
+Groups and operations support `--help` and `-h`. Help and version do not resolve
+the user home, load review configuration, open SQLite or require review tools.
+Unknown commands and invalid arguments exit with status 2; operation failures
+exit with status 1 and retain their cause. The old `--daemon-review` and root
+`add-repo` forms are invalid. The
+[client design](docs/design/daynight.md) owns command composition and lazy loading;
+the [composition decision](.agents/notes/implemented/architecture/2026-10-20-client-command-composition.md)
+records module ownership and the preserved data layout.
+
+## Review configuration and startup
 
 Register a repository before starting review mode:
 
 ```text
-daynight add-repo https://github.com/OWNER/REPO.git
-daynight add-repo git@github.com:OWNER/OTHER.git --path ./review-other
-daynight --daemon-review
+daynight review add-repo https://github.com/OWNER/REPO.git
+daynight review add-repo git@github.com:OWNER/OTHER.git --path ./review-other
+daynight review run
 ```
 
 For a local build, prefix the command with `pnpm`. These commands select
-`~/.daynight/config.yml` using the current OS user's home directory. `add-repo`
+`~/.daynight/config.yml` using the current OS user's home directory. `review add-repo`
 creates the configuration when absent. It reads, validates and saves configuration;
 cloning, authentication checks, GitHub calls, SQLite initialization and PR boundary
 selection belong to review startup. An already running reviewer keeps its loaded
@@ -312,7 +337,7 @@ abnormal exit, confirm no configuration writer remains before removing this lock
 Configuration mutation rejects symlinks and nonregular files and preserves an
 existing file's permission mode.
 
-Numeric options use the documented [configuration defaults](docs/design/daynight.md)
+Numeric options use the documented [configuration defaults](docs/design/daynight-review.md#使用方式与配置)
 when omitted. Explicit invalid values, unsupported fields, duplicate YAML keys and
 malformed documents produce nonzero exits with useful errors. Review startup also
 fails when the configuration is missing. Duplicate repository identities,
@@ -385,6 +410,11 @@ records status attribution and snapshot limits.
 
 ## Durable review state
 
+The command and source layout preserve existing YAML fields, version 1 SQLite
+schema, retained-state locations and resource identities. No data migration or
+command-specific disk partition is required. The review module owns its domain
+types independently of its SQLite implementation.
+
 The SQLite module keeps repository identity, the permanent startup PR boundary,
 observed PRs, captured review targets, completion revisions, sessions, worktree
 registration, and retry state. Repository identity includes the GitHub host and
@@ -400,7 +430,7 @@ after automatic lock recovery until process exclusion is explicitly confirmed.
 Database state does not replace physical Git/worktree or session-history
 verification.
 
-See the [architecture](docs/design/daynight.md) for transitions and the
+See the [review architecture](docs/design/daynight-review.md) for transitions and the
 [state decision](.agents/notes/implemented/architecture/2026-10-17-durable-review-state.md)
 for persistence choices. The coordinator opens this state before scheduling work
 and advances only the revision captured by each completed attempt.
@@ -538,7 +568,8 @@ including task status, dependencies, scope and acceptance criteria. Use the
 [repository skills](.agents/skills/) for decision notes, scope choices, and prose.
 
 [Agent Notes](.agents/notes/README.md) preserve decisions and alternatives. The
-[CLI decision](.agents/notes/implemented/architecture/2026-10-16-foreground-review-cli.md),
+[client composition decision](.agents/notes/implemented/architecture/2026-10-20-client-command-composition.md),
+[foreground review decision](.agents/notes/implemented/architecture/2026-10-16-foreground-review-cli.md),
 [configuration decision](.agents/notes/implemented/architecture/2026-10-16-user-home-review-configuration.md),
 and [toolchain decision](.agents/notes/implemented/process/2026-10-16-typescript-cli-toolchain.md)
 record the relevant rationale. `.agents/skills/` is canonical; `CLAUDE.md`,

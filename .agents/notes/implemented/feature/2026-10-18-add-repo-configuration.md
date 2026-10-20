@@ -12,11 +12,11 @@ other's configuration.
 
 ## Decision
 
-`daynight add-repo <remote> [--path <path>]` reads, validates and writes the fixed
+`daynight review add-repo <remote> [--path <path>]` reads, validates and writes the fixed
 user-home YAML configuration. It creates initial configuration when absent and
 preserves existing settings and comments when adding a repository. The
-[requirements](../../../../docs/spec/daynight.md) own observable behavior; the
-[configuration design](../../../../docs/design/daynight.md) owns path resolution
+[requirements](../../../../docs/spec/daynight-review.md) own observable behavior; the
+[configuration design](../../../../docs/design/daynight-review.md) owns path resolution
 and save mechanics. The
 [user-home configuration decision](../architecture/2026-10-16-user-home-review-configuration.md)
 continues to own the configuration and retained-state locations.

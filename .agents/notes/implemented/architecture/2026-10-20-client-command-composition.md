@@ -1,0 +1,112 @@
+# Agent Note: Client Command Composition
+
+Status: implemented
+
+## Problem
+
+The package's root entry and shared dependency object were organized around a
+continuous PR reviewer. Other client commands would inherit review configuration,
+paths or execution dependencies even when their operations did not use them.
+Source ownership also made SQLite the provider of domain types and combined
+remote GitHub queries with local observation commits. These relationships make
+adding an independent command require changes to unrelated review assumptions.
+
+## Decision
+
+`@codetreker/daynight` is a client command toolkit with a stable `daynight` bin.
+The root application owns help, version, command selection and general exit
+results. Its context contains package version, the package directory determined
+by the stable `main.ts` entry, input/output, and lazy home/working-directory
+queries; it does not contain resolved review paths, configuration or runtime
+functions. Command metadata declares its
+name, description and lazy loader. Each selected command owns its operation
+parsing, dependencies and lifecycle.
+
+`review` owns the existing PR-review capability. Its group shows help, `run`
+starts foreground monitoring, `list` and `ls` inspect local persisted state, and
+`add-repo <remote> [--path <path>]` saves repository configuration. The former
+`--daemon-review` and root `add-repo` entry forms are invalid. The command change
+is shipped as package version `0.3.0`; no legacy forwarding wrapper preserves a
+second command model. `update` remains a root command because it manages the
+whole client installation. Each group and operation handles help before loading
+its business implementation.
+
+Review code lives under `commands/review/`; its GitHub, worktree and Copilot
+adapters belong to that module. `model.ts` owns domain and safe-recovery proof
+types independently of the SQLite implementation. `polling.ts` composes remote
+queries, repository registration, atomic store updates and failure recording;
+GitHub queries do not receive the store. `commands/update/` owns self-update.
+Shared diagnostic and filesystem functions live under `platform/` and do not
+import command modules. Tests mirror those responsibilities, with tooling tests
+kept separately.
+
+The emitted entry remains `dist/main.js`, and the updater receives the package
+directory from that stable entry rather than computing it from its nested
+module location. Builds remove `dist/` before TypeScript compilation so moved
+source modules cannot survive as stale distribution files. The build cleanup
+script is a release input under the existing package-version gate.
+
+YAML fields, version 1 SQLite tables, data locations, repository paths, cutoff
+boundaries, revisions, retry budgets, session UUIDs and worktree ownership stay
+unchanged. Source ownership does not partition user data by command. The current
+scope supplies command composition and the existing review/update capabilities.
+Server API commands and additional business commands remain separate product
+work; adding one must preserve per-command loading and ownership so it does not
+become a startup dependency for existing commands. Independent server and web
+lifecycles retain their current owners.
+
+The [client requirements](../../../../docs/spec/daynight.md) and
+[client design](../../../../docs/design/daynight.md) own the shell and package.
+The [review requirements](../../../../docs/spec/daynight-review.md) and
+[review design](../../../../docs/design/daynight-review.md) own review behavior.
+This decision partially supersedes the package-wide review framing in the
+[foreground review decision](2026-10-16-foreground-review-cli.md), while retaining
+its polling, direct-child execution, retained-session and agent-publication
+model. The [home-layout decision](2026-10-16-user-home-review-configuration.md)
+and [self-update decision](../feature/2026-10-20-cli-self-update.md) retain their
+location and installation-ownership guarantees.
+
+## Alternatives
+
+**Keep one root router and add new command branches.** This retains a convenient
+central dispatch point, but a root dependency contract containing review
+configuration and runtime would make every future command participate in review
+wiring. Feature-owned modules keep those dependencies at the operation that
+uses them while the root still has one dispatch entry.
+
+**Publish independent npm packages for every command.** Independent packages
+could separate release and dependency installation, but would require several
+installation/update lifecycles and lose the requested unified client command.
+The current capabilities share one package while loading their runtime modules
+only when used. Separate packages remain a different distribution decision if
+release ownership or dependency installation requirements change.
+
+**Partition configuration and state under review-specific disk paths.** This
+would align disk names with source modules but require a data migration and
+change the meaning of established paths and locks. Keeping the confirmed
+configuration/state format makes the command and code reorganization independent
+of stored-data ownership. A future data-layout decision needs its own migration
+requirements and evidence.
+
+## Consequences
+
+A new command adds a registration and its own module; the root application does
+not learn its business dependencies. Help, version and update remain independent
+of review configuration, SQLite and review executables. Registration and listing
+retain their distinct side effects, and foreground monitoring alone owns its
+signal and runtime lifecycle.
+
+Operators use the canonical review group commands. Existing configuration,
+state and sessions remain directly usable at their original locations. Tests
+must exercise an independently constructed existing-schema fixture, rather than
+create all baseline data through the current store. Native Git, SQLite, process,
+APFS and installed review workloads retain their existing acceptance criteria.
+Self-update must still prove actual installation ownership and fresh-process
+version after its source move. The
+[acceptance report](../../../../docs/research/daynight-acceptance.md) separates
+observed current-source results from historical receipts and live-service gaps.
+
+One package still installs the dependencies of all its commands. Lazy loading
+isolates execution and native-addon ownership, not installation size. The shell
+is a small command registry, not a plugin framework or a promise of arbitrary
+external command discovery.

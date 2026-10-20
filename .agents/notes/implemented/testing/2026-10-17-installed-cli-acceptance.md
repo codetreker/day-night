@@ -28,9 +28,17 @@ and working directories exercise spaces and Unicode. Git protocols are limited
 to the exact local fixture origin, and live credentials are removed from the
 controlled environment.
 
-The fixture uses the installed command to register repositories, checking explicit
+The installed fixture also covers root, group and operation help before review
+state exists. An independent YAML, schema-version-1 SQL and retained-state seed
+exercise installed `review list` and `review ls` without calling the current
+store to create the baseline. Both aliases must retain configuration bytes,
+schema and rows while preserving cutoff, revision, session, retry and cleanup
+attribution. This establishes stored-format reuse for the read path; runtime
+recovery keeps its separate full-lifecycle and module coverage.
+
+The fixture uses `review add-repo` to register repositories, checking explicit
 relative paths, default-root derivation, fixed paths after a root change and
-configuration-only effects before starting review mode. It drives both installed
+configuration-only effects before starting `review run`. It drives both installed
 status-listing aliases before initialization, during Draft and completed states,
 and after closure. Those calls use a restricted PATH without Git, gh or Copilot
 and verify that the listing remains a local state read beside the running reviewer.
