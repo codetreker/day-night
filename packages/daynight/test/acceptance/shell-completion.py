@@ -35,7 +35,7 @@ class Terminal:
         if self.pid == 0:
             try:
                 os.chdir(cwd)
-                arguments = [binary, "--noprofile", "--norc", "-i"] if kind == "bash" else [binary, "-f", "-i"]
+                arguments = [binary, "--noprofile", "--norc", "-i"] if kind == "bash" else [binary, "-d", "-i"]
                 os.execve(binary, arguments, environment)
             except BaseException:
                 os._exit(127)
@@ -127,7 +127,7 @@ class Terminal:
         os.close(self.fd)
 
 
-def shell_setup(kind, script, zsh_root):
+def shell_setup(kind, script):
     common = "PS1='__DAYNIGHT_PROMPT__ '; PS2='__DAYNIGHT_CONTINUE__ '; "
     if kind == "bash":
         setup = common + "set +o history; bind 'set bell-style none'; bind 'set show-all-if-ambiguous on'; bind 'set completion-query-items 0'; "
@@ -135,16 +135,37 @@ def shell_setup(kind, script, zsh_root):
         setup += "bind -x '\"\\C-x\\C-r\":_daynight_capture'; "
     else:
         setup = common + "unsetopt BEEP AUTO_MENU MENU_COMPLETE; "
-        if zsh_root:
-            root = shlex.quote(str(Path(zsh_root).resolve()))
-            setup += "_dn_root=" + root + "; module_path=($_dn_root/usr/lib/*/zsh/*(/) $module_path); fpath=($_dn_root/usr/share/zsh/functions/*(/) $_dn_root/usr/share/zsh/functions/Completion/*(/) $fpath); "
-        setup += "autoload -Uz compinit; compinit -D; bindkey -e; "
+        setup += "autoload -Uz compaudit; compaudit || exit 91; autoload -Uz compinit; compinit -D; bindkey -e; "
         setup += "_daynight_capture() { printf '\\n" + MARKER + "BEGIN%s" + MARKER + "CURSOR%s" + MARKER + "END\\n' \"$BUFFER\" \"$CURSOR\"; zle redisplay; }; zle -N _daynight_capture; bindkey '^X^R' _daynight_capture; "
     setup += "source " + shlex.quote(str(script)) + " || exit 90; "
     # Completion must not invoke these functions. Enter invokes only this harmless argv recorder.
     setup += "daynight() { printf x >>daynight-invocations.log; printf '\\n'; for _dn_arg in \"$@\"; do printf '" + ARGUMENT + "%s" + ARGUMENT + "END\\n' \"$_dn_arg\"; done; printf '" + FINISHED + "\\n'; }; "
     setup += "node() { printf x >>forbidden-executions.log; printf '__DAYNIGHT_FORBIDDEN_NODE__\\n'; return 99; }; printf '" + READY + "\\n'"
     return setup
+
+
+def zsh_environment(directory, root):
+    environment = dict(os.environ)
+    environment.update({"HOME": str(directory / "home"), "ZDOTDIR": str(directory / "home")})
+    environment.pop("FPATH", None)
+    startup = "unsetopt GLOBAL_RCS\n"
+    if root:
+        root = Path(root).resolve()
+        modules = sorted(path for path in root.glob("usr/lib/*/zsh/*") if path.is_dir())
+        functions = root / "usr/share/zsh/functions"
+        paths = sorted(path for pattern in ["*", "Completion/*"] for path in functions.glob(pattern) if path.is_dir())
+        if not modules or not paths:
+            raise AssertionError(f"Extracted zsh toolchain is incomplete: {root}")
+        startup += "module_path=(" + " ".join(shlex.quote(str(path)) for path in modules) + ")\n"
+        startup += "fpath=(" + " ".join(shlex.quote(str(path)) for path in paths) + ")\n"
+    # MODULE_PATH from the environment is ignored; .zshenv precedes the first ZLE initialization.
+    # https://zsh.sourceforge.io/Doc/Release/Parameters.html#index-module_005fpath
+    # https://zsh.sourceforge.io/Doc/Release/Files.html#Startup_002fShutdown-Files
+    startup += "unsetopt RCS\n"
+    startup_path = directory / "home/.zshenv"
+    startup_path.write_text(startup)
+    startup_path.chmod(0o600)
+    return environment
 
 
 def executable(variable, default):
@@ -225,9 +246,10 @@ def scenarios():
 
 
 def run_shell(label, binary, kind, script, directory, evidence, zsh_root):
-    environment = dict(os.environ)
+    environment = zsh_environment(directory, zsh_root) if kind == "zsh" else dict(os.environ)
+    environment.pop("FPATH", None)
     environment.update({"HOME": str(directory / "home"), "ZDOTDIR": str(directory / "home"), "INPUTRC": "/dev/null", "TERM": "xterm", "LC_ALL": "C.UTF-8", "HISTFILE": "/dev/null", "PATH": str(directory / "bin") + os.pathsep + os.environ["PATH"]})
-    shell = Terminal(binary, kind, directory, environment, shell_setup(kind, script, zsh_root))
+    shell = Terminal(binary, kind, directory, environment, shell_setup(kind, script))
     receipt = {"shell": label, "binary": binary, "version": version(binary), "scenarios": []}
     evidence.append(receipt)
     try:
@@ -319,10 +341,8 @@ def main():
             if arguments.shell in ["all", "zsh"]:
                 binary = executable("DAYNIGHT_TEST_ZSH", "zsh")
                 source = "typeset -A _comps; source " + shlex.quote(str(scripts["zsh"])) + "; _dn_status=$?; print -r -- __REGISTERED__${_comps[daynight]-}; exit $_dn_status"
-                if os.environ.get("DAYNIGHT_TEST_ZSH_ROOT"):
-                    root = shlex.quote(str(Path(os.environ["DAYNIGHT_TEST_ZSH_ROOT"]).resolve()))
-                    source = "_dn_root=" + root + "; module_path=($_dn_root/usr/lib/*/zsh/*(/) $module_path); " + source
-                result = subprocess.run([binary, "-f", "-c", source], capture_output=True, text=True, timeout=10)
+                environment = zsh_environment(directory, os.environ.get("DAYNIGHT_TEST_ZSH_ROOT"))
+                result = subprocess.run([binary, "-d", "-c", source], env=environment, capture_output=True, text=True, timeout=10)
                 if result.returncode == 0 or "compinit" not in result.stderr or result.stdout.strip() != "__REGISTERED__":
                     raise AssertionError(f"zsh without compinit must fail with a clear diagnostic: {result!r}")
                 evidence["zsh_without_compinit"] = {"exitCode": result.returncode, "stderr": result.stderr, "passed": True}

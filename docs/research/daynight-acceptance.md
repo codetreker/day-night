@@ -95,8 +95,13 @@ invocations and optional receipt selection; the
 [completion design](../design/daynight-completion.md) owns the required behavior.
 
 The harness loads generated scripts in shells with isolated startup files and
-drives actual Tab insertion through a terminal. Candidate-function output alone
-cannot establish Readline quoting, directory suffixes or zsh insertion. Required
+drives actual Tab insertion through a terminal. Extracted zsh starts with a
+private `ZDOTDIR/.zshenv` under `zsh -d -i`; the startup file sets the package's
+exact native-module and completion-function paths before ZLE initializes, then
+disables later `RCS` and `GLOBAL_RCS` startup files. It does not append host
+`fpath` entries. An explicit `compaudit` must pass before `compinit -D`; audit
+failure exits without an interactive trust prompt. Candidate-function output
+alone cannot establish Readline quoting, directory suffixes or zsh insertion. Required
 coverage includes nested commands and aliases, current-layer options, shell
 arguments, already-consumed arguments, `--path` before and after remote, remote
 colons, special-character directories, command/directory name collisions and a
@@ -109,6 +114,17 @@ suite and uploads `.tmp/completion-evidence.json` as
 with every native CLI platform, server and web job. A suite definition or job's
 presence is not a pass receipt; historical installed-client receipts below do
 not establish completion behavior.
+
+The [hosted completion job](https://github.com/codetreker/daynight/actions/runs/39391433132/job/118523637325)
+at head `b9bb4e15626f179f73f51aa8438d36fefc2526f4` passed all 46 scenarios on each
+Bash version, then timed out before zsh became ready. ZLE attempted to load its
+module from the unavailable system package path, and `compinit` waited for an
+answer about inherited insecure function directories. The harness configured
+relocation only after interactive startup and retained host search paths. This
+job records a fixture bootstrap failure before zsh Tab scenarios; it does not
+establish zsh insertion behavior at that revision. The startup mechanism above
+places package-specific paths before ZLE and retains the completion security
+audit.
 
 Local validation on 2026-10-20 used working-tree source package `0.4.0` on Linux
 x64 with Node `v24.19.0` and pnpm `10.34.5`. Type checking passed. The ordinary
@@ -125,15 +141,15 @@ The Linux preparation helper passed both a fresh download/build/extraction run
 under a project path containing spaces and a cached-toolchain run. The observed
 build used GCC `13.3.0`; Bash 4.2 came from the checksum-verified unpatched GNU
 release, and zsh was extracted locally from downloaded packages. These are local
-toolchain and interactive-shell results. Hosted completion CI has not been run
-for this working tree, and this receipt does not establish native macOS or
-Windows shell results.
+toolchain and interactive-shell results. Hosted completion results belong to the
+CI job and artifact for their exact source revision; a local receipt does not
+substitute for that result or establish native macOS or Windows shell behavior.
 
 The installed acceptance suites for source package `0.4.0` passed the packaged
 review lifecycle and real-npm self-update. A focused installed-package check also
 passed completion help and script generation. These installed checks establish
-packaging and generation; the 138-scenario PTY matrix establishes current
-built-source interactive insertion behavior.
+packaging and generation; the 138-scenario PTY matrix records built-source
+interactive insertion behavior for that local run.
 
 ## Client composition and existing-data evidence
 
@@ -272,7 +288,7 @@ and do not establish that repair's behavior.
 
 | Evidence | Observed result |
 |---|---|
-| Shell completion local validation, 2026-10-20 | Working-tree source package `0.4.0` on Linux x64: type checking, 833 ordinary tests with ten existing platform skips in 5.06 seconds, both installed suites and focused packaged completion generation; 138 actual Tab scenarios, 46 each on GNU Bash `4.2.0(2)-release`, Bash `5.2.21(1)-release` and zsh `5.9`; clean missing-`compinit` refusal, plus fresh and cached local toolchain preparation; hosted result outstanding |
+| Shell completion local validation, 2026-10-20 | Working-tree source package `0.4.0` on Linux x64: type checking, 833 ordinary tests with ten existing platform skips in 5.06 seconds, both installed suites and focused packaged completion generation; 138 actual Tab scenarios, 46 each on GNU Bash `4.2.0(2)-release`, Bash `5.2.21(1)-release` and zsh `5.9`; clean missing-`compinit` refusal, plus fresh and cached local toolchain preparation; hosted results belong to the exact revision's completion job and artifact |
 | Client composition local validation, 2026-10-20 | Working-tree source package `0.3.0` on Linux x64: type checking, clean build with obsolete-output rejection, 768 ordinary tests with ten skips in 6.11 seconds, and both installed suites in 15.61 seconds; 35 review scenarios plus 14 real-npm update scenarios, including independent existing-schema listing reuse |
 | Self-update focused local validation, 2026-10-20 | Linux x64 passed all fourteen controlled real-npm scenarios from working-tree source package `0.2.4` in 8.03 seconds, using Node `v24.19.0` and npm `12.0.2`; separate from the review lifecycle baseline and native hosted results |
 | Package `0.2.1` CI-admission local validation, 2026-10-18 | Linux x64 passed type checking, 662 ordinary tests with eight APFS skips, build and all 33 installed scenarios |

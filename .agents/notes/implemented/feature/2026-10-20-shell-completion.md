@@ -79,6 +79,16 @@ An autoload installation mode can be added independently, provided its entry
 shape and refresh behavior are specified and tested; the current generator must
 not imply that its source output also satisfies that contract.
 
+**Relocate zsh through the process environment or interactive setup.** zsh does
+not accept `module_path` initialization from the inherited environment, and ZLE
+can load native modules before the first interactive setup command. Appending
+host completion directories also inherits their availability and trust policy.
+The PTY fixture initializes the extracted package's module and function
+paths in its private `.zshenv` before ZLE, then suppresses later startup files.
+The fixture runs `compaudit` before `compinit -D` and fails immediately if the
+audit rejects its paths. A terminal waiting for an operator trust decision is
+not a ready test shell.
+
 ## Consequences
 
 The command grammar has one owner across execution, help and two shells.
@@ -90,8 +100,11 @@ zsh and Python 3 on a POSIX host. A Linux preparation helper builds the
 hash-pinned GNU Bash 4.2 release and uses existing or locally extracted zsh,
 keeping test toolchains under the repository's `.tmp/` without global package
 installation. Its initial preparation needs network and build tools; executable
-selection remains explicit for other POSIX hosts. Ordinary CLI tests retain
-native Linux, macOS and Windows coverage.
+selection remains explicit for other POSIX hosts. Extracted zsh uses a private
+`ZDOTDIR/.zshenv` and native startup ordering so its modules are available before
+ZLE; the fixture excludes inherited completion search paths and subsequent user
+startup files while retaining `compaudit`. Ordinary CLI tests retain native
+Linux, macOS and Windows coverage.
 
 The package's next invocation uses the installed command definitions; existing
 shells keep their loaded definitions until sourced again. Saved generated files
