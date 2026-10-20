@@ -1,7 +1,8 @@
 # daynight-web
 
 The private React/TypeScript workspace implements project browsing, cursor
-pagination, request cancellation, runtime API decoding and native browser routing.
+pagination, request cancellation, runtime API decoding, native browser routing
+and a pure dependency graph model with horizontal layout.
 Project task dashboards and embedded deployment remain tracked in the
 [implementation tasks](../../docs/design/daynight-web-tasks.md). The existing Go
 service still serves JSON APIs; a successful frontend build does not install a
@@ -68,8 +69,12 @@ is a later task and is not claimed by these controlled-fetch component tests.
 
 API errors expose fixed safe text and a validated request ID; raw response bodies
 and server diagnostics do not reach the page. Project names and addresses render
-as text. Graph parsing here verifies DTO shape and resource identity; dependency
-closure, acyclicity and summary consistency belong to the graph model task.
+as text. The API parser verifies DTO shape and resource identity. The implemented graph
+model separately verifies dependency closure, acyclicity, status/readiness and
+summary consistency. It projects root descendants plus direct external
+prerequisites, caches distinct root progress, and marks shared tasks. The Dagre
+adapter returns finite left-to-right node positions and routed edge points for
+220-by-96 cards. Actual task canvas rendering belongs to W-T4.
 
 Page hooks own requests and cancellation. Navigation or refresh invalidates the
 previous request generation, continuation failures preserve loaded cards, and

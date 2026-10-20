@@ -9,7 +9,7 @@ implementation work.
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented TypeScript client command toolkit; `review` and npm global `update` commands | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
-| `daynight-web` | `packages/daynight-web/` | Project browsing, typed API client, native routing and strict coverage implemented; task view and embedded delivery pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
+| `daynight-web` | `packages/daynight-web/` | Project browsing, typed API client, graph projection/layout and strict coverage implemented; task view and embedded delivery pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The `@codetreker/daynight` package provides the `daynight` client. Its root entry
 lists commands and reports the package version; each command owns its business

@@ -19,6 +19,7 @@ the [task breakdown](../../../../docs/design/daynight-web-tasks.md) owns executi
 status, dependencies and completion criteria, and the [interactive preview](../../../../docs/design/mockups/task-dashboard.html)
 demonstrates the intended appearance. This note records a delivered design;
 the complete graph read and [project browsing foundation](2026-10-20-web-project-browsing.md)
+and the [pure graph model and layout](../feature/2026-10-20-task-graph-projection.md)
 are implemented, while task visualization and embedded deployment remain pending.
 
 Use a separate React/TypeScript/Vite package with React Flow and Dagre. Serve

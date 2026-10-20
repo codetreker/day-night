@@ -1,6 +1,6 @@
 # 项目与任务看板设计
 
-状态：完整图 API、项目列表及前端验证基础已实现；项目任务视图、图展示和部署仍待实现。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
+状态：完整图 API、项目浏览、纯图模型与横向布局已实现；项目任务视图和部署仍待实现。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
 
 ## 目标与现有基础
 
@@ -93,7 +93,7 @@ B 使用虚线边框与“外部前置，上游已省略”标签；节点仍可
 
 主节点在多个根的 R 中可达时显示“共享”标记。采用集合遍历处理菱形路径，避免重复节点与无限递归。服务端保证无环；前端解析时仍验证引用闭包、唯一 ID 与无环，失败显示“任务图数据不完整”而不是部分图。
 
-布局采用 Dagre `rankdir: "LR"`，固定节点尺寸，按 ID 稳定输入节点和边，减少无数据变化时的跳动。只在展开或新快照到达后计算布局；视口缩放不触发重新布局。
+布局适配器使用固定 Dagre 3.1.1 与 `rankdir: "LR"`，节点固定为 220×96，按 ID 稳定输入节点和边，减少无数据变化时的跳动。返回坐标转换为左上角位置并保留边路径点；空投影在调用 Dagre 前返回零尺寸，非空几何无效时明确失败。只在展开或新快照到达后计算布局；视口缩放不触发重新布局。
 
 图计算模块不导入 React、fetch 或 React Flow。其输入是已解析的图 DTO，输出是可测试的数据结构：
 
@@ -102,6 +102,8 @@ type GraphIndex = {
   nodes: ReadonlyMap<string, GraphTask>;
   successors: ReadonlyMap<string, readonly string[]>;
   roots: readonly string[];
+  sharedIds: ReadonlySet<string>;
+  rootProgress: ReadonlyMap<string, { total: number; done: number }>;
 };
 type RootProjection = {
   rootId: string;
