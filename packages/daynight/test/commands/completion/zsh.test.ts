@@ -56,4 +56,15 @@ describe("native zsh completion", () => {
     expect(script).toContain("'a'\\''b'");
     expect(script).toContain("User'\\''s \\[directory\\]\\: $HOME");
   });
+
+  it("uses an explicit no-candidate state for named text values", () => {
+    const script = renderZshCompletion({
+      name: "tool",
+      description: "",
+      options: [{ names: ["--name"], description: "Name", value: { name: "name", kind: "text" }, required: true }],
+    });
+    expect(script).toContain("(--name)--name[Name]:name:->text_value");
+    expect(script).toContain('text_value)\n      _message "$state_descr"\n      return 0');
+    expect(script).not.toContain("_files");
+  });
 });

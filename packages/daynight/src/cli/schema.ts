@@ -3,7 +3,8 @@ import { UsageError } from "./context.js";
 export type CommandOption = {
   names: readonly string[];
   description: string;
-  value?: { name: string; kind: "directory" };
+  value?: { name: string; kind: "directory" | "text" };
+  required?: boolean;
   action?: "help" | "version";
 };
 
@@ -102,6 +103,10 @@ export const parseCommand = (
   }
   const missing = definition.arguments?.[values.length];
   if (missing !== undefined) throw new UsageError(`${definition.name} requires a ${missing.name} value.`, helpCommand);
+  for (const option of definition.options ?? []) {
+    const name = option.names[0]!;
+    if (option.required === true && !options.has(name)) throw new UsageError(`${definition.name} requires ${name}.`, helpCommand);
+  }
   return { kind: "run", command: definition, path, values, options };
 };
 
@@ -122,7 +127,8 @@ export const renderCommandHelp = (
 ): string => {
   const suffix = definition.commands !== undefined ? " <command>" : [
     ...(definition.arguments ?? []).map(({ name }) => ` <${name}>`),
-    ...(definition.options ?? []).filter(({ action }) => action === undefined).map((option) => ` [${optionUsage(option)}]`),
+    ...(definition.options ?? []).filter(({ action }) => action === undefined).map((option) =>
+      option.required === true ? ` ${optionUsage(option)}` : ` [${optionUsage(option)}]`),
   ].join("");
   const paths = [path, ...(definition.aliases ?? []).map((alias) => [...path.slice(0, -1), alias])];
   const sections = [paths.map((parts, index) => `${index === 0 ? "Usage: " : "       "}${parts.join(" ")}${suffix}`).join("\n")];

@@ -165,6 +165,7 @@ const runtime = String.raw`
     ((dn_position+=1)); ((dn_count+=1))
     @PREFIX@_schema
   done
+  [[ "$dn_pending" != text ]] || return 0
   if [[ "$dn_pending" == directory ]]; then
     [[ "$dn_current" != -* ]] || return 0
     dn_prefix="$dn_current"

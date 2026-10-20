@@ -71,4 +71,16 @@ describe("Bash completion rendering", () => {
     expect(script).toContain("dn_choices=('$&' '$'\\''' '@COMMAND@' '@PREFIX@' '@{')");
     expect(script).toContain("complete -F _tool_completion 'tool'");
   });
+
+  it("consumes text values without file or option candidates", () => {
+    const script = renderBashCompletion({
+      name: "tool",
+      description: "",
+      options: [{ names: ["--name"], description: "Name", value: { name: "name", kind: "text" }, required: true }],
+    });
+    expect(script).toContain("dn_option_values=('text')");
+    const noTextCandidates = script.indexOf('[[ "$dn_pending" != text ]] || return 0');
+    expect(noTextCandidates).toBeGreaterThan(0);
+    expect(noTextCandidates).toBeLessThan(script.indexOf('if [[ "$dn_pending" == directory ]]'));
+  });
 });

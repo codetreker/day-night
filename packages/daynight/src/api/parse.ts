@@ -1,3 +1,4 @@
+import { isNonemptyText, isText } from "../platform/text.js";
 import type { ErrorDetails, GraphTask, Page, Project, ServerError, Task, TaskGraph, TaskGraphSummary, TaskStatus } from "./types.js";
 
 export class ProtocolError extends Error {
@@ -9,7 +10,7 @@ const record = (value: unknown): Record<string, unknown> => {
   return value as Record<string, unknown>;
 };
 const text = (value: unknown, nonempty = false): string => {
-  if (typeof value !== "string" || value.includes("\0") || (nonempty && value.trim() === "")) return malformed();
+  if (!isText(value) || (nonempty && !isNonemptyText(value))) return malformed();
   return value;
 };
 const bool = (value: unknown): boolean => typeof value === "boolean" ? value : malformed();

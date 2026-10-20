@@ -8,7 +8,7 @@ const optionSpecifications = (option: CommandOption): readonly string[] => {
   const exclusions = option.action === undefined ? option.names.map(escapeSpecification).join(" ") : "- *";
   const value = option.value === undefined
     ? ""
-    : `:${escapeSpecification(option.value.name)}:_files -/`;
+    : `:${escapeSpecification(option.value.name)}:${option.value.kind === "directory" ? "_files -/" : "->text_value"}`;
   return option.names.map((name) => `(${exclusions})${escapeSpecification(name)}[${escapeSpecification(option.description)}]${value}`);
 };
 
@@ -62,6 +62,12 @@ export const renderZshCompletion = (root: CommandDefinition): string => {
     const specifications = command.options?.filter((option) => option.action === undefined).flatMap(optionSpecifications) ?? [];
     const informationOptions = command.options?.filter((option) => option.action !== undefined).flatMap(optionSpecifications) ?? [];
     const states: string[] = [];
+    if (command.options?.some((option) => option.value?.kind === "text") === true) {
+      states.push(`    text_value)
+      _message "$state_descr"
+      return 0
+      ;;`);
+    }
 
     if (children.length !== 0) {
       specifications.push("1:command:->command", "*::arguments:->arguments");

@@ -6,9 +6,9 @@ import { replaceFileAtomically } from "../platform/files.js";
 const hasCode = (error: unknown, code: string): boolean =>
   error instanceof Error && "code" in error && error.code === code;
 
-export const readConfigurationSource = async (paths: ConfigurationPaths): Promise<string> => {
+export const readConfigurationSource = async (paths: ConfigurationPaths, signal?: AbortSignal): Promise<string> => {
   try {
-    return await readFile(paths.configFile, "utf8");
+    return await readFile(paths.configFile, { encoding: "utf8", ...(signal === undefined ? {} : { signal }) });
   } catch (cause) {
     throw new Error(`Cannot read configuration file ${paths.configFile}.`, { cause });
   }

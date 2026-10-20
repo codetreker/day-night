@@ -108,4 +108,35 @@ describe("shared command syntax", () => {
     expect(help).toContain("Select a directory");
     expect(help).toContain(definition.details);
   });
+
+  const textDefinition: CommandDefinition = {
+    name: "create",
+    description: "Create a resource",
+    options: [
+      { names: ["--name", "-n"], description: "Resource name", value: { name: "name", kind: "text" }, required: true },
+      { names: ["--repo"], description: "Repository", value: { name: "repo", kind: "text" }, required: true },
+      { names: ["--json"], description: "JSON" },
+      { names: ["--help"], description: "Help", action: "help" },
+    ],
+  };
+
+  it.each(["Name 中文", "\uFEFF", "\uFEFF\u0085", " name\n", "'\"$` value"])("preserves named text without trimming: %j", (name) => {
+    const parsed = parseCommand(textDefinition, ["--repo", "git@host:Org/Repo.git", "-n", name]);
+    expect(parsed.kind === "run" && [...parsed.options]).toEqual([["--repo", "git@host:Org/Repo.git"], ["--name", name]]);
+  });
+
+  it.each([
+    [], ["--name", "name"], ["--repo", "repo"],
+    ["--name"], ["--name", ""], ["--name", "--repo", "repo"],
+    ["--name", "name", "--repo"], ["--name", "name", "--repo", ""],
+    ["--name", "name", "--repo", "--json"],
+    ["--name", "name", "--repo", "repo", "-n", "duplicate"],
+  ])("rejects incomplete required named text before execution: %j", (...args) => {
+    expect(() => parseCommand(textDefinition, args)).toThrow(UsageError);
+  });
+
+  it("renders required named values without brackets and permits help without values", () => {
+    expect(renderCommandHelp(textDefinition)).toContain("Usage: create --name <name> --repo <repo> [--json]");
+    expect(parseCommand(textDefinition, ["--help"]).kind).toBe("help");
+  });
 });

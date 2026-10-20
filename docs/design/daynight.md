@@ -3,7 +3,7 @@
 状态：`packages/daynight/` 是通过 `@codetreker/daynight` 分发的 TypeScript 客户端
 命令工具包，支持 Linux、macOS 和 Windows。`review` 提供 GitHub PR 审查，`update`
 管理当前 npm 全局安装，`completion` 生成 Bash 和 zsh 的原生补全脚本。project/task
-CLI 的共享配置、HTTP 和仓库关联基础已实现，命令与完整服务验收待完成；
+CLI 的共享配置、HTTP 和仓库关联基础及 project 命令已实现，task 命令与完整服务验收待完成；
 [专属设计](daynight-project-task.md)拥有机制，[实现任务](daynight-project-task-tasks.md)
 拥有交付状态。行为归属见[客户端需求](../spec/daynight.md)及
 [review 需求](../spec/daynight-review.md)，结构选择见
@@ -24,21 +24,25 @@ daynight review add-repo <remote> [--path <path>]
 daynight completion                 # 补全帮助
 daynight completion bash
 daynight completion zsh
+daynight project
+daynight project create --name <name> --repo <repo>
+daynight project list [--json]
+daynight project show <project-id> [--json]
 ```
 
 各组和操作在该层唯一参数为 `--help` 或 `-h` 时显示帮助。顶层无参数显示帮助，
 未知命令与无效参数退出 2，业务执行失败退出 1 并保留原因。旧的 `--daemon-review` 和顶层 `add-repo` 不再是
 有效命令。review 操作沿用[review 设计](daynight-review.md)的配置、持久化和运行保证。
 
-以上命令和后文源码树描述当前实现。待实现的 project/task 命令及其模块由
+以上命令和后文源码树描述当前实现。project/task 的业务机制及待实现 task 范围由
 [专属设计](daynight-project-task.md)拥有。
 
 客户端外壳处理顶层帮助、版本、命令选择及通用退出结果。每个命令模块负责自己的
 定义、参数、帮助、依赖和执行生命周期。`review` 再按配置登记、本地列表、前台运行分派，
 避免查询或配置操作初始化审查运行时。`update` 属于包安装生命周期，不属于 review。
 独立 Go 服务与浏览器应用保持各自的数据和生命周期。已确认的 project/task 设计
-通过独立客户端模块使用现有 HTTP API，业务数据仍由 Go 服务持有；HTTP 客户端与仓库上下文已实现，
-命令入口仍待交付。
+通过独立客户端模块使用现有 HTTP API，业务数据仍由 Go 服务持有；HTTP 客户端、仓库上下文和 project 入口已实现，
+task 入口仍待交付。
 
 ## 源码组织
 
@@ -69,6 +73,12 @@ src/
     binding.ts
     context.ts
   commands/
+    project/
+      definition.ts
+      command.ts
+      rendering.ts
+    server/
+      runtime.ts
     review/
       definition.ts
       command.ts
@@ -104,6 +114,8 @@ src/
     diagnostics.ts
     filesystem.ts
     files.ts
+    terminal.ts
+    text.ts
 ```
 
 `main.ts` 是稳定的可执行入口，向应用传递包版本和从该入口确定的包目录；编译后仍为
@@ -157,6 +169,23 @@ daynight 或网络请求。参数语法保留原有唯一帮助参数、remote �
 [补全决策](../../.agents/notes/implemented/feature/2026-10-20-shell-completion.md)
 记录 Bash 下限、zsh 原生集成和本地执行的成本。脚本输出用于 source；zsh `fpath`
 自动加载需要不同的装载形式，未包含在该输出的使用承诺中。
+
+## Server 命令执行
+
+`project/definition.ts` 声明 create/list/show、必填 text 选项与查询 JSON 标志。
+`command.ts` 在帮助和语法校验后才加载共享 server runtime；show 的 UUID 校验
+先于配置读取，业务路径不查询工作目录或 Git。`rendering.ts` 使用完整项目标签块，
+输出大小随字段内容线性增长；JSON 保留 API 字段和值。
+
+`commands/server/runtime.ts` 在配置 I/O 前建立一个操作及信号取消源，后续配置读取、
+HTTP 和渲染共享期限与字节预算。回调返回完整结果字符串，最后检查取消和期限后
+只写一次 stdout，再移除本次的信号监听器并释放操作。SIGINT/SIGTERM 以及 Windows
+SIGBREAK 均进入这一取消源；配置读取接受同一 AbortSignal。错误及清理失败保留
+原因链。该执行层供后续 task 命令复用，不控制 Go server 的启动或关闭。
+
+`platform/text.ts` 按 Unicode White_Space、有效 Unicode 和无 NUL 校验服务文本，
+CLI 参数与 API DTO 共用该规则并保留原值；`platform/terminal.ts` 仅负责可读输出中的
+终端控制字符转义。完整 JSON 不经过可读格式化。
 
 ## 配置与持久化
 

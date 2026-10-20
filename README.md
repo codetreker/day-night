@@ -11,7 +11,7 @@ delivery approval remain required.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion`, shared configuration, server HTTP and repository binding foundations; project/task commands pending | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
+| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion`, shared configuration, server HTTP and repository binding foundations plus project create/list/show; task commands pending | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage implemented; static SVG local acceptance passed; hosted zoom performance under investigation | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -33,8 +33,9 @@ repository-local bindings. Its [requirements](docs/spec/daynight-project-task.md
 and [task breakdown](docs/design/daynight-project-task-tasks.md) describe the
 confirmed behavior and implementation status. Shared YAML projections, the
 `serverUrl` configuration field, bounded HTTP client and repository discovery
-with ignored local bindings are implemented. Project/task command entry points
-and their installed real-service acceptance remain pending. Controlled native-platform tests and live
+with ignored local bindings are implemented. `project create/list/show` manage
+remote projects through the configured server; task command entry points and
+installed real-service command acceptance remain pending. Controlled native-platform tests and live
 Copilot/GitHub acceptance provide separate evidence; live acceptance remains
 outstanding.
 
@@ -384,6 +385,10 @@ daynight review add-repo <remote> [--path <path>]
 daynight completion                 # Show completion help
 daynight completion bash
 daynight completion zsh
+daynight project
+daynight project create --name <name> --repo <repo>
+daynight project list [--json]
+daynight project show <project-id> [--json]
 ```
 
 Groups and operations show help when `--help` or `-h` is their sole argument.
@@ -432,6 +437,32 @@ A saved generated script must be regenerated after updating. The
 and shell integration; the
 [completion decision](.agents/notes/implemented/feature/2026-10-20-shell-completion.md)
 records compatibility and execution trade-offs.
+
+## Project management
+
+Set the server origin in `~/.daynight/config.yml`:
+
+```yaml
+serverUrl: http://127.0.0.1:8787
+```
+
+The origin includes its protocol, host and optional port; the client adds
+`/api/v1`. Then create, list or inspect projects:
+
+```bash
+daynight project create --name "Example" --repo https://github.com/OWNER/REPO.git
+daynight project list
+daynight project list --json
+daynight project show <project-id> --json
+```
+
+These commands work outside Git repositories and use only the configured server.
+Creation sends the supplied repository address for registration; lists traverse
+all pages. Human output uses complete labeled project blocks with visible
+terminal-control escapes. JSON preserves resource fields and nanosecond timestamp
+strings; a later-page failure produces an error with empty stdout. The
+[project/task requirements](docs/spec/daynight-project-task.md) own the complete
+behavior and remaining task-command scope.
 
 ## Review configuration and startup
 
