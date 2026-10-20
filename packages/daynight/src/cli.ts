@@ -4,14 +4,15 @@ export { formatError } from "./diagnostics.js";
 import { loadConfiguration } from "./config.js";
 import { resolveRuntimePaths } from "./paths.js";
 import { addRepository } from "./repositories.js";
-import { listReviews } from "./review-list.js";
-import { formatCoordinatorEvent, runForegroundReview } from "./runtime.js";
+import { updateSelf } from "./update.js";
 import type { Configuration } from "./config.js";
 import type { RuntimePaths } from "./paths.js";
 import type { AddRepositoryInput, AddRepositoryOptions, AddRepositoryResult } from "./repositories.js";
+import type { UpdateResult } from "./update.js";
 
 export type CliDependencies = {
   version: string;
+  update: () => Promise<UpdateResult>;
   homeDirectory: () => string;
   workingDirectory: () => string;
   addRepository: (input: AddRepositoryInput, paths: RuntimePaths, options: AddRepositoryOptions) => Promise<AddRepositoryResult>;
@@ -25,10 +26,12 @@ export type CliDependencies = {
 const help = `Usage: daynight --daemon-review
        daynight add-repo <remote> [--path <path>]
        daynight review list|ls
+       daynight update
 
 Commands:
   add-repo        Add a repository to configuration for the next review startup
   review list|ls  List tracked ongoing PRs and recorded review status
+  update          Update this npm global installation to the latest version
 
 Options:
   --daemon-review  Run foreground PR review until interrupted
@@ -65,15 +68,32 @@ Options:
   -h, --help      Show this help
 `;
 
+const updateHelp = `Usage: daynight update
+
+Update the current npm global installation to the registry's latest version.
+An already-current or newer installation is kept. npm configuration and
+authentication select the registry; Daynight configuration and review state are not read.
+Restart any running reviewer after updating to use the new version.
+
+Options:
+  -h, --help      Show this help
+`;
+
 type Command =
   | { kind: "help"; text: string }
   | { kind: "version" }
   | { kind: "review" }
   | { kind: "review-list" }
+  | { kind: "update" }
   | { kind: "add-repo"; input: AddRepositoryInput };
 
 const parseCommand = (args: readonly string[]): Command => {
   if (args.length === 0) throw new Error("Choose a command.");
+  if (args[0] === "update") {
+    if (args.length === 1) return { kind: "update" };
+    if (args.length === 2 && (args[1] === "--help" || args[1] === "-h")) return { kind: "help", text: updateHelp };
+    throw new Error("Expected daynight update. Run daynight update --help for usage.");
+  }
   if (args[0] === "review") {
     const remaining = args.slice(1);
     const isHelp = (value: string | undefined): boolean => value === "--help" || value === "-h";
@@ -141,6 +161,17 @@ export const runCli = async (
     return 0;
   }
   try {
+    if (command.kind === "update") {
+      const result = await dependencies.update();
+      if (result.status === "updated") {
+        stdout(`Updated daynight from ${result.previousVersion} to ${result.targetVersion}.\nRestart any running reviewer to use the new version.\n`);
+      } else if (result.status === "current") {
+        stdout(`daynight ${result.previousVersion} is already up to date.\n`);
+      } else {
+        stdout(`daynight ${result.previousVersion} is newer than latest ${result.targetVersion}.\n`);
+      }
+      return 0;
+    }
     const homeDirectory = dependencies.homeDirectory();
     const runtimePaths = resolveRuntimePaths(homeDirectory);
     if (command.kind === "review-list") {
@@ -166,14 +197,21 @@ export const runCli = async (
 
 export const defaultCliDependencies = (version: string): CliDependencies => ({
   version,
+  update: updateSelf,
   homeDirectory: homedir,
   workingDirectory: process.cwd,
   addRepository,
-  listReviews,
+  listReviews: async (paths) => {
+    const { listReviews } = await import("./review-list.js");
+    return listReviews(paths);
+  },
   loadConfiguration,
-  runReview: (configuration, paths) => runForegroundReview(configuration, paths, {
-    log: (event) => { process.stderr.write(`${formatCoordinatorEvent(event)}\n`); },
-  }),
+  runReview: async (configuration, paths) => {
+    const { formatCoordinatorEvent, runForegroundReview } = await import("./runtime.js");
+    await runForegroundReview(configuration, paths, {
+      log: (event) => { process.stderr.write(`${formatCoordinatorEvent(event)}\n`); },
+    });
+  },
   stdout: (text) => { process.stdout.write(text); },
   stderr: (text) => { process.stderr.write(text); },
 });

@@ -1,6 +1,7 @@
 # Daynight 架构设计
 
-状态：CLI 已接入配置、SQLite、GitHub 观测、Git 管理、Copilot 会话和前台协调模块。
+状态：CLI 已接入配置、SQLite、GitHub 观测、Git 管理、Copilot 会话、前台协调和 npm
+全局自更新模块。
 受控执行链已实现，真实 GitHub/Copilot 验收仍待完成。当前范围见
 [仓库 README](../../README.md)。
 
@@ -19,10 +20,11 @@ daynight add-repo git@github.com:OWNER/OTHER.git --path ./review-other
 daynight --daemon-review
 daynight review list
 daynight review ls
+daynight update
 ```
 
-CLI 固定使用当前用户主目录下的 `~/.daynight/config.yml`。`~` 由程序解析为操作系统
-当前用户的主目录，再使用平台路径操作构造文件位置，不依赖调用者的工作目录或 shell
+配置和 review 命令固定使用当前用户主目录下的 `~/.daynight/config.yml`。`~` 由程序
+解析为操作系统当前用户的主目录，再使用平台路径操作构造文件位置，不依赖调用者的工作目录或 shell
 的路径展开。Windows 同样使用当前用户主目录下的 `.daynight` 目录。
 
 `add-repo` 只处理配置：读取现有文件或创建初始文档，解析远程身份和目标路径，校验完整
@@ -92,6 +94,52 @@ inode 识别实际位置及祖先关系，处理符号链接和挂载边界。�
 使用 pnpm、TypeScript ESM、Node.js 24 LTS 和 `better-sqlite3`。实现包时锁定版本。
 review 模式需要预先安装 Git、`gh` 和 Copilot CLI，`gh` 认证提前准备好。Copilot 还需要
 受支持的凭据和可访问的模型。配置文件不包含凭据。
+
+## npm 全局自更新
+
+`update` 在解析参数后独立分派到 `updateSelf`，先于用户主目录解析、配置加载和 review
+运行时加载。列表与 review 的默认依赖只在对应命令中动态导入，因此更新进程不会加载
+SQLite 原生模块，避免它自身占用待替换的 addon。帮助和参数错误同样无需进入运行时；
+更新不接触配置、SQLite、实例锁或 Copilot 会话。`updateSelf` 返回 `current`、`ahead` 或 `updated`，携带原版本和查询
+目标版本；CLI 据此打印单行结果，更新成功时提示重启运行中的 reviewer。
+
+更新模块从自身所在包的 `realpath` 和包清单确认 `@codetreker/daynight` 及
+`dist/main.js` bin，再按平台推导实际全局 prefix。POSIX 的包路径必须为
+`<prefix>/lib/node_modules/@codetreker/daynight`，启动器为 `<prefix>/bin/daynight`；
+Windows 的包路径必须为 `<prefix>/node_modules/@codetreker/daynight`，启动器为
+`<prefix>/daynight.cmd`。POSIX 启动器解析到当前包的绝对入口；Windows 使用
+`read-cmd-shim` 解析 npm 生成的命令包装脚本，再确认相同的实际入口。包结构或启动器
+不符就拒绝，保留源码、本地依赖、`npx`、pnpm 和链接安装原有的包管理权。
+[npm 的目录规则](https://github.com/npm/cli/blob/b888cc9a9ff34a8b023ff47b784692396635397b/docs/lib/content/configuring-npm/folders.md)
+定义全局包与启动器的位置；
+[read-cmd-shim](https://github.com/npm/read-cmd-shim/blob/9887cf0f2416f05b41cd3318b8fce08d21a20d4e/lib/index.js)
+负责解析 npm 包装脚本。
+
+模块定位 npm 的 JavaScript 入口并用当前 `process.execPath` 启动，避免 PATH 中的其他
+Node.js 决定目标 engine。查询和安装都使用 `--global --prefix <实际 prefix>`，子进程
+工作目录固定在 prefix，处于待替换包外部。保留 npm 的环境、用户配置与全局配置，让
+registry 和认证沿用该全局安装上下文；不读取调用目录的项目 `.npmrc`。
+[npm 配置规则](https://github.com/npm/cli/blob/b888cc9a9ff34a8b023ff47b784692396635397b/docs/lib/content/configuring-npm/npmrc.md#L61-L77)
+明确全局模式排除项目配置。
+
+`npm view @codetreker/daynight@latest version --json` 的标量或单元素数组输出必须
+解析出唯一的规范 SemVer。用 `semver` 比较优先级，当前或领先版本直接成功返回；更新时将已解析的确切版本传给
+`npm install`，不会再次让可变的 `latest` 选择目标。需要安装前检查调用目录的实际路径，
+位于当前包内时要求从外部目录重试，避免替换使调用进程的工作目录失效。安装显式使用
+`--engine-strict --force=false`，沿用 npm 的权限和错误，不调用 sudo，也不改变 Node.js
+运行时要求。
+
+安装输出直接转发，查询输出受限且用于解析；查询、安装和新进程版本验证均有时间上限。
+npm 成功退出后，重新读取安装包的身份、bin 和确切版本，重新验证启动器，最后使用同一
+Node.js 和新安装 CLI 的绝对路径执行 `--version`。该新进程报告的版本必须与目标严格
+相同，才能返回 `updated`。任一阶段失败都保留错误原因并以非零状态退出。
+
+npm 管理替换、安装恢复和并发安装行为，模块不引入另一套包替换或回滚机制。更新失败
+不承诺原安装文件完整保留；需要按 npm 的错误处理安装。命令不控制已运行的 reviewer，
+其内存和已加载模块保持原版本，操作者须重启后使用新版本。Windows 上被占用的原生
+addon 可能阻止替换，npm 失败直接可见。
+[自更新决策](../../.agents/notes/implemented/feature/2026-10-20-cli-self-update.md)
+记录包管理权、范围选择和拒绝其他安装方式的依据。
 
 ## 本地审查状态列表
 
@@ -606,9 +654,12 @@ Unicode 编码别名、状态目录别名及探测目录清理。挂载 fixture 
 `daynight` bin。真实 SQLite 和本地 Git 配合受控的原生 gh 执行文件及 Copilot 命令
 包装脚本，验证配置登记、根目录变更后保留既有路径、本地审查列表，以及完整的审查、
 重试、重启和关闭清理流程；测试不替换产品内部依赖。
-该安装步骤需要包注册表访问，不做全局安装，也不需要真实 review 凭据。CI 只上传
-精选的工具版本清单和场景 receipt。异常退出验收在直接工具句柄全部关闭后同步结束
-CLI，检查锁保留、存活实例拒绝和自动接管失效锁；进程树终止保留独立的原生验证。[验收报告](../research/daynight-acceptance.md)
+该审查生命周期安装步骤需要包注册表访问，使用本地 consumer，也不需要真实 review 凭据。
+独立的自更新验收使用真实 npm、任务内隔离的全局 prefix 和受控 HTTP registry，将打包
+版本从 `1.0.0` 更新到 `1.0.1`，核对安装归属、默认 prefix 变更、调用目录配置隔离、
+当前或领先版本、错误及配置/状态保留。它只替换 fixture 内的包，不更新操作者的全局 CLI。
+CI 只上传精选的工具版本清单、审查生命周期 receipt 和 `.tmp/update-evidence.json`。
+异常退出验收在直接工具句柄全部关闭后同步结束 CLI，检查锁保留、存活实例拒绝和自动接管失效锁；进程树终止保留独立的原生验证。[验收报告](../research/daynight-acceptance.md)
 记录实际已测试的平台和真实服务验收范围。
 
 下表定义模块、原生子进程和安装后验收需要观测的行为；实际通过记录及其对应修订见
@@ -622,6 +673,7 @@ CLI，检查锁保留、存活实例拒绝和自动接管失效锁；进程树�
 | agent 输出 | 分块 Unicode 与 CRLF、精确末行、错误 PR 编号、stderr 中的标记、带前后缀或闭合代码围栏的标记、标记后的内容、捕获失败、非零退出 |
 | 会话与重试 | 固定 UUID 后显式恢复、首次启动中断、历史缺失报错、确认既有发布结果、持久化尝试预算 |
 | 审查列表 | `review list` 与 `review ls` 等价、配置仓库顺序和 PR 编号排序、Draft 与仍 Open 的完成或失败记录、永久边界过滤、最新修订和旧活跃审查分别归属、重试及错误、待清理屏障与清理错误、最后完整观测时间、缺失状态不创建数据库、无效数据库报错、运行中只读一致快照 |
+| 自更新 | 仅当前 npm 全局安装及启动器归属、实际 prefix、用户/全局 registry 与认证、忽略项目 `.npmrc`、确切 SemVer 目标和不降级、同 Node.js 调用 npm、engine 与权限失败、输出流、安装目录内调用拒绝、新进程版本验证、配置/状态隔离、其他包管理器明确拒绝 |
 | CLI 生命周期 | 审查期间继续轮询；准备、执行和清理的操作预留；抑制失败修订；`maxConcurrentWorker` 并发上限；Ctrl+C；拒绝第二个实例；异常退出后的失效锁自动接管；锁状态含糊时拒绝；中断审查及待清理资源阻塞与诊断 |
 | 配置与目录 | 固定的 `~/.daynight/config.yml`、严格 YAML、review 启动缺失配置报错、添加时创建配置和保留注释、全局根目录仅在添加时生成固定绝对路径、显式路径按当前目录解析、重复添加幂等及冲突、配置写锁和失败保留、不同启动目录复用状态、手写相对路径按配置目录解析、按实际文件系统规则检查重复与重叠路径、探测目录清理和失败报告；用注入的主目录解析结果隔离测试文件 |
 | 平台 | `daynight --daemon-review`、各平台用户主目录和路径分隔符、含空格或 Unicode 的路径、Windows CLI 命令包装脚本、每个受支持系统上的子进程终止和最终输出 |

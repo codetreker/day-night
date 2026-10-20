@@ -11,10 +11,15 @@ actual Copilot reasoning and GitHub effects.
 
 ## Decision
 
-`pnpm acceptance` builds, packs and installs the application into a project-local
-consumer, then drives its installed `daynight` command. The test uses real Git
-and SQLite with controlled `gh` and Copilot executables. It injects no runtime
-or coordinator dependencies and adds no product test flags.
+`pnpm acceptance` builds the application and runs two independent installed
+suites. The review lifecycle suite packs and installs the application into a
+project-local consumer, then drives its installed `daynight` command. It uses
+real Git and SQLite with controlled `gh` and Copilot executables. It injects no
+runtime or coordinator dependencies and adds no product test flags. The
+[self-update suite](../feature/2026-10-20-cli-self-update.md) uses real npm with
+isolated task-local global prefixes and a controlled scoped HTTP registry; it
+checks replacement of the invoked installation without changing the operator's
+installed CLI.
 
 Windows `execFile("gh")` receives a native executable: a copy of the existing
 Node binary preloads a bounded fixture module before resolving the absent API
@@ -43,15 +48,18 @@ keeps its own unchanged tests. The
 [acceptance report](../../../../docs/research/daynight-acceptance.md) owns the
 scenario receipts, commands, tested baselines and live-service limits.
 
-The separate command performs normal registry dependency resolution. The pnpm
+Both installed suites perform normal registry dependency resolution. The pnpm
 store alone cannot satisfy a fresh consumer's offline metadata lookup after a
-frozen workspace install. The ordinary `pnpm check` remains independent of this
-additional consumer installation. See the inspected
-[pnpm resolver](https://github.com/pnpm/pnpm/blob/702ad5f860ffd50d64a3a711d9f8a3da16fc796e/resolving/npm-resolver/src/pickPackage.ts#L143-L179).
+frozen workspace install. The self-update registry controls package versions
+and tarballs while npm installs their real dependencies. The ordinary
+`pnpm check` remains independent of these additional installations. See the
+inspected [pnpm resolver](https://github.com/pnpm/pnpm/blob/702ad5f860ffd50d64a3a711d9f8a3da16fc796e/resolving/npm-resolver/src/pickPackage.ts#L143-L179).
 
-Native CI runs both commands and uploads only the environment and lifecycle
-JSON receipts. The environment manifest selects version and OS fields; it never
-serializes the full process report or environment. The
+Native CI runs the ordinary and installed commands and uploads only the
+environment, review lifecycle and self-update JSON receipts. The environment
+manifest selects version and OS fields; it never serializes the full process
+report or environment. Self-update writes `.tmp/update-evidence.json` separately
+from the lifecycle receipt. The
 [pinned artifact action](https://github.com/actions/upload-artifact/blob/cf430e030ddbb5b0abf93d22962f4752f3646cd9/action.yml)
 includes only those explicit paths. The final matrix gate remains authoritative,
 including fixture cleanup and failed assertions.
@@ -75,8 +83,10 @@ repository, reviewer and write-authorization requirements.
 ## Consequences
 
 The same installed lifecycle can run on native Linux, macOS and Windows without
-review credentials or global installation. CI artifacts identify the exact tested
-toolchain and clearly mark both live-service flags false.
+review credentials or global installation. Self-update acceptance uses task-local
+global prefixes on those platforms. CI artifacts identify the tested toolchain
+and distinguish controlled update replacement from lifecycle receipts whose
+live-service flags are false.
 
 Package-registry access is required for acceptance. Local fixture success does
 not extend OS/architecture support beyond observed receipts. Real Copilot and

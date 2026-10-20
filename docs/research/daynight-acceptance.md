@@ -1,7 +1,9 @@
 # Daynight Acceptance Evidence
 
-The installed-CLI acceptance suite exercises a packed distribution with real Git
-and SQLite, controlled GitHub CLI responses and a controlled Copilot executable.
+Installed-CLI acceptance exercises packed distributions through separate review
+lifecycle and self-update suites. The lifecycle suite uses real Git and SQLite,
+controlled GitHub CLI responses and a controlled Copilot executable. Self-update
+uses real npm with a controlled HTTP registry and task-local global prefixes.
 Real Copilot reasoning and GitHub publication require a separately designated
 repository, reviewer identity and authorization.
 
@@ -14,9 +16,12 @@ node packages/daynight/scripts/validation-environment.ts
 ```
 
 `pnpm check` runs type checking and ordinary tests. `pnpm acceptance` builds the
-package, packs a tarball and installs it into a task-local consumer with the
-normal pnpm installer. This separate command requires package-registry access
-for dependency resolution. It creates no global installation and needs no live
+package and runs both installed suites. The review lifecycle suite packs a
+tarball and installs it into a task-local consumer with the normal pnpm installer.
+The update suite installs packed fixture versions into isolated npm global
+prefixes inside its temporary directory. Dependency resolution requires package-
+registry access; package-update metadata and tarballs come from a controlled local
+HTTP registry. Neither suite changes the operator's installed CLI or needs live
 GitHub or Copilot credentials.
 
 The installed `@codetreker/daynight` package's `daynight` bin starts from temporary
@@ -24,8 +29,8 @@ home and working directories containing spaces and Unicode. The test drives its
 public command and reads SQLite through an independent connection. Product
 scheduling APIs are not replaced. Git transport is limited to the local fixture origin.
 
-Thirty-three scenarios cover four configuration-registration cases, four local
-status-listing cases and twenty-five review lifecycle cases. Registration drives the
+The review lifecycle baseline contains thirty-three scenarios covering four
+configuration-registration cases, four local status-listing cases and twenty-five review lifecycle cases. Registration drives the
 installed command before review startup and verifies configuration-only operation, working-directory-relative
 paths, the default root, and fixed repository paths after a root change. It checks
 that registration creates no clone, database, runtime lock, agent invocation or
@@ -59,15 +64,56 @@ comment review and four approving reviews. The missing-marker attempt publishes
 once; the resumed same-session attempt confirms it without another publication.
 Only the controlled Copilot child may issue the simulated review POST.
 
+## Controlled npm self-update acceptance
+
+The separate `update.acceptance.ts` suite uses real npm global installation and
+replacement in task-local prefixes. It stages packed `@codetreker/daynight`
+versions `1.0.0`, `1.0.1` and `1.0.2` behind a local scoped HTTP registry; these
+fixture versions do not represent public npm releases. The successful replacement
+advances `1.0.0` to `1.0.1`; `1.0.2` is used for an installation-failure case.
+Calls use the installed absolute CLI and exercise its default updater without
+replacing product dependencies.
+
+Fourteen scenarios cover the npm launcher before and after replacement, a prefix
+with spaces and Unicode, same-installation replacement, configured scoped registry,
+changed default prefix, a target pinned after `latest` moves, conflicting
+caller-project `.npmrc`, help without state, preservation of invalid review-state
+bytes, current/ahead no-install results, and
+metadata/installation failures. They preserve an unrelated prefix, caller project
+files and user configuration/state. The installed manifest, launcher and fresh
+CLI version establish the replacement result. This evidence is separate from
+the thirty-three review lifecycle scenarios and establishes neither live npm
+publication nor a running reviewer's restart.
+
+The suite writes `.tmp/update-evidence.json` with the source package version,
+Node/npm versions, platform and architecture, scenarios and replacement result.
+The focused Linux x64 run on 2026-10-20 passed all fourteen scenarios in 8.03
+seconds using working-tree source package `0.2.4`, Node `v24.19.0` and npm
+`12.0.2`. npm returned a singleton JSON array for the queried version. The receipt
+records successful replacement `1.0.0` → `1.0.1` after `latest` moved to `1.0.2`,
+no installation for current/ahead versions, one successful target-tarball request,
+and status 1 for metadata and tarball HTTP 503 failures. The final installed
+version remained `1.0.1`; user npm configuration and review-state bytes survived.
+
+The fixture's isolated npm user configuration disables lifecycle scripts. This
+run verifies real package installation, replacement and command execution; it
+does not establish native-addon replacement while a reviewer is running. The
+local result is separate from native macOS/Windows evidence and live npm
+publication. Native results belong to the exact revision's CI jobs; the suite's
+presence alone is not a pass receipt.
+
 ## Evidence and verdict
 
 GitHub Actions runs the ordinary and installed suites on native Linux, macOS and
-Windows. Each job uploads only two curated files:
+Windows. Each job uploads three curated files:
 
 - `validation-environment.json`: checked-out revision, dirty flag, OS,
   architecture, Node/ABI/Node-API, pnpm, Git, gh and loaded SQLite versions.
 - `e2e-evidence.json`: installed-package lifecycle assertions and scenario
   receipts, with both live-service flags explicitly false.
+- `update-evidence.json`: controlled npm self-update scenarios, source package
+  version and replacement result, distinct from review lifecycle and live-service
+  evidence.
 
 The workflow's platform job and final `checks` gate are the validation verdict
 for their checked-out revision. A scenario receipt describes its assertions; the
@@ -104,6 +150,7 @@ and do not establish that repair's behavior.
 
 | Evidence | Observed result |
 |---|---|
+| Self-update focused local validation, 2026-10-20 | Linux x64 passed all fourteen controlled real-npm scenarios from working-tree source package `0.2.4` in 8.03 seconds, using Node `v24.19.0` and npm `12.0.2`; separate from the review lifecycle baseline and native hosted results |
 | Package `0.2.1` CI-admission local validation, 2026-10-18 | Linux x64 passed type checking, 662 ordinary tests with eight APFS skips, build and all 33 installed scenarios |
 | Package `0.2.0` local validation, 2026-10-18 | Linux x64 passed type checking, 552 ordinary tests with eight APFS skips, build and all 28 installed scenarios in 10.62 seconds |
 | Cleanup-barrier repair local validation, 2026-10-18 | Linux x64 passed `pnpm check` with 476 tests and eight APFS skips, `pnpm build` and all 24 installed scenarios |
