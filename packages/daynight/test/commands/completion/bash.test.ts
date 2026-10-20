@@ -79,8 +79,22 @@ describe("Bash completion rendering", () => {
       options: [{ names: ["--name"], description: "Name", value: { name: "name", kind: "text" }, required: true }],
     });
     expect(script).toContain("dn_option_values=('text')");
-    const noTextCandidates = script.indexOf('[[ "$dn_pending" != text ]] || return 0');
+    const noTextCandidates = script.indexOf('if [[ "$dn_pending" == text ]]; then');
     expect(noTextCandidates).toBeGreaterThan(0);
     expect(noTextCandidates).toBeLessThan(script.indexOf('if [[ "$dn_pending" == directory ]]'));
+  });
+
+  it("retains repeat and empty metadata and separates named static choices", () => {
+    const script = renderBashCompletion({ name: "tool", description: "", options: [
+      { names: ["--status"], description: "", value: { name: "status", kind: "text", choices: ["todo", "done"] } },
+      { names: ["--depends-on"], description: "", value: { name: "task", kind: "text" }, repeatable: true },
+      { names: ["--description"], description: "", value: { name: "description", kind: "text", allowEmpty: true } },
+    ] });
+    expect(script).toContain("dn_option_repeats=('0' '1' '0')");
+    expect(script).toContain("dn_option_empty=('0' '0' '1')");
+    expect(script).toContain("0) dn_value_choices=('todo' 'done')");
+    expect(script).toContain('dn_current="${dn_current#*=}"');
+    expect(script).toContain('dn_fragment="${COMP_WORDS[COMP_CWORD]}"');
+    expect(script).not.toContain("COMP_WORDBREAKS=");
   });
 });

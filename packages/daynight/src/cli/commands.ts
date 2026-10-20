@@ -3,6 +3,7 @@ import type { CommandDefinition } from "./schema.js";
 import { completionDefinition } from "../commands/completion/definition.js";
 import { reviewDefinition } from "../commands/review/definition.js";
 import { projectDefinition } from "../commands/project/definition.js";
+import { taskDefinition } from "../commands/task/definition.js";
 import { updateDefinition } from "../commands/update/definition.js";
 
 export type CommandRegistration = CommandDefinition & {
@@ -25,6 +26,10 @@ export const commands: readonly CommandRegistration[] = [
   {
     ...projectDefinition,
     load: async () => ({ run: (await import("../commands/project/command.js")).runProjectCommand }),
+  },
+  {
+    ...taskDefinition,
+    load: async () => ({ run: (await import("../commands/task/command.js")).runTaskCommand }),
   },
 ];
 

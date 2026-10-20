@@ -3,8 +3,9 @@ import { UsageError } from "./context.js";
 export type CommandOption = {
   names: readonly string[];
   description: string;
-  value?: { name: string; kind: "directory" | "text" };
+  value?: { name: string; kind: "directory" | "text"; allowEmpty?: boolean; choices?: readonly string[] };
   required?: boolean;
+  repeatable?: boolean;
   action?: "help" | "version";
 };
 
@@ -35,7 +36,7 @@ export type CommandSelection = CommandLocation & (
 export type ParsedCommand = CommandLocation & (
   | { kind: "help" }
   | { kind: "version" }
-  | { kind: "run"; values: readonly string[]; options: ReadonlyMap<string, string | true> }
+  | { kind: "run"; values: readonly string[]; options: ReadonlyMap<string, string | readonly string[] | true> }
 );
 
 const matchesCommand = (command: CommandDefinition, name: string): boolean =>
@@ -72,24 +73,34 @@ export const parseCommand = (
   const action = informationAction(definition, args);
   if (action !== undefined) return { kind: action, command: definition, path };
   const values: string[] = [];
-  const options = new Map<string, string | true>();
+  const options = new Map<string, string | string[] | true>();
   for (let index = 0; index < args.length; index++) {
     const argument = args[index]!;
     if (argument.startsWith("-")) {
-      const option = definition.options?.find((candidate) => candidate.names.includes(argument));
-      if (option === undefined || option.action !== undefined) {
+      const separator = argument.indexOf("=");
+      const inline = separator !== -1;
+      const optionName = inline ? argument.slice(0, separator) : argument;
+      const option = definition.options?.find((candidate) => candidate.names.includes(optionName));
+      if (option === undefined || option.action !== undefined || inline && option.value?.kind !== "text") {
         throw new UsageError(`Unknown ${definition.name} option ${JSON.stringify(argument)}.`, helpCommand);
       }
       const name = option.names[0]!;
-      if (options.has(name)) throw new UsageError(`Specify ${name} only once.`, helpCommand);
+      if (options.has(name) && option.repeatable !== true) throw new UsageError(`Specify ${name} only once.`, helpCommand);
       if (option.value === undefined) {
         options.set(name, true);
       } else {
-        const value = args[++index];
-        if (value === undefined || value === "" || value.startsWith("-")) {
+        const value = inline ? argument.slice(separator + 1) : args[++index];
+        if (value === undefined || value === "" && option.value.allowEmpty !== true || !inline && value.startsWith("-")) {
           throw new UsageError(`${name} requires a ${option.value.name} value.`, helpCommand);
         }
-        options.set(name, value);
+        if (option.value.choices !== undefined && !option.value.choices.includes(value)) {
+          throw new UsageError(`Unknown ${option.value.name} ${JSON.stringify(value)}. Expected ${option.value.choices.join(" or ")}.`, helpCommand);
+        }
+        if (option.repeatable === true) {
+          const previous = options.get(name) as string[] | undefined;
+          if (previous === undefined) options.set(name, [value]);
+          else previous.push(value);
+        } else options.set(name, value);
       }
       continue;
     }
@@ -114,7 +125,7 @@ const optionLabel = (option: CommandOption): string =>
   `${option.names.join(", ")}${option.value === undefined ? "" : ` <${option.value.name}>`}`;
 
 const optionUsage = (option: CommandOption): string =>
-  `${option.names[0]}${option.value === undefined ? "" : ` <${option.value.name}>`}`;
+  `${option.names[0]}${option.value === undefined ? "" : ` <${option.value.name}>`}${option.repeatable === true ? "..." : ""}`;
 
 const renderRows = (rows: readonly (readonly [string, string])[]): string => {
   const width = Math.max(...rows.map(([label]) => label.length)) + 2;

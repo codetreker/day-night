@@ -63,8 +63,21 @@ describe("native zsh completion", () => {
       description: "",
       options: [{ names: ["--name"], description: "Name", value: { name: "name", kind: "text" }, required: true }],
     });
-    expect(script).toContain("(--name)--name[Name]:name:->text_value");
+    expect(script).toContain("(--name)--name=[Name]:name:->text_value");
     expect(script).toContain('text_value)\n      _message "$state_descr"\n      return 0');
     expect(script).not.toContain("_files");
+  });
+
+  it("uses native inline choices and repeatable specifications without self-exclusion", () => {
+    const script = renderZshCompletion({ name: "tool", description: "", options: [
+      { names: ["--status"], description: "Status", value: { name: "status", kind: "text", choices: ["todo", "done"] } },
+      { names: ["--depends-on"], description: "Dependency", value: { name: "task", kind: "text" }, repeatable: true },
+      { names: ["--description"], description: "Description", value: { name: "description", kind: "text", allowEmpty: true } },
+    ] });
+    expect(script).toContain("(--status)--status=[Status]:status:('\\''todo'\\'' '\\''done'\\'')");
+    expect(script).toContain("*--depends-on=[Dependency]:task:->text_value");
+    expect(script).not.toContain("(--depends-on)");
+    expect(script).toContain("option_value=\"${word#*=}\"");
+    expect(script).toContain("'--status='*");
   });
 });

@@ -3,7 +3,7 @@
 状态：`packages/daynight/` 是通过 `@codetreker/daynight` 分发的 TypeScript 客户端
 命令工具包，支持 Linux、macOS 和 Windows。`review` 提供 GitHub PR 审查，`update`
 管理当前 npm 全局安装，`completion` 生成 Bash 和 zsh 的原生补全脚本。project/task
-CLI 的共享配置、HTTP 和仓库关联基础及 project 命令已实现，task 命令与完整服务验收待完成；
+CLI 的共享配置、HTTP、仓库关联基础及 project/task 命令已实现，完整服务验收待完成；
 [专属设计](daynight-project-task.md)拥有机制，[实现任务](daynight-project-task-tasks.md)
 拥有交付状态。行为归属见[客户端需求](../spec/daynight.md)及
 [review 需求](../spec/daynight-review.md)，结构选择见
@@ -28,13 +28,19 @@ daynight project
 daynight project create --name <name> --repo <repo>
 daynight project list [--json]
 daynight project show <project-id> [--json]
+daynight task
+daynight task create --title <title> [options]
+daynight task list [--status <status>] [--ready] [--json] [--project <project-id>]
+daynight task show <task-id> [--json] [--project <project-id>]
+daynight task update <task-id> [options]
+daynight task graph [--json] [--project <project-id>]
 ```
 
 各组和操作在该层唯一参数为 `--help` 或 `-h` 时显示帮助。顶层无参数显示帮助，
 未知命令与无效参数退出 2，业务执行失败退出 1 并保留原因。旧的 `--daemon-review` 和顶层 `add-repo` 不再是
 有效命令。review 操作沿用[review 设计](daynight-review.md)的配置、持久化和运行保证。
 
-以上命令和后文源码树描述当前实现。project/task 的业务机制及待实现 task 范围由
+以上命令和后文源码树描述当前实现。project/task 的业务机制与完整联调要求由
 [专属设计](daynight-project-task.md)拥有。
 
 客户端外壳处理顶层帮助、版本、命令选择及通用退出结果。每个命令模块负责自己的
@@ -42,7 +48,7 @@ daynight project show <project-id> [--json]
 避免查询或配置操作初始化审查运行时。`update` 属于包安装生命周期，不属于 review。
 独立 Go 服务与浏览器应用保持各自的数据和生命周期。已确认的 project/task 设计
 通过独立客户端模块使用现有 HTTP API，业务数据仍由 Go 服务持有；HTTP 客户端、仓库上下文和 project 入口已实现，
-task 入口仍待交付。
+task 入口已实现。
 
 ## 源码组织
 
@@ -73,6 +79,10 @@ src/
     binding.ts
     context.ts
   commands/
+    task/
+      definition.ts
+      command.ts
+      rendering.ts
     project/
       definition.ts
       command.ts
@@ -123,7 +133,8 @@ src/
 用户主目录和工作目录的惰性查询函数；不放入已解析的 review 路径、配置或运行函数。
 `cli/commands.ts` 组合各命令的轻量定义并保存异步执行入口；`cli/application.ts`
 只在选中命令时调用加载函数。`cli/schema.ts` 定义命令、别名、选项和值类型、位置
-参数及固定候选，并由它完成参数校验与帮助渲染。各 `definition.ts` 不导入业务实现、
+参数及固定候选；选项元数据表达 required、allowEmpty、choices 和 repeatable，
+并由它完成参数校验与帮助渲染。各 `definition.ts` 不导入业务实现、
 配置、文件系统探测、原生数据库或适配器；根分发可以读取这些定义而不加载业务。
 Bash 和 zsh 生成器消费同一命令树，避免解析、帮助和补全分别维护语法。增加业务
 命令需要登记入口和实现自己的模块，顶层分发不认识该命令的业务依赖。
@@ -147,7 +158,8 @@ review 的配置和路径类型明确以 `ReviewConfiguration`、`ReviewPaths` �
 共享的 `platform/` 只承载诊断和文件系统能力；这些函数不导入命令模块。
 
 源码测试按 `test/cli/`、`test/config/`、`test/api/`、`test/commands/review/`、
-`test/commands/update/`、`test/commands/completion/`、`test/repository/` 和 `test/platform/`
+`test/commands/update/`、`test/commands/completion/`、`test/commands/project/`、
+`test/commands/server/`、`test/commands/task/`、`test/repository/` 和 `test/platform/`
 镜像职责，构建与版本策略测试位于 `test/tooling/`，共享 fixture 与帮助函数保持明确
 归属。使用普通函数和具体类型；外部命令、时钟与故障点只在有实际
 验证需求的边界注入，不增加通用插件框架或依赖注入容器。
@@ -181,7 +193,14 @@ daynight 或网络请求。参数语法保留原有唯一帮助参数、remote �
 HTTP 和渲染共享期限与字节预算。回调返回完整结果字符串，最后检查取消和期限后
 只写一次 stdout，再移除本次的信号监听器并释放操作。SIGINT/SIGTERM 以及 Windows
 SIGBREAK 均进入这一取消源；配置读取接受同一 AbortSignal。错误及清理失败保留
-原因链。该执行层供后续 task 命令复用，不控制 Go server 的启动或关闭。
+原因链。Task 复用此执行层；它不控制 Go server 的启动或关闭。
+
+Task 的 definition、command 和 rendering 分别拥有共享语法、操作组合和完整
+输出。描述通过 `value.allowEmpty` 保留空值；状态通过 `value.choices` 统一参数
+校验和补全候选，帮助使用选项说明；重复依赖通过 `repeatable` 从首次出现起形成保留输入顺序及重复值的
+数组。text 内联赋值按首个 `=` 分隔并支持前导连字符，目录与开关继续拒绝内联。
+参数验证先于配置、Git 及 HTTP；显式 project 直接读取远端详情，自动分支才加载
+`repository/`，并在 task 写入前完成关联验证与保存。
 
 `platform/text.ts` 按 Unicode White_Space、有效 Unicode 和无 NUL 校验服务文本，
 CLI 参数与 API DTO 共用该规则并保留原值；`platform/terminal.ts` 仅负责可读输出中的
@@ -202,7 +221,7 @@ server 地址的配置可独立加载；review 不校验该地址，添加首个
 
 Git worktree 根目录 `.daynight/project.yml` 保存 server、仓库身份和 project ID 的
 本地关联。它与主目录下的 review 状态用途不同；关联模块在命中时验证远端 project，
-失效时完整发现并在有效忽略规则下原子保存。待实现命令在任务读写之前调用该模块；
+失效时完整发现并在有效忽略规则下原子保存。Task 命令在任务读写之前调用该模块；
 目录、锁、忽略规则和缓存寿命由[专属设计](daynight-project-task.md)定义。
 
 ## npm 全局自更新
