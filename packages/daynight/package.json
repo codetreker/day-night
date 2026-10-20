@@ -1,6 +1,6 @@
 {
   "name": "@codetreker/daynight",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "A foreground CLI for GitHub pull request reviews",
   "repository": {
     "type": "git",

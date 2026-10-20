@@ -1,6 +1,6 @@
 # 项目与任务看板
 
-状态：完整图 API 已实现，浏览器页面及部署待实现。本文定义只读 MVP 的交付要求；[设计](../design/daynight-web.md)说明实现方式与任务顺序，[交互预览](../design/mockups/task-dashboard.html)用于确认视觉与操作，[任务清单](../design/daynight-web-tasks.md)记录实现范围和完成条件。
+状态：完整图 API、项目列表与前端验证基础已实现；项目任务视图和部署待实现。本文定义只读 MVP 的交付要求；[设计](../design/daynight-web.md)说明实现方式与任务顺序，[交互预览](../design/mockups/task-dashboard.html)用于确认视觉与操作，[任务清单](../design/daynight-web-tasks.md)记录实现范围和完成条件。
 
 ## 目标与使用环境
 
