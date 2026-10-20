@@ -634,14 +634,18 @@ fixtures 验证克隆、私有 refs、detached head、dirty 内容、所有权�
 [协调决策](../../.agents/notes/implemented/architecture/2026-10-17-foreground-review-coordination.md)
 记录这些责任和异常恢复前提。
 macOS 检查挂载临时的大小写敏感和不敏感 APFS 镜像，验证缺失路径的大小写冲突、
-Unicode 编码别名、状态目录别名及探测目录清理。挂载 fixture 在现有 30 秒绝对清理
-预算内最多尝试三次普通 detach，仅明确的 `Resource busy` 允许继续尝试，并立即保留
-精确挂载文件系统的有界诊断。调用 attach 前就记录 `attachmentAttempted`，因为命令
-失败或超时仍可能已挂载。只要尝试过挂载，就必须成功执行普通 detach 后才删除 fixture
-目录；尚未尝试挂载的 setup 可直接移除目录。持续占用、其他错误或预算耗尽仍使测试
-失败并保留现场。八项原生断言及 hook、CI 的时间限制保持不变。
-[APFS fixture 清理决策](../../.agents/notes/implemented/testing/2026-10-18-apfs-fixture-finalization.md)
-记录资源归属和失败诊断的依据。
+Unicode 编码别名、状态目录别名及探测目录清理。fixture 创建显式的单分区 GPT 镜像，
+以 `realpath` 固定镜像路径，保存 `attach -plist` 返回的完整镜像设备身份。`plutil`
+只定向提取带类型要求的镜像数量、路径及匹配镜像的设备数组，不转换整个镜像清单。
+每次普通 detach 前，用 `hdiutil info -plist` 核对精确的镜像路径及设备身份，detach 后
+确认该镜像已完整消失，再删除 fixture 目录。
+挂载路径消失不能证明完整镜像已脱离；attach 结果不确定时同样需要镜像级证明。尚未
+尝试 attach 的 setup 可直接移除目录。清理在现有 30 秒绝对预算内最多尝试三次普通
+detach，仅明确的 `Resource busy` 允许继续尝试，并立即保留有界诊断；身份、查询、
+持续占用或其他未解决错误仍使测试失败并保留现场。八项原生断言、40 秒 hook 及
+600 秒平台限制保持不变。[镜像设备归属决策](../../.agents/notes/implemented/bug-fix/2026-10-20-apfs-device-ownership.md)
+记录设备校验和删除条件；[fixture 清理决策](../../.agents/notes/implemented/testing/2026-10-18-apfs-fixture-finalization.md)
+保留普通 detach、预算和失败诊断的依据。
 
 独立的 `pnpm acceptance` 先打包，再在临时 consumer 中正常安装，驱动实际生成的
 `daynight` bin。真实 SQLite 和本地 Git 配合受控的原生 gh 执行文件及 Copilot 命令

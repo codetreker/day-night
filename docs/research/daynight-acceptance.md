@@ -459,6 +459,26 @@ OS and architecture. Other distributions, architectures and musl require their
 own native receipt. The [state decision](../../.agents/notes/implemented/architecture/2026-10-17-durable-review-state.md)
 records the packaged binary choice.
 
+## Native APFS fixture ownership
+
+The [macOS job from run 39412445956](https://github.com/codetreker/day-night/actions/runs/39412445956/job/118593266497)
+reported 1,292 passing test cases and then failed APFS fixture finalization. An
+ordinary detach by mountpoint first reported `Resource busy`. The subsequent
+`lsof` command returned after 35 ms saying that the path was not a filesystem;
+`diskutil` returned after 39 ms without finding a disk. After the one-second
+pause, another detach by that same mountpoint failed with `No such file or
+directory`. These observations show that the mountpoint was no longer a usable
+attachment identity. They do not identify a holder, explain what changed the
+mount, or establish that the complete backing image was detached.
+
+Fixture finalization retains the attached image's device identity and verifies
+the exact fixture image's attachment state before removing its directory. The
+[device-ownership decision](../../.agents/notes/implemented/bug-fix/2026-10-20-apfs-device-ownership.md)
+owns that mechanism. The eight native APFS assertions, ordinary detach policy,
+30-second finalization budget, three-attempt limit, 40-second hook and 600-second
+platform gate remain in force. The failed job remains failure evidence; a native
+pass for the repaired fixture requires a successful job at its tested revision.
+
 ## Native termination follow-up
 
 The post-merge [runtime check](https://github.com/codetreker/day-night/actions/runs/39044760027)
