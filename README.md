@@ -1,14 +1,15 @@
 # Day Night
 
 Day Night contains a client command toolkit and an independent Go service runtime
-for project and task management. A read-only browser dashboard
-is designed and awaiting implementation.
+for project and task management. The read-only browser workspace implements
+project browsing; task visualization and embedded delivery remain tracked
+implementation work.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented TypeScript client command toolkit; `review` and npm global `update` commands | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
-| `daynight-web` | Planned `packages/daynight-web/` | Read-only dashboard design and interactive preview; application not implemented | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
+| `daynight-web` | `packages/daynight-web/` | Project browsing, typed API client, native routing and strict coverage implemented; task view and embedded delivery pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The `@codetreker/daynight` package provides the `daynight` client. Its root entry
 lists commands and reports the package version; each command owns its business
@@ -29,8 +30,9 @@ records the adopted scope and concurrency choices. The
 [server task breakdown](docs/design/daynight-server-tasks.md) owns implementation
 scope, dependencies, status and acceptance criteria. The development and runtime
 CLI commands below apply to the client; server commands have their own module.
-The planned dashboard presents source-root dependency graphs and project statistics
-from the server. Its [design decision](.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)
+The dashboard architecture presents source-root dependency graphs and project
+statistics from the server. The project list is implemented in the private web
+workspace; task visualization remains pending. Its [design decision](.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)
 defines the read-only MVP and future single-origin delivery. The standalone HTML
 preview opens directly in a browser and uses fixture data; current server builds
 continue to serve only the implemented JSON APIs. The planned delivery integrates
@@ -147,6 +149,27 @@ CLI job to pass. PostgreSQL absence is a failure, not a skipped test. The
 [server acceptance report](docs/research/daynight-server-acceptance.md) maps
 requirements to tests and describes the CI receipt containing tested source and
 binary identity, scenario results and resource cleanup.
+
+## Web development
+
+The private [web workspace](packages/daynight-web/README.md) implements the project
+list, cursor paging, safe API decoding, cancellation and browser routing. With the
+Go API running on loopback, use:
+
+```text
+pnpm web:dev
+pnpm web:typecheck
+pnpm web:build
+pnpm web:test
+```
+
+The frontend build emits `packages/daynight-web/dist/`. Project task rendering
+and embedding into the localhost service are tracked in the
+[dashboard tasks](docs/design/daynight-web-tasks.md). The web job runs typecheck,
+production build, controlled-fetch UI tests and an exact statement gate strictly
+above 90%. It independently enumerates all product TypeScript/TSX files and
+publishes raw counters plus a relative source manifest. `checks` requires web,
+Go and every native CLI platform; existing root CLI commands retain their scope.
 
 ## Package versions
 

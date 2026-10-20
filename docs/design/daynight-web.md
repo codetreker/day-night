@@ -1,6 +1,6 @@
 # 项目与任务看板设计
 
-状态：完整图 API 已实现；MVP 的浏览器页面、图展示及部署仍待实现。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
+状态：完整图 API、项目列表及前端验证基础已实现；项目任务视图、图展示和部署仍待实现。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
 
 ## 目标与现有基础
 
@@ -230,7 +230,7 @@ pnpm web:acceptance
 DAYNIGHT_TEST_DATABASE_URL=... bash scripts/check.sh
 ```
 
-以上 web 命令均为待新增契约。`web:test` 执行单元/组件测试与严格覆盖率检查；`web:acceptance` 使用现有隔离 PostgreSQL 验证直接构建的 Go 进程，并通过独立 `deployment/dev-ci` 验证完整容器栈的浏览器路径，需要 Docker 与固定版本的测试浏览器。浏览器本机优先复用，CI 下载及全部临时 profile 放在项目 `.tmp/`。`web:build` 不调用 Go，避免循环依赖。Go `scripts/check.sh` 在执行需要内嵌资源的 Go 命令前，从仓库根调用该命令；Go 测试中重新构建的进程使用同一份真实资源。缺少 pnpm、依赖、index 或资源时明确失败。
+`web:dev`、`web:typecheck`、`web:test` 和 `web:build` 已实现；`web:acceptance` 由 W-T6 接入。当前构建输出 web dist，向 Go 发布资源与 Go 检查前置属于 W-T5。`web:test` 执行单元/组件测试与严格覆盖率检查；`web:acceptance` 使用现有隔离 PostgreSQL 验证直接构建的 Go 进程，并通过独立 `deployment/dev-ci` 验证完整容器栈的浏览器路径，需要 Docker 与固定版本的测试浏览器。浏览器本机优先复用，CI 下载及全部临时 profile 放在项目 `.tmp/`。`web:build` 不调用 Go，避免循环依赖。Go `scripts/check.sh` 在执行需要内嵌资源的 Go 命令前，从仓库根调用该命令；Go 测试中重新构建的进程使用同一份真实资源。缺少 pnpm、依赖、index 或资源时明确失败。
 
 开发模式的 Vite 将 `/api` 代理到本机 Go，不引入 CORS 通配配置；生产使用 `http://127.0.0.1:8787/`。运行机器只需要服务二进制与 PostgreSQL；源码构建固定使用 Node 24 与 pnpm 10.34.5。根目录现有 CLI build/test/acceptance 命令的含义保持独立，新增 web 命令显式选择 `@codetreker/daynight-web`。
 
@@ -287,7 +287,7 @@ W-T5 交付两套环境定义与隔离 smoke test；W-T6 接入完整浏览器�
 
 ### CI 构建归属
 
-现有 `verify-server` 与新增 `verify-web` 都配置固定 pnpm/Node，从锁文件安装依赖，在没有 `node_modules` 和生成 dist 的干净 checkout 中构建真实 UI。现有 Go job 仅设置 Node，必须补齐 pnpm setup/install 后再调用 `scripts/check.sh`。`verify-server` 继续负责 build/vet/race/go-cov；`verify-web` 负责 web typecheck、严格覆盖率，以及通过 `deployment/dev-ci` 进行的生产浏览器与 Docker 交付验收，前端基础任务建立同一 job，最终验收任务扩展其步骤。两个 job 的真实成功与原生 CLI 各平台检查共同进入 `checks`。
+`verify-web` 已配置固定 pnpm/Node，从锁文件安装依赖并构建真实 UI；`verify-server` 的现有 Go 检查继续独立。W-T5 加入内嵌资源后，两个 job 都从没有 `node_modules` 和生成 dist 的干净 checkout 构建真实 UI。现有 Go job 仅设置 Node，必须补齐 pnpm setup/install 后再调用 `scripts/check.sh`。`verify-server` 继续负责 build/vet/race/go-cov；`verify-web` 负责 web typecheck、严格覆盖率，以及通过 `deployment/dev-ci` 进行的生产浏览器与 Docker 交付验收，前端基础任务建立同一 job，最终验收任务扩展其步骤。两个 job 的真实成功与原生 CLI 各平台检查共同进入 `checks`。
 
 根 `package.json`、锁文件、共享构建脚本和 `.github/workflows/checks.yml` 的唯一编辑归属按阶段交接：W-T2 建立并负责 web 命令和 `verify-web`；W-T2 验收后由 W-T5 接手构建/Go 工具配置；W-T5 验收后由 W-T6 接手最终生产验收步骤。接收任务在开始时核对前一阶段已通过的命令与 required job 清单，再接管编辑；其他任务只提出所需命令和依赖，不直接并发修改这些文件。W-T6 是最终汇总责任方，验证 `checks.needs` 包含 `verify-server`、`verify-web` 和现有 CLI `verify`，且任何失败或取消都不能被成功汇总。
 
