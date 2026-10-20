@@ -98,6 +98,7 @@ blocks only its PR until exclusion. Clearing its marker requires stopped cleanup
 operations as well as excluded agents; a newer observation alone cannot erase
 uncertainty across reopen and repeated crashes. This uses the
 existing stored marker without adding a schema migration.
-The [acceptance report](../../../../docs/research/daynight-acceptance.md) owns
-actual validation receipts; historical manual-recovery platform results do not
-establish automatic-recovery behavior on those platforms.
+The [installed acceptance decision](../testing/2026-10-17-installed-cli-acceptance.md)
+owns the recovery scenarios and their evidence boundaries. Actual validation
+receipts belong to the corresponding PR and CI run; historical manual-recovery
+platform results do not establish automatic-recovery behavior on those platforms.

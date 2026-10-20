@@ -90,5 +90,6 @@ six-second release and final-absence evidence. Disk Arbitration's [ordinary unmo
 and XNU's [busy vnode handling](https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/bsd/vfs/vfs_subr.c#L2800-L2839)
 explain the expected ordinary-file mechanism. The controlled case does not identify
 the original holder or prove the native `unmounted_attached` phase. The
-[acceptance report](../../../../docs/research/daynight-acceptance.md) owns actual
-hosted receipts and their limits.
+[APFS repair PR](https://github.com/codetreker/daynight/pull/59) and its CI run
+own source-bound hosted receipts. The [validation guide](../../../../README.md#validation)
+defines their interpretation and limits.

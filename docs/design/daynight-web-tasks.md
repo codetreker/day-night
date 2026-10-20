@@ -181,8 +181,8 @@ LR 布局模块及其测试。模型与布局不依赖 React、DOM 或网络，�
 覆盖率为 648/654（约 99.08%），18 个产品文件全部纳入。两个独立审查及初始视口
 变更复核均无 Critical/Major。生产 bundle 通过真实 Go API 与 PostgreSQL 的六组
 浏览器流程，覆盖依赖过期、全图刷新、焦点、图几何及窄屏；1,000 节点链本地单次
-探针约 1.24s 且根节点初始可见。具体证据与边界由[验收报告](../research/daynight-web-acceptance.md)
-拥有；该单次探针不替代 W-T6 的固定 CI 五次性能门槛。
+探针约 1.24s 且根节点初始可见。该单次本地探针不替代 W-T6 的固定 CI 五次性能门槛；
+验证工具与回执解释见[web 验证说明](../../packages/daynight-web/README.md#production-browser-acceptance)。
 [PR #42](https://github.com/codetreker/daynight/pull/42) 在 CI 与当前 head approval
 通过后合并；[合并后 CI](https://github.com/codetreker/daynight/actions/runs/39391455671)
 的六项检查全部通过。
@@ -237,7 +237,8 @@ LR 布局模块及其测试。模型与布局不依赖 React、DOM 或网络，�
 并发 dev-ci 运行证明端口、卷和数据独立，清理一组后另一组继续可用，最终均清理。
 两套有效 Compose 的构建、转发、网络和存储配置完成核对；未启动或修改日常栈。
 这些本地工作树结果不替代对应 PR 的干净 CI 回执，也不替代 W-T6 的真实浏览器、
-固定 1,000/5,000 图集五次性能和实际故障清理验收；证据归属[验收报告](../research/daynight-web-acceptance.md)。
+固定 1,000/5,000 图集五次性能和实际故障清理验收。对应 PR 与 CI 保存运行结果；
+回执与清理解释见[web 验证说明](../../packages/daynight-web/README.md#production-browser-acceptance)。
 
 ### 文件归属与范围
 
@@ -285,7 +286,7 @@ localhost 的生产 Dockerfile 和 nginx 配置，完成独立资源与生命周
 <a id="w-t6"></a>
 ## W-T6：生产浏览器与 CI 验收
 
-状态：已实现，当前长虚线绘制源码的完整本地验收通过，等待真实 CI、review 与合并。长斜线原生 dash 生成造成前一侧栏关闭帧的 raster/commit 阻塞；当前分解保留全部图与视觉语义，门槛不变。全部历史 hosted 失败与本地回执保留。前置：W-T5。
+状态：已实现，当前长虚线绘制源码的完整本地验收通过，等待真实 CI、review 与合并。长斜线原生 dash 生成造成前一侧栏关闭帧的 raster/commit 阻塞；当前分解保留全部图与视觉语义，门槛不变。本地回执不替代交付源码的干净 CI 验证。前置：W-T5。
 
 已实现：`pnpm web:acceptance` 构建真实 UI 和 Go 二进制，在专用 PostgreSQL 上
 运行原生进程浏览器用例，再经 dev-ci gateway 运行相同的功能用例。固定图集性能
@@ -304,8 +305,9 @@ localhost 的生产 Dockerfile 和 nginx 配置，完成独立资源与生命周
 
 回执使用 Linux 上锁定 Chromium 156.0.8078.4，无 executable override，记录
 本地源码为 `451b914` 基础上的 dirty 工作树；不能作为 clean CI 身份。较早
-原生长虚线 SVG 与 reactive-edge 的通过回执只保留为各自源码的历史证据。具体指标、
-二进制/镜像身份及证据边界由[验收报告](../research/daynight-web-acceptance.md)拥有。
+原生长虚线 SVG 与 reactive-edge 的通过回执仅能证明各自源码。具体指标、
+二进制/镜像身份及逐次结果随对应 PR 与 CI 保存；回执边界见
+[web 验证说明](../../packages/daynight-web/README.md#production-browser-acceptance)。
 实际 Docker 故障矩阵 `fault-1792493712152-d0ae9b41` 通过：启动时停止本次 PG
 使 runner 返回 1 且不执行 callback；callback 的退出 23 原样保留且遗留后代停止；
 SIGTERM 返回 143/cancelled 并清理进程组；只读 holder 阻止本次卷删除时准确报告

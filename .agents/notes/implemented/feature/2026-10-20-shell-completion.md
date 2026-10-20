@@ -128,6 +128,8 @@ The package's next invocation uses the installed command definitions; existing
 shells keep their loaded definitions until sourced again. Saved generated files
 must be regenerated after upgrades. Bash below 4.2 and zsh without `compinit`
 receive loading diagnostics. Completion does not change review data formats,
-configuration fields, clone paths or update ownership. The
-[acceptance report](../../../../docs/research/daynight-acceptance.md) separates
-observed shell receipts from historical CLI evidence and live-service acceptance.
+configuration fields, clone paths or update ownership. Shell JSON receipts are
+run-specific evidence, distinct from controlled installed-CLI and real-service
+acceptance. The [completion design](../../../../docs/design/daynight-completion.md)
+owns their coverage and interpretation; the corresponding PR and CI run retain
+observed results for their tested revision.

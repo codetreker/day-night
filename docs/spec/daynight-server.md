@@ -1,7 +1,8 @@
 # daynight-server 任务管理需求
 
 状态：Go 服务、事务存储、project/task 用例与 HTTP 接口、覆盖率门槛和完整进程
-验收均已实现。[验收报告](../research/daynight-server-acceptance.md)记录验证范围和产物。
+验收均已实现。[服务端验证说明](../../packages/daynight-server/README.md#built-process-acceptance-and-ci-evidence)
+定义验证范围、要求与测试映射和 CI 产物解释；逐次运行结果随对应 PR 与 CI 保存。
 
 本文定义 `daynight-server` 面向本机 CLI 和内部程序的任务管理行为。
 [技术设计](../design/daynight-server.md)拥有分层、存储和并发机制；

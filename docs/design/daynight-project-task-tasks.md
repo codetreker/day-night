@@ -216,7 +216,8 @@ submodule、缓存、锁、原子文件及拒绝路径。三个 receipt 的回�
 成功 stdout 分别为 202/602 字节，拒绝场景均为空，所有 probe 与共享安装回收成功。
 验证分层与取舍由
 [安装联调决策](../../.agents/notes/implemented/testing/2026-10-20-installed-project-task-acceptance.md)拥有，
-可核对的场景、产物身份及预算表由[验收报告](../research/daynight-acceptance.md#projecttask-installed-and-real-service-acceptance)拥有。
+场景、产物身份及预算 receipt 的解释见[仓库验证说明](../../README.md#validation)；
+逐次运行结果随对应 PR 与 CI 保存。
 
 ### 文件归属与范围
 

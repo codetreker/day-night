@@ -119,9 +119,10 @@ latency; the full production gate still owns its fixed capacity verdict.
 The [embedded deployment decision](../architecture/2026-10-20-embedded-dashboard-deployment.md)
 owns production build and dev-ci resource topology. The
 [architecture](../../../../docs/design/daynight-web.md) owns harness structure and
-execution requirements, the [acceptance report](../../../../docs/research/daynight-web-acceptance.md)
-owns measured outcomes, and the [task document](../../../../docs/design/daynight-web-tasks.md)
-owns delivery status.
+execution requirements, and the [task document](../../../../docs/design/daynight-web-tasks.md)
+owns delivery status. Source-bound browser artifacts and the corresponding PR
+and CI run retain measured outcomes under the
+[validation evidence decision](../process/2026-10-20-source-bound-validation-evidence.md).
 
 ## Alternatives
 

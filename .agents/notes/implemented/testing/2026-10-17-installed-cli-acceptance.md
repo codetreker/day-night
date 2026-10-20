@@ -65,9 +65,11 @@ acknowledges the actual CLI PID and exits
 synchronously before the runtime can release its lock. A native child verifies
 the public `ProcessWrap` visibility used by that gate on each platform. This
 is a controlled fault-injection point; ordinary native process-tree cancellation
-keeps its own unchanged tests. The
-[acceptance report](../../../../docs/research/daynight-acceptance.md) owns the
-scenario receipts, commands, tested baselines and live-service limits.
+keeps its own unchanged tests. The [repository validation guide](../../../../README.md#validation)
+owns repeatable commands, receipt meanings and tested-baseline limits. The
+corresponding PR and CI run retain source-bound scenario results under the
+[validation evidence decision](../process/2026-10-20-source-bound-validation-evidence.md).
+The live-service limits remain independent of controlled fixture success.
 
 The existing installed suites perform normal registry dependency resolution. The pnpm
 store alone cannot satisfy a fresh consumer's offline metadata lookup after a

@@ -1,7 +1,8 @@
 # Daynight review skill 设计
 
-状态：内置 skill 打包、固定快照、发现校验和两阶段执行已实现。实际验证记录见
-[验收报告](../research/daynight-acceptance.md)。需求归属见[review 需求](../spec/daynight-review.md)，执行与恢复模型见
+状态：内置 skill 打包、固定快照、发现校验和两阶段执行已实现。验证命令与证据边界见
+[仓库验证说明](../../README.md#validation)，逐次运行结果随对应 PR 与 CI 保存。
+需求归属见[review 需求](../spec/daynight-review.md)，执行与恢复模型见
 [review 架构](daynight-review.md)，选择依据见
 [内置 skill 决策](../../.agents/notes/implemented/architecture/2026-10-20-bundled-review-skill.md)。
 

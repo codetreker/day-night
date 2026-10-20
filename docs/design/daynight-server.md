@@ -376,7 +376,9 @@ Go 默认 10 分钟 test timer 之外，使用公开安装命令及默认 30 秒
 仍由 CLI 任务清单拥有。CI
 发布 `.tmp/acceptance-evidence.json` 和同次 `.tmp/coverage.out`；前者记录源版本、
 binary hash、场景及资源清理，CI 要求 checkout 干净且 Git revision 与 `GITHUB_SHA`
-一致。详细归属见[验收报告](../research/daynight-server-acceptance.md)。
+一致。V1–V10 的证据归属与 receipt 解释见
+[服务端验证说明](../../packages/daynight-server/README.md#built-process-acceptance-and-ci-evidence)；
+逐次运行结果随对应 PR 与 CI 保存。
 
 运行前失效项目内的 Go 测试结果缓存，确保数据库状态
 变化不能被缓存报告掩盖；编译与模块缓存保留。真实业务和跨层验收证据随对应任务交付。
