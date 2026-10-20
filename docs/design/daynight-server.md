@@ -251,6 +251,19 @@ driver 错误或完整请求体。成功日志提供方法、路由模板、状�
 CLI 和内部程序调用，服务只接受 loopback 监听地址。远程认证、授权及对外部署需要
 独立设计，当前接口中的 project ID 不作为认证凭据。
 
+[本地 Compose 部署](../../deployment/localhost/README.md)将 PostgreSQL、Go 服务与
+TCP 网关组合启动。网关拥有网络命名空间，Go 服务加入该命名空间并继续监听
+`127.0.0.1:8787`；网关监听容器端口 `80`，仅发布到宿主机 `127.0.0.1`。
+转发不解析 HTTP，响应、请求大小限制和错误语义继续由服务处理。数据库通过内部
+Compose 网络访问，PostgreSQL 18 数据卷挂到 `/var/lib/postgresql`。
+服务等待数据库健康后启动，由既有流程执行迁移；两条 HTTP 健康检查分别通过
+服务回环端口和网关访问已有的 project 列表接口。网关配置或网络拓扑变化时整体
+重建容器并保留数据卷。部署脚本每次重新构建并整体重建容器，用相同命令完成启动、
+源码更新及转发恢复；数据卷持续保留。网关意外单独重启时，Docker 不会自动重启
+共享命名空间的服务，健康检查会暴露转发失败，需要重新运行脚本恢复。
+[部署决策](../../.agents/notes/implemented/architecture/2026-10-20-localhost-compose.md)
+记录拓扑选择及运行限制。
+
 进程启动时创建 `pgxpool` 并验证数据库连接，然后从 pool 获取并固定一条专用
 `pgxpool.Conn`。该连接取得 PostgreSQL session-level advisory migration lock，
 并在同一物理连接上完成版本读取、校验和全部内嵌 SQL 迁移。当前迁移先建立 project，

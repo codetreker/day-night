@@ -89,6 +89,21 @@ receipts from live-service evidence. Controlled Copilot executables exercise ret
 launch intent, stdin prompts and streamed completion/failure handling. These
 checks require no live model invocation or GitHub publication.
 
+## Local server deployment
+
+Run the project/task API and PostgreSQL with Docker Engine 28+ and Docker
+Compose 2.20+ using Linux containers:
+
+```bash
+bash deployment/localhost/up.sh
+```
+
+The command builds the server, applies its embedded migrations and waits for
+healthy services. The API is available at `http://127.0.0.1:8787/api/v1`;
+PostgreSQL data persists across container recreation. The
+[localhost deployment guide](deployment/localhost/README.md) owns port selection,
+API examples, logs, updates and volume removal.
+
 ## Server development
 
 Use Go 1.27.2, PostgreSQL 18.6 and Node.js 24 LTS. The
