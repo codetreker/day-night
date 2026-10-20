@@ -1,6 +1,6 @@
 # Project 与 Task CLI 实现任务
 
-状态：PT-T1、PT-T2 已交付；PT-T3 已实现并通过本地验证；PT-T4、PT-T5 未开始。
+状态：PT-T1–PT-T3 已交付；PT-T4 已实现并通过本地验证；PT-T5 未开始。
 
 本文拥有任务编号、状态、依赖、文件归属和完成条件。
 [需求](../spec/daynight-project-task.md)拥有 PT1–PT10 的可观察行为，
@@ -14,8 +14,8 @@
 |---|---|---|---|---|---|
 | [PT-T1](#pt-t1) 服务访问基础 | 已完成 | 无 | 共享 YAML、独立 server 配置、HTTP 客户端和错误/取消 | PT2、PT8、PT9 |
 | [PT-T2](#pt-t2) 仓库关联发现 | 已完成 | PT-T1 | Git 定位、地址身份、完整发现、本地记录及忽略规则 | PT3、PT4、PT5 |
-| [PT-T3](#pt-t3) Project 命令 | 已实现 | PT-T1 | create/list/show、命令登记和帮助、输出 | PT1、PT6、PT8 |
-| [PT-T4](#pt-t4) Task 命令 | 未开始 | PT-T2、PT-T3 | create/list/show/update/graph、版本及依赖更新 | PT1、PT4、PT7、PT8、PT9 |
+| [PT-T3](#pt-t3) Project 命令 | 已完成 | PT-T1 | create/list/show、命令登记和帮助、输出 | PT1、PT6、PT8 |
+| [PT-T4](#pt-t4) Task 命令 | 已实现 | PT-T2、PT-T3 | create/list/show/update/graph、版本及依赖更新 | PT1、PT4、PT7、PT8、PT9 |
 | [PT-T5](#pt-t5) 安装与服务联调验收 | 未开始 | PT-T3、PT-T4 | 实际 CLI、真实 Git、Go/PostgreSQL 联调和原生证据 | PT1–PT10 |
 
 PT-T2 与 PT-T3 在 PT-T1 完成后可以并行，分别拥有仓库上下文与 project 命令文件。
@@ -96,7 +96,7 @@ worktree 管理器。`.daynight/` 和忽略规则属于执行时的产品行为�
 <a id="pt-t3"></a>
 ## PT-T3：Project 命令
 
-状态：已实现。前置：PT-T1。
+状态：已完成。前置：PT-T1。
 
 本地 `pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm acceptance` 均通过；
 普通测试 1418 项通过，10 项平台专属测试在 Linux 上跳过，安装验收 2 组通过。
@@ -107,8 +107,12 @@ CLI/Node。就绪证明分别覆盖进入编辑器前的提示符阻塞和 captu
 
 实际编译入口的受控 HTTP 证明创建只提交一次、UUID 和时间精度保留、完整分页
 JSON 与续页失败 stdout 为空；真实 Go 服务联调仍由 PT-T5 验证。长名称放大填充
-问题经线性完整输出修复，独立复审无 Critical/Major。交付 PR 的远端 review 与
-原生 CI 仍待完成。
+问题经线性完整输出修复，独立复审无 Critical/Major。
+[PR #50](https://github.com/codetreker/daynight/pull/50) 已作为 `2463776` 合并；最终
+head `d6172a2754030cd04e82dfbc07ad1204af14cdbe` 通过远端 review，全部 7 项必选检查在
+[CI run 39419829100](https://github.com/codetreker/daynight/actions/runs/39419829100)
+通过；合并后的[主线 CI run 39420853858](https://github.com/codetreker/daynight/actions/runs/39420853858)
+全部 7 项检查通过。该交付保留 PT-T5 的真实 Go 服务联调要求。
 
 ### 文件归属与范围
 
@@ -128,17 +132,32 @@ text 选项、静态补全及实际 shell 验收衔接。共享 server 执行层
 <a id="pt-t4"></a>
 ## PT-T4：Task 命令
 
-状态：未开始。前置：PT-T2、PT-T3。
+状态：已实现。前置：PT-T2、PT-T3。
+
+本地 `pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm acceptance` 均通过；
+普通测试 1510 项通过，10 项平台专属测试在 Linux 上跳过，2 组既有安装验收通过。
+Task 专项 63 项、共享语法与补全专项 87 项，以及实际编译入口的 6 项受控 HTTP
+场景通过。Bash 4.2、Bash 5.2、zsh 5.9 各 110 个真实 Tab 场景保留 68 个既有
+场景并增加 42 个 Task 场景；每个 shell 的两种就绪证明及 compinit 拒绝检查合计
+337 项通过，补全期间没有调用 CLI/Node。
+
+命令与渲染、共享语法与补全的独立最终审查均未发现 Critical/Major；交付 PR 的
+远端 review 和原生 CI 仍待完成。上述受控 HTTP 与既有安装验收不代表 Task 安装产物的真实
+Go/PostgreSQL 全流程联调，后者仍由 PT-T5 验证。
 
 ### 文件归属与范围
 
 负责 `packages/daynight/src/commands/task/` 和对应测试；PT-T3 完成后接管
 `src/cli/commands.ts` 的 task 登记。将仓库关联模块与已有 create/list/show/update/graph
-HTTP 用例组合；project/task 业务规则继续由 Go 服务持有。
+HTTP 用例组合；同时拥有描述空值、重复依赖、状态候选及 text 选项内联赋值所需的
+共享语法、帮助、Bash/zsh 生成器和真实 shell 验证。project/task 业务规则继续由
+Go 服务持有。
 
 ### 完成条件
 
 - 所有 task 操作接受可选 `--project`，默认发现并使用当前仓库对应的 project。
+- 共享语法保留描述空值、依赖输入顺序及重复 ID，支持 text 内联赋值和固定状态候选；
+  目录内联、开关内联、重复标量选项和分离的前导连字符值保持拒绝。
 - 创建、详情、状态/ready 筛选、完整图和 JSON 输出与需求一致。
 - 更新支持字段保留、清空描述、完整替换依赖和显式清空；读版本后 PATCH，或使用
   `--if-version` 指定预期版本，不能在冲突后自动获取新版本重发。

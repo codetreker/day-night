@@ -29,6 +29,18 @@ retains responsibility for dependency ownership. Existing syntax remains exact:
 help is a sole argument at its level, `--path` occurs once before or after the
 remote, and neither `--path=value` nor `--` is accepted.
 
+Task command integration extends those definitions with explicit empty-value
+permission for descriptions, fixed status choices and repeatable dependency
+values. Value choices control validation and both generated scripts. Help uses
+the declared names, value names, required markers and option descriptions; it
+does not enumerate `value.choices`.
+Text options accept inline assignment at the first equals sign, including leading
+dashes in their values; directories, switches and help retain their rejection of
+inline values. Scalar options disappear after use; dependencies remain available
+after each occurrence. Status candidates work in separated and inline forms,
+while free text and identifiers have no file fallback. Integration and native
+evidence follow the [task record](../../../../docs/design/daynight-project-task-tasks.md).
+
 Loaded scripts use shell-native completion and local directory enumeration. They
 do not start Node or another daynight process on Tab, read review data or make
 network requests. zsh uses its native completion descriptions. Directory

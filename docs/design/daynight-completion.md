@@ -1,6 +1,7 @@
 # Daynight Shell 补全设计
 
-状态：已实现，包含 `review`、`update`、`completion` 和 `project` 的共享命令语法。
+状态：共享命令语法及 Bash/zsh 生成器已实现，包含 `review`、`update`、`completion`、
+`project` 和 `task`；Task 扩展已通过本地验证，交付 PR 的原生 CI 与远端 review 待完成。
 行为约束由[客户端需求](../spec/daynight.md)拥有，project 行为由
 [Project 与 Task 客户端需求](../spec/daynight-project-task.md)拥有。本文负责命令描述、
 脚本生成、加载和真实 shell 验证的机制；[客户端架构](daynight.md)负责命令生命周期，
@@ -43,15 +44,25 @@ Git、GitHub CLI、Copilot、npm 或网络请求，不修改 shell 启动文件�
 |---|---|
 | 名称、说明、子命令、别名 | 分发、帮助、Bash 和 zsh 生成器 |
 | 选项名称、说明、动作 | 参数校验、帮助与补全；同组选项名使用同一身份 |
-| 选项的 `value.name` 与 `value.kind` | `directory` 枚举本地目录，`text` 接收自由文本并停止候选生成 |
+| 选项的 `value.name` 与 `value.kind` | `directory` 枚举本地目录，`text` 接收文本值；自由文本没有文件候选 |
+| 选项的 `value.allowEmpty` | 仅声明的描述选项可接收空字符串，省略与空值保持区别 |
+| 选项的 `value.choices` | 参数校验、分离及内联值补全共享固定允许值；帮助显示选项说明 |
+| 选项的 `repeatable` | 从第一次出现起生成有序数组，保留重复值；使用后仍可继续补全 |
 | 选项的 `required` | 解析完参数后检查是否提供；帮助中的必填选项不加方括号 |
 | 位置参数名称、说明与固定候选 | 所有声明的位置参数均必填；只有声明的 choices 提供固定候选 |
-| 命令补充说明 | 帮助 |
+| 命令补充说明及选项 `description` | 帮助；不会自动枚举 `value.choices` |
 
-选项只能指定一次，解析结果使用按首个选项名索引的只读 Map。命名值缺失、空字符串
-或以 `-` 开始时属于语法错误；合法非空值保持原样，不裁剪空白或 FEFF。名称和 repo
-等业务字段的有效性由命令在业务 I/O 前校验，不能用 JavaScript trim 改写服务允许的
-文本。project 的 `--name`、`--repo` 都是必填 text 选项，列表与详情的 `--json` 为可选开关。
+解析结果使用按首个选项名索引的只读 Map：开关为 `true`，标量值为字符串，
+repeatable 选项为只读字符串数组。未声明 repeatable 的选项只能指定一次；依赖
+值按出现顺序追加，不去重、不拆分 CSV。Task 的 `--description` 声明 `allowEmpty`，
+`--status` 声明 `todo`、`in_progress`、`done` 三个 choices，`--depends-on` 声明
+repeatable。project 的 `--name`、`--repo` 继续是必填 text，查询 `--json` 为开关。
+
+text 值接受分离及内联赋值。`--option=value` 按第一个 `=` 分割，保留值的前导
+`-` 与其他 `=`；例如 `--title=-value`、`--description=a=b`。分离形式的前导
+`-` 被判为缺少值。空值仅在 `allowEmpty` 为 true 时有效，包括 `--description ""` 和 `--description=`。目录、开关及帮助不接受内联值。缺失值、无效 choices、
+重复标量及不允许的空值均在业务 I/O 前拒绝。合法文本原样保留，不裁剪空白或 FEFF；
+名称、标题等字段的业务验证继续由命令拥有。
 
 帮助只能在该层唯一参数为 `-h` 或 `--help` 时触发，并先于必填检查及业务加载。
 顶层版本选项不继承到子命令；`--path` 可以位于 remote 前后，只能指定一次；
@@ -93,10 +104,12 @@ flowchart LR
 后面的参数不改变当前补全位置。值识别不依赖写死的单词下标，不修改用户全局的
 `COMP_WORDBREAKS`。
 
-待输入 directory 值时使用目录枚举；待输入 text 值时直接返回空候选，不能继续
-提供选项或文件。消耗 text 值后恢复相应命令的选项状态。已指定的选项不再出现，
-消耗过的位置参数不重复提供候选。自由输入的 remote 和 project ID 没有固定候选，
-也不得回落到无关文件。
+待输入值时保留具体选项身份，以便读取 `allowEmpty`、`choices` 和 `repeatable`。
+directory 使用目录枚举；text 声明 choices 时只给出固定候选，自由 text 返回空
+候选。分离和内联状态值均可补全；内联补全只替换当前值片段，不重复插入选项前缀，
+也不修改全局 `COMP_WORDBREAKS`。合法空描述及内联值消费后恢复后续选项状态。
+已使用的标量选项不再出现，repeatable 依赖仍可出现；消耗过的位置参数不重复
+提供候选。remote、project/task ID 和依赖 ID 不提供远端或文件候选。
 
 目录补全保留空格、中文、引号和特殊字符，支持相对路径、绝对路径及常见的主目录
 写法。目录无匹配项返回空候选，不把不存在的目录判为 CLI 输入错误。
@@ -104,9 +117,10 @@ flowchart LR
 ### zsh
 
 [`completion/zsh.ts`](../../packages/daynight/src/commands/completion/zsh.ts) 使用原生
-`_arguments`、`_describe` 和 `_files -/` 表达语法、候选说明和目录。text 选项使用
-明确的 `text_value` 状态；该状态通过 `_message` 显示值说明并成功返回，不产生
-候选，不依赖空 action 的默认行为。directory 选项继续使用 `_files -/`。脚本显式
+`_arguments`、`_describe` 和 `_files -/` 表达语法、候选说明和目录。自由 text 使用
+明确的值状态，通过 `_message` 显示值说明并成功返回，不产生候选；choices 值使用
+声明的静态候选。repeatable 选项使用允许重复的原生声明，不加入自身排除项。
+前缀校验同时理解空描述、重复依赖和 text 内联赋值，directory 继续使用 `_files -/`。脚本显式
 调用 `compdef` 关联 `daynight`；仅输出 `#compdef daynight` 注释不足以支持直接 source。
 
 加载要求 zsh 已初始化 `compinit`。缺少初始化时给出明确诊断并失败，不注册未生效
@@ -154,7 +168,8 @@ shell 生成当前安装版本的定义；更新包后，已有 shell 重新 sou
 
 共享语法测试校验必填命名值、原值保留、重复和缺失值、帮助以及既有命令回归。
 生成器测试覆盖 shell 数据引用、目录与 text 类型分派；编译后入口测试验证帮助、
-参数错误和生成脚本不进入业务 I/O。
+参数错误和生成脚本不进入业务 I/O。Task 扩展还需验证空描述、输入顺序及重复
+依赖、完整状态值、首个 `=` 分隔、内联前导连字符，以及目录/开关内联拒绝。
 
 [`shell-completion.py`](../../packages/daynight/test/acceptance/shell-completion.py) 通过
 PTY 驱动真实 Tab，检查编辑缓冲区、光标位置和实际解析后的 argv。直接调用函数可
@@ -181,7 +196,9 @@ editor reset widget，在同一 generation 内确认空状态。每个场景发�
 
 project 场景覆盖 create/list/show、必填选项名称、`--json`、已使用选项隐藏，以及
 名称、repo 地址和 project ID 的文件回退抑制。名称和 repo 待输入时，包括引号输入
-及以选项前缀开始的当前词，都必须保持输入且不生成文件或选项候选。
+及以选项前缀开始的当前词，都必须保持输入且不生成文件或选项候选。Task 场景
+覆盖重复依赖仍可输入、标量已用后隐藏、分离及内联状态候选、空描述后的选项恢复、
+内联值片段替换及自由标题、描述、ID 不回落文件候选。
 
 Bash 4.2 是明确下限，需要真实 4.2 执行验证；现代 Bash 和 zsh 也必须有真实证据。
 Linux 准备脚本在仓库 `.tmp/` 中校验固定 SHA-256 的 GNU Bash 4.2 源码并构建所需

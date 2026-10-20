@@ -1,8 +1,8 @@
 # Daynight 客户端需求
 
 状态：客户端入口、review、自更新、shell 补全、project 命令及配置、HTTP、仓库关联基础已实现；
-task 命令与完整服务验收待完成。
-可用命令和验证入口见[仓库 README](../../README.md)，待实现范围见
+task 命令已实现并通过本地验证，完整服务验收待完成。
+可用命令和验证入口见[仓库 README](../../README.md)，完整交付范围见
 [project/task 需求](daynight-project-task.md)及[任务清单](../design/daynight-project-task-tasks.md)。
 
 Daynight 是一个组合命令的客户端工具包。npm 包提供统一的 `daynight` 入口，命令模块
@@ -48,16 +48,28 @@ daynight project
 daynight project create --name <name> --repo <repo>
 daynight project list [--json]
 daynight project show <project-id> [--json]
+daynight task
+daynight task create --title <title> [options]
+daynight task list [--status <status>] [--ready] [--json] [--project <project-id>]
+daynight task show <task-id> [--json] [--project <project-id>]
+daynight task update <task-id> [options]
+daynight task graph [--json] [--project <project-id>]
 ```
 
 无参数、`--help` 或 `-h` 显示顶层帮助并成功退出；帮助列出 `review`、`update`、
-`completion` 和 `project`。`--version` 与 `-v` 输出当前包版本。裸 `review` 和裸 `completion`
-显示各自帮助；裸 `project` 同样显示组帮助。组和操作在该层唯一参数为 `--help` 或 `-h` 时显示帮助，且不得执行
+`completion`、`project` 和 `task`。`--version` 与 `-v` 输出当前包版本。裸 `review` 和裸 `completion`
+显示各自帮助；裸 `project` 与 `task` 同样显示组帮助。组和操作在该层唯一参数为 `--help` 或 `-h` 时显示帮助，且不得执行
 该操作。顶层版本选项不继承到子命令。`review ls` 是 `review list` 的别名。
 
 `review add-repo` 的 `--path <path>` 可以位于 remote 前后，只能指定一次；不接受
 `--path=value` 或 `--` 语法。未知命令、未知选项、多余参数或不完整参数必须输出
 具体错误及对应帮助命令，以状态码 2 退出；操作失败以状态码 1 退出并保留具体原因。
+
+服务命令的 text 选项接受分离值及 `--option=value`；内联形式按第一个 `=` 分隔，
+保留后续 `=` 及值的前导连字符。分离形式拒绝前导 `-`；仅声明 `allowEmpty` 的
+描述选项允许空字符串。标量选项不能重复，声明 repeatable 的依赖选项按输入顺序
+保留全部值及重复 ID。状态候选和允许值均由同一命令定义拥有。开关、帮助和目录
+选项不接受内联赋值；`--path=value` 和独立 `--` 继续无效。
 旧的 `--daemon-review` 和顶层 `add-repo` 是无效参数，不能隐式重定向。
 
 ### C3. 命令依赖与持久化边界
@@ -76,11 +88,12 @@ daynight project show <project-id> [--json]
 `review add-repo` 只写配置，`review list` 与 `review ls` 只读取配置及已存数据库，
 `review run` 独立持有审查运行时和信号生命周期，具体保证由 review 需求定义。
 `project` 操作只加载 server 配置和 HTTP 能力，不读取工作目录、Git 或仓库本地关联；
-共享执行层在单个操作下处理信号、期限和完整结果输出。task 命令的待实现范围由
-[project/task 需求](daynight-project-task.md)定义。
+共享执行层在单个操作下处理信号、期限和完整结果输出。`task` 显式指定 project
+时使用相同边界；自动选择时才加载 Git 与仓库关联模块。任务写入必须晚于本地
+关联准备成功，完整行为由[project/task 需求](daynight-project-task.md)定义。
 客户端的命令和源码结构调整不改变 review 配置与状态的现有格式和位置，不迁移、
 重分区或重新初始化这些数据。新增命令通过自己的模块接入；它的业务依赖不能成为
-其他命令的启动前提。[project/task 需求](daynight-project-task.md)规定待实现的服务 API
+其他命令的启动前提。[project/task 需求](daynight-project-task.md)规定服务 API
 命令；其独立配置校验、仓库本地关联和远端操作继续遵守这些加载与数据归属要求。
 
 ### C4. 自更新
@@ -125,7 +138,10 @@ npm 替换失败；该失败必须明确报告。
 补全覆盖命令、子命令、别名、当前层的选项、`completion` 的 shell 参数和
 `review add-repo --path` 的目录候选；zsh 同时展示候选说明。非重复选项使用后不再
 提供，已消耗的位置参数不重复提供候选，remote 不提供远端候选或无关文件候选。
-目录建议不约束运行时合法值，操作者仍能输入尚未创建的目标目录。
+目录建议不约束运行时合法值，操作者仍能输入尚未创建的目标目录。状态的静态
+候选为 `todo`、`in_progress`、`done`，分离及内联形式使用同一候选。重复依赖选项
+使用后仍可继续补全；自由文本、project/task ID 和依赖 ID 不回落文件候选。空描述
+和已完成内联值之后，后续选项按共享语法继续补全。
 
 按 Tab 只执行 shell 本地补全和目录枚举，不启动 Node 或其他 daynight 进程，不读取
 review 配置或数据库，不访问网络。候选和输入必须作为数据处理，不作为 shell 代码

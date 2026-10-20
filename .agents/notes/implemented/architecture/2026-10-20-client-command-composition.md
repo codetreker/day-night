@@ -59,13 +59,15 @@ selected review command and do not change the root context's business ownership.
 YAML fields, version 1 SQLite tables, data locations, repository paths, cutoff
 boundaries, revisions, retry budgets, session UUIDs and worktree ownership stay
 unchanged. Source ownership does not partition user data by command. The current
-scope supplies command composition and the review, update, completion and
-project capabilities. Server API commands were separate product work in the
+scope supplies command composition and the review, update, completion, project
+and task capabilities. Server API commands were separate product work in the
 command-composition scope. The adopted
 [project/task CLI design](2026-10-20-project-task-cli-design.md) now defines that
 consumer and its additive configuration and repository binding. Shared
 configuration, bounded HTTP, repository bindings and project commands are
-implemented; task command entry points remain pending. Adding them must preserve
+implemented; task command composition is implemented and locally validated. Its definition extends
+shared value metadata for empty descriptions, fixed statuses, ordered repeated
+dependencies and inline text assignment. Adding these operations must preserve
 per-command loading and ownership so they do not become startup dependencies for
 existing commands.
 Independent server and web lifecycles retain their current owners.

@@ -6,11 +6,17 @@ const escapeDescription = (value: string): string => value.replaceAll(/([\\:])/g
 
 const optionSpecifications = (option: CommandOption): readonly string[] => {
   const exclusions = option.action === undefined ? option.names.map(escapeSpecification).join(" ") : "- *";
+  const action = option.value?.choices === undefined ? "->text_value" : `(${option.value.choices.map(quote).join(" ")})`;
   const value = option.value === undefined
     ? ""
-    : `:${escapeSpecification(option.value.name)}:${option.value.kind === "directory" ? "_files -/" : "->text_value"}`;
-  return option.names.map((name) => `(${exclusions})${escapeSpecification(name)}[${escapeSpecification(option.description)}]${value}`);
+    : `:${escapeSpecification(option.value.name)}:${option.value.kind === "directory" ? "_files -/" : action}`;
+  return option.names.map((name) => `${option.repeatable === true ? "*" : `(${exclusions})`}${escapeSpecification(name)}${option.value?.kind === "text" ? "=" : ""}[${escapeSpecification(option.description)}]${value}`);
 };
+
+const valueValidation = (option: CommandOption, variable: string, indentation: string): string => [
+  option.value?.allowEmpty === true ? "" : `${indentation}[[ -n "$${variable}" ]] || return 1`,
+  option.value?.choices === undefined ? "" : `${indentation}case "$${variable}" in\n${indentation}  ${option.value.choices.map(quote).join("|")}) ;;\n${indentation}  *) return 1 ;;\n${indentation}esac`,
+].filter((line) => line !== "").join("\n");
 
 // _arguments tolerates unknown options and excess positionals; completion must retain the CLI's grammar.
 const renderPrefixValidation = (command: CommandDefinition): string => {
@@ -27,20 +33,28 @@ const renderPrefixValidation = (command: CommandDefinition): string => {
 
   const options = command.options?.filter((option) => option.action === undefined) ?? [];
   const arguments_ = command.arguments ?? [];
-  return `  local word
+  return `  local word option_value
   local positional_count=0 expecting_value=0${options.map((_, index) => ` option_${index}=0`).join("")}
   if (( CURRENT > 2 )); then
     for word in "\${(@)words[2,CURRENT-1]}"; do
       word="\${(Q)word}"
       if (( expecting_value )); then
         [[ "$word" == -* ]] && return 1
+        case "$expecting_value" in
+${options.flatMap((option, index) => option.value === undefined ? [] : [`          ${index + 1})
+${valueValidation(option, "word", "            ")}
+            ;;`]).join("\n")}
+        esac
         expecting_value=0
         continue
       fi
       case "$word" in
-${options.map((option, index) => `        ${option.names.map(quote).join("|")})
-          (( option_${index} )) && return 1
-          option_${index}=1${option.value === undefined ? "" : "\n          expecting_value=1"}
+${options.map((option, index) => `        ${option.names.flatMap((name) => [quote(name), ...(option.value?.kind === "text" ? [`${quote(`${name}=`)}*`] : [])]).join("|")})
+${option.repeatable === true ? "" : `          (( option_${index} )) && return 1\n`}          option_${index}=1${option.value === undefined ? "" : `
+          if [[ "$word" == *=* ]]; then
+            option_value="\${word#*=}"
+${valueValidation(option, "option_value", "            ")}
+          else expecting_value=${index + 1}; fi`}
           ;;`).join("\n")}
         -*) return 1 ;;
         *)

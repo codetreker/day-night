@@ -1,7 +1,7 @@
 # Project 与 Task 客户端设计
 
 状态：共享配置、HTTP、仓库关联基础及 `project create/list/show` 已实现；
-Task 命令入口与完整 Go 服务联调待完成。
+Task 命令已实现并通过本地验证，完整 Go 服务联调待完成。
 本文描述采用的结构和交付机制，各项状态由任务清单拥有，当前可用命令见
 [仓库 README](../../README.md)。必需行为与编号验收由
 [客户端需求](../spec/daynight-project-task.md)拥有，服务行为由
@@ -37,7 +37,7 @@ server 投影只要求有效 server 地址；review 登记可向 server-only 文
 ## 模块与依赖方向
 
 `config/`、`api/`、`repository/`、共享 server runtime、Project 命令和既有
-review/update/completion 已实现；Task 命令入口待实现。职责如下：
+review/update/completion 及 Task 命令已实现。职责如下：
 
 ```text
 src/
@@ -49,7 +49,7 @@ src/
   commands/
     server/                # 共享配置、操作与信号生命周期
     project/               # 参数、帮助、project 操作及渲染
-    task/                  # 待实现：参数、帮助、task 操作及渲染
+    task/                  # 参数、帮助、task 操作及渲染
     review/                # review 配置投影和既有行为
     update/                # 既有 npm 安装生命周期
     completion/            # 既有 Bash 和 zsh 原生补全
@@ -59,7 +59,12 @@ src/
 Project 的定义由 [`definition.ts`](../../packages/daynight/src/commands/project/definition.ts)
 拥有，解析、帮助及 Bash/zsh 补全消费同一语法；补全机制由
 [补全设计](daynight-completion.md)拥有。命令组先解析参数和帮助，校验名称及详情
-UUID，再惰性加载共享 server runtime 和业务渲染。
+UUID，再惰性加载共享 server runtime 和业务渲染。Task 的 definition、command 和
+rendering 分别拥有语法、API/仓库关联组合及可读/JSON 输出，复用同一 server session。
+共享语法通过 `value.allowEmpty` 表达描述空值，通过 `value.choices` 表达状态允许值，
+通过 `repeatable` 表达有序依赖数组；解析与静态补全消费这些事实，帮助使用定义中
+的名称、值名、必填性与选项说明。
+text 选项内联形式按首个 `=` 分隔并保留原值，目录及开关继续拒绝内联。
 project/task 不导入 review runtime、SQLite 或外部审查适配器。`project list/show/create`
 只需要配置与 HTTP；task 显式 project 分支也只需要这两者；自动分支才加载 Git 与
 仓库状态。共享模块不反向导入命令模块。
@@ -280,13 +285,19 @@ cursor 是不透明字符串，逐页提交，不在 CLI 解码或重建。每�
 继承服务不提供跨请求快照的边界，CLI 不宣称列表是同一时间点的完整快照。
 
 更新参数先转换为字段存在性明确的 patch：未出现标志时不写 key；空描述写 `""`；
-重复 `--depends-on` 原样形成替换数组；`--clear-dependencies` 写 `[]`。两种依赖
+重复 `--depends-on` 从首次出现起形成有序替换数组，保留重复 ID，不进行 CSV
+拆分；`--clear-dependencies` 写 `[]`。`--description ""` 与 `--description=`
+都写入空字符串；未出现描述选项仍省略字段。两种依赖
 标志同时出现、无修改字段、无效状态或版本属于参数错误，在任何 I/O 之前拒绝。
 
 默认 GET task 获得 version，再带该 version PATCH；两个请求之间发生并发更新时，
 服务返回 `version_conflict`。有 `--if-version` 时直接提交指定版本，不用 GET 的
 最新值替代。CLI 不重放 PATCH，不将旧版本冲突改成成功；语义无变化的响应也直接
-按服务返回渲染。服务负责事务内的状态、依赖及时间戳不变量。
+按服务返回渲染。显式 project UUID、show/update 的 task UUID、标题、描述、状态、
+版本及修改字段组合在配置、Git 和网络前验证；依赖 ID 原样保留给服务校验。显式 `--project` 直接 GET project，不读取工作目录或
+加载仓库模块；自动分支将 `serverUrl`、同一 `Operation`、API 和工作目录交给
+`resolveProject`。解析返回后才发送 task 请求，因此本地准备失败没有 task mutation。
+服务负责事务内的状态、依赖及时间戳不变量。
 
 `Task.version` 与 PATCH 版本覆盖完整正 `int64` 范围，内部使用 `bigint`；JSON 读取
 从数字原文保留精度，写入及 `--json` 使用 JSON 数字，不能转换为字符串或不精确的
@@ -304,8 +315,15 @@ Project 渲染由 `commands/project/rendering.ts` 拥有，与 API 数据分离�
 [`terminalText`](../../packages/daynight/src/platform/terminal.ts) 将可读字段中的换行、
 回车和制表符显示为 `\n`、`\r`、`\t`，其他 C0/C1 控制字符及 U+2028、U+2029
 显示为 `\uXXXX`。普通 Unicode、emoji 和原有反斜线保持原样；该转换只属于终端
-显示，不改变提交给服务或 JSON 输出的数据。Task 交付仍须展示状态、ready/阻塞
-信息和完整详情，图须展示 summary、节点、依赖及服务给出的标题截短信息。
+显示，不改变提交给服务或 JSON 输出的数据。
+
+Task 的 `rendering.ts` 采用相同的完整标签块。任务包含 `ID`、`Project`、`Title`、
+`Description`、`Status`、完整十进制 `Version`、`Ready`、`Depends on`、`Blocked by`、
+`Created` 和 `Updated`；依赖/阻塞为空时显示 `none`，空列表为 `No tasks.`。创建
+和更新分别以 `Task created.`、`Task updated.` 表明服务确认结果。Graph 展示完整
+project、六个 summary 字段及全部节点；节点的 `titlePreview` 与 `titleTruncated`
+同时展示，保留状态、ready、依赖、阻塞和时间，不能把预览称为完整标题。所有字段
+使用终端转义且不补齐等宽列，空间随资源内容总长度线性增长。
 
 查询 `--json` 是脚本和模型调用 CLI 的稳定接口：show 为资源对象，list 为完整数组，
 graph 为服务原始完整响应对象。仅序列化 API 字段，不加入渲染专用字符串、进度或
@@ -347,7 +365,9 @@ stderr 错误包含操作名、已确定的 project/task ID、失败阶段和可
 Project 命令的实际编译入口已在受控 HTTP 条件下验证创建、完整分页、
 详情、原始 JSON、参数及服务错误、取消和依赖隔离。共享 runtime 测试覆盖配置读取
 取消、信号清理、callback 失败后的空 stdout、渲染后的最终期限检查及多请求累计
-预算。Task 命令和真实 Go/PostgreSQL CLI 全流程联调仍待交付，原生 CI 结果以
+预算。Task 的命令、API/仓库组合及完整渲染已通过本地专项和编译入口验证；静态
+补全在三种真实 shell 中通过新增 Task 场景。真实 Go/PostgreSQL CLI 全流程联调
+仍待 PT-T5 交付，原生 CI 和远端 review 结果以
 [任务清单](daynight-project-task-tasks.md)中的实际证据为准。
 
 源码、包元数据或构建输入交付时按既有版本策略提升 CLI 包版本，运行
