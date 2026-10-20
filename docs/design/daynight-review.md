@@ -634,18 +634,29 @@ fixtures 验证克隆、私有 refs、detached head、dirty 内容、所有权�
 [协调决策](../../.agents/notes/implemented/architecture/2026-10-17-foreground-review-coordination.md)
 记录这些责任和异常恢复前提。
 macOS 检查挂载临时的大小写敏感和不敏感 APFS 镜像，验证缺失路径的大小写冲突、
-Unicode 编码别名、状态目录别名及探测目录清理。fixture 创建显式的单分区 GPT 镜像，
-以 `realpath` 固定镜像路径，保存 `attach -plist` 返回的完整镜像设备身份。`plutil`
-只定向提取带类型要求的镜像数量、路径及匹配镜像的设备数组，不转换整个镜像清单。
-每次普通 detach 前，用 `hdiutil info -plist` 核对精确的镜像路径及设备身份，detach 后
-确认该镜像已完整消失，再删除 fixture 目录。
-挂载路径消失不能证明完整镜像已脱离；attach 结果不确定时同样需要镜像级证明。尚未
-尝试 attach 的 setup 可直接移除目录。清理在现有 30 秒绝对预算内最多尝试三次普通
-detach，仅明确的 `Resource busy` 允许继续尝试，并立即保留有界诊断；身份、查询、
-持续占用或其他未解决错误仍使测试失败并保留现场。八项原生断言、40 秒 hook 及
-600 秒平台限制保持不变。[镜像设备归属决策](../../.agents/notes/implemented/bug-fix/2026-10-20-apfs-device-ownership.md)
-记录设备校验和删除条件；[fixture 清理决策](../../.agents/notes/implemented/testing/2026-10-18-apfs-fixture-finalization.md)
-保留普通 detach、预算和失败诊断的依据。
+Unicode 编码别名、状态目录别名及探测目录清理。fixture 创建单分区 GPT 镜像，固定
+其 `realpath`，保存 `attach -plist` 返回的 GPT 根设备，并在断言前从同用户镜像清单
+正向确认精确路径和根设备，才授予清理所有权。`plutil` 只定向提取带类型要求的身份
+字段。每次 detach 前校验当前所有权；观测区分 `mounted`、`unmounted_attached` 和
+`absent`。挂载路径消失不能证明完整镜像已脱离，未经正向验证的 attach 失败也不能
+仅凭清单缺失删除目录。只有已验证所有权下的精确镜像缺失才允许删除。
+
+一个 30 秒绝对清理预算覆盖所有串行查询、诊断、等待及最多三次普通 detach。明确的
+`Resource busy` 后，把剩余时间分给后续尝试和最终观测窗口；快速失败时，尝试通常
+位于约 0、10、20 秒，第三次之后继续观测而不增加调用。首次 Busy 立即采集卷级
+`lsof`，随后刷新精确镜像状态，再对当前所属根设备、子设备及 raw 别名查询一次有界
+诊断；该顺序避免清单查询先消耗已知持有者的六秒生命周期。保存状态转换及原始错误，
+身份、清单查询、无关命令错误或期限内持续附着均使测试失败并保留现场。
+
+八项原生文件系统断言的函数体保持不变。大小写敏感组最后增加一个同用户子进程只读
+持有普通文件的真实案例，cwd 位于主机仓库；必须观测实际 Busy、卷级 `lsof` 中的已知
+PID、Busy 后至少六秒的释放确认、最多三次普通 detach、完整镜像缺失和子进程退出。
+案例记录 monotonic 调用时间及最终状态，与 `afterAll` 共享包含失败的一次性清理
+Promise，防止重复获得清理预算。120 秒 setup、40 秒 teardown、600 秒平台限制均
+保持不变；新增案例为 40 秒，其 finalizer 仍为 30 秒。
+[设备归属决策](../../.agents/notes/implemented/bug-fix/2026-10-20-apfs-device-ownership.md)和
+[观测窗口决策](../../.agents/notes/implemented/bug-fix/2026-10-20-apfs-finalization-window.md)
+记录机制与依据；真实普通文件案例不用于识别历史持有者或证明原生部分卸载阶段。
 
 独立的 `pnpm acceptance` 先打包，再在临时 consumer 中正常安装，驱动实际生成的
 `daynight` bin。真实 SQLite 和本地 Git 配合受控的原生 gh 执行文件及 Copilot 命令

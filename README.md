@@ -141,12 +141,14 @@ workload and the 600-second platform gate remain required. The
 records the measurements, deadline semantics and remaining limits.
 
 macOS tests mount temporary case-sensitive and case-insensitive APFS images to
-check path identity against both filesystem behaviors. Fixture cleanup retains
-the whole disk-image device identity and verifies that the exact image is absent
-before deleting its directory; unresolved finalization fails the job. The
-[device-ownership decision](.agents/notes/implemented/bug-fix/2026-10-20-apfs-device-ownership.md)
-records that resource guarantee. No live GitHub or Copilot credentials are
-required by these checks.
+check path identity against both filesystem behaviors. Setup positively verifies
+whole-image ownership before the eight original filesystem cases. One additional
+same-user read-only file-holder case requires actual Busy, known-PID diagnostics,
+delayed release and exact image absence. All finalization shares one 30-second
+budget and at most three ordinary detach calls; unresolved cleanup fails the job.
+The [finalization decision](.agents/notes/implemented/bug-fix/2026-10-20-apfs-finalization-window.md)
+records the ownership and observation guarantees. No live GitHub or Copilot
+credentials are required by these checks.
 SQLite tests use real disk databases, including reopen, transaction rollback,
 locking, and revision/retry transitions on every platform.
 GitHub tests use controlled API responses and subprocess fixtures to verify

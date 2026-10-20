@@ -622,25 +622,44 @@ OS and architecture. Other distributions, architectures and musl require their
 own native receipt. The [state decision](../../.agents/notes/implemented/architecture/2026-10-17-durable-review-state.md)
 records the packaged binary choice.
 
-## Native APFS fixture ownership
+## Native APFS fixture finalization
 
 The [macOS job from run 39412445956](https://github.com/codetreker/day-night/actions/runs/39412445956/job/118593266497)
 reported 1,292 passing test cases and then failed APFS fixture finalization. An
-ordinary detach by mountpoint first reported `Resource busy`. The subsequent
-`lsof` command returned after 35 ms saying that the path was not a filesystem;
-`diskutil` returned after 39 ms without finding a disk. After the one-second
-pause, another detach by that same mountpoint failed with `No such file or
-directory`. These observations show that the mountpoint was no longer a usable
-attachment identity. They do not identify a holder, explain what changed the
-mount, or establish that the complete backing image was detached.
+ordinary detach by mountpoint first reported `Resource busy`. `lsof` returned
+after 35 ms saying the path was not a filesystem; `diskutil` returned after 39 ms
+without finding a disk. After one second, detach by the same mountpoint failed
+with `No such file or directory`. The missing mountpoint did not establish that
+the backing image was absent, motivating retained whole-image device identity.
 
-Fixture finalization retains the attached image's device identity and verifies
-the exact fixture image's attachment state before removing its directory. The
-[device-ownership decision](../../.agents/notes/implemented/bug-fix/2026-10-20-apfs-device-ownership.md)
-owns that mechanism. The eight native APFS assertions, ordinary detach policy,
-30-second finalization budget, three-attempt limit, 40-second hook and 600-second
-platform gate remain in force. The failed job remains failure evidence; a native
-pass for the repaired fixture requires a successful job at its tested revision.
+The later [macOS job from run 39431840901](https://github.com/codetreker/day-night/actions/runs/39431840901/job/118658576936)
+passed 1,518 test assertions but failed finalization after three actual Busy
+responses. The mountpoint had disappeared while exact-image inventory still
+reported attachment. Calls and two one-second pauses took about four seconds;
+the 30-second cleanup deadline and 40-second hook had not expired. The receipt
+identifies no holder and establishes no infrastructure cause or queued success.
+
+The [finalization-window decision](../../.agents/notes/implemented/bug-fix/2026-10-20-apfs-finalization-window.md)
+retains positive same-user inventory verification before filesystem assertions,
+explicit mounted/unmounted-attached/absent observations, and ordinary attempts
+distributed within the original deadline. The first Busy samples volume holders
+before refreshing inventory; exact-image root/child/raw-device diagnostics follow.
+A deterministic case charges 1.6 seconds to each inventory/extraction command,
+verifies that holder capture precedes those queries, and recovers in 22.4 seconds.
+Local Linux validation passed type checking, all 33 focused finalizer cases,
+1,524 ordinary CLI tests with eleven platform skips, and all three installed
+acceptance suites. This verifies local scheduling and packaged regression behavior;
+it does not establish native macOS cleanup behavior.
+
+Native validation must run the eight unchanged filesystem assertion bodies plus
+one same-user ordinary-file-holder case. Its receipt requires actual Busy, the
+known child PID in volume `lsof`, release acknowledged at least six seconds after
+Busy, monotonic timings for every detach, at most three ordinary calls, complete
+image absence and child exit. The test and teardown share one finalization
+promise, including rejection. The 120-second setup hook, 40-second teardown hook,
+30-second finalizer and 600-second platform gate remain unchanged. A successful
+controlled holder case establishes that path at the tested revision; it does not
+identify either historical holder or prove native `unmounted_attached` recovery.
 
 ## Native termination follow-up
 
