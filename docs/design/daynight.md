@@ -2,8 +2,9 @@
 
 状态：`packages/daynight/` 是通过 `@codetreker/daynight` 分发的 TypeScript 客户端
 命令工具包，支持 Linux、macOS 和 Windows。`review` 提供 GitHub PR 审查，`update`
-管理当前 npm 全局安装，`completion` 生成 Bash 和 zsh 的原生补全脚本。行为归属见
-[客户端需求](../spec/daynight.md)及
+管理当前 npm 全局安装，`completion` 生成 Bash 和 zsh 的原生补全脚本。project/task
+CLI 的[方案](daynight-project-task.md)已确认，[实现任务](daynight-project-task-tasks.md)
+尚未开始。行为归属见[客户端需求](../spec/daynight.md)及
 [review 需求](../spec/daynight-review.md)，结构选择见
 [命令组合决策](../../.agents/notes/implemented/architecture/2026-10-20-client-command-composition.md)。
 [补全设计](daynight-completion.md)拥有共享语法描述、脚本生成和 shell 加载机制。
@@ -28,11 +29,14 @@ daynight completion zsh
 未知命令与无效参数退出 2，业务执行失败退出 1 并保留原因。旧的 `--daemon-review` 和顶层 `add-repo` 不再是
 有效命令。review 操作沿用[review 设计](daynight-review.md)的配置、持久化和运行保证。
 
+以上命令和后文源码树描述当前实现。待实现的 project/task 命令及其模块由
+[专属设计](daynight-project-task.md)拥有。
+
 客户端外壳处理顶层帮助、版本、命令选择及通用退出结果。每个命令模块负责自己的
 定义、参数、帮助、依赖和执行生命周期。`review` 再按配置登记、本地列表、前台运行分派，
 避免查询或配置操作初始化审查运行时。`update` 属于包安装生命周期，不属于 review。
-独立 Go 服务与浏览器应用保持各自的数据和生命周期，客户端不因命令组合结构自动
-获得服务 API 或其他业务命令。
+独立 Go 服务与浏览器应用保持各自的数据和生命周期。已确认的 project/task 设计
+通过独立客户端模块使用现有 HTTP API，业务数据仍由 Go 服务持有；对应模块尚未实现。
 
 ## 源码组织
 
@@ -129,6 +133,12 @@ review 的配置仍为 `~/.daynight/config.yml`，SQLite 仍为 `~/.daynight/sta
 迁移。业务模块归属与磁盘目录归属分别管理：源码整理不会改变已保存路径、永久 PR
 边界、修订、会话 UUID、重试预算或 worktree 身份。详细格式、验证、锁及恢复规则由
 [review 设计](daynight-review.md#本地数据与-sqlite)统一定义。
+
+已确认的 [project/task 配置设计](daynight-project-task.md)在同一 YAML 中增加
+`serverUrl`，并将文件读取与业务字段校验分开；既有 review 字段及状态保持原位。
+Git worktree 根目录的 `.daynight/project.yml` 保存 server、仓库身份和 project ID 的
+本地关联。它与主目录下的 review 运行状态具有不同用途，且在读取或写入远端任务前
+按专属需求校验。上述配置能力及仓库本地目录均属于待实现方案。
 
 ## npm 全局自更新
 

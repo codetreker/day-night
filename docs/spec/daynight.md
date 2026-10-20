@@ -1,6 +1,9 @@
 # Daynight 客户端需求
 
-状态：客户端命令工具包已实现；可用命令和验证入口见[仓库 README](../../README.md)。
+状态：客户端入口、review、自更新和 shell 补全已实现；project/task CLI 方案已确认，
+实现未开始。
+可用命令和验证入口见[仓库 README](../../README.md)，待实现范围见
+[project/task 需求](daynight-project-task.md)及[任务清单](../design/daynight-project-task-tasks.md)。
 
 Daynight 是一个组合命令的客户端工具包。npm 包提供统一的 `daynight` 入口，命令模块
 拥有各自的业务行为、依赖和生命周期。`review` 是 GitHub PR 审查模块；`update` 管理
@@ -8,8 +11,10 @@ Daynight 是一个组合命令的客户端工具包。npm 包提供统一的 `da
 服务和浏览器应用保留自己的产品需求与生命周期。
 
 本文档负责客户端入口、命令组合、自更新和 shell 补全的必需行为；
-[review 需求](daynight-review.md)负责审查、配置和持久化状态。客户端机制见
-[架构设计](../design/daynight.md)，补全机制见[补全设计](../design/daynight-completion.md)。
+[review 需求](daynight-review.md)负责审查、review 配置字段和持久化状态。
+[project/task 需求](daynight-project-task.md)负责已确认的 server 连接配置、仓库关联
+发现和远端项目任务命令。客户端机制见[架构设计](../design/daynight.md)，补全机制见
+[补全设计](../design/daynight-completion.md)；各业务文档明确其实际交付状态。
 
 ## 需求
 
@@ -22,7 +27,7 @@ npm 包名为 `@codetreker/daynight`，可执行命令为 `daynight`，TypeScrip
 
 ### C2. 命令组合与退出结果
 
-客户端提供以下命令：
+客户端当前提供以下命令：
 
 ```text
 daynight
@@ -68,7 +73,8 @@ daynight completion zsh
 `review run` 独立持有审查运行时和信号生命周期，具体保证由 review 需求定义。
 客户端的命令和源码结构调整不改变 review 配置与状态的现有格式和位置，不迁移、
 重分区或重新初始化这些数据。新增命令通过自己的模块接入；它的业务依赖不能成为
-其他命令的启动前提。面向服务 API 的命令或其他业务命令需要各自明确的产品需求。
+其他命令的启动前提。[project/task 需求](daynight-project-task.md)规定待实现的服务 API
+命令；其独立配置校验、仓库本地关联和远端操作继续遵守这些加载与数据归属要求。
 
 ### C4. 自更新
 
