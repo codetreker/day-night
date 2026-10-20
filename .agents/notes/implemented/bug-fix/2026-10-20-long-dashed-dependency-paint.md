@@ -112,7 +112,8 @@ antialiasing region; this is not byte-identical output. These controlled results
 are distinct from the final helper's verification. The implemented helper now
 passes its complete local native/container workflow, all capacity repetitions,
 independent arc/phase/CTM checks and cleanup. Actual product traces confirm the
-reduced preceding raster work. Clean current-source hosted performance and
-approval remain required. Pinned-engine evidence explains the mechanism; future
+reduced preceding raster work. Production acceptance is delivered through
+[PR #52](https://github.com/codetreker/daynight/pull/52); its PR and CI retain
+source-bound execution results. Pinned-engine evidence explains the mechanism; future
 browser changes require renewed raster and visual validation without relaxing
 product budgets.

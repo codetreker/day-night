@@ -60,8 +60,10 @@ functional/36-case tooling suite, with raw coverage 718/724 across 19 product
 files and 100% functions. Its complete local native/container browser run passes
 all 20 scenarios, fifteen capacity repetitions, independent limits and geometry
 checks. These are local development results; the focused repair's PR and
-source-bound browser receipts retain binary/image and cleanup identity. Clean
-hosted verification remains required. Earlier dashboard acceptance receipts
+source-bound browser receipts retain binary/image and cleanup identity. The
+repair is delivered through [PR #57](https://github.com/codetreker/daynight/pull/57),
+with [direct-main verification](https://github.com/codetreker/daynight/actions/runs/39439839782).
+Earlier dashboard acceptance receipts
 retain their original source identities. The
 [dashboard decision](../feature/2026-10-20-project-task-dashboard.md) owns the
 broader portal and detail lifecycle, and the [design](../../../../docs/design/daynight-web.md)

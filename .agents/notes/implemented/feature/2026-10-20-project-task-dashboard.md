@@ -142,7 +142,8 @@ diagnostics identify prior drawer-close raster/commit backpressure from long
 native dashed routes. A controlled local-coordinate decomposition prototype
 reduces that raster work. The committed helper passes complete local production,
 capacity and independent geometry/phase checks; actual product traces confirm
-the reduced raster. Current-source hosted acceptance remains required. Actual browser
+the reduced raster. Production acceptance is delivered through
+[PR #52](https://github.com/codetreker/daynight/pull/52). Actual browser
 checks verify SVG/node alignment and exact route endpoints after zoom, pan and
 root changes. Dependency upgrades must revisit the declaration patch and type tests.
 

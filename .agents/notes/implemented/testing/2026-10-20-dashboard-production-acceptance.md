@@ -72,7 +72,7 @@ Measurement failures and diagnostic/cleanup errors retain their joined causes.
 One streamed CDP timeline/User Timing/frame/GC JSON trace per repetition correlates
 those markers with browser work. The trace does not enable CPU sampling or CDP
 screenshots; scenario PNG evidence stays separate. Bounded completion and resource
-closure are required. This is test-side diagnosis for unresolved hosted zoom
+closure are required. This is test-side diagnosis for hosted zoom
 latency, without changing thresholds, complete graph readiness or success rules.
 Hosted traces show that earlier drawer-close raster/commit work can delay later
 zoom frames even when the zoom handler is prompt. The budget still includes any
@@ -81,8 +81,9 @@ interaction initiated it. Controlled raster ablations and pinned-engine evidence
 of long oblique routes. The
 [local-coordinate paint decision](../bug-fix/2026-10-20-long-dashed-dependency-paint.md)
 retains native arrows, modal inertness and all canonical routes while changing
-body paint. Its new source passes complete local production validation, while
-current-source hosted validation remains required.
+body paint. Production acceptance is delivered through
+[PR #52](https://github.com/codetreker/daynight/pull/52); execution results remain
+with the corresponding PR and CI.
 
 Interrupted-run recovery checks that the original runner, callback/Playwright
 processes and their owned groups have stopped,
@@ -147,9 +148,9 @@ source identity is explicit. The first hosted shared-graph zoom measurement
 exceeded 300ms; its failed result is retained. The single static edge SVG keeps
 all original graph completeness and timing gates. Its new complete local native
 and container run passes, including all fixed datasets/repetitions, independent
-limits, SVG coordinate/endpoint alignment and cleanup/recovery. Current-source
-hosted acceptance remains required: later native-dash SVG runs exceeded the
-budget, and the local-coordinate body fix now passes its own full local gates. A separate
+limits, SVG coordinate/endpoint alignment and cleanup/recovery. Later native-dash
+SVG hosted runs exceeded the budget; the local-coordinate body fix is delivered
+with production acceptance in PR #52. A separate
 real-Docker matrix passes
 startup/test-failure,
 cancellation and cleanup-failure/recovery while a second stack retains its
@@ -157,8 +158,9 @@ HTTP/data sentinel. It predates the SVG change and tests unchanged deployment
 lifecycle code, not the new UI image identity. Its final audit confirms no owned
 resources or processes remain. That local manual matrix is distinct from CI's
 controlled lifecycle and
-production-browser suites. Exact-source hosted CI, independent review and
-approval remain required before W-T6 is complete. Historical preview and HTTP
+production-browser suites. W-T6 is complete; the
+[task document](../../../../docs/design/daynight-web-tasks.md#w-t6) links its
+delivery PRs and source-bound CI verification. Historical preview and HTTP
 smoke evidence remains labeled by its actual scope, and fixed-topology results
 do not
 establish arbitrary-DAG latency.

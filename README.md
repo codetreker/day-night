@@ -3,16 +3,16 @@
 Day Night contains a client command toolkit and an independent Go service runtime
 for project and task management. Its read-only browser workspace provides project
 statistics, task dependency graphs and details from the same Go service origin.
-The local-coordinate dashed-paint fix passes complete local production-browser
-and fixed-capacity acceptance against the native binary and production container.
-Earlier hosted failures and real Docker lifecycle evidence are preserved;
-successful current-source CI and delivery approval remain required.
+The read-only dashboard is delivered, including production-browser acceptance,
+embedded deployment and the subsequent focus-restoration repair. The
+[dashboard tasks](docs/design/daynight-web-tasks.md) record completion and link
+the corresponding PR and CI evidence.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion`, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service/default-budget acceptance verified | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
-| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage implemented; long-dashed paint fix passed local acceptance; current-source CI delivery pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
+| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The `@codetreker/daynight` package provides the `daynight` client. Its root entry
 lists commands and reports the package version; each command owns its business

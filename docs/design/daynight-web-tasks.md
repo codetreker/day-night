@@ -1,6 +1,6 @@
 # 项目与任务看板实现任务
 
-状态：W-T1–W-T5 已合并；W-T6 已定位并修复长虚线 raster 瓶颈，当前源码完整本地生产与性能通过，等待真实 CI、review 与合并。
+状态：W-T1–W-T6 全部完成。实现与验收已交付，对应运行结果由交付 PR 与 CI 保存。
 
 本文拥有任务编号、状态、依赖、文件归属和完成条件。
 [需求](../spec/daynight-web.md)拥有 W1–W12 的行为与验收要求，
@@ -16,7 +16,7 @@
 | [W-T3](#w-t3) 图投影与横向布局 | 已完成 | W-T1、W-T2 | 纯数据校验、根投影、共享与外部前置、LR 布局 | W3、W4、W5、W6、W7、W11 |
 | [W-T4](#w-t4) 项目任务看板 | 已完成 | W-T1、W-T2、W-T3 | 快照刷新、统计、根条目、只读画布、详情侧栏 | W2–W9、W12 |
 | [W-T5](#w-t5) localhost 与 dev-ci 交付 | 已完成 | W-T4 | 现有 localhost 完整启动、静态资源内嵌、隔离 dev-ci deployment | W2、W9、W10、W11 |
-| [W-T6](#w-t6) 生产浏览器与 CI 验收 | 已实现，本地通过，待 CI | W-T5 | 实际二进制及网关、性能、覆盖率证据和汇总门禁 | W1–W12 |
+| [W-T6](#w-t6) 生产浏览器与 CI 验收 | 已完成 | W-T5 | 实际二进制及网关、性能、覆盖率证据和汇总门禁 | W1–W12 |
 
 ```mermaid
 flowchart LR
@@ -286,46 +286,21 @@ localhost 的生产 Dockerfile 和 nginx 配置，完成独立资源与生命周
 <a id="w-t6"></a>
 ## W-T6：生产浏览器与 CI 验收
 
-状态：已实现，当前长虚线绘制源码的完整本地验收通过，等待真实 CI、review 与合并。长斜线原生 dash 生成造成前一侧栏关闭帧的 raster/commit 阻塞；当前分解保留全部图与视觉语义，门槛不变。本地回执不替代交付源码的干净 CI 验证。前置：W-T5。
+状态：已完成。前置：W-T5。
 
-已实现：`pnpm web:acceptance` 构建真实 UI 和 Go 二进制，在专用 PostgreSQL 上
-运行原生进程浏览器用例，再经 dev-ci gateway 运行相同的功能用例。固定图集性能
-与超限拒绝在原生目标执行；Playwright 禁止重试，回执检查要求全部指定场景、
-截图和计时数据齐全。当前绘制源码 web 类型检查、311 项功能测试与 36 项原生工具测试
-通过，19 个产品文件（含 dashes.ts）原始语句覆盖率 716/722（约 99.17%），
-函数覆盖率 100%，无产品排除项。Go 完整检查通过
-307 项测试和 9 项检查器测试，原始语句覆盖率 1153/1155（约 99.83%），既有进程及数据库资源
-全部清理。
+[PR #52](https://github.com/codetreker/daynight/pull/52) 交付生产浏览器与 CI 验收；
+[PR #57](https://github.com/codetreker/daynight/pull/57) 修复刷新时的侧栏焦点恢复，
+[PR #59](https://github.com/codetreker/daynight/pull/59) 修复必选原生测试的 APFS 清理。
+这些改动均已合并，[对应主线验证](https://github.com/codetreker/daynight/actions/runs/39446442068)
+通过。逐次结果、测试源码身份、覆盖率与清理回执由对应 PR 和 CI 保存。
 
-长虚线绘制完整本地运行 `20261020125755-d98c8daa-5d70-45e3-bba5-786459394568`
-通过 12 项原生和 8 项容器场景，保留全部节点/按钮/canonical 路线/原生箭头，
-新增完整 paint-piece readiness 与逐段 CTM/弧长/相位检查。三个图集各展开五次，
-最大 open 为单链 555.9ms、合流 1359.6ms、共享 1875.1ms；每次详情、缩放、
-平移均小于 300ms。独立超限、故障恢复、键盘、窄屏与全部清理/外层恢复均通过。
-
-回执使用 Linux 上锁定 Chromium 156.0.8078.4，无 executable override，记录
-本地源码为 `451b914` 基础上的 dirty 工作树；不能作为 clean CI 身份。较早
-原生长虚线 SVG 与 reactive-edge 的通过回执仅能证明各自源码。具体指标、
-二进制/镜像身份及逐次结果随对应 PR 与 CI 保存；回执边界见
-[web 验证说明](../../packages/daynight-web/README.md#production-browser-acceptance)。
-实际 Docker 故障矩阵 `fault-1792493712152-d0ae9b41` 通过：启动时停止本次 PG
-使 runner 返回 1 且不执行 callback；callback 的退出 23 原样保留且遗留后代停止；
-SIGTERM 返回 143/cancelled 并清理进程组；只读 holder 阻止本次卷删除时准确报告
-失败，移除已验证 holder 后按原 run ID 恢复，原失败回执不变。另一组 B 的 UI/API
-及同一项目 sentinel 在每步后和卷繁忙期间保持可用。独立最终审计确认两轮共
-10 个 run、2 个 holder 与 10 组进程均无容器、卷、网络、镜像标签或存活进程残留。
-
-首轮矩阵的额外审计将 Docker 小写 missing-object 响应误判为清理失败，原回执
-保留；修正该临时探针后完整第二轮与独立审计通过，产品 runner 未改。此手工矩阵
-与 CI 的 12 项受控 lifecycle fixture/完整真实浏览器分别记录。部署生命周期代码
-未随 SVG 更新变化，该矩阵不宣称测试当前 UI 镜像。当前渲染器已有独立完整本地
-通过回执，仍需交付 PR 当前源码的真实 CI 与 approval，不能标记
-已合并。
-
-诊断工具保留每次交互的输入/capture/首次条件/帧/end 时间点及阶段差值，逐次归档
-CDP timeline/frame/GC trace；总计时、完整图就绪和 3,000ms/300ms 门槛不变。
-诊断 helper 的 5 项定向测试已纳入完整功能测试；包含
-诊断的新源码仍需真实 CI 证据。
+`pnpm web:acceptance` 构建真实 UI 和 Go 二进制，在专用 PostgreSQL 上运行原生
+浏览器用例，再经 dev-ci gateway 运行功能用例；固定图集性能与独立超限拒绝在
+原生目标执行。验证命令、要求与场景映射、浏览器身份及回执解释由
+[web 验证说明](../../packages/daynight-web/README.md#production-browser-acceptance)拥有。
+[生产验收决策](../../.agents/notes/implemented/testing/2026-10-20-dashboard-production-acceptance.md)
+保留验证策略、实际部署故障研究的范围与持久证据；本地回执和历史镜像仍保留各自
+源码与环境范围，不能替代新的干净 CI 验证。
 
 ### 文件归属与范围
 

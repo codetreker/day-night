@@ -1,6 +1,6 @@
 # 项目与任务看板设计
 
-状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 已定位长斜线 SVG 虚线绘制造成的 raster/commit 阻塞，采用局部水平线与短原生转角路径分解；当前源码的几何/相位与完整本地生产验收已通过，hosted 验收仍待通过。运行结果随对应 PR 与 CI 保存；本地回执不能代替干净 hosted 验证。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
+状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 已定位长斜线 SVG 虚线绘制造成的 raster/commit 阻塞，采用局部水平线与短原生转角路径分解；完整生产验收已交付，完成状态与对应源码的 PR/CI 链接由任务清单记录。运行结果随对应 PR 与 CI 保存；本地回执不能代替干净 hosted 验证。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
 
 ## 目标与现有基础
 
@@ -508,8 +508,8 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 拥有验证命令、要求与场景映射和回执解释。逐次运行结果随对应 PR 与 CI 保存。
 较早渲染器的本地双目标与固定性能矩阵通过，但
 [PR #52](https://github.com/codetreker/daynight/pull/52) 的真实 CI 发现共享图缩放 452.7ms；静态 SVG
-渲染器的原生长虚线绘制仍触发 hosted 超时；采用局部绘制分解后的源码已完整本地通过，
-hosted 验证仍待通过。
+渲染器的原生长虚线绘制也曾触发 hosted 超时；局部绘制分解随 PR #52 交付，
+对应运行结果由该 PR 与 CI 保存。
 
 每次运行先生成真实 UI 与 Go 可执行文件，再启动独立 PostgreSQL 18.6，等待服务
 结构化就绪日志并记录二进制摘要。原生目标运行八个功能场景和四个容量/超限场景；
@@ -596,7 +596,7 @@ CI 无论验收成功、失败或取消都执行恢复与归档；恢复成功�
 ## 风险与重审条件
 
 - 大量共享节点会重复出现在不同根图中；通过去重统计和单展开控制成本。需要同时比较多条图时再重审交互。
-- 1,000/5,000 是明确的保护上限。长虚线绘制分解已通过新源码完整本地生产门槛，hosted 验证仍待通过；旧回执不能替代当前源码的 CI 证据。布局归一化成本取决于 rank 跨距，不能把固定矩阵的结果宣称为任意 DAG 的相同耗时保证。
+- 1,000/5,000 是明确的保护上限。长虚线绘制分解已交付；旧回执不能替代当前源码的 CI 证据。布局归一化成本取决于 rank 跨距，不能把固定矩阵的结果宣称为任意 DAG 的相同耗时保证。
 - 外部前置必须保留显式标记，否则图会错误暗示前置已完整展示。
 - Node 成为 Go 二进制的构建前置；固定构建顺序与干净 checkout 验证，运行时仍只有 Go 与 PostgreSQL。
 - 只有本机访问需求。出现远程访问要求时必须先补齐身份与授权设计。
