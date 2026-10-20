@@ -10,7 +10,7 @@ successful current-source CI and delivery approval remain required.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion`, shared configuration, server HTTP and repository binding foundations plus project and task commands; full service acceptance pending | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
+| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion`, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service/default-budget acceptance verified | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage implemented; long-dashed paint fix passed local acceptance; current-source CI delivery pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -35,7 +35,9 @@ confirmed behavior and implementation status. Shared YAML projections, the
 with ignored local bindings are implemented. `project create/list/show` manage
 remote projects through the configured server. Task create/list/show/update/graph
 commands use explicit project selection or the current repository binding;
-installed real-service command acceptance remains pending. Controlled native-platform tests and live
+installed real-service commands and production-budget acceptance pass local and
+hosted validation. [PR #55](https://github.com/codetreker/daynight/pull/55) owns
+review and integration status. Controlled native-platform tests and live
 Copilot/GitHub acceptance provide separate evidence; live acceptance remains
 outstanding.
 
@@ -84,6 +86,9 @@ registry access. The review lifecycle suite uses controlled GitHub/Copilot
 executables with real Git and SQLite. The self-update suite uses real npm and an
 isolated, task-local global prefix with a controlled HTTP registry. Neither suite
 changes the operator's installed CLI or requires live review credentials.
+Project/task acceptance is a third native installed suite using a reusable
+pack/install fixture, real Git and controlled HTTP. Its actual results
+belong to the [task record](docs/design/daynight-project-task-tasks.md#pt-t5).
 
 Shell completion has a separate real-shell acceptance command. It requires
 Python 3 on a POSIX host, Bash 4.2, a modern Bash, and zsh. Linux hosts can prepare
@@ -208,7 +213,14 @@ same raw coverage profile supplies an exact strict comparison; exactly 90%
 fails, independently of display rounding. No product files or functions are
 excluded. The CI aggregate requires this Go job, web, every native CLI platform
 and the Linux shell completion job to pass. PostgreSQL absence is a failure, not
-a skipped test. The
+a skipped test. PT-T5 adds an installed-CLI service path and production-budget
+probes to this same gate. A Node orchestrator shares one real installation across
+the Go command scenarios and, after the unchanged go-cov/strict-profile checks,
+public-command probes outside Go's default ten-minute timer. Those probes retain
+the 30-second request, five-minute operation, 128 MiB single-response and 256 MiB
+cumulative decoded-response limits. The existing 20-minute Go job and every
+required check remain in place. The [acceptance design](docs/design/daynight-project-task.md#验证与交付证据)
+owns the mechanism and source-bound evidence. The
 [server acceptance report](docs/research/daynight-server-acceptance.md) maps
 requirements to tests and describes the CI receipt containing tested source and
 binary identity, scenario results and resource cleanup.
@@ -518,8 +530,10 @@ state, dependencies, blocking and title-preview truncation flags. Queries suppor
 complete API object. Versions remain JSON numbers with full int64 precision.
 Local preparation fails before any task mutation; a lost write response is
 reported as unconfirmed. The [task record](docs/design/daynight-project-task-tasks.md)
-owns validation status; installed CLI integration with the real Go/PostgreSQL
-service remains pending.
+owns validation status. Installed CLI integration with the real Go/PostgreSQL
+service and production-budget probes pass locally and in hosted validation.
+[PR #55](https://github.com/codetreker/daynight/pull/55) records review and
+integration status.
 
 ## Review configuration and startup
 

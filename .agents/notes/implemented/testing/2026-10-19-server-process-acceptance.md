@@ -15,9 +15,15 @@ Test-only command-package files build a fresh race-enabled executable for each
 test invocation and drive it over loopback HTTP against isolated PostgreSQL
 schemas. They parse existing JSON readiness logs instead of adding a health
 endpoint, test-only production API or alternate runtime. Package tests continue
-to own store/service/server coverage.
+to own store/service/server coverage. The
+[installed project/task extension](2026-10-20-installed-project-task-acceptance.md)
+reuses this fixture for public CLI workflows, restart and
+version competition. It keeps CLI requirement identifiers in the `PT.V*` namespace and
+uses a separately prepared installation without replacing the service scenarios.
+Production-budget probes run after the existing Go gate, outside its default
+ten-minute test timer, while the Go CI job retains its 20-minute bound.
 
-Twelve named scenarios exercise persistence, refusal semantics, filtered pages,
+The original twelve service scenarios exercise persistence, refusal semantics, filtered pages,
 three deterministic write races, partial-write rollback, request cancellation,
 graceful/forced SIGTERM, migration failures and simultaneous process startup.
 Exact child application names identify PostgreSQL waiters. A nontransactional
