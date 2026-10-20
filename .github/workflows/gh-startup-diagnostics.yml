@@ -9,13 +9,13 @@ permissions:
 
 jobs:
   diagnose:
-    name: gh startup (${{ matrix.gh-path }}, sample ${{ matrix.sample }})
+    name: gh startup (${{ matrix.experiment }}, sample ${{ matrix.sample }})
     runs-on: windows-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        gh-path: [default, resolved]
+        experiment: [baseline, utc, files]
         sample: [1, 2, 3]
     env:
       COREPACK_HOME: ${{ github.workspace }}/.tmp/corepack
@@ -35,19 +35,49 @@ jobs:
           run_install: false
           dest: ${{ github.workspace }}/.tmp/pnpm
       - run: pnpm install --frozen-lockfile --store-dir .tmp/pnpm-store
-      - name: Record collector output and native gh process samples
-        id: diagnostics
+      - name: Record untraced cold collector startup
+        id: cold
         shell: pwsh
-        run: ./packages/daynight/scripts/diagnose-gh-startup.ps1 -GhPathMode '${{ matrix.gh-path }}'
+        run: |
+          try {
+            ./packages/daynight/scripts/diagnose-gh-startup.ps1 -Experiment '${{ matrix.experiment }}'
+          } finally {
+            $destination = '.tmp/gh-startup-cold'
+            if (Test-Path -LiteralPath '.tmp/gh-startup') {
+              Move-Item -LiteralPath '.tmp/gh-startup' -Destination $destination
+            } else {
+              New-Item -ItemType Directory -Path $destination -Force | Out-Null
+            }
+            foreach ($receipt in @('.tmp/validation-probes.json', '.tmp/validation-environment.json')) {
+              if (Test-Path -LiteralPath $receipt) { Move-Item -LiteralPath $receipt -Destination $destination }
+            }
+          }
+      - name: Record traced warm collector startup
+        id: warm
+        if: ${{ always() && steps.cold.outcome != 'skipped' }}
+        shell: pwsh
+        run: |
+          try {
+            ./packages/daynight/scripts/diagnose-gh-startup.ps1 -Experiment '${{ matrix.experiment }}' -TraceInitialization
+          } finally {
+            $destination = '.tmp/gh-startup-warm'
+            if (Test-Path -LiteralPath '.tmp/gh-startup') {
+              Move-Item -LiteralPath '.tmp/gh-startup' -Destination $destination
+            } else {
+              New-Item -ItemType Directory -Path $destination -Force | Out-Null
+            }
+            foreach ($receipt in @('.tmp/validation-probes.json', '.tmp/validation-environment.json')) {
+              if (Test-Path -LiteralPath $receipt) { Move-Item -LiteralPath $receipt -Destination $destination }
+            }
+          }
       - name: Upload native startup diagnostics
-        if: ${{ always() && steps.diagnostics.outcome != 'skipped' }}
+        if: ${{ always() && steps.cold.outcome != 'skipped' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: gh-startup-${{ matrix.gh-path }}-${{ matrix.sample }}
+          name: gh-startup-${{ matrix.experiment }}-${{ matrix.sample }}
           path: |
-            .tmp/validation-probes.json
-            .tmp/validation-environment.json
-            .tmp/gh-startup/
+            .tmp/gh-startup-cold/
+            .tmp/gh-startup-warm/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
