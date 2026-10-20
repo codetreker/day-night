@@ -5,7 +5,38 @@ The [requirements](../spec/daynight-web.md) own W1–W12, the
 [task document](../design/daynight-web-tasks.md) records delivery status.
 This report owns observed validation and its practical limits.
 
-## Current local validation
+## Focus-restoration repair validation
+
+The focused repair separates synchronous modal teardown from passive unmount
+focus restoration. The real ProjectPage/RootList/TaskDrawer integration suite
+covers refresh to an empty project/H1, refresh to a new current root, and normal
+close to the surviving trigger; only the canvas is mocked. The empty-project
+case failed before the source fix after the standard waitFor deadline, exposing
+the original layout-cleanup ordering. Earlier isolated drawer mocks used passive
+cleanup and could hide that production ordering. The [decision note](../../.agents/notes/implemented/bug-fix/2026-10-20-drawer-focus-restoration.md)
+records the mechanism and primary React references.
+
+The repaired source passed typechecking, 27 focused cases, all 314 functional
+and 36 native-tooling cases. Raw V8 coverage is 718/724 across all 19 product
+files, with 100% function coverage and no product exclusions. Production run
+`20261020140643-80db109c-7817-46a5-87dc-822d883b4dfd` passed all 12 native
+and eight production-gateway scenarios, every graph's five repetitions,
+independent limits and complete paint-piece geometry/phase checks. Native,
+container and aggregate cleanup passed. Separate outer recovery also passed,
+confirmed the native process absent and owned Docker resources removed, and
+preserved the original result.
+
+Its source is base `d920e4bd2ef29d033cf95b63a533c113de33dc58` with `dirty: true`
+and no GitHub SHA. Bundled Chromium 156.0.8078.4 was used without an executable
+override. Native binary SHA-256 is
+`185a92ae40c321274fd6393c178e10ec6a843159925f09ef59b9bf8119efe9d2`;
+the running production image is
+`sha256:a104f4e9fc04bac525152d9793e60613cfef78d4ccded1df6e24e6493ddfbea0`.
+This is local focused-repair evidence; clean hosted validation of the repair
+remains required. Earlier dashboard source-specific results below retain their
+original scope.
+
+## Recorded dashed-paint local validation
 
 The dashed-paint source passed build/typechecking, 311 functional tests and 36
 Node tool tests with Node 24 and pnpm 10.34.5. The tool cases include the earlier
@@ -41,7 +72,7 @@ included in the complete functional suite. The complete local run below predates
 valid renderer/workflow evidence, while the diagnostic source requires its own
 hosted result.
 
-## Current dashed-paint local production result
+## Recorded dashed-paint local production result
 
 Run `20261020125755-d98c8daa-5d70-45e3-bba5-786459394568` passed all 12 native
 and eight production-gateway scenarios, every fixed graph's five repetitions,
