@@ -39,7 +39,7 @@ migrations and atomic persistence. A second storage interface or implementation
 is unnecessary for the selected PostgreSQL deployment.
 
 Projects register a repository address without checking access or starting Git
-operations. They do not change the existing review CLI configuration or SQLite
+operations. They do not change the existing client review configuration or SQLite
 state. The [foreground CLI decision](2026-10-16-foreground-review-cli.md) retains
 ownership of that execution model; this design does not supersede it.
 

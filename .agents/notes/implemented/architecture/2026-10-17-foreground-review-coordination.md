@@ -44,7 +44,7 @@ alone do not create a revision or repeat completed reviews. CI operations share
 the coordinator's cancellation and shutdown ownership. An active agent is not
 canceled merely because new CI is later registered or rerun.
 
-The [requirements](../../../../docs/spec/daynight.md#r5-轮询与审查资格) own pass and
+The [requirements](../../../../docs/spec/daynight-review.md#r5-轮询与审查资格) own pass and
 empty-CI policy. The [GitHub observation decision](2026-10-17-github-observation.md)
 owns complete CI evidence, including approval-blocked workflows without jobs.
 

@@ -24,9 +24,9 @@
 | R9 | 使用真实 PostgreSQL 验证存储与并发行为，通过 `go-cov` 执行覆盖率门禁 |
 | R10 | 服务启动、关闭、请求取消和失败必须可观测，持久化失败不得伪装成成功或空列表 |
 
-服务与现有 TypeScript PR review CLI 分别管理各自的数据和生命周期。创建 project
+服务与现有 TypeScript 客户端的 review 命令 分别管理各自的数据和生命周期。创建 project
 只登记 repo 地址，不触发 clone、GitHub 请求、review 启动或 CLI 配置修改。
-现有 CLI 的 [需求](daynight.md)继续由其自身文档定义。
+客户端的[需求](daynight.md)与 review 的[需求](daynight-review.md)分别由其自身文档定义。
 
 ## Project
 

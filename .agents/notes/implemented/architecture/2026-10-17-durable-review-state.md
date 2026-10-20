@@ -51,7 +51,7 @@ create directories, or delete a worktree.
 The database uses WAL, FULL synchronization, a bounded busy timeout, and explicit
 schema versions. Migration and transition failures propagate. No transaction
 contains external commands, and no foreign keys are needed for these
-application-owned records. The [architecture](../../../../docs/design/daynight.md)
+application-owned records. The [architecture](../../../../docs/design/daynight-review.md)
 owns the public transition details. This mechanism implements the persistence
 part of the [foreground CLI decision](2026-10-16-foreground-review-cli.md).
 

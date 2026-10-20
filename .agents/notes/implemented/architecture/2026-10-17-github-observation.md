@@ -11,7 +11,10 @@ gives later scheduling an inconsistent observation of the repository.
 
 ## Decision
 
-The GitHub module performs one authenticated observation pass through `gh api`.
+The review GitHub adapter performs authenticated read-only queries through `gh api`.
+The review polling module composes those queries into one repository observation
+pass, registers local repository state and owns poll-result commits and failure
+recording. The adapter does not depend on SQLite or receive the store.
 It resolves a host-qualified repository identity from the REST numeric ID,
 validates safe integer representation, and keeps that identity independent of
 remote-address spelling. The existing store remains the owner of review triggers
@@ -67,7 +70,7 @@ delay/date and primary-reset headers are honored; multiple constraints use the
 latest deadline. A recognized secondary limit without an explicit deadline uses
 GitHub's minimum wait. The client keeps a host-level deadline and rejects further
 same-host API calls until it expires, including later repositories in the same
-batch. Other hosts can continue. The module does not sleep or retry internally;
+batch. Other hosts can continue. The adapter does not sleep or retry internally;
 the foreground coordinator reuses this client and schedules another pass. One repository's
 failure remains visible without discarding another repository's result.
 

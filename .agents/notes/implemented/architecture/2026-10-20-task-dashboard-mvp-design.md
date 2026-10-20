@@ -23,7 +23,7 @@ are implemented, while task visualization and embedded deployment remain pending
 
 Use a separate React/TypeScript/Vite package with React Flow and Dagre. Serve
 its built assets from the existing loopback Go origin, embedded into the binary.
-Keep the review CLI and its configuration/storage independent. A web build is
+Keep the client review module and its configuration/storage independent. A web build is
 an explicit prerequisite for clean server builds, with a visible error when
 assets are absent. The existing Docker-only localhost path gains a pinned Node
 frontend build stage and repository-root build context; the final image remains
