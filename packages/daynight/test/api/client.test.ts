@@ -279,6 +279,24 @@ const graph = (): TaskGraph => ({
 });
 
 describe("response DTO contract", () => {
+  it("preserves Go-valid FEFF-only names and titles without treating them as whitespace", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ ...project, name: "\uFEFF" }))
+      .mockResolvedValueOnce(jsonResponse({ ...task, title: "\uFEFF", description: "\u0001\u0085" }));
+    const api = client(fetch);
+    expect((await api.getProject(projectId)).name).toBe("\uFEFF");
+    expect(await api.getTask(projectId, taskId)).toMatchObject({ title: "\uFEFF", description: "\u0001\u0085" });
+  });
+  it.each(["project", "task"])("rejects Go-whitespace-only NEL in %s text", async (resource) => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse(resource === "project" ? { ...project, name: "\u0085" } : { ...task, title: "\u0085" }));
+    const api = client(fetch);
+    await expect(resource === "project" ? api.getProject(projectId) : api.getTask(projectId, taskId)).rejects.toBeInstanceOf(ApiError);
+  });
+  it.each(["project", "task"])("rejects unpaired surrogates in %s text", async (resource) => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse(resource === "project" ? { ...project, name: "\uD800" } : { ...task, description: "\uD800" }));
+    const api = client(fetch);
+    await expect(resource === "project" ? api.getProject(projectId) : api.getTask(projectId, taskId)).rejects.toBeInstanceOf(ApiError);
+  });
   it("ignores unknown numeric version fields while validating known Task versions losslessly", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({ ...project, version: 0, metadata: { version: 1.5 } }));
     expect(await client(fetch).getProject(projectId)).toEqual(project);

@@ -1,6 +1,7 @@
 # Project 与 Task 客户端设计
 
-状态：共享配置、HTTP 与仓库关联基础已实现；命令入口与完整联调待完成。
+状态：共享配置、HTTP、仓库关联基础及 `project create/list/show` 已实现；
+Task 命令入口与完整 Go 服务联调待完成。
 本文描述采用的结构和交付机制，各项状态由任务清单拥有，当前可用命令见
 [仓库 README](../../README.md)。必需行为与编号验收由
 [客户端需求](../spec/daynight-project-task.md)拥有，服务行为由
@@ -19,6 +20,9 @@
 | [`config/document.ts`](../../packages/daynight/src/config/document.ts)、[`config/files.ts`](../../packages/daynight/src/config/files.ts) | 共享严格 YAML、已知顶层字段、独立锁和原子配置保存 |
 | [`commands/review/config.ts`](../../packages/daynight/src/commands/review/config.ts) | review 字段投影与 GitHub 专用 remote 身份规则 |
 | [`api/index.ts`](../../packages/daynight/src/api/index.ts) | 命令级操作、服务 DTO、完整分页、精确 JSON 与 HTTP 错误 |
+| [`commands/server/runtime.ts`](../../packages/daynight/src/commands/server/runtime.ts) | 配置读取、共享操作、信号取消和完整结果输出 |
+| [`commands/project/command.ts`](../../packages/daynight/src/commands/project/command.ts)、[`rendering.ts`](../../packages/daynight/src/commands/project/rendering.ts) | Project 参数、API 组合及完整资源渲染 |
+| [`platform/text.ts`](../../packages/daynight/src/platform/text.ts)、[`platform/terminal.ts`](../../packages/daynight/src/platform/terminal.ts) | 与服务一致的文本验证及终端显示转义 |
 | [`commands/review/paths.ts`](../../packages/daynight/src/commands/review/paths.ts) | 既有配置位置为 `~/.daynight/config.yml` |
 | [`api/projects.go`](../../packages/daynight-server/api/projects.go) | project、分页及含 request ID 的结构化错误 |
 | [`api/tasks.go`](../../packages/daynight-server/api/tasks.go) | task、派生字段、版本和字段可选的更新请求 |
@@ -32,8 +36,8 @@ server 投影只要求有效 server 地址；review 登记可向 server-only 文
 
 ## 模块与依赖方向
 
-`config/`、`api/`、`repository/` 和既有 review/update/completion 已实现；project/task 命令仍
-待实现。职责如下，具体文件可以在保持归属的前提下拆分：
+`config/`、`api/`、`repository/`、共享 server runtime、Project 命令和既有
+review/update/completion 已实现；Task 命令入口待实现。职责如下：
 
 ```text
 src/
@@ -41,16 +45,21 @@ src/
   config/                  # 全局路径、严格 YAML 读取、顶层字段登记
   api/                     # 服务 DTO 验证、请求、分页、结构化错误
   repository/              # Git 定位、repo 正规化、关联解析和原子持久化
+  platform/                # 通用文件、服务文本契约及终端显示原语
   commands/
+    server/                # 共享配置、操作与信号生命周期
     project/               # 参数、帮助、project 操作及渲染
-    task/                  # 参数、帮助、task 操作及渲染
+    task/                  # 待实现：参数、帮助、task 操作及渲染
     review/                # review 配置投影和既有行为
     update/                # 既有 npm 安装生命周期
     completion/            # 既有 Bash 和 zsh 原生补全
 ```
 
 顶层通过业务无关的命令定义共享名称、描述、参数和补全语法，并保留惰性执行入口。
-命令组先解析参数和帮助，再加载业务实现。
+Project 的定义由 [`definition.ts`](../../packages/daynight/src/commands/project/definition.ts)
+拥有，解析、帮助及 Bash/zsh 补全消费同一语法；补全机制由
+[补全设计](daynight-completion.md)拥有。命令组先解析参数和帮助，校验名称及详情
+UUID，再惰性加载共享 server runtime 和业务渲染。
 project/task 不导入 review runtime、SQLite 或外部审查适配器。`project list/show/create`
 只需要配置与 HTTP；task 显式 project 分支也只需要这两者；自动分支才加载 Git 与
 仓库状态。共享模块不反向导入命令模块。
@@ -60,6 +69,12 @@ project/task 不导入 review runtime、SQLite 或外部审查适配器。`proje
 共享层保留原有 YAML 字段含义与保存方式，不迁移 review 数据。命令不自动创建或
 补齐全局配置。
 
+[`platform/text.ts`](../../packages/daynight/src/platform/text.ts) 统一名称、标题及 DTO
+已知字符串的结构验证：合法 Unicode 文本、不含 NUL；非空文本还须包含 Unicode
+`White_Space` 之外的字符。该规则与 Go 服务一致，U+FEFF 可以单独构成名称，
+U+0085 则不能。验证保留字符串原值，不修剪空白，也不拒绝服务允许的其他控制字符。
+Project 名称参数与响应 DTO 复用同一规则，避免已被服务接受的资源阻断完整列表。
+
 ## 服务地址与 HTTP 客户端
 
 `serverUrl` 解析为 HTTP(S) origin：协议与主机采用 URL 标准形式，默认端口省略，
@@ -67,11 +82,20 @@ project/task 不导入 review runtime、SQLite 或外部审查适配器。`proje
 与固定 `/api/v1/...` 构造，资源 ID 作为单一路径段编码，分页 cursor 通过 query
 编码。配置值不得允许请求参数改变服务 origin。
 
-完成参数分派后，每个业务命令执行拥有一个取消控制器及 5 分钟总期限，覆盖 Git
-定位、缓存验证、全部分页、本地锁与文件准备及 HTTP。所有步骤共享剩余预算，不能
+完成参数分派后，`runServerCommand` 在读取 home 和配置之前创建一个取消控制器
+及 `Operation`，总期限为 5 分钟。它覆盖配置读取、Git 定位、缓存验证、全部分页、
+本地锁与文件准备、HTTP 及结果渲染。所有步骤共享剩余预算，不能
 因翻页或重新发现重置。每个请求期限为 30 秒与命令剩余期限的较小值，覆盖连接和
 响应体读取；用户取消沿用同一命令取消源。请求成功、失败或取消后清理单次期限及
-监听器。分页请求串行执行，取消及任一失败阻止后续页面、本地保存和写请求。
+监听器；同步 JSON 解析后也按单次及总期限检查。分页请求串行执行，取消及任一
+失败阻止后续页面、本地保存和写请求。
+
+共享 runtime 将同一信号传给 `loadServerConfiguration`；配置读取层接受可选的
+`AbortSignal` 并传入 `readFile`，同步 YAML 解析完成后再次检查操作状态。已正规化
+的 server 地址、API 客户端及操作对象组成 `ServerSession`。业务 callback 返回完整渲染字符串；
+runtime 在 callback 完成后执行最终检查，再调用一次 stdout。SIGINT、SIGTERM
+及 Windows SIGBREAK 触发同一取消源，结束时移除自身监听器并 dispose 操作，
+保留其他消费者的监听器。命令失败和清理失败均保留原因。
 
 每个响应最多读取 128 MiB，单命令累计响应体最多读取 256 MiB；MiB 为
 1,048,576 字节。按解码 HTTP 内容编码后的响应体字节流计数，包含成功与错误响应，
@@ -271,9 +295,17 @@ JavaScript `number`。未知响应字段继续由 DTO 投影忽略，不能因�
 
 ## 输出与诊断
 
-渲染与 API 数据分离。可读列表展示 ID、名称或标题、状态与 ready/阻塞信息；详情
-展示完整资源；图展示 summary、节点及依赖关系，并标明服务给出的标题截短信息。
-输出长度不会改变服务数据，完整详情继续使用 show。
+Project 渲染由 `commands/project/rendering.ts` 拥有，与 API 数据分离。create 在
+服务确认后输出创建结果及完整资源；list 按顺序输出独立的带标签资源块，每块包含
+`ID`、`Name`、`Repository`、`Created`、`Updated`，show 使用同一资源格式。空列表
+输出 `No projects.`。文本不截短，按实际字段长度生成，输出空间随全部字段总长度
+线性增长，长名称不会为其他项目产生等宽填充。
+
+[`terminalText`](../../packages/daynight/src/platform/terminal.ts) 将可读字段中的换行、
+回车和制表符显示为 `\n`、`\r`、`\t`，其他 C0/C1 控制字符及 U+2028、U+2029
+显示为 `\uXXXX`。普通 Unicode、emoji 和原有反斜线保持原样；该转换只属于终端
+显示，不改变提交给服务或 JSON 输出的数据。Task 交付仍须展示状态、ready/阻塞
+信息和完整详情，图须展示 summary、节点、依赖及服务给出的标题截短信息。
 
 查询 `--json` 是脚本和模型调用 CLI 的稳定接口：show 为资源对象，list 为完整数组，
 graph 为服务原始完整响应对象。仅序列化 API 字段，不加入渲染专用字符串、进度或
@@ -312,6 +344,12 @@ stderr 错误包含操作名、已确定的 project/task ID、失败阶段和可
 解码后字节计数。锁验证使用真实并发进程观察即时竞争失败，覆盖取消发生于获取前
 或持有后的清理。不能用缩短线上常量、截断数据或跳过真实 Git/服务语义替代验收。
 
+Project 命令的实际编译入口已在受控 HTTP 条件下验证创建、完整分页、
+详情、原始 JSON、参数及服务错误、取消和依赖隔离。共享 runtime 测试覆盖配置读取
+取消、信号清理、callback 失败后的空 stdout、渲染后的最终期限检查及多请求累计
+预算。Task 命令和真实 Go/PostgreSQL CLI 全流程联调仍待交付，原生 CI 结果以
+[任务清单](daynight-project-task-tasks.md)中的实际证据为准。
+
 源码、包元数据或构建输入交付时按既有版本策略提升 CLI 包版本，运行
-`pnpm typecheck`、`pnpm test`、`pnpm build` 及相关安装验收。仅固定本文档的交付
-校验链接、文档归属、状态说明和 diff；不能将文档检查当作以上运行时验收证据。
+`pnpm typecheck`、`pnpm test`、`pnpm build` 及相关安装验收。文档变更校验链接、
+归属、状态说明和 diff；这些静态检查不构成运行时验收证据。
