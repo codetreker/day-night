@@ -1,0 +1,111 @@
+import { describe, expect, it } from "vitest";
+import { commandTree } from "../../src/cli/commands.js";
+import { UsageError } from "../../src/cli/context.js";
+import { parseCommand, renderCommandHelp } from "../../src/cli/schema.js";
+import type { CommandDefinition } from "../../src/cli/schema.js";
+
+describe("shared command syntax", () => {
+  it.each([
+    { args: [], name: "daynight" },
+    { args: ["--help"], name: "daynight" },
+    { args: ["review"], name: "review" },
+    { args: ["review", "ls", "-h"], name: "list" },
+    { args: ["update", "--help"], name: "update" },
+    { args: ["completion", "--help"], name: "completion" },
+  ])("resolves the declared help command for $args", ({ args, name }) => {
+    const parsed = parseCommand(commandTree, args);
+    expect(parsed.kind).toBe("help");
+    expect(parsed.command.name).toBe(name);
+  });
+
+  it("resolves aliases to their canonical execution command", () => {
+    const parsed = parseCommand(commandTree, ["review", "ls"]);
+    expect(parsed.kind).toBe("run");
+    expect(parsed.path).toEqual(["daynight", "review", "list"]);
+    expect(parsed.command.name).toBe("list");
+  });
+
+  it.each([
+    ["review", "add-repo", "git@github.com:o/r", "--path", "./new directory 用户"],
+    ["review", "add-repo", "--path", "./new directory 用户", "git@github.com:o/r"],
+  ])("consumes directory options on either side of required arguments: %j", (...args) => {
+    const parsed = parseCommand(commandTree, args);
+    expect(parsed.kind).toBe("run");
+    if (parsed.kind !== "run") throw new Error("Expected executable command");
+    expect(parsed.values).toEqual(["git@github.com:o/r"]);
+    expect([...parsed.options]).toEqual([["--path", "./new directory 用户"]]);
+  });
+
+  it.each([" ", "\n", "./new\nline", "./a'\"$` directory"])("preserves a nonempty directory value verbatim: %j", (directory) => {
+    const parsed = parseCommand(commandTree, ["review", "add-repo", "--path", directory, "remote"]);
+    expect(parsed.kind === "run" && parsed.options.get("--path")).toBe(directory);
+  });
+
+  it.each([
+    ["--help", "review"],
+    ["review", "--version"],
+    ["review", "run", "--help", "extra"],
+    ["review", "ls", "-h", "extra"],
+    ["review", "add-repo"],
+    ["review", "add-repo", " "],
+    ["review", "add-repo", "\n"],
+    ["review", "add-repo", "remote", "extra"],
+    ["review", "add-repo", "remote", "--path"],
+    ["review", "add-repo", "remote", "--path", ""],
+    ["review", "add-repo", "remote", "--path", "--help"],
+    ["review", "add-repo", "remote", "--path", "one", "--path", "two"],
+    ["review", "add-repo", "remote", "--path=directory"],
+    ["review", "add-repo", "--", "remote"],
+    ["review", "add-repo", "remote", "--help"],
+    ["review", "add-repo", "-h", "remote"],
+    ["completion"],
+    ["completion", "fish"],
+    ["completion", "bash", "zsh"],
+    ["completion", "bash", "--help"],
+  ])("rejects syntax outside the declared grammar: %j", (...args) => {
+    expect(() => parseCommand(commandTree, args)).toThrow(UsageError);
+  });
+
+  it.each(["bash", "zsh"])("accepts the declared %s shell choice", (shell) => {
+    const parsed = parseCommand(commandTree, ["completion", shell]);
+    expect(parsed.kind === "run" && parsed.values).toEqual([shell]);
+  });
+
+  it("keeps version handling local to the root definition", () => {
+    expect(parseCommand(commandTree, ["-v"]).kind).toBe("version");
+    expect(() => parseCommand(commandTree, ["update", "-v"])).toThrow(UsageError);
+  });
+
+  it("preserves the command owner's usage destination on nested syntax errors", () => {
+    const review = commandTree.commands!.find(({ name }) => name === "review")!;
+    try {
+      parseCommand(review, ["add-repo", "remote", "--path"], ["daynight", "review"], "daynight review --help");
+      throw new Error("Expected a usage error");
+    } catch (error) {
+      expect(error).toBeInstanceOf(UsageError);
+      expect((error as UsageError).message).toBe("--path requires a path value.");
+      expect((error as UsageError).helpCommand).toBe("daynight review --help");
+    }
+  });
+
+  it("takes syntax and help from the supplied definition", () => {
+    const definition: CommandDefinition = {
+      name: "example",
+      description: "An example command",
+      aliases: ["e"],
+      arguments: [{ name: "mode", description: "Select a mode", choices: ["left", "right"] }],
+      options: [{ names: ["--directory", "-d"], description: "Select a directory", value: { name: "destination", kind: "directory" } }],
+      details: "A nonexistent destination remains a valid directory value.",
+    };
+    const parsed = parseCommand(definition, ["-d", "not-created", "left"]);
+    expect(parsed.kind === "run" && [...parsed.options]).toEqual([["--directory", "not-created"]]);
+    expect(() => parseCommand(definition, ["center"])).toThrow('Unknown mode "center". Expected left or right.');
+    expect(() => parseCommand(definition, ["left", "-d", "one", "--directory", "two"])).toThrow("Specify --directory only once.");
+    const help = renderCommandHelp(definition);
+    expect(help).toContain("Usage: example <mode> [--directory <destination>]");
+    expect(help).toContain("       e <mode>");
+    expect(help).toContain("Select a mode");
+    expect(help).toContain("Select a directory");
+    expect(help).toContain(definition.details);
+  });
+});

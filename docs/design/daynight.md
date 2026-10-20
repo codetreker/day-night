@@ -2,9 +2,11 @@
 
 状态：`packages/daynight/` 是通过 `@codetreker/daynight` 分发的 TypeScript 客户端
 命令工具包，支持 Linux、macOS 和 Windows。`review` 提供 GitHub PR 审查，`update`
-管理当前 npm 全局安装。行为归属见[客户端需求](../spec/daynight.md)及
+管理当前 npm 全局安装，`completion` 生成 Bash 和 zsh 的原生补全脚本。行为归属见
+[客户端需求](../spec/daynight.md)及
 [review 需求](../spec/daynight-review.md)，结构选择见
 [命令组合决策](../../.agents/notes/implemented/architecture/2026-10-20-client-command-composition.md)。
+[补全设计](daynight-completion.md)拥有共享语法描述、脚本生成和 shell 加载机制。
 
 ## 命令与职责
 
@@ -17,14 +19,17 @@ daynight review                     # review 帮助
 daynight review run
 daynight review list                 # 同 review ls
 daynight review add-repo <remote> [--path <path>]
+daynight completion                 # 补全帮助
+daynight completion bash
+daynight completion zsh
 ```
 
-各组和操作接受 `--help` 与 `-h`。顶层无参数显示帮助，未知命令与无效参数退出 2，
-业务执行失败退出 1 并保留原因。旧的 `--daemon-review` 和顶层 `add-repo` 不再是
+各组和操作在该层唯一参数为 `--help` 或 `-h` 时显示帮助。顶层无参数显示帮助，
+未知命令与无效参数退出 2，业务执行失败退出 1 并保留原因。旧的 `--daemon-review` 和顶层 `add-repo` 不再是
 有效命令。review 操作沿用[review 设计](daynight-review.md)的配置、持久化和运行保证。
 
 客户端外壳处理顶层帮助、版本、命令选择及通用退出结果。每个命令模块负责自己的
-参数、帮助、依赖和执行生命周期。`review` 再按配置登记、本地列表、前台运行分派，
+定义、参数、帮助、依赖和执行生命周期。`review` 再按配置登记、本地列表、前台运行分派，
 避免查询或配置操作初始化审查运行时。`update` 属于包安装生命周期，不属于 review。
 独立 Go 服务与浏览器应用保持各自的数据和生命周期，客户端不因命令组合结构自动
 获得服务 API 或其他业务命令。
@@ -38,8 +43,10 @@ src/
     application.ts
     commands.ts
     context.ts
+    schema.ts
   commands/
     review/
+      definition.ts
       command.ts
       config.ts
       paths.ts
@@ -57,8 +64,14 @@ src/
         worktrees.ts
         copilot.ts
     update/
+      definition.ts
       command.ts
       updater.ts
+    completion/
+      definition.ts
+      command.ts
+      bash.ts
+      zsh.ts
   platform/
     diagnostics.ts
     filesystem.ts
@@ -67,12 +80,16 @@ src/
 `main.ts` 是稳定的可执行入口，向应用传递包版本和从该入口确定的包目录；编译后仍为
 `dist/main.js`。`cli/context.ts` 只描述客户端上下文：版本、包目录、输入输出，以及
 用户主目录和工作目录的惰性查询函数；不放入已解析的 review 路径、配置或运行函数。
-`cli/commands.ts` 的登记项保存命令名称、帮助描述和异步加载函数；`cli/application.ts` 只在选中命令时调用加载函数。增加业务
+`cli/commands.ts` 组合各命令的轻量定义并保存异步执行入口；`cli/application.ts`
+只在选中命令时调用加载函数。`cli/schema.ts` 定义命令、别名、选项和值类型、位置
+参数及固定候选，并由它完成参数校验与帮助渲染。各 `definition.ts` 不导入业务实现、
+配置、文件系统探测、原生数据库或适配器；根分发可以读取这些定义而不加载业务。
+Bash 和 zsh 生成器消费同一命令树，避免解析、帮助和补全分别维护语法。增加业务
 命令需要登记入口和实现自己的模块，顶层分发不认识该命令的业务依赖。
 
 命令组先完成参数和帮助分派，再按操作加载默认实现。裸命令、帮助、版本及无效参数
-无需解析用户主目录、打开数据库或调用外部程序。`review add-repo` 加载配置保存能力，
-列表加载配置解析与只读快照，`review run` 才加载运行时、信号处理、实例锁和适配器。
+无需解析用户主目录、打开数据库或调用外部程序。补全生成同样不查询工作目录、
+review 状态或网络。`review add-repo` 加载配置保存能力，列表加载配置解析与只读快照，`review run` 才加载运行时、信号处理、实例锁和适配器。
 该顺序也使自更新进程不加载待替换的 SQLite 原生 addon。
 
 review 的配置和路径类型明确以 `ReviewConfiguration`、`ReviewPaths` 命名。
@@ -81,10 +98,28 @@ review 的配置和路径类型明确以 `ReviewConfiguration`、`ReviewPaths` �
 [review 模块职责表](daynight-review.md#单进程与普通模块)解释具体职责及执行不变量。
 共享的 `platform/` 只承载诊断和文件系统能力；这些函数不导入命令模块。
 
-源码测试按 `test/cli/`、`test/commands/review/`、`test/commands/update/` 和
-`test/platform/` 镜像职责，构建与版本策略测试位于 `test/tooling/`，共享 fixture 与
-帮助函数保持明确归属。使用普通函数和具体类型；外部命令、时钟与故障点只在有实际
+源码测试按 `test/cli/`、`test/commands/review/`、`test/commands/update/`、
+`test/commands/completion/` 和 `test/platform/` 镜像职责，构建与版本策略测试位于
+`test/tooling/`，共享 fixture 与帮助函数保持明确归属。使用普通函数和具体类型；外部命令、时钟与故障点只在有实际
 验证需求的边界注入，不增加通用插件框架或依赖注入容器。
+
+## Shell 补全
+
+`commands/completion/` 通过共享命令树生成 Bash ≥4.2 和 zsh 的原生脚本；有效生成请求
+只向 stdout 写入脚本。裸 `completion` 及其帮助只显示使用说明，错误 shell 或无效
+参数沿用状态码 2。脚本生成不读取配置和状态，不加载 review 或更新业务。
+
+脚本在 source 时注册 `daynight` 补全，Bash 检查版本下限，zsh 要求调用者已完成
+`compinit`，缺少初始化时明确报错并加载失败。按 Tab 时只使用 shell 内存中的语法
+和本地目录枚举，不启动 Node、
+daynight 或网络请求。参数语法保留原有唯一帮助参数、remote 前后一次 `--path`、
+不接受 `--path=value` 或 `--` 的规则。目录候选保留实际参数边界，且不限制尚未
+创建的路径输入。生成和加载机制、引号与光标处理由[补全设计](daynight-completion.md)
+统一说明，启用命令由[README](../../README.md#shell-completion)拥有。
+
+[补全决策](../../.agents/notes/implemented/feature/2026-10-20-shell-completion.md)
+记录 Bash 下限、zsh 原生集成和本地执行的成本。脚本输出用于 source；zsh `fpath`
+自动加载需要不同的装载形式，未包含在该输出的使用承诺中。
 
 ## 配置与持久化
 
@@ -149,7 +184,8 @@ addon 可能阻止替换，npm 失败直接可见。
 调用者工作目录不会改变清理位置。包的 bin 及发布入口保持 `dist/main.js`。
 
 普通测试先构建包，既验证源码职责，也通过编译产物验证公开命令。`pnpm typecheck`、
-`pnpm test`、`pnpm build` 和独立 `pnpm acceptance` 的实际入口由
+`pnpm test`、`pnpm build`、独立 `pnpm acceptance` 和 `pnpm completion:acceptance`
+的实际入口由
 [README](../../README.md#cli-development)维护。源码、包元数据、构建或依赖输入变化
 需要更高 SemVer；构建清理脚本也属于发布输入。Linux 版本检查和全部原生检查共同
 构成必需门禁。发布授权、npm OIDC、产物身份及恢复规则继续由
@@ -159,7 +195,7 @@ addon 可能阻止替换，npm 失败直接可见。
 
 根入口与每个命令的参数验证需覆盖正常调用、裸组、帮助、版本和错误结果；构建后入口
 必须保留 shebang、bin 路径和版本输出。依赖隔离验证通过不可用的 SQLite 加载、缺失的
-review 工具、无效或缺失配置，观察帮助、版本和更新仍独立工作；配置保存不能进入
+review 工具、无效或缺失配置，观察帮助、版本、补全生成和更新仍独立工作；配置保存不能进入
 运行时，列表不能创建缺失状态、执行网络访问或获得 review 实例锁。
 
 review 的原生 Git、SQLite、进程终止、APFS、调度与安装后完整生命周期工作负载保持
@@ -173,6 +209,12 @@ fixture 不能通过当前 store 生成基线，从而避免现有实现为自�
 全局 CLI。必须观测启动器、清单和新进程版本，验证搬迁后的 updater 仍从稳定入口接收
 正确包目录。registry 访问和安装错误保持可见。
 
-GitHub Actions 在原生 Linux、macOS、Windows 上运行普通测试与两套安装验收。
+补全验证包括共享语法回归、编译后入口依赖隔离、脚本语法检查和真实 shell 交互。
+`pnpm completion:acceptance` 在隔离启动文件的 PTY 中驱动 Bash 4.2、现代 Bash 和 zsh
+的 Tab，检查实际插入文本、引号、后缀、描述和光标位置。它独立于 review 与自更新
+安装验收，使用任务内的 fixture，不修改操作者的 shell 配置或全局安装。
+
+GitHub Actions 在原生 Linux、macOS、Windows 上运行普通测试与两套安装验收，
+并在独立 Linux 作业中执行补全的真实 shell 验收。
 [验收报告](../research/daynight-acceptance.md)区分每次已观察到的本地及原生 receipt、
 受控 GitHub/Copilot 行为与真实服务验收；历史通过记录不能代替当前源码的验证结果。

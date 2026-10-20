@@ -7,7 +7,7 @@ implementation work.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented TypeScript client command toolkit; `review` and npm global `update` commands | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md) |
+| `daynight` | `packages/daynight/` | Implemented TypeScript client command toolkit; `review`, npm global `update`, and Bash/zsh `completion` commands | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, typed API client, graph projection/layout and strict coverage implemented; task view and embedded delivery pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -19,8 +19,11 @@ session for each eligible PR. SQLite preserves initialization boundaries, review
 revisions and retry budgets. The group also provides configuration-only
 repository registration and a local persisted review listing. `update` manages
 the current npm global installation independently of review configuration and
-runtime. Controlled native-platform tests and live Copilot/GitHub acceptance
-provide separate evidence; live acceptance remains outstanding.
+runtime. `completion` generates native Bash and zsh scripts from the same command
+definitions used by parsing and help. Loaded scripts complete locally without
+starting Node on each Tab. Controlled native-platform tests and live
+Copilot/GitHub acceptance provide separate evidence; live acceptance remains
+outstanding.
 
 The server design covers repository-linked projects, project-scoped tasks,
 acyclic dependencies and dependency-gated task states through HTTP JSON APIs.
@@ -66,11 +69,42 @@ executables with real Git and SQLite. The self-update suite uses real npm and an
 isolated, task-local global prefix with a controlled HTTP registry. Neither suite
 changes the operator's installed CLI or requires live review credentials.
 
+Shell completion has a separate real-shell acceptance command. It requires
+Python 3 on a POSIX host, Bash 4.2, a modern Bash, and zsh. Linux hosts can prepare
+isolated shell executables from the repository root:
+
+```bash
+bash packages/daynight/scripts/prepare-completion-shells.sh
+source .tmp/shell-completion/environment.sh
+pnpm completion:acceptance
+```
+
+The preparation helper downloads a SHA-256-pinned GNU Bash 4.2 release and builds
+its executable in `.tmp/shell-completion/`. It requires standard build tools,
+`curl`, `sha256sum`, `tar` and `timeout`. It uses an existing zsh when available;
+otherwise it downloads Debian packages with `apt-get download` and extracts them
+locally with `dpkg-deb`. It installs no global packages. First-time preparation
+requires network access; subsequent runs reuse the local toolchains.
+
+On other POSIX hosts, or to select existing executables, set `DAYNIGHT_TEST_BASH42`
+to the Bash 4.2 executable before running `pnpm completion:acceptance`.
+`DAYNIGHT_TEST_BASH` and `DAYNIGHT_TEST_ZSH` select the other executables and default
+to `bash` and `zsh`. `DAYNIGHT_TEST_ZSH_ROOT` optionally selects an extracted zsh
+toolchain root. `DAYNIGHT_COMPLETION_EVIDENCE` optionally selects the JSON receipt
+path. The command builds the client and runs a Python PTY harness against actual
+Tab insertion in all three shells. It uses isolated startup files and task-local
+fixtures, with no user configuration, review credentials or installed CLI changes.
+A dedicated Ubuntu 24.04 CI job runs this suite separately from the native CLI
+matrix; its result belongs to the tested revision. The
+[completion design](docs/design/daynight-completion.md) owns its coverage and
+loading guarantees.
+
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
-Windows runners. The final `checks` job succeeds only when all platform jobs
-succeed. The Linux job also enforces package version increases before ordinary
-validation. A PR compares its complete source changes with its merge base and
-its package version with the event's target-branch revision. Main pushes compare
+Windows runners. The final `checks` job also requires the dedicated Linux shell
+completion job and the server and web jobs; all required jobs must succeed. The
+Linux job also enforces package version increases before ordinary validation. A
+PR compares its complete source changes with its merge base and its package
+version with the event's target-branch revision. Main pushes compare
 the full event before/after range. The checkout includes the required history.
 Native tool discovery records each command's resolved executable, launcher,
 timing, status and bounded output in `.tmp/validation-probes.json`. The `gh`
@@ -169,7 +203,8 @@ and embedding into the localhost service are tracked in the
 production build, controlled-fetch UI tests and an exact statement gate strictly
 above 90%. It independently enumerates all product TypeScript/TSX files and
 publishes raw counters plus a relative source manifest. `checks` requires web,
-Go and every native CLI platform; existing root CLI commands retain their scope.
+Go, every native CLI platform and the Linux shell completion job; existing root
+CLI commands retain their scope.
 
 ## Package versions
 
@@ -299,16 +334,57 @@ daynight review                     # Show review help
 daynight review run
 daynight review list                 # Also review ls
 daynight review add-repo <remote> [--path <path>]
+daynight completion                 # Show completion help
+daynight completion bash
+daynight completion zsh
 ```
 
-Groups and operations support `--help` and `-h`. Help and version do not resolve
-the user home, load review configuration, open SQLite or require review tools.
+Groups and operations show help when `--help` or `-h` is their sole argument.
+Help, version and completion generation do not resolve the user home, load review
+configuration, open SQLite or require review tools. `review add-repo` accepts one
+`--path <path>` before or after its remote; `--path=value` and `--` are invalid.
 Unknown commands and invalid arguments exit with status 2; operation failures
 exit with status 1 and retain their cause. The old `--daemon-review` and root
 `add-repo` forms are invalid. The
 [client design](docs/design/daynight.md) owns command composition and lazy loading;
 the [composition decision](.agents/notes/implemented/architecture/2026-10-20-client-command-composition.md)
 records module ownership and the preserved data layout.
+
+## Shell completion
+
+Bash 4.2 or newer and zsh have native completion scripts. Add this to `.bashrc`:
+
+```bash
+source <(daynight completion bash)
+```
+
+For zsh, load the script after the completion system is initialized in `.zshrc`:
+
+```zsh
+autoload -Uz compinit
+compinit
+source <(daynight completion zsh)
+```
+
+If the file already initializes `compinit`, add only the final line. Loading
+without `compinit` fails with a diagnostic. The client prints scripts to stdout
+and leaves startup-file changes to the operator. These outputs are designed for
+`source`; using the same output directly as an `fpath` autoload file is outside
+the loading contract.
+
+Completion suggests commands, nested operations, aliases, options, shell names
+and local directories for `review add-repo --path`. zsh also displays descriptions.
+The scripts run in the shell on each Tab without starting Node or reading review
+configuration, SQLite or the network. Directory suggestions preserve quoted and
+special-character paths; an uncreated target directory remains valid input.
+
+New shells generate definitions from the currently installed package. After an
+update, run the applicable `source` command again to refresh an existing shell.
+A saved generated script must be regenerated after updating. The
+[completion design](docs/design/daynight-completion.md) explains the shared grammar
+and shell integration; the
+[completion decision](.agents/notes/implemented/feature/2026-10-20-shell-completion.md)
+records compatibility and execution trade-offs.
 
 ## Review configuration and startup
 

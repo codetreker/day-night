@@ -1,6 +1,6 @@
 {
   "name": "@codetreker/daynight",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "A client command toolkit for development workflows",
   "repository": {
     "type": "git",
@@ -21,7 +21,8 @@
     "build": "node scripts/clean-dist.ts && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "pnpm run build && vitest run",
-    "acceptance": "pnpm run build && vitest run --config vitest.acceptance.config.ts"
+    "acceptance": "pnpm run build && vitest run --config vitest.acceptance.config.ts",
+    "completion:acceptance": "pnpm run build && python3 -u test/acceptance/shell-completion.py"
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",
