@@ -65,9 +65,26 @@ two usable debugger snapshots were in Go package initialization, before
 `github.com/briandowns/spinner.map.init.0`. These identify a startup phase, not
 defects in those packages. The three prepared first launches took 0.54, 0.62 and
 2.58 seconds including the read and hash; native execution took 68-136 ms.
-Debugger activity perturbed the baseline timing in this run, so the final
-implementation also requires a fresh-host comparison without debugger or
-initialization tracing.
+Debugger activity perturbed the baseline timing in this run.
+
+The final [untraced ten-host comparison](https://github.com/codetreker/daynight/actions/runs/39402757322)
+tested the historical collector and the implemented collector on five fresh
+hosts each. Both groups disabled the debugger and initialization tracing, used
+the same fixed process observations and retained real native version execution.
+Times below include resolution and all preparation, not only the child command:
+
+| Collector | Successful first launches | Median | Range |
+|---|---:|---:|---:|
+| Historical collector | 5/5 | 3818.19 ms | 3212.19-5947.25 ms |
+| Prepared collector | 5/5 | 603.16 ms | 546.40-971.57 ms |
+
+Prepared native execution took 76-103 ms; the actual child timeout was reduced
+to 9116-9570 ms after preparation. Every prepared receipt included the matching
+42,875,192-byte selected file and official SHA-256. Subsequent launches measured
+128.57-204.92 ms for the historical collector and 147.07-216.98 ms for the prepared
+collector, exposing the expected extra read cost on warm files. The median first
+launch improved by 84.2% within the stricter shared budget. Five samples per arm
+establish this observed improvement, not an upper bound on every future host.
 
 Windows [file caching](https://learn.microsoft.com/en-us/windows/win32/fileio/file-caching)
 supports the preparation mechanism, but does not guarantee residency of all
@@ -78,7 +95,7 @@ has no live stack capture, so its exact operating-system trigger remains unknown
 
 **Raise the deadline or retry failed probes.** These would change the accepted
 failure condition without reducing cold-start work. Preparation and execution
-instead consume the same existing total budget, and a failure remains a failure.
+consume one 10-second total budget, and a failure remains a failure.
 
 **Set `GH_PATH` or force UTC.** These remove real eager discovery work, but the
 native comparisons did not establish a useful startup improvement. The captured
