@@ -5,7 +5,96 @@ The [requirements](../spec/daynight-web.md) own W1–W12, the
 [task document](../design/daynight-web-tasks.md) records delivery status.
 This report owns observed validation and its practical limits.
 
-## Current local validation
+## Delivered source validation
+
+[PR #52](https://github.com/codetreker/daynight/pull/52) merged as
+`64b69a3ab864f99f6914b9217dbfbebde60345aa` at 2026-10-20 13:24:32 UTC after
+approval of exact head `8b5002863bb342953fa9bb034a6f5bdc655e03cf` and all seven
+required checks passed. [PR CI run 39428105688](https://github.com/codetreker/daynight/actions/runs/39428105688)
+tested clean GitHub merge `e3e9a23c7cebd0879e7fa6a77f068192420fb449`:
+`gitSha = githubSha`, `dirty: false`. Its tree
+`4ce8c72fd2b29e2207adbab966e22bc4a655c40d` equals the approved head tree;
+the merge parents are main `c19b064b094aae6634ca6d62e943a73d22008262` and that head.
+[Mainline run 39430138740](https://github.com/codetreker/daynight/actions/runs/39430138740)
+passed all seven checks on the actual merged commit, independently of the PR
+merge-ref validation.
+
+Hosted acceptance run `20261020131132-2980f501-ddd3-45b9-98ac-8b24966141f6`
+passed all 12 native and eight production-gateway scenarios on the first attempt,
+with no skips or retries. It passed all three graphs' five repetitions,
+independent 1,001-node/0-edge and 1,000-node/5,001-edge complete 409 refusals,
+full canonical-route/paint-piece geometry and phase checks, and the functional
+keyboard, narrow-layout and failure/recovery flows. Native, dev-ci and aggregate
+cleanup passed; the separate outer recovery passed and preserved the original
+receipt. Full graph counts, modal inertness, tracing and the 3,000ms/300ms budgets
+were retained.
+
+The browser was bundled Chromium 156.0.8078.4 (revision 1248) on Linux x64,
+Node 24.22.0, without an executable override. The native binary SHA-256 is
+`03e9bf17bd0cef1ae1835d61aae00b46edac94fdf763c201935b30bbab16a037`;
+the running production image is
+`sha256:8d494c463ec62e4762bdbf24e6f839c253c75d37fce0531453c3ffbc4333598c`.
+The archived [acceptance artifact](https://github.com/codetreker/daynight/actions/runs/39428105688/artifacts/12266069050)
+contains raw reports, screenshots, performance, CDP traces, image and cleanup
+receipts. The [coverage artifact](https://github.com/codetreker/daynight/actions/runs/39428105688/artifacts/12266848127)
+contains raw V8 counters and the exact source manifest: 716/722 statements across
+all 19 product files, strictly above 90%, with no product exclusions. The Go gate
+passed 307 tests and nine checker cases with raw 1153/1155 statements; all 12
+process scenarios, 19 child reaps, 12 schema removals and owned-session cleanup
+passed.
+
+| Dataset | Five opening times (ms) | Max layout/render (ms) | Max detail/zoom/pan (ms) |
+|---|---|---|---|
+| Chain, 1,000/999 | 484.7, 453.9, 455.1, 447.2, 436.0 | 234.1 / 248.9 | 55.5 / 13.3 / 39.0 |
+| Merge, 1,000/5,000 | 1320.0, 1143.4, 1259.4, 1156.9, 1143.3 | 933.4 / 421.6 | 95.4 / 64.5 / 48.8 |
+| Shared, 1,000/5,000 | 1454.2, 1493.4, 1506.8, 1469.9, 1385.3 | 861.1 / 721.4 | 190.0 / 50.9 / 41.4 |
+
+Display rounding does not affect the raw gate; column maxima may come from
+different repetitions. The five hosted shared traces confirm the preceding
+close-frame raster maxima of 29.864/29.600/22.004/29.129/28.159ms and commit
+waits no greater than 0.262ms. Whole-trace raster maxima stay at or below
+32.139ms. This establishes reduced raster work in the actual hosted product,
+not merely input scheduled after an unchanged long frame. Earlier failed hosted
+revisions and dirty local receipts below remain distinct evidence.
+
+### Direct-main production validation
+
+[Mainline run 39430138740](https://github.com/codetreker/daynight/actions/runs/39430138740)
+passed all six verification jobs and the aggregate on direct commit
+`64b69a3ab864f99f6914b9217dbfbebde60345aa`, with `gitSha = githubSha`,
+`dirty: false` and tree `4ce8c72fd2b29e2207adbab966e22bc4a655c40d` equal to the
+approved PR head tree. Acceptance run
+`20261020132552-8534b247-af52-4077-b48f-ef7f50f879a9` again passed all 12 native
+and eight production-gateway scenarios on their first attempt, without skips,
+retries, flaky results or unexpected failures. Both independent 409 limit
+refusals and every geometry/phase check passed. The browser remained bundled
+Chromium 156.0.8078.4 with `ci: true` and no executable override.
+
+The native binary SHA-256 is
+`9e7a84860b009e2586b852b485e5841430bbf00952a489de6f626be256b9b2cd`;
+the running production image is
+`sha256:2201d4edd2419e8f9ce4b24589b11062684a7dae7588f8e9c384a610b32f6047`.
+The [main acceptance artifact](https://github.com/codetreker/daynight/actions/runs/39430138740/artifacts/12267622859)
+contains all raw reports, 13 native and eight container PNG attachments,
+performance/traces, exact running-image identity and cleanup receipts.
+The [main coverage artifact](https://github.com/codetreker/daynight/actions/runs/39430138740/artifacts/12267962742)
+again records 716/722 statements across all 19 current product files. The direct-
+main Go gate records 1153/1155 statements and the complete 307-test/nine-checker
+and process-resource result in the [server report](daynight-server-acceptance.md).
+
+| Dataset | Max open (ms) | Max layout/render (ms) | Max detail/zoom/pan (ms) |
+|---|---|---|---|
+| Chain, 1,000/999 | 443.9 | 224.9 / 221.3 | 50.2 / 34.2 / 38.4 |
+| Merge, 1,000/5,000 | 1114.5 | 810.0 / 312.2 | 85.6 / 58.7 / 51.0 |
+| Shared, 1,000/5,000 | 1406.3 | 843.5 / 590.3 | 168.4 / 39.3 / 35.0 |
+
+All fifteen observations satisfy the unchanged budgets. Native, production
+container and overall cleanup passed; outer recovery separately passed with the
+native process absent and recorded Docker resources removed, preserving the
+original evidence. These results close W-T6 and the six-task dashboard delivery;
+they do not change the separate project/task CLI acceptance status.
+
+## Recorded local validation
 
 The dashed-paint source passed build/typechecking, 311 functional tests and 36
 Node tool tests with Node 24 and pnpm 10.34.5. The tool cases include the earlier
@@ -37,11 +126,11 @@ installed CLI suites and actual Bash 4.2/modern Bash/zsh completion acceptance;
 those historical observations do not establish a new hosted current-head result.
 
 The phase/trace diagnostic helper passed typechecking and five focused tests,
-included in the complete functional suite. The complete local run below predates those diagnostic fields; it remains
-valid renderer/workflow evidence, while the diagnostic source requires its own
-hosted result.
+included in the complete functional suite. The complete dashed-paint local run below includes those phase/trace fields.
+Earlier pre-diagnostic receipts retain their historical scope; the delivered
+source also passed the clean hosted run above.
 
-## Current dashed-paint local production result
+## Recorded dashed-paint local production result
 
 Run `20261020125755-d98c8daa-5d70-45e3-bba5-786459394568` passed all 12 native
 and eight production-gateway scenarios, every fixed graph's five repetitions,
@@ -73,8 +162,8 @@ The five actual product shared traces independently identify the preceding
 close frames: maximum raster tasks were 20.348/19.979/20.538/20.094/20.214ms and
 close-to-zoom commit waits were at most 0.289ms. Whole-trace raster maxima were
 below 37.8ms, so this observation does not depend on simply scheduling zoom after
-an unchanged second-long raster. Current-source hosted validation and approval
-remain required.
+an unchanged second-long raster. The separate hosted run above verifies the
+delivered clean source.
 
 ### Durable raster and visual proof
 
@@ -229,9 +318,9 @@ semantics and all original end-to-end gates remain required.
 
 The valid local static SVG matrix above remains local evidence. It does not
 override this hosted result. Pinned-engine evidence and controlled replay identify long native dashed-body
-paint as the expensive primitive. The implemented decomposition passes complete
-local product acceptance; successful current-source hosted validation remains
-required, and no infrastructure cause or hosted delivery is claimed. Current-source successful hosted validation remains required.
+paint as the expensive primitive. The implemented decomposition passed complete
+local and clean hosted product acceptance. The failed revisions remain failed;
+no infrastructure cause is claimed for those rendering failures.
 
 ### Diagnostic evidence format
 
@@ -248,8 +337,8 @@ GC and User Timing events without CPU sampling or CDP screenshot capture. Scenar
 PNGs remain separate evidence. Diagnostic writes, trace completion and resource
 closure propagate errors while preserving measurement failures. All total
 measurements, graph/node/edge readiness, five repetitions and original thresholds
-remain unchanged. These additions collect evidence for the unresolved cause;
-no trace-based diagnosis is claimed before observing the new source's artifacts.
+remain unchanged. These diagnostics establish the recorded raster/commit cause
+and verify the delivered decomposition without subtracting prior-frame backlog.
 
 ### Earlier reactive-edge hosted failure
 
@@ -278,8 +367,8 @@ Current-source functional/geometry checks must verify portal alignment across
 actual pan, zoom and fit, every visible Dagre point and edge count, and node
 interaction. All three fixed graphs must still complete five openings under
 3,000ms and every detail/zoom/pan measurement under 300ms. The complete local
-run above passes those gates; the later static SVG hosted failure shows that
-current-source hosted performance remains unresolved.
+local and hosted dashed-paint runs above pass those gates. The earlier static
+SVG hosted failures remain evidence for the native-dash revisions they tested.
 The earlier passing receipts below are historical pre-static-SVG observations.
 
 ## Historical pre-static-SVG production-browser result
@@ -337,8 +426,8 @@ layout/render times and independent limit results.
 These are local fixed-topology observations under the stated browser/environment.
 API-generated UUIDs may change layout tie ordering between isomorphic runs.
 Normalized rank spans can also change layout cost; this matrix does not establish
-the same latency for arbitrary DAGs. Clean hosted source/image and performance
-receipts remain required before delivery. The separate real-Docker fault matrix
+the same latency for arbitrary DAGs. The delivered-source hosted result above
+supplies separate source/image and performance receipts. The real-Docker fault matrix
 below supplies startup/test-failure, cancellation and cleanup-failure evidence
 beyond the normal browser run and controlled lifecycle fixtures.
 
@@ -357,10 +446,10 @@ suite again through the actual dev-ci production-image gateway. Native acceptanc
 requires 12 stable scenarios; container acceptance requires the same eight
 functional scenarios. Capacity runs only against the native production process.
 Fixtures, including capacity datasets, use the real project/task write APIs.
-Page requests remain GET/HEAD. The current static SVG local run above passes this
-command; current-source hosted acceptance remains pending.
+Page requests remain GET/HEAD. Both the recorded dashed-paint local run and
+the delivered-source clean hosted run above pass this command.
 
-| Requirement | Production evidence and hosted requirement |
+| Requirement | Validated production evidence |
 |---|---|
 | W1 | `project-list`: more than 50 projects, cursor requests, unique cards and navigation to the later-page project |
 | W2 | `project-graph` and `deep-links`: project entry, direct HTML reload and browser history |
@@ -421,10 +510,10 @@ Recovery writes separate `recovery.json` files and preserves the original result
 A successful local hard-SIGKILL probe confirmed that recorded Chromium processes
 and their owned project-local profile were removed after the Playwright CLI was
 killed. Recovery of a failed exploratory acceptance run also passed while keeping
-its failed original receipt. The complete successful run above additionally confirmed cleanup and outer
-recovery. None of these local observations establishes a clean hosted source
-identity; failed exploratory results stay failed and are not reused as passing
-capacity receipts.
+its failed original receipt. The complete successful local and hosted runs above
+additionally confirmed cleanup and outer recovery. Local probes do not establish
+clean hosted source identity; failed exploratory results stay failed and are not
+reused as passing capacity receipts.
 
 ## Recorded real Docker deployment-fault matrix
 
@@ -552,11 +641,11 @@ prove the corresponding real Docker failure paths.
 Local run manifests, image/port/resource identities and concurrent-isolation
 receipts are temporary evidence under `.tmp/`; they are not stable source or CI
 artifacts. The complete W-T6 local production run above extends this scope with
-browser and performance results. Delivery still requires matching clean hosted
-source/image identities and archived browser, failure/cleanup and performance
-receipts.
+browser and performance results. The delivered PR validation above supplies
+matching clean hosted source/image identities and archived browser, cleanup and
+performance receipts.
 
-## Required delivery evidence
+## Delivery evidence
 
 Local worktree checks do not establish a clean hosted source identity. The
 required web job publishes raw `coverage-final.json` and `summary.json`; its
@@ -565,16 +654,15 @@ Go retains its independent raw-profile gate and native CLI validation remains
 required by the aggregate check.
 
 Embedded Go UI, localhost integration, the isolated dev-ci environment and the
-production-browser harness are implemented. Earlier local browser/capacity and
-real-Docker deployment-fault evidence remains preserved. The static SVG renderer
-passes its new complete local production/performance run and still requires the
-delivery PR's current-source clean hosted evidence, real required-check results,
-independent review and approval. Earlier hosted zoom failures remain preserved; the current dashed-paint source
-still requires successful hosted verification before completion. The
-W-T4 preview and W-T5 HTTP smoke observations retain their historical scope; the
-pre-static-SVG local result supplies the separate historical production-browser
-measurements.
+production-browser harness are delivered in PR #52. The approved source passed
+all six verification jobs and the required aggregate. The direct-main workflow
+also passed every required check on the merged commit. W-T1–W-T6 are complete
+in the task document.
 
-The required aggregate retains every native CLI platform, the dedicated Linux
-shell completion job, Go and web. Local success does not authorize describing
-W-T6 as merged or the full delivery as complete.
+Earlier hosted rendering failures, dirty local production/capacity receipts and
+the separate real-Docker deployment-fault matrix retain their actual source and
+scope. W-T4 preview and W-T5 HTTP smoke evidence remain historical observations;
+they are not substitutes for the delivered-source full hosted result. The
+required aggregate retains every native CLI platform, dedicated Linux shell
+completion, Go and web. Fixed-topology success does not establish arbitrary-DAG
+latency or the separate project/task CLI's remaining acceptance.

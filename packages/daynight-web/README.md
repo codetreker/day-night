@@ -7,9 +7,8 @@ The project dashboard, task canvas and detail drawer are embedded into the Go
 server for single-origin delivery. The [localhost deployment](../../deployment/localhost/README.md)
 starts the full UI/API/database stack; [dev-ci](../../deployment/dev-ci/README.md)
 provides an isolated instance of the same production build. Production browser
-workflows and the fixed-capacity matrix pass locally with the long-dashed paint
-fix. Earlier hosted failures and real Docker lifecycle evidence are retained;
-current-source clean CI and delivery remain tracked in the
+workflows and the fixed-capacity matrix pass in clean hosted CI with the
+long-dashed paint fix. PR #52 is merged and direct-main checks passed; completion is recorded in the
 [implementation tasks](../../docs/design/daynight-web-tasks.md).
 
 The [requirements](../../docs/spec/daynight-web.md) own visible behavior and the
@@ -93,8 +92,8 @@ HTTP/container smoke checks and concurrent dev-ci isolation. The earlier rendere
 full native/container browser workflows passed locally. The static SVG renderer
 also passes complete local production/performance acceptance after that hosted
 zoom failure. Later traces identified long native dashed-path raster work; the
-local-coordinate paint fix passes complete local acceptance and still requires
-successful current-source CI. The report keeps these source identities distinct. A separate local real-Docker matrix
+local-coordinate paint fix passes complete local and clean hosted acceptance.
+The report records the merged PR and keeps these source identities distinct. A separate local real-Docker matrix
 passed startup failure, callback failure, cancellation and cleanup failure/recovery
 while an independent sentinel stack remained healthy. CI repeats the 12 controlled
 lifecycle fixtures and full production-browser suite; that manual fault matrix
@@ -146,9 +145,11 @@ coverage. The static SVG renderer's complete local run passed 12 native scenario
 eight container scenarios and all three graphs’ five timing repetitions, including
 independent size refusals, actual SVG alignment across pan/zoom/root changes and
 confirmed cleanup/recovery. The current dashed-paint run's largest local opening was 1875.1ms; every local
-detail/zoom/pan measurement was below 300ms. Current-source hosted CI remains
-required. Local receipts retain their dirty/browser identity
-and do not establish clean hosted delivery results.
+detail/zoom/pan measurement was below 300ms. The clean hosted PR #52 run also
+passed every scenario and repetition: maximum openings were 484.7ms, 1320.0ms
+and 1506.8ms for chain, merge and shared graphs. All local feedback was below
+300ms, and original cleanup plus outer recovery passed. The report records the
+clean source, binary and image identities separately from local dirty receipts.
 
 Capacity receipts also retain per-interaction `feedbackDiagnostics`: input,
 capture, first ready condition, first/second frame and final end timestamps,

@@ -96,10 +96,23 @@ W-T5 orchestration observations do not claim the full W-T6 production-browser
 workflow or boundary-size performance gate. The subsequent pre-static-SVG W-T6
 local run passed both production targets and the fixed capacity matrix. After
 hosted zoom-budget failures, the local-coordinate dashed-paint renderer passed a
-new complete local run. Current-source hosted acceptance remains required; source identities and
-results are recorded in the web report. The
+new complete local run, followed by clean hosted production/performance
+acceptance in merged PR #52. Source identities and results are recorded in the
+web report. The
 [web evidence report](daynight-web-acceptance.md) owns the deployment proof's
 scope and remaining requirements.
+
+The dashboard delivery's [PR CI](https://github.com/codetreker/daynight/actions/runs/39428105688)
+also passed the full Go gate on clean GitHub merge
+`e3e9a23c7cebd0879e7fa6a77f068192420fb449`, whose tree equals approved head
+`8b5002863bb342953fa9bb034a6f5bdc655e03cf`. It passed 307 tests, nine checker
+cases and raw 1153/1155 statements, including all 12 process scenarios, 19 reaped
+children, 12 removed schemas and no remaining owned sessions. The direct-main
+[Go job](https://github.com/codetreker/daynight/actions/runs/39430138740/job/118652733103)
+repeated the full gate successfully on clean `64b69a3ab864f99f6914b9217dbfbebde60345aa`;
+its [artifact](https://github.com/codetreker/daynight/actions/runs/39430138740/artifacts/12266724764)
+retains the raw profile and process evidence. The complete mainline workflow
+passed all seven checks.
 
 ## Requirement evidence
 
@@ -166,9 +179,9 @@ process ownership. Authenticated remote deployment, task execution and PR
 integration remain outside the confirmed service contract. The embedded read-only
 UI is implemented. Earlier local production-browser, fixed-capacity and actual
 deployment-fault evidence is preserved. The local-coordinate dashed-paint renderer
-passes its new complete local production/performance run; W-T6 in the separate dashboard task
-document still requires successful current-source clean hosted
-source/image results and delivery approval. The task document
+passes complete local and clean hosted production/performance acceptance.
+PR #52 is merged and all direct-main checks passed; the separate dashboard task
+document records W-T6 as complete. The task document
 tracks two nonblocking test-fixture improvements: earlier setup cleanup
 registration and a stronger graceful-signal observation barrier. Neither changes
 the implemented business behavior or the current successful gate's evidence.

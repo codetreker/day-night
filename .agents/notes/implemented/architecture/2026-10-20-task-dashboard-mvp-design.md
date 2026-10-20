@@ -29,8 +29,9 @@ and fixed-dataset performance evidence is tracked by the
 The earlier renderer passed local targets but failed the hosted zoom budget. The
 static SVG edge layer needed a further
 [long-dashed paint fix](../bug-fix/2026-10-20-long-dashed-dependency-paint.md), which
-passes complete local targets and the fixed capacity matrix. Actual local deployment-fault evidence remains separate and predates the
-SVG update; W-T6 still requires successful current-source CI and delivery approval.
+passes complete local and clean hosted targets with the fixed capacity matrix.
+PR #52 is merged after approval and all required checks; its direct-main checks passed. Actual local deployment-fault evidence remains separate and predates
+the SVG update.
 
 Use a separate React/TypeScript/Vite package with React Flow and Dagre. Serve
 its built assets from the existing loopback Go origin, embedded into the binary.
@@ -128,7 +129,8 @@ snapshot freshness are necessary for an honest graph. The protective graph
 limits are product constraints, not measured capacity claims. The single local 1,000-node chain probe does not establish the boundary-size
 performance requirements. The earlier renderer passed the local matrix, but a
 hosted zoom failure required a new full matrix for the static SVG renderer. That
-new local matrix passes; current-source hosted verification remains required.
+local-coordinate paint matrix passes locally and in clean hosted CI; the
+acceptance report records exact delivered-source evidence.
 Fixed-topology results do not promise arbitrary-DAG latency.
 
 The existing [server task design](2026-10-19-daynight-server-task-design.md)

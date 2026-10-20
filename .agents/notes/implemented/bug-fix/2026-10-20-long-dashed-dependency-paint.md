@@ -107,7 +107,12 @@ antialiasing region; this is not byte-identical output. These controlled results
 are distinct from the final helper's verification. The implemented helper now
 passes its complete local native/container workflow, all capacity repetitions,
 independent arc/phase/CTM checks and cleanup. Actual product traces confirm the
-reduced preceding raster work. Clean current-source hosted performance and
-approval remain required. Pinned-engine evidence explains the mechanism; future
+reduced preceding raster work. Clean hosted PR CI also passed all 12 native
+and eight production-gateway scenarios, all fifteen performance repetitions,
+geometry/phase, limits and cleanup/recovery. The five hosted close-frame raster
+maxima are 22.004–29.864ms, with commit waits at most 0.262ms; whole-trace raster
+maxima are at most 32.139ms. PR #52 merged after approval and all required checks;
+its direct-main checks passed. The linked acceptance report owns exact
+source and artifact identities. Pinned-engine evidence explains the mechanism; future
 browser changes require renewed raster and visual validation without relaxing
 product budgets.

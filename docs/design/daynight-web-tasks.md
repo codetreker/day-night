@@ -1,6 +1,6 @@
 # 项目与任务看板实现任务
 
-状态：W-T1–W-T5 已合并；W-T6 已定位并修复长虚线 raster 瓶颈，当前源码完整本地生产与性能通过，等待真实 CI、review 与合并。
+状态：W-T1–W-T6 全部完成。PR #52 已在干净 hosted CI 与 approval 后合并，主线全部七项检查通过。
 
 本文拥有任务编号、状态、依赖、文件归属和完成条件。
 [需求](../spec/daynight-web.md)拥有 W1–W12 的行为与验收要求，
@@ -16,7 +16,7 @@
 | [W-T3](#w-t3) 图投影与横向布局 | 已完成 | W-T1、W-T2 | 纯数据校验、根投影、共享与外部前置、LR 布局 | W3、W4、W5、W6、W7、W11 |
 | [W-T4](#w-t4) 项目任务看板 | 已完成 | W-T1、W-T2、W-T3 | 快照刷新、统计、根条目、只读画布、详情侧栏 | W2–W9、W12 |
 | [W-T5](#w-t5) localhost 与 dev-ci 交付 | 已完成 | W-T4 | 现有 localhost 完整启动、静态资源内嵌、隔离 dev-ci deployment | W2、W9、W10、W11 |
-| [W-T6](#w-t6) 生产浏览器与 CI 验收 | 已实现，本地通过，待 CI | W-T5 | 实际二进制及网关、性能、覆盖率证据和汇总门禁 | W1–W12 |
+| [W-T6](#w-t6) 生产浏览器与 CI 验收 | 已完成 | W-T5 | 实际二进制及网关、性能、覆盖率证据和汇总门禁 | W1–W12 |
 
 ```mermaid
 flowchart LR
@@ -285,7 +285,7 @@ localhost 的生产 Dockerfile 和 nginx 配置，完成独立资源与生命周
 <a id="w-t6"></a>
 ## W-T6：生产浏览器与 CI 验收
 
-状态：已实现，当前长虚线绘制源码的完整本地验收通过，等待真实 CI、review 与合并。长斜线原生 dash 生成造成前一侧栏关闭帧的 raster/commit 阻塞；当前分解保留全部图与视觉语义，门槛不变。全部历史 hosted 失败与本地回执保留。前置：W-T5。
+状态：已完成。[PR #52](https://github.com/codetreker/daynight/pull/52) 已于 2026-10-20 13:24:32 UTC 在精确 head 的 approval 与七项 CI 检查通过后合并，主线全部检查通过。长斜线原生 dash 生成造成前一侧栏关闭帧的 raster/commit 阻塞；当前分解保留全部图与视觉语义，门槛不变。全部历史 hosted 失败与本地回执保留。前置：W-T5。
 
 已实现：`pnpm web:acceptance` 构建真实 UI 和 Go 二进制，在专用 PostgreSQL 上
 运行原生进程浏览器用例，再经 dev-ci gateway 运行相同的功能用例。固定图集性能
@@ -316,14 +316,22 @@ SIGTERM 返回 143/cancelled 并清理进程组；只读 holder 阻止本次卷�
 首轮矩阵的额外审计将 Docker 小写 missing-object 响应误判为清理失败，原回执
 保留；修正该临时探针后完整第二轮与独立审计通过，产品 runner 未改。此手工矩阵
 与 CI 的 12 项受控 lifecycle fixture/完整真实浏览器分别记录。部署生命周期代码
-未随 SVG 更新变化，该矩阵不宣称测试当前 UI 镜像。当前渲染器已有独立完整本地
-通过回执，仍需交付 PR 当前源码的真实 CI 与 approval，不能标记
-已合并。
+未随 SVG 更新变化，该矩阵不宣称测试当前 UI 镜像。当前渲染器另有完整本地与干净 hosted 通过回执，PR #52 已合并；
+[主线检查](https://github.com/codetreker/daynight/actions/runs/39430138740)全部七项通过，
+验证干净 merge commit `64b69a3`。主线再次完整通过 12 项原生和 8 项生产网关
+场景、十五次性能及独立超限，web/Go 原始覆盖率仍为 716/722 和 1153/1155，
+清理和外层恢复均通过。
 
 诊断工具保留每次交互的输入/capture/首次条件/帧/end 时间点及阶段差值，逐次归档
 CDP timeline/frame/GC trace；总计时、完整图就绪和 3,000ms/300ms 门槛不变。
-诊断 helper 的 5 项定向测试已纳入完整功能测试；包含
-诊断的新源码仍需真实 CI 证据。
+诊断 helper 的 5 项定向测试已纳入完整功能测试，包含诊断的源码也已通过真实 CI。
+
+[PR 检查](https://github.com/codetreker/daynight/actions/runs/39428105688)验证干净
+GitHub merge `e3e9a23`，其 tree 与获批 head `8b500286` 相同。12 项原生及
+8 项生产网关场景均首次通过，无跳过，全部十五次性能、独立超限、几何/相位与
+清理/外层恢复通过；web 原始覆盖率 716/722，Go 为 1153/1155。三图最大
+open 为 484.7/1320.0/1506.8ms，详情、缩放及平移均低于 300ms。
+精确源码、二进制、镜像、产物及完整指标由验收报告拥有。
 
 ### 文件归属与范围
 
