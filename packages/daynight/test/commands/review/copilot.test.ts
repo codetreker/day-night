@@ -1,5 +1,5 @@
 import path from "node:path";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCopilotRunner } from "../../../src/commands/review/adapters/copilot.js";
 import { createProcessSupervisor } from "../../../src/commands/review/processes.js";
@@ -7,6 +7,7 @@ import type { CopilotRunOptions, CopilotRunnerOptions } from "../../../src/comma
 import type { PreparedWorktree } from "../../../src/commands/review/adapters/worktrees.js";
 import { resolveReviewPaths } from "../../../src/commands/review/paths.js";
 import { openStore } from "../../../src/commands/review/store.js";
+import type { PreparedReviewSkill } from "../../../src/commands/review/skill.js";
 import type { Store } from "../../../src/commands/review/store.js";
 
 const fixtures = path.resolve(import.meta.dirname, "../../../../../.tmp/copilot-tests");
@@ -18,11 +19,33 @@ const fixtureSource = `import path from 'node:path';
 import {mkdirSync, writeFileSync} from 'node:fs';
 let prompt=''; for await(const chunk of process.stdin) prompt+=chunk;
 const args=process.argv.slice(2);
+const pluginRoot=args.find(arg=>arg.startsWith('--plugin-dir=')).slice('--plugin-dir='.length);
+if(args.includes('skill')&&args.includes('list')) {
+ const discovery=process.env.FIXTURE_DISCOVERY;
+ writeFileSync(process.env.FIXTURE_REPORT+'.discovery',JSON.stringify({args,prompt,cwd:process.cwd(),pid:process.pid,pluginRoot,skills:process.env.COPILOT_SKILLS_DIRS}));
+ if(discovery==='hang') {setInterval(()=>{},1000);await new Promise(()=>{});}
+ if(discovery==='delay') await new Promise(resolve=>setTimeout(resolve,150));
+ if(discovery==='descendant') {
+   const {spawn}=await import('node:child_process');
+   spawn(process.execPath,['-e',"const fs=require('node:fs');setInterval(()=>fs.writeFileSync(process.argv[1],String(Date.now())),10);",process.env.FIXTURE_REPORT+'.leaf'],{stdio:'ignore'});
+   await new Promise(resolve=>setTimeout(resolve,100));
+ }
+ const entry={name:'daynight-review',source:'plugin',enabled:discovery!=='disabled',path:discovery==='shadow'?process.cwd():path.join(pluginRoot,'skills','daynight-review')};
+ let output=JSON.stringify(discovery==='missing'?[]:[entry]);
+ if(discovery==='malformed') output='{invalid';
+ if(discovery==='duplicate') output=JSON.stringify([entry,entry]);
+ if(discovery==='oversized') output='x'.repeat(200000);
+ if(discovery==='marker') output='PR 101 Review Completed\\n';
+ if(discovery==='invalid-utf8') output=Buffer.from([0xc3]);
+ if(discovery==='bom') output='\ufeff'+output;
+ process.stderr.write('skill diagnostics');
+ await new Promise(resolve=>process.stdout.end(output,resolve));process.exit(discovery==='nonzero'?7:0);
+}
 const id=args.find(x=>x.startsWith('--session-id=')||x.startsWith('--resume=')).split('=')[1];
 const mode=process.env.FIXTURE_MODE;
 const session=path.join(process.env.COPILOT_HOME,'session-state',id);
 if(mode!=='no-history') {mkdirSync(session,{recursive:true});writeFileSync(path.join(session,'opaque.jsonl'),'not valid JSONL');}
-writeFileSync(process.env.FIXTURE_REPORT,JSON.stringify({args,prompt,cwd:process.cwd(),env:Object.fromEntries(['COPILOT_HOME','COPILOT_CACHE_HOME','TMPDIR','TMP','TEMP','HOME','GH_CONFIG_DIR','GIT_DIR','GIT_WORK_TREE','GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0','GIT_CONFIG_KEY_99','GIT_CONFIG_PARAMETERS','GIT_TRACE','GIT_CURL_VERBOSE','GIT_NO_REPLACE_OBJECTS','GIT_GRAFT_FILE','GH_TOKEN','COPILOT_GITHUB_TOKEN'].map(k=>[k,process.env[k]]))}));
+writeFileSync(process.env.FIXTURE_REPORT,JSON.stringify({args,prompt,cwd:process.cwd(),env:Object.fromEntries(['COPILOT_SKILLS_DIRS','copilot_skills_dirs','COPILOT_HOME','COPILOT_CACHE_HOME','TMPDIR','TMP','TEMP','HOME','GH_CONFIG_DIR','GIT_DIR','GIT_WORK_TREE','GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0','GIT_CONFIG_KEY_99','GIT_CONFIG_PARAMETERS','GIT_TRACE','GIT_CURL_VERBOSE','GIT_NO_REPLACE_OBJECTS','GIT_GRAFT_FILE','GH_TOKEN','COPILOT_GITHUB_TOKEN'].map(k=>[k,process.env[k]]))}));
 const marker='PR 101 Review Completed';
 if(mode==='hang') {process.stdout.write(marker+'\\n');setInterval(()=>{},1000);}
 else if(mode==='stderr') process.stderr.write(marker+'\\n');
@@ -50,7 +73,7 @@ if(mode==='nonzero') process.exitCode=7;
 
 const fixture = () => {
   mkdirSync(fixtures, { recursive: true });
-  const directory = mkdtempSync(path.join(fixtures, "Copilot 中文 "));
+  const directory = mkdtempSync(path.join(fixtures, "Copilot, 中文 "));
   directories.push(directory);
   const paths = resolveReviewPaths(path.join(directory, "home"));
   mkdirSync(paths.stateDirectory, { recursive: true });
@@ -59,6 +82,16 @@ const fixture = () => {
   const script = path.join(directory, "agent fixture.mjs");
   writeFileSync(script, fixtureSource);
   const report = path.join(directory, "report.json");
+  const skillDirectory = path.join(directory, "plugin, root", "skills", "daynight-review");
+  mkdirSync(skillDirectory, { recursive: true });
+  const skill: PreparedReviewSkill = { name: "daynight-review", digest: "a".repeat(64), rootDirectory: path.dirname(path.dirname(skillDirectory)), directory: skillDirectory, entrypoint: path.join(skillDirectory, "SKILL.md") };
+  writeFileSync(skill.entrypoint, "fixture skill");
+  const supervise = (input: Partial<CopilotRunOptions> = {}): CopilotRunOptions => {
+    const supervisor = createProcessSupervisor({ graceMs: 500 });
+    return { ...input, onProcess: (child, attempt) => { if (input.excludeProcess === undefined) supervisor.onProcess(child, attempt); input.onProcess?.(child, attempt); },
+      stopProcess: input.stopProcess === undefined ? supervisor.stop : input.stopProcess,
+      excludeProcess: input.excludeProcess === undefined ? supervisor.exclude : input.excludeProcess };
+  };
   const store = openStore(paths.databaseFile);
   stores.add(store);
   const repository = { host: "github.com", githubId: "42" };
@@ -72,16 +105,16 @@ const fixture = () => {
   const worktree: PreparedWorktree = { kind: "prepared", path: worktreePath, headSha: "a".repeat(40), baseSha: "b".repeat(40), mergeBaseSha: "c".repeat(40),
     gitEnvironment: { GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: path.join(directory, "empty-graft"), GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "core.sparseCheckout", GIT_CONFIG_VALUE_0: "false" } };
   const sessionDirectory = path.join(paths.copilotDirectory, "session-state", uuid(500));
-  const run = (mode = "success", overrides: Partial<CopilotRunnerOptions> = {}, input: CopilotRunOptions = {}) => createCopilotRunner({
-    paths, processOwner: uuid(700), timeoutMs: 10_000, terminationGraceMs: 100, now: () => 10,
+  const run = (mode = "success", overrides: Partial<CopilotRunnerOptions> = {}, input: Partial<CopilotRunOptions> = {}) => createCopilotRunner({
+    skill, paths, processOwner: uuid(700), timeoutMs: 10_000, terminationGraceMs: 100, now: () => 10,
     command: { file: process.execPath, args: [script] }, environment: { ...process.env, FIXTURE_REPORT: report, FIXTURE_MODE: mode }, ...overrides,
-  }).run(store, review.id, worktree, input);
+  }).run(store, review.id, worktree, supervise(input));
   const retry = () => {
     const running = store.getReview(review.id)!;
     store.retryReview({ reviewId: review.id, attempt: running.attemptCount }, proof, { error: "Incomplete attempt", retryAt: 20 }, 20);
     return store.reserveReview(pr, { reviewId: uuid(2), sessionId: uuid(999), maxAttempts: 3 }, 20)!;
   };
-  return { directory, paths, script, report, store, repository, pr, review, worktree, sessionDirectory, run, retry };
+  return { directory, skill, supervise, paths, script, report, store, repository, pr, review, worktree, sessionDirectory, run, retry };
 };
 
 afterEach(() => {
@@ -104,14 +137,17 @@ describe("Copilot persisted sessions and direct attempts", () => {
     const inherited = Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toUpperCase() !== "PATH"));
     const environment = { ...inherited, PATH: `${tools}${path.delimiter}${process.env.PATH!}`, FIXTURE_NODE: process.execPath, FIXTURE_SCRIPT: f.script, FIXTURE_REPORT: f.report };
     const previous = { id: uuid(99), revision: 2, headSha: "d".repeat(40), baseRef: 'branch $(literal) & | %PATH% "quote"' };
-    const outcome = await createCopilotRunner({ paths: f.paths, processOwner: uuid(700), timeoutMs: 10_000, environment, now: () => 10 })
-      .run(f.store, f.review.id, f.worktree, { previousReview: previous });
+    const outcome = await createCopilotRunner({ skill: f.skill, paths: f.paths, processOwner: uuid(700), timeoutMs: 10_000, environment, now: () => 10 })
+      .run(f.store, f.review.id, f.worktree, f.supervise({ previousReview: previous }));
     expect(outcome).toMatchObject({ completed: true, directProcessClosed: true, captureComplete: true, errors: [] });
     const report = JSON.parse(readFileSync(f.report, "utf8")) as { args: string[]; prompt: string; cwd: string };
     expect(realpathSync(report.cwd)).toBe(realpathSync(f.worktree.path));
-    expect(report.args).toEqual(["-C", f.worktree.path, `--session-id=${uuid(500)}`, "-s", "--output-format", "text", "--stream", "on", "--no-color",
+    expect(report.args).toEqual(["-C", f.worktree.path, `--plugin-dir=${f.skill.rootDirectory}`, `--session-id=${uuid(500)}`, "-s", "--output-format", "text", "--stream", "on", "--no-color",
       "--no-ask-user", "--no-auto-update", "--allow-all-tools", "--log-dir", path.dirname(outcome.stdoutLogPath)]);
     expect(report.prompt).toContain(JSON.stringify(previous));
+    expect(report.prompt).toContain("explicitly invoke /daynight-review");
+    expect(report.prompt).toContain("even when resumed conversation history already contains an older skill");
+    expect(report.prompt).toContain(`Daynight skill bundle: ${JSON.stringify({ name: f.skill.name, digest: f.skill.digest, entrypoint: f.skill.entrypoint })}`);
     expect(report.prompt).toContain(f.worktree.headSha);
     expect(report.prompt).toContain("\nPR 101 Review Completed\n");
     expect(report.args.join(" ")).not.toContain("$(literal)");
@@ -136,7 +172,7 @@ describe("Copilot persisted sessions and direct attempts", () => {
   it("passes immutable review context over stdin and preserves auth while isolating Git and runtime paths", async () => {
     const f = fixture();
     const outcome = await f.run("success", { environment: { ...process.env, FIXTURE_REPORT: f.report,
-      HOME: "original-home", GH_CONFIG_DIR: "original-gh-config", GH_TOKEN: "fixture-secret", COPILOT_GITHUB_TOKEN: "copilot-fixture-secret",
+      COPILOT_SKILLS_DIRS: "unexpected,inherited", copilot_skills_dirs: "another,inherited", HOME: "original-home", GH_CONFIG_DIR: "original-gh-config", GH_TOKEN: "fixture-secret", COPILOT_GITHUB_TOKEN: "copilot-fixture-secret",
       GIT_DIR: "wrong-repo", GIT_WORK_TREE: "wrong-worktree", GIT_CONFIG_COUNT: "100", GIT_CONFIG_KEY_99: "dangerous", GIT_CONFIG_PARAMETERS: "wrong", GIT_TRACE: "1", GIT_CURL_VERBOSE: "1" } },
     { previousReview: { id: uuid(99), revision: 2, headSha: "d".repeat(40), baseRef: "previous $(literal) & | %PATH% \"quote\"" } });
     expect(outcome.completed).toBe(true);
@@ -156,7 +192,7 @@ describe("Copilot persisted sessions and direct attempts", () => {
     expect(report.env).toMatchObject({ HOME: "original-home", GH_CONFIG_DIR: "original-gh-config", GH_TOKEN: "fixture-secret", COPILOT_GITHUB_TOKEN: "copilot-fixture-secret",
       COPILOT_HOME: f.paths.copilotDirectory, COPILOT_CACHE_HOME: f.paths.cacheDirectory, TMPDIR: f.paths.temporaryDirectory,
       GIT_NO_REPLACE_OBJECTS: "1", GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "core.sparseCheckout", GIT_CONFIG_VALUE_0: "false" });
-    for (const name of ["GIT_DIR", "GIT_WORK_TREE", "GIT_CONFIG_KEY_99", "GIT_CONFIG_PARAMETERS", "GIT_TRACE", "GIT_CURL_VERBOSE"]) expect(report.env).not.toHaveProperty(name);
+    for (const name of ["COPILOT_SKILLS_DIRS", "copilot_skills_dirs", "GIT_DIR", "GIT_WORK_TREE", "GIT_CONFIG_KEY_99", "GIT_CONFIG_PARAMETERS", "GIT_TRACE", "GIT_CURL_VERBOSE"]) expect(report.env).not.toHaveProperty(name);
     expect(report.args.join(" ")).not.toContain("fixture-secret");
     expect(report.prompt).not.toContain("fixture-secret");
   });
@@ -192,9 +228,9 @@ describe("Copilot persisted sessions and direct attempts", () => {
     f.store.retryReview(first.attempt, proof, { error: "Old target", retryAt: 20 }, 20);
     const next = f.store.reserveReview(f.pr, { reviewId: uuid(2), sessionId: uuid(999), maxAttempts: 3 }, 20)!;
     f.store.pinReviewBase(next.id, "e".repeat(40), 21);
-    const outcome = await createCopilotRunner({ paths: f.paths, processOwner: uuid(700), timeoutMs: 10_000, command: { file: process.execPath, args: [f.script] },
+    const outcome = await createCopilotRunner({ skill: f.skill, paths: f.paths, processOwner: uuid(700), timeoutMs: 10_000, command: { file: process.execPath, args: [f.script] },
       environment: { ...process.env, FIXTURE_REPORT: f.report }, now: () => 30 }).run(f.store, next.id,
-    { ...f.worktree, headSha: "d".repeat(40), baseSha: "e".repeat(40) }, { previousReview: previous });
+    { ...f.worktree, headSha: "d".repeat(40), baseSha: "e".repeat(40) }, f.supervise({ previousReview: previous }));
     expect(outcome).toMatchObject({ completed: true, sessionMode: "resume", sessionId: uuid(500), attempt: { reviewId: next.id, attempt: 1 } });
     const report = JSON.parse(readFileSync(f.report, "utf8")) as { prompt: string };
     expect(report.prompt).toContain(f.review.id);
@@ -215,7 +251,7 @@ describe("Copilot persisted sessions and direct attempts", () => {
     mkdirSync(path.dirname(f.sessionDirectory), { recursive: true });
     writeFileSync(f.sessionDirectory, "not history");
     await expect(f.run()).rejects.toThrow("must be a directory");
-    await expect(createCopilotRunner({ paths: f.paths, processOwner: uuid(700), timeoutMs: 100 }).run(f.store, f.review.id, { ...f.worktree, headSha: "wrong" })).rejects.toThrow("does not match persisted");
+    await expect(createCopilotRunner({ skill: f.skill, paths: f.paths, processOwner: uuid(700), timeoutMs: 100 }).run(f.store, f.review.id, { ...f.worktree, headSha: "wrong" }, f.supervise())).rejects.toThrow("does not match persisted");
   });
 
   it("consumes a failed spawn attempt and permits a new attempt to create the same absent history", async () => {
@@ -232,11 +268,30 @@ describe("Copilot persisted sessions and direct attempts", () => {
     const f = fixture();
     const processes = createProcessSupervisor({ graceMs: 500 });
     const outcome = await f.run("success", { command: { file: path.join(f.directory, "missing-supervised-executable") } }, {
-      onProcess: processes.onProcess, stopProcess: processes.stop,
+      onProcess: processes.onProcess, stopProcess: processes.stop, excludeProcess: processes.exclude,
     });
     expect(outcome).toMatchObject({ completed: false, directProcessClosed: true, launchFailure: "command-not-found" });
     await expect(processes.exclude(f.store.getReview(f.review.id)!, outcome)).resolves.toEqual({ processesExcluded: true });
     expect(processes.safeToReleaseLock).toBe(true);
+  });
+
+  it("classifies an unavailable native wrapper in the formal phase after successful discovery", async () => {
+    const f = fixture(); const supervisor = createProcessSupervisor({ graceMs: 500 });
+    const wrapper = path.join(f.directory, process.platform === "win32" ? "vanishing agent.cmd" : "vanishing agent");
+    writeFileSync(wrapper, process.platform === "win32"
+      ? '@echo off\r\n"%FIXTURE_NODE%" "%FIXTURE_SCRIPT%" %*\r\n'
+      : '#!/bin/sh\nexec "$FIXTURE_NODE" "$FIXTURE_SCRIPT" "$@"\n', { mode: 0o755 });
+    let phases = 0;
+    const outcome = await f.run("success", { command: { file: wrapper }, environment: { ...process.env,
+      FIXTURE_NODE: process.execPath, FIXTURE_SCRIPT: f.script, FIXTURE_REPORT: f.report } }, {
+      onProcess: (child, attempt) => { supervisor.onProcess(child, attempt); if (phases++ === 0) child.once("close", () => { rmSync(wrapper); }); },
+      stopProcess: supervisor.stop, excludeProcess: supervisor.exclude,
+    });
+    expect(outcome).toMatchObject({ completed: false, directProcessClosed: true, launchFailure: "command-not-found", processExclusionFailure: null });
+    expect(f.store.getReview(f.review.id)?.attemptCount).toBe(1);
+    expect(existsSync(f.report)).toBe(false);
+    await expect(supervisor.exclude(f.store.getReview(f.review.id)!, outcome)).resolves.toEqual({ processesExcluded: true });
+    expect(supervisor.safeToReleaseLock).toBe(true);
   });
 
   it("uses fresh log files after a rejected prelaunch intent without consuming the budget", async () => {
@@ -247,6 +302,143 @@ describe("Copilot persisted sessions and direct attempts", () => {
     expect(f.store.getReview(f.review.id)?.attemptCount).toBe(0);
     spy.mockImplementation(original);
     expect(await f.run()).toMatchObject({ completed: true, attempt: { attempt: 1 } });
+  });
+});
+
+describe("Copilot skill discovery and phase ownership", () => {
+  it("excludes discovery before clearing its identity and starting the formal review under one attempt", async () => {
+    const f = fixture();
+    const supervisor = createProcessSupervisor({ graceMs: 500 });
+    const phases: { pid: number; identity: string }[] = [];
+    let exclusionDone = false;
+    const outcome = await f.run("success", {}, {
+      onProcess: (child, attempt) => {
+        supervisor.onProcess(child, attempt);
+        const current = f.store.getReview(f.review.id)!;
+        expect(current.attemptCount).toBe(1);
+        if (phases.length === 1) expect(exclusionDone).toBe(true);
+        phases.push({ pid: child.pid!, identity: current.processIdentity! });
+      },
+      excludeProcess: async (current, processOutcome) => {
+        expect(phases).toHaveLength(1);
+        expect(current.processId).toBe(phases[0]!.pid);
+        expect(processOutcome).toMatchObject({ directProcessClosed: true, captureComplete: true });
+        expect(existsSync(f.report)).toBe(false);
+        const result = await supervisor.exclude(current, processOutcome);
+        expect(f.store.getReview(f.review.id)?.processId).toBe(phases[0]!.pid);
+        exclusionDone = true;
+        return result;
+      },
+    });
+    expect(outcome.completed).toBe(true);
+    expect(phases).toHaveLength(2);
+    expect(phases[1]!.pid).not.toBe(phases[0]!.pid);
+    expect(phases.map((phase) => phase.identity.split(":").at(-1))).toEqual(["skill-list", "review"]);
+    expect(f.store.getReview(f.review.id)).toMatchObject({ attemptCount: 1, processId: phases[1]!.pid });
+    const discovery = JSON.parse(readFileSync(`${f.report}.discovery`, "utf8")) as { args: string[]; cwd: string; prompt: string; pluginRoot: string; skills?: string };
+    expect(discovery.args).toEqual(["-C", f.worktree.path, `--plugin-dir=${f.skill.rootDirectory}`, "--no-auto-update", "skill", "list", "--json"]);
+    expect(realpathSync(discovery.cwd)).toBe(realpathSync(f.worktree.path));
+    expect(discovery.prompt).toBe("");
+    expect(discovery.pluginRoot).toBe(f.skill.rootDirectory);
+    expect(discovery).not.toHaveProperty("skills");
+    const formal = JSON.parse(readFileSync(f.report, "utf8")) as { args: string[] };
+    expect(formal.args).toContain(`--plugin-dir=${discovery.pluginRoot}`);
+    const logs = path.dirname(outcome.stdoutLogPath);
+    expect(JSON.parse(readFileSync(path.join(logs, "skill-list.stdout.log"), "utf8"))).toMatchObject([{ name: "daynight-review", path: f.skill.directory }]);
+    expect(readFileSync(path.join(logs, "skill-list.stderr.log"), "utf8")).toBe("skill diagnostics");
+    expect(readFileSync(outcome.stdoutLogPath, "utf8")).toBe("PR 101 Review Completed\n\n");
+    await supervisor.exclude(f.store.getReview(f.review.id)!, outcome);
+  });
+
+  it.each(["nonzero", "malformed", "missing", "disabled", "shadow", "duplicate", "invalid-utf8", "bom", "oversized", "marker"])("fails discovery %s after one attempt with full capture and no main process", async (discovery) => {
+    const f = fixture();
+    const outcome = await f.run("success", { maxDiscoveryBytes: 1024,
+      environment: { ...process.env, FIXTURE_REPORT: f.report, FIXTURE_DISCOVERY: discovery } });
+    expect(outcome).toMatchObject({ completed: false, directProcessClosed: true, captureComplete: true, lastNonemptyLine: null, processExclusionFailure: null });
+    expect(outcome.errors.length).toBeGreaterThan(0);
+    expect(f.store.getReview(f.review.id)).toMatchObject({ status: "running", attemptCount: 1, processId: null, processIdentity: null });
+    expect(f.store.getPullRequest(f.pr)?.sessionEstablished).toBe(false);
+    expect(existsSync(f.report)).toBe(false);
+    expect(readFileSync(outcome.stdoutLogPath, "utf8")).toBe("");
+  });
+
+  it("retains failed capture separately from JSON validation and never starts the main process", async () => {
+    const f = fixture();
+    const outcome = await f.run("success", {}, { onProcess: (child) => { child.stdout!.destroy(new Error("discovery capture failed")); } });
+    expect(outcome).toMatchObject({ completed: false, captureComplete: false });
+    expect(outcome.errors.some((error) => error.message === "discovery capture failed")).toBe(true);
+    expect(existsSync(f.report)).toBe(false);
+  });
+
+  it("retains discovery identity and forbids the main process when exclusion fails", async () => {
+    const f = fixture(); const error = new Error("discovery descendants could not be excluded");
+    const outcome = await f.run("success", {}, { excludeProcess: async () => { throw error; } });
+    expect(outcome.processExclusionFailure).toBe(error);
+    expect(f.store.getReview(f.review.id)).toMatchObject({ attemptCount: 1, processId: expect.any(Number), processIdentity: expect.stringContaining(":skill-list") });
+    expect(existsSync(f.report)).toBe(false);
+  });
+
+  it("clears an excluded preflight when aborted between phases and never launches the review", async () => {
+    const f = fixture(); const abort = new AbortController(); const supervisor = createProcessSupervisor({ graceMs: 500 });
+    const outcome = await f.run("success", {}, { signal: abort.signal, onProcess: supervisor.onProcess,
+      excludeProcess: async (current, evidence) => { const result = await supervisor.exclude(current, evidence); abort.abort(); return result; } });
+    expect(outcome).toMatchObject({ completed: false, interruption: "aborted", directProcessClosed: true, captureComplete: true });
+    expect(f.store.getReview(f.review.id)).toMatchObject({ attemptCount: 1, processId: null, processIdentity: null });
+    expect(existsSync(f.report)).toBe(false);
+    await expect(supervisor.exclude(f.store.getReview(f.review.id)!, outcome)).resolves.toEqual({ processesExcluded: true });
+  });
+
+  it("forbids the formal review when the process identity changes during exclusion", async () => {
+    const f = fixture();
+    const outcome = await f.run("success", {}, { excludeProcess: async (current) => {
+      const attempt = { reviewId: current.id, attempt: current.attemptCount };
+      f.store.clearProcess(attempt, { processId: current.processId, processIdentity: current.processIdentity }, proof);
+      f.store.recordProcess(attempt, { pid: 12345, identity: "replacement" });
+      return proof;
+    } });
+    expect(outcome.processExclusionFailure?.message).toContain("process identity changed");
+    expect(f.store.getReview(f.review.id)).toMatchObject({ attemptCount: 1, processId: 12345, processIdentity: "replacement" });
+    expect(existsSync(f.report)).toBe(false);
+  });
+
+  it("cancels active discovery and keeps the formal review unlaunched", async () => {
+    const f = fixture(); const abort = new AbortController();
+    const outcome = await f.run("success", { environment: { ...process.env, FIXTURE_REPORT: f.report, FIXTURE_DISCOVERY: "hang" } },
+      { signal: abort.signal, onProcess: () => { abort.abort(); } });
+    expect(outcome).toMatchObject({ completed: false, interruption: "aborted", directProcessClosed: true });
+    expect(existsSync(f.report)).toBe(false);
+  });
+
+  it("shares one deadline across discovery, exclusion and formal review", async () => {
+    const f = fixture(); const supervisor = createProcessSupervisor({ graceMs: 500 });
+    const timers = vi.spyOn(globalThis, "setTimeout");
+    const start = performance.now(); let mainStartedAt = 0;
+    const outcome = await f.run("hang", { timeoutMs: 700, environment: { ...process.env, FIXTURE_REPORT: f.report, FIXTURE_MODE: "hang", FIXTURE_DISCOVERY: "delay" } },
+      { onProcess: (child, attempt) => { supervisor.onProcess(child, attempt); if (child.spawnargs.some((arg) => arg.startsWith("--session-id="))) mainStartedAt = performance.now(); },
+        stopProcess: supervisor.stop, excludeProcess: supervisor.exclude });
+    expect(mainStartedAt - start).toBeGreaterThan(100);
+    expect(outcome).toMatchObject({ completed: false, interruption: "timeout", directProcessClosed: true });
+    expect(timers.mock.calls.some((call) => typeof call[1] === "number" && call[1] > 100 && call[1] < 600)).toBe(true);
+    await supervisor.exclude(f.store.getReview(f.review.id)!, outcome);
+  });
+
+  it("rechecks the deadline after discovery exclusion before launching the review", async () => {
+    const f = fixture(); const supervisor = createProcessSupervisor({ graceMs: 500 });
+    const outcome = await f.run("success", { timeoutMs: 300 }, { onProcess: supervisor.onProcess,
+      excludeProcess: async (current, evidence) => { const result = await supervisor.exclude(current, evidence); await new Promise((resolve) => { setTimeout(resolve, 350); }); return result; } });
+    expect(outcome).toMatchObject({ completed: false, interruption: "timeout", directProcessClosed: true });
+    expect(f.store.getReview(f.review.id)?.processId).toBeNull();
+    expect(existsSync(f.report)).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")("excludes real discovery descendants before starting the formal review", async () => {
+    const f = fixture();
+    const outcome = await f.run("success", { environment: { ...process.env, FIXTURE_REPORT: f.report, FIXTURE_DISCOVERY: "descendant" } });
+    expect(outcome.completed).toBe(true);
+    const stopped = readFileSync(`${f.report}.leaf`, "utf8");
+    await new Promise((resolve) => { setTimeout(resolve, 80); });
+    expect(readFileSync(`${f.report}.leaf`, "utf8")).toBe(stopped);
+    expect(existsSync(f.report)).toBe(true);
   });
 });
 
@@ -262,14 +454,14 @@ describe("Copilot completion protocol", () => {
 
   it("rejects stream capture errors even if a valid marker was written", async () => {
     const f = fixture();
-    const outcome = await f.run("success", {}, { onProcess: (child) => { child.stdout!.destroy(new Error("capture failed")); } });
+    const outcome = await f.run("success", {}, { onProcess: (child) => { if (child.spawnargs.some((arg) => arg.startsWith("--session-id="))) child.stdout!.destroy(new Error("capture failed")); } });
     expect(outcome.completed).toBe(false);
     expect(outcome.captureComplete).toBe(false);
     expect(outcome.errors.some((error) => error.message === "capture failed")).toBe(true);
   });
 
   it("bounds a hung direct process without asserting descendant exclusion", async () => {
-    const outcome = await fixture().run("hang", { timeoutMs: 100 });
+    const outcome = await fixture().run("hang", { timeoutMs: 500 });
     expect(outcome).toMatchObject({ completed: false, directProcessClosed: true, interruption: "timeout" });
     expect(outcome).not.toHaveProperty("processesExcluded");
   });
@@ -277,7 +469,7 @@ describe("Copilot completion protocol", () => {
   it("aborts an active direct process and rejects cancellation before launch without consuming budget", async () => {
     const f = fixture();
     const controller = new AbortController();
-    const outcome = await f.run("hang", {}, { signal: controller.signal, onProcess: () => { controller.abort(); } });
+    const outcome = await f.run("hang", {}, { signal: controller.signal, onProcess: (child) => { if (child.spawnargs.some((arg) => arg.startsWith("--session-id="))) controller.abort(); } });
     expect(outcome).toMatchObject({ completed: false, interruption: "aborted", directProcessClosed: true });
     const other = fixture();
     await expect(other.run("success", {}, { signal: AbortSignal.abort() })).rejects.toThrow();

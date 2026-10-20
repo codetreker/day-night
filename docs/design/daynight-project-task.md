@@ -32,7 +32,7 @@ server 投影只要求有效 server 地址；review 登记可向 server-only 文
 
 ## 模块与依赖方向
 
-`config/`、`api/`、`repository/` 和既有 review/update 已实现；project/task 命令仍
+`config/`、`api/`、`repository/` 和既有 review/update/completion 已实现；project/task 命令仍
 待实现。职责如下，具体文件可以在保持归属的前提下拆分：
 
 ```text
@@ -46,9 +46,11 @@ src/
     task/                  # 参数、帮助、task 操作及渲染
     review/                # review 配置投影和既有行为
     update/                # 既有 npm 安装生命周期
+    completion/            # 既有 Bash 和 zsh 原生补全
 ```
 
-顶层仍只登记名称、描述和惰性加载函数。命令组先解析参数和帮助，再加载业务实现。
+顶层通过业务无关的命令定义共享名称、描述、参数和补全语法，并保留惰性执行入口。
+命令组先解析参数和帮助，再加载业务实现。
 project/task 不导入 review runtime、SQLite 或外部审查适配器。`project list/show/create`
 只需要配置与 HTTP；task 显式 project 分支也只需要这两者；自动分支才加载 Git 与
 仓库状态。共享模块不反向导入命令模块。

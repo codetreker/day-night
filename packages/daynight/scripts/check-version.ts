@@ -8,6 +8,7 @@ const releaseFiles = new Set([
   "packages/daynight/tsconfig.json",
   "packages/daynight/tsconfig.build.json",
   "packages/daynight/scripts/clean-dist.ts",
+  "packages/daynight/scripts/copy-skills.ts",
   "package.json",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",

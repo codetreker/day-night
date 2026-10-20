@@ -7,6 +7,7 @@ import { createGitHubClient } from "./adapters/github.js";
 import { acquireInstanceLock } from "./instance-lock.js";
 import { createProcessSupervisor } from "./processes.js";
 import { openStore } from "./store.js";
+import { prepareReviewSkill } from "./skill.js";
 import type { ReviewConfiguration } from "./config.js";
 import type { CoordinatorEvent } from "./coordinator.js";
 import type { ReviewPaths } from "./paths.js";
@@ -14,6 +15,7 @@ import type { ReviewPaths } from "./paths.js";
 export { acquireInstanceLock } from "./instance-lock.js";
 
 export type RuntimeDependencies = {
+  prepareSkill: typeof prepareReviewSkill;
   openStore: typeof openStore;
   createClient: typeof createGitHubClient;
   createGit: typeof createGitManager;
@@ -22,7 +24,7 @@ export type RuntimeDependencies = {
   coordinate: typeof runCoordinator;
 };
 const defaultDependencies: RuntimeDependencies = {
-  openStore, createClient: createGitHubClient, createGit: createGitManager,
+  prepareSkill: prepareReviewSkill, openStore, createClient: createGitHubClient, createGit: createGitManager,
   createRunner: createCopilotRunner, createProcesses: createProcessSupervisor, coordinate: runCoordinator,
 };
 
@@ -37,7 +39,7 @@ export const formatCoordinatorEvent = (event: CoordinatorEvent): string => {
 export const runForegroundReview = async (
   configuration: ReviewConfiguration,
   paths: ReviewPaths,
-  options: { signal?: AbortSignal; log?: (event: CoordinatorEvent) => void; dependencies?: RuntimeDependencies } = {},
+  options: { packageDirectory: string; signal?: AbortSignal; log?: (event: CoordinatorEvent) => void; dependencies?: RuntimeDependencies },
 ): Promise<void> => {
   const dependencies = options.dependencies === undefined ? defaultDependencies : options.dependencies;
   const log = options.log === undefined ? (event: CoordinatorEvent) => { process.stderr.write(`${formatCoordinatorEvent(event)}\n`); } : options.log;
@@ -55,12 +57,14 @@ export const runForegroundReview = async (
     lock = await acquireInstanceLock(paths.lockFile);
     safe = lock.previousProcessesExcluded;
     signal.throwIfAborted();
+    const skill = await dependencies.prepareSkill(options.packageDirectory, paths.cacheDirectory);
+    signal.throwIfAborted();
     store = dependencies.openStore(paths.databaseFile);
     const client = dependencies.createClient();
     const git = dependencies.createGit({ temporaryDirectory: paths.temporaryDirectory, client });
     const processes = dependencies.createProcesses(lock.previousProcessesExcluded ? { previousProcessesExcluded: true } : {});
-    const runner = dependencies.createRunner({ paths, processOwner: lock.owner, timeoutMs: configuration.agentTimeoutMs });
-    log({ level: "info", phase: "startup", message: `Foreground review started; state=${paths.stateDirectory}.` });
+    const runner = dependencies.createRunner({ paths, skill, processOwner: lock.owner, timeoutMs: configuration.agentTimeoutMs });
+    log({ level: "info", phase: "startup", message: `Foreground review started; state=${paths.stateDirectory}; skill=${skill.name} digest=${skill.digest}.` });
     safe = false;
     const result = await dependencies.coordinate({ configuration, store, client, git, runner, processes, signal, log });
     safe = result.safeToReleaseLock && processes.safeToReleaseLock;

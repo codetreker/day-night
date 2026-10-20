@@ -254,6 +254,26 @@ describe("observed snapshots and review revisions", () => {
 });
 
 describe("persistent attempts, sessions and recovery", () => {
+  it("clears only the exactly excluded current process and keeps the running attempt intent", () => {
+    const { store, initialize, observe, reserve, prepare, launch } = fixture();
+    initialize(); observe(); const review = reserve(); prepare(review); launch(review);
+    const attempt = { reviewId: review.id, attempt: 1 };
+    const expected = { processId: 12345, processIdentity: "discovery" };
+    store.recordProcess(attempt, { pid: expected.processId, identity: expected.processIdentity });
+    const before = store.getReview(review.id)!;
+    expect(() => store.clearProcess(attempt, expected, { processesExcluded: false } as never)).toThrow("exclude any previous agent processes");
+    expect(() => store.clearProcess({ ...attempt, attempt: 2 }, expected, stopped)).toThrow("current running attempt");
+    expect(() => store.clearProcess(attempt, { ...expected, processId: 12346 }, stopped)).toThrow("process identity changed");
+    expect(() => store.clearProcess(attempt, { ...expected, processIdentity: "other" }, stopped)).toThrow("process identity changed");
+    expect(store.getReview(review.id)).toEqual(before);
+    expect(store.clearProcess(attempt, expected, stopped)).toEqual({ ...before, processId: null, processIdentity: null });
+    store.recordProcess(attempt, { pid: 54321, identity: "review" });
+    expect(() => store.clearProcess(attempt, expected, stopped)).toThrow("process identity changed");
+    expect(store.getReview(review.id)).toMatchObject({ processId: 54321, processIdentity: "review", attemptCount: 1, status: "running" });
+    store.retryReview(attempt, stopped, { error: "incomplete", retryAt: 100 }, 50);
+    expect(() => store.clearProcess(attempt, { processId: null, processIdentity: null }, stopped)).toThrow("current running attempt");
+  });
+
   it("persists launch intent and all current process/log references before restart without implicit recovery", () => {
     const { store, file, initialize, observe, reserve, prepare, launch } = fixture();
     initialize(); observe(); const review = reserve(); prepare(review); const running = launch(review);

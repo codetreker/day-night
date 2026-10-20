@@ -1,17 +1,7 @@
-import { isHelp, UsageError } from "../../cli/context.js";
+import { parseCommand, renderCommandHelp } from "../../cli/schema.js";
 import type { CliContext } from "../../cli/context.js";
+import { updateDefinition } from "./definition.js";
 import type { UpdateResult } from "./updater.js";
-
-const help = `Usage: daynight update
-
-Update the current npm global installation to the registry's latest version.
-An already-current or newer installation is kept. npm configuration and
-authentication select the registry; review configuration and state are not read.
-Restart any running reviewer after updating to use the new version.
-
-Options:
-  -h, --help  Show this help
-`;
 
 export type UpdateCommandDependencies = {
   update: (packageDirectory: string) => Promise<UpdateResult>;
@@ -26,11 +16,11 @@ export const runUpdateCommand = async (
   context: CliContext,
   dependencies: UpdateCommandDependencies = defaultDependencies,
 ): Promise<void> => {
-  if (args.length === 1 && isHelp(args[0])) {
-    context.stdout(help);
+  const operation = parseCommand(updateDefinition, args, ["daynight", "update"]);
+  if (operation.kind !== "run") {
+    context.stdout(renderCommandHelp(operation.command, operation.path));
     return;
   }
-  if (args.length !== 0) throw new UsageError("Expected daynight update.", "daynight update --help");
   const result = await dependencies.update(context.packageDirectory);
   if (result.status === "updated") {
     context.stdout(`Updated daynight from ${result.previousVersion} to ${result.targetVersion}.\nRestart any running reviewer to use the new version.\n`);

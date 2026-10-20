@@ -12,12 +12,20 @@ remote publication or descendant-process exclusion.
 ## Decision
 
 The Copilot adapter extends the
-[foreground execution model](2026-10-16-foreground-review-cli.md). It launches a
-direct child in the prepared PR worktree and leaves scheduling, process
+[foreground execution model](2026-10-16-foreground-review-cli.md). It launches
+sequential skill-discovery and review children in the prepared PR worktree and leaves scheduling, process
 exclusion and final review transitions to the coordinator. The existing
 [store](2026-10-17-durable-review-state.md) persists the per-PR UUID and launch
 intent before spawning; no additional execution database or process layer is
 introduced.
+
+The [bundled-skill decision](2026-10-20-bundled-review-skill.md) extends each
+attempt with native discovery of an immutable package-owned skill snapshot.
+Both child phases share one budget and timeout deadline. Discovery must resolve
+the enabled named skill to the current snapshot; its prompt explicitly invokes
+that entrypoint even on resume. The discovery execution must be excluded before
+its exact PID and identity can be cleared and the review child launched. A failed
+exclusion retains uncertainty and cannot advance to review.
 
 First invocation selects the persisted UUID. Existing opaque session history
 selects explicit full-UUID resume, including after an interrupted first launch.
@@ -39,7 +47,9 @@ identity travel in the prompt. The agent publishes inline `COMMENT` reviews for
 Critical/Major findings or `APPROVE` otherwise, binds publication to the captured
 commit, rechecks eligibility and reconciles existing publication before retry.
 
-Each attempt has a unique log directory with separate stdout and stderr logs.
+Each attempt has a unique log directory with separate stdout and stderr logs
+for discovery and review. Discovery JSON has its own bounded complete capture;
+only review output participates in the completion protocol.
 A rejected launch intent cannot occupy the next attempt's paths. Full logs stream
 to disk; the final stdout line uses at most 8,192 UTF-16 code units in memory. Only a normal zero exit, complete output capture and an exact final
 nonempty stdout line `PR N Review Completed` produce a completion assertion.
@@ -74,8 +84,9 @@ and retry reconciliation responsibility.
 
 ## Consequences
 
-Controlled executables verify invocation, durable intent, session selection,
-prompt delivery, stream handling and incomplete outcomes without live reviews.
+Controlled executables verify invocation, durable intent, skill selection,
+sequential process exclusion, session selection, prompt delivery, stream handling
+and incomplete outcomes without live reviews.
 Actual Copilot/GitHub acceptance remains a separate delivery check. Research
 verified the relevant options against local Copilot CLI 1.0.98; this is observed
 version evidence, not an inferred minimum-version guarantee.

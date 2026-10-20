@@ -7,7 +7,7 @@ implementation work.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, shared configuration, server HTTP and repository binding foundations; project/task commands pending | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
+| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion`, shared configuration, server HTTP and repository binding foundations; project/task commands pending | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details and strict coverage implemented; embedded delivery pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -15,12 +15,16 @@ The `@codetreker/daynight` package provides the `daynight` client. Its root entr
 lists commands and reports the package version; each command owns its business
 dependencies and lifecycle. `review` polls configured repositories, maintains
 dedicated local clones and PR worktrees, and launches Copilot in a retained
-session for each eligible PR. SQLite preserves initialization boundaries, review
+session for each eligible PR using a bundled review skill. SQLite preserves initialization boundaries, review
 revisions and retry budgets. The group also provides configuration-only
 repository registration and a local persisted review listing. `update` manages
 the current npm global installation independently of review configuration and
-runtime. The adopted [project/task CLI design](docs/design/daynight-project-task.md)
-adds server-backed commands, automatic Git-origin project discovery and ignored
+runtime. `completion` generates native Bash and zsh scripts from the same command
+definitions used by parsing and help. Loaded scripts complete locally without
+starting Node on each Tab.
+
+The adopted [project/task CLI design](docs/design/daynight-project-task.md) adds
+server-backed commands, automatic Git-origin project discovery and ignored
 repository-local bindings. Its [requirements](docs/spec/daynight-project-task.md)
 and [task breakdown](docs/design/daynight-project-task-tasks.md) describe the
 confirmed behavior and implementation status. Shared YAML projections, the
@@ -64,9 +68,11 @@ pnpm daynight --version
 
 `pnpm check` runs type checking and tests. Tests build the package before
 exercising the compiled CLI. `pnpm build` clears the package's `dist/` before emitting
-`packages/daynight/dist/main.js`; the package's `daynight` bin points there.
-Source tests mirror `cli/`, `config/`, `api/`, `commands/` and `platform/` ownership, with build and
-version-policy tests in `test/tooling/`.
+`packages/daynight/dist/main.js` and copying the complete built-in review skill
+bundle into `dist/commands/review/skills/`; the package's `daynight` bin points to
+the stable JavaScript entry.
+Source tests mirror `cli/`, `config/`, `api/`, `commands/` and `platform/`
+ownership, with build and version-policy tests in `test/tooling/`.
 The pnpm dependency store is local to `.tmp/pnpm-store`. `pnpm acceptance`
 separately packs and installs the CLI in a local consumer and requires package-
 registry access. The review lifecycle suite uses controlled GitHub/Copilot
@@ -74,11 +80,43 @@ executables with real Git and SQLite. The self-update suite uses real npm and an
 isolated, task-local global prefix with a controlled HTTP registry. Neither suite
 changes the operator's installed CLI or requires live review credentials.
 
+Shell completion has a separate real-shell acceptance command. It requires
+Python 3 on a POSIX host, Bash 4.2, a modern Bash, and zsh. Linux hosts can prepare
+isolated shell executables from the repository root:
+
+```bash
+bash packages/daynight/scripts/prepare-completion-shells.sh
+source .tmp/shell-completion/environment.sh
+pnpm completion:acceptance
+```
+
+The preparation helper downloads a SHA-256-pinned GNU Bash 4.2 release and builds
+its executable in `.tmp/shell-completion/`. It requires standard build tools,
+`curl`, `sha256sum`, `tar` and `timeout`. It uses an existing zsh when available;
+otherwise it downloads Debian packages with `apt-get download` and extracts them
+locally with `dpkg-deb`. It installs no global packages. First-time preparation
+requires network access; subsequent runs reuse the local toolchains.
+
+On other POSIX hosts, or to select existing executables, set `DAYNIGHT_TEST_BASH42`
+to the Bash 4.2 executable before running `pnpm completion:acceptance`.
+`DAYNIGHT_TEST_BASH` and `DAYNIGHT_TEST_ZSH` select the other executables and default
+to `bash` and `zsh`. `DAYNIGHT_TEST_ZSH_ROOT` optionally selects an extracted zsh
+toolchain root. `DAYNIGHT_COMPLETION_EVIDENCE` optionally selects the JSON receipt
+path. The command builds the client and runs a Python PTY harness against actual
+Tab insertion in all three shells. It uses isolated startup files and task-local
+fixtures, with no user configuration, review credentials or installed CLI changes.
+A dedicated Ubuntu 24.04 CI job runs this suite separately from the native CLI
+matrix; its result belongs to the tested revision. The
+[completion design](docs/design/daynight-completion.md) owns its coverage and
+loading guarantees.
+
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
-Windows runners. The final `checks` job succeeds only when all platform jobs
-succeed. The Linux job also enforces package version increases before ordinary
-validation. A PR compares its complete source changes with its merge base and
-its package version with the event's target-branch revision. Main pushes compare
+Windows runners. Each native job resolves the latest available Node.js 24 patch.
+The final `checks` job also requires the dedicated Linux shell
+completion job and the server and web jobs; all required jobs must succeed. The
+Linux job also enforces package version increases before ordinary validation. A
+PR compares its complete source changes with its merge base and its package
+version with the event's target-branch revision. Main pushes compare
 the full event before/after range. The checkout includes the required history.
 Native tool discovery records each command's resolved executable, launcher,
 timing, status and bounded output in `.tmp/validation-probes.json`. The `gh`
@@ -177,7 +215,8 @@ The frontend build emits `packages/daynight-web/dist/`. Embedding into the local
 production build, controlled-fetch UI tests and an exact statement gate strictly
 above 90%. It independently enumerates all product TypeScript/TSX files and
 publishes raw counters plus a relative source manifest. `checks` requires web,
-Go and every native CLI platform; existing root CLI commands retain their scope.
+Go, every native CLI platform and the Linux shell completion job; existing root
+CLI commands retain their scope.
 
 ## Package versions
 
@@ -307,16 +346,57 @@ daynight review                     # Show review help
 daynight review run
 daynight review list                 # Also review ls
 daynight review add-repo <remote> [--path <path>]
+daynight completion                 # Show completion help
+daynight completion bash
+daynight completion zsh
 ```
 
-Groups and operations support `--help` and `-h`. Help and version do not resolve
-the user home, load review configuration, open SQLite or require review tools.
+Groups and operations show help when `--help` or `-h` is their sole argument.
+Help, version and completion generation do not resolve the user home, load review
+configuration, open SQLite or require review tools. `review add-repo` accepts one
+`--path <path>` before or after its remote; `--path=value` and `--` are invalid.
 Unknown commands and invalid arguments exit with status 2; operation failures
 exit with status 1 and retain their cause. The old `--daemon-review` and root
 `add-repo` forms are invalid. The
 [client design](docs/design/daynight.md) owns command composition and lazy loading;
 the [composition decision](.agents/notes/implemented/architecture/2026-10-20-client-command-composition.md)
 records module ownership and the preserved data layout.
+
+## Shell completion
+
+Bash 4.2 or newer and zsh have native completion scripts. Add this to `.bashrc`:
+
+```bash
+source <(daynight completion bash)
+```
+
+For zsh, load the script after the completion system is initialized in `.zshrc`:
+
+```zsh
+autoload -Uz compinit
+compinit
+source <(daynight completion zsh)
+```
+
+If the file already initializes `compinit`, add only the final line. Loading
+without `compinit` fails with a diagnostic. The client prints scripts to stdout
+and leaves startup-file changes to the operator. These outputs are designed for
+`source`; using the same output directly as an `fpath` autoload file is outside
+the loading contract.
+
+Completion suggests commands, nested operations, aliases, options, shell names
+and local directories for `review add-repo --path`. zsh also displays descriptions.
+The scripts run in the shell on each Tab without starting Node or reading review
+configuration, SQLite or the network. Directory suggestions preserve quoted and
+special-character paths; an uncreated target directory remains valid input.
+
+New shells generate definitions from the currently installed package. After an
+update, run the applicable `source` command again to refresh an existing shell.
+A saved generated script must be regenerated after updating. The
+[completion design](docs/design/daynight-completion.md) explains the shared grammar
+and shell integration; the
+[completion decision](.agents/notes/implemented/feature/2026-10-20-shell-completion.md)
+records compatibility and execution trade-offs.
 
 ## Review configuration and startup
 
@@ -521,8 +601,27 @@ for target validation and recovery boundaries.
 
 ## Copilot execution
 
-The Copilot adapter launches a direct child in the prepared PR worktree. It
-selects the persisted per-PR UUID on first launch and explicitly resumes that
+The review module ships `daynight-review` under its own `skills/` directory.
+After taking the instance lock, the daemon captures the installed bundle once
+and prepares an immutable content-addressed snapshot under
+`~/.daynight/cache/review-skills/`. Package updates cannot replace the content
+used by that running daemon. Snapshots remain available for retained sessions
+and uncertain executions; automatic collection is not provided.
+
+Each attempt first runs native Copilot skill discovery in the prepared PR
+worktree. A single `--plugin-dir=<snapshot root>` argument supplies a generated
+local plugin wrapper containing `plugin.json` and `skills/daynight-review/`.
+This preserves paths containing commas, spaces and Unicode; inherited
+`COPILOT_SKILLS_DIRS` variables are removed from the child environment.
+Exactly one enabled `daynight-review` must resolve to that snapshot's directory;
+a disabled skill, project override or malformed response fails the attempt.
+The review prompt explicitly invokes the skill and identifies its current
+absolute entrypoint and digest on both new sessions and resume. The bundled
+skill owns review methodology; the prompt owns the immutable target, publication
+eligibility, retry reconciliation and completion protocol.
+
+The Copilot adapter then launches the review child in that same worktree and
+environment. It selects the persisted per-PR UUID on first launch and explicitly resumes that
 same session thereafter. An interrupted first launch also resumes existing
 history; missing established history is an error. Only opaque session-directory
 presence is inspected. Copilot history and agent JSONL are not parsed.
@@ -531,7 +630,12 @@ Prompts travel through stdin in noninteractive mode. `cross-spawn` handles nativ
 commands and Windows command shims; prompt text is not embedded in shell code or
 command arguments. Runtime paths contain Copilot state, cache, temporary files
 and per-attempt diagnostics. Existing GitHub CLI authentication remains available
-through Copilot's supported fallback.
+through Copilot's supported fallback. Discovery and review are sequential phases
+of one persisted attempt, sharing one retry budget and timeout deadline. The
+discovery child must be excluded before its exact persisted PID and identity are
+cleared and a review child can start. Cancellation, timeout or uncertain process
+exclusion prevents that next launch. Discovery stdout and stderr stream to
+separate `skill-list` logs and never enter completion-marker parsing.
 
 The agent publishes inline Critical/Major comments or approval itself and
 reconciles prior publication when continuing an incomplete review. The adapter
@@ -542,8 +646,15 @@ review. The coordinator owns scheduling and final state transitions; runtime
 process supervision supplies evidence under the foreground execution contract.
 
 The [execution decision](.agents/notes/implemented/architecture/2026-10-17-copilot-session-execution.md)
-records these boundaries. Live Copilot/GitHub acceptance remains separate from
-controlled subprocess tests.
+records process and publication boundaries. The
+[skill design](docs/design/daynight-review-skill.md) owns packaging, snapshots and
+loading, with rationale in the
+[bundled-skill decision](.agents/notes/implemented/architecture/2026-10-20-bundled-review-skill.md).
+Native probes with Copilot CLI 1.0.100 verify actual bundled-skill activation and
+changed-bundle resume with the same UUID, including comma, space and Unicode
+paths. The [acceptance report](docs/research/daynight-acceptance.md#native-skill-activation)
+records the probe's conditions and limits. Live Copilot/GitHub publication acceptance
+remains separate from those probes and controlled subprocess tests.
 
 ## Coordination and shutdown
 

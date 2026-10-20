@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { setImmediate } from "node:timers/promises";
 import type { ChildProcess } from "node:child_process";
 import type { ReviewConfiguration, RepositoryConfiguration } from "./config.js";
-import type { CopilotAttemptOutcome, CopilotRunOptions, createCopilotRunner } from "./adapters/copilot.js";
+import type { CopilotAttemptOutcome, CopilotProcessOutcome, CopilotRunOptions, createCopilotRunner } from "./adapters/copilot.js";
 import { GitCommandError } from "./adapters/worktrees.js";
 import type { LocalRepository, createGitManager } from "./adapters/worktrees.js";
 import { GitHubApiError } from "./adapters/github.js";
@@ -26,7 +26,7 @@ export type CoordinatorEvent = {
 export type CoordinatorProcesses = {
   onProcess: (child: ChildProcess, attempt: AttemptIdentity) => void;
   stop: (child: ChildProcess, attempt: AttemptIdentity) => Promise<void>;
-  exclude: (review: ReviewState, outcome?: CopilotAttemptOutcome) => Promise<ProcessesExcluded>;
+  exclude: (review: ReviewState, outcome?: CopilotProcessOutcome) => Promise<ProcessesExcluded>;
   recover: (review?: ReviewState) => Promise<ProcessesExcluded & OperationsStopped>;
 };
 export type CoordinatorOptions = {
@@ -257,11 +257,12 @@ export const runCoordinator = async (options: CoordinatorOptions): Promise<{ saf
         return;
       }
       const previous = store.listReviews(review).filter((item) => item.id !== review.id && item.status !== "completed").at(-1);
-      const input: CopilotRunOptions = { signal: reservation.controller.signal, onProcess: processes.onProcess, stopProcess: processes.stop,
+      const input: CopilotRunOptions = { signal: reservation.controller.signal, onProcess: processes.onProcess, stopProcess: processes.stop, excludeProcess: processes.exclude,
         ...(previous === undefined ? {} : { previousReview: previous }) };
       report(review, "launch", "Launching the PR's persisted Copilot session.");
       const outcome = await runner.run(store, review.id, worktree, input);
       const current = store.getReview(review.id)!;
+      if (outcome.processExclusionFailure !== null) { interrupt(current, outcome.processExclusionFailure); return; }
       await endAttempt(current, outcome, undefined, reservation.controller.signal.aborted);
     } catch (error) {
       const current = store.getReview(review.id)!;
