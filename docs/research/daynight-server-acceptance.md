@@ -23,6 +23,26 @@ statement coverage strictly greater than 90%. The last gate reads the same raw
 profile using integer arithmetic, so exactly 90% fails regardless of display
 rounding. No product files, functions or `ForTest` suffixes are excluded.
 
+The [installed project/task extension](../../.agents/notes/implemented/testing/2026-10-20-installed-project-task-acceptance.md)
+passes local validation. The same check entry prepares one packed/installed CLI for Go
+command scenarios, retains the original go-cov arguments and strict profile
+comparison, then runs real default HTTP-budget probes outside Go's ten-minute
+test timer. The 20-minute Go job and its existing workload remain required. CLI
+requirements use `PT.V*` identifiers in the existing server receipt; the separate
+repository-root `.tmp/project-task-service-evidence.json` owns shared install
+identity, Go-phase/coverage result, production-budget probes and cleanup.
+[Client acceptance](daynight-acceptance.md#projecttask-installed-and-real-service-acceptance)
+owns those probe semantics; the [task record](../design/daynight-project-task-tasks.md#pt-t5)
+owns actual delivery and observed results. The local package `0.6.0` source was
+`c19b064` with `dirty=true`; this does not establish a future clean hosted result.
+The complete gate passed 309 Go tests (109 top-level) and raw `1153/1155`
+statement coverage. Its installed CLI workflow passed with two service and 38 CLI
+processes reaped, its workspace and schema removed, no owned sessions, and an
+actual `200`/`409` concurrent PATCH pair. All six production-budget probes passed,
+including exact decoded limits and plus-one-byte refusals; their precise local
+observations belong to the linked client report. Hosted CI and review for this
+acceptance delivery remain pending.
+
 ## Observed local evidence
 
 ### Service baseline

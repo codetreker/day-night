@@ -17,9 +17,9 @@ The adopted [requirements](../../../../docs/spec/daynight-project-task.md) and
 [design](../../../../docs/design/daynight-project-task.md) define independent
 `project` and `task` command modules in the existing client package. The design
 is adopted. Shared configuration, bounded HTTP, repository bindings and
-`project create/list/show` are delivered. Task create/list/show/update/graph and
-shared syntax integration are implemented and locally validated; full CLI
-acceptance against the Go service remains pending. The
+`project create/list/show`, task create/list/show/update/graph and shared syntax
+integration are delivered. Installed CLI acceptance against the Go service and
+default production-budget probes pass locally; exact-head hosted delivery is pending. The
 [task breakdown](../../../../docs/design/daynight-project-task-tasks.md) owns
 implementation status, dependencies, file ownership and completion evidence.
 
@@ -138,8 +138,11 @@ commands join review, update and shell completion. Their compiled entry point
 is verified against controlled HTTP responses and the delivered Project command
 passed native CI. That evidence does not establish real Go/PostgreSQL CLI
 integration. Task composition and the shared syntax pass local module, compiled
-entrypoint and real-shell checks. Full service acceptance, final review and the
-task delivery's native CI evidence remain owned by the
+entrypoint, real-shell and native CI checks, with exact-head review. Installed
+service acceptance follows the
+[acceptance decision](../testing/2026-10-20-installed-project-task-acceptance.md);
+its native and Go/budget paths preserve all existing suites and production limits.
+Observed acceptance evidence remains owned by the
 [task breakdown](../../../../docs/design/daynight-project-task-tasks.md). Shared
 configuration, HTTP, repository and server-runtime modules support that remaining
 work. Package versions follow the existing release rules.

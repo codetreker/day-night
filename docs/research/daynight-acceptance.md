@@ -1,7 +1,10 @@
 # Daynight Acceptance Evidence
 
 Client acceptance exercises the toolkit through separate installed review
-lifecycle, installed self-update and real-shell completion suites. The
+lifecycle, installed self-update, installed project/task and real-shell completion
+suites. Project/task real-service integration and production-budget validation
+pass locally; exact-head hosted delivery remains pending under the
+[project/task task record](../design/daynight-project-task-tasks.md#pt-t5). The
 [client requirements](../spec/daynight.md) own command composition, package
 updates and shell completion; the [review requirements](../spec/daynight-review.md)
 own review execution and retained data. The lifecycle suite uses real Git and SQLite,
@@ -20,7 +23,7 @@ node packages/daynight/scripts/validation-environment.ts
 ```
 
 `pnpm check` runs type checking and ordinary tests. `pnpm acceptance` builds the
-package and runs both installed suites. The review lifecycle suite packs a
+package and runs three installed suites. The review lifecycle suite packs a
 tarball and installs it into a task-local consumer with the normal pnpm installer.
 The update suite installs packed fixture versions into isolated npm global
 prefixes inside its temporary directory. Dependency resolution requires package-
@@ -34,7 +37,7 @@ public command and reads SQLite through an independent connection. Product
 scheduling APIs are not replaced. Git transport is limited to the local fixture origin.
 
 The public client commands are root help/version, `update`, `completion` and the
-`review` group. Lifecycle registration uses `review add-repo`, monitoring uses `review run`,
+`review`, `project` and `task` groups. Lifecycle registration uses `review add-repo`, monitoring uses `review run`,
 and local status uses `review list` or `review ls`. Current validation must cover
 root/group/operation help without review dependencies, invalid former entry
 forms, the stable `dist/main.js` bin, a clean distribution after module moves,
@@ -91,6 +94,105 @@ digest and bytes while retaining the same PR session UUID. Six discovery
 children are recorded separately from the six review-agent invocations and five
 publications. These are controlled loading and lifecycle assertions; actual
 model activation has a separate native Copilot probe.
+
+## Project/task installed and real-service acceptance
+
+Status: local validation passed; exact-head native CI and remote review for this
+acceptance delivery remain pending. This section separates the implemented paths
+from source-bound observations. The
+[acceptance decision](../../.agents/notes/implemented/testing/2026-10-20-installed-project-task-acceptance.md)
+owns the alternatives and lifecycle costs.
+
+The project/task native installed suite joins the existing review and updater suites in
+`pnpm acceptance`. The
+[`installed-cli.ts`](../../packages/daynight/test/fixtures/installed-cli.ts) fixture
+packs the source CLI, installs the tarball
+in an isolated consumer and drives that installation's public command with real
+Git and controlled HTTP. Linux, macOS and Windows must establish repository
+selection, normalization, binding/ignore persistence, locks and atomic replacement,
+complete JSON, refused writes and cleanup. The repository-root
+[`project-task.acceptance.ts`](../../packages/daynight/test/cli/project-task.acceptance.ts)
+writes `.tmp/project-task-evidence.json` to identify source, tarball and installation,
+scenario outcomes and owned resources. Existing review and updater assertions
+remain independent and required.
+
+Real Go/PostgreSQL validation uses the existing server command fixture and runs
+through `bash packages/daynight-server/scripts/check.sh` with an isolated
+`DAYNIGHT_TEST_DATABASE_URL`. The Node orchestrator builds and installs the CLI
+once, shares that installation with Go command scenarios and reuses it for budget
+probes. The Go scenarios use the fresh race binary, PostgreSQL 18.6, actual
+restart and observed database waiters; they verify project/task workflow,
+dependency refusal, full reads, persistence and competing expected versions.
+Their CLI requirement identifiers use the `PT.V*` namespace, distinct from the
+original service requirements. The scenario is
+`installed_cli_project_task_workflow`; the existing server receipt also records
+validated `installedCli` identity, CLI started/reaped counts, workspace removal,
+refusal request IDs and concurrent HTTP status/request IDs.
+
+After the unchanged go-cov/race/critical and strict raw-profile gate, public CLI
+probes run outside Go's default ten-minute timer. The six invocations all use installed
+`project list --json` with production defaults: a unique cursor advancing every
+250 ms until the five-minute total limit, a started response stalled until the
+30-second request limit, and paired decoded-byte boundaries. Valid gzip JSON
+uses whitespace padding so exact 128 MiB single-response and 256 MiB cumulative
+bodies succeed with one and three small unique project resources respectively;
+every continuation page remains protocol-valid. Each boundary plus one byte must
+fail with empty stdout. Probes also require no further pages after rejection,
+attributable errors and closed/reaped resources. Cumulative byte pages are 96, 96
+and 64 MiB, with the rejected case adding one byte only to the final page. Both
+deadline cases run concurrently while the four byte cases run sequentially.
+They do not introduce a product test switch or reduce the production budgets.
+
+The repository-root `.tmp/project-task-service-evidence.json` combines the shared
+installation identity, Go phase and raw-profile result, bounded probe counts and
+wire/decoded bytes, failures and cleanup. The server's existing acceptance receipt
+and raw coverage profile remain distinct. Native and service paths prove
+different requirements; neither controlled HTTP nor a suite's presence proves
+successful hosted validation.
+
+### Observed local PT-T5 evidence
+
+The local source was `c19b064b094aae6634ca6d62e943a73d22008262` with `dirty=true`,
+package `0.6.0` and Node `v24.19.0` on Linux. This identifies an implementation
+worktree, not the future delivery commit's clean source. The shared installed
+artifact recorded tarball SHA-256
+`9b2101ede96604a743d6eba5cce4ffc3b6b2b372c4409ffd5a07ad195c2086a0`
+and entry SHA-256
+`f97d234eb1bdcb56ad2dc1fe86adde5dc88da1bbf5eea93cc22c39d7aa71e552`.
+
+| Validation | Observed result |
+|---|---|
+| Type checking, build and ordinary tests | Passed; 1,510 tests passed and ten platform-specific tests skipped on Linux |
+| Installed suites | Review, updater and project/task all passed |
+| Final project/task native receipt | Ten scenario families, 69 HTTP requests; installation removed, children exited, servers closed, zero cleanup errors |
+| Go build, vet, race, fixed go-cov and strict raw profile | Passed; 309 tests, 109 top-level, `1153/1155` covered statements |
+| Actual service workflow | Go `1.27.2` and PostgreSQL `18.6`; 8,818 ms; workflow, restart, full reads and competing versions passed |
+| Workflow cleanup | Two service processes and 38 CLI processes started/reaped; workspace and one schema removed, owned sessions absent |
+| Concurrent PATCH | One actual HTTP `200`, one `409`; distinct request IDs retained |
+
+The six installed public-command budget outcomes were:
+
+| Probe | Decoded bytes / request count | Exit / stdout | Elapsed |
+|---|---|---|---|
+| Single response at limit | `134217728` bytes | `0`, 202 bytes | 952 ms |
+| Single response plus one byte | `134217729` bytes | `1`, empty | 813 ms |
+| Cumulative responses at limit | `268435456` bytes across `100663296 + 100663296 + 67108864` | `0`, 602 bytes | 1,543 ms |
+| Cumulative responses plus one byte | `268435457` bytes | `1`, empty | 1,540 ms |
+| Request deadline after headers | One request | `1`, empty | 30,104 ms |
+| Command deadline with progress | 1,187 requests, 1,186 completed pages | `1`, empty | 300,103 ms |
+
+Every probe records `passed=true`, `childReaped=true`, `socketsClosed=true`,
+`serverClosed=true` and `fixtureRemoved=true`. The final composite records
+`passed=true`, `installedFixtureRemoved=true` and `failures=[]`. Separate
+cancellation controls cover an already-aborted setup and an active pnpm process
+with a grandchild, preserving the original cancellation reason and removing the
+installation. Fixture Git commands disable external fsmonitor per command.
+
+After the Go gate, an independent SQL check found zero owned schemas and
+sessions. Budget directories and the shared installation were absent; the owned
+PostgreSQL container and anonymous volume were removed. These local outcomes
+still require the PR's exact clean head to pass its native matrix, all other
+required CI jobs and remote review before hosted delivery is complete.
 
 ## Bundled review skill acceptance
 
@@ -337,7 +439,8 @@ presence alone is not a pass receipt.
 ## Evidence and verdict
 
 GitHub Actions runs the ordinary and installed suites on native Linux, macOS and
-Windows. Each native CLI job uploads three curated files:
+Windows. Each native CLI job uploads four curated files; the project/task receipt
+does not replace the existing ones:
 
 - `validation-environment.json`: checked-out revision, dirty flag, OS,
   architecture, Node/ABI/Node-API, pnpm, Git, gh and loaded SQLite versions.
@@ -346,6 +449,9 @@ Windows. Each native CLI job uploads three curated files:
 - `update-evidence.json`: controlled npm self-update scenarios, source package
   version and replacement result, distinct from review lifecycle and live-service
   evidence.
+- `project-task-evidence.json`: the new installed project/task suite's source,
+  tarball, installation, controlled HTTP/Git scenarios and cleanup. Its integration
+  and current result are owned by PT-T5.
 
 A separate `validation-probes.json` diagnostic artifact preserves command
 resolution, launcher, PID, timing, bounded output and failures even when complete

@@ -1,7 +1,8 @@
 # Project 与 Task 客户端需求
 
 状态：共享配置、HTTP、仓库关联基础及 `project create/list/show` 已实现；
-Task 命令已实现并通过本地验证，完整 Go 服务联调待完成。本文保留完整交付要求，具体任务状态与
+Task 命令已交付；安装产物、真实 Go/PostgreSQL 联调及默认预算验收已在本地通过，
+交付 PR 的原生 CI 与远端 review 待完成。本文保留完整交付要求，具体任务状态与
 验证证据由[任务清单](../design/daynight-project-task-tasks.md)拥有；当前可用命令见
 [仓库 README](../../README.md)。
 
@@ -237,6 +238,17 @@ daynight task graph
 入口已在受控 HTTP 条件下验证创建、完整分页、详情、参数错误、服务拒绝、
 取消、原始 JSON 与依赖隔离。Task 已通过参数、操作、渲染、仓库选择及实际编译
 入口的受控 HTTP 验证；共享补全保留既有场景，并在真实 Bash/zsh 验证 Task 语法。
-V1–V12 继续约束完整 CLI 交付，真实 Go/PostgreSQL 全流程验收仍由 PT-T5 完成。
-原生 CI、远端 review 和完整联调的实际结果见任务清单；受控 HTTP 验证不代表真实
-Go 服务联调已经完成。
+V1–V12 继续约束完整 CLI 交付。PT-T5 必须通过三原生平台的安装 CLI 受控 HTTP/Git
+验收，以及实际安装 CLI 与真实 Go 1.27.2/PostgreSQL 18.6 的完整流程、重启和版本
+竞争。默认 30 秒、5 分钟、128 MiB 和 256 MiB 预算必须通过公开安装命令与流式
+HTTP 验证，不能以注入较小预算替代。响应和累计解码字节均须提供精确边界成功
+及增加 1 字节拒绝的配对证据，使用合法 gzip JSON 和空白补齐以保留小型结果输出。
+既有 review/update 安装验收和 Go 覆盖率门槛
+全部保留，完整 Go 工作负载不与真实预算探针共享 Go 默认 10 分钟计时器。
+
+原生安装结果写入仓库根 `.tmp/project-task-evidence.json`，服务及预算结果写入
+`.tmp/project-task-service-evidence.json`；每份证据标识源码、pack/安装身份、场景
+和清理。Go 原有 receipt 及 raw coverage 保留其归属，CLI 要求编号使用 `PT.V*` 命名
+空间。真实 Go/PostgreSQL 联调及默认预算场景已在本地通过，当前验收交付仍须由
+精确 clean head 的原生 CI 和远端 review 确认；实际结果见任务清单。机制存在及
+受控 HTTP 验证不能替代真实服务证据或原生平台证据。

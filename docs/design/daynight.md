@@ -3,7 +3,8 @@
 状态：`packages/daynight/` 是通过 `@codetreker/daynight` 分发的 TypeScript 客户端
 命令工具包，支持 Linux、macOS 和 Windows。`review` 提供 GitHub PR 审查，`update`
 管理当前 npm 全局安装，`completion` 生成 Bash 和 zsh 的原生补全脚本。project/task
-CLI 的共享配置、HTTP、仓库关联基础及 project/task 命令已实现，完整服务验收待完成；
+CLI 的共享配置、HTTP、仓库关联基础及 project/task 命令已交付，安装产物、真实服务
+与默认预算验收已在本地通过；该验收交付的原生 CI 与远端 review 待完成。
 [专属设计](daynight-project-task.md)拥有机制，[实现任务](daynight-project-task-tasks.md)
 拥有交付状态。行为归属见[客户端需求](../spec/daynight.md)及
 [review 需求](../spec/daynight-review.md)，结构选择见
@@ -314,7 +315,12 @@ fixture 不能通过当前 store 生成基线，从而避免现有实现为自�
 的 Tab，检查实际插入文本、引号、后缀、描述和光标位置。它独立于 review 与自更新
 安装验收，使用任务内的 fixture，不修改操作者的 shell 配置或全局安装。
 
-GitHub Actions 在原生 Linux、macOS、Windows 上运行普通测试与两套安装验收，
-并在独立 Linux 作业中执行补全的真实 shell 验收。
+GitHub Actions 保留原生 Linux、macOS、Windows 的普通测试与既有 review/update
+安装验收，并在独立 Linux 作业中执行补全的真实 shell 验收。PT-T5 加入独立
+project/task 安装 suite，以受控 HTTP 和真实 Git 证明三个原生平台的仓库选择与
+文件行为；真实 Go/PostgreSQL 流程复用 Go command-package 的 fresh race binary。
+服务验证的编排层只安装一次 CLI，原样执行 Go 覆盖率 gate，再在 Go 默认 10 分钟
+计时器之外运行默认生产预算探针。职责与证据见
+[project/task 设计](daynight-project-task.md#验证与交付证据)，当前状态仍由任务清单拥有。
 [验收报告](../research/daynight-acceptance.md)区分每次已观察到的本地及原生 receipt、
 受控 GitHub/Copilot 行为与真实服务验收；历史通过记录不能代替当前源码的验证结果。

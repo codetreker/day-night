@@ -1,7 +1,8 @@
 # Daynight Shell 补全设计
 
 状态：共享命令语法及 Bash/zsh 生成器已实现，包含 `review`、`update`、`completion`、
-`project` 和 `task`；Task 扩展已通过本地验证，交付 PR 的原生 CI 与远端 review 待完成。
+`project` 和 `task`；Task 扩展已随 PT-T4 通过原生 CI 与远端 review 并交付，
+对应来源和结果见[任务清单](daynight-project-task-tasks.md#pt-t4)。
 行为约束由[客户端需求](../spec/daynight.md)拥有，project 行为由
 [Project 与 Task 客户端需求](../spec/daynight-project-task.md)拥有。本文负责命令描述、
 脚本生成、加载和真实 shell 验证的机制；[客户端架构](daynight.md)负责命令生命周期，

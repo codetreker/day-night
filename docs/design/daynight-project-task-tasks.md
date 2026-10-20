@@ -1,6 +1,6 @@
 # Project 与 Task CLI 实现任务
 
-状态：PT-T1–PT-T3 已交付；PT-T4 已实现并通过本地验证；PT-T5 未开始。
+状态：PT-T1–PT-T4 已交付；PT-T5 已实现并通过本地验证，交付 PR 的原生 CI 与远端 review 待完成。
 
 本文拥有任务编号、状态、依赖、文件归属和完成条件。
 [需求](../spec/daynight-project-task.md)拥有 PT1–PT10 的可观察行为，
@@ -15,8 +15,8 @@
 | [PT-T1](#pt-t1) 服务访问基础 | 已完成 | 无 | 共享 YAML、独立 server 配置、HTTP 客户端和错误/取消 | PT2、PT8、PT9 |
 | [PT-T2](#pt-t2) 仓库关联发现 | 已完成 | PT-T1 | Git 定位、地址身份、完整发现、本地记录及忽略规则 | PT3、PT4、PT5 |
 | [PT-T3](#pt-t3) Project 命令 | 已完成 | PT-T1 | create/list/show、命令登记和帮助、输出 | PT1、PT6、PT8 |
-| [PT-T4](#pt-t4) Task 命令 | 已实现 | PT-T2、PT-T3 | create/list/show/update/graph、版本及依赖更新 | PT1、PT4、PT7、PT8、PT9 |
-| [PT-T5](#pt-t5) 安装与服务联调验收 | 未开始 | PT-T3、PT-T4 | 实际 CLI、真实 Git、Go/PostgreSQL 联调和原生证据 | PT1–PT10 |
+| [PT-T4](#pt-t4) Task 命令 | 已完成 | PT-T2、PT-T3 | create/list/show/update/graph、版本及依赖更新 | PT1、PT4、PT7、PT8、PT9 |
+| [PT-T5](#pt-t5) 安装与服务联调验收 | 已实现 | PT-T3、PT-T4 | 实际 CLI、真实 Git、Go/PostgreSQL 联调和原生证据 | PT1–PT10 |
 
 PT-T2 与 PT-T3 在 PT-T1 完成后可以并行，分别拥有仓库上下文与 project 命令文件。
 PT-T3 完成登记后，PT-T4 再接管命令登记文件，避免并行改动入口。各任务自身交付有效
@@ -132,7 +132,7 @@ text 选项、静态补全及实际 shell 验收衔接。共享 server 执行层
 <a id="pt-t4"></a>
 ## PT-T4：Task 命令
 
-状态：已实现。前置：PT-T2、PT-T3。
+状态：已完成。前置：PT-T2、PT-T3。
 
 本地 `pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm acceptance` 均通过；
 普通测试 1510 项通过，10 项平台专属测试在 Linux 上跳过，2 组既有安装验收通过。
@@ -141,9 +141,13 @@ Task 专项 63 项、共享语法与补全专项 87 项，以及实际编译入�
 场景并增加 42 个 Task 场景；每个 shell 的两种就绪证明及 compinit 拒绝检查合计
 337 项通过，补全期间没有调用 CLI/Node。
 
-命令与渲染、共享语法与补全的独立最终审查均未发现 Critical/Major；交付 PR 的
-远端 review 和原生 CI 仍待完成。上述受控 HTTP 与既有安装验收不代表 Task 安装产物的真实
-Go/PostgreSQL 全流程联调，后者仍由 PT-T5 验证。
+命令与渲染、共享语法与补全的独立最终审查均未发现 Critical/Major。
+[PR #54](https://github.com/codetreker/daynight/pull/54) 已作为 `c19b064` 合并；
+最终 head `b0b79927d5785e60746deef0d0485c9a626bc3ea` 通过远端 review，全部 7 项必选检查在
+[CI run 39422326109](https://github.com/codetreker/daynight/actions/runs/39422326109)
+通过；合并后的[主线 CI run 39423564636](https://github.com/codetreker/daynight/actions/runs/39423564636)
+在 `c19b064` 上全部 7 项检查通过。上述受控 HTTP 与既有安装验收不代表 Task
+安装产物的真实 Go/PostgreSQL 全流程联调，后者仍由 PT-T5 验证。
 
 ### 文件归属与范围
 
@@ -167,22 +171,59 @@ Go 服务持有。
 <a id="pt-t5"></a>
 ## PT-T5：安装与服务联调验收
 
-状态：未开始。前置：PT-T3、PT-T4。
+状态：已实现。前置：PT-T3、PT-T4。交付 PR 的原生 CI 与远端 review 待完成。
+
+本地验证使用 `c19b064b094aae6634ca6d62e943a73d22008262` 上的 dirty 工作树，
+包版本 `0.6.0`，Node `v24.19.0`。`pnpm typecheck`、`pnpm build`、1510 项普通
+测试均通过，Linux 上 10 项平台专属测试跳过；既有 review/update 及新增 project/task
+三套安装验收通过。最终 Linux project/task 验收覆盖 10 类场景、69 个 HTTP 请求，
+安装、子进程和 HTTP 服务全部回收。helper 的预先取消及运行中 pnpm/后代取消
+注入保留原始原因并完成回收，Git fixture 命令显式关闭外部 fsmonitor。
+
+完整 Go gate 的 build、vet、race、固定 go-cov 及 strict raw profile 检查通过：
+309 项 Go 测试（109 个顶层），原始覆盖 `1153/1155`。Go `1.27.2`、PostgreSQL
+`18.6` 下，`installed_cli_project_task_workflow` 用时 8818 ms，实际重启并回收
+2/2 个 server、38/38 个 CLI，workspace 与 1 个 schema 已删除，无所属会话残留。
+并发 PATCH 的实际结果为一个 `200` 和一个 `409`，保留各自 request ID。
+
+六个公开安装 CLI 默认预算场景全部通过：精确 128 MiB 单响应、256 MiB 累计
+边界成功，各增加 1 字节拒绝且 stdout 为空；请求期限在 30104 ms、1 次请求后
+拒绝；持续推进 cursor 的总期限在 300103 ms、1187 次请求后拒绝。六个场景均确认
+child reaped、socket/server 关闭及 fixture 删除；最终服务 receipt `passed=true`、
+`installedFixtureRemoved=true`、`failures=[]`。独立数据库检查确认所属 schema 与
+session 均为零，预算目录、共享安装目录、所属 PostgreSQL container 及匿名 volume
+均已回收。
+
+三个独立源码最终审查未发现 Critical/Major，预算 receipt 与脚本 hash 的独立复核
+通过。上述本地 dirty 证据不能代替交付 PR
+精确 clean head 的原生 CI 与远端 review。验证分层与取舍由
+[安装联调决策](../../.agents/notes/implemented/testing/2026-10-20-installed-project-task-acceptance.md)拥有，
+可核对的场景、产物身份及预算表由[验收报告](../research/daynight-acceptance.md#projecttask-installed-and-real-service-acceptance)拥有。
 
 ### 文件归属与范围
 
-负责 CLI 安装验收、真实 Git 和隔离 Go/PostgreSQL 联调 fixture、验收证据与状态同步。
-若需要调整共享验证入口或 CI，由本任务独占相关文件，并保留 Go、web 与所有原生 CLI
-必选检查。服务接口和 schema 仍不属于本任务的功能范围。
+负责可复用 CLI pack/install fixture、三原生平台的受控 HTTP/Git 安装验收、真实
+Go/PostgreSQL command-package 联调、默认预算探针、证据与状态同步。同次服务验证
+只安装一次，Go 场景与预算探针复用该产物。Node 编排层保留既有 go-cov 参数及
+严格覆盖率检查，之后在 Go 默认 10 分钟计时器之外运行真实 30 秒、5 分钟及响应
+字节预算探针。统一检查脚本与 CI 由本任务独占，保留原有 20 分钟 Go 作业、Go、
+web、补全及三原生 CLI 必选检查。服务接口、生产预算和 schema 不属于功能改动范围。
 
 ### 完成条件
 
 - `pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm acceptance` 通过，并保留原有
   review/update 安装场景。单元和安装测试使用受控 server 响应及真实 Git。
+- 新增三原生平台的安装 CLI 受控 HTTP/Git 场景，保留既有 review/update 两套安装验收；
+  source、pack、安装身份及进程、HTTP、Git 与目录清理写入仓库根 `.tmp/project-task-evidence.json`。
 - 实际安装的 CLI 与隔离真实 Go/PostgreSQL 服务完成 project/task 创建、依赖推进、
   查询、更新、重启持久化及版本冲突；证明地址等价和本地发现记录生效。
 - Linux、macOS、Windows 的工作负载证明路径、Git、文件替换和退出行为；受控 HTTP
   失败覆盖取消、整体超时、持续前进 cursor、响应字节超限、错误响应、续页失败和写结果不确定，
   不能用绿灯代替行为证据。
+- 安装 CLI 通过公开命令验证默认 30 秒单次期限、5 分钟总期限；gzip 流式有效 JSON
+  以空白补齐精确 128 MiB 单响应和 256 MiB 累计边界，边界值必须成功、各增加
+  1 字节必须拒绝。期限场景保持持续推进 cursor，不能以缩小生产常量替代。
+  服务及预算验证写入仓库根 `.tmp/project-task-service-evidence.json`，Go 原有 receipt
+  中的 CLI 要求编号使用 `PT.V*` 命名空间，既有服务场景和覆盖率证据保持独立。
 - 明确记录实际命令、源码/产物身份、结果和局限；收尾回收所属服务、Git fixture、
   数据库与临时配置。同步实现状态和受影响文档，不将未运行的检查记成通过。
