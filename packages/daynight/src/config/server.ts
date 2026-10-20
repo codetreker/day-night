@@ -34,5 +34,5 @@ export const parseServerConfiguration = (source: string, paths: ConfigurationPat
   }
 };
 
-export const loadServerConfiguration = async (paths: ConfigurationPaths): Promise<ServerConfiguration> =>
-  parseServerConfiguration(await readConfigurationSource(paths), paths);
+export const loadServerConfiguration = async (paths: ConfigurationPaths, signal?: AbortSignal): Promise<ServerConfiguration> =>
+  parseServerConfiguration(await readConfigurationSource(paths, signal), paths);

@@ -200,6 +200,17 @@ def scenarios():
         ("root command and local directory collision", "daynight rev\t", ["review"]),
         ("root update", "daynight upd\t", ["update"]),
         ("root completion", "daynight comp\t", ["completion"]),
+        ("root project and local directory collision", "daynight pro\t", ["project"]),
+        ("project create", "daynight project cre\t", ["project", "create"]),
+        ("project list", "daynight project li\t", ["project", "list"]),
+        ("project show", "daynight project sh\t", ["project", "show"]),
+        ("project help", "daynight project --he\t", ["project", "--help"]),
+        ("project name option", "daynight project create --na\t", ["project", "create", "--name"]),
+        ("project repo option", "daynight project create --re\t", ["project", "create", "--repo"]),
+        ("project repo after text name", 'daynight project create --name "Day Night" --re\t', ["project", "create", "--name", "Day Night", "--repo"]),
+        ("project name after repo", "daynight project create --repo git@github.com:acme/repo.git --na\t", ["project", "create", "--repo", "git@github.com:acme/repo.git", "--name"]),
+        ("project list JSON", "daynight project list --js\t", ["project", "list", "--json"]),
+        ("project show JSON", "daynight project show project-id --js\t", ["project", "show", "project-id", "--json"]),
         ("review run", "daynight review ru\t", ["review", "run"]),
         ("review list", "daynight review li\t", ["review", "list"]),
         ("quoted command name", "daynight 'review' li\t", ["review", "list"]),
@@ -235,6 +246,15 @@ def scenarios():
     ]
     unchanged = [
         ("remote has no file fallback", "daynight review add-repo nor"),
+        ("project name has no file fallback", "daynight project create --name nor"),
+        ("project repo has no file fallback", "daynight project create --repo nor"),
+        ("project name has no option fallback", "daynight project create --name --re"),
+        ("project repo has no option fallback", "daynight project create --repo --na"),
+        ("quoted project text has no file fallback", 'daynight project create --name "nor'),
+        ("project ID has no file fallback", "daynight project show nor"),
+        ("used project name is hidden", 'daynight project create --name "Day Night" --na'),
+        ("used project repo is hidden", "daynight project create --repo git@github.com:acme/repo.git --re"),
+        ("used project JSON is hidden", "daynight project list --json --js"),
         ("used path is hidden", "daynight review add-repo acme/repo --path normal-directory/ --pa"),
         ("consumed shell choice is hidden", "daynight completion bash zs"),
         ("nonexistent directory leaf", "daynight review add-repo --path missing-leaf"),
@@ -282,8 +302,10 @@ def run_shell(label, binary, kind, script, directory, evidence, zsh_root):
                 raise AssertionError(f"{label}: {name}: expected unchanged {line!r}, received {actual!r}, terminal={output!r}")
             print(f"PASS {label}: {name}", flush=True)
         for name, line, candidates in [
-            ("empty root prefix", "daynight ", ["review", "update", "completion"]),
+            ("empty root prefix", "daynight ", ["review", "update", "completion", "project"]),
             ("empty review prefix", "daynight review ", ["run", "list", "ls", "add-repo"]),
+            ("empty project prefix", "daynight project ", ["create", "list", "show"]),
+            ("empty project create prefix", "daynight project create ", ["--name", "--repo"]),
             ("empty shell prefix", "daynight completion ", ["bash", "zsh"]),
         ]:
             actual, cursor, output = shell.complete(line + "\t\t")
@@ -315,7 +337,7 @@ def main():
                 sentinel = directory / "bin" / command
                 sentinel.write_text("#!/bin/sh\nprintf x >>" + shlex.quote(str(directory / "forbidden-executions.log")) + "\nprintf '__DAYNIGHT_FORBIDDEN_NODE__\\n'\nexit 99\n")
                 sentinel.chmod(0o755)
-            for name in ["review", "normal-directory", "space directory", "中文目录", "apostrophe'directory", 'double"directory', "dollar$directory", "backtick`directory", "colon:directory", "~literal", "home/home-directory"]:
+            for name in ["review", "project", "normal-directory", "space directory", "中文目录", "apostrophe'directory", 'double"directory', "dollar$directory", "backtick`directory", "colon:directory", "~literal", "home/home-directory"]:
                 (directory / name).mkdir(parents=True)
             scripts = {}
             for kind in ["bash", "zsh"]:

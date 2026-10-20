@@ -2,6 +2,7 @@ import type { CliCommand } from "./context.js";
 import type { CommandDefinition } from "./schema.js";
 import { completionDefinition } from "../commands/completion/definition.js";
 import { reviewDefinition } from "../commands/review/definition.js";
+import { projectDefinition } from "../commands/project/definition.js";
 import { updateDefinition } from "../commands/update/definition.js";
 
 export type CommandRegistration = CommandDefinition & {
@@ -20,6 +21,10 @@ export const commands: readonly CommandRegistration[] = [
   {
     ...completionDefinition,
     load: async () => ({ run: (await import("../commands/completion/command.js")).runCompletionCommand }),
+  },
+  {
+    ...projectDefinition,
+    load: async () => ({ run: (await import("../commands/project/command.js")).runProjectCommand }),
   },
 ];
 

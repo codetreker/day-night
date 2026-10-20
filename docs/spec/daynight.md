@@ -1,7 +1,7 @@
 # Daynight 客户端需求
 
-状态：客户端入口、review、自更新、shell 补全及 project/task 的配置、HTTP 和仓库关联基础已实现；
-project/task 命令与完整服务验收待完成。
+状态：客户端入口、review、自更新、shell 补全、project 命令及配置、HTTP、仓库关联基础已实现；
+task 命令与完整服务验收待完成。
 可用命令和验证入口见[仓库 README](../../README.md)，待实现范围见
 [project/task 需求](daynight-project-task.md)及[任务清单](../design/daynight-project-task-tasks.md)。
 
@@ -44,11 +44,15 @@ daynight review add-repo <remote> [--path <path>]
 daynight completion
 daynight completion bash
 daynight completion zsh
+daynight project
+daynight project create --name <name> --repo <repo>
+daynight project list [--json]
+daynight project show <project-id> [--json]
 ```
 
-无参数、`--help` 或 `-h` 显示顶层帮助并成功退出；帮助列出 `review`、`update` 和
-`completion`。`--version` 与 `-v` 输出当前包版本。裸 `review` 和裸 `completion`
-显示各自帮助。组和操作在该层唯一参数为 `--help` 或 `-h` 时显示帮助，且不得执行
+无参数、`--help` 或 `-h` 显示顶层帮助并成功退出；帮助列出 `review`、`update`、
+`completion` 和 `project`。`--version` 与 `-v` 输出当前包版本。裸 `review` 和裸 `completion`
+显示各自帮助；裸 `project` 同样显示组帮助。组和操作在该层唯一参数为 `--help` 或 `-h` 时显示帮助，且不得执行
 该操作。顶层版本选项不继承到子命令。`review ls` 是 `review list` 的别名。
 
 `review add-repo` 的 `--path <path>` 可以位于 remote 前后，只能指定一次；不接受
@@ -71,6 +75,9 @@ daynight completion zsh
 
 `review add-repo` 只写配置，`review list` 与 `review ls` 只读取配置及已存数据库，
 `review run` 独立持有审查运行时和信号生命周期，具体保证由 review 需求定义。
+`project` 操作只加载 server 配置和 HTTP 能力，不读取工作目录、Git 或仓库本地关联；
+共享执行层在单个操作下处理信号、期限和完整结果输出。task 命令的待实现范围由
+[project/task 需求](daynight-project-task.md)定义。
 客户端的命令和源码结构调整不改变 review 配置与状态的现有格式和位置，不迁移、
 重分区或重新初始化这些数据。新增命令通过自己的模块接入；它的业务依赖不能成为
 其他命令的启动前提。[project/task 需求](daynight-project-task.md)规定待实现的服务 API
