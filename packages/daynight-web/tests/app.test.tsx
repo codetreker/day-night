@@ -8,10 +8,16 @@ const projectPage = () => new Response(JSON.stringify({ items: [{
   createdAt: '2026-10-20T09:00:00Z', updatedAt: '2026-10-20T09:00:00Z',
 }], nextCursor: null }), { headers: { 'Content-Type': 'application/json' } });
 
+const taskGraph = () => new Response(JSON.stringify({
+  project: { id: projectId, name: '项目任务页面', repoUrl: 'https://github.com/example/repo',
+    createdAt: '2026-10-20T09:00:00Z', updatedAt: '2026-10-20T09:00:00Z' },
+  tasks: [], summary: { total: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
+}), { headers: { 'Content-Type': 'application/json' } });
+
 describe('application navigation', () => {
   beforeEach(() => {
     window.history.replaceState(null, '', '/');
-    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => projectPage()));
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => url.endsWith('/task-graph') ? taskGraph() : projectPage()));
   });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -22,19 +28,19 @@ describe('application navigation', () => {
     expect(screen.getByRole('link', { name: '项目' }).getAttribute('aria-current')).toBe('page');
     fireEvent.click(screen.getByRole('heading', { name: '真实项目' }).closest('a')!);
     expect(window.location.pathname).toBe(`/projects/${projectId}`);
-    expect(screen.getByRole('heading', { name: '页面不存在' })).toBeTruthy();
-    expect(document.title).toBe('页面不存在 · Daynight');
+    await screen.findByRole('heading', { name: '项目任务页面' });
+    expect(document.title).toBe('项目任务 · Daynight');
     expect(document.activeElement).toBe(screen.getByRole('main'));
     expect(screen.queryByRole('heading', { name: '真实项目' })).toBeNull();
     await act(async () => { window.history.back(); });
     await screen.findByRole('heading', { name: '真实项目' });
     expect(window.location.pathname).toBe('/');
     await act(async () => { window.history.forward(); });
-    await screen.findByRole('heading', { name: '页面不存在' });
+    await screen.findByRole('heading', { name: '项目任务页面' });
     expect(window.location.pathname).toBe(`/projects/${projectId}`);
   });
 
-  it.each(['/unknown', '/projects/not-a-uuid', `/projects/${projectId}`])('returns from an unregistered route %s through the visible list link', async (path) => {
+  it.each(['/unknown', '/projects/not-a-uuid'])('returns from an unregistered route %s through the visible list link', async (path) => {
     window.history.replaceState(null, '', path);
     render(<App />);
     expect(screen.getByRole('heading', { name: '页面不存在' })).toBeTruthy();
@@ -42,6 +48,17 @@ describe('application navigation', () => {
     fireEvent.click(screen.getByRole('link', { name: '返回项目列表' }));
     await screen.findByRole('heading', { name: '真实项目' });
     expect(window.location.pathname).toBe('/');
+  });
+
+  it('loads a valid project deep link through the graph API', async () => {
+    window.history.replaceState(null, '', `/projects/${projectId}`);
+    render(<App />);
+    await screen.findByRole('heading', { name: '项目任务页面' });
+    expect(fetch).toHaveBeenCalledWith(`/api/v1/projects/${projectId}/task-graph`, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(screen.getByRole('heading', { name: '还没有任务' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: '项目' }).getAttribute('aria-current')).toBe('page');
+    fireEvent.click(screen.getByRole('link', { name: '← 项目' }));
+    await screen.findByRole('heading', { name: '真实项目' });
   });
 
   it('uses the sidebar and breadcrumb as keyboard-accessible navigation controls', async () => {
