@@ -127,4 +127,4 @@ database credentials (`daynight` / `daynight-local`, database `daynight`).
 The gateway forwards TCP to the server's strict `127.0.0.1:8787` listener
 inside their shared container network namespace, preserving the server's
 HTTP handling. The review CLI has its own
-[configuration and startup](../../README.md#configuration-and-startup).
+[review configuration and startup](../../README.md#review-configuration-and-startup).

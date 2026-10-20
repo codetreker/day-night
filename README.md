@@ -1,15 +1,16 @@
 # Day Night
 
 Day Night contains a client command toolkit and an independent Go service runtime
-for project and task management. The read-only browser workspace implements
-project browsing; task visualization and embedded delivery remain tracked
-implementation work.
+for project and task management. Its read-only browser workspace provides project
+statistics, task dependency graphs and details from the same Go service origin.
+Full production-browser and performance acceptance remains tracked implementation
+work.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion`, shared configuration and server HTTP foundations; project/task commands pending | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
-| `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
-| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details and strict coverage implemented; embedded delivery pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
+| `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
+| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery and strict coverage implemented; full production acceptance pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The `@codetreker/daynight` package provides the `daynight` client. Its root entry
 lists commands and reports the package version; each command owns its business
@@ -44,11 +45,11 @@ CLI commands below apply to the client; server commands have their own module.
 The dashboard architecture presents source-root dependency graphs and project
 statistics from the server. The project list is implemented in the private web
 workspace, including task visualization and details. Its [design decision](.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)
-defines the read-only MVP and future single-origin delivery. The standalone HTML
-preview opens directly in a browser and uses fixture data; current server builds
-continue to serve only the implemented JSON APIs. The planned delivery integrates
-the full application into `deployment/localhost/` and provides an isolated
-`deployment/dev-ci/` stack for local and CI acceptance with disposable test data.
+defines the read-only MVP. The Go binary embeds the production UI and serves it
+alongside JSON APIs. The standalone HTML preview uses fixture data and remains
+separate from the application. `deployment/localhost/` starts the complete
+application; the isolated [dev-ci stack](deployment/dev-ci/README.md) uses the
+same production build and gateway with disposable test data.
 
 ## CLI development
 
@@ -151,26 +152,29 @@ checks require no live model invocation or GitHub publication.
 
 ## Local server deployment
 
-Run the project/task API and PostgreSQL with Docker Engine 28+ and Docker
+Run the dashboard, project/task API and PostgreSQL with Docker Engine 28+ and Docker
 Compose 2.20+ using Linux containers:
 
 ```bash
 bash deployment/localhost/up.sh
 ```
 
-The command builds the server, applies its embedded migrations and waits for
-healthy services. The API is available at `http://127.0.0.1:8787/api/v1`;
+The command builds the UI and server inside Docker, applies embedded migrations
+and waits for healthy services. Open `http://127.0.0.1:8787/` for the dashboard;
+the API is available at `http://127.0.0.1:8787/api/v1` on that same origin.
 PostgreSQL data persists across container recreation. The
 [localhost deployment guide](deployment/localhost/README.md) owns port selection,
 API examples, logs, updates and volume removal.
 
 ## Server development
 
-Use Go 1.27.2, PostgreSQL 18.6 and Node.js 24 LTS. The
+Use Go 1.27.2, PostgreSQL 18.6, Node.js 24 LTS and pnpm 10.34.5. Run
+`pnpm install --frozen-lockfile` from the repository root before source builds. The
 [server module](packages/daynight-server/README.md) owns configuration, startup,
 the isolated database setup and complete validation commands. Its HTTP runtime
 binds only loopback addresses and serves project creation/list/get, task
-create/list/get/update, and complete task-graph routes. Delivery status and complete process acceptance
+create/list/get/update, complete task-graph routes and embedded UI assets. Delivery
+status and complete process acceptance
 are recorded in the
 [task breakdown](docs/design/daynight-server-tasks.md).
 
@@ -181,13 +185,15 @@ PostgreSQL database, then run:
 bash scripts/check.sh
 ```
 
-This builds the binary, runs vet and race-enabled `go-cov`, and enforces total
+This first runs the shared `pnpm web:build` to publish real embedded assets, then
+builds the binary, runs vet and race-enabled `go-cov`, and enforces total
 statement coverage strictly greater than 90%, package coverage of at least 85%,
 and function coverage of at least 80%, with critical-block checks enabled. The
 same raw coverage profile supplies an exact strict comparison; exactly 90%
 fails, independently of display rounding. No product files or functions are
-excluded. The CI aggregate requires both this Go job and every existing native
-CLI job to pass. PostgreSQL absence is a failure, not a skipped test. The
+excluded. The CI aggregate requires this Go job, web, every native CLI platform
+and the Linux shell completion job to pass. PostgreSQL absence is a failure, not
+a skipped test. The
 [server acceptance report](docs/research/daynight-server-acceptance.md) maps
 requirements to tests and describes the CI receipt containing tested source and
 binary identity, scenario results and resource cleanup.
@@ -206,13 +212,22 @@ pnpm web:build
 pnpm web:test
 ```
 
-The frontend build emits `packages/daynight-web/dist/`. Embedding into the localhost service and full production acceptance are tracked in the
-[dashboard tasks](docs/design/daynight-web-tasks.md). The web job runs typecheck,
-production build, controlled-fetch UI tests and an exact statement gate strictly
+The frontend build emits `packages/daynight-web/dist/`, validates its HTML and
+assets, and publishes a complete replacement into the Go embed directory. A
+clean Go build without generated assets fails; no placeholder UI is committed.
+The web job runs typecheck, production build, controlled-fetch UI tests, isolated
+deployment lifecycle fixtures and an exact statement gate strictly
 above 90%. It independently enumerates all product TypeScript/TSX files and
 publishes raw counters plus a relative source manifest. `checks` requires web,
 Go, every native CLI platform and the Linux shell completion job; existing root
 CLI commands retain their scope.
+
+For a disposable full-stack HTTP target, run a command through
+`bash deployment/dev-ci/run.sh <command> [args...]`; it receives
+`DAYNIGHT_BASE_URL` and owns only its unique test project. The runner removes its
+containers, volume, network and image tag after completion, failure or cancellation,
+and records cleanup failures. The [dashboard tasks](docs/design/daynight-web-tasks.md)
+track the remaining real-browser and fixed-dataset performance acceptance.
 
 ## Package versions
 

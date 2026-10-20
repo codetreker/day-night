@@ -1,6 +1,6 @@
 # 项目与任务看板实现任务
 
-状态：W-T1–W-T4 已实现；W-T5 正在集成单服务及隔离部署；W-T6 未开始。
+状态：W-T1–W-T4 已合并；W-T5 已实现并通过完整本地验证，等待交付 PR 的 CI 与 approval；W-T6 未开始。
 
 本文拥有任务编号、状态、依赖、文件归属和完成条件。
 [需求](../spec/daynight-web.md)拥有 W1–W12 的行为与验收要求，
@@ -15,7 +15,7 @@
 | [W-T2](#w-t2) 项目浏览基础 | 已完成 | 无 | web 工作区、客户端、原生路由、完整项目分页、单元门禁 | W1、W2、W9、W11、W12 |
 | [W-T3](#w-t3) 图投影与横向布局 | 已完成 | W-T1、W-T2 | 纯数据校验、根投影、共享与外部前置、LR 布局 | W3、W4、W5、W6、W7、W11 |
 | [W-T4](#w-t4) 项目任务看板 | 已完成 | W-T1、W-T2、W-T3 | 快照刷新、统计、根条目、只读画布、详情侧栏 | W2–W9、W12 |
-| [W-T5](#w-t5) localhost 与 dev-ci 交付 | 进行中 | W-T4 | 现有 localhost 完整启动、静态资源内嵌、隔离 dev-ci deployment | W2、W9、W10、W11 |
+| [W-T5](#w-t5) localhost 与 dev-ci 交付 | 已实现，待合并 | W-T4 | 现有 localhost 完整启动、静态资源内嵌、隔离 dev-ci deployment | W2、W9、W10、W11 |
 | [W-T6](#w-t6) 生产浏览器与 CI 验收 | 未开始 | W-T5 | 实际二进制及网关、性能、覆盖率证据和汇总门禁 | W1–W12 |
 
 ```mermaid
@@ -183,6 +183,9 @@ LR 布局模块及其测试。模型与布局不依赖 React、DOM 或网络，�
 浏览器流程，覆盖依赖过期、全图刷新、焦点、图几何及窄屏；1,000 节点链本地单次
 探针约 1.24s 且根节点初始可见。具体证据与边界由[验收报告](../research/daynight-web-acceptance.md)
 拥有；该单次探针不替代 W-T6 的固定 CI 五次性能门槛。
+[PR #42](https://github.com/codetreker/daynight/pull/42) 在 CI 与当前 head approval
+通过后合并；[合并后 CI](https://github.com/codetreker/daynight/actions/runs/39391455671)
+的六项检查全部通过。
 
 ### 文件归属与范围
 
@@ -217,7 +220,22 @@ LR 布局模块及其测试。模型与布局不依赖 React、DOM 或网络，�
 <a id="w-t5"></a>
 ## W-T5：localhost 与 dev-ci 交付
 
-状态：进行中。前置：W-T4。
+状态：已实现，等待交付 PR 的 CI 与 approval。前置：W-T4。
+
+验证：内嵌页面、资源、路由和构建发布均已实现；Go 完整检查通过 307 项测试
+（108 项顶层）及 9 项覆盖率检查，原始语句为 1153/1155（约 99.83%）；web
+通过 293 项功能测试及 24 项工具测试（13 项覆盖率、11 项发布），原始语句为
+648/654（约 99.08%），18 个产品文件全部计入。12 项 Bash 生命周期 fixture
+通过；两个独立代码审查均无 Critical/Major。现有 CLI 类型检查、构建、965 项
+测试（另 10 项平台跳过）、两组安装验收及实际 Bash 4.2/现代 Bash/zsh completion
+验收通过。
+
+真实 Docker 的 HTTP smoke 验证 HTML、资源与缓存/HEAD、深链接、API 和完整图、
+镜像身份及三服务整体重建后的数据持久化，当前集成源码复验通过且清理成功。两次
+并发 dev-ci 运行证明端口、卷和数据独立，清理一组后另一组继续可用，最终均清理。
+两套有效 Compose 的构建、转发、网络和存储配置完成核对；未启动或修改日常栈。
+这些本地工作树结果不替代对应 PR 的干净 CI 回执，也不替代 W-T6 的真实浏览器、
+固定 1,000/5,000 图集五次性能和实际故障清理验收；证据归属[验收报告](../research/daynight-web-acceptance.md)。
 
 ### 文件归属与范围
 
@@ -292,7 +310,7 @@ localhost 的生产 Dockerfile 和 nginx 配置，完成独立资源与生命周
   布局后节点打开、缩放、平移的可见反馈不超过 300ms。网络读取与详情网络时间
   单独计量，记录布局、渲染耗时和环境；失败不能登记为已支持规模。
 - 干净 CI checkout 的 Go 与 web job 均生成真实 UI；扩展现有必选 `verify-web` job，并将
-  生产浏览器/部署验收纳入必需汇总。`checks` 成功要求 Go、web 与全部原生 CLI 检查通过。
+  生产浏览器/部署验收纳入必需汇总。`checks` 成功要求 Go、web、全部原生 CLI 与独立 shell completion 检查通过。
 - 保存原始 Go profile 与 web `coverage-final.json`、产品源码清单、语句命中/总数
   和整数比较结果；两者各自严格大于 90%，不能平均掩盖任一模块不足。保留 Go
   package/function/critical-block 门槛，验证缺失报告或数据库不可用使必需检查失败。

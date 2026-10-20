@@ -6,19 +6,21 @@ binding, connection validation, structured request logs, cancellation, and bound
 HTTP shutdown. Versioned migrations and transactional storage are implemented;
 project/task APIs and built-process acceptance are implemented; delivery status is in the
 [implementation tasks](../../docs/design/daynight-server-tasks.md); the current
-executable serves project, task and complete task-graph routes.
+executable serves project, task and complete task-graph routes together with the
+embedded read-only dashboard.
 
 The [requirements](../../docs/spec/daynight-server.md) own observable behavior and
 the [design](../../docs/design/daynight-server.md) owns architecture and concurrency.
-The existing TypeScript CLI is a separate application and does not use this
-service's database or lifecycle.
+The TypeScript review command retains its separate configuration, storage and
+lifecycle. The client HTTP foundation targets this service's API.
 
 ## Layout
 
 | Path | Responsibility |
 |---|---|
 | `cmd/daynight-server/` | Environment, process signals, dependency assembly, exit status |
-| `internal/server/` | HTTP lifecycle, request context, request IDs, structured logs |
+| `internal/server/` | API/UI routing, HTTP lifecycle, request context, request IDs, structured logs |
+| `internal/webui/` | Embedded production HTML/assets and static response policy |
 | `internal/core/store/` | PostgreSQL migrations, transactions, scoped writes and consistent reads |
 | `api/` | Project/task DTOs and common HTTP error envelopes |
 | `internal/service/` | Project/task use cases, dependency/state/version policy and scoped cursors |
@@ -34,23 +36,35 @@ migration transactions; unknown versions, gaps and checksum mismatches stop star
 ## Local Docker deployment
 
 From the repository root, run `bash deployment/localhost/up.sh` to build and
-start this API with PostgreSQL and wait for readiness. Only Docker is required
-on the host. The [deployment guide](../../deployment/localhost/README.md) owns
+start the dashboard and API with PostgreSQL and wait for readiness. Only Docker
+is required on the host. The [deployment guide](../../deployment/localhost/README.md) owns
 prerequisites, API examples, port selection and persistence/teardown commands.
 The gateway publishes host `127.0.0.1:8787` and forwards TCP to the server's
 loopback listener in their shared network namespace; the database has no
-published host port. Startup uses this module's embedded migrations.
+published host port. Startup uses this module's embedded migrations. Open
+`http://127.0.0.1:8787/` for projects and task graphs. The
+[dev-ci deployment](../../deployment/dev-ci/README.md) reuses the production
+Dockerfile and gateway in a unique disposable project for tests.
 
 ## Build and run
 
-Go **1.27.2** and `pgx/v5` **5.11.0** are pinned. From this directory:
+Go **1.27.2** and `pgx/v5` **5.11.0** are pinned. Source builds also require
+Node.js 24 and pnpm 10.34.5 to build the embedded UI. From the repository root:
 
 ```bash
+pnpm install --frozen-lockfile
+pnpm web:build
+cd packages/daynight-server
 source scripts/env.sh
 go build -o .tmp/daynight-server ./cmd/daynight-server
 export DAYNIGHT_DATABASE_URL='postgres://daynight:password@127.0.0.1:5432/daynight?sslmode=disable'
 .tmp/daynight-server
 ```
+
+`web:build` typechecks and builds the web package, validates the real output and
+publishes it to `internal/webui/dist/`. Generated files are ignored by Git; a
+clean Go build without them fails at `go:embed`. No placeholder index or frontend
+runtime is used. Once built, the binary requires only PostgreSQL at runtime.
 
 Use credentials suitable for the local PostgreSQL instance. The process validates
 the connection before listening and exits nonzero on startup or shutdown failure.
@@ -80,12 +94,20 @@ records include method, route template, status, and duration. A supplied
 `X-Request-ID` must contain 1–64 ASCII letters/digits with optional `.`, `_`, or
 `-` after the first character; invalid or absent values receive a generated ID.
 The response returns `X-Request-ID`. An unmatched route has an empty route template.
+UI and API requests use the same logging wrapper. Exact `/` and
+`/projects/{projectId}` reads return the index; `/assets/` serves actual generated
+files without directory listings or an HTML fallback. Unknown API routes retain
+JSON 404 responses. GET routes support HEAD; other methods receive 405 with
+`Allow`. HTML, complete graphs and latest task details use
+`Cache-Control: no-store`; hashed assets use long-lived immutable caching.
 Handler panics emit a safe request-correlated error and abort the HTTP request;
 the recovered value and stack are not printed by the HTTP server.
 
 ## Validate
 
-Tests require a real PostgreSQL database and fail when it is unavailable or
+Install the root workspace dependencies with `pnpm install --frozen-lockfile`
+before validation. Tests require a real PostgreSQL database and fail when it is
+unavailable or
 `DAYNIGHT_TEST_DATABASE_URL` is missing. For a disposable local instance, use the
 same PostgreSQL **18.6-bookworm** image as CI:
 
@@ -102,10 +124,11 @@ Set the reported loopback port in the test URL, then run:
 ```bash
 export DAYNIGHT_TEST_DATABASE_URL='postgres://daynight:daynight-test@127.0.0.1:PORT/daynight?sslmode=disable'
 bash scripts/check.sh
-docker rm --force daynight-server-tests
+docker rm --force --volumes daynight-server-tests
 ```
 
-The check builds the executable, runs `go vet`, expires project-local Go test
+The check first runs the shared root `pnpm web:build`, then builds the executable,
+runs `go vet`, expires project-local Go test
 results so database changes cannot be hidden by cached coverage, and executes race-enabled package
 tests through `go-cov` pinned to commit
 `d6caf2759e330b48d69a543695e37002a48feb1d`. The checked-in `.go-cov.toml`
@@ -236,9 +259,10 @@ or transaction-completion failures take precedence over missing/limit refusals.
 
 Graph requests share the existing request ID and safe error handling. Logs add
 project identity and graph counts without recording task content or repository
-addresses. This endpoint supports the planned
+addresses. This endpoint supports the implemented
 [read-only dashboard](../../docs/design/daynight-web.md); the browser application
-and embedded static delivery remain separate implementation tasks.
+and embedded static delivery are implemented. The remaining browser and fixed-
+dataset performance acceptance is tracked in the dashboard task document.
 
 ## Task HTTP API
 
