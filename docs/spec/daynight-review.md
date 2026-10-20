@@ -8,7 +8,7 @@
 `daynight review run` 承担的前台持续运行角色。
 
 本文档负责 review 的必需行为和验收场景，保留 R1–R15 作为 review 需求标识。
-[客户端需求](daynight.md)定义安装、命令组合、依赖隔离和自更新；
+[客户端需求](daynight.md)定义安装、命令组合、依赖隔离、自更新和 shell 补全；
 [review 设计](../design/daynight-review.md)解释满足这些需求的机制。
 
 ## 需求
@@ -17,7 +17,8 @@
 
 `daynight review`、`daynight review --help` 和 `daynight review -h` 显示 review 帮助，
 不启动监控。`review run`、`review list`、`review ls` 和 `review add-repo` 分别提供
-前台审查、本地状态查询和仓库配置登记；各操作的 `--help` 和 `-h` 显示对应帮助。
+前台审查、本地状态查询和仓库配置登记；各操作在唯一参数为 `--help` 或 `-h` 时
+显示对应帮助。
 工具在 Linux、macOS 和 Windows 上通过 `daynight review run` 以单个前台 CLI 启动，
 并持续运行直到被停止。CLI 负责轮询、维护 SQLite 状态、管理 worktree，并直接将
 Copilot 作为子进程启动。
@@ -32,6 +33,11 @@ Copilot 作为子进程启动。
 从不同工作目录启动都读取同一份配置。手写的仓库路径为相对路径时，相对于配置文件
 所在目录解析；每个仓库必须具有 `path`。并发审查 Worker 数量的配置项名为
 `maxConcurrentWorker`。每个配置的仓库分别维护自己的初始化状态和 PR 状态。
+
+同一文件可包含已登记的其他客户端字段，例如 `serverUrl`；review 只校验自己的
+字段值。缺失或无效 server 地址不阻塞 review，YAML 语法、重复键和未知顶层字段
+仍须报错。运行和列表要求已登记 review 仓库；添加命令允许向仅含 server 配置的
+文件登记首个仓库，并保留已有字段、注释及原有 review 字段语义。
 
 `daynight review add-repo <remote> [--path <path>]` 负责读取、校验和保存配置。配置不存在时
 自动创建；已有配置中的其他设置和 YAML 注释须保留。命令不执行 clone、认证检查、

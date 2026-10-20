@@ -24,7 +24,12 @@ Configuration and coordination state reside under `~/.daynight/`: SQLite and
 its sidecar files, retained Copilot sessions, the instance lock, logs, caches,
 and temporary files. Repository clones retain their configured paths. PR
 worktrees follow the [repository-local worktree decision](2026-10-16-repository-local-review-worktrees.md).
-Home-path resolution and configuration loading are implemented by the review module.
+Shared home-path resolution, strict YAML reading and atomic configuration saves
+are implemented under `config/`. The review module owns its field projection
+and runtime paths; the server projection validates only `serverUrl`. The
+[project/task design](2026-10-20-project-task-cli-design.md) owns that additive
+field and the independent HTTP foundation. Review retains its original state
+locations and does not validate unrelated server values.
 Configuration failures identify the fixed filename, stop startup and retain
 their causes. `review add-repo` creates missing configuration and updates existing YAML
 without entering review mode. Its separate configuration write lock coordinates

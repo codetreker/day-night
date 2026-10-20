@@ -18,9 +18,13 @@ The root application owns help, version, command selection and general exit
 results. Its context contains package version, the package directory determined
 by the stable `main.ts` entry, input/output, and lazy home/working-directory
 queries; it does not contain resolved review paths, configuration or runtime
-functions. Command metadata declares its
-name, description and lazy loader. Each selected command owns its operation
-parsing, dependencies and lifecycle.
+functions. Business-free definition modules declare each command's name,
+description, aliases, options, positional arguments and fixed choices. The root
+registry combines those definitions with lazy execution loaders. `cli/schema.ts`
+uses the same definitions for parsing and help; the Bash and zsh generators also
+consume this command tree. Each selected command owns its dependencies and
+lifecycle. Definition modules cannot import business implementations or perform
+configuration, filesystem, database or adapter operations.
 
 `review` owns the existing PR-review capability. Its group shows help, `run`
 starts foreground monitoring, `list` and `ls` inspect local persisted state, and
@@ -28,8 +32,10 @@ starts foreground monitoring, `list` and `ls` inspect local persisted state, and
 `--daemon-review` and root `add-repo` entry forms are invalid. The command change
 is shipped as package version `0.3.0`; no legacy forwarding wrapper preserves a
 second command model. `update` remains a root command because it manages the
-whole client installation. Each group and operation handles help before loading
-its business implementation.
+whole client installation. `completion` generates native shell scripts as a root
+command. Each group and operation handles help before loading its business
+implementation. Help retains its sole-argument rule, and metadata-driven parsing
+preserves the accepted operation syntax.
 
 Review code lives under `commands/review/`; its GitHub, worktree and Copilot
 adapters belong to that module. `model.ts` owns domain and safe-recovery proof
@@ -49,12 +55,15 @@ script is a release input under the existing package-version gate.
 YAML fields, version 1 SQLite tables, data locations, repository paths, cutoff
 boundaries, revisions, retry budgets, session UUIDs and worktree ownership stay
 unchanged. Source ownership does not partition user data by command. The current
-scope supplies command composition and the existing review/update capabilities.
-Server API commands were separate product work in the command-composition
-scope. The adopted [project/task CLI design](2026-10-20-project-task-cli-design.md)
-now defines that consumer and its additive configuration and repository binding;
-its implementation remains pending. Adding it must preserve per-command loading
-and ownership so it does not become a startup dependency for existing commands.
+scope supplies command composition and the review, update and completion
+capabilities. Server API commands were separate product work in the
+command-composition scope. The adopted
+[project/task CLI design](2026-10-20-project-task-cli-design.md) now defines that
+consumer and its additive configuration and repository binding. Shared
+configuration and the bounded HTTP foundation are implemented; repository
+bindings and the command entry points remain pending. Adding them must preserve
+per-command loading and ownership so they do not become startup dependencies for
+existing commands.
 Independent server and web lifecycles retain their current owners.
 
 The [client requirements](../../../../docs/spec/daynight.md) and
@@ -66,7 +75,10 @@ This decision partially supersedes the package-wide review framing in the
 its polling, direct-child execution, retained-session and agent-publication
 model. The [home-layout decision](2026-10-16-user-home-review-configuration.md)
 and [self-update decision](../feature/2026-10-20-cli-self-update.md) retain their
-location and installation-ownership guarantees.
+location and installation-ownership guarantees. The
+[shell-completion decision](../feature/2026-10-20-shell-completion.md) extends the
+metadata ownership to parsing, help and native shell generation while preserving
+per-command business loading.
 
 ## Alternatives
 
@@ -92,10 +104,12 @@ requirements and evidence.
 
 ## Consequences
 
-A new command adds a registration and its own module; the root application does
-not learn its business dependencies. Help, version and update remain independent
-of review configuration, SQLite and review executables. Registration and listing
-retain their distinct side effects, and foreground monitoring alone owns its
+A new command adds a definition, registration and its own module; the root
+application does not learn its business dependencies. Help, version, update and
+completion remain independent of review configuration, SQLite and review
+executables. Definitions are loaded for command discovery and shell generation,
+so keeping them free of business imports is an enforced dependency boundary.
+Registration and listing retain their distinct side effects, and foreground monitoring alone owns its
 signal and runtime lifecycle.
 
 Operators use the canonical review group commands. Existing configuration,

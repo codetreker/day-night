@@ -1,6 +1,7 @@
 # Project 与 Task 客户端设计
 
-状态：设计已确认，CLI 实现待完成。本文描述待实现结构和机制，当前可用能力见
+状态：共享配置与 HTTP 基础已实现；仓库关联、命令入口与完整联调待完成。
+本文描述采用的结构和交付机制，各项状态由任务清单拥有，当前可用命令见
 [仓库 README](../../README.md)。必需行为与编号验收由
 [客户端需求](../spec/daynight-project-task.md)拥有，服务行为由
 [服务需求](../spec/daynight-server.md)拥有。结构决策与真实备选方案见
@@ -15,7 +16,9 @@
 | 现有归属 | 可复用事实 |
 |---|---|
 | [`cli/commands.ts`](../../packages/daynight/src/cli/commands.ts) 与 [`cli/application.ts`](../../packages/daynight/src/cli/application.ts) | 命令登记保留异步 `load`，应用统一处理 `0/1/2` 退出结果 |
-| [`commands/review/config.ts`](../../packages/daynight/src/commands/review/config.ts) | 严格 YAML 读取、当前 review 字段与 GitHub 专用 remote 身份规则 |
+| [`config/document.ts`](../../packages/daynight/src/config/document.ts)、[`config/files.ts`](../../packages/daynight/src/config/files.ts) | 共享严格 YAML、已知顶层字段、独立锁和原子配置保存 |
+| [`commands/review/config.ts`](../../packages/daynight/src/commands/review/config.ts) | review 字段投影与 GitHub 专用 remote 身份规则 |
+| [`api/index.ts`](../../packages/daynight/src/api/index.ts) | 命令级操作、服务 DTO、完整分页、精确 JSON 与 HTTP 错误 |
 | [`commands/review/paths.ts`](../../packages/daynight/src/commands/review/paths.ts) | 既有配置位置为 `~/.daynight/config.yml` |
 | [`api/projects.go`](../../packages/daynight-server/api/projects.go) | project、分页及含 request ID 的结构化错误 |
 | [`api/tasks.go`](../../packages/daynight-server/api/tasks.go) | task、派生字段、版本和字段可选的更新请求 |
@@ -24,12 +27,13 @@
 
 现有 review 的 `remoteIdentity` 面向 GitHub 且把 owner/name 转小写，不能直接成为
 通用 project repo 比较规则。新正规化器单独拥有服务命令的 repo 身份，保持 review
-既有行为。当前 review 配置解析要求非空 repositories；共享读取与命令投影必须
-分离，否则只有 server 地址的用户仍会被无关配置阻塞。
+既有行为。共享读取与命令投影已经分离：review 运行解析要求非空 repositories，
+server 投影只要求有效 server 地址；review 登记可向 server-only 文档添加首个仓库。
 
 ## 模块与依赖方向
 
-待实现职责如下，具体文件可以在保持归属的前提下拆分：
+`config/`、`api/` 和既有 review/update/completion 已实现；`repository/`、project/task 命令仍
+待实现。职责如下，具体文件可以在保持归属的前提下拆分：
 
 ```text
 src/
@@ -42,9 +46,11 @@ src/
     task/                  # 参数、帮助、task 操作及渲染
     review/                # review 配置投影和既有行为
     update/                # 既有 npm 安装生命周期
+    completion/            # 既有 Bash 和 zsh 原生补全
 ```
 
-顶层仍只登记名称、描述和惰性加载函数。命令组先解析参数和帮助，再加载业务实现。
+顶层通过业务无关的命令定义共享名称、描述、参数和补全语法，并保留惰性执行入口。
+命令组先解析参数和帮助，再加载业务实现。
 project/task 不导入 review runtime、SQLite 或外部审查适配器。`project list/show/create`
 只需要配置与 HTTP；task 显式 project 分支也只需要这两者；自动分支才加载 Git 与
 仓库状态。共享模块不反向导入命令模块。
@@ -73,6 +79,8 @@ project/task 不导入 review runtime、SQLite 或外部审查适配器。`proje
 报告响应或累计预算超限，不解析已截断 JSON。这些常量与总期限共同限制持续推进
 cursor 的扫描及累计 JSON 内存，不新增 CLI 参数或配置字段，也不改变 server 限制。
 JSON 对象在完成有界读取后解析；下一步及最终输出前再次检查总期限与取消状态。
+失败时取消并释放响应 reader；清理最多额外占用 100 ms，取消失败或清理超时与
+原始失败一并保留，不能吞掉清理错误，也不能因底层取消迟迟未完成而无限等待。
 
 读准备阶段超限时不保存绑定、不发 mutation、不输出部分结果。若超限发生于已经
 发出的写请求响应，远端结果仍未确认，沿用写入不确定性诊断，不能断言写入未发生。
@@ -244,6 +252,11 @@ cursor 是不透明字符串，逐页提交，不在 CLI 解码或重建。每�
 服务返回 `version_conflict`。有 `--if-version` 时直接提交指定版本，不用 GET 的
 最新值替代。CLI 不重放 PATCH，不将旧版本冲突改成成功；语义无变化的响应也直接
 按服务返回渲染。服务负责事务内的状态、依赖及时间戳不变量。
+
+`Task.version` 与 PATCH 版本覆盖完整正 `int64` 范围，内部使用 `bigint`；JSON 读取
+从数字原文保留精度，写入及 `--json` 使用 JSON 数字，不能转换为字符串或不精确的
+JavaScript `number`。未知响应字段继续由 DTO 投影忽略，不能因其同名 version
+字段触发已知 task 字段的校验。
 
 ## 输出与诊断
 

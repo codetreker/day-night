@@ -70,6 +70,19 @@ describe("CLI argument handling", () => {
     expect(other).not.toHaveBeenCalled();
   });
 
+  it("uses the injected registry for root help and command selection", async () => {
+    const deps = dependencies();
+    const load = vi.fn(async () => { throw new Error("Unselected command must remain unloaded."); });
+    const registry = [{ name: "future", description: "A future command", load }];
+    expect(await runApplication(["--help"], deps, registry)).toBe(0);
+    expect(deps.output.join("")).toContain("future");
+    expect(deps.output.join("")).toContain("A future command");
+    expect(deps.output.join("")).not.toContain("Review GitHub pull requests");
+    expect(await runApplication(["review"], deps, registry)).toBe(2);
+    expect(deps.errors).toEqual(['Unknown command "review". Run daynight --help for usage.\n']);
+    expect(load).not.toHaveBeenCalled();
+  });
+
   it("reports command load failures as execution errors with their cause", async () => {
     const deps = dependencies();
     expect(await runApplication(["future"], deps, [{
@@ -206,6 +219,10 @@ describe("CLI argument handling", () => {
     ["review", "add-repo", "https://github.com/o/r", "--path", "--help"],
     ["review", "add-repo", "https://github.com/o/r", "--path", "a", "--path", "b"],
     ["review", "add-repo", "https://github.com/o/r", "--daemon-review"],
+    ["review", "add-repo", "https://github.com/o/r", "--path=directory"],
+    ["review", "add-repo", "--", "https://github.com/o/r"],
+    ["review", "add-repo", "https://github.com/o/r", "--help"],
+    ["review", "add-repo", "--help", "https://github.com/o/r"],
     ["review", "add-repo", "--unknown"],
   ])("rejects invalid add-repo syntax %j before touching user state", async (...args) => {
     const deps = dependencies();
@@ -293,7 +310,8 @@ describe("built executable", () => {
 const blocked = JSON.parse(process.env.DAYNIGHT_TEST_BLOCK_IMPORTS);
 registerHooks({ resolve(specifier, context, nextResolve) {
   const resolved = nextResolve(specifier, context);
-  if (blocked.some(value => specifier.includes(value) || resolved.url.includes(value))) throw new Error('Unexpected module import: ' + specifier);
+  const commandMetadata = /\\/commands\\/[^/]+\\/definition\\.js$/.test(resolved.url);
+  if (!commandMetadata && blocked.some(value => specifier.includes(value) || resolved.url.includes(value))) throw new Error('Unexpected module import: ' + specifier);
   return resolved;
 } });
 `);
@@ -303,6 +321,9 @@ registerHooks({ resolve(specifier, context, nextResolve) {
       { args: ["--help"], blocked: ["/commands/"] },
       { args: ["--version"], blocked: ["/commands/"] },
       { args: ["update", "--help"], blocked: ["/commands/review/", "/commands/update/updater.js", "semver", "read-cmd-shim"] },
+      ...[[], ["--help"], ["bash"], ["zsh"]].map((args) => ({
+        args: ["completion", ...args], blocked: ["/commands/review/", "/commands/update/", "better-sqlite3", "semver", "read-cmd-shim"],
+      })),
       ...[[], ["--help"], ["run", "--help"], ["list", "--help"], ["add-repo", "--help"]].map((args) => ({
         args: ["review", ...args], blocked: [...reviewRuntime, "/commands/review/config.js", "/commands/review/repositories.js"],
       })),
@@ -413,6 +434,55 @@ registerHooks({ resolve(specifier, context, nextResolve) {
       expect(await readFile(paths.configFile, "utf8")).toBe(configuration);
       expect(await readFile(paths.lockFile, "utf8")).toBe("existing review instance\n");
       expect(await readdir(cwd)).toEqual([]);
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it.each([
+    { server: "http://127.0.0.1:8787", yaml: "http://127.0.0.1:8787" },
+    { server: ["not an origin"], yaml: "[not an origin]" },
+  ])("registers review repositories in server-only configuration without validating server settings: $yaml", async ({ server, yaml }) => {
+    const temporary = fileURLToPath(new URL("../../../../.tmp/", import.meta.url));
+    await mkdir(temporary, { recursive: true });
+    const directory = await mkdtemp(path.join(temporary, "shared-configuration CLI 中文-"));
+    const home = path.join(directory, "home 中文");
+    const emptyPath = path.join(directory, "empty-path");
+    const paths = resolveReviewPaths(home);
+    await mkdir(paths.stateDirectory, { recursive: true });
+    await mkdir(emptyPath);
+    await writeFile(paths.configFile, `# server connection\nserverUrl: ${yaml} # retained server value\n`);
+    const invoke = (args: string[]) => spawnSync(process.execPath, [executable, ...args], {
+      cwd: directory, encoding: "utf8", timeout: 10_000,
+      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: emptyPath, Path: emptyPath },
+    });
+    try {
+      const missingReview = invoke(["review", "list"]);
+      expect(missingReview.error).toBeUndefined();
+      expect(missingReview.status).toBe(1);
+      expect(missingReview.stdout).toBe("");
+      expect(missingReview.stderr).toContain("repositories");
+
+      const registered = invoke(["review", "add-repo", "https://github.com/owner/repo.git"]);
+      expect(registered.error).toBeUndefined();
+      expect(registered.status, registered.stderr).toBe(0);
+      expect(registered.stderr).toBe("");
+      const source = await readFile(paths.configFile, "utf8");
+      expect(source).toContain("# server connection");
+      expect(source).toContain("# retained server value");
+      const configuration = parseDocument(source).toJS();
+      expect(configuration.serverUrl).toEqual(server);
+      expect(configuration.repositories).toEqual([{
+        remote: "https://github.com/owner/repo.git",
+        path: path.join(home, "daynights", "github.com", "owner", "repo"),
+      }]);
+
+      const listed = invoke(["review", "list"]);
+      expect(listed.error).toBeUndefined();
+      expect(listed.status, listed.stderr).toBe(0);
+      expect(listed.stderr).toBe("");
+      expect(listed.stdout).toContain("github.com/owner/repo");
+      expect(listed.stdout).toContain("Not initialized.");
+      expect(await readdir(paths.stateDirectory)).toEqual(["config.yml"]);
+      expect(await readFile(paths.configFile, "utf8")).toBe(source);
     } finally { await rm(directory, { recursive: true, force: true }); }
   }, 30_000);
 

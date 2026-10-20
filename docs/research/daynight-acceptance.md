@@ -1,8 +1,9 @@
 # Daynight Acceptance Evidence
 
-Installed-client acceptance exercises the client command toolkit through separate
-review lifecycle and self-update suites. The [client requirements](../spec/daynight.md)
-own command composition and package updates; the [review requirements](../spec/daynight-review.md)
+Client acceptance exercises the toolkit through separate installed review
+lifecycle, installed self-update and real-shell completion suites. The
+[client requirements](../spec/daynight.md) own command composition, package
+updates and shell completion; the [review requirements](../spec/daynight-review.md)
 own review execution and retained data. The lifecycle suite uses real Git and SQLite,
 controlled GitHub CLI responses and a controlled Copilot executable. Self-update
 uses real npm with a controlled HTTP registry and task-local global prefixes.
@@ -14,6 +15,7 @@ repository, reviewer identity and authorization.
 ```text
 pnpm check
 pnpm acceptance
+pnpm completion:acceptance
 node packages/daynight/scripts/validation-environment.ts
 ```
 
@@ -31,8 +33,8 @@ home and working directories containing spaces and Unicode. The test drives its
 public command and reads SQLite through an independent connection. Product
 scheduling APIs are not replaced. Git transport is limited to the local fixture origin.
 
-The public client commands are root help/version, `update`, and the `review`
-group. Lifecycle registration uses `review add-repo`, monitoring uses `review run`,
+The public client commands are root help/version, `update`, `completion` and the
+`review` group. Lifecycle registration uses `review add-repo`, monitoring uses `review run`,
 and local status uses `review list` or `review ls`. Current validation must cover
 root/group/operation help without review dependencies, invalid former entry
 forms, the stable `dist/main.js` bin, a clean distribution after module moves,
@@ -77,6 +79,77 @@ The fixture records six agent invocations and five publications: one inline
 comment review and four approving reviews. The missing-marker attempt publishes
 once; the resumed same-session attempt confirms it without another publication.
 Only the controlled Copilot child may issue the simulated review POST.
+
+## Shell completion evidence
+
+`pnpm completion:acceptance` builds the client and runs the Python 3 PTY harness
+on a POSIX host. It requires a real Bash 4.2 selected by `DAYNIGHT_TEST_BASH42`, a
+modern Bash selected by `DAYNIGHT_TEST_BASH` (default `bash`), and zsh selected by
+`DAYNIGHT_TEST_ZSH` (default `zsh`). `DAYNIGHT_TEST_ZSH_ROOT` supports an extracted
+zsh toolchain. On Linux, `prepare-completion-shells.sh` verifies the pinned GNU
+Bash 4.2 archive before building its executable locally, uses an existing zsh or
+extracts downloaded Debian zsh packages under `.tmp/shell-completion/`, and
+writes `environment.sh` for local sourcing. It does not install global packages.
+The [README](../../README.md#cli-development) owns repeatable preparation,
+invocations and optional receipt selection; the
+[completion design](../design/daynight-completion.md) owns the required behavior.
+
+The harness loads generated scripts in shells with isolated startup files and
+drives actual Tab insertion through a terminal. Extracted zsh starts with a
+private `ZDOTDIR/.zshenv` under `zsh -d -i`; the startup file sets the package's
+exact native-module and completion-function paths before ZLE initializes, then
+disables later `RCS` and `GLOBAL_RCS` startup files. It does not append host
+`fpath` entries. An explicit `compaudit` must pass before `compinit -D`; audit
+failure exits without an interactive trust prompt. Candidate-function output
+alone cannot establish Readline quoting, directory suffixes or zsh insertion. Required
+coverage includes nested commands and aliases, current-layer options, shell
+arguments, already-consumed arguments, `--path` before and after remote, remote
+colons, special-character directories, command/directory name collisions and a
+cursor before the end of the line. Ordinary tests separately exercise shared
+syntax, script generation and the compiled entry's dependency isolation.
+
+The dedicated Ubuntu 24.04 `verify (shell completion)` job runs the real-shell
+suite and uploads `.tmp/completion-evidence.json` as
+`daynight-completion-acceptance`. The final `checks` gate requires this job along
+with every native CLI platform, server and web job. A suite definition or job's
+presence is not a pass receipt; historical installed-client receipts below do
+not establish completion behavior.
+
+The [hosted completion job](https://github.com/codetreker/daynight/actions/runs/39391433132/job/118523637325)
+at head `b9bb4e15626f179f73f51aa8438d36fefc2526f4` passed all 46 scenarios on each
+Bash version, then timed out before zsh became ready. ZLE attempted to load its
+module from the unavailable system package path, and `compinit` waited for an
+answer about inherited insecure function directories. The harness configured
+relocation only after interactive startup and retained host search paths. This
+job records a fixture bootstrap failure before zsh Tab scenarios; it does not
+establish zsh insertion behavior at that revision. The startup mechanism above
+places package-specific paths before ZLE and retains the completion security
+audit.
+
+Local validation on 2026-10-20 used working-tree source package `0.4.0` on Linux
+x64 with Node `v24.19.0` and pnpm `10.34.5`. Type checking passed. The ordinary
+suite passed 965 tests with ten existing platform skips across 35 files: 34 files
+passed and one was skipped. Its recorded duration was 6.34 seconds. The completion
+receipt reports `passed: true` for 138 PTY scenarios: 46 each on GNU Bash `4.2.0(2)-release`,
+GNU Bash `5.2.21(1)-release` and zsh `5.9`. The scenarios check actual inserted
+text and resulting argv, including quoted command names, special-character
+paths, remote colons, cursor placement and consumed options. They also enforce
+that Tab starts neither daynight nor Node. An uninitialized zsh exits 1, emits
+only the `compinit` initialization diagnostic and leaves completion unregistered.
+
+The Linux preparation helper passed both a fresh download/build/extraction run
+under a project path containing spaces and a cached-toolchain run. The observed
+build used GCC `13.3.0`; Bash 4.2 came from the checksum-verified unpatched GNU
+release, and zsh was extracted locally from downloaded packages. These are local
+toolchain and interactive-shell results. Hosted completion results belong to the
+CI job and artifact for their exact source revision; a local receipt does not
+substitute for that result or establish native macOS or Windows shell behavior.
+
+The two installed acceptance suites for source package `0.4.0` passed in 14.45
+seconds, covering the packaged review lifecycle, real-npm self-update, completion
+help and script generation. These installed checks establish packaging and
+generation; the 138-scenario PTY matrix records built-source interactive insertion
+behavior for that local run.
 
 ## Client composition and existing-data evidence
 
@@ -169,7 +242,7 @@ presence alone is not a pass receipt.
 ## Evidence and verdict
 
 GitHub Actions runs the ordinary and installed suites on native Linux, macOS and
-Windows. Each job uploads three curated files:
+Windows. Each native CLI job uploads three curated files:
 
 - `validation-environment.json`: checked-out revision, dirty flag, OS,
   architecture, Node/ABI/Node-API, pnpm, Git, gh and loaded SQLite versions.
@@ -179,8 +252,9 @@ Windows. Each job uploads three curated files:
   version and replacement result, distinct from review lifecycle and live-service
   evidence.
 
-The workflow's platform job and final `checks` gate are the validation verdict
-for their checked-out revision. A scenario receipt describes its assertions; the
+The dedicated Linux completion job uploads its shell receipt separately. The
+workflow's required jobs and final `checks` gate are the validation verdict for
+their checked-out revision. A scenario receipt describes its assertions; the
 job also covers process and fixture cleanup. Full environment reports,
 credentials, sessions and raw runtime logs are outside the artifact selection.
 
@@ -214,6 +288,7 @@ and do not establish that repair's behavior.
 
 | Evidence | Observed result |
 |---|---|
+| Shell completion local validation, 2026-10-20 | Working-tree source package `0.4.0` on Linux x64: type checking, 965 ordinary tests with ten existing platform skips in 6.34 seconds, both installed suites including packaged completion generation in 14.45 seconds; 138 actual Tab scenarios, 46 each on GNU Bash `4.2.0(2)-release`, Bash `5.2.21(1)-release` and zsh `5.9`; clean missing-`compinit` refusal, plus fresh and cached local toolchain preparation; hosted results belong to the exact revision's completion job and artifact |
 | Client composition local validation, 2026-10-20 | Working-tree source package `0.3.0` on Linux x64: type checking, clean build with obsolete-output rejection, 768 ordinary tests with ten skips in 6.11 seconds, and both installed suites in 15.61 seconds; 35 review scenarios plus 14 real-npm update scenarios, including independent existing-schema listing reuse |
 | Self-update focused local validation, 2026-10-20 | Linux x64 passed all fourteen controlled real-npm scenarios from working-tree source package `0.2.4` in 8.03 seconds, using Node `v24.19.0` and npm `12.0.2`; separate from the review lifecycle baseline and native hosted results |
 | Package `0.2.1` CI-admission local validation, 2026-10-18 | Linux x64 passed type checking, 662 ordinary tests with eight APFS skips, build and all 33 installed scenarios |
