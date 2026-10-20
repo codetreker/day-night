@@ -36,8 +36,8 @@ services:
   server:
     container_name: daynight-server
     build:
-      context: ../../packages/daynight-server
-      dockerfile: ../../deployment/localhost/Dockerfile
+      context: ../..
+      dockerfile: deployment/localhost/Dockerfile
     network_mode: service:gateway
     environment:
       DAYNIGHT_DATABASE_URL: postgres://daynight:daynight-local@postgres:5432/daynight?sslmode=disable

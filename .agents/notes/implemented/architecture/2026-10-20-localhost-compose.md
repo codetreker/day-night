@@ -16,9 +16,12 @@ The [localhost deployment](../../../../deployment/localhost/README.md) owns a
 Compose stack and a location-independent startup script. Each startup recreates
 all containers together while retaining the named database volume, so the same
 command also restores coherent network namespaces after an interrupted run.
-The stack builds only
-the independent Go module using its pinned toolchain, runs PostgreSQL at the
-same version as CI and waits for database-backed API health checks. Embedded
+The stack builds the embedded dashboard and independent Go module using pinned
+Node/pnpm and Go stages, runs PostgreSQL at the same version as CI and waits for
+database-backed API health checks. The
+[embedded deployment decision](2026-10-20-embedded-dashboard-deployment.md) owns
+the frontend build prerequisite and isolated dev-ci environment; the original
+loopback forwarding and persistence rationale remains unchanged. Embedded
 service migrations retain ownership of schema initialization.
 
 A gateway owns the network namespace shared with the server. nginx forwards
@@ -55,8 +58,8 @@ need to interpret the API and preserves the service's existing HTTP handling.
 ## Consequences
 
 The host needs Docker with Linux containers, not Go, Node.js or a separately
-configured database. First startup requires image and Go-module downloads.
-Three containers run one local API stack with explicit names:
+configured database. First startup requires image, npm dependency and Go-module downloads.
+Three containers run one local dashboard/API stack with explicit names:
 `daynight-postgres`, `daynight-gateway` and
 `daynight-server`. The names keep the containers identifiable in Docker
 tools and permit one localhost stack per Docker daemon, regardless of the Compose
@@ -82,4 +85,7 @@ unavailable until the startup command recreates the stack. Compose restart
 operations propagate to the dependent server. Health checks expose this failure
 but do not promise unattended availability. The provided credentials and host-loopback
 publication describe local development; authenticated remote deployment remains
-a separate design. The client review module is not part of this stack.
+a separate design. The client review module is not part of this stack. Tests use the separate
+[dev-ci deployment](../../../../deployment/dev-ci/README.md), which shares the
+production Dockerfile and gateway configuration without operating the daily
+containers or persistent dataset.

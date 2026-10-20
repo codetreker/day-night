@@ -181,6 +181,7 @@ func (h *taskHandler) list(w http.ResponseWriter, request *http.Request) {
 }
 
 func (h *taskHandler) get(w http.ResponseWriter, request *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	projectID, id, logger, err := h.resource(request)
 	if err != nil {
 		writeError(w, request, logger, "task", "get", err)
