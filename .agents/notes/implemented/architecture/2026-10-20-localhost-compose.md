@@ -56,7 +56,11 @@ need to interpret the API and preserves the service's existing HTTP handling.
 
 The host needs Docker with Linux containers, not Go, Node.js or a separately
 configured database. First startup requires image and Go-module downloads.
-Three containers run one local API stack. Database health gates startup, and
+Three containers run one local API stack with explicit names:
+`daynight-postgres`, `daynight-gateway` and
+`daynight-server`. The names keep the containers identifiable in Docker
+tools and permit one localhost stack per Docker daemon, regardless of the Compose
+project name. Database health gates startup, and
 both the direct API and published forwarding path must become healthy before
 the startup command succeeds. The service has a longer container stop grace
 period than its HTTP drain timeout.
