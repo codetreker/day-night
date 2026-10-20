@@ -67,7 +67,7 @@ const harness = (receipt: ReleaseReceipt) => {
     if (state.publicationError !== undefined) throw state.publicationError;
     state.metadata = metadata(receipt);
   });
-  const wait = vi.fn(async () => { events.push("wait"); });
+  const wait = vi.fn(async (_milliseconds: number) => { events.push("wait"); });
   const services: ReleaseServices = { fetch: fetchMock as typeof fetch, publish, wait, token: "test-github-token", apiUrl: "https://api.github.com" };
   return { state, events, services, publish, wait, fetchMock };
 };
@@ -78,13 +78,14 @@ afterEach(() => {
 });
 
 describe("npm release publication", () => {
-  it("publishes the prepared artifact, waits for anonymous registry availability, verifies downloaded bytes, then tags its source", async () => {
+  it("waits beyond two minutes of public registry propagation, verifies downloaded bytes, then tags the prepared source", async () => {
     const f = fixture();
     const h = harness(f.receipt);
-    h.state.delay = 3;
+    h.state.delay = 28;
     await publishRelease(sourceSha, f.cwd, h.services);
     expect(h.publish).toHaveBeenCalledExactlyOnceWith(path.join(f.artifact, "package.tgz"), path.join(f.cwd, ".tmp/npm-release"));
-    expect(h.wait).toHaveBeenCalledTimes(2);
+    expect(h.wait).toHaveBeenCalledTimes(27);
+    expect(h.wait.mock.calls.reduce((elapsed, [milliseconds]) => elapsed + milliseconds, 0)).toBeGreaterThan(120_000);
     expect(h.state.tag).toBe(sourceSha);
     expect(h.events.indexOf("npm:publish")).toBeLessThan(h.events.indexOf("tarball:download"));
     expect(h.events.indexOf("tarball:download")).toBeLessThan(h.events.indexOf("tag:create"));
@@ -195,34 +196,36 @@ describe("npm release publication", () => {
     const f = fixture();
     const h = harness(f.receipt);
     h.services.publish = async () => { h.events.push("npm:publish"); };
-    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("within 120 seconds");
-    expect(h.wait).toHaveBeenCalledTimes(24);
-    expect(h.events.filter((event) => event === "registry:version")).toHaveLength(26);
+    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("within 10 minutes after npm accepted publication");
+    expect(h.wait).toHaveBeenCalledTimes(120);
+    expect(h.wait.mock.calls.reduce((elapsed, [milliseconds]) => elapsed + milliseconds, 0)).toBe(600_000);
+    expect(h.events.filter((event) => event === "registry:version")).toHaveLength(122);
     expect(h.events).not.toContain("tag:create");
   });
 
-  it.each([401, 429, 500])("exposes registry HTTP %s instead of interpreting it as an absent version", async (status) => {
+  it.each([401, 429, 500])("exposes registry HTTP %s while waiting for an accepted publication", async (status) => {
     const f = fixture();
     const h = harness(f.receipt);
     const original = h.services.fetch;
-    h.services.fetch = (async (input, init) => String(input).startsWith("https://registry.npmjs.org/") ? json({}, status) : original(input, init)) as typeof fetch;
+    h.services.fetch = (async (input, init) => String(input).startsWith("https://registry.npmjs.org/") && h.publish.mock.calls.length > 0 ? json({}, status) : original(input, init)) as typeof fetch;
     await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow(`HTTP ${status}`);
-    expect(h.publish).not.toHaveBeenCalled();
+    expect(h.publish).toHaveBeenCalledTimes(1);
     expect(h.events).not.toContain("tag:create");
   });
 
-  it("preserves network errors and request time bounds", async () => {
+  it("preserves network errors and request time bounds while waiting for an accepted publication", async () => {
     const f = fixture();
     const h = harness(f.receipt);
     const failure = new Error("registry connection reset");
     const original = h.services.fetch;
     h.services.fetch = (async (input, init) => {
       expect(init?.signal).toBeInstanceOf(AbortSignal);
-      if (String(input).startsWith("https://registry.npmjs.org/")) throw failure;
+      if (String(input).startsWith("https://registry.npmjs.org/") && h.publish.mock.calls.length > 0) throw failure;
       return original(input, init);
     }) as typeof fetch;
     await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toBe(failure);
-    expect(h.publish).not.toHaveBeenCalled();
+    expect(h.publish).toHaveBeenCalledTimes(1);
+    expect(h.events).not.toContain("tag:create");
   });
 
   it("rejects tampered local artifacts before making external requests", async () => {

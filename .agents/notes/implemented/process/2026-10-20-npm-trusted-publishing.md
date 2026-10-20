@@ -6,8 +6,10 @@ Status: implemented
 
 Publishing the CLI requires repeatable package validation and a durable mapping
 from an npm version to its source commit. A release tag must identify a package
-that is available from the public registry. Interrupted publication and tagging
-must be recoverable without replacing an existing version or moving a tag.
+that is available from the public registry. npm can accept a publication before
+its public registry metadata becomes visible. Interrupted publication and tagging
+must be recoverable without replacing an existing version or moving a tag, and
+registry verification must allow that processing time without waiting forever.
 Maintainers also need CI publication without storing a long-lived npm token.
 
 ## Decision
@@ -60,6 +62,12 @@ refs are never rewritten. A tag already pointing to the source is accepted;
 a different target fails. An existing npm version is accepted only with the
 same source and artifact, allowing an interrupted run to finish its missing tag.
 
+After `npm publish` returns success, visibility polling shares one ten-minute
+deadline across all attempts, with attempt number, elapsed time and remaining
+time logged for each poll. Individual registry requests retain a 20-second
+limit. The publishing job has a 15-minute limit for setup, publication, visibility
+verification and tagging; ordinary CI validation limits remain independent.
+
 Recovery re-runs the failed jobs of the same Actions run, preserving the captured
 source and reusing its validated artifact within the 30-day retention period.
 A separate dispatch at a different commit with the same package version fails
@@ -84,6 +92,11 @@ including documentation-only changes whose package version is unchanged. A
 manual dispatch keeps publication intent separate from integration while using
 the same exact-commit validation gate.
 
+**Retain a two-minute public visibility limit.** This ends a failed release
+sooner, but the first live publication required longer registry processing after
+npm accepted it. A shared ten-minute deadline permits that processing while
+bounding the complete polling period, even when individual requests are slow.
+
 ## Consequences
 
 The release uses one validated tarball across preparation, installation,
@@ -91,6 +104,20 @@ publication and public-registry verification. The privileged publishing job
 does not rebuild the package or execute package lifecycle scripts. Tagging is
 ordered after an observable successful publication, and re-runs complete
 interrupted releases without mutating package versions or existing tags.
+
+The first live publication validates both the OIDC path and interrupted-run
+recovery. At source `39bdff4bdc6e271cc69a733ecde742cc004dfdf8`,
+[`0.2.3` attempt 1](https://github.com/codetreker/daynight/actions/runs/39365670125/attempts/1)
+reported npm acceptance at `2026-10-20T03:46:24.465Z` and warned that processing
+could take a few minutes. Its two-minute visibility limit expired at
+`03:48:28Z`; the [public registry's publication time](https://registry.npmjs.org/@codetreker%2Fdaynight)
+for `0.2.3` is `2026-10-20T03:48:30.613Z`, approximately 126 seconds after
+acceptance. The original budget therefore rejected a normally processing
+publication. [Attempt 2](https://github.com/codetreker/daynight/actions/runs/39365670125/attempts/2)
+verified the existing version against the same source and artifact and created
+`daynight-v0.2.3` without republishing. A longer visibility budget keeps this
+processing delay inside the release workflow; exhausted or failed verification
+still prevents tag creation and can use the same recovery path.
 
 npmjs trusted-publisher configuration is an external prerequisite, and GitHub
 repository rules must permit the workflow token to create the release tag. A

@@ -193,8 +193,15 @@ tarball bytes match the artifact does the workflow create
 immutable: a tag at another commit or an existing package version with different
 source or contents fails the release.
 
-If publication succeeds but tag creation fails, re-run the failed jobs of the
-same Actions run while its validated artifact remains available for 30 days.
+After `npm publish` returns success, public visibility polling shares a
+ten-minute deadline and logs each attempt. Each registry request remains bounded
+to 20 seconds; the publishing job has a 15-minute limit. A visibility timeout
+leaves the tag uncreated and reports failure even if npm has accepted the
+package.
+
+If npm accepts the package but registry verification or tag creation fails,
+re-run the failed jobs of the same Actions run while its validated artifact
+remains available for 30 days.
 An existing version with the same source and bytes is verified before the
 missing tag is created. A new dispatch at another commit cannot claim that
 version. The workflow serializes releases, keeps in-progress releases running,
