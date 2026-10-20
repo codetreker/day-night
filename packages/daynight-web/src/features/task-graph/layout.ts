@@ -42,7 +42,7 @@ export const layoutGraph = (projection: RootProjection): CanvasLayout => {
   if (ids.length === 0) return { nodes: [], edges: [], width: 0, height: 0 };
 
   const graph = new Graph<GraphLabel, NodeLabel, EdgeLabel>({ directed: true });
-  graph.setGraph({ rankdir: 'LR', nodesep: 32, ranksep: 64, marginx: 32, marginy: 32 });
+  graph.setGraph({ rankdir: 'LR', ranker: 'longest-path', nodesep: 32, ranksep: 64, marginx: 32, marginy: 32 });
   for (const id of ids) graph.setNode(id, { width: TASK_NODE_WIDTH, height: TASK_NODE_HEIGHT });
   const sortedEdges = [...projection.edges].sort((left, right) =>
     compare(left.source, right.source) || compare(left.target, right.target));

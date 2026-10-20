@@ -1,0 +1,498 @@
+{
+  "schemaVersion": 1,
+  "kind": "daynight-web-local-lifecycle-evidence",
+  "provenance": {
+    "capturedAt": "2026-10-20",
+    "method": "Manual fault injection against the unchanged dev-ci runner and a real Docker daemon, with an independent baseline stack and final ownership audit.",
+    "sourceFiles": {
+      "firstReport": ".tmp/real-deployment-faults/fault-1792493614390-6bf49cd9/report.json",
+      "passedReport": ".tmp/real-deployment-faults/fault-1792493712152-d0ae9b41/report.json",
+      "finalAudit": ".tmp/real-deployment-faults/final-audit.json"
+    },
+    "sourceIdentity": "Development worktree receipts retain their dirty Git base, tracked-diff hash and untracked product/tool hashes; these are not clean CI receipts.",
+    "interpretation": "The first report is preserved with its failed auxiliary cleanup classification. The corrected probe passed the complete second matrix; the final audit independently verifies resource and process absence across both rounds.",
+    "historicalValues": "Loopback origins, run IDs, project UUIDs, image IDs and relative source paths are observed evidence, not runtime configuration."
+  },
+  "firstReport": {
+    "schemaVersion": 1,
+    "probeId": "fault-1792493614390-6bf49cd9",
+    "startedAt": "2026-10-20T10:53:34.391Z",
+    "source": {
+      "gitSha": "9eb4293627eaf94448c4fda7bb0e6f4e99b2b41c",
+      "dirty": true,
+      "trackedDiffSha256": "2985a916a57166596bf756a3c20511ddfd89a2637aa165623081cd402820dec2",
+      "untrackedFiles": {
+        "packages/daynight-web/scripts/dagre.test.mts": "2fd4316cd30b6bd023297cf9984c690b8cb1e614fc76a7e0f85c13658e1ce713",
+        "patches/@dagrejs__dagre@3.1.1.patch": "142fd75deec2b03c9d6839bcdb87804ff902b25f9af621d6f8140b52c765ef7b"
+      }
+    },
+    "result": "passed",
+    "scenarios": [
+      {
+        "name": "startup-mid-failure",
+        "runId": "20261020105351-909738-30138",
+        "exitCode": 1,
+        "imageId": "sha256:cca11a513e5eaef56b29cf28218e5fff15980030a6bc0224a8d3663a33054ddf",
+        "cleanup": "passed",
+        "callbackExecuted": false,
+        "baseline": {
+          "label": "after-startup-failure",
+          "baseUrl": "http://127.0.0.1:8148",
+          "projectId": "ace70bd1-5696-4edc-b5e1-17d7a69b096b",
+          "apiStatus": 200,
+          "dashboardStatus": 200,
+          "sentinelPreserved": true,
+          "checkedAt": "2026-10-20T10:53:53.710Z"
+        }
+      },
+      {
+        "name": "callback-failure",
+        "runId": "20261020105353-910760-31683",
+        "exitCode": 23,
+        "imageId": "sha256:fded519b637eae3d3299497893f39feedcf1615cdf6a7934da6c4788ac958a1e",
+        "cleanup": "passed",
+        "baseline": {
+          "label": "after-callback-failure",
+          "baseUrl": "http://127.0.0.1:8148",
+          "projectId": "ace70bd1-5696-4edc-b5e1-17d7a69b096b",
+          "apiStatus": 200,
+          "dashboardStatus": 200,
+          "sentinelPreserved": true,
+          "checkedAt": "2026-10-20T10:54:07.175Z"
+        }
+      },
+      {
+        "name": "signal-cancellation",
+        "runId": "20261020105407-912642-14324",
+        "exitCode": 143,
+        "imageId": "sha256:b8fc676cc15c755191e0f0d787ca3a52cc67089af0e68835bf71efbc91a24bda",
+        "cleanup": "passed",
+        "baseline": {
+          "label": "after-cancellation",
+          "baseUrl": "http://127.0.0.1:8148",
+          "projectId": "ace70bd1-5696-4edc-b5e1-17d7a69b096b",
+          "apiStatus": 200,
+          "dashboardStatus": 200,
+          "sentinelPreserved": true,
+          "checkedAt": "2026-10-20T10:54:20.710Z"
+        }
+      },
+      {
+        "name": "cleanup-failure-and-recovery",
+        "runId": "20261020105420-914512-06152",
+        "exitCode": 1,
+        "imageId": "sha256:bd00bd8c1cfc26917c03b2642a7e25d61ca7311bfd397f07a520863d24e063cb",
+        "originalCleanup": "failed",
+        "recoveryCleanup": "passed",
+        "originalReceiptPreserved": true,
+        "baselineDuringFailure": {
+          "label": "during-cleanup-failure",
+          "baseUrl": "http://127.0.0.1:8148",
+          "projectId": "ace70bd1-5696-4edc-b5e1-17d7a69b096b",
+          "apiStatus": 200,
+          "dashboardStatus": 200,
+          "sentinelPreserved": true,
+          "checkedAt": "2026-10-20T10:54:34.058Z"
+        },
+        "baseline": {
+          "label": "after-cleanup-recovery",
+          "baseUrl": "http://127.0.0.1:8148",
+          "projectId": "ace70bd1-5696-4edc-b5e1-17d7a69b096b",
+          "apiStatus": 200,
+          "dashboardStatus": 200,
+          "sentinelPreserved": true,
+          "checkedAt": "2026-10-20T10:54:34.627Z"
+        }
+      }
+    ],
+    "cleanup": "failed",
+    "baseline": {
+      "runId": "20261020105334-908324-04963",
+      "imageId": "sha256:a507d58253e6c9cfba715c52aad986a65725c49123d87926205646f58987dfe8",
+      "exitCode": 0,
+      "cleanup": "passed"
+    },
+    "cleanupErrors": [
+      "docker inspect --format failed code=1 signal=null: error: no such object: 3e468eea973ee241523386baf84c4530e95a55265fa32b3d00319fc03b18d85e\n"
+    ],
+    "finishedAt": "2026-10-20T10:54:37.753Z"
+  },
+  "passedReport": {
+    "schemaVersion": 1,
+    "probeId": "fault-1792493712152-d0ae9b41",
+    "startedAt": "2026-10-20T10:55:12.154Z",
+    "source": {
+      "gitSha": "9eb4293627eaf94448c4fda7bb0e6f4e99b2b41c",
+      "dirty": true,
+      "trackedDiffSha256": "28516c9a74796961cba4c486812e4bf480785b4cb7d1e9954729e711205cd627",
+      "untrackedFiles": {
+        "packages/daynight-web/scripts/dagre.test.mts": "2fd4316cd30b6bd023297cf9984c690b8cb1e614fc76a7e0f85c13658e1ce713",
+        "patches/@dagrejs__dagre@3.1.1.patch": "142fd75deec2b03c9d6839bcdb87804ff902b25f9af621d6f8140b52c765ef7b"
+      }
+    },
+    "result": "passed",
+    "scenarios": [
+      {
+        "name": "startup-mid-failure",
+        "runId": "20261020105525-920602-23589",
+        "exitCode": 1,
+        "imageId": "sha256:f34d66c07b525d35652e7b64bc48c1fb590c5868790644165675cbcb55c3d28d",
+        "cleanup": "passed",
+        "callbackExecuted": false,
+        "baseline": {
+          "label": "after-startup-failure",
+          "baseUrl": "http://127.0.0.1:8153",
+          "projectId": "e27d9e7c-e6c8-41f6-b311-1690dcbf1cbc",
+          "apiStatus": 200,
+          "dashboardStatus": 200,
+          "sentinelPreserved": true,
+          "checkedAt": "2026-10-20T10:55:27.644Z"
+        }
+      },
+      {
+        "name": "callback-failure",
+        "runId": "20261020105527-921649-04664",
+        "exitCode": 23,
+        "imageId": "sha256:ddb882115819241b4479b0a3d05eacb965614626ac1776431584b7d97a149da1",
+        "cleanup": "passed",
+        "baseline": {
+          "label": "after-callback-failure",
+          "baseUrl": "http://127.0.0.1:8153",
+          "projectId": "e27d9e7c-e6c8-41f6-b311-1690dcbf1cbc",
+          "apiStatus": 200,
+          "dashboardStatus": 200,
+          "sentinelPreserved": true,
+          "checkedAt": "2026-10-20T10:55:41.047Z"
+        }
+      },
+      {
+        "name": "signal-cancellation",
+        "runId": "20261020105541-923446-26381",
+        "exitCode": 143,
+        "imageId": "sha256:7607312d698cd6a8a93f6975ec6f88847e20877ca7f1140d78f3cfff8af3bdc6",
+        "cleanup": "passed",
+        "baseline": {
+          "label": "after-cancellation",
+          "baseUrl": "http://127.0.0.1:8153",
+          "projectId": "e27d9e7c-e6c8-41f6-b311-1690dcbf1cbc",
+          "apiStatus": 200,
+          "dashboardStatus": 200,
+          "sentinelPreserved": true,
+          "checkedAt": "2026-10-20T10:55:54.484Z"
+        }
+      },
+      {
+        "name": "cleanup-failure-and-recovery",
+        "runId": "20261020105554-925330-18788",
+        "exitCode": 1,
+        "imageId": "sha256:7edcd8b1a115a5d02dbf0164d1c33c4b08b5d53d57024241662cee301581d66b",
+        "originalCleanup": "failed",
+        "recoveryCleanup": "passed",
+        "originalReceiptPreserved": true,
+        "baselineDuringFailure": {
+          "label": "during-cleanup-failure",
+          "baseUrl": "http://127.0.0.1:8153",
+          "projectId": "e27d9e7c-e6c8-41f6-b311-1690dcbf1cbc",
+          "apiStatus": 200,
+          "dashboardStatus": 200,
+          "sentinelPreserved": true,
+          "checkedAt": "2026-10-20T10:56:07.847Z"
+        },
+        "baseline": {
+          "label": "after-cleanup-recovery",
+          "baseUrl": "http://127.0.0.1:8153",
+          "projectId": "e27d9e7c-e6c8-41f6-b311-1690dcbf1cbc",
+          "apiStatus": 200,
+          "dashboardStatus": 200,
+          "sentinelPreserved": true,
+          "checkedAt": "2026-10-20T10:56:08.426Z"
+        }
+      }
+    ],
+    "cleanup": "passed",
+    "baseline": {
+      "runId": "20261020105512-919474-25541",
+      "imageId": "sha256:9a8c40653c0559dce28177bc24e8fae627ad832af8d1208e6c82bc83678a629a",
+      "exitCode": 0,
+      "cleanup": "passed"
+    },
+    "cleanupErrors": [],
+    "finishedAt": "2026-10-20T10:56:11.572Z"
+  },
+  "finalAudit": {
+    "schemaVersion": 1,
+    "checkedAt": "2026-10-20T10:56:41.333Z",
+    "source": {
+      "gitSha": "9eb4293627eaf94448c4fda7bb0e6f4e99b2b41c",
+      "dirty": true
+    },
+    "reports": [
+      {
+        "path": "fault-1792493614390-6bf49cd9/report.json",
+        "result": "passed",
+        "cleanup": "failed",
+        "cleanupErrors": [
+          "docker inspect --format failed code=1 signal=null: error: no such object: 3e468eea973ee241523386baf84c4530e95a55265fa32b3d00319fc03b18d85e\n"
+        ],
+        "source": {
+          "gitSha": "9eb4293627eaf94448c4fda7bb0e6f4e99b2b41c",
+          "dirty": true,
+          "trackedDiffSha256": "2985a916a57166596bf756a3c20511ddfd89a2637aa165623081cd402820dec2",
+          "untrackedFiles": {
+            "packages/daynight-web/scripts/dagre.test.mts": "2fd4316cd30b6bd023297cf9984c690b8cb1e614fc76a7e0f85c13658e1ce713",
+            "patches/@dagrejs__dagre@3.1.1.patch": "142fd75deec2b03c9d6839bcdb87804ff902b25f9af621d6f8140b52c765ef7b"
+          }
+        }
+      },
+      {
+        "path": "fault-1792493712152-d0ae9b41/report.json",
+        "result": "passed",
+        "cleanup": "passed",
+        "cleanupErrors": [],
+        "source": {
+          "gitSha": "9eb4293627eaf94448c4fda7bb0e6f4e99b2b41c",
+          "dirty": true,
+          "trackedDiffSha256": "28516c9a74796961cba4c486812e4bf480785b4cb7d1e9954729e711205cd627",
+          "untrackedFiles": {
+            "packages/daynight-web/scripts/dagre.test.mts": "2fd4316cd30b6bd023297cf9984c690b8cb1e614fc76a7e0f85c13658e1ce713",
+            "patches/@dagrejs__dagre@3.1.1.patch": "142fd75deec2b03c9d6839bcdb87804ff902b25f9af621d6f8140b52c765ef7b"
+          }
+        }
+      }
+    ],
+    "runs": [
+      {
+        "runId": "20261020105351-909738-30138",
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "images": []
+      },
+      {
+        "runId": "20261020105353-910760-31683",
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "images": []
+      },
+      {
+        "runId": "20261020105407-912642-14324",
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "images": []
+      },
+      {
+        "runId": "20261020105420-914512-06152",
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "images": []
+      },
+      {
+        "runId": "20261020105334-908324-04963",
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "images": []
+      },
+      {
+        "runId": "20261020105525-920602-23589",
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "images": []
+      },
+      {
+        "runId": "20261020105527-921649-04664",
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "images": []
+      },
+      {
+        "runId": "20261020105541-923446-26381",
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "images": []
+      },
+      {
+        "runId": "20261020105554-925330-18788",
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "images": []
+      },
+      {
+        "runId": "20261020105512-919474-25541",
+        "containers": [],
+        "volumes": [],
+        "networks": [],
+        "images": []
+      }
+    ],
+    "holders": [
+      {
+        "probeId": "fault-1792493614390-6bf49cd9",
+        "containerIds": []
+      },
+      {
+        "probeId": "fault-1792493712152-d0ae9b41",
+        "containerIds": []
+      }
+    ],
+    "processes": [
+      {
+        "probeId": "fault-1792493614390-6bf49cd9",
+        "case": "A1-startup-failure",
+        "observations": [
+          {
+            "pid": 909738,
+            "state": "absent"
+          }
+        ]
+      },
+      {
+        "probeId": "fault-1792493614390-6bf49cd9",
+        "case": "A2-callback-failure",
+        "observations": [
+          {
+            "pid": 910760,
+            "state": "absent"
+          },
+          {
+            "pid": 912135,
+            "state": "absent"
+          },
+          {
+            "pid": 912146,
+            "state": "absent"
+          }
+        ]
+      },
+      {
+        "probeId": "fault-1792493614390-6bf49cd9",
+        "case": "A3-cancel",
+        "observations": [
+          {
+            "pid": 912642,
+            "state": "absent"
+          },
+          {
+            "pid": 914040,
+            "state": "absent"
+          },
+          {
+            "pid": 914051,
+            "state": "absent"
+          }
+        ]
+      },
+      {
+        "probeId": "fault-1792493614390-6bf49cd9",
+        "case": "A4-cleanup-failure",
+        "observations": [
+          {
+            "pid": 914512,
+            "state": "absent"
+          },
+          {
+            "pid": 915918,
+            "state": "absent"
+          }
+        ]
+      },
+      {
+        "probeId": "fault-1792493614390-6bf49cd9",
+        "case": "baseline-B",
+        "observations": [
+          {
+            "pid": 908324,
+            "state": "absent"
+          },
+          {
+            "pid": 909725,
+            "state": "absent"
+          }
+        ]
+      },
+      {
+        "probeId": "fault-1792493712152-d0ae9b41",
+        "case": "A1-startup-failure",
+        "observations": [
+          {
+            "pid": 920602,
+            "state": "absent"
+          }
+        ]
+      },
+      {
+        "probeId": "fault-1792493712152-d0ae9b41",
+        "case": "A2-callback-failure",
+        "observations": [
+          {
+            "pid": 921649,
+            "state": "absent"
+          },
+          {
+            "pid": 922961,
+            "state": "absent"
+          },
+          {
+            "pid": 922972,
+            "state": "absent"
+          }
+        ]
+      },
+      {
+        "probeId": "fault-1792493712152-d0ae9b41",
+        "case": "A3-cancel",
+        "observations": [
+          {
+            "pid": 923446,
+            "state": "absent"
+          },
+          {
+            "pid": 924839,
+            "state": "absent"
+          },
+          {
+            "pid": 924850,
+            "state": "absent"
+          }
+        ]
+      },
+      {
+        "probeId": "fault-1792493712152-d0ae9b41",
+        "case": "A4-cleanup-failure",
+        "observations": [
+          {
+            "pid": 925330,
+            "state": "absent"
+          },
+          {
+            "pid": 926746,
+            "state": "absent"
+          }
+        ]
+      },
+      {
+        "probeId": "fault-1792493712152-d0ae9b41",
+        "case": "baseline-B",
+        "observations": [
+          {
+            "pid": 919474,
+            "state": "absent"
+          },
+          {
+            "pid": 920588,
+            "state": "absent"
+          }
+        ]
+      }
+    ],
+    "result": "passed",
+    "probeClassifierCorrection": "The first matrix completed every product scenario and removed all resources. Its post-probe repeated holder inspection returned lowercase no such object; a case-sensitive probe-only classifier marked cleanup failed. The original report is retained, the classifier was corrected, and the already-started second complete matrix passed. This independent final audit verifies both matrices without changing their reports."
+  }
+}

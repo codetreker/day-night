@@ -5,9 +5,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaskGraph as TaskGraphData } from '../src/api/types';
 import { RootList } from '../src/features/task-graph/RootList';
 import { getInitialTaskViewport, TaskGraph } from '../src/features/task-graph/TaskGraph';
-import { buildGraphIndex } from '../src/features/task-graph/model';
+import { buildGraphIndex, projectRoot } from '../src/features/task-graph/model';
 import * as layoutModule from '../src/features/task-graph/layout';
 import { installGraphMeasurements } from './graph-measurements';
+
+const taskRenders = vi.hoisted(() => vi.fn<(id: string) => void>());
+vi.mock('../src/features/task-graph/TaskNode', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/features/task-graph/TaskNode')>();
+  const { createElement, memo } = await import('react');
+  return {
+    ...actual,
+    TaskNode: memo((props: Parameters<typeof actual.TaskNode>[0]) => {
+      taskRenders(props.id);
+      return createElement(actual.TaskNode, props);
+    }),
+  };
+});
 
 const time = '2026-10-20T00:00:00Z';
 const graph: TaskGraphData = {
@@ -35,6 +48,24 @@ const ready = async (container: HTMLElement) => {
 beforeEach(installGraphMeasurements);
 
 describe('task dependency canvas', () => {
+  it('renders all dependency paths without endpoint measurements and still observes the task nodes', () => {
+    const observed = new Set<Element>();
+    vi.stubGlobal('ResizeObserver', class {
+      observe(target: Element) { observed.add(target); }
+      unobserve(target: Element) { observed.delete(target); }
+      disconnect() {}
+    });
+    const { container } = render(<TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
+    const nodes = [...container.querySelectorAll('.react-flow__node')];
+    const edges = [...container.querySelectorAll('.react-flow__edge-path')];
+    expect(nodes).toHaveLength(5);
+    expect(edges).toHaveLength(4);
+    expect(nodes.every((node) => observed.has(node))).toBe(true);
+    expect(edges.every((edge) => edge.getAttribute('marker-end')?.startsWith('url('))).toBe(true);
+    expect(container.querySelectorAll('.react-flow__handle')).toHaveLength(0);
+    expect(container.querySelectorAll('svg.task-dependency-edges')).toHaveLength(1);
+  });
+
   it('renders complete projected nodes and arrows, preserving status, shared nodes, and external predecessors', async () => {
     const { container } = render(<TaskGraph index={index} rootId="A" selectedTaskId="C" onSelectTask={noop} />);
     await waitFor(() => { expect(container.querySelectorAll('.react-flow__edge')).toHaveLength(4); });
@@ -55,7 +86,7 @@ describe('task dependency canvas', () => {
     expect(screen.queryByRole('button', { name: /^独立任务，/ })).toBeNull();
   });
 
-  it('uses the exact Dagre point geometry instead of assuming horizontal midpoint handles', async () => {
+  it('uses every exact Dagre point in an accessible noninteractive dependency layer', async () => {
     const expected = layoutModule.layoutGraph({ rootId: 'A', mainIds: new Set(['A', 'C', 'D']), boundaryIds: new Set(['B', 'F']), edges: [
       { source: 'A', target: 'C', external: false }, { source: 'B', target: 'C', external: true },
       { source: 'C', target: 'D', external: false }, { source: 'F', target: 'D', external: true },
@@ -64,6 +95,127 @@ describe('task dependency canvas', () => {
     await waitFor(() => { expect(container.querySelectorAll('.react-flow__edge-path')).toHaveLength(expected.edges.length); });
     const actualPaths = [...container.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'));
     expect(actualPaths).toEqual(expected.edges.map((edge) => edge.points.map((point, position) => `${position === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ')));
+    const svg = container.querySelector('svg.task-dependency-edges')!;
+    expect(svg.parentElement).toHaveClass('react-flow__viewport-portal');
+    expect(svg.closest('.react-flow__viewport')).toBe(viewport(container));
+    expect(svg).toHaveAttribute('width', '100%');
+    expect(svg).toHaveAttribute('height', '100%');
+    expect(svg).not.toHaveAttribute('viewBox');
+    expect(svg).toHaveAttribute('focusable', 'false');
+    expect(svg).toHaveAttribute('role', 'group');
+    expect(svg).toHaveAttribute('aria-label', '任务依赖关系');
+    const marker = svg.querySelector('marker')!;
+    expect(marker).toHaveAttribute('markerWidth', '16');
+    expect(marker).toHaveAttribute('markerHeight', '16');
+    expect(marker).toHaveAttribute('viewBox', '-10 -10 20 20');
+    expect(marker).toHaveAttribute('orient', 'auto-start-reverse');
+    expect(marker).toHaveAttribute('markerUnits', 'strokeWidth');
+    const relations = [...svg.querySelectorAll('g.task-dependency-edge')];
+    expect(relations).toHaveLength(expected.edges.length);
+    relations.forEach((relation, position) => {
+      const edge = expected.edges[position]!;
+      expect(relation).toHaveAttribute('data-id', edge.id);
+      expect(relation).toHaveAttribute('role', 'img');
+      expect(relation).toHaveAttribute('aria-label', `前置任务 ${edge.source} → 后续任务 ${edge.target}`);
+      expect(relation).toHaveAttribute('focusable', 'false');
+      expect(relation).not.toHaveAttribute('tabindex');
+      expect(relation.querySelectorAll('a,button,[tabindex]')).toHaveLength(0);
+      const path = relation.querySelector('path.react-flow__edge-path')!;
+      expect(path).toHaveAttribute('data-source', edge.source);
+      expect(path).toHaveAttribute('data-target', edge.target);
+      expect(path).toHaveAttribute('aria-hidden', 'true');
+      expect(path).toHaveAttribute('marker-end', `url(#${marker.id})`);
+    });
+  });
+
+  it('paints complete dashed bodies before their canonical native arrow paths without changing solid edges', () => {
+    const geometry = layoutModule.layoutGraph(projectRoot(index, 'A'));
+    const original = geometry.edges.map((edge) => ({
+      ...edge, points: [{ x: 10, y: 20 }, { x: 1010, y: 20 }, { x: 1010, y: 1020 }, { x: 2010, y: 1020 }],
+    }));
+    vi.spyOn(layoutModule, 'layoutGraph').mockReturnValue({ ...geometry, edges: original });
+    const view = render(<TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
+    const svg = view.container.querySelector('svg.task-dependency-edges')!;
+    const allPieces = [...svg.querySelectorAll<SVGElement>('.task-dependency-paint-piece')];
+    expect(Number(svg.getAttribute('data-paint-piece-count'))).toBe(allPieces.length);
+    expect(allPieces.length).toBeGreaterThan(0);
+    for (const edge of original) {
+      const relation = svg.querySelector(`[data-id="${edge.id}"]`)!;
+      const canonical = relation.querySelector<SVGPathElement>('.react-flow__edge-path')!;
+      const pieces = [...relation.querySelectorAll<SVGElement>('.task-dependency-paint-piece')];
+      expect(relation.lastElementChild).toBe(canonical);
+      expect(canonical.getAttribute('d')).toBe('M10,20 L1010,20 L1010,1020 L2010,1020');
+      expect(canonical.style.strokeWidth).toBe('1.5');
+      expect(canonical.style.stroke).toBe(edge.external ? 'none' : 'rgb(171, 178, 199)');
+      expect(canonical.getAttribute('marker-end')).toBe(`url(#${svg.querySelector('marker')!.id})`);
+      if (!edge.external) {
+        expect(pieces).toHaveLength(0);
+        expect(canonical.style.strokeDasharray).toBe('');
+        continue;
+      }
+      expect(canonical.style.strokeDasharray).toBe('5 4');
+      expect(pieces.some((piece) => piece.tagName === 'line')).toBe(true);
+      expect(pieces.some((piece) => piece.tagName === 'path')).toBe(true);
+      for (const piece of pieces) {
+        expect(piece).toHaveAttribute('data-piece-kind', piece.tagName);
+        expect(piece).toHaveAttribute('aria-hidden', 'true');
+        expect(piece).toHaveAttribute('focusable', 'false');
+        expect(piece.style.pointerEvents).toBe('none');
+        expect(piece.style.stroke).toBe('rgb(171, 178, 199)');
+        expect(piece.style.strokeWidth).toBe('1.5');
+        expect(piece.style.strokeDasharray).toBe('5 4');
+        expect(piece.style.strokeLinecap).toBe('butt');
+        expect(piece.style.strokeLinejoin).toBe('miter');
+        expect(piece.style.fill).toBe('none');
+        expect(piece).not.toHaveAttribute('marker-end');
+        expect(piece).not.toHaveAttribute('tabindex');
+        if (piece.tagName === 'line') {
+          expect(piece).toHaveAttribute('x1', '0');
+          expect(piece).toHaveAttribute('y1', '0');
+          expect(piece).toHaveAttribute('y2', '0');
+          expect(Number(piece.getAttribute('x2'))).toBeGreaterThan(0);
+          expect(piece.getAttribute('transform')).toMatch(/^matrix\([^)]*\)$/);
+        } else expect(piece.getAttribute('d')).toMatch(/^M[-\d.,]+(?: L[-\d.,]+)+$/);
+      }
+    }
+    const children = [...svg.querySelectorAll('g.task-dependency-edge > *')];
+    view.rerender(<TaskGraph index={index} rootId="A" selectedTaskId="C" onSelectTask={noop} />);
+    expect(view.container.querySelector('svg.task-dependency-edges')).toBe(svg);
+    expect([...svg.querySelectorAll('g.task-dependency-edge > *')]).toEqual(children);
+    children.forEach((child, position) => { expect(svg.querySelectorAll('g.task-dependency-edge > *')[position]).toBe(child); });
+  });
+
+  it('keeps dependency paths in the node viewport during zoom and updates them from new snapshots', async () => {
+    const view = render(<TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
+    await ready(view.container);
+    const svg = view.container.querySelector('svg.task-dependency-edges')!;
+    const paths = [...svg.querySelectorAll('path.react-flow__edge-path')];
+    const initialPaths = paths.map((path) => path.getAttribute('d'));
+    const beforeZoom = viewport(view.container).style.transform;
+    fireEvent.click(screen.getByRole('button', { name: '放大' }));
+    await waitFor(() => { expect(viewport(view.container).style.transform).not.toBe(beforeZoom); });
+    expect(view.container.querySelector('svg.task-dependency-edges')).toBe(svg);
+    paths.forEach((path, position) => { expect(svg.querySelectorAll('path.react-flow__edge-path')[position]).toBe(path); });
+    expect(paths.map((path) => path.getAttribute('d'))).toEqual(initialPaths);
+    expect(svg.closest('.react-flow__viewport')).toBe(viewport(view.container));
+    expect(view.container.querySelector('.react-flow__nodes')!.parentElement).toBe(viewport(view.container));
+
+    const updated = buildGraphIndex({
+      ...graph,
+      tasks: graph.tasks.map((task) => task.id === 'D' ? { ...task, dependsOn: ['C'], blockedBy: ['C'] } : task),
+    });
+    const expected = layoutModule.layoutGraph(projectRoot(updated, 'A'));
+    const retainedPath = svg.querySelector('[data-id="A->C"] path');
+    view.rerender(<TaskGraph index={updated} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
+    await waitFor(() => { expect(svg.querySelectorAll('.react-flow__edge-path')).toHaveLength(3); });
+    expect(view.container.querySelector('svg.task-dependency-edges')).toBe(svg);
+    expect(svg.querySelector('[data-id="A->C"] path')).toBe(retainedPath);
+    expect([...svg.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'))).toEqual(
+      expected.edges.map((edge) => edge.points.map((point, position) => `${position === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ')),
+    );
+    expected.nodes.forEach((node) => {
+      expect(view.container.querySelector<HTMLElement>(`.react-flow__node[data-id="${node.id}"]`)!.style.transform).toBe(`translate(${node.position.x}px,${node.position.y}px)`);
+    });
   });
 
   it('opens each node once using mouse, Enter, or Space and returns the actual native trigger', async () => {
@@ -108,6 +260,10 @@ describe('task dependency canvas', () => {
     const spy = vi.spyOn(layoutModule, 'layoutGraph');
     const view = render(<TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
     await ready(view.container);
+    const timings = performance.getEntriesByName('daynight:task-layout') as PerformanceMeasure[];
+    expect(timings).toHaveLength(1);
+    expect(timings[0]!.detail).toEqual({ rootId: 'A' });
+    expect(timings[0]!.duration).toBeGreaterThanOrEqual(0);
     const initialZoom = zoom(view.container);
     const positions = [...view.container.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => node.style.transform);
     fireEvent.click(screen.getByRole('button', { name: '放大' }));
@@ -123,6 +279,39 @@ describe('task dependency canvas', () => {
     expect([...view.container.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => node.style.transform)).toEqual(positions);
     expect(viewport(view.container).style.transform).toBe(userViewport);
     expect(spy).toHaveBeenCalledTimes(1);
+    expect(performance.getEntriesByName('daynight:task-layout')).toEqual(timings);
+  });
+
+  it('renders only the tasks whose selected appearance changes while retaining the full graph', async () => {
+    const view = render(<TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
+    await ready(view.container);
+    const originalButtons = [...view.container.querySelectorAll('.task-node')];
+    const originalPaths = [...view.container.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'));
+    const expectChangedTasks = (ids: readonly string[]) => {
+      expect(taskRenders.mock.calls.map(([id]) => id).sort()).toEqual([...ids].sort());
+      const buttons = [...view.container.querySelectorAll('.task-node')];
+      const paths = [...view.container.querySelectorAll('.react-flow__edge-path')];
+      expect(buttons).toHaveLength(originalButtons.length);
+      expect(paths).toHaveLength(originalPaths.length);
+      buttons.forEach((button, position) => { expect(button).toBe(originalButtons[position]); });
+      expect(paths.map((path) => path.getAttribute('d'))).toEqual(originalPaths);
+    };
+
+    taskRenders.mockClear();
+    view.rerender(<TaskGraph index={index} rootId="A" selectedTaskId="C" onSelectTask={noop} />);
+    await waitFor(() => { expect(nodeButton('合流实现…')).toHaveClass('task-node-selected'); });
+    expectChangedTasks(['C']);
+
+    taskRenders.mockClear();
+    view.rerender(<TaskGraph index={index} rootId="A" selectedTaskId="D" onSelectTask={noop} />);
+    await waitFor(() => { expect(nodeButton('最终验收')).toHaveClass('task-node-selected'); });
+    expect(nodeButton('合流实现…')).not.toHaveClass('task-node-selected');
+    expectChangedTasks(['C', 'D']);
+
+    taskRenders.mockClear();
+    view.rerender(<TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
+    await waitFor(() => { expect(nodeButton('最终验收')).not.toHaveClass('task-node-selected'); });
+    expectChangedTasks(['D']);
   });
 
   it('starts a long chain at readable zoom and lets the fit control reveal more of it', async () => {
@@ -222,6 +411,39 @@ describe('initial task viewport policy', () => {
 });
 
 describe('root task accordion', () => {
+  it('retains collapsed root renders during selection and still applies their new snapshot progress', async () => {
+    const progressReads = vi.spyOn(index.rootProgress, 'get');
+    const view = render(<RootList index={index} expandedRootId="A" onExpand={noop} selectedTaskId={null} onSelectTask={noop} />);
+    await ready(view.container);
+    const originalRoots = [...view.container.querySelectorAll('.root-toggle')];
+    const originalCanvas = view.container.querySelector('.task-graph-canvas');
+
+    for (const selectedTaskId of ['C', 'D', null]) {
+      progressReads.mockClear();
+      view.rerender(<RootList index={index} expandedRootId="A" onExpand={noop} selectedTaskId={selectedTaskId} onSelectTask={noop} />);
+      await waitFor(() => {
+        const selectedNodes = view.container.querySelectorAll('.task-node-selected');
+        expect(selectedNodes).toHaveLength(selectedTaskId === null ? 0 : 1);
+        if (selectedTaskId !== null) expect(selectedNodes[0]!.closest('.react-flow__node')).toHaveAttribute('data-id', selectedTaskId);
+      });
+      expect(progressReads).toHaveBeenCalledExactlyOnceWith('A');
+      const roots = [...view.container.querySelectorAll('.root-toggle')];
+      expect(roots).toHaveLength(originalRoots.length);
+      roots.forEach((root, position) => { expect(root).toBe(originalRoots[position]); });
+      expect(view.container.querySelector('.task-graph-canvas')).toBe(originalCanvas);
+    }
+
+    const refreshed = buildGraphIndex({
+      ...graph,
+      tasks: graph.tasks.map((task) => task.id === 'E' ? { ...task, status: 'done', ready: false } : task),
+      summary: { ...graph.summary, todo: 2, done: 3, ready: 1 },
+    });
+    view.rerender(<RootList index={refreshed} expandedRootId="A" onExpand={noop} selectedTaskId={null} onSelectTask={noop} />);
+    expect(originalRoots[2]!.querySelector('.root-progress-label')).toHaveTextContent('1/1 已完成');
+    expect(originalRoots[2]!.querySelector('.root-status')).toHaveTextContent('已完成');
+    expect(view.container.querySelectorAll('.root-toggle')[2]).toBe(originalRoots[2]);
+  });
+
   it('keeps root status separate from chain progress and unmounts all but the expanded graph', async () => {
     const Wrapper = () => {
       const [expandedRootId, onExpand] = useState<string | null>('A');
@@ -237,6 +459,7 @@ describe('root task accordion', () => {
     expect(container.querySelectorAll('.task-graph-canvas')).toHaveLength(1);
     const firstCanvas = container.querySelector('.task-graph-canvas');
     fireEvent.click(roots[1]!);
+    expect((performance.getEntriesByName('daynight:task-layout') as PerformanceMeasure[]).map((entry) => entry.detail)).toEqual([{ rootId: 'B' }]);
     expect(roots[0]!.getAttribute('aria-expanded')).toBe('false');
     expect(roots[1]!.getAttribute('aria-expanded')).toBe('true');
     expect(firstCanvas?.isConnected).toBe(false);

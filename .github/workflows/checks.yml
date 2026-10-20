@@ -187,6 +187,13 @@ jobs:
     env:
       COREPACK_HOME: ${{ github.workspace }}/.tmp/corepack
       XDG_CACHE_HOME: ${{ github.workspace }}/.tmp/cache
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.tmp/playwright-browsers
+      GOCACHE: ${{ github.workspace }}/packages/daynight-server/.tmp/go-cache
+      GOMODCACHE: ${{ github.workspace }}/packages/daynight-server/.tmp/go-mod
+      GOPATH: ${{ github.workspace }}/packages/daynight-server/.tmp/go
+      GOBIN: ${{ github.workspace }}/packages/daynight-server/.tmp/bin
+      GOENV: "off"
+      GOTOOLCHAIN: go1.27.2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -201,6 +208,12 @@ jobs:
           run_install: false
           dest: ${{ github.workspace }}/.tmp/pnpm
       - run: pnpm install --frozen-lockfile --store-dir .tmp/pnpm-store
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: 1.27.2
+          cache: false
+      - name: Install the pinned Chromium browser
+        run: pnpm --filter @codetreker/daynight-web exec playwright install --with-deps chromium
       - run: pnpm web:typecheck
       - run: pnpm web:build
       - name: Test the web application and require coverage above 90%
@@ -208,6 +221,23 @@ jobs:
         run: pnpm web:test
       - name: Verify isolated deployment lifecycle
         run: bash deployment/dev-ci/tests/run.sh
+      - name: Verify production dashboard, container deployment and capacity budgets
+        id: web-acceptance
+        run: pnpm web:acceptance
+      - name: Recover recorded dashboard acceptance resources
+        if: ${{ always() && steps.web-acceptance.outcome != 'skipped' }}
+        run: node packages/daynight-web/scripts/acceptance.mts --cleanup
+      - name: Upload production browser, performance and cleanup evidence
+        if: ${{ always() && steps.web-acceptance.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: daynight-web-acceptance
+          path: |
+            packages/daynight-web/.tmp/acceptance/
+            .tmp/dev-ci/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
       - name: Upload complete web coverage evidence
         if: ${{ always() && steps.web-validation.outcome != 'skipped' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

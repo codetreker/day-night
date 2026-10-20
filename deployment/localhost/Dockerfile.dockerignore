@@ -4,7 +4,7 @@
 !pnpm-workspace.yaml
 !.npmrc
 !patches/
-!patches/@xyflow__system@0.0.83.patch
+!patches/**
 !packages/
 !packages/daynight/
 !packages/daynight/package.json

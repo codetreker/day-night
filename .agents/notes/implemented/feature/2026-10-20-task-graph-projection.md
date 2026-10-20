@@ -7,7 +7,9 @@ Status: implemented
 A dependency DAG can have multiple roots and shared descendants. Treating it as
 a tree duplicates counts and hides prerequisites outside a selected root's
 forward path. Layout also needs stable coordinates without coupling graph
-meaning to browser components or interactions.
+meaning to browser components or interactions. At the declared graph limits,
+layout must retain complete geometry while meeting the browser opening budget;
+long-edge normalization can increase work beyond original node/edge counts.
 
 ## Decision
 
@@ -26,7 +28,8 @@ totals count all tasks once. Shared membership and root progress are derived onc
 per snapshot without a global mutable cache.
 
 The separate Dagre adapter uses a new flat directed graph for each calculation,
-sorted node and edge insertion, left-to-right ranks and fixed 220-by-96 cards.
+sorted node and edge insertion, left-to-right ranks, one global longest-path
+ranker and fixed 220-by-96 cards.
 It converts returned node centers to top-left positions and retains the routed
 edge points. Empty projections return explicit zero bounds before calling Dagre;
 nonempty output must have finite coordinates and valid node bounds. No React,
@@ -34,8 +37,40 @@ DOM, network or task mutation is involved in these modules.
 
 The dependency is pinned to Dagre 3.1.1 with bundled TypeScript declarations.
 The [pinned layout implementation](https://github.com/dagrejs/dagre/blob/c3ed0802cd98de74c21cff1f754689ebbb0f8dae/lib/layout.ts#L372-L405)
-owns coordinate propagation. Canvas components consume the resulting data rather
-than recomputing dependency semantics from visible edges.
+owns coordinate propagation. One explicit ranker gives predictable ranking
+without per-graph timing heuristics. Longest-path can lengthen edges; normalization
+creates dummy vertices according to rank spans, so work depends on the sum of
+those spans as well as original node/edge counts. The product keeps Dagre's
+default crossing minimization, ordering and alignment behavior. Canvas components
+consume the resulting data rather than recomputing dependency semantics from
+visible edges.
+
+A single pnpm runtime patch targets the pinned public ESM and CJS builds. It
+removes two redundant scans while preserving their result and event order:
+
+- A flat graph with no `borderType` vertices cannot produce type-2 border
+  conflicts, so its otherwise empty scan is skipped.
+- Equal truthy barycenters use ordered buckets. The global outer event order,
+  reverse candidate-pair sequence and reference removals remain the same as the
+  original scan, preserving equal-key tie behavior and output geometry.
+
+The pinned [type-2 scan](https://github.com/dagrejs/dagre/blob/c3ed0802cd98de74c21cff1f754689ebbb0f8dae/lib/position/bk.ts#L92-L145)
+and [barycenter scan](https://github.com/dagrejs/dagre/blob/c3ed0802cd98de74c21cff1f754689ebbb0f8dae/lib/order/sort-subgraph.ts#L59-L94)
+are the semantic references. Differential checks compare complete geometry with
+unpatched Dagre under the same longest-path policy in both module formats. This
+patch equivalence does not mean changing the ranker preserves network-simplex
+geometry. Dependency upgrades require renewing those exact-output and ordering
+checks, along with all-node/all-edge left-to-right and overlap assertions. The mandatory
+`web:test` native suite reconstructs pristine bundles in memory by reversing the
+committed patch and verifying published SHA-256 values. Its 23 fixtures, four
+directions and three rankers cover both public exports and deterministic complete
+geometry; direct equal-barycenter, reversed-pair removal and `usedBias` assertions
+preserve the ordering cases. License links and stale source-map declarations are
+checked without storing another copy of the dependency.
+
+The [production acceptance decision](../testing/2026-10-20-dashboard-production-acceptance.md)
+owns browser measurements and source/image receipts. Pure algorithm probes do not
+establish production browser timing.
 
 The [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 the [architecture](../../../../docs/design/daynight-web.md) owns module contracts,
@@ -57,6 +92,15 @@ model keeps project, root-main and boundary counts distinct.
 domain checks to browser state and makes deterministic projection tests harder.
 Pure indexes and a fresh layout graph separate those responsibilities.
 
+**Disable crossing minimization or force an alignment to reduce work.** These
+change visible node ordering or routing behavior. The selected patch removes
+redundancy while retaining default crossing minimization and coordinate behavior
+for the chosen global ranker.
+
+**Replace the layout library.** A replacement would require establishing routing,
+geometry and interaction behavior again. The pinned implementation provides the
+required graph output after the narrowly specified redundant scans are removed.
+
 ## Consequences
 
 Graph semantics have direct pure-function tests, and layout tests run the real
@@ -65,6 +109,14 @@ Model and layout belong to the complete web source manifest and strict coverage
 gate. Indexing and one-root reachability are linear in nodes plus edges; all-root
 progress may require one traversal per root within the declared project limits.
 
-The module provides layout data, not an implemented task canvas. Actual browser
-rendering, focus, viewport behavior and maximum-size timing remain subsequent
-dashboard tasks and must be verified against the production application.
+The module owns layout data; the implemented task canvas owns rendering, focus
+and viewport behavior. Fixed-topology capacity fixtures retain exact node/edge
+counts and five repetitions on the same IDs. Their timings are evidence for that
+matrix and environment, not an arbitrary-DAG latency guarantee. Long rank spans
+can enlarge normalized graphs, and longest-path can increase edge lengths. These
+trade-offs and the version-specific runtime patch require exact differential
+regressions when Dagre changes. Layout policy and geometry remain unchanged as
+the canvas moves immutable edges to one static SVG. Earlier local browser
+capacity evidence stays historical. The current local-coordinate dashed-paint
+renderer passes its own complete local capacity matrix; clean current-source CI and delivery approval
+remain required before production acceptance is complete.

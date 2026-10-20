@@ -1,6 +1,6 @@
 # 项目与任务看板设计
 
-状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；完整生产浏览器与固定性能验收由 W-T6 完成。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
+状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 已定位长斜线 SVG 虚线绘制造成的 raster/commit 阻塞，采用局部水平线与短原生转角路径分解；当前源码的几何/相位与完整本地生产验收已通过，hosted 验收仍待通过。历史失败与本地回执保留于验收报告。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
 
 ## 目标与现有基础
 
@@ -93,7 +93,32 @@ B 使用虚线边框与“外部前置，上游已省略”标签；节点仍可
 
 主节点在多个根的 R 中可达时显示“共享”标记。采用集合遍历处理菱形路径，避免重复节点与无限递归。服务端保证无环；前端解析时仍验证引用闭包、唯一 ID 与无环，失败显示“任务图数据不完整”而不是部分图。
 
-布局适配器使用固定 Dagre 3.1.1 与 `rankdir: "LR"`，节点固定为 220×96，按 ID 稳定输入节点和边，减少无数据变化时的跳动。返回坐标转换为左上角位置并保留边路径点；空投影在调用 Dagre 前返回零尺寸，非空几何无效时明确失败。只在展开或新快照到达后计算布局；视口缩放不触发重新布局。
+布局适配器使用固定 Dagre 3.1.1，统一设置 `rankdir: "LR"` 和
+`ranker: "longest-path"`，节点固定为 220×96，按 ID 稳定输入节点和边，减少同一
+输入重复布局时的跳动。返回坐标转换为左上角位置并保留边路径点；空投影在调用
+Dagre 前返回零尺寸，非空几何无效时明确失败。只在展开或新快照到达后计算布局；
+视口缩放与选择不触发重新布局。
+
+全局 longest-path 提供单一可预测的排名策略，避免让每种图根据探测耗时选择算法。
+它可能拉长边；Dagre 对长边插入 dummy 节点，后续成本还取决于各边跨 rank 数之和，
+不能仅用原始 V/E 或是否达到 1,000/5,000 推断耗时。默认交叉最小化、排序轮次和
+坐标对齐策略保持启用。容量门槛验证固定拓扑矩阵，不能视作任意 DAG 的相同耗时承诺。
+
+锁定的运行时补丁覆盖 Dagre 3.1.1 的公开 ESM/CJS 入口，包含两个保持输出的冗余
+消除：平面图没有 `borderType` 节点时跳过必为空的 type-2 冲突扫描；按 truthy 且
+相等的 barycenter 建有序候选桶，同时保留原全局外层事件顺序、逆序配对遍历和
+引用移除语义。这些条件保证补丁相对同一 longest-path 配置的未补丁实现保留坐标、
+边路由及 bounds；ranker 策略本身不承诺与 network-simplex 的几何相同。原始机制见
+[pinned type-2 conflict scan](https://github.com/dagrejs/dagre/blob/c3ed0802cd98de74c21cff1f754689ebbb0f8dae/lib/position/bk.ts#L92-L145)
+与 [pinned barycenter scan](https://github.com/dagrejs/dagre/blob/c3ed0802cd98de74c21cff1f754689ebbb0f8dae/lib/order/sort-subgraph.ts#L59-L94)。
+冻结安装、容器构建必须包含此补丁；升级依赖时必须重做 ESM/CJS 的精确差分、LR
+方向/无重叠及默认排序语义回归，不能只凭新的类型检查或平均耗时接受升级。
+
+`web:test` 必需执行 `scripts/dagre.test.mts` 的三项原生检查。它从已安装入口逆向
+应用提交补丁并校验发布 bundle 的 SHA-256，在内存重建 pristine 实现；23 个
+fixture × 四个方向 × 三种 ranker 比较 ESM/CJS 的全部节点坐标、边路径、bounds
+与重复布局，还直接验证同 barycenter、逆向配对移除和 usedBias。许可证引用及
+不存在失效 source map 的检查同时执行，不另存第二份第三方源码。
 
 图计算模块不导入 React、fetch 或 React Flow。其输入是已解析的图 DTO，输出是可测试的数据结构：
 
@@ -128,14 +153,53 @@ declare const layoutGraph: (projection: RootProjection) => CanvasLayout;
 | 方案 | 成本与适用性 | 选择 |
 |---|---|---|
 | React + React Flow + Dagre | 复用图交互和可访问性；需要明确禁用编辑功能，固定节点尺寸 | 推荐 |
-| React + 自绘 SVG + Dagre | 需要自行实现视口变换、键盘定位、焦点和平移缩放测试 | 交互预览可以使用，产品代码不选 |
+| React + 完全自建 SVG 画布 + Dagre | 需要自行实现视口变换、键盘定位、焦点和平移缩放测试 | 交互预览使用；产品视口与节点交互继续由 React Flow 提供 |
 | Vue + Vue Flow + Dagre | 同样能够实现；仓库没有 Vue 基础，不能减少本次工作 | 保留为可替代方案 |
 
 依据：[React Flow 布局指南](https://reactflow.dev/learn/layouting/layouting)、[Dagre 示例](https://reactflow.dev/examples/layout/dagre)、[可访问性](https://reactflow.dev/learn/advanced-use/accessibility)、[Vue Flow](https://vueflow.dev/guide/)、[Vite 构建](https://vite.dev/guide/build)。Dagre 对外联子图的限制针对嵌套分组；这里每个根条目是独立平面图，不使用嵌套 subflow。
 
 React Flow 固定为 12.12.0，使用单个原生任务按钮处理鼠标/Enter/Space，关闭 wrapper
-焦点与所有编辑入口，控件不提供解锁开关。边保留 Dagre 路径点，透明但可测量的
-不可连接 handle 满足框架初始化；布局、选择和请求仍分别归所属模块。
+焦点与所有编辑入口，控件不提供解锁开关。React Flow 拥有 220×96 节点、键盘
+焦点、选择、视口、背景与控件；边由公开 `ViewportPortal` 中一个 memoized SVG
+拥有。SVG 位于任务节点图层下方，使用同一 `CanvasLayout` 的全部 Dagre points，保留每条边的稳定 ID、
+source/target 身份、原生箭头 marker 及可访问语义，不在交互期间省略或裁剪路线。
+实线路线保持原生描边；外部前置的完整 canonical 路线关闭自身 body stroke，保留
+原生 marker 与 1.5 描边宽度，虚线 body 由独立 paint pieces 绘制。
+
+`task-graph/dashes.ts` 的纯函数 `decomposeDashedRoute(points)` 返回只读 `DashPiece`：
+局部水平 `line` 包含 from、length、cosine、sine 和 startDistance，短原生 `path`
+包含 points 和 startDistance。每段沿路线累计弧长，用 5/4、周期 9 的原生虚线；
+内部切点位于相位 7 的 gap 中点，各 piece 使用正 `startDistance % 9` offset。
+转角保留至少 12 单位的原生路径空间，提取后的长直线至少 128 单位，首尾端点
+保持原路线端点；重复零长度段不增加弧长。helper 复用已验证布局的有限坐标，
+空、单点或全零长度路线没有 body paint，不修改 canonical 路线数据。
+
+长段在局部坐标中为 `(0,0) → (length,0)`，通过单位旋转/平移矩阵还原世界坐标。
+Skia 因此可以在局部轴向线上裁剪 dash 生成，短 path 保留原生转角与接合；绘制
+并未删除离屏依赖或改变完整路由。paint pieces 在 canonical marker 路径之前绘制，
+不接受指针、不增加可访问节点。新增[绘制决策](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
+拥有 SVG 相位、固定 Chromium/Skia 证据及替代方案。虚线分解属于布局后的渲染准备，
+其成本计入 renderMs/openMs。
+
+`ViewportPortal` 随 React Flow 视口使用相同的 pan/zoom transform，SVG 在图坐标
+中绘制，不自行订阅或重算每条边的视口状态。布局更换才替换静态 SVG 内容；选择、
+平移和缩放复用同一批路径。图中仍有全部任务节点与全部依赖路径，交互目标及焦点
+保持在任务按钮，边不接收指针事件。
+
+初始视口根据已知 Dagre 几何计算，等待 React Flow viewport 初始化且实际测得的
+画布宽高为正后一次应用。节点保留 React Flow 的原生 ResizeObserver；固定尺寸
+与实际 DOM 需通过浏览器边界回归。端点始终是 Dagre 原始矩形交点，分叉边可以
+在侧边非中心位置相交。该只读结构不需要编辑端口或逐边端点就绪登记；布局、选择、
+静态边、视口和请求分别归所属模块。
+
+同一布局及选择回调创建一组不可变节点引用，每个节点只保留普通和选中两个
+canonical variant。选择切换时只替换前后两个节点的引用，关闭只替换原选中节点；
+其余节点与边的引用、完整 DOM 和几何保持稳定。React Flow 因此只重绘选择外观
+实际变化的节点，避免详情打开成本随 1,000 个节点一起增长。选择不触发投影或布局。
+
+根列表按 `RootRow` memoize；折叠行接收稳定的 null 选择，详情切换不会重绘其他
+折叠行。展开状态、索引或回调改变仍触发对应行更新，完整图刷新更换索引会更新
+所有根行；不能通过缓存保留旧统计或旧 task 数据。
 
 锁定的 `@xyflow/system@0.0.83` 仅声明补丁显式保留 NodeBase 泛型约束，ESM/UMD
 运行时字节不变，`exactOptionalPropertyTypes` 与依赖类型检查继续有效。静态测试
@@ -149,10 +213,10 @@ packages/daynight-web/
   src/app/{App,router}.tsx           两个页面的路由与组合
   src/api/{types,client,parse}.ts    DTO、请求、运行时解析与错误
   src/features/projects/           ProjectsPage、ProjectPage、统计卡
-  src/features/task-graph/          model.ts、layout.ts、RootList、TaskGraph、TaskNode
+  src/features/task-graph/          model.ts、layout.ts、dashes.ts、RootList、TaskGraph、TaskNode
   src/features/task-detail/         TaskDrawer 与详情请求 hook
   src/styles/                      设计变量、排版与样式
-  scripts/                         构建产物发布和严格覆盖率检查
+  scripts/                         构建发布、严格覆盖率、生产验收及布局差分检查
   tests/                           组件、算法与真实浏览器验收
 
 packages/daynight-server/
@@ -171,7 +235,9 @@ packages/daynight-server/
 | projects hooks | 列表游标、完整图快照、加载/刷新状态 | 调用 api，交给 model 建索引 |
 | task-graph/model | 根、可达集合、外部前置、统计与共享关系 | 仅依赖 DTO 类型与标准集合 |
 | task-graph/layout | 将投影映射为确定的节点坐标和边 | 依赖 model 与 Dagre |
-| React Flow 组件 | 画布、只读节点、缩放和节点选择 | 接收布局与 onSelectTask，不调用 API |
+| React Flow 组件 | 视口、只读节点、缩放、平移和节点选择 | 接收布局与 onSelectTask，不调用 API |
+| 虚线绘制分解 | 保留弧长/相位的局部轴向 line 与短原生转角 path | 只依赖布局坐标类型，不访问 DOM、视口或 API |
+| 静态依赖 SVG | 公开 ViewportPortal 内的完整 canonical 路线、原生箭头、派生 body paint 与可访问语义 | 接收不可变布局，复用 React Flow 视口变换，不订阅逐边状态 |
 | TaskDrawer | 当前 taskId 的详情、关系跳转、焦点和关闭 | 调用详情 hook；不修改图快照 |
 | Go server | HTTP 解析、响应、路由与方法语义 | 调用 service 或 webui |
 | Go service | 具体 store 的读取事务、领域拒绝、图摘要 | 调用 core/store，返回 core 模型 |
@@ -184,7 +250,11 @@ flowchart LR
   Page --> Client[typed API client]
   Page --> Model[纯图模型]
   Model --> Layout[Dagre 布局]
-  Layout --> Canvas[只读 React Flow]
+  Layout --> Canvas[只读 React Flow 节点与视口]
+  Layout --> Paint[虚线局部绘制分解]
+  Layout --> SVG[完整路线与原生箭头]
+  Paint --> SVG
+  Canvas -->|共享视口变换| SVG
   Canvas --> Drawer[详情侧栏]
   Drawer --> Client
   Client --> Mux[Go ServeMux]
@@ -242,7 +312,7 @@ pnpm web:acceptance
 DAYNIGHT_TEST_DATABASE_URL=... bash scripts/check.sh
 ```
 
-`web:dev`、`web:typecheck`、`web:test` 和 `web:build` 已实现；`web:acceptance` 由 W-T6 接入。共享 `web:build` 调用 Vite 后执行 `scripts/publish-assets.mts`，验证普通文件、index 及其引用，完成整目录暂存与替换，替换失败时尝试恢复先前目录；恢复也失败时保留先前产物并传播两个原因。`web:test` 执行覆盖率检查器、文件系统发布测试、单元/组件测试与严格覆盖率检查。计划的 `web:acceptance` 使用现有隔离 PostgreSQL 验证直接构建的 Go 进程，并通过独立 `deployment/dev-ci` 验证完整容器栈的浏览器路径，需要 Docker 与固定版本的测试浏览器。浏览器本机优先复用，CI 下载及全部临时 profile 放在项目 `.tmp/`。`web:build` 不调用 Go，避免循环依赖。Go `scripts/check.sh` 在执行需要内嵌资源的 Go 命令前，从仓库根调用该命令；Go 测试中重新构建的进程使用同一份真实资源。缺少 pnpm、依赖、index 或资源时明确失败。
+`web:dev`、`web:typecheck`、`web:test`、`web:build` 和 `web:acceptance` 已实现。共享 `web:build` 调用 Vite 后执行 `scripts/publish-assets.mts`，验证普通文件、index 及其引用，完成整目录暂存与替换，替换失败时尝试恢复先前目录；恢复也失败时保留先前产物并传播两个原因。`web:test` 执行覆盖率检查器、文件系统发布测试、单元/组件测试与严格覆盖率检查。`web:acceptance` 自行创建有所有权标记的 PostgreSQL 容器及卷，验证新构建的 Go 进程，再通过独立 `deployment/dev-ci` 验证完整容器栈的浏览器路径，需要 Docker、Go 工具链与 Playwright Chromium。浏览器本机优先复用，CI 下载及全部临时 profile 放在项目 `.tmp/`。`web:build` 不调用 Go，避免循环依赖。Go `scripts/check.sh` 在执行需要内嵌资源的 Go 命令前，从仓库根调用该命令；Go 测试中重新构建的进程使用同一份真实资源。缺少 pnpm、依赖、index 或资源时明确失败。
 
 开发模式的 Vite 将 `/api` 代理到本机 Go，不引入 CORS 通配配置；生产使用 `http://127.0.0.1:8787/`。运行机器只需要服务二进制与 PostgreSQL；源码构建固定使用 Node 24 与 pnpm 10.34.5。根目录现有 CLI build/test/acceptance 命令的含义保持独立，新增 web 命令显式选择 `@codetreker/daynight-web`。
 
@@ -257,7 +327,7 @@ DAYNIGHT_TEST_DATABASE_URL=... bash scripts/check.sh
   → 非 root 运行阶段：仅复制二进制
 ```
 
-`deployment/localhost/compose.yaml` 使用仓库根 context 并显式指定 `deployment/localhost/Dockerfile`。Dockerfile 专属 `.dockerignore` 使用根相对 allowlist，纳入 workspace/root/web/Go manifests、锁文件、`patches/` 声明补丁、实际构建脚本与源码，排除宿主 `node_modules`、`.tmp`、生成 dist 和无关工作区内容。安装层只下载 web 所需依赖；镜像内部执行同一 `web:build`，不依赖宿主预构建产物。
+`deployment/localhost/compose.yaml` 使用仓库根 context 并显式指定 `deployment/localhost/Dockerfile`。Dockerfile 专属 `.dockerignore` 使用根相对 allowlist，纳入 workspace/root/web/Go manifests、锁文件、`patches/` 中的 Dagre 运行时与 XYFlow 声明补丁、实际构建脚本与源码，排除宿主 `node_modules`、`.tmp`、生成 dist 和无关工作区内容。安装层只下载 web 所需依赖；镜像内部执行同一 `web:build`，不依赖宿主预构建产物。
 
 保留 nginx stream/TCP 转发、服务与 gateway 共享网络命名空间、服务 loopback 监听、宿主 loopback 端口发布、现有 project API 健康检查和命名卷。nginx 不增加 SPA fallback，HTML、资源和 API 都由同一个 Go mux 处理。正常重建栈继续保留数据库数据。操作细节由 `deployment/localhost/README.md` 拥有，拓扑与内嵌交付选择分别由[本机部署决策](../../.agents/notes/implemented/architecture/2026-10-20-localhost-compose.md)和[内嵌交付决策](../../.agents/notes/implemented/architecture/2026-10-20-embedded-dashboard-deployment.md)拥有。
 
@@ -291,15 +361,18 @@ deployment/
 | 网络与卷 | 现有日常项目资源 | Compose 项目作用域；不设全局资源 name 或 external |
 | 结束 | 保留业务数据 | 只清理当前 run 的容器、卷和网络 |
 
-`run.sh` 在创建任何资源前生成并校验项目名、注册有界清理，固定同一组 file/project-directory/project-name 参数。使用生产 Dockerfile 构建本次唯一镜像标签，记录 image ID，等待数据库及 API 健康后发现 base URL，通过 `DAYNIGHT_BASE_URL` 交给子命令。W-T6 的 `pnpm web:acceptance` 将调用该入口运行容器浏览器用例，不启动、重建或清理日常 localhost 栈；Go 覆盖率和直接二进制测试继续使用已有独立 PostgreSQL 测试机制。
+`run.sh` 在创建任何资源前生成并校验项目名、注册有界清理，固定同一组 file/project-directory/project-name 参数。使用生产 Dockerfile 构建本次唯一镜像标签，记录 image ID，等待数据库及 API 健康后发现 base URL，通过 `DAYNIGHT_BASE_URL` 交给子命令。`pnpm web:acceptance` 调用该入口运行容器浏览器用例，不启动、重建或清理日常 localhost 栈；Go 覆盖率和直接二进制测试继续使用已有独立 PostgreSQL 测试机制。
 
 正常退出、测试失败和信号取消都先终止本次子命令进程组，再收集本项目的必要日志及状态，执行仅针对该项目的 `down --volumes --remove-orphans`。进程组在 leader 退出后仍受管理，避免成功或失败的 callback 留下继续使用资源的后代。清理拒绝空项目名、非 dev-ci 前缀和 `daynight-localhost`，不执行全局 prune；本次镜像标签也只在确认本次容器退出后移除。取消后的清理采用独立有界步骤，清理失败必须使验收失败并保留原测试失败。run ID、base URL、image ID、资源清单和结果记录在任务 `.tmp/`，诊断不输出环境凭据、原始连接串或任务正文。恢复入口 `run.sh --cleanup RUN_ID` 只接受已有本地回执的有效身份，保留原 manifest，另写 recovery-manifest；执行恢复前必须先停止原 runner 与子命令进程组。W-T6 的 CI 外层始终执行定向清理步骤，复用已登记的 run 身份；进程被强制终止而无法确认清理时，保留资源清单并报告未完成，不能宣称已回收。
 
-两套环境定义、隔离 HTTP smoke、运行镜像身份和并发隔离均已本地验证，正常重建保留数据。12 项受控 Docker fixture 验证成功、失败、取消、恢复与遗留子进程清理；它们不代替真实 Docker 故障验收。W-T6 接入完整浏览器、性能和 clean CI 证据，并扩大实际失败/清理路径验证。localhost 的配置与数据不会作为测试前置被修改。
+两套环境定义、隔离 HTTP smoke、运行镜像身份和并发隔离均已本地验证，正常重建保留数据。12 项受控 Docker fixture 验证成功、失败、取消、恢复与遗留子进程清理；它们不代替真实 Docker 故障验收。较早渲染器的本地生产浏览器/性能与实际 Docker 故障矩阵已有通过记录；后者保留独立健康栈，
+验证启动中途失败、callback 失败、取消及卷清理失败后的定向恢复。CI 运行既有
+12 项受控生命周期 fixture 和完整真实浏览器，不宣称重复这套手工 Docker 故障矩阵。
+长虚线分解之前的静态 SVG 本地回执保留；当前绘制源码的完整本地生产、几何/相位与性能已通过，随后验证 clean CI 源码及镜像身份。localhost 的配置与数据不会作为测试前置被修改。
 
 ### CI 构建归属
 
-`verify-web` 和 `verify-server` 都配置固定 Node/pnpm，并在干净 checkout 从锁文件安装依赖、构建真实 UI。Go 检查调用共享构建后继续负责 build/vet/race/go-cov；web job 负责 web typecheck、构建、严格覆盖率及 dev-ci 生命周期 fixture。W-T6 扩展 web job，加入生产浏览器、Docker 与性能验收。两个 job、原生 CLI 各平台和独立 Linux shell completion job 的真实成功共同进入 `checks`。
+`verify-web` 和 `verify-server` 都配置固定 Node/pnpm，并在干净 checkout 从锁文件安装依赖、构建真实 UI。Go 检查调用共享构建后继续负责 build/vet/race/go-cov；web job 负责 web typecheck、构建、严格覆盖率及 dev-ci 生命周期 fixture。web job 运行 `pnpm web:acceptance`，加入生产浏览器、Docker 与性能验收。两个 job、原生 CLI 各平台和独立 Linux shell completion job 的真实成功共同进入 `checks`。
 
 根 `package.json`、锁文件、共享构建脚本和 `.github/workflows/checks.yml` 的唯一编辑归属按阶段交接：W-T2 建立并负责 web 命令和 `verify-web`；W-T2 验收后由 W-T5 接手构建/Go 工具配置；W-T5 验收后由 W-T6 接手最终生产验收步骤。接收任务在开始时核对前一阶段已通过的命令与 required job 清单，再接管编辑；其他任务只提出所需命令和依赖，不直接并发修改这些文件。W-T6 是最终汇总责任方，验证 `checks.needs` 包含 `verify-server`、`verify-web`、现有 CLI `verify` 与 `verify-completion`，且任何失败或取消都不能被成功汇总。
 
@@ -424,13 +497,90 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 
 ## 验证与 CI
 
+### 生产浏览器验收工具
+
+`packages/daynight-web/scripts/acceptance.mts` 拥有新建运行的源码身份、构建、
+原生 PostgreSQL/服务进程、Playwright 与 dev-ci 调用；`scripts/acceptance/` 拥有
+进程控制及回执校验，`tests/e2e/` 拥有功能流程、API 数据和固定图集。实际运行
+结果由[验收报告](../research/daynight-web-acceptance.md)拥有：较早渲染器的本地双
+目标与固定性能矩阵通过，但 PR #52 的真实 CI 发现共享图缩放 452.7ms；静态 SVG
+渲染器的原生长虚线绘制仍触发 hosted 超时；采用局部绘制分解后的新源码已完整本地通过，hosted 验证仍待通过。
+
+每次运行先生成真实 UI 与 Go 可执行文件，再启动独立 PostgreSQL 18.6，等待服务
+结构化就绪日志并记录二进制摘要。原生目标运行八个功能场景和四个容量/超限场景；
+容器目标使用同一个功能集合，经实际生产镜像 gateway 运行。日常 localhost 栈
+不参与测试。功能数据和容量数据均通过既有写 API 建立，浏览器只发起 GET/HEAD。
+真实数据库失败由有所有权校验的专用数据库故障注入触发；浏览器路由屏障仅用于
+控制晚到响应的顺序，不能代替数据库失败证据。
+
+Playwright 固定单 worker、零 retry；报告必须包含全部要求的唯一场景、一次成功
+执行、有效 PNG 附件及一致的汇总，跳过、重试、flaky、缺失场景或全局错误均失败。
+CI 只接受 Linux、锁定 Playwright 内置 Chromium、干净 checkout，且 git SHA 必须
+等于 `GITHUB_SHA`；本机可以显式选择现有 Chromium，回执必须记录这一差异。
+
+性能目标是原生 Go 生产进程。图集拓扑固定，实际 UUID 由 API 生成，跨运行的
+同构图可能因 ID 排序打破布局同序关系；同一次运行的五次测量使用同一组 ID、
+节点与边，不在测量之间重新生成图。固定单链为 1,000 节点/999 边；分叉合流和多根共享
+各为 1,000 节点/5,000 边。每张图折叠再展开五次，浏览器内以 trusted click/pointer 事件的 timeStamp
+开始计时，完整节点和边已绘制且根可操作并经过两次 animation frame 后结束；
+Playwright 控制器的 actionability 与截图操作不进入该区间，浏览器事件排队仍包含
+在区间内。每次同时验证详情本地反馈、缩放和平移。图读取和详情网络耗时独立
+保存，不能以平均值掩盖单次超时。画布为最近一次成功根布局保留一个有界
+`daynight:task-layout` User Timing measure：其 duration 覆盖投影和 Dagre，detail
+只包含 rootId，每次布局前清除旧记录。每次容量展开额外记录 layoutMs，及布局完成
+到完整 DOM/根可见并经过两次 animation frame 的 renderMs；两者用于定位耗时，
+完整 openMs 仍受 3,000ms 门槛约束。超限用例分别验证 1,001 节点/0 边和 1,000
+节点/5,001 边的 409 完整拒绝，浏览器不得展示部分统计或部分图。
+
+每个容量 dataset 的 `feedbackDiagnostics` 增量保存每次 open/detail/zoom/pan 的
+`kind`、`repetition`、`start`、`capturedAt`、`conditionAt`、`frame1At`、
+`frame2At`、`end`、`status` 和 `error`。`phases` 分别记录输入时间戳到 capture、
+capture 到首次 ready、首次 ready 到第一帧及第一帧到第二帧的差值；尚未到达的
+时间点与差值保留 null。首次条件/帧里程碑与最终 end 分开保存，不能把阶段差值
+当作总耗时或扣除某一阶段后判断成功。原始 end-start、完整图就绪条件和所有门槛
+保持不变，诊断写入/清理失败继续传播并保留测量失败原因。
+
+`tests/e2e/capacity-trace.ts` 为每个重复保存 `*-chromium-trace.json` 附件，使用
+CDP timeline、User Timing、frame 与 GC 事件关联浏览器内的输入/条件/帧标记。
+它不启用 CPU sampling profiler 或 CDP screenshot category；既有场景 PNG 证据
+保持独立。trace 通过有界完成等待和流式文件写入保存，CDP/文件资源必须关闭。
+这些测试侧诊断用于定位 hosted 超时，不属于产品遥测，也不改变容量、交互或
+成功判定标准。
+
+绘制分解后，已有 open/初始 readiness 的 countsDirty 检查还要求 SVG 声明的
+`data-paint-piece-count` 为显式非负安全整数，且与实际 `.task-dependency-paint-piece`
+数量一致；1,000 节点/按钮与完整 999/5,000 canonical 路线检查继续保留。独立
+几何检查通过实际 CTM 将全部 pieces 映射回原路线弧长，验证有序覆盖 0 到总长、
+无跳段/重叠、5/4 相位与 gap 中点切缝，以及单位旋转、原生转角和 marker。
+大共享图的完整分解几何检查在五次计时之后执行，close → zoom 区间不增加读回或
+等待；正常 ready/count 判定与全部预算保持原义。
+
+回执增量写入 `packages/daynight-web/.tmp/acceptance/<run-id>/`，顶层
+`evidence.json` 指向最近一次结果，包含源码、二进制、数据库/浏览器版本、两目标
+结果、生产镜像与清理状态。各目标保留原始 Playwright JSON、场景截图和浏览器
+身份；原生目标保留逐次性能数据。CI 的 `daynight-web-acceptance` 产物同时归档
+这些文件与 `.tmp/dev-ci/`，独立 `daynight-web-coverage` 归档原始语句报告及源码
+清单。任何执行或清理失败必须让必选 web job 失败。
+
+恢复命令为 `node packages/daynight-web/scripts/acceptance.mts --cleanup [run-id]`，
+默认读取最近一次回执，缺失回执不操作资源。恢复先确认原 runner 已停止，callback 和
+Playwright 的进程及其组均停止，再依据记录的 Linux PID、executable、start ticks 与源码
+身份处理资源。仍存活的原生服务必须额外匹配二进制摘要，Docker 只按本次精确标记
+和名称清理。Chromium 单独记录隔离进程组、已验证 executable 和项目内 profile
+所有权 marker；只对已确认的组和 profile 恢复。启动窗口出现未登记进程、无有效
+leader 的孤立组或未知新增 profile 时明确失败，保留现场，不能猜测归属后删除。
+恢复调用已登记 dev-ci run 的既有入口，另写 `recovery.json`，保留原始验收结果。
+CI 无论验收成功、失败或取消都执行恢复与归档；恢复成功不改变此前的测试失败。
+
+### 验证矩阵
+
 1. Go：真实 PostgreSQL 测试完整图与统计一致性、空项目、不存在、规模边界、长文本预览、并发写期间的一致快照、取消与数据库失败；增加静态资源、深链接、API 优先级、缺失资源与方法测试。
 2. web：Vitest + Testing Library，重点测根识别、闭包、菱形去重、共享节点、外部前置、统计口径、请求取消/晚到、失败重试和侧栏焦点。项目列表必须覆盖续页游标、末页隐藏加载按钮、去重及下一页失败重试，证明所有项目可访问。断言可见行为，不依赖框架内部坐标。
 3. 覆盖率：保留 Go go-cov 和原始 profile 的严格 `covered * 10 > total * 9`。新增 web 必选 job，使用 Vitest V8 provider 输出的 `coverage-final.json`，按产品文件的语句命中表汇总计数并用整数执行同样严格比较。显式设置 `coverage.include` 为 `src/**/*.{ts,tsx}`；检查脚本另行枚举同一源码清单并逐文件核对报告，含未被测试导入的产品文件，缺失即失败。纯类型文件只有在确认没有运行语句时允许零语句；API、图算法和入口没有排除项。拒绝空、畸形报告，测试恰好 90%、舍入、未导入文件和遗漏文件等失败边界。第三方库与构建产物不属于产品源码。
 4. 两个模块分别大于 90%，因此加权总体也大于 90%；不能靠 Go 的高覆盖率掩盖 web 缺口。现有 Go package/function/critical-block 与所有 CLI 原生平台门槛保持。
 5. 浏览器验收使用 Playwright、构建后的真实页面、真实服务与隔离 PostgreSQL。通过 API 建立项目和任务，验证完整点击路径、共享/外部前置、空项目、局部失败与重试、深链接刷新、键盘节点操作，以及侧栏实际焦点进入/Tab 循环/Esc、关闭按钮和关闭后恢复焦点；收集截图、测试 SHA、通过结果和资源清理证据。
 6. 必选 web job 纳入 `checks`，与 Go、原生 CLI 和独立 shell completion 检查共同汇总。Go job 与 web job 各自在干净 checkout 中生成真实 UI 产物，验证内嵌页面可用。依赖变更遵守现有 workspace 与 CLI 版本检查规则。
-7. 性能验收使用 Linux CI 的固定 Chromium、生产构建和固定种子图集，覆盖 1,000 节点的单链，以及恰好同时具有 1,000 节点和 5,000 边的分叉合流、多根共享图。每次从折叠状态打开，重复五次，最慢一次从点击到可操作画布不超过 3,000ms；布局后打开详情、缩放或平移的可见反馈不超过 300ms。单独保存布局/渲染耗时和完整测试环境，接口耗时与详情网络时间分开记录。失败必须优化或重新评审支持上限，不能把超时结果当成已支持，也不默认引入后台 worker。
+7. 性能验收使用 Linux CI 的固定 Chromium、生产构建和固定拓扑图集，覆盖 1,000 节点的单链，以及恰好同时具有 1,000 节点和 5,000 边的分叉合流、多根共享图。每次从折叠状态打开，重复五次，最慢一次从点击到可操作画布不超过 3,000ms；布局后打开详情、缩放或平移的可见反馈不超过 300ms。单独保存布局/渲染耗时和完整测试环境，接口耗时与详情网络时间分开记录。失败必须优化或重新评审支持上限，不能把超时结果当成已支持，也不默认引入后台 worker。
 
 ## 实施与验收边界
 
@@ -441,7 +591,7 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 ## 风险与重审条件
 
 - 大量共享节点会重复出现在不同根图中；通过去重统计和单展开控制成本。需要同时比较多条图时再重审交互。
-- 1,000/5,000 是明确的保护上限，实施验收应记录代表性最大图的布局和交互时间；不能将未经测量的上限宣称为性能保证。
+- 1,000/5,000 是明确的保护上限。长虚线绘制分解已通过新源码完整本地生产门槛，hosted 验证仍待通过；旧回执不能替代当前源码的 CI 证据。布局归一化成本取决于 rank 跨距，不能把固定矩阵的结果宣称为任意 DAG 的相同耗时保证。
 - 外部前置必须保留显式标记，否则图会错误暗示前置已完整展示。
 - Node 成为 Go 二进制的构建前置；固定构建顺序与干净 checkout 验证，运行时仍只有 Go 与 PostgreSQL。
 - 只有本机访问需求。出现远程访问要求时必须先补齐身份与授权设计。
