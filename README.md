@@ -151,6 +151,57 @@ unreadable manifests and invalid versions fail visibly. See the
 [toolchain decision](.agents/notes/implemented/process/2026-10-16-typescript-cli-toolchain.md)
 for the comparison and CI ownership rules.
 
+## npm publication
+
+The manual [`publish` workflow](.github/workflows/publish.yml) publishes
+`@codetreker/daynight` to npmjs using OIDC trusted publishing. Configure the
+package's npmjs **Settings → Trusted Publisher** before running it:
+
+| GitHub Actions setting | Value |
+|---|---|
+| Organization or user | `codetreker` |
+| Repository | `day-night` |
+| Workflow filename | `publish.yml` |
+| Environment name | Leave blank |
+| Allowed actions | Allow direct `npm publish` |
+
+Staged publishing permission alone does not allow this workflow's direct
+publication. A newly configured trusted publisher must complete its first
+successful publication within two days; npm requires an expired configuration
+to be recreated. These settings belong to npmjs and are not configured by the
+repository. See npm's [trusted publishing documentation](https://docs.npmjs.com/trusted-publishers).
+
+After merging a stable package version to `main`, run:
+
+```bash
+gh workflow run publish.yml --ref main
+```
+
+The workflow accepts only `main` and freezes that run's source commit. It waits
+for the latest main-push `checks.yml` run at that exact commit to succeed; a
+missing or failed run stops publication. It then installs frozen dependencies,
+runs type checking, tests and installed acceptance, and smoke-installs the packed
+release tarball. A separate GitHub-hosted job uses
+Node.js 24 and pinned npm 12.2.0 to publish that same artifact publicly with
+provenance and the `latest` dist-tag. No npm token is required. Stable releases
+are supported; prerelease versions are rejected, and a new version must advance
+the public registry's current `latest` version.
+
+Only after the public registry's source commit, SHA-512 integrity and downloaded
+tarball bytes match the artifact does the workflow create
+`daynight-v<package-version>` at the frozen source commit. Existing tags are
+immutable: a tag at another commit or an existing package version with different
+source or contents fails the release.
+
+If publication succeeds but tag creation fails, re-run the failed jobs of the
+same Actions run while its validated artifact remains available for 30 days.
+An existing version with the same source and bytes is verified before the
+missing tag is created. A new dispatch at another commit cannot claim that
+version. The workflow serializes releases, keeps in-progress releases running,
+and reports conflicting or unverified state as failure. The
+[publishing decision](.agents/notes/implemented/process/2026-10-20-npm-trusted-publishing.md)
+owns artifact identity and recovery rationale.
+
 ## Configuration and startup
 
 Register a repository before starting review mode:
