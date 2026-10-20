@@ -1,8 +1,8 @@
 import { useLayoutEffect, useMemo, useRef } from 'react';
-import { Background, BackgroundVariant, BaseEdge, Controls, getViewportForBounds, MarkerType, ReactFlow, useNodesInitialized, useReactFlow, useStore, type Edge, type EdgeProps, type Viewport } from '@xyflow/react';
+import { Background, BackgroundVariant, BaseEdge, Controls, getViewportForBounds, MarkerType, Position, ReactFlow, useNodesInitialized, useReactFlow, useStore, type Edge, type EdgeProps, type NodeHandle, type Viewport } from '@xyflow/react';
 import { layoutGraph, TASK_NODE_HEIGHT, TASK_NODE_WIDTH, type CanvasLayout, type CanvasPoint } from './layout';
 import { projectRoot, type GraphIndex } from './model';
-import { TaskNode, type TaskFlowNode } from './TaskNode';
+import { TASK_HANDLE_SIZE, TaskNode, type TaskFlowNode } from './TaskNode';
 import '@xyflow/react/dist/style.css';
 
 type TaskGraphProps = {
@@ -63,20 +63,40 @@ const InitialViewport = ({ geometry, rootId }: { geometry: CanvasLayout; rootId:
 };
 
 const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry }: TaskGraphProps & { geometry: CanvasLayout }) => {
-  const nodes = useMemo<TaskFlowNode[]>(() => geometry.nodes.map((node) => ({
-    id: node.id,
-    position: node.position,
-    type: 'task',
-    width: TASK_NODE_WIDTH,
-    height: TASK_NODE_HEIGHT,
-    style: { width: TASK_NODE_WIDTH, height: TASK_NODE_HEIGHT },
-    data: {
-      task: index.nodes.get(node.id)!, kind: node.kind, shared: index.sharedIds.has(node.id),
-      selected: selectedTaskId === node.id,
-      center: { x: node.position.x + TASK_NODE_WIDTH / 2, y: node.position.y + TASK_NODE_HEIGHT / 2 },
-      onSelectTask,
-    },
-  })), [geometry, index, selectedTaskId, onSelectTask]);
+  // Stable node identities restrict selection renders to the previous and next tasks.
+  const nodeVariants = useMemo(() => geometry.nodes.map((node) => {
+    // Fixed geometry lets edges render before the first DOM measurement completes.
+    const handles: NodeHandle[] = [
+      {
+        type: 'target', position: Position.Left,
+        x: -TASK_HANDLE_SIZE / 2, y: (TASK_NODE_HEIGHT - TASK_HANDLE_SIZE) / 2,
+        width: TASK_HANDLE_SIZE, height: TASK_HANDLE_SIZE,
+      },
+      {
+        type: 'source', position: Position.Right,
+        x: TASK_NODE_WIDTH - TASK_HANDLE_SIZE / 2, y: (TASK_NODE_HEIGHT - TASK_HANDLE_SIZE) / 2,
+        width: TASK_HANDLE_SIZE, height: TASK_HANDLE_SIZE,
+      },
+    ];
+    const base: TaskFlowNode = {
+      id: node.id,
+      position: node.position,
+      type: 'task',
+      width: TASK_NODE_WIDTH,
+      height: TASK_NODE_HEIGHT,
+      handles,
+      style: { width: TASK_NODE_WIDTH, height: TASK_NODE_HEIGHT },
+      data: {
+        task: index.nodes.get(node.id)!, kind: node.kind, shared: index.sharedIds.has(node.id),
+        selected: false,
+        center: { x: node.position.x + TASK_NODE_WIDTH / 2, y: node.position.y + TASK_NODE_HEIGHT / 2 },
+        onSelectTask,
+      },
+    };
+    return { base, selected: { ...base, data: { ...base.data, selected: true } } };
+  }), [geometry, index, onSelectTask]);
+  const nodes = useMemo<TaskFlowNode[]>(() => nodeVariants.map(({ base, selected }) =>
+    base.id === selectedTaskId ? selected : base), [nodeVariants, selectedTaskId]);
   const edges = useMemo<DependencyEdge[]>(() => geometry.edges.map((edge) => ({
     id: edge.id, source: edge.source, target: edge.target, type: 'dependency',
     data: { points: edge.points, external: edge.external },
@@ -126,7 +146,13 @@ const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry }: T
 export const TaskGraph = (props: TaskGraphProps) => {
   const result = useMemo(() => {
     try {
-      return { kind: 'ready' as const, geometry: layoutGraph(projectRoot(props.index, props.rootId)) };
+      performance.clearMeasures('daynight:task-layout');
+      const started = performance.now();
+      const geometry = layoutGraph(projectRoot(props.index, props.rootId));
+      performance.measure('daynight:task-layout', {
+        start: started, end: performance.now(), detail: { rootId: props.rootId },
+      });
+      return { kind: 'ready' as const, geometry };
     } catch (error) {
       return { kind: 'error' as const, error };
     }

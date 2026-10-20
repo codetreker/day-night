@@ -14,6 +14,8 @@ export type TaskNodeData = {
 
 export type TaskFlowNode = Node<TaskNodeData, 'task'>;
 
+export const TASK_HANDLE_SIZE = 6;
+const handleStyle = { width: TASK_HANDLE_SIZE, height: TASK_HANDLE_SIZE };
 const labels = { todo: '待处理', in_progress: '进行中', done: '已完成' };
 
 export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
@@ -21,7 +23,7 @@ export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
   const title = `${data.task.titlePreview}${data.task.titleTruncated ? '…' : ''}`;
   return (
     <div className="task-node-wrapper">
-      <Handle className="task-node-handle" type="target" position={Position.Left} isConnectable={false} />
+      <Handle className="task-node-handle" type="target" position={Position.Left} style={handleStyle} isConnectable={false} />
       <button
         type="button"
         className={`task-node task-node-${data.task.status}${data.kind === 'boundary' ? ' task-node-boundary' : ''}${data.selected ? ' task-node-selected' : ''} nodrag nopan`}
@@ -50,7 +52,7 @@ export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
         </span>
         {data.kind === 'boundary' && <span className="task-boundary-label">外部前置，上游已省略</span>}
       </button>
-      <Handle className="task-node-handle" type="source" position={Position.Right} isConnectable={false} />
+      <Handle className="task-node-handle" type="source" position={Position.Right} style={handleStyle} isConnectable={false} />
     </div>
   );
 });

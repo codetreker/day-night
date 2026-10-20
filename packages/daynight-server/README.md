@@ -261,8 +261,14 @@ Graph requests share the existing request ID and safe error handling. Logs add
 project identity and graph counts without recording task content or repository
 addresses. This endpoint supports the implemented
 [read-only dashboard](../../docs/design/daynight-web.md); the browser application
-and embedded static delivery are implemented. The remaining browser and fixed-
-dataset performance acceptance is tracked in the dashboard task document.
+and embedded static delivery are implemented. Production browser and fixed-
+dataset performance and real deployment-fault acceptance pass locally; clean
+hosted delivery is tracked in the dashboard task document.
+From the repository root, `pnpm web:acceptance` builds this executable and runs
+production browser workflows against both a native process and the dev-ci
+container gateway. It owns separate PostgreSQL resources; its prerequisites,
+receipts and fixed-capacity gates are in the
+[web README](../daynight-web/README.md#production-browser-acceptance).
 
 ## Task HTTP API
 

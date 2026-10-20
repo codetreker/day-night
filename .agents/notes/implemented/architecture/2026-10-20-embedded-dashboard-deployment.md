@@ -33,7 +33,8 @@ request IDs, HEAD/method behavior and the existing sanitized error handling.
 
 The [localhost stack](../../../../deployment/localhost/README.md) builds from the
 repository root. Its Node stage installs only the web dependency closure,
-including the locked `patches/` declaration input. A Go stage embeds the published
+including the locked Dagre runtime and XYFlow declaration inputs in `patches/`.
+A Go stage embeds the published
 assets; the final nonroot runtime contains only the server executable. Host Node
 or Go is unnecessary. The existing startup command launches UI/API, PostgreSQL
 and the stream gateway together, preserving loopback publication, shared network
@@ -82,11 +83,18 @@ shared Dockerfile, proxy configuration and build command avoid two application
 implementations. Each test invocation owns its callback group and resources and
 retains a recovery receipt when cleanup cannot be confirmed.
 
-Local validation proves embedded HTTP behavior, production image identity,
-whole-stack recreation with persistent data, concurrent dev-ci isolation and
-controlled runner failure/cleanup decisions. It does not establish clean hosted
-source identity, the complete production-browser workflow or the fixed five-run
-1,000-node/5,000-edge performance requirements. W-T6 in the
-[task document](../../../../docs/design/daynight-web-tasks.md) owns those remaining
-acceptance results. The [MVP design decision](2026-10-20-task-dashboard-mvp-design.md)
+The W-T5 validation establishes embedded HTTP behavior, production image
+identity, whole-stack recreation with persistent data, concurrent dev-ci
+isolation and controlled runner failure/cleanup decisions. Its scope does not
+establish the complete production-browser workflow or fixed five-run performance
+requirements. The subsequent
+[production acceptance harness](../testing/2026-10-20-dashboard-production-acceptance.md)
+records both production targets, source identities and fixed measurements. Both
+targets, the 1,000-node/5,000-edge matrix and cleanup/recovery pass locally;
+actual deployment-fault acceptance also passes with another run retaining its
+HTTP/data sentinel throughout. Clean CI source and image verification remains
+required. W-T6 in the
+[task document](../../../../docs/design/daynight-web-tasks.md) owns delivery status
+and the [acceptance report](../../../../docs/research/daynight-web-acceptance.md)
+owns measured results. The [MVP design decision](2026-10-20-task-dashboard-mvp-design.md)
 continues to own read-only scope, graph semantics and deferred capabilities.

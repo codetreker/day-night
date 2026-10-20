@@ -24,7 +24,10 @@ are implemented. The [project task dashboard](../feature/2026-10-20-project-task
 implements visualization and detail navigation. The
 [embedded deployment](2026-10-20-embedded-dashboard-deployment.md) implements
 Go asset delivery and the localhost/dev-ci environments. Full production-browser
-and fixed-dataset performance acceptance remains tracked by W-T6.
+and fixed-dataset performance acceptance passes locally. The
+[production acceptance harness](../testing/2026-10-20-dashboard-production-acceptance.md)
+records both production targets and cleanup. Actual deployment-fault acceptance
+also passes locally; W-T6 still requires clean CI results and delivery approval.
 
 Use a separate React/TypeScript/Vite package with React Flow and Dagre. Serve
 its built assets from the existing loopback Go origin, embedded into the binary.
@@ -118,8 +121,9 @@ run owns and removes its disposable dataset.
 Shared task rows are intentionally non-additive. Boundary markers and explicit
 snapshot freshness are necessary for an honest graph. The protective graph
 limits are product constraints, not measured capacity claims. The single local 1,000-node chain probe does not establish the boundary-size
-performance requirements; W-T6 must validate every required dataset and repeat
-count before claiming that support.
+performance requirements. The complete local production matrix now passes every
+required dataset and repeat count, while clean hosted verification remains
+required. Fixed-topology results do not promise arbitrary-DAG latency.
 
 The existing [server task design](2026-10-19-daynight-server-task-design.md)
 remains the owner of the service domain and transaction rules; this decision

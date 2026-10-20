@@ -3,14 +3,15 @@
 Day Night contains a client command toolkit and an independent Go service runtime
 for project and task management. Its read-only browser workspace provides project
 statistics, task dependency graphs and details from the same Go service origin.
-Full production-browser and performance acceptance remains tracked implementation
-work.
+Production-browser and fixed-capacity acceptance passes locally against the
+native binary and production container. Real deployment-fault acceptance also
+passes locally; clean CI delivery remains tracked work.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion`, shared configuration and server HTTP foundations; project/task commands pending | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
-| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery and strict coverage implemented; full production acceptance pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
+| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage implemented; local browser/deployment-fault acceptance passed, CI delivery pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The `@codetreker/daynight` package provides the `daynight` client. Its root entry
 lists commands and reports the package version; each command owns its business
@@ -230,7 +231,16 @@ For a disposable full-stack HTTP target, run a command through
 `DAYNIGHT_BASE_URL` and owns only its unique test project. The runner removes its
 containers, volume, network and image tag after completion, failure or cancellation,
 and records cleanup failures. The [dashboard tasks](docs/design/daynight-web-tasks.md)
-track the remaining real-browser and fixed-dataset performance acceptance.
+record local production-browser/fixed-dataset performance results and pending
+clean CI delivery.
+
+`pnpm web:acceptance` builds production UI and a native Go executable, creates an
+owned PostgreSQL instance, runs Chromium workflows and fixed capacity cases, then
+runs the functional workflows against a production container through dev-ci. It
+requires Go 1.27.2, Docker, Node 24, pnpm 10.34.5 and Playwright Chromium. The
+[web README](packages/daynight-web/README.md#production-browser-acceptance) owns
+browser setup and receipts. The [acceptance report](docs/research/daynight-web-acceptance.md)
+distinguishes the passing local production run from pending clean hosted results.
 
 ## Package versions
 

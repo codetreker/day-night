@@ -6,8 +6,9 @@ and a pure dependency graph model with horizontal layout.
 The project dashboard, task canvas and detail drawer are embedded into the Go
 server for single-origin delivery. The [localhost deployment](../../deployment/localhost/README.md)
 starts the full UI/API/database stack; [dev-ci](../../deployment/dev-ci/README.md)
-provides an isolated instance of the same production build. Complete production
-browser and performance acceptance remains tracked in the
+provides an isolated instance of the same production build. Production browser
+workflows, the fixed-capacity matrix and real deployment-fault acceptance pass
+locally; clean CI and delivery remain tracked in the
 [implementation tasks](../../docs/design/daynight-web-tasks.md).
 
 The [requirements](../../docs/spec/daynight-web.md) own visible behavior and the
@@ -67,7 +68,7 @@ by Git, and clean server builds require this explicit build first. The Go
 `scripts/check.sh` invokes the same command before build/vet/race/go-cov.
 The existing root `build`, `test` and `acceptance` commands retain their CLI scope.
 
-`web:test` runs the coverage checker and asset publication filesystem tests,
+`web:test` runs coverage-checker, asset-publication and acceptance-receipt tool tests,
 the full Vitest suite with V8 coverage,
 then the exact statement gate. All `src/**/*.ts` and `src/**/*.tsx` files belong
 to the product manifest, including the browser entry. Tests live outside `src`.
@@ -88,10 +89,108 @@ with controlled Docker fixtures. It uploads `coverage-final.json` and `summary.j
 the relative product-source manifest. The [acceptance report](../../docs/research/daynight-web-acceptance.md) records
 local production-bundle checks with a real Go API and PostgreSQL, embedded
 HTTP/container smoke checks and concurrent dev-ci isolation. Full production
-browser workflows and hosted performance acceptance remain W-T6; controlled-fetch
-component tests and HTTP smoke checks do not replace them.
+browser workflows now pass for both native and container targets. Clean hosted
+performance/source verification and delivery remain W-T6; the evidence report
+keeps local and hosted receipts distinct. A separate local real-Docker matrix
+passed startup failure, callback failure, cancellation and cleanup failure/recovery
+while an independent sentinel stack remained healthy. CI repeats the 12 controlled
+lifecycle fixtures and full production-browser suite; that manual fault matrix
+is recorded separately.
+
+## Production browser acceptance
+
+On a Linux host, with Go 1.27.2, Docker Engine 28+, Compose 2.20+ and Linux
+containers available, run from the repository root to install the pinned browser
+into the project:
+
+```bash
+export PLAYWRIGHT_BROWSERS_PATH="$PWD/.tmp/playwright-browsers"
+pnpm --filter @codetreker/daynight-web exec playwright install chromium
+pnpm web:acceptance
+```
+
+Use Node 24, pnpm 10.34.5 and a frozen dependency install first. Chromium requires
+its normal Linux runtime libraries; CI installs them with Playwright's
+`--with-deps` option. Locally, `DAYNIGHT_BROWSER_EXECUTABLE` can select an existing
+Chromium executable. That override is recorded and is forbidden for CI delivery
+evidence, which must use the browser pinned by Playwright 1.64.1.
+
+The command builds real embedded assets and a new Go executable, then owns a
+separate PostgreSQL container/volume and ephemeral loopback listener. Native
+acceptance runs eight functional and four capacity/limit scenarios. The same
+eight functional scenarios run through the actual dev-ci production image and
+stream gateway. No normal localhost service or dataset is used. Functional and
+capacity fixtures use the real write APIs; the page is checked to remain read-only.
+
+Capacity uses fixed 1,000-node graphs: a 999-edge chain and two 5,000-edge graphs
+for merges and shared roots. Each graph expands five times, with every opening
+at most 3,000ms and local task/zoom/pan feedback at most 300ms. Network timings are
+recorded separately. Each expansion also records projection/layout duration and
+subsequent painted-render duration; these diagnostics do not replace the complete
+opening budget. Independent 1,001-node and 5,001-edge cases require complete
+409 rejection. Full node/edge DOM counts, readable root visibility and painted
+feedback are checked; a successful process exit without complete reports fails.
+
+Receipts live in `packages/daynight-web/.tmp/acceptance/<run-id>/`, with the
+latest aggregate at `.tmp/acceptance/evidence.json` inside this package. They
+record source identity, native binary SHA-256, PostgreSQL/browser versions, each
+target's raw Playwright report and screenshots, capacity measurements, container
+image identity and cleanup outcomes. `CI` requires a clean checkout matching
+`GITHUB_SHA`, Linux and the pinned browser. Playwright uses one worker and no
+retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validation.
+The required web CI job archives `daynight-web-acceptance` separately from raw
+coverage. The complete local run passed 12 native scenarios, eight container scenarios and
+all three graphs’ five timing repetitions, including independent size refusals and
+confirmed cleanup/recovery. Local receipts retain their dirty/browser identity
+and do not establish clean hosted delivery results.
+
+### Cleanup and interrupted-run recovery
+
+The runner registers owned-resource cleanup before creating its database or
+native process. Timeouts and cancellation stop owned command groups; browser
+receipts identify the detached Chromium group and project-local profile as well.
+A passing run requires confirmed native, browser/profile and dev-ci cleanup.
+
+After the original runner, callback/Playwright processes and their owned groups
+have stopped, run
+from the repository root:
+
+```bash
+node packages/daynight-web/scripts/acceptance.mts --cleanup
+# Select a retained run instead of the latest receipt:
+node packages/daynight-web/scripts/acceptance.mts --cleanup RUN_ID
+```
+
+No receipt is a no-op. Valid receipts constrain recovery to recorded run/source
+identities, exact Docker labels and names, and Linux PID/executable/start-time
+identity. A still-running native Go process also requires its recorded binary
+hash before targeted termination. Browser recovery checks its recorded executable,
+process group and profile marker; ambiguous startup processes, orphan-only groups
+or unknown new profiles cause failure and remain for diagnosis. It does not kill
+unidentified processes or remove unidentified profiles. Dev-ci recovery uses the
+same recorded project identity and bounded cleanup entry.
+
+Recovery writes separate per-run/latest `recovery.json` receipts and preserves
+the original acceptance outcome. A successful recovery does not turn a failed
+browser or performance result into acceptance. The CI `always()` recovery step
+and artifact upload retain this distinction; cleanup uncertainty fails the job.
 
 ## Dependency declarations
+
+Dagre is pinned to 3.1.1 with a runtime pnpm patch for its public ESM and CJS
+entries. The adapter uses one global longest-path ranker, preserving default
+crossing minimization and alignment. The patch skips an empty flat-graph border
+conflict scan and indexes equal truthy barycenters while preserving original
+scan/tie/removal order. Exact differential geometry checks compare patched and
+unpatched code under that same ranker policy. `scripts/dagre.test.mts`, included in `web:test`, reverses the committed patch
+in memory and checks pristine published bundle hashes before comparing 23
+fixtures across four directions and three rankers in both formats. Direct
+barycenter/tie/removal assertions and license/source-map checks supplement exact
+coordinate, edge-point, bounds and determinism comparisons. Upgrades must rerun
+these regressions. Longest-path can lengthen edges and normalization depends on rank
+spans; fixed capacity timings do not promise the same latency for arbitrary DAGs.
+The [layout decision](../../.agents/notes/implemented/feature/2026-10-20-task-graph-projection.md)
+owns those trade-offs.
 
 React Flow is pinned to 12.12.0. Its system dependency 0.0.83 has a declaration-only
 pnpm patch in the root `patches/` directory, referenced by the workspace and lockfile.
@@ -110,8 +209,15 @@ summary consistency. It projects root descendants plus direct external
 prerequisites, caches distinct root progress, and marks shared tasks. The Dagre
 adapter returns finite left-to-right node positions and routed edge points for
 220-by-96 cards. The read-only React Flow canvas consumes these results without changing domain
-objects. Its one-time initial viewport policy is separate from explicit fit
-controls and does not run again on selection or pan.
+objects. Fixed public dimensions/handles let edges use known geometry before DOM
+measurement; physical 6px handles and ResizeObserver remain present. Declared
+dimensions/handles satisfy node readiness without waiting for all node DOM bounds,
+while viewport initialization still requires the framework viewport and positive
+measured canvas dimensions. Hidden handle centers do not replace the exact Dagre edge paths.
+Ordinary/selected canonical node variants retain unaffected references, and
+memoized collapsed root rows keep a null selection until expanded. New snapshot
+indexes still refresh all rows. The one-time initial viewport policy is separate
+from explicit fit controls and does not run again on selection or pan.
 
 Page hooks own requests and cancellation. Navigation or refresh invalidates the
 previous request generation, continuation failures preserve loaded cards, and
