@@ -74,6 +74,10 @@ src/
       polling.ts
       coordinator.ts
       runtime.ts
+      skill.ts
+      skills/
+        daynight-review/
+          SKILL.md
       store.ts
       instance-lock.ts
       processes.ts
@@ -212,13 +216,19 @@ addon 可能阻止替换，npm 失败直接可见。
 
 开发使用 Node.js 24 LTS、pnpm 10.34.5、TypeScript ESM 和固定依赖版本。构建先执行
 `node scripts/clean-dist.ts` 删除包的 `dist/`，再通过 `tsc -p tsconfig.build.json`
-生成产物，防止模块移动后保留旧的可执行文件。清理脚本从自身位置定位目标目录，
-调用者工作目录不会改变清理位置。包的 bin 及发布入口保持 `dist/main.js`。
+生成产物，防止模块移动后保留旧的可执行文件。构建还将 review 的完整内置 skill
+bundle 复制到 `dist/commands/review/skills/daynight-review/`，由既有 `dist` 发布规则
+纳入安装包。清理和资源复制脚本从自身位置定位目录，调用者工作目录不会改变目标。
+包的 bin 及发布入口保持 `dist/main.js`。资源定位沿用稳定入口传入的包目录；
+[review skill 设计](daynight-review-skill.md)定义捕获、快照和加载流程。
 
 普通测试先构建包，既验证源码职责，也通过编译产物验证公开命令。`pnpm typecheck`、
 `pnpm test`、`pnpm build`、独立 `pnpm acceptance` 和 `pnpm completion:acceptance`
 的实际入口由
-[README](../../README.md#cli-development)维护。源码、包元数据、构建或依赖输入变化
+[README](../../README.md#cli-development)维护。资源复制回归验证从无关工作目录执行实际
+脚本，在隔离包的全新目标下检查完整 bundle；重复排他复制必须失败且保留既有内容，
+缺少源码时同样明确失败。原生矩阵每次解析最新可用的 Node.js 24 patch，使构建行为
+覆盖受支持运行时的当前实现。源码、包元数据、构建或依赖输入变化
 需要更高 SemVer；构建清理脚本也属于发布输入。Linux 版本检查和全部原生检查共同
 构成必需门禁。发布授权、npm OIDC、产物身份及恢复规则继续由
 [发布决策](../../.agents/notes/implemented/process/2026-10-20-npm-trusted-publishing.md)维护。

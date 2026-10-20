@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import type { CopilotAttemptOutcome } from "./adapters/copilot.js";
+import type { CopilotProcessOutcome } from "./adapters/copilot.js";
 import type { AttemptIdentity, ReviewState } from "./model.js";
 
 const delay = (milliseconds: number): Promise<void> => new Promise((resolve) => { setTimeout(resolve, milliseconds); });
@@ -111,7 +111,7 @@ export const createProcessSupervisor = (options: { graceMs?: number; previousPro
     })();
     await entry.stopping;
   };
-  const exclude = async (review: ReviewState, outcome?: CopilotAttemptOutcome): Promise<{ processesExcluded: true }> => {
+  const exclude = async (review: ReviewState, outcome?: CopilotProcessOutcome): Promise<{ processesExcluded: true }> => {
     const entry = managed.get(attemptKey({ reviewId: review.id, attempt: review.attemptCount }));
     if (entry === undefined) {
       if (review.processId !== null) uncertain("This review references an agent not launched by this CLI; operator-confirmed startup recovery is required.");

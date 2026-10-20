@@ -121,6 +121,10 @@ it("replaces its real npm global installation and preserves npm configuration an
     ].join("\n"));
     const npmConfigurationContents = readFileSync(userConfiguration, "utf8");
     const sourceManifest = JSON.parse(readFileSync(path.join(packageDirectory, "package.json"), "utf8")) as Manifest;
+    const skillRelativeFile = "commands/review/skills/daynight-review/SKILL.md";
+    const sourceSkillContents = readFileSync(path.join(packageDirectory, "src", skillRelativeFile), "utf8");
+    expect(readFileSync(path.join(packageDirectory, "dist", skillRelativeFile), "utf8")).toBe(sourceSkillContents);
+    const fixtureSkills = new Map<string, string>();
     const versions: Record<string, Manifest> = {};
     const tarballs = new Map<string, Buffer>();
     const requests: { pathname: string; status: number }[] = [];
@@ -155,6 +159,9 @@ it("replaces its real npm global installation and preserves npm configuration an
       const fixture = path.join(directory, `package ${version}`);
       mkdirSync(fixture);
       cpSync(path.join(packageDirectory, "dist"), path.join(fixture, "dist"), { recursive: true });
+      const skillContents = `${sourceSkillContents}\n<!-- Npm update acceptance: package ${version}. -->\n`;
+      writeFileSync(path.join(fixture, "dist", skillRelativeFile), skillContents);
+      fixtureSkills.set(version, skillContents);
       const manifest = { ...sourceManifest, version };
       writeFileSync(path.join(fixture, "package.json"), JSON.stringify(manifest, null, 2));
       const packed = success(await npm(["pack", "--ignore-scripts", "--pack-destination", artifacts], fixture));
@@ -172,8 +179,10 @@ it("replaces its real npm global installation and preserves npm configuration an
     success(await npm(["install", oldTarball, "--global", "--prefix", prefix, "--engine-strict", "--force=false", "--no-audit", "--no-fund"]));
     const installedPackage = process.platform === "win32" ? path.join(prefix, "node_modules", packageName) : path.join(prefix, "lib/node_modules", packageName);
     const installedBin = process.platform === "win32" ? path.join(prefix, "daynight.cmd") : path.join(prefix, "bin/daynight");
+    const installedSkill = path.join(installedPackage, "dist", skillRelativeFile);
     const cli = (args: string[], commandEnvironment = environment): Promise<Result> => run(installedBin, args, caller, commandEnvironment);
     expect(success(await cli(["--version"])).stdout.trim()).toBe("1.0.0");
+    expect(readFileSync(installedSkill, "utf8")).toBe(fixtureSkills.get("1.0.0"));
     const emptyHome = path.join(directory, "empty home 中文");
     mkdirSync(emptyHome);
     expect(success(await cli(["update", "--help"], { ...environment, HOME: emptyHome, USERPROFILE: emptyHome })).stdout).toContain("Usage: daynight update");
@@ -187,6 +196,8 @@ it("replaces its real npm global installation and preserves npm configuration an
     expect(success(await cli(["--version"])).stdout.trim()).toBe("1.0.1");
     expect(latest).toBe("1.0.2");
     expect((JSON.parse(readFileSync(path.join(installedPackage, "package.json"), "utf8")) as Manifest).version).toBe("1.0.1");
+    expect(readFileSync(installedSkill, "utf8")).toBe(fixtureSkills.get("1.0.1"));
+    expect(readFileSync(installedSkill, "utf8")).not.toBe(fixtureSkills.get("1.0.0"));
     expect(requests.filter((item) => item.pathname === "/tarballs/daynight-1.0.1.tgz" && item.status === 200)).toHaveLength(1);
     const downloads = requests.filter((item) => item.pathname.startsWith("/tarballs/")).length;
     latest = "1.0.1";
@@ -210,6 +221,7 @@ it("replaces its real npm global installation and preserves npm configuration an
     expect(requests.some((item) => item.pathname === "/tarballs/daynight-1.0.2.tgz" && item.status === 503)).toBe(true);
     expect(success(await cli(["--version"])).stdout.trim()).toBe("1.0.1");
     expect(readFileSync(path.join(state, "config.yml"), "utf8")).toBe(configurationContents);
+    expect(readFileSync(installedSkill, "utf8")).toBe(fixtureSkills.get("1.0.1"));
     expect(readFileSync(path.join(state, "state.sqlite"))).toEqual(databaseContents);
     expect(readdirSync(state).sort()).toEqual(["config.yml", "state.sqlite"]);
     expect(readFileSync(userConfiguration, "utf8")).toBe(npmConfigurationContents);
@@ -229,11 +241,15 @@ it("replaces its real npm global installation and preserves npm configuration an
       userNpmConfigurationPreserved: true, reviewConfigurationAndStateUnchanged: true, runtimeScripts: "disabled by isolated npm user configuration",
       scenarios: ["npm-global-shim-before-update", "spaces-and-unicode-prefix", "same-installation-replacement", "resolved-target-pinned-after-latest-moves", "npm-global-shim-after-update",
         "configured-scoped-registry", "conflicting-default-prefix", "conflicting-caller-project-npmrc", "update-help-without-state",
-        "invalid-review-state-untouched", "already-current-without-install", "ahead-without-downgrade", "metadata-failure-visible", "installation-failure-visible"],
+        "invalid-review-state-untouched", "already-current-without-install", "ahead-without-downgrade", "metadata-failure-visible", "installation-failure-visible",
+        "bundled-skill-in-installed-npm-tarball", "self-update-replaces-skill-bytes", "failed-update-preserves-installed-skill"],
       receipts: { previousVersion: "1.0.0", updatedVersion: "1.0.1", finalVersion: "1.0.1", currentSkippedInstall: true,
         aheadSkippedInstall: true, resolvedTargetPinnedAfterLatestMoves: true, metadataFailureExitCode: unavailable.status, installFailureExitCode: failedInstall.status,
         metadataRequests: requests.filter((item) => item.pathname === `/${packageName}`).length,
-        successfulUpdateTarballRequests: requests.filter((item) => item.pathname === "/tarballs/daynight-1.0.1.tgz" && item.status === 200).length },
+        successfulUpdateTarballRequests: requests.filter((item) => item.pathname === "/tarballs/daynight-1.0.1.tgz" && item.status === 200).length,
+        previousSkillSha256: createHash("sha256").update(fixtureSkills.get("1.0.0")!).digest("hex"),
+        updatedSkillSha256: createHash("sha256").update(fixtureSkills.get("1.0.1")!).digest("hex"),
+        bundledSkillUpdated: true, failedUpdatePreservesInstalledSkill: true },
     }, null, 2));
   } finally {
     await Promise.all([...children].map(terminate));

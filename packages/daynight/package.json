@@ -1,6 +1,6 @@
 {
   "name": "@codetreker/daynight",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "A client command toolkit for development workflows",
   "repository": {
     "type": "git",
@@ -18,7 +18,7 @@
     "node": ">=24.0.0 <25"
   },
   "scripts": {
-    "build": "node scripts/clean-dist.ts && tsc -p tsconfig.build.json",
+    "build": "node scripts/clean-dist.ts && tsc -p tsconfig.build.json && node scripts/copy-skills.ts",
     "typecheck": "tsc --noEmit",
     "test": "pnpm run build && vitest run",
     "acceptance": "pnpm run build && vitest run --config vitest.acceptance.config.ts",

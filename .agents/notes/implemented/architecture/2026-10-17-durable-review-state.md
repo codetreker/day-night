@@ -33,6 +33,14 @@ and preparation retry policy belong to the coordinator. Retry records retain
 the captured target, session, budget, and latest attempt evidence. Prior log files
 remain under their review and attempt paths.
 
+The [bundled skill](2026-10-20-bundled-review-skill.md) uses one attempt for
+sequential discovery and review children. `clearProcess` requires a matching
+current running attempt, exact PID and process identity, plus caller-supplied
+process-exclusion proof. It clears only that process pair and retains the
+attempt's count, target, logs and running status before the next child is
+recorded. The database neither excludes a process nor authorizes overlap by
+itself; no schema change or legacy-data fallback is needed.
+
 Opening a runtime database never authorizes recovery. Interrupted records stay
 active until the caller explicitly confirms that previous processes have stopped.
 Preparing and running work cannot be silently displaced by a newer observation.

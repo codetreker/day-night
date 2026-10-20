@@ -14,7 +14,7 @@ const review = (pid: number | null): ReviewState => ({ id: "review", host: "gith
   headSha: "a".repeat(40), baseRef: "main", baseSha: "b".repeat(40), status: "running", attemptCount: 1, maxAttempts: 3,
   retryAt: null, processOwner: "owner", processId: pid, processIdentity: pid === null ? null : "identity", stdoutLogPath: "out", stderrLogPath: "err", lastError: null, createdAt: 1, updatedAt: 1 });
 const outcome = (): CopilotAttemptOutcome => ({ attempt: { reviewId: "review", attempt: 1 }, sessionId: "session", sessionMode: "create", stdoutLogPath: "out", stderrLogPath: "err", completed: false,
-  directProcessClosed: true, captureComplete: true, exitCode: 7, signal: null, lastNonemptyLine: null, interruption: null, launchFailure: null, errors: [] });
+  directProcessClosed: true, captureComplete: true, exitCode: 7, signal: null, lastNonemptyLine: null, interruption: null, launchFailure: null, processExclusionFailure: null, errors: [] });
 const waitForFile = async (file: string): Promise<string> => {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
@@ -91,6 +91,30 @@ describe("current-run process supervision", () => {
     await once(child, "close");
     await expect(supervisor.exclude(review(child.pid!), outcome())).resolves.toEqual({ processesExcluded: true });
     expect(supervisor.safeToReleaseLock).toBe(true);
+  });
+
+  it("keeps one child per attempt until exclusion removes the previous handle", async () => {
+    const supervisor = createProcessSupervisor({ graceMs: 1_000 });
+    const attempt = { reviewId: "review", attempt: 1 };
+    const children = [0, 1].map(() => spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"],
+      { detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] }));
+    for (const child of children) { child.stdout!.resume(); child.stderr!.resume(); }
+    await Promise.all(children.map((child) => once(child, "spawn")));
+    const first = children[0]!; const second = children[1]!;
+    try {
+      supervisor.onProcess(first, attempt);
+      expect(() => supervisor.onProcess(second, attempt)).toThrow("more than one process");
+      await supervisor.stop(first, attempt);
+      await supervisor.exclude(review(first.pid!));
+      expect(() => supervisor.onProcess(second, attempt)).not.toThrow();
+      await supervisor.stop(second, attempt);
+      await supervisor.exclude(review(second.pid!));
+    } finally {
+      for (const child of children) if (child.exitCode === null && child.signalCode === null) {
+        const closed = once(child, "close"); child.kill("SIGKILL"); await closed;
+      }
+    }
+    expect(supervisor.safeToReleaseLock).toBe(false);
   });
 
   it.each([false, true])("terminates a managed native wrapper tree (ignore TERM=%s)", async (ignoreTerm) => {

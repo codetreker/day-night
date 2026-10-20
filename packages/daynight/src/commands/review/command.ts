@@ -20,6 +20,7 @@ const defaultDependencies = (context: CliContext): ReviewCommandDependencies => 
   runReview: async (configuration, paths) => {
     const { formatCoordinatorEvent, runForegroundReview } = await import("./runtime.js");
     await runForegroundReview(configuration, paths, {
+      packageDirectory: context.packageDirectory,
       log: (event) => { context.stderr(`${formatCoordinatorEvent(event)}\n`); },
     });
   },
