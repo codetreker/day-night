@@ -14,20 +14,13 @@ type projectHandler struct {
 	logger   *slog.Logger
 }
 
-func New(projects *service.Projects, tasks *service.Tasks, logger *slog.Logger) http.Handler {
+func projectRoutes(mux *http.ServeMux, projects *service.Projects, logger *slog.Logger) {
 	handler := &projectHandler{projects: projects, logger: logger}
-	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/projects", handler.create)
 	mux.HandleFunc("GET /api/v1/projects", handler.list)
 	mux.HandleFunc("GET /api/v1/projects/{projectId}", handler.get)
 	mux.HandleFunc("/api/v1/projects", methodNotAllowed(logger, "GET, HEAD, POST"))
 	mux.HandleFunc("/api/v1/projects/{projectId}", methodNotAllowed(logger, "GET, HEAD"))
-	taskRoutes(mux, tasks, logger)
-	uiRoutes(mux, logger)
-	mux.HandleFunc("/", func(w http.ResponseWriter, request *http.Request) {
-		writeError(w, request, logger, "server", "route", &service.Fault{Code: "not_found", Message: "resource not found"})
-	})
-	return mux
 }
 
 func projectResponse(project core.Project) api.Project {
