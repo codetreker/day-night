@@ -98,11 +98,17 @@ worktree 管理器。`.daynight/` 和忽略规则属于执行时的产品行为�
 
 状态：已实现。前置：PT-T1。
 
-本地 typecheck、1395 项测试、build 和 2 组安装验收通过。Bash 4.2、Bash 5.2、
-zsh 5.9 各 68 个真实 Tab 场景及未初始化 compinit 的拒绝检查共 205 项通过，
-补全期间没有调用 CLI/Node。实际编译入口的受控 HTTP 证明创建只提交一次、UUID
-和时间精度保留、完整分页 JSON 与续页失败 stdout 为空；真实 Go 服务联调仍由
-PT-T5 验证。长名称放大填充问题经线性完整输出修复，独立复审无 Critical/Major。
+本地 `pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm acceptance` 均通过；
+普通测试 1418 项通过，10 项平台专属测试在 Linux 上跳过，安装验收 2 组通过。
+Bash 4.2、Bash 5.2、zsh 5.9 各 68 个真实 Tab 场景、每个 shell 的两种编辑器
+就绪证明，以及未初始化 compinit 的拒绝检查共 211 项通过；补全期间没有调用
+CLI/Node。就绪证明分别覆盖进入编辑器前的提示符阻塞和 capture widget 完成前
+排队的 reset，机制由[补全设计](daynight-completion.md#验证)拥有。
+
+实际编译入口的受控 HTTP 证明创建只提交一次、UUID 和时间精度保留、完整分页
+JSON 与续页失败 stdout 为空；真实 Go 服务联调仍由 PT-T5 验证。长名称放大填充
+问题经线性完整输出修复，独立复审无 Critical/Major。交付 PR 的远端 review 与
+原生 CI 仍待完成。
 
 ### 文件归属与范围
 
