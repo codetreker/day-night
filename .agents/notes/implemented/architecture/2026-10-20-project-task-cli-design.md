@@ -17,8 +17,9 @@ The adopted [requirements](../../../../docs/spec/daynight-project-task.md) and
 [design](../../../../docs/design/daynight-project-task.md) define independent
 `project` and `task` command modules in the existing client package. The design
 is adopted. Shared configuration, bounded HTTP, repository bindings and
-`project create/list/show` are implemented. Task command entry points and full
-CLI acceptance against the Go service remain pending. The
+`project create/list/show` are delivered. Task create/list/show/update/graph and
+shared syntax integration are implemented and locally validated; full CLI
+acceptance against the Go service remains pending. The
 [task breakdown](../../../../docs/design/daynight-project-task-tasks.md) owns
 implementation status, dependencies, file ownership and completion evidence.
 
@@ -57,8 +58,19 @@ identity. Path case, unusual SSH contexts, aliases and nondefault ports retain
 meaningful distinctions. The service keeps its raw registered address and its
 existing API, schema, duplicate-project allowance and transaction policies.
 
-The adopted task contract retains expected-version checks, atomic
-field/dependency updates and server-side state gates. Local binding checks
+The adopted task composition uses the shared command schema and server runtime.
+Description values declare `allowEmpty`, status values declare fixed `choices`,
+and dependency options declare `repeatable`. Repeatable values form an ordered
+array from the first occurrence, retaining duplicate IDs for server validation.
+Text options accept inline assignment split at the first equals sign, preserving
+leading dashes and later equals signs. Separated dash-prefixed values remain
+invalid; directory, switch and help options reject inline assignment. These
+syntax facts belong to the definition consumed by parsing and static shell
+completion. Help uses the declared names, value names, required markers and
+option descriptions; it does not enumerate `value.choices`. Existing review directory syntax remains unchanged.
+
+Task updates retain expected-version checks, atomic field/dependency updates
+and server-side state gates. Local binding checks
 cannot replace remote resource validation. Request cancellation and failures remain visible; failed
 writes are not automatically retried. Complete paginated JSON is emitted only
 after every page has succeeded. Whole-command deadlines and response-byte
@@ -76,7 +88,7 @@ After a final cancellation/deadline check it writes stdout once. SIGINT, SIGTERM
 and Windows SIGBREAK cancel the same lifetime; completion removes owned signal
 listeners and disposes timers without removing other consumers' listeners.
 
-Project human output uses complete labeled resource blocks with space
+Project and task human output use complete labeled resource blocks with space
 proportional to the total field content. A shared terminal helper escapes
 controls and line separators while preserving ordinary Unicode. JSON uses the
 original API values. Shared text predicates match the Go Unicode White_Space
@@ -123,9 +135,11 @@ rendering space and do not depend on terminal display-width assumptions.
 
 The confirmed design remains distinct from complete feature delivery. Project
 commands join review, update and shell completion. Their compiled entry point
-is verified against controlled HTTP responses; that
-evidence does not establish real Go/PostgreSQL CLI integration. Task command
-composition, full service acceptance and native CI evidence remain owned by the
+is verified against controlled HTTP responses and the delivered Project command
+passed native CI. That evidence does not establish real Go/PostgreSQL CLI
+integration. Task composition and the shared syntax pass local module, compiled
+entrypoint and real-shell checks. Full service acceptance, final review and the
+task delivery's native CI evidence remain owned by the
 [task breakdown](../../../../docs/design/daynight-project-task-tasks.md). Shared
 configuration, HTTP, repository and server-runtime modules support that remaining
 work. Package versions follow the existing release rules.
@@ -134,7 +148,7 @@ The implemented repository resolver can infer a repository's project after one
 complete discovery and then validate it by ID. The cache remains disposable and
 scoped to server, repository and worktree. Automatic resolution can create the
 ignored local binding even when preparing a query; remote project/task data
-remains in the service. Task command composition must finish that preparation
+remains in the service. Task command composition finishes that preparation
 before mutation. Cache and ignore failures remain errors, and corrupt records
 are reported rather than silently discarded.
 

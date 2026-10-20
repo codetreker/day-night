@@ -11,7 +11,7 @@ delivery approval remain required.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion`, shared configuration, server HTTP and repository binding foundations plus project create/list/show; task commands pending | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
+| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion`, shared configuration, server HTTP and repository binding foundations plus project and task commands; full service acceptance pending | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage implemented; static SVG local acceptance passed; hosted zoom performance under investigation | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -34,8 +34,9 @@ and [task breakdown](docs/design/daynight-project-task-tasks.md) describe the
 confirmed behavior and implementation status. Shared YAML projections, the
 `serverUrl` configuration field, bounded HTTP client and repository discovery
 with ignored local bindings are implemented. `project create/list/show` manage
-remote projects through the configured server; task command entry points and
-installed real-service command acceptance remain pending. Controlled native-platform tests and live
+remote projects through the configured server. Task create/list/show/update/graph
+commands use explicit project selection or the current repository binding;
+installed real-service command acceptance remains pending. Controlled native-platform tests and live
 Copilot/GitHub acceptance provide separate evidence; live acceptance remains
 outstanding.
 
@@ -389,6 +390,12 @@ daynight project
 daynight project create --name <name> --repo <repo>
 daynight project list [--json]
 daynight project show <project-id> [--json]
+daynight task
+daynight task create --title <title> [options]
+daynight task list [--status <status>] [--ready] [--json] [--project <project-id>]
+daynight task show <task-id> [--json] [--project <project-id>]
+daynight task update <task-id> [options]
+daynight task graph [--json] [--project <project-id>]
 ```
 
 Groups and operations show help when `--help` or `-h` is their sole argument.
@@ -463,6 +470,57 @@ terminal-control escapes. JSON preserves resource fields and nanosecond timestam
 strings; a later-page failure produces an error with empty stdout. The
 [project/task requirements](docs/spec/daynight-project-task.md) own the complete
 behavior and remaining task-command scope.
+
+## Task management
+
+Task commands use the same `serverUrl` configuration as project commands:
+
+```bash
+daynight task create --title "Implement sign-in" --description "Support OAuth"
+daynight task create --title "Build the sign-in page" --depends-on <task-id>
+daynight task list --ready
+daynight task list --status in_progress --json
+daynight task show <task-id> --json
+daynight task update <task-id> --description=
+daynight task update <task-id> --status done
+daynight task update <task-id> --depends-on <task-a> --depends-on <task-b>
+daynight task update <task-id> --clear-dependencies
+daynight task graph --json
+```
+
+Every operation accepts `--project <project-id>`, which selects a project for one
+invocation without reading Git or local bindings. Otherwise, the CLI reads the
+current worktree's effective `origin`, normalizes equivalent HTTPS/SSH/SCP
+addresses, and matches the configured server's projects. A missing match fails
+with `Project does not exist`; multiple matches require explicit selection.
+A unique discovery is saved in the worktree's `.daynight/project.yml` with the
+server origin and repository identity, after ensuring `/.daynight/` is effective
+in the root `.gitignore`. A cached binding is verified against the server on each
+use and remains stable if another project later shares that repository.
+
+Creation starts in `todo`. The list status and ready filters combine with AND.
+Updates preserve omitted fields; an empty description clears it. Repeated
+`--depends-on` values replace the complete dependency set and retain input order
+and duplicates for server validation. `--clear-dependencies` clears that set and
+cannot be combined with `--depends-on`. An update needs at least one mutable
+field. By default the CLI reads the task version before PATCH; `--if-version <n>`
+uses that exact positive int64 version. Conflicts and failed writes are reported
+without automatic retries.
+
+Text options accept both separated values and `--option=value`. Inline assignment
+splits at the first equals sign and supports leading dashes, such as
+`--title=-example`; `--description=` is the explicit empty form. Separated values
+starting with a dash are rejected. Directory options, switches and help reject
+inline assignment; `--path=value` and `--` remain invalid.
+
+Human results use complete labeled task blocks and graph nodes, including task
+state, dependencies, blocking and title-preview truncation flags. Queries support
+`--json`: lists return one complete array, details one resource, and graphs the
+complete API object. Versions remain JSON numbers with full int64 precision.
+Local preparation fails before any task mutation; a lost write response is
+reported as unconfirmed. The [task record](docs/design/daynight-project-task-tasks.md)
+owns validation status; installed CLI integration with the real Go/PostgreSQL
+service remains pending.
 
 ## Review configuration and startup
 

@@ -1,7 +1,7 @@
 # Project 与 Task 客户端需求
 
 状态：共享配置、HTTP、仓库关联基础及 `project create/list/show` 已实现；
-Task 命令入口与完整 Go 服务联调待完成。本文保留完整交付要求，具体任务状态与
+Task 命令已实现并通过本地验证，完整 Go 服务联调待完成。本文保留完整交付要求，具体任务状态与
 验证证据由[任务清单](../design/daynight-project-task-tasks.md)拥有；当前可用命令见
 [仓库 README](../../README.md)。
 
@@ -147,16 +147,26 @@ daynight task update <task-id> --status done --if-version 3
 daynight task graph
 ```
 
-上述命令均接受 `--project <id>`。`list`、`show`、`graph` 接受 `--json`。
+上述命令均接受 `--project <id>`。`list`、`show`、`graph` 接受 `--json`。名称、
+标题、描述、repo 地址、ID、状态和版本等 text 选项同时接受 `--option value` 与
+`--option=value`。内联形式只按第一个 `=` 分隔，保留值内后续 `=` 和前导 `-`；
+分离形式的值以 `-` 开始时拒绝，须使用内联形式。只有描述允许空字符串，既可写
+`--description ""`，也可写 `--description=`。开关不接受内联值；目录选项的
+`--path=value` 及独立 `--` 继续拒绝。
 
 创建必需符合 PT6 文本规则的非空标题，可选描述和重复的 `--depends-on`；省略描述
 及依赖分别使用服务规定的空字符串和空集合，新 task 总为 `todo`。列表支持单个 `--status` 与 `--ready`，
-两者按 AND 组合；状态值为 `todo`、`in_progress`、`done`。详情按选定 project
-和 task ID 查询。
+两者按 AND 组合；状态值为 `todo`、`in_progress`、`done`，共享语法负责校验和静态候选；
+帮助显示选项说明。`--ready` 只表示 `ready=true`。详情按选定 project 和 task ID
+查询。显式 project ID、show/update 的 task ID、标题、描述、状态、版本及修改字段
+组合的参数错误必须先于配置读取、Git 和网络访问拒绝；依赖 ID 原样传给服务，
+其语法、引用是否存在及合法性由服务验证。
 
 更新至少提供标题、描述、状态或依赖中的一个字段。省略字段表示保持，空描述表示
 清空描述。出现 `--depends-on` 时替换完整前置集合；`--clear-dependencies` 清空
-集合，两者不能同时出现。CLI 不合并旧依赖、不去重或修正无效引用；服务负责验证
+集合，两者不能同时出现。依赖选项按输入顺序保留每一次出现，单次及重复的
+`--depends-on` 都形成数组，包括重复 ID，不执行 CSV 拆分。其他选项只允许出现
+一次。CLI 不合并旧依赖、不去重或修正无效引用；服务负责验证
 依赖、状态约束、环和跨 project 引用。拒绝结果必须保留服务错误码与相关 task ID。
 
 未传 `--if-version` 时，CLI 先读取 task 的当前 `version`，再将该版本与更新字段
@@ -172,7 +182,12 @@ daynight task graph
 普通查询提供可读结果；列表自动遍历全部分页，在完整读取、结构验证、渲染及最终
 期限检查成功后输出结果。Project 列表逐个输出完整的带标签资源块，包含 ID、名称、
 原始 repo 地址及创建、更新时间；空列表明确说明没有 project。详情和创建结果使用
-相同字段，创建结果另表明服务已确认创建。名称及地址完整显示，资源边界保持清楚。
+相同字段，创建结果另表明服务已确认创建。Task 列表逐个输出完整资源块，包括 ID、
+所属 project、标题、描述、状态、完整版本、ready、依赖、阻塞及创建、更新时间；
+空列表明确说明没有 task。创建和更新结果使用同一资源格式并表明服务已确认操作。
+图显示 project、全部 summary 字段及每个节点的状态、标题预览、截短标记、ready、
+依赖、阻塞和时间。所有文本完整显示，资源边界保持清楚，输出空间随字段内容总量
+线性增长。
 
 可读资源字段中的 C0/C1 控制字符及 Unicode 行、段分隔符必须转义为可见文本，
 普通 Unicode 与 emoji 保持原样。`--json` 将详情输出为一个资源对象、列表输出为
@@ -220,6 +235,8 @@ daynight task graph
 
 配置、HTTP、仓库关联基础及 Project 命令已提供对应模块验证；Project 的实际编译
 入口已在受控 HTTP 条件下验证创建、完整分页、详情、参数错误、服务拒绝、
-取消、原始 JSON 与依赖隔离。V1–V12 继续约束完整 CLI 交付，Task 命令与真实
-Go/PostgreSQL 全流程验收仍由后续任务完成。原生 CI 和完整联调的实际结果见任务
-清单；受控 HTTP 验证不代表真实 Go 服务联调已经完成。
+取消、原始 JSON 与依赖隔离。Task 已通过参数、操作、渲染、仓库选择及实际编译
+入口的受控 HTTP 验证；共享补全保留既有场景，并在真实 Bash/zsh 验证 Task 语法。
+V1–V12 继续约束完整 CLI 交付，真实 Go/PostgreSQL 全流程验收仍由 PT-T5 完成。
+原生 CI、远端 review 和完整联调的实际结果见任务清单；受控 HTTP 验证不代表真实
+Go 服务联调已经完成。

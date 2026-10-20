@@ -289,6 +289,30 @@ def scenarios():
         ("project name after repo", "daynight project create --repo git@github.com:acme/repo.git --na\t", ["project", "create", "--repo", "git@github.com:acme/repo.git", "--name"]),
         ("project list JSON", "daynight project list --js\t", ["project", "list", "--json"]),
         ("project show JSON", "daynight project show project-id --js\t", ["project", "show", "project-id", "--json"]),
+        ("root task and local directory collision", "daynight ta\t", ["task"]),
+        ("task create", "daynight task cre\t", ["task", "create"]),
+        ("task list", "daynight task li\t", ["task", "list"]),
+        ("task show", "daynight task sh\t", ["task", "show"]),
+        ("task update", "daynight task upd\t", ["task", "update"]),
+        ("task graph", "daynight task gr\t", ["task", "graph"]),
+        ("task title option", "daynight task create --ti\t", ["task", "create", "--title"]),
+        ("task list ready", "daynight task list --rea\t", ["task", "list", "--ready"]),
+        ("task list separate status", "daynight task list --status in\t", ["task", "list", "--status", "in_progress"]),
+        ("task list inline status", "daynight task list --status=do\t", ["task", "list", "--status=done"]),
+        ("task update inline status", "daynight task update task-id --status=in\t", ["task", "update", "task-id", "--status=in_progress"]),
+        ("task inline status before further options", "daynight task list --status=done --rea\t", ["task", "list", "--status=done", "--ready"]),
+        ("task empty separate description", 'daynight task create --title Title --description "" --pro\t', ["task", "create", "--title", "Title", "--description", "", "--project"]),
+        ("task empty inline description", "daynight task create --title Title --description='' --pro\t", ["task", "create", "--title", "Title", "--description=", "--project"]),
+        ("task dash inline description", "daynight task create --title Title --description=-leading --pro\t", ["task", "create", "--title", "Title", "--description=-leading", "--project"]),
+        ("task equals inline description", "daynight task create --title Title --description==a=b --pro\t", ["task", "create", "--title", "Title", "--description==a=b", "--project"]),
+        ("task repeatable dependency remains available", "daynight task create --title Title --depends-on a --dep\t", ["task", "create", "--title", "Title", "--depends-on", "a", "--depends-on"]),
+        ("task inline dependency followed by option", "daynight task create --title Title --depends-on=a --pro\t", ["task", "create", "--title", "Title", "--depends-on=a", "--project"]),
+        ("task repeated inline and separate dependencies", "daynight task create --title Title --depends-on=a --depends-on a --dep\t", ["task", "create", "--title", "Title", "--depends-on=a", "--depends-on", "a", "--depends-on"]),
+        ("task clear dependency flag", "daynight task update task-id --clear-dep\t", ["task", "update", "task-id", "--clear-dependencies"]),
+        ("task version option", "daynight task update task-id --if-ver\t", ["task", "update", "task-id", "--if-version"]),
+        ("task graph JSON", "daynight task graph --js\t", ["task", "graph", "--json"]),
+        ("task inline project followed by JSON", "daynight task show task-id --project=project-id --js\t", ["task", "show", "task-id", "--project=project-id", "--json"]),
+        ("project inline dash name", "daynight project create --name=-leading --re\t", ["project", "create", "--name=-leading", "--repo"]),
         ("review run", "daynight review ru\t", ["review", "run"]),
         ("review list", "daynight review li\t", ["review", "list"]),
         ("quoted command name", "daynight 'review' li\t", ["review", "list"]),
@@ -333,6 +357,21 @@ def scenarios():
         ("used project name is hidden", 'daynight project create --name "Day Night" --na'),
         ("used project repo is hidden", "daynight project create --repo git@github.com:acme/repo.git --re"),
         ("used project JSON is hidden", "daynight project list --json --js"),
+        ("task title has no file fallback", "daynight task create --title nor"),
+        ("task description has no file fallback", "daynight task create --description nor"),
+        ("task inline title has no file fallback", "daynight task create --title=nor"),
+        ("task inline description has no option fallback", "daynight task create --description=--pro"),
+        ("task empty inline description has no file fallback", "daynight task create --description="),
+        ("task dependency has no file fallback", "daynight task create --depends-on nor"),
+        ("task project has no file fallback", "daynight task list --project nor"),
+        ("task ID has no file fallback", "daynight task show nor"),
+        ("task version has no file fallback", "daynight task update task-id --if-version nor"),
+        ("used task inline scalar status is hidden", "daynight task list --status=done --sta"),
+        ("invalid inline task status stops completion", "daynight task list --status=invalid --rea"),
+        ("invalid separate task status stops completion", "daynight task list --status invalid --rea"),
+        ("empty dependency stops completion", "daynight task create --depends-on= --dep"),
+        ("inline switch has no candidate fallback", "daynight task list --ready=true --sta"),
+        ("inline directory remains unsupported", "daynight review add-repo acme/repo --path=nor"),
         ("used path is hidden", "daynight review add-repo acme/repo --path normal-directory/ --pa"),
         ("consumed shell choice is hidden", "daynight completion bash zs"),
         ("nonexistent directory leaf", "daynight review add-repo --path missing-leaf"),
@@ -380,10 +419,13 @@ def run_shell(label, binary, kind, script, directory, evidence, zsh_root):
                 raise AssertionError(f"{label}: {name}: expected unchanged {line!r}, received {actual!r}, terminal={output!r}")
             print(f"PASS {label}: {name}", flush=True)
         for name, line, candidates in [
-            ("empty root prefix", "daynight ", ["review", "update", "completion", "project"]),
+            ("empty root prefix", "daynight ", ["review", "update", "completion", "project", "task"]),
             ("empty review prefix", "daynight review ", ["run", "list", "ls", "add-repo"]),
             ("empty project prefix", "daynight project ", ["create", "list", "show"]),
             ("empty project create prefix", "daynight project create ", ["--name", "--repo"]),
+            ("empty task prefix", "daynight task ", ["create", "list", "show", "update", "graph"]),
+            ("empty separate task status", "daynight task list --status ", ["todo", "in_progress", "done"]),
+            ("empty inline task status", "daynight task list --status=", ["todo", "in_progress", "done"]),
             ("empty shell prefix", "daynight completion ", ["bash", "zsh"]),
         ]:
             actual, cursor, output = shell.complete(line + "\t\t")
@@ -415,7 +457,7 @@ def main():
                 sentinel = directory / "bin" / command
                 sentinel.write_text("#!/bin/sh\nprintf x >>" + shlex.quote(str(directory / "forbidden-executions.log")) + "\nprintf '__DAYNIGHT_FORBIDDEN_NODE__\\n'\nexit 99\n")
                 sentinel.chmod(0o755)
-            for name in ["review", "project", "normal-directory", "space directory", "中文目录", "apostrophe'directory", 'double"directory', "dollar$directory", "backtick`directory", "colon:directory", "~literal", "home/home-directory"]:
+            for name in ["review", "project", "task", "normal-directory", "space directory", "中文目录", "apostrophe'directory", 'double"directory', "dollar$directory", "backtick`directory", "colon:directory", "~literal", "home/home-directory"]:
                 (directory / name).mkdir(parents=True)
             scripts = {}
             for kind in ["bash", "zsh"]:

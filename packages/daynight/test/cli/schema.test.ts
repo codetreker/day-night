@@ -3,6 +3,7 @@ import { commandTree } from "../../src/cli/commands.js";
 import { UsageError } from "../../src/cli/context.js";
 import { parseCommand, renderCommandHelp } from "../../src/cli/schema.js";
 import type { CommandDefinition } from "../../src/cli/schema.js";
+import { taskDefinition } from "../../src/commands/task/definition.js";
 
 describe("shared command syntax", () => {
   it.each([
@@ -138,5 +139,48 @@ describe("shared command syntax", () => {
   it("renders required named values without brackets and permits help without values", () => {
     expect(renderCommandHelp(textDefinition)).toContain("Usage: create --name <name> --repo <repo> [--json]");
     expect(parseCommand(textDefinition, ["--help"]).kind).toBe("help");
+  });
+
+  it.each(["", "-leading", "=a=b", "\uFEFF"])("preserves inline descriptions split at only the first equals sign: %j", (description) => {
+    const parsed = parseCommand(taskDefinition, ["create", "--title=Title", `--description=${description}`]);
+    expect(parsed.kind === "run" && parsed.options.get("--description")).toBe(description);
+  });
+
+  it("keeps repeatable values as ordered arrays from their first occurrence", () => {
+    const first = parseCommand(taskDefinition, ["create", "--title", "Title", "--depends-on", "a"]);
+    expect(first.kind === "run" && first.options.get("--depends-on")).toEqual(["a"]);
+    const repeated = parseCommand(taskDefinition, ["create", "--title", "Title", "--depends-on=a", "--depends-on", "b", "--depends-on=a"]);
+    expect(repeated.kind === "run" && repeated.options.get("--depends-on")).toEqual(["a", "b", "a"]);
+  });
+
+  it("allows separate empty descriptions while keeping ordinary text scalar", () => {
+    const parsed = parseCommand(taskDefinition, ["update", "task-id", "--description", "", "--status", "todo"]);
+    expect(parsed.kind === "run" && [...parsed.options]).toEqual([["--description", ""], ["--status", "todo"]]);
+  });
+
+  it.each(["todo", "in_progress", "done"])("accepts exact status choices in separate and inline values: %s", (status) => {
+    for (const args of [["list", "--status", status], ["list", `--status=${status}`]]) {
+      const parsed = parseCommand(taskDefinition, args);
+      expect(parsed.kind === "run" && parsed.options.get("--status")).toBe(status);
+    }
+  });
+
+  it.each([
+    ["create", "--title="], ["create", "--title", "-leading"],
+    ["create", "--title", "Title", "--description"],
+    ["create", "--title", "Title", "--description", "--status"],
+    ["list", "--status=TODO"], ["list", "--status", "invalid"], ["list", "--status="],
+    ["list", "--ready=true"], ["list", "--help=true"],
+    ["create", "--title=Title", "--depends-on="],
+    ["update", "task-id", "--status=todo", "--status", "done"],
+  ])("rejects invalid inline, empty, duplicate, and choice syntax: %j", (...args) => {
+    expect(() => parseCommand(taskDefinition, args)).toThrow(UsageError);
+  });
+
+  it("renders repeatable dependencies and keeps help independent of task requirements", () => {
+    const create = taskDefinition.commands!.find(({ name }) => name === "create")!;
+    expect(renderCommandHelp(create, ["daynight", "task", "create"])).toContain("[--depends-on <task-id>...]");
+    expect(parseCommand(taskDefinition, ["create", "--help"]).kind).toBe("help");
+    expect(parseCommand(taskDefinition, []).kind).toBe("help");
   });
 });
