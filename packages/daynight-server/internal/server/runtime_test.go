@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 func testConfig(t *testing.T) Config {
@@ -35,6 +37,57 @@ func await[T any](t *testing.T, channel <-chan T) T {
 		var zero T
 		return zero
 	}
+}
+
+func awaitSleepingQuery(t *testing.T, databaseURL, query string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	observer, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		closeContext, closeCancel := context.WithTimeout(context.Background(), time.Second)
+		defer closeCancel()
+		if err := observer.Close(closeContext); err != nil {
+			t.Error(err)
+		}
+	}()
+	for {
+		var sleeping bool
+		if err := observer.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+			WHERE datname=current_database() AND pid<>pg_backend_pid() AND query=$1
+			AND state='active' AND wait_event_type='Timeout' AND wait_event='PgSleep')`, query).Scan(&sleeping); err != nil {
+			t.Fatal(err)
+		}
+		if sleeping {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("database query did not enter pg_sleep")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
+func cleanupCancellationRequest(t *testing.T, cancelRequest, stopRuntime context.CancelFunc, clientDone, runtimeDone <-chan struct{}) {
+	t.Helper()
+	t.Cleanup(func() {
+		cancelRequest()
+		stopRuntime()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		for _, done := range []<-chan struct{}{clientDone, runtimeDone} {
+			select {
+			case <-done:
+			case <-ctx.Done():
+				t.Error("timed out cleaning up cancellation request")
+				return
+			}
+		}
+	})
 }
 
 func TestStartupFailures(t *testing.T) {
@@ -135,7 +188,7 @@ func TestGracefulDrainPreservesActiveRequestsAndReleasesResources(t *testing.T) 
 func TestForcedDrainCancelsDatabaseWork(t *testing.T) {
 	config := testConfig(t)
 	config.ShutdownTimeout = 30 * time.Millisecond
-	entered := make(chan struct{})
+	query := "select pg_sleep(10) /* " + uuid.NewString() + " */"
 	queryResult := make(chan error, 1)
 	runtime, err := Start(context.Background(), config, testLogger(), func(database *store.Store) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -145,8 +198,7 @@ func TestForcedDrainCancelsDatabaseWork(t *testing.T) {
 				return
 			}
 			defer connection.Release()
-			close(entered)
-			_, err = connection.Exec(r.Context(), "select pg_sleep(10)")
+			_, err = connection.Exec(r.Context(), query)
 			queryResult <- err
 		})
 	})
@@ -154,18 +206,27 @@ func TestForcedDrainCancelsDatabaseWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	requestContext, cancelRequest := context.WithCancel(context.Background())
 	result := make(chan error, 1)
-	go func() { result <- runtime.Run(ctx) }()
-	clientDone := make(chan struct{})
+	clientDone, runtimeDone := make(chan struct{}), make(chan struct{})
+	cleanupCancellationRequest(t, cancelRequest, cancel, clientDone, runtimeDone)
+	go func() {
+		defer close(runtimeDone)
+		result <- runtime.Run(ctx)
+	}()
 	go func() {
 		defer close(clientDone)
-		response, err := (&http.Client{Timeout: 4 * time.Second}).Get("http://" + runtime.Address())
+		request, err := http.NewRequestWithContext(requestContext, http.MethodGet, "http://"+runtime.Address(), nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		response, err := (&http.Client{Timeout: 4 * time.Second}).Do(request)
 		if err == nil {
 			response.Body.Close()
 		}
 	}()
-	await(t, entered)
+	awaitSleepingQuery(t, config.DatabaseURL, query)
 	start := time.Now()
 	cancel()
 	if err := await(t, result); !errors.Is(err, context.DeadlineExceeded) {
@@ -181,11 +242,12 @@ func TestForcedDrainCancelsDatabaseWork(t *testing.T) {
 }
 
 func TestClientCancellationReachesDatabase(t *testing.T) {
-	entered, queryResult := make(chan struct{}), make(chan error, 1)
-	runtime, err := Start(context.Background(), testConfig(t), testLogger(), func(database *store.Store) http.Handler {
+	config := testConfig(t)
+	query := "select pg_sleep(10) /* " + uuid.NewString() + " */"
+	queryResult := make(chan error, 1)
+	runtime, err := Start(context.Background(), config, testLogger(), func(database *store.Store) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			close(entered)
-			_, err := database.Pool.Exec(r.Context(), "select pg_sleep(10)")
+			_, err := database.Pool.Exec(r.Context(), query)
 			queryResult <- err
 		})
 	})
@@ -193,23 +255,29 @@ func TestClientCancellationReachesDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	root, stop := context.WithCancel(context.Background())
-	defer stop()
 	result := make(chan error, 1)
-	go func() { result <- runtime.Run(root) }()
 	ctx, cancel := context.WithCancel(context.Background())
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+runtime.Address(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	clientDone, runtimeDone := make(chan struct{}), make(chan struct{})
+	cleanupCancellationRequest(t, cancel, stop, clientDone, runtimeDone)
+	go func() {
+		defer close(runtimeDone)
+		result <- runtime.Run(root)
+	}()
 	response := make(chan error, 1)
 	go func() {
+		defer close(clientDone)
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+runtime.Address(), nil)
+		if err != nil {
+			response <- err
+			return
+		}
 		res, err := (&http.Client{Timeout: 4 * time.Second}).Do(request)
 		if err == nil {
 			res.Body.Close()
 		}
 		response <- err
 	}()
-	await(t, entered)
+	awaitSleepingQuery(t, config.DatabaseURL, query)
 	cancel()
 	if err := await(t, response); !errors.Is(err, context.Canceled) {
 		t.Fatalf("client cancellation failed: %v", err)

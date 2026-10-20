@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, realpath, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -20,7 +20,9 @@ describe.skipIf(process.platform !== "darwin").each(modes)(
     let directory: string | undefined;
     let mountDirectory: string;
     let homeDirectory: string;
+    let imageFile: string;
     let attachmentAttempted = false;
+    let attachmentPlist: string | undefined;
 
     beforeAll(async () => {
       const temporaryDirectory = fileURLToPath(new URL("../../../../../.tmp/", import.meta.url));
@@ -28,15 +30,16 @@ describe.skipIf(process.platform !== "darwin").each(modes)(
       directory = await mkdtemp(path.join(temporaryDirectory, "apfs-config-"));
       mountDirectory = path.join(directory, "mounted volume");
       await mkdir(mountDirectory);
-      const image = path.join(directory, "filesystem.sparseimage");
+      imageFile = path.join(directory, "filesystem.sparseimage");
       await execute("/usr/bin/hdiutil", [
-        "create", "-size", "256m", "-type", "SPARSE", "-fs", format,
-        "-volname", caseSensitive ? "DaynightSensitive" : "DaynightInsensitive", "-quiet", image,
+        "create", "-size", "256m", "-type", "SPARSE", "-layout", "GPTSPUD", "-fs", format,
+        "-volname", caseSensitive ? "DaynightSensitive" : "DaynightInsensitive", "-quiet", imageFile,
       ], { timeout: 60_000 });
+      imageFile = await realpath(imageFile);
       attachmentAttempted = true;
-      await execute("/usr/bin/hdiutil", [
-        "attach", "-nobrowse", "-noautoopen", "-mountpoint", mountDirectory, image,
-      ], { timeout: 30_000 });
+      attachmentPlist = (await execute("/usr/bin/hdiutil", [
+        "attach", "-plist", "-nobrowse", "-noautoopen", "-mountpoint", mountDirectory, imageFile,
+      ], { timeout: 30_000 })).stdout;
       homeDirectory = path.join(mountDirectory, "Review Home 用户");
       await mkdir(resolveReviewPaths(homeDirectory).stateDirectory, { recursive: true });
       const probe = path.join(homeDirectory, "CaseProbe");
@@ -49,7 +52,7 @@ describe.skipIf(process.platform !== "darwin").each(modes)(
     }, 120_000);
 
     afterAll(async () => {
-      await cleanupApfsFixture({ directory, mountDirectory, attachmentAttempted });
+      await cleanupApfsFixture({ directory, mountDirectory, imageFile, attachmentAttempted, attachmentPlist });
     }, 40_000);
 
     it.each([

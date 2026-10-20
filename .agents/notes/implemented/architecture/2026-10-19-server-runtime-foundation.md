@@ -36,7 +36,13 @@ through `http.ErrAbortHandler`, retaining failure without emitting raw panic tex
 
 Go 1.27.2, pgx v5.11.0 and PostgreSQL 18.6 are fixed for this foundation. All
 runtime checks and Go caches use project-local paths. PostgreSQL tests are
-mandatory: a missing or inaccessible database is a failing prerequisite.
+mandatory: a missing or inaccessible database is a failing prerequisite. Runtime
+cancellation tests observe the uniquely marked handler SQL in PostgreSQL
+`active`/`Timeout/PgSleep` state from an independent connection before canceling
+the client or starting drain. The
+[acceptance-readiness decision](../testing/2026-10-20-observable-acceptance-readiness.md)
+owns the observation and cleanup ordering; existing cancellation, drain and
+connection-health assertions remain unchanged.
 
 The Go CI job runs alongside the existing three native CLI jobs, and the
 aggregate requires all of them. The pinned go-cov checks package coverage at
