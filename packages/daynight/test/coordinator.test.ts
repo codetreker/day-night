@@ -42,15 +42,16 @@ const observation = (number: number, change: Partial<PullRequestObservation> = {
   number, state: "open", draft: false, headSha: "a".repeat(40), baseRef: "main", baseSha: "b".repeat(40), ...change,
 });
 
-const fixture = (repositoryCount = 1, initialized = true) => {
+const fixture = (repositoryCount = 1, initialized = true, repositoryHost = (_index: number): string => "github.com") => {
   mkdirSync(root, { recursive: true });
   const directory = mkdtempSync(path.join(root, "Coordinator 中文 "));
   const paths = resolveRuntimePaths(path.join(directory, "home"));
   mkdirSync(paths.stateDirectory, { recursive: true });
   const store = openStore(paths.databaseFile);
-  const configurations = Array.from({ length: repositoryCount }, (_, index) => ({
-    remote: `https://github.com/owner/repo${index}.git`, coordinate: `github.com/owner/repo${index}`, host: "github.com", owner: "owner", name: `repo${index}`, path: path.join(directory, `repo${index}`),
-  }));
+  const configurations = Array.from({ length: repositoryCount }, (_, index) => {
+    const host = repositoryHost(index);
+    return { remote: `https://${host}/owner/repo${index}.git`, coordinate: `${host}/owner/repo${index}`, host, owner: "owner", name: `repo${index}`, path: path.join(directory, `repo${index}`) };
+  });
   const identities = configurations.map((config, index): GitHubRepository => ({ host: config.host, githubId: String(42 + index), owner: config.owner, name: config.name }));
   const snapshots = identities.map(() => new Map<number, PullRequestObservation>());
   const polls = identities.map(() => 0);
@@ -255,38 +256,66 @@ describe("foreground review coordination", () => {
 
   it("honors CI API cooldown without consuming a worker, reservation, or agent attempt", async () => {
     const f = fixture(); f.update(1); f.update(2);
-    const cooldown = Date.now() + 180;
+    let clock = Date.now();
+    const cooldown = clock + 180;
     f.checks(async (pr) => {
       if (pr.number === 1 && f.checked.filter((item) => item.number === 1).length === 1) throw new GitHubApiError("CI rate limited", { status: 429, retryAt: cooldown });
       return { headSha: pr.headSha, baseRef: pr.baseRef, ready: true };
     });
-    f.start();
+    f.start({ now: () => clock });
     await waitFor(() => f.store.getPullRequest(f.pr(2))?.completedRevision === 1, "ready PR during CI cooldown");
     expect(f.checked.filter((item) => item.number === 1)).toHaveLength(1);
     expect(f.store.listReviews(f.pr(1))).toEqual([]);
+    expect(f.store.getPullRequest(f.pr(1))).toMatchObject({ sessionId: null, worktreePath: null });
     expect(f.events.find((event) => event.phase === "ci" && event.level === "error")?.retryAt).toBe(cooldown);
+    clock = cooldown - 1;
+    await waitFor(() => f.store.getRepository(f.identities[0]!)?.lastPollAt === clock, "completed scan before CI cooldown expiry");
+    expect(f.checked.filter((item) => item.number === 1)).toHaveLength(1);
+    expect(f.store.listReviews(f.pr(1))).toEqual([]);
+    expect(f.prepared.map((review) => review.number)).toEqual([2]);
+    expect(f.launched.map((item) => item.review.number)).toEqual([2]);
+    expect(f.store.getPullRequest(f.pr(1))).toMatchObject({ sessionId: null, worktreePath: null });
+    clock = cooldown;
     await waitFor(() => f.store.getPullRequest(f.pr(1))?.completedRevision === 1, "CI cooldown expiry");
     expect(f.launched.map((item) => item.review.number)).toEqual([2, 1]);
+    expect(f.store.listReviews(f.pr(1))[0]).toMatchObject({ attemptCount: 1, createdAt: cooldown });
   });
 
   it("defers prelaunch CI API errors through their cooldown without spending an attempt", async () => {
-    const f = fixture(); f.update(1);
-    let cooldown = 0;
+    const f = fixture(); f.update(1); f.update(2);
+    let clock = Date.now();
+    const cooldown = clock + 160;
     f.checks(async (pr) => {
-      if (f.checked.length === 2) {
-        cooldown = Date.now() + 160;
+      if (pr.number === 1 && f.checked.filter((item) => item.number === 1).length === 2) {
         throw new GitHubApiError("prelaunch CI rate limited", { status: 429, retryAt: cooldown });
       }
       return { headSha: pr.headSha, baseRef: pr.baseRef, ready: true };
     });
-    f.start();
+    f.start({ now: () => clock });
     await waitFor(() => f.store.listReviews(f.pr())[0]?.status === "retry_wait", "prelaunch CI API deferral");
     const review = f.store.listReviews(f.pr())[0]!;
+    const captured = f.store.getPullRequest(f.pr())!;
     expect(review.attemptCount).toBe(0);
     expect(review.retryAt).toBe(cooldown);
-    expect(f.launched).toEqual([]);
+    expect(f.launched.filter((item) => item.review.number === 1)).toEqual([]);
+    expect(captured.sessionId).not.toBeNull();
+    expect(captured.worktreePath).not.toBeNull();
+    await waitFor(() => f.store.getPullRequest(f.pr(2))?.completedRevision === 1, "other PR after prelaunch deferral releases its worker");
+    clock = cooldown - 1;
+    await waitFor(() => f.store.getRepository(f.identities[0]!)?.lastPollAt === clock, "completed scan before prelaunch cooldown expiry");
+    expect(f.checked.filter((item) => item.number === 1)).toHaveLength(2);
+    expect(f.store.getReview(review.id)).toMatchObject({ status: "retry_wait", attemptCount: 0, retryAt: cooldown });
+    expect(f.prepared.filter((item) => item.number === 1)).toHaveLength(1);
+    expect(f.launched.map((item) => item.review.number)).toEqual([2]);
+    clock = cooldown;
     await waitFor(() => f.store.getReview(review.id)?.status === "completed", "CI API recovery");
-    expect(f.launched[0]?.review.attemptCount).toBe(1);
+    const launched = f.launched.find((item) => item.review.number === 1)!;
+    expect(launched.review).toMatchObject({ id: review.id, headSha: review.headSha, baseRef: review.baseRef, attemptCount: 1 });
+    expect(launched.session).toBe(captured.sessionId);
+    expect(f.store.getPullRequest(f.pr())).toMatchObject({ sessionId: captured.sessionId, worktreePath: captured.worktreePath });
+    expect(f.store.listReviews(f.pr())).toHaveLength(1);
+    expect(f.events.find((event) => event.phase === "launch" && event.reviewId === review.id)?.attempt).toBe(0);
+    expect(f.prepared.filter((item) => item.number === 1).map((item) => item.id)).toEqual([review.id, review.id]);
   });
 
   it("gates an incomplete agent retry on CI while reusing its persisted review and session", async () => {
@@ -765,16 +794,56 @@ describe("foreground review coordination", () => {
   });
 
   it("honors repository API cooldown without blocking another host or admitting partial observations", async () => {
-    const f = fixture(2);
-    const cooldown = Date.now() + 150;
+    const f = fixture(2, true, (index) => index === 0 ? "github.com" : "github.example.com");
+    let clock = Date.now();
+    const initial = clock;
+    const cooldown = clock + 150;
+    f.store.observePullRequest(f.identities[0]!, observation(1, { draft: true }), clock);
+    const previous = f.store.getPullRequest(f.pr())!;
+    const repository = f.store.getRepository(f.identities[0]!)!;
+    f.update(1, { state: "closed", draft: true });
+    f.update(2, { draft: true });
+    f.update(3, {}, 1);
+    const list = f.client.listOpenPullRequests;
+    let completedList: number[] | undefined;
+    f.client.listOpenPullRequests = async (identity, cutoff, signal) => {
+      const observations = await list(identity, cutoff, signal);
+      if (identity.githubId === f.identities[0]!.githubId) completedList = observations.map((item) => item.number);
+      return observations;
+    };
+    const get = f.client.getPullRequest;
     let first = true;
-    f.poll(async (index) => { if (index === 0 && first) { first = false; throw new GitHubApiError("rate limited", { status: 429, retryAt: cooldown }); } });
-    f.start();
-    await waitFor(() => f.polls[1]! >= 3, "other repository scans during cooldown");
+    f.client.getPullRequest = async (identity, number, signal) => {
+      if (identity.githubId === f.identities[0]!.githubId && number === 1 && first) {
+        first = false;
+        expect(completedList).toEqual([2]);
+        throw new GitHubApiError("rate limited", { status: 429, retryAt: cooldown });
+      }
+      return get(identity, number, signal);
+    };
+    f.start({ now: () => clock });
+    await waitFor(() => f.events.some((event) => event.phase === "poll" && event.retryAt === cooldown), "persisted partial observation failure");
+    await waitFor(() => f.store.getPullRequest(f.pr(3, 1))?.completedRevision === 1, "other host review during repository cooldown");
+    expect(f.identities[1]!.host).not.toBe(f.identities[0]!.host);
+    for (const time of [initial + 20, initial + 40, cooldown - 1]) {
+      clock = time;
+      await waitFor(() => f.store.getRepository(f.identities[1]!)?.lastPollAt === clock, "completed other-host scan during cooldown");
+    }
+    expect(f.polls[1]).toBeGreaterThanOrEqual(4);
     expect(f.polls[0]).toBe(1);
-    expect(f.store.getRepository(f.identities[0]!)?.lastPollError).toContain("rate limited");
-    await waitFor(() => f.polls[0]! >= 2, "cooldown expiry");
+    expect(f.store.getPullRequest(f.pr())).toEqual(previous);
+    expect(f.store.getPullRequest(f.pr(2))).toBeNull();
+    expect(f.store.getRepository(f.identities[0]!)).toMatchObject({ lastPollAt: repository.lastPollAt, lastPollError: "rate limited" });
+    expect(f.store.listReviews(f.pr())).toEqual([]);
+    expect(f.store.listReviews(f.pr(2))).toEqual([]);
+    expect(f.launched.map((item) => item.review.number)).toEqual([3]);
+    clock = cooldown;
+    await waitFor(() => f.store.getRepository(f.identities[0]!)?.lastPollAt === cooldown, "complete snapshot at repository cooldown expiry");
+    expect(f.polls[0]).toBe(2);
+    expect(f.store.getPullRequest(f.pr())).toMatchObject({ state: "closed", observedAt: cooldown });
+    expect(f.store.getPullRequest(f.pr(2))).toMatchObject({ state: "open", draft: true, observedAt: cooldown });
     expect(f.store.getRepository(f.identities[0]!)?.lastPollError).toBeNull();
+    expect(f.launched.map((item) => item.review.number)).toEqual([3]);
   });
 });
 
