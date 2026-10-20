@@ -347,6 +347,15 @@ Windows. Each native CLI job uploads three curated files:
   version and replacement result, distinct from review lifecycle and live-service
   evidence.
 
+A separate `validation-probes.json` diagnostic artifact preserves command
+resolution, launcher, PID, timing, bounded output and failures even when complete
+environment collection fails. The gh probe also records selected-file bytes,
+SHA-256 and preparation duration. File preparation and native execution share
+one 10-second budget, and every native version must succeed before the complete
+environment receipt is written. The
+[cold-start decision](../../.agents/notes/implemented/bug-fix/2026-10-20-gh-cold-start-preparation.md)
+owns the measurements and deadline semantics.
+
 The dedicated Linux completion job uploads its shell receipt separately. The
 workflow's required jobs and final `checks` gate are the validation verdict for
 their checked-out revision. A scenario receipt describes its assertions; the
@@ -458,6 +467,26 @@ are not a complete compatibility guarantee. The named receipt covers its actual
 OS and architecture. Other distributions, architectures and musl require their
 own native receipt. The [state decision](../../.agents/notes/implemented/architecture/2026-10-17-durable-review-state.md)
 records the packaged binary choice.
+
+## Native APFS fixture ownership
+
+The [macOS job from run 39412445956](https://github.com/codetreker/day-night/actions/runs/39412445956/job/118593266497)
+reported 1,292 passing test cases and then failed APFS fixture finalization. An
+ordinary detach by mountpoint first reported `Resource busy`. The subsequent
+`lsof` command returned after 35 ms saying that the path was not a filesystem;
+`diskutil` returned after 39 ms without finding a disk. After the one-second
+pause, another detach by that same mountpoint failed with `No such file or
+directory`. These observations show that the mountpoint was no longer a usable
+attachment identity. They do not identify a holder, explain what changed the
+mount, or establish that the complete backing image was detached.
+
+Fixture finalization retains the attached image's device identity and verifies
+the exact fixture image's attachment state before removing its directory. The
+[device-ownership decision](../../.agents/notes/implemented/bug-fix/2026-10-20-apfs-device-ownership.md)
+owns that mechanism. The eight native APFS assertions, ordinary detach policy,
+30-second finalization budget, three-attempt limit, 40-second hook and 600-second
+platform gate remain in force. The failed job remains failure evidence; a native
+pass for the repaired fixture requires a successful job at its tested revision.
 
 ## Native termination follow-up
 
