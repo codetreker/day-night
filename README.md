@@ -7,7 +7,7 @@ is designed and awaiting implementation.
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented TypeScript CLI with SQLite review state | [Requirements](docs/spec/daynight.md), [design](docs/design/daynight.md) |
-| `daynight-server` | `packages/daynight-server/` | Project/task HTTP APIs, PostgreSQL transactions, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
+| `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | Planned `packages/daynight-web/` | Read-only dashboard design and interactive preview; application not implemented | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The `@codetreker/daynight` package provides the `daynight` CLI. It polls configured
@@ -118,8 +118,8 @@ API examples, logs, updates and volume removal.
 Use Go 1.27.2, PostgreSQL 18.6 and Node.js 24 LTS. The
 [server module](packages/daynight-server/README.md) owns configuration, startup,
 the isolated database setup and complete validation commands. Its HTTP runtime
-binds only loopback addresses and serves project creation/list/get and task
-create/list/get/update routes. Delivery status and complete process acceptance
+binds only loopback addresses and serves project creation/list/get, task
+create/list/get/update, and complete task-graph routes. Delivery status and complete process acceptance
 are recorded in the
 [task breakdown](docs/design/daynight-server-tasks.md).
 

@@ -23,6 +23,8 @@ rounding. No product files, functions or `ForTest` suffixes are excluded.
 
 ## Observed local evidence
 
+### Service baseline
+
 The complete T6 development-worktree command passed with Go 1.27.2 and
 PostgreSQL 18.6:
 
@@ -45,6 +47,25 @@ run. A controlled full command against an unavailable loopback PostgreSQL
 endpoint failed nonzero and wrote a failed receipt; the positive and negative
 receipts were kept separate. The earlier same-configuration stopped-database
 control also confirmed that cached coverage cannot hide database unavailability.
+
+### Complete graph extension
+
+The W-T1 complete-graph implementation passed the same full command with real
+PostgreSQL 18.6 and Go 1.27.2: 289 Go tests (99 top-level), nine coverage-checker
+tests, and raw 1085/1087 statement coverage (about 99.82%). Store, service and
+server remain at 100%; the existing executable coverage and all 12 process
+scenario groups remain unchanged. The local receipt records the dirty
+implementation worktree, so hosted source identity must still be verified from
+the matching CI artifact.
+
+The graph tests live in their owning store/service/server packages and count
+toward those packages' coverage. They prove exact limits and independent
+rejections, project isolation, bounded Unicode previews without description
+materialization, a write interleaved between snapshot count and projection,
+query cancellation, operational/transaction-completion precedence, and HTTP
+DTO/query/method/cache/logging behavior. The browser application and new
+built-process graph workflow are separate dashboard tasks; existing process
+scenarios do not claim to exercise the new graph route.
 
 ## Requirement evidence
 

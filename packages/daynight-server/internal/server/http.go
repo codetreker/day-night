@@ -193,13 +193,18 @@ func writeError(w http.ResponseWriter, request *http.Request, logger *slog.Logge
 			status = http.StatusBadRequest
 		case "not_found":
 			status = http.StatusNotFound
-		case "version_conflict", "dependency_cycle", "dependency_unsatisfied":
+		case "version_conflict", "dependency_cycle", "dependency_unsatisfied", "graph_limit_exceeded":
 			status = http.StatusConflict
 		}
 		if status != http.StatusInternalServerError {
 			response.Code, response.Message = fault.Code, fault.Message
 			if len(fault.TaskIDs) > 0 {
 				response.Details = &api.ErrorDetails{TaskIDs: fault.TaskIDs}
+			}
+			if fault.GraphLimit != nil {
+				limits := fault.GraphLimit
+				response.Details = &api.ErrorDetails{NodeCount: &limits.NodeCount, EdgeCount: &limits.EdgeCount,
+					MaxNodes: &limits.MaxNodes, MaxEdges: &limits.MaxEdges}
 			}
 		}
 	}

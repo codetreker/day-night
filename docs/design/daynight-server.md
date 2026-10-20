@@ -8,11 +8,24 @@
 重新评估条件由[决策记录](../../.agents/notes/implemented/architecture/2026-10-19-daynight-server-task-design.md)
 拥有。决策记录标记的是已采用的设计，不表示服务已经交付。
 [任务拆分](daynight-server-tasks.md)记录执行任务的范围、依赖、状态和验收条件。
-待实现的[只读看板设计](daynight-web.md)定义浏览器页面、完整图快照接口和静态资源
-交付；该扩展保留本文的领域与事务结构，不改变现有分页读取的一致性承诺。
+[只读看板设计](daynight-web.md)定义完整图快照接口及待实现的浏览器页面和静态资源
+交付；图 API 保留本文的领域与事务结构，不改变现有分页读取的一致性承诺。
 
 现有 `packages/daynight/` TypeScript CLI、YAML 配置和 SQLite review 状态继续独立
 运行。服务不读取或迁移这些状态；注册 project 也不启动现有 review 协调器。
+
+## 完整图读取
+
+`Tasks.Graph` 复用既有具体 store 与只读 `ReadSnapshot`：先读取 project，随后获取
+精确节点和边数量，检查 1,000/5,000 上限，再读取轻量图节点并折叠统计。core 的
+`GraphTask`、`TaskGraphSummary`、`TaskGraph` 与 HTTP DTO 分离；store 的 SQL
+直接截取 160 code points 的标题预览，不加载 description 或完整标题。
+
+Project、计数、依赖及 ready 都来自同一次 `REPEATABLE READ`。服务层的缺失和
+超限 Fault 等事务成功收尾后才返回，操作或清理失败仍优先。HTTP 拒绝全部非空
+query，返回 no-store，并沿用既有 requestId 和结构化错误机制。具体响应与拒绝
+要求由[服务端需求](../spec/daynight-server.md#完整任务图)拥有；浏览器图投影由
+[看板设计](daynight-web.md#图投影与统计)拥有，不进入 store 或服务端领域状态。
 
 ## 目录与调用方向
 

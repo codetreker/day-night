@@ -6,7 +6,7 @@ binding, connection validation, structured request logs, cancellation, and bound
 HTTP shutdown. Versioned migrations and transactional storage are implemented;
 project/task APIs and built-process acceptance are implemented; delivery status is in the
 [implementation tasks](../../docs/design/daynight-server-tasks.md); the current
-executable serves project and task routes.
+executable serves project, task and complete task-graph routes.
 
 The [requirements](../../docs/spec/daynight-server.md) own observable behavior and
 the [design](../../docs/design/daynight-server.md) owns architecture and concurrency.
@@ -184,7 +184,7 @@ a response.
 
 ## Task service
 
-`service.NewTasks` exposes `Create`, `Get`, `List` and `Update` over the same
+`service.NewTasks` exposes `Create`, `Get`, `List`, `Graph` and `Update` over the same
 concrete store. HTTP task routes use the same instance. Creation uses `todo`;
 updates require a positive expected version and at least one mutable pointer
 field. Nil means omitted, while an empty description or supplied empty dependency
@@ -210,6 +210,35 @@ outer lock-only transaction succeeds; transaction/cleanup failures remain
 operational errors. Lists and reads check project existence and task state
 inside one RR snapshot. Task cursors bind the canonical project and optional
 status/ready filters, preserving the difference between absent and false.
+
+## Complete task graph
+
+`GET /api/v1/projects/{projectId}/task-graph` reads the project, exact graph size,
+all graph nodes and their dependency projections in one read-only repeatable-read
+transaction. It returns `{project, summary, tasks}` with no pagination or filters.
+Nonempty query strings fail with 400, including unsupported parameters and invalid
+encodings. Responses use `Cache-Control: no-store`.
+
+The summary has `total`, `todo`, `inProgress`, `done`, `ready` and `blocked` counts.
+Each task counts once, even when multiple roots share it. Todo consists of ready
+and blocked tasks; graph reads do not change stored status, revisions or times.
+
+Nodes contain `id`, `titlePreview`, `titleTruncated`, `status`, `dependsOn`,
+`blockedBy`, `ready` and UTC timestamps. SQL produces at most 160 Unicode code
+points of each title without selecting descriptions or full titles. Use the
+existing task detail endpoint for complete content. Node order is `(createdAt,
+id)`; dependency arrays are sorted and empty collections encode as `[]`.
+
+Projects above 1,000 nodes or 5,000 edges return 409 `graph_limit_exceeded` with
+exact `nodeCount`, `edgeCount`, `maxNodes` and `maxEdges` in `error.details`.
+The response contains no partial graph. Missing projects return 404. Operational
+or transaction-completion failures take precedence over missing/limit refusals.
+
+Graph requests share the existing request ID and safe error handling. Logs add
+project identity and graph counts without recording task content or repository
+addresses. This endpoint supports the planned
+[read-only dashboard](../../docs/design/daynight-web.md); the browser application
+and embedded static delivery remain separate implementation tasks.
 
 ## Task HTTP API
 

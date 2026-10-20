@@ -111,7 +111,7 @@ the task-management contract. Their affordable addition depends on keeping
 resource mutation separate from external execution and on retaining opaque task
 identities. The adopted [read-only dashboard design](2026-10-20-task-dashboard-mvp-design.md)
 adds a browser consumer and a complete-graph read while retaining those boundaries;
-its implementation remains pending. Current requests only persist and read
-task-management state. Delete
+the complete graph read is implemented and browser delivery remains pending.
+Current requests only persist and read task-management state. Delete
 operations require dependency and reference rules; cross-project edges require
 reconsidering the transaction boundary. Neither is an implicit future promise.

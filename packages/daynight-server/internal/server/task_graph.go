@@ -1,0 +1,57 @@
+package server
+
+import (
+	"net/http"
+	"time"
+
+	"github.com/codetreker/daynight/packages/daynight-server/api"
+	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
+)
+
+func taskGraphResponse(graph core.TaskGraph) api.TaskGraph {
+	response := api.TaskGraph{
+		Project: projectResponse(graph.Project),
+		Summary: api.TaskGraphSummary{
+			Total: graph.Summary.Total, Todo: graph.Summary.Todo, InProgress: graph.Summary.InProgress,
+			Done: graph.Summary.Done, Ready: graph.Summary.Ready, Blocked: graph.Summary.Blocked,
+		},
+		Tasks: make([]api.GraphTask, 0, len(graph.Tasks)),
+	}
+	for _, task := range graph.Tasks {
+		response.Tasks = append(response.Tasks, api.GraphTask{
+			ID: task.ID, TitlePreview: task.TitlePreview, TitleTruncated: task.TitleTruncated, Status: string(task.Status),
+			DependsOn: append([]string{}, task.DependsOn...), BlockedBy: append([]string{}, task.BlockedBy...), Ready: task.Ready,
+			CreatedAt: task.CreatedAt.UTC(), UpdatedAt: task.UpdatedAt.UTC(),
+		})
+	}
+	return response
+}
+
+func (h *taskHandler) graph(w http.ResponseWriter, request *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	start := time.Now()
+	projectID, _, logger, err := h.resource(request)
+	if err != nil {
+		writeError(w, request, logger, "task_graph", "get", err)
+		return
+	}
+	if request.URL.RawQuery != "" {
+		writeError(w, request, logger, "task_graph", "get", invalidInput("task graph does not accept query parameters"))
+		return
+	}
+	graph, err := h.tasks.Graph(request.Context(), projectID)
+	if err != nil {
+		if fault, ok := knownFault(err); ok && ErrorKind(err) == fault.Code && fault.GraphLimit != nil {
+			logger = logger.With("node_count", fault.GraphLimit.NodeCount, "edge_count", fault.GraphLimit.EdgeCount)
+		}
+		writeError(w, request, logger, "task_graph", "get", err)
+		return
+	}
+	edgeCount := 0
+	for _, task := range graph.Tasks {
+		edgeCount += len(task.DependsOn)
+	}
+	logger.InfoContext(request.Context(), "task graph read", "type", "resource", "component", "task_graph", "phase", "get",
+		"request_id", RequestID(request.Context()), "duration", time.Since(start), "node_count", len(graph.Tasks), "edge_count", edgeCount)
+	writeJSON(w, request, logger, http.StatusOK, taskGraphResponse(graph))
+}
