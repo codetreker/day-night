@@ -18,7 +18,8 @@ expandable source-root graphs, and a task detail drawer. The
 the [task breakdown](../../../../docs/design/daynight-web-tasks.md) owns execution
 status, dependencies and completion criteria, and the [interactive preview](../../../../docs/design/mockups/task-dashboard.html)
 demonstrates the intended appearance. This note records a delivered design;
-the web application and API additions remain unimplemented.
+the complete graph read is implemented, while the web application and deployment
+additions remain unimplemented.
 
 Use a separate React/TypeScript/Vite package with React Flow and Dagre. Serve
 its built assets from the existing loopback Go origin, embedded into the binary.
@@ -35,7 +36,8 @@ project-scoped database, volumes and network. Browser acceptance uses that
 isolated stack; Go coverage and direct-process tests keep their existing isolated
 database mechanism.
 
-Add one project graph read returning complete graph metadata and statistics
+The implemented [complete graph read](../feature/2026-10-20-complete-task-graph-read.md)
+returns complete graph metadata and statistics
 from the existing read-only REPEATABLE READ mechanism. Existing paged task
 reads do not share a cross-page snapshot. Graph nodes omit descriptions and
 contain bounded title previews; full content uses the existing detail endpoint.

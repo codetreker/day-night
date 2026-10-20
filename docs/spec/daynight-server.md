@@ -115,6 +115,7 @@ PATCH 可修改 `title`、`description`、`status`、`dependsOn`，并且必须�
 | `POST` | `/api/v1/projects/{projectId}/tasks` | 创建 task，返回 `201` 和资源 |
 | `GET` | `/api/v1/projects/{projectId}/tasks` | 返回 task 分页列表 |
 | `GET` | `/api/v1/projects/{projectId}/tasks/{taskId}` | 返回 task，缺失或不属于该 project 时 `404` |
+| `GET` | `/api/v1/projects/{projectId}/task-graph` | 返回同一完整快照的 project、任务图和统计 |
 | `PATCH` | `/api/v1/projects/{projectId}/tasks/{taskId}` | 原子更新 task，返回 `200` 和资源 |
 
 HTTP 创建请求使用 `Content-Type: application/json`，可附带 UTF-8 charset。请求体
@@ -150,6 +151,29 @@ Cursor 必须绑定列表类型、所属 project 和筛选条件，格式错误�
 输入错误拒绝；`limit` 的默认值仅用于未提供该参数。
 单次响应中的 task、依赖和派生字段保持一致；多次翻页不承诺跨请求快照。
 
+### 完整任务图
+
+`GET /api/v1/projects/{projectId}/task-graph` 提供同一只读 `REPEATABLE READ` 快照中的
+project、完整 tasks 及 summary，不使用分页或状态筛选。任何非空 query，包括未知
+字段、分页/筛选字段和无效编码，均返回 `400 invalid_input`。成功、拒绝和读取错误
+响应采用 `Cache-Control: no-store`；GET 同时支持 HEAD，其他方法返回 405 与 Allow。
+
+summary 包含 `total`、`todo`、`inProgress`、`done`、`ready`、`blocked`，按不同任务
+ID 计数，满足 `total = todo + inProgress + done` 和 `todo = ready + blocked`。
+blocked 只计入前置未全部完成的 todo；任务的状态、版本和时间不随此次读取变化。
+
+图节点包含 `id`、`titlePreview`、`titleTruncated`、`status`、`dependsOn`、
+`blockedBy`、`ready`、`createdAt` 和 `updatedAt`。标题预览最多 160 Unicode code
+points，截短时标记 titleTruncated；不返回完整标题、description 或 version。完整
+任务内容继续使用既有详情接口。节点按 `(createdAt,id)` 排序，前置及阻塞 ID 数组
+按 ID 排序；空图和空数组使用 `[]`，时间使用 UTC。边由 dependsOn 表示。
+
+一个成功图最多包含 1,000 节点、5,000 边。快照内先获取精确数量；超过任一上限
+返回 `409 graph_limit_exceeded`，error.details 包含 `nodeCount`、`edgeCount`、
+`maxNodes`、`maxEdges`，不包含 taskIds，不返回部分图。缺失 project 仍为 404。
+数据库、取消和事务完成失败优先于暂存的缺失或超限结果，不得被降格成 404/409。
+计数、依赖、ready 与 summary 必须来自同一次快照，即使读取期间有并发写入。
+
 错误响应统一包含 `error.code`、`error.message`、`error.requestId`，必要时包含
 `error.details.taskIds` 中按 ID 排序的阻塞 task ID。HTTP 状态与错误分类如下：
 
@@ -161,6 +185,7 @@ Cursor 必须绑定列表类型、所属 project 和筛选条件，格式错误�
 | `409` | `version_conflict` | PATCH 版本过期 |
 | `409` | `dependency_cycle` | 候选依赖图成环 |
 | `409` | `dependency_unsatisfied` | 前置状态或下游状态阻止操作 |
+| `409` | `graph_limit_exceeded` | 完整图超过节点或边上限，返回精确数量和支持上限 |
 | `500` | `internal_error` | 内部或持久化操作失败，响应不泄露数据库连接信息或 SQL |
 
 ## 运行与范围
@@ -175,8 +200,8 @@ API 端口只发布到 `127.0.0.1`，数据库不发布宿主机端口；容器�
 关闭时停止接收新请求，在有界期限内排空请求，再关闭数据库连接。
 
 本文的任务管理接口范围不包含自动任务执行、PR 关联、review 调度、跨 project
-依赖或删除接口。只读页面与新增图读取的待实现要求由[看板需求](daynight-web.md)
-拥有；现有分页接口继续遵循本文的快照边界。后续扩展必须保留现有 task 身份、
+依赖或删除接口。完整图读取由本文定义，浏览器页面的待实现要求由
+[看板需求](daynight-web.md)拥有；现有分页接口继续遵循本文的快照边界。后续扩展必须保留现有 task 身份、
 状态约束、事务原子性和错误语义。
 
 ## 验收要求

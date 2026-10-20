@@ -61,7 +61,7 @@ func knownFault(err error) (*service.Fault, bool) {
 	var fault *service.Fault
 	if errors.As(err, &fault) {
 		switch fault.Code {
-		case "invalid_input", "not_found", "version_conflict", "dependency_cycle", "dependency_unsatisfied":
+		case "invalid_input", "not_found", "version_conflict", "dependency_cycle", "dependency_unsatisfied", "graph_limit_exceeded":
 			return fault, true
 		}
 	}

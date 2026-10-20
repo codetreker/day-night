@@ -21,7 +21,11 @@ type ProjectPage struct {
 }
 
 type ErrorDetails struct {
-	TaskIDs []string `json:"taskIds"`
+	TaskIDs   []string `json:"taskIds,omitempty"`
+	NodeCount *int64   `json:"nodeCount,omitempty"`
+	EdgeCount *int64   `json:"edgeCount,omitempty"`
+	MaxNodes  *int64   `json:"maxNodes,omitempty"`
+	MaxEdges  *int64   `json:"maxEdges,omitempty"`
 }
 
 type Error struct {

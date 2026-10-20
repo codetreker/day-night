@@ -21,6 +21,11 @@ func taskRoutes(mux *http.ServeMux, tasks *service.Tasks, logger *slog.Logger) {
 	mux.HandleFunc("GET /api/v1/projects/{projectId}/tasks", handler.list)
 	mux.HandleFunc("GET /api/v1/projects/{projectId}/tasks/{taskId}", handler.get)
 	mux.HandleFunc("PATCH /api/v1/projects/{projectId}/tasks/{taskId}", handler.update)
+	mux.HandleFunc("GET /api/v1/projects/{projectId}/task-graph", handler.graph)
+	mux.HandleFunc("/api/v1/projects/{projectId}/task-graph", func(w http.ResponseWriter, request *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		methodNotAllowed(logger, "GET, HEAD")(w, request)
+	})
 	mux.HandleFunc("/api/v1/projects/{projectId}/tasks", methodNotAllowed(logger, "GET, HEAD, POST"))
 	mux.HandleFunc("/api/v1/projects/{projectId}/tasks/{taskId}", methodNotAllowed(logger, "GET, HEAD, PATCH"))
 }

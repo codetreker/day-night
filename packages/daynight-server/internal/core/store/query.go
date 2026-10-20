@@ -57,14 +57,15 @@ func scanProject(row pgx.Row) (core.Project, error) {
 }
 
 const taskProjection = `t.id::text, t.project_id::text, t.title, t.description,
-	t.status, t.version, t.created_at, t.updated_at,
-	ARRAY(SELECT d.depends_on_task_id::text FROM task_dependencies d
-		WHERE d.project_id = t.project_id AND d.task_id = t.id ORDER BY d.depends_on_task_id),
-	ARRAY(SELECT d.depends_on_task_id::text FROM task_dependencies d
+	t.status, t.version, t.created_at, t.updated_at, ` + taskDependsOn + `, ` + taskBlockedBy + `, ` + taskReady
+
+const taskDependsOn = `ARRAY(SELECT d.depends_on_task_id::text FROM task_dependencies d
+		WHERE d.project_id = t.project_id AND d.task_id = t.id ORDER BY d.depends_on_task_id)`
+
+const taskBlockedBy = `ARRAY(SELECT d.depends_on_task_id::text FROM task_dependencies d
 		WHERE d.project_id = t.project_id AND d.task_id = t.id
 		AND NOT EXISTS (SELECT 1 FROM tasks p WHERE p.project_id = d.project_id
-			AND p.id = d.depends_on_task_id AND p.status = 'done') ORDER BY d.depends_on_task_id),
-	` + taskReady
+			AND p.id = d.depends_on_task_id AND p.status = 'done') ORDER BY d.depends_on_task_id)`
 
 const taskReady = `(t.status = 'todo' AND NOT EXISTS (
 	SELECT 1 FROM task_dependencies d WHERE d.project_id = t.project_id AND d.task_id = t.id

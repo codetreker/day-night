@@ -1,6 +1,6 @@
 # 项目与任务看板设计
 
-状态：MVP 已批准，架构与实现任务已细化，功能待实现。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
+状态：完整图 API 已实现；MVP 的浏览器页面、图展示及部署仍待实现。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
 
 ## 目标与现有基础
 
@@ -206,7 +206,7 @@ flowchart LR
 | `GET /{$}` | 精确根路径，返回 SPA index；`GET /` 不能替代精确匹配 |
 | `GET /projects/{projectId}` | 返回同一个 index，资源存在性由图 API 决定 |
 | `GET /assets/` 前缀 | 仅返回实际存在的构建资源；目录与缺失文件返回 404 |
-| `/api/v1/...` | 保留现有 API；新增 task-graph 路由 |
+| `/api/v1/...` | 项目、任务及 task-graph API 已实现 |
 | 其他路径 | 404；未知 `/api/*` 保留 JSON 错误，不返回 HTML |
 
 GET 沿用 Go 的 HEAD 语义；已知 UI、asset 和图路径不支持的方法返回 405 与 Allow。`internal/webui` 暴露具体 HTML/asset handler，server 拥有路由注册，不用外层 URL dispatcher 绕过原 mux。HTML、图和最新详情响应采用 `Cache-Control: no-store`，内容哈希资源采用长期 immutable 缓存；不注册 Service Worker。
@@ -291,7 +291,7 @@ W-T5 交付两套环境定义与隔离 smoke test；W-T6 接入完整浏览器�
 
 根 `package.json`、锁文件、共享构建脚本和 `.github/workflows/checks.yml` 的唯一编辑归属按阶段交接：W-T2 建立并负责 web 命令和 `verify-web`；W-T2 验收后由 W-T5 接手构建/Go 工具配置；W-T5 验收后由 W-T6 接手最终生产验收步骤。接收任务在开始时核对前一阶段已通过的命令与 required job 清单，再接管编辑；其他任务只提出所需命令和依赖，不直接并发修改这些文件。W-T6 是最终汇总责任方，验证 `checks.needs` 包含 `verify-server`、`verify-web` 和现有 CLI `verify`，且任何失败或取消都不能被成功汇总。
 
-## 新增图 API
+## 完整图 API
 
 ```http
 GET /api/v1/projects/{projectId}/task-graph
