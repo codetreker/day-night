@@ -22,7 +22,7 @@ same version as CI and waits for database-backed API health checks. Embedded
 service migrations retain ownership of schema initialization.
 
 A gateway owns the network namespace shared with the server. nginx forwards
-TCP from container port `8080` to the service's `127.0.0.1:8787` listener; only
+TCP from container port `80` to the service's `127.0.0.1:8787` listener; only
 host `127.0.0.1` receives a published API port. The database has no published
 host port. TCP forwarding leaves HTTP parsing, size limits and request logging
 with the service. The gateway owns the published port and network namespace;

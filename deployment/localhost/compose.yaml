@@ -20,11 +20,11 @@ services:
   gateway:
     image: nginx:1.30.6-alpine3.24
     ports:
-      - "127.0.0.1:${DAYNIGHT_PORT:-8787}:8080"
+      - "127.0.0.1:${DAYNIGHT_PORT:-8787}:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     healthcheck:
-      test: [CMD, wget, -q, -T, "3", -O, /dev/null, "http://127.0.0.1:8080/api/v1/projects?limit=1"]
+      test: [CMD, wget, -q, -T, "3", -O, /dev/null, "http://127.0.0.1:80/api/v1/projects?limit=1"]
       interval: 5s
       timeout: 5s
       retries: 24
