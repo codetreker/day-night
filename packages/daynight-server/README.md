@@ -360,6 +360,14 @@ the [V1–V10 requirements](../../docs/spec/daynight-server.md) as follows:
 | V9: mandatory infrastructure and complete CI | Missing/unavailable PostgreSQL fails the check; test-result expiration preserves real observations; the [workflow aggregate](../../.github/workflows/checks.yml) requires all native CLI platforms, shell completion, Go and web jobs |
 | V10: correlation and privacy | Workflow/refusal/partial-failure/cancellation/startup scenarios verify HTTP request IDs, canonical resource IDs, structured categories and absence of submitted secret markers from logs |
 
+HTTP error assertions preserve expected status/code, JSON response headers and
+exact error.requestId/X-Request-ID correlation. Known secret markers and database
+URLs are checked across the entire body. SQL-marker checks cover the complete
+JSON envelope, including unknown fields and keys, while masking only the direct
+error.requestId string after unique, syntactically valid header correlation.
+Other original bytes and nested requestId fields remain diagnostic content. The [acceptance metadata decision](../../.agents/notes/implemented/bug-fix/2026-10-21-http-error-acceptance-metadata.md)
+explains why a legal opaque ID may contain the SQL marker.
+
 The installed CLI scenario and its artifact/source validation live in
 [`acceptance_cli_test.go`](cmd/daynight-server/acceptance_cli_test.go).
 Successful package-level coverage and actual process results are separate

@@ -31,6 +31,15 @@ sequence verifies that changed metadata and the first dependency existed before
 an injected write failure. This prevents a pre-write error from passing as
 evidence of rollback.
 
+Error assertions verify status, code and exact body/header request correlation.
+Known secret markers and database URLs remain forbidden across the whole body.
+The SQL diagnostic view masks only the direct error.requestId string after
+validating unique, syntactically valid header correlation. All other original
+JSON bytes, including unknown members and keys, remain subject to the scan.
+This treats an opaque ID as metadata without exempting diagnostic fields; the
+[metadata decision](../bug-fix/2026-10-21-http-error-acceptance-metadata.md)
+records the false-positive mechanism and rejected alternatives.
+
 Only owned children are stopped or killed, then waited for. Row locks are
 released before cleanup waits; child sessions must disappear before isolated
 schemas are dropped. Build directories are removed after execution. Cleanup is

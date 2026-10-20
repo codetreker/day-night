@@ -570,7 +570,11 @@ func acceptanceError(t *testing.T, response acceptanceResponse, status int, code
 	if value.Code != code || value.RequestID != response.header.Get("X-Request-ID") || value.Message == "" {
 		t.Fatal("HTTP error code or request correlation differs from the contract")
 	}
-	if bytes.Contains(response.body, []byte("acceptance-secret")) || bytes.Contains(response.body, []byte("SQL")) || bytes.Contains(response.body, []byte("postgres://")) {
+	leaks, err := acceptanceErrorLeaks(response.body, response.header.Values("X-Request-ID"))
+	if err != nil {
+		t.Fatalf("HTTP error correlation metadata is invalid: %v", err)
+	}
+	if leaks {
 		t.Fatal("sensitive data entered the HTTP error response")
 	}
 	return value

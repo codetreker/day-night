@@ -148,8 +148,15 @@ func acceptanceRefusals(t *testing.T, scenario *acceptanceScenario) {
 	if len(last.Items) != 1 || last.Items[0].ID != expected[1] || last.NextCursor != nil {
 		t.Fatal("filtered final keyset page or terminal cursor is invalid")
 	}
-	for _, path := range []string{acceptanceTasksPath(other.ID) + "?status=todo&ready=true&cursor=" + cursor, acceptanceTasksPath(project.ID) + "?status=todo&ready=false&cursor=" + cursor, "/api/v1/projects?cursor=" + cursor} {
-		acceptanceError(t, process.request(context.Background(), http.MethodGet, path, nil, ""), http.StatusBadRequest, "invalid_input")
+	for index, path := range []string{acceptanceTasksPath(other.ID) + "?status=todo&ready=true&cursor=" + cursor, acceptanceTasksPath(project.ID) + "?status=todo&ready=false&cursor=" + cursor, "/api/v1/projects?cursor=" + cursor} {
+		requestID := ""
+		if index == 0 {
+			requestID = acceptanceSQLRequestID
+		}
+		fault := acceptanceError(t, process.request(context.Background(), http.MethodGet, path, nil, requestID), http.StatusBadRequest, "invalid_input")
+		if requestID != "" && fault.RequestID != requestID {
+			t.Fatal("cursor refusal did not preserve its supplied request ID")
+		}
 	}
 	blocked := acceptanceDecode[api.TaskPage](t, process.request(context.Background(), http.MethodGet, acceptanceTasksPath(project.ID)+"?status=todo&ready=false", nil, ""), http.StatusOK)
 	if len(blocked.Items) != 2 || blocked.Items[0].Ready || blocked.Items[1].Ready {
