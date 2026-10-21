@@ -14,6 +14,11 @@
 现有 `packages/daynight/` TypeScript CLI、YAML 配置和 SQLite review 状态继续独立
 运行。服务不读取或迁移这些状态；注册 project 也不启动现有 review 协调器。
 
+待实现的[预定义属性设计](daynight-task-properties.md)在完整 task 中增加固定
+结构的 PR 引用，并沿用本文的 task 事务与版本机制。其
+[需求](../spec/daynight-task-properties.md)及[实施任务](daynight-task-properties-tasks.md)
+单独拥有扩展行为与实施状态。
+
 ## 完整图读取
 
 `Tasks.Graph` 复用既有具体 store 与只读 `ReadSnapshot`：先读取 project，随后获取
