@@ -82,9 +82,12 @@ that they have no runtime body. Temporary native compiler inputs and outputs liv
 under this package's `.tmp/` and are removed after classification. Typechecking
 remains a separate mandatory check; classification is not a substitute for it.
 
-CI requires `verify-web` alongside the Go server, every native CLI platform and
-the dedicated Linux shell completion job. The web job also tests the dev-ci runner
-with controlled Docker fixtures. It uploads `coverage-final.json` and
+PR CI selects affected modules using the [repository routing rules](../../README.md#ci-selection);
+main pushes run the full suite. The `checks` aggregate requires successful routing
+and successful selected jobs, with deliberately unselected jobs reported as
+`skipped`. When selected, `verify-web` retains its complete workload, including
+real embedded Go builds and production-browser acceptance. The web job also
+tests the dev-ci runner with controlled Docker fixtures. It uploads `coverage-final.json` and
 `summary.json`, which records exact counts and the relative product-source
 manifest. Coverage and acceptance artifacts are retained for 30 days. The
 [implementation tasks](../../docs/design/daynight-web-tasks.md) retain validation
@@ -155,7 +158,7 @@ target's raw Playwright report and screenshots, capacity measurements, container
 image identity and cleanup outcomes. `CI` requires a clean checkout matching
 `GITHUB_SHA`, Linux and the pinned browser. Playwright uses one worker and no
 retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validation.
-The required web CI job archives `daynight-web-acceptance` separately from raw
+When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
 tested checkout identity, which is normally a merge revision for PR runs. A pass
 requires all 12 native and eight container scenarios, every fixed graph's five

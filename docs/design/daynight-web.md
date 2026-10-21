@@ -14,7 +14,7 @@
 | 页面与 API 同源 | `internal/server` 在同一 mux 注册精确页面、静态资源及 API 路由；`internal/webui` 内嵌真实构建产物，未知 API 保留 JSON 404。 |
 | 已有一致读取机制 | `packages/daynight-server/internal/core/store/snapshot.go` 的 `ReadSnapshot` 使用只读 `REPEATABLE READ`。 |
 | 分页之间没有共同快照 | [服务端分页约定](../spec/daynight-server.md)明确这一边界；不能用多次 task list 拼成准确的项目全图。 |
-| web 与 CLI 工作区独立 | 私有 React/TypeScript/Vite 包使用显式 `web:*` 命令；根 build/typecheck/test 继续只覆盖 CLI，web 使用独立必选 CI job。 |
+| web 与 CLI 工作区独立 | 私有 React/TypeScript/Vite 包使用显式 `web:*` 命令；根 build/typecheck/test 继续只覆盖 CLI，web 使用按[CI 路由](../../README.md#ci-selection)选择的独立 job。 |
 
 ## MVP 范围
 
@@ -374,9 +374,9 @@ deployment/
 
 ### CI 构建归属
 
-`verify-web` 和 `verify-server` 都配置固定 Node/pnpm，并在干净 checkout 从锁文件安装依赖、构建真实 UI。Go 检查调用共享构建后继续负责 build/vet/race/go-cov；web job 负责 web typecheck、构建、严格覆盖率及 dev-ci 生命周期 fixture。web job 运行 `pnpm web:acceptance`，加入生产浏览器、Docker 与性能验收。两个 job、原生 CLI 各平台和独立 Linux shell completion job 的真实成功共同进入 `checks`。
+`verify-web` 和 `verify-server` 被选中时，都使用固定 Node/pnpm，在干净 checkout 从锁文件安装依赖并构建真实 UI。Go 检查调用共享构建后继续负责 build/vet/race/go-cov；web job 负责 web typecheck、构建、严格覆盖率及 dev-ci 生命周期 fixture，并运行 `pnpm web:acceptance` 完成生产浏览器、Docker 与性能验收。PR 按[仓库 CI 路由](../../README.md#ci-selection)选择模块，main push 执行全量检查。`checks` 要求路由成功，选中的 Go、web、CLI 原生矩阵和独立 Linux shell completion job 成功，未选中的 job 为 `skipped`。
 
-根 `package.json`、锁文件、共享构建脚本和 `.github/workflows/checks.yml` 的唯一编辑归属按阶段交接：W-T2 建立并负责 web 命令和 `verify-web`；W-T2 验收后由 W-T5 接手构建/Go 工具配置；W-T5 验收后由 W-T6 接手最终生产验收步骤。接收任务在开始时核对前一阶段已通过的命令与 required job 清单，再接管编辑；其他任务只提出所需命令和依赖，不直接并发修改这些文件。W-T6 是最终汇总责任方，验证 `checks.needs` 包含 `verify-server`、`verify-web`、现有 CLI `verify` 与 `verify-completion`，且任何失败或取消都不能被成功汇总。
+看板交付时，根 `package.json`、锁文件、共享构建脚本和 `.github/workflows/checks.yml` 的唯一编辑归属按阶段交接：W-T2 建立并负责 web 命令和 `verify-web`；W-T2 验收后由 W-T5 接手构建/Go 工具配置；W-T5 验收后由 W-T6 接手最终生产验收步骤。接收任务在开始时核对前一阶段已通过的命令与 required job 清单，再接管编辑；其他任务只提出所需命令和依赖，不直接并发修改这些文件。W-T6 是最终汇总责任方，验证 `checks.needs` 包含 `verify-server`、`verify-web`、现有 CLI `verify` 与 `verify-completion`，且任何失败或取消都不能被成功汇总。
 
 ## 完整图 API
 
@@ -565,7 +565,7 @@ CDP timeline、User Timing、frame 与 GC 事件关联浏览器内的输入/条�
 结果、生产镜像与清理状态。各目标保留原始 Playwright JSON、场景截图和浏览器
 身份；原生目标保留逐次性能数据。CI 的 `daynight-web-acceptance` 产物同时归档
 这些文件与 `.tmp/dev-ci/`，独立 `daynight-web-coverage` 归档原始语句报告及源码
-清单。任何执行或清理失败必须让必选 web job 失败。
+清单。web job 被选中后，任何执行或清理失败必须让该 job 失败。
 
 恢复命令为 `node packages/daynight-web/scripts/acceptance.mts --cleanup [run-id]`，
 默认读取最近一次回执，缺失回执不操作资源。恢复先确认原 runner 已停止，callback 和
@@ -581,10 +581,10 @@ CI 无论验收成功、失败或取消都执行恢复与归档；恢复成功�
 
 1. Go：真实 PostgreSQL 测试完整图与统计一致性、空项目、不存在、规模边界、长文本预览、并发写期间的一致快照、取消与数据库失败；增加静态资源、深链接、API 优先级、缺失资源与方法测试。
 2. web：Vitest + Testing Library，重点测根识别、闭包、菱形去重、共享节点、外部前置、统计口径、请求取消/晚到、失败重试和侧栏焦点。项目列表必须覆盖续页游标、末页隐藏加载按钮、去重及下一页失败重试，证明所有项目可访问。断言可见行为，不依赖框架内部坐标。
-3. 覆盖率：保留 Go go-cov 和原始 profile 的严格 `covered * 10 > total * 9`。新增 web 必选 job，使用 Vitest V8 provider 输出的 `coverage-final.json`，按产品文件的语句命中表汇总计数并用整数执行同样严格比较。显式设置 `coverage.include` 为 `src/**/*.{ts,tsx}`；检查脚本另行枚举同一源码清单并逐文件核对报告，含未被测试导入的产品文件，缺失即失败。纯类型文件只有在确认没有运行语句时允许零语句；API、图算法和入口没有排除项。拒绝空、畸形报告，测试恰好 90%、舍入、未导入文件和遗漏文件等失败边界。第三方库与构建产物不属于产品源码。
+3. 覆盖率：保留 Go go-cov 和原始 profile 的严格 `covered * 10 > total * 9`。web job 使用 Vitest V8 provider 输出的 `coverage-final.json`，按产品文件的语句命中表汇总计数并用整数执行同样严格比较。显式设置 `coverage.include` 为 `src/**/*.{ts,tsx}`；检查脚本另行枚举同一源码清单并逐文件核对报告，含未被测试导入的产品文件，缺失即失败。纯类型文件只有在确认没有运行语句时允许零语句；API、图算法和入口没有排除项。拒绝空、畸形报告，测试恰好 90%、舍入、未导入文件和遗漏文件等失败边界。第三方库与构建产物不属于产品源码。
 4. 两个模块分别大于 90%，因此加权总体也大于 90%；不能靠 Go 的高覆盖率掩盖 web 缺口。现有 Go package/function/critical-block 与所有 CLI 原生平台门槛保持。
 5. 浏览器验收使用 Playwright、构建后的真实页面、真实服务与隔离 PostgreSQL。通过 API 建立项目和任务，验证完整点击路径、共享/外部前置、空项目、局部失败与重试、深链接刷新、键盘节点操作，以及侧栏实际焦点进入/Tab 循环/Esc、关闭按钮和关闭后恢复焦点；收集截图、测试 SHA、通过结果和资源清理证据。
-6. 必选 web job 纳入 `checks`，与 Go、原生 CLI 和独立 shell completion 检查共同汇总。Go job 与 web job 各自在干净 checkout 中生成真实 UI 产物，验证内嵌页面可用。依赖变更遵守现有 workspace 与 CLI 版本检查规则。
+6. PR 按[仓库 CI 路由](../../README.md#ci-selection)选择受影响模块，main push 执行全量检查。`checks` 要求路由成功、选中的 job 成功，未选中的 job 为 `skipped`。Go job 与 web job 被选中时，各自在干净 checkout 中生成真实 UI 产物并完成既有集成验收；跨模块构建前置不改变模块路由。依赖变更遵守现有 workspace 与 CLI 版本检查规则。
 7. 性能验收使用 Linux CI 的固定 Chromium、生产构建和固定拓扑图集，覆盖 1,000 节点的单链，以及恰好同时具有 1,000 节点和 5,000 边的分叉合流、多根共享图。每次从折叠状态打开，重复五次，最慢一次从点击到可操作画布不超过 3,000ms；布局后打开详情、缩放或平移的可见反馈不超过 300ms。单独保存布局/渲染耗时和完整测试环境，接口耗时与详情网络时间分开记录。失败必须优化或重新评审支持上限，不能把超时结果当成已支持，也不默认引入后台 worker。
 
 ## 实施与验收边界

@@ -10,7 +10,7 @@ the corresponding PR and CI evidence.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion`, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service/default-budget acceptance verified | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
+| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service/default-budget acceptance verified | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -25,8 +25,9 @@ server access, review repositories or both; valid business commands guide missin
 configuration for their own capability before continuing. `update` manages
 the current npm global installation independently of review configuration and
 runtime. `completion` generates native Bash and zsh scripts from the same command
-definitions used by parsing and help. Loaded scripts complete locally without
-starting Node on each Tab.
+definitions used by parsing and help, and `completion setup` installs their
+startup configuration. Loaded scripts complete locally without starting Node on
+each Tab.
 
 The adopted [project/task CLI design](docs/design/daynight-project-task.md) adds
 server-backed commands, automatic Git-origin project discovery and ignored
@@ -120,8 +121,10 @@ to the Bash 4.2 executable before running `pnpm completion:acceptance`.
 to `bash` and `zsh`. `DAYNIGHT_TEST_ZSH_ROOT` optionally selects an extracted zsh
 toolchain root. `DAYNIGHT_COMPLETION_EVIDENCE` optionally selects the JSON receipt
 path. The command builds the client and runs a Python PTY harness against actual
-Tab insertion in all three shells. It uses isolated startup files and task-local
-fixtures, with no user configuration, review credentials or installed CLI changes.
+Tab insertion in all three shells. It also installs setup into isolated startup
+files and checks real login and interactive shell loading, repeated installation
+and completion registration. It uses task-local fixtures, with no user
+configuration, review credentials or installed CLI changes.
 A dedicated Ubuntu 24.04 CI job runs this suite separately from the native CLI
 matrix; its result belongs to the tested revision. The
 [completion design](docs/design/daynight-completion.md) owns its coverage and
@@ -129,12 +132,14 @@ loading guarantees.
 
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
 Windows runners. Each native job resolves the latest available Node.js 24 patch.
-The final `checks` job also requires the dedicated Linux shell
-completion job and the server and web jobs; all required jobs must succeed. The
-Linux job also enforces package version increases before ordinary validation. A
-PR compares its complete source changes with its merge base and its package
-version with the event's target-branch revision. Main pushes compare
-the full event before/after range. The checkout includes the required history.
+PRs select complete module jobs from their changed paths; the
+[CI selection rules](#ci-selection) define shared inputs and documentation-only
+changes. A selected CLI runs every native platform and the dedicated Linux shell
+completion job. The Linux job also enforces package version increases before
+ordinary validation. A PR compares its complete source changes with its merge
+base and its package version with the event's target-branch revision. Main pushes
+run every module and compare package versions across the full event before/after
+range. The checkout includes the required history.
 Native tool discovery records command resolution, launcher, PID, timing, status
 and bounded output in `.tmp/validation-probes.json`. Before executing `gh`, it
 reads the selected file sequentially and records its byte count, SHA-256 and
@@ -143,7 +148,8 @@ preparation duration. Resolution, preparation and native execution share one
 the probe. The version child uses isolated project-local configuration/state and
 disabled telemetry. A separate diagnostic artifact uploads after validation even
 when environment discovery fails. Every native version, the complete validation
-workload and the 600-second platform gate remain required. The
+workload and the 600-second platform gate remain required whenever CLI validation
+is selected. The
 [cold-start decision](.agents/notes/implemented/bug-fix/2026-10-20-gh-cold-start-preparation.md)
 records the measurements, deadline semantics and remaining limits.
 
@@ -151,10 +157,16 @@ macOS tests mount temporary case-sensitive and case-insensitive APFS images to
 check path identity against both filesystem behaviors. Setup positively verifies
 whole-image ownership before the eight original filesystem cases. One additional
 same-user read-only file-holder case requires actual Busy, known-PID diagnostics,
-delayed release and exact image absence. All finalization shares one 30-second
-budget and at most three ordinary detach calls; unresolved cleanup fails the job.
-The [finalization decision](.agents/notes/implemented/bug-fix/2026-10-20-apfs-finalization-window.md)
-records the ownership and observation guarantees. No live GitHub or Copilot
+acknowledged release after at least six seconds and exact image absence. That
+controlled case restricts its volume `lsof` query to the acknowledged child PID
+AND the mounted filesystem; generic fixture diagnostics retain their existing
+filesystem query. Every diagnostic keeps its two-second limit. All finalization
+shares one 30-second budget and at most three ordinary detach calls; unresolved
+cleanup fails the job. The
+[finalization decision](.agents/notes/implemented/bug-fix/2026-10-20-apfs-finalization-window.md)
+records the ownership and observation guarantees, and the
+[controlled-holder decision](.agents/notes/implemented/bug-fix/2026-10-21-apfs-controlled-holder-observation.md)
+records the limited process selection and required native evidence. No live GitHub or Copilot
 credentials are required by these checks.
 SQLite tests use real disk databases, including reopen, transaction rollback,
 locking, and revision/retry transitions on every platform.
@@ -219,15 +231,15 @@ statement coverage strictly greater than 90%, package coverage of at least 85%,
 and function coverage of at least 80%, with critical-block checks enabled. The
 same raw coverage profile supplies an exact strict comparison; exactly 90%
 fails, independently of display rounding. No product files or functions are
-excluded. The CI aggregate requires this Go job, web, every native CLI platform
-and the Linux shell completion job to pass. PostgreSQL absence is a failure, not
+excluded. When [CI selection](#ci-selection) selects the server, the aggregate
+requires this complete Go job to pass. PostgreSQL absence is a failure, not
 a skipped test. PT-T5 adds an installed-CLI service path and production-budget
 probes to this same gate. A Node orchestrator shares one real installation across
 the Go command scenarios and, after the unchanged go-cov/strict-profile checks,
 public-command probes outside Go's default ten-minute timer. Those probes retain
 the 30-second request, five-minute operation, 128 MiB single-response and 256 MiB
-cumulative decoded-response limits. The existing 20-minute Go job and every
-required check remain in place. The [acceptance design](docs/design/daynight-project-task.md#验证与交付证据)
+cumulative decoded-response limits. The Go job retains its 20-minute bound and
+complete validation workload. The [acceptance design](docs/design/daynight-project-task.md#验证与交付证据)
 owns the mechanism and source-bound evidence. The
 [server validation guide](packages/daynight-server/README.md#built-process-acceptance-and-ci-evidence) maps
 requirements to tests and describes the CI receipt containing tested source and
@@ -253,9 +265,9 @@ clean Go build without generated assets fails; no placeholder UI is committed.
 The web job runs typecheck, production build, controlled-fetch UI tests, isolated
 deployment lifecycle fixtures and an exact statement gate strictly
 above 90%. It independently enumerates all product TypeScript/TSX files and
-publishes raw counters plus a relative source manifest. `checks` requires web,
-Go, every native CLI platform and the Linux shell completion job; existing root
-CLI commands retain their scope.
+publishes raw counters plus a relative source manifest. When
+[CI selection](#ci-selection) selects web, `checks` requires this complete job to
+pass; existing root CLI commands retain their scope.
 
 For a disposable full-stack HTTP target, run a command through
 `bash deployment/dev-ci/run.sh <command> [args...]`; it receives
@@ -427,6 +439,7 @@ daynight review add-repo <remote> [--path <path>]
 daynight completion                 # Show completion help
 daynight completion bash
 daynight completion zsh
+daynight completion setup [--shell bash|zsh] [--rc-file <path>]
 daynight project
 daynight project create <name> [--repo <repo>]
 daynight project list [--json]
@@ -452,13 +465,65 @@ records module ownership and the preserved data layout.
 
 ## Shell completion
 
-Bash 4.2 or newer and zsh have native completion scripts. Add this to `.bashrc`:
+Bash 4.2 or newer and zsh have native completion scripts. Install startup
+configuration with:
+
+```bash
+daynight completion setup
+```
+
+Setup detects the calling shell from its direct parent process. If it cannot
+identify Bash or zsh reliably, select one explicitly:
+
+```bash
+daynight completion setup --shell bash
+daynight completion setup --shell zsh
+```
+
+The login-shell preference in `SHELL` does not establish which shell is running.
+For a custom startup file, use `--rc-file`; only that file is managed:
+
+```bash
+daynight completion setup --shell bash --rc-file /path/to/bashrc
+```
+
+Bash setup manages `.bashrc` and the first readable existing login file in the
+order `.bash_profile`, `.bash_login`, `.profile`. It creates `.bash_profile` only
+when none of those files exists; if existing profiles are all unreadable, it
+reports an error. The login block runs only in interactive Bash and can safely
+appear in a `.profile` shared with other POSIX shells. It does not
+make the login shell load the rest of `.bashrc`.
+
+zsh setup uses `$ZDOTDIR/.zshrc`, or `$HOME/.zshrc` when `ZDOTDIR` is unset.
+An exported empty `ZDOTDIR` selects `/.zshrc`; setup resolves a relative value
+from its current working directory. A later zsh started in another directory
+resolves that relative value from its own startup directory. A value set only
+inside zsh is not visible to the installer; use `--rc-file` in that case.
+The managed block reuses an initialized completion system or runs `compinit`
+with its normal security checks before loading daynight.
+
+Setup recognizes its managed block and the documented standalone manual loading
+statement. Repeating it leaves an installed file unchanged. A managed block
+checks the shell's actual daynight completion registration before loading.
+Managed blocks skip an existing registration, including when startup files load
+each other. Preserved manual loading statements keep their unconditional
+behavior: if one runs after a managed block, it generates and loads the script
+again. Existing content, line endings, permissions and startup-file symbolic
+links are retained. Added blocks use LF line endings because a carriage return
+is shell token data. Malformed managed blocks, invalid targets and file access failures produce
+explicit errors.
+
+Setup reports the startup files it handled. It installs persistent configuration;
+an ordinary CLI child process cannot inspect or change its parent shell's loaded
+completion functions. Use the existing loading command to enable completion in
+the current session:
 
 ```bash
 source <(daynight completion bash)
 ```
 
-For zsh, load the script after the completion system is initialized in `.zshrc`:
+For zsh, initialize its completion system first if the session has not already
+done so:
 
 ```zsh
 autoload -Uz compinit
@@ -466,11 +531,13 @@ compinit
 source <(daynight completion zsh)
 ```
 
-If the file already initializes `compinit`, add only the final line. Loading
-without `compinit` fails with a diagnostic. The client prints scripts to stdout
-and leaves startup-file changes to the operator. These outputs are designed for
-`source`; using the same output directly as an `fpath` autoload file is outside
-the loading contract.
+The `bash` and `zsh` generation operations write only scripts to stdout and do
+not change startup files. Loading the zsh script without initialized `compinit`
+fails with a diagnostic. The outputs are designed for `source`; using the same
+output directly as an `fpath` autoload file is outside the loading contract.
+Setup checks file contents without executing them. Custom early returns or later
+commands that remove registrations can prevent a startup file from enabling
+completion; verify such configuration by starting the shell.
 
 Completion suggests commands, nested operations, aliases, options, shell names
 and local directories for `review add-repo --path` and `setup --review-path`.
@@ -483,9 +550,11 @@ New shells generate definitions from the currently installed package. After an
 update, run the applicable `source` command again to refresh an existing shell.
 A saved generated script must be regenerated after updating. The
 [completion design](docs/design/daynight-completion.md) explains the shared grammar
-and shell integration; the
+and shell integration. The
 [completion decision](.agents/notes/implemented/feature/2026-10-20-shell-completion.md)
-records compatibility and execution trade-offs.
+records compatibility and execution trade-offs; the
+[setup decision](.agents/notes/implemented/feature/2026-10-21-completion-setup.md)
+records startup-file ownership and installation limits.
 
 ## Configuration setup
 
@@ -978,6 +1047,50 @@ historical decision premises; explicit archives remain immutable. New or revised
 specifications and designs use Chinese headings and prose. Preserve technical
 literals. Other documents, skills, code, comments, and commit messages use
 English unless explicitly instructed otherwise. Discuss work in Chinese.
+
+## CI selection
+
+The [`checks` workflow](.github/workflows/checks.yml) runs a lightweight routing
+job for every PR. It compares the event's explicit head with its merge base,
+using the complete Git history and NUL-delimited paths. Deletions count; a rename
+counts at both its old and new paths. Application jobs test the PR merge result.
+Multiple affected modules select the union of their jobs.
+
+| Changed paths | PR application jobs |
+|---|---|
+| `packages/daynight/` | Linux, macOS and Windows CLI validation, plus shell completion |
+| `packages/daynight-server/` | Go server |
+| `packages/daynight-web/`, runtime files under `deployment/`, the current Dagre and XYFlow patches | Web |
+| Root `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.npmrc` | Every module |
+| `docs/`, `.agents/`, `.claude/`, files named `README.md`, `AGENTS.md` or `CLAUDE.md`, or the manual `publish.yml` workflow | No application jobs |
+| CI routing/workflow changes and other unclassified paths | Every module |
+
+Every path under `packages/daynight/src/` selects CLI validation, including
+runtime Markdown such as the bundled review skill's `SKILL.md` or `README.md`.
+Other documentation exclusions apply before module selection. New modules and
+unclassified patches select all jobs until their consumers are explicitly assigned.
+
+Selected jobs keep their complete checks, coverage thresholds, acceptance suites,
+timeouts and cleanup requirements. The Go job still builds real web assets and
+exercises the installed CLI; the web job still builds and exercises the Go
+service and production deployment. Selecting one module does not split these
+existing integration suites.
+
+The final `checks` job always runs. It requires successful routing, success from
+every selected job and `skipped` from each deliberately unselected job. Missing
+selection outputs, unexpected skips, failures and cancellations fail the gate.
+Documentation-only PRs run routing tests and this aggregate without installing
+application dependencies or running application tests. Every `main` push retains
+full validation, including the exact-commit run required for npm publication.
+The [selection decision](.agents/notes/implemented/process/2026-10-21-module-scoped-pr-ci.md)
+records the alternatives and maintenance costs.
+
+To validate the routing and aggregation rules locally without application
+dependencies, run:
+
+```bash
+node --test .github/scripts/*.test.mts
+```
 
 ## Validation
 

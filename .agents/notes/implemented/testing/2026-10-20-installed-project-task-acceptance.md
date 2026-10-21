@@ -55,8 +55,10 @@ The repository-root `.tmp/project-task-service-evidence.json` combines the
 attributable installation, service and budget results with cleanup. The Go
 receipt and raw coverage profile remain separate owners of the server workload.
 The existing 20-minute Go CI job retains all prior gates; native CLI and shell
-jobs retain their workloads. Presence of a suite or local receipt does not
-establish successful hosted validation.
+jobs retain their workloads. The [module-scoped CI decision](../process/2026-10-21-module-scoped-pr-ci.md)
+selects affected PR jobs, including the existing cross-module integration
+workload within each selected job; main pushes run all modules. Presence of a
+suite or local receipt does not establish successful hosted validation.
 
 Fixture Git commands disable external fsmonitor so index inspection cannot
 launch unrelated monitoring work. Only task-owned CLI, HTTP, Git and service

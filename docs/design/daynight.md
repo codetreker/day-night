@@ -2,7 +2,8 @@
 
 状态：`packages/daynight/` 是通过 `@codetreker/daynight` 分发的 TypeScript 客户端
 命令工具包，支持 Linux、macOS 和 Windows。`review` 提供 GitHub PR 审查，`update`
-管理当前 npm 全局安装，`setup` 提供按能力配置的引导，`completion` 生成 Bash 和 zsh 的原生补全脚本。project/task
+管理当前 npm 全局安装，`setup` 提供按能力配置的引导，`completion` 生成 Bash 和 zsh
+的原生补全脚本并安装启动配置。project/task
 CLI 的共享配置、HTTP、仓库关联基础及 project/task 命令已完成，安装产物、真实服务
 与默认预算验收已通过托管验证；集成状态见[PR #55](https://github.com/codetreker/daynight/pull/55)。
 [专属设计](daynight-project-task.md)拥有机制，[实现任务](daynight-project-task-tasks.md)
@@ -28,6 +29,7 @@ daynight review add-repo <remote> [--path <path>]
 daynight completion                 # 补全帮助
 daynight completion bash
 daynight completion zsh
+daynight completion setup [--shell bash|zsh] [--rc-file <path>]
 daynight project
 daynight project create <name> [--repo <repo>]
 daynight project list [--json]
@@ -128,6 +130,7 @@ src/
     completion/
       definition.ts
       command.ts
+      setup.ts
       bash.ts
       zsh.ts
   platform/
@@ -181,6 +184,12 @@ review 的配置和路径类型明确以 `ReviewConfiguration`、`ReviewPaths` �
 `commands/completion/` 通过共享命令树生成 Bash ≥4.2 和 zsh 的原生脚本；有效生成请求
 只向 stdout 写入脚本。裸 `completion` 及其帮助只显示使用说明，错误 shell 或无效
 参数沿用状态码 2。脚本生成不读取配置和状态，不加载 review 或更新业务。
+`completion setup` 在参数校验后才加载 `setup.ts`，检查调用 shell 并安装持久启动
+配置。它独立拥有 shell 检测、默认或显式文件选择、完整管理块识别及保留原文件
+身份的写入，不改变生成操作的无 I/O 保证。它与根 `setup` 的服务/review 配置引导
+分别归属各自命令；[客户端 C7](../spec/daynight.md#c7-补全启动配置安装)拥有其行为。
+普通子进程不能修改父 shell 的函数注册，`completion setup` 输出既有 source 命令
+供当前会话启用。
 
 脚本在 source 时注册 `daynight` 补全，Bash 检查版本下限，zsh 要求调用者已完成
 `compinit`，缺少初始化时明确报错并加载失败。按 Tab 时只使用 shell 内存中的语法
@@ -191,7 +200,9 @@ daynight 或网络请求。参数语法保留原有唯一帮助参数、remote �
 统一说明，启用命令由[README](../../README.md#shell-completion)拥有。
 
 [补全决策](../../.agents/notes/implemented/feature/2026-10-20-shell-completion.md)
-记录 Bash 下限、zsh 原生集成和本地执行的成本。脚本输出用于 source；zsh `fpath`
+记录 Bash 下限、zsh 原生集成和本地执行的成本；
+[setup 决策](../../.agents/notes/implemented/feature/2026-10-21-completion-setup.md)记录
+启动文件安装及当前会话边界。脚本输出用于 source；zsh `fpath`
 自动加载需要不同的装载形式，未包含在该输出的使用承诺中。
 
 ## Server 命令执行
@@ -343,8 +354,9 @@ bundle 复制到 `dist/commands/review/skills/daynight-review/`，由既有 `dis
 脚本，在隔离包的全新目标下检查完整 bundle；重复排他复制必须失败且保留既有内容，
 缺少源码时同样明确失败。原生矩阵每次解析最新可用的 Node.js 24 patch，使构建行为
 覆盖受支持运行时的当前实现。源码、包元数据、构建或依赖输入变化
-需要更高 SemVer；构建清理脚本也属于发布输入。Linux 版本检查和全部原生检查共同
-构成必需门禁。发布在等待 CI 与安装依赖前检查精确版本的 tag 和 npm 记录；任一存在
+需要更高 SemVer；构建清理脚本也属于发布输入。[CI 路由](../../README.md#ci-selection)
+选中 CLI 时，Linux 版本检查、全部原生检查和独立 shell completion 检查必须成功；
+main push 保留全量门禁。发布在等待 CI 与安装依赖前检查精确版本的 tag 和 npm 记录；任一存在
 则成功跳过新发布。首次使用准备好的产物发布前重复检查，同一次 run 的发布失败重试
 保留严格的源码、字节验证与补齐 tag 能力。
 [版本预检决策](../../.agents/notes/implemented/process/2026-10-21-publication-version-preflight.md)
@@ -374,7 +386,9 @@ fixture 不能通过当前 store 生成基线，从而避免现有实现为自�
 补全验证包括共享语法回归、编译后入口依赖隔离、脚本语法检查和真实 shell 交互。
 `pnpm completion:acceptance` 在隔离启动文件的 PTY 中驱动 Bash 4.2、现代 Bash 和 zsh
 的 Tab，检查实际插入文本、引号、后缀、描述和光标位置。它独立于 review 与自更新
-安装验收，使用任务内的 fixture，不修改操作者的 shell 配置或全局安装。
+安装验收。`completion setup` 验收在独立主目录中安装真实启动文件，检查 Bash 登录文件优先级、
+zsh 目录选择、重复安装及启动后的注册与 Tab；使用任务内的 fixture，不修改
+操作者的 shell 配置或全局安装。
 
 GitHub Actions 保留原生 Linux、macOS、Windows 的普通测试与既有 review/update
 安装验收，并在独立 Linux 作业中执行补全的真实 shell 验收。PT-T5 加入独立

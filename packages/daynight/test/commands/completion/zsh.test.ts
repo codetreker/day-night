@@ -12,7 +12,9 @@ describe("native zsh completion", () => {
     expect(script).toContain("'review:Review GitHub pull requests and manage local review configuration'");
     expect(script).toContain("'ls:List tracked ongoing PRs and recorded review status'");
     expect(script).toContain("'list'|'ls')");
-    expect(script).toContain("local -a choices=( 'bash' 'zsh' )");
+    expect(script).toContain("'setup:Install completion in shell startup files'");
+    expect(script).toContain("(--shell)--shell=[Select the shell instead of detecting the calling shell]:shell:");
+    expect(script).toContain("'bash'|'zsh')");
     expect(script).toContain("(--path)--path[Dedicated review clone path (relative to the current directory)]:path:_files -/");
     expect(script).not.toContain("bashcompinit");
     expect(script).not.toContain("eval ");

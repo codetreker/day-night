@@ -44,8 +44,12 @@ The first Busy is reported immediately, followed first by volume `lsof`, then a
 fresh exact-image observation and one set of diagnostics over only its current
 root/child devices, their raw aliases and root `diskutil` metadata. Volume sampling
 precedes inventory queries because their legal execution costs can exceed the
-controlled holder's six-second lifetime. Diagnostic status, bounded stdout/stderr
-and image-state transitions remain visible even when finalization succeeds. Raw
+controlled holder's six-second lifetime. The
+[controlled-holder observation decision](2026-10-21-apfs-controlled-holder-observation.md)
+adds optional acknowledged-child PID selection to that volume query, intersected
+with the filesystem through `lsof -a`; generic and device diagnostics retain their
+existing scope. Every diagnostic retains its two-second bound. Diagnostic status,
+bounded stdout/stderr and image-state transitions remain visible even when finalization succeeds. Raw
 device queries inspect known entities; they create no raw-device holder and infer
 no parent device. Disk Arbitration's [eject investigation](https://github.com/apple-oss-distributions/DiskArbitration/blob/a542bda934211dc3c301bfdcc7f21349c4164a85/diskarbitrationd/DARequest.c#L1742-L1810)
 also examines raw devices and media descendants. Empty diagnostic output does not

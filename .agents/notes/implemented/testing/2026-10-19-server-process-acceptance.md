@@ -80,8 +80,10 @@ statement gate and actual process behavior. Controlled unavailable-database
 validation still fails; positive and negative receipts are retained separately
 so a negative control cannot masquerade as the successful acceptance artifact.
 
-The suite targets the Ubuntu Go CI job for process signals, while all existing
-native CLI jobs remain required. It creates no production helpers, service
+The suite targets the Ubuntu Go CI job for process signals. The
+[module-scoped CI decision](../process/2026-10-21-module-scoped-pr-ci.md) controls
+which PR jobs run; selected jobs retain their full workloads, and main pushes
+retain every native CLI job. The suite creates no production helpers, service
 interfaces or coverage exclusions. Minor test-fixture strengthening is tracked
 in the [task document](../../../../docs/design/daynight-server-tasks.md) without
 expanding the delivered task-management contract.

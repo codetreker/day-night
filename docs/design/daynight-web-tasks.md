@@ -5,7 +5,9 @@
 本文拥有任务编号、状态、依赖、文件归属和完成条件。
 [需求](../spec/daynight-web.md)拥有 W1–W12 的行为与验收要求，
 [架构设计](daynight-web.md)拥有 API、快照、图投影、请求和部署机制。
-任务完成时记录实际验证结果并同步状态；行为或机制变化先更新对应文档。
+任务完成时记录实际验证结果并同步状态；行为或机制变化先更新对应文档。下列任务与验收条件
+保留其交付时的范围；当前 PR 按[仓库 CI 路由](../../README.md#ci-selection)选择模块，
+main push 执行全量检查。
 
 ## 任务顺序与要求归属
 
@@ -38,8 +40,9 @@ W-T1 与 W-T2 可独立推进，客户端以架构中的 DTO 为共同契约。
 | W-T6 | W-T6 执行者 | 核对 W-T5 构建契约后接管，加入生产浏览器/容器验收，负责最终 `checks.needs` 完整性 |
 
 其他任务以所需命令、依赖和验收输入提出变更，由当前归属任务编辑这些共享文件。
-交接发生在前一阶段完成验收之后，不并发修改。最终汇总必须依赖现有 CLI `verify`、
-Go `verify-server`、web `verify-web` 与独立 `verify-completion`；任一失败或取消都不能汇总成功。
+交接发生在前一阶段完成验收之后，不并发修改。汇总依赖 CLI `verify`、Go
+`verify-server`、web `verify-web` 与独立 `verify-completion`，并核对路由结果：选中的
+job 必须成功，未选中的 job 必须为 `skipped`；失败或取消都不能汇总成功。
 
 ## 共同完成条件
 
@@ -326,8 +329,10 @@ localhost 的生产 Dockerfile 和 nginx 配置，完成独立资源与生命周
 - 每张性能图从折叠状态展开五次，最慢一次从点击到可操作画布不超过 3,000ms；
   布局后节点打开、缩放、平移的可见反馈不超过 300ms。网络读取与详情网络时间
   单独计量，记录布局、渲染耗时和环境；失败不能登记为已支持规模。
-- 干净 CI checkout 的 Go 与 web job 均生成真实 UI；扩展现有必选 `verify-web` job，并将
-  生产浏览器/部署验收纳入必需汇总。`checks` 成功要求 Go、web、全部原生 CLI 与独立 shell completion 检查通过。
+- 交付时，干净 CI checkout 的 Go 与 web job 均生成真实 UI；扩展现有必选 `verify-web`
+  job，并将生产浏览器/部署验收纳入必需汇总。当时的 `checks` 要求 Go、web、全部原生
+  CLI 与独立 shell completion 检查通过；当前模块选择由[仓库 CI 路由](../../README.md#ci-selection)
+  定义，各 job 的内部验收范围保持。
 - 保存原始 Go profile 与 web `coverage-final.json`、产品源码清单、语句命中/总数
   和整数比较结果；两者各自严格大于 90%，不能平均掩盖任一模块不足。保留 Go
   package/function/critical-block 门槛，验证缺失报告或数据库不可用使必需检查失败。
