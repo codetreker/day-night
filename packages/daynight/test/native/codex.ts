@@ -1,11 +1,12 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, open, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import which from "which";
 import { terminateInstalledProcess } from "../fixtures/installed-cli.js";
 import type { NativeHostEvent, NativeHostRequest, NativeHostResult } from "./host.js";
+import { assertCodexNoCredentialFiles, codexPrivateEnvironmentValues, isCodexPrivateEnvironmentName } from "./codex-privacy.js";
 
 type JsonObject = Record<string, unknown>;
 type PendingRequest = { readonly resolve: (value: JsonObject) => void; readonly reject: (cause: Error) => void };
@@ -27,23 +28,6 @@ const toml = (value: JsonObject, keys: readonly string[] = []): string => {
   const scalars = Object.entries(value).filter(([, item]) => item === null || typeof item !== "object" || Array.isArray(item));
   const tables = Object.entries(value).filter(([, item]) => item !== null && typeof item === "object" && !Array.isArray(item));
   return `${keys.length === 0 ? "" : `[${keys.map((key) => JSON.stringify(key)).join(".")}]\n`}${scalars.map(([key, item]) => `${JSON.stringify(key)} = ${tomlValue(item)}\n`).join("")}${tables.map(([key, item]) => `\n${toml(object(item, "configuration table"), [...keys, key])}`).join("")}`;
-};
-
-const credentialName = /(?:TOKEN|SECRET|PASSWORD|API_?KEY|AUTHORIZATION|CREDENTIAL|^ANTHROPIC_AUTH|^DAYNIGHT_NATIVE_CODEX_)/i;
-
-const assertNoCredentialFiles = async (directory: string, credentials: readonly string[]): Promise<void> => {
-  const needles = credentials.filter((value) => value.length >= 8).map((value) => Buffer.from(value));
-  const visit = async (parent: string): Promise<void> => {
-    for (const entry of await readdir(parent, { withFileTypes: true })) {
-      const filename = path.join(parent, entry.name);
-      if (entry.isDirectory()) await visit(filename);
-      else if (entry.isFile()) {
-        const contents = await readFile(filename);
-        if (needles.some((needle) => contents.includes(needle))) throw new Error("Codex persisted a configured credential in its isolated state.");
-      }
-    }
-  };
-  await visit(directory);
 };
 
 export const runCodex = async (request: NativeHostRequest): Promise<NativeHostResult> => {
@@ -80,19 +64,18 @@ export const runCodex = async (request: NativeHostRequest): Promise<NativeHostRe
   if (authCommand !== "sh" || authArguments.length !== 2 || authArguments[0] !== "-c" || !/^cat "\$\{CODEX_HOME:-\$HOME\/\.codex\}\/[A-Za-z0-9._-]+"$/.test(authArguments[1]!)) throw new Error("The configured Codex authentication helper no longer matches the verified read-only token-file command.");
   const home = path.join(request.stateDirectory, "codex");
   const environment: NodeJS.ProcessEnv = { ...request.environment, HOME: request.homeDirectory, CODEX_HOME: home };
-  const credentials: string[] = [];
-  for (const [name, value] of Object.entries(process.env)) if (credentialName.test(name) && value !== undefined) credentials.push(value);
+  const credentials = codexPrivateEnvironmentValues(process.env);
   let credential: string;
   try { credential = execFileSync(authCommand, authArguments, { encoding: "utf8", timeout: 10_000, maxBuffer: 64 * 1024, stdio: ["ignore", "pipe", "pipe"], env: process.env }).trim(); }
   catch { throw new Error("The configured Codex read-only authentication helper failed; its private output was discarded."); }
   if (credential === "") throw new Error("The configured Codex authentication helper returned an empty credential.");
-  credentials.push(credential);
+  credentials.push({ label: "command-auth helper token", value: credential });
   const headers: Record<string, string> = {};
   let headerIndex = 0;
   const addHeader = (name: string, value: string): void => {
     const variable = `DAYNIGHT_NATIVE_CODEX_HEADER_${headerIndex++}`;
     environment[variable] = value;
-    credentials.push(value);
+    credentials.push({ label: `provider header ${name}`, value });
     headers[name] = variable;
   };
   if (provider.http_headers !== undefined) for (const [name, value] of Object.entries(object(provider.http_headers, "static provider headers"))) addHeader(name, string(value, "static provider header"));
@@ -105,7 +88,7 @@ export const runCodex = async (request: NativeHostRequest): Promise<NativeHostRe
   provider.env_http_headers = headers;
   environment.DAYNIGHT_NATIVE_CODEX_AUTH = JSON.stringify({ command: authCommand, args: auth.args, home: originalHome, codexHome: originalCodexHome ?? null });
   provider.auth = { command: python, args: [path.join(import.meta.dirname, "codex-auth.py")] };
-  const shellEnvironment = Object.fromEntries(Object.entries(request.environment).filter(([name, value]) => value !== undefined && !credentialName.test(name)));
+  const shellEnvironment = Object.fromEntries(Object.entries(request.environment).filter(([name, value]) => value !== undefined && !isCodexPrivateEnvironmentName(name)));
   shellEnvironment.HOME = request.homeDirectory;
   shellEnvironment.CODEX_HOME = home;
   const configuration: JsonObject = {
@@ -118,7 +101,7 @@ export const runCodex = async (request: NativeHostRequest): Promise<NativeHostRe
     analytics: { enabled: false }, feedback: { enabled: false },
   };
   await mkdir(home, { recursive: true, mode: 0o700 });
-  const redact = (value: string): string => credentials.filter((credential) => credential.length >= 8).reduce((text, credential) => text.replaceAll(credential, "[redacted]"), value);
+  const redact = (value: string): string => credentials.filter((credential) => credential.value.length >= 8).reduce((text, credential) => text.replaceAll(credential.value, "[redacted]"), value);
   let result: NativeHostResult | undefined;
   let failure: unknown;
   try {
@@ -239,7 +222,7 @@ export const runCodex = async (request: NativeHostRequest): Promise<NativeHostRe
     catch (cause) { executionFailure = executionFailure === undefined ? cause : new AggregateError([executionFailure, cause], "Codex turn execution and process cleanup failed."); }
     if (executionFailure !== undefined) throw executionFailure;
   } catch (cause) { failure = cause; }
-  try { await assertNoCredentialFiles(home, credentials); }
+  try { await assertCodexNoCredentialFiles(home, credentials); }
   catch (cause) { failure = failure === undefined ? cause : new AggregateError([failure, cause], "Codex execution and credential-state verification failed."); }
   try { await rm(home, { recursive: true, force: true }); }
   catch (cause) { failure = failure === undefined ? cause : new AggregateError([failure, cause], "Codex execution and isolated-state cleanup failed."); }
