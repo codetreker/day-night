@@ -242,6 +242,7 @@ type acceptanceFixture struct {
 	admin        *pgxpool.Pool
 	schema       string
 	databaseURL  string
+	storageRoot  string
 	applications []string
 	scenario     *acceptanceScenario
 }
@@ -258,7 +259,7 @@ func newAcceptanceFixture(t *testing.T, scenario *acceptanceScenario) *acceptanc
 	if err != nil {
 		t.Fatal("cannot configure acceptance database")
 	}
-	fixture := &acceptanceFixture{schema: "acceptance_" + strings.ToLower(rand.Text()), databaseURL: base, scenario: scenario}
+	fixture := &acceptanceFixture{schema: "acceptance_" + strings.ToLower(rand.Text()), databaseURL: base, storageRoot: testStorageRoot(t), scenario: scenario}
 	if _, err := pool.Exec(ctx, "CREATE SCHEMA "+pgx.Identifier{fixture.schema}.Sanitize()); err != nil {
 		pool.Close()
 		t.Fatal("cannot create isolated acceptance schema")
@@ -429,7 +430,7 @@ func (f *acceptanceFixture) launch(t *testing.T, configuration map[string]string
 	t.Helper()
 	application := fmt.Sprintf("%s_%d", f.schema, len(f.applications)+1)
 	f.applications = append(f.applications, application)
-	values := map[string]string{"DAYNIGHT_DATABASE_URL": f.url(t, application), "DAYNIGHT_LISTEN_ADDR": "127.0.0.1:0", "DAYNIGHT_STARTUP_TIMEOUT": "5s", "DAYNIGHT_SHUTDOWN_TIMEOUT": "2s"}
+	values := map[string]string{"DAYNIGHT_DATABASE_URL": f.url(t, application), "DAYNIGHT_STORAGE_ROOT": f.storageRoot, "DAYNIGHT_LISTEN_ADDR": "127.0.0.1:0", "DAYNIGHT_STARTUP_TIMEOUT": "5s", "DAYNIGHT_SHUTDOWN_TIMEOUT": "2s"}
 	for key, value := range configuration {
 		values[key] = value
 	}

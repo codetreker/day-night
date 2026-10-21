@@ -8,10 +8,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -22,7 +23,25 @@ func testConfig(t *testing.T) Config {
 	if url == "" {
 		t.Fatal("DAYNIGHT_TEST_DATABASE_URL is required for PostgreSQL tests")
 	}
-	return Config{DatabaseURL: url, ListenAddress: "127.0.0.1:0", StartupTimeout: 5 * time.Second, ShutdownTimeout: time.Second}
+	return Config{DatabaseURL: url, StorageRoot: testStorageRoot(t), ListenAddress: "127.0.0.1:0", StartupTimeout: 5 * time.Second, ShutdownTimeout: time.Second}
+}
+
+func testStorageRoot(t *testing.T) string {
+	t.Helper()
+	temporary := filepath.Join("..", "..", ".tmp")
+	if err := os.MkdirAll(temporary, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp(temporary, "runtime-storage-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(root); err != nil {
+			t.Error(err)
+		}
+	})
+	return root
 }
 
 func testLogger() *slog.Logger { return slog.New(slog.NewJSONHandler(io.Discard, nil)) }
@@ -92,6 +111,17 @@ func cleanupCancellationRequest(t *testing.T, cancelRequest, stopRuntime context
 
 func TestStartupFailures(t *testing.T) {
 	config := testConfig(t)
+	unavailable := filepath.Join(config.StorageRoot, "file")
+	if err := os.WriteFile(unavailable, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	invalidStorage := config
+	invalidStorage.StorageRoot = unavailable
+	_, err := Start(context.Background(), invalidStorage, testLogger(), nil)
+	var configurationFailure *ConfigurationError
+	if !errors.As(err, &configurationFailure) || configurationFailure.Field != "DAYNIGHT_STORAGE_ROOT" || errors.Unwrap(err) == nil {
+		t.Fatalf("storage initialization failure lost configuration context or cause: %v", err)
+	}
 	invalid := config
 	invalid.ListenAddress = "0.0.0.0:80"
 	if _, err := Start(context.Background(), invalid, testLogger(), nil); err == nil {
@@ -123,7 +153,7 @@ func TestStartupFailures(t *testing.T) {
 func TestGracefulDrainPreservesActiveRequestsAndReleasesResources(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	canceled := make(chan bool, 1)
-	runtime, err := Start(context.Background(), testConfig(t), testLogger(), func(database *store.Store) http.Handler {
+	runtime, err := Start(context.Background(), testConfig(t), testLogger(), func(dependencies Dependencies) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			close(entered)
 			select {
@@ -131,7 +161,10 @@ func TestGracefulDrainPreservesActiveRequestsAndReleasesResources(t *testing.T) 
 				canceled <- true
 			case <-release:
 				canceled <- false
-				if err := database.Pool.Ping(r.Context()); err != nil {
+				if err := dependencies.Store.Pool.Ping(r.Context()); err != nil {
+					t.Error(err)
+				}
+				if _, err := dependencies.Files.Put(r.Context(), "runtime", "active.txt", strings.NewReader("complete")); err != nil {
 					t.Error(err)
 				}
 				_, _ = io.WriteString(w, "complete")
@@ -178,6 +211,10 @@ func TestGracefulDrainPreservesActiveRequestsAndReleasesResources(t *testing.T) 
 	if _, err := runtime.Store.Pool.Acquire(context.Background()); err == nil {
 		t.Fatal("database pool remained open")
 	}
+	if object, err := runtime.Files.Open(context.Background(), "runtime", "active.txt"); err == nil {
+		object.Body.Close()
+		t.Fatal("file storage remained open")
+	}
 	listener, err := net.Listen("tcp", runtime.Address())
 	if err != nil {
 		t.Fatalf("listener leaked: %v", err)
@@ -190,9 +227,9 @@ func TestForcedDrainCancelsDatabaseWork(t *testing.T) {
 	config.ShutdownTimeout = 30 * time.Millisecond
 	query := "select pg_sleep(10) /* " + uuid.NewString() + " */"
 	queryResult := make(chan error, 1)
-	runtime, err := Start(context.Background(), config, testLogger(), func(database *store.Store) http.Handler {
+	runtime, err := Start(context.Background(), config, testLogger(), func(dependencies Dependencies) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			connection, err := database.Pool.Acquire(r.Context())
+			connection, err := dependencies.Store.Pool.Acquire(r.Context())
 			if err != nil {
 				queryResult <- err
 				return
@@ -245,9 +282,9 @@ func TestClientCancellationReachesDatabase(t *testing.T) {
 	config := testConfig(t)
 	query := "select pg_sleep(10) /* " + uuid.NewString() + " */"
 	queryResult := make(chan error, 1)
-	runtime, err := Start(context.Background(), config, testLogger(), func(database *store.Store) http.Handler {
+	runtime, err := Start(context.Background(), config, testLogger(), func(dependencies Dependencies) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, err := database.Pool.Exec(r.Context(), query)
+			_, err := dependencies.Store.Pool.Exec(r.Context(), query)
 			queryResult <- err
 		})
 	})
@@ -296,7 +333,7 @@ func TestClientCancellationReachesDatabase(t *testing.T) {
 
 func TestServeFailureAndAlreadyClosed(t *testing.T) {
 	for _, closed := range []bool{false, true} {
-		runtime, err := Start(context.Background(), testConfig(t), testLogger(), func(*store.Store) http.Handler { return http.NotFoundHandler() })
+		runtime, err := Start(context.Background(), testConfig(t), testLogger(), func(Dependencies) http.Handler { return http.NotFoundHandler() })
 		if err != nil {
 			t.Fatal(err)
 		}

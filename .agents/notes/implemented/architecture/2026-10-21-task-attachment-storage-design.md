@@ -15,7 +15,10 @@ case repeat the same disk and transport concerns.
 The delivered artifacts are the adopted [requirements](../../../../docs/spec/daynight-task-attachments.md),
 [architecture](../../../../docs/design/daynight-task-attachments.md) and
 [implementation breakdown](../../../../docs/design/daynight-task-attachments-tasks.md).
-Runtime implementation remains pending; this note records the adopted design.
+The [file-storage foundation](2026-10-21-bucket-file-storage.md) implements the
+generic local adapter and startup integration. Task attachment metadata, HTTP,
+CLI, browser behavior and persistent volumes remain pending. This note owns the
+adopted cross-component design.
 
 Generic file storage uses bucket and real relative path addressing through
 Put/Open/Delete. The initial adapter is local disk. Task attachment consumers use
@@ -90,7 +93,8 @@ Trusted same-origin HTML has the privileges of that browser origin. Supporting
 untrusted HTML would require revisiting the preview boundary rather than
 silently presenting the current iframe as isolation.
 
-Implementation tasks remain pending. Existing server, CLI and Web contracts
-remain true for delivered features, while the new documents own the attachment
-extension. Module-specific validation and source-bound evidence remain required
-when those tasks are implemented.
+The generic storage foundation is implemented. Remaining attachment delivery
+progress is maintained in the linked Daynight tasks; the breakdown owns scope
+and acceptance. Existing server, CLI and Web contracts remain true for delivered
+features. Module-specific validation and source-bound evidence remain required
+for the remaining implementation tasks.

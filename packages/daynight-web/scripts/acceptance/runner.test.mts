@@ -19,6 +19,12 @@ type Fixture = { directory: string; bin: string; commands: string; env: NodeJS.P
 
 const fixture = async (run: (value: Fixture) => Promise<void>): Promise<void> => {
   await mkdir(temporaryRoot, { recursive: true });
+  const recoveryPath = join(evidenceRoot, 'recovery.json');
+  let previousRecovery: Buffer | undefined;
+  try { previousRecovery = await readFile(recoveryPath); }
+  catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+  }
   const directory = await mkdtemp(join(temporaryRoot, 'acceptance-runner-test-'));
   const bin = join(directory, 'bin');
   const commands = join(directory, 'commands.log');
@@ -32,7 +38,11 @@ const fixture = async (run: (value: Fixture) => Promise<void>): Promise<void> =>
   try {
     await run({ directory, bin, commands, env: { ...process.env, PATH: bin, DAYNIGHT_TEST_COMMAND_LOG: commands,
       PLAYWRIGHT_BROWSERS_PATH: join(directory, 'browsers-not-installed'), DAYNIGHT_BROWSER_EXECUTABLE: undefined } });
-  } finally { await rm(directory, { recursive: true, force: true }); }
+  } finally {
+    if (previousRecovery === undefined) await rm(recoveryPath, { force: true });
+    else await writeFile(recoveryPath, previousRecovery);
+    await rm(directory, { recursive: true, force: true });
+  }
 };
 
 const start = (args: readonly string[], value: Fixture, ipc = false) => {
@@ -112,6 +122,69 @@ test('recovery rejects unsupported receipt schemas before issuing Docker command
         assert.match(result.stderr, /Invalid acceptance recovery receipt/);
         assert.equal(await readFile(value.commands, 'utf8'), '');
         assert.deepEqual(await readdir(directory), ['evidence.json']);
+      } finally { await rm(directory, { recursive: true, force: true }); }
+    }
+  });
+});
+
+test('recovery removes only the recorded native storage after confirming the native process is absent', { skip: process.platform !== 'linux' }, async () => {
+  await fixture(async (value) => {
+    const id = runId();
+    const directory = join(evidenceRoot, id);
+    const storageRoot = join(directory, 'native-storage');
+    const operatorStorage = join(value.directory, 'operator-storage');
+    const owner = `daynight-web-${id}`;
+    const evidence = {
+      schemaVersion: 2, runId: id, source: { gitSha: sourceGitSha, githubSha: process.env.GITHUB_SHA ?? null },
+      runner: { pid: 2_147_483_647, executable: process.execPath, startTicks: '1', group: 2_147_483_647 }, stages: [],
+      native: { owner, postgresContainer: `${owner}-postgres`, postgresVolume: `${owner}-data`,
+        binary: join(directory, 'daynight-server'), storageRoot },
+    };
+    await mkdir(storageRoot, { recursive: true });
+    await mkdir(operatorStorage);
+    await writeFile(join(storageRoot, 'owned-file'), 'owned');
+    await writeFile(join(operatorStorage, 'preserved-file'), 'operator');
+    await writeFile(join(value.bin, 'docker'), '#!/bin/sh\nprintf \'%s\\n\' "$0 $*" >> "$DAYNIGHT_TEST_COMMAND_LOG"\n');
+    value.env.DAYNIGHT_STORAGE_ROOT = operatorStorage;
+    try {
+      await writeFile(join(directory, 'evidence.json'), JSON.stringify(evidence));
+      const result = await start([cli, '--cleanup', id], value).done;
+      assert.equal(result.timedOut, false);
+      assert.equal(result.code, 0, result.stderr);
+      await assert.rejects(readFile(join(storageRoot, 'owned-file')), { code: 'ENOENT' });
+      assert.equal(await readFile(join(operatorStorage, 'preserved-file'), 'utf8'), 'operator');
+      const receipt = JSON.parse(await readFile(join(directory, 'recovery.json'), 'utf8')) as Record<string, unknown>;
+      assert.equal(receipt.nativeProcess, 'not-started');
+      assert.equal(receipt.nativeStorage, 'passed');
+      assert.equal(receipt.result, 'passed');
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+});
+
+test('recovery refuses a storage path outside its run and preserves storage while the native process is live', { skip: process.platform !== 'linux' }, async () => {
+  await fixture(async (value) => {
+    for (const invalid of ['path', 'process']) {
+      const id = runId();
+      const directory = join(evidenceRoot, id);
+      const storageRoot = join(directory, 'native-storage');
+      const owner = `daynight-web-${id}`;
+      const evidence = {
+        schemaVersion: 2, runId: id, source: { gitSha: sourceGitSha, githubSha: process.env.GITHUB_SHA ?? null },
+        runner: { pid: 2_147_483_647, executable: process.execPath, startTicks: '1', group: 2_147_483_647 }, stages: [],
+        native: { owner, postgresContainer: `${owner}-postgres`, postgresVolume: `${owner}-data`,
+          binary: join(directory, 'daynight-server'), storageRoot: invalid === 'path' ? value.directory : storageRoot,
+          ...(invalid === 'process' ? { processPid: process.pid } : {}) },
+      };
+      await mkdir(storageRoot, { recursive: true });
+      await writeFile(join(storageRoot, 'owned-file'), 'owned');
+      try {
+        await writeFile(join(directory, 'evidence.json'), JSON.stringify(evidence));
+        const result = await start([cli, '--cleanup', id], value).done;
+        assert.equal(result.timedOut, false);
+        assert.equal(result.code, 1);
+        assert.match(result.stderr, invalid === 'path' ? /Recovery receipt does not identify/ : /Native process lacks enough identity/);
+        assert.equal(await readFile(join(storageRoot, 'owned-file'), 'utf8'), 'owned');
+        assert.equal(await readFile(value.commands, 'utf8'), '');
       } finally { await rm(directory, { recursive: true, force: true }); }
     }
   });

@@ -11,13 +11,16 @@ func TestLoadConfig(t *testing.T) {
 		if key == "DAYNIGHT_DATABASE_URL" {
 			return "postgres://database"
 		}
+		if key == "DAYNIGHT_STORAGE_ROOT" {
+			return "storage"
+		}
 		return ""
 	})
-	if err != nil || config.ListenAddress != "127.0.0.1:8787" || config.StartupTimeout != 10*time.Second || config.ShutdownTimeout != 10*time.Second {
+	if err != nil || config.StorageRoot != "storage" || config.ListenAddress != "127.0.0.1:8787" || config.StartupTimeout != 10*time.Second || config.ShutdownTimeout != 10*time.Second {
 		t.Fatalf("unexpected defaults: %+v, %v", config, err)
 	}
 	config, err = LoadConfig(func(key string) string {
-		return map[string]string{"DAYNIGHT_DATABASE_URL": "postgres://database", "DAYNIGHT_LISTEN_ADDR": "[::1]:0"}[key]
+		return map[string]string{"DAYNIGHT_DATABASE_URL": "postgres://database", "DAYNIGHT_STORAGE_ROOT": "storage", "DAYNIGHT_LISTEN_ADDR": "[::1]:0"}[key]
 	})
 	if err != nil || config.ListenAddress != "[::1]:0" {
 		t.Fatalf("IPv6 loopback rejected: %+v, %v", config, err)
@@ -40,7 +43,7 @@ func TestConfigRejectsInvalidInputs(t *testing.T) {
 	}
 	config, err := LoadConfig(func(key string) string {
 		return map[string]string{
-			"DAYNIGHT_DATABASE_URL": "postgres://db", "DAYNIGHT_STARTUP_TIMEOUT": "2s", "DAYNIGHT_SHUTDOWN_TIMEOUT": "300ms",
+			"DAYNIGHT_DATABASE_URL": "postgres://db", "DAYNIGHT_STORAGE_ROOT": "storage", "DAYNIGHT_STARTUP_TIMEOUT": "2s", "DAYNIGHT_SHUTDOWN_TIMEOUT": "300ms",
 		}[key]
 	})
 	if err != nil || config.StartupTimeout != 2*time.Second || config.ShutdownTimeout != 300*time.Millisecond {
@@ -48,7 +51,7 @@ func TestConfigRejectsInvalidInputs(t *testing.T) {
 	}
 	for _, address := range []string{"localhost:80", ":80", "0.0.0.0:80", "[::]:80", "192.0.2.1:80", "[::1%eth0]:80", "127.0.0.1", "127.0.0.1:word", "127.0.0.1:-1", "127.0.0.1:65536", "127.0.0.1:080"} {
 		t.Run(address, func(t *testing.T) {
-			config := Config{DatabaseURL: "postgres://secret", ListenAddress: address, StartupTimeout: time.Second, ShutdownTimeout: time.Second}
+			config := Config{DatabaseURL: "postgres://secret", StorageRoot: "storage", ListenAddress: address, StartupTimeout: time.Second, ShutdownTimeout: time.Second}
 			if err := config.Validate(); err == nil || strings.Contains(err.Error(), "secret") {
 				t.Fatalf("expected safe validation error: %v", err)
 			}
@@ -57,11 +60,26 @@ func TestConfigRejectsInvalidInputs(t *testing.T) {
 	for _, config := range []Config{
 		{ListenAddress: "127.0.0.1:0", StartupTimeout: time.Second, ShutdownTimeout: time.Second},
 		{DatabaseURL: " ", ListenAddress: "127.0.0.1:0", StartupTimeout: time.Second, ShutdownTimeout: time.Second},
-		{DatabaseURL: "postgres://db", ListenAddress: "127.0.0.1:0", ShutdownTimeout: time.Second},
-		{DatabaseURL: "postgres://db", ListenAddress: "127.0.0.1:0", StartupTimeout: time.Second, ShutdownTimeout: -time.Second},
+		{DatabaseURL: "postgres://db", StorageRoot: "storage", ListenAddress: "127.0.0.1:0", ShutdownTimeout: time.Second},
+		{DatabaseURL: "postgres://db", StorageRoot: "storage", ListenAddress: "127.0.0.1:0", StartupTimeout: time.Second, ShutdownTimeout: -time.Second},
 	} {
 		if err := config.Validate(); err == nil {
 			t.Fatalf("invalid config accepted: %+v", config)
 		}
+	}
+}
+
+func TestStorageRootConfiguration(t *testing.T) {
+	for _, root := range []string{"", " \t"} {
+		_, err := LoadConfig(func(key string) string {
+			return map[string]string{"DAYNIGHT_DATABASE_URL": "postgres://db", "DAYNIGHT_STORAGE_ROOT": root}[key]
+		})
+		if err == nil || err.Error() != "DAYNIGHT_STORAGE_ROOT is required" {
+			t.Fatalf("missing root was not diagnosed: %v", err)
+		}
+	}
+	config := Config{DatabaseURL: "postgres://db", StorageRoot: "a/root/that/does/not/exist", ListenAddress: "127.0.0.1:0", StartupTimeout: time.Second, ShutdownTimeout: time.Second}
+	if err := config.Validate(); err != nil {
+		t.Fatalf("configuration validation performed filesystem initialization: %v", err)
 	}
 }

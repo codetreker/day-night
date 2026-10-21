@@ -40,7 +40,10 @@ same absolute file and project directory with an empty environment file,
 regardless of inherited `COMPOSE_FILE` or `COMPOSE_PROJECT_NAME`. Services,
 networks and the named PostgreSQL volume have project-scoped names. PostgreSQL
 has no host port, and no resource uses a fixed container name or an external
-volume/network. Multiple invocations can run concurrently.
+volume/network. Multiple invocations can run concurrently. The server also
+receives `DAYNIGHT_STORAGE_ROOT` pointing to a writable image directory, matching
+the production startup requirement. Attachment persistent volumes are tracked
+separately; this startup wiring introduces no additional volume.
 
 ## Completion, failure and cancellation
 

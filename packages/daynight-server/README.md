@@ -1,13 +1,15 @@
 # daynight-server
 
 The Go service owns PostgreSQL-backed project and task management. Its runtime
-foundation is implemented: explicit database configuration, loopback-only HTTP
-binding, connection validation, structured request logs, cancellation, and bounded
+foundation is implemented: explicit database and file-storage configuration,
+loopback-only HTTP binding, connection validation, structured request logs, cancellation, and bounded
 HTTP shutdown. Versioned migrations and transactional storage are implemented;
 project/task APIs and built-process acceptance are implemented; delivery status is in the
 [implementation tasks](../../docs/design/daynight-server-tasks.md); the current
 executable serves project, task and complete task-graph routes together with the
-embedded read-only dashboard.
+embedded read-only dashboard. Generic bucket/path file storage and its local
+adapter are implemented; task attachment metadata, endpoints and clients remain
+tracked by the [attachment tasks](../../docs/design/daynight-task-attachments-tasks.md).
 
 The [requirements](../../docs/spec/daynight-server.md) own observable behavior and
 the [design](../../docs/design/daynight-server.md) owns architecture and concurrency.
@@ -22,14 +24,17 @@ lifecycle. The client HTTP foundation targets this service's API.
 | `internal/server/` | API/UI routing, HTTP lifecycle, request context, request IDs, structured logs |
 | `internal/webui/` | Embedded production HTML/assets and static response policy |
 | `internal/core/store/` | PostgreSQL migrations, transactions, scoped writes and consistent reads |
+| `internal/filestorage/` | Generic bucket/path byte operations and address validation |
+| `internal/filestorage/local/` | Root-confined local files, complete-file replacement and root lifecycle |
 | `api/` | Project/task DTOs and common HTTP error envelopes |
 | `internal/service/` | Project/task use cases, dependency/state/version policy and scoped cursors |
 | `internal/core/` | Shared project/task models and resource-not-found marker |
 
-HTTP startup creates and verifies one concrete store. The handler factory receives
-that store before the listener accepts requests, allowing the composition root to
-assemble services without opening another pool. The runtime owns HTTP shutdown
-and pool closure. Startup applies the embedded migrations before accepting requests.
+HTTP startup prepares one local file-storage root and creates and verifies one
+concrete PostgreSQL store. The handler factory receives `server.Dependencies`
+with `Store` and `Files` before the listener accepts requests. The composition
+root assembles services without opening another pool or file root. The runtime
+owns HTTP shutdown, storage closure and pool closure. Startup applies the embedded migrations before accepting requests.
 One pinned connection holds a session advisory lock across version checks and all
 migration transactions; unknown versions, gaps and checksum mismatches stop startup.
 
@@ -58,13 +63,15 @@ cd packages/daynight-server
 source scripts/env.sh
 go build -o .tmp/daynight-server ./cmd/daynight-server
 export DAYNIGHT_DATABASE_URL='postgres://daynight:password@127.0.0.1:5432/daynight?sslmode=disable'
+export DAYNIGHT_STORAGE_ROOT="$PWD/.tmp/storage"
 .tmp/daynight-server
 ```
 
 `web:build` typechecks and builds the web package, validates the real output and
 publishes it to `internal/webui/dist/`. Generated files are ignored by Git; a
 clean Go build without them fails at `go:embed`. No placeholder index or frontend
-runtime is used. Once built, the binary requires only PostgreSQL at runtime.
+runtime is used. Once built, the binary requires PostgreSQL and a writable,
+case-sensitive local storage directory at runtime.
 
 Use credentials suitable for the local PostgreSQL instance. The process validates
 the connection before listening and exits nonzero on startup or shutdown failure.
@@ -75,6 +82,7 @@ diagnostics and cause categories.
 | Environment variable | Meaning | Default |
 |---|---|---|
 | `DAYNIGHT_DATABASE_URL` | Explicit PostgreSQL connection string | Required |
+| `DAYNIGHT_STORAGE_ROOT` | Writable, case-sensitive local file-storage directory | Required |
 | `DAYNIGHT_LISTEN_ADDR` | Numeric loopback IP and port, including IPv6 syntax | `127.0.0.1:8787` |
 | `DAYNIGHT_STARTUP_TIMEOUT` | Positive Go duration for database connection and listener startup | `10s` |
 | `DAYNIGHT_SHUTDOWN_TIMEOUT` | Positive Go duration for draining HTTP requests | `10s` |
@@ -86,8 +94,11 @@ in the startup log. Invalid timeout values fail validation.
 `SIGINT` and `SIGTERM` stop accepting connections and begin draining requests.
 Active request contexts remain usable during the drain. On deadline, the runtime
 cancels remaining request contexts, force-closes HTTP connections, and closes the
-database pool after request-owned database resources are released. Database
-operations must use the request context and release acquired connections.
+file-storage root and database pool after request-owned resources are released.
+Database operations must use the request context and release acquired connections.
+The runtime also closes an acquired file root on later startup failure. Local
+files remain on disk when the handle closes. Startup fixtures supply isolated
+roots; built-process restart tests reuse their fixture root.
 
 Logs use JSON `slog` records with type, component, phase, and request ID. HTTP
 records include method, route template, status, and duration. A supplied
@@ -147,7 +158,27 @@ again. Both local validation and CI use
 database connection/query cancellation, HTTP cancellation, graceful and forced
 drain, listener/pool reuse, process configuration/exit status, and log redaction.
 
-## Storage boundaries
+## File storage
+
+`filestorage.Storage` exposes `Put`, `Open` and `Delete` using bucket and real
+relative path. LocalStorage mirrors `<root>/<bucket>/<path>` and validates
+addresses before resolving them through `os.Root`. It rejects roots that cannot
+distinguish case and rejects object access outside the root. `Open` returns the
+size of its opened handle. Callers own the returned body and input reader.
+
+Writes stream through an owned temporary file and publish complete contents.
+An empty internal directory can be reused as a file path; existing child files
+remain conflicts. Internal namespace synchronization belongs to this storage
+instance and does not coordinate filesystem operations with PostgreSQL or with
+other processes sharing a root. The accepted non-atomicity issue is owned by the
+[attachment requirements](../../docs/spec/daynight-task-attachments.md).
+
+The existing Compose files supply a writable image directory so startup remains
+valid. Persistent attachment volumes belong to A-T5; attachment HTTP operations
+and browser/CLI features belong to later tasks. No attachment API is implied by
+the storage foundation.
+
+## PostgreSQL storage boundaries
 
 `Store.WriteProject` locks one project in a `READ COMMITTED` transaction before
 calling the supplied operation. The operation receives a project-scoped

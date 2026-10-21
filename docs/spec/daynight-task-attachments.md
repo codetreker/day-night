@@ -1,8 +1,10 @@
 # Task 附件需求
 
-状态：需求与架构已采用，运行时尚未实现。本文拥有附件的产品行为与 FA1–FA12
+状态：通用本地文件存储及启动配置已实现；附件元数据、HTTP、CLI、Web 与持久卷
+仍待实施。本文拥有附件的产品行为与 FA1–FA12
 要求；[架构](../design/daynight-task-attachments.md)拥有模块、接口和运行机制，
-[任务拆分](../design/daynight-task-attachments-tasks.md)拥有实施状态、依赖与完成条件。
+[任务拆分](../design/daynight-task-attachments-tasks.md)拥有实施范围、依赖与完成条件，
+并提供 Daynight 进度入口。
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-task-attachment-storage-design.md)
 记录范围和取舍。文档交付不表示附件功能已经可用。
 
