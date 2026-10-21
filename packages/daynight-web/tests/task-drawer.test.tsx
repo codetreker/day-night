@@ -6,6 +6,10 @@ import type { GraphSnapshot } from '../src/features/projects/useTaskGraph';
 import { TaskDrawer, type TaskDrawerProps } from '../src/features/task-detail/TaskDrawer';
 import { buildGraphIndex } from '../src/features/task-graph/model';
 
+vi.mock('../src/features/task-detail/attachments/TaskAttachments', () => ({
+  TaskAttachments: ({ projectId, taskId }: { readonly projectId: string; readonly taskId: string }) => <section aria-label="附件" data-project-id={projectId} data-task-id={taskId} />,
+}));
+
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const projectId = id(100);
 const timestamp = '2026-10-20T09:00:00.123456789Z';
@@ -63,6 +67,17 @@ beforeEach(() => {
 afterEach(() => { cleanup(); root.remove(); document.body.style.overflow = ''; });
 
 describe('task details drawer', () => {
+  it('places task-scoped attachments after pull requests and before task relationships', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(detail())));
+    open();
+    await screen.findByRole('heading', { name: '任务 1' });
+    const attachments = screen.getByRole('region', { name: '附件' });
+    expect(attachments).toHaveAttribute('data-project-id', projectId);
+    expect(attachments).toHaveAttribute('data-task-id', id(1));
+    expect(screen.getByRole('region', { name: '关联 PR' }).nextElementSibling).toBe(attachments);
+    expect(attachments.nextElementSibling).toBe(screen.getByRole('region', { name: '前置依赖' }));
+  });
+
   it('loads real detail outside the inert application, locks scrolling, and restores focus on close', async () => {
     const pending = deferred<Response>();
     const fetch = vi.fn().mockReturnValue(pending.promise);

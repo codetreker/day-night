@@ -14,8 +14,12 @@ The [requirements](../../docs/spec/daynight-web.md) own visible behavior and the
 [architecture](../../docs/design/daynight-web.md) owns graph projection, request
 lifecycles and delivery. The [task property requirements](../../docs/spec/daynight-task-properties.md)
 and [design](../../docs/design/daynight-task-properties.md) own PR associations.
-The offline mockups illustrate the intended workflow with fixture data and are
-separate from this application.
+The [attachment requirements](../../docs/spec/daynight-task-attachments.md),
+[architecture](../../docs/design/daynight-task-attachments.md) and
+[Web decision](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)
+own single-file management, previews and their independent state. The original
+offline dashboard mockups remain separate from the application; the attachment
+development mockup below reuses the real components with a frontend-only fixture.
 
 ## Development
 
@@ -42,9 +46,10 @@ current first root. Loading, failed initial reads and empty graphs do not record
 an inferred collapsed preference. Storage failures display a notice while the
 current page remains usable. Preferences do not save detail selection or canvas
 positions and do not change server data. The [preference decision](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)
-records this ownership. Nodes open a
-read-only detail drawer with dependency navigation, PR associations and stale-data
-detection. The PR section follows the description and displays every ordered
+records this ownership. Nodes open a detail drawer with dependency navigation,
+PR associations, stale-data detection and attachment management. Task fields and
+graph interactions remain read-only. The PR section follows the description and
+displays every ordered
 title/URL pair, including duplicates. Lists longer than 100 entries use local
 100-row pages with a range/total announcement, Previous/Next controls and direct
 page selection. The complete ordered list stays in memory; changing pages makes
@@ -76,7 +81,67 @@ The canvas supports pan, zoom and fit while editing and connection controls stay
 disabled. Each node is one native keyboard button. A long graph starts with its
 root visible at readable zoom; keyboard focus brings offscreen nodes into view.
 The portal drawer locks background focus and scrolling, supports Escape and Tab,
-and restores the original node or a current root/page heading on close.
+and restores the original node or a current root/page heading on close. Focusable
+controls are enumerated with `tabbable` 6.5.0 using its normal browser visibility
+checks. Same-origin preview frames bridge Escape and first/last Tab boundaries
+back into that drawer lifecycle. Passive unmount restoration remains responsible
+for focusing a surviving trigger after DOM removal.
+
+## Task attachments
+
+The section after PR associations lists the task's path-addressed files as a
+nested tree. Select one local file, accept its name as the initial target or edit
+the relative path, then upload. MIME is selected from the target path with `mime`
+4.1.1. Uploading the same path overwrites that file. Each file offers download
+and deletion; successful writes refresh only the attachment list and preview.
+They do not change the task version, timestamp or graph snapshot.
+
+The attachment hook owns list, write, selection and preview state for one
+project/task identity. It follows all pages, keeps already-read files when a
+later page fails and labels the result incomplete with a retry action. Scope
+changes and unmount cancel requests; generations discard late results. List,
+write and preview errors stay local. An overwrite or a refreshed `updatedAt`
+reloads the selected content and remounts native previews; the server's
+`Cache-Control: no-store` keeps mutable paths current.
+
+Markdown uses `react-markdown` 10.1.0 with `remark-gfm` 4.0.1 for CommonMark and GFM
+including tables. Raw HTML remains escaped. Relative images and links resolve
+from the Markdown file's directory to the task preview route; standalone `#fragment`
+links remain on the rendered document. Paths that escape the task root are
+rejected. Text, JSON and source previews preserve text and newlines. Images use
+native image loading with error/retry feedback; PDF and HTML use native iframes.
+HTML/PDF first check preview availability with HEAD and never decode a HEAD error
+as a JSON body. The frame then performs normal resource requests.
+
+HTML loads the fixed same-origin
+`/api/v1/projects/{projectId}/tasks/{taskId}/preview/{path...}` URL. Its CSS, JS,
+images and relative fetches follow normal browser URL rules. HTML is trusted
+project code with main-origin privileges; the ordinary iframe has no sandbox.
+There is no separate preview modal, session token, domain or Service Worker.
+Other formats show metadata and a download link. Files and metadata can diverge
+after a failed write under the accepted K1 limitation; the UI reports errors and
+does not implement reconciliation or rollback.
+
+### Frontend-only attachment mockup
+
+Run `pnpm web:dev` and open `/tests/mockups/attachments.html` on Vite's printed
+origin. `tests/mockups/main.tsx` renders the production attachment components and
+CSS with `tests/mockups/fixture.ts`; metadata changes remain in memory and native
+previews use local fixture files. Choose files, empty or upload-error scenarios,
+and exercise upload, overwrite, preview, download and deletion without Go,
+PostgreSQL or network API calls. Refreshing the page resets fixture state.
+Object URLs stay valid through deletion and are released when the fixture is
+disposed. This development entry is excluded from the single-index production
+build.
+
+The mockup validates appearance and frontend behavior. Local browser probes also
+exercise the actual portal drawer, background inertness, CSS-hidden controls,
+contenteditable frame boundaries, Escape/Tab release and trigger restoration.
+The probe receipts and screenshots live under the task's `.tmp/a-t4/`; a local
+existing Chromium override is recorded and does not establish pinned CI-browser
+or real-backend delivery. JSDOM uses an upstream `tabbable` test wrapper because
+it lacks layout; those unit tests do not prove browser visibility. A-T6 owns the
+new real-service attachment journeys and their production CI inventory.
 
 ## Validation and build
 
@@ -174,7 +239,10 @@ functional scenarios through the production image's stream gateway, then four
 native capacity/limit scenarios. The native process and PostgreSQL remain alive
 through the capacity phase; other preparation commands and the complete
 container stack have finished before that phase starts. No normal localhost service or dataset is used. Functional and
-capacity fixtures use the real write APIs; the page is checked to remain read-only.
+capacity fixtures use the real write APIs; those existing scenarios check the
+graph dashboard baseline for read-only requests. They do not cover attachment
+mutations. A-T6 in the [attachment breakdown](../../docs/design/daynight-task-attachments-tasks.md#a-t6)
+owns new real-backend attachment browser journeys and combined acceptance.
 The chain fixture creates 1,000 independent tasks, then attaches its 999 edges
 with versioned PATCH requests from sink to root, avoiding repeated traversal of
 a growing ancestor chain during setup. Complete snapshots compare every node's
@@ -349,5 +417,7 @@ from explicit fit controls and does not run again on selection or pan.
 
 Page hooks own requests and cancellation. Navigation or refresh invalidates the
 previous request generation, continuation failures preserve loaded cards, and
-unmount aborts owned work. There is no global task cache, editor, polling loop or
-remote authentication flow in this workspace.
+unmount aborts owned work. Attachments have independent scoped list, write and
+preview state, while project statistics continue to use complete graph snapshots.
+There is no global task cache, task-field editor, polling loop or remote
+authentication flow in this workspace.
