@@ -19,8 +19,9 @@ The adopted [task attachment requirements](docs/spec/daynight-task-attachments.m
 [task breakdown](docs/design/daynight-task-attachments-tasks.md) define a planned
 extension: reusable bucket/path file storage, single-file task attachments,
 same-origin browser preview and binary CLI reads. The generic local-storage and
-startup foundation is implemented; attachment metadata, HTTP, CLI, browser and
-persistent-volume delivery remain pending. Filesystem/PostgreSQL non-atomicity is recorded as a known issue;
+startup foundation, attachment metadata and file/preview HTTP APIs are
+implemented; CLI commands, browser management and persistent-volume delivery
+remain pending. Filesystem/PostgreSQL non-atomicity is recorded as a known issue;
 consistency remediation is outside that implementation scope.
 
 The `@codetreker/daynight` package provides the `daynight` client. Its root entry

@@ -14,8 +14,8 @@
 服务端存储、更新与迁移已实现；[架构](../design/daynight-task-properties.md)和
 [实施任务](../design/daynight-task-properties-tasks.md)拥有机制及各组件的交付记录。
 
-已采用、尚待实现的[附件需求](daynight-task-attachments.md)扩展本文的服务基线，
-增加本地文件内容、PG 元数据、单文件操作和固定预览路径。其
+[附件需求](daynight-task-attachments.md)扩展本文的服务基线：本地内容、PG 元数据、
+单文件 API 和固定预览路径已实现，CLI 与 Web 管理界面按其任务继续交付。其
 [架构](../design/daynight-task-attachments.md)与
 [任务拆分](../design/daynight-task-attachments-tasks.md)单独拥有附件机制及实施状态。
 

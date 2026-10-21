@@ -12,7 +12,7 @@
 交付；图 API 保留本文的领域与事务结构，不改变现有分页读取的一致性承诺。
 
 已采用的[附件架构](daynight-task-attachments.md)提供独立的 bucket/path 文件存储；
-通用本地存储与启动接入已实现，单文件附件接口仍待完成；[附件需求](../spec/daynight-task-attachments.md)
+通用本地存储、元数据及单文件附件接口已实现；[附件需求](../spec/daynight-task-attachments.md)
 拥有行为与已知问题，[附件任务拆分](daynight-task-attachments-tasks.md)提供实施范围
 及 Daynight 进度入口。
 现有 PostgreSQL task 事务规则不扩展为文件与元数据的原子提交保证。
@@ -314,8 +314,8 @@ Compose 网络访问，PostgreSQL 18 数据卷挂到 `/var/lib/postgresql`。
 
 进程启动时创建 `pgxpool` 并验证数据库连接，然后从 pool 获取并固定一条专用
 `pgxpool.Conn`。该连接取得 PostgreSQL session-level advisory migration lock，
-并在同一物理连接上完成版本读取、校验和全部内嵌 SQL 迁移。当前迁移先建立 project，
-再建立 task 与依赖表；应用记录必须是内嵌迁移的有序前缀。锁必须跨越整个迁移
+并在同一物理连接上完成版本读取、校验和全部内嵌 SQL 迁移。当前迁移依次建立 project、
+task/依赖、预定义属性及独立附件表；应用记录必须是内嵌迁移的有序前缀。锁必须跨越整个迁移
 序列，不能使用会在单个迁移提交时释放的 transaction-level advisory lock，也不能
 通过 pool 的任意连接分别取得和释放锁。
 

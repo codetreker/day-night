@@ -1,7 +1,7 @@
 # Task 附件需求
 
-状态：通用本地文件存储及启动配置已实现；附件元数据、HTTP、CLI、Web 与持久卷
-仍待实施。本文拥有附件的产品行为与 FA1–FA12
+状态：通用本地存储、附件元数据和文件 HTTP/预览接口已实现；CLI、Web 管理界面及
+持久卷仍待实施。本文拥有附件的产品行为与 FA1–FA12
 要求；[架构](../design/daynight-task-attachments.md)拥有模块、接口和运行机制，
 [任务拆分](../design/daynight-task-attachments-tasks.md)拥有实施范围、依赖与完成条件，
 并提供 Daynight 进度入口。
@@ -74,12 +74,16 @@ project 不存在、task 不属于该 project 或目标附件不存在时返回�
 | `DELETE /attachments/files/{path...}` | 删除指定文件，成功返回 204；缺失附件返回 404。 |
 | `GET /preview/{path...}` | 以浏览器展示方式提供 task 内的指定文件和相对资源。 |
 
+未提供上传 Content-Type 时使用 application/octet-stream；非法或重复的 MIME header
+返回 400。内容 URL 的普通 query 不参与文件名，预览相对资源可保留缓存参数。
+
 文件列表使用现有 limit/cursor、items/nextCursor 约定，按 path 的确定顺序分页；
 cursor 绑定列表类型、project 和 task。分页不保证多次请求属于同一快照。
 CLI 完整列表只在所有页面读取成功后输出；Web 可以保留已加载页，但不能把失败
 当作文件不存在。文件读写不经过仅接受 JSON 的请求体或响应解析通道。
 
-参数错误返回 `400`，资源缺失返回 `404`，文件与目录占位冲突返回 `409`，存储或
+参数错误返回 `400 invalid_input`，资源缺失返回 `404 not_found`，文件与目录占位
+冲突返回 `409 path_conflict`，存储或
 PG 操作错误返回 `500`，沿用现有 code/message/requestId 错误结构。流式响应已经
 开始后发生错误时终止传输并记录关联错误，不在文件末尾追加 JSON 错误或成功文字。
 失败或结果未确认的写入不得自动重试。

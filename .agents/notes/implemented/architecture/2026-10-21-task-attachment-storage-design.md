@@ -16,8 +16,9 @@ The delivered artifacts are the adopted [requirements](../../../../docs/spec/day
 [architecture](../../../../docs/design/daynight-task-attachments.md) and
 [implementation breakdown](../../../../docs/design/daynight-task-attachments-tasks.md).
 The [file-storage foundation](2026-10-21-bucket-file-storage.md) implements the
-generic local adapter and startup integration. Task attachment metadata, HTTP,
-CLI, browser behavior and persistent volumes remain pending. This note owns the
+generic local adapter and startup integration. The
+[attachment HTTP delivery](2026-10-21-task-attachment-http.md) implements metadata
+and backend file operations. CLI, browser management and persistent volumes remain pending. This note owns the
 adopted cross-component design.
 
 Generic file storage uses bucket and real relative path addressing through
