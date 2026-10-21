@@ -1186,7 +1186,7 @@ English unless explicitly instructed otherwise. Discuss work in Chinese.
 
 The opt-in native suite exercises the packaged public skill with actual Codex,
 Copilot CLI and Claude Code on Linux, for User and Project installation scopes.
-It requires Docker, Python 3, authenticated GitHub CLI, the native hosts on PATH
+It requires Docker, Python 3.11+, authenticated GitHub CLI, the native hosts on PATH
 and their configured model-provider credentials. It invokes real models. Run it
 only with authorized delivery PRs: one still open and one already merged.
 

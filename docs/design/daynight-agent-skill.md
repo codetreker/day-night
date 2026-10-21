@@ -317,7 +317,7 @@ POSIX PTY 结果不能代替。普通原生 CI 继续运行 typecheck、test、b
 
 原生宿主与真实服务组合验收位于 `packages/daynight/test/native/`，独立配置为
 `vitest.skill-native.config.ts`，通过 `pnpm --filter @codetreker/daynight skill:acceptance`
-显式运行。普通 `test` 和 `acceptance` 不执行真实模型。Linux 环境需要 Docker、Python 3、
+显式运行。普通 `test` 和 `acceptance` 不执行真实模型。Linux 环境需要 Docker、Python 3.11+、
 三个原生 CLI、GitHub 认证与宿主已有模型认证；User / Project scope 的六项组合逐项
 记录，定向运行仅证明所选项。运行方式与环境变量由 [README](../../README.md#live-agent-skill-acceptance) 拥有。
 

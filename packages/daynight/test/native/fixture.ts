@@ -106,6 +106,17 @@ const taskVersions = (stdout: string): readonly { readonly id: string; readonly 
     return [...stdout.matchAll(/^ID: ([a-f0-9-]+)\n[\s\S]*?^Version: ([0-9]+)$/gm)].map((match) => ({ id: match[1]!, version: match[2]! }));
   }
 };
+const baselineAcceptanceRun = (entry: Trace, workingDirectory: string): boolean => {
+  if (entry.code !== 0 || entry.args[0] !== "--test") return false;
+  const files = entry.args.slice(1).map((argument) => path.resolve(workingDirectory, argument));
+  const baseline = path.join(workingDirectory, "baseline.test.mjs"), division = path.join(workingDirectory, "division.test.mjs");
+  if (files.length !== 0 && (!files.includes(baseline) || files.some((file) => file !== baseline && file !== division))) return false;
+  return /^ok [0-9]+ - delivered addition baseline\r?$/m.test(entry.stdout)
+    && /^# tests [1-9][0-9]*\r?$/m.test(entry.stdout)
+    && /^# pass [1-9][0-9]*\r?$/m.test(entry.stdout)
+    && /^# fail 0\r?$/m.test(entry.stdout)
+    && /^# cancelled 0\r?$/m.test(entry.stdout);
+};
 
 export const createNativeFixture = async (options: {
   readonly rootDirectory: string;
@@ -216,6 +227,7 @@ export const createNativeFixture = async (options: {
         const model = entries.filter((entry) => entry.actor === "model");
         const tasks = model.filter((entry) => entry.tool === "daynight" && entry.args[0] === "task");
         const testRuns = model.filter((entry) => entry.tool === "node");
+        const baselineRuns = testRuns.filter((entry) => baselineAcceptanceRun(entry, workingDirectory));
         assert(testRuns.some((entry) => entry.code === 0), "Native host did not run a successful real Node test command.");
         const divisionStart = tasks.find((entry) => entry.args[1] === "update" && entry.args[2] === primaryTask.id && option(entry.args, "--status") === "in_progress" && entry.code === 0);
         const divisionTests = testRuns.filter((entry) => !entry.args.some((argument) => /(?:^|[/\\])baseline\.test\.mjs$/.test(argument)) || entry.args.some((argument) => /(?:^|[/\\])division\.test\.mjs$/.test(argument)));
@@ -253,7 +265,7 @@ export const createNativeFixture = async (options: {
         assert(completion !== undefined && ready.some((entry) => entry.startedAt > completion.finishedAt), "Native host did not refresh bounded readiness after confirmed completion.");
         const completionAttempts = tasks.filter((entry) => entry.args[1] === "update" && entry.args[2] === baseline.id && option(entry.args, "--status") === "done");
         for (const attempt of completionAttempts) {
-          assert(testRuns.some((entry) => entry.code === 0 && entry.finishedAt < attempt.startedAt), "Baseline completion was attempted before a successful native acceptance test.");
+          assert(baselineRuns.some((entry) => entry.finishedAt < attempt.startedAt), "Baseline completion was attempted before an unfiltered native test run executed and passed the immutable addition baseline.");
           assert(model.some((entry) => entry.tool === "gh" && entry.prUrl === options.mergedPrUrl && entry.code === 0 && entry.finishedAt < attempt.startedAt), "Baseline completion was attempted before observing its real merged delivery PR.");
         }
         assert(!tasks.some((entry) => entry.args[1] === "update" && [blocked.id, successor.id].includes(entry.args[2]!) && option(entry.args, "--status") !== undefined), "Native host attempted to change a queued successor's status outside its authorized scope.");
