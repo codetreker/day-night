@@ -47,6 +47,7 @@ if [[ $command == compose ]]; then
       [[ $* == '--volumes --remove-orphans --timeout 20' ]] || exit 94
       [[ $scenario != cleanup-failure* ]] || exit 32
       rm -f "$FAKE_DOCKER_STATE/resources"
+      if [[ $scenario == attachment-volume-left ]]; then touch "$FAKE_DOCKER_STATE/attachment-volume"; fi
       ;;
     *) exit 93 ;;
   esac
@@ -70,9 +71,13 @@ elif [[ $command == ps || $command == volume || $command == network ]]; then
     project="$(< "$FAKE_DOCKER_STATE/project")"
     case $command in
       ps) printf '%s\n' "$container_id" ;;
-      volume) printf '%s\n' "${project}_postgres-data" ;;
+      volume) printf '%s\n' "${project}_postgres-data" "${project}_attachment-data" ;;
       network) printf '%s\n' "$network_id" ;;
     esac
+  fi
+  if [[ $command == volume && -f $FAKE_DOCKER_STATE/attachment-volume ]]; then
+    project="$(< "$FAKE_DOCKER_STATE/project")"
+    printf '%s\n' "${project}_attachment-data"
   fi
 else
   exit 89

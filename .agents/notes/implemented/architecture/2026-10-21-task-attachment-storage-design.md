@@ -18,8 +18,10 @@ The delivered artifacts are the adopted [requirements](../../../../docs/spec/day
 The [file-storage foundation](2026-10-21-bucket-file-storage.md) implements the
 generic local adapter and startup integration. The
 [attachment HTTP delivery](../feature/2026-10-21-task-attachment-http.md) implements metadata
-and backend file operations. CLI, browser management and persistent volumes remain pending. This note owns the
-adopted cross-component design.
+and backend file operations. The [persistence delivery](2026-10-21-task-attachment-persistence.md)
+implements deployment volumes, isolation and paired backup/restore validation.
+CLI and browser management remain pending. This note owns the adopted
+cross-component design.
 
 Generic file storage uses bucket and real relative path addressing through
 Put/Open/Delete. The initial adapter is local disk. Task attachment consumers use

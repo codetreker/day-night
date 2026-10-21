@@ -1,7 +1,8 @@
 # Task 附件与通用文件存储设计
 
-状态：通用存储、附件元数据与文件 HTTP/预览入口已实现；CLI、Web 管理界面和
-持久卷仍待完成。各任务交付进度在 Daynight 中维护。
+状态：通用存储、附件元数据、文件 HTTP/预览入口和部署持久卷已实现，停止写入后的
+配套备份恢复已有真实容器验证；CLI 与 Web 管理界面仍待完成。各任务交付进度在
+Daynight 中维护。
 
 行为要求由[附件需求](../spec/daynight-task-attachments.md)拥有；本文解释通用存储接口、
 附件元数据及各端集成机制。
@@ -371,23 +372,33 @@ daynight task attachment remove <task-id> docs/design.md
 Web 验收启动器、Go 子进程测试及 CLI 真实服务验收，不能等待后续持久卷任务。
 物理目录不进入 API、PG 或 CLI 配置，所有客户端继续使用既有 `serverUrl`。
 
-当前两套 Compose 已设置该变量，生产镜像已为 UID/GID `10001:10001` 准备可写
-目录；Go 启动与重启 fixture、Web native runner 使用其所属独立目录。
-A-T5 将为 localhost Compose 增加一个附件持久卷，挂载到该根目录。镜像内挂载点与卷初始化
-匹配服务 UID/GID `10001:10001`，由真实容器写入及重建验收证明可用。dev-ci 使用
-本次隔离 Compose 项目的附件卷，并在现有清理流程中删除；不使用开发环境持久卷。
+两套 Compose 均将项目作用域的 `attachment-data` 命名卷挂载到
+`/var/lib/daynight/storage`，并以该路径设置 `DAYNIGHT_STORAGE_ROOT`。生产镜像已为
+UID/GID `10001:10001` 准备目录；Docker 对空卷的初始化保留该目录所有权，普通非
+root 服务直接写入，不增加 root entrypoint。Go 启动与重启 fixture、Web native
+runner 继续使用其所属独立目录。
+
+localhost 的 PG 与附件卷在正常停止、重启、重建及 `down` 后保留，显式
+`down --volumes` 同时销毁两者。dev-ci 每次隔离 Compose 项目拥有独立的 PG 与
+附件卷，现有 runner 按项目标签记录所有卷并清理、核验其全部消失。测试项目不使用
+开发环境持久卷。实现取舍由[部署决策](../../.agents/notes/implemented/architecture/2026-10-21-task-attachment-persistence.md)
+拥有。
 
 上传、下载和预览继续经过同一个 gateway；对应代理规则必须支持二进制请求与流式
 响应，并沿用既有生命周期策略。本设计不另设一套任意文件大小或时限参数。
 
-数据库与附件目录构成一组备份材料。停止服务写入后备份 PG 与附件根目录；恢复使用
-匹配的一组数据。此流程不承诺修复备份前已经存在的文件与元数据不一致。
+数据库与附件目录构成一组备份材料。停止服务和其他直接写入方后，通过 `pg_dump`
+备份 PG，并使用同一生产镜像的非 root `tar` 容器备份附件根目录；两者完成前保持
+停止写入。恢复到空卷时，先恢复匹配 SQL 与文件，再启动服务，随后核对读取、预览及
+新上传。该手动流程不承诺修复备份前已经存在的文件与元数据不一致，也不增加备份
+平台或恢复协调机制。可执行操作由[部署说明](../../deployment/localhost/README.md#persistence-and-backup)
+拥有。
 
 ## 实现验证
 
-通用存储、元数据、HTTP 与 fixture 已有组件和实际二进制检查；源绑定结果归属
-对应 PR 与 CI。CLI、Web 管理界面及持久卷仍按各自后续任务验证，不能由后端通过
-结果代替。各层验证职责如下：
+通用存储、元数据、HTTP 与 fixture 已有组件和实际二进制检查；持久卷通过现有
+runner 的两个实际 dev-ci 项目验证。源绑定结果归属对应 PR 与 CI。CLI、Web 管理
+界面仍按各自后续任务验证，不能由后端或部署通过结果代替。各层验证职责如下：
 
 - Storage：bucket 隔离、真实相对路径、同路径完整覆盖、原始字节一致、实际大小、
   缺失与权限错误、取消、普通失败的临时文件清理及路径不能越出根目录。
