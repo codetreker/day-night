@@ -1,13 +1,16 @@
 # daynight-server
 
 The Go service owns PostgreSQL-backed project and task management. Its runtime
-foundation is implemented: explicit database configuration, loopback-only HTTP
-binding, connection validation, structured request logs, cancellation, and bounded
+foundation is implemented: explicit database and file-storage configuration,
+loopback-only HTTP binding, connection validation, structured request logs, cancellation, and bounded
 HTTP shutdown. Versioned migrations and transactional storage are implemented;
 project/task APIs and built-process acceptance are implemented; delivery status is in the
 [implementation tasks](../../docs/design/daynight-server-tasks.md); the current
 executable serves project, task and complete task-graph routes together with the
-embedded read-only dashboard.
+embedded read-only dashboard. Generic bucket/path local storage, task attachment
+metadata and file/preview HTTP endpoints are implemented. Attachment CLI and
+browser management remain tracked by the
+[attachment tasks](../../docs/design/daynight-task-attachments-tasks.md).
 
 The [requirements](../../docs/spec/daynight-server.md) own observable behavior and
 the [design](../../docs/design/daynight-server.md) owns architecture and concurrency.
@@ -22,14 +25,17 @@ lifecycle. The client HTTP foundation targets this service's API.
 | `internal/server/` | API/UI routing, HTTP lifecycle, request context, request IDs, structured logs |
 | `internal/webui/` | Embedded production HTML/assets and static response policy |
 | `internal/core/store/` | PostgreSQL migrations, transactions, scoped writes and consistent reads |
-| `api/` | Project/task DTOs and common HTTP error envelopes |
+| `internal/filestorage/` | Generic bucket/path byte operations and address validation |
+| `internal/filestorage/local/` | Root-confined local files, complete-file replacement and root lifecycle |
+| `api/` | Project/task/attachment DTOs and common HTTP error envelopes |
 | `internal/service/` | Project/task use cases, dependency/state/version policy and scoped cursors |
 | `internal/core/` | Shared project/task models and resource-not-found marker |
 
-HTTP startup creates and verifies one concrete store. The handler factory receives
-that store before the listener accepts requests, allowing the composition root to
-assemble services without opening another pool. The runtime owns HTTP shutdown
-and pool closure. Startup applies the embedded migrations before accepting requests.
+HTTP startup prepares one local file-storage root and creates and verifies one
+concrete PostgreSQL store. The handler factory receives `server.Dependencies`
+with `Store` and `Files` before the listener accepts requests. The composition
+root assembles services without opening another pool or file root. The runtime
+owns HTTP shutdown, storage closure and pool closure. Startup applies the embedded migrations before accepting requests.
 One pinned connection holds a session advisory lock across version checks and all
 migration transactions; unknown versions, gaps and checksum mismatches stop startup.
 
@@ -58,13 +64,15 @@ cd packages/daynight-server
 source scripts/env.sh
 go build -o .tmp/daynight-server ./cmd/daynight-server
 export DAYNIGHT_DATABASE_URL='postgres://daynight:password@127.0.0.1:5432/daynight?sslmode=disable'
+export DAYNIGHT_STORAGE_ROOT="$PWD/.tmp/storage"
 .tmp/daynight-server
 ```
 
 `web:build` typechecks and builds the web package, validates the real output and
 publishes it to `internal/webui/dist/`. Generated files are ignored by Git; a
 clean Go build without them fails at `go:embed`. No placeholder index or frontend
-runtime is used. Once built, the binary requires only PostgreSQL at runtime.
+runtime is used. Once built, the binary requires PostgreSQL and a writable,
+case-sensitive local storage directory at runtime.
 
 Use credentials suitable for the local PostgreSQL instance. The process validates
 the connection before listening and exits nonzero on startup or shutdown failure.
@@ -75,6 +83,7 @@ diagnostics and cause categories.
 | Environment variable | Meaning | Default |
 |---|---|---|
 | `DAYNIGHT_DATABASE_URL` | Explicit PostgreSQL connection string | Required |
+| `DAYNIGHT_STORAGE_ROOT` | Writable, case-sensitive local file-storage directory | Required |
 | `DAYNIGHT_LISTEN_ADDR` | Numeric loopback IP and port, including IPv6 syntax | `127.0.0.1:8787` |
 | `DAYNIGHT_STARTUP_TIMEOUT` | Positive Go duration for database connection and listener startup | `10s` |
 | `DAYNIGHT_SHUTDOWN_TIMEOUT` | Positive Go duration for draining HTTP requests | `10s` |
@@ -86,8 +95,11 @@ in the startup log. Invalid timeout values fail validation.
 `SIGINT` and `SIGTERM` stop accepting connections and begin draining requests.
 Active request contexts remain usable during the drain. On deadline, the runtime
 cancels remaining request contexts, force-closes HTTP connections, and closes the
-database pool after request-owned database resources are released. Database
-operations must use the request context and release acquired connections.
+file-storage root and database pool after request-owned resources are released.
+Database operations must use the request context and release acquired connections.
+The runtime also closes an acquired file root on later startup failure. Local
+files remain on disk when the handle closes. Startup fixtures supply isolated
+roots; built-process restart tests reuse their fixture root.
 
 Logs use JSON `slog` records with type, component, phase, and request ID. HTTP
 records include method, route template, status, and duration. A supplied
@@ -147,7 +159,68 @@ again. Both local validation and CI use
 database connection/query cancellation, HTTP cancellation, graceful and forced
 drain, listener/pool reuse, process configuration/exit status, and log redaction.
 
-## Storage boundaries
+## File storage
+
+`filestorage.Storage` exposes `Put`, `Open` and `Delete` using bucket and real
+relative path. LocalStorage mirrors `<root>/<bucket>/<path>` and validates
+addresses before resolving them through `os.Root`. It rejects roots that cannot
+distinguish case and rejects object access outside the root. `Open` returns the
+size of its opened handle. Callers own the returned body and input reader.
+
+Writes stream through an owned temporary file and publish complete contents.
+An empty internal directory can be reused as a file path; existing child files
+remain conflicts. Internal namespace synchronization belongs to this storage
+instance and does not coordinate filesystem operations with PostgreSQL or with
+other processes sharing a root. The accepted non-atomicity issue is owned by the
+[attachment requirements](../../docs/spec/daynight-task-attachments.md).
+
+The existing Compose files supply a writable image directory so startup remains
+valid. Persistent attachment volumes belong to A-T5. Browser management and CLI
+commands remain separate from the backend file API below.
+
+## Task attachment API
+
+For `T=/api/v1/projects/{projectId}/tasks/{taskId}`, the service provides:
+
+| Method and path | Behavior |
+|---|---|
+| `GET T/attachments` | Metadata page, using existing limit/cursor and items/nextCursor |
+| `PUT T/attachments/files/{path...}` | Raw single-file creation (201) or overwrite (200) |
+| `GET T/attachments/files/{path...}` | Original bytes with download disposition |
+| `DELETE T/attachments/files/{path...}` | Delete one registered file (204), missing record 404 |
+| `GET T/preview/{path...}` | Inline same-origin content and relative resources |
+
+With the server origin in `BASE_URL` and existing `PROJECT_ID`/`TASK_ID` values,
+upload a local document:
+
+```bash
+curl --request PUT --header 'Content-Type: text/markdown' \
+  --data-binary @design.md \
+  "$BASE_URL/api/v1/projects/$PROJECT_ID/tasks/$TASK_ID/attachments/files/docs/design.md"
+```
+
+The path is relative to the task, preserves case, and each URL segment is encoded
+individually. No request uploads or replaces a directory. A missing content type
+means `application/octet-stream`; invalid types are rejected. Binary uploads do
+not use the existing 1 MiB JSON decoder.
+
+Metadata is stored in `task_attachments`, keyed by task and path with C collation;
+the storage address is `task-attachments/<taskId>/<path>`. List cursors bind the
+project, task and list type and page by path, with no cross-page snapshot.
+Attachment operations leave task fields, properties, version and timestamps
+unchanged. Path conflicts return `409 path_conflict`; missing scoped records
+return 404. An existing record with missing disk contents remains a storage
+error. Filesystem and PG changes remain non-atomic as the documented known issue.
+
+Content-Length comes from the opened file, not cached metadata. HEAD returns
+headers without reading the body. Mutable responses use no-store. Before a
+stream begins, failures use the existing JSON error envelope; after commitment,
+the server logs one correlated error and aborts the transfer without a JSON
+suffix. Trusted HTML preview runs with the application origin permissions.
+Relative CSS, scripts, images and data URLs resolve under the fixed preview
+path; ordinary query parameters do not change the file name.
+
+## PostgreSQL storage boundaries
 
 `Store.WriteProject` locks one project in a `READ COMMITTED` transaction before
 calling the supplied operation. The operation receives a project-scoped

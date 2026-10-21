@@ -18,7 +18,7 @@ import (
 
 func uiTestHandler(output io.Writer) http.Handler {
 	logger := slog.New(slog.NewJSONHandler(output, nil))
-	return RequestLogging(logger, New(nil, nil, logger))
+	return RequestLogging(logger, New(nil, nil, nil, logger))
 }
 
 func TestUIExactRoutesAssetsAndSingleRequestLog(t *testing.T) {
@@ -140,7 +140,7 @@ func TestUIErrorsCancellationAndFailedWriteUseSafeSingleBoundary(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
 	request.Header.Set("X-Request-ID", "project-test")
 	response := httptest.NewRecorder()
-	RequestLogging(logger, New(nil, nil, logger)).ServeHTTP(response, request)
+	RequestLogging(logger, New(nil, nil, nil, logger)).ServeHTTP(response, request)
 	if response.Body.Len() != 0 || response.Header().Get("Content-Type") != "" || !strings.Contains(logs.String(), `"cause":"canceled"`) {
 		t.Fatalf("canceled UI request wrote a response or lost cause: %s %s", response.Body, &logs)
 	}

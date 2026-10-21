@@ -10,11 +10,19 @@ import (
 	"time"
 
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
+	"github.com/codetreker/daynight/packages/daynight-server/internal/filestorage"
+	"github.com/codetreker/daynight/packages/daynight-server/internal/filestorage/local"
 )
 
-type Runtime struct {
+type Dependencies struct {
 	Store *store.Store
+	Files filestorage.Storage
+}
 
+type Runtime struct {
+	Dependencies
+
+	files           *local.Storage
 	listener        net.Listener
 	http            *http.Server
 	logger          *slog.Logger
@@ -30,27 +38,32 @@ type runtimeError struct {
 func (e *runtimeError) Error() string { return fmt.Sprintf("HTTP %s failed", e.phase) }
 func (e *runtimeError) Unwrap() error { return e.cause }
 
-func Start(ctx context.Context, config Config, logger *slog.Logger, handler func(*store.Store) http.Handler) (*Runtime, error) {
+func Start(ctx context.Context, config Config, logger *slog.Logger, handler func(Dependencies) http.Handler) (*Runtime, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
 	startup, cancel := context.WithTimeout(ctx, config.StartupTimeout)
 	defer cancel()
+	files, err := local.New(config.StorageRoot)
+	if err != nil {
+		return nil, &ConfigurationError{Field: "DAYNIGHT_STORAGE_ROOT", Rule: "must identify a writable, case-sensitive storage directory", cause: err}
+	}
 	database, err := store.Open(startup, config.DatabaseURL)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(err, files.Close())
 	}
 	listener, err := (&net.ListenConfig{}).Listen(startup, "tcp", config.ListenAddress)
 	if err != nil {
 		database.Close()
-		return nil, &runtimeError{phase: "listen", cause: err}
+		return nil, &runtimeError{phase: "listen", cause: errors.Join(err, files.Close())}
 	}
 	requests, cancelRequests := context.WithCancel(context.Background())
+	dependencies := Dependencies{Store: database, Files: files}
 	runtime := &Runtime{
-		Store: database, listener: listener, logger: logger, shutdownTimeout: config.ShutdownTimeout,
+		Dependencies: dependencies, files: files, listener: listener, logger: logger, shutdownTimeout: config.ShutdownTimeout,
 		cancelRequests: cancelRequests,
 		http: &http.Server{
-			Handler:           RequestLogging(logger, handler(database)),
+			Handler:           RequestLogging(logger, handler(dependencies)),
 			ReadHeaderTimeout: 5 * time.Second,
 			IdleTimeout:       60 * time.Second,
 			BaseContext:       func(net.Listener) context.Context { return requests },
@@ -87,6 +100,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 	if !errors.Is(serveError, http.ErrServerClosed) {
 		err = errors.Join(err, serveError)
 	}
+	err = errors.Join(err, r.files.Close())
 	if err != nil {
 		return &runtimeError{phase: "shutdown", cause: err}
 	}

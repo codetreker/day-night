@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/server"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/service"
 )
@@ -29,8 +28,8 @@ func run(ctx context.Context, getenv func(string) string, output io.Writer) int 
 	}
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	runtime, err := server.Start(ctx, config, logger, func(database *store.Store) http.Handler {
-		return server.New(service.NewProjects(database), service.NewTasks(database), logger)
+	runtime, err := server.Start(ctx, config, logger, func(dependencies server.Dependencies) http.Handler {
+		return server.New(service.NewProjects(dependencies.Store), service.NewTasks(dependencies.Store), service.NewAttachments(dependencies.Store, dependencies.Files), logger)
 	})
 	if err != nil {
 		server.LogFailure(logger, ctx, "server", "startup", err)

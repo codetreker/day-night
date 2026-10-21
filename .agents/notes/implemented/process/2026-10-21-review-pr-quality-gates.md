@@ -27,10 +27,14 @@ boundary, and assess every captured change. Before publication or confirmation,
 it rereads the current title and body and reevaluates the gates against the
 relevant requirements. Approval requires both
 gates to pass and no Critical/Major code issues to remain. Blockers are published
-through `COMMENT`, with description and other PR-level problems in the review
-body and suitable out-of-scope or code findings inline. `REQUEST_CHANGES` remains
-unused. A retry can confirm an existing publication only when it matches the
-current gate result and captured review target.
+through `COMMENT` with actual resolvable review threads. Suitable out-of-scope or
+code findings are inline; description and other PR-level blockers use clearly
+labeled file-level threads on the principal changed file. `REQUEST_CHANGES`
+remains unused. Existing exact-target approvals are preserved during confirmation;
+new publication rereads the current gate inputs. The
+[conversation-cycle decision](../architecture/2026-10-21-review-conversation-cycle.md)
+partially supersedes the original summary-only COMMENT representation and
+head-only follow-up behavior while preserving these quality criteria.
 
 This partially supersedes the original absence-of-Critical/Major approval rule
 in the [Copilot execution decision](../architecture/2026-10-17-copilot-session-execution.md)
@@ -60,15 +64,15 @@ necessary relationship of changes to that scope.
 
 These gates are instructions evaluated by the review agent. Prompt and bundled
 skill regressions can verify the shipped requirements; they do not prove model
-judgment for every PR. The daemon neither parses a quality outcome nor gains a
-new state schema or an original-description snapshot. Scope decisions use
-available evidence of the original goal and cannot infer unavailable history.
-Configuration, SQLite data, session identities, scheduling and metadata-only
-trigger behavior remain unchanged. Editing only a title or body
-after a completed review does not schedule another attempt. A new `COMMENT`
-review also does not automatically dismiss an earlier GitHub approval.
+judgment for every PR. Scope decisions use available evidence of the original
+goal and cannot infer unavailable history. The original gate delivery retained
+the existing schema and scheduling, which avoided coupling methodology changes
+to a new runtime outcome contract. Conversation-driven follow-up now records
+actual publication and thread identities without parsing quality judgments or
+introducing an original-description snapshot. Correcting and resolving feedback
+can wake another round without a commit; description edits after an approved
+target do not revoke that approval.
 
 Code-defect severity and bounded verification retain their existing scope.
-Metadata-triggered rereview and machine-enforced judgments would need a separate
-scheduling or result contract; this instruction-based policy leaves their
-implementation independent of the current stored review state.
+Machine-enforced quality judgments remain distinct from the daemon's verification
+that a real approval or resolvable feedback publication exists.

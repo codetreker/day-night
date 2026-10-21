@@ -1,6 +1,7 @@
 # Task 附件与通用文件存储设计
 
-状态：架构已采用；存储、数据库、HTTP、CLI、Web 与部署实现均待完成。
+状态：通用存储、附件元数据与文件 HTTP/预览入口已实现；CLI、Web 管理界面和
+持久卷仍待完成。各任务交付进度在 Daynight 中维护。
 
 行为要求由[附件需求](../spec/daynight-task-attachments.md)拥有；本文解释通用存储接口、
 附件元数据及各端集成机制。
@@ -47,7 +48,7 @@ mockup/
 | [Task 模型](../../packages/daynight-server/internal/core/task.go)保存正文、状态、版本及依赖 | 新增独立附件模型与服务，不向 task PATCH 加入文件传输 |
 | [HTTP 组装](../../packages/daynight-server/internal/server/server.go)在同一 mux 注册 API 和内嵌页面 | 附件 API 与预览复用同一服务及 origin |
 | [JSON 解码](../../packages/daynight-server/internal/server/http.go)读取并校验受 1 MiB 限制的 JSON | 二进制上传使用独立的流式处理，既有 JSON 限制保持原义 |
-| [PG 迁移](../../packages/daynight-server/internal/core/store/migrations/002_tasks.sql)定义 task 与依赖表 | 同一迁移机制增加附件表，归属由服务校验 |
+| [附件迁移](../../packages/daynight-server/internal/core/store/migrations/004_task_attachments.sql)定义独立附件表 | 既有迁移机制维护该表，归属由服务校验 |
 | [CLI API 客户端](../../packages/daynight/src/api/client.ts)解码并汇总 UTF-8 JSON | 增加共享取消与错误机制下的二进制传输通道 |
 | [CLI 上下文](../../packages/daynight/src/cli/context.ts)的 stdout 接受字符串 | 增加可等待写入、保留背压的字节输出能力 |
 | [任务详情](../../packages/daynight-web/src/features/task-detail/TaskDrawer.tsx)独立加载 task | 在详情中增加附件区域，保持图和详情既有读取行为 |
@@ -65,7 +66,7 @@ flowchart TD
     Storage --> Local[LocalStorage]
 ```
 
-服务内新增通用文件存储包，建议位于 `internal/filestorage/`，本地实现在其
+服务内通用文件存储包位于 `internal/filestorage/`，本地实现在其
 `local/` 子包。该包不依赖 task、project、HTTP 或 PG。附件服务选择 bucket、组成
 逻辑路径，调用 Storage 并读写附件元数据；其他业务可以用自己的 bucket 复用它。
 
@@ -160,6 +161,9 @@ type Storage interface {
   提供通用 Stat、Scan 或版本操作。
 
 LocalStorage 在目标文件所在目录创建内部临时文件，流式写完并关闭后再替换目标。
+内部短锁只保护当前实例的目录准备、发布和删除，不覆盖内容流传输或 PG 操作。
+空内部目录可以在发布时让位于文件，非空目录和仍有上传临时文件的目录保持冲突；
+不提供共享根目录多进程写入的协调。
 替换前的普通写入失败或取消，清理本次调用拥有的临时文件并报告错误。用户可访问
 的路径不会指向正在写入的半个文件；内部临时名不属于附件路径或历史版本。
 
@@ -181,14 +185,16 @@ LocalStorage 在目标文件所在目录创建内部临时文件，流式写完�
 | `size_bytes` | `Put` 返回的实际大小 |
 | `created_at`、`updated_at` | PG 生成的创建与更新时间 |
 
-以 `(task_id, path)` 作为区分大小写的主键。业务服务在读写前检查 project/task
+以 `(task_id, path)` 作为主键，path 使用 `COLLATE "C"` 保持排序与唯一性区分大小写。业务服务在读写前检查 project/task
 归属，不新增 foreign key。Bucket 是附件服务中的固定值，存储路径由 taskId 与 path
 推导，表中不保存 `storage_key` 或物理根目录。
 
 覆盖保留 `created_at`，更新 MIME、大小和 `updated_at`。删除后重新上传同一路径
 创建新的附件记录。分页按相对路径的确定顺序进行 keyset 读取，cursor 包含上次路径，
 并绑定 project、task 与附件列表类型；沿用既有 opaque cursor 和 `items/nextCursor`
-形式。每页使用当前数据，不提供跨页快照。
+形式。附件游标单独保存 version/kind/projectId/taskId/path，严格拒绝未知字段、
+尾随 JSON 和跨作用域重用；不伪造既有 task 列表所需的 UUID/time 游标。每页使用
+当前数据，不提供跨页快照。
 
 ## 上传、覆盖、读取与删除
 
@@ -231,7 +237,8 @@ T = /api/v1/projects/{projectId}/tasks/{taskId}
 
 上传请求体直接携带文件字节，`Content-Type` 表达文件 MIME。上传端按文件类型选择
 合法 MIME，无法识别时使用 `application/octet-stream`；服务拒绝非法 header 值。
-服务不使用 JSON 解码器接收文件，也不将完整文件载入内存。
+缺失 Content-Type 时使用 application/octet-stream。服务不使用 JSON 解码器接收文件，
+也不将完整文件载入内存。
 
 ```http
 PUT T/attachments/files/mockup/assets/style.css
@@ -255,11 +262,17 @@ body { background: white; }
 
 列表返回 `items` 与 `nextCursor`，复用既有 limit/cursor 约定。路径各段单独 URL 编码，
 服务在路由重写或自动清理前检查非法路径，避免上传、删除被静默重定向至其他文件。
+文件 URL 的 query 不作为文件路径，允许相对资源使用普通缓存参数。路径守卫只对
+附件请求检测原始命名空间意图，不能因后续 parent 段或冗余前缀将修改重定向到旧
+JSON 路由；正常既有路由行为保持原义。
 所有入口均检查 project/task 归属。无效输入、缺失资源及内部失败使用既有 HTTP 错误
 信封、requestId 和日志规则，保留原始错误链。
 
 原始读取使用下载响应头，预览使用 inline 响应头，并以实际打开文件的大小发送内容。
 列表与可覆盖的文件使用 `Cache-Control: no-store`，刷新后读取当前内容。
+`path_conflict` 映射 409；存储记录存在而磁盘内容缺失仍为 500，不能被 not_found
+错误链误判。流式中止只记录附件操作错误，现有日志包装器直接重抛 ErrAbortHandler，
+保留真正 panic 的原有脱敏处理。
 
 ## 请求生命周期与诊断
 
@@ -350,13 +363,17 @@ daynight task attachment remove <task-id> docs/design.md
 
 ## 配置、部署与备份
 
-服务新增必填 `DAYNIGHT_STORAGE_ROOT`，为 LocalStorage 指定明确的持久化根目录。
+服务使用必填 `DAYNIGHT_STORAGE_ROOT`，为 LocalStorage 指定明确的根目录。
+当前启动以 `local.New` 准备根目录，向工厂提供 `server.Dependencies{Store, Files}`，
+在监听前完成验证；后续启动失败与 HTTP 排空后均关闭已取得的文件根句柄。
 启动时校验配置并以服务用户准备所需目录；无法访问或创建时启动失败。引入该必填
 配置的同次交付必须更新所有现有服务启动调用方，包括 Compose、镜像目录权限、
 Web 验收启动器、Go 子进程测试及 CLI 真实服务验收，不能等待后续持久卷任务。
 物理目录不进入 API、PG 或 CLI 配置，所有客户端继续使用既有 `serverUrl`。
 
-localhost Compose 增加一个附件持久卷，挂载到该根目录。镜像内挂载点与卷初始化
+当前两套 Compose 已设置该变量，生产镜像已为 UID/GID `10001:10001` 准备可写
+目录；Go 启动与重启 fixture、Web native runner 使用其所属独立目录。
+A-T5 将为 localhost Compose 增加一个附件持久卷，挂载到该根目录。镜像内挂载点与卷初始化
 匹配服务 UID/GID `10001:10001`，由真实容器写入及重建验收证明可用。dev-ci 使用
 本次隔离 Compose 项目的附件卷，并在现有清理流程中删除；不使用开发环境持久卷。
 
@@ -368,7 +385,9 @@ localhost Compose 增加一个附件持久卷，挂载到该根目录。镜像�
 
 ## 实现验证
 
-以下是后续实现任务的验证要求，尚未执行或取得通过结果：
+通用存储、元数据、HTTP 与 fixture 已有组件和实际二进制检查；源绑定结果归属
+对应 PR 与 CI。CLI、Web 管理界面及持久卷仍按各自后续任务验证，不能由后端通过
+结果代替。各层验证职责如下：
 
 - Storage：bucket 隔离、真实相对路径、同路径完整覆盖、原始字节一致、实际大小、
   缺失与权限错误、取消、普通失败的临时文件清理及路径不能越出根目录。

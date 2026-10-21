@@ -88,7 +88,7 @@ const fixture = () => {
   writeFileSync(skill.entrypoint, "fixture skill");
   const supervise = (input: Partial<CopilotRunOptions> = {}): CopilotRunOptions => {
     const supervisor = createProcessSupervisor({ graceMs: 500 });
-    return { ...input, onProcess: (child, attempt) => { if (input.excludeProcess === undefined) supervisor.onProcess(child, attempt); input.onProcess?.(child, attempt); },
+    return { publisherId: "fixture-publisher", publicationIdentityFormat: "line", ...input, onProcess: (child, attempt) => { if (input.excludeProcess === undefined) supervisor.onProcess(child, attempt); input.onProcess?.(child, attempt); },
       stopProcess: input.stopProcess === undefined ? supervisor.stop : input.stopProcess,
       excludeProcess: input.excludeProcess === undefined ? supervisor.exclude : input.excludeProcess };
   };
@@ -185,8 +185,16 @@ describe("Copilot persisted sessions and direct attempts", () => {
     expect(report.prompt).toContain(uuid(99));
     expect(report.prompt).toContain("$(literal) & | %PATH%");
     expect(report.prompt).toContain("Never submit REQUEST_CHANGES");
-    expect(report.prompt).toContain("Re-evaluate the skill's PR-quality gates against the current title and description before confirming an existing result");
-    expect(report.prompt).toContain("A body-only COMMENT is valid");
+    expect(report.prompt).toContain('Captured publishing actor node ID: "fixture-publisher"');
+    expect(report.prompt).toContain('Existing publication identity format: "line"');
+    expect(report.prompt).toContain("a token embedded in other prose is insufficient");
+    expect(report.prompt).toContain("do not publish under another identity");
+    expect(report.prompt).toContain("Confirm a matching existing APPROVED review immediately without re-evaluating later title or description edits");
+    expect(report.prompt).toContain("its unresolved threads do not block this same-round confirmation");
+    expect(report.prompt).toContain("at least one real resolvable native review thread");
+    expect(report.prompt).toContain("A top-level review body alone is insufficient");
+    expect(report.prompt).toContain("native file-level thread on the principal changed file");
+    expect(report.prompt).toContain("do not invent a code defect or line");
     expect(report.prompt).toContain("Publish APPROVE only when both PR-quality gates pass and no Critical or Major defect remains");
     expect(report.prompt).toContain("commit_id");
     expect(report.prompt).toContain("APPROVE");
@@ -198,6 +206,19 @@ describe("Copilot persisted sessions and direct attempts", () => {
     for (const name of ["COPILOT_SKILLS_DIRS", "copilot_skills_dirs", "GIT_DIR", "GIT_WORK_TREE", "GIT_CONFIG_KEY_99", "GIT_CONFIG_PARAMETERS", "GIT_TRACE", "GIT_CURL_VERBOSE"]) expect(report.env).not.toHaveProperty(name);
     expect(report.args.join(" ")).not.toContain("fixture-secret");
     expect(report.prompt).not.toContain("fixture-secret");
+  });
+
+  it("limits migrated identity recovery to existing publications while keeping new publication bodies strict", async () => {
+    const f = fixture();
+    const outcome = await f.run("success", {}, { publicationIdentityFormat: "legacy" });
+    expect(outcome.completed).toBe(true);
+    const report = JSON.parse(readFileSync(f.report, "utf8")) as { prompt: string };
+    expect(report.prompt).toContain('Existing publication identity format: "legacy"');
+    expect(report.prompt).toContain("permits legacy matching only to recover an already existing publication");
+    expect(report.prompt).toContain("Require token boundaries so a longer identity cannot match");
+    expect(report.prompt).toContain("include the stable review identity as its own exact line in the review body");
+    expect(report.prompt).toContain("Confirm a matching existing APPROVED review immediately without re-evaluating later title or description edits");
+    expect(report.prompt).toContain('Captured publishing actor node ID: "fixture-publisher"');
   });
 
   it("resumes exactly the persisted session after an incomplete attempt with fresh retained logs", async () => {

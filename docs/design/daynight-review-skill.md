@@ -5,7 +5,8 @@
 需求归属见[review 需求](../spec/daynight-review.md)，执行与恢复模型见
 [review 架构](daynight-review.md)，选择依据见
 [内置 skill 决策](../../.agents/notes/implemented/architecture/2026-10-20-bundled-review-skill.md)和
-[PR 质量门槛决策](../../.agents/notes/implemented/process/2026-10-21-review-pr-quality-gates.md)。
+[PR 质量门槛决策](../../.agents/notes/implemented/process/2026-10-21-review-pr-quality-gates.md)及
+[conversation 轮次决策](../../.agents/notes/implemented/architecture/2026-10-21-review-conversation-cycle.md)。
 
 ## 目标与边界
 
@@ -14,7 +15,8 @@ skill 定义审查方法、证据标准、PR description 与原定范围的质�
 finding 的范围；每次调用的提示词保留 PR 身份、固定的 head/base、当前 PR 信息的
 读取要求、发布前校验、重试对账和最终完成标记。两者共同构成一次审查的输入。
 
-配置文件、SQLite 表结构、已有数据位置和每个 PR 的会话 UUID 保持不变。skill 目录
+skill 的打包与发现保留配置、已有数据位置和每个 PR 的会话 UUID；审查轮次和远端结果
+由 review 状态模块显式迁移持久化。skill 目录
 由 review 模块持有；仓库根目录的 `.agents/skills/` 继续管理开发本仓库的工作流。
 不增加用户可配置的 skill 注册目录或通用插件扩展 API。
 
@@ -47,9 +49,11 @@ diff 是否围绕该结果且可以有效审查。多个独立目标、无法明
 
 代码审查继续追踪调用者及行为约束，用有边界的独立验证证明引入的问题，只发布需要
 处理的 Critical/Major 英文行级 findings；更小和无关的代码改进延后。质量门槛不借用
-Critical/Major 来判断是否阻断批准。description 和无合适 diff 行的阻断理由放在
-`COMMENT` review 正文，越界修改在适合的相关 diff 行指出。skill 不包含特定 PR 的
-值；动态提示词持有读取时机、发布结果选择、资格校验和重试确认协议。
+Critical/Major 来判断是否阻断批准。所有阻断发布都必须形成实际可 resolve 的
+conversation：越界修改和代码问题使用适合的 diff 行；description 和无合适 diff 行的
+PR 级问题使用主要修改文件上的文件级 thread，并明确标注问题属于 PR 级。review
+正文或普通 PR comment 不能单独满足反馈要求。skill 不包含特定 PR 的值；动态提示词
+持有读取时机、发布结果选择、资格校验和重试确认协议。
 
 ## 固定运行时快照
 
@@ -107,12 +111,23 @@ skill 覆盖、禁用条目、意外路径、无效 JSON、截断或超限输出
 程序不解析其会话历史，也不将工具调用文本作为新的完成条件。
 
 动态提示词要求 agent 读取当前 PR 标题、description 和链接的相关范围需求，并审查
-固定 head/base 对应的完整 diff。发布或确认既有结果前再次读取当前标题和
-description，并结合相关需求重新评估。
-只有 description 与范围两项门槛通过且没有 Critical/Major 代码问题时才能 `APPROVE`；
-其他结果使用 `COMMENT`，不使用 `REQUEST_CHANGES`。恢复会话只有在既有发布与当前
-门槛结果一致且对应捕获目标时才能确认完成。daemon 不解析质量判断，不增加数据库
-结果类型；仅元数据变化也不新增审查触发条件。
+固定 head/base 对应的完整 diff。新发布前再次读取当前标题和 description，并结合
+相关需求重新评估。只有 description 与范围两项门槛通过
+且没有 Critical/Major 代码问题时才能 `APPROVE`；否则使用带实际可 resolve thread 的
+`COMMENT`，不使用 `REQUEST_CHANGES`。执行或发布失败不能通过虚构 finding 满足该
+二选一要求。已有匹配捕获目标的 approval 保持有效，description 编辑不能要求撤销。
+
+同一轮恢复先核对已发布结果，避免重复发布。只有捕获轮次的真实 `APPROVED`、带
+自身 thread 的 `COMMENTED`，或同一固定发布者可恢复的有效匹配 pending 草稿，才
+允许绕过 conversation gate。失败尝试本身不能构成例外。账户变化后可只读核对原
+发布者的已提交结果；没有结果或仅有草稿时等待原发布者，不消费模型尝试。daemon
+不解析质量判断，而是核对稳定审查身份、捕获 commit、
+发布者和真实 review/thread 证据。接受完成标记后，远端核对失败只进行可重启的只读
+重试，不消费模型尝试预算。完整查询成功但没有合法结果时，回到有限模型重试；
+耗尽明确失败。成功 `COMMENT` 保存一次性反馈屏障；全部已提交的原生 review
+conversation resolve 后，在当前目标 CI 通过时进入下一轮，无需新 commit。resolve
+是请求再验证的信号，skill 仍要求检查问题是否实际修复。已批准目标保持完成；仅元
+数据编辑不产生新轮次。持久化和调度的机制归属见[review 架构](daynight-review.md)。
 
 ## 两阶段尝试与进程归属
 
@@ -137,23 +152,27 @@ description，并结合相关需求重新评估。
 
 进程结果类型分离直接子进程执行证据与审查业务结果，使发现失败也能复用现有的
 终止与排除机制。两阶段对 ENOENT 和 Windows 命令包装器使用相同的确定性证据。
-协调器对正式审查的最终排除、远端发布核对和完成标记规则保持不变。
+协调器在正式审查最终排除后保存完成断言，再核对远端发布；资源排除和完成标记
+不能互相替代，也不能替代真实 review/thread 证据。
 
 ## 失败与可观察结果
 
 安装资源缺失或 bundle 无效属于启动失败，不消费某个 PR 的尝试预算。发现阶段的
 命令、输出或匹配失败属于该 PR 当前 attempt 的失败，使用现有重试和上限策略。
 所有失败保留对应日志和具体原因，不能退回不带 skill 的审查。发现成功也不表示
-审查完成；只有原有正式审查协议可以产生完成断言。
+审查完成；正式审查的精确末行产生执行完成断言，实际发布还须由完整远端证据确认。
 
 ## 验证
 
 单元和受控进程验证覆盖资源定位、完整 bundle 哈希及复制、已有快照损坏、原子发布、
 发现响应及同名覆盖、子环境隔离、同一会话的恢复提示词、两阶段预算与截止时间、
 阶段间取消、PID 清空的匹配规则，以及排除失败时不启动后续进程。提示词回归检查
-断言恢复既有结果前重新评估当前标题和 description、允许仅含正文的 `COMMENT`，
-以及两项质量门槛通过且没有 Critical/Major 才能批准。初次读取 PR 信息、相关需求
-和检查完整 diff 的要求由加载的 skill 正文提供。这些指令断言不证明模型在任意 PR
+断言新发布前重新评估当前标题和 description、`COMMENT` 必须包含实际可 resolve
+thread、同一轮恢复避免重复发布，以及两项质量门槛通过且没有 Critical/Major 才能
+批准。conversation 和发布对账的状态测试覆盖同 SHA 重审、完成前 resolve、重启后
+消费一次反馈、核对失败不重复调用模型、没有发布的失败重试继续等待其他 feedback，
+以及 description 编辑保留已有 approval。
+初次读取 PR 信息、相关需求和检查完整 diff 的要求由加载的 skill 正文提供。这些指令断言不证明模型在任意 PR
 上的判断质量。
 
 安装包验收从打包产物启动，确认 `SKILL.md` 及相对资源实际存在，帮助和其他命令仍

@@ -19,7 +19,10 @@ builds the frontend with Node.js 24 and pnpm 10.34.5, embeds its generated asset
 in the Go 1.27.2 binary, recreates all three service containers while preserving
 the PostgreSQL volume, and waits up to 120 seconds for their health checks.
 Build time is separate from that readiness timeout. The final nonroot runtime
-image contains the server binary and does not need Node.js.
+image contains the server binary and does not need Node.js. It prepares the
+required writable `DAYNIGHT_STORAGE_ROOT` for UID/GID `10001:10001`. This directory
+is currently in the container layer; the attachment persistent-volume task
+owns its durable mount before the complete attachment feature is delivered.
 
 Open `http://127.0.0.1:8787/` for the project list. Selecting a project opens
 `/projects/<projectId>`, with statistics, expandable dependency graphs and task

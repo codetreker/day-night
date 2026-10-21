@@ -23,7 +23,8 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/daynight-server ./
 
 FROM alpine:3.24
 
-RUN addgroup -S -g 10001 daynight && adduser -S -D -H -u 10001 -G daynight daynight
+RUN addgroup -S -g 10001 daynight && adduser -S -D -H -u 10001 -G daynight daynight \
+    && mkdir -p /var/lib/daynight/storage && chown 10001:10001 /var/lib/daynight/storage
 COPY --from=build --chmod=0555 /out/daynight-server /usr/local/bin/daynight-server
 USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/daynight-server"]

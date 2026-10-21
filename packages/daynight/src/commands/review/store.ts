@@ -1,6 +1,7 @@
 import path from "node:path";
 import { lstatSync, statSync } from "node:fs";
 import Database from "better-sqlite3";
+import type { PublicationIdentityFormat, ReviewPublication } from "./publication.js";
 
 import type { RepositoryIdentity, PullRequestIdentity, RepositoryState, PullRequestObservation, RepositoryPollUpdate, PullRequestState, ReviewStatus, ReviewState, ReviewCandidate, ReviewListingSnapshot, AttemptIdentity, OperationsStopped, ProcessesExcluded } from "./model.js";
 
@@ -54,6 +55,21 @@ const requireExcluded = (proof: ProcessesExcluded): void => {
   if (proof.processesExcluded !== true) throw new Error("The caller must exclude any previous agent processes first.");
 };
 
+export type ReviewPublicationState = { phase: "prepared" | "pending" | "verified" | "legacy"; publisherId: string | null; identityFormat: PublicationIdentityFormat; outcome: "approved" | "commented" | null; remoteReviewId: string | null; threadIds: string[]; followupConsumed: boolean };
+const publicationColumns = `phase, publisher_id AS publisherId, identity_format AS identityFormat, outcome, remote_review_id AS remoteReviewId, remote_thread_ids AS threadIds, followup_consumed AS followupConsumed`;
+const publicationSchema = `
+  CREATE TABLE review_publications (
+    review_id TEXT PRIMARY KEY,
+    phase TEXT NOT NULL CHECK(phase IN ('prepared', 'pending', 'verified', 'legacy')),
+    identity_format TEXT NOT NULL DEFAULT 'line' CHECK(identity_format IN ('line', 'legacy')),
+    publisher_id TEXT CHECK(phase = 'legacy' OR identity_format = 'legacy' OR publisher_id IS NOT NULL),
+    outcome TEXT CHECK(outcome IN ('approved', 'commented')),
+    remote_review_id TEXT,
+    remote_thread_ids TEXT NOT NULL DEFAULT '[]',
+    followup_consumed INTEGER NOT NULL DEFAULT 0 CHECK(followup_consumed IN (0, 1)),
+    CHECK((phase = 'verified') = (outcome IS NOT NULL AND remote_review_id IS NOT NULL))
+  ) STRICT;
+`;
 const schema = `
   CREATE TABLE repositories (
     host TEXT NOT NULL,
@@ -116,7 +132,8 @@ const schema = `
   CREATE UNIQUE INDEX reviews_one_active_per_pr ON reviews(host, github_id, number)
     WHERE status IN (${activeStatuses});
   CREATE INDEX reviews_revision ON reviews(host, github_id, number, revision);
-  PRAGMA user_version = 1;
+  ${publicationSchema}
+  PRAGMA user_version = 2;
 `;
 
 const reviewDatabaseIsMissing = (databaseFile: string): boolean => {
@@ -150,7 +167,7 @@ export const readReviewListingSnapshot = (databaseFile: string): ReviewListingSn
   try {
     return db.transaction(() => {
       const version = db.pragma("user_version", { simple: true }) as number;
-      if (version !== 1) throw new Error(`Review listing requires SQLite schema version 1; found version ${version}.`);
+      if (version !== 1 && version !== 2) throw new Error(`Review listing requires SQLite schema version 1 or 2; found version ${version}.`);
       const repositories = db.prepare(`SELECT ${repositoryColumns} FROM repositories ORDER BY host, github_id`).all() as RepositoryState[];
       const pullRequests = (db.prepare(`SELECT ${pullRequestColumns} FROM pull_requests WHERE state = 'open' ORDER BY host, github_id, number`)
         .all() as PullRequestRow[]).map(asPullRequest);
@@ -180,13 +197,20 @@ export const openStore = (databaseFile: string, options: { busyTimeoutMs?: numbe
   const db = new Database(databaseFile, { timeout: busyTimeoutMs });
   try {
     const version = db.pragma("user_version", { simple: true }) as number;
-    if (version > 1) throw new Error(`SQLite schema version ${version} is newer than supported version 1.`);
+    if (version > 2) throw new Error(`SQLite schema version ${version} is newer than supported version 2.`);
     if (version < 0) throw new Error(`Unsupported SQLite schema version ${version}.`);
     const journalMode = db.pragma("journal_mode = WAL", { simple: true });
     if (journalMode !== "wal") throw new Error(`SQLite refused WAL mode: ${String(journalMode)}.`);
     db.pragma("synchronous = FULL");
     if (db.pragma("synchronous", { simple: true }) !== 2) throw new Error("SQLite refused synchronous=FULL.");
     if (version === 0) db.transaction(() => db.exec(schema)).immediate();
+    if (version === 1) db.transaction(() => {
+      db.exec(publicationSchema);
+      db.exec(`INSERT INTO review_publications(review_id, phase, identity_format)
+        SELECT id, CASE WHEN status = 'completed' THEN 'legacy' ELSE 'prepared' END, 'legacy'
+        FROM reviews WHERE status = 'completed' OR status IN (${activeStatuses})`);
+      db.pragma("user_version = 2");
+    }).immediate();
   } catch (error) {
     try { db.close(); } catch (closeError) { throw new AggregateError([error, closeError], "SQLite startup and connection cleanup failed."); }
     throw error;
@@ -235,7 +259,97 @@ export const openStore = (databaseFile: string, options: { busyTimeoutMs?: numbe
     return needReview(review.id);
   };
 
+  const getReviewPublication = (reviewId: string): ReviewPublicationState | null => {
+    const row = db.prepare(`SELECT ${publicationColumns} FROM review_publications WHERE review_id = ?`).get(reviewId) as
+      Omit<ReviewPublicationState, "threadIds" | "followupConsumed"> & { threadIds: string; followupConsumed: number } | undefined;
+    return row === undefined ? null : { ...row, threadIds: JSON.parse(row.threadIds) as string[], followupConsumed: row.followupConsumed === 1 };
+  };
   const store = {
+    getReviewPublication,
+    adoptHistoricalApproval: (reviewId: string, publication: ReviewPublication): void => atomic(() => {
+      if (getReviewPublication(reviewId)?.phase !== "legacy" || needReview(reviewId).status !== "completed" || publication.outcome !== "approved") throw new Error("Only a legacy completed review may adopt a historical approval.");
+      db.prepare("UPDATE review_publications SET phase = 'verified', publisher_id = @publisherId, outcome = 'approved', remote_review_id = @remoteReviewId, remote_thread_ids = '[]' WHERE review_id = @id")
+        .run({ id: reviewId, publisherId: publication.publisherId, remoteReviewId: publication.remoteReviewId });
+    }),
+    adoptLegacyReviewPublisher: (reviewId: string, publisherId: string): void => atomic(() => {
+      requireText(publisherId, "Legacy review publisher ID");
+      const review = needReview(reviewId);
+      const publication = getReviewPublication(reviewId);
+      if ((review.status !== "preparing" && review.status !== "retry_wait") || publication?.phase !== "prepared" || publication.identityFormat !== "legacy") throw new Error("Only an unfinished migrated review may adopt its publisher.");
+      if (publication.publisherId !== null && publication.publisherId !== publisherId) throw new Error("The migrated review's publisher is already bound to another actor.");
+      db.prepare("UPDATE review_publications SET publisher_id = ? WHERE review_id = ?").run(publisherId, reviewId);
+    }),
+    captureReviewPublisher: (reviewId: string, publisherId: string): void => atomic(() => {
+      requireText(publisherId, "Review publisher ID");
+      const review = needReview(reviewId);
+      if (review.status !== "preparing") throw new Error("Only a preparing review may capture its publisher.");
+      const publication = getReviewPublication(reviewId);
+      if (publication !== null && publication.publisherId !== null && publication.publisherId !== publisherId) throw new Error("The authenticated account differs from this round's captured review publisher.");
+      db.prepare("INSERT INTO review_publications(review_id, phase, publisher_id) VALUES(?, 'prepared', ?) ON CONFLICT(review_id) DO UPDATE SET publisher_id = excluded.publisher_id").run(reviewId, publisherId);
+    }),
+    settleApprovedTarget: (identity: PullRequestIdentity, headSha: string, baseRef: string, proof: OperationsStopped, now: number): boolean => atomic(() => {
+      requireStopped(proof);
+      const pr = needPullRequest(identity);
+      if (pr.headSha !== headSha || pr.baseRef !== baseRef || pr.state !== "open" || pr.draft || pr.cleanupPending) return false;
+      const active = activeReview(pr);
+      if (active !== null && (active.status === "running" || active.status === "interrupted")) return false;
+      if (active !== null) setStatus(active, "superseded", now, null);
+      db.prepare("UPDATE pull_requests SET completed_revision = desired_revision WHERE host = @host AND github_id = @githubId AND number = @number").run(pullRequestKey(pr));
+      return true;
+    }),
+    beginPublicationVerification: (identity: AttemptIdentity, proof: ProcessesExcluded, now: number): void => atomic(() => {
+      requireExcluded(proof);
+      requireInteger(now, "Verification time");
+      const review = attemptReview(identity);
+      const publication = getReviewPublication(review.id);
+      if (publication?.phase !== "prepared" || publication.publisherId === null) throw new Error("The review publisher must be captured before publication verification.");
+      db.prepare("UPDATE review_publications SET phase = 'pending' WHERE review_id = ?").run(review.id);
+      db.prepare("UPDATE reviews SET process_id = NULL, process_identity = NULL, updated_at = ? WHERE id = ?").run(now, review.id);
+    }),
+    rejectPublicationVerification: (reviewId: string): void => atomic(() => {
+      if (getReviewPublication(reviewId)?.phase !== "pending") throw new Error("Publication verification is not pending.");
+      db.prepare("UPDATE review_publications SET phase = 'prepared' WHERE review_id = ?").run(reviewId);
+    }),
+    recordPublicationError: (reviewId: string, error: string, now: number): void => atomic(() => {
+      if (getReviewPublication(reviewId)?.phase !== "pending") throw new Error("Only pending publication verification can record a read error.");
+      requireText(error, "Publication verification error");
+      db.prepare("UPDATE reviews SET last_error = ?, updated_at = ? WHERE id = ?").run(error, now, reviewId);
+    }),
+    confirmReviewPublication: (identity: AttemptIdentity, publication: ReviewPublication, proof: ProcessesExcluded, now: number): ReviewState => atomic(() => {
+      requireExcluded(proof);
+      const review = attemptReview(identity);
+      const captured = getReviewPublication(review.id);
+      if (captured?.phase !== "pending" || captured.publisherId !== publication.publisherId) throw new Error("The publication does not match this round's captured publisher and verification phase.");
+      if (publication.outcome === "commented" && publication.threadIds.length === 0) throw new Error("A completed COMMENT requires a resolvable conversation.");
+      db.prepare(`INSERT INTO review_publications(review_id, phase, publisher_id, outcome, remote_review_id, remote_thread_ids)
+        VALUES(@id, 'verified', @publisherId, @outcome, @remoteReviewId, @threadIds)
+        ON CONFLICT(review_id) DO UPDATE SET phase = 'verified', publisher_id = excluded.publisher_id, outcome = excluded.outcome, remote_review_id = excluded.remote_review_id, remote_thread_ids = excluded.remote_thread_ids`)
+        .run({ id: review.id, ...publication, threadIds: JSON.stringify(publication.threadIds) });
+      return store.completeReview(identity, proof, now);
+    }),
+    reconcileCompletedPublication: (reviewId: string, publication: ReviewPublication | null, allThreadsResolved: boolean, now: number): PullRequestState => atomic(() => {
+      const review = needReview(reviewId);
+      const pr = needPullRequest(review);
+      const state = getReviewPublication(review.id);
+      if (review.status !== "completed" || state === null || state.followupConsumed || !isCurrentTarget(review, pr)) return pr;
+      if (state.phase === "legacy") {
+        if (publication !== null) {
+          db.prepare("UPDATE review_publications SET phase = 'verified', publisher_id = @publisherId, outcome = @outcome, remote_review_id = @remoteReviewId, remote_thread_ids = @threadIds WHERE review_id = @id")
+            .run({ id: review.id, ...publication, threadIds: JSON.stringify(publication.threadIds) });
+          if (publication.outcome === "approved") return pr;
+        } else {
+          // Legacy completion did not prove a resolvable result; one successor adopts the new protocol.
+          db.prepare("UPDATE review_publications SET followup_consumed = 1 WHERE review_id = ?").run(review.id);
+          db.prepare("UPDATE pull_requests SET desired_revision = desired_revision + 1, observed_at = @now WHERE host = @host AND github_id = @githubId AND number = @number").run({ ...pullRequestKey(pr), now });
+          return needPullRequest(pr);
+        }
+      }
+      const current = getReviewPublication(review.id)!;
+      if (current.outcome !== "commented" || !allThreadsResolved) return pr;
+      db.prepare("UPDATE review_publications SET followup_consumed = 1 WHERE review_id = ?").run(review.id);
+      db.prepare("UPDATE pull_requests SET desired_revision = desired_revision + 1, observed_at = @now WHERE host = @host AND github_id = @githubId AND number = @number").run({ ...pullRequestKey(pr), now });
+      return needPullRequest(pr);
+    }),
     close: (): void => { db.close(); },
     getRepository,
     getPullRequest,

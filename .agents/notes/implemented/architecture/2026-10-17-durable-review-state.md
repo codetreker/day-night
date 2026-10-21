@@ -18,7 +18,8 @@ transport spelling and the configuration coordinate do not create a new
 initialization identity. A null cutoff means uninitialized, zero means a
 successful empty scan, and an initialized cutoff is immutable.
 
-Observed triggers advance a desired revision. A review captures its own immutable
+Observed target changes and resolved-feedback follow-ups advance a desired
+revision. A review captures its own immutable
 revision, head, and target branch, with the base commit pinned before launch.
 Completion advances only that captured revision. A partial unique index includes
 preparing, running, retry_wait, and interrupted reviews so that one PR has one
@@ -119,4 +120,18 @@ binary on each supported platform.
 The [foreground coordinator](2026-10-17-foreground-review-coordination.md) composes
 polling, Git preparation, agent invocation and process evidence around these
 transactions. A caller supplies timestamps, IDs and external outcomes; the
-database does not manufacture evidence of successful review publication.
+database does not manufacture evidence of successful review publication. The
+[conversation-cycle decision](2026-10-21-review-conversation-cycle.md) partially
+supersedes the original head-only follow-up and marker-only completion behavior.
+Schema version 2 adds `review_publications` records for the publisher captured
+before launch, pending remote verification,
+verified approval or commented results, exact review/thread identities, identity
+format provenance and consumed follow-ups. Version 1 completed records migrate
+as `legacy`; active unfinished records migrate as `prepared`, both with explicit
+legacy identity format and unknown publisher until historical remote evidence
+establishes the actor. New rounds and new writes use strict identities. The
+migration preserves existing records; supported legacy
+listing remains read-only. Marker acceptance and process exclusion precede durable
+pending confirmation, whose remote retries do not relaunch the model or consume
+its budget. A verified comment can produce one same-target successor after all
+conversations resolve, while a matching approval settles its target.

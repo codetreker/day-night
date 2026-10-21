@@ -51,7 +51,7 @@ does not remove the barrier, exclude processes or perform cleanup. The
 owns the recovery prerequisites that keep those resources blocked.
 
 The reader parses configuration without the runtime loader's physical path probes.
-It opens an existing database read-only and checks schema version 1 within the
+It opens an existing database read-only and accepts schema version 1 or 2 within the
 same short transaction as its selects. It does not enter runtime startup, acquire
 an instance lock, run commands, access the network, migrate state or recover work.
 An absent database yields uninitialized repositories without file creation. An
@@ -103,9 +103,10 @@ prevents cross-table observations from different commits. The listing does not
 assert process health, current GitHub state or agent publication beyond the
 persisted record. Timestamps and saved errors expose that limit.
 
-The existing schema and application-state format remain unchanged. A database
-with another schema version requires software that understands it; listing does
-not migrate or repair it. SQLite coordination sidecars remain native-managed
+The [conversation-cycle decision](../architecture/2026-10-21-review-conversation-cycle.md)
+adds version 2 publication state while retaining read-only version 1 listing.
+A database with another schema version requires software that understands it;
+listing does not migrate or repair it. SQLite coordination sidecars remain native-managed
 resources, so read-only access does not imply byte-for-byte directory immutability.
 The permanent cutoff prevents enumeration of excluded PRs, and polling gaps can
 leave the printed open or Draft state stale until the next successful observation.

@@ -11,9 +11,10 @@
 [只读看板设计](daynight-web.md)定义完整图快照接口、浏览器页面和内嵌静态资源
 交付；图 API 保留本文的领域与事务结构，不改变现有分页读取的一致性承诺。
 
-已采用、尚待实现的[附件架构](daynight-task-attachments.md)在该服务中增加独立的
-bucket/path 文件存储和单文件接口；[附件需求](../spec/daynight-task-attachments.md)
-拥有行为与已知问题，[附件任务拆分](daynight-task-attachments-tasks.md)拥有实施状态。
+已采用的[附件架构](daynight-task-attachments.md)提供独立的 bucket/path 文件存储；
+通用本地存储、元数据及单文件附件接口已实现；[附件需求](../spec/daynight-task-attachments.md)
+拥有行为与已知问题，[附件任务拆分](daynight-task-attachments-tasks.md)提供实施范围
+及 Daynight 进度入口。
 现有 PostgreSQL task 事务规则不扩展为文件与元数据的原子提交保证。
 
 现有 `packages/daynight/` TypeScript CLI、YAML 配置和 SQLite review 状态继续独立
@@ -22,7 +23,7 @@ bucket/path 文件存储和单文件接口；[附件需求](../spec/daynight-tas
 [预定义属性设计](daynight-task-properties.md)为完整 task 提供固定结构的 PR
 引用，服务端已沿用本文的事务与版本机制实现存储、迁移和 HTTP 操作。其
 [需求](../spec/daynight-task-properties.md)及[实施任务](daynight-task-properties-tasks.md)
-拥有扩展行为与 CLI/web 的后续状态。
+拥有扩展行为与各组件的交付记录。
 
 ## 完整图读取
 
@@ -284,7 +285,10 @@ driver 错误或完整请求体。成功日志提供方法、路由模板、状�
 
 ## 启动、迁移与关闭
 
-启动配置明确提供 PostgreSQL 连接信息；HTTP 默认监听 `127.0.0.1`。批准范围为本机
+启动配置明确提供 PostgreSQL 连接信息和 `DAYNIGHT_STORAGE_ROOT`；HTTP 默认监听
+`127.0.0.1`。LocalStorage 在打开数据库和监听前准备根目录，要求可写且区分大小写。
+运行时以 `Dependencies` 向装配层提供数据库与文件存储，并在启动失败或 HTTP
+排空结束后关闭已取得的文件根句柄。批准范围为本机
 CLI 和内部程序调用，服务只接受 loopback 监听地址。远程认证、授权及对外部署需要
 独立设计，当前接口中的 project ID 不作为认证凭据。
 
@@ -310,8 +314,8 @@ Compose 网络访问，PostgreSQL 18 数据卷挂到 `/var/lib/postgresql`。
 
 进程启动时创建 `pgxpool` 并验证数据库连接，然后从 pool 获取并固定一条专用
 `pgxpool.Conn`。该连接取得 PostgreSQL session-level advisory migration lock，
-并在同一物理连接上完成版本读取、校验和全部内嵌 SQL 迁移。当前迁移先建立 project，
-再建立 task 与依赖表；应用记录必须是内嵌迁移的有序前缀。锁必须跨越整个迁移
+并在同一物理连接上完成版本读取、校验和全部内嵌 SQL 迁移。当前迁移依次建立 project、
+task/依赖、预定义属性及独立附件表；应用记录必须是内嵌迁移的有序前缀。锁必须跨越整个迁移
 序列，不能使用会在单个迁移提交时释放的 transaction-level advisory lock，也不能
 通过 pool 的任意连接分别取得和释放锁。
 

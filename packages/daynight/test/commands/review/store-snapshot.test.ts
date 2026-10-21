@@ -251,7 +251,17 @@ describe("read-only review listing snapshots", () => {
     expect(snapshot?.reviews[0]).toMatchObject({ id: preparing.id, status: "preparing" });
   });
 
-  it.each([0, 2])("rejects existing schema version %i without migration and closes the reader", (version) => {
+  it("reads schema1 without creating the publication table or changing the schema version", () => {
+    const { file } = fixture();
+    const sql = connect(file);
+    sql.exec("DROP TABLE review_publications; PRAGMA user_version = 1");
+    const before = sql.prepare("SELECT name, sql FROM sqlite_master ORDER BY name").all();
+    expect(readReviewListingSnapshot(file)).not.toBeNull();
+    expect(sql.pragma("user_version", { simple: true })).toBe(1);
+    expect(sql.prepare("SELECT name, sql FROM sqlite_master ORDER BY name").all()).toEqual(before);
+  });
+
+  it.each([0, 3])("rejects existing schema version %i without migration and closes the reader", (version) => {
     const file = path.join(directory(), "state.sqlite");
     const sql = connect(file);
     sql.pragma(`user_version = ${version}`);
@@ -274,7 +284,7 @@ describe("read-only review listing snapshots", () => {
 
   it.each([false, true])("preserves the operation error when connection cleanup also fails: %s", (failOperation) => {
     const { file } = fixture();
-    if (failOperation) connect(file).pragma("user_version = 2");
+    if (failOperation) connect(file).pragma("user_version = 3");
     const cleanupError = new Error("reader cleanup failed");
     const originalClose = Database.prototype.close;
     vi.spyOn(Database.prototype, "close").mockImplementation(function (this: Database.Database) {
@@ -290,7 +300,7 @@ describe("read-only review listing snapshots", () => {
       expect(error).toBeInstanceOf(AggregateError);
       const errors = (error as AggregateError).errors as unknown[];
       expect(errors[0]).toBeInstanceOf(Error);
-      expect((errors[0] as Error).message).toContain("found version 2");
+      expect((errors[0] as Error).message).toContain("found version 3");
       expect(errors[1]).toBe(cleanupError);
     }
   });

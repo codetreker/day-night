@@ -40,11 +40,21 @@ export type TaskGraph = {
   readonly tasks: readonly GraphTask[];
 };
 
+export type PullRequestProperty = {
+  readonly url: string;
+  readonly title: string;
+};
+
+export type TaskProperties = {
+  readonly pullRequests: readonly PullRequestProperty[];
+};
+
 export type TaskDetail = {
   readonly id: string;
   readonly projectId: string;
   readonly title: string;
   readonly description: string;
+  readonly properties: TaskProperties;
   readonly status: TaskStatus;
   readonly dependsOn: readonly string[];
   readonly blockedBy: readonly string[];

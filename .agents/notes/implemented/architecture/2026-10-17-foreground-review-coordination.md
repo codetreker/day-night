@@ -29,15 +29,19 @@ agent execution or cleanup. Review preparation
 and execution consume `maxConcurrentWorker`; cleanup uses the PR reservation
 without consuming a review slot.
 
-CI admission precedes review reservation. Independent asynchronous checks retain
+CI and conversation admission precede fresh review reservation. Independent
+asynchronous checks retain
 FIFO positions and are refreshed at the existing polling interval. Evidence is
 bound to the revision, head SHA and base branch; obsolete responses cannot open
 a newer target. Waiting or failed CI creates no review, session or worktree and
 consumes no review Worker or attempt. API errors close the gate and honor rate
-limits. Restart discards this evidence and queries again, leaving SQLite review
-and revision semantics unchanged.
+limits. Restart discards transient admission evidence and queries again. A complete
+snapshot must show no unresolved native review thread from any author; outdated
+threads still block. A pending round and no current-target approval are also
+required, so constant readiness alone does not repeat completed work.
 
-After worktree preparation, each launch checks the current PR and CI again,
+After worktree preparation, each fresh launch checks the current PR, CI and
+conversation state again,
 then rechecks stored target and cancellation after the await. A regression defers
 preparation, releases capacity and preserves the review/session/budget. CI changes
 alone do not create a revision or repeat completed reviews. CI operations share
@@ -47,6 +51,21 @@ canceled merely because new CI is later registered or rerun.
 The [requirements](../../../../docs/spec/daynight-review.md#r5-轮询与审查资格) own pass and
 empty-CI policy. The [GitHub observation decision](2026-10-17-github-observation.md)
 owns complete CI evidence, including approval-blocked workflows without jobs.
+
+The [conversation-cycle decision](2026-10-21-review-conversation-cycle.md) partially
+supersedes the original trigger and completion coordination. A verified COMMENT
+with real review/thread identities arms one durable follow-up consumed when all
+conversations resolve, even with no new commit or before an open count was ever
+observed. It coalesces with a newer target. Existing exact-target approval remains
+settled after description edits. Reusing a recorded approval for pending work
+requires a fresh exact-remote-ID `APPROVED` match. Same-round reconciliation can
+bypass the conversation gate only with actual captured-round publication or a
+valid matching pending draft under its original publisher. Failed attempts with
+no publication keep waiting for unrelated feedback; a changed reader may confirm
+the original actor's submitted result but cannot continue its pending draft.
+Marker acceptance and process exclusion save pending confirmation before remote
+verification; failed lookups retry read-only across restart without another model
+attempt.
 
 Observed Draft/closure cancels the active attempt. New head/target revisions wait
 for current execution and remain pending after its captured revision completes.

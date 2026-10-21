@@ -50,15 +50,22 @@ to the captured commit and reconciles existing effects before retry. The
 [PR-quality decision](../process/2026-10-21-review-pr-quality-gates.md) partially
 supersedes the original approval rule: description and scope gates must pass in
 addition to there being no Critical/Major code issues. Blockers use `COMMENT`,
-with PR-level reasons in the body and suitable findings inline; passing reviews
-use `APPROVE`. Agent-owned publication and the completion protocol remain here.
+with actual native review threads; PR-level reasons use clearly labeled file-level
+threads and suitable findings remain inline. Passing reviews use `APPROVE`. The
+[conversation-cycle decision](2026-10-21-review-conversation-cycle.md) partially
+supersedes marker-only completion and head-only follow-up facts: stable-identity
+remote results are verified, comments arm one follow-up after resolution, and
+existing approvals are preserved during confirmation. Agent-owned publication
+and process execution remain here.
 
 Each attempt has a unique log directory with separate stdout and stderr logs
 for discovery and review. Discovery JSON has its own bounded complete capture;
 only review output participates in the completion protocol.
 A rejected launch intent cannot occupy the next attempt's paths. Full logs stream
 to disk; the final stdout line uses at most 8,192 UTF-16 code units in memory. Only a normal zero exit, complete output capture and an exact final
-nonempty stdout line `PR N Review Completed` produce a completion assertion.
+nonempty stdout line `PR N Review Completed` produce an execution completion assertion. The coordinator persists that assertion
+after process exclusion and verifies the remote publication before recording
+round completion.
 Timeout, cancellation, malformed output and logging failure remain incomplete.
 The result reports direct-child evidence and explicit command-not-found launch
 failure; the coordinator supplies process exclusion before retry or worktree
@@ -97,7 +104,9 @@ Actual Copilot/GitHub acceptance remains a separate delivery check. Research
 verified the relevant options against local Copilot CLI 1.0.98; this is observed
 version evidence, not an inferred minimum-version guarantee.
 
-The completion marker remains an agent assertion. GitHub publication and SQLite
+The completion marker remains an agent assertion. The conversation cycle requires
+matching remote approval or actual review/thread evidence before local completion,
+with read-only confirmation retries across restart. GitHub publication and SQLite
 updates are not one transaction, and a closed CLI wrapper does not prove that
 all descendants have stopped. The [foreground coordination decision](2026-10-17-foreground-review-coordination.md)
 defines the supported foreground-tools contract, current-tree cancellation and

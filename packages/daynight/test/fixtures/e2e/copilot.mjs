@@ -39,6 +39,10 @@ const prompt = readFileSync(0, "utf8");
 const suppliedSkill = JSON.parse(prompt.split("\n").find((line) => line.startsWith("Daynight skill bundle: ")).slice("Daynight skill bundle: ".length));
 if (!prompt.includes("/daynight-review") || suppliedSkill.name !== metadata.name || suppliedSkill.entrypoint !== entrypoint || suppliedSkill.digest !== skill.digest) throw new Error("The review prompt did not explicitly invoke the current skill snapshot.");
 const target = JSON.parse(prompt.split("\n").find((line) => line.startsWith('{"host":')));
+const publisherId = JSON.parse(prompt.split("\n").find((line) => line.startsWith("Captured publishing actor node ID: ")).slice("Captured publishing actor node ID: ".length));
+if (publisherId !== "fixture-copilot") throw new Error("The installed runner did not bind its publication to the captured actor.");
+const identityFormat = JSON.parse(prompt.split("\n").find((line) => line.startsWith("Existing publication identity format: ")).slice("Existing publication identity format: ".length));
+if (identityFormat !== "line") throw new Error("New installed review rounds must require strict publication identity lines.");
 const sessionFlag = args.find((argument) => /^--(?:session-id|resume)=/.test(argument));
 if (sessionFlag === undefined) throw new Error("The CLI did not supply a session identity.");
 const session = sessionFlag.slice(sessionFlag.indexOf("=") + 1);
@@ -52,12 +56,24 @@ const current = gh("GET", endpoint);
 if (current.state !== "open" || current.draft || current.head.sha !== target.headSha || current.base.ref !== target.baseBranch) throw new Error("The fixture agent observed a stale target.");
 const previous = gh("GET", `${endpoint}/reviews`).find((item) => item.body.includes(stable));
 const inlineFinding = target.pullRequest === 11 && target.revision === 3;
-const descriptionBlocker = target.pullRequest === 12;
+const descriptionBlocker = target.pullRequest === 12 && current.body === "unclear";
 const event = inlineFinding || descriptionBlocker ? "COMMENT" : "APPROVE";
-if (previous === undefined) gh("POST", `${endpoint}/reviews`, {
-  commit_id: target.headSha, body: `Copilot: ${descriptionBlocker ? "PR-quality blocker: clarify the concrete problem, intended outcome and scope in the description. " : ""}${stable}`, event,
-  ...(inlineFinding ? { comments: [{ path: "review.txt", line: 1, side: "RIGHT", body: "Copilot: Major fixture finding." }] } : {}),
-});
+let pendingInterrupted = false;
+const body = `Copilot: ${descriptionBlocker ? "PR-wide description/scope issue: clarify the concrete problem, intended outcome and scope." : "Review result."}\n<!-- ${stable} -->`;
+if (previous === undefined || previous.state === "PENDING") {
+  if (descriptionBlocker) {
+    const pending = previous ?? gh("POST", `${endpoint}/reviews`, { commit_id: target.headSha, body });
+    const mutation = "mutation AddFileThread($input: AddPullRequestReviewThreadInput!) { addPullRequestReviewThread(input: $input) { thread { id } } }";
+    if (gh("GET", `${endpoint}/reviews/${pending.id}/comments`).length === 0) execFileSync("gh", ["api", "--method", "POST", "--hostname", target.host, "graphql", "--input", "-"], { encoding: "utf8",
+      env: { ...process.env, DAYNIGHT_E2E_PUBLISHER: "copilot-fixture" }, input: JSON.stringify({ query: mutation,
+        variables: { input: { pullRequestReviewId: pending.node_id, path: "review.txt", subjectType: "FILE", body: "Copilot: PR-wide description/scope issue: clarify the description before approval." } } }) });
+    // Interrupt after the native FILE thread exists to exercise pending-review reuse.
+    if (previous === undefined) pendingInterrupted = true;
+    else gh("POST", `${endpoint}/reviews/${pending.id}/events`, { event: "COMMENT", body });
+  } else gh("POST", `${endpoint}/reviews`, { commit_id: target.headSha, body, event,
+    ...(inlineFinding ? { comments: [{ path: "review.txt", line: 1, side: "RIGHT", body: "Copilot: Major fixture finding." }] } : {}),
+  });
+}
 const record = {
   target, args, session, prompt, cwd: process.cwd(), skill,
   head: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
@@ -67,6 +83,7 @@ const record = {
 };
 writeRecord("agents", record);
 writeFileSync(path.join(history, `${randomUUID()}.json`), JSON.stringify({ reviewId: target.reviewId, revision: target.revision }), { flag: "wx" });
-// The first publication deliberately succeeds without the required final marker.
-if (event === "COMMENT" && previous === undefined) process.stdout.write("Publication succeeded; confirmation was interrupted.\n");
+// Inline publication and pending FILE publication each exercise a distinct retry point.
+if (pendingInterrupted) process.stdout.write("Pending review thread created; submission was interrupted.\n");
+else if (event === "COMMENT" && previous === undefined) process.stdout.write("Publication succeeded; confirmation was interrupted.\n");
 else process.stdout.write(`PR ${target.pullRequest} Review Completed\n`);
