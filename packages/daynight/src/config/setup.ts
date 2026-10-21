@@ -126,4 +126,3 @@ export const guideMissingConfiguration = async <Result>(
     return load();
   }
 };
-
