@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseDocument } from "yaml";
 import type { CliContext } from "../../src/cli/context.js";
-import { SetupCancelledError } from "../../src/cli/prompts.js";
+import { CliCancelledError } from "../../src/cli/cancellation.js";
 import { runCli } from "../../src/cli/application.js";
 import { MissingConfigurationFileError, isMissingConfiguration } from "../../src/config/errors.js";
 import { readConfigurationSource } from "../../src/config/files.js";
@@ -32,10 +32,10 @@ const fixture = async (source?: string) => {
 const answers = (context: CliContext, values: readonly string[]) => {
   let index = 0;
   const ask = vi.fn(async () => {
-    if (index >= values.length) throw new SetupCancelledError();
+    if (index >= values.length) throw new CliCancelledError();
     return values[index++]!;
   });
-  context.prompt = { isInteractive: true, ask, close: vi.fn() };
+  context.prompt = { isInteractive: true, select: async () => { throw new Error("Unexpected select"); }, selectMany: async () => { throw new Error("Unexpected selectMany"); }, ask, close: vi.fn() };
   return ask;
 };
 
@@ -55,7 +55,7 @@ describe("guided configuration transactions", () => {
     const source = "# connection\nserverUrl: http://original:8787 # retained\n";
     const { context, paths } = await fixture(source);
     answers(context, ["both", "http://changed:8787", "https://github.com/owner/repo"]);
-    await expect(configure(context)).rejects.toBeInstanceOf(SetupCancelledError);
+    await expect(configure(context)).rejects.toBeInstanceOf(CliCancelledError);
     expect(await readFile(paths.configFile, "utf8")).toBe(source);
     expect(await readdir(paths.stateDirectory)).toEqual(["config.yml"]);
     expect(context.stdout).not.toHaveBeenCalled();
@@ -75,7 +75,7 @@ describe("guided configuration transactions", () => {
     const { context, paths } = await fixture("# settings\npollIntervalMs: 1000 # interval\n");
     if (process.platform !== "win32") await chmod(paths.configFile, 0o640);
     context.prompt = {
-      isInteractive: true, close: vi.fn(), ask: vi.fn(async () => {
+      isInteractive: true, select: async () => { throw new Error("Unexpected select"); }, selectMany: async () => { throw new Error("Unexpected selectMany"); }, close: vi.fn(), ask: vi.fn(async () => {
         await writeFile(paths.configFile, "# concurrently edited\npollIntervalMs: 2000 # retained interval\n");
         return "http://localhost:8787";
       }),
@@ -91,7 +91,7 @@ describe("guided configuration transactions", () => {
   it("rejects concurrent changes to the selected field without overwriting them", async () => {
     const { context, paths } = await fixture("serverUrl: http://original:8787\n");
     const concurrent = "serverUrl: http://concurrent:8787\n";
-    context.prompt = { isInteractive: true, close: vi.fn(), ask: vi.fn(async () => { await writeFile(paths.configFile, concurrent); return "http://requested:8787"; }) };
+    context.prompt = { isInteractive: true, select: async () => { throw new Error("Unexpected select"); }, selectMany: async () => { throw new Error("Unexpected selectMany"); }, close: vi.fn(), ask: vi.fn(async () => { await writeFile(paths.configFile, concurrent); return "http://requested:8787"; }) };
     await expect(configure(context, undefined, "server")).rejects.toThrow("Configuration changed during setup");
     expect(await readFile(paths.configFile, "utf8")).toBe(concurrent);
     expect(await readdir(paths.stateDirectory)).toEqual(["config.yml"]);
@@ -100,7 +100,7 @@ describe("guided configuration transactions", () => {
   it("rejects cancellation after an answer before saving", async () => {
     const { context, paths } = await fixture();
     const cancellation = new AbortController();
-    context.prompt = { isInteractive: true, close: vi.fn(), ask: vi.fn(async () => { cancellation.abort(); return "http://localhost:8787"; }) };
+    context.prompt = { isInteractive: true, select: async () => { throw new Error("Unexpected select"); }, selectMany: async () => { throw new Error("Unexpected selectMany"); }, close: vi.fn(), ask: vi.fn(async () => { cancellation.abort(); return "http://localhost:8787"; }) };
     await expect(configure(context, undefined, "server", cancellation.signal)).rejects.toThrow("Setup cancelled");
     await expect(lstat(paths.stateDirectory)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -127,7 +127,7 @@ describe("guided configuration transactions", () => {
 
   it("resumes the original command once with a fresh operation budget after human input", async () => {
     const { context, paths } = await fixture();
-    context.prompt = { isInteractive: true, close: vi.fn(), ask: vi.fn(async () => { await new Promise((resolve) => setTimeout(resolve, 40)); return "http://localhost:8787"; }) };
+    context.prompt = { isInteractive: true, select: async () => { throw new Error("Unexpected select"); }, selectMany: async () => { throw new Error("Unexpected selectMany"); }, close: vi.fn(), ask: vi.fn(async () => { await new Promise((resolve) => setTimeout(resolve, 40)); return "http://localhost:8787"; }) };
     const command = vi.fn(async ({ operation }) => { operation.check(); return "original command\n"; });
     await runServerCommand(context, command, { operationLimits: { totalMs: 20 } });
     expect(command).toHaveBeenCalledTimes(1);

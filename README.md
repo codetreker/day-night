@@ -10,7 +10,7 @@ the corresponding PR and CI evidence.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
+| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle and interactive Agent installation, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -52,8 +52,9 @@ Copilot CLI and Claude Code. Its [requirements](docs/spec/daynight-agent-skill.m
 cover active task management in associated projects, agent and scope selection,
 and complete replacement on reinstall. The public skill and its command reference
 are included in the npm package build under
-`dist/commands/skill/skills/daynight/`; the interactive installer remains planned.
-The skill guides task recovery, dependency and observed-version updates, and
+`dist/commands/skill/skills/daynight/`. Interactive
+[`daynight skill install`](#agent-skill-installation) detects supported Agent
+launchers and installs that bundle at the selected scope. The skill guides task recovery, dependency and observed-version updates, and
 completion only after required PRs are confirmed merged and acceptance passes.
 The design links implementation tasks tracked in the real Daynight project;
 their live status belongs to Daynight. Native Agent loading and automatic
@@ -107,7 +108,15 @@ repository workflow skills are not scanned for publication. The package's
 `daynight` bin points to the stable JavaScript entry.
 Source tests mirror `cli/`, `config/`, `api/`, `commands/` and `platform/`
 ownership, with build and version-policy tests in `test/tooling/`.
-The pnpm dependency store is local to `.tmp/pnpm-store`. `pnpm acceptance`
+The pnpm dependency store is local to `.tmp/pnpm-store`. Native skill terminal
+acceptance uses the development-only `node-pty` dependency, including Windows
+ConPTY. The workspace build policy permits only the pinned node-pty hook and
+keeps the existing SQLite build-hook suppression. Linux builds its native
+terminal addon with the available compiler/Python toolchain; macOS and Windows
+use the packaged prebuild when available. A version-pinned pnpm patch restores
+missing Darwin helper executable bits in the stable terminal dependency. The
+[native terminal decision](.agents/notes/implemented/testing/2026-10-21-native-skill-terminal-acceptance.md)
+records the test isolation and stream separation. `pnpm acceptance`
 separately packs and installs the CLI in a local consumer and requires package-
 registry access. The review lifecycle suite uses controlled GitHub/Copilot
 executables with real Git and SQLite. The self-update suite uses real npm and an
@@ -467,6 +476,8 @@ daynight completion                 # Show completion help
 daynight completion bash
 daynight completion zsh
 daynight completion setup [--shell bash|zsh] [--rc-file <path>]
+daynight skill                      # Show skill help
+daynight skill install              # Select Agents, then User or Project scope
 daynight project
 daynight project create <name> [--repo <repo>]
 daynight project list [--json]
@@ -489,6 +500,54 @@ exit with status 1 and retain their cause. The old `--daemon-review` and root
 [client design](docs/design/daynight.md) owns command composition and lazy loading;
 the [composition decision](.agents/notes/implemented/architecture/2026-10-20-client-command-composition.md)
 records module ownership and the preserved data layout.
+
+## Agent skill installation
+
+Install the public project/task skill through an interactive terminal:
+
+```bash
+daynight skill install
+```
+
+The command detects available `codex`, `copilot` and `claude` launchers without
+starting them or checking login. Select one or more detected Agents with Space,
+then Enter; the initial selection is empty. Next select `User` or `Project`,
+with User initially selected. Installation starts after the scope is submitted.
+Repeating the same command refreshes installed content from the running package.
+
+| Agent | User destination | Project destination |
+|---|---|---|
+| Codex | `~/.agents/skills/daynight/` | `<worktree>/.agents/skills/daynight/` |
+| Copilot CLI | `~/.agents/skills/daynight/` | `<worktree>/.agents/skills/daynight/` |
+| Claude Code | `~/.claude/skills/daynight/` | `<worktree>/.claude/skills/daynight/` |
+
+User scope works outside Git. Project scope uses the current Git worktree root,
+including calls from subdirectories or linked worktrees, and does not require
+an origin, server configuration or Daynight project association. Installing the
+skill and associating a project remain separate operations. Terminal stdin and
+stderr are required; prompts use stderr and installation results use stdout.
+Help and installation do not depend on review configuration or credentials.
+
+Every installation replaces the complete destination `daynight` entry, including
+local edits and obsolete files. Other skills and existing parent-directory links
+are preserved. Several Agent paths that resolve to the same physical directory
+share one write; strictly nested targets are rejected before writing. A selected
+Agent's discovery directory can also be visible to another Agent. Installing at
+one scope does not change a same-named skill at another scope; host precedence
+still applies.
+
+The command reports per-Agent destinations and results. A failure stops later
+targets, retains earlier successful installations and exits nonzero. A failure
+after removing the old directory can leave that target absent; the diagnostic
+states the result and rerunning installs the packaged content again. Ctrl+C
+before publication cleans the operation's stage and newly created empty parents.
+
+Codex normally discovers changed skills automatically; restart its session if
+needed. For Copilot CLI run `/skills reload` and inspect `/skills info daynight`.
+Claude Code watches existing roots; use `/reload-skills` when a top-level skills
+directory was created during the session. The
+[skill design](docs/design/daynight-agent-skill.md) owns installation mechanisms
+and the separate native Agent loading and automatic-trigger acceptance gates.
 
 ## Shell completion
 

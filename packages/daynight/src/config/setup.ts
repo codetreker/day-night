@@ -1,6 +1,6 @@
 import { Document } from "yaml";
 import type { CliContext } from "../cli/context.js";
-import { SetupCancelledError } from "../cli/prompts.js";
+import { CliCancelledError, withCliCancellation } from "../cli/cancellation.js";
 import { parseConfigurationDocument } from "./document.js";
 import { MissingConfigurationFileError, isMissingConfiguration } from "./errors.js";
 import { readConfigurationSource, updateConfigurationFile } from "./files.js";
@@ -16,22 +16,12 @@ const optionalSource = async (context: CliContext, signal: AbortSignal): Promise
   catch (cause) { if (cause instanceof MissingConfigurationFileError) return undefined; throw cause; }
 };
 
-const withCancellation = async <Result>(action: (signal: AbortSignal) => Promise<Result>, supplied?: AbortSignal): Promise<Result> => {
-  if (supplied !== undefined) return action(supplied);
-  const controller = new AbortController();
-  const signals: NodeJS.Signals[] = process.platform === "win32" ? ["SIGINT", "SIGTERM", "SIGBREAK"] : ["SIGINT", "SIGTERM"];
-  const cancel = (): void => controller.abort(new SetupCancelledError());
-  for (const signal of signals) process.on(signal, cancel);
-  try { return await action(controller.signal); }
-  finally { for (const signal of signals) process.off(signal, cancel); }
-};
-
 export const configure = async (
   context: CliContext,
   input?: SetupInput,
   capability?: Capability,
   suppliedSignal?: AbortSignal,
-): Promise<void> => withCancellation(async (signal) => {
+): Promise<void> => withCliCancellation(context, async (signal) => {
   const paths = resolveConfigurationPaths(context.homeDirectory());
   const source = await optionalSource(context, signal);
   const baseline = source === undefined ? {} : parseConfigurationDocument(source, paths).mapping;
@@ -48,7 +38,7 @@ export const configure = async (
       try { return await validate(answer); }
       catch (cause) {
         signal.throwIfAborted();
-        if (cause instanceof SetupCancelledError) throw cause;
+        if (cause instanceof CliCancelledError) throw cause;
         context.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
       }
     }
@@ -104,10 +94,10 @@ export const configure = async (
     }, signal);
     context.stderr(`Configuration saved to ${paths.configFile}.\n`);
   } catch (cause) {
-    if (signal.aborted) throw new SetupCancelledError({ cause: signal.reason });
+    if (signal.aborted) throw new CliCancelledError("Setup cancelled.", { cause: signal.reason });
     throw cause;
-  } finally { context.prompt?.close(); }
-}, suppliedSignal);
+  }
+}, suppliedSignal, () => new CliCancelledError("Setup cancelled."));
 
 export const guideMissingConfiguration = async <Result>(
   context: CliContext,

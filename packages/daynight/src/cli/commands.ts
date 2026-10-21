@@ -5,6 +5,7 @@ import { reviewDefinition } from "../commands/review/definition.js";
 import { projectDefinition } from "../commands/project/definition.js";
 import { taskDefinition } from "../commands/task/definition.js";
 import { updateDefinition } from "../commands/update/definition.js";
+import { skillDefinition } from "../commands/skill/definition.js";
 import { setupDefinition } from "../commands/setup/definition.js";
 
 export type CommandRegistration = CommandDefinition & {
@@ -12,6 +13,7 @@ export type CommandRegistration = CommandDefinition & {
 };
 
 export const commands: readonly CommandRegistration[] = [
+  { ...skillDefinition, load: async () => ({ run: (await import("../commands/skill/command.js")).runSkillCommand }) },
   { ...setupDefinition, load: async () => ({ run: (await import("../commands/setup/command.js")).runSetupCommand }) },
   {
     ...reviewDefinition,

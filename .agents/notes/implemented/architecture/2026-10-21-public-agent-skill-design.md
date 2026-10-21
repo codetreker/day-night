@@ -19,8 +19,9 @@ command. Document preparation and review do not complete the tracked design
 task: its PR must be confirmed merged and its acceptance criteria satisfied.
 The public bundle and focused command reference are implemented under
 `src/commands/skill/skills/daynight/` and included in the package build. The
-interactive installer and native Agent integration acceptance remain dependent
-work tracked in the real Daynight project.
+interactive installer implements the selected-agent and scope workflow; native
+Agent loading and automatic-trigger acceptance remain separately tracked work
+in the real Daynight project.
 
 The installer detects Codex, Copilot CLI and Claude Code launchers, asks which
 agents to install for, then asks for user or project scope. It replaces the whole

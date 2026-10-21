@@ -165,22 +165,29 @@ export const runRepositoryGit = async (
 
 const finalLine = (value: string): string => value.replace(/\r?\n$/, "");
 
-export const discoverRepository = async (
+export const discoverWorktreeRoot = async (
   cwd: string,
   operation: Operation,
-): Promise<{ root: string; remote: string; identity: string }> => {
+): Promise<string> => {
   let bare: RepositoryGitResult;
   try { bare = await runRepositoryGit(cwd, ["rev-parse", "--is-bare-repository"], operation); }
   catch (cause) {
     if (cause === operation.signal.reason) throw cause;
     throw new Error("Cannot locate a Git repository from the current working directory.", { cause });
   }
-  if (finalLine(bare.stdout) === "true") throw new Error("Automatic project discovery requires a Git worktree; the current repository is bare.");
+  if (finalLine(bare.stdout) === "true") throw new Error("This operation requires a Git worktree; the current repository is bare.");
   if (finalLine(bare.stdout) !== "false") throw new Error("Git returned an invalid bare-repository result.");
   const gitRoot = finalLine((await runRepositoryGit(cwd, ["rev-parse", "--show-toplevel"], operation)).stdout);
   if (gitRoot === "") throw new Error("Git returned an empty worktree root.");
   if (!path.isAbsolute(gitRoot)) throw new Error("Git returned a worktree root that is not an absolute path.");
-  const root = path.normalize(gitRoot);
+  return path.normalize(gitRoot);
+};
+
+export const discoverRepository = async (
+  cwd: string,
+  operation: Operation,
+): Promise<{ root: string; remote: string; identity: string }> => {
+  const root = await discoverWorktreeRoot(cwd, operation);
   let remote: string;
   try { remote = finalLine((await runRepositoryGit(root, ["remote", "get-url", "origin"], operation)).stdout); }
   catch (cause) {

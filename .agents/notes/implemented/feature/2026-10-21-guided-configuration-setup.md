@@ -41,7 +41,10 @@ capabilities, existing repository paths and permission modes. The
 remote identity, saved paths, idempotency and configuration-only registration.
 It supplies the shared repository updater rather than a second registration path.
 
-Prompts and save diagnostics use stderr. Cancellation signals and EOF stop input
+Prompts and save diagnostics use stderr. The shared CLI prompt and cancellation
+lifecycle also serves [skill installation](../../../../docs/design/daynight-agent-skill.md),
+while configuration collection and persistence remain setup-owned. Cancellation
+signals and EOF stop input
 without saving partial values or entering the original operation. Setup does not
 access the network, prepare clones, initialize SQLite or activate a reviewer.
 Automatic setup then executes the original operation once with the original

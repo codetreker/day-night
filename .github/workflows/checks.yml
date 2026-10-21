@@ -95,6 +95,7 @@ jobs:
             .tmp/e2e-evidence.json
             .tmp/update-evidence.json
             .tmp/project-task-evidence.json
+            .tmp/skill-install-evidence.json
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 30
