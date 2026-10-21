@@ -33,8 +33,19 @@ const renderPrefixValidation = (command: CommandDefinition): string => {
 
   const options = command.options?.filter((option) => option.action === undefined) ?? [];
   const arguments_ = command.arguments ?? [];
+  const positionalValidation = arguments_.length === 0 ? "          return 1" : `          [[ -n "$word" ]] || return 1
+          case "$positional_count" in
+${arguments_.map((argument, index) => `            ${index})${argument.choices === undefined ? " ;;" : `
+              case "$word" in
+                ${argument.choices.map(quote).join("|")}) ;;
+                *) return 1 ;;
+              esac
+              ;;`}`).join("\n")}
+            *) return 1 ;;
+          esac
+          (( positional_count++ ))`;
   return `  local word option_value
-  local positional_count=0 expecting_value=0${options.map((_, index) => ` option_${index}=0`).join("")}
+  local positional_count=0 expecting_value=0 options_terminated=0${options.map((_, index) => ` option_${index}=0`).join("")}
   if (( CURRENT > 2 )); then
     for word in "\${(@)words[2,CURRENT-1]}"; do
       word="\${(Q)word}"
@@ -48,7 +59,15 @@ ${valueValidation(option, "word", "            ")}
         expecting_value=0
         continue
       fi
-      case "$word" in
+${command.allowOptionsTerminator === true ? `      if (( options_terminated )); then
+${positionalValidation}
+        continue
+      fi
+      if [[ "$word" == -- ]]; then
+        options_terminated=1
+        continue
+      fi
+` : ""}      case "$word" in
 ${options.map((option, index) => `        ${option.names.flatMap((name) => [quote(name), ...(option.value?.kind === "text" ? [`${quote(`${name}=`)}*`] : [])]).join("|")})
 ${option.repeatable === true ? "" : `          (( option_${index} )) && return 1\n`}          option_${index}=1${option.value === undefined ? "" : `
           if [[ "$word" == *=* ]]; then
@@ -58,7 +77,7 @@ ${valueValidation(option, "option_value", "            ")}
           ;;`).join("\n")}
         -*) return 1 ;;
         *)
-${arguments_.length === 0 ? "          return 1" : `          case "$positional_count" in\n${arguments_.map((argument, index) => `            ${index})${argument.choices === undefined ? " ;;" : `\n              case "$word" in\n                ${argument.choices.map(quote).join("|")}) ;;\n                *) return 1 ;;\n              esac\n              ;;`}`).join("\n")}\n            *) return 1 ;;\n          esac\n          (( positional_count++ ))`}
+${positionalValidation}
           ;;
       esac
     done
@@ -76,6 +95,7 @@ export const renderZshCompletion = (root: CommandDefinition): string => {
     const specifications = command.options?.filter((option) => option.action === undefined).flatMap(optionSpecifications) ?? [];
     const informationOptions = command.options?.filter((option) => option.action !== undefined).flatMap(optionSpecifications) ?? [];
     const states: string[] = [];
+    const freeformSpecifications: string[] = [];
     if (command.options?.some((option) => option.value?.kind === "text") === true) {
       states.push(`    text_value)
       _message "$state_descr"
@@ -100,8 +120,16 @@ ${children.map(({ command: child, functionName: childFunction }) => `        ${[
     } else {
       for (const [index, argument] of (command.arguments ?? []).entries()) {
         const state = `argument_${index + 1}`;
-        specifications.push(`${index + 1}:${escapeSpecification(argument.description)}:->${state}`);
-        if (argument.choices !== undefined) {
+        const specification = `${index + 1}:${escapeSpecification(argument.description)}:->${state}`;
+        if (argument.choices === undefined) {
+          // zsh hides options beside a positional state unless the option prefix is present.
+          // An unstarted free-form value has no candidates, so omit its state until needed.
+          // https://zsh.sourceforge.io/Doc/Release/Completion-System.html (prefix-needed)
+          freeformSpecifications.push(`  if (( positional_count > ${index} || expecting_value )) || [[ -n "\${(Q)words[CURRENT]}" ]]; then
+    specifications+=( ${quote(specification)} )
+  fi`);
+        } else {
+          specifications.push(specification);
           states.push(`    ${state})
       local -a choices=( ${argument.choices.map((choice) => quote(escapeDescription(choice))).join(" ")} )
       _describe ${quote(argument.name)} choices && result=0
@@ -119,7 +147,7 @@ ${renderPrefixValidation(command).trimEnd()}
   local -a specifications=(
 ${specifications.map((specification) => `    ${quote(specification)}`).join("\n")}
   )
-${informationOptions.length === 0 ? "" : `  if (( CURRENT == 2 )); then\n    specifications+=( ${informationOptions.map(quote).join(" ")} )\n  fi\n`}  (( $#specifications )) && _arguments -C "\${specifications[@]}" && result=0
+${freeformSpecifications.length === 0 ? "" : `${freeformSpecifications.join("\n")}\n`}${informationOptions.length === 0 ? "" : `  if (( CURRENT == 2 )); then\n    specifications+=( ${informationOptions.map(quote).join(" ")} )\n  fi\n`}  (( $#specifications )) && _arguments -C${command.allowOptionsTerminator === true ? " -S" : ""} "\${specifications[@]}" && result=0
 ${states.length === 0 ? "" : `  case "$state" in\n${states.join("\n")}\n  esac\n`}  return result
 }`);
     return functionName;

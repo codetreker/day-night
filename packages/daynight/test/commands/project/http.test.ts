@@ -95,7 +95,7 @@ describe("project command over HTTP", () => {
       request.on("end", () => { bodies.push(JSON.parse(body)); respond(response, { ...project, name, repoUrl }, 201); });
     });
     const { context, dependencies } = await fixture(url);
-    await runProjectCommand(["create", "--name", name, "--repo", repoUrl], context, dependencies);
+    await runProjectCommand(["create", name, "--repo", repoUrl], context, dependencies);
     expect(bodies).toEqual([{ name, repoUrl }]);
     expect(requests).toBe(1);
     expect(context.stdout).toHaveBeenCalledOnce();

@@ -84,6 +84,14 @@ describe("Bash completion rendering", () => {
     expect(noTextCandidates).toBeLessThan(script.indexOf('if [[ "$dn_pending" == directory ]]'));
   });
 
+  it("derives option termination from the command definition", () => {
+    const script = renderBashCompletion({ name: "tool", description: "", allowOptionsTerminator: true, arguments: [{ name: "name", description: "Name" }] });
+    expect(script).toContain("dn_allow_terminator=1");
+    expect(script).toContain('if ((!dn_options_terminated && dn_allow_terminator)) && [[ "$dn_word" == -- ]]');
+    expect(script).toContain("((dn_options_terminated)) && return 0");
+    expect(renderBashCompletion({ name: "tool", description: "" })).toContain("dn_allow_terminator=0");
+  });
+
   it("retains repeat and empty metadata and separates named static choices", () => {
     const script = renderBashCompletion({ name: "tool", description: "", options: [
       { names: ["--status"], description: "", value: { name: "status", kind: "text", choices: ["todo", "done"] } },

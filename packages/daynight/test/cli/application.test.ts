@@ -213,6 +213,9 @@ describe("CLI argument handling", () => {
   it.each([
     ["review", "add-repo"],
     ["review", "add-repo", ""],
+    ["review", "add-repo", " "],
+    ["review", "add-repo", "\n"],
+    ["review", "add-repo", "\ufeff"],
     ["review", "add-repo", "https://github.com/o/r", "other"],
     ["review", "add-repo", "https://github.com/o/r", "--path"],
     ["review", "add-repo", "https://github.com/o/r", "--path", ""],

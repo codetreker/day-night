@@ -41,8 +41,9 @@ describe("project command boundaries", () => {
   });
 
   it.each([
-    ["unknown"], ["create"], ["create", "--name", "Name"], ["create", "--repo", "https://git.example/o/r"],
-    ["create", "--name", "Name", "--name", "Again", "--repo", "remote"], ["create", "--name", "Name", "--repo", "remote", "--json"],
+    ["unknown"], ["create"], ["create", "Name"], ["create", "--repo", "https://git.example/o/r"],
+    ["create", "--name", "Name", "--repo", "remote"], ["create", "Name", "Again", "--repo", "remote"],
+    ["create", "--repo", "remote", "-leading"], ["create", "--", "Name", "--repo", "remote"], ["create", "Name", "--repo", "remote", "--json"],
     ["list", "extra"], ["list", "--project", id], ["list", "--json", "--json"], ["show"], ["show", "invalid"], ["show", id, "extra"],
   ].map((args) => ({ args })))("rejects bad arguments before runtime or location access: $args", async ({ args }) => {
     const { context, dependencies } = fixture();
@@ -53,18 +54,42 @@ describe("project command boundaries", () => {
     expect(context.stdout).not.toHaveBeenCalled();
   });
 
-  it.each([" \t\r\n", "\u0085", "\u2003\u3000", "\0", "\ud800"])("rejects a server-invalid name before runtime: %j", async (name) => {
+  it.each(["", " \t\r\n", "\u0085", "\u2003\u3000", "\0", "\ud800"])("rejects a server-invalid name before runtime: %j", async (name) => {
     const { context, dependencies } = fixture();
-    await expect(runProjectCommand(["create", "--name", name, "--repo", "https://git.example/o/r"], context, dependencies)).rejects.toBeInstanceOf(UsageError);
+    await expect(runProjectCommand(["create", name, "--repo", "https://git.example/o/r"], context, dependencies)).rejects.toBeInstanceOf(UsageError);
     expect(dependencies.runServerCommand).not.toHaveBeenCalled();
   });
 
   it("preserves FEFF-only names and repository addresses for server validation", async () => {
     const { api, context, dependencies } = fixture();
     const repoUrl = "server-authoritative-address";
-    await runProjectCommand(["create", "--name", "\ufeff", "--repo", repoUrl], context, dependencies);
+    await runProjectCommand(["create", "\ufeff", "--repo", repoUrl], context, dependencies);
     expect(api.createProject).toHaveBeenCalledExactlyOnceWith({ name: "\ufeff", repoUrl });
     expect(context.workingDirectory).not.toHaveBeenCalled();
+  });
+
+  it.each(["Project 中文", "  Original name  ", "\ufeff\u0085", "name\nwith lines"])("passes the original positional name and required repo to the API: %j", async (name) => {
+    for (const args of [["create", name, "--repo", project.repoUrl], ["create", "--repo", project.repoUrl, name]]) {
+      const { api, context, dependencies } = fixture();
+      await runProjectCommand(args, context, dependencies);
+      expect(api.createProject).toHaveBeenCalledExactlyOnceWith({ name, repoUrl: project.repoUrl });
+    }
+  });
+
+  it.each(["-leading", "--name", "--help", "--", "-中文"])("preserves dash-prefixed names after the options terminator: %j", async (name) => {
+    const { api, context, dependencies } = fixture();
+    await runProjectCommand(["create", "--repo", project.repoUrl, "--", name], context, dependencies);
+    expect(api.createProject).toHaveBeenCalledExactlyOnceWith({ name, repoUrl: project.repoUrl });
+  });
+
+  it("describes the required positional name and dash syntax in create help", async () => {
+    const { context, dependencies } = fixture();
+    await runProjectCommand(["create", "--help"], context, dependencies);
+    const output = context.stdout.mock.calls[0]![0];
+    expect(output).toContain("Usage: daynight project create <name> --repo <repo>");
+    expect(output).toContain("<name>  Project name");
+    expect(output).toContain("use -- before the name");
+    expect(output).not.toContain("--name");
   });
 
   it("canonicalizes an explicit show UUID before the API call", async () => {
@@ -79,7 +104,7 @@ describe("project command output", () => {
   it("prints the confirmed created resource with every project field", async () => {
     const { api, context, dependencies } = fixture();
     const name = "  Original name  ";
-    await runProjectCommand(["create", "--name", name, "--repo", project.repoUrl], context, dependencies);
+    await runProjectCommand(["create", name, "--repo", project.repoUrl], context, dependencies);
     expect(api.createProject).toHaveBeenCalledExactlyOnceWith({ name, repoUrl: project.repoUrl });
     expect(context.stdout).toHaveBeenCalledExactlyOnceWith(`Project created.\nID: ${id}\nName: ${project.name}\nRepository: ${project.repoUrl}\nCreated: ${project.createdAt}\nUpdated: ${project.updatedAt}\n`);
     expect(context.stderr).not.toHaveBeenCalled();
@@ -115,7 +140,7 @@ describe("project command output", () => {
     const raw = { ...project, name: "First\nSecond\u001b[2J\u0085", repoUrl: "git@git.example:Org/Repo\t.git" };
     const { api, context, dependencies } = fixture([raw]);
     api.getProject.mockResolvedValue(raw); api.createProject.mockResolvedValue(raw);
-    const args = command === "create" ? ["create", "--name", "Name", "--repo", "remote"] : command === "show" ? ["show", id] : ["list"];
+    const args = command === "create" ? ["create", "Name", "--repo", "remote"] : command === "show" ? ["show", id] : ["list"];
     await runProjectCommand(args, context, dependencies);
     const output = context.stdout.mock.calls[0]![0];
     expect(output).toContain("First\\nSecond\\u001b[2J\\u0085");
@@ -147,7 +172,7 @@ describe("project command output", () => {
     const { api, context, dependencies } = fixture();
     const failure = new ApiError({ operation: `project.${command}`, projectId: id }, "response", { cause: new Error("Server rejected operation"), status: 409, serverError: { code: "conflict", message: "Server rejected operation", requestId: "project-request" } });
     api.createProject.mockRejectedValue(failure); api.listProjects.mockRejectedValue(failure); api.getProject.mockRejectedValue(failure);
-    const args = command === "create" ? ["create", "--name", "Name", "--repo", "remote"] : command === "show" ? ["show", id] : ["list"];
+    const args = command === "create" ? ["create", "Name", "--repo", "remote"] : command === "show" ? ["show", id] : ["list"];
     await expect(runProjectCommand(args, context, dependencies)).rejects.toBe(failure);
     expect(context.stdout).not.toHaveBeenCalled();
   });

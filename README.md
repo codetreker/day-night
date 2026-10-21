@@ -423,7 +423,7 @@ daynight completion                 # Show completion help
 daynight completion bash
 daynight completion zsh
 daynight project
-daynight project create --name <name> --repo <repo>
+daynight project create <name> --repo <repo>
 daynight project list [--json]
 daynight project show <project-id> [--json]
 daynight task
@@ -493,13 +493,16 @@ The origin includes its protocol, host and optional port; the client adds
 `/api/v1`. Then create, list or inspect projects:
 
 ```bash
-daynight project create --name "Example" --repo https://github.com/OWNER/REPO.git
+daynight project create "Example" --repo https://github.com/OWNER/REPO.git
 daynight project list
 daynight project list --json
 daynight project show <project-id> --json
 ```
 
 These commands work outside Git repositories and use only the configured server.
+Creation requires one positional name and `--repo`; quote names containing spaces.
+For a name beginning with `-`, put the required option before the terminator:
+`daynight project create --repo <repo> -- -name`. The name is sent unchanged.
 Creation sends the supplied repository address for registration; lists traverse
 all pages. Human output uses complete labeled project blocks with visible
 terminal-control escapes. JSON preserves resource fields and nanosecond timestamp

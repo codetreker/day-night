@@ -33,8 +33,13 @@ the owner of lazy command dispatch. Its original source reorganization preserved
 the existing YAML; this design adopts additional configuration without moving
 those fields or introducing a review-data migration. Project definitions share
 parameter syntax with help and shell completion. Help and argument validation
-finish before the shared server runtime is loaded. Project creation sends the
-original name and repository address; listing reads all projects, and details
+finish before the shared server runtime is loaded. Project creation takes one
+required positional name and the required `--repo` option, then sends the
+original name and repository address. Its definition permits `--` to end option
+parsing, preserving leading-dash names as `project create --repo <repo> -- -name`.
+Names containing spaces remain one quoted argument. The syntax parser checks
+positional presence, empty strings and declared choices; command-owned text
+validation retains the Unicode rules without trimming the name. Listing reads all projects, and details
 use an explicit UUID. These operations do not inspect the working directory or
 change repository bindings.
 
@@ -98,6 +103,14 @@ NEL-only names remain invalid; validation never rewrites the supplied text.
 
 ## Alternatives
 
+**Add a separate positional text kind to bypass trimming for names.** Named text
+values already preserve their characters before domain validation. Giving only
+some positional arguments that treatment creates two validation policies for
+the same raw input. The syntax layer checks presence and choices; each command
+owns its semantic validation before I/O, including review's whitespace-only
+remote refusal. Explicit per-command terminator metadata preserves review's
+existing syntax while allowing project names to begin with a dash.
+
 **Require explicit project selection for every task command.** This avoids local
 state and discovery but repeats server identifiers during ordinary repository
 work. Explicit selection remains available as the per-invocation override.
@@ -147,6 +160,11 @@ Observed acceptance evidence remains owned by the
 [task breakdown](../../../../docs/design/daynight-project-task-tasks.md). Shared
 configuration, HTTP, repository and server-runtime modules support that remaining
 work. Package versions follow the existing release rules.
+
+Project creation uses `project create <name> --repo <repo>` in help, examples and
+generated completion. The removed `--name` option is an argument error. Existing
+shells must reload generated completion after installing the new package to use
+the same positional grammar as execution.
 
 The implemented repository resolver can infer a repository's project after one
 complete discovery and then validate it by ID. The cache remains disposable and

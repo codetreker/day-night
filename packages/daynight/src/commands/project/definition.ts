@@ -10,12 +10,13 @@ export const projectDefinition: CommandDefinition = {
     {
       name: "create",
       description: "Create a project with its name and repository address",
+      arguments: [{ name: "name", description: "Project name" }],
+      allowOptionsTerminator: true,
       options: [
-        { names: ["--name"], description: "Project name", value: { name: "name", kind: "text" }, required: true },
         { names: ["--repo"], description: "Repository address to register", value: { name: "repo", kind: "text" }, required: true },
         helpOption,
       ],
-      details: "Submit the original name and repository address to the configured server.\nProject creation does not depend on the current Git repository.",
+      details: "Submit the original name and repository address to the configured server.\nProject creation does not depend on the current Git repository.\nFor a name beginning with a dash, put options first and use -- before the name.",
     },
     {
       name: "list",
