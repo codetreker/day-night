@@ -22,7 +22,7 @@ const fixture = async () => {
     selectMany: async <Value>(question: PromptMultipleSelection<Value>): Promise<Value[]> => { selections.push(question); return ["codex", "copilot", "claude"] as Value[]; },
     select: async <Value>(question: PromptSelection<Value>): Promise<Value> => { selections.push(question); return "user" as Value; },
   };
-  const context: CliContext = { version: "1.2.3", packageDirectory: "installed package", homeDirectory: () => directory, workingDirectory: () => "outside Git", stdout: vi.fn(), stderr: vi.fn(), prompt };
+  const context: CliContext = { version: "1.2.3", packageDirectory: "installed package", homeDirectory: () => directory, workingDirectory: () => "outside Git", stdoutBytes: vi.fn(async () => {}), stdout: vi.fn(), stderr: vi.fn(), prompt };
   const dependencies: SkillCommandDependencies = {
     detectAgents: vi.fn(async () => [...skillAgents]), projectRoot: vi.fn(async () => directory),
     captureBundle: vi.fn(async () => []), planTargets: vi.fn(planSkillTargets),

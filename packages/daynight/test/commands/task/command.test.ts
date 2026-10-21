@@ -24,16 +24,18 @@ const fixture = (operation = createOperation()) => {
     createTask: vi.fn<ApiClient["createTask"]>().mockResolvedValue(task), getTask: vi.fn<ApiClient["getTask"]>().mockResolvedValue(task),
     listTasks: vi.fn<ApiClient["listTasks"]>().mockResolvedValue([task]), listReadyTasks: vi.fn<ApiClient["listReadyTasks"]>().mockResolvedValue([task]), updateTask: vi.fn<ApiClient["updateTask"]>().mockResolvedValue(task),
     getTaskGraph: vi.fn<ApiClient["getTaskGraph"]>().mockResolvedValue(graph),
+    putTaskAttachment: vi.fn<ApiClient["putTaskAttachment"]>(), listTaskAttachments: vi.fn<ApiClient["listTaskAttachments"]>(),
+    readTaskAttachment: vi.fn<ApiClient["readTaskAttachment"]>(), removeTaskAttachment: vi.fn<ApiClient["removeTaskAttachment"]>(),
   };
   const context = {
     version: "0.0.0", packageDirectory: "unused", homeDirectory: vi.fn<() => string>(() => { throw new Error("Dispatch must not read home"); }),
-    workingDirectory: vi.fn(() => path.resolve("caller")), stdout: vi.fn<(value: string) => void>(), stderr: vi.fn<(value: string) => void>(),
+    workingDirectory: vi.fn(() => path.resolve("caller")), stdout: vi.fn<(value: string) => void>(), stdoutBytes: vi.fn(async () => {}), stderr: vi.fn<(value: string) => void>(),
   };
   const dependencies = {
     resolveProject: vi.fn<TaskCommandDependencies["resolveProject"]>().mockResolvedValue(project),
     runServerCommand: vi.fn<TaskCommandDependencies["runServerCommand"]>(async (current, command) => {
       const output = await command({ api, operation, serverUrl: "http://localhost:8787" });
-      operation.check(); current.stdout(output);
+      operation.check(); if (output !== undefined) current.stdout(output);
     }),
   };
   return { context, api, dependencies, operation };

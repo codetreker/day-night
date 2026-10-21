@@ -69,7 +69,7 @@ export const parseCommand = (
   if (definition.commands !== undefined) {
     const selection = selectCommand(definition, args, path, helpCommand);
     if (selection.kind !== "selected") return selection;
-    return parseCommand(selection.command, selection.remaining, selection.path, helpCommand);
+    return parseCommand(selection.command, selection.remaining, selection.path, `${selection.path.join(" ")} --help`);
   }
   const action = informationAction(definition, args);
   if (action !== undefined) return { kind: action, command: definition, path };
@@ -88,7 +88,7 @@ export const parseCommand = (
       const optionName = inline ? argument.slice(0, separator) : argument;
       const option = definition.options?.find((candidate) => candidate.names.includes(optionName));
       if (option === undefined || option.action !== undefined || inline && option.value?.kind !== "text") {
-        throw new UsageError(`Unknown ${definition.name} option ${JSON.stringify(argument)}.`, helpCommand);
+        throw new UsageError(`Unknown ${path.join(" ")} option ${JSON.stringify(argument)}.`, helpCommand);
       }
       const name = option.names[0]!;
       if (options.has(name) && option.repeatable !== true) throw new UsageError(`Specify ${name} only once.`, helpCommand);
@@ -111,18 +111,18 @@ export const parseCommand = (
       continue;
     }
     const positional = definition.arguments?.[values.length];
-    if (positional === undefined) throw new UsageError(`Unexpected ${definition.name} argument ${JSON.stringify(argument)}.`, helpCommand);
-    if (argument === "") throw new UsageError(`${definition.name} requires a ${positional.name} value.`, helpCommand);
+    if (positional === undefined) throw new UsageError(`Unexpected ${path.join(" ")} argument ${JSON.stringify(argument)}.`, helpCommand);
+    if (argument === "") throw new UsageError(`${path.join(" ")} requires a ${positional.name} value.`, helpCommand);
     if (positional.choices !== undefined && !positional.choices.includes(argument)) {
       throw new UsageError(`Unknown ${positional.name} ${JSON.stringify(argument)}. Expected ${positional.choices.join(" or ")}.`, helpCommand);
     }
     values.push(argument);
   }
   const missing = definition.arguments?.[values.length];
-  if (missing !== undefined) throw new UsageError(`${definition.name} requires a ${missing.name} value.`, helpCommand);
+  if (missing !== undefined) throw new UsageError(`${path.join(" ")} requires a ${missing.name} value.`, helpCommand);
   for (const option of definition.options ?? []) {
     const name = option.names[0]!;
-    if (option.required === true && !options.has(name)) throw new UsageError(`${definition.name} requires ${name}.`, helpCommand);
+    if (option.required === true && !options.has(name)) throw new UsageError(`${path.join(" ")} requires ${name}.`, helpCommand);
   }
   return { kind: "run", command: definition, path, values, options };
 };

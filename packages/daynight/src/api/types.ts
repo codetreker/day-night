@@ -1,5 +1,20 @@
 export type TaskStatus = "todo" | "in_progress" | "done";
 
+export type TaskAttachment = {
+  readonly path: string;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+export type PutTaskAttachmentInput = {
+  readonly body: ReadableStream<Uint8Array>;
+  readonly contentType: string;
+};
+
+export type AttachmentConsumer = (chunk: Uint8Array, signal: AbortSignal) => Promise<void>;
+
 export type Project = {
   readonly id: string;
   readonly name: string;

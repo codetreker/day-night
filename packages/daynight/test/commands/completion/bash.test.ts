@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { renderBashCompletion } from "../../../src/commands/completion/bash.js";
+import { commandTree } from "../../../src/cli/commands.js";
 import type { CommandDefinition } from "../../../src/cli/schema.js";
 
 describe("Bash completion rendering", () => {
+  it("registers all three attachment command levels and operation options", () => {
+    const script = renderBashCompletion(commandTree);
+    expect(script).toContain("'attachment'");
+    expect(script).toContain("dn_children=('put' 'list' 'read' 'remove')");
+    expect(script).toContain("dn_options=('--path' '--project' '-h' '--help')");
+    expect(script).toContain("dn_options=('--tree' '--project' '--json' '-h' '--help')");
+  });
+
   it("renders the supplied command tree, aliases, option identity, and argument choices", () => {
     const definition: CommandDefinition = {
       name: "tool",

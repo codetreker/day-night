@@ -1,5 +1,5 @@
 import { isNonemptyText, isText } from "../platform/text.js";
-import type { ErrorDetails, GraphTask, Page, Project, ServerError, Task, TaskGraph, TaskGraphSummary, TaskProperties, TaskStatus } from "./types.js";
+import type { ErrorDetails, GraphTask, Page, Project, ServerError, Task, TaskAttachment, TaskGraph, TaskGraphSummary, TaskProperties, TaskStatus } from "./types.js";
 
 export class ProtocolError extends Error {
   constructor(message = "The server returned an invalid response.") { super(message); this.name = "ProtocolError"; }
@@ -28,13 +28,28 @@ const timestamp = (value: unknown): string => {
   if (!Number.isFinite(milliseconds) || new Date(milliseconds).toISOString().slice(0, 19) !== parsed.slice(0, 19)) return malformed();
   return parsed;
 };
-const array = <T>(value: unknown, parse: (item: unknown) => T): T[] => Array.isArray(value) ? value.map(parse) : malformed();
+const array = <T>(value: unknown, parse: (item: unknown) => T): T[] => Array.isArray(value) ? value.map((item) => parse(item)) : malformed();
 const ids = (value: unknown): string[] => {
   const parsed = array(value, id);
   if (new Set(parsed).size !== parsed.length) return malformed();
   return parsed;
 };
 const status = (value: unknown): TaskStatus => value === "todo" || value === "in_progress" || value === "done" ? value : malformed();
+
+const validAttachmentPath = (value: string): boolean => isText(value) && !/^[A-Za-z]:\//.test(value) && !/[\\\p{Cc}]/u.test(value) && value.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..");
+export const validateAttachmentPath = (value: string): string => {
+  if (!validAttachmentPath(value)) throw new Error("Attachment path must be a valid relative path with nonempty segments and no dot segments, backslashes or control characters.");
+  return value;
+};
+
+export const parseTaskAttachment = (value: unknown, expectedPath?: string): TaskAttachment => {
+  const data = record(value);
+  const path = text(data.path);
+  if (!validAttachmentPath(path)) return malformed();
+  const parsed = { path, contentType: text(data.contentType, true), sizeBytes: count(data.sizeBytes), createdAt: timestamp(data.createdAt), updatedAt: timestamp(data.updatedAt) };
+  if (expectedPath !== undefined && parsed.path !== expectedPath) return malformed();
+  return parsed;
+};
 
 export const parseProject = (value: unknown, expectedId?: string): Project => {
   const data = record(value);
@@ -67,10 +82,10 @@ export const parseTask = (value: unknown, projectId: string, taskId?: string): T
   return parsed;
 };
 
-export const parsePage = <T extends { readonly id: string }>(value: unknown, parse: (item: unknown) => T): Page<T> => {
+export const parsePage = <T>(value: unknown, parse: (item: unknown) => T, identity: (item: T) => string): Page<T> => {
   const data = record(value);
   const items = array(data.items, parse);
-  if (items.length > 100 || new Set(items.map((item) => item.id)).size !== items.length) return malformed();
+  if (items.length > 100 || new Set(items.map((item) => identity(item))).size !== items.length) return malformed();
   let nextCursor: string | null = null;
   if (data.nextCursor !== null) {
     nextCursor = text(data.nextCursor, true);

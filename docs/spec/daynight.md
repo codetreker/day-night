@@ -64,6 +64,11 @@ daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
 daynight task graph [--json] [--project <project-id>]
+daynight task attachment
+daynight task attachment put <task-id> <file> [--path <relative-path>] [--project <project-id>]
+daynight task attachment list <task-id> [--tree | --json] [--project <project-id>]
+daynight task attachment read <task-id> <relative-path> [--project <project-id>]
+daynight task attachment remove <task-id> <relative-path> [--project <project-id>]
 ```
 
 无参数、`--help` 或 `-h` 显示顶层帮助并成功退出；帮助列出 `review`、`update`、`setup`、
@@ -79,10 +84,12 @@ daynight task graph [--json] [--project <project-id>]
 保留后续 `=` 及值的前导连字符。分离形式拒绝前导 `-`；仅声明 `allowEmpty` 的
 描述选项允许空字符串。标量选项不能重复，声明 repeatable 的依赖选项按输入顺序
 保留全部值及重复 ID。状态候选和允许值均由同一命令定义拥有。开关、帮助和目录
-选项不接受内联赋值；`--path=value` 无效。`project create` 接受一个必填位置参数
+选项不接受内联赋值。附件 `put` 的 `--path` 是 text 选项，接受 `--path=value`；
+review 的目录 `--path` 保留原有拒绝规则。`project create` 接受一个必填位置参数
 `<name>` 及可选 `--repo`；`--repo` 可在名称前后。省略时读取当前 Git worktree 的
-有效 `origin`，显式提供时使用给定地址。只有该操作接受独立 `--` 结束选项解析，
-前导 `-` 的名称可写成 `project create -- -name`，也可在终止符前指定 `--repo`。
+有效 `origin`，显式提供时使用给定地址。该操作及附件的 `put/read/remove` 接受
+独立 `--` 结束选项解析。前导 `-` 的名称可写成 `project create -- -name`，也可
+在终止符前指定 `--repo`；附件终止符用于保留前导连字符的本地或目标位置路径。
 旧的 `--daemon-review` 和顶层 `add-repo` 是无效参数，不能隐式重定向。
 
 ### C3. 命令依赖与持久化边界
@@ -105,7 +112,9 @@ daynight task graph [--json] [--project <project-id>]
 `--repo` 的创建才加载 Git 发现当前 worktree 的有效 `origin`。所有 project 操作
 均不读取或改写仓库本地关联、不写 ignore 规则。创建在完整分页比较仓库身份后，
 仅无匹配时提交；唯一匹配成功返回既有 project，多匹配及查询失败均拒绝创建。
-共享执行层在单个操作下处理信号、期限和完整结果输出。`task ready` 默认选择前
+共享执行层在单个操作下处理信号、期限和结果输出；元数据完整读取后输出，附件
+原始内容通过支持背压的字节通道逐段输出，失败可能留下不完整内容。
+`task ready` 默认选择前
 10 个 ready task，`--limit <N>` 接受十进制整数 `1..100`；它只请求一页，不遍历
 后续 cursor。`task list` 继续读取全部匹配页。`ready` 的参数、服务排序及响应校验
 由[project/task 需求](daynight-project-task.md#pt7-task-命令与更新语义)拥有。`task` 显式指定 project
@@ -115,6 +124,9 @@ daynight task graph [--json] [--project <project-id>]
 重分区或重新初始化这些数据。新增命令通过自己的模块接入；它的业务依赖不能成为
 其他命令的启动前提。[project/task 需求](daynight-project-task.md)规定服务 API
 命令；其独立配置校验、仓库本地关联和远端操作继续遵守这些加载与数据归属要求。
+附件 `put/list/read/remove` 的文件语义由[附件需求](daynight-task-attachments.md#cli)
+拥有。帮助和普通元数据命令不得为二进制输出启动辅助进程；首次实际写入非空文件
+内容时才加载所需输出能力，该进程在命令结束前必须退出并被回收。
 
 ### C4. 自更新
 

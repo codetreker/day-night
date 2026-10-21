@@ -13,7 +13,7 @@ export type ServerSession = {
   readonly serverUrl: string;
 };
 
-export type ServerCommand = (session: ServerSession) => Promise<string>;
+export type ServerCommand = (session: ServerSession) => Promise<string | void>;
 
 export type ServerCommandOptions = {
   readonly signalEmitter?: Pick<EventEmitter, "on" | "off">;
@@ -56,13 +56,15 @@ export const runServerCommand = async (
     const api = createApiClient({ serverUrl, operation, ...(options.fetch === undefined ? {} : { fetch: options.fetch }) });
     const output = await command({ api, operation, serverUrl });
     operation.check();
-    context.stdout(output);
+    if (typeof output === "string") context.stdout(output);
   } catch (cause) {
     failed = true;
     failure = cause;
     throw cause;
   } finally {
     const cleanup: unknown[] = [];
+    try { await context.closeStdoutBytes?.(); }
+    catch (cause) { cleanup.push(cause); }
     for (const [signal, listener] of listeners) {
       try { emitter.off(signal, listener); }
       catch (cause) { cleanup.push(cause); }
