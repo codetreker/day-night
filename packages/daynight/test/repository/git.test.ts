@@ -7,6 +7,23 @@ import type { Operation } from "../../src/api/operation.js";
 import { discoverRepository, RepositoryGitError, runRepositoryGit } from "../../src/repository/git.js";
 import { formatError } from "../../src/platform/diagnostics.js";
 
+const nativeTaskkill = vi.hoisted(() => ({ outcomes: [] as ({ returned: true } | { returned: false; error: unknown })[] }));
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  const execute: typeof actual.execFileSync = (...args: unknown[]) => {
+    if (typeof args[0] !== "string" || !/[\\/]System32[\\/]taskkill\.exe$/i.test(args[0])) return Reflect.apply(actual.execFileSync, undefined, args);
+    try {
+      const result = Reflect.apply(actual.execFileSync, undefined, args);
+      nativeTaskkill.outcomes.push({ returned: true });
+      return result;
+    } catch (error) {
+      nativeTaskkill.outcomes.push({ returned: false, error });
+      throw error;
+    }
+  };
+  return { ...actual, execFileSync: execute };
+});
+
 const scratch = path.resolve(import.meta.dirname, "../../../../.tmp/repository-git-tests");
 const directories: string[] = [];
 const operations: Operation[] = [];
@@ -43,6 +60,7 @@ afterEach(async () => {
   for (const op of operations.splice(0)) op.dispose();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
+  nativeTaskkill.outcomes.splice(0);
   for (const root of directories.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
@@ -284,7 +302,25 @@ describe("repository Git discovery", () => {
       expect(ownedPid).toBeTypeOf("number");
       const cancelled = performance.now();
       controller.abort(new Error("Cancel the owned Git alias"));
-      expect(await pending).toBe(op.signal.reason);
+      const error: unknown = await pending;
+      if (process.platform === "win32") {
+        expect(nativeTaskkill.outcomes).toHaveLength(1);
+        const outcome = nativeTaskkill.outcomes[0]!;
+        if (outcome.returned) expect(error).toBe(op.signal.reason);
+        else {
+          expect(outcome.error).toBeInstanceOf(Error);
+          const nativeError = outcome.error as Error & { status?: number; signal?: NodeJS.Signals | null; code?: string };
+          expect(nativeError.status).toBeTypeOf("number");
+          expect(Number.isFinite(nativeError.status)).toBe(true);
+          expect(nativeError.status).not.toBe(0);
+          expect(nativeError.signal).toBeNull();
+          expect(nativeError.code).toBeUndefined();
+          expect(error).toBeInstanceOf(AggregateError);
+          expect((error as AggregateError).errors).toEqual([nativeError]);
+          expect((error as AggregateError).errors[0]).toBe(nativeError);
+          expect((error as AggregateError).cause).toBe(op.signal.reason);
+        }
+      } else expect(error).toBe(op.signal.reason);
       expect(performance.now() - cancelled).toBeLessThan(2500);
       const stopped = await readFile(ticks, "utf8").catch((error: unknown) => {
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return "";
