@@ -35,6 +35,7 @@ const dependencies = (): TestDependencies => {
     loadConfiguration: async () => { throw new Error("Configuration must not be loaded for informational commands."); },
     runReview: async () => { throw new Error("Review must not run for informational commands."); },
     stdout: (text) => { output.push(text); },
+    stdoutBytes: async () => { throw new Error("Informational commands must not write binary output."); },
     stderr: (text) => { errors.push(text); },
     output,
     errors,
@@ -230,7 +231,8 @@ describe("CLI argument handling", () => {
   ])("rejects invalid add-repo syntax %j before touching user state", async (...args) => {
     const deps = dependencies();
     expect(await runCli(args, deps)).toBe(2);
-    expect(deps.errors.join("")).toContain("daynight review --help");
+    const help = args.length === 3 && args[2] !== "" && args[2]!.trim() === "" ? "daynight review --help" : "daynight review add-repo --help";
+    expect(deps.errors.join("")).toContain(help);
     expect(deps.errors.join("")).not.toContain("informational commands");
     expect(deps.output).toEqual([]);
   });

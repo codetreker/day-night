@@ -1,7 +1,7 @@
 # Task 附件与通用文件存储设计
 
-状态：通用存储、附件元数据与文件 HTTP/预览入口已实现；CLI、Web 管理界面和
-持久卷仍待完成。各任务交付进度在 Daynight 中维护。
+状态：通用存储、附件元数据、文件 HTTP/预览入口和 CLI 附件命令已实现；Web
+管理界面和持久卷仍待完成。各任务交付进度在 Daynight 中维护。
 
 行为要求由[附件需求](../spec/daynight-task-attachments.md)拥有；本文解释通用存储接口、
 附件元数据及各端集成机制。
@@ -41,7 +41,8 @@ mockup/
 
 ## 现有结构与集成位置
 
-以下是当前源码事实，用来确定实现位置；附件行为仍是本文定义的待实现设计。
+以下是当前集成位置。存储、HTTP 和 CLI 已有实现；Web 管理界面及附件持久卷仍按
+后续任务交付。
 
 | 当前结构 | 集成方式 |
 |---|---|
@@ -49,8 +50,8 @@ mockup/
 | [HTTP 组装](../../packages/daynight-server/internal/server/server.go)在同一 mux 注册 API 和内嵌页面 | 附件 API 与预览复用同一服务及 origin |
 | [JSON 解码](../../packages/daynight-server/internal/server/http.go)读取并校验受 1 MiB 限制的 JSON | 二进制上传使用独立的流式处理，既有 JSON 限制保持原义 |
 | [附件迁移](../../packages/daynight-server/internal/core/store/migrations/004_task_attachments.sql)定义独立附件表 | 既有迁移机制维护该表，归属由服务校验 |
-| [CLI API 客户端](../../packages/daynight/src/api/client.ts)解码并汇总 UTF-8 JSON | 增加共享取消与错误机制下的二进制传输通道 |
-| [CLI 上下文](../../packages/daynight/src/cli/context.ts)的 stdout 接受字符串 | 增加可等待写入、保留背压的字节输出能力 |
+| [CLI API 客户端](../../packages/daynight/src/api/client.ts)区分 JSON、字节与空响应 | 复用期限、取消、错误及元数据预算；原始文件流不经过 JSON 解码 |
+| [CLI 上下文](../../packages/daynight/src/cli/context.ts)提供 text 与 bytes 输出 | `stdoutBytes` 可等待且保留背压，`closeStdoutBytes` 负责命令结束前的输出清理 |
 | [任务详情](../../packages/daynight-web/src/features/task-detail/TaskDrawer.tsx)独立加载 task | 在详情中增加附件区域，保持图和详情既有读取行为 |
 | [localhost Compose](../../deployment/localhost/compose.yaml)经 gateway 同源交付，服务使用 [UID 10001](../../deployment/localhost/Dockerfile) | 增加一个附件持久卷及写权限，不新增 Web 服务或预览监听端口 |
 
@@ -342,9 +343,17 @@ daynight task attachment read <task-id> mockup/assets/logo.png > ./logo.png
 daynight task attachment remove <task-id> docs/design.md
 ```
 
-全部命令支持现有 `--project` 选择规则；省略时复用仓库关联发现。`put` 省略 `--path`
-使用来源文件 basename，只接受普通文件。默认 list 输出文件列表，`--tree` 展示目录
-结构，`--json` 输出完整元数据，两种格式选项互斥。
+全部命令支持现有 `--project` 选择规则；省略时复用仓库关联发现。
+[attachment.ts](../../packages/daynight/src/commands/task/attachment.ts)在实际上传前打开
+来源并检查该句柄为普通文件，后续读取使用同一句柄，最终显式关闭。`put` 省略
+`--path` 使用来源文件 basename，MIME 由 `mime` 4.1.1 根据最终逻辑目标路径推导，
+未知扩展名使用 `application/octet-stream`。目标路径逐段 URL 编码一次，保留文件名
+拼写及其中的 `%` 等字符。
+
+默认 list 输出带标签的文件元数据，`--tree` 展示目录结构，`--json` 输出完整元数据
+数组，两种格式选项互斥。分页以 path 作为身份，拒绝重复路径或循环 cursor，读完
+所有页后才打印。`--path` 声明为 text，支持内联赋值；put/read/remove 启用 `--`
+终止选项解析，用于前导连字符的位置路径。
 
 `read` 向 stdout 输出原始字节，不解码、不增加标签、转义或额外换行。诊断写 stderr；
 失败非零退出，已输出的部分内容可能不完整。上传及读取都采用保留背压的字节流，
@@ -354,9 +363,26 @@ daynight task attachment remove <task-id> docs/design.md
 [操作生命周期](../../packages/daynight/src/api/operation.ts)中的取消、请求期限、整次
 操作期限。元数据继续受现有 JSON 单响应及累计字节上限约束；原始文件上传和读取
 使用有界缓冲流，不套用 JSON 字节上限，内存占用不随文件总大小增长。共享取消和
-期限不因此放宽。文件传输失败、stdout
-关闭或操作取消时，关闭本次拥有的流并解除网络请求。写请求不自动重试或经重定向
-重发，结果未确认时明确提示操作可能已经生效。
+期限不因此放宽。客户端按操作接受 PUT 的 200/201 元数据、GET 的 200 原始内容及
+DELETE 的 204 空响应；错误响应继续使用 JSON DTO 和字节预算。
+
+[byte-output.ts](../../packages/daynight/src/cli/byte-output.ts)在首次非空输出时才动态
+加载 `node:child_process` 并启动本次命令拥有的
+[输出辅助进程](../../packages/daynight/src/cli/byte-output-helper.ts)。父进程通过管道
+发送不超过 64 KiB 的 frame，每段等待辅助进程的 stdout 写入完成及 IPC 确认，再
+推进 HTTP 响应读取。阻塞的 fd 1 写入位于子进程中，因此父进程的取消和期限仍能
+执行，尤其避免 Windows 同步 stdout 写入阻塞父进程事件循环。
+
+取消、超时、EPIPE 或辅助进程失败时中止请求，终止并回收该子进程。正常完成先关闭
+辅助输入，等待退出；所有结束路径均有界等待并保留清理错误。
+`runServerCommand` 接受返回 `string | void` 的 callback：元数据返回完整文本，read
+逐段调用可等待的 `stdoutBytes` 后返回 void。真实 CLI 上下文始终提供
+`closeStdoutBytes`，runtime 在 dispose 操作和移除信号监听器前调用它；测试或嵌入
+上下文可以不提供该可选关闭函数。该辅助进程只服务一次命令的字节输出，不是后台
+服务。机制选择见[CLI 决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-cli.md)。
+
+文件传输失败、stdout 关闭或操作取消时关闭本次拥有的流并解除网络请求。写请求不
+自动重试或经重定向重发，结果未确认时明确提示操作可能已经生效。
 
 命令登记、帮助及静态补全继续通过既有声明式命令树生成，帮助不加载配置、Git 或
 网络依赖。
@@ -386,8 +412,9 @@ A-T5 将为 localhost Compose 增加一个附件持久卷，挂载到该根目�
 ## 实现验证
 
 通用存储、元数据、HTTP 与 fixture 已有组件和实际二进制检查；源绑定结果归属
-对应 PR 与 CI。CLI、Web 管理界面及持久卷仍按各自后续任务验证，不能由后端通过
-结果代替。各层验证职责如下：
+对应 PR 与 CI。CLI 命令及字节输出已有实现，原生平台、安装产物和完整服务组合的
+验证结论仍须来自各自源码绑定的实际运行；本机验证不能代替 Windows/macOS 托管
+结果。Web 管理界面及持久卷继续按后续任务验证。各层验证职责如下：
 
 - Storage：bucket 隔离、真实相对路径、同路径完整覆盖、原始字节一致、实际大小、
   缺失与权限错误、取消、普通失败的临时文件清理及路径不能越出根目录。

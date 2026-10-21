@@ -104,7 +104,7 @@ describe("shared command syntax", () => {
     expect(() => parseCommand(commandTree, ["update", "-v"])).toThrow(UsageError);
   });
 
-  it("preserves the command owner's usage destination on nested syntax errors", () => {
+  it("uses the complete canonical command path on nested syntax errors", () => {
     const review = commandTree.commands!.find(({ name }) => name === "review")!;
     try {
       parseCommand(review, ["add-repo", "remote", "--path"], ["daynight", "review"], "daynight review --help");
@@ -112,7 +112,24 @@ describe("shared command syntax", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(UsageError);
       expect((error as UsageError).message).toBe("--path requires a path value.");
-      expect((error as UsageError).helpCommand).toBe("daynight review --help");
+      expect((error as UsageError).helpCommand).toBe("daynight review add-repo --help");
+    }
+  });
+
+  it("parses three-level attachment commands and terminates options for dash-prefixed paths", () => {
+    const parsed = parseCommand(commandTree, ["task", "attachment", "read", "task-id", "--", "-draft.md"]);
+    expect(parsed.kind).toBe("run");
+    expect(parsed.path).toEqual(["daynight", "task", "attachment", "read"]);
+    expect(parsed.kind === "run" && parsed.values).toEqual(["task-id", "-draft.md"]);
+    const help = parseCommand(commandTree, ["task", "attachment", "put", "--help"]);
+    expect(renderCommandHelp(help.command, help.path)).toContain("Usage: daynight task attachment put <task-id> <file>");
+    try {
+      parseCommand(commandTree, ["task", "attachment", "list", "task-id", "--unknown"]);
+      throw new Error("Expected a usage error");
+    } catch (error) {
+      expect(error).toBeInstanceOf(UsageError);
+      expect((error as UsageError).message).toContain("daynight task attachment list");
+      expect((error as UsageError).helpCommand).toBe("daynight task attachment list --help");
     }
   });
 

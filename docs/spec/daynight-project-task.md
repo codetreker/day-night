@@ -18,11 +18,11 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 完整资源输出已实现。[架构](../design/daynight-task-properties.md)与
 [实施任务](../design/daynight-task-properties-tasks.md)拥有属性机制及各组件的交付记录。
 
-已采用、尚待实现的[附件需求](daynight-task-attachments.md)增加
-`task attachment` 文件命令及原始字节读取；其
-[架构](../design/daynight-task-attachments.md)和
-[任务拆分](../design/daynight-task-attachments-tasks.md)拥有扩展机制与实施状态。
-本文的既有命令、服务配置和 project 选择继续作为该扩展的基础。
+[附件需求](daynight-task-attachments.md)定义的 `task attachment put/list/read/remove`
+及原始字节读取已实现，复用本文的服务配置和 project 选择。
+[架构](../design/daynight-task-attachments.md)拥有文件与流传输机制，
+[任务拆分](../design/daynight-task-attachments-tasks.md)记录扩展范围和 Daynight 任务入口；
+Web 管理界面与持久卷仍待交付。
 
 ## PT1. 范围与命令边界
 
@@ -185,7 +185,9 @@ daynight task graph
 分离形式的值以 `-` 开始时拒绝，须使用内联形式。描述和 PR 的 URL/title 允许空
 字符串，可写 `--description ""`、`--description=`、`--pull-request-url=` 或
 `--pull-request-title=`。开关不接受内联值；目录选项的
-`--path=value` 继续拒绝。只有 `project create` 接受独立 `--` 结束选项解析。
+`--path=value` 继续拒绝。附件上传的 `--path` 是 text 选项，接受内联赋值。
+`project create` 与附件 `put/read/remove` 接受独立 `--` 结束选项解析；该终止符
+用于保留前导连字符的位置参数，其他操作继续使用其声明的语法。
 
 创建必需符合 PT6 文本规则的非空 task 标题，可选描述、重复的 `--depends-on` 和
 PR URL/title 配对；省略描述、依赖和 PR 引用分别使用服务规定的空字符串、空集合
@@ -231,9 +233,13 @@ PR 的 `--pull-request-url` 和 `--pull-request-title` 在 create/update 中分�
 `graph` 使用现有完整图接口，呈现节点状态、依赖、阻塞和汇总；标题预览、快照
 边界、节点和边上限均继承服务要求。超限时报告数量及上限，不返回部分图。
 
+附件 `put/list/read/remove` 继承相同的 project 选择，逐文件处理完整相对路径。
+目标 basename、MIME 推导、目录拒绝与原始内容输出的完整要求由
+[附件需求](daynight-task-attachments.md#cli)拥有。
+
 ## PT8. 输出、分页与错误
 
-普通查询提供可读结果；`project list` 和 `task list` 自动遍历全部匹配分页，
+普通元数据查询提供可读结果；`project list` 和 `task list` 自动遍历全部匹配分页，
 `task ready` 只读取所选的前 N 项。每个操作在其全部必要读取、结构验证、渲染及
 最终期限检查成功后输出结果。Project 列表逐个输出完整的带标签资源块，包含 ID、名称、
 原始 repo 地址及创建、更新时间；空列表明确说明没有 project。详情和创建结果使用
@@ -260,14 +266,17 @@ PR 的 `--pull-request-url` 和 `--pull-request-title` 在 create/update 中分�
 ## PT9. 请求生命周期
 
 执行命令必须具有覆盖配置读取、Git、缓存验证、全部分页、本地锁、HTTP 及结果
-渲染的共享总期限，HTTP 请求还须有单次期限；读取和累积响应必须具有字节上限。客户端机制常量由设计
-定义，不增加公开配置项或 CLI 参数。总期限、单次期限、响应或累计字节超限均需
-明确失败，不能静默截断、返回部分成功或换用猜测目标。这些是客户端资源限制，
-不改变服务分页、图或业务约束。
+输出的共享总期限，HTTP 请求还须有单次期限。JSON 元数据响应的读取和累积必须有
+字节上限；附件原始内容使用有界缓冲流，不套用 JSON 字节上限，仍受共享取消和期限
+约束。客户端机制常量由设计定义，不增加公开配置项或 CLI 参数。超限明确失败，
+不能静默截断或换用猜测目标；失败的原始内容读取允许已输出的部分字节，不能返回
+成功。既有服务分页、图或业务约束保持不变。
 
 业务执行必须处理 SIGINT、SIGTERM，并在 Windows 处理 SIGBREAK；执行结束后
 移除自身监听器并释放期限资源，保留同一信号上的其他监听器。取消须传入配置读取
-和后续共享操作，业务执行失败或渲染完成后的取消、总期限超限不得输出结果。
+和后续共享操作；元数据操作在业务失败、最终取消或超限时不得输出结果。附件字节
+输出必须可等待且支持背压，取消、超时或下游管道关闭时终止本次拥有的输出执行并
+回收资源。原始流可能已有部分 stdout，退出状态仍必须反映失败。
 
 超时、连接失败、取消、解析失败和服务拒绝必须区分；取消或预算用尽后停止翻页、
 本地保存与后续写入。准备阶段超限不得保存发现结果或发送 task mutation。写请求

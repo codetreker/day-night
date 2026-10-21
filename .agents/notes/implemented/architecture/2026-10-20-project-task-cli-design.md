@@ -116,10 +116,14 @@ response cleanup preserves both the original failure and cleanup errors.
 
 The shared server runtime starts that operation before home/configuration I/O
 and passes its cancellation signal into configuration reading. It supplies one
-API client and operation to a callback that returns the fully rendered result.
-After a final cancellation/deadline check it writes stdout once. SIGINT, SIGTERM
-and Windows SIGBREAK cancel the same lifetime; completion removes owned signal
-listeners and disposes timers without removing other consumers' listeners.
+API client and operation to a callback. Metadata callbacks return a fully
+rendered string, written once after the final cancellation/deadline check. The
+[attachment CLI decision](../feature/2026-10-21-task-attachment-cli.md) extends that
+original text-output contract with streamed bytes and a void callback result.
+SIGINT, SIGTERM and Windows SIGBREAK cancel the same lifetime. Completion first
+closes any owned binary output helper, then removes owned signal listeners and
+disposes timers without removing other consumers' listeners. The JSON metadata
+budgets, exact task versions and complete metadata output remain unchanged.
 
 Project and task human output use complete labeled resource blocks with space
 proportional to the total field content. A shared terminal helper escapes

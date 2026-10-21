@@ -27,7 +27,12 @@ export const runTaskCommand = async (
     context.stdout(renderCommandHelp(command.command, command.path));
     return;
   }
-  const help = `daynight task ${command.command.name} --help`;
+  if (command.path[2] === "attachment") {
+    const { runTaskAttachmentCommand } = await import("./attachment.js");
+    await runTaskAttachmentCommand(command, context, dependencies);
+    return;
+  }
+  const help = `${command.path.join(" ")} --help`;
   const title = command.options.get("--title") as string | undefined;
   const description = command.options.get("--description") as string | undefined;
   const status = command.options.get("--status") as TaskStatus | undefined;

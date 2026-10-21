@@ -16,11 +16,13 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 参数与完整输出已实现。[需求](../spec/daynight-task-properties.md)和
 [实施任务](daynight-task-properties-tasks.md)拥有扩展约定及实施状态。
 
-已采用、尚待实现的[附件架构](daynight-task-attachments.md)在现有 task 命令中
-增加独立文件操作与二进制传输通道，行为见
-[附件需求](../spec/daynight-task-attachments.md)，实施见
-[附件任务拆分](daynight-task-attachments-tasks.md)。既有 JSON 元数据和完整文本
-输出机制继续服务本文已交付命令。
+[附件架构](daynight-task-attachments.md)中的 `task attachment put/list/read/remove`
+及二进制传输通道已实现，行为见[附件需求](../spec/daynight-task-attachments.md)，
+范围与 Daynight 任务入口见[附件任务拆分](daynight-task-attachments-tasks.md)。
+Web 文件管理与持久卷仍待交付。既有 JSON 元数据和完整文本输出机制继续服务元数据
+命令；原始内容逐段写入字节通道。
+[CLI 决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-cli.md)记录
+流传输及输出辅助进程的选择。
 
 ## 现有基础与交付边界
 
@@ -62,7 +64,7 @@ src/
   commands/
     server/                # 共享配置、操作与信号生命周期
     project/               # 参数、帮助、project 操作及渲染
-    task/                  # 参数、帮助、task 操作及渲染
+    task/                  # task 与附件的参数、帮助、操作及渲染
     review/                # review 配置投影和既有行为
     update/                # 既有 npm 安装生命周期
     completion/            # 既有 Bash 和 zsh 原生补全
@@ -120,17 +122,21 @@ Project 名称参数与响应 DTO 复用同一规则，避免已被服务接受�
 
 共享 runtime 将同一信号传给 `loadServerConfiguration`；配置读取层接受可选的
 `AbortSignal` 并传入 `readFile`，同步 YAML 解析完成后再次检查操作状态。已正规化
-的 server 地址、API 客户端及操作对象组成 `ServerSession`。业务 callback 返回完整渲染字符串；
-runtime 在 callback 完成后执行最终检查，再调用一次 stdout。SIGINT、SIGTERM
-及 Windows SIGBREAK 触发同一取消源，结束时移除自身监听器并 dispose 操作，
-保留其他消费者的监听器。命令失败和清理失败均保留原因。
+的 server 地址、API 客户端及操作对象组成 `ServerSession`。业务 callback 返回
+`string | void`：元数据命令返回完整渲染字符串，runtime 最终检查后调用一次 stdout；
+附件 read 通过可等待的字节输出逐段写入并返回 void。SIGINT、SIGTERM 及 Windows
+SIGBREAK 触发同一取消源。结束时先等待 `closeStdoutBytes` 关闭并回收实际创建的
+辅助进程，再移除自身监听器并 dispose 操作，保留其他消费者的监听器。真实 CLI
+上下文始终提供该关闭函数，注入上下文可省略它。命令和清理失败均保留原因。
 
-每个响应最多读取 128 MiB，单命令累计响应体最多读取 256 MiB；MiB 为
-1,048,576 字节。按解码 HTTP 内容编码后的响应体字节流计数，包含成功与错误响应，
+每个 JSON 响应最多读取 128 MiB，单命令累计 JSON 响应体最多读取 256 MiB；MiB 为
+1,048,576 字节。按解码 HTTP 内容编码后的响应体字节流计数，包含 JSON 成功与错误响应，
 在 JSON 解析前累计；不能只相信 `Content-Length`。超过任一上限立即取消读取并
 报告响应或累计预算超限，不解析已截断 JSON。这些常量与总期限共同限制持续推进
 cursor 的扫描及累计 JSON 内存；预算不增加公开配置字段，也不改变 server 限制。
-`task ready --limit` 仅选择返回任务数，不改变期限或字节预算。
+`task ready --limit` 仅选择返回任务数，不改变期限或字节预算。附件原始内容上传和
+成功读取使用有界缓冲的字节流，不经过上述 JSON 字节上限；取消和请求/总期限继续
+覆盖传输和等待 stdout 背压的过程，错误响应仍按 JSON 预算处理。
 JSON 对象在完成有界读取后解析；下一步及最终输出前再次检查总期限与取消状态。
 失败时取消并释放响应 reader；清理最多额外占用 100 ms，取消失败或清理超时与
 原始失败一并保留，不能吞掉清理错误，也不能因底层取消迟迟未完成而无限等待。
@@ -138,7 +144,8 @@ JSON 对象在完成有界读取后解析；下一步及最终输出前再次检
 读准备阶段超限时不保存绑定、不发 mutation、不输出部分结果。若超限发生于已经
 发出的写请求响应，远端结果仍未确认，沿用写入不确定性诊断，不能断言写入未发生。
 
-HTTP 层只接受 API 规定的成功状态和合法 JSON 结构；缺失字段、错误类型、未知
+HTTP 层按操作消费 JSON、原始字节或空响应，只接受 API 规定的成功状态；JSON
+响应继续校验结构，删除必须为 204 且响应体为空。缺失字段、错误类型、未知
 状态值、无效分页 cursor 形态及不完整错误 envelope 作为协议错误暴露。验证可消费
 的已知字段，服务将来添加无冲突字段无需猜测其含义。DTO 的时间、版本、UUID 和
 数组语义与现有服务契约一致。错误保留 cause，并区分网络、期限、主动取消、HTTP
@@ -303,6 +310,10 @@ flowchart TD
 | `task show <id>` | `GET /api/v1/projects/{projectId}/tasks/{id}` |
 | `task update <id>` | 可选先 GET task，再 PATCH 同一路径 |
 | `task graph` | `GET /api/v1/projects/{projectId}/task-graph`，不附加 query |
+| `task attachment put <id> <file>` | `PUT /api/v1/projects/{projectId}/tasks/{id}/attachments/files/{path...}`，流式请求体，接受 200/201 元数据 |
+| `task attachment list <id>` | `GET /api/v1/projects/{projectId}/tasks/{id}/attachments`，按路径身份读完分页 |
+| `task attachment read <id> <path>` | `GET /api/v1/projects/{projectId}/tasks/{id}/attachments/files/{path...}`，原始字节逐段输出 |
+| `task attachment remove <id> <path>` | `DELETE /api/v1/projects/{projectId}/tasks/{id}/attachments/files/{path...}`，接受 204 空响应 |
 
 `project list` 和 `task list` 使用服务支持的 `limit`，客户端固定选择 100 以减少
 请求；不提供公开 cursor 选项。cursor 是不透明字符串，逐页提交，不在 CLI 解码
@@ -364,6 +375,23 @@ repo 许可、API、schema 和事务政策保持原样。原子唯一性需要�
 JavaScript `number`。未知响应字段继续由 DTO 投影忽略，不能因其同名 version
 字段触发已知 task 字段的校验。
 
+## 附件命令组合
+
+`commands/task/command.ts` 在轻量语法解析后才加载 `attachment.ts`；该模块组合现有
+server session 与 project 选择，不引入 review 生命周期。`put` 打开来源并对已打开
+句柄检查普通文件属性，上传使用该句柄，最后显式关闭；输入准备失败不会发出远端
+写请求。`--path` 默认使用本地 basename，`mime` 4.1.1 根据最终逻辑目标路径推导
+MIME，未知扩展名使用 `application/octet-stream`。
+
+路径经过业务校验后按段编码一次。附件分页以完整 path 作为资源身份，拒绝页内或
+跨页重复路径及循环 cursor，读完全部页面才返回元数据。原有 task/project 列表继续
+以 UUID 为身份，task version 的无损 JSON 读写保持不变。
+
+附件的 `--path` 声明为 text 选项；`put/read/remove` 在定义中启用 `--` 终止选项
+解析，使前导连字符的位置路径可以原样传入。帮助和原生补全消费同一嵌套命令树；
+没有为附件维护第二套解析或补全入口。具体二进制输出、关闭和辅助进程机制由
+[附件设计](daynight-task-attachments.md#cli)拥有。
+
 ## 输出与诊断
 
 Project 渲染由 `commands/project/rendering.ts` 拥有，与 API 数据分离。create 在
@@ -391,8 +419,10 @@ project、六个 summary 字段及全部节点；节点的 `titlePreview` 与 `t
 查询 `--json` 是脚本和模型调用 CLI 的稳定接口：show 为资源对象，list 为所有
 匹配资源的数组，ready 为所选完整 task 的数组，graph 为服务原始完整响应对象。
 ready 空结果为 `[]`，不输出分页 envelope 或 cursor。仅序列化 API 字段，不加入
-渲染专用字符串、进度或诊断；无额外 model agent tool 或遥测框架。stdout 在读取完成前保持空，确保脚本
-不会消费前半段成功结果。写操作输出已确认的资源结果；任何失败均不打印成功文案。
+渲染专用字符串、进度或诊断；无额外 model agent tool 或遥测框架。元数据查询在读取
+完成前保持 stdout 为空，确保脚本不会消费前半段成功结果。附件 list 同样完整输出
+元数据；read 输出原始字节，传输失败时可能已有部分内容，错误及非零退出仍必须
+保留。写操作输出已确认的资源结果；任何失败均不打印成功文案。
 
 stderr 错误包含操作名、已确定的 project/task ID、失败阶段和可用的服务
 `error.code`、`message`、`requestId`。相关 `taskIds` 或图数量与上限应可读地展示。
