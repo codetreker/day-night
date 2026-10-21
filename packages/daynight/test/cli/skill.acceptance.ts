@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { lstat, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import crossSpawn from "cross-spawn";
@@ -24,7 +23,7 @@ afterAll(async () => {
   catch (cause) { if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") installationRemoved = true; else failures.push(cause); }
   const { packageVersion, tarballSha256, entrySha256, source } = installed.receipt;
   const terminalSessionsClosed = skillTerminalSessionsClosed();
-  await writeFile(evidencePath, `${JSON.stringify({ schemaVersion: 1, success: scenarios.length === 8 && failures.length === 0 && installationRemoved && terminalSessionsClosed, platform: process.platform, nodeVersion: process.version, artifact: { packageVersion, tarballSha256, entrySha256, source }, scenarios, terminals: skillTerminalEvidence, cleanup: { installationRemoved, terminalSessionsClosed, errors: failures.length } }, null, 2)}\n`, { mode: 0o600 });
+  await writeFile(evidencePath, `${JSON.stringify({ schemaVersion: 1, success: scenarios.length === 14 && failures.length === 0 && installationRemoved && terminalSessionsClosed, platform: process.platform, nodeVersion: process.version, artifact: { packageVersion, tarballSha256, entrySha256, source }, scenarios, terminals: skillTerminalEvidence, cleanup: { installationRemoved, terminalSessionsClosed, errors: failures.length } }, null, 2)}\n`, { mode: 0o600 });
   if (failures.length !== 0) throw new AggregateError(failures, "Installed skill acceptance cleanup failed.");
   expect(installationRemoved).toBe(true);
   expect(terminalSessionsClosed).toBe(true);
@@ -35,14 +34,14 @@ const selection = (keys: readonly string[] = [" ", "\r"], project = false): Term
   { waitFor: agentsPrompt, keys },
   { waitFor: scopePrompt, keys: project ? [down, "\r"] : ["\r"] },
 ];
-const tree = async (directory: string): Promise<Record<string, string>> => {
-  const files: Record<string, string> = {};
+const tree = async (directory: string): Promise<Record<string, Buffer | "directory">> => {
+  const files: Record<string, Buffer | "directory"> = {};
   const visit = async (current: string): Promise<void> => {
     for (const entry of await readdir(current, { withFileTypes: true })) {
       const file = path.join(current, entry.name);
       const relative = path.relative(directory, file).replaceAll("\\", "/");
       if (entry.isDirectory()) { files[`${relative}/`] = "directory"; await visit(file); }
-      else files[relative] = createHash("sha256").update(await readFile(file)).digest("hex");
+      else files[relative] = await readFile(file);
     }
   };
   await visit(directory);
@@ -122,6 +121,51 @@ it("requires an explicit checkbox selection and installs the complete bundle to 
   await expect(lstat(path.join(fixture.home, ".agents"))).rejects.toMatchObject({ code: "ENOENT" });
   await untouched(fixture);
   scenarios.push("single-agent-explicit-checkbox-and-default-user-scope");
+});
+
+const installationCases = [
+  { agent: "codex", name: "Codex", directory: ".agents" },
+  { agent: "copilot", name: "Copilot CLI", directory: ".agents" },
+  { agent: "claude", name: "Claude Code", directory: ".claude" },
+].flatMap((agent) => ["user", "project"].map((scope) => ({ ...agent, scope })));
+
+it.each(installationCases)("installs and replaces the direct $agent $scope bundle while preserving sibling skills and the opposite scope", async ({ agent, name, directory, scope }) => {
+  const fixture = await fresh([agent]);
+  const project = path.join(fixture.root, "project 中文");
+  await mkdir(project);
+  await git(fixture, ["init", "--initial-branch=fixture"], project);
+  const projectScope = scope === "project";
+  const parent = path.join(projectScope ? project : fixture.home, directory, "skills");
+  const target = path.join(parent, "daynight");
+  const opposite = path.join(projectScope ? fixture.home : project, directory, "skills/daynight");
+  await mkdir(path.join(parent, "sibling"), { recursive: true });
+  await writeFile(path.join(parent, "sibling/SKILL.md"), "untouched sibling\n");
+  await mkdir(path.join(opposite, "references"), { recursive: true });
+  await writeFile(path.join(opposite, "SKILL.md"), "untouched opposite scope\n");
+  await writeFile(path.join(opposite, "references/existing.md"), "opposite scope reference\n");
+  const oppositeBefore = await tree(opposite);
+
+  const first = await skillTerminal(installed.receipt, fixture, selection(undefined, projectScope), project);
+  expect(first.code, first.stderr).toBe(0);
+  expect(first.stdout).toContain(`Installed ${name}: ${projectScope ? "Project" : "User"} skill at ${target}`);
+  expect(first.stdout).not.toContain("shared installation");
+  await expectBundle(target);
+  expect((await lstat(target)).isDirectory()).toBe(true);
+  expect((await lstat(target)).isSymbolicLink()).toBe(false);
+  await untouched(fixture);
+
+  await writeFile(path.join(target, "SKILL.md"), "locally modified\n");
+  await writeFile(path.join(target, "obsolete.txt"), "old bundle file\n");
+  await mkdir(path.join(target, "obsolete-empty-directory"));
+  const repeated = await skillTerminal(installed.receipt, fixture, selection(undefined, projectScope), project);
+  expect(repeated.code, repeated.stderr).toBe(0);
+  expect(repeated.stdout).toContain(`Installed ${name}: ${projectScope ? "Project" : "User"} skill at ${target}`);
+  await expectBundle(target);
+  expect(await tree(opposite)).toEqual(oppositeBefore);
+  expect(await readFile(path.join(parent, "sibling/SKILL.md"), "utf8")).toBe("untouched sibling\n");
+  expect(await readdir(parent)).toEqual(["daynight", "sibling"]);
+  await untouched(fixture);
+  scenarios.push(`direct-${agent}-${scope}-install-and-replace`);
 });
 
 it("drives native checkbox arrows and Project selection from a new no-origin repository subdirectory, sharing Codex and Copilot output", async () => {

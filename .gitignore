@@ -12,3 +12,4 @@ docs/plans/
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+/.daynight/

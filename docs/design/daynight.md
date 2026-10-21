@@ -44,6 +44,11 @@ daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
 daynight task graph [--json] [--project <project-id>]
+daynight task attachment
+daynight task attachment put <task-id> <file> [--path <relative-path>] [--project <project-id>]
+daynight task attachment list <task-id> [--tree | --json] [--project <project-id>]
+daynight task attachment read <task-id> <relative-path> [--project <project-id>]
+daynight task attachment remove <task-id> <relative-path> [--project <project-id>]
 ```
 
 各组和操作在该层唯一参数为 `--help` 或 `-h` 时显示帮助。顶层无参数显示帮助，
@@ -70,6 +75,8 @@ src/
     application.ts
     commands.ts
     context.ts
+    byte-output.ts
+    byte-output-helper.ts
     prompts.ts
     cancellation.ts
     schema.ts
@@ -110,6 +117,8 @@ src/
       definition.ts
       command.ts
       rendering.ts
+      attachment.ts
+      attachment-rendering.ts
     project/
       definition.ts
       command.ts
@@ -237,10 +246,12 @@ project 操作不读写仓库绑定或 ignore 规则。`rendering.ts` 使用完�
 `commands/server/runtime.ts` 在首次配置读取前建立操作和信号取消源，配置完整时，
 读取、HTTP 和渲染共享期限与字节预算。仅识别出结构化的必要配置缺失时，释放初始
 操作的期限，在同一取消信号下完成引导；保存后的重新读取建立新操作及完整业务
-预算。回调返回完整结果字符串，最后检查取消和期限后
-只写一次 stdout，再移除本次的信号监听器并释放操作。SIGINT/SIGTERM 以及 Windows
-SIGBREAK 均进入这一取消源；配置读取接受同一 AbortSignal。错误及清理失败保留
-原因链。Task 复用此执行层；它不控制 Go server 的启动或关闭。
+预算。回调返回 `string | void`：元数据操作返回完整字符串，在最终检查取消和期限后
+一次写 stdout；附件 read 通过 `CliContext.stdoutBytes` 逐段输出并返回 void。
+结束时先等待 `closeStdoutBytes` 关闭并回收已创建的输出辅助进程，再移除本次的信号
+监听器并释放操作，清理失败保留原因。SIGINT/SIGTERM 以及 Windows SIGBREAK 均
+进入这一取消源；配置读取接受同一 AbortSignal。Task 复用此执行层；它不控制 Go
+server 的启动或关闭。
 
 Task 的 definition、command 和 rendering 分别拥有共享语法、操作组合和完整
 资源输出。`ready` 的 `--limit` 在任何配置、Git 或 HTTP 访问前校验为十进制整数
@@ -249,6 +260,12 @@ Task 的 definition、command 和 rendering 分别拥有共享语法、操作组
 操作在返回前验证数量不超限、每项确为 ready 且 task ID 不重复。`list` 仍使用完整
 分页。完整的请求、排序和输出机制见
 [project/task 设计](daynight-project-task.md#api-映射与更新机制)。
+
+Task 的 `attachment.ts` 单独组合单文件上传、完整分页列表、原始读取和删除。
+API 客户端分别消费 JSON、字节流与 204 空响应，字节流不经过 UTF-8/JSON 解析或
+元数据字节上限。二进制输出延迟创建本次命令拥有的子进程，以有界 frame 和写入
+确认传递背压，使父进程在 stdout 阻塞时仍可响应取消和期限。详细的流、关闭及错误
+契约由[附件设计](daynight-task-attachments.md#cli)拥有。
 
 描述通过 `value.allowEmpty` 保留空值；状态通过 `value.choices` 统一参数校验和补全
 候选，帮助使用选项说明；重复依赖通过 `repeatable` 从首次出现起形成保留输入顺序及重复值的

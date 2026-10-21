@@ -38,12 +38,14 @@ Each invocation uses `daynight-dev-ci-<run-id>` as the explicit Compose project
 and a unique `daynight-dev-ci:<run-id>` image tag. All Compose operations use the
 same absolute file and project directory with an empty environment file,
 regardless of inherited `COMPOSE_FILE` or `COMPOSE_PROJECT_NAME`. Services,
-networks and the named PostgreSQL volume have project-scoped names. PostgreSQL
-has no host port, and no resource uses a fixed container name or an external
+networks and the `postgres-data` and `attachment-data` named volumes have
+project-scoped names. PostgreSQL has no host port, and no resource uses a fixed
+container name or an external
 volume/network. Multiple invocations can run concurrently. The server also
-receives `DAYNIGHT_STORAGE_ROOT` pointing to a writable image directory, matching
-the production startup requirement. Attachment persistent volumes are tracked
-separately; this startup wiring introduces no additional volume.
+receives `DAYNIGHT_STORAGE_ROOT=/var/lib/daynight/storage`, mounted from this
+project's attachment volume. Fresh-volume initialization preserves the image
+directory's UID/GID `10001:10001`; the normal nonroot process writes the files.
+No test uses the localhost deployment's persistent volumes.
 
 ## Completion, failure and cancellation
 
@@ -98,7 +100,9 @@ the receipts as CI artifacts when reporting a failure.
 
 The Bash fixture tests exercise success, malformed cleanup identities, build and
 partial-startup failures, image mismatch, callback failure, cleanup failure,
-recovery, cancellation and callback descendants without starting Docker:
+recovery, cancellation and callback descendants without starting Docker. The
+fixture records both data volumes and rejects cleanup that leaves only the
+attachment volume behind:
 
 ```bash
 bash deployment/dev-ci/tests/run.sh
@@ -106,3 +110,38 @@ bash deployment/dev-ci/tests/run.sh
 
 Production-image HTTP/browser acceptance uses this runner with a real Docker
 daemon. Fake-Docker checks only verify orchestration and cleanup decisions.
+
+## Attachment persistence check
+
+With Node.js 24 and the runner's Docker prerequisites, run from the repository
+root; no host workspace dependencies are required:
+
+```bash
+node deployment/dev-ci/tests/attachments.mts
+```
+
+The check starts two independent invocations of the existing runner and uses the
+production Dockerfile, embedded Web build and gateway. It verifies fresh-volume
+ownership and UID 10001 writes, nested text/binary and HTML/CSS uploads, exact
+metadata and byte hashes through download and inline preview routes, server
+stop/start and full stack recreation. It rediscovers the gateway port after
+recreation. The two projects have separate database and attachment volumes;
+each rejects the other's project/task paths. Cleaning one deployment leaves the
+other's existing files and new uploads usable.
+
+For paired restore, the check stops the server, captures `pg_dump` and a `tar`
+archive of its attachment root, removes only that project's stack and volumes,
+and restores SQL and files into fresh volumes before starting the server. The
+archive uses a one-off container from the same production image with a `tar`
+entrypoint and the ordinary service user. Reads, previews and another nonroot
+upload must succeed after restoration. The
+[localhost backup procedure](../localhost/README.md#persistence-and-backup)
+owns the operator commands and the accepted pre-existing consistency limitation.
+
+Source-bound receipts are written under `.tmp/attachment-deployment-*/` and the
+two normal `.tmp/dev-ci/<run-id>/` directories. They record owned project and
+volume identities, performed phases, metadata and SHA-256 values. SQL dumps and
+file archives are removed after the check; they are test data, not retained
+backups. The runner performs scoped cleanup on success or failure, and the check
+requires both final cleanup receipts and absence of project resources and image
+tags. Keep receipts with the corresponding PR or CI run when reporting results.

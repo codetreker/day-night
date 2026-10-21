@@ -18,18 +18,18 @@ describe("static agent detection", () => {
     await expect(detectSkillAgents(async () => { throw failure; })).rejects.toBe(failure);
   });
 
-  it("uses native PATH lookup without launching an executable", async () => {
+  it.each(["codex", "copilot", "claude"])("uses native PATH lookup for %s without launching an executable", async (agent) => {
     const temporary = path.resolve(import.meta.dirname, "../../../../../.tmp/agent-detection");
     await mkdir(temporary, { recursive: true });
     const directory = await mkdtemp(path.join(temporary, "PATH space 中文-"));
     directories.push(directory);
     const marker = path.join(directory, "executed");
-    const launcher = path.join(directory, process.platform === "win32" ? "codex.cmd" : "codex");
+    const launcher = path.join(directory, process.platform === "win32" ? `${agent}.cmd` : agent);
     await writeFile(launcher, process.platform === "win32" ? `@echo called > "${marker}"\r\n` : `#!/bin/sh\nprintf called > '${marker.replaceAll("'", "'\\''")}'\n`);
     await chmod(launcher, 0o755);
     vi.stubEnv("PATH", directory);
     if (process.platform === "win32") { vi.stubEnv("Path", directory); vi.stubEnv("PATHEXT", ".COM;.EXE;.BAT;.CMD"); }
-    expect((await detectSkillAgents()).map(({ id }) => id)).toEqual(["codex"]);
+    expect((await detectSkillAgents()).map(({ id }) => id)).toEqual([agent]);
     await expect(readFile(marker)).rejects.toMatchObject({ code: "ENOENT" });
     if (process.platform !== "win32") {
       await chmod(launcher, 0o644);

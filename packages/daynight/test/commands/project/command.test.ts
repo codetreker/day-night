@@ -11,7 +11,7 @@ const project: Project = { id, name: "Project 名称", repoUrl: "git@Git.Example
 const context = () => ({
   version: "0.0.0", packageDirectory: "unused", homeDirectory: vi.fn<() => string>(() => { throw new Error("Home directory must not be read by project dispatch"); }),
   workingDirectory: vi.fn<() => string>(() => { throw new Error("Working directory must not be read by project commands"); }),
-  stdout: vi.fn<(value: string) => void>(), stderr: vi.fn<(value: string) => void>(),
+  stdoutBytes: vi.fn(async () => {}), stdout: vi.fn<(value: string) => void>(), stderr: vi.fn<(value: string) => void>(),
 });
 const fixture = (projects: readonly Project[] = []) => {
   const unavailable = async (): Promise<never> => { throw new Error("Unexpected task API"); };
@@ -20,10 +20,14 @@ const fixture = (projects: readonly Project[] = []) => {
     listProjects: vi.fn<ApiClient["listProjects"]>().mockResolvedValue(projects),
     getProject: vi.fn<ApiClient["getProject"]>().mockResolvedValue(project),
     createTask: unavailable, getTask: unavailable, listTasks: unavailable, listReadyTasks: unavailable, updateTask: unavailable, getTaskGraph: unavailable,
+    putTaskAttachment: unavailable, listTaskAttachments: unavailable, readTaskAttachment: unavailable, removeTaskAttachment: unavailable,
   };
   const runServerCommand = vi.fn<ProjectCommandDependencies["runServerCommand"]>(async (current, command) => {
     const operation = createOperation();
-    try { current.stdout(await command({ api, operation, serverUrl: "http://server.example:8787" })); }
+    try {
+      const output = await command({ api, operation, serverUrl: "http://server.example:8787" });
+      if (typeof output === "string") current.stdout(output);
+    }
     finally { operation.dispose(); }
   });
   return { api, dependencies: { runServerCommand }, context: context() };

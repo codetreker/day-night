@@ -2,8 +2,8 @@ import { performance } from "node:perf_hooks";
 import { parseApiJson, stringifyApiJson } from "./json.js";
 import { OperationError } from "./operation.js";
 import type { Operation } from "./operation.js";
-import { canonicalId, parsePage, parseProject, parseServerError, parseTask, parseTaskGraph, ProtocolError } from "./parse.js";
-import type { CreateProjectInput, CreateTaskInput, ErrorDetails, Project, ServerError, Task, TaskFilters, TaskGraph, UpdateTaskInput } from "./types.js";
+import { canonicalId, parsePage, parseProject, parseServerError, parseTask, parseTaskGraph, parseTaskAttachment, ProtocolError, validateAttachmentPath } from "./parse.js";
+import type { AttachmentConsumer, CreateProjectInput, CreateTaskInput, ErrorDetails, Project, PutTaskAttachmentInput, ServerError, Task, TaskAttachment, TaskFilters, TaskGraph, UpdateTaskInput } from "./types.js";
 
 type Context = { readonly operation: string; readonly projectId?: string; readonly taskId?: string };
 export type ApiPhase = "prepare" | "request" | "response" | "protocol" | "pagination";
@@ -58,6 +58,10 @@ export type ApiClient = {
   listReadyTasks(projectId: string, limit: number): Promise<readonly Task[]>;
   updateTask(projectId: string, taskId: string, input: UpdateTaskInput): Promise<Task>;
   getTaskGraph(projectId: string): Promise<TaskGraph>;
+  putTaskAttachment(projectId: string, taskId: string, path: string, input: PutTaskAttachmentInput): Promise<TaskAttachment>;
+  listTaskAttachments(projectId: string, taskId: string): Promise<readonly TaskAttachment[]>;
+  readTaskAttachment(projectId: string, taskId: string, path: string, consume: AttachmentConsumer): Promise<void>;
+  removeTaskAttachment(projectId: string, taskId: string, path: string): Promise<void>;
 };
 
 const resourceId = (value: string): string => {
@@ -65,6 +69,9 @@ const resourceId = (value: string): string => {
   if (parsed === null) throw new Error("Resource ID must be a hyphenated UUID.");
   return parsed;
 };
+
+const attachmentPrefix = (projectId: string, taskId: string): string => `/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/attachments`;
+const encodeAttachmentPath = (path: string): string => path.split("/").map(encodeURIComponent).join("/");
 
 export const createApiClient = (options: {
   readonly serverUrl: string;
@@ -76,12 +83,20 @@ export const createApiClient = (options: {
   const operation = options.operation;
   const fetch = options.fetch ?? globalThis.fetch;
 
-  const request = async <T>(context: Context, path: string, method: "GET" | "POST" | "PATCH", parse: (value: unknown) => T, body?: unknown): Promise<T> => {
+  type ResponseMode<T> =
+    | { readonly kind: "json"; readonly parse: (value: unknown) => T }
+    | { readonly kind: "bytes"; readonly consume: AttachmentConsumer; readonly result: T }
+    | { readonly kind: "empty"; readonly result: T };
+  type RequestBody = { readonly kind: "json"; readonly value: unknown } | { readonly kind: "bytes"; readonly value: ReadableStream<Uint8Array>; readonly contentType: string };
+  const exchange = async <T>(context: Context, path: string, method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE", mode: ResponseMode<T>, statuses: readonly number[], body?: RequestBody, mutable = false): Promise<T> => {
     let phase: ApiPhase = "prepare";
     let dispatched = false;
     let status: number | undefined;
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     let bodyFailure: unknown;
+    let uploadReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    let uploadFailure: unknown;
+    let uploadDone = false;
     let removeAbort = (): void => {};
     let removeOperationAbort = (): void => {};
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -99,7 +114,32 @@ export const createApiClient = (options: {
     };
     try {
       operation.check();
-      const serialized = body === undefined ? undefined : stringifyApiJson(body);
+      let payload: string | ReadableStream<Uint8Array> | undefined;
+      if (body?.kind === "json") payload = stringifyApiJson(body.value);
+      else if (body?.kind === "bytes") {
+        uploadReader = body.value.getReader();
+        const source = uploadReader;
+        void source.closed.catch((error: unknown) => { uploadFailure = error; });
+        let pending: Uint8Array | undefined;
+        let offset = 0;
+        payload = new ReadableStream<Uint8Array>({
+          pull: async (target) => {
+            checkRequest();
+            if (pending === undefined) {
+              const chunk = await source.read();
+              checkRequest();
+              if (chunk.done) { uploadDone = true; target.close(); return; }
+              pending = chunk.value;
+              offset = 0;
+            }
+            target.enqueue(pending.subarray(offset, offset + 65_536));
+            offset += 65_536;
+            if (offset >= pending.byteLength) pending = undefined;
+          },
+          cancel: (reason) => source.cancel(reason),
+        }, { highWaterMark: 0 });
+      }
+      const contentType = body === undefined ? undefined : body.kind === "json" ? "application/json" : body.contentType;
       const url = new URL(`/api/v1${path}`, origin);
       const remaining = operation.remainingMs();
       const timeout = Math.min(operation.limits.requestMs, remaining);
@@ -124,14 +164,19 @@ export const createApiClient = (options: {
         dispatched = true;
         return fetch(url, {
         method,
-        headers: { Accept: "application/json", ...(serialized === undefined ? {} : { "Content-Type": "application/json" }) },
-        ...(serialized === undefined ? {} : { body: serialized }),
+        headers: { Accept: mode.kind === "bytes" ? "*/*" : "application/json", ...(contentType === undefined ? {} : { "Content-Type": contentType }) },
+        ...(payload === undefined ? {} : { body: payload }),
+        ...(body?.kind === "bytes" ? { duplex: "half" } : {}),
+        ...(mutable ? { cache: "no-store" } : {}),
         redirect: "manual",
         signal: controller.signal,
         });
       }), aborted]);
       status = response.status;
       phase = "response";
+      const success = statuses.includes(status);
+      const binary = success && mode.kind === "bytes";
+      const empty = success && mode.kind === "empty";
       const decoder = new TextDecoder("utf-8", { fatal: true });
       const chunks: string[] = [];
       let pendingText = "";
@@ -146,8 +191,16 @@ export const createApiClient = (options: {
           const chunk = await Promise.race([reader.read(), aborted]);
           if (chunk.done) break;
           bytes += chunk.value.byteLength;
+          if (binary && mode.kind === "bytes") {
+            for (let offset = 0; offset < chunk.value.byteLength; offset += 65_536) {
+              checkRequest();
+              await Promise.race([mode.consume(chunk.value.subarray(offset, offset + 65_536), controller.signal), aborted]);
+            }
+            continue;
+          }
           operation.consume(chunk.value.byteLength);
           if (bytes > operation.limits.responseBytes) throw new OperationError("response_limit");
+          if (empty) throw new ProtocolError("Expected an empty response body.");
           // Count the whole bounded body even when UTF-8 decoding fails before its end.
           if (decodingError === undefined) {
             try {
@@ -160,34 +213,40 @@ export const createApiClient = (options: {
       }
       checkRequest();
       phase = "protocol";
+      if (success && mode.kind !== "json") return mode.result;
       if (decodingError !== undefined) throw decodingError;
       chunks.push(pendingText, decoder.decode());
-      const contentType = response.headers.get("content-type");
-      if (contentType === null || !/^application\/json(?:\s*;\s*charset\s*=\s*(?:utf-8|"utf-8"))?\s*$/i.test(contentType)) throw new ProtocolError("Expected an application/json UTF-8 response.");
+      const responseContentType = response.headers.get("content-type");
+      if (responseContentType === null || !/^application\/json(?:\s*;\s*charset\s*=\s*(?:utf-8|"utf-8"))?\s*$/i.test(responseContentType)) throw new ProtocolError("Expected an application/json UTF-8 response.");
       const value = parseApiJson(chunks.join(""));
       checkRequest();
-      const expectedStatus = method === "POST" ? 201 : 200;
-      if (status !== expectedStatus) {
+      if (!success) {
         if (status < 400 || status > 599) throw new ProtocolError("Unexpected HTTP status.");
         serverError = parseServerError(value);
         const confirmedRefusal = status >= 400 && status < 500;
         throw new ApiError(context, "response", { cause: new Error(serverError.message), status, serverError, confirmedRefusal, outcomeUnconfirmed: method !== "GET" && !confirmedRefusal });
       }
-      const result = parse(value);
+      if (mode.kind !== "json") throw new ProtocolError("Unexpected response mode.");
+      const result = mode.parse(value);
       checkRequest();
+      if (uploadReader !== undefined && !uploadDone) {
+        await Promise.race([uploadReader.cancel(), aborted]);
+        checkRequest();
+      }
       return result;
     } catch (cause) {
       controller.abort(cause);
       let failure = cause;
-      if (reader !== undefined) {
+      for (const [stream, existingFailure] of [[reader, bodyFailure], [uploadReader, uploadFailure]] as const) {
+        if (stream === undefined) continue;
         let cleanupTimer: ReturnType<typeof setTimeout> | undefined;
         try {
-          const cleanup = reader.cancel(cause);
+          const cleanup = stream.cancel(cause);
           await Promise.race([cleanup, new Promise<never>((_resolve, reject) => {
-            cleanupTimer = setTimeout(() => reject(new Error("Response stream cancellation exceeded its 100 ms cleanup deadline.")), 100);
+            cleanupTimer = setTimeout(() => reject(new Error("HTTP stream cancellation exceeded its 100 ms cleanup deadline.")), 100);
           })]);
         } catch (cleanupError) {
-          if (cleanupError !== cause && cleanupError !== bodyFailure) failure = new AggregateError([cause, cleanupError], "HTTP request failed and response cleanup failed.", { cause });
+          if (cleanupError !== cause && cleanupError !== existingFailure) failure = new AggregateError([failure, cleanupError], "HTTP request failed and stream cleanup failed.", { cause });
         } finally {
           if (cleanupTimer !== undefined) clearTimeout(cleanupTimer);
         }
@@ -205,22 +264,26 @@ export const createApiClient = (options: {
       removeAbort();
       removeOperationAbort();
       reader?.releaseLock();
+      uploadReader?.releaseLock();
     }
   };
 
-  const list = async <T extends { readonly id: string }>(context: Context, path: string, parse: (item: unknown) => T, filters: Record<string, string> = {}): Promise<readonly T[]> => {
+  const request = <T>(context: Context, path: string, method: "GET" | "POST" | "PATCH", parse: (value: unknown) => T, body?: unknown): Promise<T> => exchange(context, path, method, { kind: "json", parse }, [method === "POST" ? 201 : 200], body === undefined ? undefined : { kind: "json", value: body });
+
+  const list = async <T>(context: Context, path: string, parse: (item: unknown) => T, identity: (item: T) => string, filters: Record<string, string> = {}, mutable = false): Promise<readonly T[]> => {
     const result: T[] = [];
-    const seenIds = new Set<string>();
+    const seenIdentities = new Set<string>();
     const seenCursors = new Set<string>();
     let cursor: string | null = null;
     try {
       do {
         operation.check();
         const query = new URLSearchParams({ ...filters, limit: "100", ...(cursor === null ? {} : { cursor }) });
-        const page = await request(context, `${path}?${query}`, "GET", (value) => parsePage(value, parse));
+        const page = await exchange(context, `${path}?${query}`, "GET", { kind: "json", parse: (value) => parsePage(value, parse, identity) }, [200], undefined, mutable);
         for (const item of page.items) {
-          if (seenIds.has(item.id)) throw new ProtocolError("Duplicate resource ID across list pages.");
-          seenIds.add(item.id);
+          const key = identity(item);
+          if (seenIdentities.has(key)) throw new ProtocolError("Duplicate resource identity across list pages.");
+          seenIdentities.add(key);
           result.push(item);
         }
         cursor = page.nextCursor;
@@ -243,7 +306,7 @@ export const createApiClient = (options: {
       const project = resourceId(projectId);
       return request({ operation: "project.show", projectId: project }, `/projects/${encodeURIComponent(project)}`, "GET", (value) => parseProject(value, project));
     },
-    listProjects: () => list({ operation: "project.list" }, "/projects", (value) => parseProject(value)),
+    listProjects: () => list({ operation: "project.list" }, "/projects", (value) => parseProject(value), (project) => project.id),
     createTask: (projectId, input) => {
       const project = resourceId(projectId);
       return request({ operation: "task.create", projectId: project }, `/projects/${encodeURIComponent(project)}/tasks`, "POST", (value) => parseTask(value, project), {
@@ -264,7 +327,7 @@ export const createApiClient = (options: {
         const task = parseTask(value, project);
         if ((filters.status !== undefined && task.status !== filters.status) || (filters.ready !== undefined && task.ready !== filters.ready)) throw new ProtocolError("Task does not match the requested filters.");
         return task;
-      }, query);
+      }, (task) => task.id, query);
     },
     listReadyTasks: (projectId, limit) => {
       const project = resourceId(projectId);
@@ -275,7 +338,7 @@ export const createApiClient = (options: {
           const task = parseTask(item, project);
           if (!task.ready) throw new ProtocolError("Task does not match the requested ready filter.");
           return task;
-        });
+        }, (task) => task.id);
         if (page.items.length > limit) throw new ProtocolError("Ready task page exceeds the requested limit.");
         return page.items;
       });
@@ -290,6 +353,22 @@ export const createApiClient = (options: {
         ...(input.dependsOn === undefined ? {} : { dependsOn: input.dependsOn }),
         ...(input.properties === undefined ? {} : { properties: input.properties }),
       });
+    },
+    putTaskAttachment: (projectId, taskId, path, input) => {
+      const project = resourceId(projectId), task = resourceId(taskId), attachmentPath = validateAttachmentPath(path);
+      return exchange({ operation: "task.attachment.put", projectId: project, taskId: task }, `${attachmentPrefix(project, task)}/files/${encodeAttachmentPath(attachmentPath)}`, "PUT", { kind: "json", parse: (value) => parseTaskAttachment(value, attachmentPath) }, [200, 201], { kind: "bytes", value: input.body, contentType: input.contentType }, true);
+    },
+    listTaskAttachments: (projectId, taskId) => {
+      const project = resourceId(projectId), task = resourceId(taskId);
+      return list({ operation: "task.attachment.list", projectId: project, taskId: task }, attachmentPrefix(project, task), parseTaskAttachment, (attachment) => attachment.path, {}, true);
+    },
+    readTaskAttachment: (projectId, taskId, path, consume) => {
+      const project = resourceId(projectId), task = resourceId(taskId), attachmentPath = validateAttachmentPath(path);
+      return exchange({ operation: "task.attachment.read", projectId: project, taskId: task }, `${attachmentPrefix(project, task)}/files/${encodeAttachmentPath(attachmentPath)}`, "GET", { kind: "bytes", consume, result: undefined }, [200], undefined, true);
+    },
+    removeTaskAttachment: (projectId, taskId, path) => {
+      const project = resourceId(projectId), task = resourceId(taskId), attachmentPath = validateAttachmentPath(path);
+      return exchange({ operation: "task.attachment.remove", projectId: project, taskId: task }, `${attachmentPrefix(project, task)}/files/${encodeAttachmentPath(attachmentPath)}`, "DELETE", { kind: "empty", result: undefined }, [204], undefined, true);
     },
     getTaskGraph: (projectId) => {
       const project = resourceId(projectId);

@@ -5,10 +5,10 @@ Status: implemented
 ## Problem
 
 Tasks need to carry design documents, architecture documents, images and runnable
-UI mockups. At adoption, the task model contained text and dependency state, the
-browser was a read-only consumer and CLI transport handled JSON and rendered
-text. A file mechanism tied to one task model would also make another file use
-case repeat the same disk and transport concerns.
+UI mockups. When this design was adopted, the task model carried text and
+dependency state, the browser was a read-only consumer, and the CLI transport
+handled JSON and rendered text. A file mechanism tied to one task model would
+also make another file use case repeat the same disk and transport concerns.
 
 ## Decision
 
@@ -17,12 +17,16 @@ The delivered artifacts are the adopted [requirements](../../../../docs/spec/day
 [implementation breakdown](../../../../docs/design/daynight-task-attachments-tasks.md).
 The [file-storage foundation](2026-10-21-bucket-file-storage.md) implements the
 generic local adapter and startup integration. The
-[attachment HTTP delivery](../feature/2026-10-21-task-attachment-http.md) implements metadata
-and backend file operations. The
+[attachment HTTP delivery](../feature/2026-10-21-task-attachment-http.md) implements
+metadata and backend file operations. The
+[attachment CLI delivery](../feature/2026-10-21-task-attachment-cli.md) implements
+put/list/read/remove and byte-stream output. The
+[persistence delivery](2026-10-21-task-attachment-persistence.md) implements
+deployment volumes, isolation and paired backup/restore validation. The
 [Web attachment delivery](../feature/2026-10-21-task-attachment-web.md) implements
-file management, typed previews and drawer focus integration. CLI, deployment and
-combined acceptance progress is maintained in Daynight. This note owns the
-adopted cross-component design.
+file management, typed previews and drawer focus integration. This note owns the
+adopted cross-component design; the CLI and Web notes own their transport,
+rendering and output choices. Combined acceptance remains tracked in Daynight.
 
 Generic file storage uses bucket and real relative path addressing through
 Put/Open/Delete. The initial adapter is local disk. Task attachment consumers use
@@ -97,10 +101,11 @@ Trusted same-origin HTML has the privileges of that browser origin. Supporting
 untrusted HTML would require revisiting the preview boundary rather than
 silently presenting the current iframe as isolation.
 
-Generic local storage, attachment HTTP resources and browser management are
-implemented. The Web delivery note owns its state, rendering and focus choices;
-this note retains the cross-component addressing and accepted K1 decision.
-Remaining delivery and combined acceptance progress is maintained in the linked
-Daynight tasks; the breakdown owns scope and acceptance. Existing server, CLI and Web contracts remain true for delivered
-features. Module-specific validation and source-bound evidence remain required
-for the remaining implementation tasks.
+Generic local storage, attachment HTTP resources, CLI commands, browser
+management and persistent deployment volumes are implemented. The Web delivery
+note owns its state, rendering and focus choices; this note retains the
+cross-component addressing and accepted K1 decision. A-T6 combined acceptance
+progress is maintained in Daynight; the breakdown owns scope and acceptance.
+Existing server, CLI and Web contracts remain true for delivered features.
+Module-specific validation and source-bound evidence remain required; native CLI
+outcomes cannot be inferred from source inspection or another platform's run.

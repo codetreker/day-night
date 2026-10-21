@@ -38,7 +38,7 @@ const fixture = async (serverUrl: string, operationLimits?: { readonly totalMs: 
   const context = {
     version: "0.0.0", packageDirectory: "unused", homeDirectory: () => home,
     workingDirectory: vi.fn<() => string>(() => { throw new Error("Project commands must not query the working directory"); }),
-    stdout: vi.fn<(value: string) => void>(), stderr: vi.fn<(value: string) => void>(),
+    stdoutBytes: vi.fn(async () => {}), stdout: vi.fn<(value: string) => void>(), stderr: vi.fn<(value: string) => void>(),
   };
   const dependencies = { runServerCommand: (current: Parameters<typeof runServerCommand>[0], command: Parameters<typeof runServerCommand>[1]) => runServerCommand(current, command, { signalEmitter: signals, ...(operationLimits === undefined ? {} : { operationLimits }) }) };
   return { context, dependencies, signals };

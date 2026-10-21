@@ -1,7 +1,8 @@
 # Task 附件与通用文件存储设计
 
-状态：通用存储、附件元数据、文件 HTTP/预览入口及 Web 管理界面已实现。
-CLI、部署整合与跨层验收按独立任务交付，进度在 Daynight 中维护。
+状态：通用存储、附件元数据、文件 HTTP/预览入口、CLI 附件命令、Web 管理界面和
+部署持久卷已实现，停止写入后的配套备份恢复已有真实容器验证。A-T6 跨层组合验收
+仍待完成，进度在 Daynight 中维护。
 
 行为要求由[附件需求](../spec/daynight-task-attachments.md)拥有；本文解释通用存储接口、
 附件元数据及各端集成机制。
@@ -41,7 +42,8 @@ mockup/
 
 ## 现有结构与集成位置
 
-以下源码位置分别拥有已交付机制或剩余集成入口；各层交付与组合验收状态分别维护。
+以下是当前集成位置。存储、HTTP、CLI、Web 管理界面和部署持久卷已有实现；
+各层交付及 A-T6 组合验收状态分别维护。
 
 | 当前结构 | 集成方式 |
 |---|---|
@@ -49,10 +51,10 @@ mockup/
 | [HTTP 组装](../../packages/daynight-server/internal/server/server.go)在同一 mux 注册 API 和内嵌页面 | 附件 API 与预览复用同一服务及 origin |
 | [JSON 解码](../../packages/daynight-server/internal/server/http.go)读取并校验受 1 MiB 限制的 JSON | 二进制上传使用独立的流式处理，既有 JSON 限制保持原义 |
 | [附件迁移](../../packages/daynight-server/internal/core/store/migrations/004_task_attachments.sql)定义独立附件表 | 既有迁移机制维护该表，归属由服务校验 |
-| [CLI API 客户端](../../packages/daynight/src/api/client.ts)解码并汇总 UTF-8 JSON | 增加共享取消与错误机制下的二进制传输通道 |
-| [CLI 上下文](../../packages/daynight/src/cli/context.ts)的 stdout 接受字符串 | 增加可等待写入、保留背压的字节输出能力 |
+| [CLI API 客户端](../../packages/daynight/src/api/client.ts)区分 JSON、字节与空响应 | 复用期限、取消、错误及元数据预算；原始文件流不经过 JSON 解码 |
+| [CLI 上下文](../../packages/daynight/src/cli/context.ts)提供 text 与 bytes 输出 | `stdoutBytes` 可等待且保留背压，`closeStdoutBytes` 负责命令结束前的输出清理 |
 | [任务详情](../../packages/daynight-web/src/features/task-detail/TaskDrawer.tsx)独立加载 task | 组合附件区域，附件 hook 独立持有分页、写状态和预览，保持图和详情读取行为 |
-| [localhost Compose](../../deployment/localhost/compose.yaml)经 gateway 同源交付，服务使用 [UID 10001](../../deployment/localhost/Dockerfile) | 增加一个附件持久卷及写权限，不新增 Web 服务或预览监听端口 |
+| [localhost Compose](../../deployment/localhost/compose.yaml)经 gateway 同源交付，服务使用 [UID 10001](../../deployment/localhost/Dockerfile) | 项目独立的附件持久卷挂载到服务可写根目录，沿用同一 Web 服务及监听端口 |
 
 ## 模块职责与依赖
 
@@ -363,9 +365,17 @@ daynight task attachment read <task-id> mockup/assets/logo.png > ./logo.png
 daynight task attachment remove <task-id> docs/design.md
 ```
 
-全部命令支持现有 `--project` 选择规则；省略时复用仓库关联发现。`put` 省略 `--path`
-使用来源文件 basename，只接受普通文件。默认 list 输出文件列表，`--tree` 展示目录
-结构，`--json` 输出完整元数据，两种格式选项互斥。
+全部命令支持现有 `--project` 选择规则；省略时复用仓库关联发现。
+[attachment.ts](../../packages/daynight/src/commands/task/attachment.ts)在实际上传前打开
+来源并检查该句柄为普通文件，后续读取使用同一句柄，最终显式关闭。`put` 省略
+`--path` 使用来源文件 basename，MIME 由 `mime` 4.1.1 根据最终逻辑目标路径推导，
+未知扩展名使用 `application/octet-stream`。目标路径逐段 URL 编码一次，保留文件名
+拼写及其中的 `%` 等字符。
+
+默认 list 输出带标签的文件元数据，`--tree` 展示目录结构，`--json` 输出完整元数据
+数组，两种格式选项互斥。分页以 path 作为身份，拒绝重复路径或循环 cursor，读完
+所有页后才打印。`--path` 声明为 text，支持内联赋值；put/read/remove 启用 `--`
+终止选项解析，用于前导连字符的位置路径。
 
 `read` 向 stdout 输出原始字节，不解码、不增加标签、转义或额外换行。诊断写 stderr；
 失败非零退出，已输出的部分内容可能不完整。上传及读取都采用保留背压的字节流，
@@ -375,9 +385,26 @@ daynight task attachment remove <task-id> docs/design.md
 [操作生命周期](../../packages/daynight/src/api/operation.ts)中的取消、请求期限、整次
 操作期限。元数据继续受现有 JSON 单响应及累计字节上限约束；原始文件上传和读取
 使用有界缓冲流，不套用 JSON 字节上限，内存占用不随文件总大小增长。共享取消和
-期限不因此放宽。文件传输失败、stdout
-关闭或操作取消时，关闭本次拥有的流并解除网络请求。写请求不自动重试或经重定向
-重发，结果未确认时明确提示操作可能已经生效。
+期限不因此放宽。客户端按操作接受 PUT 的 200/201 元数据、GET 的 200 原始内容及
+DELETE 的 204 空响应；错误响应继续使用 JSON DTO 和字节预算。
+
+[byte-output.ts](../../packages/daynight/src/cli/byte-output.ts)在首次非空输出时才动态
+加载 `node:child_process` 并启动本次命令拥有的
+[输出辅助进程](../../packages/daynight/src/cli/byte-output-helper.ts)。父进程通过管道
+发送不超过 64 KiB 的 frame，每段等待辅助进程的 stdout 写入完成及 IPC 确认，再
+推进 HTTP 响应读取。阻塞的 fd 1 写入位于子进程中，因此父进程的取消和期限仍能
+执行，尤其避免 Windows 同步 stdout 写入阻塞父进程事件循环。
+
+取消、超时、EPIPE 或辅助进程失败时中止请求，终止并回收该子进程。正常完成先关闭
+辅助输入，等待退出；所有结束路径均有界等待并保留清理错误。
+`runServerCommand` 接受返回 `string | void` 的 callback：元数据返回完整文本，read
+逐段调用可等待的 `stdoutBytes` 后返回 void。真实 CLI 上下文始终提供
+`closeStdoutBytes`，runtime 在 dispose 操作和移除信号监听器前调用它；测试或嵌入
+上下文可以不提供该可选关闭函数。该辅助进程只服务一次命令的字节输出，不是后台
+服务。机制选择见[CLI 决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-cli.md)。
+
+文件传输失败、stdout 关闭或操作取消时关闭本次拥有的流并解除网络请求。写请求不
+自动重试或经重定向重发，结果未确认时明确提示操作可能已经生效。
 
 命令登记、帮助及静态补全继续通过既有声明式命令树生成，帮助不加载配置、Git 或
 网络依赖。
@@ -392,24 +419,37 @@ daynight task attachment remove <task-id> docs/design.md
 Web 验收启动器、Go 子进程测试及 CLI 真实服务验收，不能等待后续持久卷任务。
 物理目录不进入 API、PG 或 CLI 配置，所有客户端继续使用既有 `serverUrl`。
 
-当前两套 Compose 已设置该变量，生产镜像已为 UID/GID `10001:10001` 准备可写
-目录；Go 启动与重启 fixture、Web native runner 使用其所属独立目录。
-A-T5 将为 localhost Compose 增加一个附件持久卷，挂载到该根目录。镜像内挂载点与卷初始化
-匹配服务 UID/GID `10001:10001`，由真实容器写入及重建验收证明可用。dev-ci 使用
-本次隔离 Compose 项目的附件卷，并在现有清理流程中删除；不使用开发环境持久卷。
+两套 Compose 均将项目作用域的 `attachment-data` 命名卷挂载到
+`/var/lib/daynight/storage`，并以该路径设置 `DAYNIGHT_STORAGE_ROOT`。生产镜像已为
+UID/GID `10001:10001` 准备目录；Docker 对空卷的初始化保留该目录所有权，普通非
+root 服务直接写入，不增加 root entrypoint。Go 启动与重启 fixture、Web native
+runner 继续使用其所属独立目录。
+
+localhost 的 PG 与附件卷在正常停止、重启、重建及 `down` 后保留，显式
+`down --volumes` 同时销毁两者。dev-ci 每次隔离 Compose 项目拥有独立的 PG 与
+附件卷，现有 runner 按项目标签记录所有卷并清理、核验其全部消失。测试项目不使用
+开发环境持久卷。实现取舍由[部署决策](../../.agents/notes/implemented/architecture/2026-10-21-task-attachment-persistence.md)
+拥有。
 
 上传、下载和预览继续经过同一个 gateway；对应代理规则必须支持二进制请求与流式
 响应，并沿用既有生命周期策略。本设计不另设一套任意文件大小或时限参数。
 
-数据库与附件目录构成一组备份材料。停止服务写入后备份 PG 与附件根目录；恢复使用
-匹配的一组数据。此流程不承诺修复备份前已经存在的文件与元数据不一致。
+数据库与附件目录构成一组备份材料。停止服务和其他直接写入方后，通过 `pg_dump`
+备份 PG，并使用同一生产镜像的非 root `tar` 容器备份附件根目录；两者完成前保持
+停止写入。恢复到空卷时，先恢复匹配 SQL 与文件，再启动服务，随后核对读取、预览及
+新上传。该手动流程不承诺修复备份前已经存在的文件与元数据不一致，也不增加备份
+平台或恢复协调机制。可执行操作由[部署说明](../../deployment/localhost/README.md#persistence-and-backup)
+拥有。
 
 ## 实现验证
 
-通用存储、元数据与 HTTP 已有组件和实际二进制检查。Web 管理界面交付组件、状态
-及前端 fixture，真实浏览器探针覆盖该环境的视觉与焦点；源绑定结果归属对应 PR
-与 CI。各任务保留自身验证，A-T6 的实际后端生产浏览器旅程、安装 CLI 组合及 CI
-inventory 不能由后端测试或前端 mockup 结果代替。各层验证职责如下：
+通用存储、元数据与 HTTP 已有组件和实际二进制检查；持久卷通过现有 runner 的
+两个实际 dev-ci 项目验证。CLI 命令及字节输出已有实现，原生平台、安装产物和
+完整服务组合的验证结论仍须来自各自源码绑定的实际运行，本机验证不能代替
+Windows/macOS 托管结果。Web 管理界面交付组件、状态及前端 fixture，真实浏览器
+探针覆盖该环境的视觉与焦点。源绑定结果归属对应 PR 与 CI。A-T6 的实际后端生产
+浏览器旅程、安装 CLI 组合及 CI inventory 仍待完成，不能由后端、部署或前端
+mockup 的通过结果代替。各层验证职责如下：
 
 - Storage：bucket 隔离、真实相对路径、同路径完整覆盖、原始字节一致、实际大小、
   缺失与权限错误、取消、普通失败的临时文件清理及路径不能越出根目录。
