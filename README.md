@@ -1207,7 +1207,9 @@ pnpm --filter @codetreker/daynight skill:acceptance
 `DAYNIGHT_NATIVE_HOST=codex|copilot|claude` and
 `DAYNIGHT_NATIVE_SCOPE=user|project` select a case for diagnosis. `DAYNIGHT_NATIVE_RECOVERY=unlinked|ambiguous|service_failure` selects one focused
 Codex recovery case. A selected-case receipt proves only that selection; a full
-run covers the six workflow combinations and all three recovery cases. Ordinary `pnpm test` and `pnpm acceptance` do not run live models.
+run covers the six workflow combinations and all three recovery cases. Up to
+three independent workflows share the owned service; all finish and clean up
+before the recovery cases run sequentially. Ordinary `pnpm test` and `pnpm acceptance` do not run live models.
 
 Codex defaults to `workspace-write` and checks the host's user-namespace support
 before authentication or model calls. If that facility is unavailable, an

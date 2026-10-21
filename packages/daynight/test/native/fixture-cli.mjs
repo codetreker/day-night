@@ -74,7 +74,8 @@ export const run = async (configurationPath, tool) => {
       const current = await invoke(["task", "show", configuration.primaryTaskId, "--project", configuration.projectId, "--json"]);
       if (current.code !== 0) throw new Error(`Fixture concurrent read failed: ${current.stderr}`);
       const task = JSON.parse(current.stdout, (key, value, context) => key === "version" && typeof value === "number" ? context.source : value);
-      const competingArgs = ["task", "update", configuration.primaryTaskId, "--project", configuration.projectId, "--if-version", task.version, "--description", `${task.description}\n\n${configuration.conflictMarker}`];
+      const dependencies = [...new Set([...task.dependsOn, configuration.baselineTaskId])];
+      const competingArgs = ["task", "update", configuration.primaryTaskId, "--project", configuration.projectId, "--if-version", task.version, "--description", `${task.description}\n\n${configuration.conflictMarker}`, ...dependencies.flatMap((id) => ["--depends-on", id])];
       const competing = await invoke(competingArgs);
       await append(configuration, { actor: "contender", tool, args: competingArgs, startedAt: Date.now(), finishedAt: Date.now(), ...competing });
       if (competing.code !== 0) throw new Error(`Fixture concurrent update failed: ${competing.stderr}`);

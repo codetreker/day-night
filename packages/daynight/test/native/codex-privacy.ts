@@ -9,6 +9,9 @@ export const isCodexPrivateEnvironmentName = (name: string): boolean =>
 export const codexPrivateEnvironmentValues = (environment: NodeJS.ProcessEnv): CodexPrivateValue[] =>
   Object.entries(environment).flatMap(([name, value]) => isCodexPrivateEnvironmentName(name) && value !== undefined ? [{ label: `environment ${name}`, value }] : []);
 
+export const redactCodexPrivateValues = (text: string, credentials: readonly CodexPrivateValue[]): string =>
+  credentials.filter(({ value }) => value !== "").sort((left, right) => right.value.length - left.value.length).reduce((result, { value }) => result.replaceAll(value, "[redacted]"), text);
+
 export const assertCodexNoCredentialFiles = async (directory: string, credentials: readonly CodexPrivateValue[]): Promise<void> => {
   const needles = credentials.filter(({ value }) => value.length >= 8).map(({ label, value }) => ({ label, bytes: Buffer.from(value) }));
   const visit = async (parent: string): Promise<void> => {
@@ -18,7 +21,7 @@ export const assertCodexNoCredentialFiles = async (directory: string, credential
       else if (entry.isFile()) {
         const contents = await readFile(filename);
         const matched = needles.find(({ bytes }) => contents.includes(bytes));
-        if (matched !== undefined) throw new Error(`Codex persisted ${matched.label} in isolated state file ${path.relative(directory, filename)}.`);
+        if (matched !== undefined) throw new Error(redactCodexPrivateValues(`Codex persisted ${matched.label} in isolated state file ${path.relative(directory, filename)}.`, credentials));
       }
     }
   };

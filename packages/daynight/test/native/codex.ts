@@ -6,7 +6,7 @@ import path from "node:path";
 import which from "which";
 import { terminateInstalledProcess } from "../fixtures/installed-cli.js";
 import type { NativeHostEvent, NativeHostRequest, NativeHostResult } from "./host.js";
-import { assertCodexNoCredentialFiles, codexPrivateEnvironmentValues, isCodexPrivateEnvironmentName } from "./codex-privacy.js";
+import { assertCodexNoCredentialFiles, codexPrivateEnvironmentValues, isCodexPrivateEnvironmentName, redactCodexPrivateValues } from "./codex-privacy.js";
 
 type JsonObject = Record<string, unknown>;
 type PendingRequest = { readonly resolve: (value: JsonObject) => void; readonly reject: (cause: Error) => void };
@@ -87,6 +87,7 @@ export const runCodex = async (request: NativeHostRequest): Promise<NativeHostRe
   delete provider.http_headers;
   provider.env_http_headers = headers;
   environment.DAYNIGHT_NATIVE_CODEX_AUTH = JSON.stringify({ command: authCommand, args: auth.args, home: originalHome, codexHome: originalCodexHome ?? null });
+  credentials.push({ label: "command-auth bridge routing", value: environment.DAYNIGHT_NATIVE_CODEX_AUTH });
   provider.auth = { command: python, args: [path.join(import.meta.dirname, "codex-auth.py")] };
   const shellEnvironment = Object.fromEntries(Object.entries(request.environment).filter(([name, value]) => value !== undefined && !isCodexPrivateEnvironmentName(name)));
   shellEnvironment.HOME = request.homeDirectory;
@@ -101,7 +102,7 @@ export const runCodex = async (request: NativeHostRequest): Promise<NativeHostRe
     analytics: { enabled: false }, feedback: { enabled: false },
   };
   await mkdir(home, { recursive: true, mode: 0o700 });
-  const redact = (value: string): string => credentials.filter((credential) => credential.value.length >= 8).reduce((text, credential) => text.replaceAll(credential.value, "[redacted]"), value);
+  const redact = (value: string): string => redactCodexPrivateValues(value, credentials);
   let result: NativeHostResult | undefined;
   let failure: unknown;
   try {

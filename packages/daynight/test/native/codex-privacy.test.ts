@@ -34,3 +34,10 @@ it.each([
   try { await assertCodexNoCredentialFiles(root, credentials); }
   catch (error) { expect(error instanceof Error && error.message.includes(value)).toBe(false); }
 });
+
+it("redacts private values in both a persisted filename and its diagnostic label", async () => {
+  const value = "fixture-filename-private-value";
+  await writeFile(path.join(root, `${value}.log`), value);
+  const credentials = [{ label: `provider header ${value}`, value }];
+  await expect(assertCodexNoCredentialFiles(root, credentials)).rejects.toThrow("Codex persisted provider header [redacted] in isolated state file [redacted].log.");
+});

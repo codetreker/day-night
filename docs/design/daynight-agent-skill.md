@@ -324,7 +324,8 @@ POSIX PTY 结果不能代替。普通原生 CI 继续运行 typecheck、test、b
 `vitest.skill-native.config.ts`，通过 `pnpm --filter @codetreker/daynight skill:acceptance`
 显式运行。普通 `test` 和 `acceptance` 不执行真实模型。Linux 环境需要 Docker、Python 3.11+、
 三个原生 CLI、GitHub 认证与宿主已有模型认证；User / Project scope 的六项组合及 Codex 的未关联、歧义和持续服务失败三项恢复场景逐项
-记录，定向运行仅证明所选项。运行方式与环境变量由 [README](../../README.md#live-agent-skill-acceptance) 拥有。
+记录，定向运行仅证明所选项。普通工作流最多三项并发，各自持有独立项目和 fixture；
+全部结束并清理后，三项恢复用例串行运行以核对完整项目清单和请求窗口。运行方式与环境变量由 [README](../../README.md#live-agent-skill-acceptance) 拥有。
 
 组合验收打包并安装实际 npm CLI，经真实交互安装器把 bundle 安装到隔离 home 或新建
 linked worktree，重装验证旧文件移除和 sibling 保留。三个宿主均使用普通开发请求，
@@ -336,7 +337,9 @@ session 提取真正的 context delivery；Claude 关联成功的 Skill / Read �
 一个独立 Go/PostgreSQL 实例持有全部 fixture 项目。透明记录器转发真实 HTTP，CLI、
 Node 测试和受限只读 GitHub wrapper 只记录并转发实际执行，不提供伪造响应。普通开发
 任务使用有界 ready、show、create 与精确版本 update；竞争写入通过另一个真实 CLI
-请求发生，原更新如实收到 version_conflict，随后重读并保留并发验收条件。不可改写
+请求增加已交付基线验证的前置依赖，原更新如实收到 version_conflict；Agent 必须重读、
+先验证并完成该前置，再开始被阻塞的开发。最终依赖与执行顺序证明并发条件得到保留，
+任务描述可保持含义而连贯重写，不要求逐字复制说明性文字。不可改写
 的验收测试及操作顺序共同证明执行和完成条件，不能仅比较最终状态。既有任务增加
 已验证前置时必须保留仍必需的旧依赖，用完整集合替换并使用观察到的版本。
 

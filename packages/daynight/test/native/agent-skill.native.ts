@@ -27,7 +27,7 @@ const selectedScopes = selected("DAYNIGHT_NATIVE_SCOPE", scopes);
 const recoveryKinds = ["unlinked", "ambiguous", "service_failure"] as const;
 const recoveryOnly = process.env.DAYNIGHT_NATIVE_RECOVERY !== undefined;
 const recoverySelection = selected("DAYNIGHT_NATIVE_RECOVERY", recoveryKinds);
-const cases = recoveryOnly ? [] : hosts.flatMap((host) => selectedScopes.map((scope) => ({ host, scope })));
+const cases = recoveryOnly ? [] : selectedScopes.flatMap((scope) => hosts.map((host) => ({ host, scope })));
 const recoveryCases = recoveryOnly || process.env.DAYNIGHT_NATIVE_HOST === undefined && process.env.DAYNIGHT_NATIVE_SCOPE === undefined ? recoverySelection : [];
 const expectedCases = [...cases.map(({ host, scope }) => `${host}/${scope}`), ...recoveryCases.map((kind) => `codex/recovery/${kind}`)];
 const runners = { codex: runCodex, copilot: runCopilot, claude: runClaude };
@@ -38,6 +38,7 @@ let service: Awaited<ReturnType<typeof createNativeService>> | undefined;
 let root: string | undefined;
 let openPrUrl: string;
 let mergedPrUrl: string;
+let normalCasesFinished = Promise.resolve();
 
 const verifiedPr = (name: string, state: string): string => {
   const url = process.env[name];
@@ -57,7 +58,7 @@ beforeAll(async () => {
   service = await createNativeService(root);
 });
 
-if (cases.length !== 0) it.each(cases)("automatically loads the installed skill and maintains real tasks: $host / $scope", async ({ host, scope }) => {
+const runWorkflow = async ({ host, scope }: typeof cases[number]): Promise<void> => {
   if (root === undefined || installed === undefined || service === undefined) throw new Error("Native acceptance setup did not complete.");
   const fixture = await createNativeFixture({ rootDirectory: path.join(root, `${host}-${scope}`), receipt: installed.receipt, serviceUrl: service.url, host, scope, openPrUrl, mergedPrUrl, expectUncertainCreate: true });
   service.dropNextTaskCreateResponse(fixture.projectId);
@@ -80,9 +81,27 @@ if (cases.length !== 0) it.each(cases)("automatically loads the installed skill 
     try { await fixture.cleanup(); }
     catch (cleanupError) { failures.push(`${host}/${scope}: fixture cleanup failed`); throw failure === undefined ? cleanupError : new AggregateError([failure, cleanupError], "Native workflow and fixture cleanup failed."); }
   }
+};
+
+if (cases.length !== 0) it("automatically loads the installed skill and maintains real tasks in the selected workflow matrix", async () => {
+  const pending = [...cases];
+  const errors: unknown[] = [];
+  const workers = Array.from({ length: Math.min(3, cases.length) }, async () => {
+    let current: typeof cases[number] | undefined;
+    while ((current = pending.shift()) !== undefined) {
+      const { host, scope } = current;
+      process.stdout.write(`Native workflow started: ${host}/${scope}\n`);
+      try { await runWorkflow(current); process.stdout.write(`Native workflow passed: ${host}/${scope}\n`); }
+      catch (cause) { errors.push(cause); }
+    }
+  });
+  normalCasesFinished = Promise.all(workers).then(() => {});
+  await normalCasesFinished;
+  if (errors.length !== 0) throw new AggregateError(errors, "Selected native workflows failed.");
 });
 
 if (recoveryCases.length !== 0) it.each(recoveryCases)("preserves real project recovery failures: %s", async (kind) => {
+  await normalCasesFinished;
   if (root === undefined || installed === undefined || service === undefined) throw new Error("Native acceptance setup did not complete.");
   const fixture = await createRecoveryFixture({ rootDirectory: path.join(root, `recovery-${kind}`), receipt: installed.receipt, service, kind });
   let failure: unknown;

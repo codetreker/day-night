@@ -27,12 +27,19 @@ app-server threads and successful structured read results. Copilot correlates
 the isolated session's native skill context-delivery events; stdout omits them.
 Claude correlates successful Skill/Read results with the complete delivered
 content, including its first-invocation synthetic user message. Native versions,
-source hashes and selected scopes bound what each receipt establishes.
+source hashes and selected scopes bound what each receipt establishes. Up to
+three normal cases run concurrently with distinct projects, origins, homes,
+trace files, ownership tokens and fault-map entries. The runner explicitly
+awaits every normal case and cleanup before the three recovery cases run
+sequentially; those cases compare global project inventory and request windows.
 
 Real installation uses the existing terminal fixture. Real CLI and read-only
 GitHub wrappers forward requests unchanged and record results. A second actual
-CLI update introduces one version conflict; the Agent must reread and preserve
-the concurrent acceptance condition. Immutable arithmetic tests prevent a
+CLI update adds the delivered-baseline prerequisite and introduces one version
+conflict. The Agent must reread and preserve that dependency, verify/complete it
+before starting division, and use the observed version. Graph facts and trace
+order establish this condition; coherent description rewrites need not reproduce
+instructional prose verbatim. Immutable arithmetic tests prevent a
 rewritten test from proving the requested behavior. Trace order establishes
 in-progress before implementation testing, successful tests and actual merged-PR
 inspection before completion, and a ready refresh afterward. Any attempted
@@ -41,7 +48,7 @@ inspect the unique resource without another create. Existing dependencies are
 replaced with a complete set that preserves every required predecessor. Actual
 zero/two-project association and persistent scoped network failures preserve the
 reported cause, configured server and binding without guessed selections or
-resource mutations. Queued successors retain their statuses; service-derived readiness supplies the unlock.
+resource mutations. Queued successors retain their statuses; redundant explicit todo is permitted; service-derived readiness supplies the unlock.
 
 The service helper uses version-pinned Docker images, a fresh source build,
 random loopback ports, generated child-only database credentials, tmpfs storage
