@@ -50,7 +50,9 @@ Existing Go process fixtures, the native browser runner and both Compose
 configurations provide explicit roots in the same delivery. Each acceptance
 fixture owns a directory and reuses it across restart. Browser recovery validates
 its run directory and stopped process before removing storage. The runtime image
-prepares the directory for UID/GID `10001:10001`; persistent volumes remain A-T5.
+prepares the directory for UID/GID `10001:10001`. The separate
+[persistence delivery](2026-10-21-task-attachment-persistence.md) mounts project-scoped
+volumes there and verifies fresh-volume ownership, retention and paired restore.
 
 ## Alternatives
 

@@ -16,13 +16,14 @@ the corresponding PR and CI evidence.
 
 The adopted [task attachment requirements](docs/spec/daynight-task-attachments.md),
 [architecture](docs/design/daynight-task-attachments.md) and
-[task breakdown](docs/design/daynight-task-attachments-tasks.md) define a planned
-extension: reusable bucket/path file storage, single-file task attachments,
-same-origin browser preview and binary CLI reads. The generic local-storage and
-startup foundation, attachment metadata and file/preview HTTP APIs are
-implemented; CLI commands, browser management and persistent-volume delivery
-remain pending. Filesystem/PostgreSQL non-atomicity is recorded as a known issue;
-consistency remediation is outside that implementation scope.
+[task breakdown](docs/design/daynight-task-attachments-tasks.md) define reusable
+bucket/path file storage, single-file task attachments, same-origin browser
+preview and binary CLI reads. Generic local storage and startup, attachment
+metadata and file/preview HTTP APIs, persistent deployment volumes and paired
+backup/restore are implemented. CLI commands and browser management remain
+pending. The [deployment guide](deployment/localhost/README.md#persistence-and-backup)
+owns data retention and backup commands. Filesystem/PostgreSQL non-atomicity
+remains a known issue; consistency remediation is outside that scope.
 
 The `@codetreker/daynight` package provides the `daynight` client. Its root entry
 lists commands and reports the package version; each command owns its business
@@ -1321,6 +1322,13 @@ publication receipts do not establish live model behavior. The
 [installed CLI decision](.agents/notes/implemented/testing/2026-10-17-installed-cli-acceptance.md)
 owns the lifecycle rationale; the [bundled-skill decision](.agents/notes/implemented/architecture/2026-10-20-bundled-review-skill.md)
 owns native loading evidence.
+
+The [dev-ci attachment check](deployment/dev-ci/README.md#attachment-persistence-check)
+runs with `node deployment/dev-ci/tests/attachments.mts` using Node.js 24 and
+Docker. Two isolated production builds verify attachment-volume permissions,
+restart/recreation persistence, project isolation, paired PostgreSQL/file restore
+and targeted cleanup. The Bash runner fixture remains a separate orchestration
+check; real-container evidence is required for persistence claims.
 
 For document changes, check relative links, requirement references, status, and
 note lifecycle sections. For workflow changes, also check skill frontmatter and

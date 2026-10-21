@@ -43,6 +43,8 @@ services:
       DAYNIGHT_DATABASE_URL: postgres://daynight:daynight-local@postgres:5432/daynight?sslmode=disable
       DAYNIGHT_LISTEN_ADDR: 127.0.0.1:8787
       DAYNIGHT_STORAGE_ROOT: /var/lib/daynight/storage
+    volumes:
+      - attachment-data:/var/lib/daynight/storage
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,3 +63,4 @@ services:
 
 volumes:
   postgres-data:
+  attachment-data:

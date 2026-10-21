@@ -186,6 +186,12 @@ Daynight task：`bfd78c1b-fc19-4ce4-b4b4-bb5f96593a03`。前置：A-T2。
 
 Daynight task：`5c9b9234-2f7d-4ac8-bd02-8600a45a9925`。前置：A-T2。
 
+部署卷与专用真实容器验证入口已实现；交付状态以关联 Daynight task 为准。
+`node deployment/dev-ci/tests/attachments.mts` 通过现有 runner 的两个独立项目验证
+fresh-volume 非 root 权限、停止/重建保留、项目隔离及清理、停止写入后的 PG/附件目录
+成对备份恢复。操作说明由[localhost 部署](../../deployment/localhost/README.md#persistence-and-backup)
+拥有，证据与限制由对应 PR/CI 保留。
+
 ### 文件归属与范围
 
 负责 `deployment/localhost/`、`deployment/dev-ci/`、生产 Dockerfile 及相关部署测试中
