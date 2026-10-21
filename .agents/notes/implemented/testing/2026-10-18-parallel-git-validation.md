@@ -29,7 +29,21 @@ constructs one bare-origin seed with native Git, then copies it into a unique
 directory for every case. Copies contain independent files, objects and refs;
 they use no hardlinks or shared object alternates. SQLite databases, clones,
 worktrees, command interceptors and observation state remain private to each
-case. Only the seed survives case cleanup, and file cleanup removes it.
+case. Only the seed survives case cleanup, and file cleanup removes it. A
+factory initialization callback can prepare additional immutable source objects
+and refs before case copies exist. Both sparse suites use it to build their
+identical sparse source graph once per file. Each case still reads the copied
+source refs, records the initial and sparse observations in its own SQLite
+store, and runs native clone/configuration/fetch/index/worktree operations and
+byte-preservation snapshots.
+
+Version-gate tests separately copy a file-owned immutable bare seed containing
+only the default parentless `1.0.0` base objects. Scenario commits and refs remain
+private; prerelease roots, absent objects/manifests and unrelated histories are
+still constructed by their owning cases. The seed replaces repeated identical
+source construction without precomputing the behavior being tested. The
+[CI efficiency decision](2026-10-21-ci-validation-efficiency.md) records this
+extension alongside other workload optimizations.
 
 All existing Git scenarios and assertions remain exercised. The manager still
 executes real clone, fetch, worktree, sparse-checkout and submodule operations.
@@ -72,6 +86,9 @@ six-worker experiment demonstrates that more concurrency can increase native
 command costs and exhaust existing test deadlines.
 
 Fixture setup still uses native Git once per file, and every case still creates
-its own real repository state. Future scenarios must retain per-case mutable
+its own real repository state. Sparse source preparation and the version-gate
+base share only immutable source objects, without increasing workers, adding
+same-file concurrency or reusing mutable test subjects. Future scenarios must
+retain per-case mutable
 resources and per-file cleanup ownership. The optimization changes validation
 structure and is exempt from the package version policy.

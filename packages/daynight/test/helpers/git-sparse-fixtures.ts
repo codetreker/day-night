@@ -1,21 +1,25 @@
 import path from "node:path";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { expect } from "vitest";
-import { commit, rawGit } from "./git-fixtures.js";
+import { commit, createGitTestFixtures, rawGit } from "./git-fixtures.js";
 import type { GitFixtureFactory } from "./git-fixtures.js";
 
 export type SparseMode = { cone: boolean; sparseIndex: boolean; worktreeConfig: boolean };
+const sparseExtra = (upstream: string, value: string, added = false): string => {
+  const contents = (contentsValue: string): string => rawGit(upstream, ["hash-object", "-w", "--stdin"], contentsValue);
+  const hiddenTree = rawGit(upstream, ["mktree"], `100644 blob ${contents(value)}\thidden.txt\n${added ? `100644 blob ${contents("new hidden path\n")}\tnew.txt\n` : ""}`);
+  const visibleTree = rawGit(upstream, ["mktree"], `100644 blob ${contents("visible\n")}\tvisible.txt\n`);
+  return `100644 blob ${contents(value)}\thidden.txt\n040000 tree ${hiddenTree}\thidden\n040000 tree ${visibleTree}\tvisible\n`;
+};
+export const createSparseGitTestFixtures = (name: string) => createGitTestFixtures(name, (upstream, initialBase) => {
+  const base = commit(upstream, "base sparse\n", initialBase, sparseExtra(upstream, "base hidden\n"));
+  const head = commit(upstream, "PR sparse\n", base, sparseExtra(upstream, "initial hidden change\n"));
+  rawGit(upstream, ["update-ref", "refs/heads/main", base]); rawGit(upstream, ["update-ref", "refs/pull/101/head", head]);
+});
 export const createSparseFixture = async (fixture: GitFixtureFactory, mode: SparseMode) => {
   const f = fixture();
-  const contents = (value: string): string => rawGit(f.upstream, ["hash-object", "-w", "--stdin"], value);
-  const extra = (value: string, added = false): string => {
-    const hiddenTree = rawGit(f.upstream, ["mktree"], `100644 blob ${contents(value)}\thidden.txt\n${added ? `100644 blob ${contents("new hidden path\n")}\tnew.txt\n` : ""}`);
-    const visibleTree = rawGit(f.upstream, ["mktree"], `100644 blob ${contents("visible\n")}\tvisible.txt\n`);
-    return `100644 blob ${contents(value)}\thidden.txt\n040000 tree ${hiddenTree}\thidden\n040000 tree ${visibleTree}\tvisible\n`;
-  };
-  const base = commit(f.upstream, "base sparse\n", f.base, extra("base hidden\n"));
-  const head = commit(f.upstream, "PR sparse\n", base, extra("initial hidden change\n"));
-  rawGit(f.upstream, ["update-ref", "refs/heads/main", base]); rawGit(f.upstream, ["update-ref", "refs/pull/101/head", head]);
+  const [base, head] = rawGit(f.upstream, ["rev-parse", "refs/heads/main", "refs/pull/101/head"]).split("\n");
+  if (base === undefined || head === undefined) throw new Error("Expected sparse source revisions.");
   f.update({ headSha: head, baseSha: base });
   const local = await f.manager.ensureRepository(f.configuration);
   const patterns = mode.cone ? ["visible"] : ["/file.txt", "/.gitattributes", "/visible/"];
@@ -47,5 +51,5 @@ export const createSparseFixture = async (fixture: GitFixtureFactory, mode: Spar
       })) };
   };
   expect(existsSync(path.join(local.root, "hidden", "hidden.txt"))).toBe(false);
-  return { ...f, local, sparseHead: head, sparseExtra: extra, snapshot };
+  return { ...f, local, sparseHead: head, sparseExtra: (value: string, added = false) => sparseExtra(f.upstream, value, added), snapshot };
 };

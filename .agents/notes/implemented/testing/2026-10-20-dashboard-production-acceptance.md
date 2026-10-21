@@ -73,8 +73,15 @@ Measurement failures and diagnostic/cleanup errors retain their joined causes.
 One streamed CDP timeline/User Timing/frame/GC JSON trace per repetition correlates
 those markers with browser work. The trace does not enable CPU sampling or CDP
 screenshots; scenario PNG evidence stays separate. Bounded completion and resource
-closure are required. This is test-side diagnosis for hosted zoom
-latency, without changing thresholds, complete graph readiness or success rules.
+closure are required. Capacity tests disable Playwright's repeated DOM snapshots
+and filmstrip while retaining failure action/network traces, all 15 CDP traces,
+scenario PNGs and complete graph/geometry checks. Controller-side fixture,
+snapshot and repetition durations identify harness costs separately from the
+browser performance gate. The
+[CI efficiency decision](2026-10-21-ci-validation-efficiency.md) records this
+capture-work optimization and the choice to retain the unsplit suite. This is
+test-side diagnosis for hosted zoom latency, without changing thresholds,
+complete graph readiness or success rules.
 Hosted traces show that earlier drawer-close raster/commit work can delay later
 zoom frames even when the zoom handler is prompt. The budget still includes any
 backlog visible after trusted input; work is not deducted because an earlier

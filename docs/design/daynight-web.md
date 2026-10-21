@@ -369,12 +369,29 @@ deployment/
 
 两套环境定义、隔离 HTTP smoke、运行镜像身份和并发隔离均已本地验证，正常重建保留数据。12 项受控 Docker fixture 验证成功、失败、取消、恢复与遗留子进程清理；它们不代替真实 Docker 故障验收。较早渲染器的本地生产浏览器/性能与实际 Docker 故障矩阵已有通过记录；后者保留独立健康栈，
 验证启动中途失败、callback 失败、取消及卷清理失败后的定向恢复。CI 运行既有
-12 项受控生命周期 fixture 和完整真实浏览器，不宣称重复这套手工 Docker 故障矩阵。
+受控生命周期 fixture 和完整真实浏览器，不宣称重复这套手工 Docker 故障矩阵。
 长虚线分解之前的静态 SVG 本地回执保留；当前绘制源码的完整本地生产、几何/相位与性能已通过，随后验证 clean CI 源码及镜像身份。localhost 的配置与数据不会作为测试前置被修改。
 
 ### CI 构建归属
 
-`verify-web` 和 `verify-server` 被选中时，都使用固定 Node/pnpm，在干净 checkout 从锁文件安装依赖并构建真实 UI。Go 检查调用共享构建后继续负责 build/vet/race/go-cov；web job 负责 web typecheck、构建、严格覆盖率及 dev-ci 生命周期 fixture，并运行 `pnpm web:acceptance` 完成生产浏览器、Docker 与性能验收。PR 按[仓库 CI 路由](../../README.md#ci-selection)选择模块，main push 执行全量检查。`checks` 要求路由成功，选中的 Go、web、CLI 原生矩阵和独立 Linux shell completion job 成功，未选中的 job 为 `skipped`。
+`verify-web` 和 `verify-server` 被选中时，都使用固定 Node/pnpm，在干净 checkout
+从锁文件安装依赖并构建真实 UI。Go 检查调用共享构建后继续负责 build/vet/race/go-cov；
+web job 的 `scripts/ci.mts` 并行执行三个准备任务：固定 Chromium 的
+`install --with-deps chromium`、既有 `pnpm web:test` 严格覆盖率检查，以及生产
+Dockerfile 的 `docker buildx build --builder default --file deployment/localhost/Dockerfile --output=type=cacheonly .`。
+后者准备同一 Docker daemon 的缓存；正常 dev-ci 仍从源码构建并验证本次唯一镜像。
+显式 `BUILDX_BUILDER` 只接受 `default`，保证两个阶段使用同一 builder。
+准备任务复用验收工具的进程组、流式输出、有界执行和取消管理；浏览器与单元验证
+各限 180 秒，Docker 准备沿用部署构建的 600 秒限制。`Promise.allSettled` 等待
+三个命令结束，任一失败通过 `AggregateError` 保留并使该步骤失败；准备进程全部
+结束后才进入后续阶段。三者成功后依次执行 dev-ci 生命周期 fixture 和
+`pnpm web:acceptance`；acceptance 独占原生生产构建（包含 typecheck），并完成
+生产浏览器、Docker 与性能验收。两个 job 复用以 server `go.sum`
+为依赖身份的 Go 模块/编译缓存；Go gate 仍先失效测试结果缓存。web job 保留完整
+生产容器构建及本次 image ID 检查。
+PR 按[仓库 CI 路由](../../README.md#ci-selection)选择模块，main push 执行全量检查。
+`checks` 要求路由成功，选中的 Go、web、CLI 原生矩阵和独立 Linux shell completion
+job 成功，未选中的 job 为 `skipped`。
 
 看板交付时，根 `package.json`、锁文件、共享构建脚本和 `.github/workflows/checks.yml` 的唯一编辑归属按阶段交接：W-T2 建立并负责 web 命令和 `verify-web`；W-T2 验收后由 W-T5 接手构建/Go 工具配置；W-T5 验收后由 W-T6 接手最终生产验收步骤。接收任务在开始时核对前一阶段已通过的命令与 required job 清单，再接管编辑；其他任务只提出所需命令和依赖，不直接并发修改这些文件。W-T6 是最终汇总责任方，验证 `checks.needs` 包含 `verify-server`、`verify-web`、现有 CLI `verify` 与 `verify-completion`，且任何失败或取消都不能被成功汇总。
 
@@ -515,6 +532,11 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 结构化就绪日志并记录二进制摘要。原生目标运行八个功能场景和四个容量/超限场景；
 容器目标使用同一个功能集合，经实际生产镜像 gateway 运行。日常 localhost 栈
 不参与测试。功能数据和容量数据均通过既有写 API 建立，浏览器只发起 GET/HEAD。
+单链先 POST 创建 1,000 个无依赖任务，再按索引从 999 到 1 PATCH 当前任务，
+将依赖设为前一任务；每次保留实际返回的版本和字段。此顺序使每次环校验遇到的
+前置仍为独立任务，避免 fixture 重复遍历不断增长的祖先链。最终仍是相同的
+1,000 节点/999 边单链。每个图的完整 API snapshot 逐 ID 比较全部依赖，单链另
+校验每个节点精确依赖前一节点；五次计时使用完成后的同一图。
 真实数据库失败由有所有权校验的专用数据库故障注入触发；浏览器路由屏障仅用于
 控制晚到响应的顺序，不能代替数据库失败证据。
 
@@ -550,7 +572,12 @@ CDP timeline、User Timing、frame 与 GC 事件关联浏览器内的输入/条�
 它不启用 CPU sampling profiler 或 CDP screenshot category；既有场景 PNG 证据
 保持独立。trace 通过有界完成等待和流式文件写入保存，CDP/文件资源必须关闭。
 这些测试侧诊断用于定位 hosted 超时，不属于产品遥测，也不改变容量、交互或
-成功判定标准。
+成功判定标准。容量用例关闭 Playwright trace 的重复 DOM snapshot 与 filmstrip，
+失败时仍保留 action/network trace；十五份 CDP trace、场景 PNG 和全部图/几何检查
+继续保留。`controllerDurations` 记录 fixture 创建、完整图 snapshot 校验，以及每次
+重复的 interaction/total 耗时，用于区分浏览器交互与测试控制器成本；不参与性能
+通过判定。此取舍由
+[CI 验证效率决策](../../.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md)拥有。
 
 绘制分解后，已有 open/初始 readiness 的 countsDirty 检查还要求 SVG 声明的
 `data-paint-piece-count` 为显式非负安全整数，且与实际 `.task-dependency-paint-piece`

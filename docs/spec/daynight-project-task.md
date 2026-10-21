@@ -257,15 +257,19 @@ daynight task graph
 入口的受控 HTTP 验证；共享补全保留既有场景，并在真实 Bash/zsh 验证 Task 语法。
 V1–V12 继续约束完整 CLI 交付。PT-T5 必须通过三原生平台的安装 CLI 受控 HTTP/Git
 验收，以及实际安装 CLI 与真实 Go 1.27.2/PostgreSQL 18.6 的完整流程、重启和版本
-竞争。默认 30 秒、5 分钟、128 MiB 和 256 MiB 预算必须通过公开安装命令与流式
-HTTP 验证，不能以注入较小预算替代。响应和累计解码字节均须提供精确边界成功
-及增加 1 字节拒绝的配对证据，使用合法 gzip JSON 和空白补齐以保留小型结果输出。
-既有 review/update 安装验收和 Go 覆盖率门槛
-全部保留，完整 Go 工作负载不与真实预算探针共享 Go 默认 10 分钟计时器。
+竞争。生产默认值必须保持单次请求 30 秒、总操作 5 分钟、单响应 128 MiB 和
+累计响应 256 MiB，并由测试单独断言。期限行为通过公开安装命令与流式 HTTP
+验证；测试应仅对期限注入合理的较小值，覆盖响应开始后停顿，以及每页均在单次
+期限内且 cursor 持续推进仍耗尽总期限。回执必须标明实际期限与 mock 状态。
+响应和累计解码字节使用真实生产上限，均须提供精确边界成功及增加 1 字节拒绝的
+配对证据，使用合法 gzip JSON 和空白补齐以保留小型结果输出。既有 review/update
+安装验收和 Go 覆盖率门槛全部保留；完整 Go 工作负载与预算探针分别运行，后者
+不占用 Go 默认 10 分钟计时器。
 
 原生安装结果写入仓库根 `.tmp/project-task-evidence.json`，服务及预算结果写入
 `.tmp/project-task-service-evidence.json`；每份证据标识源码、pack/安装身份、场景
 和清理。Go 原有 receipt 及 raw coverage 保留其归属，CLI 要求编号使用 `PT.V*` 命名
-空间。真实 Go/PostgreSQL 联调及默认预算场景已通过本地和托管验证，实际结果
-及 tested source 见任务清单；review 与合并状态由 PR #55 拥有。受控 HTTP、真实
-服务与原生平台证据分别证明其对应要求，不能互相替代。
+空间。PT-T5 的真实 Go/PostgreSQL 联调及真实默认预算历史验证结果与 tested source
+见任务清单和 PR #55；当前期限 mock 及验证成本取舍由
+[CI 验证效率决策](../../.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md)
+拥有，逐次结果随对应 PR 与 CI 保存。受控 HTTP、真实服务与原生平台证据分别证明其对应要求，不能互相替代。

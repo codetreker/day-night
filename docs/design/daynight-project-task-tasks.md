@@ -178,6 +178,10 @@ Go 服务持有。
 状态：已完成。前置：PT-T3、PT-T4。功能与托管验收已完成；集成状态见
 [PR #55](https://github.com/codetreker/daynight/pull/55)。
 
+以下为 PT-T5 交付时的历史验证记录；当时期限探针真实等待生产期限，当前测试侧
+短期限 mock 由[CI 验证效率决策](../../.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md)
+定义。记录中的耗时及源码身份保留其原始范围。
+
 本地验证使用 `c19b064b094aae6634ca6d62e943a73d22008262` 上的 dirty 工作树，
 包版本 `0.6.0`，Node `v24.19.0`。`pnpm typecheck`、`pnpm build`、1510 项普通
 测试均通过，Linux 上 10 项平台专属测试跳过；既有 review/update 及新增 project/task
@@ -225,10 +229,11 @@ submodule、缓存、锁、原子文件及拒绝路径。三个 receipt 的回�
 ### 文件归属与范围
 
 负责可复用 CLI pack/install fixture、三原生平台的受控 HTTP/Git 安装验收、真实
-Go/PostgreSQL command-package 联调、默认预算探针、证据与状态同步。同次服务验证
-只安装一次，Go 场景与预算探针复用该产物。Node 编排层保留既有 go-cov 参数及
-严格覆盖率检查，之后在 Go 默认 10 分钟计时器之外运行真实 30 秒、5 分钟及响应
-字节预算探针。统一检查脚本与 CI 由本任务独占，保留原有 20 分钟 Go 作业、Go、
+Go/PostgreSQL command-package 联调、期限与字节预算探针、证据与状态同步。同次服务
+验证只安装一次，Go 场景与预算探针复用该产物。Node 编排层保留既有 go-cov 参数
+及严格覆盖率检查，之后在 Go 默认 10 分钟计时器之外运行公开安装命令的期限与
+真实响应字节预算探针。期限通过测试侧 mock 缩短，生产默认值单独断言。统一检查
+脚本与 CI 由本任务独占，保留原有 20 分钟 Go 作业、Go、
 web、补全及三原生 CLI 必选检查。服务接口、生产预算和 schema 不属于功能改动范围。
 
 ### 完成条件
@@ -242,9 +247,10 @@ web、补全及三原生 CLI 必选检查。服务接口、生产预算和 schem
 - Linux、macOS、Windows 的工作负载证明路径、Git、文件替换和退出行为；受控 HTTP
   失败覆盖取消、整体超时、持续前进 cursor、响应字节超限、错误响应、续页失败和写结果不确定，
   不能用绿灯代替行为证据。
-- 安装 CLI 通过公开命令验证默认 30 秒单次期限、5 分钟总期限；gzip 流式有效 JSON
-  以空白补齐精确 128 MiB 单响应和 256 MiB 累计边界，边界值必须成功、各增加
-  1 字节必须拒绝。期限场景保持持续推进 cursor，不能以缩小生产常量替代。
+- 安装 CLI 通过公开命令验证响应开始后停顿的单次期限和持续推进 cursor 的总期限；
+  测试侧 mock 使用 1 秒单次、3 秒总期限，生产默认 30 秒/5 分钟单独断言且保持不变。
+  gzip 流式有效 JSON 以空白补齐真实 128 MiB 单响应和 256 MiB 累计边界，边界值
+  必须成功、各增加 1 字节必须拒绝。回执标明实际期限与 mock 状态。
   服务及预算验证写入仓库根 `.tmp/project-task-service-evidence.json`，Go 原有 receipt
   中的 CLI 要求编号使用 `PT.V*` 命名空间，既有服务场景和覆盖率证据保持独立。
 - 明确记录实际命令、源码/产物身份、结果和局限；收尾回收所属服务、Git fixture、

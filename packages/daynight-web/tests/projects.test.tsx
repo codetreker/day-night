@@ -49,14 +49,15 @@ describe('project browsing', () => {
     await screen.findByRole('heading', { name: '项目 51' });
     expect(fetch.mock.calls[1]?.[0]).toBe('/api/v1/projects?limit=50&cursor=next%2F%2B+cursor');
     expect(screen.getAllByRole('listitem')).toHaveLength(51);
-    expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent)).toEqual(
+    const headings = screen.getAllByRole('heading', { level: 2 });
+    expect(headings.map((heading) => heading.textContent)).toEqual(
       Array.from({ length: 51 }, (_, index) => `项目 ${index + 1}`),
     );
     expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
     expect(screen.getByText('已加载全部项目')).toBeTruthy();
-    for (let index = 1; index <= 51; index++) {
-      const card = screen.getByRole('heading', { name: `项目 ${index}` }).closest('a');
-      expect(card?.getAttribute('href')).toBe(`/projects/${project(index).id}`);
+    for (const [index, heading] of headings.entries()) {
+      expect(heading).toHaveAccessibleName(`项目 ${index + 1}`);
+      expect(heading.closest('a')?.getAttribute('href')).toBe(`/projects/${project(index + 1).id}`);
     }
   });
 

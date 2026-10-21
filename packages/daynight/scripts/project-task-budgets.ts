@@ -9,12 +9,14 @@ import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 import { performance } from "node:perf_hooks";
 import type { InstalledCliReceipt } from "../test/fixtures/installed-cli.js";
+import type { DeadlineLimits } from "../test/fixtures/installed-operation-limits.js";
 
 const mib = 1_048_576;
 const responseLimit = 128 * mib;
 const totalLimit = 256 * mib;
 const requestMs = 30_000;
 const totalMs = 300_000;
+const deadlineLimits: DeadlineLimits = { totalMs: 3_000, requestMs: 1_000 };
 const outputLimit = 64 * 1024;
 const filler = Buffer.alloc(64 * 1024, " ");
 
@@ -22,6 +24,7 @@ export type BudgetProbeReceipt = {
   name: string;
   passed: boolean;
   elapsedMs: number;
+  deadlines: DeadlineLimits & { mocked: boolean };
   requests: number;
   completedPages: number;
   uniqueCursors: number;
@@ -97,10 +100,10 @@ const expectedDisconnect = (error: unknown): boolean => typeof error === "object
 
 type TerminateInstalledProcess = typeof import("../test/fixtures/installed-cli.js").terminateInstalledProcess;
 
-const runInstalledList = async (installed: InstalledCliReceipt, home: string, cwd: string, watchdogMs: number, receipt: BudgetProbeReceipt, terminate: TerminateInstalledProcess, signal?: AbortSignal): Promise<void> => {
+const runInstalledList = async (installed: InstalledCliReceipt, home: string, cwd: string, watchdogMs: number, receipt: BudgetProbeReceipt, terminate: TerminateInstalledProcess, preload: string | undefined, signal?: AbortSignal): Promise<void> => {
   signal?.throwIfAborted();
   const started = performance.now();
-  const child = spawn(installed.nodePath, [installed.entryPath, "project", "list", "--json"], {
+  const child = spawn(installed.nodePath, [...(preload === undefined ? [] : ["--import", preload]), installed.entryPath, "project", "list", "--json"], {
     cwd, env: { ...process.env, HOME: home, USERPROFILE: home }, windowsHide: true,
     detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"],
   });
@@ -154,6 +157,7 @@ type ProbeDefinition = {
   expected: { exitCode: 0; stdout: string } | { exitCode: 1; reason: string };
   watchdogMs: number;
   minimumMs?: number;
+  deadlineLimits?: DeadlineLimits;
   expectedRequests?: number;
   handle(response: ServerResponse, index: number, receipt: BudgetProbeReceipt): Promise<void>;
   verify(receipt: BudgetProbeReceipt): void;
@@ -162,8 +166,9 @@ type ProbeDefinition = {
 const progressPage: ProbeDefinition = {
   name: "command-deadline-with-progress",
   expected: { exitCode: 1, reason: "Operation deadline exceeded." },
-  watchdogMs: totalMs + 30_000,
-  minimumMs: totalMs - 1_000,
+  watchdogMs: 10_000,
+  minimumMs: deadlineLimits.totalMs,
+  deadlineLimits,
   handle: (response, index, receipt) => new Promise<void>((resolve) => {
     const done = (): void => { clearTimeout(timer); response.removeListener("close", done); resolve(); };
     const timer = setTimeout(() => {
@@ -171,22 +176,22 @@ const progressPage: ProbeDefinition = {
         response.writeHead(200, { "Content-Type": "application/json" });
         response.end(JSON.stringify({ items: [project(index)], nextCursor: `page-${index + 1}` }));
         receipt.completedPages += 1;
-        if (index % 100 === 0) console.log(`Production command deadline: ${index} valid project pages completed.`);
       }
       done();
-    }, 250);
+    }, 25);
     response.once("close", done);
   }),
   verify: (receipt) => {
-    requireCondition(receipt.completedPages > 100, "The command-deadline probe must make sustained valid pagination progress.");
+    requireCondition(receipt.completedPages > 10, "The command-deadline probe must make sustained valid pagination progress.");
     requireCondition(receipt.requests - receipt.completedPages <= 1, "Only the final pagination request may be interrupted.");
   },
 };
 const stalledBody: ProbeDefinition = {
   name: "request-deadline-after-headers",
   expected: { exitCode: 1, reason: "HTTP request deadline exceeded." },
-  watchdogMs: requestMs + 15_000,
-  minimumMs: requestMs - 1_000,
+  watchdogMs: 10_000,
+  minimumMs: deadlineLimits.requestMs,
+  deadlineLimits,
   expectedRequests: 1,
   handle: async (response) => {
     response.writeHead(200, { "Content-Type": "application/json" });
@@ -237,6 +242,7 @@ export class BudgetAcceptanceError extends AggregateError {
 const runProbe = async (definition: ProbeDefinition, installed: InstalledCliReceipt, temporaryRoot: string, terminate: TerminateInstalledProcess, signal?: AbortSignal): Promise<{ receipt: BudgetProbeReceipt; errors: unknown[] }> => {
   const receipt: BudgetProbeReceipt = {
     name: definition.name, passed: false, elapsedMs: 0, requests: 0, completedPages: 0, uniqueCursors: 0,
+    deadlines: { ...(definition.deadlineLimits ?? { totalMs, requestMs }), mocked: definition.deadlineLimits !== undefined },
     responseBodyBytes: [], generatedDecodedBytes: 0, compressedBytes: 0,
     exitCode: null, signal: null, stdoutBytes: 0, stdout: "", stderr: "", childReaped: false,
     socketsClosed: false, serverClosed: false, fixtureRemoved: false, failures: [],
@@ -280,8 +286,13 @@ const runProbe = async (definition: ProbeDefinition, installed: InstalledCliRece
     const address = server.address();
     if (address === null || typeof address === "string") throw new Error("The controlled HTTP server did not acquire a TCP port.");
     await writeFile(path.join(home, ".daynight/config.yml"), `serverUrl: http://127.0.0.1:${address.port}\n`);
-    console.log(`Checking production resource budget: ${definition.name}.`);
-    await runInstalledList(installed, home, fixture, definition.watchdogMs, receipt, terminate, signal);
+    let preload: string | undefined;
+    if (definition.deadlineLimits !== undefined) {
+      const mock: typeof import("../test/fixtures/installed-operation-limits.js") = await import(new URL("../test/fixtures/installed-operation-limits.ts", import.meta.url).href);
+      preload = await mock.createInstalledDeadlineMock(fixture, installed.entryPath, definition.deadlineLimits);
+    }
+    console.log(`Checking installed CLI resource budget: ${definition.name}.`);
+    await runInstalledList(installed, home, fixture, definition.watchdogMs, receipt, terminate, preload, signal);
     requireCondition(receipt.exitCode === definition.expected.exitCode && receipt.signal === null, `${definition.name} must exit ${definition.expected.exitCode}.\n${receipt.stderr}`);
     if (definition.expected.exitCode === 1) {
       requireCondition(receipt.stdoutBytes === 0, `${definition.name} must not emit a partial JSON result.`);
@@ -289,7 +300,7 @@ const runProbe = async (definition: ProbeDefinition, installed: InstalledCliRece
     } else {
       requireCondition(receipt.stdout === definition.expected.stdout && receipt.stderr === "", `${definition.name} must return the complete successful JSON result without diagnostics.`);
     }
-    if (definition.minimumMs !== undefined) requireCondition(receipt.elapsedMs >= definition.minimumMs, `${definition.name} completed before its production deadline.`);
+    if (definition.minimumMs !== undefined) requireCondition(receipt.elapsedMs >= definition.minimumMs, `${definition.name} completed before its configured deadline.`);
     if (definition.expectedRequests !== undefined) requireCondition(receipt.requests === definition.expectedRequests, `${definition.name} made an unexpected request count.`);
     requireCondition(receipt.requests === receipt.uniqueCursors, `${definition.name} must not retry a request.`);
     definition.verify(receipt);
@@ -320,7 +331,7 @@ const runProbe = async (definition: ProbeDefinition, installed: InstalledCliRece
     catch (error) { fail(error); }
   }
   receipt.passed = receipt.failures.length === 0 && receipt.childReaped && receipt.socketsClosed && receipt.serverClosed && receipt.fixtureRemoved;
-  console.log(`${receipt.passed ? "PASS" : "FAIL"} production resource budget ${receipt.name}: ${receipt.elapsedMs} ms, ${receipt.requests} requests.`);
+  console.log(`${receipt.passed ? "PASS" : "FAIL"} installed CLI resource budget ${receipt.name}: ${receipt.elapsedMs} ms, ${receipt.requests} requests.`);
   return { receipt, errors };
 };
 

@@ -139,7 +139,10 @@ than 90%**. Exactly 90% fails. The check also tests that calculation's boundary
 and malformed-profile behavior.
 
 `scripts/env.sh` places downloaded tools, dependencies, caches, binaries, and
-temporary outputs under this module's `.tmp/`. Both local validation and CI use
+temporary outputs under this module's `.tmp/`. Both Go-consuming CI jobs restore
+module and compiler caches using `go.sum`; `go clean -testcache` still invalidates
+server test results before validation so database and coverage observations run
+again. Both local validation and CI use
 `scripts/check.sh` and the same coverage configuration. The tests cover real
 database connection/query cancellation, HTTP cancellation, graceful and forced
 drain, listener/pool reuse, process configuration/exit status, and log redaction.
@@ -333,7 +336,13 @@ race-enabled server, starts only owned loopback children against isolated real
 PostgreSQL schemas, and checks HTTP workflows, restart persistence, competing
 mutations, partial-write rollback, cancellation, graceful/forced SIGTERM,
 migration failures and simultaneous startup. This signal acceptance runs in the
-Ubuntu Go CI job. Existing three-platform CLI validation remains separate.
+Ubuntu Go CI job. Independent scenario subtests run with at most four concurrent
+slots within their sequential top-level test; each retains its own schema,
+processes, database barriers and cleanup. This keeps other top-level tests'
+process-wide environment changes outside the parallel scenario lifetime.
+Existing three-platform CLI validation remains separate. The
+[CI efficiency decision](../../.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md)
+records the validation-cost trade-offs.
 
 The test process incrementally writes `.tmp/acceptance-evidence.json` with the
 checked-out Git/GitHub SHA, dirty state, Go/PostgreSQL versions, tested binary
@@ -370,8 +379,15 @@ explains why a legal opaque ID may contain the SQL marker.
 
 The installed CLI scenario and its artifact/source validation live in
 [`acceptance_cli_test.go`](cmd/daynight-server/acceptance_cli_test.go).
-Successful package-level coverage and actual process results are separate
-evidence: binary HTTP tests supplement the store/service/server package tests.
+The Node orchestrator reuses that installation for six budget probes after the
+Go coverage gate. Deadline probes load a test-only preload with 1-second request
+and 3-second operation deadlines, while separately asserting the installed
+production defaults of 30 seconds and five minutes. Four decoded-byte probes use
+the unchanged 128 MiB/256 MiB defaults and exact-limit/+1-byte pairs. Each probe's
+`deadlines` records `totalMs`, `requestMs` and whether it was mocked in the root
+`.tmp/project-task-service-evidence.json` receipt. Successful package-level
+coverage and actual process results are separate evidence: binary HTTP tests
+supplement the store/service/server package tests.
 The owning store/service tests retain deterministic snapshot and lock proofs:
 `TestQueriesSnapshotRetainsCompleteOldGraph` in [query tests](internal/core/store/query_test.go),
 `TestTaskSnapshotKeepsProjectAndDerivedTaskStateConsistent` in

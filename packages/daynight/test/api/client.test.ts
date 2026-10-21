@@ -151,13 +151,15 @@ describe("operation-scoped API access", () => {
     expect(mutations).toBe(1);
   });
 
-  it("includes body reading in the real HTTP request timeout", async () => {
+  it.each(["headers", "body"])("enforces the real HTTP request timeout while waiting for %s", async (waitingFor) => {
     const url = await server((_request, response) => {
-      response.writeHead(200, { "Content-Type": "application/json" });
-      response.write('{"items":');
+      if (waitingFor === "body") {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.write('{"items":');
+      }
     });
-    const api = createApiClient({ serverUrl: url, operation: operation({ limits: { requestMs: 30 } }) });
-    await expect(api.listProjects()).rejects.toMatchObject({ phase: "response", cause: { kind: "request_timeout" } });
+    const api = createApiClient({ serverUrl: url, operation: operation({ limits: { requestMs: 50 } }) });
+    await expect(api.listProjects()).rejects.toMatchObject({ phase: waitingFor === "headers" ? "request" : "response", cause: { kind: "request_timeout" } });
   });
 
   it("cancels a custom response stream even when fetch ignores its signal", async () => {

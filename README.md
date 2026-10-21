@@ -10,7 +10,7 @@ the corresponding PR and CI evidence.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service/default-budget acceptance verified | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
+| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -38,10 +38,12 @@ confirmed behavior and implementation status. Shared YAML projections, the
 with ignored local bindings are implemented. `project create/list/show` manage
 remote projects through the configured server. Task create/list/show/update/graph
 commands use explicit project selection or the current repository binding;
-installed real-service commands and production-budget acceptance pass local and
-hosted validation. [PR #55](https://github.com/codetreker/daynight/pull/55) owns
-review and integration status. Controlled native-platform tests and live
-Copilot/GitHub acceptance provide separate evidence; live acceptance remains
+installed real-service and resource-budget acceptance are implemented.
+[PR #55](https://github.com/codetreker/daynight/pull/55) records the original
+integration and real-default-budget validation. Current deadline tests use short
+test-side budgets under the
+[CI efficiency decision](.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md).
+Controlled native-platform tests and live Copilot/GitHub acceptance provide separate evidence; live acceptance remains
 outstanding.
 
 The server design covers repository-linked projects, project-scoped tasks,
@@ -81,8 +83,10 @@ pnpm daynight --help
 pnpm daynight --version
 ```
 
-`pnpm check` runs type checking and tests. Tests build the package before
-exercising the compiled CLI. `pnpm build` clears the package's `dist/` before emitting
+`pnpm check` runs type checking and tests. Standalone `pnpm test` and
+`pnpm acceptance` build the package before exercising the compiled CLI. Native CI
+typechecks and builds once, then invokes both Vitest configurations against that
+same compiled output. `pnpm build` clears the package's `dist/` before emitting
 `packages/daynight/dist/main.js` and copying the complete built-in review skill
 bundle into `dist/commands/review/skills/`; the package's `daynight` bin points to
 the stable JavaScript entry.
@@ -176,8 +180,10 @@ Git lifecycle tests use local origin/clone fixtures and real worktrees to check
 captured targets, disposable review artifacts, shared refs, and isolation between
 PR worktrees. Independent Git suites run in separate Vitest workers. Each suite
 copies its immutable bare-origin seed into private test directories; refs,
-SQLite databases, clones and worktrees remain separate for every case. Tests
-within a file stay sequential so environment changes and cleanup have one owner.
+SQLite databases, clones and worktrees remain separate for every case. Sparse
+suites prepare their shared source graph before copying, and version-gate tests
+reuse only immutable default-base objects; scenario observations and mutations
+remain private. Tests within a file stay sequential so environment changes and cleanup have one owner.
 The [Git test decision](.agents/notes/implemented/testing/2026-10-18-parallel-git-validation.md)
 records the isolation rules, and the
 [CI timing report](docs/research/windows-ci-performance.md) records native
@@ -233,13 +239,16 @@ same raw coverage profile supplies an exact strict comparison; exactly 90%
 fails, independently of display rounding. No product files or functions are
 excluded. When [CI selection](#ci-selection) selects the server, the aggregate
 requires this complete Go job to pass. PostgreSQL absence is a failure, not
-a skipped test. PT-T5 adds an installed-CLI service path and production-budget
+a skipped test. PT-T5 adds an installed-CLI service path and resource-budget
 probes to this same gate. A Node orchestrator shares one real installation across
 the Go command scenarios and, after the unchanged go-cov/strict-profile checks,
-public-command probes outside Go's default ten-minute timer. Those probes retain
-the 30-second request, five-minute operation, 128 MiB single-response and 256 MiB
-cumulative decoded-response limits. The Go job retains its 20-minute bound and
-complete validation workload. The [acceptance design](docs/design/daynight-project-task.md#验证与交付证据)
+public-command probes outside Go's default ten-minute timer. Test-only deadline
+mocks use a 1-second request and 3-second operation budget while separately
+asserting the installed production defaults of 30 seconds and five minutes.
+The 128 MiB single-response and 256 MiB cumulative decoded-byte probes keep
+real exact-limit and +1-byte tests. Each receipt identifies actual deadlines and
+mock status. The Go job retains its 20-minute bound and complete validation
+workload. The [acceptance design](docs/design/daynight-project-task.md#验证与交付证据)
 owns the mechanism and source-bound evidence. The
 [server validation guide](packages/daynight-server/README.md#built-process-acceptance-and-ci-evidence) maps
 requirements to tests and describes the CI receipt containing tested source and
@@ -689,10 +698,11 @@ state, dependencies, blocking and title-preview truncation flags. Queries suppor
 complete API object. Versions remain JSON numbers with full int64 precision.
 Local preparation fails before any task mutation; a lost write response is
 reported as unconfirmed. The [task record](docs/design/daynight-project-task-tasks.md)
-owns validation status. Installed CLI integration with the real Go/PostgreSQL
-service and production-budget probes pass locally and in hosted validation.
-[PR #55](https://github.com/codetreker/daynight/pull/55) records review and
-integration status.
+owns validation status. Installed CLI integration uses the real Go/PostgreSQL
+service; deadline behavior uses short test-only budgets and byte probes retain
+the full production limits. [PR #55](https://github.com/codetreker/daynight/pull/55)
+records the original integration and real-default-budget validation, with its
+historical source identity.
 
 ## Review configuration and startup
 
@@ -1074,7 +1084,18 @@ Selected jobs keep their complete checks, coverage thresholds, acceptance suites
 timeouts and cleanup requirements. The Go job still builds real web assets and
 exercises the installed CLI; the web job still builds and exercises the Go
 service and production deployment. Selecting one module does not split these
-existing integration suites.
+existing integration suites. Native CLI jobs typecheck and build once before
+running ordinary and installed tests against the same output. The web job
+prepares pinned Chromium, runs unit/coverage tests and prepares the production
+Dockerfile's cache concurrently using the default Docker builder. It joins all
+three results before deployment fixtures and `web:acceptance`. Acceptance owns
+the native production build and typechecking. Browser performance tests begin
+after all preparation and unit checks have finished. Both Go-consuming jobs restore module and compiler
+caches keyed by the server `go.sum`, while the server check expires test results
+before database/race/coverage validation. The web job retains the complete
+production container build and unique image identity check. The
+[CI efficiency decision](.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md)
+records these workload optimizations and their limits.
 
 The final `checks` job always runs. It requires successful routing, success from
 every selected job and `skipped` from each deliberately unselected job. Missing

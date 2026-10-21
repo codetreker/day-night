@@ -6,9 +6,10 @@ Status: implemented
 
 Module and compiled-entry tests do not establish that a packed CLI can resolve a
 real Git repository, persist its binding through native filesystems, or use the
-actual Go/PostgreSQL service across restart and competing updates. Injected short
-budgets also cannot establish that an installed command enforces its public
-30-second request, five-minute operation and decoded-response byte limits.
+actual Go/PostgreSQL service across restart and competing updates. At adoption,
+the acceptance claim also required installed commands to enforce their public
+30-second request, five-minute operation and decoded-response byte limits;
+injected short budgets could not establish those exact elapsed deadlines.
 
 ## Decision
 
@@ -17,7 +18,10 @@ review, self-update, completion, Go and web validation. Implementation and both
 local and hosted validation are complete. [PR #55](https://github.com/codetreker/daynight/pull/55)
 owns review and integration status. The [task record](../../../../docs/design/daynight-project-task-tasks.md)
 owns observed results and delivery status. This decision adds no production API,
-database schema, test-only CLI flag or reduced resource limit.
+database schema or test-only CLI flag. The
+[CI efficiency decision](2026-10-21-ci-validation-efficiency.md) partially
+supersedes its original requirement for real wall-clock deadline waits, retaining
+the installation, real-service path, byte limits and cleanup guarantees.
 
 The native project/task suite packs and installs the actual CLI into an isolated
 consumer, drives its public command with real Git and controlled HTTP, and runs
@@ -39,17 +43,20 @@ identity and CLI process/workspace/request results supplement the original servi
 scenarios and package-owned coverage.
 
 A Node orchestrator prepares the installation once for the service path, passes
-it to the Go acceptance scenarios, and reuses it for production-budget probes.
+it to the Go acceptance scenarios, and reuses it for resource-budget probes.
 It retains the existing go-cov arguments, race and critical-block checks and
 strict raw-coverage comparison. After that gate succeeds, budget probes run
-outside the Go test process and its default ten-minute timer. The probes invoke
-the installed public CLI against controlled streaming HTTP with the real
-30-second request, five-minute operation, 128 MiB single-response and 256 MiB
-cumulative-response limits. Gzip JSON uses whitespace padding: exact decoded-byte
-boundaries must succeed with small complete results, and each boundary plus one
-byte must fail. Unique progressing cursors cannot evade the total
-deadline; decoded bytes, partial-output refusal and already-sent write
-uncertainty retain their production meaning.
+outside the Go test process and its default ten-minute timer. All six probes use
+the installed public CLI against controlled streaming HTTP. The deadline probes
+load a test-only preload that invokes the unchanged operation implementation
+with a 1-second request and 3-second operation deadline after asserting the
+installed production defaults. Byte probes use the unchanged production defaults
+and real 128 MiB single-response and 256 MiB cumulative-response limits. Gzip JSON
+uses whitespace padding: exact decoded-byte boundaries must succeed with small
+complete results, and each boundary plus one byte must fail. Unique progressing
+cursors cannot evade the total deadline; decoded bytes, partial-output refusal
+and already-sent write uncertainty retain their production meaning. Probe
+receipts record actual deadline values and whether they were mocked.
 
 The repository-root `.tmp/project-task-service-evidence.json` combines the
 attributable installation, service and budget results with cleanup. The Go
@@ -85,11 +92,12 @@ the client. It would also place installation and long HTTP probes inside the Go
 test lifetime. Explicit orchestration installs once for the acceptance consumers
 and leaves the Go runner responsible for its tested service process.
 
-**Run all production-budget probes under Go's ten-minute test timer.** A genuine
-five-minute operation probe, request deadline and complete Go workload compete
-for that timer. Raising or weakening a tested production limit would change the
-claim. A separate orchestrator keeps the original coverage command and runs the
-installed budget probes after it without changing the Go timer.
+**Run all production-budget probes under Go's ten-minute test timer.** The
+original real five-minute operation probe, request deadline and complete Go
+workload competed for that timer. A separate orchestrator preserved the original
+coverage command and ran installed probes after it. The later short-deadline
+strategy retains this separation so installed probes and their cleanup remain
+outside the Go test process.
 
 **Create a separate deployment stack for CLI acceptance.** This would duplicate
 database, listener, process restart and cleanup mechanisms already owned by the
@@ -104,13 +112,17 @@ different facts. Both remain required; neither can replace the other or the
 existing suites. One installation per service invocation keeps its Go and budget
 receipts tied to the same packed artifact and bounds package-registry work.
 
-The production five-minute probe adds unavoidable elapsed time to the Go job.
-Streaming responses keep the test driver bounded, while the installed CLI must
-still enforce its own decoded-byte budgets. Receipt selection must distinguish
-native and service/budget artifacts and preserve failures and resource cleanup.
-The local Linux receipt covers the three installed suites, real Go/PostgreSQL
-workflow and six default-budget cases. It records package `0.6.0` from the dirty
-`c19b064` development source. Hosted receipts separately identify PR head
+The original real five-minute probe imposed a five-minute floor on the Go job.
+The replacement decision removes that floor through test-only deadlines; current
+receipts establish deadline behavior under their recorded values, not a real
+30-second or five-minute elapsed wait. Streaming responses keep the test driver
+bounded, while the installed CLI still enforces full decoded-byte budgets.
+Receipt selection must distinguish native and service/budget artifacts and
+preserve failures and resource cleanup.
+
+The original local Linux receipt covers the three installed suites, real
+Go/PostgreSQL workflow and six default-budget cases. It records package `0.6.0`
+from the dirty `c19b064` development source. Hosted receipts separately identify PR head
 `e9a634aca23710ffe46723fcdb2cf8e7a75d56bf` and clean build revision
 `2e7b8da99cf4b5de6da9c8083446f84fd19f1daf`; the required native matrix and Go
 workload passed in [run 39428165296](https://github.com/codetreker/daynight/actions/runs/39428165296).

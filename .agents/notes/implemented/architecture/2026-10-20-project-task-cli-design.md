@@ -19,8 +19,11 @@ The adopted [requirements](../../../../docs/spec/daynight-project-task.md) and
 is adopted. Shared configuration, bounded HTTP, repository bindings and
 `project create/list/show`, task create/list/show/update/graph and shared syntax
 integration are delivered. Installed CLI acceptance against the Go service and
-default production-budget probes pass locally and in hosted validation.
-[PR #55](https://github.com/codetreker/daynight/pull/55) owns review and integration status. The
+default production-budget probes passed local and hosted validation for
+[PR #55](https://github.com/codetreker/daynight/pull/55). The
+[CI efficiency decision](../testing/2026-10-21-ci-validation-efficiency.md)
+subsequently replaces real wall-clock deadline waits with short test-only
+budgets while preserving production defaults and full byte-limit probes. The
 [task breakdown](../../../../docs/design/daynight-project-task-tasks.md) owns
 implementation status, dependencies, file ownership and completion evidence.
 

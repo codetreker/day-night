@@ -393,9 +393,11 @@ Project 命令的实际编译入口已在受控 HTTP 条件下验证创建、完
 取消、信号清理、callback 失败后的空 stdout、渲染后的最终期限检查及多请求累计
 预算。Task 的命令、API/仓库组合及完整渲染已通过本地专项和编译入口验证；静态
 补全在三种真实 shell 中通过新增 Task 场景。PT-T5 的真实 Go/PostgreSQL CLI
-全流程联调和默认预算场景已在本地通过，实际结果见[任务清单](daynight-project-task-tasks.md)。安装验证的
-分层、时间边界与替代方案见
-[安装联调决策](../../.agents/notes/implemented/testing/2026-10-20-installed-project-task-acceptance.md)。
+全流程联调及默认预算的历史验证结果见[任务清单](daynight-project-task-tasks.md)。安装验证的
+分层与隔离由
+[安装联调决策](../../.agents/notes/implemented/testing/2026-10-20-installed-project-task-acceptance.md)
+拥有；当前期限 mock 和验证成本取舍由
+[CI 验证效率决策](../../.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md)拥有。
 
 PT-T5 的原生路径将 project/task 安装 suite 加入既有 `pnpm acceptance`，三个
 原生平台的必选 suite 使用实际 pack/install 产物、真实 Git 和受控 HTTP 验证配置、自动发现、
@@ -408,7 +410,7 @@ fixture [`installed-cli.ts`](../../packages/daynight/test/fixtures/installed-cli
 服务路径的 Node 编排入口为
 `node packages/daynight/scripts/project-task-acceptance.ts`，由 Go 检查脚本调用；
 [`project-task-budgets.ts`](../../packages/daynight/scripts/project-task-budgets.ts)
-拥有默认预算场景。
+拥有期限与解码字节预算场景。
 它构建并安装 CLI 一次，将安装身份传给 Go command-package 验收，复用既有 fresh
 race binary、隔离 PostgreSQL schema、listener、重启和数据库等待屏障。新场景
 `installed_cli_project_task_workflow` 通过要求编号 `PT.V1`、`PT.V3`、`PT.V5`、
@@ -418,19 +420,27 @@ source、包版本、tarball/entry hash、Node 和 launcher 身份；场景记�
 数量、workspace 回收、拒绝 request ID 及并发请求的 200/409 结果。
 
 编排层原样执行固定 go-cov 参数及 strict raw coverage 检查，通过后才在 Go 默认
-10 分钟计时器之外运行六个公开安装 CLI 场景：持续推进 cursor 的 5 分钟总期限、
-响应开始后停顿的 30 秒期限，以及两组 gzip 解码字节边界配对。单响应精确
+10 分钟计时器之外运行六个公开安装 CLI 场景：持续推进 cursor 的总期限、
+响应开始后停顿的单次期限，以及两组 gzip 解码字节边界配对。两个期限场景使用
+测试侧 Node.js `registerHooks` preload，只包装安装产物的 `api/operation.js` 导出，
+复用原有 `createOperation` 实现并注入 3 秒总期限和 1 秒单次期限。preload 先断言
+安装产物的生产默认值仍为 300,000/30,000 ms 和 128/256 MiB；测试不改写安装文件、
+生产源码、环境配置或 CLI 参数。preload 以编码后的 file URL 传给 Node `--import`，
+保留 Windows 驱动器字母、空格和 Unicode 路径的模块解析；原生模块错误类型及其
+身份保持一致。单响应精确
 128 MiB 和分页累计精确 256 MiB 均必须成功，各增加 1 字节必须拒绝。合法 JSON
 以空白补齐字节数；单响应成功结果为一个小型 project，累计成功结果为三个唯一
 project，各页均满足列表协议，失败 stdout 必须为空。
 累计场景的三页分别为 96、96、64 MiB，超限场景只在最后一页增加 1 字节，
 每页均低于单响应上限。两种期限场景并行运行，四个字节边界场景依次执行；
-所有场景共享默认生产预算，不注入更小限制。已有 20 分钟 Go 作业保留其全部 gate。根目录
-`.tmp/project-task-service-evidence.json` 记录共享安装身份、Go 命令/覆盖率结果、
-解码与传输字节、探针结果和进程/socket/目录清理。本地 Linux 安装路径、真实
-Go/PostgreSQL 流程及六个默认预算场景已通过。本地 receipt 保留 `c19b064` 的
-dirty 源码；托管 receipt 另记录 PR head、干净 build Git SHA 和产物身份，实际结果
-随[PR #55](https://github.com/codetreker/daynight/pull/55)与对应 CI 保存；
+四个字节场景使用完整生产默认值，不加载期限 mock；两个期限场景仍验证实际等待、
+正确错误分类、持续分页、空 stdout 和清理。已有 20 分钟 Go 作业保留其全部 gate。
+根目录 `.tmp/project-task-service-evidence.json` 记录共享安装身份、Go 命令/覆盖率
+结果、解码与传输字节、探针结果和进程/socket/目录清理。每个预算场景的
+`deadlines` 记录实际 `totalMs`、`requestMs` 与 `mocked`，避免将短期限行为证据
+误解为实际等待了生产期限。PT-T5 的本地 `c19b064` dirty receipt 与
+[PR #55](https://github.com/codetreker/daynight/pull/55) 的干净托管 receipt 保留真实
+30 秒/5 分钟预算的历史证据；它们不代表当前源码的运行结果。逐次结果随对应 PR 与 CI 保存；
 [仓库验证说明](../../README.md#validation)拥有 receipt 解释，
 [任务清单](daynight-project-task-tasks.md#pt-t5)拥有完成条件。review 与合并状态由 PR #55 拥有。
 
