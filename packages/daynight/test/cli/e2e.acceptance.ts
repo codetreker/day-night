@@ -143,6 +143,11 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     const originalBundle = bundleFiles(sourceSkillDirectory);
     expect(originalBundle["SKILL.md"]).toBeDefined();
     expect(bundleFiles(installedSkillDirectory)).toEqual(originalBundle);
+    const publicSkillRelativeDirectory = "commands/skill/skills/daynight";
+    const publicBundle = bundleFiles(path.join(packageDirectory, "src", publicSkillRelativeDirectory));
+    expect(publicBundle["SKILL.md"]).toBeDefined();
+    expect(publicBundle["references/commands.md"]).toBeDefined();
+    expect(bundleFiles(path.join(installedPackage, "dist", publicSkillRelativeDirectory))).toEqual(publicBundle);
     const installedSkillFile = path.join(installedSkillDirectory, "SKILL.md");
     const originalSkillContents = originalBundle["SKILL.md"]!.toString("utf8");
     const updatedSkillContents = `${originalSkillContents}\n<!-- Installed acceptance: updated bundle for the next daemon. -->\n`;
@@ -519,6 +524,15 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       await completed(1, 12);
       scenarios.push("no-ci-review");
       expect(pr(12)!.session_id).not.toBe(session);
+      const descriptionReviews = publications().filter((item) => item.number === 12);
+      expect(descriptionReviews).toHaveLength(1);
+      expect(descriptionReviews[0]).toMatchObject({ event: "COMMENT", commit_id: third, body: expect.stringContaining("PR-quality blocker") });
+      expect(descriptionReviews[0]).not.toHaveProperty("comments");
+      const descriptionAgents = agents().filter((item) => item.target.pullRequest === 12);
+      expect(descriptionAgents).toHaveLength(2);
+      expect(descriptionAgents.filter((item) => item.reconciled)).toHaveLength(1);
+      expect(new Set(descriptionAgents.map((item) => item.session)).size).toBe(1);
+      scenarios.push("body-only-comment", "body-only-comment-retry-reconciliation");
       const completedConfiguration = readFileSync(configFile, "utf8");
       const completedSnapshot = databaseSnapshot(true);
       const completedLock = readFileSync(path.join(stateDirectory, "instance.lock"), "utf8");
@@ -529,7 +543,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       const withoutPollTime = (text: string): string => text.replace(/^Last observed: .*$/gm, "Last observed: <daemon poll time>");
       expect(withoutPollTime(aliasListing)).toBe(withoutPollTime(completedListing));
       expect(completedListing).toMatch(/^#11\s+Open\s+Completed\s+1$/m);
-      expect(completedListing).toMatch(/^#12\s+Open\s+Completed\s+1$/m);
+      expect(completedListing).toMatch(/^#12\s+Open\s+Completed\s+2$/m);
       expect(readFileSync(configFile, "utf8")).toBe(completedConfiguration);
       expect(readFileSync(path.join(stateDirectory, "instance.lock"), "utf8")).toBe(completedLock);
       expect(databaseSnapshot(true)).toEqual(completedSnapshot);
@@ -566,7 +580,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       scenarios.push("review-list-closed-snapshot");
       const calls = agents();
       const discoveryCalls = discoveries();
-      expect(calls).toHaveLength(6);
+      expect(calls).toHaveLength(7);
       expect(discoveryCalls).toHaveLength(calls.length);
       expect(discoveryCalls.every((item) => item.args.slice(-3).join(" ") === "skill list --json" && item.args.includes("--no-auto-update") && item.args[item.args.indexOf("-C") + 1] === item.cwd && !item.args.some((argument) => /^--(?:session-id|resume)=/.test(argument)))).toBe(true);
       expect([...discoveryCalls, ...calls].every((item) => item.args.includes(`--plugin-dir=${item.skill.rootDirectory}`))).toBe(true);

@@ -4,13 +4,15 @@
 [仓库验证说明](../../README.md#validation)，逐次运行结果随对应 PR 与 CI 保存。
 需求归属见[review 需求](../spec/daynight-review.md)，执行与恢复模型见
 [review 架构](daynight-review.md)，选择依据见
-[内置 skill 决策](../../.agents/notes/implemented/architecture/2026-10-20-bundled-review-skill.md)。
+[内置 skill 决策](../../.agents/notes/implemented/architecture/2026-10-20-bundled-review-skill.md)和
+[PR 质量门槛决策](../../.agents/notes/implemented/process/2026-10-21-review-pr-quality-gates.md)。
 
 ## 目标与边界
 
 `review run` 的每次 Copilot 审查都使用随客户端发布的 `daynight-review` skill。
-skill 定义审查方法、证据标准和 finding 的范围；每次调用的提示词保留 PR 身份、固定的
-head/base、发布前校验、重试对账和最终完成标记。两者共同构成一次审查的输入。
+skill 定义审查方法、证据标准、PR description 与原定范围的质量门槛，以及代码
+finding 的范围；每次调用的提示词保留 PR 身份、固定的 head/base、当前 PR 信息的
+读取要求、发布前校验、重试对账和最终完成标记。两者共同构成一次审查的输入。
 
 配置文件、SQLite 表结构、已有数据位置和每个 PR 的会话 UUID 保持不变。skill 目录
 由 review 模块持有；仓库根目录的 `.agents/skills/` 继续管理开发本仓库的工作流。
@@ -36,10 +38,18 @@ packages/daynight/
 命令将它传入运行时，资源位置不依赖调用目录、源码目录或用户环境。
 
 `SKILL.md` 使用标准 YAML frontmatter，名称固定为 `daynight-review`，description
-说明它适用于 Daynight 管理的 PR 审查。正文使用英文，保持可独立理解。它要求固定
-审查范围、追踪调用者及行为约束、用有边界的独立验证证明引入的问题，并只发布需要
-处理的 Critical/Major 英文行级 findings；更小和无关的问题延后。它不复制动态的
-发布协议，也不包含特定 PR 的值。
+说明它适用于 Daynight 管理的 PR 审查。正文使用英文，保持可独立理解。它要求先从
+PR description 和相关需求确定一个明确问题、预期结果及原定范围，再检查完整捕获
+diff 是否围绕该结果且可以有效审查。多个独立目标、无法明确边界的 description，
+以及越界改动都是阻断批准的 PR 质量问题；必要实现、结构调整、测试和文档同步按其
+与同一结果的关系判断，不设置固定行数或文件数限制。扩大 description 本身不能把
+无关修改变为原定范围。
+
+代码审查继续追踪调用者及行为约束，用有边界的独立验证证明引入的问题，只发布需要
+处理的 Critical/Major 英文行级 findings；更小和无关的代码改进延后。质量门槛不借用
+Critical/Major 来判断是否阻断批准。description 和无合适 diff 行的阻断理由放在
+`COMMENT` review 正文，越界修改在适合的相关 diff 行指出。skill 不包含特定 PR 的
+值；动态提示词持有读取时机、发布结果选择、资格校验和重试确认协议。
 
 ## 固定运行时快照
 
@@ -96,6 +106,14 @@ skill 覆盖、禁用条目、意外路径、无效 JSON、截断或超限输出
 不能依赖对话历史里已经出现过同名 skill。Copilot 的标准 skill 调用负责加载内容，
 程序不解析其会话历史，也不将工具调用文本作为新的完成条件。
 
+动态提示词要求 agent 读取当前 PR 标题、description 和链接的相关范围需求，并审查
+固定 head/base 对应的完整 diff。发布或确认既有结果前再次读取当前标题和
+description，并结合相关需求重新评估。
+只有 description 与范围两项门槛通过且没有 Critical/Major 代码问题时才能 `APPROVE`；
+其他结果使用 `COMMENT`，不使用 `REQUEST_CHANGES`。恢复会话只有在既有发布与当前
+门槛结果一致且对应捕获目标时才能确认完成。daemon 不解析质量判断，不增加数据库
+结果类型；仅元数据变化也不新增审查触发条件。
+
 ## 两阶段尝试与进程归属
 
 一次持久化 attempt 覆盖顺序执行的发现进程和正式审查进程，计数只增加一次，两阶段
@@ -132,7 +150,11 @@ skill 覆盖、禁用条目、意外路径、无效 JSON、截断或超限输出
 
 单元和受控进程验证覆盖资源定位、完整 bundle 哈希及复制、已有快照损坏、原子发布、
 发现响应及同名覆盖、子环境隔离、同一会话的恢复提示词、两阶段预算与截止时间、
-阶段间取消、PID 清空的匹配规则，以及排除失败时不启动后续进程。
+阶段间取消、PID 清空的匹配规则，以及排除失败时不启动后续进程。提示词回归检查
+断言恢复既有结果前重新评估当前标题和 description、允许仅含正文的 `COMMENT`，
+以及两项质量门槛通过且没有 Critical/Major 才能批准。初次读取 PR 信息、相关需求
+和检查完整 diff 的要求由加载的 skill 正文提供。这些指令断言不证明模型在任意 PR
+上的判断质量。
 
 安装包验收从打包产物启动，确认 `SKILL.md` 及相对资源实际存在，帮助和其他命令仍
 不加载 review 运行时。真实 Copilot 验收分别观察新会话和同 UUID 恢复时的原生 skill

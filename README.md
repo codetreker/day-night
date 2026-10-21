@@ -10,7 +10,7 @@ the corresponding PR and CI evidence.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
+| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -45,6 +45,19 @@ test-side budgets under the
 [CI efficiency decision](.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md).
 Controlled native-platform tests and live Copilot/GitHub acceptance provide separate evidence; live acceptance remains
 outstanding.
+
+The adopted [public Agent skill design](docs/design/daynight-agent-skill.md)
+defines an npm-bundled `daynight` skill and interactive installation for Codex,
+Copilot CLI and Claude Code. Its [requirements](docs/spec/daynight-agent-skill.md)
+cover active task management in associated projects, agent and scope selection,
+and complete replacement on reinstall. The public skill and its command reference
+are included in the npm package build under
+`dist/commands/skill/skills/daynight/`; the interactive installer remains planned.
+The skill guides task recovery, dependency and observed-version updates, and
+completion only after required PRs are confirmed merged and acceptance passes.
+The design links implementation tasks tracked in the real Daynight project;
+their live status belongs to Daynight. Native Agent loading and automatic
+activation remain separate acceptance work.
 
 The [task property requirements](docs/spec/daynight-task-properties.md),
 [design](docs/design/daynight-task-properties.md),
@@ -95,9 +108,11 @@ pnpm daynight --version
 `pnpm acceptance` build the package before exercising the compiled CLI. Native CI
 typechecks and builds once, then invokes both Vitest configurations against that
 same compiled output. `pnpm build` clears the package's `dist/` before emitting
-`packages/daynight/dist/main.js` and copying the complete built-in review skill
-bundle into `dist/commands/review/skills/`; the package's `daynight` bin points to
-the stable JavaScript entry.
+`packages/daynight/dist/main.js` and copying the explicit review and public skill
+bundles into `dist/commands/review/skills/daynight-review/` and
+`dist/commands/skill/skills/daynight/`. Complete relative resources are included;
+repository workflow skills are not scanned for publication. The package's
+`daynight` bin points to the stable JavaScript entry.
 Source tests mirror `cli/`, `config/`, `api/`, `commands/` and `platform/`
 ownership, with build and version-policy tests in `test/tooling/`.
 The pnpm dependency store is local to `.tmp/pnpm-store`. `pnpm acceptance`
@@ -955,16 +970,35 @@ cleared and a review child can start. Cancellation, timeout or uncertain process
 exclusion prevents that next launch. Discovery stdout and stderr stream to
 separate `skill-list` logs and never enter completion-marker parsing.
 
-The agent publishes inline Critical/Major comments or approval itself and
-reconciles prior publication when continuing an incomplete review. The adapter
-streams separate stdout/stderr logs and accepts only normal zero exit, complete
-capture and the exact final nonempty stdout line `PR N Review Completed`.
-Incomplete output, timeout, cancellation and logging errors cannot complete a
-review. The coordinator owns scheduling and final state transitions; runtime
-process supervision supplies evidence under the foreground execution contract.
+The agent reads the current PR title, description and linked scope requirements,
+then checks the complete captured diff against one concrete problem and outcome.
+A clear description and changes within the original scope are independent
+approval gates. Independent objectives, an unreviewable combined PR or unrelated
+changes block approval even without a Critical/Major code defect. Necessary
+implementation, structural changes, tests and documentation for the same outcome
+remain in scope; fixed line or file counts do not decide reviewability. Expanding
+the description alone cannot justify unrelated work.
+
+Before publishing or confirming prior publication, the agent rereads the current
+PR information and reevaluates those gates. It publishes `COMMENT` reviews for
+blockers, with description or other PR-level problems in the review body and
+suitable code findings inline; it does not use `REQUEST_CHANGES`. It approves
+only when both quality gates pass and no Critical/Major code issues remain.
+Retry confirmation requires prior publication to match the current gate result
+and captured target. These are agent instructions, not a machine-enforced
+quality judgment; title or description edits alone do not trigger another review.
+
+The adapter streams separate stdout/stderr logs and accepts only normal zero
+exit, complete capture and the exact final nonempty stdout line
+`PR N Review Completed`. Incomplete output, timeout, cancellation and logging
+errors cannot complete a review. The coordinator owns scheduling and final state
+transitions; runtime process supervision supplies evidence under the foreground
+execution contract.
 
 The [execution decision](.agents/notes/implemented/architecture/2026-10-17-copilot-session-execution.md)
-records process and publication boundaries. The
+records process and publication boundaries; the
+[PR-quality decision](.agents/notes/implemented/process/2026-10-21-review-pr-quality-gates.md)
+records the approval policy. The
 [skill design](docs/design/daynight-review-skill.md) owns packaging, snapshots and
 loading, with rationale in the
 [bundled-skill decision](.agents/notes/implemented/architecture/2026-10-20-bundled-review-skill.md).
@@ -1030,8 +1064,11 @@ records owner-liveness checks and the separate process-exclusion requirement.
 ## Working in the repository
 
 Read [AGENTS.md](AGENTS.md) for task scope, shared task worktrees, collaboration,
-verification, and delivery. Keep task breakdowns with their design documents,
-including task status, dependencies, scope and acceptance criteria. Use the
+verification, and delivery. Keep delivery boundaries, dependencies, scope and
+acceptance criteria with their design documents. When tasks are managed in
+Daynight, link their IDs from the design and query Daynight for live status;
+local execution plans remain temporary checklists. Existing document-owned task
+records retain their ownership until explicitly migrated. Use the
 [repository skills](.agents/skills/) for decision notes, scope choices, and prose.
 
 [Agent Notes](.agents/notes/README.md) preserve decisions and alternatives. The
