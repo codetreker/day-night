@@ -1,16 +1,17 @@
 # 项目与任务看板设计
 
-状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 已定位长斜线 SVG 虚线绘制造成的 raster/commit 阻塞，采用局部水平线与短原生转角路径分解；完整生产验收已交付，完成状态与对应源码的 PR/CI 链接由任务清单记录。运行结果随对应 PR 与 CI 保存；本地回执不能代替干净 hosted 验证。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
+状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 已定位长斜线 SVG 虚线绘制造成的 raster/commit 阻塞，采用局部水平线与短原生转角路径分解；完整生产验收已交付，完成状态与对应源码的 PR/CI 链接由任务清单记录。运行结果随对应 PR 与 CI 保存；本地回执不能代替干净 hosted 验证。原始看板基线为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
 
 [预定义属性设计](daynight-task-properties.md)的 server 接口、CLI 和任务详情中的
 只读 PR 区域已实现。[需求](../spec/daynight-task-properties.md)、
 [交互预览](mockups/task-properties.html)及[实施任务](daynight-task-properties-tasks.md)
 分别拥有行为、样式和实施状态。
 
-已采用、尚待实现的[附件架构](daynight-task-attachments.md)扩展 task 详情，提供
-文件树、单文件管理及同源预览。[附件需求](../spec/daynight-task-attachments.md)
-拥有新行为，[附件任务拆分](daynight-task-attachments-tasks.md)拥有实施状态。
-本文的只读 MVP 仍描述已经交付的看板基线。
+已实现的[附件架构](daynight-task-attachments.md)扩展 task 详情，提供文件树、
+单文件上传/覆盖/删除、下载及同源预览。[附件需求](../spec/daynight-task-attachments.md)
+拥有文件行为，[Web 决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)
+记录状态、渲染和焦点机制；[附件任务拆分](daynight-task-attachments-tasks.md)拥有
+实施与组合验收范围，进度由 Daynight 维护。图、统计与 task 字段保留原只读约定。
 
 ## 目标与现有基础
 
@@ -26,9 +27,11 @@
 | 分页之间没有共同快照 | [服务端分页约定](../spec/daynight-server.md)明确这一边界；不能用多次 task list 拼成准确的项目全图。 |
 | web 与 CLI 工作区独立 | 私有 React/TypeScript/Vite 包使用显式 `web:*` 命令；根 build/typecheck/test 继续只覆盖 CLI，web 使用按[CI 路由](../../README.md#ci-selection)选择的独立 job。 |
 
-## MVP 范围
+## 看板基线与附件扩展
 
-交付两个页面、一个详情侧栏和一个新增只读 API。使用手动刷新，保持现有写入接口、依赖规则、数据库结构与本机监听方式。
+原看板交付两个页面、一个详情侧栏和一个新增只读 API。该基线使用手动刷新，保持
+原有写入接口、依赖规则与本机监听方式。附件是独立的文件资源扩展，使用自己的
+元数据、HTTP 接口和局部状态，不把文件写入混入 task PATCH 或图快照。
 
 项目列表只展示项目元数据，不为每张卡额外请求任务统计。统计集中在项目详情，避免列表产生 N 次图查询。创建编辑、实时推送、身份认证和大图分片的延后成本及保留条件由[要求文档](../spec/daynight-web.md#明确延后的能力)定义。
 
@@ -74,8 +77,8 @@
 
 ### 详情侧栏
 
-桌面从右侧打开，窄屏占满可用宽度。显示完整标题、纯文本描述、关联 PR、状态、
-时间、完整 ID、直接前置、当前阻塞项和直接后续。依赖引用可以切换侧栏内容；
+桌面从右侧打开，窄屏占满可用宽度。显示完整标题、纯文本描述、关联 PR、附件、
+状态、时间、完整 ID、直接前置、当前阻塞项和直接后续。依赖引用可以切换侧栏内容；
 全部依赖标签使用可访问的按钮。
 
 PR 区域在描述之后，标题与 URL 分别使用文本节点，空字符串显示专用标记，重复项
@@ -89,7 +92,17 @@ PR 区域在描述之后，标题与 URL 分别使用文本节点，空字符串
 
 前置与后续标签来自当前图快照；若详情依赖指向快照中没有的节点，显示其 ID 并允许打开详情，不伪造标题。直接后续来自图快照，明确标为“任务图快照中的后续”。详情与快照中的状态、ready、依赖集合、阻塞集合、更新时间不符时，提示刷新全图。详情读取成功不会单独修改画布或统计。
 
-侧栏打开后焦点进入关闭按钮，Tab 在侧栏内循环，Esc 和关闭按钮关闭。关闭后优先恢复仍连接 DOM 的原节点；节点已随刷新消失时，恢复当前展开根的按钮；没有任务链时恢复项目 H1。
+附件区域在关联 PR 之后，使用 `TaskAttachments` 和独立的 `useAttachments`，列举、
+写操作及预览不依赖详情请求或图刷新。上传目标初始为所选文件名，可编辑为多层相对
+路径；同路径覆盖，成功后只刷新附件数据。具体分页、错误和内容机制由
+[附件设计](daynight-task-attachments.md#web-文件树与预览)拥有。
+
+侧栏打开后焦点进入关闭按钮，Tab 在侧栏内循环，Esc 和关闭按钮关闭。
+`focus.ts` 统一调用 `tabbable` 6.5.0，使用生产默认的完整可见性检查，按实际可 Tab
+次序识别表单、链接、iframe 和 contenteditable。可信同源 frame 在 load 后登记
+键盘桥接：Esc 调用当前关闭回调，首末 Tab/Shift+Tab 回到侧栏相邻可聚焦元素；监听
+随 frame 替换或卸载释放。关闭后优先恢复仍连接 DOM 的原节点；节点已随刷新消失时，
+恢复当前展开根的按钮；没有任务链时恢复项目 H1。
 
 卸载时，`useLayoutEffect` 同步移除键盘监听、恢复背景 inert 与 body 滚动状态；独立的 `useEffect([])` cleanup 在 DOM 删除后，调用 ref 中最新的焦点恢复回调。刷新可能同时卸载侧栏和相邻任务链，恢复必须等旧节点真正移除后再检查 `isConnected`，否则焦点会先落到即将删除的节点，随后丢失到 body。关系跳转继续复用侧栏，不触发卸载恢复。具体失败机制与验证由[焦点恢复决策](../../.agents/notes/implemented/bug-fix/2026-10-20-drawer-focus-restoration.md)记录。
 
@@ -235,10 +248,12 @@ packages/daynight-web/
   src/api/{types,client,parse}.ts    DTO、请求、运行时解析与错误
   src/features/projects/           ProjectsPage、ProjectPage、统计卡
   src/features/task-graph/          model.ts、layout.ts、dashes.ts、RootList、TaskGraph、TaskNode
-  src/features/task-detail/         TaskDrawer 与详情请求 hook
+  src/features/task-detail/         TaskDrawer、详情请求 hook、PR 展示及 focus helper
+  src/features/task-detail/attachments/  路径树、附件 hook、操作和内容预览
   src/styles/                      设计变量、排版与样式
   scripts/                         构建发布、严格覆盖率、生产验收及布局差分检查
   tests/                           组件、算法与真实浏览器验收
+  tests/mockups/                   仅开发使用的实际附件组件及前端 fixture
 
 packages/daynight-server/
   api/task_graph.go                 HTTP 图 DTO
@@ -252,14 +267,16 @@ packages/daynight-server/
 | 模块 | 拥有的内容 | 依赖方向 |
 |---|---|---|
 | 浏览器 app/router | URL 解析、history/popstate、页面装卸与 404 | 组合页面，不直接 fetch |
-| api/client、api/parse | 相对 `/api` 请求、AbortSignal、JSON 结构校验与 typed error | 不引用组件和图布局 |
+| api/client、api/parse | 相对 `/api` 请求、AbortSignal、JSON/附件 DTO 校验、文件传输、HEAD 与 typed error | 不引用组件和图布局 |
 | projects hooks | 列表游标、完整图快照、加载/刷新状态 | 调用 api，交给 model 建索引 |
 | task-graph/model | 根、可达集合、外部前置、统计与共享关系 | 仅依赖 DTO 类型与标准集合 |
 | task-graph/layout | 将投影映射为确定的节点坐标和边 | 依赖 model 与 Dagre |
 | React Flow 组件 | 视口、只读节点、缩放、平移和节点选择 | 接收布局与 onSelectTask，不调用 API |
 | 虚线绘制分解 | 保留弧长/相位的局部轴向 line 与短原生转角 path | 只依赖布局坐标类型，不访问 DOM、视口或 API |
 | 静态依赖 SVG | 公开 ViewportPortal 内的完整 canonical 路线、原生箭头、派生 body paint 与可访问语义 | 接收不可变布局，复用 React Flow 视口变换，不订阅逐边状态 |
-| TaskDrawer | 当前 taskId 的详情、关系跳转、焦点和关闭 | 调用详情 hook；不修改图快照 |
+| TaskDrawer | 当前 taskId 的详情、关系跳转、portal、焦点和关闭 | 组合详情、PR 与附件区域；不修改图快照 |
+| 附件 hook/model | 当前 project/task 的分页、写状态、选择、预览状态及目录树 | 调用 api；不修改详情或图快照 |
+| 附件预览 | Markdown、文本、图片和可信同源 frame | 使用服务预览路径；frame 键盘桥接复用侧栏 focus helper |
 | Go server | HTTP 解析、响应、路由与方法语义 | 调用 service 或 webui |
 | Go service | 具体 store 的读取事务、领域拒绝、图摘要 | 调用 core/store，返回 core 模型 |
 | core/store | 同一快照内的具体 SQL 查询与扫描 | 使用 pgx，不依赖 HTTP、React 或 API DTO |
@@ -294,6 +311,7 @@ flowchart LR
 - `useTaskGraph(projectId)` 拥有完整 `TaskGraph`、接收时间、请求序号和 refresh 动作。新请求成功后一次替换快照与索引，不能逐节点补丁式混合两次响应。
 - `ProjectPage` 只持有 `expandedRootId`、`selectedTaskId`。图刷新后沿用仍存在的根与选中任务，否则重新选择首根或关闭详情。
 - `useTaskDetail(projectId, taskId)` 拥有最新详情与局部加载/错误。侧栏换节点不改变页面路由，关闭侧栏释放请求；前置引用在侧栏内部切换同一个选择。
+- `useAttachments(projectId, taskId)` 独立拥有按页加载的文件、选择、写操作与预览；所有结果绑定 project/task，预览还绑定 path。列表校验重复游标和目录冲突，续页失败保留已读取文件并明确标记不完整；刷新取消旧列表请求。所选路径或 `updatedAt` 改变时取消并重新读取内容，同路径覆盖后增加预览 revision。
 - 图与详情的已加载数据分别绑定 projectId 与 `(projectId,taskId)`。渲染时只显示 key 相符的数据；key 变化立即显示新资源的加载状态，不能等 effect 清理后再去掉旧内容。同资源刷新才保留旧快照，取消/序号检查不能代替这一显示身份约束。侧栏的焦点外壳保持独立，关系跳转不把焦点临时恢复到旧节点。
 - API client 的明确入口为 `listProjects(query, signal)`、`getTaskGraph(projectId, signal)`、`getTask(projectId, taskId, signal)`。错误类型区分已取消、网络/解析失败和服务端错误码；错误页面只展示脱敏文案及 requestId。图响应的 project.id、详情响应的 projectId/id 必须与规范化后的请求资源匹配，否则按协议错误拒绝显示。
 - 页面导航使用 `pushState`，浏览器返回使用 `popstate`；在组件装卸边界取消请求。未知路径、无法解码的路径或无效 projectId 有明确错误页面，不发起拼接后的非法请求。
@@ -521,11 +539,16 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 
 ## 请求、刷新与故障
 
-项目列表请求、图请求、详情请求分别归属其页面/选择。导航、关闭详情或重新刷新时通过 `AbortController` 取消旧请求，并用请求序号检查晚到结果；取消不展示失败通知。
+项目列表、图、详情和附件请求分别归属其页面或选择。附件的列表、写操作与预览有
+独立状态，预览选择变化会取消旧内容请求。导航、关闭详情或重新刷新时通过
+`AbortController` 取消所属请求，并用请求序号和资源身份检查晚到结果；取消不展示
+失败通知。附件写入不自动重试，失败时明确展示错误，保留 K1 的结果可能已生效语义。
 
 首次加载显示 skeleton。刷新时保留上次成功图，显示“正在刷新”；刷新失败保留旧图和上次成功时间，明确显示“刷新失败，当前为此前数据”。成功时一次替换统计、索引和所有根条目；当前展开根仍存在则保留，否则选择新首根。当前详情仍存在则重读详情，不存在则关闭并提示。
 
-后端图超限是可解释的页面拒绝。HTTP 404 显示项目不存在与返回入口；其他错误提供重试和 requestId，避免渲染原始响应内容。标题、描述和仓库地址以纯文本显示，不渲染 HTML 或 Markdown。
+后端图超限是可解释的页面拒绝。HTTP 404 显示项目不存在与返回入口；其他错误提供重试和 requestId，避免渲染原始响应内容。标题、描述和仓库地址以纯文本显示，不渲染 HTML 或 Markdown。附件内容按
+[附件预览规则](daynight-task-attachments.md#web-文件树与预览)处理，不能把任务正文
+的纯文本规则误用于 Markdown 文件或可信 HTML。
 
 ## 观测与生命周期
 
@@ -660,6 +683,15 @@ CI 无论验收成功、失败或取消都执行恢复与归档；恢复成功�
 [任务清单](daynight-web-tasks.md)定义六个实现任务：图读取 API、项目浏览基础、纯图模型、项目任务看板、localhost 与 dev-ci 交付、完整验收。任务状态、依赖和文件归属只在该文档维护。图 API 与项目浏览基础可以并行，后续按清单依赖推进。
 
 所有任务交付自身的有效测试与覆盖率；最终验收任务验证组合后的真实进程，不替前面的任务补写缺失测试。设计预览不是实际 API、覆盖率、Docker 或集成完成证据。
+
+附件的前端 mockup 通过 `pnpm web:dev` 下的 `/tests/mockups/attachments.html` 打开，
+复用实际组件、CSS、内存 fixture API 和原生资源文件，不请求 Go API 或 PG。生产构建
+只保留应用单一 index，排除该开发入口。组件/状态测试覆盖附件交互；本地真实浏览器
+探针验证 CSS 隐藏、contenteditable、frame Tab/Esc、portal/inert 和被动焦点恢复。
+JSDOM 使用上游 `tabbable` 测试包装，不能提供可见性证据。本机 Chromium override
+的回执只证明该环境的前端行为，不等同锁定 CI 浏览器或真实后端验收。
+[A-T6](daynight-task-attachments-tasks.md#a-t6)拥有新增附件后端旅程和组合 CI inventory，
+既有看板的原生/容器/容量场景及其门槛继续有效。
 
 ## 风险与重审条件
 

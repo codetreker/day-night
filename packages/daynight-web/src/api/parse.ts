@@ -1,4 +1,6 @@
 import type {
+  Attachment,
+  AttachmentPage,
   GraphLimitDetails,
   GraphTask,
   Project,
@@ -185,4 +187,23 @@ export const parseServerError = (value: unknown): ServerError => {
       maxEdges: count(details.maxEdges),
     },
   };
+};
+
+export const isAttachmentPath = (value: string): boolean =>
+  value !== "" && !/^[a-z]:\//i.test(value) && !/[\\\p{Cc}\p{Cs}]/u.test(value) &&
+  value.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..");
+
+export const parseAttachment = (value: unknown): Attachment => {
+  const data = record(value);
+  const path = string(data.path);
+  const contentType = nonemptyString(data.contentType);
+  if (!isAttachmentPath(path) || !/^[!#$%&'*+.^_`|~a-z0-9-]+\/[!#$%&'*+.^_`|~a-z0-9-]+(?:\s*;[^\r\n]*)?$/i.test(contentType)) return malformed();
+  return { path, contentType, sizeBytes: count(data.sizeBytes), createdAt: timestamp(data.createdAt), updatedAt: timestamp(data.updatedAt) };
+};
+
+export const parseAttachmentPage = (value: unknown): AttachmentPage => {
+  const data = record(value);
+  const items = array(data.items, parseAttachment);
+  if (new Set(items.map((item) => item.path)).size !== items.length) return malformed();
+  return { items, nextCursor: data.nextCursor === null ? null : nonemptyString(data.nextCursor) };
 };

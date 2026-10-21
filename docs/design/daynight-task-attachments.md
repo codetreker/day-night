@@ -1,7 +1,7 @@
 # Task 附件与通用文件存储设计
 
-状态：通用存储、附件元数据与文件 HTTP/预览入口已实现；CLI、Web 管理界面和
-持久卷仍待完成。各任务交付进度在 Daynight 中维护。
+状态：通用存储、附件元数据、文件 HTTP/预览入口及 Web 管理界面已实现。
+CLI、部署整合与跨层验收按独立任务交付，进度在 Daynight 中维护。
 
 行为要求由[附件需求](../spec/daynight-task-attachments.md)拥有；本文解释通用存储接口、
 附件元数据及各端集成机制。
@@ -41,7 +41,7 @@ mockup/
 
 ## 现有结构与集成位置
 
-以下是当前源码事实，用来确定实现位置；附件行为仍是本文定义的待实现设计。
+以下源码位置分别拥有已交付机制或剩余集成入口；各层交付与组合验收状态分别维护。
 
 | 当前结构 | 集成方式 |
 |---|---|
@@ -51,7 +51,7 @@ mockup/
 | [附件迁移](../../packages/daynight-server/internal/core/store/migrations/004_task_attachments.sql)定义独立附件表 | 既有迁移机制维护该表，归属由服务校验 |
 | [CLI API 客户端](../../packages/daynight/src/api/client.ts)解码并汇总 UTF-8 JSON | 增加共享取消与错误机制下的二进制传输通道 |
 | [CLI 上下文](../../packages/daynight/src/cli/context.ts)的 stdout 接受字符串 | 增加可等待写入、保留背压的字节输出能力 |
-| [任务详情](../../packages/daynight-web/src/features/task-detail/TaskDrawer.tsx)独立加载 task | 在详情中增加附件区域，保持图和详情既有读取行为 |
+| [任务详情](../../packages/daynight-web/src/features/task-detail/TaskDrawer.tsx)独立加载 task | 组合附件区域，附件 hook 独立持有分页、写状态和预览，保持图和详情读取行为 |
 | [localhost Compose](../../deployment/localhost/compose.yaml)经 gateway 同源交付，服务使用 [UID 10001](../../deployment/localhost/Dockerfile) | 增加一个附件持久卷及写权限，不新增 Web 服务或预览监听端口 |
 
 ## 模块职责与依赖
@@ -297,36 +297,57 @@ docker compose -f deployment/localhost/compose.yaml logs server | rg '"request_i
 
 ## Web 文件树与预览
 
-Task 详情增加附件区域，分页加载元数据并按路径构建目录树。用户选择一个本地文件、
-填写目标相对路径后上传；点击文件预览，单文件操作提供下载与删除。相同路径直接
-覆盖，成功后刷新附件区域。加载、上传或删除失败在该区域显示错误，保留其他已加载
-内容；不触发任务图更新。
+`TaskDrawer` 在关联 PR 后组合 `TaskAttachments`。用户选择一个文件，目标路径初始为
+文件名，可改为多层相对路径；`mime` 4.1.1 按目标路径确定上传 Content-Type，未知
+类型使用 `application/octet-stream`。同路径直接覆盖，单文件提供下载和删除，成功
+后刷新附件区域，不修改详情、task 版本或图。页面沿用看板样式，没有独立预览弹窗。
 
-| 类型 | 预览方式 |
+`useAttachments` 分开持有列表、写操作、选中路径和预览。列表逐页读取，并检查路径
+树冲突与重复游标；续页失败保留已经读取的文件并标明不完整，提供重试。结果绑定
+project/task，内容状态同时绑定 path；切换身份、选择或卸载通过 AbortController 和
+请求 generation 排除旧结果。写操作不自动重试，普通错误在附件区域明确展示。
+
+覆盖成功增加预览 revision。手动刷新发现所选文件的 `updatedAt` 改变时重新请求正文；
+`path/updatedAt` 作为预览组件身份，使同路径的图片和 frame 重新挂载。HTTP 的
+`Cache-Control: no-store` 保持可覆盖路径的当前读取语义。
+
+| 类型 | 预览机制 |
 |---|---|
-| Markdown | 前端安全渲染，将相对图片及链接按该文件所在目录解析到预览路径 |
-| 图片 | 图片查看 |
-| PDF | 浏览器原生 PDF 查看 |
-| 文本、JSON、源码 | 文本查看，保留内容与换行 |
-| HTML | 普通 iframe 中加载并执行 |
-| 其他格式 | 文件信息及下载 |
+| Markdown | `react-markdown` 10.1.0 与 `remark-gfm` 4.0.1 渲染 CommonMark/GFM，含表格；原始 HTML 保持转义 |
+| 图片 | 原生 img 的加载、错误和重试状态 |
+| PDF | HEAD 检查后交给浏览器原生 iframe |
+| 文本、JSON、源码 | 原始文本节点与 pre，保留换行 |
+| HTML | HEAD 检查后在普通同源 iframe 中加载执行 |
+| 其他格式 | 元数据及下载链接 |
 
-HTML 入口为固定 URL，例如：
+Markdown 的相对图片和链接从当前文件所在目录解析到 task 预览路径；逐段处理 URL
+编码和 parent 段，拒绝越过 task 根目录，保留 query/hash。独立 `#fragment` 保持原值，
+不改成文件请求。绝对 URL 和根相对 URL 继续遵循正常 URL 语义，并通过渲染库的
+默认 URL 安全规则；不把原始 HTML 作为可执行节点插入 Markdown。
+
+HTML 入口是固定同源 URL，例如：
 
 ```text
 /api/v1/projects/{projectId}/tasks/{taskId}/preview/mockup/index.html
 ```
 
-入口中的 `./assets/style.css`、`./assets/app.js` 和相对 fetch URL 按正常 URL 规则
-读取同目录结构的文件。不改写 HTML、CSS 或 JavaScript 内容；以 `/` 开头的根相对
-地址仍指向主站根目录，不自动改成 task 内路径。
+HTML/PDF 的 HEAD 可用性检查只判断响应状态和 requestId，不尝试读取不存在的 JSON
+body。成功后 frame 正常 GET 文件和其资源。入口中的 `./assets/style.css`、
+`./assets/app.js` 和相对 fetch URL 按浏览器规则读取同目录结构，不改写文件内容；
+以 `/` 开头的地址仍指向主站根目录。HTML 附件属于可信项目代码，拥有主应用同源
+权限，普通 iframe 不使用 sandbox；不增加 session/token、独立 origin/端口、Service
+Worker 或离线文件系统。
 
-HTML 附件属于可信项目代码，普通 iframe 与主应用同源，可以运行脚本、ES modules、
-fetch 和浏览器存储，也拥有主应用的同源权限。本设计不提供执行隔离。预览复用既有
-服务 origin，无预览 session/token、独立域名或端口、Service Worker、离线文件系统。
+原侧栏继续拥有 portal、背景 inert、滚动和被动卸载后的焦点恢复。`tabbable` 6.5.0
+的生产默认可见性检查统一枚举侧栏与同源 frame 的可 Tab 元素；frame 的 load
+监听桥接 Esc 与首末 Tab/Shift+Tab 到侧栏，并在替换或卸载时释放。详细历史与取舍
+见 [Web 附件决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)。
 
-本设计确定交互和内容约定，不定义新的视觉样式；页面实现沿用现有看板组件和可访问
-交互。具体文件切换应取消过期加载，避免前一文件内容覆盖当前选择。
+`tests/mockups/attachments.html` 仅由 Vite 开发服务提供，实际组件和 CSS 使用内存
+fixture API 与原生 fixture 文件，支持文件、空态和上传失败场景。fixture 分配的对象
+URL 在删除后仍保持有效，到 fixture dispose 才释放，避免已加载组件使用失效地址。
+生产构建保留单一应用 index，不包含该入口或 fixture 文件。该 mockup 及本地浏览器
+探针验证前端交互，A-T6 承担真实后端生产浏览器旅程及组合 CI inventory。
 
 ## CLI
 
@@ -385,9 +406,10 @@ A-T5 将为 localhost Compose 增加一个附件持久卷，挂载到该根目�
 
 ## 实现验证
 
-通用存储、元数据、HTTP 与 fixture 已有组件和实际二进制检查；源绑定结果归属
-对应 PR 与 CI。CLI、Web 管理界面及持久卷仍按各自后续任务验证，不能由后端通过
-结果代替。各层验证职责如下：
+通用存储、元数据与 HTTP 已有组件和实际二进制检查。Web 管理界面交付组件、状态
+及前端 fixture，真实浏览器探针覆盖该环境的视觉与焦点；源绑定结果归属对应 PR
+与 CI。各任务保留自身验证，A-T6 的实际后端生产浏览器旅程、安装 CLI 组合及 CI
+inventory 不能由后端测试或前端 mockup 结果代替。各层验证职责如下：
 
 - Storage：bucket 隔离、真实相对路径、同路径完整覆盖、原始字节一致、实际大小、
   缺失与权限错误、取消、普通失败的临时文件清理及路径不能越出根目录。

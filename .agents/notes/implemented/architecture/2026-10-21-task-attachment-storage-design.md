@@ -5,8 +5,8 @@ Status: implemented
 ## Problem
 
 Tasks need to carry design documents, architecture documents, images and runnable
-UI mockups. The current task model contains text and dependency state, while the
-browser is a read-only consumer and the CLI transport handles JSON and rendered
+UI mockups. At adoption, the task model contained text and dependency state, the
+browser was a read-only consumer and CLI transport handled JSON and rendered
 text. A file mechanism tied to one task model would also make another file use
 case repeat the same disk and transport concerns.
 
@@ -18,7 +18,10 @@ The delivered artifacts are the adopted [requirements](../../../../docs/spec/day
 The [file-storage foundation](2026-10-21-bucket-file-storage.md) implements the
 generic local adapter and startup integration. The
 [attachment HTTP delivery](../feature/2026-10-21-task-attachment-http.md) implements metadata
-and backend file operations. CLI, browser management and persistent volumes remain pending. This note owns the
+and backend file operations. The
+[Web attachment delivery](../feature/2026-10-21-task-attachment-web.md) implements
+file management, typed previews and drawer focus integration. CLI, deployment and
+combined acceptance progress is maintained in Daynight. This note owns the
 adopted cross-component design.
 
 Generic file storage uses bucket and real relative path addressing through
@@ -94,8 +97,10 @@ Trusted same-origin HTML has the privileges of that browser origin. Supporting
 untrusted HTML would require revisiting the preview boundary rather than
 silently presenting the current iframe as isolation.
 
-The generic storage foundation is implemented. Remaining attachment delivery
-progress is maintained in the linked Daynight tasks; the breakdown owns scope
-and acceptance. Existing server, CLI and Web contracts remain true for delivered
+Generic local storage, attachment HTTP resources and browser management are
+implemented. The Web delivery note owns its state, rendering and focus choices;
+this note retains the cross-component addressing and accepted K1 decision.
+Remaining delivery and combined acceptance progress is maintained in the linked
+Daynight tasks; the breakdown owns scope and acceptance. Existing server, CLI and Web contracts remain true for delivered
 features. Module-specific validation and source-bound evidence remain required
 for the remaining implementation tasks.

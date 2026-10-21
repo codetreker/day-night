@@ -64,10 +64,13 @@ layout remain separate from React rendering and API requests. Page hooks own
 request cancellation and snapshot replacement; the drawer never mutates the
 project snapshot.
 
-Keep the MVP read-only with manual refresh. Editing and live subscriptions are
-additive later features because graph projection remains separate from API
-mutations and request triggers. Remote access is not an additive configuration
-change: authentication, authorization, and deployment boundaries require their
+The adopted MVP was read-only with manual refresh. Graph projection remained
+separate from API mutations and request triggers so editing and live subscriptions
+could be added independently. The later
+[Web attachment decision](../feature/2026-10-21-task-attachment-web.md) uses that
+separation for file upload, overwrite and deletion in the drawer. Task fields and
+dependency editing remain outside the browser's delivered scope. Remote access
+is not an additive configuration change: authentication, authorization, and deployment boundaries require their
 own design. Graph filtering must retain dependency context; large-graph support
 needs a new closed-subgraph contract or measured limit changes.
 
