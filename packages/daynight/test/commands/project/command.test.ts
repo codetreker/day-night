@@ -13,7 +13,7 @@ const context = () => ({
   workingDirectory: vi.fn<() => string>(() => { throw new Error("Working directory must not be read by project commands"); }),
   stdout: vi.fn<(value: string) => void>(), stderr: vi.fn<(value: string) => void>(),
 });
-const fixture = (projects: readonly Project[] = [project]) => {
+const fixture = (projects: readonly Project[] = []) => {
   const unavailable = async (): Promise<never> => { throw new Error("Unexpected task API"); };
   const api = {
     createProject: vi.fn<ApiClient["createProject"]>().mockResolvedValue(project),
@@ -41,7 +41,7 @@ describe("project command boundaries", () => {
   });
 
   it.each([
-    ["unknown"], ["create"], ["create", "Name"], ["create", "--repo", "https://git.example/o/r"],
+    ["unknown"], ["create"], ["create", "--repo", "https://git.example/o/r"],
     ["create", "--name", "Name", "--repo", "remote"], ["create", "Name", "Again", "--repo", "remote"],
     ["create", "--repo", "remote", "-leading"], ["create", "--", "Name", "--repo", "remote"], ["create", "Name", "--repo", "remote", "--json"],
     ["list", "extra"], ["list", "--project", id], ["list", "--json", "--json"], ["show"], ["show", "invalid"], ["show", id, "extra"],
@@ -60,15 +60,15 @@ describe("project command boundaries", () => {
     expect(dependencies.runServerCommand).not.toHaveBeenCalled();
   });
 
-  it("preserves FEFF-only names and repository addresses for server validation", async () => {
+  it("preserves FEFF-only names and explicit repository addresses", async () => {
     const { api, context, dependencies } = fixture();
-    const repoUrl = "server-authoritative-address";
+    const repoUrl = "https://git.example/o/r.git";
     await runProjectCommand(["create", "\ufeff", "--repo", repoUrl], context, dependencies);
     expect(api.createProject).toHaveBeenCalledExactlyOnceWith({ name: "\ufeff", repoUrl });
     expect(context.workingDirectory).not.toHaveBeenCalled();
   });
 
-  it.each(["Project 中文", "  Original name  ", "\ufeff\u0085", "name\nwith lines"])("passes the original positional name and required repo to the API: %j", async (name) => {
+  it.each(["Project 中文", "  Original name  ", "\ufeff\u0085", "name\nwith lines"])("passes the original positional name and explicit repo to the API: %j", async (name) => {
     for (const args of [["create", name, "--repo", project.repoUrl], ["create", "--repo", project.repoUrl, name]]) {
       const { api, context, dependencies } = fixture();
       await runProjectCommand(args, context, dependencies);
@@ -86,10 +86,46 @@ describe("project command boundaries", () => {
     const { context, dependencies } = fixture();
     await runProjectCommand(["create", "--help"], context, dependencies);
     const output = context.stdout.mock.calls[0]![0];
-    expect(output).toContain("Usage: daynight project create <name> --repo <repo>");
+    expect(output).toContain("Usage: daynight project create <name> [--repo <repo>]");
     expect(output).toContain("<name>  Project name");
     expect(output).toContain("use -- before the name");
     expect(output).not.toContain("--name");
+  });
+
+  it("returns the original server project for an equivalent repository without renaming it", async () => {
+    const { api, context, dependencies } = fixture([project]);
+    await runProjectCommand(["create", "A different name", "--repo", "https://git.example/Org/Repo"], context, dependencies);
+    expect(api.listProjects).toHaveBeenCalledOnce();
+    expect(api.createProject).not.toHaveBeenCalled();
+    expect(context.stdout.mock.calls[0]![0]).toContain(`Project already exists.\nID: ${id}\nName: ${project.name}\n`);
+    expect(context.workingDirectory).not.toHaveBeenCalled();
+  });
+
+  it("rejects ambiguous repository matches with their IDs before creation", async () => {
+    const second = { ...project, id: "22222222-2222-2222-2222-222222222222", repoUrl: "https://git.example/Org/Repo" };
+    const { api, context, dependencies } = fixture([project, second]);
+    await expect(runProjectCommand(["create", "Name", "--repo", project.repoUrl], context, dependencies)).rejects.toThrow(`Multiple projects match this repository (${id}, ${second.id})`);
+    expect(api.createProject).not.toHaveBeenCalled();
+    expect(context.stdout).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid listed repository before creation even after an earlier match", async () => {
+    const { api, context, dependencies } = fixture([project, { ...project, repoUrl: "invalid repository" }]);
+    await expect(runProjectCommand(["create", "Name", "--repo", project.repoUrl], context, dependencies)).rejects.toThrow("Invalid repository address");
+    expect(api.createProject).not.toHaveBeenCalled();
+    expect(context.stdout).not.toHaveBeenCalled();
+  });
+
+  it("checks cancellation after listing and does not create", async () => {
+    const controller = new AbortController();
+    const operation = createOperation({ signal: controller.signal });
+    const { api, context } = fixture();
+    api.listProjects.mockImplementation(async () => { controller.abort(new Error("Cancelled after listing")); return []; });
+    try {
+      const failure = await runProjectCommand(["create", "Name", "--repo", project.repoUrl], context, { runServerCommand: async (_current, command) => { await command({ api, operation, serverUrl: "http://server.example" }); } }).catch((error: unknown) => error);
+      expect(failure).toBe(operation.signal.reason);
+      expect(api.createProject).not.toHaveBeenCalled();
+    } finally { operation.dispose(); }
   });
 
   it("canonicalizes an explicit show UUID before the API call", async () => {
@@ -138,9 +174,9 @@ describe("project command output", () => {
 
   it.each(["create", "list", "show"])("escapes server-controlled terminal characters in %s human output", async (command) => {
     const raw = { ...project, name: "First\nSecond\u001b[2J\u0085", repoUrl: "git@git.example:Org/Repo\t.git" };
-    const { api, context, dependencies } = fixture([raw]);
+    const { api, context, dependencies } = fixture(command === "create" ? [] : [raw]);
     api.getProject.mockResolvedValue(raw); api.createProject.mockResolvedValue(raw);
-    const args = command === "create" ? ["create", "Name", "--repo", "remote"] : command === "show" ? ["show", id] : ["list"];
+    const args = command === "create" ? ["create", "Name", "--repo", "https://git.example/Other/Repo"] : command === "show" ? ["show", id] : ["list"];
     await runProjectCommand(args, context, dependencies);
     const output = context.stdout.mock.calls[0]![0];
     expect(output).toContain("First\\nSecond\\u001b[2J\\u0085");
@@ -172,7 +208,7 @@ describe("project command output", () => {
     const { api, context, dependencies } = fixture();
     const failure = new ApiError({ operation: `project.${command}`, projectId: id }, "response", { cause: new Error("Server rejected operation"), status: 409, serverError: { code: "conflict", message: "Server rejected operation", requestId: "project-request" } });
     api.createProject.mockRejectedValue(failure); api.listProjects.mockRejectedValue(failure); api.getProject.mockRejectedValue(failure);
-    const args = command === "create" ? ["create", "Name", "--repo", "remote"] : command === "show" ? ["show", id] : ["list"];
+    const args = command === "create" ? ["create", "Name", "--repo", "https://git.example/Other/Repo"] : command === "show" ? ["show", id] : ["list"];
     await expect(runProjectCommand(args, context, dependencies)).rejects.toBe(failure);
     expect(context.stdout).not.toHaveBeenCalled();
   });

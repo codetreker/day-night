@@ -441,7 +441,7 @@ daynight completion bash
 daynight completion zsh
 daynight completion setup [--shell bash|zsh] [--rc-file <path>]
 daynight project
-daynight project create <name> --repo <repo>
+daynight project create <name> [--repo <repo>]
 daynight project list [--json]
 daynight project show <project-id> [--json]
 daynight task
@@ -612,17 +612,29 @@ The origin includes its protocol, host and optional port; the client adds
 `/api/v1`. Then create, list or inspect projects:
 
 ```bash
+daynight project create "Example"
 daynight project create "Example" --repo https://github.com/OWNER/REPO.git
 daynight project list
 daynight project list --json
 daynight project show <project-id> --json
 ```
 
-These commands work outside Git repositories and use only the configured server.
-Creation requires one positional name and `--repo`; quote names containing spaces.
-For a name beginning with `-`, put the required option before the terminator:
-`daynight project create --repo <repo> -- -name`. The name is sent unchanged.
-Creation sends the supplied repository address for registration; lists traverse
+Creation requires one positional name; quote names containing spaces. Omit
+`--repo` to use the current Git worktree's effective `origin`, including Git
+`insteadOf` expansion. Supply `--repo` to use that address without inspecting Git;
+this form, listing and details work outside Git repositories. For a name beginning
+with `-`, use `daynight project create -- -name` or put an explicit repository
+option before the terminator: `daynight project create --repo <repo> -- -name`.
+The name is sent unchanged.
+
+Creation first scans every project page and compares canonical repository
+identities. With no match it registers the original name and repository address.
+With one match it reports `Project already exists.` and the existing project,
+leaving that project's name and address unchanged. Multiple matches fail with
+their IDs; lookup failures and exhausted command budgets stop before creation.
+This client preflight does not provide atomic uniqueness against concurrent
+creators, and the service continues to allow duplicate repository registrations.
+Project commands do not write repository bindings or ignore rules. Lists traverse
 all pages. Human output uses complete labeled project blocks with visible
 terminal-control escapes. JSON preserves resource fields and nanosecond timestamp
 strings; a later-page failure produces an error with empty stdout. The

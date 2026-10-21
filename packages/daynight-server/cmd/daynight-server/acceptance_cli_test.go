@@ -355,11 +355,23 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(cli.home, ".daynight", "config.yml"), []byte("serverUrl: http://"+process.address+"\n"), 0o600); err != nil {
 			t.Fatal("cannot configure isolated installed CLI")
 		}
-		projectID := acceptanceCLIResourceID(t, cli.run(t, cli.caller, "project", "create", "Installed CLI 项目", "--repo", "https://Git.Example/Org/Repo.git"))
+		projectID := acceptanceCLIResourceID(t, cli.run(t, filepath.Join(cli.repo, "source"), "project", "create", "Installed CLI 项目"))
+		for _, arguments := range [][]string{
+			{"project", "create", "Preserve existing name"},
+			{"project", "create", "Explicit existing project", "--repo", "https://Git.Example/Org/Repo.git"},
+		} {
+			output := cli.run(t, cli.repo, arguments...)
+			if !strings.HasPrefix(output, "Project already exists.\n") || acceptanceCLIResourceID(t, output) != projectID {
+				t.Fatal("installed project creation did not return the existing repository project")
+			}
+		}
 		project := acceptanceCLIJSON[api.Project](t, cli.run(t, cli.caller, "project", "show", projectID, "--json"))
 		projects := acceptanceCLIJSON[[]api.Project](t, cli.run(t, cli.caller, "project", "list", "--json"))
-		if len(projects) != 1 || !reflect.DeepEqual(projects[0], project) {
+		if len(projects) != 1 || !reflect.DeepEqual(projects[0], project) || project.Name != "Installed CLI 项目" || project.RepoURL != "git@git.example:Org/Repo.git" {
 			t.Fatal("installed project commands disagree with the created resource")
+		}
+		if _, err := os.Stat(filepath.Join(cli.repo, ".daynight")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("installed project creation wrote repository binding metadata")
 		}
 		first := acceptanceCLIResourceID(t, cli.run(t, filepath.Join(cli.repo, "source"), "task", "create", "--title", "前置 Task", "--description", "Persistent description"))
 		bindingPath := filepath.Join(cli.repo, ".daynight", "project.yml")
@@ -413,7 +425,10 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 			t.Fatal("installed CLI rounded an explicit or read Go int64 version")
 		}
 		cli.git(t, "-C", cli.repo, "remote", "set-url", "origin", "ssh://git@GIT.EXAMPLE:22/Org/Repo.git")
-		cli.run(t, cli.caller, "project", "create", "Later duplicate", "--repo", "https://git.example/Org/Repo")
+		duplicate := acceptanceDecode[api.Project](t, process.request(context.Background(), http.MethodPost, "/api/v1/projects", api.CreateProjectRequest{Name: "Later duplicate", RepoURL: "https://git.example/Org/Repo"}, ""), http.StatusCreated)
+		if duplicate.ID == projectID {
+			t.Fatal("server duplicate fixture reused the original project")
+		}
 		if task := cli.task(t, editable); task.ProjectID != projectID {
 			t.Fatal("equivalent origin or later duplicate changed a validated binding")
 		}

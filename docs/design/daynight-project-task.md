@@ -7,7 +7,8 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 [仓库 README](../../README.md)。必需行为与编号验收由
 [客户端需求](../spec/daynight-project-task.md)拥有，服务行为由
 [服务需求](../spec/daynight-server.md)拥有。结构决策与真实备选方案见
-[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-project-task-cli-design.md)，
+[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-project-task-cli-design.md)及
+[创建预检决策](../../.agents/notes/implemented/bug-fix/2026-10-21-project-create-repository-discovery.md)，
 实现顺序与依赖见[交付任务](daynight-project-task-tasks.md)。
 
 ## 现有基础与交付边界
@@ -62,7 +63,7 @@ Project 的定义由 [`definition.ts`](../../packages/daynight/src/commands/proj
 [补全设计](daynight-completion.md)拥有。命令组先解析参数和帮助，校验名称及详情
 UUID，再惰性加载共享 server runtime 和业务渲染。Task 的 definition、command 和
 rendering 分别拥有语法、API/仓库关联组合及可读/JSON 输出，复用同一 server session。
-`project create` 将名称声明为一个必填位置参数，保留必填 `--repo`。该定义声明
+`project create` 将名称声明为一个必填位置参数，`--repo` 声明为可选 text 选项。该定义声明
 `allowOptionsTerminator`，使 `--` 后的词按位置参数处理，因而前导 `-` 的名称也能
 原样提交。语法层只校验位置参数的存在性、非空字符串及声明的固定候选；名称的
 Unicode 文本语义由 Project 命令在业务加载之前校验。
@@ -70,9 +71,10 @@ Unicode 文本语义由 Project 命令在业务加载之前校验。
 通过 `repeatable` 表达有序依赖数组；解析与静态补全消费这些事实，帮助使用定义中
 的名称、值名、必填性与选项说明。
 text 选项内联形式按首个 `=` 分隔并保留原值，目录及开关继续拒绝内联。
-project/task 不导入 review runtime、SQLite 或外部审查适配器。`project list/show/create`
-只需要配置与 HTTP；task 显式 project 分支也只需要这两者；自动分支才加载 Git 与
-仓库状态。共享模块不反向导入命令模块。
+project/task 不导入 review runtime、SQLite 或外部审查适配器。`project list/show` 和
+显式 repo 的 create 只需要配置与 HTTP；省略 repo 的 create 才加载 Git 发现，不
+加载仓库关联保存。task 显式 project 分支也只需要配置与 HTTP；自动分支才加载 Git
+与仓库状态。共享模块不反向导入命令模块。
 
 配置共享层产出 YAML mapping 和文档上下文，拒绝语法、重复 key、非 mapping 及
 未登记顶层字段。review 投影只解析 review 字段；server 投影只要求 `serverUrl`。
@@ -280,7 +282,7 @@ flowchart TD
 
 | CLI 操作 | API |
 |---|---|
-| `project create <name> --repo <repo>` | `POST /api/v1/projects`，提交原始 `name`、`repoUrl` |
+| `project create <name> [--repo <repo>]` | 完整 `GET /api/v1/projects` 预检；仅零匹配时 `POST /api/v1/projects`，提交原始 `name`、`repoUrl` |
 | `project list` | `GET /api/v1/projects`，读到 `nextCursor: null` |
 | `project show <id>` | `GET /api/v1/projects/{id}` |
 | `task create` | `POST /api/v1/projects/{projectId}/tasks` |
@@ -293,6 +295,19 @@ flowchart TD
 cursor 是不透明字符串，逐页提交，不在 CLI 解码或重建。每页验证后累积结果，末页
 才渲染；重复 cursor 或不前进的循环响应作为协议错误终止，不能无限请求。多页读取
 继承服务不提供跨请求快照的边界，CLI 不宣称列表是同一时间点的完整快照。
+
+创建先确定 repo：显式 `--repo` 直接使用原值，并跳过工作目录查询及 Git；省略时
+直接复用 `repository/git.ts` 的 `discoverRepository`，读取当前 worktree 有效
+`origin`，包含 `insteadOf` 展开。随后将该地址及全部列表结果的 `repoUrl` 交给
+`repository/identity.ts` 的同一正规化器比较。零匹配才 POST 原始名称和原始地址；
+唯一匹配通过既有资源渲染器输出 `Project already exists.` 及完整 project，不改名
+或更新 repo；多匹配列出 ID 并失败。此路径不调用 task 的 `resolveProject`，因此
+不读取或保存 `.daynight/project.yml`，也不写 ignore 规则。
+
+Git、完整分页、身份比较和后续 POST 共用同一 `Operation`；每步完成后检查取消和
+剩余期限，预检失败不能进入创建。身份比较失败保留具体错误，也不能变成零匹配。
+完整扫描不是服务端事务，扫描完成与 POST 之间仍可能有并发创建；服务的重复
+repo 许可、API、schema 和事务政策保持原样。原子唯一性需要独立的服务契约决策。
 
 更新参数先转换为字段存在性明确的 patch：未出现标志时不写 key；空描述写 `""`；
 重复 `--depends-on` 从首次出现起形成有序替换数组，保留重复 ID，不进行 CSV
@@ -347,7 +362,7 @@ stderr 错误包含操作名、已确定的 project/task ID、失败阶段和可
 
 边界错误保留 cause，顶层统一映射退出码：参数 `2`，操作 `1`，成功 `0`。超时与
 用户取消在错误文字中有区别；取消后释放客户端锁、期限及监听器，清理任务拥有的
-临时文件，不控制 server 进程。若 task 写请求已发送而无确认，说明结果未确认，
+临时文件，不控制 server 进程。若写请求已发送而无确认，说明结果未确认，
 不能声称数据库未写入。
 
 ## 验证与交付证据
@@ -357,14 +372,15 @@ stderr 错误包含操作名、已确定的 project/task ID、失败阶段和可
 | 层次 | 关键观察 |
 |---|---|
 | 纯数据与参数 | 正规化表和拒绝 fixture、字段存在性、依赖替换/清空、版本参数、JSON 格式 |
-| CLI 依赖边界 | 缺失 Git/SQLite/review 工具，或 serverUrl 缺失、业务值无效时，实际编译入口的帮助、版本、update 与 review 仍各自独立；服务命令缺少字段时仅引导连接配置，非交互提供 setup 命令，人工输入不消耗业务期限 |
+| CLI 依赖边界 | 缺失 Git/SQLite/review 工具，或 serverUrl 缺失、业务值无效时，实际编译入口的帮助、版本、update 与 review 仍各自独立；显式 repo 创建、列表和详情不读取工作目录或 Git；服务命令缺少字段时仅引导连接配置，非交互提供 setup 命令，人工输入不消耗业务期限 |
 | Git 与本地状态 | 真实仓库的 insteadOf、子目录、worktree、submodule、ignore 生效、被跟踪目录、并发锁及原子替换 |
-| 受控 HTTP | 多页零/一/多匹配、后页失败、server 或 origin 独立变化、缓存 404/不符、500/无效响应、循环或持续推进 cursor、单次/总期限、字节超限、取消及写响应丢失 |
+| 受控 HTTP | 创建及 task discover 的多页零/一/多匹配、唯一匹配创建命令保留原资源、后页失败无 POST、server 或 origin 独立变化、缓存 404/不符、500/无效响应、循环或持续推进 cursor、单次/总期限、字节超限、取消及写响应丢失 |
 | 真实服务 | 隔离 PostgreSQL 与 Go server 的 project/task 全流程、依赖拒绝、版本并发冲突、图快照和图超限 |
 | 安装后跨平台 | Linux、macOS、Windows 的已构建 CLI 调用真实 Git、文件锁、rename、退出码、stdout/stderr 和信号清理 |
 
-断言本地准备失败时服务器未收到 mutation，显式 project 从未读取本地关联，有效
-缓存后增加重复 project 仍使用原绑定，以及完整页失败时 stdout 为空。真实服务
+断言本地准备失败时服务器未收到 mutation，显式 project 从未读取本地关联，project
+命令不读写绑定及 ignore，有效缓存后增加重复 project 仍使用原绑定，以及完整页
+失败时 stdout 为空。真实服务
 验收保留服务 request ID 与目标 ID，便于将错误对应到 API 及数据库事实。
 
 预算验证使用可控制时钟和流式响应，覆盖每页均在单次期限内且 cursor 唯一推进、

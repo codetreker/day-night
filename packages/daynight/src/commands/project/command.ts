@@ -31,17 +31,36 @@ export const runProjectCommand = async (
     projectId = canonicalId(command.values[0]!) ?? undefined;
     if (projectId === undefined) throw new UsageError("project-id must be a hyphenated UUID.", "daynight project show --help");
   }
-  await dependencies.runServerCommand(context, async ({ api }) => {
+  await dependencies.runServerCommand(context, async ({ api, operation }) => {
+    operation.check();
     const { renderProject, renderProjectJson, renderProjectList } = await import("./rendering.js");
+    operation.check();
     if (command.command.name === "create") {
-      const project = await api.createProject({ name: name!, repoUrl: command.options.get("--repo") as string });
+      const { repositoryIdentity } = await import("../../repository/identity.js");
+      operation.check();
+      const explicitRepo = command.options.get("--repo") as string | undefined;
+      const repoUrl = explicitRepo === undefined
+        ? (await (await import("../../repository/git.js")).discoverRepository(context.workingDirectory(), operation)).remote
+        : explicitRepo;
+      operation.check();
+      const identity = repositoryIdentity(repoUrl);
+      const projects = await api.listProjects();
+      operation.check();
+      const matches = projects.filter((project) => repositoryIdentity(project.repoUrl) === identity);
+      operation.check();
+      if (matches.length > 1) throw new Error(`Multiple projects match this repository (${matches.map(({ id }) => id).join(", ")}); choose an existing project by its ID.`);
+      if (matches.length === 1) return `Project already exists.\n${renderProject(matches[0]!)}`;
+      const project = await api.createProject({ name: name!, repoUrl });
+      operation.check();
       return `Project created.\n${renderProject(project)}`;
     }
     if (command.command.name === "list") {
       const projects = await api.listProjects();
+      operation.check();
       return command.options.has("--json") ? renderProjectJson(projects) : renderProjectList(projects);
     }
     const project = await api.getProject(projectId!);
+    operation.check();
     return command.options.has("--json") ? renderProjectJson(project) : renderProject(project);
   });
 };

@@ -51,7 +51,7 @@ daynight completion bash
 daynight completion zsh
 daynight completion setup [--shell bash|zsh] [--rc-file <path>]
 daynight project
-daynight project create <name> --repo <repo>
+daynight project create <name> [--repo <repo>]
 daynight project list [--json]
 daynight project show <project-id> [--json]
 daynight task
@@ -76,8 +76,9 @@ daynight task graph [--json] [--project <project-id>]
 描述选项允许空字符串。标量选项不能重复，声明 repeatable 的依赖选项按输入顺序
 保留全部值及重复 ID。状态候选和允许值均由同一命令定义拥有。开关、帮助和目录
 选项不接受内联赋值；`--path=value` 无效。`project create` 接受一个必填位置参数
-`<name>` 及必填 `--repo`；`--repo` 可在名称前后。只有该操作接受独立 `--` 结束
-选项解析，前导 `-` 的名称可写成 `project create --repo <repo> -- -name`。
+`<name>` 及可选 `--repo`；`--repo` 可在名称前后。省略时读取当前 Git worktree 的
+有效 `origin`，显式提供时使用给定地址。只有该操作接受独立 `--` 结束选项解析，
+前导 `-` 的名称可写成 `project create -- -name`，也可在终止符前指定 `--repo`。
 旧的 `--daemon-review` 和顶层 `add-repo` 是无效参数，不能隐式重定向。
 
 ### C3. 命令依赖与持久化边界
@@ -96,9 +97,12 @@ daynight task graph [--json] [--project <project-id>]
 `setup` 与 `review add-repo` 只写配置。按 C6 完成必要的配置引导后，
 `review list` 与 `review ls` 只读取配置及已存数据库，
 `review run` 独立持有审查运行时和信号生命周期，具体保证由 review 需求定义。
-`project` 操作只加载 server 配置和 HTTP 能力，不读取工作目录、Git 或仓库本地关联；
+`project list/show` 和显式 `--repo` 的创建只加载 server 配置和 HTTP 能力；省略
+`--repo` 的创建才加载 Git 发现当前 worktree 的有效 `origin`。所有 project 操作
+均不读取或改写仓库本地关联、不写 ignore 规则。创建在完整分页比较仓库身份后，
+仅无匹配时提交；唯一匹配成功返回既有 project，多匹配及查询失败均拒绝创建。
 共享执行层在单个操作下处理信号、期限和完整结果输出。`task` 显式指定 project
-时使用相同边界；自动选择时才加载 Git 与仓库关联模块。任务写入必须晚于本地
+时只需要 server 配置和 HTTP；自动选择时才加载 Git 与仓库关联模块。任务写入必须晚于本地
 关联准备成功，完整行为由[project/task 需求](daynight-project-task.md)定义。
 客户端的命令和源码结构调整不改变 review 配置与状态的现有格式和位置，不迁移、
 重分区或重新初始化这些数据。新增命令通过自己的模块接入；它的业务依赖不能成为

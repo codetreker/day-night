@@ -9,14 +9,14 @@ export const projectDefinition: CommandDefinition = {
   commands: [
     {
       name: "create",
-      description: "Create a project with its name and repository address",
+      description: "Create a project unless its repository is already registered",
       arguments: [{ name: "name", description: "Project name" }],
       allowOptionsTerminator: true,
       options: [
-        { names: ["--repo"], description: "Repository address to register", value: { name: "repo", kind: "text" }, required: true },
+        { names: ["--repo"], description: "Repository address (defaults to the current Git origin)", value: { name: "repo", kind: "text" } },
         helpOption,
       ],
-      details: "Submit the original name and repository address to the configured server.\nProject creation does not depend on the current Git repository.\nFor a name beginning with a dash, put options first and use -- before the name.",
+      details: "Without --repo, use the current Git worktree's effective origin fetch address.\nAn explicit --repo works outside Git and overrides the current repository.\nRead all server projects and return an existing project with an equivalent repository address.\nMultiple matching projects require choosing an existing project by its ID.\nOtherwise, submit the original name and repository address to the configured server.\nFor a name beginning with a dash, put options first and use -- before the name.",
     },
     {
       name: "list",
