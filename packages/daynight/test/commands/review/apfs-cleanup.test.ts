@@ -260,6 +260,41 @@ describe("APFS fixture cleanup", () => {
     expect(script.calls.find(({ command }) => command === "/usr/sbin/diskutil")?.args).toEqual(["info", "-plist", device]);
   });
 
+  it("intersects the known owned PID with only the volume diagnostic and records the executed query", async () => {
+    const script = simulated({ detach: (attempt) => attempt === 1 ? busy() : undefined });
+    await cleanupApfsFixture({ ...fixture, volumeHolderPid: 123 }, script.dependencies);
+    const volumeArgs = ["-nP", "-Fpcfnt", "-a", "-p", "123", "+f", "--", mountDirectory];
+    expect(script.calls.filter(({ command }) => command === "/usr/sbin/lsof").map(({ args, options }) => ({ args, timeout: options.timeout }))).toEqual([
+      { args: volumeArgs, timeout: 2_000 },
+      { args: ["-nP", "-Fpcfnt", "--", "/dev/disk8", "/dev/rdisk8", device, "/dev/rdisk5", "/dev/disk8s1", "/dev/rdisk8s1"], timeout: 2_000 },
+    ]);
+    expect(script.calls.find(({ command }) => command === "/usr/sbin/diskutil")?.args).toEqual(["info", "-plist", device]);
+    expect(script.records).toContainEqual({
+      kind: "diagnostic", command: "/usr/sbin/lsof", args: volumeArgs,
+      result: { stdout: "p123\ncnode\nf19\ntREG\nnheld-file\n", stderr: "" },
+    });
+    expect(script.detachCalls().map(({ at }) => at)).toEqual([0, 10_000]);
+    expect(script.removed).toEqual([directory]);
+  });
+
+  it("keeps a slow scoped diagnostic within two seconds and the original cleanup deadline", async () => {
+    const initial = busy();
+    const script = simulated({
+      detach: (attempt) => attempt === 1 ? initial : undefined,
+      cost: ({ command, args }) => command === "/usr/sbin/lsof" && args.includes(mountDirectory) ? 3_000 : 0,
+    });
+    await cleanupApfsFixture({ ...fixture, volumeHolderPid: 123 }, script.dependencies);
+    const volumeQuery = script.calls.find(({ command, args }) => command === "/usr/sbin/lsof" && args.includes(mountDirectory))!;
+    expect(volumeQuery.args).toEqual(["-nP", "-Fpcfnt", "-a", "-p", "123", "+f", "--", mountDirectory]);
+    expect(volumeQuery.options.timeout).toBe(2_000);
+    expect(script.records).toContainEqual(expect.objectContaining({
+      kind: "diagnostic", args: volumeQuery.args, failure: expect.objectContaining({ message: "command timed out within cleanup deadline" }),
+    }));
+    expect(script.detachCalls().map(({ at }) => at)).toEqual([0, 10_000]);
+    expect(script.elapsed()).toBe(10_000);
+    expect(script.removed).toEqual([directory]);
+  });
+
   it("does not treat empty-holder diagnostics or status one as proof of detach", async () => {
     const noHolders = failure("");
     const initial = busy();
