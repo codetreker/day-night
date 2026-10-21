@@ -217,6 +217,10 @@ fresh-volume 非 root 权限、停止/重建保留、项目隔离及清理、停
 
 Daynight task：`39837b94-0cc6-4793-8eb3-53b59495ba09`。前置：A-T3、A-T4、A-T5。
 
+组合机制与证据边界由[跨层验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)拥有，实际状态与交付 PR 仍在 Daynight
+维护。它复用 Go 安装 CLI 场景、原生/容器生产浏览器 inventory 及既有部署检查，
+保留全部旧场景和门槛；每次通过结论必须对应实际源码和运行回执。
+
 ### 文件归属与范围
 
 负责真实构建产物、安装 CLI 和生产浏览器的附件验收设施与证据归属；接管

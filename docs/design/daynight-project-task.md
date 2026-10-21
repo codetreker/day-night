@@ -489,6 +489,13 @@ race binary、隔离 PostgreSQL schema、listener、重启和数据库等待屏�
 source、包版本、tarball/entry hash、Node 和 launcher 身份；场景记录 CLI 启停
 数量、workspace 回收、拒绝 request ID 及并发请求的 200/409 结果。
 
+附件 `installed_cli_task_attachment_workflow` 复用同一服务安装及进程 fixture，覆盖
+原始字节、多页路径列表、拒绝、同根重启及完整 task 不变；清理 gate 同时要求存储
+根实际消失。共享安装 fixture 也供完整 Web run 使用，在原生与容器页面上复用一次
+安装来操作同组真实数据。机制与证据字段由
+[附件跨层验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+拥有，原有 PT 场景和六个预算探针保持完整。
+
 编排层原样执行固定 go-cov 参数及 strict raw coverage 检查，通过后才在 Go 默认
 10 分钟计时器之外运行六个公开安装 CLI 场景：持续推进 cursor 的总期限、
 响应开始后停顿的单次期限，以及两组 gzip 解码字节边界配对。两个期限场景使用

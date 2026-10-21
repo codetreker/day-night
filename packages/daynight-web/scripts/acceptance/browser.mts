@@ -39,7 +39,7 @@ export const browserInventory = async (): Promise<BrowserInventory> => {
     registry: { registry: { findExecutable(name: string): { executablePath(): string } } };
   }).registry.registry;
   const executablePaths = process.env.DAYNIGHT_BROWSER_EXECUTABLE === undefined
-    ? ['chromium', 'chromium-headless-shell'].map((name) => registry.findExecutable(name).executablePath())
+    ? [registry.findExecutable('chromium').executablePath()]
     : [process.env.DAYNIGHT_BROWSER_EXECUTABLE];
   const executables = await Promise.all(executablePaths.map((path) => realpath(path)));
   for (const path of [...executables]) {

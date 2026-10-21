@@ -96,7 +96,9 @@ browser override and owned-resource cleanup; they are not pinned CI-browser or
 real-backend acceptance. PR and CI artifacts retain runtime results rather than
 turning this note into a test transcript.
 
-[A-T6](../../../../docs/design/daynight-task-attachments-tasks.md#a-t6) owns new
-real-backend production-browser journeys, installed CLI/service combination and
-CI inventory. Existing graph production/performance gates remain intact. The
-frontend mockup proves neither PostgreSQL persistence nor combined delivery.
+The [cross-layer acceptance decision](../testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+owns real-backend production-browser journeys, installed CLI/service combination,
+visible PDF content and the combined CI inventory. Existing graph
+production/performance gates remain intact. A-T6 progress belongs to Daynight;
+the frontend mockup itself proves neither PostgreSQL persistence nor combined
+delivery.

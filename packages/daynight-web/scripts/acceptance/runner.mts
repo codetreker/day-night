@@ -11,6 +11,7 @@ import { processIdentity, requireGroupStopped, requireStopped, sameProcess, type
 import { browserInventory, recoverBrowsers, type BrowserInventory } from './browser.mts';
 import { waitForContainerPermission, writeContainerPermission } from './permission.mts';
 import { runPipeline } from './pipeline.mts';
+import { recoverCliProcesses, validateInstalledCli, type InstalledCliReceipt } from './installed-cli.mts';
 
 const packageRoot = fileURLToPath(new URL('../../', import.meta.url));
 const repositoryRoot = resolve(packageRoot, '../..');
@@ -19,7 +20,7 @@ const evidenceRoot = join(packageRoot, '.tmp/acceptance');
 const script = fileURLToPath(new URL('../acceptance.mts', import.meta.url));
 const labelKey = 'io.daynight.acceptance.run';
 const functionalScenarios = ['project-list', 'project-graph', 'detail-navigation', 'refresh-staleness',
-  'failure-recovery', 'deep-links', 'keyboard-focus', 'narrow-layout'] as const;
+  'failure-recovery', 'deep-links', 'keyboard-focus', 'narrow-layout', 'task-attachments'] as const;
 const capacityScenarios = ['capacity-chain', 'capacity-merge', 'capacity-shared', 'capacity-limits'] as const;
 
 const json = async (path: string, value: unknown): Promise<void> => {
@@ -30,6 +31,15 @@ const json = async (path: string, value: unknown): Promise<void> => {
 const readJson = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, 'utf8'));
 export type AcceptanceCommand = (file: string, args: readonly string[], options?: Omit<CommandOptions, 'cwd'> & { cwd?: string }) => Promise<string>;
 export type AcceptancePreparations = { browser: (run: AcceptanceCommand) => Promise<void>; coverage: (run: AcceptanceCommand) => Promise<void> };
+
+type InstalledPreparation = { receipt: InstalledCliReceipt; receiptPath: string; cleanup(): Promise<void> };
+type InstalledFactoryOptions = { signal: AbortSignal; temporaryRoot: string; rootDirectory: string; onSpawn(child: ChildProcess): Promise<void> };
+const prepareInstalledCli = async (options: InstalledFactoryOptions): Promise<InstalledPreparation> => {
+  const fixture = await import(new URL('../../../daynight/test/fixtures/installed-cli.ts', import.meta.url).href) as Record<string, unknown>;
+  if (typeof fixture.createInstalledCli !== 'function') throw new Error('The installed CLI preparation fixture is unavailable.');
+  const create = fixture.createInstalledCli as (options: InstalledFactoryOptions) => Promise<InstalledPreparation>;
+  return await create(options);
+};
 
 const createRunner = (cancellation: AbortController) => {
   const expectedServerShutdowns = new WeakSet<ChildProcess>();
@@ -56,10 +66,17 @@ const createRunner = (cancellation: AbortController) => {
     processPid?: number; postgresImage: string; postgresImageId?: string; postgresVersion?: string; cleanup: 'pending' | 'passed' | 'failed';
     processIdentity?: ProcessIdentity;
   };
+  type InstalledEvidence = { root: string; receiptPath?: string; receipt?: InstalledCliReceipt; cleanup: 'pending' | 'passed' | 'failed' };
+  type ReadyInstalledEvidence = InstalledEvidence & { receiptPath: string; receipt: InstalledCliReceipt };
+  const readyInstallation = (installed: InstalledEvidence | undefined): ReadyInstalledEvidence => {
+    if (installed?.receiptPath === undefined || installed.receipt === undefined) throw new Error('The shared installed CLI is not prepared.');
+    return { ...installed, receiptPath: installed.receiptPath, receipt: installed.receipt };
+  };
   type Evidence = {
     schemaVersion: 2; runId: string; source: Source; startedAt: string; result: 'running' | 'passed' | 'failed';
     native: NativeEvidence; targets: Target[]; stages: Stage[]; container?: unknown; performance?: unknown;
     cleanup: 'pending' | 'passed' | 'failed'; finishedAt?: string; error?: string; cleanupErrors?: string[];
+    installedCli?: InstalledEvidence;
     runner: ProcessIdentity; devCi?: { runId?: string; runner?: ProcessIdentity };
   };
 
@@ -72,7 +89,7 @@ const createRunner = (cancellation: AbortController) => {
     return { gitSha, githubSha, dirty };
   };
 
-  const playwright = async (target: BrowserPhase, directory: string): Promise<BrowserPhase> => {
+  const playwright = async (target: BrowserPhase, directory: string, installed: ReadyInstalledEvidence): Promise<BrowserPhase> => {
     let identitySaved: Promise<void> = Promise.resolve();
     let failure: unknown;
     try {
@@ -84,7 +101,7 @@ const createRunner = (cancellation: AbortController) => {
         target.phase === 'capacity' ? '--grep' : '--grep-invert', '@capacity'], {
         cwd: packageRoot, timeoutMs: 900_000,
         env: { ...process.env, TMPDIR: '.tmp', DAYNIGHT_BASE_URL: target.baseUrl, DAYNIGHT_ACCEPTANCE_TARGET: target.target,
-          DAYNIGHT_ACCEPTANCE_DIRECTORY: directory, PLAYWRIGHT_JSON_OUTPUT_FILE: join(directory, 'playwright.json') },
+          DAYNIGHT_ACCEPTANCE_DIRECTORY: directory, DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT: installed.receiptPath, PLAYWRIGHT_JSON_OUTPUT_FILE: join(directory, 'playwright.json') },
         onSpawn: (child) => {
           target.playwrightGroup = child.pid!;
           identitySaved = (async () => {
@@ -126,6 +143,8 @@ const createRunner = (cancellation: AbortController) => {
       if (target.playwrightGroup !== undefined) {
         try { requireGroupStopped(target.playwrightGroup); } catch (error) { failures.push(error); }
       }
+      try { await recoverCliProcesses(dirname(installed.receipt.root), installed.receiptPath, installed.receipt); }
+      catch (error) { failures.push(error); }
       if (target.browserInventory !== undefined) {
         try { await recoverBrowsers(directory, target.browserInventory); target.browserCleanup = 'passed'; }
         catch (error) { target.browserCleanup = 'failed'; failures.push(error); }
@@ -166,9 +185,12 @@ const createRunner = (cancellation: AbortController) => {
     await waitForContainerPermission(directory, { acceptanceRunId: evidence.runId, devCiRunId: runId,
       sourceGitSha: evidence.source.gitSha }, { signal: cancellation.signal, timeoutMs: 900_000 });
     cancellation.signal.throwIfAborted();
+    const prepared = await readJson(join(acceptanceDirectory, 'evidence.json')) as Evidence;
+    const installation = readyInstallation(prepared.installedCli);
+    await validateInstalledCli(installation.receiptPath, acceptanceDirectory);
     await playwright({ target: 'container', phase: 'functional', result: 'running', startedAt: new Date().toISOString(),
       browserCleanup: 'not-started', baseUrl, postgresContainer,
-      projectLabel: { key: 'com.docker.compose.project', value: project }, database: 'daynight' }, directory);
+      projectLabel: { key: 'com.docker.compose.project', value: project }, database: 'daynight' }, directory, installation);
   };
 
   const wait = async (milliseconds: number): Promise<void> => {
@@ -307,6 +329,28 @@ const createRunner = (cancellation: AbortController) => {
     }
   };
 
+  const cleanupInstallation = async (evidence: Evidence, directory: string, persist: () => Promise<void>): Promise<void> => {
+    const installed = evidence.installedCli;
+    if (installed === undefined) return;
+    if (installed.root !== join(directory, 'installed-cli')
+      || (installed.receiptPath === undefined) !== (installed.receipt === undefined)) throw new Error('Installed CLI preparation ownership differs from this run.');
+    for (const stage of evidence.stages) {
+      for (const identity of stage.commands) await requireStopped(validIdentity(identity));
+      for (const group of stage.commandGroups) requireGroupStopped(group);
+    }
+    if (installed.receipt !== undefined && installed.receiptPath !== undefined) {
+      if (installed.receipt.root !== installed.root || installed.receipt.source.gitSha !== evidence.source.gitSha
+        || installed.receipt.source.dirty !== evidence.source.dirty) throw new Error('Installed CLI artifact source differs from its owner.');
+      const present = await optionalJson(installed.receiptPath);
+      if (present !== undefined) await validateInstalledCli(installed.receiptPath, directory);
+      else if (installed.cleanup !== 'passed') throw new Error('Installed CLI artifacts disappeared before confirmed cleanup.');
+      await recoverCliProcesses(directory, installed.receiptPath, installed.receipt);
+    }
+    await rm(installed.root, { recursive: true, force: true });
+    installed.cleanup = 'passed';
+    await persist();
+  };
+
   const recover = async (requestedRunId: string | undefined): Promise<void> => {
     if (requestedRunId !== undefined && !/^\d{14}-[a-f0-9-]{36}$/.test(requestedRunId)) throw new Error('Invalid acceptance recovery run ID.');
     const original = await optionalJson(requestedRunId === undefined ? join(evidenceRoot, 'evidence.json') : join(evidenceRoot, requestedRunId, 'evidence.json'));
@@ -358,6 +402,14 @@ const createRunner = (cancellation: AbortController) => {
         }
         if (target?.playwrightGroup !== undefined) requireGroupStopped(target.playwrightGroup);
         if (target?.browserInventory !== undefined) await recoverBrowsers(targetDirectory, target.browserInventory);
+      }
+      if (evidence.installedCli !== undefined) {
+        await cleanupInstallation(evidence, directory, async () => {
+          await json(join(directory, 'evidence.json'), evidence);
+          const latest = await optionalJson(join(evidenceRoot, 'evidence.json')) as Evidence | undefined;
+          if (latest?.runId === evidence.runId) await json(join(evidenceRoot, 'evidence.json'), evidence);
+        });
+        receipt.installedCli = 'passed';
       }
       if (native.processIdentity !== undefined) {
         const identity = validIdentity(native.processIdentity);
@@ -431,10 +483,16 @@ const createRunner = (cancellation: AbortController) => {
       });
       return evidenceWrites;
     };
-    const stage = async (name: string, operation: (ownedRun: AcceptanceCommand) => Promise<void>): Promise<void> => {
+    const stage = async (name: string, operation: (ownedRun: AcceptanceCommand, register: (child: ChildProcess) => Promise<void>) => Promise<void>): Promise<void> => {
       const current: Stage = { name, result: 'running', startedAt: new Date().toISOString(), commands: [], commandGroups: [] };
       evidence.stages.push(current);
       await save();
+      const register = async (child: ChildProcess): Promise<void> => {
+        current.commandGroups.push(child.pid!);
+        const identity = await processIdentity(child.pid!);
+        if (identity !== null) current.commands.push(identity);
+        await save();
+      };
       const ownedRun: AcceptanceCommand = async (file, args, options = {}) => {
         let identitySaved = Promise.resolve();
         let failure: unknown;
@@ -443,14 +501,8 @@ const createRunner = (cancellation: AbortController) => {
         try {
           output = await run(file, args, { ...options, onSpawn: (child) => {
             group = child.pid!;
-            current.commandGroups.push(group);
-            options.onSpawn?.(child);
-            identitySaved = (async () => {
-              const identity = await processIdentity(child.pid!);
-              if (identity !== null) current.commands.push(identity);
-              await save();
-            })();
-            void identitySaved.catch(() => {});
+            identitySaved = Promise.all([register(child), options.onSpawn?.(child)]).then(() => {});
+            return identitySaved;
           } });
         } catch (error) { failure = error; }
         try { await identitySaved; }
@@ -463,7 +515,7 @@ const createRunner = (cancellation: AbortController) => {
         return output;
       };
       let failure: unknown;
-      try { await operation(ownedRun); }
+      try { await operation(ownedRun, register); }
       catch (error) { failure = error; current.error = error instanceof Error ? error.message : String(error); }
       current.result = failure === undefined ? 'passed' : 'failed';
       current.finishedAt = new Date().toISOString();
@@ -471,6 +523,7 @@ const createRunner = (cancellation: AbortController) => {
       catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error], 'Stage and evidence recording failed.'); }
       if (failure !== undefined) throw failure;
     };
+    const installedEvidence = (): ReadyInstalledEvidence => readyInstallation(evidence.installedCli);
     let child: ChildProcess | undefined;
     let nativeTarget: Target | undefined;
     let devCiRunId: string | undefined;
@@ -494,11 +547,12 @@ const createRunner = (cancellation: AbortController) => {
         }
         return phase.scenarios;
       }), required);
-      const browsers = target.phases.map((phase) => phase.browser as Record<string, unknown>);
+      const browsers = [...evidence.targets.filter((other) => other !== target).flatMap((other) => other.phases), ...target.phases]
+        .map((phase) => phase.browser as Record<string, unknown>);
       const identity = (browser: Record<string, unknown>) => JSON.stringify([
         browser.name, browser.version, browser.platform, browser.executableOverride,
       ]);
-      if (browsers.some((browser) => identity(browser) !== identity(browsers[0]!))) throw new Error('Browser identity changed between target phases.');
+      if (browsers.some((browser) => identity(browser) !== identity(browsers[0]!))) throw new Error('Browser identity changed between acceptance targets or phases.');
       target.result = 'passed';
     };
     await save();
@@ -506,8 +560,17 @@ const createRunner = (cancellation: AbortController) => {
       await runPipeline(cancellation, {
         browser: () => stage('browser-preparation', async (ownedRun) => { if (preparations !== undefined) await preparations.browser(ownedRun); }),
         coverage: () => stage('coverage', async (ownedRun) => { if (preparations !== undefined) await preparations.coverage(ownedRun); }),
-        nativePreparation: () => stage('native-preparation', async (ownedRun) => {
+        nativePreparation: () => stage('native-preparation', async (ownedRun, register) => {
           console.log(`Web acceptance ${runId}: building production assets and native Go executable.`);
+          await ownedRun('pnpm', ['build'], { timeoutMs: 180_000 });
+          evidence.installedCli = { root: join(directory, 'installed-cli'), cleanup: 'pending' };
+          await save();
+          const installed = await prepareInstalledCli({ signal: cancellation.signal, temporaryRoot: directory,
+            rootDirectory: evidence.installedCli.root, onSpawn: register });
+          evidence.installedCli.receiptPath = installed.receiptPath;
+          evidence.installedCli.receipt = installed.receipt;
+          await save();
+          await validateInstalledCli(installed.receiptPath, directory);
           await ownedRun('pnpm', ['web:build'], { timeoutMs: 180_000 });
           await ownedRun('bash', ['-c', 'source scripts/env.sh\ngo build -o "$1" ./cmd/daynight-server', 'acceptance-build', evidence.native.binary],
             { cwd: serverRoot, timeoutMs: 300_000 });
@@ -543,7 +606,7 @@ const createRunner = (cancellation: AbortController) => {
         nativeFunctional: () => stage('native-functional', async () => {
           const phase = nativePhase('functional');
           await save();
-          await playwright(phase, join(directory, 'native/functional'));
+          await playwright(phase, join(directory, 'native/functional'), installedEvidence());
           await save();
         }),
         releaseContainer: () => stage('container-release', async () => {
@@ -599,7 +662,7 @@ const createRunner = (cancellation: AbortController) => {
         capacity: () => stage('native-capacity', async () => {
           const phase = nativePhase('capacity');
           await save();
-          await playwright(phase, join(directory, 'native/capacity'));
+          await playwright(phase, join(directory, 'native/capacity'), installedEvidence());
           evidence.performance = await readJson(join(directory, 'native/capacity/performance.json'));
           validatePerformance(evidence.performance);
           aggregate(native(), [...functionalScenarios, ...capacityScenarios]);
@@ -640,6 +703,10 @@ const createRunner = (cancellation: AbortController) => {
         }
       }
       for (const target of evidence.targets) if (target.result === 'running') target.result = 'failed';
+      if (evidence.installedCli !== undefined) {
+        try { await cleanupInstallation(evidence, directory, save); }
+        catch (error) { evidence.installedCli.cleanup = 'failed'; cleanupFailures.push(error); }
+      }
       const beforeNativeCleanup = cleanupFailures.length;
       try { await stopServer(child); } catch (error) { cleanupFailures.push(error); }
       try { await cleanupNativeStorage(evidence.native, runId); }

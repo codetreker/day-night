@@ -21,7 +21,11 @@ bucket/path file storage, single-file task attachments, same-origin browser
 preview and binary CLI reads. Generic local storage and startup, attachment
 metadata, file/preview HTTP APIs, CLI put/list/read/remove commands, browser file
 management, persistent deployment volumes and paired backup/restore are
-implemented. Combined production acceptance remains tracked in Daynight. The
+implemented. Installed CLI/service and production-browser attachment journeys
+share real service data on native and container targets; their
+[acceptance decision](.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+owns byte, rendering and cleanup proof. Delivery progress remains tracked in
+Daynight, and successful runs remain tied to their tested source and CI. The
 [Web attachment decision](.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)
 owns browser state, rendering and focus integration; the
 [deployment guide](deployment/localhost/README.md#persistence-and-backup) owns data
@@ -1322,7 +1326,8 @@ Multiple affected modules select the union of their jobs.
 
 | Changed paths | PR application jobs |
 |---|---|
-| `packages/daynight/` | Linux, macOS and Windows CLI validation, plus shell completion |
+| `packages/daynight/test/fixtures/installed-cli.ts` | CLI, Go server and Web; all installed-package consumers |
+| Other `packages/daynight/` paths | Linux, macOS and Windows CLI validation, plus shell completion |
 | `packages/daynight-server/` | Go server |
 | `packages/daynight-web/`, runtime files under `deployment/`, the current Dagre and XYFlow patches | Web |
 | Root `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.npmrc` | Every module |
@@ -1352,7 +1357,11 @@ and all preparation/check commands finish before the native capacity phase.
 Both Go-consuming jobs restore module and compiler caches keyed by the server
 `go.sum`, while the server check expires test results before database/race/
 coverage validation. The web pipeline retains the full production build and
-unique image identity check. The
+unique image identity check. One packed/installed CLI is reused by the native
+and container browser attachment journeys. After the web pipeline and recorded
+resource recovery, Ubuntu web CI runs the existing real-container attachment
+persistence and paired-backup check once; its `.tmp/attachment-deployment-*/`
+evidence is archived with the browser/deployment evidence. The
 [acceptance pipeline decision](.agents/notes/implemented/testing/2026-10-21-web-acceptance-pipeline.md)
 owns scheduling and phase evidence; the
 [CI efficiency decision](.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md)
