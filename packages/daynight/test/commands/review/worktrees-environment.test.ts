@@ -6,6 +6,7 @@ import { createGitManager } from "../../../src/commands/review/adapters/worktree
 import { executeCommand } from "../../../src/commands/review/adapters/github.js";
 import type { CommandExecutor } from "../../../src/commands/review/adapters/github.js";
 import { commit, createGitTestFixtures, proof, rawGit } from "../../helpers/git-fixtures.js";
+import type { GitSnapshotEntry } from "../../helpers/git-objects.js";
 
 const fixtures = createGitTestFixtures("git-environment");
 const { fixture } = fixtures;
@@ -21,8 +22,10 @@ describe("initialized owned submodules", () => {
     const f = fixture();
     const moduleSource = path.join(f.directory, "module.git"); mkdirSync(moduleSource); rawGit(moduleSource, ["init", "--bare", "--initial-branch=main"]);
     const moduleHead = commit(moduleSource, "module contents\n"); rawGit(moduleSource, ["update-ref", "refs/heads/main", moduleHead]);
-    const modulesBlob = rawGit(f.upstream, ["hash-object", "-w", "--stdin"], `[submodule "module"]\n\tpath = module\n\turl = ${pathToFileURL(moduleSource).href}\n`);
-    const extra = `100644 blob ${modulesBlob}\t.gitmodules\n160000 commit ${moduleHead}\tmodule\n`;
+    const extra: GitSnapshotEntry[] = [
+      { path: ".gitmodules", mode: "100644", contents: `[submodule "module"]\n\tpath = module\n\turl = ${pathToFileURL(moduleSource).href}\n` },
+      { path: "module", mode: "160000", object: moduleHead },
+    ];
     const main = commit(f.upstream, "main module\n", f.base, extra); rawGit(f.upstream, ["update-ref", "refs/heads/main", main]);
     const head = commit(f.upstream, "PR module\n", main, extra); rawGit(f.upstream, ["update-ref", "refs/pull/101/head", head]); f.update({ headSha: head, baseSha: main });
     const local = await f.manager.ensureRepository(f.configuration);
@@ -71,8 +74,10 @@ describe("Git configuration and revision-transition regressions", () => {
     if (prepared.kind !== "prepared") throw new Error("Expected preparation.");
     const modulePath = path.join(prepared.path, "module"); mkdirSync(modulePath);
     writeFileSync(path.join(modulePath, "stale.txt"), "old untracked contents");
-    const modulesBlob = rawGit(f.upstream, ["hash-object", "-w", "--stdin"], `[submodule "module"]\n\tpath = module\n\turl = ${pathToFileURL(f.upstream).href}\n`);
-    const extra = `100644 blob ${modulesBlob}\t.gitmodules\n160000 commit ${f.base}\tmodule\n`;
+    const extra: GitSnapshotEntry[] = [
+      { path: ".gitmodules", mode: "100644", contents: `[submodule "module"]\n\tpath = module\n\turl = ${pathToFileURL(f.upstream).href}\n` },
+      { path: "module", mode: "160000", object: f.base },
+    ];
     const nextHead = commit(f.upstream, "new gitlink\n", f.head, extra); const next = f.nextRevision(first.id, nextHead);
     expect(await f.manager.prepareWorktree(f.store, local, next.id, proof)).toMatchObject({ kind: "prepared", headSha: nextHead });
     expect(readdirSync(modulePath)).toEqual([]);

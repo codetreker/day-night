@@ -183,7 +183,9 @@ copies its immutable bare-origin seed into private test directories; refs,
 SQLite databases, clones and worktrees remain separate for every case. Sparse
 suites prepare their shared source graph before copying, and version-gate tests
 reuse only immutable default-base objects; scenario observations and mutations
-remain private. Tests within a file stay sequential so environment changes and cleanup have one owner.
+remain private. Source snapshots are prepared through batched native Git imports,
+while real clone/fetch/worktree operations remain the test subjects. Tests within
+a file stay sequential so environment changes and cleanup have one owner.
 The [Git test decision](.agents/notes/implemented/testing/2026-10-18-parallel-git-validation.md)
 records the isolation rules, and the
 [CI timing report](docs/research/windows-ci-performance.md) records native
