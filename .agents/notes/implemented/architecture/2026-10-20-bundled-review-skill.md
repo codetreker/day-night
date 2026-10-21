@@ -56,13 +56,17 @@ Uncertain exclusion preserves the recorded process and lock and prevents the
 next child. Separate discovery logs retain its failure evidence without entering
 the review's completion-marker parser.
 
-The skill owns methodology: introduced causality, callers and contracts,
-consequential defects, bounded verification and actionable English inline
-findings. Dynamic targets, publication eligibility, stable identity, retry
-reconciliation, foreground tools and completion remain in the attempt prompt.
-Configuration, data formats, session UUIDs and the existing agent-owned publisher
-are unchanged. The [skill design](../../../../docs/design/daynight-review-skill.md)
-owns the mechanism and validation boundaries. This extends the
+The skill owns methodology: description and original-scope quality gates,
+introduced causality, callers and contracts, consequential defects, bounded
+verification and actionable English findings. The
+[PR-quality decision](../process/2026-10-21-review-pr-quality-gates.md) partially
+supersedes its original Critical/Major-only approval scope while retaining the
+packaging and loading decision here. Dynamic targets, current PR metadata reads,
+publication eligibility, stable identity, retry reconciliation, foreground tools
+and completion remain in the attempt prompt. Configuration, data formats,
+session UUIDs and the existing agent-owned publisher are unchanged. The
+[skill design](../../../../docs/design/daynight-review-skill.md) owns the mechanism
+and validation boundaries. This extends the
 [Copilot execution decision](2026-10-17-copilot-session-execution.md) and
 [client command composition](2026-10-20-client-command-composition.md).
 

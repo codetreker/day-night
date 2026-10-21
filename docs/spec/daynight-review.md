@@ -106,8 +106,8 @@ daemon 会跟踪 Draft PR，使其转为 ready 后能够获得审查资格。PR 
 - PR 从 Draft 转为 ready for review。
 - PR 修改目标分支。
 
-仅目标分支新增提交不触发审查。PR 处于 Draft 时发生的变化，必须等到 PR 转为 ready
-后才能触发审查。
+仅目标分支新增提交或仅 PR 标题、description 变化不触发审查。PR 处于 Draft 时
+发生的变化，必须等到 PR 转为 ready 后才能触发审查。
 
 ### R7. 单个 PR 的执行顺序
 
@@ -133,14 +133,27 @@ PR 合并或未合并就被关闭时，daemon 清理其 worktree。deprecated PR
 
 ### R10. 审查判断与结果发布
 
-agent 负责审查，并直接将结果发布到 GitHub：
+agent 负责审查，并直接将结果发布到 GitHub。批准必须同时满足以下条件：
 
-- 发现 Critical 或 Major 问题时，在相关代码行发布 inline review comments，不提交
-  `REQUEST_CHANGES`。
-- 没有发现 Critical 或 Major 问题时，approve 该 PR。
+- PR description 清楚说明要解决的一个具体问题、预期结果和修改范围。PR 只能有一个
+  交付目标，不能把独立目标打包为超级 PR；同一宽泛主题不能取代明确的问题。范围应当
+  支持有效审查，按独立目标及其依赖关系拆分，不以固定行数或文件数判断。
+- 完整 diff 中的每项修改都属于原定范围。agent 读取当前标题、description 及其链接的
+  相关需求来确定边界，并检查所有捕获的差异。实现同一结果所必需的结构调整、测试和
+  文档同步属于范围；独立能力、无关修复和顺手清理必须移出。事后扩大 description
+  不能单独证明无关修改属于原定范围。
+- 没有需要处理的 Critical 或 Major 代码问题。
 
-daemon 不代替 agent 发布审查结果，也不通过解析 JSONL 或结构化 findings 来决定
-发布内容。
+前两项是独立于代码缺陷严重程度的 PR 质量门槛。任一门槛不满足时，agent 必须拒绝
+批准，即使没有发现 Critical 或 Major 代码问题。agent 用 `COMMENT` review 发布
+阻断理由，不提交 `REQUEST_CHANGES`；description 或无适合代码行的问题写入 review
+正文，越界修改和 Critical/Major 代码问题在适合的相关 diff 行发布 inline comments。
+仅当三项条件全部满足时，agent 才能提交 `APPROVE`。
+
+发布或确认既有发布前，agent 重新读取当前 PR 标题和 description，结合相关需求
+重新判断质量门槛；同时按固定审查目标重新确认发布资格。daemon 不代替
+agent 判断门槛或发布审查结果，也不通过解析 JSONL 或结构化 findings 来决定发布
+内容。
 
 ### R11. 文本完成协议
 
@@ -158,10 +171,10 @@ PR <number> Review Completed
 ### R12. 确认与重试
 
 agent 结束时如果缺少所需的完成标记，daemon 恢复同一个会话，请求确认或重试。
-agent 首先判断上次尝试是否已经发布了所需结果。如果已经发布完成，就输出标记确认
-完成；否则完成剩余工作。重试发布前，agent 核对先前在 GitHub 上产生的效果，避免
-明知同一审查结果已经发布却再次发布。完成标记表示 agent 声明所需操作已成功；GitHub
-发布与 SQLite 状态变更并非同一个原子操作。
+agent 重新执行 R10 的质量判断，再核对上次尝试已在 GitHub 发布的结果。只有既有
+发布符合当前门槛判断和本次捕获的审查目标，才能输出标记确认完成；否则完成所需的
+剩余发布操作。核对必须避免明知相同且仍然适用的结果已经发布却再次发布。完成标记
+表示 agent 声明所需操作已成功；GitHub 发布与 SQLite 状态变更并非同一个原子操作。
 
 ### R13. 持久化状态与重启
 
@@ -285,11 +298,17 @@ skill 的方法不能取代本次审查目标、发布资格、远端结果对�
 | 首次审查、同会话重试或更新后的 daemon 恢复已有会话。 | 每次确认已启用的 `daynight-review` 对应本次固定内容，并显式要求加载当前版本；PR 会话 UUID 保持一致。 | R8, R16 |
 | skill 缺失、禁用、被同名项目 skill 覆盖，或发现响应无效。 | 资源问题阻止启动；尝试中的发现问题阻止正式审查并按原预算重试，错误及日志可见。 | R12, R16 |
 | skill 发现与正式审查之间取消、超时，或发现进程无法确认排除。 | 不启动正式审查；不确定执行保留进程证据和实例锁，不允许资源复用或清理。 | R7, R13, R16 |
-| 审查发现 Critical 或 Major 问题。 | agent 发布 inline comments，不提交 `REQUEST_CHANGES`。 | R10 |
-| 审查没有发现 Critical 或 Major 问题。 | agent approve 该 PR。 | R10 |
+| description 未说明具体问题、预期结果或范围，或 PR 包含独立目标或无法有效审查的组合范围。 | 即使没有 Critical/Major 代码问题，agent 也以 `COMMENT` review 正文说明阻断理由，不批准、不提交 `REQUEST_CHANGES`。 | R10 |
+| 完整捕获 diff 包含原定范围之外的独立能力、无关修复或清理。 | agent 拒绝批准，在适合的 diff 行评论越界修改；单独扩大 description 不能使其通过。 | R10 |
+| 跨模块的实现、必要结构调整、测试与文档共同服务于同一个明确结果。 | agent 依据必要联系判断范围，不因文件数、行数或跨层修改本身拒绝。 | R10 |
+| 审查发现 Critical 或 Major 代码问题。 | agent 以 `COMMENT` review 发布相关 inline comments，不批准、不提交 `REQUEST_CHANGES`。 | R10 |
+| description 和范围两项质量门槛均通过，且没有 Critical 或 Major 代码问题。 | agent approve 该 PR。 | R10 |
+| 审查后、发布前 PR 的 description 改变，head 和目标分支未变。 | agent 重新读取并评估 description 和相关需求，再依据当前门槛结果发布。 | R10 |
+| 已完成审查的 PR 仅修改标题或 description。 | 单独的元数据修改不触发新审查。 | R6 |
 | 发布成功，且输出的最后一个非空行是 `PR 101 Review Completed`。 | daemon 识别出 PR 101 的该次尝试已经完成。 | R11, R14 |
 | agent 退出时缺少严格匹配的最终标记。 | daemon 不记录协议完成状态，并恢复同一个会话进行确认或重试。 | R11, R12 |
-| 进程结束时缺少标记，但发布可能已经成功。 | 恢复的 agent 在重试前核对先前在 GitHub 上产生的效果，避免明知结果已经发布却重复发布。 | R12 |
+| 进程结束时缺少标记，但发布可能已经成功。 | 恢复的 agent 重新评估当前质量门槛；只有先前发布仍符合当前结果和捕获目标才确认完成，并避免重复发布仍适用的结果。 | R10, R12 |
+| 重试时既有 approval 对应的 description 已变得不清楚或掩盖越界修改。 | agent 不能仅凭既有 approval 输出完成标记，必须按当前门槛完成所需发布。 | R10, R12 |
 | 已审查的 PR 被合并，或未合并就被关闭。 | daemon 清理该 PR 的 worktree。 | R9 |
 | daemon 重启时存在待处理或被中断的审查工作。 | 保存的边界、PR 版本、会话、worktree 和执行状态支持恢复，且不会错误地宣告完成。 | R13, R14 |
 | 已有实例锁记录的 CLI 仍存活，或其状态无法确认。 | 保留实例锁并明确拒绝启动，不接管既有运行。 | R13 |
