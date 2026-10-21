@@ -46,7 +46,12 @@ tasks. A completed root with unfinished descendants remains visible. The native
 Show completed chains checkbox reports the completed-chain count and remembers
 its per-project choice; the heading shows visible/total chains. Project counters
 and every displayed graph retain the complete snapshot. Filtering rows makes no
-API request. The complete graph index and API ordering stay unchanged. Rows expand one
+API request. The complete graph index and API ordering stay unchanged. Collapsed root buttons
+use a 62px minimum height and 7px row gaps; a single-line row is about 64px with
+its border. Long titles grow naturally. Desktop titles stay 13px and narrow-screen
+titles 12px, with readable metadata/status sizes of 11px/10px. Reduced padding
+and progress spacing provide density while retaining the full native row button.
+Rows expand one
 horizontal graph at a time, including shared tasks and direct external prerequisites.
 Per-project browser
 preferences retain the expanded root or an explicitly collapsed list across reloads
@@ -163,7 +168,9 @@ origin. The fixture mounts the production project page and CSS with mixed,
 fully completed and empty project graphs. It demonstrates the exact
 newest-first root order, shared dependencies, current task details and per-project
 expanded/collapsed and completed-chain visibility preferences across reloads.
-It distinguishes hidden all-complete chains from a truly empty project and
+It uses the final compact row CSS directly, including naturally growing long
+titles and complete status/progress fields. It distinguishes hidden all-complete
+chains from a truly empty project and
 preserves focus when the reveal action disappears. The scenario stays in the URL hash.
 Graph, detail and empty attachment-list reads are served in memory; unexpected
 requests fail instead of reaching a service. This development entry is excluded
