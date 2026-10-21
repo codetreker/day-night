@@ -14,10 +14,16 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 [交付任务](../design/daynight-project-task-tasks.md)，决策见
 [方案决策](../../.agents/notes/implemented/architecture/2026-10-20-project-task-cli-design.md)。
 
+已采用、尚待实现的[附件需求](daynight-task-attachments.md)增加
+`task attachment` 文件命令及原始字节读取；其
+[架构](../design/daynight-task-attachments.md)和
+[任务拆分](../design/daynight-task-attachments-tasks.md)拥有扩展机制与实施状态。
+本文的既有命令、服务配置和 project 选择继续作为该扩展的基础。
+
 ## PT1. 范围与命令边界
 
 交付包含 project 创建、列表和详情，以及 project 内 task 的创建、列表、详情、更新
-和完整图查询。CLI 复用现有服务接口，不新增 server API、数据库字段、project 唯一
+和完整图查询。本文已交付的命令复用现有服务接口，不新增 server API、数据库字段、project 唯一
 约束、认证方式或任务执行能力。允许配置地址不改变服务现有的本机访问边界。
 
 顶层、命令组和操作帮助必须先于配置加载、Git、文件写入和网络访问执行。裸

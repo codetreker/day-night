@@ -14,6 +14,14 @@ the corresponding PR and CI evidence.
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
+The adopted [task attachment requirements](docs/spec/daynight-task-attachments.md),
+[architecture](docs/design/daynight-task-attachments.md) and
+[task breakdown](docs/design/daynight-task-attachments-tasks.md) define a planned
+extension: reusable bucket/path file storage, single-file task attachments,
+same-origin browser preview and binary CLI reads. Runtime implementation is
+pending. Filesystem/PostgreSQL non-atomicity is recorded as a known issue;
+consistency remediation is outside that implementation scope.
+
 The `@codetreker/daynight` package provides the `daynight` client. Its root entry
 lists commands and reports the package version; each command owns its business
 dependencies and lifecycle. `review` polls configured repositories, maintains
