@@ -108,8 +108,9 @@ addressed and immutable so that later collection does not require redesigning
 launch semantics. No configurable skill catalog or generic plugin framework is
 provided. The adopted [public task skill design](2026-10-21-public-agent-skill-design.md)
 assigns the separate public bundle and installation contract to a new skill
-command; that implementation remains planned. Review retains this runtime
-loading and snapshot contract.
+command. The public bundle is included by the shared build copier; its
+interactive installer remains planned. Review retains this runtime loading and
+snapshot contract.
 
 Native discovery against Copilot CLI 1.0.98 verifies the minimal plugin wrapper
 through a comma-containing path after plain, backslash-escaped, quoted,

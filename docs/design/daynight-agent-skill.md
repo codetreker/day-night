@@ -1,6 +1,7 @@
 # Daynight 项目任务 skill 与交互安装设计
 
-状态：设计文档已审查，任务完成以交付验收及 PR 合并为准；产品 skill 和 `daynight skill install` 尚未实现。
+状态：公开 skill bundle 及命令参考已实现并纳入 npm 构建；交互安装器与原生 Agent
+集成验收待交付。任务完成以交付验收及对应 PR 合并为准。
 
 [需求](../spec/daynight-agent-skill.md)拥有安装、覆盖和任务管理的可观察行为，
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-public-agent-skill-design.md)
@@ -22,7 +23,7 @@
 | 轻量命令登记 | [命令表](../../packages/daynight/src/cli/commands.ts)按命令延迟加载运行时；新增 `skill` 定义和 loader |
 | 交互输入 | [CliPrompt](../../packages/daynight/src/cli/prompts.ts)已有 `ask(question, signal)`、`isInteractive`、`close()`；补充类型化选择能力 |
 | 中断生命周期 | [setup](../../packages/daynight/src/config/setup.ts)管理终端信号和 prompt 关闭；提取共享交互执行器 |
-| 资源打包 | [copy-skills.ts](../../packages/daynight/scripts/copy-skills.ts)将内部 skill 复制到 `dist`；扩展为两个明确的 bundle 条目 |
+| 资源打包 | [copy-skills.ts](../../packages/daynight/scripts/copy-skills.ts)按明确清单将内部 review 与公开 daynight 两个完整 bundle 复制到 `dist`，重复构建目标明确失败 |
 | 路径解析 | [filesystem.ts](../../packages/daynight/src/platform/filesystem.ts)的 `resolvePhysicalDirectory` 能解析已有祖先和未创建部分；用于安装目标去重 |
 | 仓库定位 | [git.ts](../../packages/daynight/src/repository/git.ts)的 `discoverRepository`还读取 origin；提取只查当前 worktree 根目录的操作 |
 | 已安装 CLI 验收 | [installed-cli.ts](../../packages/daynight/test/fixtures/installed-cli.ts)提供真实打包、安装与 launcher fixture |
@@ -182,6 +183,13 @@ bundle，记录候选路径和重复情况。
 使用 `/reload-skills`。不同 Agent 的重新发现方式按其官方文档和验收版本维护。
 
 ## Skill 的工作协议
+
+公开正文位于
+[SKILL.md](../../packages/daynight/src/commands/skill/skills/daynight/SKILL.md)，
+详细语法与错误处理位于
+[命令参考](../../packages/daynight/src/commands/skill/skills/daynight/references/commands.md)。
+构建复制整个目录，npm 消费者无需源码 checkout 即可获得这些相对资源。
+
 
 ### 触发与上下文
 

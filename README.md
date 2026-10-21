@@ -10,7 +10,7 @@ the corresponding PR and CI evidence.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
+| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -50,9 +50,14 @@ The adopted [public Agent skill design](docs/design/daynight-agent-skill.md)
 defines an npm-bundled `daynight` skill and interactive installation for Codex,
 Copilot CLI and Claude Code. Its [requirements](docs/spec/daynight-agent-skill.md)
 cover active task management in associated projects, agent and scope selection,
-and complete replacement on reinstall. The product skill and installer are not
-implemented. The design links the dependent implementation tasks tracked in the
-real Daynight project; their live status belongs to Daynight.
+and complete replacement on reinstall. The public skill and its command reference
+are included in the npm package build under
+`dist/commands/skill/skills/daynight/`; the interactive installer remains planned.
+The skill guides task recovery, dependency and observed-version updates, and
+completion only after required PRs are confirmed merged and acceptance passes.
+The design links implementation tasks tracked in the real Daynight project;
+their live status belongs to Daynight. Native Agent loading and automatic
+activation remain separate acceptance work.
 
 The server design covers repository-linked projects, project-scoped tasks,
 acyclic dependencies and dependency-gated task states through HTTP JSON APIs.
@@ -95,9 +100,11 @@ pnpm daynight --version
 `pnpm acceptance` build the package before exercising the compiled CLI. Native CI
 typechecks and builds once, then invokes both Vitest configurations against that
 same compiled output. `pnpm build` clears the package's `dist/` before emitting
-`packages/daynight/dist/main.js` and copying the complete built-in review skill
-bundle into `dist/commands/review/skills/`; the package's `daynight` bin points to
-the stable JavaScript entry.
+`packages/daynight/dist/main.js` and copying the explicit review and public skill
+bundles into `dist/commands/review/skills/daynight-review/` and
+`dist/commands/skill/skills/daynight/`. Complete relative resources are included;
+repository workflow skills are not scanned for publication. The package's
+`daynight` bin points to the stable JavaScript entry.
 Source tests mirror `cli/`, `config/`, `api/`, `commands/` and `platform/`
 ownership, with build and version-policy tests in `test/tooling/`.
 The pnpm dependency store is local to `.tmp/pnpm-store`. `pnpm acceptance`
