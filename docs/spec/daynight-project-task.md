@@ -22,7 +22,7 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 及原始字节读取已实现，复用本文的服务配置和 project 选择。
 [架构](../design/daynight-task-attachments.md)拥有文件与流传输机制，
 [任务拆分](../design/daynight-task-attachments-tasks.md)记录扩展范围和 Daynight 任务入口；
-Web 管理界面仍待交付。
+Web 附件管理亦已实现，组合验收由 A-T6 维护。
 
 ## PT1. 范围与命令边界
 

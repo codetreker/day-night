@@ -79,7 +79,11 @@ calls the latest restoration callback after sibling DOM deletion. It focuses the
 surviving original node, otherwise the current expanded-root button, otherwise
 the project H1. This ordering avoids selecting a still-connected node that the
 same commit will remove; the [focus-restoration decision](../bug-fix/2026-10-20-drawer-focus-restoration.md)
-records the failure and integration evidence. Latest detail data never patches graph statistics.
+records the failure and integration evidence. The
+[Web attachment decision](2026-10-21-task-attachment-web.md) extends this lifecycle
+with `tabbable` enumeration for form controls and same-origin frame keyboard
+bridges; background ownership and passive restoration remain unchanged.
+Latest detail data never patches graph statistics.
 Readiness, blocking, dependency, status, preview and timestamp differences produce
 a refresh notice; a new graph revision rereads the selected detail.
 

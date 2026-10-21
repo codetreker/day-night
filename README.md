@@ -1,10 +1,10 @@
 # Day Night
 
 Day Night contains a client command toolkit and an independent Go service runtime
-for project and task management. Its read-only browser workspace provides project
-statistics, task dependency graphs and details from the same Go service origin.
-The read-only dashboard is delivered, including production-browser acceptance,
-embedded deployment and the subsequent focus-restoration repair. The
+for project and task management. Its browser workspace provides project
+statistics, task dependency graphs, task details and file attachments from the
+same Go service origin. The read-only graph dashboard is delivered, including
+production-browser acceptance, embedded deployment and the subsequent focus-restoration repair. The
 [dashboard tasks](docs/design/daynight-web-tasks.md) record completion and link
 the corresponding PR and CI evidence.
 
@@ -12,16 +12,18 @@ the corresponding PR and CI evidence.
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle and interactive Agent installation, shared configuration, server HTTP and repository binding foundations plus project, task and single-file attachment commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
-| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
+| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs and task details, attachment management/preview, embedded delivery, graph production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The adopted [task attachment requirements](docs/spec/daynight-task-attachments.md),
 [architecture](docs/design/daynight-task-attachments.md) and
 [task breakdown](docs/design/daynight-task-attachments-tasks.md) define reusable
 bucket/path file storage, single-file task attachments, same-origin browser
 preview and binary CLI reads. Generic local storage and startup, attachment
-metadata, file/preview HTTP APIs, CLI put/list/read/remove commands, persistent
-deployment volumes and paired backup/restore are implemented. Browser management
-remains pending. The
+metadata, file/preview HTTP APIs, CLI put/list/read/remove commands, browser file
+management, persistent deployment volumes and paired backup/restore are
+implemented. Combined production acceptance remains tracked in Daynight. The
+[Web attachment decision](.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)
+owns browser state, rendering and focus integration; the
 [deployment guide](deployment/localhost/README.md#persistence-and-backup) owns data
 retention and backup commands. Filesystem/PostgreSQL non-atomicity remains a known
 issue; consistency remediation is outside that scope.
@@ -99,10 +101,12 @@ CLI commands below apply to the client; server commands have their own module.
 The dashboard architecture presents source-root dependency graphs and project
 statistics from the server. The project list is implemented in the private web
 workspace, including task visualization and details. Its [design decision](.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)
-defines the read-only MVP. The Go binary embeds the production UI and serves it
-alongside JSON APIs. The standalone HTML preview uses fixture data and remains
-separate from the application. `deployment/localhost/` starts the complete
-application; the isolated [dev-ci stack](deployment/dev-ci/README.md) uses the
+defines the original read-only MVP. Attachment upload, overwrite and deletion
+extend the task drawer without changing task fields or the graph snapshot. The
+Go binary embeds the production UI and serves it alongside the APIs. The original
+standalone dashboard preview uses fixture data; the attachment development mockup
+uses the actual attachment components and styles with a frontend-only fixture.
+`deployment/localhost/` starts the complete application; the isolated [dev-ci stack](deployment/dev-ci/README.md) uses the
 same production build and gateway with disposable test data.
 
 ## CLI development
@@ -314,7 +318,7 @@ binary identity, scenario results and resource cleanup.
 
 The private [web workspace](packages/daynight-web/README.md) implements the project
 list, cursor paging, safe API decoding, cancellation, project statistics, task
-graphs and detail drawers. With the
+graphs, detail drawers and single-file attachment management. With the
 Go API running on loopback, use:
 
 ```text
@@ -323,6 +327,14 @@ pnpm web:typecheck
 pnpm web:build
 pnpm web:test
 ```
+
+For the frontend-only attachment mockup, run `pnpm web:dev` and open
+`/tests/mockups/attachments.html` on the origin printed by Vite. It uses the real
+attachment UI with in-memory metadata and local fixture files; it needs no Go
+service or PostgreSQL. Scenario selection covers files, an empty task and upload
+failure. Production builds keep the single application index and exclude these
+fixture entry points. The [web README](packages/daynight-web/README.md#task-attachments)
+explains previews and the mockup's evidence limits.
 
 The frontend build emits `packages/daynight-web/dist/`, validates its HTML and
 assets, and publishes a complete replacement into the Go embed directory. A
@@ -351,6 +363,9 @@ requires Go 1.27.2, Docker, Node 24, pnpm 10.34.5 and Playwright Chromium. The
 browser setup, required gates and receipt interpretation. The
 [dashboard task record](docs/design/daynight-web-tasks.md#w-t6) identifies the
 source-bound production/performance results and remaining delivery requirements.
+That existing inventory covers the graph dashboard baseline. A-T6 in the
+[attachment breakdown](docs/design/daynight-task-attachments-tasks.md#a-t6) owns
+new real-backend attachment browser journeys and combined acceptance.
 
 ## Package versions
 

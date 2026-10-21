@@ -69,3 +69,16 @@ export type GraphLimitDetails = {
   readonly maxNodes: number;
   readonly maxEdges: number;
 };
+
+export type Attachment = {
+  readonly path: string;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+export type AttachmentPage = {
+  readonly items: readonly Attachment[];
+  readonly nextCursor: string | null;
+};

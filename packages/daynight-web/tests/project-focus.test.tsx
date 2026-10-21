@@ -7,6 +7,7 @@ import { projectRoot, type GraphIndex } from '../src/features/task-graph/model';
 
 vi.mock('../src/api/client', async (original) => ({
   ...await original<typeof import('../src/api/client')>(), getTask: vi.fn(), getTaskGraph: vi.fn(),
+  listAttachments: vi.fn(async () => ({ items: [], nextCursor: null })),
 }));
 vi.mock('../src/features/task-graph/TaskGraph', () => ({
   TaskGraph: ({ index, rootId, onSelectTask }: {

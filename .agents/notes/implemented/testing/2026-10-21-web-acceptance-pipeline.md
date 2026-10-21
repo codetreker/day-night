@@ -64,7 +64,13 @@ and require matching browser identity within a target.
 The top-level evidence and recovery receipts use schema 2. Pipeline stages record
 names, results, timestamps, observed managed-command process identities and their
 spawned process groups. Short-lived commands retain their observed group without a
-fabricated process identity. Target aggregates contain `phases` and `scenarios`;
+fabricated process identity. Identity lookup treats both ENOENT and ESRCH as an
+absent process: Linux can return ESRCH when a descriptor opened before process
+exit is subsequently read, as described by the
+[pinned proc documentation](https://github.com/torvalds/linux/blob/a804c5742bff224d4cb4d25dd383554d598be32b/Documentation/filesystems/proc.rst#L121-L127).
+Other filesystem errors remain failures. A regression interposes the actual
+open/exit/read sequence rather than relying on scheduling luck; permission
+failures retain their original error object. Target aggregates contain `phases` and `scenarios`;
 each browser phase records its functional/capacity kind, timestamps, actual
 Playwright process/group, browser identity and `browserCleanup`. Raw phase data
 lives under `native/functional`, `container` and `native/capacity`; capacity

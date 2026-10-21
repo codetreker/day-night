@@ -14,7 +14,7 @@ export const processIdentity = async (pid: number): Promise<ProcessIdentity | nu
     if (startTicks === undefined || !/^\d+$/.test(startTicks) || !Number.isSafeInteger(group) || group <= 0) throw new Error('Invalid Linux process start identity.');
     return { pid, executable, startTicks, group };
   } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null;
+    if (error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'ESRCH')) return null;
     throw error;
   }
 };

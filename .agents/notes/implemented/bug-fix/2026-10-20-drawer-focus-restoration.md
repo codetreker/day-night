@@ -67,4 +67,7 @@ Earlier dashboard acceptance receipts
 retain their original source identities. The
 [dashboard decision](../feature/2026-10-20-project-task-dashboard.md) owns the
 broader portal and detail lifecycle, and the [design](../../../../docs/design/daynight-web.md)
-owns the current mechanism.
+owns the current mechanism. The later
+[Web attachment decision](../feature/2026-10-21-task-attachment-web.md) adds complete
+tabbable enumeration and same-origin frame keyboard bridges while preserving
+this passive teardown ordering and restoration policy.

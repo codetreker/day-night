@@ -47,8 +47,11 @@ existing Node 24 support range is preserved.
 
 The [architecture](../../../../docs/design/daynight-web.md) owns integration and
 the [task document](../../../../docs/design/daynight-web-tasks.md) owns delivery
-status. The frontend remains read-only; production embedding and dev-ci deployment
-are later tasks.
+status. The browsing foundation was delivered as a read-only consumer.
+Production embedding and dev-ci deployment are implemented through the
+[deployment decision](2026-10-20-embedded-dashboard-deployment.md). The later
+[Web attachment decision](../feature/2026-10-21-task-attachment-web.md) adds
+independent file mutations without changing project paging or graph snapshots.
 
 ## Alternatives
 
@@ -72,6 +75,8 @@ runtime classification, relative file identities and exact counts, so release
 validation can detect omissions independently of the displayed percentage.
 
 The source manifest check adds a bounded native compiler invocation. Dependency
-upgrades must preserve its emitted-code and provider-format tests. Project detail,
-task graph rendering and single-service deployment remain tracked work rather
-than placeholder behaviors in the current application.
+upgrades must preserve its emitted-code and provider-format tests. The later
+[dashboard implementation](../feature/2026-10-20-project-task-dashboard.md) and
+[embedded deployment](2026-10-20-embedded-dashboard-deployment.md) own delivered
+project details, graph rendering and single-service deployment. Attachment UI
+extends that application through its own scoped state and decision record.
