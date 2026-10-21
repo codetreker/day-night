@@ -134,7 +134,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
     const explicit = ["--project", id];
     const listed = await invoke(["project", "list", "--json"], outside, 0, true);
     expect(JSON.parse(listed.stdout)).toEqual(projects);
-    await invoke(["project", "create", "--name", "Native 名称", "--repo", project().repoUrl], outside, 0, true);
+    await invoke(["project", "create", "Native 名称", "--repo", project().repoUrl], outside, 0, true);
     expect(JSON.parse((await invoke(["project", "show", id, "--json"], outside, 0, true)).stdout)).toEqual(project());
     expect(parseApiJson((await invoke(["task", "show", taskId, "--json", ...explicit], outside, 0, true)).stdout)).toEqual({ ...task(), version: 9_007_199_254_740_993n });
     await invoke(["task", "create", "--title", "Native task", ...explicit], outside, 0, true);

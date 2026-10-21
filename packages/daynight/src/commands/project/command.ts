@@ -21,7 +21,7 @@ export const runProjectCommand = async (
     context.stdout(renderCommandHelp(command.command, command.path));
     return;
   }
-  const name = command.options.get("--name") as string | undefined;
+  const name = command.command.name === "create" ? command.values[0]! : undefined;
   if (name !== undefined && !isNonemptyText(name)) {
     throw new UsageError("Project name must be nonempty UTF-8 text without NUL characters.", "daynight project create --help");
   }

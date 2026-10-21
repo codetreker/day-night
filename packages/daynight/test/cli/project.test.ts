@@ -63,7 +63,7 @@ describe("compiled project commands", () => {
         expect(result.stdout).toContain("Usage: daynight project");
         expect(result.stderr).toBe("");
       }
-      for (const args of [["create", "--name", "Example"], ["create", "--name", "\u0085", "--repo", "git@git.example:Org/Repo"], ["list", "--unknown"]]) {
+      for (const args of [["create", "Example"], ["create", "--name", "Example", "--repo", "remote"], ["create", "Name", "extra", "--repo", "remote"], ["create", "--repo", "remote"], ["create", "--repo", "remote", "-leading"], ["create", "\u0085", "--repo", "git@git.example:Org/Repo"], ["list", "--unknown"]]) {
         const result = await f.invoke(["project", ...args], blocked);
         expect(result.code, result.stderr).toBe(2);
         expect(result.stdout).toBe("");
@@ -125,11 +125,17 @@ describe("compiled project commands", () => {
 
       const name = "名字\n\u001b[31m";
       const remote = "ssh://git@Git.Example/Org/Repo.git";
-      const created = await f.invoke(["project", "create", "--name", name, "--repo", remote], blocked);
+      const created = await f.invoke(["project", "create", name, "--repo", remote], blocked);
       expect(created.code, created.stderr).toBe(0);
       expect(created.stdout).toContain("Project created.");
       expect(created.stdout).toContain("名字\\n\\u001b[31m");
       expect(requests.filter(({ method }) => method === "POST")).toEqual([{ method: "POST", pathname: "/api/v1/projects", cursor: null, body: { name, repoUrl: remote } }]);
+
+      for (const name of [" Name 中文 ", "\ufeff", "-leading"]) {
+        const created = await f.invoke(["project", "create", "--repo", remote, "--", name], blocked);
+        expect(created.code, created.stderr).toBe(0);
+        expect(requests.at(-1)!.body).toEqual({ name, repoUrl: remote });
+      }
 
       failSecondPage = true;
       const failed = await f.invoke(["project", "list", "--json"], blocked);

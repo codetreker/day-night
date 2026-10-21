@@ -68,6 +68,14 @@ describe("native zsh completion", () => {
     expect(script).not.toContain("_files");
   });
 
+  it("enables native option termination only for a declaring command", () => {
+    const script = renderZshCompletion({ name: "tool", description: "", allowOptionsTerminator: true, arguments: [{ name: "name", description: "Name" }] });
+    expect(script).toContain('_arguments -C -S "${specifications[@]}"');
+    expect(script).toContain('if [[ "$word" == -- ]]; then');
+    expect(script).toContain('if (( options_terminated )); then');
+    expect(renderZshCompletion({ name: "tool", description: "" })).not.toContain("_arguments -C -S");
+  });
+
   it("uses native inline choices and repeatable specifications without self-exclusion", () => {
     const script = renderZshCompletion({ name: "tool", description: "", options: [
       { names: ["--status"], description: "Status", value: { name: "status", kind: "text", choices: ["todo", "done"] } },

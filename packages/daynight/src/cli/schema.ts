@@ -22,6 +22,7 @@ export type CommandDefinition = {
   commands?: readonly CommandDefinition[];
   options?: readonly CommandOption[];
   arguments?: readonly CommandArgument[];
+  allowOptionsTerminator?: boolean;
   details?: string;
 };
 
@@ -74,9 +75,14 @@ export const parseCommand = (
   if (action !== undefined) return { kind: action, command: definition, path };
   const values: string[] = [];
   const options = new Map<string, string | string[] | true>();
+  let optionsTerminated = false;
   for (let index = 0; index < args.length; index++) {
     const argument = args[index]!;
-    if (argument.startsWith("-")) {
+    if (!optionsTerminated && argument === "--" && definition.allowOptionsTerminator === true) {
+      optionsTerminated = true;
+      continue;
+    }
+    if (!optionsTerminated && argument.startsWith("-")) {
       const separator = argument.indexOf("=");
       const inline = separator !== -1;
       const optionName = inline ? argument.slice(0, separator) : argument;
@@ -106,7 +112,7 @@ export const parseCommand = (
     }
     const positional = definition.arguments?.[values.length];
     if (positional === undefined) throw new UsageError(`Unexpected ${definition.name} argument ${JSON.stringify(argument)}.`, helpCommand);
-    if (argument.trim() === "") throw new UsageError(`${definition.name} requires a ${positional.name} value.`, helpCommand);
+    if (argument === "") throw new UsageError(`${definition.name} requires a ${positional.name} value.`, helpCommand);
     if (positional.choices !== undefined && !positional.choices.includes(argument)) {
       throw new UsageError(`Unknown ${positional.name} ${JSON.stringify(argument)}. Expected ${positional.choices.join(" or ")}.`, helpCommand);
     }

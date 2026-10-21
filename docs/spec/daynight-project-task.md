@@ -112,14 +112,17 @@ projectId: 8cb7af59-133e-4dc4-a9e6-c8a4b2429762
 ## PT6. Project 命令
 
 ```bash
-daynight project create --name "Day Night" --repo https://github.com/codetreker/day-night.git
+daynight project create "Day Night" --repo https://github.com/codetreker/day-night.git
 daynight project list
 daynight project list --json
 daynight project show <project-id>
 daynight project show <project-id> --json
 ```
 
-创建必须显式提供名称和 repo 地址，将原始名称和 repo 地址提交给服务。名称必须为
+创建必须提供一个位置参数 `<name>` 和必填 `--repo`，将原始名称和 repo 地址提交给服务。
+含空格的名称须作为同一个 shell 参数传入；前导 `-` 的名称使用
+`daynight project create --repo <repo> -- -name`，`--` 后的词均为位置参数。
+`--name` 不再是有效选项，名称缺失或多余位置参数均为参数错误。名称必须为
 不含 NUL 的合法 Unicode 文本，且不能全部由 Unicode `White_Space` 组成；保留原始
 字符及空白，不以 JavaScript `trim()` 改写。U+FEFF 单独作为名称有效，U+0085 单独
 作为名称无效。名称和详情 UUID 的参数错误必须在配置读取及网络访问之前拒绝。
@@ -148,12 +151,12 @@ daynight task update <task-id> --status done --if-version 3
 daynight task graph
 ```
 
-上述命令均接受 `--project <id>`。`list`、`show`、`graph` 接受 `--json`。名称、
-标题、描述、repo 地址、ID、状态和版本等 text 选项同时接受 `--option value` 与
+上述命令均接受 `--project <id>`。`list`、`show`、`graph` 接受 `--json`。标题、
+描述、repo 地址、ID、状态和版本等 text 选项同时接受 `--option value` 与
 `--option=value`。内联形式只按第一个 `=` 分隔，保留值内后续 `=` 和前导 `-`；
 分离形式的值以 `-` 开始时拒绝，须使用内联形式。只有描述允许空字符串，既可写
 `--description ""`，也可写 `--description=`。开关不接受内联值；目录选项的
-`--path=value` 及独立 `--` 继续拒绝。
+`--path=value` 继续拒绝。只有 `project create` 接受独立 `--` 结束选项解析。
 
 创建必需符合 PT6 文本规则的非空标题，可选描述和重复的 `--depends-on`；省略描述
 及依赖分别使用服务规定的空字符串和空集合，新 task 总为 `todo`。列表支持单个 `--status` 与 `--ready`，
