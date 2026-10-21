@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
-import { lstat, readFile, readdir } from "node:fs/promises";
+import { lstat, open, readFile, readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
+import which from "which";
 import { terminateInstalledProcess } from "../fixtures/installed-cli.js";
 
 export const nativeRecord = (value: unknown): Record<string, unknown> | undefined =>
@@ -71,7 +72,17 @@ type NativeProcessRequest = {
 };
 
 export const runNativeProcess = async (request: NativeProcessRequest): Promise<string> => {
-  const child = spawn(request.executable, [...request.arguments], {
+  const executable = await which(request.executable, { path: process.env.PATH });
+  const descriptor = await open(executable, "r");
+  const prefix = Buffer.alloc(256);
+  let shebang: string;
+  try {
+    const { bytesRead } = await descriptor.read(prefix, 0, prefix.length, 0);
+    shebang = prefix.subarray(0, bytesRead).toString("utf8").split("\n", 1)[0] as string;
+  } finally { await descriptor.close(); }
+  const nodeLauncher = /^#!\s*(?:\/usr\/bin\/env\s+node|\/[^\s]+\/node)\r?$/.test(shebang);
+  // Fixture PATH instruments shell tests; native host bootstrapping keeps its real Node interpreter.
+  const child = spawn(nodeLauncher ? process.execPath : executable, nodeLauncher ? [executable, ...request.arguments] : [...request.arguments], {
     cwd: request.cwd,
     env: request.environment,
     stdio: ["pipe", "pipe", "pipe"],

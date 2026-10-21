@@ -35,6 +35,7 @@ const execute = async (configuration, file, args, environment) => {
     throw cause;
   } finally { clearTimeout(timer); if (registration !== undefined && (child.exitCode !== null || child.signalCode !== null)) await rm(registration, { force: true }); }
 };
+export { execute as executeFixtureCommand };
 const option = (args, name) => {
   const index = args.indexOf(name);
   return index === -1 ? args.find((value) => value.startsWith(`${name}=`))?.slice(name.length + 1) : args[index + 1];

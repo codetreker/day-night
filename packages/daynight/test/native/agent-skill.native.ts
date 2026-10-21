@@ -9,6 +9,7 @@ import { runCodex } from "./codex.js";
 import { runCopilot } from "./copilot.js";
 import { createNativeFixture } from "./fixture.js";
 import type { NativeHostName, NativeHostResult } from "./host.js";
+import { createRecoveryFixture } from "./recovery.js";
 import { createNativeService } from "./service.js";
 import type { NativeServiceCleanup } from "./service.js";
 
@@ -21,7 +22,14 @@ const selected = <T extends string>(name: string, values: readonly T[]): readonl
   if (!values.includes(value as T)) throw new Error(`${name} must be one of ${values.join(", ")}.`);
   return [value as T];
 };
-const cases = selected("DAYNIGHT_NATIVE_HOST", hostNames).flatMap((host) => selected("DAYNIGHT_NATIVE_SCOPE", scopes).map((scope) => ({ host, scope })));
+const hosts = selected("DAYNIGHT_NATIVE_HOST", hostNames);
+const selectedScopes = selected("DAYNIGHT_NATIVE_SCOPE", scopes);
+const recoveryKinds = ["unlinked", "ambiguous", "service_failure"] as const;
+const recoveryOnly = process.env.DAYNIGHT_NATIVE_RECOVERY !== undefined;
+const recoverySelection = selected("DAYNIGHT_NATIVE_RECOVERY", recoveryKinds);
+const cases = recoveryOnly ? [] : hosts.flatMap((host) => selectedScopes.map((scope) => ({ host, scope })));
+const recoveryCases = recoveryOnly || process.env.DAYNIGHT_NATIVE_HOST === undefined && process.env.DAYNIGHT_NATIVE_SCOPE === undefined ? recoverySelection : [];
+const expectedCases = [...cases.map(({ host, scope }) => `${host}/${scope}`), ...recoveryCases.map((kind) => `codex/recovery/${kind}`)];
 const runners = { codex: runCodex, copilot: runCopilot, claude: runClaude };
 const results: Record<string, unknown>[] = [];
 const failures: string[] = [];
@@ -49,9 +57,10 @@ beforeAll(async () => {
   service = await createNativeService(root);
 });
 
-it.each(cases)("automatically loads the installed skill and maintains real tasks: $host / $scope", async ({ host, scope }) => {
+if (cases.length !== 0) it.each(cases)("automatically loads the installed skill and maintains real tasks: $host / $scope", async ({ host, scope }) => {
   if (root === undefined || installed === undefined || service === undefined) throw new Error("Native acceptance setup did not complete.");
-  const fixture = await createNativeFixture({ rootDirectory: path.join(root, `${host}-${scope}`), receipt: installed.receipt, serviceUrl: service.url, host, scope, openPrUrl, mergedPrUrl });
+  const fixture = await createNativeFixture({ rootDirectory: path.join(root, `${host}-${scope}`), receipt: installed.receipt, serviceUrl: service.url, host, scope, openPrUrl, mergedPrUrl, expectUncertainCreate: true });
+  service.dropNextTaskCreateResponse(fixture.projectId);
   let failure: unknown;
   let native: NativeHostResult | undefined;
   try {
@@ -60,6 +69,7 @@ it.each(cases)("automatically loads the installed skill and maintains real tasks
     const expectedSkillContents = await readFile(skillEntrypoints[0]!, "utf8");
     native = await runners[host]({ ...fixture, fixtureDirectory: path.join(root, `${host}-${scope}`), skillEntrypoints, expectedSkillContents, timeoutMs: 300_000 });
     const observations = await fixture.verify(native);
+    expect(service.faults.some((fault) => fault.kind === "drop_task_create_response" && fault.projectId === fixture.projectId && fault.state === "applied" && fault.upstreamStatus === 201 && fault.afterCommit && fault.appliedHits === 1)).toBe(true);
     results.push({ host, scope, skillEntrypointSha256: createHash("sha256").update(expectedSkillContents).digest("hex"), native, observations });
   } catch (cause) {
     failure = cause;
@@ -72,22 +82,42 @@ it.each(cases)("automatically loads the installed skill and maintains real tasks
   }
 });
 
+if (recoveryCases.length !== 0) it.each(recoveryCases)("preserves real project recovery failures: %s", async (kind) => {
+  if (root === undefined || installed === undefined || service === undefined) throw new Error("Native acceptance setup did not complete.");
+  const fixture = await createRecoveryFixture({ rootDirectory: path.join(root, `recovery-${kind}`), receipt: installed.receipt, service, kind });
+  let failure: unknown;
+  let native: NativeHostResult | undefined;
+  try {
+    native = await runCodex({ ...fixture, timeoutMs: 300_000 });
+    const observations = await fixture.verify(native);
+    results.push({ host: "codex", recovery: kind, native, observations });
+  } catch (cause) {
+    failure = cause;
+    failures.push(`codex/recovery/${kind}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    if (native !== undefined) results.push({ host: "codex", recovery: kind, native, failed: true });
+    throw cause;
+  } finally {
+    try { await fixture.cleanup(); }
+    catch (cleanupError) { failures.push(`recovery/${kind}: fixture cleanup failed`); throw failure === undefined ? cleanupError : new AggregateError([failure, cleanupError], "Native recovery and fixture cleanup failed."); }
+  }
+});
+
 afterAll(async () => {
   const cleanupFailures: unknown[] = [];
   let serviceCleanup: NativeServiceCleanup | undefined;
   if (service !== undefined) try { serviceCleanup = await service.cleanup(); } catch (cause) { cleanupFailures.push(cause); }
   if (installed !== undefined) try { await installed.cleanup(); } catch (cause) { cleanupFailures.push(cause); }
   if (root !== undefined) try { await rm(root, { recursive: true, force: true }); } catch (cause) { cleanupFailures.push(cause); }
-  const expectedCases = cases.map(({ host, scope }) => `${host}/${scope}`);
   const receipt = {
-    schemaVersion: 1, success: failures.length === 0 && cleanupFailures.length === 0 && results.length === cases.length,
+    schemaVersion: 1, success: failures.length === 0 && cleanupFailures.length === 0 && results.length === expectedCases.length,
     selection: expectedCases, platform: process.platform, nodeVersion: process.version,
     artifact: installed === undefined ? null : { packageVersion: installed.receipt.packageVersion, tarballSha256: installed.receipt.tarballSha256, entrySha256: installed.receipt.entrySha256, source: installed.receipt.source },
-    service: service?.identity, requests: service?.observations, cases: results, failures,
+    service: service?.identity, requests: service?.observations, faults: service?.faults, cases: results, failures,
     cleanup: { service: serviceCleanup, errors: cleanupFailures.length },
   };
   await mkdir(path.join(workspace, ".tmp"), { recursive: true });
-  await writeFile(path.join(workspace, `.tmp/native-agent-skill-${process.env.DAYNIGHT_NATIVE_HOST ?? "all"}-${process.env.DAYNIGHT_NATIVE_SCOPE ?? "all"}-evidence.json`), `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });
+  const selectionName = recoveryOnly ? `recovery-${process.env.DAYNIGHT_NATIVE_RECOVERY}` : `${process.env.DAYNIGHT_NATIVE_HOST ?? "all"}-${process.env.DAYNIGHT_NATIVE_SCOPE ?? "all"}`;
+  await writeFile(path.join(workspace, `.tmp/native-agent-skill-${selectionName}-evidence.json`), `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });
   if (cleanupFailures.length !== 0) throw new AggregateError(cleanupFailures, "Native Agent acceptance cleanup failed.");
   expect(failures).toEqual([]);
 });

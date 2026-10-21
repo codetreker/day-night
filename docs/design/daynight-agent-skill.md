@@ -307,7 +307,8 @@ user/project 目录，检验整目录覆盖会移除旧文件、保留 sibling s
 
 原生终端 fixture 使用开发依赖 `node-pty@1.1.0`，在三个平台驱动真实 PTY / ConPTY。
 PTY 内的 Node bridge 启动实际安装 launcher，stdin 与 stderr 继承终端，stdout 单独
-指向结果文件，分别证明生产 `isTTY`条件、界面输出和结果输出。发送 Space、方向键、
+指向结果文件；bridge 通过原始 ChildProcess 的 exit / close 事件及一致状态确认
+launcher 结束，PID 仅作诊断，避免退出后 PID 复用导致错误归因。分别证明生产 `isTTY`条件、界面输出和结果输出。发送 Space、方向键、
 Enter 与 Ctrl+C；`pty.kill()`只用于超时收尾，不能充当取消验证。版本受限的 pnpm
 `allowBuilds`仅允许该终端依赖构建，保留 SQLite 的现有禁止构建选择；版本固定的
 pnpm mode-only 补丁修正稳定包中 Darwin helper 的可执行位，测试不自行修复依赖。
@@ -322,7 +323,7 @@ POSIX PTY 结果不能代替。普通原生 CI 继续运行 typecheck、test、b
 原生宿主与真实服务组合验收位于 `packages/daynight/test/native/`，独立配置为
 `vitest.skill-native.config.ts`，通过 `pnpm --filter @codetreker/daynight skill:acceptance`
 显式运行。普通 `test` 和 `acceptance` 不执行真实模型。Linux 环境需要 Docker、Python 3.11+、
-三个原生 CLI、GitHub 认证与宿主已有模型认证；User / Project scope 的六项组合逐项
+三个原生 CLI、GitHub 认证与宿主已有模型认证；User / Project scope 的六项组合及 Codex 的未关联、歧义和持续服务失败三项恢复场景逐项
 记录，定向运行仅证明所选项。运行方式与环境变量由 [README](../../README.md#live-agent-skill-acceptance) 拥有。
 
 组合验收打包并安装实际 npm CLI，经真实交互安装器把 bundle 安装到隔离 home 或新建
@@ -336,7 +337,14 @@ session 提取真正的 context delivery；Claude 关联成功的 Skill / Read �
 Node 测试和受限只读 GitHub wrapper 只记录并转发实际执行，不提供伪造响应。普通开发
 任务使用有界 ready、show、create 与精确版本 update；竞争写入通过另一个真实 CLI
 请求发生，原更新如实收到 version_conflict，随后重读并保留并发验收条件。不可改写
-的验收测试及操作顺序共同证明执行和完成条件，不能仅比较最终状态。
+的验收测试及操作顺序共同证明执行和完成条件，不能仅比较最终状态。既有任务增加
+已验证前置时必须保留仍必需的旧依赖，用完整集合替换并使用观察到的版本。
+
+不确定写入通过真实网络故障产生：服务已经返回完整 201、数据库已提交后，记录器
+丢弃一次对应项目的 create 响应并断开下游连接。Agent 必须通过实际任务清单和详情
+核对完整预期字段、确认唯一已创建对象，不能盲目重复 create。恢复场景使用真实零个、
+两个项目关联，以及指定项目持续读取断连；Agent 保留未关联、歧义或服务失败的实际
+原因，不猜测 project，不创建替代资源或改写已有配置与绑定。
 
 开发 fixture 的交付 PR 必须真实保持 OPEN，任何提前 done 尝试均使验收失败；依赖
 继续阻塞。另一项已交付验证使用平台实际 MERGED 的前置 PR，成功测试与平台读取

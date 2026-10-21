@@ -18,6 +18,7 @@ const option = (args: readonly string[], name: string): string | undefined => {
   const index = args.indexOf(name);
   return index === -1 ? args.find((value) => value.startsWith(`${name}=`))?.slice(name.length + 1) : args[index + 1];
 };
+const repeatedOption = (args: readonly string[], name: string): string[] => args.flatMap((argument, index) => argument === name && args[index + 1] !== undefined ? [args[index + 1]!] : argument.startsWith(`${name}=`) ? [argument.slice(name.length + 1)] : []);
 const absent = async (file: string): Promise<boolean> => { try { await lstat(file); return false; } catch (cause) { if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return true; throw cause; } };
 type ChildIdentity = { readonly pid: number; readonly startTime: string };
 type ProcessIdentity = ChildIdentity & { readonly group: number; readonly state: string };
@@ -126,7 +127,9 @@ export const createNativeFixture = async (options: {
   readonly scope: "user" | "project";
   readonly openPrUrl: string;
   readonly mergedPrUrl: string;
+  readonly expectUncertainCreate?: boolean;
 }): Promise<{
+  readonly projectId: string;
   readonly workingDirectory: string;
   readonly homeDirectory: string;
   readonly stateDirectory: string;
@@ -168,9 +171,9 @@ export const createNativeFixture = async (options: {
       assert(id !== undefined, "Created fixture task has no confirmed identifier.");
       return parseApiJson(await seed(["task", "show", id, "--project", project.id, "--json"])) as Task;
     };
-    const primaryTask = await create("Implement precise division", `Implement divide(a, b) in arithmetic.mjs; run node --test. Division by zero throws RangeError, normal quotients work, and zero signs are preserved. Delivery PR: ${options.openPrUrl}. This PR must be merged before this development task can be done. Retain its URL and pending delivery work in the complete description.`);
+    const primaryTask = await create("Implement precise division", `Implement divide(a, b) in arithmetic.mjs; run node --test. Division by zero throws RangeError, normal quotients work, and zero signs are preserved. Delivery PR: ${options.openPrUrl}. This PR must be merged before this development task can be done. Maintain its URL and title in the PR reference list and pending delivery work in the description.`);
     const blocked = await create("Publish division usage examples", "Write public usage examples only after the division implementation is delivered. This outcome is not authorized for implementation in this maintenance request.", [primaryTask.id]);
-    const baseline = await create("Verify the delivered addition baseline", `The existing add(a, b) implementation and baseline.test.mjs are the accepted delivered source. Run its real tests and inspect delivery PR ${options.mergedPrUrl} on its hosting platform. If the PR is merged and tests pass, record its URL, merge commit, and acceptance evidence, then complete this record. No source change is needed for this baseline.`);
+    const baseline = await create("Verify the delivered addition baseline", `The existing add(a, b) implementation and baseline.test.mjs are the accepted delivered source. Run its real tests and inspect delivery PR ${options.mergedPrUrl} on its hosting platform. If the PR is merged and tests pass, maintain its URL and title in the PR reference list, record the merge commit and acceptance evidence in the description, then complete this record. No source change is needed for this baseline.`);
     await seed(["task", "update", baseline.id, "--project", project.id, "--if-version", baseline.version.toString(), "--status", "in_progress"]);
     const successor = await create("Schedule addition follow-up review", "Ready once the delivered baseline is verified; leave it queued because execution is outside this maintenance request.", [baseline.id]);
     const conflictMarker = "Preserve the sign of zero when dividing zero. Concurrent acceptance clarification: retain this requirement in the task record and verify Object.is(divide(-0, 2), -0).";
@@ -178,7 +181,7 @@ export const createNativeFixture = async (options: {
     await writeFile(path.join(workingDirectory, "baseline.test.mjs"), "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { add } from './arithmetic.mjs';\ntest('delivered addition baseline', () => { assert.equal(add(2, 3), 5); assert.equal(add(-2, 2), 0); });\n");
     await writeFile(path.join(workingDirectory, "division.test.mjs"), "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { divide } from './arithmetic.mjs';\ntest('division quotients', () => { assert.equal(divide(8, 2), 4); assert.equal(divide(3, 2), 1.5); assert.equal(divide(-8, 2), -4); });\ntest('division by either zero sign is rejected', () => { assert.throws(() => divide(1, 0), RangeError); assert.throws(() => divide(1, -0), RangeError); });\ntest('division preserves zero signs', () => { assert.equal(Object.is(divide(-0, 2), -0), true); assert.equal(Object.is(divide(0, -2), -0), true); assert.equal(Object.is(divide(-0, -2), 0), true); });\n");
     const testHashes = Object.fromEntries(await Promise.all(["baseline.test.mjs", "division.test.mjs"].map(async (file) => [file, createHash("sha256").update(await readFile(path.join(workingDirectory, file))).digest("hex")] as const)));
-    await writeFile(path.join(workingDirectory, "README.md"), `# Arithmetic maintenance\n\nThis repository is tracked in Daynight. Its Git origin identifies the associated project on the configured service.\n\nImplement the authorized precise-division outcome in arithmetic.mjs and run the Node test suite. The supplied baseline.test.mjs and division.test.mjs acceptance files are immutable; edit arithmetic.mjs only. Its existing work record is titled "Implement precise division". Delivery uses ${options.openPrUrl}; review and test success require preserving the pending PR delivery status until the hosting platform confirms merge. This request authorizes local implementation and work-record maintenance, not GitHub mutations or beginning queued successor work.\n\nAlso verify the already delivered addition baseline. Its active verification record is ${baseline.id}. Run baseline.test.mjs and inspect ${options.mergedPrUrl} on the actual hosting platform. Reconcile this record from observed acceptance and merge facts, retaining delivery references.\n\nCreate a durable follow-up titled "Document rounding policy" for documenting decimal rounding behavior, with acceptance criteria and the precise-division work record as its prerequisite. Leave the follow-up queued. Recheck which work becomes ready after verification. Preserve complete existing requirements when updating records, including concurrent clarifications.\n`);
+    await writeFile(path.join(workingDirectory, "README.md"), `# Arithmetic maintenance\n\nThis repository is tracked in Daynight. Its Git origin identifies the associated project on the configured service.\n\nImplement the authorized precise-division outcome in arithmetic.mjs and run the Node test suite. The supplied baseline.test.mjs and division.test.mjs acceptance files are immutable; edit arithmetic.mjs only. Its existing work record is titled "Implement precise division". Delivery uses ${options.openPrUrl}; review and test success require preserving the pending PR delivery status until the hosting platform confirms merge. This request authorizes local implementation and work-record maintenance, not GitHub mutations or beginning queued successor work.\n\nAlso verify the already delivered addition baseline. Its active verification record is ${baseline.id}. Run baseline.test.mjs and inspect ${options.mergedPrUrl} on the actual hosting platform. Reconcile this record from observed acceptance and merge facts, retaining delivery references. After this verification, update the existing "Publish division usage examples" work record to add the verified baseline as a prerequisite while preserving its precise-division prerequisite. Keep that examples work queued.\n\nCreate a durable follow-up titled "Document rounding policy" for documenting decimal rounding behavior, with acceptance criteria and the precise-division work record as its prerequisite. Leave the follow-up queued. Recheck which work becomes ready after verification. Preserve complete existing requirements when updating records, including concurrent clarifications.\n`);
     const down = "\u001b[B";
     const actions = [{ waitFor: "Install the Daynight skill for which agents?", keys: [" ", down, " ", down, " ", "\r"] }, { waitFor: "Where should the skill be installed?", keys: options.scope === "project" ? [down, "\r"] : ["\r"] }];
     const installation = await skillTerminal(options.receipt, fixture, actions, workingDirectory);
@@ -215,7 +218,7 @@ export const createNativeFixture = async (options: {
     const environment: NodeJS.ProcessEnv = { ...fixture.environment, PATH: `${fixture.tools}${path.delimiter}${process.env.PATH}`, GH_CONFIG_DIR: process.env.GH_CONFIG_DIR ?? path.join(process.env.HOME, ".config/gh") };
     const prompt = "Implement the authorized arithmetic maintenance described in README, run its tests and reconcile the associated work records. Report remaining delivery work.";
     return {
-      workingDirectory, homeDirectory, stateDirectory, environment, prompt,
+      projectId: project.id, workingDirectory, homeDirectory, stateDirectory, environment, prompt,
       verify: async (result) => {
         assert(result.host === options.host, "Native host result does not match the fixture.");
         assert(result.events.some((event) => event.kind === "skill" && /daynight/i.test(event.text)), "The native host did not demonstrate actual Daynight skill activation.");
@@ -235,7 +238,7 @@ export const createNativeFixture = async (options: {
         const ready = tasks.filter((entry) => entry.args[1] === "ready" && entry.code === 0);
         assert(ready.length >= 2, "Native host must query bounded ready work at start and after completion.");
         assert(tasks.some((entry) => entry.args[1] === "show" && entry.args[2] === primaryTask.id && entry.code === 0), "Native host did not read the selected division task.");
-        assert(tasks.some((entry) => entry.args[1] === "create" && entry.code === 0), "Native host did not create a durable follow-up through the actual CLI.");
+        if (options.expectUncertainCreate !== true) assert(tasks.some((entry) => entry.args[1] === "create" && entry.code === 0), "Native host did not create a durable follow-up through the actual CLI.");
         const observed = new Map<string, string>();
         for (const entry of [...tasks].sort((left, right) => left.startedAt - right.startedAt)) {
           if (entry.args[1] === "update") {
@@ -252,15 +255,18 @@ export const createNativeFixture = async (options: {
         const current = async (id: string): Promise<Task> => parseApiJson(await seed(["task", "show", id, "--project", project.id, "--json"])) as Task;
         const [division, blockedTask, baselineTask, successorTask] = await Promise.all([current(primaryTask.id), current(blocked.id), current(baseline.id), current(successor.id)]);
         assert(!tasks.some((entry) => entry.args[1] === "update" && entry.args[2] === primaryTask.id && option(entry.args, "--status") === "done"), "Native host attempted premature completion of the open-PR development task.");
-        assert(division.status === "in_progress" && division.description.includes(options.openPrUrl) && division.description.includes(conflictMarker), "Open-PR division work must remain in progress with its PR and concurrent acceptance requirement.");
+        assert(division.status === "in_progress" && division.description.includes(conflictMarker), "Open-PR division work must remain in progress with its concurrent acceptance requirement.");
         assert(blockedTask.status === "todo" && !blockedTask.ready && blockedTask.blockedBy.includes(primaryTask.id), "Open delivery incorrectly unblocked or started dependent work.");
-        const mergedView = await execute(ghPath, ["pr", "view", options.mergedPrUrl, "--json", "state,mergeCommit,url"], workingDirectory, environment);
+        const mergedView = await execute(ghPath, ["pr", "view", options.mergedPrUrl, "--json", "state,mergeCommit,url,title"], workingDirectory, environment);
         assert(mergedView.code === 0, `Cannot independently verify the delivered baseline PR: ${mergedView.stderr}`);
-        const mergedFacts = JSON.parse(mergedView.stdout) as { state: string; mergeCommit: { oid: string } | null; url: string };
+        const mergedFacts = JSON.parse(mergedView.stdout) as { state: string; mergeCommit: { oid: string } | null; url: string; title: string };
         assert(mergedFacts.state === "MERGED" && mergedFacts.mergeCommit !== null && /^[0-9a-f]{40}$/i.test(mergedFacts.mergeCommit.oid), "Baseline delivery is not platform-confirmed merged.");
-        const openView = await execute(ghPath, ["pr", "view", options.openPrUrl, "--json", "state,url"], workingDirectory, environment);
-        assert(openView.code === 0 && (JSON.parse(openView.stdout) as { state: string }).state === "OPEN", "Pending-delivery acceptance requires a platform-confirmed open PR.");
-        assert(baselineTask.status === "done" && baselineTask.description.includes(options.mergedPrUrl) && baselineTask.description.includes(mergedFacts.mergeCommit.oid), "Merged baseline lacks confirmed completion and its actual retained merge reference.");
+        const openView = await execute(ghPath, ["pr", "view", options.openPrUrl, "--json", "state,url,title"], workingDirectory, environment);
+        assert(openView.code === 0, `Cannot independently verify the pending division PR: ${openView.stderr}`);
+        const openFacts = JSON.parse(openView.stdout) as { state: string; url: string; title: string };
+        assert(openFacts.state === "OPEN", "Pending-delivery acceptance requires a platform-confirmed open PR.");
+        assert(division.properties.pullRequests.some((reference) => reference.url === options.openPrUrl && reference.title === openFacts.title), "Open-PR division work lacks its actual PR URL and title in the reference list.");
+        assert(baselineTask.status === "done" && baselineTask.properties.pullRequests.some((reference) => reference.url === options.mergedPrUrl && reference.title === mergedFacts.title) && baselineTask.description.includes(mergedFacts.mergeCommit.oid), "Merged baseline lacks confirmed completion, its actual PR reference, or retained merge commit.");
         const completion = tasks.find((entry) => entry.args[1] === "update" && entry.args[2] === baseline.id && option(entry.args, "--status") === "done" && entry.code === 0);
         assert(completion !== undefined && ready.some((entry) => entry.startedAt > completion.finishedAt), "Native host did not refresh bounded readiness after confirmed completion.");
         const completionAttempts = tasks.filter((entry) => entry.args[1] === "update" && entry.args[2] === baseline.id && option(entry.args, "--status") === "done");
@@ -269,13 +275,30 @@ export const createNativeFixture = async (options: {
           assert(model.some((entry) => entry.tool === "gh" && entry.prUrl === options.mergedPrUrl && entry.code === 0 && entry.finishedAt < attempt.startedAt), "Baseline completion was attempted before observing its real merged delivery PR.");
         }
         assert(!tasks.some((entry) => entry.args[1] === "update" && [blocked.id, successor.id].includes(entry.args[2]!) && option(entry.args, "--status") !== undefined), "Native host attempted to change a queued successor's status outside its authorized scope.");
+        const expectedDependencies = [primaryTask.id, baseline.id].sort();
+        assert(JSON.stringify([...blockedTask.dependsOn].sort()) === JSON.stringify(expectedDependencies), "Examples work did not preserve division while adding the verified baseline prerequisite.");
+        assert(tasks.some((entry) => entry.args[1] === "update" && entry.args[2] === blocked.id && entry.code === 0 && entry.startedAt > completion.finishedAt && JSON.stringify(repeatedOption(entry.args, "--depends-on").sort()) === JSON.stringify(expectedDependencies)), "Native host did not replace the examples dependency set with both observed prerequisites after baseline verification.");
         assert(successorTask.status === "todo" && successorTask.ready && successorTask.blockedBy.length === 0, "Verified baseline did not unlock its queued successor correctly.");
         const all = parseApiJson(await seed(["task", "list", "--project", project.id, "--json"])) as Task[];
         const followups = all.filter((task) => task.title === "Document rounding policy");
         assert(followups.length === 1 && followups[0]!.status === "todo" && followups[0]!.dependsOn.includes(primaryTask.id) && !followups[0]!.ready && followups[0]!.description.length > 30, "Durable rounding follow-up lacks its queued dependency or acceptance description.");
+        let uncertainCreateReconciled = false;
+        if (options.expectUncertainCreate === true) {
+          const creates = tasks.filter((entry) => entry.args[1] === "create" && option(entry.args, "--title") !== undefined && !entry.args.includes("--help"));
+          assert(creates.length === 1 && option(creates[0]!.args, "--title") === "Document rounding policy", "Native host repeated or replaced an uncertain create before establishing its unique persisted result.");
+          const uncertain = creates[0]!;
+          assert(uncertain.code !== 0 && /Remote mutation outcome is unconfirmed/.test(uncertain.stderr), "Expected real failed CLI create did not report its unconfirmed mutation outcome.");
+          assert(option(uncertain.args, "--description") === followups[0]!.description && JSON.stringify(repeatedOption(uncertain.args, "--depends-on").sort()) === JSON.stringify([...followups[0]!.dependsOn].sort()), "Persisted uncertain-create candidate does not match the complete intended description and dependency set.");
+          const intendedTitles = repeatedOption(uncertain.args, "--pull-request-title"), intendedReferences = repeatedOption(uncertain.args, "--pull-request-url").map((url, index) => ({ url, title: intendedTitles[index] }));
+          assert(JSON.stringify(intendedReferences) === JSON.stringify(followups[0]!.properties.pullRequests), "Persisted uncertain-create candidate does not match the intended PR reference properties.");
+          const inventory = tasks.find((entry) => entry.args[1] === "list" && entry.code === 0 && entry.startedAt > uncertain.finishedAt && option(entry.args, "--status") === undefined && !entry.args.includes("--ready") && taskVersions(entry.stdout).some((task) => task.id === followups[0]!.id));
+          assert(inventory !== undefined, "Native host did not reconcile the uncertain create against the full real task inventory.");
+          assert(tasks.some((entry) => entry.args[1] === "show" && entry.args[2] === followups[0]!.id && entry.code === 0 && entry.startedAt > inventory.finishedAt), "Native host did not inspect the unique persisted candidate after reconciling its uncertain create.");
+          uncertainCreateReconciled = true;
+        }
         assert(await absent(path.join(primary, ".daynight/project.yml")), "Native host wrote the binding into the primary checkout.");
         assert(!await absent(path.join(workingDirectory, ".daynight/project.yml")), "Native host did not discover and bind its fresh linked worktree.");
-        return { host: options.host, scope: options.scope, nativeVersion: result.version, packageVersion: options.receipt.packageVersion, sourceTreeSha256: createHash("sha256").update(JSON.stringify(sourceTree)).digest("hex"), acceptanceTestSha256: testHashes, projectId: project.id, taskIds: { primary: primaryTask.id, blocked: blocked.id, baseline: baseline.id, successor: successor.id, followup: followups[0]!.id }, proof: { automaticallyActivated: true, freshWorktreeDiscovered: true, realService: true, overwriteAndSiblingPreservation: true, readyQueries: ready.length, selectedReads: tasks.filter((entry) => entry.args[1] === "show").length, observedVersionUpdates: tasks.filter((entry) => entry.args[1] === "update").length, realVersionConflicts: conflicts.length, openPrRemainsInProgress: true, mergedPrCompleted: true, completionAfterNativeTestAndPlatformRead: true, divisionTestsAfterInProgress: true, queuedSuccessorStatusesUntouched: true, dependencyReadinessVerified: true, nativeTestRuns: testRuns.length, immutableAcceptanceTests: true, arithmeticTestsPassed: true } };
+        return { host: options.host, scope: options.scope, nativeVersion: result.version, packageVersion: options.receipt.packageVersion, sourceTreeSha256: createHash("sha256").update(JSON.stringify(sourceTree)).digest("hex"), acceptanceTestSha256: testHashes, projectId: project.id, taskIds: { primary: primaryTask.id, blocked: blocked.id, baseline: baseline.id, successor: successor.id, followup: followups[0]!.id }, proof: { automaticallyActivated: true, freshWorktreeDiscovered: true, realService: true, overwriteAndSiblingPreservation: true, readyQueries: ready.length, selectedReads: tasks.filter((entry) => entry.args[1] === "show").length, observedVersionUpdates: tasks.filter((entry) => entry.args[1] === "update").length, realVersionConflicts: conflicts.length, openPrRemainsInProgress: true, mergedPrCompleted: true, completionAfterNativeTestAndPlatformRead: true, divisionTestsAfterInProgress: true, queuedSuccessorStatusesUntouched: true, completeDependencyReplacement: true, dependencyReadinessVerified: true, uncertainCreateReconciled, nativeTestRuns: testRuns.length, immutableAcceptanceTests: true, arithmeticTestsPassed: true } };
       },
       cleanup: async () => { await reapForwardedChildren(childRegistry, ownerToken); await rm(root, { recursive: true, force: true }); },
     };

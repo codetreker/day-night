@@ -19,6 +19,16 @@ export type NativeServiceObservation = {
   readonly status: number | null;
 };
 
+export type NativeServiceFault = {
+  readonly kind: "drop_task_create_response" | "project_read_unavailable";
+  readonly projectId: string;
+  readonly path: string;
+  readonly state: "armed" | "forwarding" | "applied" | "failed" | "cleared";
+  readonly upstreamStatus: number | null;
+  readonly afterCommit: boolean;
+  readonly appliedHits: number;
+};
+
 export type NativeServiceCleanup = {
   readonly serverStopped: boolean;
   readonly sessionsRemaining: number;
@@ -36,12 +46,16 @@ export type NativeService = {
     readonly binarySha256: string;
   };
   readonly observations: readonly NativeServiceObservation[];
+  readonly faults: readonly NativeServiceFault[];
+  dropNextTaskCreateResponse(projectId: string): void;
+  setProjectReadUnavailable(projectId: string, unavailable: boolean): void;
   cleanup(): Promise<NativeServiceCleanup>;
 };
 
 type CommandResult = { stdout: string; stderr: string };
 type ServiceExit = { code: number | null; signal: NodeJS.Signals | null };
 type MutableObservation = { method: string; path: string; query: Record<string, string>; status: number | null };
+type MutableFault = { -readonly [Key in keyof NativeServiceFault]: NativeServiceFault[Key] };
 
 export const runNativeServiceCommand = async (
   operation: string,
@@ -108,6 +122,9 @@ export const createNativeService = async (rootDirectory: string): Promise<Native
   const applicationName = `native_skill_${suffix.replaceAll("-", "")}`;
   const password = randomBytes(32).toString("hex");
   const observations: MutableObservation[] = [];
+  const faults: MutableFault[] = [];
+  const pendingCreateFaults = new Map<string, MutableFault>();
+  const unavailableProjects = new Map<string, MutableFault>();
   let server: ChildProcess | undefined;
   let serverClosed: Promise<ServiceExit> | undefined;
   let serverExit: ServiceExit | undefined;
@@ -117,6 +134,27 @@ export const createNativeService = async (rootDirectory: string): Promise<Native
   let unsafeLog = false;
   let logFailure: Error | undefined;
   let cleanupPromise: Promise<NativeServiceCleanup> | undefined;
+
+  const projectPath = (projectId: string): string => {
+    if (cleanupPromise !== undefined) throw new Error("Native service is already stopping or stopped.");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(projectId)) throw new Error("Native service fault requires a canonical fixture project UUID.");
+    return `/api/v1/projects/${projectId}`;
+  };
+  const armFault = (kind: NativeServiceFault["kind"], projectId: string, faultPath: string): MutableFault => {
+    const fault: MutableFault = { kind, projectId, path: faultPath, state: "armed", upstreamStatus: null, afterCommit: false, appliedHits: 0 };
+    faults.push(fault);
+    return fault;
+  };
+  const dropNextTaskCreateResponse = (projectId: string): void => {
+    if (pendingCreateFaults.has(projectId)) throw new Error("A task-create response fault is already armed for this project.");
+    pendingCreateFaults.set(projectId, armFault("drop_task_create_response", projectId, `${projectPath(projectId)}/tasks`));
+  };
+  const setProjectReadUnavailable = (projectId: string, unavailable: boolean): void => {
+    const faultPath = projectPath(projectId);
+    const existing = unavailableProjects.get(projectId);
+    if (unavailable && existing === undefined) unavailableProjects.set(projectId, armFault("project_read_unavailable", projectId, faultPath));
+    if (!unavailable && existing !== undefined) { existing.state = "cleared"; unavailableProjects.delete(projectId); }
+  };
 
   const containerExists = async (name: string): Promise<boolean> => (await run("Inspect owned container", "docker", ["container", "ls", "--all", "--filter", `name=^/${name}$`, "--filter", `label=${label}`, "--format", "{{.ID}}"])).stdout.trim() !== "";
   const removeContainer = async (name: string): Promise<boolean> => {
@@ -224,19 +262,48 @@ export const createNativeService = async (rootDirectory: string): Promise<Native
       if (url.origin !== upstreamOrigin) { outgoing.writeHead(400); outgoing.end(); return; }
       const observation: MutableObservation = { method: incoming.method!, path: /^\/api\/v1\/projects(?:\/[0-9a-f-]+(?:\/tasks(?:\/[0-9a-f-]+)?|\/task-graph)?)?$/.test(url.pathname) ? url.pathname : "other", query: observeQuery(url.searchParams), status: null };
       observations.push(observation);
+      const scopedProject = /^\/api\/v1\/projects\/([0-9a-f-]+)(?:\/|$)/.exec(url.pathname)?.[1];
+      const readFault = scopedProject === undefined ? undefined : unavailableProjects.get(scopedProject);
+      if (incoming.method === "GET" && readFault !== undefined) {
+        const fault = readFault;
+        fault.path = url.pathname;
+        fault.state = "applied";
+        fault.appliedHits++;
+        outgoing.destroy();
+        return;
+      }
+      const pendingCreate = scopedProject === undefined ? undefined : pendingCreateFaults.get(scopedProject);
+      const createFault = incoming.method === "POST" && pendingCreate?.path === url.pathname ? pendingCreate : undefined;
+      if (createFault !== undefined) { pendingCreateFaults.delete(createFault.projectId); createFault.state = "forwarding"; }
       const upstream = request(url, { method: incoming.method, headers: { ...incoming.headers, host: url.host } }, (result) => {
         observation.status = result.statusCode!;
+        if (createFault !== undefined) {
+          createFault.upstreamStatus = result.statusCode!;
+          if (result.statusCode === 201) {
+            result.once("end", () => {
+              createFault.state = result.complete ? "applied" : "failed";
+              createFault.afterCommit = result.complete;
+              if (result.complete) createFault.appliedHits++;
+              outgoing.destroy();
+            });
+            result.once("aborted", () => { createFault.state = "failed"; outgoing.destroy(); });
+            result.once("error", () => { createFault.state = "failed"; outgoing.destroy(); });
+            result.resume();
+            return;
+          }
+          createFault.state = "failed";
+        }
         outgoing.writeHead(result.statusCode!, result.headers);
         result.pipe(outgoing);
       });
-      upstream.once("error", () => { observation.status = 502; outgoing.writeHead(502); outgoing.end(); });
+      upstream.once("error", () => { if (createFault !== undefined) createFault.state = "failed"; observation.status = 502; outgoing.writeHead(502); outgoing.end(); });
       incoming.once("aborted", () => upstream.destroy());
       incoming.pipe(upstream);
     });
     await waitFor("Native service recorder startup", new Promise<void>((resolve, reject) => { proxy!.once("error", reject); proxy!.listen(0, "127.0.0.1", resolve); }), 5_000);
     const proxyAddress = proxy.address();
     if (typeof proxyAddress !== "object" || proxyAddress === null) throw new Error("Native service recorder did not allocate a loopback port.");
-    return { url: `http://127.0.0.1:${proxyAddress.port}`, identity: { goVersion, postgresVersion, binarySha256 }, observations, cleanup };
+    return { url: `http://127.0.0.1:${proxyAddress.port}`, identity: { goVersion, postgresVersion, binarySha256 }, observations, faults, dropNextTaskCreateResponse, setProjectReadUnavailable, cleanup };
   } catch (error) {
     try { await cleanup(); }
     catch (cleanupError) { throw new AggregateError([error, cleanupError], "Native service startup and cleanup failed."); }

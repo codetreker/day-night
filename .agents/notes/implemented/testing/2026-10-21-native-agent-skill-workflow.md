@@ -15,7 +15,8 @@ outside a test fixture unless ownership is explicit.
 
 The opt-in `skill:acceptance` suite in `test/native/` uses actual Codex, Copilot
 CLI and Claude Code with the real packed CLI and an isolated Go/PostgreSQL
-service. User and Project scopes form six cases. A normal development request
+service. User and Project scopes form six workflow cases; three focused Codex cases
+cover missing/ambiguous project association and persistent service failure. A normal development request
 names neither Daynight, the skill nor its path; fixture documentation supplies
 ordinary project context. Successful native content delivery must match the
 installed entrypoint or its native Markdown body. Inventory, invocation intent,
@@ -35,8 +36,12 @@ the concurrent acceptance condition. Immutable arithmetic tests prevent a
 rewritten test from proving the requested behavior. Trace order establishes
 in-progress before implementation testing, successful tests and actual merged-PR
 inspection before completion, and a ready refresh afterward. Any attempted
-completion of the open-PR task fails acceptance, even if later reverted. Queued
-successors retain their statuses; service-derived readiness supplies the unlock.
+completion of the open-PR task fails acceptance, even if later reverted. A real committed-create response is dropped once; reconciliation must find and
+inspect the unique resource without another create. Existing dependencies are
+replaced with a complete set that preserves every required predecessor. Actual
+zero/two-project association and persistent scoped network failures preserve the
+reported cause, configured server and binding without guessed selections or
+resource mutations. Queued successors retain their statuses; service-derived readiness supplies the unlock.
 
 The service helper uses version-pinned Docker images, a fresh source build,
 random loopback ports, generated child-only database credentials, tmpfs storage

@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import which from "which";
@@ -51,6 +51,13 @@ export const runCodex = async (request: NativeHostRequest): Promise<NativeHostRe
   if (installedSkills.size === 0 || request.expectedSkillContents === "") throw new Error("The Codex fixture has no expected installed skill.");
   for (const entrypoint of installedSkills) if (await readFile(entrypoint, "utf8") !== request.expectedSkillContents) throw new Error("The Codex fixture skill differs from the expected installed bundle.");
   const binary = await which("codex", { path: process.env.PATH });
+  const executable = await open(binary, "r");
+  let nodeLauncher: boolean;
+  try {
+    const prefix = Buffer.alloc(256);
+    const { bytesRead } = await executable.read(prefix, 0, prefix.length, 0);
+    nodeLauncher = /^#!\s*(?:\/usr\/bin\/env\s+node|[^\s]+\/node)(?:\s|$)/.test(prefix.subarray(0, bytesRead).toString("utf8").split("\n")[0]!);
+  } finally { await executable.close(); }
   const python = await which("python3", { path: process.env.PATH });
   const version = execFileSync(binary, ["--version"], { encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] }).trim();
   const originalHome = process.env.HOME ?? os.homedir();
@@ -110,7 +117,8 @@ export const runCodex = async (request: NativeHostRequest): Promise<NativeHostRe
   let failure: unknown;
   try {
     await writeFile(path.join(home, "config.toml"), toml(configuration), { mode: 0o600 });
-    const child = spawn(binary, ["app-server", "--stdio"], { cwd: request.workingDirectory, env: environment, detached: process.platform !== "win32", windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+    // The fixture's node wrapper closes stdin for recorded commands; pin Node for the host's persistent RPC transport.
+    const child = spawn(nodeLauncher ? process.execPath : binary, [...(nodeLauncher ? [binary] : []), "app-server", "--stdio"], { cwd: request.workingDirectory, env: environment, detached: process.platform !== "win32", windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
     const closed = new Promise<void>((resolve) => child.once("close", () => resolve()));
     const pending = new Map<number, PendingRequest>();
     const events: NativeHostEvent[] = [];

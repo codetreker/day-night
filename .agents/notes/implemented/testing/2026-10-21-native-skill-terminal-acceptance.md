@@ -25,6 +25,15 @@ ConPTY can encode that blank as cursor movement in its VT stream. Raw terminal
 transcripts remain available, and complete answer, choice and stdout assertions
 still establish the interaction's result.
 
+The bridge records `exit` and then `close` on the original spawned ChildProcess
+and requires matching status in the receipt. PID is diagnostic data, not a fresh
+post-reap identity query. Windows can recycle it before the parent observes the
+receipt; querying that number again can observe a different process. The
+[original-handle exit sequencing](https://github.com/nodejs/node/blob/f14cd3aa7bf9ca8df2cc5b8bb14beb0f335b1d93/lib/internal/child_process.js#L300-L335)
+and [numeric PID lookup](https://github.com/nodejs/node/blob/f14cd3aa7bf9ca8df2cc5b8bb14beb0f335b1d93/deps/uv/src/win/process.c#L1382-L1406)
+are separate observations. The existing bounded terminal and receipt deadline
+still applies.
+
 Tests drive Space, arrow keys, Enter and Ctrl+C, inspect installed bundle bytes
 and destinations, and bound owned process lifetimes. Ctrl+C is actual terminal
 input; force termination is cleanup only. Fixture homes, PATH launchers, logs
@@ -75,6 +84,11 @@ packaging defect. A prerelease changes unrelated terminal behavior. The scoped
 mode-only patch carries the upstream artifact correction while preserving the
 selected stable implementation.
 
+**Poll the launcher PID after its original handle closed.** A fresh numeric
+lookup can follow a replacement process on Windows. Even a bounded wait would
+wait on an unrelated identity. The original ChildProcess's matching exit/close
+status supplies the intended direct-launcher proof.
+
 **Depend on a runner-provided terminal CLI.** The runner image documents Python,
 PowerShell, .NET and Windows SDK tools, but does not guarantee a general PTY
 driver. Depending on an undocumented executable would make fixture behavior
@@ -87,7 +101,7 @@ hook permission. End-user production installations do not include node-pty.
 Test code has an explicit process lifecycle and can verify result/terminal
 stream separation without weakening production interactivity checks.
 
-Native Agent skill loading and automatic selection remain separate acceptance
-work. Passing terminal installation proves the command and files, not that a
+The [native Agent workflow](2026-10-21-native-agent-skill-workflow.md) keeps
+skill loading and automatic selection separate from terminal installation. Passing terminal installation proves the command and files, not that a
 model loaded or acted on the skill. Runtime counts and transcripts belong to
 source-bound PR/CI evidence; this note preserves the mechanism and limits.

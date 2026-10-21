@@ -1205,9 +1205,9 @@ pnpm --filter @codetreker/daynight skill:acceptance
 ```
 
 `DAYNIGHT_NATIVE_HOST=codex|copilot|claude` and
-`DAYNIGHT_NATIVE_SCOPE=user|project` select a case for diagnosis. A selected-case
-receipt proves only that selection; the full six-case matrix is the workflow
-acceptance. Ordinary `pnpm test` and `pnpm acceptance` do not run live models.
+`DAYNIGHT_NATIVE_SCOPE=user|project` select a case for diagnosis. `DAYNIGHT_NATIVE_RECOVERY=unlinked|ambiguous|service_failure` selects one focused
+Codex recovery case. A selected-case receipt proves only that selection; a full
+run covers the six workflow combinations and all three recovery cases. Ordinary `pnpm test` and `pnpm acceptance` do not run live models.
 
 The suite packs and installs the actual CLI, installs the bundle through the
 interactive command into isolated homes or fresh linked worktrees, and starts
@@ -1230,7 +1230,7 @@ must be removed even after failure. Host and subprocess owners enforce their
 own deadlines and finish teardown before returning; Vitest's non-cancelling
 outer timeouts are disabled for this opt-in suite.
 
-Receipts under `.tmp/native-agent-skill-<host>-<scope>-evidence.json` retain
+Receipts under `.tmp/native-agent-skill-<selection>-evidence.json` retain
 source/package/native versions, content hashes, relevant native events, real
 service observations and cleanup results. Match them to their source and selected
 cases. Linux live-model results do not replace native Windows/macOS installer
