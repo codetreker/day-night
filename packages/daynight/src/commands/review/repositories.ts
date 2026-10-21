@@ -30,7 +30,7 @@ const sameDirectory = async (first: string, second: string): Promise<boolean> =>
     missingPathsReferToSameDirectory(left.ancestorPath, left.missingComponents, right.missingComponents);
 };
 
-const updateConfiguration = async (
+export const updateRepositoryConfiguration = async (
   source: string | undefined,
   input: AddRepositoryInput,
   runtimePaths: ReviewPaths,
@@ -84,5 +84,5 @@ export const addRepository = async (
   if (!path.isAbsolute(options.workingDirectory) || !path.isAbsolute(options.homeDirectory)) {
     throw new Error("The working directory and home directory must be absolute paths.");
   }
-  return updateConfigurationFile(runtimePaths, (source) => updateConfiguration(source, input, runtimePaths, options));
+  return updateConfigurationFile(runtimePaths, (source) => updateRepositoryConfiguration(source, input, runtimePaths, options));
 };

@@ -10,7 +10,7 @@ the corresponding PR and CI evidence.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion`, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service/default-budget acceptance verified | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
+| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion`, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service/default-budget acceptance verified | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -20,7 +20,9 @@ dependencies and lifecycle. `review` polls configured repositories, maintains
 dedicated local clones and PR worktrees, and launches Copilot in a retained
 session for each eligible PR using a bundled review skill. SQLite preserves initialization boundaries, review
 revisions and retry budgets. The group also provides configuration-only
-repository registration and a local persisted review listing. `update` manages
+repository registration and a local persisted review listing. `setup` configures
+server access, review repositories or both; valid business commands guide missing
+configuration for their own capability before continuing. `update` manages
 the current npm global installation independently of review configuration and
 runtime. `completion` generates native Bash and zsh scripts from the same command
 definitions used by parsing and help. Loaded scripts complete locally without
@@ -415,6 +417,9 @@ daynight                            # Show root help
 daynight --help                      # Also -h
 daynight --version                   # Also -v
 daynight update
+daynight setup                       # Choose server access, review or both
+daynight setup --server-url <url>
+daynight setup --review-repo <remote> [--review-path <path>]
 daynight review                     # Show review help
 daynight review run
 daynight review list                 # Also review ls
@@ -468,7 +473,8 @@ and leaves startup-file changes to the operator. These outputs are designed for
 the loading contract.
 
 Completion suggests commands, nested operations, aliases, options, shell names
-and local directories for `review add-repo --path`. zsh also displays descriptions.
+and local directories for `review add-repo --path` and `setup --review-path`.
+zsh also displays descriptions.
 The scripts run in the shell on each Tab without starting Node or reading review
 configuration, SQLite or the network. Directory suggestions preserve quoted and
 special-character paths; an uncreated target directory remains valid input.
@@ -481,9 +487,53 @@ and shell integration; the
 [completion decision](.agents/notes/implemented/feature/2026-10-20-shell-completion.md)
 records compatibility and execution trade-offs.
 
+## Configuration setup
+
+The first valid project or task command asks for a server origin when the
+configuration file or `serverUrl` is absent. The first `review run`, `review list`
+or `review ls` asks for a repository when the file or `repositories` field is
+absent. Each command asks only for its own capability. Machines that do not run
+review can keep only `serverUrl`. After saving, the original command runs once
+with its original arguments.
+
+Run `daynight setup` to choose server access, review or both in advance. For scripts,
+use explicit options, which never prompt:
+
+```bash
+daynight setup --server-url http://127.0.0.1:8787
+daynight setup --review-repo https://github.com/OWNER/REPO.git
+daynight setup --review-repo git@github.com:OWNER/OTHER.git --review-path ./review-other
+```
+
+The two capabilities can be configured in one invocation by combining
+`--server-url` and `--review-repo`; `--review-path` requires `--review-repo`.
+The server origin has no implicit default. Review registration uses the same
+remote and path rules as `review add-repo`.
+
+Interactive setup requires terminal stdin and stderr. Prompts and save messages
+go to stderr, so redirected stdout keeps its normal text or JSON results. Missing
+configuration in a noninteractive command fails with the corresponding scriptable
+setup command. Shared YAML/schema errors, invalid values for the selected
+capability and read errors retain their specific errors; an explicit empty review
+repository list is invalid. Business values belonging only to the other capability
+remain outside the current command's validation.
+Help, version, completion, update and invalid arguments do not prompt.
+
+Setup collects all selected values before one atomic save under the configuration
+write lock, preserving comments, other settings and concurrent completed changes
+to unrelated fields. If a selected field changed while input was collected, setup
+fails with a conflict and asks for setup to be run again.
+Ctrl+C, termination signals or EOF cancel input without saving partial values or
+running the original command. Input time does not consume the business command's
+timeout. Setup saves configuration only; network access, authentication, cloning
+and review state initialization belong to the subsequent business command. A
+connection failure after setup keeps the saved configuration. The
+[setup decision](.agents/notes/implemented/feature/2026-10-21-guided-configuration-setup.md)
+records the independent capabilities and persistence guarantees.
+
 ## Project management
 
-Set the server origin in `~/.daynight/config.yml`:
+Configure the server origin with setup or in `~/.daynight/config.yml`:
 
 ```yaml
 serverUrl: http://127.0.0.1:8787
@@ -565,7 +615,7 @@ integration status.
 
 ## Review configuration and startup
 
-Register a repository before starting review mode:
+Register a repository explicitly, or let the first review operation guide registration:
 
 ```text
 daynight review add-repo https://github.com/OWNER/REPO.git
@@ -622,8 +672,9 @@ existing file's permission mode.
 
 Numeric options use the documented [configuration defaults](docs/design/daynight-review.md#使用方式与配置)
 when omitted. Explicit invalid values, unsupported fields, duplicate YAML keys and
-malformed documents produce nonzero exits with useful errors. Review startup also
-fails when the configuration is missing. Duplicate repository identities,
+malformed documents produce nonzero exits with useful errors. Missing configuration
+triggers the [configuration setup](#configuration-setup) rules before review
+startup. Duplicate repository identities,
 duplicate local paths, paths overlapping the retained state directory, and paths
 with an existing nondirectory component are rejected. Missing clone directories
 remain valid for later repository creation. Existing paths are compared by

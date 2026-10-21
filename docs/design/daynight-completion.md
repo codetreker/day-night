@@ -1,6 +1,6 @@
 # Daynight Shell 补全设计
 
-状态：共享命令语法及 Bash/zsh 生成器已实现，包含 `review`、`update`、`completion`、
+状态：共享命令语法及 Bash/zsh 生成器已实现，包含 `review`、`update`、`setup`、`completion`、
 `project` 和 `task`；Task 扩展已随 PT-T4 通过原生 CI 与远端 review 并交付，
 对应来源和结果见[任务清单](daynight-project-task-tasks.md#pt-t4)。
 行为约束由[客户端需求](../spec/daynight.md)拥有，project 行为由
@@ -11,7 +11,7 @@
 ## 目标与范围
 
 客户端为 Bash ≥4.2 和 zsh 提供原生补全，覆盖登记的命令、子命令、别名、选项、
-`completion` 的 shell 参数和 `review add-repo --path` 的目录参数。zsh 使用原生描述
+`completion` 的 shell 参数、`review add-repo --path` 和 `setup --review-path` 的目录参数。zsh 使用原生描述
 展示能力。目录候选不限制运行时合法值；`--path` 继续接受尚未创建的目标目录。
 
 公开脚本生成入口为：
@@ -31,7 +31,8 @@ Git、GitHub CLI、Copilot、npm 或网络请求，不修改 shell 启动文件�
 `project create <name> --repo <repo>`、`project list [--json]` 和
 `project show <project-id> [--json]` 已登记在共享命令树中。名称、repo 地址和 project ID
 是自由输入，不提供文件或远端候选。Tab 不加载 server 配置，不查询 project 列表；
-执行 project 命令时的服务访问仍由其业务模块负责。
+执行 project 命令时的服务访问仍由其业务模块负责。`setup` 的服务 URL 和仓库地址
+同样是自由文本，`--review-path` 只补全本地目录；生成与 Tab 不触发配置引导。
 
 ## 共享命令描述
 

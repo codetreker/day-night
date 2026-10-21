@@ -30,16 +30,22 @@ and runtime paths; the server projection validates only `serverUrl`. The
 [project/task design](2026-10-20-project-task-cli-design.md) owns that additive
 field and the independent HTTP foundation. Review retains its original state
 locations and does not validate unrelated server values.
-Configuration failures identify the fixed filename, stop startup and retain
-their causes. `review add-repo` creates missing configuration and updates existing YAML
-without entering review mode. Its separate configuration write lock coordinates
+Configuration failures identify the fixed filename and retain their causes.
+The original configuration-loading behavior stopped startup when the file was
+absent, making manual preparation an explicit prerequisite. The
+[guided setup decision](../feature/2026-10-21-guided-configuration-setup.md) partially
+supersedes that prerequisite: valid review operations can guide missing repository
+configuration before entering their operation. Invalid existing configuration
+still stops execution. `review add-repo` and setup create missing configuration
+and update existing YAML without entering review mode. The separate configuration
+write lock coordinates
 configuration commands while the review instance lock continues to exclude
 concurrent reviewers. The [foreground coordinator](2026-10-17-foreground-review-coordination.md)
 creates retained state and runs review monitoring under an exclusive instance lock.
 The [local status listing](../feature/2026-10-18-review-status-listing.md) reads the
 same current configuration and existing database without that lock or runtime
-startup. It parses configuration without creating physical path probes and leaves
-a missing database absent. SQLite may manage coordination sidecars while reading
+startup. After any required setup, it parses configuration without creating
+physical path probes and leaves a missing database absent. SQLite may manage coordination sidecars while reading
 existing WAL state.
 
 This location choice complements the

@@ -8,10 +8,11 @@ task 命令、安装产物、真实服务及默认预算验收已完成并通过
 
 Daynight 是一个组合命令的客户端工具包。npm 包提供统一的 `daynight` 入口，命令模块
 拥有各自的业务行为、依赖和生命周期。`review` 是 GitHub PR 审查模块；`update` 管理
-整个客户端的 npm 全局安装；`completion` 生成 Bash 和 zsh 的原生补全脚本。独立的 Go
+整个客户端的 npm 全局安装；`setup` 按能力保存配置；`completion` 生成 Bash 和 zsh
+的原生补全脚本。独立的 Go
 服务和浏览器应用保留自己的产品需求与生命周期。
 
-本文档负责客户端入口、命令组合、自更新和 shell 补全的必需行为；
+本文档负责客户端入口、命令组合、按需配置引导、自更新和 shell 补全的必需行为；
 [review 需求](daynight-review.md)负责审查、review 配置字段和持久化状态。
 [project/task 需求](daynight-project-task.md)负责已确认的 server 连接配置、仓库关联
 发现和远端项目任务命令。客户端机制见[架构设计](../design/daynight.md)，补全机制见
@@ -37,6 +38,9 @@ daynight -h
 daynight --version
 daynight -v
 daynight update
+daynight setup
+daynight setup --server-url <url>
+daynight setup --review-repo <remote> [--review-path <path>]
 daynight review
 daynight review run
 daynight review list
@@ -57,7 +61,7 @@ daynight task update <task-id> [options]
 daynight task graph [--json] [--project <project-id>]
 ```
 
-无参数、`--help` 或 `-h` 显示顶层帮助并成功退出；帮助列出 `review`、`update`、
+无参数、`--help` 或 `-h` 显示顶层帮助并成功退出；帮助列出 `review`、`update`、`setup`、
 `completion`、`project` 和 `task`。`--version` 与 `-v` 输出当前包版本。裸 `review` 和裸 `completion`
 显示各自帮助；裸 `project` 与 `task` 同样显示组帮助。组和操作在该层唯一参数为 `--help` 或 `-h` 时显示帮助，且不得执行
 该操作。顶层版本选项不继承到子命令。`review ls` 是 `review list` 的别名。
@@ -88,7 +92,8 @@ daynight task graph [--json] [--project <project-id>]
 工作目录、获取实例锁、读取审查状态或执行 npm 和网络请求。生成的脚本在按 Tab 时
 遵守 C5 的本地执行要求。
 
-`review add-repo` 只写配置，`review list` 与 `review ls` 只读取配置及已存数据库，
+`setup` 与 `review add-repo` 只写配置。按 C6 完成必要的配置引导后，
+`review list` 与 `review ls` 只读取配置及已存数据库，
 `review run` 独立持有审查运行时和信号生命周期，具体保证由 review 需求定义。
 `project` 操作只加载 server 配置和 HTTP 能力，不读取工作目录、Git 或仓库本地关联；
 共享执行层在单个操作下处理信号、期限和完整结果输出。`task` 显式指定 project
@@ -139,7 +144,7 @@ npm 替换失败；该失败必须明确报告。
 使用当前安装的定义；已有 shell 重新加载脚本后刷新。保存的脚本文件需要重新生成。
 
 补全覆盖命令、子命令、别名、当前层的选项、`completion` 的 shell 参数和
-`review add-repo --path` 的目录候选；zsh 同时展示候选说明。非重复选项使用后不再
+`review add-repo --path` 与 `setup --review-path` 的目录候选；zsh 同时展示候选说明。非重复选项使用后不再
 提供，已消耗的位置参数不重复提供候选，remote 不提供远端候选或无关文件候选。
 目录建议不约束运行时合法值，操作者仍能输入尚未创建的目标目录。状态的静态
 候选为 `todo`、`in_progress`、`done`，分离及内联形式使用同一候选。重复依赖选项
@@ -152,6 +157,38 @@ review 配置或数据库，不访问网络。候选和输入必须作为数据�
 行中的情况，且不改变用户全局的分词配置或 completion style。当前脚本按 source
 加载；不承诺将同一输出直接用于 zsh `fpath` 自动加载。
 
+### C6. 按需配置引导
+
+`project` 和 `task` 的有效业务调用只要求服务连接配置；`review run`、`review list`
+及 `review ls` 只要求 review 配置。机器仅使用 project/task 时，可以一直只有
+`serverUrl`，无需登记 review 仓库。各能力不共享“初始化完成”状态。
+
+当前命令缺少配置文件，或严格解析成功后缺少其必需字段时，若 stdin 与 stderr 均为
+TTY，必须询问所缺配置。服务命令只询问 `serverUrl`；review 只询问一个 GitHub 远程
+地址及可选本地克隆路径，复用仓库登记规则。当前能力已有的无效字段值、review 的
+空仓库列表、共享 YAML 语法或结构错误、重复键、未知字段和读取权限错误仍须显示
+原因；不得通过引导覆盖或修复这些输入。其他能力的业务字段值继续由其独立投影
+校验，不能阻塞当前能力。
+配置修改继续拒绝符号链接和其他非普通文件。配置完整时不询问。
+
+`daynight setup` 无选项时让操作者选择服务连接、review 或两者，再收集所选值。
+显式 `--server-url <url>`、`--review-repo <remote>` 可单独或同时使用，仅设置选中的
+能力且不询问；`--review-path <path>` 必须与 `--review-repo` 一起使用。远程地址和
+路径语义与 `review add-repo` 相同；服务地址使用 PT2 的校验规则且没有隐含默认值。
+非交互调用缺少必要配置时，立即以状态码 1 失败，给出可执行的对应 setup 命令。
+
+提示、保存结果和取消诊断只写 stderr，业务结果保留 stdout 的原有格式，包括 JSON。
+必须先收集全部输入，再持配置写锁重新读取文件、合并所选字段、校验并原子保存；
+保留其他能力的字段、YAML 注释、已有仓库路径和文件权限。并发完成的无关字段修改
+必须保留；所选字段在收集输入期间变化时，明确报冲突并要求重新设置，不能覆盖。
+已有配置写锁被占用时明确失败。
+
+输入结束、Ctrl+C、SIGTERM 或 Windows SIGBREAK 取消尚未完成的引导；取消时不保存
+部分输入，也不执行原业务。引导不访问网络、不检查认证、不 clone、不初始化 SQLite
+或审查运行时。自动引导保存成功后，原命令以原参数执行且只执行一次；后续连接或运行
+失败保留已保存的配置。人工输入时间不计入业务命令期限。帮助、版本、补全、自更新及
+无效参数不触发引导。
+
 ## 验收场景
 
 | 场景 | 必需结果 | 对应需求 |
@@ -160,6 +197,11 @@ review 配置或数据库，不访问网络。候选和输入必须作为数据�
 | 调用裸 `review`、裸 `completion`、组帮助或任何操作帮助。 | 显示对应帮助，退出 0，未进入业务操作或加载审查运行时。 | C2, C3 |
 | 调用未知根命令、旧入口、不完整参数或未知操作选项。 | 输出错误及对应帮助命令，退出 2；未执行配置、审查或更新。 | C2, C3 |
 | 在 remote 前后使用一次 `--path`，或重复、合并赋值、混用帮助及其他参数。 | 合法顺序保持等价；重复 `--path`、`--path=value`、`--` 和非唯一帮助参数退出 2。 | C2 |
+| 首次在 TTY 执行有效 project/task 或 review 业务操作。 | 仅询问当前能力的缺失字段，保存后以原参数执行一次；JSON stdout 不含提示。 | C6 |
+| 仅配置服务地址，或只配置 review 仓库。 | 对应命令直接运行；首次使用另一能力时才补充其配置，保留已有字段和注释。 | C3, C6 |
+| 主动选择 setup 的两种能力，或通过显式选项配置。 | 全部值收集、校验后一次原子保存；显式选项不询问，review 路径必须伴随仓库地址。 | C6 |
+| 非 TTY 缺配置、已有配置损坏、读取失败，或在引导期间取消及 EOF。 | 缺配置给出脚本配置命令；损坏及读取错误保留原因；取消不保存部分值且不执行业务。 | C6 |
+| 引导期间另一配置命令已写入，或配置锁被占用。 | 保存前重读并保留无关字段修改；所选字段已变更或占锁时明确失败且不执行业务。 | C6 |
 | 执行 review 的配置、列表和运行操作。 | 按操作加载其依赖，复用原有 YAML 和 SQLite；审查保证见 review 的 R1–R15。 | C3 |
 | 执行 `daynight update`，registry 的 `latest` 比当前版本更新。 | 只更新当前 npm 全局安装，安装已查询到的确切版本，重新验证清单、启动器和新进程版本后报告成功；保留配置及审查状态。 | C4 |
 | npm 默认全局 prefix 已变化，或调用目录包含项目 `.npmrc`。 | 仍使用当前安装的实际 prefix，保留用户/全局 registry 与认证配置，不更新其他 prefix，也不使用调用目录的项目配置。 | C4 |

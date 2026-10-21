@@ -1,6 +1,7 @@
 import { parseConfigurationDocument } from "./document.js";
 import { readConfigurationSource } from "./files.js";
 import type { ConfigurationPaths } from "./paths.js";
+import { MissingConfigurationFieldError } from "./errors.js";
 
 export type ServerConfiguration = { serverUrl: string };
 
@@ -26,7 +27,7 @@ export const parseServerConfiguration = (source: string, paths: ConfigurationPat
   try {
     const { mapping } = parseConfigurationDocument(source, paths);
     if (!Object.hasOwn(mapping, "serverUrl")) {
-      throw new Error("serverUrl is not configured; set it to the daynight-server HTTP(S) origin.");
+      throw new MissingConfigurationFieldError("serverUrl", "serverUrl is not configured; use daynight setup --server-url <url> to set the daynight-server HTTP(S) origin.");
     }
     return { serverUrl: normalizeServerUrl(mapping.serverUrl) };
   } catch (cause) {

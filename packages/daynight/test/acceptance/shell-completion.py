@@ -278,6 +278,12 @@ def scenarios():
         ("root command and local directory collision", "daynight rev\t", ["review"]),
         ("root update", "daynight upd\t", ["update"]),
         ("root completion", "daynight comp\t", ["completion"]),
+        ("root setup and local directory collision", "daynight set\t", ["setup"]),
+        ("setup server URL option", "daynight setup --ser\t", ["setup", "--server-url"]),
+        ("setup review repository option", "daynight setup --review-r\t", ["setup", "--review-repo"]),
+        ("setup review path option", "daynight setup --review-p\t", ["setup", "--review-path"]),
+        ("setup review directory", "daynight setup --review-path nor\t", ["setup", "--review-path", "normal-directory/"]),
+        ("setup review after server URL", "daynight setup --server-url https://service.example --review-r\t", ["setup", "--server-url", "https://service.example", "--review-repo"]),
         ("root project and local directory collision", "daynight pro\t", ["project"]),
         ("project create", "daynight project cre\t", ["project", "create"]),
         ("project list", "daynight project li\t", ["project", "list"]),
@@ -344,6 +350,9 @@ def scenarios():
         ("Unicode cursor before following option", "daynight review add-repo --path 中 --bad\x01" + "\x06" * len("daynight review add-repo --path 中") + "\t", ["review", "add-repo", "--path", "中文目录/", "--bad"]),
     ]
     unchanged = [
+        ("setup server URL has no file fallback", "daynight setup --server-url nor"),
+        ("setup review repository has no file fallback", "daynight setup --review-repo nor"),
+        ("used setup server URL is hidden", "daynight setup --server-url https://service.example --ser"),
         ("remote has no file fallback", "daynight review add-repo nor"),
         ("project name has no file fallback", "daynight project create nor"),
         ("project repo has no file fallback", "daynight project create --repo nor"),
@@ -402,8 +411,9 @@ def run_shell(label, binary, kind, script, directory, evidence, zsh_root):
             actual = shell.execute()
             native_expected = list(expected)
             # ZLE removes an automatically added directory slash when accepting the line.
-            if kind == "zsh" and "--path" in expected:
-                path_index = expected.index("--path") + 1
+            directory_option = next((option for option in ["--path", "--review-path"] if option in expected), None)
+            if kind == "zsh" and directory_option is not None:
+                path_index = expected.index(directory_option) + 1
                 if path_index < len(expected) and path_index < len(actual) and expected[path_index].endswith("/") and actual[path_index] == expected[path_index][:-1]:
                     native_expected[path_index] = expected[path_index][:-1]
             result = {"name": name, "line": line, "cursor": cursor, "argv": actual, "passed": actual == native_expected}
@@ -422,7 +432,8 @@ def run_shell(label, binary, kind, script, directory, evidence, zsh_root):
                 raise AssertionError(f"{label}: {name}: expected unchanged {line!r}, received {actual!r}, terminal={output!r}")
             print(f"PASS {label}: {name}", flush=True)
         for name, line, candidates in [
-            ("empty root prefix", "daynight ", ["review", "update", "completion", "project", "task"]),
+            ("empty root prefix", "daynight ", ["review", "update", "completion", "project", "task", "setup"]),
+            ("empty setup prefix", "daynight setup ", ["--server-url", "--review-repo", "--review-path"]),
             ("empty review prefix", "daynight review ", ["run", "list", "ls", "add-repo"]),
             ("empty project prefix", "daynight project ", ["create", "list", "show"]),
             ("empty project create prefix", "daynight project create ", ["--repo"]),
@@ -460,7 +471,7 @@ def main():
                 sentinel = directory / "bin" / command
                 sentinel.write_text("#!/bin/sh\nprintf x >>" + shlex.quote(str(directory / "forbidden-executions.log")) + "\nprintf '__DAYNIGHT_FORBIDDEN_NODE__\\n'\nexit 99\n")
                 sentinel.chmod(0o755)
-            for name in ["review", "project", "task", "normal-directory", "space directory", "中文目录", "apostrophe'directory", 'double"directory', "dollar$directory", "backtick`directory", "colon:directory", "~literal", "home/home-directory"]:
+            for name in ["review", "project", "task", "setup", "normal-directory", "space directory", "中文目录", "apostrophe'directory", 'double"directory', "dollar$directory", "backtick`directory", "colon:directory", "~literal", "home/home-directory"]:
                 (directory / name).mkdir(parents=True)
             scripts = {}
             for kind in ["bash", "zsh"]:
