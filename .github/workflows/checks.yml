@@ -13,8 +13,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  detect-changes:
+    name: detect affected modules
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      cli: ${{ steps.modules.outputs.cli }}
+      server: ${{ steps.modules.outputs.server }}
+      web: ${{ steps.modules.outputs.web }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Test module selection and required-check aggregation
+        run: node --test .github/scripts/ci-modules.test.mts
+      - name: Select modules from the complete PR diff
+        id: modules
+        env:
+          MODULE_EVENT: ${{ github.event_name }}
+          MODULE_BASE: ${{ github.event.pull_request.base.sha }}
+          MODULE_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: node .github/scripts/ci-modules.mts detect
+
   verify:
     name: verify (${{ matrix.os }})
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.cli == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -78,6 +107,8 @@ jobs:
 
   verify-completion:
     name: verify (shell completion)
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.cli == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -114,6 +145,8 @@ jobs:
 
   verify-server:
     name: verify (Go server)
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.server == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -184,6 +217,8 @@ jobs:
 
   verify-web:
     name: verify (web)
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.web == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -254,14 +289,18 @@ jobs:
 
   checks:
     if: ${{ always() }}
-    needs: [verify, verify-completion, verify-server, verify-web]
+    needs: [detect-changes, verify, verify-completion, verify-server, verify-web]
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
-      - name: Require every CLI platform, shell completion, Go server and web application to pass
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Require every selected module to pass and every unselected module to be skipped
         env:
-          VERIFY_RESULT: ${{ needs.verify.result }}
-          COMPLETION_RESULT: ${{ needs.verify-completion.result }}
-          SERVER_RESULT: ${{ needs.verify-server.result }}
-          WEB_RESULT: ${{ needs.verify-web.result }}
-        run: test "$VERIFY_RESULT" = success && test "$COMPLETION_RESULT" = success && test "$SERVER_RESULT" = success && test "$WEB_RESULT" = success
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: node .github/scripts/ci-modules.mts require

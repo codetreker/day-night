@@ -23,7 +23,9 @@ resource scope before returning data. It preserves cancellation, exposes safe
 error categories and request IDs, and does not render raw server bodies. Domain
 graph validation remains separate from transport decoding.
 
-CI adds a required web check without changing existing Go or native CLI checks.
+The browsing foundation added a required web check without changing existing Go
+or native CLI workloads. The later [module-scoped CI decision](../process/2026-10-21-module-scoped-pr-ci.md)
+selects affected PR jobs and preserves full main-push validation.
 The exact statement gate enumerates every product TypeScript/TSX source and
 requires complete runtime coverage records. It compares raw counters with
 BigInt, rejecting equality at 90%, empty reports and missing runtime files.

@@ -349,8 +349,9 @@ bundle 复制到 `dist/commands/review/skills/daynight-review/`，由既有 `dis
 脚本，在隔离包的全新目标下检查完整 bundle；重复排他复制必须失败且保留既有内容，
 缺少源码时同样明确失败。原生矩阵每次解析最新可用的 Node.js 24 patch，使构建行为
 覆盖受支持运行时的当前实现。源码、包元数据、构建或依赖输入变化
-需要更高 SemVer；构建清理脚本也属于发布输入。Linux 版本检查和全部原生检查共同
-构成必需门禁。发布在等待 CI 与安装依赖前检查精确版本的 tag 和 npm 记录；任一存在
+需要更高 SemVer；构建清理脚本也属于发布输入。[CI 路由](../../README.md#ci-selection)
+选中 CLI 时，Linux 版本检查、全部原生检查和独立 shell completion 检查必须成功；
+main push 保留全量门禁。发布在等待 CI 与安装依赖前检查精确版本的 tag 和 npm 记录；任一存在
 则成功跳过新发布。首次使用准备好的产物发布前重复检查，同一次 run 的发布失败重试
 保留严格的源码、字节验证与补齐 tag 能力。
 [版本预检决策](../../.agents/notes/implemented/process/2026-10-21-publication-version-preflight.md)
