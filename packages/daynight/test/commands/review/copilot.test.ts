@@ -185,6 +185,9 @@ describe("Copilot persisted sessions and direct attempts", () => {
     expect(report.prompt).toContain(uuid(99));
     expect(report.prompt).toContain("$(literal) & | %PATH%");
     expect(report.prompt).toContain("Never submit REQUEST_CHANGES");
+    expect(report.prompt).toContain("Re-evaluate the skill's PR-quality gates against the current title and description before confirming an existing result");
+    expect(report.prompt).toContain("A body-only COMMENT is valid");
+    expect(report.prompt).toContain("Publish APPROVE only when both PR-quality gates pass and no Critical or Major defect remains");
     expect(report.prompt).toContain("commit_id");
     expect(report.prompt).toContain("APPROVE");
     expect(report.prompt).toContain("Open, non-Draft");

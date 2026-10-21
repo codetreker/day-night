@@ -955,16 +955,35 @@ cleared and a review child can start. Cancellation, timeout or uncertain process
 exclusion prevents that next launch. Discovery stdout and stderr stream to
 separate `skill-list` logs and never enter completion-marker parsing.
 
-The agent publishes inline Critical/Major comments or approval itself and
-reconciles prior publication when continuing an incomplete review. The adapter
-streams separate stdout/stderr logs and accepts only normal zero exit, complete
-capture and the exact final nonempty stdout line `PR N Review Completed`.
-Incomplete output, timeout, cancellation and logging errors cannot complete a
-review. The coordinator owns scheduling and final state transitions; runtime
-process supervision supplies evidence under the foreground execution contract.
+The agent reads the current PR title, description and linked scope requirements,
+then checks the complete captured diff against one concrete problem and outcome.
+A clear description and changes within the original scope are independent
+approval gates. Independent objectives, an unreviewable combined PR or unrelated
+changes block approval even without a Critical/Major code defect. Necessary
+implementation, structural changes, tests and documentation for the same outcome
+remain in scope; fixed line or file counts do not decide reviewability. Expanding
+the description alone cannot justify unrelated work.
+
+Before publishing or confirming prior publication, the agent rereads the current
+PR information and reevaluates those gates. It publishes `COMMENT` reviews for
+blockers, with description or other PR-level problems in the review body and
+suitable code findings inline; it does not use `REQUEST_CHANGES`. It approves
+only when both quality gates pass and no Critical/Major code issues remain.
+Retry confirmation requires prior publication to match the current gate result
+and captured target. These are agent instructions, not a machine-enforced
+quality judgment; title or description edits alone do not trigger another review.
+
+The adapter streams separate stdout/stderr logs and accepts only normal zero
+exit, complete capture and the exact final nonempty stdout line
+`PR N Review Completed`. Incomplete output, timeout, cancellation and logging
+errors cannot complete a review. The coordinator owns scheduling and final state
+transitions; runtime process supervision supplies evidence under the foreground
+execution contract.
 
 The [execution decision](.agents/notes/implemented/architecture/2026-10-17-copilot-session-execution.md)
-records process and publication boundaries. The
+records process and publication boundaries; the
+[PR-quality decision](.agents/notes/implemented/process/2026-10-21-review-pr-quality-gates.md)
+records the approval policy. The
 [skill design](docs/design/daynight-review-skill.md) owns packaging, snapshots and
 loading, with rationale in the
 [bundled-skill decision](.agents/notes/implemented/architecture/2026-10-20-bundled-review-skill.md).

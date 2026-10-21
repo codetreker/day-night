@@ -43,9 +43,15 @@ credentials into application state or prompts.
 The adapter reuses the Git manager's environment isolation before applying the
 [prepared raw/full-checkout settings](2026-10-17-owned-review-worktrees.md).
 Captured PR/review identity, head, base, merge base and prior unfinished review
-identity travel in the prompt. The agent publishes inline `COMMENT` reviews for
-Critical/Major findings or `APPROVE` otherwise, binds publication to the captured
-commit, rechecks eligibility and reconciles existing publication before retry.
+identity travel in the prompt. The agent reads current PR metadata and linked
+scope requirements, checks the complete captured diff, and rechecks metadata and
+eligibility before publishing or confirming prior publication. It binds reviews
+to the captured commit and reconciles existing effects before retry. The
+[PR-quality decision](../process/2026-10-21-review-pr-quality-gates.md) partially
+supersedes the original approval rule: description and scope gates must pass in
+addition to there being no Critical/Major code issues. Blockers use `COMMENT`,
+with PR-level reasons in the body and suitable findings inline; passing reviews
+use `APPROVE`. Agent-owned publication and the completion protocol remain here.
 
 Each attempt has a unique log directory with separate stdout and stderr logs
 for discovery and review. Discovery JSON has its own bounded complete capture;
