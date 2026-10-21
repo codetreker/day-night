@@ -69,7 +69,11 @@ URL/title pairs provide the required behavior without a second input language.
 The design retains the existing status, dependency, cancellation and optimistic
 concurrency guarantees. It adds no remote service or background lifecycle.
 Opaque JSON text needs strict application decoding; corruption must fail reads
-instead of appearing as empty properties. Future stored property additions need
+instead of appearing as empty properties. Native Windows CMD forwarding has a
+separate argument representation boundary: installed-launcher checks cover its
+representable arguments and opaque response values, while the same installed
+Node entry verifies literal multiline input. The server content contract stays
+unchanged. Future stored property additions need
 migrations, with no read-time old-format fallback.
 
 Property filtering, reverse PR lookup and sorting would require explicit value

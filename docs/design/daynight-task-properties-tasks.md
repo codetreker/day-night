@@ -58,7 +58,8 @@ TP-T2 与 TP-T3 的依赖相同，可在 TP-T1 交付后分别推进。已打开
 1. TP-V1、TP-V3、TP-V6、TP-V8 的客户端路径成立；成对参数错误和互斥冲突在任何
    配置、Git 或网络 I/O 之前失败。
 2. 编译入口与安装产物对真实 Go/PostgreSQL 服务完成创建、替换、清空、冲突和
-   读回；HTTP fixture 另外验证 CLI 参数无法携带的控制字符响应及 JSON 原值。
+   读回；同一安装产物的 Node 入口验证 CR/LF 参数，原生 launcher 验证可表示的
+   成对参数及 HTTP 提供的完整原始字符串响应，覆盖 NUL 与终端控制字符。
 3. `pnpm typecheck`、`pnpm test`、`pnpm build` 及适用安装验收成功；帮助与
    Bash/zsh 补全通过既有实壳验证。按实施时主线版本满足现有 CLI 发布版本门禁。
 

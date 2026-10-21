@@ -25,6 +25,7 @@ const send = (response: ServerResponse, value: unknown, status = 200): void => {
 const fault = (response: ServerResponse, code: string, requestId: string, status: number, details?: unknown): void => send(response, { error: { code, message: "Native acceptance refusal.", requestId, ...(details === undefined ? {} : { details }) } }, status);
 type Result = { code: number | null; stdout: string; stderr: string };
 type RequestRecord = { method: string; path: string; body: unknown };
+type Transport = "launcher" | "node-entry";
 
 it("runs the actual installed launcher through native project/task discovery, persistence and failure lifecycles", async () => {
   const evidencePath = path.join(workspace, ".tmp/project-task-evidence.json");
@@ -88,8 +89,10 @@ it("runs the actual installed launcher through native project/task discovery, pe
     const address = server.address(); if (address === null || typeof address === "string") throw new Error("Missing native acceptance listener.");
     return `http://127.0.0.1:${address.port}`;
   };
-  const start = (args: readonly string[], cwd = outside, isolated = false) => {
-    const child = crossSpawn(receipt.launcherPath, [...args], { cwd, env: { ...environment, ...(isolated ? { NODE_OPTIONS: `--import=${pathToFileURL(path.join(receipt.root, "isolation.mjs")).href}` } : {}) }, windowsHide: true, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
+  const start = (args: readonly string[], cwd = outside, isolated = false, transport: Transport = "launcher") => {
+    const command = transport === "launcher" ? receipt.launcherPath : receipt.nodePath;
+    const commandArguments = transport === "launcher" ? [...args] : [receipt.entryPath, ...args];
+    const child = crossSpawn(command, commandArguments, { cwd, env: { ...environment, ...(isolated ? { NODE_OPTIONS: `--import=${pathToFileURL(path.join(receipt.root, "isolation.mjs")).href}` } : {}) }, windowsHide: true, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "", stderr = "", problem: Error | undefined;
     child.stdout!.setEncoding("utf8"); child.stderr!.setEncoding("utf8");
     child.stdout!.on("data", (value: string) => { stdout += value; }); child.stderr!.on("data", (value: string) => { stderr += value; });
@@ -111,8 +114,8 @@ it("runs the actual installed launcher through native project/task discovery, pe
     })();
     return { child, result };
   };
-  const invoke = async (args: readonly string[], cwd = outside, expected = 0, isolated = false): Promise<Result> => {
-    const result = await start(args, cwd, isolated).result;
+  const invoke = async (args: readonly string[], cwd = outside, expected = 0, isolated = false, transport: Transport = "launcher"): Promise<Result> => {
+    const result = await start(args, cwd, isolated, transport).result;
     expect(result.code, result.stderr).toBe(expected);
     if (expected !== 0) expect(result.stdout).toBe("");
     return result;
@@ -153,16 +156,23 @@ it("runs the actual installed launcher through native project/task discovery, pe
     expect(JSON.parse((await invoke(["task", "graph", "--json", ...explicit], outside, 0, true)).stdout).tasks).toEqual([]);
     scenarios.push("installed-project-task-operations-server-only-config-explicit-isolation");
 
-    const pullRequests = [{ url: "", title: "" }, { url: "-arbitrary=a,b", title: " 标题\n\u001b[2J " }, { url: "-arbitrary=a,b", title: " 标题\n\u001b[2J " }];
+    // The Windows .cmd launcher passes command text through cmd.exe. Line breaks
+    // are exercised through this same installation's Node entry below.
+    // https://github.com/moxystudio/node-cross-spawn/blob/77cd97f3ca7b62c904a63a698fc4a79bf41977d0/lib/parse.js#L38-L62
+    const pullRequests = [{ url: "", title: "" }, { url: "-arbitrary=a,b", title: " 标题 ,=() " }, { url: "-arbitrary=a,b", title: " 标题 ,=() " }];
     const pairs = ["--pull-request-url=", "--pull-request-url=-arbitrary=a,b", "--pull-request-title=", "--pull-request-title", pullRequests[1]!.title, "--pull-request-title", pullRequests[2]!.title, "--pull-request-url=-arbitrary=a,b"];
     const createdWithPr = await invoke(["task", "create", "--title", "PR task", ...pairs, ...explicit], outside, 0, true);
     expect(requests.at(-1)!.body).toEqual({ title: "PR task", properties: { pullRequests } });
     expect(createdWithPr.stdout).toContain("Pull requests: 3");
-    expect(createdWithPr.stdout).toContain(" 标题\\n\\u001b[2J ");
-    properties = { pullRequests: [...pullRequests, { url: "\0 arbitrary\ttext", title: "\0" }] };
+    expect(createdWithPr.stdout).toContain(" 标题 ,=() ");
+    properties = { pullRequests: [...pullRequests, { url: "\0 arbitrary\ttext", title: "\0\n\r\u001b[2J" }] };
     expect(parseApiJson((await invoke(["task", "show", taskId, "--json", ...explicit], outside, 0, true)).stdout)).toEqual({ ...task(), properties, version: 9_007_199_254_740_993n });
     expect(parseApiJson((await invoke(["task", "list", "--json", ...explicit], outside, 0, true)).stdout)).toEqual([{ ...task(), properties }]);
-    for (const args of [["task", "show", taskId, ...explicit], ["task", "list", ...explicit]]) expect((await invoke(args, outside, 0, true)).stdout).toContain("\\u0000 arbitrary\\ttext");
+    for (const args of [["task", "show", taskId, ...explicit], ["task", "list", ...explicit]]) {
+      const output = (await invoke(args, outside, 0, true)).stdout;
+      expect(output).toContain("\\u0000 arbitrary\\ttext");
+      expect(output).toContain("4. Title: \\u0000\\n\\r\\u001b[2J");
+    }
     const replaceAt = requests.length;
     await invoke(["task", "update", taskId, ...pairs, ...explicit], outside, 0, true);
     expect(requests.slice(replaceAt).map(({ method }) => method)).toEqual(["GET", "GET", "PATCH"]);
@@ -173,6 +183,24 @@ it("runs the actual installed launcher through native project/task discovery, pe
     expect(requests.at(-1)!.body).toEqual({ version: 9_223_372_036_854_775_807n, properties: { pullRequests: [] } });
     properties = { pullRequests: [] };
     scenarios.push("installed-pr-pairing-empty-duplicates-raw-text-json-replace-and-clear");
+
+    const multiline = [{ url: " arbitrary\r\nURL ", title: " 标题\n\r\u001b[2J " }, { url: "", title: "" }, { url: " arbitrary\r\nURL ", title: " 标题\n\r\u001b[2J " }];
+    const multilinePairs = ["--pull-request-title", multiline[0]!.title, "--pull-request-url", multiline[0]!.url, "--pull-request-url=", "--pull-request-url", multiline[2]!.url, "--pull-request-title=", "--pull-request-title", multiline[2]!.title];
+    const createdMultiline = await invoke(["task", "create", "--title", "Multiline PR task", ...multilinePairs, ...explicit], outside, 0, true, "node-entry");
+    expect(requests.at(-1)!.body).toEqual({ title: "Multiline PR task", properties: { pullRequests: multiline } });
+    expect(createdMultiline.stdout).toContain("1. Title:  标题\\n\\r\\u001b[2J \n     URL:  arbitrary\\r\\nURL ");
+    properties = { pullRequests: multiline };
+    const multilineUpdateAt = requests.length;
+    await invoke(["task", "update", taskId, ...multilinePairs, ...explicit], outside, 0, true, "node-entry");
+    expect(requests.slice(multilineUpdateAt).map(({ method }) => method)).toEqual(["GET", "GET", "PATCH"]);
+    expect(requests.at(-1)!.body).toEqual({ version: 9_007_199_254_740_993n, properties });
+    for (const args of [["task", "show", taskId], ["task", "list"]]) {
+      const json = await invoke([...args, "--json", ...explicit], outside, 0, true, "node-entry");
+      expect(parseApiJson(json.stdout)).toEqual(args[1] === "list" ? [{ ...task(), properties }] : { ...task(), properties, version: 9_007_199_254_740_993n });
+      expect((await invoke([...args, ...explicit], outside, 0, true, "node-entry")).stdout).toContain(" 标题\\n\\r\\u001b[2J ");
+    }
+    properties = { pullRequests: [] };
+    scenarios.push("installed-node-entry-pr-multiline-create-update-and-readback");
 
     await initialize(repository); const nested = path.join(repository, "nested 中文"); await mkdir(nested);
     await writeFile(path.join(repository, ".gitignore"), "# Keep original\r\n");
