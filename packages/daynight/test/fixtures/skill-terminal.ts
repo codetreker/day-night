@@ -22,6 +22,7 @@ type BridgeResult = {
   readonly signal: string | null;
   readonly failure?: string;
   readonly launcherPid: number;
+  readonly launcherExit?: { readonly code: number | null; readonly signal: string | null };
   readonly stdinTerminal: boolean;
   readonly stderrTerminal: boolean;
   readonly stdoutTerminal: boolean;
@@ -157,11 +158,8 @@ export const skillTerminal = async (
     await until(() => exited, "waiting for completion");
     const bridge = JSON.parse(await readFile(resultPath, "utf8")) as BridgeResult;
     if (bridge.failure !== undefined) throw new Error(`Installed launcher failed: ${bridge.failure}`);
+    if (bridge.launcherExit === undefined || (bridge.launcherExit.code === null && bridge.launcherExit.signal === null) || bridge.launcherExit.code !== bridge.code || bridge.launcherExit.signal !== bridge.signal) throw new Error(`Installed launcher did not report matching exit and close events: ${JSON.stringify(bridge)}`);
     if (!bridge.stdinTerminal || !bridge.stderrTerminal || bridge.stdoutTerminal) throw new Error(`Unexpected installed launcher terminal topology: ${JSON.stringify(bridge)}`);
-    let launcherExited = false;
-    try { process.kill(bridge.launcherPid, 0); }
-    catch (cause) { if (cause instanceof Error && "code" in cause && cause.code === "ESRCH") launcherExited = true; else throw cause; }
-    if (!launcherExited) throw new Error(`Installed launcher ${bridge.launcherPid} remains alive after terminal completion.`);
     const stdout = await readFile(stdoutPath, "utf8");
     skillTerminalEvidence.push({ ...bridge, terminalId: id, stdout, rawTranscript: transcript });
     return { code: bridge.code, stdout, stderr: transcript };
