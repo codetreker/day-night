@@ -40,8 +40,11 @@ that all list-based queries exhaust their cursors.
 The [requirements](../../../../docs/spec/daynight-project-task.md) own observable
 command behavior; the [design](../../../../docs/design/daynight-project-task.md)
 owns transport and rendering. The real Daynight task is
-`ada23216-a6e6-45de-89f4-67f1f71fbbfc`; native Agent/service acceptance follows this
-command so the public workflow is exercised with its final query strategy.
+`ada23216-a6e6-45de-89f4-67f1f71fbbfc`. Existing command and service suites own its
+query behavior. The
+[installation acceptance decision](../testing/2026-10-21-simulated-agent-installation-acceptance.md)
+checks the packaged skill and command reference statically and validates the
+installer with simulated launchers, without running an Agent or task service.
 
 ## Alternatives
 

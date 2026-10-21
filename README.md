@@ -67,8 +67,14 @@ are included in the npm package build under
 launchers and installs that bundle at the selected scope. The skill guides task recovery, dependency and observed-version updates, and
 completion only after required PRs are confirmed merged and acceptance passes.
 The design links implementation tasks tracked in the real Daynight project;
-their live status belongs to Daynight. Native Agent loading and automatic
-activation remain separate acceptance work.
+their live status belongs to Daynight. Installation acceptance uses simulated
+Agent launchers in an isolated PATH and the actual packed CLI in PTY/ConPTY. It
+checks all three agents at both scopes, complete bundle bytes, direct overwrite,
+stale-file removal, and preservation of sibling skills and the other scope. The
+launchers fail if executed; real Agent installations, models, and Daynight services
+are not part of this installer acceptance. The
+[acceptance decision](.agents/notes/implemented/testing/2026-10-21-simulated-agent-installation-acceptance.md)
+owns that boundary.
 
 The [task property requirements](docs/spec/daynight-task-properties.md),
 [design](docs/design/daynight-task-properties.md),
@@ -134,7 +140,10 @@ terminal addon with the available compiler/Python toolchain; macOS and Windows
 use the packaged prebuild when available. A version-pinned pnpm patch restores
 missing Darwin helper executable bits in the stable terminal dependency. The
 [native terminal decision](.agents/notes/implemented/testing/2026-10-21-native-skill-terminal-acceptance.md)
-records the test isolation and stream separation. `pnpm acceptance`
+records the test isolation and stream separation. Installer acceptance constructs
+Agent launcher fixtures and verifies they are never run. Static bundle tests own
+frontmatter, local references and published task-command guidance; existing
+project/task suites own service and task semantics. `pnpm acceptance`
 separately packs and installs the CLI in a local consumer and requires package-
 registry access. The review lifecycle suite uses controlled GitHub/Copilot
 executables with real Git and SQLite. The self-update suite uses real npm and an
@@ -566,7 +575,7 @@ needed. For Copilot CLI run `/skills reload` and inspect `/skills info daynight`
 Claude Code watches existing roots; use `/reload-skills` when a top-level skills
 directory was created during the session. The
 [skill design](docs/design/daynight-agent-skill.md) owns installation mechanisms
-and the separate native Agent loading and automatic-trigger acceptance gates.
+and the simulated-launcher installation acceptance matrix.
 
 ## Shell completion
 
