@@ -4,7 +4,7 @@ import { navigate } from "../../app/router";
 import { TaskDrawer } from "../task-detail/TaskDrawer";
 import { RootList } from "../task-graph/RootList";
 import { GraphDataError } from "../task-graph/model";
-import { projectViewPreferenceNotice, useProjectViewPreferences } from "./useProjectViewPreferences";
+import { completedChainPreferenceNotice, projectViewPreferenceNotice, useCompletedChainVisibility, useProjectViewPreferences } from "./useProjectViewPreferences";
 import { useTaskGraph } from "./useTaskGraph";
 import "../../styles/project.css";
 
@@ -49,8 +49,12 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
   const originalTrigger = useRef<HTMLElement | null>(null);
   const expandedRoot = useRef<string | null>(null);
   const snapshot = graph.snapshot;
+  const { showCompleted, onShowCompletedChange, issue: visibilityIssue } = useCompletedChainVisibility(projectId);
   // Database timestamp precision is retained by reversing the server's exact order.
-  const rootIds = useMemo(() => snapshot?.index.roots.toReversed() ?? null, [snapshot]);
+  const rootIds = useMemo(() => snapshot === null ? null : snapshot.index.roots.toReversed().filter((id) => {
+    const progress = snapshot.index.rootProgress.get(id)!;
+    return showCompleted || progress.done < progress.total;
+  }), [snapshot, showCompleted]);
   const { expandedRootId, setExpandedRootId, issue: preferenceIssue } = useProjectViewPreferences(projectId, rootIds);
   expandedRoot.current = expandedRootId;
   const selectedTaskId = selection !== null && snapshot !== null &&
@@ -102,6 +106,7 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
         <button className="button" type="button" onClick={graph.refresh} disabled={graph.refreshing}>{graph.refreshing ? "正在刷新…" : "刷新"}</button>
       </div>
       {preferenceIssue !== null && <p className="snapshot-notice" role="status">{projectViewPreferenceNotice(preferenceIssue)}</p>}
+      {visibilityIssue !== null && <p className="snapshot-notice" role="status">{completedChainPreferenceNotice(visibilityIssue)}</p>}
       {graph.status === "loading" && (
         <section className="state-box" role="status" aria-label="正在加载任务图">
           <span className="spinner" aria-hidden="true" /><h2>正在加载任务图</h2><p>正在读取项目任务和依赖关系。</p>
@@ -135,7 +140,8 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
             <section className="state-box"><h2>还没有任务</h2><p>项目中的任务会显示在这里。创建任务后，点击刷新查看。</p></section>
           ) : (
             <section aria-label="任务依赖链">
-              <RootList index={snapshot.index} rootIds={rootIds!} expandedRootId={expandedRootId} onExpand={setExpandedRootId} selectedTaskId={selectedTaskId} onSelectTask={onSelectTask} />
+              <RootList index={snapshot.index} rootIds={rootIds!} expandedRootId={expandedRootId} onExpand={setExpandedRootId} selectedTaskId={selectedTaskId} onSelectTask={onSelectTask}
+                showCompleted={showCompleted} onShowCompletedChange={onShowCompletedChange} />
             </section>
           )}
           {selectedTaskId !== null && <TaskDrawer projectId={projectId} taskId={selectedTaskId} snapshot={snapshot} onSelectTask={onSelectRelation}

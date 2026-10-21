@@ -413,7 +413,7 @@ describe('initial task viewport policy', () => {
 describe('root task accordion', () => {
   it('renders the presented root order without changing the complete graph index', () => {
     const rootIds = index.roots.toReversed();
-    const view = render(<RootList index={index} rootIds={rootIds} expandedRootId={null} onExpand={noop} selectedTaskId={null} onSelectTask={noop} />);
+    const view = render(<RootList showCompleted={true} onShowCompletedChange={noop} index={index} rootIds={rootIds} expandedRootId={null} onExpand={noop} selectedTaskId={null} onSelectTask={noop} />);
     expect([...view.container.querySelectorAll('.root-toggle')].map((root) => root.id)).toEqual(['task-root-F', 'task-root-E', 'task-root-B', 'task-root-A']);
     expect(index.roots).toEqual(['A', 'B', 'E', 'F']);
     expect(index.successors.get('A')).toEqual(['C']);
@@ -423,14 +423,14 @@ describe('root task accordion', () => {
 
   it('retains collapsed root renders during selection and still applies their new snapshot progress', async () => {
     const progressReads = vi.spyOn(index.rootProgress, 'get');
-    const view = render(<RootList index={index} rootIds={index.roots} expandedRootId="A" onExpand={noop} selectedTaskId={null} onSelectTask={noop} />);
+    const view = render(<RootList showCompleted={true} onShowCompletedChange={noop} index={index} rootIds={index.roots} expandedRootId="A" onExpand={noop} selectedTaskId={null} onSelectTask={noop} />);
     await ready(view.container);
     const originalRoots = [...view.container.querySelectorAll('.root-toggle')];
     const originalCanvas = view.container.querySelector('.task-graph-canvas');
 
     for (const selectedTaskId of ['C', 'D', null]) {
       progressReads.mockClear();
-      view.rerender(<RootList index={index} rootIds={index.roots} expandedRootId="A" onExpand={noop} selectedTaskId={selectedTaskId} onSelectTask={noop} />);
+      view.rerender(<RootList showCompleted={true} onShowCompletedChange={noop} index={index} rootIds={index.roots} expandedRootId="A" onExpand={noop} selectedTaskId={selectedTaskId} onSelectTask={noop} />);
       await waitFor(() => {
         const selectedNodes = view.container.querySelectorAll('.task-node-selected');
         expect(selectedNodes).toHaveLength(selectedTaskId === null ? 0 : 1);
@@ -448,7 +448,7 @@ describe('root task accordion', () => {
       tasks: graph.tasks.map((task) => task.id === 'E' ? { ...task, status: 'done', ready: false } : task),
       summary: { ...graph.summary, todo: 2, done: 3, ready: 1 },
     });
-    view.rerender(<RootList index={refreshed} rootIds={refreshed.roots} expandedRootId="A" onExpand={noop} selectedTaskId={null} onSelectTask={noop} />);
+    view.rerender(<RootList showCompleted={true} onShowCompletedChange={noop} index={refreshed} rootIds={refreshed.roots} expandedRootId="A" onExpand={noop} selectedTaskId={null} onSelectTask={noop} />);
     expect(originalRoots[2]!.querySelector('.root-progress-label')).toHaveTextContent('1/1 已完成');
     expect(originalRoots[2]!.querySelector('.root-status')).toHaveTextContent('已完成');
     expect(view.container.querySelectorAll('.root-toggle')[2]).toBe(originalRoots[2]);
@@ -457,7 +457,7 @@ describe('root task accordion', () => {
   it('keeps root status separate from chain progress and unmounts all but the expanded graph', async () => {
     const Wrapper = () => {
       const [expandedRootId, onExpand] = useState<string | null>('A');
-      return <RootList index={index} rootIds={index.roots} expandedRootId={expandedRootId} onExpand={onExpand} selectedTaskId={null} onSelectTask={noop} />;
+      return <RootList showCompleted={true} onShowCompletedChange={noop} index={index} rootIds={index.roots} expandedRootId={expandedRootId} onExpand={onExpand} selectedTaskId={null} onSelectTask={noop} />;
     };
     const { container } = render(<Wrapper />);
     const roots = container.querySelectorAll<HTMLButtonElement>('.root-toggle');
@@ -485,7 +485,7 @@ describe('root task accordion', () => {
   it('renders task previews as plain text in both the accordion and nodes', () => {
     const untrusted = '<img src=x onerror=alert(1)>'.repeat(6);
     const snapshot = { ...graph, tasks: graph.tasks.map((task) => task.id === 'A' ? { ...task, titlePreview: untrusted, titleTruncated: true } : task) };
-    const { container } = render(<RootList index={buildGraphIndex(snapshot)} rootIds={index.roots} expandedRootId="A" onExpand={noop} selectedTaskId={null} onSelectTask={noop} />);
+    const { container } = render(<RootList showCompleted={true} onShowCompletedChange={noop} index={buildGraphIndex(snapshot)} rootIds={index.roots} expandedRootId="A" onExpand={noop} selectedTaskId={null} onSelectTask={noop} />);
     expect(screen.getAllByText(`${untrusted}…`)).toHaveLength(2);
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('script')).toBeNull();

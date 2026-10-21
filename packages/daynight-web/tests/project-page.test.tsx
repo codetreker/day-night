@@ -73,6 +73,7 @@ beforeEach(() => {
 });
 
 describe("project dashboard", () => {
+  beforeEach(() => { window.localStorage.setItem(`daynight:completed-chains:${projectId}`, "true"); });
   beforeEach(() => { rememberRoot(A); });
 
   it("loads a complete graph into six accurate unique-task statistics and expands the newest root on a first visit", async () => {
@@ -239,6 +240,7 @@ describe("project dashboard", () => {
 });
 
 describe("newest-first task chains", () => {
+  beforeEach(() => { window.localStorage.setItem(`daynight:completed-chains:${projectId}`, "true"); });
   const presentedRoots = () => [...screen.getByTestId("root-list").querySelectorAll('[id^="task-root-"]')].map((root) => root.id);
   const newerRoots: readonly Seed[] = [
     { id: E, title: "新任务链", status: "todo", dependsOn: [] },
@@ -304,6 +306,7 @@ describe("newest-first task chains", () => {
 });
 
 describe("remembered task chain expansion", () => {
+  beforeEach(() => { window.localStorage.setItem(`daynight:completed-chains:${projectId}`, "true"); });
   it("restores a chosen root and an explicitly collapsed list after remounting", async () => {
     graphRequest.mockResolvedValue(graph());
     let view = render(<ProjectPage projectId={projectId} />);
@@ -344,14 +347,14 @@ describe("remembered task chain expansion", () => {
     const pending = deferred<TaskGraph>();
     graphRequest.mockReturnValueOnce(pending.promise).mockRejectedValueOnce(new ApiError("network"));
     render(<ProjectPage projectId={projectId} />);
-    expect(read).toHaveBeenCalledTimes(1);
+    expect(read.mock.calls.filter(([key]) => key === preferenceKey())).toHaveLength(1);
     expect(write).not.toHaveBeenCalled();
     await act(async () => { pending.resolve(graph()); });
     expect(screen.getByTestId(`chain-${A}`)).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "刷新" }));
     await screen.findByRole("alert");
     expect(screen.getByTestId(`chain-${A}`)).toBeVisible();
-    expect(read).toHaveBeenCalledTimes(1);
+    expect(read.mock.calls.filter(([key]) => key === preferenceKey())).toHaveLength(1);
     expect(write).not.toHaveBeenCalled();
   });
 
@@ -427,7 +430,7 @@ describe("remembered task chain expansion", () => {
     graphRequest.mockResolvedValue(graph());
     render(<ProjectPage projectId={projectId} />);
     expect(await screen.findByTestId(`chain-${C}`)).toBeVisible();
-    expect(screen.getByRole("status")).toHaveTextContent("无法读取浏览器保存的任务链展开状态");
+    expect(screen.getByText(/^无法读取浏览器保存的任务链展开状态/)).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "已完成根" }));
     expect(screen.getByTestId(`chain-${A}`)).toBeVisible();
     expect(write).toHaveBeenLastCalledWith(preferenceKey(), JSON.stringify({ expandedRootId: A }));
@@ -438,7 +441,7 @@ describe("remembered task chain expansion", () => {
     graphRequest.mockResolvedValue(graph());
     render(<ProjectPage projectId={projectId} />);
     expect(await screen.findByTestId(`chain-${C}`)).toBeVisible();
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("任务链展开状态无法保存到浏览器"));
+    await waitFor(() => expect(screen.getByText(/^任务链展开状态无法保存到浏览器/)).toBeVisible());
     fireEvent.click(screen.getByRole("button", { name: "已完成根" }));
     expect(screen.getByTestId(`chain-${A}`)).toBeVisible();
   });

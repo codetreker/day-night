@@ -25,7 +25,7 @@ Only one root canvas is mounted. The project restores the expanded root or
 an explicitly collapsed list from per-project browser storage; the
 [browsing preference decision](2026-10-21-task-browsing-preferences.md) owns its
 persistence, reconciliation and failure behavior. The project view shares one
-newest-first root sequence between list rendering and default-root selection;
+newest-first visible root sequence between list rendering and default-root selection;
 the [presentation decision](2026-10-21-task-chain-presentation.md) owns that order
 while the complete graph index retains its API order. React Flow owns fixed 220-by-96 task nodes,
 native node measurement, keyboard interaction, the viewport and its controls.

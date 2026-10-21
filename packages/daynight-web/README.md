@@ -41,15 +41,24 @@ browser back/forward and a generic not-found page. A project shows six statistic
 from one complete graph snapshot. Root rows appear newest creation first, with
 descending IDs breaking equal-time ties. The view reverses the exact API root
 sequence without reducing timestamp precision; updates do not move older roots.
-The complete graph index and API ordering stay unchanged. Rows expand one
+Fully completed chains are hidden by default, including completed standalone
+tasks. A completed root with unfinished descendants remains visible. The native
+Show completed chains checkbox reports the completed-chain count and remembers
+its per-project choice; the heading shows visible/total chains. Project counters
+and every displayed graph retain the complete snapshot. Filtering rows makes no
+API request. The complete graph index and API ordering stay unchanged. Rows expand one
 horizontal graph at a time, including shared tasks and direct external prerequisites.
 Per-project browser
 preferences retain the expanded root or an explicitly collapsed list across reloads
-and navigation. First visits open the newest root; a missing saved root selects
-the current newest root while an existing saved root stays open. Loading, failed initial reads and empty graphs do not record
+and navigation. First visits open the newest visible root; a missing or hidden
+saved root selects the current newest visible root while an existing visible
+saved root stays open. With no visible roots, the saved ID or explicit collapse
+is retained for revealing those rows again. The all-complete state offers a
+reveal action that focuses the persistent checkbox before the action disappears. Loading, failed initial reads and empty graphs do not record
 an inferred collapsed preference. Storage failures display a notice while the
 current page remains usable. Preferences do not save detail selection or canvas
-positions and do not change server data. The [preference decision](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)
+positions and do not change server data. The visibility preference has its own
+record, preserving the existing expansion record format. The [preference decision](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)
 records this ownership. Nodes open a detail drawer with dependency navigation,
 PR associations, stale-data detection and attachment management. Task fields and
 graph interactions remain read-only. The PR section follows the description and
@@ -153,7 +162,9 @@ Run `pnpm web:dev` and open `/tests/mockups/browsing.html` on Vite's printed
 origin. The fixture mounts the production project page and CSS with mixed,
 fully completed and empty project graphs. It demonstrates the exact
 newest-first root order, shared dependencies, current task details and per-project
-expanded/collapsed preferences across reloads. The scenario stays in the URL hash.
+expanded/collapsed and completed-chain visibility preferences across reloads.
+It distinguishes hidden all-complete chains from a truly empty project and
+preserves focus when the reveal action disappears. The scenario stays in the URL hash.
 Graph, detail and empty attachment-list reads are served in memory; unexpected
 requests fail instead of reaching a service. This development entry is excluded
 from the production build and does not establish real-backend acceptance.
