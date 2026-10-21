@@ -25,6 +25,7 @@ func NewTasks(database *store.Store) *Tasks {
 type CreateTask struct {
 	Title       string
 	Description string
+	Properties  core.TaskProperties
 	DependsOn   []string
 }
 
@@ -34,6 +35,7 @@ type UpdateTask struct {
 	Description *string
 	Status      *core.TaskStatus
 	DependsOn   *[]string
+	Properties  core.TaskPropertiesPatch
 }
 
 type TaskListRequest struct {
@@ -64,7 +66,7 @@ func (s *Tasks) Create(ctx context.Context, projectID string, input CreateTask) 
 	if err != nil {
 		return core.Task{}, fmt.Errorf("generate task ID: %w", err)
 	}
-	values := store.TaskWrite{Title: input.Title, Description: input.Description, Status: core.TaskTodo}
+	values := store.TaskWrite{Title: input.Title, Description: input.Description, Status: core.TaskTodo, Properties: core.TaskProperties{PullRequests: append([]core.PullRequestProperty{}, input.Properties.PullRequests...)}}
 	values.DependsOn, err = canonicalDependencies(input.DependsOn, id.String())
 	if err != nil {
 		return core.Task{}, err
@@ -92,7 +94,7 @@ func (s *Tasks) Update(ctx context.Context, projectID, id string, input UpdateTa
 	if input.Version < 1 {
 		return core.Task{}, invalidInput("Version must be a positive integer.")
 	}
-	if input.Title == nil && input.Description == nil && input.Status == nil && input.DependsOn == nil {
+	if input.Title == nil && input.Description == nil && input.Status == nil && input.DependsOn == nil && input.Properties.PullRequests == nil {
 		return core.Task{}, invalidInput("At least one task field must be provided.")
 	}
 	return s.write(ctx, projectID, func(tx *store.ProjectTx) (taskMutation, error) {
@@ -114,7 +116,7 @@ func (s *Tasks) Update(ctx context.Context, projectID, id string, input UpdateTa
 			return taskMutation{}, err
 		}
 		changed := current.Title != values.Title || current.Description != values.Description ||
-			current.Status != values.Status || !slices.Equal(current.DependsOn, values.DependsOn)
+			current.Status != values.Status || !slices.Equal(current.DependsOn, values.DependsOn) || !slices.Equal(current.Properties.PullRequests, values.Properties.PullRequests)
 		return taskMutation{id: id, current: current, values: values, changed: changed}, nil
 	})
 }
@@ -154,7 +156,7 @@ func (s *Tasks) write(ctx context.Context, projectID string, prepare func(*store
 }
 
 func taskCandidate(current core.Task, input UpdateTask) (store.TaskWrite, error) {
-	values := store.TaskWrite{Title: current.Title, Description: current.Description, Status: current.Status, DependsOn: current.DependsOn}
+	values := store.TaskWrite{Title: current.Title, Description: current.Description, Status: current.Status, DependsOn: current.DependsOn, Properties: current.Properties}
 	if input.Title != nil {
 		values.Title = *input.Title
 	}
@@ -170,6 +172,9 @@ func taskCandidate(current core.Task, input UpdateTask) (store.TaskWrite, error)
 		if err != nil {
 			return store.TaskWrite{}, err
 		}
+	}
+	if input.Properties.PullRequests != nil {
+		values.Properties.PullRequests = append([]core.PullRequestProperty{}, (*input.Properties.PullRequests)...)
 	}
 	if err := validateTaskText(values); err != nil {
 		return store.TaskWrite{}, err

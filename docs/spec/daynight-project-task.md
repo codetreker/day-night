@@ -14,8 +14,8 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 [交付任务](../design/daynight-project-task-tasks.md)，决策见
 [方案决策](../../.agents/notes/implemented/architecture/2026-10-20-project-task-cli-design.md)。
 
-已编写、待实现的[预定义属性需求](daynight-task-properties.md)扩展 task 的 PR
-引用参数和完整资源输出；[架构](../design/daynight-task-properties.md)与
+[预定义属性需求](daynight-task-properties.md)的 server 接口已实现；CLI 的 PR
+引用参数和完整资源输出仍待实施。[架构](../design/daynight-task-properties.md)与
 [实施任务](../design/daynight-task-properties-tasks.md)拥有扩展机制和状态。本文
 继续描述已交付的 CLI 基线。
 

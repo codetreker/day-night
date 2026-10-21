@@ -2,8 +2,8 @@
 
 状态：完整图 API、只读项目任务看板及 localhost/dev-ci 单服务交付已完成。验证命令、要求与场景映射和回执解释见[web 验证说明](../../packages/daynight-web/README.md#production-browser-acceptance)，运行结果随对应 PR 与 CI 保存。本文定义只读 MVP 的交付要求；[设计](../design/daynight-web.md)说明实现方式与任务顺序，[交互预览](../design/mockups/task-dashboard.html)用于确认视觉与操作，[任务清单](../design/daynight-web-tasks.md)记录实现范围和完成条件。
 
-已编写、待实现的[预定义属性需求](daynight-task-properties.md)在任务详情中
-增加只读 PR 引用区域；[架构](../design/daynight-task-properties.md)、
+[预定义属性需求](daynight-task-properties.md)的 server 接口已实现；任务详情的
+只读 PR 引用区域仍待实施。[架构](../design/daynight-task-properties.md)、
 [交互预览](../design/mockups/task-properties.html)与
 [实施任务](../design/daynight-task-properties-tasks.md)拥有该扩展的机制、样式和状态。
 

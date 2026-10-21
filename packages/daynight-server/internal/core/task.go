@@ -15,6 +15,7 @@ type Task struct {
 	ProjectID   string
 	Title       string
 	Description string
+	Properties  TaskProperties
 	Status      TaskStatus
 	Version     int64
 	CreatedAt   time.Time
