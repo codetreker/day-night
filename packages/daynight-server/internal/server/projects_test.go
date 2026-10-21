@@ -69,7 +69,7 @@ func projectTestStore(t *testing.T) *store.Store {
 
 func projectTestHandler(database *store.Store, output io.Writer) http.Handler {
 	logger := slog.New(slog.NewJSONHandler(output, nil))
-	return RequestLogging(logger, New(service.NewProjects(database), service.NewTasks(database), logger))
+	return RequestLogging(logger, New(service.NewProjects(database), service.NewTasks(database), nil, logger))
 }
 
 func projectRequest(handler http.Handler, method, path, body string) *httptest.ResponseRecorder {

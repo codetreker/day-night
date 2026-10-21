@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -55,7 +56,7 @@ func TestMigrationsRejectInvalidHistory(t *testing.T) {
 	for _, test := range []struct{ name, sql, want string }{
 		{"checksum", `UPDATE schema_migrations SET checksum = repeat('0', 64) WHERE version = 1`, "checksum mismatch"},
 		{"gap", `DELETE FROM schema_migrations WHERE version = 1`, "not an ordered prefix"},
-		{"unknown", `INSERT INTO schema_migrations (version, checksum) VALUES (4, repeat('0', 64))`, "not an ordered prefix"},
+		{"unknown", fmt.Sprintf(`INSERT INTO schema_migrations (version, checksum) VALUES (%d, repeat('0', 64))`, schemaMigrations[len(schemaMigrations)-1].version+1), "not an ordered prefix"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			database := isolatedStore(t)

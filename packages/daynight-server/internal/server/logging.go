@@ -61,7 +61,7 @@ func knownFault(err error) (*service.Fault, bool) {
 	var fault *service.Fault
 	if errors.As(err, &fault) {
 		switch fault.Code {
-		case "invalid_input", "not_found", "version_conflict", "dependency_cycle", "dependency_unsatisfied", "graph_limit_exceeded":
+		case "invalid_input", "not_found", "path_conflict", "version_conflict", "dependency_cycle", "dependency_unsatisfied", "graph_limit_exceeded":
 			return fault, true
 		}
 	}
@@ -119,6 +119,9 @@ func RequestLogging(logger *slog.Logger, next http.Handler) http.Handler {
 		request = request.WithContext(context.WithValue(request.Context(), requestIDKey{}, id))
 		defer func() {
 			if value := recover(); value != nil {
+				if value == http.ErrAbortHandler {
+					panic(value)
+				}
 				logger.ErrorContext(request.Context(), "request interrupted", "type", "request_error", "component", "server",
 					"phase", "handler", "cause", "panic", "request_id", id)
 				// net/http aborts the request without logging the recovered value.

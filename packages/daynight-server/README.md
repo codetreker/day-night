@@ -7,9 +7,10 @@ HTTP shutdown. Versioned migrations and transactional storage are implemented;
 project/task APIs and built-process acceptance are implemented; delivery status is in the
 [implementation tasks](../../docs/design/daynight-server-tasks.md); the current
 executable serves project, task and complete task-graph routes together with the
-embedded read-only dashboard. Generic bucket/path file storage and its local
-adapter are implemented; task attachment metadata, endpoints and clients remain
-tracked by the [attachment tasks](../../docs/design/daynight-task-attachments-tasks.md).
+embedded read-only dashboard. Generic bucket/path local storage, task attachment
+metadata and file/preview HTTP endpoints are implemented. Attachment CLI and
+browser management remain tracked by the
+[attachment tasks](../../docs/design/daynight-task-attachments-tasks.md).
 
 The [requirements](../../docs/spec/daynight-server.md) own observable behavior and
 the [design](../../docs/design/daynight-server.md) owns architecture and concurrency.
@@ -26,7 +27,7 @@ lifecycle. The client HTTP foundation targets this service's API.
 | `internal/core/store/` | PostgreSQL migrations, transactions, scoped writes and consistent reads |
 | `internal/filestorage/` | Generic bucket/path byte operations and address validation |
 | `internal/filestorage/local/` | Root-confined local files, complete-file replacement and root lifecycle |
-| `api/` | Project/task DTOs and common HTTP error envelopes |
+| `api/` | Project/task/attachment DTOs and common HTTP error envelopes |
 | `internal/service/` | Project/task use cases, dependency/state/version policy and scoped cursors |
 | `internal/core/` | Shared project/task models and resource-not-found marker |
 
@@ -174,9 +175,50 @@ other processes sharing a root. The accepted non-atomicity issue is owned by the
 [attachment requirements](../../docs/spec/daynight-task-attachments.md).
 
 The existing Compose files supply a writable image directory so startup remains
-valid. Persistent attachment volumes belong to A-T5; attachment HTTP operations
-and browser/CLI features belong to later tasks. No attachment API is implied by
-the storage foundation.
+valid. Persistent attachment volumes belong to A-T5. Browser management and CLI
+commands remain separate from the backend file API below.
+
+## Task attachment API
+
+For `T=/api/v1/projects/{projectId}/tasks/{taskId}`, the service provides:
+
+| Method and path | Behavior |
+|---|---|
+| `GET T/attachments` | Metadata page, using existing limit/cursor and items/nextCursor |
+| `PUT T/attachments/files/{path...}` | Raw single-file creation (201) or overwrite (200) |
+| `GET T/attachments/files/{path...}` | Original bytes with download disposition |
+| `DELETE T/attachments/files/{path...}` | Delete one registered file (204), missing record 404 |
+| `GET T/preview/{path...}` | Inline same-origin content and relative resources |
+
+With the server origin in `BASE_URL` and existing `PROJECT_ID`/`TASK_ID` values,
+upload a local document:
+
+```bash
+curl --request PUT --header 'Content-Type: text/markdown' \
+  --data-binary @design.md \
+  "$BASE_URL/api/v1/projects/$PROJECT_ID/tasks/$TASK_ID/attachments/files/docs/design.md"
+```
+
+The path is relative to the task, preserves case, and each URL segment is encoded
+individually. No request uploads or replaces a directory. A missing content type
+means `application/octet-stream`; invalid types are rejected. Binary uploads do
+not use the existing 1 MiB JSON decoder.
+
+Metadata is stored in `task_attachments`, keyed by task and path with C collation;
+the storage address is `task-attachments/<taskId>/<path>`. List cursors bind the
+project, task and list type and page by path, with no cross-page snapshot.
+Attachment operations leave task fields, properties, version and timestamps
+unchanged. Path conflicts return `409 path_conflict`; missing scoped records
+return 404. An existing record with missing disk contents remains a storage
+error. Filesystem and PG changes remain non-atomic as the documented known issue.
+
+Content-Length comes from the opened file, not cached metadata. HEAD returns
+headers without reading the body. Mutable responses use no-store. Before a
+stream begins, failures use the existing JSON error envelope; after commitment,
+the server logs one correlated error and aborts the transfer without a JSON
+suffix. Trusted HTML preview runs with the application origin permissions.
+Relative CSS, scripts, images and data URLs resolve under the fixed preview
+path; ordinary query parameters do not change the file name.
 
 ## PostgreSQL storage boundaries
 
