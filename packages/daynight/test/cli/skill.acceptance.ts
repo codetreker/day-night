@@ -207,9 +207,9 @@ it.each(["agent", "scope"])("handles real Ctrl+C at the %s selector with no inst
 it("hands native stdin from setup text questions to a choice and back without consuming answers or arrow keys", async () => {
   const fixture = await fresh([]);
   const result = await skillTerminal(installed.receipt, fixture, [
-    { waitFor: "First input: ", keys: ["first-value\r"] },
+    { waitFor: "First input:", keys: ["first-value\r"] },
     { waitFor: "Choose a value?", keys: [down, "\r"] },
-    { waitFor: "Last input: ", keys: ["last-value\r"] },
+    { waitFor: "Last input:", keys: ["last-value\r"] },
   ], fixture.home, {
     launcherPath: process.execPath,
     args: [path.resolve(import.meta.dirname, "../fixtures/skill-terminal-handoff.mjs"), path.join(path.dirname(installed.receipt.entryPath), "cli/prompts.js")],

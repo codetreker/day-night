@@ -20,6 +20,11 @@ terminal, while stdout uses a separate result file descriptor. The unmodified
 CLI therefore observes real terminal input/error handles and ordinary output
 remains independently verifiable.
 
+Prompt matching uses stable visible text rather than a literal trailing blank:
+ConPTY can encode that blank as cursor movement in its VT stream. Raw terminal
+transcripts remain available, and complete answer, choice and stdout assertions
+still establish the interaction's result.
+
 Tests drive Space, arrow keys, Enter and Ctrl+C, inspect installed bundle bytes
 and destinations, and bound owned process lifetimes. Ctrl+C is actual terminal
 input; force termination is cleanup only. Fixture homes, PATH launchers, logs
