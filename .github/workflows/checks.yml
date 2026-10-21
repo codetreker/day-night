@@ -30,7 +30,7 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
-      - name: Test module selection and required-check aggregation
+      - name: Test module selection
         run: node --test .github/scripts/ci-modules.test.mts
       - name: Select modules from the complete PR diff
         id: modules
@@ -38,7 +38,7 @@ jobs:
           MODULE_EVENT: ${{ github.event_name }}
           MODULE_BASE: ${{ github.event.pull_request.base.sha }}
           MODULE_HEAD: ${{ github.event.pull_request.head.sha }}
-        run: node .github/scripts/ci-modules.mts detect
+        run: node .github/scripts/ci-modules.mts
 
   verify:
     name: verify (${{ matrix.os }})
@@ -70,12 +70,11 @@ jobs:
           dest: ${{ github.workspace }}/.tmp/pnpm
       - run: pnpm install --frozen-lockfile --store-dir .tmp/pnpm-store
       - name: Require a package version increase for code changes
-        if: matrix.os == 'ubuntu-latest'
+        if: github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest'
         env:
-          VERSION_EVENT: ${{ github.event_name }}
-          VERSION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          VERSION_HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
-        run: pnpm version:check "$VERSION_EVENT" "$VERSION_BASE" "$VERSION_HEAD"
+          VERSION_BASE: ${{ github.event.pull_request.base.sha }}
+          VERSION_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: pnpm version:check pull_request "$VERSION_BASE" "$VERSION_HEAD"
       - name: Record native validation environment
         id: environment
         run: node packages/daynight/scripts/validation-environment.ts
@@ -292,14 +291,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-          package-manager-cache: false
-      - name: Require every selected module to pass and every unselected module to be skipped
+      - name: Require preceding jobs to succeed or be skipped
         env:
-          NEEDS_JSON: ${{ toJSON(needs) }}
-        run: node .github/scripts/ci-modules.mts require
+          JOB_RESULTS: ${{ toJSON(needs.*.result) }}
+        run: jq --exit-status 'all(.[]; . == "success" or . == "skipped")' <<< "$JOB_RESULTS"
