@@ -50,7 +50,7 @@ daynight completion
 daynight completion bash
 daynight completion zsh
 daynight project
-daynight project create --name <name> --repo <repo>
+daynight project create <name> --repo <repo>
 daynight project list [--json]
 daynight project show <project-id> [--json]
 daynight task
@@ -74,7 +74,9 @@ daynight task graph [--json] [--project <project-id>]
 保留后续 `=` 及值的前导连字符。分离形式拒绝前导 `-`；仅声明 `allowEmpty` 的
 描述选项允许空字符串。标量选项不能重复，声明 repeatable 的依赖选项按输入顺序
 保留全部值及重复 ID。状态候选和允许值均由同一命令定义拥有。开关、帮助和目录
-选项不接受内联赋值；`--path=value` 和独立 `--` 继续无效。
+选项不接受内联赋值；`--path=value` 无效。`project create` 接受一个必填位置参数
+`<name>` 及必填 `--repo`；`--repo` 可在名称前后。只有该操作接受独立 `--` 结束
+选项解析，前导 `-` 的名称可写成 `project create --repo <repo> -- -name`。
 旧的 `--daemon-review` 和顶层 `add-repo` 是无效参数，不能隐式重定向。
 
 ### C3. 命令依赖与持久化边界

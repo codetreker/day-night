@@ -25,9 +25,17 @@ argument kinds and fixed choices. Parsing, help and both script generators share
 that command tree. The root registry may import these definitions while command
 execution stays lazy. The
 [client-composition decision](../architecture/2026-10-20-client-command-composition.md)
-retains responsibility for dependency ownership. Existing syntax remains exact:
-help is a sole argument at its level, `--path` occurs once before or after the
-remote, and neither `--path=value` nor `--` is accepted.
+retains responsibility for dependency ownership. Existing review syntax remains
+exact: help is a sole argument at its level, `--path` occurs once before or after
+the remote, and `review add-repo` accepts neither `--path=value` nor `--`.
+
+Project creation declares one positional name and the required `--repo` option.
+Its `allowOptionsTerminator` declaration permits `--` to end option parsing so
+leading-dash names remain representable. Both generated shells consume that
+declaration: after the terminator they track only positional input and suppress
+option and file candidates. Before it, unconsumed options remain available.
+The [project/task decision](../architecture/2026-10-20-project-task-cli-design.md)
+owns name validation and original-text preservation.
 
 Task command integration extends those definitions with explicit empty-value
 permission for descriptions, fixed status choices and repeatable dependency

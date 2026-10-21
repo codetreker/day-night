@@ -49,6 +49,7 @@ const commandCases = (root: CommandDefinition): string => {
       dn_option_empty=${shellArray(optionEmpty)}
       dn_option_repeats=${shellArray(optionRepeats)}
       dn_argument_count=${node.arguments?.length ?? 0}
+      dn_allow_terminator=${node.allowOptionsTerminator === true ? 1 : 0}
       case "$dn_position" in
 ${choices.join("\n")}
       esac
@@ -138,7 +139,7 @@ const runtime = String.raw`
   local -a dn_option_values dn_option_actions dn_choices
   local -a dn_option_empty dn_option_repeats dn_value_choices
   local dn_node=0 dn_position=0 dn_argument_count=0 dn_count=0 dn_pending=''
-  local dn_value_option=-1 dn_value_match=-1 dn_inline=0
+  local dn_value_option=-1 dn_value_match=-1 dn_inline=0 dn_options_terminated=0 dn_allow_terminator=0
   local dn_used='|' dn_tilde dn_current dn_word dn_index dn_match dn_option
   local dn_candidate dn_prefix dn_fragment dn_trim dn_choice
   local dn_name dn_value dn_inline_prefix
@@ -159,11 +160,16 @@ const runtime = String.raw`
       @PREFIX@_schema
       continue
     fi
+    if ((!dn_options_terminated && dn_allow_terminator)) && [[ "$dn_word" == -- ]]; then
+      dn_options_terminated=1
+      ((dn_count+=1))
+      continue
+    fi
     dn_name="$dn_word"; dn_inline=0
     if [[ "$dn_word" == -*=* ]]; then dn_name="@{dn_word%%=*}"; dn_inline=1; fi
     dn_match=-1
     for ((dn_option=0; dn_option<@{#dn_options[@]}; dn_option++)); do
-      if [[ "$dn_name" == "@{dn_options[dn_option]}" ]]; then dn_match=$dn_option; break; fi
+      if ((!dn_options_terminated)) && [[ "$dn_name" == "@{dn_options[dn_option]}" ]]; then dn_match=$dn_option; break; fi
     done
     if ((dn_match >= 0)); then
       [[ "@{dn_option_repeats[dn_match]}" == 1 || "$dn_used" != *"|@{dn_option_ids[dn_match]}|"* ]] || return 0
@@ -181,7 +187,7 @@ const runtime = String.raw`
       ((dn_count+=1))
       continue
     fi
-    [[ "$dn_word" != -* ]] || return 0
+    ((dn_options_terminated)) || [[ "$dn_word" != -* ]] || return 0
     if ((@{#dn_children[@]} > 0)); then
       dn_match=-1
       for ((dn_option=0; dn_option<@{#dn_children[@]}; dn_option++)); do
@@ -194,7 +200,7 @@ const runtime = String.raw`
       continue
     fi
     ((dn_position < dn_argument_count)) || return 0
-    [[ "$dn_word" == *[!$' \t\n\r']* ]] || return 0
+    [[ -n "$dn_word" ]] || return 0
     if ((@{#dn_choices[@]} > 0)); then
       dn_match=0
       for dn_choice in "@{dn_choices[@]}"; do
@@ -232,7 +238,7 @@ const runtime = String.raw`
     compopt -o filenames -o nospace 2>/dev/null || :
     return 0
   fi
-  if [[ "$dn_current" == -*=* ]]; then
+  if ((!dn_options_terminated)) && [[ "$dn_current" == -*=* ]]; then
     dn_name="@{dn_current%%=*}"
     for ((dn_option=0; dn_option<@{#dn_options[@]}; dn_option++)); do
       [[ "$dn_name" == "@{dn_options[dn_option]}" ]] || continue
@@ -255,6 +261,7 @@ const runtime = String.raw`
   for dn_candidate in "@{dn_children[@]}" "@{dn_choices[@]}"; do
     [[ "$dn_candidate" == "$dn_current"* ]] && COMPREPLY+=("$dn_candidate")
   done
+  ((dn_options_terminated)) && return 0
   for ((dn_option=0; dn_option<@{#dn_options[@]}; dn_option++)); do
     [[ "@{dn_option_repeats[dn_option]}" == 1 || "$dn_used" != *"|@{dn_option_ids[dn_option]}|"* ]] || continue
     [[ -z "@{dn_option_actions[dn_option]}" || "$dn_count" == 0 ]] || continue

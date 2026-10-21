@@ -355,7 +355,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(cli.home, ".daynight", "config.yml"), []byte("serverUrl: http://"+process.address+"\n"), 0o600); err != nil {
 			t.Fatal("cannot configure isolated installed CLI")
 		}
-		projectID := acceptanceCLIResourceID(t, cli.run(t, cli.caller, "project", "create", "--name", "Installed CLI 项目", "--repo", "https://Git.Example/Org/Repo.git"))
+		projectID := acceptanceCLIResourceID(t, cli.run(t, cli.caller, "project", "create", "Installed CLI 项目", "--repo", "https://Git.Example/Org/Repo.git"))
 		project := acceptanceCLIJSON[api.Project](t, cli.run(t, cli.caller, "project", "show", projectID, "--json"))
 		projects := acceptanceCLIJSON[[]api.Project](t, cli.run(t, cli.caller, "project", "list", "--json"))
 		if len(projects) != 1 || !reflect.DeepEqual(projects[0], project) {
@@ -413,7 +413,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 			t.Fatal("installed CLI rounded an explicit or read Go int64 version")
 		}
 		cli.git(t, "-C", cli.repo, "remote", "set-url", "origin", "ssh://git@GIT.EXAMPLE:22/Org/Repo.git")
-		cli.run(t, cli.caller, "project", "create", "--name", "Later duplicate", "--repo", "https://git.example/Org/Repo")
+		cli.run(t, cli.caller, "project", "create", "Later duplicate", "--repo", "https://git.example/Org/Repo")
 		if task := cli.task(t, editable); task.ProjectID != projectID {
 			t.Fatal("equivalent origin or later duplicate changed a validated binding")
 		}

@@ -1,4 +1,5 @@
 import { parseCommand, renderCommandHelp } from "../../cli/schema.js";
+import { UsageError } from "../../cli/context.js";
 import type { CliContext } from "../../cli/context.js";
 import { reviewDefinition } from "./definition.js";
 import type { ReviewConfiguration } from "./config.js";
@@ -36,6 +37,9 @@ export const runReviewCommand = async (
   if (operation.kind !== "run") {
     context.stdout(renderCommandHelp(operation.command, operation.path));
     return;
+  }
+  if (operation.command.name === "add-repo" && operation.values[0]!.trim() === "") {
+    throw new UsageError("add-repo requires a remote value.", "daynight review --help");
   }
   const homeDirectory = context.homeDirectory();
   const paths = resolveReviewPaths(homeDirectory);

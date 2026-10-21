@@ -62,6 +62,10 @@ Project 的定义由 [`definition.ts`](../../packages/daynight/src/commands/proj
 [补全设计](daynight-completion.md)拥有。命令组先解析参数和帮助，校验名称及详情
 UUID，再惰性加载共享 server runtime 和业务渲染。Task 的 definition、command 和
 rendering 分别拥有语法、API/仓库关联组合及可读/JSON 输出，复用同一 server session。
+`project create` 将名称声明为一个必填位置参数，保留必填 `--repo`。该定义声明
+`allowOptionsTerminator`，使 `--` 后的词按位置参数处理，因而前导 `-` 的名称也能
+原样提交。语法层只校验位置参数的存在性、非空字符串及声明的固定候选；名称的
+Unicode 文本语义由 Project 命令在业务加载之前校验。
 共享语法通过 `value.allowEmpty` 表达描述空值，通过 `value.choices` 表达状态允许值，
 通过 `repeatable` 表达有序依赖数组；解析与静态补全消费这些事实，帮助使用定义中
 的名称、值名、必填性与选项说明。
@@ -276,7 +280,7 @@ flowchart TD
 
 | CLI 操作 | API |
 |---|---|
-| `project create` | `POST /api/v1/projects`，提交原始 `name`、`repoUrl` |
+| `project create <name> --repo <repo>` | `POST /api/v1/projects`，提交原始 `name`、`repoUrl` |
 | `project list` | `GET /api/v1/projects`，读到 `nextCursor: null` |
 | `project show <id>` | `GET /api/v1/projects/{id}` |
 | `task create` | `POST /api/v1/projects/{projectId}/tasks` |

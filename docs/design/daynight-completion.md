@@ -28,7 +28,7 @@ daynight completion zsh
 两种生成操作不读取用户主目录、工作目录、配置、SQLite、实例锁或审查状态，不执行
 Git、GitHub CLI、Copilot、npm 或网络请求，不修改 shell 启动文件。
 
-`project create --name <name> --repo <repo>`、`project list [--json]` 和
+`project create <name> --repo <repo>`、`project list [--json]` 和
 `project show <project-id> [--json]` 已登记在共享命令树中。名称、repo 地址和 project ID
 是自由输入，不提供文件或远端候选。Tab 不加载 server 配置，不查询 project 列表；
 执行 project 命令时的服务访问仍由其业务模块负责。`setup` 的服务 URL 和仓库地址
@@ -52,13 +52,16 @@ Git、GitHub CLI、Copilot、npm 或网络请求，不修改 shell 启动文件�
 | 选项的 `repeatable` | 从第一次出现起生成有序数组，保留重复值；使用后仍可继续补全 |
 | 选项的 `required` | 解析完参数后检查是否提供；帮助中的必填选项不加方括号 |
 | 位置参数名称、说明与固定候选 | 所有声明的位置参数均必填；只有声明的 choices 提供固定候选 |
+| 命令的 `allowOptionsTerminator` | 显式允许 `--` 结束选项解析；只有 `project create` 声明，后续词按位置参数处理 |
 | 命令补充说明及选项 `description` | 帮助；不会自动枚举 `value.choices` |
 
 解析结果使用按首个选项名索引的只读 Map：开关为 `true`，标量值为字符串，
 repeatable 选项为只读字符串数组。未声明 repeatable 的选项只能指定一次；依赖
 值按出现顺序追加，不去重、不拆分 CSV。Task 的 `--description` 声明 `allowEmpty`，
 `--status` 声明 `todo`、`in_progress`、`done` 三个 choices，`--depends-on` 声明
-repeatable。project 的 `--name`、`--repo` 继续是必填 text，查询 `--json` 为开关。
+repeatable。`project create` 的名称是一个必填位置参数，`--repo` 是必填 text 选项，
+查询 `--json` 为开关。位置参数在语法层拒绝缺失和空字符串，业务文本规则由命令
+在 I/O 前校验；名称原值不会被 JavaScript `trim()` 提前裁决。
 
 text 值接受分离及内联赋值。`--option=value` 按第一个 `=` 分割，保留值的前导
 `-` 与其他 `=`；例如 `--title=-value`、`--description=a=b`。分离形式的前导
@@ -68,7 +71,9 @@ text 值接受分离及内联赋值。`--option=value` 按第一个 `=` 分割�
 
 帮助只能在该层唯一参数为 `-h` 或 `--help` 时触发，并先于必填检查及业务加载。
 顶层版本选项不继承到子命令；`--path` 可以位于 remote 前后，只能指定一次；
-不接受 `--path=value` 或 `--` 语法。`ls` 分发到 `list` 的同一操作。
+`review add-repo` 不接受 `--path=value` 或 `--` 语法。`project create` 的独立
+`--` 结束选项解析，例如 `project create --repo <repo> -- -name`；此后的 `--help`
+同样只是名称文本，补全不再提供选项候选。`ls` 分发到 `list` 的同一操作。
 
 解析、帮助和补全共同消费定义中的语法事实。业务模块把已校验参数转换为自身输入，
 只在实际执行操作时加载其实现。根帮助、命令帮助、版本和脚本生成的依赖隔离必须由
@@ -119,11 +124,17 @@ directory 使用目录枚举；text 声明 choices 时只给出固定候选，�
 ### zsh
 
 [`completion/zsh.ts`](../../packages/daynight/src/commands/completion/zsh.ts) 使用原生
-`_arguments`、`_describe` 和 `_files -/` 表达语法、候选说明和目录。自由 text 使用
+`_arguments`、`_describe` 和 `_files -/` 表达语法、候选说明和目录。自由 text 选项使用
 明确的值状态，通过 `_message` 显示值说明并成功返回，不产生候选；choices 值使用
 声明的静态候选。repeatable 选项使用允许重复的原生声明，不加入自身排除项。
 前缀校验同时理解空描述、重复依赖和 text 内联赋值，directory 继续使用 `_files -/`。脚本显式
 调用 `compdef` 关联 `daynight`；仅输出 `#compdef daynight` 注释不足以支持直接 source。
+
+自由文本位置参数尚未开始且当前词为空时，生成器暂不向 `_arguments` 提供该位置的
+动作状态，让原生助手展示尚未使用的选项。否则默认 `prefix-needed` 规则会抑制空词
+处的选项候选。已消费的位置参数、固定候选及待填选项值保留对应规格；`--` 后仍由
+原生 `-S` 语义停止选项候选。这使 `project create ` 提示 `--repo`，同时保持名称
+没有文件候选、已用标量隐藏及调用者 completion style 的含义。
 
 加载要求 zsh 已初始化 `compinit`。缺少初始化时给出明确诊断并失败，不注册未生效
 的定义。脚本不改变调用者的 completion style，不引入 `bashcompinit`，不重复初始化
@@ -196,9 +207,11 @@ editor reset widget，在同一 generation 内确认空状态。每个场景发�
 `--path` 在 remote 前后及目录完成后的下一参数均需覆盖；目录名与 `review` 或
 `project` 同名时，命令补全仍插入命令并保留正确分隔符。
 
-project 场景覆盖 create/list/show、必填选项名称、`--json`、已使用选项隐藏，以及
-名称、repo 地址和 project ID 的文件回退抑制。名称和 repo 待输入时，包括引号输入
-及以选项前缀开始的当前词，都必须保持输入且不生成文件或选项候选。Task 场景
+project 场景覆盖 create/list/show、必填位置名称、`--repo`、`--json`、已使用选项隐藏，
+以及名称、repo 地址和 project ID 的文件回退抑制。名称待输入时不生成文件候选，
+仍可补全未使用的选项；`--` 后只允许名称文本，选项和文件候选均被抑制。repo 值
+待输入时，包括引号输入及以选项前缀开始的当前词，保持输入且不生成文件或选项候选。
+Task 场景
 覆盖重复依赖仍可输入、标量已用后隐藏、分离及内联状态候选、空描述后的选项恢复、
 内联值片段替换及自由标题、描述、ID 不回落文件候选。
 

@@ -29,7 +29,7 @@ daynight completion                 # 补全帮助
 daynight completion bash
 daynight completion zsh
 daynight project
-daynight project create --name <name> --repo <repo>
+daynight project create <name> --repo <repo>
 daynight project list [--json]
 daynight project show <project-id> [--json]
 daynight task

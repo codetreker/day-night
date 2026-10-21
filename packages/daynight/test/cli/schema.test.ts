@@ -48,8 +48,6 @@ describe("shared command syntax", () => {
     ["review", "run", "--help", "extra"],
     ["review", "ls", "-h", "extra"],
     ["review", "add-repo"],
-    ["review", "add-repo", " "],
-    ["review", "add-repo", "\n"],
     ["review", "add-repo", "remote", "extra"],
     ["review", "add-repo", "remote", "--path"],
     ["review", "add-repo", "remote", "--path", ""],
@@ -64,6 +62,34 @@ describe("shared command syntax", () => {
     ["completion", "bash", "zsh"],
     ["completion", "bash", "--help"],
   ])("rejects syntax outside the declared grammar: %j", (...args) => {
+    expect(() => parseCommand(commandTree, args)).toThrow(UsageError);
+  });
+
+  it.each([" ", "\n", "\ufeff", "\u0085"])("leaves positional text semantics to its command owner: %j", (value) => {
+    const parsed = parseCommand(commandTree, ["review", "add-repo", value]);
+    expect(parsed.kind === "run" && parsed.values).toEqual([value]);
+  });
+
+  it.each([
+    { args: ["project", "create", "Name 中文", "--repo", "remote"], name: "Name 中文" },
+    { args: ["project", "create", "--repo", "remote", "Name 中文"], name: "Name 中文" },
+    { args: ["project", "create", "--repo", "remote", "--", "-leading"], name: "-leading" },
+    { args: ["project", "create", "--repo", "remote", "--", "--help"], name: "--help" },
+  ])("parses positional project names with explicitly enabled option termination: $args", ({ args, name }) => {
+    const parsed = parseCommand(commandTree, args);
+    expect(parsed.kind === "run" && parsed.values).toEqual([name]);
+    expect(parsed.kind === "run" && [...parsed.options]).toEqual([["--repo", "remote"]]);
+  });
+
+  it.each([
+    ["project", "create", "--name", "Name", "--repo", "remote"],
+    ["project", "create", "Name", "extra", "--repo", "remote"],
+    ["project", "create", "--repo", "remote", "-leading"],
+    ["project", "create", "--", "Name", "--repo", "remote"],
+    ["project", "create", "--repo", "remote", "--"],
+    ["project", "create", "--repo", "remote", "--", ""],
+    ["task", "show", "--", "task-id"],
+  ])("rejects removed project flags and undeclared termination: %j", (...args) => {
     expect(() => parseCommand(commandTree, args)).toThrow(UsageError);
   });
 
