@@ -23,27 +23,27 @@ budgets, failure handling and resource ownership remain required.
 
 Native CLI CI typechecks and builds once, then runs the ordinary and installed
 Vitest configurations directly against that compiled output. Standalone
-`pnpm test` and `pnpm acceptance` retain their self-contained builds. The web
-CI entry runs three tasks concurrently: pinned Chromium installation including
-Linux dependencies, the existing `pnpm web:test`, and a production Dockerfile
-build with `--builder default --output=type=cacheonly`. The cache-only build
-prepares the same daemon cache used by the normal dev-ci source build; it does
-not replace that build or its unique-image checks. Explicit `BUILDX_BUILDER`
-overrides must name `default`. All commands use the acceptance harness's bounded,
-cancellable process-group wrapper with streaming output. Browser and unit work
-each retain a 180-second bound; Docker preparation retains the deployment build's
-600-second bound. Only the coverage child receives `VITEST_MAX_WORKERS=2`, keeping
-Vitest's `forks` pool and file isolation. The parent, browser installation and
-Docker commands retain their existing environments. This budget leaves scheduling
-headroom during concurrent preparation; it is neither a universal CPU cap nor a
-claim that two workers always run faster. The entry joins all three commands
-with `Promise.allSettled` and preserves all failures in an `AggregateError`. Only successful completion of
-all tasks permits the subsequent dev-ci fixtures and `web:acceptance`, so browser
-performance measurements do not overlap preparation or unit tests. Acceptance
-owns the native production build, including typechecking. Both Go-consuming jobs
-restore module and compiler caches
-using the server `go.sum`; the server gate still expires test results before
-real database, race and coverage observations.
+`pnpm test` and `pnpm acceptance` retain their self-contained builds. Both
+Go-consuming jobs restore module and compiler caches using the server `go.sum`;
+the server gate still expires test results before real database, race and
+coverage observations.
+
+Web execution follows the
+[acceptance pipeline decision](2026-10-21-web-acceptance-pipeline.md), which
+partially replaces this decision's cache-only preparation and serial target
+schedule. The original optimization ran pinned Chromium installation,
+`pnpm web:test` and a default-builder cache-only Dockerfile build concurrently,
+then performed full acceptance. This overlapped preparation without changing the
+normal dev-ci image checks, but still rebuilt that production path later and
+waited for all preparation before native browser work. Its coverage child gained
+a two-worker budget with the existing `forks` pool and file isolation to provide
+contention headroom. Those adopted steps and their stability refinement remain
+attributable to [PR #70](https://github.com/codetreker/daynight/pull/70) and
+[PR #71](https://github.com/codetreker/daynight/pull/71); their historical CI
+results retain their tested source and do not establish a later pipeline's
+behavior. The replacement keeps that child budget and all acceptance gates while
+using one early normal dev-ci source build and delaying capacity until other
+work and container cleanup have finished.
 
 Native Git fixture reuse extends the existing per-file immutable bare seed.
 Sparse suites prepare their shared source graph and refs once before copying;

@@ -10,6 +10,21 @@ const array = (value: unknown): unknown[] => {
 
 export type Scenario = { name: string; title: string; durationMs: number; screenshots: string[] };
 
+export const aggregateScenarios = (phases: readonly (readonly Scenario[])[], required: readonly string[]): Scenario[] => {
+  const requiredNames = new Set(required);
+  if (requiredNames.size !== required.length) throw new Error('Duplicate required acceptance scenario names.');
+  const scenarios = phases.flat();
+  if (scenarios.length === 0) throw new Error('No acceptance scenarios ran.');
+  const names = new Set<string>();
+  for (const scenario of scenarios) {
+    if (names.has(scenario.name)) throw new Error(`Duplicate acceptance scenario name: ${scenario.name}`);
+    names.add(scenario.name);
+    if (!requiredNames.has(scenario.name)) throw new Error(`Unexpected acceptance scenario: ${scenario.name}`);
+  }
+  for (const name of required) if (!names.has(name)) throw new Error(`Required acceptance scenario missing: ${name}`);
+  return scenarios;
+};
+
 export const readReport = (value: unknown, required: readonly string[]): Scenario[] => {
   const report = object(value);
   if (array(report.errors).length !== 0) throw new Error('Playwright reported global errors.');
@@ -43,13 +58,10 @@ export const readReport = (value: unknown, required: readonly string[]): Scenari
     for (const child of suite.suites === undefined ? [] : array(suite.suites)) visit(child);
   };
   for (const suite of array(report.suites)) visit(suite);
-  if (scenarios.length === 0) throw new Error('No acceptance scenarios ran.');
-  const names = new Set(scenarios.map((scenario) => scenario.name));
-  if (names.size !== scenarios.length) throw new Error('Duplicate acceptance scenario names.');
-  for (const name of required) if (!names.has(name)) throw new Error(`Required acceptance scenario missing: ${name}`);
+  const verifiedScenarios = aggregateScenarios([scenarios], required);
   const stats = object(report.stats);
   if (stats.unexpected !== 0 || stats.flaky !== 0 || stats.skipped !== 0 || stats.expected !== scenarios.length) {
     throw new Error('Playwright summary disagrees with successful scenarios.');
   }
-  return scenarios;
+  return verifiedScenarios;
 };

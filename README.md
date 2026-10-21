@@ -287,8 +287,9 @@ record historical production/deployment results, the earlier hosted zoom failure
 the dashed-paint fix's complete local pass and pending hosted delivery.
 
 `pnpm web:acceptance` builds production UI and a native Go executable, creates an
-owned PostgreSQL instance, runs Chromium workflows and fixed capacity cases, then
-runs the functional workflows against a production container through dev-ci. It
+owned PostgreSQL instance and starts the normal dev-ci production build in
+parallel. It runs native functional workflows, then the container workflows and
+complete container cleanup, and finally the fixed native capacity cases. It
 requires Go 1.27.2, Docker, Node 24, pnpm 10.34.5 and Playwright Chromium. The
 [web README](packages/daynight-web/README.md#production-browser-acceptance) owns
 browser setup, required gates and receipt interpretation. The
@@ -1085,18 +1086,21 @@ timeouts and cleanup requirements. The Go job still builds real web assets and
 exercises the installed CLI; the web job still builds and exercises the Go
 service and production deployment. Selecting one module does not split these
 existing integration suites. Native CLI jobs typecheck and build once before
-running ordinary and installed tests against the same output. The web job
-prepares pinned Chromium, runs unit/coverage tests and prepares the production
-Dockerfile's cache concurrently using the default Docker builder. It joins all
-three results before deployment fixtures and `web:acceptance`. Only the coverage
-subprocess uses a two-worker Vitest budget, retaining its `forks` pool and file
-isolation. Acceptance owns the native production build and typechecking. Browser performance tests begin
-after all preparation and unit checks have finished. Both Go-consuming jobs restore module and compiler
-caches keyed by the server `go.sum`, while the server check expires test results
-before database/race/coverage validation. The web job retains the complete
-production container build and unique image identity check. The
+running ordinary and installed tests against the same output. After deployment
+fixture checks, the web job uses one acceptance pipeline. Pinned Chromium,
+unit/coverage checks, native UI/Go/PostgreSQL preparation and the normal dev-ci
+source build can overlap. Only the coverage subprocess uses two Vitest workers,
+retaining its `forks` pool and file isolation. Native functional checks and their
+browser cleanup precede the container browser checks; full container cleanup
+and all preparation/check commands finish before the native capacity phase.
+Both Go-consuming jobs restore module and compiler caches keyed by the server
+`go.sum`, while the server check expires test results before database/race/
+coverage validation. The web pipeline retains the full production build and
+unique image identity check. The
+[acceptance pipeline decision](.agents/notes/implemented/testing/2026-10-21-web-acceptance-pipeline.md)
+owns scheduling and phase evidence; the
 [CI efficiency decision](.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md)
-records these workload optimizations and their limits.
+retains the other workload optimizations and their limits.
 
 The final `checks` job always runs. It requires successful routing, success from
 every selected job and `skipped` from each deliberately unselected job. Missing

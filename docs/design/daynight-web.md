@@ -314,7 +314,7 @@ pnpm web:acceptance
 DAYNIGHT_TEST_DATABASE_URL=... bash scripts/check.sh
 ```
 
-`web:dev`、`web:typecheck`、`web:test`、`web:build` 和 `web:acceptance` 已实现。共享 `web:build` 调用 Vite 后执行 `scripts/publish-assets.mts`，验证普通文件、index 及其引用，完成整目录暂存与替换，替换失败时尝试恢复先前目录；恢复也失败时保留先前产物并传播两个原因。`web:test` 执行覆盖率检查器、文件系统发布测试、单元/组件测试与严格覆盖率检查。`web:acceptance` 自行创建有所有权标记的 PostgreSQL 容器及卷，验证新构建的 Go 进程，再通过独立 `deployment/dev-ci` 验证完整容器栈的浏览器路径，需要 Docker、Go 工具链与 Playwright Chromium。浏览器本机优先复用，CI 下载及全部临时 profile 放在项目 `.tmp/`。`web:build` 不调用 Go，避免循环依赖。Go `scripts/check.sh` 在执行需要内嵌资源的 Go 命令前，从仓库根调用该命令；Go 测试中重新构建的进程使用同一份真实资源。缺少 pnpm、依赖、index 或资源时明确失败。
+`web:dev`、`web:typecheck`、`web:test`、`web:build` 和 `web:acceptance` 已实现。共享 `web:build` 调用 Vite 后执行 `scripts/publish-assets.mts`，验证普通文件、index 及其引用，完成整目录暂存与替换，替换失败时尝试恢复先前目录；恢复也失败时保留先前产物并传播两个原因。`web:test` 执行覆盖率检查器、文件系统发布测试、单元/组件测试与严格覆盖率检查。`web:acceptance` 自行创建有所有权标记的 PostgreSQL 容器及卷，并与正常 dev-ci 生产构建并行准备原生 Go 进程；浏览器按原生功能、容器功能、原生容量的顺序完成验证，需要 Docker、Go 工具链与 Playwright Chromium。浏览器本机优先复用，CI 下载及全部临时 profile 放在项目 `.tmp/`。`web:build` 不调用 Go，避免循环依赖。Go `scripts/check.sh` 在执行需要内嵌资源的 Go 命令前，从仓库根调用该命令；Go 测试中重新构建的进程使用同一份真实资源。缺少 pnpm、依赖、index 或资源时明确失败。
 
 开发模式的 Vite 将 `/api` 代理到本机 Go，不引入 CORS 通配配置；生产使用 `http://127.0.0.1:8787/`。运行机器只需要服务二进制与 PostgreSQL；源码构建固定使用 Node 24 与 pnpm 10.34.5。根目录现有 CLI build/test/acceptance 命令的含义保持独立，新增 web 命令显式选择 `@codetreker/daynight-web`。
 
@@ -376,19 +376,25 @@ deployment/
 
 `verify-web` 和 `verify-server` 被选中时，都使用固定 Node/pnpm，在干净 checkout
 从锁文件安装依赖并构建真实 UI。Go 检查调用共享构建后继续负责 build/vet/race/go-cov；
-web job 的 `scripts/ci.mts` 并行执行三个准备任务：固定 Chromium 的
-`install --with-deps chromium`、既有 `pnpm web:test` 严格覆盖率检查，以及生产
-Dockerfile 的 `docker buildx build --builder default --file deployment/localhost/Dockerfile --output=type=cacheonly .`。
-后者准备同一 Docker daemon 的缓存；正常 dev-ci 仍从源码构建并验证本次唯一镜像。
-显式 `BUILDX_BUILDER` 只接受 `default`，保证两个阶段使用同一 builder。
-准备任务复用验收工具的进程组、流式输出、有界执行和取消管理；浏览器与单元验证
-各限 180 秒，Docker 准备沿用部署构建的 600 秒限制。`Promise.allSettled` 等待
-三个命令结束，任一失败通过 `AggregateError` 保留并使该步骤失败；准备进程全部
-结束后才进入后续阶段。三者成功后依次执行 dev-ci 生命周期 fixture 和
-`pnpm web:acceptance`；acceptance 独占原生生产构建（包含 typecheck），并完成
-生产浏览器、Docker 与性能验收。两个 job 复用以 server `go.sum`
-为依赖身份的 Go 模块/编译缓存；Go gate 仍先失效测试结果缓存。web job 保留完整
-生产容器构建及本次 image ID 检查。
+web job 在统一验收前执行 dev-ci 生命周期 fixture，随后仅调用 `scripts/ci.mts`。
+该入口把固定 Chromium 的 `install --with-deps chromium` 和既有 `pnpm web:test`
+作为准备 callback 交给共享 runner；仅覆盖率子进程设置 `VITEST_MAX_WORKERS=2`，
+保留 `forks` pool 和文件隔离，两个准备命令各限 180 秒。它们与原生 UI/Go/
+PostgreSQL 准备及正常 dev-ci 源码构建/启动并行。dev-ci 继续拥有本次唯一镜像
+及运行镜像身份校验和完整 shell 清理。
+
+原生功能阶段只等待原生服务和浏览器就绪；其八个场景及浏览器回收成功后，runner
+原子写入绑定 acceptance run ID、dev-ci run ID 和 source SHA 的容器执行许可。
+容器 callback 已登记身份后等待该许可，通过后才记录浏览器 inventory 并执行
+八个功能场景。完整 dev-ci 退出清理、容器浏览器回收和全部准备/覆盖率命令结束
+后，才在仍存活的原生 Go/PostgreSQL 上执行四个容量/超限场景。任一失败取消并
+等待已启动的所有任务；原生进程意外退出同样取消其他任务。容量阶段保持单浏览器
+worker，并与构建、单元测试、功能测试及容器清理隔离。
+
+两个 job 复用以 server `go.sum` 为依赖身份的 Go 模块/编译缓存；Go gate 仍先
+失效测试结果缓存。workflow 的恢复和两组产物归档都绑定同一个统一验收步骤。
+[流水线决策](../../.agents/notes/implemented/testing/2026-10-21-web-acceptance-pipeline.md)
+拥有调度、替代方案和阶段证据取舍。
 PR 按[仓库 CI 路由](../../README.md#ci-selection)选择模块，main push 执行全量检查。
 `checks` 要求路由成功，选中的 Go、web、CLI 原生矩阵和独立 Linux shell completion
 job 成功，未选中的 job 为 `skipped`。
@@ -518,9 +524,13 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 
 ### 生产浏览器验收工具
 
-`packages/daynight-web/scripts/acceptance.mts` 拥有新建运行的源码身份、构建、
-原生 PostgreSQL/服务进程、Playwright 与 dev-ci 调用；`scripts/acceptance/` 拥有
-进程控制及回执校验，`tests/e2e/` 拥有功能流程、API 数据和固定图集。
+`scripts/acceptance/runner.mts` 拥有新建运行的源码身份、构建、原生 PostgreSQL/
+服务进程、Playwright、dev-ci 调用与恢复；模块导入不注册信号或启动工作。
+`packages/daynight-web/scripts/acceptance.mts` 是解析命令及显式传入取消控制器的
+CLI，`scripts/ci.mts` 调用同一 runner 并提供浏览器/覆盖率准备 callback。
+`pipeline.mts` 只表达本验收的固定阶段依赖，`permission.mts` 拥有绑定运行和源码的
+原子许可；没有新增部署环境接口或旧二进制交接路径。`tests/e2e/` 拥有功能流程、
+API 数据和固定图集。
 [web 验证说明](../../packages/daynight-web/README.md#production-browser-acceptance)
 拥有验证命令、要求与场景映射和回执解释。逐次运行结果随对应 PR 与 CI 保存。
 较早渲染器的本地双目标与固定性能矩阵通过，但
@@ -528,9 +538,10 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 渲染器的原生长虚线绘制也曾触发 hosted 超时；局部绘制分解随 PR #52 交付，
 对应运行结果由该 PR 与 CI 保存。
 
-每次运行先生成真实 UI 与 Go 可执行文件，再启动独立 PostgreSQL 18.6，等待服务
-结构化就绪日志并记录二进制摘要。原生目标运行八个功能场景和四个容量/超限场景；
-容器目标使用同一个功能集合，经实际生产镜像 gateway 运行。日常 localhost 栈
+每次运行生成真实 UI 与 Go 可执行文件、启动独立 PostgreSQL 18.6，等待服务
+结构化就绪日志并记录二进制摘要；正常 dev-ci 生产构建/启动与这些工作并行。
+原生目标分成八个功能场景和四个容量/超限场景，容器目标经实际生产镜像 gateway
+执行同一个八场景功能集合。浏览器顺序和清理屏障由[CI 构建归属](#ci-构建归属)定义。日常 localhost 栈
 不参与测试。功能数据和容量数据均通过既有写 API 建立，浏览器只发起 GET/HEAD。
 单链先 POST 创建 1,000 个无依赖任务，再按索引从 999 到 1 PATCH 当前任务，
 将依赖设为前一任务；每次保留实际返回的版本和字段。此顺序使每次环校验遇到的
@@ -541,7 +552,9 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 控制晚到响应的顺序，不能代替数据库失败证据。
 
 Playwright 固定单 worker、零 retry；报告必须包含全部要求的唯一场景、一次成功
-执行、有效 PNG 附件及一致的汇总，跳过、重试、flaky、缺失场景或全局错误均失败。
+执行、有效 PNG 附件及一致的汇总，跳过、重试、flaky、缺失、多余或重复场景及
+全局错误均失败。原生 functional/capacity 两份报告严格合并为十二个唯一场景，
+容器目标严格要求八个；同一目标的各阶段浏览器身份必须一致。
 CI 只接受 Linux、锁定 Playwright 内置 Chromium、干净 checkout，且 git SHA 必须
 等于 `GITHUB_SHA`；本机可以显式选择现有 Chromium，回执必须记录这一差异。
 
@@ -588,16 +601,24 @@ CDP timeline、User Timing、frame 与 GC 事件关联浏览器内的输入/条�
 等待；正常 ready/count 判定与全部预算保持原义。
 
 回执增量写入 `packages/daynight-web/.tmp/acceptance/<run-id>/`，顶层
-`evidence.json` 指向最近一次结果，包含源码、二进制、数据库/浏览器版本、两目标
-结果、生产镜像与清理状态。各目标保留原始 Playwright JSON、场景截图和浏览器
-身份；原生目标保留逐次性能数据。CI 的 `daynight-web-acceptance` 产物同时归档
+`evidence.json` 指向最近一次结果，顶层 `schemaVersion: 2` 包含源码、二进制、
+数据库/浏览器版本、两目标结果、生产镜像与清理状态。`stages` 逐阶段记录名称、
+结果、起止时间、实际取得的受管理命令进程身份 `commands` 和这些命令的
+`commandGroups`；短命令仍记录其组，不能伪造已消失进程的身份。目标包含
+`phases` 和严格合并的 `scenarios`；每个浏览器阶段记录 functional/capacity、
+起止时间、Playwright 进程/组、浏览器身份及 `browserCleanup`。
+`native/functional/`、`container/`、`native/capacity/` 分别保留原始 Playwright JSON、
+场景截图和浏览器身份；容量的原 schema 1 性能回执位于
+`native/capacity/performance.json`。CI 的 `daynight-web-acceptance` 产物同时归档
 这些文件与 `.tmp/dev-ci/`，独立 `daynight-web-coverage` 归档原始语句报告及源码
 清单。web job 被选中后，任何执行或清理失败必须让该 job 失败。
 
 恢复命令为 `node packages/daynight-web/scripts/acceptance.mts --cleanup [run-id]`，
-默认读取最近一次回执，缺失回执不操作资源。恢复先确认原 runner 已停止，callback 和
-Playwright 的进程及其组均停止，再依据记录的 Linux PID、executable、start ticks 与源码
-身份处理资源。仍存活的原生服务必须额外匹配二进制摘要，Docker 只按本次精确标记
+默认读取最近一次回执，缺失回执不操作资源。恢复只接受顶层 schema 2，schema 1
+及未知版本明确失败。恢复先确认原 runner、阶段命令身份和全部登记进程组均停止；
+浏览器按 `native/capacity`、`container`、`native/functional` 的逆序检查和回收。
+callback 和 Playwright 的进程及其组必须已停止，再依据记录的 Linux PID、
+executable、start ticks 与源码身份处理资源。仍存活的原生服务必须额外匹配二进制摘要，Docker 只按本次精确标记
 和名称清理。Chromium 单独记录隔离进程组、已验证 executable 和项目内 profile
 所有权 marker；只对已确认的组和 profile 恢复。启动窗口出现未登记进程、无有效
 leader 的孤立组或未知新增 profile 时明确失败，保留现场，不能猜测归属后删除。
