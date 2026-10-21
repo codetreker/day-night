@@ -78,8 +78,9 @@ describe("binary stdout", () => {
       import {createCliContext} from ${JSON.stringify(module)};
       const context = createCliContext('test', '.');
       const controller = new AbortController();
-      setTimeout(() => controller.abort(new Error('Output cancelled.')), 100);
       try {
+        await context.stdoutBytes(new Uint8Array([1]), controller.signal);
+        setTimeout(() => controller.abort(new Error('Output cancelled.')), 100);
         for (let index = 0; index < 128; index++) await context.stdoutBytes(new Uint8Array(65_536), controller.signal);
       } catch (error) {
         context.stderr(error.message);
