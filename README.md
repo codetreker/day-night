@@ -46,6 +46,14 @@ test-side budgets under the
 Controlled native-platform tests and live Copilot/GitHub acceptance provide separate evidence; live acceptance remains
 outstanding.
 
+The adopted [public Agent skill design](docs/design/daynight-agent-skill.md)
+defines an npm-bundled `daynight` skill and interactive installation for Codex,
+Copilot CLI and Claude Code. Its [requirements](docs/spec/daynight-agent-skill.md)
+cover active task management in associated projects, agent and scope selection,
+and complete replacement on reinstall. The product skill and installer are not
+implemented. The design links the dependent implementation tasks tracked in the
+real Daynight project; their live status belongs to Daynight.
+
 The server design covers repository-linked projects, project-scoped tasks,
 acyclic dependencies and dependency-gated task states through HTTP JSON APIs.
 Its data and runtime are independent of the client review module. The
@@ -1022,8 +1030,11 @@ records owner-liveness checks and the separate process-exclusion requirement.
 ## Working in the repository
 
 Read [AGENTS.md](AGENTS.md) for task scope, shared task worktrees, collaboration,
-verification, and delivery. Keep task breakdowns with their design documents,
-including task status, dependencies, scope and acceptance criteria. Use the
+verification, and delivery. Keep delivery boundaries, dependencies, scope and
+acceptance criteria with their design documents. When tasks are managed in
+Daynight, link their IDs from the design and query Daynight for live status;
+local execution plans remain temporary checklists. Existing document-owned task
+records retain their ownership until explicitly migrated. Use the
 [repository skills](.agents/skills/) for decision notes, scope choices, and prose.
 
 [Agent Notes](.agents/notes/README.md) preserve decisions and alternatives. The
