@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { createInstalledDeadlineMock } from "../fixtures/installed-operation-limits.js";
 
@@ -26,6 +26,9 @@ describe("installed CLI deadline mocking", () => {
     const unrelatedPath = path.join(directory, "unrelated-operation.mjs");
     await copyFile(operationPath, unrelatedPath);
     const preload = await createInstalledDeadlineMock(directory, path.join(installedDirectory, "main.js"), { totalMs: 50, requestMs: 20 });
+    expect(new URL(preload).protocol).toBe("file:");
+    expect(new URL(preload).pathname).toContain("Deadline%20%E4%B8%AD%E6%96%87%20");
+    expect(fileURLToPath(preload)).toBe(path.join(directory, "installed-deadline-mock.mjs"));
     const result = spawnSync(process.execPath, ["--import", preload, "--input-type", "module", "--eval", `
 import { deepStrictEqual, strictEqual, throws } from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";

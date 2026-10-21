@@ -254,11 +254,9 @@ jobs:
           go-version: 1.27.2
           cache: true
           cache-dependency-path: packages/daynight-server/go.sum
-      - name: Install the pinned Chromium browser
-        run: pnpm --filter @codetreker/daynight-web exec playwright install --with-deps chromium
-      - name: Test the web application and require coverage above 90%
+      - name: Prepare pinned Chromium and require web coverage above 90%
         id: web-validation
-        run: pnpm web:test
+        run: node packages/daynight-web/scripts/ci.mts
       - name: Verify isolated deployment lifecycle
         run: bash deployment/dev-ci/tests/run.sh
       - name: Verify production dashboard, container deployment and capacity budgets

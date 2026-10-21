@@ -23,10 +23,15 @@ budgets, failure handling and resource ownership remain required.
 
 Native CLI CI typechecks and builds once, then runs the ordinary and installed
 Vitest configurations directly against that compiled output. Standalone
-`pnpm test` and `pnpm acceptance` retain their self-contained builds. Web
-unit/coverage and dev-ci fixture checks precede `web:acceptance`; acceptance owns
-the native production build, including typechecking, so CI does not run a second
-preacceptance build. Both Go-consuming jobs restore module and compiler caches
+`pnpm test` and `pnpm acceptance` retain their self-contained builds. The web
+CI entry runs pinned Chromium installation, including Linux dependencies, and
+the existing `pnpm web:test` concurrently through the acceptance harness's
+bounded, cancellable process-group wrapper with streaming output. It joins both
+commands with `Promise.allSettled` and preserves all failures in an
+`AggregateError`. Only successful completion of both permits the subsequent
+dev-ci fixtures and `web:acceptance`, so browser performance measurements do not
+overlap preparation or unit tests. Acceptance owns the native production build,
+including typechecking, so CI does not run a second preacceptance build. Both Go-consuming jobs restore module and compiler caches
 using the server `go.sum`; the server gate still expires test results before
 real database, race and coverage observations.
 
@@ -49,8 +54,10 @@ Node.js `registerHooks` preload wraps only the exact installed
 `api/operation.js` module, re-exports its original implementation and error
 classes, and invokes `createOperation` with a 3-second total and 1-second request
 deadline. It first asserts the installed defaults of 300,000/30,000 ms and
-128/256 MiB. The installed files, production source, CLI parameters and runtime
-configuration are unchanged.
+128/256 MiB. Node receives the preload through an encoded file URL, preserving
+module resolution for Windows drive letters, spaces and Unicode paths. The
+installed files, production source, CLI parameters and runtime configuration are
+unchanged.
 
 The stalled-response probe still receives headers and an incomplete JSON body
 before waiting for the request deadline. The total-deadline probe still makes
@@ -112,6 +119,12 @@ short-deadline behavior tests remove that floor without changing runtime values.
 **Move long probes to scheduled or release-only CI.** This reduces PR latency but
 splits the required evidence across schedules. Short test deadlines allow the
 same six installed resource-budget scenarios to remain in each selected Go job.
+
+**Prepare the browser and run unit checks serially.** These stages have no
+shared mutable test subject or dependency on each other's output. Serial
+execution adds their elapsed times to the web critical path. Running them
+together retains both exact commands, waits for both owned process groups and
+keeps the later browser performance workload isolated from preparation work.
 
 **Export and restore a local BuildKit cache across CI runners.** An isolated
 cold/warm builder experiment measured substantial warm-cache rehydration and

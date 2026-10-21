@@ -376,9 +376,12 @@ deployment/
 
 `verify-web` 和 `verify-server` 被选中时，都使用固定 Node/pnpm，在干净 checkout
 从锁文件安装依赖并构建真实 UI。Go 检查调用共享构建后继续负责 build/vet/race/go-cov；
-web job 先执行严格覆盖率与
-dev-ci 生命周期 fixture，再由 `pnpm web:acceptance` 独占原生生产构建（包含
-typecheck）并完成生产浏览器、Docker 与性能验收。两个 job 复用以 server `go.sum`
+web job 的 `scripts/ci.mts` 并行执行固定 Chromium 的 `install --with-deps chromium`
+与既有 `pnpm web:test` 严格覆盖率检查，复用验收工具的进程组、流式输出、有界执行
+和取消管理。`Promise.allSettled` 等待两个命令结束，任一失败通过 `AggregateError`
+保留并使该步骤失败；不会遗留准备进程进入后续性能测量。二者成功后依次执行
+dev-ci 生命周期 fixture 和 `pnpm web:acceptance`；acceptance 独占原生生产构建
+（包含 typecheck）并完成生产浏览器、Docker 与性能验收。两个 job 复用以 server `go.sum`
 为依赖身份的 Go 模块/编译缓存；Go gate 仍先失效测试结果缓存。web job 保留完整
 生产容器构建及本次 image ID 检查。
 PR 按[仓库 CI 路由](../../README.md#ci-selection)选择模块，main push 执行全量检查。

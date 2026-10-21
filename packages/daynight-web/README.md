@@ -86,9 +86,14 @@ PR CI selects affected modules using the [repository routing rules](../../README
 main pushes run the full suite. The `checks` aggregate requires successful routing
 and successful selected jobs, with deliberately unselected jobs reported as
 `skipped`. When selected, `verify-web` retains its complete workload, including
-real embedded Go builds and production-browser acceptance. Unit/coverage and
-controlled dev-ci fixture checks precede `web:acceptance`, which owns the native
-production build, including typechecking. CI reuses Go module/compiler caches
+real embedded Go builds and production-browser acceptance. The CI entry
+`node packages/daynight-web/scripts/ci.mts` concurrently installs the pinned
+Chromium with its Linux dependencies and runs the existing `pnpm web:test`
+unit/coverage command. Both managed command groups must finish successfully;
+timeouts, cancellation and either failure fail preparation. Controlled dev-ci
+fixtures and `web:acceptance` start afterward, so browser performance tests do
+not overlap those preparation processes. Acceptance owns the native production
+build, including typechecking. CI reuses Go module/compiler caches
 while retaining the complete production container build and this run's image
 identity check. The web job also tests the dev-ci
 runner with controlled Docker fixtures. It uploads `coverage-final.json` and

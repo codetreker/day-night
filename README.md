@@ -1085,10 +1085,12 @@ timeouts and cleanup requirements. The Go job still builds real web assets and
 exercises the installed CLI; the web job still builds and exercises the Go
 service and production deployment. Selecting one module does not split these
 existing integration suites. Native CLI jobs typecheck and build once before
-running ordinary and installed tests against the same output. The web job runs
-its unit/coverage and deployment-fixture tests before `web:acceptance`, which
-owns the native production build and includes typechecking; it does not prebuild
-the same assets separately. Both Go-consuming jobs restore module and compiler
+running ordinary and installed tests against the same output. The web job
+prepares pinned Chromium and runs unit/coverage tests concurrently, joins both
+results, then runs deployment fixtures and `web:acceptance`. Acceptance owns the
+native production build and includes typechecking; it does not prebuild the same
+assets separately. Browser performance tests begin after preparation and unit
+checks have finished. Both Go-consuming jobs restore module and compiler
 caches keyed by the server `go.sum`, while the server check expires test results
 before database/race/coverage validation. The web job retains the complete
 production container build and unique image identity check. The

@@ -425,7 +425,9 @@ source、包版本、tarball/entry hash、Node 和 launcher 身份；场景记�
 测试侧 Node.js `registerHooks` preload，只包装安装产物的 `api/operation.js` 导出，
 复用原有 `createOperation` 实现并注入 3 秒总期限和 1 秒单次期限。preload 先断言
 安装产物的生产默认值仍为 300,000/30,000 ms 和 128/256 MiB；测试不改写安装文件、
-生产源码、环境配置或 CLI 参数。原生模块错误类型及其身份保持一致。单响应精确
+生产源码、环境配置或 CLI 参数。preload 以编码后的 file URL 传给 Node `--import`，
+保留 Windows 驱动器字母、空格和 Unicode 路径的模块解析；原生模块错误类型及其
+身份保持一致。单响应精确
 128 MiB 和分页累计精确 256 MiB 均必须成功，各增加 1 字节必须拒绝。合法 JSON
 以空白补齐字节数；单响应成功结果为一个小型 project，累计成功结果为三个唯一
 project，各页均满足列表协议，失败 stdout 必须为空。

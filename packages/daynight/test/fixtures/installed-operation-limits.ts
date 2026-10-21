@@ -32,5 +32,5 @@ registerHooks({
 `;
   const mockPath = path.join(directory, "installed-deadline-mock.mjs");
   await writeFile(mockPath, preload);
-  return mockPath;
+  return pathToFileURL(mockPath).href;
 };
