@@ -192,8 +192,8 @@ loading guarantees.
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
 Windows runners. Each native job resolves the latest available Node.js 24 patch.
 PRs select complete module jobs from their changed paths; the
-[CI selection rules](#ci-selection) define shared inputs and documentation-only
-changes. A selected CLI runs every native platform and the dedicated Linux shell
+[CI selection rules](#ci-selection) define shared inputs and exclusions for
+documentation and repository metadata. A selected CLI runs every native platform and the dedicated Linux shell
 completion job. On PRs, the Linux job also enforces package version increases
 before ordinary validation. It compares the PR's complete source changes with
 its merge base and its package version with the event's target-branch revision.
@@ -1311,13 +1311,16 @@ Multiple affected modules select the union of their jobs.
 | `packages/daynight-server/` | Go server |
 | `packages/daynight-web/`, runtime files under `deployment/`, the current Dagre and XYFlow patches | Web |
 | Root `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.npmrc` | Every module |
-| `docs/`, `.agents/`, `.claude/`, files named `README.md`, `AGENTS.md` or `CLAUDE.md`, or the manual `publish.yml` workflow | No application jobs |
+| Root `.gitignore`, `docs/`, `.agents/`, `.claude/`, files named `README.md`, `AGENTS.md` or `CLAUDE.md`, or the manual `publish.yml` workflow | No application jobs |
 | CI routing/workflow changes and other unclassified paths | Every module |
 
 Every path under `packages/daynight/src/` selects CLI validation, including
 runtime Markdown such as the bundled review skill's `SKILL.md` or `README.md`.
-Other documentation exclusions apply before module selection. New modules and
-unclassified patches select all jobs until their consumers are explicitly assigned.
+Other documentation exclusions apply before module selection. The `.gitignore`
+exclusion matches only the repository root; nested ignore files retain their
+module ownership or the unclassified-path fallback. An excluded path does not
+suppress jobs selected by other changed files. New modules and unclassified
+patches select all jobs until their consumers are explicitly assigned.
 
 Selected jobs keep their complete checks, coverage thresholds, acceptance suites,
 timeouts and cleanup requirements. The Go job still builds real web assets and
