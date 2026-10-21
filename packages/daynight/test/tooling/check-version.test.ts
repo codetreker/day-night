@@ -3,6 +3,7 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { checkVersion } from "../../scripts/check-version.js";
+import { writeGitSnapshot } from "../helpers/git-objects.js";
 
 const fixtures = path.resolve(import.meta.dirname, "../../../../.tmp/version-tests");
 const script = path.resolve(import.meta.dirname, "../../scripts/check-version.ts");
@@ -14,31 +15,13 @@ const source = "packages/daynight/src/中文 file.ts";
 const zeroSha = "0".repeat(40);
 const environment = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith("GIT_")));
 type Files = Record<string, string>;
-type Tree = Map<string, string | Tree>;
 const files = (version: unknown = "1.0.0"): Files => ({ [manifest]: JSON.stringify({ name: "@codetreker/daynight", version }), [source]: "export const value = 1;\n" });
 const repository = (directory: string) => {
   const git = (args: string[], input?: string): string => execFileSync("git", ["-C", directory, ...args], {
     encoding: "utf8", env: environment, timeout: 20_000, ...(input === undefined ? {} : { input }), stdio: ["pipe", "pipe", "pipe"],
   }).trim();
-  const writeTree = (tree: Tree): string => git(["mktree", "-z"], [...tree].map(([name, entry]) => typeof entry === "string"
-    ? `100644 blob ${git(["hash-object", "-w", "--stdin"], entry)}\t${name}\0`
-    : `040000 tree ${writeTree(entry)}\t${name}\0`).join(""));
-  const commit = (contents: Files, ...parents: string[]): string => {
-    const tree: Tree = new Map();
-    for (const [filename, contentsValue] of Object.entries(contents)) {
-      const components = filename.split("/");
-      let directoryTree = tree;
-      for (const component of components.slice(0, -1)) {
-        let child = directoryTree.get(component);
-        if (child === undefined) { child = new Map(); directoryTree.set(component, child); }
-        if (typeof child === "string") throw new Error(`Conflicting fixture path: ${filename}.`);
-        directoryTree = child;
-      }
-      directoryTree.set(components.at(-1)!, contentsValue);
-    }
-    return git(["hash-object", "-t", "commit", "-w", "--stdin"],
-      `tree ${writeTree(tree)}\n${parents.map((parent) => `parent ${parent}\n`).join("")}author Fixture <fixture@example.invalid> 1700000000 +0000\ncommitter Fixture <fixture@example.invalid> 1700000000 +0000\n\nVersion fixture\n`);
-  };
+  const commit = (contents: Files, ...parents: string[]): string => writeGitSnapshot(git,
+    Object.entries(contents).map(([filename, contentsValue]) => ({ path: filename, mode: "100644", contents: contentsValue })), "Version fixture\n", parents);
   return { directory, commit, git, check: (event: string, base: string, head: string) => checkVersion(event, base, head, directory) };
 };
 

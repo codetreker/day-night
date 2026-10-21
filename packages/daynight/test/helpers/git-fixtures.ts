@@ -8,6 +8,8 @@ import type { CommandExecutor, GitHubClient } from "../../src/commands/review/ad
 import { openStore } from "../../src/commands/review/store.js";
 import type { Store } from "../../src/commands/review/store.js";
 import type { PullRequestObservation } from "../../src/commands/review/model.js";
+import { writeGitSnapshot } from "./git-objects.js";
+import type { GitSnapshotEntry } from "./git-objects.js";
 
 export const uuid = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 export const proof = { processesExcluded: true, operationsStopped: true } as const;
@@ -15,13 +17,11 @@ const nativeEnvironment = (): NodeJS.ProcessEnv => Object.fromEntries(Object.ent
 export const rawGit = (directory: string, args: string[], input?: string): string => execFileSync("git", ["-C", directory, ...args], {
   encoding: "utf8", env: nativeEnvironment(), timeout: 20_000, ...(input === undefined ? {} : { input }), stdio: ["pipe", "pipe", "pipe"],
 }).trim();
-export const commit = (bare: string, contents: string, parent?: string, extraTree?: string): string => {
-  const blob = rawGit(bare, ["hash-object", "-w", "--stdin"], contents);
-  const attributes = rawGit(bare, ["hash-object", "-w", "--stdin"], "* -text\n");
-  const tree = rawGit(bare, ["mktree"], `100644 blob ${attributes}\t.gitattributes\n100644 blob ${blob}\tfile.txt\n${extraTree === undefined ? "" : extraTree}`);
-  return rawGit(bare, ["hash-object", "-t", "commit", "-w", "--stdin"],
-    `tree ${tree}\n${parent === undefined ? "" : `parent ${parent}\n`}author Fixture <fixture@example.invalid> 1700000000 +0000\ncommitter Fixture <fixture@example.invalid> 1700000000 +0000\n\n${contents}\n`);
-};
+export const commit = (bare: string, contents: string, parent?: string, extraEntries: readonly GitSnapshotEntry[] = []): string => writeGitSnapshot(
+  (args, input) => rawGit(bare, args, input),
+  [{ path: ".gitattributes", mode: "100644", contents: "* -text\n" }, { path: "file.txt", mode: "100644", contents }, ...extraEntries],
+  `${contents}\n`, parent === undefined ? [] : [parent],
+);
 
 export const createGitTestFixtures = (name: string, prepareSource?: (upstream: string, base: string) => void) => {
   const directories: string[] = [];

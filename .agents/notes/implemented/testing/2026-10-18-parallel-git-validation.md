@@ -49,6 +49,11 @@ All existing Git scenarios and assertions remain exercised. The manager still
 executes real clone, fetch, worktree, sparse-checkout and submodule operations.
 Fixture commands retain their dynamic environment filtering, Unicode and space
 paths, fixed commit identities and committed byte-preservation attributes.
+The [batched-object decision](2026-10-21-batched-git-fixture-objects.md) extends
+source preparation with one native `fast-import` stream per snapshot. It keeps
+this note's per-file seed lifecycle, private mutable subjects and all native
+manager operations; the historical split-suite measurements above retain their
+original implementation and tested source.
 The three-platform workflow and installed CLI acceptance retain their full
 workload and existing time limits.
 
@@ -85,8 +90,8 @@ private fixtures. Worker limits and CI runner size remain unchanged; the rejecte
 six-worker experiment demonstrates that more concurrency can increase native
 command costs and exhaust existing test deadlines.
 
-Fixture setup still uses native Git once per file, and every case still creates
-its own real repository state. Sparse source preparation and the version-gate
+Immutable seed setup remains file-owned, native Git writes each source snapshot
+through one import, and every case still creates its own real repository state. Sparse source preparation and the version-gate
 base share only immutable source objects, without increasing workers, adding
 same-file concurrency or reusing mutable test subjects. Future scenarios must
 retain per-case mutable

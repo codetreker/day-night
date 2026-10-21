@@ -3,17 +3,18 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { expect } from "vitest";
 import { commit, createGitTestFixtures, rawGit } from "./git-fixtures.js";
 import type { GitFixtureFactory } from "./git-fixtures.js";
+import type { GitSnapshotEntry } from "./git-objects.js";
 
 export type SparseMode = { cone: boolean; sparseIndex: boolean; worktreeConfig: boolean };
-const sparseExtra = (upstream: string, value: string, added = false): string => {
-  const contents = (contentsValue: string): string => rawGit(upstream, ["hash-object", "-w", "--stdin"], contentsValue);
-  const hiddenTree = rawGit(upstream, ["mktree"], `100644 blob ${contents(value)}\thidden.txt\n${added ? `100644 blob ${contents("new hidden path\n")}\tnew.txt\n` : ""}`);
-  const visibleTree = rawGit(upstream, ["mktree"], `100644 blob ${contents("visible\n")}\tvisible.txt\n`);
-  return `100644 blob ${contents(value)}\thidden.txt\n040000 tree ${hiddenTree}\thidden\n040000 tree ${visibleTree}\tvisible\n`;
-};
+const sparseExtra = (value: string, added = false): GitSnapshotEntry[] => [
+  { path: "hidden.txt", mode: "100644", contents: value },
+  { path: "hidden/hidden.txt", mode: "100644", contents: value },
+  { path: "visible/visible.txt", mode: "100644", contents: "visible\n" },
+  ...(added ? [{ path: "hidden/new.txt", mode: "100644" as const, contents: "new hidden path\n" }] : []),
+];
 export const createSparseGitTestFixtures = (name: string) => createGitTestFixtures(name, (upstream, initialBase) => {
-  const base = commit(upstream, "base sparse\n", initialBase, sparseExtra(upstream, "base hidden\n"));
-  const head = commit(upstream, "PR sparse\n", base, sparseExtra(upstream, "initial hidden change\n"));
+  const base = commit(upstream, "base sparse\n", initialBase, sparseExtra("base hidden\n"));
+  const head = commit(upstream, "PR sparse\n", base, sparseExtra("initial hidden change\n"));
   rawGit(upstream, ["update-ref", "refs/heads/main", base]); rawGit(upstream, ["update-ref", "refs/pull/101/head", head]);
 });
 export const createSparseFixture = async (fixture: GitFixtureFactory, mode: SparseMode) => {
@@ -51,5 +52,5 @@ export const createSparseFixture = async (fixture: GitFixtureFactory, mode: Spar
       })) };
   };
   expect(existsSync(path.join(local.root, "hidden", "hidden.txt"))).toBe(false);
-  return { ...f, local, sparseHead: head, sparseExtra: (value: string, added = false) => sparseExtra(f.upstream, value, added), snapshot };
+  return { ...f, local, sparseHead: head, sparseExtra, snapshot };
 };
