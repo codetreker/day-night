@@ -66,6 +66,8 @@ are included in the npm package build under
 [`daynight skill install`](#agent-skill-installation) detects supported Agent
 launchers and installs that bundle at the selected scope. The skill guides task recovery, dependency and observed-version updates, and
 completion only after required PRs are confirmed merged and acceptance passes.
+Each session resumes its current task or selects one ready todo task most
+relevant to the authorized work, retaining that single task through delivery.
 The design links implementation tasks tracked in the real Daynight project;
 their live status belongs to Daynight. Installation acceptance uses simulated
 Agent launchers in an isolated PATH and the actual packed CLI in PTY/ConPTY. It

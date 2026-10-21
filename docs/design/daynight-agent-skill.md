@@ -207,6 +207,16 @@ description 明确适用于已关联 Daynight 的仓库中的日常开发和任�
 readiness，不表达优先级或独占领取。已知恢复目标时 `task show <id> --json` 刷新任务；
 身份未知时按需查询 `task list --status in_progress --json`，再 show 选定任务。
 
+选择策略由 skill 表达：每个 Agent 会话优先恢复当前任务；选择新工作时，比较候选的
+范围、描述与依赖，从已授权范围内挑一个最相关的 ready `todo`，再 show 完整详情。
+创建时间决定返回顺序，不是相关性排名；候选数量上限不表示可以同时推进多个任务。
+没有匹配候选时沿用范围匹配或建任务规则，不自动扩大工作范围。
+
+同一会话保持一个当前任务，等待 CI、review 或合并期间也保持该任务；subagents
+协作完成同一个任务。全部必要交付 PR 确认合并且验收满足、任务确认 done 后，才按
+相同相关性规则在授权范围内选择下一项。这是 Agent 的工作协议，不增加服务端的
+全局并发限制、优先级字段或独占领取机制。
+
 这些命令均让现有 CLI 解析 Git origin 与绑定。新 worktree 没有 `.daynight/project.yml`
 是正常情况，不能用文件存在性阻止恢复。首次发现可能按现有协议保存被忽略的绑定
 并维护 `.gitignore`。无关联时不自动创建项目；缺少 server 配置时保留 setup 指引，
@@ -319,9 +329,11 @@ Windows 的交互和 `.cmd`检测需要真实 Windows runner 的结果，POSIX P
 
 单元测试继续拥有更细的预检、scope 提交后首次写入前信号、stage 期间取消、新建空目录
 清理、parent/leaf symlink、两个方向的嵌套目标拒绝、部分失败结果、信号监听清理及
-completion 回归。静态 bundle 测试验证 frontmatter、全部相对引用、构建资源来源、
-公开内容与命令参考，包括有界 ready、精确版本、依赖替换、不确定写入恢复和 PR 合并后
-才能完成的规则。现有 project/task 测试继续验证命令与服务语义；原有 review skill
+completion 回归。静态 bundle 测试验证 frontmatter、全部相对引用及构建资源来源。
+内容审查核对公开 skill 与命令参考中的有界 ready、每次选择一个与已授权工作最相关的
+ready todo、当前任务恢复、交付等待与 subagent 协作期间保持单任务、精确版本、依赖
+替换、不确定写入恢复和 PR 合并后才能完成的规则。现有 project/task 测试继续验证
+命令与服务语义；原有 review skill
 的快照身份、配置、原生 Copilot 加载及命令隔离保留其独立验收。
 
 普通原生 CI 继续运行 typecheck、test、build、acceptance。发布要求包版本递增、当前

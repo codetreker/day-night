@@ -15,7 +15,12 @@ tasks, or when project discovery, a query, or a write fails.
 ## Restore context
 
 At work start, context recovery, or a worktree switch, query from the current
-repository through a noninteractive shell. To select the next work, use:
+repository through a noninteractive shell. Resume this session's current task
+before selecting new work: refresh it with `daynight task show <task-id> --json`.
+If its identity is unknown, query
+`daynight task list --status in_progress --json` as needed.
+
+When selecting new work, query candidates with:
 
 ```bash
 daynight task ready --json
@@ -25,19 +30,29 @@ This returns at most 10 ready tasks, earliest created first. Use `--limit <N>`
 for 1–100 candidates. It reads one task page; the result is not the complete
 backlog. An empty result does not mean there are no in-progress or blocked tasks.
 
+Pick exactly one ready `todo` task most relevant to the current authorized work.
+Compare candidates by their scope, description, and dependencies; creation order
+does not establish relevance. Read the selected task with
+`daynight task show <task-id> --json` before acting. The returned tasks are
+candidates, not a batch to start. If no candidate matches the authorized work,
+follow the task-creation guidance below without taking unrelated work.
+
+Advance only that one task at a time, including while waiting for CI, review, or
+merge. Subagents may collaborate on the same task; they do not each select a
+separate task. Select another task only after confirmed completion, within the
+authorized scope.
+
 Let the CLI resolve the current project. A new worktree without
 `.daynight/project.yml` is normal: repository discovery can find the existing
 project and save a local binding. Do not gate queries on that file's presence,
 reuse remembered IDs as current facts, or edit bindings directly.
 
-For work already being resumed, refresh its task with
-`daynight task show <task-id> --json`. If its identity is unknown, query
-`daynight task list --status in_progress --json` as needed. Show selected ready
-tasks too before acting. Use `daynight task graph --json` when dependency or
-project-wide context is needed; it has title previews and omits full
+Use `daynight task graph --json` when dependency or project-wide context is
+needed; it has title previews and omits full
 descriptions, PR properties, and versions. If it reports `graph_limit_exceeded`,
-continue with bounded ready and selected task reads; the error does not mean the project is unlinked. Full lists
-traverse every page, so request them only when a complete inventory is needed.
+continue with bounded ready and selected task reads; the error does not mean the
+project is unlinked. Full lists traverse every page, so request them only when a
+complete inventory is needed.
 
 If configuration, discovery, or a service request fails, preserve its actual
 cause. Follow the CLI's setup guidance or obtain an explicit project selection
@@ -86,11 +101,14 @@ is pending.
 Before setting `done`, query the platform's actual merge state for every required
 PR. Preserve its URL and title in the complete PR reference list and its merge
 commit reference in the task description. Then reread the task and update with
-its observed version. Missing merge visibility, a missing permission, or an unmet merge check keeps the task
-`in_progress`; the completion rule grants no merge authority. Tasks with no
+its observed version. Missing merge visibility, a missing permission, or an unmet
+merge check keeps the task `in_progress`; the completion rule grants no merge
+authority. Tasks with no
 development or PR delivery path use their stated acceptance criteria.
 
 After confirmed completion, query `daynight task ready --json` to see which
-dependent tasks became available. A ready successor still needs authorization
-within the current scope before work starts. Refresh task facts at these semantic
-checkpoints; do not reload the full project on every conversational turn.
+dependent tasks became available. Apply the same relevance rule to select at
+most one next task within the authorized scope. A ready successor still needs
+authorization within the current scope before work starts. Refresh task facts at
+these semantic checkpoints; do not reload the full project on every
+conversational turn.
