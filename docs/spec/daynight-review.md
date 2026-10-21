@@ -36,13 +36,18 @@ Copilot 作为子进程启动。
 
 同一文件可包含已登记的其他客户端字段，例如 `serverUrl`；review 只校验自己的
 字段值。缺失或无效 server 地址不阻塞 review，YAML 语法、重复键和未知顶层字段
-仍须报错。运行和列表要求已登记 review 仓库；添加命令允许向仅含 server 配置的
-文件登记首个仓库，并保留已有字段、注释及原有 review 字段语义。
+仍须报错。运行和列表需要已登记 review 仓库；缺少文件或 `repositories` 字段时，
+按[客户端 C6](daynight.md#c6-按需配置引导)在 TTY 中引导登记，保存后继续原命令，
+无需设置服务地址。空列表和其他无效 review 值仍须报错。非交互环境缺配置时给出
+`daynight setup --review-repo <remote>` 指引。添加命令和 setup 可向仅含 server 配置的
+文件登记首个仓库，保留已有字段、注释及原有 review 字段语义。
 
 `daynight review add-repo <remote> [--path <path>]` 负责读取、校验和保存配置。配置不存在时
 自动创建；已有配置中的其他设置和 YAML 注释须保留。命令不执行 clone、认证检查、
 GitHub 查询、SQLite 初始化或 PR 初始化。运行中的 daemon 在下次启动时读取新配置；
-添加成功只表示配置已保存。
+添加成功只表示配置已保存。`daynight setup --review-repo <remote>` 及可选
+`--review-path <path>` 复用同一登记和路径规则；引导只保存配置，后续的原 `review run`
+才启动正常审查生命周期。
 
 顶层 `repositoryRoot` 默认是 `~/daynights`，仅在添加仓库且省略 `--path` 时用于决定
 路径。命令按规范化的 host/owner/name 生成路径，并将结果作为绝对路径写入该仓库的
@@ -218,11 +223,12 @@ Draft 显示 `Paused`。下次重试时间和已保存错误归属到对应审�
 `Pending (cleanup blocked)`，Draft 仍显示 `Paused`。旧活跃审查继续单独列出，
 命令不解除屏障或执行清理。
 
-命令读取当前配置和 SQLite 的一致快照，可与运行中的 daemon 并行执行。它不启动
+完成必要的配置引导后，命令读取当前配置和 SQLite 的一致快照，可与运行中的 daemon
+并行执行。列表操作本身不启动
 监控、不执行 Git 或网络调用、不获取 review 实例锁、不创建缺失的数据库、不迁移
 表结构、不恢复审查，也不修改应用状态。读取已有 WAL 数据库时，SQLite 自身可能
-创建或更新协调使用的伴随文件。配置缺失或无效、已有数据库无法读取或损坏、表结构
-版本不受支持时，必须显示错误并以非零状态退出。
+创建或更新协调使用的伴随文件。配置引导按 C6 处理缺少文件或仓库字段；配置无效、
+已有数据库无法读取或损坏、表结构版本不受支持时，必须显示错误并以非零状态退出。
 
 ### R16. 随客户端发布的审查 skill
 
@@ -247,6 +253,8 @@ skill 的方法不能取代本次审查目标、发布资格、远端结果对�
 | 使用重构前格式的 YAML 和独立构造的版本 1 SQLite fixture。 | 查询与运行直接读取原位置和原有记录，保留永久边界、修订、会话、预算、清理屏障及 worktree 身份。 | R2, R4, R8, R13, R14 |
 | 在 Linux、macOS 或 Windows 上执行 `daynight review run`。 | 前台 CLI 通过直接启动 Copilot 子进程支持所需工作流程，并已验证命令执行、输出处理和正常退出。 | R1 |
 | 从不同工作目录执行启动命令。 | 读取同一份 `~/.daynight/config.yml` YAML 配置，使用 `~/.daynight/` 中的同一份运行状态；仓库相对路径按配置目录解析。 | R1, R2, R13 |
+| 首次在 TTY 执行 `review run`、`review list` 或 `review ls`，缺少文件或仓库字段。 | 仅引导仓库登记，保存后继续原操作；无 server 地址也可使用 review。 | R2, R15 |
+| 非交互环境缺少 review 仓库，或已配置空列表、无效字段及损坏 YAML。 | 缺配置给出 setup 命令；无效已有配置明确失败，不覆盖配置或启动运行时。 | R2 |
 | 配置不存在时执行 `daynight review add-repo <remote>`。 | 自动创建 YAML，使用默认 `~/daynights` 根目录和规范化仓库身份生成绝对 `path`；只保存配置。 | R2 |
 | 添加仓库后修改 `repositoryRoot`，再添加另一个仓库。 | 只有后添加仓库使用新的根目录；原条目的 `path` 保持原值。 | R2 |
 | 从任意目录执行带相对 `--path` 的添加命令。 | 按命令当前目录解析并保存绝对路径，保留已有配置设置与注释。 | R2 |

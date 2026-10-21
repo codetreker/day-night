@@ -31,7 +31,13 @@ update and review retain their independent execution requirements. The
 [command composition decision](2026-10-20-client-command-composition.md) remains
 the owner of lazy command dispatch. Its original source reorganization preserved
 the existing YAML; this design adopts additional configuration without moving
-those fields or introducing a review-data migration. Project definitions share
+those fields or introducing a review-data migration. The original client design
+required global configuration to exist before execution; the
+[guided setup decision](../feature/2026-10-21-guided-configuration-setup.md) partially
+supersedes that prerequisite. Valid service calls guide only an absent file or
+`serverUrl`. Initial configuration I/O remains bounded; an actual setup releases
+that deadline, and the post-setup reload starts a fresh business budget. Invalid
+existing server values remain errors. Project definitions share
 parameter syntax with help and shell completion. Help and argument validation
 finish before the shared server runtime is loaded. Project creation sends the
 original name and repository address; listing reads all projects, and details

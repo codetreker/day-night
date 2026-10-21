@@ -59,8 +59,10 @@ selected review command and do not change the root context's business ownership.
 YAML fields, version 1 SQLite tables, data locations, repository paths, cutoff
 boundaries, revisions, retry budgets, session UUIDs and worktree ownership stay
 unchanged. Source ownership does not partition user data by command. The current
-scope supplies command composition and the review, update, completion, project
-and task capabilities. Server API commands were separate product work in the
+scope supplies command composition and the review, update, setup, completion,
+project and task capabilities. The [guided setup decision](../feature/2026-10-21-guided-configuration-setup.md)
+extends the independent configuration capabilities with a root setup command and
+preflight at the affected business entries. Server API commands were separate product work in the
 command-composition scope. The adopted
 [project/task CLI design](2026-10-20-project-task-cli-design.md) now defines that
 consumer and its additive configuration and repository binding. Shared

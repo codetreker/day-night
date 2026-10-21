@@ -5,12 +5,14 @@ import { reviewDefinition } from "../commands/review/definition.js";
 import { projectDefinition } from "../commands/project/definition.js";
 import { taskDefinition } from "../commands/task/definition.js";
 import { updateDefinition } from "../commands/update/definition.js";
+import { setupDefinition } from "../commands/setup/definition.js";
 
 export type CommandRegistration = CommandDefinition & {
   load: () => Promise<CliCommand>;
 };
 
 export const commands: readonly CommandRegistration[] = [
+  { ...setupDefinition, load: async () => ({ run: (await import("../commands/setup/command.js")).runSetupCommand }) },
   {
     ...reviewDefinition,
     load: async () => ({ run: (await import("../commands/review/command.js")).runReviewCommand }),

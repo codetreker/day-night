@@ -2,7 +2,7 @@
 
 状态：`packages/daynight/` 是通过 `@codetreker/daynight` 分发的 TypeScript 客户端
 命令工具包，支持 Linux、macOS 和 Windows。`review` 提供 GitHub PR 审查，`update`
-管理当前 npm 全局安装，`completion` 生成 Bash 和 zsh 的原生补全脚本。project/task
+管理当前 npm 全局安装，`setup` 提供按能力配置的引导，`completion` 生成 Bash 和 zsh 的原生补全脚本。project/task
 CLI 的共享配置、HTTP、仓库关联基础及 project/task 命令已完成，安装产物、真实服务
 与默认预算验收已通过托管验证；集成状态见[PR #55](https://github.com/codetreker/daynight/pull/55)。
 [专属设计](daynight-project-task.md)拥有机制，[实现任务](daynight-project-task-tasks.md)
@@ -18,6 +18,9 @@ daynight                            # 顶层帮助
 daynight --help                      # 同 -h
 daynight --version                   # 同 -v
 daynight update
+daynight setup                       # 选择服务连接、review 或两者
+daynight setup --server-url <url>
+daynight setup --review-repo <remote> [--review-path <path>]
 daynight review                     # review 帮助
 daynight review run
 daynight review list                 # 同 review ls
@@ -60,11 +63,14 @@ src/
     application.ts
     commands.ts
     context.ts
+    prompts.ts
     schema.ts
   config/
     paths.ts
     document.ts
     files.ts
+    errors.ts
+    setup.ts
     server.ts
   api/
     index.ts
@@ -80,6 +86,9 @@ src/
     binding.ts
     context.ts
   commands/
+    setup/
+      definition.ts
+      command.ts
     task/
       definition.ts
       command.ts
@@ -142,7 +151,9 @@ Bash 和 zsh 生成器消费同一命令树，避免解析、帮助和补全分�
 
 命令组先完成参数和帮助分派，再按操作加载默认实现。裸命令、帮助、版本及无效参数
 无需解析用户主目录、打开数据库或调用外部程序。补全生成同样不查询工作目录、
-review 状态或网络。`review add-repo` 加载配置保存能力，列表加载配置解析与只读快照，`review run` 才加载运行时、信号处理、实例锁和适配器。
+review 状态或网络。`setup` 与 `review add-repo` 加载配置保存能力；有效服务及 review
+业务调用先按当前能力检查必要配置。需要时完成引导，随后列表加载配置解析与只读
+快照，`review run` 才加载运行时、信号处理、实例锁和适配器。
 该顺序也使自更新进程不加载待替换的 SQLite 原生 addon。
 
 `config/` 拥有共享配置路径、严格 YAML、已知顶层字段和保留注释的文件保存协议；
@@ -190,8 +201,10 @@ daynight 或网络请求。参数语法保留原有唯一帮助参数、remote �
 先于配置读取，业务路径不查询工作目录或 Git。`rendering.ts` 使用完整项目标签块，
 输出大小随字段内容线性增长；JSON 保留 API 字段和值。
 
-`commands/server/runtime.ts` 在配置 I/O 前建立一个操作及信号取消源，后续配置读取、
-HTTP 和渲染共享期限与字节预算。回调返回完整结果字符串，最后检查取消和期限后
+`commands/server/runtime.ts` 在首次配置读取前建立操作和信号取消源，配置完整时，
+读取、HTTP 和渲染共享期限与字节预算。仅识别出结构化的必要配置缺失时，释放初始
+操作的期限，在同一取消信号下完成引导；保存后的重新读取建立新操作及完整业务
+预算。回调返回完整结果字符串，最后检查取消和期限后
 只写一次 stdout，再移除本次的信号监听器并释放操作。SIGINT/SIGTERM 以及 Windows
 SIGBREAK 均进入这一取消源；配置读取接受同一 AbortSignal。错误及清理失败保留
 原因链。Task 复用此执行层；它不控制 Go server 的启动或关闭。
@@ -206,6 +219,43 @@ Task 的 definition、command 和 rendering 分别拥有共享语法、操作组
 `platform/text.ts` 按 Unicode White_Space、有效 Unicode 和无 NUL 校验服务文本，
 CLI 参数与 API DTO 共用该规则并保留原值；`platform/terminal.ts` 仅负责可读输出中的
 终端控制字符转义。完整 JSON 不经过可读格式化。
+
+## 按需配置引导
+
+参数和业务值校验先于配置引导，帮助、版本、补全和自更新保持各自独立入口。
+`setup` 的轻量定义与其他命令一样由共享语法生成帮助和 shell 补全；执行实现仅在
+选中该命令时加载。服务业务入口和 review 的 run/list 入口按各自的能力调用同一
+配置引导机制，不通过捕获任意业务错误重新分派命令。`config/errors.ts` 区分结构化的
+缺少配置结果；`cli/prompts.ts` 拥有终端输入和信号处理，`config/setup.ts` 组合收集及
+持久化，`commands/setup/` 拥有主动入口。review 的仓库更新函数由登记和 setup 共用。
+
+预检读取严格 YAML，区分不存在的文件或必需字段与共享文档错误、当前能力无效字段
+及读取错误。
+只有前者允许自动引导。服务能力只检查 `serverUrl`；review 能力只检查仓库登记，
+不要求服务地址。当前能力已提供但无效的值保留原错误，其他能力的业务值不参与
+校验；review 的 `repositories: []` 也不会触发引导。
+这使只使用服务命令的机器无需配置 review，并避免把数据损坏当成首次运行。
+
+交互要求 stdin 与 stderr 同为 TTY；stdout 可重定向，以保留 `--json` 的完整结果。
+提示、保存消息和取消诊断写 stderr。无参数 setup 先选择服务连接、review 或两者；
+显式 `--server-url`、`--review-repo`、`--review-path` 直接组成配置请求且不询问，
+路径选项必须伴随仓库地址。服务 URL 没有隐含默认值；review 可省略路径并复用现有
+登记默认值。非交互缺配置立即失败，诊断给出对应的显式 setup 命令。
+
+引导先收集全部所选值，再进入共享配置写入协议。写入者持独立配置锁重新读取当前
+YAML，在最新文档上设置服务地址或复用 review 仓库登记逻辑，然后验证并进行同目录
+原子替换。锁内比较所选字段与收集前的值；若已改变，报冲突并要求重新设置。
+其他字段的并发完成修改合并保留。现有注释、其他能力的
+字段、已有仓库路径和权限模式均保留；两种能力同时设置也只进行一次保存。锁冲突、
+校验、写入及清理失败沿用原有显式错误和资源所有权规则。
+
+交互阶段拥有取消与输入结束处理；取消或 EOF 时不提交收集到的部分值，不进入业务。
+配置收集和保存不进行网络、认证、clone、SQLite 或审查启动。自动引导成功后调用
+原操作一次，保留原参数；后续操作失败不撤销已保存的配置。服务命令仅在需要
+实际引导时释放首次读取的期限，并在保存后重新建立五分钟业务预算；配置完整时
+沿用首次读取起的同一预算，人工输入不消耗业务期限。共享协议的必需结果由
+[客户端 C6](../spec/daynight.md#c6-按需配置引导)拥有，决策及替代方案见
+[配置引导决策](../../.agents/notes/implemented/feature/2026-10-21-guided-configuration-setup.md)。
 
 ## 配置与持久化
 
@@ -301,7 +351,9 @@ bundle 复制到 `dist/commands/review/skills/daynight-review/`，由既有 `dis
 根入口与每个命令的参数验证需覆盖正常调用、裸组、帮助、版本和错误结果；构建后入口
 必须保留 shebang、bin 路径和版本输出。依赖隔离验证通过不可用的 SQLite 加载、缺失的
 review 工具、无效或缺失配置，观察帮助、版本、补全生成和更新仍独立工作；配置保存不能进入
-运行时，列表不能创建缺失状态、执行网络访问或获得 review 实例锁。
+运行时，完成必要引导后的列表不能创建缺失状态、执行网络访问或获得 review 实例锁。
+引导验证覆盖 TTY 与重定向 stdout、按能力提问、一次恢复、非交互诊断、取消与 EOF、
+全部收集后保存、锁内重读及失败保留，并确认输入时间不消耗业务期限。
 
 review 的原生 Git、SQLite、进程终止、APFS、调度与安装后完整生命周期工作负载保持
 原有验收标准。独立构造的既有 YAML/SQLite fixture 验证命令重组后继续使用原有数据；

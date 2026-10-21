@@ -72,8 +72,10 @@ project/task 不导入 review runtime、SQLite 或外部审查适配器。`proje
 
 配置共享层产出 YAML mapping 和文档上下文，拒绝语法、重复 key、非 mapping 及
 未登记顶层字段。review 投影只解析 review 字段；server 投影只要求 `serverUrl`。
-共享层保留原有 YAML 字段含义与保存方式，不迁移 review 数据。命令不自动创建或
-补齐全局配置。
+共享层保留原有 YAML 字段含义与保存方式，不迁移 review 数据。服务入口在缺少文件或
+`serverUrl` 字段时复用[客户端配置引导](daynight.md#按需配置引导)，只收集并保存服务
+地址；已有无效 `serverUrl`、共享文档错误及读取错误直接暴露。review 配置可始终
+省略，其业务字段不参与服务配置校验。
 
 [`platform/text.ts`](../../packages/daynight/src/platform/text.ts) 统一名称、标题及 DTO
 已知字符串的结构验证：合法 Unicode 文本、不含 NUL；非空文本还须包含 Unicode
@@ -88,9 +90,12 @@ Project 名称参数与响应 DTO 复用同一规则，避免已被服务接受�
 与固定 `/api/v1/...` 构造，资源 ID 作为单一路径段编码，分页 cursor 通过 query
 编码。配置值不得允许请求参数改变服务 origin。
 
-完成参数分派后，`runServerCommand` 在读取 home 和配置之前创建一个取消控制器
-及 `Operation`，总期限为 5 分钟。它覆盖配置读取、Git 定位、缓存验证、全部分页、
-本地锁与文件准备、HTTP 及结果渲染。所有步骤共享剩余预算，不能
+完成参数分派后，`runServerCommand` 在首次配置读取前创建取消控制器及
+`Operation`，总期限为 5 分钟。配置完整时，首次读取及后续业务共享这一期限。
+仅在结构化的文件或 `serverUrl` 缺失时释放该操作，保留取消信号完成引导；保存后
+创建新操作并重新读取配置，人工输入不占用业务期限。业务预算覆盖配置读取、Git
+定位、缓存验证、全部分页、本地锁与文件准备、HTTP 及结果渲染。所有步骤共享剩余
+预算，不能
 因翻页或重新发现重置。每个请求期限为 30 秒与命令剩余期限的较小值，覆盖连接和
 响应体读取；用户取消沿用同一命令取消源。请求成功、失败或取消后清理单次期限及
 监听器；同步 JSON 解析后也按单次及总期限检查。分页请求串行执行，取消及任一
@@ -348,7 +353,7 @@ stderr 错误包含操作名、已确定的 project/task ID、失败阶段和可
 | 层次 | 关键观察 |
 |---|---|
 | 纯数据与参数 | 正规化表和拒绝 fixture、字段存在性、依赖替换/清空、版本参数、JSON 格式 |
-| CLI 依赖边界 | 缺失 Git/SQLite/review 工具，或 serverUrl 缺失、业务值无效时，实际编译入口的帮助、版本、update 与 review 仍各自独立 |
+| CLI 依赖边界 | 缺失 Git/SQLite/review 工具，或 serverUrl 缺失、业务值无效时，实际编译入口的帮助、版本、update 与 review 仍各自独立；服务命令缺少字段时仅引导连接配置，非交互提供 setup 命令，人工输入不消耗业务期限 |
 | Git 与本地状态 | 真实仓库的 insteadOf、子目录、worktree、submodule、ignore 生效、被跟踪目录、并发锁及原子替换 |
 | 受控 HTTP | 多页零/一/多匹配、后页失败、server 或 origin 独立变化、缓存 404/不符、500/无效响应、循环或持续推进 cursor、单次/总期限、字节超限、取消及写响应丢失 |
 | 真实服务 | 隔离 PostgreSQL 与 Go server 的 project/task 全流程、依赖拒绝、版本并发冲突、图快照和图超限 |

@@ -1,15 +1,40 @@
-import { lstat, mkdir, open, readFile, unlink } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import type { ConfigurationPaths } from "./paths.js";
 import { replaceFileAtomically } from "../platform/files.js";
+import { MissingConfigurationFileError } from "./errors.js";
 
 const hasCode = (error: unknown, code: string): boolean =>
   error instanceof Error && "code" in error && error.code === code;
+
+const isMissingFile = async (file: string): Promise<boolean> => {
+  const absolute = path.resolve(file);
+  const root = path.parse(absolute).root;
+  let current = root;
+  for (const component of absolute.slice(root.length).split(path.sep)) {
+    current = path.join(current, component);
+    let entry;
+    try { entry = await lstat(current); }
+    catch (cause) {
+      if (hasCode(cause, "ENOENT")) return true;
+      return false;
+    }
+    if (entry.isSymbolicLink()) {
+      try { entry = await stat(current); }
+      catch { return false; }
+    }
+    if (current !== absolute && !entry.isDirectory()) return false;
+  }
+  return false;
+};
 
 export const readConfigurationSource = async (paths: ConfigurationPaths, signal?: AbortSignal): Promise<string> => {
   try {
     return await readFile(paths.configFile, { encoding: "utf8", ...(signal === undefined ? {} : { signal }) });
   } catch (cause) {
+    if (hasCode(cause, "ENOENT") && await isMissingFile(paths.configFile)) {
+      throw new MissingConfigurationFileError(paths.configFile, cause);
+    }
     throw new Error(`Cannot read configuration file ${paths.configFile}.`, { cause });
   }
 };
@@ -19,7 +44,9 @@ export type ConfigurationUpdate<Result> = { result: Result; source?: string };
 export const updateConfigurationFile = async <Result>(
   paths: ConfigurationPaths,
   update: (source: string | undefined) => Promise<ConfigurationUpdate<Result>>,
+  signal?: AbortSignal,
 ): Promise<Result> => {
+  signal?.throwIfAborted();
   await mkdir(path.dirname(paths.configFile), { recursive: true });
   const lockFile = `${paths.configFile}.lock`;
   let lock;
@@ -45,6 +72,7 @@ export const updateConfigurationFile = async <Result>(
     }
     const source = existingEntry === undefined ? undefined : await readConfigurationSource(paths);
     const updated = await update(source);
+    signal?.throwIfAborted();
     if (updated.source !== undefined) {
       await replaceFileAtomically(paths.configFile, updated.source, existingEntry?.mode);
     }

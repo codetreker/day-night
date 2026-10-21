@@ -1,6 +1,7 @@
 import path from "node:path";
 import { parseConfigurationDocument } from "../../config/document.js";
 import { readConfigurationSource } from "../../config/files.js";
+import { MissingConfigurationFieldError } from "../../config/errors.js";
 import { ancestorIdentities, missingPathsReferToSameDirectory, pathsEqual, pathsOverlap, resolvePhysicalDirectory } from "../../platform/filesystem.js";
 import type { ReviewPaths } from "./paths.js";
 import type { PathApi, PhysicalDirectory } from "../../platform/filesystem.js";
@@ -216,7 +217,7 @@ const parseReviewConfiguration = (
     if (allowMissingRepositories) {
       return { ...settings, repositories: [] };
     }
-    throw new Error("Review repositories are not configured; use daynight review add-repo.");
+    throw new MissingConfigurationFieldError("repositories", "Review repositories are not configured; use daynight setup --review-repo <remote> or daynight review add-repo.");
   }
   if (!Array.isArray(mapping.repositories) || mapping.repositories.length === 0) {
     throw new Error("repositories must be a nonempty sequence.");
@@ -277,9 +278,15 @@ const validatePhysicalRepositoryPaths = async (
   const stateAncestors = await ancestryOf(stateDirectory);
   for (const [index, directory] of repositoryDirectories.entries()) {
     const repositoryAncestors = await ancestryOf(directory);
+    const sharedAncestor = directory.ancestorIdentity === stateDirectory.ancestorIdentity;
+    const prefixLength = Math.min(directory.missingComponents.length, stateDirectory.missingComponents.length);
+    const statePrefix = stateDirectory.missingComponents.slice(0, prefixLength);
+    const repositoryPrefix = directory.missingComponents.slice(0, prefixLength);
+    const sharedMissingPrefix = sharedAncestor && (statePrefix.every((component, componentIndex) => component === repositoryPrefix[componentIndex]) ||
+      await missingPathsReferToSameDirectory(directory.ancestorPath, statePrefix, repositoryPrefix));
     if (
-      repositoryAncestors.has(stateDirectory.ancestorIdentity) ||
-      (directory.missingComponents.length === 0 && stateAncestors.has(directory.ancestorIdentity))
+      (stateDirectory.missingComponents.length === 0 && repositoryAncestors.has(stateDirectory.ancestorIdentity)) ||
+      (directory.missingComponents.length === 0 && stateAncestors.has(directory.ancestorIdentity)) || sharedMissingPrefix
     ) {
       throw new Error(`repositories[${index}].path must not overlap the state directory ${statePath}.`);
     }

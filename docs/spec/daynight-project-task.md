@@ -34,13 +34,16 @@ serverUrl: http://127.0.0.1:8787
 
 该值是包含协议、主机和可选端口的 HTTP 或 HTTPS 服务根地址；省略端口使用协议的
 默认端口。允许结尾根斜线，拒绝凭据、非根路径、query、fragment、空值及错误类型。
-客户端添加 `/api/v1`。缺失或无效值必须说明配置文件、字段和修正方式。
+客户端添加 `/api/v1`。缺少文件或 `serverUrl` 时，按[客户端 C6](daynight.md#c6-按需配置引导)
+仅引导服务连接；保存成功后执行原命令。无效值和读取错误须说明配置文件、字段及原因，
+非交互环境缺配置时给出 `daynight setup --server-url <url>` 指引。
 
 仅使用 project/task 时，上述配置即足够，不要求 `repositories`、review 路径、
 SQLite、GitHub CLI 或 Copilot。共享层读取严格 YAML 并识别已登记的顶层字段；各
 命令只校验和解析自己的配置投影。project/task 不因无关 review 字段的业务校验失败
 而拒绝执行，review 也不要求有效的 `serverUrl`。YAML 语法错误、重复 key 和未知
-顶层字段仍需暴露。既有 review 配置、状态格式和路径保持原有语义。
+顶层字段仍需暴露。既有 review 配置、状态格式和路径保持原有语义。配置引导和显式 setup 仅保存配置，
+不验证服务可达性；人工输入时间不计入业务期限。
 
 ## PT3. 仓库地址正规化
 
