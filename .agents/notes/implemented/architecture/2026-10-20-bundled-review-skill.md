@@ -106,8 +106,10 @@ deferred: it can be added independently only with a reference policy covering
 retained sessions and uncertain executions. The layout must remain content
 addressed and immutable so that later collection does not require redesigning
 launch semantics. No configurable skill catalog or generic plugin framework is
-provided; adding another product skill requires its own owning command and
-loading contract.
+provided. The adopted [public task skill design](2026-10-21-public-agent-skill-design.md)
+assigns the separate public bundle and installation contract to a new skill
+command; that implementation remains planned. Review retains this runtime
+loading and snapshot contract.
 
 Native discovery against Copilot CLI 1.0.98 verifies the minimal plugin wrapper
 through a comma-containing path after plain, backslash-escaped, quoted,
