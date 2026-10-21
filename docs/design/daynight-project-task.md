@@ -9,7 +9,12 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 [服务需求](../spec/daynight-server.md)拥有。结构决策与真实备选方案见
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-20-project-task-cli-design.md)及
 [创建预检决策](../../.agents/notes/implemented/bug-fix/2026-10-21-project-create-repository-discovery.md)，
+有界 ready 选择见[选择决策](../../.agents/notes/implemented/feature/2026-10-21-bounded-ready-task-selection.md)。
 实现顺序与依赖见[交付任务](daynight-project-task-tasks.md)。
+
+[预定义属性设计](daynight-task-properties.md)的 server 接口、CLI 成对 PR 引用
+参数与完整输出已实现。[需求](../spec/daynight-task-properties.md)和
+[实施任务](daynight-task-properties-tasks.md)拥有扩展约定及实施状态。
 
 已采用、尚待实现的[附件架构](daynight-task-attachments.md)在现有 task 命令中
 增加独立文件操作与二进制传输通道，行为见
@@ -27,7 +32,7 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 | [`cli/commands.ts`](../../packages/daynight/src/cli/commands.ts) 与 [`cli/application.ts`](../../packages/daynight/src/cli/application.ts) | 命令登记保留异步 `load`，应用统一处理 `0/1/2` 退出结果 |
 | [`config/document.ts`](../../packages/daynight/src/config/document.ts)、[`config/files.ts`](../../packages/daynight/src/config/files.ts) | 共享严格 YAML、已知顶层字段、独立锁和原子配置保存 |
 | [`commands/review/config.ts`](../../packages/daynight/src/commands/review/config.ts) | review 字段投影与 GitHub 专用 remote 身份规则 |
-| [`api/index.ts`](../../packages/daynight/src/api/index.ts) | 命令级操作、服务 DTO、完整分页、精确 JSON 与 HTTP 错误 |
+| [`api/index.ts`](../../packages/daynight/src/api/index.ts) | 命令级操作、服务 DTO、完整分页、有界 ready 选择、精确 JSON 与 HTTP 错误 |
 | [`commands/server/runtime.ts`](../../packages/daynight/src/commands/server/runtime.ts) | 配置读取、共享操作、信号取消和完整结果输出 |
 | [`commands/project/command.ts`](../../packages/daynight/src/commands/project/command.ts)、[`rendering.ts`](../../packages/daynight/src/commands/project/rendering.ts) | Project 参数、API 组合及完整资源渲染 |
 | [`platform/text.ts`](../../packages/daynight/src/platform/text.ts)、[`platform/terminal.ts`](../../packages/daynight/src/platform/terminal.ts) | 与服务一致的文本验证及终端显示转义 |
@@ -124,7 +129,8 @@ runtime 在 callback 完成后执行最终检查，再调用一次 stdout。SIGI
 1,048,576 字节。按解码 HTTP 内容编码后的响应体字节流计数，包含成功与错误响应，
 在 JSON 解析前累计；不能只相信 `Content-Length`。超过任一上限立即取消读取并
 报告响应或累计预算超限，不解析已截断 JSON。这些常量与总期限共同限制持续推进
-cursor 的扫描及累计 JSON 内存，不新增 CLI 参数或配置字段，也不改变 server 限制。
+cursor 的扫描及累计 JSON 内存；预算不增加公开配置字段，也不改变 server 限制。
+`task ready --limit` 仅选择返回任务数，不改变期限或字节预算。
 JSON 对象在完成有界读取后解析；下一步及最终输出前再次检查总期限与取消状态。
 失败时取消并释放响应 reader；清理最多额外占用 100 ms，取消失败或清理超时与
 原始失败一并保留，不能吞掉清理错误，也不能因底层取消迟迟未完成而无限等待。
@@ -293,14 +299,31 @@ flowchart TD
 | `project show <id>` | `GET /api/v1/projects/{id}` |
 | `task create` | `POST /api/v1/projects/{projectId}/tasks` |
 | `task list` | `GET /api/v1/projects/{projectId}/tasks`，保留相同筛选遍历 cursor |
+| `task ready [--limit <N>]` | 单次 `GET /api/v1/projects/{projectId}/tasks?ready=true&limit=N`，不提交 cursor |
 | `task show <id>` | `GET /api/v1/projects/{projectId}/tasks/{id}` |
 | `task update <id>` | 可选先 GET task，再 PATCH 同一路径 |
 | `task graph` | `GET /api/v1/projects/{projectId}/task-graph`，不附加 query |
 
-列表使用服务支持的 `limit`，客户端固定选择 100 以减少请求；不新增公开分页选项。
-cursor 是不透明字符串，逐页提交，不在 CLI 解码或重建。每页验证后累积结果，末页
-才渲染；重复 cursor 或不前进的循环响应作为协议错误终止，不能无限请求。多页读取
-继承服务不提供跨请求快照的边界，CLI 不宣称列表是同一时间点的完整快照。
+`project list` 和 `task list` 使用服务支持的 `limit`，客户端固定选择 100 以减少
+请求；不提供公开 cursor 选项。cursor 是不透明字符串，逐页提交，不在 CLI 解码
+或重建。每页验证后累积结果，末页才渲染；重复 cursor 或不前进的循环响应作为
+协议错误终止，不能无限请求。多页读取继承服务不提供跨请求快照的边界，CLI 不
+宣称列表是同一时间点的完整快照。
+
+`task ready` 将常见的下一项工作选择限制为前 N 项，避免项目积累任务后每次
+选择都读取完整 ready 集合。命令校验 `--limit` 为十进制整数 `1..100`，省略时
+为 `10`；无效值在配置读取、Git 与网络访问之前拒绝。它不接受 `--status` 或
+`--cursor`。`api/client.ts` 的 `listReadyTasks` 独立拥有有界操作，使用既有 task
+列表接口发送一次 `ready=true` 和 `limit=N` 请求。DTO 继续验证完整分页 envelope；
+合法 `nextCursor` 表示尚有候选，调用方不跟随。无论当前响应是否达到 N 项，都不
+补发请求。`task list --ready` 仍执行完整分页。
+
+服务既有查询按 `createdAt ASC, id ASC` 排序，ready 表示 `todo` 且直接依赖全部
+为 `done`，因此无需服务或 schema 变更。客户端保留服务顺序，在返回前验证项数
+不超过 N、每项为 ready、task ID 不重复。超量、非 ready 或重复资源都报协议错误，
+不截取、丢弃或修复响应。`listReadyTasks` 与完整列表复用 DTO、精确 JSON 和
+同一 `Operation` 的取消、期限、字节预算及最终输出检查。完整依赖图仍供按需查看
+关系使用；日常候选选择可以直接使用 ready。
 
 创建先确定 repo：显式 `--repo` 直接使用原值，并跳过工作目录查询及 Git；省略时
 直接复用 `repository/git.ts` 的 `discoverRepository`，读取当前 worktree 有效
@@ -320,6 +343,12 @@ repo 许可、API、schema 和事务政策保持原样。原子唯一性需要�
 拆分；`--clear-dependencies` 写 `[]`。`--description ""` 与 `--description=`
 都写入空字符串；未出现描述选项仍省略字段。两种依赖
 标志同时出现、无修改字段、无效状态或版本属于参数错误，在任何 I/O 之前拒绝。
+
+可重复的 `--pull-request-url` 与 `--pull-request-title` 使用 `allowEmpty`，各自
+保留出现顺序，第 n 个 URL 对应第 n 个标题；次数必须相等，字符串不作内容校验。
+配对值写为 `properties.pullRequests` 完整替换数组；`--clear-pull-requests` 写
+空数组并与任一配对选项互斥。省略这些选项时不生成属性 patch，只有属性修改也
+满足 update 的修改字段要求。次数和互斥校验在任何 I/O 之前完成。
 
 默认 GET task 获得 version，再带该 version PATCH；两个请求之间发生并发更新时，
 服务返回 `version_conflict`。有 `--if-version` 时直接提交指定版本，不用 GET 的
@@ -350,15 +379,19 @@ Project 渲染由 `commands/project/rendering.ts` 拥有，与 API 数据分离�
 
 Task 的 `rendering.ts` 采用相同的完整标签块。任务包含 `ID`、`Project`、`Title`、
 `Description`、`Status`、完整十进制 `Version`、`Ready`、`Depends on`、`Blocked by`、
-`Created` 和 `Updated`；依赖/阻塞为空时显示 `none`，空列表为 `No tasks.`。创建
+`Created` 和 `Updated`，以及关联 PR 数量、按顺序编号的 title/url；依赖/阻塞
+为空时显示 `none`，空 list 为 `No tasks.`，空 ready 为 `No ready tasks.`。ready
+中每项仍为完整资源块。PR 字符串只检查类型，保留空、重复、控制字符与原有顺序，
+可读输出继续使用 terminalText。创建
 和更新分别以 `Task created.`、`Task updated.` 表明服务确认结果。Graph 展示完整
 project、六个 summary 字段及全部节点；节点的 `titlePreview` 与 `titleTruncated`
 同时展示，保留状态、ready、依赖、阻塞和时间，不能把预览称为完整标题。所有字段
 使用终端转义且不补齐等宽列，空间随资源内容总长度线性增长。
 
-查询 `--json` 是脚本和模型调用 CLI 的稳定接口：show 为资源对象，list 为完整数组，
-graph 为服务原始完整响应对象。仅序列化 API 字段，不加入渲染专用字符串、进度或
-诊断；无额外 model agent tool 或遥测框架。stdout 在读取完成前保持空，确保脚本
+查询 `--json` 是脚本和模型调用 CLI 的稳定接口：show 为资源对象，list 为所有
+匹配资源的数组，ready 为所选完整 task 的数组，graph 为服务原始完整响应对象。
+ready 空结果为 `[]`，不输出分页 envelope 或 cursor。仅序列化 API 字段，不加入
+渲染专用字符串、进度或诊断；无额外 model agent tool 或遥测框架。stdout 在读取完成前保持空，确保脚本
 不会消费前半段成功结果。写操作输出已确认的资源结果；任何失败均不打印成功文案。
 
 stderr 错误包含操作名、已确定的 project/task ID、失败阶段和可用的服务
@@ -373,21 +406,22 @@ stderr 错误包含操作名、已确定的 project/task ID、失败阶段和可
 
 ## 验证与交付证据
 
-验证由需求 V1–V12 约束。测试按模块归属组织，避免只镜像实现分支：
+验证由需求 V1–V13 约束。测试按模块归属组织，避免只镜像实现分支：
 
 | 层次 | 关键观察 |
 |---|---|
-| 纯数据与参数 | 正规化表和拒绝 fixture、字段存在性、依赖替换/清空、版本参数、JSON 格式 |
+| 纯数据与参数 | 正规化表和拒绝 fixture、字段存在性、依赖替换/清空、版本参数、ready limit 默认/边界/拒绝、JSON 格式 |
 | CLI 依赖边界 | 缺失 Git/SQLite/review 工具，或 serverUrl 缺失、业务值无效时，实际编译入口的帮助、版本、update 与 review 仍各自独立；显式 repo 创建、列表和详情不读取工作目录或 Git；服务命令缺少字段时仅引导连接配置，非交互提供 setup 命令，人工输入不消耗业务期限 |
 | Git 与本地状态 | 真实仓库的 insteadOf、子目录、worktree、submodule、ignore 生效、被跟踪目录、并发锁及原子替换 |
 | 受控 HTTP | 创建及 task discover 的多页零/一/多匹配、唯一匹配创建命令保留原资源、后页失败无 POST、server 或 origin 独立变化、缓存 404/不符、500/无效响应、循环或持续推进 cursor、单次/总期限、字节超限、取消及写响应丢失 |
-| 真实服务 | 隔离 PostgreSQL 与 Go server 的 project/task 全流程、依赖拒绝、版本并发冲突、图快照和图超限 |
+| 真实服务 | 隔离 PostgreSQL 与 Go server 的 project/task 全流程、依赖拒绝、版本并发冲突、图快照和图超限；ready 的前 N 项及依赖完成后的候选变化 |
 | 安装后跨平台 | Linux、macOS、Windows 的已构建 CLI 调用真实 Git、文件锁、rename、退出码、stdout/stderr 和信号清理 |
 
 断言本地准备失败时服务器未收到 mutation，显式 project 从未读取本地关联，project
 命令不读写绑定及 ignore，有效缓存后增加重复 project 仍使用原绑定，以及完整页
-失败时 stdout 为空。真实服务
-验收保留服务 request ID 与目标 ID，便于将错误对应到 API 及数据库事实。
+失败时 stdout 为空。有界 ready 验证单次请求、合法 cursor 不续页、顺序保留、
+超量/非 ready/重复 ID 拒绝、空结果及完整 int64 JSON；原有 list 继续覆盖完整翻页。
+真实服务验收保留服务 request ID 与目标 ID，便于将错误对应到 API 及数据库事实。
 
 预算验证使用可控制时钟和流式响应，覆盖每页均在单次期限内且 cursor 唯一推进、
 最终仍耗尽总期限的服务；分别跨越 128 MiB 单响应及 256 MiB 累计边界，并验证按

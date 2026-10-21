@@ -10,7 +10,7 @@ const taskId = "22222222-2222-2222-2222-222222222222";
 const otherId = "33333333-3333-3333-3333-333333333333";
 const time = "2026-10-20T01:02:03.123456789Z";
 const project = { id: projectId, name: "Project", repoUrl: "git@github.com:Org/Repo.git", createdAt: time, updatedAt: time };
-const task = { id: taskId, projectId, title: "Task", description: "", status: "todo", version: 1n, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true };
+const task = { id: taskId, projectId, title: "Task", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true };
 const refusal = (code = "not_found", details?: unknown) => ({ error: { code, message: "Actual server explanation.", requestId: "req-1", ...(details === undefined ? {} : { details }) } });
 const jsonResponse = (value: unknown, status = 200) => new Response(stringifyApiJson(value), { status, headers: { "Content-Type": "application/json" } });
 const cleanups: (() => void | Promise<void>)[] = [];
@@ -94,6 +94,23 @@ describe("operation-scoped API access", () => {
     expect(fetch.mock.calls.every((call) => call[1]?.redirect === "manual")).toBe(true);
   });
 
+  it("writes full PR lists unchanged and distinguishes omission from explicit clearing", async () => {
+    const properties = { pullRequests: [{ url: "\0 arbitrary text\n", title: "" }, { url: "\0 arbitrary text\n", title: "" }] };
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ ...task, properties }, 201))
+      .mockResolvedValueOnce(jsonResponse({ ...task, properties }))
+      .mockResolvedValueOnce(jsonResponse(task));
+    const api = client(fetch);
+    expect((await api.createTask(projectId, { title: "Task", properties })).properties).toEqual(properties);
+    await api.updateTask(projectId, taskId, { version: 9_223_372_036_854_775_807n, properties });
+    await api.updateTask(projectId, taskId, { version: 1n, properties: { pullRequests: [] } });
+    expect(fetch.mock.calls.map((call) => parseApiJson(String(call[1]!.body)))).toEqual([
+      { title: "Task", properties },
+      { version: 9_223_372_036_854_775_807n, properties },
+      { version: 1n, properties: { pullRequests: [] } },
+    ]);
+  });
+
   it("lists complete pages with stable filters and encoded opaque cursors", async () => {
     const cursor = "next page+/=?";
     const fetch = vi.fn<typeof globalThis.fetch>()
@@ -104,6 +121,45 @@ describe("operation-scoped API access", () => {
     expect(fetch.mock.calls.map((call) => new URL(String(call[0])).searchParams.toString())).toEqual([
       "status=todo&ready=true&limit=100", `status=todo&ready=true&limit=100&cursor=${encodeURIComponent(cursor).replaceAll("%20", "+")}`,
     ]);
+  });
+
+  it("returns one bounded ready page without following its valid cursor", async () => {
+    const tasks = [{ ...task, properties: { pullRequests: [{ url: "\0 arbitrary URL", title: "Ready\nPR" }] }, version: 9_223_372_036_854_775_807n }, { ...task, id: otherId }];
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({ items: tasks, nextCursor: "next page+/=?" }));
+    const result = await client(fetch).listReadyTasks(projectId, 2);
+    expect(result).toEqual(tasks);
+    expect(fetch).toHaveBeenCalledOnce();
+    const [url, options] = fetch.mock.calls[0]!;
+    expect(new URL(String(url)).pathname).toBe(`/api/v1/projects/${projectId}/tasks`);
+    expect(Object.fromEntries(new URL(String(url)).searchParams)).toEqual({ ready: "true", limit: "2" });
+    expect(options?.method).toBe("GET");
+    expect(options?.redirect).toBe("manual");
+  });
+
+  it.each([{ items: [] }, { items: [task] }])("accepts a ready page below its bound: $items", async ({ items }) => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({ items, nextCursor: null }));
+    await expect(client(fetch).listReadyTasks(projectId, 10)).resolves.toEqual(items);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { items: [task, { ...task, id: otherId }], nextCursor: null },
+    { items: [{ ...task, status: "in_progress", ready: false }], nextCursor: null },
+    { items: [{ ...task, projectId: otherId }], nextCursor: null },
+    { items: [task, task], nextCursor: null },
+    { items: [task], nextCursor: "" },
+    { items: [task] },
+    { items: [], nextCursor: "next" },
+  ])("rejects an invalid or overflowing ready page %# without another request", async (page) => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse(page));
+    await expect(client(fetch).listReadyTasks(projectId, 1)).rejects.toMatchObject({ operation: "task.ready", phase: "protocol", projectId, outcomeUnconfirmed: false });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it.each([0, 101, -1, 1.5, NaN, Infinity])("rejects an invalid ready limit %s before fetching", (limit) => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    expect(() => client(fetch).listReadyTasks(projectId, limit)).toThrow("Ready task limit must be an integer from 1 to 100.");
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it.each(["cursor", "duplicate", "later failure"])("rejects %s without returning a partial list", async (failure) => {
@@ -281,6 +337,28 @@ const graph = (): TaskGraph => ({
 });
 
 describe("response DTO contract", () => {
+  it("projects complete raw PR properties without interpreting their content or future fields", async () => {
+    const pullRequests = [{ url: "", title: "\0\n\u0085\u001b[2J" }, { url: "  任意文本  ", title: "" }, { url: "  任意文本  ", title: "" }];
+    const expected = { ...task, properties: { pullRequests } };
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({ ...expected, properties: { future: null, pullRequests: pullRequests.map((item) => ({ ...item, metadata: { version: 1.5 } })) } }));
+    expect(await client(fetch).getTask(projectId, taskId)).toEqual(expected);
+  });
+
+  it.each([
+    undefined, null, [], {}, { pullRequests: null }, { pullRequests: {} },
+    { pullRequests: [null] }, { pullRequests: [[]] }, { pullRequests: [{}] },
+    { pullRequests: [{ url: "" }] }, { pullRequests: [{ title: "" }] },
+    { pullRequests: [{ url: 42, title: "" }] }, { pullRequests: [{ url: "", title: false }] },
+  ])("rejects missing or malformed required properties %#", async (properties) => {
+    await expect(client(vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({ ...task, properties }))).getTask(projectId, taskId)).rejects.toMatchObject({ phase: "protocol", cause: expect.any(Error) });
+  });
+
+  it("applies response byte budgets to PR content without truncating resources", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({ ...task, properties: { pullRequests: [{ url: "T".repeat(2048), title: "Title" }] } }));
+    await expect(client(fetch, operation({ limits: { responseBytes: 1024 } })).getTask(projectId, taskId)).rejects.toMatchObject({ phase: "response", cause: { kind: "response_limit" } });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
   it("preserves Go-valid FEFF-only names and titles without treating them as whitespace", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>()
       .mockResolvedValueOnce(jsonResponse({ ...project, name: "\uFEFF" }))

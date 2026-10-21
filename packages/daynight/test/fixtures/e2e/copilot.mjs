@@ -51,10 +51,12 @@ const gh = (method, endpoint, payload) => JSON.parse(execFileSync("gh", ["api", 
 const current = gh("GET", endpoint);
 if (current.state !== "open" || current.draft || current.head.sha !== target.headSha || current.base.ref !== target.baseBranch) throw new Error("The fixture agent observed a stale target.");
 const previous = gh("GET", `${endpoint}/reviews`).find((item) => item.body.includes(stable));
-const event = target.pullRequest === 11 && target.revision === 3 ? "COMMENT" : "APPROVE";
+const inlineFinding = target.pullRequest === 11 && target.revision === 3;
+const descriptionBlocker = target.pullRequest === 12;
+const event = inlineFinding || descriptionBlocker ? "COMMENT" : "APPROVE";
 if (previous === undefined) gh("POST", `${endpoint}/reviews`, {
-  commit_id: target.headSha, body: `Copilot: ${stable}`, event,
-  ...(event === "COMMENT" ? { comments: [{ path: "review.txt", line: 1, side: "RIGHT", body: "Copilot: Major fixture finding." }] } : {}),
+  commit_id: target.headSha, body: `Copilot: ${descriptionBlocker ? "PR-quality blocker: clarify the concrete problem, intended outcome and scope in the description. " : ""}${stable}`, event,
+  ...(inlineFinding ? { comments: [{ path: "review.txt", line: 1, side: "RIGHT", body: "Copilot: Major fixture finding." }] } : {}),
 });
 const record = {
   target, args, session, prompt, cwd: process.cwd(), skill,

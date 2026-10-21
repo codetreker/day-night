@@ -1,0 +1,14 @@
+package core
+
+type PullRequestProperty struct {
+	URL   string
+	Title string
+}
+
+type TaskProperties struct {
+	PullRequests []PullRequestProperty
+}
+
+type TaskPropertiesPatch struct {
+	PullRequests *[]PullRequestProperty
+}

@@ -21,7 +21,7 @@ func TestMigrationsEmptyRepeatAndConstraints(t *testing.T) {
 		t.Fatal(err)
 	}
 	var count, foreignKeys int
-	if err := database.Pool.QueryRow(ctx, "SELECT count(*) FROM schema_migrations").Scan(&count); err != nil || count != 2 {
+	if err := database.Pool.QueryRow(ctx, "SELECT count(*) FROM schema_migrations").Scan(&count); err != nil || count != len(schemaMigrations) {
 		t.Fatalf("versions: %d, %v", count, err)
 	}
 	if err := database.Pool.QueryRow(ctx, `SELECT count(*) FROM pg_constraint WHERE connamespace = current_schema()::regnamespace AND contype = 'f'`).Scan(&foreignKeys); err != nil || foreignKeys != 0 {
@@ -55,7 +55,7 @@ func TestMigrationsRejectInvalidHistory(t *testing.T) {
 	for _, test := range []struct{ name, sql, want string }{
 		{"checksum", `UPDATE schema_migrations SET checksum = repeat('0', 64) WHERE version = 1`, "checksum mismatch"},
 		{"gap", `DELETE FROM schema_migrations WHERE version = 1`, "not an ordered prefix"},
-		{"unknown", `INSERT INTO schema_migrations (version, checksum) VALUES (3, repeat('0', 64))`, "not an ordered prefix"},
+		{"unknown", `INSERT INTO schema_migrations (version, checksum) VALUES (4, repeat('0', 64))`, "not an ordered prefix"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			database := isolatedStore(t)

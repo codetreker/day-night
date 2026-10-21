@@ -3,14 +3,15 @@
 状态：`packages/daynight/` 是通过 `@codetreker/daynight` 分发的 TypeScript 客户端
 命令工具包，支持 Linux、macOS 和 Windows。`review` 提供 GitHub PR 审查，`update`
 管理当前 npm 全局安装，`setup` 提供按能力配置的引导，`completion` 生成 Bash 和 zsh
-的原生补全脚本并安装启动配置。project/task
+的原生补全脚本并安装启动配置；`skill` 提供公开项目任务 skill 的交互安装。project/task
 CLI 的共享配置、HTTP、仓库关联基础及 project/task 命令已完成，安装产物、真实服务
 与默认预算验收已通过托管验证；集成状态见[PR #55](https://github.com/codetreker/daynight/pull/55)。
 [专属设计](daynight-project-task.md)拥有机制，[实现任务](daynight-project-task-tasks.md)
 拥有交付状态。行为归属见[客户端需求](../spec/daynight.md)及
 [review 需求](../spec/daynight-review.md)，结构选择见
 [命令组合决策](../../.agents/notes/implemented/architecture/2026-10-20-client-command-composition.md)。
-[补全设计](daynight-completion.md)拥有共享语法描述、脚本生成和 shell 加载机制。
+[补全设计](daynight-completion.md)拥有共享语法描述、脚本生成和 shell 加载机制，
+[Agent skill 设计](daynight-agent-skill.md)拥有公开资源、交互安装、scope 与覆盖机制。
 
 ## 命令与职责
 
@@ -30,6 +31,8 @@ daynight completion                 # 补全帮助
 daynight completion bash
 daynight completion zsh
 daynight completion setup [--shell bash|zsh] [--rc-file <path>]
+daynight skill                       # skill 帮助
+daynight skill install               # 多选 Agent，再选择 User 或 Project scope
 daynight project
 daynight project create <name> [--repo <repo>]
 daynight project list [--json]
@@ -37,6 +40,7 @@ daynight project show <project-id> [--json]
 daynight task
 daynight task create --title <title> [options]
 daynight task list [--status <status>] [--ready] [--json] [--project <project-id>]
+daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
 daynight task graph [--json] [--project <project-id>]
@@ -52,7 +56,8 @@ daynight task graph [--json] [--project <project-id>]
 客户端外壳处理顶层帮助、版本、命令选择及通用退出结果。每个命令模块负责自己的
 定义、参数、帮助、依赖和执行生命周期。`review` 再按配置登记、本地列表、前台运行分派，
 避免查询或配置操作初始化审查运行时。`update` 属于包安装生命周期，不属于 review。
-独立 Go 服务与浏览器应用保持各自的数据和生命周期。已确认的 project/task 设计
+`skill` 拥有已安装 Agent 检测、终端选择、scope 规划和 bundle 覆盖，独立于服务及
+review 配置。独立 Go 服务与浏览器应用保持各自的数据和生命周期。已确认的 project/task 设计
 通过独立客户端模块使用现有 HTTP API，业务数据仍由 Go 服务持有；HTTP 客户端、仓库上下文和 project 入口已实现，
 task 入口已实现。
 
@@ -66,6 +71,7 @@ src/
     commands.ts
     context.ts
     prompts.ts
+    cancellation.ts
     schema.ts
   config/
     paths.ts
@@ -88,6 +94,15 @@ src/
     binding.ts
     context.ts
   commands/
+    skill/
+      definition.ts
+      command.ts
+      agents.ts
+      targets.ts
+      install.ts
+      skills/daynight/
+        SKILL.md
+        references/commands.md
     setup/
       definition.ts
       command.ts
@@ -134,6 +149,7 @@ src/
       bash.ts
       zsh.ts
   platform/
+    skill-bundle.ts
     diagnostics.ts
     filesystem.ts
     files.ts
@@ -161,7 +177,7 @@ review 状态或网络。`setup` 与 `review add-repo` 加载配置保存能力�
 
 `config/` 拥有共享配置路径、严格 YAML、已知顶层字段和保留注释的文件保存协议；
 `server.ts` 提供独立 server 字段投影。`api/` 拥有服务 DTO、精确数值 JSON、
-命令级期限和字节预算、HTTP 错误及完整分页，供后续业务命令组合。共享层不导入
+命令级期限和字节预算、HTTP 错误、完整分页及有界 ready 查询，供业务命令组合。共享层不导入
 review 或 update；服务器客户端也不依赖 YAML、SQLite 或 Git。`repository/` 将有效 origin、通用
 仓库身份、远端 project 校验与本地关联组合；原子文件替换由 `platform/files.ts`
 复用，配置保存和仓库元数据各自拥有锁、路径校验及调用顺序。
@@ -170,7 +186,8 @@ review 的配置和路径类型明确以 `ReviewConfiguration`、`ReviewPaths` �
 `commands/review/model.ts` 持有领域和安全恢复证明类型，store 专注持久化；
 `polling.ts` 组合远端只读观测与本地原子状态提交，GitHub 适配器专注远端查询。
 [review 模块职责表](daynight-review.md#单进程与普通模块)解释具体职责及执行不变量。
-共享的 `platform/` 只承载诊断和文件系统能力；这些函数不导入命令模块。
+共享的 `platform/` 承载诊断、文件系统和无业务副作用的 bundle 捕获/entrypoint 校验；
+这些函数不导入命令模块。review 继续拥有快照、哈希和执行协议。
 
 源码测试按 `test/cli/`、`test/config/`、`test/api/`、`test/commands/review/`、
 `test/commands/update/`、`test/commands/completion/`、`test/commands/project/`、
@@ -226,8 +243,15 @@ SIGBREAK 均进入这一取消源；配置读取接受同一 AbortSignal。错�
 原因链。Task 复用此执行层；它不控制 Go server 的启动或关闭。
 
 Task 的 definition、command 和 rendering 分别拥有共享语法、操作组合和完整
-输出。描述通过 `value.allowEmpty` 保留空值；状态通过 `value.choices` 统一参数
-校验和补全候选，帮助使用选项说明；重复依赖通过 `repeatable` 从首次出现起形成保留输入顺序及重复值的
+资源输出。`ready` 的 `--limit` 在任何配置、Git 或 HTTP 访问前校验为十进制整数
+`1..100`，默认 `10`。它调用 `api/client.ts` 的 `listReadyTasks`，仅发送一次带
+`ready=true` 和所选 `limit` 的 task GET；合法 `nextCursor` 不触发续页。该 API
+操作在返回前验证数量不超限、每项确为 ready 且 task ID 不重复。`list` 仍使用完整
+分页。完整的请求、排序和输出机制见
+[project/task 设计](daynight-project-task.md#api-映射与更新机制)。
+
+描述通过 `value.allowEmpty` 保留空值；状态通过 `value.choices` 统一参数校验和补全
+候选，帮助使用选项说明；重复依赖通过 `repeatable` 从首次出现起形成保留输入顺序及重复值的
 数组。text 内联赋值按首个 `=` 分隔并支持前导连字符，目录与开关继续拒绝内联。
 参数验证先于配置、Git 及 HTTP；显式 project 直接读取远端详情，自动分支才加载
 `repository/`，并在 task 写入前完成关联验证与保存。
@@ -242,8 +266,8 @@ CLI 参数与 API DTO 共用该规则并保留原值；`platform/terminal.ts` �
 `setup` 的轻量定义与其他命令一样由共享语法生成帮助和 shell 补全；执行实现仅在
 选中该命令时加载。服务业务入口和 review 的 run/list 入口按各自的能力调用同一
 配置引导机制，不通过捕获任意业务错误重新分派命令。`config/errors.ts` 区分结构化的
-缺少配置结果；`cli/prompts.ts` 拥有终端输入和信号处理，`config/setup.ts` 组合收集及
-持久化，`commands/setup/` 拥有主动入口。review 的仓库更新函数由登记和 setup 共用。
+缺少配置结果；`cli/prompts.ts` 拥有终端文本输入和类型化选择，`cli/cancellation.ts`
+共享 setup 与 skill 的信号、取消及关闭生命周期，`config/setup.ts` 组合配置收集及持久化，`commands/setup/` 拥有主动入口。review 的仓库更新函数由登记和 setup 共用。
 
 预检读取严格 YAML，区分不存在的文件或必需字段与共享文档错误、当前能力无效字段
 及读取错误。
@@ -357,9 +381,10 @@ bundle 复制到 `dist/commands/review/skills/daynight-review/`，由既有 `dis
 缺少源码时同样明确失败。原生矩阵每次解析最新可用的 Node.js 24 patch，使构建行为
 覆盖受支持运行时的当前实现。源码、包元数据、构建或依赖输入变化
 需要更高 SemVer；构建清理脚本也属于发布输入。[CI 路由](../../README.md#ci-selection)
-选中 CLI 时，Linux 版本检查、全部原生检查和独立 shell completion 检查必须成功；
-main push 保留全量门禁。发布在等待 CI 与安装依赖前检查精确版本的 tag 和 npm 记录；任一存在
-则成功跳过新发布。首次使用准备好的产物发布前重复检查，同一次 run 的发布失败重试
+选中 CLI 时，全部原生检查和独立 shell completion 检查必须成功，PR 的 Linux CLI
+任务还检查包版本；main push 保留全量应用门禁。最终 `checks` 只接受所有前置 job 的
+`success` 或 `skipped`，失败、取消及其他结果使汇总失败。
+发布在等待 CI 与安装依赖前检查精确版本的 tag 和 npm 记录；任一存在则成功跳过新发布。首次使用准备好的产物发布前重复检查，同一次 run 的发布失败重试
 保留严格的源码、字节验证与补齐 tag 能力。
 [版本预检决策](../../.agents/notes/implemented/process/2026-10-21-publication-version-preflight.md)
 维护跳过与重试规则；发布授权、npm OIDC、产物身份及公共验证由

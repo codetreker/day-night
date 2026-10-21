@@ -33,6 +33,15 @@ export const runTaskCommand = async (
   const status = command.options.get("--status") as TaskStatus | undefined;
   const dependsOn = command.options.get("--depends-on") as readonly string[] | undefined;
   const clearDependencies = command.options.has("--clear-dependencies");
+  const pullRequestUrls = command.options.get("--pull-request-url") as readonly string[] | undefined;
+  const pullRequestTitles = command.options.get("--pull-request-title") as readonly string[] | undefined;
+  const clearPullRequests = command.options.has("--clear-pull-requests");
+  if (clearPullRequests && (pullRequestUrls !== undefined || pullRequestTitles !== undefined)) throw new UsageError("--clear-pull-requests conflicts with --pull-request-url and --pull-request-title.", help);
+  if (pullRequestUrls?.length !== pullRequestTitles?.length) throw new UsageError("Provide the same number of --pull-request-url and --pull-request-title values.", help);
+  const properties = clearPullRequests ? { pullRequests: [] } : pullRequestUrls === undefined ? undefined : { pullRequests: pullRequestUrls.map((url, index) => ({ url, title: pullRequestTitles![index]! })) };
+  const limitArgument = command.options.get("--limit") as string | undefined;
+  const readyLimit = limitArgument === undefined ? 10 : Number(limitArgument);
+  if (limitArgument !== undefined && (!/^[0-9]+$/.test(limitArgument) || !Number.isInteger(readyLimit) || readyLimit < 1 || readyLimit > 100)) throw new UsageError("Ready task limit must be a decimal integer from 1 to 100.", help);
   if (title !== undefined && !isNonemptyText(title)) throw new UsageError("Task title must be nonempty UTF-8 text without NUL characters.", help);
   if (description !== undefined && !isText(description)) throw new UsageError("Task description must be UTF-8 text without NUL characters.", help);
   if (status !== undefined && !["todo", "in_progress", "done"].includes(status)) throw new UsageError("Task status must be todo, in_progress, or done.", help);
@@ -43,8 +52,9 @@ export const runTaskCommand = async (
     ...(status === undefined ? {} : { status }),
     ...(dependsOn === undefined ? {} : { dependsOn }),
     ...(clearDependencies ? { dependsOn: [] } : {}),
+    ...(properties === undefined ? {} : { properties }),
   };
-  if (command.command.name === "update" && Object.keys(changes).length === 0) throw new UsageError("Task update requires a title, description, status, or dependency change.", help);
+  if (command.command.name === "update" && Object.keys(changes).length === 0) throw new UsageError("Task update requires a title, description, status, dependency, or PR reference change.", help);
   const rawProjectId = command.options.get("--project") as string | undefined;
   let projectId: string | undefined;
   let taskId: string | undefined;
@@ -78,7 +88,7 @@ export const runTaskCommand = async (
     const { renderTask, renderTaskGraph, renderTaskJson, renderTaskList } = await import("./rendering.js");
     operation.check();
     if (command.command.name === "create") {
-      const input: CreateTaskInput = { title: title!, ...(description === undefined ? {} : { description }), ...(dependsOn === undefined ? {} : { dependsOn }) };
+      const input: CreateTaskInput = { title: title!, ...(description === undefined ? {} : { description }), ...(dependsOn === undefined ? {} : { dependsOn }), ...(properties === undefined ? {} : { properties }) };
       const task = await api.createTask(project.id, input);
       operation.check();
       return `Task created.\n${renderTask(task)}`;
@@ -88,6 +98,11 @@ export const runTaskCommand = async (
       const tasks = await api.listTasks(project.id, filters);
       operation.check();
       return command.options.has("--json") ? renderTaskJson(tasks) : renderTaskList(tasks);
+    }
+    if (command.command.name === "ready") {
+      const tasks = await api.listReadyTasks(project.id, readyLimit);
+      operation.check();
+      return command.options.has("--json") ? renderTaskJson(tasks) : tasks.length === 0 ? "No ready tasks.\n" : renderTaskList(tasks);
     }
     if (command.command.name === "graph") {
       const graph = await api.getTaskGraph(project.id);

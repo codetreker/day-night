@@ -10,6 +10,10 @@
 记录取舍和范围。[任务拆分](../design/daynight-server-tasks.md)记录实现任务、依赖、
 状态与验收条件。
 
+[预定义属性需求](daynight-task-properties.md)扩展本文的 task 资源，PR 引用的
+服务端存储、更新与迁移已实现；[架构](../design/daynight-task-properties.md)和
+[实施任务](../design/daynight-task-properties-tasks.md)拥有机制及 CLI/web 的后续状态。
+
 已采用、尚待实现的[附件需求](daynight-task-attachments.md)扩展本文的服务基线，
 增加本地文件内容、PG 元数据、单文件操作和固定预览路径。其
 [架构](../design/daynight-task-attachments.md)与
@@ -63,6 +67,7 @@ Task 包含以下持久化字段：
 | `projectId` | 所属 project，创建后不可变 |
 | `title` | 必填的非空 UTF-8 标题，不含 NUL |
 | `description` | 不含 NUL 的 UTF-8 描述，省略时为空字符串，允许更新为空字符串 |
+| `properties` | server 预定义属性；当前 `pullRequests` 为有序的 `{url, title}` 字符串记录数组，默认空数组 |
 | `status` | `todo / in_progress / done`，创建时为 `todo` |
 | `version` | 从 `1` 开始的正整数，每次实际变更增加一次 |
 | `createdAt`、`updatedAt` | UTC 创建和最后实际变更时间 |
@@ -96,20 +101,29 @@ Task 响应还包含 `dependsOn`、`blockedBy` 和 `ready`：
 | 修改 `in_progress / done` task 的依赖 | 修改后的全部前置已完成 |
 | 保持当前状态并修改字段 | 满足完整依赖与状态约束 |
 
-拒绝操作必须返回可辨识的错误及相关阻塞 task ID，原有字段、依赖、版本和时间戳均保留。
+拒绝操作必须返回可辨识的错误及相关阻塞 task ID，原有字段、依赖、属性、版本和时间戳均保留。
 重开前置与开始下游的并发请求也必须遵守同一规则。
 
-创建 task 可携带 `title`、`description`、`dependsOn`；`description` 省略时为空，
-`dependsOn` 省略时为空集合。新 task 总是 `todo`，`status` 不属于创建输入。
+创建 task 可携带 `title`、`description`、`dependsOn` 和 `properties`；描述省略时
+为空字符串，依赖及 `properties.pullRequests` 省略时为空数组。新 task 总是
+`todo`，`status` 不属于创建输入。
 
-PATCH 可修改 `title`、`description`、`status`、`dependsOn`，并且必须提供读取到的
-`version`。省略字段表示保留，`null` 为无效输入，`dependsOn: []` 表示清空依赖。
-至少提供一个可修改字段；ID、所属 project 和时间戳不可写入。
+PATCH 可修改 `title`、`description`、`status`、`dependsOn` 和预定义属性，并且
+必须提供读取到的 `version`。省略字段表示保留，`null` 为无效输入，`dependsOn: []`
+表示清空依赖。`properties.pullRequests` 按完整数组替换，`[]` 清空该属性；空
+`properties` 对象本身不算可修改字段。至少提供一个可修改字段；ID、所属 project
+和时间戳不可写入。
 未知字段、未知状态和无效字段类型必须拒绝。
 
 版本在事务内比较；过期版本返回冲突，即使请求期望的字段与当前值相同。
 语义无变化且版本匹配的请求返回当前资源，保持版本和 `updatedAt`；
-依赖数组顺序不构成变化。实际更新字段或依赖集合时，版本只增加一次。
+依赖数组顺序不构成变化；PR 数组顺序、重复项及各项字符串都参与属性等值比较。
+实际更新字段、属性或依赖集合时，版本只增加一次。
+
+PR 的 `url` 与 `title` 仅校验字符串类型及必填结构，保留解码后的内容，包括空
+字符串、控制字符、顺序与重复项。服务不校验 URL、PR 存在性或仓库匹配；严格
+拒绝嵌套未知字段、重复 key、null、缺失项和错误类型。详细行为及验收由
+[属性需求](daynight-task-properties.md)拥有。
 
 ## HTTP API
 

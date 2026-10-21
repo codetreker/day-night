@@ -56,13 +56,17 @@ Uncertain exclusion preserves the recorded process and lock and prevents the
 next child. Separate discovery logs retain its failure evidence without entering
 the review's completion-marker parser.
 
-The skill owns methodology: introduced causality, callers and contracts,
-consequential defects, bounded verification and actionable English inline
-findings. Dynamic targets, publication eligibility, stable identity, retry
-reconciliation, foreground tools and completion remain in the attempt prompt.
-Configuration, data formats, session UUIDs and the existing agent-owned publisher
-are unchanged. The [skill design](../../../../docs/design/daynight-review-skill.md)
-owns the mechanism and validation boundaries. This extends the
+The skill owns methodology: description and original-scope quality gates,
+introduced causality, callers and contracts, consequential defects, bounded
+verification and actionable English findings. The
+[PR-quality decision](../process/2026-10-21-review-pr-quality-gates.md) partially
+supersedes its original Critical/Major-only approval scope while retaining the
+packaging and loading decision here. Dynamic targets, current PR metadata reads,
+publication eligibility, stable identity, retry reconciliation, foreground tools
+and completion remain in the attempt prompt. Configuration, data formats,
+session UUIDs and the existing agent-owned publisher are unchanged. The
+[skill design](../../../../docs/design/daynight-review-skill.md) owns the mechanism
+and validation boundaries. This extends the
 [Copilot execution decision](2026-10-17-copilot-session-execution.md) and
 [client command composition](2026-10-20-client-command-composition.md).
 
@@ -106,8 +110,11 @@ deferred: it can be added independently only with a reference policy covering
 retained sessions and uncertain executions. The layout must remain content
 addressed and immutable so that later collection does not require redesigning
 launch semantics. No configurable skill catalog or generic plugin framework is
-provided; adding another product skill requires its own owning command and
-loading contract.
+provided. The adopted [public task skill design](2026-10-21-public-agent-skill-design.md)
+assigns the separate public bundle and installation contract to a new skill
+command. The public bundle is included by the shared build copier; its
+interactive installer shares data-level capture and entrypoint validation.
+Review retains this runtime loading, hashing and snapshot contract.
 
 Native discovery against Copilot CLI 1.0.98 verifies the minimal plugin wrapper
 through a comma-containing path after plain, backslash-escaped, quoted,

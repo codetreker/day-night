@@ -55,6 +55,7 @@ export type ApiClient = {
   createTask(projectId: string, input: CreateTaskInput): Promise<Task>;
   getTask(projectId: string, taskId: string): Promise<Task>;
   listTasks(projectId: string, filters?: TaskFilters): Promise<readonly Task[]>;
+  listReadyTasks(projectId: string, limit: number): Promise<readonly Task[]>;
   updateTask(projectId: string, taskId: string, input: UpdateTaskInput): Promise<Task>;
   getTaskGraph(projectId: string): Promise<TaskGraph>;
 };
@@ -249,6 +250,7 @@ export const createApiClient = (options: {
         title: input.title,
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.dependsOn === undefined ? {} : { dependsOn: input.dependsOn }),
+        ...(input.properties === undefined ? {} : { properties: input.properties }),
       });
     },
     getTask: (projectId, taskId) => {
@@ -264,6 +266,20 @@ export const createApiClient = (options: {
         return task;
       }, query);
     },
+    listReadyTasks: (projectId, limit) => {
+      const project = resourceId(projectId);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("Ready task limit must be an integer from 1 to 100.");
+      const query = new URLSearchParams({ ready: "true", limit: String(limit) });
+      return request({ operation: "task.ready", projectId: project }, `/projects/${encodeURIComponent(project)}/tasks?${query}`, "GET", (value) => {
+        const page = parsePage(value, (item) => {
+          const task = parseTask(item, project);
+          if (!task.ready) throw new ProtocolError("Task does not match the requested ready filter.");
+          return task;
+        });
+        if (page.items.length > limit) throw new ProtocolError("Ready task page exceeds the requested limit.");
+        return page.items;
+      });
+    },
     updateTask: (projectId, taskId, input) => {
       const project = resourceId(projectId), task = resourceId(taskId);
       return request({ operation: "task.update", projectId: project, taskId: task }, `/projects/${encodeURIComponent(project)}/tasks/${encodeURIComponent(task)}`, "PATCH", (value) => parseTask(value, project, task), {
@@ -272,6 +288,7 @@ export const createApiClient = (options: {
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.status === undefined ? {} : { status: input.status }),
         ...(input.dependsOn === undefined ? {} : { dependsOn: input.dependsOn }),
+        ...(input.properties === undefined ? {} : { properties: input.properties }),
       });
     },
     getTaskGraph: (projectId) => {

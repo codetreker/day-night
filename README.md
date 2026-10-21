@@ -10,7 +10,7 @@ the corresponding PR and CI evidence.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
+| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle and interactive Agent installation, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -44,7 +44,7 @@ and [task breakdown](docs/design/daynight-project-task-tasks.md) describe the
 confirmed behavior and implementation status. Shared YAML projections, the
 `serverUrl` configuration field, bounded HTTP client and repository discovery
 with ignored local bindings are implemented. `project create/list/show` manage
-remote projects through the configured server. Task create/list/show/update/graph
+remote projects through the configured server. Task create/list/ready/show/update/graph
 commands use explicit project selection or the current repository binding;
 installed real-service and resource-budget acceptance are implemented.
 [PR #55](https://github.com/codetreker/daynight/pull/55) records the original
@@ -53,6 +53,28 @@ test-side budgets under the
 [CI efficiency decision](.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md).
 Controlled native-platform tests and live Copilot/GitHub acceptance provide separate evidence; live acceptance remains
 outstanding.
+
+The adopted [public Agent skill design](docs/design/daynight-agent-skill.md)
+defines an npm-bundled `daynight` skill and interactive installation for Codex,
+Copilot CLI and Claude Code. Its [requirements](docs/spec/daynight-agent-skill.md)
+cover active task management in associated projects, agent and scope selection,
+and complete replacement on reinstall. The public skill and its command reference
+are included in the npm package build under
+`dist/commands/skill/skills/daynight/`. Interactive
+[`daynight skill install`](#agent-skill-installation) detects supported Agent
+launchers and installs that bundle at the selected scope. The skill guides task recovery, dependency and observed-version updates, and
+completion only after required PRs are confirmed merged and acceptance passes.
+The design links implementation tasks tracked in the real Daynight project;
+their live status belongs to Daynight. Native Agent loading and automatic
+activation remain separate acceptance work.
+
+The [task property requirements](docs/spec/daynight-task-properties.md),
+[design](docs/design/daynight-task-properties.md),
+[implementation breakdown](docs/design/daynight-task-properties-tasks.md) and
+[interactive preview](docs/design/mockups/task-properties.html) define
+server-predefined task properties, starting with ordered PR references containing
+caller-provided URLs and titles. Server persistence, migration, HTTP operations
+and CLI editing/output are implemented; web presentation remains planned.
 
 The server design covers repository-linked projects, project-scoped tasks,
 acyclic dependencies and dependency-gated task states through HTTP JSON APIs.
@@ -95,12 +117,22 @@ pnpm daynight --version
 `pnpm acceptance` build the package before exercising the compiled CLI. Native CI
 typechecks and builds once, then invokes both Vitest configurations against that
 same compiled output. `pnpm build` clears the package's `dist/` before emitting
-`packages/daynight/dist/main.js` and copying the complete built-in review skill
-bundle into `dist/commands/review/skills/`; the package's `daynight` bin points to
-the stable JavaScript entry.
+`packages/daynight/dist/main.js` and copying the explicit review and public skill
+bundles into `dist/commands/review/skills/daynight-review/` and
+`dist/commands/skill/skills/daynight/`. Complete relative resources are included;
+repository workflow skills are not scanned for publication. The package's
+`daynight` bin points to the stable JavaScript entry.
 Source tests mirror `cli/`, `config/`, `api/`, `commands/` and `platform/`
 ownership, with build and version-policy tests in `test/tooling/`.
-The pnpm dependency store is local to `.tmp/pnpm-store`. `pnpm acceptance`
+The pnpm dependency store is local to `.tmp/pnpm-store`. Native skill terminal
+acceptance uses the development-only `node-pty` dependency, including Windows
+ConPTY. The workspace build policy permits only the pinned node-pty hook and
+keeps the existing SQLite build-hook suppression. Linux builds its native
+terminal addon with the available compiler/Python toolchain; macOS and Windows
+use the packaged prebuild when available. A version-pinned pnpm patch restores
+missing Darwin helper executable bits in the stable terminal dependency. The
+[native terminal decision](.agents/notes/implemented/testing/2026-10-21-native-skill-terminal-acceptance.md)
+records the test isolation and stream separation. `pnpm acceptance`
 separately packs and installs the CLI in a local consumer and requires package-
 registry access. The review lifecycle suite uses controlled GitHub/Copilot
 executables with real Git and SQLite. The self-update suite uses real npm and an
@@ -147,11 +179,10 @@ Windows runners. Each native job resolves the latest available Node.js 24 patch.
 PRs select complete module jobs from their changed paths; the
 [CI selection rules](#ci-selection) define shared inputs and documentation-only
 changes. A selected CLI runs every native platform and the dedicated Linux shell
-completion job. The Linux job also enforces package version increases before
-ordinary validation. A PR compares its complete source changes with its merge
-base and its package version with the event's target-branch revision. Main pushes
-run every module and compare package versions across the full event before/after
-range. The checkout includes the required history.
+completion job. On PRs, the Linux job also enforces package version increases
+before ordinary validation. It compares the PR's complete source changes with
+its merge base and its package version with the event's target-branch revision.
+Main pushes run every module. The checkout includes the required history.
 Native tool discovery records command resolution, launcher, PID, timing, status
 and bounded output in `.tmp/validation-probes.json`. Before executing `gh`, it
 reads the selected file sequentially and records its byte count, SHA-256 and
@@ -191,7 +222,9 @@ copies its immutable bare-origin seed into private test directories; refs,
 SQLite databases, clones and worktrees remain separate for every case. Sparse
 suites prepare their shared source graph before copying, and version-gate tests
 reuse only immutable default-base objects; scenario observations and mutations
-remain private. Tests within a file stay sequential so environment changes and cleanup have one owner.
+remain private. Source snapshots are prepared through batched native Git imports,
+while real clone/fetch/worktree operations remain the test subjects. Tests within
+a file stay sequential so environment changes and cleanup have one owner.
 The [Git test decision](.agents/notes/implemented/testing/2026-10-18-parallel-git-validation.md)
 records the isolation rules, and the
 [CI timing report](docs/research/windows-ci-performance.md) records native
@@ -245,9 +278,9 @@ statement coverage strictly greater than 90%, package coverage of at least 85%,
 and function coverage of at least 80%, with critical-block checks enabled. The
 same raw coverage profile supplies an exact strict comparison; exactly 90%
 fails, independently of display rounding. No product files or functions are
-excluded. When [CI selection](#ci-selection) selects the server, the aggregate
-requires this complete Go job to pass. PostgreSQL absence is a failure, not
-a skipped test. PT-T5 adds an installed-CLI service path and resource-budget
+excluded. When [CI selection](#ci-selection) selects the server, the complete
+Go job contributes its result to the final `checks` job. PostgreSQL absence is a
+failure, not a skipped test. PT-T5 adds an installed-CLI service path and resource-budget
 probes to this same gate. A Node orchestrator shares one real installation across
 the Go command scenarios and, after the unchanged go-cov/strict-profile checks,
 public-command probes outside Go's default ten-minute timer. Test-only deadline
@@ -283,8 +316,8 @@ The web job runs typecheck, production build, controlled-fetch UI tests, isolate
 deployment lifecycle fixtures and an exact statement gate strictly
 above 90%. It independently enumerates all product TypeScript/TSX files and
 publishes raw counters plus a relative source manifest. When
-[CI selection](#ci-selection) selects web, `checks` requires this complete job to
-pass; existing root CLI commands retain their scope.
+[CI selection](#ci-selection) selects web, the complete job contributes its result
+to the final `checks` job; existing root CLI commands retain their scope.
 
 For a disposable full-stack HTTP target, run a command through
 `bash deployment/dev-ci/run.sh <command> [args...]`; it receives
@@ -311,14 +344,15 @@ Changes to `packages/daynight/src/`, either package manifest, `pnpm-lock.yaml`,
 the package's build-cleanup script require a strictly greater SemVer in `packages/daynight/package.json`. Source
 additions, deletions and moves all count. Unchanged versions, downgrades and
 build-metadata-only changes fail. Tests, fixtures, documentation, CI workflows
-and validation scripts alone do not require a version increase. An initial main
-push with no previous commit validates the starting version without comparing
-against a nonexistent predecessor.
+and validation scripts alone do not require a version increase. CI enforces this
+policy in the PR's Linux CLI job using the event's explicit base and head commits.
 
 Update the version in the same PR as the code. To check committed revisions
 locally, run `pnpm version:check pull_request <base-sha> <head-sha>` or
 `pnpm version:check push <before-sha> <after-sha>`. The command reads versions
-from those commits; uncommitted files do not affect the result. Missing history,
+from those commits; uncommitted files do not affect the result. The local push
+mode compares the complete before/after range; an all-zero before SHA validates
+the starting version without a predecessor comparison. Missing history,
 unreadable manifests and invalid versions fail visibly. See the
 [toolchain decision](.agents/notes/implemented/process/2026-10-16-typescript-cli-toolchain.md)
 for the comparison and CI ownership rules.
@@ -458,6 +492,8 @@ daynight completion                 # Show completion help
 daynight completion bash
 daynight completion zsh
 daynight completion setup [--shell bash|zsh] [--rc-file <path>]
+daynight skill                      # Show skill help
+daynight skill install              # Select Agents, then User or Project scope
 daynight project
 daynight project create <name> [--repo <repo>]
 daynight project list [--json]
@@ -465,6 +501,7 @@ daynight project show <project-id> [--json]
 daynight task
 daynight task create --title <title> [options]
 daynight task list [--status <status>] [--ready] [--json] [--project <project-id>]
+daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
 daynight task graph [--json] [--project <project-id>]
@@ -480,6 +517,54 @@ exit with status 1 and retain their cause. The old `--daemon-review` and root
 [client design](docs/design/daynight.md) owns command composition and lazy loading;
 the [composition decision](.agents/notes/implemented/architecture/2026-10-20-client-command-composition.md)
 records module ownership and the preserved data layout.
+
+## Agent skill installation
+
+Install the public project/task skill through an interactive terminal:
+
+```bash
+daynight skill install
+```
+
+The command detects available `codex`, `copilot` and `claude` launchers without
+starting them or checking login. Select one or more detected Agents with Space,
+then Enter; the initial selection is empty. Next select `User` or `Project`,
+with User initially selected. Installation starts after the scope is submitted.
+Repeating the same command refreshes installed content from the running package.
+
+| Agent | User destination | Project destination |
+|---|---|---|
+| Codex | `~/.agents/skills/daynight/` | `<worktree>/.agents/skills/daynight/` |
+| Copilot CLI | `~/.agents/skills/daynight/` | `<worktree>/.agents/skills/daynight/` |
+| Claude Code | `~/.claude/skills/daynight/` | `<worktree>/.claude/skills/daynight/` |
+
+User scope works outside Git. Project scope uses the current Git worktree root,
+including calls from subdirectories or linked worktrees, and does not require
+an origin, server configuration or Daynight project association. Installing the
+skill and associating a project remain separate operations. Terminal stdin and
+stderr are required; prompts use stderr and installation results use stdout.
+Help and installation do not depend on review configuration or credentials.
+
+Every installation replaces the complete destination `daynight` entry, including
+local edits and obsolete files. Other skills and existing parent-directory links
+are preserved. Several Agent paths that resolve to the same physical directory
+share one write; strictly nested targets are rejected before writing. A selected
+Agent's discovery directory can also be visible to another Agent. Installing at
+one scope does not change a same-named skill at another scope; host precedence
+still applies.
+
+The command reports per-Agent destinations and results. A failure stops later
+targets, retains earlier successful installations and exits nonzero. A failure
+after removing the old directory can leave that target absent; the diagnostic
+states the result and rerunning installs the packaged content again. Ctrl+C
+before publication cleans the operation's stage and newly created empty parents.
+
+Codex normally discovers changed skills automatically; restart its session if
+needed. For Copilot CLI run `/skills reload` and inspect `/skills info daynight`.
+Claude Code watches existing roots; use `/reload-skills` when a top-level skills
+directory was created during the session. The
+[skill design](docs/design/daynight-agent-skill.md) owns installation mechanisms
+and the separate native Agent loading and automatic-trigger acceptance gates.
 
 ## Shell completion
 
@@ -666,6 +751,8 @@ Task commands use the same `serverUrl` configuration as project commands:
 ```bash
 daynight task create --title "Implement sign-in" --description "Support OAuth"
 daynight task create --title "Build the sign-in page" --depends-on <task-id>
+daynight task ready
+daynight task ready --limit 5 --json
 daynight task list --ready
 daynight task list --status in_progress --json
 daynight task show <task-id> --json
@@ -686,7 +773,17 @@ server origin and repository identity, after ensuring `/.daynight/` is effective
 in the root `.gitignore`. A cached binding is verified against the server on each
 use and remains stable if another project later shares that repository.
 
-Creation starts in `todo`. The list status and ready filters combine with AND.
+Creation starts in `todo`. `task ready` selects up to 10 actionable tasks by
+default; `--limit <N>` accepts decimal integers from 1 through 100. It makes one
+task-list request with `ready=true` and the chosen limit, without fetching later
+pages. The service orders results by creation time and then task ID, both
+ascending. A ready task is `todo` with all direct dependencies `done`. This
+bounded selection supports choosing the next work without retrieving the whole
+project; `task graph` provides a dependency overview when needed. `task list`
+continues to read every matching page, including with `--ready`; its status and
+ready filters combine with AND. `task ready` accepts neither `--status` nor
+`--cursor`.
+
 Updates preserve omitted fields; an empty description clears it. Repeated
 `--depends-on` values replace the complete dependency set and retain input order
 and duplicates for server validation. `--clear-dependencies` clears that set and
@@ -703,8 +800,11 @@ inline assignment; `--path=value` and `--` remain invalid.
 
 Human results use complete labeled task blocks and graph nodes, including task
 state, dependencies, blocking and title-preview truncation flags. Queries support
-`--json`: lists return one complete array, details one resource, and graphs the
-complete API object. Versions remain JSON numbers with full int64 precision.
+`--json`: `list` returns every matching resource in one array, `ready` returns
+only its selected tasks as an array, details return one resource, and graphs
+return the complete API object. A ready result retains every task field; an
+empty human result is `No ready tasks.` and empty JSON is `[]`. Versions remain
+JSON numbers with full int64 precision.
 Local preparation fails before any task mutation; a lost write response is
 reported as unconfirmed. The [task record](docs/design/daynight-project-task-tasks.md)
 owns validation status. Installed CLI integration uses the real Go/PostgreSQL
@@ -953,16 +1053,35 @@ cleared and a review child can start. Cancellation, timeout or uncertain process
 exclusion prevents that next launch. Discovery stdout and stderr stream to
 separate `skill-list` logs and never enter completion-marker parsing.
 
-The agent publishes inline Critical/Major comments or approval itself and
-reconciles prior publication when continuing an incomplete review. The adapter
-streams separate stdout/stderr logs and accepts only normal zero exit, complete
-capture and the exact final nonempty stdout line `PR N Review Completed`.
-Incomplete output, timeout, cancellation and logging errors cannot complete a
-review. The coordinator owns scheduling and final state transitions; runtime
-process supervision supplies evidence under the foreground execution contract.
+The agent reads the current PR title, description and linked scope requirements,
+then checks the complete captured diff against one concrete problem and outcome.
+A clear description and changes within the original scope are independent
+approval gates. Independent objectives, an unreviewable combined PR or unrelated
+changes block approval even without a Critical/Major code defect. Necessary
+implementation, structural changes, tests and documentation for the same outcome
+remain in scope; fixed line or file counts do not decide reviewability. Expanding
+the description alone cannot justify unrelated work.
+
+Before publishing or confirming prior publication, the agent rereads the current
+PR information and reevaluates those gates. It publishes `COMMENT` reviews for
+blockers, with description or other PR-level problems in the review body and
+suitable code findings inline; it does not use `REQUEST_CHANGES`. It approves
+only when both quality gates pass and no Critical/Major code issues remain.
+Retry confirmation requires prior publication to match the current gate result
+and captured target. These are agent instructions, not a machine-enforced
+quality judgment; title or description edits alone do not trigger another review.
+
+The adapter streams separate stdout/stderr logs and accepts only normal zero
+exit, complete capture and the exact final nonempty stdout line
+`PR N Review Completed`. Incomplete output, timeout, cancellation and logging
+errors cannot complete a review. The coordinator owns scheduling and final state
+transitions; runtime process supervision supplies evidence under the foreground
+execution contract.
 
 The [execution decision](.agents/notes/implemented/architecture/2026-10-17-copilot-session-execution.md)
-records process and publication boundaries. The
+records process and publication boundaries; the
+[PR-quality decision](.agents/notes/implemented/process/2026-10-21-review-pr-quality-gates.md)
+records the approval policy. The
 [skill design](docs/design/daynight-review-skill.md) owns packaging, snapshots and
 loading, with rationale in the
 [bundled-skill decision](.agents/notes/implemented/architecture/2026-10-20-bundled-review-skill.md).
@@ -1028,8 +1147,11 @@ records owner-liveness checks and the separate process-exclusion requirement.
 ## Working in the repository
 
 Read [AGENTS.md](AGENTS.md) for task scope, shared task worktrees, collaboration,
-verification, and delivery. Keep task breakdowns with their design documents,
-including task status, dependencies, scope and acceptance criteria. Use the
+verification, and delivery. Keep delivery boundaries, dependencies, scope and
+acceptance criteria with their design documents. When tasks are managed in
+Daynight, link their IDs from the design and query Daynight for live status;
+local execution plans remain temporary checklists. Existing document-owned task
+records retain their ownership until explicitly migrated. Use the
 [repository skills](.agents/skills/) for decision notes, scope choices, and prose.
 
 [Agent Notes](.agents/notes/README.md) preserve decisions and alternatives. The
@@ -1110,17 +1232,19 @@ owns scheduling and phase evidence; the
 [CI efficiency decision](.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md)
 retains the other workload optimizations and their limits.
 
-The final `checks` job always runs. It requires successful routing, success from
-every selected job and `skipped` from each deliberately unselected job. Missing
-selection outputs, unexpected skips, failures and cancellations fail the gate.
-Documentation-only PRs run routing tests and this aggregate without installing
-application dependencies or running application tests. Every `main` push retains
-full validation, including the exact-commit run required for npm publication.
-The [selection decision](.agents/notes/implemented/process/2026-10-21-module-scoped-pr-ci.md)
-records the alternatives and maintenance costs.
+The final `checks` job always runs after routing and application jobs. It accepts
+only `success` or `skipped` from every preceding job; failures, cancellations and
+other results fail the gate. It uses those job results without comparing module
+selection flags. Documentation-only PRs run routing tests and this final gate
+without installing application dependencies or running application tests. Every
+`main` push retains full application validation, including the exact-commit workflow run required for npm
+publication. Package-version enforcement belongs to PR validation. The
+[selection decision](.agents/notes/implemented/process/2026-10-21-module-scoped-pr-ci.md)
+records the routing alternatives and maintenance costs; the
+[CI simplification decision](.agents/notes/implemented/simplification/2026-10-21-ci-gate-simplification.md)
+owns version-check timing and the final job-result gate.
 
-To validate the routing and aggregation rules locally without application
-dependencies, run:
+To validate the routing rules locally without application dependencies, run:
 
 ```bash
 node --test .github/scripts/*.test.mts

@@ -15,15 +15,18 @@ these APIs and the client had no project or task commands.
 
 The adopted [requirements](../../../../docs/spec/daynight-project-task.md) and
 [design](../../../../docs/design/daynight-project-task.md) define independent
-`project` and `task` command modules in the existing client package. The design
-is adopted. Shared configuration, bounded HTTP, repository bindings and
-`project create/list/show`, task create/list/show/update/graph and shared syntax
-integration are delivered. Installed CLI acceptance against the Go service and
-default production-budget probes passed local and hosted validation for
-[PR #55](https://github.com/codetreker/daynight/pull/55). The
+`project` and `task` command modules in the existing client package. Shared
+configuration, bounded HTTP, repository bindings, `project create/list/show`,
+task create/list/show/update/graph and shared syntax integration were delivered
+through [PR #55](https://github.com/codetreker/daynight/pull/55), including local
+and hosted installed CLI acceptance against the Go service and default
+production-budget probes. The
 [CI efficiency decision](../testing/2026-10-21-ci-validation-efficiency.md)
 subsequently replaces real wall-clock deadline waits with short test-only
 budgets while preserving production defaults and full byte-limit probes. The
+[bounded ready selection decision](../feature/2026-10-21-bounded-ready-task-selection.md)
+extends the original complete-list operations with `task ready` single-page
+candidate selection while preserving `task list --ready` traversal. The
 [task breakdown](../../../../docs/design/daynight-project-task-tasks.md) owns
 implementation status, dependencies, file ownership and completion evidence.
 
@@ -96,12 +99,18 @@ option descriptions; it does not enumerate `value.choices`. Existing review dire
 Task updates retain expected-version checks, atomic field/dependency updates
 and server-side state gates. Local binding checks
 cannot replace remote resource validation. Request cancellation and failures remain visible; failed
-writes are not automatically retried. Complete paginated JSON is emitted only
-after every page has succeeded. Whole-command deadlines and response-byte
-budgets bound complete scans; reaching a limit fails without partial output,
+writes are not automatically retried. Project and task `list` JSON is emitted
+only after every matching page has succeeded. `task ready` returns up
+to its requested limit, defaulting to 10, after one validated task response; it
+accepts decimal limits from 1 through 100 and does not follow a valid cursor.
+The ready operation preserves full task resources and the service
+`createdAt ASC, id ASC` order, validating count, eligibility and distinct IDs
+before output. Whole-command deadlines and response-byte budgets bound complete
+scans; reaching a limit fails without partial output,
 while an already-sent write can still have an unconfirmed outcome. The HTTP
 foundation uses one disposable operation for shared deadlines and byte counters,
-strict response DTOs and complete opaque-cursor traversal. Task versions use
+strict response DTOs, complete opaque-cursor traversal for list operations and
+an explicit `listReadyTasks` operation for bounded selection. Task versions use
 `bigint` internally and retain JSON numeric int64 precision on the wire. Bounded
 response cleanup preserves both the original failure and cleanup errors.
 

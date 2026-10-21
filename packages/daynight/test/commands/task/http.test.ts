@@ -14,7 +14,7 @@ const taskId = "abcdefab-2222-4222-8333-123456789abc";
 const otherId = "abcdefab-3333-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project = { id: projectId, name: "Project", repoUrl: "git@git.example:Org/Repo.git", createdAt: time, updatedAt: time };
-const task: Task = { id: taskId, projectId, title: "Task title", description: "Description", status: "todo", version: 9_007_199_254_740_993n, ready: true, dependsOn: [], blockedBy: [], createdAt: time, updatedAt: time };
+const task: Task = { id: taskId, projectId, title: "Task title", description: "Description", properties: { pullRequests: [] }, status: "todo", version: 9_007_199_254_740_993n, ready: true, dependsOn: [], blockedBy: [], createdAt: time, updatedAt: time };
 type Request = { readonly method: string; readonly path: string; readonly query: URLSearchParams; readonly body: string };
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); vi.restoreAllMocks(); });
@@ -104,6 +104,28 @@ describe("task commands over HTTP", () => {
     await expect(f.run(["list", "--json"])).rejects.toMatchObject({ operation: "task.list", projectId, code: "internal_error", requestId: "task-page-failure" });
     expect(f.context.stdout).not.toHaveBeenCalled();
     expect(f.requests).toHaveLength(3);
+  });
+
+  it("publishes only the first ready page even when a later page would fail", async () => {
+    const f = await fixture((request, response) => {
+      if (request.query.has("cursor")) respond(response, { error: { code: "internal_error", message: "Not a bounded request", requestId: "unexpected-later-page" } }, 500);
+      else respond(response, { items: [task], nextCursor: "next" });
+    });
+    await f.run(["ready", "--limit", "1", "--json"]);
+    expect(f.context.stdout).toHaveBeenCalledOnce();
+    expect(parseApiJson(f.context.stdout.mock.calls[0]![0])).toEqual([task]);
+    expect(f.requests).toHaveLength(2);
+    expect(Object.fromEntries(f.requests[1]!.query)).toEqual({ ready: "true", limit: "1" });
+  });
+
+  it.each([
+    { items: [task, { ...task, id: otherId }], nextCursor: null },
+    { items: [{ ...task, status: "in_progress", ready: false }], nextCursor: null },
+  ])("keeps an invalid ready page out of stdout %#", async (page) => {
+    const f = await fixture((_request, response) => respond(response, page));
+    await expect(f.run(["ready", "--limit", "1", "--json"])).rejects.toMatchObject({ operation: "task.ready", projectId, phase: "protocol" });
+    expect(f.context.stdout).not.toHaveBeenCalled();
+    expect(f.requests).toHaveLength(2);
   });
 
   it("preserves version conflicts and related task IDs without rereading or retrying", async () => {

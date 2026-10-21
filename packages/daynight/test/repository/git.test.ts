@@ -4,8 +4,25 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOperation, OperationError } from "../../src/api/operation.js";
 import type { Operation } from "../../src/api/operation.js";
-import { discoverRepository, RepositoryGitError, runRepositoryGit } from "../../src/repository/git.js";
+import { discoverRepository, discoverWorktreeRoot, RepositoryGitError, runRepositoryGit } from "../../src/repository/git.js";
 import { formatError } from "../../src/platform/diagnostics.js";
+
+const nativeTaskkill = vi.hoisted(() => ({ outcomes: [] as ({ returned: true } | { returned: false; error: unknown })[] }));
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  const execute: typeof actual.execFileSync = (...args: unknown[]) => {
+    if (typeof args[0] !== "string" || !/[\\/]System32[\\/]taskkill\.exe$/i.test(args[0])) return Reflect.apply(actual.execFileSync, undefined, args);
+    try {
+      const result = Reflect.apply(actual.execFileSync, undefined, args);
+      nativeTaskkill.outcomes.push({ returned: true });
+      return result;
+    } catch (error) {
+      nativeTaskkill.outcomes.push({ returned: false, error });
+      throw error;
+    }
+  };
+  return { ...actual, execFileSync: execute };
+});
 
 const scratch = path.resolve(import.meta.dirname, "../../../../.tmp/repository-git-tests");
 const directories: string[] = [];
@@ -43,10 +60,21 @@ afterEach(async () => {
   for (const op of operations.splice(0)) op.dispose();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
+  nativeTaskkill.outcomes.splice(0);
   for (const root of directories.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
 describe("repository Git discovery", () => {
+  it("locates roots without origins or project configuration", async () => {
+    const root = await repository();
+    git(root, ["remote", "remove", "origin"]);
+    const nested = path.join(root, "nested path");
+    await mkdir(nested);
+    expect(await discoverWorktreeRoot(nested, operation())).toBe(root);
+    await expect(readFile(path.join(root, ".daynight/project.yml"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(discoverRepository(root, operation())).rejects.toThrow("origin fetch address");
+  });
+
   it("finds Chinese and spaced roots from a subdirectory without loading review state", async () => {
     const root = await repository();
     const sub = path.join(root, "子目录 with spaces");
@@ -86,6 +114,7 @@ describe("repository Git discovery", () => {
     git(root, ["config", "--unset-all", "remote.origin.url"]);
     git(worktree, ["config", "--worktree", "remote.origin.url", "git@git.example:Linked/Repo.git"]);
     expect((await readFile(path.join(worktree, ".git"), "utf8")).startsWith("gitdir:")).toBe(true);
+    expect(await discoverWorktreeRoot(worktree, operation())).toBe(worktree);
     expect(await discoverRepository(worktree, operation())).toEqual({ root: worktree, remote: "git@git.example:Linked/Repo.git", identity: "git.example/Linked/Repo" });
   });
 
@@ -96,6 +125,7 @@ describe("repository Git discovery", () => {
     git(root, ["-c", "protocol.file.allow=always", "submodule", "add", source, "nested module"]);
     const submodule = path.join(root, "nested module");
     git(submodule, ["remote", "set-url", "origin", "git@git.example:Submodule/Repo.git"]);
+    expect(await discoverWorktreeRoot(submodule, operation())).toBe(submodule);
     expect(await discoverRepository(submodule, operation())).toEqual({ root: submodule, remote: "git@git.example:Submodule/Repo.git", identity: "git.example/Submodule/Repo" });
   });
 
@@ -133,6 +163,7 @@ describe("repository Git discovery", () => {
     const bare = await directory();
     git(bare, ["init", "--bare"]);
     await expect(discoverRepository(bare, operation())).rejects.toThrow("repository is bare");
+    await expect(discoverWorktreeRoot(bare, operation())).rejects.toThrow("repository is bare");
     const root = await repository();
     git(root, ["remote", "remove", "origin"]);
     await expect(discoverRepository(root, operation())).rejects.toThrow("origin fetch address");
@@ -284,7 +315,25 @@ describe("repository Git discovery", () => {
       expect(ownedPid).toBeTypeOf("number");
       const cancelled = performance.now();
       controller.abort(new Error("Cancel the owned Git alias"));
-      expect(await pending).toBe(op.signal.reason);
+      const error: unknown = await pending;
+      if (process.platform === "win32") {
+        expect(nativeTaskkill.outcomes).toHaveLength(1);
+        const outcome = nativeTaskkill.outcomes[0]!;
+        if (outcome.returned) expect(error).toBe(op.signal.reason);
+        else {
+          expect(outcome.error).toBeInstanceOf(Error);
+          const nativeError = outcome.error as Error & { status?: number; signal?: NodeJS.Signals | null; code?: string };
+          expect(nativeError.status).toBeTypeOf("number");
+          expect(Number.isFinite(nativeError.status)).toBe(true);
+          expect(nativeError.status).not.toBe(0);
+          expect(nativeError.signal).toBeNull();
+          expect(nativeError.code).toBeUndefined();
+          expect(error).toBeInstanceOf(AggregateError);
+          expect((error as AggregateError).errors).toEqual([nativeError]);
+          expect((error as AggregateError).errors[0]).toBe(nativeError);
+          expect((error as AggregateError).cause).toBe(op.signal.reason);
+        }
+      } else expect(error).toBe(op.signal.reason);
       expect(performance.now() - cancelled).toBeLessThan(2500);
       const stopped = await readFile(ticks, "utf8").catch((error: unknown) => {
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return "";

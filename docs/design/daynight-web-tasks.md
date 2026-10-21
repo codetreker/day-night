@@ -40,9 +40,12 @@ W-T1 与 W-T2 可独立推进，客户端以架构中的 DTO 为共同契约。
 | W-T6 | W-T6 执行者 | 核对 W-T5 构建契约后接管，加入生产浏览器/容器验收，负责最终 `checks.needs` 完整性 |
 
 其他任务以所需命令、依赖和验收输入提出变更，由当前归属任务编辑这些共享文件。
-交接发生在前一阶段完成验收之后，不并发修改。汇总依赖 CLI `verify`、Go
-`verify-server`、web `verify-web` 与独立 `verify-completion`，并核对路由结果：选中的
-job 必须成功，未选中的 job 必须为 `skipped`；失败或取消都不能汇总成功。
+交接发生在前一阶段完成验收之后，不并发修改。交付时的汇总依赖 CLI `verify`、Go
+`verify-server`、web `verify-web` 与独立 `verify-completion`，失败或取消都不能汇总
+成功。当前工作流按[仓库 CI 路由](../../README.md#ci-selection)选择模块，最终 `checks`
+只接受所有前置 job 的 `success` 或 `skipped`，失败、取消及其他结果使汇总失败；
+[CI 简化决策](../../.agents/notes/implemented/simplification/2026-10-21-ci-gate-simplification.md)
+记录汇总规则。
 
 ## 共同完成条件
 

@@ -9,14 +9,15 @@ task 命令、安装产物、真实服务及默认预算验收已完成并通过
 Daynight 是一个组合命令的客户端工具包。npm 包提供统一的 `daynight` 入口，命令模块
 拥有各自的业务行为、依赖和生命周期。`review` 是 GitHub PR 审查模块；`update` 管理
 整个客户端的 npm 全局安装；`setup` 按能力保存配置；`completion` 生成 Bash 和 zsh
-的原生补全脚本并安装启动配置。独立的 Go 服务和浏览器应用保留自己的产品需求
+的原生补全脚本并安装启动配置；`skill` 安装随包分发的公开项目任务 skill。独立的 Go 服务和浏览器应用保留自己的产品需求
 与生命周期。
 
 本文档负责客户端入口、命令组合、按需配置引导、自更新和 shell 补全的必需行为；
 [review 需求](daynight-review.md)负责审查、review 配置字段和持久化状态。
 [project/task 需求](daynight-project-task.md)负责已确认的 server 连接配置、仓库关联
 发现和远端项目任务命令。客户端机制见[架构设计](../design/daynight.md)，补全机制见
-[补全设计](../design/daynight-completion.md)；各业务文档明确其实际交付状态。
+[补全设计](../design/daynight-completion.md)。公开 skill 的分发、交互安装和任务工作流
+由[Agent skill 需求](daynight-agent-skill.md)拥有；各业务文档明确实际交付状态。
 
 ## 需求
 
@@ -50,6 +51,8 @@ daynight completion
 daynight completion bash
 daynight completion zsh
 daynight completion setup [--shell bash|zsh] [--rc-file <path>]
+daynight skill
+daynight skill install
 daynight project
 daynight project create <name> [--repo <repo>]
 daynight project list [--json]
@@ -57,14 +60,15 @@ daynight project show <project-id> [--json]
 daynight task
 daynight task create --title <title> [options]
 daynight task list [--status <status>] [--ready] [--json] [--project <project-id>]
+daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
 daynight task graph [--json] [--project <project-id>]
 ```
 
 无参数、`--help` 或 `-h` 显示顶层帮助并成功退出；帮助列出 `review`、`update`、`setup`、
-`completion`、`project` 和 `task`。`--version` 与 `-v` 输出当前包版本。裸 `review` 和裸 `completion`
-显示各自帮助；裸 `project` 与 `task` 同样显示组帮助。组和操作在该层唯一参数为 `--help` 或 `-h` 时显示帮助，且不得执行
+`completion`、`skill`、`project` 和 `task`。`--version` 与 `-v` 输出当前包版本。裸 `review` 和裸 `completion`
+显示各自帮助；裸 `skill`、`project` 与 `task` 同样显示组帮助。组和操作在该层唯一参数为 `--help` 或 `-h` 时显示帮助，且不得执行
 该操作。顶层版本选项不继承到子命令。`review ls` 是 `review list` 的别名。
 
 `review add-repo` 的 `--path <path>` 可以位于 remote 前后，只能指定一次；不接受
@@ -101,7 +105,10 @@ daynight task graph [--json] [--project <project-id>]
 `--repo` 的创建才加载 Git 发现当前 worktree 的有效 `origin`。所有 project 操作
 均不读取或改写仓库本地关联、不写 ignore 规则。创建在完整分页比较仓库身份后，
 仅无匹配时提交；唯一匹配成功返回既有 project，多匹配及查询失败均拒绝创建。
-共享执行层在单个操作下处理信号、期限和完整结果输出。`task` 显式指定 project
+共享执行层在单个操作下处理信号、期限和完整结果输出。`task ready` 默认选择前
+10 个 ready task，`--limit <N>` 接受十进制整数 `1..100`；它只请求一页，不遍历
+后续 cursor。`task list` 继续读取全部匹配页。`ready` 的参数、服务排序及响应校验
+由[project/task 需求](daynight-project-task.md#pt7-task-命令与更新语义)拥有。`task` 显式指定 project
 时只需要 server 配置和 HTTP；自动选择时才加载 Git 与仓库关联模块。任务写入必须晚于本地
 关联准备成功，完整行为由[project/task 需求](daynight-project-task.md)定义。
 客户端的命令和源码结构调整不改变 review 配置与状态的现有格式和位置，不迁移、

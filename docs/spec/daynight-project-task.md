@@ -14,6 +14,10 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 [交付任务](../design/daynight-project-task-tasks.md)，决策见
 [方案决策](../../.agents/notes/implemented/architecture/2026-10-20-project-task-cli-design.md)。
 
+[预定义属性需求](daynight-task-properties.md)的 server 接口、CLI PR 引用参数和
+完整资源输出已实现。[架构](../design/daynight-task-properties.md)与
+[实施任务](../design/daynight-task-properties-tasks.md)拥有属性机制及网页后续状态。
+
 已采用、尚待实现的[附件需求](daynight-task-attachments.md)增加
 `task attachment` 文件命令及原始字节读取；其
 [架构](../design/daynight-task-attachments.md)和
@@ -22,8 +26,8 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 
 ## PT1. 范围与命令边界
 
-交付包含 project 创建、列表和详情，以及 project 内 task 的创建、列表、详情、更新
-和完整图查询。本文已交付的命令复用现有服务接口，不新增 server API、数据库字段、project 唯一
+交付包含 project 创建、列表和详情，以及 project 内 task 的创建、列表、有界 ready
+选择、详情、更新和完整图查询。本文已交付的命令复用现有服务接口，不新增 server API、数据库字段、project 唯一
 约束、认证方式或任务执行能力。允许配置地址不改变服务现有的本机访问边界。
 
 顶层、命令组和操作帮助必须先于配置加载、Git、文件写入和网络访问执行。裸
@@ -158,6 +162,8 @@ Git、取消或期限错误均按实际原因失败，不得把查询失败视�
 daynight task create --title "实现登录" --description "支持 OAuth 登录"
 daynight task create --title "实现登录页面" --depends-on <task-id>
 daynight task list
+daynight task ready
+daynight task ready --limit 5 --json
 daynight task list --ready
 daynight task list --status in_progress
 daynight task show <task-id>
@@ -168,30 +174,54 @@ daynight task update <task-id> --status done
 daynight task update <task-id> --depends-on <task-a> --depends-on <task-b>
 daynight task update <task-id> --clear-dependencies
 daynight task update <task-id> --status done --if-version 3
+daynight task update <task-id> --pull-request-url <url> --pull-request-title <title>
+daynight task update <task-id> --clear-pull-requests
 daynight task graph
 ```
 
-上述命令均接受 `--project <id>`。`list`、`show`、`graph` 接受 `--json`。标题、
+上述命令均接受 `--project <id>`。`list`、`ready`、`show`、`graph` 接受 `--json`。标题、
 描述、repo 地址、ID、状态和版本等 text 选项同时接受 `--option value` 与
 `--option=value`。内联形式只按第一个 `=` 分隔，保留值内后续 `=` 和前导 `-`；
-分离形式的值以 `-` 开始时拒绝，须使用内联形式。只有描述允许空字符串，既可写
-`--description ""`，也可写 `--description=`。开关不接受内联值；目录选项的
+分离形式的值以 `-` 开始时拒绝，须使用内联形式。描述和 PR 的 URL/title 允许空
+字符串，可写 `--description ""`、`--description=`、`--pull-request-url=` 或
+`--pull-request-title=`。开关不接受内联值；目录选项的
 `--path=value` 继续拒绝。只有 `project create` 接受独立 `--` 结束选项解析。
 
-创建必需符合 PT6 文本规则的非空标题，可选描述和重复的 `--depends-on`；省略描述
-及依赖分别使用服务规定的空字符串和空集合，新 task 总为 `todo`。列表支持单个 `--status` 与 `--ready`，
+创建必需符合 PT6 文本规则的非空 task 标题，可选描述、重复的 `--depends-on` 和
+PR URL/title 配对；省略描述、依赖和 PR 引用分别使用服务规定的空字符串、空集合
+和空数组，新 task 总为 `todo`。PR 标题只要求字符串类型，不使用 task 标题的内容
+校验。列表支持单个 `--status` 与 `--ready`，
 两者按 AND 组合；状态值为 `todo`、`in_progress`、`done`，共享语法负责校验和静态候选；
 帮助显示选项说明。`--ready` 只表示 `ready=true`。详情按选定 project 和 task ID
 查询。显式 project ID、show/update 的 task ID、标题、描述、状态、版本及修改字段
 组合的参数错误必须先于配置读取、Git 和网络访问拒绝；依赖 ID 原样传给服务，
 其语法、引用是否存在及合法性由服务验证。
 
-更新至少提供标题、描述、状态或依赖中的一个字段。省略字段表示保持，空描述表示
+`ready` 供日常选择下一项工作，返回当前 project 按服务顺序排列的前 N 个 ready task；
+默认 `N=10`，可通过 `--limit <N>` 指定。limit 仅接受十进制整数字符串且数值为
+`1..100`；拒绝符号、小数、指数、非十进制形式、空值及越界值。limit 参数错误
+必须在配置读取、Git 和网络访问之前拒绝。该操作只发送一次 task GET，查询固定
+`ready=true` 和所选 `limit`；响应中的合法 `nextCursor` 不触发续页，也不提供
+`--status`、`--cursor` 或其他筛选。`task list --ready` 保持遍历全部匹配页的行为。
+
+ready 沿用服务定义：task 为 `todo`，且每个直接依赖均为 `done`。服务按
+`createdAt ASC, id ASC` 排序；CLI 保留该顺序，不重新排序。返回项数不得超过所选
+limit，每项必须为 ready，且 task ID 不得重复；响应违反任一条件时作为协议错误
+拒绝，stdout 保持为空。正常的候选选择使用此有界操作，完整依赖关系可按需使用
+`graph` 查看。
+
+更新至少提供标题、描述、状态、依赖或预定义属性中的一个字段。省略字段表示保持，空描述表示
 清空描述。出现 `--depends-on` 时替换完整前置集合；`--clear-dependencies` 清空
 集合，两者不能同时出现。依赖选项按输入顺序保留每一次出现，单次及重复的
-`--depends-on` 都形成数组，包括重复 ID，不执行 CSV 拆分。其他选项只允许出现
-一次。CLI 不合并旧依赖、不去重或修正无效引用；服务负责验证
+`--depends-on` 都形成数组，包括重复 ID，不执行 CSV 拆分。PR URL/title 配对选项
+同样可以重复；其他选项只允许出现一次。CLI 不合并旧依赖、不去重或修正无效引用；服务负责验证
 依赖、状态约束、环和跨 project 引用。拒绝结果必须保留服务错误码与相关 task ID。
+
+PR 的 `--pull-request-url` 和 `--pull-request-title` 在 create/update 中分别按
+出现顺序配对，两类选项次数必须相等且至少一对；它们无需在命令行相邻。提供配对
+表示替换完整列表，Update 的 `--clear-pull-requests` 表示清空并与任一配对选项互斥。
+没有相关选项时省略属性 patch；重复项、空白与空字符串都保留，不检查 URL 内容。
+配对、互斥和修改字段组合错误必须先于配置、Git 和网络 I/O 失败。
 
 未传 `--if-version` 时，CLI 先读取 task 的当前 `version`，再将该版本与更新字段
 一起提交。显式指定时，使用该正整数作为期望版本，不用最新版本覆盖它。版本范围为
@@ -203,19 +233,23 @@ daynight task graph
 
 ## PT8. 输出、分页与错误
 
-普通查询提供可读结果；列表自动遍历全部分页，在完整读取、结构验证、渲染及最终
-期限检查成功后输出结果。Project 列表逐个输出完整的带标签资源块，包含 ID、名称、
+普通查询提供可读结果；`project list` 和 `task list` 自动遍历全部匹配分页，
+`task ready` 只读取所选的前 N 项。每个操作在其全部必要读取、结构验证、渲染及
+最终期限检查成功后输出结果。Project 列表逐个输出完整的带标签资源块，包含 ID、名称、
 原始 repo 地址及创建、更新时间；空列表明确说明没有 project。详情和创建结果使用
 相同字段，创建结果另表明服务已确认创建。Task 列表逐个输出完整资源块，包括 ID、
-所属 project、标题、描述、状态、完整版本、ready、依赖、阻塞及创建、更新时间；
-空列表明确说明没有 task。创建和更新结果使用同一资源格式并表明服务已确认操作。
+所属 project、标题、描述、状态、完整版本、ready、依赖、阻塞、全部 PR 标题与 URL
+及创建、更新时间；空 task list 明确说明没有 task。ready 使用同一完整 task 资源
+格式，空结果输出 `No ready tasks.`。创建和更新结果使用同一资源格式并表明服务
+已确认操作。
 图显示 project、全部 summary 字段及每个节点的状态、标题预览、截短标记、ready、
 依赖、阻塞和时间。所有文本完整显示，资源边界保持清楚，输出空间随字段内容总量
 线性增长。
 
 可读资源字段中的 C0/C1 控制字符及 Unicode 行、段分隔符必须转义为可见文本，
-普通 Unicode 与 emoji 保持原样。`--json` 将详情输出为一个资源对象、列表输出为
-完整资源数组、图输出为完整图响应对象，并以换行结束。JSON 保留 API 字段名称、
+普通 Unicode 与 emoji 保持原样。`--json` 将详情输出为一个资源对象、list 输出为
+所有匹配资源的数组、ready 输出为所选完整 task 的数组、图输出为完整图响应对象，
+并以换行结束。ready 不添加分页 envelope，空结果为 `[]`。JSON 保留 API 字段名称、
 类型和原始字符串，不应用终端显示转义或插入诊断文字。写操作成功后输出服务确认
 的资源 ID 及结果；服务未确认成功时不得输出成功结果。
 
@@ -256,6 +290,7 @@ daynight task graph
 | V10 | 多页查询与 `--json` 仅完整成功后输出；图保持完整响应字段并正确报告超限，stdout 可直接由 JSON parser 读取 |
 | V11 | 单次期限、持续推进 cursor 耗尽总期限、单响应和累计字节超限、锁竞争、用户取消、错误响应、无效 JSON、损坏缓存及磁盘失败分别给出正确 stderr 和退出码；超限无部分输出或后续副作用，写响应未确认不产生虚假失败确定性 |
 | V12 | CLI 既有 `pnpm typecheck`、`pnpm test`、`pnpm build` 及相关安装验收通过；Linux、macOS、Windows 的 Git、锁及文件替换有原生证据 |
+| V13 | `task ready` 的默认和显式 limit、参数在 I/O 前拒绝、单次 `ready=true` 查询、合法 cursor 不续页、稳定服务顺序、完整 int64 JSON、空结果及超量/非 ready/重复 ID 响应拒绝均可观察；`task list --ready` 仍完整翻页，真实服务证明选择前 N 项及依赖完成后的 ready 变化 |
 
 配置、HTTP、仓库关联基础及 Project 命令已提供对应模块验证；Project 的实际编译
 入口已在受控 HTTP 条件下验证创建、完整分页、详情、参数错误、服务拒绝、

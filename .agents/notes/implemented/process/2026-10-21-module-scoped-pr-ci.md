@@ -35,33 +35,44 @@ changes job scheduling without separating or weakening these integration suites.
 Every main push runs all jobs, preserving the successful exact-commit main run
 consumed by [npm publication](2026-10-20-npm-trusted-publishing.md).
 
-The workflow starts on every PR, including documentation changes. Its final
-`checks` job runs with `always()`, requires successful routing, validates every
-selection flag and accepts only success for selected jobs and skipped for
-unselected jobs. Selection failure, absent outputs, unexpected skips, failed
-checks and cancellations fail the aggregate. Routing and aggregate tests run in
-the lightweight job without installing pnpm dependencies.
+The workflow starts on every PR, including documentation changes. Routing tests
+run in the lightweight job without installing pnpm dependencies. The final
+`checks` job runs after every routing and application job and accepts only success
+or skipped for each result. Failures, cancellations and other results fail the
+gate. Intentionally unselected jobs remain skipped.
+
+This scheduling decision originally included a final `checks` job that validated
+selection flags and required success for selected jobs and skipped for unselected
+jobs. It distinguished intentional omissions from unexpected skips, selection
+failures and missing outputs. The later
+[CI simplification decision](../simplification/2026-10-21-ci-gate-simplification.md)
+replaces selection-aware aggregation with the job-result gate and keeps
+package-version enforcement in PRs. The path selection and each module's
+validation workload remain unchanged.
 
 This refines the scheduling described by the
 [CLI toolchain decision](2026-10-16-typescript-cli-toolchain.md),
 [server foundation](../architecture/2026-10-19-server-runtime-foundation.md) and
 [dashboard acceptance decision](../testing/2026-10-20-dashboard-production-acceptance.md).
 Their module workloads and acceptance criteria continue to apply when selected.
-GitHub documents [job conditions](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-jobs-with-conditions)
-and [dependency handling](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idneeds);
-the explicit aggregate distinguishes deliberate omissions from failed execution.
+GitHub's [job-condition documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-jobs-with-conditions)
+and [dependency documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idneeds)
+define routing dependencies and the skipped state of unselected jobs.
 
 ## Alternatives
 
-**Filter the entire workflow by changed paths.** This prevents the workflow from
-producing its final check on excluded PRs. GitHub's
+**Filter the entire workflow by changed paths.** At the time of this decision,
+this prevented the workflow from producing the planned final check on excluded
+PRs. GitHub's
 [path-filter documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onpushpull_requestpull_request_targetpathspaths-ignore)
 explains that skipped workflows can leave required checks pending. Job-level
-selection preserves a consistent aggregate for every PR.
+selection also keeps routing tests active for documentation-only PRs.
 
-**Allow every skipped dependency in the aggregate.** This cannot distinguish
-an intended omission from a selected job skipped because routing or a dependency
-failed. Validating the selection and expected result preserves that distinction.
+**Allow every skipped dependency in the original aggregate.** This could not
+distinguish an intended omission from a selected job skipped because routing or
+a dependency failed. The original selection-aware aggregate preserved that
+distinction; the later simplification accepts success or skipped from every
+preceding job without comparing selection flags.
 
 **Run every module on every PR.** This was the existing scheduling behavior and
 provided broad integration evidence before each merge. It spends the full
@@ -71,10 +82,11 @@ while removing that repeated work.
 
 ## Consequences
 
-Module-only PRs wait for their own job family; documentation-only PRs run only
-routing tests and aggregation. Every selected suite retains its original
-coverage, real-process behavior, time bounds and cleanup failures. No repository
-protection changes or additional workflow permissions are required.
+Module-only PRs wait for their own job family and the final gate;
+documentation-only PRs run routing tests and the gate. Every selected suite
+retains its original coverage, real-process behavior, time bounds and cleanup
+failures. No repository protection changes or additional workflow permissions are
+required.
 
 The path map is maintained alongside package and tooling ownership. Unknown
 paths deliberately incur full validation, so a new package or dependency patch
