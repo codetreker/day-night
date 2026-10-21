@@ -121,9 +121,11 @@ describe.skipIf(process.platform !== "darwin").each(modes)(
     let attachmentAttempted = false;
     let attachmentPlist: string | undefined;
     let ownership: VerifiedApfsImage | undefined;
+    let volumeHolderPid: number | undefined;
     const finalizeOnce = createApfsFinalizer(() => ({
       directory, mountDirectory, imageFile, attachmentAttempted, attachmentPlist,
       ...(ownership === undefined ? {} : { ownership }),
+      ...(volumeHolderPid === undefined ? {} : { volumeHolderPid }),
     }));
 
     beforeAll(async () => {
@@ -221,6 +223,8 @@ describe.skipIf(process.platform !== "darwin").each(modes)(
         try {
           await holder.ready;
           expect(holder.readyPid()).toBe(holder.child.pid);
+          expect(holder.readyPid()).toBeTypeOf("number");
+          volumeHolderPid = holder.readyPid();
           startedAt = performance.now();
           await finalizeOnce({
             ...realApfsCleanupDependencies,
@@ -250,6 +254,8 @@ describe.skipIf(process.platform !== "darwin").each(modes)(
           }).finally(() => { finishedAt = performance.now(); });
           expect(firstBusyAt).toBeDefined();
           const volumeHolders = records.filter((record) => record.kind === "diagnostic" && record.command === "/usr/sbin/lsof" && record.args.includes(mountDirectory));
+          expect(volumeHolders).toHaveLength(1);
+          expect(volumeHolders[0]).toMatchObject({ args: ["-nP", "-Fpcfnt", "-a", "-p", String(holder.child.pid), "+f", "--", mountDirectory] });
           expect(volumeHolders.some((record) => record.kind === "diagnostic" && record.result?.stdout.split("\n").includes(`p${holder.child.pid}`))).toBe(true);
           expect(holder.releasedAt()).toBeGreaterThanOrEqual(firstBusyAt! + 6_000);
           expect(detachCalls).toBeGreaterThan(0);
@@ -266,7 +272,7 @@ describe.skipIf(process.platform !== "darwin").each(modes)(
             throw cleanupError;
           } finally {
             process.stderr.write(`APFS holder recovery: ${JSON.stringify({
-              holderPid: holder.child.pid, firstBusyAt, releasedAt: holder.releasedAt(), detachCalls, detachEvents,
+              holderPid: holder.child.pid, readyPid: holder.readyPid(), volumeHolderPid, firstBusyAt, releasedAt: holder.releasedAt(), detachCalls, detachEvents,
               finalizationStartedAt: startedAt, finalizationFinishedAt: finishedAt,
               elapsedMs: startedAt === undefined || finishedAt === undefined ? undefined : finishedAt - startedAt,
               finalState: records.filter((record) => record.kind === "image").at(-1),

@@ -151,10 +151,16 @@ macOS tests mount temporary case-sensitive and case-insensitive APFS images to
 check path identity against both filesystem behaviors. Setup positively verifies
 whole-image ownership before the eight original filesystem cases. One additional
 same-user read-only file-holder case requires actual Busy, known-PID diagnostics,
-delayed release and exact image absence. All finalization shares one 30-second
-budget and at most three ordinary detach calls; unresolved cleanup fails the job.
-The [finalization decision](.agents/notes/implemented/bug-fix/2026-10-20-apfs-finalization-window.md)
-records the ownership and observation guarantees. No live GitHub or Copilot
+acknowledged release after at least six seconds and exact image absence. That
+controlled case restricts its volume `lsof` query to the acknowledged child PID
+AND the mounted filesystem; generic fixture diagnostics retain their existing
+filesystem query. Every diagnostic keeps its two-second limit. All finalization
+shares one 30-second budget and at most three ordinary detach calls; unresolved
+cleanup fails the job. The
+[finalization decision](.agents/notes/implemented/bug-fix/2026-10-20-apfs-finalization-window.md)
+records the ownership and observation guarantees, and the
+[controlled-holder decision](.agents/notes/implemented/bug-fix/2026-10-21-apfs-controlled-holder-observation.md)
+records the limited process selection and required native evidence. No live GitHub or Copilot
 credentials are required by these checks.
 SQLite tests use real disk databases, including reopen, transaction rollback,
 locking, and revision/retry transitions on every platform.

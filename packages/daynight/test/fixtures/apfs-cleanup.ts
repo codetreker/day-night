@@ -20,6 +20,7 @@ export type ApfsFixture = {
   attachmentAttempted: boolean;
   attachmentPlist: string | undefined;
   ownership?: VerifiedApfsImage;
+  volumeHolderPid?: number;
 };
 export type CleanupRecord = {
   kind: "busy" | "diagnostic";
@@ -185,7 +186,12 @@ export const cleanupApfsFixture = async (fixture: ApfsFixture, dependencies: Apf
           report({ kind: "busy", command: "/usr/bin/hdiutil", args: ["detach", owned.rootDevice], failure: failureRecord(error) });
           const observedAt = dependencies.now();
           const nextAttemptAt = attempt === 2 ? deadline : observedAt + Math.floor(Math.max(0, deadline - observedAt) / (3 - attempt));
-          if (attempt === 0) await diagnose({ command: "/usr/sbin/lsof", args: ["-nP", "-Fpcfnt", "+f", "--", fixture.mountDirectory] });
+          if (attempt === 0) {
+            // Intersect a known owned process with the volume selection; lsof otherwise ORs selections.
+            // https://github.com/apple-oss-distributions/lsof/blob/7a8a1b2a3c0f35c30a5fcd0927f31d441c3e5255/lsof/lsof.8#L169-L186
+            const processSelection = fixture.volumeHolderPid === undefined ? [] : ["-a", "-p", String(fixture.volumeHolderPid)];
+            await diagnose({ command: "/usr/sbin/lsof", args: ["-nP", "-Fpcfnt", ...processSelection, "+f", "--", fixture.mountDirectory] });
+          }
           observation = await observe();
           if (attempt === 0) await diagnoseDevices(observation);
           if (observation.state !== "absent") observation = await observeUntil(nextAttemptAt);
