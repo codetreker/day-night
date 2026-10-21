@@ -23,7 +23,9 @@ the existing commit bytes and IDs. `deleteall` makes each entry list the complet
 snapshot rather than inheriting omitted paths from its parent.
 
 Paths use quoted UTF-8 octal bytes, and inline contents declare their byte length.
-Typed entries preserve ordinary/executable files and symbolic links as contents,
+Encoding preserves accepted path bytes while native Git retains its platform's
+path validation. Windows-invalid names remain native errors. Typed entries
+preserve ordinary/executable files and symbolic links as contents,
 and existing trees or gitlinks as object references. Sparse fixture entries and
 version-gate file maps use the same writer. `fastimport.unpackLimit=0` keeps small
 imports packed, avoiding an additional native unpacking process. Native Git
@@ -39,11 +41,13 @@ native. Worker counts, the `forks` pool, test deadlines and product code are
 unchanged.
 
 The [snapshot contract tests](../../../../packages/daynight/test/tooling/git-objects.test.ts)
-assert exact object IDs, ordered parents, UTF-8 paths, modes, referenced trees and
-gitlinks, stable refs/HEAD/config and visible missing-parent errors. The existing
-Git and version scenarios remain responsible for their original behavior. The
-[repository validation guide](../../../../README.md#validation) owns commands and
-source-bound evidence interpretation; the
+use portable UTF-8 and space-containing paths on every platform to assert exact
+object IDs, ordered parents, modes, referenced trees and gitlinks.
+A separate path case verifies accepted Unix path bytes and native Windows
+rejection of invalid names while retaining refs/HEAD/config. Missing-parent
+errors remain visible. The existing Git and version scenarios remain responsible
+for their original behavior. Commands and source-bound evidence interpretation
+belong to the [repository validation guide](../../../../README.md#validation); the
 [Windows timing report](../../../../docs/research/windows-ci-performance.md)
 retains the earlier split-suite measurements and their original source.
 
