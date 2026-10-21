@@ -5,6 +5,7 @@ import type { TaskStatus } from '../../api/types';
 import type { GraphSnapshot } from '../projects/useTaskGraph';
 import { isTaskStale } from './freshness';
 import { useTaskDetail } from './useTaskDetail';
+import { TaskPullRequests } from './TaskPullRequests';
 import '../../styles/drawer.css';
 
 export type TaskDrawerProps = {
@@ -147,6 +148,7 @@ export const TaskDrawer = ({ projectId, taskId, snapshot, onSelectTask, onClose,
                 <h4>描述</h4>
                 <p className="drawer-description">{detail.description === '' ? '暂无描述' : detail.description}</p>
               </section>
+              <TaskPullRequests pullRequests={detail.properties.pullRequests} />
               <section className="drawer-section" aria-label="前置依赖">
                 <h4>前置依赖 · {detail.dependsOn.length}</h4>
                 {detail.dependsOn.length === 0 ? <p className="drawer-description">无前置依赖</p> : <ul className="drawer-relations">{detail.dependsOn.map(relation)}</ul>}
