@@ -16,7 +16,7 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 
 [预定义属性需求](daynight-task-properties.md)的 server 接口、CLI PR 引用参数和
 完整资源输出已实现。[架构](../design/daynight-task-properties.md)与
-[实施任务](../design/daynight-task-properties-tasks.md)拥有属性机制及网页后续状态。
+[实施任务](../design/daynight-task-properties-tasks.md)拥有属性机制及各组件的交付记录。
 
 ## PT1. 范围与命令边界
 

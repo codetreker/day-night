@@ -12,8 +12,10 @@ fixed-capacity and real Docker lifecycle validation and delivery status belong i
 
 The [requirements](../../docs/spec/daynight-web.md) own visible behavior and the
 [architecture](../../docs/design/daynight-web.md) owns graph projection, request
-lifecycles and delivery. The offline mockup illustrates the intended
-workflow with fixture data and is separate from this application.
+lifecycles and delivery. The [task property requirements](../../docs/spec/daynight-task-properties.md)
+and [design](../../docs/design/daynight-task-properties.md) own PR associations.
+The offline mockups illustrate the intended workflow with fixture data and are
+separate from this application.
 
 ## Development
 
@@ -34,13 +36,28 @@ The application implements `/` and `/projects/{projectId}`, direct URL reload,
 browser back/forward and a generic not-found page. A project shows six statistics
 from one complete graph snapshot. Root rows expand one horizontal graph at a
 time, including shared tasks and direct external prerequisites. Nodes open a
-read-only detail drawer with dependency navigation and stale-data detection.
+read-only detail drawer with dependency navigation, PR associations and stale-data
+detection. The PR section follows the description and displays every ordered
+title/URL pair, including duplicates. Empty strings have a display-only marker;
+whitespace and long content remain selectable text and wrap within the drawer.
+Only absolute HTTP(S) addresses recognized by the browser URL parser become
+links, with a new tab and `noopener noreferrer`. Other strings remain plain
+text; values are never interpreted as HTML or fetched for metadata. Property
+changes are managed through the CLI or API.
+
+The detail decoder requires `properties.pullRequests` with string `url` and
+`title` fields. Missing or malformed structure produces the existing detail
+error and retry state. It preserves string content, including NUL and arbitrary
+address text, without defaults or content validation. The graph decoder retains
+its compact projection and never copies properties into graph nodes.
 
 Refresh retains the last successful snapshot with an explicit loading/error
 notice and replaces the full graph only on success. A resource change clears
 previous-resource content immediately. Live detail never changes graph counters;
 a changed prerequisite can alter readiness without revising the task itself.
 The drawer offers a full graph refresh when that difference is observed.
+Reopening or refreshing details reads current PR associations; an attribute
+update changes the task timestamp and uses the same stale-snapshot prompt.
 
 The canvas supports pan, zoom and fit while editing and connection controls stay
 disabled. Each node is one native keyboard button. A long graph starts with its
@@ -171,11 +188,12 @@ scenario annotations validated in each target's report.
 | W2 | `project-graph`, `deep-links`: project entry, direct HTML reload and browser history |
 | W3–W4 | `project-graph`, `refresh-staleness`, `failure-recovery`: exact statistics, distinct root progress, consistent full refresh and retained old snapshot after failure |
 | W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`: complete root projections, shared/external prerequisites, state markers and viewport/node actions |
-| W8 | `detail-navigation`, `refresh-staleness`: complete current content, relation navigation and readiness differences without revising a dependent task |
+| W8 | `detail-navigation`, `refresh-staleness`: complete current content, ordered PR associations, relation navigation, property refresh and readiness differences without revising a dependent task |
 | W9 | `failure-recovery`, `deep-links`, `capacity-limits`: owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
-| W12 | `keyboard-focus`, `narrow-layout`: modal focus lifecycle, keyboard node activation and 320px page geometry |
+| W12 | `keyboard-focus`, `narrow-layout`: modal focus lifecycle including PR links, keyboard node activation and 320px page/drawer geometry |
+| TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
 
 Receipts live in `packages/daynight-web/.tmp/acceptance/<run-id>/`, with the
 latest aggregate at `.tmp/acceptance/evidence.json` inside this package. They

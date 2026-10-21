@@ -2,8 +2,8 @@
 
 状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 已定位长斜线 SVG 虚线绘制造成的 raster/commit 阻塞，采用局部水平线与短原生转角路径分解；完整生产验收已交付，完成状态与对应源码的 PR/CI 链接由任务清单记录。运行结果随对应 PR 与 CI 保存；本地回执不能代替干净 hosted 验证。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
 
-[预定义属性设计](daynight-task-properties.md)的 server 接口与 CLI 已实现；任务详情的
-只读 PR 区域仍待实施。[需求](../spec/daynight-task-properties.md)、
+[预定义属性设计](daynight-task-properties.md)的 server 接口、CLI 和任务详情中的
+只读 PR 区域已实现。[需求](../spec/daynight-task-properties.md)、
 [交互预览](mockups/task-properties.html)及[实施任务](daynight-task-properties-tasks.md)
 分别拥有行为、样式和实施状态。
 
@@ -69,7 +69,14 @@
 
 ### 详情侧栏
 
-桌面从右侧打开，窄屏占满可用宽度。显示完整标题、纯文本描述、状态、时间、完整 ID、直接前置、当前阻塞项和直接后续。依赖引用可以切换侧栏内容；全部标签使用可访问的按钮。
+桌面从右侧打开，窄屏占满可用宽度。显示完整标题、纯文本描述、关联 PR、状态、
+时间、完整 ID、直接前置、当前阻塞项和直接后续。依赖引用可以切换侧栏内容；
+全部依赖标签使用可访问的按钮。
+
+PR 区域在描述之后，标题与 URL 分别使用文本节点，空字符串显示专用标记，重复项
+保留独立行，长文本按现有抽屉宽度换行。HTTP(S) 绝对地址提供 `_blank` 与
+`noopener noreferrer` 导航，其他字符串仍展示原文。属性格式、原值保存和导航资格
+的分工由[属性设计](daynight-task-properties.md)拥有。
 
 使用既有 `GET /api/v1/projects/{projectId}/tasks/{taskId}`。节点详情单独加载、失败局部重试，不阻塞图。切换节点时取消旧请求，并检查请求所属 project/task，防止晚到响应覆盖新选择。
 

@@ -17,7 +17,7 @@
 [预定义属性设计](daynight-task-properties.md)为完整 task 提供固定结构的 PR
 引用，服务端已沿用本文的事务与版本机制实现存储、迁移和 HTTP 操作。其
 [需求](../spec/daynight-task-properties.md)及[实施任务](daynight-task-properties-tasks.md)
-拥有扩展行为与 CLI/web 的后续状态。
+拥有扩展行为与各组件的交付记录。
 
 ## 完整图读取
 

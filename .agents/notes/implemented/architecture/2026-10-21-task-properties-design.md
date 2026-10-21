@@ -15,8 +15,8 @@ The delivered artifacts are the [requirements](../../../../docs/spec/daynight-ta
 [design](../../../../docs/design/daynight-task-properties.md),
 [implementation breakdown](../../../../docs/design/daynight-task-properties-tasks.md)
 and [interactive preview](../../../../docs/design/mockups/task-properties.html).
-Server persistence, migration, HTTP operations and CLI property input/output
-are implemented. Read-only web presentation remains pending. The existing
+Server persistence, migration, HTTP operations, CLI property input/output and
+read-only web presentation are implemented. The existing
 [server task design](2026-10-19-daynight-server-task-design.md) owns the delivered
 task lifecycle and transaction foundation; this design extends that foundation.
 

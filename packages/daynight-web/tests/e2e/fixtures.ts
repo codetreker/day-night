@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { test as base, expect, type APIRequestContext } from '@playwright/test';
 import { command } from '../../scripts/acceptance/process.mts';
 import { recordBrowserOwnership } from '../../scripts/acceptance/browser.mts';
+import type { TaskProperties } from '../../src/api/types';
 
 export { expect };
 export const test = base.extend<{ acceptanceEvidence: void }>({
@@ -29,6 +30,7 @@ export type Project = { id: string; name: string; repoUrl: string; createdAt: st
 export type Task = {
   id: string; projectId: string; title: string; description: string; status: 'todo' | 'in_progress' | 'done';
   version: number; dependsOn: string[]; blockedBy: string[]; ready: boolean; createdAt: string; updatedAt: string;
+  properties: TaskProperties;
 };
 
 export const createProject = async (request: APIRequestContext, input: { name?: string; repoUrl?: string } = {}): Promise<Project> => {
@@ -40,17 +42,17 @@ export const createProject = async (request: APIRequestContext, input: { name?: 
 };
 
 export const createTask = async (request: APIRequestContext, projectId: string, input: {
-  title: string; description?: string; dependsOn?: string[];
+  title: string; description?: string; dependsOn?: string[]; properties?: TaskProperties;
 }): Promise<Task> => {
   const response = await request.post(`/api/v1/projects/${projectId}/tasks`, {
-    data: { title: input.title, description: input.description ?? '', dependsOn: input.dependsOn ?? [] },
+    data: { title: input.title, description: input.description ?? '', dependsOn: input.dependsOn ?? [], properties: input.properties },
   });
   expect(response.status(), 'Task fixture creation succeeds').toBe(201);
   return await response.json() as Task;
 };
 
 export const updateTask = async (request: APIRequestContext, projectId: string, taskId: string, input: {
-  version: number; title?: string; description?: string; status?: Task['status']; dependsOn?: string[];
+  version: number; title?: string; description?: string; status?: Task['status']; dependsOn?: string[]; properties?: TaskProperties;
 }): Promise<Task> => {
   const response = await request.patch(`/api/v1/projects/${projectId}/tasks/${taskId}`, { data: input });
   expect(response.status(), 'Task fixture update succeeds').toBe(200);

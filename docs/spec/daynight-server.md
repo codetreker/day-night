@@ -12,7 +12,7 @@
 
 [预定义属性需求](daynight-task-properties.md)扩展本文的 task 资源，PR 引用的
 服务端存储、更新与迁移已实现；[架构](../design/daynight-task-properties.md)和
-[实施任务](../design/daynight-task-properties-tasks.md)拥有机制及 CLI/web 的后续状态。
+[实施任务](../design/daynight-task-properties-tasks.md)拥有机制及各组件的交付记录。
 
 ## 目标与交付范围
 

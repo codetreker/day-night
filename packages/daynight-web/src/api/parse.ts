@@ -3,9 +3,11 @@ import type {
   GraphTask,
   Project,
   ProjectPage,
+  PullRequestProperty,
   TaskDetail,
   TaskGraph,
   TaskGraphSummary,
+  TaskProperties,
   TaskStatus,
 } from "./types";
 
@@ -130,6 +132,16 @@ export const parseTaskGraph = (value: unknown, projectId: string): TaskGraph => 
   return parsed;
 };
 
+const pullRequest = (value: unknown): PullRequestProperty => {
+  const data = record(value);
+  return { url: string(data.url), title: string(data.title) };
+};
+
+const properties = (value: unknown): TaskProperties => {
+  const data = record(value);
+  return { pullRequests: array(data.pullRequests, pullRequest) };
+};
+
 export const parseTaskDetail = (value: unknown, projectId: string, taskId: string): TaskDetail => {
   const data = record(value);
   const parsed = {
@@ -137,6 +149,7 @@ export const parseTaskDetail = (value: unknown, projectId: string, taskId: strin
     projectId: id(data.projectId),
     title: nonemptyString(data.title),
     description: string(data.description),
+    properties: properties(data.properties),
     status: status(data.status),
     dependsOn: ids(data.dependsOn),
     blockedBy: ids(data.blockedBy),

@@ -1,6 +1,6 @@
 # Task 预定义属性实施任务
 
-状态：TP-T1 服务端与 TP-T2 CLI 已实现；TP-T3 网页待实施。
+状态：TP-T1 服务端与 TP-T2 CLI 已交付；TP-T3 网页已实现，交付结果随对应 PR 和 CI 保存。
 [需求](../spec/daynight-task-properties.md)拥有 TP1–TP9 与 TP-V1–TP-V8，
 [架构设计](daynight-task-properties.md)拥有类型、事务、存储、CLI 和网页机制，
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-task-properties-design.md)
@@ -11,8 +11,8 @@
 | 任务 | 前置 | 交付目的 | 状态 |
 |---|---|---|---|
 | TP-T1 | 无 | 服务端持久化与发布预定义 PR 属性 | 已交付：[PR #83](https://github.com/codetreker/daynight/pull/83)，合并提交 `0cece99` |
-| TP-T2 | TP-T1 | CLI 创建、替换、清空与显示关联 PR | 已实现；验证结果随对应源码与 CI 保存 |
-| TP-T3 | TP-T1 | 网页详情呈现关联 PR | 待实施 |
+| TP-T2 | TP-T1 | CLI 创建、替换、清空与显示关联 PR | 已交付：[PR #85](https://github.com/codetreker/daynight/pull/85)，合并提交 `a12146b` |
+| TP-T3 | TP-T1 | 网页详情呈现关联 PR | 已实现；验证与交付结果随对应源码、PR 和 CI 保存 |
 
 每个任务按一个目的形成可独立审查的改动，使用该任务自己的一个共享 worktree。
 TP-T2 与 TP-T3 的依赖相同，可在 TP-T1 交付后分别推进。已打开的附件设计或其他

@@ -4,6 +4,7 @@ import { test, expect, createProject, createTask, updateTask, withDependencyFail
 import { parseTaskGraph } from '../../src/api/parse';
 import { buildGraphIndex, projectRoot } from '../../src/features/task-graph/model';
 import { layoutGraph, type CanvasLayout } from '../../src/features/task-graph/layout';
+import type { PullRequestProperty } from '../../src/api/types';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
 const node = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node`);
@@ -13,6 +14,16 @@ const screenshot = async (page: Page, info: TestInfo, slug: string): Promise<voi
   const path = info.outputPath(`${slug}.png`);
   await page.screenshot({ path, fullPage: true });
   await info.attach('scenario-screenshot', { path, contentType: 'image/png' });
+};
+const checkPullRequests = async (dialog: Locator, pullRequests: readonly PullRequestProperty[]): Promise<Locator> => {
+  const region = dialog.getByRole('region', { name: '关联 PR', exact: true });
+  await expect(region.getByRole('heading')).toHaveText(`关联 PR · ${pullRequests.length}`);
+  const items = region.locator('.drawer-pr');
+  await expect(items).toHaveCount(pullRequests.length);
+  expect(await items.locator('.drawer-pr-title').allTextContents()).toEqual(pullRequests.map(({ title }) => title === '' ? '（空字符串）' : title));
+  expect(await items.locator('.drawer-pr-value').allTextContents()).toEqual(pullRequests.map(({ url }) => url === '' ? '（空字符串）' : url));
+  await expect(region.locator('img,script,iframe,object')).toHaveCount(0);
+  return region;
 };
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -330,9 +341,27 @@ test('detail-navigation', scenario('detail-navigation'), async ({ page, request 
   await updateTask(request, project.id, a.id, { version: a.version, status: 'done' });
   const title = '完整标题 😀 '.repeat(24);
   const description = '第一行\n<img src=x onerror=alert(1)>\n<script>window.leaked=true</script>\n最后一行';
-  const b = await createTask(request, project.id, { title, description, dependsOn: [a.id] });
+  const ownURL = new URL(`/projects/${project.id}`, info.project.use.baseURL as string).href;
+  const pullRequests = [
+    { title: '服务端关联', url: ownURL },
+    { title: '', url: '' },
+    { title: '  标题\n\t\0保留  ', url: '  arbitrary\n\t\0address  ' },
+    { title: '<img src=x onerror=window.leaked=true>', url: '<script>window.leaked=true</script>' },
+    { title: '脚本字符串', url: 'javascript:window.leaked=true' },
+    { title: '数据字符串', url: 'data:text/html,<script>window.leaked=true</script>' },
+    { title: '自定义协议', url: 'review:example/123' },
+    { title: '相对引用', url: '/pull/123' },
+    { title: '损坏地址', url: 'https://[' },
+    { title: '服务端关联', url: ownURL },
+  ];
+  const b = await createTask(request, project.id, { title, description, dependsOn: [a.id], properties: { pullRequests } });
+  expect(b.properties.pullRequests).toEqual(pullRequests);
   const c = await createTask(request, project.id, { title: '快照中的后续', description: '后续描述', dependsOn: [b.id] });
   await openProject(page, project.id, project.name);
+  const graphResponse = await request.get(`/api/v1/projects/${project.id}/task-graph`);
+  expect(graphResponse.status()).toBe(200);
+  const graph = await graphResponse.json() as { tasks: Record<string, unknown>[] };
+  expect(graph.tasks.every((task) => !Object.hasOwn(task, 'properties'))).toBe(true);
   const unknown = await createTask(request, project.id, { title: '图快照外的新任务', description: '最新详情可读取' });
   await updateTask(request, project.id, b.id, { version: b.version, dependsOn: [a.id, unknown.id] });
   await node(page, b.id).click();
@@ -342,12 +371,31 @@ test('detail-navigation', scenario('detail-navigation'), async ({ page, request 
   await expect(dialog.locator('.drawer-full-id')).toHaveText(b.id);
   await expect(dialog.locator('time')).toHaveCount(2);
   await expect(dialog.locator('img,script')).toHaveCount(0);
+  const properties = await checkPullRequests(dialog, pullRequests);
+  const links = properties.getByRole('link');
+  await expect(links).toHaveCount(2);
+  for (const link of await links.all()) {
+    await expect(link).toHaveAttribute('href', ownURL);
+    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  }
+  const opened = page.waitForEvent('popup');
+  await links.first().click();
+  const popup = await opened;
+  try {
+    await popup.waitForLoadState('domcontentloaded');
+    expect(popup.url()).toBe(ownURL);
+    expect(await popup.evaluate(() => window.opener === null)).toBe(true);
+  } finally { await popup.close(); }
+  expect(await page.evaluate(() => 'leaked' in window)).toBe(false);
   await expect(dialog.getByRole('region', { name: '前置依赖', exact: true }).getByRole('button', { name: a.title, exact: true })).toBeVisible();
   const unknownReference = dialog.getByRole('region', { name: '前置依赖', exact: true }).getByRole('button', { name: unknown.id, exact: true });
   await expect(unknownReference).toBeVisible();
   await expect(dialog.getByRole('region', { name: '任务图快照中的直接后续', exact: true }).getByRole('button', { name: c.title, exact: true })).toBeVisible();
   await dialog.getByRole('region', { name: '任务图快照中的直接后续', exact: true }).getByRole('button', { name: c.title, exact: true }).click();
   await expect(dialog.locator('.drawer-title')).toHaveText(c.title);
+  await checkPullRequests(dialog, []);
+  await expect(dialog.getByText('暂无关联 PR', { exact: true })).toBeVisible();
   await dialog.getByRole('region', { name: '前置依赖', exact: true }).getByRole('button', { name: `${Array.from(title).slice(0, 160).join('')}…`, exact: true }).click();
   await expect(dialog.locator('.drawer-title')).toHaveText(title);
   await dialog.getByRole('region', { name: '前置依赖', exact: true }).getByRole('button', { name: unknown.id, exact: true }).click();
@@ -388,6 +436,16 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   await expect(dialog.locator('.drawer-title')).toHaveText(dependent.title);
   await expect(dialog.locator('.drawer-stale')).toHaveCount(0);
   await expect(node(page, dependent.id).locator('.graph-blocked-badge')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  const pullRequests = [{ title: '刷新后读取的新关联', url: '  new arbitrary URL\0  ' }];
+  const changed = await updateTask(request, project.id, dependent.id, { version: current.version, properties: { pullRequests } });
+  expect(changed.properties.pullRequests).toEqual(pullRequests);
+  await node(page, dependent.id).click();
+  await checkPullRequests(dialog, pullRequests);
+  await expect(dialog.locator('.drawer-stale')).toBeVisible();
+  await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
+  await checkPullRequests(dialog, pullRequests);
+  await expect(dialog.locator('.drawer-stale')).toHaveCount(0);
   await screenshot(page, info, 'refresh-staleness');
 });
 
@@ -523,7 +581,9 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   const project = await createProject(request, { name: `Keyboard ${randomUUID()}` });
   const a = await createTask(request, project.id, { title: '键盘前置任务' });
   await updateTask(request, project.id, a.id, { version: a.version, status: 'done' });
-  const b = await createTask(request, project.id, { title: '键盘选择任务', dependsOn: [a.id] });
+  const b = await createTask(request, project.id, { title: '键盘选择任务', dependsOn: [a.id], properties: {
+    pullRequests: [{ title: '键盘可访问的 PR', url: 'https://example.com/pull/123' }],
+  } });
   const c = await createTask(request, project.id, { title: '键盘后续任务', dependsOn: [b.id] });
   await openProject(page, project.id, project.name);
   const trigger = node(page, b.id);
@@ -539,6 +599,10 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   expect(detailReads).toBe(1);
   await expect(close).toBeFocused();
   await expect(page.locator('#root')).toHaveAttribute('inert', '');
+  await page.keyboard.press('Tab');
+  await expect(dialog.getByRole('link', { name: b.properties.pullRequests[0]!.url, exact: true })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(close).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(dialog.getByRole('region', { name: '任务图快照中的直接后续', exact: true }).getByRole('button', { name: c.title, exact: true })).toBeFocused();
   await page.keyboard.press('Tab');
@@ -604,7 +668,12 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
 
 test('narrow-layout', scenario('narrow-layout'), async ({ page, request }, info) => {
   const project = await createProject(request, { name: `窄屏项目 ${'很长的项目名称😀'.repeat(12)}` });
-  const a = await createTask(request, project.id, { title: `窄屏根 ${'很长的任务标题😀'.repeat(30)}`, description: '长描述 <img src=x>\n'.repeat(40) });
+  const pullRequests = [
+    { title: '  多行标题\n第二行\t\0  ', url: `https://example.com/${'long-path-'.repeat(500)}` },
+    { title: '很长的 PR 标题😀'.repeat(150), url: '   '.repeat(500) },
+    { title: '', url: '' },
+  ];
+  const a = await createTask(request, project.id, { title: `窄屏根 ${'很长的任务标题😀'.repeat(30)}`, description: '长描述 <img src=x>\n'.repeat(40), properties: { pullRequests } });
   await createTask(request, project.id, { title: '后续任务', dependsOn: [a.id] });
   await page.setViewportSize({ width: 320, height: 800 });
   await openProject(page, project.id, project.name);
@@ -617,6 +686,7 @@ test('narrow-layout', scenario('narrow-layout'), async ({ page, request }, info)
   const dialog = page.getByRole('dialog', { name: '任务详情' });
   await expect(dialog.locator('.drawer-title')).toHaveText(a.title);
   await expect(dialog.locator('.drawer-description').first()).toHaveText(a.description);
+  await checkPullRequests(dialog, pullRequests);
   for (const width of [320, 768, 1280, 320]) {
     await page.setViewportSize({ width, height: 800 });
     await expect.poll(async () => {
@@ -624,6 +694,7 @@ test('narrow-layout', scenario('narrow-layout'), async ({ page, request }, info)
       return bounds !== null && bounds.x >= -0.5 && bounds.x + bounds.width <= width + 0.5 && bounds.y >= -0.5 && bounds.height <= 800.5;
     }).toBe(true);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(await dialog.locator('.drawer-body').evaluate((body) => body.scrollWidth <= body.clientWidth)).toBe(true);
   }
   await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
   await screenshot(page, info, 'narrow-layout');
