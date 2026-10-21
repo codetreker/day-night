@@ -32,15 +32,21 @@ func testEnvironment(t *testing.T) map[string]string {
 
 func testStorageRoot(t *testing.T) string {
 	t.Helper()
-	root, err := os.MkdirTemp(filepath.Dir(binaryAcceptance.path), "process-storage-")
-	if err != nil {
-		t.Fatal(err)
-	}
+	root := newTestStorageRoot(t)
 	t.Cleanup(func() {
 		if err := os.RemoveAll(root); err != nil {
 			t.Error(err)
 		}
 	})
+	return root
+}
+
+func newTestStorageRoot(t *testing.T) string {
+	t.Helper()
+	root, err := os.MkdirTemp(filepath.Dir(binaryAcceptance.path), "process-storage-")
+	if err != nil {
+		t.Fatal(err)
+	}
 	return root
 }
 
