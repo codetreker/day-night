@@ -1,6 +1,6 @@
 # Task 预定义属性实施任务
 
-状态：TP-T1 服务端实现已完成；TP-T2 CLI 与 TP-T3 网页待实施。
+状态：TP-T1 服务端与 TP-T2 CLI 已实现；TP-T3 网页待实施。
 [需求](../spec/daynight-task-properties.md)拥有 TP1–TP9 与 TP-V1–TP-V8，
 [架构设计](daynight-task-properties.md)拥有类型、事务、存储、CLI 和网页机制，
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-task-properties-design.md)
@@ -10,8 +10,8 @@
 
 | 任务 | 前置 | 交付目的 | 状态 |
 |---|---|---|---|
-| TP-T1 | 无 | 服务端持久化与发布预定义 PR 属性 | 已实现；验证结果随对应源码与 CI 保存 |
-| TP-T2 | TP-T1 | CLI 创建、替换、清空与显示关联 PR | 待实施 |
+| TP-T1 | 无 | 服务端持久化与发布预定义 PR 属性 | 已交付：[PR #83](https://github.com/codetreker/daynight/pull/83)，合并提交 `0cece99` |
+| TP-T2 | TP-T1 | CLI 创建、替换、清空与显示关联 PR | 已实现；验证结果随对应源码与 CI 保存 |
 | TP-T3 | TP-T1 | 网页详情呈现关联 PR | 待实施 |
 
 每个任务按一个目的形成可独立审查的改动，使用该任务自己的一个共享 worktree。
@@ -58,7 +58,8 @@ TP-T2 与 TP-T3 的依赖相同，可在 TP-T1 交付后分别推进。已打开
 1. TP-V1、TP-V3、TP-V6、TP-V8 的客户端路径成立；成对参数错误和互斥冲突在任何
    配置、Git 或网络 I/O 之前失败。
 2. 编译入口与安装产物对真实 Go/PostgreSQL 服务完成创建、替换、清空、冲突和
-   读回；HTTP fixture 另外验证 CLI 参数无法携带的控制字符响应及 JSON 原值。
+   读回；同一安装产物的 Node 入口验证 CR/LF 参数，原生 launcher 验证可表示的
+   成对参数及 HTTP 提供的完整原始字符串响应，覆盖 NUL 与终端控制字符。
 3. `pnpm typecheck`、`pnpm test`、`pnpm build` 及适用安装验收成功；帮助与
    Bash/zsh 补全通过既有实壳验证。按实施时主线版本满足现有 CLI 发布版本门禁。
 

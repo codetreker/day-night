@@ -65,8 +65,8 @@ The [task property requirements](docs/spec/daynight-task-properties.md),
 [implementation breakdown](docs/design/daynight-task-properties-tasks.md) and
 [interactive preview](docs/design/mockups/task-properties.html) define
 server-predefined task properties, starting with ordered PR references containing
-caller-provided URLs and titles. Server persistence, migration and HTTP operations
-are implemented; CLI editing/output and web presentation remain planned.
+caller-provided URLs and titles. Server persistence, migration, HTTP operations
+and CLI editing/output are implemented; web presentation remains planned.
 
 The server design covers repository-linked projects, project-scoped tasks,
 acyclic dependencies and dependency-gated task states through HTTP JSON APIs.

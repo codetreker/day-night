@@ -12,8 +12,8 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 有界 ready 选择见[选择决策](../../.agents/notes/implemented/feature/2026-10-21-bounded-ready-task-selection.md)。
 实现顺序与依赖见[交付任务](daynight-project-task-tasks.md)。
 
-[预定义属性设计](daynight-task-properties.md)的 server 接口已实现；CLI 的成对
-PR 引用参数与完整输出仍待实施。[需求](../spec/daynight-task-properties.md)和
+[预定义属性设计](daynight-task-properties.md)的 server 接口、CLI 成对 PR 引用
+参数与完整输出已实现。[需求](../spec/daynight-task-properties.md)和
 [实施任务](daynight-task-properties-tasks.md)拥有扩展约定及实施状态。
 
 ## 现有基础与交付边界
@@ -338,6 +338,12 @@ repo 许可、API、schema 和事务政策保持原样。原子唯一性需要�
 都写入空字符串；未出现描述选项仍省略字段。两种依赖
 标志同时出现、无修改字段、无效状态或版本属于参数错误，在任何 I/O 之前拒绝。
 
+可重复的 `--pull-request-url` 与 `--pull-request-title` 使用 `allowEmpty`，各自
+保留出现顺序，第 n 个 URL 对应第 n 个标题；次数必须相等，字符串不作内容校验。
+配对值写为 `properties.pullRequests` 完整替换数组；`--clear-pull-requests` 写
+空数组并与任一配对选项互斥。省略这些选项时不生成属性 patch，只有属性修改也
+满足 update 的修改字段要求。次数和互斥校验在任何 I/O 之前完成。
+
 默认 GET task 获得 version，再带该 version PATCH；两个请求之间发生并发更新时，
 服务返回 `version_conflict`。有 `--if-version` 时直接提交指定版本，不用 GET 的
 最新值替代。CLI 不重放 PATCH，不将旧版本冲突改成成功；语义无变化的响应也直接
@@ -367,8 +373,10 @@ Project 渲染由 `commands/project/rendering.ts` 拥有，与 API 数据分离�
 
 Task 的 `rendering.ts` 采用相同的完整标签块。任务包含 `ID`、`Project`、`Title`、
 `Description`、`Status`、完整十进制 `Version`、`Ready`、`Depends on`、`Blocked by`、
-`Created` 和 `Updated`；依赖/阻塞为空时显示 `none`，空 list 为 `No tasks.`，
-空 ready 为 `No ready tasks.`。ready 中每项仍为完整资源块。创建
+`Created` 和 `Updated`，以及关联 PR 数量、按顺序编号的 title/url；依赖/阻塞
+为空时显示 `none`，空 list 为 `No tasks.`，空 ready 为 `No ready tasks.`。ready
+中每项仍为完整资源块。PR 字符串只检查类型，保留空、重复、控制字符与原有顺序，
+可读输出继续使用 terminalText。创建
 和更新分别以 `Task created.`、`Task updated.` 表明服务确认结果。Graph 展示完整
 project、六个 summary 字段及全部节点；节点的 `titlePreview` 与 `titleTruncated`
 同时展示，保留状态、ready、依赖、阻塞和时间，不能把预览称为完整标题。所有字段
