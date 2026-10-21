@@ -57,8 +57,9 @@ are included in the npm package build under
 launchers and installs that bundle at the selected scope. The skill guides task recovery, dependency and observed-version updates, and
 completion only after required PRs are confirmed merged and acceptance passes.
 The design links implementation tasks tracked in the real Daynight project;
-their live status belongs to Daynight. Native Agent loading and automatic
-activation remain separate acceptance work.
+their live status belongs to Daynight. Native Agent loading and automatic activation use an opt-in
+[live acceptance suite](#live-agent-skill-acceptance), separate from the ordinary
+credential-free CI suites.
 
 The [task property requirements](docs/spec/daynight-task-properties.md),
 [design](docs/design/daynight-task-properties.md),
@@ -1180,6 +1181,54 @@ historical decision premises; explicit archives remain immutable. New or revised
 specifications and designs use Chinese headings and prose. Preserve technical
 literals. Other documents, skills, code, comments, and commit messages use
 English unless explicitly instructed otherwise. Discuss work in Chinese.
+
+## Live Agent skill acceptance
+
+The opt-in native suite exercises the packaged public skill with actual Codex,
+Copilot CLI and Claude Code on Linux, for User and Project installation scopes.
+It requires Docker, Python 3, authenticated GitHub CLI, the native hosts on PATH
+and their configured model-provider credentials. It invokes real models. Run it
+only with authorized delivery PRs: one still open and one already merged.
+
+```bash
+DAYNIGHT_NATIVE_OPEN_PR=https://github.com/owner/repository/pull/123 \
+DAYNIGHT_NATIVE_MERGED_PR=https://github.com/owner/repository/pull/122 \
+pnpm --filter @codetreker/daynight skill:acceptance
+```
+
+`DAYNIGHT_NATIVE_HOST=codex|copilot|claude` and
+`DAYNIGHT_NATIVE_SCOPE=user|project` select a case for diagnosis. A selected-case
+receipt proves only that selection; the full six-case matrix is the workflow
+acceptance. Ordinary `pnpm test` and `pnpm acceptance` do not run live models.
+
+The suite packs and installs the actual CLI, installs the bundle through the
+interactive command into isolated homes or fresh linked worktrees, and starts
+an owned Go/PostgreSQL service. A normal development prompt names neither the
+skill nor its path. Native successful content delivery must match the installed
+bundle; an inventory entry or a failed load request is insufficient. Forwarding
+wrappers record real CLI, test and read-only GitHub results without replacing
+responses. The task exercise observes exact-version conflict recovery, blocked
+dependencies, an open PR retaining `in_progress`, and verified merged delivery
+allowing completion and successor readiness.
+
+Operator authentication remains read-only input to isolated host processes.
+The current adapters support command-backed Codex Responses-provider auth,
+Copilot's GitHub authentication and Claude's configured bearer-provider settings.
+They preserve the selected providers/models, keep credentials out of shell
+subprocesses and scan owned state for known secret values. Unsupported or missing
+authentication fails explicitly. No skill or auth cache is installed into a
+personal Agent profile. Containers, processes and fixtures belong to the run and
+must be removed even after failure. Host and subprocess owners enforce their
+own deadlines and finish teardown before returning; Vitest's non-cancelling
+outer timeouts are disabled for this opt-in suite.
+
+Receipts under `.tmp/native-agent-skill-<host>-<scope>-evidence.json` retain
+source/package/native versions, content hashes, relevant native events, real
+service observations and cleanup results. Match them to their source and selected
+cases. Linux live-model results do not replace native Windows/macOS installer
+terminal evidence. The
+[native workflow decision](.agents/notes/implemented/testing/2026-10-21-native-agent-skill-workflow.md)
+records these limits and proof requirements.
 
 ## CI selection
 

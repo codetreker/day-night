@@ -1,6 +1,6 @@
 {
   "name": "@codetreker/daynight",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "description": "A client command toolkit for development workflows",
   "repository": {
     "type": "git",
@@ -22,7 +22,8 @@
     "typecheck": "tsc --noEmit",
     "test": "pnpm run build && vitest run",
     "acceptance": "pnpm run build && vitest run --config vitest.acceptance.config.ts",
-    "completion:acceptance": "pnpm run build && python3 -u test/acceptance/shell-completion.py"
+    "completion:acceptance": "pnpm run build && python3 -u test/acceptance/shell-completion.py",
+    "skill:acceptance": "pnpm run build && vitest run --config vitest.skill-native.config.ts"
   },
   "dependencies": {
     "@inquirer/prompts": "8.7.4",

@@ -1,7 +1,7 @@
 # Daynight 项目任务 skill 与交互安装设计
 
-状态：公开 skill bundle 与交互安装器已实现；原生 Agent 加载及自动触发集成验收
-独立跟踪。任务完成以交付验收及对应 PR 合并为准。
+状态：公开 skill bundle、交互安装器、有界 ready 查询及独立的原生 Agent 验收机制已实现。
+具体运行结果以对应源码的验收 receipt 与交付 PR 为准。
 
 [需求](../spec/daynight-agent-skill.md)拥有安装、覆盖和任务管理的可观察行为，
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-public-agent-skill-design.md)
@@ -315,14 +315,38 @@ root/group/install help、setup 文本问题、信号监听清理和 completion
 回归均属于安装器验收。Windows 的交互和 `.cmd`检测需要真实 Windows 终端证据，
 POSIX PTY 结果不能代替。普通原生 CI 继续运行 typecheck、test、build、acceptance。
 
-Codex、Copilot CLI、Claude Code 各自的真实发现和行为验收在隔离配置中进行，不向
-操作者个人 Agent 目录安装。覆盖单 Agent、Codex + Copilot、Claude 与共享目录组合，
-以及项目范围内独立 `.agents` / `.claude`目录和已有根目录链接。记录实际 Agent 版本、
-bundle 来源、候选路径和加载内容。通过内容标记或真实命令操作证明加载，不能仅检查
-文件存在；普通开发请求的自动触发与显式调用分开记录，同时验证自动恢复上下文、
-遵守阻塞、版本冲突与结果未确认的处理。开发任务与设计/文档交付还需观察：PR 打开
-且 CI/review 已通过时仍为 in_progress、后继仍阻塞；确认必要 PR 已合并并满足验收后
-才更新 done，保存 PR/merge 引用并重新查询后继 readiness。
+原生宿主与真实服务组合验收位于 `packages/daynight/test/native/`，独立配置为
+`vitest.skill-native.config.ts`，通过 `pnpm --filter @codetreker/daynight skill:acceptance`
+显式运行。普通 `test` 和 `acceptance` 不执行真实模型。Linux 环境需要 Docker、Python 3、
+三个原生 CLI、GitHub 认证与宿主已有模型认证；User / Project scope 的六项组合逐项
+记录，定向运行仅证明所选项。运行方式与环境变量由 [README](../../README.md#live-agent-skill-acceptance) 拥有。
+
+组合验收打包并安装实际 npm CLI，经真实交互安装器把 bundle 安装到隔离 home 或新建
+linked worktree，重装验证旧文件移除和 sibling 保留。三个宿主均使用普通开发请求，
+不点名 Daynight、skill 或其路径；fixture README 可以正常声明项目使用的任务系统。
+宿主成功读取或实际送达的正文须与安装 bundle 内容匹配，发现列表、调用意图及失败
+读取均不能充当激活证据。Codex 使用 app-server 的成功 read 结果；Copilot 从隔离
+session 提取真正的 context delivery；Claude 关联成功的 Skill / Read 与完整送达内容。
+
+一个独立 Go/PostgreSQL 实例持有全部 fixture 项目。透明记录器转发真实 HTTP，CLI、
+Node 测试和受限只读 GitHub wrapper 只记录并转发实际执行，不提供伪造响应。普通开发
+任务使用有界 ready、show、create 与精确版本 update；竞争写入通过另一个真实 CLI
+请求发生，原更新如实收到 version_conflict，随后重读并保留并发验收条件。不可改写
+的验收测试及操作顺序共同证明执行和完成条件，不能仅比较最终状态。
+
+开发 fixture 的交付 PR 必须真实保持 OPEN，任何提前 done 尝试均使验收失败；依赖
+继续阻塞。另一项已交付验证使用平台实际 MERGED 的前置 PR，成功测试与平台读取
+均发生后才能完成，并保留准确 merge commit，再查询 ready 核对后继解锁。任务数据
+不授予 GitHub 写入、合并或部署权限。新 worktree 初始没有关联文件，首次实际查询
+必须发现并绑定正确项目。
+
+原生配置、home、日志、临时资源与数据库均为验收所有。读取操作者认证只用于保持
+所选 provider/model 的实际认证语义，不复制 auth cache。凭据经进程内存、受限 helper
+或 child-only env 传递，禁止进入 Agent shell；检查隔离状态未保存已知秘密后清理。
+子进程与后代、服务会话和唯一标签容器均须有界回收；执行、扫描和清理同时失败时
+保留全部原因。证据仅保留脱敏后的版本、内容来源、原生事件、命令与服务结果及
+清理状态，具体机制和替代方案见
+[原生组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-native-agent-skill-workflow.md)。
 
 发布要求包版本递增、当前提交的必需 CI 与独立审查通过。安装器和公开 skill 的完成
 状态依赖实现验收；设计演练不替代其原生加载证明。

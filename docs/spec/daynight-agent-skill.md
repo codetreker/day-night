@@ -1,10 +1,7 @@
 # Agent 项目任务管理 Skill 需求
 
-状态：公开 skill bundle、命令参考和交互安装器已实现；原生 Agent 加载与自动触发
-集成验收独立跟踪。任务完成以交付验收及对应 PR 合并为准。
-本文规定随 `@codetreker/daynight` npm 包发布的 `daynight` skill 及其安装命令；文中的命令和行为是交付要求。实现机制由
-[设计文档](../design/daynight-agent-skill.md)拥有，已有 project/task 命令、项目关联、
-版本与错误语义继续由[客户端需求](daynight-project-task.md)拥有。
+状态：公开 skill bundle、命令参考、交互安装器与原生组合验收机制已实现。
+各项行为是否通过以对应源码、宿主版本和 scope 的实际证据为准。
 
 该 skill 供 Codex、Copilot CLI、Claude Code 等 Agent 在开发期间主动使用 daynight
 查询、组织和维护项目任务。安装使 Agent 获得使用说明；项目关联决定任务管理的目标。
