@@ -22,6 +22,7 @@ const fixture = async (run: (value: { directory: string; receiptPath: string; re
   await writeFile(entryPath, `
     if(process.argv[2]==='bytes')process.stdout.write(Buffer.from([0,255,128,10]));
     else if(process.argv[2]==='missing'){process.stderr.write('not_found\\n');process.exitCode=1;}
+    else if(process.argv[2]==='colors'){const{WriteStream}=await import('node:tty');WriteStream.prototype.getColorDepth();process.stdout.write('color-safe\\n');}
     else {process.stdout.write(JSON.stringify({cwd:process.cwd(),home:process.env.HOME})+'\\n');}
   `);
   await writeFile(tarballPath, 'packed fixture');
@@ -118,5 +119,27 @@ test('an exclusive fixture root failure preserves a preexisting installation', a
     await assert.rejects(producer.createInstalledCli({ temporaryRoot: directory, rootDirectory: receipt.root }), { code: 'EEXIST' });
     assert.deepEqual(await readFile(receipt.entryPath), before);
     assert.equal(await readFile(receipt.tarballPath, 'utf8'), 'packed fixture');
+  });
+});
+
+test('captured CLI output disables inherited forced color without changing the parent environment', { skip: process.platform !== 'linux' }, async () => {
+  await fixture(async ({ directory }) => {
+    const previousForce = process.env.FORCE_COLOR;
+    const previousNoColor = process.env.NO_COLOR;
+    process.env.FORCE_COLOR = '1';
+    process.env.NO_COLOR = '1';
+    try {
+      const workspace = join(directory, 'native/functional/test-results/color-cli');
+      const cli = await createAcceptanceCli('http://127.0.0.1:12345', workspace);
+      const result = await cli.run(['colors']);
+      assert.equal(result.exitCode, 0);
+      assert.equal(result.stderr, '');
+      assert.equal(result.stdout, 'color-safe\n');
+      assert.equal(process.env.FORCE_COLOR, '1');
+      assert.equal(process.env.NO_COLOR, '1');
+    } finally {
+      if (previousForce === undefined) delete process.env.FORCE_COLOR; else process.env.FORCE_COLOR = previousForce;
+      if (previousNoColor === undefined) delete process.env.NO_COLOR; else process.env.NO_COLOR = previousNoColor;
+    }
   });
 });

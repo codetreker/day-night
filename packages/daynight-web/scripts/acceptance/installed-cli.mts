@@ -164,11 +164,13 @@ export const createAcceptanceCli = async (baseURL: string, directory: string) =>
   const execute = async (args: readonly string[]) => {
     let group: number | undefined;
     let original: unknown;
+    const env: NodeJS.ProcessEnv = { ...process.env, NO_COLOR: '1', HOME: home, USERPROFILE: home,
+      DAYNIGHT_ACCEPTANCE_RUN_DIRECTORY: runDirectory, DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT: receiptPath };
+    delete env.FORCE_COLOR;
     try {
       return await commandBytes(receipt.nodePath, [receipt.entryPath, ...args], {
         cwd, timeoutMs: 60_000,
-        env: { ...process.env, HOME: home, USERPROFILE: home, DAYNIGHT_ACCEPTANCE_RUN_DIRECTORY: runDirectory,
-          DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT: receiptPath },
+        env,
         onSpawn: (child) => { group = child.pid; return recordCliProcess(runDirectory, receiptPath, child); },
       });
     } catch (cause) { original = cause; throw cause; }
