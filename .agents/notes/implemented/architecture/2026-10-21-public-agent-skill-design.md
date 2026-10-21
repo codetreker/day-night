@@ -15,8 +15,10 @@ user installation flow for general-purpose agents.
 The adopted [requirements](../../../../docs/spec/daynight-agent-skill.md) and
 [design](../../../../docs/design/daynight-agent-skill.md) define one portable
 `daynight` skill in the npm package and an interactive `daynight skill install`
-command. The design is delivered; the public bundle and installer remain planned
-implementation work, tracked as dependent tasks in the real Daynight project.
+command. Document preparation and review do not complete the tracked design
+task: its PR must be confirmed merged and its acceptance criteria satisfied.
+The public bundle and installer remain planned implementation work, tracked as
+dependent tasks in the real Daynight project.
 
 The installer detects Codex, Copilot CLI and Claude Code launchers, asks which
 agents to install for, then asks for user or project scope. It replaces the whole
@@ -33,6 +35,13 @@ including fresh worktrees. It preserves user authority, uses observed task
 versions for decisions based on read data, and treats readiness as a dependency
 result without claiming ownership. Existing CLI and service contracts remain the
 authority for state transitions and uncertain writes.
+
+Development tasks and PR-delivered design/documentation tasks remain
+`in_progress` while a required PR is open, even after code, review or CI succeeds.
+Completion requires platform-confirmed merge of all required delivery PRs and
+satisfied acceptance, with PR and merge-commit references retained.
+Non-development tasks with no repository PR deliverable use their explicit
+acceptance criteria; the completion gate grants no merge authority.
 
 The [bundled review decision](2026-10-20-bundled-review-skill.md) continues to own
 review snapshots and Copilot invocation. Its original narrow runtime scope does
@@ -86,6 +95,7 @@ transactions, rollback, automatic npm-to-skill synchronization and edit merging.
 
 Daynight stores the design task and dependent implementation tasks. Repository
 documents own requirements, mechanism and rationale; they do not mirror live task
-status. The design exercise proves current task creation and dependency gating,
-not native loading of an unimplemented public skill. Implementation readiness
-does not itself grant authorization to execute that work.
+status. The task exercise proves current task creation and dependency gating,
+not native loading of an unimplemented public skill. An open design PR keeps
+the design task in progress and its implementation successors blocked.
+Implementation readiness does not itself grant authorization to execute that work.
