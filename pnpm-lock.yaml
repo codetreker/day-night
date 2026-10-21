@@ -11,6 +11,9 @@ patchedDependencies:
   '@xyflow/system@0.0.83':
     hash: 5bb2dbf7a659c5abc2776087ca263fb707abfe3da27393fca9bbe56e7429d343
     path: patches/@xyflow__system@0.0.83.patch
+  node-pty@1.1.0:
+    hash: fafbe015bc6c5527a2279c7ef62bda81d72c7b5cf7514a00acae75a85e647773
+    path: patches/node-pty@1.1.0.patch
 
 importers:
 
@@ -57,7 +60,7 @@ importers:
         version: 3.0.4
       node-pty:
         specifier: 1.1.0
-        version: 1.1.0
+        version: 1.1.0(patch_hash=fafbe015bc6c5527a2279c7ef62bda81d72c7b5cf7514a00acae75a85e647773)
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -2084,7 +2087,7 @@ snapshots:
 
   node-addon-api@8.9.2: {}
 
-  node-pty@1.1.0:
+  node-pty@1.1.0(patch_hash=fafbe015bc6c5527a2279c7ef62bda81d72c7b5cf7514a00acae75a85e647773):
     dependencies:
       node-addon-api: 7.1.1
 

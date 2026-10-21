@@ -296,7 +296,9 @@ user/project 目录，检验整目录覆盖会移除旧文件、保留 sibling s
 PTY 内的 Node bridge 启动实际安装 launcher，stdin 与 stderr 继承终端，stdout 单独
 指向结果文件，分别证明生产 `isTTY`条件、界面输出和结果输出。发送 Space、方向键、
 Enter 与 Ctrl+C；`pty.kill()`只用于超时收尾，不能充当取消验证。版本受限的 pnpm
-`allowBuilds`仅允许该终端依赖构建，保留 SQLite 的现有禁止构建选择。依据及取舍见
+`allowBuilds`仅允许该终端依赖构建，保留 SQLite 的现有禁止构建选择；版本固定的
+pnpm mode-only 补丁修正稳定包中 Darwin helper 的可执行位，测试不自行修复依赖。
+依据及取舍见
 [原生终端验收决策](../../.agents/notes/implemented/testing/2026-10-21-native-skill-terminal-acceptance.md)。
 
 scope 提交后首次写入前的信号、stage 期间取消和新建空目录清理、非交互拒绝、

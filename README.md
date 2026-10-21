@@ -113,7 +113,8 @@ acceptance uses the development-only `node-pty` dependency, including Windows
 ConPTY. The workspace build policy permits only the pinned node-pty hook and
 keeps the existing SQLite build-hook suppression. Linux builds its native
 terminal addon with the available compiler/Python toolchain; macOS and Windows
-use the packaged prebuild when available. The
+use the packaged prebuild when available. A version-pinned pnpm patch restores
+missing Darwin helper executable bits in the stable terminal dependency. The
 [native terminal decision](.agents/notes/implemented/testing/2026-10-21-native-skill-terminal-acceptance.md)
 records the test isolation and stream separation. `pnpm acceptance`
 separately packs and installs the CLI in a local consumer and requires package-

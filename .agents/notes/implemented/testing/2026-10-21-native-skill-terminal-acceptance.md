@@ -32,6 +32,16 @@ compiler and Python; published macOS/Windows prebuilds are used when available.
 Actual Node 24 native loading and terminal behavior remain validation gates;
 Node-API compatibility alone is not proof.
 
+The stable 1.1.0 tarball publishes both Darwin `spawn-helper` binaries with mode
+0644. Darwin's native spawn cannot execute them, so the maintained dependency is
+pinned with a mode-only pnpm patch restoring 0755 for arm64 and x64. This matches
+the upstream [publication correction](https://github.com/microsoft/node-pty/blob/d70a3252ca5337186130a8e4644ffe28b15cf640/publish.yml)
+and fixes the published artifact rather than adding test-time repair behavior.
+The [reported failure](https://github.com/microsoft/node-pty/issues/850) occurs
+before the CLI starts; it is not evidence that Inquirer or the installer failed.
+The patch can be removed only when the selected release contains executable
+helpers and unchanged native acceptance passes.
+
 The owning [skill design](../../../../docs/design/daynight-agent-skill.md)
 describes installation and acceptance. The
 [pinned node-pty manifest](https://github.com/microsoft/node-pty/blob/1def5774632305246fe21f0f69e23a664d6c5910/package.json)
@@ -53,6 +63,12 @@ adapter owns that platform work.
 **Use ordinary child pipes or skip Windows interaction.** These can test
 noninteractive errors but do not exercise the terminal contract or provide the
 required native cancellation proof.
+
+**Repair helper modes in each test or move to a prerelease.** Test-time repair
+would conceal an invalid installed dependency and couple every fixture to its
+packaging defect. A prerelease changes unrelated terminal behavior. The scoped
+mode-only patch carries the upstream artifact correction while preserving the
+selected stable implementation.
 
 **Depend on a runner-provided terminal CLI.** The runner image documents Python,
 PowerShell, .NET and Windows SDK tools, but does not guarantee a general PTY
