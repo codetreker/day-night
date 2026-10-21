@@ -19,7 +19,7 @@ const fixture = (projects: readonly Project[] = []) => {
     createProject: vi.fn<ApiClient["createProject"]>().mockResolvedValue(project),
     listProjects: vi.fn<ApiClient["listProjects"]>().mockResolvedValue(projects),
     getProject: vi.fn<ApiClient["getProject"]>().mockResolvedValue(project),
-    createTask: unavailable, getTask: unavailable, listTasks: unavailable, updateTask: unavailable, getTaskGraph: unavailable,
+    createTask: unavailable, getTask: unavailable, listTasks: unavailable, listReadyTasks: unavailable, updateTask: unavailable, getTaskGraph: unavailable,
   };
   const runServerCommand = vi.fn<ProjectCommandDependencies["runServerCommand"]>(async (current, command) => {
     const operation = createOperation();

@@ -36,7 +36,7 @@ and [task breakdown](docs/design/daynight-project-task-tasks.md) describe the
 confirmed behavior and implementation status. Shared YAML projections, the
 `serverUrl` configuration field, bounded HTTP client and repository discovery
 with ignored local bindings are implemented. `project create/list/show` manage
-remote projects through the configured server. Task create/list/show/update/graph
+remote projects through the configured server. Task create/list/ready/show/update/graph
 commands use explicit project selection or the current repository binding;
 installed real-service and resource-budget acceptance are implemented.
 [PR #55](https://github.com/codetreker/daynight/pull/55) records the original
@@ -493,6 +493,7 @@ daynight project show <project-id> [--json]
 daynight task
 daynight task create --title <title> [options]
 daynight task list [--status <status>] [--ready] [--json] [--project <project-id>]
+daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
 daynight task graph [--json] [--project <project-id>]
@@ -742,6 +743,8 @@ Task commands use the same `serverUrl` configuration as project commands:
 ```bash
 daynight task create --title "Implement sign-in" --description "Support OAuth"
 daynight task create --title "Build the sign-in page" --depends-on <task-id>
+daynight task ready
+daynight task ready --limit 5 --json
 daynight task list --ready
 daynight task list --status in_progress --json
 daynight task show <task-id> --json
@@ -762,7 +765,17 @@ server origin and repository identity, after ensuring `/.daynight/` is effective
 in the root `.gitignore`. A cached binding is verified against the server on each
 use and remains stable if another project later shares that repository.
 
-Creation starts in `todo`. The list status and ready filters combine with AND.
+Creation starts in `todo`. `task ready` selects up to 10 actionable tasks by
+default; `--limit <N>` accepts decimal integers from 1 through 100. It makes one
+task-list request with `ready=true` and the chosen limit, without fetching later
+pages. The service orders results by creation time and then task ID, both
+ascending. A ready task is `todo` with all direct dependencies `done`. This
+bounded selection supports choosing the next work without retrieving the whole
+project; `task graph` provides a dependency overview when needed. `task list`
+continues to read every matching page, including with `--ready`; its status and
+ready filters combine with AND. `task ready` accepts neither `--status` nor
+`--cursor`.
+
 Updates preserve omitted fields; an empty description clears it. Repeated
 `--depends-on` values replace the complete dependency set and retain input order
 and duplicates for server validation. `--clear-dependencies` clears that set and
@@ -779,8 +792,11 @@ inline assignment; `--path=value` and `--` remain invalid.
 
 Human results use complete labeled task blocks and graph nodes, including task
 state, dependencies, blocking and title-preview truncation flags. Queries support
-`--json`: lists return one complete array, details one resource, and graphs the
-complete API object. Versions remain JSON numbers with full int64 precision.
+`--json`: `list` returns every matching resource in one array, `ready` returns
+only its selected tasks as an array, details return one resource, and graphs
+return the complete API object. A ready result retains every task field; an
+empty human result is `No ready tasks.` and empty JSON is `[]`. Versions remain
+JSON numbers with full int64 precision.
 Local preparation fails before any task mutation; a lost write response is
 reported as unconfirmed. The [task record](docs/design/daynight-project-task-tasks.md)
 owns validation status. Installed CLI integration uses the real Go/PostgreSQL

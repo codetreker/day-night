@@ -7,10 +7,12 @@ private API calls or manually edit `.daynight/project.yml`.
 ## Project discovery and reads
 
 ```bash
-daynight task graph --json
-daynight task list --status in_progress --json
-daynight task list --status todo --ready --json
+daynight task ready --json
+daynight task ready --limit 20 --json
 daynight task show <task-id> --json
+daynight task list --status in_progress --json
+daynight task graph --json
+daynight task list --ready --json
 daynight project list --json
 daynight project show <project-id> --json
 ```
@@ -29,15 +31,27 @@ target; it applies to that invocation and bypasses repository binding discovery.
 Do not silently substitute a remembered project ID after discovery fails. Use
 project list/show to inspect candidates when an explicit selection is needed.
 
-Lists read every page and return a complete array. Filters combine with AND.
-`ready` means `todo` with every direct dependency done; it provides no ownership.
-The graph is one complete snapshot containing project metadata, summary, task
-IDs, title previews, status, readiness, and dependency/blocking IDs. It omits full
-descriptions and task versions, so show the selected tasks before acting.
+`task ready` returns the first N ready tasks in `createdAt`, then ID ascending
+order. `--limit` defaults to 10 and accepts decimal integers in 1–100. It requests
+one task page without following its cursor and returns a full-task array of at
+most N elements. It accepts `--project` and `--json`, with no status or cursor
+option. A result with N tasks can have more candidates beyond it. An empty array
+means no ready work was found, not that the project has no tasks. `ready` means
+`todo` with every direct dependency done; it provides no ownership or priority.
 
+Use ready for routine work selection and show for the selected task or a known
+task being resumed. When its identity is unknown, query in-progress work as
+needed. `task list`, including `task list --ready`, reads every page and returns
+a complete array; reserve it for a complete inventory. List filters combine
+with AND. Task counts are bounded by ready, but full titles/descriptions and
+project discovery can still produce substantial output or additional requests.
+
+Use the graph when an overall dependency view is needed. It is one complete
+snapshot containing project metadata, summary, task IDs, title previews, status,
+readiness, and dependency/blocking IDs. It omits full descriptions and versions.
 `graph_limit_exceeded` reports the service's 1,000-node / 5,000-edge bound; no
-partial graph is returned. Recover with the two filtered task lists above and
-show selected tasks. Other graph failures retain their own cause.
+partial graph is returned. Continue with bounded ready and selected task reads.
+Other graph failures retain their own cause.
 
 ## Create and update
 
@@ -56,7 +70,7 @@ daynight task update <task-id> --description= --if-version <observed-version>
 
 Create starts in `todo`. Create and update do **not** accept `--json`; their
 success output contains the confirmed resource, including its ID and version.
-Read it before planning the next mutation. Only list, show, and graph task
+Read it before planning the next mutation. Only ready, list, show, and graph task
 queries accept `--json`.
 
 An update must change at least one of title, description, status, or dependencies.
@@ -135,7 +149,7 @@ verify merge facts; do not assume a particular hosting service. Do not merge
 without the applicable authorization. Nondevelopment tasks with no PR delivery
 path use their explicit acceptance criteria.
 
-After the service confirms `done`, query `daynight task graph --json` or
-`daynight task list --status todo --ready --json` to inspect newly available
-successors. Pending or unconfirmed completion must not be presented as having
+After the service confirms `done`, query `daynight task ready --json` to inspect
+newly available successors. Query the graph when overall dependency context is
+needed. Pending or unconfirmed completion must not be presented as having
 unblocked a dependent task.

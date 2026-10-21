@@ -60,6 +60,7 @@ daynight project show <project-id> [--json]
 daynight task
 daynight task create --title <title> [options]
 daynight task list [--status <status>] [--ready] [--json] [--project <project-id>]
+daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
 daynight task graph [--json] [--project <project-id>]
@@ -104,7 +105,10 @@ daynight task graph [--json] [--project <project-id>]
 `--repo` 的创建才加载 Git 发现当前 worktree 的有效 `origin`。所有 project 操作
 均不读取或改写仓库本地关联、不写 ignore 规则。创建在完整分页比较仓库身份后，
 仅无匹配时提交；唯一匹配成功返回既有 project，多匹配及查询失败均拒绝创建。
-共享执行层在单个操作下处理信号、期限和完整结果输出。`task` 显式指定 project
+共享执行层在单个操作下处理信号、期限和完整结果输出。`task ready` 默认选择前
+10 个 ready task，`--limit <N>` 接受十进制整数 `1..100`；它只请求一页，不遍历
+后续 cursor。`task list` 继续读取全部匹配页。`ready` 的参数、服务排序及响应校验
+由[project/task 需求](daynight-project-task.md#pt7-task-命令与更新语义)拥有。`task` 显式指定 project
 时只需要 server 配置和 HTTP；自动选择时才加载 Git 与仓库关联模块。任务写入必须晚于本地
 关联准备成功，完整行为由[project/task 需求](daynight-project-task.md)定义。
 客户端的命令和源码结构调整不改变 review 配置与状态的现有格式和位置，不迁移、

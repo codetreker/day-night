@@ -22,7 +22,7 @@ const fixture = (operation = createOperation()) => {
     createProject: vi.fn<ApiClient["createProject"]>(), listProjects: vi.fn<ApiClient["listProjects"]>(),
     getProject: vi.fn<ApiClient["getProject"]>().mockResolvedValue(project),
     createTask: vi.fn<ApiClient["createTask"]>().mockResolvedValue(task), getTask: vi.fn<ApiClient["getTask"]>().mockResolvedValue(task),
-    listTasks: vi.fn<ApiClient["listTasks"]>().mockResolvedValue([task]), updateTask: vi.fn<ApiClient["updateTask"]>().mockResolvedValue(task),
+    listTasks: vi.fn<ApiClient["listTasks"]>().mockResolvedValue([task]), listReadyTasks: vi.fn<ApiClient["listReadyTasks"]>().mockResolvedValue([task]), updateTask: vi.fn<ApiClient["updateTask"]>().mockResolvedValue(task),
     getTaskGraph: vi.fn<ApiClient["getTaskGraph"]>().mockResolvedValue(graph),
   };
   const context = {
@@ -40,7 +40,7 @@ const fixture = (operation = createOperation()) => {
 };
 
 describe("task parameter boundaries", () => {
-  it.each([[], ["--help"], ["create", "--help"], ["list", "--help"], ["show", "--help"], ["update", "--help"], ["graph", "--help"]].map((args) => ({ args })))("renders help without business dependencies: $args", async ({ args }) => {
+  it.each([[], ["--help"], ["create", "--help"], ["list", "--help"], ["ready", "--help"], ["show", "--help"], ["update", "--help"], ["graph", "--help"]].map((args) => ({ args })))("renders help without business dependencies: $args", async ({ args }) => {
     const f = fixture();
     await runTaskCommand(args, f.context, f.dependencies);
     expect(f.context.stdout).toHaveBeenCalledOnce();
@@ -58,6 +58,8 @@ describe("task parameter boundaries", () => {
     ["update", taskId, "--title", "\u2003"], ["update", taskId, "--status", "done", "--if-version", "9223372036854775808"],
     ["update", taskId, "--status", "done", "--if-version", "1.5"], ["update", taskId, "--depends-on", dependencyId, "--clear-dependencies"],
     ["graph", "--ready"], ["create", "--title", "Title", "--json"], ["list", "--ready", "--ready"],
+    ...["0", "101", "-1", "+1", "1.5", "1e1", " 1", "1 ", "Infinity", "99999999999999999999999999999", ""].map((value) => ["ready", `--limit=${value}`]),
+    ["ready", "--status", "todo"], ["ready", "--cursor", "next"], ["ready", "--limit", "1", "--limit", "2"],
   ].map((args) => ({ args })))("rejects invalid parameters before runtime or local preparation: $args", async ({ args }) => {
     const f = fixture();
     await expect(runTaskCommand(args, f.context, f.dependencies)).rejects.toBeInstanceOf(UsageError);
@@ -66,7 +68,7 @@ describe("task parameter boundaries", () => {
     expect(f.context.stdout).not.toHaveBeenCalled();
   });
 
-  it.each(["create", "list", "show", "update", "graph"])("uses explicit project for %s without consulting cwd or repository resolution", async (command) => {
+  it.each(["create", "list", "ready", "show", "update", "graph"])("uses explicit project for %s without consulting cwd or repository resolution", async (command) => {
     const f = fixture();
     f.context.workingDirectory.mockImplementation(() => { throw new Error("Explicit project must not read cwd"); });
     const base = command === "create" ? [command, "--title", "Title"] : command === "show" ? [command, taskId.toUpperCase()] : command === "update" ? [command, taskId.toUpperCase(), "--status", "done"] : [command];
@@ -75,9 +77,9 @@ describe("task parameter boundaries", () => {
     expect(f.dependencies.resolveProject).not.toHaveBeenCalled(); expect(f.context.workingDirectory).not.toHaveBeenCalled();
   });
 
-  it("uses the current repository resolver with the same API client and command operation", async () => {
+  it.each(["list", "ready"])("uses the current repository resolver with the same API client and command operation for %s", async (command) => {
     const f = fixture();
-    await runTaskCommand(["list"], f.context, f.dependencies);
+    await runTaskCommand([command], f.context, f.dependencies);
     expect(f.dependencies.resolveProject).toHaveBeenCalledExactlyOnceWith({ serverUrl: "http://localhost:8787", operation: f.operation, api: f.api, workingDirectory: path.resolve("caller") });
     expect(f.api.getProject).not.toHaveBeenCalled();
   });
@@ -103,6 +105,22 @@ describe("task request contracts", () => {
     const unfiltered = fixture();
     await runTaskCommand(["list", "--project", projectId], unfiltered.context, unfiltered.dependencies);
     expect(unfiltered.api.listTasks).toHaveBeenCalledExactlyOnceWith(projectId, {});
+  });
+
+  it.each([{ args: [], limit: 10 }, { args: ["--limit", "1"], limit: 1 }, { args: ["--limit=100"], limit: 100 }, { args: ["--limit=002"], limit: 2 }])("requests a bounded ready page with limit $limit", async ({ args, limit }) => {
+    const f = fixture();
+    await runTaskCommand(["ready", ...args, "--project", projectId], f.context, f.dependencies);
+    expect(f.api.listReadyTasks).toHaveBeenCalledExactlyOnceWith(projectId, limit);
+    expect(f.api.listTasks).not.toHaveBeenCalled();
+    expect(f.context.stdout).toHaveBeenCalledExactlyOnceWith(renderTaskList([task]));
+  });
+
+  it("does not print ready results after operation cancellation", async () => {
+    const cancellation = new AbortController();
+    const f = fixture(createOperation({ signal: cancellation.signal }));
+    f.api.listReadyTasks.mockImplementation(async () => { cancellation.abort(); return [task]; });
+    await expect(runTaskCommand(["ready", "--project", projectId], f.context, f.dependencies)).rejects.toThrow("Operation cancelled");
+    expect(f.context.stdout).not.toHaveBeenCalled();
   });
 
   it("reads the task's exact current version before PATCH while preserving omitted fields", async () => {
@@ -172,13 +190,13 @@ describe("task output contracts", () => {
     for (const field of [`ID: ${taskId}`, `Project: ${projectId}`, `Title: ${task.title}`, `Description: ${task.description}`, `Status: ${task.status}`, `Version: ${task.version}`, "Ready: false", `Depends on: ${dependencyId}`, `Blocked by: ${dependencyId}`, `Created: ${time}`, `Updated: ${time}`]) expect(output).toContain(field);
   });
 
-  it.each(["list", "show", "graph"])("preserves complete %s JSON with numeric full-int64 versions", async (command) => {
+  it.each(["list", "ready", "show", "graph"])("preserves complete %s JSON with numeric full-int64 versions", async (command) => {
     const f = fixture();
     const base = command === "show" ? [command, taskId] : [command];
     await runTaskCommand([...base, "--json", "--project", projectId], f.context, f.dependencies);
     const output = f.context.stdout.mock.calls[0]![0];
     expect(output.endsWith("\n")).toBe(true);
-    expect(parseApiJson(output)).toEqual(command === "list" ? [task] : command === "graph" ? graph : task);
+    expect(parseApiJson(output)).toEqual(command === "list" || command === "ready" ? [task] : command === "graph" ? graph : task);
     if (command !== "graph") expect(output).toContain('"version":9007199254740993');
   });
 
@@ -207,6 +225,14 @@ describe("task output contracts", () => {
     expect(f.context.stdout).toHaveBeenLastCalledWith("No tasks.\n");
     await runTaskCommand(["graph", "--project", projectId], f.context, f.dependencies);
     expect(f.context.stdout.mock.calls[1]![0]).toContain("Total: 0"); expect(f.context.stdout.mock.calls[1]![0]).toMatch(/No tasks\.\n$/);
+  });
+
+  it("renders an empty ready selection in human and JSON output", async () => {
+    const f = fixture(); f.api.listReadyTasks.mockResolvedValue([]);
+    await runTaskCommand(["ready", "--project", projectId], f.context, f.dependencies);
+    expect(f.context.stdout).toHaveBeenLastCalledWith("No ready tasks.\n");
+    await runTaskCommand(["ready", "--json", "--project", projectId], f.context, f.dependencies);
+    expect(f.context.stdout).toHaveBeenLastCalledWith("[]\n");
   });
 
   it("renders full values in linear space despite an outlier title or description", () => {
