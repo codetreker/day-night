@@ -11,6 +11,7 @@ import (
 
 type Config struct {
 	DatabaseURL     string
+	StorageRoot     string
 	ListenAddress   string
 	StartupTimeout  time.Duration
 	ShutdownTimeout time.Duration
@@ -19,9 +20,11 @@ type Config struct {
 type ConfigurationError struct {
 	Field string
 	Rule  string
+	cause error
 }
 
 func (e *ConfigurationError) Error() string { return fmt.Sprintf("%s %s", e.Field, e.Rule) }
+func (e *ConfigurationError) Unwrap() error { return e.cause }
 
 func LoadConfig(getenv func(string) string) (Config, error) {
 	startupTimeout, err := loadTimeout(getenv, "DAYNIGHT_STARTUP_TIMEOUT")
@@ -38,6 +41,7 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 	}
 	config := Config{
 		DatabaseURL:     getenv("DAYNIGHT_DATABASE_URL"),
+		StorageRoot:     getenv("DAYNIGHT_STORAGE_ROOT"),
 		ListenAddress:   address,
 		StartupTimeout:  startupTimeout,
 		ShutdownTimeout: shutdownTimeout,
@@ -60,6 +64,9 @@ func loadTimeout(getenv func(string) string, field string) (time.Duration, error
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.DatabaseURL) == "" {
 		return &ConfigurationError{Field: "DAYNIGHT_DATABASE_URL", Rule: "is required"}
+	}
+	if strings.TrimSpace(c.StorageRoot) == "" {
+		return &ConfigurationError{Field: "DAYNIGHT_STORAGE_ROOT", Rule: "is required"}
 	}
 	host, port, err := net.SplitHostPort(c.ListenAddress)
 	if err != nil {

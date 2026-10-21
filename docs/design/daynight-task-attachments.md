@@ -1,6 +1,7 @@
 # Task 附件与通用文件存储设计
 
-状态：架构已采用；存储、数据库、HTTP、CLI、Web 与部署实现均待完成。
+状态：通用存储、本地实现及必填配置接入已实现；附件元数据、HTTP、CLI、Web 和
+持久卷仍待完成。各任务交付进度在 Daynight 中维护。
 
 行为要求由[附件需求](../spec/daynight-task-attachments.md)拥有；本文解释通用存储接口、
 附件元数据及各端集成机制。
@@ -65,7 +66,7 @@ flowchart TD
     Storage --> Local[LocalStorage]
 ```
 
-服务内新增通用文件存储包，建议位于 `internal/filestorage/`，本地实现在其
+服务内通用文件存储包位于 `internal/filestorage/`，本地实现在其
 `local/` 子包。该包不依赖 task、project、HTTP 或 PG。附件服务选择 bucket、组成
 逻辑路径，调用 Storage 并读写附件元数据；其他业务可以用自己的 bucket 复用它。
 
@@ -160,6 +161,9 @@ type Storage interface {
   提供通用 Stat、Scan 或版本操作。
 
 LocalStorage 在目标文件所在目录创建内部临时文件，流式写完并关闭后再替换目标。
+内部短锁只保护当前实例的目录准备、发布和删除，不覆盖内容流传输或 PG 操作。
+空内部目录可以在发布时让位于文件，非空目录和仍有上传临时文件的目录保持冲突；
+不提供共享根目录多进程写入的协调。
 替换前的普通写入失败或取消，清理本次调用拥有的临时文件并报告错误。用户可访问
 的路径不会指向正在写入的半个文件；内部临时名不属于附件路径或历史版本。
 
@@ -350,13 +354,17 @@ daynight task attachment remove <task-id> docs/design.md
 
 ## 配置、部署与备份
 
-服务新增必填 `DAYNIGHT_STORAGE_ROOT`，为 LocalStorage 指定明确的持久化根目录。
+服务使用必填 `DAYNIGHT_STORAGE_ROOT`，为 LocalStorage 指定明确的根目录。
+当前启动以 `local.New` 准备根目录，向工厂提供 `server.Dependencies{Store, Files}`，
+在监听前完成验证；后续启动失败与 HTTP 排空后均关闭已取得的文件根句柄。
 启动时校验配置并以服务用户准备所需目录；无法访问或创建时启动失败。引入该必填
 配置的同次交付必须更新所有现有服务启动调用方，包括 Compose、镜像目录权限、
 Web 验收启动器、Go 子进程测试及 CLI 真实服务验收，不能等待后续持久卷任务。
 物理目录不进入 API、PG 或 CLI 配置，所有客户端继续使用既有 `serverUrl`。
 
-localhost Compose 增加一个附件持久卷，挂载到该根目录。镜像内挂载点与卷初始化
+当前两套 Compose 已设置该变量，生产镜像已为 UID/GID `10001:10001` 准备可写
+目录；Go 启动与重启 fixture、Web native runner 使用其所属独立目录。
+A-T5 将为 localhost Compose 增加一个附件持久卷，挂载到该根目录。镜像内挂载点与卷初始化
 匹配服务 UID/GID `10001:10001`，由真实容器写入及重建验收证明可用。dev-ci 使用
 本次隔离 Compose 项目的附件卷，并在现有清理流程中删除；不使用开发环境持久卷。
 
@@ -368,7 +376,8 @@ localhost Compose 增加一个附件持久卷，挂载到该根目录。镜像�
 
 ## 实现验证
 
-以下是后续实现任务的验证要求，尚未执行或取得通过结果：
+通用存储、启动接入和 fixture 已有组件与真实服务检查；源绑定结果归属对应 PR 与
+CI。下列其他附件能力仍是后续任务的验证要求，不能由存储基础的通过结果代替：
 
 - Storage：bucket 隔离、真实相对路径、同路径完整覆盖、原始字节一致、实际大小、
   缺失与权限错误、取消、普通失败的临时文件清理及路径不能越出根目录。

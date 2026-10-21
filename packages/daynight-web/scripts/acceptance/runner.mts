@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -52,7 +52,7 @@ const createRunner = (cancellation: AbortController) => {
     commands: ProcessIdentity[]; commandGroups: number[]; error?: string;
   };
   type NativeEvidence = {
-    owner: string; postgresContainer: string; postgresVolume: string; binary: string; binarySha256?: string;
+    owner: string; postgresContainer: string; postgresVolume: string; binary: string; storageRoot: string; binarySha256?: string;
     processPid?: number; postgresImage: string; postgresImageId?: string; postgresVersion?: string; cleanup: 'pending' | 'passed' | 'failed';
     processIdentity?: ProcessIdentity;
   };
@@ -183,7 +183,9 @@ const createRunner = (cancellation: AbortController) => {
   const startServer = async (binary: string, databaseUrl: string, evidence: NativeEvidence, register: (child: ChildProcess) => void,
     persist: () => Promise<void>): Promise<{ child: ChildProcess; baseUrl: string }> => {
     cancellation.signal.throwIfAborted();
-    const child = spawn(binary, [], { cwd: serverRoot, env: { ...process.env, DAYNIGHT_DATABASE_URL: databaseUrl, DAYNIGHT_LISTEN_ADDR: '127.0.0.1:0' },
+    await mkdir(evidence.storageRoot, { recursive: true });
+    const child = spawn(binary, [], { cwd: serverRoot, env: { ...process.env, DAYNIGHT_DATABASE_URL: databaseUrl,
+      DAYNIGHT_LISTEN_ADDR: '127.0.0.1:0', DAYNIGHT_STORAGE_ROOT: evidence.storageRoot },
       stdio: ['ignore', 'ignore', 'pipe'] });
     register(child);
     if (child.pid !== undefined) evidence.processPid = child.pid;
@@ -273,6 +275,19 @@ const createRunner = (cancellation: AbortController) => {
     if (remaining !== '' || remainingVolumes !== '') throw new Error('Native acceptance resources remain.');
   };
 
+  const cleanupNativeStorage = async (native: NativeEvidence, runId: string): Promise<void> => {
+    const storageRoot = join(evidenceRoot, runId, 'native-storage');
+    if (!/^\d{14}-[a-f0-9-]{36}$/.test(runId) || native.storageRoot !== storageRoot
+      || native.binary !== join(evidenceRoot, runId, 'daynight-server')) {
+      throw new Error('Native storage ownership differs from its receipt.');
+    }
+    if (native.processIdentity !== undefined) await requireStopped(native.processIdentity);
+    else if (native.processPid !== undefined && await processIdentity(native.processPid) !== null) {
+      throw new Error('Native process lacks enough identity evidence for storage cleanup.');
+    }
+    await rm(storageRoot, { recursive: true, force: true });
+  };
+
   const validIdentity = (value: unknown): ProcessIdentity => {
     if (value === null || typeof value !== 'object') throw new Error('Missing recorded process identity.');
     const identity = value as ProcessIdentity;
@@ -303,7 +318,8 @@ const createRunner = (cancellation: AbortController) => {
     const owner = `daynight-web-${evidence.runId}`;
     const native = evidence.native;
     if (native.owner !== owner || native.postgresContainer !== `${owner}-postgres` || native.postgresVolume !== `${owner}-data`
-      || native.binary !== join(directory, 'daynight-server') || !/^[a-f0-9]{40}$/.test(evidence.source.gitSha)
+      || native.binary !== join(directory, 'daynight-server') || native.storageRoot !== join(directory, 'native-storage')
+      || !/^[a-f0-9]{40}$/.test(evidence.source.gitSha)
       || (process.env.GITHUB_SHA !== undefined && evidence.source.githubSha !== process.env.GITHUB_SHA)) {
       throw new Error('Recovery receipt does not identify this run resources and source.');
     }
@@ -372,6 +388,8 @@ const createRunner = (cancellation: AbortController) => {
       }
       await cleanupNative(native);
       receipt.nativeDocker = 'passed';
+      await cleanupNativeStorage(native, evidence.runId);
+      receipt.nativeStorage = 'passed';
       if (evidence.devCi?.runId !== undefined) {
         const runId = evidence.devCi.runId;
         if (!/^\d{14}-\d+-\d{5}$/.test(runId)) throw new Error('Invalid recorded dev-ci recovery run ID.');
@@ -403,7 +421,8 @@ const createRunner = (cancellation: AbortController) => {
     if (runner === null) throw new Error('Acceptance runner process identity disappeared.');
     const evidence: Evidence = { schemaVersion: 2, runId, source: await sourceIdentity(), startedAt: new Date().toISOString(),
       result: 'running', native: { owner, postgresContainer: `${owner}-postgres`, postgresVolume: `${owner}-data`,
-        binary: join(directory, 'daynight-server'), postgresImage, cleanup: 'pending' }, targets: [], stages: [], cleanup: 'pending', runner };
+        binary: join(directory, 'daynight-server'), storageRoot: join(directory, 'native-storage'),
+        postgresImage, cleanup: 'pending' }, targets: [], stages: [], cleanup: 'pending', runner };
     let evidenceWrites = Promise.resolve();
     const save = (): Promise<void> => {
       evidenceWrites = evidenceWrites.then(async () => {
@@ -621,9 +640,13 @@ const createRunner = (cancellation: AbortController) => {
         }
       }
       for (const target of evidence.targets) if (target.result === 'running') target.result = 'failed';
+      const beforeNativeCleanup = cleanupFailures.length;
       try { await stopServer(child); } catch (error) { cleanupFailures.push(error); }
-      try { await cleanupNative(evidence.native); evidence.native.cleanup = 'passed'; }
-      catch (error) { evidence.native.cleanup = 'failed'; cleanupFailures.push(error); }
+      try { await cleanupNativeStorage(evidence.native, runId); }
+      catch (error) { cleanupFailures.push(error); }
+      try { await cleanupNative(evidence.native); }
+      catch (error) { cleanupFailures.push(error); }
+      evidence.native.cleanup = cleanupFailures.length === beforeNativeCleanup ? 'passed' : 'failed';
       evidence.cleanup = cleanupFailures.length === 0 ? 'passed' : 'failed';
       if (cleanupFailures.length > 0) {
         evidence.result = 'failed';

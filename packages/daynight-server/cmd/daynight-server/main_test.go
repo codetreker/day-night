@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -26,7 +27,21 @@ func testEnvironment(t *testing.T) map[string]string {
 	if url == "" {
 		t.Fatal("DAYNIGHT_TEST_DATABASE_URL is required for PostgreSQL tests")
 	}
-	return map[string]string{"DAYNIGHT_DATABASE_URL": url, "DAYNIGHT_LISTEN_ADDR": "127.0.0.1:0"}
+	return map[string]string{"DAYNIGHT_DATABASE_URL": url, "DAYNIGHT_STORAGE_ROOT": testStorageRoot(t), "DAYNIGHT_LISTEN_ADDR": "127.0.0.1:0"}
+}
+
+func testStorageRoot(t *testing.T) string {
+	t.Helper()
+	root, err := os.MkdirTemp(filepath.Dir(binaryAcceptance.path), "process-storage-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(root); err != nil {
+			t.Error(err)
+		}
+	})
+	return root
 }
 
 func processAPIEnvironment(t *testing.T) map[string]string {
@@ -65,9 +80,9 @@ func processAPIEnvironment(t *testing.T) map[string]string {
 func TestRunStartupFailures(t *testing.T) {
 	for _, values := range []map[string]string{
 		{},
-		{"DAYNIGHT_DATABASE_URL": "postgres://user:top-secret@bad%host/db"},
-		{"DAYNIGHT_DATABASE_URL": "postgres://user:top-secret@127.0.0.1:1/db?connect_timeout=1"},
-		{"DAYNIGHT_DATABASE_URL": "postgres://top-secret", "DAYNIGHT_LISTEN_ADDR": "0.0.0.0:80"},
+		{"DAYNIGHT_DATABASE_URL": "postgres://user:top-secret@bad%host/db", "DAYNIGHT_STORAGE_ROOT": testStorageRoot(t)},
+		{"DAYNIGHT_DATABASE_URL": "postgres://user:top-secret@127.0.0.1:1/db?connect_timeout=1", "DAYNIGHT_STORAGE_ROOT": testStorageRoot(t)},
+		{"DAYNIGHT_DATABASE_URL": "postgres://top-secret", "DAYNIGHT_STORAGE_ROOT": testStorageRoot(t), "DAYNIGHT_LISTEN_ADDR": "0.0.0.0:80"},
 	} {
 		var output bytes.Buffer
 		if code := run(context.Background(), func(key string) string { return values[key] }, &output); code != 1 {
