@@ -30,6 +30,9 @@ importers:
       cross-spawn:
         specifier: 7.0.6
         version: 7.0.6
+      mime:
+        specifier: 4.1.1
+        version: 4.1.1
       read-cmd-shim:
         specifier: 6.0.0
         version: 6.0.0
@@ -1035,6 +1038,11 @@ packages:
 
   mdn-data@2.27.1:
     resolution: {integrity: sha512-9Yubnt3e8A0OKwxYSXyhLymGW4sCufcLG6VdiDdUGVkPhpqLxlvP5vl1983gQjJl3tqbrM731mjaZaP68AgosQ==}
+
+  mime@4.1.1:
+    resolution: {integrity: sha512-YAApRsTpM2+gnUFHhRNGfkX8NK0V5xj1nyQLufGlwEI+eX4xRsTcel2IXDuMEGSGjBvzykNW4VuoEACgwYe7BQ==}
+    engines: {node: '>=16'}
+    hasBin: true
 
   min-indent@1.0.1:
     resolution: {integrity: sha512-I9jwMn07Sy/IwOj3zVkVik2JTvgpaykDZEigL6Rx6N9LbMywwUSMtxET+7lVoDLLd3O3IXwJwvuuns8UB/HeAg==}
@@ -2076,6 +2084,8 @@ snapshots:
       source-map-js: 1.2.2
 
   mdn-data@2.27.1: {}
+
+  mime@4.1.1: {}
 
   min-indent@1.0.1: {}
 

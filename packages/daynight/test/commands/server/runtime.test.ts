@@ -30,7 +30,7 @@ const fixture = async (serverUrl = "http://127.0.0.1:8787"): Promise<CliContext 
   return {
     version: "0.0.0", packageDirectory: "unused", homeDirectory: () => home,
     workingDirectory: () => { throw new Error("Server runtime must not query cwd"); },
-    stdout: vi.fn<(text: string) => void>(), stderr: vi.fn<(text: string) => void>(),
+    stdoutBytes: vi.fn(async () => {}), stdout: vi.fn<(text: string) => void>(), stderr: vi.fn<(text: string) => void>(),
   };
 };
 
@@ -203,6 +203,60 @@ describe("shared server command runtime", () => {
     expect(added.mock.calls.map(([signal]) => signal)).toEqual(expectedSignals);
     expect(removed.mock.calls.map(([signal]) => signal)).toEqual(expectedSignals);
     expect(context.stdout).not.toHaveBeenCalled();
+    expectReleased(signals);
+  });
+});
+
+describe("binary server command lifetime", () => {
+  it("waits for raw output completion without a text write", async () => {
+    const context = await fixture();
+    const signals = new EventEmitter();
+    let flush: () => void = () => {};
+    let started: () => void = () => {};
+    const writing = new Promise<void>((resolve) => { started = resolve; });
+    const flushed = new Promise<void>((resolve) => { flush = resolve; });
+    let session: ServerSession | undefined;
+    const bytes = new Uint8Array([255, 0, 128]);
+    context.stdoutBytes = vi.fn(async (_chunk, signal) => { expect(signal.aborted).toBe(false); started(); await flushed; });
+    const pending = runServerCommand(context, async (current) => {
+      session = current;
+      await current.api.readTaskAttachment(projectId, "22222222-2222-2222-2222-222222222222", "file", context.stdoutBytes);
+    }, { signalEmitter: signals, fetch: vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(bytes)) });
+    await writing;
+    expect(session?.operation.signal.aborted).toBe(false);
+    expect(signals.listenerCount("SIGINT")).toBe(1);
+    flush();
+    await pending;
+    expect(context.stdoutBytes).toHaveBeenCalledWith(bytes, expect.any(AbortSignal));
+    expect(context.stdout).not.toHaveBeenCalled();
+    expect(() => session?.operation.check()).toThrow("disposed");
+    expectReleased(signals);
+  });
+});
+
+describe("binary output resource ownership", () => {
+  it("closes output before releasing operation cancellation and signal listeners", async () => {
+    const context = await fixture();
+    const signals = new EventEmitter();
+    let session: ServerSession | undefined;
+    context.closeStdoutBytes = vi.fn(async () => {
+      expect(session?.operation.signal.aborted).toBe(false);
+      expect(signals.listenerCount("SIGINT")).toBe(1);
+    });
+    await runServerCommand(context, async (current) => { session = current; }, { signalEmitter: signals });
+    expect(context.closeStdoutBytes).toHaveBeenCalledOnce();
+    expectReleased(signals);
+  });
+
+  it("retains the command failure when output shutdown also fails", async () => {
+    const context = await fixture();
+    const failure = new Error("Content read failed.");
+    const cleanup = new Error("Output helper shutdown failed.");
+    context.closeStdoutBytes = vi.fn(async () => { throw cleanup; });
+    const signals = new EventEmitter();
+    const result = await runServerCommand(context, async () => { throw failure; }, { signalEmitter: signals }).catch((cause: unknown) => cause);
+    expect(result).toBeInstanceOf(AggregateError);
+    expect((result as AggregateError).errors).toEqual([failure, cleanup]);
     expectReleased(signals);
   });
 });

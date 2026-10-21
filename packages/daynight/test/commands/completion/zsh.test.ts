@@ -4,6 +4,15 @@ import type { CommandDefinition } from "../../../src/cli/schema.js";
 import { renderZshCompletion } from "../../../src/commands/completion/zsh.js";
 
 describe("native zsh completion", () => {
+  it("registers attachment operations below the task command", () => {
+    const script = renderZshCompletion(commandTree);
+    expect(script).toContain("'attachment:Manage files attached to a task'");
+    expect(script).toContain("'put:Upload one local regular file, replacing the same attachment path'");
+    expect(script).toContain("'read:Write the attachment'\\''s original bytes to stdout'");
+    expect(script).toContain("(--tree)--tree[Display attachment paths as a directory tree]");
+    expect(script).toContain("(--path)--path=[Attachment relative path (default\\: source basename)]:relative-path:->text_value");
+  });
+
   it("registers the actual command grammar and descriptions with native helpers", () => {
     const script = renderZshCompletion(commandTree);
     expect(script).toContain("compdef _daynight 'daynight'\n");

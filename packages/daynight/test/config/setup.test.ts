@@ -24,7 +24,7 @@ const fixture = async (source?: string) => {
   const context: CliContext = {
     version: "0.0.0", packageDirectory: directory,
     homeDirectory: () => directory, workingDirectory: () => directory,
-    stdout: vi.fn(), stderr: vi.fn(),
+    stdoutBytes: vi.fn(async () => {}), stdout: vi.fn(), stderr: vi.fn(),
   };
   return { context, paths, directory };
 };

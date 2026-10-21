@@ -15,6 +15,7 @@ const context = (): CliContext & { output: string[]; errors: string[] } => {
     homeDirectory: () => { throw new Error("Completion must not inspect the home directory."); },
     workingDirectory: () => { throw new Error("Completion must not inspect the working directory."); },
     stdout: (text) => { output.push(text); },
+    stdoutBytes: async () => { throw new Error("Completion must not write binary output."); },
     stderr: (text) => { errors.push(text); },
     output,
     errors,
@@ -55,7 +56,8 @@ describe("completion command", () => {
     const dependencies = context();
     const error = await runCompletionCommand(args, dependencies).catch((error: unknown) => error);
     expect(error).toBeInstanceOf(UsageError);
-    expect((error as UsageError).helpCommand).toBe("daynight completion --help");
+    const selected = ["bash", "zsh", "setup"].includes(args[0]!) ? ` ${args[0]}` : "";
+    expect((error as UsageError).helpCommand).toBe(`daynight completion${selected} --help`);
     expect(dependencies.output).toEqual([]);
     expect(dependencies.errors).toEqual([]);
   });

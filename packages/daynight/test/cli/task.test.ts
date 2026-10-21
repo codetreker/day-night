@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
 import { parseApiJson, stringifyApiJson } from "../../src/api/json.js";
-import type { Project, Task, TaskGraph } from "../../src/api/types.js";
+import type { Project, Task, TaskAttachment, TaskGraph } from "../../src/api/types.js";
 
 const executable = fileURLToPath(new URL("../../dist/main.js", import.meta.url));
 const projectId = "a1b2c3d4-1111-4222-8333-123456789abc";
@@ -30,8 +30,8 @@ const blockedExplicit = ["/repository/", ...blockedReview];
 const respond = (response: ServerResponse, value: unknown, status = 200): void => { response.writeHead(status, { "Content-Type": "application/json" }); response.end(stringifyApiJson(value)); };
 const refuse = (response: ServerResponse, code: string, requestId: string, status: number, details?: unknown): void => respond(response, { error: { code, message: "Controlled task refusal.", requestId, ...(details === undefined ? {} : { details }) } }, status);
 
-type CapturedRequest = { method: string; pathname: string; query: URLSearchParams; bodyText: string; body: unknown };
-type Result = { code: number | null; stdout: string; stderr: string };
+type CapturedRequest = { method: string; pathname: string; query: URLSearchParams; bodyText: string; body: unknown; contentType: string | undefined; bytes: Buffer };
+type Result = { code: number | null; stdout: string; stdoutBytes: Buffer; stderr: string };
 type InvokeOptions = { blocked?: readonly string[]; cwd?: string; git?: boolean };
 
 const fixture = async () => {
@@ -62,16 +62,17 @@ registerHooks({ resolve(specifier, context, nextResolve) {
     });
     active.add(child);
     const result = new Promise<Result>((resolve, reject) => {
-      let stdout = "", stderr = "";
+      const output: Buffer[] = [];
+      let stderr = "";
       let failure: Error | undefined;
-      child.stdout.setEncoding("utf8"); child.stderr.setEncoding("utf8");
-      child.stdout.on("data", (value: string) => { stdout += value; });
+      child.stderr.setEncoding("utf8");
+      child.stdout.on("data", (value: Buffer) => { output.push(value); });
       child.stderr.on("data", (value: string) => { stderr += value; });
       child.once("error", (error) => { failure = error; });
       const timer = setTimeout(() => { failure = new Error("Compiled task command exceeded its test deadline."); child.kill("SIGKILL"); }, 20_000);
       child.once("close", (code) => {
         active.delete(child); clearTimeout(timer);
-        if (failure !== undefined) reject(failure); else resolve({ code, stdout, stderr });
+        if (failure !== undefined) reject(failure); else { const stdoutBytes = Buffer.concat(output); resolve({ code, stdout: stdoutBytes.toString("utf8"), stdoutBytes, stderr }); }
       });
     });
     return { child, result };
@@ -84,8 +85,10 @@ registerHooks({ resolve(specifier, context, nextResolve) {
       request.on("data", (chunk: Buffer) => { chunks.push(chunk); });
       request.on("end", () => {
         const url = new URL(request.url!, "http://localhost");
-        const bodyText = Buffer.concat(chunks).toString("utf8");
-        const captured = { method: request.method!, pathname: url.pathname, query: url.searchParams, bodyText, body: bodyText === "" ? null : parseApiJson(bodyText) };
+        const bytes = Buffer.concat(chunks);
+        const bodyText = bytes.toString("utf8");
+        const contentType = request.headers["content-type"];
+        const captured = { method: request.method!, pathname: url.pathname, query: url.searchParams, bodyText, body: bytes.length === 0 ? null : contentType?.startsWith("application/json") ? parseApiJson(bodyText) : bytes, contentType, bytes };
         requests.push(captured);
         if (captured.method === "GET" && captured.pathname === projectPath) respond(response, project);
         else handler(captured, response);
@@ -120,12 +123,147 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 
 const explicit = ["--project", projectId];
 
+const attachmentPath = `${taskPath}/${taskId}/attachments`;
+const attachment = (relativePath: string, bytes: Uint8Array, contentType = "application/octet-stream"): TaskAttachment => ({ path: relativePath, sizeBytes: bytes.byteLength, contentType, createdAt: time, updatedAt: time });
+
+describe("compiled task attachment commands", () => {
+  it("uploads one real file with encoded paths, overwrites it, lists complete metadata, and removes it", async () => {
+    const f = await fixture();
+    try {
+      const bytes = Buffer.from([0, 255, 128, 10, 13, 65]);
+      const file = path.join(f.caller, "source.bin");
+      await writeFile(file, bytes);
+      const relativePath = "资料%?#/renamed.html";
+      const encoded = relativePath.split("/").map(encodeURIComponent).join("/");
+      let writes = 0;
+      const metadata = attachment(relativePath, bytes, "text/html");
+      const other = attachment("docs/second.md", Buffer.from("second"), "text/markdown");
+      const { requests } = await f.serve((request, response) => {
+        if (request.method === "PUT") { writes++; respond(response, metadata, writes === 1 ? 201 : 200); }
+        else if (request.method === "DELETE") { response.writeHead(204); response.end(); }
+        else if (request.pathname === attachmentPath) respond(response, request.query.has("cursor") ? { items: [other], nextCursor: null } : { items: [metadata], nextCursor: "next page+/=?" });
+        else refuse(response, "not_found", "unexpected-attachment-route", 404);
+      });
+      for (const expectedWrites of [1, 2]) {
+        const result = await f.invoke(["attachment", "put", taskId.toUpperCase(), file, "--path", relativePath, ...explicit]);
+        expect(result.code, result.stderr).toBe(0);
+        expect(result.stdout).toContain(`Path: ${relativePath}`);
+        expect(writes).toBe(expectedWrites);
+        const request = requests.filter(({ method }) => method === "PUT").at(-1)!;
+        expect(request.pathname).toBe(`${attachmentPath}/files/${encoded}`);
+        expect(request.bytes).toEqual(bytes);
+        expect(request.contentType).toBe("text/html");
+      }
+      const listed = await f.invoke(["attachment", "list", taskId, "--json", ...explicit]);
+      expect(listed.code, listed.stderr).toBe(0);
+      expect(parseApiJson(listed.stdout)).toEqual([metadata, other]);
+      expect(requests.filter(({ pathname }) => pathname === attachmentPath).at(-1)!.query.get("cursor")).toBe("next page+/=?");
+      const tree = await f.invoke(["attachment", "list", taskId, "--tree", ...explicit]);
+      expect(tree.code, tree.stderr).toBe(0);
+      expect(tree.stdout).toBe("├── docs/\n│   └── second.md\n└── 资料%?#/\n    └── renamed.html\n");
+      const removed = await f.invoke(["attachment", "remove", taskId, relativePath, ...explicit]);
+      expect(removed.code, removed.stderr).toBe(0);
+      expect(removed.stdout).toBe("Attachment removed.\n");
+      expect(requests.at(-1)!.pathname).toBe(`${attachmentPath}/files/${encoded}`);
+    } finally { await f.close(); }
+  }, 60_000);
+
+  it("uses source basenames and rejects a source directory without network activity", async () => {
+    const f = await fixture();
+    try {
+      const { requests } = await f.serve((request, response) => respond(response, attachment("source.unknown-extension", request.bytes), 201));
+      const directory = await f.invoke(["attachment", "put", taskId, f.caller, ...explicit]);
+      expect(directory.code).toBe(2);
+      expect(directory.stdoutBytes).toHaveLength(0);
+      expect(directory.stderr).toContain("Attachment source must be a regular file.");
+      expect(requests).toHaveLength(0);
+      await writeFile(path.join(f.caller, "source.unknown-extension"), Buffer.alloc(0));
+      const uploaded = await f.invoke(["attachment", "put", taskId, "source.unknown-extension", ...explicit]);
+      expect(uploaded.code, uploaded.stderr).toBe(0);
+      expect(requests.at(-1)!.pathname).toBe(`${attachmentPath}/files/source.unknown-extension`);
+      expect(requests.at(-1)!.contentType).toBe("application/octet-stream");
+      expect(requests.at(-1)!.bytes).toHaveLength(0);
+    } finally { await f.close(); }
+  }, 60_000);
+
+  it("prints nothing when a later metadata page fails", async () => {
+    const f = await fixture();
+    try {
+      const { requests } = await f.serve((request, response) => request.query.has("cursor")
+        ? refuse(response, "internal_error", "attachment-page-two", 500)
+        : respond(response, { items: [attachment("first", Buffer.from("first"))], nextCursor: "page-two" }));
+      const result = await f.invoke(["attachment", "list", taskId, "--json", ...explicit]);
+      expect(result.code).toBe(1);
+      expect(result.stdoutBytes).toHaveLength(0);
+      expect(result.stderr).toContain("attachment-page-two");
+      expect(requests).toHaveLength(3);
+    } finally { await f.close(); }
+  }, 60_000);
+
+  it("preserves arbitrary binary and empty reads without an extra byte", async () => {
+    const f = await fixture();
+    try {
+      const bytes = Buffer.from([0, 255, 254, 192, 128, 13, 10]);
+      let current = bytes;
+      const { requests } = await f.serve((_request, response) => { response.writeHead(200, { "Content-Type": "application/octet-stream" }); response.end(current); });
+      const result = await f.invoke(["attachment", "read", taskId, ...explicit, "--", "-中文%?#.bin"]);
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.stdoutBytes).toEqual(bytes);
+      expect(result.stderr).toBe("");
+      expect(requests.at(-1)!.pathname).toBe(`${attachmentPath}/files/${encodeURIComponent("-中文%?#.bin")}`);
+      current = Buffer.alloc(0);
+      const empty = await f.invoke(["attachment", "read", taskId, "empty", ...explicit]);
+      expect(empty.code, empty.stderr).toBe(0);
+      expect(empty.stdoutBytes).toHaveLength(0);
+      expect(empty.stderr).toBe("");
+    } finally { await f.close(); }
+  }, 60_000);
+
+  it("returns a failure after a read is interrupted and preserves only the received prefix", async () => {
+    const f = await fixture();
+    try {
+      const prefix = Buffer.from([0, 255, 128, 65]);
+      await f.serve((_request, response) => {
+        response.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Length": "1024" });
+        response.write(prefix);
+        const timer = setTimeout(() => response.destroy(), 100);
+        response.once("close", () => clearTimeout(timer));
+      });
+      const result = await f.invoke(["attachment", "read", taskId, "broken.bin", ...explicit]);
+      expect(result.code).toBe(1);
+      expect(result.stdoutBytes).toEqual(prefix);
+      expect(result.stderr).toContain("attachment.read");
+      expect(result.stderr).toContain("[response]");
+    } finally { await f.close(); }
+  }, 60_000);
+
+  it("discovers the project from real Git and reuses the binding for attachment operations", async () => {
+    const f = await fixture();
+    try {
+      await f.initializeRepository(f.caller);
+      const { requests } = await f.serve((request, response) => {
+        if (request.pathname === "/api/v1/projects") respond(response, { items: [project], nextCursor: null });
+        else respond(response, { items: [attachment("docs/a.md", Buffer.alloc(0), "text/markdown")], nextCursor: null });
+      });
+      const options = { git: true, blocked: blockedReview };
+      const first = await f.invoke(["attachment", "list", taskId, "--json"], options);
+      expect(first.code, first.stderr).toBe(0);
+      expect(parseApiJson(first.stdout)).toEqual([attachment("docs/a.md", Buffer.alloc(0), "text/markdown")]);
+      expect(existsSync(path.join(f.caller, ".daynight/project.yml"))).toBe(true);
+      const before = requests.length;
+      const cached = await f.invoke(["attachment", "list", taskId, "--tree"], options);
+      expect(cached.code, cached.stderr).toBe(0);
+      expect(requests.slice(before).map(({ pathname }) => pathname)).toEqual([projectPath, attachmentPath]);
+    } finally { await f.close(); }
+  }, 60_000);
+});
+
 describe("compiled task commands", () => {
   it("keeps all operation help and malformed arguments independent of configuration and business imports", async () => {
     const f = await fixture();
     try {
       const helpBlocked = ["/api/", "/config/", "/repository/", "/commands/server/", "/commands/task/rendering.js", "better-sqlite3"];
-      for (const args of [[], ["--help"], ...["create", "list", "ready", "show", "update", "graph"].map((name) => [name, "--help"])]) {
+      for (const args of [[], ["--help"], ...["create", "list", "ready", "show", "update", "graph"].map((name) => [name, "--help"]), ["attachment"], ["attachment", "--help"], ...["put", "list", "read", "remove"].map((name) => ["attachment", name, "--help"])]) {
         const result = await f.invoke(args, { blocked: helpBlocked });
         expect(result.code, result.stderr).toBe(0);
         expect(result.stdout).toContain("Usage: daynight task");
@@ -143,6 +281,9 @@ describe("compiled task commands", () => {
         ["update", taskId, "--status", "done", "--if-version", "9223372036854775808"],
         ["show", "invalid"], ["list", "--project", "invalid"], ["list", "--ready", "false"], ["graph", "--unknown"],
         ["ready", "--limit", "0"], ["ready", "--limit", "101"], ["ready", "--limit=1e1"], ["ready", "--limit=1.5"], ["ready", "--limit=+1"], ["ready", "--status", "todo"],
+        ["attachment", "list", "invalid"], ["attachment", "list", taskId, "--tree", "--json"],
+        ["attachment", "put", taskId, "missing.txt", "--path", "../escape"],
+        ["attachment", "read", taskId, "/absolute"], ["attachment", "remove", taskId, "a//b"],
       ]) {
         const result = await f.invoke(args, { blocked: validationBlocked });
         expect(result.code, result.stderr).toBe(2);

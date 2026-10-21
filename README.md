@@ -10,7 +10,7 @@ the corresponding PR and CI evidence.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle and interactive Agent installation, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
+| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle and interactive Agent installation, shared configuration, server HTTP and repository binding foundations plus project, task and single-file attachment commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -19,11 +19,12 @@ The adopted [task attachment requirements](docs/spec/daynight-task-attachments.m
 [task breakdown](docs/design/daynight-task-attachments-tasks.md) define reusable
 bucket/path file storage, single-file task attachments, same-origin browser
 preview and binary CLI reads. Generic local storage and startup, attachment
-metadata and file/preview HTTP APIs, persistent deployment volumes and paired
-backup/restore are implemented. CLI commands and browser management remain
-pending. The [deployment guide](deployment/localhost/README.md#persistence-and-backup)
-owns data retention and backup commands. Filesystem/PostgreSQL non-atomicity
-remains a known issue; consistency remediation is outside that scope.
+metadata, file/preview HTTP APIs, CLI put/list/read/remove commands, persistent
+deployment volumes and paired backup/restore are implemented. Browser management
+remains pending. The
+[deployment guide](deployment/localhost/README.md#persistence-and-backup) owns data
+retention and backup commands. Filesystem/PostgreSQL non-atomicity remains a known
+issue; consistency remediation is outside that scope.
 
 The `@codetreker/daynight` package provides the `daynight` client. Its root entry
 lists commands and reports the package version; each command owns its business
@@ -519,6 +520,11 @@ daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
 daynight task graph [--json] [--project <project-id>]
+daynight task attachment
+daynight task attachment put <task-id> <file> [--path <relative-path>] [--project <project-id>]
+daynight task attachment list <task-id> [--tree | --json] [--project <project-id>]
+daynight task attachment read <task-id> <relative-path> [--project <project-id>]
+daynight task attachment remove <task-id> <relative-path> [--project <project-id>]
 ```
 
 Groups and operations show help when `--help` or `-h` is their sole argument.
@@ -810,7 +816,9 @@ Text options accept both separated values and `--option=value`. Inline assignmen
 splits at the first equals sign and supports leading dashes, such as
 `--title=-example`; `--description=` is the explicit empty form. Separated values
 starting with a dash are rejected. Directory options, switches and help reject
-inline assignment; `--path=value` and `--` remain invalid.
+inline assignment. Attachment `put` declares its `--path` as text, accepting
+`--path=value`; attachment `put/read/remove` also accept `--` before positional
+paths starting with a dash. Other task operations retain their declared syntax.
 
 Human results use complete labeled task blocks and graph nodes, including task
 state, dependencies, blocking and title-preview truncation flags. Queries support
@@ -826,6 +834,47 @@ service; deadline behavior uses short test-only budgets and byte probes retain
 the full production limits. [PR #55](https://github.com/codetreker/daynight/pull/55)
 records the original integration and real-default-budget validation, with its
 historical source identity.
+
+## Task attachments
+
+Attachment commands use the existing project selection and server configuration:
+
+```bash
+daynight task attachment put <task-id> ./design.md --path docs/design.md
+daynight task attachment put <task-id> ./mockup.html --path mockup/index.html
+daynight task attachment list <task-id> --tree
+daynight task attachment list <task-id> --json
+daynight task attachment read <task-id> docs/design.md
+daynight task attachment read <task-id> images/mockup.png > ./mockup.png
+daynight task attachment remove <task-id> docs/design.md
+```
+
+Each upload accepts one local regular file. Without `--path`, its basename is the
+target path; the same complete task-relative path is overwritten. Names preserve
+case and Unicode spelling, with `/` separators and no absolute or dot-segment
+paths. The content type comes from the target path's extension, even when it
+differs from the local filename; unknown extensions use
+`application/octet-stream`. Uploads and deletions affect one file at a time.
+
+`list` reads every page before emitting its complete metadata result. `--tree`
+and `--json` select mutually exclusive formats. `read` writes the original bytes
+without labels, decoding or an added newline. Diagnostics remain on stderr;
+a failed transfer can leave incomplete stdout and exits nonzero. File transfers
+stream with backpressure and retain the shared deadlines and cancellation;
+metadata JSON keeps its existing byte budgets. Use `--` for a dash-prefixed
+positional path, for example:
+
+```bash
+daynight task attachment put --project <project-id> <task-id> -- -design.md
+daynight task attachment read --project <project-id> <task-id> -- -design.md
+```
+
+Failed writes are not retried. File storage and PostgreSQL metadata are not
+atomic; an unsuccessful operation may already have changed storage. The
+[attachment requirements](docs/spec/daynight-task-attachments.md) define this
+known issue and the trusted same-origin preview model. The
+[CLI delivery decision](.agents/notes/implemented/feature/2026-10-21-task-attachment-cli.md)
+records binary transport and output ownership.
 
 ## Review configuration and startup
 
