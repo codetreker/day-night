@@ -10,7 +10,8 @@ also occupy the same list as unfinished work, but a completed root can still
 have unfinished descendants. Ordering and visibility control the initially
 expanded graph and its replacement; inconsistent choices would open a different
 chain from the first visible row. Database creation timestamps can distinguish
-tasks within one JavaScript millisecond.
+tasks within one JavaScript millisecond. Generous row padding also limits how
+much work fits in one viewport, especially with long titles.
 
 ## Decision
 
@@ -43,6 +44,13 @@ request and does not change dependency direction or layout. A detail remains
 open when its graph disappears but the task still exists; closing restores a
 surviving trigger, current visible expanded root or page heading.
 
+Collapsed root buttons use a 62px minimum height, compact padding and 7px list
+gaps. Single-line bordered rows are about 64px; long titles grow naturally.
+Titles retain 13px desktop and 12px narrow-screen text, with metadata and status
+at 11px/10px. The progress area narrows with the viewport. Native row actions,
+focus outlines and complete status/progress remain present. Task-node and canvas
+geometry keep their existing dimensions.
+
 ## Alternatives
 
 **Change the graph API to descending order.** The API already serves a stable
@@ -62,9 +70,19 @@ list and distinguishes root state from chain completion.
 and changes the meaning of shared and external dependencies. Hiding only whole
 completed chains keeps every visible graph's complete dependency context.
 
+**Shrink text to fit more rows.** Most excess height came from padding and
+spacing. Reducing that space keeps title sizes and permits larger metadata and
+status text while increasing list density.
+
+**Use a fixed row height.** That creates a hard ceiling for long Chinese or
+English titles and progress labels. A minimum height gives short rows a compact
+floor while allowing content to grow without clipping.
+
 ## Consequences
 
-Recent unfinished chains appear first while historical completed work remains
+Compact rows expose more work in the same viewport while retaining readable
+content and a full-row click target. Recent unfinished chains appear first while
+historical completed work remains
 one explicit control away. Presentation arrays are bounded by the project node
 limit; completed-chain classification uses the existing per-root progress and
 never duplicates graph nodes or changes project totals. Visibility and expansion
