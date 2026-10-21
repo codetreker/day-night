@@ -50,7 +50,7 @@ beforeEach(() => {
   graphRequest.mockReset();
   detailRequest.mockReset();
   detailRequest.mockImplementation(async (project, id) => ({
-    id, projectId: project, title: '所选任务详情', description: '', status: 'done',
+    id, projectId: project, title: '所选任务详情', description: '', properties: { pullRequests: [] }, status: 'done',
     dependsOn: [rootId], blockedBy: [], ready: false, createdAt: timestamp, updatedAt: timestamp,
   }));
 });

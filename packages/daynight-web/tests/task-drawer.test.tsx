@@ -12,7 +12,7 @@ const timestamp = '2026-10-20T09:00:00.123456789Z';
 const project: Project = { id: projectId, name: '测试项目', repoUrl: 'https://github.com/example/project', createdAt: timestamp, updatedAt: timestamp };
 const detail = (value = 1, changes: Partial<TaskDetail> = {}): TaskDetail => ({
   id: id(value), projectId, title: `任务 ${value}`, description: `任务 ${value} 的完整描述`, status: 'todo',
-  dependsOn: [], blockedBy: [], ready: true, createdAt: timestamp, updatedAt: timestamp, ...changes,
+  properties: { pullRequests: [] }, dependsOn: [], blockedBy: [], ready: true, createdAt: timestamp, updatedAt: timestamp, ...changes,
 });
 const node = (task: TaskDetail): GraphTask => ({
   id: task.id, titlePreview: Array.from(task.title).slice(0, 160).join(''), titleTruncated: Array.from(task.title).length > 160,
@@ -82,6 +82,8 @@ describe('task details drawer', () => {
     expect(screen.getByText('无前置依赖')).toBeVisible();
     expect(screen.getByText('所有前置已完成')).toBeVisible();
     expect(screen.getByText('无后续任务')).toBeVisible();
+    expect(screen.getByRole('region', { name: '关联 PR' })).toHaveTextContent('关联 PR · 0');
+    expect(screen.getByText('暂无关联 PR')).toBeVisible();
     expect(screen.queryByRole('button', { name: '刷新任务图' })).toBeNull();
     const times = dialog.querySelectorAll('time');
     expect(times).toHaveLength(2);
@@ -90,6 +92,83 @@ describe('task details drawer', () => {
     expect(root.hasAttribute('inert')).toBe(false);
     expect(document.body.style.overflow).toBe('scroll');
     expect(trigger).toHaveFocus();
+  });
+
+  it('preserves ordered PR fields and duplicates as text, with explicit markers only for empty strings', async () => {
+    const pullRequests = [
+      { title: '  标题\n第二行\t\0', url: '  arbitrary\naddress\0  ' },
+      { title: '<img src=x onerror=alert(1)>', url: '<script>window.leaked=true</script>' },
+      { title: '', url: '' },
+      { title: '  标题\n第二行\t\0', url: '  arbitrary\naddress\0  ' },
+      { title: '很长的标题'.repeat(200), url: 'x'.repeat(5000) },
+    ];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(detail(1, { properties: { pullRequests } }))));
+    open();
+    const region = await screen.findByRole('region', { name: '关联 PR' });
+    expect(within(region).getByRole('heading')).toHaveTextContent('关联 PR · 5');
+    const items = within(region).getAllByRole('listitem');
+    expect(items.map((item) => item.querySelector('.drawer-pr-title')?.textContent))
+      .toEqual(pullRequests.map(({ title }) => title === '' ? '（空字符串）' : title));
+    expect(items.map((item) => item.querySelector('.drawer-pr-value')?.textContent))
+      .toEqual(pullRequests.map(({ url }) => url === '' ? '（空字符串）' : url));
+    expect(region.querySelectorAll('.drawer-pr-empty')).toHaveLength(2);
+    expect(region.querySelectorAll('a,img,script')).toHaveLength(0);
+    expect(items[0]?.querySelector('.drawer-pr-title')?.textContent).toBe(items[3]?.querySelector('.drawer-pr-title')?.textContent);
+  });
+
+  it('offers only browser-identifiable HTTP(S) links and includes them in the existing focus cycle', async () => {
+    const pullRequests = [
+      { title: '安全地址', url: 'https://github.com/example/repo/pull/1' },
+      { title: '脚本地址', url: 'javascript:alert(1)' },
+      { title: '数据地址', url: 'data:text/html,<script>alert(1)</script>' },
+      { title: '相对地址', url: '/pull/2' },
+      { title: '文件地址', url: 'file:///tmp/example' },
+      { title: '损坏地址', url: 'http://[' },
+      { title: '保留原值', url: '  HTTP://EXAMPLE.COM/pull/2  ' },
+    ];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(detail(1, { properties: { pullRequests } }))));
+    open();
+    const region = await screen.findByRole('region', { name: '关联 PR' });
+    const links = within(region).getAllByRole('link');
+    expect(links).toHaveLength(2);
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([pullRequests[0]!.url, pullRequests[6]!.url]);
+    for (const link of links) {
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    }
+    const close = screen.getByRole('button', { name: '关闭任务详情' });
+    const user = userEvent.setup();
+    await user.tab();
+    expect(links[0]).toHaveFocus();
+    await user.tab();
+    expect(links[1]).toHaveFocus();
+    await user.tab();
+    expect(close).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(links[1]).toHaveFocus();
+  });
+
+  it('rereads changed properties after graph refresh', async () => {
+    const old = detail();
+    const fresh = detail(1, { properties: { pullRequests: [{ title: '新的关联', url: 'arbitrary' }] }, updatedAt: '2026-10-21T10:00:00Z' });
+    const fetch = vi.fn().mockResolvedValueOnce(response(fresh)).mockResolvedValueOnce(response(fresh));
+    vi.stubGlobal('fetch', fetch);
+    const initial = props({ snapshot: snapshot([old]) });
+    const view = open(initial);
+    await screen.findByRole('button', { name: '刷新任务图' });
+    expect(screen.getByText('新的关联')).toBeVisible();
+    view.rerender(<TaskDrawer {...initial} snapshot={snapshot([fresh], 2)} />);
+    await screen.findByText('新的关联');
+    expect(screen.queryByRole('button', { name: '刷新任务图' })).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('exposes malformed properties as a detail error without deriving an empty list', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...detail(), properties: null }), { headers: { 'Content-Type': 'application/json' } })));
+    open();
+    await screen.findByRole('alert');
+    expect(screen.queryByText('暂无关联 PR')).toBeNull();
+    expect(screen.queryByRole('region', { name: '关联 PR' })).toBeNull();
   });
 
   it('renders full untrusted content as plain text and shows all snapshot relations as buttons', async () => {

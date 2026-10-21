@@ -8,7 +8,7 @@ const otherId = "30000000-0000-0000-0000-00000000000c";
 const time = "2026-10-20T12:34:56.123456Z";
 const project = { id: projectId, name: "Core project", repoUrl: "git@github.com:org/repo.git", createdAt: time, updatedAt: time };
 const task = {
-  id: taskId, projectId, title: "A task", description: "", status: "todo", version: 9007199254740992,
+  id: taskId, projectId, title: "A task", description: "", properties: { pullRequests: [] }, status: "todo", version: 9007199254740992,
   dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
 };
 const graphTask = {
@@ -63,6 +63,29 @@ describe("response parsing", () => {
     expect(parseTaskDetail(task, projectId, taskId)).toEqual(detail);
     expect(parseTaskDetail({ ...task, status: "done", ready: false, dependsOn: [otherId], blockedBy: [] }, projectId, taskId).status).toBe("done");
     expect(parseTaskDetail({ ...task, status: "in_progress" }, projectId, taskId).status).toBe("in_progress");
+  });
+
+  it("preserves complete ordered PR strings and duplicates without interpreting their content", () => {
+    const pullRequests = [
+      { url: '', title: '' },
+      { url: '  arbitrary\0URL\n\t', title: '<script>文本</script>\n\0' },
+      { url: 'javascript:alert(1)', title: '  ' },
+      { url: '  arbitrary\0URL\n\t', title: '<script>文本</script>\n\0' },
+    ];
+    expect(parseTaskDetail({ ...task, properties: { pullRequests } }, projectId, taskId).properties)
+      .toEqual({ pullRequests });
+    expect(parseTaskDetail({ ...task, properties: { pullRequests, futureField: true } }, projectId, taskId).properties)
+      .toEqual({ pullRequests });
+    expect(parseTaskGraph({ ...graph, tasks: [{ ...graphTask, properties: { pullRequests } }] }, projectId)).toEqual(graph);
+  });
+
+  it.each([
+    undefined, null, [], {}, { pullRequests: null }, { pullRequests: {} }, { pullRequests: [null] },
+    { pullRequests: [[]] }, { pullRequests: [{}] }, { pullRequests: [{ url: '' }] },
+    { pullRequests: [{ title: '' }] }, { pullRequests: [{ url: null, title: '' }] },
+    { pullRequests: [{ url: '', title: 1 }] },
+  ])("rejects missing or malformed task properties without a legacy fallback %#", (properties) => {
+    expect(() => parseTaskDetail({ ...task, properties }, projectId, taskId)).toThrow('invalid response');
   });
 
   it.each([
