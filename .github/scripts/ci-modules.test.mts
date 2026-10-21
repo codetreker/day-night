@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { type TestContext } from "node:test";
-import { detectModules, pullRequestPaths, requireSelectedChecks, selectModules, type CheckResults, type ModuleSelection } from "./ci-modules.mts";
+import { detectModules, pullRequestPaths, selectModules, type ModuleSelection } from "./ci-modules.mts";
 
 const none = { cli: false, server: false, web: false };
 const all = { cli: true, server: true, web: true };
@@ -152,77 +152,16 @@ test("rejects unknown events, malformed SHAs, and unavailable commits", async (t
   await assert.rejects(pullRequestPaths(repo.cwd, repo.base, "f".repeat(40)), /git cat-file failed/);
 });
 
-const results = (selected: ModuleSelection): CheckResults => ({
-  "detect-changes": { result: "success", outputs: Object.fromEntries(Object.entries(selected).map(([module, enabled]) => [module, String(enabled)])) },
-  verify: { result: selected.cli ? "success" : "skipped" },
-  "verify-completion": { result: selected.cli ? "success" : "skipped" },
-  "verify-server": { result: selected.server ? "success" : "skipped" },
-  "verify-web": { result: selected.web ? "success" : "skipped" },
-});
-
-test("accepts exactly successful selected jobs and skipped unselected jobs", () => {
-  for (let mask = 0; mask < 8; mask++) {
-    assert.doesNotThrow(() => requireSelectedChecks(results({ cli: Boolean(mask & 1), server: Boolean(mask & 2), web: Boolean(mask & 4) })));
-  }
-});
-
-test("fails closed when detection fails or selection outputs are absent or invalid", () => {
-  assert.throws(() => requireSelectedChecks({}), /detection did not succeed/);
-  const missingOutputs = results(none);
-  delete missingOutputs["detect-changes"]!.outputs;
-  assert.throws(() => requireSelectedChecks(missingOutputs), /Missing module selections/);
-  for (const result of ["failure", "cancelled", "skipped", undefined]) {
-    const needs = results(none);
-    needs["detect-changes"]!.result = result;
-    assert.throws(() => requireSelectedChecks(needs), /detection did not succeed/);
-  }
-  for (const value of [undefined, "", "TRUE", "yes", true, false]) {
-    const needs = results(none);
-    needs["detect-changes"]!.outputs!.cli = value;
-    assert.throws(() => requireSelectedChecks(needs), /invalid cli selection/);
-  }
-});
-
-test("rejects failed, cancelled, skipped, and missing selected jobs", () => {
-  for (const job of ["verify", "verify-completion", "verify-server", "verify-web"]) {
-    for (const result of ["failure", "cancelled", "skipped", undefined]) {
-      const needs = results(all);
-      needs[job]!.result = result;
-      assert.throws(() => requireSelectedChecks(needs), /must be success/);
-    }
-    const needs = results(all);
-    delete needs[job];
-    assert.throws(() => requireSelectedChecks(needs), /must be success/);
-  }
-});
-
-test("rejects executed or missing unselected jobs", () => {
-  for (const job of ["verify", "verify-completion", "verify-server", "verify-web"]) {
-    for (const result of ["success", "failure", "cancelled", undefined]) {
-      const needs = results(none);
-      needs[job]!.result = result;
-      assert.throws(() => requireSelectedChecks(needs), /must be skipped/);
-    }
-  }
-});
-
-test("command entry points write GitHub outputs and enforce the aggregate status", async (t) => {
+test("command entry point writes module selections to GitHub outputs", async (t) => {
   const repo = repository(t);
   repo.write("packages/daynight-server/server.go");
   const head = repo.commit();
   const script = join(root, ".github/scripts/ci-modules.mts");
   const output = join(repo.cwd, "github-output");
-  execFileSync(process.execPath, [script, "detect"], {
+  execFileSync(process.execPath, [script], {
     cwd: repo.cwd,
     env: { ...process.env, MODULE_EVENT: "pull_request", MODULE_BASE: repo.base, MODULE_HEAD: head, GITHUB_OUTPUT: output },
     stdio: ["ignore", "pipe", "pipe"],
   });
   assert.equal(readFileSync(output, "utf8"), "cli=false\nserver=true\nweb=false\n");
-  const needs = results({ ...none, server: true });
-  const requireChecks = () => execFileSync(process.execPath, [script, "require"], {
-    cwd: repo.cwd, env: { ...process.env, NEEDS_JSON: JSON.stringify(needs) }, stdio: ["ignore", "pipe", "pipe"],
-  });
-  assert.doesNotThrow(requireChecks);
-  needs["verify-server"]!.result = "failure";
-  assert.throws(requireChecks);
 });

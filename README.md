@@ -154,11 +154,10 @@ Windows runners. Each native job resolves the latest available Node.js 24 patch.
 PRs select complete module jobs from their changed paths; the
 [CI selection rules](#ci-selection) define shared inputs and documentation-only
 changes. A selected CLI runs every native platform and the dedicated Linux shell
-completion job. The Linux job also enforces package version increases before
-ordinary validation. A PR compares its complete source changes with its merge
-base and its package version with the event's target-branch revision. Main pushes
-run every module and compare package versions across the full event before/after
-range. The checkout includes the required history.
+completion job. On PRs, the Linux job also enforces package version increases
+before ordinary validation. It compares the PR's complete source changes with
+its merge base and its package version with the event's target-branch revision.
+Main pushes run every module. The checkout includes the required history.
 Native tool discovery records command resolution, launcher, PID, timing, status
 and bounded output in `.tmp/validation-probes.json`. Before executing `gh`, it
 reads the selected file sequentially and records its byte count, SHA-256 and
@@ -254,9 +253,9 @@ statement coverage strictly greater than 90%, package coverage of at least 85%,
 and function coverage of at least 80%, with critical-block checks enabled. The
 same raw coverage profile supplies an exact strict comparison; exactly 90%
 fails, independently of display rounding. No product files or functions are
-excluded. When [CI selection](#ci-selection) selects the server, the aggregate
-requires this complete Go job to pass. PostgreSQL absence is a failure, not
-a skipped test. PT-T5 adds an installed-CLI service path and resource-budget
+excluded. When [CI selection](#ci-selection) selects the server, the complete
+Go job contributes its result to the workflow. PostgreSQL absence is a failure,
+not a skipped test. PT-T5 adds an installed-CLI service path and resource-budget
 probes to this same gate. A Node orchestrator shares one real installation across
 the Go command scenarios and, after the unchanged go-cov/strict-profile checks,
 public-command probes outside Go's default ten-minute timer. Test-only deadline
@@ -292,8 +291,8 @@ The web job runs typecheck, production build, controlled-fetch UI tests, isolate
 deployment lifecycle fixtures and an exact statement gate strictly
 above 90%. It independently enumerates all product TypeScript/TSX files and
 publishes raw counters plus a relative source manifest. When
-[CI selection](#ci-selection) selects web, `checks` requires this complete job to
-pass; existing root CLI commands retain their scope.
+[CI selection](#ci-selection) selects web, the complete job contributes its result
+to the workflow; existing root CLI commands retain their scope.
 
 For a disposable full-stack HTTP target, run a command through
 `bash deployment/dev-ci/run.sh <command> [args...]`; it receives
@@ -320,14 +319,15 @@ Changes to `packages/daynight/src/`, either package manifest, `pnpm-lock.yaml`,
 the package's build-cleanup script require a strictly greater SemVer in `packages/daynight/package.json`. Source
 additions, deletions and moves all count. Unchanged versions, downgrades and
 build-metadata-only changes fail. Tests, fixtures, documentation, CI workflows
-and validation scripts alone do not require a version increase. An initial main
-push with no previous commit validates the starting version without comparing
-against a nonexistent predecessor.
+and validation scripts alone do not require a version increase. CI enforces this
+policy in the PR's Linux CLI job using the event's explicit base and head commits.
 
 Update the version in the same PR as the code. To check committed revisions
 locally, run `pnpm version:check pull_request <base-sha> <head-sha>` or
 `pnpm version:check push <before-sha> <after-sha>`. The command reads versions
-from those commits; uncommitted files do not affect the result. Missing history,
+from those commits; uncommitted files do not affect the result. The local push
+mode compares the complete before/after range; an all-zero before SHA validates
+the starting version without a predecessor comparison. Missing history,
 unreadable manifests and invalid versions fail visibly. See the
 [toolchain decision](.agents/notes/implemented/process/2026-10-16-typescript-cli-toolchain.md)
 for the comparison and CI ownership rules.
@@ -1141,17 +1141,17 @@ owns scheduling and phase evidence; the
 [CI efficiency decision](.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md)
 retains the other workload optimizations and their limits.
 
-The final `checks` job always runs. It requires successful routing, success from
-every selected job and `skipped` from each deliberately unselected job. Missing
-selection outputs, unexpected skips, failures and cancellations fail the gate.
-Documentation-only PRs run routing tests and this aggregate without installing
-application dependencies or running application tests. Every `main` push retains
-full validation, including the exact-commit run required for npm publication.
-The [selection decision](.agents/notes/implemented/process/2026-10-21-module-scoped-pr-ci.md)
-records the alternatives and maintenance costs.
+The workflow result reflects the routing and application jobs directly.
+Documentation-only PRs run routing tests without installing application
+dependencies or running application tests. Every `main` push retains full
+application validation, including the exact-commit workflow run required for npm
+publication. Package-version enforcement belongs to PR validation. The
+[selection decision](.agents/notes/implemented/process/2026-10-21-module-scoped-pr-ci.md)
+records the routing alternatives and maintenance costs; the
+[CI simplification decision](.agents/notes/implemented/simplification/2026-10-21-ci-gate-simplification.md)
+owns version-check timing and workflow-result ownership.
 
-To validate the routing and aggregation rules locally without application
-dependencies, run:
+To validate the routing rules locally without application dependencies, run:
 
 ```bash
 node --test .github/scripts/*.test.mts
