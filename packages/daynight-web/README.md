@@ -14,20 +14,8 @@ The [requirements](../../docs/spec/daynight-web.md) own visible behavior and the
 [architecture](../../docs/design/daynight-web.md) owns graph projection, request
 lifecycles and delivery. The [task property requirements](../../docs/spec/daynight-task-properties.md)
 and [design](../../docs/design/daynight-task-properties.md) own PR associations.
-The mockups illustrate workflows with fixture data and are separate from the
-application. The [task browsing preview](../../docs/design/mockups/task-browsing.html)
-uses the production graph and drawer components to demonstrate remembered
-expansion, newest-first chains, completed-chain visibility and compact rows.
-Run it from the repository root without an API service:
-
-```bash
-pnpm --filter @codetreker/daynight-web exec vite --config ../../docs/design/mockups/task-browsing.vite.ts --host 127.0.0.1 --port 5198 --strictPort
-```
-
-Open `http://127.0.0.1:5198/docs/design/mockups/task-browsing.html`. The scenario
-selector covers mixed, fully completed and empty projects. Its fixture adapter
-serves task details in memory; this preview does not establish production API
-or delivery acceptance.
+The offline mockups illustrate the intended workflow with fixture data and are
+separate from this application.
 
 ## Development
 
