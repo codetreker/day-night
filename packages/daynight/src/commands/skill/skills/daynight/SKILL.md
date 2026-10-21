@@ -34,9 +34,9 @@ For work already being resumed, refresh its task with
 `daynight task show <task-id> --json`. If its identity is unknown, query
 `daynight task list --status in_progress --json` as needed. Show selected ready
 tasks too before acting. Use `daynight task graph --json` when dependency or
-project-wide context is needed; it has title previews, not full descriptions or
-versions. If it reports `graph_limit_exceeded`, continue with bounded ready and
-selected task reads; the error does not mean the project is unlinked. Full lists
+project-wide context is needed; it has title previews and omits full
+descriptions, PR properties, and versions. If it reports `graph_limit_exceeded`,
+continue with bounded ready and selected task reads; the error does not mean the project is unlinked. Full lists
 traverse every page, so request them only when a complete inventory is needed.
 
 If configuration, discovery, or a service request fails, preserve its actual
@@ -66,8 +66,9 @@ the project's existing communication rules.
 Before changing any field, read the complete task and pass that exact observed
 version as `--if-version`. Preserve the full int64 decimal value. A conflict
 requires rereading and reconsidering the intended change, not replaying it with
-a newer version. Descriptions and dependency sets are complete replacements;
-the command reference explains clearing and omitted fields.
+a newer version. Descriptions, dependency sets, and PR reference lists are
+complete replacements; the command reference explains pairing URL/title values,
+clearing, and omitted fields.
 
 Only report a write as successful after service confirmation. When a result is
 unconfirmed, reconcile it with service reads before taking another write action;
@@ -83,13 +84,13 @@ condition. Record PR URLs, outstanding checks, and waiting items while delivery
 is pending.
 
 Before setting `done`, query the platform's actual merge state for every required
-PR and retain its PR URL and merge commit reference in the task description.
-Then reread the task and update with its observed version. Missing merge
-visibility, a missing permission, or an unmet merge check keeps the task
+PR. Preserve its URL and title in the complete PR reference list and its merge
+commit reference in the task description. Then reread the task and update with
+its observed version. Missing merge visibility, a missing permission, or an unmet merge check keeps the task
 `in_progress`; the completion rule grants no merge authority. Tasks with no
 development or PR delivery path use their stated acceptance criteria.
 
 After confirmed completion, query `daynight task ready --json` to see which
-dependent tasks became available. A ready successor still needs authorization within the
-current scope before work starts. Refresh task facts at these semantic
+dependent tasks became available. A ready successor still needs authorization
+within the current scope before work starts. Refresh task facts at these semantic
 checkpoints; do not reload the full project on every conversational turn.

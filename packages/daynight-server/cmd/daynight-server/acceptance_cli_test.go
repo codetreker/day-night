@@ -345,7 +345,7 @@ func (c *acceptanceCLI) refuse(t *testing.T, process *acceptanceProcess, code, t
 
 func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 	receipt := readAcceptanceCLI(t)
-	acceptanceCase(t, "installed_cli_project_task_workflow", []string{"PT.V1", "PT.V3", "PT.V5", "PT.V6", "PT.V7", "PT.V8", "PT.V9", "PT.V10"}, func(t *testing.T, scenario *acceptanceScenario) {
+	acceptanceCase(t, "installed_cli_project_task_workflow", []string{"PT.V1", "PT.V3", "PT.V5", "PT.V6", "PT.V7", "PT.V8", "PT.V9", "PT.V10", "TP-V1", "TP-V3", "TP-V6", "TP-V8"}, func(t *testing.T, scenario *acceptanceScenario) {
 		fixture := newAcceptanceFixture(t, scenario)
 		cli := newAcceptanceCLI(t, receipt, scenario)
 		if version := cli.run(t, cli.caller, "--version"); version != receipt.PackageVersion+"\n" {
@@ -373,7 +373,17 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(cli.repo, ".daynight")); !errors.Is(err, os.ErrNotExist) {
 			t.Fatal("installed project creation wrote repository binding metadata")
 		}
-		first := acceptanceCLIResourceID(t, cli.run(t, filepath.Join(cli.repo, "source"), "task", "create", "--title", "前置 Task", "--description", "Persistent description"))
+		references := api.TaskProperties{PullRequests: []api.PullRequestProperty{
+			{URL: "", Title: ""},
+			{URL: "-arbitrary=地址, text", Title: "  标题\n\x1b[2J  "},
+			{URL: "-arbitrary=地址, text", Title: "  标题\n\x1b[2J  "},
+		}}
+		pairs := []string{"--pull-request-url=", "--pull-request-title=", "--pull-request-title", references.PullRequests[1].Title, "--pull-request-url=" + references.PullRequests[1].URL, "--pull-request-url=" + references.PullRequests[2].URL, "--pull-request-title", references.PullRequests[2].Title}
+		created := cli.run(t, filepath.Join(cli.repo, "source"), append([]string{"task", "create", "--title", "前置 Task", "--description", "Persistent description"}, pairs...)...)
+		first := acceptanceCLIResourceID(t, created)
+		if !strings.Contains(created, "Pull requests: 3\n  1. Title: \n     URL: \n") || !strings.Contains(created, "3. Title:   标题\\n\\u001b[2J  \n     URL: -arbitrary=地址, text") || !reflect.DeepEqual(cli.task(t, first).Properties, references) {
+			t.Fatal("installed CLI create changed raw PR strings, order, duplicates or text output")
+		}
 		bindingPath := filepath.Join(cli.repo, ".daynight", "project.yml")
 		binding, err := os.ReadFile(bindingPath)
 		if err != nil || !bytes.Contains(binding, []byte("repoIdentity: git.example/Org/Repo\n")) || !bytes.Contains(binding, []byte("projectId: "+projectID+"\n")) || !bytes.Contains(binding, []byte("serverUrl: http://"+process.address+"\n")) {
@@ -384,6 +394,9 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 			t.Fatal("installed discovery left an unexpected metadata file or lock")
 		}
 		second := acceptanceCLIResourceID(t, cli.run(t, cli.repo, "task", "create", "--title", "Alternate"))
+		if task := cli.task(t, second); task.Properties.PullRequests == nil || len(task.Properties.PullRequests) != 0 {
+			t.Fatal("installed CLI creation without PR options did not read a concrete empty list")
+		}
 		target := acceptanceCLIResourceID(t, cli.run(t, cli.repo, "task", "create", "--title", "Dependent", "--depends-on", first))
 		blocked := cli.task(t, target)
 		if blocked.Version != 1 || blocked.Status != "todo" || blocked.Ready || !slices.Equal(blocked.DependsOn, []string{first}) || !slices.Equal(blocked.BlockedBy, []string{first}) {
@@ -417,6 +430,34 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		cli.run(t, cli.repo, "task", "update", editable, "--clear-dependencies")
 		if task := cli.task(t, editable); len(task.DependsOn) != 0 || !task.Ready {
 			t.Fatal("installed dependency clear left a dependency or blocked state")
+		}
+		beforeProperties := cli.task(t, editable)
+		cli.run(t, cli.repo, append([]string{"task", "update", editable}, pairs...)...)
+		replaced := cli.task(t, editable)
+		if replaced.Version != beforeProperties.Version+1 || !reflect.DeepEqual(replaced.Properties, references) || !slices.Equal(replaced.DependsOn, beforeProperties.DependsOn) || replaced.Title != beforeProperties.Title {
+			t.Fatal("installed property-only update did not replace the list in one version")
+		}
+		cli.run(t, cli.repo, append([]string{"task", "update", editable, "--if-version", strconv.FormatInt(replaced.Version, 10)}, pairs...)...)
+		if task := cli.task(t, editable); !reflect.DeepEqual(task, replaced) {
+			t.Fatal("installed identical PR update changed the task version, time or data")
+		}
+		cli.refuse(t, process, "version_conflict", editable, "task", "update", editable, "--clear-pull-requests", "--if-version", strconv.FormatInt(beforeProperties.Version, 10))
+		if task := cli.task(t, editable); !reflect.DeepEqual(task, replaced) {
+			t.Fatal("installed stale PR clear changed the persisted task")
+		}
+		cli.run(t, cli.repo, "task", "update", editable, "--description", "Keep PR references")
+		preserved := cli.task(t, editable)
+		if !reflect.DeepEqual(preserved.Properties, references) || preserved.Version != replaced.Version+1 {
+			t.Fatal("installed update without PR options discarded properties")
+		}
+		cli.run(t, cli.caller, "task", "update", editable, "--project", projectID, "--if-version", strconv.FormatInt(preserved.Version, 10), "--clear-pull-requests")
+		cleared := cli.task(t, editable)
+		if cleared.Properties.PullRequests == nil || len(cleared.Properties.PullRequests) != 0 || cleared.Version != preserved.Version+1 || cleared.Description != preserved.Description {
+			t.Fatal("installed explicit-version PR clear changed other fields or lost the empty list")
+		}
+		cli.run(t, cli.repo, "task", "update", editable, "--clear-pull-requests")
+		if task := cli.task(t, editable); !reflect.DeepEqual(task, cleared) {
+			t.Fatal("installed empty PR clear changed the task version, time or data")
 		}
 		fixture.exec(t, "UPDATE tasks SET version=$1 WHERE id=$2", int64(9_007_199_254_740_993), editable)
 		cli.run(t, cli.caller, "task", "update", editable, "--project", projectID, "--if-version", "9007199254740993", "--title", "Exact version 中文")
@@ -484,6 +525,31 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		if before.Version != 9_007_199_254_740_996 || before.Title != "Concurrent left" && before.Title != "Concurrent right" {
 			t.Fatal("concurrent installed CLI writers persisted an unexpected version or title")
 		}
+		firstWithPR := cli.task(t, first)
+		if !reflect.DeepEqual(firstWithPR.Properties, references) {
+			t.Fatal("installed ordinary status updates discarded the created PR list")
+		}
+		references.PullRequests = append(references.PullRequests, api.PullRequestProperty{URL: "\x00 arbitrary\tURL", Title: "标题\x00\n"})
+		firstWithPR = acceptanceDecode[api.Task](t, process.request(context.Background(), http.MethodPatch, acceptanceTaskPath(firstWithPR), map[string]any{"version": firstWithPR.Version, "properties": references}, "installed-raw-pr-readback"), http.StatusOK)
+		if task := cli.task(t, first); !reflect.DeepEqual(task, firstWithPR) {
+			t.Fatal("installed CLI JSON did not preserve HTTP-supplied NUL PR strings")
+		}
+		for _, arguments := range [][]string{{"task", "show", first}, {"task", "list"}} {
+			output := cli.run(t, cli.repo, arguments...)
+			if !strings.Contains(output, "4. Title: 标题\\u0000\\n\n     URL: \\u0000 arbitrary\\tURL") {
+				t.Fatal("installed full-resource text output lost or executed PR control characters")
+			}
+		}
+		listed := acceptanceCLIJSON[[]api.Task](t, cli.run(t, cli.repo, "task", "list", "--json"))
+		found := false
+		for _, task := range listed {
+			if task.ID == first {
+				found = reflect.DeepEqual(task, firstWithPR)
+			}
+		}
+		if !found {
+			t.Fatal("installed CLI list JSON omitted the task or changed raw properties")
+		}
 		graph := acceptanceCLIJSON[api.TaskGraph](t, cli.run(t, cli.repo, "task", "graph", "--json"))
 		expectedGraph := acceptanceDecode[api.TaskGraph](t, process.request(context.Background(), http.MethodGet, "/api/v1/projects/"+projectID+"/task-graph", nil, ""), http.StatusOK)
 		if !reflect.DeepEqual(graph, expectedGraph) {
@@ -491,6 +557,9 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		}
 		if graph.Project.ID != projectID || graph.Summary.Total != 4 || graph.Summary.Done != 2 || graph.Summary.Todo != 2 || graph.Summary.Ready != 2 || len(graph.Tasks) != 4 {
 			t.Fatal("installed CLI graph lost the complete server summary or tasks")
+		}
+		if strings.Contains(cli.run(t, cli.repo, "task", "graph", "--json"), `"properties"`) {
+			t.Fatal("installed graph included full-resource properties")
 		}
 		firstBefore, targetBefore := cli.task(t, first), cli.task(t, target)
 		process.signal(t)

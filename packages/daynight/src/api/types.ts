@@ -8,6 +8,13 @@ export type Project = {
   readonly updatedAt: string;
 };
 
+export type PullRequestProperty = {
+  readonly url: string;
+  readonly title: string;
+};
+
+export type TaskProperties = { readonly pullRequests: readonly PullRequestProperty[] };
+
 export type Task = {
   readonly id: string;
   readonly projectId: string;
@@ -15,6 +22,7 @@ export type Task = {
   readonly description: string;
   readonly status: TaskStatus;
   readonly version: bigint;
+  readonly properties: TaskProperties;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly dependsOn: readonly string[];
@@ -22,7 +30,7 @@ export type Task = {
   readonly ready: boolean;
 };
 
-export type GraphTask = Omit<Task, "projectId" | "title" | "description" | "version"> & {
+export type GraphTask = Omit<Task, "projectId" | "title" | "description" | "version" | "properties"> & {
   readonly titlePreview: string;
   readonly titleTruncated: boolean;
 };
@@ -47,12 +55,14 @@ export type CreateProjectInput = { readonly name: string; readonly repoUrl: stri
 export type CreateTaskInput = {
   readonly title: string;
   readonly description?: string;
+  readonly properties?: TaskProperties;
   readonly dependsOn?: readonly string[];
 };
 export type UpdateTaskInput = {
   readonly version: bigint;
   readonly title?: string;
   readonly description?: string;
+  readonly properties?: TaskProperties;
   readonly status?: TaskStatus;
   readonly dependsOn?: readonly string[];
 };

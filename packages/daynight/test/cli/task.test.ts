@@ -17,7 +17,7 @@ const secondId = "b1b2c3d4-1111-4222-8333-123456789abd";
 const thirdId = "b1b2c3d4-1111-4222-8333-123456789abe";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project: Project = { id: projectId, name: "Project 中文", repoUrl: "git@git.example:Org/Repo.git", createdAt: time, updatedAt: time };
-const task = (partial: Partial<Task> = {}): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", status: "todo", version: 1n, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true, ...partial });
+const task = (partial: Partial<Task> = {}): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true, ...partial });
 const graph = (): TaskGraph => ({
   project,
   summary: { total: 1, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
@@ -135,6 +135,10 @@ describe("compiled task commands", () => {
       for (const args of [
         ["create"], ["create", "--title", "\u0085"], ["update", taskId],
         ["update", taskId, "--description", "", "--depends-on", secondId, "--clear-dependencies"],
+        ["create", "--title", "Title", "--pull-request-url="],
+        ["update", taskId, "--pull-request-title="],
+        ["update", taskId, "--pull-request-url=", "--clear-pull-requests"],
+        ["update", taskId, "--pull-request-title=", "--clear-pull-requests"],
         ["update", taskId, "--status", "invalid"],
         ["update", taskId, "--status", "done", "--if-version", "9223372036854775808"],
         ["show", "invalid"], ["list", "--project", "invalid"], ["list", "--ready", "false"], ["graph", "--unknown"],
@@ -151,10 +155,59 @@ describe("compiled task commands", () => {
     } finally { await f.close(); }
   }, 60_000);
 
+  it("preserves ordered raw PR lists through compiled mutations and complete text or JSON reads", async () => {
+    const f = await fixture();
+    try {
+      const supplied = [{ url: "", title: "" }, { url: "-arbitrary=a,b", title: " 标题\n\u001b[2J " }, { url: "-arbitrary=a,b", title: " 标题\n\u001b[2J " }];
+      const returned = { pullRequests: [...supplied, { url: "\0not a URL", title: "\0" }] };
+      let current = task({ properties: returned, version: 9_223_372_036_854_775_807n });
+      let conflict = false;
+      const { requests } = await f.serve((request, response) => {
+        if (request.method === "POST") respond(response, current, 201);
+        else if (request.method === "PATCH") {
+          if (conflict) refuse(response, "version_conflict", "pr-conflict", 409);
+          else { current = { ...current, ...(request.body as object) }; respond(response, current); }
+        } else if (request.pathname === taskPath) respond(response, { items: [current], nextCursor: null });
+        else respond(response, current);
+      });
+      const pairs = ["--pull-request-url=", "--pull-request-title=", "--pull-request-url=-arbitrary=a,b", "--pull-request-url=-arbitrary=a,b", "--pull-request-title", supplied[1]!.title, "--pull-request-title", supplied[2]!.title];
+      const created = await f.invoke(["create", "--title", "Title", ...pairs, ...explicit]);
+      expect(created.code, created.stderr).toBe(0);
+      expect(requests.find(({ method }) => method === "POST")!.body).toEqual({ title: "Title", properties: { pullRequests: supplied } });
+      expect(created.stdout).toContain("Pull requests: 4");
+      expect(created.stdout).toContain("4. Title: \\u0000\n     URL: \\u0000not a URL");
+      for (const command of [["show", taskId], ["list"]]) {
+        const json = await f.invoke([...command, "--json", ...explicit]);
+        expect(json.code, json.stderr).toBe(0);
+        expect(parseApiJson(json.stdout)).toEqual(command[0] === "list" ? [current] : current);
+        const text = await f.invoke([...command, ...explicit]);
+        expect(text.code, text.stderr).toBe(0);
+        expect(text.stdout).toContain(" 标题\\n\\u001b[2J ");
+        expect(text.stdout).toContain("\\u0000not a URL");
+      }
+      const before = requests.length;
+      const replaced = await f.invoke(["update", taskId, ...pairs, ...explicit]);
+      expect(replaced.code, replaced.stderr).toBe(0);
+      expect(requests.slice(before).map(({ method }) => method)).toEqual(["GET", "GET", "PATCH"]);
+      expect(requests.at(-1)!.body).toEqual({ version: 9_223_372_036_854_775_807n, properties: { pullRequests: supplied } });
+      const clearAt = requests.length;
+      const cleared = await f.invoke(["update", taskId, "--clear-pull-requests", "--if-version", "9223372036854775807", ...explicit]);
+      expect(cleared.code, cleared.stderr).toBe(0);
+      expect(cleared.stdout).toContain("Pull requests: 0");
+      expect(requests.slice(clearAt).map(({ method }) => method)).toEqual(["GET", "PATCH"]);
+      expect(requests.at(-1)!.body).toEqual({ version: 9_223_372_036_854_775_807n, properties: { pullRequests: [] } });
+      conflict = true;
+      const conflictAt = requests.length;
+      const refused = await f.invoke(["update", taskId, ...pairs, ...explicit]);
+      expect(refused.code).toBe(1); expect(refused.stdout).toBe(""); expect(refused.stderr).toContain("pr-conflict");
+      expect(requests.slice(conflictAt).map(({ method }) => method)).toEqual(["GET", "GET", "PATCH"]);
+    } finally { await f.close(); }
+  }, 60_000);
+
   it("requests a single bounded ready page and preserves full task JSON and empty output", async () => {
     const f = await fixture();
     try {
-      let items = [task({ version: 9_223_372_036_854_775_807n })];
+      let items = [task({ properties: { pullRequests: [{ url: "\0 arbitrary URL", title: "Ready\nPR" }] }, version: 9_223_372_036_854_775_807n })];
       let cursor: string | null = "unrequested next page";
       const { requests } = await f.serve((request, response) => {
         if (request.query.has("cursor")) refuse(response, "internal_error", "unexpected-ready-cursor", 500);
@@ -166,6 +219,9 @@ describe("compiled task commands", () => {
       expect(ready.stdout).toContain('"version":9223372036854775807');
       expect(requests).toHaveLength(2);
       expect(Object.fromEntries(requests[1]!.query)).toEqual({ ready: "true", limit: "1" });
+      const text = await f.invoke(["ready", "--limit", "1", ...explicit]);
+      expect(text.code, text.stderr).toBe(0);
+      expect(text.stdout).toContain("1. Title: Ready\\nPR\n     URL: \\u0000 arbitrary URL");
       items = []; cursor = null;
       const empty = await f.invoke(["ready", ...explicit]);
       expect(empty.code, empty.stderr).toBe(0); expect(empty.stdout).toBe("No ready tasks.\n");

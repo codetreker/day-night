@@ -11,6 +11,11 @@
 [只读看板设计](daynight-web.md)定义完整图快照接口、浏览器页面和内嵌静态资源
 交付；图 API 保留本文的领域与事务结构，不改变现有分页读取的一致性承诺。
 
+已采用、尚待实现的[附件架构](daynight-task-attachments.md)在该服务中增加独立的
+bucket/path 文件存储和单文件接口；[附件需求](../spec/daynight-task-attachments.md)
+拥有行为与已知问题，[附件任务拆分](daynight-task-attachments-tasks.md)拥有实施状态。
+现有 PostgreSQL task 事务规则不扩展为文件与元数据的原子提交保证。
+
 现有 `packages/daynight/` TypeScript CLI、YAML 配置和 SQLite review 状态继续独立
 运行。服务不读取或迁移这些状态；注册 project 也不启动现有 review 协调器。
 
@@ -64,8 +69,9 @@ service/store；请求仍只经过一次现有日志包装。HTML、图及最新
 
 调用方向为 `server → service → core/store`。传输层将 API DTO 转换为 service
 参数，core 不依赖 HTTP，store 不决定状态转换或依赖规则。事务内查询所需的数据、
-加锁和持久化操作由 store 提供，是否接受候选变更由 service 决定。只有一个存储实现，
-不为测试另外定义空泛的 `Store` 接口或模拟存储实现。
+加锁和持久化操作由 store 提供，是否接受候选变更由 service 决定。现有关系型数据只有 PostgreSQL 一个实现，
+不为测试另外定义空泛的 `Store` 接口或模拟存储实现。附件的字节存储接口由其独立
+架构拥有，不替代这里的具体 PostgreSQL store。
 
 独立模块允许服务拥有自己的 Go/PostgreSQL 生命周期，避免将数据库事务接入现有
 客户端的 review 命令。`cmd/` 与 `internal/` 的职责遵循

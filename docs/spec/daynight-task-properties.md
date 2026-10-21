@@ -1,6 +1,6 @@
 # Task 预定义属性需求
 
-状态：服务端存储、迁移与 HTTP 读写已实现；CLI 和网页扩展待实施。本文定义 task
+状态：服务端存储、迁移、HTTP 读写及 CLI 属性操作已实现；网页展示待实施。本文定义 task
 预定义属性的行为；
 [架构设计](../design/daynight-task-properties.md)拥有机制与取舍，
 [任务拆分](../design/daynight-task-properties-tasks.md)拥有实施顺序与验收状态。
@@ -79,7 +79,8 @@ PATCH 继续要求正整数 `version`，并按以下规则处理：
 提供一组或多组配对表示提交完整列表。Update 另有 `--clear-pull-requests`，与任一
 配对选项互斥；没有 PR 选项时省略属性 patch。保留 `--if-version` 及冲突后不重试
 的既有行为。文本输出按序显示各项的标题与 URL，控制字符沿用终端可见转义；JSON
-输出包含完整原值。操作系统参数无法承载的字符串可以通过 HTTP API 提交。
+输出包含完整原值。操作系统或原生 shell 启动器无法承载的字符串可以通过 HTTP API
+提交；这些传输限制不产生 URL/title 内容校验规则。
 
 ## 网页详情
 

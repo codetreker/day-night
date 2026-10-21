@@ -15,8 +15,8 @@ The delivered artifacts are the [requirements](../../../../docs/spec/daynight-ta
 [design](../../../../docs/design/daynight-task-properties.md),
 [implementation breakdown](../../../../docs/design/daynight-task-properties-tasks.md)
 and [interactive preview](../../../../docs/design/mockups/task-properties.html).
-Server persistence, migration and HTTP operations are implemented. CLI property
-editing/output and read-only web presentation remain pending. The existing
+Server persistence, migration, HTTP operations and CLI property input/output
+are implemented. Read-only web presentation remains pending. The existing
 [server task design](2026-10-19-daynight-server-task-design.md) owns the delivered
 task lifecycle and transaction foundation; this design extends that foundation.
 
@@ -36,7 +36,9 @@ fields, dependencies and properties together.
 
 CLI URL and title options repeat independently and pair by their occurrence
 index. This reuses existing ordered repeatable text options, including empty
-values. The web drawer presents all values as text and enables navigation only
+values. The bundled public task skill preserves required PR URLs and titles in
+the complete property list while retaining merge evidence in the description.
+The web drawer presents all values as text and enables navigation only
 for HTTP(S) absolute URLs, independently of storage acceptance. Complete task
 reads contain properties; the bounded graph projection remains independent.
 
@@ -67,7 +69,11 @@ URL/title pairs provide the required behavior without a second input language.
 The design retains the existing status, dependency, cancellation and optimistic
 concurrency guarantees. It adds no remote service or background lifecycle.
 Opaque JSON text needs strict application decoding; corruption must fail reads
-instead of appearing as empty properties. Future stored property additions need
+instead of appearing as empty properties. Native Windows CMD forwarding has a
+separate argument representation boundary: installed-launcher checks cover its
+representable arguments and opaque response values, while the same installed
+Node entry verifies literal multiline input. The server content contract stays
+unchanged. Future stored property additions need
 migrations, with no read-time old-format fallback.
 
 Property filtering, reverse PR lookup and sorting would require explicit value

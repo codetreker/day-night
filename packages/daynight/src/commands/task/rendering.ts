@@ -9,6 +9,11 @@ export const renderTask = (task: Task): string => [
   `Project: ${terminalText(task.projectId)}`,
   `Title: ${terminalText(task.title)}`,
   `Description: ${terminalText(task.description)}`,
+  `Pull requests: ${task.properties.pullRequests.length}`,
+  ...task.properties.pullRequests.flatMap((pullRequest, index) => [
+    `  ${index + 1}. Title: ${terminalText(pullRequest.title)}`,
+    `     URL: ${terminalText(pullRequest.url)}`,
+  ]),
   `Status: ${terminalText(task.status)}`,
   `Version: ${task.version}`,
   `Ready: ${task.ready}`,
