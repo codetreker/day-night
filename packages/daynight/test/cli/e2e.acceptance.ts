@@ -143,6 +143,11 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     const originalBundle = bundleFiles(sourceSkillDirectory);
     expect(originalBundle["SKILL.md"]).toBeDefined();
     expect(bundleFiles(installedSkillDirectory)).toEqual(originalBundle);
+    const publicSkillRelativeDirectory = "commands/skill/skills/daynight";
+    const publicBundle = bundleFiles(path.join(packageDirectory, "src", publicSkillRelativeDirectory));
+    expect(publicBundle["SKILL.md"]).toBeDefined();
+    expect(publicBundle["references/commands.md"]).toBeDefined();
+    expect(bundleFiles(path.join(installedPackage, "dist", publicSkillRelativeDirectory))).toEqual(publicBundle);
     const installedSkillFile = path.join(installedSkillDirectory, "SKILL.md");
     const originalSkillContents = originalBundle["SKILL.md"]!.toString("utf8");
     const updatedSkillContents = `${originalSkillContents}\n<!-- Installed acceptance: updated bundle for the next daemon. -->\n`;
