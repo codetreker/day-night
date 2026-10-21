@@ -32,7 +32,11 @@ attempt. Bounded holder and device diagnostics retain command status, stdout and
 stderr. `lsof +f -- <mount>` selects the mounted filesystem without recursively
 opening its files, as documented by the
 [Apple lsof manual](https://github.com/apple-oss-distributions/lsof/blob/7a8a1b2a3c0f35c30a5fcd0927f31d441c3e5255/lsof/lsof.8#L722-L760).
-An exit of 1 is not proof that no holder exists. Busy results and diagnostics are
+The [controlled-holder observation decision](../bug-fix/2026-10-21-apfs-controlled-holder-observation.md)
+limits that volume query to an acknowledged owned child when the native case
+provides its PID, using `-a` to intersect process and filesystem selection. Generic
+volume diagnostics keep the original query. An exit of 1 is not proof that no
+holder exists. Busy results and diagnostics are
 reported immediately as structured stderr records, including when a later detach
 succeeds. Darwin's [unmount handling](https://github.com/apple-oss-distributions/DiskArbitration/blob/a542bda934211dc3c301bfdcc7f21349c4164a85/diskarbitrationd/DARequest.c#L1672-L1733)
 likewise treats busy unmounts and holder investigation as distinct operations.
