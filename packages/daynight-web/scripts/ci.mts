@@ -14,7 +14,8 @@ try {
   const outcomes = await Promise.allSettled([
     command('pnpm', ['--filter', '@codetreker/daynight-web', 'exec', 'playwright', 'install', '--with-deps', 'chromium'],
       { cwd: repositoryRoot, signal: cancellation.signal, timeoutMs: 180_000 }),
-    command('pnpm', ['web:test'], { cwd: repositoryRoot, signal: cancellation.signal, timeoutMs: 180_000 }),
+    command('pnpm', ['web:test'], { cwd: repositoryRoot, env: { ...process.env, VITEST_MAX_WORKERS: '2' },
+      signal: cancellation.signal, timeoutMs: 180_000 }),
     // The deployment runner produces and verifies its own image from this source;
     // cache-only preparation shares the daemon cache without exporting an image.
     command('docker', ['buildx', 'build', '--builder', 'default', '--file', 'deployment/localhost/Dockerfile',

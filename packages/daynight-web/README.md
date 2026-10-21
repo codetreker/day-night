@@ -95,8 +95,12 @@ The cache-only build prepares the same Docker daemon's cache; the normal dev-ci
 runner still builds and verifies its own unique image. An explicit
 `BUILDX_BUILDER` value must be `default`. Browser installation and unit tests each
 have a 180-second bound, and Docker preparation has the deployment build's
-600-second bound. All three managed command groups must finish successfully;
-timeouts, cancellation and any failure fail preparation. Controlled dev-ci
+600-second bound. Only the coverage subprocess receives `VITEST_MAX_WORKERS=2`,
+retaining the `forks` pool and per-file isolation; browser, Docker and parent
+process environments are unchanged. This limits coverage workers during shared
+preparation and does not impose a global CPU cap. All three managed command
+groups must finish successfully; timeouts, cancellation and any failure fail
+preparation. Controlled dev-ci
 fixtures and `web:acceptance` start afterward, so browser performance tests do
 not overlap those preparation processes. Acceptance owns the native production
 build, including typechecking. CI reuses Go module/compiler caches

@@ -35,9 +35,8 @@ describe('project browsing', () => {
 
   it('loads all projects across pages, preserves server order, and deduplicates shared page items', async () => {
     const first = deferred<Response>();
-    const fetch = vi.fn()
-      .mockReturnValueOnce(first.promise)
-      .mockResolvedValueOnce(response([project(50), project(51)]));
+    const second = deferred<Response>();
+    const fetch = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
     vi.stubGlobal('fetch', fetch);
     render(<ProjectsPage />);
     expect(screen.getByRole('status').textContent).toContain('正在加载项目');
@@ -46,7 +45,10 @@ describe('project browsing', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(50);
     expect(screen.queryByText(/项目总数/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
-    await screen.findByRole('heading', { name: '项目 51' });
+    expect((screen.getByRole('button', { name: '正在加载更多…' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getAllByRole('listitem')).toHaveLength(50);
+    await act(async () => { second.resolve(response([project(50), project(51)])); });
+    expect(screen.getByRole('heading', { name: '项目 51' })).toBeTruthy();
     expect(fetch.mock.calls[1]?.[0]).toBe('/api/v1/projects?limit=50&cursor=next%2F%2B+cursor');
     expect(screen.getAllByRole('listitem')).toHaveLength(51);
     const headings = screen.getAllByRole('heading', { level: 2 });

@@ -15,7 +15,7 @@ must preserve caller-visible behavior, full capacity data, coverage and cleanup.
 
 ## Decision
 
-Optimize work within the existing job families before adding shards. Module
+Optimize work within the existing job families without shards. Module
 selection, native platforms, installed suites, real Go/PostgreSQL workflows,
 production container checks, fixed graph topology and repetition counts retain
 their existing scope. Strict Go and web coverage thresholds, browser performance
@@ -32,8 +32,12 @@ not replace that build or its unique-image checks. Explicit `BUILDX_BUILDER`
 overrides must name `default`. All commands use the acceptance harness's bounded,
 cancellable process-group wrapper with streaming output. Browser and unit work
 each retain a 180-second bound; Docker preparation retains the deployment build's
-600-second bound. The entry joins all three commands with `Promise.allSettled`
-and preserves all failures in an `AggregateError`. Only successful completion of
+600-second bound. Only the coverage child receives `VITEST_MAX_WORKERS=2`, keeping
+Vitest's `forks` pool and file isolation. The parent, browser installation and
+Docker commands retain their existing environments. This budget leaves scheduling
+headroom during concurrent preparation; it is neither a universal CPU cap nor a
+claim that two workers always run faster. The entry joins all three commands
+with `Promise.allSettled` and preserves all failures in an `AggregateError`. Only successful completion of
 all tasks permits the subsequent dev-ci fixtures and `web:acceptance`, so browser
 performance measurements do not overlap preparation or unit tests. Acceptance
 owns the native production build, including typechecking. Both Go-consuming jobs
@@ -105,10 +109,14 @@ continues to own the required production targets, fixed datasets, five complete
 repetitions and performance budgets.
 
 Test queries reuse results and search the smallest known control region. The
-51-project pagination case reuses its complete ordered heading array for every
-link assertion; capacity interactions locate the explicit dialog role, close
-button within its header and zoom button within the canvas controls. Exact
-button roles/names, trusted click actionability, dialog visibility/removal and
+51-project pagination case controls both HTTP page promises, verifies the
+disabled loading button and retained 50 items before releasing the second page
+inside awaited `act`, then synchronously checks all 51 ordered accessible names,
+deduplication, links and the final state. It reuses the complete heading array
+for link assertions and retains the five-second outer test bound. Capacity
+interactions find the dialog by role within the backdrop, its close button within
+the header and the zoom button within the canvas controls. Exact button
+roles/names, trusted click actionability, dialog visibility/removal and
 all original node, geometry, timing and trace checks remain required. This
 removes repeated whole-document accessibility traversal without relaxing test
 timeouts or acceptance budgets.
@@ -152,12 +160,18 @@ without established workflow savings. Keep the existing complete container path;
 reconsider only when a hosted comparison includes setup, transfer, build, export
 and cleanup and demonstrates a net benefit for the same production workload.
 
-**Shard browser or Windows suites immediately.** Additional runners can shorten
-the critical path but duplicate setup, consume more total compute and add report
-aggregation obligations. Existing job families first remove duplicated work and
-use scenario-local concurrency. Sharding remains a last resort if hosted timing
-still misses the target after these optimizations; it needs its own measured
-justification and complete-evidence aggregation design.
+**Shard browser or Windows suites.** Additional runners were considered for
+shortening the critical path, but duplicate setup, consume more total compute
+and add report aggregation obligations. The adopted scope excludes shards and
+continues optimizing the existing complete job families.
+
+**Use automatic or single-worker sizing for concurrent web preparation.** A
+controlled four-CPU comparison combined complete coverage with an uncached Docker
+build. Two Vitest workers preserved joint elapsed time relative to the default
+three-worker run, while one worker took longer. The two-worker child budget
+therefore provides contention headroom without changing pool isolation or test
+coverage. This local comparison does not establish a universal faster setting
+or a hosted timing result.
 
 **Keep attaching chain dependencies during forward node creation.** This uses
 fewer write requests but makes cycle validation repeatedly traverse an expanding

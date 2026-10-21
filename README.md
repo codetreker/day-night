@@ -1088,8 +1088,9 @@ existing integration suites. Native CLI jobs typecheck and build once before
 running ordinary and installed tests against the same output. The web job
 prepares pinned Chromium, runs unit/coverage tests and prepares the production
 Dockerfile's cache concurrently using the default Docker builder. It joins all
-three results before deployment fixtures and `web:acceptance`. Acceptance owns
-the native production build and typechecking. Browser performance tests begin
+three results before deployment fixtures and `web:acceptance`. Only the coverage
+subprocess uses a two-worker Vitest budget, retaining its `forks` pool and file
+isolation. Acceptance owns the native production build and typechecking. Browser performance tests begin
 after all preparation and unit checks have finished. Both Go-consuming jobs restore module and compiler
 caches keyed by the server `go.sum`, while the server check expires test results
 before database/race/coverage validation. The web job retains the complete
