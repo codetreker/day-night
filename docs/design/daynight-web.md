@@ -396,10 +396,11 @@ worker，并与构建、单元测试、功能测试及容器清理隔离。
 [流水线决策](../../.agents/notes/implemented/testing/2026-10-21-web-acceptance-pipeline.md)
 拥有调度、替代方案和阶段证据取舍。
 PR 按[仓库 CI 路由](../../README.md#ci-selection)选择模块，main push 执行全量检查。
-工作流直接采用路由与 Go、web、CLI 原生矩阵和独立 Linux shell completion job 的结果；
-未选中的 job 为 `skipped`。
+最终 `checks` 汇总路由、Go、web、CLI 原生矩阵和独立 Linux shell completion job 的
+结果，只接受 `success` 或 `skipped`，失败、取消及其他结果使汇总失败；未选中的 job
+为 `skipped`。
 
-看板交付时，根 `package.json`、锁文件、共享构建脚本和 `.github/workflows/checks.yml` 的唯一编辑归属按阶段交接：W-T2 建立并负责 web 命令和 `verify-web`；W-T2 验收后由 W-T5 接手构建/Go 工具配置；W-T5 验收后由 W-T6 接手最终生产验收步骤。接收任务在开始时核对前一阶段已通过的命令与 required job 清单，再接管编辑；其他任务只提出所需命令和依赖，不直接并发修改这些文件。W-T6 在交付时负责最终汇总，验证当时的 `checks.needs` 包含 `verify-server`、`verify-web`、CLI `verify` 与 `verify-completion`，且任何失败或取消都不能被成功汇总。当前工作流结果归属见[CI 简化决策](../../.agents/notes/implemented/simplification/2026-10-21-ci-gate-simplification.md)。
+看板交付时，根 `package.json`、锁文件、共享构建脚本和 `.github/workflows/checks.yml` 的唯一编辑归属按阶段交接：W-T2 建立并负责 web 命令和 `verify-web`；W-T2 验收后由 W-T5 接手构建/Go 工具配置；W-T5 验收后由 W-T6 接手最终生产验收步骤。接收任务在开始时核对前一阶段已通过的命令与 required job 清单，再接管编辑；其他任务只提出所需命令和依赖，不直接并发修改这些文件。W-T6 在交付时负责最终汇总，验证当时的 `checks.needs` 包含 `verify-server`、`verify-web`、CLI `verify` 与 `verify-completion`，且任何失败或取消都不能被成功汇总。当前汇总规则见[CI 简化决策](../../.agents/notes/implemented/simplification/2026-10-21-ci-gate-simplification.md)。
 
 ## 完整图 API
 
@@ -632,7 +633,7 @@ CI 无论验收成功、失败或取消都执行恢复与归档；恢复成功�
 3. 覆盖率：保留 Go go-cov 和原始 profile 的严格 `covered * 10 > total * 9`。web job 使用 Vitest V8 provider 输出的 `coverage-final.json`，按产品文件的语句命中表汇总计数并用整数执行同样严格比较。显式设置 `coverage.include` 为 `src/**/*.{ts,tsx}`；检查脚本另行枚举同一源码清单并逐文件核对报告，含未被测试导入的产品文件，缺失即失败。纯类型文件只有在确认没有运行语句时允许零语句；API、图算法和入口没有排除项。拒绝空、畸形报告，测试恰好 90%、舍入、未导入文件和遗漏文件等失败边界。第三方库与构建产物不属于产品源码。
 4. 两个模块分别大于 90%，因此加权总体也大于 90%；不能靠 Go 的高覆盖率掩盖 web 缺口。现有 Go package/function/critical-block 与所有 CLI 原生平台门槛保持。
 5. 浏览器验收使用 Playwright、构建后的真实页面、真实服务与隔离 PostgreSQL。通过 API 建立项目和任务，验证完整点击路径、共享/外部前置、空项目、局部失败与重试、深链接刷新、键盘节点操作，以及侧栏实际焦点进入/Tab 循环/Esc、关闭按钮和关闭后恢复焦点；收集截图、测试 SHA、通过结果和资源清理证据。
-6. PR 按[仓库 CI 路由](../../README.md#ci-selection)选择受影响模块，main push 执行全量应用检查。工作流直接采用路由与应用 job 的结果，未选中的 job 为 `skipped`。Go job 与 web job 被选中时，各自在干净 checkout 中生成真实 UI 产物并完成既有集成验收；跨模块构建前置不改变模块路由。依赖变更遵守现有 workspace 与 PR 的 CLI 版本检查规则。
+6. PR 按[仓库 CI 路由](../../README.md#ci-selection)选择受影响模块，main push 执行全量应用检查。最终 `checks` 只接受所有前置 job 的 `success` 或 `skipped`，失败、取消及其他结果使汇总失败；未选中的 job 为 `skipped`。Go job 与 web job 被选中时，各自在干净 checkout 中生成真实 UI 产物并完成既有集成验收；跨模块构建前置不改变模块路由。依赖变更遵守现有 workspace 与 PR 的 CLI 版本检查规则。
 7. 性能验收使用 Linux CI 的固定 Chromium、生产构建和固定拓扑图集，覆盖 1,000 节点的单链，以及恰好同时具有 1,000 节点和 5,000 边的分叉合流、多根共享图。每次从折叠状态打开，重复五次，最慢一次从点击到可操作画布不超过 3,000ms；布局后打开详情、缩放或平移的可见反馈不超过 300ms。单独保存布局/渲染耗时和完整测试环境，接口耗时与详情网络时间分开记录。失败必须优化或重新评审支持上限，不能把超时结果当成已支持，也不默认引入后台 worker。
 
 ## 实施与验收边界

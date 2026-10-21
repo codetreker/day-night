@@ -358,7 +358,8 @@ bundle 复制到 `dist/commands/review/skills/daynight-review/`，由既有 `dis
 覆盖受支持运行时的当前实现。源码、包元数据、构建或依赖输入变化
 需要更高 SemVer；构建清理脚本也属于发布输入。[CI 路由](../../README.md#ci-selection)
 选中 CLI 时，全部原生检查和独立 shell completion 检查必须成功，PR 的 Linux CLI
-任务还检查包版本；main push 保留全量应用门禁。工作流直接采用各 job 的结果。
+任务还检查包版本；main push 保留全量应用门禁。最终 `checks` 只接受所有前置 job 的
+`success` 或 `skipped`，失败、取消及其他结果使汇总失败。
 发布在等待 CI 与安装依赖前检查精确版本的 tag 和 npm 记录；任一存在则成功跳过新发布。首次使用准备好的产物发布前重复检查，同一次 run 的发布失败重试
 保留严格的源码、字节验证与补齐 tag 能力。
 [版本预检决策](../../.agents/notes/implemented/process/2026-10-21-publication-version-preflight.md)

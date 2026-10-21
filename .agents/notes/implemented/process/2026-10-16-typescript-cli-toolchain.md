@@ -52,10 +52,10 @@ When the CLI is selected by the [module-scoped CI decision](2026-10-21-module-sc
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
 Windows. macOS tests mount temporary case-sensitive and case-insensitive APFS
 images and verify their actual lookup behavior before exercising configuration
-validation. The entire selected CLI matrix and the dedicated shell completion
-job contribute their results directly to the workflow. Main pushes select all
-modules. The [CI simplification decision](../simplification/2026-10-21-ci-gate-simplification.md)
-owns workflow-result handling and PR-only version enforcement.
+validation. The final `checks` job accepts only success or skipped from every
+preceding job, including the CLI matrix and dedicated shell completion job.
+Main pushes select all modules. The [CI simplification decision](../simplification/2026-10-21-ci-gate-simplification.md)
+owns the final job-result gate and PR-only version enforcement.
 Actions are pinned to the inspected commits:
 [checkout](https://github.com/actions/checkout/tree/3d3c42e5aac5ba805825da76410c181273ba90b1),
 [setup-node](https://github.com/actions/setup-node/tree/949feb2413d6458794dcd2491c4babbbce0c15c1),
@@ -85,7 +85,7 @@ The directly declared `semver` runtime dependency validates and orders versions
 for self-update and the package-version gate, including prereleases. Build
 metadata alone does not increase version precedence. Invalid manifests or missing commits fail instead of bypassing the
 check. The local push mode validates its first version when no predecessor
-exists. Version-check failures fail the PR's Linux job and its workflow result.
+exists. Version-check failures fail the PR's Linux job and the final `checks` job.
 The original toolchain ran this policy on main pushes as well; the
 [CI simplification decision](../simplification/2026-10-21-ci-gate-simplification.md)
 keeps the version decision in the reviewed PR while retaining full application

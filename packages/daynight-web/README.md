@@ -83,9 +83,10 @@ under this package's `.tmp/` and are removed after classification. Typechecking
 remains a separate mandatory check; classification is not a substitute for it.
 
 PR CI selects affected modules using the [repository routing rules](../../README.md#ci-selection);
-main pushes run the full suite. The workflow uses routing and application-job
-results directly, with deliberately unselected jobs reported as `skipped`. When
-selected, `verify-web` retains its complete workload, including real embedded Go
+main pushes run the full suite. The final `checks` job accepts only `success` or
+`skipped` from every preceding job; failures, cancellations and other results fail
+the gate. Deliberately unselected jobs report `skipped`. When selected,
+`verify-web` retains its complete workload, including real embedded Go
 builds and production-browser acceptance. The CI entry
 `node packages/daynight-web/scripts/ci.mts` uses the same acceptance runner as
 `pnpm web:acceptance`. CI supplies pinned Chromium installation, including Linux
@@ -173,7 +174,7 @@ scenario annotations validated in each target's report.
 | W8 | `detail-navigation`, `refresh-staleness`: complete current content, relation navigation and readiness differences without revising a dependent task |
 | W9 | `failure-recovery`, `deep-links`, `capacity-limits`: owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
-| W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the CI workflow result |
+| W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
 | W12 | `keyboard-focus`, `narrow-layout`: modal focus lifecycle, keyboard node activation and 320px page geometry |
 
 Receipts live in `packages/daynight-web/.tmp/acceptance/<run-id>/`, with the

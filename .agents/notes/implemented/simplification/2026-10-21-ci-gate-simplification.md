@@ -6,9 +6,9 @@ Status: implemented
 
 The package-version policy is evaluated on a PR before its release inputs reach
 main. Repeating that policy after merging adds a second version decision to
-mainline application validation. A terminal CI job also reinterprets module
-selection and job states that the workflow already exposes, despite publication
-consuming the workflow result.
+mainline application validation. The terminal CI gate also duplicates module
+selection when it derives expected job states from flags that the routing job
+has already calculated.
 
 ## Decision
 
@@ -18,13 +18,18 @@ passes the PR event's base and head commits directly to the existing version
 script. Main pushes retain every application suite. The local script keeps its
 push comparison mode, including initial-push baseline validation.
 
-Module detection still selects complete PR job families and selects every module
-on main pushes. Routing and application jobs determine the workflow result
-directly. The terminal `checks` aggregation job and its result-validation helper,
-CLI path and dedicated tests are removed; routing tests remain in the lightweight
-job. The main ruleset requires no named check context, and
-[npm publication](../process/2026-10-20-npm-trusted-publishing.md) already consumes
-a successful whole `checks.yml` main-push run at the exact source commit. These
+Module detection selects complete PR job families and every module on main
+pushes. The final `checks` job runs with `always()` after routing and all
+application jobs. Its single step uses `jq` to accept only `success` or `skipped`
+from every preceding job. Failure, cancellation and any other result fail the
+gate. It reads job results without comparing module-selection flags and needs no
+checkout, runtime setup or repository helper. The selection-aware result helper,
+its CLI path and dedicated tests are removed; routing tests remain in the
+lightweight job.
+
+The main ruleset requires no named check context, and
+[npm publication](../process/2026-10-20-npm-trusted-publishing.md) consumes a
+successful whole `checks.yml` main-push run at the exact source commit. These
 consumers require no configuration or publication-workflow change.
 
 This partially supersedes the
@@ -40,20 +45,19 @@ module routing, native validation and complete acceptance workloads remain.
 already applied to the reviewed PR. Mainline validation still runs all application
 suites without making the release-number decision again.
 
-**Keep the terminal aggregation job.** Its selection-aware validation originally
-provided one status that distinguished intentional skips from unexpected skips.
-The workflow result already represents the jobs used by publication, and the
-repository requires no named aggregate status. Maintaining another result
-calculation adds a job and helper code for that duplicate responsibility.
+**Keep selection-aware result validation.** It originally distinguished intentional
+skips from unexpected skips by comparing every result with module-selection
+flags. The routing job already owns module selection. Reading each preceding
+job's result is sufficient for the terminal gate to reject failed or cancelled
+work without another selection calculation and repository helper.
 
 ## Consequences
 
-Version failures remain visible in the PR's Linux CLI job and workflow result.
+Version failures remain visible in the PR's Linux CLI job and fail the final gate.
 Main-push runs provide the same full application evidence required for publication
 without repeating the PR version policy. Documentation-only PRs run routing tests
-and skip application jobs. Job selection, coverage thresholds, real-service
-acceptance and cleanup requirements are unchanged.
+and the final gate while application jobs are skipped. Job selection, coverage
+thresholds, real-service acceptance and cleanup requirements are unchanged.
 
-Workflow consumers use the workflow conclusion or individual application-job
-results. There is no separately computed status that validates expected selected
-and skipped job combinations.
+The final `checks` result summarizes whether every preceding job succeeded or
+was skipped. It does not validate selected-versus-skipped job combinations.

@@ -254,8 +254,8 @@ and function coverage of at least 80%, with critical-block checks enabled. The
 same raw coverage profile supplies an exact strict comparison; exactly 90%
 fails, independently of display rounding. No product files or functions are
 excluded. When [CI selection](#ci-selection) selects the server, the complete
-Go job contributes its result to the workflow. PostgreSQL absence is a failure,
-not a skipped test. PT-T5 adds an installed-CLI service path and resource-budget
+Go job contributes its result to the final `checks` job. PostgreSQL absence is a
+failure, not a skipped test. PT-T5 adds an installed-CLI service path and resource-budget
 probes to this same gate. A Node orchestrator shares one real installation across
 the Go command scenarios and, after the unchanged go-cov/strict-profile checks,
 public-command probes outside Go's default ten-minute timer. Test-only deadline
@@ -292,7 +292,7 @@ deployment lifecycle fixtures and an exact statement gate strictly
 above 90%. It independently enumerates all product TypeScript/TSX files and
 publishes raw counters plus a relative source manifest. When
 [CI selection](#ci-selection) selects web, the complete job contributes its result
-to the workflow; existing root CLI commands retain their scope.
+to the final `checks` job; existing root CLI commands retain their scope.
 
 For a disposable full-stack HTTP target, run a command through
 `bash deployment/dev-ci/run.sh <command> [args...]`; it receives
@@ -1141,15 +1141,17 @@ owns scheduling and phase evidence; the
 [CI efficiency decision](.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md)
 retains the other workload optimizations and their limits.
 
-The workflow result reflects the routing and application jobs directly.
-Documentation-only PRs run routing tests without installing application
-dependencies or running application tests. Every `main` push retains full
-application validation, including the exact-commit workflow run required for npm
+The final `checks` job always runs after routing and application jobs. It accepts
+only `success` or `skipped` from every preceding job; failures, cancellations and
+other results fail the gate. It uses those job results without comparing module
+selection flags. Documentation-only PRs run routing tests and this final gate
+without installing application dependencies or running application tests. Every
+`main` push retains full application validation, including the exact-commit workflow run required for npm
 publication. Package-version enforcement belongs to PR validation. The
 [selection decision](.agents/notes/implemented/process/2026-10-21-module-scoped-pr-ci.md)
 records the routing alternatives and maintenance costs; the
 [CI simplification decision](.agents/notes/implemented/simplification/2026-10-21-ci-gate-simplification.md)
-owns version-check timing and workflow-result ownership.
+owns version-check timing and the final job-result gate.
 
 To validate the routing rules locally without application dependencies, run:
 

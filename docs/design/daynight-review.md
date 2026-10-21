@@ -627,8 +627,8 @@ Node 文档说明了相关的
 应用工具链提供 `pnpm typecheck`、`pnpm test`、`pnpm build` 和独立的 `pnpm acceptance`。
 CI 要求源码、包元数据、构建或依赖输入发生变化时升级包版本；具体范围和本地检查命令见
 [README](../../README.md#package-versions)。版本检查只在 PR 的 Linux CLI 任务中运行，
-使用事件中的 base 与 head 提交；任务失败直接影响工作流结果。main push 保留全量应用
-检查。包构建及命令间依赖隔离由[客户端设计](daynight.md)定义。
+使用事件中的 base 与 head 提交；任务失败使最终 `checks` 汇总失败。main push 保留全量
+应用检查。包构建及命令间依赖隔离由[客户端设计](daynight.md)定义。
 
 review 测试覆盖组与操作参数、帮助、编译后的入口、仓库添加、审查列表、严格配置解析
 和路径校验；GitHub Actions 在 Linux、macOS 和 Windows 上运行这些检查。SQLite 测试使用真实磁盘数据库，验证迁移、事务回滚、

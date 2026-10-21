@@ -36,17 +36,19 @@ Every main push runs all jobs, preserving the successful exact-commit main run
 consumed by [npm publication](2026-10-20-npm-trusted-publishing.md).
 
 The workflow starts on every PR, including documentation changes. Routing tests
-run in the lightweight job without installing pnpm dependencies. The workflow
-uses routing and application-job results directly, and intentionally unselected
-jobs remain skipped.
+run in the lightweight job without installing pnpm dependencies. The final
+`checks` job runs after every routing and application job and accepts only success
+or skipped for each result. Failures, cancellations and other results fail the
+gate. Intentionally unselected jobs remain skipped.
 
 This scheduling decision originally included a final `checks` job that validated
 selection flags and required success for selected jobs and skipped for unselected
 jobs. It distinguished intentional omissions from unexpected skips, selection
 failures and missing outputs. The later
 [CI simplification decision](../simplification/2026-10-21-ci-gate-simplification.md)
-removes that additional aggregation and keeps package-version enforcement in PRs.
-The path selection and each module's validation workload remain unchanged.
+replaces selection-aware aggregation with the job-result gate and keeps
+package-version enforcement in PRs. The path selection and each module's
+validation workload remain unchanged.
 
 This refines the scheduling described by the
 [CLI toolchain decision](2026-10-16-typescript-cli-toolchain.md),
@@ -69,7 +71,8 @@ selection also keeps routing tests active for documentation-only PRs.
 **Allow every skipped dependency in the original aggregate.** This could not
 distinguish an intended omission from a selected job skipped because routing or
 a dependency failed. The original selection-aware aggregate preserved that
-distinction; the later simplification delegates results to the workflow.
+distinction; the later simplification accepts success or skipped from every
+preceding job without comparing selection flags.
 
 **Run every module on every PR.** This was the existing scheduling behavior and
 provided broad integration evidence before each merge. It spends the full
@@ -79,10 +82,11 @@ while removing that repeated work.
 
 ## Consequences
 
-Module-only PRs wait for their own job family; documentation-only PRs run only
-routing tests. Every selected suite retains its original
-coverage, real-process behavior, time bounds and cleanup failures. No repository
-protection changes or additional workflow permissions are required.
+Module-only PRs wait for their own job family and the final gate;
+documentation-only PRs run routing tests and the gate. Every selected suite
+retains its original coverage, real-process behavior, time bounds and cleanup
+failures. No repository protection changes or additional workflow permissions are
+required.
 
 The path map is maintained alongside package and tooling ownership. Unknown
 paths deliberately incur full validation, so a new package or dependency patch

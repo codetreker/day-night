@@ -283,3 +283,14 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 30
+
+  checks:
+    if: ${{ always() }}
+    needs: [detect-changes, verify, verify-completion, verify-server, verify-web]
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Require preceding jobs to succeed or be skipped
+        env:
+          JOB_RESULTS: ${{ toJSON(needs.*.result) }}
+        run: jq --exit-status 'all(.[]; . == "success" or . == "skipped")' <<< "$JOB_RESULTS"
