@@ -49,11 +49,12 @@ Local browser overrides and dirty state stay explicit in local receipts.
 
 Incremental evidence records source/binary/database/browser identities, both
 runtime targets, raw Playwright reports, screenshots, performance and dev-ci
-image/cleanup results in the project. The required web job archives browser
+image/cleanup results in the project. When selected, the web job archives browser
 acceptance independently of the raw V8 coverage report; it remains dependent on
 successful execution and cleanup. Go and web each retain strict unrounded total
-statement coverage above 90%, while all native CLI and shell completion gates
-remain required.
+statement coverage above 90%. The [module-scoped CI decision](../process/2026-10-21-module-scoped-pr-ci.md)
+selects affected PR jobs without changing their internal gates; main pushes
+retain all native CLI, shell completion, Go and web checks.
 
 Timing begins at the trusted browser input event's performance-clock timestamp
 and ends after the full DOM/readable-root or feedback condition and two animation

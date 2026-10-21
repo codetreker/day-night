@@ -44,8 +44,11 @@ the client or starting drain. The
 owns the observation and cleanup ordering; existing cancellation, drain and
 connection-health assertions remain unchanged.
 
-The Go CI job runs alongside the existing three native CLI jobs, and the
-aggregate requires all of them. The pinned go-cov checks package coverage at
+The foundation originally added the Go CI job alongside the existing three
+native CLI jobs and required all of them in the aggregate. The later
+[module-scoped CI decision](../process/2026-10-21-module-scoped-pr-ci.md) selects
+PR jobs by affected module while preserving full main-push validation and each
+selected job's workload. The pinned go-cov checks package coverage at
 85%, function coverage at 80%, critical blocks, and total coverage at 90%.
 No product file or function is excluded; the default `ForTest` suffix exclusion
 is explicitly cleared.

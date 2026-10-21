@@ -48,11 +48,13 @@ the instance lock, opens SQLite and runs the
 [foreground coordinator](../architecture/2026-10-17-foreground-review-coordination.md).
 Configuration failures report their filename and preserve the original cause.
 
+When the CLI is selected by the [module-scoped CI decision](2026-10-21-module-scoped-pr-ci.md),
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
 Windows. macOS tests mount temporary case-sensitive and case-insensitive APFS
 images and verify their actual lookup behavior before exercising configuration
-validation. A final `checks` job requires the entire matrix to succeed. Actions are
-pinned to the inspected commits:
+validation. The final `checks` job requires the entire selected CLI matrix and
+the dedicated shell completion job to succeed. Main pushes select all modules.
+Actions are pinned to the inspected commits:
 [checkout](https://github.com/actions/checkout/tree/3d3c42e5aac5ba805825da76410c181273ba90b1),
 [setup-node](https://github.com/actions/setup-node/tree/949feb2413d6458794dcd2491c4babbbce0c15c1),
 and [pnpm setup](https://github.com/pnpm/action-setup/tree/ea17c68df8912ef543352723c149a84f56e3d413).
@@ -81,8 +83,9 @@ The directly declared `semver` runtime dependency validates and orders versions
 for self-update and the package-version gate, including prereleases. Build
 metadata alone does not increase version precedence. Invalid manifests or missing commits fail instead of bypassing the
 check. An initial main push validates its first version because no predecessor
-exists. The existing required matrix gate includes the Linux result, so version
-check failures block integration through the same required check.
+exists. When CLI validation is selected, the required aggregate includes the
+Linux result, so version-check failures block integration through the same
+required check.
 
 ## Alternatives
 

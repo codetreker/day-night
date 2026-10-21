@@ -58,8 +58,10 @@ uses statement counts from the same raw coverage profile so equality and rounded
 display values cannot weaken the requirement. The runtime foundation records
 this stricter replacement of the original inclusive total threshold. The design pins a tool revision containing the exclusion
 denominator fix and keeps tests with the packages whose coverage they must prove.
-The CI aggregate gate must require both the Go service checks and the existing
-native CLI checks.
+The original CI aggregate required both the Go service checks and the existing
+native CLI checks. The later [module-scoped CI decision](../process/2026-10-21-module-scoped-pr-ci.md)
+selects affected PR modules and retains all checks on main pushes without
+changing the individual validation gates.
 
 ## Alternatives
 
