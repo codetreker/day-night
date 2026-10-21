@@ -9,6 +9,12 @@
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-20-project-task-cli-design.md)
 保存范围和取舍。文档记录已确认的交付目标；状态按实际实现及验证证据更新。
 
+PT-T1–PT-T5 记录原有完整 CLI 的交付与历史证据。有界 `task ready` 选择由
+[选择决策](../../.agents/notes/implemented/feature/2026-10-21-bounded-ready-task-selection.md)
+拥有，实时任务为 `ada23216-a6e6-45de-89f4-67f1f71fbbfc`；其当前行为归入需求
+PT7、PT8 和 V13。该扩展保持 `task list --ready` 的完整分页，未改变下述历史验证
+结果的范围。
+
 ## 任务顺序
 
 | 编号 | 任务 | 状态 | 前置 | 主要交付 | 对应要求 |

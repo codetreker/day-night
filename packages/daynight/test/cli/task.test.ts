@@ -125,7 +125,7 @@ describe("compiled task commands", () => {
     const f = await fixture();
     try {
       const helpBlocked = ["/api/", "/config/", "/repository/", "/commands/server/", "/commands/task/rendering.js", "better-sqlite3"];
-      for (const args of [[], ["--help"], ...["create", "list", "show", "update", "graph"].map((name) => [name, "--help"])]) {
+      for (const args of [[], ["--help"], ...["create", "list", "ready", "show", "update", "graph"].map((name) => [name, "--help"])]) {
         const result = await f.invoke(args, { blocked: helpBlocked });
         expect(result.code, result.stderr).toBe(0);
         expect(result.stdout).toContain("Usage: daynight task");
@@ -138,6 +138,7 @@ describe("compiled task commands", () => {
         ["update", taskId, "--status", "invalid"],
         ["update", taskId, "--status", "done", "--if-version", "9223372036854775808"],
         ["show", "invalid"], ["list", "--project", "invalid"], ["list", "--ready", "false"], ["graph", "--unknown"],
+        ["ready", "--limit", "0"], ["ready", "--limit", "101"], ["ready", "--limit=1e1"], ["ready", "--limit=1.5"], ["ready", "--limit=+1"], ["ready", "--status", "todo"],
       ]) {
         const result = await f.invoke(args, { blocked: validationBlocked });
         expect(result.code, result.stderr).toBe(2);
@@ -146,6 +147,29 @@ describe("compiled task commands", () => {
         expect(result.stderr).not.toContain("configuration file");
       }
       await expect(readdir(f.home)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await readdir(f.caller)).toEqual([]);
+    } finally { await f.close(); }
+  }, 60_000);
+
+  it("requests a single bounded ready page and preserves full task JSON and empty output", async () => {
+    const f = await fixture();
+    try {
+      let items = [task({ version: 9_223_372_036_854_775_807n })];
+      let cursor: string | null = "unrequested next page";
+      const { requests } = await f.serve((request, response) => {
+        if (request.query.has("cursor")) refuse(response, "internal_error", "unexpected-ready-cursor", 500);
+        else respond(response, { items, nextCursor: cursor });
+      });
+      const ready = await f.invoke(["ready", "--limit", "1", "--json", ...explicit]);
+      expect(ready.code, ready.stderr).toBe(0);
+      expect(parseApiJson(ready.stdout)).toEqual(items);
+      expect(ready.stdout).toContain('"version":9223372036854775807');
+      expect(requests).toHaveLength(2);
+      expect(Object.fromEntries(requests[1]!.query)).toEqual({ ready: "true", limit: "1" });
+      items = []; cursor = null;
+      const empty = await f.invoke(["ready", ...explicit]);
+      expect(empty.code, empty.stderr).toBe(0); expect(empty.stdout).toBe("No ready tasks.\n");
+      expect(Object.fromEntries(requests.at(-1)!.query)).toEqual({ ready: "true", limit: "10" });
       expect(await readdir(f.caller)).toEqual([]);
     } finally { await f.close(); }
   }, 60_000);
@@ -283,6 +307,12 @@ describe("compiled task commands", () => {
       expect(cached.code, cached.stderr).toBe(0);
       expect(parseApiJson(cached.stdout)).toEqual([task()]);
       expect(requests.slice(beforeCached).map(({ method, pathname }) => `${method} ${pathname}`)).toEqual([`GET ${projectPath}`, `GET ${taskPath}`]);
+      const beforeReady = requests.length;
+      const ready = await f.invoke(["ready", "--limit=1", "--json"], options);
+      expect(ready.code, ready.stderr).toBe(0);
+      expect(parseApiJson(ready.stdout)).toEqual([task()]);
+      expect(requests.slice(beforeReady).map(({ method, pathname }) => `${method} ${pathname}`)).toEqual([`GET ${projectPath}`, `GET ${taskPath}`]);
+      expect(Object.fromEntries(requests.at(-1)!.query)).toEqual({ ready: "true", limit: "1" });
 
       const blockedRepository = path.join(f.root, "blocked repository");
       await f.initializeRepository(blockedRepository);

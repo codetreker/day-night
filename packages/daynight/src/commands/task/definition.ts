@@ -26,6 +26,12 @@ export const taskDefinition: CommandDefinition = {
       details: "Combine --status and --ready with AND. Read every page before printing the complete result.",
     },
     {
+      name: "ready",
+      description: "Show the first ready tasks in the project",
+      options: [{ names: ["--limit"], description: "Maximum number of tasks to return, from 1 to 100 (default: 10)", value: { name: "count", kind: "text" } }, projectOption, jsonOption, helpOption],
+      details: "Read one bounded page ordered by creation time, then task UUID, ascending. A task is ready when it is todo and every dependency is done.",
+    },
+    {
       name: "show",
       description: "Show a task by its ID",
       arguments: [taskArgument],

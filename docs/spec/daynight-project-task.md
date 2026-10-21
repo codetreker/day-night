@@ -21,8 +21,8 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 
 ## PT1. 范围与命令边界
 
-交付包含 project 创建、列表和详情，以及 project 内 task 的创建、列表、详情、更新
-和完整图查询。CLI 复用现有服务接口，不新增 server API、数据库字段、project 唯一
+交付包含 project 创建、列表和详情，以及 project 内 task 的创建、列表、有界 ready
+选择、详情、更新和完整图查询。CLI 复用现有服务接口，不新增 server API、数据库字段、project 唯一
 约束、认证方式或任务执行能力。允许配置地址不改变服务现有的本机访问边界。
 
 顶层、命令组和操作帮助必须先于配置加载、Git、文件写入和网络访问执行。裸
@@ -157,6 +157,8 @@ Git、取消或期限错误均按实际原因失败，不得把查询失败视�
 daynight task create --title "实现登录" --description "支持 OAuth 登录"
 daynight task create --title "实现登录页面" --depends-on <task-id>
 daynight task list
+daynight task ready
+daynight task ready --limit 5 --json
 daynight task list --ready
 daynight task list --status in_progress
 daynight task show <task-id>
@@ -170,7 +172,7 @@ daynight task update <task-id> --status done --if-version 3
 daynight task graph
 ```
 
-上述命令均接受 `--project <id>`。`list`、`show`、`graph` 接受 `--json`。标题、
+上述命令均接受 `--project <id>`。`list`、`ready`、`show`、`graph` 接受 `--json`。标题、
 描述、repo 地址、ID、状态和版本等 text 选项同时接受 `--option value` 与
 `--option=value`。内联形式只按第一个 `=` 分隔，保留值内后续 `=` 和前导 `-`；
 分离形式的值以 `-` 开始时拒绝，须使用内联形式。只有描述允许空字符串，既可写
@@ -184,6 +186,19 @@ daynight task graph
 查询。显式 project ID、show/update 的 task ID、标题、描述、状态、版本及修改字段
 组合的参数错误必须先于配置读取、Git 和网络访问拒绝；依赖 ID 原样传给服务，
 其语法、引用是否存在及合法性由服务验证。
+
+`ready` 供日常选择下一项工作，返回当前 project 按服务顺序排列的前 N 个 ready task；
+默认 `N=10`，可通过 `--limit <N>` 指定。limit 仅接受十进制整数字符串且数值为
+`1..100`；拒绝符号、小数、指数、非十进制形式、空值及越界值。limit 参数错误
+必须在配置读取、Git 和网络访问之前拒绝。该操作只发送一次 task GET，查询固定
+`ready=true` 和所选 `limit`；响应中的合法 `nextCursor` 不触发续页，也不提供
+`--status`、`--cursor` 或其他筛选。`task list --ready` 保持遍历全部匹配页的行为。
+
+ready 沿用服务定义：task 为 `todo`，且每个直接依赖均为 `done`。服务按
+`createdAt ASC, id ASC` 排序；CLI 保留该顺序，不重新排序。返回项数不得超过所选
+limit，每项必须为 ready，且 task ID 不得重复；响应违反任一条件时作为协议错误
+拒绝，stdout 保持为空。正常的候选选择使用此有界操作，完整依赖关系可按需使用
+`graph` 查看。
 
 更新至少提供标题、描述、状态或依赖中的一个字段。省略字段表示保持，空描述表示
 清空描述。出现 `--depends-on` 时替换完整前置集合；`--clear-dependencies` 清空
@@ -202,19 +217,22 @@ daynight task graph
 
 ## PT8. 输出、分页与错误
 
-普通查询提供可读结果；列表自动遍历全部分页，在完整读取、结构验证、渲染及最终
-期限检查成功后输出结果。Project 列表逐个输出完整的带标签资源块，包含 ID、名称、
+普通查询提供可读结果；`project list` 和 `task list` 自动遍历全部匹配分页，
+`task ready` 只读取所选的前 N 项。每个操作在其全部必要读取、结构验证、渲染及
+最终期限检查成功后输出结果。Project 列表逐个输出完整的带标签资源块，包含 ID、名称、
 原始 repo 地址及创建、更新时间；空列表明确说明没有 project。详情和创建结果使用
 相同字段，创建结果另表明服务已确认创建。Task 列表逐个输出完整资源块，包括 ID、
 所属 project、标题、描述、状态、完整版本、ready、依赖、阻塞及创建、更新时间；
-空列表明确说明没有 task。创建和更新结果使用同一资源格式并表明服务已确认操作。
+空 task list 明确说明没有 task。ready 使用同一完整 task 资源格式，空结果输出
+`No ready tasks.`。创建和更新结果使用同一资源格式并表明服务已确认操作。
 图显示 project、全部 summary 字段及每个节点的状态、标题预览、截短标记、ready、
 依赖、阻塞和时间。所有文本完整显示，资源边界保持清楚，输出空间随字段内容总量
 线性增长。
 
 可读资源字段中的 C0/C1 控制字符及 Unicode 行、段分隔符必须转义为可见文本，
-普通 Unicode 与 emoji 保持原样。`--json` 将详情输出为一个资源对象、列表输出为
-完整资源数组、图输出为完整图响应对象，并以换行结束。JSON 保留 API 字段名称、
+普通 Unicode 与 emoji 保持原样。`--json` 将详情输出为一个资源对象、list 输出为
+所有匹配资源的数组、ready 输出为所选完整 task 的数组、图输出为完整图响应对象，
+并以换行结束。ready 不添加分页 envelope，空结果为 `[]`。JSON 保留 API 字段名称、
 类型和原始字符串，不应用终端显示转义或插入诊断文字。写操作成功后输出服务确认
 的资源 ID 及结果；服务未确认成功时不得输出成功结果。
 
@@ -255,6 +273,7 @@ daynight task graph
 | V10 | 多页查询与 `--json` 仅完整成功后输出；图保持完整响应字段并正确报告超限，stdout 可直接由 JSON parser 读取 |
 | V11 | 单次期限、持续推进 cursor 耗尽总期限、单响应和累计字节超限、锁竞争、用户取消、错误响应、无效 JSON、损坏缓存及磁盘失败分别给出正确 stderr 和退出码；超限无部分输出或后续副作用，写响应未确认不产生虚假失败确定性 |
 | V12 | CLI 既有 `pnpm typecheck`、`pnpm test`、`pnpm build` 及相关安装验收通过；Linux、macOS、Windows 的 Git、锁及文件替换有原生证据 |
+| V13 | `task ready` 的默认和显式 limit、参数在 I/O 前拒绝、单次 `ready=true` 查询、合法 cursor 不续页、稳定服务顺序、完整 int64 JSON、空结果及超量/非 ready/重复 ID 响应拒绝均可观察；`task list --ready` 仍完整翻页，真实服务证明选择前 N 项及依赖完成后的 ready 变化 |
 
 配置、HTTP、仓库关联基础及 Project 命令已提供对应模块验证；Project 的实际编译
 入口已在受控 HTTP 条件下验证创建、完整分页、详情、参数错误、服务拒绝、

@@ -71,9 +71,13 @@ command-composition scope. The adopted
 [project/task CLI design](2026-10-20-project-task-cli-design.md) now defines that
 consumer and its additive configuration and repository binding. Shared
 configuration, bounded HTTP, repository bindings and project commands are
-delivered; task command composition is delivered. Its definition extends
-shared value metadata for empty descriptions, fixed statuses, ordered repeated
-dependencies and inline text assignment. Adding these operations must preserve
+delivered; task command composition is delivered. The
+[bounded ready selection decision](../feature/2026-10-21-bounded-ready-task-selection.md)
+extends that module with `task ready [--limit <N>]`, using the API client
+`listReadyTasks` operation without changing the complete-list contract. Its
+limit validation finishes before server configuration, Git or HTTP is loaded.
+Task definitions extend shared value metadata for empty descriptions, fixed
+statuses, ordered repeated dependencies and inline text assignment. Adding these operations must preserve
 per-command loading and ownership so they do not become startup dependencies for
 existing commands.
 Independent server and web lifecycles retain their current owners.

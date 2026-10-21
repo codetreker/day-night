@@ -106,6 +106,28 @@ describe("task commands over HTTP", () => {
     expect(f.requests).toHaveLength(3);
   });
 
+  it("publishes only the first ready page even when a later page would fail", async () => {
+    const f = await fixture((request, response) => {
+      if (request.query.has("cursor")) respond(response, { error: { code: "internal_error", message: "Not a bounded request", requestId: "unexpected-later-page" } }, 500);
+      else respond(response, { items: [task], nextCursor: "next" });
+    });
+    await f.run(["ready", "--limit", "1", "--json"]);
+    expect(f.context.stdout).toHaveBeenCalledOnce();
+    expect(parseApiJson(f.context.stdout.mock.calls[0]![0])).toEqual([task]);
+    expect(f.requests).toHaveLength(2);
+    expect(Object.fromEntries(f.requests[1]!.query)).toEqual({ ready: "true", limit: "1" });
+  });
+
+  it.each([
+    { items: [task, { ...task, id: otherId }], nextCursor: null },
+    { items: [{ ...task, status: "in_progress", ready: false }], nextCursor: null },
+  ])("keeps an invalid ready page out of stdout %#", async (page) => {
+    const f = await fixture((_request, response) => respond(response, page));
+    await expect(f.run(["ready", "--limit", "1", "--json"])).rejects.toMatchObject({ operation: "task.ready", projectId, phase: "protocol" });
+    expect(f.context.stdout).not.toHaveBeenCalled();
+    expect(f.requests).toHaveLength(2);
+  });
+
   it("preserves version conflicts and related task IDs without rereading or retrying", async () => {
     const f = await fixture((request, response) => {
       if (request.method === "GET") respond(response, task);

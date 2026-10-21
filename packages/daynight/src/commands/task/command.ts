@@ -33,6 +33,9 @@ export const runTaskCommand = async (
   const status = command.options.get("--status") as TaskStatus | undefined;
   const dependsOn = command.options.get("--depends-on") as readonly string[] | undefined;
   const clearDependencies = command.options.has("--clear-dependencies");
+  const limitArgument = command.options.get("--limit") as string | undefined;
+  const readyLimit = limitArgument === undefined ? 10 : Number(limitArgument);
+  if (limitArgument !== undefined && (!/^[0-9]+$/.test(limitArgument) || !Number.isInteger(readyLimit) || readyLimit < 1 || readyLimit > 100)) throw new UsageError("Ready task limit must be a decimal integer from 1 to 100.", help);
   if (title !== undefined && !isNonemptyText(title)) throw new UsageError("Task title must be nonempty UTF-8 text without NUL characters.", help);
   if (description !== undefined && !isText(description)) throw new UsageError("Task description must be UTF-8 text without NUL characters.", help);
   if (status !== undefined && !["todo", "in_progress", "done"].includes(status)) throw new UsageError("Task status must be todo, in_progress, or done.", help);
@@ -88,6 +91,11 @@ export const runTaskCommand = async (
       const tasks = await api.listTasks(project.id, filters);
       operation.check();
       return command.options.has("--json") ? renderTaskJson(tasks) : renderTaskList(tasks);
+    }
+    if (command.command.name === "ready") {
+      const tasks = await api.listReadyTasks(project.id, readyLimit);
+      operation.check();
+      return command.options.has("--json") ? renderTaskJson(tasks) : tasks.length === 0 ? "No ready tasks.\n" : renderTaskList(tasks);
     }
     if (command.command.name === "graph") {
       const graph = await api.getTaskGraph(project.id);

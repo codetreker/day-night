@@ -40,6 +40,7 @@ daynight project show <project-id> [--json]
 daynight task
 daynight task create --title <title> [options]
 daynight task list [--status <status>] [--ready] [--json] [--project <project-id>]
+daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
 daynight task graph [--json] [--project <project-id>]
@@ -176,7 +177,7 @@ review 状态或网络。`setup` 与 `review add-repo` 加载配置保存能力�
 
 `config/` 拥有共享配置路径、严格 YAML、已知顶层字段和保留注释的文件保存协议；
 `server.ts` 提供独立 server 字段投影。`api/` 拥有服务 DTO、精确数值 JSON、
-命令级期限和字节预算、HTTP 错误及完整分页，供后续业务命令组合。共享层不导入
+命令级期限和字节预算、HTTP 错误、完整分页及有界 ready 查询，供业务命令组合。共享层不导入
 review 或 update；服务器客户端也不依赖 YAML、SQLite 或 Git。`repository/` 将有效 origin、通用
 仓库身份、远端 project 校验与本地关联组合；原子文件替换由 `platform/files.ts`
 复用，配置保存和仓库元数据各自拥有锁、路径校验及调用顺序。
@@ -242,8 +243,15 @@ SIGBREAK 均进入这一取消源；配置读取接受同一 AbortSignal。错�
 原因链。Task 复用此执行层；它不控制 Go server 的启动或关闭。
 
 Task 的 definition、command 和 rendering 分别拥有共享语法、操作组合和完整
-输出。描述通过 `value.allowEmpty` 保留空值；状态通过 `value.choices` 统一参数
-校验和补全候选，帮助使用选项说明；重复依赖通过 `repeatable` 从首次出现起形成保留输入顺序及重复值的
+资源输出。`ready` 的 `--limit` 在任何配置、Git 或 HTTP 访问前校验为十进制整数
+`1..100`，默认 `10`。它调用 `api/client.ts` 的 `listReadyTasks`，仅发送一次带
+`ready=true` 和所选 `limit` 的 task GET；合法 `nextCursor` 不触发续页。该 API
+操作在返回前验证数量不超限、每项确为 ready 且 task ID 不重复。`list` 仍使用完整
+分页。完整的请求、排序和输出机制见
+[project/task 设计](daynight-project-task.md#api-映射与更新机制)。
+
+描述通过 `value.allowEmpty` 保留空值；状态通过 `value.choices` 统一参数校验和补全
+候选，帮助使用选项说明；重复依赖通过 `repeatable` 从首次出现起形成保留输入顺序及重复值的
 数组。text 内联赋值按首个 `=` 分隔并支持前导连字符，目录与开关继续拒绝内联。
 参数验证先于配置、Git 及 HTTP；显式 project 直接读取远端详情，自动分支才加载
 `repository/`，并在 task 写入前完成关联验证与保存。
