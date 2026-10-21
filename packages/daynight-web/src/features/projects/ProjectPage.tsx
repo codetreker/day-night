@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { ApiError } from "../../api/client";
 import { navigate } from "../../app/router";
 import { TaskDrawer } from "../task-detail/TaskDrawer";
@@ -49,7 +49,9 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
   const originalTrigger = useRef<HTMLElement | null>(null);
   const expandedRoot = useRef<string | null>(null);
   const snapshot = graph.snapshot;
-  const { expandedRootId, setExpandedRootId, issue: preferenceIssue } = useProjectViewPreferences(projectId, snapshot?.index.roots ?? null);
+  // Database timestamp precision is retained by reversing the server's exact order.
+  const rootIds = useMemo(() => snapshot?.index.roots.toReversed() ?? null, [snapshot]);
+  const { expandedRootId, setExpandedRootId, issue: preferenceIssue } = useProjectViewPreferences(projectId, rootIds);
   expandedRoot.current = expandedRootId;
   const selectedTaskId = selection !== null && snapshot !== null &&
     (selection.revision === snapshot.revision || snapshot.index.nodes.has(selection.id)) ? selection.id : null;
@@ -133,7 +135,7 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
             <section className="state-box"><h2>还没有任务</h2><p>项目中的任务会显示在这里。创建任务后，点击刷新查看。</p></section>
           ) : (
             <section aria-label="任务依赖链">
-              <RootList index={snapshot.index} expandedRootId={expandedRootId} onExpand={setExpandedRootId} selectedTaskId={selectedTaskId} onSelectTask={onSelectTask} />
+              <RootList index={snapshot.index} rootIds={rootIds!} expandedRootId={expandedRootId} onExpand={setExpandedRootId} selectedTaskId={selectedTaskId} onSelectTask={onSelectTask} />
             </section>
           )}
           {selectedTaskId !== null && <TaskDrawer projectId={projectId} taskId={selectedTaskId} snapshot={snapshot} onSelectTask={onSelectRelation}

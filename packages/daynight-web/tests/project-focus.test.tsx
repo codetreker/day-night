@@ -64,6 +64,7 @@ afterEach(() => {
 
 const openDrawer = async () => {
   render(<ProjectPage projectId={projectId} />, { container: root });
+  fireEvent.click(await screen.findByRole('button', { name: /^原任务链/ }));
   const trigger = await screen.findByRole('button', { name: '节点 所选任务' });
   trigger.focus();
   fireEvent.click(trigger);

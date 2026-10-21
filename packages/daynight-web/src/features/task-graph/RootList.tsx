@@ -5,6 +5,7 @@ import '../../styles/graph.css';
 
 type RootListProps = {
   readonly index: GraphIndex;
+  readonly rootIds: readonly string[];
   readonly expandedRootId: string | null;
   readonly onExpand: (id: string | null) => void;
   readonly selectedTaskId: string | null;
@@ -13,7 +14,7 @@ type RootListProps = {
 
 const labels = { todo: '待处理', in_progress: '进行中', done: '已完成' };
 
-type RootRowProps = Omit<RootListProps, 'expandedRootId'> & {
+type RootRowProps = Omit<RootListProps, 'expandedRootId' | 'rootIds'> & {
   readonly rootId: string;
   readonly expanded: boolean;
 };
@@ -51,19 +52,19 @@ const RootRow = memo(({ index, rootId, expanded, onExpand, selectedTaskId, onSel
   );
 });
 
-export const RootList = ({ index, expandedRootId, onExpand, selectedTaskId, onSelectTask }: RootListProps) => (
+export const RootList = ({ index, rootIds, expandedRootId, onExpand, selectedTaskId, onSelectTask }: RootListProps) => (
   <section aria-labelledby="task-roots-heading">
     <div className="graph-section-heading">
-      <h2 id="task-roots-heading">任务链 <span className="graph-count-pill">{index.roots.length}</span></h2>
+      <h2 id="task-roots-heading">任务链 <span className="graph-count-pill">{rootIds.length}</span></h2>
       <div className="graph-legend" aria-label="任务状态图例">
         <span className="graph-status graph-status-todo"><i aria-hidden="true" />待处理</span>
         <span className="graph-status graph-status-in_progress"><i aria-hidden="true" />进行中</span>
         <span className="graph-status graph-status-done"><i aria-hidden="true" />已完成</span>
       </div>
     </div>
-    <p className="graph-note">从没有前置依赖的任务开始展开。共享任务可能出现在多条任务链中，各链进度不能相加作为项目总数。</p>
+    <p className="graph-note">按根任务创建时间倒序排列，从没有前置依赖的任务开始展开。共享任务可能出现在多条任务链中，各链进度不能相加作为项目总数。</p>
     <ul className="root-list">
-      {index.roots.map((rootId) => (
+      {rootIds.map((rootId) => (
         <RootRow
           key={rootId}
           index={index}

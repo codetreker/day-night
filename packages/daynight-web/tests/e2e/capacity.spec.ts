@@ -376,6 +376,7 @@ test.describe('fixed capacity and performance @capacity', () => {
           const graphResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/projects/${fixture.project.id}/task-graph`));
           const coldStart = performance.now();
           await page.goto(`/projects/${fixture.project.id}`, { waitUntil: 'domcontentloaded' });
+          if (kind === 'shared') await page.locator(`#task-root-${fixture.root.id}`).click();
           await visibleGraph(page, fixture.root.id, dataset.edges);
           dataset.coldOpenMs = performance.now() - coldStart;
           const initialResponse = await graphResponse;
