@@ -355,6 +355,10 @@ Node 测试和受限只读 GitHub wrapper 只记录并转发实际执行，不�
 原生配置、home、日志、临时资源与数据库均为验收所有。读取操作者认证只用于保持
 所选 provider/model 的实际认证语义，不复制 auth cache。凭据经进程内存、受限 helper
 或 child-only env 传递，禁止进入 Agent shell；检查隔离状态未保存已知秘密后清理。
+Codex 默认 workspace-write；宿主不支持 user namespace 时在认证和模型调用前拒绝。
+受信任 fixture 可显式设置 `DAYNIGHT_NATIVE_CODEX_SANDBOX=danger-full-access`，只改变
+该子进程的 thread / turn 策略，receipt 记录实际模式。此模式不证明文件系统强制隔离，
+不改宿主系统或操作者配置；home、凭据过滤与资源所有权要求继续成立。
 子进程与后代、服务会话和唯一标签容器均须有界回收；执行、扫描和清理同时失败时
 保留全部原因。证据仅保留脱敏后的版本、内容来源、原生事件、命令与服务结果及
 清理状态，具体机制和替代方案见

@@ -62,6 +62,13 @@ configured command-backed provider using a helper-only restoration of original
 credential lookup; headers become excluded child-only environment values and
 shell snapshots are disabled. Claude retains configured bearer auth with native
 subprocess credential scrubbing. Copilot uses its supported GitHub auth route.
+Codex's default workspace-write mode requires working user namespaces. A
+bounded preflight fails before auth/model calls when the host denies that
+facility. The explicit `DAYNIGHT_NATIVE_CODEX_SANDBOX=danger-full-access` option
+sets only this trusted fixture child's thread/turn policy; its receipt records
+the mode and cannot establish filesystem confinement. It changes neither the
+operator's configuration nor the host's namespace/security settings. Native
+homes, shell credential exclusion and ownership cleanup remain required.
 Known credentials are scanned from owned state before deletion; execution,
 scan and cleanup errors retain their causes together.
 

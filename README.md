@@ -1209,6 +1209,14 @@ pnpm --filter @codetreker/daynight skill:acceptance
 Codex recovery case. A selected-case receipt proves only that selection; a full
 run covers the six workflow combinations and all three recovery cases. Ordinary `pnpm test` and `pnpm acceptance` do not run live models.
 
+Codex defaults to `workspace-write` and checks the host's user-namespace support
+before authentication or model calls. If that facility is unavailable, an
+explicit `DAYNIGHT_NATIVE_CODEX_SANDBOX=danger-full-access` selects the per-child
+execution policy for these trusted fixtures. It changes no operator profile or
+system setting. The receipt records the selected mode; this mode does not prove
+filesystem confinement. Fixture homes, credential filtering, read-only hosting
+wrappers and owned-resource cleanup still apply.
+
 The suite packs and installs the actual CLI, installs the bundle through the
 interactive command into isolated homes or fresh linked worktrees, and starts
 an owned Go/PostgreSQL service. A normal development prompt names neither the

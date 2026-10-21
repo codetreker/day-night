@@ -47,6 +47,12 @@ const assertNoCredentialFiles = async (directory: string, credentials: readonly 
 };
 
 export const runCodex = async (request: NativeHostRequest): Promise<NativeHostResult> => {
+  const sandbox = process.env.DAYNIGHT_NATIVE_CODEX_SANDBOX ?? "workspace-write";
+  if (sandbox !== "workspace-write" && sandbox !== "danger-full-access") throw new Error("DAYNIGHT_NATIVE_CODEX_SANDBOX must be workspace-write or danger-full-access.");
+  if (sandbox === "workspace-write") {
+    try { execFileSync(await which("unshare", { path: process.env.PATH }), ["--user", "--map-root-user", "--", "true"], { timeout: 5_000, stdio: ["ignore", "pipe", "pipe"] }); }
+    catch { throw new Error("Codex workspace-write requires usable user namespaces. For this trusted native acceptance fixture, explicitly select DAYNIGHT_NATIVE_CODEX_SANDBOX=danger-full-access to run without OS sandbox confinement."); }
+  }
   const installedSkills = new Set(request.skillEntrypoints.map((entrypoint) => path.resolve(entrypoint)));
   if (installedSkills.size === 0 || request.expectedSkillContents === "") throw new Error("The Codex fixture has no expected installed skill.");
   for (const entrypoint of installedSkills) if (await readFile(entrypoint, "utf8") !== request.expectedSkillContents) throw new Error("The Codex fixture skill differs from the expected installed bundle.");
@@ -222,11 +228,11 @@ export const runCodex = async (request: NativeHostRequest): Promise<NativeHostRe
       await rpc("initialize", { clientInfo: { name: "daynight-native-acceptance", version: "1" }, capabilities: { experimentalApi: true } });
       send({ method: "initialized", params: {} });
       await rpc("skills/list", { cwds: [request.workingDirectory], forceReload: true });
-      const thread = await rpc("thread/start", { cwd: request.workingDirectory, ephemeral: true, approvalPolicy: "never", sandbox: "workspace-write" });
+      const thread = await rpc("thread/start", { cwd: request.workingDirectory, ephemeral: true, approvalPolicy: "never", sandbox });
       const threadId = string(object(thread.thread, "started thread").id, "started thread id");
-      await rpc("turn/start", { threadId, input: [{ type: "text", text: request.prompt, text_elements: [] }], sandboxPolicy: { type: "workspaceWrite", writableRoots: [request.fixtureDirectory, request.workingDirectory, request.homeDirectory, request.stateDirectory], networkAccess: true, excludeTmpdirEnvVar: true, excludeSlashTmp: true } });
+      await rpc("turn/start", { threadId, input: [{ type: "text", text: request.prompt, text_elements: [] }], sandboxPolicy: sandbox === "workspace-write" ? { type: "workspaceWrite", writableRoots: [request.fixtureDirectory, request.workingDirectory, request.homeDirectory, request.stateDirectory], networkAccess: true, excludeTmpdirEnvVar: true, excludeSlashTmp: true } : { type: "dangerFullAccess" } });
       await completed;
-      result = { host: "codex", version, model: string(thread.model, "selected model"), events, ...(usage === undefined ? {} : { usage }), finalText };
+      result = { host: "codex", version, model: string(thread.model, "selected model"), sandbox, events, ...(usage === undefined ? {} : { usage }), finalText };
     } catch (cause) { executionFailure = cause; }
     clearTimeout(timer);
     try { await terminateInstalledProcess(child, closed); }
