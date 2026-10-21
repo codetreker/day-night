@@ -22,6 +22,7 @@ export type NativeHostResult = {
   readonly version: string;
   readonly model?: string;
   readonly sandbox?: "workspace-write" | "danger-full-access";
+  readonly runtime?: Readonly<Record<string, string | number | boolean>>;
   readonly events: readonly NativeHostEvent[];
   readonly usage?: Readonly<Record<string, number>>;
   readonly finalText: string;

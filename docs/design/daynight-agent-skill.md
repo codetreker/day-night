@@ -340,7 +340,7 @@ Node 测试和受限只读 GitHub wrapper 只记录并转发实际执行，不�
 请求增加已交付基线验证的前置依赖，原更新如实收到 version_conflict；Agent 必须重读、
 先验证并完成该前置，再开始被阻塞的开发。最终依赖与执行顺序证明并发条件得到保留，
 任务描述可保持含义而连贯重写，不要求逐字复制说明性文字。不可改写
-的验收测试及操作顺序共同证明执行和完成条件，不能仅比较最终状态。既有任务增加
+的验收测试、实际 Node 24 Spec / TAP 的基线通过结果及操作顺序共同证明执行和完成条件，不能仅比较最终状态。既有任务增加
 已验证前置时必须保留仍必需的旧依赖，用完整集合替换并使用观察到的版本。
 
 不确定写入通过真实网络故障产生：服务已经返回完整 201、数据库已提交后，记录器
@@ -362,6 +362,16 @@ Codex 默认 workspace-write；宿主不支持 user namespace 时在认证和模
 受信任 fixture 可显式设置 `DAYNIGHT_NATIVE_CODEX_SANDBOX=danger-full-access`，只改变
 该子进程的 thread / turn 策略，receipt 记录实际模式。此模式不证明文件系统强制隔离，
 不改宿主系统或操作者配置；home、凭据过滤与资源所有权要求继续成立。
+Claude 保留原生凭据清除模式，使用同一已安装 Linux ELF 在一次性容器运行，解决
+宿主缺少可用 namespace / bubblewrap 的执行前提。工作树、工具和必要 GitHub 配置只读
+挂载，只有 fixture 可写；容器使用 host network 访问隔离的 loopback 服务。真实 setuid
+bubblewrap 所需的 SYS_ADMIN / NET_ADMIN / SYS_PTRACE 及 seccomp / AppArmor 选项
+仅作用于该容器，模型进程使用宿主 UID 并验证 ambient capabilities 为零。调用前以
+真实 namespace 和官方 --init-only Setup hook 的合成凭据检查证明原生清除生效，记录
+image、ELF、bubblewrap 及执行参数。容器须先移除，再进行宿主 PID registry 与 fixture
+清理。User scope 使用隔离 HOME/.claude 配置根，避免另设配置目录隐藏已安装 skill。
+Copilot 的认证引导从原始 PATH 私下调用原始 gh，现有 token 仅在内存和指定子环境中
+传递；Agent shell 继续使用凭据过滤与受限只读 wrapper。
 子进程与后代、服务会话和唯一标签容器均须有界回收；执行、扫描和清理同时失败时
 保留全部原因。证据仅保留脱敏后的版本、内容来源、原生事件、命令与服务结果及
 清理状态，具体机制和替代方案见

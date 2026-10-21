@@ -40,7 +40,10 @@ conflict. The Agent must reread and preserve that dependency, verify/complete it
 before starting division, and use the observed version. Graph facts and trace
 order establish this condition; coherent description rewrites need not reproduce
 instructional prose verbatim. Immutable arithmetic tests prevent a
-rewritten test from proving the requested behavior. Trace order establishes
+rewritten test from proving the requested behavior. The baseline oracle accepts
+actual Node 24 Spec or TAP pass/count facts and rejects filtered, skipped,
+unrelated or zero-test runs; reporter formatting cannot substitute for a real
+unfiltered baseline execution. Trace order establishes
 in-progress before implementation testing, successful tests and actual merged-PR
 inspection before completion, and a ready refresh afterward. Any attempted
 completion of the open-PR task fails acceptance, even if later reverted. A real committed-create response is dropped once; reconciliation must find and
@@ -67,8 +70,23 @@ Native host homes and configuration stay inside the task workspace. Existing
 operator auth is read-only input, never a copied auth cache. Codex retains its
 configured command-backed provider using a helper-only restoration of original
 credential lookup; headers become excluded child-only environment values and
-shell snapshots are disabled. Claude retains configured bearer auth with native
-subprocess credential scrubbing. Copilot uses its supported GitHub auth route.
+shell snapshots are disabled. Claude retains configured bearer auth and actual native subprocess credential
+scrubbing. Its installed ELF runs in a disposable pinned-base Linux container:
+read-only worktree/binary/GitHub configuration mounts, a writable owned fixture,
+host networking for the owned loopback service, and container-only
+SYS_ADMIN/NET_ADMIN/SYS_PTRACE capabilities plus seccomp/AppArmor options needed
+by real setuid bubblewrap. Claude uses the host UID with verified zero ambient
+capabilities. A real namespace probe and official --init-only Setup hook with a
+synthetic bearer prove scrub behavior before the model call. Runtime identities
+and execution settings stay in the receipt; the container is removed before
+host PID-registry and fixture cleanup. No host security setting is changed.
+The isolated HOME/.claude configuration root also preserves real User-scope
+skill discovery, and the installed skill remains until verification.
+Copilot privately resolves its original GitHub CLI before fixture PATH is
+applied, obtains the existing active token only in memory and supplies it via
+its supported child environment. Agent subprocesses receive neither that token
+nor the private bootstrap command; read-only platform queries still use the
+fixture wrapper.
 Codex's default workspace-write mode requires working user namespaces. A
 bounded preflight fails before auth/model calls when the host denies that
 facility. The explicit `DAYNIGHT_NATIVE_CODEX_SANDBOX=danger-full-access` option

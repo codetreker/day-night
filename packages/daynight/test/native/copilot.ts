@@ -1,8 +1,9 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { parse as parseYaml } from "yaml";
+import which from "which";
 import type { NativeHostEvent, NativeHostRequest, NativeHostResult } from "./host.js";
 import {
   assertNativeStateHasNoSecrets,
@@ -18,18 +19,32 @@ import {
 const originalGhDirectory = (): string => process.env.GH_CONFIG_DIR
   ?? join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "gh");
 
-const ghCredentialValues = async (directory: string): Promise<readonly string[]> => {
-  try {
-    const hosts = nativeRecord(parseYaml(await readFile(join(directory, "hosts.yml"), "utf8")));
-    if (hosts === undefined) throw new Error("GitHub CLI hosts must contain an object");
-    return Object.values(hosts).flatMap((value) => {
-      const token = nativeString(nativeRecord(value)?.oauth_token);
-      return token === undefined ? [] : [token];
-    });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    return [];
+const originalCopilotCredential = async (): Promise<string> => {
+  for (const name of ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]) {
+    const value = process.env[name];
+    if (value === undefined) continue;
+    if (value.trim() === "") throw new Error(`The configured ${name} credential is empty; configure the original Copilot authentication before rerunning native acceptance`);
+    return value.trim();
   }
+  let executable: string;
+  try { executable = await which("gh", { path: process.env.PATH }); }
+  catch { throw new Error("The original GitHub CLI is unavailable; authenticate its existing profile before rerunning Copilot native acceptance"); }
+  const host = process.env.COPILOT_GH_HOST ?? process.env.GH_HOST ?? "github.com";
+  let credential: string;
+  try {
+    credential = execFileSync(executable, ["auth", "token", "--hostname", host], {
+      env: { ...process.env, GH_CONFIG_DIR: originalGhDirectory() },
+      encoding: "utf8",
+      timeout: 10_000,
+      maxBuffer: 64 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    }).trim();
+  } catch {
+    throw new Error(`The original GitHub CLI could not provide an existing credential for ${host}; check its authentication before rerunning Copilot native acceptance. Private authentication output was discarded`);
+  }
+  if (credential === "") throw new Error(`The original GitHub CLI returned an empty credential for ${host}; configure its existing authentication before rerunning Copilot native acceptance`);
+  return credential;
 };
 
 const nativeSessionSkills = async (directory: string, sessionId: string, request: NativeHostRequest, redact: (text: string) => string): Promise<readonly NativeHostEvent[]> => {
@@ -66,6 +81,7 @@ const nativeSessionSkills = async (directory: string, sessionId: string, request
 };
 
 export const runCopilot = async (request: NativeHostRequest): Promise<NativeHostResult> => {
+  const credential = await originalCopilotCredential();
   const config = join(request.stateDirectory, "copilot");
   const logs = join(request.stateDirectory, "logs");
   const temporary = join(request.stateDirectory, "tmp");
@@ -75,6 +91,7 @@ export const runCopilot = async (request: NativeHostRequest): Promise<NativeHost
   const environment: NodeJS.ProcessEnv = {
     ...authentication,
     ...request.environment,
+    COPILOT_GITHUB_TOKEN: credential,
     HOME: request.homeDirectory,
     USERPROFILE: request.homeDirectory,
     COPILOT_HOME: config,
@@ -86,7 +103,7 @@ export const runCopilot = async (request: NativeHostRequest): Promise<NativeHost
     COPILOT_OTEL_ENABLED: "false",
     USE_TGREP: "false",
   };
-  const secrets = [...nativeSecrets(environment), ...await ghCredentialValues(environment.GH_CONFIG_DIR as string)];
+  const secrets = nativeSecrets(environment);
   const redact = nativeRedactor(secrets);
   const events: NativeHostEvent[] = [];
   let finalText = "";

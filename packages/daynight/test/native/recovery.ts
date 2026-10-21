@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseApiJson } from "../../src/api/json.js";
@@ -11,7 +11,7 @@ import type { NativeHostResult } from "./host.js";
 import type { NativeService } from "./service.js";
 
 export type NativeRecoveryKind = "unlinked" | "ambiguous" | "service_failure";
-type Trace = { readonly args: string[]; readonly code: number | null; readonly stdout: string; readonly stderr: string; readonly rejected: boolean };
+type Trace = { readonly tool: "daynight" | "git"; readonly args: string[]; readonly code: number | null; readonly stdout: string; readonly stderr: string; readonly rejected: boolean };
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => { if (!condition) throw new Error(message); };
 const hash = (value: Uint8Array | string): string => createHash("sha256").update(value).digest("hex");
 const optionalHash = async (file: string): Promise<string | null> => {
@@ -122,8 +122,10 @@ export const createRecoveryFixture = async (options: {
     for (const host of ["codex", "copilot", "claude"]) await rm(path.join(fixture.tools, host));
     const tracePath = path.join(root, "commands.jsonl"), configurationPath = path.join(root, "wrapper.json");
     await writeFile(tracePath, "", { mode: 0o600 });
-    await writeFile(configurationPath, JSON.stringify({ trace: tracePath, childRegistry, ownerToken, home: homeDirectory, nodePath: options.receipt.nodePath, entryPath: options.receipt.entryPath }), { mode: 0o600 });
-    await writeFile(path.join(fixture.tools, "daynight"), `#!${process.execPath}\nimport { run } from ${JSON.stringify(pathToFileURL(path.join(import.meta.dirname, "recovery-cli.mjs")).href)};\nawait run(${JSON.stringify(configurationPath)});\n`, { mode: 0o755 });
+    const gitPath = await realpath(path.join(fixture.tools, "git"));
+    await writeFile(configurationPath, JSON.stringify({ trace: tracePath, childRegistry, ownerToken, home: homeDirectory, nodePath: options.receipt.nodePath, entryPath: options.receipt.entryPath, gitPath, kind: options.kind, repoUrl, projectId: options.kind === "service_failure" ? projectIds[0] : undefined }), { mode: 0o600 });
+    await rm(path.join(fixture.tools, "git"));
+    for (const tool of ["daynight", "git"] as const) await writeFile(path.join(fixture.tools, tool), `#!${process.execPath}\nimport { run } from ${JSON.stringify(pathToFileURL(path.join(import.meta.dirname, "recovery-cli.mjs")).href)};\nawait run(${JSON.stringify(configurationPath)}, ${JSON.stringify(tool)});\n`, { mode: 0o755 });
     assert(process.env.PATH !== undefined, "Native recovery fixture requires the operator executable path.");
     const environment: NodeJS.ProcessEnv = { ...fixture.environment, PATH: `${fixture.tools}${path.delimiter}${process.env.PATH}` };
     const observationStart = options.service.observations.length;
@@ -137,14 +139,21 @@ export const createRecoveryFixture = async (options: {
         assert(result.events.some((event) => event.kind === "skill" && /daynight/i.test(event.text)), "Native recovery did not demonstrate installed skill activation.");
         const traces = (await readFile(tracePath, "utf8")).split("\n").filter(Boolean).map((line) => JSON.parse(line) as Trace);
         assert(!traces.some((entry) => entry.rejected), "Native recovery attempted an unauthorized mutation or guessed project selection.");
-        const readyFailures = traces.filter((entry) => entry.args[0] === "task" && entry.args[1] === "ready" && entry.code !== 0);
-        assert(readyFailures.length > 0, "Native recovery did not attempt the actual bounded ready query and observe its failure.");
+        const readyFailures = traces.filter((entry) => entry.tool === "daynight" && entry.args[0] === "task" && entry.args[1] === "ready" && entry.code !== 0);
+        if (options.kind !== "unlinked") assert(readyFailures.length > 0, "Native recovery did not attempt the actual bounded ready query and observe its failure.");
         const nativeObservations = options.service.observations.slice(observationStart);
         assert(nativeObservations.every((observation) => observation.method === "GET"), "Native recovery mutated the real service during a read-only request.");
         const diagnostic = readyFailures.map((entry) => entry.stderr).join("\n");
         if (options.kind === "unlinked") {
-          assert(/Project does not exist\./.test(diagnostic), "Unlinked recovery lost the CLI's actual missing-project diagnostic.");
-          assert(/(?:no|not|missing|cannot|unable|does not|doesn't|不存在|未关联|未绑定|没有|找不到|无法)[\s\S]{0,140}(?:project|association|项目|关联)|(?:project|项目|关联)[\s\S]{0,140}(?:not|missing|不存在|未关联|未绑定|没有|找不到)/i.test(result.finalText), "Native final report did not preserve the missing association cause.");
+          const observedOrigin = traces.some((entry) => entry.tool === "git" && entry.code === 0 && entry.stdout.includes(repoUrl)
+            && (entry.args.includes("remote") || entry.args.includes("config") && entry.args.some((argument) => /remote.*url/.test(argument))));
+          const observedMissingAssociation = traces.some((entry) => {
+            if (entry.tool !== "daynight" || entry.args[0] !== "project" || entry.args[1] !== "list" || !entry.args.includes("--json") || entry.code !== 0) return false;
+            const projects = parseApiJson(entry.stdout) as Project[];
+            return Array.isArray(projects) && !projects.some((project) => project.repoUrl === repoUrl);
+          });
+          assert(/Project does not exist\./.test(diagnostic) || observedOrigin && observedMissingAssociation, "Unlinked recovery did not establish the missing association from an actual task diagnostic or observed Git origin and complete project inventory.");
+          assert(/(?:no|not|missing|cannot|unable|does not|doesn't|不存在|未关联|未绑定|没有|找不到|无法|不匹配)[\s\S]{0,140}(?:project|association|origin|项目|关联)|(?:project|项目|关联)[\s\S]{0,140}(?:not|missing|不存在|未关联|未绑定|没有|找不到|不匹配)/i.test(result.finalText), "Native final report did not preserve the missing association cause.");
         } else if (options.kind === "ambiguous") {
           assert(/Multiple projects match this repository/.test(diagnostic) && projectIds.every((id) => diagnostic.includes(id)), "Ambiguous recovery lost its actual matching project choices.");
           assert(/multiple|ambiguous|more than one|several|多个|多项|歧义|不唯一/i.test(result.finalText) && /project|项目/i.test(result.finalText), "Native final report did not preserve the ambiguous project cause.");

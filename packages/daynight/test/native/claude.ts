@@ -2,6 +2,8 @@ import { mkdir, readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { NativeHostEvent, NativeHostRequest, NativeHostResult } from "./host.js";
+import { createClaudeContainer } from "./claude-container.js";
+import type { ClaudeContainer } from "./claude-container.js";
 import {
   assertNativeStateHasNoSecrets,
   nativeNumericUsage,
@@ -10,7 +12,6 @@ import {
   nativeSecrets,
   nativeSkillContents,
   nativeString,
-  runNativeProcess,
 } from "./copilot-process.js";
 
 const originalProvider = async (): Promise<{ environment: NodeJS.ProcessEnv; model?: string }> => {
@@ -35,7 +36,9 @@ const originalProvider = async (): Promise<{ environment: NodeJS.ProcessEnv; mod
 
 export const runClaude = async (request: NativeHostRequest): Promise<NativeHostResult> => {
   const provider = await originalProvider();
-  const config = join(request.stateDirectory, "claude");
+  // This setting also relocates user skills, which the installer writes under the isolated HOME.
+  // https://code.claude.com/docs/en/claude-directory
+  const config = join(request.homeDirectory, ".claude");
   const temporary = join(request.stateDirectory, "tmp");
   const environment: NodeJS.ProcessEnv = {
     ...provider.environment,
@@ -156,18 +159,23 @@ export const runClaude = async (request: NativeHostRequest): Promise<NativeHostR
     ...(provider.model === undefined ? [] : ["--model", provider.model]),
   ];
   let result: NativeHostResult | undefined;
+  let runtime: ClaudeContainer | undefined;
   const failures: unknown[] = [];
   try {
     await Promise.all([mkdir(config, { recursive: true }), mkdir(temporary, { recursive: true })]);
-    const version = await runNativeProcess({ executable: "claude", arguments: ["--version"], cwd: request.workingDirectory, environment, timeoutMs: 15_000, redact });
-    await runNativeProcess({ executable: "claude", arguments: arguments_, cwd: request.workingDirectory, environment, input: request.prompt, timeoutMs: request.timeoutMs, redact, onJson });
+    runtime = await createClaudeContainer(request, environment, redact);
+    const version = await runtime.run(["--version"], { environment, timeoutMs: 15_000 });
+    await runtime.run(arguments_, { environment, input: request.prompt, timeoutMs: request.timeoutMs, onJson });
     if (finalText === "") throw new Error("Claude native turn completed without a result");
-    result = { host: "claude", version, ...(model === undefined ? {} : { model: redact(model) }), events, usage, finalText };
+    result = { host: "claude", version, ...(model === undefined ? {} : { model: redact(model) }), runtime: runtime.identity, events, usage, finalText };
   } catch (cause) { failures.push(cause); }
+  if (runtime !== undefined) {
+    try { await runtime.cleanup(); } catch (cause) { failures.push(cause); }
+  }
   for (const directory of [request.stateDirectory, request.homeDirectory]) {
     try { await assertNativeStateHasNoSecrets(directory, secrets); } catch (cause) { failures.push(cause); }
   }
-  for (const directory of [config, temporary]) {
+  for (const directory of [temporary]) {
     try { await rm(directory, { recursive: true, force: true }); } catch (cause) { failures.push(cause); }
   }
   if (failures.length === 1) throw failures[0];

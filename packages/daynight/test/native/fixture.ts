@@ -10,6 +10,7 @@ import type { InstalledCliReceipt } from "../fixtures/installed-cli.js";
 import { terminateInstalledProcess } from "../fixtures/installed-cli.js";
 import { createSkillFixture, skillPipe, skillTerminal } from "../fixtures/skill-terminal.js";
 import type { NativeHostName, NativeHostResult } from "./host.js";
+import { baselineAcceptanceRun } from "./fixture-reporter.js";
 
 type Trace = { readonly actor: "model" | "contender"; readonly tool: "daynight" | "gh" | "node"; readonly args: string[]; readonly prUrl?: string; readonly startedAt: number; readonly finishedAt: number; readonly code: number | null; readonly stdout: string; readonly stderr: string };
 type CommandResult = { readonly code: number | null; readonly stdout: string; readonly stderr: string };
@@ -107,18 +108,6 @@ const taskVersions = (stdout: string): readonly { readonly id: string; readonly 
     return [...stdout.matchAll(/^ID: ([a-f0-9-]+)\n[\s\S]*?^Version: ([0-9]+)$/gm)].map((match) => ({ id: match[1]!, version: match[2]! }));
   }
 };
-const baselineAcceptanceRun = (entry: Trace, workingDirectory: string): boolean => {
-  if (entry.code !== 0 || entry.args[0] !== "--test") return false;
-  const files = entry.args.slice(1).map((argument) => path.resolve(workingDirectory, argument));
-  const baseline = path.join(workingDirectory, "baseline.test.mjs"), division = path.join(workingDirectory, "division.test.mjs");
-  if (files.length !== 0 && (!files.includes(baseline) || files.some((file) => file !== baseline && file !== division))) return false;
-  return /^ok [0-9]+ - delivered addition baseline\r?$/m.test(entry.stdout)
-    && /^# tests [1-9][0-9]*\r?$/m.test(entry.stdout)
-    && /^# pass [1-9][0-9]*\r?$/m.test(entry.stdout)
-    && /^# fail 0\r?$/m.test(entry.stdout)
-    && /^# cancelled 0\r?$/m.test(entry.stdout);
-};
-
 export const createNativeFixture = async (options: {
   readonly rootDirectory: string;
   readonly receipt: InstalledCliReceipt;

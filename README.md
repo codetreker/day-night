@@ -1233,9 +1233,18 @@ Operator authentication remains read-only input to isolated host processes.
 The current adapters support command-backed Codex Responses-provider auth,
 Copilot's GitHub authentication and Claude's configured bearer-provider settings.
 They preserve the selected providers/models, keep credentials out of shell
-subprocesses and scan owned state for known secret values. Unsupported or missing
-authentication fails explicitly. No skill or auth cache is installed into a
-personal Agent profile. Containers, processes and fixtures belong to the run and
+subprocesses and scan owned state for known secret values. Copilot obtains its active GitHub credential privately
+through the original GitHub CLI, outside fixture command wrappers; only its
+Agent shell uses the read-only wrapper. Unsupported or missing authentication
+fails explicitly. Claude uses the same installed Linux ELF in a disposable container so native
+bubblewrap credential scrubbing can run on hosts that deny user namespaces.
+The worktree and required binaries/GitHub configuration are read-only mounts;
+only the owned fixture is writable. Container-specific security options and
+capabilities support the actual setuid bubblewrap; the model process uses the
+host UID with verified zero ambient capabilities. Runtime image, binary and
+bubblewrap identities, capability/security settings and scrub preflight result
+are recorded. The container is removed before host fixture/process cleanup.
+No skill or auth cache is installed into a personal Agent profile. Containers, processes and fixtures belong to the run and
 must be removed even after failure. Host and subprocess owners enforce their
 own deadlines and finish teardown before returning; Vitest's non-cancelling
 outer timeouts are disabled for this opt-in suite.
