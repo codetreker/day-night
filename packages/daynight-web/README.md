@@ -88,9 +88,15 @@ and successful selected jobs, with deliberately unselected jobs reported as
 `skipped`. When selected, `verify-web` retains its complete workload, including
 real embedded Go builds and production-browser acceptance. The CI entry
 `node packages/daynight-web/scripts/ci.mts` concurrently installs the pinned
-Chromium with its Linux dependencies and runs the existing `pnpm web:test`
-unit/coverage command. Both managed command groups must finish successfully;
-timeouts, cancellation and either failure fail preparation. Controlled dev-ci
+Chromium with its Linux dependencies, runs the existing `pnpm web:test`
+unit/coverage command and builds the production Dockerfile with
+`docker buildx build --builder default --file deployment/localhost/Dockerfile --output=type=cacheonly .`.
+The cache-only build prepares the same Docker daemon's cache; the normal dev-ci
+runner still builds and verifies its own unique image. An explicit
+`BUILDX_BUILDER` value must be `default`. Browser installation and unit tests each
+have a 180-second bound, and Docker preparation has the deployment build's
+600-second bound. All three managed command groups must finish successfully;
+timeouts, cancellation and any failure fail preparation. Controlled dev-ci
 fixtures and `web:acceptance` start afterward, so browser performance tests do
 not overlap those preparation processes. Acceptance owns the native production
 build, including typechecking. CI reuses Go module/compiler caches

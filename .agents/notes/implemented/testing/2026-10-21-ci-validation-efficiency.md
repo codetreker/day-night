@@ -24,14 +24,20 @@ budgets, failure handling and resource ownership remain required.
 Native CLI CI typechecks and builds once, then runs the ordinary and installed
 Vitest configurations directly against that compiled output. Standalone
 `pnpm test` and `pnpm acceptance` retain their self-contained builds. The web
-CI entry runs pinned Chromium installation, including Linux dependencies, and
-the existing `pnpm web:test` concurrently through the acceptance harness's
-bounded, cancellable process-group wrapper with streaming output. It joins both
-commands with `Promise.allSettled` and preserves all failures in an
-`AggregateError`. Only successful completion of both permits the subsequent
-dev-ci fixtures and `web:acceptance`, so browser performance measurements do not
-overlap preparation or unit tests. Acceptance owns the native production build,
-including typechecking, so CI does not run a second preacceptance build. Both Go-consuming jobs restore module and compiler caches
+CI entry runs three tasks concurrently: pinned Chromium installation including
+Linux dependencies, the existing `pnpm web:test`, and a production Dockerfile
+build with `--builder default --output=type=cacheonly`. The cache-only build
+prepares the same daemon cache used by the normal dev-ci source build; it does
+not replace that build or its unique-image checks. Explicit `BUILDX_BUILDER`
+overrides must name `default`. All commands use the acceptance harness's bounded,
+cancellable process-group wrapper with streaming output. Browser and unit work
+each retain a 180-second bound; Docker preparation retains the deployment build's
+600-second bound. The entry joins all three commands with `Promise.allSettled`
+and preserves all failures in an `AggregateError`. Only successful completion of
+all tasks permits the subsequent dev-ci fixtures and `web:acceptance`, so browser
+performance measurements do not overlap preparation or unit tests. Acceptance
+owns the native production build, including typechecking. Both Go-consuming jobs
+restore module and compiler caches
 using the server `go.sum`; the server gate still expires test results before
 real database, race and coverage observations.
 
@@ -120,11 +126,12 @@ short-deadline behavior tests remove that floor without changing runtime values.
 splits the required evidence across schedules. Short test deadlines allow the
 same six installed resource-budget scenarios to remain in each selected Go job.
 
-**Prepare the browser and run unit checks serially.** These stages have no
-shared mutable test subject or dependency on each other's output. Serial
-execution adds their elapsed times to the web critical path. Running them
-together retains both exact commands, waits for both owned process groups and
-keeps the later browser performance workload isolated from preparation work.
+**Prepare the browser, unit checks and Docker layers serially.** These stages
+have no shared mutable test subject or dependency on each other's output.
+Serial execution adds their elapsed times to the web critical path. Concurrent
+preparation retains the exact browser/unit commands and the production
+Dockerfile, waits for every owned command and keeps the later browser
+performance workload isolated from preparation work.
 
 **Export and restore a local BuildKit cache across CI runners.** An isolated
 cold/warm builder experiment measured substantial warm-cache rehydration and
