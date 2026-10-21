@@ -1,5 +1,5 @@
 import { isNonemptyText, isText } from "../platform/text.js";
-import type { ErrorDetails, GraphTask, Page, Project, ServerError, Task, TaskGraph, TaskGraphSummary, TaskStatus } from "./types.js";
+import type { ErrorDetails, GraphTask, Page, Project, ServerError, Task, TaskGraph, TaskGraphSummary, TaskProperties, TaskStatus } from "./types.js";
 
 export class ProtocolError extends Error {
   constructor(message = "The server returned an invalid response.") { super(message); this.name = "ProtocolError"; }
@@ -49,11 +49,20 @@ const dependencyState = (data: Record<string, unknown>) => {
   return parsed;
 };
 
+const rawString = (value: unknown): string => typeof value === "string" ? value : malformed();
+const properties = (value: unknown): TaskProperties => {
+  const data = record(value);
+  return { pullRequests: array(data.pullRequests, (item) => {
+    const pullRequest = record(item);
+    return { url: rawString(pullRequest.url), title: rawString(pullRequest.title) };
+  }) };
+};
+
 export const parseTask = (value: unknown, projectId: string, taskId?: string): Task => {
   const data = record(value);
   const version = data.version;
   if (typeof version !== "bigint" || version < 1n || version > 9_223_372_036_854_775_807n) return malformed();
-  const parsed = { ...dependencyState(data), projectId: id(data.projectId), title: text(data.title, true), description: text(data.description), version };
+  const parsed = { ...dependencyState(data), projectId: id(data.projectId), title: text(data.title, true), description: text(data.description), properties: properties(data.properties), version };
   if (parsed.projectId !== projectId || (taskId !== undefined && parsed.id !== taskId)) return malformed();
   return parsed;
 };
