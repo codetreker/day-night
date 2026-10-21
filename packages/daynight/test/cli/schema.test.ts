@@ -13,6 +13,9 @@ describe("shared command syntax", () => {
     { args: ["review", "ls", "-h"], name: "list" },
     { args: ["update", "--help"], name: "update" },
     { args: ["completion", "--help"], name: "completion" },
+    { args: ["completion"], name: "completion" },
+    { args: ["completion", "setup", "--help"], name: "setup" },
+    { args: ["completion", "bash", "--help"], name: "bash" },
   ])("resolves the declared help command for $args", ({ args, name }) => {
     const parsed = parseCommand(commandTree, args);
     expect(parsed.kind).toBe("help");
@@ -57,10 +60,8 @@ describe("shared command syntax", () => {
     ["review", "add-repo", "--", "remote"],
     ["review", "add-repo", "remote", "--help"],
     ["review", "add-repo", "-h", "remote"],
-    ["completion"],
     ["completion", "fish"],
     ["completion", "bash", "zsh"],
-    ["completion", "bash", "--help"],
   ])("rejects syntax outside the declared grammar: %j", (...args) => {
     expect(() => parseCommand(commandTree, args)).toThrow(UsageError);
   });
@@ -95,7 +96,7 @@ describe("shared command syntax", () => {
 
   it.each(["bash", "zsh"])("accepts the declared %s shell choice", (shell) => {
     const parsed = parseCommand(commandTree, ["completion", shell]);
-    expect(parsed.kind === "run" && parsed.values).toEqual([shell]);
+    expect(parsed.kind === "run" && parsed.command.name).toBe(shell);
   });
 
   it("keeps version handling local to the root definition", () => {

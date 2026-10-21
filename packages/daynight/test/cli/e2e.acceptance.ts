@@ -189,7 +189,8 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     expect(information(["review", "run", "--help"])).toContain("Usage: daynight review run");
     expect(information(["update", "--help"])).toContain("Usage: daynight update");
     const completionHelp = information(["completion"]);
-    expect(completionHelp).toContain("Usage: daynight completion <shell>");
+    expect(completionHelp).toContain("Usage: daynight completion <command>");
+    expect(information(["completion", "setup", "--help"])).toContain("--rc-file <path>");
     expect(information(["completion", "--help"])).toBe(completionHelp);
     expect(information(["completion", "bash"])).toContain("complete -F _daynight_completion 'daynight'");
     expect(information(["completion", "zsh"])).toContain("compdef _daynight 'daynight'");
