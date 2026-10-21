@@ -20,7 +20,7 @@ const unrelatedId = "a1b2c3d4-1111-4222-8333-123456789abe";
 const taskId = "b1b2c3d4-1111-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project = (projectId = id, repoUrl = "git@git.example:Org/Repo.git"): Project => ({ id: projectId, name: "Project 中文", repoUrl, createdAt: time, updatedAt: time });
-const task = (projectId = id): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", status: "todo", version: 1n, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true });
+const task = (projectId = id): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true });
 const send = (response: ServerResponse, value: unknown, status = 200): void => { response.writeHead(status, { "Content-Type": "application/json" }); response.end(stringifyApiJson(value)); };
 const fault = (response: ServerResponse, code: string, requestId: string, status: number, details?: unknown): void => send(response, { error: { code, message: "Native acceptance refusal.", requestId, ...(details === undefined ? {} : { details }) } }, status);
 type Result = { code: number | null; stdout: string; stderr: string };
@@ -44,6 +44,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
   for (const key of Object.keys(environment)) if (/^(?:GIT_|GH_|GITHUB_|COPILOT_|NODE_OPTIONS$|DAYNIGHT_)/i.test(key)) delete environment[key];
   Object.assign(environment, { HOME: home, USERPROFILE: home, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: path.join(receipt.root, "git-global"), GIT_TERMINAL_PROMPT: "0", NO_COLOR: "1" });
   let projects = [project(unrelatedId, "https://other.example/Unrelated/Repo"), project()];
+  let properties: Task["properties"] = { pullRequests: [] };
   let broken: "none" | "page" | "json" | "dependency" | "write" | "hold" | "conflict" = "none";
   let received: (() => void) | undefined;
   const configure = async (serverUrl: string): Promise<void> => { await mkdir(state, { recursive: true }); await writeFile(path.join(state, "config.yml"), `serverUrl: ${serverUrl}\nrepositories: invalid-for-review\n`); };
@@ -77,9 +78,9 @@ it("runs the actual installed launcher through native project/task discovery, pe
           send(response, { ...task(projectId), ...(body as object), version: request.method === "PATCH" ? 9_007_199_254_740_994n : 1n }, request.method === "POST" ? 201 : 200); return;
         }
         if (parts[5] === "task-graph") { send(response, { project: project(projectId), summary: { total: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 }, tasks: [] }); return; }
-        if (parts.length === 7) { send(response, { ...task(projectId), version: 9_007_199_254_740_993n }); return; }
+        if (parts.length === 7) { send(response, { ...task(projectId), properties, version: 9_007_199_254_740_993n }); return; }
         if (broken === "page" && url.searchParams.has("cursor")) { fault(response, "internal_error", "native-later-page", 500); return; }
-        send(response, { items: [task(projectId)], nextCursor: broken === "page" ? "native later page" : null });
+        send(response, { items: [{ ...task(projectId), properties }], nextCursor: broken === "page" ? "native later page" : null });
       });
     });
     servers.push(server);
@@ -129,6 +130,12 @@ it("runs the actual installed launcher through native project/task discovery, pe
     await writeFile(path.join(receipt.root, "isolation.mjs"), `import {registerHooks} from 'node:module';registerHooks({resolve(specifier,context,nextResolve){const result=nextResolve(specifier,context);if(['/repository/git.js','/repository/binding.js','/repository/context.js','/commands/review/runtime.js','better-sqlite3','node:child_process'].some(value=>specifier.includes(value)||result.url.includes(value)))throw new Error('Unexpected business import: '+specifier);return result;}});`);
     expect((await invoke(["task", "--help"], outside, 0, true)).stdout).toContain("Usage: daynight task");
     await invoke(["task", "update", taskId, "--status", "done", "--if-version", "9223372036854775808"], outside, 2, true);
+    for (const args of [
+      ["create", "--title", "Title", "--pull-request-url="],
+      ["update", taskId, "--pull-request-title="],
+      ["update", taskId, "--pull-request-url=", "--clear-pull-requests"],
+      ["update", taskId, "--pull-request-title=", "--clear-pull-requests"],
+    ]) await invoke(["task", ...args], outside, 2, true);
     expect(await readdir(home)).toEqual([]); scenarios.push("installed-launcher-help-and-usage-before-config");
     const firstUrl = await listen(); const secondUrl = await listen(); await configure(firstUrl);
     const explicit = ["--project", id];
@@ -145,6 +152,27 @@ it("runs the actual installed launcher through native project/task discovery, pe
     expect(parseApiJson((await invoke(["task", "list", "--status", "todo", "--ready", "--json", ...explicit], outside, 0, true)).stdout)).toEqual([task()]);
     expect(JSON.parse((await invoke(["task", "graph", "--json", ...explicit], outside, 0, true)).stdout).tasks).toEqual([]);
     scenarios.push("installed-project-task-operations-server-only-config-explicit-isolation");
+
+    const pullRequests = [{ url: "", title: "" }, { url: "-arbitrary=a,b", title: " 标题\n\u001b[2J " }, { url: "-arbitrary=a,b", title: " 标题\n\u001b[2J " }];
+    const pairs = ["--pull-request-url=", "--pull-request-url=-arbitrary=a,b", "--pull-request-title=", "--pull-request-title", pullRequests[1]!.title, "--pull-request-title", pullRequests[2]!.title, "--pull-request-url=-arbitrary=a,b"];
+    const createdWithPr = await invoke(["task", "create", "--title", "PR task", ...pairs, ...explicit], outside, 0, true);
+    expect(requests.at(-1)!.body).toEqual({ title: "PR task", properties: { pullRequests } });
+    expect(createdWithPr.stdout).toContain("Pull requests: 3");
+    expect(createdWithPr.stdout).toContain(" 标题\\n\\u001b[2J ");
+    properties = { pullRequests: [...pullRequests, { url: "\0 arbitrary\ttext", title: "\0" }] };
+    expect(parseApiJson((await invoke(["task", "show", taskId, "--json", ...explicit], outside, 0, true)).stdout)).toEqual({ ...task(), properties, version: 9_007_199_254_740_993n });
+    expect(parseApiJson((await invoke(["task", "list", "--json", ...explicit], outside, 0, true)).stdout)).toEqual([{ ...task(), properties }]);
+    for (const args of [["task", "show", taskId, ...explicit], ["task", "list", ...explicit]]) expect((await invoke(args, outside, 0, true)).stdout).toContain("\\u0000 arbitrary\\ttext");
+    const replaceAt = requests.length;
+    await invoke(["task", "update", taskId, ...pairs, ...explicit], outside, 0, true);
+    expect(requests.slice(replaceAt).map(({ method }) => method)).toEqual(["GET", "GET", "PATCH"]);
+    expect(requests.at(-1)!.body).toEqual({ version: 9_007_199_254_740_993n, properties: { pullRequests } });
+    const clearAt = requests.length;
+    expect((await invoke(["task", "update", taskId, "--clear-pull-requests", "--if-version", "9223372036854775807", ...explicit], outside, 0, true)).stdout).toContain("Pull requests: 0");
+    expect(requests.slice(clearAt).map(({ method }) => method)).toEqual(["GET", "PATCH"]);
+    expect(requests.at(-1)!.body).toEqual({ version: 9_223_372_036_854_775_807n, properties: { pullRequests: [] } });
+    properties = { pullRequests: [] };
+    scenarios.push("installed-pr-pairing-empty-duplicates-raw-text-json-replace-and-clear");
 
     await initialize(repository); const nested = path.join(repository, "nested 中文"); await mkdir(nested);
     await writeFile(path.join(repository, ".gitignore"), "# Keep original\r\n");

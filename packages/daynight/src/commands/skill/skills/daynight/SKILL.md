@@ -28,8 +28,9 @@ reuse remembered IDs as current facts, or edit bindings directly.
 
 Use the graph's project, states, dependencies, and readiness to identify relevant
 in-progress and ready work. Then run `daynight task show <task-id> --json` for
-each selected task; the graph contains title previews, not full descriptions or
-versions. If the server reports `graph_limit_exceeded`, query
+each selected task; the graph contains title previews and omits full
+descriptions, PR properties, and versions. If the server reports
+`graph_limit_exceeded`, query
 `daynight task list --status in_progress --json` and
 `daynight task list --status todo --ready --json`, then show selected tasks.
 This limit does not mean the project is unlinked.
@@ -61,8 +62,9 @@ the project's existing communication rules.
 Before changing any field, read the complete task and pass that exact observed
 version as `--if-version`. Preserve the full int64 decimal value. A conflict
 requires rereading and reconsidering the intended change, not replaying it with
-a newer version. Descriptions and dependency sets are complete replacements;
-the command reference explains clearing and omitted fields.
+a newer version. Descriptions, dependency sets, and PR reference lists are
+complete replacements; the command reference explains pairing URL/title values,
+clearing, and omitted fields.
 
 Only report a write as successful after service confirmation. When a result is
 unconfirmed, reconcile it with service reads before taking another write action;
@@ -78,8 +80,8 @@ condition. Record PR URLs, outstanding checks, and waiting items while delivery
 is pending.
 
 Before setting `done`, query the platform's actual merge state for every required
-PR and retain its PR URL and merge commit reference in the task description.
-Then reread the task and update with its observed version. Missing merge
+PR. Preserve its URL and title in the complete PR reference list and its merge
+commit reference in the task description. Then reread the task and update with its observed version. Missing merge
 visibility, a missing permission, or an unmet merge check keeps the task
 `in_progress`; the completion rule grants no merge authority. Tasks with no
 development or PR delivery path use their stated acceptance criteria.

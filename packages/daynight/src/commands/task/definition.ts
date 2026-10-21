@@ -7,6 +7,10 @@ const titleOption: CommandOption = { names: ["--title"], description: "Task titl
 const descriptionOption: CommandOption = { names: ["--description"], description: "Task description; an empty value clears it", value: { name: "description", kind: "text", allowEmpty: true } };
 const dependencyOption: CommandOption = { names: ["--depends-on"], description: "Direct dependency task UUID; repeat to supply the full set", value: { name: "task-id", kind: "text" }, repeatable: true };
 const statusOption: CommandOption = { names: ["--status"], description: "Task status", value: { name: "status", kind: "text", choices: ["todo", "in_progress", "done"] } };
+const pullRequestOptions: readonly CommandOption[] = [
+  { names: ["--pull-request-url"], description: "PR URL text; repeat for the complete list", value: { name: "text", kind: "text", allowEmpty: true }, repeatable: true },
+  { names: ["--pull-request-title"], description: "PR title text; pair by position with each URL", value: { name: "text", kind: "text", allowEmpty: true }, repeatable: true },
+];
 const taskArgument = { name: "task-id", description: "Task UUID" };
 
 export const taskDefinition: CommandDefinition = {
@@ -15,9 +19,9 @@ export const taskDefinition: CommandDefinition = {
   commands: [
     {
       name: "create",
-      description: "Create a todo task with optional dependencies",
-      options: [{ ...titleOption, required: true }, descriptionOption, dependencyOption, projectOption, helpOption],
-      details: "New tasks start in todo. Repeated --depends-on values preserve the supplied dependency set.",
+      description: "Create a todo task with optional dependencies and PR references",
+      options: [{ ...titleOption, required: true }, descriptionOption, dependencyOption, ...pullRequestOptions, projectOption, helpOption],
+      details: "New tasks start in todo. Repeated --depends-on values preserve the supplied dependency set.\nPR URL and title counts must match; the nth URL pairs with the nth title. Empty values are accepted, and all text is stored as supplied.",
     },
     {
       name: "list",
@@ -33,13 +37,15 @@ export const taskDefinition: CommandDefinition = {
     },
     {
       name: "update",
-      description: "Atomically update task fields and dependencies",
+      description: "Atomically update task fields, dependencies, and PR references",
       arguments: [taskArgument],
       options: [titleOption, descriptionOption, statusOption, dependencyOption,
         { names: ["--clear-dependencies"], description: "Clear the complete dependency set" },
+        ...pullRequestOptions,
+        { names: ["--clear-pull-requests"], description: "Clear the complete PR reference list" },
         { names: ["--if-version"], description: "Use this expected task version without reading a newer version", value: { name: "version", kind: "text" } },
         projectOption, helpOption],
-      details: "Provide at least one changed field. --depends-on replaces all dependencies; it conflicts with --clear-dependencies.\nWithout --if-version, read the current version before submitting the update. Conflicts are not retried.",
+      details: "Provide at least one changed field. --depends-on replaces all dependencies; it conflicts with --clear-dependencies.\nPR URL and title counts must match; the nth URL pairs with the nth title. Pairs replace the complete list; empty values are accepted. --clear-pull-requests conflicts with either PR option. Omitted PR options preserve the current list.\nWithout --if-version, read the current version before submitting the update. Conflicts are not retried.",
     },
     {
       name: "graph",

@@ -1,6 +1,6 @@
 # Task 预定义属性设计
 
-状态：服务端存储、迁移与 HTTP 读写已实现；CLI 和网页扩展待实施。行为与验收编号由
+状态：服务端存储、迁移、HTTP 读写及 CLI 属性操作已实现；网页展示待实施。行为与验收编号由
 [属性需求](../spec/daynight-task-properties.md)拥有；
 [任务拆分](daynight-task-properties-tasks.md)记录后续实施；
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-task-properties-design.md)
@@ -160,7 +160,7 @@ Create 支持成对选项；Update 另有 `--clear-pull-requests`，与任一配
 参数层生成有字段存在性语义的属性 patch。Update 只改属性时也满足“至少修改一项”
 要求，并沿用现有 GET version 或显式 `--if-version` 路径。
 
-CLI 与 web 的完整 task 类型、已知字段投影和字符串解析需要显式增加属性。
+CLI 的完整 task 类型、已知字段投影和字符串解析包含属性；web 的对应扩展待实施。
 PR 字符串只检查 `typeof value === "string"`，不能使用限制 task 标题内容的
 现有 `isText`。精确 JSON 版本处理继续只处理既有数字 version 需求，固定 PR
 结构没有可调用方定义的数值字段，因此无需为本功能扩展通用 JSON 数值协议。

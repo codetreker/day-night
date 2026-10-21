@@ -223,10 +223,11 @@ graph 提供统计、依赖、状态和 titlePreview，没有完整描述或 ver
 且直接前置全部完成，不是领取或所有权。开始已授权工作时转 in_progress。
 **开发任务必须在对应 PR 已合并且交付验收满足后才转 done**；通过 PR 交付的设计和
 文档任务也遵守此规则。代码写完、PR 创建、review 通过或 CI 通过时，PR 尚未合并就
-仍保持 in_progress，在 description 记录 PR、剩余检查和等待事项。
+仍保持 in_progress，保留 PR 引用，并在 description 记录剩余检查和等待事项。
 
-完成前查询平台的实际 merge 状态，核对任务涉及的所有必要交付 PR，保留 PR URL 与
-merge commit 引用；平台未确认合并时不得更新 done。确认合并及验收后，再按实际读到
+完成前查询平台的实际 merge 状态，核对任务涉及的所有必要交付 PR，将 URL 与标题
+保留在完整 `properties.pullRequests` 列表，将 merge commit 引用保留在 description；
+平台未确认合并时不得更新 done。确认合并及验收后，再按实际读到
 的任务 version 提交状态更新；后继由现有依赖计算解锁。非开发且无需通过仓库 PR
 交付的任务沿用其明确验收条件。合并要求不产生合并权限；缺少权限或检查未满足时继续保持
 in_progress 并如实交接。任务发现与 ready 状态不授予额外实现、发布、部署、merge
@@ -235,7 +236,9 @@ in_progress 并如实交接。任务发现与 ready 状态不授予额外实现�
 基于已读内容进行任何字段更新时传读到的精确 `--if-version`，冲突后重读并重新决策。
 默认 update 自行 GET 最新版本，不能替代这个读写关联。version 必须保留完整 int64
 十进制精度；不要让普通 JavaScript JSON 数字处理丢失精度。
-description 和重复的 `--depends-on`均为完整字段替换，清空依赖用 `--clear-dependencies`。
+description、重复的 `--depends-on` 及 PR 引用列表均为完整字段替换。清空依赖用
+`--clear-dependencies`；PR 的 URL/title 配对、清空和原值语义由
+[属性设计](daynight-task-properties.md)拥有，写入时保留仍然需要的全部引用。
 create / update 没有 `--json`，应读取其成功资源输出，不编造参数。
 
 写入结果未确认时先查询服务状态，create 也需查询匹配任务，避免重复提交。
@@ -277,7 +280,7 @@ stdout 字节和耗时，再汇总一次恢复的调用数、总输出和粗略 
 依赖演练须验证：前置 PR 未合并时，即使 review 和 CI 已通过也不提交 done；开始
 后继被 `dependency_unsatisfied`拒绝，状态和 version 不变。平台确认合并、交付验收
 满足后，使用所读版本更新前置为 done，再查询图和 ready，仅正确的下一项解锁。
-任务描述保留 PR 与 merge commit 引用，便于接手者核验交付。
+任务 PR 属性保留 URL 与标题，描述保留 merge commit 引用，便于接手者核验交付。
 
 实现工程投入估算使用分钟，不含外部 CI 排队与账号登录等待：公开 skill 与打包约
 90–150 分钟，交互安装器及自身测试约 180–300 分钟，原生组合验收约 120–240 分钟。

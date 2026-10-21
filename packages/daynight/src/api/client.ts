@@ -249,6 +249,7 @@ export const createApiClient = (options: {
         title: input.title,
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.dependsOn === undefined ? {} : { dependsOn: input.dependsOn }),
+        ...(input.properties === undefined ? {} : { properties: input.properties }),
       });
     },
     getTask: (projectId, taskId) => {
@@ -272,6 +273,7 @@ export const createApiClient = (options: {
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.status === undefined ? {} : { status: input.status }),
         ...(input.dependsOn === undefined ? {} : { dependsOn: input.dependsOn }),
+        ...(input.properties === undefined ? {} : { properties: input.properties }),
       });
     },
     getTaskGraph: (projectId) => {

@@ -33,7 +33,8 @@ Lists read every page and return a complete array. Filters combine with AND.
 `ready` means `todo` with every direct dependency done; it provides no ownership.
 The graph is one complete snapshot containing project metadata, summary, task
 IDs, title previews, status, readiness, and dependency/blocking IDs. It omits full
-descriptions and task versions, so show the selected tasks before acting.
+descriptions, task properties, and task versions, so show the selected tasks
+before acting.
 
 `graph_limit_exceeded` reports the service's 1,000-node / 5,000-edge bound; no
 partial graph is returned. Recover with the two filtered task lists above and
@@ -52,6 +53,9 @@ daynight task update <task-id> --description "Complete revised task description"
 daynight task update <task-id> --depends-on <task-a> --depends-on <task-b> --if-version <observed-version>
 daynight task update <task-id> --clear-dependencies --if-version <observed-version>
 daynight task update <task-id> --description= --if-version <observed-version>
+daynight task create --title "Deliver sign-in" --pull-request-url "https://github.com/owner/repo/pull/123" --pull-request-title "Implement sign-in"
+daynight task update <task-id> --pull-request-url "https://github.com/owner/repo/pull/123" --pull-request-title "Implement sign-in" --if-version <observed-version>
+daynight task update <task-id> --clear-pull-requests --if-version <observed-version>
 ```
 
 Create starts in `todo`. Create and update do **not** accept `--json`; their
@@ -59,12 +63,25 @@ success output contains the confirmed resource, including its ID and version.
 Read it before planning the next mutation. Only list, show, and graph task
 queries accept `--json`.
 
-An update must change at least one of title, description, status, or dependencies.
-Omitted fields remain unchanged. A provided description replaces the entire
-description; `--description=` or `--description ""` clears it. Repeated
+An update must provide at least one of title, description, status, dependencies,
+or PR references. Omitted fields remain unchanged. A provided description replaces
+the entire description; `--description=` or `--description ""` clears it. Repeated
 `--depends-on` supplies the **complete** replacement set, not additions; retain
 each still-required dependency. Values are individual UUIDs, not CSV. Use
 `--clear-dependencies` to empty the set; it conflicts with `--depends-on`.
+
+PR references are the server-defined `properties.pullRequests` array of
+`{url, title}` strings. Pair repeated `--pull-request-url` and
+`--pull-request-title` values by their occurrence within each option: the nth URL
+belongs to the nth title, even when options are not adjacent. Counts must match.
+A supplied list replaces **all** PR references; preserve each still-required
+entry. `--clear-pull-requests` empties the list and conflicts with either paired
+option. Omitted PR options preserve the current list. Empty strings, whitespace,
+order, duplicates, and arbitrary URL/title text are retained without content or
+URL validation. Use `--pull-request-url=` and `--pull-request-title=` for empty
+values. Text resource output escapes terminal controls; task show/list JSON
+contains complete raw properties. The graph omits properties.
+
 Text options accept `--option=value`; use that form when a value starts with a
 dash. Preserve server validation errors rather than silently altering inputs.
 
@@ -110,8 +127,8 @@ any later update needs the exact version read for that decision.
 
 For an unconfirmed create, list tasks in the established project and inspect
 plausible matches with show. Match the intended title, full description,
-dependencies, and operation context; title alone is not a unique identity. A
-unique matching candidate must have its identity established before treating it
+dependencies, PR references, and operation context; title alone is not a unique
+identity. A unique matching candidate must have its identity established before treating it
 as the created task. With zero candidates, multiple candidates, or unresolved
 identity, keep the create unconfirmed and explain the minimum needed
 reconciliation. Do not create again merely because a read returned no match.
