@@ -65,8 +65,9 @@ call the installed generation operation dynamically, so new shells receive the
 current package's definitions. Tab continues to execute only the loaded shell
 code and local directory enumeration.
 
-The [client requirements](../../../../docs/spec/daynight.md) own observable
-behavior. The [completion design](../../../../docs/design/daynight-completion.md)
+[Client requirement C7](../../../../docs/spec/daynight.md#c7-补全启动配置安装)
+owns observable startup-installation behavior; the root `daynight setup`
+configuration command remains a separate operation. The [completion design](../../../../docs/design/daynight-completion.md)
 owns startup ordering, registration tests and file mechanics. The
 [README](../../../../README.md#shell-completion) owns installation and activation
 instructions.

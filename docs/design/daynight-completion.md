@@ -1,9 +1,10 @@
 # Daynight Shell 补全设计
 
-状态：共享命令语法、Bash/zsh 生成器及启动配置 setup 已实现，包含 `review`、`update`、`completion`、
-`project` 和 `task`；Task 扩展已随 PT-T4 通过原生 CI 与远端 review 并交付，
+状态：共享命令语法、Bash/zsh 生成器及启动配置安装已实现，包含 `review`、`update`、
+`setup`、`completion`、`project` 和 `task`；Task 扩展已随 PT-T4 通过原生 CI 与远端 review 并交付，
 对应来源和结果见[任务清单](daynight-project-task-tasks.md#pt-t4)。
-行为约束由[客户端需求](../spec/daynight.md)拥有，project 行为由
+脚本行为由[客户端 C5](../spec/daynight.md#c5-bash-与-zsh-补全)拥有，启动配置安装由
+[客户端 C7](../spec/daynight.md#c7-补全启动配置安装)拥有，project 行为由
 [Project 与 Task 客户端需求](../spec/daynight-project-task.md)拥有。本文负责命令描述、
 脚本生成、加载和真实 shell 验证的机制；[客户端架构](daynight.md)负责命令生命周期，
 [补全决策](../../.agents/notes/implemented/feature/2026-10-20-shell-completion.md)记录兼容范围，
@@ -12,7 +13,7 @@
 ## 目标与范围
 
 客户端为 Bash ≥4.2 和 zsh 提供原生补全，覆盖登记的命令、子命令、别名、选项、
-`completion` 的 shell 参数和 `review add-repo --path` 的目录参数。zsh 使用原生描述
+`completion` 的 shell 参数、`review add-repo --path` 和 `setup --review-path` 的目录参数。zsh 使用原生描述
 展示能力。目录候选不限制运行时合法值；`--path` 继续接受尚未创建的目标目录。
 
 公开入口为：
@@ -34,7 +35,8 @@ Git、GitHub CLI、Copilot、npm 或网络请求，不修改 shell 启动文件�
 `project create <name> --repo <repo>`、`project list [--json]` 和
 `project show <project-id> [--json]` 已登记在共享命令树中。名称、repo 地址和 project ID
 是自由输入，不提供文件或远端候选。Tab 不加载 server 配置，不查询 project 列表；
-执行 project 命令时的服务访问仍由其业务模块负责。
+执行 project 命令时的服务访问仍由其业务模块负责。`setup` 的服务 URL 和仓库地址
+同样是自由文本，`--review-path` 只补全本地目录；生成与 Tab 不触发配置引导。
 
 ## 共享命令描述
 
@@ -149,8 +151,9 @@ directory 使用目录枚举；text 声明 choices 时只给出固定候选，�
 ## 启动配置安装
 
 [`completion/setup.ts`](../../packages/daynight/src/commands/completion/setup.ts) 独立拥有
-shell 检测、启动文件选择、安装状态识别及文件写入。`command.ts` 先用共享定义
-完成帮助和参数校验，只在 setup 真正执行时加载它。脚本生成器不导入安装模块，
+shell 检测、启动文件选择、安装状态识别及文件写入，与根 `setup` 的业务配置引导
+分别归属各自的命令模块。`command.ts` 先用共享定义
+完成帮助和参数校验，只在 `completion setup` 真正执行时加载它。脚本生成器不导入安装模块，
 因此生成、帮助及无效参数仍保持原有的主目录、工作目录和业务依赖隔离。
 
 ```mermaid

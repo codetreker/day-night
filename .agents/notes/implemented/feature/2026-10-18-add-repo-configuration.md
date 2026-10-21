@@ -47,6 +47,12 @@ write failures preserve the original file; cleanup errors after replacement rema
 visible. Mutation requires a regular
 configuration file and rejects symlinks.
 
+The [guided setup decision](2026-10-21-guided-configuration-setup.md) reuses this
+registration operation for explicit setup and missing-review configuration prompts.
+The shared updater composes repository registration with an optional server change
+in one locked configuration transaction. Existing path and idempotency rules remain
+owned here.
+
 Registration is a configuration operation. It does not clone, check credentials,
 query GitHub, initialize SQLite or choose the permanent PR boundary. A running
 reviewer keeps its loaded configuration; the next startup performs the normal

@@ -16,7 +16,9 @@ have not been polled or individually enumerate permanently excluded PRs.
 `daynight review list` and `daynight review ls` share a one-shot local listing.
 The [requirements](../../../../docs/spec/daynight-review.md) own its visible behavior;
 the [design](../../../../docs/design/daynight-review.md) owns the reader and rendering
-mechanics. The command reads the current configuration and a consistent SQLite
+mechanics. The [guided setup decision](2026-10-21-guided-configuration-setup.md)
+owns the configuration preflight for an absent file or repository field. After
+that preflight, the listing reads the current configuration and a consistent SQLite
 snapshot, then groups configured repositories in configuration order and sorts
 tracked open PRs numerically. Draft, completed and failed records remain visible
 while their PR is open. Removed configuration entries and closed PR history do
