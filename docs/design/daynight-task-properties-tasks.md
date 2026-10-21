@@ -12,7 +12,7 @@
 |---|---|---|---|
 | TP-T1 | 无 | 服务端持久化与发布预定义 PR 属性 | 已交付：[PR #83](https://github.com/codetreker/daynight/pull/83)，合并提交 `0cece99` |
 | TP-T2 | TP-T1 | CLI 创建、替换、清空与显示关联 PR | 已交付：[PR #85](https://github.com/codetreker/daynight/pull/85)，合并提交 `a12146b` |
-| TP-T3 | TP-T1 | 网页详情呈现关联 PR | 已实现；验证与交付结果随对应源码、PR 和 CI 保存 |
+| TP-T3 | TP-T1 | 网页详情呈现关联 PR | 已实现：[PR #89](https://github.com/codetreker/daynight/pull/89)，交付与验证状态由该 PR 和 CI 记录 |
 
 每个任务按一个目的形成可独立审查的改动，使用该任务自己的一个共享 worktree。
 TP-T2 与 TP-T3 的依赖相同，可在 TP-T1 交付后分别推进。已打开的附件设计或其他
