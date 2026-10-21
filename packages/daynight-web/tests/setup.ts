@@ -22,5 +22,6 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
+  window.localStorage.clear();
   window.history.replaceState(null, "", "/");
 });

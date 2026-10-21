@@ -21,7 +21,10 @@ resource cannot render an earlier resource's data. Same-project refresh retains
 the last successful snapshot with an explicit loading/error notice, and replaces
 statistics, indexes and root rows together after success.
 
-Only one root canvas is mounted. React Flow owns fixed 220-by-96 task nodes,
+Only one root canvas is mounted. The project restores the expanded root or
+an explicitly collapsed list from per-project browser storage; the
+[browsing preference decision](2026-10-21-task-browsing-preferences.md) owns its
+persistence, reconciliation and failure behavior. React Flow owns fixed 220-by-96 task nodes,
 native node measurement, keyboard interaction, the viewport and its controls.
 Editing, connection, deletion, wrapper focus and interactive-lock controls remain
 disabled. Each task has one native button for pointer, Enter and Space activation;

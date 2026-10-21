@@ -39,10 +39,17 @@ Refresh discards old pages and cursors; late responses cannot repopulate them.
 The application implements `/` and `/projects/{projectId}`, direct URL reload,
 browser back/forward and a generic not-found page. A project shows six statistics
 from one complete graph snapshot. Root rows expand one horizontal graph at a
-time, including shared tasks and direct external prerequisites. Nodes open a
-detail drawer with dependency navigation, PR associations, stale-data detection
-and attachment management. Task fields and graph interactions remain read-only.
-The PR section follows the description and displays every ordered
+time, including shared tasks and direct external prerequisites. Per-project browser
+preferences retain the expanded root or an explicitly collapsed list across reloads
+and navigation. First visits open the first root; a missing saved root selects the
+current first root. Loading, failed initial reads and empty graphs do not record
+an inferred collapsed preference. Storage failures display a notice while the
+current page remains usable. Preferences do not save detail selection or canvas
+positions and do not change server data. The [preference decision](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)
+records this ownership. Nodes open a detail drawer with dependency navigation,
+PR associations, stale-data detection and attachment management. Task fields and
+graph interactions remain read-only. The PR section follows the description and
+displays every ordered
 title/URL pair, including duplicates. Lists longer than 100 entries use local
 100-row pages with a range/total announcement, Previous/Next controls and direct
 page selection. The complete ordered list stays in memory; changing pages makes
