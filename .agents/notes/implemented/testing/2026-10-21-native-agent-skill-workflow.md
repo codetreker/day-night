@@ -51,7 +51,13 @@ inspect the unique resource without another create. Existing dependencies are
 replaced with a complete set that preserves every required predecessor. Actual
 zero/two-project association and persistent scoped network failures preserve the
 reported cause, configured server and binding without guessed selections or
-resource mutations. Queued successors retain their statuses; redundant explicit todo is permitted; service-derived readiness supplies the unlock.
+resource mutations. Association failures can be established by an actual CLI
+diagnostic or the observed current Git origin/configuration and complete service
+project inventory. A proven ambiguity needs no redundant task request. Complete
+Git configuration read results are compared before redaction and retained as
+file hashes, preserving proof when private-value redaction changes random IDs.
+Queued successors retain their statuses; redundant explicit todo is permitted;
+service-derived readiness supplies the unlock.
 
 The service helper uses version-pinned Docker images, a fresh source build,
 random loopback ports, generated child-only database credentials, tmpfs storage
@@ -64,7 +70,12 @@ an async setup or model owner can still create resources. Individual owners
 retain their process/request/readiness deadlines and complete cleanup before
 the suite advances. Fixture forwarding children carry private
 ownership tokens and stable Linux process identities so cancellation can reclaim
-orphans without killing reused unrelated PIDs.
+orphans without killing reused unrelated PIDs. A process disappearing during a
+procfs read can produce ENOENT or ESRCH; neither replaces the original child's
+exit/close result with an instrumentation failure. Captured identities are
+registered only while the original child is still running and its ownership
+token matches. The service's required file-storage root is inside the owned
+temporary tree and is removed after server shutdown.
 
 Native host homes and configuration stay inside the task workspace. Existing
 operator auth is read-only input, never a copied auth cache. Codex retains its
@@ -81,7 +92,14 @@ synthetic bearer prove scrub behavior before the model call. Runtime identities
 and execution settings stay in the receipt; the container is removed before
 host PID-registry and fixture cleanup. No host security setting is changed.
 The isolated HOME/.claude configuration root also preserves real User-scope
-skill discovery, and the installed skill remains until verification.
+skill discovery, and the installed skill remains until verification. Claude's
+existing HTTP proxy and exclusion variables retain their precedence; proxy
+URLs with userinfo are rejected before launch because the native subprocess
+scrub preserves those variables, as confirmed by an actual --init-only Setup
+probe with synthetic proxy credentials. Plain proxy routing remains supported.
+Copilot uses isolated
+HOME/.copilot because a nonstandard COPILOT_HOME disables personal .agents skill
+discovery in CLI 1.0.101, as confirmed by a no-model inventory comparison.
 Copilot privately resolves its original GitHub CLI before fixture PATH is
 applied, obtains the existing active token only in memory and supplies it via
 its supported child environment. Agent subprocesses receive neither that token

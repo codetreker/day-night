@@ -228,7 +228,7 @@ export const createNativeService = async (rootDirectory: string): Promise<Native
     databaseUrl.searchParams.set("application_name", applicationName);
     databaseUrl.searchParams.set("timezone", "UTC");
     const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("DAYNIGHT_")));
-    server = spawn(binary, [], { cwd: root, env: { ...environment, DAYNIGHT_DATABASE_URL: databaseUrl.toString(), DAYNIGHT_LISTEN_ADDR: "127.0.0.1:0", DAYNIGHT_STARTUP_TIMEOUT: "10s", DAYNIGHT_SHUTDOWN_TIMEOUT: "2s" }, stdio: ["ignore", "pipe", "pipe"] });
+    server = spawn(binary, [], { cwd: root, env: { ...environment, DAYNIGHT_DATABASE_URL: databaseUrl.toString(), DAYNIGHT_STORAGE_ROOT: path.join(root, "file-storage"), DAYNIGHT_LISTEN_ADDR: "127.0.0.1:0", DAYNIGHT_STARTUP_TIMEOUT: "10s", DAYNIGHT_SHUTDOWN_TIMEOUT: "2s" }, stdio: ["ignore", "pipe", "pipe"] });
     const readiness = Promise.withResolvers<string>();
     server.once("error", (error) => readiness.reject(new Error("Native service process could not start.", { cause: error })));
     serverClosed = new Promise<ServiceExit>((resolve) => server!.once("close", (code, signal) => { serverExit = { code, signal }; resolve(serverExit); readiness.reject(new Error("Native service exited before readiness.")); }));

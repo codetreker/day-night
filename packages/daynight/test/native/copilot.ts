@@ -82,7 +82,8 @@ const nativeSessionSkills = async (directory: string, sessionId: string, request
 
 export const runCopilot = async (request: NativeHostRequest): Promise<NativeHostResult> => {
   const credential = await originalCopilotCredential();
-  const config = join(request.stateDirectory, "copilot");
+  // Copilot suppresses personal .agents discovery when COPILOT_HOME differs from HOME/.copilot.
+  const config = join(request.homeDirectory, ".copilot");
   const logs = join(request.stateDirectory, "logs");
   const temporary = join(request.stateDirectory, "tmp");
   const authentication = Object.fromEntries([

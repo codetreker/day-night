@@ -7,6 +7,7 @@ import which from "which";
 import { terminateInstalledProcess } from "../fixtures/installed-cli.js";
 import type { NativeHostEvent, NativeHostRequest, NativeHostResult } from "./host.js";
 import { assertCodexNoCredentialFiles, codexPrivateEnvironmentValues, isCodexPrivateEnvironmentName, redactCodexPrivateValues } from "./codex-privacy.js";
+import { exactCodexConfigCat, readOwnedCodexConfig } from "./codex-config-read.js";
 
 type JsonObject = Record<string, unknown>;
 type PendingRequest = { readonly resolve: (value: JsonObject) => void; readonly reject: (cause: Error) => void };
@@ -143,8 +144,34 @@ export const runCodex = async (request: NativeHostRequest): Promise<NativeHostRe
       const item = object(value, "completed item");
       if (item.type === "commandExecution") {
         const command = redact(string(item.command, "executed command"));
-        events.push({ kind: "command", text: command });
         const actions = Array.isArray(item.commandActions) ? item.commandActions : [];
+        let observedFile: NativeHostEvent["observedFile"];
+        if (item.status === "completed" && item.exitCode === 0 && typeof item.aggregatedOutput === "string") {
+          const filenames: string[] = [];
+          for (const action of actions) {
+            const candidate = object(action, "command action");
+            if (candidate.type !== "read" || typeof candidate.path !== "string") continue;
+            filenames.push(path.resolve(string(item.cwd, "command working directory"), candidate.path));
+          }
+          if (path.resolve(string(item.cwd, "command working directory")) === path.resolve(request.workingDirectory)) {
+            const configCat = exactCodexConfigCat(string(item.command, "executed command"), request.workingDirectory);
+            if (configCat !== undefined) filenames.push(configCat);
+          }
+          for (const filename of new Set(filenames)) {
+            const relative = path.relative(request.fixtureDirectory, filename);
+            const contents = readOwnedCodexConfig(filename, request.fixtureDirectory);
+            if (contents === undefined || contents === "") continue;
+            const start = item.aggregatedOutput.indexOf(contents);
+            if (start === -1) continue;
+            const matchedContents = item.aggregatedOutput.slice(start, start + contents.length);
+            observedFile = { path: redact(relative.replaceAll(path.sep, "/")), sha256: createHash("sha256").update(matchedContents).digest("hex") };
+            break;
+          }
+        }
+        events.push({ kind: "command", text: command,
+          ...(typeof item.exitCode === "number" ? { exitCode: item.exitCode } : {}),
+          ...(observedFile === undefined ? {} : { observedFile }),
+        });
         const skillRead = actions.some((action) => {
           const candidate = object(action, "command action");
           return candidate.type === "read" && typeof candidate.path === "string" && installedSkills.has(path.resolve(string(item.cwd, "command working directory"), candidate.path));

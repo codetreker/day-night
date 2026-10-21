@@ -3,6 +3,8 @@ export type NativeHostName = "codex" | "copilot" | "claude";
 export type NativeHostEvent = {
   readonly kind: "skill" | "command" | "message";
   readonly text: string;
+  readonly exitCode?: number;
+  readonly observedFile?: { readonly path: string; readonly sha256: string };
 };
 
 export type NativeHostRequest = {

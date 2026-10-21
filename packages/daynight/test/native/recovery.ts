@@ -140,23 +140,26 @@ export const createRecoveryFixture = async (options: {
         const traces = (await readFile(tracePath, "utf8")).split("\n").filter(Boolean).map((line) => JSON.parse(line) as Trace);
         assert(!traces.some((entry) => entry.rejected), "Native recovery attempted an unauthorized mutation or guessed project selection.");
         const readyFailures = traces.filter((entry) => entry.tool === "daynight" && entry.args[0] === "task" && entry.args[1] === "ready" && entry.code !== 0);
-        if (options.kind !== "unlinked") assert(readyFailures.length > 0, "Native recovery did not attempt the actual bounded ready query and observe its failure.");
+        if (options.kind === "service_failure") assert(readyFailures.length > 0, "Native service recovery did not attempt the actual bounded ready query and observe its failure.");
         const nativeObservations = options.service.observations.slice(observationStart);
         assert(nativeObservations.every((observation) => observation.method === "GET"), "Native recovery mutated the real service during a read-only request.");
         const diagnostic = readyFailures.map((entry) => entry.stderr).join("\n");
-        if (options.kind === "unlinked") {
+        if (options.kind === "unlinked" || options.kind === "ambiguous") {
           const observedOrigin = traces.some((entry) => entry.tool === "git" && entry.code === 0 && entry.stdout.includes(repoUrl)
-            && (entry.args.includes("remote") || entry.args.includes("config") && entry.args.some((argument) => /remote.*url/.test(argument))));
-          const observedMissingAssociation = traces.some((entry) => {
+            && (entry.args.includes("remote") || entry.args.includes("config") && entry.args.some((argument) => /remote.*url/.test(argument))))
+            || result.events.some((event) => event.kind === "command" && event.exitCode === 0 && event.observedFile?.path === "repository/.git/config" && event.observedFile.sha256 === protectedHashes[3]);
+          const observedAssociation = traces.some((entry) => {
             if (entry.tool !== "daynight" || entry.args[0] !== "project" || entry.args[1] !== "list" || !entry.args.includes("--json") || entry.code !== 0) return false;
             const projects = parseApiJson(entry.stdout) as Project[];
-            return Array.isArray(projects) && !projects.some((project) => project.repoUrl === repoUrl);
+            if (!Array.isArray(projects)) return false;
+            const matches = projects.filter((project) => project.repoUrl === repoUrl);
+            return matches.length === projectIds.length && projectIds.every((id) => matches.some((project) => project.id === id));
           });
-          assert(/Project does not exist\./.test(diagnostic) || observedOrigin && observedMissingAssociation, "Unlinked recovery did not establish the missing association from an actual task diagnostic or observed Git origin and complete project inventory.");
-          assert(/(?:no|not|missing|cannot|unable|does not|doesn't|不存在|未关联|未绑定|没有|找不到|无法|不匹配)[\s\S]{0,140}(?:project|association|origin|项目|关联)|(?:project|项目|关联)[\s\S]{0,140}(?:not|missing|不存在|未关联|未绑定|没有|找不到|不匹配)/i.test(result.finalText), "Native final report did not preserve the missing association cause.");
-        } else if (options.kind === "ambiguous") {
-          assert(/Multiple projects match this repository/.test(diagnostic) && projectIds.every((id) => diagnostic.includes(id)), "Ambiguous recovery lost its actual matching project choices.");
-          assert(/multiple|ambiguous|more than one|several|多个|多项|歧义|不唯一/i.test(result.finalText) && /project|项目/i.test(result.finalText), "Native final report did not preserve the ambiguous project cause.");
+          const diagnosedAssociation = options.kind === "unlinked" ? /Project does not exist\./.test(diagnostic)
+            : /Multiple projects match this repository/.test(diagnostic) && projectIds.every((id) => diagnostic.includes(id));
+          assert(diagnosedAssociation || observedOrigin && observedAssociation, "Native recovery did not establish its association boundary from an actual task diagnostic or observed Git origin and complete project inventory.");
+          if (options.kind === "unlinked") assert(/(?:no|not|missing|cannot|unable|does not|doesn't|不存在|未关联|未绑定|没有|找不到|无法|不匹配)[\s\S]{0,140}(?:project|association|origin|项目|关联)|(?:project|项目|关联)[\s\S]{0,140}(?:not|missing|不存在|未关联|未绑定|没有|找不到|不匹配)/i.test(result.finalText), "Native final report did not preserve the missing association cause.");
+          else assert(/multiple|ambiguous|more than one|several|两个|多个|多项|歧义|不唯一/i.test(result.finalText) && /project|项目/i.test(result.finalText), "Native final report did not preserve the ambiguous project cause.");
         } else {
           const fault = options.service.faults.find((entry) => entry.kind === "project_read_unavailable" && entry.projectId === projectIds[0]);
           assert(fault !== undefined && fault.state === "applied" && fault.appliedHits > 0 && fault.upstreamStatus === null && !fault.afterCommit, "Service recovery did not encounter the persistent real network outage.");

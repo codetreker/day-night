@@ -28,7 +28,7 @@ const processIdentity = async (pid: number): Promise<ProcessIdentity | undefined
     const stat = await readFile(`/proc/${pid}/stat`, "utf8"), fields = stat.slice(stat.lastIndexOf(")") + 1).trim().split(/\s+/);
     assert(fields[0] !== undefined && fields[2] !== undefined && fields[19] !== undefined, "Linux process identity is incomplete.");
     return { pid, group: Number(fields[2]), startTime: fields[19], state: fields[0] };
-  } catch (cause) { if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return undefined; throw cause; }
+  } catch (cause) { if (cause instanceof Error && "code" in cause && (cause.code === "ENOENT" || cause.code === "ESRCH")) return undefined; throw cause; }
 };
 export const reapForwardedChildren = async (registry: string, ownerToken: string): Promise<void> => {
   const registrations: ChildIdentity[] = [];

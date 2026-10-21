@@ -12,14 +12,20 @@ const execute = async (configuration, file, args, environment) => {
   let registration;
   let timer;
   try {
-    if (child.pid !== undefined) {
+    if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) {
       try {
         const stat = await readFile(`/proc/${child.pid}/stat`, "utf8");
         const fields = stat.slice(stat.lastIndexOf(")") + 1).trim().split(/\s+/);
-        if (Number(fields[2]) !== child.pid || !/^[0-9]+$/.test(fields[19])) throw new Error("Owned native child did not receive its own process group.");
-        registration = path.join(configuration.childRegistry, `${child.pid}-${fields[19]}.json`);
-        await writeFile(registration, JSON.stringify({ pid: child.pid, startTime: fields[19] }), { flag: "wx", mode: 0o600 });
-      } catch (cause) { if (cause.code !== "ENOENT") throw cause; }
+        const environment = await readFile(`/proc/${child.pid}/environ`);
+        if (child.exitCode === null && child.signalCode === null && environment.toString().split("\0").includes(`DAYNIGHT_NATIVE_OWNER=${configuration.ownerToken}`)) {
+          if (Number(fields[2]) !== child.pid || !/^[0-9]+$/.test(fields[19])) throw new Error("Owned native child did not receive its own process group.");
+          registration = path.join(configuration.childRegistry, `${child.pid}-${fields[19]}.json`);
+          await writeFile(registration, JSON.stringify({ pid: child.pid, startTime: fields[19] }), { flag: "wx", mode: 0o600 });
+        }
+      } catch (cause) {
+        // A fast child can be reaped before /proc is read; its close event still owns the result.
+        if (cause.code !== "ENOENT" && cause.code !== "ESRCH") throw cause;
+      }
     }
     const result = await Promise.race([closed, new Promise((resolve) => { timer = setTimeout(() => resolve("timeout"), 30_000); })]);
     if (result === "timeout") {

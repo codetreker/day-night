@@ -1279,8 +1279,13 @@ allowing completion and successor readiness.
 Operator authentication remains read-only input to isolated host processes.
 The current adapters support command-backed Codex Responses-provider auth,
 Copilot's GitHub authentication and Claude's configured bearer-provider settings.
-They preserve the selected providers/models, keep credentials out of shell
-subprocesses and scan owned state for known secret values. Copilot obtains its active GitHub credential privately
+They preserve the selected providers/models and Claude's existing HTTP proxy
+routing, keep credentials out of shell subprocesses and scan owned state for
+known secret values. Isolated Copilot and Claude configuration roots retain
+their standard HOME-relative locations so User-scope skills remain discoverable.
+Claude's native subprocess scrub retains proxy variables, so credential-bearing
+proxy URLs are rejected before launch; plain proxy routing is preserved.
+Copilot obtains its active GitHub credential privately
 through the original GitHub CLI, outside fixture command wrappers; only its
 Agent shell uses the read-only wrapper. Unsupported or missing authentication
 fails explicitly. Claude uses the same installed Linux ELF in a disposable container so native

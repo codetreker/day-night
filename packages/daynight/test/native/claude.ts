@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import type { NativeHostEvent, NativeHostRequest, NativeHostResult } from "./host.js";
 import { createClaudeContainer } from "./claude-container.js";
 import type { ClaudeContainer } from "./claude-container.js";
+import { assertClaudeProxyEnvironment, claudeProviderEnvironment } from "./claude-provider.js";
 import {
   assertNativeStateHasNoSecrets,
   nativeNumericUsage,
@@ -24,12 +25,7 @@ const originalProvider = async (): Promise<{ environment: NodeJS.ProcessEnv; mod
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  const environment: NodeJS.ProcessEnv = {};
-  for (const source of [nativeRecord(settings.env) ?? {}, process.env]) {
-    for (const [name, value] of Object.entries(source)) {
-      if (/^ANTHROPIC_/.test(name) && typeof value === "string") environment[name] = value;
-    }
-  }
+  const environment = claudeProviderEnvironment(nativeRecord(settings.env) ?? {}, process.env);
   const model = nativeString(settings.model);
   return { environment, ...(model === undefined ? {} : { model }) };
 };
@@ -60,6 +56,7 @@ export const runClaude = async (request: NativeHostRequest): Promise<NativeHostR
     DISABLE_TELEMETRY: "1",
     DISABLE_ERROR_REPORTING: "1",
   };
+  assertClaudeProxyEnvironment(environment);
   const secrets = nativeSecrets(environment);
   const redact = nativeRedactor(secrets);
   const events: NativeHostEvent[] = [];

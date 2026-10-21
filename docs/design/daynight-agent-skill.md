@@ -348,6 +348,9 @@ Node 测试和受限只读 GitHub wrapper 只记录并转发实际执行，不�
 核对完整预期字段、确认唯一已创建对象，不能盲目重复 create。恢复场景使用真实零个、
 两个项目关联，以及指定项目持续读取断连；Agent 保留未关联、歧义或服务失败的实际
 原因，不猜测 project，不创建替代资源或改写已有配置与绑定。
+未关联或歧义可以由真实 CLI 诊断证明，也可以由成功观察到的当前 Git origin 或完整
+Git 配置与实际完整项目清单共同证明；歧义已明确时不要求再执行必然失败的任务查询。
+Git 配置内容在脱敏前与实际文件完整比对，只保留其路径和摘要。
 
 开发 fixture 的交付 PR 必须真实保持 OPEN，任何提前 done 尝试均使验收失败；依赖
 继续阻塞。另一项已交付验证使用平台实际 MERGED 的前置 PR，成功测试与平台读取
@@ -370,6 +373,9 @@ bubblewrap 所需的 SYS_ADMIN / NET_ADMIN / SYS_PTRACE 及 seccomp / AppArmor �
 真实 namespace 和官方 --init-only Setup hook 的合成凭据检查证明原生清除生效，记录
 image、ELF、bubblewrap 及执行参数。容器须先移除，再进行宿主 PID registry 与 fixture
 清理。User scope 使用隔离 HOME/.claude 配置根，避免另设配置目录隐藏已安装 skill。
+Claude 同时保留已有 HTTP 代理与排除规则的优先级。原生 subprocess scrub 会保留代理
+变量，带认证信息的代理 URL 在启动前明确拒绝，避免代理凭据进入 Agent shell。
+Copilot 使用隔离 HOME/.copilot 配置根；自定义到其他根会关闭个人 .agents skill 发现。
 Copilot 的认证引导从原始 PATH 私下调用原始 gh，现有 token 仅在内存和指定子环境中
 传递；Agent shell 继续使用凭据过滤与受限只读 wrapper。
 子进程与后代、服务会话和唯一标签容器均须有界回收；执行、扫描和清理同时失败时
