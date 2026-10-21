@@ -10,7 +10,7 @@ the corresponding PR and CI evidence.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
-| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion`, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service/default-budget acceptance verified | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
+| `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, Bash/zsh `completion` generation and setup, shared configuration, server HTTP and repository binding foundations plus project and task commands; native installed service/default-budget acceptance verified | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
@@ -23,8 +23,9 @@ revisions and retry budgets. The group also provides configuration-only
 repository registration and a local persisted review listing. `update` manages
 the current npm global installation independently of review configuration and
 runtime. `completion` generates native Bash and zsh scripts from the same command
-definitions used by parsing and help. Loaded scripts complete locally without
-starting Node on each Tab.
+definitions used by parsing and help, and `completion setup` installs their
+startup configuration. Loaded scripts complete locally without starting Node on
+each Tab.
 
 The adopted [project/task CLI design](docs/design/daynight-project-task.md) adds
 server-backed commands, automatic Git-origin project discovery and ignored
@@ -118,8 +119,10 @@ to the Bash 4.2 executable before running `pnpm completion:acceptance`.
 to `bash` and `zsh`. `DAYNIGHT_TEST_ZSH_ROOT` optionally selects an extracted zsh
 toolchain root. `DAYNIGHT_COMPLETION_EVIDENCE` optionally selects the JSON receipt
 path. The command builds the client and runs a Python PTY harness against actual
-Tab insertion in all three shells. It uses isolated startup files and task-local
-fixtures, with no user configuration, review credentials or installed CLI changes.
+Tab insertion in all three shells. It also installs setup into isolated startup
+files and checks real login and interactive shell loading, repeated installation
+and completion registration. It uses task-local fixtures, with no user
+configuration, review credentials or installed CLI changes.
 A dedicated Ubuntu 24.04 CI job runs this suite separately from the native CLI
 matrix; its result belongs to the tested revision. The
 [completion design](docs/design/daynight-completion.md) owns its coverage and
@@ -422,6 +425,7 @@ daynight review add-repo <remote> [--path <path>]
 daynight completion                 # Show completion help
 daynight completion bash
 daynight completion zsh
+daynight completion setup [--shell bash|zsh] [--rc-file <path>]
 daynight project
 daynight project create <name> --repo <repo>
 daynight project list [--json]
@@ -447,13 +451,65 @@ records module ownership and the preserved data layout.
 
 ## Shell completion
 
-Bash 4.2 or newer and zsh have native completion scripts. Add this to `.bashrc`:
+Bash 4.2 or newer and zsh have native completion scripts. Install startup
+configuration with:
+
+```bash
+daynight completion setup
+```
+
+Setup detects the calling shell from its direct parent process. If it cannot
+identify Bash or zsh reliably, select one explicitly:
+
+```bash
+daynight completion setup --shell bash
+daynight completion setup --shell zsh
+```
+
+The login-shell preference in `SHELL` does not establish which shell is running.
+For a custom startup file, use `--rc-file`; only that file is managed:
+
+```bash
+daynight completion setup --shell bash --rc-file /path/to/bashrc
+```
+
+Bash setup manages `.bashrc` and the first readable existing login file in the
+order `.bash_profile`, `.bash_login`, `.profile`. It creates `.bash_profile` only
+when none of those files exists; if existing profiles are all unreadable, it
+reports an error. The login block runs only in interactive Bash and can safely
+appear in a `.profile` shared with other POSIX shells. It does not
+make the login shell load the rest of `.bashrc`.
+
+zsh setup uses `$ZDOTDIR/.zshrc`, or `$HOME/.zshrc` when `ZDOTDIR` is unset.
+An exported empty `ZDOTDIR` selects `/.zshrc`; setup resolves a relative value
+from its current working directory. A later zsh started in another directory
+resolves that relative value from its own startup directory. A value set only
+inside zsh is not visible to the installer; use `--rc-file` in that case.
+The managed block reuses an initialized completion system or runs `compinit`
+with its normal security checks before loading daynight.
+
+Setup recognizes its managed block and the documented standalone manual loading
+statement. Repeating it leaves an installed file unchanged. A managed block
+checks the shell's actual daynight completion registration before loading.
+Managed blocks skip an existing registration, including when startup files load
+each other. Preserved manual loading statements keep their unconditional
+behavior: if one runs after a managed block, it generates and loads the script
+again. Existing content, line endings, permissions and startup-file symbolic
+links are retained. Added blocks use LF line endings because a carriage return
+is shell token data. Malformed managed blocks, invalid targets and file access failures produce
+explicit errors.
+
+Setup reports the startup files it handled. It installs persistent configuration;
+an ordinary CLI child process cannot inspect or change its parent shell's loaded
+completion functions. Use the existing loading command to enable completion in
+the current session:
 
 ```bash
 source <(daynight completion bash)
 ```
 
-For zsh, load the script after the completion system is initialized in `.zshrc`:
+For zsh, initialize its completion system first if the session has not already
+done so:
 
 ```zsh
 autoload -Uz compinit
@@ -461,11 +517,13 @@ compinit
 source <(daynight completion zsh)
 ```
 
-If the file already initializes `compinit`, add only the final line. Loading
-without `compinit` fails with a diagnostic. The client prints scripts to stdout
-and leaves startup-file changes to the operator. These outputs are designed for
-`source`; using the same output directly as an `fpath` autoload file is outside
-the loading contract.
+The `bash` and `zsh` generation operations write only scripts to stdout and do
+not change startup files. Loading the zsh script without initialized `compinit`
+fails with a diagnostic. The outputs are designed for `source`; using the same
+output directly as an `fpath` autoload file is outside the loading contract.
+Setup checks file contents without executing them. Custom early returns or later
+commands that remove registrations can prevent a startup file from enabling
+completion; verify such configuration by starting the shell.
 
 Completion suggests commands, nested operations, aliases, options, shell names
 and local directories for `review add-repo --path`. zsh also displays descriptions.
@@ -477,9 +535,11 @@ New shells generate definitions from the currently installed package. After an
 update, run the applicable `source` command again to refresh an existing shell.
 A saved generated script must be regenerated after updating. The
 [completion design](docs/design/daynight-completion.md) explains the shared grammar
-and shell integration; the
+and shell integration. The
 [completion decision](.agents/notes/implemented/feature/2026-10-20-shell-completion.md)
-records compatibility and execution trade-offs.
+records compatibility and execution trade-offs; the
+[setup decision](.agents/notes/implemented/feature/2026-10-21-completion-setup.md)
+records startup-file ownership and installation limits.
 
 ## Project management
 

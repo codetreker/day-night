@@ -25,9 +25,15 @@ describe("completion command", () => {
   it.each([[], ["--help"], ["-h"]])("shows help for %j without reading user state", async (...args) => {
     const dependencies = context();
     await runCompletionCommand(args, dependencies);
-    expect(dependencies.output.join("")).toContain("Usage: daynight completion <shell>");
+    expect(dependencies.output.join("")).toContain("Usage: daynight completion <command>");
     expect(dependencies.output.join("")).toContain("compinit");
     expect(dependencies.errors).toEqual([]);
+  });
+
+  it.each(["bash", "zsh", "setup"])("shows %s help without reading user state", async (command) => {
+    const dependencies = context();
+    await runCompletionCommand([command, "--help"], dependencies);
+    expect(dependencies.output.join("")).toContain(`Usage: daynight completion ${command}`);
   });
 
   it.each([
@@ -42,8 +48,9 @@ describe("completion command", () => {
 
   it.each([
     ["fish"], ["Bash"], ["bash", "extra"], ["zsh", "bash"],
-    ["--unknown"], ["--help", "bash"], ["zsh", "--help"],
-    ["--version"], ["--"],
+    ["--unknown"], ["--help", "bash"],
+    ["--version"], ["--"], ["setup", "--activate"], ["setup", "--shell", "fish"],
+    ["setup", "--shell"], ["setup", "--rc-file"], ["setup", "--shell=bash", "--shell=zsh"],
   ])("rejects unsupported syntax %j before emitting output", async (...args) => {
     const dependencies = context();
     const error = await runCompletionCommand(args, dependencies).catch((error: unknown) => error);

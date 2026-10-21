@@ -17,8 +17,12 @@ scripts for Bash 4.2 or newer and zsh. Bare `completion` and its help options sh
 usage. Script generation writes only the script to stdout and does not resolve
 user-home or working-directory queries, load review dependencies or execute
 external tools. Scripts register `daynight` when sourced; zsh requires an already
-initialized `compinit` and reports its absence. The operator owns startup-file
-changes and script reload after a package update.
+initialized `compinit` and reports its absence. The original loading contract
+left startup-file changes to the operator so generated stdout remained a pure
+sourceable script. The [setup decision](2026-10-21-completion-setup.md) partially
+supersedes that installation choice with an explicit installer; generation
+remains pure, and an existing shell still needs an explicit reload after a
+package update.
 
 Each command's business-free definition supplies names, aliases, options,
 argument kinds and fixed choices. Parsing, help and both script generators share

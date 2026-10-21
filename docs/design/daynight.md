@@ -25,6 +25,7 @@ daynight review add-repo <remote> [--path <path>]
 daynight completion                 # 补全帮助
 daynight completion bash
 daynight completion zsh
+daynight completion setup [--shell bash|zsh] [--rc-file <path>]
 daynight project
 daynight project create <name> --repo <repo>
 daynight project list [--json]
@@ -119,6 +120,7 @@ src/
     completion/
       definition.ts
       command.ts
+      setup.ts
       bash.ts
       zsh.ts
   platform/
@@ -170,6 +172,10 @@ review 的配置和路径类型明确以 `ReviewConfiguration`、`ReviewPaths` �
 `commands/completion/` 通过共享命令树生成 Bash ≥4.2 和 zsh 的原生脚本；有效生成请求
 只向 stdout 写入脚本。裸 `completion` 及其帮助只显示使用说明，错误 shell 或无效
 参数沿用状态码 2。脚本生成不读取配置和状态，不加载 review 或更新业务。
+`completion setup` 在参数校验后才加载 `setup.ts`，检查调用 shell 并安装持久启动
+配置。它独立拥有 shell 检测、默认或显式文件选择、完整管理块识别及保留原文件
+身份的写入，不改变生成操作的无 I/O 保证。普通子进程不能修改父 shell 的函数
+注册，setup 输出既有 source 命令供当前会话启用。
 
 脚本在 source 时注册 `daynight` 补全，Bash 检查版本下限，zsh 要求调用者已完成
 `compinit`，缺少初始化时明确报错并加载失败。按 Tab 时只使用 shell 内存中的语法
@@ -180,7 +186,9 @@ daynight 或网络请求。参数语法保留原有唯一帮助参数、remote �
 统一说明，启用命令由[README](../../README.md#shell-completion)拥有。
 
 [补全决策](../../.agents/notes/implemented/feature/2026-10-20-shell-completion.md)
-记录 Bash 下限、zsh 原生集成和本地执行的成本。脚本输出用于 source；zsh `fpath`
+记录 Bash 下限、zsh 原生集成和本地执行的成本；
+[setup 决策](../../.agents/notes/implemented/feature/2026-10-21-completion-setup.md)记录
+启动文件安装及当前会话边界。脚本输出用于 source；zsh `fpath`
 自动加载需要不同的装载形式，未包含在该输出的使用承诺中。
 
 ## Server 命令执行
@@ -317,7 +325,9 @@ fixture 不能通过当前 store 生成基线，从而避免现有实现为自�
 补全验证包括共享语法回归、编译后入口依赖隔离、脚本语法检查和真实 shell 交互。
 `pnpm completion:acceptance` 在隔离启动文件的 PTY 中驱动 Bash 4.2、现代 Bash 和 zsh
 的 Tab，检查实际插入文本、引号、后缀、描述和光标位置。它独立于 review 与自更新
-安装验收，使用任务内的 fixture，不修改操作者的 shell 配置或全局安装。
+安装验收。setup 验收在独立主目录中安装真实启动文件，检查 Bash 登录文件优先级、
+zsh 目录选择、重复安装及启动后的注册与 Tab；使用任务内的 fixture，不修改
+操作者的 shell 配置或全局安装。
 
 GitHub Actions 保留原生 Linux、macOS、Windows 的普通测试与既有 review/update
 安装验收，并在独立 Linux 作业中执行补全的真实 shell 验收。PT-T5 加入独立

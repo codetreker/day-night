@@ -33,7 +33,7 @@ FINISHED = "__DAYNIGHT_FINISHED__"
 
 
 class Terminal:
-    def __init__(self, binary, kind, cwd, environment, setup):
+    def __init__(self, binary, kind, cwd, environment, setup, startup=None):
         gate_reader, self.gate_writer = os.pipe()
         capture_reader, self.capture_gate_writer = os.pipe()
         os.set_inheritable(gate_reader, True)
@@ -45,7 +45,7 @@ class Terminal:
                 os.close(self.gate_writer)
                 os.close(self.capture_gate_writer)
                 os.chdir(cwd)
-                arguments = [binary, "--noprofile", "--norc", "-i"] if kind == "bash" else [binary, "-d", "-i"]
+                arguments = [binary, *startup] if startup is not None else [binary, "--noprofile", "--norc", "-i"] if kind == "bash" else [binary, "-d", "-i"]
                 os.execve(binary, arguments, environment)
             except BaseException:
                 os._exit(127)
@@ -78,7 +78,7 @@ class Terminal:
             data = os.read(self.fd, 65536)
         except OSError as error:
             if error.errno == errno.EIO:
-                raise AssertionError("The interactive shell exited unexpectedly") from error
+                raise AssertionError(f"The interactive shell exited unexpectedly: {self.pending.decode(errors='replace')!r}") from error
             raise
         if not data:
             raise AssertionError("The interactive shell closed its terminal")
@@ -210,11 +210,14 @@ def shell_setup(kind, script):
         setup += "_daynight_editor_reset() { READLINE_LINE=''; READLINE_POINT=0; _daynight_editor_ready; }; bind -x '\"\\e?\":_daynight_editor_reset'; "
     else:
         setup = common + "unsetopt BEEP AUTO_MENU MENU_COMPLETE; "
-        setup += "autoload -Uz compaudit; compaudit || exit 91; autoload -Uz compinit; compinit -D; bindkey -e; "
+        if script is not None:
+            setup += "autoload -Uz compaudit; compaudit || exit 91; autoload -Uz compinit; compinit -D; "
+        setup += "bindkey -e; "
         setup += "_daynight_capture() { printf '\\n" + MARKER + "BEGIN%s" + MARKER + "CURSOR%s" + MARKER + "END\\n' \"$BUFFER\" \"$CURSOR\"; _daynight_hold_capture; zle redisplay; }; zle -N _daynight_capture; bindkey '^X^R' _daynight_capture; "
         setup += "_daynight_editor_ready() { printf '\\n" + READY + "GEN%s" + READY + "BUFFER%s" + READY + "CURSOR%s" + READY + "END\\n' \"$_daynight_generation\" \"$BUFFER\" \"$CURSOR\"; zle redisplay; }; zle -N _daynight_editor_ready; bindkey '^[!' _daynight_editor_ready; "
         setup += "_daynight_editor_reset() { BUFFER=''; CURSOR=0; _daynight_editor_ready; }; zle -N _daynight_editor_reset; bindkey '^[?' _daynight_editor_reset; "
-    setup += "source " + shlex.quote(str(script)) + " || exit 90; "
+    if script is not None:
+        setup += "source " + shlex.quote(str(script)) + " || exit 90; "
     # Completion must not invoke these functions. Enter invokes only this harmless argv recorder.
     setup += "daynight() { printf x >>daynight-invocations.log; printf '\\n'; for _dn_arg in \"$@\"; do printf '" + ARGUMENT + "%s" + ARGUMENT + "END\\n' \"$_dn_arg\"; done; printf '" + FINISHED + "\\n'; }; "
     setup += "node() { printf x >>forbidden-executions.log; printf '__DAYNIGHT_FORBIDDEN_NODE__\\n'; return 99; }; "
@@ -222,7 +225,7 @@ def shell_setup(kind, script):
     return setup
 
 
-def zsh_environment(directory, root):
+def zsh_environment(directory, root, disable_rcs=True):
     environment = dict(os.environ)
     environment.update({"HOME": str(directory / "home"), "ZDOTDIR": str(directory / "home")})
     environment.pop("FPATH", None)
@@ -239,7 +242,8 @@ def zsh_environment(directory, root):
     # MODULE_PATH from the environment is ignored; .zshenv precedes the first ZLE initialization.
     # https://zsh.sourceforge.io/Doc/Release/Parameters.html#index-module_005fpath
     # https://zsh.sourceforge.io/Doc/Release/Files.html#Startup_002fShutdown-Files
-    startup += "unsetopt RCS\n"
+    if disable_rcs:
+        startup += "unsetopt RCS\n"
     startup_path = directory / "home/.zshenv"
     startup_path.write_text(startup)
     startup_path.chmod(0o600)
@@ -322,6 +326,11 @@ def scenarios():
         ("leaf help", "daynight review run --he\t", ["review", "run", "--help"]),
         ("bash shell choice", "daynight completion ba\t", ["completion", "bash"]),
         ("zsh shell choice", "daynight completion zs\t", ["completion", "zsh"]),
+        ("completion setup command", "daynight completion set\t", ["completion", "setup"]),
+        ("completion setup shell option", "daynight completion setup --sh\t", ["completion", "setup", "--shell"]),
+        ("completion setup separate shell choice", "daynight completion setup --shell ba\t", ["completion", "setup", "--shell", "bash"]),
+        ("completion setup inline shell choice", "daynight completion setup --shell=zs\t", ["completion", "setup", "--shell=zsh"]),
+        ("completion setup rc option", "daynight completion setup --rc\t", ["completion", "setup", "--rc-file"]),
         ("path before remote", "daynight review add-repo --pa\t", ["review", "add-repo", "--path"]),
         ("path after HTTPS remote", "daynight review add-repo https://github.com/acme/repo.git --pa\t", ["review", "add-repo", "https://github.com/acme/repo.git", "--path"]),
         ("path after SSH remote", "daynight review add-repo git@github.com:acme/repo.git --pa\t", ["review", "add-repo", "git@github.com:acme/repo.git", "--path"]),
@@ -429,7 +438,8 @@ def run_shell(label, binary, kind, script, directory, evidence, zsh_root):
             ("empty task prefix", "daynight task ", ["create", "list", "show", "update", "graph"]),
             ("empty separate task status", "daynight task list --status ", ["todo", "in_progress", "done"]),
             ("empty inline task status", "daynight task list --status=", ["todo", "in_progress", "done"]),
-            ("empty shell prefix", "daynight completion ", ["bash", "zsh"]),
+            ("empty shell prefix", "daynight completion ", ["bash", "zsh", "setup"]),
+            ("empty setup shell choice", "daynight completion setup --shell ", ["bash", "zsh"]),
         ]:
             actual, cursor, output = shell.complete(line + "\t\t")
             missing = [candidate for candidate in candidates if candidate not in output]
@@ -443,6 +453,222 @@ def run_shell(label, binary, kind, script, directory, evidence, zsh_root):
         shell.close()
 
 
+def setup_fixture(directory, kind, zsh_root):
+    (directory / "home").mkdir(parents=True)
+    (directory / "bin").mkdir()
+    environment = zsh_environment(directory, zsh_root, disable_rcs=False) if kind == "zsh" else dict(os.environ)
+    environment.update({"HOME": str(directory / "home"), "INPUTRC": "/dev/null", "TERM": "xterm", "LC_ALL": "C.UTF-8", "HISTFILE": "/dev/null", "PATH": str(directory / "bin") + os.pathsep + os.environ["PATH"]})
+    for name in ["BASH_ENV", "ENV"]:
+        environment.pop(name, None)
+    environment["SHELL"] = "/bin/zsh" if kind == "bash" else "/bin/bash"
+    if kind == "bash":
+        environment.pop("ZDOTDIR", None)
+    log = directory / "generation.log"
+    shim = directory / "bin/daynight"
+    shim.write_text("#!/bin/sh\nif [ \"$1\" = completion ] && { [ \"$2\" = bash ] || [ \"$2\" = zsh ]; }; then printf '%s\\n' \"$2\" >>" + shlex.quote(str(log)) + "; fi\nexec " + shlex.quote(executable("DAYNIGHT_TEST_NODE", "node")) + " " + shlex.quote(str(PACKAGE / "dist/main.js")) + ' "$@"\n')
+    shim.chmod(0o755)
+    return environment
+
+
+def invoke_setup(binary, kind, directory, environment, options=(), implicit=False, success=True):
+    command = [str(directory / "bin/daynight"), "completion", "setup", *options]
+    if implicit:
+        arguments = [binary, "--noprofile", "--norc", "-c"] if kind == "bash" else [binary, "-d", "-c"]
+        command = [*arguments, shlex.join(command) + "; _daynight_status=$?; exit $_daynight_status"]
+    result = subprocess.run(command, cwd=directory, env=environment, capture_output=True, text=True, timeout=15)
+    if (result.returncode == 0) != success:
+        raise AssertionError(f"Unexpected setup result ({'success' if success else 'failure'} required): {result!r}")
+    return {"exitCode": result.returncode, "stdout": result.stdout, "stderr": result.stderr}
+
+
+def generation_count(directory):
+    log = directory / "generation.log"
+    return len(log.read_text().splitlines()) if log.exists() else 0
+
+
+def startup_probe(label, binary, kind, directory, environment, profile, login=False, repeat=True, explicit_source=False):
+    # Neither registration nor compinit is installed by the editor harness: startup owns both.
+    registered = "complete -p daynight >/dev/null 2>&1" if kind == "bash" else '(( $+functions[compdef] )) && [[ -n ${_comps[daynight]-} ]]'
+    guard = "source " + shlex.quote(str(profile)) + " || exit 93; " if explicit_source else ""
+    guard += registered + " || exit 92; "
+    if repeat:
+        guard += "source " + shlex.quote(str(profile)) + " || exit 93; "
+    startup = ["--noprofile", "--norc", "-i"] if explicit_source and kind == "bash" else ["-l", "-i"] if login else ["-i"] if kind == "bash" else ["-d", "-i"]
+    shell = Terminal(binary, kind, directory, environment, guard + shell_setup(kind, None), startup=startup)
+    try:
+        loads = generation_count(directory)
+        if loads != 1:
+            raise AssertionError(f"{label}: startup and repeated sourcing must load exactly once, received {loads}")
+        line, cursor, output = shell.complete("daynight comp\t")
+        actual = shell.execute()
+        if actual != ["completion"]:
+            raise AssertionError(f"{label}: installed startup completion failed: {actual!r}, {output!r}")
+        if generation_count(directory) != loads:
+            raise AssertionError(f"{label}: Tab completion started the CLI")
+        return {"login": login, "line": line, "cursor": cursor, "argv": actual, "generationCalls": loads, "editor_readiness_proof": shell.readiness_proof, "capture_reset_proof": shell.capture_reset_proof, "transcript": bytes(shell.transcript).decode(errors="replace"), "passed": True}
+    finally:
+        shell.close()
+
+
+def run_setup_acceptance(selected, directory, evidence, zsh_root):
+    for label, binary, kind in selected:
+        receipt = {"shell": label, "version": version(binary), "scenarios": []}
+        evidence.append(receipt)
+
+        def fixture(name):
+            target = directory / (label.replace(" ", "-") + "-" + name)
+            target.mkdir()
+            return target, setup_fixture(target, kind, zsh_root)
+
+        def passed(name, **details):
+            receipt["scenarios"].append({"name": name, **details, "passed": True})
+            print(f"PASS {label} setup: {name}", flush=True)
+
+        fresh, environment = fixture("fresh")
+        first = invoke_setup(binary, kind, fresh, environment, implicit=True)
+        home = fresh / "home"
+        profile = home / (".bashrc" if kind == "bash" else ".zshrc")
+        expected = [profile, home / ".bash_profile"] if kind == "bash" else [profile]
+        if not all(path.is_file() for path in expected):
+            raise AssertionError(f"{label}: setup did not create expected startup files: {expected!r}")
+        original = {path: path.read_bytes() for path in expected}
+        second = invoke_setup(binary, kind, fresh, environment, implicit=True)
+        if any(path.read_bytes() != contents for path, contents in original.items()):
+            raise AssertionError(f"{label}: repeating setup changed installed startup files")
+        passed("caller detection, fresh install and byte-identical repeat", first=first, repeated=second)
+        probe = startup_probe(label, binary, kind, fresh, environment, profile)
+        passed("fresh interactive startup and repeated source load once with real Tab", probe=probe)
+        if kind == "bash":
+            (fresh / "generation.log").unlink()
+            probe = startup_probe(label, binary, kind, fresh, environment, home / ".bash_profile", login=True)
+            passed("fresh login startup and repeated source load once with real Tab", probe=probe)
+
+        manual, environment = fixture("manual")
+        rc = manual / "manual.rc"
+        original = ("# A manually installed completion loader.\nsource <(daynight completion " + kind + ")\n").encode()
+        rc.write_bytes(original)
+        invoke_setup(binary, kind, manual, environment, ["--shell", kind, "--rc-file", str(rc)])
+        if rc.read_bytes() != original:
+            raise AssertionError(f"{label}: setup duplicated the documented manual loader")
+        passed("documented manual loader is preserved byte for byte")
+
+        custom, environment = fixture("custom")
+        rc = custom / "custom.rc"
+        prefix = b"# Existing CRLF configuration\r\nexport DAYNIGHT_CUSTOM_PRESENT=preserved"
+        rc.write_bytes(prefix)
+        rc.chmod(0o640)
+        link = custom / "linked.rc"
+        link.symlink_to(rc.name)
+        invoke_setup(binary, kind, custom, environment, ["--shell", kind, "--rc-file", str(link)])
+        first = rc.read_bytes()
+        if not link.is_symlink() or rc.stat().st_mode & 0o777 != 0o640 or not first.startswith(prefix):
+            raise AssertionError(f"{label}: setup replaced a symlink, permissions or existing contents")
+        invoke_setup(binary, kind, custom, environment, ["--shell", kind, "--rc-file", str(link)])
+        if rc.read_bytes() != first or any((custom / "home" / name).exists() for name in [".bashrc", ".bash_profile", ".bash_login", ".profile", ".zshrc"]):
+            raise AssertionError(f"{label}: explicit --rc-file was not isolated and idempotent")
+        probe = startup_probe(label, binary, kind, custom, environment, link, explicit_source=True)
+        passed("custom symlink with CRLF and no final newline preserves contents and mode and works with Tab", probe=probe)
+        readonly = custom / "readonly.rc"
+        readonly.write_text("# A fresh file requiring an install.\n")
+        readonly.chmod(0o400)
+        try:
+            failure = invoke_setup(binary, kind, custom, environment, ["--shell", kind, "--rc-file", str(readonly)], success=False)
+        finally:
+            readonly.chmod(0o640)
+        passed("write failure is reported", result=failure)
+
+        rejected, environment = fixture("directory")
+        failure = invoke_setup(binary, kind, rejected, environment, ["--shell", kind, "--rc-file", str(rejected / "home")], success=False)
+        passed("non-file rc target fails", result=failure)
+        malformed = rejected / "malformed.rc"
+        malformed.write_text("# >>> daynight completion >>>\n")
+        before = malformed.read_bytes()
+        failure = invoke_setup(binary, kind, rejected, environment, ["--shell", kind, "--rc-file", str(malformed)], success=False)
+        if malformed.read_bytes() != before:
+            raise AssertionError(f"{label}: setup modified a damaged managed block")
+        passed("damaged managed block fails without modifying it", result=failure)
+
+        generation, environment = fixture("generation-failure")
+        rc = generation / "generated.rc"
+        invoke_setup(binary, kind, generation, environment, ["--shell", kind, "--rc-file", str(rc)])
+        if kind == "zsh":
+            zsh_environment(generation, zsh_root)
+        for name, body, expected_status in [
+            ("generator failure", "printf 'injected generation failure\\n' >&2\nexit 73\n", 73),
+            ("generated script failure", "printf 'return 74\\n'\n", 74),
+        ]:
+            (generation / "bin/daynight").write_text("#!/bin/sh\n" + body)
+            registered = "complete -p daynight >/dev/null 2>&1" if kind == "bash" else '[[ -n ${_comps[daynight]-} ]]'
+            source = "source " + shlex.quote(str(rc)) + "; _daynight_status=$?; if " + registered + "; then exit 99; fi; exit $_daynight_status"
+            arguments = [binary, "--noprofile", "--norc", "-i", "-c", source] if kind == "bash" else [binary, "-d", "-i", "-c", source]
+            result = subprocess.run(arguments, cwd=generation, env=environment, input="", capture_output=True, text=True, timeout=15)
+            if result.returncode != expected_status:
+                raise AssertionError(f"{label}: {name} must preserve failure status {expected_status}: {result!r}")
+            passed(name + " remains nonzero and unregistered", exitCode=result.returncode, stderr=result.stderr)
+
+        if kind == "bash":
+            for login_name in [".bash_login", ".profile"]:
+                target, environment = fixture(login_name[1:])
+                login = target / "home" / login_name
+                prefix = "export DAYNIGHT_EXISTING_PROFILE=preserved\n"
+                login.write_text(prefix)
+                invoke_setup(binary, kind, target, environment, ["--shell", kind])
+                if (target / "home/.bash_profile").exists() or not login.read_text().startswith(prefix):
+                    raise AssertionError(f"{label}: setup masked or replaced existing {login_name}")
+                probe = startup_probe(label, binary, kind, target, environment, login, login=True)
+                if login_name == ".profile":
+                    result = subprocess.run(["/bin/sh", "-c", '. "$HOME/.profile"; printf "%s" "$DAYNIGHT_EXISTING_PROFILE"'], cwd=target, env=environment, capture_output=True, text=True, timeout=10)
+                    if result.returncode != 0 or result.stdout != "preserved":
+                        raise AssertionError(f"Bash setup made .profile unsafe for a POSIX shell: {result!r}")
+                passed("existing " + login_name + " remains effective and works with Tab", probe=probe)
+        else:
+            reused, environment = fixture("compinit-reuse")
+            rc = reused / "home/.zshrc"
+            initialization_log = reused / "unexpected-compinit.log"
+            rc.write_text("autoload -Uz compinit; compinit -D\ncompinit() { print -r -- called >>" + shlex.quote(str(initialization_log)) + "; return 82; }\n")
+            invoke_setup(binary, kind, reused, environment, ["--shell", kind])
+            probe = startup_probe(label, binary, kind, reused, environment, rc, repeat=False)
+            if initialization_log.exists():
+                raise AssertionError("zsh setup reran compinit despite an initialized completion system")
+            passed("existing compinit is reused", probe=probe)
+
+            failed, environment = fixture("compinit-failure")
+            invoke_setup(binary, kind, failed, environment, ["--shell", kind])
+            zsh_environment(failed, zsh_root)
+            rc = failed / "home/.zshrc"
+            source = "fpath=(); source " + shlex.quote(str(rc)) + "; _daynight_status=$?; [[ -z ${_comps[daynight]-} ]] || exit 99; exit $_daynight_status"
+            result = subprocess.run([binary, "-d", "-i", "-c", source], cwd=failed, env=environment, input="", capture_output=True, text=True, timeout=15)
+            if result.returncode == 0 or result.returncode == 99 or generation_count(failed) != 0 or "compinit" not in result.stderr:
+                raise AssertionError(f"zsh initialization failure must remain visible and leave completion unregistered: {result!r}")
+            passed("compinit failure remains nonzero and unregistered", exitCode=result.returncode, stderr=result.stderr)
+            insecure = failed / "insecure-functions"
+            insecure.mkdir(mode=0o777)
+            insecure.chmod(0o777)
+            (insecure / "_insecure").write_text("#compdef insecure\n")
+            source = "fpath=(" + shlex.quote(str(insecure)) + " $fpath); source " + shlex.quote(str(rc)) + "; _daynight_status=$?; [[ -z ${_comps[daynight]-} ]] || exit 99; exit $_daynight_status"
+            result = subprocess.run([binary, "-d", "-i", "-c", source], cwd=failed, env=environment, input="n\n", capture_output=True, text=True, timeout=15)
+            if result.returncode == 0 or result.returncode == 99 or generation_count(failed) != 0 or "compinit" not in result.stderr:
+                raise AssertionError(f"zsh setup bypassed the completion security audit: {result!r}")
+            passed("compinit security audit rejects insecure function directories", exitCode=result.returncode, stderr=result.stderr)
+
+            for zdotdir in [None, "absolute", "relative"]:
+                target, environment = fixture("zdotdir-" + ("unset" if zdotdir is None else zdotdir))
+                if zdotdir is None:
+                    environment.pop("ZDOTDIR", None)
+                    startup_directory = target / "home"
+                else:
+                    startup_directory = target / "custom-dotdir"
+                    startup_directory.mkdir(exist_ok=True)
+                    (startup_directory / ".zshenv").write_bytes((target / "home/.zshenv").read_bytes())
+                    environment["ZDOTDIR"] = startup_directory.name if zdotdir == "relative" else str(startup_directory)
+                invoke_setup(binary, kind, target, environment, ["--shell", kind])
+                rc = startup_directory / ".zshrc"
+                if not rc.is_file():
+                    raise AssertionError(f"zsh setup ignored ZDOTDIR={zdotdir!r}")
+                probe = startup_probe(label, binary, kind, target, environment, rc)
+                passed("ZDOTDIR " + repr(zdotdir) + " is honored with real startup Tab", probe=probe)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--shell", choices=["all", "bash42", "bash", "zsh"], default="all")
@@ -451,7 +677,7 @@ def main():
     temporary.mkdir(exist_ok=True)
     receipt_path = Path(os.environ.get("DAYNIGHT_COMPLETION_EVIDENCE", str(temporary / "completion-evidence.json"))).resolve()
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    evidence = {"shells": [], "passed": False}
+    evidence = {"shells": [], "setup": [], "passed": False}
     try:
         with tempfile.TemporaryDirectory(prefix="completion-acceptance-", dir=temporary) as path:
             directory = Path(path)
@@ -483,6 +709,7 @@ def main():
             for label, binary, kind in selected:
                 subprocess.run([binary, "-n", str(scripts[kind])], check=True, timeout=10)
                 run_shell(label, binary, kind, scripts[kind], directory, evidence["shells"], os.environ.get("DAYNIGHT_TEST_ZSH_ROOT"))
+            run_setup_acceptance(selected, directory, evidence["setup"], os.environ.get("DAYNIGHT_TEST_ZSH_ROOT"))
             if arguments.shell in ["all", "zsh"]:
                 binary = executable("DAYNIGHT_TEST_ZSH", "zsh")
                 source = "typeset -A _comps; source " + shlex.quote(str(scripts["zsh"])) + "; _dn_status=$?; print -r -- __REGISTERED__${_comps[daynight]-}; exit $_dn_status"
