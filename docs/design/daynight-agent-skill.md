@@ -1,7 +1,7 @@
 # Daynight 项目任务 skill 与交互安装设计
 
-状态：公开 skill bundle 与交互安装器已实现；原生 Agent 加载及自动触发集成验收
-独立跟踪。任务完成以交付验收及对应 PR 合并为准。
+状态：公开 skill bundle 与交互安装器已实现。安装验收使用模拟 Agent launcher 与
+实际打包 CLI，覆盖终端交互和文件行为。任务完成以交付验收及对应 PR 合并为准。
 
 [需求](../spec/daynight-agent-skill.md)拥有安装、覆盖和任务管理的可观察行为，
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-public-agent-skill-design.md)
@@ -45,7 +45,7 @@ flowchart TD
     J --> K[通过现有 daynight CLI 管理任务]
 ```
 
-预期源码与产物归属：
+源码与产物归属：
 
 ```text
 packages/daynight/
@@ -144,10 +144,10 @@ Project 在非仓库或 bare repository 中明确失败。
 选择 Agent 表示为该 Agent 安装兼容资源，发现目录可能同时被其他 Agent 扫描。
 安装器不限制其他 Agent 的可见性，也不改写同名 skill 在其他 scope 的副本。
 Claude Code 的 personal scope 优先于 project scope；安装到 Project 不会改变这一规则。
-原生探针在所测 Copilot 版本上确认，独立的 `.agents` / `.claude`同名副本与共享父目录
-链接均选择 `.agents`的一项候选；该版本和场景的具体 receipt 随设计 PR 保留。这不能
-把一次物理写入等同于各版本中的一次逻辑发现。验收继续要求实际加载的内容属于预期
-bundle，记录候选路径和重复情况。
+设计期间的 Copilot 探针曾观察到，所测版本对独立的 `.agents` / `.claude`同名副本与
+共享父目录链接均选择 `.agents`的一项候选；该版本和场景的 receipt 随设计 PR 保留。
+这是历史观察，不能推广为所有宿主版本的发现保证。安装验收按文档映射验证路径和
+完整文件内容，宿主自行决定如何发现同名副本。
 
 ## 完整覆盖与失败语义
 
@@ -182,7 +182,7 @@ bundle，记录候选路径和重复情况。
 成功结果逐 Agent 展示安装路径、运行包版本、scope 和重新加载方式；共享目标标明复用
 同一次写入。Codex 通常自动发现，未出现时重启会话；Copilot 使用 `/skills reload`
 并可通过 `/skills info daynight`检查；Claude Code 对已有目录自动发现，新增顶层目录时
-使用 `/reload-skills`。不同 Agent 的重新发现方式按其官方文档和验收版本维护。
+使用 `/reload-skills`。不同 Agent 的重新发现方式按其官方文档维护。
 
 ## Skill 的工作协议
 
@@ -197,10 +197,9 @@ bundle，记录候选路径和重复情况。
 
 `SKILL.md`使用英文、标准 `name` / `description` frontmatter。
 description 明确适用于已关联 Daynight 的仓库中的日常开发和任务恢复，允许 host 自动
-选择；不设置仅显式调用策略。skill 文件能被发现并不证明 host 会自动触发。
-原生验收必须在已关联项目的新会话中给出未点名 Daynight、skill 或其路径的普通开发
-请求，观察 host 自动选择并加载当前 bundle，随后恢复任务；显式调用或提示读取路径
-只能单独证明可加载，不能替代这个触发验收。
+选择；不设置仅显式调用策略。静态 bundle 检查验证名称、description 和相对引用，
+并核对正文及命令参考中的工作协议。安装器将文件放入对应发现目录；具体会话中的
+选择、加载和执行由宿主负责。
 
 日常选择下一项工作时使用非交互 shell 执行 `daynight task ready --json`，默认最多
 10 项，需要更多候选时用 `--limit <N>` 指定 1..100。命令只取服务端按创建时间、ID
@@ -276,7 +275,7 @@ stdout 字节和耗时，再汇总一次恢复的调用数、总输出和粗略 
 | 发布公开 skill | `35081440-a120-4fb4-9225-c893bb243b8e` | 设计完成；公开 bundle、资源打包、行为评估 |
 | 交互安装器 | `668910a4-470b-4ca5-bf52-0a47788c8ce6` | bundle 完成；skill command、选择器、目标与覆盖、对应测试 |
 | 有界 ready 查询 | `ada23216-a6e6-45de-89f4-67f1f71fbbfc` | 安装器完成；task ready、公开 skill 查询策略及相应命令验收 |
-| 原生 Agent 验收 | `852473fd-c078-4d18-83a1-b34e37dc731f` | 安装器与有界 ready 完成；原生发现、行为演练和证据 |
+| 安装组合验收 | `852473fd-c078-4d18-83a1-b34e37dc731f` | 安装器与有界 ready 完成；模拟 launcher、六种 Agent/scope 选择、完整资源及覆盖证据 |
 
 项目 ID 为 `fb1a3e30-f945-4c48-ab0f-55be117e098e`。表格是任务身份与交付顺序的映射，
 实时状态从 Daynight 查询；执行需要用户授权，ready 本身不是授权。
@@ -286,50 +285,48 @@ stdout 字节和耗时，再汇总一次恢复的调用数、总输出和粗略 
 设计 PR 已合并。PR 仍打开时设计任务保持 in_progress，其实现后继保持 todo 且被阻塞。
 不能为演示 ready 流转而提前完成真实交付任务。
 
-依赖演练须验证：前置 PR 未合并时，即使 review 和 CI 已通过也不提交 done；开始
-后继被 `dependency_unsatisfied`拒绝，状态和 version 不变。平台确认合并、交付验收
-满足后，使用所读版本更新前置为 done，再查询有界 ready，仅正确的下一项解锁；
-需要全图核对时按需查询。任务 PR 属性保留 URL 与标题，描述保留 merge commit
-引用，便于接手者核验交付。
-
-实现工程投入估算使用分钟，不含外部 CI 排队与账号登录等待：公开 skill 与打包约
-90–150 分钟，交互安装器及自身测试约 180–300 分钟，原生组合验收约 120–240 分钟。
-原生终端和宿主发现异常需要按原因修正，估算不是减少验收范围的依据。
+项目演练使用实际 Daynight 任务管理交付：前置 PR 未合并时保持 in_progress，后继由
+现有依赖机制阻塞；平台确认合并、交付验收满足后，使用所读版本更新为 done，再查询
+有界 ready。任务 PR 属性保留 URL 与标题，描述保留 merge commit 引用，便于接手者
+核验交付。这是项目开发流程，安装器测试无需启动任务服务或让 Agent 执行它。
 
 ## 验证与交付
 
-公开 bundle 的基础验证包括 frontmatter、相对引用、完整目录、构建资源来源、真实 tarball
-和从安装后的 launcher 定位资源。原有 review skill 的快照身份、配置与命令隔离保持验证。
+验收的被测对象是随 npm 包发布的 skill 文件和 `daynight skill install`。组合验收复用
+[已安装 CLI fixture](../../packages/daynight/test/fixtures/installed-cli.ts)，执行真实
+npm pack、安装和 launcher。隔离的 User、Project 与 PATH 全部位于项目测试目录中；
+PATH 中仅构造所需的 `codex`、`copilot`、`claude`模拟 launcher。每个模拟 launcher
+若被执行就写入 sentinel 并失败，全部安装场景结束后断言 sentinel 不存在，证明检测
+只查找命令。测试环境不安装或运行真实 Agent，不读取其账号配置或调用模型，也不
+启动 Daynight 服务或数据库。范围依据见
+[模拟安装验收决策](../../.agents/notes/implemented/testing/2026-10-21-simulated-agent-installation-acceptance.md)。
 
-安装器的每个实现任务覆盖自身行为；组合验收复用真实 npm pack/install fixture 与隔离
-user/project 目录，检验整目录覆盖会移除旧文件、保留 sibling skills、处理 parent symlink
-和 leaf symlink、按物理目录去重、两个方向的嵌套目标预检拒绝，以及失败后的准确结果。
-
-原生终端 fixture 使用开发依赖 `node-pty@1.1.0`，在三个平台驱动真实 PTY / ConPTY。
-PTY 内的 Node bridge 启动实际安装 launcher，stdin 与 stderr 继承终端，stdout 单独
-指向结果文件，分别证明生产 `isTTY`条件、界面输出和结果输出。发送 Space、方向键、
-Enter 与 Ctrl+C；`pty.kill()`只用于超时收尾，不能充当取消验证。版本受限的 pnpm
-`allowBuilds`仅允许该终端依赖构建，保留 SQLite 的现有禁止构建选择；版本固定的
-pnpm mode-only 补丁修正稳定包中 Darwin helper 的可执行位，测试不自行修复依赖。
-依据及取舍见
+真实终端 fixture 使用开发依赖 `node-pty@1.1.0`，在 Linux、macOS、Windows 驱动
+PTY / ConPTY。PTY 内的 Node bridge 启动实际安装 launcher，stdin 与 stderr 继承
+终端，stdout 单独指向结果文件，分别证明生产 `isTTY`条件、界面输出和结果输出。
+发送 Space、方向键、Enter 与 Ctrl+C；`pty.kill()`只用于超时收尾，不能充当取消验证。
+版本受限的 pnpm `allowBuilds`仅允许该终端依赖构建，保留 SQLite 的既有禁止构建选择；
+版本固定的 pnpm mode-only 补丁修正稳定包中 Darwin helper 的可执行位，测试不自行
+修复依赖。依据见
 [原生终端验收决策](../../.agents/notes/implemented/testing/2026-10-21-native-skill-terminal-acceptance.md)。
 
-scope 提交后首次写入前的信号、stage 期间取消和新建空目录清理、非交互拒绝、
-root/group/install help、setup 文本问题、信号监听清理和 completion
-回归均属于安装器验收。Windows 的交互和 `.cmd`检测需要真实 Windows 终端证据，
-POSIX PTY 结果不能代替。普通原生 CI 继续运行 typecheck、test、build、acceptance。
+终端组合验收逐一选择三个 Agent × User/Project 的六种组合，断言选项、默认 User、
+实际目标与成功结果。每种组合都比较安装目录和包内 bundle 的完整相对路径集合及每个
+文件的原始字节，再修改安装内容、加入旧文件并重装，验证直接覆盖及旧文件移除。
+同时验证 sibling skills 与另一 scope 的副本保留。额外场景覆盖零个和多个 launcher、
+空选择约束、交互取消、无终端拒绝、共享目录去重，以及子目录和 linked worktree 定位。
+Windows 的交互和 `.cmd`检测需要真实 Windows runner 的结果，POSIX PTY 结果不能代替。
 
-Codex、Copilot CLI、Claude Code 各自的真实发现和行为验收在隔离配置中进行，不向
-操作者个人 Agent 目录安装。覆盖单 Agent、Codex + Copilot、Claude 与共享目录组合，
-以及项目范围内独立 `.agents` / `.claude`目录和已有根目录链接。记录实际 Agent 版本、
-bundle 来源、候选路径和加载内容。通过内容标记或真实命令操作证明加载，不能仅检查
-文件存在；普通开发请求的自动触发与显式调用分开记录，同时验证自动恢复上下文、
-遵守阻塞、版本冲突与结果未确认的处理。开发任务与设计/文档交付还需观察：PR 打开
-且 CI/review 已通过时仍为 in_progress、后继仍阻塞；确认必要 PR 已合并并满足验收后
-才更新 done，保存 PR/merge 引用并重新查询后继 readiness。
+单元测试继续拥有更细的预检、scope 提交后首次写入前信号、stage 期间取消、新建空目录
+清理、parent/leaf symlink、两个方向的嵌套目标拒绝、部分失败结果、信号监听清理及
+completion 回归。静态 bundle 测试验证 frontmatter、全部相对引用、构建资源来源、
+公开内容与命令参考，包括有界 ready、精确版本、依赖替换、不确定写入恢复和 PR 合并后
+才能完成的规则。现有 project/task 测试继续验证命令与服务语义；原有 review skill
+的快照身份、配置、原生 Copilot 加载及命令隔离保留其独立验收。
 
-发布要求包版本递增、当前提交的必需 CI 与独立审查通过。安装器和公开 skill 的完成
-状态依赖实现验收；设计演练不替代其原生加载证明。
+普通原生 CI 继续运行 typecheck、test、build、acceptance。发布要求包版本递增、当前
+提交的必需 CI 与独立审查通过。receipt 记录被测源码、平台、场景和资源清理结果；
+完整安装文件证明复制结果，不承担模型自动触发或任务执行结果的证明。
 
 ## 操作结果与可诊断性
 
@@ -346,16 +343,17 @@ bundle 来源、候选路径和加载内容。通过内容标记或真实命令�
 额外 operation ID，共享上下文的 Agent / scope / target 足以对应一次运行的输出。
 
 部署后的具体核查方式是：在隔离终端运行已安装版本的 `daynight skill install`，选择
-Codex 与 Copilot、User scope，观察两条 Agent 成功结果指向同一物理路径；再通过 host
-原生发现检查该路径内容。失败探针让目标父目录不可写，确认 stderr 含 selection 之后
-的 planning / staging 阶段、scope、Agent、目标和原始权限原因，退出码非零且没有虚报成功。
+Codex 与 Copilot、User scope，观察两条 Agent 成功结果指向同一物理路径，并比较目标
+与包内 bundle 的完整文件集合和字节。失败探针让目标父目录不可写，确认 stderr 含
+selection 之后的 planning / staging 阶段、scope、Agent、目标和原始权限原因，退出码
+非零且没有虚报成功。
 
 ## 风险与重新评估条件
 
-host 的发现规则和 scope 优先级可能变化，官方目录映射与原生验收需随支持版本维护。
-不同根目录的同名候选若导致加载过期内容，应先据实际发现结果修正布局，不能用文件
-存在性测试放宽验收。skill 的 description 影响自动选择，真实误触发或漏触发应驱动
-文案和场景调整，不引入后台扫描器。
+host 的发现规则、scope 优先级及重新加载命令可能变化，官方目录映射与操作指引需同步
+维护。相同名称在多个 scope 中存在时，安装器只更新所选目标，使用者需按宿主规则
+管理其余副本。skill 的 description 为宿主选择提供上下文；安装测试验证所交付的
+文件与说明，具体模型行为不属于安装器保证。
 
 整体覆盖承担本地定制丢失及失败时目标可能缺失的明确成本；使用者可重新安装。
 跨目标原子性、修改保护、自动同步 npm 更新和独占领取均不属于这个交付。
