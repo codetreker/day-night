@@ -1,6 +1,6 @@
 # Task 预定义属性设计
 
-状态：设计方案，功能待实现。行为与验收编号由
+状态：服务端存储、迁移与 HTTP 读写已实现；CLI 和网页扩展待实施。行为与验收编号由
 [属性需求](../spec/daynight-task-properties.md)拥有；
 [任务拆分](daynight-task-properties-tasks.md)记录后续实施；
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-task-properties-design.md)
@@ -13,12 +13,13 @@ Task 需要记录关联的多个 PR。把引用写进 description 会混合任�
 `pullRequests` 的每项只有 `url` 和 `title`。两者都是调用方提供的字符串；属性
 机制不负责判断 PR 的格式、存在性或业务含义。
 
-本设计交付定义清楚的存储与交互契约。它复用现有 task 创建、更新与读取路径，
+预定义属性复用现有 task 创建、更新与读取路径，
 保留原有状态机、依赖校验和任务级并发控制。
 
 ## 现有结构与集成位置
 
-下表的行号对应设计基线 `781bd04`，片段说明影响；相对链接指向实际归属文件。
+下表保留设计基线 `781bd04` 的集成依据；行号与片段属于当时的既有机制，
+具体属性类型及 codec 归属由下节说明。相对链接指向实际归属文件。
 
 | 归属与位置 | 片段及影响 |
 |---|---|
@@ -45,7 +46,9 @@ flowchart LR
 ```
 
 `core` 持有领域类型，`api` 持有 JSON DTO，`server` 校验输入结构，`service`
-组合候选值与检测变化，`store` 编解码持久化内容。CLI 和 web 各自在已有 API 层
+组合候选值与检测变化。`internal/jsonobject` 复用严格对象解析，
+`internal/taskproperties` 以具体类型编解码持久化文档及属性 patch，`store` 在
+完整 task 读写中调用该 codec。CLI 和 web 各自在已有 API 层
 声明相同资源结构，不引入跨语言共享代码生成或运行时属性插件。
 
 ```go
@@ -69,8 +72,8 @@ type TaskPropertiesPatch struct {
 
 ## 持久化与迁移
 
-在当前 schema 后新增一个有序迁移，示例名称为 `003_task_properties.sql`；实际
-编号以实施时的迁移注册表为准。已有迁移的内容及 checksum 保持不变。
+`003_task_properties.sql` 为属性列的有序迁移；已有迁移的内容及 checksum 保持
+不变。启动迁移仍使用原有 checksum 检查与互斥机制。
 
 ```sql
 ALTER TABLE tasks ADD COLUMN properties text NOT NULL
@@ -91,7 +94,7 @@ Store 用具体的持久化 DTO 编码与严格解码，校验必需结构、非
 及缺失字段均使读取失败并保留错误链。序列化表示并非公开契约；比较用领域值，
 不比较 JSON key 排列、转义写法或字符串化结果。
 
-将属性加入 `TaskWrite`、完整 task SQL 投影、扫描器和 INSERT/UPDATE。与任务其他
+属性位于 `TaskWrite`、完整 task SQL 投影、扫描器和 INSERT/UPDATE。与任务其他
 标量同处一行，因此不需要额外关联表、foreign key、第二次查询或分开的提交点。
 图查询继续使用现有显式投影，不读取属性列。
 
@@ -243,5 +246,6 @@ summary 独立避免图容量契约随 PR 内容增长。存储文本缺少数�
 race/go-cov、CLI typecheck/test/build、web 覆盖率和生产浏览器门禁。Go 和 web 总
 语句覆盖率均须严格大于 90%；完成标准与任务归属见[任务拆分](daynight-task-properties-tasks.md)。
 
-当前设计交付的验证包括 Markdown 本地链接、文档状态与路径、示例 JSON/SQL/命令
-审查及预览脚本检查。功能运行结果须在实施时随对应源码和 CI 保存。
+设计交付的验证包括 Markdown 本地链接、文档状态与路径、示例 JSON/SQL/命令
+审查及预览脚本检查。服务端及后续客户端的运行结果随对应源码和 CI 保存；
+[实施任务](daynight-task-properties-tasks.md)拥有任务状态与证据归属。

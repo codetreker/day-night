@@ -14,10 +14,10 @@
 现有 `packages/daynight/` TypeScript CLI、YAML 配置和 SQLite review 状态继续独立
 运行。服务不读取或迁移这些状态；注册 project 也不启动现有 review 协调器。
 
-待实现的[预定义属性设计](daynight-task-properties.md)在完整 task 中增加固定
-结构的 PR 引用，并沿用本文的 task 事务与版本机制。其
+[预定义属性设计](daynight-task-properties.md)为完整 task 提供固定结构的 PR
+引用，服务端已沿用本文的事务与版本机制实现存储、迁移和 HTTP 操作。其
 [需求](../spec/daynight-task-properties.md)及[实施任务](daynight-task-properties-tasks.md)
-单独拥有扩展行为与实施状态。
+拥有扩展行为与 CLI/web 的后续状态。
 
 ## 完整图读取
 
@@ -79,14 +79,16 @@ service/store；请求仍只经过一次现有日志包装。HTML、图及最新
 | 对象 | 字段与含义 |
 |---|---|
 | Project | `id`、非空 `name`、`repoUrl`、`createdAt`、`updatedAt` |
-| Task | `id`、`projectId`、非空 `title`、`description`、`status`、`version`、`createdAt`、`updatedAt` |
+| Task | `id`、`projectId`、非空 `title`、`description`、`status`、具体 `properties`、`version`、`createdAt`、`updatedAt` |
 | TaskDependency | `projectId`、`taskId`、`dependsOnTaskId` |
 
 `TaskDependency` 的方向是“`taskId` 依赖 `dependsOnTaskId`”。project 拥有任务及依赖
 图；不同 project 可以关联相同仓库地址，`repoUrl` 不作为 project 唯一键。当前 API
 没有修改 project 仓库或删除资源的操作。
 
-建议使用 `projects`、`tasks`、`task_dependencies` 三张表。主键分别为 `id`、`id`、
+使用 `projects`、`tasks`、`task_dependencies` 三张表。`tasks.properties` 用 text
+保存固定属性 DTO 的序列化 JSON；属性不增加关联表，完整 task 同行读写，图查询
+保持显式精简投影。主键分别为 `id`、`id`、
 `(project_id, task_id, depends_on_task_id)`。数据库使用非空、状态枚举检查、正版本
 检查、非自身依赖检查及主键唯一性保证可局部表达的约束。索引支持以下访问：
 
@@ -193,11 +195,13 @@ callback 不执行写入并正常结束；只有外层事务成功后才返回�
 | `PATCH /api/v1/projects/{projectId}/tasks/{taskId}` | 原子更新 task 及依赖 |
 
 创建 project 的输入为 `name` 和 `repoUrl`。创建 task 的输入为 `title`、可省略的
-`description` 与 `dependsOn`；省略描述表示空字符串，省略依赖表示空集合。创建成功
+`description`、`dependsOn` 与 `properties`；省略描述表示空字符串，省略依赖和
+PR 引用表示空数组。创建成功
 返回 `201`、资源体和对应资源的 `Location`；读取及更新成功返回 `200`。
 
 PATCH 必须提交期望的 `version`，并至少提供 `title`、`description`、`status`、
-`dependsOn` 中的一个可修改字段。只有 `version` 的请求返回 `invalid_input`；
+`dependsOn` 或一个已定义属性。只有 `version` 或空 `properties` 的请求返回
+`invalid_input`；
 提供字段但值未变的请求采用前述语义空操作规则。例如：
 
 ```json
@@ -210,7 +214,9 @@ PATCH 必须提交期望的 `version`，并至少提供 `title`、`description`�
 ```
 
 省略可更新字段表示保持原值；`description: ""` 清空描述，`dependsOn: []` 清空
-依赖。显式 `null`、未知字段、不合理的类型及非法枚举均为输入错误。`id`、
+依赖，`properties.pullRequests: []` 清空 PR 引用。属性数组按序比较并整体替换，
+具体记录只有字符串 `url` 和 `title`；内容不做业务校验。显式 `null`、嵌套未知或
+重复字段、不合理的类型及非法枚举均为输入错误。`id`、
 `projectId`、创建时间及更新时间不可由调用者写入。任务返回结构包含模型字段及
 `dependsOn`、`blockedBy`、`ready`。
 

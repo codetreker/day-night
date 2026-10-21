@@ -1,6 +1,6 @@
 # Task 预定义属性实施任务
 
-状态：设计方案已编写，以下实现任务均未开始。
+状态：TP-T1 服务端实现已完成；TP-T2 CLI 与 TP-T3 网页待实施。
 [需求](../spec/daynight-task-properties.md)拥有 TP1–TP9 与 TP-V1–TP-V8，
 [架构设计](daynight-task-properties.md)拥有类型、事务、存储、CLI 和网页机制，
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-task-properties-design.md)
@@ -10,7 +10,7 @@
 
 | 任务 | 前置 | 交付目的 | 状态 |
 |---|---|---|---|
-| TP-T1 | 无 | 服务端持久化与发布预定义 PR 属性 | 待实施 |
+| TP-T1 | 无 | 服务端持久化与发布预定义 PR 属性 | 已实现；验证结果随对应源码与 CI 保存 |
 | TP-T2 | TP-T1 | CLI 创建、替换、清空与显示关联 PR | 待实施 |
 | TP-T3 | TP-T1 | 网页详情呈现关联 PR | 待实施 |
 

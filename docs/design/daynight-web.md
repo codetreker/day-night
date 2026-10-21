@@ -2,8 +2,8 @@
 
 状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 已定位长斜线 SVG 虚线绘制造成的 raster/commit 阻塞，采用局部水平线与短原生转角路径分解；完整生产验收已交付，完成状态与对应源码的 PR/CI 链接由任务清单记录。运行结果随对应 PR 与 CI 保存；本地回执不能代替干净 hosted 验证。范围为[只读 MVP](../spec/daynight-web.md)，页面效果见[可交互预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
 
-待实现的[预定义属性设计](daynight-task-properties.md)定义任务详情中的只读
-PR 区域；[需求](../spec/daynight-task-properties.md)、
+[预定义属性设计](daynight-task-properties.md)的 server 接口已实现；任务详情的
+只读 PR 区域仍待实施。[需求](../spec/daynight-task-properties.md)、
 [交互预览](mockups/task-properties.html)及[实施任务](daynight-task-properties-tasks.md)
 分别拥有行为、样式和实施状态。
 

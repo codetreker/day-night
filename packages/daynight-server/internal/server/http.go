@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/codetreker/daynight/packages/daynight-server/api"
+	"github.com/codetreker/daynight/packages/daynight-server/internal/jsonobject"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/service"
 )
 
@@ -31,35 +32,9 @@ func decodeObject(w http.ResponseWriter, request *http.Request, allowed ...strin
 	if err != nil || !utf8.Valid(body) {
 		return nil, invalidInput("request body must be valid JSON within the 1 MiB limit")
 	}
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	token, err := decoder.Token()
-	if err != nil || token != json.Delim('{') {
-		return nil, invalidInput("request body must be one JSON object")
-	}
-	fields := make(map[string]json.RawMessage)
-	for decoder.More() {
-		token, err := decoder.Token()
-		if err != nil {
-			return nil, invalidInput("request body must be valid JSON")
-		}
-		key, ok := token.(string)
-		if !ok || !containsField(allowed, key) {
-			return nil, invalidInput("request body contains an unknown or read-only field")
-		}
-		if _, exists := fields[key]; exists {
-			return nil, invalidInput("request body contains a duplicate field")
-		}
-		var value json.RawMessage
-		if err := decoder.Decode(&value); err != nil {
-			return nil, invalidInput("request body must be valid JSON")
-		}
-		fields[key] = value
-	}
-	if _, err := decoder.Token(); err != nil {
-		return nil, invalidInput("request body must be valid JSON")
-	}
-	if err := decoder.Decode(new(any)); err != io.EOF {
-		return nil, invalidInput("request body must contain exactly one JSON object")
+	fields, err := jsonobject.Decode(body, "request body", allowed...)
+	if err != nil {
+		return nil, invalidInput(err.Error())
 	}
 	return fields, nil
 }

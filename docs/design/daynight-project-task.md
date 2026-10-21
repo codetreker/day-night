@@ -11,8 +11,8 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 [创建预检决策](../../.agents/notes/implemented/bug-fix/2026-10-21-project-create-repository-discovery.md)，
 实现顺序与依赖见[交付任务](daynight-project-task-tasks.md)。
 
-待实现的[预定义属性设计](daynight-task-properties.md)扩展 task 的成对 PR
-引用参数与完整输出；[需求](../spec/daynight-task-properties.md)和
+[预定义属性设计](daynight-task-properties.md)的 server 接口已实现；CLI 的成对
+PR 引用参数与完整输出仍待实施。[需求](../spec/daynight-task-properties.md)和
 [实施任务](daynight-task-properties-tasks.md)拥有扩展约定及实施状态。
 
 ## 现有基础与交付边界

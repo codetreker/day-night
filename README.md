@@ -63,10 +63,10 @@ activation remain separate acceptance work.
 The [task property requirements](docs/spec/daynight-task-properties.md),
 [design](docs/design/daynight-task-properties.md),
 [implementation breakdown](docs/design/daynight-task-properties-tasks.md) and
-[interactive preview](docs/design/mockups/task-properties.html) define planned
+[interactive preview](docs/design/mockups/task-properties.html) define
 server-predefined task properties, starting with ordered PR references containing
-caller-provided URLs and titles. The design is documented; the feature remains
-unimplemented.
+caller-provided URLs and titles. Server persistence, migration and HTTP operations
+are implemented; CLI editing/output and web presentation remain planned.
 
 The server design covers repository-linked projects, project-scoped tasks,
 acyclic dependencies and dependency-gated task states through HTTP JSON APIs.

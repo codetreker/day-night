@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
+	"github.com/codetreker/daynight/packages/daynight-server/internal/taskproperties"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -57,7 +58,7 @@ func scanProject(row pgx.Row) (core.Project, error) {
 }
 
 const taskProjection = `t.id::text, t.project_id::text, t.title, t.description,
-	t.status, t.version, t.created_at, t.updated_at, ` + taskDependsOn + `, ` + taskBlockedBy + `, ` + taskReady
+	t.status, t.version, t.created_at, t.updated_at, t.properties, ` + taskDependsOn + `, ` + taskBlockedBy + `, ` + taskReady
 
 const taskDependsOn = `ARRAY(SELECT d.depends_on_task_id::text FROM task_dependencies d
 		WHERE d.project_id = t.project_id AND d.task_id = t.id ORDER BY d.depends_on_task_id)`
@@ -74,8 +75,16 @@ const taskReady = `(t.status = 'todo' AND NOT EXISTS (
 
 func scanTask(row pgx.Row) (core.Task, error) {
 	var task core.Task
+	var properties string
 	err := row.Scan(&task.ID, &task.ProjectID, &task.Title, &task.Description, &task.Status,
-		&task.Version, &task.CreatedAt, &task.UpdatedAt, &task.DependsOn, &task.BlockedBy, &task.Ready)
+		&task.Version, &task.CreatedAt, &task.UpdatedAt, &properties, &task.DependsOn, &task.BlockedBy, &task.Ready)
+	if err != nil {
+		return core.Task{}, err
+	}
+	task.Properties, err = taskproperties.Decode([]byte(properties))
+	if err != nil {
+		return core.Task{}, err
+	}
 	task.CreatedAt = task.CreatedAt.UTC()
 	task.UpdatedAt = task.UpdatedAt.UTC()
 	return task, err

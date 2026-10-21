@@ -152,8 +152,9 @@ drain, listener/pool reuse, process configuration/exit status, and log redaction
 `Store.WriteProject` locks one project in a `READ COMMITTED` transaction before
 calling the supplied operation. The operation receives a project-scoped
 `ProjectTx`; its subsequent reads observe commits made while it waited for the
-lock. Returning an error rolls back fields, dependencies, version and timestamps
-together. Only expose a captured resource after the outer call succeeds.
+lock. Returning an error rolls back fields, properties, dependencies, version and
+timestamps together. Only expose a captured resource after the outer call
+succeeds.
 
 `Store.ReadSnapshot` uses read-only `REPEATABLE READ` for project/task queries and
 derived readiness. Pages use a validated limit and optional `(createdAt, id)`
@@ -162,13 +163,20 @@ is returned as `HasMore`; HTTP cursor encoding belongs to the API layer.
 
 The shared `core.Project` and `core.Task` models have one representation across
 storage and service. Store queries report prerequisite/dependent records and
-candidate reachability. The service owns reference validation, DAG/state rules,
-optimistic version comparison and semantic no-ops. There are no foreign keys or
+candidate reachability. The typed property codec in `internal/taskproperties/`
+stores serialized JSON in `tasks.properties` text, allowing JSON-escaped NUL
+without PostgreSQL JSONB restrictions. Migration `003_task_properties.sql` gives
+existing tasks empty PR lists while preserving version and timestamps. Corrupt
+stored structures fail reads; there is no read-time default. The HTTP boundary
+and property codec share the strict object decoder in `internal/jsonobject/`.
+The service owns reference validation, DAG/state rules, optimistic version
+comparison and semantic no-ops. There are no foreign keys or
 delete operations. Direct database writers must not bypass these service rules.
 
 Store tests use unique owned schemas and real PostgreSQL sessions. They prove
-multi-migration exclusion, rollback after partial writes, snapshot consistency,
-project-lock serialization, independent projects and cancellation. Rollback and
+old-schema property migration with unchanged metadata, multi-migration exclusion,
+rollback after partial writes, snapshot consistency, project-lock serialization,
+independent projects and cancellation. Rollback and
 advisory unlock use independent bounded contexts and preserve original causes.
 
 ## Project API
@@ -212,9 +220,9 @@ a response.
 
 `service.NewTasks` exposes `Create`, `Get`, `List`, `Graph` and `Update` over the same
 concrete store. HTTP task routes use the same instance. Creation uses `todo`;
-updates require a positive expected version and at least one mutable pointer
-field. Nil means omitted, while an empty description or supplied empty dependency
-list clears that value. The task HTTP boundary rejects explicit JSON null
+its predefined `properties.pullRequests` list defaults to empty. Updates require
+a positive expected version and at least one mutable pointer field. Nil means omitted, while an empty description or supplied empty dependency
+or PR list clears that value. The task HTTP boundary rejects explicit JSON null
 before constructing these Go parameters.
 
 Dependencies are canonicalized UUIDs, sorted and checked for duplicate identity,
@@ -228,6 +236,7 @@ Task writes hold the project lock while comparing versions and validating the
 graph. A stale version conflicts even when values match. A matching semantic
 no-op preserves version and update time; any actual change increments once.
 Dependency order/case spelling does not create a change after canonicalization.
+PR order and duplicate entries are retained; changing their order is a real change.
 Predecessor changes derive readiness on read without changing downstream status,
 version or timestamps.
 
@@ -251,7 +260,7 @@ and blocked tasks; graph reads do not change stored status, revisions or times.
 
 Nodes contain `id`, `titlePreview`, `titleTruncated`, `status`, `dependsOn`,
 `blockedBy`, `ready` and UTC timestamps. SQL produces at most 160 Unicode code
-points of each title without selecting descriptions or full titles. Use the
+points of each title without selecting descriptions, properties or full titles. Use the
 existing task detail endpoint for complete content. Node order is `(createdAt,
 id)`; dependency arrays are sorted and empty collections encode as `[]`.
 
@@ -283,16 +292,30 @@ receipts and fixed-capacity gates are in the
 | `GET` | `/api/v1/projects/{projectId}/tasks/{taskId}` | `200`, task |
 | `PATCH` | `/api/v1/projects/{projectId}/tasks/{taskId}` | `200`, updated task |
 
-Creation accepts required `title`, optional `description` and optional
-`dependsOn`; omitted optional values mean empty text and an empty dependency
-set. Status, version and identity are server-owned on creation. PATCH accepts
-a positive integer `version` and at least one of `title`, `description`,
-`status`, `dependsOn`. Omitted fields stay unchanged; explicit null (including
-null dependency elements) fails. Empty description or `dependsOn: []` clears
-that field. Fractions, exponents, strings and out-of-range versions fail.
+Creation accepts required `title`, optional `description`, `dependsOn` and
+`properties`; omitted optional values mean empty text, an empty dependency set
+and an empty PR list. Status, version and identity are server-owned on creation.
+PATCH accepts a positive integer `version` and at least one mutation of `title`,
+`description`, `status`, `dependsOn` or `properties.pullRequests`. Omitted fields
+stay unchanged; explicit null (including null dependency or PR elements) fails.
+Empty description, `dependsOn: []` or `properties: {"pullRequests": []}` clears
+that value. `properties: {}` has no mutation intent and is accepted only with
+another mutable field. Fractions, exponents, strings and out-of-range versions fail.
+
+`properties` contains the server-defined `pullRequests` ordered array. Each item
+requires exactly string fields `url` and `title`. Strings preserve their decoded
+JSON content, including empty text, whitespace, controls and NUL; order and
+duplicate items are data. The server performs no URL, PR, provider, repository
+or title-content checks and fetches no external metadata. Supplying a list
+replaces the complete list; omission preserves it. Unknown fields, duplicate
+keys, null, wrong types and missing item fields fail at every object level.
+The existing UTF-8, single JSON object and 1 MiB request limit apply, with no
+additional count or string-length limits. The complete API behavior is owned by
+the [task properties requirements](../../docs/spec/daynight-task-properties.md).
 
 Task responses contain identity, project, title, description, status, version,
-UTC timestamps, sorted `dependsOn`/`blockedBy` arrays and `ready`. A missing
+UTC timestamps, sorted `dependsOn`/`blockedBy` arrays, `ready` and complete
+`properties` with an initialized `pullRequests` array. A missing
 project or a task outside the specified project returns 404. The initialized
 empty project returns `items: []`, `nextCursor: null`.
 
@@ -312,7 +335,7 @@ For example, after obtaining a project and task ID:
 
 ```bash
 curl --header 'Content-Type: application/json' \
-  --data '{"title":"Implement API","dependsOn":[]}' \
+  --data '{"title":"Implement API","dependsOn":[],"properties":{"pullRequests":[{"url":"https://github.com/owner/repo/pull/123","title":"Implement API"}]}}' \
   http://127.0.0.1:8787/api/v1/projects/PROJECT_ID/tasks
 curl --request PATCH --header 'Content-Type: application/json' \
   --data '{"version":1,"status":"in_progress"}' \
@@ -334,7 +357,8 @@ The same check runs 12 actual-process scenario groups and the installed CLI
 project/task workflow. TestMain freshly builds a
 race-enabled server, starts only owned loopback children against isolated real
 PostgreSQL schemas, and checks HTTP workflows, restart persistence, competing
-mutations, partial-write rollback, cancellation, graceful/forced SIGTERM,
+mutations, PR string/NUL/order/duplicate persistence, partial-write rollback,
+cancellation, graceful/forced SIGTERM,
 migration failures and simultaneous startup. This signal acceptance runs in the
 Ubuntu Go CI job. Independent scenario subtests run with at most four concurrent
 slots within their sequential top-level test; each retains its own schema,
