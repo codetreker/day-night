@@ -57,7 +57,7 @@
         <div class="drawer-badges"><span class="drawer-status drawer-status-in_progress">进行中</span></div>
         <section class="drawer-section" aria-label="描述"><h4>描述</h4><p class="drawer-description">实现登录接口、会话验证和注销流程。
 覆盖服务端与前端的接入，使用真实服务验证完整的登录体验。</p></section>
-        <section class="drawer-section" aria-label="关联 PR"><h4 id="pr-heading">关联 PR · 2</h4><div id="pr-content"></div></section>
+        <section class="drawer-section" aria-label="关联 PR"><h4 id="pr-heading" tabindex="-1">关联 PR · 2</h4><div class="drawer-pr-pagination" id="pr-pagination" hidden><p class="drawer-pr-range" id="pr-range" role="status" aria-live="polite" aria-atomic="true"></p><div class="drawer-pr-page-controls"><button class="button" type="button" id="pr-previous">上一页</button><label class="drawer-pr-page-label" for="pr-page">页码</label><select class="drawer-pr-page-select" id="pr-page" aria-label="关联 PR 页码"></select><button class="button" type="button" id="pr-next">下一页</button></div></div><div id="pr-content"></div></section>
         <section class="drawer-section" aria-label="前置依赖"><h4>前置依赖 · 1</h4><ul class="drawer-relations"><li><button class="drawer-relation" type="button"><span class="drawer-relation-dot drawer-dot-done" aria-hidden="true"></span><span>确定接口与权限模型</span><span class="drawer-relation-arrow" aria-hidden="true">↗</span></button></li></ul></section>
         <section class="drawer-section" aria-label="当前未完成的前置"><h4>当前未完成的前置 · 0</h4><p class="drawer-description">所有前置已完成</p></section>
         <section class="drawer-section" aria-label="任务图快照中的直接后续"><h4>任务图快照中的直接后续 · 1</h4><ul class="drawer-relations"><li><button class="drawer-relation" type="button"><span class="drawer-relation-dot drawer-dot-todo" aria-hidden="true"></span><span>接入前端登录页面</span><span class="drawer-relation-arrow" aria-hidden="true">↗</span></button></li></ul></section>
@@ -67,7 +67,7 @@
     </section>
   <aside class="preview-panel" aria-label="设计预览控制">
     <h2>设计预览</h2>
-    <div><label for="scenario">PR 数据场景</label><select id="scenario"><option value="multiple">多个 PR · 跨仓库</option><option value="single">单个 PR</option><option value="none">无关联 PR</option><option value="empty-title">空标题</option><option value="long">长标题和长 URL</option><option value="arbitrary">任意 URL 字符串</option><option value="many">大量 PR</option></select></div>
+    <div><label for="scenario">PR 数据场景</label><select id="scenario"><option value="multiple">多个 PR · 跨仓库</option><option value="single">单个 PR</option><option value="none">无关联 PR</option><option value="empty-title">空标题</option><option value="long">长标题和长 URL</option><option value="arbitrary">任意 URL 字符串</option><option value="many">大量 PR · 本地分页</option></select></div>
     <p class="preview-scenario" id="scenario-note" aria-live="polite"></p>
     <p class="preview-help">关联 PR 通过 CLI 维护。此处仅展示详情；切换场景用于检查不同数据的呈现。</p>
     <button type="button" class="button" id="preview-top">回到详情顶部</button>
@@ -109,8 +109,15 @@
         ],
       },
       many: {
-        note: '12 项关联按输入顺序展示，继续滚动可查看依赖与元数据。',
-        pullRequests: Array.from({ length: 12 }, (_, index) => ({ title: `登录与会话管理 · 交付任务 ${index + 1}`, url: `https://github.com/example/auth-service/pull/${130 + index}` })),
+        note: '完整保留 205 项，每页显示 100 项；可直接选页，最后一页包含重复、空值和原始文本。',
+        pullRequests: [
+          ...Array.from({ length: 200 }, (_, index) => ({ title: `登录与会话管理 · 交付任务 ${index + 1}`, url: `https://github.com/example/auth-service/pull/${130 + index}` })),
+          { title: '', url: '' },
+          { title: '  多行标题\n\t\0保留  ', url: '  任意文本\0地址  ' },
+          { title: '重复关联', url: 'https://github.com/example/auth-service/pull/130' },
+          { title: '重复关联', url: 'https://github.com/example/auth-service/pull/130' },
+          { title: '最后一项', url: 'review:example/205' },
+        ],
       },
     };
     const overlay = document.getElementById('overlay');
@@ -118,6 +125,7 @@
     const closeButton = document.getElementById('close-drawer');
     const scenario = document.getElementById('scenario');
     let restoreFocus = document.getElementById('open-drawer');
+    let prPage = 0;
     const openDrawer = (trigger) => {
       restoreFocus = trigger;
       overlay.hidden = false;
@@ -142,6 +150,21 @@
     const render = () => {
       const example = examples[scenario.value];
       const content = document.getElementById('pr-content');
+      const pageCount = Math.ceil(example.pullRequests.length / 100);
+      const start = prPage * 100;
+      const visible = example.pullRequests.slice(start, start + 100);
+      const select = document.getElementById('pr-page');
+      document.getElementById('pr-pagination').hidden = pageCount <= 1;
+      document.getElementById('pr-range').textContent = `第 ${start + 1}–${start + visible.length} 项，共 ${example.pullRequests.length} 项`;
+      document.getElementById('pr-previous').disabled = prPage === 0;
+      document.getElementById('pr-next').disabled = prPage === pageCount - 1;
+      select.replaceChildren(...Array.from({ length: pageCount }, (_, index) => {
+        const option = document.createElement('option');
+        option.value = String(index);
+        option.textContent = `${index + 1} / ${pageCount}`;
+        return option;
+      }));
+      select.value = String(prPage);
       document.getElementById('pr-heading').textContent = `关联 PR · ${example.pullRequests.length}`;
       document.getElementById('scenario-note').textContent = example.note;
       content.replaceChildren();
@@ -153,7 +176,7 @@
       } else {
         const list = document.createElement('ul');
         list.className = 'drawer-pr-list';
-        for (const pullRequest of example.pullRequests) {
+        for (const pullRequest of visible) {
           const item = document.createElement('li');
           item.className = 'drawer-pr';
           const title = document.createElement('p');
@@ -188,9 +211,22 @@
         }
         content.append(list);
       }
-      document.getElementById('drawer-body').scrollTop = 0;
     };
-    scenario.addEventListener('change', () => { render(); if (overlay.hidden) openDrawer(scenario); });
+    const changePage = (page) => {
+      prPage = page;
+      render();
+      const active = document.activeElement;
+      if (active instanceof HTMLButtonElement && active.disabled) document.getElementById('pr-page').focus();
+    };
+    document.getElementById('pr-previous').addEventListener('click', () => changePage(prPage - 1));
+    document.getElementById('pr-next').addEventListener('click', () => changePage(prPage + 1));
+    document.getElementById('pr-page').addEventListener('change', (event) => changePage(Number(event.currentTarget.value)));
+    scenario.addEventListener('change', () => {
+      prPage = 0;
+      render();
+      document.getElementById('drawer-body').scrollTop = 0;
+      if (overlay.hidden) openDrawer(scenario);
+    });
     closeButton.addEventListener('click', closeDrawer);
     overlay.addEventListener('click', (event) => { if (event.target === overlay) closeDrawer(); });
     for (const id of ['open-drawer', 'graph-task']) {

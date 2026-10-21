@@ -39,7 +39,10 @@ index. This reuses existing ordered repeatable text options, including empty
 values. The bundled public task skill preserves required PR URLs and titles in
 the complete property list while retaining merge evidence in the description.
 The web drawer presents all values as text and enables navigation only
-for HTTP(S) absolute URLs, independently of storage acceptance. Complete task
+for HTTP(S) absolute URLs, independently of storage acceptance. Local pages mount
+at most 100 records while retaining the complete array, its order and duplicates.
+Native paging controls expose every record without another request; task or
+collection replacement resets the page before display. Complete task
 reads contain properties; the bounded graph projection remains independent.
 
 ## Alternatives
@@ -63,6 +66,19 @@ The accepted write unit is the complete list on its task.
 for generated commands, but hand-written values require shell and JSON quoting.
 The existing parser already preserves ordered repeated text values, so explicit
 URL/title pairs provide the required behavior without a second input language.
+
+**Mount the complete PR list or reveal more rows cumulatively.** A valid byte-limited
+request can carry tens of thousands of short records. The
+[initial renderer](https://github.com/codetreker/daynight/blob/4758842d37707a620d76622dc4ead3f4614f9bef/packages/daynight-web/src/features/task-detail/TaskPullRequests.tsx)
+created a DOM/accessibility representation proportional to the complete array;
+progressive append eventually reaches the same size. Fixed local pages bound the
+mounted representation while keeping every record reachable. CSS-only display
+optimizations would retain the full React/DOM allocation.
+
+**Virtualize a continuous variable-height list.** This could also bound mounted
+rows, but raw titles and URLs have variable height and keyboard focus requires
+explicit handling of unmounted rows. Native page selection provides direct
+access and predictable focus without a new measurement framework or dependency.
 
 ## Consequences
 

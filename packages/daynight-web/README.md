@@ -38,7 +38,13 @@ from one complete graph snapshot. Root rows expand one horizontal graph at a
 time, including shared tasks and direct external prerequisites. Nodes open a
 read-only detail drawer with dependency navigation, PR associations and stale-data
 detection. The PR section follows the description and displays every ordered
-title/URL pair, including duplicates. Empty strings have a display-only marker;
+title/URL pair, including duplicates. Lists longer than 100 entries use local
+100-row pages with a range/total announcement, Previous/Next controls and direct
+page selection. The complete ordered list stays in memory; changing pages makes
+no requests and imposes no storage or content limit. Replacing the task or
+property collection returns to the first page. Focus stays on current pagination
+controls or moves to the section heading when those controls disappear.
+Empty strings have a display-only marker;
 whitespace and long content remain selectable text and wrap within the drawer.
 Only absolute HTTP(S) addresses recognized by the browser URL parser become
 links, with a new tab and `noopener noreferrer`. Other strings remain plain
@@ -193,7 +199,7 @@ scenario annotations validated in each target's report.
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
 | W12 | `keyboard-focus`, `narrow-layout`: modal focus lifecycle including PR links, keyboard node activation and 320px page/drawer geometry |
-| TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
+| TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
 
 Receipts live in `packages/daynight-web/.tmp/acceptance/<run-id>/`, with the
 latest aggregate at `.tmp/acceptance/evidence.json` inside this package. They
