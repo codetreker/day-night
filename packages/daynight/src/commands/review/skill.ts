@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, realpath, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { parseDocument } from "yaml";
+import { captureSkillBundle, validateSkillEntrypoint } from "../../platform/skill-bundle.js";
+import type { BundleEntry } from "../../platform/skill-bundle.js";
 
 const skillName = "daynight-review";
 const pluginManifest = Buffer.from(`${JSON.stringify({
@@ -18,88 +19,8 @@ export type PreparedReviewSkill = {
   entrypoint: string;
 };
 
-type BundleEntry =
-  | { relativePath: string; type: "directory" }
-  | { relativePath: string; type: "file"; contents: Buffer };
-
 const hasCode = (error: unknown, code: string): boolean =>
   error instanceof Error && "code" in error && error.code === code;
-
-const captureBundle = async (directory: string): Promise<BundleEntry[]> => {
-  const root = await lstat(directory);
-  if (!root.isDirectory() || root.isSymbolicLink()) {
-    throw new Error(`Review skill bundle must be a directory without symbolic links: ${directory}.`);
-  }
-  const entries: BundleEntry[] = [];
-  const visit = async (relativeDirectory: string): Promise<void> => {
-    const names = await readdir(path.join(directory, relativeDirectory));
-    for (const name of names) {
-      if (name === "" || name === "." || name === ".." || /[/\\\0]/u.test(name)) {
-        throw new Error(`Review skill bundle contains an invalid path segment: ${JSON.stringify(name)}.`);
-      }
-      const relativePath = relativeDirectory === "" ? name : `${relativeDirectory}/${name}`;
-      const filename = path.join(directory, ...relativePath.split("/"));
-      const entry = await lstat(filename);
-      if (entry.isSymbolicLink()) {
-        throw new Error(`Review skill bundle must not contain symbolic links: ${filename}.`);
-      }
-      if (entry.isDirectory()) {
-        entries.push({ relativePath, type: "directory" });
-        await visit(relativePath);
-      } else if (entry.isFile()) {
-        entries.push({ relativePath, type: "file", contents: await readFile(filename) });
-      } else {
-        throw new Error(`Review skill bundle must contain only regular files and directories: ${filename}.`);
-      }
-    }
-  };
-  await visit("");
-  return entries.sort((left, right) => left.relativePath < right.relativePath ? -1 : left.relativePath > right.relativePath ? 1 : 0);
-};
-
-const validateEntrypoint = (entries: BundleEntry[]): void => {
-  const entrypoint = entries.find((entry) => entry.relativePath === "SKILL.md");
-  if (entrypoint?.type !== "file") {
-    throw new Error("Review skill bundle must contain a regular SKILL.md file.");
-  }
-  let source: string;
-  try {
-    source = new TextDecoder("utf-8", { fatal: true }).decode(entrypoint.contents);
-  } catch (cause) {
-    throw new Error("Review skill SKILL.md must be valid UTF-8.", { cause });
-  }
-  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(source);
-  if (frontmatter === null) {
-    throw new Error("Review skill SKILL.md must begin with YAML frontmatter.");
-  }
-  const document = parseDocument(frontmatter[1]!, {
-    strict: true,
-    uniqueKeys: true,
-    stringKeys: true,
-    prettyErrors: false,
-  });
-  const problems = [...document.errors, ...document.warnings];
-  if (problems.length !== 0) {
-    throw new Error("Review skill SKILL.md has invalid YAML frontmatter.", {
-      cause: new AggregateError(problems, "Review skill frontmatter was rejected."),
-    });
-  }
-  let metadata: unknown;
-  try {
-    metadata = document.toJS();
-  } catch (cause) {
-    throw new Error("Cannot decode review skill frontmatter.", { cause });
-  }
-  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) {
-    throw new Error("Review skill frontmatter must be a mapping.");
-  }
-  if (!("name" in metadata) || metadata.name !== skillName) {
-    throw new Error(`Review skill frontmatter name must be ${skillName}.`);
-  }
-  if (!("description" in metadata) || typeof metadata.description !== "string" || metadata.description.trim() === "" || metadata.description.includes("\0")) {
-    throw new Error("Review skill frontmatter description must be a nonempty string without NUL characters.");
-  }
-};
 
 const bundleDigest = (entries: BundleEntry[]): string => {
   const hash = createHash("sha256").update("daynight-review-plugin-bundle-v1\0");
@@ -126,7 +47,7 @@ const pluginBundle = (entries: BundleEntry[]): BundleEntry[] => [
 ];
 
 const verifySnapshot = async (directory: string, expected: BundleEntry[]): Promise<void> => {
-  const actual = await captureBundle(directory);
+  const actual = await captureSkillBundle(directory, "Review skill");
   if (actual.length !== expected.length || actual.some((entry, index) => {
     const wanted = expected[index]!;
     return entry.relativePath !== wanted.relativePath || entry.type !== wanted.type ||
@@ -143,8 +64,8 @@ export const prepareReviewSkill = async (
   const sourceDirectory = path.join(packageDirectory, "dist", "commands", "review", "skills", skillName);
   let entries: BundleEntry[];
   try {
-    entries = await captureBundle(sourceDirectory);
-    validateEntrypoint(entries);
+    entries = await captureSkillBundle(sourceDirectory, "Review skill");
+    validateSkillEntrypoint(entries, skillName, "Review skill");
   } catch (cause) {
     throw new Error(`Cannot capture installed review skill bundle ${sourceDirectory}.`, { cause });
   }

@@ -1,7 +1,7 @@
 # Agent 项目任务管理 Skill 需求
 
-状态：公开 skill bundle 及命令参考已纳入 npm 构建；交互安装与原生 Agent 集成验收
-待交付。任务完成以交付验收及对应 PR 合并为准。
+状态：公开 skill bundle、命令参考和交互安装器已实现；原生 Agent 加载与自动触发
+集成验收独立跟踪。任务完成以交付验收及对应 PR 合并为准。
 本文规定随 `@codetreker/daynight` npm 包发布的 `daynight` skill 及其安装命令；文中的命令和行为是交付要求。实现机制由
 [设计文档](../design/daynight-agent-skill.md)拥有，已有 project/task 命令、项目关联、
 版本与错误语义继续由[客户端需求](daynight-project-task.md)拥有。

@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOperation, OperationError } from "../../src/api/operation.js";
 import type { Operation } from "../../src/api/operation.js";
-import { discoverRepository, RepositoryGitError, runRepositoryGit } from "../../src/repository/git.js";
+import { discoverRepository, discoverWorktreeRoot, RepositoryGitError, runRepositoryGit } from "../../src/repository/git.js";
 import { formatError } from "../../src/platform/diagnostics.js";
 
 const nativeTaskkill = vi.hoisted(() => ({ outcomes: [] as ({ returned: true } | { returned: false; error: unknown })[] }));
@@ -65,6 +65,16 @@ afterEach(async () => {
 });
 
 describe("repository Git discovery", () => {
+  it("locates roots without origins or project configuration", async () => {
+    const root = await repository();
+    git(root, ["remote", "remove", "origin"]);
+    const nested = path.join(root, "nested path");
+    await mkdir(nested);
+    expect(await discoverWorktreeRoot(nested, operation())).toBe(root);
+    await expect(readFile(path.join(root, ".daynight/project.yml"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(discoverRepository(root, operation())).rejects.toThrow("origin fetch address");
+  });
+
   it("finds Chinese and spaced roots from a subdirectory without loading review state", async () => {
     const root = await repository();
     const sub = path.join(root, "子目录 with spaces");
@@ -104,6 +114,7 @@ describe("repository Git discovery", () => {
     git(root, ["config", "--unset-all", "remote.origin.url"]);
     git(worktree, ["config", "--worktree", "remote.origin.url", "git@git.example:Linked/Repo.git"]);
     expect((await readFile(path.join(worktree, ".git"), "utf8")).startsWith("gitdir:")).toBe(true);
+    expect(await discoverWorktreeRoot(worktree, operation())).toBe(worktree);
     expect(await discoverRepository(worktree, operation())).toEqual({ root: worktree, remote: "git@git.example:Linked/Repo.git", identity: "git.example/Linked/Repo" });
   });
 
@@ -114,6 +125,7 @@ describe("repository Git discovery", () => {
     git(root, ["-c", "protocol.file.allow=always", "submodule", "add", source, "nested module"]);
     const submodule = path.join(root, "nested module");
     git(submodule, ["remote", "set-url", "origin", "git@git.example:Submodule/Repo.git"]);
+    expect(await discoverWorktreeRoot(submodule, operation())).toBe(submodule);
     expect(await discoverRepository(submodule, operation())).toEqual({ root: submodule, remote: "git@git.example:Submodule/Repo.git", identity: "git.example/Submodule/Repo" });
   });
 
@@ -151,6 +163,7 @@ describe("repository Git discovery", () => {
     const bare = await directory();
     git(bare, ["init", "--bare"]);
     await expect(discoverRepository(bare, operation())).rejects.toThrow("repository is bare");
+    await expect(discoverWorktreeRoot(bare, operation())).rejects.toThrow("repository is bare");
     const root = await repository();
     git(root, ["remote", "remove", "origin"]);
     await expect(discoverRepository(root, operation())).rejects.toThrow("origin fetch address");

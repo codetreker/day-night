@@ -42,8 +42,8 @@ adapters belong to that module. `model.ts` owns domain and safe-recovery proof
 types independently of the SQLite implementation. `polling.ts` composes remote
 queries, repository registration, atomic store updates and failure recording;
 GitHub queries do not receive the store. `commands/update/` owns self-update.
-Shared diagnostic and filesystem functions live under `platform/` and do not
-import command modules. Tests mirror those responsibilities, with tooling tests
+Shared diagnostic, filesystem and data-level skill-bundle functions live under
+`platform/` and do not import command modules. Tests mirror those responsibilities, with tooling tests
 kept separately.
 
 The emitted entry remains `dist/main.js`, and the updater receives the package
@@ -60,7 +60,11 @@ YAML fields, version 1 SQLite tables, data locations, repository paths, cutoff
 boundaries, revisions, retry budgets, session UUIDs and worktree ownership stay
 unchanged. Source ownership does not partition user data by command. The current
 scope supplies command composition and the review, update, setup, completion,
-project and task capabilities. The [guided setup decision](../feature/2026-10-21-guided-configuration-setup.md)
+skill, project and task capabilities. The
+[public skill design](2026-10-21-public-agent-skill-design.md) owns its bundle and
+interactive installer; it needs no server or review configuration. Shared
+`cli/prompts.ts` supports typed selections, and `cli/cancellation.ts` owns the
+short-lived setup/skill signal and prompt lifecycle. The [guided setup decision](../feature/2026-10-21-guided-configuration-setup.md)
 extends the independent configuration capabilities with a root setup command and
 preflight at the affected business entries. Server API commands were separate product work in the
 command-composition scope. The adopted
@@ -118,7 +122,8 @@ completion remain independent of review configuration, SQLite and review
 executables. Definitions are loaded for command discovery and shell generation,
 so keeping them free of business imports is an enforced dependency boundary.
 Registration and listing retain their distinct side effects, and foreground monitoring alone owns its
-signal and runtime lifecycle.
+long-running review signal and runtime lifecycle. Short-lived setup and skill
+interactions use the shared CLI cancellation owner.
 
 Operators use the canonical review group commands. Existing configuration,
 state and sessions remain directly usable at their original locations. Tests

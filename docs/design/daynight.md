@@ -3,14 +3,15 @@
 状态：`packages/daynight/` 是通过 `@codetreker/daynight` 分发的 TypeScript 客户端
 命令工具包，支持 Linux、macOS 和 Windows。`review` 提供 GitHub PR 审查，`update`
 管理当前 npm 全局安装，`setup` 提供按能力配置的引导，`completion` 生成 Bash 和 zsh
-的原生补全脚本并安装启动配置。project/task
+的原生补全脚本并安装启动配置；`skill` 提供公开项目任务 skill 的交互安装。project/task
 CLI 的共享配置、HTTP、仓库关联基础及 project/task 命令已完成，安装产物、真实服务
 与默认预算验收已通过托管验证；集成状态见[PR #55](https://github.com/codetreker/daynight/pull/55)。
 [专属设计](daynight-project-task.md)拥有机制，[实现任务](daynight-project-task-tasks.md)
 拥有交付状态。行为归属见[客户端需求](../spec/daynight.md)及
 [review 需求](../spec/daynight-review.md)，结构选择见
 [命令组合决策](../../.agents/notes/implemented/architecture/2026-10-20-client-command-composition.md)。
-[补全设计](daynight-completion.md)拥有共享语法描述、脚本生成和 shell 加载机制。
+[补全设计](daynight-completion.md)拥有共享语法描述、脚本生成和 shell 加载机制，
+[Agent skill 设计](daynight-agent-skill.md)拥有公开资源、交互安装、scope 与覆盖机制。
 
 ## 命令与职责
 
@@ -30,6 +31,8 @@ daynight completion                 # 补全帮助
 daynight completion bash
 daynight completion zsh
 daynight completion setup [--shell bash|zsh] [--rc-file <path>]
+daynight skill                       # skill 帮助
+daynight skill install               # 多选 Agent，再选择 User 或 Project scope
 daynight project
 daynight project create <name> [--repo <repo>]
 daynight project list [--json]
@@ -52,7 +55,8 @@ daynight task graph [--json] [--project <project-id>]
 客户端外壳处理顶层帮助、版本、命令选择及通用退出结果。每个命令模块负责自己的
 定义、参数、帮助、依赖和执行生命周期。`review` 再按配置登记、本地列表、前台运行分派，
 避免查询或配置操作初始化审查运行时。`update` 属于包安装生命周期，不属于 review。
-独立 Go 服务与浏览器应用保持各自的数据和生命周期。已确认的 project/task 设计
+`skill` 拥有已安装 Agent 检测、终端选择、scope 规划和 bundle 覆盖，独立于服务及
+review 配置。独立 Go 服务与浏览器应用保持各自的数据和生命周期。已确认的 project/task 设计
 通过独立客户端模块使用现有 HTTP API，业务数据仍由 Go 服务持有；HTTP 客户端、仓库上下文和 project 入口已实现，
 task 入口已实现。
 
@@ -66,6 +70,7 @@ src/
     commands.ts
     context.ts
     prompts.ts
+    cancellation.ts
     schema.ts
   config/
     paths.ts
@@ -88,6 +93,15 @@ src/
     binding.ts
     context.ts
   commands/
+    skill/
+      definition.ts
+      command.ts
+      agents.ts
+      targets.ts
+      install.ts
+      skills/daynight/
+        SKILL.md
+        references/commands.md
     setup/
       definition.ts
       command.ts
@@ -134,6 +148,7 @@ src/
       bash.ts
       zsh.ts
   platform/
+    skill-bundle.ts
     diagnostics.ts
     filesystem.ts
     files.ts
@@ -170,7 +185,8 @@ review 的配置和路径类型明确以 `ReviewConfiguration`、`ReviewPaths` �
 `commands/review/model.ts` 持有领域和安全恢复证明类型，store 专注持久化；
 `polling.ts` 组合远端只读观测与本地原子状态提交，GitHub 适配器专注远端查询。
 [review 模块职责表](daynight-review.md#单进程与普通模块)解释具体职责及执行不变量。
-共享的 `platform/` 只承载诊断和文件系统能力；这些函数不导入命令模块。
+共享的 `platform/` 承载诊断、文件系统和无业务副作用的 bundle 捕获/entrypoint 校验；
+这些函数不导入命令模块。review 继续拥有快照、哈希和执行协议。
 
 源码测试按 `test/cli/`、`test/config/`、`test/api/`、`test/commands/review/`、
 `test/commands/update/`、`test/commands/completion/`、`test/commands/project/`、
@@ -242,8 +258,8 @@ CLI 参数与 API DTO 共用该规则并保留原值；`platform/terminal.ts` �
 `setup` 的轻量定义与其他命令一样由共享语法生成帮助和 shell 补全；执行实现仅在
 选中该命令时加载。服务业务入口和 review 的 run/list 入口按各自的能力调用同一
 配置引导机制，不通过捕获任意业务错误重新分派命令。`config/errors.ts` 区分结构化的
-缺少配置结果；`cli/prompts.ts` 拥有终端输入和信号处理，`config/setup.ts` 组合收集及
-持久化，`commands/setup/` 拥有主动入口。review 的仓库更新函数由登记和 setup 共用。
+缺少配置结果；`cli/prompts.ts` 拥有终端文本输入和类型化选择，`cli/cancellation.ts`
+共享 setup 与 skill 的信号、取消及关闭生命周期，`config/setup.ts` 组合配置收集及持久化，`commands/setup/` 拥有主动入口。review 的仓库更新函数由登记和 setup 共用。
 
 预检读取严格 YAML，区分不存在的文件或必需字段与共享文档错误、当前能力无效字段
 及读取错误。

@@ -1,7 +1,7 @@
 # Daynight 项目任务 skill 与交互安装设计
 
-状态：公开 skill bundle 及命令参考已实现并纳入 npm 构建；交互安装器与原生 Agent
-集成验收待交付。任务完成以交付验收及对应 PR 合并为准。
+状态：公开 skill bundle 与交互安装器已实现；原生 Agent 加载及自动触发集成验收
+独立跟踪。任务完成以交付验收及对应 PR 合并为准。
 
 [需求](../spec/daynight-agent-skill.md)拥有安装、覆盖和任务管理的可观察行为，
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-public-agent-skill-design.md)
@@ -21,11 +21,11 @@
 | 现有机制 | 证据与复用方式 |
 |---|---|
 | 轻量命令登记 | [命令表](../../packages/daynight/src/cli/commands.ts)按命令延迟加载运行时；新增 `skill` 定义和 loader |
-| 交互输入 | [CliPrompt](../../packages/daynight/src/cli/prompts.ts)已有 `ask(question, signal)`、`isInteractive`、`close()`；补充类型化选择能力 |
-| 中断生命周期 | [setup](../../packages/daynight/src/config/setup.ts)管理终端信号和 prompt 关闭；提取共享交互执行器 |
+| 交互输入 | [CliPrompt](../../packages/daynight/src/cli/prompts.ts)共享 `ask`、类型化 `select` / `selectMany`、交互检查与关闭，选择器按需加载 |
+| 中断生命周期 | [cancellation.ts](../../packages/daynight/src/cli/cancellation.ts)为 setup 与 skill 管理终端信号、取消和 prompt 关闭 |
 | 资源打包 | [copy-skills.ts](../../packages/daynight/scripts/copy-skills.ts)按明确清单将内部 review 与公开 daynight 两个完整 bundle 复制到 `dist`，重复构建目标明确失败 |
 | 路径解析 | [filesystem.ts](../../packages/daynight/src/platform/filesystem.ts)的 `resolvePhysicalDirectory` 能解析已有祖先和未创建部分；用于安装目标去重 |
-| 仓库定位 | [git.ts](../../packages/daynight/src/repository/git.ts)的 `discoverRepository`还读取 origin；提取只查当前 worktree 根目录的操作 |
+| 仓库定位 | [git.ts](../../packages/daynight/src/repository/git.ts)的 `discoverWorktreeRoot`仅定位根目录；项目发现另行读取 origin，安装器无需项目关联 |
 | 已安装 CLI 验收 | [installed-cli.ts](../../packages/daynight/test/fixtures/installed-cli.ts)提供真实打包、安装与 launcher fixture |
 
 ## 总体结构
@@ -34,7 +34,7 @@
 flowchart TD
     A[发布的 npm 包] --> B[公开 daynight skill bundle]
     A --> C[daynight skill install]
-    C --> D[检测 PATH 上的三个 Agent]
+    C --> D[检测三个 Agent launcher]
     D --> E[多选 Agent]
     E --> F[单选 User 或 Project]
     F --> G[读取 bundle 并规划物理目标]
@@ -61,14 +61,15 @@ packages/daynight/
     skills/daynight/
       SKILL.md
       references/commands.md
+  src/platform/skill-bundle.ts
   dist/commands/skill/skills/daynight/
     SKILL.md
     references/commands.md
 ```
 
 `agents.ts`拥有固定的三个 Agent 标识、命令名和发现目录映射；`targets.ts`规划目标；
-`install.ts`捕获 bundle 并替换目录。只有确实被公开 skill 与 review 共用的数据级
-bundle 校验才提取到共享模块；review 的快照和执行协议留在 review 内。
+`install.ts`捕获 bundle 并替换目录。`platform/skill-bundle.ts`共享目录捕获和 entrypoint
+校验；review 的快照、哈希和执行协议留在 review 内。
 
 ## 安装入口与交互
 
@@ -78,8 +79,9 @@ bundle 校验才提取到共享模块；review 的快照和执行协议留在 re
 skill 注册中心或用户修改检测。非交互终端明确失败，提示在交互终端执行该命令。
 命令帮助仅访问命令元数据，不探测 Agent、不读取配置、不创建目录。
 
-Agent 检测依固定顺序查找 `codex`、`copilot`、`claude`。检测指 PATH 上存在可执行
-launcher，不启动 Agent，不执行 `--version`，也不检查登录或账号状态。
+Agent 检测依固定顺序查找 `codex`、`copilot`、`claude`。检测指当前环境的原生命令
+查找规则下存在可执行 launcher，不启动 Agent，不执行 `--version`，也不检查登录
+或账号状态。
 静态查找通过直接依赖 `which` 的薄适配器实现，复用 PATHEXT、npm `.cmd` launcher、
 带引号 PATH 和 POSIX 执行权限规则，不启动外部进程；Windows 也遵循当前目录优先的
 原生命令查找规则。界面使用“未检测到”，不把无法执行的候选诊断为已卸载。
@@ -153,8 +155,8 @@ bundle，记录候选路径和重复情况。
 构建脚本仅列出公开 daynight 与内部 daynight-review 两个允许发布的 bundle，不扫描
 仓库开发 skill。npm 的 `files: ["dist"]`覆盖完整公开 bundle 及相对引用资源。
 
-每次安装捕获当前包内的完整 bundle 一次；验证合法 UTF-8、frontmatter 的固定名称
-`daynight`和非空 description、只含目录与普通文件。构建与安装验收校验全部相对引用可用，安装运行时不另建通用 Markdown 解析器。
+每次安装捕获当前包内的完整 bundle 一次；验证 SKILL.md 的合法 UTF-8、frontmatter 固定名称
+`daynight`和非空 description，目录树只含目录与普通文件；其他资源按原始字节保留。构建与安装验收校验全部相对引用可用，安装运行时不另建通用 Markdown 解析器。
 同次选择的目标使用同一批字节。已安装目录与包版本的对应由操作输出记录，不维护
 独立版本注册文件。更新 npm 包后再次运行安装命令即可同步 skill。
 
@@ -290,8 +292,14 @@ stdout 字节和耗时，再汇总一次恢复的调用数、总输出和粗略 
 user/project 目录，检验整目录覆盖会移除旧文件、保留 sibling skills、处理 parent symlink
 和 leaf symlink、按物理目录去重、两个方向的嵌套目标预检拒绝，以及失败后的准确结果。
 
-实际 PTY 驱动 checkbox / select 的 Space、方向键、Enter 与取消，分开捕获 stdout /
-stderr；scope 提交后首次写入前的信号、stage 期间取消和新建空目录清理、非交互拒绝、
+原生终端 fixture 使用开发依赖 `node-pty@1.1.0`，在三个平台驱动真实 PTY / ConPTY。
+PTY 内的 Node bridge 启动实际安装 launcher，stdin 与 stderr 继承终端，stdout 单独
+指向结果文件，分别证明生产 `isTTY`条件、界面输出和结果输出。发送 Space、方向键、
+Enter 与 Ctrl+C；`pty.kill()`只用于超时收尾，不能充当取消验证。版本受限的 pnpm
+`allowBuilds`仅允许该终端依赖构建，保留 SQLite 的现有禁止构建选择。依据及取舍见
+[原生终端验收决策](../../.agents/notes/implemented/testing/2026-10-21-native-skill-terminal-acceptance.md)。
+
+scope 提交后首次写入前的信号、stage 期间取消和新建空目录清理、非交互拒绝、
 root/group/install help、setup 文本问题、信号监听清理和 completion
 回归均属于安装器验收。Windows 的交互和 `.cmd`检测需要真实 Windows 终端证据，
 POSIX PTY 结果不能代替。普通原生 CI 继续运行 typecheck、test、build、acceptance。
@@ -310,8 +318,9 @@ bundle 来源、候选路径和加载内容。通过内容标记或真实命令�
 
 ## 操作结果与可诊断性
 
-逻辑操作范围是一次 `skill install`进程。CLI 已有执行上下文持有取消信号和输出；
-各边界传播 scope、Agent 标识、包版本、逻辑路径与物理目标，文件错误保持原始原因链。
+逻辑操作范围是一次 `skill install`进程。共享交互执行器持有取消信号，`CliContext`
+提供输出、包版本与目录；各边界传播 scope、Agent 标识、包版本、逻辑路径与物理目标，
+文件错误保持原始原因链。
 唯一物理目标串行执行，不引入后台服务、detached promise、队列或定时任务。
 选择器 Promise 和文件写入均被 await，信号由共享交互执行器管理；发布目标的两个
 文件操作完成后才处理取消，清理始终属于本次进程。

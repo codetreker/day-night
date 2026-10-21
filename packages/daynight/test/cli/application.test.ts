@@ -327,6 +327,9 @@ registerHooks({ resolve(specifier, context, nextResolve) {
       ...[[], ["--help"], ["bash"], ["zsh"], ["bash", "--help"], ["zsh", "--help"], ["setup", "--help"]].map((args) => ({
         args: ["completion", ...args], blocked: ["/commands/completion/setup.js", "/commands/review/", "/commands/update/", "better-sqlite3", "semver", "read-cmd-shim"],
       })),
+      ...[[], ["--help"], ["install", "--help"]].map((args) => ({
+        args: ["skill", ...args], blocked: ["@inquirer/", "which", "/commands/skill/agents.js", "/commands/skill/install.js", "/commands/skill/targets.js", "/commands/review/", "/config/", "/repository/", "/api/"],
+      })),
       ...[[], ["--help"], ["run", "--help"], ["list", "--help"], ["add-repo", "--help"]].map((args) => ({
         args: ["review", ...args], blocked: [...reviewRuntime, "/commands/review/config.js", "/commands/review/repositories.js"],
       })),
