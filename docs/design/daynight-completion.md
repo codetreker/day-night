@@ -28,7 +28,7 @@ daynight completion zsh
 两种生成操作不读取用户主目录、工作目录、配置、SQLite、实例锁或审查状态，不执行
 Git、GitHub CLI、Copilot、npm 或网络请求，不修改 shell 启动文件。
 
-`project create <name> --repo <repo>`、`project list [--json]` 和
+`project create <name> [--repo <repo>]`、`project list [--json]` 和
 `project show <project-id> [--json]` 已登记在共享命令树中。名称、repo 地址和 project ID
 是自由输入，不提供文件或远端候选。Tab 不加载 server 配置，不查询 project 列表；
 执行 project 命令时的服务访问仍由其业务模块负责。`setup` 的服务 URL 和仓库地址
@@ -59,9 +59,10 @@ Git、GitHub CLI、Copilot、npm 或网络请求，不修改 shell 启动文件�
 repeatable 选项为只读字符串数组。未声明 repeatable 的选项只能指定一次；依赖
 值按出现顺序追加，不去重、不拆分 CSV。Task 的 `--description` 声明 `allowEmpty`，
 `--status` 声明 `todo`、`in_progress`、`done` 三个 choices，`--depends-on` 声明
-repeatable。`project create` 的名称是一个必填位置参数，`--repo` 是必填 text 选项，
+repeatable。`project create` 的名称是一个必填位置参数，`--repo` 是可选 text 选项，
 查询 `--json` 为开关。位置参数在语法层拒绝缺失和空字符串，业务文本规则由命令
 在 I/O 前校验；名称原值不会被 JavaScript `trim()` 提前裁决。
+省略 repo 时的 Git 发现和服务 project 列表预检属于执行行为，补全仍只提供静态语法。
 
 text 值接受分离及内联赋值。`--option=value` 按第一个 `=` 分割，保留值的前导
 `-` 与其他 `=`；例如 `--title=-value`、`--description=a=b`。分离形式的前导
@@ -207,7 +208,7 @@ editor reset widget，在同一 generation 内确认空状态。每个场景发�
 `--path` 在 remote 前后及目录完成后的下一参数均需覆盖；目录名与 `review` 或
 `project` 同名时，命令补全仍插入命令并保留正确分隔符。
 
-project 场景覆盖 create/list/show、必填位置名称、`--repo`、`--json`、已使用选项隐藏，
+project 场景覆盖 create/list/show、必填位置名称、可选 `--repo`、`--json`、已使用选项隐藏，
 以及名称、repo 地址和 project ID 的文件回退抑制。名称待输入时不生成文件候选，
 仍可补全未使用的选项；`--` 后只允许名称文本，选项和文件候选均被抑制。repo 值
 待输入时，包括引号输入及以选项前缀开始的当前词，保持输入且不生成文件或选项候选。

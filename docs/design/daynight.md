@@ -29,7 +29,7 @@ daynight completion                 # 补全帮助
 daynight completion bash
 daynight completion zsh
 daynight project
-daynight project create <name> --repo <repo>
+daynight project create <name> [--repo <repo>]
 daynight project list [--json]
 daynight project show <project-id> [--json]
 daynight task
@@ -196,9 +196,14 @@ daynight 或网络请求。参数语法保留原有唯一帮助参数、remote �
 
 ## Server 命令执行
 
-`project/definition.ts` 声明 create/list/show、必填 text 选项与查询 JSON 标志。
+`project/definition.ts` 声明 create/list/show、创建的必填位置名称、可选 `--repo` 与查询 JSON 标志。
 `command.ts` 在帮助和语法校验后才加载共享 server runtime；show 的 UUID 校验
-先于配置读取，业务路径不查询工作目录或 Git。`rendering.ts` 使用完整项目标签块，
+先于配置读取。list/show 及显式 `--repo` 的 create 不查询工作目录或 Git；省略 repo
+时 create 复用 Git 发现以取得当前 worktree 的有效 `origin`，不加载关联保存流程。
+两种创建路径都先完整列举 project，以共享仓库身份规则比较：零匹配才 POST 原始名称
+和地址，唯一匹配返回既有 project，多匹配报告 ID。查询失败、取消和期限错误阻止
+后续创建。该预检保持服务允许重复 repo 的边界，不提供并发创建的原子唯一性；
+project 操作不读写仓库绑定或 ignore 规则。`rendering.ts` 使用完整项目标签块，
 输出大小随字段内容线性增长；JSON 保留 API 字段和值。
 
 `commands/server/runtime.ts` 在首次配置读取前建立操作和信号取消源，配置完整时，

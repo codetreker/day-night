@@ -29,13 +29,17 @@ retains responsibility for dependency ownership. Existing review syntax remains
 exact: help is a sole argument at its level, `--path` occurs once before or after
 the remote, and `review add-repo` accepts neither `--path=value` nor `--`.
 
-Project creation declares one positional name and the required `--repo` option.
+Project creation declares one positional name and an optional `--repo` option.
 Its `allowOptionsTerminator` declaration permits `--` to end option parsing so
 leading-dash names remain representable. Both generated shells consume that
 declaration: after the terminator they track only positional input and suppress
 option and file candidates. Before it, unconsumed options remain available.
 The [project/task decision](../architecture/2026-10-20-project-task-cli-design.md)
-owns name validation and original-text preservation.
+owns name validation and original-text preservation. The
+[repository-discovery correction](../bug-fix/2026-10-21-project-create-repository-discovery.md)
+owns origin inference and creation preflight; these execute only with the business
+command, while completion continues to use static syntax without Git or service
+queries.
 
 Task command integration extends those definitions with explicit empty-value
 permission for descriptions, fixed status choices and repeatable dependency

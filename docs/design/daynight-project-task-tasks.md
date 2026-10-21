@@ -118,17 +118,20 @@ head `d6172a2754030cd04e82dfbc07ad1204af14cdbe` 通过远端 review，全部 7 �
 ### 文件归属与范围
 
 负责 `packages/daynight/src/commands/project/`、对应测试，并在交付期间独占
-`src/cli/commands.ts` 的 project 登记及根帮助衔接；同时拥有所需的共享语法必填
-text 选项、静态补全及实际 shell 验收衔接。共享 server 执行层、配置取消信号和
+`src/cli/commands.ts` 的 project 登记及根帮助衔接；同时拥有所需的共享 text
+语法、静态补全及实际 shell 验收衔接。共享 server 执行层、配置取消信号和
 服务文本规则保证 project 操作独立加载并保留合法值。使用现有 API 创建、列举和读取 project，
-`create` 明确接受名称及 repo，列表覆盖完整分页，详情使用明确 ID。
+`create` 接受必填名称和可选 repo，省略 repo 时读取当前 worktree 有效 origin；创建
+前通过完整分页进行仓库身份预检，唯一匹配返回既有资源。该行为由
+[创建预检决策](../../.agents/notes/implemented/bug-fix/2026-10-21-project-create-repository-discovery.md)
+拥有。列表覆盖完整分页，详情使用明确 ID。
 
 ### 完成条件
 
 - 裸组及各级帮助不触发业务依赖；参数错误与操作错误使用既有退出规则。
 - 实际编译 CLI 完成 create/list/show，并在明确 ID/地址情况下支持仓库之外调用。
 - 机器输出保持完整 JSON；续页失败不输出部分成功数组，文本错误与诊断进入 stderr。
-- 根命令登记、review/update 的帮助与操作保持独立，项目创建仍由 server 负责地址校验。
+- 根命令登记、review/update 的帮助与操作保持独立；创建预检使用共享仓库身份规则，server 继续负责写入地址的服务端校验。
 
 <a id="pt-t4"></a>
 ## PT-T4：Task 命令

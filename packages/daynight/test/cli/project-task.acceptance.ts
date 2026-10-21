@@ -126,7 +126,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
   const mutations = (): number => requests.filter(({ method }) => method !== "GET").length;
   try {
     await mkdir(outside); await mkdir(home);
-    await writeFile(path.join(receipt.root, "isolation.mjs"), `import {registerHooks} from 'node:module';registerHooks({resolve(specifier,context,nextResolve){const result=nextResolve(specifier,context);if(['/repository/','/commands/review/runtime.js','better-sqlite3','node:child_process'].some(value=>specifier.includes(value)||result.url.includes(value)))throw new Error('Unexpected business import: '+specifier);return result;}});`);
+    await writeFile(path.join(receipt.root, "isolation.mjs"), `import {registerHooks} from 'node:module';registerHooks({resolve(specifier,context,nextResolve){const result=nextResolve(specifier,context);if(['/repository/git.js','/repository/binding.js','/repository/context.js','/commands/review/runtime.js','better-sqlite3','node:child_process'].some(value=>specifier.includes(value)||result.url.includes(value)))throw new Error('Unexpected business import: '+specifier);return result;}});`);
     expect((await invoke(["task", "--help"], outside, 0, true)).stdout).toContain("Usage: daynight task");
     await invoke(["task", "update", taskId, "--status", "done", "--if-version", "9223372036854775808"], outside, 2, true);
     expect(await readdir(home)).toEqual([]); scenarios.push("installed-launcher-help-and-usage-before-config");
@@ -134,7 +134,11 @@ it("runs the actual installed launcher through native project/task discovery, pe
     const explicit = ["--project", id];
     const listed = await invoke(["project", "list", "--json"], outside, 0, true);
     expect(JSON.parse(listed.stdout)).toEqual(projects);
-    await invoke(["project", "create", "Native 名称", "--repo", project().repoUrl], outside, 0, true);
+    const existingProject = await invoke(["project", "create", "Different name", "--repo", project().repoUrl], outside, 0, true);
+    expect(existingProject.stdout).toContain("Project already exists.");
+    const createdProject = await invoke(["project", "create", "Native 名称", "--repo", "https://git.example/Native/New.git"], outside, 0, true);
+    expect(createdProject.stdout).toContain("Project created.");
+    expect(requests.at(-1)!.body).toEqual({ name: "Native 名称", repoUrl: "https://git.example/Native/New.git" });
     expect(JSON.parse((await invoke(["project", "show", id, "--json"], outside, 0, true)).stdout)).toEqual(project());
     expect(parseApiJson((await invoke(["task", "show", taskId, "--json", ...explicit], outside, 0, true)).stdout)).toEqual({ ...task(), version: 9_007_199_254_740_993n });
     await invoke(["task", "create", "--title", "Native task", ...explicit], outside, 0, true);

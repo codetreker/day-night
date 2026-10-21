@@ -47,9 +47,10 @@ SQLite、GitHub CLI 或 Copilot。共享层读取严格 YAML 并识别已登记�
 
 ## PT3. 仓库地址正规化
 
-未显式指定 project 的 task 操作，必须定位调用目录所属的 Git worktree 根目录，并
-读取经 Git `insteadOf` 展开后的 `origin` fetch 地址。从子目录调用使用同一根目录；
-linked worktree 分别保存自身关联，submodule 使用自身的根目录及 origin。非 Git
+省略 `--repo` 的 project 创建及未显式指定 project 的 task 操作，必须定位调用目录
+所属的 Git worktree 根目录，并读取经 Git `insteadOf` 展开后的 `origin` fetch 地址。
+从子目录调用使用同一根目录；linked worktree 分别保存自身关联，submodule 使用
+自身的根目录及 origin。非 Git
 目录、bare repository、缺少 origin 或读取失败应报告具体原因。
 
 当前 origin 和服务返回的 `repoUrl` 必须使用同一正规化规则比较。普通 hosted repo
@@ -115,6 +116,7 @@ projectId: 8cb7af59-133e-4dc4-a9e6-c8a4b2429762
 ## PT6. Project 命令
 
 ```bash
+daynight project create "Day Night"
 daynight project create "Day Night" --repo https://github.com/codetreker/day-night.git
 daynight project list
 daynight project list --json
@@ -122,18 +124,27 @@ daynight project show <project-id>
 daynight project show <project-id> --json
 ```
 
-创建必须提供一个位置参数 `<name>` 和必填 `--repo`，将原始名称和 repo 地址提交给服务。
-含空格的名称须作为同一个 shell 参数传入；前导 `-` 的名称使用
-`daynight project create --repo <repo> -- -name`，`--` 后的词均为位置参数。
+创建必须提供一个位置参数 `<name>`；`--repo` 可选。省略时按 PT3 读取当前 worktree
+的有效 `origin`；显式提供时原样使用该地址，不读取工作目录或 Git，因此可在 Git
+仓库之外执行。含空格的名称须作为同一个 shell 参数传入；前导 `-` 的名称可使用
+`daynight project create -- -name`，或在终止符前指定 `--repo`；`--` 后的词均为位置参数。
 `--name` 不再是有效选项，名称缺失或多余位置参数均为参数错误。名称必须为
 不含 NUL 的合法 Unicode 文本，且不能全部由 Unicode `White_Space` 组成；保留原始
 字符及空白，不以 JavaScript `trim()` 改写。U+FEFF 单独作为名称有效，U+0085 单独
 作为名称无效。名称和详情 UUID 的参数错误必须在配置读取及网络访问之前拒绝。
 
-登记 project 不修改当前仓库关联、不 clone 仓库、不启动 review。列表查询配置
-server 中的全部 project，不按当前仓库筛选。详情使用显式的连字符 UUID，接受
-大小写输入并使用规范 ID 查询。以上操作均可在 Git 仓库之外执行，不查询当前工作
-目录；命令组及操作帮助遵守 PT1 的依赖隔离。
+创建在写入前必须读取配置 server 的全部 project 分页，将选定 repo 地址与每个
+`repoUrl` 按 PT3 的同一规则比较。零匹配时提交原始名称与所选原始地址；唯一匹配
+时成功输出 `Project already exists.` 和既有 project，不发送创建或修改请求，保留
+其名称与地址。多个匹配时报告歧义及全部匹配 ID，不创建。任一分页、响应验证、
+Git、取消或期限错误均按实际原因失败，不得把查询失败视为零匹配；完整预检成功
+并确认剩余预算后才能发送创建请求。该客户端预检不承诺并发创建的原子唯一性，
+服务继续允许同一仓库有多个 project。
+
+所有 project 操作均不读取或改写当前仓库关联、不写 ignore 规则、不 clone 仓库、
+不启动 review。列表查询配置 server 中的全部 project，不按当前仓库筛选。详情使用
+显式的连字符 UUID，接受大小写输入并使用规范 ID 查询。列表及详情可在 Git 仓库之外
+执行，不查询当前工作目录；命令组及操作帮助遵守 PT1 的依赖隔离。
 
 ## PT7. Task 命令与更新语义
 
@@ -230,11 +241,11 @@ daynight task graph
 | V1 | 仅有 `serverUrl` 的配置可执行服务命令；review 与服务配置分别校验，缺失或业务值无效的 `serverUrl` 不影响 review、帮助、版本及 update 的依赖隔离 |
 | V2 | 从真实 Git 仓库根目录、子目录、linked worktree 和 submodule 正确读取有效 origin；缺少仓库或 origin 时错误可辨 |
 | V3 | HTTPS、SSH、SCP 等价 fixture 得到同一身份；单独 `.git` 路径有可比较身份，路径大小写、自定义端口、特殊用户、alias 和显式相对路径不被误合并 |
-| V4 | discover 跨全部 project 页区分零、唯一、多匹配；后续页失败不保存关联、不输出成功、不执行 task 写入 |
+| V4 | 受控 HTTP 验证创建预检与 task discover 跨全部 project 页区分零、唯一、多匹配；创建唯一匹配保留原资源，多匹配列出 ID；后续页失败不保存关联、不输出成功、不发送 project POST 或 task 写入；project 操作不写绑定或 ignore |
 | V5 | 首次唯一发现创建正确元数据和有效 ignore；并发写入不损坏记录，本地失败发生于 task mutation 之前 |
 | V6 | 缓存每次通过远端详情验证，后增重复 project 不改变有效绑定；server 或 origin 任一变化均重新发现；404 或 repo 不符仅重新发现一次，网络及结构错误保持原因 |
 | V7 | 显式 `--project` 在 Git 外可执行且不改自动绑定；显式 ID 缺失、无权限或读取失败不进入自动发现 |
-| V8 | project 创建、列表、详情与 task 创建、筛选、详情、更新、图查询通过真实 Go server 联调；所有写入遵循现有服务规则 |
+| V8 | project 创建、列表、详情与 task 创建、筛选、详情、更新、图查询通过真实 Go server 联调；创建覆盖省略 repo 的 Git 发现，以及省略与显式 repo 再次创建均复用原资源且不改名称、不写本地绑定；所有写入遵循现有服务规则 |
 | V9 | 更新覆盖读取版本、显式期望版本、并发冲突、空描述、依赖替换及清空；服务拒绝保留 task ID 且没有隐式重试 |
 | V10 | 多页查询与 `--json` 仅完整成功后输出；图保持完整响应字段并正确报告超限，stdout 可直接由 JSON parser 读取 |
 | V11 | 单次期限、持续推进 cursor 耗尽总期限、单响应和累计字节超限、锁竞争、用户取消、错误响应、无效 JSON、损坏缓存及磁盘失败分别给出正确 stderr 和退出码；超限无部分输出或后续副作用，写响应未确认不产生虚假失败确定性 |

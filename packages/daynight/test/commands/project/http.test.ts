@@ -27,7 +27,7 @@ const server = async (handler: (request: IncomingMessage, response: ServerRespon
   if (typeof address !== "object" || address === null) throw new Error("Missing server address");
   return `http://127.0.0.1:${address.port}`;
 };
-const fixture = async (serverUrl: string) => {
+const fixture = async (serverUrl: string, operationLimits?: { readonly totalMs: number }) => {
   const temporary = path.resolve(import.meta.dirname, "../../../../../.tmp/project-command-tests");
   await mkdir(temporary, { recursive: true });
   const home = await mkdtemp(path.join(temporary, "home 用户 "));
@@ -40,7 +40,7 @@ const fixture = async (serverUrl: string) => {
     workingDirectory: vi.fn<() => string>(() => { throw new Error("Project commands must not query the working directory"); }),
     stdout: vi.fn<(value: string) => void>(), stderr: vi.fn<(value: string) => void>(),
   };
-  const dependencies = { runServerCommand: (current: Parameters<typeof runServerCommand>[0], command: Parameters<typeof runServerCommand>[1]) => runServerCommand(current, command, { signalEmitter: signals }) };
+  const dependencies = { runServerCommand: (current: Parameters<typeof runServerCommand>[0], command: Parameters<typeof runServerCommand>[1]) => runServerCommand(current, command, { signalEmitter: signals, ...(operationLimits === undefined ? {} : { operationLimits }) }) };
   return { context, dependencies, signals };
 };
 const respond = (response: ServerResponse, value: unknown, status = 200) => {
@@ -88,6 +88,7 @@ describe("project command over HTTP", () => {
     const bodies: unknown[] = [];
     const url = await server((request, response) => {
       requests++;
+      if (request.method === "GET") { respond(response, { items: [], nextCursor: null }); return; }
       expect(request.method).toBe("POST"); expect(request.url).toBe("/api/v1/projects");
       let body = "";
       request.setEncoding("utf8");
@@ -97,10 +98,58 @@ describe("project command over HTTP", () => {
     const { context, dependencies } = await fixture(url);
     await runProjectCommand(["create", name, "--repo", repoUrl], context, dependencies);
     expect(bodies).toEqual([{ name, repoUrl }]);
-    expect(requests).toBe(1);
+    expect(requests).toBe(2);
     expect(context.stdout).toHaveBeenCalledOnce();
     expect(context.stdout.mock.calls[0]![0]).toContain(`ID: ${project.id}\nName: ${name}\nRepository: ${repoUrl}\n`);
     expect(context.workingDirectory).not.toHaveBeenCalled();
+  });
+
+  it("reads every project page before returning a canonical match on a later page", async () => {
+    const requests: string[] = [];
+    const unrelated = { ...project, id: "22222222-2222-2222-2222-222222222222", repoUrl: "https://git.example/Other/Repo" };
+    const url = await server((request, response) => {
+      requests.push(`${request.method} ${request.url}`);
+      const later = new URL(request.url!, "http://localhost").searchParams.has("cursor");
+      respond(response, { items: later ? [project] : [unrelated], nextCursor: later ? null : "later" });
+    });
+    const { context, dependencies } = await fixture(url);
+    await runProjectCommand(["create", "Another name", "--repo", "https://git.example/Org/Repo"], context, dependencies);
+    expect(requests).toEqual(["GET /api/v1/projects?limit=100", "GET /api/v1/projects?limit=100&cursor=later"]);
+    expect(context.stdout.mock.calls[0]![0]).toContain(`Project already exists.\nID: ${id}\nName: ${project.name}\n`);
+    expect(context.workingDirectory).not.toHaveBeenCalled();
+  });
+
+  it("rejects canonical matches split across pages with every matching ID", async () => {
+    const second = { ...project, id: "22222222-2222-2222-2222-222222222222", repoUrl: "https://git.example/Org/Repo" };
+    const methods: string[] = [];
+    const url = await server((request, response) => {
+      methods.push(request.method!);
+      const later = new URL(request.url!, "http://localhost").searchParams.has("cursor");
+      respond(response, { items: later ? [second] : [project], nextCursor: later ? null : "later" });
+    });
+    const { context, dependencies } = await fixture(url);
+    await expect(runProjectCommand(["create", "Name", "--repo", project.repoUrl], context, dependencies)).rejects.toThrow(`Multiple projects match this repository (${id}, ${second.id})`);
+    expect(methods).toEqual(["GET", "GET"]);
+    expect(context.stdout).not.toHaveBeenCalled();
+  });
+
+  it.each(["refusal", "json", "invalid-repository", "repeated-cursor", "disconnect", "deadline"])("does not create after a later project page fails: %s", async (failure) => {
+    const methods: string[] = [];
+    const url = await server((request, response) => {
+      methods.push(request.method!);
+      const later = new URL(request.url!, "http://localhost").searchParams.has("cursor");
+      if (!later) { respond(response, { items: [project], nextCursor: "later" }); return; }
+      if (failure === "refusal") respond(response, { error: { code: "internal", message: "Later page failed", requestId: "create-page-failure" } }, 500);
+      else if (failure === "json") { response.writeHead(200, { "Content-Type": "application/json" }); response.end("{"); }
+      else if (failure === "invalid-repository") respond(response, { items: [{ ...project, id: "22222222-2222-2222-2222-222222222222", repoUrl: "invalid repository" }], nextCursor: null });
+      else if (failure === "repeated-cursor") respond(response, { items: [], nextCursor: "later" });
+      else if (failure === "disconnect") response.destroy();
+    });
+    const { context, dependencies, signals } = await fixture(url, failure === "deadline" ? { totalMs: 250 } : undefined);
+    await expect(runProjectCommand(["create", "Name", "--repo", project.repoUrl], context, dependencies)).rejects.toBeInstanceOf(Error);
+    expect(methods).toEqual(["GET", "GET"]);
+    expect(context.stdout).not.toHaveBeenCalled();
+    expect(signals.listenerCount("SIGINT")).toBe(0);
   });
 
   it("queries an explicit canonical project ID and preserves full timestamps in JSON", async () => {

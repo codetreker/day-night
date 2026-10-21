@@ -40,14 +40,23 @@ that deadline, and the post-setup reload starts a fresh business budget. Invalid
 existing server values remain errors. Project definitions share
 parameter syntax with help and shell completion. Help and argument validation
 finish before the shared server runtime is loaded. Project creation takes one
-required positional name and the required `--repo` option, then sends the
-original name and repository address. Its definition permits `--` to end option
+required positional name and an optional `--repo` option. The
+[repository-discovery correction](../bug-fix/2026-10-21-project-create-repository-discovery.md)
+partially supersedes the original requirement to supply `--repo` and immediately
+register the requested project. That original contract kept project operations
+independent of working-directory discovery. Creation now infers the current
+worktree's effective origin only when the option is omitted, and both forms
+compare canonical repository identities across the complete project list before
+creating. Zero matches sends the original name and address; one match returns
+the unchanged existing project; multiple matches fail with their IDs. Its
+definition permits `--` to end option
 parsing, preserving leading-dash names as `project create --repo <repo> -- -name`.
 Names containing spaces remain one quoted argument. The syntax parser checks
 positional presence, empty strings and declared choices; command-owned text
 validation retains the Unicode rules without trimming the name. Listing reads all projects, and details
-use an explicit UUID. These operations do not inspect the working directory or
-change repository bindings.
+use an explicit UUID. List, show and explicit-repository creation do not inspect
+the working directory. Project operations do not read or change repository
+bindings or ignore rules.
 
 The repository foundation resolves explicit project selection for one invocation,
 including outside Git. Otherwise it reads the current worktree's effective
@@ -167,10 +176,13 @@ Observed acceptance evidence remains owned by the
 configuration, HTTP, repository and server-runtime modules support that remaining
 work. Package versions follow the existing release rules.
 
-Project creation uses `project create <name> --repo <repo>` in help, examples and
+Project creation uses `project create <name> [--repo <repo>]` in help, examples and
 generated completion. The removed `--name` option is an argument error. Existing
 shells must reload generated completion after installing the new package to use
-the same positional grammar as execution.
+the same grammar as execution. Repository inference reuses the Git discovery
+mechanism without task binding persistence. Creation preflight costs a complete
+project scan and preserves lookup errors; it does not provide atomic uniqueness
+against concurrent creators or change the service's duplicate-project allowance.
 
 The implemented repository resolver can infer a repository's project after one
 complete discovery and then validate it by ID. The cache remains disposable and
