@@ -95,6 +95,7 @@ export const renderZshCompletion = (root: CommandDefinition): string => {
     const specifications = command.options?.filter((option) => option.action === undefined).flatMap(optionSpecifications) ?? [];
     const informationOptions = command.options?.filter((option) => option.action !== undefined).flatMap(optionSpecifications) ?? [];
     const states: string[] = [];
+    const freeformSpecifications: string[] = [];
     if (command.options?.some((option) => option.value?.kind === "text") === true) {
       states.push(`    text_value)
       _message "$state_descr"
@@ -119,8 +120,16 @@ ${children.map(({ command: child, functionName: childFunction }) => `        ${[
     } else {
       for (const [index, argument] of (command.arguments ?? []).entries()) {
         const state = `argument_${index + 1}`;
-        specifications.push(`${index + 1}:${escapeSpecification(argument.description)}:->${state}`);
-        if (argument.choices !== undefined) {
+        const specification = `${index + 1}:${escapeSpecification(argument.description)}:->${state}`;
+        if (argument.choices === undefined) {
+          // zsh hides options beside a positional state unless the option prefix is present.
+          // An unstarted free-form value has no candidates, so omit its state until needed.
+          // https://zsh.sourceforge.io/Doc/Release/Completion-System.html (prefix-needed)
+          freeformSpecifications.push(`  if (( positional_count > ${index} || expecting_value )) || [[ -n "\${(Q)words[CURRENT]}" ]]; then
+    specifications+=( ${quote(specification)} )
+  fi`);
+        } else {
+          specifications.push(specification);
           states.push(`    ${state})
       local -a choices=( ${argument.choices.map((choice) => quote(escapeDescription(choice))).join(" ")} )
       _describe ${quote(argument.name)} choices && result=0
@@ -138,7 +147,7 @@ ${renderPrefixValidation(command).trimEnd()}
   local -a specifications=(
 ${specifications.map((specification) => `    ${quote(specification)}`).join("\n")}
   )
-${informationOptions.length === 0 ? "" : `  if (( CURRENT == 2 )); then\n    specifications+=( ${informationOptions.map(quote).join(" ")} )\n  fi\n`}  (( $#specifications )) && _arguments -C${command.allowOptionsTerminator === true ? " -S" : ""} "\${specifications[@]}" && result=0
+${freeformSpecifications.length === 0 ? "" : `${freeformSpecifications.join("\n")}\n`}${informationOptions.length === 0 ? "" : `  if (( CURRENT == 2 )); then\n    specifications+=( ${informationOptions.map(quote).join(" ")} )\n  fi\n`}  (( $#specifications )) && _arguments -C${command.allowOptionsTerminator === true ? " -S" : ""} "\${specifications[@]}" && result=0
 ${states.length === 0 ? "" : `  case "$state" in\n${states.join("\n")}\n  esac\n`}  return result
 }`);
     return functionName;

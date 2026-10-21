@@ -33,7 +33,8 @@ describe("native zsh completion", () => {
       description: "Test command",
       arguments: [{ name: "remote", description: "GitHub repository remote" }],
     });
-    expect(script).toContain("'1:GitHub repository remote:->argument_1'");
+    expect(script).toContain("specifications+=( '1:GitHub repository remote:->argument_1' )");
+    expect(script).toContain('if (( positional_count > 0 || expecting_value )) || [[ -n "${(Q)words[CURRENT]}" ]]; then');
     expect(script).not.toContain("_files");
     expect(script).toContain('local -a completion_words=( "${(@)words[1,CURRENT]}" )');
   });

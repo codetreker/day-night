@@ -123,11 +123,17 @@ directory 使用目录枚举；text 声明 choices 时只给出固定候选，�
 ### zsh
 
 [`completion/zsh.ts`](../../packages/daynight/src/commands/completion/zsh.ts) 使用原生
-`_arguments`、`_describe` 和 `_files -/` 表达语法、候选说明和目录。自由 text 使用
+`_arguments`、`_describe` 和 `_files -/` 表达语法、候选说明和目录。自由 text 选项使用
 明确的值状态，通过 `_message` 显示值说明并成功返回，不产生候选；choices 值使用
 声明的静态候选。repeatable 选项使用允许重复的原生声明，不加入自身排除项。
 前缀校验同时理解空描述、重复依赖和 text 内联赋值，directory 继续使用 `_files -/`。脚本显式
 调用 `compdef` 关联 `daynight`；仅输出 `#compdef daynight` 注释不足以支持直接 source。
+
+自由文本位置参数尚未开始且当前词为空时，生成器暂不向 `_arguments` 提供该位置的
+动作状态，让原生助手展示尚未使用的选项。否则默认 `prefix-needed` 规则会抑制空词
+处的选项候选。已消费的位置参数、固定候选及待填选项值保留对应规格；`--` 后仍由
+原生 `-S` 语义停止选项候选。这使 `project create ` 提示 `--repo`，同时保持名称
+没有文件候选、已用标量隐藏及调用者 completion style 的含义。
 
 加载要求 zsh 已初始化 `compinit`。缺少初始化时给出明确诊断并失败，不注册未生效
 的定义。脚本不改变调用者的 completion style，不引入 `bashcompinit`，不重复初始化
