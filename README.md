@@ -945,21 +945,30 @@ records status attribution and snapshot limits.
 
 ## Durable review state
 
-The command and source layout preserve existing YAML fields, version 1 SQLite
-schema, retained-state locations and resource identities. No data migration or
-command-specific disk partition is required. The review module owns its domain
-types independently of its SQLite implementation.
+The command and source layout preserve existing YAML fields, retained-state
+locations and resource identities. Runtime opening explicitly migrates earlier
+SQLite state to retain verified review publications and conversation follow-ups;
+existing cutoffs, revision budgets, sessions, process evidence and worktrees remain
+owned by their original records. Read-only listing does not migrate state. The
+review module owns its domain types independently of its SQLite implementation.
 
 The SQLite module keeps repository identity, the permanent startup PR boundary,
 observed PRs, captured review targets, completion revisions, sessions, worktree
-registration, and retry state. Repository identity includes the GitHub host and
-stable repository ID. Completing a captured revision leaves later observations
-pending; retries retain their original review identity and consumed budget.
+registration, retry state, and verified GitHub review/thread identities. Repository
+identity includes the GitHub host and stable repository ID. Completing a captured
+revision leaves later observations pending; retries retain their original review
+identity and consumed budget. Each successful comment result arms one durable
+follow-up that is consumed once when conversations are resolved, even at the same
+commit. A verified approval settles its current target; description edits retain
+that approval. Reusing a stored approval to settle a pending target requires a
+fresh snapshot confirming that exact remote review is still `APPROVED`, with the
+captured actor, commit and stable identity. A dismissed historical review cannot
+suppress that pending work.
 
 Runtime database opening applies explicit schema migrations and enables WAL with
 FULL synchronization and a bounded busy timeout. The listing reader checks the
-existing schema without applying migrations. The instance lock checks whether its
-recorded CLI owner still exists; that check does not establish whether its agents
+existing schema, accepting versions 1 and 2 without applying migrations. The
+instance lock checks whether its recorded CLI owner still exists; that check does not establish whether its agents
 or tools have stopped. Interrupted reviews and pending cleanup remain blocked
 after automatic lock recovery until process exclusion is explicitly confirmed.
 Database state does not replace physical Git/worktree or session-history
@@ -992,6 +1001,15 @@ All reported CI must finish successfully; GitHub's `success`, `skipped` and
 `neutral` outcomes pass. No CI allows immediate review. API errors and partial
 results keep the PR waiting. Latest workflow runs replace historical attempts;
 waiting or failing workflows do not consume review capacity.
+
+Fresh review also requires a complete, paginated review snapshot with no unresolved
+native `PullRequestReviewThread` from any author. Outdated threads still block
+until resolved. Threads proven to belong to unpublished `PENDING` reviews are
+excluded from this author-facing gate; unknown ownership cannot imply resolution.
+Review summaries and ordinary PR comments have no resolution state. A pending round and no active or uncertain execution are also required, so
+repeated passing-CI/zero-thread observations do not repeatedly review a settled
+target. CI and conversation waiting consume no review Worker or model attempt.
+API failure or incomplete data cannot prove that no conversations remain.
 
 ## Repository clones and worktrees
 
@@ -1063,26 +1081,49 @@ implementation, structural changes, tests and documentation for the same outcome
 remain in scope; fixed line or file counts do not decide reviewability. Expanding
 the description alone cannot justify unrelated work.
 
-Before publishing or confirming prior publication, the agent rereads the current
-PR information and reevaluates those gates. It publishes `COMMENT` reviews for
-blockers, with description or other PR-level problems in the review body and
-suitable code findings inline; it does not use `REQUEST_CHANGES`. It approves
-only when both quality gates pass and no Critical/Major code issues remain.
-Retry confirmation requires prior publication to match the current gate result
-and captured target. These are agent instructions, not a machine-enforced
-quality judgment; title or description edits alone do not trigger another review.
+Before new publication, the agent rereads the current PR information and
+reevaluates those gates. A successful review either approves or publishes
+`COMMENT` with at least one actual resolvable review thread. Suitable code findings
+use diff lines. Description and other PR-level blockers use a clearly labeled
+file-level conversation on the principal changed file; a review summary alone
+cannot satisfy this requirement. `REQUEST_CHANGES` remains unused. The reviewer
+must verify corrections after authors resolve feedback; resolution is a request
+for rereview, not evidence that the issue was fixed. Operational failures retain
+bounded retries and cannot be represented as quality findings.
+
+The daemon verifies remote publication using its stable review identity, captured
+commit and publishing actor, without interpreting the quality judgment or parsing
+findings. Marker acceptance is persisted before this read-only verification; API
+errors retry verification across restart without another model attempt. A complete
+lookup with no valid matching publication is a protocol failure and uses the
+remaining bounded model retry budget. A verified `COMMENT` records its real
+review/thread IDs and arms exactly one follow-up. Once
+all submitted native conversations are resolved and the current CI passes, that follow-up
+runs even without new commits or metadata edits. New targets and feedback wakeups
+coalesce. Same-round confirmation can proceed through open conversations only
+when exact-round remote evidence proves an approval, commented review with owned
+threads, or a recoverable matching pending draft under the captured publisher. A
+failed attempt alone supplies no exemption. If the authenticated reader changes,
+it can confirm the captured actor's submitted result; an unpublished result or
+pending draft waits for that actor without consuming model attempts. Verified
+approval settles the current target, and
+description edits do not revoke it or start another round.
 
 The adapter streams separate stdout/stderr logs and accepts only normal zero
 exit, complete capture and the exact final nonempty stdout line
 `PR N Review Completed`. Incomplete output, timeout, cancellation and logging
-errors cannot complete a review. The coordinator owns scheduling and final state
-transitions; runtime process supervision supplies evidence under the foreground
-execution contract.
+errors cannot assert execution completion. A marker alone is insufficient: the
+coordinator verifies the corresponding remote approval or resolvable feedback
+before completing the round. It owns scheduling and final state transitions;
+runtime process supervision supplies evidence under the foreground execution
+contract.
 
 The [execution decision](.agents/notes/implemented/architecture/2026-10-17-copilot-session-execution.md)
 records process and publication boundaries; the
 [PR-quality decision](.agents/notes/implemented/process/2026-10-21-review-pr-quality-gates.md)
 records the approval policy. The
+[conversation-cycle decision](.agents/notes/implemented/architecture/2026-10-21-review-conversation-cycle.md)
+records durable follow-ups and publication verification. The
 [skill design](docs/design/daynight-review-skill.md) owns packaging, snapshots and
 loading, with rationale in the
 [bundled-skill decision](.agents/notes/implemented/architecture/2026-10-20-bundled-review-skill.md).
@@ -1096,13 +1137,17 @@ remains separate from those probes and controlled subprocess tests.
 
 A FIFO pending queue coalesces observations for each PR while preventing a
 frequently updated PR from starving other repositories or PRs. One reservation
-spans preparation, execution and cleanup for each PR. CI admission precedes
-that reservation and is refreshed at `pollIntervalMs`; waiting candidates retain
-their queue position without blocking ready PRs. CI evidence is kept in memory
-for the exact revision, head and base branch and is refreshed after restart.
-Every agent launch rechecks PR state and CI after worktree preparation, including
-retries. A regression defers preparation without consuming an attempt or losing
-the retained session. CI changes alone do not retrigger completed revisions.
+spans preparation, execution and cleanup for each PR. Fresh-round CI and
+conversation admission precedes that reservation and is refreshed at
+`pollIntervalMs`; waiting candidates retain their queue position without blocking
+ready PRs. Admission evidence is kept in memory for the exact revision, head and
+base branch and is refreshed after restart. New review launches recheck PR state,
+CI and conversations after worktree preparation. Same-round reconciliation can
+confirm proven exact-round publication while its own feedback remains open;
+matching pending drafts require the captured publishing actor. An unsuccessful
+attempt without publication still waits for unrelated open conversations. A regression
+defers fresh preparation without consuming an attempt or losing the retained
+session. CI changes alone do not retrigger completed revisions.
 Readiness is a launch-time observation; later CI registration or reruns do not
 automatically cancel an active agent.
 

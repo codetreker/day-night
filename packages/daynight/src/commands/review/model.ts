@@ -58,3 +58,25 @@ export type ReviewListingSnapshot = {
 export type AttemptIdentity = { reviewId: string; attempt: number };
 export type OperationsStopped = { operationsStopped: true };
 export type ProcessesExcluded = { processesExcluded: true };
+
+export type RemoteReview = {
+  id: string;
+  authorId: string | null;
+  headSha: string | null;
+  body: string;
+  state: "APPROVED" | "COMMENTED" | "CHANGES_REQUESTED" | "DISMISSED" | "PENDING";
+};
+export type RemoteReviewThread = {
+  id: string;
+  reviewId: string | null;
+  isResolved: boolean;
+};
+export type PullRequestReviewSnapshot = {
+  state: "open" | "closed" | "merged";
+  draft: boolean;
+  headSha: string;
+  baseRef: string;
+  viewerId: string;
+  reviews: RemoteReview[];
+  threads: RemoteReviewThread[];
+};

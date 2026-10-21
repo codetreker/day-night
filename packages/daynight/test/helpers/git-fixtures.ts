@@ -60,7 +60,7 @@ export const createGitTestFixtures = (name: string, prepareSource?: (upstream: s
       listPullRequestNumbers: async () => [101],
       listOpenPullRequests: async () => [observation],
       getPullRequest: async () => { onGet?.(); return { ...observation }; },
-      getPullRequestChecks: async () => { throw new Error("Git preparation must not query CI readiness."); },
+      getPullRequestReviewSnapshot: async () => { throw new Error("Unexpected review snapshot request in worktree fixture."); }, getPullRequestChecks: async () => { throw new Error("Git preparation must not query CI readiness."); },
     };
     const calls: { file: string; args: readonly string[] }[] = [];
     let intercept: CommandExecutor | undefined;
