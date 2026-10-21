@@ -26,23 +26,26 @@ says `No ready tasks.` for an empty result. Ordinary `task list --ready` retains
 complete traversal for inventory callers. No service endpoint, schema, cursor
 option or new task state is introduced.
 
-The [public skill](../architecture/2026-10-21-public-agent-skill-design.md) uses
-bounded ready for next-work selection and show for selected or known tasks.
-In-progress inventory is read as needed to recover an unknown active task;
-graph is read for overall dependencies. An empty ready result cannot establish
-that a project has no active or blocked tasks, and a full result cannot establish
-that no additional candidates exist. The prior graph-first policy provided a
-single complete dependency view for small projects; bounded selection removes
-that cost from routine recovery. This partially replaces the original
+The [public skill distribution](../architecture/2026-10-21-public-agent-skill-design.md)
+introduced bounded ready for next-work selection and show for known tasks.
+The [mode decision](../architecture/2026-10-21-using-daynight-modes.md) assigns
+selection to explicitly requested autopilot and designated-task execution to
+run-task. In-progress inventory supplies recovery clues, not session ownership;
+graph supplies overall dependencies. An empty ready result cannot establish that
+a project has no active or blocked work, and a full result cannot establish that
+no additional candidates exist. The prior graph-first policy provided a complete
+view for small projects; bounded selection removes that cost from routine
+recovery. This partially replaces the original
 [project/task CLI decision](../architecture/2026-10-20-project-task-cli-design.md)
 that all list-based queries exhaust their cursors.
 
-Within the observed candidates, the public skill selects one ready todo task
-most relevant to the current authorized work. A session resumes its current
-task first and retains it through delivery waits; subagents collaborate on the
-same task. Only confirmed completion permits selecting another authorized task.
-The relevance decision belongs to the agent's workflow, not the service's
-creation-order sorting or a new priority field.
+Within observed candidates, autopilot selects one ready todo most relevant to
+the current authorized work, after comparing problem, scope, attached solution
+and acceptance, and dependencies. A session restores its checkpoint's current
+task first and retains it through delivery waits; subagents collaborate on it.
+Only confirmed done permits selecting another authorized task. A standalone
+run-task returns without successor selection. Relevance belongs to the agent
+workflow, not service creation-order sorting or a new priority field.
 
 The [requirements](../../../../docs/spec/daynight-project-task.md) own observable
 command behavior; the [design](../../../../docs/design/daynight-project-task.md)
@@ -50,7 +53,7 @@ owns transport and rendering. The real Daynight task is
 `ada23216-a6e6-45de-89f4-67f1f71fbbfc`. Existing command and service suites own its
 query behavior. The
 [installation acceptance decision](../testing/2026-10-21-simulated-agent-installation-acceptance.md)
-checks the packaged skill and command reference statically and validates the
+checks the packaged skill and mode references statically and validates the
 installer with simulated launchers, without running an Agent or task service.
 
 ## Alternatives

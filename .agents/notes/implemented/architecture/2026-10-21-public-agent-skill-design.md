@@ -12,54 +12,50 @@ user installation flow for general-purpose agents.
 
 ## Decision
 
-The adopted [requirements](../../../../docs/spec/daynight-agent-skill.md) and
-[design](../../../../docs/design/daynight-agent-skill.md) define one portable
-`daynight` skill in the npm package and an interactive `daynight skill install`
-command. Document preparation and review do not complete the tracked design
-task: its PR must be confirmed merged and its acceptance criteria satisfied.
-The public bundle and focused command reference are implemented under
-`src/commands/skill/skills/daynight/` and included in the package build. The
-interactive installer implements the selected-agent and scope workflow. The
-[installation acceptance decision](../testing/2026-10-21-simulated-agent-installation-acceptance.md)
-owns its packed-CLI tests with simulated Agent launchers, real PTY/ConPTY and
-complete file comparisons. Static bundle tests check the distributed guidance.
+The original distribution decision introduced one portable `daynight` skill
+and an interactive `daynight skill install` command. The
+[mode and attachment decision](2026-10-21-using-daynight-modes.md) partially
+supersedes its public name and task-protocol ownership. The current bundle is
+`using-daynight` under `src/commands/skill/skills/using-daynight/`, with an
+entrypoint and four mode references. The
+[requirements](../../../../docs/spec/daynight-agent-skill.md) and
+[design](../../../../docs/design/daynight-agent-skill.md) own the current contract.
+The original design task required a merged PR and satisfied acceptance; document
+preparation and review alone did not complete it.
 
 The installer detects Codex, Copilot CLI and Claude Code launchers, asks which
 agents to install for, then asks for user or project scope. It replaces the whole
-selected `daynight` directory with current packaged bytes on every run. It does
-not preserve local edits or introduce an installation registry. Codex and Copilot
-share their documented `.agents/skills` destination; Claude uses `.claude/skills`.
-Existing parent-directory links are preserved, and physical targets are
-deduplicated; strictly nested physical destinations are rejected before writes
-to prevent one replacement from deleting another completed installation. Selected
-agents can share discovery paths with unselected agents.
+selected using-daynight directory with packaged bytes, then removes the legacy
+daynight leaf in the same selected physical root. It does not preserve local
+edits or introduce an installation registry. Codex and Copilot share their
+`.agents/skills` destination; Claude uses `.claude/skills`. Parent links are
+preserved, physical targets are deduplicated and destructive nested targets are
+rejected before writes. Selected agents can share discovery with unselected
+agents. The replacement note owns migration ordering and partial-cleanup results.
 
-The public skill teaches active task management in associated repositories,
-including fresh worktrees. Routine next-work selection uses bounded `task ready`,
-known work is refreshed with `task show`, and graph or complete lists are read
-when their broader context is needed. The
+The original workflow taught active task management in associated repositories,
+including fresh worktrees. The
 [bounded-selection decision](../feature/2026-10-21-bounded-ready-task-selection.md)
-replaces the original graph-first recovery policy while preserving discovery
-and completion requirements. The skill preserves user authority, uses observed task
-versions for decisions based on read data, and treats readiness as a dependency
-result without claiming ownership. Existing CLI and service contracts remain the
-authority for state transitions and uncertain writes.
+replaced its graph-first recovery policy with bounded ready queries, while
+preserving show for full details and graph or complete lists when needed.
+Selecting one task most related to authorized work and retaining it through
+CI/review/merge waits prevented candidates from becoming an implicit batch.
+The replacement mode decision assigns that selection to explicitly requested
+autopilot and assigns designated-task completion to run-task. Observed versions,
+readiness without ownership and unchanged CLI/service semantics remain required.
 
-Each agent session resumes its current task before selecting new work. For new
-work, it picks exactly one ready todo candidate most relevant to the authorized
-scope, using the candidate's scope, description and dependencies. Creation order
-only orders the bounded page. The selected task stays current through CI,
-review and merge waits; subagents collaborate on that same task. Confirmed
-completion precedes selecting another authorized task. This keeps a candidate
-query from becoming an implicit batch of work without changing server ownership
-or concurrency semantics.
+Development and PR-delivered design/documentation tasks remain in progress while
+necessary PRs are open. All required PRs must be platform-confirmed merged and
+acceptance satisfied before done. PR URLs/titles remain in properties; the
+replacement decision moves acceptance evidence and merge commits to the primary
+Markdown attachment and progress to existing checkpoints. Non-PR tasks use their
+explicit acceptance criteria. No completion rule supplies merge authority.
 
-Development tasks and PR-delivered design/documentation tasks remain
-`in_progress` while a required PR is open, even after code, review or CI succeeds.
-Completion requires platform-confirmed merge of all required delivery PRs and
-satisfied acceptance, with PR and merge-commit references retained.
-Non-development tasks with no repository PR deliverable use their explicit
-acceptance criteria; the completion gate grants no merge authority.
+The [installation acceptance decision](../testing/2026-10-21-simulated-agent-installation-acceptance.md)
+replaced the original live-loading acceptance requirement with packed-CLI tests
+using simulated launchers, real PTY/ConPTY and complete file comparisons. Static
+checks inspect distributed guidance; independent scenario review assesses mode
+instructions separately from installer file evidence.
 
 The [bundled review decision](2026-10-20-bundled-review-skill.md) continues to own
 review snapshots and Copilot invocation. Its original narrow runtime scope does
@@ -98,9 +94,10 @@ fits the requested interaction while retaining existing setup text prompts.
 
 **Add task ownership and other project fields with the skill.** The existing
 task model already supports this workflow through dependencies and optimistic
-versions. Ownership, comments, priorities and attachments change service
-contracts and can be added independently; this design states the current limits
-and does not infer exclusive claims from `in_progress`.
+versions. At the original decision, ownership, comments, priorities and attachments were
+separate service-contract changes. Attachment-backed task planning is now owned
+by the replacement mode decision; no exclusive claim is inferred from
+`in_progress`.
 
 ## Consequences
 
@@ -114,8 +111,9 @@ compatibility rather than exclusive visibility to that Agent.
 
 Whole-directory replacement can discard local customization. Without backups,
 a filesystem failure after removal can leave a target absent; completed earlier
-targets remain installed and the command reports the partial result. Re-running
-restores current packaged content. This deliberately avoids cross-target
+targets remain installed and the command reports the partial result. Legacy-name
+cleanup failure preserves the newly published bundle and reports migration as
+incomplete. Re-running restores current packaged content. This deliberately avoids cross-target
 transactions, rollback, automatic npm-to-skill synchronization and edit merging.
 
 Daynight stores the design task and dependent implementation tasks. Repository

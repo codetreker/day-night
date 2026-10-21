@@ -16,9 +16,9 @@ const fixture = async () => {
   const directory = await fs.mkdtemp(path.join(temporary, "install 中文-"));
   directories.push(directory);
   const packageDirectory = path.join(directory, "package");
-  const source = path.join(packageDirectory, "dist/commands/skill/skills/daynight");
+  const source = path.join(packageDirectory, "dist/commands/skill/skills/using-daynight");
   await fs.mkdir(path.join(source, "references"), { recursive: true });
-  await fs.writeFile(path.join(source, "SKILL.md"), "---\nname: daynight\ndescription: Track project work\n---\nRead references/commands.md\n");
+  await fs.writeFile(path.join(source, "SKILL.md"), "---\nname: using-daynight\ndescription: Track project work\n---\nRead references/commands.md\n");
   await fs.writeFile(path.join(source, "references/commands.md"), "Current commands\n");
   await fs.writeFile(path.join(source, "resource.bin"), Buffer.from([0, 255, 128]));
   const base = path.join(directory, "home");
@@ -33,6 +33,8 @@ describe("complete skill installation", () => {
     const targets = await planSkillTargets(base, skillAgents);
     expect(targets).toHaveLength(2);
     const first = targets[0]!;
+    await fs.mkdir(first.legacyPath, { recursive: true });
+    await fs.writeFile(path.join(first.legacyPath, "SKILL.md"), "Legacy skill");
     await fs.mkdir(first.path, { recursive: true });
     await fs.writeFile(path.join(first.path, "SKILL.md"), "Local edits");
     await fs.writeFile(path.join(first.path, "obsolete"), "old");
@@ -49,6 +51,7 @@ describe("complete skill installation", () => {
       expect(await fs.readFile(path.join(target.path, "resource.bin"))).toEqual(Buffer.from([0, 255, 128]));
     }
     expect(await fs.readFile(path.join(first.parent, "another/SKILL.md"), "utf8")).toBe("other skill");
+    await expect(fs.lstat(first.legacyPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("deduplicates linked parent directories and replaces only a target leaf link", async () => {
@@ -59,8 +62,10 @@ describe("complete skill installation", () => {
     const outside = path.join(directory, "leaf contents");
     await fs.mkdir(outside);
     await fs.writeFile(path.join(outside, "keep"), "external");
-    const leaf = path.join(base, ".agents/skills/daynight");
+    const leaf = path.join(base, ".agents/skills/using-daynight");
     await link(outside, leaf);
+    const legacyLeaf = path.join(base, ".agents/skills/daynight");
+    await link(outside, legacyLeaf);
     const targets = await planSkillTargets(base, skillAgents);
     expect(targets).toHaveLength(1);
     expect(targets[0]!.agents.map(({ id }) => id)).toEqual(["codex", "copilot", "claude"]);
@@ -68,15 +73,67 @@ describe("complete skill installation", () => {
     expect((await fs.lstat(leaf)).isSymbolicLink()).toBe(false);
     expect((await fs.lstat(path.join(base, ".claude/skills"))).isSymbolicLink()).toBe(true);
     expect(await fs.readFile(path.join(outside, "keep"), "utf8")).toBe("external");
+    await expect(fs.lstat(legacyLeaf)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("migrates only the selected physical root and preserves an unselected agent's legacy skill", async () => {
+    const { packageDirectory, base } = await fixture();
+    const [selected, unselected] = await planSkillTargets(base, [codex, claude]);
+    for (const target of [selected!, unselected!]) {
+      await fs.mkdir(target.legacyPath, { recursive: true });
+      await fs.writeFile(path.join(target.legacyPath, "SKILL.md"), "legacy bundle");
+    }
+    await installSkillTargets([selected!], await captureInstalledSkill(packageDirectory), signal(), vi.fn());
+    await expect(fs.lstat(selected!.legacyPath)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await fs.readFile(path.join(unselected!.legacyPath, "SKILL.md"), "utf8")).toBe("legacy bundle");
+    await expect(fs.lstat(unselected!.path)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it.each([false, true])("rejects nested physical targets before writing, reversed=%s", async (reversed) => {
     const { base } = await fixture();
-    await fs.mkdir(path.join(base, ".claude/skills/daynight"), { recursive: true });
+    await fs.mkdir(path.join(base, ".claude/skills/using-daynight"), { recursive: true });
     await fs.mkdir(path.join(base, ".agents"));
-    await link(path.join(base, ".claude/skills/daynight"), path.join(base, ".agents/skills"));
+    await link(path.join(base, ".claude/skills/using-daynight"), path.join(base, ".agents/skills"));
     await expect(planSkillTargets(base, reversed ? [claude, codex] : [codex, claude])).rejects.toThrow("overlapping skill targets");
-    expect(await fs.readdir(path.join(base, ".claude/skills/daynight"))).toEqual([]);
+    expect(await fs.readdir(path.join(base, ".claude/skills/using-daynight"))).toEqual([]);
+  });
+
+  it.each([false, true])("rejects legacy cleanup containing a selected physical target before writing, reversed=%s", async (reversed) => {
+    const { base } = await fixture();
+    const legacy = path.join(base, ".claude/skills/daynight");
+    await fs.mkdir(legacy, { recursive: true });
+    await fs.writeFile(path.join(legacy, "keep"), "legacy contents");
+    await fs.mkdir(path.join(base, ".agents"));
+    await link(legacy, path.join(base, ".agents/skills"));
+    await expect(planSkillTargets(base, reversed ? [claude, codex] : [codex, claude])).rejects.toThrow("contains the using-daynight installation");
+    expect(await fs.readdir(legacy)).toEqual(["keep"]);
+    expect(await fs.readdir(path.dirname(legacy))).toEqual(["daynight"]);
+  });
+
+  it("removes a legacy leaf link without following its target containing another selected installation", async () => {
+    const { packageDirectory, base } = await fixture();
+    const shared = path.join(base, ".agents/skills");
+    await fs.mkdir(shared, { recursive: true });
+    await fs.mkdir(path.join(base, ".claude/skills"), { recursive: true });
+    const legacyLink = path.join(base, ".claude/skills/daynight");
+    await link(shared, legacyLink);
+    const targets = await planSkillTargets(base, [codex, claude]);
+    await installSkillTargets(targets, await captureInstalledSkill(packageDirectory), signal(), vi.fn());
+    for (const target of targets) expect(await fs.readFile(path.join(target.path, "references/commands.md"), "utf8")).toBe("Current commands\n");
+    await expect(fs.lstat(legacyLink)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("preserves the legacy bundle when staging fails before publication", async () => {
+    const { packageDirectory, base } = await fixture();
+    const targets = await planSkillTargets(base, [codex]);
+    const target = targets[0]!;
+    await fs.mkdir(target.legacyPath, { recursive: true });
+    await fs.writeFile(path.join(target.legacyPath, "SKILL.md"), "legacy bundle");
+    const failure = new Error("disk full");
+    const writeFile = vi.fn<typeof fs.writeFile>().mockRejectedValue(failure);
+    await expect(installSkillTargets(targets, await captureInstalledSkill(packageDirectory), signal(), vi.fn(), { ...fs, writeFile })).rejects.toMatchObject({ installedAtFailedTarget: false });
+    expect(await fs.readFile(path.join(target.legacyPath, "SKILL.md"), "utf8")).toBe("legacy bundle");
+    await expect(fs.lstat(target.path)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("leaves no directories when cancelled before the first mutation", async () => {
@@ -113,6 +170,8 @@ describe("complete skill installation", () => {
     const targets = await planSkillTargets(base, [codex, claude]);
     await fs.mkdir(targets[1]!.path, { recursive: true });
     await fs.writeFile(path.join(targets[1]!.path, "old"), "old");
+    await fs.mkdir(targets[1]!.legacyPath);
+    await fs.writeFile(path.join(targets[1]!.legacyPath, "SKILL.md"), "legacy bundle");
     const third = (await planSkillTargets(path.join(directory, "later"), [codex]))[0]!;
     targets.push(third);
     const failure = new Error("rename permission denied");
@@ -125,8 +184,32 @@ describe("complete skill installation", () => {
     expect(installed).toHaveBeenCalledTimes(1);
     await expect(fs.lstat(targets[1]!.path)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(fs.lstat(path.join(directory, "later"))).rejects.toMatchObject({ code: "ENOENT" });
-    expect(await fs.readdir(targets[1]!.parent)).toEqual([]);
+    expect(await fs.readdir(targets[1]!.parent)).toEqual(["daynight"]);
+    expect(await fs.readFile(path.join(targets[1]!.legacyPath, "SKILL.md"), "utf8")).toBe("legacy bundle");
     expect(await fs.readFile(path.join(targets[0]!.path, "references/commands.md"), "utf8")).toBe("Current commands\n");
+  });
+
+  it("reports published-new/cleanup-failed state and retries cleanup without losing completed targets", async () => {
+    const { packageDirectory, base, directory } = await fixture();
+    const targets = await planSkillTargets(base, [codex, claude]);
+    const failed = targets[1]!;
+    await fs.mkdir(failed.legacyPath, { recursive: true });
+    await fs.writeFile(path.join(failed.legacyPath, "SKILL.md"), "legacy bundle");
+    const third = (await planSkillTargets(path.join(directory, "later"), [codex]))[0]!;
+    targets.push(third);
+    const failure = new Error("legacy directory is busy");
+    const rm = vi.fn<typeof fs.rm>().mockImplementation(async (...args) => { if (args[0] === failed.legacyPath) throw failure; await fs.rm(...args); });
+    const installed = vi.fn();
+    const bundle = await captureInstalledSkill(packageDirectory);
+    await expect(installSkillTargets(targets, bundle, signal(), installed, { ...fs, rm })).rejects.toMatchObject({ completed: [targets[0]], failed, unattempted: [third], installedAtFailedTarget: true, message: expect.stringContaining("using-daynight skill is installed"), cause: failure });
+    expect(installed).toHaveBeenCalledExactlyOnceWith(targets[0]);
+    expect(await fs.readFile(path.join(failed.path, "references/commands.md"), "utf8")).toBe("Current commands\n");
+    expect(await fs.readFile(path.join(failed.legacyPath, "SKILL.md"), "utf8")).toBe("legacy bundle");
+    await expect(fs.lstat(third.parent)).rejects.toMatchObject({ code: "ENOENT" });
+    await installSkillTargets(targets.slice(1), bundle, signal(), installed);
+    expect(installed).toHaveBeenCalledTimes(3);
+    await expect(fs.lstat(failed.legacyPath)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await fs.readFile(path.join(third.path, "references/commands.md"), "utf8")).toBe("Current commands\n");
   });
 
   it("retains cleanup failure and original copy failure in the error chain", async () => {
@@ -146,13 +229,13 @@ describe("complete skill installation", () => {
 describe("installed bundle validation", () => {
   it.each([
     ["wrong name", "---\nname: another\ndescription: Track tasks\n---\n"],
-    ["empty description", "---\nname: daynight\ndescription: ''\n---\n"],
+    ["empty description", "---\nname: using-daynight\ndescription: ''\n---\n"],
     ["invalid YAML", "---\nname: [\n---\n"],
     ["invalid UTF8", Buffer.from([0xff])],
   ])("rejects %s without creating targets", async (_name, contents) => {
     const { packageDirectory, source, base } = await fixture();
     await fs.writeFile(path.join(source, "SKILL.md"), contents);
-    await expect(captureInstalledSkill(packageDirectory)).rejects.toThrow("Cannot capture installed Daynight skill bundle");
+    await expect(captureInstalledSkill(packageDirectory)).rejects.toThrow("Cannot capture installed using-daynight skill bundle");
     expect(await fs.readdir(base)).toEqual([]);
   });
 

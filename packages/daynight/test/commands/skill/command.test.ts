@@ -53,13 +53,13 @@ describe("interactive skill command", () => {
     context.workingDirectory = () => { throw new Error("User scope must not inspect Git or cwd"); };
     await runSkillCommand(["install"], context, dependencies);
     expect(selections).toEqual([
-      { message: "Install the Daynight skill for which agents?", choices: [{ name: "Codex", value: "codex" }, { name: "Copilot CLI", value: "copilot" }, { name: "Claude Code", value: "claude" }], requiredMessage: "Select at least one agent." },
+      { message: "Install the using-daynight skill for which agents?", choices: [{ name: "Codex", value: "codex" }, { name: "Copilot CLI", value: "copilot" }, { name: "Claude Code", value: "claude" }], requiredMessage: "Select at least one agent." },
       { message: "Where should the skill be installed?", choices: [{ name: "User", value: "user" }, { name: "Project", value: "project" }], default: "user" },
     ]);
     expect(dependencies.projectRoot).not.toHaveBeenCalled();
     expect(dependencies.captureBundle).toHaveBeenCalledWith("installed package");
     expect(context.stdout).toHaveBeenCalledTimes(3);
-    expect(context.stdout).toHaveBeenCalledWith(expect.stringContaining("Installed Copilot CLI: User skill at"));
+    expect(context.stdout).toHaveBeenCalledWith(expect.stringContaining("Installed Copilot CLI: User using-daynight skill at"));
     expect(context.stdout).toHaveBeenCalledWith(expect.stringContaining("package 1.2.3; shared installation"));
     expect(context.stderr).not.toHaveBeenCalled();
     expect(prompt.close).toHaveBeenCalledOnce();
@@ -71,9 +71,18 @@ describe("interactive skill command", () => {
     dependencies.install = async (targets, _bundle, _signal, _installed) => { throw new SkillInstallationError([], targets[0], targets.slice(1), "copy failed", { cause: new Error("disk full") }); };
     await expect(runSkillCommand(["install"], context, dependencies)).rejects.toThrow("copy failed");
     expect(dependencies.projectRoot).toHaveBeenCalledWith("outside Git", expect.any(AbortSignal));
-    expect(context.stderr).toHaveBeenCalledWith(expect.stringContaining("Failed Codex: Project skill at"));
-    expect(context.stderr).toHaveBeenCalledWith(expect.stringContaining("Failed Copilot CLI: Project skill at"));
-    expect(context.stderr).toHaveBeenCalledWith(expect.stringContaining("Not attempted Claude Code: Project skill at"));
+    expect(context.stderr).toHaveBeenCalledWith(expect.stringContaining("Failed Codex: Project using-daynight skill at"));
+    expect(context.stderr).toHaveBeenCalledWith(expect.stringContaining("Failed Copilot CLI: Project using-daynight skill at"));
+    expect(context.stderr).toHaveBeenCalledWith(expect.stringContaining("Not attempted Claude Code: Project using-daynight skill at"));
+    expect(context.stdout).not.toHaveBeenCalled();
+  });
+
+  it("reports a published installation and failed legacy cleanup without a successful result", async () => {
+    const { context, dependencies } = await fixture();
+    dependencies.install = async (targets) => { throw new SkillInstallationError([], targets[0], targets.slice(1), "legacy cleanup failed", { cause: new Error("directory is busy") }, true); };
+    await expect(runSkillCommand(["install"], context, dependencies)).rejects.toThrow("legacy cleanup failed");
+    expect(context.stderr).toHaveBeenCalledWith(expect.stringMatching(/Installed Codex: User using-daynight skill at .*; legacy daynight cleanup failed at /));
+    expect(context.stderr).toHaveBeenCalledWith(expect.stringContaining("Not attempted Claude Code: User using-daynight skill at"));
     expect(context.stdout).not.toHaveBeenCalled();
   });
 

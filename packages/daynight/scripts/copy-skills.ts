@@ -2,7 +2,7 @@ import { cpSync, statSync } from "node:fs";
 
 const bundles = [
   "commands/review/skills/daynight-review",
-  "commands/skill/skills/daynight",
+  "commands/skill/skills/using-daynight",
 ];
 
 for (const bundle of bundles) {

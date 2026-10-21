@@ -10,12 +10,12 @@ const filesystem: SkillInstallFilesystem = { mkdir, mkdtemp, rename, rm, rmdir, 
 const hasCode = (cause: unknown, code: string): boolean => cause instanceof Error && "code" in cause && cause.code === code;
 
 export const captureInstalledSkill = async (packageDirectory: string): Promise<SkillBundle> => {
-  const source = path.join(packageDirectory, "dist", "commands", "skill", "skills", "daynight");
+  const source = path.join(packageDirectory, "dist", "commands", "skill", "skills", "using-daynight");
   try {
-    const bundle = await captureSkillBundle(source, "Daynight skill");
-    validateSkillEntrypoint(bundle, "daynight", "Daynight skill");
+    const bundle = await captureSkillBundle(source, "using-daynight skill");
+    validateSkillEntrypoint(bundle, "using-daynight", "using-daynight skill");
     return bundle;
-  } catch (cause) { throw new Error(`Cannot capture installed Daynight skill bundle ${source}. Reinstall the npm package and try again.`, { cause }); }
+  } catch (cause) { throw new Error(`Cannot capture installed using-daynight skill bundle ${source}. Reinstall the npm package and try again.`, { cause }); }
 };
 
 export class SkillInstallationError extends Error {
@@ -25,6 +25,7 @@ export class SkillInstallationError extends Error {
     readonly unattempted: readonly SkillTarget[],
     message: string,
     options: ErrorOptions,
+    readonly installedAtFailedTarget = false,
   ) {
     super(message, options);
     this.name = "SkillInstallationError";
@@ -100,6 +101,10 @@ export const installSkillTargets = async (
     catch (cause) { throw new SkillInstallationError(completed, undefined, targets.slice(index), "Skill installation cancelled before the next target.", { cause }); }
     try { await replaceTarget(target, bundle, signal, fs); }
     catch (cause) { throw new SkillInstallationError(completed, target, targets.slice(index + 1), "Skill installation stopped at the failed target; completed targets are preserved.", { cause }); }
+    try { await fs.rm(target.legacyPath, { recursive: true, force: true }); }
+    catch (cause) {
+      throw new SkillInstallationError(completed, target, targets.slice(index + 1), `The using-daynight skill is installed at ${target.path}, but legacy daynight cleanup failed at ${target.legacyPath}. Run daynight skill install again to finish cleanup; completed targets are preserved.`, { cause }, true);
+    }
     completed.push(target);
     installed(target);
   }
