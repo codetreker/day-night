@@ -52,16 +52,18 @@ When the CLI is selected by the [module-scoped CI decision](2026-10-21-module-sc
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
 Windows. macOS tests mount temporary case-sensitive and case-insensitive APFS
 images and verify their actual lookup behavior before exercising configuration
-validation. The final `checks` job requires the entire selected CLI matrix and
-the dedicated shell completion job to succeed. Main pushes select all modules.
+validation. The final `checks` job accepts only success or skipped from every
+preceding job, including the CLI matrix and dedicated shell completion job.
+Main pushes select all modules. The [CI simplification decision](../simplification/2026-10-21-ci-gate-simplification.md)
+owns the final job-result gate and PR-only version enforcement.
 Actions are pinned to the inspected commits:
 [checkout](https://github.com/actions/checkout/tree/3d3c42e5aac5ba805825da76410c181273ba90b1),
 [setup-node](https://github.com/actions/setup-node/tree/949feb2413d6458794dcd2491c4babbbce0c15c1),
 and [pnpm setup](https://github.com/pnpm/action-setup/tree/ea17c68df8912ef543352723c149a84f56e3d413).
 
-The Linux verification job checks package version increases before the ordinary
-checks. Release inputs are production source, package manifests, TypeScript build
-configuration, the workspace definition, dependency lock and package-manager
+On PRs, the Linux verification job checks package version increases before the
+ordinary checks, using the event's explicit base and head commits. Release inputs
+are production source, package manifests, TypeScript build configuration, the workspace definition, dependency lock and package-manager
 configuration and the package build-cleanup script. The
 [README](../../../../README.md#package-versions) owns the exact
 scope and local command. Tests, documentation and validation scripts alone do
@@ -72,9 +74,9 @@ dependency graph.
 PR change detection compares merge-base to the explicit event head, while its
 version comparison uses the event's target revision. Target-only changes do not
 become PR changes, and a version already present on the target cannot satisfy a
-new code revision. Main pushes compare the complete before/after range. Full
-checkout history and explicit commit reads avoid synthetic merge versions,
-shallow-history guesses and uncommitted state. The
+new code revision. The local script's push mode compares the complete
+before/after range. Full checkout history and explicit commit reads avoid
+synthetic merge versions, shallow-history guesses and uncommitted state. The
 [Git diff documentation](https://git-scm.com/docs/git-diff) defines the merge-base
 comparison; the [GitHub event documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request)
 distinguishes the synthetic merge SHA from the PR head.
@@ -82,10 +84,12 @@ distinguishes the synthetic merge SHA from the PR head.
 The directly declared `semver` runtime dependency validates and orders versions
 for self-update and the package-version gate, including prereleases. Build
 metadata alone does not increase version precedence. Invalid manifests or missing commits fail instead of bypassing the
-check. An initial main push validates its first version because no predecessor
-exists. When CLI validation is selected, the required aggregate includes the
-Linux result, so version-check failures block integration through the same
-required check.
+check. The local push mode validates its first version when no predecessor
+exists. Version-check failures fail the PR's Linux job and the final `checks` job.
+The original toolchain ran this policy on main pushes as well; the
+[CI simplification decision](../simplification/2026-10-21-ci-gate-simplification.md)
+keeps the version decision in the reviewed PR while retaining full application
+validation on main.
 
 ## Alternatives
 
@@ -119,7 +123,7 @@ maintainer. A read-only failure keeps the version choice in the reviewed change.
 
 Every release-affecting PR includes its version decision. Documentation and
 test maintenance stay independent of release numbering. The gate verifies the
-revisions supplied by each CI event; it does not publish packages or schedule
+PR revisions supplied by the event; it does not publish packages or schedule
 release tags. Native-platform checks still own application validation. The
 separate [npm publishing decision](2026-10-20-npm-trusted-publishing.md) owns
 manual release authorization, OIDC, artifact identity, and post-publication tags;

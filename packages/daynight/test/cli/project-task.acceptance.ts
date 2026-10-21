@@ -47,6 +47,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
   let projects = [project(unrelatedId, "https://other.example/Unrelated/Repo"), project()];
   let properties: Task["properties"] = { pullRequests: [] };
   let broken: "none" | "page" | "json" | "dependency" | "write" | "hold" | "conflict" = "none";
+  let readyPage: { items: readonly Task[]; nextCursor: string | null } | undefined;
   let received: (() => void) | undefined;
   const configure = async (serverUrl: string): Promise<void> => { await mkdir(state, { recursive: true }); await writeFile(path.join(state, "config.yml"), `serverUrl: ${serverUrl}\nrepositories: invalid-for-review\n`); };
   const listen = async (): Promise<string> => {
@@ -80,6 +81,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
         }
         if (parts[5] === "task-graph") { send(response, { project: project(projectId), summary: { total: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 }, tasks: [] }); return; }
         if (parts.length === 7) { send(response, { ...task(projectId), properties, version: 9_007_199_254_740_993n }); return; }
+        if (readyPage !== undefined && url.searchParams.get("ready") === "true") { send(response, readyPage); return; }
         if (broken === "page" && url.searchParams.has("cursor")) { fault(response, "internal_error", "native-later-page", 500); return; }
         send(response, { items: [{ ...task(projectId), properties }], nextCursor: broken === "page" ? "native later page" : null });
       });
@@ -139,6 +141,8 @@ it("runs the actual installed launcher through native project/task discovery, pe
       ["update", taskId, "--pull-request-url=", "--clear-pull-requests"],
       ["update", taskId, "--pull-request-title=", "--clear-pull-requests"],
     ]) await invoke(["task", ...args], outside, 2, true);
+
+    await invoke(["task", "ready", "--limit", "101"], outside, 2, true);
     expect(await readdir(home)).toEqual([]); scenarios.push("installed-launcher-help-and-usage-before-config");
     const firstUrl = await listen(); const secondUrl = await listen(); await configure(firstUrl);
     const explicit = ["--project", id];
@@ -202,6 +206,22 @@ it("runs the actual installed launcher through native project/task discovery, pe
     properties = { pullRequests: [] };
     scenarios.push("installed-node-entry-pr-multiline-create-update-and-readback");
 
+    const readyTask = { ...task(), properties: { pullRequests: [{ url: "\0 arbitrary URL", title: "Ready\nPR" }] }, version: 9_223_372_036_854_775_807n };
+    readyPage = { items: [readyTask], nextCursor: "native unrequested next page" };
+    const readyAt = requests.length;
+    expect(parseApiJson((await invoke(["task", "ready", "--limit=1", "--json", ...explicit], outside, 0, true)).stdout)).toEqual([readyTask]);
+    expect(requests.slice(readyAt).map(({ path: pathname }) => pathname)).toEqual([`/api/v1/projects/${id}`, `/api/v1/projects/${id}/tasks?ready=true&limit=1`]);
+    expect((await invoke(["task", "ready", "--limit=1", ...explicit], outside, 0, true)).stdout).toContain("1. Title: Ready\\nPR\n     URL: \\u0000 arbitrary URL");
+    readyPage = { items: [], nextCursor: null };
+    expect((await invoke(["task", "ready", ...explicit], outside, 0, true)).stdout).toBe("No ready tasks.\n");
+    expect(requests.at(-1)!.path).toBe(`/api/v1/projects/${id}/tasks?ready=true&limit=10`);
+    readyPage = { items: [readyTask, { ...readyTask, id: alternateId }], nextCursor: null };
+    expect((await invoke(["task", "ready", "--limit=1", "--json", ...explicit], outside, 1, true)).stderr).toContain("task.ready");
+    readyPage = { items: [{ ...readyTask, status: "in_progress", ready: false }], nextCursor: null };
+    expect((await invoke(["task", "ready", "--json", ...explicit], outside, 1, true)).stderr).toContain("task.ready");
+    readyPage = undefined;
+    scenarios.push("installed-ready-single-bounded-page-int64-empty-and-protocol-refusals");
+
     await initialize(repository); const nested = path.join(repository, "nested 中文"); await mkdir(nested);
     await writeFile(path.join(repository, ".gitignore"), "# Keep original\r\n");
     await chmod(path.join(repository, ".gitignore"), 0o640);
@@ -214,7 +234,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
     scenarios.push("native-root-subdirectory-insteadOf-ssh-https-discovery-ignore-and-modes");
 
     projects.push(project(alternateId)); const cachedAt = requests.length;
-    await invoke(["task", "list", "--json"], repository);
+    await invoke(["task", "ready", "--limit", "1", "--json"], repository);
     expect(requests.slice(cachedAt).filter(({ path: pathname }) => pathname.startsWith("/api/v1/projects?"))).toEqual([]);
     const original = await readFile(binding(repository), "utf8");
     await invoke(["task", "list", "--json", "--project", unrelatedId], repository, 0, true);

@@ -36,7 +36,7 @@ and [task breakdown](docs/design/daynight-project-task-tasks.md) describe the
 confirmed behavior and implementation status. Shared YAML projections, the
 `serverUrl` configuration field, bounded HTTP client and repository discovery
 with ignored local bindings are implemented. `project create/list/show` manage
-remote projects through the configured server. Task create/list/show/update/graph
+remote projects through the configured server. Task create/list/ready/show/update/graph
 commands use explicit project selection or the current repository binding;
 installed real-service and resource-budget acceptance are implemented.
 [PR #55](https://github.com/codetreker/daynight/pull/55) records the original
@@ -171,11 +171,10 @@ Windows runners. Each native job resolves the latest available Node.js 24 patch.
 PRs select complete module jobs from their changed paths; the
 [CI selection rules](#ci-selection) define shared inputs and documentation-only
 changes. A selected CLI runs every native platform and the dedicated Linux shell
-completion job. The Linux job also enforces package version increases before
-ordinary validation. A PR compares its complete source changes with its merge
-base and its package version with the event's target-branch revision. Main pushes
-run every module and compare package versions across the full event before/after
-range. The checkout includes the required history.
+completion job. On PRs, the Linux job also enforces package version increases
+before ordinary validation. It compares the PR's complete source changes with
+its merge base and its package version with the event's target-branch revision.
+Main pushes run every module. The checkout includes the required history.
 Native tool discovery records command resolution, launcher, PID, timing, status
 and bounded output in `.tmp/validation-probes.json`. Before executing `gh`, it
 reads the selected file sequentially and records its byte count, SHA-256 and
@@ -271,9 +270,9 @@ statement coverage strictly greater than 90%, package coverage of at least 85%,
 and function coverage of at least 80%, with critical-block checks enabled. The
 same raw coverage profile supplies an exact strict comparison; exactly 90%
 fails, independently of display rounding. No product files or functions are
-excluded. When [CI selection](#ci-selection) selects the server, the aggregate
-requires this complete Go job to pass. PostgreSQL absence is a failure, not
-a skipped test. PT-T5 adds an installed-CLI service path and resource-budget
+excluded. When [CI selection](#ci-selection) selects the server, the complete
+Go job contributes its result to the final `checks` job. PostgreSQL absence is a
+failure, not a skipped test. PT-T5 adds an installed-CLI service path and resource-budget
 probes to this same gate. A Node orchestrator shares one real installation across
 the Go command scenarios and, after the unchanged go-cov/strict-profile checks,
 public-command probes outside Go's default ten-minute timer. Test-only deadline
@@ -309,8 +308,8 @@ The web job runs typecheck, production build, controlled-fetch UI tests, isolate
 deployment lifecycle fixtures and an exact statement gate strictly
 above 90%. It independently enumerates all product TypeScript/TSX files and
 publishes raw counters plus a relative source manifest. When
-[CI selection](#ci-selection) selects web, `checks` requires this complete job to
-pass; existing root CLI commands retain their scope.
+[CI selection](#ci-selection) selects web, the complete job contributes its result
+to the final `checks` job; existing root CLI commands retain their scope.
 
 For a disposable full-stack HTTP target, run a command through
 `bash deployment/dev-ci/run.sh <command> [args...]`; it receives
@@ -337,14 +336,15 @@ Changes to `packages/daynight/src/`, either package manifest, `pnpm-lock.yaml`,
 the package's build-cleanup script require a strictly greater SemVer in `packages/daynight/package.json`. Source
 additions, deletions and moves all count. Unchanged versions, downgrades and
 build-metadata-only changes fail. Tests, fixtures, documentation, CI workflows
-and validation scripts alone do not require a version increase. An initial main
-push with no previous commit validates the starting version without comparing
-against a nonexistent predecessor.
+and validation scripts alone do not require a version increase. CI enforces this
+policy in the PR's Linux CLI job using the event's explicit base and head commits.
 
 Update the version in the same PR as the code. To check committed revisions
 locally, run `pnpm version:check pull_request <base-sha> <head-sha>` or
 `pnpm version:check push <before-sha> <after-sha>`. The command reads versions
-from those commits; uncommitted files do not affect the result. Missing history,
+from those commits; uncommitted files do not affect the result. The local push
+mode compares the complete before/after range; an all-zero before SHA validates
+the starting version without a predecessor comparison. Missing history,
 unreadable manifests and invalid versions fail visibly. See the
 [toolchain decision](.agents/notes/implemented/process/2026-10-16-typescript-cli-toolchain.md)
 for the comparison and CI ownership rules.
@@ -493,6 +493,7 @@ daynight project show <project-id> [--json]
 daynight task
 daynight task create --title <title> [options]
 daynight task list [--status <status>] [--ready] [--json] [--project <project-id>]
+daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
 daynight task graph [--json] [--project <project-id>]
@@ -742,6 +743,8 @@ Task commands use the same `serverUrl` configuration as project commands:
 ```bash
 daynight task create --title "Implement sign-in" --description "Support OAuth"
 daynight task create --title "Build the sign-in page" --depends-on <task-id>
+daynight task ready
+daynight task ready --limit 5 --json
 daynight task list --ready
 daynight task list --status in_progress --json
 daynight task show <task-id> --json
@@ -762,7 +765,17 @@ server origin and repository identity, after ensuring `/.daynight/` is effective
 in the root `.gitignore`. A cached binding is verified against the server on each
 use and remains stable if another project later shares that repository.
 
-Creation starts in `todo`. The list status and ready filters combine with AND.
+Creation starts in `todo`. `task ready` selects up to 10 actionable tasks by
+default; `--limit <N>` accepts decimal integers from 1 through 100. It makes one
+task-list request with `ready=true` and the chosen limit, without fetching later
+pages. The service orders results by creation time and then task ID, both
+ascending. A ready task is `todo` with all direct dependencies `done`. This
+bounded selection supports choosing the next work without retrieving the whole
+project; `task graph` provides a dependency overview when needed. `task list`
+continues to read every matching page, including with `--ready`; its status and
+ready filters combine with AND. `task ready` accepts neither `--status` nor
+`--cursor`.
+
 Updates preserve omitted fields; an empty description clears it. Repeated
 `--depends-on` values replace the complete dependency set and retain input order
 and duplicates for server validation. `--clear-dependencies` clears that set and
@@ -779,8 +792,11 @@ inline assignment; `--path=value` and `--` remain invalid.
 
 Human results use complete labeled task blocks and graph nodes, including task
 state, dependencies, blocking and title-preview truncation flags. Queries support
-`--json`: lists return one complete array, details one resource, and graphs the
-complete API object. Versions remain JSON numbers with full int64 precision.
+`--json`: `list` returns every matching resource in one array, `ready` returns
+only its selected tasks as an array, details return one resource, and graphs
+return the complete API object. A ready result retains every task field; an
+empty human result is `No ready tasks.` and empty JSON is `[]`. Versions remain
+JSON numbers with full int64 precision.
 Local preparation fails before any task mutation; a lost write response is
 reported as unconfirmed. The [task record](docs/design/daynight-project-task-tasks.md)
 owns validation status. Installed CLI integration uses the real Go/PostgreSQL
@@ -1208,17 +1224,19 @@ owns scheduling and phase evidence; the
 [CI efficiency decision](.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md)
 retains the other workload optimizations and their limits.
 
-The final `checks` job always runs. It requires successful routing, success from
-every selected job and `skipped` from each deliberately unselected job. Missing
-selection outputs, unexpected skips, failures and cancellations fail the gate.
-Documentation-only PRs run routing tests and this aggregate without installing
-application dependencies or running application tests. Every `main` push retains
-full validation, including the exact-commit run required for npm publication.
-The [selection decision](.agents/notes/implemented/process/2026-10-21-module-scoped-pr-ci.md)
-records the alternatives and maintenance costs.
+The final `checks` job always runs after routing and application jobs. It accepts
+only `success` or `skipped` from every preceding job; failures, cancellations and
+other results fail the gate. It uses those job results without comparing module
+selection flags. Documentation-only PRs run routing tests and this final gate
+without installing application dependencies or running application tests. Every
+`main` push retains full application validation, including the exact-commit workflow run required for npm
+publication. Package-version enforcement belongs to PR validation. The
+[selection decision](.agents/notes/implemented/process/2026-10-21-module-scoped-pr-ci.md)
+records the routing alternatives and maintenance costs; the
+[CI simplification decision](.agents/notes/implemented/simplification/2026-10-21-ci-gate-simplification.md)
+owns version-check timing and the final job-result gate.
 
-To validate the routing and aggregation rules locally without application
-dependencies, run:
+To validate the routing rules locally without application dependencies, run:
 
 ```bash
 node --test .github/scripts/*.test.mts

@@ -202,16 +202,23 @@ description 明确适用于已关联 Daynight 的仓库中的日常开发和任�
 请求，观察 host 自动选择并加载当前 bundle，随后恢复任务；显式调用或提示读取路径
 只能单独证明可加载，不能替代这个触发验收。
 
-开发开始时使用非交互 shell 执行 `daynight task graph --json`，让现有 CLI 解析 Git origin
-与绑定。新 worktree 没有 `.daynight/project.yml`是正常情况，不能用文件存在性阻止恢复。
-首次发现可能按现有协议保存被忽略的绑定并维护 `.gitignore`。
-无关联时不自动创建项目；缺少 server 配置时保留 setup 指引，不能猜测地址。
-网络错误、歧义、协议和绑定错误均按实际原因报告。
+日常选择下一项工作时使用非交互 shell 执行 `daynight task ready --json`，默认最多
+10 项，需要更多候选时用 `--limit <N>` 指定 1..100。命令只取服务端按创建时间、ID
+升序筛选出的第一页；ready 为空不代表项目没有进行中或被阻塞的工作。它沿用现有
+readiness，不表达优先级或独占领取。已知恢复目标时 `task show <id> --json` 刷新任务；
+身份未知时按需查询 `task list --status in_progress --json`，再 show 选定任务。
 
-graph 提供统计、依赖、状态和 titlePreview，没有完整描述或 version；定位到相关工作后
-只 `task show <id> --json`读取必要任务。graph 超出服务的 1,000 节点 / 5,000 边限制时，
-改查 `task list --status in_progress --json`和 `task list --status todo --ready --json`；
-这是完整图限制的恢复路径，不代表项目未关联。
+这些命令均让现有 CLI 解析 Git origin 与绑定。新 worktree 没有 `.daynight/project.yml`
+是正常情况，不能用文件存在性阻止恢复。首次发现可能按现有协议保存被忽略的绑定
+并维护 `.gitignore`。无关联时不自动创建项目；缺少 server 配置时保留 setup 指引，
+不能猜测地址。网络错误、歧义、协议和绑定错误均按实际原因报告。
+
+需要理解整体依赖时使用 graph。它提供统计、依赖、状态和 titlePreview，没有完整
+描述或 version；定位后只 show 必要任务。graph 超出服务的 1,000 节点 / 5,000 边限制
+时，改用有界 ready 和选定任务详情；这是完整图限制，不代表项目未关联。完整
+`task list` 保留遍历全部分页的语义，只有需要完整清单时才使用。原先采用 graph-first
+恢复便于同时理解小项目全图；随着任务积累，日常选择改用有界查询，理由见
+[ready 决策](../../.agents/notes/implemented/feature/2026-10-21-bounded-ready-task-selection.md)。
 
 ### 建任务与更新
 
@@ -249,16 +256,17 @@ create / update 没有 `--json`，应读取其成功资源输出，不编造参�
 
 ## 调用成本与实际项目演练
 
-恢复的通常路径是一次 graph 加选中任务的 show，语义检查点再执行更新，不在每轮
-对话重复全量 list。已有有效绑定的 graph / show 各需要绑定验证和相应资源读取；
-首次发现还涉及完整项目分页，实际请求数随项目页数变化。
+日常选择通常读取一次有界 ready，再 show 必要任务；已知任务恢复直接 show。
+只在语义检查点更新，不在每轮对话重复完整 list 或 graph。已有有效绑定的 ready / show
+各需要绑定验证和相应资源读取；首次发现还涉及完整项目分页，实际请求数随项目页数
+变化。有界 ready 限制任务数量，单项完整描述仍可能很长，不保证固定字节或 token 数。
 
-接口成本以真实服务上的 graph、选定任务 show 和 ready 查询测量：逐条记录命令、
+接口成本以真实服务上的 ready、选定任务 show 和按需 graph 查询测量：逐条记录命令、
 stdout 字节和耗时，再汇总一次恢复的调用数、总输出和粗略 token 预算。英文输出可用
-字符数 / 4 作估算，必须标注这不是 tokenizer 精确计数或性能承诺。本设计已执行该测量，
-具体版本、数字和原始 receipt 随设计 PR 保留。持久结论是完整图不携带 description，
-正常恢复只加载所选任务全文；任务描述增大时不会让整个图同比增大。
-演练使用已发布 CLI，不证明尚未实现的公开 skill 或安装器的加载行为。
+字符数 / 4 作估算，必须标注这不是 tokenizer 精确计数或性能承诺。设计 PR 曾以
+已发布 CLI 测量 graph / show / 完整 ready 列表；该历史测量不证明有界命令或公开 skill
+加载行为。完整图不携带 description；有界 ready 返回完整 Task，其输出随选定任务
+正文增长，均不能替代真实调用观测。
 
 本功能的持久执行顺序由真实 Daynight 项目拥有：
 
@@ -267,10 +275,11 @@ stdout 字节和耗时，再汇总一次恢复的调用数、总输出和粗略 
 | 整体设计 | `d5ac82bb-bc74-48f4-9d13-205c1937c47a` | 当前设计交付；需求、设计、决策与 README |
 | 发布公开 skill | `35081440-a120-4fb4-9225-c893bb243b8e` | 设计完成；公开 bundle、资源打包、行为评估 |
 | 交互安装器 | `668910a4-470b-4ca5-bf52-0a47788c8ce6` | bundle 完成；skill command、选择器、目标与覆盖、对应测试 |
-| 原生 Agent 验收 | `852473fd-c078-4d18-83a1-b34e37dc731f` | 安装器完成；原生发现、行为演练和证据 |
+| 有界 ready 查询 | `ada23216-a6e6-45de-89f4-67f1f71fbbfc` | 安装器完成；task ready、公开 skill 查询策略及相应命令验收 |
+| 原生 Agent 验收 | `852473fd-c078-4d18-83a1-b34e37dc731f` | 安装器与有界 ready 完成；原生发现、行为演练和证据 |
 
 项目 ID 为 `fb1a3e30-f945-4c48-ab0f-55be117e098e`。表格是任务身份与交付顺序的映射，
-实时状态从 Daynight 查询；后续实现需要另行获得实现授权，ready 不是授权。
+实时状态从 Daynight 查询；执行需要用户授权，ready 本身不是授权。
 每项实现以单一目的交付，不把独立的 ownership/claim、评论、优先级或附件能力并入安装器。
 
 设计任务的完成条件是需求、设计与决策文档通过审查及必需检查，且平台确认对应
@@ -279,8 +288,9 @@ stdout 字节和耗时，再汇总一次恢复的调用数、总输出和粗略 
 
 依赖演练须验证：前置 PR 未合并时，即使 review 和 CI 已通过也不提交 done；开始
 后继被 `dependency_unsatisfied`拒绝，状态和 version 不变。平台确认合并、交付验收
-满足后，使用所读版本更新前置为 done，再查询图和 ready，仅正确的下一项解锁。
-任务 PR 属性保留 URL 与标题，描述保留 merge commit 引用，便于接手者核验交付。
+满足后，使用所读版本更新前置为 done，再查询有界 ready，仅正确的下一项解锁；
+需要全图核对时按需查询。任务 PR 属性保留 URL 与标题，描述保留 merge commit
+引用，便于接手者核验交付。
 
 实现工程投入估算使用分钟，不含外部 CI 排队与账号登录等待：公开 skill 与打包约
 90–150 分钟，交互安装器及自身测试约 180–300 分钟，原生组合验收约 120–240 分钟。

@@ -14,26 +14,30 @@ tasks, or when project discovery, a query, or a write fails.
 
 ## Restore context
 
-At work start, context recovery, or a worktree switch, run the following through
-a noninteractive shell from the current repository:
+At work start, context recovery, or a worktree switch, query from the current
+repository through a noninteractive shell. To select the next work, use:
 
 ```bash
-daynight task graph --json
+daynight task ready --json
 ```
+
+This returns at most 10 ready tasks, earliest created first. Use `--limit <N>`
+for 1–100 candidates. It reads one task page; the result is not the complete
+backlog. An empty result does not mean there are no in-progress or blocked tasks.
 
 Let the CLI resolve the current project. A new worktree without
 `.daynight/project.yml` is normal: repository discovery can find the existing
-project and save a local binding. Do not gate this query on that file's presence,
+project and save a local binding. Do not gate queries on that file's presence,
 reuse remembered IDs as current facts, or edit bindings directly.
 
-Use the graph's project, states, dependencies, and readiness to identify relevant
-in-progress and ready work. Then run `daynight task show <task-id> --json` for
-each selected task; the graph contains title previews and omits full
-descriptions, PR properties, and versions. If the server reports
-`graph_limit_exceeded`, query
-`daynight task list --status in_progress --json` and
-`daynight task list --status todo --ready --json`, then show selected tasks.
-This limit does not mean the project is unlinked.
+For work already being resumed, refresh its task with
+`daynight task show <task-id> --json`. If its identity is unknown, query
+`daynight task list --status in_progress --json` as needed. Show selected ready
+tasks too before acting. Use `daynight task graph --json` when dependency or
+project-wide context is needed; it has title previews and omits full
+descriptions, PR properties, and versions. If it reports `graph_limit_exceeded`,
+continue with bounded ready and selected task reads; the error does not mean the project is unlinked. Full lists
+traverse every page, so request them only when a complete inventory is needed.
 
 If configuration, discovery, or a service request fails, preserve its actual
 cause. Follow the CLI's setup guidance or obtain an explicit project selection
@@ -81,12 +85,12 @@ is pending.
 
 Before setting `done`, query the platform's actual merge state for every required
 PR. Preserve its URL and title in the complete PR reference list and its merge
-commit reference in the task description. Then reread the task and update with its observed version. Missing merge
-visibility, a missing permission, or an unmet merge check keeps the task
+commit reference in the task description. Then reread the task and update with
+its observed version. Missing merge visibility, a missing permission, or an unmet merge check keeps the task
 `in_progress`; the completion rule grants no merge authority. Tasks with no
 development or PR delivery path use their stated acceptance criteria.
 
-After confirmed completion, query the graph or ready list to see which dependent
-tasks became available. A ready successor still needs authorization within the
-current scope before work starts. Refresh task facts at these semantic
+After confirmed completion, query `daynight task ready --json` to see which
+dependent tasks became available. A ready successor still needs authorization
+within the current scope before work starts. Refresh task facts at these semantic
 checkpoints; do not reload the full project on every conversational turn.

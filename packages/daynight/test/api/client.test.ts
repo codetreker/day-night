@@ -123,6 +123,45 @@ describe("operation-scoped API access", () => {
     ]);
   });
 
+  it("returns one bounded ready page without following its valid cursor", async () => {
+    const tasks = [{ ...task, properties: { pullRequests: [{ url: "\0 arbitrary URL", title: "Ready\nPR" }] }, version: 9_223_372_036_854_775_807n }, { ...task, id: otherId }];
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({ items: tasks, nextCursor: "next page+/=?" }));
+    const result = await client(fetch).listReadyTasks(projectId, 2);
+    expect(result).toEqual(tasks);
+    expect(fetch).toHaveBeenCalledOnce();
+    const [url, options] = fetch.mock.calls[0]!;
+    expect(new URL(String(url)).pathname).toBe(`/api/v1/projects/${projectId}/tasks`);
+    expect(Object.fromEntries(new URL(String(url)).searchParams)).toEqual({ ready: "true", limit: "2" });
+    expect(options?.method).toBe("GET");
+    expect(options?.redirect).toBe("manual");
+  });
+
+  it.each([{ items: [] }, { items: [task] }])("accepts a ready page below its bound: $items", async ({ items }) => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({ items, nextCursor: null }));
+    await expect(client(fetch).listReadyTasks(projectId, 10)).resolves.toEqual(items);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { items: [task, { ...task, id: otherId }], nextCursor: null },
+    { items: [{ ...task, status: "in_progress", ready: false }], nextCursor: null },
+    { items: [{ ...task, projectId: otherId }], nextCursor: null },
+    { items: [task, task], nextCursor: null },
+    { items: [task], nextCursor: "" },
+    { items: [task] },
+    { items: [], nextCursor: "next" },
+  ])("rejects an invalid or overflowing ready page %# without another request", async (page) => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse(page));
+    await expect(client(fetch).listReadyTasks(projectId, 1)).rejects.toMatchObject({ operation: "task.ready", phase: "protocol", projectId, outcomeUnconfirmed: false });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it.each([0, 101, -1, 1.5, NaN, Infinity])("rejects an invalid ready limit %s before fetching", (limit) => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    expect(() => client(fetch).listReadyTasks(projectId, limit)).toThrow("Ready task limit must be an integer from 1 to 100.");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it.each(["cursor", "duplicate", "later failure"])("rejects %s without returning a partial list", async (failure) => {
     const cursor = Buffer.from("cursor").toString("base64url");
     const fetch = vi.fn<typeof globalThis.fetch>()

@@ -34,7 +34,12 @@ to prevent one replacement from deleting another completed installation. Selecte
 agents can share discovery paths with unselected agents.
 
 The public skill teaches active task management in associated repositories,
-including fresh worktrees. It preserves user authority, uses observed task
+including fresh worktrees. Routine next-work selection uses bounded `task ready`,
+known work is refreshed with `task show`, and graph or complete lists are read
+when their broader context is needed. The
+[bounded-selection decision](../feature/2026-10-21-bounded-ready-task-selection.md)
+replaces the original graph-first recovery policy while preserving discovery
+and completion requirements. The skill preserves user authority, uses observed task
 versions for decisions based on read data, and treats readiness as a dependency
 result without claiming ownership. Existing CLI and service contracts remain the
 authority for state transitions and uncertain writes.

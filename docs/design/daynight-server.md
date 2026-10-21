@@ -367,8 +367,9 @@ HTTP 测试验证路由、DTO、错误映射、project 范围查找、分页筛�
 [固定版本 README](https://github.com/codetreker/go-cov/blob/d6caf2759e330b48d69a543695e37002a48feb1d/README.md#configuration)。
 
 覆盖率不替代并发、回滚和调用方行为断言。PR 按[仓库 CI 路由](../../README.md#ci-selection)
-选择受影响模块，main push 执行全量检查。`checks` 要求路由成功、被选中的 job 成功，
-未选中的 job 为 `skipped`；Go、web、CLI 和 shell completion 各自的检查内容及门槛保持。
+选择受影响模块，main push 执行全量应用检查。最终 `checks` 只接受所有前置 job 的
+`success` 或 `skipped`，失败、取消及其他结果使汇总失败；未选中的 job 为 `skipped`。
+Go、web、CLI 和 shell completion 各自的检查内容及门槛保持。
 统一验证入口为模块内的 `bash scripts/check.sh`，要求显式设置
 `DAYNIGHT_TEST_DATABASE_URL`。干净 checkout 先从根目录 frozen 安装 Node 24/pnpm
 10.34.5 依赖，Go 检查在任何 build/vet/race 前调用共享 `pnpm web:build` 发布

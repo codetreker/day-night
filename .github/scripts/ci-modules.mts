@@ -3,7 +3,6 @@ import { appendFileSync } from "node:fs";
 
 type Module = "cli" | "server" | "web";
 export type ModuleSelection = Record<Module, boolean>;
-export type CheckResults = Record<string, { result?: string | undefined; outputs?: Record<string, unknown> }>;
 
 const allModules: ModuleSelection = { cli: true, server: true, web: true };
 const sharedInputs = new Set(["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc"]);
@@ -70,29 +69,9 @@ export const detectModules = async ({ event, base, head, cwd }: { event: string 
   return selectModules(await pullRequestPaths(cwd, base, head));
 };
 
-export const requireSelectedChecks = (needs: CheckResults): void => {
-  if (needs["detect-changes"]?.result !== "success") throw new Error("Change detection did not succeed.");
-  const selected = needs["detect-changes"].outputs;
-  if (selected === undefined) throw new Error("Missing module selections.");
-  for (const module of Object.keys(allModules)) {
-    if (selected?.[module] !== "true" && selected?.[module] !== "false") throw new Error(`Missing or invalid ${module} selection.`);
-  }
-  for (const [job, module] of [["verify", "cli"], ["verify-completion", "cli"], ["verify-server", "server"], ["verify-web", "web"]] as const) {
-    const expected = selected[module] === "true" ? "success" : "skipped";
-    if (needs[job]?.result !== expected) throw new Error(`${job} must be ${expected}; received ${needs[job]?.result}.`);
-  }
-};
-
 if (import.meta.main) {
-  const command = process.argv[2];
-  if (command === "detect") {
-    const selected = await detectModules({ event: process.env.MODULE_EVENT, base: process.env.MODULE_BASE, head: process.env.MODULE_HEAD, cwd: process.cwd() });
-    if (process.env.GITHUB_OUTPUT === undefined) throw new Error("Change detection requires GITHUB_OUTPUT.");
-    appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(selected).map(([module, value]) => `${module}=${value}\n`).join(""));
-    console.log(`Selected modules: ${JSON.stringify(selected)}`);
-  } else if (command === "require") {
-    if (process.env.NEEDS_JSON === undefined) throw new Error("Required-check aggregation requires NEEDS_JSON.");
-    requireSelectedChecks(JSON.parse(process.env.NEEDS_JSON));
-    console.log("All selected module checks passed.");
-  } else throw new Error("Usage: node .github/scripts/ci-modules.mts <detect|require>");
+  const selected = await detectModules({ event: process.env.MODULE_EVENT, base: process.env.MODULE_BASE, head: process.env.MODULE_HEAD, cwd: process.cwd() });
+  if (process.env.GITHUB_OUTPUT === undefined) throw new Error("Change detection requires GITHUB_OUTPUT.");
+  appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(selected).map(([module, value]) => `${module}=${value}\n`).join(""));
+  console.log(`Selected modules: ${JSON.stringify(selected)}`);
 }
