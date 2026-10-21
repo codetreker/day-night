@@ -39,9 +39,15 @@ option. A result with N tasks can have more candidates beyond it. An empty array
 means no ready work was found, not that the project has no tasks. `ready` means
 `todo` with every direct dependency done; it provides no ownership or priority.
 
-Use ready for routine work selection and show for the selected task or a known
-task being resumed. When its identity is unknown, query in-progress work as
-needed. `task list`, including `task list --ready`, reads every page and returns
+Resume this session's current task with show before selecting new work. When its
+identity is unknown, query in-progress work as needed. For new work, pick exactly
+one ready `todo` candidate most relevant to the current authorized work, comparing
+scope, description, and dependencies. Creation order is not relevance. Read the
+selected task with show before acting, and advance only that task through CI,
+review, and merge waits. Subagents collaborate on the same task. Multiple
+candidates do not authorize starting a batch or unrelated work.
+
+`task list`, including `task list --ready`, reads every page and returns
 a complete array; reserve it for a complete inventory. List filters combine
 with AND. Task counts are bounded by ready, but full titles/descriptions and
 project discovery can still produce substantial output or additional requests.
@@ -167,6 +173,7 @@ without the applicable authorization. Nondevelopment tasks with no PR delivery
 path use their explicit acceptance criteria.
 
 After the service confirms `done`, query `daynight task ready --json` to inspect
-newly available successors. Query the graph when overall dependency context is
-needed. Pending or unconfirmed completion must not be presented as having
+newly available successors. Select at most one next task using the same relevance
+rule and only within the authorized scope. Query the graph when overall
+dependency context is needed. Pending or unconfirmed completion must not be presented as having
 unblocked a dependent task.

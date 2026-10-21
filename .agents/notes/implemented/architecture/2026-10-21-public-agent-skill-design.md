@@ -45,6 +45,15 @@ versions for decisions based on read data, and treats readiness as a dependency
 result without claiming ownership. Existing CLI and service contracts remain the
 authority for state transitions and uncertain writes.
 
+Each agent session resumes its current task before selecting new work. For new
+work, it picks exactly one ready todo candidate most relevant to the authorized
+scope, using the candidate's scope, description and dependencies. Creation order
+only orders the bounded page. The selected task stays current through CI,
+review and merge waits; subagents collaborate on that same task. Confirmed
+completion precedes selecting another authorized task. This keeps a candidate
+query from becoming an implicit batch of work without changing server ownership
+or concurrency semantics.
+
 Development tasks and PR-delivered design/documentation tasks remain
 `in_progress` while a required PR is open, even after code, review or CI succeeds.
 Completion requires platform-confirmed merge of all required delivery PRs and
