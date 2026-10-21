@@ -37,11 +37,21 @@ that cost from routine recovery. This partially replaces the original
 [project/task CLI decision](../architecture/2026-10-20-project-task-cli-design.md)
 that all list-based queries exhaust their cursors.
 
+Within the observed candidates, the public skill selects one ready todo task
+most relevant to the current authorized work. A session resumes its current
+task first and retains it through delivery waits; subagents collaborate on the
+same task. Only confirmed completion permits selecting another authorized task.
+The relevance decision belongs to the agent's workflow, not the service's
+creation-order sorting or a new priority field.
+
 The [requirements](../../../../docs/spec/daynight-project-task.md) own observable
 command behavior; the [design](../../../../docs/design/daynight-project-task.md)
 owns transport and rendering. The real Daynight task is
-`ada23216-a6e6-45de-89f4-67f1f71fbbfc`; native Agent/service acceptance follows this
-command so the public workflow is exercised with its final query strategy.
+`ada23216-a6e6-45de-89f4-67f1f71fbbfc`. Existing command and service suites own its
+query behavior. The
+[installation acceptance decision](../testing/2026-10-21-simulated-agent-installation-acceptance.md)
+checks the packaged skill and command reference statically and validates the
+installer with simulated launchers, without running an Agent or task service.
 
 ## Alternatives
 

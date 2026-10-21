@@ -27,9 +27,14 @@ still establish the interaction's result.
 
 Tests drive Space, arrow keys, Enter and Ctrl+C, inspect installed bundle bytes
 and destinations, and bound owned process lifetimes. Ctrl+C is actual terminal
-input; force termination is cleanup only. Fixture homes, PATH launchers, logs
-and temporary resources stay in task-owned project directories. Hosted native
-CI supplies the final platform evidence, not a Linux projection of Windows.
+input; force termination is cleanup only. Fixture homes, simulated PATH launchers,
+logs and temporary resources stay in task-owned project directories. Launchers
+write a sentinel and fail if executed; its absence verifies that detection never
+runs them. The
+[installation acceptance decision](2026-10-21-simulated-agent-installation-acceptance.md)
+owns the three-Agent by two-scope matrix, full bundle comparisons and replacement
+checks. Hosted native CI supplies the final platform evidence, not a Linux
+projection of Windows.
 
 The workspace permits only the selected node-pty version's build hooks and
 keeps `better-sqlite3` hooks disabled. Linux compiles the addon with its available
@@ -87,7 +92,10 @@ hook permission. End-user production installations do not include node-pty.
 Test code has an explicit process lifecycle and can verify result/terminal
 stream separation without weakening production interactivity checks.
 
-Native Agent skill loading and automatic selection remain separate acceptance
-work. Passing terminal installation proves the command and files, not that a
-model loaded or acted on the skill. Runtime counts and transcripts belong to
-source-bound PR/CI evidence; this note preserves the mechanism and limits.
+Terminal installation proves the command and installed files. The installer
+acceptance uses simulated launchers and does not install or run real Agents,
+inspect account configuration, call models, or start Daynight services/databases.
+Static checks validate skill frontmatter, relative references and task-command
+guidance; existing project/task suites own task behavior. Host discovery and
+reload guidance follow the documented paths. Counts and transcripts belong to
+source-bound PR/CI evidence; this note preserves the terminal mechanism and limits.

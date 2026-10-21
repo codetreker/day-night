@@ -19,7 +19,7 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 [附件架构](daynight-task-attachments.md)中的 `task attachment put/list/read/remove`
 及二进制传输通道已实现，行为见[附件需求](../spec/daynight-task-attachments.md)，
 范围与 Daynight 任务入口见[附件任务拆分](daynight-task-attachments-tasks.md)。
-Web 文件管理与持久卷仍待交付。既有 JSON 元数据和完整文本输出机制继续服务元数据
+Web 文件管理仍待交付。既有 JSON 元数据和完整文本输出机制继续服务元数据
 命令；原始内容逐段写入字节通道。
 [CLI 决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-cli.md)记录
 流传输及输出辅助进程的选择。

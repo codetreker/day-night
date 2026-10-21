@@ -20,9 +20,11 @@ generic local adapter and startup integration. The
 [attachment HTTP delivery](../feature/2026-10-21-task-attachment-http.md) implements
 metadata and backend file operations. The
 [attachment CLI delivery](../feature/2026-10-21-task-attachment-cli.md) implements
-put/list/read/remove and byte-stream output. Browser management and persistent
-volumes remain pending. This note owns the adopted cross-component design; the
-CLI note owns its transport and output implementation choices.
+put/list/read/remove and byte-stream output. The
+[persistence delivery](2026-10-21-task-attachment-persistence.md) implements
+deployment volumes, isolation and paired backup/restore validation. Browser
+management remains pending. This note owns the adopted cross-component design;
+the CLI note owns its transport and output implementation choices.
 
 Generic file storage uses bucket and real relative path addressing through
 Put/Open/Delete. The initial adapter is local disk. Task attachment consumers use
@@ -97,8 +99,8 @@ Trusted same-origin HTML has the privileges of that browser origin. Supporting
 untrusted HTML would require revisiting the preview boundary rather than
 silently presenting the current iframe as isolation.
 
-The generic storage foundation, attachment HTTP resources and CLI commands are
-implemented. Remaining attachment delivery progress is maintained in the linked
+The generic storage foundation, attachment HTTP resources, CLI commands and
+persistent deployment volumes are implemented. Remaining attachment delivery progress is maintained in the linked
 Daynight tasks; the breakdown owns scope and acceptance. Existing server, CLI
 and Web contracts remain true for delivered features. Module-specific validation
 and source-bound evidence remain required; native CLI outcomes cannot be inferred

@@ -19,9 +19,10 @@ command. Document preparation and review do not complete the tracked design
 task: its PR must be confirmed merged and its acceptance criteria satisfied.
 The public bundle and focused command reference are implemented under
 `src/commands/skill/skills/daynight/` and included in the package build. The
-interactive installer implements the selected-agent and scope workflow; native
-Agent loading and automatic-trigger acceptance remain separately tracked work
-in the real Daynight project.
+interactive installer implements the selected-agent and scope workflow. The
+[installation acceptance decision](../testing/2026-10-21-simulated-agent-installation-acceptance.md)
+owns its packed-CLI tests with simulated Agent launchers, real PTY/ConPTY and
+complete file comparisons. Static bundle tests check the distributed guidance.
 
 The installer detects Codex, Copilot CLI and Claude Code launchers, asks which
 agents to install for, then asks for user or project scope. It replaces the whole
@@ -43,6 +44,15 @@ and completion requirements. The skill preserves user authority, uses observed t
 versions for decisions based on read data, and treats readiness as a dependency
 result without claiming ownership. Existing CLI and service contracts remain the
 authority for state transitions and uncertain writes.
+
+Each agent session resumes its current task before selecting new work. For new
+work, it picks exactly one ready todo candidate most relevant to the authorized
+scope, using the candidate's scope, description and dependencies. Creation order
+only orders the bounded page. The selected task stays current through CI,
+review and merge waits; subagents collaborate on that same task. Confirmed
+completion precedes selecting another authorized task. This keeps a candidate
+query from becoming an implicit batch of work without changing server ownership
+or concurrency semantics.
 
 Development tasks and PR-delivered design/documentation tasks remain
 `in_progress` while a required PR is open, even after code, review or CI succeeds.
@@ -95,9 +105,12 @@ and does not infer exclusive claims from `in_progress`.
 ## Consequences
 
 Installation is independent of server and review configuration. A small fixed
-Agent catalog owns directories and reload guidance, with native acceptance
-required for overlapping discovery roots and actual loaded content. A selection
-expresses compatibility rather than exclusive visibility to that Agent.
+Agent catalog owns directories and reload guidance. Acceptance simulates installed
+launchers and proves detection never executes them, then verifies all six Agent
+and scope destinations with the actual packaged CLI. Complete bundle bytes,
+direct replacement, stale-file removal and preservation of sibling skills and
+the opposite scope are observable installer results. A selection expresses
+compatibility rather than exclusive visibility to that Agent.
 
 Whole-directory replacement can discard local customization. Without backups,
 a filesystem failure after removal can leave a target absent; completed earlier
@@ -107,8 +120,9 @@ transactions, rollback, automatic npm-to-skill synchronization and edit merging.
 
 Daynight stores the design task and dependent implementation tasks. Repository
 documents own requirements, mechanism and rationale; they do not mirror live task
-status. The task exercise proves current task creation and dependency gating,
-not native loading or automatic activation of the packaged public skill. An
-open delivery PR keeps its task in progress and its implementation successors
-blocked.
-Implementation readiness does not itself grant authorization to execute that work.
+status. The task exercise proves current task creation and dependency gating.
+An open delivery PR keeps its task in progress and its implementation successors
+blocked. Installer acceptance does not require real Agent installation, account
+configuration, models, or a Daynight service/database; existing task tests own
+the task-command semantics. Implementation readiness does not itself grant
+authorization to execute that work.

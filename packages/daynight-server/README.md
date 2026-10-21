@@ -174,9 +174,21 @@ instance and does not coordinate filesystem operations with PostgreSQL or with
 other processes sharing a root. The accepted non-atomicity issue is owned by the
 [attachment requirements](../../docs/spec/daynight-task-attachments.md).
 
-The existing Compose files supply a writable image directory so startup remains
-valid. Persistent attachment volumes belong to A-T5. Browser management and CLI
-commands remain separate from the backend file API below.
+Both Compose deployments mount a project-scoped `attachment-data` volume at
+`DAYNIGHT_STORAGE_ROOT=/var/lib/daynight/storage`. Fresh-volume initialization
+preserves the image directory's UID/GID `10001:10001`, and the normal nonroot
+server writes without a privileged startup process. Normal restart and rebuild
+retain PostgreSQL metadata and attachment bytes; dev-ci removes both owned data
+volumes on cleanup. The [deployment guide](../../deployment/localhost/README.md#persistence-and-backup)
+owns retention and the stopped-write, paired PostgreSQL/directory backup and
+restore commands. A matching pair preserves the state captured; it does not
+repair a pre-existing cross-store mismatch. Browser management and CLI commands
+remain separate from the backend file API below.
+
+The [real-container attachment check](../../deployment/dev-ci/README.md#attachment-persistence-check)
+verifies nonroot volume writes, nested original bytes and previews, restart and
+full recreation, two-project isolation, targeted cleanup and fresh-volume paired
+restore followed by another upload.
 
 ## Task attachment API
 

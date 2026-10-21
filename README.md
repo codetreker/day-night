@@ -18,10 +18,13 @@ The adopted [task attachment requirements](docs/spec/daynight-task-attachments.m
 [architecture](docs/design/daynight-task-attachments.md) and
 [task breakdown](docs/design/daynight-task-attachments-tasks.md) define reusable
 bucket/path file storage, single-file task attachments, same-origin browser
-preview and binary CLI reads. The generic local-storage and startup foundation,
-attachment metadata, file/preview HTTP APIs and CLI put/list/read/remove commands
-are implemented. Browser management and persistent-volume delivery remain pending. Filesystem/PostgreSQL non-atomicity is recorded as a known issue;
-consistency remediation is outside that implementation scope.
+preview and binary CLI reads. Generic local storage and startup, attachment
+metadata, file/preview HTTP APIs, CLI put/list/read/remove commands, persistent
+deployment volumes and paired backup/restore are implemented. Browser management
+remains pending. The
+[deployment guide](deployment/localhost/README.md#persistence-and-backup) owns data
+retention and backup commands. Filesystem/PostgreSQL non-atomicity remains a known
+issue; consistency remediation is outside that scope.
 
 The `@codetreker/daynight` package provides the `daynight` client. Its root entry
 lists commands and reports the package version; each command owns its business
@@ -65,9 +68,17 @@ are included in the npm package build under
 [`daynight skill install`](#agent-skill-installation) detects supported Agent
 launchers and installs that bundle at the selected scope. The skill guides task recovery, dependency and observed-version updates, and
 completion only after required PRs are confirmed merged and acceptance passes.
+Each session resumes its current task or selects one ready todo task most
+relevant to the authorized work, retaining that single task through delivery.
 The design links implementation tasks tracked in the real Daynight project;
-their live status belongs to Daynight. Native Agent loading and automatic
-activation remain separate acceptance work.
+their live status belongs to Daynight. Installation acceptance uses simulated
+Agent launchers in an isolated PATH and the actual packed CLI in PTY/ConPTY. It
+checks all three agents at both scopes, complete bundle bytes, direct overwrite,
+stale-file removal, and preservation of sibling skills and the other scope. The
+launchers fail if executed; real Agent installations, models, and Daynight services
+are not part of this installer acceptance. The
+[acceptance decision](.agents/notes/implemented/testing/2026-10-21-simulated-agent-installation-acceptance.md)
+owns that boundary.
 
 The [task property requirements](docs/spec/daynight-task-properties.md),
 [design](docs/design/daynight-task-properties.md),
@@ -133,7 +144,10 @@ terminal addon with the available compiler/Python toolchain; macOS and Windows
 use the packaged prebuild when available. A version-pinned pnpm patch restores
 missing Darwin helper executable bits in the stable terminal dependency. The
 [native terminal decision](.agents/notes/implemented/testing/2026-10-21-native-skill-terminal-acceptance.md)
-records the test isolation and stream separation. `pnpm acceptance`
+records the test isolation and stream separation. Installer acceptance constructs
+Agent launcher fixtures and verifies they are never run. Static bundle tests own
+frontmatter, local references and published task-command guidance; existing
+project/task suites own service and task semantics. `pnpm acceptance`
 separately packs and installs the CLI in a local consumer and requires package-
 registry access. The review lifecycle suite uses controlled GitHub/Copilot
 executables with real Git and SQLite. The self-update suite uses real npm and an
@@ -570,7 +584,7 @@ needed. For Copilot CLI run `/skills reload` and inspect `/skills info daynight`
 Claude Code watches existing roots; use `/reload-skills` when a top-level skills
 directory was created during the session. The
 [skill design](docs/design/daynight-agent-skill.md) owns installation mechanisms
-and the separate native Agent loading and automatic-trigger acceptance gates.
+and the simulated-launcher installation acceptance matrix.
 
 ## Shell completion
 
@@ -1368,6 +1382,13 @@ publication receipts do not establish live model behavior. The
 [installed CLI decision](.agents/notes/implemented/testing/2026-10-17-installed-cli-acceptance.md)
 owns the lifecycle rationale; the [bundled-skill decision](.agents/notes/implemented/architecture/2026-10-20-bundled-review-skill.md)
 owns native loading evidence.
+
+The [dev-ci attachment check](deployment/dev-ci/README.md#attachment-persistence-check)
+runs with `node deployment/dev-ci/tests/attachments.mts` using Node.js 24 and
+Docker. Two isolated production builds verify attachment-volume permissions,
+restart/recreation persistence, project isolation, paired PostgreSQL/file restore
+and targeted cleanup. The Bash runner fixture remains a separate orchestration
+check; real-container evidence is required for persistence claims.
 
 For document changes, check relative links, requirement references, status, and
 note lifecycle sections. For workflow changes, also check skill frontmatter and

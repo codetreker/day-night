@@ -16,7 +16,9 @@ The [requirements](../../../../docs/spec/daynight-task-attachments.md) and
 cross-component contract. This delivery implements A-T2 from the
 [breakdown](../../../../docs/design/daynight-task-attachments-tasks.md) on the
 [local storage foundation](../architecture/2026-10-21-bucket-file-storage.md).
-CLI commands, browser management and persistent volumes remain separate tasks.
+CLI commands and browser management remain separate tasks. The
+[persistence delivery](../architecture/2026-10-21-task-attachment-persistence.md)
+provides the deployment volumes and paired backup/restore validation.
 
 Migration 004 adds one `task_attachments` table keyed by `(task_id, path)` with
 C-collated path, ownership, content type, actual write size and timestamps.

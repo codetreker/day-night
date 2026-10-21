@@ -62,7 +62,10 @@ run_case() {
   manifest="$(manifest_for "$FAKE_DOCKER_STATE")"
   assert_contains "$manifest" '"schemaVersion":1'
   assert_contains "$manifest" '"phase":"finished"'
-  if [[ $scenario == cleanup-failure* ]]; then
+  if [[ $scenario == attachment-volume-left ]]; then
+    assert_contains "$manifest" '"cleanupResult":"failed"'
+    [[ -f $FAKE_DOCKER_STATE/attachment-volume && -f $FAKE_DOCKER_STATE/image ]]
+  elif [[ $scenario == cleanup-failure* ]]; then
     assert_contains "$manifest" '"cleanupResult":"failed"'
     [[ -f $FAKE_DOCKER_STATE/resources && -f $FAKE_DOCKER_STATE/image ]]
   else
@@ -89,6 +92,8 @@ run_case passed 0 bash -c '[[ $DAYNIGHT_BASE_URL == http://127.0.0.1:32777 && $D
 assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"result":"passed"'
 assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"imageId":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"'
 assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"containerIds":["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]'
+project="$(< "$FAKE_DOCKER_STATE/project")"
+assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" "\"volumeNames\":[\"${project}_postgres-data\",\"${project}_attachment-data\"]"
 run_case build-failure 30 true
 run_case partial-startup 31 true
 run_case image-mismatch 1 true
@@ -105,6 +110,7 @@ assert_contains "${failed_manifest%manifest.json}recovery-manifest.json" '"clean
 [[ ! -f $FAKE_DOCKER_STATE/resources && ! -f $FAKE_DOCKER_STATE/image ]]
 assert_contains "$failed_manifest" '"cleanupResult":"failed"'
 printf '%s\n' 'PASS bounded recovery retains original receipt'
+run_case attachment-volume-left 1 true
 
 for callback_status in 0 49; do
   run_case "descendant-$callback_status" "$callback_status" bash -c '
