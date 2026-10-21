@@ -4,6 +4,7 @@ import { navigate } from "../../app/router";
 import { TaskDrawer } from "../task-detail/TaskDrawer";
 import { RootList } from "../task-graph/RootList";
 import { GraphDataError } from "../task-graph/model";
+import { projectViewPreferenceNotice, useProjectViewPreferences } from "./useProjectViewPreferences";
 import { useTaskGraph } from "./useTaskGraph";
 import "../../styles/project.css";
 
@@ -42,23 +43,19 @@ const ErrorDetail = ({ error }: { readonly error: unknown }) => (
 
 const ProjectView = ({ projectId }: { readonly projectId: string }) => {
   const graph = useTaskGraph(projectId);
-  const [expanded, setExpanded] = useState<string | null | undefined>(undefined);
   const [selection, setSelection] = useState<{ readonly id: string; readonly revision: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const originalTrigger = useRef<HTMLElement | null>(null);
   const expandedRoot = useRef<string | null>(null);
   const snapshot = graph.snapshot;
-  const roots = snapshot === null ? [] : snapshot.index.roots;
-  const expandedRootId = expanded === null ? null : expanded !== undefined && roots.includes(expanded) ? expanded : roots[0] ?? null;
+  const { expandedRootId, setExpandedRootId, issue: preferenceIssue } = useProjectViewPreferences(projectId, snapshot?.index.roots ?? null);
   expandedRoot.current = expandedRootId;
   const selectedTaskId = selection !== null && snapshot !== null &&
     (selection.revision === snapshot.revision || snapshot.index.nodes.has(selection.id)) ? selection.id : null;
 
   useEffect(() => {
     if (snapshot === null) return;
-    setExpanded((current) => current === null ? null : current !== undefined && snapshot.index.roots.includes(current)
-      ? current : snapshot.index.roots[0] ?? null);
     if (selection !== null && selection.revision !== snapshot.revision && !snapshot.index.nodes.has(selection.id)) {
       setSelection(null);
       setNotice("所选任务已不在新的任务图中，详情已关闭。");
@@ -102,6 +99,7 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
         </div>
         <button className="button" type="button" onClick={graph.refresh} disabled={graph.refreshing}>{graph.refreshing ? "正在刷新…" : "刷新"}</button>
       </div>
+      {preferenceIssue !== null && <p className="snapshot-notice" role="status">{projectViewPreferenceNotice(preferenceIssue)}</p>}
       {graph.status === "loading" && (
         <section className="state-box" role="status" aria-label="正在加载任务图">
           <span className="spinner" aria-hidden="true" /><h2>正在加载任务图</h2><p>正在读取项目任务和依赖关系。</p>
@@ -135,7 +133,7 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
             <section className="state-box"><h2>还没有任务</h2><p>项目中的任务会显示在这里。创建任务后，点击刷新查看。</p></section>
           ) : (
             <section aria-label="任务依赖链">
-              <RootList index={snapshot.index} expandedRootId={expandedRootId} onExpand={setExpanded} selectedTaskId={selectedTaskId} onSelectTask={onSelectTask} />
+              <RootList index={snapshot.index} expandedRootId={expandedRootId} onExpand={setExpandedRootId} selectedTaskId={selectedTaskId} onSelectTask={onSelectTask} />
             </section>
           )}
           {selectedTaskId !== null && <TaskDrawer projectId={projectId} taskId={selectedTaskId} snapshot={snapshot} onSelectTask={onSelectRelation}

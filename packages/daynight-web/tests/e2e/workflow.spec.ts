@@ -332,7 +332,16 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   await expect(root(page, b.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(page.locator('.task-graph-canvas')).toHaveCount(1);
   await checkEdges(b.id);
+  await page.reload();
+  await expect(root(page, b.id)).toHaveAttribute('aria-expanded', 'true');
+  await expect(root(page, a.id)).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('.task-graph-canvas')).toHaveCount(1);
+  await checkEdges(b.id);
   await root(page, b.id).click();
+  await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
+  await page.reload();
+  await expect(root(page, a.id)).toHaveAttribute('aria-expanded', 'false');
+  await expect(root(page, b.id)).toHaveAttribute('aria-expanded', 'false');
   await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
   await root(page, a.id).click();
   await expect(page.locator('.react-flow__node')).toHaveCount(7);
@@ -502,7 +511,6 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, request },
   await expect(stat(page, '任务总数')).toHaveText('1');
   await expect(stat(page, '已完成')).toHaveText('1');
   await expect(page.getByText('完成比例 100%')).toBeVisible();
-  await root(page, task.id).click();
   await expect(root(page, task.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(node(page, task.id)).toBeVisible();
   const receipt = await page.locator('.snapshot-time time').getAttribute('datetime');

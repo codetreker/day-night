@@ -14,8 +14,20 @@ The [requirements](../../docs/spec/daynight-web.md) own visible behavior and the
 [architecture](../../docs/design/daynight-web.md) owns graph projection, request
 lifecycles and delivery. The [task property requirements](../../docs/spec/daynight-task-properties.md)
 and [design](../../docs/design/daynight-task-properties.md) own PR associations.
-The offline mockups illustrate the intended workflow with fixture data and are
-separate from this application.
+The mockups illustrate workflows with fixture data and are separate from the
+application. The [task browsing preview](../../docs/design/mockups/task-browsing.html)
+uses the production graph and drawer components to demonstrate remembered
+expansion, newest-first chains, completed-chain visibility and compact rows.
+Run it from the repository root without an API service:
+
+```bash
+pnpm --filter @codetreker/daynight-web exec vite --config ../../docs/design/mockups/task-browsing.vite.ts --host 127.0.0.1 --port 5198 --strictPort
+```
+
+Open `http://127.0.0.1:5198/docs/design/mockups/task-browsing.html`. The scenario
+selector covers mixed, fully completed and empty projects. Its fixture adapter
+serves task details in memory; this preview does not establish production API
+or delivery acceptance.
 
 ## Development
 
@@ -35,7 +47,14 @@ Refresh discards old pages and cursors; late responses cannot repopulate them.
 The application implements `/` and `/projects/{projectId}`, direct URL reload,
 browser back/forward and a generic not-found page. A project shows six statistics
 from one complete graph snapshot. Root rows expand one horizontal graph at a
-time, including shared tasks and direct external prerequisites. Nodes open a
+time, including shared tasks and direct external prerequisites. Per-project browser
+preferences retain the expanded root or an explicitly collapsed list across reloads
+and navigation. First visits open the first root; a missing saved root selects the
+current first root. Loading, failed initial reads and empty graphs do not record
+an inferred collapsed preference. Storage failures display a notice while the
+current page remains usable. Preferences do not save detail selection or canvas
+positions and do not change server data. The [preference decision](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)
+records this ownership. Nodes open a
 read-only detail drawer with dependency navigation, PR associations and stale-data
 detection. The PR section follows the description and displays every ordered
 title/URL pair, including duplicates. Lists longer than 100 entries use local
