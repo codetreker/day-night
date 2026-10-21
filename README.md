@@ -46,6 +46,14 @@ test-side budgets under the
 Controlled native-platform tests and live Copilot/GitHub acceptance provide separate evidence; live acceptance remains
 outstanding.
 
+The [task property requirements](docs/spec/daynight-task-properties.md),
+[design](docs/design/daynight-task-properties.md),
+[implementation breakdown](docs/design/daynight-task-properties-tasks.md) and
+[interactive preview](docs/design/mockups/task-properties.html) define planned
+server-predefined task properties, starting with ordered PR references containing
+caller-provided URLs and titles. The design is documented; the feature remains
+unimplemented.
+
 The server design covers repository-linked projects, project-scoped tasks,
 acyclic dependencies and dependency-gated task states through HTTP JSON APIs.
 Its data and runtime are independent of the client review module. The

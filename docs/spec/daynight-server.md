@@ -10,6 +10,10 @@
 记录取舍和范围。[任务拆分](../design/daynight-server-tasks.md)记录实现任务、依赖、
 状态与验收条件。
 
+已编写、待实现的[预定义属性需求](daynight-task-properties.md)扩展本文的 task
+基线，定义 PR 引用、属性更新与迁移行为；[架构](../design/daynight-task-properties.md)
+和[实施任务](../design/daynight-task-properties-tasks.md)拥有机制及实施状态。
+
 ## 目标与交付范围
 
 | 编号 | 要求 |
