@@ -30,7 +30,11 @@ fixture owns tarball creation, consumer installation, the installed launcher and
 task-local resources. The curated repository-root
 `.tmp/project-task-evidence.json` identifies source, packed and installed
 artifacts, scenarios and cleanup; it does not serialize credentials or an entire
-environment.
+environment. The
+[attachment acceptance decision](2026-10-21-task-attachment-cross-layer-acceptance.md)
+reuses this fixture for one installation per full Web run as well as the new Go
+attachment workflow. That extension adds consumers and original-byte evidence
+without replacing the original native or service paths.
 
 Real service acceptance reuses the Go command package's fresh race binary,
 isolated PostgreSQL schema, readiness and process cleanup. The same installed CLI

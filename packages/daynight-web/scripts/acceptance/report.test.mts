@@ -39,20 +39,26 @@ test('rejects retries, flaky tests, global errors, and invalid result evidence',
 });
 
 const functionalNames = ['project-list', 'project-graph', 'detail-navigation', 'refresh-staleness',
-  'failure-recovery', 'deep-links', 'keyboard-focus', 'narrow-layout'] as const;
+  'failure-recovery', 'deep-links', 'keyboard-focus', 'narrow-layout', 'task-attachments'] as const;
 const capacityNames = ['capacity-chain', 'capacity-merge', 'capacity-shared', 'capacity-limits'] as const;
 const nativeNames = [...functionalNames, ...capacityNames];
 const scenario = (name: string): Scenario => ({ name, title: name, durationMs: 12, screenshots: [`/owned/${name}.png`] });
 
-test('aggregates native functional and capacity reports into exactly twelve scenarios', () => {
+test('verifies exactly nine functional scenarios for the container target', () => {
+  const scenarios = readReport(report([...functionalNames]), functionalNames);
+  assert.equal(scenarios.length, 9);
+  assert.deepEqual(scenarios.map(({ name }) => name), functionalNames);
+});
+
+test('aggregates native functional and capacity reports into exactly thirteen scenarios', () => {
   const functional = readReport(report([...functionalNames]), functionalNames);
   const capacity = readReport(report([...capacityNames]), capacityNames);
   const phases: readonly (readonly Scenario[])[] = [functional, capacity];
   const scenarios = aggregateScenarios(phases, nativeNames);
-  assert.equal(scenarios.length, 12);
+  assert.equal(scenarios.length, 13);
   assert.deepEqual(scenarios.map(({ name }) => name), nativeNames);
   assert.equal(scenarios[0], functional[0]);
-  assert.equal(scenarios[8], capacity[0]);
+  assert.equal(scenarios[9], capacity[0]);
 });
 
 test('rejects missing and unexpected scenarios across phases', () => {

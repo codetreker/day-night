@@ -262,6 +262,8 @@ jobs:
       - name: Recover recorded dashboard acceptance resources
         if: ${{ always() && steps.web-acceptance.outcome != 'skipped' }}
         run: node packages/daynight-web/scripts/acceptance.mts --cleanup
+      - name: Verify attachment persistence and paired backup restoration
+        run: node deployment/dev-ci/tests/attachments.mts
       - name: Upload production browser, performance and cleanup evidence
         if: ${{ always() && steps.web-acceptance.outcome != 'skipped' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -270,6 +272,7 @@ jobs:
           path: |
             packages/daynight-web/.tmp/acceptance/
             .tmp/dev-ci/
+            .tmp/attachment-deployment-*/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 30

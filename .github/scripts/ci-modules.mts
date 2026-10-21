@@ -15,6 +15,7 @@ export const selectModules = (paths: readonly string[]): ModuleSelection => {
   const selected = { cli: false, server: false, web: false };
   for (const path of paths) {
     if (sharedInputs.has(path)) return { ...allModules };
+    if (path === "packages/daynight/test/fixtures/installed-cli.ts") return { ...allModules };
     if (path.startsWith("packages/daynight/src/")) {
       selected.cli = true;
       continue;

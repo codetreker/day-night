@@ -23,7 +23,10 @@ Application jobs continue testing the checked-out PR merge result. The
 Each module keeps its complete job: the CLI selects all three native platforms
 and shell completion; Go selects server validation; web selects web validation.
 Multiple changed modules select their union. Shared workspace/dependency inputs
-select all consumers. Known web dependency patches select web; unclassified
+select all consumers. The shared installed-CLI fixture selects CLI, Go and Web
+because all three consume its packed package and receipt contract. The
+[attachment acceptance decision](../testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+records the new Web consumer. Known web dependency patches select web; unclassified
 inputs select every module until their ownership is explicit. All CLI source
 paths select CLI validation before documentation exclusions, preserving the
 existing release-input policy and recursive runtime-skill packaging. Repository

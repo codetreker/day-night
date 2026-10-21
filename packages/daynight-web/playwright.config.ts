@@ -21,6 +21,7 @@ export default defineConfig({
   reporter: [["line"], ["json", { outputFile: path.join(directory, "playwright.json") }]],
   use: {
     baseURL,
+    channel: "chromium",
     viewport: { width: 1600, height: 1100 },
     locale: "zh-CN",
     trace: "retain-on-failure",

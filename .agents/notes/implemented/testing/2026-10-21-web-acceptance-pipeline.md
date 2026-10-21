@@ -39,7 +39,7 @@ The runner starts normal dev-ci source build/start once, concurrently with nativ
 production UI/Go/PostgreSQL preparation and CI browser/coverage callbacks. The
 existing shell runner remains authoritative for the unique image, running-image
 check and full stack cleanup. Native functional browser work waits only for the
-native process and browser preparation. Its eight scenarios and immediate
+native process, shared installed CLI and browser preparation. Its nine scenarios and immediate
 browser recovery must pass before the runner releases the container browser.
 
 Release is an atomic `container/container-permission.json` receipt with schema 1,
@@ -47,7 +47,7 @@ phase `native-functional-cleaned`, acceptance run ID, dev-ci run ID and source
 SHA. The container callback records its process identity before waiting and
 inventories browsers only after validating that exact permission. Its
 `ready.json` records diagnostic timing and grants no permission. The callback
-runs the eight container functional scenarios, confirms browser cleanup and
+runs the nine container functional scenarios, confirms browser cleanup and
 returns to the normal shell exit path. The outer stage waits for full dev-ci
 cleanup and browser recovery before completing.
 
@@ -57,7 +57,7 @@ Go process and PostgreSQL remain alive for this final phase. One browser worker,
 zero retries, all three fixed graphs with five repetitions, both independent
 limits, complete geometry, fifteen CDP traces and all original timing gates
 remain required. Native functional and capacity phases strictly aggregate to
-twelve unique scenarios; the container target requires eight. Per-phase and
+thirteen unique scenarios; the container target requires nine. Per-phase and
 aggregate validation reject missing, extra or duplicate scenarios and retries,
 and require matching browser identity within a target.
 
@@ -86,7 +86,10 @@ both artifact uploads share the unified acceptance step's attempted-execution
 condition, so partial preparation remains attributable and recoverable.
 
 The [web README](../../../../packages/daynight-web/README.md#production-browser-acceptance)
-owns commands and evidence interpretation; the
+owns commands and evidence interpretation. The
+[attachment acceptance decision](2026-10-21-task-attachment-cross-layer-acceptance.md)
+adds one shared installed CLI and one same-data attachment scenario per functional
+target; it retains this schedule and all four capacity scenarios. The
 [web design](../../../../docs/design/daynight-web.md#验证与-ci) owns mechanisms.
 Measured outcomes remain tied to their source, environment and PR/CI run.
 

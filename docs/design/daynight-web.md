@@ -420,10 +420,10 @@ web job 在统一验收前执行 dev-ci 生命周期 fixture，随后仅调用 `
 PostgreSQL 准备及正常 dev-ci 源码构建/启动并行。dev-ci 继续拥有本次唯一镜像
 及运行镜像身份校验和完整 shell 清理。
 
-原生功能阶段只等待原生服务和浏览器就绪；其八个场景及浏览器回收成功后，runner
+原生功能阶段只等待原生服务和浏览器就绪；其九个场景及浏览器回收成功后，runner
 原子写入绑定 acceptance run ID、dev-ci run ID 和 source SHA 的容器执行许可。
 容器 callback 已登记身份后等待该许可，通过后才记录浏览器 inventory 并执行
-八个功能场景。完整 dev-ci 退出清理、容器浏览器回收和全部准备/覆盖率命令结束
+九个功能场景。完整 dev-ci 退出清理、容器浏览器回收和全部准备/覆盖率命令结束
 后，才在仍存活的原生 Go/PostgreSQL 上执行四个容量/超限场景。任一失败取消并
 等待已启动的所有任务；原生进程意外退出同样取消其他任务。容量阶段保持单浏览器
 worker，并与构建、单元测试、功能测试及容器清理隔离。
@@ -431,7 +431,10 @@ worker，并与构建、单元测试、功能测试及容器清理隔离。
 两个 job 复用以 server `go.sum` 为依赖身份的 Go 模块/编译缓存；Go gate 仍先
 失效测试结果缓存。workflow 的恢复和两组产物归档都绑定同一个统一验收步骤。
 [流水线决策](../../.agents/notes/implemented/testing/2026-10-21-web-acceptance-pipeline.md)
-拥有调度、替代方案和阶段证据取舍。
+拥有调度、替代方案和阶段证据取舍。完整 Web run 只准备一次已安装 CLI，在原生与
+容器的附件功能场景中复用。生产浏览器与恢复结束后，Ubuntu web job 再执行一次
+既有 `deployment/dev-ci/tests/attachments.mts`，将其附件卷和配套备份恢复回执归档到
+同一部署证据产物；容量测试继续与构建、功能检查及清理隔离。
 PR 按[仓库 CI 路由](../../README.md#ci-selection)选择模块，main push 执行全量检查。
 最终 `checks` 汇总路由、Go、web、CLI 原生矩阵和独立 Linux shell completion job 的
 结果，只接受 `success` 或 `skipped`，失败、取消及其他结果使汇总失败；未选中的 job
@@ -583,9 +586,14 @@ API 数据和固定图集。
 
 每次运行生成真实 UI 与 Go 可执行文件、启动独立 PostgreSQL 18.6，等待服务
 结构化就绪日志并记录二进制摘要；正常 dev-ci 生产构建/启动与这些工作并行。
-原生目标分成八个功能场景和四个容量/超限场景，容器目标经实际生产镜像 gateway
-执行同一个八场景功能集合。浏览器顺序和清理屏障由[CI 构建归属](#ci-构建归属)定义。日常 localhost 栈
-不参与测试。功能数据和容量数据均通过既有写 API 建立，浏览器只发起 GET/HEAD。
+原生目标分成九个功能场景和四个容量/超限场景，容器目标经实际生产镜像 gateway
+执行同一个九场景功能集合。浏览器顺序和清理屏障由[CI 构建归属](#ci-构建归属)定义。日常 localhost 栈
+不参与测试。功能数据和容量数据均通过真实写 API 建立；原有八个图场景的浏览器
+继续只发起 GET/HEAD。新增 `task-attachments` 仅允许精确 fixture task 内的文件
+PUT/DELETE，其他写请求仍失败。该场景在两目标上都让安装 CLI 与生产页面操作同一
+组数据，按原始字节交叉验证写入、覆盖、下载与删除；具体机制由
+[附件组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+拥有。
 单链先 POST 创建 1,000 个无依赖任务，再按索引从 999 到 1 PATCH 当前任务，
 将依赖设为前一任务；每次保留实际返回的版本和字段。此顺序使每次环校验遇到的
 前置仍为独立任务，避免 fixture 重复遍历不断增长的祖先链。最终仍是相同的
@@ -596,10 +604,12 @@ API 数据和固定图集。
 
 Playwright 固定单 worker、零 retry；报告必须包含全部要求的唯一场景、一次成功
 执行、有效 PNG 附件及一致的汇总，跳过、重试、flaky、缺失、多余或重复场景及
-全局错误均失败。原生 functional/capacity 两份报告严格合并为十二个唯一场景，
-容器目标严格要求八个；同一目标的各阶段浏览器身份必须一致。
-CI 只接受 Linux、锁定 Playwright 内置 Chromium、干净 checkout，且 git SHA 必须
+全局错误均失败。原生 functional/capacity 两份报告严格合并为十三个唯一场景，
+容器目标严格要求九个；原生与容器及同目标各阶段浏览器身份必须一致。
+CI 只接受 Linux、锁定 Playwright 的完整 Chromium channel `chromium`、干净 checkout，且 git SHA 必须
 等于 `GITHUB_SHA`；本机可以显式选择现有 Chromium，回执必须记录这一差异。
+PDF 预览通过轮询 iframe 的实际 compositor 截图，验证 fixture 专用色块已经绘制，
+保留成功 PNG、色块计数/范围及 PDF 摘要；不能只依赖 MIME、load 或固定等待。
 
 性能目标是原生 Go 生产进程。图集拓扑固定，实际 UUID 由 API 生成，跨运行的
 同构图可能因 ID 排序打破布局同序关系；同一次运行的五次测量使用同一组 ID、
@@ -645,7 +655,9 @@ CDP timeline、User Timing、frame 与 GC 事件关联浏览器内的输入/条�
 
 回执增量写入 `packages/daynight-web/.tmp/acceptance/<run-id>/`，顶层
 `evidence.json` 指向最近一次结果，顶层 `schemaVersion: 2` 包含源码、二进制、
-数据库/浏览器版本、两目标结果、生产镜像与清理状态。`stages` 逐阶段记录名称、
+数据库/浏览器版本、两目标结果、生产镜像与清理状态。已安装 CLI 回执核对 Git SHA、
+dirty 标记、tarball 和 entry 摘要，并重算实际产物摘要；dirty 标记不代表工作区文件
+内容指纹，CI 的干净源码与 `GITHUB_SHA` 检查继续承担源码归属。`stages` 逐阶段记录名称、
 结果、起止时间、实际取得的受管理命令进程身份 `commands` 和这些命令的
 `commandGroups`；短命令仍记录其组，不能伪造已消失进程的身份。目标包含
 `phases` 和严格合并的 `scenarios`；每个浏览器阶段记录 functional/capacity、
@@ -653,7 +665,7 @@ CDP timeline、User Timing、frame 与 GC 事件关联浏览器内的输入/条�
 `native/functional/`、`container/`、`native/capacity/` 分别保留原始 Playwright JSON、
 场景截图和浏览器身份；容量的原 schema 1 性能回执位于
 `native/capacity/performance.json`。CI 的 `daynight-web-acceptance` 产物同时归档
-这些文件与 `.tmp/dev-ci/`，独立 `daynight-web-coverage` 归档原始语句报告及源码
+这些文件与 `.tmp/dev-ci/`、`.tmp/attachment-deployment-*/`，独立 `daynight-web-coverage` 归档原始语句报告及源码
 清单。web job 被选中后，任何执行或清理失败必须让该 job 失败。
 
 恢复命令为 `node packages/daynight-web/scripts/acceptance.mts --cleanup [run-id]`，
@@ -665,7 +677,14 @@ executable、start ticks 与源码身份处理资源。仍存活的原生服务�
 和名称清理。Chromium 单独记录隔离进程组、已验证 executable 和项目内 profile
 所有权 marker；只对已确认的组和 profile 恢复。启动窗口出现未登记进程、无有效
 leader 的孤立组或未知新增 profile 时明确失败，保留现场，不能猜测归属后删除。
-恢复调用已登记 dev-ci run 的既有入口，另写 `recovery.json`，保留原始验收结果。
+安装产物只有一个 `installedCli` 记录：在调用工厂前保存确定的
+`<acceptanceRun>/installed-cli` 根目录与 cleanup 状态，准备完成后才填入可选
+`receiptPath/receipt`。工厂排他创建根目录，已有目录保留并报错。清理先确认登记的
+命令和组已停止，完整产物仍存在时核对其身份，完成安装时回收所属 CLI；随后删除准确根目录并将
+cleanup 成功写回原 evidence，再处理余下原生/Docker 清理。因此准备中断、尚无
+完整回执或后续 Docker 清理失败时仍可重复恢复；活跃准备进程阻止删除。
+恢复调用已登记 dev-ci run 的既有入口，另写 `recovery.json`，保留原始验收结果和
+已经完成的清理状态。
 CI 无论验收成功、失败或取消都执行恢复与归档；恢复成功不改变此前的测试失败。
 
 ### 验证矩阵

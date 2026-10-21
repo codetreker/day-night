@@ -438,8 +438,8 @@ URLs, bodies, SQL and credentials are excluded from logs.
 
 ## Built-process acceptance and CI evidence
 
-The same check runs 12 actual-process scenario groups and the installed CLI
-project/task workflow. TestMain freshly builds a
+The same check runs the 12 original actual-process scenario groups, the installed
+CLI project/task workflow and `installed_cli_task_attachment_workflow`. TestMain freshly builds a
 race-enabled server, starts only owned loopback children against isolated real
 PostgreSQL schemas, and checks HTTP workflows, restart persistence, competing
 mutations, PR string/NUL/order/duplicate persistence, partial-write rollback,
@@ -458,7 +458,8 @@ checked-out Git/GitHub SHA, dirty state, Go/PostgreSQL versions, tested binary
 SHA-256, named results and cleanup counts. CI requires a clean checkout and a
 revision matching `GITHUB_SHA`. All children stop before schemas are removed;
 the receipt records reaping, removed schemas and disappearance of owned sessions.
-The temporary tested binary is removed after the run; its hash remains in the
+Every fixture also requires `storageRootRemoved`: the owned root is removed and
+its absence is checked before cleanup can pass. The temporary tested binary is removed after the run; its hash remains in the
 receipt.
 
 The [binary scenarios](cmd/daynight-server/acceptance_test.go) and their
@@ -486,8 +487,22 @@ error.requestId string after unique, syntactically valid header correlation.
 Other original bytes and nested requestId fields remain diagnostic content. The [acceptance metadata decision](../../.agents/notes/implemented/bug-fix/2026-10-21-http-error-acceptance-metadata.md)
 explains why a legal opaque ID may contain the SQL marker.
 
-The installed CLI scenario and its artifact/source validation live in
-[`acceptance_cli_test.go`](cmd/daynight-server/acceptance_cli_test.go).
+The installed CLI project/task scenario and its artifact/source validation live
+in [`acceptance_cli_test.go`](cmd/daynight-server/acceptance_cli_test.go).
+The [attachment scenario](cmd/daynight-server/acceptance_attachment_cli_test.go)
+reuses the same packed/installed CLI and real-process fixture. It checks exact
+text, empty and multi-chunk binary bytes above 1 MiB; nested/special paths,
+different-directory basenames, overwrite metadata, a complete list of more than 100 files
+requiring multiple pages, tree output, deletion, scoped/refusal/requestId behavior and
+ordinary missing-content errors. The full task snapshot stays unchanged. Actual
+restart reuses the same root and compares all remaining metadata and bytes.
+`attachmentFiles` retains path/size/SHA-256, `attachmentsListed` and
+`attachmentPageRequests` record complete pagination, and existing
+`cliRefusalRequestIds` retains correlated failures; file bodies are not receipts.
+K1 remains recorded only, without asserting cross-store rollback.
+The [combined acceptance decision](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+owns this proof alongside the same-data CLI/browser journeys.
+
 The Node orchestrator reuses that installation for six budget probes after the
 Go coverage gate. Deadline probes load a test-only preload with 1-second request
 and 3-second operation deadlines, while separately asserting the installed
@@ -509,7 +524,8 @@ retained for 30 days. Inspect the artifact from the exact workflow run: a PR run
 normally tests a merge revision, so the receipt identifies the tested checkout.
 Build and result must be `passed`; all expected scenarios and their cleanup must
 pass; process start/reap counts must agree; every schema/session cleanup must be
-confirmed. Recompute the strict coverage comparison from the accompanying raw
+confirmed, including actual removal of each fixture's storage root. Recompute
+the strict coverage comparison from the accompanying raw
 profile rather than its rounded display. A failed job, partial receipt or local
 pass does not establish successful hosted acceptance for another source revision.
 Durable validation conclusions and delivery links belong in the

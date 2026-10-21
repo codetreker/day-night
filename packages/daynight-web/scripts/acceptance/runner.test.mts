@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -259,5 +259,114 @@ test('an early container callback records readiness and waits for permission bef
       await running.done;
       await rm(directory, { recursive: true, force: true });
     }
+  });
+});
+
+const installationRecoveryFixture = async (value: Fixture, completed: boolean) => {
+  const id = runId();
+  const directory = join(evidenceRoot, id);
+  const root = join(directory, 'installed-cli');
+  const storageRoot = join(directory, 'native-storage');
+  const owner = `daynight-web-${id}`;
+  const source = { gitSha: sourceGitSha, dirty: true, githubSha: process.env.GITHUB_SHA ?? null };
+  const installedCli: Record<string, unknown> = { root, cleanup: 'pending' };
+  await mkdir(root, { recursive: true });
+  await mkdir(storageRoot);
+  await writeFile(join(root, 'partial-install'), 'owned preparation');
+  await writeFile(join(storageRoot, 'owned-file'), 'owned native storage');
+  if (completed) {
+    const entryPath = join(root, 'consumer install/node_modules/@codetreker/daynight/dist/main.js');
+    const launcherPath = join(root, 'consumer install/node_modules/.bin/daynight');
+    const tarballPath = join(root, 'daynight.tgz');
+    await mkdir(join(root, 'consumer install/node_modules/@codetreker/daynight/dist'), { recursive: true });
+    await mkdir(join(root, 'consumer install/node_modules/.bin'));
+    await writeFile(entryPath, 'export {};');
+    await writeFile(launcherPath, 'launcher');
+    await writeFile(tarballPath, 'packed');
+    const version = (JSON.parse(await readFile(new URL('../../../daynight/package.json', import.meta.url), 'utf8')) as { version: string }).version;
+    await writeFile(join(root, 'consumer install/node_modules/@codetreker/daynight/package.json'), JSON.stringify({ name: '@codetreker/daynight', version, bin: { daynight: 'dist/main.js' } }));
+    const digest = async (path: string) => createHash('sha256').update(await readFile(path)).digest('hex');
+    const receipt = { schemaVersion: 1, root, packageVersion: version, entryPath, entrySha256: await digest(entryPath),
+      launcherPath, tarballPath, tarballSha256: await digest(tarballPath), nodePath: process.execPath, source: { gitSha: source.gitSha, dirty: source.dirty } };
+    const receiptPath = join(root, 'installed-cli.json');
+    installedCli.receipt = receipt;
+    installedCli.receiptPath = receiptPath;
+    await writeFile(receiptPath, JSON.stringify(receipt));
+  }
+  const evidence = { schemaVersion: 2, runId: id, source, installedCli,
+    runner: { pid: 2_147_483_647, executable: process.execPath, startTicks: '1', group: 2_147_483_647 }, stages: [],
+    native: { owner, postgresContainer: `${owner}-postgres`, postgresVolume: `${owner}-data`, binary: join(directory, 'daynight-server'), storageRoot } };
+  await writeFile(join(directory, 'evidence.json'), JSON.stringify(evidence));
+  value.env.CI = undefined;
+  return { id, directory, root, evidence };
+};
+
+test('recovery owns an interrupted preparation root before any installed receipt exists and is repeatable', { skip: process.platform !== 'linux' }, async () => {
+  await fixture(async (value) => {
+    const current = await installationRecoveryFixture(value, false);
+    const operator = join(value.directory, 'operator-installed-cli');
+    await mkdir(operator);
+    await writeFile(join(operator, 'keep'), 'operator');
+    await writeFile(join(value.bin, 'docker'), '#!/bin/sh\nexit 0\n');
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const result = await start([cli, '--cleanup', current.id], value).done;
+        assert.equal(result.code, 0, result.stderr);
+        await assert.rejects(readFile(join(current.root, 'partial-install')), { code: 'ENOENT' });
+        assert.equal(await readFile(join(operator, 'keep'), 'utf8'), 'operator');
+        const evidence = JSON.parse(await readFile(join(current.directory, 'evidence.json'), 'utf8')) as { installedCli: { cleanup: string } };
+        assert.equal(evidence.installedCli.cleanup, 'passed');
+      }
+    } finally { await rm(current.directory, { recursive: true, force: true }); }
+  });
+});
+
+test('installed cleanup remains committed when later Docker cleanup fails and a new recovery retries', { skip: process.platform !== 'linux' }, async () => {
+  await fixture(async (value) => {
+    const current = await installationRecoveryFixture(value, true);
+    await writeFile(join(value.bin, 'docker'), '#!/bin/sh\nexit 91\n');
+    try {
+      const failed = await start([cli, '--cleanup', current.id], value).done;
+      assert.equal(failed.code, 1);
+      await assert.rejects(readFile(join(current.root, 'installed-cli.json')), { code: 'ENOENT' });
+      const evidence = JSON.parse(await readFile(join(current.directory, 'evidence.json'), 'utf8')) as { installedCli: { cleanup: string } };
+      assert.equal(evidence.installedCli.cleanup, 'passed');
+      await writeFile(join(value.bin, 'docker'), '#!/bin/sh\nexit 0\n');
+      const retried = await start([cli, '--cleanup', current.id], value).done;
+      assert.equal(retried.code, 0, retried.stderr);
+      const receipt = JSON.parse(await readFile(join(current.directory, 'recovery.json'), 'utf8')) as { installedCli: string; nativeDocker: string; result: string };
+      assert.deepEqual({ installedCli: receipt.installedCli, nativeDocker: receipt.nativeDocker, result: receipt.result }, { installedCli: 'passed', nativeDocker: 'passed', result: 'passed' });
+    } finally { await rm(current.directory, { recursive: true, force: true }); }
+  });
+});
+
+test('partial installation cleanup rejects a root outside the recorded run', { skip: process.platform !== 'linux' }, async () => {
+  await fixture(async (value) => {
+    const current = await installationRecoveryFixture(value, false);
+    current.evidence.installedCli.root = value.directory;
+    await writeFile(join(current.directory, 'evidence.json'), JSON.stringify(current.evidence));
+    try {
+      const result = await start([cli, '--cleanup', current.id], value).done;
+      assert.equal(result.code, 1);
+      assert.match(result.stderr, /preparation ownership differs/);
+      assert.equal(await readFile(join(current.root, 'partial-install'), 'utf8'), 'owned preparation');
+      assert.equal(await readFile(value.commands, 'utf8'), '');
+    } finally { await rm(current.directory, { recursive: true, force: true }); }
+  });
+});
+
+test('partial installation is retained while a recorded preparation process is still alive', { skip: process.platform !== 'linux' }, async () => {
+  await fixture(async (value) => {
+    const current = await installationRecoveryFixture(value, false);
+    const identity = await processIdentity(process.pid);
+    assert.notEqual(identity, null);
+    await writeFile(join(current.directory, 'evidence.json'), JSON.stringify({ ...current.evidence, stages: [{ commands: [identity], commandGroups: [] }] }));
+    try {
+      const result = await start([cli, '--cleanup', current.id], value).done;
+      assert.equal(result.code, 1);
+      assert.match(result.stderr, /Original acceptance process is still running/);
+      assert.equal(await readFile(join(current.root, 'partial-install'), 'utf8'), 'owned preparation');
+      assert.equal(await readFile(value.commands, 'utf8'), '');
+    } finally { await rm(current.directory, { recursive: true, force: true }); }
   });
 });

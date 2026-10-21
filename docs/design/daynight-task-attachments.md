@@ -1,8 +1,8 @@
 # Task 附件与通用文件存储设计
 
 状态：通用存储、附件元数据、文件 HTTP/预览入口、CLI 附件命令、Web 管理界面和
-部署持久卷已实现，停止写入后的配套备份恢复已有真实容器验证。A-T6 跨层组合验收
-仍待完成，进度在 Daynight 中维护。
+部署持久卷已实现，停止写入后的配套备份恢复已有真实容器验证。跨层组合验收复用
+真实服务、安装 CLI 和生产浏览器，实施与交付进度在 Daynight 中维护。
 
 行为要求由[附件需求](../spec/daynight-task-attachments.md)拥有；本文解释通用存储接口、
 附件元数据及各端集成机制。
@@ -349,7 +349,7 @@ Worker 或离线文件系统。
 fixture API 与原生 fixture 文件，支持文件、空态和上传失败场景。fixture 分配的对象
 URL 在删除后仍保持有效，到 fixture dispose 才释放，避免已加载组件使用失效地址。
 生产构建保留单一应用 index，不包含该入口或 fixture 文件。该 mockup 及本地浏览器
-探针验证前端交互，A-T6 承担真实后端生产浏览器旅程及组合 CI inventory。
+探针验证前端交互；真实服务的安装 CLI/生产浏览器旅程另由组合验收覆盖。
 
 ## CLI
 
@@ -447,9 +447,8 @@ localhost 的 PG 与附件卷在正常停止、重启、重建及 `down` 后保�
 两个实际 dev-ci 项目验证。CLI 命令及字节输出已有实现，原生平台、安装产物和
 完整服务组合的验证结论仍须来自各自源码绑定的实际运行，本机验证不能代替
 Windows/macOS 托管结果。Web 管理界面交付组件、状态及前端 fixture，真实浏览器
-探针覆盖该环境的视觉与焦点。源绑定结果归属对应 PR 与 CI。A-T6 的实际后端生产
-浏览器旅程、安装 CLI 组合及 CI inventory 仍待完成，不能由后端、部署或前端
-mockup 的通过结果代替。各层验证职责如下：
+探针覆盖该环境的视觉与焦点。源绑定结果归属对应 PR 与 CI。组合验收的机制见
+[跨层验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)，各层验证职责如下：
 
 - Storage：bucket 隔离、真实相对路径、同路径完整覆盖、原始字节一致、实际大小、
   缺失与权限错误、取消、普通失败的临时文件清理及路径不能越出根目录。
@@ -463,6 +462,24 @@ mockup 的通过结果代替。各层验证职责如下：
   图片/PDF/文本展示、失败反馈与切换文件时的过期请求取消。
 - 部署：真实非 root 容器写入、同源 gateway 传输、正常重建保留附件、dev-ci 卷隔离
   及清理、配套备份恢复。
+
+Go 的 `installed_cli_task_attachment_workflow` 使用既有安装回执与实际服务，比较文本、
+空内容及超过 1 MiB 的二进制；覆盖多级/特殊路径、同 basename、覆盖、超过 100 条
+列表、删除和 requestId。实际进程重启复用同一存储根，核对 metadata、bytes 和完整
+任务资源。回执保存附件 path/size/SHA-256 与分页数量，所有 fixture 的清理 gate
+必须确认 `storageRootRemoved`。
+
+Web 新增 `task-attachments` 功能场景，在原生和实际生产容器上让同一次安装的 CLI
+与页面操作同一批数据；原有八个图功能场景及四个原生容量场景保持完整。严格 inventory
+为原生 13 个、容器 9 个。只有附件场景精确的 task/file PUT/DELETE 获准，旧图场景
+继续 GET/HEAD。完整 Chromium channel `chromium` 对 PDF 的证明来自 iframe 实际
+compositor 像素中的 fixture 专用色块，成功状态、load 和固定等待均不能代替绘制。
+
+运行回执校验 Git SHA/dirty 标记及实际 tarball/entry 摘要；dirty 标记不是脏源码内容
+指纹。CI 继续要求干净 checkout 等于 `GITHUB_SHA`。浏览器、CLI 和辅助子进程/组均
+归本次 run 管理，失败或取消也必须清理。Web CI 完成生产浏览器、容量及恢复后，
+再运行一次既有真实部署附件检查，保留配套备份恢复回执。所有通过结论须绑定
+对应实际运行的源码、产物及环境回执。
 
 本方案没有新增 MCP 或模型工具定义，模型工具 schema 与 token 预算不适用。
 

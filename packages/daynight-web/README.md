@@ -143,8 +143,9 @@ contenteditable frame boundaries, Escape/Tab release and trigger restoration.
 The probe receipts and screenshots live under the task's `.tmp/a-t4/`; a local
 existing Chromium override is recorded and does not establish pinned CI-browser
 or real-backend delivery. JSDOM uses an upstream `tabbable` test wrapper because
-it lacks layout; those unit tests do not prove browser visibility. A-T6 owns the
-new real-service attachment journeys and their production CI inventory.
+it lacks layout; those unit tests do not prove browser visibility. The production
+`task-attachments` journey below uses the real service and the installed CLI on
+both runtime targets; its receipts remain separate from this fixture evidence.
 
 ## Frontend-only task browsing mockup
 
@@ -208,12 +209,16 @@ runner remains the owner of the built/running image identity and full cleanup.
 
 Native functional checks start after the native process and browser are ready.
 Their browser cleanup must pass before an atomic, run/source-bound permission
-releases the container's eight functional checks. Capacity runs last, after all
+releases the container's nine functional checks. Capacity runs last, after all
 preparation and coverage commands, container checks, full dev-ci cleanup and
 container browser recovery have finished. Every browser phase retains one
 worker and zero retries. CI runs controlled deployment fixtures before the
 unified pipeline, and keys outer recovery and both artifact uploads to that
-pipeline's attempted execution. Go module/compiler caches remain reusable.
+pipeline's attempted execution. After the pipeline and recorded recovery, the
+Ubuntu web job runs `node deployment/dev-ci/tests/attachments.mts` once for real
+volume/recreation/isolation and paired-backup proof. Its
+`.tmp/attachment-deployment-*/` receipts join the existing deployment artifact.
+Go module/compiler caches remain reusable.
 The [pipeline decision](../../.agents/notes/implemented/testing/2026-10-21-web-acceptance-pipeline.md)
 records the scheduling and ownership constraints. The web job uploads
 `coverage-final.json` and `summary.json`, which records exact counts and the relative product-source
@@ -243,20 +248,31 @@ Use Node 24, pnpm 10.34.5 and a frozen dependency install first. Chromium requir
 its normal Linux runtime libraries; CI installs them with Playwright's
 `--with-deps` option. Locally, `DAYNIGHT_BROWSER_EXECUTABLE` can select an existing
 Chromium executable. That override is recorded and is forbidden for CI delivery
-evidence, which must use the browser pinned by Playwright 1.64.1.
+evidence, which must use the full bundled Chromium channel (`chromium`) pinned by
+Playwright 1.64.1. This channel renders PDF pages; MIME-document readiness alone
+is not a painted-content oracle. Native and container phases record and require
+the same browser identity.
 
 The command builds real embedded assets and a new Go executable and owns a
 separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
 the normal dev-ci runner builds and starts the actual production image. Browser
-execution proceeds through eight native functional scenarios, the same eight
+execution proceeds through nine native functional scenarios, the same nine
 functional scenarios through the production image's stream gateway, then four
 native capacity/limit scenarios. The native process and PostgreSQL remain alive
 through the capacity phase; other preparation commands and the complete
 container stack have finished before that phase starts. No normal localhost service or dataset is used. Functional and
-capacity fixtures use the real write APIs; those existing scenarios check the
-graph dashboard baseline for read-only requests. They do not cover attachment
-mutations. A-T6 in the [attachment breakdown](../../docs/design/daynight-task-attachments-tasks.md#a-t6)
-owns new real-backend attachment browser journeys and combined acceptance.
+capacity fixtures use the real write APIs. The eight graph scenarios retain
+their GET/HEAD-only browser checks. Only `task-attachments` allows exact
+fixture-scoped PUT/DELETE file routes; unrelated mutations remain failures.
+One packed/installed CLI is shared by the whole web run. On each target,
+`task-attachments` uploads through that CLI and consumes the same task/files in
+the production page, then checks Web mutations through raw CLI reads. It covers
+Markdown relative images, image/text/PDF and interactive HTML resources. PDF
+acceptance polls compositor screenshots for a substantial fixture-only colored
+marker, retaining the successful PNG and marker evidence; HTTP success or an
+iframe load cannot satisfy this check. The
+[combined acceptance decision](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+owns the data-sharing and rendering proof.
 The chain fixture creates 1,000 independent tasks, then attaches its 999 edges
 with versioned PATCH requests from sink to root, avoiding repeated traversal of
 a growing ancestor chain during setup. Complete snapshots compare every node's
@@ -272,7 +288,8 @@ opening budget. Independent 1,001-node and 5,001-edge cases require complete
 409 rejection. Full node/edge DOM counts, readable root visibility and painted
 feedback are checked; a successful process exit without complete reports fails.
 
-The [functional scenarios](tests/e2e/workflow.spec.ts),
+The [graph functional scenarios](tests/e2e/workflow.spec.ts),
+[attachment journey](tests/e2e/attachments.spec.ts),
 [capacity scenarios](tests/e2e/capacity.spec.ts) and
 [acceptance runner](scripts/acceptance.mts) map to the
 [W1–W12 requirements](../../docs/spec/daynight-web.md) as follows. Names are stable
@@ -289,11 +306,13 @@ scenario annotations validated in each target's report.
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
 | W12 | `keyboard-focus`, `narrow-layout`: modal focus lifecycle including PR links, keyboard node activation and 320px page/drawer geometry |
+| FA1–FA12 | `task-attachments`: installed CLI and production UI operate on the same real task/files on native and container targets, exact binary round trips, independent mutations/previews, visible PDF content and full task state unchanged |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
 
 Receipts live in `packages/daynight-web/.tmp/acceptance/<run-id>/`, with the
 latest aggregate at `.tmp/acceptance/evidence.json` inside this package. They
-use top-level `schemaVersion: 2` and record source identity, native binary
+use top-level `schemaVersion: 2` and record source identity, the installed CLI
+receipt and raw artifact identities, native binary
 SHA-256, PostgreSQL/browser versions, pipeline stages, target phases, capacity
 measurements, container image identity and cleanup outcomes. Each stage records
 its result, start/end times, observed command process identities and spawned
@@ -306,8 +325,8 @@ retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validati
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
 tested checkout identity, which is normally a merge revision for PR runs. A pass
-requires the strict union of eight native functional and four native capacity
-scenarios, plus the eight container functional scenarios. Every phase and target
+requires the strict union of nine native functional and four native capacity
+scenarios (13 native total), plus the nine container functional scenarios. Every phase and target
 rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
 Browser identities must agree across a target's phases; every fixed graph's five
 timing repetitions, independent size refusals and cleanup/recovery must pass.
@@ -371,8 +390,17 @@ or unknown new profiles cause failure and remain for diagnosis. It does not kill
 unidentified processes or remove unidentified profiles. Dev-ci recovery uses the
 same recorded project identity and bounded cleanup entry.
 
+The runner persists one `installedCli` ownership record before package
+preparation: its deterministic `<acceptanceRun>/installed-cli` root and cleanup
+state exist even if a completed receipt does not. Preparation creates that root
+exclusively. Cleanup requires recorded commands/groups to have stopped, validates
+completed artifacts when present, removes only that root and persists its cleanup
+state in the original evidence before later native/Docker cleanup. Recovery can
+repeat after interrupted preparation or a subsequent cleanup failure; a live
+preparation process blocks removal.
+
 Recovery writes separate per-run/latest `recovery.json` receipts and preserves
-the original acceptance outcome. A successful recovery does not turn a failed
+the original acceptance outcome while retaining completed cleanup state. A successful recovery does not turn a failed
 browser or performance result into acceptance. The CI `always()` recovery step
 and artifact upload retain this distinction; cleanup uncertainty fails the job.
 

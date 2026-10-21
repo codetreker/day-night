@@ -104,8 +104,10 @@ silently presenting the current iframe as isolation.
 Generic local storage, attachment HTTP resources, CLI commands, browser
 management and persistent deployment volumes are implemented. The Web delivery
 note owns its state, rendering and focus choices; this note retains the
-cross-component addressing and accepted K1 decision. A-T6 combined acceptance
-progress is maintained in Daynight; the breakdown owns scope and acceptance.
+cross-component addressing and accepted K1 decision. The
+[cross-layer acceptance decision](../testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+owns installed CLI/service and same-data production-browser proof. A-T6 progress
+is maintained in Daynight; the breakdown owns scope and acceptance.
 Existing server, CLI and Web contracts remain true for delivered features.
 Module-specific validation and source-bound evidence remain required; native CLI
 outcomes cannot be inferred from source inspection or another platform's run.

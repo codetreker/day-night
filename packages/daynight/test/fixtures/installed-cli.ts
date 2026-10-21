@@ -59,17 +59,24 @@ export const terminateInstalledProcess = async (child: ChildProcess, closed: Pro
   if (failures.length !== 0) throw new AggregateError(failures, "Owned installation process-tree cleanup failed.");
 };
 
-export const createInstalledCli = async (options: { readonly signal?: AbortSignal } = {}): Promise<{
+export const createInstalledCli = async (options: { readonly signal?: AbortSignal; readonly temporaryRoot?: string; readonly rootDirectory?: string; readonly onSpawn?: (child: ChildProcess) => void | Promise<void> } = {}): Promise<{
   readonly receipt: InstalledCliReceipt;
   readonly receiptPath: string;
   cleanup(): Promise<void>;
 }> => {
   const check = (): void => options.signal?.throwIfAborted();
   check();
-  const temporary = path.join(workspace, ".tmp");
+  const temporary = options.temporaryRoot === undefined ? path.join(workspace, ".tmp") : options.temporaryRoot;
+  if (!path.isAbsolute(temporary)) throw new Error("Installed CLI temporary root must be absolute.");
   await mkdir(temporary, { recursive: true });
   check();
-  const root = await mkdtemp(path.join(temporary, "Installed project task 中文 "));
+  let root: string;
+  if (options.rootDirectory === undefined) root = await mkdtemp(path.join(temporary, "Installed project task 中文 "));
+  else {
+    if (!path.isAbsolute(options.rootDirectory) || path.dirname(options.rootDirectory) !== temporary) throw new Error("Installed CLI root must be an immediate child of its temporary root.");
+    await mkdir(options.rootDirectory, { mode: 0o700 });
+    root = options.rootDirectory;
+  }
   try {
     check();
     await chmod(root, 0o700);
@@ -95,7 +102,12 @@ export const createInstalledCli = async (options: { readonly signal?: AbortSigna
       if (options.signal?.aborted) cancelled();
       let result: Awaited<typeof closed> | "timeout" | "cancelled";
       try {
-        result = await Promise.race([closed, cancellation, new Promise<"timeout">((resolve) => { timer = setTimeout(() => resolve("timeout"), 120_000); })]);
+        const registered = Promise.resolve(options.onSpawn?.(child));
+        result = await Promise.race([registered.then(() => closed), cancellation, new Promise<"timeout">((resolve) => { timer = setTimeout(() => resolve("timeout"), 120_000); })]);
+      } catch (cause) {
+        try { await terminateInstalledProcess(child, closed); }
+        catch (cleanupError) { throw new AggregateError([cause, cleanupError], "Installation registration and cleanup failed."); }
+        throw cause;
       } finally {
         if (timer !== undefined) clearTimeout(timer);
         options.signal?.removeEventListener("abort", cancelled);
