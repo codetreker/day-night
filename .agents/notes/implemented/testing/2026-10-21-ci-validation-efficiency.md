@@ -104,6 +104,15 @@ total duration separately from browser input-to-feedback timing. The
 continues to own the required production targets, fixed datasets, five complete
 repetitions and performance budgets.
 
+Test queries reuse results and search the smallest known control region. The
+51-project pagination case reuses its complete ordered heading array for every
+link assertion; capacity interactions locate the explicit dialog role, close
+button within its header and zoom button within the canvas controls. Exact
+button roles/names, trusted click actionability, dialog visibility/removal and
+all original node, geometry, timing and trace checks remain required. This
+removes repeated whole-document accessibility traversal without relaxing test
+timeouts or acceptance budgets.
+
 The production container path retains its full build, image identity checks,
 functional scenarios and cleanup under the existing
 [embedded deployment decision](../architecture/2026-10-20-embedded-dashboard-deployment.md).

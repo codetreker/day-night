@@ -287,10 +287,11 @@ const panPoint = (page: Page) => page.evaluate(() => {
 });
 
 const measureInteractions = async (page: Page, fixture: CapacityFixture, expansion: ExpansionMeasurement, dataset: Dataset, repetition: number): Promise<Measurement> => {
+  const dialog = page.locator('.drawer-backdrop').getByRole('dialog');
   const detailResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/projects/${fixture.project.id}/tasks/${fixture.root.id}`));
   const detail = await measureBrowserFeedback(page, { kind: 'detail', rootId: fixture.root.id }, () =>
     page.locator(`.react-flow__node[data-id="${fixture.root.id}"] .task-node`).click(), dataset, repetition);
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(dialog).toBeVisible();
   const detailMs = detail.duration;
   const response = await detailResponse;
   expect(response.status()).toBe(200);
@@ -298,12 +299,12 @@ const measureInteractions = async (page: Page, fixture: CapacityFixture, expansi
   const timing = response.request().timing();
   const detailNetworkMs = timing.responseEnd - timing.requestStart;
   await expect(page.locator('.drawer-title')).toHaveText(fixture.root.title);
-  await page.getByRole('button', { name: '关闭任务详情' }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await dialog.locator('.drawer-header').getByRole('button', { name: '关闭任务详情', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
 
   const beforeZoom = await transform(page);
   const zoom = await measureBrowserFeedback(page, { kind: 'zoom', previousTransform: beforeZoom }, () =>
-    page.getByRole('button', { name: '放大', exact: true }).click(), dataset, repetition);
+    page.locator('.react-flow__controls').getByRole('button', { name: '放大', exact: true }).click(), dataset, repetition);
   const zoomMs = zoom.duration;
 
   const point = await panPoint(page);
