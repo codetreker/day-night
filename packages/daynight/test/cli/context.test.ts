@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
 import { Writable } from "node:stream";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { writeOutputBytes } from "../../src/cli/byte-output.js";
 
@@ -74,7 +73,7 @@ describe("binary stdout", () => {
   });
 
   it("releases a real blocked stdout pipe on cancellation", async () => {
-    const module = fileURLToPath(new URL("../../dist/cli/context.js", import.meta.url));
+    const module = new URL("../../dist/cli/context.js", import.meta.url).href;
     const script = `
       import {createCliContext} from ${JSON.stringify(module)};
       const context = createCliContext('test', '.');
@@ -100,7 +99,7 @@ describe("binary stdout", () => {
   }, 10_000);
 
   it("packages the output helper and flushes exact binary bytes before normal shutdown", async () => {
-    const module = fileURLToPath(new URL("../../dist/cli/context.js", import.meta.url));
+    const module = new URL("../../dist/cli/context.js", import.meta.url).href;
     const script = `
       import {createCliContext} from ${JSON.stringify(module)};
       const context = createCliContext('test', '.');
@@ -125,7 +124,7 @@ describe("binary stdout", () => {
   }, 10_000);
 
   it("returns a real broken pipe error and reaps its output helper", async () => {
-    const module = fileURLToPath(new URL("../../dist/cli/context.js", import.meta.url));
+    const module = new URL("../../dist/cli/context.js", import.meta.url).href;
     const script = `
       import {createCliContext} from ${JSON.stringify(module)};
       const context = createCliContext('test', '.');
