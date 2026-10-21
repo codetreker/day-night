@@ -1,28 +1,77 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readReport } from './report.mts';
+import { aggregateScenarios, readReport, type Scenario } from './report.mts';
 
-const report = () => ({ errors: [], suites: [{ specs: [], suites: [{ specs: [{ title: 'sample', ok: true, tests: [{
-  expectedStatus: 'passed', status: 'expected', annotations: [{ type: 'scenario', description: 'sample-flow' }],
+const report = (names = ['sample-flow']) => ({ errors: [], suites: [{ specs: [], suites: [{ specs: names.map((name) => ({ title: 'sample', ok: true, tests: [{
+  expectedStatus: 'passed', status: 'expected', annotations: [{ type: 'scenario', description: name }],
   results: [{ status: 'passed', retry: 0, errors: [], duration: 12, attachments: [{ contentType: 'image/png', path: '/owned/sample.png' }] }],
-}] }], suites: [] }] }], stats: { expected: 1, skipped: 0, flaky: 0, unexpected: 0 } });
+}] })), suites: [] }] }], stats: { expected: names.length, skipped: 0, flaky: 0, unexpected: 0 } });
+
 test('recursively verifies a first-attempt scenario', () => assert.deepEqual(readReport(report(), ['sample-flow']), [
   { name: 'sample-flow', title: 'sample', durationMs: 12, screenshots: ['/owned/sample.png'] },
 ]));
-test('rejects missing required scenarios', () => assert.throws(() => readReport(report(), ['missing'])));
+test('rejects missing, extra, and duplicate scenarios in a raw report', () => {
+  assert.throws(() => readReport(report(), ['sample-flow', 'missing']), /Required acceptance scenario missing: missing/);
+  assert.throws(() => readReport(report(['sample-flow', 'extra-flow']), ['sample-flow']), /Unexpected acceptance scenario: extra-flow/);
+  assert.throws(() => readReport(report(['sample-flow', 'sample-flow']), ['sample-flow']), /Duplicate acceptance scenario name: sample-flow/);
+});
 test('rejects empty or malformed reports', () => {
   for (const value of [null, {}, { errors: [], suites: [], stats: {} }]) assert.throws(() => readReport(value, []));
 });
-test('rejects retries and unexpected statuses', () => {
-  for (const mutate of [
-    (value: ReturnType<typeof report>) => { value.errors.push('error' as never); },
-    (value: ReturnType<typeof report>) => { value.stats.skipped = 1; },
-    (value: ReturnType<typeof report>) => { value.suites[0]!.suites[0]!.specs[0]!.tests[0]!.status = 'flaky'; },
-    (value: ReturnType<typeof report>) => { value.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!.retry = 1; },
-    (value: ReturnType<typeof report>) => { value.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results.push({ status: 'passed', retry: 1, errors: [], duration: 12, attachments: [] }); },
-    (value: ReturnType<typeof report>) => { value.suites[0]!.suites[0]!.specs[0]!.tests[0]!.annotations = []; },
-    (value: ReturnType<typeof report>) => { value.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!.attachments = []; },
-  ]) {
-    const value = report(); mutate(value); assert.throws(() => readReport(value, []));
+test('rejects retries, flaky tests, global errors, and invalid result evidence', () => {
+  const cases: { mutate: (value: ReturnType<typeof report>) => void; error: RegExp }[] = [
+    { mutate: (value) => { value.errors.push('error' as never); }, error: /global errors/ },
+    { mutate: (value) => { value.stats.skipped = 1; }, error: /summary disagrees/ },
+    { mutate: (value) => { value.stats.flaky = 1; }, error: /summary disagrees/ },
+    { mutate: (value) => { value.stats.unexpected = 1; }, error: /summary disagrees/ },
+    { mutate: (value) => { value.stats.expected = 2; }, error: /summary disagrees/ },
+    { mutate: (value) => { value.suites[0]!.suites[0]!.specs[0]!.tests[0]!.status = 'flaky'; }, error: /skipped, flaky, or failed/ },
+    { mutate: (value) => { value.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!.retry = 1; }, error: /first attempt/ },
+    { mutate: (value) => { value.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results.push({ status: 'passed', retry: 1, errors: [], duration: 12, attachments: [] }); }, error: /Retries are forbidden/ },
+    { mutate: (value) => { value.suites[0]!.suites[0]!.specs[0]!.tests[0]!.annotations = []; }, error: /stable scenario annotation/ },
+    { mutate: (value) => { value.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!.attachments = []; }, error: /screenshot attachment/ },
+  ];
+  for (const { mutate, error } of cases) {
+    const value = report();
+    mutate(value);
+    assert.throws(() => readReport(value, ['sample-flow']), error);
   }
+});
+
+const functionalNames = ['project-list', 'project-graph', 'detail-navigation', 'refresh-staleness',
+  'failure-recovery', 'deep-links', 'keyboard-focus', 'narrow-layout'] as const;
+const capacityNames = ['capacity-chain', 'capacity-merge', 'capacity-shared', 'capacity-limits'] as const;
+const nativeNames = [...functionalNames, ...capacityNames];
+const scenario = (name: string): Scenario => ({ name, title: name, durationMs: 12, screenshots: [`/owned/${name}.png`] });
+
+test('aggregates native functional and capacity reports into exactly twelve scenarios', () => {
+  const functional = readReport(report([...functionalNames]), functionalNames);
+  const capacity = readReport(report([...capacityNames]), capacityNames);
+  const phases: readonly (readonly Scenario[])[] = [functional, capacity];
+  const scenarios = aggregateScenarios(phases, nativeNames);
+  assert.equal(scenarios.length, 12);
+  assert.deepEqual(scenarios.map(({ name }) => name), nativeNames);
+  assert.equal(scenarios[0], functional[0]);
+  assert.equal(scenarios[8], capacity[0]);
+});
+
+test('rejects missing and unexpected scenarios across phases', () => {
+  const functional = functionalNames.map(scenario);
+  const capacity = capacityNames.map(scenario);
+  assert.throws(() => aggregateScenarios([functional, capacity.slice(1)], nativeNames), /Required acceptance scenario missing: capacity-chain/);
+  assert.throws(() => aggregateScenarios([functional, [...capacity, scenario('extra-flow')]], nativeNames), /Unexpected acceptance scenario: extra-flow/);
+  assert.throws(() => aggregateScenarios([functional, [...capacity.slice(1), scenario('extra-flow')]], nativeNames), /Unexpected acceptance scenario: extra-flow/);
+});
+
+test('rejects duplicate scenarios within and across phases', () => {
+  const functional = functionalNames.map(scenario);
+  const capacity = capacityNames.map(scenario);
+  assert.throws(() => aggregateScenarios([[...functional, functional[0]!], capacity], nativeNames), /Duplicate acceptance scenario name: project-list/);
+  assert.throws(() => aggregateScenarios([functional, [...capacity, functional[0]!]], nativeNames), /Duplicate acceptance scenario name: project-list/);
+  assert.throws(() => aggregateScenarios([functional, [capacity[0]!, capacity[0]!, ...capacity.slice(2)]], nativeNames), /Duplicate acceptance scenario name: capacity-chain/);
+});
+
+test('rejects an empty aggregate and duplicate required scenario names', () => {
+  assert.throws(() => aggregateScenarios([[], []], nativeNames), /No acceptance scenarios ran/);
+  assert.throws(() => aggregateScenarios([[scenario('sample-flow')]], ['sample-flow', 'sample-flow']), /Duplicate required acceptance scenario names/);
 });

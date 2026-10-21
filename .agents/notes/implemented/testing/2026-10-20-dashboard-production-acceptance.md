@@ -12,12 +12,19 @@ a mismatched image or cleanup failures unless its receipts are validated.
 
 ## Decision
 
-`pnpm web:acceptance` builds real embedded assets and a fresh native Go executable.
-It owns a PostgreSQL 18.6 container and volume with a unique label, waits for the
-process's structured readiness message and runs production Chromium tests. It
-then invokes the existing isolated dev-ci runner and runs the same functional
-workflows through that production image's stream gateway. The normal localhost
-stack and its data do not participate.
+`pnpm web:acceptance` uses the shared acceptance runner to build real embedded
+assets and a fresh native Go executable, own an isolated PostgreSQL 18.6
+container/volume and wait for structured service readiness. The normal dev-ci
+source build/start runs concurrently. Browser phases run eight native functional
+scenarios, the same eight functional scenarios through the production image's
+stream gateway, then four native capacity/limit scenarios. The normal localhost
+stack and its data do not participate. The
+[pipeline decision](2026-10-21-web-acceptance-pipeline.md) partially supersedes the
+original native-then-container schedule and owns stage dependencies, per-phase
+cleanup and evidence aggregation. The original ordering kept each complete
+target serial and its resource lifetime easy to inspect; the replacement
+preserves capacity isolation while overlapping preparation and retaining the
+native process through the final capacity phase.
 
 Eight stable functional scenarios cover pagination, graph/statistics, detail
 navigation, freshness, database failure/recovery, direct routes, keyboard focus
@@ -41,15 +48,22 @@ remains the performance gate. Each independent over-limit response must be a com
 
 Playwright runs one worker with zero retries. Report validation rejects global
 errors, skipped/flaky/retried tests, duplicate/missing stable scenarios, missing
-PNG screenshots and inconsistent summary counts. Performance validation requires
+PNG screenshots and inconsistent summary counts. Native functional/capacity
+reports form a strict twelve-scenario union; container functional validation
+requires eight. Missing, extra or duplicate names fail both phase and aggregate
+validation, and browser identity must agree across a target's phases.
+Performance validation requires
 all fixed datasets, exactly five valid measurements per dataset, every budget
 and both independent limit receipts. CI also requires Linux, the Chromium version
 pinned by Playwright 1.64.1 and a clean checkout whose Git SHA equals GITHUB_SHA.
 Local browser overrides and dirty state stay explicit in local receipts.
 
-Incremental evidence records source/binary/database/browser identities, both
-runtime targets, raw Playwright reports, screenshots, performance and dev-ci
-image/cleanup results in the project. When selected, the web job archives browser
+Incremental schema 2 evidence records source/binary/database/browser identities,
+pipeline stages, both runtime targets and their phases, raw Playwright reports,
+screenshots, performance and dev-ci image/cleanup results in the project. The
+capacity performance receipt retains its own schema 1. Each browser phase
+verifies its process group and owned-browser cleanup before its successor;
+capacity begins only after the other stages and full dev-ci cleanup finish. When selected, the web job archives browser
 acceptance independently of the raw V8 coverage report; it remains dependent on
 successful execution and cleanup. Go and web each retain strict unrounded total
 statement coverage above 90%. The [module-scoped CI decision](../process/2026-10-21-module-scoped-pr-ci.md)
@@ -101,7 +115,10 @@ project-local profile marker receipts. Only confirmed groups/profiles are
 reclaimed; ambiguous startup processes, orphan-only groups or unknown new
 profiles fail recovery. A separate recovery result preserves the original
 acceptance outcome and does not convert failed measurements into success.
-The CI outer recovery step runs after every attempted acceptance invocation.
+Recovery accepts only top-level schema 2 evidence and validates stage command
+identities/groups. It visits browser phases in reverse order: native capacity,
+container, native functional. The CI outer recovery step and both artifact
+uploads are tied to every attempted unified acceptance invocation.
 
 The pinned Dagre optimization is validated separately from browser timing.
 Exact differential checks in both ESM and CJS compare complete geometry with the

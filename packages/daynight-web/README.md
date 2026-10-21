@@ -87,27 +87,26 @@ main pushes run the full suite. The `checks` aggregate requires successful routi
 and successful selected jobs, with deliberately unselected jobs reported as
 `skipped`. When selected, `verify-web` retains its complete workload, including
 real embedded Go builds and production-browser acceptance. The CI entry
-`node packages/daynight-web/scripts/ci.mts` concurrently installs the pinned
-Chromium with its Linux dependencies, runs the existing `pnpm web:test`
-unit/coverage command and builds the production Dockerfile with
-`docker buildx build --builder default --file deployment/localhost/Dockerfile --output=type=cacheonly .`.
-The cache-only build prepares the same Docker daemon's cache; the normal dev-ci
-runner still builds and verifies its own unique image. An explicit
-`BUILDX_BUILDER` value must be `default`. Browser installation and unit tests each
-have a 180-second bound, and Docker preparation has the deployment build's
-600-second bound. Only the coverage subprocess receives `VITEST_MAX_WORKERS=2`,
-retaining the `forks` pool and per-file isolation; browser, Docker and parent
-process environments are unchanged. This limits coverage workers during shared
-preparation and does not impose a global CPU cap. All three managed command
-groups must finish successfully; timeouts, cancellation and any failure fail
-preparation. Controlled dev-ci
-fixtures and `web:acceptance` start afterward, so browser performance tests do
-not overlap those preparation processes. Acceptance owns the native production
-build, including typechecking. CI reuses Go module/compiler caches
-while retaining the complete production container build and this run's image
-identity check. The web job also tests the dev-ci
-runner with controlled Docker fixtures. It uploads `coverage-final.json` and
-`summary.json`, which records exact counts and the relative product-source
+`node packages/daynight-web/scripts/ci.mts` uses the same acceptance runner as
+`pnpm web:acceptance`. CI supplies pinned Chromium installation, including Linux
+dependencies, and the existing `pnpm web:test` command as preparation callbacks.
+Only the coverage child receives `VITEST_MAX_WORKERS=2`, retaining its `forks`
+pool and per-file isolation. Browser and coverage commands each retain a
+180-second bound. Native production assets, Go/PostgreSQL and one normal dev-ci
+source build/start can proceed concurrently with those callbacks. The dev-ci
+runner remains the owner of the built/running image identity and full cleanup.
+
+Native functional checks start after the native process and browser are ready.
+Their browser cleanup must pass before an atomic, run/source-bound permission
+releases the container's eight functional checks. Capacity runs last, after all
+preparation and coverage commands, container checks, full dev-ci cleanup and
+container browser recovery have finished. Every browser phase retains one
+worker and zero retries. CI runs controlled deployment fixtures before the
+unified pipeline, and keys outer recovery and both artifact uploads to that
+pipeline's attempted execution. Go module/compiler caches remain reusable.
+The [pipeline decision](../../.agents/notes/implemented/testing/2026-10-21-web-acceptance-pipeline.md)
+records the scheduling and ownership constraints. The web job uploads
+`coverage-final.json` and `summary.json`, which records exact counts and the relative product-source
 manifest. Coverage and acceptance artifacts are retained for 30 days. The
 [implementation tasks](../../docs/design/daynight-web-tasks.md) retain validation
 conclusions and link source-specific delivery evidence. The
@@ -136,11 +135,14 @@ its normal Linux runtime libraries; CI installs them with Playwright's
 Chromium executable. That override is recorded and is forbidden for CI delivery
 evidence, which must use the browser pinned by Playwright 1.64.1.
 
-The command builds real embedded assets and a new Go executable, then owns a
-separate PostgreSQL container/volume and ephemeral loopback listener. Native
-acceptance runs eight functional and four capacity/limit scenarios. The same
-eight functional scenarios run through the actual dev-ci production image and
-stream gateway. No normal localhost service or dataset is used. Functional and
+The command builds real embedded assets and a new Go executable and owns a
+separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
+the normal dev-ci runner builds and starts the actual production image. Browser
+execution proceeds through eight native functional scenarios, the same eight
+functional scenarios through the production image's stream gateway, then four
+native capacity/limit scenarios. The native process and PostgreSQL remain alive
+through the capacity phase; other preparation commands and the complete
+container stack have finished before that phase starts. No normal localhost service or dataset is used. Functional and
 capacity fixtures use the real write APIs; the page is checked to remain read-only.
 The chain fixture creates 1,000 independent tasks, then attaches its 999 edges
 with versioned PATCH requests from sink to root, avoiding repeated traversal of
@@ -176,16 +178,24 @@ scenario annotations validated in each target's report.
 
 Receipts live in `packages/daynight-web/.tmp/acceptance/<run-id>/`, with the
 latest aggregate at `.tmp/acceptance/evidence.json` inside this package. They
-record source identity, native binary SHA-256, PostgreSQL/browser versions, each
-target's raw Playwright report and screenshots, capacity measurements, container
-image identity and cleanup outcomes. `CI` requires a clean checkout matching
+use top-level `schemaVersion: 2` and record source identity, native binary
+SHA-256, PostgreSQL/browser versions, pipeline stages, target phases, capacity
+measurements, container image identity and cleanup outcomes. Each stage records
+its result, start/end times, observed command process identities and spawned
+process groups. Each browser phase records its own result, browser identity,
+Playwright process/group and `browserCleanup` result. Raw reports and screenshots
+live under `native/functional/`, `container/` and `native/capacity/`; the unchanged
+schema 1 capacity receipt is `native/capacity/performance.json`. `CI` requires a clean checkout matching
 `GITHUB_SHA`, Linux and the pinned browser. Playwright uses one worker and no
 retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validation.
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
 tested checkout identity, which is normally a merge revision for PR runs. A pass
-requires all 12 native and eight container scenarios, every fixed graph's five
-timing repetitions, independent size refusals and confirmed cleanup/recovery.
+requires the strict union of eight native functional and four native capacity
+scenarios, plus the eight container functional scenarios. Every phase and target
+rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
+Browser identities must agree across a target's phases; every fixed graph's five
+timing repetitions, independent size refusals and cleanup/recovery must pass.
 Local receipts retain their source and browser identity; they do not establish
 clean hosted delivery results. The
 [implementation tasks](../../docs/design/daynight-web-tasks.md#w-t6) own durable
@@ -215,6 +225,14 @@ The runner registers owned-resource cleanup before creating its database or
 native process. Timeouts and cancellation stop owned command groups; browser
 receipts identify the detached Chromium group and project-local profile as well.
 A passing run requires confirmed native, browser/profile and dev-ci cleanup.
+Each phase verifies its Playwright group has stopped and recovers owned browser
+resources immediately. After the native functional phase, an atomically written
+`container/container-permission.json` binds its completed cleanup to the exact
+acceptance run ID, dev-ci run ID and source SHA. The container callback records
+its identity before waiting, and inventories browsers only after permission;
+its `ready.json` is diagnostic timing, not browser permission. Any stage failure
+or unexpected native-server exit cancels sibling work, drains started tasks and
+preserves failures before final cleanup.
 
 After the original runner, callback/Playwright processes and their owned groups
 have stopped, run
@@ -226,9 +244,12 @@ node packages/daynight-web/scripts/acceptance.mts --cleanup
 node packages/daynight-web/scripts/acceptance.mts --cleanup RUN_ID
 ```
 
-No receipt is a no-op. Valid receipts constrain recovery to recorded run/source
-identities, exact Docker labels and names, and Linux PID/executable/start-time
-identity. A still-running native Go process also requires its recorded binary
+No receipt is a no-op. Recovery accepts only top-level schema 2 receipts;
+schema 1 and unknown versions fail without a compatibility fallback. Valid
+receipts constrain recovery to recorded run/source identities, exact Docker labels and names, and Linux PID/executable/start-time
+identity. It verifies recorded stage command identities/groups and visits browser
+phases in reverse order: `native/capacity`, `container`, `native/functional`.
+A still-running native Go process also requires its recorded binary
 hash before targeted termination. Browser recovery checks its recorded executable,
 process group and profile marker; ambiguous startup processes, orphan-only groups
 or unknown new profiles cause failure and remain for diagnosis. It does not kill

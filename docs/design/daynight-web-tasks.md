@@ -297,9 +297,10 @@ localhost 的生产 Dockerfile 和 nginx 配置，完成独立资源与生命周
 这些改动均已合并，[对应主线验证](https://github.com/codetreker/daynight/actions/runs/39446442068)
 通过。逐次结果、测试源码身份、覆盖率与清理回执由对应 PR 和 CI 保存。
 
-`pnpm web:acceptance` 构建真实 UI 和 Go 二进制，在专用 PostgreSQL 上运行原生
-浏览器用例，再经 dev-ci gateway 运行功能用例；固定图集性能与独立超限拒绝在
-原生目标执行。验证命令、要求与场景映射、浏览器身份及回执解释由
+`pnpm web:acceptance` 构建真实 UI 和 Go 二进制，并与正常 dev-ci 生产构建并行
+准备原生服务。浏览器依次执行原生功能、dev-ci gateway 功能和原生容量/超限阶段；
+容量开始前全部准备与容器清理必须结束。当前调度与阶段证据由
+[流水线决策](../../.agents/notes/implemented/testing/2026-10-21-web-acceptance-pipeline.md)定义。验证命令、要求与场景映射、浏览器身份及回执解释由
 [web 验证说明](../../packages/daynight-web/README.md#production-browser-acceptance)拥有。
 [生产验收决策](../../.agents/notes/implemented/testing/2026-10-20-dashboard-production-acceptance.md)
 保留验证策略、实际部署故障研究的范围与持久证据；本地回执和历史镜像仍保留各自

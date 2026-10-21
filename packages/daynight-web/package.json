@@ -10,7 +10,7 @@
     "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "build": "pnpm typecheck && vite build",
-    "test": "node --test scripts/coverage.test.mts scripts/dagre.test.mts scripts/publish-assets.test.mts scripts/acceptance/report.test.mts scripts/acceptance/performance.test.mts scripts/acceptance/identity.test.mts && vitest run --coverage && node scripts/coverage.mts",
+    "test": "node --test scripts/coverage.test.mts scripts/dagre.test.mts scripts/publish-assets.test.mts scripts/acceptance/report.test.mts scripts/acceptance/performance.test.mts scripts/acceptance/identity.test.mts scripts/acceptance/permission.test.mts scripts/acceptance/pipeline.test.mts scripts/acceptance/runner.test.mts && vitest run --coverage && node scripts/coverage.mts",
     "test:unit": "vitest run",
     "preview": "vite preview --host 127.0.0.1",
     "test:acceptance": "node scripts/acceptance.mts"
