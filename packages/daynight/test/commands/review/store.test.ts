@@ -65,10 +65,10 @@ describe("durable SQLite initialization", () => {
   it("creates a versioned WAL database at a real Unicode path", () => {
     const { file } = fixture();
     const sql = connect(file);
-    expect(sql.pragma("user_version", { simple: true })).toBe(1);
+    expect(sql.pragma("user_version", { simple: true })).toBe(2);
     expect(sql.pragma("journal_mode", { simple: true })).toBe("wal");
     expect(sql.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all()).toEqual([
-      { name: "pull_requests" }, { name: "repositories" }, { name: "reviews" },
+      { name: "pull_requests" }, { name: "repositories" }, { name: "review_publications" }, { name: "reviews" },
     ]);
     for (const table of ["repositories", "pull_requests", "reviews"]) expect(sql.pragma(`foreign_key_list(${table})`)).toEqual([]);
   });
@@ -77,10 +77,10 @@ describe("durable SQLite initialization", () => {
     const { file, store } = fixture();
     close(store);
     const sql = connect(file);
-    sql.pragma("user_version = 2");
+    sql.pragma("user_version = 3");
     sql.exec("CREATE TABLE future_data (value TEXT); INSERT INTO future_data VALUES ('preserved')");
     expect(() => openStore(file)).toThrow("newer than supported");
-    expect(sql.pragma("user_version", { simple: true })).toBe(2);
+    expect(sql.pragma("user_version", { simple: true })).toBe(3);
     expect(sql.prepare("SELECT value FROM future_data").get()).toEqual({ value: "preserved" });
   });
 
@@ -88,12 +88,42 @@ describe("durable SQLite initialization", () => {
     const { file, store } = fixture();
     close(store);
     const sql = connect(file);
-    sql.exec("DROP TABLE repositories; DROP TABLE pull_requests; DROP TABLE reviews; CREATE TABLE reviews (sentinel TEXT); INSERT INTO reviews VALUES ('retained')");
+    sql.exec("DROP TABLE repositories; DROP TABLE pull_requests; DROP TABLE reviews; DROP TABLE review_publications; CREATE TABLE reviews (sentinel TEXT); INSERT INTO reviews VALUES ('retained')");
     sql.pragma("user_version = 0");
     expect(() => openStore(file)).toThrow("reviews already exists");
     expect(sql.pragma("user_version", { simple: true })).toBe(0);
     expect(sql.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all()).toEqual([{ name: "reviews" }]);
     expect(sql.prepare("SELECT sentinel FROM reviews").get()).toEqual({ sentinel: "retained" });
+  });
+
+  it("migrates schema1 transactionally while retaining sessions, worktrees, active process identities and historical completions", () => {
+    const f = fixture(); f.initialize(); f.observe();
+    const first = f.reserve(); f.prepare(first); const firstRunning = f.launch(first);
+    f.store.completeReview({ reviewId: first.id, attempt: firstRunning.attemptCount }, stopped, 50);
+    f.observe({ headSha: "head-b" }, 60);
+    const active = f.reserve(3, 70); f.prepare(active); f.launch(active, 80);
+    f.store.recordProcess({ reviewId: active.id, attempt: 1 }, { pid: 987, identity: "owned-process" });
+    const repositoryBefore = f.store.getRepository(repository);
+    const prBefore = f.store.getPullRequest(pr);
+    const reviewsBefore = f.store.listReviews(pr);
+    close(f.store);
+    const sql = connect(f.file); sql.exec("DROP TABLE review_publications; PRAGMA user_version = 1");
+    const migrated = open(f.file);
+    expect(sql.pragma("user_version", { simple: true })).toBe(2);
+    expect(migrated.getRepository(repository)).toEqual(repositoryBefore);
+    expect(migrated.getPullRequest(pr)).toEqual(prBefore);
+    expect(migrated.listReviews(pr)).toEqual(reviewsBefore);
+    expect(migrated.getReviewPublication(first.id)).toEqual({ phase: "legacy", publisherId: null, outcome: null, remoteReviewId: null, threadIds: [], followupConsumed: false });
+    expect(migrated.getReviewPublication(active.id)).toBeNull();
+  });
+
+  it("rolls back a schema1 publication migration without altering its data when DDL fails", () => {
+    const f = fixture(); f.initialize(); f.observe(); const before = f.store.getPullRequest(pr); close(f.store);
+    const sql = connect(f.file); sql.pragma("user_version = 1");
+    expect(() => openStore(f.file)).toThrow("review_publications already exists");
+    expect(sql.pragma("user_version", { simple: true })).toBe(1);
+    expect(sql.prepare("SELECT head_sha FROM pull_requests").get()).toEqual({ head_sha: before!.headSha });
+    expect(sql.prepare("SELECT count(*) AS count FROM review_publications").get()).toEqual({ count: 0 });
   });
 
   it("exposes real write contention and leaves no partial observation", () => {

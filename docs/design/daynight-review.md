@@ -1,8 +1,8 @@
 # Daynight review 架构设计
 
 状态：review 已接入配置、SQLite、GitHub 观测、Git 管理、Copilot 会话、内置 skill
-和前台协调。
-受控执行链已实现，真实 GitHub/Copilot 验收仍待完成。验证命令与 receipt 解释见
+和前台协调，并通过原生 review conversation 管理后续轮次。
+受控执行链与真实服务的证据分别保存。验证命令与 receipt 解释见
 [仓库验证说明](../../README.md#validation)，逐次运行结果随对应 PR 与 CI 保存。
 
 `review` 是 `daynight` 客户端中的完整命令模块。`review run` 在单个前台 Node.js
@@ -115,7 +115,8 @@ review 模式需要预先安装 Git、`gh` 和 Copilot CLI，`gh` 认证提前�
 
 `readReviewListingSnapshot` 以 `readonly` 和 `fileMustExist` 打开已有数据库，在一个
 短的 deferred 事务内检查表结构版本并读取仓库、Open PR 和相关审查记录。读取路径
-只接受已支持的版本 1，不调用运行时开库、迁移、恢复或日志写入。数据库缺失时返回
+接受表结构版本 1 或 2，不调用运行时开库、迁移、恢复或日志写入。版本 1 读取
+按原有记录语义返回，新字段仅由运行时显式迁移建立。数据库缺失时返回
 空快照且不创建文件。缺失判断逐级检查父路径，直到最近既有祖先，并要求该祖先
 解析为目录；中间父目录同样缺失可以表示未初始化。非目录祖先、悬空的祖先符号链接、
 权限错误或文件系统根查询失败均报错，不能归为未初始化。已有空文件、损坏或版本
@@ -164,9 +165,13 @@ flowchart TD
     DB --> Queue[CLI 内待处理的 PR]
     Queue --> Git[准备 PR 的 worktree]
     Git --> Agent[Copilot 子进程]
-    Agent --> GitHub[agent 发布行级评论或批准]
+    Agent --> GitHub[agent 发布可 resolve 评论或批准]
     Agent --> Marker[末尾纯文本完成行]
-    Marker --> DB
+    Marker --> Verify[只读核对远端 review 与 thread]
+    GitHub --> Verify
+    Verify --> DB
+    GitHub --> Resolved[全部 conversation 已 resolve]
+    Resolved --> Queue
 ```
 
 轮询与审查调度是在同一个 Node.js 进程内运行的异步任务。轮询器不等待整轮审查结束
@@ -193,7 +198,8 @@ PR 预留，但不占审查 Worker 容量。待处理期间的多次更新合并
 | `runtime.ts` | review 模块组装、实例持有关系、信号与有序关闭 |
 | `skill.ts` 与 `skills/daynight-review/` | 发布资源校验、内容寻址快照、发现结果校验，以及内置审查方法 |
 | `processes.ts` | 本次执行的进程组或 Windows 进程树停止与执行证据 |
-| `adapters/github.ts` | 通过 `gh` 读取仓库、PR、分页与当前 CI 完整状态，不登记本地状态 |
+| `publication.ts` | 稳定审查发布身份和完整远端结果的匹配规则 |
+| `adapters/github.ts` | 通过 `gh` 读取仓库、PR、分页、当前 CI、review 和 conversation 完整状态，不登记本地状态 |
 | `adapters/worktrees.ts` | 克隆校验、fetch、PR worktree 准备与清理 |
 | `adapters/copilot.ts` | 提示词、会话选择、子进程执行和完成检查 |
 
@@ -233,16 +239,18 @@ API 请求为兼容 `gh` 的主机名校验，会在受控内存中读取已有�
 配置与状态位置的选择记录在
 [用户主目录配置决策](../../.agents/notes/implemented/architecture/2026-10-16-user-home-review-configuration.md)。
 
-表结构需要三张表：
+状态表按仓库观测、审查执行和远端发布分别保存：
 
 | 表 | 键 | 保存的状态 |
 |---|---|---|
 | `repositories` | 主机 + 稳定的 GitHub 仓库 ID | 远程地址、本地路径、可为空的 `start_pr_no`、初始化时间、最近成功轮询及错误 |
 | `pull_requests` | 仓库 ID + PR 编号 | 观测到的 open/draft/head/base branch、待审及已完成修订序号、会话 UUID 及已建立标记、worktree 路径、清理状态 |
 | `reviews` | 审查 UUID | PR 身份、不可变的修订序号/head/base branch、固定的 base SHA、状态、尝试次数、重试时间、子进程身份、日志路径、最近错误 |
+| `review_publications` | 审查 UUID | `prepared`、`pending`、`verified` 或 `legacy` 阶段，固定发布者，`approved`/`commented` 结果，远端 review/thread 身份及 follow-up 已消费标记 |
 
 修订序号是本地递增的数字，用于表示观测到的审查触发事件。即使 head SHA 未变化，
-它也能避免丢失 Draft 转 ready 或修改目标分支的触发事件。待审修订序号与已完成修订
+它也能避免丢失 Draft 转 ready、修改目标分支或上一轮反馈解决的触发事件。
+待审修订序号与已完成修订
 序号分开保存。一轮正在执行的审查只持有启动时捕获的修订序号；完成它不得同时将更新
 的待审修订标记为完成。审查状态为 `preparing`、`running`、`retry_wait`、`completed`、
 `failed`、`interrupted` 或 `superseded`。活跃审查的唯一索引覆盖 `preparing`、
@@ -251,14 +259,25 @@ API 请求为兼容 `gh` 的主机名校验，会在受控内存中读取已有�
 
 相关状态变更使用短事务。事务不得跨越 Git、API 或 agent 调用。启用 WAL、
 `synchronous=FULL`，并设置有上限的 busy timeout；数据库保存在本地文件系统。
-使用显式的表结构迁移，并暴露迁移失败。参见
+运行时通过显式表结构迁移从版本 1 升到版本 2，增加发布记录，保留原表中的永久
+边界、修订、
+尝试预算、会话、worktree、日志和进程证据；只读列表不迁移。迁移和查询失败均暴露。参见
 [SQLite 事务](https://www.sqlite.org/lang_transaction.html)和
 [同步设置](https://www.sqlite.org/pragma.html#pragma_synchronous)。
 
 状态模块以同步函数维护这些记录，时间、UUID 和已经验证的外部结果由调用者传入。
 `start_pr_no` 从 NULL 写入整数的操作只允许成功一次；零表示成功完成的空扫描，不表示
 需要重新初始化。已完成审查只推进它捕获的修订；最终失败的修订不能通过新建审查 ID
-重新获得尝试预算。会话 UUID 在启动前保存，已建立标记只向前推进。worktree 登记、
+重新获得尝试预算。启动前保存当前认证 viewer 的 node ID，发布记录以 `prepared`
+固定本轮发布者；
+账户变化不能让该轮改用另一发布者。完成标记接受且正式审查进程排除后转为
+`pending`。远端核对失败只重新查询，
+不重新调用 Copilot，也不消耗 agent 尝试；该状态跨重启保留。核对成功后，在同一事务
+中记录远端结果并推进捕获修订。`approved` 对当前目标停止调度；`commented` 保存
+实际 review/thread 身份，并且只在一次完整快照确认所有 conversation 已解决后消费
+一次 follow-up。已有较新目标时合并该信号，避免产生重复轮次。
+
+会话 UUID 在启动前保存，已建立标记只向前推进。worktree 登记、
 待清理标记和清理错误也保留在数据库中，但不能替代 Git 身份或会话文件检查。
 `cleanup_pending` 是独立于 PR 开关状态的资源屏障，观测到重新打开不会清除标记或错误。
 `listCleanupCandidates` 包含已重新打开的待清理 PR；只在调用者确认清理操作已停止并
@@ -274,32 +293,36 @@ API 请求为兼容 `gh` 的主机名校验，会在受控内存中读取已有�
 
 ## 轮询与工作选择
 
-1. 对每个尚未初始化的仓库，枚举所有状态、所有分页中的 PR，计算最大编号，并在一次
-   成功的数据库提交中保存 `Start PR No`。成功扫描且结果为空时保存零；失败时保持
-   未完成初始化。初始化期间创建的 PR 可能落在这个边界之内。
-2. 后续轮询枚举编号超过永久边界的 Open PR，包括 Draft。完整扫描 Open PR 后，
-   对未出现在扫描结果中的已跟踪 PR 单独读取，确认后才记录关闭。失败或不完整的响应
-   不得作为关闭证据。
-3. 更新观测结果，并在首次发现、head SHA 变化、目标分支名变化或观测到 Draft 转 ready
-   时递增待审修订序号。Draft 期间的变化会被保存，但不调度执行。重新打开策略
-   也会在观测到 closed 转 open 时递增修订序号。
-4. 调度 Open、非 Draft，且待审修订序号大于已完成修订序号的 PR；该修订尚未被标记
-   为最终失败，PR 也不得有已预留的操作或尚未解决的中断执行。已有到期重试记录时复用该
-   记录，不另建一轮审查。公平选择工作，并遵守并发限制和截止时间。独立异步查询当前
-   PR 的 CI，只有通过才进入工作预留；等待不创建审查、会话或 worktree，也不占 Worker。
-   未通过的队首不阻挡其他已通过 PR。结果仅在修订序号、head SHA 和目标分支都匹配时
-   有效，按现有轮询间隔更新，错误遵守限流期限；重启后重新查询，不修改 SQLite 表结构。
-5. 在第一个 await 之前同步预留该 PR，并在执行 Git 操作前，将选中的审查持久化为
-   `preparing`。读取当前元数据，针对捕获的目标准备 worktree；目标已变化时将旧审查
-   标记为 `superseded`。启动子进程前重新读取 PR 并查询 CI，await 返回后再次核对数据库
-   目标和取消状态。CI 退回未通过或查询失败时延后准备、释放容量，保留原审查、会话和
-   尝试预算。只有通过后才持久化固定的目标和 `running` 状态，然后启动 Copilot。预留一直保留到子进程 close；
-   清理也必须等待该预留释放。完成后重新核对最新观测状态，使后续变化继续保持待处理。
+1. 对尚未初始化的仓库，枚举所有状态、所有分页中的 PR，计算最大编号，在一次成功的
+   数据库提交中保存 `Start PR No`。成功空扫描保存零，失败保持未初始化；扫描期间
+   创建的 PR 可能落在永久边界内。
+2. 后续轮询枚举边界以上的 Open PR，包括 Draft。完整扫描后，对未出现的已跟踪 PR
+   单独读取并确认关闭。不完整响应不能作为关闭证据。首次发现、head SHA、目标分支名、
+   Draft 转 ready 和 closed 转 open 的观测推进待审修订。Draft 期间保存变化但不执行。
+3. 新轮次候选必须 Open、非 Draft、有未完成轮次、没有最终失败抑制或活跃/不确定操作，
+   且当前目标尚未获得已核对的 Daynight approval。独立异步查询当前 CI 及完整 review
+   snapshot：只有 CI 通过且所有作者都没有未解决的原生 review thread 才能取得工作
+   预留。outdated thread 仍阻塞。等待不创建审查、会话或 worktree，不占 Worker 或
+   尝试；队首等待不阻挡其他就绪 PR。资格只对匹配的修订、head 和目标分支有效，按
+   轮询间隔刷新；错误遵守限流期限，重启重新查询。
+4. 成功 `COMMENT` 留下一次性反馈屏障。完整 snapshot 确认所有 conversation resolve
+   后，原子消费该屏障并推进一轮；已有更新目标则合并到最新待审轮次。无需先观察
+   open 数量，作者在 agent 完成前就 resolve 仍能唤醒。原生 review 正文和普通 issue
+   comment 没有 resolution 状态，不参与反馈屏障。resolve 只是再验证信号，不能代表
+   修复已经正确。
+5. 第一个 await 之前同步预留 PR，执行 Git 前持久化 `preparing`。准备 worktree 后、
+   启动新审查前重新校验目标、CI 和 conversation，再核对数据库目标及取消状态。资格
+   回退时释放容量并保留会话和预算。只有资格通过才持久化固定目标和 `running`，
+   然后启动 Copilot。预留涵盖整个执行和进程排除，清理必须等待它释放。
+6. 同一轮发布确认不属于新轮次。已有结果通过稳定身份对账，该轮自己的未解决反馈
+   不能使确认死锁。已接受 marker 的远端查询失败保存为只读待核对工作；无需模型
+   重启，也不需要等待这些反馈 resolve。确认完成后再依照新轮次资格决定后续工作。
 
-比较 `head.sha` 和 `base.ref`；只有 `base.sha` 变化不调度审查。不得将最近看到的 PR
-编号或 `updated_at` 用作永久轮询游标，范围内的旧 PR 仍可能不断发生变化。一个仓库
-扫描失败时，记录日志并重试，不重置其边界，也不停止其他仓库。遵守 GitHub 限流要求
-的等待时间。
+head SHA 与目标分支名标识代码目标，固定 base SHA 保持该轮 diff 和 CI 上下文。
+仅 base tip 变化、仅标题/description 编辑和 CI 重跑不生成新轮次。当前目标已经
+approval 时保持完成，不撤销批准；新 head 或目标分支变化仍需审查。不得将最大 PR
+编号或 `updated_at` 用作永久轮询游标。仓库扫描失败保存错误，不重置边界或停止其他
+仓库；同一 PR 的多次变化与反馈信号合并，完成旧轮次不能覆盖较新待审目标。
 
 CI 资格通过只读 GraphQL 查询取得。检查 head 和可用的 `potentialMergeCommit` 的
 `statusCheckRollup`，覆盖 check runs 与旧式 statuses；同时分页读取 check suites，防止
@@ -309,9 +332,22 @@ CI 资格通过只读 GraphQL 查询取得。检查 head 和可用的 `potential
 检查时直接放行。分页固定目标、suite 总数及唯一身份并校验完整覆盖；可见的集合变化、错误、未知状态或
 不完整数据都不能授权启动。
 
+conversation 和发布对账使用 `getPullRequestReviewSnapshot` 取得完整远端快照，
+分别分页读取全部 review、review thread 及 thread 中用于证明归属的评论。集合身份、
+计数、游标和必需字段必须一致，API 错误或不完整集合不能证明未解决数量为零。
+只有正向确认 parent review 为 `PENDING` 的未发布草稿 thread 才从已提交 conversation
+中排除，避免要求作者处理不可见草稿；归属未知的 thread 仍保留其阻塞作用。
+新轮次启动前捕获的发布者 node ID 与 review 的 author node ID 精确匹配；
+当前 viewer 改变不能覆盖已保存的发布者。稳定 Daynight
+身份必须是 review 正文中的完整独立标识，commit 必须是捕获 head。多个候选按明确
+规则核对，不能用不相符或较旧结果覆盖有效的 approval。`COMMENTED` 只有具备真实、
+归属于该发布的原生 thread 才是成功反馈；它们即使已经 resolve 仍是有效发布证据。
+
 CI 只是启动条件，不递增待审修订。已完成审查不会因 CI 重跑而再次启动；已开始的
 agent 也不因后续新登记的 CI 自动取消。没有检查时直接放行意味着后续才登记的 workflow
-可能在审查启动后出现。CI 请求与其他受管操作一起响应关闭，并等待已发出的请求结束。
+可能在审查启动后出现。CI、snapshot 请求与其他受管操作共同响应关闭，并等待已发出
+请求结束。资格与完成核对规则的选择见
+[conversation 轮次决策](../../.agents/notes/implemented/architecture/2026-10-21-review-conversation-cycle.md)。
 
 `adapters/github.ts` 提供只读查询，`polling.ts` 编排一次仓库观测，不启动定时器。
 通过参数数组调用 `gh api --include`
@@ -490,23 +526,36 @@ PR 标题、description 及其链接的相关范围需求。agent 以原定问�
 行数或文件数拒绝跨模块的必要修改。具体规则由[review 需求 R10](../spec/daynight-review.md#r10-审查判断与结果发布)
 持有，决策依据见[PR 质量门槛决策](../../.agents/notes/implemented/process/2026-10-21-review-pr-quality-gates.md)。
 
-发布或确认既有发布前，agent 立即重新读取当前标题和 description，结合相关需求
-重新评估质量门槛，并检查 PR 是否 Open 且非 Draft，以及 head 和目标分支是否符合预期。
-只有质量门槛通过且没有 Critical/Major 代码问题才使用 `APPROVE`。有阻断问题时使用
-`COMMENT` review：description 或无合适代码行的问题写入正文，越界修改和代码问题
-在适合的相关 diff 行评论；不使用 `REQUEST_CHANGES`。通过 `gh api` 显式提供
-`commit_id`，使发布结果归属于被审查的 head，并在 review 正文中包含稳定的审查 ID。
-评论使用英文，并表明 agent 身份。daemon 不提交 review，也不解析质量判断或问题
-内容；不增加结果 schema、SQLite 字段或仅元数据变化的审查触发条件。
+agent 首先按稳定审查身份、捕获 commit 和当前 `gh` 发布者核对既有结果。匹配的
+`APPROVED` 直接确认，description 后续变化不能撤销它；已有 `COMMENTED` 必须证明
+归属该 review 的实际 thread，同一轮自己的未解决反馈不阻塞恢复。发布途中已有
+pending review 或 thread 时继续完成它，不能重复创建同一反馈。自己的过时 pending
+草稿可以清理，以免遗留未提交内容；已提交 approval 不撤销。
 
-GitHub API 无法原子地断言发布期间 head 一直未变。作者也无法批准自己的 PR。
-这些情况不得导致虚假的完成状态。完成标记是 agent 的声明，不是独立的远程证据，
-也不是跨越 GitHub 和 SQLite 的事务。资料来源：
+新发布前立即读取标题和 description，结合需求重新评估质量门槛，并确认 PR Open、
+非 Draft、head 和目标分支未变，没有尚未解决的 conversation。通过两项门槛且没有
+Critical/Major 代码问题才 `APPROVE`；有真实阻断问题则 `COMMENT` 并留下至少一条
+原生可 resolve 的 review thread。越界修改和代码问题评论在适合的相关 diff 行。
+description 和其他 PR 级问题使用主要修改文件的文件级 thread，明确说明它是 PR 级
+问题；review 正文或普通 PR comment 不能代替该反馈。评论使用英文并表明 agent 身份，
+不使用 `REQUEST_CHANGES`，也不得为满足发布协议制造问题。
+
+每个发布显式绑定捕获 `commit_id`，review 正文包含由 `publication.ts` 构造的稳定
+审查身份。文件级反馈先创建带稳定正文和 commit 的 pending review，再调用 GraphQL
+`addPullRequestReviewThread`，提供该 review 的 node ID、`subjectType: FILE`、真实
+修改路径和反馈正文，最后提交 `COMMENT`。REST batch review comments 不提供文件级
+subject 参数，不能伪造行号来代替；重试继续已有 pending review/thread。daemon 仍不
+提交 review 或判断 finding 内容，只核对实际远端发布及会话轮次需要的结果。
+
+GitHub 无法原子断言发布期间 head 始终不变，作者也不能批准自己的 PR；无法真实
+完成发布必须暴露为操作失败。marker 是进程完成声明，远端 review/thread 才是发布
+证据；两者都不构成 GitHub 与 SQLite 的跨系统事务。资料来源：
 [Copilot 非交互调用](https://docs.github.com/en/copilot/how-tos/copilot-cli/automate-copilot-cli/run-cli-programmatically)、
 [GitHub CLI 认证回退](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli#authenticating-with-github-cli)、
 [Copilot 命令行参数](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference)、
 [会话存储](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference)、
-[创建 review](https://docs.github.com/en/rest/pulls/reviews#create-a-review-for-a-pull-request)和
+[创建 review](https://docs.github.com/en/rest/pulls/reviews#create-a-review-for-a-pull-request)、
+[review thread mutation](https://docs.github.com/en/graphql/reference/mutations#addpullrequestreviewthread)和
 [审查权限](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/reviewing-proposed-changes-in-a-pull-request)。
 
 ## 完成、重试与退出
@@ -539,13 +588,19 @@ PR 123 Review Completed
 只有匹配所请求命令的结构化 spawn ENOENT 加上包装进程关闭，才能使用此明确失败结论；
 不能把普通输出捕获错误当作未启动。启动意图已提交时，失败仍消耗本次尝试预算。
 
-目标未变化且缺少完成标记的审查转入 `retry_wait`；恢复同一会话，要求它重新评估
-当前 PR 质量门槛并检查 GitHub 上已有的发布结果。只有既有发布与当前门槛结果及
-捕获目标一致时才能确认完成，否则完成所需的剩余发布；避免重复发布仍然适用的
-相同结果。每次尝试使用新的日志。建议策略为最多
-尝试三次，从 `retryDelayMs` 开始指数退避，延迟上限为十分钟。次数耗尽时记录 `failed`
-并输出原因。调度器继续抑制该修订，重启后也一样；后续观测到新的触发事件时，创建
-可执行的更新修订。普通轮询不得通过新建审查 ID 重置已耗尽的尝试预算。
+精确完成标记与进程排除都成立后，先保存待核对发布状态，再查询远端结果。核对
+成功后，原子记录 `approved` 或带 review/thread ID 的 `commented`，推进捕获修订。
+查询错误、限流或不完整结果保留待核对状态和错误，按退避只读重试；重启继续该核对，
+不运行 Copilot、不重新消费模型尝试，即使 marker 来自最后一次模型尝试也一样。
+完整查询成功却没有匹配的合法结果属于协议失败，清除待核对阶段并回到既有有限模型
+重试；最后一次尝试仍无合法结果则失败并抑制该修订。
+
+目标未变化且缺少 marker 的审查沿用 `retry_wait` 和同一会话。恢复优先核对远端影响，
+避免重复发布；匹配 approval 保持有效，匹配 COMMENT 必须有真实 thread。自己的
+未解决 conversation 不能阻塞同轮确认；新一轮才适用零未解决 gate。执行或发布失败
+最多尝试三次，从 `retryDelayMs` 开始指数退避，上限十分钟；耗尽记录 `failed` 和
+原因，普通轮询与重启不能通过换审查 ID 重置预算。不能用虚构 finding 掩盖工具、
+权限或发布失败。
 
 尝试次数在提交启动 agent 的意图时原子递增，并在实际启动子进程前保存。提交后即使
 启动失败或进程中断，该次预算也已消耗。仅进行 Git 准备不消耗 agent 尝试次数；准备
@@ -640,14 +695,18 @@ fixtures 验证克隆、私有 refs、detached head、dirty 内容、所有权�
 其他 PR 工作区保留。Copilot 测试使用受控可执行文件和真实 SQLite，验证会话选择、
 启动意图、stdin 提示词、skill 发现及精确路径选择、分流日志、两阶段的预算/截止时间/
 取消/进程排除、完成标记及异常输出，不调用真实模型或发布 review。质量门槛的提示词
-断言覆盖恢复既有结果前重评当前标题和 description、允许仅含正文的 `COMMENT`，
-以及两项门槛通过且没有 Critical/Major 才能批准。初次读取 PR 信息、相关需求和检查
+断言覆盖优先恢复既有发布、保留 approval、新发布前重评当前标题和 description、
+`COMMENT` 必须有原生 thread，以及两项门槛通过且没有 Critical/Major 才能批准。
+初次读取 PR 信息、相关需求和检查
 完整 diff 的指令由加载的 skill 提供；提示词断言不证明模型对这些指令的实际执行。
 skill 资源验证覆盖完整 bundle、内容哈希、原子缓存和已有快照损坏；安装验收验证
 实际发布资源存在。
 执行边界见[Copilot 会话执行决策](../../.agents/notes/implemented/architecture/2026-10-17-copilot-session-execution.md)。
 协调器测试使用真实 SQLite、受控观测和失败注入，验证公平调度、并发容量、永久边界、
-预算抑制、取消、清理及恢复。公平调度案例通过注入时钟及显式控制 CI 响应、执行结束
+预算抑制、取消、清理及恢复。conversation 用例覆盖任意作者与 outdated thread 的
+阻塞、相同 SHA resolve 后一次后续轮次、完成前 resolve、合并新目标、重复轮询与
+重启不重复消费，以及 marker 后发布查询失败的只读恢复。公平调度案例通过注入
+时钟及显式控制 CI 响应、执行结束
 来建立先后关系：先确认新修订已持久化，再让两个等待 PR 的 CI 就绪，逐次释放 Worker，
 验证两个等待 PR 均先于持续更新 PR 的后续修订，且就绪候选保持 FIFO。时钟在准入比较
 期间固定，机器负载不会使其中一个候选的 CI 证据先过期；详见
@@ -702,8 +761,12 @@ CI 只上传精选的工具版本清单、审查生命周期 receipt 和 `.tmp/u
 [仓库验证说明](../../README.md#validation)定义原生平台 receipt 的源码身份与真实服务验收边界。
 
 独立的既有数据 fixture 直接构造重构前的 YAML 与版本 1 SQLite 表和记录，不使用
-当前 store 创建基线。安装后的列表及运行操作必须复用永久边界、修订、预算、会话和
-worktree 身份，且保留未解决的清理屏障；命令重组不构成重新初始化的理由。
+当前 store 创建基线。安装后的列表必须只读旧状态，运行时显式迁移并复用永久边界、
+修订、预算、会话、日志、进程和 worktree 身份，保留清理屏障。旧的已完成记录按相关
+远端结果对账：从稳定审查身份和捕获 head 对应的真实历史 approval 取得其发布者，
+不假定它等于今天的 viewer。匹配 approval 保持完成；缺少有效 approval 的相关当前记录可消费
+一次迁移采用轮次，包括只有正文而无 thread 的历史 COMMENT。不能伪造旧 thread 或
+反复重置预算，无关历史不启动模型。
 
 下表定义模块、原生子进程和安装后验收需要观测的行为；实际通过记录及其对应修订
 随对应 PR 与 CI 保存。历史平台 receipt 不构成自动接管失效锁行为的验证：
@@ -711,10 +774,10 @@ worktree 身份，且保留未解决的清理屏障；命令重组不构成重�
 | 范围 | 必须观测的行为 |
 |---|---|
 | 轮询 | 初始化覆盖所有分页和 PR 状态；永久边界；扫描失败不得关闭 PR 或将仓库视为空仓库 |
-| 触发条件 | head、目标分支名、ready 状态变化触发；仅 base SHA 变化不触发；Draft 不得启动；旧审查完成后保留待审修订 |
+| 触发条件 | head、目标分支名、ready 状态变化与已完成 COMMENT 的反馈解决触发；同 SHA 允许一次后续轮次；仅 base SHA 或元数据变化不触发；已批准目标保持完成；Draft 不得启动；旧审查完成后保留较新待审修订 |
 | Worktree | 所属仓库根目录的 `.worktrees/`、固定 PR 路径、其他 worktree 保留、fork PR 引用、确切的 detached head、脏文件残留、正确的仓库与路径校验、关闭和重新打开时的清理 |
 | agent 输出 | 分块 Unicode 与 CRLF、精确末行、错误 PR 编号、stderr 中的标记、带前后缀或闭合代码围栏的标记、标记后的内容、捕获失败、非零退出 |
-| 会话与重试 | 固定 UUID 后显式恢复、首次启动中断、历史缺失报错、重新评估当前质量门槛后才确认适用的既有发布结果、持久化尝试预算 |
+| 会话与重试 | 固定 UUID 后显式恢复、首次启动中断、历史缺失报错、优先核对既有发布避免重复、同轮确认允许自己的 open thread、持久化尝试预算、marker 后远端核对只读重试且可重启 |
 | 审查指令 | 读取当前标题、description 及相关范围需求；检查完整捕获 diff；description 与范围独立阻断批准；发布或确认前重评；只在门槛通过且没有 Critical/Major 时批准 |
 | 审查列表 | `review list` 与 `review ls` 等价、配置仓库顺序和 PR 编号排序、Draft 与仍 Open 的完成或失败记录、永久边界过滤、最新修订和旧活跃审查分别归属、重试及错误、待清理屏障与清理错误、最后完整观测时间、缺失状态不创建数据库、无效数据库报错、运行中只读一致快照 |
 | CLI 生命周期 | 审查期间继续轮询；准备、执行和清理的操作预留；抑制失败修订；`maxConcurrentWorker` 并发上限；Ctrl+C；拒绝第二个实例；异常退出后的失效锁自动接管；锁状态含糊时拒绝；中断审查及待清理资源阻塞与诊断 |
@@ -725,8 +788,8 @@ worktree 身份，且保留未解决的清理屏障；命令重组不构成重�
 行级评论和批准行为。受控的完整执行链验证编排、打包及文本/会话协议；真实模型判断、
 认证权限和远程发布效果仍需独立的实际运行证据。
 
-本次命令结构调整保持原有 YAML 字段、SQLite 版本 1 表结构、状态路径和持久化身份，
-不引入数据迁移或按命令分区。Webhook、分布式执行、UI 和其他 agent 提供方属于独立功能。
+YAML 字段、状态路径和持久化身份继续沿用；发布和反馈轮次通过显式 SQLite 迁移记录，
+不按命令分区。Webhook、分布式执行、UI 和其他 agent 提供方属于独立功能。
 进程监督服务会改变执行模型，超出本 CLI 设计的
 范围。单进程模型明确要求运维人员介入处理状态含糊的异常退出，不承诺透明恢复仍在
 运行的子进程。

@@ -13,7 +13,7 @@ const workspace = path.resolve(import.meta.dirname, "../../../..");
 const packageDirectory = path.join(workspace, "packages/daynight");
 const helpers = path.resolve(import.meta.dirname, "../fixtures/e2e");
 const existingState = path.resolve(import.meta.dirname, "../fixtures/review-state-v1");
-type Pull = { number: number; state: "open" | "closed"; draft: boolean; merged_at: string | null; head: { sha: string }; base: { ref: string; sha: string }; ci: "PENDING" | "FAILURE" | "SUCCESS" | null };
+type Pull = { number: number; state: "open" | "closed"; draft: boolean; merged_at: string | null; head: { sha: string }; base: { ref: string; sha: string }; ci: "PENDING" | "FAILURE" | "SUCCESS" | null; title: string; body: string };
 type Skill = { rootDirectory: string; directory: string; entrypoint: string; digest: string; contents: string; contentSha256: string };
 type Discovery = { args: string[]; cwd: string; skill: Skill };
 type Agent = Discovery & { session: string; target: { pullRequest: number; reviewId: string; revision: number; headSha: string; baseBranch: string }; head: string; reconciled: boolean; reviewFile: string; prompt: string; repositoryStatus: string };
@@ -72,14 +72,15 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     git(["--git-dir", origin, "update-ref", "refs/heads/release", base]);
     git(["--git-dir", origin, "update-ref", "refs/pull/11/head", first]);
     git(["--git-dir", origin, "update-ref", "refs/pull/12/head", third]);
-    const pull = (number: number, sha: string, draft = false): Pull => ({ number, state: "open", draft, merged_at: null, head: { sha }, base: { ref: "main", sha: base }, ci: null });
+    const pull = (number: number, sha: string, draft = false): Pull => ({ number, state: "open", draft, merged_at: null, head: { sha }, base: { ref: "main", sha: base }, ci: null, title: "Review lifecycle fixture", body: number === 12 ? "unclear" : "A focused lifecycle fixture." });
     const old = pull(10, first);
     const current = pull(11, first, true);
     const pulls = [old];
     let version = 0;
+    const resolvedThreadIds: string[] = [];
     const publishState = (): number => {
       const next = path.join(directory, `${randomUUID()}.json`);
-      writeFileSync(next, JSON.stringify({ version: ++version, pulls }));
+      writeFileSync(next, JSON.stringify({ version: ++version, pulls, resolvedThreadIds }));
       renameSync(next, path.join(directory, "api.json"));
       return version;
     };
@@ -91,6 +92,10 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     const agents = () => readRecords<Agent>("agents");
     const discoveries = () => readRecords<Discovery>("discoveries");
     const publications = () => readRecords<Publication>("publications");
+    const threads = () => readRecords<{ id: string; number: number; reviewId: string; subjectType?: string; line?: number }>("threads");
+    const resolveThreads = (number: number): void => {
+      for (const thread of threads().filter((item) => item.number === number)) if (!resolvedThreadIds.includes(thread.id)) resolvedThreadIds.push(thread.id);
+    };
     const databaseFile = path.join(stateDirectory, "state.sqlite");
     const query = <T>(sql: string): T | undefined => {
       if (!existsSync(databaseFile)) return undefined;
@@ -259,7 +264,8 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
             for (const row of pullRequests) delete row.observed_at;
           }
           return { schema: database.pragma("user_version", { simple: true }), repositories, pullRequests,
-            reviews: database.prepare("SELECT * FROM reviews ORDER BY id").all() };
+            reviews: database.prepare("SELECT * FROM reviews ORDER BY id").all(),
+            publications: database.prepare("SELECT * FROM review_publications ORDER BY review_id").all() };
         }).deferred();
       } finally { database.close(); }
     };
@@ -483,6 +489,10 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       renameSync(replacement, installedSkillFile);
       expect(readFileSync(installedSkillFile, "utf8")).toBe(updatedSkillContents);
       expect(readFileSync(path.join(sourceSkillDirectory, "SKILL.md"), "utf8")).toBe(originalSkillContents);
+      await observedWithoutReview(publishState(), 2);
+      expect(pr()!.desired_revision).toBe(3);
+      scenarios.push("unresolved-native-thread-blocks-fresh-round", "same-round-marker-reconciliation-with-open-thread");
+      resolveThreads(11);
       current.head.sha = third; current.ci = "PENDING";
       git(["--git-dir", origin, "update-ref", "refs/pull/11/head", third]);
       await observedWithoutReview(publishState(), 2);
@@ -526,13 +536,35 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       expect(pr(12)!.session_id).not.toBe(session);
       const descriptionReviews = publications().filter((item) => item.number === 12);
       expect(descriptionReviews).toHaveLength(1);
-      expect(descriptionReviews[0]).toMatchObject({ event: "COMMENT", commit_id: third, body: expect.stringContaining("PR-quality blocker") });
+      expect(readRecords<Publication>("reviews").filter((item) => item.number === 12)).toHaveLength(1);
+      expect(descriptionReviews[0]).toMatchObject({ event: "COMMENT", commit_id: third, body: expect.stringContaining("PR-wide description/scope issue") });
       expect(descriptionReviews[0]).not.toHaveProperty("comments");
       const descriptionAgents = agents().filter((item) => item.target.pullRequest === 12);
       expect(descriptionAgents).toHaveLength(2);
       expect(descriptionAgents.filter((item) => item.reconciled)).toHaveLength(1);
       expect(new Set(descriptionAgents.map((item) => item.session)).size).toBe(1);
-      scenarios.push("body-only-comment", "body-only-comment-retry-reconciliation");
+      expect(threads().filter((item) => item.number === 12)).toHaveLength(1);
+      const descriptionThread = threads().find((item) => item.number === 12)!;
+      expect(descriptionThread).toMatchObject({ subjectType: "FILE" });
+      expect(descriptionThread).not.toHaveProperty("line");
+      additional.body = "Clarify the lifecycle fixture description without changing its commits.";
+      await observedWithoutReview(publishState(), agents().length);
+      expect(pr(12)!.desired_revision).toBe(1);
+      scenarios.push("file-level-description-thread", "pending-file-thread-retry-reconciliation", "description-edit-waits-for-thread-resolution");
+      const beforeResolution = agents().length;
+      resolveThreads(12); publishState();
+      await completed(2, 12);
+      expect(agents()).toHaveLength(beforeResolution + 1);
+      expect(publications().filter((item) => item.number === 12)).toHaveLength(2);
+      expect(publications().filter((item) => item.number === 12 && item.event === "APPROVE")).toHaveLength(1);
+      const sameHeadAgents = agents().filter((item) => item.target.pullRequest === 12);
+      expect(sameHeadAgents.every((item) => item.target.headSha === third)).toBe(true);
+      expect(new Set(sameHeadAgents.map((item) => item.session)).size).toBe(1);
+      await observedWithoutReview(publishState(), beforeResolution + 1);
+      additional.body = "Edited after approval; retain the existing approval.";
+      await observedWithoutReview(publishState(), beforeResolution + 1);
+      expect(pr(12)!.desired_revision).toBe(2);
+      scenarios.push("description-only-resolution-admits-one-same-head-round", "approved-description-edit-preserves-approval");
       const completedConfiguration = readFileSync(configFile, "utf8");
       const completedSnapshot = databaseSnapshot(true);
       const completedLock = readFileSync(path.join(stateDirectory, "instance.lock"), "utf8");
@@ -543,7 +575,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       const withoutPollTime = (text: string): string => text.replace(/^Last observed: .*$/gm, "Last observed: <daemon poll time>");
       expect(withoutPollTime(aliasListing)).toBe(withoutPollTime(completedListing));
       expect(completedListing).toMatch(/^#11\s+Open\s+Completed\s+1$/m);
-      expect(completedListing).toMatch(/^#12\s+Open\s+Completed\s+2$/m);
+      expect(completedListing).toMatch(/^#12\s+Open\s+Completed\s+1$/m);
       expect(readFileSync(configFile, "utf8")).toBe(completedConfiguration);
       expect(readFileSync(path.join(stateDirectory, "instance.lock"), "utf8")).toBe(completedLock);
       expect(databaseSnapshot(true)).toEqual(completedSnapshot);
@@ -580,7 +612,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       scenarios.push("review-list-closed-snapshot");
       const calls = agents();
       const discoveryCalls = discoveries();
-      expect(calls).toHaveLength(7);
+      expect(calls).toHaveLength(8);
       expect(discoveryCalls).toHaveLength(calls.length);
       expect(discoveryCalls.every((item) => item.args.slice(-3).join(" ") === "skill list --json" && item.args.includes("--no-auto-update") && item.args[item.args.indexOf("-C") + 1] === item.cwd && !item.args.some((argument) => /^--(?:session-id|resume)=/.test(argument)))).toBe(true);
       expect([...discoveryCalls, ...calls].every((item) => item.args.includes(`--plugin-dir=${item.skill.rootDirectory}`))).toBe(true);
@@ -601,7 +633,8 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
           originalSkillSha256: initialSkill.contentSha256, updatedSkillSha256: resumedUpdatedAgent.skill.contentSha256,
           runningDaemonSkillPreserved: true, sameSessionUpdatedSkillAfterRestart: true, reviewedCheckoutClean: true,
           publications: publications().length, commentReviews: publications().filter((item) => item.event === "COMMENT").length,
-          approvingReviews: publications().filter((item) => item.event === "APPROVE").length, sameSessionAfterRestart: true, cleanShutdowns: 2, cleanedWorktrees: 2,
+          approvingReviews: publications().filter((item) => item.event === "APPROVE").length, nativeThreads: threads().length,
+          sameHeadReviewAfterResolution: true, approvedDescriptionEditsPreserved: true, sameSessionAfterRestart: true, cleanShutdowns: 2, cleanedWorktrees: 2,
           singletonRefusals: 1, abruptStops: 1, automaticStaleLockRecoveries: 1 },
       }, null, 2));
     } finally {

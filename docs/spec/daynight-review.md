@@ -82,32 +82,44 @@ daemon 按间隔持续轮询配置的仓库。只有同时满足以下条件的 
 - 状态为 Open。
 - 不是 Draft，即已 ready for review。
 - 当前 PR 提交的 CI 已全部结束并通过；没有任何 CI 检查时允许直接审查。
+- 没有未解决的原生 review conversation。所有作者的 `PullRequestReviewThread` 都纳入
+  判断；`isOutdated` 不等于已解决，行级和文件级 thread 同样适用。已证明所属 review
+  仍为 `PENDING` 的未发布草稿 thread 不属于已提交 conversation，不要求作者 resolve
+  不可见的草稿；无法确认归属或发布状态时不能推断已解决。
 
 通过状态包括 `success`、`skipped` 和 `neutral`。正在等待、运行、失败、取消、超时或
 需要人工批准的 CI 都不得放行；已登记但尚未创建 jobs 的 workflow 同样需要等待。
 同时检查 head 和可用的测试合并提交，覆盖 check runs 与旧式 commit statuses。
-API 查询失败或结果不完整不能视为没有 CI。
+API 查询失败或结果不完整不能视为没有 CI 或没有未解决的 conversation。
+conversation 必须完整分页；普通 PR issue comment 和 review 正文没有 resolution 状态，
+不能替代可 resolve 的 review thread。
 
 daemon 会跟踪 Draft PR，使其转为 ready 后能够获得审查资格。PR 处于 Draft 或关闭
 状态时，不得启动审查。等待 CI 不得消耗审查 Worker、尝试次数，也不应创建审查记录、
 会话或 worktree。CI 转为通过后，自动继续原先待处理的审查，无需新增提交。
 
-每次启动 agent，包括确认和重试，都重新确认当前目标与 CI。准备 worktree 期间 CI
-退回未通过时，保留既有会话及尝试预算并继续等待。已完成修订的 CI 后续变化不单独
-触发再次审查；已启动审查不因之后新登记或重跑 CI 而自动取消。
+每次启动模型，包括同一轮的确认和重试，都重新确认当前目标与 CI。新一轮还须确认
+conversation 状态。准备 worktree 期间资格不满足时，保留既有会话及尝试预算并继续
+等待。确认同一轮已经发布的结果
+不受该轮新建 conversation 的阻塞，避免自己的反馈使完成恢复无法继续。
+已完成修订的 CI 后续变化不单独触发再次审查；已启动审查不因之后新登记或重跑 CI
+而自动取消。
 
-### R6. 审查触发条件
+### R6. 审查轮次与触发条件
 
-对于编号超过边界的 PR，观察到以下任一情况时，只要满足 R5 的审查资格条件，就需要
-进行审查：
+对于编号超过边界的 PR，以下事件产生待审轮次：首次发现 ready PR、head SHA 变化、
+Draft 转 ready、目标分支名变化，以及上一轮 `COMMENT` 反馈全部解决。head 和目标分支
+仍用于确定审查目标及对应 CI；反馈解决后不要求新增 commit，也不要求修改 description。
 
-- 新发现的 PR 已经 ready for review。
-- PR 的 head SHA 变化，包括新增提交或 force push 后的变化。
-- PR 从 Draft 转为 ready for review。
-- PR 修改目标分支。
+新一轮只有在 R5 资格满足、当前目标尚未获得 Daynight approval，且没有正在执行或
+不确定的审查操作时才能启动。每一轮成功的 `COMMENT` 都保存远端 review 和实际 thread
+身份，只能消费一次反馈解决信号；不依赖先观察到未解决数量再观察到零。作者在 agent
+结束前就 resolve 反馈也必须能够唤醒下一轮。若已有新 head 或目标分支的待审轮次，
+反馈解决事件与该轮次合并，针对最新目标执行一次。
 
-仅目标分支新增提交或仅 PR 标题、description 变化不触发审查。PR 处于 Draft 时
-发生的变化，必须等到 PR 转为 ready 后才能触发审查。
+仅目标分支新增提交或仅 PR 标题、description 变化不触发审查。当前目标已经获得
+Daynight approval 时保持完成，修改 description 不撤销或 dismiss approval。新 head
+或目标分支变化仍需审查。PR 处于 Draft 时保存变化，转为 ready 后再按资格执行。
 
 ### R7. 单个 PR 的执行顺序
 
@@ -145,15 +157,20 @@ agent 负责审查，并直接将结果发布到 GitHub。批准必须同时满�
 - 没有需要处理的 Critical 或 Major 代码问题。
 
 前两项是独立于代码缺陷严重程度的 PR 质量门槛。任一门槛不满足时，agent 必须拒绝
-批准，即使没有发现 Critical 或 Major 代码问题。agent 用 `COMMENT` review 发布
-阻断理由，不提交 `REQUEST_CHANGES`；description 或无适合代码行的问题写入 review
-正文，越界修改和 Critical/Major 代码问题在适合的相关 diff 行发布 inline comments。
-仅当三项条件全部满足时，agent 才能提交 `APPROVE`。
+批准，即使没有发现 Critical 或 Major 代码问题。成功完成的审查必须二选一：提交
+`APPROVE`，或提交 `COMMENT` 并包含至少一条实际可 resolve 的 review thread；不提交
+`REQUEST_CHANGES`。越界修改和 Critical/Major 代码问题在适合的相关 diff 行发布
+inline comments。description 或无适合代码行的 PR 级问题，锚定到主要修改文件的
+文件级 conversation，并明确标注它是 PR 级问题及需要修正的内容。review 正文或普通
+PR comment 不能单独满足阻断发布要求。没有真实问题时不得为满足协议伪造 finding；
+执行或发布失败沿用 R12 的有限重试。仅当三项批准条件全部满足时，才能 `APPROVE`。
 
-发布或确认既有发布前，agent 重新读取当前 PR 标题和 description，结合相关需求
-重新判断质量门槛；同时按固定审查目标重新确认发布资格。daemon 不代替
-agent 判断门槛或发布审查结果，也不通过解析 JSONL 或结构化 findings 来决定发布
-内容。
+新发布前，agent 重新读取当前 PR 标题和 description，结合相关需求重新判断质量
+门槛，并按固定审查目标重新确认发布资格。同一轮恢复先核对既有结果；匹配捕获目标
+的 Daynight approval 不因 description 变化而重新评判或撤销。resolve 只表示作者提交了
+反馈处理信号，不代表问题已修复，下一轮 agent 必须重新验证。daemon 不代替 agent
+判断门槛或发布结果，也不解析 JSONL 或结构化 findings 来决定发布内容；它通过 GitHub
+远端证据核对结果类型、审查身份、提交、发布者和实际 conversation。
 
 ### R11. 文本完成协议
 
@@ -164,29 +181,43 @@ PR <number> Review Completed
 ```
 
 `<number>` 是当前审查的 PR 的十进制编号，例如 `PR 123 Review Completed`。这一行
-必须独立存在，不附带其他格式。daemon 在 agent 进程结束后检查此行。其他 PR 的标记、
+必须独立存在，不附带其他格式。daemon 在 agent 进程结束后检查此行，并核对 R10 的远端发布证据。标记本身不能证明
+approval 或可 resolve 反馈已经存在。其他 PR 的标记、
 不完整的标记，或者标记之后还有其他非空行，都不满足协议。agent 只能在所需的 GitHub
 操作成功后输出标记。
 
 ### R12. 确认与重试
 
 agent 结束时如果缺少所需的完成标记，daemon 恢复同一个会话，请求确认或重试。
-agent 重新执行 R10 的质量判断，再核对上次尝试已在 GitHub 发布的结果。只有既有
-发布符合当前门槛判断和本次捕获的审查目标，才能输出标记确认完成；否则完成所需的
-剩余发布操作。核对必须避免明知相同且仍然适用的结果已经发布却再次发布。完成标记
-表示 agent 声明所需操作已成功；GitHub 发布与 SQLite 状态变更并非同一个原子操作。
+恢复的 agent 优先核对同一轮已经存在的 GitHub 发布，避免重复发布。已有匹配捕获目标的 approval
+保持有效，description 编辑不能要求撤销；匹配的 `COMMENT` 必须有实际 review thread。
+同一轮发布确认不受未解决 conversation 的新轮次 gate 阻塞。
+
+完成标记已接受后，daemon 持久化待核对状态，再以只读方式取得完整远端证据。核对
+失败、限流或响应不完整时保存错误并重试核对，重启后继续，不重新调用模型，也不消费
+agent 尝试预算。完整查询成功但没有合法匹配结果属于协议失败，回到原有限模型重试，
+耗尽时明确失败；它与网络或不完整查询的只读重试分别处理。远端结果必须与稳定
+Daynight 审查身份、捕获 commit 和启动前固定的发布者
+相符；只有核对成功后才能原子记录完成及 approval 或下一轮反馈屏障。GitHub 发布与
+SQLite 更新仍不是同一个原子操作。
+
+执行、模型或发布失败使用有限尝试和退避；耗尽后明确记录失败。不能把缺少权限、
+工具失败或无法判断问题伪装成可 resolve 的质量 finding。
 
 ### R13. 持久化状态与重启
 
-命令和源码结构调整保留现有配置及本地状态的格式、字段、表结构版本、路径和身份。
-既有 YAML 与版本 1 SQLite 数据库必须由 review 命令直接复用，不增加命令分区、迁移或
-另一份状态；既有边界、修订、尝试预算、会话和 worktree 归属仍然有效。
+既有 YAML、状态路径和身份继续使用，不增加命令分区或另一份数据库。运行时通过
+显式数据库迁移保存审查结果、远端发布身份与反馈轮次；版本 1 数据必须保留既有永久
+边界、修订、尝试预算、会话、进程证据、日志和 worktree 归属。已完成旧记录按相关
+远端结果对账，匹配的 approval 保持完成；没有有效 approval 的当前旧记录可消费一次
+采用轮次。只读列表接受版本 1 和 2，不得执行迁移。
 
 SQLite 数据库位于 `~/.daynight/state.sqlite`。数据库、会话文件、实例锁、日志、缓存
 和临时文件统一保存在 `~/.daynight/`。PR worktree 按 R9 放在所属仓库根目录的
 `.worktrees/` 下，仓库克隆位置由配置中的本地路径指定。SQLite 保存恢复仓库监控和
 审查执行所需的持久化状态，包括仓库初始化边界、已观察到的 PR 状态、目标分支和
-head SHA、已审查版本、CLI 会话标识、worktree 标识、执行状态，以及确认或重试状态。
+head SHA、已审查版本、CLI 会话标识、worktree 标识、执行状态、确认或重试状态，
+以及已核对的远端 review/thread 身份和已消费的反馈轮次。
 
 重启后，daemon 根据这些状态恢复待处理或被中断的工作，同时保留 R4 规定的永久排除
 规则和 R8 规定的单个 PR 会话连续性。不得仅因 daemon 已经重启，就将被中断的尝试视为
@@ -209,7 +240,8 @@ CLI 进程是否仍存活。仅在确认该进程不存在时自动接管失效�
 
 每次审查尝试及其完成状态，都关联到该次尝试被要求审查的 PR 版本。完成针对某个 head
 SHA 的尝试，不能满足另一个 head SHA 的待处理审查。同样，完成一次尝试也不会清除
-后续 ready 状态转换或目标分支变化产生的待处理触发事件。
+后续 ready 状态转换、目标分支变化或反馈解决产生的待处理触发事件。同一 head
+可以具有多轮审查；每轮评论反馈只产生一次可合并的后续轮次。
 
 ### R15. 本地审查状态列表
 
@@ -253,7 +285,7 @@ daemon 启动时固定本次运行使用的完整 skill 内容；运行中的客
 资源缺失或无效时，daemon 明确启动失败。skill 不可发现、被其他同名 skill 覆盖、
 被禁用或发现结果无效时，该次尝试明确失败并使用现有的重试预算和超时限制，不能
 继续不带此 skill 的审查。发现与正式审查之间也必须维持单个 PR 的顺序、取消和
-进程排除保证。该能力不改变既有配置、数据格式、状态位置或 PR 会话身份。
+进程排除保证。skill 发现本身不改变配置、状态位置或 PR 会话身份；审查轮次的持久化升级遵循 R13。
 
 skill 的方法不能取代本次审查目标、发布资格、远端结果对账或完成协议；只有正式
 审查满足 R10–R12 才能记录完成。Copilot 发现成功不表示已经审查或发布。
@@ -263,7 +295,7 @@ skill 的方法不能取代本次审查目标、发布资格、远端结果对�
 | 场景 | 必需结果 | 对应需求 |
 |---|---|---|
 | 无配置、无数据库和外部工具时执行 review 组或操作帮助。 | 帮助成功，既不解析用户主目录，也不加载配置、SQLite 或审查运行时。 | R1 |
-| 使用重构前格式的 YAML 和独立构造的版本 1 SQLite fixture。 | 查询与运行直接读取原位置和原有记录，保留永久边界、修订、会话、预算、清理屏障及 worktree 身份。 | R2, R4, R8, R13, R14 |
+| 使用重构前格式的 YAML 和独立构造的版本 1 SQLite fixture。 | 列表只读原位置和原有记录；运行显式迁移，保留永久边界、修订、会话、预算、进程证据、清理屏障及 worktree 身份。 | R2, R4, R8, R13, R14 |
 | 在 Linux、macOS 或 Windows 上执行 `daynight review run`。 | 前台 CLI 通过直接启动 Copilot 子进程支持所需工作流程，并已验证命令执行、输出处理和正常退出。 | R1 |
 | 从不同工作目录执行启动命令。 | 读取同一份 `~/.daynight/config.yml` YAML 配置，使用 `~/.daynight/` 中的同一份运行状态；仓库相对路径按配置目录解析。 | R1, R2, R13 |
 | 首次在 TTY 执行 `review run`、`review list` 或 `review ls`，缺少文件或仓库字段。 | 仅引导仓库登记，保存后继续原操作；无 server 地址也可使用 review。 | R2, R15 |
@@ -298,17 +330,23 @@ skill 的方法不能取代本次审查目标、发布资格、远端结果对�
 | 首次审查、同会话重试或更新后的 daemon 恢复已有会话。 | 每次确认已启用的 `daynight-review` 对应本次固定内容，并显式要求加载当前版本；PR 会话 UUID 保持一致。 | R8, R16 |
 | skill 缺失、禁用、被同名项目 skill 覆盖，或发现响应无效。 | 资源问题阻止启动；尝试中的发现问题阻止正式审查并按原预算重试，错误及日志可见。 | R12, R16 |
 | skill 发现与正式审查之间取消、超时，或发现进程无法确认排除。 | 不启动正式审查；不确定执行保留进程证据和实例锁，不允许资源复用或清理。 | R7, R13, R16 |
-| description 未说明具体问题、预期结果或范围，或 PR 包含独立目标或无法有效审查的组合范围。 | 即使没有 Critical/Major 代码问题，agent 也以 `COMMENT` review 正文说明阻断理由，不批准、不提交 `REQUEST_CHANGES`。 | R10 |
+| description 未说明具体问题、预期结果或范围，或 PR 包含独立目标或无法有效审查的组合范围。 | 即使没有 Critical/Major 代码问题，agent 也以明确标注 PR 级问题的文件级 conversation 说明阻断理由，不批准、不提交 `REQUEST_CHANGES`。 | R10 |
 | 完整捕获 diff 包含原定范围之外的独立能力、无关修复或清理。 | agent 拒绝批准，在适合的 diff 行评论越界修改；单独扩大 description 不能使其通过。 | R10 |
 | 跨模块的实现、必要结构调整、测试与文档共同服务于同一个明确结果。 | agent 依据必要联系判断范围，不因文件数、行数或跨层修改本身拒绝。 | R10 |
 | 审查发现 Critical 或 Major 代码问题。 | agent 以 `COMMENT` review 发布相关 inline comments，不批准、不提交 `REQUEST_CHANGES`。 | R10 |
 | description 和范围两项质量门槛均通过，且没有 Critical 或 Major 代码问题。 | agent approve 该 PR。 | R10 |
 | 审查后、发布前 PR 的 description 改变，head 和目标分支未变。 | agent 重新读取并评估 description 和相关需求，再依据当前门槛结果发布。 | R10 |
-| 已完成审查的 PR 仅修改标题或 description。 | 单独的元数据修改不触发新审查。 | R6 |
-| 发布成功，且输出的最后一个非空行是 `PR 101 Review Completed`。 | daemon 识别出 PR 101 的该次尝试已经完成。 | R11, R14 |
+| 当前目标已经获得 Daynight approval，之后只修改标题或 description。 | 保持完成，不撤销 approval，也不触发新审查。 | R6 |
+| 当前目标的 CI 通过，但任意作者仍有未解决的行级或文件级 conversation。 | 保持待审；outdated 但未 resolved 的 thread 同样阻塞。 | R5, R6 |
+| `COMMENT` 的反馈全部 resolve，未新增 commit。 | 合并并消费该轮反馈信号，针对当前目标自动审查一次；resolve 不代表问题已经修复。 | R6, R10, R14 |
+| 作者在 agent 结束前就 resolve 该轮全部反馈，或 daemon 随后重启。 | 持久化 review/thread 身份仍能唤醒一次后续轮次，无需先观测 open count。 | R6, R12, R13 |
+| conversation 查询失败、分页不完整或数据无效。 | 不能认定没有未解决 conversation，保持 gate 关闭并报告错误。 | R5 |
+| 发布成功，且输出的最后一个非空行是 `PR 101 Review Completed`。 | daemon 接受执行完成标记，核对匹配的远端 approval 或实际 conversation 后才记录完成。 | R11, R14 |
 | agent 退出时缺少严格匹配的最终标记。 | daemon 不记录协议完成状态，并恢复同一个会话进行确认或重试。 | R11, R12 |
-| 进程结束时缺少标记，但发布可能已经成功。 | 恢复的 agent 重新评估当前质量门槛；只有先前发布仍符合当前结果和捕获目标才确认完成，并避免重复发布仍适用的结果。 | R10, R12 |
-| 重试时既有 approval 对应的 description 已变得不清楚或掩盖越界修改。 | agent 不能仅凭既有 approval 输出完成标记，必须按当前门槛完成所需发布。 | R10, R12 |
+| 进程结束时缺少标记，但发布可能已经成功。 | 先按稳定身份核对远端发布；同一轮确认允许已有未解决反馈，避免重复发布；必要时恢复同一会话。 | R10, R12 |
+| 远端 approval 已成功，但本地确认前 description 改变。 | 核对到匹配捕获目标的既有 approval 后保留批准，不因描述编辑撤销或新建反馈轮次。 | R6, R10, R12 |
+| 完成标记已接受，但远端核对失败，或失败发生在最后一次 agent 尝试。 | 保存待核对状态并只读重试；重启保留它，不额外消费模型尝试预算。 | R11, R12, R13 |
+| `COMMENT` 只有正文或普通 PR comment，没有实际 review thread。 | 不能记录成功反馈结果；保留明确失败及有限重试，不能伪造 conversation。 | R10, R12 |
 | 已审查的 PR 被合并，或未合并就被关闭。 | daemon 清理该 PR 的 worktree。 | R9 |
 | daemon 重启时存在待处理或被中断的审查工作。 | 保存的边界、PR 版本、会话、worktree 和执行状态支持恢复，且不会错误地宣告完成。 | R13, R14 |
 | 已有实例锁记录的 CLI 仍存活，或其状态无法确认。 | 保留实例锁并明确拒绝启动，不接管既有运行。 | R13 |

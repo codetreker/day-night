@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import type { RepositoryConfiguration } from "../config.js";
-import type { PullRequestObservation, RepositoryIdentity } from "../model.js";
+import type { PullRequestObservation, PullRequestReviewSnapshot, RemoteReview, RemoteReviewThread, RepositoryIdentity } from "../model.js";
+import { parsePullRequestReviewSnapshot, pullRequestReviewSnapshotQuery, reviewSnapshotCollection, type ReviewSnapshotPage } from "./github-review-state.js";
 
 export type CommandOptions = {
   timeoutMs: number;
@@ -18,6 +19,7 @@ export type GitHubClient = {
   listOpenPullRequests: (repository: GitHubRepository, cutoff: number, signal?: AbortSignal) => Promise<PullRequestObservation[]>;
   getPullRequest: (repository: GitHubRepository, number: number, signal?: AbortSignal) => Promise<PullRequestObservation>;
   getPullRequestChecks: (repository: GitHubRepository, number: number, signal?: AbortSignal) => Promise<PullRequestChecks>;
+  getPullRequestReviewSnapshot: (repository: GitHubRepository, number: number, signal?: AbortSignal) => Promise<PullRequestReviewSnapshot>;
 };
 
 export class GitHubApiError extends Error {
@@ -99,6 +101,7 @@ fragment SuitePage on CheckSuiteConnection {
   pageInfo { hasNextPage endCursor }
 }`;
 type ChecksQuery = { owner: string; name: string; number: number; headCursor: string | null; mergeCursor: string | null };
+type GraphQLQuery = { document: string; variables: Record<string, string | number | null> };
 type CheckSuite = { id: string; ready: boolean; workflow: { key: string; runNumber: number; runAttempt: number } | null };
 type SuitePage = { totalCount: number; suites: CheckSuite[]; cursor: string | null };
 type ChecksSnapshot = PullRequestChecks & { mergeSha: string | null; headSuites: SuitePage; mergeSuites: SuitePage | null };
@@ -431,7 +434,7 @@ export const createGitHubClient = (options: {
       cooldowns.delete(origin);
     }
   };
-  const request = async (host: string, endpoint: string, signal?: AbortSignal, query?: ChecksQuery): Promise<HttpResponse> => {
+  const request = async (host: string, endpoint: string, signal?: AbortSignal, query?: GraphQLQuery): Promise<HttpResponse> => {
     const base = apiBase(host);
     requireAvailableHost(host, base.origin);
     const origin = new URL(`https://${host}`);
@@ -451,10 +454,9 @@ export const createGitHubClient = (options: {
     try {
       // gh only groups flat variables for the literal "graphql" endpoint, not absolute URLs.
       // https://github.com/cli/cli/blob/fa92838bef95fe4a29c1587693885d5e9bdb6cf1/pkg/cmd/api/http.go#L16-L55
-      const variable = (name: keyof ChecksQuery): string => ported ? `variables[${name}]` : name;
-      const fields = query === undefined ? [] : ["--raw-field", `query=${pullRequestChecksQuery}`,
-        "--raw-field", `${variable("owner")}=${query.owner}`, "--raw-field", `${variable("name")}=${query.name}`, "--field", `${variable("number")}=${query.number}`,
-        ...(["headCursor", "mergeCursor"] as const).flatMap((key) => [query[key] === null ? "--field" : "--raw-field", `${variable(key)}=${query[key] === null ? "null" : query[key]}`])];
+      const variable = (name: string): string => ported ? `variables[${name}]` : name;
+      const fields = query === undefined ? [] : ["--raw-field", `query=${query.document}`,
+        ...Object.entries(query.variables).flatMap(([key, value]) => [typeof value === "string" ? "--raw-field" : "--field", `${variable(key)}=${value === null ? "null" : value}`])];
       result = await execute("gh", ["api", "--include", "--method", query === undefined ? "GET" : "POST", "--hostname", ported ? origin.hostname : host,
         "--header", "Accept: application/vnd.github+json", "--header", "X-GitHub-Api-Version: 2022-11-28", ...fields, target],
       { timeoutMs, maxBufferBytes, ...(signal === undefined ? {} : { signal }), ...(authentication.environment === undefined ? {} : { environment: authentication.environment }) });
@@ -561,7 +563,7 @@ export const createGitHubClient = (options: {
       let first: ChecksSnapshot | null = null;
       let ready = true;
       do {
-        const response = await request(repository.host, "graphql", signal, query);
+        const response = await request(repository.host, "graphql", signal, { document: pullRequestChecksQuery, variables: query });
         const snapshot = pullRequestChecks(response.body);
         if (first === null) first = snapshot;
         else if (snapshot.headSha !== first.headSha || snapshot.baseRef !== first.baseRef || snapshot.mergeSha !== first.mergeSha) throw new Error("PR CI target changed during check-suite pagination.");
@@ -572,6 +574,29 @@ export const createGitHubClient = (options: {
         query.mergeCursor = merge.cursor();
       } while (!head.complete() || (first.mergeSha !== null && !merge.complete()));
       return { headSha: first.headSha, baseRef: first.baseRef, ready: ready && head.ready() && merge.ready() };
+    },
+    getPullRequestReviewSnapshot: async (repository, number, signal) => {
+      positiveInteger(number, "PR number");
+      const variables = { owner: repository.owner, name: repository.name, number, reviewCursor: null as string | null, threadCursor: null as string | null };
+      const reviews = reviewSnapshotCollection<RemoteReview>("PR reviews");
+      const threads = reviewSnapshotCollection<RemoteReviewThread>("PR review threads");
+      let first: ReviewSnapshotPage | null = null;
+      let pages = 0;
+      let bytes = 0;
+      do {
+        if (++pages > 1_000) throw new Error("PR review snapshot exceeded its pagination limit.");
+        const response = await request(repository.host, "graphql", signal, { document: pullRequestReviewSnapshotQuery, variables });
+        bytes += Buffer.byteLength(JSON.stringify(response.body), "utf8");
+        if (bytes > maxBufferBytes) throw new Error("PR review snapshot exceeded its response size limit.");
+        const snapshot = parsePullRequestReviewSnapshot(response.body, repository.githubId, number);
+        if (first === null) first = snapshot;
+        else if (snapshot.state !== first.state || snapshot.draft !== first.draft || snapshot.headSha !== first.headSha || snapshot.baseRef !== first.baseRef || snapshot.viewerId !== first.viewerId) throw new Error("PR review target or viewer changed during pagination.");
+        reviews.observe(snapshot.reviews);
+        threads.observe(snapshot.threads);
+        variables.reviewCursor = reviews.cursor();
+        variables.threadCursor = threads.cursor();
+      } while (!reviews.complete() || !threads.complete());
+      return { state: first.state, draft: first.draft, headSha: first.headSha, baseRef: first.baseRef, viewerId: first.viewerId, reviews: reviews.nodes(), threads: threads.nodes() };
     },
   };
 };

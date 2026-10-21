@@ -63,8 +63,13 @@ verification and actionable English findings. The
 supersedes its original Critical/Major-only approval scope while retaining the
 packaging and loading decision here. Dynamic targets, current PR metadata reads,
 publication eligibility, stable identity, retry reconciliation, foreground tools
-and completion remain in the attempt prompt. Configuration, data formats,
-session UUIDs and the existing agent-owned publisher are unchanged. The
+and completion remain in the attempt prompt. The
+[conversation-cycle decision](2026-10-21-review-conversation-cycle.md) changes
+follow-up and remote completion persistence while retaining the packaging and
+loading decision here: COMMENT now needs a real resolvable thread, same-round
+recovery preserves approval and existing effects, and resolved feedback can wake
+a new round without a commit. Configuration, session UUIDs and the existing
+agent-owned publisher remain unchanged. The
 [skill design](../../../../docs/design/daynight-review-skill.md) owns the mechanism
 and validation boundaries. This extends the
 [Copilot execution decision](2026-10-17-copilot-session-execution.md) and
@@ -151,4 +156,5 @@ Same-path resume can retain an old body, so content-addressed paths and explicit
 current-path invocation remain required. Observed-version evidence does not
 create a minimum-version promise or a production transcript parser. The existing
 completion marker remains the agent's assertion and does not independently prove
-its reasoning or remote effects.
+its reasoning or remote effects; the conversation cycle separately verifies
+matching remote publication before completing a round.

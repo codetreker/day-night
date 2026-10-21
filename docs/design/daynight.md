@@ -301,9 +301,11 @@ YAML，在最新文档上设置服务地址或复用 review 仓库登记逻辑�
 
 review 的配置仍为 `~/.daynight/config.yml`，SQLite 仍为 `~/.daynight/state.sqlite`；
 会话、锁、日志、缓存和临时文件仍在同一状态目录，PR worktree 仍位于各仓库的
-`.worktrees/`。既有 YAML 字段和 SQLite 版本 1 表结构保持原样，不新增命令分区或
-迁移。业务模块归属与磁盘目录归属分别管理：源码整理不会改变已保存路径、永久 PR
-边界、修订、会话 UUID、重试预算或 worktree 身份。详细格式、验证、锁及恢复规则由
+`.worktrees/`。既有 YAML 字段、状态路径和持久化身份继续使用，不新增命令分区。
+review 运行时通过显式 SQLite 迁移从版本 1 升到版本 2，保存远端发布证据和一次性
+conversation 后续轮次，保留旧边界、预算、会话、进程证据及 worktree；只读列表接受
+两个版本并不执行迁移。业务模块归属与磁盘目录归属分别管理，源码整理本身不改变
+持久化身份。详细格式、验证、锁及恢复规则由
 [review 设计](daynight-review.md#本地数据与-sqlite)统一定义。
 
 [project/task 配置设计](daynight-project-task.md)定义同一 YAML 中的 `serverUrl`。

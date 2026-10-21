@@ -10,6 +10,29 @@ reconciliation rules and completion protocol. Those values belong to the current
 attempt, including when the conversation contains an earlier review. Repository
 instructions remain applicable within that target and the authorized review.
 
+## Reconcile interrupted publication
+
+Before reviewing or publishing, inspect existing reviews and native review
+threads for the supplied stable identity, target commit and captured publishing
+actor. Before any publication or draft deletion, require the authenticated GitHub
+viewer node ID to match that captured actor; an account change cannot transfer
+the round to another publisher. Confirm an existing matching APPROVED review without reviewing
+later title or description changes, revoking approval or publishing again. A
+matching COMMENTED review is complete only when it owns at least one real
+resolvable native review thread. Its open threads do not block confirmation of
+that same result. Revalidate the unsent findings of a matching PENDING review and
+reuse its existing threads when still justified. For an obsolete or unjustified
+owned draft, re-read that exact numeric review ID and verify its author, exact
+stable identity, commit and PENDING state immediately before deleting only that
+draft. Never delete submitted reviews or submit an obsolete target's findings.
+Do not duplicate reviews, comments or replies on retry.
+
+When no valid matching result exists, conduct a fresh review. The task admits
+fresh rounds after CI passes and all submitted native review conversations are
+resolved. Positively identified PENDING drafts are not submitted conversations.
+Resolution is a request to verify the correction, not evidence that it is fixed.
+Use the current title and description even when the commit has not changed.
+
 ## Establish and gate the scope
 
 Use gh with the supplied host, repository and PR number to read the current PR
@@ -61,32 +84,48 @@ the limits of evidence; discard findings that remain speculative.
 Keep probes within the supplied worktree and temporary directory, preserve the
 captured target, and obey the task's foreground-process and cleanup rules.
 
-## Select and publish findings
+## Select and publish the result
 
 Report PR-quality blockers and actionable Critical or Major defects introduced
-by the change.
-Critical defects have severe, broad consequences such as destructive data loss
-or a fundamental security failure. Major defects break required behavior for a
-concrete supported use case. Judge severity by the demonstrated consequence and
-reach, not by how small the fix appears.
+by the change. Critical defects have severe, broad consequences such as
+destructive data loss or a fundamental security failure. Major defects break
+required behavior for a concrete supported use case. Judge severity by the
+demonstrated consequence and reach, not by how small the fix appears.
 
 Defer minor improvement requests, style preferences and pre-existing defects.
 Do not grow the review into a repository-wide audit. If an uncertain code-defect
 candidate cannot be established with the available evidence, leave it out of
 published findings.
 
+A successful review has one of two results:
+
+- APPROVE when both PR-quality gates pass and no Critical or Major defect remains.
+- COMMENT owning at least one real resolvable native review thread when a blocker
+  remains. Never submit REQUEST_CHANGES. A top-level review body alone cannot
+  satisfy this result.
+
 Write English comments and identify the reviewing agent as required by the task.
-Put out-of-scope changes and code defects on the relevant changed lines. Put
-description or PR-wide blockers in the review body when no suitable changed line
-exists; a COMMENT review may contain only a body. State the violated scope or
-behavior, its concrete effect, and the necessary correction concisely. Keep
-investigation narration, reproduction transcripts and lists of things checked
-out of comments. Combine duplicate manifestations of one cause.
+Put localized out-of-scope changes and code defects on the relevant changed
+lines. Put description or PR-wide scope blockers in a native file-level thread
+on the principal changed file using a file subject without a fabricated line.
+Explicitly label such a comment as a PR-wide description/scope issue; the file is
+its discussion anchor, not an allegation of a code defect. If no truthful changed
+file anchor exists or a required thread cannot be published, report the actual
+operational failure and withhold the completion marker.
 
-Approve only when both PR-quality gates pass and no Critical or Major defect
-remains. Before publication or retry confirmation, re-read the current title and
-description and evaluate the gates again. A matching stable identity on an old
-APPROVE does not establish that the current description and scope pass.
+State the violated scope or behavior, its concrete effect, and the necessary
+correction concisely. Keep investigation narration, reproduction transcripts and
+lists of things checked out of comments. Combine duplicate manifestations of one
+cause.
 
-Follow the current task's result-publication and retry-reconciliation protocol.
-Only its successful publication or confirmation permits its completion marker.
+Immediately before fresh publication, re-read the current title and description,
+evaluate the gates again, and check the task's target and conversation eligibility.
+For a file-level blocker, create a pending review by POSTing its target commit
+and stable body without an event. Use GraphQL addPullRequestReviewThread with
+that review's node ID, the changed path, subjectType FILE and the finding body;
+omit line and side. Submit that review with COMMENT only after its thread exists.
+The batch create-review comments payload does not support file subjects. Follow
+the task's stable identity format and resume partial publication on retry.
+Verify the actual review event, commit, reviewing actor and identity; for COMMENT,
+verify the review owns its native thread. Follow the supplied retry protocol.
+Only successful publication or valid reconciliation permits the completion marker.

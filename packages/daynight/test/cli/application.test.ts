@@ -429,13 +429,13 @@ registerHooks({ resolve(specifier, context, nextResolve) {
       expect(await readFile(paths.databaseFile, "utf8")).toBe(corrupt);
       await rm(paths.databaseFile);
       const database = new Database(paths.databaseFile);
-      database.pragma("user_version = 2");
+      database.pragma("user_version = 3");
       database.close();
       const original = await readFile(paths.databaseFile);
       const future = invoke("list");
       expect(future.status).toBe(1);
       expect(future.stdout).toBe("");
-      expect(future.stderr).toContain("found version 2");
+      expect(future.stderr).toContain("found version 3");
       expect(await readFile(paths.databaseFile)).toEqual(original);
       expect(await readFile(paths.configFile, "utf8")).toBe(configuration);
       expect(await readFile(paths.lockFile, "utf8")).toBe("existing review instance\n");

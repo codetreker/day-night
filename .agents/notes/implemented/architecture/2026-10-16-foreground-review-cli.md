@@ -34,7 +34,12 @@ Polling, pending work, SQLite updates, worktree management, and direct Copilot
 child invocation belong to that single process. Each PR retains a session UUID
 and worktree. Captured review revisions are separate from latest desired state,
 so an old completion cannot discard a later trigger. Agents publish their own
-GitHub outcomes and report completion through one exact final text line.
+GitHub outcomes and report execution completion through one exact final text line.
+The [conversation-cycle decision](2026-10-21-review-conversation-cycle.md) partially
+supersedes the original marker-only confirmation and head-only follow-up: the
+coordinator verifies actual publication, and resolved comment feedback can wake
+one later round without a commit. Agent-owned publishing and this foreground
+execution model remain unchanged.
 
 The CLI supports Linux, macOS, and Windows using ordinary command execution and
 platform termination behavior. Agents obey a foreground-tools contract; runtime
@@ -56,8 +61,9 @@ same Node.js process can poll and await children asynchronously.
 
 **Parse model findings and publish from the CLI.** This introduces a findings
 schema and publisher contrary to the agent-owned publication requirement. The
-plain-text marker trusts the agent's assertion and leaves GitHub reconciliation
-to that same agent session.
+original plain-text marker trusted the agent's assertion and left GitHub
+reconciliation to that same agent session. The conversation cycle adds read-only
+publication verification without moving findings or publishing into the CLI.
 
 ## Consequences
 

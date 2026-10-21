@@ -15,7 +15,7 @@ import { resolveReviewPaths } from "../../../src/commands/review/paths.js";
 import { createProcessSupervisor } from "../../../src/commands/review/processes.js";
 import { openStore } from "../../../src/commands/review/store.js";
 import type { Store } from "../../../src/commands/review/store.js";
-import type { PullRequestObservation, ReviewState } from "../../../src/commands/review/model.js";
+import type { PullRequestObservation, PullRequestReviewSnapshot, ReviewState } from "../../../src/commands/review/model.js";
 
 const root = path.resolve(import.meta.dirname, "../../../../../.tmp/coordinator-tests");
 const fixtures: { directory: string; store: Store; runs: { abort: AbortController; completion: Promise<{ safeToReleaseLock: boolean }> }[] }[] = [];
@@ -66,6 +66,9 @@ const fixture = (repositoryCount = 1, initialized = true, repositoryHost = (_ind
   const prepared: ReviewState[] = [];
   const launched: { review: ReviewState; session: string; input: CopilotRunOptions }[] = [];
   const cleaned: number[] = [];
+  const publications: PullRequestReviewSnapshot["reviews"] = [];
+  const threads: PullRequestReviewSnapshot["threads"] = [];
+  let onSnapshot: (() => Promise<void>) | undefined;
   const checked: { number: number; headSha: string; baseRef: string }[] = [];
   let onPoll: ((index: number) => Promise<void>) | undefined;
   let onPrepare: ((review: ReviewState, signal: AbortSignal) => Promise<void>) | undefined;
@@ -82,6 +85,11 @@ const fixture = (repositoryCount = 1, initialized = true, repositoryHost = (_ind
       return [...snapshots[index]!.values()].filter((item) => item.state === "open").map((item) => ({ ...item }));
     },
     getPullRequest: async (repository, number) => ({ ...snapshots[identities.findIndex((item) => item.githubId === repository.githubId)]!.get(number)! }),
+    getPullRequestReviewSnapshot: async (repository, number) => {
+      await onSnapshot?.();
+      const pr = snapshots[identities.findIndex((item) => item.githubId === repository.githubId)]!.get(number)!;
+      return { state: pr.state, draft: pr.draft, headSha: pr.headSha, baseRef: pr.baseRef, viewerId: "viewer", reviews: publications.filter((item) => item.body.includes(`number=${number} `)), threads: [...threads] };
+    },
     getPullRequestChecks: async (repository, number, signal) => {
       const pr = { ...snapshots[identities.findIndex((item) => item.githubId === repository.githubId)]!.get(number)! };
       checked.push({ number, headSha: pr.headSha, baseRef: pr.baseRef });
@@ -121,6 +129,8 @@ const fixture = (repositoryCount = 1, initialized = true, repositoryHost = (_ind
     const outcome: CopilotAttemptOutcome = { attempt: { reviewId: id, attempt: started.attemptCount }, sessionId: state.getPullRequest(started)!.sessionId!, sessionMode: started.attemptCount === 1 ? "create" : "resume",
       stdoutLogPath: started.stdoutLogPath!, stderrLogPath: started.stderrLogPath!, completed, directProcessClosed: true, captureComplete: true,
       exitCode: 0, signal: null, lastNonemptyLine: completed ? `PR ${started.number} Review Completed` : "incomplete", interruption: null, launchFailure: null, processExclusionFailure: null, errors: [] };
+    if (completed && !publications.some((item) => item.body.includes(`review=${id} `))) publications.push({ id: `remote-${id}`, authorId: "viewer", headSha: started.headSha,
+      state: "APPROVED", body: `number=${started.number} fixture\n<!-- daynight review=${id} revision=${started.revision} head=${started.headSha} -->` });
     expect(worktree.headSha).toBe(started.headSha);
     return outcome;
   } };
@@ -138,7 +148,7 @@ const fixture = (repositoryCount = 1, initialized = true, repositoryHost = (_ind
     snapshots[index]!.set(number, observation(number, { ...snapshots[index]!.get(number), ...change }));
   };
   const pr = (number = 1, index = 0) => ({ ...identities[index]!, number });
-  const result = { directory, paths, store, configurations, identities, snapshots, polls, events, prepared, launched, cleaned, checked, client, git, runner, processes, configuration, start, update, pr, runs,
+  const result = { directory, paths, store, publications, threads, snapshot: (handler: typeof onSnapshot) => { onSnapshot = handler; }, configurations, identities, snapshots, polls, events, prepared, launched, cleaned, checked, client, git, runner, processes, configuration, start, update, pr, runs,
     prepare: (handler: typeof onPrepare) => { onPrepare = handler; }, run: (handler: typeof onRun) => { onRun = handler; }, poll: (handler: typeof onPoll) => { onPoll = handler; }, cleanup: (handler: typeof onCleanup) => { onCleanup = handler; },
     checks: (handler: typeof onChecks) => { onChecks = handler; } };
   fixtures.push(result);
@@ -155,6 +165,150 @@ afterEach(async () => {
 });
 
 describe("foreground review coordination", () => {
+  it("waits for all unresolved conversations without reserving resources, including outdated and other-author threads", async () => {
+    const f = fixture(); f.update(1);
+    f.threads.push({ id: "outdated-other-author", reviewId: "other-review", isResolved: false });
+    f.start();
+    await waitFor(() => f.polls[0]! >= 3, "thread-blocked polls");
+    expect(f.launched).toEqual([]); expect(f.prepared).toEqual([]);
+    expect(f.store.getPullRequest(f.pr())!.sessionId).toBeNull();
+    f.threads[0]!.isResolved = true;
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 1, "resolved initial admission");
+  });
+
+  it("excludes positively identified private PENDING threads but blocks unknown-parent unresolved conversations", async () => {
+    const f = fixture(); f.update(1);
+    f.publications.push({ id: "private-draft", authorId: "viewer", headSha: "a".repeat(40), state: "PENDING", body: "number=1 private draft" });
+    f.threads.push({ id: "private", reviewId: "private-draft", isResolved: false }, { id: "unknown", reviewId: null, isResolved: false });
+    f.start(); await waitFor(() => f.polls[0]! >= 3, "unknown parent blocks");
+    expect(f.launched).toHaveLength(0);
+    f.threads[1]!.isResolved = true;
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 1, "private draft does not block");
+    expect(f.launched).toHaveLength(1);
+  });
+
+  it("arms exactly one same-head successor after every native conversation resolves", async () => {
+    const f = fixture(); f.update(1);
+    f.run(async (review) => {
+      if (review.revision === 1) {
+        f.publications.push({ id: "comment-review", authorId: "viewer", headSha: review.headSha, state: "COMMENTED", body: `number=1 fixture\n<!-- daynight review=${review.id} revision=1 head=${review.headSha} -->` });
+        f.threads.push({ id: "description", reviewId: "comment-review", isResolved: false }, { id: "other", reviewId: "someone-else", isResolved: false });
+      }
+      return true;
+    });
+    f.start();
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 1, "comment completion");
+    const first = f.store.listReviews(f.pr())[0]!;
+    expect(f.store.getReviewPublication(first.id)).toMatchObject({ phase: "verified", outcome: "commented", publisherId: "viewer", threadIds: ["description"], followupConsumed: false });
+    f.threads[0]!.isResolved = true;
+    const polls = f.polls[0]!; await waitFor(() => f.polls[0]! >= polls + 3, "other unresolved conversation");
+    expect(f.launched).toHaveLength(1);
+    f.threads[1]!.isResolved = true;
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 2, "same-head follow-up");
+    const after = f.polls[0]!; await waitFor(() => f.polls[0]! >= after + 3, "settled repeated polls");
+    expect(f.launched.map(({ review }) => [review.revision, review.headSha])).toEqual([[1, "a".repeat(40)], [2, "a".repeat(40)]]);
+    expect(f.launched[1]!.session).toBe(f.launched[0]!.session);
+    expect(f.store.getReviewPublication(first.id)!.followupConsumed).toBe(true);
+  });
+
+  it("does not miss resolution before process completion or the first publication read", async () => {
+    const f = fixture(); f.update(1);
+    f.run(async (review) => {
+      if (review.revision === 1) {
+        f.publications.push({ id: "fast-comment", authorId: "viewer", headSha: review.headSha, state: "COMMENTED", body: `number=1 fixture\ndaynight review=${review.id} revision=1 head=${review.headSha}` });
+        f.threads.push({ id: "already-resolved", reviewId: "fast-comment", isResolved: true });
+      }
+      return true;
+    });
+    f.start(); await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 2, "already resolved follow-up");
+    expect(f.launched).toHaveLength(2);
+  });
+
+  it("coalesces new commits with a comment follow-up and waits for unresolved conversations", async () => {
+    const f = fixture(); f.update(1);
+    f.run(async (review) => {
+      if (review.revision === 1) {
+        f.publications.push({ id: "old-comment", authorId: "viewer", headSha: review.headSha, state: "COMMENTED", body: `number=1 fixture\ndaynight review=${review.id} revision=1 head=${review.headSha}` });
+        f.threads.push({ id: "still-open", reviewId: "old-comment", isResolved: false });
+      }
+      return true;
+    });
+    f.start(); await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 1, "old comment");
+    f.update(1, { headSha: "e".repeat(40) });
+    await waitFor(() => f.store.getPullRequest(f.pr())?.desiredRevision === 2, "new pending head");
+    const polls = f.polls[0]!; await waitFor(() => f.polls[0]! >= polls + 3, "new head waiting threads");
+    expect(f.launched).toHaveLength(1);
+    f.threads[0]!.isResolved = true;
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 2, "coalesced latest head");
+    expect(f.launched.map(({ review }) => review.revision)).toEqual([1, 2]);
+    expect(f.store.getPullRequest(f.pr())!.desiredRevision).toBe(2);
+  });
+
+  it("confirms a marker-loss retry despite its own open conversation", async () => {
+    const f = fixture(); f.update(1);
+    f.run(async (review) => {
+      if (review.attemptCount === 1) {
+        f.publications.push({ id: "lost-marker", authorId: "viewer", headSha: review.headSha, state: "COMMENTED", body: `number=1 fixture\ndaynight review=${review.id} revision=1 head=${review.headSha}` });
+        f.threads.push({ id: "open-own", reviewId: "lost-marker", isResolved: false });
+        return false;
+      }
+      return true;
+    });
+    f.start(); await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 1, "same-round confirmation");
+    expect(f.launched).toHaveLength(2);
+    expect(f.launched[1]!.review.id).toBe(f.launched[0]!.review.id);
+    expect(f.store.getPullRequest(f.pr())!.desiredRevision).toBe(1);
+  });
+
+  it("retains successful last-attempt publication verification across API errors and restart without relaunch", async () => {
+    const f = fixture(); f.update(1); f.configuration.maxAttempts = 1;
+    let failRead = true;
+    f.snapshot(async () => { if (f.launched.length > 0 && failRead) throw new Error("snapshot unavailable"); });
+    const first = f.start();
+    await waitFor(() => f.events.some((event) => event.phase === "publication"), "read-only verification error");
+    const review = f.store.listReviews(f.pr())[0]!;
+    expect(review).toMatchObject({ status: "running", attemptCount: 1 });
+    expect(f.store.getReviewPublication(review.id)!.phase).toBe("pending");
+    first.abort.abort(); await first.completion;
+    const recover = vi.fn(async () => proof);
+    failRead = false; f.start({ processes: { ...f.processes, recover } });
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 1, "read-only restart confirmation");
+    expect(f.launched).toHaveLength(1); expect(recover).not.toHaveBeenCalled();
+    expect(f.store.getReview(review.id)!.attemptCount).toBe(1);
+  });
+
+  it("verifies the captured publisher after the authenticated reader changes", async () => {
+    const f = fixture(); f.update(1);
+    const snapshot = f.client.getPullRequestReviewSnapshot;
+    f.client.getPullRequestReviewSnapshot = async (...args) => {
+      const result = await snapshot(...args);
+      return { ...result, viewerId: f.launched.length === 0 ? "viewer" : "new-reader" };
+    };
+    f.start(); await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 1, "original publisher confirmation");
+    expect(f.store.getReviewPublication(f.launched[0]!.review.id)!.publisherId).toBe("viewer");
+    expect(f.launched).toHaveLength(1);
+  });
+
+  it("settles an already approved same target after Draft becomes ready without rerunning", async () => {
+    const f = fixture(); f.update(1); f.start();
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 1, "approval");
+    f.update(1, { draft: true }); await waitFor(() => f.store.getPullRequest(f.pr())?.draft === true, "draft observation");
+    f.update(1, { draft: false }); await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 2, "same-target approval reconciliation");
+    expect(f.launched).toHaveLength(1);
+    f.update(1, { baseRef: "release" }); await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 3, "different base review");
+    expect(f.launched).toHaveLength(2);
+  });
+
+  it("rejects an empty COMMENT as incomplete rather than claiming completion", async () => {
+    const f = fixture(); f.update(1); f.configuration.maxAttempts = 1;
+    f.run(async (review) => {
+      f.publications.push({ id: "empty-comment", authorId: "viewer", headSha: review.headSha, state: "COMMENTED", body: `number=1 fixture\ndaynight review=${review.id} revision=1 head=${review.headSha}` });
+      return true;
+    });
+    f.start(); await waitFor(() => f.store.listReviews(f.pr())[0]?.status === "failed", "invalid publication failure");
+    expect(f.store.getPullRequest(f.pr())!.completedRevision).toBe(0);
+  });
+
   it("waits for CI without reserving resources and admits other ready PRs before CI finishes", async () => {
     const f = fixture(); f.update(1); f.update(2);
     const firstCheck = deferred<{ headSha: string; baseRef: string; ready: boolean }>();
@@ -900,7 +1054,14 @@ const sha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();appe
     const skillDirectory = path.join(f.directory, "plugin, skill", "skills", "daynight-review"); mkdirSync(skillDirectory, { recursive: true });
     const runner = createCopilotRunner({ skill: { name: "daynight-review", digest: "a".repeat(64), rootDirectory: path.dirname(path.dirname(skillDirectory)), directory: skillDirectory, entrypoint: path.join(skillDirectory, "SKILL.md") }, paths: f.paths, processOwner: uuid(900), timeoutMs: 10_000, terminationGraceMs: 100,
       command: { file: process.execPath, args: [script] }, environment: { ...process.env, FIXTURE_REPORT: report } });
-    f.start({ git, runner, processes: createProcessSupervisor({ graceMs: 500, previousProcessesExcluded: true }) });
+    const publishingRunner: CoordinatorOptions["runner"] = { run: async (...args) => {
+      const outcome = await runner.run(...args);
+      const review = args[0].getReview(args[1])!;
+      if (outcome.completed) f.publications.push({ id: `remote-${review.id}`, authorId: "viewer", headSha: review.headSha, state: "APPROVED",
+        body: `number=${review.number} fixture\n<!-- daynight review=${review.id} revision=${review.revision} head=${review.headSha} -->` });
+      return outcome;
+    } };
+    f.start({ git, runner: publishingRunner, processes: createProcessSupervisor({ graceMs: 500, previousProcessesExcluded: true }) });
     await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 1, "first real review", 30_000);
     const target = path.join(f.configurations[0]!.path, ".worktrees", "pr-1");
     expect(nativeGit(target, ["rev-parse", "HEAD"])).toBe(first);
