@@ -33,8 +33,8 @@ const graph = (tasks = [task(rootId, '原任务链'), task(selectedId, '所选�
   project: { id: projectId, name: '核心项目', repoUrl: '', createdAt: timestamp, updatedAt: timestamp },
   tasks,
   summary: {
-    total: tasks.length, todo: tasks.length, done: 0, inProgress: 0,
-    ready: tasks.filter((item) => item.ready).length, blocked: tasks.filter((item) => !item.ready).length,
+    total: tasks.length, todo: tasks.filter((item) => item.status === 'todo').length, done: tasks.filter((item) => item.status === 'done').length, inProgress: tasks.filter((item) => item.status === 'in_progress').length,
+    ready: tasks.filter((item) => item.ready).length, blocked: tasks.filter((item) => item.status === 'todo' && !item.ready).length,
   },
 });
 const graphRequest = vi.mocked(getTaskGraph);
@@ -84,6 +84,27 @@ const expectModalReleased = () => {
 };
 
 describe('project drawer focus restoration', () => {
+  it.each([true, false])('retains details when completion hides their chain and restores visible focus (remaining=%s)', async (keepRemaining) => {
+    const completed = [task(rootId, '原任务链'), task(selectedId, '所选任务', [rootId])].map((item) => ({
+      ...item, status: 'done' as const, ready: false, blockedBy: [],
+    }));
+    graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph(keepRemaining ? [...completed, remaining] : completed));
+    const { trigger, dialog } = await openDrawer();
+    fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
+    await waitFor(() => expect(trigger.isConnected).toBe(false));
+    expect(dialog).toBeVisible();
+    expect(document.getElementById(`task-root-${rootId}`)).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: '关闭任务详情' }));
+    await waitFor(() => expect(keepRemaining ? screen.getByRole('button', { name: /^保留任务链/ }) : screen.getByRole('heading', { name: '核心项目' })).toHaveFocus());
+    expectModalReleased();
+    const checkbox = screen.getByRole('checkbox', { name: /^显示已完成任务链/ });
+    if (!keepRemaining) {
+      fireEvent.click(screen.getByRole('button', { name: '显示已完成任务链' }));
+      expect(checkbox).toHaveFocus();
+      expect(screen.getByRole('button', { name: /^原任务链/ })).toHaveAttribute('aria-expanded', 'true');
+    }
+  });
+
   it('focuses the page heading after refresh removes the selected chain and every task', async () => {
     graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([]));
     const { trigger, dialog } = await openDrawer();

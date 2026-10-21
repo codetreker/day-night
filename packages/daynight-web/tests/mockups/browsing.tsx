@@ -67,7 +67,7 @@ const BrowsingMockup = () => {
               <option value="complete">全部完成</option>
               <option value="empty">尚无任务</option>
             </select>
-            <p>任务链按创建时间倒序排列。展开选择按项目保存，刷新页面可验证。</p>
+            <p>任务链按创建时间倒序排列。展开选择和已完成任务链的显示设置按项目保存，刷新页面可验证。</p>
           </section>
           <ProjectPage key={scenario} projectId={browsingProjects[scenario].project.id} />
         </main>

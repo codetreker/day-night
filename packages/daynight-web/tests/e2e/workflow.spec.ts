@@ -137,17 +137,33 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   await updateTask(request, project.id, e.id, { version: e.version, status: 'done' });
   const f = await createTask(request, project.id, { title: 'F 三根共享合流', dependsOn: [d.id, e.id, b.id, c.id] });
   const g = await createTask(request, project.id, { title: 'G 共享后续', dependsOn: [f.id] });
+  const completed = await createTask(request, project.id, { title: '已完成独立任务' });
+  await updateTask(request, project.id, completed.id, { version: completed.version, status: 'done' });
   const independent = await createTask(request, project.id, { title: '独立待处理任务' });
   await openProject(page, project.id, project.name);
-  for (const [label, value] of [['任务总数', '8'], ['已完成', '4'], ['待处理', '3'], ['进行中', '1'], ['可开始', '1'], ['被阻塞', '2']] as const) {
+  for (const [label, value] of [['任务总数', '9'], ['已完成', '5'], ['待处理', '3'], ['进行中', '1'], ['可开始', '1'], ['被阻塞', '2']] as const) {
     await expect(stat(page, label)).toHaveText(value);
   }
-  await expect(page.getByText('完成比例 50%')).toBeVisible();
+  await expect(page.getByText('完成比例 56%')).toBeVisible();
   expect(await page.locator('.root-toggle').evaluateAll((items) => items.map((item) => item.id))).toEqual(
     [independent, c, b, a].map(({ id }) => `task-root-${id}`),
   );
   await expect(root(page, independent.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(page.locator('.react-flow__node')).toHaveCount(1);
+  const completedVisibility = page.getByRole('checkbox', { name: '显示已完成任务链（1）' });
+  await expect(completedVisibility).not.toBeChecked();
+  await expect(root(page, completed.id)).toHaveCount(0);
+  await expect(page.getByLabel('显示 4 条，共 5 条任务链')).toBeVisible();
+  await completedVisibility.check();
+  await expect(root(page, completed.id)).toBeVisible();
+  await page.reload();
+  await expect(completedVisibility).toBeChecked();
+  expect(await page.locator('.root-toggle').evaluateAll((items) => items.map((item) => item.id))).toEqual(
+    [independent, completed, c, b, a].map(({ id }) => `task-root-${id}`),
+  );
+  await expect(root(page, independent.id)).toHaveAttribute('aria-expanded', 'true');
+  await completedVisibility.uncheck();
+  await expect(root(page, completed.id)).toHaveCount(0);
   await root(page, a.id).click();
   await expect(root(page, a.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(root(page, a.id).locator('.root-status')).toHaveText('已完成');
@@ -517,6 +533,9 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, request },
   await expect(stat(page, '任务总数')).toHaveText('1');
   await expect(stat(page, '已完成')).toHaveText('1');
   await expect(page.getByText('完成比例 100%')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '所有任务链已完成' })).toBeVisible();
+  await page.getByRole('button', { name: '显示已完成任务链', exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: '显示已完成任务链（1）' })).toBeFocused();
   await expect(root(page, task.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(node(page, task.id)).toBeVisible();
   const receipt = await page.locator('.snapshot-time time').getAttribute('datetime');
@@ -709,6 +728,9 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
 
+  const completedVisibility = page.getByRole('checkbox', { name: '显示已完成任务链（0）' });
+  await completedVisibility.check();
+  await expect(completedVisibility).toBeChecked();
   await updateTask(request, project.id, b.id, { version: b.version, dependsOn: [] });
   await trigger.click();
   await expect(dialog.locator('.drawer-stale')).toBeVisible();
