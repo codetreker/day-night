@@ -167,9 +167,12 @@ describe("missing configuration classification", () => {
   it("retains a file ancestor error", async () => {
     const { paths } = await fixture();
     await writeFile(paths.stateDirectory, "not a directory");
+    const nativeFailure = await readFile(paths.configFile, "utf8").catch((cause: unknown) => cause);
     const failure = await readConfigurationSource(paths).catch((cause: unknown) => cause);
     expect(isMissingConfiguration(failure, "serverUrl")).toBe(false);
-    expect(failure).toMatchObject({ cause: { code: "ENOTDIR" } });
+    expect(nativeFailure).toBeInstanceOf(Error);
+    const { code, syscall, path: failedPath } = nativeFailure as NodeJS.ErrnoException;
+    expect(failure).toMatchObject({ cause: { code, syscall, path: failedPath } });
   });
 
   it.skipIf(process.platform === "win32")("retains dangling file and parent symlink errors", async () => {
