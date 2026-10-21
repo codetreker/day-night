@@ -7,6 +7,11 @@
 [交互预览](../design/mockups/task-properties.html)与
 [实施任务](../design/daynight-task-properties-tasks.md)拥有该扩展的机制、样式和状态。
 
+已采用、尚待实现的[附件需求](daynight-task-attachments.md)在 task 详情中增加
+文件管理与预览，机制见[附件架构](../design/daynight-task-attachments.md)，
+进度见[附件任务拆分](../design/daynight-task-attachments-tasks.md)。本文继续拥有
+已经交付的只读项目与任务看板基线，不将附件交互表述为当前可用能力。
+
 ## 目标与使用环境
 
 通过本机浏览器查看 `daynight-server` 中的项目、任务进度和执行依赖。完整路径为：项目列表 → 项目详情 → 展开任务链 → 查看任务详情。

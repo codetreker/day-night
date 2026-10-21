@@ -7,6 +7,11 @@
 [交互预览](mockups/task-properties.html)及[实施任务](daynight-task-properties-tasks.md)
 分别拥有行为、样式和实施状态。
 
+已采用、尚待实现的[附件架构](daynight-task-attachments.md)扩展 task 详情，提供
+文件树、单文件管理及同源预览。[附件需求](../spec/daynight-task-attachments.md)
+拥有新行为，[附件任务拆分](daynight-task-attachments-tasks.md)拥有实施状态。
+本文的只读 MVP 仍描述已经交付的看板基线。
+
 ## 目标与现有基础
 
 浏览器完成“项目列表 → 项目统计 → 根任务展开 → 任务详情”的完整读取路径。数据继续归属 `daynight-server`，不接入 客户端的 review 命令，不新增父子任务或新的任务状态。

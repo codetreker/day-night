@@ -16,9 +16,15 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 参数与完整输出已实现。[需求](../spec/daynight-task-properties.md)和
 [实施任务](daynight-task-properties-tasks.md)拥有扩展约定及实施状态。
 
+已采用、尚待实现的[附件架构](daynight-task-attachments.md)在现有 task 命令中
+增加独立文件操作与二进制传输通道，行为见
+[附件需求](../spec/daynight-task-attachments.md)，实施见
+[附件任务拆分](daynight-task-attachments-tasks.md)。既有 JSON 元数据和完整文本
+输出机制继续服务本文已交付命令。
+
 ## 现有基础与交付边界
 
-`project` 和 `task` 复用已有 HTTP API，不改服务或数据库。实现入口及字段可以由
+本文已交付的 `project` 和 `task` 命令复用已有 HTTP API，不改服务或数据库。实现入口及字段可以由
 以下现有文件核对：
 
 | 现有归属 | 可复用事实 |

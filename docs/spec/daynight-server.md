@@ -14,6 +14,11 @@
 服务端存储、更新与迁移已实现；[架构](../design/daynight-task-properties.md)和
 [实施任务](../design/daynight-task-properties-tasks.md)拥有机制及 CLI/web 的后续状态。
 
+已采用、尚待实现的[附件需求](daynight-task-attachments.md)扩展本文的服务基线，
+增加本地文件内容、PG 元数据、单文件操作和固定预览路径。其
+[架构](../design/daynight-task-attachments.md)与
+[任务拆分](../design/daynight-task-attachments-tasks.md)单独拥有附件机制及实施状态。
+
 ## 目标与交付范围
 
 | 编号 | 要求 |
@@ -211,11 +216,12 @@ points，截短时标记 titleTruncated；不返回完整标题、description �
 并启动内嵌只读看板、API 和 PostgreSQL，等待数据库及完整 API 转发路径健康后返回。
 页面和 API 共用服务 origin，宿主机 HTTP 端口只发布到 `127.0.0.1`，数据库不发布宿主机端口；容器重建和普通停止必须
 保留项目与任务，删除持久卷须使用单独的显式命令。
-服务使用 PostgreSQL 作为业务状态的唯一持久化来源，启动失败必须非零退出。
+本文已交付的 project/task 管理状态仅由 PostgreSQL 持久化，启动失败必须非零退出。
+后续附件扩展将文件内容保存到独立存储，其非原子性边界由附件需求记录。
 关闭时停止接收新请求，在有界期限内排空请求，再关闭数据库连接。
 
 本文的任务管理接口范围不包含自动任务执行、PR 关联、review 调度、跨 project
-依赖或删除接口。完整图读取由本文定义，浏览器页面及内嵌交付要求由
+依赖或 project/task 删除接口。完整图读取由本文定义，浏览器页面及内嵌交付要求由
 [看板需求](daynight-web.md)拥有；现有分页接口继续遵循本文的快照边界。后续扩展必须保留现有 task 身份、
 状态约束、事务原子性和错误语义。源码构建需要先安装固定的 Node/pnpm workspace
 依赖并构建真实页面资源；缺少资源必须构建失败，不能交付占位页面。容器验收使用独立
