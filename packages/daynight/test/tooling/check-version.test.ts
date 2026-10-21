@@ -1,12 +1,14 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { checkVersion } from "../../scripts/check-version.js";
 
 const fixtures = path.resolve(import.meta.dirname, "../../../../.tmp/version-tests");
 const script = path.resolve(import.meta.dirname, "../../scripts/check-version.ts");
 const directories: string[] = [];
+let seedDirectory: string | undefined;
+let seed: { directory: string; base: string } | undefined;
 const manifest = "packages/daynight/package.json";
 const source = "packages/daynight/src/中文 file.ts";
 const zeroSha = "0".repeat(40);
@@ -14,14 +16,10 @@ const environment = Object.fromEntries(Object.entries(process.env).filter(([name
 type Files = Record<string, string>;
 type Tree = Map<string, string | Tree>;
 const files = (version: unknown = "1.0.0"): Files => ({ [manifest]: JSON.stringify({ name: "@codetreker/daynight", version }), [source]: "export const value = 1;\n" });
-const fixture = () => {
-  mkdirSync(fixtures, { recursive: true });
-  const directory = mkdtempSync(path.join(fixtures, "Version 中文 "));
-  directories.push(directory);
+const repository = (directory: string) => {
   const git = (args: string[], input?: string): string => execFileSync("git", ["-C", directory, ...args], {
     encoding: "utf8", env: environment, timeout: 20_000, ...(input === undefined ? {} : { input }), stdio: ["pipe", "pipe", "pipe"],
   }).trim();
-  git(["init", "--bare", "--initial-branch=main"]);
   const writeTree = (tree: Tree): string => git(["mktree", "-z"], [...tree].map(([name, entry]) => typeof entry === "string"
     ? `100644 blob ${git(["hash-object", "-w", "--stdin"], entry)}\t${name}\0`
     : `040000 tree ${writeTree(entry)}\t${name}\0`).join(""));
@@ -44,12 +42,30 @@ const fixture = () => {
   return { directory, commit, git, check: (event: string, base: string, head: string) => checkVersion(event, base, head, directory) };
 };
 
+beforeAll(() => {
+  mkdirSync(fixtures, { recursive: true });
+  const directory = mkdtempSync(path.join(fixtures, "source-template "));
+  seedDirectory = directory;
+  const sourceRepository = repository(directory);
+  sourceRepository.git(["init", "--bare", "--initial-branch=main"]);
+  seed = { directory, base: sourceRepository.commit(files()) };
+});
+const fixture = () => {
+  if (seed === undefined) throw new Error("Version fixtures must be initialized before use.");
+  const directory = mkdtempSync(path.join(fixtures, "Version 中文 "));
+  directories.push(directory);
+  const upstream = path.join(directory, "source.git");
+  cpSync(seed.directory, upstream, { recursive: true, force: false, errorOnExist: true });
+  return { ...repository(upstream), base: seed.base };
+};
+
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
+afterAll(() => { if (seedDirectory !== undefined) rmSync(seedDirectory, { recursive: true, force: true }); seedDirectory = undefined; seed = undefined; });
 
 describe("release version gate", () => {
   it("requires a code change to increase the version read from Git, independently of checkout files", () => {
     const f = fixture();
-    const base = f.commit(files());
+    const base = f.base;
     const unchanged = f.commit({ ...files(), [source]: "export const value = 2;\n" }, base);
     expect(() => f.check("pull_request", base, unchanged)).toThrow(`${manifest} version above 1.0.0; HEAD version is 1.0.0`);
     const increased = f.commit({ ...files("1.0.1"), [source]: "export const value = 2;\n" }, base);
@@ -58,7 +74,7 @@ describe("release version gate", () => {
 
   it("exempts documents, tests, workflows, and validation scripts", () => {
     const f = fixture();
-    const base = f.commit(files());
+    const base = f.base;
     const head = f.commit({ ...files(), "README.md": "docs", "packages/daynight/test/example.test.ts": "test", ".github/workflows/checks.yml": "workflow", "packages/daynight/scripts/check-version.ts": "script" }, base);
     expect(f.check("pull_request", base, head)).toContain("No release inputs changed");
   });
@@ -66,7 +82,7 @@ describe("release version gate", () => {
   it.each(["delete", "move outside source"])("detects a source %s with rename detection disabled", (action) => {
     const f = fixture();
     const initial = files();
-    const base = f.commit(initial);
+    const base = f.base;
     const changed = Object.fromEntries(Object.entries(initial).filter(([name]) => name !== source));
     if (action === "move outside source") changed["docs/moved.ts"] = initial[source]!;
     const head = f.commit(changed, base);
@@ -75,14 +91,14 @@ describe("release version gate", () => {
 
   it.each(["packages/daynight/tsconfig.json", "packages/daynight/tsconfig.build.json", "packages/daynight/scripts/clean-dist.ts", "packages/daynight/scripts/copy-skills.ts", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc"])("requires an increase for build or dependency input %s", (filename) => {
     const f = fixture();
-    const base = f.commit(files());
+    const base = f.base;
     const head = f.commit({ ...files(), [filename]: "changed" }, base);
     expect(() => f.check("push", base, head)).toThrow("Release inputs changed");
   });
 
   it.each(["1.0.0", "0.9.9", "1.0.0+build.2"])("rejects non-increasing version %s", (version) => {
     const f = fixture();
-    const base = f.commit(files());
+    const base = f.base;
     const head = f.commit({ ...files(version), [source]: "changed" }, base);
     expect(() => f.check("push", base, head)).toThrow(`HEAD version is ${version}`);
   });
@@ -102,7 +118,7 @@ describe("release version gate", () => {
 
   it("ignores base-only code/version changes when a PR changes only documents", () => {
     const f = fixture();
-    const common = f.commit(files());
+    const common = f.base;
     const base = f.commit({ ...files("1.0.1"), [source]: "base-only source" }, common);
     const head = f.commit({ ...files(), "README.md": "PR documentation" }, common);
     expect(f.check("pull_request", base, head)).toContain("No release inputs changed");
@@ -110,7 +126,7 @@ describe("release version gate", () => {
 
   it("rejects a PR version increase already consumed by the current target branch", () => {
     const f = fixture();
-    const common = f.commit(files());
+    const common = f.base;
     const base = f.commit(files("1.0.1"), common);
     const head = f.commit({ ...files("1.0.1"), [source]: "PR code" }, common);
     expect(() => f.check("pull_request", base, head)).toThrow("version above 1.0.1");
@@ -119,7 +135,7 @@ describe("release version gate", () => {
 
   it("checks the complete multi-commit push rather than only the final commit", () => {
     const f = fixture();
-    const base = f.commit(files());
+    const base = f.base;
     const intermediate = f.commit({ ...files(), [source]: "changed in first pushed commit" }, base);
     const head = f.commit({ ...files(), [source]: "changed in first pushed commit", "README.md": "last pushed commit" }, intermediate);
     expect(() => f.check("push", base, head)).toThrow("Release inputs changed");
@@ -127,7 +143,7 @@ describe("release version gate", () => {
 
   it("initializes only a push with an all-zero base and a valid head manifest", () => {
     const f = fixture();
-    const head = f.commit(files());
+    const head = f.base;
     expect(f.check("push", zeroSha, head)).toContain("Initialized");
     expect(() => f.check("pull_request", zeroSha, head)).toThrow("existing commits");
     expect(() => f.check("push", head, zeroSha)).toThrow("existing commits");
@@ -136,7 +152,7 @@ describe("release version gate", () => {
 
   it("exposes missing objects, missing manifests, invalid versions, and unrelated histories", () => {
     const f = fixture();
-    const base = f.commit(files());
+    const base = f.base;
     expect(() => f.check("push", base, "f".repeat(40))).toThrow();
     expect(() => f.check("push", base, f.commit({ [source]: "missing manifest" }, base))).toThrow();
     expect(() => f.check("push", base, f.commit(files(42), base))).toThrow("valid semantic version");
@@ -147,7 +163,7 @@ describe("release version gate", () => {
 
   it("validates CLI arguments and reports successful or failed checks to callers", () => {
     const f = fixture();
-    const base = f.commit(files());
+    const base = f.base;
     const head = f.commit({ ...files(), [source]: "changed" }, base);
     const run = (...args: string[]) => spawnSync(process.execPath, [script, ...args], { cwd: f.directory, env: environment, encoding: "utf8", timeout: 20_000 });
     const success = run("push", zeroSha, base);

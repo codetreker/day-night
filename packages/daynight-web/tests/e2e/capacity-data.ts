@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { APIRequestContext } from '@playwright/test';
-import { createProject, createTask, type Project, type Task } from './fixtures';
+import { createProject, createTask, updateTask, type Project, type Task } from './fixtures';
 
 export type CapacityKind = 'chain' | 'merge' | 'shared';
 export type CapacityFixture = {
@@ -32,10 +32,14 @@ export const seedCapacity = async (request: APIRequestContext, kind: CapacityKin
   const root = await createTask(request, project.id, { title: `${kind} source root` });
   const tasks: Task[] = [root];
   if (kind === 'chain') {
-    let previous = root;
-    for (let index = 1; index < 1000; index++) {
-      previous = await createTask(request, project.id, { title: `chain task ${index}`, dependsOn: [previous.id] });
-      tasks.push(previous);
+    tasks.push(...await boundedMap(Array.from({ length: 999 }, (_, index) => index + 1), (index) =>
+      createTask(request, project.id, { title: `chain task ${index}` })));
+    // We attach the chain from its sink so each existing predecessor is still
+    // independent when cycle validation traverses it. The final graph is built
+    // entirely through the same public write API as the other capacity graphs.
+    for (let index = tasks.length - 1; index > 0; index--) {
+      const task = tasks[index]!;
+      tasks[index] = await updateTask(request, project.id, task.id, { version: task.version, dependsOn: [tasks[index - 1]!.id] });
     }
     return { kind, project, root, tasks, edgeCount: 999 };
   }

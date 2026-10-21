@@ -5,11 +5,17 @@ import { evidenceDirectory, expect, test, updateTask } from './fixtures';
 import { seedCapacity, seedNodeLimit, type CapacityFixture, type CapacityKind } from './capacity-data';
 import { withCapacityTrace } from './capacity-trace';
 
+// Repeated DOM snapshots of complete capacity graphs add controller work between
+// measured interactions. Dedicated CDP timelines and scenario PNGs retain the
+// rendering evidence alongside Playwright's action and network trace.
+test.use({ trace: { mode: 'retain-on-failure', snapshots: false, screenshots: false } });
+
 type ExpansionMeasurement = { openMs: number; layoutMs: number; renderMs: number };
 type Measurement = ExpansionMeasurement & { detailMs: number; detailNetworkMs: number; zoomMs: number; panMs: number };
 type Dataset = {
   scenario: string; nodes: 1000; edges: number; result: 'running' | 'passed' | 'failed';
   networkMs?: number; coldOpenMs?: number; measurements: Measurement[]; feedbackDiagnostics: FeedbackDiagnostic[]; error?: string;
+  controllerDurations: { fixtureMs?: number; snapshotMs?: number; repetitions: { interactionMs: number; totalMs: number }[] };
 };
 type Limit = { status: number; nodeCount: number; edgeCount: number; maxNodes: number; maxEdges: number };
 const receipt: {
@@ -337,14 +343,21 @@ test.describe('fixed capacity and performance @capacity', () => {
     const scenario = `capacity-${kind}`;
     test(`renders and operates the complete ${kind} capacity graph`, { annotation: { type: 'scenario', description: scenario } }, async ({ page, request }, info) => {
       test.setTimeout(240_000);
-      const dataset: Dataset = { scenario, nodes: 1000, edges: kind === 'chain' ? 999 : 5000, result: 'running', measurements: [], feedbackDiagnostics: [] };
+      const dataset: Dataset = { scenario, nodes: 1000, edges: kind === 'chain' ? 999 : 5000, result: 'running', measurements: [], feedbackDiagnostics: [],
+        controllerDurations: { repetitions: [] } };
       receipt.datasets.push(dataset);
       await persist();
       try {
         await withScreenshot(page, info, scenario, async () => {
+          const fixtureStart = performance.now();
           const fixture = await seedCapacity(request, kind);
+          dataset.controllerDurations.fixtureMs = performance.now() - fixtureStart;
           if (kind === 'merge') mergeFixture = fixture;
           expect(fixture.tasks).toHaveLength(1000);
+          if (kind === 'chain') {
+            expect(fixture.tasks.slice(1).map((task) => task.dependsOn)).toEqual(fixture.tasks.slice(0, -1).map((task) => [task.id]));
+          }
+          const snapshotStart = performance.now();
           const snapshot = await request.get(`/api/v1/projects/${fixture.project.id}/task-graph`);
           expect(snapshot.status()).toBe(200);
           const graph = await snapshot.json() as { summary: { total: number }; tasks: { id: string; dependsOn: string[] }[] };
@@ -352,6 +365,10 @@ test.describe('fixed capacity and performance @capacity', () => {
           expect(graph.tasks).toHaveLength(1000);
           expect(new Set(graph.tasks.map((task) => task.id)).size).toBe(1000);
           expect(graph.tasks.reduce((count, task) => count + task.dependsOn.length, 0)).toBe(dataset.edges);
+          expect(new Map(graph.tasks.map((task) => [task.id, [...task.dependsOn].sort()]))).toEqual(
+            new Map(fixture.tasks.map((task) => [task.id, [...task.dependsOn].sort()])),
+          );
+          dataset.controllerDurations.snapshotMs = performance.now() - snapshotStart;
           let graphRequests = 0;
           const trackGraph = (request: { url: () => string }) => { if (request.url().endsWith(`/api/v1/projects/${fixture.project.id}/task-graph`)) graphRequests++; };
           page.on('request', trackGraph);
@@ -377,7 +394,10 @@ test.describe('fixed capacity and performance @capacity', () => {
             await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
             await expect(root).toHaveAttribute('aria-expanded', 'false');
             await root.scrollIntoViewIfNeeded();
+            const repetitionStart = performance.now();
+            let interactionMs!: number;
             await withCapacityTrace(page, info, `${scenario}-repetition-${repetition}`, async () => {
+              const interactionStart = performance.now();
               const opened = await measureBrowserFeedback(page, { kind: 'open', rootId: fixture.root.id, edges: dataset.edges }, () => root.click(), dataset, repetition);
               const expansion = await page.evaluate(({ rootId, start, paintedTime }) => {
                 const measures = (performance.getEntriesByName('daynight:task-layout', 'measure') as PerformanceMeasure[])
@@ -394,7 +414,10 @@ test.describe('fixed capacity and performance @capacity', () => {
               dataset.measurements.push(measurement);
               await persist();
               checkMeasurement(measurement);
+              interactionMs = performance.now() - interactionStart;
             });
+            dataset.controllerDurations.repetitions.push({ interactionMs, totalMs: performance.now() - repetitionStart });
+            await persist();
           }
           if (kind === 'shared') {
             const diagnostics = await page.evaluate(() => {

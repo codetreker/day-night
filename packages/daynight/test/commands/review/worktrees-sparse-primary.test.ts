@@ -2,12 +2,12 @@ import path from "node:path";
 import { readFileSync } from "node:fs";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { executeCommand } from "../../../src/commands/review/adapters/github.js";
-import { commit, createGitTestFixtures, proof } from "../../helpers/git-fixtures.js";
+import { commit, proof } from "../../helpers/git-fixtures.js";
 
-import { createSparseFixture } from "../../helpers/git-sparse-fixtures.js";
+import { createSparseFixture, createSparseGitTestFixtures } from "../../helpers/git-sparse-fixtures.js";
 import type { SparseMode } from "../../helpers/git-sparse-fixtures.js";
 
-const fixtures = createGitTestFixtures("git-sparse-primary");
+const fixtures = createSparseGitTestFixtures("git-sparse-primary");
 const { fixture } = fixtures;
 beforeAll(fixtures.initialize);
 afterEach(() => {

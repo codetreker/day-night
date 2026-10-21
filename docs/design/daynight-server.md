@@ -367,10 +367,13 @@ HTTP 测试验证路由、DTO、错误映射、project 范围查找、分页筛�
 PT-T5 的安装 CLI 验收复用此 command-package fixture，新增
 `installed_cli_project_task_workflow` 场景，通过 `PT.V*` 要求编号对应 CLI 的真实
 project/task 操作、依赖推进、重启持久化及版本竞争。Node 编排入口在 Go
-覆盖率 gate 前准备一次安装，将同一产物用于 Go 场景及随后真实预算探针；原有
-go-cov 参数、race、critical 与 strict raw profile 检查保持原义。预算探针运行在
-Go 默认 10 分钟 test timer 之外，使用公开安装命令及默认 30 秒、5 分钟、128 MiB、
-256 MiB 限制；原有 Go 作业仍为 20 分钟。原始服务场景不被 CLI 场景替换，细节见
+覆盖率 gate 前准备一次安装，将同一产物用于 Go 场景及随后预算探针；原有 go-cov
+参数、race、critical 与 strict raw profile 检查保持原义。预算探针运行在 Go 默认
+10 分钟 test timer 之外；公开安装命令的两个期限场景通过测试侧 preload 使用
+1 秒单次和 3 秒总期限，生产默认 30 秒/5 分钟由测试单独断言。四个字节场景保留
+真实 128 MiB/256 MiB 限制及精确边界和 +1 字节配对。原有 Go 作业仍为 20 分钟。
+独立实际进程场景在其顶层测试内最多四个并发，各自保留 schema、进程、数据库
+屏障及清理；顶层测试间的全局环境修改仍串行。原始服务场景不被 CLI 场景替换，细节见
 [安装联调决策](../../.agents/notes/implemented/testing/2026-10-20-installed-project-task-acceptance.md)及
 [CLI 设计](daynight-project-task.md#验证与交付证据)。根目录
 `.tmp/project-task-service-evidence.json` 记录安装身份、Go/预算结果与清理，实际状态
@@ -382,4 +385,5 @@ binary hash、场景及资源清理，CI 要求 checkout 干净且 Git revision 
 逐次运行结果随对应 PR 与 CI 保存。
 
 运行前失效项目内的 Go 测试结果缓存，确保数据库状态
-变化不能被缓存报告掩盖；编译与模块缓存保留。真实业务和跨层验收证据随对应任务交付。
+变化不能被缓存报告掩盖；Go 与 web 两个 job 通过 `setup-go` 复用以 server `go.sum`
+为依赖身份的编译与模块缓存。真实业务和跨层验收证据随对应任务交付。

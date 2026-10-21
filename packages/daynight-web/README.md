@@ -86,8 +86,12 @@ PR CI selects affected modules using the [repository routing rules](../../README
 main pushes run the full suite. The `checks` aggregate requires successful routing
 and successful selected jobs, with deliberately unselected jobs reported as
 `skipped`. When selected, `verify-web` retains its complete workload, including
-real embedded Go builds and production-browser acceptance. The web job also
-tests the dev-ci runner with controlled Docker fixtures. It uploads `coverage-final.json` and
+real embedded Go builds and production-browser acceptance. Unit/coverage and
+controlled dev-ci fixture checks precede `web:acceptance`, which owns the native
+production build, including typechecking. CI reuses Go module/compiler caches
+while retaining the complete production container build and this run's image
+identity check. The web job also tests the dev-ci
+runner with controlled Docker fixtures. It uploads `coverage-final.json` and
 `summary.json`, which records exact counts and the relative product-source
 manifest. Coverage and acceptance artifacts are retained for 30 days. The
 [implementation tasks](../../docs/design/daynight-web-tasks.md) retain validation
@@ -95,7 +99,7 @@ conclusions and link source-specific delivery evidence. The
 [deployment decision](../../.agents/notes/implemented/architecture/2026-10-20-embedded-dashboard-deployment.md)
 records embedded HTTP/container smoke checks and concurrent dev-ci isolation;
 the [production acceptance decision](../../.agents/notes/implemented/testing/2026-10-20-dashboard-production-acceptance.md)
-records the separate real-Docker fault matrix and its limits. CI repeats the 12
+records the separate real-Docker fault matrix and its limits. CI repeats the
 controlled lifecycle fixtures and full production-browser suite. Manual Docker
 fault testing and controlled fixtures each retain their own evidence scope.
 
@@ -123,6 +127,10 @@ acceptance runs eight functional and four capacity/limit scenarios. The same
 eight functional scenarios run through the actual dev-ci production image and
 stream gateway. No normal localhost service or dataset is used. Functional and
 capacity fixtures use the real write APIs; the page is checked to remain read-only.
+The chain fixture creates 1,000 independent tasks, then attaches its 999 edges
+with versioned PATCH requests from sink to root, avoiding repeated traversal of
+a growing ancestor chain during setup. Complete snapshots compare every node's
+dependencies with the fixture, including the chain's exact predecessor sequence.
 
 Capacity uses fixed 1,000-node graphs: a 999-edge chain and two 5,000-edge graphs
 for merges and shared roots. Each graph expands five times, with every opening
@@ -177,6 +185,14 @@ attaches `*-chromium-trace.json` from CDP timeline/frame/GC/User Timing events,
 without CPU sampling or CDP screenshots. These diagnostics preserve all original
 total timing/readiness gates; they do not subtract queue/frame time or turn a
 failed measurement into success. Scenario PNG evidence remains independent.
+Capacity tests disable Playwright's repeated DOM snapshots and trace filmstrip;
+action/network traces remain available on failure alongside all 15 streamed CDP
+traces, scenario PNGs and complete graph/geometry checks. Controller-side
+`controllerDurations` records fixture creation, graph snapshot validation and
+per-repetition interaction/total durations. These diagnostics locate harness
+costs outside the browser input-to-feedback gates; they do not alter those gates.
+The [CI efficiency decision](../../.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md)
+records why this avoids duplicate capture work without splitting the suite.
 
 ### Cleanup and interrupted-run recovery
 

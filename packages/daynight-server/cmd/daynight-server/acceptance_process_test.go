@@ -63,6 +63,8 @@ type acceptanceScenario struct {
 
 var binaryAcceptance *acceptanceEvidence
 
+var acceptanceSlots = make(chan struct{}, 4)
+
 func (e *acceptanceEvidence) update(change func()) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -200,6 +202,11 @@ func acceptanceEnvironment(values map[string]string) []string {
 func acceptanceCase(t *testing.T, name string, requirements []string, operation func(*testing.T, *acceptanceScenario)) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
+		// Parallel subtests finish before their parent returns, keeping process-wide
+		// environment changes in the other top-level tests outside these scenarios.
+		t.Parallel()
+		acceptanceSlots <- struct{}{}
+		t.Cleanup(func() { <-acceptanceSlots })
 		started := time.Now()
 		scenario := &acceptanceScenario{Name: name, Requirements: requirements, Result: "running", Cleanup: "pending"}
 		if err := binaryAcceptance.update(func() { binaryAcceptance.Scenarios = append(binaryAcceptance.Scenarios, scenario) }); err != nil {

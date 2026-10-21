@@ -23,7 +23,7 @@ export const commit = (bare: string, contents: string, parent?: string, extraTre
     `tree ${tree}\n${parent === undefined ? "" : `parent ${parent}\n`}author Fixture <fixture@example.invalid> 1700000000 +0000\ncommitter Fixture <fixture@example.invalid> 1700000000 +0000\n\n${contents}\n`);
 };
 
-export const createGitTestFixtures = (name: string) => {
+export const createGitTestFixtures = (name: string, prepareSource?: (upstream: string, base: string) => void) => {
   const directories: string[] = [];
   const stores = new Set<Store>();
   let root: string | undefined;
@@ -40,6 +40,7 @@ export const createGitTestFixtures = (name: string) => {
     const head = commit(upstream, "PR\n", base);
     rawGit(upstream, ["update-ref", "refs/heads/main", base]);
     rawGit(upstream, ["update-ref", "refs/pull/101/head", head]);
+    prepareSource?.(upstream, base);
     seed = { directory, upstream, base, head };
   };
 

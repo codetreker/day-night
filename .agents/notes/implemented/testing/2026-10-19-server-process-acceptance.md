@@ -20,8 +20,14 @@ to own store/service/server coverage. The
 reuses this fixture for public CLI workflows, restart and
 version competition. It keeps CLI requirement identifiers in the `PT.V*` namespace and
 uses a separately prepared installation without replacing the service scenarios.
-Production-budget probes run after the existing Go gate, outside its default
-ten-minute test timer, while the Go CI job retains its 20-minute bound.
+Resource-budget probes run after the existing Go gate, outside its default
+ten-minute test timer, while the Go CI job retains its 20-minute bound. The
+[CI efficiency decision](2026-10-21-ci-validation-efficiency.md) defines short
+test-only deadline values, unchanged real byte-limit probes and bounded parallel
+scenario execution. Independent scenario subtests have at most four active
+slots within their sequential top-level test. Each owns its schema, server
+processes, database barriers and cleanup; top-level tests that modify process-wide
+environment do not overlap them.
 
 The original twelve service scenarios exercise persistence, refusal semantics, filtered pages,
 three deterministic write races, partial-write rollback, request cancellation,
