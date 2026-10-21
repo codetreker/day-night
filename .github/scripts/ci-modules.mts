@@ -21,7 +21,8 @@ export const selectModules = (paths: readonly string[]): ModuleSelection => {
     }
     if (
       path.startsWith("docs/") || path.startsWith(".agents/") || path.startsWith(".claude/") ||
-      /(^|\/)(README|AGENTS|CLAUDE)\.md$/.test(path) || path === ".github/workflows/publish.yml"
+      /(^|\/)(README|AGENTS|CLAUDE)\.md$/.test(path) || path === ".gitignore" ||
+      path === ".github/workflows/publish.yml"
     ) continue;
     if (path.startsWith("packages/daynight/")) selected.cli = true;
     else if (path.startsWith("packages/daynight-server/")) selected.server = true;
