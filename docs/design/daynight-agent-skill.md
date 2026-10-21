@@ -331,7 +331,8 @@ POSIX PTY 结果不能代替。普通原生 CI 继续运行 typecheck、test、b
 linked worktree，重装验证旧文件移除和 sibling 保留。三个宿主均使用普通开发请求，
 不点名 Daynight、skill 或其路径；fixture README 可以正常声明项目使用的任务系统。
 宿主成功读取或实际送达的正文须与安装 bundle 内容匹配，发现列表、调用意图及失败
-读取均不能充当激活证据。Codex 使用 app-server 的成功 read 结果；Copilot 从隔离
+读取均不能充当激活证据。Codex 使用 app-server 的成功命令读取结果，对结构化 read
+与明确读取已知路径的复合命令统一核对实际输出的完整内容；Copilot 从隔离
 session 提取真正的 context delivery；Claude 关联成功的 Skill / Read 与完整送达内容。
 
 一个独立 Go/PostgreSQL 实例持有全部 fixture 项目。透明记录器转发真实 HTTP，CLI、
@@ -345,7 +346,9 @@ Node 测试和受限只读 GitHub wrapper 只记录并转发实际执行，不�
 
 不确定写入通过真实网络故障产生：服务已经返回完整 201、数据库已提交后，记录器
 丢弃一次对应项目的 create 响应并断开下游连接。Agent 必须通过实际任务清单和详情
-核对完整预期字段、确认唯一已创建对象，不能盲目重复 create。恢复场景使用真实零个、
+核对完整预期字段、确认唯一已创建对象，不能盲目重复 create。完整任务清单已实际
+包含唯一候选的全部字段时，可直接证明读取与身份，不要求重复
+show；只有标题或摘要不足以核对。恢复场景使用真实零个、
 两个项目关联，以及指定项目持续读取断连；Agent 保留未关联、歧义或服务失败的实际
 原因，不猜测 project，不创建替代资源或改写已有配置与绑定。
 未关联或歧义可以由真实 CLI 诊断证明，也可以由成功观察到的当前 Git origin 或完整

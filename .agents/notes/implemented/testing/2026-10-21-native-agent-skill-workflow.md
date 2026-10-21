@@ -23,7 +23,9 @@ installed entrypoint or its native Markdown body. Inventory, invocation intent,
 failed reads and path-only output cannot satisfy that proof.
 
 The native adapters keep host-specific protocols concrete. Codex uses ephemeral
-app-server threads and successful structured read results. Copilot correlates
+app-server threads and successful command reads of exact expected artifacts.
+Structured read actions and conservative literal compound-shell reads share the
+same full-content check; command shape alone cannot establish delivery. Copilot correlates
 the isolated session's native skill context-delivery events; stdout omits them.
 Claude correlates successful Skill/Read results with the complete delivered
 content, including its first-invocation synthetic user message. Native versions,
@@ -47,7 +49,9 @@ unfiltered baseline execution. Trace order establishes
 in-progress before implementation testing, successful tests and actual merged-PR
 inspection before completion, and a ready refresh afterward. Any attempted
 completion of the open-PR task fails acceptance, even if later reverted. A real committed-create response is dropped once; reconciliation must find and
-inspect the unique resource without another create. Existing dependencies are
+inspect the unique resource without another create. An observed complete Task
+inventory can establish its full fields and identity without a redundant show;
+summary/title-only matches cannot. Existing dependencies are
 replaced with a complete set that preserves every required predecessor. Actual
 zero/two-project association and persistent scoped network failures preserve the
 reported cause, configured server and binding without guessed selections or

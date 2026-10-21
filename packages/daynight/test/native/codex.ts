@@ -1,5 +1,4 @@
 import { execFileSync, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
 import { mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -7,7 +6,8 @@ import which from "which";
 import { terminateInstalledProcess } from "../fixtures/installed-cli.js";
 import type { NativeHostEvent, NativeHostRequest, NativeHostResult } from "./host.js";
 import { assertCodexNoCredentialFiles, codexPrivateEnvironmentValues, isCodexPrivateEnvironmentName, redactCodexPrivateValues } from "./codex-privacy.js";
-import { exactCodexConfigCat, readOwnedCodexConfig } from "./codex-config-read.js";
+import { codexArtifactReadEvidence, readOwnedCodexArtifact } from "./codex-file-read.js";
+import type { CodexExpectedArtifact } from "./codex-file-read.js";
 
 type JsonObject = Record<string, unknown>;
 type PendingRequest = { readonly resolve: (value: JsonObject) => void; readonly reject: (cause: Error) => void };
@@ -41,6 +41,10 @@ export const runCodex = async (request: NativeHostRequest): Promise<NativeHostRe
   const installedSkills = new Set(request.skillEntrypoints.map((entrypoint) => path.resolve(entrypoint)));
   if (installedSkills.size === 0 || request.expectedSkillContents === "") throw new Error("The Codex fixture has no expected installed skill.");
   for (const entrypoint of installedSkills) if (await readFile(entrypoint, "utf8") !== request.expectedSkillContents) throw new Error("The Codex fixture skill differs from the expected installed bundle.");
+  const expectedArtifacts: CodexExpectedArtifact[] = [...installedSkills].map((filename) => ({ filename, contents: request.expectedSkillContents }));
+  const configFilename = path.resolve(request.workingDirectory, ".git/config");
+  const configContents = readOwnedCodexArtifact(configFilename, request.fixtureDirectory);
+  if (configContents !== undefined) expectedArtifacts.push({ filename: configFilename, contents: configContents });
   const binary = await which("codex", { path: process.env.PATH });
   const executable = await open(binary, "r");
   let nodeLauncher: boolean;
@@ -145,45 +149,14 @@ export const runCodex = async (request: NativeHostRequest): Promise<NativeHostRe
       if (item.type === "commandExecution") {
         const command = redact(string(item.command, "executed command"));
         const actions = Array.isArray(item.commandActions) ? item.commandActions : [];
-        let observedFile: NativeHostEvent["observedFile"];
-        if (item.status === "completed" && item.exitCode === 0 && typeof item.aggregatedOutput === "string") {
-          const filenames: string[] = [];
-          for (const action of actions) {
-            const candidate = object(action, "command action");
-            if (candidate.type !== "read" || typeof candidate.path !== "string") continue;
-            filenames.push(path.resolve(string(item.cwd, "command working directory"), candidate.path));
-          }
-          if (path.resolve(string(item.cwd, "command working directory")) === path.resolve(request.workingDirectory)) {
-            const configCat = exactCodexConfigCat(string(item.command, "executed command"), request.workingDirectory);
-            if (configCat !== undefined) filenames.push(configCat);
-          }
-          for (const filename of new Set(filenames)) {
-            const relative = path.relative(request.fixtureDirectory, filename);
-            const contents = readOwnedCodexConfig(filename, request.fixtureDirectory);
-            if (contents === undefined || contents === "") continue;
-            const start = item.aggregatedOutput.indexOf(contents);
-            if (start === -1) continue;
-            const matchedContents = item.aggregatedOutput.slice(start, start + contents.length);
-            observedFile = { path: redact(relative.replaceAll(path.sep, "/")), sha256: createHash("sha256").update(matchedContents).digest("hex") };
-            break;
-          }
-        }
+        const reads = codexArtifactReadEvidence({ command: string(item.command, "executed command"), cwd: string(item.cwd, "command working directory"), commandActions: actions, status: item.status, exitCode: item.exitCode, aggregatedOutput: item.aggregatedOutput }, expectedArtifacts);
+        const configRead = reads.find((read) => read.filename === configFilename);
+        const observedFile = configRead === undefined ? undefined : { path: redact(path.relative(request.fixtureDirectory, configRead.filename).replaceAll(path.sep, "/")), sha256: configRead.sha256 };
         events.push({ kind: "command", text: command,
           ...(typeof item.exitCode === "number" ? { exitCode: item.exitCode } : {}),
           ...(observedFile === undefined ? {} : { observedFile }),
         });
-        const skillRead = actions.some((action) => {
-          const candidate = object(action, "command action");
-          return candidate.type === "read" && typeof candidate.path === "string" && installedSkills.has(path.resolve(string(item.cwd, "command working directory"), candidate.path));
-        });
-        if (item.status === "completed" && item.exitCode === 0 && skillRead && typeof item.aggregatedOutput === "string") {
-          const start = item.aggregatedOutput.indexOf(request.expectedSkillContents);
-          if (start !== -1) {
-            const matchedContents = item.aggregatedOutput.slice(start, start + request.expectedSkillContents.length);
-            const digest = createHash("sha256").update(matchedContents).digest("hex");
-            events.push({ kind: "skill", text: `Read the installed daynight/SKILL.md with exact bundled content (sha256:${digest}).` });
-          }
-        }
+        for (const read of reads) if (installedSkills.has(read.filename)) events.push({ kind: "skill", text: `Read the installed daynight/SKILL.md with exact bundled content (sha256:${read.sha256}).` });
       } else if (item.type === "agentMessage") {
         const text = redact(string(item.text, "agent message"));
         events.push({ kind: "message", text });

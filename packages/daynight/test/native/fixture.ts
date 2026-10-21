@@ -11,6 +11,7 @@ import { terminateInstalledProcess } from "../fixtures/installed-cli.js";
 import { createSkillFixture, skillPipe, skillTerminal } from "../fixtures/skill-terminal.js";
 import type { NativeHostName, NativeHostResult } from "./host.js";
 import { baselineAcceptanceRun } from "./fixture-reporter.js";
+import { inventoryObservesUniqueTask } from "./fixture-reconciliation.js";
 
 type Trace = { readonly actor: "model" | "contender"; readonly tool: "daynight" | "gh" | "node"; readonly args: string[]; readonly prUrl?: string; readonly startedAt: number; readonly finishedAt: number; readonly code: number | null; readonly stdout: string; readonly stderr: string };
 type CommandResult = { readonly code: number | null; readonly stdout: string; readonly stderr: string };
@@ -282,9 +283,8 @@ export const createNativeFixture = async (options: {
           assert(option(uncertain.args, "--description") === followups[0]!.description && JSON.stringify(repeatedOption(uncertain.args, "--depends-on").sort()) === JSON.stringify([...followups[0]!.dependsOn].sort()), "Persisted uncertain-create candidate does not match the complete intended description and dependency set.");
           const intendedTitles = repeatedOption(uncertain.args, "--pull-request-title"), intendedReferences = repeatedOption(uncertain.args, "--pull-request-url").map((url, index) => ({ url, title: intendedTitles[index] }));
           assert(JSON.stringify(intendedReferences) === JSON.stringify(followups[0]!.properties.pullRequests), "Persisted uncertain-create candidate does not match the intended PR reference properties.");
-          const inventory = tasks.find((entry) => entry.args[1] === "list" && entry.code === 0 && entry.startedAt > uncertain.finishedAt && option(entry.args, "--status") === undefined && !entry.args.includes("--ready") && taskVersions(entry.stdout).some((task) => task.id === followups[0]!.id));
-          assert(inventory !== undefined, "Native host did not reconcile the uncertain create against the full real task inventory.");
-          assert(tasks.some((entry) => entry.args[1] === "show" && entry.args[2] === followups[0]!.id && entry.code === 0 && entry.startedAt > inventory.finishedAt), "Native host did not inspect the unique persisted candidate after reconciling its uncertain create.");
+          const inventory = tasks.find((entry) => entry.args[1] === "list" && entry.code === 0 && entry.startedAt > uncertain.finishedAt && option(entry.args, "--status") === undefined && !entry.args.includes("--ready") && entry.args.includes("--json") && inventoryObservesUniqueTask(entry.stdout, followups[0]!));
+          assert(inventory !== undefined, "Native host did not observe the unique complete persisted candidate in its postfailure task inventory.");
           uncertainCreateReconciled = true;
         }
         assert(await absent(path.join(primary, ".daynight/project.yml")), "Native host wrote the binding into the primary checkout.");
