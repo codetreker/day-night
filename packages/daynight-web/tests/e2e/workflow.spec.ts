@@ -143,6 +143,12 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
     await expect(stat(page, label)).toHaveText(value);
   }
   await expect(page.getByText('完成比例 50%')).toBeVisible();
+  expect(await page.locator('.root-toggle').evaluateAll((items) => items.map((item) => item.id))).toEqual(
+    [independent, c, b, a].map(({ id }) => `task-root-${id}`),
+  );
+  await expect(root(page, independent.id)).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('.react-flow__node')).toHaveCount(1);
+  await root(page, a.id).click();
   await expect(root(page, a.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(root(page, a.id).locator('.root-status')).toHaveText('已完成');
   await expect(root(page, a.id).locator('.root-progress-label')).toHaveText('3/5 已完成');

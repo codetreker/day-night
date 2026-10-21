@@ -38,19 +38,22 @@ Refresh discards old pages and cursors; late responses cannot repopulate them.
 
 The application implements `/` and `/projects/{projectId}`, direct URL reload,
 browser back/forward and a generic not-found page. A project shows six statistics
-from one complete graph snapshot. Root rows expand one horizontal graph at a
-time, including shared tasks and direct external prerequisites. Per-project browser
+from one complete graph snapshot. Root rows appear newest creation first, with
+descending IDs breaking equal-time ties. The view reverses the exact API root
+sequence without reducing timestamp precision; updates do not move older roots.
+The complete graph index and API ordering stay unchanged. Rows expand one
+horizontal graph at a time, including shared tasks and direct external prerequisites.
+Per-project browser
 preferences retain the expanded root or an explicitly collapsed list across reloads
-and navigation. First visits open the first root; a missing saved root selects the
-current first root. Loading, failed initial reads and empty graphs do not record
+and navigation. First visits open the newest root; a missing saved root selects
+the current newest root while an existing saved root stays open. Loading, failed initial reads and empty graphs do not record
 an inferred collapsed preference. Storage failures display a notice while the
 current page remains usable. Preferences do not save detail selection or canvas
 positions and do not change server data. The [preference decision](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)
 records this ownership. Nodes open a detail drawer with dependency navigation,
 PR associations, stale-data detection and attachment management. Task fields and
 graph interactions remain read-only. The PR section follows the description and
-displays every ordered
-title/URL pair, including duplicates. Lists longer than 100 entries use local
+displays every ordered title/URL pair, including duplicates. Lists longer than 100 entries use local
 100-row pages with a range/total announcement, Previous/Next controls and direct
 page selection. The complete ordered list stays in memory; changing pages makes
 no requests and imposes no storage or content limit. Replacing the task or
@@ -142,6 +145,17 @@ existing Chromium override is recorded and does not establish pinned CI-browser
 or real-backend delivery. JSDOM uses an upstream `tabbable` test wrapper because
 it lacks layout; those unit tests do not prove browser visibility. A-T6 owns the
 new real-service attachment journeys and their production CI inventory.
+
+## Frontend-only task browsing mockup
+
+Run `pnpm web:dev` and open `/tests/mockups/browsing.html` on Vite's printed
+origin. The fixture mounts the production project page and CSS with mixed,
+fully completed and empty project graphs. It demonstrates the exact
+newest-first root order, shared dependencies, current task details and per-project
+expanded/collapsed preferences across reloads. The scenario stays in the URL hash.
+Graph, detail and empty attachment-list reads are served in memory; unexpected
+requests fail instead of reaching a service. This development entry is excluded
+from the production build and does not establish real-backend acceptance.
 
 ## Validation and build
 
@@ -249,7 +263,8 @@ a growing ancestor chain during setup. Complete snapshots compare every node's
 dependencies with the fixture, including the chain's exact predecessor sequence.
 
 Capacity uses fixed 1,000-node graphs: a 999-edge chain and two 5,000-edge graphs
-for merges and shared roots. Each graph expands five times, with every opening
+for merges and shared roots. The browser explicitly selects the fixture root so newest-first browsing does not
+change the graph workload. Each graph expands five times, with every opening
 at most 3,000ms and local task/zoom/pan feedback at most 300ms. Network timings are
 recorded separately. Each expansion also records projection/layout duration and
 subsequent painted-render duration; these diagnostics do not replace the complete

@@ -15,8 +15,10 @@ The project view owns an independent browser preference hook. It reads the
 current origin's localStorage once for each mounted project and saves an expanded
 root ID or an explicit null for a collapsed list. Project IDs isolate choices;
 there is no server preference or task-data change. An absent preference selects
-the first root. A successful nonempty snapshot validates the saved choice and
-replaces a missing root with its current first root. A successful empty snapshot,
+the first presented root. The [presentation decision](2026-10-21-task-chain-presentation.md)
+orders that list newest-first while retaining an existing valid choice. A
+successful nonempty snapshot validates the saved choice and replaces a missing
+root with its current first presented root. A successful empty snapshot,
 loading and an initial read failure do not turn an automatic absence into an
 explicit collapsed preference.
 

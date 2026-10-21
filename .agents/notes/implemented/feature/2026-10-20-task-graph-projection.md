@@ -18,7 +18,9 @@ checks unique nodes and references, dependency closure, acyclicity, status,
 blocked-by and readiness consistency, summary counts, and the declared size
 limits. Invalid snapshots fail as a whole. Root order preserves the backend's
 exact response order; JavaScript millisecond dates do not reorder database
-timestamps with finer precision.
+timestamps with finer precision. The
+[presentation decision](2026-10-21-task-chain-presentation.md) owns the separate
+newest-first list; it consumes a reversed copy without changing this index.
 
 For one root, the main set is the root and its forward-reachable descendants.
 The boundary set contains the main set's direct predecessors that are outside

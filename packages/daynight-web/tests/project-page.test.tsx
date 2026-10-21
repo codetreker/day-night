@@ -9,9 +9,9 @@ import { useTaskDetail } from "../src/features/task-detail/useTaskDetail";
 import { projectRoot, type GraphIndex } from "../src/features/task-graph/model";
 
 vi.mock("../src/api/client", async (original) => ({ ...await original<typeof import("../src/api/client")>(), getTask: vi.fn(), getTaskGraph: vi.fn() }));
-vi.mock("../src/features/task-graph/RootList", () => ({ RootList: ({ index, expandedRootId, onExpand, onSelectTask }: {
-  index: GraphIndex; expandedRootId: string | null; onExpand: (id: string | null) => void; onSelectTask: (id: string, trigger: HTMLElement) => void;
-}) => <div data-testid="root-list">{index.roots.map((root) => <div key={root}>
+vi.mock("../src/features/task-graph/RootList", () => ({ RootList: ({ index, rootIds, expandedRootId, onExpand, onSelectTask }: {
+  index: GraphIndex; rootIds: readonly string[]; expandedRootId: string | null; onExpand: (id: string | null) => void; onSelectTask: (id: string, trigger: HTMLElement) => void;
+}) => <div data-testid="root-list" data-index-roots={index.roots.join(",")}>{rootIds.map((root) => <div key={root}>
   <button id={`task-root-${root}`} onClick={() => onExpand(expandedRootId === root ? null : root)}>{index.nodes.get(root)!.titlePreview}</button>
   {expandedRootId === root && <div data-testid={`chain-${root}`}>{[...projectRoot(index, root).mainIds].map((id) => <button key={id} onClick={(event) => onSelectTask(id, event.currentTarget)}>节点 {index.nodes.get(id)!.titlePreview}</button>)}</div>}
 </div>)}</div> }));
@@ -31,6 +31,8 @@ const A = "20000000-0000-0000-0000-000000000001";
 const B = "20000000-0000-0000-0000-000000000002";
 const C = "20000000-0000-0000-0000-000000000003";
 const D = "20000000-0000-0000-0000-000000000004";
+const E = "20000000-0000-0000-0000-000000000005";
+const F = "20000000-0000-0000-0000-000000000006";
 const X = "20000000-0000-0000-0000-000000000009";
 const time = "2026-10-20T12:00:00.123456Z";
 type Seed = { id: string; title: string; status: TaskStatus; dependsOn: readonly string[] };
@@ -71,7 +73,10 @@ beforeEach(() => {
 });
 
 describe("project dashboard", () => {
-  it("loads a complete graph into six accurate unique-task statistics and expands the first root", async () => {
+  beforeEach(() => { rememberRoot(A); });
+
+  it("loads a complete graph into six accurate unique-task statistics and expands the newest root on a first visit", async () => {
+    window.localStorage.clear();
     const pending = deferred<TaskGraph>();
     graphRequest.mockReturnValueOnce(pending.promise);
     render(<ProjectPage projectId={projectId} />);
@@ -82,15 +87,15 @@ describe("project dashboard", () => {
     expect(["任务总数", "已完成", "待处理", "进行中", "可开始", "被阻塞"].map(number)).toEqual(["4", "1", "3", "0", "2", "1"]);
     expect(screen.getByText("完成比例 25%")).toBeTruthy();
     expect(screen.getAllByText("待处理的子集")).toHaveLength(2);
-    expect(screen.getByTestId(`chain-${A}`)).toBeTruthy();
-    expect(screen.queryByTestId(`chain-${C}`)).toBeNull();
-    expect(screen.getByText("git@github.com:example/project.git")).toBeTruthy();
-    expect(screen.getByText(/最近成功刷新/).querySelector("time")?.getAttribute("datetime")).not.toBe(time);
-    fireEvent.click(screen.getByRole("button", { name: "独立根" }));
     expect(screen.getByTestId(`chain-${C}`)).toBeTruthy();
     expect(screen.queryByTestId(`chain-${A}`)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "独立根" }));
+    expect(screen.getByText("git@github.com:example/project.git")).toBeTruthy();
+    expect(screen.getByText(/最近成功刷新/).querySelector("time")?.getAttribute("datetime")).not.toBe(time);
+    fireEvent.click(screen.getByRole("button", { name: "已完成根" }));
+    expect(screen.getByTestId(`chain-${A}`)).toBeTruthy();
     expect(screen.queryByTestId(`chain-${C}`)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "已完成根" }));
+    expect(screen.queryByTestId(`chain-${A}`)).toBeNull();
   });
 
   it("retains the snapshot and receipt time on refresh failure and keeps a valid expanded root", async () => {
@@ -233,42 +238,107 @@ describe("project dashboard", () => {
   });
 });
 
+describe("newest-first task chains", () => {
+  const presentedRoots = () => [...screen.getByTestId("root-list").querySelectorAll('[id^="task-root-"]')].map((root) => root.id);
+  const newerRoots: readonly Seed[] = [
+    { id: E, title: "新任务链", status: "todo", dependsOn: [] },
+    { id: F, title: "最新任务链", status: "todo", dependsOn: [] },
+  ];
+
+  it("reverses exact API root order across equal and sub-millisecond timestamps with children interspersed", async () => {
+    const ordered = graph([
+      { id: A, title: "最早任务链", status: "done", dependsOn: [] },
+      { id: B, title: "已完成后续", status: "done", dependsOn: [A] },
+      { id: C, title: "稍早任务链", status: "done", dependsOn: [] },
+      { id: D, title: "最新后续任务", status: "todo", dependsOn: [B] },
+      ...newerRoots,
+    ]);
+    const timestamps = ["123454", "123455", "123455", "123456", "123456", "123456"];
+    const snapshot = { ...ordered, tasks: Object.freeze(ordered.tasks.map((task, position) => ({
+      ...task, createdAt: `2026-10-20T12:00:00.${timestamps[position]}Z`,
+      updatedAt: task.id === A ? "2026-10-22T12:00:00Z" : task.updatedAt,
+    }))) };
+    expect(new Set(snapshot.tasks.map((task) => Date.parse(task.createdAt))).size).toBe(1);
+    graphRequest.mockResolvedValue(snapshot);
+    render(<ProjectPage projectId={projectId} />);
+    expect(await screen.findByTestId(`chain-${F}`)).toBeVisible();
+    expect(presentedRoots()).toEqual([F, E, C, A].map((id) => `task-root-${id}`));
+    expect(screen.getByTestId("root-list")).toHaveAttribute("data-index-roots", [A, C, E, F].join(","));
+    expect(snapshot.tasks.map((task) => task.id)).toEqual([A, B, C, D, E, F]);
+    fireEvent.click(screen.getByRole("button", { name: "最早任务链" }));
+    const chain = screen.getByTestId(`chain-${A}`);
+    expect(within(chain).getAllByRole("button").map((button) => button.textContent)).toEqual(["节点 最早任务链", "节点 已完成后续", "节点 最新后续任务"]);
+    expect(number("任务总数")).toBe("6");
+    expect(number("已完成")).toBe("3");
+  });
+
+  it("keeps a remembered older root open when newer roots arrive and selects the newest fallback when it disappears", async () => {
+    rememberRoot(A);
+    graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([...seeds, ...newerRoots]))
+      .mockResolvedValueOnce(graph([seeds[2]!, ...newerRoots]));
+    render(<ProjectPage projectId={projectId} />);
+    expect(await screen.findByTestId(`chain-${A}`)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+    await screen.findByRole("button", { name: "最新任务链" });
+    expect(presentedRoots()).toEqual([F, E, C, A].map((id) => `task-root-${id}`));
+    expect(screen.getByTestId(`chain-${A}`)).toBeVisible();
+    expect(screen.queryByTestId(`chain-${F}`)).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem(preferenceKey())!)).toEqual({ expandedRootId: A });
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+    expect(await screen.findByTestId(`chain-${F}`)).toBeVisible();
+    expect(presentedRoots()).toEqual([F, E, C].map((id) => `task-root-${id}`));
+    expect(JSON.parse(window.localStorage.getItem(preferenceKey())!)).toEqual({ expandedRootId: F });
+  });
+
+  it("keeps an explicitly collapsed list closed when newer roots arrive", async () => {
+    rememberRoot(null);
+    graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([...seeds, ...newerRoots]));
+    render(<ProjectPage projectId={projectId} />);
+    await screen.findByRole("button", { name: "独立根" });
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+    await screen.findByRole("button", { name: "最新任务链" });
+    expect(presentedRoots()).toEqual([F, E, C, A].map((id) => `task-root-${id}`));
+    expect(screen.queryAllByTestId(/^chain-/)).toHaveLength(0);
+    expect(JSON.parse(window.localStorage.getItem(preferenceKey())!)).toEqual({ expandedRootId: null });
+  });
+});
+
 describe("remembered task chain expansion", () => {
   it("restores a chosen root and an explicitly collapsed list after remounting", async () => {
     graphRequest.mockResolvedValue(graph());
     let view = render(<ProjectPage projectId={projectId} />);
-    fireEvent.click(await screen.findByRole("button", { name: "独立根" }));
-    expect(screen.getByTestId(`chain-${C}`)).toBeVisible();
+    fireEvent.click(await screen.findByRole("button", { name: "已完成根" }));
+    expect(screen.getByTestId(`chain-${A}`)).toBeVisible();
     view.unmount();
     view = render(<ProjectPage projectId={projectId} />);
-    expect(await screen.findByTestId(`chain-${C}`)).toBeVisible();
-    expect(screen.queryByTestId(`chain-${A}`)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "独立根" }));
+    expect(await screen.findByTestId(`chain-${A}`)).toBeVisible();
+    expect(screen.queryByTestId(`chain-${C}`)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "已完成根" }));
     view.unmount();
     render(<ProjectPage projectId={projectId} />);
-    await screen.findByRole("button", { name: "独立根" });
-    expect(screen.queryByTestId(`chain-${A}`)).toBeNull();
+    await screen.findByRole("button", { name: "已完成根" });
     expect(screen.queryByTestId(`chain-${C}`)).toBeNull();
+    expect(screen.queryByTestId(`chain-${A}`)).toBeNull();
     expect(JSON.parse(window.localStorage.getItem(preferenceKey())!)).toEqual({ expandedRootId: null });
   });
 
   it("keeps project preferences separate across navigation", async () => {
     graphRequest.mockImplementation(async (id) => graph(seeds, id));
     const view = render(<ProjectPage projectId={projectId} />);
-    fireEvent.click(await screen.findByRole("button", { name: "独立根" }));
+    fireEvent.click(await screen.findByRole("button", { name: "已完成根" }));
     view.rerender(<ProjectPage projectId={otherProject} />);
-    expect(await screen.findByTestId(`chain-${A}`)).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "已完成根" }));
-    view.rerender(<ProjectPage projectId={projectId} />);
     expect(await screen.findByTestId(`chain-${C}`)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "独立根" }));
+    view.rerender(<ProjectPage projectId={projectId} />);
+    expect(await screen.findByTestId(`chain-${A}`)).toBeVisible();
     view.rerender(<ProjectPage projectId={otherProject} />);
-    await screen.findByRole("button", { name: "已完成根" });
-    expect(screen.queryByTestId(`chain-${A}`)).toBeNull();
+    await screen.findByRole("button", { name: "独立根" });
     expect(screen.queryByTestId(`chain-${C}`)).toBeNull();
+    expect(screen.queryByTestId(`chain-${A}`)).toBeNull();
   });
 
   it("reads once per mounted project and preserves saved state during loading and refresh failure", async () => {
-    rememberRoot(C);
+    rememberRoot(A);
     const read = vi.spyOn(Storage.prototype, "getItem");
     const write = vi.spyOn(Storage.prototype, "setItem");
     const pending = deferred<TaskGraph>();
@@ -277,23 +347,23 @@ describe("remembered task chain expansion", () => {
     expect(read).toHaveBeenCalledTimes(1);
     expect(write).not.toHaveBeenCalled();
     await act(async () => { pending.resolve(graph()); });
-    expect(screen.getByTestId(`chain-${C}`)).toBeVisible();
+    expect(screen.getByTestId(`chain-${A}`)).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "刷新" }));
     await screen.findByRole("alert");
-    expect(screen.getByTestId(`chain-${C}`)).toBeVisible();
+    expect(screen.getByTestId(`chain-${A}`)).toBeVisible();
     expect(read).toHaveBeenCalledTimes(1);
     expect(write).not.toHaveBeenCalled();
   });
 
   it("does not replace saved preferences when an initial graph read fails", async () => {
-    rememberRoot(C);
+    rememberRoot(A);
     const write = vi.spyOn(Storage.prototype, "setItem");
     graphRequest.mockRejectedValueOnce(new ApiError("network")).mockResolvedValueOnce(graph());
     render(<ProjectPage projectId={projectId} />);
     await screen.findByRole("alert");
     expect(write).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
-    expect(await screen.findByTestId(`chain-${C}`)).toBeVisible();
+    expect(await screen.findByTestId(`chain-${A}`)).toBeVisible();
     expect(write).not.toHaveBeenCalled();
   });
 
@@ -301,18 +371,18 @@ describe("remembered task chain expansion", () => {
     rememberRoot(remembered);
     const pending = deferred<TaskGraph>();
     const write = vi.spyOn(Storage.prototype, "setItem");
-    graphRequest.mockReturnValueOnce(pending.promise).mockResolvedValueOnce(graph([seeds[2]!]));
+    graphRequest.mockReturnValueOnce(pending.promise).mockResolvedValueOnce(graph([seeds[0]!]));
     render(<ProjectPage projectId={projectId} />);
     expect(write).not.toHaveBeenCalled();
     await act(async () => { pending.resolve(graph()); });
-    expect(screen.getByTestId(`chain-${A}`)).toBeVisible();
-    expect(JSON.parse(window.localStorage.getItem(preferenceKey())!)).toEqual({ expandedRootId: A });
-    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
-    expect(await screen.findByTestId(`chain-${C}`)).toBeVisible();
+    expect(screen.getByTestId(`chain-${C}`)).toBeVisible();
     expect(JSON.parse(window.localStorage.getItem(preferenceKey())!)).toEqual({ expandedRootId: C });
+    fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+    expect(await screen.findByTestId(`chain-${A}`)).toBeVisible();
+    expect(JSON.parse(window.localStorage.getItem(preferenceKey())!)).toEqual({ expandedRootId: A });
   });
 
-  it.each([undefined, C, X])("preserves automatic expansion through empty snapshots and remounts (%s)", async (remembered) => {
+  it.each([undefined, A, X])("preserves automatic expansion through empty snapshots and remounts (%s)", async (remembered) => {
     if (remembered !== undefined) rememberRoot(remembered);
     const write = vi.spyOn(Storage.prototype, "setItem");
     graphRequest.mockResolvedValueOnce(graph([])).mockResolvedValueOnce(graph([])).mockResolvedValueOnce(graph());
@@ -324,7 +394,7 @@ describe("remembered task chain expansion", () => {
     await screen.findByRole("heading", { name: "还没有任务" });
     expect(write).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "刷新" }));
-    expect(await screen.findByTestId(`chain-${remembered === C ? C : A}`)).toBeVisible();
+    expect(await screen.findByTestId(`chain-${remembered === A ? A : C}`)).toBeVisible();
   });
 
   it("retains an explicit collapse when an empty project later gains roots", async () => {
@@ -333,9 +403,9 @@ describe("remembered task chain expansion", () => {
     render(<ProjectPage projectId={projectId} />);
     await screen.findByRole("heading", { name: "还没有任务" });
     fireEvent.click(screen.getByRole("button", { name: "刷新" }));
-    await screen.findByRole("button", { name: "独立根" });
-    expect(screen.queryByTestId(`chain-${A}`)).toBeNull();
+    await screen.findByRole("button", { name: "已完成根" });
     expect(screen.queryByTestId(`chain-${C}`)).toBeNull();
+    expect(screen.queryByTestId(`chain-${A}`)).toBeNull();
   });
 
   it.each(["{", "null", "[]", "{}", '{"expandedRootId":12}', '{"expandedRootId":"  "}', '{"expandedRootId":null,"unknown":true}'])(
@@ -343,11 +413,11 @@ describe("remembered task chain expansion", () => {
       window.localStorage.setItem(preferenceKey(), stored);
       graphRequest.mockResolvedValue(graph());
       render(<ProjectPage projectId={projectId} />);
-      expect(await screen.findByTestId(`chain-${A}`)).toBeVisible();
+      expect(await screen.findByTestId(`chain-${C}`)).toBeVisible();
       expect(screen.getByRole("status")).toHaveTextContent("浏览器保存的任务链展开状态无效");
-      fireEvent.click(screen.getByRole("button", { name: "独立根" }));
-      expect(screen.getByTestId(`chain-${C}`)).toBeVisible();
-      expect(JSON.parse(window.localStorage.getItem(preferenceKey())!)).toEqual({ expandedRootId: C });
+      fireEvent.click(screen.getByRole("button", { name: "已完成根" }));
+      expect(screen.getByTestId(`chain-${A}`)).toBeVisible();
+      expect(JSON.parse(window.localStorage.getItem(preferenceKey())!)).toEqual({ expandedRootId: A });
     },
   );
 
@@ -356,33 +426,33 @@ describe("remembered task chain expansion", () => {
     const write = vi.spyOn(Storage.prototype, "setItem");
     graphRequest.mockResolvedValue(graph());
     render(<ProjectPage projectId={projectId} />);
-    expect(await screen.findByTestId(`chain-${A}`)).toBeVisible();
+    expect(await screen.findByTestId(`chain-${C}`)).toBeVisible();
     expect(screen.getByRole("status")).toHaveTextContent("无法读取浏览器保存的任务链展开状态");
-    fireEvent.click(screen.getByRole("button", { name: "独立根" }));
-    expect(screen.getByTestId(`chain-${C}`)).toBeVisible();
-    expect(write).toHaveBeenLastCalledWith(preferenceKey(), JSON.stringify({ expandedRootId: C }));
+    fireEvent.click(screen.getByRole("button", { name: "已完成根" }));
+    expect(screen.getByTestId(`chain-${A}`)).toBeVisible();
+    expect(write).toHaveBeenLastCalledWith(preferenceKey(), JSON.stringify({ expandedRootId: A }));
   });
 
   it("reports blocked storage access without preventing browsing", async () => {
     vi.spyOn(window, "localStorage", "get").mockImplementation(() => { throw new DOMException("Storage access denied", "SecurityError"); });
     graphRequest.mockResolvedValue(graph());
     render(<ProjectPage projectId={projectId} />);
-    expect(await screen.findByTestId(`chain-${A}`)).toBeVisible();
+    expect(await screen.findByTestId(`chain-${C}`)).toBeVisible();
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("任务链展开状态无法保存到浏览器"));
-    fireEvent.click(screen.getByRole("button", { name: "独立根" }));
-    expect(screen.getByTestId(`chain-${C}`)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "已完成根" }));
+    expect(screen.getByTestId(`chain-${A}`)).toBeVisible();
   });
 
   it("reports failed saves and clears that notice when a later user choice is saved", async () => {
     const write = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("Storage is full", "QuotaExceededError"); });
     graphRequest.mockResolvedValue(graph());
     render(<ProjectPage projectId={projectId} />);
-    expect(await screen.findByTestId(`chain-${A}`)).toBeVisible();
+    expect(await screen.findByTestId(`chain-${C}`)).toBeVisible();
     expect(screen.getByRole("status")).toHaveTextContent("任务链展开状态无法保存到浏览器");
-    fireEvent.click(screen.getByRole("button", { name: "独立根" }));
-    expect(screen.getByTestId(`chain-${C}`)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "已完成根" }));
+    expect(screen.getByTestId(`chain-${A}`)).toBeVisible();
     write.mockRestore();
-    fireEvent.click(screen.getByRole("button", { name: "独立根" }));
+    fireEvent.click(screen.getByRole("button", { name: "已完成根" }));
     expect(screen.queryByRole("status")).toBeNull();
     expect(JSON.parse(window.localStorage.getItem(preferenceKey())!)).toEqual({ expandedRootId: null });
   });
