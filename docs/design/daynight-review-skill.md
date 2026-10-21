@@ -117,8 +117,11 @@ skill 覆盖、禁用条目、意外路径、无效 JSON、截断或超限输出
 `COMMENT`，不使用 `REQUEST_CHANGES`。执行或发布失败不能通过虚构 finding 满足该
 二选一要求。已有匹配捕获目标的 approval 保持有效，description 编辑不能要求撤销。
 
-同一轮恢复先核对已发布结果，避免重复发布；该轮新建的未解决 conversation 不能
-阻塞它的发布确认。daemon 不解析质量判断，而是核对稳定审查身份、捕获 commit、
+同一轮恢复先核对已发布结果，避免重复发布。只有捕获轮次的真实 `APPROVED`、带
+自身 thread 的 `COMMENTED`，或同一固定发布者可恢复的有效匹配 pending 草稿，才
+允许绕过 conversation gate。失败尝试本身不能构成例外。账户变化后可只读核对原
+发布者的已提交结果；没有结果或仅有草稿时等待原发布者，不消费模型尝试。daemon
+不解析质量判断，而是核对稳定审查身份、捕获 commit、
 发布者和真实 review/thread 证据。接受完成标记后，远端核对失败只进行可重启的只读
 重试，不消费模型尝试预算。完整查询成功但没有合法结果时，回到有限模型重试；
 耗尽明确失败。成功 `COMMENT` 保存一次性反馈屏障；全部已提交的原生 review
@@ -167,7 +170,8 @@ conversation resolve 后，在当前目标 CI 通过时进入下一轮，无需�
 断言新发布前重新评估当前标题和 description、`COMMENT` 必须包含实际可 resolve
 thread、同一轮恢复避免重复发布，以及两项质量门槛通过且没有 Critical/Major 才能
 批准。conversation 和发布对账的状态测试覆盖同 SHA 重审、完成前 resolve、重启后
-消费一次反馈、核对失败不重复调用模型，以及 description 编辑保留已有 approval。
+消费一次反馈、核对失败不重复调用模型、没有发布的失败重试继续等待其他 feedback，
+以及 description 编辑保留已有 approval。
 初次读取 PR 信息、相关需求和检查完整 diff 的要求由加载的 skill 正文提供。这些指令断言不证明模型在任意 PR
 上的判断质量。
 

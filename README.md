@@ -951,7 +951,10 @@ revision leaves later observations pending; retries retain their original review
 identity and consumed budget. Each successful comment result arms one durable
 follow-up that is consumed once when conversations are resolved, even at the same
 commit. A verified approval settles its current target; description edits retain
-that approval.
+that approval. Reusing a stored approval to settle a pending target requires a
+fresh snapshot confirming that exact remote review is still `APPROVED`, with the
+captured actor, commit and stable identity. A dismissed historical review cannot
+suppress that pending work.
 
 Runtime database opening applies explicit schema migrations and enables WAL with
 FULL synchronization and a bounded busy timeout. The listing reader checks the
@@ -1084,11 +1087,17 @@ commit and publishing actor, without interpreting the quality judgment or parsin
 findings. Marker acceptance is persisted before this read-only verification; API
 errors retry verification across restart without another model attempt. A complete
 lookup with no valid matching publication is a protocol failure and uses the
-remaining bounded model retry budget. A verified `COMMENT` records its real review/thread IDs and arms exactly one follow-up. Once
+remaining bounded model retry budget. A verified `COMMENT` records its real
+review/thread IDs and arms exactly one follow-up. Once
 all submitted native conversations are resolved and the current CI passes, that follow-up
 runs even without new commits or metadata edits. New targets and feedback wakeups
-coalesce. Same-round confirmation can read an already published result while its
-own conversations remain open. Verified approval settles the current target, and
+coalesce. Same-round confirmation can proceed through open conversations only
+when exact-round remote evidence proves an approval, commented review with owned
+threads, or a recoverable matching pending draft under the captured publisher. A
+failed attempt alone supplies no exemption. If the authenticated reader changes,
+it can confirm the captured actor's submitted result; an unpublished result or
+pending draft waits for that actor without consuming model attempts. Verified
+approval settles the current target, and
 description edits do not revoke it or start another round.
 
 The adapter streams separate stdout/stderr logs and accepts only normal zero
@@ -1125,7 +1134,9 @@ conversation admission precedes that reservation and is refreshed at
 ready PRs. Admission evidence is kept in memory for the exact revision, head and
 base branch and is refreshed after restart. New review launches recheck PR state,
 CI and conversations after worktree preparation. Same-round reconciliation can
-confirm existing publication while its own feedback remains open. A regression
+confirm proven exact-round publication while its own feedback remains open;
+matching pending drafts require the captured publishing actor. An unsuccessful
+attempt without publication still waits for unrelated open conversations. A regression
 defers fresh preparation without consuming an attempt or losing the retained
 session. CI changes alone do not retrigger completed revisions.
 Readiness is a launch-time observation; later CI registration or reruns do not

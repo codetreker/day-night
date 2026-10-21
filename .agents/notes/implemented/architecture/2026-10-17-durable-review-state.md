@@ -125,8 +125,12 @@ database does not manufacture evidence of successful review publication. The
 supersedes the original head-only follow-up and marker-only completion behavior.
 Schema version 2 adds `review_publications` records for the publisher captured
 before launch, pending remote verification,
-verified approval or commented results, exact review/thread identities and consumed
-follow-ups. Version 1 migration preserves the existing records; supported legacy
+verified approval or commented results, exact review/thread identities, identity
+format provenance and consumed follow-ups. Version 1 completed records migrate
+as `legacy`; active unfinished records migrate as `prepared`, both with explicit
+legacy identity format and unknown publisher until historical remote evidence
+establishes the actor. New rounds and new writes use strict identities. The
+migration preserves existing records; supported legacy
 listing remains read-only. Marker acceptance and process exclusion precede durable
 pending confirmation, whose remote retries do not relaunch the model or consume
 its budget. A verified comment can produce one same-target successor after all

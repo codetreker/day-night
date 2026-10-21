@@ -246,7 +246,7 @@ API 请求为兼容 `gh` 的主机名校验，会在受控内存中读取已有�
 | `repositories` | 主机 + 稳定的 GitHub 仓库 ID | 远程地址、本地路径、可为空的 `start_pr_no`、初始化时间、最近成功轮询及错误 |
 | `pull_requests` | 仓库 ID + PR 编号 | 观测到的 open/draft/head/base branch、待审及已完成修订序号、会话 UUID 及已建立标记、worktree 路径、清理状态 |
 | `reviews` | 审查 UUID | PR 身份、不可变的修订序号/head/base branch、固定的 base SHA、状态、尝试次数、重试时间、子进程身份、日志路径、最近错误 |
-| `review_publications` | 审查 UUID | `prepared`、`pending`、`verified` 或 `legacy` 阶段，固定发布者，`approved`/`commented` 结果，远端 review/thread 身份及 follow-up 已消费标记 |
+| `review_publications` | 审查 UUID | `prepared`、`pending`、`verified` 或 `legacy` 阶段，`identity_format`（`line`/`legacy`），固定发布者，`approved`/`commented` 结果，远端 review/thread 身份及 follow-up 已消费标记 |
 
 修订序号是本地递增的数字，用于表示观测到的审查触发事件。即使 head SHA 未变化，
 它也能避免丢失 Draft 转 ready、修改目标分支或上一轮反馈解决的触发事件。
@@ -260,20 +260,25 @@ API 请求为兼容 `gh` 的主机名校验，会在受控内存中读取已有�
 相关状态变更使用短事务。事务不得跨越 Git、API 或 agent 调用。启用 WAL、
 `synchronous=FULL`，并设置有上限的 busy timeout；数据库保存在本地文件系统。
 运行时通过显式表结构迁移从版本 1 升到版本 2，增加发布记录，保留原表中的永久
-边界、修订、
-尝试预算、会话、worktree、日志和进程证据；只读列表不迁移。迁移和查询失败均暴露。参见
+边界、修订、尝试预算、会话、worktree、日志和进程证据。旧的 completed 记录以
+`phase=legacy` 保存；`preparing`、`running`、`retry_wait` 和 `interrupted` 记录以
+`phase=prepared` 保存，两者均显式记录 `identity_format=legacy`，发布者保持未知，
+直至远端证据确定实际 actor。新建轮次使用 `identity_format=line`。只读列表不迁移，
+迁移和查询失败均暴露。参见
 [SQLite 事务](https://www.sqlite.org/lang_transaction.html)和
 [同步设置](https://www.sqlite.org/pragma.html#pragma_synchronous)。
 
 状态模块以同步函数维护这些记录，时间、UUID 和已经验证的外部结果由调用者传入。
 `start_pr_no` 从 NULL 写入整数的操作只允许成功一次；零表示成功完成的空扫描，不表示
 需要重新初始化。已完成审查只推进它捕获的修订；最终失败的修订不能通过新建审查 ID
-重新获得尝试预算。启动前保存当前认证 viewer 的 node ID，发布记录以 `prepared`
-固定本轮发布者；
+重新获得尝试预算。新轮次启动前保存当前认证 viewer 的 node ID，发布记录以
+`prepared` 固定本轮发布者；迁移轮次先按历史远端证据取得其实际 actor。
 账户变化不能让该轮改用另一发布者。完成标记接受且正式审查进程排除后转为
 `pending`。远端核对失败只重新查询，
 不重新调用 Copilot，也不消耗 agent 尝试；该状态跨重启保留。核对成功后，在同一事务
-中记录远端结果并推进捕获修订。`approved` 对当前目标停止调度；`commented` 保存
+中记录远端结果并推进捕获修订。`approved` 对当前目标停止调度；复用该保存结果结束
+新待审轮次前，必须在新鲜快照中核对同一 remote review ID 仍为 `APPROVED`，actor、
+head 和稳定身份均相符。历史 dismissed review 不能充当批准。`commented` 保存
 实际 review/thread 身份，并且只在一次完整快照确认所有 conversation 已解决后消费
 一次 follow-up。已有较新目标时合并该信号，避免产生重复轮次。
 
@@ -314,9 +319,11 @@ API 请求为兼容 `gh` 的主机名校验，会在受控内存中读取已有�
    启动新审查前重新校验目标、CI 和 conversation，再核对数据库目标及取消状态。资格
    回退时释放容量并保留会话和预算。只有资格通过才持久化固定目标和 `running`，
    然后启动 Copilot。预留涵盖整个执行和进程排除，清理必须等待它释放。
-6. 同一轮发布确认不属于新轮次。已有结果通过稳定身份对账，该轮自己的未解决反馈
-   不能使确认死锁。已接受 marker 的远端查询失败保存为只读待核对工作；无需模型
-   重启，也不需要等待这些反馈 resolve。确认完成后再依照新轮次资格决定后续工作。
+6. 同一轮发布确认不属于新轮次。绕过 conversation gate 必须有捕获 actor、head 和
+   稳定身份匹配的实际 `APPROVED`、带自身 thread 的 `COMMENTED`，或同一 actor 可
+   恢复的有效 `PENDING` 草稿。失败 attempt 次数不能替代这些证据：无发布且存在
+   其他未解决 conversation 时继续等待，不消费模型预算。已接受 marker 的远端查询
+   失败保存为只读待核对工作，无需模型重启。确认完成后再按新轮次资格决定后续工作。
 
 head SHA 与目标分支名标识代码目标，固定 base SHA 保持该轮 diff 和 CI 上下文。
 仅 base tip 变化、仅标题/description 编辑和 CI 重跑不生成新轮次。当前目标已经
@@ -338,8 +345,13 @@ conversation 和发布对账使用 `getPullRequestReviewSnapshot` 取得完整�
 只有正向确认 parent review 为 `PENDING` 的未发布草稿 thread 才从已提交 conversation
 中排除，避免要求作者处理不可见草稿；归属未知的 thread 仍保留其阻塞作用。
 新轮次启动前捕获的发布者 node ID 与 review 的 author node ID 精确匹配；
-当前 viewer 改变不能覆盖已保存的发布者。稳定 Daynight
-身份必须是 review 正文中的完整独立标识，commit 必须是捕获 head。多个候选按明确
+当前 viewer 改变不能覆盖已保存的发布者。新读取账户可核对原 actor 的已提交结果；
+没有结果或只有 pending 草稿时等待原 actor 恢复，不启动模型或消费尝试。新轮次的
+稳定身份必须是 review 正文中的完整独立行或 HTML 注释，commit 必须是捕获 head。
+只有显式迁移为 `identity_format=legacy` 的轮次可以按有边界的旧 token 识别带前缀
+的历史正文；写入前先取得该 token/head 对应的实际历史 actor，不能假定当前 viewer
+就是原发布者。该来源标记贯穿 actor 捕获和待核对阶段，所有新写入仍使用严格身份。
+多个候选按明确
 规则核对，不能用不相符或较旧结果覆盖有效的 approval。`COMMENTED` 只有具备真实、
 归属于该发布的原生 thread 才是成功反馈；它们即使已经 resolve 仍是有效发布证据。
 
@@ -516,7 +528,9 @@ JSONL。Copilot 的上下文压缩由其自身处理。
 提示词显式调用 `/daynight-review`，提供当前快照的绝对 `SKILL.md` 路径和 digest，
 要求恢复会话也加载本次内容。skill 负责审查方法、证据标准和 PR 质量判断。提示词
 提供仓库与 PR、审查 ID 与修订序号、确切的 head、目标分支、固定的差异上下文、
-上一轮未完成审查的身份、代码缺陷严重程度规则和完成标记，并要求 agent 读取当前
+上一轮未完成审查的身份、代码缺陷严重程度规则和完成标记。必填的
+`CopilotRunOptions.publicationIdentityFormat` 仅控制迁移轮次的历史结果读取，新的发布
+仍使用严格身份，skill 内容不承担旧格式兼容。提示词要求 agent 读取当前
 PR 标题、description 及其链接的相关范围需求。agent 以原定问题、预期结果和范围
 检查完整捕获 diff，再审查代码及既有问题，并自行使用 `gh` 发布。
 
@@ -526,9 +540,11 @@ PR 标题、description 及其链接的相关范围需求。agent 以原定问�
 行数或文件数拒绝跨模块的必要修改。具体规则由[review 需求 R10](../spec/daynight-review.md#r10-审查判断与结果发布)
 持有，决策依据见[PR 质量门槛决策](../../.agents/notes/implemented/process/2026-10-21-review-pr-quality-gates.md)。
 
-agent 首先按稳定审查身份、捕获 commit 和当前 `gh` 发布者核对既有结果。匹配的
+agent 首先按稳定审查身份、捕获 commit 和本轮固定发布者核对既有结果。匹配的
 `APPROVED` 直接确认，description 后续变化不能撤销它；已有 `COMMENTED` 必须证明
-归属该 review 的实际 thread，同一轮自己的未解决反馈不阻塞恢复。发布途中已有
+归属该 review 的实际 thread。这类真实提交结果才允许在 conversation 尚未解决时
+恢复确认；同一固定发布者的有效匹配 pending 草稿也可继续发布。没有结果的失败
+重试仍须等待其他 open conversation。发布途中已有
 pending review 或 thread 时继续完成它，不能重复创建同一反馈。自己的过时 pending
 草稿可以清理，以免遗留未提交内容；已提交 approval 不撤销。
 
@@ -596,8 +612,10 @@ PR 123 Review Completed
 重试；最后一次尝试仍无合法结果则失败并抑制该修订。
 
 目标未变化且缺少 marker 的审查沿用 `retry_wait` 和同一会话。恢复优先核对远端影响，
-避免重复发布；匹配 approval 保持有效，匹配 COMMENT 必须有真实 thread。自己的
-未解决 conversation 不能阻塞同轮确认；新一轮才适用零未解决 gate。执行或发布失败
+避免重复发布；匹配 approval 保持有效，匹配 COMMENT 必须有真实 thread。只有
+这样的提交结果或同一固定 actor 可继续的有效匹配 pending 草稿，才允许绕过
+conversation gate；失败 attempt 本身不提供例外。账户 B 可核对 actor A 已提交的
+结果，缺少结果或只有草稿时等待 A，保留预算。执行或发布失败
 最多尝试三次，从 `retryDelayMs` 开始指数退避，上限十分钟；耗尽记录 `failed` 和
 原因，普通轮询与重启不能通过换审查 ID 重置预算。不能用虚构 finding 掩盖工具、
 权限或发布失败。
@@ -705,7 +723,9 @@ skill 资源验证覆盖完整 bundle、内容哈希、原子缓存和已有快�
 协调器测试使用真实 SQLite、受控观测和失败注入，验证公平调度、并发容量、永久边界、
 预算抑制、取消、清理及恢复。conversation 用例覆盖任意作者与 outdated thread 的
 阻塞、相同 SHA resolve 后一次后续轮次、完成前 resolve、合并新目标、重复轮询与
-重启不重复消费，以及 marker 后发布查询失败的只读恢复。公平调度案例通过注入
+重启不重复消费、过往 dismissed approval 不抑制新待审轮次、无发布失败遇到他人
+open thread 时等待，以及 actor 切换后已提交结果的核对与草稿等待。marker 后发布
+查询失败单独验证只读恢复。公平调度案例通过注入
 时钟及显式控制 CI 响应、执行结束
 来建立先后关系：先确认新修订已持久化，再让两个等待 PR 的 CI 就绪，逐次释放 Worker，
 验证两个等待 PR 均先于持续更新 PR 的后续修订，且就绪候选保持 FIFO。时钟在准入比较
@@ -762,11 +782,13 @@ CI 只上传精选的工具版本清单、审查生命周期 receipt 和 `.tmp/u
 
 独立的既有数据 fixture 直接构造重构前的 YAML 与版本 1 SQLite 表和记录，不使用
 当前 store 创建基线。安装后的列表必须只读旧状态，运行时显式迁移并复用永久边界、
-修订、预算、会话、日志、进程和 worktree 身份，保留清理屏障。旧的已完成记录按相关
-远端结果对账：从稳定审查身份和捕获 head 对应的真实历史 approval 取得其发布者，
-不假定它等于今天的 viewer。匹配 approval 保持完成；缺少有效 approval 的相关当前记录可消费
-一次迁移采用轮次，包括只有正文而无 thread 的历史 COMMENT。不能伪造旧 thread 或
-反复重置预算，无关历史不启动模型。
+修订、预算、会话、日志、进程和 worktree 身份，保留清理屏障。迁移 fixture 分别
+验证完成记录的 `legacy` 阶段与活跃未完成记录的 `prepared` 阶段，二者均保留明确的
+旧身份格式及未知 publisher。带前缀旧正文中的有效 APPROVED 和带实际 thread 的
+COMMENT 在丢失 marker 后，按旧 token/head 找到实际 actor，再保留该身份完成对账；
+新轮次仍拒绝旧格式。匹配 approval 保持完成；缺少有效 approval 的相关已完成记录
+可消费一次采用轮次，包括只有正文而无 thread 的历史 COMMENT。不能伪造历史 actor
+或 thread，也不能反复重置预算；无关历史不启动模型。
 
 下表定义模块、原生子进程和安装后验收需要观测的行为；实际通过记录及其对应修订
 随对应 PR 与 CI 保存。历史平台 receipt 不构成自动接管失效锁行为的验证：
@@ -777,7 +799,7 @@ CI 只上传精选的工具版本清单、审查生命周期 receipt 和 `.tmp/u
 | 触发条件 | head、目标分支名、ready 状态变化与已完成 COMMENT 的反馈解决触发；同 SHA 允许一次后续轮次；仅 base SHA 或元数据变化不触发；已批准目标保持完成；Draft 不得启动；旧审查完成后保留较新待审修订 |
 | Worktree | 所属仓库根目录的 `.worktrees/`、固定 PR 路径、其他 worktree 保留、fork PR 引用、确切的 detached head、脏文件残留、正确的仓库与路径校验、关闭和重新打开时的清理 |
 | agent 输出 | 分块 Unicode 与 CRLF、精确末行、错误 PR 编号、stderr 中的标记、带前后缀或闭合代码围栏的标记、标记后的内容、捕获失败、非零退出 |
-| 会话与重试 | 固定 UUID 后显式恢复、首次启动中断、历史缺失报错、优先核对既有发布避免重复、同轮确认允许自己的 open thread、持久化尝试预算、marker 后远端核对只读重试且可重启 |
+| 会话与重试 | 固定 UUID 后显式恢复、首次启动中断、历史缺失报错、优先核对既有发布避免重复、只有真实同轮发布或原 actor 可继续的匹配草稿才绕过 conversation gate、actor 变化后确认提交结果或等待原 actor、持久化尝试预算、marker 后远端核对只读重试且可重启 |
 | 审查指令 | 读取当前标题、description 及相关范围需求；检查完整捕获 diff；description 与范围独立阻断批准；发布或确认前重评；只在门槛通过且没有 Critical/Major 时批准 |
 | 审查列表 | `review list` 与 `review ls` 等价、配置仓库顺序和 PR 编号排序、Draft 与仍 Open 的完成或失败记录、永久边界过滤、最新修订和旧活跃审查分别归属、重试及错误、待清理屏障与清理错误、最后完整观测时间、缺失状态不创建数据库、无效数据库报错、运行中只读一致快照 |
 | CLI 生命周期 | 审查期间继续轮询；准备、执行和清理的操作预留；抑制失败修订；`maxConcurrentWorker` 并发上限；Ctrl+C；拒绝第二个实例；异常退出后的失效锁自动接管；锁状态含糊时拒绝；中断审查及待清理资源阻塞与诊断 |

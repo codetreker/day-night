@@ -6,7 +6,7 @@ import type { CopilotAttemptOutcome, CopilotProcessOutcome, CopilotRunOptions, c
 import { GitCommandError } from "./adapters/worktrees.js";
 import type { LocalRepository, createGitManager } from "./adapters/worktrees.js";
 import { GitHubApiError } from "./adapters/github.js";
-import { findReviewPublication, findLegacyReviewPublication, hasOpenReviewConversations } from "./publication.js";
+import { findReviewPublication, findLegacyReviewPublication, hasOpenReviewConversations, hasPendingReviewPublication, findLegacyReviewPublisher } from "./publication.js";
 import { pollRepository } from "./polling.js";
 import type { GitHubClient } from "./adapters/github.js";
 import type { Store } from "./store.js";
@@ -109,7 +109,11 @@ export const runCoordinator = async (options: CoordinatorOptions): Promise<{ saf
     const approved = store.listReviews(pr).some((review) => {
       if (review.headSha !== pr.headSha || review.baseRef !== pr.baseRef) return false;
       const publication = store.getReviewPublication(review.id);
-      if (publication?.outcome === "approved") return true;
+      if (publication?.outcome === "approved") {
+        const remote = snapshot.reviews.find((item) => item.id === publication.remoteReviewId && item.authorId === publication.publisherId);
+        return remote !== undefined && publication.publisherId !== null &&
+          findReviewPublication(review, { ...snapshot, reviews: [remote] }, publication.publisherId, publication.identityFormat)?.outcome === "approved";
+      }
       if (publication?.phase !== "legacy") return false;
       const historical = findLegacyReviewPublication(review, snapshot);
       if (historical === null) return false;
@@ -117,6 +121,22 @@ export const runCoordinator = async (options: CoordinatorOptions): Promise<{ saf
       return true;
     });
     return approved && store.settleApprovedTarget(pr, pr.headSha, pr.baseRef, stopped, now());
+  };
+  const publicationContext = (review: ReviewState | null, snapshot: PullRequestReviewSnapshot) => {
+    let captured = review === null ? null : store.getReviewPublication(review.id);
+    if (review !== null && captured?.identityFormat === "legacy" && captured.publisherId === null) {
+      const historicalActor = findLegacyReviewPublisher(review, snapshot);
+      if (historicalActor !== null) {
+        store.adoptLegacyReviewPublisher(review.id, historicalActor);
+        captured = store.getReviewPublication(review.id);
+      }
+    }
+    const publisherId = captured === null || captured.publisherId === null ? snapshot.viewerId : captured.publisherId;
+    const identityFormat = captured === null ? "line" as const : captured.identityFormat;
+    const hasResult = review !== null && findReviewPublication(review, snapshot, publisherId, identityFormat) !== null;
+    const sameRoundRecovery = hasResult || (review !== null && snapshot.viewerId === publisherId &&
+      hasPendingReviewPublication(review, snapshot, publisherId, identityFormat));
+    return { captured, publisherId, identityFormat, hasResult, sameRoundRecovery };
   };
   const checkCandidate = async (repository: RepositoryWork, pr: PullRequestState, admission: CheckAdmission): Promise<void> => {
     const prKey = key(pr);
@@ -128,10 +148,13 @@ export const runCoordinator = async (options: CoordinatorOptions): Promise<{ saf
       const candidate = waiting.get(prKey);
       if (signal.aborted || checkAdmissions.get(prKey) !== admission || candidate === undefined || target(candidate.pullRequest) !== admission.target) return;
       if (settlePriorApproval(pr, snapshot)) return;
-      const sameRoundRetry = candidate.review !== null && candidate.review.attemptCount > 0;
-      const ready = checks.ready && checks.headSha === pr.headSha && checks.baseRef === pr.baseRef &&
+      const { publisherId, hasResult, sameRoundRecovery } = publicationContext(candidate.review, snapshot);
+      const actorReady = publisherId === snapshot.viewerId || hasResult;
+      if (!actorReady && !admission.reported) log({ level: "error", phase: "publisher", repository: repository.configuration.coordinate,
+        number: pr.number, revision: pr.desiredRevision, message: "The authenticated account differs from this round's captured publisher; review admission is waiting without consuming an agent attempt." });
+      const ready = actorReady && checks.ready && checks.headSha === pr.headSha && checks.baseRef === pr.baseRef &&
         snapshot.state === "open" && !snapshot.draft && snapshot.headSha === pr.headSha && snapshot.baseRef === pr.baseRef &&
-        (sameRoundRetry || !hasOpenReviewConversations(snapshot));
+        (sameRoundRecovery || !hasOpenReviewConversations(snapshot));
       if (!admission.reported || admission.ready !== ready) log({ level: "info", phase: "ci", repository: repository.configuration.coordinate,
         number: pr.number, revision: pr.desiredRevision, message: ready ? "All CI checks passed for the waiting PR target." : "The PR is waiting for all CI checks to finish and pass." });
       admission.ready = ready;
@@ -236,8 +259,9 @@ export const runCoordinator = async (options: CoordinatorOptions): Promise<{ saf
     let publication: ReturnType<typeof findReviewPublication>;
     try {
       snapshot = await client.getPullRequestReviewSnapshot(repository.local!.repository, review.number, signal);
-      const publisherId = store.getReviewPublication(review.id)!.publisherId!;
-      publication = findReviewPublication(review, snapshot, publisherId);
+      const captured = store.getReviewPublication(review.id)!;
+      const publisherId = captured.publisherId!;
+      publication = findReviewPublication(review, snapshot, publisherId, captured.identityFormat);
       if (publication === null && snapshot.viewerId !== publisherId) throw new Error("The authenticated account changed before the captured publisher's review publication could be confirmed.");
     } catch (error) {
       const retryAt = checksRetryAt(error);
@@ -322,16 +346,22 @@ export const runCoordinator = async (options: CoordinatorOptions): Promise<{ saf
       }
       const snapshot = await client.getPullRequestReviewSnapshot(local.repository, review.number, reservation.controller.signal);
       if (settlePriorApproval(store.getPullRequest(review)!, snapshot)) return;
-      const sameRoundRetry = review.attemptCount > 0;
+      const { captured, publisherId, identityFormat, hasResult, sameRoundRecovery } = publicationContext(review, snapshot);
+      if (snapshot.viewerId !== publisherId && !hasResult) {
+        const time = now();
+        const deferred = store.deferPreparation(review.id, stopped, { error: "The authenticated account differs from this round's captured publisher and no submitted result can be confirmed read-only.", retryAt: checksRetryAt() }, time);
+        report(deferred, "publisher", "Waiting for the captured publishing account without consuming an agent attempt.");
+        return;
+      }
       if (snapshot.state !== "open" || snapshot.draft || snapshot.headSha !== review.headSha || snapshot.baseRef !== review.baseRef ||
-        (!sameRoundRetry && hasOpenReviewConversations(snapshot))) {
+        (!sameRoundRecovery && hasOpenReviewConversations(snapshot))) {
         const time = now();
         store.deferPreparation(review.id, stopped, { error: "The PR is waiting for its eligible target and resolved review conversations.", retryAt: checksRetryAt() }, time);
         return;
       }
-      store.captureReviewPublisher(review.id, snapshot.viewerId);
+      if (captured === null || captured.publisherId === null) store.captureReviewPublisher(review.id, publisherId);
       const previous = store.listReviews(review).filter((item) => item.id !== review.id && item.status !== "completed").at(-1);
-      const input: CopilotRunOptions = { publisherId: snapshot.viewerId, signal: reservation.controller.signal, onProcess: processes.onProcess, stopProcess: processes.stop, excludeProcess: processes.exclude,
+      const input: CopilotRunOptions = { publisherId, publicationIdentityFormat: identityFormat, signal: reservation.controller.signal, onProcess: processes.onProcess, stopProcess: processes.stop, excludeProcess: processes.exclude,
         ...(previous === undefined ? {} : { previousReview: previous }) };
       report(review, "launch", "Launching the PR's persisted Copilot session.");
       const outcome = await runner.run(store, review.id, worktree, input);

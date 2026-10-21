@@ -7,6 +7,7 @@ import type { ChildProcess } from "node:child_process";
 import crossSpawn from "cross-spawn";
 import { remoteIdentity } from "../config.js";
 import { reviewPublicationIdentity } from "../publication.js";
+import type { PublicationIdentityFormat } from "../publication.js";
 import { isolatedGitEnvironment } from "./worktrees.js";
 import type { PreparedWorktree } from "./worktrees.js";
 import type { ReviewPaths } from "../paths.js";
@@ -49,6 +50,7 @@ export type CopilotRunnerOptions = {
 };
 export type CopilotRunOptions = {
   publisherId: string;
+  publicationIdentityFormat: PublicationIdentityFormat;
   excludeProcess: (review: ReviewState, outcome: CopilotProcessOutcome) => Promise<ProcessesExcluded>;
   signal?: AbortSignal;
   previousReview?: PreviousReview;
@@ -70,7 +72,7 @@ const sessionExists = async (directory: string): Promise<boolean> => {
   }
 };
 
-const reviewPrompt = (review: ReviewState, worktree: PreparedWorktree, repository: { owner: string; name: string }, skill: PreparedReviewSkill, publisherId: string, previous?: PreviousReview): string => `You are the Copilot code review agent for daynight.
+const reviewPrompt = (review: ReviewState, worktree: PreparedWorktree, repository: { owner: string; name: string }, skill: PreparedReviewSkill, publisherId: string, publicationIdentityFormat: PublicationIdentityFormat, previous?: PreviousReview): string => `You are the Copilot code review agent for daynight.
 Before reviewing, explicitly invoke /daynight-review and load the CURRENT immutable skill snapshot from ${JSON.stringify(skill.entrypoint)} (digest ${skill.digest}). Load this exact current path even when resumed conversation history already contains an older skill with the same name. Complete the native skill invocation before beginning the review.
 Daynight skill bundle: ${JSON.stringify({ name: skill.name, digest: skill.digest, entrypoint: skill.entrypoint })}
 Review this immutable target:
@@ -80,6 +82,8 @@ The worktree is already prepared. Its Git environment exposes the original commi
 ${previous === undefined ? "" : `A previous unfinished review may have published results: ${JSON.stringify(previous)}. Reconcile its existing effects; do not publish a review for its obsolete target merely to confirm it.\n`}This attempt may follow an interrupted or incomplete attempt of this same review. Before reviewing or publishing, inspect the PR's existing reviews and native review threads for the stable identity below, bound to this target commit and the captured publishing actor below. Confirm a matching existing APPROVED review immediately without re-evaluating later title or description edits, changing that approval, or publishing again. Confirm a matching existing COMMENTED review only when it owns at least one real resolvable native review thread; its unresolved threads do not block this same-round confirmation. Do not duplicate reviews, comments or replies. If a matching PENDING review exists, revalidate its unsent findings and reuse its ID and threads when still justified. If an owned draft is obsolete or its findings no longer apply, re-GET that exact numeric review ID and verify its author, exact stable identity, commit and PENDING state immediately before deleting only that draft with DELETE reviews/{review_id}; then publish the correct current result. Never delete a submitted APPROVED or COMMENTED review, and never submit findings for an obsolete target. If no valid matching result exists, complete a fresh review using the current title and description.
 Stable review identity: ${reviewPublicationIdentity(review)}
 Captured publishing actor node ID: ${JSON.stringify(publisherId)}
+Existing publication identity format: ${JSON.stringify(publicationIdentityFormat)}
+${publicationIdentityFormat === "legacy" ? "This migrated unfinished round permits legacy matching only to recover an already existing publication: the exact supplied stable identity token may be embedded in its historical prefix or prose. Require token boundaries so a longer identity cannot match, and retain the captured actor and commit checks. This recovery permission does not change the required format of new publication bodies." : "Recognize an existing publication only when the supplied stable identity is its own exact body line or an entire HTML-comment line; a token embedded in other prose is insufficient."}
 Before creating, submitting or deleting a review or thread, query the authenticated GitHub viewer node ID and require it to equal this captured publisher ID. If it differs, report the account mismatch and do not publish under another identity. Read-only confirmation of the captured publisher's existing valid result remains valid.
 Publish the review yourself using gh api. Immediately before publication or retry confirmation re-read the PR and require it to be Open, non-Draft, with head SHA ${review.headSha} and base branch ${JSON.stringify(review.baseRef)}. Before starting a new publication also re-evaluate the skill's PR-quality gates against its current title and description and require no unresolved submitted native review conversations. Positively identified PENDING draft threads are not submitted conversations. A matching pending review's own threads do not block finishing that publication. If it is stale, closed, Draft, inaccessible, or publication fails, explain the problem and do not output the completion marker.
 Use POST repos/${repository.owner}/${repository.name}/pulls/${review.number}/reviews on host ${review.host}. Explicitly set commit_id to ${review.headSha} and include the stable review identity as its own exact line in the review body, preferably inside an HTML comment. Use English and identify yourself as Copilot in published text.
@@ -155,6 +159,7 @@ export const createCopilotRunner = (options: CopilotRunnerOptions) => {
   const run = async (store: Store, reviewId: string, worktree: PreparedWorktree, input: CopilotRunOptions): Promise<CopilotAttemptOutcome> => {
     input.signal?.throwIfAborted();
     if (input.publisherId.trim() === "") throw new Error("The captured review publisher ID must be nonempty.");
+    if (input.publicationIdentityFormat !== "line" && input.publicationIdentityFormat !== "legacy") throw new Error("The publication identity format must be line or legacy.");
     const review = store.getReview(reviewId);
     if (review === null) throw new Error("The Copilot review does not exist.");
     const pr = store.getPullRequest(review);
@@ -295,7 +300,7 @@ export const createCopilotRunner = (options: CopilotRunnerOptions) => {
       const parser = new LastLine(lineLimit);
       mainStarted = true;
       await runPhase("review", [...prefix, `--${mode === "resume" ? "resume" : "session-id"}=${pr.sessionId}`, "-s", "--output-format", "text", "--stream", "on", "--no-color",
-        "--no-ask-user", "--no-auto-update", "--allow-all-tools", "--log-dir", attemptDirectory], parser, [stdoutFile, stderrFile], reviewPrompt(launched, worktree, coordinate, options.skill, input.publisherId, input.previousReview));
+        "--no-ask-user", "--no-auto-update", "--allow-all-tools", "--log-dir", attemptDirectory], parser, [stdoutFile, stderrFile], reviewPrompt(launched, worktree, coordinate, options.skill, input.publisherId, input.publicationIdentityFormat, input.previousReview));
       outcome.lastNonemptyLine = parser.lastNonempty;
       try {
         if (await sessionExists(sessionDirectory)) store.markSessionEstablished(pr);

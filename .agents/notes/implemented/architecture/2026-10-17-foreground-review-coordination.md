@@ -57,8 +57,12 @@ supersedes the original trigger and completion coordination. A verified COMMENT
 with real review/thread identities arms one durable follow-up consumed when all
 conversations resolve, even with no new commit or before an open count was ever
 observed. It coalesces with a newer target. Existing exact-target approval remains
-settled after description edits. Same-round publication reconciliation bypasses
-the fresh-round conversation gate so its own feedback cannot deadlock recovery.
+settled after description edits. Reusing a recorded approval for pending work
+requires a fresh exact-remote-ID `APPROVED` match. Same-round reconciliation can
+bypass the conversation gate only with actual captured-round publication or a
+valid matching pending draft under its original publisher. Failed attempts with
+no publication keep waiting for unrelated feedback; a changed reader may confirm
+the original actor's submitted result but cannot continue its pending draft.
 Marker acceptance and process exclusion save pending confirmation before remote
 verification; failed lookups retry read-only across restart without another model
 attempt.

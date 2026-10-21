@@ -41,6 +41,8 @@ if (!prompt.includes("/daynight-review") || suppliedSkill.name !== metadata.name
 const target = JSON.parse(prompt.split("\n").find((line) => line.startsWith('{"host":')));
 const publisherId = JSON.parse(prompt.split("\n").find((line) => line.startsWith("Captured publishing actor node ID: ")).slice("Captured publishing actor node ID: ".length));
 if (publisherId !== "fixture-copilot") throw new Error("The installed runner did not bind its publication to the captured actor.");
+const identityFormat = JSON.parse(prompt.split("\n").find((line) => line.startsWith("Existing publication identity format: ")).slice("Existing publication identity format: ".length));
+if (identityFormat !== "line") throw new Error("New installed review rounds must require strict publication identity lines.");
 const sessionFlag = args.find((argument) => /^--(?:session-id|resume)=/.test(argument));
 if (sessionFlag === undefined) throw new Error("The CLI did not supply a session identity.");
 const session = sessionFlag.slice(sessionFlag.indexOf("=") + 1);

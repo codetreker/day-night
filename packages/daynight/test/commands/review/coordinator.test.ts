@@ -2,6 +2,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import Database from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCoordinator } from "../../../src/commands/review/coordinator.js";
 import type { CoordinatorEvent, CoordinatorOptions } from "../../../src/commands/review/coordinator.js";
@@ -48,7 +49,7 @@ const fixture = (repositoryCount = 1, initialized = true, repositoryHost = (_ind
   const directory = mkdtempSync(path.join(root, "Coordinator 中文 "));
   const paths = resolveReviewPaths(path.join(directory, "home"));
   mkdirSync(paths.stateDirectory, { recursive: true });
-  const store = openStore(paths.databaseFile);
+  let store = openStore(paths.databaseFile);
   const configurations = Array.from({ length: repositoryCount }, (_, index) => {
     const host = repositoryHost(index);
     return { remote: `https://${host}/owner/repo${index}.git`, coordinate: `${host}/owner/repo${index}`, host, owner: "owner", name: `repo${index}`, path: path.join(directory, `repo${index}`) };
@@ -148,7 +149,13 @@ const fixture = (repositoryCount = 1, initialized = true, repositoryHost = (_ind
     snapshots[index]!.set(number, observation(number, { ...snapshots[index]!.get(number), ...change }));
   };
   const pr = (number = 1, index = 0) => ({ ...identities[index]!, number });
-  const result = { directory, paths, store, publications, threads, snapshot: (handler: typeof onSnapshot) => { onSnapshot = handler; }, configurations, identities, snapshots, polls, events, prepared, launched, cleaned, checked, client, git, runner, processes, configuration, start, update, pr, runs,
+  const migrateSchema1 = () => {
+    store.close();
+    const previous = new Database(paths.databaseFile);
+    try { previous.exec("DROP TABLE review_publications; PRAGMA user_version = 1"); } finally { previous.close(); }
+    store = openStore(paths.databaseFile);
+  };
+  const result = { directory, paths, get store() { return store; }, migrateSchema1, publications, threads, snapshot: (handler: typeof onSnapshot) => { onSnapshot = handler; }, configurations, identities, snapshots, polls, events, prepared, launched, cleaned, checked, client, git, runner, processes, configuration, start, update, pr, runs,
     prepare: (handler: typeof onPrepare) => { onPrepare = handler; }, run: (handler: typeof onRun) => { onRun = handler; }, poll: (handler: typeof onPoll) => { onPoll = handler; }, cleanup: (handler: typeof onCleanup) => { onCleanup = handler; },
     checks: (handler: typeof onChecks) => { onChecks = handler; } };
   fixtures.push(result);
@@ -260,6 +267,117 @@ describe("foreground review coordination", () => {
     expect(f.store.getPullRequest(f.pr())!.desiredRevision).toBe(1);
   });
 
+  it("waits through a foreign conversation opened during backoff without spending the remaining attempt", async () => {
+    const f = fixture(); f.update(1); f.configuration.maxAttempts = 2;
+    f.run(async (review) => {
+      if (review.attemptCount === 1) {
+        f.threads.push({ id: "foreign-during-backoff", reviewId: "foreign-review", isResolved: false });
+        return false;
+      }
+      return true;
+    });
+    f.start();
+    await waitFor(() => f.store.listReviews(f.pr())[0]?.status === "retry_wait", "first failed attempt");
+    const first = f.store.listReviews(f.pr())[0]!;
+    const polls = f.polls[0]!; await waitFor(() => f.polls[0]! >= polls + 5, "foreign conversation waiting beyond backoff");
+    expect(f.launched).toHaveLength(1); expect(f.prepared).toHaveLength(1);
+    expect(f.store.getReview(first.id)).toMatchObject({ status: "retry_wait", attemptCount: 1 });
+    f.threads[0]!.isResolved = true;
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 1, "same-round resume after foreign conversation resolution");
+    expect(f.launched.map(({ review }) => [review.id, review.attemptCount])).toEqual([[first.id, 1], [first.id, 2]]);
+  });
+
+  it("confirms a captured actor's marker-loss COMMENT read-only after the reader account switches", async () => {
+    const f = fixture(); f.update(1);
+    const snapshot = f.client.getPullRequestReviewSnapshot;
+    f.client.getPullRequestReviewSnapshot = async (...args) => ({ ...await snapshot(...args), viewerId: f.launched.length === 0 ? "viewer" : "new-reader" });
+    f.run(async (review, input) => {
+      expect(input.publisherId).toBe("viewer");
+      if (review.attemptCount === 1) {
+        f.publications.push({ id: "actor-a-comment", authorId: "viewer", headSha: review.headSha, state: "COMMENTED", body: `number=1 fixture\ndaynight review=${review.id} revision=1 head=${review.headSha}` });
+        f.threads.push({ id: "actor-a-thread", reviewId: "actor-a-comment", isResolved: false });
+        return false;
+      }
+      return true;
+    });
+    f.start(); await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 1, "readonly actor-a confirmation under reader-b");
+    expect(f.launched).toHaveLength(2);
+    expect(f.launched[1]!.review.id).toBe(f.launched[0]!.review.id);
+    expect(f.store.getReviewPublication(f.launched[0]!.review.id)).toMatchObject({ publisherId: "viewer", outcome: "commented", remoteReviewId: "actor-a-comment" });
+    expect(f.publications).toHaveLength(1);
+  });
+
+  it.each([false, true])("does not launch a different actor to publish or finish the captured actor's PENDING draft: %s", async (pending) => {
+    const f = fixture(); f.update(1); f.configuration.maxAttempts = 2;
+    let switched = false;
+    const snapshot = f.client.getPullRequestReviewSnapshot;
+    f.client.getPullRequestReviewSnapshot = async (...args) => ({ ...await snapshot(...args), viewerId: switched ? "new-reader" : "viewer" });
+    f.run(async (review, input) => {
+      expect(input.publisherId).toBe("viewer");
+      if (review.attemptCount === 1) {
+        if (pending) {
+          f.publications.push({ id: "actor-a-draft", authorId: "viewer", headSha: review.headSha, state: "PENDING", body: `number=1 fixture\ndaynight review=${review.id} revision=1 head=${review.headSha}` });
+          f.threads.push({ id: "actor-a-private", reviewId: "actor-a-draft", isResolved: false }, { id: "foreign", reviewId: "foreign-review", isResolved: false });
+        }
+        switched = true;
+        return false;
+      }
+      if (pending) f.publications[0]!.state = "COMMENTED";
+      return true;
+    });
+    f.start(); await waitFor(() => f.events.some((event) => event.phase === "publisher"), "captured actor wait");
+    const first = f.store.listReviews(f.pr())[0]!;
+    const polls = f.polls[0]!; await waitFor(() => f.polls[0]! >= polls + 5, "account wait beyond backoff");
+    expect(f.launched).toHaveLength(1); expect(f.prepared).toHaveLength(1);
+    expect(f.store.getReview(first.id)).toMatchObject({ status: "retry_wait", attemptCount: 1 });
+    switched = false;
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 1, "captured actor resumed round");
+    expect(f.launched).toHaveLength(2);
+    expect(f.launched[1]!.review.id).toBe(first.id);
+    expect(f.store.getReviewPublication(first.id)!.publisherId).toBe("viewer");
+  });
+
+  it.each([
+    ["running", "APPROVED"], ["retry_wait", "APPROVED"], ["running", "COMMENTED"], ["retry_wait", "COMMENTED"],
+  ] as const)("recovers schema1 %s marker loss with a prefixed legacy %s and adopts its historical actor", async (status, outcome) => {
+    const f = fixture(); f.update(1);
+    f.store.observePullRequest(f.identities[0]!, observation(1), Date.now());
+    const old = f.store.reserveReview(f.pr(), { reviewId: uuid(870), sessionId: uuid(871), maxAttempts: 3 }, Date.now())!;
+    f.store.registerWorktree(f.pr(), path.join(f.configurations[0]!.path, ".worktrees", "pr-1"));
+    f.store.pinReviewBase(old.id, "b".repeat(40), Date.now());
+    f.store.startAttempt(old.id, { processOwner: "old-runtime", stdoutLogPath: path.join(f.directory, "old-out"), stderrLogPath: path.join(f.directory, "old-err") }, Date.now());
+    if (status === "retry_wait") f.store.retryReview({ reviewId: old.id, attempt: 1 }, proof, { error: "old final marker missing", retryAt: Date.now() }, Date.now());
+    f.publications.push({ id: "old-submitted-review", authorId: "historical-publisher", headSha: old.headSha, state: outcome,
+      body: `number=1 fixture\nStable review identity: daynight review=${old.id} revision=1 head=${old.headSha}` });
+    if (outcome === "COMMENTED") f.threads.push({ id: "legacy-feedback", reviewId: "old-submitted-review", isResolved: false });
+    f.migrateSchema1();
+    expect(f.store.getReviewPublication(old.id)).toMatchObject({ identityFormat: "legacy", phase: "prepared", publisherId: null });
+    const recover = vi.fn(async () => proof);
+    f.run(async (review, input) => {
+      expect(review.id).toBe(old.id); expect(review.attemptCount).toBe(2);
+      expect(input.publisherId).toBe("historical-publisher"); expect(input.publicationIdentityFormat).toBe("legacy");
+      return true;
+    });
+    f.start({ processes: { ...f.processes, recover } });
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 1, "migrated unfinished publication confirmation");
+    expect(f.launched).toHaveLength(1);
+    expect(recover).toHaveBeenCalledTimes(status === "running" ? 1 : 0);
+    expect(f.store.getReview(old.id)).toMatchObject({ status: "completed", attemptCount: 2 });
+    expect(f.store.getReviewPublication(old.id)).toMatchObject({ identityFormat: "legacy", publisherId: "historical-publisher", remoteReviewId: "old-submitted-review", outcome: outcome === "APPROVED" ? "approved" : "commented" });
+    expect(f.publications).toHaveLength(1);
+  });
+
+  it("keeps newly created rounds strict when a legacy-style prefixed approval is returned", async () => {
+    const f = fixture(); f.update(1); f.configuration.maxAttempts = 1;
+    f.run(async (review, input) => {
+      expect(input.publicationIdentityFormat).toBe("line");
+      f.publications.push({ id: "wrong-new-format", authorId: "viewer", headSha: review.headSha, state: "APPROVED", body: `number=1 fixture\nStable review identity: daynight review=${review.id} revision=1 head=${review.headSha}` });
+      return true;
+    });
+    f.start(); await waitFor(() => f.store.listReviews(f.pr())[0]?.status === "failed", "strict new-round publication rejection");
+    expect(f.store.getPullRequest(f.pr())!.completedRevision).toBe(0);
+  });
+
   it("retains successful last-attempt publication verification across API errors and restart without relaunch", async () => {
     const f = fixture(); f.update(1); f.configuration.maxAttempts = 1;
     let failRead = true;
@@ -297,6 +415,23 @@ describe("foreground review coordination", () => {
     expect(f.launched).toHaveLength(1);
     f.update(1, { baseRef: "release" }); await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 3, "different base review");
     expect(f.launched).toHaveLength(2);
+  });
+
+  it("reviews a returned historical head again when GitHub has dismissed its cached approval", async () => {
+    const f = fixture(); f.update(1); f.start();
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 1, "first head approval");
+    const first = f.launched[0]!.review;
+    const firstPublication = f.store.getReviewPublication(first.id)!;
+    f.update(1, { headSha: "e".repeat(40) });
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 2, "second head approval");
+    const historical = f.publications.find((publication) => publication.id === firstPublication.remoteReviewId)!;
+    historical.state = "DISMISSED";
+    f.update(1, { headSha: first.headSha });
+    await waitFor(() => f.store.getPullRequest(f.pr())?.completedRevision === 3, "fresh approval after returning to historical head");
+    expect(f.launched.map(({ review }) => review.headSha)).toEqual(["a".repeat(40), "e".repeat(40), "a".repeat(40)]);
+    expect(f.launched[2]!.review.id).not.toBe(first.id);
+    expect(historical.state).toBe("DISMISSED");
+    expect(f.store.getReviewPublication(f.launched[2]!.review.id)!.outcome).toBe("approved");
   });
 
   it("rejects an empty COMMENT as incomplete rather than claiming completion", async () => {

@@ -113,8 +113,8 @@ describe("durable SQLite initialization", () => {
     expect(migrated.getRepository(repository)).toEqual(repositoryBefore);
     expect(migrated.getPullRequest(pr)).toEqual(prBefore);
     expect(migrated.listReviews(pr)).toEqual(reviewsBefore);
-    expect(migrated.getReviewPublication(first.id)).toEqual({ phase: "legacy", publisherId: null, outcome: null, remoteReviewId: null, threadIds: [], followupConsumed: false });
-    expect(migrated.getReviewPublication(active.id)).toBeNull();
+    expect(migrated.getReviewPublication(first.id)).toEqual({ phase: "legacy", publisherId: null, identityFormat: "legacy", outcome: null, remoteReviewId: null, threadIds: [], followupConsumed: false });
+    expect(migrated.getReviewPublication(active.id)).toEqual({ phase: "prepared", publisherId: null, identityFormat: "legacy", outcome: null, remoteReviewId: null, threadIds: [], followupConsumed: false });
   });
 
   it("rolls back a schema1 publication migration without altering its data when DDL fails", () => {

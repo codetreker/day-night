@@ -33,14 +33,18 @@ the agent finished. It advances the desired revision or coalesces with a newer
 pending target. A new commit or description edit is unnecessary. Resolve requests
 validation again; it does not prove that the correction is adequate. A verified
 approval settles its target. Description edits neither revoke approval nor
-create another round.
+create another round. Reusing that stored approval to settle a pending target
+requires its exact remote review ID to remain `APPROVED` in a fresh snapshot,
+with the captured actor, head and stable identity. A historical dismissed review
+cannot suppress the pending round; the daemon never dismisses approvals itself.
 
 The store uses schema version 2 and a `review_publications` record per internal
 review ID. Its `prepared`, `pending`, `verified` and `legacy` phases separate execution from
-remote confirmation. Verified records retain `approved` or `commented`, concrete
-remote review/thread IDs, and whether the follow-up was consumed. `prepared`
-captures the publishing actor before launch; retries cannot silently switch that
-actor when the authenticated viewer changes. Marker
+remote confirmation. `identity_format` records `line` or explicit migration
+provenance `legacy`. Verified records retain `approved` or `commented`, concrete
+remote review/thread IDs, and whether the follow-up was consumed. For new rounds,
+`prepared` captures the publishing actor before launch; retries cannot silently
+switch that actor when the authenticated viewer changes. Marker
 acceptance and process exclusion persist pending confirmation before querying
 GitHub. Remote lookup failure retries read-only across restart without another
 model attempt or fresh process. A complete lookup with no valid result is instead
@@ -52,21 +56,33 @@ The daemon verifies publication facts without interpreting code findings or
 publishing reviews itself.
 
 Same-round publication reconciliation is distinct from fresh-round admission.
-An existing exact-target approval is preserved, and a comment with its owned
-thread can be confirmed while those threads remain unresolved. Pending reviews
-and their draft threads are recovered before creating another publication.
-The final stdout marker remains required execution evidence; it is insufficient
-without the matching remote result.
+Only actual captured-round `APPROVED` or `COMMENTED` with its owned threads, or
+a matching valid `PENDING` draft under the same captured publisher, permits the
+conversation-gate exception. An attempt count alone supplies no proof of earlier
+publication. A failed attempt with no result waits for unrelated unresolved
+conversations without consuming another attempt. Existing pending reviews and
+their draft threads are recovered before creating another publication. A changed
+reader can confirm the captured actor's submitted result; no result or a pending
+draft waits for the original actor without launching a model or spending its
+budget. The final stdout marker remains required execution evidence; it is
+insufficient without the matching remote result.
 
 Runtime migration preserves version 1 cutoffs, revisions, attempt budgets,
 sessions, process evidence, logs, cleanup barriers and worktrees. Existing
-completed records become explicit legacy publications. Relevant current rows
-reconcile against remote evidence: an exact stable-identity/head approval supplies
-its actual historical actor rather than assuming today's viewer. That approval
-remains settled; a row
-without valid approval may consume one adoption successor. Historical rows do
-not start models merely because the schema changed. Read-only listing accepts
-supported schemas without migrating them.
+completed records enter phase `legacy`; unfinished active records enter
+`prepared`. Both retain `identity_format=legacy` and an unknown publisher, rather
+than assigning today's reader to earlier effects. Before further writes, the old
+exact token and captured head identify any actual historical publisher; the
+captured actor and identity provenance remain fixed through pending verification.
+This allows migrated prefixed approvals or threaded comments to recover after a
+lost marker. Only these migrated records read that old format. New rounds use
+strict own-line or HTML identities, and all new writes remain strict, including
+writes made while recovering a migrated round.
+
+Relevant completed legacy rows reconcile against remote evidence: matching
+approval remains settled; a row without valid approval may consume one adoption
+successor. Historical rows do not start models merely because the schema changed.
+Read-only listing accepts supported schemas without migrating them.
 
 This partially supersedes trigger and completion facts in the
 [foreground-CLI decision](2026-10-16-foreground-review-cli.md),
@@ -109,7 +125,8 @@ allow a first resolved observation to consume the follow-up without losing it.
 **Apply the conversation gate to publication confirmation.** A successfully
 published comment can be followed by a lost completion marker. Its own unresolved
 thread would then block confirmation forever. The gate applies to fresh work;
-same-round reconciliation reads existing effects without creating a successor.
+same-round reconciliation requires actual captured-round publication or a valid
+matching draft under its original publisher, and does not create a successor.
 
 **Accept the completion marker as publication proof.** The marker reports what
 the agent asserts, while remote failure or a summary-only comment can leave no
@@ -133,6 +150,9 @@ engine. A future event transport can supply the same complete admission and
 publication facts without changing round ownership.
 
 Controlled runtime, SQLite and installed-lifecycle checks establish the state and
-publication handshake. They do not prove arbitrary model judgment, live GitHub
+publication handshake. Migration checks distinguish completed and active schema 1
+records, preserve explicit identity provenance, recover prefixed submitted results
+with their actual actor, and retain strict identities for new rounds. They do not
+prove arbitrary model judgment, live GitHub
 permissions or actual native review publication. Those require their own
 source-bound service observations.
