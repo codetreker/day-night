@@ -8,6 +8,7 @@ import { runRepositoryGit } from "../../src/repository/git.js";
 const boundary = vi.hoisted(() => ({
   wrapper: undefined as string | undefined,
   root: undefined as ChildProcess | undefined,
+  rootClosed: undefined as Promise<void> | undefined,
   closed: false,
   terminate: undefined as ((pid: number) => Buffer) | undefined,
   calls: [] as number[],
@@ -18,7 +19,7 @@ vi.mock("node:child_process", async (importOriginal) => {
     if (args[0] !== "git" || boundary.wrapper === undefined) return Reflect.apply(actual.spawn, undefined, args);
     const child = actual.spawn(process.execPath, [boundary.wrapper], args[2] as Parameters<typeof actual.spawn>[2]);
     boundary.root = child;
-    child.once("close", () => { boundary.closed = true; });
+    boundary.rootClosed = new Promise<void>((resolve) => { child.once("close", () => { boundary.closed = true; resolve(); }); });
     return child;
   };
   const execFileSync: typeof actual.execFileSync = (...args: unknown[]) => {
@@ -53,7 +54,7 @@ const waitUntilGone = async (pid: number): Promise<void> => {
 };
 afterEach(async () => {
   vi.unstubAllGlobals(); vi.unstubAllEnvs();
-  boundary.wrapper = undefined; boundary.root = undefined; boundary.closed = false; boundary.terminate = undefined; boundary.calls.splice(0);
+  boundary.wrapper = undefined; boundary.root = undefined; boundary.rootClosed = undefined; boundary.closed = false; boundary.terminate = undefined; boundary.calls.splice(0);
   for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
 });
 
@@ -68,7 +69,9 @@ describe("Windows Git process-tree confirmation", () => {
     const descendant = path.join(directory, "descendant.mjs");
     const wrapper = path.join(directory, "wrapper.mjs");
     await writeFile(descendant, `import { appendFileSync, writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(marker)}, JSON.stringify({ pid: process.pid }));\nsetInterval(() => appendFileSync(${JSON.stringify(ticks)}, 'tick\\n'), 10);\n`);
-    await writeFile(wrapper, `import { spawn } from 'node:child_process';\nimport { writeFileSync } from 'node:fs';\nconst child = spawn(process.execPath, [${JSON.stringify(descendant)}], { detached: true, stdio: 'ignore' });\nwriteFileSync(${JSON.stringify(childPidFile)}, JSON.stringify({ pid: child.pid }));\nchild.once('exit', () => process.exit(0));\nsetInterval(() => {}, 1000);\n`);
+    // The descendant's working directory must outlive the per-case control files: Windows locks a process's current directory.
+    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setcurrentdirectory#remarks
+    await writeFile(wrapper, `import { spawn } from 'node:child_process';\nimport { writeFileSync } from 'node:fs';\nconst child = spawn(process.execPath, [${JSON.stringify(descendant)}], { cwd: ${JSON.stringify(scratch)}, detached: true, windowsHide: true, stdio: 'ignore' });\nwriteFileSync(${JSON.stringify(childPidFile)}, JSON.stringify({ pid: child.pid }));\nchild.once('exit', () => process.exit(0));\nsetInterval(() => {}, 1000);\n`);
     boundary.wrapper = wrapper;
     vi.stubGlobal("process", new Proxy(nativeProcess, { get: (target, key, receiver) => key === "platform" ? "win32" : Reflect.get(target, key, receiver) }));
     vi.stubEnv("SystemRoot", "C:\\Windows");
@@ -118,6 +121,7 @@ describe("Windows Git process-tree confirmation", () => {
       }
       if (ownedPid !== undefined) { kill(ownedPid); await waitUntilGone(ownedPid); }
       if (boundary.root?.pid !== undefined) { kill(boundary.root.pid); await waitUntilGone(boundary.root.pid); }
+      if (boundary.rootClosed !== undefined) await boundary.rootClosed;
       op.dispose();
     }
   }, 10_000);
