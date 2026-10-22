@@ -557,8 +557,10 @@ describe('progressive task visibility', () => {
     return { scope, nodeButton, nodeShell, expansion };
   };
   const rendered = async (container: HTMLElement, nodes: number, edges: number) => {
-    await waitFor(() => { expect(container.querySelectorAll('.react-flow__node')).toHaveLength(nodes); });
-    await waitFor(() => { expect(container.querySelectorAll('.react-flow__edge-path')).toHaveLength(edges); });
+    await waitFor(() => {
+      const actual = [container.querySelectorAll('.react-flow__node').length, container.querySelectorAll('.react-flow__edge-path').length];
+      expect(actual).toEqual([nodes, edges]);
+    });
   };
 
   it('shows a bounded root overview with full counts and opens details from the independent native body without changing visibility', async () => {

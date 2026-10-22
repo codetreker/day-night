@@ -60,14 +60,16 @@ visible graph, all real induced edges and explicit expansion/reset checks;
 body-open-details and the existing polyline renderer remain current. The new initial upstream task replaces only that dataset's readable
 root condition; existing datasets retain their root-visibility checks. Strict
 inventory validation retains five native capacity/limit scenarios. The later
-[bilingual interface decision](2026-10-22-web-bilingual-interface.md) expands
-functional checks to thirteen per target, producing eighteen unique native
-scenarios and thirteen container scenarios without changing that matrix. The
+[bilingual interface decision](2026-10-22-web-bilingual-interface.md) expanded
+functional checks to thirteen per target, producing eighteen native and thirteen
+container scenarios at that stage. The
 [authentication activation](../architecture/2026-10-22-authentication-activation.md)
-subsequently adds six functional scenarios per target. The
+added six functional scenarios per target, and the
 [Markdown description delivery](../architecture/2026-10-22-task-description-markdown.md)
-adds one more; current strict inventories are twenty-five native and twenty
-container scenarios, with these same five capacity/limit cases.
+added one, producing the earlier twenty-five-native/twenty-container inventory.
+The [approval lifecycle](2026-10-22-task-approval-lifecycle.md) adds three approval
+scenarios per target. Current strict inventories are twenty-eight native and
+twenty-three container scenarios, with these same five capacity/limit cases.
 
 The [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 the [web design](../../../../docs/design/daynight-web.md) owns model and viewport

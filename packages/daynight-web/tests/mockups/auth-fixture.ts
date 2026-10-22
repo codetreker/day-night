@@ -1,5 +1,6 @@
 import type { PersonalAccessToken, ProjectInvitation, ProjectMember, User } from '../../src/api/auth-types';
 import type { Attachment, Project, TaskDetail, TaskGraph } from '../../src/api/types';
+import { stringifyApiJson } from '../../src/api/json';
 import { browsingProjects } from './browsing-fixture';
 import previewHtml from '../../../../docs/design/mockups/auth/preview-assets/index.html?raw';
 import previewCss from '../../../../docs/design/mockups/auth/preview-assets/style.css?raw';
@@ -229,8 +230,8 @@ export const installAuthFixture = (initial: AuthScenario) => {
         if (task === undefined) return error(404, 'not_found');
         const taskSuffix = taskMatch[2] ?? '';
         if (taskSuffix === '' && method === 'GET') {
-          const detail: TaskDetail = { id: task.id, projectId: entry.project.id, title: task.titlePreview, description: '完成项目范围内的实现与验证，确认成员权限、任务状态与实际交付结果一致。', properties: { pullRequests: [] }, status: task.status, dependsOn: task.dependsOn, blockedBy: task.blockedBy, ready: task.ready, createdAt: task.createdAt, updatedAt: task.updatedAt };
-          return Response.json(detail);
+          const detail: TaskDetail = { id: task.id, projectId: entry.project.id, title: task.titlePreview, description: '完成项目范围内的实现与验证，确认成员权限、任务状态与实际交付结果一致。', properties: { pullRequests: [] }, status: task.status, version: 1n, dependsOn: task.dependsOn, blockedBy: task.blockedBy, ready: task.ready, createdAt: task.createdAt, updatedAt: task.updatedAt };
+          return new Response(stringifyApiJson(detail), { headers: { 'Content-Type': 'application/json' } });
         }
         if (taskSuffix === 'attachments' && method === 'GET') return Response.json({ items: attachments, nextCursor: null });
         const fileMatch = /^(preview|attachments\/files)\/(.+)$/.exec(taskSuffix);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   decodeAuthJson, parseAuthConfig, parseCreatedInvitation, parseCreatedToken, parseInvitation,
   parseInvitationInspection, parseInvitations, parseMember, parseMembers, parseMemberVersion,
@@ -134,6 +134,29 @@ describe("lossless membership JSON decoding", () => {
     expect(parseInvitationInspection(inspection).member?.version).toBe(9_007_199_254_740_993n);
   });
 
+  it("decodes every membership envelope without requiring reviver context support", async () => {
+    const nativeParse = JSON.parse;
+    const parse = vi.spyOn(JSON, "parse").mockImplementation((text, reviver) => nativeParse(text, reviver === undefined
+      ? undefined : function (key, value) { return reviver.call(this, key, value); }));
+    try {
+      const root = await decodeAuthJson(new Response(memberJson("9223372036854775807")));
+      expect(parseMember(root).version).toBe(9_223_372_036_854_775_807n);
+      const page = await decodeAuthJson(new Response(`{"items":[${memberJson("9007199254740993")}]}`));
+      expect(parseMembers(page, projectId)[0]?.version).toBe(9_007_199_254_740_993n);
+      const inspection = await decodeAuthJson(new Response(`{"projectId":"${projectId}","projectName":"Project","member":${memberJson("9223372036854775807")}}`));
+      expect(parseInvitationInspection(inspection).member?.version).toBe(9_223_372_036_854_775_807n);
+    } finally { parse.mockRestore(); }
+  });
+
+  it("uses final escaped envelope keys and preserves native nested container semantics", async () => {
+    const page = await decodeAuthJson(new Response(`{"items":{"0":${memberJson("9223372036854775807")}},"\\u0069tems":[${memberJson("1")}]}`));
+    expect(parseMembers(page, projectId)[0]?.version).toBe(1n);
+    const source = `{"items":[${memberJson("9223372036854775807")}],"items":{"0":${memberJson("1")}}}`;
+    expect(await decodeAuthJson(new Response(source))).toEqual(JSON.parse(source));
+    const inspection = await decodeAuthJson(new Response(`{"projectId":"${projectId}","projectName":"Project","member":${memberJson("9223372036854775807")},"\\u006dember":${memberJson("1")}}`));
+    expect(parseInvitationInspection(inspection).member?.version).toBe(1n);
+  });
+
   it.each(["0", "-1", "9223372036854775808", "1.5", "1.0", "1e0", "1E+3", '"1"', "null"])("rejects invalid version lexeme %s after actual JSON decoding", async (numericVersion) => {
     const decoded = await decodeAuthJson(new Response(memberJson(numericVersion)));
     expect(() => parseMember(decoded, projectId, userId)).toThrow("invalid response");
@@ -141,7 +164,7 @@ describe("lossless membership JSON decoding", () => {
 
   it("keeps unrelated numbers and strings as JSON values and exposes malformed JSON", async () => {
     await expect(decodeAuthJson(new Response('{"count":2,"name":"unchanged","nested":{"version":1}}')))
-      .resolves.toEqual({ count: 2, name: "unchanged", nested: { version: 1n } });
+      .resolves.toEqual({ count: 2, name: "unchanged", nested: { version: 1 } });
     await expect(decodeAuthJson(new Response('{"version":'))).rejects.toBeInstanceOf(SyntaxError);
   });
 });

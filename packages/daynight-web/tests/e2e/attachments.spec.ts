@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { attachmentDownloadUrl, attachmentPageUrl, attachmentPreviewUrl } from '../../src/api/client';
 import { createAcceptanceCli } from '../../scripts/acceptance/installed-cli.mts';
-import { createProject, createTask, expect, test, type Task } from './fixtures';
+import { createProject, createApprovedTask, expect, test, type Task } from './fixtures';
 import { expectCenteredTaskDetail } from './detail-dialog';
 import { hasPaintedPdfMarker, readPdfPixels, type PdfPixels } from './pdf-pixels';
 
@@ -66,7 +66,7 @@ const paintedPdf = async (page: Page, frame: Locator, info: TestInfo, source: Bu
 
 test('task-attachments', { annotation: { type: 'scenario', description: 'task-attachments' } }, async ({ page, api: request, allowAttachmentWrites }, info) => {
   const project = await createProject(request, { name: `Attachments ${randomUUID()}` });
-  const task = await createTask(request, project.id, { title: 'CLI 与 Web 共享同一任务附件', description: '验证文件内容、预览和单文件操作。' });
+  const task = await createApprovedTask(request, project.id, { title: 'CLI 与 Web 共享同一任务附件', description: '验证文件内容、预览和单文件操作。' });
   const baseURL = info.project.use.baseURL;
   if (typeof baseURL !== 'string') throw new Error('Attachment acceptance requires the actual service base URL.');
   const directory = info.outputPath('attachment-files');

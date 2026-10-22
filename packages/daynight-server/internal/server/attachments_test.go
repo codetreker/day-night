@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -456,5 +457,39 @@ func TestAttachmentHTTPMalformedPrefixCannotRedirectIntoTask(t *testing.T) {
 	response := projectRequest(handler, http.MethodGet, ordinary, "")
 	if response.Code != http.StatusTemporaryRedirect || response.Header().Get("Location") != taskPath(task) {
 		t.Fatalf("ordinary old JSON normalization changed: %d %+v", response.Code, response.Header())
+	}
+}
+
+func TestAttachmentHTTPPendingTaskAndLifecyclePreserveAttachment(t *testing.T) {
+	handler := attachmentTestHandler(t, projectTestStore(t), attachmentTestFiles(t), io.Discard)
+	project := taskProject(t, handler)
+	prerequisite := createHTTPTask(t, handler, project.ID, "Prerequisite")
+	task := createHTTPTask(t, handler, project.ID, "Attached proposed task", prerequisite.ID)
+	task = updateHTTPTask(t, handler, task, map[string]any{"properties": api.TaskProperties{PullRequests: []api.PullRequestProperty{{URL: "https://example.com/pr/1", Title: "Implementation"}}}})
+	location := attachmentFilePath(task, "plan.md")
+	created := decodeResponse[api.Attachment](t, attachmentRequest(handler, http.MethodPut, location, "text/markdown", []byte("Acceptance criteria")), http.StatusCreated)
+	if actual := readHTTPTask(t, handler, task); !reflect.DeepEqual(actual, task) || actual.Status != "proposed" || len(actual.BlockedBy) != 1 {
+		t.Fatalf("upload changed blocked proposed task: %+v", actual)
+	}
+	task = transitionHTTPTask(t, handler, task, "approve")
+	if task.Status != "todo" || task.Ready || !slices.Equal(task.BlockedBy, []string{prerequisite.ID}) {
+		t.Fatalf("approval unexpectedly completed prerequisite: %+v", task)
+	}
+	prerequisite = transitionHTTPTask(t, handler, prerequisite, "approve")
+	prerequisite = transitionHTTPTask(t, handler, prerequisite, "claim")
+	prerequisite = transitionHTTPTask(t, handler, prerequisite, "complete")
+	for _, action := range []string{"claim", "complete"} {
+		task = transitionHTTPTask(t, handler, task, action)
+		if !slices.Equal(task.Properties.PullRequests, []api.PullRequestProperty{{URL: "https://example.com/pr/1", Title: "Implementation"}}) {
+			t.Fatalf("%s changed PR properties: %+v", action, task)
+		}
+		page := decodeResponse[api.AttachmentPage](t, attachmentRequest(handler, http.MethodGet, taskPath(task)+"/attachments", "", nil), http.StatusOK)
+		if len(page.Items) != 1 || !reflect.DeepEqual(page.Items[0], created) {
+			t.Fatalf("%s changed attachment metadata: %+v", action, page)
+		}
+		response := attachmentRequest(handler, http.MethodGet, location, "", nil)
+		if response.Code != http.StatusOK || response.Body.String() != "Acceptance criteria" {
+			t.Fatalf("%s changed attachment content: %d %s", action, response.Code, response.Body)
+		}
 	}
 }

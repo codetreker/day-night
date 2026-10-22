@@ -33,6 +33,9 @@ func TestResourceServicesRejectAbsentPrincipals(t *testing.T) {
 				return err
 			},
 			func() error { _, err := tasks.Graph(ctx, principal, id); return err },
+			func() error { _, err := tasks.Approve(ctx, principal, id, id, 1); return err },
+			func() error { _, err := tasks.Claim(ctx, principal, id, id, 1); return err },
+			func() error { _, err := tasks.Complete(ctx, principal, id, id, 1); return err },
 			func() error { _, err := attachments.List(ctx, principal, id, id, PageRequest{Limit: 1}); return err },
 			func() error {
 				_, _, err := attachments.Put(ctx, principal, id, id, "file", "text/plain", strings.NewReader("content"))
@@ -102,9 +105,16 @@ func TestAllResourcesRequireCurrentProjectMembership(t *testing.T) {
 			func() error { return attachments.Delete(ctx, principal, project.ID, task.ID, "member.txt") },
 		}
 	}
+	actions := func(principal core.Principal) []func() error {
+		return []func() error{
+			func() error { _, err := tasks.Approve(ctx, principal, project.ID, task.ID, task.Version); return err },
+			func() error { _, err := tasks.Claim(ctx, principal, project.ID, task.ID, task.Version); return err },
+			func() error { _, err := tasks.Complete(ctx, principal, project.ID, task.ID, task.Version); return err },
+		}
+	}
 	for _, principal := range []core.Principal{outsider, {}} {
 		before := probe.count()
-		for _, call := range readAndWrite(principal) {
+		for _, call := range append(readAndWrite(principal), actions(principal)...) {
 			code := "not_found"
 			if principal.UserID == "" {
 				code = "unauthenticated"
@@ -124,7 +134,7 @@ func TestAllResourcesRequireCurrentProjectMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := probe.count()
-	for _, call := range readAndWrite(member) {
+	for _, call := range append(readAndWrite(member), actions(member)...) {
 		requireFault(t, call(), "not_found")
 	}
 	if probe.count() != before {
@@ -256,9 +266,11 @@ func TestTaskWriteChecksMembershipAfterAcquiringProjectLock(t *testing.T) {
 	f.join(t, admin, member, project.ID)
 	tasks := NewTasks(f.database)
 	task := createTask(t, tasks, admin, project.ID, "Unchanged")
+	todo := approveTask(t, tasks, admin, createTask(t, tasks, admin, project.ID, "Unclaimed"))
+	active := claimTask(t, tasks, admin, approveTask(t, tasks, admin, createTask(t, tasks, admin, project.ID, "Incomplete")))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	results := make(chan taskResult, 2)
+	results := make(chan taskResult, 5)
 	if err := f.database.WriteProject(ctx, project.ID, func(tx *store.ProjectTx) error {
 		if err := tx.RemoveMember(ctx, member.UserID); err != nil {
 			return err
@@ -271,17 +283,46 @@ func TestTaskWriteChecksMembershipAfterAcquiringProjectLock(t *testing.T) {
 			updated, err := tasks.Update(ctx, member, project.ID, task.ID, UpdateTask{Version: task.Version, Title: pointer("Must not change")})
 			results <- taskResult{task: updated, err: err}
 		}()
-		waitForTaskWriters(t, ctx, f.database, 2)
+		for _, action := range []struct {
+			apply func(context.Context, core.Principal, string, string, int64) (core.Task, error)
+			task  core.Task
+		}{{tasks.Approve, task}, {tasks.Claim, todo}, {tasks.Complete, active}} {
+			go func() {
+				updated, err := action.apply(ctx, member, project.ID, action.task.ID, action.task.Version)
+				results <- taskResult{task: updated, err: err}
+			}()
+		}
+		waitForTaskWriters(t, ctx, f.database, 5)
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for range 2 {
+	for range 5 {
 		requireFault(t, receiveTaskResult(t, ctx, results).err, "not_found")
 	}
 	assertTaskUnchanged(t, tasks, admin, task)
+	assertTaskUnchanged(t, tasks, admin, todo)
+	assertTaskUnchanged(t, tasks, admin, active)
 	page, err := tasks.List(ctx, admin, project.ID, TaskListRequest{PageRequest: PageRequest{Limit: 100}})
-	if err != nil || len(page.Items) != 1 {
+	if err != nil || len(page.Items) != 3 {
 		t.Fatalf("rejected creation persisted: %#v %v", page, err)
+	}
+}
+
+func TestMemberCanPerformTaskLifecycleActions(t *testing.T) {
+	f := newMembershipFixture(t)
+	admin, member := f.user(t), f.user(t)
+	project := f.project(t, admin, "Member lifecycle authority")
+	f.join(t, admin, member, project.ID)
+	tasks := NewTasks(f.database)
+	task := createTask(t, tasks, member, project.ID, "Member-owned work")
+	if task.Status != core.TaskProposed {
+		t.Fatalf("new task status: %s", task.Status)
+	}
+	task = approveTask(t, tasks, member, task)
+	task = claimTask(t, tasks, member, task)
+	task = completeTask(t, tasks, member, task)
+	if task.Status != core.TaskDone || task.Version != 4 {
+		t.Fatalf("member lifecycle: %#v", task)
 	}
 }

@@ -73,22 +73,29 @@ with stage briefs. Clarification produces complete requirements and applicable
 final-style interactive frontend-only UI; architecture completes design and
 registers all successors before handover. Implementation roots depend on design.
 Scoped Goal creation permission covers the initial pair and its in-scope breakdown.
-No new task state, service resource, CLI command or ownership mechanism is added.
+The Goal protocol adds no service resource, CLI command or ownership mechanism.
+The [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) applies
+to every stage: registration produces proposed, approval requires an explicit
+user instruction for the task or stated Goal-task scope, and ready todo is claimed
+with its reviewed version. Goal creation, stage completion, run-task and autopilot
+never imply approval permission.
 
 Dependencies remain in dependsOn; PR URLs and titles remain in
 properties.pullRequests. Results and merge references belong with the primary
 attachment's acceptance items. Execution position, blockers and next steps use
 an existing checkpoint. Registration is complete only after necessary task-owned
 artifacts and shared inputs are read back. Partial registration retains IDs;
-uncertain writes are reconciled before retrying. Run-task reads the self-contained
+uncertain writes are reconciled before further mutation. Registration leaves
+proposed work awaiting approval unless separately authorized. Run-task reads the self-contained
 brief, detailed plan and stage inputs, executes its designated task and returns
 after completion or an external blocker. Development and PR-delivered documentation
 require every necessary PR platform-confirmed merged and acceptance satisfied
-before done. Retaining a PR keeps the task in progress; completion grants no merge
+before versioned task complete. Retaining a PR keeps the task in progress; completion grants no merge
 authority. A stage done does not establish whole-Goal completion.
 
 Autopilot restores the checkpoint's current task, otherwise picks exactly one
-ready todo most related to the authorized goal. In-progress inventory does not
+approved ready todo most related to the authorized goal, without auto-approving
+proposed work. In-progress inventory does not
 establish ownership, and a bounded ready page does not establish complete backlog
 state. Delivery waits and subagents remain on the current task. Only confirmed
 done permits the next selection; external blockers retain the current task and

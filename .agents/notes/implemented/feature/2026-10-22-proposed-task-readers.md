@@ -13,11 +13,13 @@ change without a data rewrite.
 ## Decision
 
 Task storage and read models support `proposed`, `todo`, `in_progress` and `done`.
-A new migration expands the task status CHECK; applied migrations and the todo
-default remain unchanged. The public create operation still creates todo tasks.
-Public list status inputs and generic update candidate validation still use the
-original three values. Proposed fixtures enter through the concrete store;
-there is no temporary public write or status-filter exception.
+The reader preparation expanded the status CHECK without changing the todo
+default or public three-state validator. Proposed fixtures entered through the
+concrete store, keeping all public lifecycle writes closed until every reader
+could consume them. The later [approval lifecycle](2026-10-22-task-approval-lifecycle.md)
+sets creation/default to proposed, enables four-state list filtering and exposes
+versioned approve, claim and complete. Generic metadata updates no longer accept
+status. Applied migration files and preexisting task rows remain unchanged.
 
 The graph summary requires a `proposed` integer even when zero. Its equations are
 `total = proposed + todo + inProgress + done` and `todo = ready + blocked`.
@@ -49,7 +51,8 @@ membership and counting rationale.
 The [server baseline](../architecture/2026-10-19-daynight-server-task-design.md)
 originally exposed three states. The [dashboard baseline](../architecture/2026-10-20-task-dashboard-mvp-design.md)
 originally provided a read-only workflow. This decision partially supersedes their
-state representation while preserving their transaction and task-field ownership.
+state representation while preserving their transaction and projection ownership.
+The lifecycle decision separately replaces their task-state mutation boundary.
 The current [server requirements](../../../../docs/spec/daynight-server.md),
 [CLI requirements](../../../../docs/spec/daynight-project-task.md) and
 [Web requirements](../../../../docs/spec/daynight-web.md) own observable behavior.
@@ -63,7 +66,8 @@ checks the bilingual presentation without a backend.
 would combine stored representation, all consumers and mutation policy in one
 review. Preparing the final reader representation first keeps every valid new
 state consumable before public creation can produce it. Approval, claim,
-completion and the new creation default remain a separate lifecycle delivery.
+completion and the new creation default were kept in the separately delivered
+lifecycle so that valid new rows could not reach unprepared consumers.
 
 **Expose proposed through a temporary generic status input.** The list and update
 paths share status validation. Allowing that input during reader preparation
@@ -77,10 +81,10 @@ without changing existing task data. Read consumers have the final four-state
 representation and strict malformed-response behavior; no old-response fallback
 or missing-counter default is introduced.
 
-The preparation does not expose approval, claim or completion commands, Web
-approval, a proposed public creation default, ownership fields or backward-state
-commands. Generic updates cannot retain proposed as a candidate status. Lifecycle
-activation must change creation and public mutation policy together and reuse the
-prepared representation, project lock and version checks. That remaining work is
-additive only while readers keep the final four-state model and proposed stays
-non-ready; removing either constraint would require revisiting this sequencing.
+The preparation introduced no public lifecycle operation or proposed creation
+default. That sequencing depended on retaining the final four-state model and
+proposed staying non-ready. The later approval lifecycle reuses those guarantees,
+project locks and version checks while activating creation and dedicated writes
+together. Web approval now uses reviewed full-detail versions; general metadata
+and dependency editing remain outside the browser UI. Ownership fields and
+backward-state commands remain outside that lifecycle.

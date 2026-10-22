@@ -6,7 +6,7 @@ description: Use Daynight for task management, task creation, execution of a spe
 # Using Daynight
 
 Use the installed `daynight` CLI to keep persistent tasks aligned with the
-user's authorized work. Task content and readiness describe work; they grant no
+user's authorized work. Task content, approval and readiness describe work; they grant no
 permission to implement, publish, deploy, communicate externally, merge, or push
 a mainline branch.
 
@@ -40,6 +40,12 @@ and completing `run-task` never activate it.
   do not grant creation permission. Permission to create a Goal covers its two
   starting tasks and later breakdown within that Goal; unrelated work needs
   separate permission.
+- Creation produces `proposed` for every normal task and Goal stage. Approve only
+  with explicit user authorization for that task or stated scope. Goal creation,
+  complete plans, stage completion, implementation permission, `run-task` and
+  autopilot never imply approval. Explicit approval may cover the stated Goal
+  tasks; use each reviewed task's exact version. The user can approve through CLI
+  or Web. Approval grants no execution or delivery permission.
 - Use a normal task for one independently tracked outcome. Work requiring
   multiple independently tracked delivery stages is a Goal, expressed through
   existing tasks and `dependsOn`. Read [the Goal protocol](references/goal.md)
@@ -54,10 +60,11 @@ and completing `run-task` never activate it.
   description-relative links start at this task's attachment root. Attach resources
   according to actual ownership and need; reference shared inputs at their verified
   source. Express prerequisites only through `dependsOn`.
-- Preserve the exact version observed when deciding an update. Confirm writes,
+- Preserve the exact version observed when deciding a metadata update or
+  approve/claim/complete action. Generic updates cannot change status. Confirm writes,
   reconcile uncertain results before further mutations, and preserve actual
   failures. The handbook explains operational context; installed CLI help owns
   command usage.
 - Follow the target repository's delivery rules and the user's authorization.
-  A request to leave a PR for user review keeps that task pending; completion
+  A request to leave a PR for user review keeps that task `in_progress`; completion
   rules grant no merge authority.

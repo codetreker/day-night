@@ -5,7 +5,9 @@
 按[鉴权架构](../daynight-auth.md)把身份、项目成员授权、CLI 和双语 Web 接入正式
 入口。Go composition、配置、显式 Principal、全部资源 handler、Web 主入口、
 localhost/dev-ci 和原有启动/验收调用方属于同一交付。视觉使用[原型](../mockups/auth/index.html)，
-语言保持当前常驻 LocaleProvider、完整目录和选择器。估算 240–360 分钟。
+语言保持当前常驻 LocaleProvider、完整目录和选择器。TaskDetailSessionProvider
+位于身份域内，跨关闭/重开保持同一任务的批准状态并在换账号时清除。估算
+240–360 分钟。
 
 server.New 接受 Dependencies、Config 和 logger，返回 handler 或 error；校验失败
 关闭启动已取得的资源。全部业务入口强制认证，没有匿名或可信用户适配器。正式
@@ -37,8 +39,11 @@ listener 推导。Go listener 保持 loopback；healthz/readyz 公开且无业�
 
 每个 HTTP 请求读取当前凭据取得 Principal。资源读取在 Snapshot 内检查成员，
 任务写入在项目锁内检查成员并执行领域约束；项目创建与首位 admin 原子提交，
-列表在 SQL 分页前筛成员。凭据认证与业务事务各有准入时点，不新增将凭据撤销
-和业务提交串行化的协议。
+列表在 SQL 分页前筛成员。任务 approve/claim/complete 同样显式传递 Principal，
+在取得项目锁后检查成员；新任务默认 proposed，元数据 PATCH 不接受 status。
+所有成员均可批准、领取和完成，管理员只额外管理成员/邀请；新 POST 与其 405
+fallback 均经过 Require、Origin 与 no-store。凭据认证与业务事务各有准入时点，
+不新增将凭据撤销和业务提交串行化的协议。
 
 附件在短快照检查成员、项目、task 和路径后准入 IO，已准入操作允许完成，不在
 文件 IO 后再次检查成员。可信同源 HTML、普通 iframe、相对资源、主站 session、

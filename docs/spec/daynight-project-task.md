@@ -185,11 +185,12 @@ daynight task list --status in_progress
 daynight task show <task-id>
 daynight task update <task-id> --title "新的标题"
 daynight task update <task-id> --description ""
-daynight task update <task-id> --status in_progress
-daynight task update <task-id> --status done
+daynight task approve <task-id>
+daynight task claim <task-id>
+daynight task complete <task-id>
 daynight task update <task-id> --depends-on <task-a> --depends-on <task-b>
 daynight task update <task-id> --clear-dependencies
-daynight task update <task-id> --status done --if-version 3
+daynight task complete <task-id> --if-version 3
 daynight task update <task-id> --pull-request-url <url> --pull-request-title <title>
 daynight task update <task-id> --clear-pull-requests
 daynight task graph
@@ -207,11 +208,11 @@ daynight task graph
 
 创建必需符合 PT6 文本规则的非空 task 标题，可选描述、重复的 `--depends-on` 和
 PR URL/title 配对；省略描述、依赖和 PR 引用分别使用服务规定的空字符串、空集合
-和空数组，新 task 总为 `todo`。PR 标题只要求字符串类型，不使用 task 标题的内容
+和空数组，新 task 总为 `proposed`。PR 标题只要求字符串类型，不使用 task 标题的内容
 校验。任务响应解码接受 `proposed`、`todo`、`in_progress`、`done`，列表默认选择
 所有未完成任务，包含 `proposed`；`--all` 选择所有状态，
 单个 `--status` 选择指定状态，包括 `done`。`--all` 与 `--status` 互斥，组合使用
-属于参数错误；状态值为 `todo`、`in_progress`、`done`，共享语法负责校验和静态候选，
+属于参数错误；列表状态值为 `proposed`、`todo`、`in_progress`、`done`，共享语法负责校验和静态候选，
 帮助显示选项说明。`--ready` 表示 `ready=true`，与所选状态按 AND 组合，支持
 `--all --ready`。列表读完全部匹配分页后，按 `in_progress`、ready、其余 `todo`、
 `proposed`、`done` 分组排序；组内保留跨页的服务顺序，文本和 JSON 使用同一顺序。详情按选定
@@ -232,7 +233,16 @@ limit，每项必须为 ready，且 task ID 不得重复；响应违反任一条
 拒绝，stdout 保持为空。正常的候选选择使用此有界操作，完整依赖关系可按需使用
 `graph` 查看。
 
-更新至少提供标题、描述、状态、依赖或预定义属性中的一个字段。省略字段表示保持，空描述表示
+approve、claim、complete 接受明确 task ID、可选 project 和 `--if-version`。其唯一转换
+分别为 proposed→todo、todo→in_progress、in_progress→done；审批允许未完成前置，
+领取及完成要求前置全部 done。三种操作均向当前项目成员开放，管理员角色只
+额外管理成员与邀请。动作输出完整 task，重复或错误前态返回可辨识的
+invalid_transition。显式版本不预读；省略时在提交前读取一次。基于已审阅内容的决策
+必须显式携带其读取版本，不能靠临时 GET 替代。冲突不重试；不确定结果先读取核对，
+不将取消解释为回滚。四状态、事务和错误规则由[服务规范](daynight-server.md)拥有。
+
+更新至少提供标题、描述、依赖或预定义属性中的一个字段。`task update --status`
+作为不支持的选项拒绝，帮助引导使用 approve、claim 和 complete。省略字段表示保持，空描述表示
 清空描述。出现 `--depends-on` 时替换完整前置集合；`--clear-dependencies` 清空
 集合，两者不能同时出现。依赖选项按输入顺序保留每一次出现，单次及重复的
 `--depends-on` 都形成数组，包括重复 ID，不执行 CSV 拆分。PR URL/title 配对选项
@@ -253,8 +263,8 @@ PR 的 `--pull-request-url` 和 `--pull-request-title` 在 create/update 中分�
 `graph` 使用现有完整图接口，呈现四种节点状态、依赖、阻塞和汇总；文本汇总
 包含 Proposed，JSON summary 必须包含 `proposed`，总数满足
 `total = proposed + todo + inProgress + done`。proposed 任务无论前置是否完成均不可
-ready，默认清单、show 和 graph 保留其状态。公开 `--status` 输入仍为既有三个
-choices，不提供 proposed 筛选或审批、领取、完成命令。标题预览、快照边界、
+ready，默认清单、show 和 graph 保留其状态。公开列表 `--status proposed` 可筛选待审批
+任务；状态写入只通过 approve、claim、complete。标题预览、快照边界、
 节点和边上限均继承服务要求。超限时报告数量及上限，不返回部分图。
 
 附件 `put/list/read/remove` 继承相同的 project 选择，逐文件处理完整相对路径。

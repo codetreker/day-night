@@ -61,10 +61,15 @@ Open the configured public origin, `http://127.0.0.1:8787/` with the template,
 and sign in through UniAuth. The dashboard provides project creation, member and
 invitation management, personal access token management and task browsing.
 Selecting a project opens `/projects/<projectId>`, with statistics, expandable
-dependency graphs and task details. The HTTP API uses the same origin at
-`/api/v1`. Users see only projects where they are members; a new project's
-creator becomes its administrator. Existing projects need their member records
-prepared manually before users can access them.
+dependency graphs and task details. Task details can approve proposed work and
+manage attachments; use the CLI or API to create tasks, claim or complete tasks,
+and edit metadata. The HTTP API uses the same origin at `/api/v1`.
+
+Users see only projects where they are members; a new project's creator becomes
+its administrator. All project members can read and write project resources,
+including approving, claiming and completing tasks. Administrators additionally
+manage project membership and invitations. Existing projects need their member
+records prepared manually before users can access them.
 
 To select a different host port, update `DAYNIGHT_PORT`,
 `DAYNIGHT_PUBLIC_ORIGIN` and `DAYNIGHT_UNIAUTH_CALLBACK_URL` together in `.env`,
@@ -106,8 +111,39 @@ curl --fail-with-body --header "Authorization: Bearer $DAYNIGHT_TOKEN" \
   "$DAYNIGHT_BASE_URL/api/v1/projects/$PROJECT_ID/tasks"
 curl --fail-with-body --header "Authorization: Bearer $DAYNIGHT_TOKEN" \
   "$DAYNIGHT_BASE_URL/api/v1/projects/$PROJECT_ID/tasks"
+```
+
+Creation always produces a `proposed` task with version `1`. Creation and
+metadata `PATCH` requests omit `status`; lifecycle changes use the dedicated
+`approve`, `claim` and `complete` actions. Approval changes `proposed` to `todo`,
+claim changes `todo` to `in_progress`, and completion changes `in_progress` to
+`done`. Claim and completion require all dependencies to be done.
+
+Copy the created task's `id` into `TASK_ID`. With no intervening task changes,
+the following sequence submits the current version for each action: approval
+returns version `2`, claim returns version `3`, and completion returns version
+`4`.
+
+```bash
+TASK_ID=YOUR_TASK_ID
+curl --fail-with-body --header "Authorization: Bearer $DAYNIGHT_TOKEN" \
+  --header 'Content-Type: application/json' \
+  --data '{"version":1}' \
+  "$DAYNIGHT_BASE_URL/api/v1/projects/$PROJECT_ID/tasks/$TASK_ID/approve"
+curl --fail-with-body --header "Authorization: Bearer $DAYNIGHT_TOKEN" \
+  --header 'Content-Type: application/json' \
+  --data '{"version":2}' \
+  "$DAYNIGHT_BASE_URL/api/v1/projects/$PROJECT_ID/tasks/$TASK_ID/claim"
+curl --fail-with-body --header "Authorization: Bearer $DAYNIGHT_TOKEN" \
+  --header 'Content-Type: application/json' \
+  --data '{"version":3}' \
+  "$DAYNIGHT_BASE_URL/api/v1/projects/$PROJECT_ID/tasks/$TASK_ID/complete"
 unset DAYNIGHT_TOKEN
 ```
+
+If another member changes the task, fetch its latest state and use its returned
+version before submitting the next action. Stale versions fail without applying
+the action.
 
 Refresh the dashboard to load the new data. Project registration stores
 repository metadata without cloning or contacting the repository. A token uses

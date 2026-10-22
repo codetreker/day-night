@@ -205,8 +205,18 @@ describe("auth API failures", () => {
     expect(String(failure)).not.toContain(secret);
     expect(failure).not.toHaveProperty("cause");
     fetcher.mockRejectedValue(new Error(secret));
-    await expect(createToken({ name: "name" }, signal())).rejects.toMatchObject({ kind: "network", status: null });
+    const networkFailure = await createToken({ name: "name" }, signal()).catch((error: unknown) => error);
+    expect(networkFailure).toMatchObject({ kind: "network", status: null });
+    expect(networkFailure).not.toHaveProperty("cause");
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves cancellation identity while sanitizing auth request errors", async () => {
+    const reason = new Error("identity changed");
+    const controller = new AbortController();
+    const fetcher = mock(new Response());
+    fetcher.mockImplementation(async () => { controller.abort(reason); throw new TypeError("transport detail"); });
+    await expect(createToken({ name: "name" }, controller.signal)).rejects.toBe(reason);
   });
 });
 

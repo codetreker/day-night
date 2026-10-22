@@ -9,6 +9,7 @@ import { CreateProjectDialog } from "../features/auth/CreateProjectDialog";
 import { InvitationPage } from "../features/auth/InvitationPage";
 import { LoginPage } from "../features/auth/LoginPage";
 import { captureInvitation, clearInvitation } from "../features/auth/invitation";
+import { TaskDetailSessionProvider } from "../features/task-detail/TaskDetailSession";
 import { ProjectPage } from "../features/projects/ProjectPage";
 import { ProjectsPage } from "../features/projects/ProjectsPage";
 import { AttachmentPage } from "../features/task-detail/attachments/AttachmentPage";
@@ -218,12 +219,12 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
   const identity = `${session.user.id}:${session.generation}`;
   const checking = revalidation !== "idle";
   const revalidationOverlay = checking ? <RevalidationOverlay failed={revalidation === "error"} onRetry={recheckIdentity} /> : null;
-  if (route.kind === "attachment") return <>{revalidationOverlay}{cleanupWarning}<div className="auth-shell" key={identity} aria-hidden={checking} inert={checking}>
+  if (route.kind === "attachment") return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}{cleanupWarning}<div className="auth-shell" key={identity} aria-hidden={checking} inert={checking}>
     <AttachmentPage key={`${route.projectId}/${route.taskId}/${route.path}`} projectId={route.projectId} taskId={route.taskId} path={route.path} />
-  </div></>;
-  if (route.kind === "invitations") return <>{revalidationOverlay}{cleanupWarning}<div aria-hidden={checking} inert={checking}><InvitationPage key={`${identity}:${invitationRevision}`} lifetime={invitationLifetime.current.signal} invitation={invitation} user={session.user} onComplete={completeInvitation} onCancel={cancelInvitation} onSwitchAccount={signOut} onUnavailable={unavailableInvitation} /></div></>;
-  return <>{revalidationOverlay}<Workspace key={identity} user={session.user} route={route} onSignOut={signOut} checking={checking}>
+  </div></TaskDetailSessionProvider>;
+  if (route.kind === "invitations") return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}{cleanupWarning}<div aria-hidden={checking} inert={checking}><InvitationPage key={`${identity}:${invitationRevision}`} lifetime={invitationLifetime.current.signal} invitation={invitation} user={session.user} onComplete={completeInvitation} onCancel={cancelInvitation} onSwitchAccount={signOut} onUnavailable={unavailableInvitation} /></div></TaskDetailSessionProvider>;
+  return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}<Workspace key={identity} user={session.user} route={route} onSignOut={signOut} checking={checking}>
     {cleanupWarning}{route.kind === "projects" ? <ProjectsPage onCreate={() => setCreating(true)} /> : route.kind === "project" ? <AuthorizedProject key={route.projectId} projectId={route.projectId} user={session.user} onOpenMembers={(project) => { setProjectName(project.name); navigate(`/projects/${project.id}/members`); }} /> : route.kind === "members" ? <MembersPanel key={route.projectId} projectId={route.projectId} projectName={projectName ?? m.genericProject} user={session.user} onRemoved={() => navigate("/")} /> : route.kind === "account" ? <AccountPage user={session.user} onSignOut={signOut} /> : <section className="state-box"><h1>{app.notFound}</h1><a className="button primary" href="/" onClick={followLink}>{app.returnToProjects}</a></section>}
     {creating && <CreateProjectDialog onClose={() => setCreating(false)} onCreated={(project) => { setCreating(false); navigate(`/projects/${project.id}`); }} />}
-  </Workspace></>;
+  </Workspace></TaskDetailSessionProvider>;
 };

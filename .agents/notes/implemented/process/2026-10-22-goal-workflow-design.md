@@ -52,7 +52,13 @@ required snapshot must name its source version and purpose.
 Four skill modes remain. A shared Goal reference supplies stage-specific guidance;
 create-task registers and returns, run-task executes one task, and explicitly
 activated autopilot owns subsequent selection. Scoped Goal-creation permission
-covers the initial pair and its agreed breakdown. Task content supplies no additional
+covers the initial pair and its agreed breakdown. The
+[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) makes every
+new stage and delivery task proposed. Approval requires a separate explicit user
+instruction for the task or stated Goal-task scope, followed by observed-version
+claim from ready todo and complete after stage acceptance and required authorized
+PR merges. Goal creation, stage completion and autopilot never infer approval;
+completed dependencies alone do not approve successors. Task content supplies no additional
 execution, external-action or merge authority. PR-delivered planning work remains
 in progress until all necessary PRs are platform-confirmed merged and acceptance
 is satisfied. Completing Goal description does not complete the whole Goal.

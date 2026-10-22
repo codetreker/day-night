@@ -45,6 +45,33 @@ func updateTask(t *testing.T, tasks *Tasks, principal core.Principal, task core.
 	return updated
 }
 
+func approveTask(t *testing.T, tasks *Tasks, principal core.Principal, task core.Task) core.Task {
+	t.Helper()
+	approved, err := tasks.Approve(context.Background(), principal, task.ProjectID, task.ID, task.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return approved
+}
+
+func claimTask(t *testing.T, tasks *Tasks, principal core.Principal, task core.Task) core.Task {
+	t.Helper()
+	claimed, err := tasks.Claim(context.Background(), principal, task.ProjectID, task.ID, task.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return claimed
+}
+
+func completeTask(t *testing.T, tasks *Tasks, principal core.Principal, task core.Task) core.Task {
+	t.Helper()
+	completed, err := tasks.Complete(context.Background(), principal, task.ProjectID, task.ID, task.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return completed
+}
+
 func pointer[T any](value T) *T { return &value }
 
 func assertTaskUnchanged(t *testing.T, tasks *Tasks, principal core.Principal, before core.Task) {
@@ -70,34 +97,34 @@ func TestTaskCreateReadAndDerivedState(t *testing.T) {
 	}
 	want := []string{first.ID, second.ID}
 	slices.Sort(want)
-	if created.Status != core.TaskTodo || created.Version != 1 || created.Title != "  Third  " || created.Description != "Description" || created.Ready ||
+	if created.Status != core.TaskProposed || created.Version != 1 || created.Title != "  Third  " || created.Description != "Description" || created.Ready ||
 		!slices.Equal(created.DependsOn, want) || !slices.Equal(created.BlockedBy, want) || created.CreatedAt.IsZero() || !created.CreatedAt.Equal(created.UpdatedAt) {
 		t.Fatalf("created task: %#v", created)
 	}
-	if first.DependsOn == nil || first.BlockedBy == nil || !first.Ready || first.Description != "" {
+	if first.DependsOn == nil || first.BlockedBy == nil || first.Ready || first.Description != "" {
 		t.Fatalf("task defaults: %#v", first)
 	}
 	got, err := tasks.Get(context.Background(), principal, strings.ToUpper(project.ID), strings.ToUpper(created.ID))
 	if err != nil || !reflect.DeepEqual(got, created) {
 		t.Fatalf("canonical read: %#v, %v", got, err)
 	}
-	first = updateTask(t, tasks, principal, first, UpdateTask{Status: pointer(core.TaskDone)})
-	second = updateTask(t, tasks, principal, second, UpdateTask{Status: pointer(core.TaskDone)})
+	approved := approveTask(t, tasks, principal, created)
+	if approved.Ready || !slices.Equal(approved.BlockedBy, want) {
+		t.Fatalf("approval completed prerequisites: %#v", approved)
+	}
+	first = approveTask(t, tasks, principal, first)
+	first = claimTask(t, tasks, principal, first)
+	first = completeTask(t, tasks, principal, first)
+	second = approveTask(t, tasks, principal, second)
+	second = claimTask(t, tasks, principal, second)
+	second = completeTask(t, tasks, principal, second)
 	ready, err := tasks.Get(context.Background(), principal, project.ID, created.ID)
-	if err != nil || !ready.Ready || len(ready.BlockedBy) != 0 || ready.Version != created.Version || !ready.UpdatedAt.Equal(created.UpdatedAt) {
+	if err != nil || !ready.Ready || len(ready.BlockedBy) != 0 || ready.Version != approved.Version || !ready.UpdatedAt.Equal(approved.UpdatedAt) {
 		t.Fatalf("derived readiness must not mutate metadata: %#v, %v", ready, err)
 	}
-	started := updateTask(t, tasks, principal, ready, UpdateTask{Status: pointer(core.TaskInProgress)})
-	if started.Ready || started.Version != 2 {
+	started := claimTask(t, tasks, principal, ready)
+	if started.Ready || started.Version != 3 {
 		t.Fatalf("active task readiness: %#v", started)
-	}
-	for _, prerequisite := range []core.Task{first, second} {
-		_, err := tasks.Update(context.Background(), principal, project.ID, prerequisite.ID, UpdateTask{Version: prerequisite.Version, Status: pointer(core.TaskTodo)})
-		fault := requireFault(t, err, "dependency_unsatisfied")
-		if !slices.Equal(fault.TaskIDs, []string{started.ID}) {
-			t.Fatalf("reopen blockers: %v", fault.TaskIDs)
-		}
-		assertTaskUnchanged(t, tasks, principal, prerequisite)
 	}
 }
 
@@ -115,7 +142,6 @@ func TestTaskInputValidation(t *testing.T) {
 	for _, input := range []UpdateTask{
 		{Version: 0, Title: pointer("Changed")}, {Version: -1, Title: pointer("Changed")}, {Version: target.Version},
 		{Version: target.Version, Title: pointer(" ")}, {Version: target.Version, Description: pointer("bad\x00")},
-		{Version: target.Version, Status: pointer(core.TaskStatus("unknown"))},
 		{Version: target.Version, DependsOn: pointer([]string{"invalid"})},
 		{Version: target.Version, DependsOn: pointer([]string{target.ID})},
 		{Version: target.Version, DependsOn: pointer([]string{target.ID, strings.ToUpper(target.ID)})},
@@ -226,28 +252,88 @@ func TestTaskCyclesAndDependencyReplacement(t *testing.T) {
 	assertTaskUnchanged(t, tasks, principal, b)
 }
 
-func TestTaskStatusPairsWithoutDependencies(t *testing.T) {
+func TestTaskLifecyclePredecessorsAndVersionOrder(t *testing.T) {
 	tasks, _, project, _, principal := taskService(t)
-	for _, from := range []core.TaskStatus{core.TaskTodo, core.TaskInProgress, core.TaskDone} {
-		for _, to := range []core.TaskStatus{core.TaskTodo, core.TaskInProgress, core.TaskDone} {
-			t.Run(string(from)+"_to_"+string(to), func(t *testing.T) {
+	for _, from := range []core.TaskStatus{core.TaskProposed, core.TaskTodo, core.TaskInProgress, core.TaskDone} {
+		for _, action := range []struct {
+			name     string
+			from, to core.TaskStatus
+			apply    func(context.Context, core.Principal, string, string, int64) (core.Task, error)
+		}{
+			{"approve", core.TaskProposed, core.TaskTodo, tasks.Approve},
+			{"claim", core.TaskTodo, core.TaskInProgress, tasks.Claim},
+			{"complete", core.TaskInProgress, core.TaskDone, tasks.Complete},
+		} {
+			t.Run(string(from)+"_"+action.name, func(t *testing.T) {
 				task := createTask(t, tasks, principal, project.ID, "Transition")
-				if from != core.TaskTodo {
-					task = updateTask(t, tasks, principal, task, UpdateTask{Status: &from})
+				task = updateTask(t, tasks, principal, task, UpdateTask{Description: pointer("Keep description"), Properties: propertyPatch(core.PullRequestProperty{URL: "https://github.com/owner/repo/pull/1", Title: "Keep property"})})
+				if from != core.TaskProposed {
+					task = approveTask(t, tasks, principal, task)
 				}
-				after := updateTask(t, tasks, principal, task, UpdateTask{Status: &to})
-				if after.Status != to {
-					t.Fatalf("status: %#v", after)
+				if from == core.TaskInProgress || from == core.TaskDone {
+					task = claimTask(t, tasks, principal, task)
 				}
-				if from == to {
-					if !reflect.DeepEqual(after, task) {
-						t.Fatal("same-state update changed task")
-					}
-				} else if after.Version != task.Version+1 || !after.UpdatedAt.After(task.UpdatedAt) {
-					t.Fatalf("transition must update version/time once: before %#v, after %#v", task, after)
+				if from == core.TaskDone {
+					task = completeTask(t, tasks, principal, task)
 				}
+				_, err := action.apply(context.Background(), principal, project.ID, task.ID, task.Version+1)
+				requireFault(t, err, "version_conflict")
+				assertTaskUnchanged(t, tasks, principal, task)
+				after, err := action.apply(context.Background(), principal, strings.ToUpper(project.ID), strings.ToUpper(task.ID), task.Version)
+				if from != action.from {
+					requireFault(t, err, "invalid_transition")
+					assertTaskUnchanged(t, tasks, principal, task)
+					return
+				}
+				if err != nil || after.Status != action.to || after.Version != task.Version+1 || !after.UpdatedAt.After(task.UpdatedAt) {
+					t.Fatalf("lifecycle transition: before %#v, after %#v, %v", task, after, err)
+				}
+				expected := task
+				expected.Status, expected.Version, expected.UpdatedAt = action.to, after.Version, after.UpdatedAt
+				expected.Ready = action.to == core.TaskTodo
+				if !reflect.DeepEqual(after, expected) {
+					t.Fatalf("lifecycle changed unrelated fields: before %#v, after %#v", task, after)
+				}
+				_, err = action.apply(context.Background(), principal, project.ID, task.ID, after.Version)
+				requireFault(t, err, "invalid_transition")
+				assertTaskUnchanged(t, tasks, principal, after)
 			})
 		}
+	}
+}
+
+func TestTaskLifecycleValidationAndScope(t *testing.T) {
+	tasks, database, project, _, principal := taskService(t)
+	target := createTask(t, tasks, principal, project.ID, "Target")
+	otherProject, err := NewProjects(database).Create(context.Background(), principal, CreateProject{Name: "Other", RepoURL: "host:other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := createTask(t, tasks, principal, otherProject.ID, "Other")
+	missing := "00000000-0000-0000-0000-000000000000"
+	for _, action := range []struct {
+		name  string
+		apply func(context.Context, core.Principal, string, string, int64) (core.Task, error)
+	}{{"approve", tasks.Approve}, {"claim", tasks.Claim}, {"complete", tasks.Complete}} {
+		t.Run(action.name, func(t *testing.T) {
+			for _, version := range []int64{0, -1} {
+				_, err := action.apply(context.Background(), principal, project.ID, target.ID, version)
+				requireFault(t, err, "invalid_input")
+			}
+			for _, scope := range [][2]string{{"invalid", target.ID}, {project.ID, "invalid"}} {
+				_, err := action.apply(context.Background(), principal, scope[0], scope[1], target.Version)
+				requireFault(t, err, "invalid_input")
+			}
+			for _, scope := range [][2]string{{missing, target.ID}, {project.ID, missing}, {project.ID, other.ID}} {
+				_, err := action.apply(context.Background(), principal, scope[0], scope[1], target.Version)
+				fault := requireFault(t, err, "not_found")
+				if !errors.Is(fault, core.ErrNotFound) {
+					t.Fatalf("missing cause: %#v", fault)
+				}
+			}
+			assertTaskUnchanged(t, tasks, principal, target)
+			assertTaskUnchanged(t, tasks, principal, other)
+		})
 	}
 }
 
@@ -257,7 +343,7 @@ func TestTaskVersionAndSemanticNoop(t *testing.T) {
 	b := createTask(t, tasks, principal, project.ID, "B")
 	target := createTask(t, tasks, principal, project.ID, "Target", a.ID, b.ID)
 	for _, input := range []UpdateTask{
-		{Title: pointer(target.Title)}, {Description: pointer("")}, {Status: pointer(core.TaskTodo)},
+		{Title: pointer(target.Title)}, {Description: pointer("")},
 		{DependsOn: pointer([]string{strings.ToUpper(b.ID), strings.ToUpper(a.ID)})},
 	} {
 		got := updateTask(t, tasks, principal, target, input)
@@ -278,21 +364,32 @@ func TestTaskVersionAndSemanticNoop(t *testing.T) {
 	}
 }
 
-func TestTaskCandidateStateAndReopeningRules(t *testing.T) {
+func TestTaskCandidateDependencyRules(t *testing.T) {
 	tasks, database, project, _, principal := taskService(t)
 	undone := createTask(t, tasks, principal, project.ID, "Undone")
 	done := createTask(t, tasks, principal, project.ID, "Done")
-	done = updateTask(t, tasks, principal, done, UpdateTask{Status: pointer(core.TaskDone)})
+	done = approveTask(t, tasks, principal, done)
+	done = claimTask(t, tasks, principal, done)
+	done = completeTask(t, tasks, principal, done)
+	blocked := createTask(t, tasks, principal, project.ID, "Blocked", undone.ID)
+	blocked = updateTask(t, tasks, principal, blocked, UpdateTask{Title: pointer("Edited proposed"), Description: pointer("Unfinished prerequisites allowed"), Properties: propertyPatch(core.PullRequestProperty{URL: "https://github.com/owner/repo/pull/1"})})
+	if blocked.Status != core.TaskProposed || blocked.Ready {
+		t.Fatalf("metadata changed lifecycle: %#v", blocked)
+	}
+	blocked = approveTask(t, tasks, principal, blocked)
+	_, err := tasks.Claim(context.Background(), principal, project.ID, blocked.ID, blocked.Version)
+	fault := requireFault(t, err, "dependency_unsatisfied")
+	if !slices.Equal(fault.TaskIDs, []string{undone.ID}) {
+		t.Fatalf("unsatisfied prerequisite IDs: %v", fault.TaskIDs)
+	}
+	assertTaskUnchanged(t, tasks, principal, blocked)
 	for _, status := range []core.TaskStatus{core.TaskInProgress, core.TaskDone} {
-		target := createTask(t, tasks, principal, project.ID, "Blocked", undone.ID)
-		_, err := tasks.Update(context.Background(), principal, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Rejected"), Status: &status})
-		fault := requireFault(t, err, "dependency_unsatisfied")
-		if !slices.Equal(fault.TaskIDs, []string{undone.ID}) {
-			t.Fatalf("unsatisfied prerequisite IDs: %v", fault.TaskIDs)
-		}
-		assertTaskUnchanged(t, tasks, principal, target)
 		active := createTask(t, tasks, principal, project.ID, "Active", done.ID)
-		active = updateTask(t, tasks, principal, active, UpdateTask{Status: &status})
+		active = approveTask(t, tasks, principal, active)
+		active = claimTask(t, tasks, principal, active)
+		if status == core.TaskDone {
+			active = completeTask(t, tasks, principal, active)
+		}
 		_, err = tasks.Update(context.Background(), principal, project.ID, active.ID, UpdateTask{Version: active.Version, DependsOn: pointer([]string{undone.ID})})
 		requireFault(t, err, "dependency_unsatisfied")
 		assertTaskUnchanged(t, tasks, principal, active)
@@ -310,26 +407,11 @@ func TestTaskCandidateStateAndReopeningRules(t *testing.T) {
 		_, err = tasks.Update(context.Background(), principal, project.ID, active.ID, UpdateTask{Version: corrupt.Version, Title: pointer("Metadata")})
 		requireFault(t, err, "dependency_unsatisfied")
 		assertTaskUnchanged(t, tasks, principal, corrupt)
-	}
-	prerequisite := createTask(t, tasks, principal, project.ID, "Predecessor")
-	prerequisite = updateTask(t, tasks, principal, prerequisite, UpdateTask{Status: pointer(core.TaskDone)})
-	downstream := createTask(t, tasks, principal, project.ID, "Downstream", prerequisite.ID)
-	for _, status := range []core.TaskStatus{core.TaskInProgress, core.TaskDone} {
-		downstream = updateTask(t, tasks, principal, downstream, UpdateTask{Status: &status})
-		for _, reopen := range []core.TaskStatus{core.TaskTodo, core.TaskInProgress} {
-			_, err := tasks.Update(context.Background(), principal, project.ID, prerequisite.ID, UpdateTask{Version: prerequisite.Version, Status: &reopen})
-			fault := requireFault(t, err, "dependency_unsatisfied")
-			if !slices.Equal(fault.TaskIDs, []string{downstream.ID}) {
-				t.Fatalf("downstream blockers: %v", fault.TaskIDs)
-			}
-			assertTaskUnchanged(t, tasks, principal, prerequisite)
+		if status == core.TaskInProgress {
+			_, err = tasks.Complete(context.Background(), principal, project.ID, active.ID, corrupt.Version)
+			requireFault(t, err, "dependency_unsatisfied")
+			assertTaskUnchanged(t, tasks, principal, corrupt)
 		}
-	}
-	downstream = updateTask(t, tasks, principal, downstream, UpdateTask{Status: pointer(core.TaskTodo)})
-	prerequisite = updateTask(t, tasks, principal, prerequisite, UpdateTask{Status: pointer(core.TaskTodo)})
-	after, err := tasks.Get(context.Background(), principal, project.ID, downstream.ID)
-	if err != nil || after.Ready || !slices.Equal(after.BlockedBy, []string{prerequisite.ID}) || after.Version != downstream.Version || !after.UpdatedAt.Equal(downstream.UpdatedAt) {
-		t.Fatalf("reopening must not cascade metadata: %#v, %v", after, err)
 	}
 }
 
@@ -337,17 +419,24 @@ func TestTaskListKeysetsFiltersAndCursorScopes(t *testing.T) {
 	tasks, database, project, _, principal := taskService(t)
 	ctx := context.Background()
 	predecessor := createTask(t, tasks, principal, project.ID, "Predecessor")
+	predecessor = approveTask(t, tasks, principal, predecessor)
+	proposed := createTask(t, tasks, principal, project.ID, "Proposed")
 	ready := createTask(t, tasks, principal, project.ID, "Ready")
+	ready = approveTask(t, tasks, principal, ready)
 	blocked := createTask(t, tasks, principal, project.ID, "Blocked", predecessor.ID)
+	blocked = approveTask(t, tasks, principal, blocked)
 	active := createTask(t, tasks, principal, project.ID, "Active")
-	active = updateTask(t, tasks, principal, active, UpdateTask{Status: pointer(core.TaskInProgress)})
+	active = approveTask(t, tasks, principal, active)
+	active = claimTask(t, tasks, principal, active)
 	done := createTask(t, tasks, principal, project.ID, "Done")
-	done = updateTask(t, tasks, principal, done, UpdateTask{Status: pointer(core.TaskDone)})
+	done = approveTask(t, tasks, principal, done)
+	done = claimTask(t, tasks, principal, done)
+	done = completeTask(t, tasks, principal, done)
 	stamp := time.Date(2026, 2, 3, 4, 5, 6, 123456000, time.UTC)
 	if _, err := database.Pool.Exec(ctx, "UPDATE tasks SET created_at = $1 WHERE project_id = $2", stamp, project.ID); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{predecessor.ID, ready.ID, blocked.ID, active.ID, done.ID}
+	want := []string{predecessor.ID, proposed.ID, ready.ID, blocked.ID, active.ID, done.ID}
 	slices.Sort(want)
 	var got []string
 	request := TaskListRequest{PageRequest: PageRequest{Limit: 2}}
@@ -377,7 +466,8 @@ func TestTaskListKeysetsFiltersAndCursorScopes(t *testing.T) {
 		ids    []string
 	}{
 		{nil, pointer(true), []string{predecessor.ID, ready.ID}},
-		{nil, pointer(false), []string{blocked.ID, active.ID, done.ID}},
+		{nil, pointer(false), []string{proposed.ID, blocked.ID, active.ID, done.ID}},
+		{pointer(core.TaskProposed), nil, []string{proposed.ID}},
 		{pointer(core.TaskTodo), pointer(false), []string{blocked.ID}},
 		{pointer(core.TaskInProgress), nil, []string{active.ID}},
 		{pointer(core.TaskDone), pointer(true), []string{}},

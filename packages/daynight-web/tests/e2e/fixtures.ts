@@ -17,10 +17,18 @@ export type AttachmentWriteExpectation = {
   readonly path: string;
   readonly count: number;
 };
+export type ApprovalWriteExpectation = {
+  readonly origin: string;
+  readonly projectId: string;
+  readonly taskId: string;
+  readonly count: number;
+};
 type AttachmentWritePolicy = {
   readonly allowed: Map<string, { readonly count: number; observed: number }>;
+  readonly approvals: Map<string, { readonly count: number; observed: number }>;
   readonly unexpected: string[];
   readonly register: (entries: readonly AttachmentWriteExpectation[]) => void;
+  readonly registerApprovals: (entries: readonly ApprovalWriteExpectation[]) => void;
   readonly registerBrowser: (entries: readonly BrowserWriteExpectation[]) => void;
 };
 export type BrowserWriteExpectation = { readonly method: 'POST' | 'PATCH' | 'PUT' | 'DELETE'; readonly url: string; readonly count: number };
@@ -30,6 +38,7 @@ export const test = base.extend<{
   authenticatedContext: void;
   acceptanceEvidence: void;
   allowAttachmentWrites: AttachmentWritePolicy['register'];
+  allowApprovalWrites: AttachmentWritePolicy['registerApprovals'];
   attachmentWritePolicy: AttachmentWritePolicy;
   allowBrowserWrites: AttachmentWritePolicy['registerBrowser'];
 }>({
@@ -47,6 +56,7 @@ export const test = base.extend<{
   },
   attachmentWritePolicy: async ({}, use) => {
     const allowed: AttachmentWritePolicy['allowed'] = new Map();
+    const approvals: AttachmentWritePolicy['approvals'] = new Map();
     const unexpected: string[] = [];
     const registerBrowser = (entries: readonly BrowserWriteExpectation[]) => {
       for (const entry of entries) {
@@ -58,21 +68,35 @@ export const test = base.extend<{
         allowed.set(key, { count: entry.count, observed: 0 });
       }
     };
-    await use({ allowed, unexpected, registerBrowser, register: (entries) => {
+    await use({ allowed, approvals, unexpected, registerBrowser, register: (entries) => {
       if (allowed.size !== 0) throw new Error('Attachment write expectations are registered once per scenario.');
-      const writes: BrowserWriteExpectation[] = [];
       for (const entry of entries) {
         const origin = new URL(entry.origin);
         if (!['http:', 'https:'].includes(origin.protocol) || origin.origin !== entry.origin
           || !['PUT', 'DELETE'].includes(entry.method) || !Number.isInteger(entry.count) || entry.count < 1) {
           throw new Error('Invalid exact attachment write expectation.');
         }
-        writes.push({ method: entry.method, url: new URL(attachmentDownloadUrl(entry.projectId, entry.taskId, entry.path), origin).href, count: entry.count });
+        const key = `${entry.method} ${new URL(attachmentDownloadUrl(entry.projectId, entry.taskId, entry.path), origin).href}`;
+        if (allowed.has(key)) throw new Error('Duplicate exact attachment write expectation.');
+        allowed.set(key, { count: entry.count, observed: 0 });
       }
-      registerBrowser(writes);
+    }, registerApprovals: (entries) => {
+      if (approvals.size !== 0) throw new Error('Approval write expectations are registered once per scenario.');
+      for (const entry of entries) {
+        const origin = new URL(entry.origin);
+        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+        if (!['http:', 'https:'].includes(origin.protocol) || origin.origin !== entry.origin
+          || !uuid.test(entry.projectId) || !uuid.test(entry.taskId) || !Number.isInteger(entry.count) || entry.count < 1) {
+          throw new Error('Invalid exact approval write expectation.');
+        }
+        const key = `POST ${origin.origin}/api/v1/projects/${entry.projectId}/tasks/${entry.taskId}/approve`;
+        if (approvals.has(key)) throw new Error('Duplicate exact approval write expectation.');
+        approvals.set(key, { count: entry.count, observed: 0 });
+      }
     } });
   },
   allowAttachmentWrites: async ({ attachmentWritePolicy }, use) => { await use(attachmentWritePolicy.register); },
+  allowApprovalWrites: async ({ attachmentWritePolicy }, use) => { await use(attachmentWritePolicy.registerApprovals); },
   allowBrowserWrites: async ({ attachmentWritePolicy }, use) => { await use(attachmentWritePolicy.registerBrowser); },
   acceptanceEvidence: [async ({ browser, page, attachmentWritePolicy }, use) => {
     const directory = evidenceDirectory();
@@ -88,22 +112,21 @@ export const test = base.extend<{
     page.on('request', (request) => {
       if (['GET', 'HEAD'].includes(request.method())) return;
       const key = `${request.method()} ${request.url()}`;
-      const allowed = attachmentWritePolicy.allowed.get(key);
+      const allowed = attachmentWritePolicy.allowed.get(key) ?? attachmentWritePolicy.approvals.get(key);
       if (allowed === undefined) attachmentWritePolicy.unexpected.push(key);
       else allowed.observed += 1;
     });
     await use();
     expect(pageErrors, 'Production page has no uncaught exceptions').toEqual([]);
-    expect(attachmentWritePolicy.unexpected, attachmentWritePolicy.allowed.size === 0
-      ? 'Dashboard remains read-only' : 'Browser writes match only the exact registered URLs and methods').toEqual([]);
-    for (const [key, entry] of attachmentWritePolicy.allowed) {
+    expect(attachmentWritePolicy.unexpected, 'Browser writes match only exact registered URLs and methods').toEqual([]);
+    for (const [key, entry] of [...attachmentWritePolicy.allowed, ...attachmentWritePolicy.approvals]) {
       expect(entry.observed, `Exact browser write count: ${key}`).toBe(entry.count);
     }
   }, { auto: true }],
 });
 export type Project = { id: string; name: string; repoUrl: string; createdAt: string; updatedAt: string };
 export type Task = {
-  id: string; projectId: string; title: string; description: string; status: 'todo' | 'in_progress' | 'done';
+  id: string; projectId: string; title: string; description: string; status: 'proposed' | 'todo' | 'in_progress' | 'done';
   version: number; dependsOn: string[]; blockedBy: string[]; ready: boolean; createdAt: string; updatedAt: string;
   properties: TaskProperties;
 };
@@ -123,11 +146,33 @@ export const createTask = async (request: AuthenticatedAPI, projectId: string, i
     data: { title: input.title, description: input.description ?? '', dependsOn: input.dependsOn ?? [], properties: input.properties },
   });
   expect(response.status(), 'Task fixture creation succeeds').toBe(201);
-  return await response.json() as Task;
+  const task = await response.json() as Task;
+  expect(task.status, 'Task fixture creation leaves approval pending').toBe('proposed');
+  return task;
 };
 
+export const createProposedTask = createTask;
+
+type TaskInput = Parameters<typeof createTask>[2];
+type TaskVersion = Pick<Task, 'id' | 'version'>;
+const transitionTask = async (request: AuthenticatedAPI, projectId: string, task: TaskVersion, action: 'approve' | 'claim' | 'complete'): Promise<Task> => {
+  const response = await request.post(`/api/v1/projects/${projectId}/tasks/${task.id}/${action}`, { data: { version: task.version } });
+  expect(response.status(), `Task fixture ${action} succeeds`).toBe(200);
+  const result = await response.json() as Task;
+  expect(result.status, `Task fixture ${action} reaches its forward state`).toBe({ approve: 'todo', claim: 'in_progress', complete: 'done' }[action]);
+  expect(result.version, `Task fixture ${action} increments the observed version once`).toBe(task.version + 1);
+  return result;
+};
+export const approveTask = async (request: AuthenticatedAPI, projectId: string, task: TaskVersion): Promise<Task> => transitionTask(request, projectId, task, 'approve');
+export const claimTask = async (request: AuthenticatedAPI, projectId: string, task: TaskVersion): Promise<Task> => transitionTask(request, projectId, task, 'claim');
+export const completeTask = async (request: AuthenticatedAPI, projectId: string, task: TaskVersion): Promise<Task> => transitionTask(request, projectId, task, 'complete');
+export const createApprovedTask = async (request: AuthenticatedAPI, projectId: string, input: TaskInput): Promise<Task> =>
+  approveTask(request, projectId, await createProposedTask(request, projectId, input));
+export const completeApprovedTask = async (request: AuthenticatedAPI, projectId: string, task: TaskVersion): Promise<Task> =>
+  completeTask(request, projectId, await claimTask(request, projectId, task));
+
 export const updateTask = async (request: AuthenticatedAPI, projectId: string, taskId: string, input: {
-  version: number; title?: string; description?: string; status?: Task['status']; dependsOn?: string[]; properties?: TaskProperties;
+  version: number; title?: string; description?: string; dependsOn?: string[]; properties?: TaskProperties;
 }): Promise<Task> => {
   const response = await request.patch(`/api/v1/projects/${projectId}/tasks/${taskId}`, { data: input });
   expect(response.status(), 'Task fixture update succeeds').toBe(200);
@@ -155,6 +200,20 @@ const ownedDatabase = async (): Promise<DatabaseTarget> => {
   });
   if (label !== target.projectLabel.value) throw new Error('Database ownership label differs from this acceptance target.');
   return target;
+};
+
+export const seedTaskVersion = async (projectId: string, taskId: string, version: bigint): Promise<void> => {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+  if (!uuid.test(projectId) || !uuid.test(taskId) || version <= 0n || version >= 9223372036854775807n) {
+    throw new Error('Invalid exact task version fixture.');
+  }
+  const target = await ownedDatabase();
+  const result = await command('docker', ['exec', target.postgresContainer, 'psql', '--no-psqlrc', '--set', 'ON_ERROR_STOP=1',
+    '--username', 'daynight', '--dbname', target.database, '--tuples-only', '--no-align', '--command',
+    `UPDATE tasks SET version = ${version} WHERE project_id = '${projectId}' AND id = '${taskId}' RETURNING version`], {
+    cwd: process.cwd(), timeoutMs: 15_000, quiet: true,
+  });
+  expect(result.split('\n')[0], 'Owned task version fixture updates exactly the selected row').toBe(String(version));
 };
 
 const withTableFailure = async <T>(table: 'task_dependencies' | 'projects', callback: () => Promise<T>): Promise<T> => {

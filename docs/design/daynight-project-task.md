@@ -34,7 +34,9 @@ task list 的 JSON 仅省略 `description`，其他元数据查询保留各自�
 [任务拆分](daynight-auth-tasks.md)拥有完整项目授权与交付条件；生产服务对全部
 项目、任务、图和附件业务请求强制鉴权。安装 CLI 的真实服务及预算验收通过 UniAuth
 夹具取得用户 PAT，并复用正常配置与 Bearer 请求通道。仓库关联不保存凭据、
-不授予项目访问权；旧项目由部署者手工补齐成员关系。
+不授予项目访问权；旧项目由部署者手工补齐成员关系。专用 approve、claim、
+complete 与现有资源读写共用当前成员权限；管理员额外管理成员和邀请，不另设
+审批角色。
 
 ## 现有基础与交付边界
 
@@ -337,7 +339,8 @@ flowchart TD
 | `task list` | `GET /api/v1/projects/{projectId}/tasks`，保留相同筛选遍历 cursor |
 | `task ready [--limit <N>]` | 单次 `GET /api/v1/projects/{projectId}/tasks?ready=true&limit=N`，不提交 cursor |
 | `task show <id>` | `GET /api/v1/projects/{projectId}/tasks/{id}` |
-| `task update <id>` | 可选先 GET task，再 PATCH 同一路径 |
+| `task update <id>` | 可选先 GET task，再 PATCH 同一路径，只写元数据 |
+| `task approve/claim/complete <id>` | 可选先 GET task，再 POST 同一 task 的 `/approve`、`/claim` 或 `/complete`，body 只含 version |
 | `task graph` | `GET /api/v1/projects/{projectId}/task-graph`，不附加 query |
 | `task attachment put <id> <file>` | `PUT /api/v1/projects/{projectId}/tasks/{id}/attachments/files/{path...}`，流式请求体，接受 200/201 元数据 |
 | `task attachment list <id>` | `GET /api/v1/projects/{projectId}/tasks/{id}/attachments`，按路径身份读完分页 |
@@ -360,11 +363,11 @@ flowchart TD
 
 API 的响应状态解码与命令输入 choices 分别拥有不同契约：task 和 graph 的响应
 接受 `proposed`、`todo`、`in_progress`、`done`，图 summary 的 `proposed` 是必填
-整数；公开状态输入仍只接受后三者。默认清单保留 proposed，稳定分组置于 todo
+整数；列表状态输入接受四种状态，通用 update 不声明 status 选项。默认清单保留 proposed，稳定分组置于 todo
 之后、done 之前；详情继续保留完整描述，列表 JSON 仍只省略 description。
-图文本输出单独显示 Proposed 计数。此准备不增加状态写入入口，避免在审批规则
-启用前绕过生命周期；[读取决策](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
-拥有存储与读取先于写入启用的取舍。
+图文本输出单独显示 Proposed 计数。[读取决策](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
+拥有先准备读取再启用写入的历史取舍；[生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
+拥有当前专用操作与 proposed 创建默认。
 
 `task ready` 将常见的下一项工作选择限制为前 N 项，避免项目积累任务后每次
 选择都读取完整 ready 集合。命令校验 `--limit` 为十进制整数 `1..100`，省略时
@@ -398,7 +401,7 @@ repo 许可、API、schema 和事务政策保持原样。原子唯一性需要�
 重复 `--depends-on` 从首次出现起形成有序替换数组，保留重复 ID，不进行 CSV
 拆分；`--clear-dependencies` 写 `[]`。`--description ""` 与 `--description=`
 都写入空字符串；未出现描述选项仍省略字段。两种依赖
-标志同时出现、无修改字段、无效状态或版本属于参数错误，在任何 I/O 之前拒绝。
+标志同时出现、无修改字段、已移除的 status 选项或无效版本属于参数错误，在任何 I/O 之前拒绝。
 
 可重复的 `--pull-request-url` 与 `--pull-request-title` 使用 `allowEmpty`，各自
 保留出现顺序，第 n 个 URL 对应第 n 个标题；次数必须相等，字符串不作内容校验。
@@ -406,10 +409,12 @@ repo 许可、API、schema 和事务政策保持原样。原子唯一性需要�
 空数组并与任一配对选项互斥。省略这些选项时不生成属性 patch，只有属性修改也
 满足 update 的修改字段要求。次数和互斥校验在任何 I/O 之前完成。
 
-默认 GET task 获得 version，再带该 version PATCH；两个请求之间发生并发更新时，
+元数据更新默认 GET task 获得 version，再带该 version PATCH；两个请求之间发生并发更新时，
 服务返回 `version_conflict`。有 `--if-version` 时直接提交指定版本，不用 GET 的
 最新值替代。CLI 不重放 PATCH，不将旧版本冲突改成成功；语义无变化的响应也直接
-按服务返回渲染。显式 project UUID、show/update 的 task UUID、标题、描述、状态、
+按服务返回渲染。生命周期操作复用相同 project 解析、Operation、int64 序列化和
+完整 mutation 渲染器；显式版本直接 POST，省略时仅 GET 一次，无冲突重试。
+显式 project UUID、show/update/approve/claim/complete 的 task UUID、标题、描述、
 版本及修改字段组合在配置、Git 和网络前验证；依赖 ID 原样保留给服务校验。显式 `--project` 直接 GET project，不读取工作目录或
 加载仓库模块；自动分支将 `serverUrl`、同一 `Operation`、API 和工作目录交给
 `resolveProject`。解析返回后才发送 task 请求，因此本地准备失败没有 task mutation。

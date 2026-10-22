@@ -34,8 +34,13 @@ login evidence retain their separate scopes.
 The shared request boundary uses same-origin browser credentials, cancellation
 and request IDs. A current-generation 401 notifies the shell; identity transitions
 invalidate outstanding requests and unmount user-owned content. A project 404
-stays a resource error. Auth-specific JSON parsing and mutation encoding preserve
-member observation versions as `bigint` throughout the positive int64 range.
+stays a resource error. TaskDetailSessionProvider lives in that identity domain
+and retains each project/task approval operation across dialog close/reopen;
+identity changes discard its pending and unknown-outcome state. The existing
+[approval lifecycle](2026-10-22-task-approval-lifecycle.md) uses the same member
+resource permission, not an admin-only approval role. Auth-specific JSON parsing
+and mutation encoding preserve member observation versions as `bigint` throughout
+the positive int64 range.
 
 Creation responses alone supply PAT values and invitation links. The UI keeps
 those secrets in the current dialog, supports retrying a failed copy, and

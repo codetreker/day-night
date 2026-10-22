@@ -22,6 +22,11 @@ func taskRoutes(mux *http.ServeMux, tasks *service.Tasks, auth *Authentication, 
 	mux.HandleFunc("GET /api/v1/projects/{projectId}/tasks", auth.Require(handler.list))
 	mux.HandleFunc("GET /api/v1/projects/{projectId}/tasks/{taskId}", auth.Require(handler.get))
 	mux.HandleFunc("PATCH /api/v1/projects/{projectId}/tasks/{taskId}", auth.Require(handler.update))
+	for name, action := range map[string]taskAction{"approve": tasks.Approve, "claim": tasks.Claim, "complete": tasks.Complete} {
+		path := "/api/v1/projects/{projectId}/tasks/{taskId}/" + name
+		mux.HandleFunc("POST "+path, auth.Require(handler.lifecycle(name, action)))
+		mux.HandleFunc(path, auth.Require(resourceMethodNotAllowed(logger, "POST")))
+	}
 	mux.HandleFunc("GET /api/v1/projects/{projectId}/task-graph", auth.Require(handler.graph))
 	mux.HandleFunc("/api/v1/projects/{projectId}/task-graph", auth.Require(resourceMethodNotAllowed(logger, "GET, HEAD")))
 	mux.HandleFunc("/api/v1/projects/{projectId}/tasks", auth.Require(resourceMethodNotAllowed(logger, "GET, HEAD, POST")))
@@ -118,19 +123,16 @@ func createTaskInput(fields map[string]json.RawMessage) (api.CreateTaskRequest, 
 
 func updateTaskInput(fields map[string]json.RawMessage) (api.UpdateTaskRequest, error) {
 	var input api.UpdateTaskRequest
-	if err := json.Unmarshal(fields["version"], &input.Version); err != nil || input.Version < 1 {
-		return api.UpdateTaskRequest{}, invalidInput("version is required and must be a positive 64-bit integer")
-	}
 	var err error
+	input.Version, err = taskVersionInput(fields)
+	if err != nil {
+		return api.UpdateTaskRequest{}, err
+	}
 	input.Title, err = optionalString(fields, "title")
 	if err != nil {
 		return api.UpdateTaskRequest{}, err
 	}
 	input.Description, err = optionalString(fields, "description")
-	if err != nil {
-		return api.UpdateTaskRequest{}, err
-	}
-	input.Status, err = optionalString(fields, "status")
 	if err != nil {
 		return api.UpdateTaskRequest{}, err
 	}
@@ -142,7 +144,7 @@ func updateTaskInput(fields map[string]json.RawMessage) (api.UpdateTaskRequest, 
 	if err != nil {
 		return api.UpdateTaskRequest{}, err
 	}
-	if input.Title == nil && input.Description == nil && input.Status == nil && input.DependsOn == nil &&
+	if input.Title == nil && input.Description == nil && input.DependsOn == nil &&
 		(input.Properties == nil || input.Properties.PullRequests == nil) {
 		return api.UpdateTaskRequest{}, invalidInput("at least one task field must be provided")
 	}
@@ -249,7 +251,7 @@ func (h *taskHandler) update(w http.ResponseWriter, request *http.Request, princ
 		writeError(w, request, logger, "task", "update", err)
 		return
 	}
-	fields, err := decodeObject(w, request, "version", "title", "description", "status", "dependsOn", "properties")
+	fields, err := decodeObject(w, request, "version", "title", "description", "dependsOn", "properties")
 	if err != nil {
 		writeError(w, request, logger, "task", "update", err)
 		return
@@ -263,10 +265,6 @@ func (h *taskHandler) update(w http.ResponseWriter, request *http.Request, princ
 	if input.Properties != nil && input.Properties.PullRequests != nil {
 		properties := propertyValues(api.TaskProperties{PullRequests: *input.Properties.PullRequests})
 		values.Properties.PullRequests = &properties.PullRequests
-	}
-	if input.Status != nil {
-		status := core.TaskStatus(*input.Status)
-		values.Status = &status
 	}
 	task, err := h.tasks.Update(request.Context(), principal, projectID, id, values)
 	if err != nil {

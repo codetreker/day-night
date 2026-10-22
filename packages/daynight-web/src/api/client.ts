@@ -1,4 +1,5 @@
 import mime from "mime";
+import { isTaskVersion, parseApiJson, stringifyApiJson } from "./json";
 import { canonicalId, isAttachmentPath, parseAttachment, parseAttachmentPage, parseProjectPage, parseServerError, parseTaskDetail, parseTaskGraph } from "./parse";
 import type { Attachment, AttachmentPage, GraphLimitDetails, ProjectPage, TaskDetail, TaskGraph } from "./types";
 
@@ -25,13 +26,14 @@ export class ApiError extends Error {
     code: string = kind,
     requestId: string | null = null,
     graphLimit?: GraphLimitDetails,
+    cause?: unknown,
   ) {
     const message = kind === "network"
       ? "Unable to connect to the server. Please try again."
       : kind === "protocol"
         ? "The server returned an invalid response. Please try again."
         : Object.hasOwn(serverMessages, code) ? serverMessages[code]! : "Unable to load the requested data. Please try again.";
-    super(message);
+    super(message, cause === undefined ? undefined : { cause });
     this.name = "ApiError";
     this.kind = kind;
     this.status = status;
@@ -62,7 +64,7 @@ export const request = async (url: string, signal: AbortSignal, init: RequestIni
   } catch (error) {
     signal.throwIfAborted();
     if (isAbortError(error)) throw error;
-    throw new ApiError("network");
+    throw new ApiError("network", null, "network", null, undefined, error);
   }
   signal.throwIfAborted();
   if (response.status === 401 && generation === authGeneration) {
@@ -71,7 +73,7 @@ export const request = async (url: string, signal: AbortSignal, init: RequestIni
   return response;
 };
 
-export const json = async <T>(response: Response, signal: AbortSignal, parse: (data: unknown) => T, decode: (response: Response) => Promise<unknown> = (value) => value.json()): Promise<T> => {
+export const json = async <T>(response: Response, signal: AbortSignal, parse: (data: unknown) => T, decode: (response: Response) => Promise<unknown> = async (value) => parseApiJson(await value.text())): Promise<T> => {
   let body: unknown;
   try {
     const contentType = response.headers.get("Content-Type");
@@ -81,7 +83,7 @@ export const json = async <T>(response: Response, signal: AbortSignal, parse: (d
   } catch (error) {
     signal.throwIfAborted();
     if (isAbortError(error)) throw error;
-    throw new ApiError("protocol", response.status);
+    throw new ApiError("protocol", response.status, "protocol", null, undefined, error);
   }
   try {
     if (response.ok) return parse(body);
@@ -89,7 +91,7 @@ export const json = async <T>(response: Response, signal: AbortSignal, parse: (d
     throw new ApiError("server", response.status, serverError.code, serverError.requestId, serverError.graphLimit);
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    throw new ApiError("protocol", response.status);
+    throw new ApiError("protocol", response.status, "protocol", null, undefined, error);
   }
 };
 
@@ -125,6 +127,25 @@ export const getTask = (projectId: string, taskId: string, signal: AbortSignal):
   const project = requestId(projectId);
   const task = requestId(taskId);
   return read(`/api/v1/projects/${project}/tasks/${task}`, signal, (data) => parseTaskDetail(data, project, task));
+};
+
+export const approveTask = async (
+  projectId: string, taskId: string, exactVersion: bigint, signal: AbortSignal,
+): Promise<TaskDetail> => {
+  const project = requestId(projectId);
+  const task = requestId(taskId);
+  if (!isTaskVersion(exactVersion)) throw new ApiError("protocol");
+  const response = await request(`/api/v1/projects/${project}/tasks/${task}/approve`, signal, {
+    method: "POST", redirect: "error", headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: stringifyApiJson({ version: exactVersion }),
+  });
+  return json(response, signal, (data) => {
+    const approved = parseTaskDetail(data, project, task);
+    if (response.status !== 200 || approved.status !== "todo" || approved.version !== exactVersion + 1n) {
+      throw new ApiError("protocol", response.status);
+    }
+    return approved;
+  });
 };
 
 const attachmentTaskUrl = (projectId: string, taskId: string): string =>
@@ -196,7 +217,7 @@ export const readAttachmentText = async (projectId: string, taskId: string, path
   } catch (error) {
     signal.throwIfAborted();
     if (isAbortError(error)) throw error;
-    throw new ApiError("network", response.status);
+    throw new ApiError("network", response.status, "network", null, undefined, error);
   }
 };
 

@@ -4,7 +4,7 @@ import { OperationError } from "./operation.js";
 import { validateServerToken, validateTokenTransport } from "../config/server-token.js";
 import type { Operation } from "./operation.js";
 import { canonicalId, parsePage, parseProject, parseServerError, parseTask, parseTaskGraph, parseTaskAttachment, ProtocolError, validateAttachmentPath } from "./parse.js";
-import type { AttachmentConsumer, CreateProjectInput, CreateTaskInput, ErrorDetails, Project, PutTaskAttachmentInput, ServerError, Task, TaskAttachment, TaskFilters, TaskGraph, UpdateTaskInput } from "./types.js";
+import type { AttachmentConsumer, CreateProjectInput, CreateTaskInput, ErrorDetails, Project, PutTaskAttachmentInput, ServerError, Task, TaskActionInput, TaskAttachment, TaskFilters, TaskGraph, UpdateTaskInput } from "./types.js";
 
 type Context = { readonly operation: string; readonly projectId?: string; readonly taskId?: string };
 export type ApiPhase = "prepare" | "request" | "response" | "protocol" | "pagination";
@@ -58,6 +58,9 @@ export type ApiClient = {
   listTasks(projectId: string, filters?: TaskFilters): Promise<readonly Task[]>;
   listReadyTasks(projectId: string, limit: number): Promise<readonly Task[]>;
   updateTask(projectId: string, taskId: string, input: UpdateTaskInput): Promise<Task>;
+  approveTask(projectId: string, taskId: string, input: TaskActionInput): Promise<Task>;
+  claimTask(projectId: string, taskId: string, input: TaskActionInput): Promise<Task>;
+  completeTask(projectId: string, taskId: string, input: TaskActionInput): Promise<Task>;
   getTaskGraph(projectId: string): Promise<TaskGraph>;
   putTaskAttachment(projectId: string, taskId: string, path: string, input: PutTaskAttachmentInput): Promise<TaskAttachment>;
   listTaskAttachments(projectId: string, taskId: string): Promise<readonly TaskAttachment[]>;
@@ -304,6 +307,11 @@ export const createApiClient = (options: {
     }
   };
 
+  const taskAction = (action: "approve" | "claim" | "complete", projectId: string, taskId: string, input: TaskActionInput): Promise<Task> => {
+    const project = resourceId(projectId), task = resourceId(taskId);
+    return exchange({ operation: `task.${action}`, projectId: project, taskId: task }, `/projects/${encodeURIComponent(project)}/tasks/${encodeURIComponent(task)}/${action}`, "POST", { kind: "json", parse: (value) => parseTask(value, project, task) }, [200], { kind: "json", value: { version: input.version } });
+  };
+
   return {
     createProject: (input) => request({ operation: "project.create" }, "/projects", "POST", (value) => parseProject(value), { name: input.name, repoUrl: input.repoUrl }),
     getProject: (projectId) => {
@@ -353,11 +361,13 @@ export const createApiClient = (options: {
         version: input.version,
         ...(input.title === undefined ? {} : { title: input.title }),
         ...(input.description === undefined ? {} : { description: input.description }),
-        ...(input.status === undefined ? {} : { status: input.status }),
         ...(input.dependsOn === undefined ? {} : { dependsOn: input.dependsOn }),
         ...(input.properties === undefined ? {} : { properties: input.properties }),
       });
     },
+    approveTask: (projectId, taskId, input) => taskAction("approve", projectId, taskId, input),
+    claimTask: (projectId, taskId, input) => taskAction("claim", projectId, taskId, input),
+    completeTask: (projectId, taskId, input) => taskAction("complete", projectId, taskId, input),
     putTaskAttachment: (projectId, taskId, path, input) => {
       const project = resourceId(projectId), task = resourceId(taskId), attachmentPath = validateAttachmentPath(path);
       return exchange({ operation: "task.attachment.put", projectId: project, taskId: task }, `${attachmentPrefix(project, task)}/files/${encodeAttachmentPath(attachmentPath)}`, "PUT", { kind: "json", parse: (value) => parseTaskAttachment(value, attachmentPath) }, [200, 201], { kind: "bytes", value: input.body, contentType: input.contentType }, true);

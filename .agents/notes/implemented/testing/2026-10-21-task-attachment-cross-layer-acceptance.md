@@ -82,8 +82,10 @@ adds three functional language scenarios per target. Those deliveries produced
 [authentication activation](../architecture/2026-10-22-authentication-activation.md)
 adds six functional scenarios per target and normal protocol bootstrap. The
 [Markdown description delivery](../architecture/2026-10-22-task-description-markdown.md)
-adds one read-only browser journey per target; current strict inventories require
-25 unique native and twenty container scenarios. One worker,
+adds one read-only browser journey per target. The later
+[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds three
+approval journeys with separate registered-task POST allowances. Current strict
+inventories require 28 unique native and twenty-three container scenarios. One worker,
 zero retries, complete reports and cleanup remain mandatory.
 
 All phases use the full bundled Chromium channel `chromium`, retaining the

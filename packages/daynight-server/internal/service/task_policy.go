@@ -8,7 +8,7 @@ import (
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
 )
 
-func validateCandidate(ctx context.Context, tx *store.ProjectTx, id string, values store.TaskWrite, current *core.Task) error {
+func validateCandidate(ctx context.Context, tx *store.ProjectTx, id string, values store.TaskWrite) error {
 	prerequisites, err := tx.TasksByID(ctx, values.DependsOn)
 	if err != nil {
 		return err
@@ -39,7 +39,7 @@ func validateCandidate(ctx context.Context, tx *store.ProjectTx, id string, valu
 	if len(cycles) > 0 {
 		return &Fault{Code: "dependency_cycle", Message: "Task dependencies would create a cycle.", TaskIDs: cycles}
 	}
-	if values.Status != core.TaskTodo {
+	if values.Status == core.TaskInProgress || values.Status == core.TaskDone {
 		blocked := make([]string, 0)
 		for _, prerequisite := range prerequisites {
 			if prerequisite.Status != core.TaskDone {
@@ -49,22 +49,6 @@ func validateCandidate(ctx context.Context, tx *store.ProjectTx, id string, valu
 		if len(blocked) > 0 {
 			slices.Sort(blocked)
 			return &Fault{Code: "dependency_unsatisfied", Message: "Task prerequisites must be done.", TaskIDs: blocked}
-		}
-	}
-	if current != nil && current.Status == core.TaskDone && values.Status != core.TaskDone {
-		dependents, err := tx.Dependents(ctx, id)
-		if err != nil {
-			return err
-		}
-		blocked := make([]string, 0)
-		for _, dependent := range dependents {
-			if dependent.Status != core.TaskTodo {
-				blocked = append(blocked, dependent.ID)
-			}
-		}
-		if len(blocked) > 0 {
-			slices.Sort(blocked)
-			return &Fault{Code: "dependency_unsatisfied", Message: "Active or done dependents prevent reopening this task.", TaskIDs: blocked}
 		}
 	}
 	return nil

@@ -52,6 +52,24 @@ const fixture = async (handler: (request: Request, response: ServerResponse, raw
 };
 
 describe("task commands over HTTP", () => {
+  it.each(["approve", "claim", "complete"] as const)("sends exactly one %s POST after its version read or with a supplied version", async (action) => {
+    const f = await fixture((request, response) => respond(response, request.method === "GET" ? task : { ...task, version: task.version + 1n }));
+    await f.run([action, taskId.toUpperCase()]);
+    expect(f.requests.map(({ method, path: pathname }) => `${method} ${pathname}`)).toEqual([`GET /api/v1/projects/${projectId}`, `GET /api/v1/projects/${projectId}/tasks/${taskId}`, `POST /api/v1/projects/${projectId}/tasks/${taskId}/${action}`]);
+    expect(f.requests.at(-1)!.body).toBe('{"version":9007199254740993}');
+    f.requests.length = 0;
+    await f.run([action, taskId, "--if-version", "9223372036854775807"]);
+    expect(f.requests.map(({ method }) => method)).toEqual(["GET", "POST"]);
+    expect(f.requests.at(-1)!.body).toBe('{"version":9223372036854775807}');
+  });
+
+  it.each(["approve", "claim", "complete"] as const)("reports an unconfirmed %s after dispatch without retrying", async (action) => {
+    const f = await fixture((_request, _response, raw) => { raw.socket.destroy(); });
+    await expect(f.run([action, taskId, "--if-version", "1"])).rejects.toMatchObject({ operation: `task.${action}`, projectId, taskId, outcomeUnconfirmed: true });
+    expect(f.requests.map(({ method }) => method)).toEqual(["GET", "POST"]);
+    expect(f.context.stdout).not.toHaveBeenCalled();
+  });
+
   it("submits optional create fields exactly once and prints the confirmed result", async () => {
     const title = "-Original=title\n\u001b[2J";
     const f = await fixture((request, response) => {
@@ -135,8 +153,8 @@ describe("task commands over HTTP", () => {
       if (request.method === "GET") respond(response, task);
       else respond(response, { error: { code: "version_conflict", message: "Concurrent update", requestId: "task-conflict", details: { taskIds: [taskId] } } }, 409);
     });
-    await expect(f.run(["update", taskId, "--status", "done"])).rejects.toMatchObject({ operation: "task.update", taskId, code: "version_conflict", requestId: "task-conflict", details: { taskIds: [taskId] }, confirmedRefusal: true });
-    expect(f.requests.map(({ method }) => method)).toEqual(["GET", "GET", "PATCH"]);
+    await expect(f.run(["complete", taskId])).rejects.toMatchObject({ operation: "task.complete", taskId, code: "version_conflict", requestId: "task-conflict", details: { taskIds: [taskId] }, confirmedRefusal: true });
+    expect(f.requests.map(({ method }) => method)).toEqual(["GET", "GET", "POST"]);
     expect(f.context.stdout).not.toHaveBeenCalled();
   });
 
@@ -165,14 +183,14 @@ describe("task commands over HTTP", () => {
     expect(f.context.stdout).not.toHaveBeenCalled();
   });
 
-  it("cancels during the version response and never submits PATCH", async () => {
+  it("cancels during the version response and never submits the action", async () => {
     let entered: () => void = () => {};
     const ready = new Promise<void>((resolve) => { entered = resolve; });
     const f = await fixture((_request, response) => { response.writeHead(200, { "Content-Type": "application/json" }); response.write("{"); entered(); });
-    const pending = f.run(["update", taskId, "--status", "done"]);
+    const pending = f.run(["complete", taskId]);
     await ready; f.signals.emit("SIGINT");
     await expect(pending).rejects.toMatchObject({ operation: "task.show", projectId, taskId, cause: { kind: "cancelled" } });
-    expect(f.requests.some(({ method }) => method === "PATCH")).toBe(false);
+    expect(f.requests.some(({ method }) => method === "POST")).toBe(false);
     expect(f.context.stdout).not.toHaveBeenCalled();
     expect(f.signals.listenerCount("SIGINT")).toBe(0);
   });

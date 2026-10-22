@@ -94,6 +94,16 @@ changed. Reference reuse avoids unnecessary layout work but does not remove
 transport or database cost. Push transport should be reconsidered if this load
 or the five-second visibility delay becomes material. A live detail and graph
 remain independent reads; stale-data detection still offers a full graph refresh.
-Task editing, project-list polling, attachment polling and server push are outside
-this decision's scope. Their separate owners and refresh actions remain visible
+The [approval lifecycle](2026-10-22-task-approval-lifecycle.md) separately supplies
+explicit proposed approval and its task sessions. Task descriptors, current read
+errors and explicit reconciliation determine whether a fresh read is required;
+receipt-only optional polls do not invalidate an already observed CAS version or
+block approval while their GET runs. loadedRevision remains the successful GET's
+starting receipt. Known task/prerequisite disagreement still blocks approval,
+including when derived blockers change without a task revision. Approval-triggered
+refreshes retain other active task panels under the same rules. A 404 removes
+private task content; an unresolved approval retains only operation/error feedback
+and GET-only reconciliation controls. General task
+editing, project-list polling, attachment polling and server push remain outside
+this automatic-trigger decision's scope. Their separate owners and refresh actions remain visible
 rather than being coupled to the graph timer.

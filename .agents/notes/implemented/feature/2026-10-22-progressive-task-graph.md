@@ -81,7 +81,12 @@ The four complete API capacity inputs retain 1,000 tasks each and their exact
 999/5,000 edges, with five samples. The browser workload now requires bounded
 initial S, all real induced visible edges and explicit expansion/reset, rather
 than all input tasks/edges simultaneously in the DOM. `openMs ≤ 3000` and existing
-detail/zoom/pan feedback ≤300ms remain. All 31 scenarios, zero retries, timeouts,
+detail/zoom/pan feedback ≤300ms remain. The original overview retained 31
+scenarios; the [approval lifecycle](2026-10-22-task-approval-lifecycle.md) adds
+three functional scenarios per target. The
+[Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
+adds one per target, producing 39 (22 native, 17 container).
+Zero retries, timeouts,
 size refusals, coverage and cleanup gates remain. Independent existing polyline
 and dash checks cover every visible edge; selection timing and curved oracles
 belong to the inspection PR. Runtime evidence remains source-bound and pending

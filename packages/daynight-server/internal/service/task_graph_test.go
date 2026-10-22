@@ -43,23 +43,18 @@ func TestTaskGraphEmptyScopedAndSummary(t *testing.T) {
 	}
 	createTask(t, tasks, principal, other.ID, "Out of scope")
 	done := createTask(t, tasks, principal, project.ID, "Done")
-	done = updateTask(t, tasks, principal, done, UpdateTask{Status: pointer(core.TaskDone)})
+	done = approveTask(t, tasks, principal, done)
+	done = claimTask(t, tasks, principal, done)
+	done = completeTask(t, tasks, principal, done)
 	active := createTask(t, tasks, principal, project.ID, "Active", done.ID)
-	active = updateTask(t, tasks, principal, active, UpdateTask{Status: pointer(core.TaskInProgress)})
+	active = approveTask(t, tasks, principal, active)
+	active = claimTask(t, tasks, principal, active)
 	ready := createTask(t, tasks, principal, project.ID, "Ready", done.ID)
+	ready = approveTask(t, tasks, principal, ready)
 	blocked := createTask(t, tasks, principal, project.ID, "Blocked", active.ID, ready.ID)
-	var proposed, proposedBlocked core.Task
-	if err := database.WriteProject(ctx, project.ID, func(tx *store.ProjectTx) error {
-		var err error
-		proposed, err = tx.CreateTask(ctx, "00000000-0000-4000-8000-000000000001", store.TaskWrite{Title: "Proposed", Status: core.TaskProposed, DependsOn: []string{done.ID}})
-		if err != nil {
-			return err
-		}
-		proposedBlocked, err = tx.CreateTask(ctx, "00000000-0000-4000-8000-000000000002", store.TaskWrite{Title: "Proposed blocked", Status: core.TaskProposed, DependsOn: []string{active.ID}})
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
+	blocked = approveTask(t, tasks, principal, blocked)
+	proposed := createTask(t, tasks, principal, project.ID, "Proposed", done.ID)
+	proposedBlocked := createTask(t, tasks, principal, project.ID, "Proposed blocked", active.ID)
 	graph, err := tasks.Graph(ctx, principal, project.ID)
 	wantSummary := core.TaskGraphSummary{Total: 6, Proposed: 2, Todo: 2, InProgress: 1, Done: 1, Ready: 1, Blocked: 1}
 	if err != nil || graph.Summary != wantSummary || len(graph.Tasks) != 6 || !reflect.DeepEqual(graph.Project, project) {
@@ -124,7 +119,9 @@ func TestTaskGraphInterleavedWriteKeepsOneSnapshot(t *testing.T) {
 	tasks, database, project, databaseURL, principal := taskService(t)
 	ctx := context.Background()
 	predecessor := createTask(t, tasks, principal, project.ID, "Predecessor")
+	predecessor = approveTask(t, tasks, principal, predecessor)
 	dependent := createTask(t, tasks, principal, project.ID, "Dependent", predecessor.ID)
+	dependent = approveTask(t, tasks, principal, dependent)
 	writes := 0
 	traced := tracedTasks(t, databaseURL, taskQueryAction{
 		match: func(sql string) bool { return strings.Contains(sql, "SELECT count(*) FROM tasks") },

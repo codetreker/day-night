@@ -2,7 +2,7 @@
 
 Use this mode to prepare and register work that needs persistent tracking. Read
 [the handbook](handbook.md) before discovery, queries, or writes. Return after
-registration; creating work does not authorize execution or activate autopilot.
+registration; creating work does not authorize approval, execution or autopilot.
 
 Create tasks only with the user's explicit permission for the relevant scope.
 Loading this mode, needing durable tracking, or permission to implement or run
@@ -72,7 +72,7 @@ Do not upload the same whole packet to every task. Create a separate snapshot
 only when the task needs an independent copy, recording its purpose, original
 source, and source revision or content identity.
 
-A frontend task requires an interactive mock UI that runs with frontend code
+A frontend delivery task requires an interactive mock UI that runs with frontend code
 alone, matches final visual styling, and represents relevant data and interaction
 states. Include applicable populated, empty, loading, failure, disabled, long
 content, and narrow-screen cases. Provide required CSS, JavaScript, images, and
@@ -130,7 +130,7 @@ evidence. The prototype remains with its actual owner when shared across a Goal.
 
 ## Register and verify
 
-Reuse the established project and suitable tasks. Create new tasks in `todo`,
+Reuse the established project and suitable tasks. Create new tasks in `proposed`,
 retaining each confirmed ID. Set their concrete descriptions and actual
 `dependsOn` prerequisites. Upload each task's own primary Markdown and required
 resources; add actual attachment references to the complete description using
@@ -141,12 +141,17 @@ Read back each complete task, its attachment inventory and required contents,
 and its referenced shared inputs. Verify self-contained Markdown descriptions,
 valid links and images, the two required primary-document sections, real source
 identities, intended dependencies, and applicable mock UI resources and
-interaction. For a Goal, verify both starting tasks and their stage briefs. Registration is complete only when required
-artifacts and associations are confirmed readable.
+interaction. For a Goal, verify both starting tasks and their stage briefs.
+Registration is complete only when required artifacts and associations are
+confirmed readable. Without separate explicit approval authorization, leave
+registered work proposed and report that approval is pending. Goal-creation
+permission covers the two starting tasks and later in-scope breakdown, but never
+their approval. A user can explicitly approve a stated task or Goal-task scope,
+or approve directly through CLI/Web; an authorized Agent uses each reviewed
+task's exact version through `task approve`.
 
 If creation succeeds but a later operation fails, retain the confirmed IDs and
-resume missing operations there. Tasks remain `todo`; there is no additional
-draft state. Reconcile uncertain results through the handbook before another
+resume missing operations there. Tasks remain `proposed`. Reconcile uncertain results through the handbook before another
 mutation. Report incomplete registration with the exact missing operation or
 artifact and next step. Do not move detailed plans into descriptions to bypass
 an attachment failure. Return after verified registration without selecting or

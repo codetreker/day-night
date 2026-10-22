@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -690,7 +691,7 @@ func (p *acceptanceProcess) task(t *testing.T, project api.Project, title string
 	}
 	response := p.request(context.Background(), http.MethodPost, acceptanceTasksPath(project.ID), input, "")
 	task := acceptanceDecode[api.Task](t, response, http.StatusCreated)
-	if response.header.Get("Location") != acceptanceTaskPath(task) || task.ProjectID != project.ID || task.Version != 1 {
+	if response.header.Get("Location") != acceptanceTaskPath(task) || task.ProjectID != project.ID || task.Version != 1 || task.Status != "proposed" || task.Ready {
 		t.Fatal("task create metadata or Location is invalid")
 	}
 	return task
@@ -705,6 +706,17 @@ func (p *acceptanceProcess) update(t *testing.T, task api.Task, fields map[strin
 	t.Helper()
 	fields["version"] = task.Version
 	return acceptanceDecode[api.Task](t, p.request(context.Background(), http.MethodPatch, acceptanceTaskPath(task), fields, ""), http.StatusOK)
+}
+
+func (p *acceptanceProcess) action(t *testing.T, task api.Task, action string) api.Task {
+	t.Helper()
+	updated := acceptanceDecode[api.Task](t, p.request(context.Background(), http.MethodPost, acceptanceTaskPath(task)+"/"+action, map[string]any{"version": task.Version}, ""), http.StatusOK)
+	preserved := updated
+	preserved.Status, preserved.Ready, preserved.Version, preserved.UpdatedAt = task.Status, task.Ready, task.Version, task.UpdatedAt
+	if updated.Version != task.Version+1 || !updated.UpdatedAt.After(task.UpdatedAt) || !reflect.DeepEqual(preserved, task) {
+		t.Fatal("lifecycle action did not preserve metadata or advance version and timestamp exactly once")
+	}
+	return updated
 }
 
 func (f *acceptanceFixture) exec(t *testing.T, sql string, arguments ...any) {
