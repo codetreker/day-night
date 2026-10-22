@@ -5,6 +5,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { parse as parseYaml } from "yaml";
 import { preflightRelease, prepareRelease, publishRelease, runNpmPublish, runNpmView } from "../../scripts/publish.js";
 import type { ReleaseReceipt, ReleaseServices } from "../../scripts/publish.js";
 
@@ -230,13 +231,34 @@ describe("release version preflight", () => {
     expect(readFileSync(output, "utf8")).toBe("version=1.2.3\nskip=true\n");
   });
 
-  it("rechecks every workflow attempt and gates publication on the skip output", () => {
-    const workflow = readFileSync(path.resolve(import.meta.dirname, "../../../../.github/workflows/publish.yml"), "utf8");
-    expect(workflow).not.toContain("run_attempt");
-    expect(workflow).not.toContain("outputs.attempt");
-    expect(workflow).toContain("- name: Recheck before publication\n        id: preflight\n        env:");
-    expect(workflow).toContain("if: steps.preflight.outputs.skip != 'true'");
-    expect(workflow.match(/NPM_CLI_JS:/g)).toHaveLength(3);
+  it.each(["\n", "\r\n"])("rechecks every workflow attempt and gates publication on the skip output (%j line endings)", (newline) => {
+    type Step = { id?: string; run?: string; if?: string; uses?: string; env?: Record<string, string> };
+    type Job = { if?: string; outputs?: Record<string, string>; steps: Step[] };
+    const content = readFileSync(path.resolve(import.meta.dirname, "../../../../.github/workflows/publish.yml"), "utf8");
+    const { jobs } = parseYaml(content.replace(/\r?\n/g, newline)) as { jobs: { preflight: Job; prepare: Job; publish: Job } };
+    expect(jobs.preflight.if).toBeUndefined();
+    expect(jobs.preflight.outputs?.skip).toBe("${{ steps.release.outputs.skip }}");
+    expect(jobs.prepare.outputs).not.toHaveProperty("attempt");
+    for (const job of [jobs.prepare, jobs.publish]) expect(job.if).toBe("needs.preflight.outputs.skip == 'false'");
+    const recheckIndex = jobs.publish.steps.findIndex((step) => step.id === "preflight");
+    const publicationIndex = jobs.publish.steps.findIndex((step) => step.run === 'node packages/daynight/scripts/publish.ts publish "$GITHUB_SHA"');
+    const downloadIndex = jobs.publish.steps.findIndex((step) => step.uses?.startsWith("actions/download-artifact@"));
+    expect(recheckIndex).toBeGreaterThan(-1);
+    for (const index of [downloadIndex, publicationIndex]) {
+      expect(index).toBeGreaterThan(recheckIndex);
+      expect(jobs.publish.steps[index]!.if).toBe("steps.preflight.outputs.skip != 'true'");
+    }
+    const npmCli = "${{ github.workspace }}/.tmp/npm-cli/node_modules/npm/bin/npm-cli.js";
+    expect(jobs.publish.steps[publicationIndex]!.env?.NPM_CLI_JS).toBe(npmCli);
+    for (const [job, lookupId] of [[jobs.preflight, "release"], [jobs.publish, "preflight"]] as const) {
+      const lookupIndex = job.steps.findIndex((step) => step.id === lookupId);
+      const installIndex = job.steps.findIndex((step) => step.run?.startsWith("npm install --prefix .tmp/npm-cli ") && step.run.endsWith(" npm@12.2.0"));
+      expect(installIndex).toBeGreaterThan(-1);
+      expect(lookupIndex).toBeGreaterThan(installIndex);
+      expect(job.steps[installIndex]!.if).toBeUndefined();
+      expect(job.steps[lookupIndex]).toMatchObject({ run: 'node packages/daynight/scripts/publish.ts preflight "$GITHUB_SHA"', env: { NPM_CLI_JS: npmCli } });
+      expect(job.steps[lookupIndex]!.if).toBeUndefined();
+    }
   });
 });
 
