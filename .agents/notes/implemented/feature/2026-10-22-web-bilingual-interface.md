@@ -23,7 +23,11 @@ operate their own selector while the underlying application is inert.
 
 The two typed catalogs cover all shipped first-party components. `common`
 owns task status labels and the request ID label; `workspace`, `graph` and
-`inspection` own their domain messages. Dates, times, numbers and exact bytes
+`inspection` own their domain messages. The opt-in
+[authenticated workspace](2026-10-22-web-auth-workspace.md) extends the same
+contract with `auth` for login, account and project collaboration, while the
+production entry still renders the original `App` under the persistent Provider.
+Dates, times, numbers and exact bytes
 use the runtime formatters. User content, API field values, state values,
 request IDs and attachment bytes remain unchanged. The
 [runtime decision](../architecture/2026-10-22-web-locale-runtime.md) retains the

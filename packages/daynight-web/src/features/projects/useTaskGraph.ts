@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getTaskGraph, isAbortError } from "../../api/client";
+import { ApiError, getTaskGraph, isAbortError } from "../../api/client";
 import type { TaskGraph } from "../../api/types";
 import { buildGraphIndex, type GraphIndex } from "../task-graph/model";
 
@@ -43,7 +43,7 @@ export const useTaskGraph = (projectId: string) => {
     } catch (error) {
       if (controller.signal.aborted || revision !== generation.current || isAbortError(error)) return;
       setState((previous) => {
-        const snapshot = previous.projectId === projectId ? previous.snapshot : null;
+        const snapshot = error instanceof ApiError && error.status === 404 ? null : previous.projectId === projectId ? previous.snapshot : null;
         return { projectId, snapshot, status: snapshot === null ? "error" : "ready", refreshing: false, error };
       });
     } finally {

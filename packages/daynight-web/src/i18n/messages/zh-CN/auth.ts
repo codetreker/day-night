@@ -1,0 +1,82 @@
+import type { AuthMessages } from "../auth";
+
+export const auth: AuthMessages = {
+  roles: { admin: "管理员", member: "成员" },
+  shell: {
+    myProjects: "我的项目", accountSettings: "账户设置", members: "项目成员", teamWorkspace: "团队工作空间",
+    accountLink: ({ name }) => `账户设置：${name}`, currentAccount: "当前账户", genericProject: "项目",
+    accessUnavailable: "项目不存在或你没有访问权限", accessUnavailableDetail: "如果你认为应该可以访问，请联系项目管理员获取邀请。",
+    permissionsError: "暂时无法读取项目权限。", retryPermissions: "重试读取权限", identityLoading: "正在确认登录状态", identityError: "暂时无法确认登录状态",
+    networkRetry: "请检查网络连接后重试。", signOut: "退出登录", retryLogout: "重试退出登录",
+    invitationStorageError: "浏览器无法保存邀请。登录后请重新打开邀请链接。", invitationCleanupError: "浏览器无法清除邀请临时数据。请关闭此标签页以清除邀请。",
+    revalidationLabel: "重新确认当前账户", revalidationLoading: "正在确认当前账户…", revalidationError: "暂时无法重新确认当前账户",
+    revalidationRetained: "当前工作已保留。确认账户后可继续。", revalidationRetry: "重新确认账户",
+    notice: {
+      expired: "登录状态已过期。重新登录后可继续访问项目。", signedOut: "你已退出登录。",
+      logoutFailed: "本地账户数据已清除，但服务暂时无法确认退出。请重试退出登录。",
+      loginFailed: "登录未完成。身份服务暂时无法确认你的身份，请重新登录。",
+    },
+    documentTitle: {
+      loading: "正在确认登录 · Daynight", error: "登录暂不可用 · Daynight", login: "登录 · Daynight", invitations: "项目邀请 · Daynight",
+      projects: "我的项目 · Daynight", project: "项目任务 · Daynight", members: "项目成员 · Daynight", account: "账户设置 · Daynight", notFound: "页面不存在 · Daynight",
+    },
+  },
+  login: {
+    heroTitleFirst: "让任务有序推进，", heroTitleSecond: "让协作持续发生。", heroDetail: "在项目中整理任务、连接依赖、共享成果。与团队一起，把计划推进到完成。",
+    heroCaption: "专注于你的项目，与团队共同前进。", milestones: ["明确目标", "连接工作", "交付成果"], welcome: "欢迎使用 DAYNIGHT", title: "登录你的工作空间",
+    subtitle: "通过 UniAuth 登录，访问你的项目与任务。", inviteSubtitle: "通过 UniAuth 登录后，继续确认项目邀请。",
+    providersLoading: "正在读取登录方式…", providersError: "暂时无法读取登录方式，请重试。", providersEmpty: "当前没有可用的登录方式。请联系部署管理员。",
+    providerButton: ({ provider }) => `使用 ${provider} 登录`, redirecting: "正在前往 UniAuth…", redirectStatus: "正在安全跳转，请稍候。",
+    noteFirst: "登录后可以创建私有项目，或接受团队的项目邀请。", noteSecond: "你的身份由 UniAuth 验证。",
+  },
+  invitation: {
+    loading: "正在读取项目邀请", unavailable: "邀请已不可用", unavailableDetail: "此邀请可能已过期、被撤销或已使用。请联系项目管理员获取新的邀请。",
+    loadError: "邀请暂时无法加载", loadErrorDetail: "请检查网络连接后重试。", invited: "你受邀加入一个项目", alreadyMember: "你已经是项目成员",
+    invitedDetail: "确认项目信息后，加入并开始协作。", alreadyMemberDetail: "可以直接打开项目，无需再次接受邀请。", memberRole: "加入角色：成员",
+    permissions: ["读写项目中的任务与附件", "查看项目成员"], noEmail: "未提供邮箱", switchAccount: "切换账户", acceptError: "暂时无法接受邀请，请重试。",
+    accepting: "正在加入…", accept: "接受邀请并加入", open: "打开项目", cancel: "暂不加入", returnToProjects: "返回我的项目",
+  },
+  createProject: {
+    open: "＋ 创建项目", createFirst: "创建第一个项目", emptyDetail: "创建私有项目来整理工作，或使用管理员发给你的邀请链接加入团队。",
+    title: "创建私有项目", close: "关闭创建项目", intro: "项目仅对你和项目成员可见。创建后，你将成为项目管理员。",
+    name: "项目名称", repository: "仓库地址", repositoryHint: "支持 HTTPS、SSH URL 或 git@host:team/project.git 格式。",
+    error: "项目创建失败，请检查输入后重试。", cancel: "取消", busy: "正在创建…", submit: "创建项目",
+  },
+  management: {
+    common: {
+      closeDialog: "关闭对话框", cancel: "取消", retry: "重试", self: "（你）", createdAt: "创建于", expiresAt: "到期", expired: "已过期", unusable: "不可使用", revoke: "撤销",
+      roleAdmin: "管理员", roleMember: "成员", submitPending: "正在提交…", unauthenticated: "登录状态已失效，请重新登录。", notFound: "项目不存在或你没有访问权限。", operationFailed: "操作未能完成，请重试。",
+    },
+    account: {
+      eyebrow: "你的账户", title: "账户设置", subtitle: "管理个人资料和 CLI、Agent 的访问凭据。", profileTab: "个人资料", tokensTab: "访问令牌",
+      loginMethod: "登录方式", viaUniAuth: "通过 UniAuth", profileSource: "资料来源", profileSourceDescription: "姓名、邮箱和头像由登录身份提供。",
+      sessionTitle: "当前会话", sessionDescription: "退出当前浏览器的登录状态。", signOut: "退出登录", tokensTitle: "个人访问令牌", tokensDescription: "让 CLI 和 Agent 以你的身份访问 Daynight。",
+      createToken: "创建令牌", loading: "正在加载访问令牌…", empty: "还没有访问令牌。创建后可用于 CLI 或 Agent。",
+      authorityNotice: "令牌代表你当前的项目权限。项目成员关系变化会立即影响后续访问；请只将令牌交给你信任的客户端。",
+      oneTimeNotice: "令牌明文只在创建成功时显示一次。丢失后请撤销并创建新令牌。", createTitle: "创建个人访问令牌", nameLabel: "令牌名称", namePlaceholder: "例如：MacBook · 日常开发",
+      nameHint: "用名称区分设备或自动化用途，最多 100 个字符。", daysLabel: "有效期", daysHint: "按天设置有效期，范围为 1–365 天。",
+      validation: "请输入 1–100 个字符的令牌名称，以及 1–365 天的有效期。", createNotice: "令牌以你的身份访问项目。请勿将令牌放入代码仓库或公开日志。",
+      creating: "正在创建…", revokeTitle: "撤销访问令牌？", revoking: "正在撤销…", revokeConfirm: "撤销令牌",
+      revokeBody: ({ name }) => `“${name}”将立即无法发起新的请求。使用它的 CLI 或 Agent 需要配置新的令牌。`, revokeLabel: ({ name }) => `撤销令牌 ${name}`,
+    },
+    members: {
+      eyebrow: "项目设置", title: "项目成员", subtitle: ({ projectName }) => `${projectName} · 管理协作成员与加入邀请`, invite: "邀请成员", loading: "正在加载项目成员…",
+      memberNotice: "你可以读写项目中的任务和附件。成员与邀请由项目管理员管理。", membersTitle: "成员", accessDescription: "所有成员都可以读写项目资源。", memberColumn: "成员", roleColumn: "项目角色", actionColumn: "操作",
+      roleLabel: ({ name }) => `${name} 的项目角色`, removeLabel: ({ name }) => `移除 ${name}`, remove: "移除", lastAdminTitle: "项目必须至少保留一名管理员",
+      lastAdminNote: "项目必须至少保留一名管理员。最后一名管理员需要先将另一位成员设为管理员，才能移除自己或变更自己的角色。",
+      invitesTitle: "有效邀请", invitesDescription: "每个邀请链接只能使用一次，接受邀请后以成员身份加入。链接只在创建时显示。", invitesEmpty: "还没有有效邀请。创建邀请链接，邀请团队成员加入。", newInvitation: "邀请新成员",
+      revokeLabel: ({ id }) => `撤销邀请 ${id}`, adminDescription: "读写项目、任务和附件，并管理项目成员及邀请。", memberDescription: "读写项目、任务和附件，与团队共同推进工作。",
+      roleTitle: ({ name }) => `变更 ${name} 的角色？`, removeTitle: ({ name }) => `移除 ${name}？`, revokeTitle: "撤销邀请？", inviteTitle: "邀请项目成员", saveRole: "保存角色", removeConfirm: "移除成员", revokeConfirm: "撤销邀请", createInvite: "创建邀请链接",
+      roleAdminBody: "管理员可以管理项目成员和邀请，并保留全部项目读写权限。", roleMemberBody: "成员可以继续读写项目资源，成员和邀请由管理员管理。", selfDemotionBody: "变更后，你将失去成员管理权限。",
+      selfRemovalBody: "移除后，你将无法继续访问这个项目。重新加入需要管理员邀请。", otherRemovalBody: "移除后，对方的浏览器和访问令牌将无法继续访问这个项目。",
+      inviteBody: "创建一个单次使用的邀请链接，分享给你希望加入项目的人。对方登录并确认后，以成员身份加入。", inviteTerms: "7 天后到期 · 单次使用 · 加入角色：成员", revokeBody: "撤销后，这个邀请链接将立即失效。",
+      notice: { permissionReloaded: "项目权限已变化，已重新加载最新权限。", conflictReloaded: "成员状态已变化，已重新加载最新权限。请检查后再操作。", permissionChecked: "项目权限已变化，已重新检查你的访问权限。" },
+    },
+    secret: {
+      tokenTitle: "访问令牌已创建", invitationTitle: "邀请链接已创建", tokenBody: "把令牌保存在安全的位置，然后配置到 CLI 或 Agent。", invitationBody: "将链接分享给一位协作者。对方需要登录并确认加入。",
+      tokenLabel: "一次性访问令牌", invitationLabel: "一次性邀请链接", copy: "复制", copyLink: "复制链接", copied: "已复制。", copyFailed: "浏览器未允许自动复制。已选中内容，请手动复制并保存在安全的位置。",
+      returnSave: "返回保存", confirmClose: "确认已保存，关闭", savedClose: "我已保存，关闭", tokenOneTime: "令牌明文只在创建时显示一次。关闭后无法再次查看；如果丢失，请撤销并重新创建。",
+      invitationOneTime: "邀请链接只在创建时显示一次。关闭后无法再次查看；如果丢失，请撤销并重新创建。", tokenCloseWarning: "关闭后无法恢复这份令牌。请确认你已保存。", invitationCloseWarning: "关闭后无法恢复这份邀请链接。请确认你已保存。",
+    },
+  },
+};

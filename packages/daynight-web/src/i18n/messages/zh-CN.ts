@@ -1,12 +1,14 @@
 import { workspace } from "./zh-CN/workspace";
 import { graph } from "./zh-CN/graph";
 import { inspection } from "./zh-CN/inspection";
+import { auth } from "./zh-CN/auth";
 import type { Messages } from "../messages";
 
 export const zhCN: Messages = {
   workspace,
   graph,
   inspection,
+  auth,
   common: {
     retrySave: "重试保存语言",
     status: { proposed: "待审批", todo: "待处理", in_progress: "进行中", done: "已完成" },
