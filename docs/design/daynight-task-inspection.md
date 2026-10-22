@@ -1,12 +1,12 @@
 # 任务依赖追踪与详情阅读设计
 
-状态：完整上游上下文（UX-T1）已实现；依赖选择与平滑连线、居中详情和 Markdown 描述（UX-T2–UX-T4）待实现。适用模块为 `daynight-web` 与 CLI 发布的 `using-daynight` skill。行为以[要求](../spec/daynight-task-inspection.md)为准，交付边界见[任务拆分](daynight-task-inspection-tasks.md)，视觉见[交互原型](mockups/task-inspection/index.html)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-22-task-inspection-design.md)保留实际比较与范围选择。
+状态：完整上游上下文（UX-T1）与居中详情（UX-T3）已实现；依赖选择与平滑连线（UX-T2）和 Markdown 描述（UX-T4）待实现。适用模块为 `daynight-web` 与 CLI 发布的 `using-daynight` skill。行为以[要求](../spec/daynight-task-inspection.md)为准，交付边界见[任务拆分](daynight-task-inspection-tasks.md)，视觉见[交互原型](mockups/task-inspection/index.html)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-22-task-inspection-design.md)保留实际比较与范围选择。
 
 ## 问题与当前结构
 
-当前任务节点是整张可点击按钮，点击后同时设置图的选中任务和打开详情。选择与阅读耦合，无法在画布上持续追踪依赖。投影已补齐链内任务的全部上游前置，并排除外部前置的无关后续；其机制由[完整上下文决策](../../.agents/notes/implemented/feature/2026-10-22-complete-prerequisite-context.md)拥有。依赖线仍按 Dagre 点列绘制为折线，描述仍以纯文本显示在右侧详情抽屉中。下文的选择、曲线、居中详情和 Markdown 机制属于其余任务的目标结构。
+当前任务节点是整张可点击按钮，点击后同时设置图的选中任务和打开详情。选择与阅读耦合，无法在画布上持续追踪依赖。投影已补齐链内任务的全部上游前置，并排除外部前置的无关后续；其机制由[完整上下文决策](../../.agents/notes/implemented/feature/2026-10-22-complete-prerequisite-context.md)拥有。依赖线仍按 Dagre 点列绘制为折线，描述仍以纯文本显示。详情已使用居中对话框，机制由[居中详情决策](../../.agents/notes/implemented/feature/2026-10-22-centered-task-detail-dialog.md)拥有；下文的选择、曲线和 Markdown 机制属于其余任务的目标结构。
 
-这些事实分别由 [TaskNode](../../packages/daynight-web/src/features/task-graph/TaskNode.tsx)、[ProjectPage](../../packages/daynight-web/src/features/projects/ProjectPage.tsx)、[投影模型](../../packages/daynight-web/src/features/task-graph/model.ts)、[TaskGraph](../../packages/daynight-web/src/features/task-graph/TaskGraph.tsx) 和 [TaskDrawer](../../packages/daynight-web/src/features/task-detail/TaskDrawer.tsx) 实现。图索引已包含完整项目的 `dependsOn` 和 `successors`，无需新增服务端读取接口。附件预览已使用 `react-markdown`、`remark-gfm` 及任务内相对 URL 解析。
+这些事实分别由 [TaskNode](../../packages/daynight-web/src/features/task-graph/TaskNode.tsx)、[ProjectPage](../../packages/daynight-web/src/features/projects/ProjectPage.tsx)、[投影模型](../../packages/daynight-web/src/features/task-graph/model.ts)、[TaskGraph](../../packages/daynight-web/src/features/task-graph/TaskGraph.tsx) 和 [TaskDetailDialog](../../packages/daynight-web/src/features/task-detail/TaskDetailDialog.tsx) 实现。图索引已包含完整项目的 `dependsOn` 和 `successors`，无需新增服务端读取接口。附件预览已使用 `react-markdown`、`remark-gfm` 及任务内相对 URL 解析。
 
 ## 目标与边界
 
@@ -75,9 +75,9 @@ flowchart LR
 
 ## 居中详情
 
-详情外壳更名为 `TaskDetailDialog`，保留已有详情 hook、关系跳转、PR 和附件组件。内容区位于视口居中容器，宽度 `min(960px, 100% − 2 × gutter)`，桌面 `gutter = 24px`，600px 以下为 12px；高度不超过 `100dvh − 2 × gutter`。内部内容滚动，标题栏、关闭按钮及既有底部说明保持可访问。长代码和表格局部横向滚动。
+`TaskDetailDialog` 组合已有详情 hook、关系跳转、PR 和附件组件，样式由 `task-detail.css` 的 `task-detail-*` 命名空间拥有。外壳相对可用视口居中，宽度 `min(960px, 100% − 2 × gutter)`，桌面 `gutter = 24px`，600px 及以下为 12px；最大高度为 `min(880px, 100dvh − 2 × gutter)`。标题栏、关闭按钮和底部说明处于滚动内容之外，正文独立滚动。桌面正文包含阅读主栏与 265px 元数据/关系栏，850px 及以下侧栏收为 225px，600px 及以下堆叠；长文本换行，代码和表格在所属区域横向滚动。描述仍为纯文本，Markdown 与描述附件导航由 UX-T4 交付。
 
-继续复用 body portal、共享滚动锁、背景 inert、焦点循环、遮罩关闭和分层 Esc。清理 inert、滚动锁和监听器的同步阶段与 DOM 移除后恢复焦点的阶段保持既有职责。原入口消失时仍依次选择可用的全屏退出控件、当前根和项目标题；独立任务标签集成后，保留其当前可用条目或标签回退。任务关系切换不卸载外壳，不中途恢复到旧入口。原型的窗口动画仅作用于外壳，不引入图重挂载。
+继续复用 body portal、共享滚动锁、背景 inert、焦点循环、遮罩关闭和分层 Esc。清理 inert、滚动锁和监听器的同步阶段与 DOM 移除后恢复焦点的阶段保持既有职责。原入口消失时优先选择仍可用的全屏退出控件，否则使用当前页签内可见的任务或页签控件；整个项目为空时恢复项目标题。任务关系切换不卸载外壳，不中途恢复到旧入口。外壳不引入图重挂载。`dialogFocusables` 与同源附件 frame 共用可见控件枚举，frame 监听仍按原有 load/替换/卸载生命周期释放。
 
 ## Markdown 与附件链接
 
