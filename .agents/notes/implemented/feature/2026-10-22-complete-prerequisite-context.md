@@ -43,9 +43,11 @@ decision kept direct blockers visible without recursively expanding ancestry;
 it remains the owner of complete-snapshot validation, main-set counting and the
 pinned Dagre layout choices. The
 [inspection design](../architecture/2026-10-22-task-inspection-design.md) owns the
-remaining task-card selection, smooth-route, centered-detail and Markdown goals.
-Card activation still opens the existing drawer, routes remain Dagre polylines,
-and descriptions remain plain text until their respective tasks deliver them.
+overall task-card, routing, centered-detail and Markdown goals. The later
+[dependency inspection decision](2026-10-22-task-dependency-inspection.md) adds
+card selection, a separate Details action and smooth highlighted routes on this
+complete projection. Details continue to use the drawer and plain descriptions
+until the remaining reading tasks deliver their changes.
 
 The production capacity matrix preserves its chain, merge and shared-root graphs
 and adds `capacity-external`: 1,000 nodes and 5,000 edges, with two main tasks and

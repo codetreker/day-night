@@ -19,8 +19,10 @@ restores focus to the same toolbar button. Layout geometry, node identity and
 React Flow viewport survive the switch. The mode belongs to the mounted graph
 and is not persisted.
 
-The detail drawer retains its body portal and appears above the fullscreen
-graph. Its keyboard events do not reach the graph container, so Escape closes
+Graph-local inspection, route geometry and viewport survive fullscreen mode
+changes. The card Details action opens the existing drawer without changing
+inspection. The detail drawer retains its body portal and appears above the
+fullscreen graph. Its keyboard events do not reach the graph container, so Escape closes
 only the active detail view. When a refresh removes the original node but keeps
 the fullscreen graph, drawer focus returns to its exit control before the
 ordinary root/page fallback. Both views acquire the same counted body scroll

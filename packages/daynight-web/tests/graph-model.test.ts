@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GraphTask, TaskGraph, TaskStatus } from "../src/api/types";
-import { buildGraphIndex, GraphDataError, projectRoot } from "../src/features/task-graph/model";
+import { buildGraphIndex, GraphDataError, projectRoot, tracePrerequisites } from "../src/features/task-graph/model";
 
 const id = (letter: string): string => `00000000-0000-0000-0000-${letter.charCodeAt(0).toString(16).padStart(12, "0")}`;
 const [A, B, C, D, E, F, G, H, I] = ["A", "B", "C", "D", "E", "F", "G", "H", "I"].map(id) as [string, string, string, string, string, string, string, string, string];
@@ -237,6 +237,24 @@ describe("complete prerequisite projection", () => {
     const index = buildGraphIndex(graph([{ id: A }, { id: B, dependsOn: [A] }]));
     expect(() => projectRoot(index, B)).toThrow(GraphDataError);
     expect(() => projectRoot(index, C)).toThrow(GraphDataError);
+  });
+});
+
+describe("prerequisite inspection", () => {
+  it("traces only upstream tasks, retaining completed and shared ancestors exactly once", () => {
+    const index = buildGraphIndex(graph([
+      { id: A, status: "done" }, { id: B, status: "done", dependsOn: [A] },
+      { id: C, status: "done", dependsOn: [A] }, { id: D, dependsOn: [B, C] }, { id: E, dependsOn: [B] },
+    ]));
+    expect(tracePrerequisites(index, D)).toEqual(new Set([A, B, C, D]));
+    expect(tracePrerequisites(index, A)).toEqual(new Set([A]));
+    expect(tracePrerequisites(index, D)).not.toBe(tracePrerequisites(index, D));
+    expect(() => tracePrerequisites(index, "missing")).toThrow(GraphDataError);
+  });
+
+  it("traces the permitted maximum-depth chain without recursion", () => {
+    const seeds = Array.from({ length: 1000 }, (_, position) => ({ id: String(position), dependsOn: position === 0 ? [] : [String(position - 1)] }));
+    expect(tracePrerequisites(buildGraphIndex(graph(seeds)), "999").size).toBe(1000);
   });
 });
 

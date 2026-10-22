@@ -13,22 +13,29 @@ boundary dash and modal interaction must remain present.
 
 ## Decision
 
-The existing single SVG in React Flow's public ViewportPortal keeps every
-canonical Dagre route, stable identity and native arrow marker. Solid routes
-retain their native body paint. Dashed bodies use immutable paint pieces derived
-from the complete route: locally horizontal lines with world-space rotation and
-translation, plus short native paths around bends. The canonical dashed route
-retains its full points and marker ownership while its separate body pieces own
-stroke paint. This partially replaces the body-paint mechanism in the
-[dashboard decision](../feature/2026-10-20-project-task-dashboard.md); graph
-projection, ranking, viewport ownership and arrow geometry remain unchanged.
+The adopted fix separates complete-route semantics and markers from dashed body
+paint in React Flow's public ViewportPortal. Its original helper kept canonical
+Dagre polylines and derived immutable locally horizontal lines with world-space
+rotation/translation, plus short native paths around vertices. Solid routes kept
+native body paint. This partially replaced the body-paint mechanism in the
+[dashboard decision](../feature/2026-10-20-project-task-dashboard.md), preserving
+projection, ranking, viewport ownership and arrow geometry.
 
-`decomposeDashedRoute` uses the existing 5/4 dash pattern and nine-unit period.
+The later
+[dependency inspection decision](../feature/2026-10-22-task-dependency-inspection.md)
+replaces canonical polyline corners with bounded quadratic curves and compiles
+actual curved arc length, while retaining the axis-local long-line strategy,
+5/4 phase and native marker ownership. It also adds synchronized body/arrow
+styles through three bounded marker variants. This note preserves the original
+raster evidence and the reasons the rendering strategy remains necessary.
+
+The original `decomposeDashedRoute` helper used the existing 5/4 dash pattern and
+nine-unit period.
 Cuts fall at gap midpoints, seven units into that period. Each piece uses the
 positive `startDistance % 9` offset, so a gap-midpoint start has two unpainted
-units before its next dash. Native bend paths retain the original vertices and
-joins; cuts inside gaps do not introduce visible stroke caps. Long straight
-pieces use unit-scale rotation/translation rather than changing world geometry,
+units before its next dash. The original native bend paths retained polyline
+vertices and joins; cuts inside gaps do not introduce visible stroke caps. Long
+straight pieces use unit-scale rotation/translation rather than changing world geometry,
 stroke width or dash spacing. The
 [SVG2 stroke-shape algorithm](https://www.w3.org/TR/SVG2/painting.html#StrokeShape)
 owns that positive-offset interpretation.
@@ -58,7 +65,8 @@ retain arrow behavior when dashed body paint is separated. The route's stroke
 width and native marker definition stay intact; arrow flattening is unnecessary.
 
 The [acceptance decision](../testing/2026-10-20-dashboard-production-acceptance.md)
-retains all 1,000 task nodes/buttons, exact canonical route counts, complete paint
+retains all 1,000 task nodes and their controls, exact canonical route counts,
+complete paint
 piece readiness, five repetitions and unchanged 3,000ms/300ms gates. Modal root
 inertness, focus restoration, native node measurement and tracing stay enabled.
 The committed [dashed-paint evidence](../../../../docs/research/evidence/daynight-web-dashed-paint.json)
@@ -109,8 +117,8 @@ arrow and modal semantics. The same prototype's 1328-by-445 pixel comparison cha
 four, and the maximum was seven on the 0–255 scale. Alpha was unchanged and mean
 absolute RGB delta was 0.0006216. Differences were confined to a thin route
 antialiasing region; this is not byte-identical output. These controlled results
-are distinct from the final helper's verification. The implemented helper now
-passes its complete local native/container workflow, all capacity repetitions,
+are distinct from the final helper's verification. The delivered polyline helper
+passed its complete local native/container workflow, all capacity repetitions,
 independent arc/phase/CTM checks and cleanup. Actual product traces confirm the
 reduced preceding raster work. Production acceptance is delivered through
 [PR #52](https://github.com/codetreker/daynight/pull/52); its PR and CI retain

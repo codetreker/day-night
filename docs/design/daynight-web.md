@@ -1,6 +1,6 @@
 # 项目与任务看板设计
 
-状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 已定位长斜线 SVG 虚线绘制造成的 raster/commit 阻塞，采用局部水平线与短原生转角路径分解；完整生产验收已交付，完成状态与对应源码的 PR/CI 链接由任务清单记录。运行结果随对应 PR 与 CI 保存；本地回执不能代替干净 hosted 验证。原始看板基线为[只读 MVP](../spec/daynight-web.md)，当前项目内任务页签见[任务视图交互预览](mockups/task-views.html)；[原始看板预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)保留初始视觉基线。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
+状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现。图卡片支持独立依赖选择，平滑路线、箭头和外部虚线同步高亮；长虚线继续使用局部水平线与短曲线路径。原始完整生产验收已交付，完成状态与对应源码的 PR/CI 链接由任务清单记录。运行结果随对应 PR 与 CI 保存；本地回执不能代替干净 hosted 验证。原始看板基线为[只读 MVP](../spec/daynight-web.md)，当前项目内任务页签见[任务视图交互预览](mockups/task-views.html)；[原始看板预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)保留初始视觉基线。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
 
 [预定义属性设计](daynight-task-properties.md)的 server 接口、CLI 和任务详情中的
 只读 PR 区域已实现。[需求](../spec/daynight-task-properties.md)、
@@ -195,6 +195,7 @@ type RootProjection = {
 };
 declare const buildGraphIndex: (graph: TaskGraph) => GraphIndex;
 declare const projectRoot: (index: GraphIndex, rootId: string) => RootProjection;
+declare const tracePrerequisites: (index: GraphIndex, taskId: string) => ReadonlySet<string>;
 declare const layoutGraph: (projection: RootProjection) => CanvasLayout;
 ```
 
@@ -214,48 +215,25 @@ declare const layoutGraph: (projection: RootProjection) => CanvasLayout;
 
 依据：[React Flow 布局指南](https://reactflow.dev/learn/layouting/layouting)、[Dagre 示例](https://reactflow.dev/examples/layout/dagre)、[可访问性](https://reactflow.dev/learn/advanced-use/accessibility)、[Vue Flow](https://vueflow.dev/guide/)、[Vite 构建](https://vite.dev/guide/build)。Dagre 对外联子图的限制针对嵌套分组；这里每个根条目是独立平面图，不使用嵌套 subflow。
 
-React Flow 固定为 12.12.0，使用单个原生任务按钮处理鼠标/Enter/Space，关闭 wrapper
-焦点与所有编辑入口，控件不提供解锁开关。React Flow 拥有 220×96 节点、键盘
-焦点、选择、视口、背景与控件；边由公开 `ViewportPortal` 中一个 memoized SVG
-拥有。SVG 位于任务节点图层下方，使用同一 `CanvasLayout` 的全部 Dagre points，保留每条边的稳定 ID、
-source/target 身份、原生箭头 marker 及可访问语义，不在交互期间省略或裁剪路线。
-实线路线保持原生描边；外部前置的完整 canonical 路线关闭自身 body stroke，保留
-原生 marker 与 1.5 描边宽度，虚线 body 由独立 paint pieces 绘制。
+React Flow 固定为 12.12.0，拥有 220×96 节点、原生测量、视口、背景与控件。关闭 wrapper 焦点与所有编辑入口，控件不提供解锁开关。每张卡片由非交互外壳和两个兄弟原生按钮组成：主体以鼠标、Enter 或空格切换依赖选择，“详情”打开详情侧栏。两个控件的键盘聚焦均可平移到离屏节点，保留缩放。卡片的 `data-inspection` 为 `normal`、`selected`、`prerequisite` 或 `unrelated`，主体通过 `aria-pressed` 表达当前选择，详情通过 `aria-haspopup="dialog"` 表达阅读入口。
 
-`task-graph/dashes.ts` 的纯函数 `decomposeDashedRoute(points)` 返回只读 `DashPiece`：
-局部水平 `line` 包含 from、length、cosine、sine 和 startDistance，短原生 `path`
-包含 points 和 startDistance。每段沿路线累计弧长，用 5/4、周期 9 的原生虚线；
-内部切点位于相位 7 的 gap 中点，各 piece 使用正 `startDistance % 9` offset。
-转角保留至少 12 单位的原生路径空间，提取后的长直线至少 128 单位，首尾端点
-保持原路线端点；重复零长度段不增加弧长。helper 复用已验证布局的有限坐标，
-空、单点或全零长度路线没有 body paint，不修改 canonical 路线数据。
+`TaskGraph` 保存当前挂载画布的依赖选择；`tracePrerequisites(index, taskId)` 迭代返回所选任务和全部祖先，未知 ID 显式失败。依赖边的终点位于该闭包时高亮，源也必在闭包。选中任务与前置采用不同边框和底色，无关任务适度淡化，保留状态色、阻塞、共享和完成信息。再次选择同一任务或点击空白清除选择。详情资源选择归 `ProjectPage`，`onOpenTask(id, trigger)` 只打开或切换详情；关闭与关系导航不改变依赖选择。
 
-长段在局部坐标中为 `(0,0) → (length,0)`，通过单位旋转/平移矩阵还原世界坐标。
-Skia 因此可以在局部轴向线上裁剪 dash 生成，短 path 保留原生转角与接合；绘制
-并未删除离屏依赖或改变完整路由。paint pieces 在 canonical marker 路径之前绘制，
-不接受指针、不增加可访问节点。新增[绘制决策](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
-拥有 SVG 相位、固定 Chromium/Skia 证据及替代方案。虚线分解属于布局后的渲染准备，
-其成本计入 renderMs/openMs。
+选择不持久化，切换项目、根或页签以及卸载画布时清除。成功刷新仍可见的 ID 时重算闭包，已移出投影则清除；若焦点控件随刷新删除，恢复到可用图工具栏。失败保留旧快照和选择。完整上下文早于选择完成，选择不增删节点、投影、布局或重新适应视口。
 
-`ViewportPortal` 随 React Flow 视口使用相同的 pan/zoom transform，SVG 在图坐标
-中绘制，不自行订阅或重算每条边的视口状态。布局更换才替换静态 SVG 内容；选择、
-平移和缩放复用同一批路径。图中仍有全部任务节点与全部依赖路径，交互目标及焦点
-保持在任务按钮，边不接收指针事件。
+边由公开 `ViewportPortal` 中一个 memoized SVG 拥有。`task-graph/routes.ts` 的 `compileDependencyRoute(points, dashed)` 消费同一 `CanvasLayout` 的 Dagre points，生成整条标准 `d` 和外部虚线 `pieces`。保留稳定 ID、source/target 身份、首尾矩形交点及原生 marker；连续重复点和同向共线冗余点先移除，非共线转角的入、出段分别裁切 `min(12, 入段长度/2, 出段长度/2)`，以原转角为控制点生成二次 Bézier `Q`。标准路径使用 `M/L/Q`，保留首尾方向；无效非有限坐标显式失败。
 
-初始视口根据已知 Dagre 几何计算，等待 React Flow viewport 初始化且实际测得的
-画布宽高为正后一次应用。完整图可在 0.8–1 倍显示时整体适应；否则使用 0.8 倍锚定最左 rank，根已在该 rank 时保持垂直居中；外部上游位于根左侧时，将该 rank 的最上方节点放在画布 32px 内边距处。不能将根固定在左侧而把新增祖先放到不可见区域；平移、缩放、适应画布和键盘节点聚焦可访问其余内容。该策略只在初始化运行，选择和详情不重新适应。节点保留 React Flow 的原生 ResizeObserver；固定尺寸
-与实际 DOM 需通过浏览器边界回归。端点始终是 Dagre 原始矩形交点，分叉边可以
-在侧边非中心位置相交。该只读结构不需要编辑端口或逐边端点就绪登记；布局、选择、
-静态边、视口和请求分别归所属模块。
+实线使用标准路径原生描边，外部 canonical 路线关闭自身 body stroke，保留 marker 和 1.5 描边宽度，虚线 body 由独立 paint pieces 绘制。长直线继续使用局部水平 `<line>` 和单位旋转/平移，短曲线使用局部 `path`。`dashes.ts` 拥有只读 `DashPiece` 类型和 5/4、周期 9 的常量；line 保存起点、长度、旋转和 `startDistance`，path 保存 `d` 与 `startDistance`。
 
-同一布局及选择回调创建一组不可变节点引用，每个节点只保留普通和选中两个
-canonical variant。选择切换时只替换前后两个节点的引用，关闭只替换原选中节点；
-其余节点与边的引用、完整 DOM 和几何保持稳定。React Flow 因此只重绘选择外观
-实际变化的节点，避免详情打开成本随 1,000 个节点一起增长。选择不触发投影或布局。
+曲线弧长通过自适应 de Casteljau 分割的 chord/control-polygon 上下界计算；每个 `Q` 平分整条路线的误差预算，最大支持缩放 1.8 下累计长度误差不超过 0.025 CSS px，严于 0.1 CSS px 要求。全部 pieces 沿实际曲线弧长累计 `startDistance`，以正 `startDistance % 9` 设置虚线相位；长直线的切点仍在相位 7 的 gap 中点，转角两侧保留 12 单位空间，提取出的轴向长段至少 128 单位。实线不需要虚线弧长工作。该分解保留长路线局部轴向裁剪，避免完整长斜虚线路径的原生离屏 dash 生成。
 
-根列表按 `RootRow` memoize；折叠行接收稳定的 null 选择，详情切换不会重绘其他
-折叠行。展开状态、索引或回调改变仍触发对应行更新，完整图刷新更换索引会更新
-所有根行；不能通过缓存保留旧统计或旧 task 数据。
+路径、曲线长度和分片只随布局重新编译，计入 renderMs/openMs。选择复用相同 `d`、分片和节点位置，只更新呈现状态。SVG 保留 normal、highlighted、unrelated 三个有界 marker 变体，整条实线、所有外部虚线 pieces 及箭头同步换色或淡化；高亮外部边继续是虚线。pieces 不接受指针且不进入可访问树，canonical 边保留语义。平移和缩放使用同一 viewport transform，不订阅逐边 store 状态。完整任务与依赖始终保留，卡片和画布接收交互。
+
+[局部绘制决策](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)保留原折线绘制的固定 Chromium/Skia 证据与相位理由；[依赖追踪决策](../../.agents/notes/implemented/feature/2026-10-22-task-dependency-inspection.md)拥有当前平滑编译、呈现状态及独立曲线验收。
+
+初始视口根据已知 Dagre 几何计算，等待 React Flow viewport 初始化且实际测得的画布宽高为正后一次应用。完整图可在 0.8–1 倍显示时整体适应；否则使用 0.8 倍锚定最左 rank，根已在该 rank 时保持垂直居中；外部上游位于根左侧时，将该 rank 的最上方节点放在画布 32px 内边距处。平移、缩放、适应画布和键盘聚焦可访问其余内容。选择与详情不重新适应；固定节点尺寸与实际 DOM 继续通过浏览器回归。
+
+不可变节点呈现变体保留未改变状态的引用；选择可以同时改变许多祖先与无关任务的样式，成本通过容量图的 `selectMs` 实测，不能沿用只更新前后两个节点的性能结论。根列表按 `RootRow` memoize；折叠行不持有图内选择，详情切换不改变依赖选择。展开状态、索引或回调改变仍触发对应行更新，新快照不能复用旧统计或 task 数据。
 
 锁定的 `@xyflow/system@0.0.83` 仅声明补丁显式保留 NodeBase 泛型约束，ESM/UMD
 运行时字节不变，`exactOptionalPropertyTypes` 与依赖类型检查继续有效。静态测试
@@ -293,9 +271,9 @@ packages/daynight-server/
 | projects hooks | 列表游标、完整图快照、加载/刷新状态、按项目隔离的视图偏好 | 图读取调用 api 并交给 model；偏好只访问浏览器存储 |
 | task-graph/model | 根、可达集合、外部前置、统计与共享关系 | 仅依赖 DTO 类型与标准集合 |
 | task-graph/layout | 将投影映射为确定的节点坐标和边 | 依赖 model 与 Dagre |
-| React Flow 组件 | 视口、只读节点、缩放、平移和节点选择 | 接收布局与 onSelectTask，不调用 API |
-| 虚线绘制分解 | 保留弧长/相位的局部轴向 line 与短原生转角 path | 只依赖布局坐标类型，不访问 DOM、视口或 API |
-| 静态依赖 SVG | 公开 ViewportPortal 内的完整 canonical 路线、原生箭头、派生 body paint 与可访问语义 | 接收不可变布局，复用 React Flow 视口变换，不订阅逐边状态 |
+| React Flow 组件 | 视口、只读节点、缩放、平移、局部依赖选择与独立详情入口 | 接收完整索引、布局和 onOpenTask，不调用 API |
+| 路线编译与虚线分解 | Dagre 点列的 M/L/Q 圆角标准路径、实际曲线弧长和局部轴向 paint pieces | 只依赖布局坐标类型，不访问 DOM、视口或 API |
+| 依赖 SVG | 公开 ViewportPortal 内的完整标准路线、三种 marker、派生 body paint 与可访问语义 | 复用编译后几何和视口变换，选择只更新样式，不订阅逐边 store 状态 |
 | TaskDrawer | 当前 taskId 的详情、关系跳转、portal、焦点和关闭 | 组合详情、PR 与附件区域；不修改图快照 |
 | 附件 hook/model | 当前 project/task 的分页、写状态、选择、预览状态及目录树 | 调用 api；不修改详情或图快照 |
 | 附件预览 | Markdown、文本、图片和可信同源 frame | 使用服务预览路径；frame 键盘桥接复用侧栏 focus helper |
@@ -331,7 +309,8 @@ flowchart LR
 
 - `useProjects` 拥有当前已加载页、nextCursor 和下一页错误。首次请求、加载更多和刷新有各自状态；刷新使旧游标及旧请求失效。
 - `useTaskGraph(projectId)` 拥有完整 `TaskGraph`、接收时间、请求序号和 refresh 动作。新请求成功后一次替换快照与索引，不能逐节点补丁式混合两次响应。
-- `ProjectPage` 管理任务选择、当前页签、独立任务与非独立根的倒序展示序列、各自完成项筛选和浏览位置。任务链列表通过 `rootIds` 使用其可见序列，图投影继续使用完整且未改写的 `GraphIndex`。偏好 hook 负责按项目读取、校验并保存本地选择。图刷新后沿用仍可见的根，根隐藏、消失或变成独立任务后选择最新可见链根；没有可见链根时保留原偏好，明确的全部折叠继续保留。详情选择按完整快照判断存在性，分类和完成项过滤不关闭仍存在的任务。
+- `ProjectPage` 管理详情资源选择、当前页签、独立任务与非独立根的倒序展示序列、各自完成项筛选和浏览位置。任务链列表通过 `rootIds` 使用其可见序列，图投影继续使用完整且未改写的 `GraphIndex`。偏好 hook 负责按项目读取、校验并保存本地选择。图刷新后沿用仍可见的根，根隐藏、消失或变成独立任务后选择最新可见链根；没有可见链根时保留原偏好，明确的全部折叠继续保留。详情选择按完整快照判断存在性，分类和完成项过滤不关闭仍存在的任务。
+- `TaskGraph` 管理当前画布的依赖选择，按完整索引派生全部祖先和边的呈现状态；打开详情与关系导航不写入此状态。
 - `useTaskDetail(projectId, taskId)` 拥有最新详情与局部加载/错误。侧栏换节点不改变页面路由，关闭侧栏释放请求；前置引用在侧栏内部切换同一个选择。
 - `useAttachments(projectId, taskId)` 独立拥有按页加载的文件、选择、写操作与预览；所有结果绑定 project/task，预览还绑定 path。列表校验重复游标和目录冲突，续页失败保留已读取文件并明确标记不完整；刷新取消旧列表请求。所选路径或 `updatedAt` 改变时取消并重新读取内容，同路径覆盖后增加预览 revision。
 - 图与详情的已加载数据分别绑定 projectId 与 `(projectId,taskId)`。渲染时只显示 key 相符的数据；key 变化立即显示新资源的加载状态，不能等 effect 清理后再去掉旧内容。同资源刷新才保留旧快照，取消/序号检查不能代替这一显示身份约束。侧栏的焦点外壳保持独立，关系跳转不把焦点临时恢复到旧节点。
@@ -655,7 +634,7 @@ PDF 预览通过轮询 iframe 的实际 compositor 截图，验证 fixture 专�
 各为 1,000 节点/5,000 边。新增外部祖先密集图也有 1,000 节点/5,000 边，其中链内 2 项、外部前置 998 项，所有边均保留。页面按倒序展示根，验收显式选择 fixture 的既定根以保持完整节点/边工作负载；该选择计入原有冷启动耗时。每张图折叠再展开五次，浏览器内以 trusted click/pointer 事件的 timeStamp
 开始计时，完整节点和边已绘制、初始焦点任务可操作并经过两次 animation frame 后结束；原有图仍检查根可见，外部祖先密集图检查最左上游可见。
 Playwright 控制器的 actionability 与截图操作不进入该区间，浏览器事件排队仍包含
-在区间内。每次同时验证详情本地反馈、缩放和平移。图读取和详情网络耗时独立
+在区间内。每个样本先验证原初始视口的详情→关闭→立即缩放/平移，再在计时前聚焦深层终点，以可信点击测量完整上游选择 `selectMs`，最后在高亮态重复详情→关闭→立即缩放/平移。`selectMs` 不得超过 300ms；`detailMs`、`zoomMs`、`panMs` 各取普通态和高亮态中的较慢值，`detailNetworkMs` 取两次实测较大值。两段关闭到缩放之间均不适应画布、不重置视口、不插入额外等待。图读取和详情网络耗时独立
 保存，不能以平均值掩盖单次超时。画布为最近一次成功根布局保留一个有界
 `daynight:task-layout` User Timing measure：其 duration 覆盖投影和 Dagre，detail
 只包含 rootId，每次布局前清除旧记录。每次容量展开额外记录 layoutMs，及布局完成
@@ -663,7 +642,7 @@ Playwright 控制器的 actionability 与截图操作不进入该区间，浏览
 完整 openMs 仍受 3,000ms 门槛约束。超限用例分别验证 1,001 节点/0 边和 1,000
 节点/5,001 边的 409 完整拒绝，浏览器不得展示部分统计或部分图。
 
-每个容量 dataset 的 `feedbackDiagnostics` 增量保存每次 open/detail/zoom/pan 的
+每个容量 dataset 的 `feedbackDiagnostics` 增量保存每次 open/select/detail/zoom/pan 的
 `kind`、`repetition`、`start`、`capturedAt`、`conditionAt`、`frame1At`、
 `frame2At`、`end`、`status` 和 `error`。`phases` 分别记录输入时间戳到 capture、
 capture 到首次 ready、首次 ready 到第一帧及第一帧到第二帧的差值；尚未到达的
@@ -685,9 +664,8 @@ CDP timeline、User Timing、frame 与 GC 事件关联浏览器内的输入/条�
 
 绘制分解后，已有 open/初始 readiness 的 countsDirty 检查还要求 SVG 声明的
 `data-paint-piece-count` 为显式非负安全整数，且与实际 `.task-dependency-paint-piece`
-数量一致；1,000 节点/按钮与完整 999/5,000 canonical 路线检查继续保留。独立
-几何检查通过实际 CTM 将全部 pieces 映射回原路线弧长，验证有序覆盖 0 到总长、
-无跳段/重叠、5/4 相位与 gap 中点切缝，以及单位旋转、原生转角和 marker。
+数量一致；1,000 节点及其主体/详情控件与完整 999/5,000 canonical 路线检查继续保留。独立
+几何判断解析标准 `M/L/Q`，用精确二次曲线/矩形交点验证节点避让，用独立的二次曲线速度解析积分及近直线几何界计算弧长，检查端点、最终切线和全部边覆盖；通过实际 CTM 将 pieces 映射回标准曲线弧长，验证有序覆盖、无跳段/重叠、5/4 相位、gap 中点切缝、单位旋转与 marker。`dependency-geometry.test.ts` 中缺边、错误箭头、穿节点曲线、相位偏差和 paint coverage 负例必须失败；判断器不导入生产路线生成器或图模型作为期望值。
 大共享图的完整分解几何检查在五次计时之后执行，close → zoom 区间不增加读回或
 等待；正常 ready/count 判定与全部预算保持原义。
 
@@ -733,7 +711,7 @@ CI 无论验收成功、失败或取消都执行恢复与归档；恢复成功�
 4. 两个模块分别大于 90%，因此加权总体也大于 90%；不能靠 Go 的高覆盖率掩盖 web 缺口。现有 Go package/function/critical-block 与所有 CLI 原生平台门槛保持。
 5. 浏览器验收使用 Playwright、构建后的真实页面、真实服务与隔离 PostgreSQL。通过 API 建立项目和任务，验证完整点击路径、共享/外部前置、空项目、局部失败与重试、深链接刷新、键盘节点操作，以及侧栏实际焦点进入/Tab 循环/Esc、关闭按钮和关闭后恢复焦点；收集截图、测试 SHA、通过结果和资源清理证据。
 6. PR 按[仓库 CI 路由](../../README.md#ci-selection)选择受影响模块，main push 执行全量应用检查。最终 `checks` 只接受所有前置 job 的 `success` 或 `skipped`，失败、取消及其他结果使汇总失败；未选中的 job 为 `skipped`。Go job 与 web job 被选中时，各自在干净 checkout 中生成真实 UI 产物并完成既有集成验收；跨模块构建前置不改变模块路由。依赖变更遵守现有 workspace 与 PR 的 CLI 版本检查规则。
-7. 性能验收使用 Linux CI 的固定 Chromium、生产构建和固定拓扑图集，覆盖 1,000 节点的单链，以及恰好同时具有 1,000 节点和 5,000 边的分叉合流、多根共享和外部祖先密集图；外部图的链内 2 项与上下文 998 项分别计数。每次从折叠状态打开，重复五次，最慢一次从点击到可操作画布不超过 3,000ms；布局后打开详情、缩放或平移的可见反馈不超过 300ms。单独保存布局/渲染耗时和完整测试环境，接口耗时与详情网络时间分开记录。失败必须优化或重新评审支持上限，不能把超时结果当成已支持，也不默认引入后台 worker。
+7. 性能验收使用 Linux CI 的固定 Chromium、生产构建和固定拓扑图集，覆盖 1,000 节点的单链，以及恰好同时具有 1,000 节点和 5,000 边的分叉合流、多根共享和外部祖先密集图；外部图的链内 2 项与上下文 998 项分别计数。每次从折叠状态打开，重复五次，最慢一次从点击到可操作画布不超过 3,000ms；布局后依赖选择、打开详情、缩放或平移的可见反馈不超过 300ms。四个固定图各五次记录 `selectMs`；选择前后的节点位置、标准路线和视口必须保持一致。单独保存布局/渲染耗时和完整测试环境，接口耗时与详情网络时间分开记录。失败必须优化或重新评审支持上限，不能把超时结果当成已支持，也不默认引入后台 worker。
 
 ## 实施与验收边界
 

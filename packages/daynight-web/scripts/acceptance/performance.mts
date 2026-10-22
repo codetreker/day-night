@@ -31,7 +31,7 @@ export const validatePerformance = (value: unknown): void => {
     if (measurements.length !== 5) throw new Error('Capacity requires exactly five expansion measurements.');
     for (const rawMeasurement of measurements) {
       const measurement = object(rawMeasurement);
-      if (duration(measurement.openMs) > 3000 || duration(measurement.detailMs) > 300
+      if (duration(measurement.openMs) > 3000 || duration(measurement.selectMs) > 300 || duration(measurement.detailMs) > 300
         || duration(measurement.zoomMs) > 300 || duration(measurement.panMs) > 300) {
         throw new Error('Capacity measurement exceeded its supported performance gate.');
       }

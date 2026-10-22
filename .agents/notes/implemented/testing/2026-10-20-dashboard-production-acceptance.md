@@ -53,10 +53,17 @@ between isomorphic runs. Five repetitions share the exact same graph and IDs.
 Each capacity dataset has exactly 1,000 nodes: the chain has 999 edges, and the
 merge, shared-root and dense-external datasets have 5,000 edges each. The dense
 external graph retains two main tasks, 998 contextual tasks and every dependency.
-Five expansions per dataset must
-all meet the 3,000ms click-to-painted complete-canvas budget. Task selection,
-zoom and pan must each provide visible local feedback within 300ms. Network
-readings remain separate. Each expansion records layout and painted-render
+Five expansions per dataset must all meet the 3,000ms click-to-painted complete-canvas budget. Task selection,
+detail opening, zoom and pan must each provide visible local feedback within
+300ms. Each of the four datasets additionally records five `selectMs` values
+for transitive dependency inspection, each within 300ms; the stable scenario
+inventory remains fifteen native and ten container checks. Each sample first
+preserves initial-viewport Details → close → immediate zoom/pan, then focuses
+the deep sink before trusted selection timing, and repeats the detail/close/zoom/pan
+sequence while highlighted. `detailMs`, `zoomMs` and `panMs` retain the worse
+normal/highlighted value, and `detailNetworkMs` retains the larger observed
+network duration. Neither close-to-zoom sequence inserts Fit view, viewport
+reset or extra waiting. Network readings remain separate. Each expansion records layout and painted-render
 durations from one bounded latest-root User Timing measure; complete `openMs`
 remains the performance gate. Each independent over-limit response must be a complete
 409 refusal, with accurate counts and no partial browser graph or statistics.
@@ -93,7 +100,7 @@ required. A bounded latest-root User Timing measure separates projection/Dagre
 from subsequent rendering without a growing product telemetry history.
 
 Each capacity dataset incrementally retains `feedbackDiagnostics` for every
-interaction: trusted input, capture, first ready condition, first/second frame and
+open/select/detail/zoom/pan interaction: trusted input, capture, first ready condition, first/second frame and
 final end timestamps, status/error and phase differences. Missing milestones
 remain null. The first condition/frame milestones do not replace the final end;
 phase values are diagnostic observations, never deductions from the total budget.
@@ -104,8 +111,14 @@ those markers with browser work. The trace does not enable CPU sampling or CDP
 screenshots; scenario PNG evidence stays separate. Bounded completion and resource
 closure are required. Capacity tests disable Playwright's repeated DOM snapshots
 and filmstrip while retaining failure action/network traces, all 20 CDP traces,
-scenario PNGs and complete graph/geometry checks. Controller-side fixture,
-snapshot and repetition durations identify harness costs separately from the
+scenario PNGs and complete graph/geometry checks. The
+[inspection decision](../feature/2026-10-22-task-dependency-inspection.md) extends
+independent geometry parsing to `M/L/Q`, exact quadratic/rectangle intersections,
+independent analytic speed integration with near-straight geometric bounds, real
+curved dash phase and marker tangents. `dependency-geometry.test.ts` rejects
+missing edges, wrong arrows, node crossings, phase errors and paint-coverage
+errors without importing the production route compiler or graph model. Inspection must preserve node positions, canonical routes and viewport.
+Controller-side fixture, snapshot and repetition durations identify harness costs separately from the
 browser performance gate. The
 [CI efficiency decision](2026-10-21-ci-validation-efficiency.md) records this
 capture-work optimization and the choice to retain the unsplit suite. This is

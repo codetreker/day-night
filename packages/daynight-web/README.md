@@ -108,7 +108,18 @@ so returning to a chain retains its root choice and initializes its canvas
 viewport again. The [preference decision](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)
 records storage ownership. Tab switching, filtering and scroll restoration make
 no API request and do not change the full project counters, graph index or API
-ordering. Nodes open a detail drawer with dependency navigation,
+ordering. Each graph card has sibling native controls: its body selects the task
+and its complete upstream path, while Details opens the detail drawer. Selected
+tasks and prerequisites have distinct borders/backgrounds, unrelated elements
+are dimmed without hiding text or status, and edges and arrows share the same
+highlight. Completed and external prerequisites remain present; external routes
+keep their dash pattern. Selecting the same task or blank canvas clears
+inspection. Mouse, Enter and Space operate the focused control. Detail opening,
+closing and relationship navigation preserve inspection and viewport. Inspection
+belongs to the mounted canvas, clears on project/root/tab changes or unmount,
+and is recomputed after a successful snapshot refresh when the task still
+belongs to the projection. Failed refresh preserves the prior selection and
+snapshot. The drawer retains dependency navigation,
 PR associations, stale-data detection and attachment management. Task fields and
 graph interactions remain read-only. The PR section follows the description and
 displays every ordered title/URL pair, including duplicates. Lists longer than 100 entries use local
@@ -362,7 +373,14 @@ Capacity uses four fixed 1,000-node graphs: a 999-edge chain and three
 external graph displays two chain tasks and 998 external prerequisites, retaining
 all 5,000 dependencies. The browser explicitly selects the fixture root so
 newest-first browsing does not change the graph workload. Each graph expands five times, with every opening
-at most 3,000ms and local task/zoom/pan feedback at most 300ms. Network timings are
+at most 3,000ms and local selection/detail/zoom/pan feedback at most 300ms. Each
+dataset records five `selectMs` measurements alongside its existing timings.
+Each sample first preserves the original initial-viewport Details → close →
+immediate zoom/pan sequence, then focuses the deep sink before timing its trusted
+selection, and repeats Details → close → immediate zoom/pan while highlighted.
+`detailMs`, `zoomMs` and `panMs` report the worse normal/highlighted duration;
+`detailNetworkMs` retains the larger observed network duration. Neither close-to-zoom
+sequence inserts Fit view, a viewport reset or an extra wait. Network timings are
 recorded separately. Each expansion also records projection/layout duration and
 subsequent painted-render duration; these diagnostics do not replace the complete
 opening budget. Independent 1,001-node and 5,001-edge cases require complete
@@ -383,7 +401,7 @@ scenario annotations validated in each target's report.
 | W1 | `project-list`: more than 50 projects, cursor requests, unique cards and navigation to a later-page project |
 | W2 | `project-graph`, `deep-links`: project entry, direct HTML reload and browser history |
 | W3–W4 | `project-graph`, `project-view-tabs`, `refresh-staleness`, `failure-recovery`: exact statistics, topology-based tabs, distinct root progress, direct standalone details, independent completion filters, per-project tab/scroll/expansion restoration, dependency reclassification and consistent full refresh |
-| W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`, `capacity-external`: complete root projections, shared/external prerequisites, state markers and viewport/node actions |
+| W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`, `capacity-external`: complete root projections, shared/external prerequisites, state markers, complete dependency inspection, stable smooth routes and viewport/node actions |
 | W8 | `detail-navigation`, `refresh-staleness`: complete current content, ordered PR associations, relation navigation, property refresh and readiness differences without revising a dependent task |
 | W9 | `failure-recovery`, `deep-links`, `capacity-limits`: owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
@@ -527,25 +545,45 @@ adapter returns finite left-to-right node positions and routed edge points for
 220-by-96 cards. The read-only React Flow canvas consumes these results without changing domain
 objects. React Flow owns fixed task nodes, native ResizeObserver measurement,
 keyboard behavior, viewport and controls. One memoized SVG in its public
-ViewportPortal renders every exact Dagre path, with stable edge identity,
-arrowheads, external-context dashes and accessibility semantics. It shares the viewport's
-transform, so selection/pan/zoom reuse geometry without per-edge reactive state.
-Canonical routes retain native arrow markers and full Dagre points. Dashed body
-paint uses `dashes.ts` to derive locally horizontal rotated lines and short native
-vertex paths, with the original 5/4 pattern and continuous positive arc-length
-phase. Solid bodies remain native. Pieces are noninteractive and hidden from the
-accessibility tree; canonical edges keep their existing identity/semantics. The
-[paint decision](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
-owns the pinned raster evidence, phase preservation and visual tolerances.
+ViewportPortal renders every compiled route, with stable edge identity,
+arrowheads, external-context dashes and accessibility semantics. `routes.ts`
+exports `compileDependencyRoute(points, dashed)`, returning canonical `d` and
+immutable paint `pieces`. It retains Dagre endpoints and route direction while
+rounding noncollinear corners with quadratic `Q` segments and at most 12 units
+trimmed from either adjoining span. Duplicate and forward-collinear redundant
+points are removed before compilation; invalid coordinates fail explicitly.
+
+Canonical routes use `M/L/Q`. Solid bodies remain native. Dashed bodies retain
+locally horizontal rotated long lines and short paths around curves, with the
+original 5/4 pattern. `dashes.ts` owns `DashPiece` and dash constants. Adaptive de
+Casteljau subdivision bounds quadratic arc length between chord and control
+polygon lengths; each curve receives an equal share of the route error budget,
+which is at most 0.025 CSS px at maximum 1.8 zoom. Cumulative real arc length
+sets each piece's positive dash offset, preserving the phase across curves and
+gap-midpoint cuts. Solid routes skip dash arc-length work. Pieces are
+noninteractive and hidden from the accessibility tree; canonical edges retain
+semantics and native arrow ownership.
+
+Routes and pieces compile only when layout changes. Inspection reuses their
+geometry and selects one of three bounded normal/highlighted/unrelated marker
+variants with matching edge-body styles. External highlighted routes stay dashed.
+Pan and zoom share the viewport transform without per-edge store subscriptions.
+The [paint decision](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
+retains the original pinned raster evidence and phase rationale; the
+[inspection decision](../../.agents/notes/implemented/feature/2026-10-22-task-dependency-inspection.md)
+owns smooth compilation and synchronized presentation.
+
 Initial placement uses known layout bounds after the viewport and positive
 measured canvas dimensions are ready, fitting within 0.8–1 zoom or anchoring the
 leftmost rank at 0.8 zoom. The root remains vertically centered when already
 leftmost; otherwise the topmost upstream node starts at a 32px canvas inset.
-Dependency geometry does not require connection-port DOM or per-edge endpoint readiness.
-Ordinary/selected canonical node variants retain unaffected references, and
-memoized collapsed root rows keep a null selection until expanded. New snapshot
-indexes still refresh all rows. The one-time initial viewport policy is separate
-from explicit fit controls and does not run again on selection or pan.
+Dependency geometry does not require connection-port DOM or per-edge endpoint
+readiness. Immutable node presentation variants reuse references when their
+inspection state is unchanged; selecting a task may restyle many ancestors and
+unrelated tasks. The five `selectMs` measurements in each capacity dataset verify
+that work directly. Memoized collapsed root rows do not own graph selection;
+new snapshot indexes still refresh their data. Initial viewport placement is
+separate from explicit Fit view and does not rerun on selection or pan.
 
 Page hooks own requests and cancellation. Navigation or refresh invalidates the
 previous request generation, continuation failures preserve loaded cards, and

@@ -17,10 +17,12 @@ and [design](../../../../docs/design/daynight-task-inspection.md) define the
 target behavior. This delivery consists of that design, an interactive visual
 prototype and a four-task implementation breakdown. The
 [complete prerequisite context decision](../feature/2026-10-22-complete-prerequisite-context.md)
-implements the first task: complete ancestors, separate counts and a readable
-upstream-aware initial viewport. Graph inspection and smooth paths, centered
-reading, and Markdown descriptions remain pending in their Daynight tasks.
-Existing paint and detail notes describe their current mechanisms.
+implements complete ancestors, separate counts and a readable upstream-aware
+initial viewport. The
+[dependency inspection decision](../feature/2026-10-22-task-dependency-inspection.md)
+implements independent card controls, transitive node/edge inspection and smooth
+routes. Centered reading and Markdown descriptions remain pending in their
+Daynight tasks; existing detail notes describe the current drawer mechanism.
 
 The root and its descendants remain the chain's counted membership. Rendering
 adds the complete prerequisite closure without importing unrelated descendants
@@ -93,8 +95,8 @@ geometry preserves affordable extension points without claiming those features.
 
 The [projection](../feature/2026-10-20-task-graph-projection.md) note retains the
 original direct-boundary rationale and links its replacement. The existing
-[paint repair](../bug-fix/2026-10-20-long-dashed-dependency-paint.md) and
-[fullscreen](../feature/2026-10-22-task-graph-fullscreen.md) notes remain current
-until their implementation tasks revise the affected mechanisms and cross-link
-any replacement decisions. The standalone prototype proves its own
+[paint repair](../bug-fix/2026-10-20-long-dashed-dependency-paint.md) retains its
+original raster investigation and links the smooth-route replacement. The
+[fullscreen](../feature/2026-10-22-task-graph-fullscreen.md) note remains the owner
+of viewport-preserving graph expansion and modal layering. The standalone prototype proves its own
 interaction, not production behavior or capacity.

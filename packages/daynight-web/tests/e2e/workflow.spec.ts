@@ -3,11 +3,13 @@ import type { Locator, Page, TestInfo } from '@playwright/test';
 import { test, expect, createProject, createTask, updateTask, withDependencyFailure, withProjectsFailure } from './fixtures';
 import { parseTaskGraph } from '../../src/api/parse';
 import { buildGraphIndex, projectRoot } from '../../src/features/task-graph/model';
-import { layoutGraph, type CanvasLayout } from '../../src/features/task-graph/layout';
+import { layoutGraph } from '../../src/features/task-graph/layout';
+import { checkDependencyGeometry } from './dependency-geometry';
 import type { PullRequestProperty } from '../../src/api/types';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
-const node = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node`);
+const node = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node-body`);
+const details = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node-details`);
 const root = (page: Page, id: string): Locator => page.locator(`#task-root-${id}`);
 const standalone = (page: Page, id: string): Locator => page.locator(`#standalone-task-${id}`);
 const viewTab = (page: Page, name: '独立任务' | '任务链'): Locator => page.getByRole('tab', { name, exact: true });
@@ -200,141 +202,8 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
     const expected = layoutGraph(projectRoot(graphIndex, rootId));
     await expect(page.locator('.task-dependency-edges')).toHaveCount(1);
     await expect(page.locator('.task-dependency-edge')).toHaveCount(expected.edges.length);
-    const diagnostics = await page.evaluate((geometry: CanvasLayout) => {
-      const failures: string[] = [];
-      const svg = document.querySelector<SVGSVGElement>('.task-dependency-edges');
-      const viewport = document.querySelector('.react-flow__viewport');
-      if (svg === null || viewport === null) return ['The dependency layer or viewport is absent.'];
-      if (svg.closest('.react-flow__viewport') !== viewport) failures.push('Dependency SVG uses a different viewport.');
-      if (getComputedStyle(svg).pointerEvents !== 'none') failures.push('Dependency SVG captures pointer input.');
-      if (svg.hasAttribute('viewBox')) failures.push('Dependency SVG rescales the layout coordinates.');
-      const declaredPieces = svg.getAttribute('data-paint-piece-count');
-      const bodyPieces = svg.querySelectorAll('.task-dependency-paint-piece');
-      if (declaredPieces === null || !/^(0|[1-9]\d*)$/.test(declaredPieces) || !Number.isSafeInteger(Number(declaredPieces)) || Number(declaredPieces) !== bodyPieces.length) failures.push('Dependency paint pieces differ from the complete declared count.');
-      if (svg.querySelectorAll('[tabindex]:not([tabindex="-1"])').length !== 0) failures.push('Dependency SVG has a keyboard focus target.');
-      const expectedIds = new Set(geometry.edges.map((edge) => edge.id));
-      const actualIds = [...svg.querySelectorAll('.task-dependency-edge')].map((edge) => edge.getAttribute('data-id'));
-      if (actualIds.length !== expectedIds.size || actualIds.some((id) => id === null || !expectedIds.has(id))) failures.push('Dependency identities differ from the active projection.');
-      const expectedNodeIds = new Set(geometry.nodes.map((node) => node.id));
-      const actualNodeIds = [...viewport.querySelectorAll('.react-flow__node')].map((node) => node.getAttribute('data-id'));
-      if (actualNodeIds.length !== expectedNodeIds.size || actualNodeIds.some((id) => id === null || !expectedNodeIds.has(id))) failures.push('Task identities differ from the active projection.');
-      for (const expectedNode of geometry.nodes) {
-        const element = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${expectedNode.id}"]`);
-        if (element === null || element.closest('.react-flow__viewport') !== viewport) failures.push(`Node ${expectedNode.id} uses a different viewport.`);
-      }
-      const onBorder = (point: DOMPoint, bounds: DOMRect): boolean => {
-        const epsilon = 0.75;
-        return point.x >= bounds.left - epsilon && point.x <= bounds.right + epsilon
-          && point.y >= bounds.top - epsilon && point.y <= bounds.bottom + epsilon
-          && Math.min(Math.abs(point.x - bounds.left), Math.abs(point.x - bounds.right), Math.abs(point.y - bounds.top), Math.abs(point.y - bounds.bottom)) <= epsilon;
-      };
-      for (const edge of geometry.edges) {
-        const group = svg.querySelector<SVGGElement>(`.task-dependency-edge[data-id="${edge.id}"]`);
-        const path = group?.querySelector<SVGPathElement>('path.react-flow__edge-path');
-        const source = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${edge.source}"]`);
-        const target = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${edge.target}"]`);
-        if (group === null || path === undefined || path === null || source === null || target === null) {
-          failures.push(`Dependency ${edge.id} lacks its path or endpoint nodes.`);
-          continue;
-        }
-        if (group.getAttribute('role') !== 'img' || group.getAttribute('focusable') !== 'false' || !(group.getAttribute('aria-label') ?? '').includes(edge.source) || !(group.getAttribute('aria-label') ?? '').includes(edge.target)) failures.push(`Dependency ${edge.id} lost its accessible identity.`);
-        const expectedPath = edge.points.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ');
-        if (path.getAttribute('d') !== expectedPath || path.dataset.source !== edge.source || path.dataset.target !== edge.target) failures.push(`Dependency ${edge.id} lost layout points or endpoint identities.`);
-        if (path.getAttribute('aria-hidden') !== 'true' || getComputedStyle(path).pointerEvents !== 'none') failures.push(`Dependency ${edge.id} is interactive.`);
-        const dashed = getComputedStyle(path).strokeDasharray !== 'none';
-        if (dashed !== edge.external) failures.push(`Dependency ${edge.id} has an incorrect external style.`);
-        const pieces = [...group.querySelectorAll<SVGGraphicsElement>('.task-dependency-paint-piece')];
-        if (edge.external !== (pieces.length > 0) || (edge.external ? getComputedStyle(path).stroke !== 'none' : getComputedStyle(path).stroke === 'none')) failures.push(`Dependency ${edge.id} has incomplete or duplicate body paint.`);
-        if (edge.external) {
-          const epsilon = 0.001;
-          const svgMatrix = svg.getScreenCTM();
-          if (svgMatrix === null) {
-            failures.push(`Dependency ${edge.id} has no painted viewport matrix.`);
-            continue;
-          }
-          let accumulated = 0;
-          const segments: { from: CanvasLayout['edges'][number]['points'][number]; to: CanvasLayout['edges'][number]['points'][number]; start: number; length: number }[] = [];
-          for (let index = 1; index < edge.points.length; index++) {
-            const from = edge.points[index - 1]!;
-            const to = edge.points[index]!;
-            const length = Math.hypot(to.x - from.x, to.y - from.y);
-            if (length > 0) segments.push({ from, to, start: accumulated, length });
-            accumulated += length;
-          }
-          const alongRoute = (point: DOMPoint, minimum: number): number | null => {
-            for (const segment of segments) {
-              const dx = segment.to.x - segment.from.x;
-              const dy = segment.to.y - segment.from.y;
-              const fraction = ((point.x - segment.from.x) * dx + (point.y - segment.from.y) * dy) / (segment.length * segment.length);
-              const projected = { x: segment.from.x + dx * fraction, y: segment.from.y + dy * fraction };
-              const distance = segment.start + Math.max(0, Math.min(1, fraction)) * segment.length;
-              if (fraction >= -epsilon / segment.length && fraction <= 1 + epsilon / segment.length && Math.hypot(point.x - projected.x, point.y - projected.y) <= epsilon && distance >= minimum - epsilon) return distance;
-            }
-            return null;
-          };
-          let covered = 0;
-          for (const piece of pieces) {
-            const style = getComputedStyle(piece);
-            const dash = style.strokeDasharray.match(/[-+\d.]+/g)?.map(Number);
-            if (piece.getAttribute('aria-hidden') !== 'true' || piece.getAttribute('focusable') !== 'false' || style.pointerEvents !== 'none' || style.stroke !== 'rgb(171, 178, 199)' || Number.parseFloat(style.strokeWidth) !== 1.5 || style.strokeLinecap !== 'butt' || style.strokeLinejoin !== 'miter' || piece instanceof SVGPathElement && style.fill !== 'none' || dash?.length !== 2 || dash[0] !== 5 || dash[1] !== 4) failures.push(`Dependency ${edge.id} changed native dash paint semantics.`);
-            const pieceMatrix = piece.getScreenCTM();
-            if (pieceMatrix === null) {
-              failures.push(`Dependency ${edge.id} has a body piece without geometry.`);
-              continue;
-            }
-            const localToGraph = svgMatrix.inverse().multiply(pieceMatrix);
-            let localPoints: { x: number; y: number }[];
-            if (piece instanceof SVGLineElement && piece.dataset.pieceKind === 'line') {
-              localPoints = [{ x: piece.x1.baseVal.value, y: piece.y1.baseVal.value }, { x: piece.x2.baseVal.value, y: piece.y2.baseVal.value }];
-              if (localPoints[0]!.x !== 0 || localPoints[0]!.y !== 0 || localPoints[1]!.y !== 0 || localPoints[1]!.x <= 0 || Math.abs(Math.hypot(localToGraph.a, localToGraph.b) - 1) > epsilon || Math.abs(localToGraph.a - localToGraph.d) > epsilon || Math.abs(localToGraph.b + localToGraph.c) > epsilon) failures.push(`Dependency ${edge.id} has a non-axis or rescaled line body.`);
-            } else if (piece instanceof SVGPathElement && piece.dataset.pieceKind === 'path') {
-              const commands = [...(piece.getAttribute('d') ?? '').matchAll(/[ML]([^ML]+)/g)];
-              localPoints = commands.map((command) => {
-                const coordinates = command[1]!.trim().split(/[ ,]+/).map(Number);
-                return { x: coordinates[0]!, y: coordinates[1]! };
-              });
-            } else {
-              failures.push(`Dependency ${edge.id} has an unknown paint primitive.`);
-              continue;
-            }
-            if (localPoints.length < 2 || localPoints.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) {
-              failures.push(`Dependency ${edge.id} has an invalid native join path.`);
-              continue;
-            }
-            const points = localPoints.map((point) => new DOMPoint(point.x, point.y).matrixTransform(localToGraph));
-            const distances: number[] = [];
-            let previous = covered;
-            for (const point of points) {
-              const distance = alongRoute(point, previous);
-              if (distance === null) break;
-              distances.push(distance);
-              previous = distance;
-            }
-            if (distances.length !== points.length || Math.abs(distances[0]! - covered) > epsilon) {
-              failures.push(`Dependency ${edge.id} omits, overlaps or leaves its canonical route.`);
-              continue;
-            }
-            let paintedLength = 0;
-            for (let index = 1; index < points.length; index++) paintedLength += Math.hypot(points[index]!.x - points[index - 1]!.x, points[index]!.y - points[index - 1]!.y);
-            const start = distances[0]!;
-            const end = distances[distances.length - 1]!;
-            const phase = ((start % 9) + 9) % 9;
-            if (Math.abs(paintedLength - (end - start)) > epsilon || Math.abs(Number.parseFloat(style.strokeDashoffset) - phase) > epsilon) failures.push(`Dependency ${edge.id} changes route length or continuous dash phase.`);
-            if (start > epsilon && Math.abs(phase - 7) > epsilon) failures.push(`Dependency ${edge.id} separates native joins outside a dash gap.`);
-            covered = end;
-          }
-          if (Math.abs(covered - accumulated) > epsilon) failures.push(`Dependency ${edge.id} does not paint its complete canonical body.`);
-        }
-        const matrix = path.getScreenCTM();
-        const first = edge.points[0]!;
-        const last = edge.points[edge.points.length - 1]!;
-        if (matrix === null || !onBorder(new DOMPoint(first.x, first.y).matrixTransform(matrix), source.getBoundingClientRect()) || !onBorder(new DOMPoint(last.x, last.y).matrixTransform(matrix), target.getBoundingClientRect())) failures.push(`Dependency ${edge.id} does not meet its rendered endpoint boundaries.`);
-        const markerId = /#([^#)]+)\)/.exec(path.getAttribute('marker-end') ?? '')?.[1];
-        if (markerId === undefined || !svg.querySelectorAll('marker').values().some((marker) => marker.id === markerId)) failures.push(`Dependency ${edge.id} has no local arrow marker.`);
-      }
-      return failures;
-    }, expected);
-    expect(diagnostics, 'Every static dependency follows all Dagre points and the actual transformed task boundaries').toEqual([]);
+    const diagnostics = await checkDependencyGeometry(page, expected);
+    expect(diagnostics, 'Every smooth dependency follows its routed endpoints and transformed task boundaries').toEqual([]);
   };
   await test.step('keeps every static dependency aligned with task nodes through zoom and pan', async () => {
     await checkEdges(a.id);
@@ -372,14 +241,14 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
     }).toBe(true);
     await expect(viewport).toHaveAttribute('style', beforeFullscreen!);
     expect(await viewportElement!.evaluate((element) => element === document.querySelector('.react-flow__viewport'))).toBe(true);
-    expect(await taskElement!.evaluate((element, id) => element === document.querySelector(`.react-flow__node[data-id="${id}"] button.task-node`), a.id)).toBe(true);
+    expect(await taskElement!.evaluate((element, id) => element === document.querySelector(`.react-flow__node[data-id="${id}"] button.task-node-body`), a.id)).toBe(true);
     await checkEdges(a.id);
     await fullscreen.getByRole('button', { name: '退出全屏', exact: true }).click();
     await expect(fullscreen).toHaveCount(0);
     await expect(enter).toBeFocused();
     await expect(viewport).toHaveAttribute('style', beforeFullscreen!);
     expect(await viewportElement!.evaluate((element) => element === document.querySelector('.react-flow__viewport'))).toBe(true);
-    expect(await taskElement!.evaluate((element, id) => element === document.querySelector(`.react-flow__node[data-id="${id}"] button.task-node`), a.id)).toBe(true);
+    expect(await taskElement!.evaluate((element, id) => element === document.querySelector(`.react-flow__node[data-id="${id}"] button.task-node-body`), a.id)).toBe(true);
     await checkEdges(a.id);
     await viewportElement!.dispose();
     await taskElement!.dispose();
@@ -451,20 +320,69 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
       }, taskId);
       await expect.poll(() => visibleInCanvas(ancestor.id)).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      const appearance = () => page.evaluate(() => ({
+        viewport: (document.querySelector('.react-flow__viewport') as HTMLElement).style.transform,
+        nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((element) => [element.dataset.id, element.style.transform]),
+        routes: [...document.querySelectorAll('.react-flow__edge-path')].map((element) => element.getAttribute('d')),
+        pieces: [...document.querySelectorAll('.task-dependency-paint-piece')].map((element) => [element.getAttribute('d'), element.getAttribute('transform'), element.getAttribute('x2')]),
+      }));
+      await page.keyboard.press('Tab');
+      await node(page, prerequisite.id).focus();
+      await expect.poll(() => visibleInCanvas(prerequisite.id)).toBe(true);
+      const beforeSelection = await appearance();
+      await page.keyboard.press('Enter');
+      await expect(node(page, prerequisite.id)).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.locator(`.react-flow__node[data-id="${ancestor.id}"] .task-node`)).toHaveAttribute('data-inspection', 'prerequisite');
+      for (const task of [source, sink]) await expect(page.locator(`.react-flow__node[data-id="${task.id}"] .task-node`)).toHaveAttribute('data-inspection', 'unrelated');
+      await expect(page.locator('.task-dependency-highlighted')).toHaveCount(1);
+      await expect(page.locator('.drawer-backdrop')).toHaveCount(0);
+      expect(await appearance()).toEqual(beforeSelection);
+      await page.keyboard.press('Space');
+      await expect(page.locator('.task-node-selected')).toHaveCount(0);
+      await node(page, prerequisite.id).click();
+      await page.locator('.react-flow__pane').click({ position: { x: 5, y: 5 } });
+      await expect(page.locator('.task-node-selected')).toHaveCount(0);
+      await page.keyboard.press('Tab');
+      await details(page, sink.id).focus();
+      await expect.poll(() => visibleInCanvas(sink.id)).toBe(true);
+      const beforeDetail = await appearance();
+      await node(page, sink.id).click();
+      await expect(page.locator('.task-node-prerequisite')).toHaveCount(3);
+      await expect(page.locator('.task-dependency-highlighted')).toHaveCount(3);
+      await details(page, sink.id).click();
+      const inspectionDetail = page.locator('.drawer-backdrop').getByRole('dialog');
+      await expect(inspectionDetail.locator('.drawer-title')).toHaveText(sink.title);
+      await inspectionDetail.getByRole('region', { name: '前置依赖', exact: true }).getByRole('button', { name: prerequisite.title, exact: true }).click();
+      await expect(inspectionDetail.locator('.drawer-title')).toHaveText(prerequisite.title);
+      await page.keyboard.press('Escape');
+      await expect(details(page, sink.id)).toBeFocused();
+      await expect(node(page, sink.id)).toHaveAttribute('aria-pressed', 'true');
+      expect(await appearance()).toEqual(beforeDetail);
+      await page.locator('.react-flow__pane').click({ position: { x: 5, y: 5 } });
+      await expect(page.locator('.task-node-selected')).toHaveCount(0);
       await page.keyboard.press('Tab');
       for (const task of [ancestor, prerequisite, source, sink]) {
-        await node(page, task.id).focus();
+        await details(page, task.id).focus();
         await expect.poll(() => visibleInCanvas(task.id)).toBe(true);
         await page.keyboard.press('Enter');
         const detail = page.locator('.drawer-backdrop').getByRole('dialog');
         await expect(detail.locator('.drawer-title')).toHaveText(task.title);
         await page.keyboard.press('Escape');
         await expect(detail).toHaveCount(0);
-        await expect(node(page, task.id)).toBeFocused();
+        await expect(details(page, task.id)).toBeFocused();
       }
       await page.getByRole('button', { name: '适应画布', exact: true }).click();
       for (const task of [ancestor, prerequisite, source, sink]) await expect.poll(() => visibleInCanvas(task.id)).toBe(true);
       await screenshot(page, info, `complete-prerequisites-${width}`);
+      await page.keyboard.press('Tab');
+      await node(page, source.id).focus();
+      await page.keyboard.press('Enter');
+      await expect(node(page, source.id)).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.locator('.task-node-prerequisite')).toHaveCount(0);
+      await viewTab(page, '独立任务').click();
+      await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
+      await viewTab(page, '任务链').click();
+      await expect(page.locator('.task-node-selected')).toHaveCount(0);
     }
   });
 });
@@ -584,7 +502,7 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
   await viewTab(page, '任务链').click();
   await expect(node(page, independent.id)).toBeVisible();
   independent = await updateTask(request, project.id, independent.id, { version: independent.version, dependsOn: [] });
-  await node(page, independent.id).click();
+  await details(page, independent.id).click();
   await expect(dialog.locator('.drawer-stale')).toBeVisible();
   await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
   await expect(dialog.locator('.drawer-title')).toHaveText(independent.title);
@@ -635,7 +553,7 @@ test('detail-navigation', scenario('detail-navigation'), async ({ page, request 
   await updateTask(request, project.id, b.id, { version: b.version, dependsOn: [a.id, unknown.id] });
   let detailReads = 0;
   page.on('request', (request) => { if (new URL(request.url()).pathname === `/api/v1/projects/${project.id}/tasks/${b.id}`) detailReads++; });
-  await node(page, b.id).click();
+  await details(page, b.id).click();
   const dialog = page.getByRole('dialog', { name: '任务详情' });
   await expect(dialog.locator('.drawer-title')).toHaveText(title);
   expect(await dialog.getByRole('region', { name: '描述', exact: true }).locator('.drawer-description').textContent()).toBe(description);
@@ -710,6 +628,8 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   await expect(root(page, predecessor.id).locator('.root-status')).toHaveText('待处理');
   await expect(root(page, predecessor.id).locator('.root-progress-label')).toHaveText('0/2 已完成');
   await expect(node(page, dependent.id).locator('.graph-blocked-badge')).toBeVisible();
+  await node(page, dependent.id).click();
+  await expect(node(page, dependent.id)).toHaveAttribute('aria-pressed', 'true');
   await updateTask(request, project.id, predecessor.id, { version: predecessor.version, status: 'done' });
   const currentResponse = await request.get(`/api/v1/projects/${project.id}/tasks/${dependent.id}`);
   expect(currentResponse.status()).toBe(200);
@@ -718,7 +638,7 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   expect(current.updatedAt).toBe(dependent.updatedAt);
   expect(current.ready).toBe(true);
   expect(current.blockedBy).toEqual([]);
-  await node(page, dependent.id).click();
+  await details(page, dependent.id).click();
   const dialog = page.getByRole('dialog', { name: '任务详情' });
   await expect(dialog.locator('.drawer-title')).toHaveText(dependent.title);
   await expect(dialog.locator('.drawer-ready')).toHaveText('可开始');
@@ -736,12 +656,14 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   await expect(node(page, predecessor.id).locator('.graph-status')).toHaveText('已完成');
   await expect(dialog.locator('.drawer-title')).toHaveText(dependent.title);
   await expect(dialog.locator('.drawer-stale')).toHaveCount(0);
+  await expect(node(page, dependent.id)).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.task-node-prerequisite')).toHaveCount(1);
   await expect(node(page, dependent.id).locator('.graph-blocked-badge')).toHaveCount(0);
   await page.keyboard.press('Escape');
   const pullRequests = Array.from({ length: 205 }, (_, index) => ({ title: `刷新前关联 ${index + 1}`, url: '  new arbitrary URL\0  ' }));
   const changed = await updateTask(request, project.id, dependent.id, { version: current.version, properties: { pullRequests } });
   expect(changed.properties.pullRequests).toEqual(pullRequests);
-  await node(page, dependent.id).click();
+  await details(page, dependent.id).click();
   await checkPullRequests(dialog, pullRequests);
   await expect(dialog.locator('.drawer-stale')).toBeVisible();
   await dialog.getByRole('combobox', { name: '关联 PR 页码' }).selectOption('2');
@@ -765,6 +687,7 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   await expect(root(page, predecessor.id).locator('.root-progress-label')).toHaveText('2/2 已完成');
   await expect(node(page, predecessor.id).locator('.graph-status')).toHaveText('已完成');
   await expect(node(page, dependent.id).locator('.graph-status')).toHaveText('已完成');
+  await expect(node(page, dependent.id)).toHaveAttribute('aria-pressed', 'false');
   await screenshot(page, info, 'refresh-chain-complete');
 });
 
@@ -787,11 +710,13 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, request },
   await expect(root(page, task.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(root(page, task.id).locator('.root-status')).toHaveText('已完成');
   await expect(node(page, task.id)).toBeVisible();
+  await node(page, successor.id).click();
+  await expect(node(page, successor.id)).toHaveAttribute('aria-pressed', 'true');
   const receipt = await page.locator('.snapshot-time time').getAttribute('datetime');
   const dialog = page.getByRole('dialog', { name: '任务详情' });
   await withDependencyFailure(async () => {
     const failedDetail = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/projects/${project.id}/tasks/${task.id}`);
-    await node(page, task.id).click();
+    await details(page, task.id).click();
     const response = await failedDetail;
     expect(response.status()).toBe(500);
     await expect(dialog.getByRole('heading', { name: '任务详情加载失败' })).toBeVisible();
@@ -811,8 +736,10 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, request },
   await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
-  await expect(node(page, task.id)).toBeFocused();
+  await expect(details(page, task.id)).toBeFocused();
   await page.getByRole('button', { name: '放大', exact: true }).click();
+  const retainedViewport = await page.locator('.react-flow__viewport').getAttribute('style');
+  const retainedRoutes = await page.locator('.react-flow__edge-path').evaluateAll((paths) => paths.map((path) => path.getAttribute('d')));
   await withDependencyFailure(async () => {
     const failed = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/projects/${project.id}/task-graph`);
     await page.getByRole('button', { name: '刷新', exact: true }).click();
@@ -829,6 +756,11 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, request },
     await expect(stat(page, '已完成')).toHaveText('2');
     await expect(page.locator('.snapshot-time time')).toHaveAttribute('datetime', receipt!);
     await expect(page.getByRole('alert')).not.toContainText('task_dependencies');
+    await expect(node(page, successor.id)).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.task-node-prerequisite')).toHaveCount(1);
+    await expect(page.locator('.task-dependency-highlighted')).toHaveCount(1);
+    await expect(page.locator('.react-flow__viewport')).toHaveAttribute('style', retainedViewport!);
+    expect(await page.locator('.react-flow__edge-path').evaluateAll((paths) => paths.map((path) => path.getAttribute('d')))).toEqual(retainedRoutes);
     await page.reload();
     await expect(page.getByRole('heading', { name: '项目加载失败' })).toBeVisible();
     await expect(page.getByRole('region', { name: '项目任务统计' })).toHaveCount(0);
@@ -911,7 +843,7 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   const c = await createTask(request, project.id, { title: '键盘后续任务', dependsOn: [b.id] });
   await createTask(request, project.id, { title: '保留原链根的另一分支', dependsOn: [a.id] });
   await openProject(page, project.id, project.name);
-  const trigger = node(page, b.id);
+  const trigger = details(page, b.id);
   let detailReads = 0;
   page.on('request', (request) => { if (new URL(request.url()).pathname === `/api/v1/projects/${project.id}/tasks/${b.id}`) detailReads++; });
   const originalOverflow = await page.evaluate(() => ({ document: document.documentElement.style.overflow, body: document.body.style.overflow }));
@@ -1012,11 +944,14 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
       await enterFullscreen.click();
     }
     currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, dependsOn: [] });
+    await node(page, b.id).click();
+    await expect(node(page, b.id)).toHaveAttribute('aria-pressed', 'true');
     await trigger.click();
     await expect(dialog.locator('.drawer-stale')).toBeVisible();
     await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
     await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
     await expect(trigger).toHaveCount(0);
+    await expect(page.locator('.task-node-selected')).toHaveCount(0);
     if (fullscreenMode) await expect(page.locator('.task-graph-fullscreen')).toHaveCount(1);
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
@@ -1062,7 +997,7 @@ test('narrow-layout', scenario('narrow-layout'), async ({ page, request }, info)
     expect(await fullscreen.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
-  await node(page, a.id).focus();
+  await details(page, a.id).focus();
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: '任务详情' });
   await expect(dialog.locator('.drawer-title')).toHaveText(a.title);

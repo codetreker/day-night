@@ -9,20 +9,19 @@ type RootListProps = {
   readonly allRootIds: readonly string[];
   readonly expandedRootId: string | null;
   readonly onExpand: (id: string | null) => void;
-  readonly selectedTaskId: string | null;
-  readonly onSelectTask: (id: string, trigger: HTMLElement) => void;
+  readonly onOpenTask: (id: string, trigger: HTMLElement) => void;
   readonly showCompleted: boolean;
   readonly onShowCompletedChange: (show: boolean) => void;
 };
 
 const labels = { todo: '待处理', in_progress: '进行中', done: '已完成' };
 
-type RootRowProps = Pick<RootListProps, 'index' | 'onExpand' | 'selectedTaskId' | 'onSelectTask'> & {
+type RootRowProps = Pick<RootListProps, 'index' | 'onExpand' | 'onOpenTask'> & {
   readonly rootId: string;
   readonly expanded: boolean;
 };
 
-const RootRow = memo(({ index, rootId, expanded, onExpand, selectedTaskId, onSelectTask }: RootRowProps) => {
+const RootRow = memo(({ index, rootId, expanded, onExpand, onOpenTask }: RootRowProps) => {
   const task = index.nodes.get(rootId)!;
   const progress = index.rootProgress.get(rootId)!;
   return (
@@ -48,14 +47,14 @@ const RootRow = memo(({ index, rootId, expanded, onExpand, selectedTaskId, onSel
       </button>
       {expanded && (
         <div id={`task-graph-${rootId}`} role="region" aria-label={`${task.titlePreview} 的任务依赖图`}>
-          <TaskGraph index={index} rootId={rootId} selectedTaskId={selectedTaskId} onSelectTask={onSelectTask} />
+          <TaskGraph index={index} rootId={rootId} onOpenTask={onOpenTask} />
         </div>
       )}
     </li>
   );
 });
 
-export const RootList = ({ index, rootIds, allRootIds, expandedRootId, onExpand, selectedTaskId, onSelectTask, showCompleted, onShowCompletedChange }: RootListProps) => {
+export const RootList = ({ index, rootIds, allRootIds, expandedRootId, onExpand, onOpenTask, showCompleted, onShowCompletedChange }: RootListProps) => {
   const checkbox = useRef<HTMLInputElement>(null);
   const completedCount = useMemo(() => allRootIds.filter((id) => {
     const progress = index.rootProgress.get(id)!;
@@ -82,8 +81,7 @@ export const RootList = ({ index, rootIds, allRootIds, expandedRootId, onExpand,
           rootId={rootId}
           expanded={expandedRootId === rootId}
           onExpand={onExpand}
-          selectedTaskId={expandedRootId === rootId ? selectedTaskId : null}
-          onSelectTask={onSelectTask}
+          onOpenTask={onOpenTask}
         />
       ))}
     </ul>}

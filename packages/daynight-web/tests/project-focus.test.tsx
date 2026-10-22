@@ -11,14 +11,14 @@ vi.mock('../src/api/client', async (original) => ({
 }));
 vi.mock('../src/features/task-graph/TaskGraph', async () => {
   const { useGraphFullscreen } = await import('../src/features/task-graph/useGraphFullscreen');
-  return { TaskGraph: ({ index, rootId, onSelectTask }: {
-    index: GraphIndex; rootId: string; onSelectTask: (id: string, trigger: HTMLElement) => void;
+  return { TaskGraph: ({ index, rootId, onOpenTask }: {
+    index: GraphIndex; rootId: string; onOpenTask: (id: string, trigger: HTMLElement) => void;
   }) => {
     const { fullscreen, containerRef, toggleRef, onKeyDown, toggle } = useGraphFullscreen();
     return <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} ref={containerRef} onKeyDown={onKeyDown} role={fullscreen ? 'dialog' : undefined} aria-label={fullscreen ? '任务依赖图全屏查看' : undefined}>
       <button type="button" className="graph-fullscreen-toggle" ref={toggleRef} onClick={toggle}>{fullscreen ? '退出全屏' : '全屏查看'}</button>
       {[...projectRoot(index, rootId).mainIds].map((id) => (
-    <button key={id} type="button" onClick={(event) => onSelectTask(id, event.currentTarget)}>
+    <button key={id} type="button" onClick={(event) => onOpenTask(id, event.currentTarget)}>
       节点 {index.nodes.get(id)!.titlePreview}
     </button>
       ))}</div>;

@@ -34,19 +34,26 @@ the [presentation decision](2026-10-21-task-chain-presentation.md) owns that ord
 while the complete graph index retains its API order. React Flow owns fixed 220-by-96 task nodes,
 native node measurement, keyboard interaction, the viewport and its controls.
 Editing, connection, deletion, wrapper focus and interactive-lock controls remain
-disabled. Each task has one native button for pointer, Enter and Space activation;
-keyboard focus pans offscreen nodes without changing zoom.
+disabled. The
+[dependency inspection decision](2026-10-22-task-dependency-inspection.md) replaces
+the original single task action with sibling native inspection and Details
+controls. Keyboard focus on either control pans offscreen tasks without changing
+zoom. Graph inspection belongs to the mounted canvas; detail resource selection
+belongs to the project page.
 
 One memoized SVG beneath task nodes in the public `ViewportPortal` renders every
-dependency from the immutable Dagre layout. Canonical paths retain all exact
-routed points, stable edge/source/target identity, native arrow markers and
-accessibility semantics. Solid bodies keep native paint. Long dashed bodies use
-immutable locally horizontal lines and short native bend paths, preserving full
-arc length and dash phase through the
-[long-dashed paint decision](../bug-fix/2026-10-20-long-dashed-dependency-paint.md).
+dependency from the immutable Dagre layout. The inspection decision compiles
+its points into bounded quadratic corners while preserving route endpoints,
+stable edge/source/target identity, native markers and accessibility semantics.
+Solid bodies keep native paint. Long dashed bodies retain immutable locally
+horizontal lines and short curved paths, preserving actual curve arc length
+and dash phase. The
+[long-dashed paint decision](../bug-fix/2026-10-20-long-dashed-dependency-paint.md)
+retains the original axis-local raster rationale and links its smooth successor.
 The portal shares the React Flow viewport transform; pan and zoom transform the
 same complete paths without per-edge store subscriptions or endpoint-admission
-work. Selection keeps the edge layer stable. Edges do not intercept pointer
+work. Selection reuses compiled geometry while changing node, body-piece and
+marker presentation together. Edges do not intercept pointer
 input, so task buttons and the canvas remain the interaction targets.
 
 The original W-T4 custom-edge integration used invisible framework ports for
@@ -61,23 +68,24 @@ It uses no connection-port DOM or node-handle readiness state. Initial placement
 and positive measured canvas dimensions are ready; native ResizeObserver node
 measurement remains enabled.
 
-Initial viewport policy keeps readable zoom. When the graph cannot fit at that
-zoom, the chosen root is placed near the left edge and vertically centered;
-centering the entire bounding box would open a long chain in its middle. The
-policy runs once after initialization, while explicit overview controls may
+Initial viewport policy keeps readable zoom. The
+[complete context decision](2026-10-22-complete-prerequisite-context.md) anchors
+the leftmost upstream rank for graphs that cannot fit at 0.8–1 zoom. A root
+already in that rank stays vertically centered, preserving the original long-chain
+starting point; ancestors extending left of it start at the top of their rank.
+The policy runs once after initialization, while explicit overview controls may
 zoom out further. Selection and viewport movement do not rerun layout.
 
-A layout/callback pair owns immutable ordinary and selected variants for each
-node. Selection reuses all unaffected references and swaps only the previous and
-next selected variants; closing swaps only the previous selection. React Flow
-can therefore update selection styling without rendering every task again. Full
-node/edge DOM and geometry remain present, which preserves focus, graph inspection
-and complete-capacity assertions. Component tests check the changed-node rendering
-counts for open, switch and close transitions. This structure keeps detail-opening
-work proportional to changed styling while retaining the full graph.
+Immutable node presentation variants preserve references whose inspection state
+is unchanged. The original detail-coupled selection changed at most two tasks;
+complete upstream inspection can restyle many prerequisites and unrelated tasks.
+The inspection decision replaces that two-node cost assumption with measured
+`selectMs` for all four capacity datasets. Full node/edge DOM, routes and viewport
+remain present, and detail opening does not alter inspection. This retains focus
+and complete-capacity assertions while measuring the actual changed styling.
 
-Each root row is memoized. Collapsed rows receive a stable null selection, so
-opening or switching task details does not rerender every unrelated root. Expanded
+Each root row is memoized. Collapsed rows hold no graph-local inspection, so
+opening or switching task details does not change their dependency selection. Expanded
 state, callback and index changes still invalidate the relevant rows; a new
 snapshot index refreshes every row and its statistics.
 
@@ -121,8 +129,9 @@ can leave global counts or related nodes inconsistent. Explicit stale detection
 and complete snapshot replacement retain the single-snapshot meaning.
 
 **Keep the default interactive canvas controls.** The lock control can re-enable
-editing, and wrapper keyboard selection does not open task details. A single
-native button plus explicit read-only props implements the intended actions.
+editing, and wrapper keyboard selection does not implement the required task
+actions. The original native button and explicit read-only props supplied the
+MVP action; sibling controls now distinguish inspection from opening details.
 
 **Represent every immutable dependency as a reactive React Flow edge.** Each
 edge then owns wrapper/SVG/store and endpoint bookkeeping. At 5,000 edges those
@@ -132,8 +141,8 @@ continues to own nodes, viewport interaction and controls.
 
 **Recreate every node data object on selection.** The selection becomes visible,
 but all task props change and a detail action can rerender the complete
-1,000-node graph. Canonical ordinary/selected variants preserve the immutable
-layout and limit updates to the styling that actually changed.
+1,000-node graph. Immutable presentation variants preserve the layout and
+references whose styling is unchanged, including the expanded inspection states.
 
 **Always center the complete graph at a clamped readable zoom.** In a thousand-node
 chain, its root falls far outside the viewport. Root anchoring preserves the

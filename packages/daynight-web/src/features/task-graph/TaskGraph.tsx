@@ -1,61 +1,57 @@
-import { memo, useId, useLayoutEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Background, BackgroundVariant, Controls, getViewportForBounds, ReactFlow, useReactFlow, useStore, ViewportPortal, type Viewport } from '@xyflow/react';
-import { decomposeDashedRoute, DEPENDENCY_DASH_ARRAY, DEPENDENCY_DASH_PERIOD } from './dashes';
-import { layoutGraph, TASK_NODE_HEIGHT, TASK_NODE_WIDTH, type CanvasLayout, type CanvasPoint } from './layout';
-import { projectRoot, type GraphIndex } from './model';
-import { TaskNode, type TaskFlowNode } from './TaskNode';
+import { DEPENDENCY_DASH_ARRAY, DEPENDENCY_DASH_PERIOD } from './dashes';
+import { layoutGraph, TASK_NODE_HEIGHT, TASK_NODE_WIDTH, type CanvasLayout } from './layout';
+import { projectRoot, tracePrerequisites, type GraphIndex } from './model';
+import { TaskNode, type InspectionState, type TaskFlowNode } from './TaskNode';
+import { compileDependencyRoute } from './routes';
 import { useGraphFullscreen } from './useGraphFullscreen';
 import '@xyflow/react/dist/style.css';
 
 type TaskGraphProps = {
   index: GraphIndex;
   rootId: string;
-  selectedTaskId: string | null;
-  onSelectTask: (id: string, trigger: HTMLElement) => void;
+  onOpenTask: (id: string, trigger: HTMLElement) => void;
 };
 
-const pathData = (points: readonly CanvasPoint[]) => points.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ');
+const edgeColors = { normal: '#abb2c7', highlighted: '#6762ce', unrelated: '#c7cddb' };
 const dashStyle = {
-  fill: 'none', stroke: '#abb2c7', strokeWidth: 1.5, strokeDasharray: DEPENDENCY_DASH_ARRAY,
+  fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeDasharray: DEPENDENCY_DASH_ARRAY,
   strokeLinecap: 'butt', strokeLinejoin: 'miter', pointerEvents: 'none',
 } as const;
 
-const DependencyEdges = memo(({ geometry }: { geometry: CanvasLayout }) => {
+const DependencyPaint = memo(({ route }: { route: ReturnType<typeof compileDependencyRoute> }) => <>
+  {route.pieces.map((piece, position) => {
+    const properties = {
+      className: 'task-dependency-paint-piece', 'data-piece-kind': piece.kind,
+      'aria-hidden': true as const, focusable: false as const,
+      style: { ...dashStyle, strokeDashoffset: piece.startDistance % DEPENDENCY_DASH_PERIOD },
+    };
+    return piece.kind === 'line'
+      ? <line key={position} {...properties} x1="0" y1="0" x2={piece.length} y2="0" transform={`matrix(${piece.cos} ${piece.sin} ${-piece.sin} ${piece.cos} ${piece.from.x} ${piece.from.y})`} />
+      : <path key={position} {...properties} d={piece.d} />;
+  })}
+</>);
+
+const DependencyEdges = memo(({ geometry, highlighted }: { geometry: CanvasLayout; highlighted: ReadonlySet<string> | null }) => {
   const markerId = `task-dependency-arrow-${useId()}`;
-  const routes = useMemo(() => geometry.edges.map((edge) => ({
-    edge, pieces: edge.external ? decomposeDashedRoute(edge.points) : [],
-  })), [geometry]);
+  const routes = useMemo(() => geometry.edges.map((edge) => ({ edge, route: compileDependencyRoute(edge.points, edge.external) })), [geometry]);
   return (
     <ViewportPortal>
-      <svg className="task-dependency-edges" data-testid="task-dependency-edges" data-paint-piece-count={routes.reduce((count, route) => count + route.pieces.length, 0)} width="100%" height="100%" role="group" aria-label="任务依赖关系" focusable="false">
+      <svg className="task-dependency-edges" data-testid="task-dependency-edges" data-paint-piece-count={routes.reduce((count, item) => count + item.route.pieces.length, 0)} width="100%" height="100%" role="group" aria-label="任务依赖关系" focusable="false">
         <defs>
-          <marker id={markerId} markerWidth="16" markerHeight="16" viewBox="-10 -10 20 20" markerUnits="strokeWidth" orient="auto-start-reverse" refX="0" refY="0">
-            <polyline className="arrowclosed" points="-5,-4 0,0 -5,4 -5,-4" stroke="#abb2c7" fill="#abb2c7" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
-          </marker>
+          {(Object.keys(edgeColors) as (keyof typeof edgeColors)[]).map((state) => <marker key={state} id={`${markerId}-${state}`} markerWidth="16" markerHeight="16" viewBox="-10 -10 20 20" markerUnits="strokeWidth" orient="auto-start-reverse" refX="0" refY="0">
+            <polyline className="arrowclosed" points="-5,-4 0,0 -5,4 -5,-4" stroke={edgeColors[state]} fill={edgeColors[state]} strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+          </marker>)}
         </defs>
-        {routes.map(({ edge, pieces }) => (
-          <g key={edge.id} className="react-flow__edge task-dependency-edge" data-id={edge.id} role="img" aria-label={`前置任务 ${edge.source} → 后续任务 ${edge.target}`} focusable="false">
-            {pieces.map((piece, position) => {
-              const properties = {
-                className: 'task-dependency-paint-piece', 'data-piece-kind': piece.kind,
-                'aria-hidden': true as const, focusable: false as const,
-                style: { ...dashStyle, strokeDashoffset: piece.startDistance % DEPENDENCY_DASH_PERIOD },
-              };
-              return piece.kind === 'line'
-                ? <line key={position} {...properties} x1="0" y1="0" x2={piece.length} y2="0" transform={`matrix(${piece.cosine} ${piece.sine} ${-piece.sine} ${piece.cosine} ${piece.from.x} ${piece.from.y})`} />
-                : <path key={position} {...properties} d={pathData(piece.points)} />;
-            })}
-            <path
-              className="react-flow__edge-path"
-              data-source={edge.source}
-              data-target={edge.target}
-              d={pathData(edge.points)}
-              markerEnd={`url(#${markerId})`}
-              aria-hidden="true"
-              style={{ fill: 'none', stroke: edge.external ? 'none' : '#abb2c7', strokeWidth: 1.5, strokeDasharray: edge.external ? DEPENDENCY_DASH_ARRAY : undefined }}
-            />
-          </g>
-        ))}
+        {routes.map(({ edge, route }) => {
+          const state = highlighted === null ? 'normal' : highlighted.has(edge.target) ? 'highlighted' : 'unrelated';
+          return <g key={edge.id} className={`react-flow__edge task-dependency-edge task-dependency-${state}`} data-id={edge.id} data-source={edge.source} data-target={edge.target} data-inspection={state} role="img" aria-label={`前置任务 ${edge.source} → 后续任务 ${edge.target}${state === 'highlighted' ? '，所选依赖路径' : ''}`} focusable="false" style={{ color: edgeColors[state] }}>
+            <DependencyPaint route={route} />
+            <path className="react-flow__edge-path" data-source={edge.source} data-target={edge.target} d={route.d} markerEnd={`url(#${markerId}-${state})`} aria-hidden="true"
+              style={{ fill: 'none', stroke: edge.external ? 'none' : 'currentColor', strokeWidth: 1.5, strokeDasharray: edge.external ? DEPENDENCY_DASH_ARRAY : undefined }} />
+          </g>;
+        })}
       </svg>
     </ViewportPortal>
   );
@@ -68,8 +64,8 @@ const ariaLabels = {
   'controls.zoomIn.ariaLabel': '放大',
   'controls.zoomOut.ariaLabel': '缩小',
   'controls.fitView.ariaLabel': '适应画布',
-  'node.a11yDescription.default': '使用 Tab 选择任务，按 Enter 或空格查看任务详情。',
-  'node.a11yDescription.keyboardDisabled': '使用 Tab 选择任务，按 Enter 或空格查看任务详情。',
+  'node.a11yDescription.default': '使用 Tab 聚焦卡片主体或详情，按 Enter 或空格追踪依赖或打开详情。',
+  'node.a11yDescription.keyboardDisabled': '使用 Tab 聚焦卡片主体或详情，按 Enter 或空格追踪依赖或打开详情。',
 };
 
 export const getInitialTaskViewport = (geometry: CanvasLayout, rootId: string, width: number, height: number): Viewport => {
@@ -104,28 +100,41 @@ const InitialViewport = ({ geometry, rootId }: { geometry: CanvasLayout; rootId:
   return null;
 };
 
-const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry }: TaskGraphProps & { geometry: CanvasLayout }) => {
+const TaskCanvas = ({ index, rootId, onOpenTask, geometry }: TaskGraphProps & { geometry: CanvasLayout }) => {
   const { fullscreen, containerRef, toggleRef, onKeyDown, toggle } = useGraphFullscreen();
-  // Stable node identities restrict selection renders to the previous and next tasks.
+  const [inspection, setInspection] = useState<{ id: string; trigger: HTMLElement } | null>(null);
+  const selectedTaskId = inspection !== null && geometry.nodes.some((node) => node.id === inspection.id) ? inspection.id : null;
+  const highlighted = useMemo(() => selectedTaskId === null ? null : tracePrerequisites(index, selectedTaskId), [index, selectedTaskId]);
+  useLayoutEffect(() => {
+    const focusedNode = document.activeElement?.closest<HTMLElement>('.react-flow__node');
+    if (focusedNode !== undefined && focusedNode !== null && containerRef.current?.contains(focusedNode) &&
+      !geometry.nodes.some((node) => node.id === focusedNode.dataset.id)) toggleRef.current?.focus();
+  }, [geometry, containerRef, toggleRef]);
+  useEffect(() => {
+    if (inspection === null || selectedTaskId !== null) return;
+    if (document.activeElement === inspection.trigger || !inspection.trigger.isConnected && document.activeElement === document.body) toggleRef.current?.focus();
+    setInspection(null);
+  }, [inspection, selectedTaskId, toggleRef]);
+  const onInspectTask = useCallback((id: string, trigger: HTMLElement) => {
+    setInspection((current) => current?.id === id ? null : { id, trigger });
+  }, []);
+  const clearInspection = useCallback(() => { setInspection(null); }, []);
   const nodeVariants = useMemo(() => geometry.nodes.map((node) => {
     const base: TaskFlowNode = {
-      id: node.id,
-      position: node.position,
-      type: 'task',
-      width: TASK_NODE_WIDTH,
-      height: TASK_NODE_HEIGHT,
+      id: node.id, position: node.position, type: 'task', width: TASK_NODE_WIDTH, height: TASK_NODE_HEIGHT,
       style: { width: TASK_NODE_WIDTH, height: TASK_NODE_HEIGHT },
       data: {
-        task: index.nodes.get(node.id)!, kind: node.kind, shared: index.sharedIds.has(node.id),
-        selected: false,
+        task: index.nodes.get(node.id)!, kind: node.kind, shared: index.sharedIds.has(node.id), inspection: 'normal',
         center: { x: node.position.x + TASK_NODE_WIDTH / 2, y: node.position.y + TASK_NODE_HEIGHT / 2 },
-        onSelectTask,
+        onInspectTask, onOpenTask,
       },
     };
-    return { base, selected: { ...base, data: { ...base.data, selected: true } } };
-  }), [geometry, index, onSelectTask]);
-  const nodes = useMemo<TaskFlowNode[]>(() => nodeVariants.map(({ base, selected }) =>
-    base.id === selectedTaskId ? selected : base), [nodeVariants, selectedTaskId]);
+    const variant = (inspection: InspectionState): TaskFlowNode => ({ ...base, data: { ...base.data, inspection } });
+    return { normal: base, selected: variant('selected'), prerequisite: variant('prerequisite'), unrelated: variant('unrelated') };
+  }), [geometry, index, onInspectTask, onOpenTask]);
+  const nodes = useMemo<TaskFlowNode[]>(() => nodeVariants.map((variants) => highlighted === null ? variants.normal
+    : variants.normal.id === selectedTaskId ? variants.selected
+      : highlighted.has(variants.normal.id) ? variants.prerequisite : variants.unrelated), [nodeVariants, highlighted, selectedTaskId]);
   return (
     <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} ref={containerRef} role={fullscreen ? 'dialog' : undefined} aria-modal={fullscreen ? true : undefined} aria-label={fullscreen ? '任务依赖图全屏查看' : undefined} onKeyDown={onKeyDown}>
       <div className="graph-toolbar">
@@ -140,7 +149,7 @@ const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry }: T
           </button>
         </div>
       </div>
-      <p className="graph-instructions" id={`graph-instructions-${rootId}`}>拖动画布平移，滚轮或按钮缩放。Tab 选择任务，Enter 或空格查看详情。</p>
+      <p className="graph-instructions" id={`graph-instructions-${rootId}`}>点击卡片追踪全部前置，再次点击或点击空白处清除；详情单独打开。拖动平移，滚轮缩放；Tab 聚焦后按 Enter 或空格操作。</p>
       <div className="task-graph-canvas">
         <ReactFlow<TaskFlowNode>
           id={`flow-${rootId}`}
@@ -156,6 +165,7 @@ const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry }: T
           edgesFocusable={false}
           edgesReconnectable={false}
           elementsSelectable={false}
+          onPaneClick={clearInspection}
           connectOnClick={false}
           deleteKeyCode={null}
           panActivationKeyCode={null}
@@ -167,7 +177,7 @@ const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry }: T
           attributionPosition="bottom-right"
         >
           <InitialViewport geometry={geometry} rootId={rootId} />
-          <DependencyEdges geometry={geometry} />
+          <DependencyEdges geometry={geometry} highlighted={highlighted} />
           <Background variant={BackgroundVariant.Dots} gap={18} size={0.8} color="#d9dee9" bgColor="#fafbfe" />
           <Controls position="top-right" orientation="horizontal" showInteractive={false} fitViewOptions={viewportFitOptions} />
         </ReactFlow>
@@ -194,5 +204,5 @@ export const TaskGraph = (props: TaskGraphProps) => {
   if (result.kind === 'error') {
     return <div className="graph-error" role="alert"><h3>任务图布局失败</h3><p>无法绘制此任务链，请刷新项目后重试。</p></div>;
   }
-  return <TaskCanvas {...props} geometry={result.geometry} />;
+  return <TaskCanvas key={props.rootId} {...props} geometry={result.geometry} />;
 };

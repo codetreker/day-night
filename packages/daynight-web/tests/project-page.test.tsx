@@ -9,11 +9,11 @@ import { useTaskDetail } from "../src/features/task-detail/useTaskDetail";
 import { projectRoot, type GraphIndex } from "../src/features/task-graph/model";
 
 vi.mock("../src/api/client", async (original) => ({ ...await original<typeof import("../src/api/client")>(), getTask: vi.fn(), getTaskGraph: vi.fn() }));
-vi.mock("../src/features/task-graph/RootList", () => ({ RootList: ({ index, rootIds, expandedRootId, onExpand, onSelectTask }: {
-  index: GraphIndex; rootIds: readonly string[]; expandedRootId: string | null; onExpand: (id: string | null) => void; onSelectTask: (id: string, trigger: HTMLElement) => void;
+vi.mock("../src/features/task-graph/RootList", () => ({ RootList: ({ index, rootIds, expandedRootId, onExpand, onOpenTask }: {
+  index: GraphIndex; rootIds: readonly string[]; expandedRootId: string | null; onExpand: (id: string | null) => void; onOpenTask: (id: string, trigger: HTMLElement) => void;
 }) => <div data-testid="root-list" data-index-roots={index.roots.join(",")}>{rootIds.map((root) => <div key={root}>
   <button id={`task-root-${root}`} onClick={() => onExpand(expandedRootId === root ? null : root)}>{index.nodes.get(root)!.titlePreview}</button>
-  {expandedRootId === root && <div data-testid={`chain-${root}`}>{[...projectRoot(index, root).mainIds].map((id) => <button key={id} onClick={(event) => onSelectTask(id, event.currentTarget)}>节点 {index.nodes.get(id)!.titlePreview}</button>)}</div>}
+  {expandedRootId === root && <div data-testid={`chain-${root}`}>{[...projectRoot(index, root).mainIds].map((id) => <button key={id} onClick={(event) => onOpenTask(id, event.currentTarget)}>节点 {index.nodes.get(id)!.titlePreview}</button>)}</div>}
 </div>)}</div> }));
 vi.mock("../src/features/task-detail/TaskDrawer", () => ({ TaskDrawer: ({ projectId, taskId, snapshot, onSelectTask, onClose, onRestoreFocus, onRefreshGraph }: {
   projectId: string; taskId: string; snapshot: GraphSnapshot; onSelectTask: (id: string) => void; onClose: () => void; onRestoreFocus: () => void; onRefreshGraph: () => void;

@@ -1,10 +1,10 @@
 # 任务依赖追踪与详情阅读设计
 
-状态：完整上游上下文（UX-T1）已实现；依赖选择与平滑连线、居中详情和 Markdown 描述（UX-T2–UX-T4）待实现。适用模块为 `daynight-web` 与 CLI 发布的 `using-daynight` skill。行为以[要求](../spec/daynight-task-inspection.md)为准，交付边界见[任务拆分](daynight-task-inspection-tasks.md)，视觉见[交互原型](mockups/task-inspection/index.html)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-22-task-inspection-design.md)保留实际比较与范围选择。
+状态：完整上游上下文、依赖选择、平滑高亮连线和独立详情入口（UX-T1–UX-T2）已实现；居中详情和 Markdown 描述（UX-T3–UX-T4）待实现。适用模块为 `daynight-web` 与 CLI 发布的 `using-daynight` skill。行为以[要求](../spec/daynight-task-inspection.md)为准，交付边界见[任务拆分](daynight-task-inspection-tasks.md)，视觉见[交互原型](mockups/task-inspection/index.html)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-22-task-inspection-design.md)保留实际比较与范围选择。
 
 ## 问题与当前结构
 
-当前任务节点是整张可点击按钮，点击后同时设置图的选中任务和打开详情。选择与阅读耦合，无法在画布上持续追踪依赖。投影已补齐链内任务的全部上游前置，并排除外部前置的无关后续；其机制由[完整上下文决策](../../.agents/notes/implemented/feature/2026-10-22-complete-prerequisite-context.md)拥有。依赖线仍按 Dagre 点列绘制为折线，描述仍以纯文本显示在右侧详情抽屉中。下文的选择、曲线、居中详情和 Markdown 机制属于其余任务的目标结构。
+任务卡片主体选择该任务及其完整上游路径，独立“详情”入口打开详情。依赖选择属于当前画布，与详情资源选择分离；平滑路径、箭头和虚线分片同步高亮。投影已补齐链内任务的全部上游前置，并排除外部前置的无关后续；其机制由[完整上下文决策](../../.agents/notes/implemented/feature/2026-10-22-complete-prerequisite-context.md)拥有。[依赖追踪决策](../../.agents/notes/implemented/feature/2026-10-22-task-dependency-inspection.md)拥有选择与平滑绘制。描述仍以纯文本显示在右侧详情抽屉中；居中详情和 Markdown 章节定义其余任务的目标结构。
 
 这些事实分别由 [TaskNode](../../packages/daynight-web/src/features/task-graph/TaskNode.tsx)、[ProjectPage](../../packages/daynight-web/src/features/projects/ProjectPage.tsx)、[投影模型](../../packages/daynight-web/src/features/task-graph/model.ts)、[TaskGraph](../../packages/daynight-web/src/features/task-graph/TaskGraph.tsx) 和 [TaskDrawer](../../packages/daynight-web/src/features/task-detail/TaskDrawer.tsx) 实现。图索引已包含完整项目的 `dependsOn` 和 `successors`，无需新增服务端读取接口。附件预览已使用 `react-markdown`、`remark-gfm` 及任务内相对 URL 解析。
 
@@ -33,7 +33,7 @@ flowchart LR
   Markdown -->|附件链接| Attachments
 ```
 
-`ProjectPage` 拥有详情资源选择、打开入口和焦点恢复；每个挂载的 `TaskGraph` 拥有局部依赖选择。使用不同的回调表达 `onInspectTask(id)` 与 `onOpenTask(id, trigger)`，关系导航只更新详情 ID。卡片外壳为非交互容器，主选择按钮与“详情”按钮互为兄弟；详情按钮采用链接视觉，继续使用按钮语义，因为它打开本页对话框。
+`ProjectPage` 拥有详情资源选择、打开入口和焦点恢复；每个挂载的 `TaskGraph` 拥有局部依赖选择。使用不同的回调表达 `onInspectTask(id, trigger)` 与 `onOpenTask(id, trigger)`，关系导航只更新详情 ID。卡片外壳为非交互容器，主选择按钮与“详情”按钮互为兄弟；详情按钮采用链接视觉，继续使用按钮语义，因为它打开本页对话框。
 
 `model.ts` 拥有集合语义；`layout.ts` 只布局既定投影；路径模块把布局点列转换为标准曲线路径及绘制元数据；`TaskGraph` 组合这些结果和状态。标题、状态、共享与阻塞值继续来自完整索引，不能从淡化或过滤后的元素推导。
 
@@ -65,13 +65,13 @@ flowchart LR
 
 一个路径模型同时生成整条可访问标准 `M/L/Q` 路径、箭头的最终切线，以及外部虚线的局部绘制片段。内部边直接绘制标准路径。外部边继续将长直线段画成局部坐标水平 `<line>`，短曲线画成局部路径；整条标准路径只承担语义和 marker。不得重新绘制带长斜线包围盒的整条虚线路径。
 
-分片沿同一标准曲线累积实际弧长，保持现有 5/4 虚线周期和相位；曲线弧长使用可证明误差界的计算，单条路径累计误差在最大支持缩放下不超过 0.1 CSS px。箭头、实线和所有虚线分片共享呈现状态。使用有限的普通/高亮/淡化 marker 变体或等效稳定机制，避免每次选择重新生成几何和每条边独立复制 marker。
+分片沿同一标准曲线累积实际弧长，保持现有 5/4 虚线周期和相位。`routes.ts` 的 `compileDependencyRoute(points, dashed)` 同时返回标准 `d` 与虚线 `pieces`；弧长采用自适应 de Casteljau 的 chord/control-polygon 上下界，各曲线平分单路线预算，在最大缩放 1.8 下累计误差不超过 0.025 CSS px，严于 0.1 CSS px 要求。箭头、实线和所有虚线分片共享呈现状态。使用有限的普通/高亮/淡化 marker 变体或等效稳定机制，避免每次选择重新生成几何和每条边独立复制 marker。
 
 路径转换与弧长分片在布局结果变化时预计算。选择只更新节点、边和 marker 的样式引用。无关元素的透明度不得降低到无法阅读状态的程度，选中和前置样式使用边框、底色及可访问说明区分，原有状态色保留。
 
 ### 验收判断的升级
 
-既有生产验收对折线路径及分片有独立几何判断。曲线交付必须同步升级判断器，支持 `M/L/Q`、端点、最终切线、节点矩形避让、全部边覆盖、曲线与虚线分片一致性。判断器使用独立解析与采样或独立数学计算，不导入生产路径生成器作为期望值；加入缺边、错误箭头、曲线穿过节点、相位偏差等负例。只放宽现有 `M/L` 断言不构成曲线验收。
+生产验收的独立几何判断器解析 `M/L/Q`，检查端点、最终切线、节点矩形避让、全部边覆盖及曲线与虚线分片一致性。判断器使用精确二次曲线/矩形交点、独立速度解析积分及近直线几何界，不导入生产路径生成器或图模型作为期望值；缺边、错误箭头、曲线穿过节点、相位偏差和 paint coverage 负例必须失败。标准路径、节点位置和视口在选择前后逐项比较。
 
 ## 居中详情
 
@@ -101,7 +101,7 @@ flowchart LR
 
 组件与浏览器测试覆盖 sibling 控件、键盘选择/详情、根无依赖、跨链祖先、关系导航不改变依赖选择、详情关闭的焦点、全屏两层 Esc、刷新移除入口、附件 frame Tab/Esc、320px 无页面溢出、Markdown 表格/代码/HTML文本、相对链接和错误恢复。保留既有原生、容器与容量验收；每项任务完成自己的受影响检查，不把基本可用性留给单独的最终集成任务。
 
-上限仍是完整项目 1,000 节点/5,000 边。完整闭包可使一条链显示接近整个项目，因此保留现有容量矩阵，新增外部祖先密集场景，并测量选择时完整重绘成本。展开五次最慢不超过 3,000ms；布局后交互本地反馈不超过 300ms；网络等待单独统计。
+上限仍是完整项目 1,000 节点/5,000 边。完整闭包可使一条链显示接近整个项目，因此保留含外部祖先密集图的四个容量场景，每图五次记录 `selectMs`，验证选择时完整重绘成本。每个样本先保留普通态初始视口的详情→关闭→立即缩放/平移，再测量深层终点的可信选择，最后在高亮态重复详情→关闭→立即缩放/平移；详情、缩放和平移各取两态较慢值，网络时间取实测较大值。关闭到缩放之间不插入适应画布、视口重置或额外等待。展开五次最慢不超过 3,000ms；布局后交互本地反馈不超过 300ms；网络等待单独统计。
 
 本设计不引入服务端入口、后台调度或新的并发执行边界。图与详情继续通过 `projectId`、`taskId`、请求序号和既有 `requestId` 关联，保留 abort、资源身份检查和局部重试。附件控制器归属当前详情资源，切换 task 或关闭时取消待处理读取，晚到响应不能改写新资源。错误继续使用现有脱敏呈现，不记录描述或附件正文。生产核查可按具体项目/任务复现：打开浏览器网络面板，过滤该 project/task API 路径，确认只有一个附件清单读取所有者，切换任务后旧请求取消；遇到错误按显示的 requestId 对照现有服务日志。性能使用现有 `daynight:task-layout` 与验收报告，不新增遥测系统。
 

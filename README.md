@@ -6,16 +6,16 @@ statistics, task dependency graphs, task details and file attachments from the
 same Go service origin. The read-only graph dashboard is delivered, including
 production-browser acceptance, embedded deployment and the subsequent focus-restoration repair. The
 [dashboard tasks](docs/design/daynight-web-tasks.md) record completion and link
-the corresponding PR and CI evidence. Complete prerequisite context is implemented.
+the corresponding PR and CI evidence. Complete prerequisite context and graph dependency inspection are implemented.
 The [task inspection requirements](docs/spec/daynight-task-inspection.md),
 [architecture](docs/design/daynight-task-inspection.md),
 [focused task breakdown](docs/design/daynight-task-inspection-tasks.md) and
 [interactive preview](docs/design/mockups/task-inspection/index.html) cover
 complete prerequisite context, smooth highlighted dependency routes, a centered
 detail dialog and Markdown descriptions with matching public skill guidance.
-Graph inspection, smooth paths, centered details and Markdown remain pending.
-Card activation still opens the detail drawer, routes remain polylines, and descriptions remain plain text until
-their focused tasks are delivered.
+Graph cards select their complete upstream path, with smooth synchronized
+node, line and arrow highlighting and a separate detail action. Centered details
+and Markdown remain pending; details still use the drawer and plain descriptions.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
