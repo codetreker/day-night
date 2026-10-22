@@ -1,7 +1,7 @@
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createOperation, OperationError } from "../../src/api/operation.js";
 import type { Operation } from "../../src/api/operation.js";
 import { discoverRepository, discoverWorktreeRoot, RepositoryGitError, runRepositoryGit } from "../../src/repository/git.js";
@@ -118,15 +118,22 @@ describe("repository Git discovery", () => {
     expect(await discoverRepository(worktree, operation())).toEqual({ root: worktree, remote: "git@git.example:Linked/Repo.git", identity: "git.example/Linked/Repo" });
   });
 
-  it("discovers a submodule's own Git root and origin", async () => {
-    const root = await repository();
-    const source = await repository();
-    seedCommit(source);
-    git(root, ["-c", "protocol.file.allow=always", "submodule", "add", source, "nested module"]);
-    const submodule = path.join(root, "nested module");
-    git(submodule, ["remote", "set-url", "origin", "git@git.example:Submodule/Repo.git"]);
-    expect(await discoverWorktreeRoot(submodule, operation())).toBe(submodule);
-    expect(await discoverRepository(submodule, operation())).toEqual({ root: submodule, remote: "git@git.example:Submodule/Repo.git", identity: "git.example/Submodule/Repo" });
+  describe("submodule discovery", () => {
+    let submodule: string;
+
+    beforeEach(async () => {
+      const root = await repository();
+      const source = await repository();
+      seedCommit(source);
+      git(root, ["-c", "protocol.file.allow=always", "submodule", "add", source, "nested module"]);
+      submodule = path.join(root, "nested module");
+      git(submodule, ["remote", "set-url", "origin", "git@git.example:Submodule/Repo.git"]);
+    });
+
+    it("discovers a submodule's own Git root and origin", async () => {
+      expect(await discoverWorktreeRoot(submodule, operation())).toBe(submodule);
+      expect(await discoverRepository(submodule, operation())).toEqual({ root: submodule, remote: "git@git.example:Submodule/Repo.git", identity: "git.example/Submodule/Repo" });
+    });
   });
 
   it("ignores inherited repository-target selectors while preserving cwd", async () => {

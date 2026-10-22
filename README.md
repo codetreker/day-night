@@ -293,12 +293,6 @@ otherwise it downloads Debian packages with `apt-get download` and extracts them
 locally with `dpkg-deb`. It installs no global packages. First-time preparation
 requires network access; subsequent runs reuse the local toolchains.
 
-The Ubuntu shell-completion CI step selects the canonical HTTPS Ubuntu archive
-in the runner's existing APT mirror-list file before invoking that unchanged
-helper. This applies only to the ephemeral CI runner. APT candidate/index and
-signature/hash verification, the 120-second package-download bound, the pinned
-Bash checksum/version checks and all real-shell acceptance remain unchanged.
-
 On other POSIX hosts, or to select existing executables, set `DAYNIGHT_TEST_BASH42`
 to the Bash 4.2 executable before running `pnpm completion:acceptance`.
 `DAYNIGHT_TEST_BASH` and `DAYNIGHT_TEST_ZSH` select the other executables and default
@@ -368,7 +362,11 @@ a file stay sequential so environment changes and cleanup have one owner.
 The [Git test decision](.agents/notes/implemented/testing/2026-10-18-parallel-git-validation.md)
 records the isolation rules, and the
 [CI timing report](docs/research/windows-ci-performance.md) records native
-before/after measurements. The installed acceptance suite additionally verifies the package
+before/after measurements. The repository-discovery submodule case prepares its
+real Git fixture in a case-scoped hook before exercising discovery, retaining
+separate setup and behavior limits and the existing private-directory cleanup.
+The [fixture lifecycle decision](.agents/notes/implemented/testing/2026-10-22-submodule-discovery-fixture-lifecycle.md)
+records that separation. The installed acceptance suite additionally verifies the package
 bin, default native command shims, singleton/stale-lock behavior and the complete
 review/re-review/restart/closure lifecycle. Separate npm global-prefix acceptance
 checks self-update and installation ownership. Curated environment and scenario
@@ -1366,7 +1364,10 @@ a disabled skill, project override or malformed response fails the attempt.
 The review prompt explicitly invokes the skill and identifies its current
 absolute entrypoint and digest on both new sessions and resume. The bundled
 skill owns review methodology; the prompt owns the immutable target, publication
-eligibility, retry reconciliation and completion protocol.
+eligibility, retry reconciliation and completion protocol. The prompt also
+explicitly requests the skill's native subagent delegation and synthesis when
+fresh review is required; confirming a valid matching submitted result retains
+its reconciliation exception.
 
 The Copilot adapter then launches the review child in that same worktree and
 environment. It selects the persisted per-PR UUID on first launch and explicitly resumes that
@@ -1403,6 +1404,27 @@ changes block approval even without a Critical/Major code defect. Necessary
 implementation, structural changes, tests and documentation for the same outcome
 remain in scope; fixed line or file counts do not decide reviewability. Expanding
 the description alone cannot justify unrelated work.
+
+For every fresh review, the main agent first inspects that complete fixed diff,
+then chooses at least two complementary perspectives based on the PR's actual
+changes, contracts and risks. It invokes independent subagents, preferably in
+parallel, with exact head/base/merge-base context, scope, applicable repository
+instructions, evidence standards and shared worktree, temporary-file and process
+rules. Source and Git state remain read-only; subagents return findings and
+coverage limits to the main agent without publishing or emitting completion
+markers. The main agent waits for all required perspectives, verifies candidates,
+resolves disagreements and deduplicates root causes. It records the perspective
+rationale, completed coverage, limits, fix/defer/reject dispositions and confirmed
+blockers in attempt output, while GitHub comments contain concise findings only.
+An unavailable tool, failed child or incomplete required perspective is an
+operational failure; retries or reassignment stay within the attempt's existing
+budget. An incomplete review publishes neither a result nor a completion marker.
+
+These subagents belong to one attempt within the daemon-managed main review
+session; they do not create more review Workers, PR sessions or worktrees.
+Reconciliation of a valid matching submitted result confirms that result without
+repeating delegation. The selected questions must fit each PR, including
+documentation-only changes.
 
 Before new publication, the agent rereads the current PR information and
 reevaluates those gates. A successful review either approves or publishes
@@ -1444,7 +1466,9 @@ contract.
 The [execution decision](.agents/notes/implemented/architecture/2026-10-17-copilot-session-execution.md)
 records process and publication boundaries; the
 [PR-quality decision](.agents/notes/implemented/process/2026-10-21-review-pr-quality-gates.md)
-records the approval policy. The
+records the approval policy, and the
+[multi-perspective decision](.agents/notes/implemented/process/2026-10-22-pr-specific-review-perspectives.md)
+records delegation and synthesis. The
 [conversation-cycle decision](.agents/notes/implemented/architecture/2026-10-21-review-conversation-cycle.md)
 records durable follow-ups and publication verification. The
 [skill design](docs/design/daynight-review-skill.md) owns packaging, snapshots and
@@ -1588,7 +1612,13 @@ Selected jobs keep their complete checks, coverage thresholds, acceptance suites
 timeouts and cleanup requirements. The Go job still builds real web assets and
 exercises the installed CLI; the web job still builds and exercises the Go
 service and production deployment. Selecting one module does not split these
-existing integration suites. Native CLI jobs typecheck and build once before
+existing integration suites. The Ubuntu shell-completion and Web jobs select the
+official HTTPS Ubuntu archive and security services before package preparation.
+Their shared command changes only the runner's referenced mirror list; signed
+source stanzas and package indices remain intact. An unexpected source layout
+fails explicitly. The [mirror decision](.agents/notes/implemented/testing/2026-10-22-ubuntu-package-mirrors.md)
+records the provisioning failure and the retained acceptance limits.
+Native CLI jobs typecheck and build once before
 running ordinary and installed tests against the same output. After deployment
 fixture checks, the web job uses one acceptance pipeline. Pinned Chromium,
 unit/coverage checks, native UI/Go/PostgreSQL preparation and the normal dev-ci

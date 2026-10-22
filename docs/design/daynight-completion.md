@@ -300,12 +300,6 @@ Linux 准备脚本在仓库 `.tmp/` 中校验固定 SHA-256 的 GNU Bash 4.2 源
 程序；zsh 使用现有程序或仅下载、解包发行版软件包。该脚本不做系统安装，输出环境
 文件供本地和独立 CI 作业使用同一验收入口。
 
-Ubuntu shell-completion CI 在调用同一准备脚本前，把临时 runner 已有 APT mirror-list
-文件设为 canonical Ubuntu HTTPS archive。该工作流步骤只选择 CI 下载源，保留
-APT 的候选版本、索引与签名/hash 校验、120 秒软件包下载上限、固定 Bash 源码
-checksum/版本检查及全部真实 Bash/zsh 验收。本地准备脚本与 APT 配置保持原行为，
-取舍与来源由[补全决策](../../.agents/notes/implemented/feature/2026-10-20-shell-completion.md)拥有。
-
 解包的 zsh 在首次 ZLE 初始化前定位自身原生模块和补全函数。直接加载脚本的
 PTY 验收使用任务专属的 `ZDOTDIR/.zshenv`，通过 `zsh -d -i` 启动；该文件设置解包工具链的准确 `module_path`
 和补全函数目录，不拼接宿主 `fpath`。准备完成后关闭 `RCS` 与 `GLOBAL_RCS`，避免

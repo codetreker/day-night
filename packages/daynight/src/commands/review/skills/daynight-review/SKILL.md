@@ -1,6 +1,6 @@
 ---
 name: daynight-review
-description: Enforce a clear, focused pull-request scope and verify introduced Critical or Major defects.
+description: Review a focused pull request through independent PR-specific perspectives and verify introduced Critical or Major defects.
 ---
 
 # Daynight Review
@@ -25,9 +25,12 @@ reuse its existing threads when still justified. For an obsolete or unjustified
 owned draft, re-read that exact numeric review ID and verify its author, exact
 stable identity, commit and PENDING state immediately before deleting only that
 draft. Never delete submitted reviews or submit an obsolete target's findings.
-Do not duplicate reviews, comments or replies on retry.
+Do not duplicate reviews, comments or replies on retry. Confirming a valid
+matching submitted result does not require fresh review or subagent delegation.
 
-When no valid matching result exists, conduct a fresh review. The task admits
+When no valid matching submitted result exists, complete the fresh-review
+delegation and synthesis before any new publication, including submission of a
+resumed pending draft. The task admits
 fresh rounds after CI passes and all submitted native review conversations are
 resolved. Positively identified PENDING drafts are not submitted conversations.
 Resolution is a request to verify the correction, not evidence that it is fixed.
@@ -67,6 +70,52 @@ behavior when needed to distinguish an introduced defect from an existing one.
 Include adjacent code only when its interaction with this change causes the
 failure.
 
+## Delegate independent review perspectives
+
+For every fresh review, inspect the complete fixed diff before selecting at
+least two complementary review perspectives. Derive their questions from the
+actual changes, affected contracts and risks; explain what each perspective can
+establish. A documentation-only PR still needs distinct, relevant perspectives.
+Do not apply an unrelated fixed specialist checklist to every PR.
+
+Actually invoke independent subagents for those perspectives, preferably in
+parallel. Multiple passes by the main agent do not satisfy delegation. The main
+agent retains responsibility for the complete diff, both PR-quality gates,
+verification and publication. Subagents belong to this attempt under its existing
+deadline and retry budget; they do not create another daemon-managed review
+session or another worktree.
+
+Give every subagent a self-contained assignment containing:
+
+- The supplied host, repository and PR identity, exact head SHA, base branch,
+  captured base SHA and merge-base SHA, and the diff range to inspect. Keep these
+  values fixed; do not substitute a newer branch tip.
+- The established delivery goal and scope, relevant requirements, applicable
+  repository instructions, assigned perspective and affected paths or contracts.
+  Do not assume that a specialized subagent inherits repository instructions.
+- The shared worktree, permitted temporary directory and collision-free probe
+  ownership, foreground-process, timeout and cleanup rules. Review source and Git
+  state read-only; bounded probes may write only task-permitted temporary files.
+  Preserve the captured target and other reviewers' work.
+- The evidence and severity rules in this skill, including introduced causality,
+  concrete supported triggers, caller-visible consequences and changed locations.
+  Require fix, defer and reject as possible candidate dispositions.
+- A prohibition on GitHub publication, draft or thread mutation, repository edits,
+  worktree management and completion markers. Return findings only to the main
+  agent; stop all owned tools and services before returning.
+
+Require each subagent to return its inspected scope and perspective, evidence and
+locations for candidate introduced Critical/Major defects or PR-quality blockers,
+recommended dispositions, and coverage limits or operational failures. A report
+with no candidates must still identify what was inspected and what could not be
+verified.
+
+Wait for all required perspectives before selecting a fresh result. An unavailable
+subagent tool, failed child or incomplete required perspective is an operational
+failure, not a passing review. Retry or reassign within the current attempt's
+remaining budget when possible; otherwise report the failure and withhold both
+publication and the completion marker.
+
 ## Verify consequential defects
 
 Prioritize data loss, incorrect results, broken authorization, unavailable
@@ -84,6 +133,20 @@ the limits of evidence; discard findings that remain speculative.
 Keep probes within the supplied worktree and temporary directory, preserve the
 captured target, and obey the task's foreground-process and cleanup rules.
 
+## Synthesize the review
+
+Independently verify candidate findings from every subagent. Resolve disagreements
+against the fixed diff and relevant contracts, and combine duplicate symptoms of
+one root cause. Classify candidates as fix (a confirmed blocker requiring author
+correction), defer (a smaller or unrelated improvement), or reject (unsupported
+or incorrect). Delegation does not make a candidate established evidence.
+
+Before publication, summarize the selected perspectives and why they fit the PR,
+their completed coverage, verification limits, candidate dispositions and confirmed
+blockers in this attempt's output. Keep this synthesis before the final completion
+marker, separate from GitHub findings. Do not claim coverage for failed or
+unfinished work, and do not approve while a required perspective is incomplete.
+
 ## Select and publish the result
 
 Report PR-quality blockers and actionable Critical or Major defects introduced
@@ -97,7 +160,9 @@ Do not grow the review into a repository-wide audit. If an uncertain code-defect
 candidate cannot be established with the available evidence, leave it out of
 published findings.
 
-A successful review has one of two results:
+Only the main agent publishes the review and completion marker. After all required
+perspectives and synthesis are complete, a successful fresh review has one of two
+results:
 
 - APPROVE when both PR-quality gates pass and no Critical or Major defect remains.
 - COMMENT owning at least one real resolvable native review thread when a blocker

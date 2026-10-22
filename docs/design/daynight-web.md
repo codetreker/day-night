@@ -490,7 +490,14 @@ deployment/
 | 网络与卷 | 现有日常项目资源 | Compose 项目作用域；不设全局资源 name 或 external |
 | 结束 | 保留业务数据 | 只清理当前 run 的容器、卷和网络 |
 
-`run.sh` 在创建任何资源前生成并校验项目名、注册有界清理，固定同一组 file/project-directory/project-name 参数。使用生产 Dockerfile 构建本次唯一镜像标签，记录 image ID，等待数据库及 API 健康后发现 base URL，通过 `DAYNIGHT_BASE_URL` 交给子命令。`pnpm web:acceptance` 调用该入口运行容器浏览器用例，不启动、重建或清理日常 localhost 栈；Go 覆盖率和直接二进制测试继续使用已有独立 PostgreSQL 测试机制。
+`run.sh` 在创建任何资源前生成并校验项目名、注册有界清理，固定同一组
+file/project-directory/project-name 参数。使用生产 Dockerfile 构建本次唯一镜像标签，
+记录 image ID；先启动 gateway/PostgreSQL 并发现主站 base URL，再配置精确 callback、
+真实 UniAuth fixture 与私有 auth.env，最后启动服务并等待公开 readyz。
+`DAYNIGHT_BASE_URL`、本 run 的私有配置/descriptor 交给子命令，凭据不进入公开回执。
+`pnpm web:acceptance` 调用该入口运行容器浏览器用例，不启动、重建或清理日常
+localhost 栈；Go 覆盖率和直接二进制测试继续使用已有独立 PostgreSQL 测试机制。
+详细配置和重建恢复顺序由[dev-ci 指南](../../deployment/dev-ci/README.md)拥有。
 
 正常退出、测试失败和信号取消都先终止本次子命令进程组，再收集本项目的必要日志及状态，执行仅针对该项目的 `down --volumes --remove-orphans`。进程组在 leader 退出后仍受管理，避免成功或失败的 callback 留下继续使用资源的后代。清理拒绝空项目名、非 dev-ci 前缀和 `daynight-localhost`，不执行全局 prune；本次镜像标签也只在确认本次容器退出后移除。取消后的清理采用独立有界步骤，清理失败必须使验收失败并保留原测试失败。run ID、base URL、image ID、资源清单和结果记录在任务 `.tmp/`，诊断不输出环境凭据、原始连接串或任务正文。恢复入口 `run.sh --cleanup RUN_ID` 只接受已有本地回执的有效身份，保留原 manifest，另写 recovery-manifest；执行恢复前必须先停止原 runner 与子命令进程组。W-T6 的 CI 外层始终执行定向清理步骤，复用已登记的 run 身份；进程被强制终止而无法确认清理时，保留资源清单并报告未完成，不能宣称已回收。
 
@@ -504,16 +511,22 @@ deployment/
 `verify-web` 和 `verify-server` 被选中时，都使用固定 Node/pnpm，在干净 checkout
 从锁文件安装依赖并构建真实 UI。Go 检查调用共享构建后继续负责 build/vet/race/go-cov；
 web job 在统一验收前执行 dev-ci 生命周期 fixture，随后仅调用 `scripts/ci.mts`。
-该入口把固定 Chromium 的 `install --with-deps chromium` 和既有 `pnpm web:test`
+workflow 先选择官方 Ubuntu package archives，再启动统一验收；该镜像源变更由
+[PR #148](https://github.com/codetreker/daynight/pull/148) 交付。
+入口把固定 Chromium 的 `install --with-deps chromium` 和既有 `pnpm web:test`
 作为准备 callback 交给共享 runner；仅覆盖率子进程设置 `VITEST_MAX_WORKERS=2`，
-保留 `forks` pool 和文件隔离，两个准备命令各限 180 秒。它们与原生 UI/Go/
-PostgreSQL 准备及正常 dev-ci 源码构建/启动并行。dev-ci 继续拥有本次唯一镜像
-及运行镜像身份校验和完整 shell 清理。
+保留 `forks` pool 和文件隔离。runner 同时启动覆盖率、原生 UI/Go/PostgreSQL 准备、
+容器 callback 与正常 dev-ci 源码构建/启动；仅在覆盖率通过后启动浏览器安装，
+避免 apt 与 Chromium 下载争用 5 秒 UI 测试时限。浏览器安装（含 Linux 依赖）限时
+600 秒，覆盖率命令限时 180 秒，任一失败都使验收失败。官方包源下载时间仍会波动，
+600 秒只容纳已观测的慢速安装；web job 20 分钟总上限继续约束完整验收。浏览器准备
+仍与原生及 dev-ci 准备并行。dev-ci 继续拥有本次唯一镜像及运行镜像身份校验和完整
+shell 清理。
 
-原生功能阶段只等待原生服务和浏览器就绪；其十三个场景及浏览器回收成功后，runner
+原生功能阶段只等待原生服务和浏览器就绪；其二十个场景及浏览器回收成功后，runner
 原子写入绑定 acceptance run ID、dev-ci run ID 和 source SHA 的容器执行许可。
 容器 callback 已登记身份后等待该许可，通过后才记录浏览器 inventory 并执行
-十三个功能场景。完整 dev-ci 退出清理、容器浏览器回收和全部准备/覆盖率命令结束
+二十个功能场景。完整 dev-ci 退出清理、容器浏览器回收和全部准备/覆盖率命令结束
 后，才在仍存活的原生 Go/PostgreSQL 上执行五个容量/超限场景。任一失败取消并
 等待已启动的所有任务；原生进程意外退出同样取消其他任务。容量阶段保持单浏览器
 worker，并与构建、单元测试、功能测试及容器清理隔离。
@@ -735,8 +748,8 @@ PUT/DELETE；六个鉴权场景仅放行各自登记的精确管理请求，其�
 
 Playwright 固定单 worker、零 retry；报告必须包含全部要求的唯一场景、一次成功
 执行、有效 PNG 附件及一致的汇总，跳过、重试、flaky、缺失、多余或重复场景及
-全局错误均失败。原生 functional/capacity 两份报告严格合并为十八个唯一场景，
-容器目标严格要求十三个；原生与容器及同目标各阶段浏览器身份必须一致。
+全局错误均失败。原生 functional/capacity 两份报告严格合并为二十五个唯一场景，
+容器目标严格要求二十个；原生与容器及同目标各阶段浏览器身份必须一致。
 CI 只接受 Linux、锁定 Playwright 的完整 Chromium channel `chromium`、干净 checkout，且 git SHA 必须
 等于 `GITHUB_SHA`；本机可以显式选择现有 Chromium，回执必须记录这一差异。
 PDF 预览通过轮询 iframe 的实际 compositor 截图，验证 fixture 专用色块已经绘制，

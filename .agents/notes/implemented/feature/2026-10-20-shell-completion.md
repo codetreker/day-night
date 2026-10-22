@@ -129,28 +129,9 @@ zsh and Python 3 on a POSIX host. A Linux preparation helper builds the
 hash-pinned GNU Bash 4.2 release and uses existing or locally extracted zsh,
 keeping test toolchains under the repository's `.tmp/` without global package
 installation. Its initial preparation needs network and build tools; executable
-selection remains explicit for other POSIX hosts.
-
-The Ubuntu shell-completion workflow selects
-`https://archive.ubuntu.com/ubuntu/` in the ephemeral runner's existing
-`/etc/apt/apt-mirrors.txt` before invoking the unchanged preparation helper.
-The inspected Ubuntu 24.04 image `20261012.334`
-[configures the mirror list and source URI](https://github.com/actions/runner-images/blob/7e7dc1bcc0ef464e5e315a2b4c33609590c6cffe/images/ubuntu/scripts/build/configure-apt-sources.sh#L9-L16)
-with Azure HTTP at priority 1 and Ubuntu archive HTTPS at priority 2. Delayed
-fallback can exhaust the 120-second package-download bound before reaching the
-Ubuntu archive. Selecting the canonical HTTPS archive retains the
-existing `mirror+file` APT source rather than replacing package resolution or
-transport tooling. The pinned
-[APT mirror-list parser](https://github.com/Debian/apt/blob/39d24618587e28b2dd2cae04ed2393056869f771/methods/mirror.cc#L239-L264)
-accepts plain archive URIs, and its
-[mirror-list read path](https://github.com/Debian/apt/blob/39d24618587e28b2dd2cae04ed2393056869f771/methods/mirror.cc#L356-L404)
-uses that list for the existing source. Candidate/index, signature and package
-hash verification remain with APT. The helper's 120-second bound, pinned Bash
-checksum/version checks and native Bash/zsh acceptance are unchanged; local
-preparation does not rewrite APT configuration.
-
-Extracted zsh uses a private `ZDOTDIR/.zshenv` and native startup ordering so its
-modules are available before ZLE; the fixture excludes inherited completion search paths and subsequent user
+selection remains explicit for other POSIX hosts. Extracted zsh uses a private
+`ZDOTDIR/.zshenv` and native startup ordering so its modules are available before
+ZLE; the fixture excludes inherited completion search paths and subsequent user
 startup files while retaining `compaudit`. Ordinary CLI tests retain native
 Linux, macOS and Windows coverage. The PTY driver uses the
 [observable readiness protocol](../testing/2026-10-20-observable-acceptance-readiness.md):
