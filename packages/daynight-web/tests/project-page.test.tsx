@@ -193,7 +193,7 @@ describe("project dashboard", () => {
     graphRequest.mockResolvedValue(graph([]));
     render(<ProjectPage projectId={projectId} />);
     await screen.findByRole("heading", { name: "还没有任务" });
-    expect(["任务总数", "已完成", "待处理", "进行中", "可开始", "被阻塞"].map(number)).toEqual(["0", "0", "0", "0", "0", "0"]);
+    expect(["任务总数", "已完成", "待审批", "待处理", "进行中", "可开始", "被阻塞"].map(number)).toEqual(["0", "0", "0", "0", "0", "0", "0"]);
     expect(screen.getByText("完成比例 0%")).toBeTruthy();
   });
 
