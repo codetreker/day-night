@@ -196,9 +196,13 @@ controls adding at most twenty hidden direct neighbors in P, with exact new-task
 new-induced-edge and remaining counts. Manual expansion has no edge cap. Every
 real edge with both endpoints in S appears, without shortcuts or aggregate cards.
 
-Cards are 220 by 136 pixels: 94px body, 40px two-column expansion footer and two
-border pixels; unused directions remain blank. Body activation still opens the
-current TaskDetailDialog, and expansion controls are sibling native buttons.
+Cards are 220 by 96 pixels when no hidden direct neighbors can be expanded:
+a 94px body and two border pixels, with no footer or separator. Cards with at
+least one expansion control are 220 by 136 pixels, including a 40px two-column
+footer; an unused direction retains its column. Body activation opens the current
+TaskDetailDialog, and expansion controls are sibling native buttons. Each visible
+snapshot derives expansion data once; Dagre, React Flow, viewport fitting and
+keyboard reveal share each card's actual dimensions.
 The existing Dagre polyline/native-arrow/local-dash renderer is retained.
 Expansion centers its anchor at current zoom and focuses its body. Global reset
 “收起到概览” recomputes/frames overview and retains reset focus.
@@ -794,8 +798,9 @@ S and all real edges with both endpoints in S; external classification still
 depends on source membership in P−M. It derives distinct root progress and aggregate chain status from main
 tasks in the same traversal, and marks shared tasks. The Dagre
 adapter returns finite left-to-right node positions and routed edge points for
-220-by-136 visible cards. The read-only React Flow canvas consumes these results without changing domain
-objects. React Flow owns fixed task nodes, native ResizeObserver measurement,
+220px-wide visible cards with 96px compact or 136px expandable heights. The
+read-only React Flow canvas consumes these results without changing domain
+objects. React Flow owns task nodes with those exact dimensions, native ResizeObserver measurement,
 keyboard behavior, viewport and controls. One memoized SVG in its public
 ViewportPortal renders every exact Dagre path, with stable edge identity,
 arrowheads, external-context dashes and accessibility semantics. It shares the viewport's

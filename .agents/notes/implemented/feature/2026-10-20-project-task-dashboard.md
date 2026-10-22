@@ -34,7 +34,9 @@ an explicitly collapsed list from per-project browser storage; the
 persistence, reconciliation and failure behavior. The project view shares one
 newest-first visible root sequence between list rendering and default-root selection;
 the [presentation decision](2026-10-21-task-chain-presentation.md) owns that order
-while the complete graph index retains its API order. React Flow owns fixed 220-by-136 task cards,
+while the complete graph index retains its API order. React Flow owns 220px-wide
+task cards, 96px high without expansion controls and 136px with them, following
+the [conditional footer decision](../bug-fix/2026-10-22-task-card-expansion-footer.md),
 native node measurement, keyboard interaction, the viewport and its controls.
 Editing, connection, deletion, wrapper focus and interactive-lock controls remain
 disabled. Each task has one native button for pointer, Enter and Space activation;
