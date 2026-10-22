@@ -29,6 +29,41 @@ capabilities are not implemented. The current browser workspace uses the
 unauthenticated local service. Trusted same-origin previews, relative resources
 and keyboard behavior continue after authentication is delivered.
 
+## Language runtime
+
+The [language requirements](../../docs/spec/daynight-web-i18n.md) define the full
+English and Simplified Chinese interface. The implemented
+[runtime design](../../docs/design/daynight-web-i18n.md) provides typed catalogs,
+cached native Intl formatters, explicit initial resolution, a Provider and a
+shared native language selector under `src/i18n/`. Production `main.tsx`, `App`
+and feature components are not yet mounted under that Provider and retain their
+current Chinese behavior. Complete interface integration and real production
+acceptance are separately tracked in Daynight.
+
+`LocaleProvider` requires an explicit initial locale result. `useI18n()` reads
+`locale`, `messages` and `format`; `useLocaleCommands()` exposes selection and
+save retry; `useLocalePreference()` additionally exposes the current storage
+issue. Hooks fail clearly outside the Provider. Component tests can use
+`tests/helpers/renderWithLocale.tsx` to choose deterministic language and storage
+behavior. The base message contract includes runtime messages only; feature
+integration extends the same complete contract in both catalogs.
+
+Initial resolution prefers a valid explicit value, then the first supported
+browser language, then English. Chinese language variants use Simplified Chinese.
+Automatic detection does not save a choice. Explicit selection saves raw `en` or
+`zh-CN` under the origin-local `daynight.web.locale` key, independently of all
+per-project browsing records. Read, invalid-value and write failures remain
+visible in localized selector text; a successful save clears the current issue,
+including startup errors. Cross-tab live synchronization and account preferences
+are outside this runtime's persistence guarantee.
+
+With `pnpm web:dev`, open `/tests/mockups/locale-runtime.html` for the
+[actual-component runtime preview](tests/mockups/locale-runtime.html). It shows
+shared selectors and retained fixture state with production selector styles
+and no Go API or PostgreSQL. This isolated preview verifies the foundation;
+the full bilingual interface mockup remains attached to its Daynight task. Web
+typecheck, test and build include the runtime under the existing coverage gate.
+
 ## Development
 
 Use Node.js 24 LTS and pnpm 11.28.6. From the repository root:
