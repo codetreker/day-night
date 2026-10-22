@@ -972,7 +972,18 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
     if (fullscreenMode) {
       currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, dependsOn: [a.id] });
       await page.getByRole('button', { name: '刷新', exact: true }).click();
+      await expect(trigger).toHaveCount(0);
+      await expect(inspectTask(page, c.id)).toHaveCount(0);
+      await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '2');
+      await expect(page.locator('.task-graph')).toHaveAttribute('data-total-task-count', '4');
+      const expandSuccessors = card(page, a.id).getByRole('button', { name: '展开后续 1 个任务、1 条依赖', exact: true });
+      await expect(expandSuccessors).toHaveAttribute('data-added-tasks', '1');
+      await expect(expandSuccessors).toHaveAttribute('data-added-edges', '1');
+      await expandSuccessors.click();
       await expect(trigger).toBeVisible();
+      await expect(inspectTask(page, a.id)).toBeFocused();
+      await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '3');
+      await expect(inspectTask(page, c.id)).toHaveCount(0);
       await enterFullscreen.click();
     }
     currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, dependsOn: [] });
