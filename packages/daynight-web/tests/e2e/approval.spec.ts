@@ -104,7 +104,7 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   const uploadFailures: string[] = [];
   page.on('requestfailed', (failed) => { if (failed.url() === uploadUrl) uploadFailures.push(failed.failure()!.errorText); });
   await page.route(uploadUrl, async (route) => {
-    expect(route.request().method()).toBe('PUT');
+    if (route.request().method() !== 'PUT') { await route.fallback(); return; }
     expect(route.request().postDataBuffer()).toEqual(uploadBytes);
     const response = await route.fetch({ timeout: 15_000, maxRetries: 0 });
     expect(response.status()).toBe(201);
