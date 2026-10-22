@@ -153,13 +153,13 @@ export class TaskDetailSessions {
   }
 }
 const Context = createContext<TaskDetailSessions | null>(null);
-const OwnedSessions = ({ children }: { readonly children: ReactNode }) => {
+export const TaskDetailSessionProvider = ({ children }: { readonly children: ReactNode }) => {
   const [sessions] = useState(() => new TaskDetailSessions());
   useEffect(() => () => { sessions.dispose(); }, [sessions]);
   return <Context.Provider value={sessions}>{children}</Context.Provider>;
 };
 export const TaskDetailSessionBoundary = ({ children }: { readonly children: ReactNode }) =>
-  useContext(Context) === null ? <OwnedSessions>{children}</OwnedSessions> : children;
+  useContext(Context) === null ? <TaskDetailSessionProvider>{children}</TaskDetailSessionProvider> : children;
 export const useTaskDetailSessions = (): TaskDetailSessions => {
   const sessions = useContext(Context);
   if (sessions === null) throw new Error("Task detail sessions are required.");

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { approveTask, getTask } from "../src/api/client";
+import { approveTask, getTask, subscribeUnauthorized } from "../src/api/client";
 import { parseApiJson, stringifyApiJson } from "../src/api/json";
 import { parseTaskDetail } from "../src/api/parse";
 
@@ -120,7 +120,7 @@ describe("approval transport", () => {
     const abortSignal = signal();
     await expect(approveTask(projectId.toUpperCase(), taskId.toUpperCase(), version, abortSignal)).resolves.toEqual(approved);
     expect(fetcher).toHaveBeenCalledExactlyOnceWith(`/api/v1/projects/${projectId}/tasks/${taskId}/approve`, {
-      method: "POST", redirect: "error", signal: abortSignal, cache: "no-store",
+      method: "POST", redirect: "error", signal: abortSignal, cache: "no-store", credentials: "same-origin",
       headers: { Accept: "application/json", "Content-Type": "application/json" }, body: `{"version":${version}}`,
     });
   });
@@ -129,6 +129,16 @@ describe("approval transport", () => {
     const fetcher = fetchResponse(response({ error: { code, message: "internal SQL", requestId: "approve-1" } }, 409));
     await expect(approveTask(projectId, taskId, 1n, signal())).rejects.toMatchObject({ kind: "server", status: 409, code, requestId: "approve-1" });
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the shared unauthorized notification for approval refusals", async () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeUnauthorized(listener);
+    try {
+      fetchResponse(response({ error: { code: "unauthenticated", message: "expired", requestId: "approve-auth" } }, 401));
+      await expect(approveTask(projectId, taskId, 1n, signal())).rejects.toMatchObject({ kind: "server", status: 401, code: "unauthenticated" });
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally { unsubscribe(); }
   });
 
   it("allows the maximum int64 expected version to reach a service refusal without rounding", async () => {

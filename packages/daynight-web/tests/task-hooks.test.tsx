@@ -1,7 +1,7 @@
 import { act, renderHook as renderHookWithoutSession, waitFor, type RenderHookOptions } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GraphTask, TaskDetail, TaskGraph } from "../src/api/types";
-import { getTask, getTaskGraph } from "../src/api/client";
+import { ApiError, getTask, getTaskGraph } from "../src/api/client";
 import { useTaskGraph } from "../src/features/projects/useTaskGraph";
 import { useTaskDetail } from "../src/features/task-detail/useTaskDetail";
 import { TaskDetailSessionBoundary } from "../src/features/task-detail/TaskDetailSession";
@@ -65,6 +65,16 @@ describe("task graph snapshots", () => {
     expect(result.current.snapshot?.index.nodes.size).toBe(0);
     expect(result.current.snapshot?.revision).toBeGreaterThan(first!.revision);
     expect(result.current.error).toBeNull();
+  });
+
+  it("discards the entire retained graph after an authoritative not-found response", async () => {
+    const failure = new ApiError("server", 404, "not_found");
+    graphRequest.mockResolvedValueOnce(graph()).mockRejectedValueOnce(failure);
+    const { result } = renderHook(() => useTaskGraph(projectId));
+    await waitFor(() => expect(result.current.snapshot?.graph).toEqual(graph()));
+    act(() => result.current.refresh());
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    expect(result.current).toMatchObject({ snapshot: null, refreshing: false, error: failure });
   });
 
   it("hides prior project data on the very first render after identity changes", async () => {

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { TaskAttachments } from '../../src/features/task-detail/attachments/TaskAttachments';
+import { useBodyScrollLock } from '../../src/app/useBodyScrollLock';
+import { TaskDetailPanels } from '../../src/features/task-detail/TaskDetailPanels';
 import { TaskPullRequests } from '../../src/features/task-detail/TaskPullRequests';
 import { LocaleProvider, useI18n } from '../../src/i18n/LocaleProvider';
 import { LanguageSelector } from '../../src/i18n/LanguageSelector';
@@ -18,6 +20,7 @@ const AttachmentMockup = () => {
   }, [locale, messages]);
   const [scenario, setScenario] = useState<MockupScenario>('files');
   const [open, setOpen] = useState(true);
+  useBodyScrollLock(open);
   const fixture = useMemo(() => createAttachmentFixture(scenario), [scenario]);
   useEffect(() => () => fixture.dispose(), [fixture]);
   return <>
@@ -27,13 +30,14 @@ const AttachmentMockup = () => {
       <div className="task-detail-body">
         <div className="task-detail-heading">
           <p className="task-detail-id">00000000-0000-4000-8000-000000000001</p><h3 className="task-detail-title">为项目补充设计与交互附件</h3><div className="task-detail-badges"><span className="task-detail-status task-detail-status-in_progress">{messages.common.status.in_progress}</span></div>
-          <label className="attachment-hint" htmlFor="mockup-scenario">预览场景 </label><select className="task-detail-pr-page-select" id="mockup-scenario" value={scenario} onChange={(event) => setScenario(event.currentTarget.value as MockupScenario)}><option value="files">目录与多种格式</option><option value="empty">暂无附件</option><option value="upload-error">上传失败</option></select>
         </div>
-        <div className="task-detail-columns">
+        <TaskDetailPanels overview={<div className="task-detail-columns">
           <div className="task-detail-main">
+            <section className="task-detail-section">
+              <label className="attachment-hint" htmlFor="mockup-scenario">预览场景 </label><select className="task-detail-pr-page-select" id="mockup-scenario" value={scenario} onChange={(event) => setScenario(event.currentTarget.value as MockupScenario)}><option value="files">目录与多种格式</option><option value="empty">暂无附件</option><option value="upload-error">上传失败</option><option value="loading">列表加载中</option><option value="list-error">列表加载失败</option><option value="preview-error">预览失败</option><option value="busy">上传持续处理中</option></select>
+            </section>
             <section className="task-detail-section" aria-label={m.description}><h4>{m.description}</h4><p className="task-detail-description">浏览设计文档、图片、PDF、JSON 和可交互 HTML。选择文件后可在附件区域直接预览。</p></section>
             <TaskPullRequests pullRequests={[{ title: 'Add task attachments to the task detail dialog', url: 'https://github.com/example/project/pull/42' }]} />
-            <TaskAttachments key={scenario} projectId="mockup-project" taskId="mockup-task" api={fixture.api} urls={fixture.urls} onClose={() => setOpen(false)} />
           </div>
           <aside className="task-detail-aside" aria-label={m.relationsMetadata}>
             <section className="task-detail-section" aria-label={m.dependencies}><h4>{m.countedHeading({ label: m.dependencies, count: format.number(0) })}</h4><p className="task-detail-description">{m.noDependencies}</p></section>
@@ -41,7 +45,7 @@ const AttachmentMockup = () => {
             <section className="task-detail-section" aria-label={m.successors}><h4>{m.countedHeading({ label: m.successors, count: format.number(0) })}</h4><p className="task-detail-description">{m.noSuccessors}</p></section>
             <dl className="task-detail-section task-detail-metadata"><div><dt>{m.created}</dt><dd>{format.dateTime('2026-10-21T10:00:00Z')}</dd></div><div><dt>{m.updated}</dt><dd>{format.dateTime('2026-10-22T09:00:00Z')}</dd></div><div><dt>{m.taskId}</dt><dd className="task-detail-full-id">00000000-0000-4000-8000-000000000001</dd></div></dl>
           </aside>
-        </div>
+        </div>} attachments={<TaskAttachments key={scenario} projectId="mockup-project" taskId="mockup-task" api={fixture.api} urls={fixture.urls} onClose={() => setOpen(false)} />} />
       </div><footer className="task-detail-footer">{m.footer}</footer>
     </section></div>}
   </>;

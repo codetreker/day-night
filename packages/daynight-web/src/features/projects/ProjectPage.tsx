@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import type { Project } from "../../api/types";
 import { ApiError } from "../../api/client";
 import { navigate } from "../../app/router";
 import { useI18n } from "../../i18n/LocaleProvider";
@@ -50,7 +51,7 @@ const ErrorDetail = ({ error }: { readonly error: unknown }) => {
 
 type ProjectNotice = { readonly kind: "selected-task-removed" };
 
-const ProjectView = ({ projectId }: { readonly projectId: string }) => {
+const ProjectView = ({ projectId, renderActions }: { readonly projectId: string; readonly renderActions?: (project: Project) => ReactNode }) => {
   const graph = useTaskGraph(projectId);
   const sessions = useTaskDetailSessions();
   useEffect(() => sessions.subscribeProject(projectId, graph.refresh), [sessions, projectId, graph.refresh]);
@@ -153,7 +154,7 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
           <h1 ref={heading} tabIndex={-1}>{snapshot === null ? app.projectTasks : snapshot.graph.project.name}</h1>
           {snapshot !== null && <p className="project-repository">{snapshot.graph.project.repoUrl}</p>}
         </div>
-        <button className="button" type="button" onClick={graph.refresh} disabled={graph.refreshing}>{graph.refreshing ? m.refreshing : projects.refresh}</button>
+        <div className="project-title-actions">{snapshot !== null && renderActions?.(snapshot.graph.project)}<button className="button" type="button" onClick={graph.refresh} disabled={graph.refreshing}>{graph.refreshing ? m.refreshing : projects.refresh}</button></div>
       </div>
       {preferenceIssue !== null && <p className="snapshot-notice" role="status">{preferences.expanded[preferenceIssue.kind]}</p>}
       {visibilityIssue !== null && <p className="snapshot-notice" role="status">{preferences.completedChains[visibilityIssue.kind]}</p>}
@@ -216,4 +217,4 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
   );
 };
 
-export const ProjectPage = ({ projectId }: { readonly projectId: string }) => <TaskDetailSessionBoundary><ProjectView key={projectId} projectId={projectId} /></TaskDetailSessionBoundary>;
+export const ProjectPage = ({ projectId, renderActions }: { readonly projectId: string; readonly renderActions?: (project: Project) => ReactNode }) => <TaskDetailSessionBoundary><ProjectView key={projectId} projectId={projectId} {...(renderActions === undefined ? {} : { renderActions })} /></TaskDetailSessionBoundary>;

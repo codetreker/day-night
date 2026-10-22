@@ -148,6 +148,7 @@ test.describe('Web language journeys', () => {
     await pagination.selectOption('1');
     await expect(dialog.locator('.task-detail-pr-title')).toHaveText(['原始 PR 101']);
     const attachments = dialog.locator('.task-attachments');
+    await dialog.getByRole('tab', { name: 'Attachments', exact: true }).click();
     await attachments.locator('.attachment-file').filter({ hasText: htmlPath }).click();
     const frame = attachments.locator('iframe');
     await expect(frame).toHaveAttribute('src', attachmentPreviewUrl(project.id, task.id, htmlPath));
@@ -164,8 +165,10 @@ test.describe('Web language journeys', () => {
     await language(dialog).focus();
     await language(dialog).selectOption('zh-CN');
     await expect(language(dialog)).toBeFocused();
+    await dialog.getByRole('tab', { name: '概览', exact: true }).click();
     await expect(dialog.getByRole('combobox', { name: '关联 PR 页码', exact: true })).toHaveValue('1');
     await expect(dialog.locator('.task-detail-pr-title')).toHaveText(['原始 PR 101']);
+    await dialog.getByRole('tab', { name: '附件', exact: true }).click();
     await expect(frame).toHaveAttribute('title', `HTML 预览：${htmlPath}`);
     await expect(frame).toHaveAttribute('src', attachmentPreviewUrl(project.id, task.id, htmlPath));
     expect(await frameElement.evaluate((element) => element === document.querySelector('.task-attachments iframe'))).toBe(true);
@@ -313,6 +316,7 @@ test.describe('Web language journeys', () => {
         await expect(dialog.locator('.task-detail-title')).toHaveText(task.title);
         await expect(language(dialog)).toHaveValue(locale);
         const attachments = dialog.locator('.task-attachments');
+        await dialog.getByRole('tab', { name: locale === 'en' ? 'Attachments' : '附件', exact: true }).click();
         await attachments.locator('.attachment-file').filter({ hasText: '原始.txt' }).click();
         await expect(attachments.locator('pre')).toHaveText('原始附件 Raw attachment\n');
         await expectDialogLayout(page, dialog);

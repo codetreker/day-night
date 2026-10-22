@@ -37,9 +37,9 @@ const ErrorDetail = ({ error }: { error: unknown }) => {
   );
 };
 
-export const ProjectsPage = () => {
+export const ProjectsPage = ({ onCreate }: { readonly onCreate?: () => void }) => {
   const projects = useProjects();
-  const { messages: { workspace: { projects: m, app } }, format } = useI18n();
+  const { messages: { workspace: { projects: m, app }, auth: { createProject } }, format } = useI18n();
 
   return (
     <>
@@ -49,12 +49,12 @@ export const ProjectsPage = () => {
           <h1 id="page-title" tabIndex={-1}>{app.projects}</h1>
           <p className="subtitle">{m.subtitle}</p>
         </div>
-        <button className="button" type="button" onClick={projects.refresh}>
+        <div className="heading-actions">{onCreate !== undefined && <button className="button primary" type="button" onClick={onCreate}>{createProject.open}</button>}<button className="button" type="button" onClick={projects.refresh}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
             <path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1" />
           </svg>
           {m.refresh}
-        </button>
+        </button></div>
       </div>
 
       {projects.status === 'loading' && (
@@ -78,7 +78,7 @@ export const ProjectsPage = () => {
         <section className="state-box">
           <div className="state-icon"><FolderIcon /></div>
           <h2>{m.empty}</h2>
-          <p>{m.emptyDetail}</p>
+          <p>{onCreate === undefined ? m.emptyDetail : createProject.emptyDetail}</p>{onCreate !== undefined && <button className="button primary" type="button" onClick={onCreate}>{createProject.createFirst}</button>}
         </section>
       )}
 

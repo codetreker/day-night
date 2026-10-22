@@ -304,10 +304,39 @@ docker compose -f deployment/localhost/compose.yaml logs server | rg '"request_i
 
 ## Web 文件树与预览
 
-`TaskDetailDialog` 在关联 PR 后组合 `TaskAttachments`。用户选择一个文件，目标路径初始为
-文件名，可改为多层相对路径；`mime` 4.1.1 按目标路径确定上传 Content-Type，未知
-类型使用 `application/octet-stream`。同路径直接覆盖，单文件提供下载和删除，成功
-后刷新附件区域，不修改详情、task 版本或图。页面沿用看板样式，没有独立预览弹窗。
+`TaskDetailDialog` 在公共标题下组合 `TaskDetailPanels`，以概览和附件两个稳定面板
+分开任务阅读与文件浏览。详情与面板以 `(projectId, taskId)` 为身份，每个新身份默认
+概览；两个面板保持挂载，非当前面板同时使用 `hidden` 与 `inert`。页签按钮关联
+`tabpanel`，使用 roving tabindex，方向键和 Home/End 自动激活并聚焦目标页签，原生
+Enter/空格继续有效。`TaskAttachments`、表单及目录控件保留组件身份，因此往返页签
+保留选中路径、目录展开、列表/预览状态和未提交上传。未来描述附件导航复用同一
+控制器并激活附件页签，不建立第二份清单状态。
+
+附件面板使用占满可用正文的 `attachment-split` grid：左侧
+`attachment-sidebar` 放置文件树、刷新和上传；右侧 `attachment-preview-pane`
+放置所选文件预览，以竖向分隔线区分。桌面左栏 250px，窄屏使用紧凑比例，在 320px
+继续保持左右位置。每一级可收缩 flex/grid 子元素明确 `min-width: 0` 与
+`min-height: 0`，对话框正文和面板隐藏溢出，外层不额外滚动。概览拥有独立滚动区，
+其元数据侧栏继续沿用看板响应式布局。
+
+左栏可独立纵向滚动，右侧以非滚动预览标题和可伸缩正文组成。完整路径通过可访问
+名称与 title 保留，显示路径允许换行或受控截断；路径不能挤掉下载和删除操作。
+`attachment-preview-body` 是 Markdown、文本/JSON/源码及大图的唯一纵向滚动
+所有者，渲染器内不再设置高度上限或嵌套纵向滚动。表格、代码只保留局部横向
+滚动。HTML/PDF 就绪时切换为隐藏外溢的 `attachment-preview-body-native`，
+`attachment-native` 和 iframe 占满可用高度，内部文档或浏览器阅读器负责唯一的
+纵向滚动。加载、错误、无选择及不支持类型在同一正文布局内显示。
+
+短视口压缩公共标题行、标题、页签、预览标题及底部间距，844×390 仍保留正文、
+关闭按钮和所有操作。隐藏标题仍可取得完整内容；布局不通过恢复对话框纵向滚动
+容纳右侧预览。内容渲染和尺寸约定为独立标签页完整阅读保留可复用结构；该阅读
+入口及此阅读任务组的真实服务组合验收分别由后续任务交付，不在当前布局中提供
+占位操作。选择与滚动所有权的理由见[分屏决策](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-split-view.md)。
+
+用户选择一个文件，目标路径初始为文件名，可改为多层相对路径；`mime` 4.1.1 按
+目标路径确定上传 Content-Type，未知类型使用 `application/octet-stream`。同路径
+直接覆盖，单文件提供下载和删除，成功后刷新附件区域，不修改详情、task 版本或图。
+页面沿用看板样式。
 
 `useAttachments` 分开持有列表、写操作、选中路径和预览。列表逐页读取，并检查路径
 树冲突与重复游标；续页失败保留已经读取的文件并标明不完整，提供重试。结果绑定
@@ -339,14 +368,15 @@ HTML 入口是固定同源 URL，例如：
 ```
 
 HTML/PDF 的 HEAD 可用性检查只判断响应状态和 requestId，不尝试读取不存在的 JSON
-body。成功后 frame 正常 GET 文件和其资源。入口中的 `./assets/style.css`、
+body。成功后 frame 正常 GET 文件和其资源；HEAD 仅证明入口可用，实际 HTML
+交互和 PDF 绘制仍需由真实 frame 验证。入口中的 `./assets/style.css`、
 `./assets/app.js` 和相对 fetch URL 按浏览器规则读取同目录结构，不改写文件内容；
 以 `/` 开头的地址仍指向主站根目录。HTML 附件属于可信项目代码，拥有主应用同源
 权限，普通 iframe 不使用 sandbox；不增加专用预览 session/token、独立 origin/
 端口、Service Worker 或离线文件系统。规划中的[鉴权架构](daynight-auth.md)为
 附件请求增加登录态和项目成员检查，继续保留可信 HTML 的同源执行约定。
 
-居中详情对话框拥有 body portal、背景 inert、共享滚动锁和被动卸载后的焦点恢复；其尺寸与正文独立滚动由[看板设计](daynight-web.md#居中任务详情)拥有。`dialogFocusables` 使用 `tabbable` 6.5.0 的生产默认可见性检查，统一枚举对话框与同源 frame 的可 Tab 元素；frame 的 load 监听桥接 Esc 与首末 Tab/Shift+Tab 到对话框，并在替换或卸载时释放。该桥仍属于预览组件，不因外壳居中另建键盘所有者。详细历史与取舍见 [Web 附件决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)。
+居中详情对话框拥有 body portal、背景 inert、共享滚动锁和被动卸载后的焦点恢复；其居中尺寸、概览滚动与详情页签由[看板设计](daynight-web.md#居中任务详情)说明，附件页签的分屏和右侧滚动由本节拥有。`dialogFocusables` 使用 `tabbable` 6.5.0 的生产默认可见性检查，统一枚举对话框与同源 frame 的可 Tab 元素；frame 的 load 监听桥接 Esc 与首末 Tab/Shift+Tab 到对话框，并在替换或卸载时释放。该桥仍属于预览组件，不因外壳居中另建键盘所有者。详细历史与取舍见 [Web 附件决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)。
 
 `tests/mockups/attachments.html` 仅由 Vite 开发服务提供，实际组件和 CSS 使用内存
 fixture API 与原生 fixture 文件，支持文件、空态和上传失败场景。fixture 分配的对象

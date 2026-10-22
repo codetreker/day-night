@@ -13,11 +13,15 @@
 记录状态、渲染和焦点机制；[附件任务拆分](daynight-task-attachments-tasks.md)拥有
 实施与组合验收范围，进度由 Daynight 维护。图、统计与 task 元数据保留读取约定；proposed 的审批是独立版本化操作。
 
-[鉴权架构](daynight-auth.md)单独定义规划中的 UniAuth 登录、项目权限、成员与
-邀请界面及个人访问令牌；[需求](../spec/daynight-auth.md)和
-[任务拆分](daynight-auth-tasks.md)拥有行为与交付顺序。当前页面尚未实现这些能力，
-仍为本机未认证看板。鉴权接入后继续保留本文的可信同源 frame、相对资源及键盘
-机制，附件请求增加项目成员检查。
+[鉴权架构](daynight-auth.md)拥有 UniAuth 登录、项目权限、成员与邀请及个人访问
+令牌；显式挂载的 `AuthenticatedApp` 和 API 客户端已实现。
+[需求](../spec/daynight-auth.md)与[任务拆分](daynight-auth-tasks.md)拥有完整行为和
+统一启用顺序。生产 `main.tsx` 在常驻 LocaleProvider 中继续渲染原 `App`，当前
+交付仍为本机未认证看板；AuthenticatedApp 复用该 Provider 和 messages.auth 的
+英语/简体中文目录。真实 provider discovery 的 SDK 升级与生产挂载由统一启用交付。新壳复用现有任务页签、图和居中
+`TaskDetailDialog`，保留可信同源 frame、相对资源及键盘机制。
+[Web 鉴权决策](../../.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
+记录组件、会话生命周期和验证边界。
 
 [语言设计](daynight-web-i18n.md)拥有已实现的类型化目录、Intl 格式化器、首屏解析、常驻 Provider、共享选择器和全部现有第一方组件的双语呈现；[双语需求](../spec/daynight-web-i18n.md)拥有完整覆盖与验收。源码绑定的组合生产验收由独立任务核对。语言偏好使用独立的 origin-local 键，不改变本文的项目浏览记录、API、图或附件生命周期。
 
@@ -42,7 +46,7 @@
 原有写入接口、依赖规则与本机监听方式。附件是独立的文件资源扩展，使用自己的
 元数据、HTTP 接口和局部状态，不把文件写入混入 task PATCH 或图快照。
 
-项目列表只展示项目元数据，不为每张卡额外请求任务统计。统计集中在项目详情，避免列表产生 N 次图查询。创建编辑、实时推送和大图分片的延后成本及保留条件由[要求文档](../spec/daynight-web.md#明确延后的能力)定义；身份认证与项目成员授权的待实施机制由[鉴权架构](daynight-auth.md)拥有。
+项目列表只展示项目元数据，不为每张卡额外请求任务统计。统计集中在项目详情，避免列表产生 N 次图查询。创建编辑、实时推送和大图分片的延后成本及保留条件由[要求文档](../spec/daynight-web.md#明确延后的能力)定义；显式挂载鉴权壳和待完成的生产统一启用由[鉴权架构](daynight-auth.md)拥有。
 
 ## 页面与视觉
 
@@ -100,7 +104,26 @@ proposed 按当前语言使用“Proposed”或“待审批”及独立的紫色
 
 ### 居中任务详情
 
-`TaskDetailDialog` 通过 body portal 相对可用视口居中，最大宽度 960px，桌面四周至少 24px；600px 及以下边距为 12px。外壳最大高度为 `min(880px, 100dvh − 2 × gutter)`，标题栏和底部说明固定在正文滚动区域之外，关闭入口始终可访问。`task-detail.css` 使用统一的 `task-detail-*` 类名；正文上方展示完整标题与状态，阅读主栏展示纯文本描述、关联 PR 和附件，265px 辅栏展示时间、完整 ID、直接前置、当前阻塞项和直接后续。850px 及以下辅栏为 225px，600px 及以下堆叠为单栏，长文本换行，预格式文本和表格在局部滚动。依赖引用可以切换同一对话框内容，全部依赖标签使用可访问的按钮。尺寸和生命周期的取舍由[居中详情决策](../../.agents/notes/implemented/feature/2026-10-22-centered-task-detail-dialog.md)记录。
+`TaskDetailDialog` 通过 body portal 相对可用视口居中，最大宽度 960px，桌面四周
+至少 24px；600px 及以下边距为 12px。外壳最大高度为
+`min(880px, 100dvh − 2 × gutter)`，公共标题、状态、页签和底部说明处于面板滚动区
+之外，关闭入口始终可访问。`task-detail.css` 使用统一的 `task-detail-*` 类名。
+`TaskDetailPanels` 提供默认概览及附件页签，两面板保持挂载并以 hidden/inert 隔离
+隐藏控件；页签使用可访问关联、roving tabindex、方向键与 Home/End 自动激活。
+project/task 身份切换重新从概览开始。
+
+概览是详情中任务内容的滚动所有者。阅读主栏展示纯文本描述和关联 PR，265px 辅栏
+展示时间、完整 ID、直接前置、当前阻塞项和直接后续。850px 及以下辅栏为 225px，
+600px 及以下堆叠为单栏；长文本换行，表格和代码在局部横向滚动。附件页签占满正文
+宽度，在所有支持宽度保持左列表、右预览；父级正文、面板及右侧外壳隐藏溢出，每侧
+分别拥有滚动。Markdown/文本/图片由预览正文纵向滚动，HTML/PDF 由拟合正文的
+iframe 内文档纵向滚动。短视口压缩标题与间距以保留内容，不能引入包围右侧的第二个
+纵向滚动区。分屏尺寸链、操作及状态由[附件设计](daynight-task-attachments.md#web-文件树与预览)拥有。
+
+依赖引用可以切换同一对话框内容，全部依赖标签使用可访问的按钮。
+[居中详情决策](../../.agents/notes/implemented/feature/2026-10-22-centered-task-detail-dialog.md)
+保留外壳和生命周期的理由，[分屏决策](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-split-view.md)
+拥有页签及滚动所有权。
 
 PR 区域在描述之后，标题与 URL 分别使用文本节点，空字符串显示专用标记，重复项
 保留独立行，长文本按阅读主栏宽度换行。`TaskPullRequests` 用本地 100 行分页
@@ -113,8 +136,9 @@ PR 区域在描述之后，标题与 URL 分别使用文本节点，空字符串
 
 前置与后续标签来自当前图快照；若详情依赖指向快照中没有的节点，显示其 ID 并允许打开详情，不伪造标题。直接后续来自图快照，明确标为“任务图快照中的后续”。详情与快照中的状态、ready、依赖集合、阻塞集合、更新时间不符时，提示刷新全图。详情读取成功不会单独修改画布或统计。
 
-附件区域在关联 PR 之后，使用 `TaskAttachments` 和独立的 `useAttachments`，列举、
-写操作及预览不依赖详情请求或图刷新。上传目标初始为所选文件名，可编辑为多层相对
+附件页签组合 `TaskAttachments` 和唯一的 `useAttachments`，列举、
+写操作及预览不依赖详情请求或图刷新；切换页签保留附件与表单状态，隐藏面板
+不参与焦点循环。上传目标初始为所选文件名，可编辑为多层相对
 路径；同路径覆盖，成功后只刷新附件数据。具体分页、错误和内容机制由
 [附件设计](daynight-task-attachments.md#web-文件树与预览)拥有。
 
@@ -129,16 +153,24 @@ PR 区域在描述之后，标题与 URL 分别使用文本节点，空字符串
 
 ### 版本化审批与任务会话
 
-`TaskDetailSession.tsx` 在 App 生命周期中按 `(projectId, taskId)` 保存详情读取、审批
-提交和核对状态，独立行、图节点及全屏详情消费同一键。它只协调本页生命周期，不是
+`TaskDetailSession.tsx` 在工作空间生命周期中按 `(projectId, taskId)` 保存详情读取、审批
+提交和核对状态，独立行、图节点及全屏详情消费同一键。原 App 拥有常驻 boundary；
+显式鉴权壳用 TaskDetailSessionProvider 包裹已认证分支，key 为现有 user ID/会话
+generation，Workspace 和邀请路由复用该 owner。相同身份跨项目导航保留防重状态，
+同用户重新核对不改变 generation；身份替换、登出或匿名分支卸载并释放旧 owner，
+旧操作结果不能进入新身份。审批控件及错误反馈在概览的滚动区域，切换附件页签仍保留
+进行中操作、公共标题/状态、附件选择与焦点。它只协调当前工作空间，不是
 服务器所有权锁。用户主动点击 Approve / 批准任务时，发送其已审阅完整详情的 version
 至 `POST /api/v1/projects/{projectId}/tasks/{taskId}/approve`；请求体只含 version。
 proposed 可以含未完成前置，批准后仍可能是 blocked todo，不隐式 claim。
 
-详情模型以 bigint 保存 version。Web JSON 读取先保留数字 token 的原始十进制精度，
-校验正 int64 后转为 bigint；请求序列化将该值作为 JSON 数字输出。不能先经 Response.json()
-或 Number 再转换；图节点仍无 version。CLI 和 Web 采用相同数字契约，但 Web 不导入
-CLI 运行时。成功响应还校验原项目/任务身份、todo 和 version 增加一次，无法确认的结果
+详情模型以 bigint 保存 version。任务详情 codec 先用原生 JSON 语法校验，再非递归扫描根对象的
+键和值范围，仅保留根 TaskDetail.version 的整数数字 lexeme 并转为 bigint；字符串
+完整跳过、转义根键按解码身份识别，其他成员保持原生语义。DTO 再验证正 int64 范围。
+请求序列化仅将根 bigint version 输出为精确 JSON 数字，其他成员交给原生 stringify。
+该任务 codec 不使用占位 marker、JSON.rawJSON、reviver context、嵌套 bigint 支持或浏览器 polyfill，
+也不缩小现有浏览器范围；图节点仍无 version。CLI 和 Web 共用数字契约，但 Web 不
+导入 CLI 运行时。成功响应还校验原项目/任务身份、todo 和 version 增加一次，无法确认的结果
 进入核对状态，不能据 HTTP 200 单独宣称审批已完成。
 
 每键只允许一个进行中提交，关闭、重开或切换对话框不重新开放入口。确认成功先保存
@@ -334,8 +366,8 @@ packages/daynight-server/
 | React Flow 组件 | 视口、只读节点、缩放、平移和节点选择 | 接收布局与 onSelectTask，不调用 API |
 | 虚线绘制分解 | 保留弧长/相位的局部轴向 line 与短原生转角 path | 只依赖布局坐标类型，不访问 DOM、视口或 API |
 | 静态依赖 SVG | 公开 ViewportPortal 内的完整 canonical 路线、原生箭头、派生 body paint 与可访问语义 | 接收不可变布局，复用 React Flow 视口变换，不订阅逐边状态 |
-| TaskDetailDialog | 当前 taskId 的详情、审批控件、居中外壳、关系跳转、body portal、焦点和关闭 | 消费任务会话，组合阅读、PR 与附件；不自行修改图快照 |
-| TaskDetailSession | App 生命周期内按 project/task 隔离的详情、审批防重和结果核对 | 确认审批后发布对应项目刷新，关闭对话框不遗失进行中提交 |
+| TaskDetailDialog、TaskDetailPanels | 当前 taskId 的详情、审批控件、居中外壳、概览/附件页签、关系跳转、body portal、焦点和关闭 | 消费任务会话；概览组合阅读、元数据/关系及 PR，附件组合独立左右分屏；不自行修改图快照 |
+| TaskDetailSession | 工作空间/当前身份生命周期内按 project/task 隔离的详情、审批防重和结果核对 | 确认审批后发布对应项目刷新，关闭对话框不遗失进行中提交 |
 | 附件 hook/model | 当前 project/task 的分页、写状态、选择、预览状态及目录树 | 调用 api；不修改详情或图快照 |
 | 附件预览 | Markdown、文本、图片和可信同源 frame | 使用服务预览路径；frame 键盘桥接复用对话框 focus helper |
 | Go server | HTTP 解析、响应、路由与方法语义 | 调用 service 或 webui |
@@ -375,6 +407,7 @@ flowchart LR
 - `useTaskDetail(projectId, taskId)` 消费 TaskDetailSession 中该键的详情和审批状态。
   对话框换节点不改路由；关闭详情不清除仍在进行的审批或未核对结果。前置引用切换
   选择，晚到数据仅更新原键；详情读取与变更使用会话代次避免旧响应恢复 proposed。
+- `TaskDetailPanels` 的两个面板保持挂载，隐藏面板排除交互；页签状态属于当前 project/task，不进入项目浏览偏好。
 - `useAttachments(projectId, taskId)` 独立拥有按页加载的文件、选择、写操作与预览；所有结果绑定 project/task，预览还绑定 path。列表校验重复游标和目录冲突，续页失败保留已读取文件并明确标记不完整；刷新取消旧列表请求。所选路径或 `updatedAt` 改变时取消并重新读取内容，同路径覆盖后增加预览 revision。
 - 图与详情的已加载数据分别绑定 projectId 与 `(projectId,taskId)`。渲染时只显示 key 相符的数据；key 变化立即显示新资源的加载状态，不能等 effect 清理后再去掉旧内容。同资源刷新才保留旧快照，取消/序号检查不能代替这一显示身份约束。对话框的焦点外壳保持独立，关系跳转不把焦点临时恢复到旧节点。
 - API client 的明确入口为 `listProjects(query, signal)`、`getTaskGraph(projectId, signal)`、`getTask(projectId, taskId, signal)` 与 versioned `approveTask`。错误类型区分已取消、网络/解析失败和服务端错误码；错误页面只展示脱敏文案及 requestId。图响应的 project.id、详情响应的 projectId/id 必须与规范化后的请求资源匹配，否则按协议错误拒绝显示。
@@ -777,7 +810,7 @@ CI 无论验收成功、失败或取消都执行恢复与归档；恢复成功�
 2. web：Vitest + Testing Library，重点测完整图独立分类、页签未完成任务数与默认/恢复、跨根链共享后续去重、筛选计数稳定、全部完成归零及刷新后的状态/分类计数、独立任务直接详情、分类迁移、独立筛选与浏览位置、根识别、闭包、菱形去重、共享节点、外部前置、统计口径、请求取消/晚到、失败重试和居中详情焦点。项目列表必须覆盖续页游标、末页隐藏加载按钮、去重及下一页失败重试，证明所有项目可访问。断言可见行为，不依赖框架内部坐标。
 3. 覆盖率：保留 Go go-cov 和原始 profile 的严格 `covered * 10 > total * 9`。web job 使用 Vitest V8 provider 输出的 `coverage-final.json`，按产品文件的语句命中表汇总计数并用整数执行同样严格比较。显式设置 `coverage.include` 为 `src/**/*.{ts,tsx}`；检查脚本另行枚举同一源码清单并逐文件核对报告，含未被测试导入的产品文件，缺失即失败。纯类型文件只有在确认没有运行语句时允许零语句；API、图算法和入口没有排除项。拒绝空、畸形报告，测试恰好 90%、舍入、未导入文件和遗漏文件等失败边界。第三方库与构建产物不属于产品源码。
 4. 两个模块分别大于 90%，因此加权总体也大于 90%；不能靠 Go 的高覆盖率掩盖 web 缺口。现有 Go package/function/critical-block 与所有 CLI 原生平台门槛保持。
-5. 浏览器验收使用 Playwright、构建后的真实页面、真实服务与隔离 PostgreSQL。通过 API 建立项目和任务，验证完整点击路径、共享/外部前置、空项目、局部失败与重试、深链接刷新、键盘节点操作，以及居中详情的实际几何、正文独立滚动、焦点进入/Tab 循环/Esc、遮罩/关闭按钮和关闭后恢复焦点；收集截图、测试 SHA、通过结果和资源清理证据。
+5. 浏览器验收使用 Playwright、构建后的真实页面、真实服务与隔离 PostgreSQL。通过 API 建立项目和任务，验证完整点击路径、共享/外部前置、空项目、局部失败与重试、深链接刷新、键盘节点操作，以及居中详情的实际几何、概览独立滚动、附件左右分屏与唯一右侧纵向滚动、焦点进入/Tab 循环/Esc、遮罩/关闭按钮和关闭后恢复焦点；收集截图、测试 SHA、通过结果和资源清理证据。
 6. PR 按[仓库 CI 路由](../../README.md#ci-selection)选择受影响模块，main push 执行全量应用检查。最终 `checks` 只接受所有前置 job 的 `success` 或 `skipped`，失败、取消及其他结果使汇总失败；未选中的 job 为 `skipped`。Go job 与 web job 被选中时，各自在干净 checkout 中生成真实 UI 产物并完成既有集成验收；跨模块构建前置不改变模块路由。依赖变更遵守现有 workspace 与 PR 的 CLI 版本检查规则。
 7. 性能验收使用 Linux CI 的固定 Chromium、生产构建和固定拓扑图集，覆盖 1,000 节点的单链，以及恰好同时具有 1,000 节点和 5,000 边的分叉合流、多根共享和外部祖先密集图；外部图的链内 2 项与上下文 998 项分别计数。每次从折叠状态打开，重复五次，最慢一次从点击到可操作画布不超过 3,000ms；布局后打开详情、缩放或平移的可见反馈不超过 300ms。单独保存布局/渲染耗时和完整测试环境，接口耗时与详情网络时间分开记录。失败必须优化或重新评审支持上限，不能把超时结果当成已支持，也不默认引入后台 worker。
 

@@ -24,8 +24,13 @@ application. The [membership foundation](2026-10-22-project-membership.md) adds
 transaction-scoped access, private creation, roles and invitations without
 mounting them. [CLI credentials](2026-10-22-cli-server-credentials.md) implement
 origin-bound optional tokens, hidden/stdin setup, safe persistence and shared
-HTTP Bearer transport. Web integration and full activation remain separately
-tracked.
+HTTP Bearer transport. The opt-in [Web workspace](../feature/2026-10-22-web-auth-workspace.md)
+implements authentication and project-management components without replacing
+production `main.tsx`, which now mounts `LocaleProvider` around `App`. The opt-in
+shell uses that same Provider and both complete catalogs. UniAuth
+[PR #19](https://github.com/codetreker/uniauth/pull/19) supplies App-aware provider
+discovery upstream; upgrading Daynight's existing SDK pin, production mounting
+and full activation remain separately tracked.
 
 Existing UniAuth and its Go SDK provide one-time identity handoff. Daynight owns
 stable local users, browser sessions, personal access tokens, project memberships
@@ -87,7 +92,8 @@ whole authenticated composition is ready, without an auth-disable flag.
 The implementation adds local users, memberships, invitations and two ordinary
 credential types, with final-style frontend artifacts. CLI credential transport
 is implemented without a new provider-login flow or credential framework;
-production mounting and Web token management remain separate work. It reuses the
+Web token management is implemented in the opt-in workspace. Production mounting
+and actual App-aware provider discovery remain separate work. It reuses the
 existing application origin, file storage, project locks, runtime and deployment topology.
 No preview-specific lifecycle or infrastructure is introduced.
 

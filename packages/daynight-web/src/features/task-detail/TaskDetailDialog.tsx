@@ -11,6 +11,7 @@ import { dialogFocusables } from './focus';
 import { TaskDetailSessionBoundary } from './TaskDetailSession';
 import { useTaskDetail } from './useTaskDetail';
 import { TaskApproval } from './TaskApproval';
+import { TaskDetailPanels } from './TaskDetailPanels';
 import { TaskPullRequests } from './TaskPullRequests';
 import { TaskAttachments } from './attachments/TaskAttachments';
 import '../../styles/task-detail.css';
@@ -138,7 +139,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
             <>
               <div className="task-detail-heading">
                 <p className="task-detail-id">{detail.id}</p>
-                <h3 className="task-detail-title">{detail.title}</h3>
+                <h3 className="task-detail-title" title={detail.title}>{detail.title}</h3>
                 <div className="task-detail-badges">
                   <StatusBadge status={detail.status} />
                   {detail.status === 'todo' && <span className={detail.ready ? 'task-detail-ready' : 'task-detail-blocked'}>{detail.ready ? m.ready : m.blocked}</span>}
@@ -150,39 +151,39 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                   </div>
                 )}
               </div>
-              <div className="task-detail-approval"><TaskApproval detail={detail} approval={task.approval} canApprove={task.canApprove} onApprove={task.approve} onReconcile={task.reconcile} /></div>
-              {error !== null && status === 'ready' && <div className="task-detail-read-error" role="alert"><DetailError error={error} /><button className="button" type="button" onClick={retry}>{m.retry}</button></div>}
-              <div className="task-detail-columns">
-                <div className="task-detail-main">
-                  <section className="task-detail-section" aria-label={m.description}>
-                    <h4>{m.description}</h4>
-                    <p className="task-detail-description">{detail.description === '' ? m.noDescription : detail.description}</p>
-                  </section>
-                  <TaskPullRequests pullRequests={detail.properties.pullRequests} />
-                  <TaskAttachments projectId={projectId} taskId={taskId} onClose={onClose} />
-                </div>
-                <aside className="task-detail-aside" aria-label={m.relationsMetadata}>
-                  <section className="task-detail-section" aria-label={m.dependencies}>
-                    <h4>{m.countedHeading({ label: m.dependencies, count: format.number(detail.dependsOn.length) })}</h4>
-                    {detail.dependsOn.length === 0 ? <p className="task-detail-description">{m.noDependencies}</p> : <ul className="task-detail-relations">{detail.dependsOn.map(relation)}</ul>}
-                  </section>
-                  <section className="task-detail-section" aria-label={m.blockers}>
-                    <h4>{m.countedHeading({ label: m.blockers, count: format.number(detail.blockedBy.length) })}</h4>
-                    {detail.blockedBy.length === 0 ? <p className="task-detail-description">{m.noBlockers}</p> : <ul className="task-detail-relations">{detail.blockedBy.map(relation)}</ul>}
-                  </section>
-                  <section className="task-detail-section" aria-label={m.successors}>
-                    <h4>{successors === undefined ? m.successors : m.countedHeading({ label: m.successors, count: format.number(successors.length) })}</h4>
-                    {successors === undefined
-                      ? <p className="task-detail-description">{m.successorsMissing}</p>
-                      : successors.length === 0 ? <p className="task-detail-description">{m.noSuccessors}</p> : <ul className="task-detail-relations">{successors.map(relation)}</ul>}
-                  </section>
-                  <dl className="task-detail-section task-detail-metadata">
-                    <div><dt>{m.created}</dt><dd><time dateTime={detail.createdAt}>{format.dateTime(detail.createdAt)}</time></dd></div>
-                    <div><dt>{m.updated}</dt><dd><time dateTime={detail.updatedAt}>{format.dateTime(detail.updatedAt)}</time></dd></div>
-                    <div><dt>{m.taskId}</dt><dd className="task-detail-full-id">{detail.id}</dd></div>
-                  </dl>
-                </aside>
-              </div>
+              <TaskDetailPanels key={`${projectId}/${taskId}`} overview={<>
+                <div className="task-detail-approval"><TaskApproval detail={detail} approval={task.approval} canApprove={task.canApprove} onApprove={task.approve} onReconcile={task.reconcile} /></div>
+                {error !== null && status === 'ready' && <div className="task-detail-read-error" role="alert"><DetailError error={error} /><button className="button" type="button" onClick={retry}>{m.retry}</button></div>}
+                <div className="task-detail-columns">
+                  <div className="task-detail-main">
+                    <section className="task-detail-section" aria-label={m.description}>
+                      <h4>{m.description}</h4>
+                      <p className="task-detail-description">{detail.description === '' ? m.noDescription : detail.description}</p>
+                    </section>
+                    <TaskPullRequests pullRequests={detail.properties.pullRequests} />
+                  </div>
+                  <aside className="task-detail-aside" aria-label={m.relationsMetadata}>
+                    <section className="task-detail-section" aria-label={m.dependencies}>
+                      <h4>{m.countedHeading({ label: m.dependencies, count: format.number(detail.dependsOn.length) })}</h4>
+                      {detail.dependsOn.length === 0 ? <p className="task-detail-description">{m.noDependencies}</p> : <ul className="task-detail-relations">{detail.dependsOn.map(relation)}</ul>}
+                    </section>
+                    <section className="task-detail-section" aria-label={m.blockers}>
+                      <h4>{m.countedHeading({ label: m.blockers, count: format.number(detail.blockedBy.length) })}</h4>
+                      {detail.blockedBy.length === 0 ? <p className="task-detail-description">{m.noBlockers}</p> : <ul className="task-detail-relations">{detail.blockedBy.map(relation)}</ul>}
+                    </section>
+                    <section className="task-detail-section" aria-label={m.successors}>
+                      <h4>{successors === undefined ? m.successors : m.countedHeading({ label: m.successors, count: format.number(successors.length) })}</h4>
+                      {successors === undefined
+                        ? <p className="task-detail-description">{m.successorsMissing}</p>
+                        : successors.length === 0 ? <p className="task-detail-description">{m.noSuccessors}</p> : <ul className="task-detail-relations">{successors.map(relation)}</ul>}
+                    </section>
+                    <dl className="task-detail-section task-detail-metadata">
+                      <div><dt>{m.created}</dt><dd><time dateTime={detail.createdAt}>{format.dateTime(detail.createdAt)}</time></dd></div>
+                      <div><dt>{m.updated}</dt><dd><time dateTime={detail.updatedAt}>{format.dateTime(detail.updatedAt)}</time></dd></div>
+                      <div><dt>{m.taskId}</dt><dd className="task-detail-full-id">{detail.id}</dd></div>
+                    </dl>
+                  </aside>
+                </div></>} attachments={<TaskAttachments projectId={projectId} taskId={taskId} onClose={onClose} />} />
             </>
           )}
         </div>

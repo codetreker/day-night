@@ -1,0 +1,209 @@
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { listMembers, logout, me } from "../api/auth";
+import type { AuthProvider, CurrentUser, ProjectRole } from "../api/auth-types";
+import { ApiError, invalidateAuthRequests, isAbortError, subscribeUnauthorized } from "../api/client";
+import type { Project } from "../api/types";
+import { AccountPage } from "../features/management/AccountPage";
+import { MembersPanel } from "../features/management/MembersPanel";
+import { CreateProjectDialog } from "../features/auth/CreateProjectDialog";
+import { InvitationPage } from "../features/auth/InvitationPage";
+import { LoginPage } from "../features/auth/LoginPage";
+import { captureInvitation, clearInvitation } from "../features/auth/invitation";
+import { TaskDetailSessionProvider } from "../features/task-detail/TaskDetailSession";
+import { ProjectPage } from "../features/projects/ProjectPage";
+import { ProjectsPage } from "../features/projects/ProjectsPage";
+import { canonicalId } from "../api/parse";
+import { navigate } from "./router";
+import { useI18n } from "../i18n/LocaleProvider";
+import { LanguageSelector } from "../i18n/LanguageSelector";
+import "../styles/auth.css";
+
+type AuthRoute = { readonly kind: "projects" | "account" | "invitations" | "notFound" } | { readonly kind: "project" | "members"; readonly projectId: string };
+export const parseAuthRoute = (pathname: string): AuthRoute => {
+  if (pathname === "/") return { kind: "projects" };
+  if (pathname === "/account") return { kind: "account" };
+  if (pathname === "/invitations") return { kind: "invitations" };
+  const match = /^\/projects\/([^/]+)(\/members)?$/.exec(pathname);
+  if (match === null) return { kind: "notFound" };
+  let decoded: string;
+  try { decoded = decodeURIComponent(match[1]!); } catch { return { kind: "notFound" }; }
+  const projectId = canonicalId(decoded);
+  return projectId === null ? { kind: "notFound" } : { kind: match[2] === undefined ? "project" : "members", projectId };
+};
+
+const followLink = (event: MouseEvent<HTMLAnchorElement>) => {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault(); navigate(event.currentTarget.pathname);
+};
+const accountLabel = (user: CurrentUser, currentAccount: string) => user.name ?? user.email ?? currentAccount;
+const AccessUnavailable = () => {
+  const { messages: { auth: { shell: m }, workspace: { app } } } = useI18n();
+  return <section className="state-box" role="alert"><h1>{m.accessUnavailable}</h1><p>{m.accessUnavailableDetail}</p><a className="button primary" href="/" onClick={followLink}>{app.returnToProjects}</a></section>;
+};
+
+const AuthorizedProject = ({ projectId, user, onOpenMembers }: { readonly projectId: string; readonly user: CurrentUser; readonly onOpenMembers: (project: Project) => void }) => {
+  const { messages: { auth: { shell: m, roles } } } = useI18n();
+  const [membership, setMembership] = useState<{ status: "loading" | "ready" | "error" | "unavailable"; role: ProjectRole | null }>({ status: "loading", role: null });
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setMembership({ status: "loading", role: null });
+    void listMembers(projectId, controller.signal).then((members) => {
+      if (controller.signal.aborted) return;
+      const current = members.find((member) => member.userId === user.id);
+      setMembership(current === undefined ? { status: "unavailable", role: null } : { status: "ready", role: current.role });
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted && !isAbortError(error)) setMembership({ status: error instanceof ApiError && error.status === 404 ? "unavailable" : "error", role: null });
+    });
+    return () => controller.abort();
+  }, [projectId, user.id, attempt]);
+  if (membership.status === "unavailable") return <AccessUnavailable />;
+  return <>{membership.status === "error" && <div className="notice error" role="alert"><p>{m.permissionsError}</p><button className="button" type="button" onClick={() => setAttempt((value) => value + 1)}>{m.retryPermissions}</button></div>}<ProjectPage projectId={projectId} renderActions={(project) => membership.status === "ready" ? <><span className={`badge ${membership.role}`}>{roles[membership.role!]}</span><a className="button" href={`/projects/${projectId}/members`} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onOpenMembers(project); }}>{m.members}</a></> : null} /></>;
+};
+
+const Workspace = ({ user, children, route, onSignOut, checking }: { readonly user: CurrentUser; readonly children: ReactNode; readonly route: AuthRoute; readonly onSignOut: () => void; readonly checking: boolean }) => {
+  const { messages: { auth: { shell: m }, workspace: { app } } } = useI18n();
+  const content = useRef<HTMLElement>(null);
+  const label = route.kind === "projects" ? m.myProjects : route.kind === "account" ? m.accountSettings : route.kind === "members" ? m.members : route.kind === "project" ? app.projectTasks : app.notFound;
+  useLayoutEffect(() => { content.current?.focus(); }, [route.kind, "projectId" in route ? route.projectId : null]);
+  return <div className="shell auth-shell" aria-hidden={checking} inert={checking}><a className="skip-link" href="#main-content">{app.skipToContent}</a><aside className="sidebar" aria-label={app.workspaceNavigation}><a className="brand" href="/" onClick={followLink} aria-label={app.projectHome}><span className="brand-mark" aria-hidden="true" />daynight</a><nav aria-label={app.mainNavigation}><p className="nav-label">{app.workspace}</p><a className="nav-button" href="/" onClick={followLink} aria-current={route.kind === "projects" || route.kind === "project" || route.kind === "members" ? "page" : undefined}>▦　{m.myProjects}</a><a className="nav-button account-nav" href="/account" onClick={followLink} aria-current={route.kind === "account" ? "page" : undefined}>◎　{m.accountSettings}</a></nav><div className="sidebar-bottom">{m.teamWorkspace}<small>{app.localWorkspaceDetail}</small></div></aside><div className="workspace"><header className="topbar"><nav className="crumb" aria-label={app.breadcrumb}><a href="/" onClick={followLink}>{app.workspace}</a><span aria-hidden="true">/</span><span className="crumb-current" aria-current="page">{label}</span></nav><div className="account-actions"><LanguageSelector /><a className="account-button" href="/account" onClick={followLink} aria-label={m.accountLink({ name: accountLabel(user, m.currentAccount) })}><span className="avatar" aria-hidden="true">{accountLabel(user, m.currentAccount).slice(0, 1).toUpperCase()}</span><span className="account-name">{accountLabel(user, m.currentAccount)}</span></a><button className="inline-link" type="button" onClick={onSignOut}>{m.signOut}</button></div></header><main className="content" id="main-content" ref={content} tabIndex={-1}>{children}</main></div></div>;
+};
+
+const RevalidationOverlay = ({ failed, onRetry }: { readonly failed: boolean; readonly onRetry: () => void }) => {
+  const { messages: { auth: { shell: m } } } = useI18n();
+  const dialog = useRef<HTMLDialogElement>(null);
+  useLayoutEffect(() => {
+    const opener = document.activeElement;
+    dialog.current!.showModal();
+    return () => queueMicrotask(() => { if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); });
+  }, []);
+  return <dialog ref={dialog} className="auth-revalidation-overlay" aria-label={m.revalidationLabel} onCancel={(event) => event.preventDefault()} onKeyDown={(event) => event.stopPropagation()}>
+    <LanguageSelector />
+    {failed ? <div role="alert"><h1>{m.revalidationError}</h1><p>{m.revalidationRetained}</p><button className="button primary" type="button" onClick={onRetry}>{m.revalidationRetry}</button></div> : <div role="status"><span className="spinner" aria-hidden="true" /><p>{m.revalidationLoading}</p></div>}
+  </dialog>;
+};
+
+type SessionNotice = "expired" | "signedOut" | "logoutFailed";
+type Session = { readonly status: "loading" } | { readonly status: "error" } | { readonly status: "anonymous"; readonly notice?: SessionNotice } | { readonly status: "authenticated"; readonly user: CurrentUser; readonly generation: number };
+const assignLogin = (url: string) => window.location.assign(url);
+
+export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly navigateToLogin?: (url: string) => void }) => {
+  const { locale, messages: { auth: { shell: m }, workspace: { app, projects } } } = useI18n();
+  const [invitation, setInvitation] = useState(captureInvitation);
+  const [pathname, setPathname] = useState(window.location.pathname);
+  const [invitationRevision, setInvitationRevision] = useState(0);
+  const invitationLifetime = useRef(new AbortController());
+  const [session, setSession] = useState<Session>({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
+  const [revalidation, setRevalidation] = useState<"idle" | "loading" | "error">("idle");
+  const revalidationRef = useRef(revalidation);
+  revalidationRef.current = revalidation;
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const [creating, setCreating] = useState(false);
+  const [logoutFailed, setLogoutFailed] = useState(false);
+  const [cleanupFailed, setCleanupFailed] = useState(false);
+  const [projectName, setProjectName] = useState<string | null>(null);
+  const generation = useRef(0);
+  const active = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
+  const route = parseAuthRoute(pathname);
+  useLayoutEffect(() => {
+    document.documentElement.lang = locale;
+    document.title = m.documentTitle[session.status === "authenticated" ? route.kind : session.status === "anonymous" ? "login" : session.status];
+  }, [locale, m.documentTitle, route.kind, session.status]);
+  const [loginError] = useState(() => {
+    const parameters = new URLSearchParams(window.location.search);
+    const failed = parameters.get("authError") === "login_failed";
+    if (parameters.has("authError")) { parameters.delete("authError"); window.history.replaceState(window.history.state, "", window.location.pathname + (parameters.size === 0 ? "" : `?${parameters}`)); }
+    return failed;
+  });
+  const clearSession = useCallback((notice?: SessionNotice) => {
+    invalidateAuthRequests(); ++generation.current; active.current?.abort(); active.current = null;
+    setCreating(false); setProjectName(null); setRevalidation("idle"); setSession({ status: "anonymous", ...(notice === undefined ? {} : { notice }) });
+  }, []);
+  useEffect(() => subscribeUnauthorized(() => clearSession(sessionRef.current.status === "authenticated" ? "expired" : undefined)), [clearSession]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; active.current?.abort(); invalidateAuthRequests(); };
+  }, []);
+  useEffect(() => {
+    const onNavigate = () => {
+      if (window.location.pathname === "/invitations" && window.location.hash !== "") {
+        const incoming = captureInvitation();
+        invitationLifetime.current.abort();
+        invitationLifetime.current = new AbortController();
+        setInvitation(incoming); setInvitationRevision((value) => value + 1);
+      }
+      setPathname(window.location.pathname);
+    };
+    window.addEventListener("popstate", onNavigate);
+    window.addEventListener("hashchange", onNavigate);
+    return () => { window.removeEventListener("popstate", onNavigate); window.removeEventListener("hashchange", onNavigate); };
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController(); active.current = controller;
+    const current = ++generation.current;
+    if (sessionRef.current.status === "authenticated") setRevalidation("loading");
+    else setSession({ status: "loading" });
+    void me(controller.signal).then((user) => {
+      if (controller.signal.aborted || current !== generation.current) return;
+      const previous = sessionRef.current;
+      if (previous.status === "authenticated" && previous.user.id === user.id) {
+        setSession({ ...previous, user });
+      } else {
+        invalidateAuthRequests(); setCreating(false); setProjectName(null);
+        setSession({ status: "authenticated", user, generation: current });
+      }
+      setRevalidation("idle");
+    }).catch((error: unknown) => {
+      if (controller.signal.aborted || current !== generation.current || isAbortError(error)) return;
+      if (error instanceof ApiError && error.status === 401) clearSession(sessionRef.current.status === "authenticated" ? "expired" : undefined);
+      else if (sessionRef.current.status === "authenticated") setRevalidation("error");
+      else setSession({ status: "error" });
+    });
+    return () => controller.abort();
+  }, [attempt, clearSession]);
+  const discardInvitation = useCallback(() => { invitationLifetime.current.abort(); setCleanupFailed(!clearInvitation()); setInvitation({ token: null, storageUnavailable: false }); }, []);
+  const completeInvitation = useCallback((projectId: string) => { discardInvitation(); navigate(`/projects/${projectId}`); }, [discardInvitation]);
+  const cancelInvitation = useCallback(() => { discardInvitation(); navigate("/"); }, [discardInvitation]);
+  const unavailableInvitation = discardInvitation;
+  useEffect(() => { if (route.kind !== "invitations" && invitation.token !== null) discardInvitation(); }, [route.kind, invitation.token, discardInvitation]);
+  const signOut = useCallback(() => {
+    setLogoutFailed(false);
+    const controller = new AbortController();
+    const request = logout(controller.signal);
+    clearSession("signedOut");
+    void request.catch((error: unknown) => {
+      if (mounted.current && !isAbortError(error) && !(error instanceof ApiError && error.status === 401)) { setLogoutFailed(true); setSession({ status: "anonymous", notice: "logoutFailed" }); }
+    });
+  }, [clearSession]);
+  const recheckIdentity = useCallback(() => { revalidationRef.current = "loading"; setRevalidation("loading"); setAttempt((value) => value + 1); }, []);
+  useLayoutEffect(() => {
+    document.body.classList.toggle("auth-session-checking", revalidation !== "idle");
+    return () => document.body.classList.remove("auth-session-checking");
+  }, [revalidation]);
+  useEffect(() => {
+    if (session.status !== "authenticated") return;
+    const refreshIdentity = () => { if (revalidationRef.current === "idle") recheckIdentity(); };
+    window.addEventListener("focus", refreshIdentity);
+    return () => window.removeEventListener("focus", refreshIdentity);
+  }, [session.status, recheckIdentity]);
+  const startLogin = (provider: AuthProvider) => {
+    const returnPath = route.kind === "invitations" ? "/invitations" : pathname;
+    const parameters = new URLSearchParams({ provider, returnPath });
+    navigateToLogin(`/api/v1/auth/login?${parameters}`);
+  };
+  const cleanupWarning = cleanupFailed ? <div className="notice warning" role="alert">{m.invitationCleanupError}</div> : null;
+  if (session.status === "loading") return <main className="auth-main"><section className="state-box" role="status"><span className="spinner" aria-hidden="true" /><h1>{m.identityLoading}</h1><LanguageSelector /></section></main>;
+  if (session.status === "error") return <main className="auth-main"><section className="state-box" role="alert"><h1>{m.identityError}</h1><p>{m.networkRetry}</p><LanguageSelector /><button className="button primary" type="button" onClick={() => setAttempt((value) => value + 1)}>{projects.retry}</button></section></main>;
+  if (session.status === "anonymous") return <>{cleanupWarning}{route.kind === "invitations" && invitation.storageUnavailable && <div className="notice warning" role="alert">{m.invitationStorageError}</div>}<LoginPage invitation={route.kind === "invitations"} {...(session.notice !== undefined ? { notice: m.notice[session.notice] } : loginError ? { notice: m.notice.loginFailed } : {})} onLogin={startLogin} />{logoutFailed && <button className="button" type="button" onClick={signOut}>{m.retryLogout}</button>}</>;
+  const identity = `${session.user.id}:${session.generation}`;
+  const checking = revalidation !== "idle";
+  const revalidationOverlay = checking ? <RevalidationOverlay failed={revalidation === "error"} onRetry={recheckIdentity} /> : null;
+  if (route.kind === "invitations") return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}{cleanupWarning}<div aria-hidden={checking} inert={checking}><InvitationPage key={`${identity}:${invitationRevision}`} lifetime={invitationLifetime.current.signal} invitation={invitation} user={session.user} onComplete={completeInvitation} onCancel={cancelInvitation} onSwitchAccount={signOut} onUnavailable={unavailableInvitation} /></div></TaskDetailSessionProvider>;
+  return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}<Workspace key={identity} user={session.user} route={route} onSignOut={signOut} checking={checking}>
+    {cleanupWarning}{route.kind === "projects" ? <ProjectsPage onCreate={() => setCreating(true)} /> : route.kind === "project" ? <AuthorizedProject key={route.projectId} projectId={route.projectId} user={session.user} onOpenMembers={(project) => { setProjectName(project.name); navigate(`/projects/${project.id}/members`); }} /> : route.kind === "members" ? <MembersPanel key={route.projectId} projectId={route.projectId} projectName={projectName ?? m.genericProject} user={session.user} onRemoved={() => navigate("/")} /> : route.kind === "account" ? <AccountPage user={session.user} onSignOut={signOut} /> : <section className="state-box"><h1>{app.notFound}</h1><a className="button primary" href="/" onClick={followLink}>{app.returnToProjects}</a></section>}
+    {creating && <CreateProjectDialog onClose={() => setCreating(false)} onCreated={(project) => { setCreating(false); navigate(`/projects/${project.id}`); }} />}
+  </Workspace></TaskDetailSessionProvider>;
+};

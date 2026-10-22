@@ -36,7 +36,7 @@ describe('attachment preview', () => {
     fireEvent.click(screen.getByRole('button', { name: '重试预览' }));
     expect(retry).toHaveBeenCalledOnce();
     view.rerender(<AttachmentPreview {...props} preview={{ ...ready, status: 'idle' }} />);
-    expect(view.container).toBeEmptyDOMElement();
+    expect(view.container.querySelector('.attachment-preview-body')).toBeEmptyDOMElement();
   });
 
   it('uses text, native images, PDF, trusted HTML, and download-only states', () => {

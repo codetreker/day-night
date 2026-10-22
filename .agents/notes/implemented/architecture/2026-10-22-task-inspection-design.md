@@ -21,8 +21,10 @@ implements the first task: complete ancestors, separate counts and a readable
 upstream-aware initial viewport. The
 [centered detail decision](../feature/2026-10-22-centered-task-detail-dialog.md)
 implements the reading shell while retaining existing modal and attachment
-ownership. Graph inspection, smooth paths and Markdown descriptions remain
-pending in their Daynight tasks. Existing paint and detail notes describe their
+ownership. The [attachment split-view decision](2026-10-22-task-attachment-split-view.md)
+extends that shell with Overview/Attachments tabs, retained attachment state and
+a bounded two-pane preview. Graph inspection, smooth paths and Markdown
+descriptions remain pending in their Daynight tasks. Existing paint and detail notes describe their
 current mechanisms.
 
 The root and its descendants remain the chain's counted membership. Rendering
@@ -41,8 +43,8 @@ coverage, dash continuity and real production timing.
 Descriptions use the existing CommonMark/GFM stack. Relative links resolve
 from the task attachment root, while attachment documents retain their own
 directory base. Ordinary relative attachment links select the existing preview
-through one attachment-state owner. The published skill teaches Markdown
-problem statements and verified attachment references without moving solution
+through one attachment-state owner and activates its attachment tab. The
+published skill teaches Markdown problem statements and verified attachment references without moving solution
 or acceptance ownership out of the primary Markdown attachment.
 
 The [breakdown](../../../../docs/design/daynight-task-inspection-tasks.md)

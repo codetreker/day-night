@@ -12,14 +12,14 @@ export const expectCenteredTaskDetail = async (page: Page, dialog: Locator): Pro
       && bounds.height <= window.innerHeight - gutter * 2 + 0.5;
   }), { message: 'Task details remain centered within the available viewport and its required gutters' }).toBe(true);
   await expect(dialog.locator('.task-detail-header')).toBeInViewport({ ratio: 1 });
-  await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeInViewport({ ratio: 1 });
+  await expect(dialog.locator('.task-detail-close')).toBeInViewport({ ratio: 1 });
   await expect(dialog.locator('.task-detail-footer')).toBeInViewport({ ratio: 1 });
   expect(await dialog.locator('.task-detail-body').evaluate((body) => body.scrollWidth <= body.clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 };
 
 export const expectTaskDetailScroll = async (page: Page, dialog: Locator): Promise<void> => {
-  const body = dialog.locator('.task-detail-body');
+  const body = dialog.locator('.task-detail-panel-overview');
   expect(await body.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
   const fixedBefore = await dialog.locator('.task-detail-header,.task-detail-footer').evaluateAll((elements) =>
     elements.map((element) => { const bounds = element.getBoundingClientRect(); return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }; }));

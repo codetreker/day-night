@@ -3,6 +3,16 @@ import { isTaskVersion, parseApiJson, stringifyApiJson } from "./json";
 import { canonicalId, isAttachmentPath, parseAttachment, parseAttachmentPage, parseProjectPage, parseServerError, parseTaskDetail, parseTaskGraph } from "./parse";
 import type { Attachment, AttachmentPage, GraphLimitDetails, ProjectPage, TaskDetail, TaskGraph } from "./types";
 
+const serverMessages: Readonly<Record<string, string>> = {
+  not_found: "The requested resource was not found.",
+  unauthenticated: "Your session has expired. Please sign in again.",
+  forbidden: "You do not have permission to perform this action.",
+  version_conflict: "The resource changed. Refresh it before trying again.",
+  last_admin: "The project must retain at least one administrator.",
+  invitation_unavailable: "This invitation is no longer available.",
+  graph_limit_exceeded: "This project's task graph exceeds the supported size.",
+};
+
 export class ApiError extends Error {
   readonly kind: "network" | "protocol" | "server";
   readonly status: number | null;
@@ -22,12 +32,8 @@ export class ApiError extends Error {
       ? "Unable to connect to the server. Please try again."
       : kind === "protocol"
         ? "The server returned an invalid response. Please try again."
-        : code === "not_found"
-          ? "The requested resource was not found."
-          : code === "graph_limit_exceeded"
-            ? "This project's task graph exceeds the supported size."
-            : "Unable to load the requested data. Please try again.";
-    super(message, { cause });
+        : Object.hasOwn(serverMessages, code) ? serverMessages[code]! : "Unable to load the requested data. Please try again.";
+    super(message, cause === undefined ? undefined : { cause });
     this.name = "ApiError";
     this.kind = kind;
     this.status = status;
@@ -40,25 +46,39 @@ export class ApiError extends Error {
 export const isAbortError = (error: unknown): boolean =>
   typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
 
-const request = async (url: string, signal: AbortSignal, init: RequestInit = {}): Promise<Response> => {
+let authGeneration = 0;
+const unauthorizedListeners = new Set<() => void>();
+
+export const invalidateAuthRequests = (): void => { authGeneration += 1; };
+export const subscribeUnauthorized = (listener: () => void): (() => void) => {
+  unauthorizedListeners.add(listener);
+  return () => { unauthorizedListeners.delete(listener); };
+};
+
+export const request = async (url: string, signal: AbortSignal, init: RequestInit = {}): Promise<Response> => {
   signal.throwIfAborted();
+  const generation = authGeneration;
+  let response: Response;
   try {
-    const response = await fetch(url, { ...init, signal, cache: "no-store" });
-    signal.throwIfAborted();
-    return response;
+    response = await fetch(url, { ...init, signal, cache: "no-store", credentials: "same-origin", redirect: "error" });
   } catch (error) {
     signal.throwIfAborted();
     if (isAbortError(error)) throw error;
     throw new ApiError("network", null, "network", null, undefined, error);
   }
+  signal.throwIfAborted();
+  if (response.status === 401 && generation === authGeneration) {
+    for (const listener of unauthorizedListeners) listener();
+  }
+  return response;
 };
 
-const json = async <T>(response: Response, signal: AbortSignal, parse: (data: unknown) => T): Promise<T> => {
+export const json = async <T>(response: Response, signal: AbortSignal, parse: (data: unknown) => T, decode: (response: Response) => Promise<unknown> = async (value) => parseApiJson(await value.text())): Promise<T> => {
   let body: unknown;
   try {
     const contentType = response.headers.get("Content-Type");
     if (contentType === null || !/^application\/json(?:\s*;|\s*$)/i.test(contentType)) throw new Error("Invalid media type");
-    body = parseApiJson(await response.text());
+    body = await decode(response);
     signal.throwIfAborted();
   } catch (error) {
     signal.throwIfAborted();
@@ -75,10 +95,10 @@ const json = async <T>(response: Response, signal: AbortSignal, parse: (data: un
   }
 };
 
-const read = async <T>(url: string, signal: AbortSignal, parse: (data: unknown) => T): Promise<T> =>
-  json(await request(url, signal, { headers: { Accept: "application/json" } }), signal, parse);
+export const read = async <T>(url: string, signal: AbortSignal, parse: (data: unknown) => T, decode?: (response: Response) => Promise<unknown>): Promise<T> =>
+  json(await request(url, signal, { headers: { Accept: "application/json" } }), signal, parse, decode);
 
-const requestId = (value: string): string => {
+export const requestId = (value: string): string => {
   const id = canonicalId(value);
   if (id === null) throw new ApiError("protocol");
   return id;
@@ -203,7 +223,7 @@ export const checkAttachmentPreview = async (projectId: string, taskId: string, 
   if (!response.ok) {
     const header = response.headers.get("X-Request-ID");
     const requestId = header !== null && /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(header) ? header : null;
-    throw new ApiError("server", response.status, "server", requestId);
+    throw new ApiError("server", response.status, response.status === 401 ? "unauthenticated" : "server", requestId);
   }
   if (response.status !== 200) throw new ApiError("protocol", response.status);
 };

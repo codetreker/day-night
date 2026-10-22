@@ -31,13 +31,20 @@ bucket/path file storage, single-file task attachments, same-origin browser
 preview and binary CLI reads. Generic local storage and startup, attachment
 metadata, file/preview HTTP APIs, CLI put/list/read/remove commands, browser file
 management, persistent deployment volumes and paired backup/restore are
-implemented. Installed CLI/service and production-browser attachment journeys
-share real service data on native and container targets; their
+implemented. Task details open on Overview and provide a separate Attachments
+tab with adjacent file and preview panes at every supported width. Each pane
+owns its scroll region; the preview has exactly one vertical scroll owner,
+including native HTML/PDF documents. Full-page attachment reading in a new
+browser tab and independent integrated acceptance for that reading group
+remain separately tracked work. Installed CLI/service and production-browser
+attachment journeys share real service data on native and container targets; their
 [acceptance decision](.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
 owns byte, rendering and cleanup proof. Delivery progress remains tracked in
 Daynight, and successful runs remain tied to their tested source and CI. The
 [Web attachment decision](.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)
 owns browser state, rendering and focus integration; the
+[split-view decision](.agents/notes/implemented/architecture/2026-10-22-task-attachment-split-view.md)
+owns detail tabs, retained attachment state and preview scroll ownership; the
 [deployment guide](deployment/localhost/README.md#persistence-and-backup) owns data
 retention and backup commands. Filesystem/PostgreSQL non-atomicity remains a known
 issue; consistency remediation is outside that scope.
@@ -51,8 +58,14 @@ provides persistent users, credentials and callable authentication handlers. The
 [project membership module](.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
 adds private creation, filtered access, roles and invitations. Both modules remain
 unmounted. [CLI server credentials](.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
-are implemented; Web integration and coordinated activation are separately
-tracked, and the current application is unauthenticated and loopback-only. Trusted
+are implemented. The opt-in [authenticated Web workspace](.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
+provides login, private project creation, account/token management, project
+members and invitation acceptance in English and Simplified Chinese through the
+existing locale runtime. Production `main.tsx` keeps `LocaleProvider` and `App`;
+the opt-in shell uses the same Provider. Coordinated activation switches the
+application entry and integrates provider discovery after upgrading the pinned
+UniAuth SDK to the delivered upstream capability. The current application is
+unauthenticated and loopback-only. Trusted
 same-origin executable HTML previews retain their existing execution model after
 authentication is delivered; attachment requests gain project-member checks.
 Existing projects will receive membership data manually outside that work.
@@ -396,9 +409,9 @@ pnpm web:test
 For the frontend-only attachment mockup, run `pnpm web:dev` and open
 `/tests/mockups/attachments.html` on the origin printed by Vite. It uses the real
 attachment UI with in-memory metadata and local fixture files; it needs no Go
-service or PostgreSQL. Scenario selection covers files, an empty task and upload
-failure. Production builds keep the single application index and exclude these
-fixture entry points. The [web README](packages/daynight-web/README.md#task-attachments)
+service or PostgreSQL. It exercises the detail tabs, adjacent panes, tall
+content and attachment loading, empty, failure and busy states. Production builds
+keep the single application index and exclude these fixture entry points. The [web README](packages/daynight-web/README.md#task-attachments)
 explains previews and the mockup's evidence limits.
 
 The frontend build emits `packages/daynight-web/dist/`, validates its HTML and

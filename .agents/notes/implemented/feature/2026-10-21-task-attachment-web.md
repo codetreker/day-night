@@ -23,9 +23,13 @@ This decision implements the browser portion of that design. It extends the
 and [project browsing foundation](../architecture/2026-10-20-web-project-browsing.md)
 without changing task fields, dependency policy or graph snapshots.
 
-`TaskDetailDialog` composes `TaskAttachments` after PR associations in its
-reading column. The [centered detail decision](2026-10-22-centered-task-detail-dialog.md)
-owns the outer shell and responsive layout. One file input
+The original composition placed `TaskAttachments` after PR associations so file
+management extended the existing task-reading workflow without introducing a
+second task surface. The [split-view decision](../architecture/2026-10-22-task-attachment-split-view.md)
+partially supersedes that placement: `TaskDetailDialog` now keeps attachment
+management in a dedicated tab with adjacent inventory and preview panes and one
+right-side vertical scroll owner. The [centered detail decision](2026-10-22-centered-task-detail-dialog.md)
+retains the outer shell and modal lifecycle. One file input
 initializes a target path from the filename; users may edit it to a nested path.
 `mime` 4.1.1 derives Content-Type from that target, so changing a source filename
 does not silently determine the saved path's type. Same-path upload overwrites;

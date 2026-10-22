@@ -131,8 +131,35 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   await approve.focus();
   const beforeApproval = await page.locator('.react-flow__viewport').getAttribute('style');
   const zoom = await page.locator('.react-flow__viewport').evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).a);
-  await page.keyboard.press('Enter');
-  await expectStatus(page, 'To do');
+  const graphSubmitted = deferred();
+  const graphRelease = deferred();
+  const graphFinished = deferred();
+  const graphApprovalPattern = `**${taskPath(project.id, blocked.id)}/approve`;
+  await page.route(graphApprovalPattern, async (route) => {
+    const response = await route.fetch({ timeout: 15_000, maxRetries: 0 });
+    expect(response.status()).toBe(200);
+    graphSubmitted.resolve();
+    await within(graphRelease.promise, 'graph approval response release');
+    await route.fulfill({ response });
+    graphFinished.resolve();
+  });
+  try {
+    await page.keyboard.press('Enter');
+    await within(graphSubmitted.promise, 'real graph approval commit');
+    const attachmentsTab = detail(page).getByRole('tab', { name: 'Attachments', exact: true });
+    await attachmentsTab.click();
+    await expect(attachmentsTab).toHaveAttribute('aria-selected', 'true');
+    graphRelease.resolve();
+    await within(graphFinished.promise, 'graph approval response');
+    await expectStatus(page, 'To do');
+    await expect(attachmentsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(attachmentsTab).toBeFocused();
+    await page.keyboard.press('ArrowLeft');
+    await expect(detail(page).getByRole('tab', { name: 'Overview', exact: true })).toHaveAttribute('aria-selected', 'true');
+  } finally {
+    graphRelease.resolve();
+    await page.unroute(graphApprovalPattern);
+  }
   await expect(approval(page).getByRole('status')).toContainText('Approval confirmed');
   await expect(approval(page)).toContainText('Unfinished prerequisites still block it');
   await expect(detail(page).locator('.task-detail-blocked')).toHaveText('Blocked');

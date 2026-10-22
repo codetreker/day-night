@@ -21,13 +21,57 @@ own single-file management, previews and their independent state. The original
 offline dashboard mockups remain separate from the application; the attachment
 development mockup below reuses the real components with a frontend-only fixture.
 
-The planned [authentication requirements](../../docs/spec/daynight-auth.md),
+The [authentication requirements](../../docs/spec/daynight-auth.md),
 [architecture](../../docs/design/daynight-auth.md) and
 [task breakdown](../../docs/design/daynight-auth-tasks.md) define login, private
-projects, member and invitation management, and personal access tokens. These
-capabilities are not implemented. The current browser workspace uses the
-unauthenticated local service. Trusted same-origin previews, relative resources
-and keyboard behavior continue after authentication is delivered.
+projects, member and invitation management, and personal access tokens. The
+opt-in `AuthenticatedApp` implements their browser components and API client.
+Production `main.tsx` still renders `App` under `LocaleProvider`; the deployed workspace remains
+unauthenticated and loopback-only until coordinated activation. Trusted
+same-origin previews, relative resources and keyboard behavior remain unchanged.
+The [Web workspace decision](../../.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
+owns this integration boundary and its lifecycle choices.
+
+## Authenticated workspace
+
+`AuthenticatedApp` runs under the same `LocaleProvider` as the existing
+workspace and owns current-user loading, login navigation and session loss. Both
+complete catalogs provide its `messages.auth` domain, including accessible names,
+validation, notices and already displayed errors. Login, workspace, invitation
+and management dialogs expose the shared language selector; native formatters
+render dates and counts. Language changes retain form inputs, dialog and
+one-time secrets, identity and pending requests without restarting operations.
+It composes the existing project list, graph and centered `TaskDetailDialog` with
+private project creation, account/token pages, member/invitation management and
+explicit invitation acceptance. Identity changes invalidate outstanding requests
+and unmount user-owned content; a project 404 stays a resource error. Requests
+use same-origin browser credentials and preserve request IDs, cancellation and
+explicit failures. Member versions remain `bigint` from JSON decoding through
+mutation encoding, including values above the safe JavaScript integer range.
+
+PAT values and invitation links are displayed only after creation. Copy failure
+keeps a recoverable action; closing the secret dialog requires confirmation. The
+invitation entry removes its fragment immediately, uses tab-local temporary
+storage across login, and clears it when the workflow ends. Inspection does not
+accept an invitation. The UI retains ordinary same-origin attachment iframes,
+relative resources and their existing keyboard bridge.
+
+The login page reads `GET /api/v1/auth/providers` with response
+`{providers: [providerId, ...]}`. This is an unmounted client dependency, not an
+implemented production backend route. The response must reflect the configured
+UniAuth App's allowed and enabled providers. Discovery failures and an empty
+provider set have explicit states; the UI does not invent a provider list. Real
+App-aware UniAuth discovery and backend exposure belong to coordinated activation.
+UniAuth [PR #19](https://github.com/codetreker/uniauth/pull/19) supplies the upstream
+capability; Daynight retains its older SDK pin until that activation upgrades and
+connects it, as described in the
+[authentication architecture](../../docs/design/daynight-auth.md#登录方式发现).
+
+With `pnpm web:dev`, open `/tests/mockups/auth.html` for actual components with
+controlled fetch responses, the same locale Provider and final styles. This fixture validates frontend
+interaction separately from production service mounting and real third-party
+login. The [static design prototype](../../docs/design/mockups/auth/index.html)
+retains the broader scenario reference.
 
 ## Languages
 
@@ -130,8 +174,11 @@ Approval uses the full reviewed task's positive int64 version, represented as
 bigint without passing through a rounded JavaScript Number. Lossless JSON reads
 and numeric request serialization retain exact digits above the safe-integer
 range through int64 maximum. `TaskDetailSession` owns project/task-keyed detail
-and approval state for the App lifetime: closing or reopening details does not
-permit a second pending submission. Confirmed responses must match identity,
+and approval state for the workspace lifetime: closing or reopening details does
+not permit a second pending submission. Legacy App owns the boundary. The opt-in
+authenticated branch owns a provider keyed by user ID and session generation,
+shared across workspace/invitation navigation; replacing identity, logout or
+anonymous state disposes it. Late responses cannot populate another identity. Confirmed responses must match identity,
 todo and the expected next version. Success retains that detail and refreshes
 the matching project's graph; a graph refresh failure keeps confirmed todo and
 an explicit stale-snapshot refresh action. Pre-approval reads cannot restore
@@ -230,10 +277,15 @@ records the modal and viewport ownership. Each node is one native keyboard butto
 root visible at readable zoom; keyboard focus brings offscreen nodes into view.
 The centered body-portal dialog has a 960px maximum width, 24px viewport gutters
 (12px at 600px and below), and a maximum height of
-`min(880px, 100dvh - 2 × gutter)`. A single content region scrolls independently
-of the persistent header and footer. Desktop content pairs a reading column with
-a 265px metadata/relationship column (225px at 850px and below); at 600px and
-below it stacks into one column. The dialog locks background focus and scrolling,
+`min(880px, 100dvh - 2 × gutter)`. The persistent heading, tabs and footer
+surround an Overview panel and an Attachments panel. Overview owns its content
+scrolling and pairs a reading column with a 265px metadata/relationship column
+(225px at 850px and below); at 600px and below it stacks into one column.
+Attachments fills the panel with adjacent file and preview panes at every
+supported width, including 320px. Its parent body and panels do not scroll.
+Short viewports, including 844×390, use compact heading and control spacing to
+retain usable content without a second outer scrollbar. The dialog locks
+background focus and scrolling,
 supports its close button, backdrop, Escape and Tab,
 and restores a surviving original trigger or a visible control in the active task view on close. Focusable
 controls are enumerated with `tabbable` 6.5.0 using its normal browser visibility
@@ -243,9 +295,24 @@ for focusing a surviving trigger after DOM removal.
 
 ## Task attachments
 
-The section after PR associations lists the task's path-addressed files as a
-nested tree. Select one local file, accept its name as the initial target or edit
-the relative path, then upload. MIME is selected from the target path with `mime`
+Every task detail opens on Overview, which retains descriptions, PR
+associations, relationships and metadata. The separate Attachments tab places
+the path-addressed file tree, refresh and upload on the left and the selected
+file's preview on the right. A vertical divider separates independently
+scrollable panes; narrow layouts retain this left/right placement. The
+[split-view decision](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-split-view.md)
+owns this composition and its scroll rules.
+
+`TaskDetailPanels` keeps both panels mounted with stable tab relationships. The
+active tab is the sole roving tab stop; arrows and Home/End activate its neighbor
+or endpoint, and native Enter/Space work normally. Hidden panels are both hidden
+and inert. Returning to Attachments retains selection, expanded directories,
+loaded state, preview and an unsent file/path draft. Changing project/task resets
+the tab and attachment scope. Description-to-attachment navigation, when
+implemented, activates this same panel and controller.
+
+Select one local file, accept its name as the initial target or edit the relative
+path, then upload. MIME is selected from the target path with `mime`
 4.1.1. Uploading the same path overwrites that file. Each file offers download
 and deletion; successful writes refresh only the attachment list and preview.
 They do not change the task version, timestamp or graph snapshot.
@@ -256,7 +323,19 @@ later page fails and labels the result incomplete with a retry action. Scope
 changes and unmount cancel requests; generations discard late results. List,
 write and preview errors stay local. An overwrite or a refreshed `updatedAt`
 reloads the selected content and remounts native previews; the server's
-`Cache-Control: no-store` keeps mutable paths current.
+`Cache-Control: no-store` keeps mutable paths current. Empty inventory and no
+selection have distinct states; deleting the selected file clears its preview.
+
+The right preview has one vertical scroll owner. Markdown, text/JSON/source and
+large images use `attachment-preview-body`; their renderers have no nested
+vertical height limits. Tables and code can scroll horizontally. For ready
+HTML/PDF, the body and fitted frame wrapper hide overflow and the embedded
+document or native reader owns scrolling. The preview header never scrolls
+independently, exposes the complete path and keeps download/delete reachable.
+Left-pane scrolling does not move right-side content or its reading position.
+Full-page reading in a new browser tab and independent real-service acceptance
+for this reading group remain separate pending tasks. The renderer sizing and
+fixed service URLs remain reusable by that delivery.
 
 Markdown uses `react-markdown` 10.1.0 with `remark-gfm` 4.0.1 for CommonMark and GFM
 including tables. Raw HTML remains escaped. Relative images and links resolve
@@ -265,7 +344,9 @@ links remain on the rendered document. Paths that escape the task root are
 rejected. Text, JSON and source previews preserve text and newlines. Images use
 native image loading with error/retry feedback; PDF and HTML use native iframes.
 HTML/PDF first check preview availability with HEAD and never decode a HEAD error
-as a JSON body. The frame then performs normal resource requests.
+as a JSON body. The frame then performs normal resource requests. HEAD success
+does not prove that native content has rendered; integrated acceptance must
+observe actual HTML interaction and PDF output.
 
 HTML loads the fixed same-origin
 `/api/v1/projects/{projectId}/tasks/{taskId}/preview/{path...}` URL. Its CSS, JS,
@@ -284,8 +365,9 @@ does not implement reconciliation or rollback.
 Run `pnpm web:dev` and open `/tests/mockups/attachments.html` on Vite's printed
 origin. `tests/mockups/main.tsx` renders the production attachment components and
 CSS with `tests/mockups/fixture.ts`; metadata changes remain in memory and native
-previews use local fixture files. Choose files, empty or upload-error scenarios,
-and exercise upload, overwrite, preview, download and deletion without Go,
+previews use local fixture files. Exercise detail tabs, adjacent panes and tall
+content along with loading, empty, failure and busy states, plus upload,
+overwrite, preview, download and deletion without Go,
 PostgreSQL or network API calls. Refreshing the page resets fixture state.
 Object URLs stay valid through deletion and are released when the fixture is
 disposed. This development entry is excluded from the single-index production
@@ -651,5 +733,6 @@ Page hooks own requests and cancellation. Navigation or refresh invalidates the
 previous request generation, continuation failures preserve loaded cards, and
 unmount aborts owned work. Attachments have independent scoped list, write and
 preview state, while project statistics continue to use complete graph snapshots.
-There is no global task cache, task-field editor, polling loop or remote
-authentication flow in this workspace.
+There is no global task cache, task-field editor or polling loop. The opt-in
+`AuthenticatedApp` owns the authentication flow; production `main.tsx` continues
+to mount the existing `App` until coordinated activation.

@@ -8,7 +8,7 @@ export const parseApiJson = (text: string): unknown => {
   let offset = 0;
   let depth = 0;
   let versionSource: string | undefined;
-  // Only full-task responses carry a root version. Preserve its source digits without
+  // Versioned resource responses carry a root version. Preserve its source digits without
   // requiring the newer JSON reviver context API or changing unknown nested data.
   while (offset < text.length) {
     switch (text[offset]) {
