@@ -19,6 +19,8 @@
 仍为本机未认证看板。鉴权接入后继续保留本文的可信同源 frame、相对资源及键盘
 机制，附件请求增加项目成员检查。
 
+[语言设计](daynight-web-i18n.md)拥有已实现的类型化目录、Intl 格式化器、显式初始解析、Provider 和共用选择器，以及后续生产界面接入约束；[双语需求](../spec/daynight-web-i18n.md)拥有完整覆盖和验收。基础运行时尚未挂载到生产入口，现有产品仍使用中文。语言偏好使用独立的 origin-local 键，不改变本文的项目浏览记录、API、图或附件生命周期。
+
 ## 目标与现有基础
 
 浏览器完成“项目列表 → 项目统计 → 独立任务列表或根任务链 → 任务详情”的完整读取路径。数据继续归属 `daynight-server`，不接入 客户端的 review 命令，不新增父子任务。读取模型支持 proposed、todo、in_progress 和 done；公开创建仍为
@@ -44,12 +46,9 @@ todo，任务字段继续只读。
 
 ## 页面与视觉
 
-采用浅色内容区、白色卡片、深色窄导航栏和克制的靛蓝强调色。节点颜色始终表达业务状态；选中态使用描边，不覆盖状态颜色。所有内容使用中文标签，代码标识和仓库地址保留原文。proposed 使用“待审批”及
-独立的紫色，应用于新增项目统计、独立行、整链标签、图节点与详情；颜色同时
-配有文字。统计使用七项网格，窄屏保留自然换行。现有[任务视图预览](mockups/task-views.html)
-展示四状态和整链聚合，真实组件开发入口承载对应浏览夹具。
-[四状态读取决策](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
-拥有存储与读取准备的边界，图模型与组件不提供状态写入控制。
+采用浅色内容区、白色卡片、深色窄导航栏和克制的靛蓝强调色。节点颜色始终表达业务状态；选中态使用描边，不覆盖状态颜色。当前产品组件使用中文标签，代码标识和仓库地址保留原文；完整英语与中文接入遵守[语言设计](daynight-web-i18n.md)的状态、焦点和布局约束。
+
+proposed 使用“待审批”及独立的紫色，应用于项目统计、独立行、整链标签、图节点与详情；颜色同时配有文字。统计使用七项网格，窄屏保留自然换行。现有[任务视图预览](mockups/task-views.html)展示四状态和整链聚合，真实组件开发入口承载对应浏览夹具。[四状态读取决策](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)拥有存储与读取准备的边界，图模型与组件不提供状态写入控制。
 
 ### 项目列表 `/`
 
@@ -66,7 +65,7 @@ todo，任务字段继续只读。
 项目名称
 仓库地址
 
-[任务总数] [已完成] [待处理] [进行中] [可开始] [被阻塞]
+[任务总数] [已完成] [待审批] [待处理] [进行中] [可开始] [被阻塞]
 可开始与被阻塞均为待处理的子集；已完成卡展示完成比例
 
 [独立任务 2] [任务链 7]
@@ -275,6 +274,7 @@ packages/daynight-web/
   src/main.tsx                      浏览器入口
   src/app/{App,router}.tsx           两个页面的路由与组合
   src/api/{types,client,parse}.ts    DTO、请求、运行时解析与错误
+  src/i18n/                         可显式挂载的语言目录、格式化器、Provider 与选择器
   src/features/projects/           ProjectsPage、ProjectPage、ProjectTaskTabs、StandaloneList、偏好 hooks、统计卡
   src/features/task-graph/          model.ts、layout.ts、dashes.ts、RootList、TaskGraph、TaskNode
   src/features/task-detail/         TaskDetailDialog、详情请求 hook、PR 展示及 focus helper
@@ -282,7 +282,7 @@ packages/daynight-web/
   src/styles/                      设计变量、排版与样式
   scripts/                         构建发布、严格覆盖率、生产验收及布局差分检查
   tests/                           组件、算法与真实浏览器验收
-  tests/mockups/                   仅开发使用的实际看板、附件组件及前端 fixture
+  tests/mockups/                   仅开发使用的实际看板、附件、语言组件及前端 fixture
 
 packages/daynight-server/
   api/task_graph.go                 HTTP 图 DTO
@@ -297,6 +297,7 @@ packages/daynight-server/
 |---|---|---|
 | 浏览器 app/router | URL 解析、history/popstate、页面装卸与 404 | 组合页面，不直接 fetch |
 | api/client、api/parse | 相对 `/api` 请求、AbortSignal、JSON/附件 DTO 校验、文件传输、HEAD 与 typed error | 不引用组件和图布局 |
+| i18n | 两种目录、格式化、当前语言、独立保存与偏好错误、共用选择器 | 显式 Provider 挂载；不调用业务 API 或图布局，生产入口接入待交付 |
 | projects hooks | 列表游标、完整图快照、加载/刷新状态、按项目隔离的视图偏好 | 图读取调用 api 并交给 model；偏好只访问浏览器存储 |
 | task-graph/model | 根、可达集合、外部前置、统计与共享关系 | 仅依赖 DTO 类型与标准集合 |
 | task-graph/layout | 将投影映射为确定的节点坐标和边 | 依赖 model 与 Dagre |
