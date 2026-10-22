@@ -99,7 +99,8 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
   }, [taskId, status, snapshot.revision]);
 
   const snapshotNode = snapshot.index.nodes.get(taskId);
-  const stale = detail !== null && isTaskStale(snapshotNode, detail);
+  const retainedDetail = detail !== null && (task.refreshing || error !== null || task.loadedRevision !== snapshot.revision);
+  const stale = detail !== null && !retainedDetail && isTaskStale(snapshotNode, detail);
   const successors = snapshot.index.successors.get(taskId);
   const relation = (id: string) => {
     const node = snapshot.index.nodes.get(id);
@@ -144,6 +145,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                   <StatusBadge status={detail.status} />
                   {detail.status === 'todo' && <span className={detail.ready ? 'task-detail-ready' : 'task-detail-blocked'}>{detail.ready ? m.ready : m.blocked}</span>}
                 </div>
+                {retainedDetail && <p className="task-detail-refresh" role="status">{task.refreshing ? m.refreshingDetail : m.retainedDetail}</p>}
                 {stale && (
                   <div className="task-detail-stale" role="status">
                     <p>{task.approval.phase === 'confirmed' ? messages.inspection.approval.confirmedSnapshot : m.stale}</p>
@@ -153,7 +155,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
               </div>
               <TaskDetailPanels key={`${projectId}/${taskId}`} overview={<>
                 <div className="task-detail-approval"><TaskApproval detail={detail} approval={task.approval} canApprove={task.canApprove} onApprove={task.approve} onReconcile={task.reconcile} /></div>
-                {error !== null && status === 'ready' && <div className="task-detail-read-error" role="alert"><DetailError error={error} /><button className="button" type="button" onClick={retry}>{m.retry}</button></div>}
+                {error !== null && status === 'ready' && <div className="task-detail-read-error" role="alert"><p>{m.refreshFailed}</p><DetailError error={error} /><button className="button" type="button" onClick={retry}>{m.retry}</button></div>}
                 <div className="task-detail-columns">
                   <div className="task-detail-main">
                     <section className="task-detail-section" aria-label={m.description}>

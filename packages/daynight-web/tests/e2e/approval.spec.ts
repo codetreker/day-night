@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { Locator, Page, TestInfo } from '@playwright/test';
+import { attachmentDownloadUrl } from '../../src/api/client';
 import {
-  approveTask, createApprovedTask, createProject, createProposedTask, expect, seedTaskVersion, test,
+  approveTask, createProject, createProposedTask, expect, seedTaskVersion, test,
   updateTask, withDependencyFailure,
 } from './fixtures';
 import { expectCenteredTaskDetail } from './detail-dialog';
@@ -28,11 +29,11 @@ const deferred = () => {
   const promise = new Promise<void>((done) => { resolve = done; });
   return { promise, resolve };
 };
-const within = async (promise: Promise<unknown>, label: string): Promise<void> => {
+const within = async (promise: Promise<unknown>, label: string, timeoutMs = 15_000): Promise<void> => {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([promise, new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label}.`)), 15_000);
+      timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label}.`)), timeoutMs);
     })]);
   } finally { clearTimeout(timer); }
 };
@@ -45,10 +46,10 @@ const openStandalone = async (page: Page, id: string): Promise<void> => {
   await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
 };
 
-test('task-approval', scenario('task-approval'), async ({ page, request, allowApprovalWrites }, info) => {
+test('task-approval', scenario('task-approval'), async ({ page, request, allowApprovalWrites, allowAttachmentWrites }, info) => {
   const project = await createProject(request, { name: `Approval ${randomUUID()}` });
   const exact = await createProposedTask(request, project.id, { title: '精确版本审批', description: '保留完整说明与任务内容。' });
-  const other = await createApprovedTask(request, project.id, { title: '审批期间查看的另一任务' });
+  const other = await createProposedTask(request, project.id, { title: '审批期间查看的另一任务', description: '刷新前审阅的完整详情' });
   const prerequisite = await createProposedTask(request, project.id, { title: '仍未完成的前置任务' });
   const blocked = await createProposedTask(request, project.id, { title: '有未完成前置的待审批任务', dependsOn: [prerequisite.id] });
   for (let index = 0; index < 79; index++) {
@@ -59,6 +60,31 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   const exactResponse = await request.get(taskPath(project.id, exact.id));
   expect(await exactResponse.text()).toMatch(new RegExp(`"version"\\s*:\\s*${exactVersion}(?:,|})`));
   allowApprovalWrites([exact, blocked].map(({ id }) => ({ origin: origin(info), projectId: project.id, taskId: id, count: 1 })));
+  const previewPath = 'preview.txt';
+  const previewText = 'Attachment preview retained through another task approval.\n';
+  const seededPreview = await request.put(attachmentDownloadUrl(project.id, other.id, previewPath), {
+    headers: { 'content-type': 'text/plain' }, data: previewText,
+  });
+  expect(seededPreview.status()).toBe(201);
+  const uploadPath = 'uploads/preserved.txt';
+  const uploadBytes = Buffer.from('Original upload bytes survive a fresh task detail read.\n');
+  const uploadUrl = new URL(attachmentDownloadUrl(project.id, other.id, uploadPath), origin(info)).href;
+  allowAttachmentWrites([{ origin: origin(info), method: 'PUT', projectId: project.id, taskId: other.id, path: uploadPath, count: 1 }]);
+  await page.addInitScript(({ url }) => {
+    const originalFetch = window.fetch;
+    const probe: { body: File | null; signal: AbortSignal | null; requests: number } = { body: null, signal: null, requests: 0 };
+    Reflect.set(window, 'approvalUploadProbe', probe);
+    window.fetch = (input, init) => {
+      const requestedUrl = input instanceof Request ? input.url : new URL(String(input), location.href).href;
+      if (requestedUrl === url && init?.method === 'PUT') {
+        if (!(init.body instanceof File) || !(init.signal instanceof AbortSignal)) throw new Error('The upload must retain its original File and AbortSignal.');
+        probe.body = init.body;
+        probe.signal = init.signal;
+        probe.requests++;
+      }
+      return originalFetch(input, init);
+    };
+  }, { url: uploadUrl });
   await page.goto(`/projects/${project.id}`);
   await openStandalone(page, exact.id);
   await expectStatus(page, '待审批');
@@ -66,6 +92,37 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   const fetched = deferred();
   const release = deferred();
   const finished = deferred();
+  const uploadFetched = deferred();
+  const uploadRelease = deferred();
+  const uploadFinished = deferred();
+  const otherFetched = deferred();
+  const otherRelease = deferred();
+  const otherFinished = deferred();
+  let holdOtherRead = false;
+  let otherTitle = other.title;
+  const otherPattern = `**${taskPath(project.id, other.id)}`;
+  const uploadFailures: string[] = [];
+  page.on('requestfailed', (failed) => { if (failed.url() === uploadUrl) uploadFailures.push(failed.failure()!.errorText); });
+  await page.route(uploadUrl, async (route) => {
+    expect(route.request().method()).toBe('PUT');
+    expect(route.request().postDataBuffer()).toEqual(uploadBytes);
+    const response = await route.fetch({ timeout: 15_000, maxRetries: 0 });
+    expect(response.status()).toBe(201);
+    uploadFetched.resolve();
+    await within(uploadRelease.promise, 'active attachment upload response release', 60_000);
+    await route.fulfill({ response });
+    uploadFinished.resolve();
+  });
+  await page.route(otherPattern, async (route) => {
+    if (!holdOtherRead) { await route.continue(); return; }
+    const response = await route.fetch({ timeout: 15_000, maxRetries: 0 });
+    expect(response.status()).toBe(200);
+    expect((await response.json() as { title: string }).title).toBe(otherTitle);
+    otherFetched.resolve();
+    await within(otherRelease.promise, 'background task detail response release', 60_000);
+    await route.fulfill({ response });
+    otherFinished.resolve();
+  });
   const submitted: string[] = [];
   const pattern = `**${taskPath(project.id, exact.id)}/approve`;
   await page.route(pattern, async (route) => {
@@ -74,7 +131,7 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
     expect(response.status()).toBe(200);
     expect(await response.text()).toMatch(new RegExp(`"version"\\s*:\\s*${exactVersion + 1n}(?:,|})`));
     fetched.resolve();
-    await within(release.promise, 'pending approval response release');
+    await within(release.promise, 'pending approval response release', 60_000);
     await route.fulfill({ response });
     finished.resolve();
   });
@@ -96,12 +153,77 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
     await page.keyboard.press('Escape');
     await standalone(page, other.id).click();
     await expect(detail(page).locator('.task-detail-title')).toHaveText(other.title);
+    const attachmentsTab = detail(page).getByRole('tab', { name: '附件', exact: true });
+    await attachmentsTab.click();
+    const attachments = detail(page).locator('.task-attachments');
+    await attachments.locator('.attachment-file').filter({ hasText: previewPath }).click();
+    await expect(attachments.locator('pre')).toHaveText(previewText);
+    const fileInput = attachments.locator('input[type=file]');
+    const pathInput = attachments.locator('input[type=text]');
+    await fileInput.setInputFiles({ name: 'original.txt', mimeType: 'text/plain', buffer: uploadBytes });
+    await pathInput.fill(uploadPath);
+    const inputElement = await fileInput.elementHandle();
+    const previewElement = await attachments.locator('.attachment-preview').elementHandle();
+    const textElement = await attachments.locator('pre').elementHandle();
+    if (inputElement === null || previewElement === null || textElement === null) throw new Error('The active attachment workspace is absent.');
+    await attachments.getByRole('button', { name: '上传文件', exact: true }).click();
+    await within(uploadFetched.promise, 'real attachment upload commit');
+    await attachmentsTab.focus();
+    const assertUploadRetained = async (): Promise<void> => {
+      await expect(attachmentsTab).toHaveAttribute('aria-selected', 'true');
+      await expect(attachmentsTab).toBeFocused();
+      await expect(fileInput).toBeDisabled();
+      await expect(pathInput).toHaveValue(uploadPath);
+      await expect(pathInput).toBeDisabled();
+      await expect(attachments.getByRole('button', { name: '正在上传…', exact: true })).toBeDisabled();
+      await expect(attachments.locator('.attachment-file-selected')).toContainText(previewPath);
+      await expect(attachments.locator('pre')).toHaveText(previewText);
+      expect(await inputElement.evaluate((element) => element.isConnected && element === document.querySelector('.task-attachments input[type=file]'))).toBe(true);
+      expect(await previewElement.evaluate((element) => element.isConnected && element === document.querySelector('.task-attachments .attachment-preview'))).toBe(true);
+      expect(await textElement.evaluate((element) => element.isConnected && element === document.querySelector('.task-attachments pre'))).toBe(true);
+      const pending = await page.evaluate(async () => {
+        const probe = Reflect.get(window, 'approvalUploadProbe') as { body: File; signal: AbortSignal; requests: number };
+        const selected = document.querySelector<HTMLInputElement>('.task-attachments input[type=file]')!.files![0];
+        return { requests: probe.requests, aborted: probe.signal.aborted, sameFile: selected === probe.body,
+          name: selected!.name, bytes: [...new Uint8Array(await probe.body.arrayBuffer())] };
+      });
+      expect(pending).toEqual({ requests: 1, aborted: false, sameFile: true, name: 'original.txt', bytes: [...uploadBytes] });
+      expect(uploadFailures).toEqual([]);
+    };
+    await assertUploadRetained();
+    const updatedOther = await updateTask(request, project.id, other.id, { version: other.version, title: '任务图已更新、附件工作区持续保留', description: '后台读取返回的新详情' });
+    otherTitle = updatedOther.title;
+    holdOtherRead = true;
+    const refreshedGraph = page.waitForResponse((response) => new URL(response.url()).pathname === graphPath(project.id));
     release.resolve();
     await within(finished.promise, 'delayed approval response');
+    expect((await refreshedGraph).status()).toBe(200);
+    await within(otherFetched.promise, 'fresh task detail after another approval');
     await expect(standalone(page, exact.id).locator('.root-status')).toHaveText('待处理');
+    await expect(standalone(page, other.id).locator('.root-title')).toHaveText(updatedOther.title);
     await expect(detail(page).locator('.task-detail-title')).toHaveText(other.title);
-    await expectStatus(page, '待处理');
-    await expect(approval(page)).toHaveCount(0);
+    await expectStatus(page, '待审批');
+    await expect(approval(page).getByRole('button', { name: '批准任务', exact: true, includeHidden: true })).toBeDisabled();
+    await assertUploadRetained();
+    otherRelease.resolve();
+    await within(otherFinished.promise, 'fresh background task detail response');
+    await expect(detail(page).locator('.task-detail-title')).toHaveText(updatedOther.title);
+    await expect(approval(page).getByRole('button', { name: '批准任务', exact: true, includeHidden: true })).toBeEnabled();
+    await assertUploadRetained();
+    await screenshot(page, info, 'task-approval-preserves-active-upload');
+    uploadRelease.resolve();
+    await within(uploadFinished.promise, 'original attachment upload response');
+    await expect(pathInput).toHaveValue('');
+    await expect(fileInput).toBeEnabled();
+    expect(await fileInput.evaluate((element: HTMLInputElement) => element.files!.length)).toBe(0);
+    await expect(attachments.getByRole('heading', { name: uploadPath, exact: true })).toBeVisible();
+    await expect(attachments.locator('pre')).toHaveText(uploadBytes.toString('utf8'));
+    const storedUpload = await request.get(attachmentDownloadUrl(project.id, other.id, uploadPath));
+    expect(await storedUpload.body()).toEqual(uploadBytes);
+    expect(uploadFailures).toEqual([]);
+    await inputElement.dispose();
+    await previewElement.dispose();
+    await textElement.dispose();
     await page.keyboard.press('Escape');
     await standalone(page, exact.id).click();
     await expectStatus(page, '待处理');
@@ -109,7 +231,11 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
     expect(submitted).toEqual([`{"version":${exactVersion}}`]);
   } finally {
     release.resolve();
+    otherRelease.resolve();
+    uploadRelease.resolve();
     await page.unroute(pattern);
+    await page.unroute(otherPattern);
+    await page.unroute(uploadUrl);
   }
   await page.keyboard.press('Escape');
   await page.getByRole('tab', { name: '任务链', exact: true }).click();
@@ -193,7 +319,7 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   expect(await page.evaluate((projectId) => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.endsWith(projectId) && !key.includes('scroll'))), project.id)).toEqual(preferences);
   await page.setViewportSize({ width: 1600, height: 1100 });
   await page.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('zh-CN');
-  await expect(page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^待审批$/ }) }).locator('.stat-number')).toHaveText('80');
+  await expect(page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^待审批$/ }) }).locator('.stat-number')).toHaveText('81');
   await expect(page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^被阻塞$/ }) }).locator('.stat-number')).toHaveText('1');
   await screenshot(page, info, 'task-approval');
 });

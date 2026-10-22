@@ -281,8 +281,8 @@ describe('task detail dialog', () => {
     expect(screen.getByText('可开始')).toBeVisible();
     const refreshed = snapshot([detail(1, { status: 'done', ready: false }), fresh], 2);
     view.rerender(<TaskDetailDialog {...first} snapshot={refreshed} />);
-    expect(screen.getByRole('status')).toHaveTextContent('正在加载任务详情');
-    expect(screen.queryByRole('heading', { name: fresh.title })).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('正在刷新任务详情');
+    expect(screen.getByRole('heading', { name: fresh.title })).toBeVisible();
     await screen.findByRole('heading', { name: fresh.title });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole('button', { name: '刷新任务图' })).toBeNull();

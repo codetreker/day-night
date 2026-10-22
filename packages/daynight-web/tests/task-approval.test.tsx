@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, approveTask, getTask, getTaskGraph } from '../src/api/client';
+import userEvent from '@testing-library/user-event';
+import { ApiError, approveTask, checkAttachmentPreview, getTask, getTaskGraph, listAttachments, putAttachment, readAttachmentText } from '../src/api/client';
 import type { TaskDetail, TaskGraph } from '../src/api/types';
 import { App } from '../src/app/App';
 import { ProjectPage } from '../src/features/projects/ProjectPage';
@@ -8,7 +9,8 @@ import { renderWithLocale } from './helpers/renderWithLocale';
 import { installGraphMeasurements } from './graph-measurements';
 
 vi.mock('../src/api/client', async (original) => ({ ...await original<typeof import('../src/api/client')>(),
-  getTask: vi.fn(), getTaskGraph: vi.fn(), approveTask: vi.fn(), listAttachments: vi.fn(async () => ({ items: [], nextCursor: null })),
+  getTask: vi.fn(), getTaskGraph: vi.fn(), approveTask: vi.fn(), listAttachments: vi.fn(), putAttachment: vi.fn(),
+  readAttachmentText: vi.fn(), checkAttachmentPreview: vi.fn(),
 }));
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const project = id(100); const parent = id(1); const child = id(2); const standalone = id(3);
@@ -47,6 +49,10 @@ beforeEach(() => {
   vi.mocked(getTaskGraph).mockReset().mockImplementation(async () => graph());
   vi.mocked(getTask).mockReset().mockImplementation(async (_project, taskId) => records.get(taskId)!);
   vi.mocked(approveTask).mockReset();
+  vi.mocked(listAttachments).mockReset().mockResolvedValue({ items: [], nextCursor: null });
+  vi.mocked(putAttachment).mockReset();
+  vi.mocked(readAttachmentText).mockReset().mockResolvedValue('Selected attachment content');
+  vi.mocked(checkAttachmentPreview).mockReset().mockResolvedValue(undefined);
 });
 afterEach(() => { cleanup(); root.remove(); });
 const mount = () => renderWithLocale(<ProjectPage projectId={project} />, { locale: 'en', container: root });
@@ -59,6 +65,68 @@ const openChild = async () => {
 };
 
 describe('approval in shared production task details', () => {
+  it('keeps another task attachment draft and upload mounted during a background detail refresh triggered by approval', async () => {
+    const mutation = deferred<TaskDetail>();
+    const refresh = deferred<TaskDetail>();
+    const kept = { path: 'kept.txt', contentType: 'text/plain', sizeBytes: 27, createdAt: time, updatedAt: time };
+    const uploaded = { ...kept, path: 'drafts/new.txt', sizeBytes: 18 };
+    const upload = deferred<typeof uploaded>();
+    vi.mocked(approveTask).mockReturnValueOnce(mutation.promise);
+    vi.mocked(putAttachment).mockReturnValueOnce(upload.promise);
+    vi.mocked(listAttachments).mockResolvedValue({ items: [kept], nextCursor: null });
+    let otherReads = 0;
+    vi.mocked(getTask).mockImplementation(async (_project, taskId) => taskId === standalone && ++otherReads === 2 ? refresh.promise : records.get(taskId)!);
+    mount(); let dialog = await openChild();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve task' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close task details' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Standalone tasks' }));
+    fireEvent.click(screen.getByRole('button', { name: /Task 3/ }));
+    dialog = screen.getByRole('dialog', { name: 'Task details' });
+    await within(dialog).findByRole('heading', { name: 'Task 3' });
+    const approvalButton = within(dialog).getByRole('button', { name: 'Approve task' });
+    const tab = within(dialog).getByRole('tab', { name: 'Attachments' }); fireEvent.click(tab);
+    const selection = await within(dialog).findByRole('button', { name: /kept.txt/ }); fireEvent.click(selection);
+    const preview = await within(dialog).findByText('Selected attachment content', { selector: 'pre' });
+    const attachments = dialog.querySelector('.task-attachments');
+    const input = within(dialog).getByLabelText('Choose one file') as HTMLInputElement;
+    const path = within(dialog).getByRole('textbox', { name: 'Target relative path' });
+    const file = new File(['pending file bytes'], 'new.txt', { type: 'text/plain' });
+    await userEvent.setup().upload(input, file);
+    fireEvent.change(path, { target: { value: 'drafts/new.txt' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Upload file' }));
+    const signal = vi.mocked(putAttachment).mock.calls[0]![4];
+    tab.focus();
+    const prior = records.get(standalone)!;
+    const changed = { ...prior, title: 'Task 3 revised', description: 'Fresh task metadata', version: prior.version + 1n, updatedAt: '2026-10-22T00:02:00Z' };
+    records.set(standalone, changed);
+    await act(async () => { mutation.resolve(commit()); });
+    await waitFor(() => expect(otherReads).toBe(2));
+    expect(tab.isConnected).toBe(true);
+    expect(dialog.querySelector('.task-attachments')).toBe(attachments);
+    expect(within(dialog).getByRole('tab', { name: 'Attachments' })).toBe(tab);
+    expect(tab).toHaveAttribute('aria-selected', 'true'); expect(tab).toHaveFocus();
+    expect(input.files?.[0]).toBe(file); expect(path).toHaveValue('drafts/new.txt');
+    expect(within(dialog).getByRole('button', { name: 'Uploading…' })).toBeDisabled();
+    expect(selection).toHaveAttribute('aria-pressed', 'true');
+    expect(within(dialog).getByText('Selected attachment content', { selector: 'pre' })).toBe(preview);
+    expect(signal.aborted).toBe(false); expect(putAttachment).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(putAttachment).mock.calls[0]?.[3]).toBe(file);
+    expect(within(dialog).getByRole('heading', { name: 'Task 3' })).toBeVisible();
+    expect(approvalButton).toBeDisabled();
+    expect(dialog.querySelector('.task-detail-stale')).toBeNull();
+    expect(within(dialog).getByText('Refreshing task details. Previously loaded content remains available.')).toBeVisible();
+    await act(async () => { refresh.resolve(changed); });
+    await within(dialog).findByRole('heading', { name: 'Task 3 revised' });
+    expect(dialog.querySelector('.task-attachments')).toBe(attachments); expect(tab).toHaveFocus();
+    expect(input.files?.[0]).toBe(file); expect(path).toHaveValue('drafts/new.txt'); expect(signal.aborted).toBe(false);
+    expect(approvalButton).toBeEnabled(); expect(selection).toHaveAttribute('aria-pressed', 'true');
+    expect(within(dialog).getByText('Selected attachment content', { selector: 'pre' })).toBe(preview);
+    vi.mocked(listAttachments).mockResolvedValue({ items: [kept, uploaded], nextCursor: null });
+    await act(async () => { upload.resolve(uploaded); });
+    await waitFor(() => expect(path).toHaveValue(''));
+    expect(putAttachment).toHaveBeenCalledTimes(1);
+  });
+
   it('owns pending approval across real App project routes and isolates its late result from the current project', async () => {
     const otherProject = id(200); const otherTask = id(4);
     const other = { ...seed(4), projectId: otherProject };

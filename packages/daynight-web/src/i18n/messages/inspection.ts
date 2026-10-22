@@ -37,6 +37,9 @@ export type InspectionMessages = {
     readonly ready: string;
     readonly blocked: string;
     readonly stale: string;
+    readonly refreshingDetail: string;
+    readonly retainedDetail: string;
+    readonly refreshFailed: string;
     readonly refreshGraph: string;
     readonly description: string;
     readonly noDescription: string;

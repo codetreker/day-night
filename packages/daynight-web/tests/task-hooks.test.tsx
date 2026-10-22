@@ -1,7 +1,7 @@
 import { act, renderHook as renderHookWithoutSession, waitFor, type RenderHookOptions } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GraphTask, TaskDetail, TaskGraph } from "../src/api/types";
-import { ApiError, getTask, getTaskGraph } from "../src/api/client";
+import { ApiError, approveTask, getTask, getTaskGraph } from "../src/api/client";
 import { useTaskGraph } from "../src/features/projects/useTaskGraph";
 import { useTaskDetail } from "../src/features/task-detail/useTaskDetail";
 import { TaskDetailSessionBoundary } from "../src/features/task-detail/TaskDetailSession";
@@ -11,7 +11,7 @@ import { GraphDataError } from "../src/features/task-graph/model";
 const renderHook = <Result, Props,>(render: (props: Props) => Result, options?: RenderHookOptions<Props>) =>
   renderHookWithoutSession(render, { ...options, wrapper: TaskDetailSessionBoundary });
 
-vi.mock("../src/api/client", async (original) => ({ ...await original<typeof import("../src/api/client")>(), getTask: vi.fn(), getTaskGraph: vi.fn() }));
+vi.mock("../src/api/client", async (original) => ({ ...await original<typeof import("../src/api/client")>(), approveTask: vi.fn(), getTask: vi.fn(), getTaskGraph: vi.fn() }));
 const graphRequest = vi.mocked(getTaskGraph);
 const detailRequest = vi.mocked(getTask);
 const projectId = "10000000-0000-0000-0000-000000000001";
@@ -31,7 +31,7 @@ const deferred = <T,>() => {
   const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
   return { promise, resolve, reject };
 };
-beforeEach(() => { graphRequest.mockReset(); detailRequest.mockReset(); });
+beforeEach(() => { graphRequest.mockReset(); detailRequest.mockReset(); vi.mocked(approveTask).mockReset(); });
 
 describe("task graph snapshots", () => {
   it("publishes graph, validated index, local receipt time and revision atomically", async () => {
@@ -155,7 +155,7 @@ describe("task details", () => {
     expect(result.current).toMatchObject({ status: "ready", detail, error: null });
   });
 
-  it("clears immediately for project, task and graph revision changes", async () => {
+  it("clears immediately for identity changes and retains loaded details through a same-identity graph refresh", async () => {
     detailRequest.mockImplementation(async (project, task) => ({ ...detail, projectId: project, id: task }));
     const renders: Array<{ key: string; displayed: string | null }> = [];
     const { result, rerender } = renderHook(({ project, task, revision }) => {
@@ -171,12 +171,59 @@ describe("task details", () => {
     ]) {
       const first = renders.length;
       rerender(props);
-      expect(renders[first]?.displayed).toBeNull();
-      await waitFor(() => expect(result.current.status).toBe("ready"));
+      if (props.revision === 2) {
+        expect(renders[first]?.displayed).toBe(props.task);
+        expect(result.current.refreshing).toBe(true);
+        expect(result.current.loadedRevision).toBe(1);
+      } else expect(renders[first]?.displayed).toBeNull();
+      await waitFor(() => expect(result.current.loadedRevision).toBe(props.revision));
+      expect(result.current.status).toBe("ready");
       expect(result.current.detail?.projectId).toBe(props.project);
       expect(result.current.detail?.id).toBe(props.task);
     }
     expect(detailRequest).toHaveBeenCalledTimes(4);
+  });
+
+  it.each([new Error("Background detail read failed"), new DOMException("Background read cancelled", "AbortError")])("retains loaded details and the actual background error until a fresh retry succeeds %#", async (error) => {
+    const pending = deferred<TaskDetail>();
+    const recovery = deferred<TaskDetail>();
+    const proposed = { ...detail, status: "proposed" as const, ready: false };
+    const fresh = { ...proposed, version: proposed.version + 1n, title: "Updated task" };
+    detailRequest.mockResolvedValueOnce(proposed).mockReturnValueOnce(pending.promise).mockReturnValueOnce(recovery.promise);
+    const { result, rerender } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision), { initialProps: { revision: 1 } });
+    await waitFor(() => expect(result.current.loadedRevision).toBe(1));
+    rerender({ revision: 2 });
+    expect(result.current.detail).toBe(proposed);
+    expect(result.current.refreshing).toBe(true);
+    expect(result.current.canApprove).toBe(false);
+    await act(async () => { pending.reject(error); });
+    expect(result.current).toMatchObject({ detail: proposed, status: "ready", loadedRevision: 1, revision: 2, refreshing: false, error });
+    expect(result.current.error).toBe(error);
+    expect(result.current.canApprove).toBe(false);
+    act(() => result.current.retry());
+    expect(result.current.detail).toBe(proposed);
+    await act(async () => { recovery.resolve(fresh); });
+    expect(result.current).toMatchObject({ detail: fresh, loadedRevision: 2, refreshing: false, error: null, canApprove: true });
+  });
+
+  it("performs the deferred background read when approval finishes after the graph revision changes", async () => {
+    const mutation = deferred<TaskDetail>();
+    const refresh = deferred<TaskDetail>();
+    const proposed = { ...detail, status: "proposed" as const, ready: false };
+    const approved = { ...detail, version: proposed.version + 1n };
+    detailRequest.mockResolvedValueOnce(proposed).mockReturnValueOnce(refresh.promise);
+    vi.mocked(approveTask).mockReturnValueOnce(mutation.promise);
+    const { result, rerender } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision), { initialProps: { revision: 1 } });
+    await waitFor(() => expect(result.current.loadedRevision).toBe(1));
+    act(() => result.current.approve());
+    rerender({ revision: 2 });
+    expect(detailRequest).toHaveBeenCalledTimes(1);
+    expect(result.current.approval.phase).toBe("pending");
+    await act(async () => { mutation.resolve(approved); });
+    await waitFor(() => expect(detailRequest).toHaveBeenCalledTimes(2));
+    expect(result.current).toMatchObject({ detail: approved, refreshing: true, loadedRevision: 1 });
+    await act(async () => { refresh.resolve(approved); });
+    expect(result.current).toMatchObject({ detail: approved, refreshing: false, loadedRevision: 2, error: null });
   });
 
   it("aborts superseded details and ignores late values without patching the graph", async () => {

@@ -39,9 +39,15 @@ The Web detail dialog offers Approve / 批准任务 only for proposed. It uses t
 reviewed full task's positive int64 version, preserving numeric digits through
 lossless decoding, bigint storage and JSON-number serialization. Graph nodes
 remain version-free. App-lifetime project/task sessions prevent repeat pending
-submissions across close/reopen. Confirmed todo responses remain authoritative
-while the graph refreshes; a failed graph refresh retains that detail and an
-explicit stale-snapshot refresh action. Conflicts reread current content and
+submissions across close/reopen. Background reads of the same active task retain
+any loaded detail and mounted attachment panels, regardless of approval phase.
+Approving one task can refresh another currently displayed task without discarding
+its attachment draft or upload. Requested revision and loadedRevision distinguish
+new graph context from cached detail; refresh and read errors remain visible,
+and approval stays disabled until a successful current read. Cold, different-task
+and identity opens retain their loading/isolation boundaries. Confirmed todo
+responses remain authoritative while the graph refreshes; a failed graph refresh
+retains that detail and an explicit stale-snapshot refresh action. Conflicts reread current content and
 require another click. Unknown outcomes retain their error and require current
 state reconciliation before another submission. Old reads and late results
 cannot restore proposed or populate another task. Existing language, attachment,
