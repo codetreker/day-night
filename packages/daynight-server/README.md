@@ -24,8 +24,11 @@ handoff, local users, browser sessions, personal access tokens and project
 membership. The [identity foundation](../../.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
 implements persistent users, browser-bound login transactions, sessions, PATs and
 callable HTTP handlers. NewIdentity/NewAuthentication/RegisterRoutes support
-explicit composition; the application mux does not mount them yet. Project
-membership and mandatory runtime activation remain separate work, so the current
+explicit composition. The [membership foundation](../../.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
+adds NewMemberships/NewMembershipRoutes, transaction-scoped access checks, private
+project creation, filtered project lists, administrator changes and invitations.
+The application mux does not mount these modules yet. Client integration and
+mandatory runtime activation remain separate work, so the current
 service remains unauthenticated and loopback-only. Trusted executable HTML retains its existing
 application origin when project-member checks are added to attachment requests.
 
@@ -39,9 +42,9 @@ application origin when project-member checks are added to attachment requests.
 | `internal/core/store/` | PostgreSQL migrations, transactions, scoped writes and consistent reads |
 | `internal/filestorage/` | Generic bucket/path byte operations and address validation |
 | `internal/filestorage/local/` | Root-confined local files, complete-file replacement and root lifecycle |
-| `api/` | Project/task/attachment DTOs and common HTTP error envelopes |
-| `internal/service/` | Project/task use cases, dependency/state/version policy and scoped cursors |
-| `internal/core/` | Shared project/task models and resource-not-found marker |
+| `api/` | Project/task/attachment, identity and membership DTOs; common HTTP error envelopes |
+| `internal/service/` | Project/task use cases, identity/credentials, project membership/invitations, state/version policy and scoped cursors |
+| `internal/core/` | Shared project/task, identity/member models and resource-not-found markers |
 
 HTTP startup prepares one local file-storage root and creates and verifies one
 concrete PostgreSQL store. The handler factory receives `server.Dependencies`

@@ -1,6 +1,6 @@
 # UniAuth 登录与项目授权架构
 
-状态：身份/凭据模块已实现且可显式组合，尚未挂入生产路由；成员和统一启用继续交付。
+状态：身份/凭据与项目成员模块已实现且可显式组合，均未挂入生产路由；客户端与统一启用继续交付。
 [需求](../spec/daynight-auth.md)拥有完整可观察行为，
 [任务入口](daynight-auth-tasks.md)连接执行资料，
 [鉴权决策](../../.agents/notes/implemented/architecture/2026-10-22-auth-architecture.md)
@@ -19,7 +19,8 @@
 当前主站 mux 继续注册 project/task/attachment/UI，尚未挂载鉴权模块；项目列表仍
 全局分页，配置强制 numeric loopback。身份迁移和独立 handlers 已由
 [身份/凭据决策](../../.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
-交付，成员授权与入口启用尚未完成。以下可复用机制的原始源码基线 `38b827fe644139f4e20989cd8e7740350566fb56`：
+交付；[项目成员模块](../../.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
+已提供可组合的授权、私有创建和邀请，正式资源入口尚未启用。以下可复用机制的原始源码基线 `38b827fe644139f4e20989cd8e7740350566fb56`：
 
 | 机制 | 固定源码 | 使用方式 |
 |---|---|---|
@@ -102,14 +103,16 @@ localhost/numeric loopback HTTP，使用不带 __Host 前缀和 Secure 的开发
 | login_transactions | 事务 ID、state_hash、browser_binding_hash、provider、return_path、expires_at。 |
 | sessions | ID、唯一 token_hash、user_id、expires_at；注销删除。 |
 | personal_access_tokens | ID、唯一 token_hash、user_id、name、created_at、expires_at；撤销删除。 |
-| project_members | `(project_id,user_id)` 唯一；role 为 admin/member；独立 bigint version。 |
+| project_members | `(project_id,user_id)` 唯一；role 为 admin/member；bigint version 来自独立 sequence。 |
 | project_invitations | ID、project_id、唯一 token_hash、created_by、expires_at、consumed_by/at、revoked_at。 |
 
 使用既有迁移机制、唯一索引和角色 CHECK，不要求新增 foreign key；关联由业务事务
 验证。旧项目内容保持，不自动分配成员，空成员项目自然不可见，后续手工补齐。
 
 创建项目和首位 admin 原子提交。成员管理提交观察版本，锁项目后重查 admin/版本，
-变更增加成员版本，过期返回 version_conflict。删除/降级最后 admin 返回 409 last_admin。
+真实角色变更与新加入从 project_member_versions sequence 取得新版本，观察值不要求
+连续或每次恰好加一；无变化保持版本。移除后重加入不复用旧版本，过期返回
+version_conflict。删除/降级最后 admin 返回 409 last_admin。
 两个 admin 并发不能都离任；成员变更不改 task.version。
 
 邀请七天有效、只授予 member、可撤销。邀请属于项目，创建者离任不自动作废。
@@ -188,6 +191,17 @@ handler；public origin 是 fixture 显式输入，不是生产 fallback。
 显式组合，Require/AuthenticateRequest 产生 Principal；当前生产 New 不挂载它。
 真实网关集成 fixture 固定 UniAuth 源码并在其模块内编译 testdata 命令，实际 App
 注册、状态、PKCE、GitHub 适配器和一次性结果均参与 HTTP 链路；只控制上游响应。
+
+成员模块由 service.NewMemberships 和 server.NewMembershipRoutes 提供；RegisterRoutes
+显式组合 Auth.Require。RequireProjectRead/Write 接收调用者并在其 Snapshot/ProjectTx
+内检查成员，私有创建与过滤列表复用 Projects 的现有校验/cursor。正式资源入口接入
+时替换原无身份入口，不保留可信用户适配器。
+
+成员响应是 `{projectId,userId,email,name,avatarUrl,role,version,createdAt,updatedAt}`，
+名单包在 items；角色 PATCH 为 `{version,role}`，移除 DELETE 为 `{version}`，version
+使用完整正 int64，前端不得以有损 Number 重新编码。创建邀请 POST 接受空对象，
+响应仅这一次有 link，列表 items 仅元数据；inspect/accept POST body 为 `{token}`。
+inspect 返回 projectId/projectName，仅已有成员时包含 member；accept 返回成员资源。
 
 身份/成员模块先以真实 handler/store 验证，尚未挂入入口时维持当前本机行为；CLI
 凭据和 Web 新壳完成后，统一接线同时修改 composition、业务 actor 参数、Web 主入口、
