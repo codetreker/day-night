@@ -2,7 +2,7 @@
 
 Use this mode to prepare and register work that needs persistent tracking. Read
 [the handbook](handbook.md) before discovery, queries, or writes. Return after
-registration; creating a task does not authorize implementation or activate
+registration; creating a task does not authorize approval, implementation or
 autopilot.
 
 Create a task only with the user's explicit permission to create tasks, whether
@@ -82,7 +82,7 @@ verifiable acceptance criteria.
 ## Register and verify
 
 Reuse the established project and task when applicable. For a new task, create
-it in `todo` with its problem and actual dependencies, retaining the confirmed
+it in `proposed` with its problem and actual dependencies, retaining the confirmed
 task ID. Upload the primary Markdown, frontend mock UI, and all required
 resources under that same ID. Add their actual paths to the complete task
 description using the observed task version. Do not present planned paths as
@@ -92,12 +92,17 @@ Read back the complete task, attachment metadata, and required contents. Confirm
 that references resolve, the two required Markdown sections are present,
 dependencies match the intended prerequisites, and the frontend mock UI and its
 resources are available and work together. Registration is complete only after
-all required artifacts and their associations are confirmed readable.
+all required artifacts and their associations are confirmed readable. Without a
+separate explicit approval instruction, leave the task proposed and report that
+approval is pending. Registration completeness,
+creation permission and implementation permission never authorize approval.
+Only an explicit user instruction approving the task or stated scope permits
+approval, using its reviewed version through `task approve`; the user may also
+approve directly through the Web detail action.
 
 If creation succeeds but an upload or description update fails, preserve the
-task ID and resume registration on that task. It remains `todo`; there is no
-additional draft state. If a write result is uncertain, follow the handbook's
-reconciliation rules before another mutation. Report incomplete registration
+task ID and resume registration on that task. It remains `proposed`. If a write
+result is uncertain, follow the handbook's reconciliation rules before another mutation. Report incomplete registration
 with the exact missing artifact or operation and next step. Do not inline the
 solution or acceptance criteria into the description to bypass an attachment
 failure.

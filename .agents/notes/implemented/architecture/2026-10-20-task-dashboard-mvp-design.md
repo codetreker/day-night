@@ -79,10 +79,12 @@ separate from API mutations and request triggers so editing and live subscriptio
 could be added independently. The later
 [Web attachment decision](../feature/2026-10-21-task-attachment-web.md) uses that
 separation for file upload, overwrite and deletion in task details. Task fields and
-dependency editing remain outside the browser's delivered scope. Proposed tasks
-are readable as Proposed or 待审批 in the current interface language, with matching
-statistics and aggregate chain status; the
-four-state reader decision preserves this read-only task-field boundary. Remote access
+dependency editing remain outside the browser's delivered scope. The
+[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds only proposed→todo
+approval in full task details, with reviewed versions and coordinated snapshot
+refresh. Proposed tasks retain their current-language badge, matching statistics
+and aggregate chain state. The four-state reader preparation preserved read-only
+task fields until that dedicated operation existed. Remote access
 is not an additive configuration change: authentication, authorization, and deployment boundaries require their
 own design. Graph filtering must retain dependency context; large-graph support
 needs a new closed-subgraph contract or measured limit changes.

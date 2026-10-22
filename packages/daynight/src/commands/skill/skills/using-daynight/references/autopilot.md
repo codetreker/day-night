@@ -31,26 +31,30 @@ When there is no current task, query:
 daynight task ready --json
 ```
 
-Pick exactly one ready `todo` task most relevant to the confirmed goal and
-authorized work. Compare problem, scope, solution, acceptance criteria, and
+Pick exactly one approved ready `todo` task most relevant to the confirmed goal
+and authorized work. Compare problem, scope, solution, acceptance criteria, and
 dependencies; creation order does not establish relevance. Read full details
 and actual referenced attachments for plausible candidates before committing to
 a target. Readiness checks prerequisites, not required artifact completeness or
-execution authorization. Pass the selected task ID to `run-task`.
+execution authorization. Pass the selected task ID to `run-task`, which claims
+the observed version before starting. Autopilot never auto-approves proposed
+work; activation and permission to implement are not approval instructions.
 
 Ready returns at most 10 candidates by default, or the requested bounded
 `--limit`; it is not a complete backlog. If this page is empty or no candidate
 matches, obtain the additional context actually needed through selected reads,
 the graph, or a complete filtered list as described in the handbook. Distinguish
-completed scope, remaining work blocked by prerequisites, other ongoing work,
-and insufficient candidates. Do not report the scope complete from an empty or
+completed scope, work awaiting explicit approval, remaining work blocked by
+prerequisites, other ongoing work, and insufficient candidates. Do not report the
+scope complete from an empty or
 unrelated bounded page, or take unrelated work to stay busy.
 
 Autopilot permission covers execution of existing tasks, not creation of new
 ones. If the confirmed goal requires missing tracked work, obtain explicit task
 creation permission unless the user already granted it for that scope, then use
 [create-task](create-task.md). Its return does not itself start execution;
-selection and execution still follow this mode's rules.
+the new task remains proposed pending separate explicit approval; selection and
+execution still follow this mode's rules.
 
 ## Advance serially
 

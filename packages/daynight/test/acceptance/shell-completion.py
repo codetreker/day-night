@@ -302,6 +302,9 @@ def scenarios():
         ("project show JSON", "daynight project show project-id --js\t", ["project", "show", "project-id", "--json"]),
         ("root task and local directory collision", "daynight ta\t", ["task"]),
         ("task create", "daynight task cre\t", ["task", "create"]),
+        ("task approve", "daynight task ap\t", ["task", "approve"]),
+        ("task claim", "daynight task cl\t", ["task", "claim"]),
+        ("task complete", "daynight task co\t", ["task", "complete"]),
         ("task list", "daynight task li\t", ["task", "list"]),
         ("task ready", "daynight task rea\t", ["task", "ready"]),
         ("task show", "daynight task sh\t", ["task", "show"]),
@@ -324,7 +327,8 @@ def scenarios():
         ("task ready limit followed by JSON", "daynight task ready --limit=2 --js\t", ["task", "ready", "--limit=2", "--json"]),
         ("task list separate status", "daynight task list --status in\t", ["task", "list", "--status", "in_progress"]),
         ("task list inline status", "daynight task list --status=do\t", ["task", "list", "--status=done"]),
-        ("task update inline status", "daynight task update task-id --status=in\t", ["task", "update", "task-id", "--status=in_progress"]),
+        ("task list separate proposed status", "daynight task list --status pro\t", ["task", "list", "--status", "proposed"]),
+        ("task list inline proposed status", "daynight task list --status=pro\t", ["task", "list", "--status=proposed"]),
         ("task inline status before further options", "daynight task list --status=done --rea\t", ["task", "list", "--status=done", "--ready"]),
         ("task empty separate description", 'daynight task create --title Title --description "" --pro\t', ["task", "create", "--title", "Title", "--description", "", "--project"]),
         ("task empty inline description", "daynight task create --title Title --description='' --pro\t", ["task", "create", "--title", "Title", "--description=", "--project"]),
@@ -420,6 +424,12 @@ def scenarios():
         ("task project has no file fallback", "daynight task list --project nor"),
         ("task ID has no file fallback", "daynight task show nor"),
         ("task version has no file fallback", "daynight task update task-id --if-version nor"),
+        ("removed task update status has no candidate", "daynight task update task-id --sta"),
+        ("removed inline task update status has no candidate", "daynight task update task-id --status=in"),
+        ("removed task update status stops completion", "daynight task update task-id --status todo --pro"),
+        ("removed inline task update status stops completion", "daynight task update task-id --status=todo --pro"),
+        ("ambiguous task approval prefix stays incomplete", "daynight task a"),
+        ("ambiguous task creation prefix stays incomplete", "daynight task c"),
         ("task ready limit has no file fallback", "daynight task ready --limit nor"),
         ("used task inline scalar status is hidden", "daynight task list --status=done --sta"),
         ("invalid inline task status stops completion", "daynight task list --status=invalid --rea"),
@@ -434,6 +444,24 @@ def scenarios():
         ("terminal help stops completion", "daynight review --help ru"),
         ("version does not inherit", "daynight review --ver"),
     ]
+    for action, version in [("approve", "9007199254740991"), ("claim", "9007199254740993"), ("complete", "9223372036854775807")]:
+        cases.extend([
+            (f"task {action} version option", f"daynight task {action} task-id --if-ver\t", ["task", action, "task-id", "--if-version"]),
+            (f"task {action} explicit project", f"daynight task {action} task-id --pro\t", ["task", action, "task-id", "--project"]),
+            (f"task {action} help", f"daynight task {action} --he\t", ["task", action, "--help"]),
+            (f"task {action} separate int64 version", f"daynight task {action} task-id --if-version {version} --pro\t", ["task", action, "task-id", "--if-version", version, "--project"]),
+            (f"task {action} inline int64 version", f"daynight task {action} task-id --if-version={version} --pro\t", ["task", action, "task-id", f"--if-version={version}", "--project"]),
+            (f"task {action} int64 version before ID", f"daynight task {action} --if-version={version} task-id --pro\t", ["task", action, f"--if-version={version}", "task-id", "--project"]),
+        ])
+        unchanged.extend([
+            (f"task {action} ID has no file fallback", f"daynight task {action} nor"),
+            (f"task {action} version has no file fallback", f"daynight task {action} task-id --if-version nor"),
+            (f"task {action} inline version has no file fallback", f"daynight task {action} task-id --if-version=nor"),
+            (f"task {action} project has no file fallback", f"daynight task {action} task-id --project nor"),
+            (f"task {action} used int64 version is hidden", f"daynight task {action} task-id --if-version={version} --if-ver"),
+            (f"task {action} status has no candidate", f"daynight task {action} task-id --sta"),
+            (f"task {action} terminal help stops completion", f"daynight task {action} --help --pro"),
+        ])
     return cases, unchanged
 
 
@@ -480,10 +508,12 @@ def run_shell(label, binary, kind, script, directory, evidence, zsh_root):
             ("empty review prefix", "daynight review ", ["run", "list", "ls", "add-repo"]),
             ("empty project prefix", "daynight project ", ["create", "list", "show"]),
             ("empty project create prefix", "daynight project create ", ["--repo"]),
-            ("empty task prefix", "daynight task ", ["create", "list", "ready", "show", "update", "graph", "attachment"]),
+            ("empty task prefix", "daynight task ", ["create", "list", "ready", "show", "update", "approve", "claim", "complete", "graph", "attachment"]),
+            ("ambiguous task approval prefix", "daynight task a", ["approve", "attachment"]),
+            ("ambiguous task creation prefix", "daynight task c", ["claim", "complete", "create"]),
             ("empty task attachment prefix", "daynight task attachment ", ["put", "list", "read", "remove"]),
-            ("empty separate task status", "daynight task list --status ", ["todo", "in_progress", "done"]),
-            ("empty inline task status", "daynight task list --status=", ["todo", "in_progress", "done"]),
+            ("empty separate task status", "daynight task list --status ", ["proposed", "todo", "in_progress", "done"]),
+            ("empty inline task status", "daynight task list --status=", ["proposed", "todo", "in_progress", "done"]),
             ("empty shell prefix", "daynight completion ", ["bash", "zsh", "setup"]),
             ("empty setup shell choice", "daynight completion setup --shell ", ["bash", "zsh"]),
         ]:

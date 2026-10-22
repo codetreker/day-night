@@ -1,53 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { getTask, isAbortError } from "../../api/client";
-import type { TaskDetail } from "../../api/types";
-
-type DetailState = {
-  readonly projectId: string;
-  readonly taskId: string;
-  readonly revision: number;
-  readonly detail: TaskDetail | null;
-  readonly status: "loading" | "ready" | "error";
-  readonly error: unknown;
-};
-
-const initialState = (projectId: string, taskId: string, revision: number): DetailState => ({
-  projectId, taskId, revision, detail: null, status: "loading", error: null,
-});
+import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { canApprove, useTaskDetailSessions } from "./TaskDetailSession";
 
 export const useTaskDetail = (projectId: string, taskId: string, revision: number) => {
-  const [state, setState] = useState<DetailState>(() => initialState(projectId, taskId, revision));
-  const generation = useRef(0);
-  const active = useRef<AbortController | null>(null);
-  const request = useCallback(async () => {
-    active.current?.abort();
-    const controller = new AbortController();
-    active.current = controller;
-    const sequence = ++generation.current;
-    setState(initialState(projectId, taskId, revision));
-    try {
-      const detail = await getTask(projectId, taskId, controller.signal);
-      if (controller.signal.aborted || sequence !== generation.current) return;
-      setState({ projectId, taskId, revision, detail, status: "ready", error: null });
-    } catch (error) {
-      if (controller.signal.aborted || sequence !== generation.current || isAbortError(error)) return;
-      setState({ projectId, taskId, revision, detail: null, status: "error", error });
-    } finally {
-      if (sequence === generation.current) active.current = null;
-    }
-  }, [projectId, taskId, revision]);
-
+  const sessions = useTaskDetailSessions();
+  const subscribe = useCallback((listener: () => void) => sessions.subscribe(projectId, taskId, listener), [sessions, projectId, taskId]);
+  const snapshot = useCallback(() => sessions.snapshot(projectId, taskId), [sessions, projectId, taskId]);
+  const state = useSyncExternalStore(subscribe, snapshot);
   useEffect(() => {
-    void request();
-    return () => {
-      ++generation.current;
-      active.current?.abort();
-      active.current = null;
-    };
-  }, [request]);
-
-  const retry = useCallback(() => { void request(); }, [request]);
-  const visible = state.projectId === projectId && state.taskId === taskId && state.revision === revision
-    ? state : initialState(projectId, taskId, revision);
-  return { detail: visible.detail, status: visible.status, error: visible.error, retry };
+    sessions.load(projectId, taskId, revision);
+    return () => { sessions.releaseRead(projectId, taskId); };
+  }, [sessions, projectId, taskId, revision]);
+  const retry = useCallback(() => { sessions.load(projectId, taskId, revision); }, [sessions, projectId, taskId, revision]);
+  const approve = useCallback(() => { sessions.approve(projectId, taskId); }, [sessions, projectId, taskId]);
+  const reconcile = useCallback(() => { sessions.reconcile(projectId, taskId); }, [sessions, projectId, taskId]);
+  const visible = state.revision === revision || state.approval.phase !== "idle" ? state : { ...state, detail: null, status: "loading" as const, error: null };
+  return { ...visible, retry, approve, reconcile, canApprove: canApprove(visible) };
 };

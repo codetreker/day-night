@@ -1,4 +1,5 @@
 import type { GraphTask, TaskDetail, TaskGraph, TaskGraphSummary, TaskStatus } from '../../src/api/types';
+import { isTaskVersion, parseApiJson, stringifyApiJson } from '../../src/api/json';
 
 export const browsingScenarioLabels = {
   mixed: '四种状态与共享后续',
@@ -15,6 +16,18 @@ export const browsingScenarioLabels = {
   error: '初始加载失败 · 可重试',
   'refresh-error': '刷新失败 · 保留快照',
   empty: '空项目',
+  'approval-ready': '批准可开始的任务 · 精确大版本号',
+  'approval-blocked': '批准仍有未完成前置的任务',
+  pending: '批准处理中 · 可关闭重开详情',
+  failure: '服务拒绝批准 · 显示错误后显式重试',
+  conflict: '版本冲突 · 重读修改后的任务',
+  'approved-by-other': '其他调用方已批准',
+  'unknown-applied': '响应丢失 · 核查后确认已批准',
+  'unknown-unapplied': '响应丢失 · 核查后仍待审批',
+  'unknown-reconcile-error': '结果未知 · 核查失败后显式恢复',
+  'graph-refresh-error': '批准成功 · 任务图刷新失败',
+  'task-switch': '批准处理中切换任务 · 响应身份隔离',
+  long320: '批准长标题任务 · 320px 键盘交互',
 } as const;
 export type BrowsingScenario = keyof typeof browsingScenarioLabels;
 export const readBrowsingScenario = (): BrowsingScenario => {
@@ -32,6 +45,12 @@ type TaskSeed = {
   readonly status: TaskStatus;
   readonly dependencies: readonly number[];
 };
+
+const approvalScenarios = new Set<BrowsingScenario>([
+  'approval-ready', 'approval-blocked', 'pending', 'failure', 'conflict', 'approved-by-other',
+  'unknown-applied', 'unknown-unapplied', 'unknown-reconcile-error', 'graph-refresh-error', 'task-switch', 'long320',
+]);
+export const isApprovalScenario = (scenario: BrowsingScenario): boolean => approvalScenarios.has(scenario);
 
 const id = (number: number): string => `00000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
 const titles = new Map<string, string>();
@@ -56,6 +75,16 @@ const mixed: readonly TaskSeed[] = [
 
 const scenarioSeeds = (scenario: BrowsingScenario): readonly TaskSeed[] => {
   const selected = (numbers: readonly number[]) => mixed.filter((task) => numbers.includes(task.number));
+  if (isApprovalScenario(scenario)) {
+    const seeds: readonly TaskSeed[] = [
+      { number: 1, title: '审阅并批准任务范围', status: 'proposed', dependencies: [] },
+      { number: 2, title: '批准有未完成前置的后续任务', status: 'proposed', dependencies: [1] },
+      { number: 12, title: '切换查看的独立待审批任务', status: 'proposed', dependencies: [] },
+    ];
+    return scenario === 'long320'
+      ? seeds.map((task) => ({ ...task, title: `${task.title}：中文、English identifiers、Keyboard navigation 与完整审批内容的自然换行。`.repeat(4) }))
+      : seeds;
+  }
   switch (scenario) {
     case 'empty': return [];
     case 'all-proposed': return selected([1, 2]).map((task) => ({ ...task, dependencies: task.dependencies.filter((number) => number !== 3) }));
@@ -106,53 +135,177 @@ export const browsingProjects = Object.fromEntries(
   (Object.keys(browsingScenarioLabels) as BrowsingScenario[]).map((scenario, index) => [scenario, createGraph(scenario, 101 + index)]),
 ) as Readonly<Record<BrowsingScenario, TaskGraph>>;
 
-const detail = (graph: TaskGraph, task: GraphTask, scenario: BrowsingDetailScenario): TaskDetail => ({
-  ...task, projectId: graph.project.id, title: titles.get(`${graph.project.id}:${task.id}`)!,
+const detail = (graph: TaskGraph, task: GraphTask | TaskDetail, scenario: BrowsingDetailScenario, version = 1n): TaskDetail => ({
+  id: task.id, projectId: graph.project.id, title: titles.get(`${graph.project.id}:${task.id}`)!, version,
+  status: task.status, dependsOn: task.dependsOn, blockedBy: task.blockedBy, ready: task.ready,
+  createdAt: task.createdAt, updatedAt: task.updatedAt,
   description: scenario === 'empty' ? '' : scenario === 'long'
     ? Array.from({ length: 24 }, (_, index) => `验收记录 ${index + 1}：完成任务范围内的实现与验证，确认依赖关系、任务状态与实际交付结果一致。共享任务可出现在多条任务链中；已完成的前置任务保留在依赖图中。完整内容在详情窗口内滚动，标题栏、关闭按钮和底部说明持续可见。`).join('\n\n')
     : '完成任务范围内的实现与验证，确认依赖关系、任务状态与实际交付结果一致。\n\n共享任务可出现在多条任务链中；已完成的前置任务保留在依赖图中。',
   properties: { pullRequests: [] },
 });
 
-export const installBrowsingFixture = (): (() => void) => {
+type SceneState = {
+  readonly scenario: BrowsingScenario;
+  readonly initial: TaskGraph;
+  readonly tasks: Map<string, TaskDetail>;
+  readonly attempts: Map<string, number>;
+  readonly failedTaskReads: Set<string>;
+  readonly pending: Map<number, { readonly settle: () => void; readonly reject: (error: unknown) => void }>;
+  graphReads: number;
+  failedGraphReads: boolean;
+};
+export type BrowsingFixtureControls = {
+  readonly pending: number;
+  readonly taskReadFailure: boolean;
+  readonly graphReadFailure: boolean;
+};
+export type BrowsingFixture = (() => void) & {
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly getRevision: () => number;
+  readonly controls: (scenario: BrowsingScenario) => BrowsingFixtureControls;
+  readonly settlePending: (scenario: BrowsingScenario) => void;
+  readonly recoverReads: (scenario: BrowsingScenario) => void;
+};
+
+const jsonResponse = (value: unknown, status = 200): Response => new Response(stringifyApiJson(value), {
+  status, headers: { 'Content-Type': 'application/json' },
+});
+const fault = (code: string, status: number): Response => jsonResponse({
+  error: { code, message: `Preview request failed: ${code}.`, requestId: `mockup-${code}` },
+}, status);
+
+const graphSnapshot = (state: SceneState): TaskGraph => {
+  const tasks: GraphTask[] = [...state.tasks.values()].map((task) => ({
+    id: task.id, titlePreview: Array.from(task.title).slice(0, 160).join(''), titleTruncated: Array.from(task.title).length > 160,
+    status: task.status, dependsOn: task.dependsOn, blockedBy: task.blockedBy, ready: task.ready,
+    createdAt: task.createdAt, updatedAt: task.updatedAt,
+  }));
+  return { project: state.initial.project, tasks, summary: {
+    total: tasks.length, proposed: tasks.filter((task) => task.status === 'proposed').length,
+    todo: tasks.filter((task) => task.status === 'todo').length, inProgress: tasks.filter((task) => task.status === 'in_progress').length,
+    done: tasks.filter((task) => task.status === 'done').length, ready: tasks.filter((task) => task.ready).length,
+    blocked: tasks.filter((task) => task.status === 'todo' && !task.ready).length,
+  } };
+};
+
+export const installBrowsingFixture = (): BrowsingFixture => {
   const originalFetch = window.fetch;
-  const requests = new Map<string, number>();
+  const listeners = new Set<() => void>();
+  let revision = 0;
+  let pendingId = 0;
+  const emit = () => { revision++; for (const listener of listeners) listener(); };
+  const states = new Map((Object.keys(browsingProjects) as BrowsingScenario[]).map((scenario) => {
+    const initial = browsingProjects[scenario];
+    const state: SceneState = { scenario, initial, tasks: new Map(initial.tasks.map((task) => [
+      task.id, detail(initial, task, scenario === 'long320' ? 'long' : 'normal', isApprovalScenario(scenario) ? 9_007_199_254_740_993n : 1n),
+    ])), attempts: new Map(), failedTaskReads: new Set(), pending: new Map(), graphReads: 0, failedGraphReads: false };
+    return [initial.project.id, state];
+  }));
+  const stateForScenario = (scenario: BrowsingScenario) => states.get(browsingProjects[scenario].project.id)!;
+  const approve = (state: SceneState, taskId: string, version: bigint): Response => {
+    const current = state.tasks.get(taskId)!;
+    if (current.version !== version) return fault('version_conflict', 409);
+    if (current.status !== 'proposed') return fault('invalid_transition', 409);
+    const approved = { ...current, status: 'todo' as const, version: current.version + 1n,
+      ready: current.blockedBy.length === 0, updatedAt: '2026-10-22T10:00:00Z' };
+    state.tasks.set(taskId, approved);
+    if (state.scenario === 'graph-refresh-error') state.failedGraphReads = true;
+    emit();
+    return jsonResponse(approved);
+  };
   const fixtureFetch: typeof fetch = async (input, init) => {
     const request = input instanceof Request ? input : null;
     const method = init?.method ?? request?.method ?? 'GET';
-    if (method !== 'GET') throw new Error(`Browsing preview does not support ${method} requests.`);
     const signal = init?.signal ?? request?.signal;
     signal?.throwIfAborted();
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.origin);
     if (url.origin !== location.origin) throw new Error(`Unknown browsing preview origin: ${url.origin}`);
     const graphMatch = /^\/api\/v1\/projects\/([^/]+)\/task-graph$/.exec(url.pathname);
-    const taskMatch = /^\/api\/v1\/projects\/([^/]+)\/tasks\/([^/]+)(\/attachments)?$/.exec(url.pathname);
+    const taskMatch = /^\/api\/v1\/projects\/([^/]+)\/tasks\/([^/]+)(\/(?:attachments|approve))?$/.exec(url.pathname);
     const projectId = graphMatch?.[1] ?? taskMatch?.[1];
-    const graph = Object.values(browsingProjects).find((candidate) => candidate.project.id === projectId);
-    if (graph !== undefined && graphMatch !== null) {
-      const scenario = (Object.keys(browsingProjects) as BrowsingScenario[]).find((key) => browsingProjects[key] === graph)!;
-      const count = requests.get(projectId!) ?? 0;
-      requests.set(projectId!, count + 1);
-      if (scenario === 'loading') return new Promise<Response>((_resolve, reject) => {
+    const state = projectId === undefined ? undefined : states.get(projectId);
+    if (state !== undefined && graphMatch !== null) {
+      if (method !== 'GET') return fault('method_not_allowed', 405);
+      const count = state.graphReads++;
+      if (state.scenario === 'loading') return new Promise<Response>((_resolve, reject) => {
         signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
       });
-      if (scenario === 'error' && count === 0 || scenario === 'refresh-error' && count === 1) {
-        return Response.json({ error: { code: 'internal_error', message: 'Mockup graph request failed.', requestId: 'mockup-graph-error' } }, { status: 500 });
-      }
-      return Response.json(graph);
+      if (state.scenario === 'error' && count === 0 || state.scenario === 'refresh-error' && count === 1 || state.failedGraphReads) return fault('internal_error', 500);
+      return jsonResponse(graphSnapshot(state));
     }
-    const task = graph?.tasks.find((candidate) => candidate.id === taskMatch?.[2]);
-    if (graph !== undefined && task !== undefined && taskMatch !== null) {
-      if (taskMatch[3] !== undefined) return Response.json({ items: [], nextCursor: null });
+    const task = state?.tasks.get(taskMatch?.[2] ?? '');
+    if (state !== undefined && task !== undefined && taskMatch !== null) {
+      if (taskMatch[3] === '/approve') {
+        if (method !== 'POST') return fault('method_not_allowed', 405);
+        const body = typeof init?.body === 'string' ? init.body : request === null ? '' : await request.text();
+        let data: unknown;
+        try { data = parseApiJson(body); } catch { return fault('validation_failed', 400); }
+        if (typeof data !== 'object' || data === null || Array.isArray(data) || Object.keys(data).length !== 1 || !('version' in data) || !isTaskVersion(data.version)) return fault('validation_failed', 400);
+        const version = data.version;
+        if (version !== task.version) return fault('version_conflict', 409);
+        if (task.status !== 'proposed') return fault('invalid_transition', 409);
+        const attempt = state.attempts.get(task.id) ?? 0;
+        state.attempts.set(task.id, attempt + 1);
+        if (state.scenario === 'pending' || state.scenario === 'task-switch') {
+          const key = ++pendingId;
+          return new Promise<Response>((resolve, reject) => {
+            state.pending.set(key, { settle: () => resolve(approve(state, task.id, version)), reject });
+            emit();
+          });
+        }
+        if (attempt === 0) {
+          if (state.scenario === 'failure') return fault('internal_error', 503);
+          if (state.scenario === 'conflict') {
+            state.tasks.set(task.id, { ...task, version: version + 1n, title: `${task.title}（范围已更新，请重新审阅）`, updatedAt: '2026-10-22T09:30:00Z' });
+            return fault('version_conflict', 409);
+          }
+          if (state.scenario === 'approved-by-other') {
+            approve(state, task.id, version);
+            return fault('version_conflict', 409);
+          }
+          if (state.scenario === 'unknown-applied' || state.scenario === 'unknown-reconcile-error') approve(state, task.id, version);
+          if (state.scenario === 'unknown-reconcile-error') { state.failedTaskReads.add(task.id); emit(); }
+          if (state.scenario === 'unknown-applied' || state.scenario === 'unknown-unapplied' || state.scenario === 'unknown-reconcile-error') throw new TypeError('The preview approval response was lost.');
+        }
+        return approve(state, task.id, version);
+      }
+      if (method !== 'GET') return fault('method_not_allowed', 405);
+      if (taskMatch[3] === '/attachments') return jsonResponse({ items: [], nextCursor: null });
       const scenario = readBrowsingDetailScenario();
       if (scenario === 'loading') return new Promise<Response>((_resolve, reject) => {
         signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
       });
-      if (scenario === 'error') return Response.json({ error: { code: 'internal_error', message: 'Mockup detail request failed.', requestId: 'mockup-detail-error' } }, { status: 500 });
-      return Response.json(detail(graph, task, scenario));
+      if (scenario === 'error' || state.failedTaskReads.has(task.id)) return fault('internal_error', 500);
+      return jsonResponse({ ...task, description: scenario === 'normal' ? task.description : detail(state.initial, task, scenario).description });
     }
     throw new Error(`Unknown browsing preview request: ${url.pathname}`);
   };
   window.fetch = fixtureFetch;
-  return () => { if (window.fetch === fixtureFetch) window.fetch = originalFetch; };
+  const dispose = () => {
+    if (window.fetch === fixtureFetch) window.fetch = originalFetch;
+    for (const state of states.values()) for (const pending of state.pending.values()) pending.reject(new DOMException('Preview closed', 'AbortError'));
+    listeners.clear();
+  };
+  return Object.assign(dispose, {
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    getRevision: () => revision,
+    controls: (scenario: BrowsingScenario): BrowsingFixtureControls => {
+      const state = stateForScenario(scenario);
+      return { pending: state.pending.size, taskReadFailure: state.failedTaskReads.size > 0, graphReadFailure: state.failedGraphReads };
+    },
+    settlePending: (scenario: BrowsingScenario) => {
+      const state = stateForScenario(scenario);
+      const pending = [...state.pending.values()];
+      state.pending.clear();
+      for (const entry of pending) entry.settle();
+      emit();
+    },
+    recoverReads: (scenario: BrowsingScenario) => {
+      const state = stateForScenario(scenario);
+      state.failedTaskReads.clear();
+      state.failedGraphReads = false;
+      emit();
+    },
+  });
 };

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, getTask, getTaskGraph, isAbortError, listProjects } from "../src/api/client";
 import { canonicalId, parseProjectPage, parseServerError, parseTaskDetail, parseTaskGraph } from "../src/api/parse";
+import { stringifyApiJson } from "../src/api/json";
 
 const projectId = "10000000-0000-0000-0000-00000000000a";
 const taskId = "20000000-0000-0000-0000-00000000000b";
@@ -8,7 +9,7 @@ const otherId = "30000000-0000-0000-0000-00000000000c";
 const time = "2026-10-20T12:34:56.123456Z";
 const project = { id: projectId, name: "Core project", repoUrl: "git@github.com:org/repo.git", createdAt: time, updatedAt: time };
 const task = {
-  id: taskId, projectId, title: "A task", description: "", properties: { pullRequests: [] }, status: "todo", version: 9007199254740992,
+  id: taskId, projectId, title: "A task", description: "", properties: { pullRequests: [] }, status: "todo", version: 9007199254740993n,
   dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
 };
 const graphTask = {
@@ -18,7 +19,7 @@ const graphTask = {
 const summary = { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 };
 const graph = { project, summary, tasks: [graphTask] };
 const signal = (): AbortSignal => new AbortController().signal;
-const response = (value: unknown, status = 200): Response => new Response(JSON.stringify(value), {
+const response = (value: unknown, status = 200): Response => new Response(stringifyApiJson(value), {
   status, headers: { "Content-Type": "application/json; charset=utf-8" },
 });
 const mockResponse = (value: unknown, status = 200) => {
@@ -55,12 +56,11 @@ describe("response parsing", () => {
     }
   });
 
-  it("parses complete graph and task fields without using int64 version", () => {
+  it("parses complete graph fields and preserves the exact full-task int64 version", () => {
     expect(parseTaskGraph(graph, projectId)).toEqual(graph);
     expect(parseTaskGraph({ ...graph, tasks: [{ ...graphTask, titlePreview: " ".repeat(160), titleTruncated: true }] }, projectId).tasks[0]?.titlePreview)
       .toBe(" ".repeat(160));
-    const { version: _version, ...detail } = task;
-    expect(parseTaskDetail(task, projectId, taskId)).toEqual(detail);
+    expect(parseTaskDetail(task, projectId, taskId)).toEqual(task);
     expect(parseTaskDetail({ ...task, status: "done", ready: false, dependsOn: [otherId], blockedBy: [] }, projectId, taskId).status).toBe("done");
     expect(parseTaskDetail({ ...task, status: "in_progress" }, projectId, taskId).status).toBe("in_progress");
   });
@@ -236,8 +236,8 @@ describe("API requests", () => {
     const reason = new DOMException("Aborted", "AbortError");
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(reason));
     await expect(listProjects({}, signal())).rejects.toBe(reason);
-    const json = vi.fn().mockRejectedValue(reason);
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ headers: new Headers({ "Content-Type": "application/json" }), status: 200, json }));
+    const text = vi.fn().mockRejectedValue(reason);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ headers: new Headers({ "Content-Type": "application/json" }), status: 200, text }));
     await expect(listProjects({}, signal())).rejects.toBe(reason);
     expect(isAbortError(reason)).toBe(true);
     expect(isAbortError(null)).toBe(false);
@@ -256,11 +256,11 @@ describe("API requests", () => {
 
   it("rejects cancellation during body parsing", async () => {
     const controller = new AbortController();
-    const json = vi.fn().mockImplementation(() => {
+    const text = vi.fn().mockImplementation(() => {
       controller.abort();
-      return Promise.resolve({ items: [], nextCursor: null });
+      return Promise.resolve('{"items":[],"nextCursor":null}');
     });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ headers: new Headers({ "Content-Type": "application/json" }), status: 200, json }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ headers: new Headers({ "Content-Type": "application/json" }), status: 200, text }));
     const error: unknown = await listProjects({}, controller.signal).catch((failure: unknown) => failure);
     expect(error).toBe(controller.signal.reason);
   });

@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-The read-only dashboard needs an ordinary local startup path and a reproducible
+The original read-only dashboard needed an ordinary local startup path and a reproducible
 production build. A source build that silently embeds stale or placeholder files
 can pass API tests while shipping no usable page. Tests also need the complete
 HTTP/database topology without sharing the daily stack's fixed names, port or
@@ -107,4 +107,6 @@ explicit: it is manual real-Docker acceptance against unchanged deployment code,
 not clean CI evidence or a claim that CI repeats the fault matrix. Historical
 loopback origins, run IDs and relative source paths are observed evidence, not
 operator configuration. The [MVP design decision](2026-10-20-task-dashboard-mvp-design.md)
-continues to own read-only scope, graph semantics and deferred capabilities.
+continues to own the read-only baseline, graph semantics and deferred capabilities.
+The [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds a dedicated
+task-detail write while keeping the same embedded origin and deployment model.

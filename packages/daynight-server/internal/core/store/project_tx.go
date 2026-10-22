@@ -52,11 +52,6 @@ func (tx *ProjectTx) TasksByID(ctx context.Context, ids []string) ([]core.Task, 
 	return tx.tasks(ctx, `t.id = ANY($2::uuid[])`, ids, "read prerequisites")
 }
 
-func (tx *ProjectTx) Dependents(ctx context.Context, id string) ([]core.Task, error) {
-	return tx.tasks(ctx, `EXISTS (SELECT 1 FROM task_dependencies d WHERE d.project_id = t.project_id
-		AND d.task_id = t.id AND d.depends_on_task_id = $2)`, id, "read dependents")
-}
-
 func (tx *ProjectTx) tasks(ctx context.Context, condition string, value any, phase string) ([]core.Task, error) {
 	rows, err := tx.tx.Query(ctx, `SELECT `+taskProjection+` FROM tasks t
 		WHERE t.project_id = $1 AND `+condition+` ORDER BY t.id`, tx.projectID, value)

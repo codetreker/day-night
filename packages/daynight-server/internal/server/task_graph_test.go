@@ -17,7 +17,6 @@ import (
 
 	"github.com/codetreker/daynight/packages/daynight-server/api"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
-	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/service"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -30,13 +29,20 @@ func TestTaskGraphHTTPCompleteProjectionAndSafeLogs(t *testing.T) {
 	handler := projectTestHandler(database, &logs)
 	project := taskProject(t, handler)
 	root := createHTTPTask(t, handler, project.ID, "root-private-title")
-	root = updateHTTPTask(t, handler, root, map[string]any{"status": "done"})
+	root = transitionHTTPTask(t, handler, root, "approve")
+	root = transitionHTTPTask(t, handler, root, "claim")
+	root = transitionHTTPTask(t, handler, root, "complete")
 	active := createHTTPTask(t, handler, project.ID, "active-private-title", root.ID)
-	active = updateHTTPTask(t, handler, active, map[string]any{"status": "in_progress"})
+	active = transitionHTTPTask(t, handler, active, "approve")
+	active = transitionHTTPTask(t, handler, active, "claim")
 	ready := createHTTPTask(t, handler, project.ID, strings.Repeat("🙂", 161))
+	ready = transitionHTTPTask(t, handler, ready, "approve")
 	blocked := createHTTPTask(t, handler, project.ID, "blocked-private-title", active.ID, root.ID)
+	blocked = transitionHTTPTask(t, handler, blocked, "approve")
 	done := createHTTPTask(t, handler, project.ID, "done-private-title")
-	done = updateHTTPTask(t, handler, done, map[string]any{"status": "done"})
+	done = transitionHTTPTask(t, handler, done, "approve")
+	done = transitionHTTPTask(t, handler, done, "claim")
+	done = transitionHTTPTask(t, handler, done, "complete")
 	other := taskProject(t, handler)
 	createHTTPTask(t, handler, other.ID, "foreign-private-title")
 	response := projectRequest(handler, http.MethodGet, graphPath(strings.ToUpper(project.ID)), "")
@@ -270,31 +276,21 @@ func TestTaskGraphHTTPErrorPrecedenceAndDTOUTC(t *testing.T) {
 	}
 }
 
-func TestTaskHTTPProposedReadContractWithoutPublicStatusWrites(t *testing.T) {
+func TestTaskHTTPProposedReadContractWithoutGenericStatusWrites(t *testing.T) {
 	database := projectTestStore(t)
 	var logs bytes.Buffer
 	handler := projectTestHandler(database, &logs)
 	project := taskProject(t, handler)
 	pending := createHTTPTask(t, handler, project.ID, "Pending")
+	pending = transitionHTTPTask(t, handler, pending, "approve")
 	done := createHTTPTask(t, handler, project.ID, "Done")
-	done = updateHTTPTask(t, handler, done, map[string]any{"status": "done"})
-	var proposed, proposedBlocked core.Task
-	if err := database.WriteProject(context.Background(), project.ID, func(tx *store.ProjectTx) error {
-		var err error
-		proposed, err = tx.CreateTask(context.Background(), "00000000-0000-4000-8000-000000000001", store.TaskWrite{
-			Title: "Proposed", Description: "Complete proposed description", Status: core.TaskProposed, DependsOn: []string{done.ID},
-		})
-		if err != nil {
-			return err
-		}
-		proposedBlocked, err = tx.CreateTask(context.Background(), "00000000-0000-4000-8000-000000000002", store.TaskWrite{
-			Title: "Proposed with prerequisite", Status: core.TaskProposed, DependsOn: []string{pending.ID},
-		})
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
-	for _, original := range []core.Task{proposed, proposedBlocked} {
+	done = transitionHTTPTask(t, handler, done, "approve")
+	done = transitionHTTPTask(t, handler, done, "claim")
+	done = transitionHTTPTask(t, handler, done, "complete")
+	proposed := createHTTPTask(t, handler, project.ID, "Proposed", done.ID)
+	proposed = updateHTTPTask(t, handler, proposed, map[string]any{"description": "Complete proposed description"})
+	proposedBlocked := createHTTPTask(t, handler, project.ID, "Proposed with prerequisite", pending.ID)
+	for _, original := range []api.Task{proposed, proposedBlocked} {
 		read := readHTTPTask(t, handler, api.Task{ProjectID: project.ID, ID: original.ID})
 		if read.Status != "proposed" || read.Ready || read.Description != original.Description || read.Version != original.Version ||
 			!read.CreatedAt.Equal(original.CreatedAt) || !read.UpdatedAt.Equal(original.UpdatedAt) || !slices.Equal(read.BlockedBy, original.BlockedBy) {
@@ -322,7 +318,10 @@ func TestTaskHTTPProposedReadContractWithoutPublicStatusWrites(t *testing.T) {
 		len(graph.Tasks[2].BlockedBy) != 0 || !slices.Equal(graph.Tasks[3].BlockedBy, []string{pending.ID}) {
 		t.Fatalf("HTTP proposed graph: %#v", graph)
 	}
-	assertProjectError(t, projectRequest(handler, http.MethodGet, taskCollection(project.ID)+"?status=proposed", ""), http.StatusBadRequest, "invalid_input")
+	filtered := decodeResponse[api.TaskPage](t, projectRequest(handler, http.MethodGet, taskCollection(project.ID)+"?status=proposed", ""), http.StatusOK)
+	if len(filtered.Items) != 2 || filtered.Items[0].ID != proposed.ID || filtered.Items[1].ID != proposedBlocked.ID {
+		t.Fatalf("proposed status filter: %+v", filtered)
+	}
 	assertProjectError(t, projectRequest(handler, http.MethodPatch, taskPath(pending), jsonBody(t, map[string]any{"version": pending.Version, "status": "proposed"})), http.StatusBadRequest, "invalid_input")
 	if read := readHTTPTask(t, handler, pending); !reflect.DeepEqual(read, pending) {
 		t.Fatalf("rejected proposed write changed existing task: %#v", read)

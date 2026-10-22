@@ -34,7 +34,7 @@ func TestTaskProposedMigrationPreservesExistingResourcesAndDefault(t *testing.T)
 	if !errors.As(err, &constraint) || constraint.Code != "23514" {
 		t.Fatalf("old schema did not reject proposed: %v", err)
 	}
-	if err := migrate(ctx, pool, schemaMigrations); err != nil {
+	if err := migrate(ctx, pool, schemaMigrations[:7]); err != nil {
 		t.Fatal(err)
 	}
 	for _, original := range before {
@@ -54,7 +54,7 @@ func TestTaskProposedMigrationPreservesExistingResourcesAndDefault(t *testing.T)
 	if err := pool.QueryRow(ctx, "SELECT applied_at FROM schema_migrations WHERE version=7").Scan(&applied); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrate(ctx, pool, schemaMigrations); err != nil {
+	if err := migrate(ctx, pool, schemaMigrations[:7]); err != nil {
 		t.Fatal(err)
 	}
 	var after time.Time
@@ -109,5 +109,47 @@ func TestTaskProposedGetPaginationAndReadiness(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestTaskProposedDefaultMigrationPreservesExistingResources(t *testing.T) {
+	ctx := context.Background()
+	pool := emptyPool(t)
+	if err := migrate(ctx, pool, schemaMigrations[:7]); err != nil {
+		t.Fatal(err)
+	}
+	database := &Store{Pool: pool}
+	project := queryProject(t, database, 1)
+	stamp := time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC)
+	var before []core.Task
+	for index, status := range []core.TaskStatus{core.TaskProposed, core.TaskTodo, core.TaskInProgress, core.TaskDone} {
+		id := queryID(index + 10)
+		mustQueryExec(t, database, `INSERT INTO tasks (id, project_id, title, description, status, version, created_at, updated_at)
+			VALUES ($1, $2, 'Existing task', 'Existing description', $3, $4, $5, $6)`, id, project.ID, status, index+17, stamp, stamp.Add(time.Hour))
+		before = append(before, snapshotTask(t, database, project.ID, id))
+	}
+	if err := migrate(ctx, pool, schemaMigrations); err != nil {
+		t.Fatal(err)
+	}
+	for _, original := range before {
+		if after := snapshotTask(t, database, project.ID, original.ID); !reflect.DeepEqual(after, original) {
+			t.Fatalf("default migration changed existing resource: %#v versus %#v", after, original)
+		}
+	}
+	mustQueryExec(t, database, `INSERT INTO tasks (id, project_id, title) VALUES ($1, $2, 'Default')`, queryID(21), project.ID)
+	created := snapshotTask(t, database, project.ID, queryID(21))
+	if created.Status != core.TaskProposed || created.Ready || created.Version != 1 || !created.CreatedAt.Equal(created.UpdatedAt) {
+		t.Fatalf("database default did not create proposed task: %#v", created)
+	}
+	var applied time.Time
+	if err := pool.QueryRow(ctx, "SELECT applied_at FROM schema_migrations WHERE version=8").Scan(&applied); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate(ctx, pool, schemaMigrations); err != nil {
+		t.Fatal(err)
+	}
+	var after time.Time
+	if err := pool.QueryRow(ctx, "SELECT applied_at FROM schema_migrations WHERE version=8").Scan(&after); err != nil || !after.Equal(applied) || !reflect.DeepEqual(snapshotTask(t, database, project.ID, created.ID), created) {
+		t.Fatalf("repeated default migration changed ledger/resource: %v, %v", after, err)
 	}
 }

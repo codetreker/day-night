@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { commandTree } from "../../../src/cli/commands.js";
 import type { CommandDefinition } from "../../../src/cli/schema.js";
 import { renderZshCompletion } from "../../../src/commands/completion/zsh.js";
+import { taskDefinition } from "../../../src/commands/task/definition.js";
 
 describe("native zsh completion", () => {
   it("offers the server token stdin option without a token value completion", () => {
@@ -17,6 +18,29 @@ describe("native zsh completion", () => {
     expect(script).toContain("'read:Write the attachment'\\''s original bytes to stdout'");
     expect(script).toContain("(--tree)--tree[Display attachment paths as a directory tree]");
     expect(script).toContain("(--path)--path=[Attachment relative path (default\\: source basename)]:relative-path:->text_value");
+  });
+
+  it("offers explicit lifecycle commands and proposed filtering without metadata status updates", () => {
+    const script = renderZshCompletion(commandTree);
+    expect(script).toContain("'approve:Approve a proposed task, moving it to todo'");
+    expect(script).toContain("'claim:Claim an approved todo task, moving it to in_progress'");
+    expect(script).toContain("'complete:Complete an in_progress task, moving it to done'");
+    expect(script).toContain("(--status)--status=[Task status]:status:('\\''proposed'\\'' '\\''todo'\\'' '\\''in_progress'\\'' '\\''done'\\'')");
+    const update = renderZshCompletion(taskDefinition.commands!.find(({ name }) => name === "update")!);
+    expect(update).not.toContain("--status");
+    expect(update).toContain("--if-version");
+    expect(update).toContain("--depends-on");
+  });
+
+  it.each(["approve", "claim", "complete"])("completes %s with one task ID and version/project text options", (action) => {
+    const script = renderZshCompletion(taskDefinition.commands!.find(({ name }) => name === action)!);
+    expect(script).toContain("(--if-version)--if-version=[Use this expected task version without reading a newer version]:version:->text_value");
+    expect(script).toContain("(--project)--project=[Use this project UUID for this invocation]:project-id:->text_value");
+    expect(script).toContain("(- *)--help[Show this help]");
+    expect(script).toContain("specifications+=( '1:Task UUID:->argument_1' )");
+    expect(script).not.toContain("--status");
+    expect(script).not.toContain("--json");
+    expect(script).not.toContain("_files");
   });
 
   it("registers the actual command grammar and descriptions with native helpers", () => {

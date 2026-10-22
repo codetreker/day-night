@@ -57,6 +57,7 @@ export type TaskDetail = {
   readonly description: string;
   readonly properties: TaskProperties;
   readonly status: TaskStatus;
+  readonly version: bigint;
   readonly dependsOn: readonly string[];
   readonly blockedBy: readonly string[];
   readonly ready: boolean;

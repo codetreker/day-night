@@ -3,6 +3,7 @@ import { createLocaleRender, renderWithLocale } from './helpers/renderWithLocale
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GraphTask, Project, TaskDetail, TaskGraph } from '../src/api/types';
+import { stringifyApiJson } from '../src/api/json';
 import type { GraphSnapshot } from '../src/features/projects/useTaskGraph';
 import { TaskDetailDialog, type TaskDetailDialogProps } from '../src/features/task-detail/TaskDetailDialog';
 import { buildGraphIndex } from '../src/features/task-graph/model';
@@ -18,7 +19,7 @@ const projectId = id(100);
 const timestamp = '2026-10-20T09:00:00.123456789Z';
 const project: Project = { id: projectId, name: '测试项目', repoUrl: 'https://github.com/example/project', createdAt: timestamp, updatedAt: timestamp };
 const detail = (value = 1, changes: Partial<TaskDetail> = {}): TaskDetail => ({
-  id: id(value), projectId, title: `任务 ${value}`, description: `任务 ${value} 的完整描述`, status: 'todo',
+  id: id(value), projectId, title: `任务 ${value}`, description: `任务 ${value} 的完整描述`, status: 'todo', version: 1n,
   properties: { pullRequests: [] }, dependsOn: [], blockedBy: [], ready: true, createdAt: timestamp, updatedAt: timestamp, ...changes,
 });
 const node = (task: TaskDetail): GraphTask => ({
@@ -37,7 +38,7 @@ const snapshot = (tasks = [detail()], revision = 1): GraphSnapshot => {
   };
   return { graph, index: buildGraphIndex(graph), receivedAt: Date.now(), revision };
 };
-const response = (task: TaskDetail) => new Response(JSON.stringify(task), { headers: { 'Content-Type': 'application/json' } });
+const response = (task: TaskDetail) => new Response(stringifyApiJson(task), { headers: { 'Content-Type': 'application/json' } });
 const failure = (code = 'internal_error') => new Response(JSON.stringify({ error: {
   code, message: 'private database password', requestId: 'task-detail-request-123',
 } }), { status: code === 'not_found' ? 404 : 500, headers: { 'Content-Type': 'application/json' } });
@@ -215,7 +216,7 @@ describe('task detail dialog', () => {
   });
 
   it('exposes malformed properties as a detail error without deriving an empty list', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...detail(), properties: null }), { headers: { 'Content-Type': 'application/json' } })));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(stringifyApiJson({ ...detail(), properties: null }), { headers: { 'Content-Type': 'application/json' } })));
     open();
     await screen.findByRole('alert');
     expect(screen.queryByText('暂无关联 PR')).toBeNull();

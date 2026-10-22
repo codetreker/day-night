@@ -22,11 +22,21 @@ the concrete issue; do not silently invent acceptance criteria or move the plan
 into the description. Do not execute prerequisites as an implicit expansion of
 the requested task.
 
-For `todo`, begin only when dependencies are done and the work is authorized,
-then set `in_progress`. For `in_progress`, recover existing work and coordinate
-using the project's established mechanisms; the status is not an ownership
-claim. A task already `done` is reported as such; reopening needs explicit
-intent. Preserve the requested task ID through recovery and waiting.
+For `proposed`, keep execution pending approval. A run request or autopilot
+activation does not authorize approval. Only if the user explicitly authorized
+approval of this task or stated scope, review its current content and use
+`task approve` with that exact observed version, then confirm the resulting todo
+state. The user can also approve directly through the CLI or Web. Approval does
+not expand implementation or delivery authorization.
+
+For ready `todo`, begin only when dependencies are done, artifacts are complete
+and the work is authorized. Use `task claim` with the exact version observed for
+that decision and confirm in_progress before starting. A stale version or
+changed prerequisite requires rereading and reconsidering, with no automatic
+claim retry. For `in_progress`, recover existing work and coordinate using the
+project's established mechanisms; the state is not an assignee lock or lease.
+A task already `done` is reported as such; there is no reopening operation.
+Preserve the requested task ID through recovery and waiting.
 
 ## Execute and maintain continuity
 
@@ -69,12 +79,13 @@ an unmet merge check likewise keeps completion pending.
 
 For tasks with no development or PR delivery path, use their stated acceptance
 criteria. In all cases, confirm the required evidence is recorded and readable,
-then reread the complete task and set `done` with the exact observed version.
-Only service confirmation establishes the status update; reconcile an uncertain
+then reread the complete in-progress task and use `task complete` with the exact
+observed version. Only service confirmation establishes the status update; reconcile an uncertain
 result before reporting it.
 
 Continue ordinary CI and review waits as the current task. If progress requires
 external intervention, preserve the current target, actual task state, concrete
 blocker, existing work, and next action in the checkpoint, then return that
-waiting result. An unstarted task stays `todo`; a started task stays
-`in_progress`. Do not declare completion or select other work to bypass a wait.
+waiting result. Unapproved work stays `proposed`; approved unstarted work stays
+`todo`; claimed work stays `in_progress`. Do not declare completion or select
+other work to bypass a wait.

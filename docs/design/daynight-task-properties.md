@@ -108,7 +108,6 @@ Store 用具体的持久化 DTO 编码与严格解码，校验必需结构、非
 ```json
 {
   "version": 3,
-  "status": "in_progress",
   "properties": {
     "pullRequests": [
       { "url": "https://github.com/owner/repo/pull/123", "title": "实现登录接口" }

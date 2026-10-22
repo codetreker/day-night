@@ -1,6 +1,31 @@
 import type { InspectionMessages } from "../inspection";
 
 export const inspection: InspectionMessages = {
+  approval: {
+    title: "Task approval",
+    explanation: "Approval moves this task to To do. Unfinished prerequisites will continue to block it.",
+    approve: "Approve task",
+    submitting: "Approving…",
+    pending: "Submitting approval. You can close these details while the request completes.",
+    confirmed: "Approval confirmed.",
+    currentState: "The current task state has been loaded.",
+    approvedReady: "The task is approved and ready to be claimed before work starts.",
+    approvedBlocked: "The task is approved. Unfinished prerequisites still block it.",
+    confirmedSnapshot: "Approval is confirmed and its result is retained. The task graph snapshot still differs; refresh it to update progress and relationships.",
+    conflict: "The task changed. Review the reloaded content before approving again.",
+    unknown: "The approval outcome is unknown. Check the current task state before another approval.",
+    reconciled: "The current task state has been confirmed. Review the content before any new approval.",
+    checking: "Checking the current task state…",
+    checkState: "Check task state",
+    checkFailed: "The current task state could not be confirmed. Approval remains unavailable until it can be read.",
+    networkError: "The approval request could not reach a confirmed response from the service.",
+    protocolError: "The service response could not confirm the approval result.",
+    versionConflict: "The task version changed before this approval could be applied.",
+    invalidTransition: "Only a proposed task can be approved.",
+    notFound: "The task or project is no longer available.",
+    refused: "The service refused the approval request.",
+    requestFailed: "The approval request failed.",
+  },
   detail: {
     title: "Task details", close: "Close task details", loading: "Loading task details", failed: "Task details could not be loaded",
     networkError: "Unable to connect to the service. Check the local service and try again.",

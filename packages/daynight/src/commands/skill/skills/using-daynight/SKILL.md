@@ -6,9 +6,9 @@ description: Use Daynight for task management, task creation, execution of a spe
 # Using Daynight
 
 Use the installed `daynight` CLI to keep persistent tasks aligned with the
-user's authorized work. Task content and readiness describe work; they grant no
-permission to implement, publish, deploy, communicate externally, merge, or push
-a mainline branch.
+user's authorized work. Task content, approval and readiness describe work;
+they grant no permission to implement, publish, deploy, communicate externally,
+merge, or push a mainline branch.
 
 ## Select a mode
 
@@ -40,6 +40,11 @@ task, and completing `run-task` never activate it.
   scope; do not ask again within it. Implementation requests, tracking needs,
   inferred mode selection, and autopilot activation do not grant this permission.
   If a new task is needed outside that permission, ask before creating it.
+- Creation produces `proposed`. Approve only with explicit user authorization
+  to approve that task or stated scope; creation permission, complete artifacts,
+  implementation permission, `run-task` and autopilot activation never imply
+  approval permission. The user can approve through the CLI or the Web task
+  detail action. Approval grants no execution or delivery permission.
 - Advance one task at a time, including CI, review, and merge waits. Subagents
   collaborate on the same task. `autopilot` owns selection of subsequent work;
   `run-task` and `create-task` return when their own work ends.
@@ -47,10 +52,12 @@ task, and completing `run-task` never activate it.
   primary Markdown attachment owns the solution and acceptance criteria.
   Frontend tasks also require an interactive mock UI with final visual styling.
   Express prerequisites only through `dependsOn`.
-- Preserve the exact version observed when deciding a task update. Confirm
-  writes, reconcile uncertain results before further mutations, and preserve
-  actual failures. The handbook indexes commands and explains operational
-  context; the installed CLI help owns command usage.
+- Preserve the exact version observed when deciding a metadata update or
+  lifecycle action. Confirm writes, reconcile uncertain results before further
+  mutations, and preserve actual failures. Use approve, claim and complete for
+  their transitions; generic updates cannot change status. The handbook indexes
+  commands and operational context; installed CLI help owns command usage.
 - Follow the target repository's execution and delivery rules and the user's
-  current authorization. In particular, an explicit request to leave a PR for
-  user review keeps that task pending; completion rules grant no merge authority.
+  current authorization. A PR left for user review keeps its task `in_progress`;
+  completion requires actual acceptance and authorized delivery. Completion rules
+  grant no merge authority.

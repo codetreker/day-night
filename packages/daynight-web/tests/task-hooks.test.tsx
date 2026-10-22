@@ -1,11 +1,15 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook as renderHookWithoutSession, waitFor, type RenderHookOptions } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GraphTask, TaskDetail, TaskGraph } from "../src/api/types";
 import { getTask, getTaskGraph } from "../src/api/client";
 import { useTaskGraph } from "../src/features/projects/useTaskGraph";
 import { useTaskDetail } from "../src/features/task-detail/useTaskDetail";
+import { TaskDetailSessionBoundary } from "../src/features/task-detail/TaskDetailSession";
 import { isTaskStale } from "../src/features/task-detail/freshness";
 import { GraphDataError } from "../src/features/task-graph/model";
+
+const renderHook = <Result, Props,>(render: (props: Props) => Result, options?: RenderHookOptions<Props>) =>
+  renderHookWithoutSession(render, { ...options, wrapper: TaskDetailSessionBoundary });
 
 vi.mock("../src/api/client", async (original) => ({ ...await original<typeof import("../src/api/client")>(), getTask: vi.fn(), getTaskGraph: vi.fn() }));
 const graphRequest = vi.mocked(getTaskGraph);
@@ -16,7 +20,7 @@ const taskId = "20000000-0000-0000-0000-000000000001";
 const otherTask = "20000000-0000-0000-0000-000000000002";
 const time = "2026-10-20T12:00:00.123456Z";
 const node: GraphTask = { id: taskId, titlePreview: "任务一", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
-const detail: TaskDetail = { id: taskId, projectId, title: "任务一", description: "完整描述", properties: { pullRequests: [] }, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
+const detail: TaskDetail = { id: taskId, projectId, title: "任务一", description: "完整描述", properties: { pullRequests: [] }, status: "todo", version: 1n, dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
 const graph = (id = projectId): TaskGraph => ({
   project: { id, name: `项目 ${id}`, repoUrl: "https://github.com/example/repo", createdAt: time, updatedAt: time },
   tasks: [node], summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },

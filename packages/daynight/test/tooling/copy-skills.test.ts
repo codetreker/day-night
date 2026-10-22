@@ -104,6 +104,31 @@ describe("packaged skill resource copy", () => {
     for (const bundle of bundles) expect(existsSync(f.destination(bundle))).toBe(false);
   });
 
+  it("publishes dedicated lifecycle guidance without obsolete generic status writes", () => {
+    const f = fixture();
+    const copied = f.run();
+    expect(copied.status, copied.stderr).toBe(0);
+    const destination = f.destination(bundles[1]);
+    const documents = files(destination).filter((name) => name.endsWith(".md"))
+      .map((name) => readFileSync(path.join(destination, name), "utf8"));
+    const guidance = documents.join("\n");
+    for (const command of ["task approve", "task claim", "task complete"]) expect(guidance).toContain(command);
+    expect(guidance).toContain("--if-version");
+    expect(guidance).not.toMatch(/task update[^\n]*--status/);
+    expect(guidance).not.toMatch(/(?:create|register)[^\n]*in `todo`/i);
+    expect(guidance).not.toContain("then set `in_progress`");
+    expect(guidance).not.toContain("set `done`");
+    const create = readFileSync(path.join(destination, "references/create-task.md"), "utf8");
+    const run = readFileSync(path.join(destination, "references/run-task.md"), "utf8");
+    const autopilot = readFileSync(path.join(destination, "references/autopilot.md"), "utf8");
+    expect(create).toContain("it in `proposed`");
+    expect(create).toContain("approval is pending");
+    expect(run).toContain("keep execution pending approval");
+    expect(run).toContain("every necessary delivery PR");
+    expect(run).toContain("is merged");
+    expect(autopilot).toContain("never auto-approves proposed");
+  });
+
   it("ships valid skill metadata and resolves every local resource link inside each copied bundle", () => {
     const f = fixture();
     const copied = f.run();

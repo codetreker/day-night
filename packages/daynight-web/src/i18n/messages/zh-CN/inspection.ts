@@ -1,6 +1,31 @@
 import type { InspectionMessages } from "../inspection";
 
 export const inspection: InspectionMessages = {
+  approval: {
+    title: "任务审批",
+    explanation: "批准后进入待处理；前置未完成时，任务仍会被阻塞。",
+    approve: "批准任务",
+    submitting: "正在批准…",
+    pending: "正在提交批准请求。可以关闭详情，结果会保留。",
+    confirmed: "批准成功。",
+    currentState: "已读取当前任务状态。",
+    approvedReady: "任务已批准，认领后即可开始执行。",
+    approvedBlocked: "任务已批准，未完成的前置仍会阻塞执行。",
+    confirmedSnapshot: "任务已批准，批准结果已保留。任务图快照仍有差异，请刷新以更新进度与关系。",
+    conflict: "任务已变化。请检查重新读取的内容，再次批准需要重新点击。",
+    unknown: "批准结果尚未确认。再次批准前，请先检查当前任务状态。",
+    reconciled: "已确认当前任务状态。再次批准前，请检查完整内容。",
+    checking: "正在检查当前任务状态…",
+    checkState: "检查任务状态",
+    checkFailed: "暂时无法确认当前任务状态，读取成功前无法再次批准。",
+    networkError: "批准请求未能从服务取得可确认的响应。",
+    protocolError: "服务响应无法确认批准结果。",
+    versionConflict: "任务版本已变化，本次批准未能生效。",
+    invalidTransition: "只有待审批任务可以批准。",
+    notFound: "任务或项目已无法读取。",
+    refused: "服务拒绝了批准请求。",
+    requestFailed: "批准请求失败。",
+  },
   detail: {
     title: "任务详情", close: "关闭任务详情", loading: "正在加载任务详情", failed: "任务详情加载失败",
     networkError: "无法连接服务，请检查本地服务后重试。", notFoundError: "这个任务已无法读取，请刷新任务图。",

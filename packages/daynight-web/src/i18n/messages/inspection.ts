@@ -1,4 +1,29 @@
 export type InspectionMessages = {
+  readonly approval: {
+    readonly title: string;
+    readonly explanation: string;
+    readonly approve: string;
+    readonly submitting: string;
+    readonly pending: string;
+    readonly confirmed: string;
+    readonly currentState: string;
+    readonly approvedReady: string;
+    readonly approvedBlocked: string;
+    readonly confirmedSnapshot: string;
+    readonly conflict: string;
+    readonly unknown: string;
+    readonly reconciled: string;
+    readonly checking: string;
+    readonly checkState: string;
+    readonly checkFailed: string;
+    readonly networkError: string;
+    readonly protocolError: string;
+    readonly versionConflict: string;
+    readonly invalidTransition: string;
+    readonly notFound: string;
+    readonly refused: string;
+    readonly requestFailed: string;
+  };
   readonly detail: {
     readonly title: string;
     readonly close: string;

@@ -8,7 +8,9 @@ import type { TaskStatus } from '../../api/types';
 import type { GraphSnapshot } from '../projects/useTaskGraph';
 import { isTaskStale } from './freshness';
 import { dialogFocusables } from './focus';
+import { TaskDetailSessionBoundary } from './TaskDetailSession';
 import { useTaskDetail } from './useTaskDetail';
+import { TaskApproval } from './TaskApproval';
 import { TaskPullRequests } from './TaskPullRequests';
 import { TaskAttachments } from './attachments/TaskAttachments';
 import '../../styles/task-detail.css';
@@ -41,10 +43,11 @@ const DetailError = ({ error }: { readonly error: unknown }) => {
   </>;
 };
 
-export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, onClose, onRestoreFocus, onRefreshGraph }: TaskDetailDialogProps) => {
+const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, onRestoreFocus, onRefreshGraph }: TaskDetailDialogProps) => {
   const { messages, format } = useI18n();
   const m = messages.inspection.detail;
-  const { detail, status, error, retry } = useTaskDetail(projectId, taskId, snapshot.revision);
+  const task = useTaskDetail(projectId, taskId, snapshot.revision);
+  const { detail, status, error, retry } = task;
   const headingId = useId();
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -142,11 +145,13 @@ export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, on
                 </div>
                 {stale && (
                   <div className="task-detail-stale" role="status">
-                    <p>{m.stale}</p>
+                    <p>{task.approval.phase === 'confirmed' ? messages.inspection.approval.confirmedSnapshot : m.stale}</p>
                     <button className="button" type="button" onClick={onRefreshGraph}>{m.refreshGraph}</button>
                   </div>
                 )}
               </div>
+              <div className="task-detail-approval"><TaskApproval detail={detail} approval={task.approval} canApprove={task.canApprove} onApprove={task.approve} onReconcile={task.reconcile} /></div>
+              {error !== null && status === 'ready' && <div className="task-detail-read-error" role="alert"><DetailError error={error} /><button className="button" type="button" onClick={retry}>{m.retry}</button></div>}
               <div className="task-detail-columns">
                 <div className="task-detail-main">
                   <section className="task-detail-section" aria-label={m.description}>
@@ -187,3 +192,5 @@ export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, on
     document.body,
   );
 };
+
+export const TaskDetailDialog = (props: TaskDetailDialogProps) => <TaskDetailSessionBoundary><TaskDetailView {...props} /></TaskDetailSessionBoundary>;

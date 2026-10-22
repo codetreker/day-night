@@ -12,6 +12,7 @@ import type {
   TaskProperties,
   TaskStatus,
 } from "./types";
+import { isTaskVersion } from "./json";
 
 const malformed = (): never => {
   throw new Error("The server returned an invalid response.");
@@ -149,6 +150,8 @@ const properties = (value: unknown): TaskProperties => {
 
 export const parseTaskDetail = (value: unknown, projectId: string, taskId: string): TaskDetail => {
   const data = record(value);
+  const version = data.version;
+  if (!isTaskVersion(version)) return malformed();
   const parsed = {
     id: id(data.id),
     projectId: id(data.projectId),
@@ -156,6 +159,7 @@ export const parseTaskDetail = (value: unknown, projectId: string, taskId: strin
     description: string(data.description),
     properties: properties(data.properties),
     status: status(data.status),
+    version,
     dependsOn: ids(data.dependsOn),
     blockedBy: ids(data.blockedBy),
     ready: boolean(data.ready),

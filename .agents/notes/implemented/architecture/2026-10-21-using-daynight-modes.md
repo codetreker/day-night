@@ -54,19 +54,25 @@ visuals and representative states, with its necessary assets. Dependencies remai
 in dependsOn; PR URLs and titles remain in properties.pullRequests. Verification
 results and merge references belong with the attachment's acceptance items.
 Execution position, blockers and next steps use an existing session or project
-checkpoint. No new task state or ownership mechanism is introduced.
+checkpoint. The original mode split introduced no task state or ownership
+mechanism. The [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) now makes
+registration proposed and separates explicit approval permission from creation
+and execution permission. Creation, run-task and autopilot never infer approval.
 
 Registration is complete only after necessary attachments and associations are
-read back. Partial creation retains the same task ID; uncertain writes are
-reconciled before retrying. Run-task reads the plan and applicable mock UI,
+read back. It leaves proposed work pending approval. Partial creation retains the
+same task ID; uncertain writes are reconciled before another mutation. Run-task
+reads the plan and applicable mock UI, requires separate explicit scoped approval
+for proposed work, claims ready todo at its observed version, and
 executes only its designated task and returns after completion or an external
 blocker. Development and PR-delivered documentation require all necessary PRs
-platform-confirmed merged plus satisfied acceptance before done. User instructions
+platform-confirmed merged plus satisfied acceptance before versioned task complete. User instructions
 to retain a PR keep the task in progress and return it for review; completion
 rules grant no merge authority.
 
 Autopilot restores the checkpoint's current task, otherwise picks exactly one
-ready todo most related to the authorized goal. In-progress inventory does not
+approved ready todo most related to the authorized goal, without auto-approving
+proposed work. In-progress inventory does not
 establish ownership, and a bounded ready page does not establish complete backlog
 state. Delivery waits and subagents remain on the current task. Only confirmed
 done permits the next selection; external blockers retain the current task and

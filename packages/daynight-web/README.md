@@ -121,10 +121,28 @@ statistics, standalone rows, chain badges, graph nodes and task details. The
 required graph summary includes `proposed`; totals satisfy
 `total = proposed + todo + inProgress + done`. Only todo tasks contribute to ready
 or blocked counts. Proposed tasks remain unfinished even when all prerequisites
-are complete. Task fields remain read-only; the prepared reader contract does
-not expose an approval control. Creation still starts in todo through the public
-API. The [four-state reader decision](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
-explains the storage/read preparation and lifecycle boundary.
+are complete. Creation starts in proposed. Full task details offer Approve /
+批准任务, including for proposed tasks with unfinished prerequisites; success
+changes only the lifecycle to todo. The [lifecycle decision](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
+extends the original [reader preparation](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md).
+
+Approval uses the full reviewed task's positive int64 version, represented as
+bigint without passing through a rounded JavaScript Number. Lossless JSON reads
+and numeric request serialization retain exact digits above the safe-integer
+range through int64 maximum. `TaskDetailSession` owns project/task-keyed detail
+and approval state for the App lifetime: closing or reopening details does not
+permit a second pending submission. Confirmed responses must match identity,
+todo and the expected next version. Success retains that detail and refreshes
+the matching project's graph; a graph refresh failure keeps confirmed todo and
+an explicit stale-snapshot refresh action. Pre-approval reads cannot restore
+proposed. Version conflicts reload current details and graph; approving a newer
+version needs a fresh click. Unknown outcomes retain the actual failure and
+require current-state reconciliation before another submission. Request
+cancellation does not establish rollback. Late results remain with their original
+project/task identity. There are no Web claim, complete or metadata-edit controls.
+The [actual-component browsing fixture](tests/mockups/browsing.html) is the
+frontend-only visual and interaction owner for approval, including blocked,
+pending, conflict, unknown-outcome and refresh-failure cases in both languages.
 
 Both lists use newest creation first, with descending IDs breaking equal-time
 ties. Presentation reverses the exact API sequence without reducing timestamp
@@ -169,8 +187,8 @@ viewport again. The [preference decision](../../.agents/notes/implemented/featur
 records storage ownership. Tab switching, filtering and scroll restoration make
 no API request and do not change the full project counters, graph index or API
 ordering. Nodes open a task detail dialog with dependency navigation,
-PR associations, stale-data detection and attachment management. Task fields and
-graph interactions remain read-only. The PR section follows the description and
+PR associations, stale-data detection and attachment management. Task metadata and graph interactions remain read-only; the detail dialog offers
+the dedicated proposed approval action. The PR section follows the description and
 displays every ordered title/URL pair, including duplicates. Lists longer than 100 entries use local
 100-row pages with a range/total announcement, Previous/Next controls and direct
 page selection. The complete ordered list stays in memory; changing pages makes
@@ -354,7 +372,7 @@ runner remains the owner of the built/running image identity and full cleanup.
 
 Native functional checks start after the native process and browser are ready.
 Their browser cleanup must pass before an atomic, run/source-bound permission
-releases the container's thirteen functional checks. Capacity runs last, after all
+releases the container's sixteen functional checks. Capacity runs last, after all
 preparation and coverage commands, container checks, full dev-ci cleanup and
 container browser recovery have finished. Every browser phase retains one
 worker and zero retries. CI runs controlled deployment fixtures before the
@@ -401,7 +419,7 @@ the same browser identity.
 The command builds real embedded assets and a new Go executable and owns a
 separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
 the normal dev-ci runner builds and starts the actual production image. Browser
-execution proceeds through thirteen native functional scenarios, the same thirteen
+execution proceeds through sixteen native functional scenarios, the same sixteen
 functional scenarios through the production image's stream gateway, then five
 native capacity/limit scenarios. The native process and PostgreSQL remain alive
 through the capacity phase; other preparation commands and the complete
@@ -410,8 +428,9 @@ capacity fixtures use the real write APIs. The original eight graph scenarios an
 their GET/HEAD-only browser checks. `task-attachments` and
 `language-state-preservation` allow exact fixture-scoped PUT/DELETE file routes;
 the latter holds each upload, overwrite and deletion while changing language to
-verify one write and retained state. Other language scenarios remain GET/HEAD-only,
-and unrelated mutations remain failures.
+verify one write and retained state. Other language scenarios remain GET/HEAD-only.
+The three task-approval scenarios separately admit only registered project/task
+POST approve requests with exact expected counts; unrelated mutations remain failures.
 One packed/installed CLI is shared by the whole web run. On each target,
 `task-attachments` uploads through that CLI and consumes the same task/files in
 the production page, then checks Web mutations through raw CLI reads. It covers
@@ -447,9 +466,10 @@ complete reports fails.
 The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [attachment journey](tests/e2e/attachments.spec.ts),
 [language journeys](tests/e2e/i18n.spec.ts),
+[approval journeys](tests/e2e/approval.spec.ts),
 [capacity scenarios](tests/e2e/capacity.spec.ts) and
 [acceptance runner](scripts/acceptance.mts) map to the
-[W1–W12 requirements](../../docs/spec/daynight-web.md) and
+[W1–W13 requirements](../../docs/spec/daynight-web.md) and
 [language requirements](../../docs/spec/daynight-web-i18n.md) as follows. Names are stable
 scenario annotations validated in each target's report.
 
@@ -464,6 +484,7 @@ scenario annotations validated in each target's report.
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
+| W13 | `task-approval`, `task-approval-conflicts`, `task-approval-recovery`: real versioned approval, blocked prerequisites, pending protection, exact int64 digits, reviewed-version conflicts, unknown-outcome reconciliation, graph refresh failure and identity/focus/browsing preservation |
 | FA1–FA12 | `task-attachments`: installed CLI and production UI operate on the same real task/files on native and container targets, exact binary round trips, independent mutations/previews, visible PDF content and full task state unchanged |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
 | L1–L4 | `language-startup-preferences`: browser default, saved override, reload, route metadata, shared selectors and unchanged user data |
@@ -487,8 +508,8 @@ retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validati
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
 tested checkout identity, which is normally a merge revision for PR runs. A pass
-requires the strict union of thirteen native functional and five native capacity/limit
-scenarios (18 native total), plus the thirteen container functional scenarios. Every
+requires the strict union of sixteen native functional and five native capacity/limit
+scenarios (21 native total), plus the sixteen container functional scenarios. Every
 phase and target rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
 Browser identities must agree across a target's phases; every fixed graph's five
 timing repetitions, independent size refusals and cleanup/recovery must pass.

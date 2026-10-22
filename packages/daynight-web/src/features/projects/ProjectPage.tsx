@@ -3,6 +3,7 @@ import { ApiError } from "../../api/client";
 import { navigate } from "../../app/router";
 import { useI18n } from "../../i18n/LocaleProvider";
 import type { WorkspaceMessages } from "../../i18n/messages/workspace";
+import { TaskDetailSessionBoundary, useTaskDetailSessions } from "../task-detail/TaskDetailSession";
 import { TaskDetailDialog } from "../task-detail/TaskDetailDialog";
 import { RootList } from "../task-graph/RootList";
 import { GraphDataError } from "../task-graph/model";
@@ -51,6 +52,8 @@ type ProjectNotice = { readonly kind: "selected-task-removed" };
 
 const ProjectView = ({ projectId }: { readonly projectId: string }) => {
   const graph = useTaskGraph(projectId);
+  const sessions = useTaskDetailSessions();
+  useEffect(() => sessions.subscribeProject(projectId, graph.refresh), [sessions, projectId, graph.refresh]);
   const { messages: { workspace: { project: m, projects, app, preferences }, common }, format } = useI18n();
   const [selection, setSelection] = useState<{ readonly id: string; readonly revision: number } | null>(null);
   const [notice, setNotice] = useState<ProjectNotice | null>(null);
@@ -213,4 +216,4 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
   );
 };
 
-export const ProjectPage = ({ projectId }: { readonly projectId: string }) => <ProjectView key={projectId} projectId={projectId} />;
+export const ProjectPage = ({ projectId }: { readonly projectId: string }) => <TaskDetailSessionBoundary><ProjectView key={projectId} projectId={projectId} /></TaskDetailSessionBoundary>;
