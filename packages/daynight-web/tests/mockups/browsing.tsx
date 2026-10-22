@@ -1,10 +1,19 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ProjectPage } from '../../src/features/projects/ProjectPage';
+import { LocaleProvider, useI18n } from '../../src/i18n/LocaleProvider';
+import { LanguageSelector } from '../../src/i18n/LanguageSelector';
+import { resolveInitialLocale } from '../../src/i18n/locale';
 import { browsingProjects, browsingScenarioLabels, installBrowsingFixture, readBrowsingDetailScenario, readBrowsingScenario, type BrowsingDetailScenario, type BrowsingScenario } from './browsing-fixture';
 import '../../src/styles/app.css';
 
 const BrowsingMockup = () => {
+  const { locale, messages } = useI18n();
+  const m = messages.workspace.app;
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    document.title = m.documentTitle.project;
+  }, [locale, m]);
   const [scenario, setScenario] = useState(readBrowsingScenario);
   const [detailScenario, setDetailScenario] = useState(readBrowsingDetailScenario);
   const scenarioSelect = useRef<HTMLSelectElement>(null);
@@ -27,30 +36,30 @@ const BrowsingMockup = () => {
       <a className="skip-link" href="#main-content" onClick={(event) => {
         event.preventDefault();
         document.getElementById('main-content')?.focus();
-      }}>跳到主要内容</a>
-      <aside className="sidebar" aria-label="工作空间导航">
-        <a className="brand" href="/" aria-label="Daynight 项目首页">
+      }}>{m.skipToContent}</a>
+      <aside className="sidebar" aria-label={m.workspaceNavigation}>
+        <a className="brand" href="/" aria-label={m.projectHome}>
           <span className="brand-mark" aria-hidden="true" />daynight
         </a>
-        <nav aria-label="主导航">
-          <p className="nav-label">工作空间</p>
+        <nav aria-label={m.mainNavigation}>
+          <p className="nav-label">{m.workspace}</p>
           <a className="nav-button" href="/" aria-current="page">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
               <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
               <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
             </svg>
-            项目
+            {m.projects}
           </a>
         </nav>
-        <div className="sidebar-bottom">本地工作空间<small>任务与依赖，一处看清</small></div>
+        <div className="sidebar-bottom">{m.localWorkspace}<small>{m.localWorkspaceDetail}</small></div>
       </aside>
       <div className="workspace">
         <header className="topbar">
-          <nav className="crumb" aria-label="面包屑">
-            <a href="/">工作空间</a><span aria-hidden="true">/</span>
-            <span className="crumb-current" aria-current="page">项目任务</span>
+          <nav className="crumb" aria-label={m.breadcrumb}>
+            <a href="/">{m.workspace}</a><span aria-hidden="true">/</span>
+            <span className="crumb-current" aria-current="page">{m.projectTasks}</span>
           </nav>
-          <span className="local-label">工作空间 · 本地</span>
+          <div className="topbar-tools"><span className="local-label">{m.localLabel}</span><LanguageSelector /></div>
         </header>
         <main className="content" id="main-content" tabIndex={-1}>
           <section className="snapshot-notice" aria-label="预览场景" style={{ margin: '0 0 24px' }}>
@@ -87,6 +96,7 @@ const BrowsingMockup = () => {
 const container = document.getElementById('root');
 if (container === null) throw new Error('The browsing mockup root is required.');
 const disposeFixture = installBrowsingFixture();
+const initial = resolveInitialLocale();
 const root = createRoot(container);
-root.render(<BrowsingMockup />);
+root.render(<LocaleProvider initial={initial}><BrowsingMockup /></LocaleProvider>);
 import.meta.hot?.dispose(() => { root.unmount(); disposeFixture(); });

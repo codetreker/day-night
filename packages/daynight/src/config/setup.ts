@@ -6,9 +6,10 @@ import { MissingConfigurationFileError, isMissingConfiguration } from "./errors.
 import { readConfigurationSource, updateConfigurationFile } from "./files.js";
 import { resolveConfigurationPaths } from "./paths.js";
 import { normalizeServerUrl } from "./server.js";
+import { parseServerTokenInput, validateServerToken, validateTokenTransport } from "./server-token.js";
 import type { AddRepositoryInput } from "../commands/review/repositories.js";
 
-export type SetupInput = { serverUrl?: string; reviewRepository?: AddRepositoryInput };
+export type SetupInput = { serverUrl?: string; serverTokenStdin?: boolean; reviewRepository?: AddRepositoryInput };
 type Capability = "server" | "review";
 
 const optionalSource = async (context: CliContext, signal: AbortSignal): Promise<string | undefined> => {
@@ -22,6 +23,7 @@ export const configure = async (
   capability?: Capability,
   suppliedSignal?: AbortSignal,
 ): Promise<void> => withCliCancellation(context, async (signal) => {
+  if (input?.serverUrl !== undefined) normalizeServerUrl(input.serverUrl);
   const paths = resolveConfigurationPaths(context.homeDirectory());
   const source = await optionalSource(context, signal);
   const baseline = source === undefined ? {} : parseConfigurationDocument(source, paths).mapping;
@@ -44,7 +46,7 @@ export const configure = async (
     }
   };
   try {
-    let server = input?.serverUrl !== undefined || capability === "server";
+    let server = input?.serverUrl !== undefined || input?.serverTokenStdin === true || capability === "server";
     let review = input?.reviewRepository !== undefined || capability === "review";
     if (input === undefined && capability === undefined) {
       const selected = await retry("Configure (server/review/both): ", (answer) => {
@@ -55,8 +57,43 @@ export const configure = async (
       review = selected !== "server";
     }
     let serverUrl = input?.serverUrl;
+    if (input?.serverTokenStdin === true && serverUrl === undefined) {
+      if (!Object.hasOwn(baseline, "serverUrl")) throw new Error("--server-token-stdin requires --server-url when no serverUrl is configured.");
+      serverUrl = normalizeServerUrl(baseline.serverUrl);
+    }
     if (server && serverUrl === undefined) serverUrl = await retry("Server URL (for example http://127.0.0.1:8787): ", normalizeServerUrl);
     if (serverUrl !== undefined) serverUrl = normalizeServerUrl(serverUrl);
+    const sameOrigin = serverUrl !== undefined && Object.hasOwn(baseline, "serverUrl") && normalizeServerUrl(baseline.serverUrl) === serverUrl;
+    let serverToken: string | undefined;
+    if (input?.serverTokenStdin === true) {
+      validateTokenTransport(serverUrl!);
+      if (context.readStdin === undefined) throw new Error("serverToken stdin input is unavailable in this context.");
+      serverToken = parseServerTokenInput(await context.readStdin(signal));
+      signal.throwIfAborted();
+    } else if (server && input?.serverUrl === undefined) {
+      if (context.prompt?.isInteractive !== true || context.prompt.askSecret === undefined) throw new Error("Hidden terminal input is required to configure serverToken interactively.");
+      const question = sameOrigin && Object.hasOwn(baseline, "serverToken") ? "Server token (hidden; blank to keep current token): " : "Server token (hidden; blank to skip): ";
+      for (;;) {
+        signal.throwIfAborted();
+        const answer = await context.prompt.askSecret(question, signal);
+        signal.throwIfAborted();
+        if (answer === "") break;
+        try {
+          const candidate = validateServerToken(answer);
+          validateTokenTransport(serverUrl!);
+          serverToken = candidate;
+          break;
+        }
+        catch (cause) {
+          if (cause instanceof CliCancelledError) throw cause;
+          context.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+        }
+      }
+    }
+    if (server && serverToken === undefined && sameOrigin && Object.hasOwn(baseline, "serverToken")) {
+      validateServerToken(baseline.serverToken);
+      validateTokenTransport(serverUrl!);
+    }
     let reviewRepository = input?.reviewRepository;
     let reviewTools: typeof import("../commands/review/repositories.js") | undefined;
     let reviewPaths: ReturnType<typeof import("../commands/review/paths.js")["resolveReviewPaths"]> | undefined;
@@ -77,14 +114,18 @@ export const configure = async (
       }
       await reviewTools.updateRepositoryConfiguration(source, reviewRepository, reviewPaths, reviewOptions);
     }
-    const selectedFields = [...(server ? ["serverUrl"] : []), ...(review ? ["repositoryRoot", "repositories"] : [])];
+    const selectedFields = [...(server ? ["serverUrl", "serverToken"] : []), ...(review ? ["repositoryRoot", "repositories"] : [])];
     const fingerprint = (mapping: Record<string, unknown>): string => JSON.stringify(selectedFields.map((field) => [field, Object.hasOwn(mapping, field), mapping[field]]));
     signal.throwIfAborted();
     await updateConfigurationFile(paths, async (currentSource) => {
       const current = currentSource === undefined ? undefined : parseConfigurationDocument(currentSource, paths);
       if (fingerprint(current?.mapping ?? {}) !== fingerprint(baseline)) throw new Error("Configuration changed during setup. Run setup again to review the current values.");
       const document = current?.document ?? new Document({});
-      if (serverUrl !== undefined) document.set("serverUrl", serverUrl);
+      if (serverUrl !== undefined) {
+        document.set("serverUrl", serverUrl);
+        if (serverToken !== undefined) document.set("serverToken", serverToken);
+        else if (!sameOrigin) document.delete("serverToken");
+      }
       let updatedSource = document.toString();
       if (reviewRepository !== undefined) {
         const result = await reviewTools!.updateRepositoryConfiguration(updatedSource, reviewRepository, reviewPaths!, reviewOptions!);
@@ -94,7 +135,7 @@ export const configure = async (
     }, signal);
     context.stderr(`Configuration saved to ${paths.configFile}.\n`);
   } catch (cause) {
-    if (signal.aborted) throw new CliCancelledError("Setup cancelled.", { cause: signal.reason });
+    if (signal.aborted || cause instanceof CliCancelledError) throw new CliCancelledError("Setup cancelled.", { cause: signal.aborted ? signal.reason : cause });
     throw cause;
   }
 }, suppliedSignal, () => new CliCancelledError("Setup cancelled."));

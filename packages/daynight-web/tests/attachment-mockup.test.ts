@@ -1,10 +1,12 @@
 import { createElement } from 'react';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { TaskAttachments } from '../src/features/task-detail/attachments/TaskAttachments';
 import { createAttachmentFixture } from './mockups/fixture';
 
+const render = createLocaleRender('zh-CN');
 const signal = () => new AbortController().signal;
 
 describe('development attachment fixture', () => {

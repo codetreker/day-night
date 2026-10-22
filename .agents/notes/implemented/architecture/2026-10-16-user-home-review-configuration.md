@@ -30,11 +30,15 @@ and temporary files. Repository clones retain their configured paths. PR
 worktrees follow the [repository-local worktree decision](2026-10-16-repository-local-review-worktrees.md).
 Shared home-path resolution, strict YAML reading and atomic configuration saves
 are implemented under `config/`. The review module owns its field projection
-and runtime paths; the server projection validates only `serverUrl`. The
-[project/task design](2026-10-20-project-task-cli-design.md) owns that additive
-field and the independent HTTP foundation. Review retains its original state
-locations and does not validate unrelated server values.
-Configuration failures identify the fixed filename and retain their causes.
+and runtime paths; the server projection validates `serverUrl` and optional
+`serverToken`. The [project/task design](2026-10-20-project-task-cli-design.md)
+owns the independent HTTP foundation, and the
+[credential decision](2026-10-22-cli-server-credentials.md) owns origin-bound
+tokens, hidden/stdin setup and POSIX `0600` for credential-bearing configuration.
+Review retains its original state locations and does not validate unrelated
+server values. Configuration failures identify the fixed filename. YAML parser
+failures retain safe category, code and offsets without raw scalar text or
+parser causes; other errors preserve their useful cause chains.
 The original configuration-loading behavior stopped startup when the file was
 absent, making manual preparation an explicit prerequisite. The
 [guided setup decision](../feature/2026-10-21-guided-configuration-setup.md) partially

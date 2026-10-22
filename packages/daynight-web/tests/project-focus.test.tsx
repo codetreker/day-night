@@ -1,9 +1,12 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTask, getTaskGraph } from '../src/api/client';
 import type { GraphTask, TaskGraph } from '../src/api/types';
 import { ProjectPage } from '../src/features/projects/ProjectPage';
 import { projectRoot, type GraphIndex } from '../src/features/task-graph/model';
+
+const render = createLocaleRender('zh-CN');
 
 vi.mock('../src/api/client', async (original) => ({
   ...await original<typeof import('../src/api/client')>(), getTask: vi.fn(), getTaskGraph: vi.fn(),

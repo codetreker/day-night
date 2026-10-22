@@ -80,7 +80,8 @@ could be added independently. The later
 [Web attachment decision](../feature/2026-10-21-task-attachment-web.md) uses that
 separation for file upload, overwrite and deletion in task details. Task fields and
 dependency editing remain outside the browser's delivered scope. Proposed tasks
-are readable as 待审批 with matching statistics and aggregate chain status; the
+are readable as Proposed or 待审批 in the current interface language, with matching
+statistics and aggregate chain status; the
 four-state reader decision preserves this read-only task-field boundary. Remote access
 is not an additive configuration change: authentication, authorization, and deployment boundaries require their
 own design. Graph filtering must retain dependency context; large-graph support

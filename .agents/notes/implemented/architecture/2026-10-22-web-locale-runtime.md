@@ -4,8 +4,8 @@ Status: implemented
 
 ## Problem
 
-The browser workspace has Chinese product text and locale-specific formatting
-throughout its existing components. English and Simplified Chinese need one
+At the foundation decision, the browser workspace used Chinese product text
+and locale-specific formatting throughout its existing components. English and Simplified Chinese needed one
 language choice, consistent message parameters, observable preference failures,
 and a way to update presentation without resetting graph, detail or attachment
 state. The existing per-project browsing records already have independent
@@ -17,8 +17,10 @@ storage formats and must retain their meaning.
 Two eagerly imported TypeScript catalogs satisfy one `Messages` interface, and
 React Context distributes the selected catalog and cached native `Intl`
 formatters. Fixed strings and named-parameter message functions share that
-interface. The base catalog contains only messages used by the runtime;
-application components extend the same contract when they adopt it.
+interface. The foundation initially contained only runtime messages. The
+[bilingual interface decision](../feature/2026-10-22-web-bilingual-interface.md)
+extends that contract with the current component callers and owns production
+integration and state preservation.
 
 Initial resolution prefers a valid explicit `en` or `zh-CN` value, then the first
 supported browser language, then English. Every Chinese language variant uses
@@ -42,9 +44,10 @@ requests and does not modify API, task, project or database data.
 
 The [requirements](../../../../docs/spec/daynight-web-i18n.md) own the complete
 bilingual outcome; the [design](../../../../docs/design/daynight-web-i18n.md)
-distinguishes the delivered runtime from production integration. Production
-`main.tsx`, `App` and feature components retain their current Chinese behavior
-until the separately tracked interface integration is delivered.
+explains both runtime and production integration. `main.tsx` now mounts the
+Provider before rendering, and `App` and feature components use the same
+catalogs. The linked interface decision owns that integration; the foundation
+choice recorded here remains in force.
 
 ## Alternatives
 
@@ -79,18 +82,18 @@ a language. Storage failures remain visible while the current page can still
 change language.
 
 The runtime, interface integration and production acceptance have separate
-tracked completion conditions. This sequence keeps the runtime reviewable before
-replacing product text and broadens its catalog only with actual callers. The
-later integration remains affordable because mounting is explicit, language has
-no domain-side effects and catalog functions support complete messages. State
-preservation remains a requirement of the complete interface.
+tracked completion conditions. The foundation was delivered independently so its
+behavior could be reviewed before replacing product text, and its catalog grew
+with actual callers. Explicit mounting, absence of domain-side effects and
+complete message functions let the interface integrate without changing runtime
+preference semantics. The linked interface decision owns state preservation.
 
 The isolated preview and test helper allow components to adopt the runtime
 explicitly. They do not establish complete English coverage, initial document
-metadata, modal integration or production-browser acceptance. Those remaining
-tasks must preserve resource identity, business request dependencies, graph
-geometry and the existing browsing records when mounting the root Provider and
-translating feature components.
+metadata, modal integration or production-browser acceptance. The interface
+integration supplies those component and metadata behaviors while retaining
+resource identity, business request dependencies, graph geometry and existing
+browsing records. Combined production verification remains separately tracked.
 
 Cross-tab live synchronization and account-level preferences are outside the
 current guarantee. The origin-local value is read at startup and written on an

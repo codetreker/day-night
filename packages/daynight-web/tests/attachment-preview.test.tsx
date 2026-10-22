@@ -1,8 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import { describe, expect, it, vi } from 'vitest';
 import type { Attachment } from '../src/api/types';
 import { AttachmentPreview, type AttachmentPreviewState } from '../src/features/task-detail/attachments/AttachmentPreview';
 import { dialogFocusables } from '../src/features/task-detail/focus';
+
+const render = createLocaleRender('zh-CN');
 
 const attachment = (path: string, contentType: string): Attachment => ({ path, contentType, sizeBytes: 10, createdAt: '2026-10-21T00:00:00Z', updatedAt: '2026-10-21T00:00:00Z' });
 const ready: AttachmentPreviewState = { path: 'docs/guide.md', status: 'ready', text: null, error: null };

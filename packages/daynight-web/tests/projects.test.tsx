@@ -1,7 +1,10 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Project } from '../src/api/types';
 import { ProjectsPage } from '../src/features/projects/ProjectsPage';
+
+const render = createLocaleRender('zh-CN');
 
 const project = (index: number, overrides: Partial<Project> = {}): Project => ({
   id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,

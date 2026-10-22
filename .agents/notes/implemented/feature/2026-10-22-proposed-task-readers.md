@@ -34,7 +34,10 @@ The [list-default decision](2026-10-22-task-list-defaults.md) retains ownership 
 inventory selection and rendering, including its original three-state rationale.
 
 Web statistics, standalone rows, root badges, graph nodes and details use the
-purple 待审批 presentation. Chain state derives from distinct root/main tasks:
+purple status presentation with the current catalog label, Proposed or 待审批.
+Both catalogs use the [bilingual interface mechanism](2026-10-22-web-bilingual-interface.md);
+changing language preserves the existing task, graph and detail identities.
+Chain state derives from distinct root/main tasks:
 all done means done; otherwise any done or in-progress means in-progress;
 otherwise any todo means todo; otherwise all are proposed. External prerequisite
 context never changes chain counts or state. Proposed tasks contribute to the
@@ -51,8 +54,8 @@ The current [server requirements](../../../../docs/spec/daynight-server.md),
 [CLI requirements](../../../../docs/spec/daynight-project-task.md) and
 [Web requirements](../../../../docs/spec/daynight-web.md) own observable behavior.
 The [task-view mockup](../../../../docs/design/mockups/task-views.html) shows the
-four-state reading behavior; the production-component browsing fixture checks the
-same presentation without a backend.
+four-state Chinese visual baseline; the production-component browsing fixture
+checks the bilingual presentation without a backend.
 
 ## Alternatives
 

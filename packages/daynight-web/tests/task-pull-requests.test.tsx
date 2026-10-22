@@ -1,7 +1,10 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { TaskPullRequests } from '../src/features/task-detail/TaskPullRequests';
+
+const render = createLocaleRender('zh-CN');
 
 const entries = (length: number) => Array.from({ length }, (_, index) => ({ title: `关联 ${index + 1}`, url: `https://example.com/pull/${index + 1}` }));
 const shown = () => within(screen.getByRole('region', { name: '关联 PR' })).getAllByRole('listitem');

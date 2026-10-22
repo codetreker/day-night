@@ -1,6 +1,9 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/app/App';
+
+const render = createLocaleRender('zh-CN');
 
 const projectId = '00000000-0000-4000-8000-000000000001';
 const projectPage = () => new Response(JSON.stringify({ items: [{

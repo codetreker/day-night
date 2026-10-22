@@ -28,10 +28,11 @@ task list 的 JSON 仅省略 `description`，其他元数据查询保留各自�
 [CLI 决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-cli.md)记录
 流传输及输出辅助进程的选择。
 
-[鉴权架构](daynight-auth.md)定义规划中的个人访问令牌配置和 HTTP 认证集成，
-并要求项目发现只查询当前用户的可访问项目；[需求](../spec/daynight-auth.md)和
-[任务拆分](daynight-auth-tasks.md)拥有行为与实施顺序。该扩展尚未实现，本文的
-HTTP 客户端仍面向本机未认证服务。仓库关联不保存凭据、不授予项目访问权。
+个人访问令牌配置和共享 HTTP Bearer 传输已实现，机制由
+[凭据决策](../../.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)拥有。
+[鉴权架构](daynight-auth.md)、[需求](../spec/daynight-auth.md)和
+[任务拆分](daynight-auth-tasks.md)拥有完整项目授权与统一启用；当前生产服务尚未
+挂载鉴权模块。仓库关联不保存凭据、不授予项目访问权。
 
 ## 现有基础与交付边界
 
@@ -99,11 +100,14 @@ project/task 不导入 review runtime、SQLite 或外部审查适配器。`proje
 与仓库状态。共享模块不反向导入命令模块。
 
 配置共享层产出 YAML mapping 和文档上下文，拒绝语法、重复 key、非 mapping 及
-未登记顶层字段。review 投影只解析 review 字段；server 投影只要求 `serverUrl`。
-共享层保留原有 YAML 字段含义与保存方式，不迁移 review 数据。服务入口在缺少文件或
-`serverUrl` 字段时复用[客户端配置引导](daynight.md#按需配置引导)，只收集并保存服务
-地址；已有无效 `serverUrl`、共享文档错误及读取错误直接暴露。review 配置可始终
-省略，其业务字段不参与服务配置校验。
+未登记顶层字段。review 投影只解析 review 字段；server 投影要求 `serverUrl`，
+并校验可选 `serverToken`。共享层保留既有 YAML 格式，不迁移 review 数据。缺少文件
+或 `serverUrl` 时复用[客户端配置引导](daynight.md#按需配置引导)，收集地址及可选
+隐藏令牌；令牌缺失不触发引导。已有无效服务值、共享文档错误及读取错误直接暴露。
+review 配置可始终省略，其业务字段不参与服务校验。YAML 错误以安全类别、代码和
+位置表达，原始标量及 parser cause 不进入错误对象。共享写入者在持锁重读的文档上
+保存，含令牌结果使用 POSIX `0600`；无令牌文件继续既有权限行为，普通文件/符号
+链接检查与原子替换不变。
 
 [`platform/text.ts`](../../packages/daynight/src/platform/text.ts) 统一名称、标题及 DTO
 已知字符串的结构验证：合法 Unicode 文本、不含 NUL；非空文本还须包含 Unicode
@@ -117,6 +121,20 @@ Project 名称参数与响应 DTO 复用同一规则，避免已被服务接受�
 末尾根斜线省略。拒绝用户信息、非根路径、query 和 fragment。API URL 从该 origin
 与固定 `/api/v1/...` 构造，资源 ID 作为单一路径段编码，分页 cursor 通过 query
 编码。配置值不得允许请求参数改变服务 origin。
+
+`serverToken` 为非空 opaque visible ASCII。配置令牌时只允许 HTTPS，或 host 为
+字面量 `localhost`、`127.0.0.0/8` 内的数值 IPv4、`::1` 的 HTTP。setup 隐藏输入，空回答保留
+同一正规化 origin 的令牌或跳过新 origin 令牌；布尔 `--server-token-stdin` 读取
+不超过 1 MiB 的一行非空值，允许单个 LF/CRLF，拒绝空输入、多行和控制字符。显式
+URL 配置不询问，stdin 可复用已保存地址，无地址时须显式提供。锁内共同比较
+serverUrl/serverToken；origin 变化时同次原子保存清除旧令牌，相同 origin 保留它，
+其他能力的并发完成修改合并保留。
+
+共享 API 请求边界为已有 project/task/graph/property/attachment 请求附加 Bearer，
+包括文件上传、下载、分页与失败路径。继续使用 manual redirect，不向重定向目标
+转发令牌。401 给出 setup 指导，不自动匿名重试、写重试或登录预检；403/404/409、
+精确 int64、分页、二进制输出和既有预算保持。凭据不写入仓库关联，也不新增 CLI
+登录协议、独立 auth 命令组、keychain 或通用鉴权框架。
 
 完成参数分派后，`runServerCommand` 在首次配置读取前创建取消控制器及
 `Operation`，总期限为 5 分钟。配置完整时，首次读取及后续业务共享这一期限。
