@@ -16,14 +16,20 @@ The [task inspection requirements](docs/spec/daynight-task-inspection.md),
 [architecture](docs/design/daynight-task-inspection.md),
 [focused task breakdown](docs/design/daynight-task-inspection-tasks.md) and
 [interactive preview](docs/design/mockups/task-inspection/index.html) cover these
-interactions and the planned Markdown description/skill work. The progressive
+interactions and Markdown description/skill behavior. The progressive
 view starts at fifty tasks/one hundred induced edges, with explicit twenty-neighbor
 expansion and global reset; complete data, statistics and progress remain intact.
 Smooth routes retain direction, card clearance and external dashes. Cards use
 220×96 compact or 220×136 expandable geometry. The centered dialog preserves
 Overview/Attachments split panels, the standalone reader and existing modal,
-attachment and focus lifecycles. Descriptions remain plain text; Markdown and
-matching public skill guidance belong to pending UX4. Daynight task records and
+attachment and focus lifecycles. Descriptions render CommonMark/GFM through the
+shared renderer. Relative links/images resolve from the task attachment root;
+ordinary relative file links select the existing Attachments preview through one
+controller, while real hrefs retain native browser navigation. The
+[Markdown reading decision](.agents/notes/implemented/architecture/2026-10-22-task-description-markdown.md)
+owns root/document resolution, complete-inventory checks and focus integration.
+The published skill preserves self-contained briefs, primary-plan ownership and
+existing Goal, dependency, PR and permission semantics. Daynight task records and
 task-specific primary plans own delivery status and source-bound acceptance.
 
 | Component | Location | Implementation status | Requirements and design |
@@ -147,9 +153,14 @@ resolved with the user. Autopilot requires an explicit request for continuous
 execution. Creating tasks requires explicit user permission to create them;
 implementation requests and autopilot activation do not supply that permission.
 Existing explicit permission applies within its stated scope without repeated
-confirmation. Task descriptions are self-contained briefs: concrete actions, scope, deliverables,
-constraints, observable completion summaries and actual input references. Each
-task-specific primary Markdown owns detailed solution, full acceptance and evidence.
+confirmation. Task descriptions are self-contained Markdown briefs: the concrete
+problem and action, scope, deliverables, constraints, observable completion
+summaries and actual input references. The Web renders that Markdown; API storage
+and CLI/Agent output preserve the original string bytes. Each task-specific
+primary Markdown owns its detailed Solution, full Acceptance criteria and
+evidence. Use relative references such as `[Solution and acceptance](plan.md)`
+only after confirming that the referenced file belongs to that task and has
+been uploaded successfully.
 Shared Goal and design inputs stay at their source task ID and attachment path,
 or a verified immutable repository URL; attachments follow actual need. Frontend
 implementation tasks read the completed final-style interactive prototype and
@@ -950,7 +961,11 @@ behavior and remaining task-command scope.
 Task commands use the same `serverUrl` configuration as project commands:
 
 ```bash
-daynight task create --title "Implement sign-in" --description "Support OAuth"
+daynight task create --title "Implement sign-in" --description '## Sign-in
+
+Implement OAuth sign-in for the web workspace. Deliver the callback flow and
+visible failure recovery; preserve the existing session and provider rules.
+Complete when a valid login opens the workspace and a rejected login can retry.'
 daynight task create --title "Build the sign-in page" --depends-on <task-id>
 daynight task ready
 daynight task ready --limit 5 --json

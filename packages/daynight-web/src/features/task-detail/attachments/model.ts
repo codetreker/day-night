@@ -62,30 +62,46 @@ export const attachmentTree = (items: readonly Attachment[]): readonly Attachmen
   return nodes(root, "");
 };
 
-export const resolveAttachmentUrl = (value: string, currentPath: string, previewRoot: string): string | null => {
-  if (!isAttachmentPath(currentPath)) return null;
-  if (value.startsWith("#")) return value;
-  if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(value.trim())) return value;
+export type MarkdownAttachmentBase = { readonly kind: "root" } | { readonly kind: "document"; readonly path: string };
+export type AttachmentReference =
+  | { readonly kind: "native"; readonly url: string }
+  | { readonly kind: "relative"; readonly path: string; readonly suffix: string }
+  | { readonly kind: "root"; readonly suffix: string }
+  | { readonly kind: "invalid" };
+
+export const resolveAttachmentReference = (value: string, base: MarkdownAttachmentBase): AttachmentReference => {
+  if (base.kind === "document" && !isAttachmentPath(base.path)) return { kind: "invalid" };
+  if (value.startsWith("#") || /^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(value.trim())) return { kind: "native", url: value };
   const boundary = value.search(/[?#]/);
   const pathname = boundary === -1 ? value : value.slice(0, boundary);
   const suffix = boundary === -1 ? "" : value.slice(boundary);
-  if (pathname === "") return `${previewRoot}${currentPath.split("/").map(encodeURIComponent).join("/")}${suffix}`;
-  const parts = currentPath.split("/").slice(0, -1);
+  if (pathname === "") return base.kind === "root" ? { kind: "root", suffix } : { kind: "relative", path: base.path, suffix };
+  const parts = base.kind === "root" ? [] : base.path.split("/").slice(0, -1);
   try {
     for (const encoded of pathname.split("/")) {
       const segment = decodeURIComponent(encoded);
       if (segment === ".") continue;
       if (segment === "..") {
-        if (parts.length === 0) return null;
+        if (parts.length === 0) return { kind: "invalid" };
         parts.pop();
       } else {
-        if (segment.includes("/") || !isAttachmentPath(segment)) return null;
+        if (segment.includes("/") || !isAttachmentPath(segment)) return { kind: "invalid" };
         parts.push(segment);
       }
     }
   } catch {
-    return null;
+    return { kind: "invalid" };
   }
-  if (parts.length === 0) return null;
-  return `${previewRoot}${parts.map(encodeURIComponent).join("/")}${suffix}`;
+  return parts.length === 0 ? { kind: "invalid" } : { kind: "relative", path: parts.join("/"), suffix };
 };
+
+export const resolveMarkdownAttachmentUrl = (value: string, base: MarkdownAttachmentBase, previewRoot: string): string | null => {
+  const reference = resolveAttachmentReference(value, base);
+  if (reference.kind === "invalid") return null;
+  if (reference.kind === "native") return reference.url;
+  if (reference.kind === "root") return `${previewRoot}${reference.suffix}`;
+  return `${previewRoot}${reference.path.split("/").map(encodeURIComponent).join("/")}${reference.suffix}`;
+};
+
+export const resolveAttachmentUrl = (value: string, currentPath: string, previewRoot: string): string | null =>
+  resolveMarkdownAttachmentUrl(value, { kind: "document", path: currentPath }, previewRoot);

@@ -9,9 +9,8 @@ import type { GraphSnapshot } from '../projects/useTaskGraph';
 import { isTaskStale } from './freshness';
 import { dialogFocusables } from './focus';
 import { useTaskDetail } from './useTaskDetail';
-import { TaskDetailPanels } from './TaskDetailPanels';
+import { TaskDetailReading } from './TaskDetailReading';
 import { TaskPullRequests } from './TaskPullRequests';
-import { TaskAttachments } from './attachments/TaskAttachments';
 import '../../styles/task-detail.css';
 
 export type TaskDetailDialogProps = {
@@ -156,11 +155,11 @@ export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, on
                   </div>
                 )}
               </div>
-              <TaskDetailPanels key={`${projectId}/${taskId}`} overview={<div className="task-detail-columns">
+              <TaskDetailReading key={`${projectId}/${taskId}`} projectId={projectId} taskId={taskId} description={detail.description} onClose={onClose} overview={(description) => <div className="task-detail-columns">
                 <div className="task-detail-main">
                   <section className="task-detail-section" aria-label={m.description}>
                     <h4>{m.description}</h4>
-                    <p className="task-detail-description">{detail.description === '' ? m.noDescription : detail.description}</p>
+                    {description}
                   </section>
                   <TaskPullRequests pullRequests={detail.properties.pullRequests} />
                 </div>
@@ -185,7 +184,7 @@ export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, on
                     <div><dt>{m.taskId}</dt><dd className="task-detail-full-id">{detail.id}</dd></div>
                   </dl>
                 </aside>
-              </div>} attachments={<TaskAttachments projectId={projectId} taskId={taskId} onClose={onClose} />} />
+              </div>} />
             </>
           )}
         </div>

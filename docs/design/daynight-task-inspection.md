@@ -1,6 +1,6 @@
 # 任务依赖追踪与详情阅读设计
 
-完整前置上下文、渐进概览、局部依赖检查、独立 Details 与平滑路线已实现。Markdown 描述与 skill 属于待实现的 UX-T4。[要求](../spec/daynight-task-inspection.md)、[拆分](daynight-task-inspection-tasks.md)和[原型](mockups/task-inspection/index.html)分别拥有行为、范围与视觉；任务状态与源码绑定验收记录归 Daynight 和任务专属主附件。
+完整前置上下文、渐进概览、局部依赖检查、独立 Details 与平滑路线已实现。Markdown 描述、附件导航和 bundled skill 指引也已实现。[要求](../spec/daynight-task-inspection.md)、[拆分](daynight-task-inspection-tasks.md)和[原型](mockups/task-inspection/index.html)分别拥有行为、范围与视觉；任务状态与源码绑定验收记录归 Daynight 和任务专属主附件。
 
 ## 实现范围
 
@@ -45,19 +45,47 @@ ProjectPage保持详情资源和入口/关闭恢复所有权。当前画布拥�
 
 ## 居中详情
 
-`TaskDetailDialog` 组合已有详情 hook、关系跳转、PR 和附件组件，样式由 `task-detail.css` 的 `task-detail-*` 命名空间拥有。外壳相对可用视口居中，宽度 `min(960px, 100% − 2 × gutter)`，桌面 `gutter = 24px`，600px 及以下为 12px；最大高度为 `min(880px, 100dvh − 2 × gutter)`。标题栏、详情页签、关闭按钮和底部说明处于滚动内容之外。默认“概览”正文独立滚动，包含描述、PR 与元数据/关系；桌面为阅读主栏与 265px 侧栏，850px 及以下侧栏收为 225px，600px 及以下堆叠。附件页签占用全部正文宽度，在所有宽度下保持左列表、右预览；尺寸链及唯一右侧滚动所有者由[附件设计](daynight-task-attachments.md#web-文件树与预览)拥有。长文本换行，代码和表格只在所属区域横向滚动。描述仍为纯文本，Markdown 与描述附件导航由 UX-T4 交付。
+`TaskDetailDialog` 组合已有详情 hook、关系跳转、PR 和附件组件，样式由 `task-detail.css` 的 `task-detail-*` 命名空间拥有。外壳相对可用视口居中，宽度 `min(960px, 100% − 2 × gutter)`，桌面 `gutter = 24px`，600px 及以下为 12px；最大高度为 `min(880px, 100dvh − 2 × gutter)`。标题栏、详情页签、关闭按钮和底部说明处于滚动内容之外。默认“概览”正文独立滚动，包含描述、PR 与元数据/关系；桌面为阅读主栏与 265px 侧栏，850px 及以下侧栏收为 225px，600px 及以下堆叠。附件页签占用全部正文宽度，在所有宽度下保持左列表、右预览；尺寸链及唯一右侧滚动所有者由[附件设计](daynight-task-attachments.md#web-文件树与预览)拥有。长文本换行，代码和表格只在所属区域横向滚动。描述使用共享 Markdown 视图和现有附件导航，详情加载与错误继续由详情资源拥有。
 
 继续复用 body portal、共享滚动锁、背景 inert、焦点循环、遮罩关闭和分层 Esc。清理 inert、滚动锁和监听器的同步阶段与 DOM 移除后恢复焦点的阶段保持既有职责。原入口消失时优先选择仍可用的全屏退出控件，否则使用当前页签内可见的任务或页签控件；整个项目为空时恢复项目标题。任务关系切换不卸载外壳，不中途恢复到旧入口。外壳不引入图重挂载。`dialogFocusables` 与实际对话框中的同源附件 frame 共用可见控件枚举，frame 监听仍按原有 load/替换/卸载生命周期释放。附件独立阅读页复用内容渲染，但保留普通浏览器键盘行为；其路由、完整清单与满视口阅读机制由[附件设计](daynight-task-attachments.md#独立附件阅读页)拥有。
 
-## 待实现：Markdown 与附件链接
+## Markdown 与附件链接
 
-从 `AttachmentPreview` 提取只负责 CommonMark/GFM 渲染和样式的 Markdown 视图；URL 转换及链接激活由调用方提供。描述调用方使用附件根为基准，Markdown 附件调用方使用实际文档目录，不能给描述虚构一个文件名或目录。原始 HTML、协议处理和图片规则沿用现有附件规则。
+`MarkdownContent` 复用 `react-markdown` 与 `remark-gfm`，只拥有 CommonMark/GFM
+渲染及共享样式，覆盖标题、段落、列表、引用、代码、表格、链接和图片。原始 HTML
+作为文本，URL 协议沿用已有规则。空描述使用双语目录中的空态消息；用户 Markdown
+字节不随语言切换变化。概览继续拥有纵向阅读滚动，代码和表格只在局部横向滚动，
+宽内容不能撑破 320px 的尺寸链。
 
-详情组合层共享单个附件控制器给描述导航与附件区域。普通主键点击无 query/hash 的相对附件链接时，读取完整附件清单，激活附件页签，选中路径并聚焦已有预览区域；Markdown、图片、HTML、PDF、文本和未知类型继续使用既有预览或下载行为。路径无效、清单失败、附件不存在与内容失败有各自可见状态，不能以空清单兜底。
+`MarkdownAttachmentBase` 显式区分任务 `root` 与实际文件 `document`。描述从当前
+任务附件根解析相对链接和图片；附件 Markdown 从实际文件目录解析。既有路径解析
+逐段解码、处理 parent 段并拒绝越过任务根，继续使用真实预览 URL 构造器；不为描述
+虚构文件名。API 保存和 CLI/Agent 读取保持原始字符串，不增加格式标记、迁移或
+旧数据特判，描述更新保留完整字段替换及观察到的版本语义。
 
-保留真实 preview `href`；修饰键、上下文菜单、绝对 URL、协议 URL、以 `/` 开头的 URL、`#fragment` 及带 query/hash 的链接使用经过现有 URL 策略处理的原生导航。本设计不生成 Markdown 标题 ID。相对图片以任务附件根解析，附件内部资源仍按文件目录解析。附件更新独立于 task version；描述变更继续使用完整字段替换和观察到的版本。
+`TaskDetailReading` 在当前 project/task 身份内持有单个 `useAttachments`，将同一
+控制器交给描述导航、`TaskDetailPanels` 和 `TaskAttachmentsPanel`。普通主键点击
+无 query/hash 的有效相对文件链接时，选择解码后的路径、激活附件页签并将焦点带入
+已有 `.attachment-preview-pane`。清单完整前保留加载，只有完整分页清单才判定
+缺失；非法路径、清单失败、确认缺失与预览失败分别可见，适用时提供重试。附件区
+和描述没有第二份清单或预览请求所有者。独立使用的 `TaskAttachments` wrapper 保留
+自身 hook，独立阅读页继续沿用原有文件身份与普通浏览器键盘行为。
 
-公开 skill 源为 `packages/daynight/src/commands/skill/skills/using-daynight/`。同步入口、create-task、run-task 和适用的 handbook 指引、skill 需求/设计及 README。描述保持当前self-contained行动/范围/交付物/约束/简明完成条件与真实引用；专属主附件保留Solution/Acceptance criteria，不能恢复problem-only或强制复制整包规则。示例使用 `[方案与验收](plan.md)` 和 `[交互原型](mockui/index.html)`，仅在真实归属并确认上传后引用。安装目录通过正常重新安装获得更新，交付验证检查实际 npm 包中的完整 bundle。
+链接保留真实 preview `href`。修饰键、非主键、上下文菜单、绝对 URL、协议 URL、
+以 `/` 开头的 URL、`#fragment` 及 query/hash 链接使用经过现有 URL 策略处理的
+原生导航，不生成 Markdown 标题 ID。预览、原生 frame 键盘桥及 focus cleanup 保留
+原所有者；选择、关闭、任务/鉴权/资源失效通过原有取消和 generation 规则排除旧
+结果，同路径更新仍使用既有 revision 与 `updatedAt` 重读规则。
+
+公开 skill 源为 `packages/daynight/src/commands/skill/skills/using-daynight/`。
+入口、create-task、run-task、handbook 和适用 Goal 指引要求 Markdown 自足简介，
+包含具体问题、行动、范围、交付物、约束、简明完成条件和真实引用。任务专属主
+Markdown 仍拥有详细 Solution、完整 Acceptance criteria 与证据；共享要求、设计和
+原型引用实际来源，不复制整套资料。`[方案与验收](plan.md)` 或
+`[交互原型](mockui/index.html)` 只用于实际归属且确认上传的文件。依赖、PR 属性、
+Goal 阶段和创建/实现/合并权限不变。交付验证检查实际 npm bundle 及隔离安装夹具，
+安装目录通过正常重新安装更新。机制取舍见
+[Markdown 描述决策](../../.agents/notes/implemented/architecture/2026-10-22-task-description-markdown.md)。
 
 ## 验证与交付
 
@@ -65,6 +93,6 @@ ProjectPage保持详情资源和入口/关闭恢复所有权。当前画布拥�
 
 独立地从完整 API 投影 P 和实际 S 推导每个卡片是否存在隐藏直接邻居，验证 96/136px 高度；P 外无关后续不产生 footer。实际DOM路线的端点/方向、平滑相切、全部可见卡片避让、真实CTM、完整body coverage、参考弧长/phase及原生箭头独立判断，不能由生产规划器输出充当有效预期。可选输入只做编译忠实度，负例覆盖缺/多边、错误箭头、穿卡片和相位/覆盖失败。稳定性比较使用图坐标/相对变换，页面滚动诊断单独保留，不能把一致的文档平移误判为图变化。
 
-31场景（18原生/13容器）、四个完整1000任务输入及999/5000边、每图五次、mandatory visibility、超限、coverage、零retry、timeout和cleanup保持。验收验证selected/hidden上游及selectMs≤300，保留open≤3000及detail/zoom/pan≤300。普通Details→close→立即zoom/pan、可信可见任务选择、高亮态同序列，每项取较慢state、网络单独计量；close与zoom间不加等待/reset/fit。
+33场景（19原生/14容器）、四个完整1000任务输入及999/5000边、每图五次、mandatory visibility、超限、coverage、零retry、timeout和cleanup保持。验收验证selected/hidden上游及selectMs≤300，保留open≤3000及detail/zoom/pan≤300。普通Details→close→立即zoom/pan、可信可见任务选择、高亮态同序列，每项取较慢state、网络单独计量；close与zoom间不加等待/reset/fit。
 
-原型不替代生产验收。生产验证覆盖 typecheck、测试/coverage、build、真实 component/native/container/capacity 和独立审查。结果必须绑定确切源码，任务状态、PR、审批、required checks 与合并证据归 Daynight 和任务专属主附件。任务说明保持自足，专属主附件拥有 Solution/Acceptance criteria。
+`task-description-markdown` 在原生/容器目标保留独立描述阅读旅程，并验证图内检查→Details→相对附件导航→关闭后 S、选择、几何和视口保持。API 不引入格式标记或旧数据特判，现有字符串直接按 Markdown 展示，不批量改写已有任务描述。原型不替代生产验收。生产验证覆盖 typecheck、测试/coverage、build、真实 component/native/container/capacity 和独立审查。结果必须绑定确切源码，任务状态、PR、审批、required checks 与合并证据归 Daynight 和任务专属主附件。任务说明保持自足，专属主附件拥有 Solution/Acceptance criteria。

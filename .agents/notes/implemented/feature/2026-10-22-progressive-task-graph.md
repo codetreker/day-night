@@ -84,12 +84,13 @@ The four complete API capacity inputs retain 1,000 tasks each and their exact
 999/5,000 edges, with five samples. The browser workload now requires bounded
 initial S, all real induced visible edges and explicit expansion/reset, rather
 than all input tasks/edges simultaneously in the DOM. `openMs ≤ 3000` and existing
-detail/zoom/pan feedback ≤300ms remain. All 31 scenarios, zero retries, timeouts,
-size refusals, coverage and cleanup gates remain. Independent existing polyline
-and dash checks cover every visible edge; selection timing and curved oracles
-belong to the inspection PR. PR134 evidence remains bound to its delivered overview source. Replacement
-inspection evidence must come from its own new source; no prior inspection run
-establishes that result.
+detail/zoom/pan feedback ≤300ms remain. The original overview retained 31
+scenarios; Markdown description navigation adds one functional journey per target,
+bringing the current inventory to 33. Zero retries, timeouts, size refusals,
+coverage and cleanup gates remain. Independent visible-route and paint checks
+cover every edge; inspection additionally verifies selection timing and curves.
+PR134 evidence remains bound to its delivered overview source; combined inspection
+and Markdown evidence must come from its own source.
 
 The [requirements](../../../../docs/spec/daynight-task-inspection.md),
 [design](../../../../docs/design/daynight-task-inspection.md) and

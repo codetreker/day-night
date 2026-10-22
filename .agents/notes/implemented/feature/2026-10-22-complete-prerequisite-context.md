@@ -49,7 +49,8 @@ task-card selection and smooth-route mechanisms, plus the pending Markdown goals
 the reading shell. The [inspection decision](2026-10-22-task-dependency-inspection.md)
 owns sibling selection/Details actions and smooth routes on the progressive graph;
 source-bound runtime and delivery evidence belongs to the task records.
-Descriptions remain plain text.
+The [Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
+owns shared CommonMark/GFM and root-based attachment navigation.
 
 The production capacity matrix preserves its chain, merge and shared-root graphs
 and adds `capacity-external`: 1,000 nodes and 5,000 edges, with two main tasks and
@@ -64,7 +65,10 @@ root condition; existing datasets retain their root-visibility checks. Strict
 inventory validation retains five native capacity/limit scenarios. The later
 [bilingual interface decision](2026-10-22-web-bilingual-interface.md) expands
 functional checks to thirteen per target, producing eighteen unique native
-scenarios and thirteen container scenarios without changing that matrix.
+scenarios and thirteen container scenarios without changing that matrix. The
+later Markdown-description scenario brings functional targets to fourteen each
+(nineteen native including capacity/limits, fourteen container), retaining the
+same complete capacity inputs.
 
 The [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 the [web design](../../../../docs/design/daynight-web.md) owns model and viewport

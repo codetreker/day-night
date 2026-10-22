@@ -322,6 +322,44 @@ checks. Same-origin preview frames bridge Escape and first/last Tab boundaries
 back into that dialog lifecycle. Passive unmount restoration remains responsible
 for focusing a surviving trigger after DOM removal.
 
+## Markdown task descriptions
+
+Task descriptions render CommonMark and GFM using the same `MarkdownContent`
+renderer and styles as Markdown attachments: headings, paragraphs, lists,
+checkboxes, quotes, fenced code, tables, links and images. Raw HTML remains text;
+URL protocols retain the renderer's existing policy. Empty descriptions use the
+current interface language. Markdown and localized messages do not change the
+stored string or CLI/API output. Wide tables and code scroll within their local
+regions, and long words wrap inside the Overview reading column at 320px.
+
+Description-relative links and images resolve from the task attachment root.
+Markdown attachments resolve from their containing file's directory. Both use
+the actual preview URL and reject references that escape the root. An ordinary
+primary click on a relative attachment link without a query or fragment opens
+the existing Attachments tab, selects that exact path through its shared
+controller, and focuses the preview pane. The anchor retains its real preview
+href for modified clicks, context menus and native navigation. Absolute,
+root-relative, protocol, fragment and query/fragment links retain native behavior.
+The selected file's separate Open in new tab action continues to use the
+standalone reader.
+
+Pending inventory, incomplete-list failure with retry, invalid references,
+missing files and preview failures remain visible and distinct. Only the
+complete paginated inventory can establish that a path is missing. Description
+navigation does not create another inventory or preview owner; task changes,
+close and existing authentication invalidation release its requests and state.
+Same-path overwrite and explicit attachment refresh retain the existing revision
+and preview reload behavior.
+
+Run `pnpm web:dev` and open `/tests/mockups/markdown.html` for the production
+`TaskDetailReading` composition and final styles with the existing frontend-only
+attachment fixture. Its controls select rich, empty or long descriptions and
+attachment loading, empty, list-error, preview-error, upload-error or busy states.
+Actual root-relative image/document links, missing/upward references, detail
+panels and the standalone fixture reader are interactive without Go or
+PostgreSQL. This entry and `/tests/mockups/attachments.html` share
+`tests/mockups/main.tsx`; neither belongs to the production single-index build.
+
 ## Task attachments
 
 Every task detail opens on Overview, which retains descriptions, PR
@@ -337,8 +375,8 @@ active tab is the sole roving tab stop; arrows and Home/End activate its neighbo
 or endpoint, and native Enter/Space work normally. Hidden panels are both hidden
 and inert. Returning to Attachments retains selection, expanded directories,
 loaded state, preview and an unsent file/path draft. Changing project/task resets
-the tab and attachment scope. Description-to-attachment navigation, when
-implemented, activates this same panel and controller.
+the tab and attachment scope. Description-to-attachment navigation activates this
+same panel and controller.
 
 The upload section starts collapsed. Activate Upload with a click or the
 keyboard to expand it, then select one local file, accept its name as the initial
@@ -532,7 +570,7 @@ runner remains the owner of the built/running image identity and full cleanup.
 
 Native functional checks start after the native process and browser are ready.
 Their browser cleanup must pass before an atomic, run/source-bound permission
-releases the container's thirteen functional checks. Capacity runs last, after all
+releases the container's fourteen functional checks. Capacity runs last, after all
 preparation and coverage commands, container checks, full dev-ci cleanup and
 container browser recovery have finished. Every browser phase retains one
 worker and zero retries. CI runs controlled deployment fixtures before the
@@ -579,7 +617,7 @@ the same browser identity.
 The command builds real embedded assets and a new Go executable and owns a
 separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
 the normal dev-ci runner builds and starts the actual production image. Browser
-execution proceeds through thirteen native functional scenarios, the same thirteen
+execution proceeds through fourteen native functional scenarios, the same fourteen
 functional scenarios through the production image's stream gateway, then five
 native capacity/limit scenarios. The native process and PostgreSQL remain alive
 through the capacity phase; other preparation commands and the complete
@@ -588,8 +626,9 @@ capacity fixtures use the real write APIs. The original eight graph scenarios an
 their GET/HEAD-only browser checks. `task-attachments` and
 `language-state-preservation` allow exact fixture-scoped PUT/DELETE file routes;
 the latter holds each upload, overwrite and deletion while changing language to
-verify one write and retained state. Other language scenarios remain GET/HEAD-only,
-and unrelated mutations remain failures.
+verify one write and retained state. `task-description-markdown` and the other
+language scenarios remain GET/HEAD-only in the browser; fixture writes use the
+installed CLI or API request context. Unrelated browser mutations remain failures.
 One packed/installed CLI is shared by the whole web run. On each target,
 `task-attachments` uploads through that CLI and consumes the same task/files in
 the production page, then checks Web mutations through raw CLI reads. It covers
@@ -646,13 +685,14 @@ Actual DOM fixed ports, Q≤12/tangency, card avoidance,
 body/marker coverage and analytic curved dash phase cover every visible edge.
 Stable owner transforms are graph-relative real root/owner CTMs; raw screen,
 page-scroll and canvas diagnostics stay separate from reset equality.
-31 scenarios, current manual/periodic refresh, attachment tabs/standalone reader,
+33 scenarios, current manual/periodic refresh, attachment tabs/standalone reader,
 bilingual/auth boundaries, zero retries, timeouts, coverage, size refusals and
 cleanup remain. Runtime receipts bind results to their exact tested source;
 Daynight task records and primary plans own delivery evidence.
 
 The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [attachment journey](tests/e2e/attachments.spec.ts),
+[Markdown description journey](tests/e2e/markdown.spec.ts),
 [language journeys](tests/e2e/i18n.spec.ts),
 [capacity scenarios](tests/e2e/capacity.spec.ts) and
 [acceptance runner](scripts/acceptance.mts) map to the
@@ -672,6 +712,7 @@ scenario annotations validated in each target's report.
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
 | FA1–FA12 | `task-attachments`: installed CLI and production UI share real task/files on native and container targets; exact bytes, file mutations, detail tabs, adjacent panes, unique preview scroll owners, rendered formats and reloadable standalone reading. Independent real-service probes add end-of-document wheel/keyboard, native PDF final-page paint, fault/retry and unchanged task/graph proof |
+| TI8–TI9 | `task-description-markdown`: installed CLI and real API preserve Unicode/CRLF Markdown bytes and versioned full replacement; bilingual 1440px/320px rich rendering, escaped HTML, URL policy, task-root images/encoded references, paginated loading/list failure/retry, invalid/missing/preview failure states, one-controller navigation/focus, overwrite refresh, modified native href and HTML frame interaction; inspection→Details→relative attachment→close preserves graph selection/geometry/view |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
 | L1–L4 | `language-startup-preferences`: browser default, saved override, reload, route metadata, shared selectors and unchanged user data |
 | L2, L4–L5 | `language-state-preservation`: graph geometry/viewport, fullscreen and modal focus, PR page, file input and iframe identity; pending upload, overwrite and deletion execute once |
@@ -694,8 +735,8 @@ retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validati
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
 tested checkout identity, which is normally a merge revision for PR runs. A pass
-requires the strict union of thirteen native functional and five native capacity/limit
-scenarios (18 native total), plus the thirteen container functional scenarios. Every
+requires the strict union of fourteen native functional and five native capacity/limit
+scenarios (19 native total), plus the fourteen container functional scenarios. Every
 phase and target rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
 Browser identities must agree across a target's phases; every fixed graph's five
 timing repetitions, independent size refusals and cleanup/recovery must pass.

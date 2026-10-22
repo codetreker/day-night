@@ -78,7 +78,8 @@ adds a dense-external capacity graph; native capacity preserves its four origina
 scenarios and all timing/geometry gates. The
 [bilingual interface decision](../feature/2026-10-22-web-bilingual-interface.md)
 adds three functional language scenarios per target. Strict inventories require
-18 unique native scenarios and thirteen container scenarios. One worker,
+19 unique native scenarios and fourteen container scenarios, including the
+shared Markdown-description journey. One worker,
 zero retries, complete reports and cleanup remain mandatory.
 
 All phases use the full bundled Chromium channel `chromium`, retaining the

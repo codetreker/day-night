@@ -580,7 +580,7 @@ test('detail-navigation', scenario('detail-navigation'), async ({ page, request 
   await details(page, b.id).click();
   const dialog = page.getByRole('dialog', { name: '任务详情' });
   await expect(dialog.locator('.task-detail-title')).toHaveText(title);
-  expect(await dialog.getByRole('region', { name: '描述', exact: true }).locator('.task-detail-description').textContent()).toBe(description);
+  expect(await dialog.getByRole('region', { name: '描述', exact: true }).locator('.task-description').textContent()).toBe(description);
   await expect(dialog.locator('.task-detail-full-id')).toHaveText(b.id);
   await expect(dialog.locator('time')).toHaveCount(2);
   await expect(dialog.locator('img,script')).toHaveCount(0);
@@ -1088,7 +1088,7 @@ test('narrow-layout', scenario('narrow-layout'), async ({ page, request }, info)
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: '任务详情' });
   await expect(dialog.locator('.task-detail-title')).toHaveText(a.title);
-  await expect(dialog.locator('.task-detail-description').first()).toHaveText(a.description);
+  await expect(dialog.locator('.task-description')).toHaveText(a.description);
   await checkPullRequests(dialog, pullRequests);
   await dialog.getByRole('combobox', { name: '关联 PR 页码' }).selectOption('1');
   await checkPullRequests(dialog, pullRequests, 1);

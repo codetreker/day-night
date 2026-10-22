@@ -68,6 +68,16 @@ conflict, reread and reconsider rather than merely swapping in a newer version.
 replace the whole supplied field. Preserve every still-needed value. Omitted
 fields stay unchanged; clearing and option-pairing syntax is in command help.
 
+**Markdown descriptions.** Write self-contained task briefs in Markdown following
+[create-task](create-task.md). The Web displays CommonMark/GFM, while API and CLI
+reads preserve the original string, including line breaks and fenced code. There
+is no format flag. Relative description links and images start at the current
+task's attachment root; Markdown attachment internals start at their containing
+file's directory. Keep real case-sensitive paths inside the task root, confirm
+uploaded contents before linking them, and preserve Markdown and valid references
+when replacing a description. Shared inputs retain their source task ID and path
+or verified immutable repository URL; they are not cross-task relative links.
+
 **Attachment independence.** Task reads contain no attachment inventory.
 Attachments use case-sensitive relative paths; uploads to the same path replace
 that file, so keep mock UI resources at their referenced relative locations.

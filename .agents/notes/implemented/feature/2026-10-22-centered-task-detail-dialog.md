@@ -55,8 +55,9 @@ visible contract. The [web acceptance map](../../../../packages/daynight-web/REA
 owns the production journeys for geometry, independent scrolling, graph and
 standalone entries, refresh removal, fullscreen and frame keys. The
 production-component mockups reuse the dialog and styles; the standalone
-inspection prototype remains a target for the still-pending graph and Markdown
-work, rather than evidence that those behaviors are delivered.
+inspection prototype remains a target for graph inspection and a visual input
+for Markdown reading. It does not establish the source-bound acceptance of
+either delivery.
 
 ## Alternatives
 
@@ -75,7 +76,9 @@ the split-view decision owns compact short-viewport spacing and per-pane scroll
 rules while preserving this shell's geometry.
 
 The dialog remains an independent live detail read and never patches the graph
-snapshot. Descriptions remain plain text; Markdown descriptions and relative
-attachment navigation belong to UX-T4. Graph-card inspection and smooth paths
-belong to UX-T2. Keeping the same opening callback and attachment-state ownership
-allows those tasks to extend the dialog without replacing its modal lifecycle.
+snapshot. The [Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
+extends Overview with CommonMark/GFM and root-based attachment navigation,
+sharing the existing attachment controller and preserving this modal lifecycle.
+Graph-card inspection and smooth paths remain with UX-T2. Its replacement
+implementation and Markdown reading each require their own source-bound
+acceptance and authorized delivery.
