@@ -19,9 +19,13 @@ The project page owns one validated graph/index snapshot, its client receipt tim
 and revision. Requests are scoped by project identity and generation; a different
 resource cannot render an earlier resource's data. Same-project refresh retains
 the last successful snapshot with an explicit loading/error notice, and replaces
-statistics, indexes and root rows together after success.
+statistics, indexes and both task-category lists together after success.
 
-Only one root canvas is mounted. The project restores the expanded root or
+The [task view decision](2026-10-22-project-task-views.md) separates standalone
+rows, which open details directly, from non-isolated root chains. Only one root
+canvas is mounted in the active chain view; inactive panel contents unmount
+while their hidden wrappers retain stable tabpanel IDs. The project
+restores the expanded root or
 an explicitly collapsed list from per-project browser storage; the
 [browsing preference decision](2026-10-21-task-browsing-preferences.md) owns its
 persistence, reconciliation and failure behavior. The project view shares one
@@ -81,9 +85,9 @@ The detail drawer uses a portal outside the application root, background inertne
 body scroll ownership and a dynamic focus trap. Its lifetime is independent of
 relation selection. Layout cleanup synchronously releases the keyboard listener,
 background inertness and scroll ownership. A separate passive unmount cleanup
-calls the latest restoration callback after sibling DOM deletion. It focuses the
-surviving original node, otherwise the current expanded-root button, otherwise
-the project H1. This ordering avoids selecting a still-connected node that the
+calls the latest restoration callback after sibling DOM deletion. It focuses a surviving original trigger, otherwise a visible control in the
+active task view. The task view decision extends that fallback to standalone
+rows and tabs; a truly empty project retains the project H1 fallback. This ordering avoids selecting a still-connected node that the
 same commit will remove; the [focus-restoration decision](../bug-fix/2026-10-20-drawer-focus-restoration.md)
 records the failure and integration evidence. The
 [Web attachment decision](2026-10-21-task-attachment-web.md) extends this lifecycle

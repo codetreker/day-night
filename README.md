@@ -6,7 +6,13 @@ statistics, task dependency graphs, task details and file attachments from the
 same Go service origin. The read-only graph dashboard is delivered, including
 production-browser acceptance, embedded deployment and the subsequent focus-restoration repair. The
 [dashboard tasks](docs/design/daynight-web-tasks.md) record completion and link
-the corresponding PR and CI evidence.
+the corresponding PR and CI evidence. The designed, pending
+[task inspection requirements](docs/spec/daynight-task-inspection.md),
+[architecture](docs/design/daynight-task-inspection.md),
+[focused task breakdown](docs/design/daynight-task-inspection-tasks.md) and
+[interactive preview](docs/design/mockups/task-inspection/index.html) cover
+complete prerequisite context, smooth highlighted dependency routes, a centered
+detail dialog and Markdown descriptions with matching public skill guidance.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
@@ -129,9 +135,14 @@ records the adopted scope and concurrency choices. The
 [server task breakdown](docs/design/daynight-server-tasks.md) owns implementation
 scope, dependencies, status and acceptance criteria. The development and runtime
 CLI commands below apply to the client; server commands have their own module.
-The dashboard architecture presents source-root dependency graphs and project
-statistics from the server. The project list is implemented in the private web
-workspace, including task visualization and details. Its [design decision](.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)
+The dashboard architecture presents project statistics and two in-project task
+tabs from one complete server snapshot. Standalone tasks open details directly;
+root-based task chains retain dependency graphs, shared successors and aggregate
+progress. The first visit opens task chains, and each project retains its last
+tab, independent completed-item filters and browse positions. The [task view
+preview](docs/design/mockups/task-views.html) demonstrates those interactions.
+The project list is implemented in the private web workspace, including task
+visualization and details. Its [design decision](.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)
 defines the original read-only MVP. Attachment upload, overwrite and deletion
 extend the task drawer without changing task fields or the graph snapshot. The
 Go binary embeds the production UI and serves it alongside the APIs. The original
@@ -896,11 +907,13 @@ Human task lists use labeled blocks containing ID, project, title, PR references
 status, readiness, dependencies and blocking. Description, version and timestamps
 remain available in show, ready, create and update output. Graph nodes include
 state, dependencies, blocking and title-preview truncation flags. Queries support
-`--json`: `list` returns every matching resource with all API fields in one array,
-`ready` returns only its selected tasks as an array, details return one resource,
-and graphs return the complete API object. A ready result retains every task
-field; an empty human result is `No ready tasks.` and empty JSON is `[]`. Versions
-remain JSON numbers with full int64 precision.
+`--json`: task `list` returns every matching task in one array, omitting only
+`description` while retaining every other API field, including raw PR strings,
+version and timestamps. This applies to the default list and every filter,
+including `--all`. Project lists retain all API fields. Task `ready` returns its
+selected full tasks as an array, details return one full resource, and graphs
+return the complete API object. An empty human ready result is `No ready tasks.`
+and empty JSON is `[]`. Versions remain JSON numbers with full int64 precision.
 Local preparation fails before any task mutation; a lost write response is
 reported as unconfirmed. The [task record](docs/design/daynight-project-task-tasks.md)
 owns validation status. Installed CLI integration uses the real Go/PostgreSQL

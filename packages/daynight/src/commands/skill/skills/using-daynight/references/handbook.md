@@ -37,8 +37,10 @@ relevance. An empty page does not rule out in-progress or dependency-blocked
 work. List traverses every matching page but excludes `done` by default; include
 completed tasks explicitly when checking the full backlog or prior registrations.
 Its status/readiness grouping does not rank relevance. Human lists are summaries;
-JSON preserves full task fields. Graph provides compact
-dependency context without full descriptions, PR properties, or versions. Read
+JSON lists omit only `description` and preserve every other task field. Use show
+when a description is needed; ready, details and write results retain full tasks.
+Graph provides compact dependency context without full descriptions, PR
+properties, or versions. Read
 the selected task's details before acting. A graph-limit error still permits
 bounded candidate and individual task reads.
 

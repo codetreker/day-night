@@ -35,7 +35,8 @@ const task = (id: string, titlePreview: string, dependsOn: readonly string[] = [
   ready: dependsOn.length === 0, createdAt: timestamp, updatedAt: timestamp,
 });
 const remaining = task(remainingId, '保留任务链');
-const graph = (tasks = [task(rootId, '原任务链'), task(selectedId, '所选任务', [rootId]), remaining]): TaskGraph => ({
+const remainingChain = [remaining, task('remaining-child', '保留后续任务', [remainingId])];
+const graph = (tasks = [task(rootId, '原任务链'), task(selectedId, '所选任务', [rootId]), ...remainingChain]): TaskGraph => ({
   project: { id: projectId, name: '核心项目', repoUrl: '', createdAt: timestamp, updatedAt: timestamp },
   tasks,
   summary: {
@@ -92,7 +93,7 @@ const expectModalReleased = () => {
 
 describe('project drawer focus restoration', () => {
   it('returns focus to fullscreen exit when refresh removes the selected node but retains its graph', async () => {
-    graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([task(rootId, '原任务链'), remaining]));
+    graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([task(rootId, '原任务链'), task('surviving-child', '保留图节点', [rootId]), ...remainingChain]));
     const { trigger, dialog } = await openDrawer(true);
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     const fullscreen = await screen.findByRole('dialog', { name: '任务依赖图全屏查看' });
@@ -109,7 +110,7 @@ describe('project drawer focus restoration', () => {
     const completed = [task(rootId, '原任务链'), task(selectedId, '所选任务', [rootId])].map((item) => ({
       ...item, status: 'done' as const, ready: false, blockedBy: [],
     }));
-    graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([...completed, remaining]));
+    graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([...completed, ...remainingChain]));
     const { trigger, dialog } = await openDrawer(true);
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     await waitFor(() => expect(trigger.isConnected).toBe(false));
@@ -126,14 +127,14 @@ describe('project drawer focus restoration', () => {
     const completed = [task(rootId, '原任务链'), task(selectedId, '所选任务', [rootId])].map((item) => ({
       ...item, status: 'done' as const, ready: false, blockedBy: [],
     }));
-    graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph(keepRemaining ? [...completed, remaining] : completed));
+    graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph(keepRemaining ? [...completed, ...remainingChain] : completed));
     const { trigger, dialog } = await openDrawer();
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     await waitFor(() => expect(trigger.isConnected).toBe(false));
     expect(dialog).toBeVisible();
     expect(document.getElementById(`task-root-${rootId}`)).toBeNull();
     fireEvent.click(within(dialog).getByRole('button', { name: '关闭任务详情' }));
-    await waitFor(() => expect(keepRemaining ? screen.getByRole('button', { name: /^保留任务链/ }) : screen.getByRole('heading', { name: '核心项目' })).toHaveFocus());
+    await waitFor(() => expect(keepRemaining ? screen.getByRole('button', { name: /^保留任务链/ }) : screen.getByRole('tab', { name: '任务链' })).toHaveFocus());
     expectModalReleased();
     const checkbox = screen.getByRole('checkbox', { name: /^显示已完成任务链/ });
     if (!keepRemaining) {
@@ -157,7 +158,7 @@ describe('project drawer focus restoration', () => {
   });
 
   it('focuses the newly expanded root after refresh removes the selected chain', async () => {
-    graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([remaining]));
+    graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph(remainingChain));
     const { trigger, dialog } = await openDrawer();
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     const remainingRoot = await screen.findByRole('button', { name: /^保留任务链/ });

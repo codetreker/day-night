@@ -24,10 +24,13 @@ single-status and readiness filters retain their contracts.
 
 Human task lists contain ID, project, title, status, readiness, dependencies,
 blocking and all PR references. They omit description, version, creation time
-and update time. Full task resources remain available in JSON and in human
-show, ready, create and update results. Shared escaping, full field values,
-clear resource boundaries and rendering space proportional to displayed content
-continue to apply.
+and update time. Human show, ready, create and update results retain full task
+resources. The later [JSON description decision](../simplification/2026-10-22-task-list-json-description.md)
+partially supersedes the original choice to retain every task field in list
+JSON: all list variants now omit only description. Show and ready JSON retain
+full task resources. Shared escaping, full displayed field values, clear resource
+boundaries and rendering space proportional to displayed content continue to
+apply.
 
 This partially replaces the
 [original project/task CLI decision](../architecture/2026-10-20-project-task-cli-design.md).
@@ -54,9 +57,12 @@ filters already provide the data needed for final selection and stable grouping.
 ## Consequences
 
 The default list focuses on unfinished work and puts active tasks before ready
-candidates. `task list --all --json` provides an explicit complete inventory,
-including completed work and every API field. Scripts using the default list
-observe the same status selection and ordering as terminal callers.
+candidates. `task list --all --json` provides an explicit inventory including
+completed work, with every API field except description. Scripts using the
+default list observe the same status selection and ordering as terminal callers.
+The original full-resource JSON choice let scripts read descriptions without
+individual detail queries; the replacement decision makes that extra read
+explicit while retaining versions and timestamps in the inventory.
 
 Global ordering requires the full matching traversal to finish; existing command
 deadlines, byte budgets and refusal of partial metadata output still apply.

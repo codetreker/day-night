@@ -56,13 +56,16 @@ uploads with that CLI and opens the same task/files
 in the production page; Web mutations are checked with raw CLI reads. It covers
 original binary downloads, single-file mutations, directory paths, Markdown
 relative images, image/text/PDF and HTML relative styles/scripts/data behavior.
-The original eight graph scenarios keep GET/HEAD-only browser checks. Exact
+The original eight graph scenarios and the later `project-view-tabs` scenario
+keep GET/HEAD-only browser checks. Exact
 fixture-scoped file PUT/DELETE requests are admitted only by the attachment
 scenario, retaining the existing failure rule for every unrelated mutation.
 
-Each target has nine functional scenarios; native capacity retains its four
+The attachment delivery expanded each target to nine functional scenarios. The
+later [task view decision](../feature/2026-10-22-project-task-views.md) adds
+`project-view-tabs`, so each target now has ten. Native capacity retains its four
 original scenarios and all timing/geometry gates. Strict inventories therefore
-require 13 unique native scenarios and nine container scenarios. One worker,
+require 14 unique native scenarios and ten container scenarios. One worker,
 zero retries, complete reports and cleanup remain mandatory.
 
 All phases use the full bundled Chromium channel `chromium`, retaining the

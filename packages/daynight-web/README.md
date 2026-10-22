@@ -46,42 +46,57 @@ Refresh discards old pages and cursors; late responses cannot repopulate them.
 
 The application implements `/` and `/projects/{projectId}`, direct URL reload,
 browser back/forward and a generic not-found page. A project shows six statistics
-from one complete graph snapshot. Root rows appear newest creation first, with
-descending IDs breaking equal-time ties. The view reverses the exact API root
-sequence without reducing timestamp precision; updates do not move older roots.
-Fully completed chains are hidden by default, including completed standalone
-tasks. Each row shows aggregate chain status: done only when every distinct root
-and reachable successor task is done; in progress when any of those tasks is
-done or in progress and the chain is unfinished; otherwise pending. A completed
-root with unfinished descendants remains visible with an in-progress chain
-badge. External prerequisite context does not contribute to the chain status.
-Node and detail status still describe individual tasks. Row badges, completed
-counts and filtering consume the same model-derived chain status, recalculated
-with each graph snapshot. The
-[chain status decision](../../.agents/notes/implemented/bug-fix/2026-10-22-task-chain-status.md)
-records the scope and rationale. The native
-Show completed chains checkbox reports the completed-chain count and remembers
-its per-project choice; the heading shows visible/total chains. Project counters
-and every displayed graph retain the complete snapshot. Filtering rows makes no
-API request. The complete graph index and API ordering stay unchanged. Collapsed root buttons
-use a 62px minimum height and 7px row gaps; a single-line row is about 64px with
-its border. Long titles grow naturally. Desktop titles stay 13px and narrow-screen
-titles 12px, with readable metadata/status sizes of 11px/10px. Reduced padding
-and progress spacing provide density while retaining the full native row button.
-Rows expand one
-horizontal graph at a time, including shared tasks and direct external prerequisites.
-Per-project browser
-preferences retain the expanded root or an explicitly collapsed list across reloads
-and navigation. First visits open the newest visible root; a missing or hidden
-saved root selects the current newest visible root while an existing visible
-saved root stays open. With no visible roots, the saved ID or explicit collapse
-is retained for revealing those rows again. The all-complete state offers a
-reveal action that focuses the persistent checkbox before the action disappears. Loading, failed initial reads and empty graphs do not record
-an inferred collapsed preference. Storage failures display a notice while the
-current page remains usable. Preferences do not save detail selection or canvas
-positions and do not change server data. The visibility preference has its own
-record, preserving the existing expansion record format. The [preference decision](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)
-records this ownership. Nodes open a detail drawer with dependency navigation,
+from one complete graph snapshot and two in-project tabs: Standalone tasks and
+Task chains. The first visit opens Task chains; subsequent visits restore the
+project's last tab. Counts on the tabs include all items in that category,
+independent of completed-item visibility. A standalone task has no prerequisites
+and no successors in the complete graph. Every other root remains a root-based
+chain entry, including multiple roots with shared successors. Task status never
+changes this classification. The [task view decision](../../.agents/notes/implemented/feature/2026-10-22-project-task-views.md)
+records the presentation boundary.
+
+Standalone rows display the title, individual status, ID and creation time and
+open the existing detail drawer directly. Chain rows display aggregate progress
+and status: done only when every distinct root and reachable successor task is
+done; in progress when any is done or in progress and the chain is unfinished;
+otherwise pending. A completed root with unfinished descendants stays visible.
+External prerequisite context does not contribute to chain status. Node and
+detail status continue to describe individual tasks. Chain badges, completed
+counts and filtering share the same model-derived status, rebuilt with each
+snapshot; the [chain status decision](../../.agents/notes/implemented/bug-fix/2026-10-22-task-chain-status.md)
+records its rationale.
+
+Both lists use newest creation first, with descending IDs breaking equal-time
+ties. Presentation reverses the exact API sequence without reducing timestamp
+precision; updates do not move older tasks. Completed items are hidden by default
+in each category. Each tab has its own completed-count checkbox, visible/total
+count and per-project visibility preference. An empty category, hidden all-complete
+items and a truly empty project have distinct states. Revealing completed items
+focuses the persistent checkbox before the empty-state action disappears. Long
+titles grow naturally in compact native row buttons. Chain buttons keep a 62px
+minimum height and 7px row gaps; a single-line bordered row is about 64px.
+Desktop titles stay 13px and narrow-screen titles 12px, with readable
+metadata/status sizes of 11px/10px.
+
+Rows expand one horizontal graph at a time, including shared tasks and direct
+external prerequisites. Per-project browser preferences retain the selected tab,
+each tab's page scroll position and completed-item choice, and the chain's
+expanded root or explicit collapse across reloads and navigation. First visits
+to chains open the newest visible chain root; a missing or hidden saved root
+selects the current newest visible root. With no visible chain roots, the saved
+ID or explicit collapse is retained for later reveal. Loading, failed initial
+reads and empty graphs do not record an inferred collapsed preference. The
+existing `{ expandedRootId: string | null }` record and completed-chain boolean
+keep their formats; new choices use separate records. Storage failures display a
+notice while the current page remains usable. Both tabpanel wrappers keep stable
+IDs and use `hidden` for the inactive category; only the active contents mount.
+Page scroll restoration does not
+persist detail selection, graph coordinates, zoom or pan. Inactive panel contents unmount,
+so returning to a chain retains its root choice and initializes its canvas
+viewport again. The [preference decision](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)
+records storage ownership. Tab switching, filtering and scroll restoration make
+no API request and do not change the full project counters, graph index or API
+ordering. Nodes open a detail drawer with dependency navigation,
 PR associations, stale-data detection and attachment management. Task fields and
 graph interactions remain read-only. The PR section follows the description and
 displays every ordered title/URL pair, including duplicates. Lists longer than 100 entries use local
@@ -124,7 +139,7 @@ is local to the mounted graph and is not saved as a browsing preference. The
 records the modal and viewport ownership. Each node is one native keyboard button. A long graph starts with its
 root visible at readable zoom; keyboard focus brings offscreen nodes into view.
 The portal drawer locks background focus and scrolling, supports Escape and Tab,
-and restores the original node or a current root/page heading on close. Focusable
+and restores a surviving original trigger or a visible control in the active task view on close. Focusable
 controls are enumerated with `tabbable` 6.5.0 using its normal browser visibility
 checks. Same-origin preview frames bridge Escape and first/last Tab boundaries
 back into that drawer lifecycle. Passive unmount restoration remains responsible
@@ -195,14 +210,17 @@ both runtime targets; its receipts remain separate from this fixture evidence.
 Run `pnpm web:dev` and open `/tests/mockups/browsing.html` on Vite's printed
 origin. The fixture mounts the production project page and CSS with mixed,
 fully completed and empty project graphs. It demonstrates the exact
-newest-first root order, shared dependencies, current task details and per-project
-expanded/collapsed and completed-chain visibility preferences across reloads.
+two project tabs, newest-first category lists, topology-based standalone classification,
+shared dependencies, direct standalone details and per-project tab, scroll,
+expanded/collapsed and independent completed-item preferences across reloads.
 It uses the final compact row CSS directly, including naturally growing long
 titles and complete status/progress fields. Each expanded graph provides the
 production fullscreen controls, retained pan/zoom, keyboard focus isolation and
 task details above the fullscreen canvas, including on narrow screens. It distinguishes hidden all-complete
-chains from a truly empty project and
-preserves focus when the reveal action disappears. The scenario stays in the URL hash.
+items from an empty category and a truly empty project and
+preserves focus when the reveal action disappears. The self-contained
+[task view mockup](../../docs/design/mockups/task-views.html) offers the final
+visual presentation and frontend-only interaction without a development server. The scenario stays in the URL hash.
 Graph, detail and empty attachment-list reads are served in memory; unexpected
 requests fail instead of reaching a service. This development entry is excluded
 from the production build and does not establish real-backend acceptance.
@@ -258,7 +276,7 @@ runner remains the owner of the built/running image identity and full cleanup.
 
 Native functional checks start after the native process and browser are ready.
 Their browser cleanup must pass before an atomic, run/source-bound permission
-releases the container's nine functional checks. Capacity runs last, after all
+releases the container's ten functional checks. Capacity runs last, after all
 preparation and coverage commands, container checks, full dev-ci cleanup and
 container browser recovery have finished. Every browser phase retains one
 worker and zero retries. CI runs controlled deployment fixtures before the
@@ -305,12 +323,12 @@ the same browser identity.
 The command builds real embedded assets and a new Go executable and owns a
 separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
 the normal dev-ci runner builds and starts the actual production image. Browser
-execution proceeds through nine native functional scenarios, the same nine
+execution proceeds through ten native functional scenarios, the same ten
 functional scenarios through the production image's stream gateway, then four
 native capacity/limit scenarios. The native process and PostgreSQL remain alive
 through the capacity phase; other preparation commands and the complete
 container stack have finished before that phase starts. No normal localhost service or dataset is used. Functional and
-capacity fixtures use the real write APIs. The eight graph scenarios retain
+capacity fixtures use the real write APIs. The original eight graph scenarios and `project-view-tabs` retain
 their GET/HEAD-only browser checks. Only `task-attachments` allows exact
 fixture-scoped PUT/DELETE file routes; unrelated mutations remain failures.
 One packed/installed CLI is shared by the whole web run. On each target,
@@ -348,7 +366,7 @@ scenario annotations validated in each target's report.
 |---|---|
 | W1 | `project-list`: more than 50 projects, cursor requests, unique cards and navigation to a later-page project |
 | W2 | `project-graph`, `deep-links`: project entry, direct HTML reload and browser history |
-| W3–W4 | `project-graph`, `refresh-staleness`, `failure-recovery`: exact statistics, distinct root progress, consistent full refresh and retained old snapshot after failure |
+| W3–W4 | `project-graph`, `project-view-tabs`, `refresh-staleness`, `failure-recovery`: exact statistics, topology-based tabs, distinct root progress, direct standalone details, independent completion filters, per-project tab/scroll/expansion restoration, dependency reclassification and consistent full refresh |
 | W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`: complete root projections, shared/external prerequisites, state markers and viewport/node actions |
 | W8 | `detail-navigation`, `refresh-staleness`: complete current content, ordered PR associations, relation navigation, property refresh and readiness differences without revising a dependent task |
 | W9 | `failure-recovery`, `deep-links`, `capacity-limits`: owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |
@@ -374,8 +392,8 @@ retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validati
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
 tested checkout identity, which is normally a merge revision for PR runs. A pass
-requires the strict union of nine native functional and four native capacity
-scenarios (13 native total), plus the nine container functional scenarios. Every phase and target
+requires the strict union of ten native functional and four native capacity
+scenarios (14 native total), plus the ten container functional scenarios. Every phase and target
 rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
 Browser identities must agree across a target's phases; every fixed graph's five
 timing repetitions, independent size refusals and cleanup/recovery must pass.

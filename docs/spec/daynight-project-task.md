@@ -7,7 +7,7 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 [仓库 README](../../README.md)。
 
 `daynight project` 和 `daynight task` 是 `daynight-server` 的客户端入口，供开发者
-在终端管理项目及任务，也为脚本提供完整 JSON 查询结果。它们与 `review`、`update`
+在终端管理项目及任务，也为脚本提供 JSON 查询结果。它们与 `review`、`update`
 并列，使用现有 HTTP API。本文拥有命令、配置、仓库关联和输出要求；服务的数据、
 状态约束及错误语义由[服务需求](daynight-server.md)拥有，机制见
 [客户端设计](../design/daynight-project-task.md)，实现分解见
@@ -263,11 +263,14 @@ ready 空结果输出 `No ready tasks.`，创建和更新结果另表明服务�
 线性增长。
 
 可读资源字段中的 C0/C1 控制字符及 Unicode 行、段分隔符必须转义为可见文本，
-普通 Unicode 与 emoji 保持原样。`--json` 将详情输出为一个资源对象、list 输出为
-所有匹配资源的完整字段数组、ready 输出为所选完整 task 的数组、图输出为完整图响应对象，
-并以换行结束。ready 不添加分页 envelope，空结果为 `[]`。JSON 保留 API 字段名称、
-类型和原始字符串，不应用终端显示转义或插入诊断文字。写操作成功后输出服务确认
-的资源 ID 及结果；服务未确认成功时不得输出成功结果。
+普通 Unicode 与 emoji 保持原样。`--json` 将详情输出为一个完整资源对象、project list
+输出为所有匹配资源的完整字段数组、task list 输出为所有匹配 task 仅省略
+`description` 的数组、ready 输出为所选完整 task 的数组、图输出为完整图响应对象，
+并以换行结束。Task list 的默认、`--all`、`--status`、`--ready` 及其合法组合
+均使用同一 JSON 字段规则；其余 API 字段全部保留，包括原始 PR 字符串、完整 int64
+版本及创建、更新时间。ready 不添加分页 envelope，空列表为 `[]`。JSON 保留所输出
+API 字段的名称、类型和原始字符串，不应用终端显示转义或插入诊断文字。写操作
+成功后输出服务确认的资源 ID 及结果；服务未确认成功时不得输出成功结果。
 
 结果写入 stdout，错误及诊断写入 stderr。成功退出 `0`，参数错误退出 `2`，操作
 失败退出 `1`。诊断须标识操作及相关 project/task；服务错误保留 `code`、`message`、
@@ -306,7 +309,7 @@ ready 空结果输出 `No ready tasks.`，创建和更新结果另表明服务�
 | V7 | 显式 `--project` 在 Git 外可执行且不改自动绑定；显式 ID 缺失、无权限或读取失败不进入自动发现 |
 | V8 | project 创建、列表、详情与 task 创建、筛选、详情、更新、图查询通过真实 Go server 联调；创建覆盖省略 repo 的 Git 发现，以及省略与显式 repo 再次创建均复用原资源且不改名称、不写本地绑定；所有写入遵循现有服务规则 |
 | V9 | 更新覆盖读取版本、显式期望版本、并发冲突、空描述、依赖替换及清空；服务拒绝保留 task ID 且没有隐式重试 |
-| V10 | 多页查询与 `--json` 仅完整成功后输出；task list 默认排除 done，支持 `--all` 和显式状态、互斥参数在 I/O 前拒绝、ready 交集及跨页稳定分组；文本列表省略描述、版本和时间而 JSON 保留全部字段，其他 task 资源输出保持完整；图保持完整响应字段并正确报告超限，stdout 可直接由 JSON parser 读取 |
+| V10 | 多页查询与 `--json` 仅完整成功后输出；task list 默认排除 done，支持 `--all` 和显式状态、互斥参数在 I/O 前拒绝、ready 交集及跨页稳定分组；文本列表省略描述、版本和时间，所有筛选形式的 JSON 列表仅省略 description 且保留其余全部字段、原始 PR 字符串、精确版本和时间戳，其他 task 资源输出保持完整；图保持完整响应字段并正确报告超限，stdout 可直接由 JSON parser 读取 |
 | V11 | 单次期限、持续推进 cursor 耗尽总期限、单响应和累计字节超限、锁竞争、用户取消、错误响应、无效 JSON、损坏缓存及磁盘失败分别给出正确 stderr 和退出码；超限无部分输出或后续副作用，写响应未确认不产生虚假失败确定性 |
 | V12 | CLI 既有 `pnpm typecheck`、`pnpm test`、`pnpm build` 及相关安装验收通过；Linux、macOS、Windows 的 Git、锁及文件替换有原生证据 |
 | V13 | `task ready` 的默认和显式 limit、参数在 I/O 前拒绝、单次 `ready=true` 查询、合法 cursor 不续页、稳定服务顺序、完整 int64 JSON、空结果及超量/非 ready/重复 ID 响应拒绝均可观察；`task list --ready` 仍完整翻页，真实服务证明选择前 N 项及依赖完成后的 ready 变化 |
