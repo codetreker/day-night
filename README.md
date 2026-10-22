@@ -42,12 +42,16 @@ tab with adjacent file and preview panes at every supported width. Each pane
 owns its scroll region; the preview has exactly one vertical scroll owner,
 including native HTML/PDF documents. A link beside Download opens the selected
 file in a reloadable full-page reader outside the workspace and dialog, with
-the same rendering and relative resources. Independent integrated acceptance
-for this reading group remains separately tracked work. Installed CLI/service and production-browser
-attachment journeys share real service data on native and container targets; their
+the same rendering and relative resources. Independent runtime acceptance of
+this reading group is complete against real embedded assets and service files,
+including native PDF reading to the final painted page. Installed CLI/service
+and production-browser attachment journeys share real service data on native
+and container targets; their
 [acceptance decision](.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
-owns byte, rendering and cleanup proof. Delivery progress remains tracked in
-Daynight, and successful runs remain tied to their tested source and CI. The
+owns byte, rendering, scroll, failure-recovery and cleanup proof. Delivery
+progress remains tracked in Daynight, and successful runs remain tied to their
+tested source, built artifacts and browser environment; local browser overrides
+do not establish hosted-CI browser results. The
 [Web attachment decision](.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)
 owns browser state, rendering and focus integration; the
 [split-view decision](.agents/notes/implemented/architecture/2026-10-22-task-attachment-split-view.md)
