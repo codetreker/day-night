@@ -16,7 +16,8 @@ counts. The existing distinct root-main traversal derives all three values:
 all main tasks done means done; any done or in-progress main task with unfinished
 work means in progress; otherwise every main task is pending. The main set is
 the root and every reachable successor, with shared descendants counted once.
-Direct external prerequisite context is outside that set.
+External prerequisite context, including its complete ancestor closure, is
+outside that set.
 
 The row badge, completed-chain count and visibility filter in the task-chain
 tab consume the same aggregate status. The [task view decision](../feature/2026-10-22-project-task-views.md)
@@ -29,8 +30,10 @@ selection, pan and zoom do not trigger domain recomputation.
 This replaces the original badge semantics described by the
 [presentation decision](../feature/2026-10-21-task-chain-presentation.md).
 The [projection decision](../feature/2026-10-20-task-graph-projection.md) retains
-ownership of reachability and distinct counts. Requirements and current
-structure belong in the [specification](../../../../docs/spec/daynight-web.md)
+ownership of reachability and distinct counts; the
+[complete context decision](../feature/2026-10-22-complete-prerequisite-context.md)
+expands displayed ancestors without changing that counted membership.
+Requirements and current structure belong in the [specification](../../../../docs/spec/daynight-web.md)
 and [design](../../../../docs/design/daynight-web.md).
 
 ## Alternatives

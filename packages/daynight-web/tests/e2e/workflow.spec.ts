@@ -158,7 +158,7 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   await expect(root(page, c.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(root(page, b.id).locator('.root-status')).toHaveText('进行中');
   await expect(root(page, b.id).locator('.root-progress-label')).toHaveText('0/3 已完成');
-  await expect(page.locator('.react-flow__node')).toHaveCount(6);
+  await expect(page.locator('.react-flow__node')).toHaveCount(7);
   const completedVisibility = page.getByRole('checkbox', { name: '显示已完成任务链（0）' });
   await expect(completedVisibility).not.toBeChecked();
   await expect(root(page, completed.id)).toHaveCount(0);
@@ -384,8 +384,8 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
     await viewportElement!.dispose();
     await taskElement!.dispose();
   });
-  await expect(page.locator('.task-node-boundary')).toHaveCount(2);
-  await expect(page.locator('.task-boundary-label')).toHaveText(['外部前置，上游已省略', '外部前置，上游已省略']);
+  await expect(page.locator('.task-node-external')).toHaveCount(2);
+  await expect(page.locator('.task-external-label')).toHaveText(['外部前置', '外部前置']);
   await expect(node(page, f.id).locator('.task-shared-label')).toHaveText('共享');
   await expect(node(page, g.id).locator('.task-shared-label')).toHaveText('共享');
   await expect(node(page, f.id).locator('.graph-blocked-badge')).toHaveText('被阻塞');
@@ -420,6 +420,53 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   await expect(page.locator('.react-flow__node')).toHaveCount(7);
   await checkEdges(a.id);
   await screenshot(page, info, 'project-graph');
+  await test.step('completes recursive external ancestry without following unrelated successors at desktop and 320px', async () => {
+    const contextProject = await createProject(request, { name: `Complete prerequisites ${randomUUID()}` });
+    const ancestor = await createTask(request, contextProject.id, { title: 'B completed external ancestor' });
+    await updateTask(request, contextProject.id, ancestor.id, { version: ancestor.version, status: 'done' });
+    const prerequisite = await createTask(request, contextProject.id, { title: 'C completed external prerequisite', dependsOn: [ancestor.id] });
+    await updateTask(request, contextProject.id, prerequisite.id, { version: prerequisite.version, status: 'done' });
+    const unrelated = await createTask(request, contextProject.id, { title: 'X unrelated successor', dependsOn: [prerequisite.id] });
+    const source = await createTask(request, contextProject.id, { title: 'A chain source' });
+    const sink = await createTask(request, contextProject.id, { title: 'D chain sink', dependsOn: [source.id, prerequisite.id] });
+    for (const width of [1440, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      await openProject(page, contextProject.id, contextProject.name);
+      await expect(root(page, source.id)).toHaveAttribute('aria-expanded', 'true');
+      await expect(root(page, source.id).locator('.root-progress-label')).toHaveText('0/2 已完成');
+      await expect(page.locator('.react-flow__node')).toHaveCount(4);
+      await expect(page.locator('.task-dependency-edge')).toHaveCount(3);
+      await expect(page.locator('.task-node-external')).toHaveCount(2);
+      await expect(page.getByText('2 个链内任务 · 2 个外部前置 · 3 条依赖')).toBeVisible();
+      await expect(node(page, unrelated.id)).toHaveCount(0);
+      await expect(node(page, ancestor.id)).toHaveAccessibleName('B completed external ancestor，已完成，外部前置');
+      await expect(node(page, prerequisite.id)).toHaveAccessibleName('C completed external prerequisite，已完成，外部前置');
+      expect(await page.locator('.task-dependency-edge').evaluateAll((edges) => edges.map((edge) => edge.getAttribute('data-id')).sort())).toEqual([
+        `${source.id}->${sink.id}`, `${ancestor.id}->${prerequisite.id}`, `${prerequisite.id}->${sink.id}`,
+      ].sort());
+      const visibleInCanvas = (taskId: string) => page.evaluate((id) => {
+        const bounds = document.querySelector('.task-graph-canvas')!.getBoundingClientRect();
+        const task = document.querySelector(`.react-flow__node[data-id="${id}"] .task-node`)!.getBoundingClientRect();
+        return task.left >= bounds.left && task.top >= bounds.top && task.right <= bounds.right && task.bottom <= bounds.bottom;
+      }, taskId);
+      await expect.poll(() => visibleInCanvas(ancestor.id)).toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.keyboard.press('Tab');
+      for (const task of [ancestor, prerequisite, source, sink]) {
+        await node(page, task.id).focus();
+        await expect.poll(() => visibleInCanvas(task.id)).toBe(true);
+        await page.keyboard.press('Enter');
+        const detail = page.locator('.drawer-backdrop').getByRole('dialog');
+        await expect(detail.locator('.drawer-title')).toHaveText(task.title);
+        await page.keyboard.press('Escape');
+        await expect(detail).toHaveCount(0);
+        await expect(node(page, task.id)).toBeFocused();
+      }
+      await page.getByRole('button', { name: '适应画布', exact: true }).click();
+      for (const task of [ancestor, prerequisite, source, sink]) await expect.poll(() => visibleInCanvas(task.id)).toBe(true);
+      await screenshot(page, info, `complete-prerequisites-${width}`);
+    }
+  });
 });
 
 test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request }, info) => {

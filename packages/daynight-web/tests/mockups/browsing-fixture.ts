@@ -1,6 +1,6 @@
 import type { GraphTask, TaskDetail, TaskGraph, TaskGraphSummary, TaskStatus } from '../../src/api/types';
 
-export type BrowsingScenario = 'mixed' | 'complete' | 'empty';
+export type BrowsingScenario = 'mixed' | 'external' | 'complete' | 'empty';
 type TaskSeed = {
   readonly number: number;
   readonly title: string;
@@ -25,8 +25,18 @@ const mixed: readonly TaskSeed[] = [
   { number: 13, title: '验证最新任务链与浏览器保存的展开状态', status: 'todo', dependencies: [12] },
 ];
 
+const external: readonly TaskSeed[] = [
+  { number: 30, title: '外部上下文 · 链内交付起点', status: 'todo', dependencies: [] },
+  { number: 14, title: '外部祖先 · 已完成基础协议', status: 'done', dependencies: [] },
+  { number: 15, title: '外部前置 · 实现共享接口', status: 'done', dependencies: [14] },
+  { number: 16, title: '外部前置 · 验证共享接口', status: 'done', dependencies: [14] },
+  { number: 17, title: '外部前置 · 菱形合流', status: 'done', dependencies: [15, 16] },
+  { number: 31, title: '链内最终交付', status: 'todo', dependencies: [30, 17] },
+  { number: 32, title: '外部前置的无关后续 · 当前链不显示', status: 'todo', dependencies: [17] },
+];
+
 const createGraph = (scenario: BrowsingScenario, name: string, number: number): TaskGraph => {
-  const seeds = scenario === 'empty' ? [] : scenario === 'complete' ? mixed.slice(0, 3) : mixed;
+  const seeds = scenario === 'empty' ? [] : scenario === 'complete' ? mixed.slice(0, 3) : scenario === 'external' ? external : mixed;
   const statuses = new Map(seeds.map((task) => [task.number, task.status]));
   const tasks: GraphTask[] = seeds.map((task) => {
     const blockedBy = task.dependencies.filter((dependency) => statuses.get(dependency) !== 'done').map(id);
@@ -56,6 +66,7 @@ const createGraph = (scenario: BrowsingScenario, name: string, number: number): 
 
 export const browsingProjects: Readonly<Record<BrowsingScenario, TaskGraph>> = {
   mixed: createGraph('mixed', 'Daynight · 任务链浏览', 101),
+  external: createGraph('external', '完整上游上下文', 104),
   complete: createGraph('complete', '已交付项目', 102),
   empty: createGraph('empty', '新项目', 103),
 };

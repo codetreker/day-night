@@ -470,7 +470,9 @@ Go 的 `installed_cli_task_attachment_workflow` 使用既有安装回执与实�
 必须确认 `storageRootRemoved`。
 
 Web 新增 `task-attachments` 功能场景，在原生和实际生产容器上让同一次安装的 CLI
-与页面操作同一批数据；原有八个图功能场景及四个原生容量场景保持完整。
+与页面操作同一批数据；原有八个图功能场景及四个原生容量/超限场景保持完整。
+完整上下文交付另加入 `capacity-external`，原生容量/超限共五个场景；机制与统计
+由[看板设计](daynight-web.md#验证与-ci)拥有。
 另有 `project-view-tabs` 验证项目内任务视图，当前严格 inventory 为原生 14 个、
 容器 10 个。只有附件场景精确的 task/file PUT/DELETE 获准，图与任务视图场景
 继续 GET/HEAD。完整 Chromium channel `chromium` 对 PDF 的证明来自 iframe 实际

@@ -27,10 +27,14 @@ then keeps non-isolated roots in the chain presentation. Status and visibility
 filters do not alter topology or projection.
 
 For one root, the main set is the root and its forward-reachable descendants.
-The boundary set contains the main set's direct predecessors that are outside
-that main set. Boundary ancestors stop expanding. Every edge ending in the main
-set remains visible. Per-root progress counts only distinct main nodes; project
-totals count all tasks once. Root progress also carries the aggregate status
+The original projection added only their direct predecessors outside that main
+set, stopping at that explicit boundary. This kept direct blockers visible
+without recursively importing context. The later
+[complete prerequisite context decision](2026-10-22-complete-prerequisite-context.md)
+replaces that boundary with the full ancestor closure and all required edges,
+while retaining main-set membership. Per-root progress counts only distinct main
+nodes; project totals count all tasks once. Root progress also carries the
+aggregate status
 owned by the [chain status decision](../bug-fix/2026-10-22-task-chain-status.md);
 its count and state derive from the same main-set traversal. Shared membership
 and root progress are derived once
@@ -90,12 +94,13 @@ integration and browser performance acceptance separately.
 
 **Use only reachable nodes and omit other predecessors.** A shared task could
 appear unblocked even though another root's prerequisite is unfinished. Explicit
-boundary nodes preserve those direct dependencies without recursively expanding
-unrelated ancestry.
+boundary nodes preserved those direct dependencies without recursively expanding
+unrelated ancestry. Complete transitive inspection later required the ancestor
+closure recorded by the replacement decision.
 
-**Compute progress from rendered nodes or sum root counters.** Boundary context
+**Compute progress from rendered nodes or sum root counters.** External context
 would inflate one chain and shared descendants would inflate the project. The
-model keeps project, root-main and boundary counts distinct.
+model keeps project, root-main and external-context counts distinct.
 
 **Let the canvas library own graph grouping and layout state.** This couples
 domain checks to browser state and makes deterministic projection tests harder.

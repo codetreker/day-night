@@ -17,10 +17,10 @@ export const validatePerformance = (value: unknown): void => {
   if (report.schemaVersion !== 1 || report.result !== 'passed') throw new Error('Capacity receipt did not pass.');
   const datasets = array(report.datasets);
   const names = new Set<string>();
-  if (datasets.length !== 3) throw new Error('Capacity requires all three fixed graph datasets.');
+  if (datasets.length !== 4) throw new Error('Capacity requires all four fixed graph datasets.');
   for (const raw of datasets) {
     const dataset = object(raw);
-    if (typeof dataset.scenario !== 'string' || !['capacity-chain', 'capacity-merge', 'capacity-shared'].includes(dataset.scenario)
+    if (typeof dataset.scenario !== 'string' || !['capacity-chain', 'capacity-merge', 'capacity-shared', 'capacity-external'].includes(dataset.scenario)
       || names.has(dataset.scenario) || dataset.result !== 'passed' || dataset.nodes !== 1000
       || dataset.edges !== (dataset.scenario === 'capacity-chain' ? 999 : 5000)) {
       throw new Error('Capacity dataset differs from the fixed supported graph.');

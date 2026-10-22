@@ -6,19 +6,22 @@ statistics, task dependency graphs, task details and file attachments from the
 same Go service origin. The read-only graph dashboard is delivered, including
 production-browser acceptance, embedded deployment and the subsequent focus-restoration repair. The
 [dashboard tasks](docs/design/daynight-web-tasks.md) record completion and link
-the corresponding PR and CI evidence. The designed, pending
-[task inspection requirements](docs/spec/daynight-task-inspection.md),
+the corresponding PR and CI evidence. Complete prerequisite context is implemented.
+The [task inspection requirements](docs/spec/daynight-task-inspection.md),
 [architecture](docs/design/daynight-task-inspection.md),
 [focused task breakdown](docs/design/daynight-task-inspection-tasks.md) and
 [interactive preview](docs/design/mockups/task-inspection/index.html) cover
 complete prerequisite context, smooth highlighted dependency routes, a centered
 detail dialog and Markdown descriptions with matching public skill guidance.
+Graph inspection, smooth paths, centered details and Markdown remain pending.
+Card activation still opens the detail drawer, routes remain polylines, and descriptions remain plain text until
+their focused tasks are delivered.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle and interactive Agent installation, shared configuration, server HTTP and repository binding foundations plus project, task and single-file attachment commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
-| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs and task details, attachment management/preview, embedded delivery, graph production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
+| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs with complete prerequisite context and task details, attachment management/preview, embedded delivery, graph production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The adopted [task attachment requirements](docs/spec/daynight-task-attachments.md),
 [architecture](docs/design/daynight-task-attachments.md) and
@@ -128,7 +131,9 @@ CLI commands below apply to the client; server commands have their own module.
 The dashboard architecture presents project statistics and two in-project task
 tabs from one complete server snapshot. Standalone tasks open details directly;
 root-based task chains retain dependency graphs, shared successors and aggregate
-progress. The first visit opens task chains, and each project retains its last
+progress. Expanding a chain includes all upstream prerequisites of its root and
+reachable successors, without adding unrelated successors of contextual tasks.
+Only the root and its reachable successors contribute to chain progress and status. The first visit opens task chains, and each project retains its last
 tab, independent completed-item filters and browse positions. The [task view
 preview](docs/design/mockups/task-views.html) demonstrates those interactions.
 The project list is implemented in the private web workspace, including task

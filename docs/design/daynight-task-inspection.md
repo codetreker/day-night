@@ -1,10 +1,10 @@
 # 任务依赖追踪与详情阅读设计
 
-状态：设计完成，待实现。适用模块为 `daynight-web` 与 CLI 发布的 `using-daynight` skill。行为以[要求](../spec/daynight-task-inspection.md)为准，交付边界见[任务拆分](daynight-task-inspection-tasks.md)，视觉见[交互原型](mockups/task-inspection/index.html)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-22-task-inspection-design.md)保留实际比较与范围选择。
+状态：完整上游上下文（UX-T1）已实现；依赖选择与平滑连线、居中详情和 Markdown 描述（UX-T2–UX-T4）待实现。适用模块为 `daynight-web` 与 CLI 发布的 `using-daynight` skill。行为以[要求](../spec/daynight-task-inspection.md)为准，交付边界见[任务拆分](daynight-task-inspection-tasks.md)，视觉见[交互原型](mockups/task-inspection/index.html)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-22-task-inspection-design.md)保留实际比较与范围选择。
 
 ## 问题与当前结构
 
-当前任务节点是整张可点击按钮，点击后同时设置图的选中任务和打开详情。选择与阅读耦合，无法在画布上持续追踪依赖。当前投影仅补入链内任务的直接外部前置，其祖先被省略；依赖线按 Dagre 点列绘制为折线；描述以纯文本显示在右侧详情抽屉中。
+当前任务节点是整张可点击按钮，点击后同时设置图的选中任务和打开详情。选择与阅读耦合，无法在画布上持续追踪依赖。投影已补齐链内任务的全部上游前置，并排除外部前置的无关后续；其机制由[完整上下文决策](../../.agents/notes/implemented/feature/2026-10-22-complete-prerequisite-context.md)拥有。依赖线仍按 Dagre 点列绘制为折线，描述仍以纯文本显示在右侧详情抽屉中。下文的选择、曲线、居中详情和 Markdown 机制属于其余任务的目标结构。
 
 这些事实分别由 [TaskNode](../../packages/daynight-web/src/features/task-graph/TaskNode.tsx)、[ProjectPage](../../packages/daynight-web/src/features/projects/ProjectPage.tsx)、[投影模型](../../packages/daynight-web/src/features/task-graph/model.ts)、[TaskGraph](../../packages/daynight-web/src/features/task-graph/TaskGraph.tsx) 和 [TaskDrawer](../../packages/daynight-web/src/features/task-detail/TaskDrawer.tsx) 实现。图索引已包含完整项目的 `dependsOn` 和 `successors`，无需新增服务端读取接口。附件预览已使用 `react-markdown`、`remark-gfm` 及任务内相对 URL 解析。
 
@@ -12,7 +12,7 @@
 
 交付完整上游上下文、可持续依赖选择、平滑且同步高亮的连线、独立详情入口、居中详情阅读和 Markdown 描述。API 与存储继续使用现有任务字符串和依赖字段，图快照与详情读取保持独立。任务字段编辑、Markdown 编辑器、图布局替换、自动执行任务及新的附件协议不属于本设计。
 
-已在开发的独立任务/任务链标签能力负责分类和浏览偏好。本设计只定义图内卡片的新交互，以及所有现有详情入口共用的阅读窗口。独立条目仍直接打开详情。若标签能力先交付，实现任务应基于当时的主线接入它；文件重叠本身不构成功能前置。
+已实现的独立任务/任务链标签能力负责分类和浏览偏好。本设计只定义图内卡片的新交互，以及所有现有详情入口共用的阅读窗口。独立条目仍直接打开详情；图内新交互接入现有页签、完成项过滤与浏览偏好。文件重叠本身不构成功能前置。
 
 ## 架构与职责
 
@@ -45,7 +45,7 @@ flowchart LR
 
 投影和布局只在根或成功快照改变时计算。选择任务 `s` 时，遍历完整索引的 `dependsOn` 得到 `H = {s} ∪ ancestors(s)`。高亮边是终点在 `H` 的依赖边，闭包保证源也在 `H` 中；不高亮仅仅连接两个无关分支的边。状态为 `selected`、`prerequisite`、`unrelated` 或无选择时的 `normal`。去重集合保留共享前置和已完成任务。
 
-成功刷新时从新投影重算；所选节点不再可见则清除。失败不替换旧快照。局部状态随画布卸载释放，打开详情不会更新它。初始视口必须允许访问根左侧新增前置：能以 0.8–1 倍容纳时整体适应，否则以最左上游区域开始、保持可读比例并提供“适应画布”；不得继续把根固定在最左侧而将全部外部前置放在初始视口外。完整前置已在画布中，选择时不进行自动重新适应。
+成功刷新时从新投影重算；所选节点不再可见则清除。失败不替换旧快照。局部状态随画布卸载释放，打开详情不会更新它。初始视口必须允许访问根左侧新增前置：能以 0.8–1 倍容纳时整体适应，否则以 0.8 倍锚定最左 rank，根已在该 rank 时保持垂直居中，外部上游位于根左侧时将该 rank 的最上方节点置于画布 32px 内边距，并提供“适应画布”；不得继续把根固定在最左侧而将全部外部前置放在初始视口外。完整前置已在画布中，选择时不进行自动重新适应。
 
 ## 平滑路由与绘制
 

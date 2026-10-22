@@ -23,7 +23,7 @@ export type ProjectionEdge = {
 export type RootProjection = {
   readonly rootId: string;
   readonly mainIds: ReadonlySet<string>;
-  readonly boundaryIds: ReadonlySet<string>;
+  readonly externalIds: ReadonlySet<string>;
   readonly edges: readonly ProjectionEdge[];
   readonly completed: number;
 };
@@ -135,14 +135,23 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
 export const projectRoot = (index: GraphIndex, rootId: string): RootProjection => {
   if (!index.roots.includes(rootId)) return rejectGraph();
   const mainIds = reachable(index.successors, rootId);
-  const boundaryIds = new Set<string>();
-  const edges: ProjectionEdge[] = [];
-  for (const id of mainIds) {
-    for (const source of index.nodes.get(id)!.dependsOn) {
-      const external = !mainIds.has(source);
-      if (external) boundaryIds.add(source);
-      edges.push({ source, target: id, external });
+  const visibleIds = new Set(mainIds);
+  const pending = [...mainIds];
+  while (pending.length > 0) {
+    for (const source of index.nodes.get(pending.pop()!)!.dependsOn) {
+      if (visibleIds.has(source)) continue;
+      visibleIds.add(source);
+      pending.push(source);
     }
   }
-  return { rootId, mainIds, boundaryIds, edges, completed: index.rootProgress.get(rootId)!.done };
+  const externalIds = new Set<string>();
+  const edges: ProjectionEdge[] = [];
+  for (const task of index.nodes.values()) {
+    if (!visibleIds.has(task.id)) continue;
+    if (!mainIds.has(task.id)) externalIds.add(task.id);
+    for (const source of task.dependsOn) {
+      edges.push({ source, target: task.id, external: !mainIds.has(source) });
+    }
+  }
+  return { rootId, mainIds, externalIds, edges, completed: index.rootProgress.get(rootId)!.done };
 };

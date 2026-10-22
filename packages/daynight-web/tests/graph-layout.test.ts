@@ -5,17 +5,17 @@ import { layoutGraph, TASK_NODE_HEIGHT, TASK_NODE_WIDTH, type CanvasLayout } fro
 const projection = (
   mainIds: readonly string[],
   edges: readonly (readonly [string, string])[],
-  boundaryIds: readonly string[] = [],
+  externalIds: readonly string[] = [],
 ): RootProjection => ({
   rootId: mainIds[0] ?? '',
   mainIds: new Set(mainIds),
-  boundaryIds: new Set(boundaryIds),
-  edges: edges.map(([source, target]) => ({ source, target, external: boundaryIds.includes(source) })),
+  externalIds: new Set(externalIds),
+  edges: edges.map(([source, target]) => ({ source, target, external: externalIds.includes(source) })),
   completed: 0,
 });
 
 const verifyGeometry = (actual: CanvasLayout, expected: RootProjection) => {
-  const expectedIds = [...expected.mainIds, ...expected.boundaryIds].sort();
+  const expectedIds = [...expected.mainIds, ...expected.externalIds].sort();
   expect(actual.nodes.map((node) => node.id)).toEqual(expectedIds);
   expect(new Set(actual.nodes.map((node) => node.id)).size).toBe(expectedIds.length);
   expect(actual.edges.map(({ source, target, external }) => ({ source, target, external }))).toEqual(
@@ -34,7 +34,7 @@ const verifyGeometry = (actual: CanvasLayout, expected: RootProjection) => {
     expect(node.position.y).toBeGreaterThan(0);
     expect(node.position.x + TASK_NODE_WIDTH).toBeLessThan(actual.width);
     expect(node.position.y + TASK_NODE_HEIGHT).toBeLessThan(actual.height);
-    expect(node.kind).toBe(expected.mainIds.has(node.id) ? 'main' : 'boundary');
+    expect(node.kind).toBe(expected.mainIds.has(node.id) ? 'main' : 'external');
   }
   for (const edge of actual.edges) {
     const source = nodes.get(edge.source)!;
@@ -80,6 +80,7 @@ describe('horizontal task graph layout', () => {
     ['diamond', projection(['A', 'B', 'C', 'D'], [['A', 'B'], ['A', 'C'], ['B', 'D'], ['C', 'D']])],
     ['fan out and merge', projection(['A', 'B', 'C', 'D', 'E'], [['A', 'B'], ['A', 'C'], ['A', 'D'], ['B', 'E'], ['C', 'E'], ['D', 'E']])],
     ['multiple external predecessors', projection(['A', 'C', 'D'], [['A', 'C'], ['B', 'C'], ['C', 'D'], ['X', 'D']], ['B', 'X'])],
+    ['complete external diamond', projection(['A', 'D'], [['A', 'D'], ['B', 'C'], ['B', 'E'], ['C', 'F'], ['E', 'F'], ['F', 'D']], ['B', 'C', 'E', 'F'])],
     ['disconnected independent tasks', projection(['A', 'B', 'C'], [])],
     ['long unicode task identity', projection(['节点甲'.repeat(30), '节点乙'.repeat(30)], [['节点甲'.repeat(30), '节点乙'.repeat(30)]])],
   ])('preserves every node and edge with finite, nonoverlapping LR geometry: %s', (_name, input) => {
@@ -95,19 +96,19 @@ describe('horizontal task graph layout', () => {
     verifyGeometry(b, second);
     expect(a.nodes.find((node) => node.id === 'C')?.kind).toBe('main');
     expect(b.nodes.find((node) => node.id === 'C')?.kind).toBe('main');
-    expect(a.nodes.find((node) => node.id === 'B')?.kind).toBe('boundary');
-    expect(b.nodes.find((node) => node.id === 'A')?.kind).toBe('boundary');
+    expect(a.nodes.find((node) => node.id === 'B')?.kind).toBe('external');
+    expect(b.nodes.find((node) => node.id === 'A')?.kind).toBe('external');
   });
 
   it('produces identical layout from reordered sets and edges without mutating the projection', () => {
     const input = projection(['A', 'B', 'C', 'D'], [['X', 'D'], ['C', 'D'], ['A', 'C'], ['B', 'D'], ['A', 'B']], ['X']);
     const original = {
-      mainIds: [...input.mainIds], boundaryIds: [...input.boundaryIds], edges: structuredClone(input.edges),
+      mainIds: [...input.mainIds], externalIds: [...input.externalIds], edges: structuredClone(input.edges),
     };
     const reordered = {
       ...input,
       mainIds: new Set([...input.mainIds].reverse()),
-      boundaryIds: new Set([...input.boundaryIds].reverse()),
+      externalIds: new Set([...input.externalIds].reverse()),
       edges: [...input.edges].reverse(),
     };
     const first = layoutGraph(input);
@@ -115,7 +116,7 @@ describe('horizontal task graph layout', () => {
     expect(second).toEqual(first);
     expect(layoutGraph(input)).toEqual(first);
     expect([...input.mainIds]).toEqual(original.mainIds);
-    expect([...input.boundaryIds]).toEqual(original.boundaryIds);
+    expect([...input.externalIds]).toEqual(original.externalIds);
     expect(input.edges).toEqual(original.edges);
   });
 

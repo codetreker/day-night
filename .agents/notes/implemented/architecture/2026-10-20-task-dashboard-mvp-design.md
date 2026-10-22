@@ -59,11 +59,14 @@ contain bounded title previews; full content uses the existing detail endpoint.
 Reject graphs exceeding the declared size limits without returning a partial
 success. No schema, parent-child, or write-policy changes are required.
 
-Each expanded row contains its root and forward-reachable descendants, plus
-explicit boundary nodes for omitted direct prerequisites. Boundary ancestors
-stop expanding. Root progress excludes boundary nodes; project totals count
-each task once. Only one root graph is mounted at a time. Pure indexing/projection and Dagre
-layout remain separate from React rendering and API requests. Page hooks own
+The original MVP expanded each root and its forward-reachable descendants,
+adding explicit direct-boundary prerequisite nodes without expanding their
+ancestors. The later
+[complete context decision](../feature/2026-10-22-complete-prerequisite-context.md)
+replaces that boundary with every required ancestor and dependency, excluding
+unrelated descendants of contextual tasks. Root progress still excludes external
+context; project totals count each task once. Only one root graph is mounted at a
+time. Pure indexing/projection and Dagre layout remain separate from React rendering and API requests. Page hooks own
 request cancellation and snapshot replacement; the drawer never mutates the
 project snapshot.
 

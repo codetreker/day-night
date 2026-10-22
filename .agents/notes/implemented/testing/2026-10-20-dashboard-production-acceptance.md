@@ -17,7 +17,7 @@ assets and a fresh native Go executable, own an isolated PostgreSQL 18.6
 container/volume and wait for structured service readiness. The normal dev-ci
 source build/start runs concurrently. Browser phases run ten native functional
 scenarios, the same ten functional scenarios through the production image's
-stream gateway, then four native capacity/limit scenarios. The normal localhost
+stream gateway, then five native capacity/limit scenarios. The normal localhost
 stack and its data do not participate. The
 [pipeline decision](2026-10-21-web-acceptance-pipeline.md) partially supersedes the
 original native-then-container schedule and owns stage dependencies, per-phase
@@ -35,8 +35,11 @@ both runtime targets and requiring visibly painted PDF content. The
 [task view decision](../feature/2026-10-22-project-task-views.md) adds
 `project-view-tabs` on both targets for topology classification, direct standalone
 details and independent per-project browsing preferences. The native target also
-runs three fixed capacity datasets and
-independent node/edge-limit rejections. Fixtures are created through real APIs;
+runs four fixed capacity datasets and
+independent node/edge-limit rejections. The
+[complete context decision](../feature/2026-10-22-complete-prerequisite-context.md)
+adds dense external ancestry while preserving the original three datasets.
+Fixtures are created through real APIs;
 the original graph scenarios and task-view scenario retain read-only browser
 request checks. Only the new
 attachment scenario permits exact fixture-scoped file PUT/DELETE requests;
@@ -47,8 +50,10 @@ response ordering separately from actual backend-failure observations.
 
 Topology is fixed while API-generated UUIDs can change layout tie ordering
 between isomorphic runs. Five repetitions share the exact same graph and IDs.
-Each capacity dataset has exactly 1,000 nodes: the chain has 999 edges, and merge
-and shared-root datasets have 5,000 edges each. Five expansions per dataset must
+Each capacity dataset has exactly 1,000 nodes: the chain has 999 edges, and the
+merge, shared-root and dense-external datasets have 5,000 edges each. The dense
+external graph retains two main tasks, 998 contextual tasks and every dependency.
+Five expansions per dataset must
 all meet the 3,000ms click-to-painted complete-canvas budget. Task selection,
 zoom and pan must each provide visible local feedback within 300ms. Network
 readings remain separate. Each expansion records layout and painted-render
@@ -59,7 +64,7 @@ remains the performance gate. Each independent over-limit response must be a com
 Playwright runs one worker with zero retries. Report validation rejects global
 errors, skipped/flaky/retried tests, duplicate/missing stable scenarios, missing
 PNG screenshots and inconsistent summary counts. Native functional/capacity
-reports form a strict fourteen-scenario union; container functional validation
+reports form a strict fifteen-scenario union; container functional validation
 requires ten. Missing, extra or duplicate names fail both phase and aggregate
 validation, and browser identity must agree across a target's phases.
 Performance validation requires
@@ -81,8 +86,8 @@ selects affected PR jobs without changing their internal gates; main pushes
 retain all native CLI, shell completion, Go and web checks.
 
 Timing begins at the trusted browser input event's performance-clock timestamp
-and ends after the full DOM/readable-root or feedback condition and two animation
-frames. Event queue time remains included; automation actionability and diagnostic
+and ends after the full DOM/readable-initial-task or feedback condition and two
+animation frames. Event queue time remains included; automation actionability and diagnostic
 snapshot work are excluded. All five repetitions and all original budgets remain
 required. A bounded latest-root User Timing measure separates projection/Dagre
 from subsequent rendering without a growing product telemetry history.
@@ -98,7 +103,7 @@ One streamed CDP timeline/User Timing/frame/GC JSON trace per repetition correla
 those markers with browser work. The trace does not enable CPU sampling or CDP
 screenshots; scenario PNG evidence stays separate. Bounded completion and resource
 closure are required. Capacity tests disable Playwright's repeated DOM snapshots
-and filmstrip while retaining failure action/network traces, all 15 CDP traces,
+and filmstrip while retaining failure action/network traces, all 20 CDP traces,
 scenario PNGs and complete graph/geometry checks. Controller-side fixture,
 snapshot and repetition durations identify harness costs separately from the
 browser performance gate. The
