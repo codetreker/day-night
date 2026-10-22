@@ -1,10 +1,10 @@
 # Day Night
 
 Day Night contains a client command toolkit and an independent Go service runtime
-for project and task management. Its read-only browser workspace provides project
-statistics, task dependency graphs and details from the same Go service origin.
-The read-only dashboard is delivered, including production-browser acceptance,
-embedded deployment and the subsequent focus-restoration repair. The
+for project and task management. Its browser workspace provides project
+statistics, task dependency graphs, task details and file attachments from the
+same Go service origin. The read-only graph dashboard is delivered, including
+production-browser acceptance, embedded deployment and the subsequent focus-restoration repair. The
 [dashboard tasks](docs/design/daynight-web-tasks.md) record completion and link
 the corresponding PR and CI evidence.
 
@@ -12,16 +12,22 @@ the corresponding PR and CI evidence.
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle and interactive Agent installation, shared configuration, server HTTP and repository binding foundations plus project, task and single-file attachment commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
-| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs/details, embedded delivery, production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
+| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs and task details, attachment management/preview, embedded delivery, graph production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The adopted [task attachment requirements](docs/spec/daynight-task-attachments.md),
 [architecture](docs/design/daynight-task-attachments.md) and
 [task breakdown](docs/design/daynight-task-attachments-tasks.md) define reusable
 bucket/path file storage, single-file task attachments, same-origin browser
 preview and binary CLI reads. Generic local storage and startup, attachment
-metadata, file/preview HTTP APIs, CLI put/list/read/remove commands, persistent
-deployment volumes and paired backup/restore are implemented. Browser management
-remains pending. The
+metadata, file/preview HTTP APIs, CLI put/list/read/remove commands, browser file
+management, persistent deployment volumes and paired backup/restore are
+implemented. Installed CLI/service and production-browser attachment journeys
+share real service data on native and container targets; their
+[acceptance decision](.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+owns byte, rendering and cleanup proof. Delivery progress remains tracked in
+Daynight, and successful runs remain tied to their tested source and CI. The
+[Web attachment decision](.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)
+owns browser state, rendering and focus integration; the
 [deployment guide](deployment/localhost/README.md#persistence-and-backup) owns data
 retention and backup commands. Filesystem/PostgreSQL non-atomicity remains a known
 issue; consistency remediation is outside that scope.
@@ -116,10 +122,12 @@ CLI commands below apply to the client; server commands have their own module.
 The dashboard architecture presents source-root dependency graphs and project
 statistics from the server. The project list is implemented in the private web
 workspace, including task visualization and details. Its [design decision](.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)
-defines the read-only MVP. The Go binary embeds the production UI and serves it
-alongside JSON APIs. The standalone HTML preview uses fixture data and remains
-separate from the application. `deployment/localhost/` starts the complete
-application; the isolated [dev-ci stack](deployment/dev-ci/README.md) uses the
+defines the original read-only MVP. Attachment upload, overwrite and deletion
+extend the task drawer without changing task fields or the graph snapshot. The
+Go binary embeds the production UI and serves it alongside the APIs. The original
+standalone dashboard preview uses fixture data; the attachment development mockup
+uses the actual attachment components and styles with a frontend-only fixture.
+`deployment/localhost/` starts the complete application; the isolated [dev-ci stack](deployment/dev-ci/README.md) uses the
 same production build and gateway with disposable test data.
 
 ## CLI development
@@ -209,8 +217,8 @@ loading guarantees.
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
 Windows runners. Each native job resolves the latest available Node.js 24 patch.
 PRs select complete module jobs from their changed paths; the
-[CI selection rules](#ci-selection) define shared inputs and documentation-only
-changes. A selected CLI runs every native platform and the dedicated Linux shell
+[CI selection rules](#ci-selection) define shared inputs and exclusions for
+documentation and repository metadata. A selected CLI runs every native platform and the dedicated Linux shell
 completion job. On PRs, the Linux job also enforces package version increases
 before ordinary validation. It compares the PR's complete source changes with
 its merge base and its package version with the event's target-branch revision.
@@ -331,7 +339,7 @@ binary identity, scenario results and resource cleanup.
 
 The private [web workspace](packages/daynight-web/README.md) implements the project
 list, cursor paging, safe API decoding, cancellation, project statistics, task
-graphs and detail drawers. With the
+graphs, detail drawers and single-file attachment management. With the
 Go API running on loopback, use:
 
 ```text
@@ -340,6 +348,14 @@ pnpm web:typecheck
 pnpm web:build
 pnpm web:test
 ```
+
+For the frontend-only attachment mockup, run `pnpm web:dev` and open
+`/tests/mockups/attachments.html` on the origin printed by Vite. It uses the real
+attachment UI with in-memory metadata and local fixture files; it needs no Go
+service or PostgreSQL. Scenario selection covers files, an empty task and upload
+failure. Production builds keep the single application index and exclude these
+fixture entry points. The [web README](packages/daynight-web/README.md#task-attachments)
+explains previews and the mockup's evidence limits.
 
 The frontend build emits `packages/daynight-web/dist/`, validates its HTML and
 assets, and publishes a complete replacement into the Go embed directory. A
@@ -368,6 +384,9 @@ requires Go 1.27.2, Docker, Node 24, pnpm 10.34.5 and Playwright Chromium. The
 browser setup, required gates and receipt interpretation. The
 [dashboard task record](docs/design/daynight-web-tasks.md#w-t6) identifies the
 source-bound production/performance results and remaining delivery requirements.
+That existing inventory covers the graph dashboard baseline. A-T6 in the
+[attachment breakdown](docs/design/daynight-task-attachments-tasks.md#a-t6) owns
+new real-backend attachment browser journeys and combined acceptance.
 
 ## Package versions
 
@@ -416,55 +435,61 @@ gh workflow run publish.yml --ref main
 ```
 
 The workflow accepts only `main` and freezes that run's source commit. Before
-waiting for CI or installing dependencies, a read-only preflight reads the
-package version and checks the exact `daynight-v<package-version>` tag and the
-exact `@codetreker/daynight` version on npmjs. Either existing marker makes the
-new dispatch succeed with an explicit skip message, even when it belongs to an
-earlier commit. A skip does not publish, download or verify the existing package,
-or create a missing tag. A tag alone is sufficient to skip. Only HTTP 404 means
-absence; lookup failures and malformed responses fail the run.
+validating the CLI or installing project dependencies, preflight checks the exact
+`daynight-v<package-version>` tag and npm package version. Either existing
+marker makes every dispatch and retry succeed with an explicit skip message,
+regardless of its source or contents. A tag alone is sufficient to skip. A skip
+does not download or verify the existing package, or create a missing tag.
 
-When both markers are absent, preparation waits for the latest main-push
-`checks.yml` run at the frozen commit to succeed; a missing or failed run stops
-publication. It then installs frozen dependencies, runs type checking, tests and
-installed acceptance, and smoke-installs the packed release tarball. The
+npm metadata queries use pinned npm 12.2.0 through
+`npm view @codetreker/daynight@<version> --json --registry=https://registry.npmjs.org`.
+This uses npm's package-document lookup and version selection. Only npm's JSON
+`E404` means the version is absent; GitHub tag absence requires HTTP 404.
+Authentication, network, timeout and malformed-response errors fail visibly.
+Queries use a project-local cache and have a 30-second process limit.
+
+When both markers are absent, preparation installs frozen dependencies and runs
+type checking, tests and installed acceptance explicitly for
+`@codetreker/daynight` at the frozen commit. It then smoke-installs the packed
+release tarball. Publication validates the CLI independently of the full
+`checks.yml` workflow; Go server and Web results do not gate the npm release. The
 publishing job is titled `Publish daynight v<version>`, using the version from the
-prepared artifact's release receipt. Before its first publication attempt with
-that artifact, it repeats the preflight so a version that appeared during
-preparation also skips successfully. That separate GitHub-hosted job uses
-Node.js 24 and pinned npm 12.2.0 to publish the same artifact publicly with
+prepared artifact's release receipt. Every publication attempt repeats preflight
+before downloading the artifact, so versions that appeared during preparation
+or an earlier attempt also skip successfully. That separate GitHub-hosted job
+uses Node.js 24 and pinned npm 12.2.0 to publish the same artifact publicly with
 provenance and the `latest` dist-tag. No npm token is required. Stable releases
 are supported; prerelease versions are rejected, and a new version must advance
 the public registry's current `latest` version.
 
-Only after the public registry's source commit, SHA-512 integrity and downloaded
-tarball bytes match the artifact does publication create
-`daynight-v<package-version>` at the frozen source commit. Existing versions and
-tags are never overwritten. Public metadata and tarball visibility share one
-ten-minute verification deadline after npm accepts publication, or from
-verification start when recovering an existing version. HTTP 404 responses for
-either resource are polled within that deadline, with each attempt logged. Other
-HTTP errors and source or integrity mismatches fail immediately. Individual
-requests, including response bodies, have a 20-second limit and share the
-remaining verification deadline; the publishing job has a 15-minute limit. A
-visibility timeout leaves the tag uncreated and reports failure even if npm has
-accepted the package.
+The publication script checks existence again before upload. If an upload
+fails, it queries the exact npm version: a confirmed existing version succeeds
+as a skip, covering a concurrent duplicate publication; confirmed absence
+preserves the original upload error. Failed queries remain failures.
 
-If npm accepts the package but registry verification or tag creation fails,
-re-run the failed jobs of the same Actions run while its validated artifact
-remains available for 30 days. A publishing-job retry with that retained artifact
-bypasses the fresh-publication preflight, verifies an existing version against
-the same source and bytes, and creates the missing tag. Conflicting source,
-contents or tag targets fail recovery. If preparation itself is retried, the
-first publication attempt with its newly prepared artifact still runs the second
-preflight. Re-running all jobs or creating a new dispatch repeats the initial
-preflight and skips any existing marker; these operations do not complete an
-interrupted release. The workflow serializes releases and keeps in-progress
-releases running. The
-[preflight decision](.agents/notes/implemented/process/2026-10-21-publication-version-preflight.md)
-owns skip and retry behavior; the
+For a new upload, publication creates `daynight-v<package-version>` at the frozen
+source commit only after the public registry's source commit, SHA-512 integrity
+and downloaded tarball bytes match the artifact. Existing versions and tags are
+never overwritten. Public metadata and tarball visibility share one ten-minute
+verification deadline after npm accepts publication. npm `E404` and tarball HTTP
+404 responses are polled within that deadline, with each attempt logged. Other
+errors and source or integrity mismatches fail. npm queries have a 30-second
+limit; GitHub and tarball HTTP requests, including response bodies, have a
+20-second limit. Verification operations share the remaining overall deadline;
+the publishing job has a 15-minute limit.
+
+A verification or tag-creation failure can leave an accepted npm package without
+a tag. Re-running failed jobs, re-running all jobs and new dispatches all skip
+successfully once the exact npm version or tag exists. These skips do not
+complete a missing tag or claim that the existing package matches the retained
+artifact. Artifacts remain available for 30 days. The workflow serializes
+releases and keeps in-progress releases running. The
+[npm CLI publication-check decision](.agents/notes/implemented/process/2026-10-22-npm-cli-publication-checks.md)
+owns lookup, skip and duplicate-publication behavior; the
 [trusted-publishing decision](.agents/notes/implemented/process/2026-10-20-npm-trusted-publishing.md)
-owns artifact identity, OIDC and public verification.
+owns new-artifact identity, OIDC and public verification. The
+[CLI publication-validation decision](.agents/notes/implemented/process/2026-10-22-cli-publication-validation.md)
+owns the release validation scope.
 
 ## Install and update
 
@@ -532,7 +557,7 @@ daynight project list [--json]
 daynight project show <project-id> [--json]
 daynight task
 daynight task create --title <title> [options]
-daynight task list [--status <status>] [--ready] [--json] [--project <project-id>]
+daynight task list [--all | --status <status>] [--ready] [--json] [--project <project-id>]
 daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
@@ -795,6 +820,7 @@ daynight task create --title "Build the sign-in page" --depends-on <task-id>
 daynight task ready
 daynight task ready --limit 5 --json
 daynight task list --ready
+daynight task list --all --json
 daynight task list --status in_progress --json
 daynight task show <task-id> --json
 daynight task update <task-id> --description=
@@ -821,9 +847,13 @@ pages. The service orders results by creation time and then task ID, both
 ascending. A ready task is `todo` with all direct dependencies `done`. This
 bounded selection supports choosing the next work without retrieving the whole
 project; `task graph` provides a dependency overview when needed. `task list`
-continues to read every matching page, including with `--ready`; its status and
-ready filters combine with AND. `task ready` accepts neither `--status` nor
-`--cursor`.
+reads every matching page, including with `--ready`, and excludes `done` by
+default. `--all` includes every status; `--status <status>` selects one status,
+including `done`. These two options conflict. `--ready` intersects the selected
+statuses and can be combined with `--all`. List results place `in_progress`
+first, then ready tasks, other `todo` tasks, and `done`; each group retains
+service order across all pages. This order applies to human and JSON results.
+`task ready` accepts neither `--status` nor `--cursor`.
 
 Updates preserve omitted fields; an empty description clears it. Repeated
 `--depends-on` values replace the complete dependency set and retain input order
@@ -841,13 +871,15 @@ inline assignment. Attachment `put` declares its `--path` as text, accepting
 `--path=value`; attachment `put/read/remove` also accept `--` before positional
 paths starting with a dash. Other task operations retain their declared syntax.
 
-Human results use complete labeled task blocks and graph nodes, including task
+Human task lists use labeled blocks containing ID, project, title, PR references,
+status, readiness, dependencies and blocking. Description, version and timestamps
+remain available in show, ready, create and update output. Graph nodes include
 state, dependencies, blocking and title-preview truncation flags. Queries support
-`--json`: `list` returns every matching resource in one array, `ready` returns
-only its selected tasks as an array, details return one resource, and graphs
-return the complete API object. A ready result retains every task field; an
-empty human result is `No ready tasks.` and empty JSON is `[]`. Versions remain
-JSON numbers with full int64 precision.
+`--json`: `list` returns every matching resource with all API fields in one array,
+`ready` returns only its selected tasks as an array, details return one resource,
+and graphs return the complete API object. A ready result retains every task
+field; an empty human result is `No ready tasks.` and empty JSON is `[]`. Versions
+remain JSON numbers with full int64 precision.
 Local preparation fails before any task mutation; a lost write response is
 reported as unconfirmed. The [task record](docs/design/daynight-project-task-tasks.md)
 owns validation status. Installed CLI integration uses the real Go/PostgreSQL
@@ -1328,17 +1360,21 @@ Multiple affected modules select the union of their jobs.
 
 | Changed paths | PR application jobs |
 |---|---|
-| `packages/daynight/` | Linux, macOS and Windows CLI validation, plus shell completion |
+| `packages/daynight/test/fixtures/installed-cli.ts` | CLI, Go server and Web; all installed-package consumers |
+| Other `packages/daynight/` paths | Linux, macOS and Windows CLI validation, plus shell completion |
 | `packages/daynight-server/` | Go server |
 | `packages/daynight-web/`, runtime files under `deployment/`, the current Dagre and XYFlow patches | Web |
 | Root `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.npmrc` | Every module |
-| `docs/`, `.agents/`, `.claude/`, files named `README.md`, `AGENTS.md` or `CLAUDE.md`, or the manual `publish.yml` workflow | No application jobs |
+| Root `.gitignore`, `docs/`, `.agents/`, `.claude/`, files named `README.md`, `AGENTS.md` or `CLAUDE.md`, or the manual `publish.yml` workflow | No application jobs |
 | CI routing/workflow changes and other unclassified paths | Every module |
 
 Every path under `packages/daynight/src/` selects CLI validation, including
 runtime Markdown such as the bundled review skill's `SKILL.md` or `README.md`.
-Other documentation exclusions apply before module selection. New modules and
-unclassified patches select all jobs until their consumers are explicitly assigned.
+Other documentation exclusions apply before module selection. The `.gitignore`
+exclusion matches only the repository root; nested ignore files retain their
+module ownership or the unclassified-path fallback. An excluded path does not
+suppress jobs selected by other changed files. New modules and unclassified
+patches select all jobs until their consumers are explicitly assigned.
 
 Selected jobs keep their complete checks, coverage thresholds, acceptance suites,
 timeouts and cleanup requirements. The Go job still builds real web assets and
@@ -1355,7 +1391,11 @@ and all preparation/check commands finish before the native capacity phase.
 Both Go-consuming jobs restore module and compiler caches keyed by the server
 `go.sum`, while the server check expires test results before database/race/
 coverage validation. The web pipeline retains the full production build and
-unique image identity check. The
+unique image identity check. One packed/installed CLI is reused by the native
+and container browser attachment journeys. After the web pipeline and recorded
+resource recovery, Ubuntu web CI runs the existing real-container attachment
+persistence and paired-backup check once; its `.tmp/attachment-deployment-*/`
+evidence is archived with the browser/deployment evidence. The
 [acceptance pipeline decision](.agents/notes/implemented/testing/2026-10-21-web-acceptance-pipeline.md)
 owns scheduling and phase evidence; the
 [CI efficiency decision](.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md)
@@ -1366,8 +1406,9 @@ only `success` or `skipped` from every preceding job; failures, cancellations an
 other results fail the gate. It uses those job results without comparing module
 selection flags. Documentation-only PRs run routing tests and this final gate
 without installing application dependencies or running application tests. Every
-`main` push retains full application validation, including the exact-commit workflow run required for npm
-publication. Package-version enforcement belongs to PR validation. The
+`main` push retains full application validation. npm publication runs its own
+CLI validation at the frozen release commit. Package-version enforcement belongs
+to PR validation. The
 [selection decision](.agents/notes/implemented/process/2026-10-21-module-scoped-pr-ci.md)
 records the routing alternatives and maintenance costs; the
 [CI simplification decision](.agents/notes/implemented/simplification/2026-10-21-ci-gate-simplification.md)

@@ -1,8 +1,8 @@
 # Task 附件与通用文件存储设计
 
-状态：通用存储、附件元数据、文件 HTTP/预览入口、CLI 附件命令和部署持久卷已实现，
-停止写入后的配套备份恢复已有真实容器验证；Web 管理界面仍待完成。各任务交付进度
-在 Daynight 中维护。
+状态：通用存储、附件元数据、文件 HTTP/预览入口、CLI 附件命令、Web 管理界面和
+部署持久卷已实现，停止写入后的配套备份恢复已有真实容器验证。跨层组合验收复用
+真实服务、安装 CLI 和生产浏览器，实施与交付进度在 Daynight 中维护。
 
 行为要求由[附件需求](../spec/daynight-task-attachments.md)拥有；本文解释通用存储接口、
 附件元数据及各端集成机制。
@@ -42,8 +42,8 @@ mockup/
 
 ## 现有结构与集成位置
 
-以下是当前集成位置。存储、HTTP、CLI 和部署持久卷已有实现；Web 管理界面仍按
-后续任务交付。
+以下是当前集成位置。存储、HTTP、CLI、Web 管理界面和部署持久卷已有实现；
+各层交付及 A-T6 组合验收状态分别维护。
 
 | 当前结构 | 集成方式 |
 |---|---|
@@ -53,7 +53,7 @@ mockup/
 | [附件迁移](../../packages/daynight-server/internal/core/store/migrations/004_task_attachments.sql)定义独立附件表 | 既有迁移机制维护该表，归属由服务校验 |
 | [CLI API 客户端](../../packages/daynight/src/api/client.ts)区分 JSON、字节与空响应 | 复用期限、取消、错误及元数据预算；原始文件流不经过 JSON 解码 |
 | [CLI 上下文](../../packages/daynight/src/cli/context.ts)提供 text 与 bytes 输出 | `stdoutBytes` 可等待且保留背压，`closeStdoutBytes` 负责命令结束前的输出清理 |
-| [任务详情](../../packages/daynight-web/src/features/task-detail/TaskDrawer.tsx)独立加载 task | 在详情中增加附件区域，保持图和详情既有读取行为 |
+| [任务详情](../../packages/daynight-web/src/features/task-detail/TaskDrawer.tsx)独立加载 task | 组合附件区域，附件 hook 独立持有分页、写状态和预览，保持图和详情读取行为 |
 | [localhost Compose](../../deployment/localhost/compose.yaml)经 gateway 同源交付，服务使用 [UID 10001](../../deployment/localhost/Dockerfile) | 项目独立的附件持久卷挂载到服务可写根目录，沿用同一 Web 服务及监听端口 |
 
 ## 模块职责与依赖
@@ -299,36 +299,57 @@ docker compose -f deployment/localhost/compose.yaml logs server | rg '"request_i
 
 ## Web 文件树与预览
 
-Task 详情增加附件区域，分页加载元数据并按路径构建目录树。用户选择一个本地文件、
-填写目标相对路径后上传；点击文件预览，单文件操作提供下载与删除。相同路径直接
-覆盖，成功后刷新附件区域。加载、上传或删除失败在该区域显示错误，保留其他已加载
-内容；不触发任务图更新。
+`TaskDrawer` 在关联 PR 后组合 `TaskAttachments`。用户选择一个文件，目标路径初始为
+文件名，可改为多层相对路径；`mime` 4.1.1 按目标路径确定上传 Content-Type，未知
+类型使用 `application/octet-stream`。同路径直接覆盖，单文件提供下载和删除，成功
+后刷新附件区域，不修改详情、task 版本或图。页面沿用看板样式，没有独立预览弹窗。
 
-| 类型 | 预览方式 |
+`useAttachments` 分开持有列表、写操作、选中路径和预览。列表逐页读取，并检查路径
+树冲突与重复游标；续页失败保留已经读取的文件并标明不完整，提供重试。结果绑定
+project/task，内容状态同时绑定 path；切换身份、选择或卸载通过 AbortController 和
+请求 generation 排除旧结果。写操作不自动重试，普通错误在附件区域明确展示。
+
+覆盖成功增加预览 revision。手动刷新发现所选文件的 `updatedAt` 改变时重新请求正文；
+`path/updatedAt` 作为预览组件身份，使同路径的图片和 frame 重新挂载。HTTP 的
+`Cache-Control: no-store` 保持可覆盖路径的当前读取语义。
+
+| 类型 | 预览机制 |
 |---|---|
-| Markdown | 前端安全渲染，将相对图片及链接按该文件所在目录解析到预览路径 |
-| 图片 | 图片查看 |
-| PDF | 浏览器原生 PDF 查看 |
-| 文本、JSON、源码 | 文本查看，保留内容与换行 |
-| HTML | 普通 iframe 中加载并执行 |
-| 其他格式 | 文件信息及下载 |
+| Markdown | `react-markdown` 10.1.0 与 `remark-gfm` 4.0.1 渲染 CommonMark/GFM，含表格；原始 HTML 保持转义 |
+| 图片 | 原生 img 的加载、错误和重试状态 |
+| PDF | HEAD 检查后交给浏览器原生 iframe |
+| 文本、JSON、源码 | 原始文本节点与 pre，保留换行 |
+| HTML | HEAD 检查后在普通同源 iframe 中加载执行 |
+| 其他格式 | 元数据及下载链接 |
 
-HTML 入口为固定 URL，例如：
+Markdown 的相对图片和链接从当前文件所在目录解析到 task 预览路径；逐段处理 URL
+编码和 parent 段，拒绝越过 task 根目录，保留 query/hash。独立 `#fragment` 保持原值，
+不改成文件请求。绝对 URL 和根相对 URL 继续遵循正常 URL 语义，并通过渲染库的
+默认 URL 安全规则；不把原始 HTML 作为可执行节点插入 Markdown。
+
+HTML 入口是固定同源 URL，例如：
 
 ```text
 /api/v1/projects/{projectId}/tasks/{taskId}/preview/mockup/index.html
 ```
 
-入口中的 `./assets/style.css`、`./assets/app.js` 和相对 fetch URL 按正常 URL 规则
-读取同目录结构的文件。不改写 HTML、CSS 或 JavaScript 内容；以 `/` 开头的根相对
-地址仍指向主站根目录，不自动改成 task 内路径。
+HTML/PDF 的 HEAD 可用性检查只判断响应状态和 requestId，不尝试读取不存在的 JSON
+body。成功后 frame 正常 GET 文件和其资源。入口中的 `./assets/style.css`、
+`./assets/app.js` 和相对 fetch URL 按浏览器规则读取同目录结构，不改写文件内容；
+以 `/` 开头的地址仍指向主站根目录。HTML 附件属于可信项目代码，拥有主应用同源
+权限，普通 iframe 不使用 sandbox；不增加 session/token、独立 origin/端口、Service
+Worker 或离线文件系统。
 
-HTML 附件属于可信项目代码，普通 iframe 与主应用同源，可以运行脚本、ES modules、
-fetch 和浏览器存储，也拥有主应用的同源权限。本设计不提供执行隔离。预览复用既有
-服务 origin，无预览 session/token、独立域名或端口、Service Worker、离线文件系统。
+原侧栏继续拥有 portal、背景 inert、滚动和被动卸载后的焦点恢复。`tabbable` 6.5.0
+的生产默认可见性检查统一枚举侧栏与同源 frame 的可 Tab 元素；frame 的 load
+监听桥接 Esc 与首末 Tab/Shift+Tab 到侧栏，并在替换或卸载时释放。详细历史与取舍
+见 [Web 附件决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)。
 
-本设计确定交互和内容约定，不定义新的视觉样式；页面实现沿用现有看板组件和可访问
-交互。具体文件切换应取消过期加载，避免前一文件内容覆盖当前选择。
+`tests/mockups/attachments.html` 仅由 Vite 开发服务提供，实际组件和 CSS 使用内存
+fixture API 与原生 fixture 文件，支持文件、空态和上传失败场景。fixture 分配的对象
+URL 在删除后仍保持有效，到 fixture dispose 才释放，避免已加载组件使用失效地址。
+生产构建保留单一应用 index，不包含该入口或 fixture 文件。该 mockup 及本地浏览器
+探针验证前端交互；真实服务的安装 CLI/生产浏览器旅程另由组合验收覆盖。
 
 ## CLI
 
@@ -422,11 +443,12 @@ localhost 的 PG 与附件卷在正常停止、重启、重建及 `down` 后保�
 
 ## 实现验证
 
-通用存储、元数据、HTTP 与 fixture 已有组件和实际二进制检查；持久卷通过现有
-runner 的两个实际 dev-ci 项目验证。源绑定结果归属对应 PR 与 CI。CLI 命令及字节
-输出已有实现，原生平台、安装产物和完整服务组合的验证结论仍须来自各自源码绑定
-的实际运行；本机验证不能代替 Windows/macOS 托管结果。Web 管理界面继续按后续
-任务验证，不能由后端或部署通过结果代替。各层验证职责如下：
+通用存储、元数据与 HTTP 已有组件和实际二进制检查；持久卷通过现有 runner 的
+两个实际 dev-ci 项目验证。CLI 命令及字节输出已有实现，原生平台、安装产物和
+完整服务组合的验证结论仍须来自各自源码绑定的实际运行，本机验证不能代替
+Windows/macOS 托管结果。Web 管理界面交付组件、状态及前端 fixture，真实浏览器
+探针覆盖该环境的视觉与焦点。源绑定结果归属对应 PR 与 CI。组合验收的机制见
+[跨层验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)，各层验证职责如下：
 
 - Storage：bucket 隔离、真实相对路径、同路径完整覆盖、原始字节一致、实际大小、
   缺失与权限错误、取消、普通失败的临时文件清理及路径不能越出根目录。
@@ -440,6 +462,24 @@ runner 的两个实际 dev-ci 项目验证。源绑定结果归属对应 PR 与 
   图片/PDF/文本展示、失败反馈与切换文件时的过期请求取消。
 - 部署：真实非 root 容器写入、同源 gateway 传输、正常重建保留附件、dev-ci 卷隔离
   及清理、配套备份恢复。
+
+Go 的 `installed_cli_task_attachment_workflow` 使用既有安装回执与实际服务，比较文本、
+空内容及超过 1 MiB 的二进制；覆盖多级/特殊路径、同 basename、覆盖、超过 100 条
+列表、删除和 requestId。实际进程重启复用同一存储根，核对 metadata、bytes 和完整
+任务资源。回执保存附件 path/size/SHA-256 与分页数量，所有 fixture 的清理 gate
+必须确认 `storageRootRemoved`。
+
+Web 新增 `task-attachments` 功能场景，在原生和实际生产容器上让同一次安装的 CLI
+与页面操作同一批数据；原有八个图功能场景及四个原生容量场景保持完整。严格 inventory
+为原生 13 个、容器 9 个。只有附件场景精确的 task/file PUT/DELETE 获准，旧图场景
+继续 GET/HEAD。完整 Chromium channel `chromium` 对 PDF 的证明来自 iframe 实际
+compositor 像素中的 fixture 专用色块，成功状态、load 和固定等待均不能代替绘制。
+
+运行回执校验 Git SHA/dirty 标记及实际 tarball/entry 摘要；dirty 标记不是脏源码内容
+指纹。CI 继续要求干净 checkout 等于 `GITHUB_SHA`。浏览器、CLI 和辅助子进程/组均
+归本次 run 管理，失败或取消也必须清理。Web CI 完成生产浏览器、容量及恢复后，
+再运行一次既有真实部署附件检查，保留配套备份恢复回执。所有通过结论须绑定
+对应实际运行的源码、产物及环境回执。
 
 本方案没有新增 MCP 或模型工具定义，模型工具 schema 与 token 预算不适用。
 

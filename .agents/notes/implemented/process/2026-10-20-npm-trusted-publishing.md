@@ -8,9 +8,9 @@ Publishing the CLI requires repeatable package validation and a durable mapping
 from an npm version to its source commit. A release tag must identify a package
 that is available from the public registry. npm can accept a publication before
 its public registry metadata or tarball becomes visible, and metadata can appear
-before the corresponding tarball is downloadable. Interrupted publication and
-tagging must be recoverable without replacing an existing version or moving a tag, and
-registry verification must allow that processing time without waiting forever.
+before the corresponding tarball is downloadable. Repeated publication must succeed without replacing an existing version or
+moving a tag, and registry verification must allow that processing time without
+waiting forever.
 Maintainers also need CI publication without storing a long-lived npm token and
 must be able to identify the target version in the publishing job's title.
 
@@ -26,11 +26,12 @@ neither increments it nor commits changes. Prerelease versions fail because this
 workflow publishes stable releases to `latest`. A previously unpublished version
 must have greater precedence than the registry's current stable `latest` version.
 
-After the [version preflight](2026-10-21-publication-version-preflight.md) admits
-a new release, a read-only preparation job waits for the latest main-push
-`checks.yml` run at the captured commit to succeed. A missing or failed matching run stops the
-release. Preparation then uses Node.js 24 and pnpm 10.34.5 for a frozen
-install, type checking, tests and installed acceptance. It packs the staged CLI
+After the [version preflight](2026-10-22-npm-cli-publication-checks.md) admits
+a new release, a read-only preparation job uses Node.js 24 and pnpm 10.34.5 for a
+frozen install, CLI type checking, tests and installed acceptance at the captured
+commit. The [CLI publication-validation decision](2026-10-22-cli-publication-validation.md)
+replaces the original whole-main-checks prerequisite with this independent CLI
+validation. It packs the staged CLI
 with the captured commit in `gitHead`, smoke-installs the resulting tarball, and
 uploads `.tmp/npm-release/artifact/package.tgz` together with `release.json` as
 an immutable Actions artifact. The receipt binds package name, version, source,
@@ -43,10 +44,10 @@ Publishing a tarball does not infer
 the [npm publish implementation](https://github.com/npm/cli/blob/ae98c62586b6fea44114f72e249e246a2981de70/lib/commands/publish.js)
 distinguishes tarball and directory publication.
 
-After the fresh-publication preflight admits the artifact, the publishing job
-downloads it on a GitHub-hosted Ubuntu runner with Node.js 24 and npm 12.2.0.
-A failed publishing-job retry with the retained artifact uses strict recovery
-without that existence-only preflight. It receives `id-token: write` for npm OIDC and
+Every publishing-job attempt, including a retry, repeats existence-only
+preflight before downloading the artifact on a GitHub-hosted Ubuntu runner
+with Node.js 24 and npm 12.2.0. Existing versions or tags succeed as skips. The
+job receives `id-token: write` for npm OIDC and
 `contents: write` for the final tag. It publishes the tarball to the public npm
 registry with `latest`, provenance and lifecycle scripts disabled. No npm token
 is provided. The package repository metadata identifies the GitHub source and
@@ -62,39 +63,40 @@ The [npm trusted publishing documentation](https://docs.npmjs.com/trusted-publis
 owns these registry requirements; the [provenance documentation](https://docs.npmjs.com/generating-provenance-statements)
 owns source and build attestation requirements.
 
-Publication completion is determined through the public registry. The release
-requires the registry's `gitHead` and SHA-512 integrity to match the receipt,
-downloads the registered tarball, and verifies its bytes. Only then does it
-create the lightweight `daynight-v<version>` tag at the captured source commit.
-The prefix distinguishes CLI releases from the independent server. Existing
-refs are never rewritten. During publication and same-run recovery, a tag already
-pointing to the source is accepted; a different target fails. Recovery accepts
-an existing npm version only with the same source and artifact, allowing an
-interrupted run to finish its missing tag. New dispatches use the existence-only
-preflight and skip either existing marker without verifying it.
+For a new upload, publication completion is determined through the public
+registry. The release requires the registry's `gitHead` and SHA-512 integrity
+to match the receipt, downloads the registered tarball, and verifies its bytes.
+Only then does it create the lightweight `daynight-v<version>` tag at the
+captured source commit. The prefix distinguishes CLI releases from the
+independent server. Existing refs are never rewritten. Existing tags or npm
+versions detected before upload succeed without verification or tag completion,
+regardless of their source or contents. A failed upload also succeeds when a
+subsequent exact npm query confirms that the version exists.
 
-Public verification uses one loop and one ten-minute deadline for metadata and
-tarball visibility. The deadline starts after npm accepts a fresh publication,
-or when verification begins for an existing version. A 404 for either resource
-means propagation is pending. Validated metadata is retained while waiting for
-the tarball, without resetting the deadline or republishing. Each poll logs its
-attempt number, elapsed time and remaining time. Other HTTP errors, malformed
-metadata or tarball URLs, source mismatches and integrity mismatches fail
-immediately. Individual requests, including response bodies, retain a 20-second
-limit within the shared deadline. Tag creation follows successful public byte
-verification. The publishing job has a 15-minute limit for setup, publication,
-visibility verification and tagging; ordinary CI validation limits remain
-independent.
+Public verification of a fresh upload uses one loop and one ten-minute deadline
+for metadata and tarball visibility, starting after npm accepts publication.
+Metadata is read through `npm view`; npm JSON `E404` or a tarball HTTP 404 means
+propagation is pending. Validated metadata is retained while waiting for the
+tarball, without resetting the deadline or republishing. Each poll logs its
+attempt number, elapsed time and remaining time. Other errors, malformed
+metadata or tarball URLs, source mismatches and integrity mismatches fail.
+npm queries have a 30-second process limit; GitHub and tarball HTTP requests,
+including response bodies, retain a 20-second limit. Verification operations
+share the remaining overall deadline. Tag creation follows successful public
+byte verification. The publishing job has a 15-minute limit for setup,
+publication, visibility verification and tagging; ordinary CI validation limits
+remain independent.
 
-Recovery re-runs the failed jobs of the same Actions run, preserving the captured
-source and reusing its validated artifact within the 30-day retention period.
-Registry errors, artifact mismatches and conflicting tags remain visible recovery
-failures. The original policy also verified existing markers for a separate
-dispatch, rejecting a different source even when its application files happened
-to be unchanged. That policy tied every accepted dispatch to the published
-source. The [version-preflight decision](2026-10-21-publication-version-preflight.md)
-replaces that admission policy: new dispatches skip existing versions or tags,
-while recovery retains the source and artifact checks described here.
+The original policy verified source and artifact identity for all existing
+versions and could finish a missing tag from a retained artifact. The
+[version-preflight decision](2026-10-21-publication-version-preflight.md) first
+replaced admission for new dispatches while retaining strict same-run recovery.
+The [npm CLI publication-check decision](2026-10-22-npm-cli-publication-checks.md)
+now applies existence-only skips to every retry as well. It owns npm queries,
+uniform skips and duplicate-upload reconciliation. Re-running failed jobs can
+succeed once the exact version exists, but does not create its missing tag or
+claim that the existing bytes match the artifact. Preparation artifacts remain
+available for 30 days.
 
 ## Alternatives
 
@@ -117,8 +119,8 @@ the configured GitHub workflow.
 
 **Publish on every main merge.** This makes each merge a release authorization,
 including documentation-only changes whose package version is unchanged. A
-manual dispatch keeps publication intent separate from integration while using
-the same exact-commit validation gate.
+manual dispatch keeps publication intent separate from integration while
+validating the CLI at the exact release commit.
 
 **Retain a two-minute public visibility limit.** This ends a failed release
 sooner, but the first live publication required longer registry processing after
@@ -135,13 +137,13 @@ deadline covers both resources while retaining a bounded verification period.
 The release uses one validated tarball across preparation, installation,
 publication and public-registry verification. The privileged publishing job
 does not rebuild the package or execute package lifecycle scripts. Tagging is
-ordered after an observable successful publication, and publishing-job retries
-complete interrupted releases without mutating package versions or existing tags.
+ordered after an observable successful new publication. Repeated attempts skip
+existing releases without mutating package versions or existing tags.
 The publishing job title follows the artifact version automatically, including
 when failed jobs are re-run with the retained artifact.
 
-The first live publication validates both the OIDC path and interrupted-run
-recovery. At source `39bdff4bdc6e271cc69a733ecde742cc004dfdf8`,
+The first live publication validated the OIDC path and the original
+interrupted-run recovery policy. At source `39bdff4bdc6e271cc69a733ecde742cc004dfdf8`,
 [`0.2.3` attempt 1](https://github.com/codetreker/daynight/actions/runs/39365670125/attempts/1)
 reported npm acceptance at `2026-10-20T03:46:24.465Z` and warned that processing
 could take a few minutes. Its two-minute visibility limit expired at
@@ -152,7 +154,8 @@ publication. [Attempt 2](https://github.com/codetreker/daynight/actions/runs/393
 verified the existing version against the same source and artifact and created
 `daynight-v0.2.3` without republishing. A longer visibility budget keeps this
 processing delay inside the release workflow; exhausted or failed verification
-still prevents tag creation and can use the same recovery path.
+still prevents tag creation. The current uniform skip policy does not repeat
+that historical tag-completion procedure.
 
 The [`0.6.1` publication](https://github.com/codetreker/daynight/actions/runs/39430284042/job/118656438389)
 exposed the separate tarball visibility window. npm accepted it at

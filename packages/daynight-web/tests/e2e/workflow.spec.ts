@@ -137,12 +137,34 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   await updateTask(request, project.id, e.id, { version: e.version, status: 'done' });
   const f = await createTask(request, project.id, { title: 'F 三根共享合流', dependsOn: [d.id, e.id, b.id, c.id] });
   const g = await createTask(request, project.id, { title: 'G 共享后续', dependsOn: [f.id] });
+  const completed = await createTask(request, project.id, { title: '已完成独立任务' });
+  await updateTask(request, project.id, completed.id, { version: completed.version, status: 'done' });
   const independent = await createTask(request, project.id, { title: '独立待处理任务' });
   await openProject(page, project.id, project.name);
-  for (const [label, value] of [['任务总数', '8'], ['已完成', '4'], ['待处理', '3'], ['进行中', '1'], ['可开始', '1'], ['被阻塞', '2']] as const) {
+  for (const [label, value] of [['任务总数', '9'], ['已完成', '5'], ['待处理', '3'], ['进行中', '1'], ['可开始', '1'], ['被阻塞', '2']] as const) {
     await expect(stat(page, label)).toHaveText(value);
   }
-  await expect(page.getByText('完成比例 50%')).toBeVisible();
+  await expect(page.getByText('完成比例 56%')).toBeVisible();
+  expect(await page.locator('.root-toggle').evaluateAll((items) => items.map((item) => item.id))).toEqual(
+    [independent, c, b, a].map(({ id }) => `task-root-${id}`),
+  );
+  await expect(root(page, independent.id)).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('.react-flow__node')).toHaveCount(1);
+  const completedVisibility = page.getByRole('checkbox', { name: '显示已完成任务链（1）' });
+  await expect(completedVisibility).not.toBeChecked();
+  await expect(root(page, completed.id)).toHaveCount(0);
+  await expect(page.getByLabel('显示 4 条，共 5 条任务链')).toBeVisible();
+  await completedVisibility.check();
+  await expect(root(page, completed.id)).toBeVisible();
+  await page.reload();
+  await expect(completedVisibility).toBeChecked();
+  expect(await page.locator('.root-toggle').evaluateAll((items) => items.map((item) => item.id))).toEqual(
+    [independent, completed, c, b, a].map(({ id }) => `task-root-${id}`),
+  );
+  await expect(root(page, independent.id)).toHaveAttribute('aria-expanded', 'true');
+  await completedVisibility.uncheck();
+  await expect(root(page, completed.id)).toHaveCount(0);
+  await root(page, a.id).click();
   await expect(root(page, a.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(root(page, a.id).locator('.root-status')).toHaveText('已完成');
   await expect(root(page, a.id).locator('.root-progress-label')).toHaveText('3/5 已完成');
@@ -311,6 +333,36 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
     await expect.poll(() => viewport.getAttribute('style')).not.toBe(beforePan);
     await checkEdges(a.id);
   });
+  await test.step('fills the viewport without replacing the active graph or resetting its view', async () => {
+    const viewport = page.locator('.react-flow__viewport');
+    const beforeFullscreen = await viewport.getAttribute('style');
+    const viewportElement = await viewport.elementHandle();
+    const taskElement = await node(page, a.id).elementHandle();
+    expect(viewportElement).not.toBeNull();
+    expect(taskElement).not.toBeNull();
+    const enter = page.getByRole('button', { name: '全屏查看', exact: true });
+    await enter.click();
+    const fullscreen = page.getByRole('dialog', { name: '任务依赖图全屏查看', exact: true });
+    await expect(fullscreen).toHaveAttribute('aria-modal', 'true');
+    await expect.poll(async () => {
+      const bounds = await fullscreen.boundingBox();
+      return bounds !== null && Math.abs(bounds.x) <= 0.5 && Math.abs(bounds.y) <= 0.5
+        && Math.abs(bounds.width - 1600) <= 0.5 && Math.abs(bounds.height - 1100) <= 0.5;
+    }).toBe(true);
+    await expect(viewport).toHaveAttribute('style', beforeFullscreen!);
+    expect(await viewportElement!.evaluate((element) => element === document.querySelector('.react-flow__viewport'))).toBe(true);
+    expect(await taskElement!.evaluate((element, id) => element === document.querySelector(`.react-flow__node[data-id="${id}"] button.task-node`), a.id)).toBe(true);
+    await checkEdges(a.id);
+    await fullscreen.getByRole('button', { name: '退出全屏', exact: true }).click();
+    await expect(fullscreen).toHaveCount(0);
+    await expect(enter).toBeFocused();
+    await expect(viewport).toHaveAttribute('style', beforeFullscreen!);
+    expect(await viewportElement!.evaluate((element) => element === document.querySelector('.react-flow__viewport'))).toBe(true);
+    expect(await taskElement!.evaluate((element, id) => element === document.querySelector(`.react-flow__node[data-id="${id}"] button.task-node`), a.id)).toBe(true);
+    await checkEdges(a.id);
+    await viewportElement!.dispose();
+    await taskElement!.dispose();
+  });
   await expect(page.locator('.task-node-boundary')).toHaveCount(2);
   await expect(page.locator('.task-boundary-label')).toHaveText(['外部前置，上游已省略', '外部前置，上游已省略']);
   await expect(node(page, f.id).locator('.task-shared-label')).toHaveText('共享');
@@ -332,7 +384,16 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   await expect(root(page, b.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(page.locator('.task-graph-canvas')).toHaveCount(1);
   await checkEdges(b.id);
+  await page.reload();
+  await expect(root(page, b.id)).toHaveAttribute('aria-expanded', 'true');
+  await expect(root(page, a.id)).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('.task-graph-canvas')).toHaveCount(1);
+  await checkEdges(b.id);
   await root(page, b.id).click();
+  await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
+  await page.reload();
+  await expect(root(page, a.id)).toHaveAttribute('aria-expanded', 'false');
+  await expect(root(page, b.id)).toHaveAttribute('aria-expanded', 'false');
   await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
   await root(page, a.id).click();
   await expect(page.locator('.react-flow__node')).toHaveCount(7);
@@ -502,7 +563,9 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, request },
   await expect(stat(page, '任务总数')).toHaveText('1');
   await expect(stat(page, '已完成')).toHaveText('1');
   await expect(page.getByText('完成比例 100%')).toBeVisible();
-  await root(page, task.id).click();
+  await expect(page.getByRole('heading', { name: '所有任务链已完成' })).toBeVisible();
+  await page.getByRole('button', { name: '显示已完成任务链', exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: '显示已完成任务链（1）' })).toBeFocused();
   await expect(root(page, task.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(node(page, task.id)).toBeVisible();
   const receipt = await page.locator('.snapshot-time time').getAttribute('datetime');
@@ -631,7 +694,23 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   const trigger = node(page, b.id);
   let detailReads = 0;
   page.on('request', (request) => { if (new URL(request.url()).pathname === `/api/v1/projects/${project.id}/tasks/${b.id}`) detailReads++; });
+  const originalOverflow = await page.evaluate(() => ({ document: document.documentElement.style.overflow, body: document.body.style.overflow }));
+  const enterFullscreen = page.getByRole('button', { name: '全屏查看', exact: true });
+  await enterFullscreen.focus();
+  await page.keyboard.press('Enter');
+  const fullscreen = page.getByRole('dialog', { name: '任务依赖图全屏查看', exact: true });
+  const exitFullscreen = fullscreen.getByRole('button', { name: '退出全屏', exact: true });
+  await expect(exitFullscreen).toBeFocused();
+  expect(await root(page, a.id).evaluate((element) => element.closest('[inert]') !== null)).toBe(true);
+  expect(await page.getByRole('button', { name: '刷新', exact: true, includeHidden: true }).evaluate((element) => element.closest('[inert]') !== null)).toBe(true);
+  await page.keyboard.press('Shift+Tab');
+  expect(await fullscreen.evaluate((element) => element.contains(document.activeElement))).toBe(true);
   await page.keyboard.press('Tab');
+  await expect(exitFullscreen).toBeFocused();
+  for (let index = 0; index < 10; index++) {
+    await page.keyboard.press('Tab');
+    expect(await fullscreen.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  }
   await trigger.focus();
   await expect(trigger).toBeFocused();
   await page.keyboard.press('Enter');
@@ -655,12 +734,18 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   }
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
+  await expect(fullscreen).toBeVisible();
   await expect(trigger).toBeFocused();
   await page.keyboard.press('Space');
   await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
   expect(detailReads).toBe(2);
   await close.click();
   await expect(trigger).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(fullscreen).toHaveCount(0);
+  await expect(enterFullscreen).toBeFocused();
+  expect(await root(page, a.id).evaluate((element) => element.closest('[inert]') !== null)).toBe(false);
+  expect(await page.evaluate(() => ({ document: document.documentElement.style.overflow, body: document.body.style.overflow }))).toEqual(originalOverflow);
 
   await trigger.click();
   await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
@@ -695,16 +780,36 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
 
-  await updateTask(request, project.id, b.id, { version: b.version, dependsOn: [] });
-  await trigger.click();
-  await expect(dialog.locator('.drawer-stale')).toBeVisible();
-  await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
-  await expect(trigger).toHaveCount(0);
-  await page.keyboard.press('Escape');
-  await expect(dialog).toHaveCount(0);
-  await expect(root(page, a.id)).toBeFocused();
-  await expect(page.locator('#root')).not.toHaveAttribute('inert', '');
+  const completedVisibility = page.getByRole('checkbox', { name: '显示已完成任务链（0）' });
+  await completedVisibility.check();
+  await expect(completedVisibility).toBeChecked();
+  let currentTask = b;
+  for (const fullscreenMode of [false, true]) {
+    if (fullscreenMode) {
+      currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, dependsOn: [a.id] });
+      await page.getByRole('button', { name: '刷新', exact: true }).click();
+      await expect(trigger).toBeVisible();
+      await enterFullscreen.click();
+    }
+    currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, dependsOn: [] });
+    await trigger.click();
+    await expect(dialog.locator('.drawer-stale')).toBeVisible();
+    await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
+    await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
+    await expect(trigger).toHaveCount(0);
+    if (fullscreenMode) await expect(page.locator('.task-graph-fullscreen')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    if (fullscreenMode) {
+      await expect(fullscreen).toBeVisible();
+      await expect(exitFullscreen).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(fullscreen).toHaveCount(0);
+      await expect(enterFullscreen).toBeFocused();
+    } else await expect(root(page, a.id)).toBeFocused();
+    await expect(page.locator('#root')).not.toHaveAttribute('inert', '');
+    expect(await page.evaluate(() => ({ document: document.documentElement.style.overflow, body: document.body.style.overflow }))).toEqual(originalOverflow);
+  }
   await screenshot(page, info, 'keyboard-focus');
 });
 
@@ -723,7 +828,19 @@ test('narrow-layout', scenario('narrow-layout'), async ({ page, request }, info)
   await expect(page.getByRole('button', { name: '刷新', exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expect(page.locator('.stats .stat')).toHaveCount(6);
-  await page.keyboard.press('Tab');
+  await page.getByRole('button', { name: '全屏查看', exact: true }).click();
+  const fullscreen = page.getByRole('dialog', { name: '任务依赖图全屏查看', exact: true });
+  for (const width of [320, 768, 1280, 320]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect.poll(async () => {
+      const bounds = await fullscreen.boundingBox();
+      return bounds !== null && Math.abs(bounds.x) <= 0.5 && Math.abs(bounds.y) <= 0.5
+        && Math.abs(bounds.width - width) <= 0.5 && Math.abs(bounds.height - 800) <= 0.5;
+    }).toBe(true);
+    await expect(fullscreen.getByRole('button', { name: '退出全屏', exact: true })).toBeVisible();
+    expect(await fullscreen.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
   await node(page, a.id).focus();
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: '任务详情' });

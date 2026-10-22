@@ -1,11 +1,14 @@
 import { useEffect, useId, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ApiError } from '../../api/client';
+import { useBodyScrollLock } from '../../app/useBodyScrollLock';
 import type { TaskStatus } from '../../api/types';
 import type { GraphSnapshot } from '../projects/useTaskGraph';
 import { isTaskStale } from './freshness';
+import { drawerFocusables } from './focus';
 import { useTaskDetail } from './useTaskDetail';
 import { TaskPullRequests } from './TaskPullRequests';
+import { TaskAttachments } from './attachments/TaskAttachments';
 import '../../styles/drawer.css';
 
 export type TaskDrawerProps = {
@@ -21,8 +24,6 @@ export type TaskDrawerProps = {
 const statusLabels: Record<TaskStatus, string> = {
   todo: '待处理', in_progress: '进行中', done: '已完成',
 };
-
-const focusableSelector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 const StatusBadge = ({ status }: { readonly status: TaskStatus }) => (
   <span className={`drawer-status drawer-status-${status}`}>{statusLabels[status]}</span>
@@ -48,14 +49,13 @@ export const TaskDrawer = ({ projectId, taskId, snapshot, onSelectTask, onClose,
   const closeRef = useRef<HTMLButtonElement>(null);
   const callbacks = useRef({ onClose, onRestoreFocus });
   callbacks.current = { onClose, onRestoreFocus };
+  useBodyScrollLock(true);
 
   useLayoutEffect(() => {
     const root = document.getElementById('root');
     if (root === null) throw new Error('The application root is required for the task drawer.');
     const wasInert = root.hasAttribute('inert');
-    const previousOverflow = document.body.style.overflow;
     root.setAttribute('inert', '');
-    document.body.style.overflow = 'hidden';
     closeRef.current!.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -64,7 +64,7 @@ export const TaskDrawer = ({ projectId, taskId, snapshot, onSelectTask, onClose,
         callbacks.current.onClose();
       } else if (event.key === 'Tab') {
         const dialog = dialogRef.current!;
-        const buttons = [...dialog.querySelectorAll<HTMLElement>(focusableSelector)];
+        const buttons = drawerFocusables(dialog);
         const first = buttons[0]!;
         const last = buttons[buttons.length - 1]!;
         const active = document.activeElement;
@@ -81,7 +81,6 @@ export const TaskDrawer = ({ projectId, taskId, snapshot, onSelectTask, onClose,
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       if (!wasInert) root.removeAttribute('inert');
-      document.body.style.overflow = previousOverflow;
     };
   }, [projectId]);
 
@@ -149,6 +148,7 @@ export const TaskDrawer = ({ projectId, taskId, snapshot, onSelectTask, onClose,
                 <p className="drawer-description">{detail.description === '' ? '暂无描述' : detail.description}</p>
               </section>
               <TaskPullRequests pullRequests={detail.properties.pullRequests} />
+              <TaskAttachments projectId={projectId} taskId={taskId} onClose={onClose} />
               <section className="drawer-section" aria-label="前置依赖">
                 <h4>前置依赖 · {detail.dependsOn.length}</h4>
                 {detail.dependsOn.length === 0 ? <p className="drawer-description">无前置依赖</p> : <ul className="drawer-relations">{detail.dependsOn.map(relation)}</ul>}

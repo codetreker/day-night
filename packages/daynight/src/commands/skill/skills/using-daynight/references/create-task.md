@@ -20,7 +20,9 @@ independently understandable outcome when its delivery needs continued tracking,
 cross-session continuity, handoff, or dependency coordination. If the request does not merit a task,
 explain that conclusion without creating one or starting unrequested work.
 
-Look for an existing task that solves the same problem within the same scope.
+Look for an existing task that solves the same problem within the same scope,
+including completed tasks when checking prior registrations; the default list
+contains only unfinished work.
 Inspect its full description, dependencies, primary Markdown, and acceptance
 criteria; matching titles alone do not establish equivalence. Reuse a suitable
 task and preserve its valid requirements. Do not create another task because

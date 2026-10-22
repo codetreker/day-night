@@ -14,6 +14,9 @@ const publicationAttempts = publicationWindow / publicationInterval + 1;
 const npmCommand = (): { command: string; prefix: string[] } => process.platform === "win32"
   ? { command: process.execPath, prefix: [path.join(path.dirname(process.execPath), "node_modules/npm/bin/npm-cli.js")] }
   : { command: "npm", prefix: [] };
+const configuredNpmCommand = () => process.env.NPM_CLI_JS === undefined
+  ? npmCommand()
+  : { command: process.execPath, prefix: [process.env.NPM_CLI_JS] };
 
 export interface ReleaseReceipt {
   name: string;
@@ -27,13 +30,14 @@ export interface ReleaseReceipt {
 
 export interface ReleaseServices {
   fetch: typeof fetch;
+  npmView: (version: string, cwd: string, signal?: AbortSignal) => Promise<RecordValue | undefined>;
   publish: (tarball: string, cwd: string) => Promise<void>;
   wait: (milliseconds: number) => Promise<void>;
   token: string;
   apiUrl: string;
 }
 
-type ReleaseLookupServices = Pick<ReleaseServices, "fetch" | "token" | "apiUrl">;
+type ReleaseLookupServices = Pick<ReleaseServices, "fetch" | "npmView" | "token" | "apiUrl">;
 export interface ReleasePreflight {
   version: string;
   skip: boolean;
@@ -116,8 +120,7 @@ export const runNpmPublish = async (tarball: string, cwd: string): Promise<void>
   await writeFile(emptyGlobalConfig, "");
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^npm_config_/i.test(key) && !/^(NODE_AUTH_TOKEN|NPM_TOKEN)$/i.test(key)));
   const args = ["publish", tarball, "--access=public", "--tag=latest", "--provenance", "--ignore-scripts", `--registry=${registry}/`, `--userconfig=${emptyUserConfig}`, `--globalconfig=${emptyGlobalConfig}`, `--cache=${path.join(cwd, "npm-cache")}`];
-  const cli = process.env.NPM_CLI_JS;
-  const npm = cli === undefined ? npmCommand() : { command: process.execPath, prefix: [cli] };
+  const npm = configuredNpmCommand();
   await new Promise<void>((resolve, reject) => {
     const child = spawn(npm.command, [...npm.prefix, ...args], {
       cwd, env, stdio: "inherit", timeout: 180_000,
@@ -127,10 +130,46 @@ export const runNpmPublish = async (tarball: string, cwd: string): Promise<void>
   });
 };
 
+export const runNpmView = async (version: string, cwd: string, signal?: AbortSignal): Promise<RecordValue | undefined> => {
+  const subject = `${packageName}@${version}`;
+  const deadline = AbortSignal.timeout(30_000);
+  const requestSignal = signal === undefined ? deadline : AbortSignal.any([signal, deadline]);
+  const npm = configuredNpmCommand();
+  const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+    const child = spawn(npm.command, [...npm.prefix, "view", subject, "--json", "--registry", registry, `--cache=${path.join(cwd, ".tmp/npm-view-cache")}`], {
+      cwd, stdio: ["ignore", "pipe", "pipe"], signal: requestSignal, killSignal: "SIGKILL",
+    });
+    let stdout = "";
+    let stderr = "";
+    let failure: Error | undefined;
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => { stdout += chunk; });
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
+    child.once("error", (error) => { failure = new Error(`npm view ${subject} failed.`, { cause: requestSignal.aborted ? requestSignal.reason : error }); });
+    child.once("close", (code) => failure === undefined ? resolve({ code, stdout, stderr }) : reject(failure));
+  });
+  if (result.code !== 0) {
+    let failure: unknown;
+    try { failure = JSON.parse(result.stdout); } catch { /* npm can report transport failures without JSON. */ }
+    if (typeof failure === "object" && failure !== null && "error" in failure) {
+      const error = failure.error;
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "E404") return undefined;
+    }
+    throw new Error(`Unable to read npm publication metadata for ${subject}: ${result.stderr || result.stdout || `exit ${result.code}`}`);
+  }
+  let input: unknown;
+  try { input = JSON.parse(result.stdout); } catch (error) {
+    throw new Error(`npm view ${subject} returned malformed JSON.`, { cause: error });
+  }
+  const metadata = record(Array.isArray(input) && input.length === 1 ? input[0] : input, `npm metadata for ${subject}`);
+  if (metadata.name !== packageName || typeof metadata.version !== "string" || !stableVersion.test(metadata.version)
+    || version !== "latest" && metadata.version !== version) throw new Error(`npm view returned invalid metadata for ${subject}.`);
+  return metadata;
+};
+
 const defaultLookupServices = (): ReleaseLookupServices => {
   const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
   if (token === undefined || token.length === 0) throw new Error("GITHUB_TOKEN is required to look up release tags.");
-  return { fetch, token, apiUrl: process.env.GITHUB_API_URL ?? "https://api.github.com" };
+  return { fetch, npmView: runNpmView, token, apiUrl: process.env.GITHUB_API_URL ?? "https://api.github.com" };
 };
 const defaultServices = (): ReleaseServices => {
   return {
@@ -149,13 +188,6 @@ const request = async <T>(services: ReleaseLookupServices, url: string, read: (r
   } finally {
     signal.removeEventListener("abort", abort);
   }
-};
-const registryMetadata = async (services: ReleaseLookupServices, version: string, signal?: AbortSignal): Promise<RecordValue | undefined> => {
-  return request(services, `${registry}/${encodeURIComponent(packageName)}/${encodeURIComponent(version)}`, async (response) => {
-    if (response.status === 404) return undefined;
-    if (!response.ok) throw new Error(`npm registry lookup for ${version} failed: HTTP ${response.status}.`);
-    return record(await response.json(), `npm metadata for ${version}`);
-  }, { headers: { Accept: "application/json" }, ...(signal === undefined ? {} : { signal }) });
 };
 const verifyMetadata = (metadata: RecordValue, receipt: ReleaseReceipt): RecordValue => {
   const dist = record(metadata.dist, "npm distribution metadata");
@@ -199,10 +231,7 @@ export const preflightRelease = async (sha: string, cwd = process.cwd(), service
   checkedOutSource(sha, cwd);
   const { version } = await packageManifest(cwd);
   if (await tagReference(services, `daynight-v${version}`) !== undefined) return { version, skip: true };
-  const metadata = await registryMetadata(services, version);
-  if (metadata !== undefined && (metadata.name !== packageName || metadata.version !== version)) {
-    throw new Error(`npm registry returned invalid metadata for ${packageName}@${version}.`);
-  }
+  const metadata = await services.npmView(version, cwd);
   return { version, skip: metadata !== undefined };
 };
 const createTag = async (services: ReleaseServices, receipt: ReleaseReceipt): Promise<void> => {
@@ -219,7 +248,7 @@ const createTag = async (services: ReleaseServices, receipt: ReleaseReceipt): Pr
   });
 };
 
-const verifyPublicPackage = async (services: ReleaseServices, receipt: ReleaseReceipt, metadata: RecordValue | undefined): Promise<void> => {
+const verifyPublicPackage = async (services: ReleaseServices, receipt: ReleaseReceipt, cwd: string): Promise<void> => {
   const started = Date.now();
   const deadline = AbortSignal.timeout(publicationWindow);
   const timeoutMessage = `Timed out waiting for public npm version ${receipt.name}@${receipt.version} and tarball within 10 minutes.`;
@@ -230,7 +259,7 @@ const verifyPublicPackage = async (services: ReleaseServices, receipt: ReleaseRe
       const elapsed = Date.now() - started;
       console.log(`Waiting for public npm version and tarball ${receipt.name}@${receipt.version}: attempt ${attempt + 1}/${publicationAttempts}, elapsed ${Math.floor(elapsed / 1_000)}s, remaining ${Math.ceil(Math.max(0, publicationWindow - elapsed) / 1_000)}s.`);
       if (tarballUrl === undefined) {
-        metadata ??= await registryMetadata(services, receipt.version, deadline);
+        const metadata = await services.npmView(receipt.version, cwd, deadline);
         if (metadata !== undefined) {
           const dist = verifyMetadata(metadata, receipt);
           if (typeof dist.tarball !== "string") throw new Error("Published npm metadata has no tarball URL.");
@@ -261,18 +290,29 @@ const verifyPublicPackage = async (services: ReleaseServices, receipt: ReleaseRe
 export const publishRelease = async (sha: string, cwd = process.cwd(), services = defaultServices()): Promise<ReleaseReceipt> => {
   const dirs = locations(cwd);
   const receipt = checkReceipt(JSON.parse(await readFile(path.join(dirs.artifact, "release.json"), "utf8")), sha);
+  const skip = () => {
+    console.log(`Skipping existing release ${receipt.name}@${receipt.version}.`);
+    return receipt;
+  };
+  if (await tagReference(services, receipt.tag) !== undefined || await services.npmView(receipt.version, cwd) !== undefined) return skip();
+  const latest = await services.npmView("latest", cwd);
+  if (latest?.version === receipt.version) return skip();
+  if (latest !== undefined && (typeof latest.version !== "string" || compareVersions(latest.version, receipt.version) >= 0)) {
+    throw new Error(`Publishing ${receipt.version} would not advance npm latest (${String(latest.version)}).`);
+  }
   const tarball = path.join(dirs.artifact, receipt.tarball);
   if (integrity(await readFile(tarball)) !== receipt.integrity) throw new Error("Prepared tarball integrity differs from the release receipt.");
-  await existingTag(services, receipt);
-  const metadata = await registryMetadata(services, receipt.version);
-  if (metadata === undefined) {
-    const latest = await registryMetadata(services, "latest");
-    if (latest !== undefined && (typeof latest.version !== "string" || compareVersions(latest.version, receipt.version) >= 0)) {
-      throw new Error(`Publishing ${receipt.version} would not advance npm latest (${String(latest.version)}).`);
-    }
+  try {
     await services.publish(tarball, dirs.root);
+  } catch (error) {
+    let metadata: RecordValue | undefined;
+    try { metadata = await services.npmView(receipt.version, cwd); } catch (lookupError) {
+      throw new AggregateError([error, lookupError], `npm publish failed and the publication status of ${receipt.name}@${receipt.version} could not be checked.`, { cause: error });
+    }
+    if (metadata !== undefined) return skip();
+    throw error;
   }
-  await verifyPublicPackage(services, receipt, metadata);
+  await verifyPublicPackage(services, receipt, cwd);
   await createTag(services, receipt);
   console.log(`Verified ${receipt.name}@${receipt.version}; tag ${receipt.tag} points to ${receipt.sourceSha}.`);
   return receipt;

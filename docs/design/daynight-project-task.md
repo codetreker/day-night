@@ -9,7 +9,8 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 [服务需求](../spec/daynight-server.md)拥有。结构决策与真实备选方案见
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-20-project-task-cli-design.md)及
 [创建预检决策](../../.agents/notes/implemented/bug-fix/2026-10-21-project-create-repository-discovery.md)，
-有界 ready 选择见[选择决策](../../.agents/notes/implemented/feature/2026-10-21-bounded-ready-task-selection.md)。
+有界 ready 选择见[选择决策](../../.agents/notes/implemented/feature/2026-10-21-bounded-ready-task-selection.md)，
+列表默认值与输出见[列表决策](../../.agents/notes/implemented/feature/2026-10-22-task-list-defaults.md)。
 实现顺序与依赖见[交付任务](daynight-project-task-tasks.md)。
 
 [预定义属性设计](daynight-task-properties.md)的 server 接口、CLI 成对 PR 引用
@@ -19,8 +20,8 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 [附件架构](daynight-task-attachments.md)中的 `task attachment put/list/read/remove`
 及二进制传输通道已实现，行为见[附件需求](../spec/daynight-task-attachments.md)，
 范围与 Daynight 任务入口见[附件任务拆分](daynight-task-attachments-tasks.md)。
-Web 文件管理仍待交付。既有 JSON 元数据和完整文本输出机制继续服务元数据
-命令；原始内容逐段写入字节通道。
+Web 文件管理亦已实现，组合验收由 A-T6 维护。元数据命令输出完整 JSON，并按操作
+选择列表摘要或完整文本资源；原始内容逐段写入字节通道。
 [CLI 决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-cli.md)记录
 流传输及输出辅助进程的选择。
 
@@ -321,6 +322,14 @@ flowchart TD
 协议错误终止，不能无限请求。多页读取继承服务不提供跨请求快照的边界，CLI 不
 宣称列表是同一时间点的完整快照。
 
+`task list` 的状态选择和展示顺序属于命令层。默认从完整结果中排除 `done`；
+`--all` 保留所有状态，`--status` 使用既有单状态查询，两者互斥并在任何 I/O 前
+拒绝。`--ready` 沿用服务筛选，与所选状态取交集，包含 `--all --ready`。
+命令在全部分页成功后按 `in_progress`、ready、其余 `todo`、`done` 稳定分组，
+同一组保留服务按 `createdAt ASC, id ASC` 返回的跨页顺序。文本和 JSON 消费
+同一选择结果，因此分页边界不会改变组间优先顺序。此机制复用既有 API 筛选和分页，
+不增加服务排序或多状态查询契约。
+
 `task ready` 将常见的下一项工作选择限制为前 N 项，避免项目积累任务后每次
 选择都读取完整 ready 集合。命令校验 `--limit` 为十进制整数 `1..100`，省略时
 为 `10`；无效值在配置读取、Git 与网络访问之前拒绝。它不接受 `--status` 或
@@ -330,7 +339,7 @@ flowchart TD
 补发请求。`task list --ready` 仍执行完整分页。
 
 服务既有查询按 `createdAt ASC, id ASC` 排序，ready 表示 `todo` 且直接依赖全部
-为 `done`，因此无需服务或 schema 变更。客户端保留服务顺序，在返回前验证项数
+为 `done`，因此无需服务或 schema 变更。有界 ready 保留服务顺序，在返回前验证项数
 不超过 N、每项为 ready、task ID 不重复。超量、非 ready 或重复资源都报协议错误，
 不截取、丢弃或修复响应。`listReadyTasks` 与完整列表复用 DTO、精确 JSON 和
 同一 `Operation` 的取消、期限、字节预算及最终输出检查。完整依赖图仍供按需查看
@@ -405,19 +414,21 @@ Project 渲染由 `commands/project/rendering.ts` 拥有，与 API 数据分离�
 显示为 `\uXXXX`。普通 Unicode、emoji 和原有反斜线保持原样；该转换只属于终端
 显示，不改变提交给服务或 JSON 输出的数据。
 
-Task 的 `rendering.ts` 采用相同的完整标签块。任务包含 `ID`、`Project`、`Title`、
-`Description`、`Status`、完整十进制 `Version`、`Ready`、`Depends on`、`Blocked by`、
-`Created` 和 `Updated`，以及关联 PR 数量、按顺序编号的 title/url；依赖/阻塞
-为空时显示 `none`，空 list 为 `No tasks.`，空 ready 为 `No ready tasks.`。ready
-中每项仍为完整资源块。PR 字符串只检查类型，保留空、重复、控制字符与原有顺序，
-可读输出继续使用 terminalText。创建
-和更新分别以 `Task created.`、`Task updated.` 表明服务确认结果。Graph 展示完整
-project、六个 summary 字段及全部节点；节点的 `titlePreview` 与 `titleTruncated`
+Task 的 `rendering.ts` 提供列表标签块与完整资源标签块。列表包含 `ID`、
+`Project`、`Title`、`Status`、`Ready`、`Depends on`、`Blocked by`，以及关联 PR
+数量、按顺序编号的 title/url；完整资源另外包含 `Description`、完整十进制
+`Version`、`Created` 和 `Updated`，供 show、ready、create 和 update 使用。
+依赖/阻塞为空时显示 `none`，空 list 为 `No tasks.`，空 ready 为 `No ready tasks.`。
+PR 字符串只检查类型，保留空、重复、控制字符与原有顺序，可读输出继续使用
+terminalText。创建和更新分别以 `Task created.`、`Task updated.` 表明服务确认结果。
+Graph 展示完整 project、六个 summary 字段及全部节点；节点的 `titlePreview` 与
+`titleTruncated`
 同时展示，保留状态、ready、依赖、阻塞和时间，不能把预览称为完整标题。所有字段
 使用终端转义且不补齐等宽列，空间随资源内容总长度线性增长。
 
 查询 `--json` 是脚本和模型调用 CLI 的稳定接口：show 为资源对象，list 为所有
-匹配资源的数组，ready 为所选完整 task 的数组，graph 为服务原始完整响应对象。
+匹配资源的完整字段数组，不应用文本列表的字段省略；ready 为所选完整 task 的数组，
+graph 为服务原始完整响应对象。
 ready 空结果为 `[]`，不输出分页 envelope 或 cursor。仅序列化 API 字段，不加入
 渲染专用字符串、进度或诊断；无额外 model agent tool 或遥测框架。元数据查询在读取
 完成前保持 stdout 为空，确保脚本不会消费前半段成功结果。附件 list 同样完整输出
@@ -450,7 +461,9 @@ stderr 错误包含操作名、已确定的 project/task ID、失败阶段和可
 断言本地准备失败时服务器未收到 mutation，显式 project 从未读取本地关联，project
 命令不读写绑定及 ignore，有效缓存后增加重复 project 仍使用原绑定，以及完整页
 失败时 stdout 为空。有界 ready 验证单次请求、合法 cursor 不续页、顺序保留、
-超量/非 ready/重复 ID 拒绝、空结果及完整 int64 JSON；原有 list 继续覆盖完整翻页。
+超量/非 ready/重复 ID 拒绝、空结果及完整 int64 JSON。List 验证完整翻页后的默认
+状态选择、`--all`/`--status` 互斥及 `--ready` 交集、跨页稳定分组、精简文本和
+完整 JSON，并确认 ready、详情及写入结果继续使用完整资源输出。
 真实服务验收保留服务 request ID 与目标 ID，便于将错误对应到 API 及数据库事实。
 
 预算验证使用可控制时钟和流式响应，覆盖每页均在单次期限内且 cursor 唯一推进、
@@ -488,6 +501,13 @@ race binary、隔离 PostgreSQL schema、listener、重启和数据库等待屏�
 场景及所属 package 覆盖率。Go receipt 的 `installedCli` 保存共享 helper 的 schema、
 source、包版本、tarball/entry hash、Node 和 launcher 身份；场景记录 CLI 启停
 数量、workspace 回收、拒绝 request ID 及并发请求的 200/409 结果。
+
+附件 `installed_cli_task_attachment_workflow` 复用同一服务安装及进程 fixture，覆盖
+原始字节、多页路径列表、拒绝、同根重启及完整 task 不变；清理 gate 同时要求存储
+根实际消失。共享安装 fixture 也供完整 Web run 使用，在原生与容器页面上复用一次
+安装来操作同组真实数据。机制与证据字段由
+[附件跨层验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+拥有，原有 PT 场景和六个预算探针保持完整。
 
 编排层原样执行固定 go-cov 参数及 strict raw coverage 检查，通过后才在 Go 默认
 10 分钟计时器之外运行六个公开安装 CLI 场景：持续推进 cursor 的总期限、

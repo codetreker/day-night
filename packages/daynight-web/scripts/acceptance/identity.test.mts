@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import fs from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import test from 'node:test';
 import { processIdentity, requireGroupStopped, requireStopped, sameProcess } from './identity.mts';
 
@@ -29,4 +31,41 @@ test('invalid process identities fail before process operations', async () => {
     await assert.rejects(processIdentity(pid));
     assert.throws(() => requireGroupStopped(pid));
   }
+});
+
+test('a process disappearing after its stat file opens is absent', { skip: process.platform !== 'linux' }, async (context) => {
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+  const readFile = fs.readFile;
+  let observedCode: unknown;
+  const read = context.mock.method(fs, 'readFile', async (...args: Parameters<typeof fs.readFile>) => {
+    if (args[0] !== `/proc/${child.pid}/stat`) return await readFile(...args);
+    const handle = await fs.open(args[0], 'r');
+    try {
+      child.kill('SIGTERM');
+      await exited;
+      return await handle.readFile('utf8');
+    } catch (error) {
+      if (error instanceof Error && 'code' in error) observedCode = error.code;
+      throw error;
+    } finally { await handle.close(); }
+  });
+  syncBuiltinESMExports();
+  try {
+    await new Promise<void>((resolve, reject) => { child.once('spawn', () => resolve()); child.once('error', reject); });
+    assert.equal(await processIdentity(child.pid!), null);
+    assert.equal(observedCode, 'ESRCH');
+  } finally {
+    read.mock.restore();
+    syncBuiltinESMExports();
+    if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exited; }
+  }
+});
+
+test('process identity preserves filesystem failures other than process absence', async (context) => {
+  const failure = Object.assign(new Error('Cannot read process identity.'), { code: 'EACCES' });
+  const read = context.mock.method(fs, 'readFile', async () => { throw failure; });
+  syncBuiltinESMExports();
+  try { await assert.rejects(processIdentity(process.pid), (error) => error === failure); }
+  finally { read.mock.restore(); syncBuiltinESMExports(); }
 });

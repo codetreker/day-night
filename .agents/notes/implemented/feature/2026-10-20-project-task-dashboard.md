@@ -21,7 +21,13 @@ resource cannot render an earlier resource's data. Same-project refresh retains
 the last successful snapshot with an explicit loading/error notice, and replaces
 statistics, indexes and root rows together after success.
 
-Only one root canvas is mounted. React Flow owns fixed 220-by-96 task nodes,
+Only one root canvas is mounted. The project restores the expanded root or
+an explicitly collapsed list from per-project browser storage; the
+[browsing preference decision](2026-10-21-task-browsing-preferences.md) owns its
+persistence, reconciliation and failure behavior. The project view shares one
+newest-first visible root sequence between list rendering and default-root selection;
+the [presentation decision](2026-10-21-task-chain-presentation.md) owns that order
+while the complete graph index retains its API order. React Flow owns fixed 220-by-96 task nodes,
 native node measurement, keyboard interaction, the viewport and its controls.
 Editing, connection, deletion, wrapper focus and interactive-lock controls remain
 disabled. Each task has one native button for pointer, Enter and Space activation;
@@ -79,7 +85,11 @@ calls the latest restoration callback after sibling DOM deletion. It focuses the
 surviving original node, otherwise the current expanded-root button, otherwise
 the project H1. This ordering avoids selecting a still-connected node that the
 same commit will remove; the [focus-restoration decision](../bug-fix/2026-10-20-drawer-focus-restoration.md)
-records the failure and integration evidence. Latest detail data never patches graph statistics.
+records the failure and integration evidence. The
+[Web attachment decision](2026-10-21-task-attachment-web.md) extends this lifecycle
+with `tabbable` enumeration for form controls and same-origin frame keyboard
+bridges; background ownership and passive restoration remain unchanged.
+Latest detail data never patches graph statistics.
 Readiness, blocking, dependency, status, preview and timestamp differences produce
 a refresh notice; a new graph revision rereads the selected detail.
 

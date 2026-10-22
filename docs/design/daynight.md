@@ -39,7 +39,7 @@ daynight project list [--json]
 daynight project show <project-id> [--json]
 daynight task
 daynight task create --title <title> [options]
-daynight task list [--status <status>] [--ready] [--json] [--project <project-id>]
+daynight task list [--all | --status <status>] [--ready] [--json] [--project <project-id>]
 daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
@@ -256,8 +256,11 @@ project 操作不读写仓库绑定或 ignore 规则。`rendering.ts` 使用完�
 进入这一取消源；配置读取接受同一 AbortSignal。Task 复用此执行层；它不控制 Go
 server 的启动或关闭。
 
-Task 的 definition、command 和 rendering 分别拥有共享语法、操作组合和完整
-资源输出。`ready` 的 `--limit` 在任何配置、Git 或 HTTP 访问前校验为十进制整数
+Task 的 definition、command 和 rendering 分别拥有共享语法、操作组合和
+可读/JSON 输出。`list` 在命令层选择状态并对完整分页结果稳定分组，默认排除
+`done`，互斥的 `--all` 与 `--status` 调整所选状态，`--ready` 与之取交集；
+文本列表使用精简标签块，JSON 保留完整资源。`ready` 的 `--limit` 在任何配置、Git
+或 HTTP 访问前校验为十进制整数
 `1..100`，默认 `10`。它调用 `api/client.ts` 的 `listReadyTasks`，仅发送一次带
 `ready=true` 和所选 `limit` 的 task GET；合法 `nextCursor` 不触发续页。该 API
 操作在返回前验证数量不超限、每项确为 ready 且 task ID 不重复。`list` 仍使用完整
@@ -406,10 +409,21 @@ bundle 复制到 `dist/commands/review/skills/daynight-review/`，由既有 `dis
 选中 CLI 时，全部原生检查和独立 shell completion 检查必须成功，PR 的 Linux CLI
 任务还检查包版本；main push 保留全量应用门禁。最终 `checks` 只接受所有前置 job 的
 `success` 或 `skipped`，失败、取消及其他结果使汇总失败。
-发布在等待 CI 与安装依赖前检查精确版本的 tag 和 npm 记录；任一存在则成功跳过新发布。首次使用准备好的产物发布前重复检查，同一次 run 的发布失败重试
-保留严格的源码、字节验证与补齐 tag 能力。
-[版本预检决策](../../.agents/notes/implemented/process/2026-10-21-publication-version-preflight.md)
-维护跳过与重试规则；发布授权、npm OIDC、产物身份及公共验证由
+发布在验证 CLI 与安装项目依赖前检查精确版本的 tag 和 npm 记录；任一存在则成功跳过。
+新版本在冻结的源码提交上独立执行 `@codetreker/daynight` 的类型检查、测试、安装验收和
+发布包安装检查。发布不依赖全仓 `checks.yml` 的结果，Go server 与 Web 检查不会阻止
+npm 发布；[CLI 发布验证决策](../../.agents/notes/implemented/process/2026-10-22-cli-publication-validation.md)
+维护验证范围。
+npm 元数据统一由固定版本的 npm 12.2.0 执行 `npm view <package>@<version> --json`
+读取完整包记录并选择版本，仅 JSON `E404` 表示版本不存在。鉴权、网络、超时和格式
+错误继续暴露。每次发布尝试，包括失败重跑，都会在下载产物前重复预检；发布脚本也会
+在上传前检查。已有版本不再比较源码与字节，不下载旧包或补齐缺失的 tag。上传失败后
+若重新查询确认精确版本存在，也成功跳过；确认不存在时保留原上传错误。
+新上传仍要求同一份产物、源码和公共字节验证成功后才创建不可变 tag，元数据与 tarball
+共用十分钟验证期限。npm 查询限制三十秒，GitHub 与 tarball HTTP 请求限制二十秒，
+并受剩余总期限约束。
+[npm CLI 发布检查决策](../../.agents/notes/implemented/process/2026-10-22-npm-cli-publication-checks.md)
+维护查询、跳过与重复发布规则；发布授权、npm OIDC、产物身份及公共验证由
 [发布决策](../../.agents/notes/implemented/process/2026-10-20-npm-trusted-publishing.md)维护。
 
 ## 验证与交付

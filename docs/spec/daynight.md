@@ -59,7 +59,7 @@ daynight project list [--json]
 daynight project show <project-id> [--json]
 daynight task
 daynight task create --title <title> [options]
-daynight task list [--status <status>] [--ready] [--json] [--project <project-id>]
+daynight task list [--all | --status <status>] [--ready] [--json] [--project <project-id>]
 daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
@@ -116,7 +116,10 @@ review 的目录 `--path` 保留原有拒绝规则。`project create` 接受一�
 原始内容通过支持背压的字节通道逐段输出，失败可能留下不完整内容。
 `task ready` 默认选择前
 10 个 ready task，`--limit <N>` 接受十进制整数 `1..100`；它只请求一页，不遍历
-后续 cursor。`task list` 继续读取全部匹配页。`ready` 的参数、服务排序及响应校验
+后续 cursor。`task list` 读取全部匹配页，默认排除 `done`，通过互斥的 `--all` 或
+`--status` 调整所选状态；`--ready` 与所选状态取交集。列表按 `in_progress`、ready、
+其余 `todo`、`done` 稳定分组，文本省略描述、版本和时间，JSON 保留全部字段。
+`ready` 的参数、服务排序及响应校验
 由[project/task 需求](daynight-project-task.md#pt7-task-命令与更新语义)拥有。`task` 显式指定 project
 时只需要 server 配置和 HTTP；自动选择时才加载 Git 与仓库关联模块。任务写入必须晚于本地
 关联准备成功，完整行为由[project/task 需求](daynight-project-task.md)定义。

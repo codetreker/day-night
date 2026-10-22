@@ -1,0 +1,210 @@
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError, getTaskGraph } from '../src/api/client';
+import type { GraphTask, TaskGraph } from '../src/api/types';
+import { ProjectPage } from '../src/features/projects/ProjectPage';
+import { projectRoot, type GraphIndex } from '../src/features/task-graph/model';
+
+vi.mock('../src/api/client', async (original) => ({ ...await original<typeof import('../src/api/client')>(), getTaskGraph: vi.fn() }));
+vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, rootId, onSelectTask }: {
+  index: GraphIndex; rootId: string; onSelectTask: (id: string, trigger: HTMLElement) => void;
+}) => {
+  const projection = projectRoot(index, rootId);
+  return <div data-testid="projection" data-root-id={rootId}>
+    {[...projection.mainIds, ...projection.boundaryIds].map((id) => <button key={id} data-node-id={id} onClick={(event) => { onSelectTask(id, event.currentTarget); }}>{index.nodes.get(id)!.titlePreview}</button>)}
+    {projection.edges.map(({ source, target }) => <span key={`${source}->${target}`} data-edge={`${source}->${target}`} />)}
+  </div>;
+} }));
+
+const projectId = '10000000-0000-0000-0000-000000000001';
+const otherProject = '10000000-0000-0000-0000-000000000002';
+const time = '2026-10-20T12:00:00Z';
+const task = (id: string, status: GraphTask['status'], dependsOn: string[] = []): GraphTask => ({
+  id, titlePreview: `任务 ${id}`, titleTruncated: false, status, dependsOn, blockedBy: [], ready: false, createdAt: time, updatedAt: time,
+});
+const seeds = [task('A', 'done'), task('B', 'todo', ['A']), task('C', 'done'), task('D', 'done', ['C']), task('E', 'done'), task('F', 'todo'), task('G', 'todo', ['B', 'F'])];
+const graph = (items = seeds, id = projectId): TaskGraph => {
+  const tasks = items.map((item) => {
+    const blockedBy = item.dependsOn.filter((dependency) => items.find((candidate) => candidate.id === dependency)!.status !== 'done');
+    return { ...item, blockedBy, ready: item.status === 'todo' && blockedBy.length === 0 };
+  });
+  return { project: { id, name: `项目 ${id}`, repoUrl: '', createdAt: time, updatedAt: time }, tasks,
+    summary: { total: tasks.length, todo: tasks.filter((item) => item.status === 'todo').length, done: tasks.filter((item) => item.status === 'done').length,
+      inProgress: tasks.filter((item) => item.status === 'in_progress').length, ready: tasks.filter((item) => item.ready).length,
+      blocked: tasks.filter((item) => item.status === 'todo' && !item.ready).length } };
+};
+const allDone = () => seeds.map((item) => ({ ...item, status: 'done' as const }));
+const visibilityKey = (id = projectId) => `daynight:completed-chains:${id}`;
+const expansionKey = `daynight:project-view:${projectId}`;
+const checkbox = () => screen.getByRole('checkbox', { name: /^显示已完成任务链/ });
+const root = (id: string) => document.getElementById(`task-root-${id}`)!;
+const roots = () => [...document.querySelectorAll('.root-toggle')].map((item) => item.id);
+const request = vi.mocked(getTaskGraph);
+const count = (label: string) => screen.getByText(label, { selector: '.stat-label' }).parentElement!.querySelector('.stat-number')!.textContent;
+const expansion = () => JSON.parse(window.localStorage.getItem(expansionKey)!);
+
+beforeEach(() => { request.mockReset(); request.mockResolvedValue(graph()); });
+
+describe('completed task chain visibility', () => {
+  it('hides only complete chains while keeping done roots, shared dependencies and full project counts', async () => {
+    render(<ProjectPage projectId={projectId} />);
+    await screen.findByRole('checkbox', { name: '显示已完成任务链（2）' });
+    expect(checkbox()).not.toBeChecked();
+    expect(roots()).toEqual(['task-root-F', 'task-root-A']);
+    expect(screen.getByLabelText('显示 2 条，共 4 条任务链')).toHaveTextContent('2 / 4');
+    expect([count('任务总数'), count('已完成'), count('待处理')]).toEqual(['7', '4', '3']);
+    fireEvent.click(root('A'));
+    expect(within(root('A')).getByText('已完成')).toBeVisible();
+    const projection = screen.getByTestId('projection');
+    expect([...projection.querySelectorAll('[data-node-id]')].map((item) => item.getAttribute('data-node-id'))).toEqual(['A', 'B', 'G', 'F']);
+    expect([...projection.querySelectorAll('[data-edge]')].map((item) => item.getAttribute('data-edge'))).toEqual(['A->B', 'B->G', 'F->G']);
+    checkbox().focus();
+    fireEvent.click(checkbox());
+    expect(checkbox()).toHaveFocus();
+    expect(roots()).toEqual(['task-root-F', 'task-root-E', 'task-root-C', 'task-root-A']);
+    expect(root('A')).toHaveAttribute('aria-expanded', 'true');
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists the newest visible fallback when hiding an expanded complete chain', async () => {
+    window.localStorage.setItem(visibilityKey(), 'true');
+    render(<ProjectPage projectId={projectId} />);
+    await screen.findByRole('checkbox');
+    fireEvent.click(root('E'));
+    checkbox().focus(); fireEvent.click(checkbox());
+    expect(checkbox()).toHaveFocus();
+    expect(root('F')).toHaveAttribute('aria-expanded', 'true');
+    expect(expansion()).toEqual({ expandedRootId: 'F' });
+    fireEvent.click(checkbox());
+    expect(root('F')).toHaveAttribute('aria-expanded', 'true');
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('remembers visibility across remounts and isolates projects without changing expansion format', async () => {
+    request.mockImplementation(async (id) => graph(seeds, id));
+    let view = render(<ProjectPage projectId={projectId} />);
+    await screen.findByRole('checkbox');
+    fireEvent.click(checkbox()); fireEvent.click(root('C'));
+    view.unmount(); view = render(<ProjectPage projectId={projectId} />);
+    await screen.findByRole('checkbox');
+    expect(checkbox()).toBeChecked();
+    expect(root('C')).toHaveAttribute('aria-expanded', 'true');
+    expect(expansion()).toEqual({ expandedRootId: 'C' });
+    view.rerender(<ProjectPage projectId={otherProject} />);
+    await screen.findByRole('checkbox'); expect(checkbox()).not.toBeChecked();
+    fireEvent.click(checkbox()); fireEvent.click(checkbox());
+    view.rerender(<ProjectPage projectId={projectId} />);
+    await screen.findByRole('checkbox'); expect(checkbox()).toBeChecked();
+    expect(window.localStorage.getItem(visibilityKey(otherProject))).toBe('false');
+  });
+
+  it.each(['C', null])('distinguishes all-complete from empty and preserves saved expansion intent (%s)', async (saved) => {
+    window.localStorage.setItem(expansionKey, JSON.stringify({ expandedRootId: saved }));
+    request.mockResolvedValue(graph([seeds[2]!, seeds[3]!, seeds[4]!]));
+    render(<ProjectPage projectId={projectId} />);
+    await screen.findByRole('heading', { name: '所有任务链已完成' });
+    expect(screen.queryByText('还没有任务')).toBeNull();
+    expect(count('任务总数')).toBe('3'); expect(count('已完成')).toBe('3');
+    expect(screen.getByLabelText('显示 0 条，共 2 条任务链')).toBeVisible();
+    expect(expansion()).toEqual({ expandedRootId: saved });
+    fireEvent.click(screen.getByRole('button', { name: '显示已完成任务链' }));
+    expect(checkbox()).toBeChecked(); expect(checkbox()).toHaveFocus();
+    expect(screen.queryByRole('heading', { name: '所有任务链已完成' })).toBeNull();
+    expect(document.querySelectorAll('[aria-expanded="true"]')).toHaveLength(saved === null ? 0 : 1);
+    if (saved !== null) expect(root(saved)).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(checkbox()); expect(checkbox()).toHaveFocus();
+    expect(expansion()).toEqual({ expandedRootId: saved });
+  });
+
+  it('keeps a truly empty project distinct from an all-complete list', async () => {
+    request.mockResolvedValue(graph([])); render(<ProjectPage projectId={projectId} />);
+    await screen.findByRole('heading', { name: '还没有任务' });
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.queryByRole('heading', { name: '所有任务链已完成' })).toBeNull();
+  });
+
+  it('preserves intent through a refresh that completes every chain and falls back after a remembered root disappears', async () => {
+    request.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph(allDone())).mockResolvedValueOnce(graph([task('Z', 'todo')]));
+    render(<ProjectPage projectId={projectId} />); await screen.findByRole('checkbox');
+    fireEvent.click(root('A')); fireEvent.click(screen.getByRole('button', { name: '刷新' }));
+    await screen.findByRole('heading', { name: '所有任务链已完成' });
+    expect(expansion()).toEqual({ expandedRootId: 'A' });
+    fireEvent.click(screen.getByRole('button', { name: '显示已完成任务链' }));
+    expect(root('A')).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '刷新' }));
+    await screen.findByRole('checkbox', { name: '显示已完成任务链（0）' });
+    expect(root('Z')).toHaveAttribute('aria-expanded', 'true');
+    expect(expansion()).toEqual({ expandedRootId: 'Z' });
+  });
+
+  it('preserves an explicit collapse while filtering and refreshing', async () => {
+    window.localStorage.setItem(expansionKey, JSON.stringify({ expandedRootId: null }));
+    render(<ProjectPage projectId={projectId} />); await screen.findByRole('checkbox');
+    fireEvent.click(checkbox()); fireEvent.click(checkbox()); fireEvent.click(screen.getByRole('button', { name: '刷新' }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId('projection')).toBeNull(); expect(expansion()).toEqual({ expandedRootId: null });
+  });
+
+  it('does not save visibility while initial graph loading or an initial request failure is displayed', async () => {
+    let reject!: (error: unknown) => void;
+    request.mockReturnValue(new Promise((_resolve, rejectRequest) => { reject = rejectRequest; }));
+    const write = vi.spyOn(Storage.prototype, 'setItem');
+    render(<ProjectPage projectId={projectId} />);
+    expect(write).not.toHaveBeenCalled();
+    await act(async () => { reject(new ApiError('network')); });
+    await screen.findByRole('alert'); expect(write).not.toHaveBeenCalled();
+  });
+
+  it('retains the chosen visibility and complete snapshot when a refresh fails', async () => {
+    request.mockResolvedValueOnce(graph()).mockRejectedValueOnce(new ApiError('network'));
+    const read = vi.spyOn(Storage.prototype, 'getItem');
+    render(<ProjectPage projectId={projectId} />); await screen.findByRole('checkbox');
+    fireEvent.click(checkbox()); fireEvent.click(screen.getByRole('button', { name: '刷新' }));
+    await screen.findByRole('alert');
+    expect(checkbox()).toBeChecked(); expect(roots()).toHaveLength(4);
+    expect(count('任务总数')).toBe('7');
+    expect(read.mock.calls.filter(([key]) => key === visibilityKey())).toHaveLength(1);
+    expect(window.localStorage.getItem(visibilityKey())).toBe('true');
+  });
+
+  it.each(['{', 'null', '{}', '[]', '"true"', '1'])('reports invalid visibility data and keeps filtering usable (%s)', async (saved) => {
+    window.localStorage.setItem(visibilityKey(), saved);
+    render(<ProjectPage projectId={projectId} />); await screen.findByRole('checkbox');
+    expect(screen.getByText(/^浏览器保存的已完成任务链显示偏好无效/)).toBeVisible();
+    expect(checkbox()).not.toBeChecked(); fireEvent.click(checkbox());
+    expect(checkbox()).toBeChecked(); expect(window.localStorage.getItem(visibilityKey())).toBe('true');
+  });
+
+  it('reports read failures and retains usable default filtering', async () => {
+    const original = Storage.prototype.getItem;
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key) {
+      if (key === visibilityKey()) throw new DOMException('Storage denied', 'SecurityError');
+      return original.call(this, key);
+    });
+    render(<ProjectPage projectId={projectId} />); await screen.findByRole('checkbox');
+    expect(screen.getByText(/^无法读取浏览器保存的已完成任务链显示偏好/)).toBeVisible();
+    fireEvent.click(checkbox()); expect(checkbox()).toBeChecked(); expect(roots()).toHaveLength(4);
+  });
+
+  it('reports write failures while applying the choice and clears them after a successful save', async () => {
+    const original = Storage.prototype.setItem;
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (key === visibilityKey()) throw new DOMException('Storage full', 'QuotaExceededError');
+      original.call(this, key, value);
+    });
+    render(<ProjectPage projectId={projectId} />); await screen.findByRole('checkbox');
+    fireEvent.click(checkbox()); expect(checkbox()).toBeChecked(); expect(roots()).toHaveLength(4);
+    expect(screen.getByText(/^已完成任务链显示偏好无法保存到浏览器/)).toBeVisible();
+    write.mockRestore(); fireEvent.click(checkbox());
+    expect(screen.queryByText(/^已完成任务链显示偏好无法保存到浏览器/)).toBeNull();
+    expect(window.localStorage.getItem(visibilityKey())).toBe('false');
+  });
+
+  it('keeps visibility controls usable when browser storage access is entirely denied', async () => {
+    vi.spyOn(window, 'localStorage', 'get').mockImplementation(() => { throw new DOMException('Storage denied', 'SecurityError'); });
+    render(<ProjectPage projectId={projectId} />); await screen.findByRole('checkbox');
+    expect(screen.getByText(/^无法读取浏览器保存的已完成任务链显示偏好/)).toBeVisible();
+    fireEvent.click(checkbox()); expect(checkbox()).toBeChecked(); expect(roots()).toHaveLength(4);
+    expect(screen.getByText(/^已完成任务链显示偏好无法保存到浏览器/)).toBeVisible();
+  });
+});

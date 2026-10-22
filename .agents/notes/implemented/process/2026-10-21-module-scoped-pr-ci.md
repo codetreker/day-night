@@ -23,20 +23,30 @@ Application jobs continue testing the checked-out PR merge result. The
 Each module keeps its complete job: the CLI selects all three native platforms
 and shell completion; Go selects server validation; web selects web validation.
 Multiple changed modules select their union. Shared workspace/dependency inputs
-select all consumers. Known web dependency patches select web; unclassified
+select all consumers. The shared installed-CLI fixture selects CLI, Go and Web
+because all three consume its packed package and receipt contract. The
+[attachment acceptance decision](../testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+records the new Web consumer. Known web dependency patches select web; unclassified
 inputs select every module until their ownership is explicit. All CLI source
 paths select CLI validation before documentation exclusions, preserving the
 existing release-input policy and recursive runtime-skill packaging. Repository
-docs and workflow guidance otherwise skip application tests.
+docs and workflow guidance otherwise skip application tests. The exact root
+`.gitignore` also skips application tests: repository-local metadata ignores
+such as `/.daynight/` do not change tracked application inputs. Nested ignore
+files retain their module ownership or the unclassified-path fallback, and
+exclusions do not suppress jobs selected by other changed paths.
 
 The Go job retains real web builds and installed-CLI acceptance. The web job
 retains production Go builds, browser and deployment acceptance. Module selection
 changes job scheduling without separating or weakening these integration suites.
-Every main push runs all jobs, preserving the successful exact-commit main run
-consumed by [npm publication](2026-10-20-npm-trusted-publishing.md).
+Every main push runs all jobs. This originally also supplied the exact-commit
+main run required by npm publication. The
+[CLI publication-validation decision](2026-10-22-cli-publication-validation.md)
+removes that release dependency while retaining full main-push validation.
 
-The workflow starts on every PR, including documentation changes. Routing tests
-run in the lightweight job without installing pnpm dependencies. The final
+The workflow starts on every PR, including changes only to documentation or the
+root `.gitignore`. Routing tests run in the lightweight job without installing
+pnpm dependencies. The final
 `checks` job runs after every routing and application job and accepts only success
 or skipped for each result. Failures, cancellations and other results fail the
 gate. Intentionally unselected jobs remain skipped.
@@ -82,9 +92,9 @@ while removing that repeated work.
 
 ## Consequences
 
-Module-only PRs wait for their own job family and the final gate;
-documentation-only PRs run routing tests and the gate. Every selected suite
-retains its original coverage, real-process behavior, time bounds and cleanup
+Module-only PRs wait for their own job family and the final gate. PRs changing
+only documentation or the root `.gitignore` run routing tests and the gate. Every
+selected suite retains its original coverage, real-process behavior, time bounds and cleanup
 failures. No repository protection changes or additional workflow permissions are
 required.
 

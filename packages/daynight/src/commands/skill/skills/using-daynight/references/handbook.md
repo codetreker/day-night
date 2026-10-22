@@ -15,7 +15,7 @@ needed to use them correctly.
 | `project show` | Inspect a project's details. |
 | `task create` | Register a todo task. |
 | `task ready` | Get a bounded set of tasks whose prerequisites are complete. |
-| `task list` | Read the complete matching task inventory. |
+| `task list` | Read every matching page; defaults to unfinished tasks. |
 | `task show` | Read one task's complete details and version. |
 | `task update` | Change a task's fields, dependencies, or PR references. |
 | `task graph` | Inspect the project's dependency graph and summary. |
@@ -34,7 +34,10 @@ to make a query succeed.
 
 **Read scope.** Ready is a candidate page, ordered by creation rather than
 relevance. An empty page does not rule out in-progress or dependency-blocked
-work. List provides a complete matching inventory; graph provides compact
+work. List traverses every matching page but excludes `done` by default; include
+completed tasks explicitly when checking the full backlog or prior registrations.
+Its status/readiness grouping does not rank relevance. Human lists are summaries;
+JSON preserves full task fields. Graph provides compact
 dependency context without full descriptions, PR properties, or versions. Read
 the selected task's details before acting. A graph-limit error still permits
 bounded candidate and individual task reads.

@@ -4,6 +4,7 @@ import { decomposeDashedRoute, DEPENDENCY_DASH_ARRAY, DEPENDENCY_DASH_PERIOD } f
 import { layoutGraph, TASK_NODE_HEIGHT, TASK_NODE_WIDTH, type CanvasLayout, type CanvasPoint } from './layout';
 import { projectRoot, type GraphIndex } from './model';
 import { TaskNode, type TaskFlowNode } from './TaskNode';
+import { useGraphFullscreen } from './useGraphFullscreen';
 import '@xyflow/react/dist/style.css';
 
 type TaskGraphProps = {
@@ -101,6 +102,7 @@ const InitialViewport = ({ geometry, rootId }: { geometry: CanvasLayout; rootId:
 };
 
 const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry }: TaskGraphProps & { geometry: CanvasLayout }) => {
+  const { fullscreen, containerRef, toggleRef, onKeyDown, toggle } = useGraphFullscreen();
   // Stable node identities restrict selection renders to the previous and next tasks.
   const nodeVariants = useMemo(() => geometry.nodes.map((node) => {
     const base: TaskFlowNode = {
@@ -122,8 +124,19 @@ const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry }: T
   const nodes = useMemo<TaskFlowNode[]>(() => nodeVariants.map(({ base, selected }) =>
     base.id === selectedTaskId ? selected : base), [nodeVariants, selectedTaskId]);
   return (
-    <>
-      <div className="graph-toolbar"><span>横向依赖图</span><span>{nodes.length} 个节点 · {geometry.edges.length} 条依赖</span></div>
+    <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} ref={containerRef} role={fullscreen ? 'dialog' : undefined} aria-modal={fullscreen ? true : undefined} aria-label={fullscreen ? '任务依赖图全屏查看' : undefined} onKeyDown={onKeyDown}>
+      <div className="graph-toolbar">
+        <span>横向依赖图</span>
+        <div className="graph-toolbar-actions">
+          <span>{nodes.length} 个节点 · {geometry.edges.length} 条依赖</span>
+          <button className="button graph-fullscreen-toggle" type="button" ref={toggleRef} onClick={toggle}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+              <path d={fullscreen ? 'M4 9h5V4m6 0v5h5M4 15h5v5m6 0v-5h5' : 'M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5'} />
+            </svg>
+            {fullscreen ? '退出全屏' : '全屏查看'}
+          </button>
+        </div>
+      </div>
       <p className="graph-instructions" id={`graph-instructions-${rootId}`}>拖动画布平移，滚轮或按钮缩放。Tab 选择任务，Enter 或空格查看详情。</p>
       <div className="task-graph-canvas">
         <ReactFlow<TaskFlowNode>
@@ -157,7 +170,7 @@ const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry }: T
         </ReactFlow>
       </div>
       <div className="graph-foot"><span>箭头表示前置 → 后续</span><span>虚线节点：外部前置，上游已省略</span></div>
-    </>
+    </div>
   );
 };
 

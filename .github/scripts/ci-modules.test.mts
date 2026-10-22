@@ -12,18 +12,23 @@ const root = fileURLToPath(new URL("../../", import.meta.url));
 
 for (const [path, expected] of [
   ["packages/daynight/src/main.ts", { ...none, cli: true }],
+  ["packages/daynight/src/.gitignore", { ...none, cli: true }],
   ["packages/daynight/src/commands/review/skills/daynight-review/SKILL.md", { ...none, cli: true }],
   ["packages/daynight/src/commands/review/skills/daynight-review/README.md", { ...none, cli: true }],
   ["packages/daynight/src/commands/review/skills/daynight-review/AGENTS.md", { ...none, cli: true }],
   ["packages/daynight/src/README.md", { ...none, cli: true }],
   ["packages/daynight/test/tooling/check-version.test.ts", { ...none, cli: true }],
+  ["packages/daynight/test/fixtures/installed-cli.ts", all],
   ["packages/daynight-server/internal/server/tasks.go", { ...none, server: true }],
+  ["packages/daynight-server/.gitignore", { ...none, server: true }],
   ["packages/daynight-web/src/App.vue", { ...none, web: true }],
+  ["packages/daynight-web/.gitignore", { ...none, web: true }],
   ["deployment/localhost/Dockerfile", { ...none, web: true }],
   ["deployment/dev-ci/tests/run.sh", { ...none, web: true }],
   ["patches/@dagrejs__dagre@3.1.1.patch", { ...none, web: true }],
   ["patches/@xyflow__system@0.0.83.patch", { ...none, web: true }],
   ["README.md", none],
+  [".gitignore", none],
   ["packages/daynight/README.md", none],
   ["packages/daynight-web/README.md", none],
   ["packages/daynight-server/internal/AGENTS.md", none],
@@ -44,6 +49,7 @@ for (const [path, expected] of [
   [".github/scripts/ci-modules.mts", all],
   [".github/scripts/ci-modules.test.mts", all],
   ["unknown-runtime.md", all],
+  ["unknown/.gitignore", all],
 ] satisfies Array<[string, ModuleSelection]>) {
   test(`routes ${path}`, () => assert.deepEqual(selectModules([path]), expected));
 }
@@ -51,6 +57,22 @@ for (const [path, expected] of [
 test("combines module ownership without making documentation select a module", () => {
   assert.deepEqual(selectModules(["docs/spec/daynight-web.md", "packages/daynight/src/main.ts", "packages/daynight-web/package.json"]), { ...all, server: false });
   assert.deepEqual(selectModules([]), none);
+});
+
+test("the shared installed CLI fixture validates all of its consumers", () => {
+  for (const paths of [
+    ["packages/daynight/test/fixtures/installed-cli.ts"],
+    ["docs/spec/daynight-task-attachments.md", "packages/daynight/test/fixtures/installed-cli.ts"],
+    ["packages/daynight-web/tests/e2e/attachments.spec.ts", "packages/daynight/test/fixtures/installed-cli.ts"],
+  ]) assert.deepEqual(selectModules(paths), all);
+});
+
+test("root ignore rules do not change other paths' module selection", () => {
+  for (const path of ["docs/spec/daynight-web.md", "packages/daynight/src/main.ts", "packages/daynight-server/main.go", "packages/daynight-web/src/App.tsx", "pnpm-lock.yaml", "unknown-runtime.md"]) {
+    const expected = selectModules([path]);
+    assert.deepEqual(selectModules([".gitignore", path]), expected);
+    assert.deepEqual(selectModules([path, ".gitignore"]), expected);
+  }
 });
 
 const repository = (t: TestContext) => {
@@ -75,6 +97,16 @@ const repository = (t: TestContext) => {
   const base = commit();
   return { cwd, git, write, commit, base };
 };
+
+test("a PR changing only root ignore rules selects no application jobs", async (t) => {
+  const repo = repository(t);
+  repo.write(".gitignore", ".tmp/\n");
+  const base = repo.commit();
+  repo.write(".gitignore", ".tmp/\n/.daynight/\n");
+  const head = repo.commit();
+  assert.deepEqual(await pullRequestPaths(repo.cwd, base, head), [".gitignore"]);
+  assert.deepEqual(await detectModules({ event: "pull_request", cwd: repo.cwd, base, head }), none);
+});
 
 test("uses the explicit PR head and merge base when the target branch advances", async (t) => {
   const repo = repository(t);

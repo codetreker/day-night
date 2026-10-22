@@ -21,6 +21,10 @@ a task does not activate it. The handbook provides a command-purpose index and
 operational context such as repository discovery, read scope, observed-version
 updates and attachment independence. Installed CLI help owns argument and option
 usage; the handbook does not duplicate invocation examples or decoding code.
+Task lists traverse matching pages but exclude completed work by default;
+complete inventories and prior-registration checks explicitly include completed
+tasks. Status/readiness grouping does not establish relevance, and JSON retains
+full task fields while human lists are summaries.
 
 This partially replaces the
 [original public distribution decision](2026-10-21-public-agent-skill-design.md):

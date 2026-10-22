@@ -316,6 +316,7 @@ def scenarios():
         ("task attachment inline path followed by project", "daynight task attachment put task-id source --path=-draft.md --pro\t", ["task", "attachment", "put", "task-id", "source", "--path=-draft.md", "--project"]),
         ("task title option", "daynight task create --ti\t", ["task", "create", "--title"]),
         ("task list ready", "daynight task list --rea\t", ["task", "list", "--ready"]),
+        ("task list all", "daynight task list --al\t", ["task", "list", "--all"]),
         ("task ready limit", "daynight task ready --li\t", ["task", "ready", "--limit"]),
         ("task ready limit followed by JSON", "daynight task ready --limit=2 --js\t", ["task", "ready", "--limit=2", "--json"]),
         ("task list separate status", "daynight task list --status in\t", ["task", "list", "--status", "in_progress"]),

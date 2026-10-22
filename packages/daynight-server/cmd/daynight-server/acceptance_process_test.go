@@ -45,20 +45,24 @@ type acceptanceEvidence struct {
 }
 
 type acceptanceScenario struct {
-	Name                  string                 `json:"name"`
-	Requirements          []string               `json:"requirements"`
-	Result                string                 `json:"result"`
-	DurationMS            int64                  `json:"durationMs"`
-	ProcessesStarted      int                    `json:"processesStarted"`
-	ProcessesReaped       int                    `json:"processesReaped"`
-	CLIProcessesStarted   int                    `json:"cliProcessesStarted,omitempty"`
-	CLIProcessesReaped    int                    `json:"cliProcessesReaped,omitempty"`
-	CLIWorkspaceRemoved   bool                   `json:"cliWorkspaceRemoved,omitempty"`
-	CLIRefusalRequestIDs  []string               `json:"cliRefusalRequestIds,omitempty"`
-	ConcurrentCLIRequests []acceptanceCLIRequest `json:"concurrentCliRequests,omitempty"`
-	SchemasRemoved        int                    `json:"schemasRemoved"`
-	SessionsRemoved       bool                   `json:"sessionsRemoved"`
-	Cleanup               string                 `json:"cleanup"`
+	Name                   string                         `json:"name"`
+	Requirements           []string                       `json:"requirements"`
+	Result                 string                         `json:"result"`
+	DurationMS             int64                          `json:"durationMs"`
+	ProcessesStarted       int                            `json:"processesStarted"`
+	ProcessesReaped        int                            `json:"processesReaped"`
+	CLIProcessesStarted    int                            `json:"cliProcessesStarted,omitempty"`
+	CLIProcessesReaped     int                            `json:"cliProcessesReaped,omitempty"`
+	CLIWorkspaceRemoved    bool                           `json:"cliWorkspaceRemoved,omitempty"`
+	CLIRefusalRequestIDs   []string                       `json:"cliRefusalRequestIds,omitempty"`
+	ConcurrentCLIRequests  []acceptanceCLIRequest         `json:"concurrentCliRequests,omitempty"`
+	SchemasRemoved         int                            `json:"schemasRemoved"`
+	SessionsRemoved        bool                           `json:"sessionsRemoved"`
+	StorageRootRemoved     bool                           `json:"storageRootRemoved"`
+	AttachmentFiles        []acceptanceAttachmentEvidence `json:"attachmentFiles,omitempty"`
+	AttachmentsListed      int                            `json:"attachmentsListed,omitempty"`
+	AttachmentPageRequests int                            `json:"attachmentPageRequests,omitempty"`
+	Cleanup                string                         `json:"cleanup"`
 }
 
 var binaryAcceptance *acceptanceEvidence
@@ -220,7 +224,7 @@ func acceptanceCase(t *testing.T, name string, requirements []string, operation 
 				if t.Failed() {
 					scenario.Result = "failed"
 				}
-				if scenario.ProcessesStarted == scenario.ProcessesReaped && scenario.CLIProcessesStarted == scenario.CLIProcessesReaped && (scenario.CLIProcessesStarted == 0 || scenario.CLIWorkspaceRemoved) && scenario.SchemasRemoved > 0 && scenario.SessionsRemoved {
+				if scenario.ProcessesStarted == scenario.ProcessesReaped && scenario.CLIProcessesStarted == scenario.CLIProcessesReaped && (scenario.CLIProcessesStarted == 0 || scenario.CLIWorkspaceRemoved) && scenario.SchemasRemoved > 0 && scenario.SessionsRemoved && scenario.StorageRootRemoved {
 					scenario.Cleanup = "passed"
 					cleanupPassed = true
 				} else {
@@ -259,7 +263,20 @@ func newAcceptanceFixture(t *testing.T, scenario *acceptanceScenario) *acceptanc
 	if err != nil {
 		t.Fatal("cannot configure acceptance database")
 	}
-	fixture := &acceptanceFixture{schema: "acceptance_" + strings.ToLower(rand.Text()), databaseURL: base, storageRoot: testStorageRoot(t), scenario: scenario}
+	fixture := &acceptanceFixture{schema: "acceptance_" + strings.ToLower(rand.Text()), databaseURL: base, storageRoot: newTestStorageRoot(t), scenario: scenario}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(fixture.storageRoot); err != nil {
+			t.Error("cannot remove owned acceptance storage root")
+			return
+		}
+		if _, err := os.Stat(fixture.storageRoot); !errors.Is(err, os.ErrNotExist) {
+			t.Error("owned acceptance storage root still exists")
+			return
+		}
+		if err := binaryAcceptance.update(func() { scenario.StorageRootRemoved = true }); err != nil {
+			t.Error("cannot persist acceptance storage cleanup")
+		}
+	})
 	if _, err := pool.Exec(ctx, "CREATE SCHEMA "+pgx.Identifier{fixture.schema}.Sanitize()); err != nil {
 		pool.Close()
 		t.Fatal("cannot create isolated acceptance schema")
