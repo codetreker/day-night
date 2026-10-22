@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { AttachmentPage } from '../../src/features/task-detail/attachments/AttachmentPage';
 import { TaskAttachments } from '../../src/features/task-detail/attachments/TaskAttachments';
 import { useBodyScrollLock } from '../../src/app/useBodyScrollLock';
 import { TaskDetailPanels } from '../../src/features/task-detail/TaskDetailPanels';
@@ -11,18 +12,22 @@ import { createAttachmentFixture, type MockupScenario } from './fixture';
 import '../../src/styles/app.css';
 import '../../src/styles/task-detail.css';
 
+const query = new URLSearchParams(window.location.search);
+const standalonePath = query.get('file');
+
 const AttachmentMockup = () => {
   const { locale, messages, format } = useI18n();
   const m = messages.inspection.detail;
   useEffect(() => {
     document.documentElement.lang = locale;
-    document.title = messages.workspace.app.documentTitle.project;
+    document.title = messages.workspace.app.documentTitle[standalonePath === null ? 'project' : 'attachment'];
   }, [locale, messages]);
-  const [scenario, setScenario] = useState<MockupScenario>('files');
+  const [scenario, setScenario] = useState<MockupScenario>((query.get('scenario') ?? 'files') as MockupScenario);
   const [open, setOpen] = useState(true);
-  useBodyScrollLock(open);
+  useBodyScrollLock(open && standalonePath === null);
   const fixture = useMemo(() => createAttachmentFixture(scenario), [scenario]);
   useEffect(() => () => fixture.dispose(), [fixture]);
+  if (standalonePath !== null) return <AttachmentPage projectId="mockup-project" taskId="mockup-task" path={standalonePath} api={fixture.api} urls={fixture.urls} />;
   return <>
     <main className="content"><LanguageSelector /><p className="eyebrow">DAYNIGHT</p><h1>任务附件交互预览</h1><p className="subtitle">开发环境中的前端 fixture；上传、覆盖和删除保存在当前页面。</p><p style={{ marginTop: 20 }}><button className="button primary" type="button" onClick={() => setOpen(true)}>打开任务详情</button></p></main>
     {open && <div className="task-detail-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setOpen(false); }}><section className="task-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="mockup-heading">

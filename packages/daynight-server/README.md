@@ -121,8 +121,17 @@ records include method, route template, status, and duration. A supplied
 `X-Request-ID` must contain 1–64 ASCII letters/digits with optional `.`, `_`, or
 `-` after the first character; invalid or absent values receive a generated ID.
 The response returns `X-Request-ID`. An unmatched route has an empty route template.
-UI and API requests use the same logging wrapper. Exact `/` and
-`/projects/{projectId}` reads return the index; `/assets/` serves actual generated
+UI and API requests use the same logging wrapper. Exact `/`,
+`/projects/{projectId}` and
+`/projects/{projectId}/tasks/{taskId}/attachments/{path...}` page shapes return
+the index; the last route opens the standalone attachment reader. Invalid page
+IDs retain the existing index response and frontend not-found behavior. The
+raw attachment path guard also protects this page namespace before ServeMux
+normalization, rejecting invalid segments without redirecting or repairing the
+address. File reads still use the existing scoped attachment APIs; no new
+metadata, authorization or storage format is introduced. The
+[attachment design](../../docs/design/daynight-task-attachments.md#独立附件阅读页)
+owns reader composition. Unknown page shapes return JSON 404; `/assets/` serves actual generated
 files without directory listings or an HTML fallback. Unknown API routes retain
 JSON 404 responses. GET routes support HEAD; other methods receive 405 with
 `Allow`. HTML, complete graphs and latest task details use

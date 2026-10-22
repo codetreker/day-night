@@ -131,8 +131,9 @@ and listens on loopback. The project list requests 50 items per page, preserves
 server order, and follows `nextCursor` through Load more. Repeated IDs count once.
 Refresh discards old pages and cursors; late responses cannot repopulate them.
 
-The application implements `/` and `/projects/{projectId}`, direct URL reload,
-browser back/forward and a generic not-found page. A project shows seven statistics
+The application implements `/`, `/projects/{projectId}` and the standalone
+`/projects/{projectId}/tasks/{taskId}/attachments/{path...}` reader, direct URL
+reload, browser back/forward and a generic not-found page. A project shows seven statistics
 from one complete graph snapshot and two in-project tabs: Standalone tasks and
 Task chains. The first visit opens Task chains; subsequent visits restore the
 project's last tab. Both tab badges count unfinished tasks (proposed, pending and in
@@ -308,8 +309,8 @@ implemented, activates this same panel and controller.
 
 Select one local file, accept its name as the initial target or edit the relative
 path, then upload. MIME is selected from the target path with `mime`
-4.1.1. Uploading the same path overwrites that file. Each file offers download
-and deletion; successful writes refresh only the attachment list and preview.
+4.1.1. Uploading the same path overwrites that file. Each preview offers Download,
+a neighboring Open in new tab link with an external-link icon, and Delete; successful writes refresh only the attachment list and preview.
 They do not change the task version, timestamp or graph snapshot.
 
 The attachment hook owns list, write, selection and preview state for one
@@ -328,9 +329,9 @@ HTML/PDF, the body and fitted frame wrapper hide overflow and the embedded
 document or native reader owns scrolling. The preview header never scrolls
 independently, exposes the complete path and keeps download/delete reachable.
 Left-pane scrolling does not move right-side content or its reading position.
-Full-page reading in a new browser tab and independent real-service acceptance
-for this reading group remain separate pending tasks. The renderer sizing and
-fixed service URLs remain reusable by that delivery.
+The standalone reader uses this same rendering and sizing. Independent
+real-service acceptance for the attachment-reading group remains a separate
+pending task.
 
 Markdown uses `react-markdown` 10.1.0 with `remark-gfm` 4.0.1 for CommonMark and GFM
 including tables. Raw HTML remains escaped. Relative images and links resolve
@@ -355,6 +356,48 @@ Other formats show metadata and a download link. Files and metadata can diverge
 after a failed write under the accepted K1 limitation; the UI reports errors and
 does not implement reconciliation or rollback.
 
+### Standalone attachment reader
+
+The new-tab action is a real anchor with `target="_blank"` and
+`rel="noopener noreferrer"`. `attachmentPageUrl` uses the selected metadata's
+project, task and complete case-sensitive path, so loading preview content does
+not delay or stale the link. The source dialog, tab and selection stay intact.
+The URL survives copying, closing the source dialog and reloading.
+
+`App` renders `AttachmentPage` outside the workspace shell and modal at
+`/projects/{projectId}/tasks/{taskId}/attachments/{path...}`. The page has a return
+to project link, path, metadata, download and the shared language selector. Its
+initial focus enters the main reading region. The root locale Provider supplies
+first-party messages, HTML language and the route title without changing file
+bytes, resource identity or normal browser keyboard behavior.
+
+The reader reuses `useAttachments` and waits for its complete paginated inventory
+before matching the exact path. Initial and partial-list failures remain errors
+with retry; only a complete inventory can establish a missing file. The existing
+`AttachmentPreview` handles all formats and content failures. The route owns
+project/task/path identity, cancellation and stale-result rejection independently
+of any originating tab. No metadata API, object-URL navigation contract or
+second renderer is introduced.
+
+The parser splits the raw path before decoding segments once and applies the
+existing canonical-ID and attachment-path validators. Encoded separators and
+traversal are rejected; encoded `%252F` represents a valid literal `%2F` in a
+filename. Go serves index HTML for GET/HEAD of this exact page shape, returns
+405 with `Allow: GET, HEAD` for other methods, and keeps unknown page shapes as
+JSON 404. Invalid page IDs retain the existing index plus frontend not-found
+behavior. The raw attachment path guard rejects invalid paths before ServeMux
+normalization can redirect or repair them; file endpoints retain their existing
+scope checks.
+
+The page is a `100dvh` flex column with an actual-height header and remaining-height
+renderer. Its outer wrapper does not scroll. Documents, text and images use the
+shared preview body; HTML/PDF use a fitted native frame whose document owns
+vertical scrolling. There is no fixed header-height subtraction or modal height
+cap. The iframe Escape/Tab bridge is installed only when a real dialog ancestor
+and close callback exist; standalone frames keep ordinary browser keys. The
+[full-reader decision](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-full-reader.md)
+owns the routing and nonmodal composition.
+
 ### Frontend-only attachment mockup
 
 Run `pnpm web:dev` and open `/tests/mockups/attachments.html` on Vite's printed
@@ -365,8 +408,11 @@ content along with loading, empty, failure and busy states, plus upload,
 overwrite, preview, download and deletion without Go,
 PostgreSQL or network API calls. Refreshing the page resets fixture state.
 Object URLs stay valid through deletion and are released when the fixture is
-disposed. This development entry is excluded from the single-index production
-build.
+disposed. Open `/tests/mockups/attachments.html?file=docs%2Fguide.md&scenario=files`
+for the same production reader with a bundled file; it reloads independently
+using the injected fixture API and URLs. Uploaded object URLs remain simulation
+resources and do not define production navigation. This development entry is
+excluded from the single-index production build.
 
 The mockup validates appearance and frontend behavior. Local browser probes also
 exercise the actual portal dialog, background inertness, CSS-hidden controls,

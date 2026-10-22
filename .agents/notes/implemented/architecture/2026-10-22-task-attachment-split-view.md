@@ -36,7 +36,7 @@ There is one right-side vertical scroll owner. Markdown, text/JSON/source and
 large images use the preview body without child vertical height caps. Tables
 and code retain local horizontal scrolling. Ready HTML/PDF use a fitted iframe;
 the preview body and frame wrapper hide overflow while the embedded document or
-native reader scrolls. The header exposes the full path and keeps download and
+native reader scrolls. The header exposes the full path and keeps download, standalone opening and
 delete reachable. Overview has its own normal content scrollbar.
 
 The [requirements](../../../../docs/spec/daynight-task-attachments.md#web-管理与预览)
@@ -48,14 +48,15 @@ Their file, request, trusted-origin and modal lifecycle decisions remain valid.
 
 The confirmed reading delivery separates the tab/split layout, full-page reading
 in a new browser tab, and independent integrated real-service acceptance. The
-layout delivery includes local behavior and regression validation. The full
-reader remains a later capability: the current preview offers working download
-and delete actions without a placeholder new-tab button. Its later cost remains
-additive because renderer sizing is explicit and file identity continues to use
-project, task and the complete relative path; the reader need not replace the
-attachment controller, invent another storage address or alter service preview
-URLs. Independent acceptance observes the integrated production page and actual
-native rendering rather than inferring frame success from HEAD.
+layout delivery included its own behavior and regression validation while
+leaving the full reader as an additive capability. Explicit renderer sizing and
+project/task/full-path identity kept that deferral affordable without another
+storage address or altered service preview URL. The
+[full-reader decision](2026-10-22-task-attachment-full-reader.md) now implements
+the download-adjacent action and standalone route using that shared structure.
+Independent acceptance remains separately tracked and observes the integrated
+production page and actual native rendering rather than inferring frame success
+from HEAD.
 
 ## Alternatives
 
@@ -93,6 +94,7 @@ the accepted K1 filesystem/PostgreSQL boundary remain unchanged.
 The frontend-only production-component mockup proves its own visual and
 interaction behavior. Source-bound UI and browser checks establish the layout
 on their tested artifact; neither replaces the separately tracked real-service
-acceptance or claims the pending full-page reader has shipped. Changes that
+acceptance. The full-reader decision owns the implemented standalone capability.
+Changes that
 remove explicit renderer sizing, mount a second attachment controller or add
 another vertical overflow ancestor require revisiting this decision.

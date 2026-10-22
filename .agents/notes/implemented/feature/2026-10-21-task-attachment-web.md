@@ -29,7 +29,10 @@ second task surface. The [split-view decision](../architecture/2026-10-22-task-a
 partially supersedes that placement: `TaskDetailDialog` now keeps attachment
 management in a dedicated tab with adjacent inventory and preview panes and one
 right-side vertical scroll owner. The [centered detail decision](2026-10-22-centered-task-detail-dialog.md)
-retains the outer shell and modal lifecycle. One file input
+retains the outer shell and modal lifecycle. The
+[full-reader decision](../architecture/2026-10-22-task-attachment-full-reader.md)
+extends the shared renderer with a reloadable nonmodal page and scopes the
+frame keyboard bridge to actual dialog use. One file input
 initializes a target path from the filename; users may edit it to a nested path.
 `mime` 4.1.1 derives Content-Type from that target, so changing a source filename
 does not silently determine the saved path's type. Same-path upload overwrites;
@@ -56,8 +59,8 @@ Service Worker or separate preview origin.
 The [dashboard lifecycle](2026-10-20-project-task-dashboard.md) retains portal,
 background inertness and scroll ownership. `tabbable` 6.5.0 supplies normal
 production visibility and keyboard-order checks for form controls, CSS-hidden
-elements, iframes and contenteditable. Same-origin frame load registers Escape
-and boundary Tab/Shift+Tab bridges into the dialog and releases them on replace
+elements, iframes and contenteditable. Same-origin frame load inside an actual dialog with a close callback registers
+Escape and boundary Tab/Shift+Tab bridges into that dialog and releases them on replace
 or unmount. The [passive restoration decision](../bug-fix/2026-10-20-drawer-focus-restoration.md)
 continues to restore a surviving trigger after sibling DOM removal.
 

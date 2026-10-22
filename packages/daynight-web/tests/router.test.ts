@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { navigate, parseRoute } from "../src/app/router";
 
+const taskId = "b0000000-0000-0000-0000-000000000002";
 const projectId = "a0000000-0000-0000-0000-000000000001";
 
 afterEach(() => window.history.replaceState(null, "", "/"));
@@ -10,6 +11,20 @@ describe("route parsing", () => {
     expect(parseRoute("/")).toEqual({ kind: "projects" });
     expect(parseRoute(`/projects/${projectId.toUpperCase()}`)).toEqual({ kind: "project", projectId });
     expect(parseRoute(`/projects/%61${projectId.slice(1)}`)).toEqual({ kind: "project", projectId });
+  });
+
+  it("parses complete attachment identities without normalizing filename case or literal percent escapes", () => {
+    expect(parseRoute(`/projects/${projectId.toUpperCase()}/tasks/${taskId.toUpperCase()}/attachments/Docs/%E8%AE%BE%E8%AE%A1%20%3F%23%25.md`)).toEqual({ kind: "attachment", projectId, taskId, path: "Docs/设计 ?#%.md" });
+    expect(parseRoute(`/projects/${projectId}/tasks/${taskId}/attachments/%252F`)).toEqual({ kind: "attachment", projectId, taskId, path: "%2F" });
+  });
+
+  it.each(["", "/", "a//b", "a/", "%2F", "a%2fb", "a%5Cb", ".", "..", "a/%2E%2E/b", "%00", "%7F", "C%3A/absolute", "%ED%A0%80", "%ZZ"])("rejects invalid attachment route path %s", (path) => {
+    expect(parseRoute(`/projects/${projectId}/tasks/${taskId}/attachments/${path}`)).toEqual({ kind: "notFound" });
+  });
+  it("rejects invalid attachment route IDs", () => {
+    expect(parseRoute(`/projects/bad/tasks/${taskId}/attachments/a.txt`)).toEqual({ kind: "notFound" });
+    expect(parseRoute(`/projects/${projectId}/tasks/bad/attachments/a.txt`)).toEqual({ kind: "notFound" });
+    expect(parseRoute(`/projects/%ZZ/tasks/${taskId}/attachments/a.txt`)).toEqual({ kind: "notFound" });
   });
 
   it.each([

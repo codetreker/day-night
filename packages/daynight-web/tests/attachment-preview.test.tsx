@@ -111,6 +111,22 @@ describe('attachment preview', () => {
     expect(fireEvent.keyDown(detached.contentDocument!, { key: 'Tab' })).toBe(true);
   });
 
+  it('leaves standalone iframe Escape and Tab to the browser even if a close callback was supplied', () => {
+    const close = vi.fn();
+    const file = attachment('index.html', 'text/html');
+    const view = render(<AttachmentPreview attachment={file} preview={ready} url={`${root}index.html`} previewRoot={root} onRetry={vi.fn()} onClose={close} />);
+    const frame = screen.getByTitle('HTML 预览：index.html') as HTMLIFrameElement;
+    fireEvent.load(frame);
+    expect(fireEvent.keyDown(frame.contentDocument!, { key: 'Escape' })).toBe(true);
+    expect(fireEvent.keyDown(frame.contentDocument!, { key: 'Tab' })).toBe(true);
+    expect(close).not.toHaveBeenCalled();
+    view.rerender(<section role="dialog"><AttachmentPreview attachment={file} preview={ready} url={`${root}index.html`} previewRoot={root} onRetry={vi.fn()} /></section>);
+    const withoutClose = screen.getByTitle('HTML 预览：index.html') as HTMLIFrameElement;
+    fireEvent.load(withoutClose);
+    expect(fireEvent.keyDown(withoutClose.contentDocument!, { key: 'Escape' })).toBe(true);
+    expect(fireEvent.keyDown(withoutClose.contentDocument!, { key: 'Tab' })).toBe(true);
+  });
+
   it('uses sequential native controls and editing hosts while excluding inert and collapsed descendants', () => {
     const view = render(<div><button type="button" disabled>Disabled</button><div inert><a href="#">Inert</a></div><details><summary>Directory</summary><button type="button">Hidden file</button><details><summary>Nested</summary><button type="button">Nested file</button></details></details><details open><summary>Open directory</summary><button type="button">Visible file</button></details><input type="hidden" /><a href="#" tabIndex={-1}>Skipped link</a><div contentEditable suppressContentEditableWarning>Editable</div></div>);
     expect(dialogFocusables(view.container).map((element) => element.textContent)).toEqual(['Directory', 'Open directory', 'Visible file', 'Editable']);
