@@ -77,6 +77,15 @@ const openProject = async (page: Page, id: string, name: string): Promise<void> 
   expect(response?.headers()['content-type']).toContain('text/html');
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
 };
+const pauseRefreshClock = async (page: Page): Promise<void> => {
+  await page.clock.pauseAt(new Date('2030-01-01T00:00:00Z'));
+  await expect(page.locator('.snapshot-time time')).toHaveAttribute('datetime', /^2030-/);
+};
+const nextAutomaticRefresh = async (page: Page, projectId: string): Promise<number> => {
+  const response = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/projects/${projectId}/task-graph`);
+  await page.clock.fastForward(5_000);
+  return (await response).status();
+};
 
 test('project-list', scenario('project-list'), async ({ page, request }, info) => {
   const prefix = `Pagination ${randomUUID()}`;
@@ -341,6 +350,7 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
 });
 
 test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request }, info) => {
+  await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   await page.setViewportSize({ width: 1100, height: 700 });
   const project = await createProject(request, { name: `Task views ${randomUUID()}` });
   const predecessor = await createTask(request, project.id, { title: '已经完成但仍属于任务链的前置' });
@@ -445,6 +455,7 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
   await expect(viewTab(page, '独立任务')).toHaveAttribute('aria-selected', 'true');
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(320);
 
+  await pauseRefreshClock(page);
   independent = await updateTask(request, project.id, independent.id, { version: independent.version, dependsOn: [predecessor.id] });
   await standalone(page, independent.id).click();
   await expect(dialog.locator('.task-detail-stale')).toBeVisible();
@@ -578,6 +589,7 @@ test('detail-navigation', scenario('detail-navigation'), async ({ page, request 
 });
 
 test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request }, info) => {
+  await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   const project = await createProject(request, { name: `Freshness ${randomUUID()}` });
   const predecessor = await createTask(request, project.id, { title: '完成后解除阻塞的前置' });
   const dependent = await createTask(request, project.id, { title: '版本和时间保持不变的后续', dependsOn: [predecessor.id] });
@@ -587,6 +599,7 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   await expect(root(page, predecessor.id).locator('.root-status')).toHaveText('待处理');
   await expect(root(page, predecessor.id).locator('.root-progress-label')).toHaveText('0/2 已完成');
   await expect(node(page, dependent.id).locator('.graph-blocked-badge')).toBeVisible();
+  await pauseRefreshClock(page);
   await updateTask(request, project.id, predecessor.id, { version: predecessor.version, status: 'done' });
   const currentResponse = await request.get(`/api/v1/projects/${project.id}/tasks/${dependent.id}`);
   expect(currentResponse.status()).toBe(200);
@@ -616,19 +629,63 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   await expect(node(page, dependent.id).locator('.graph-blocked-badge')).toHaveCount(0);
   await page.keyboard.press('Escape');
   const pullRequests = Array.from({ length: 205 }, (_, index) => ({ title: `刷新前关联 ${index + 1}`, url: '  new arbitrary URL\0  ' }));
-  const changed = await updateTask(request, project.id, dependent.id, { version: current.version, properties: { pullRequests } });
+  let changed = await updateTask(request, project.id, dependent.id, { version: current.version, properties: { pullRequests } });
   expect(changed.properties.pullRequests).toEqual(pullRequests);
   await node(page, dependent.id).click();
   await checkPullRequests(dialog, pullRequests);
   await expect(dialog.locator('.task-detail-stale')).toBeVisible();
   await dialog.getByRole('combobox', { name: '关联 PR 页码' }).selectOption('2');
+  await dialog.getByRole('combobox', { name: '关联 PR 页码' }).focus();
+  await checkPullRequests(dialog, pullRequests, 2);
+  const graphTransform = await page.locator('.react-flow__viewport').getAttribute('style');
+  const pagePosition = await page.evaluate(() => window.scrollY);
+  changed = await updateTask(request, project.id, dependent.id, { version: changed.version, status: 'in_progress' });
+  expect(await nextAutomaticRefresh(page, project.id)).toBe(200);
+  await expect(stat(page, '进行中')).toHaveText('1');
+  await expect(stat(page, '待处理')).toHaveText('0');
+  await expect(node(page, dependent.id).locator('.graph-status')).toHaveText('进行中');
+  await expect(dialog.locator('.task-detail-status')).toHaveText('进行中');
+  await expect(dialog.locator('.task-detail-stale')).toHaveCount(0);
+  await checkPullRequests(dialog, pullRequests, 2);
+  await expect(dialog.getByRole('combobox', { name: '关联 PR 页码' })).toBeFocused();
+  await expect(page.locator('.react-flow__viewport')).toHaveAttribute('style', graphTransform!);
+  expect(await page.evaluate(() => window.scrollY)).toBe(pagePosition);
+
+  const attachmentTab = dialog.getByRole('tab', { name: '附件', exact: true });
+  const attachmentPath = dialog.getByRole('textbox', { name: '目标相对路径', exact: true });
+  await attachmentTab.click();
+  const fileInput = dialog.getByLabel('选择一个文件', { exact: true });
+  await fileInput.setInputFiles({ name: 'retained.txt', mimeType: 'text/plain', buffer: Buffer.from('Unsubmitted attachment draft') });
+  await attachmentPath.fill('draft/retained.txt');
+  changed = await updateTask(request, project.id, dependent.id, { version: changed.version, title: '自动刷新后的任务标题' });
+  expect(await nextAutomaticRefresh(page, project.id)).toBe(200);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(changed.title);
+  await expect(attachmentTab).toHaveAttribute('aria-selected', 'true');
+  await expect(attachmentPath).toHaveValue('draft/retained.txt');
+  await expect(attachmentPath).toBeFocused();
+  expect(await fileInput.evaluate((input: HTMLInputElement) => input.files?.[0]?.name)).toBe('retained.txt');
+  await dialog.getByRole('tab', { name: '概览', exact: true }).click();
+  await checkPullRequests(dialog, pullRequests, 2);
+
+  const successfulReceipt = await page.locator('.snapshot-time time').getAttribute('datetime');
+  await withDependencyFailure(async () => {
+    expect(await nextAutomaticRefresh(page, project.id)).toBe(500);
+    await expect(page.getByRole('heading', { name: '刷新失败' })).toBeVisible();
+    await expect(page.locator('.snapshot-time time')).toHaveAttribute('datetime', successfulReceipt!);
+    await expect(stat(page, '进行中')).toHaveText('1');
+    await expect(dialog.locator('.task-detail-title')).toHaveText(changed.title);
+    await checkPullRequests(dialog, pullRequests, 2);
+  });
+  expect(await nextAutomaticRefresh(page, project.id)).toBe(200);
+  await expect(page.locator('.snapshot-error')).toHaveCount(0);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(changed.title);
   await checkPullRequests(dialog, pullRequests, 2);
   const replacement = Array.from({ length: 101 }, (_, index) => ({ title: `刷新后关联 ${index + 1}`, url: 'arbitrary' }));
   const replaced = await updateTask(request, project.id, dependent.id, { version: changed.version, properties: { pullRequests: replacement } });
-  await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
+  expect(await nextAutomaticRefresh(page, project.id)).toBe(200);
   await checkPullRequests(dialog, replacement);
   await expect(dialog.locator('.task-detail-stale')).toHaveCount(0);
-  await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
+  await expect(dialog.getByRole('tab', { name: '概览', exact: true })).toBeFocused();
   await screenshot(page, info, 'refresh-staleness');
   await page.keyboard.press('Escape');
   await updateTask(request, project.id, dependent.id, { version: replaced.version, status: 'done' });
@@ -646,6 +703,7 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
 });
 
 test('failure-recovery', scenario('failure-recovery'), async ({ page, request }, info) => {
+  await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   const project = await createProject(request, { name: `Recovery ${randomUUID()}` });
   await openProject(page, project.id, project.name);
   await expect(page.getByRole('heading', { name: '还没有任务' })).toBeVisible();
@@ -664,6 +722,7 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, request },
   await expect(root(page, task.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(root(page, task.id).locator('.root-status')).toHaveText('已完成');
   await expect(node(page, task.id)).toBeVisible();
+  await pauseRefreshClock(page);
   const receipt = await page.locator('.snapshot-time time').getAttribute('datetime');
   const dialog = page.getByRole('dialog', { name: '任务详情' });
   await withDependencyFailure(async () => {
@@ -780,6 +839,7 @@ test('deep-links', scenario('deep-links'), async ({ page, request }, info) => {
 });
 
 test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, info) => {
+  await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   const project = await createProject(request, { name: `Keyboard ${randomUUID()}` });
   const a = await createTask(request, project.id, { title: '键盘前置任务' });
   await updateTask(request, project.id, a.id, { version: a.version, status: 'done' });
@@ -890,6 +950,7 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   await expect(trigger).toBeFocused();
 
   const completedVisibility = page.getByRole('checkbox', { name: '显示已完成任务链（0）' });
+  await pauseRefreshClock(page);
   await completedVisibility.check();
   await expect(completedVisibility).toBeChecked();
   let currentTask = b;

@@ -30,6 +30,137 @@ const deferred = <T,>() => {
 beforeEach(() => { graphRequest.mockReset(); detailRequest.mockReset(); });
 
 describe("task graph snapshots", () => {
+  it("polls every five seconds without replacing an unchanged graph or announcing background loading", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    graphRequest.mockImplementation(async () => graph());
+    const { result } = renderHook(() => useTaskGraph(projectId));
+    await act(async () => { await Promise.resolve(); });
+    const first = result.current.snapshot!;
+    await act(async () => { await vi.advanceTimersByTimeAsync(4_999); });
+    expect(graphRequest).toHaveBeenCalledTimes(1);
+    const next = deferred<TaskGraph>();
+    graphRequest.mockReturnValueOnce(next.promise);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(graphRequest).toHaveBeenCalledTimes(2);
+    expect(result.current).toMatchObject({ snapshot: first, status: "ready", refreshing: false });
+    await act(async () => { next.resolve(graph()); });
+    expect(result.current.snapshot!.graph).toBe(first.graph);
+    expect(result.current.snapshot!.index).toBe(first.index);
+    expect(result.current.snapshot!.receivedAt).toBe(6_000);
+    expect(result.current.snapshot!.revision).toBeGreaterThan(first.revision);
+  });
+
+  it("lets slow automatic requests finish and gives manual refresh priority", async () => {
+    vi.useFakeTimers();
+    const slow = deferred<TaskGraph>();
+    graphRequest.mockReturnValueOnce(slow.promise).mockResolvedValue(graph());
+    const { result } = renderHook(() => useTaskGraph(projectId));
+    const signal = graphRequest.mock.calls[0]![1];
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    expect(graphRequest).toHaveBeenCalledTimes(1);
+    expect(signal.aborted).toBe(false);
+    act(() => result.current.refresh());
+    expect(signal.aborted).toBe(true);
+    await act(async () => { await Promise.resolve(); });
+    const fresh = result.current.snapshot;
+    await act(async () => { slow.reject(new Error("superseded")); });
+    expect(result.current.snapshot).toBe(fresh);
+    expect(result.current.error).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(graphRequest).toHaveBeenCalledTimes(3);
+  });
+
+  it("pauses hidden-page polling, refreshes on return, and removes timers and listeners on unmount", async () => {
+    vi.useFakeTimers();
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    graphRequest.mockImplementation(async () => graph());
+    const { unmount } = renderHook(() => useTaskGraph(projectId));
+    await act(async () => { await Promise.resolve(); });
+    visibility.mockReturnValue("hidden");
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(graphRequest).toHaveBeenCalledTimes(1);
+    visibility.mockReturnValue("visible");
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+    expect(graphRequest).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(graphRequest).toHaveBeenCalledTimes(3);
+    unmount();
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(graphRequest).toHaveBeenCalledTimes(3);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps errors visible during background retry and recovers automatically with a fresh receipt", async () => {
+    vi.useFakeTimers();
+    const failure = new Error("offline");
+    const recovery = deferred<TaskGraph>();
+    graphRequest.mockResolvedValueOnce(graph()).mockRejectedValueOnce(failure).mockReturnValueOnce(recovery.promise);
+    const { result } = renderHook(() => useTaskGraph(projectId));
+    await act(async () => { await Promise.resolve(); });
+    const first = result.current.snapshot!;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(result.current).toMatchObject({ snapshot: first, error: failure });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(result.current).toMatchObject({ snapshot: first, error: failure, refreshing: false });
+    await act(async () => { recovery.resolve(graph()); });
+    expect(result.current.error).toBeNull();
+    expect(result.current.snapshot!.index).toBe(first.index);
+    expect(result.current.snapshot!.revision).toBeGreaterThan(first.revision);
+  });
+
+  it("keeps an initial error visible through an automatic retry without repeating the loading state", async () => {
+    vi.useFakeTimers();
+    const recovery = deferred<TaskGraph>();
+    const failure = new Error("offline");
+    graphRequest.mockRejectedValueOnce(failure).mockReturnValueOnce(recovery.promise);
+    const { result } = renderHook(() => useTaskGraph(projectId));
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current).toMatchObject({ snapshot: null, status: "error", error: failure });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(result.current).toMatchObject({ snapshot: null, status: "error", error: failure });
+    await act(async () => { recovery.resolve(graph()); });
+    expect(result.current.status).toBe("ready");
+    expect(result.current.error).toBeNull();
+  });
+
+  it("continues an in-flight graph across a hidden and visible transition", async () => {
+    vi.useFakeTimers();
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const pending = deferred<TaskGraph>();
+    graphRequest.mockReturnValueOnce(pending.promise).mockResolvedValue(graph());
+    const { result } = renderHook(() => useTaskGraph(projectId));
+    const signal = graphRequest.mock.calls[0]![1];
+    visibility.mockReturnValue("hidden");
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    visibility.mockReturnValue("visible");
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    expect(graphRequest).toHaveBeenCalledTimes(1);
+    expect(signal.aborted).toBe(false);
+    await act(async () => { pending.resolve(graph()); });
+    expect(result.current.status).toBe("ready");
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(graphRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("publishes proposed status and readiness changes even with unchanged task timestamps", async () => {
+    vi.useFakeTimers();
+    const proposed: TaskGraph = { ...graph(), tasks: [{ ...node, status: "proposed", ready: false }],
+      summary: { total: 1, proposed: 1, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } };
+    graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(proposed);
+    const { result } = renderHook(() => useTaskGraph(projectId));
+    await act(async () => { await Promise.resolve(); });
+    const first = result.current.snapshot!;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(result.current.snapshot!.index).not.toBe(first.index);
+    expect(result.current.snapshot!.index.nodes.get(taskId)).toMatchObject({ status: "proposed", ready: false, updatedAt: time });
+    expect(result.current.snapshot!.graph.summary.proposed).toBe(1);
+  });
+
   it("publishes graph, validated index, local receipt time and revision atomically", async () => {
     vi.spyOn(Date, "now").mockReturnValue(123456);
     graphRequest.mockResolvedValue(graph());
@@ -151,7 +282,7 @@ describe("task details", () => {
     expect(result.current).toMatchObject({ status: "ready", detail, error: null });
   });
 
-  it("clears immediately for project, task and graph revision changes", async () => {
+  it("clears immediately for project and task changes while retaining the same task on graph receipts", async () => {
     detailRequest.mockImplementation(async (project, task) => ({ ...detail, projectId: project, id: task }));
     const renders: Array<{ key: string; displayed: string | null }> = [];
     const { result, rerender } = renderHook(({ project, task, revision }) => {
@@ -163,7 +294,6 @@ describe("task details", () => {
     for (const props of [
       { project: projectId, task: otherTask, revision: 1 },
       { project: otherProject, task: otherTask, revision: 1 },
-      { project: otherProject, task: otherTask, revision: 2 },
     ]) {
       const first = renders.length;
       rerender(props);
@@ -172,6 +302,10 @@ describe("task details", () => {
       expect(result.current.detail?.projectId).toBe(props.project);
       expect(result.current.detail?.id).toBe(props.task);
     }
+    const first = renders.length;
+    rerender({ project: otherProject, task: otherTask, revision: 2 });
+    expect(renders[first]?.displayed).toBe(otherTask);
+    await waitFor(() => expect(detailRequest).toHaveBeenCalledTimes(4));
     expect(detailRequest).toHaveBeenCalledTimes(4);
   });
 
@@ -192,6 +326,8 @@ describe("task details", () => {
     detailRequest.mockReturnValueOnce(late.promise).mockResolvedValueOnce(detail);
     const { result, rerender, unmount } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision), { initialProps: { revision: 1 } });
     rerender({ revision: 2 });
+    expect(detailRequest).toHaveBeenCalledTimes(1);
+    act(() => result.current.retry());
     await waitFor(() => expect(result.current.status).toBe("ready"));
     await act(async () => { late.reject(new Error("stale failure")); });
     expect(result.current.error).toBeNull();
@@ -202,6 +338,74 @@ describe("task details", () => {
     unmount();
     expect(pendingSignal.aborted).toBe(true);
     await act(async () => { pending.resolve(detail); });
+  });
+
+  it("coalesces graph receipts behind slow details without cancellation and reads the newest properties", async () => {
+    const slow = deferred<TaskDetail>();
+    const updated = { ...detail, description: "updated", properties: { pullRequests: [{ title: "PR", url: "https://example.com/pr/1" }] } };
+    detailRequest.mockReturnValueOnce(slow.promise).mockResolvedValueOnce(updated);
+    const { result, rerender } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision), { initialProps: { revision: 1 } });
+    const signal = detailRequest.mock.calls[0]![2];
+    rerender({ revision: 2 });
+    rerender({ revision: 3 });
+    expect(detailRequest).toHaveBeenCalledTimes(1);
+    expect(signal.aborted).toBe(false);
+    await act(async () => { slow.resolve(detail); });
+    expect(detailRequest).toHaveBeenCalledTimes(2);
+    expect(result.current.detail).toEqual(updated);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("retains successful detail and PR pagination identity through failures and automatically recovers", async () => {
+    const retry = deferred<TaskDetail>();
+    const failure = new Error("offline");
+    detailRequest.mockResolvedValueOnce(detail).mockRejectedValueOnce(failure).mockReturnValueOnce(retry.promise);
+    const { result, rerender } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision), { initialProps: { revision: 1 } });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    const first = result.current.detail!;
+    rerender({ revision: 2 });
+    expect(result.current.detail).toBe(first);
+    await waitFor(() => expect(result.current.error).toBe(failure));
+    expect(result.current).toMatchObject({ detail: first, status: "ready" });
+    rerender({ revision: 3 });
+    expect(result.current.error).toBe(failure);
+    await act(async () => { retry.resolve({ ...detail, description: "new description", properties: { pullRequests: [] } }); });
+    expect(result.current.error).toBeNull();
+    expect(result.current.detail!.description).toBe("new description");
+    expect(result.current.detail!.properties.pullRequests).toBe(first.properties.pullRequests);
+  });
+
+  it("retries an initial detail failure on an unchanged graph receipt and discards retained data on not-found", async () => {
+    const recovery = deferred<TaskDetail>();
+    const failure = new Error("offline");
+    detailRequest.mockRejectedValueOnce(failure).mockReturnValueOnce(recovery.promise)
+      .mockRejectedValueOnce(new ApiError("server", 404, "not_found"));
+    const { result, rerender } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision), { initialProps: { revision: 1 } });
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    rerender({ revision: 2 });
+    expect(result.current).toMatchObject({ status: "error", detail: null, error: failure });
+    await act(async () => { recovery.resolve(detail); });
+    await waitFor(() => expect(result.current.detail).toEqual(detail));
+    rerender({ revision: 3 });
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    expect(result.current.detail).toBeNull();
+  });
+
+  it("defers automatic details while hidden and resumes on the next graph receipt", async () => {
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const pending = deferred<TaskDetail>();
+    detailRequest.mockReturnValueOnce(pending.promise).mockResolvedValueOnce({ ...detail, description: "latest" });
+    const { result, rerender } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision), { initialProps: { revision: 1 } });
+    rerender({ revision: 2 });
+    visibility.mockReturnValue("hidden");
+    await act(async () => { pending.resolve(detail); });
+    expect(detailRequest).toHaveBeenCalledTimes(1);
+    rerender({ revision: 3 });
+    expect(detailRequest).toHaveBeenCalledTimes(1);
+    visibility.mockReturnValue("visible");
+    rerender({ revision: 4 });
+    await waitFor(() => expect(result.current.detail!.description).toBe("latest"));
+    expect(detailRequest).toHaveBeenCalledTimes(2);
   });
 
   it("does not turn an AbortError into a displayed failure", async () => {

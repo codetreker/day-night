@@ -4,6 +4,8 @@ export const inspection: InspectionMessages = {
   detail: {
     overview: "Overview",
     title: "Task details", close: "Close task details", loading: "Loading task details", failed: "Task details could not be loaded",
+    refreshFailed: "Task details could not be refreshed",
+    retainedData: "Showing the last successfully loaded details. Updates will retry automatically.",
     networkError: "Unable to connect to the service. Check the local service and try again.",
     notFoundError: "This task can no longer be read. Refresh the task graph.",
     loadError: "Unable to read task details. Please try again.", retry: "Retry details", ready: "Ready", blocked: "Blocked",

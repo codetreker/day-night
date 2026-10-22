@@ -5,6 +5,8 @@ export type InspectionMessages = {
     readonly close: string;
     readonly loading: string;
     readonly failed: string;
+    readonly refreshFailed: string;
+    readonly retainedData: string;
     readonly networkError: string;
     readonly notFoundError: string;
     readonly loadError: string;
