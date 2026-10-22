@@ -139,7 +139,7 @@ describe("YAML configuration", () => {
     }
   });
 
-  it("reports an unresolved YAML alias through its original cause", () => {
+  it("reports an unresolved YAML alias as a decode failure", () => {
     expect(() => parse("repositories: *missing")).toThrow("Cannot decode YAML");
   });
 

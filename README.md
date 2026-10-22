@@ -50,8 +50,9 @@ sessions and personal access tokens, private projects and membership. The
 provides persistent users, credentials and callable authentication handlers. The
 [project membership module](.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
 adds private creation, filtered access, roles and invitations. Both modules remain
-unmounted; client integration and coordinated activation are separately tracked,
-and the current application is unauthenticated and loopback-only. Trusted
+unmounted. [CLI server credentials](.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
+are implemented; Web integration and coordinated activation are separately
+tracked, and the current application is unauthenticated and loopback-only. Trusted
 same-origin executable HTML previews retain their existing execution model after
 authentication is delivered; attachment requests gain project-member checks.
 Existing projects will receive membership data manually outside that work.
@@ -775,12 +776,13 @@ records startup-file ownership and installation limits.
 
 ## Configuration setup
 
-The first valid project or task command asks for a server origin when the
-configuration file or `serverUrl` is absent. The first `review run`, `review list`
-or `review ls` asks for a repository when the file or `repositories` field is
-absent. Each command asks only for its own capability. Machines that do not run
-review can keep only `serverUrl`. After saving, the original command runs once
-with its original arguments.
+The first valid project or task command asks for a server origin and an optional
+hidden personal access token when the configuration file or `serverUrl` is
+absent. The first `review run`, `review list` or `review ls` asks for a repository
+when the file or `repositories` field is absent. Each command asks only for its
+own capability. A server-only machine needs no review fields; `serverToken` is
+optional in configuration. After saving, the original command runs once with
+its original arguments.
 
 Run `daynight setup` to choose server access, review or both in advance. For scripts,
 use explicit options, which never prompt:
@@ -794,7 +796,27 @@ daynight setup --review-repo git@github.com:OWNER/OTHER.git --review-path ./revi
 The two capabilities can be configured in one invocation by combining
 `--server-url` and `--review-repo`; `--review-path` requires `--review-repo`.
 The server origin has no implicit default. Review registration uses the same
-remote and path rules as `review add-repo`.
+remote and path rules as `review add-repo`. Interactive server setup hides the
+token input. A blank answer keeps an existing token for the same normalized
+origin or skips the token for a new origin.
+
+For automation, use the boolean `--server-token-stdin` option with one nonempty
+line, optionally ending in LF or CRLF. It can accompany `--server-url` or reuse
+the saved server origin; without either origin setup fails. Explicit URL-only
+setup remains noninteractive. For example, a secret-producing command can pipe
+its output directly into setup:
+
+```bash
+secret-provider-command | daynight setup --server-url https://daynight.example.com --server-token-stdin
+```
+
+`secret-provider-command` represents an external secret source, not a Daynight
+command or environment setting. Stdin input rejects empty input, multiple lines,
+control characters and input larger than 1 MiB. Tokens are opaque visible ASCII. A token
+requires HTTPS except for HTTP origins whose host is literal `localhost`,
+a numeric IPv4 address in `127.0.0.0/8`, or `::1`. Changing the normalized origin
+removes its previous token in the same atomic save; an equivalent origin preserves it. Tokens stay out of
+command arguments, repository bindings and diagnostics.
 
 Interactive setup requires terminal stdin and stderr. Prompts and save messages
 go to stderr, so redirected stdout keeps its normal text or JSON results. Missing
@@ -807,15 +829,24 @@ Help, version, completion, update and invalid arguments do not prompt.
 
 Setup collects all selected values before one atomic save under the configuration
 write lock, preserving comments, other settings and concurrent completed changes
-to unrelated fields. If a selected field changed while input was collected, setup
-fails with a conflict and asks for setup to be run again.
+to unrelated fields. The server origin and token are checked together for
+concurrent changes; a selected-field conflict requires setup to be run again.
+Credential-bearing configuration files use POSIX mode `0600`, including writes
+by review setup or registration; files without a token retain existing mode
+behavior. Symlink rejection and atomic replacement continue to apply.
 Ctrl+C, termination signals or EOF cancel input without saving partial values or
 running the original command. Input time does not consume the business command's
-timeout. Setup saves configuration only; network access, authentication, cloning
-and review state initialization belong to the subsequent business command. A
+timeout. Setup saves configuration only; it makes no network request, login
+preflight or authentication check. Cloning and review state initialization belong
+to the subsequent business command. A
 connection failure after setup keeps the saved configuration. The
 [setup decision](.agents/notes/implemented/feature/2026-10-21-guided-configuration-setup.md)
-records the independent capabilities and persistence guarantees.
+records the independent capabilities and persistence guarantees; the
+[credential decision](.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
+owns token handling. Configured credentials are attached to existing project,
+task and attachment requests. Redirects are not followed with credentials. A
+`401` gives setup guidance without anonymous fallback or automatic write retry;
+reconcile an unconfirmed write before another mutation.
 
 ## Project management
 
@@ -999,9 +1030,10 @@ cloning, authentication checks, GitHub calls, SQLite initialization and PR bound
 selection belong to review startup. An already running reviewer keeps its loaded
 configuration until its next startup.
 
-The same YAML also accepts the server client's `serverUrl` field. Review validates
-its own fields independently of that value, while the server configuration
-projection requires only a valid HTTP(S) origin. The shared parser still rejects
+The same YAML also accepts the server client's `serverUrl` and optional
+`serverToken` fields. Review validates its own fields independently of server
+business values. The server projection requires a valid HTTP(S) origin and
+validates any configured token and its transport. The shared parser still rejects
 invalid YAML, duplicate keys and unknown root fields. Registration can add the
 first review repository to a server-only file while preserving its server
 settings and comments.
@@ -1050,8 +1082,9 @@ errors after replacement remain visible. A separate
 `~/.daynight/config.yml.lock` excludes another configuration writer and fails
 clearly when occupied; it is independent of the review instance lock. After an
 abnormal exit, confirm no configuration writer remains before removing this lock.
-Configuration mutation rejects symlinks and nonregular files and preserves an
-existing file's permission mode.
+Configuration mutation rejects symlinks and nonregular files. A resulting
+configuration containing `serverToken` uses POSIX mode `0600`; without a token,
+existing file-mode behavior is preserved.
 
 Numeric options use the documented [configuration defaults](docs/design/daynight-review.md#使用方式与配置)
 when omitted. Explicit invalid values, unsupported fields, duplicate YAML keys and
