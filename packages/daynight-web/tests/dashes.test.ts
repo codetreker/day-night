@@ -113,6 +113,36 @@ describe('dashed dependency route decomposition', () => {
     }
   });
 
+  it.each([
+    [{ x: 0, y: 0 }, { x: 100000, y: 0 }],
+    [{ x: 12000, y: 90000 }, { x: -48000, y: 10000 }],
+  ])('bounds long straight paint pieces without omitting route geometry (%j → %j)', (from, to) => {
+    const pieces = expectCompleteRoute([from, to]);
+    expect(pieces.length).toBeGreaterThan(1);
+    for (const piece of pieces) {
+      expect(piece.kind).toBe('line');
+      if (piece.kind === 'line') expect(piece.length).toBeLessThanOrEqual(8192);
+    }
+  });
+
+  it('preserves native bends and a short final line across bounded gap seams', () => {
+    const points = [
+      { x: 0, y: 0 }, { x: 8192.01, y: 0 },
+      { x: 8192.01, y: 20000 }, { x: -10000, y: 20000 },
+    ];
+    const pieces = expectCompleteRoute(points);
+    expect(pieces.some((piece) => piece.kind === 'path')).toBe(true);
+    for (const piece of pieces) {
+      if (piece.kind === 'line') expect(piece.length).toBeLessThanOrEqual(8192);
+    }
+    const straight = expectCompleteRoute(points.slice(0, 2));
+    expect(straight).toHaveLength(2);
+    expect(straight[1]!.startDistance).toBe(8188);
+    expect(straight[1]!.kind).toBe('line');
+    if (straight[1]!.kind === 'line') expect(straight[1]!.length).toBeCloseTo(4.01);
+    expect(expectCompleteRoute([{ x: 0, y: 0 }, { x: 8192, y: 0 }])).toHaveLength(1);
+  });
+
   it('retains short routes, short reversals, and short segments between long bodies', () => {
     const short = [{ x: 0, y: 0 }, { x: 12, y: 15 }, { x: -3, y: 15 }, { x: -3, y: 12 }];
     const pieces = expectCompleteRoute(short);

@@ -33,6 +33,11 @@ stroke width or dash spacing. The
 [SVG2 stroke-shape algorithm](https://www.w3.org/TR/SVG2/painting.html#StrokeShape)
 owns that positive-offset interpretation.
 
+The [bounded-line extension](2026-10-22-bounded-dashed-dependency-lines.md)
+additionally limits each line to 8,192 graph units for macOS GPU rendering.
+It preserves this local-coordinate mechanism and the historical CPU raster
+evidence below while splitting long bodies at additional global dash gaps.
+
 The pinned Chromium implementation explains why local coordinates matter.
 [Chromium's DEPS](https://github.com/chromium/chromium/blob/f842f52ef39fd97b449eb27cff414bf05a98ddce/DEPS#L340)
 pins Skia `95ee33d7ec7791ab9c071675710a14fe6408ae4f`.
