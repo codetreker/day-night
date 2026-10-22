@@ -495,9 +495,10 @@ deployment/
 web job 在统一验收前执行 dev-ci 生命周期 fixture，随后仅调用 `scripts/ci.mts`。
 该入口把固定 Chromium 的 `install --with-deps chromium` 和既有 `pnpm web:test`
 作为准备 callback 交给共享 runner；仅覆盖率子进程设置 `VITEST_MAX_WORKERS=2`，
-保留 `forks` pool 和文件隔离，两个准备命令各限 180 秒。它们与原生 UI/Go/
-PostgreSQL 准备及正常 dev-ci 源码构建/启动并行。dev-ci 继续拥有本次唯一镜像
-及运行镜像身份校验和完整 shell 清理。
+保留 `forks` pool 和文件隔离。浏览器安装含 apt Linux 依赖与 Chromium 下载，限时
+600 秒；覆盖率命令仍限 180 秒，任一失败都使验收失败。两项准备与原生 UI/Go/
+PostgreSQL 准备及正常 dev-ci 源码构建/启动并行。web job 总上限仍为 20 分钟；
+dev-ci 继续拥有本次唯一镜像及运行镜像身份校验和完整 shell 清理。
 
 原生功能阶段只等待原生服务和浏览器就绪；其十三个场景及浏览器回收成功后，runner
 原子写入绑定 acceptance run ID、dev-ci run ID 和 source SHA 的容器执行许可。

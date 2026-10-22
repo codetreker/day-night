@@ -15,8 +15,12 @@ The preceding optimizations and stability work are delivered through
 [PR #71](https://github.com/codetreker/daynight/pull/71). The
 [post-PR #71 main run](https://github.com/codetreker/daynight/actions/runs/39545046061)
 at `0a1510aa1af9482c7670a09c67096bbd391041a2` passed its complete workload in
-4 minutes 28 seconds. That source-bound baseline explains the remaining
-scheduling work; it does not validate this pipeline.
+4 minutes 28 seconds. Later, main run
+[39785915428](https://github.com/codetreker/daynight/actions/runs/39785915428)
+failed in browser preparation: Playwright's apt phase needed 4 minutes 56 seconds
+to download 25.9 MB, while the command had a 180-second deadline. The timeout
+was real, but the delay came from package transfer rather than a browser or
+product acceptance failure.
 
 ## Decision
 
@@ -27,10 +31,13 @@ signal handlers on import. The thin `scripts/acceptance.mts` CLI and `scripts/ci
 pass explicit cancellation controllers to that runner. CI supplies callbacks for
 pinned Chromium installation and the unchanged `pnpm web:test` command; only the
 coverage child receives `VITEST_MAX_WORKERS=2`, retaining its `forks` pool and
-per-file isolation. Controlled deployment fixtures run before the unified CI
-entry. This partially replaces the cache-only preparation and target sequencing
-of the [CI efficiency decision](2026-10-21-ci-validation-efficiency.md) and the
-original schedule of the
+per-file isolation. Browser installation, including Playwright's Linux dependency
+installation, is bounded at 600 seconds. Coverage remains bounded at 180 seconds.
+Both commands remain required: a nonzero exit or timeout fails acceptance. The
+web job retains its 20-minute overall timeout. Controlled deployment fixtures run
+before the unified CI entry. This partially replaces the cache-only preparation
+and target sequencing of the [CI efficiency decision](2026-10-21-ci-validation-efficiency.md)
+and the original schedule of the
 [dashboard acceptance decision](2026-10-20-dashboard-production-acceptance.md).
 Their real targets, complete scenarios, coverage, performance and cleanup
 requirements continue to apply.
@@ -39,8 +46,9 @@ The runner starts normal dev-ci source build/start once, concurrently with nativ
 production UI/Go/PostgreSQL preparation and CI browser/coverage callbacks. The
 existing shell runner remains authoritative for the unique image, running-image
 check and full stack cleanup. Native functional browser work waits only for the
-native process, shared installed CLI and browser preparation. Its thirteen scenarios and immediate
-browser recovery must pass before the runner releases the container browser.
+native process, shared installed CLI and browser preparation. Its thirteen
+scenarios and immediate browser recovery must pass before the runner releases
+the container browser.
 
 Release is an atomic `container/container-permission.json` receipt with schema 1,
 phase `native-functional-cleaned`, acceptance run ID, dev-ci run ID and source
@@ -55,11 +63,11 @@ Capacity runs last, after every preparation/check command, native functional
 phase, container functional phase and complete container cleanup. The native
 Go process and PostgreSQL remain alive for this final phase. One browser worker,
 zero retries, all four fixed graphs with five repetitions, both independent
-limits, complete visible induced geometry, twenty CDP traces and all original timing gates
-remain required. Native functional and capacity phases strictly aggregate to
-eighteen unique scenarios; the container target requires thirteen. Per-phase and
-aggregate validation reject missing, extra or duplicate scenarios and retries,
-and require matching browser identity within a target.
+limits, complete visible induced geometry, twenty CDP traces and all original
+timing gates remain required. Native functional and capacity phases strictly
+aggregate to eighteen unique scenarios; the container target requires thirteen.
+Per-phase and aggregate validation reject missing, extra or duplicate scenarios
+and retries, and require matching browser identity within a target.
 
 The [progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
 retains those complete API inputs and existing timing thresholds while requiring
@@ -75,12 +83,12 @@ exit is subsequently read, as described by the
 [pinned proc documentation](https://github.com/torvalds/linux/blob/a804c5742bff224d4cb4d25dd383554d598be32b/Documentation/filesystems/proc.rst#L121-L127).
 Other filesystem errors remain failures. A regression interposes the actual
 open/exit/read sequence rather than relying on scheduling luck; permission
-failures retain their original error object. Target aggregates contain `phases` and `scenarios`;
-each browser phase records its functional/capacity kind, timestamps, actual
-Playwright process/group, browser identity and `browserCleanup`. Raw phase data
-lives under `native/functional`, `container` and `native/capacity`; capacity
-`performance.json` retains schema 1. Top-level schema 1 and unknown versions are
-rejected rather than interpreted through a compatibility fallback.
+failures retain their original error object. Target aggregates contain `phases`
+and `scenarios`; each browser phase records its functional/capacity kind,
+timestamps, actual Playwright process/group, browser identity and `browserCleanup`.
+Raw phase data lives under `native/functional`, `container` and `native/capacity`;
+capacity `performance.json` retains schema 1. Top-level schema 1 and unknown
+versions are rejected rather than interpreted through a compatibility fallback.
 
 Any task failure cancels siblings and drains every started task before final
 cleanup; an unexpected native-server exit follows the same path. Browser phase
@@ -101,11 +109,13 @@ errors propagate. Recovery neither signals an unidentified group nor treats
 process-discovery absence as cleanup success.
 
 A controlled real-kernel reproduction exercises this exit/reap interval through
-`recoverCliProcesses`. The hosted failure that motivated the repair retained no
+`recoverCliProcesses`. The hosted failure that motivated that repair retained no
 child-state observation, so the reproduction establishes the mechanism without
-asserting that the CI child was a zombie. The broader process-discovery and
-privileged-permission questions in [issue #86](https://github.com/codetreker/daynight/issues/86)
-remain outside this bounded recovery correction.
+asserting that the CI child was a zombie. The browser-install timeout adjustment
+does not alter command cancellation or recovery semantics; the broader
+process-discovery and privileged-permission questions in
+[issue #86](https://github.com/codetreker/daynight/issues/86) remain separately
+tracked.
 
 CI recovery and both artifact uploads share the unified acceptance step's
 attempted-execution condition, so partial preparation remains attributable and
@@ -128,6 +138,20 @@ aggregation and all capacity conditions. The
 Measured outcomes remain tied to their source, environment and PR/CI run.
 
 ## Alternatives
+
+**Keep the 180-second browser-install timeout.** It fails when apt package
+transfers exceed three minutes even though the required dependency installation
+can complete. Main run 39785915428 took 4 minutes 56 seconds to download the
+packages alone, so the existing deadline cannot accommodate the observed case.
+
+**Remove `--with-deps` in CI.** This avoids apt work but leaves the runner without
+the Linux libraries and fonts that Playwright prepares for Chromium. Browser
+acceptance would depend on incidental runner-image contents rather than an
+explicit environment requirement.
+
+**Increase the whole job timeout.** That expands the deadline for every CI phase
+and does not repair the browser command's own 180-second deadline. The 600-second
+bound applies only to browser preparation; the workflow's 20-minute cap remains.
 
 **Keep cache-only preparation followed by a later normal build.** This allowed
 preparation overlap without changing deployment ownership, but scheduled a second
@@ -157,12 +181,14 @@ which builds fresh native artifacts and owns their exact identity and lifetime.
 ## Consequences
 
 Preparation and functional work can overlap while capacity remains isolated.
-The normal dev-ci runner keeps its existing public interface, production image
-checks and targeted cleanup. The native service lives longer because both native
-browser phases use the same verified process and database.
+The browser command can absorb the observed apt delay and still has a finite
+deadline; the job-level limit bounds total CI time. The normal dev-ci runner keeps
+its existing public interface, production image checks and targeted cleanup. The
+native service lives longer because both native browser phases use the same
+verified process and database.
 
 Phase separation adds explicit permission and recovery evidence. A complete
 result requires every phase, strict scenario union, matching browser identities
-and cleanup, not merely successful child exits. The timing benefit still requires
-complete hosted CI observation; local validation and historical main runs retain
-their own source and environment limits.
+and cleanup, not merely successful child exits. Hosted CI remains the authority
+for full acceptance; local validation and historical main runs retain their own
+source and environment limits.
