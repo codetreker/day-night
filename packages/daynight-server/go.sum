@@ -1,3 +1,5 @@
+github.com/codetreker/uniauth/sdk/go v0.0.0-20261022051636-c82c55c7fcd3 h1:zgcbQXEwuxmsT8wuw6z/uB6+QZ7ncwxKvTfPkDNhOMs=
+github.com/codetreker/uniauth/sdk/go v0.0.0-20261022051636-c82c55c7fcd3/go.mod h1:P59R9ayyRjldNFfWtOT2zm7VieGEouPnoyscpOqbZjw=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

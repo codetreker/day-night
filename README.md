@@ -40,10 +40,12 @@ issue; consistency remediation is outside that scope.
 
 The [authentication requirements](docs/spec/daynight-auth.md),
 [architecture](docs/design/daynight-auth.md) and
-[task breakdown](docs/design/daynight-auth-tasks.md) define planned UniAuth login,
-Daynight sessions and personal access tokens, private projects with administrator
-and member roles, and invitations. This design is separate from runtime delivery:
-the current application remains unauthenticated and loopback-only. Trusted
+[task breakdown](docs/design/daynight-auth-tasks.md) define UniAuth login, Daynight
+sessions and personal access tokens, private projects and membership. The
+[identity foundation](.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
+provides persistent users, credentials and callable authentication handlers. These
+handlers are not mounted in the application; membership and activation remain
+separately tracked, and the current application is unauthenticated and loopback-only. Trusted
 same-origin executable HTML previews retain their existing execution model after
 authentication is delivered; attachment requests gain project-member checks.
 Existing projects will receive membership data manually outside that work.
