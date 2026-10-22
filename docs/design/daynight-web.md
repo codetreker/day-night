@@ -105,7 +105,10 @@ proposed 按当前语言使用“Proposed”或“待审批”及独立的紫色
 之外，关闭入口始终可访问。`task-detail.css` 使用统一的 `task-detail-*` 类名。
 `TaskDetailPanels` 提供默认概览及附件页签，两面板保持挂载并以 hidden/inert 隔离
 隐藏控件；页签使用可访问关联、roving tabindex、方向键与 Home/End 自动激活。
-project/task 身份切换重新从概览开始。
+project/task 身份切换重新从概览开始。下载旁的新标签页入口打开独立阅读路由；
+`App` 对该路由单独渲染 `AttachmentPage`，不挂载工作空间侧栏或详情外壳。完整清单、
+共享内容渲染、locale、非模态键盘与满视口滚动机制由
+[独立附件阅读页](daynight-task-attachments.md#独立附件阅读页)拥有。
 
 概览是详情中任务内容的滚动所有者。阅读主栏展示纯文本描述和关联 PR，265px 辅栏
 展示时间、完整 ID、直接前置、当前阻塞项和直接后续。850px 及以下辅栏为 225px，
@@ -326,7 +329,7 @@ packages/daynight-server/
 | 静态依赖 SVG | 公开 ViewportPortal 内的完整 canonical 路线、原生箭头、派生 body paint 与可访问语义 | 接收不可变布局，复用 React Flow 视口变换，不订阅逐边状态 |
 | TaskDetailDialog、TaskDetailPanels | 当前 taskId 的详情、居中外壳、概览/附件页签、关系跳转、body portal、焦点和关闭 | 概览组合阅读主栏、元数据/关系栏及 PR，附件组合独立左右分屏；不修改图快照 |
 | 附件 hook/model | 当前 project/task 的分页、写状态、选择、预览状态及目录树 | 调用 api；不修改详情或图快照 |
-| 附件预览 | Markdown、文本、图片和可信同源 frame | 使用服务预览路径；frame 键盘桥接复用对话框 focus helper |
+| 附件预览、AttachmentPage | 共享 Markdown、文本、图片和可信同源 frame；独立阅读页的完整清单与文件身份 | 使用原有文件/预览路径；仅实际对话框中的 frame 复用 focus helper 安装键盘桥 |
 | Go server | HTTP 解析、响应、路由与方法语义 | 调用 service 或 webui |
 | Go service | 具体 store 的读取事务、领域拒绝、图摘要 | 调用 core/store，返回 core 模型 |
 | core/store | 同一快照内的具体 SQL 查询与扫描 | 使用 pgx，不依赖 HTTP、React 或 API DTO |
@@ -392,11 +395,15 @@ Go 服务在同一 origin 提供 JSON API、页面和真实内嵌资源。
 |---|---|
 | `GET /{$}` | 精确根路径，返回 SPA index；`GET /` 不能替代精确匹配 |
 | `GET /projects/{projectId}` | 返回同一个 index，资源存在性由图 API 决定 |
+| `GET /projects/{projectId}/tasks/{taskId}/attachments/{path...}` | 返回同一个 index，前端在工作空间外打开独立阅读页；文件存在性由完整附件清单决定 |
 | `GET /assets/` 前缀 | 仅返回实际存在的构建资源；目录与缺失文件返回 404 |
 | `/api/v1/...` | 项目、任务及 task-graph API 已实现 |
 | 其他路径 | 404；未知 `/api/*` 保留 JSON 错误，不返回 HTML |
 
-GET 沿用 Go 的 HEAD 语义；已知 UI、asset 和图路径不支持的方法返回 405 与 Allow。`internal/webui` 暴露具体 HTML/asset handler，server 拥有路由注册，不用外层 URL dispatcher 绕过原 mux。HTML、图和最新详情响应采用 `Cache-Control: no-store`，内容哈希资源采用长期 immutable 缓存；不注册 Service Worker。
+GET 沿用 Go 的 HEAD 语义；已知 UI、asset 和图路径不支持的方法返回 405 与 Allow。
+已知页面形状的 ID 由前端解析，错误 ID 仍交付 index 后显示未找到页面。附件页面
+路径先经过既有原始附件路径守卫，非法分隔符、空段、点段和上越在 ServeMux
+规范化之前拒绝，不扩大任意页面回退范围。`internal/webui` 暴露具体 HTML/asset handler，server 拥有路由注册，不用外层 URL dispatcher 绕过原 mux。HTML、图和最新详情响应采用 `Cache-Control: no-store`，内容哈希资源采用长期 immutable 缓存；不注册 Service Worker。
 
 ### 本地构建与开发
 

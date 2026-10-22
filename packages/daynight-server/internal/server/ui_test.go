@@ -56,7 +56,7 @@ func TestUIExactRoutesAssetsAndSingleRequestLog(t *testing.T) {
 			t.Fatalf("production asset response: %d %+v", response.Code, response.Header())
 		}
 	}
-	for _, target := range []string{"/unknown-private-page", "/projects", "/projects/id/extra", "/api/unknown-private-route", "/api/v1/projects/id/unknown", "/assets/", "/assets/missing-private.js", "/assets/%2e%2e/index.html", "/assets/%2findex.html"} {
+	for _, target := range []string{"/unknown-private-page", "/projects", "/projects/id/extra", "/projects/id/tasks", "/projects/id/tasks/task/unknown/file", "/projects/id/tasks/task/attachment/file", "/api/unknown-private-route", "/api/v1/projects/id/unknown", "/assets/", "/assets/missing-private.js", "/assets/%2e%2e/index.html", "/assets/%2findex.html"} {
 		response := projectRequest(handler, http.MethodGet, target, "")
 		assertProjectError(t, response, http.StatusNotFound, "not_found")
 		if strings.Contains(response.Body.String(), "<html") {
@@ -65,6 +65,33 @@ func TestUIExactRoutesAssetsAndSingleRequestLog(t *testing.T) {
 	}
 	if strings.Contains(logs.String(), "private") {
 		t.Fatalf("UI path leaked to logs: %s", &logs)
+	}
+}
+
+func TestUIStandaloneAttachmentReloadUsesProductionIndexAndSafeRequestLog(t *testing.T) {
+	var logs bytes.Buffer
+	handler := uiTestHandler(&logs)
+	index := projectRequest(handler, http.MethodGet, "/", "")
+	for _, target := range []string{
+		"/projects/00000000-0000-4000-8000-000000000099/tasks/00000000-0000-4000-8000-000000000001/attachments/plan.md",
+		"/projects/00000000-0000-4000-8000-000000000099/tasks/00000000-0000-4000-8000-000000000001/attachments/%E6%96%87%E6%A1%A3%20space/private%20%3F%23%20%252F.md",
+		"/projects/invalid-private-project/tasks/invalid-private-task/attachments/file.txt",
+	} {
+		for range 2 {
+			logs.Reset()
+			response := projectRequest(handler, http.MethodGet, target, "")
+			if response.Code != http.StatusOK || !bytes.Equal(response.Body.Bytes(), index.Body.Bytes()) || response.Header().Get("Content-Type") != "text/html; charset=utf-8" || response.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("standalone deep link did not return actual index: %s %d %+v", target, response.Code, response.Header())
+			}
+			var entry map[string]any
+			decoder := json.NewDecoder(&logs)
+			if err := decoder.Decode(&entry); err != nil {
+				t.Fatal(err)
+			}
+			if decoder.More() || entry["type"] != "http_request" || entry["route"] != "GET /projects/{projectId}/tasks/{taskId}/attachments/{path...}" || entry["request_id"] != "project-test" || strings.Contains(logs.String(), "private") {
+				t.Fatalf("standalone route lost safe single request logging: %+v %s", entry, &logs)
+			}
+		}
 	}
 }
 
@@ -77,7 +104,7 @@ func TestUIHeadAndKnownMethodBoundaries(t *testing.T) {
 	}
 	server := httptest.NewServer(handler)
 	defer server.Close()
-	for _, target := range []string{"/", "/projects/00000000-0000-4000-8000-000000000099", asset[1]} {
+	for _, target := range []string{"/", "/projects/00000000-0000-4000-8000-000000000099", "/projects/00000000-0000-4000-8000-000000000099/tasks/00000000-0000-4000-8000-000000000001/attachments/nested/plan.md", asset[1]} {
 		for _, method := range []string{http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions} {
 			response := projectRequest(handler, method, target, "private-body")
 			assertProjectError(t, response, http.StatusMethodNotAllowed, "method_not_allowed")

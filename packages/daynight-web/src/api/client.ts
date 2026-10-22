@@ -115,6 +115,9 @@ const encodedAttachmentPath = (path: string): string => {
   return path.split("/").map(encodeURIComponent).join("/");
 };
 
+export const attachmentPageUrl = (projectId: string, taskId: string, path: string): string =>
+  `/projects/${requestId(projectId)}/tasks/${requestId(taskId)}/attachments/${encodedAttachmentPath(path)}`;
+
 export const attachmentDownloadUrl = (projectId: string, taskId: string, path: string): string =>
   `${attachmentTaskUrl(projectId, taskId)}/attachments/files/${encodedAttachmentPath(path)}`;
 

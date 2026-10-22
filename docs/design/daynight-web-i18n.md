@@ -13,7 +13,7 @@ packages/daynight-web/
     messages.ts            公共消息、领域契约与目录选择
     messages/en.ts         英语目录
     messages/zh-CN.ts      简体中文目录
-    messages/workspace.ts  导航、项目、统计、页签与偏好消息
+    messages/workspace.ts  导航、页面标题、项目、统计、页签与偏好消息
     messages/graph.ts      图、节点、依赖与 React Flow 消息
     messages/inspection.ts 详情、PR、附件与预览消息
     formats.ts             按语言缓存的 Intl 格式化器
@@ -77,7 +77,7 @@ Provider 使用一份当前 issue 状态，初始值来自 `initial.issue`。选
 
 生产入口在 `createRoot()` 前执行初始解析，再把常驻 Provider 放在应用根部。首屏 HTML `lang` 和标题使用解析结果，后续导航与切换同步更新。Provider 不以 locale 作为 `key`，领域组件也不使用 locale 重置实例。
 
-导航、居中 `TaskDetailDialog` 和全屏工具栏共用 `LanguageSelector`。详情打开时底层页面处于 `inert`，对话框自己的选择器继续可操作。所有入口继续使用现有焦点圈定、Escape 分层和关闭后恢复机制；切换本身不移动焦点。
+导航、居中 `TaskDetailDialog`、全屏工具栏和独立 `AttachmentPage` 共用 `LanguageSelector`。详情打开时底层页面处于 `inert`，对话框自己的选择器继续可操作。模态入口继续使用现有焦点圈定、Escape 分层和关闭后恢复机制；独立阅读页保留普通浏览器键盘行为。切换语言本身不移动焦点。
 
 项目、图、详情与附件请求仍由资源 ID、revision 和原有操作触发。locale 不进入业务 hook 的请求、取消或订阅依赖；上传、覆盖、删除和刷新期间切换只更新展示。附件预览继续使用原来的 key、URL、DOM 和 iframe 身份，输入与已选文件保持不变。
 

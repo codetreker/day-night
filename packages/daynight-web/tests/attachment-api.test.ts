@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, checkAttachmentPreview, attachmentContentType, attachmentDownloadUrl, attachmentPreviewRoot, attachmentPreviewUrl, listAttachments, putAttachment, readAttachmentText, removeAttachment } from "../src/api/client";
+import { ApiError, attachmentPageUrl, checkAttachmentPreview, attachmentContentType, attachmentDownloadUrl, attachmentPreviewRoot, attachmentPreviewUrl, listAttachments, putAttachment, readAttachmentText, removeAttachment } from "../src/api/client";
 import { isAttachmentPath, parseAttachment, parseAttachmentPage } from "../src/api/parse";
 
 const project = "10000000-0000-0000-0000-00000000000a";
@@ -41,6 +41,10 @@ describe("attachment transport", () => {
   it("encodes every path segment exactly once with canonical scope IDs", () => {
     const encoded = "docs/%E8%AE%BE%E8%AE%A1%25%3F%23.md";
     expect(attachmentDownloadUrl(project.toUpperCase(), task.toUpperCase(), item.path)).toBe(`${base}/attachments/files/${encoded}`);
+    expect(attachmentPageUrl(project.toUpperCase(), task.toUpperCase(), item.path)).toBe(`/projects/${project}/tasks/${task}/attachments/${encoded}`);
+    expect(attachmentPageUrl(project, task, "%2F")).toBe(`/projects/${project}/tasks/${task}/attachments/%252F`);
+    expect(() => attachmentPageUrl("bad", task, "file")).toThrow(ApiError);
+    expect(() => attachmentPageUrl(project, task, "a/../file")).toThrow(ApiError);
     expect(attachmentPreviewRoot(project, task)).toBe(`${base}/preview/`);
     expect(attachmentPreviewUrl(project, task, item.path)).toBe(`${base}/preview/${encoded}`);
     expect(attachmentDownloadUrl(project, task, "%2F")).toBe(`${base}/attachments/files/%252F`);
