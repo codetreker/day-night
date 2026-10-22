@@ -26,7 +26,10 @@ For one root, the main set is the root and its forward-reachable descendants.
 The boundary set contains the main set's direct predecessors that are outside
 that main set. Boundary ancestors stop expanding. Every edge ending in the main
 set remains visible. Per-root progress counts only distinct main nodes; project
-totals count all tasks once. Shared membership and root progress are derived once
+totals count all tasks once. Root progress also carries the aggregate status
+owned by the [chain status decision](../bug-fix/2026-10-22-task-chain-status.md);
+its count and state derive from the same main-set traversal. Shared membership
+and root progress are derived once
 per snapshot without a global mutable cache.
 
 The separate Dagre adapter uses a new flat directed graph for each calculation,

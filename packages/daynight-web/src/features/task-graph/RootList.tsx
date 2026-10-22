@@ -43,7 +43,7 @@ const RootRow = memo(({ index, rootId, expanded, onExpand, selectedTaskId, onSel
           <span className="root-progress-label">{progress.done}/{progress.total} 已完成</span>
           <span className="root-progress-track" aria-hidden="true"><i style={{ width: `${progress.done / progress.total * 100}%` }} /></span>
         </span>
-        <span className={`root-status graph-status-${task.status}`}>{labels[task.status]}</span>
+        <span className={`root-status graph-status-${progress.status}`}>{labels[progress.status]}</span>
       </button>
       {expanded && (
         <div id={`task-graph-${rootId}`} role="region" aria-label={`${task.titlePreview} 的任务依赖图`}>
@@ -58,13 +58,13 @@ export const RootList = ({ index, rootIds, expandedRootId, onExpand, selectedTas
   const checkbox = useRef<HTMLInputElement>(null);
   const completedCount = useMemo(() => index.roots.filter((id) => {
     const progress = index.rootProgress.get(id)!;
-    return progress.done === progress.total;
+    return progress.status === 'done';
   }).length, [index]);
   return (
   <section aria-labelledby="task-roots-heading">
     <div className="graph-section-heading">
       <h2 id="task-roots-heading">任务链 <span className="graph-count-pill" aria-label={`显示 ${rootIds.length} 条，共 ${index.roots.length} 条任务链`}>{rootIds.length} / {index.roots.length}</span></h2>
-      <div className="graph-legend" aria-label="任务状态图例">
+      <div className="graph-legend" aria-label="任务链状态图例">
         <span className="graph-status graph-status-todo"><i aria-hidden="true" />待处理</span>
         <span className="graph-status graph-status-in_progress"><i aria-hidden="true" />进行中</span>
         <span className="graph-status graph-status-done"><i aria-hidden="true" />已完成</span>

@@ -506,7 +506,7 @@ describe('root task accordion', () => {
     expect([...view.container.querySelectorAll('.root-toggle')].map((root) => root.id)).toEqual(['task-root-F', 'task-root-E', 'task-root-B', 'task-root-A']);
     expect(index.roots).toEqual(['A', 'B', 'E', 'F']);
     expect(index.successors.get('A')).toEqual(['C']);
-    expect(index.rootProgress.get('A')).toEqual({ total: 3, done: 1 });
+    expect(index.rootProgress.get('A')).toEqual({ total: 3, done: 1, status: 'in_progress' });
     expect(view.container.querySelector('.graph-count-pill')).toHaveTextContent('4');
   });
 
@@ -516,6 +516,10 @@ describe('root task accordion', () => {
     await ready(view.container);
     const originalRoots = [...view.container.querySelectorAll('.root-toggle')];
     const originalCanvas = view.container.querySelector('.task-graph-canvas');
+    expect(originalRoots[0]!.querySelector('.root-status')).toHaveTextContent('进行中');
+    expect(originalRoots[0]!.querySelector('.root-status')).toHaveClass('graph-status-in_progress');
+    expect(originalRoots[2]!.querySelector('.root-status')).toHaveClass('graph-status-todo');
+    expect(originalRoots[3]!.querySelector('.root-status')).toHaveTextContent('待处理');
 
     for (const selectedTaskId of ['C', 'D', null]) {
       progressReads.mockClear();
@@ -534,16 +538,20 @@ describe('root task accordion', () => {
 
     const refreshed = buildGraphIndex({
       ...graph,
-      tasks: graph.tasks.map((task) => task.id === 'E' ? { ...task, status: 'done', ready: false } : task),
-      summary: { ...graph.summary, todo: 2, done: 3, ready: 1 },
+      tasks: graph.tasks.map((task) => ({ ...task, status: 'done', blockedBy: [], ready: false })),
+      summary: { total: 6, todo: 0, inProgress: 0, done: 6, ready: 0, blocked: 0 },
     });
     view.rerender(<RootList showCompleted={true} onShowCompletedChange={noop} index={refreshed} rootIds={refreshed.roots} expandedRootId="A" onExpand={noop} selectedTaskId={null} onSelectTask={noop} />);
     expect(originalRoots[2]!.querySelector('.root-progress-label')).toHaveTextContent('1/1 已完成');
     expect(originalRoots[2]!.querySelector('.root-status')).toHaveTextContent('已完成');
+    expect(originalRoots[0]!.querySelector('.root-progress-label')).toHaveTextContent('3/3 已完成');
+    expect(originalRoots[0]!.querySelector('.root-status')).toHaveTextContent('已完成');
+    expect(originalRoots[0]!.querySelector('.root-status')).toHaveClass('graph-status-done');
+    expect(screen.getByRole('checkbox', { name: '显示已完成任务链（4）' })).toBeChecked();
     expect(view.container.querySelectorAll('.root-toggle')[2]).toBe(originalRoots[2]);
   });
 
-  it('keeps root status separate from chain progress and unmounts all but the expanded graph', async () => {
+  it('shows aggregate chain status and unmounts all but the expanded graph', async () => {
     const Wrapper = () => {
       const [expandedRootId, onExpand] = useState<string | null>('A');
       return <RootList showCompleted={true} onShowCompletedChange={noop} index={index} rootIds={index.roots} expandedRootId={expandedRootId} onExpand={onExpand} selectedTaskId={null} onSelectTask={noop} />;
@@ -553,7 +561,8 @@ describe('root task accordion', () => {
     expect(roots).toHaveLength(4);
     expect(roots[0]!.id).toBe('task-root-A');
     expect(roots[0]!.textContent).toContain('1/3 已完成');
-    expect(roots[0]!.textContent).toContain('已完成');
+    expect(roots[0]!.querySelector('.root-status')).toHaveTextContent('进行中');
+    expect(nodeButton('基础 API')).toHaveClass('task-node-done');
     expect(roots[0]!.getAttribute('aria-expanded')).toBe('true');
     expect(container.querySelectorAll('.task-graph-canvas')).toHaveLength(1);
     const firstCanvas = container.querySelector('.task-graph-canvas');
