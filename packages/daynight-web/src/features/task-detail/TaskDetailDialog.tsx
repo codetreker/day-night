@@ -9,6 +9,7 @@ import type { GraphSnapshot } from '../projects/useTaskGraph';
 import { isTaskStale } from './freshness';
 import { dialogFocusables } from './focus';
 import { useTaskDetail } from './useTaskDetail';
+import { TaskDetailPanels } from './TaskDetailPanels';
 import { TaskPullRequests } from './TaskPullRequests';
 import { TaskAttachments } from './attachments/TaskAttachments';
 import '../../styles/task-detail.css';
@@ -135,7 +136,7 @@ export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, on
             <>
               <div className="task-detail-heading">
                 <p className="task-detail-id">{detail.id}</p>
-                <h3 className="task-detail-title">{detail.title}</h3>
+                <h3 className="task-detail-title" title={detail.title}>{detail.title}</h3>
                 <div className="task-detail-badges">
                   <StatusBadge status={detail.status} />
                   {detail.status === 'todo' && <span className={detail.ready ? 'task-detail-ready' : 'task-detail-blocked'}>{detail.ready ? m.ready : m.blocked}</span>}
@@ -147,14 +148,13 @@ export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, on
                   </div>
                 )}
               </div>
-              <div className="task-detail-columns">
+              <TaskDetailPanels key={`${projectId}/${taskId}`} overview={<div className="task-detail-columns">
                 <div className="task-detail-main">
                   <section className="task-detail-section" aria-label={m.description}>
                     <h4>{m.description}</h4>
                     <p className="task-detail-description">{detail.description === '' ? m.noDescription : detail.description}</p>
                   </section>
                   <TaskPullRequests pullRequests={detail.properties.pullRequests} />
-                  <TaskAttachments projectId={projectId} taskId={taskId} onClose={onClose} />
                 </div>
                 <aside className="task-detail-aside" aria-label={m.relationsMetadata}>
                   <section className="task-detail-section" aria-label={m.dependencies}>
@@ -177,7 +177,7 @@ export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, on
                     <div><dt>{m.taskId}</dt><dd className="task-detail-full-id">{detail.id}</dd></div>
                   </dl>
                 </aside>
-              </div>
+              </div>} attachments={<TaskAttachments projectId={projectId} taskId={taskId} onClose={onClose} />} />
             </>
           )}
         </div>

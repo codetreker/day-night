@@ -2,6 +2,7 @@ import type { InspectionMessages } from "../inspection";
 
 export const inspection: InspectionMessages = {
   detail: {
+    overview: "概览",
     title: "任务详情", close: "关闭任务详情", loading: "正在加载任务详情", failed: "任务详情加载失败",
     networkError: "无法连接服务，请检查本地服务后重试。", notFoundError: "这个任务已无法读取，请刷新任务图。",
     loadError: "暂时无法读取任务详情，请重试。", retry: "重试详情", ready: "可开始", blocked: "被阻塞",

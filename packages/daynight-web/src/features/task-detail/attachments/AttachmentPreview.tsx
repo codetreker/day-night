@@ -60,7 +60,7 @@ const TrustedFrame = ({ url, title, onClose }: { readonly url: string; readonly 
     removeListener.current = () => content.removeEventListener('keydown', keyDown);
   };
 
-  return <div>
+  return <div className="attachment-native">
     {!loadedFrame && <p className="attachment-state attachment-native-state" role="status">{m.previewLoading}</p>}
     <iframe className="attachment-frame" ref={frameRef} src={url} title={title} tabIndex={0} onLoad={loaded} />
   </div>;
@@ -80,7 +80,7 @@ const ImagePreview = ({ url, path }: { readonly url: string; readonly path: stri
   return <div><NativeStatus status={status} onRetry={() => { setStatus('loading'); setRevision((value) => value + 1); }} />{status !== 'error' && <img key={revision} className="attachment-image" src={url} alt={path} onLoad={() => setStatus('ready')} onError={() => setStatus('error')} />}</div>;
 };
 
-export const AttachmentPreview = ({ attachment, preview, url, previewRoot, onRetry, onClose }: AttachmentPreviewProps) => {
+const PreviewContent = ({ attachment, preview, url, previewRoot, onRetry, onClose }: AttachmentPreviewProps) => {
   const { messages } = useI18n();
   const m = messages.inspection.attachments;
   const kind = attachmentKind(attachment);
@@ -105,4 +105,10 @@ export const AttachmentPreview = ({ attachment, preview, url, previewRoot, onRet
   if (kind === 'image') return <ImagePreview key={url} url={url} path={attachment.path} />;
   if (kind === 'pdf' || kind === 'html') return <TrustedFrame key={url} url={url} title={m.frameTitle({ kind: kind === 'pdf' ? 'PDF' : 'HTML', path: attachment.path })} onClose={onClose} />;
   return <p className="attachment-state">{m.unsupportedPreview}</p>;
+};
+
+export const AttachmentPreview = (props: AttachmentPreviewProps) => {
+  const kind = attachmentKind(props.attachment);
+  const native = props.preview.status === 'ready' && (kind === 'html' || kind === 'pdf');
+  return <div tabIndex={native ? undefined : 0} className={`attachment-preview-body${native ? ' attachment-preview-body-native' : ''}`}><PreviewContent {...props} /></div>;
 };

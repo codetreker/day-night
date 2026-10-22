@@ -1,6 +1,7 @@
 export type InspectionMessages = {
   readonly detail: {
     readonly title: string;
+    readonly overview: string;
     readonly close: string;
     readonly loading: string;
     readonly failed: string;
