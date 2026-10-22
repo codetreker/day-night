@@ -42,7 +42,11 @@ per snapshot without a global mutable cache.
 
 The separate Dagre adapter uses a new flat directed graph for each calculation,
 sorted node and edge insertion, left-to-right ranks, one global longest-path
-ranker and fixed 220-by-96 cards.
+ranker and 220px-wide cards. The original cards were 220 by 96; the
+[progressive overview](2026-10-22-progressive-task-graph.md) introduced 136px
+heights for direction controls. The [conditional footer decision](../bug-fix/2026-10-22-task-card-expansion-footer.md)
+uses 96px when no expansion is available and 136px when controls are present,
+with the actual dimensions shared by layout and rendering.
 It converts returned node centers to top-left positions and retains the routed
 edge points. Empty projections return explicit zero bounds before calling Dagre;
 nonempty output must have finite coordinates and valid node bounds. No React,
@@ -85,7 +89,10 @@ The [production acceptance decision](../testing/2026-10-20-dashboard-production-
 owns browser measurements and source/image receipts. Pure algorithm probes do not
 establish production browser timing.
 
-The [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
+The [progressive overview decision](2026-10-22-progressive-task-graph.md) derives
+a visible subset after complete root projection; it does not change full main-set
+progress, state aggregation or project statistics. The
+[requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 the [architecture](../../../../docs/design/daynight-web.md) owns module contracts,
 and the [task document](../../../../docs/design/daynight-web-tasks.md) tracks UI
 integration and browser performance acceptance separately.

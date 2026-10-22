@@ -1,10 +1,12 @@
 import { createElement } from 'react';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { TaskAttachments } from '../src/features/task-detail/attachments/TaskAttachments';
-import { createAttachmentFixture } from './mockups/fixture';
+import { createAttachmentFixture, mockupLongPath } from './mockups/fixture';
 
+const render = createLocaleRender('zh-CN');
 const signal = () => new AbortController().signal;
 
 describe('development attachment fixture', () => {
@@ -16,6 +18,9 @@ describe('development attachment fixture', () => {
     expect(await fixture.api.readText('project', 'task', 'docs/guide.md', signal())).toContain('| 文件 | 用途 |');
     expect(fixture.urls.preview('site/index.html')).toBe('/tests/mockups/files/site/index.html');
     expect(fixture.urls.download('brief.pdf')).toBe('/tests/mockups/files/brief.pdf');
+    expect(fixture.urls.page('docs/guide.md')).toBe('/tests/mockups/attachments.html?file=docs%2Fguide.md&scenario=files');
+    expect(await fixture.api.readText('project', 'task', mockupLongPath, signal())).toContain('Long text reading fixture');
+    expect(fixture.urls.preview(mockupLongPath)).toBe('/tests/mockups/files/data/tall.txt');
     expect(fixture.urls.previewRoot).toBe('/tests/mockups/files/');
     fixture.dispose();
   });
@@ -52,6 +57,9 @@ describe('development attachment fixture', () => {
     const view = render(createElement(TaskAttachments, { projectId: 'mockup-project', taskId: 'mockup-task', api: fixture.api, urls: fixture.urls, onClose: vi.fn() }));
     await screen.findByText('暂无附件，上传文件后即可在这里浏览。');
     const user = userEvent.setup();
+    const summary = screen.getByText('上传文件', { selector: 'summary' });
+    expect(screen.getByLabelText('选择一个文件')).not.toBeVisible();
+    await user.click(summary);
     const upload = async (contents: string) => {
       await user.upload(screen.getByLabelText('选择一个文件'), new File([contents], 'new.txt', { type: 'text/plain' }));
       const path = screen.getByRole('textbox', { name: '目标相对路径' });

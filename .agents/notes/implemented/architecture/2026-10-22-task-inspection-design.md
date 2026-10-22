@@ -18,9 +18,21 @@ target behavior. This delivery consists of that design, an interactive visual
 prototype and a four-task implementation breakdown. The
 [complete prerequisite context decision](../feature/2026-10-22-complete-prerequisite-context.md)
 implements the first task: complete ancestors, separate counts and a readable
-upstream-aware initial viewport. Graph inspection and smooth paths, centered
-reading, and Markdown descriptions remain pending in their Daynight tasks.
-Existing paint and detail notes describe their current mechanisms.
+upstream-aware initial viewport. The
+[centered detail decision](../feature/2026-10-22-centered-task-detail-dialog.md)
+implements the reading shell while retaining existing modal and attachment
+ownership. The [attachment split-view decision](2026-10-22-task-attachment-split-view.md)
+extends that shell with Overview/Attachments tabs, retained attachment state and
+a bounded two-pane preview. Graph inspection, smooth paths and Markdown
+descriptions remain pending in their Daynight tasks. Existing paint and detail notes describe their
+current mechanisms.
+
+The [progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
+partially supersedes all-context-at-once rendering. UX-T2 first delivers bounded
+visible graphs and explicit expansion/reset while body activation still opens
+TaskDetailDialog and paths remain polylines. The following inspection PR owns
+selection/Details separation and smooth highlighting; both PRs must be integrated
+before UX-T2 completion.
 
 The root and its descendants remain the chain's counted membership. Rendering
 adds the complete prerequisite closure without importing unrelated descendants
@@ -38,8 +50,8 @@ coverage, dash continuity and real production timing.
 Descriptions use the existing CommonMark/GFM stack. Relative links resolve
 from the task attachment root, while attachment documents retain their own
 directory base. Ordinary relative attachment links select the existing preview
-through one attachment-state owner. The published skill teaches Markdown
-problem statements and verified attachment references without moving solution
+through one attachment-state owner and activates its attachment tab. The
+published skill teaches Markdown problem statements and verified attachment references without moving solution
 or acceptance ownership out of the primary Markdown attachment.
 
 The [breakdown](../../../../docs/design/daynight-task-inspection-tasks.md)
@@ -95,6 +107,6 @@ The [projection](../feature/2026-10-20-task-graph-projection.md) note retains th
 original direct-boundary rationale and links its replacement. The existing
 [paint repair](../bug-fix/2026-10-20-long-dashed-dependency-paint.md) and
 [fullscreen](../feature/2026-10-22-task-graph-fullscreen.md) notes remain current
-until their implementation tasks revise the affected mechanisms and cross-link
-any replacement decisions. The standalone prototype proves its own
+for the retained rendering and modal ownership; the centered detail decision
+extends the fullscreen and detail composition without changing those lifecycles. The standalone prototype proves its own
 interaction, not production behavior or capacity.

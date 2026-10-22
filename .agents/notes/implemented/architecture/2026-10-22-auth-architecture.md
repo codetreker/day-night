@@ -4,8 +4,9 @@ Status: implemented
 
 ## Problem
 
-The delivered local service has no user or membership model. Its global project
-list cannot express which people may access a project's tasks and attachments.
+When this architecture was adopted, the delivered local service had no user or
+membership model. Its global project list could not express which people may
+access a project's tasks and attachments.
 The application needs individual identity, revocable credentials and project
 membership while preserving the existing trusted attachment execution model.
 
@@ -19,7 +20,17 @@ implementation. This note records the adopted architecture; runtime delivery
 remains separately tracked and is not claimed by document completion. The
 [identity foundation](2026-10-22-identity-credentials.md) implements persistent
 users, sessions/PATs and callable handlers without mounting them into the current
-application; membership and full activation remain separately tracked.
+application. The [membership foundation](2026-10-22-project-membership.md) adds
+transaction-scoped access, private creation, roles and invitations without
+mounting them. [CLI credentials](2026-10-22-cli-server-credentials.md) implement
+origin-bound optional tokens, hidden/stdin setup, safe persistence and shared
+HTTP Bearer transport. The opt-in [Web workspace](../feature/2026-10-22-web-auth-workspace.md)
+implements authentication and project-management components without replacing
+production `main.tsx`, which now mounts `LocaleProvider` around `App`. The opt-in
+shell uses that same Provider and both complete catalogs. UniAuth
+[PR #19](https://github.com/codetreker/uniauth/pull/19) supplies App-aware provider
+discovery upstream; upgrading Daynight's existing SDK pin, production mounting
+and full activation remain separately tracked.
 
 Existing UniAuth and its Go SDK provide one-time identity handoff. Daynight owns
 stable local users, browser sessions, personal access tokens, project memberships
@@ -79,8 +90,11 @@ whole authenticated composition is ready, without an auth-disable flag.
 ## Consequences
 
 The implementation adds local users, memberships, invitations and two ordinary
-credential types, with final-style frontend artifacts. It reuses the existing
-application origin, file storage, project locks, runtime and deployment topology.
+credential types, with final-style frontend artifacts. CLI credential transport
+is implemented without a new provider-login flow or credential framework;
+Web token management is implemented in the opt-in workspace. Production mounting
+and actual App-aware provider discovery remain separate work. It reuses the
+existing application origin, file storage, project locks, runtime and deployment topology.
 No preview-specific lifecycle or infrastructure is introduced.
 
 Existing project assignments are deferred to manual membership maintenance.

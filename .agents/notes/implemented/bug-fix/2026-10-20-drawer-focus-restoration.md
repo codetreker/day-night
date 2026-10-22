@@ -19,12 +19,12 @@ whole refresh committed; it did not reproduce the real portal/sibling ordering.
 
 ## Decision
 
-TaskDrawer keeps modal ownership in useLayoutEffect: it enters the dialog and
+`TaskDetailDialog` keeps modal ownership in useLayoutEffect: it enters the dialog and
 locks the background before paint, then synchronously removes the key listener
 and restores prior inertness and body overflow during teardown. A separate
 useEffect([]) cleanup restores focus on unmount, after DOM mutations have removed
 the old sibling content. The callback is read from the existing latest-callback
-ref, so relation selection retains one drawer lifetime and does not briefly
+ref, so relation selection retains one dialog lifetime and does not briefly
 restore focus to an earlier task.
 
 This follows React's documented unmount ordering: [useLayoutEffect](https://react.dev/reference/react/useLayoutEffect)
@@ -36,7 +36,7 @@ extends the fallback to controls visible in the active category while retaining
 the empty-project heading. Restoration evaluates the current policy against
 the committed DOM rather than a node pending deletion.
 
-The integration suite renders real ProjectPage, RootList and portal TaskDrawer,
+The integration suite renders real ProjectPage, RootList and portal TaskDetailDialog,
 mocking only the canvas and API transport. It waits for final focus after refresh
 to no tasks, refresh to a remaining root, and ordinary close. It also verifies
 that the deleted trigger is disconnected, the dialog is gone, background
@@ -73,4 +73,7 @@ owns the current mechanism. The later
 [Web attachment decision](../feature/2026-10-21-task-attachment-web.md) adds complete
 tabbable enumeration and same-origin frame keyboard bridges while preserving
 this passive teardown ordering. The task view decision owns the subsequent
-active-category restoration policy.
+active-category restoration policy. The
+[centered detail decision](../feature/2026-10-22-centered-task-detail-dialog.md)
+replaces the reading layout and component name while retaining this separation
+between synchronous modal teardown and passive focus restoration.

@@ -1,6 +1,9 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/app/App';
+
+const render = createLocaleRender('zh-CN');
 
 const projectId = '00000000-0000-4000-8000-000000000001';
 const projectPage = () => new Response(JSON.stringify({ items: [{
@@ -11,7 +14,7 @@ const projectPage = () => new Response(JSON.stringify({ items: [{
 const taskGraph = () => new Response(JSON.stringify({
   project: { id: projectId, name: '项目任务页面', repoUrl: 'https://github.com/example/repo',
     createdAt: '2026-10-20T09:00:00Z', updatedAt: '2026-10-20T09:00:00Z' },
-  tasks: [], summary: { total: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
+  tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
 }), { headers: { 'Content-Type': 'application/json' } });
 
 describe('application navigation', () => {
@@ -59,6 +62,24 @@ describe('application navigation', () => {
     expect(screen.getByRole('link', { name: '项目' }).getAttribute('aria-current')).toBe('page');
     fireEvent.click(screen.getByRole('link', { name: '← 项目' }));
     await screen.findByRole('heading', { name: '真实项目' });
+  });
+
+  it('opens a standalone attachment route outside workspace chrome and the task dialog', async () => {
+    const taskId = '00000000-0000-4000-8000-000000000002';
+    window.history.replaceState(null, '', `/projects/${projectId}/tasks/${taskId}/attachments/docs/guide.md`);
+    const list = { items: [{ path: 'docs/guide.md', contentType: 'text/markdown', sizeBytes: 12, createdAt: '2026-10-20T09:00:00Z', updatedAt: '2026-10-20T09:00:00Z' }], nextCursor: null };
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url.includes('/attachments?') ? new Response(JSON.stringify(list), { headers: { 'Content-Type': 'application/json' } }) : new Response('# Standalone document')));
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Standalone document' });
+    expect(document.title).toBe('附件预览 · Daynight');
+    expect(screen.getByRole('main')).toHaveFocus();
+    expect(document.querySelector('.shell')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('combobox', { name: '语言 / Language' })).toBeVisible();
+    fireEvent.change(screen.getByRole('combobox', { name: '语言 / Language' }), { target: { value: 'en' } });
+    expect(document.title).toBe('Attachment preview · Daynight');
+    expect(screen.getByRole('link', { name: 'Download' })).toBeVisible();
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('uses the sidebar and breadcrumb as keyboard-accessible navigation controls', async () => {

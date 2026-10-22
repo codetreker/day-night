@@ -1,7 +1,7 @@
 # Task 附件与通用文件存储设计
 
 状态：通用存储、附件元数据、文件 HTTP/预览入口、CLI 附件命令、Web 管理界面和
-部署持久卷已实现，停止写入后的配套备份恢复已有真实容器验证。跨层组合验收复用
+部署持久卷及独立附件完整阅读页已实现，停止写入后的配套备份恢复已有真实容器验证。跨层组合验收复用
 真实服务、安装 CLI 和生产浏览器，实施与交付进度在 Daynight 中维护。
 
 行为要求由[附件需求](../spec/daynight-task-attachments.md)拥有；本文解释通用存储接口、
@@ -58,7 +58,7 @@ mockup/
 | [附件迁移](../../packages/daynight-server/internal/core/store/migrations/004_task_attachments.sql)定义独立附件表 | 既有迁移机制维护该表，归属由服务校验 |
 | [CLI API 客户端](../../packages/daynight/src/api/client.ts)区分 JSON、字节与空响应 | 复用期限、取消、错误及元数据预算；原始文件流不经过 JSON 解码 |
 | [CLI 上下文](../../packages/daynight/src/cli/context.ts)提供 text 与 bytes 输出 | `stdoutBytes` 可等待且保留背压，`closeStdoutBytes` 负责命令结束前的输出清理 |
-| [任务详情](../../packages/daynight-web/src/features/task-detail/TaskDrawer.tsx)独立加载 task | 组合附件区域，附件 hook 独立持有分页、写状态和预览，保持图和详情读取行为 |
+| [任务详情](../../packages/daynight-web/src/features/task-detail/TaskDetailDialog.tsx)独立加载 task | 组合附件区域，附件 hook 独立持有分页、写状态和预览，保持图和详情读取行为 |
 | [localhost Compose](../../deployment/localhost/compose.yaml)经 gateway 同源交付，服务使用 [UID 10001](../../deployment/localhost/Dockerfile) | 项目独立的附件持久卷挂载到服务可写根目录，沿用同一 Web 服务及监听端口 |
 
 ## 模块职责与依赖
@@ -304,10 +304,45 @@ docker compose -f deployment/localhost/compose.yaml logs server | rg '"request_i
 
 ## Web 文件树与预览
 
-`TaskDrawer` 在关联 PR 后组合 `TaskAttachments`。用户选择一个文件，目标路径初始为
-文件名，可改为多层相对路径；`mime` 4.1.1 按目标路径确定上传 Content-Type，未知
-类型使用 `application/octet-stream`。同路径直接覆盖，单文件提供下载和删除，成功
-后刷新附件区域，不修改详情、task 版本或图。页面沿用看板样式，没有独立预览弹窗。
+`TaskDetailDialog` 在公共标题下组合 `TaskDetailPanels`，以概览和附件两个稳定面板
+分开任务阅读与文件浏览。详情与面板以 `(projectId, taskId)` 为身份，每个新身份默认
+概览；两个面板保持挂载，非当前面板同时使用 `hidden` 与 `inert`。页签按钮关联
+`tabpanel`，使用 roving tabindex，方向键和 Home/End 自动激活并聚焦目标页签，原生
+Enter/空格继续有效。`TaskAttachments`、表单及目录控件保留组件身份，因此往返页签
+保留选中路径、目录展开、列表/预览状态和未提交上传。未来描述附件导航复用同一
+控制器并激活附件页签，不建立第二份清单状态。
+
+附件面板使用占满可用正文的 `attachment-split` grid：左侧
+`attachment-sidebar` 放置文件树、刷新和上传；右侧 `attachment-preview-pane`
+放置所选文件预览，以竖向分隔线区分。桌面左栏 250px，窄屏使用紧凑比例，在 320px
+继续保持左右位置。每一级可收缩 flex/grid 子元素明确 `min-width: 0` 与
+`min-height: 0`，对话框正文和面板隐藏溢出，外层不额外滚动。概览拥有独立滚动区，
+其元数据侧栏继续沿用看板响应式布局。
+
+左栏可独立纵向滚动，右侧以非滚动预览标题和可伸缩正文组成。完整路径通过可访问
+名称与 title 保留，显示路径允许换行或受控截断；路径不能挤掉下载和删除操作。
+`attachment-preview-body` 是 Markdown、文本/JSON/源码及大图的唯一纵向滚动
+所有者，渲染器内不再设置高度上限或嵌套纵向滚动。表格、代码只保留局部横向
+滚动。HTML/PDF 就绪时切换为隐藏外溢的 `attachment-preview-body-native`，
+`attachment-native` 和 iframe 占满可用高度，内部文档或浏览器阅读器负责唯一的
+纵向滚动。加载、错误、无选择及不支持类型在同一正文布局内显示。
+
+短视口压缩公共标题行、标题、页签、预览标题及底部间距，844×390 仍保留正文、
+关闭按钮和所有操作。隐藏标题仍可取得完整内容；布局不通过恢复对话框纵向滚动
+容纳右侧预览。内嵌预览标题在下载后紧邻提供新标签页打开链接，再提供删除；链接
+使用当前选择的元数据路径，即使正文请求仍未完成也保持正确地址。
+`attachmentPageUrl` 沿用 ID 与路径校验，生成逐段编码的独立页面 URL。选择与
+滚动所有权的理由见[分屏决策](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-split-view.md)。
+
+上传表单位于默认关闭的原生 `details` 内，`summary` 使用当前语言的“上传文件”
+文案。浏览器提供鼠标与键盘展开/收起以及折叠内容的焦点排除。表单始终挂载，收起
+不会清空文件、目标路径或校验状态；页签往返保留展开状态，project/task 身份变化
+随整个附件组件重置为收起。上传入口与文件树保留各自的展开状态。
+
+用户选择一个文件，目标路径初始为文件名，可改为多层相对路径；`mime` 4.1.1 按
+目标路径确定上传 Content-Type，未知类型使用 `application/octet-stream`。同路径
+直接覆盖，单文件提供下载和删除，成功后刷新附件区域，不修改详情、task 版本或图。
+页面沿用看板样式。
 
 `useAttachments` 分开持有列表、写操作、选中路径和预览。列表逐页读取，并检查路径
 树冲突与重复游标；续页失败保留已经读取的文件并标明不完整，提供重试。结果绑定
@@ -339,23 +374,65 @@ HTML 入口是固定同源 URL，例如：
 ```
 
 HTML/PDF 的 HEAD 可用性检查只判断响应状态和 requestId，不尝试读取不存在的 JSON
-body。成功后 frame 正常 GET 文件和其资源。入口中的 `./assets/style.css`、
+body。成功后 frame 正常 GET 文件和其资源；HEAD 仅证明入口可用，实际 HTML
+交互和 PDF 绘制仍需由真实 frame 验证。入口中的 `./assets/style.css`、
 `./assets/app.js` 和相对 fetch URL 按浏览器规则读取同目录结构，不改写文件内容；
 以 `/` 开头的地址仍指向主站根目录。HTML 附件属于可信项目代码，拥有主应用同源
 权限，普通 iframe 不使用 sandbox；不增加专用预览 session/token、独立 origin/
 端口、Service Worker 或离线文件系统。规划中的[鉴权架构](daynight-auth.md)为
 附件请求增加登录态和项目成员检查，继续保留可信 HTML 的同源执行约定。
 
-原侧栏继续拥有 portal、背景 inert、滚动和被动卸载后的焦点恢复。`tabbable` 6.5.0
-的生产默认可见性检查统一枚举侧栏与同源 frame 的可 Tab 元素；frame 的 load
-监听桥接 Esc 与首末 Tab/Shift+Tab 到侧栏，并在替换或卸载时释放。详细历史与取舍
-见 [Web 附件决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)。
+居中详情对话框拥有 body portal、背景 inert、共享滚动锁和被动卸载后的焦点恢复；其居中尺寸、概览滚动与详情页签由[看板设计](daynight-web.md#居中任务详情)说明，附件页签的分屏和右侧滚动由本节拥有。`dialogFocusables` 使用 `tabbable` 6.5.0 的生产默认可见性检查，统一枚举对话框与同源 frame 的可 Tab 元素；frame 的 load 监听桥接 Esc 与首末 Tab/Shift+Tab 到对话框，并在替换或卸载时释放。该桥仍属于预览组件，不因外壳居中另建键盘所有者。详细历史与取舍见 [Web 附件决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)。
 
 `tests/mockups/attachments.html` 仅由 Vite 开发服务提供，实际组件和 CSS 使用内存
-fixture API 与原生 fixture 文件，支持文件、空态和上传失败场景。fixture 分配的对象
+fixture API 与原生 fixture 文件，覆盖有文件、空态、加载、失败和忙碌状态及长内容。fixture 分配的对象
 URL 在删除后仍保持有效，到 fixture dispose 才释放，避免已加载组件使用失效地址。
 生产构建保留单一应用 index，不包含该入口或 fixture 文件。该 mockup 及本地浏览器
 探针验证前端交互；真实服务的安装 CLI/生产浏览器旅程另由组合验收覆盖。
+
+## 独立附件阅读页
+
+`router.ts` 将 `/projects/{projectId}/tasks/{taskId}/attachments/{path...}` 解析为
+`attachment` 路由。先按原始 `/` 分段再逐段解码，拒绝解码后含 `/` 的段，规范化
+UUID 并复用 `isAttachmentPath`；文件路径保持大小写和合法 Unicode 拼写，字面 `%2F`
+通过 `%252F` 表达。`attachmentPageUrl` 与原文件 URL builder 共用同一地址规则，
+不把文件路径或预览状态从来源页写入浏览器内存作为导航依赖。
+
+`App` 在工作空间外渲染 `AttachmentPage`，仍由生产根部的 `LocaleProvider` 提供
+文案、格式与保存偏好。页面以 `(projectId, taskId, path)` 为身份；进入时聚焦主阅读
+区域，语言切换仅更新展示，不重挂载资源或 frame。页面标题由路由消息目录提供，
+页面头包含返回项目链接、完整文件路径、元数据、下载和语言选择。
+
+`AttachmentPage` 复用 `useAttachments` 的完整分页读取。仅 `complete` 为 true 后
+在清单中精确匹配路径，找到后通过同一个控制器选择并读取预览；后续页失败保留
+不完整清单提示，不能退化为缺失。无文件、列表失败及内容失败使用各自状态与适用
+重试，继续展示可用的下载入口。页面复用 `AttachmentPreview`，Markdown/文本/
+图片及可信同源 frame 仍使用既有内容 URL 和相对资源处理，没有第二个渲染器、
+存储标识或元数据接口。
+
+`attachment-page` 是占满 `100dvh` 的 flex column，外壳隐藏外溢；实际高度的头部
+不收缩，正文通过 flex 占据余下高度，每一级保持零最小尺寸。共享预览正文承担
+Markdown、文本和图片的滚动；原生 HTML/PDF 由拟合正文的 iframe 内文档滚动。
+不使用固定头部高度减法、frame 最低高度或嵌套纵向滚动。路径显示可截断但完整值
+保留在可访问文本与 title，短视口压缩内边距。
+
+`AttachmentPreview` 的关闭能力是可选的。`TrustedFrame` 仅在存在实际 dialog 祖先
+并且调用方提供关闭回调时安装原有 Escape/边界 Tab 桥；独立页面不注册该监听，
+因此保留普通浏览器键盘行为。内嵌详情的焦点圈定、frame load/替换/卸载清理和
+关闭恢复继续按原规则执行。
+
+Go 的 `uiRoutes` 精确登记同一页面形状的 GET/HEAD index 及方法 fallback，继续由
+`internal/webui` 提供 no-store 页面。`attachmentPathGuard` 将新页面命名空间纳入
+既有原始路径检查，在 ServeMux 清理路径或重定向前验证每段和完整文件路径，
+保留中间 `..` 会掩盖命名空间的意图检查。页面 ID 无效仍先交付 index，由前端
+显示未找到页面；数据请求的 ID、归属、路径、授权检查继续由原接口负责。独立页
+及 UI 路由决策见[完整阅读决策](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-full-reader.md)。
+
+前端实际组件 mockup 提供可重新加载的本地文件阅读入口，fixture 上传产生的临时
+对象 URL 仅用于演示。独立真实服务运行时验收已覆盖内嵌与完整阅读页面的真实输入、
+内容绘制、滚动与失败恢复；mockup 不承担该证明。运行方法与证据边界由
+[附件组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+拥有，详细回执归属对应任务及 PR/CI。
 
 ## CLI
 
@@ -464,8 +541,9 @@ Windows/macOS 托管结果。Web 管理界面交付组件、状态及前端 fixt
   非法路径拒绝，以及失败明确暴露；不以跨介质原子性作为验收条件。
 - CLI：实际构建入口的上传、完整列表、文本和二进制 stdout、背压、取消、管道中断、
   既有 project 选择、帮助及补全。
-- Web：目录树与单文件操作、Markdown 相对图片、HTML 相对 CSS/JS/modules/fetch、
-  图片/PDF/文本展示、失败反馈与切换文件时的过期请求取消。
+- Web：详情页签与状态保留、左右分屏和独立完整阅读、单文件操作、相对资源、真实
+  内容绘制、唯一纵向滚动与读至结尾、键盘与原生 frame 行为，以及失败恢复和
+  切换文件时的过期请求取消。
 - 部署：真实非 root 容器写入、同源 gateway 传输、正常重建保留附件、dev-ci 卷隔离
   及清理、配套备份恢复。
 
@@ -479,10 +557,17 @@ Web 新增 `task-attachments` 功能场景，在原生和实际生产容器上�
 与页面操作同一批数据；原有八个图功能场景及四个原生容量/超限场景保持完整。
 完整上下文交付另加入 `capacity-external`，原生容量/超限共五个场景；机制与统计
 由[看板设计](daynight-web.md#验证与-ci)拥有。
-另有 `project-view-tabs` 验证项目内任务视图，当前严格 inventory 为原生 14 个、
-容器 10 个。只有附件场景精确的 task/file PUT/DELETE 获准，图与任务视图场景
-继续 GET/HEAD。完整 Chromium channel `chromium` 对 PDF 的证明来自 iframe 实际
-compositor 像素中的 fixture 专用色块，成功状态、load 和固定等待均不能代替绘制。
+另有 `project-view-tabs` 验证项目内任务视图；[双语界面](daynight-web-i18n.md)增加三个功能场景，当前严格 inventory 为原生 18 个、
+容器 13 个。附件场景和 `language-state-preservation` 仅允许精确 fixture task/file 的 PUT/DELETE，后者验证切换期间待完成操作只执行一次；图、任务视图及其他语言场景继续 GET/HEAD。完整 Chromium channel `chromium` 对 PDF 的证明来自 iframe 实际
+compositor 像素中的 fixture 专用色块。判断器将匹配像素按连通区域分组，独立计算
+各个实心色块的像素数、边界和密度，并在延伸到 frame 右半区的页面候选中检查
+最大的色块。此位置规则基于 fixture 与固定查看器布局，排除仅缩略图已绘制的情形；
+独立边界也使单独绘制的缩略图不会稀释页面色块的密度。成功 PNG 与区域指标保留在绘制回执中，
+匹配阈值由[组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+拥有。成功状态、load 和固定等待均不能代替绘制。独立阅读验收另以真实滚轮、
+键盘及多页 PDF 的末页专用绘制标记证明内容可读至末尾；私有查看器 DOM 只提供
+只读偏移诊断，不能替代真实输入和绘制。实际故障来自隔离数据库与存储文件，
+请求屏障仅控制时序，不伪造服务响应。判定与环境限制继续由该决策拥有。
 
 运行回执校验 Git SHA/dirty 标记及实际 tarball/entry 摘要；dirty 标记不是脏源码内容
 指纹。CI 继续要求干净 checkout 等于 `GITHUB_SHA`。浏览器、CLI 和辅助子进程/组均

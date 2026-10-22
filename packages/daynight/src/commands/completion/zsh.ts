@@ -168,6 +168,6 @@ _daynight() {
   ${rootFunction}
 }
 
-compdef _daynight ${quote(root.name)}
+compdef _daynight ${[root.name, ...(root.aliases ?? [])].map(quote).join(" ")}
 `;
 };

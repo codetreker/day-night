@@ -5,6 +5,7 @@ import "time"
 type TaskStatus string
 
 const (
+	TaskProposed   TaskStatus = "proposed"
 	TaskTodo       TaskStatus = "todo"
 	TaskInProgress TaskStatus = "in_progress"
 	TaskDone       TaskStatus = "done"

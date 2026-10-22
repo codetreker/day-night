@@ -4,6 +4,16 @@ import { commandTree } from "../../../src/cli/commands.js";
 import type { CommandDefinition } from "../../../src/cli/schema.js";
 
 describe("Bash completion rendering", () => {
+  it("registers both installed command names with the same completion function", () => {
+    expect(renderBashCompletion(commandTree)).toContain("complete -F _daynight_completion 'daynight' 'dn'\n");
+  });
+
+  it("treats the server token stdin option as a boolean without a secret value completion", () => {
+    const script = renderBashCompletion(commandTree);
+    expect(script).toContain("dn_options=('--server-url' '--server-token-stdin' '--review-repo' '--review-path' '-h' '--help')");
+    expect(script).toContain("dn_option_values=('text' '' 'text' 'directory' '' '')");
+  });
+
   it("registers all three attachment command levels and operation options", () => {
     const script = renderBashCompletion(commandTree);
     expect(script).toContain("'attachment'");
@@ -15,6 +25,7 @@ describe("Bash completion rendering", () => {
   it("renders the supplied command tree, aliases, option identity, and argument choices", () => {
     const definition: CommandDefinition = {
       name: "tool",
+      aliases: ["t"],
       description: "Example command",
       commands: [{
         name: "inspect",
@@ -29,7 +40,7 @@ describe("Bash completion rendering", () => {
     };
 
     const script = renderBashCompletion(definition);
-    expect(script).toContain("complete -F _tool_completion 'tool'");
+    expect(script).toContain("complete -F _tool_completion 'tool' 't'\n");
     expect(script).toContain("dn_children=('inspect' 'show')");
     expect(script).toContain("dn_child_nodes=('1' '1')");
     expect(script).toContain("dn_options=('-d' '--directory' '--help')");
@@ -45,6 +56,7 @@ describe("Bash completion rendering", () => {
     const quoted = "'a'\\''b $HOME `uname` $(touch unsafe):中文'";
     const script = renderBashCompletion({
       name: "tool",
+      aliases: [value],
       description: "",
       commands: [{
         name: value,
@@ -58,6 +70,7 @@ describe("Bash completion rendering", () => {
     expect(script).toContain(`dn_children=(${quoted} 'another'\\''alias')`);
     expect(script).toContain(`dn_options=(${quoted})`);
     expect(script).toContain(`dn_choices=(${quoted})`);
+    expect(script).toContain(`complete -F _tool_completion 'tool' ${quoted}\n`);
     expect(script).not.toContain("A description need not become executable shell code");
   });
 

@@ -39,7 +39,7 @@ The runner starts normal dev-ci source build/start once, concurrently with nativ
 production UI/Go/PostgreSQL preparation and CI browser/coverage callbacks. The
 existing shell runner remains authoritative for the unique image, running-image
 check and full stack cleanup. Native functional browser work waits only for the
-native process, shared installed CLI and browser preparation. Its ten scenarios and immediate
+native process, shared installed CLI and browser preparation. Its thirteen scenarios and immediate
 browser recovery must pass before the runner releases the container browser.
 
 Release is an atomic `container/container-permission.json` receipt with schema 1,
@@ -47,7 +47,7 @@ phase `native-functional-cleaned`, acceptance run ID, dev-ci run ID and source
 SHA. The container callback records its process identity before waiting and
 inventories browsers only after validating that exact permission. Its
 `ready.json` records diagnostic timing and grants no permission. The callback
-runs the ten container functional scenarios, confirms browser cleanup and
+runs the thirteen container functional scenarios, confirms browser cleanup and
 returns to the normal shell exit path. The outer stage waits for full dev-ci
 cleanup and browser recovery before completing.
 
@@ -55,11 +55,16 @@ Capacity runs last, after every preparation/check command, native functional
 phase, container functional phase and complete container cleanup. The native
 Go process and PostgreSQL remain alive for this final phase. One browser worker,
 zero retries, all four fixed graphs with five repetitions, both independent
-limits, complete geometry, twenty CDP traces and all original timing gates
+limits, complete visible induced geometry, twenty CDP traces and all original timing gates
 remain required. Native functional and capacity phases strictly aggregate to
-fifteen unique scenarios; the container target requires ten. Per-phase and
+eighteen unique scenarios; the container target requires thirteen. Per-phase and
 aggregate validation reject missing, extra or duplicate scenarios and retries,
 and require matching browser identity within a target.
+
+The [progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
+retains those complete API inputs and existing timing thresholds while requiring
+bounded overview DOM, all induced visible edges and explicit expansion/reset.
+Phase ownership and the 31-scenario inventory remain unchanged.
 
 The pipeline originally introduced top-level schema 2. The
 [macOS acceptance decision](2026-10-22-macos-web-acceptance.md) advances current
@@ -97,6 +102,9 @@ target; it retains this schedule and the original capacity scenarios. The later
 or capacity isolation. The
 [complete context decision](../feature/2026-10-22-complete-prerequisite-context.md)
 adds the dense-external capacity graph while preserving that isolation. The
+[bilingual interface decision](../feature/2026-10-22-web-bilingual-interface.md)
+adds three functional scenarios per target, preserving phase ownership, strict
+aggregation and all capacity conditions. The
 [web design](../../../../docs/design/daynight-web.md#验证与-ci) owns mechanisms.
 Measured outcomes remain tied to their source, environment and PR/CI run.
 

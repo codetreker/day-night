@@ -6,9 +6,12 @@ import guide from './files/docs/guide.md?raw';
 import json from './files/data/example.json?raw';
 import style from './files/site/style.css?raw';
 import script from './files/site/app.js?raw';
+import tallMarkdown from './files/docs/tall.md?raw';
+import tallText from './files/data/tall.txt?raw';
 
-export type MockupScenario = 'files' | 'empty' | 'upload-error';
+export type MockupScenario = 'files' | 'empty' | 'upload-error' | 'loading' | 'list-error' | 'preview-error' | 'busy';
 const base = '/tests/mockups/files/';
+export const mockupLongPath = `docs/${'long-file-name-'.repeat(12)}.txt`;
 const timestamp = '2026-10-21T10:00:00Z';
 const sources = [
   ['docs/guide.md', 'text/markdown', guide],
@@ -18,6 +21,12 @@ const sources = [
   ['site/app.js', 'text/javascript', script],
   ['data/example.json', 'application/json', json],
   ['brief.pdf', 'application/pdf', ''],
+  ['docs/tall.md', 'text/markdown', tallMarkdown],
+  ['data/tall.txt', 'text/plain', tallText],
+  ['images/tall.svg', 'image/svg+xml', ''],
+  ['site/tall.html', 'text/html', ''],
+  ['tall.pdf', 'application/pdf', ''],
+  [mockupLongPath, 'text/plain', tallText],
   ['archive.bin', 'application/octet-stream', 'Binary attachment'],
 ] as const;
 
@@ -34,7 +43,7 @@ export const createAttachmentFixture = (scenario: MockupScenario) => {
     attachment: { path, contentType, sizeBytes: text === '' ? 640 : new TextEncoder().encode(text).length, createdAt: timestamp, updatedAt: timestamp },
     text,
   }]));
-  const pathUrls = new Map([...files.keys()].map((path) => [path, `${base}${path}`]));
+  const pathUrls = new Map([...files.keys()].map((path) => [path, `${base}${path === mockupLongPath ? 'data/tall.txt' : path}`]));
   const ownedUrls = new Set<string>();
   let revision = 0;
   const required = (path: string) => {
@@ -43,10 +52,21 @@ export const createAttachmentFixture = (scenario: MockupScenario) => {
     return file;
   };
   const api: AttachmentApi = {
-    list: async () => ({ items: [...files.values()].map((file) => file.attachment), nextCursor: null }),
-    readText: async (_project, _task, path) => required(path).text,
-    checkPreview: async (_project, _task, path) => { required(path); },
+    list: async () => {
+      if (scenario === 'loading') return new Promise(() => {});
+      if (scenario === 'list-error') throw new Error('Mockup list failed.');
+      return { items: [...files.values()].map((file) => file.attachment), nextCursor: null };
+    },
+    readText: async (_project, _task, path) => {
+      if (scenario === 'preview-error') throw new Error('Mockup preview failed.');
+      return required(path).text;
+    },
+    checkPreview: async (_project, _task, path) => {
+      if (scenario === 'preview-error') throw new Error('Mockup preview failed.');
+      required(path);
+    },
     put: async (_project, _task, path, file) => {
+      if (scenario === 'busy') return new Promise(() => {});
       if (scenario === 'upload-error') throw new Error('Mockup upload failed.');
       const previous = files.get(path);
       const url = URL.createObjectURL(file);
@@ -63,6 +83,6 @@ export const createAttachmentFixture = (scenario: MockupScenario) => {
     if (url === undefined) throw new Error('Fixture attachment URL was never allocated.');
     return url;
   };
-  const urls: AttachmentUrls = { previewRoot: base, preview: fileUrl, download: fileUrl };
+  const urls: AttachmentUrls = { page: (path) => `/tests/mockups/attachments.html?file=${encodeURIComponent(path)}&scenario=${scenario}`, previewRoot: base, preview: fileUrl, download: (path) => pathUrls.get(path) ?? `${base}${path.split('/').map(encodeURIComponent).join('/')}` };
   return { api, urls, dispose: () => { ownedUrls.forEach((url) => URL.revokeObjectURL(url)); } };
 };

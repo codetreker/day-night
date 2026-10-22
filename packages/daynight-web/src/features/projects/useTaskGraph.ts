@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getTaskGraph, isAbortError } from "../../api/client";
+import { ApiError, getTaskGraph, isAbortError } from "../../api/client";
 import type { TaskGraph } from "../../api/types";
 import { buildGraphIndex, type GraphIndex } from "../task-graph/model";
 
@@ -26,24 +26,38 @@ export const useTaskGraph = (projectId: string) => {
   const [state, setState] = useState<GraphState>(() => initialState(projectId));
   const generation = useRef(0);
   const active = useRef<AbortController | null>(null);
-  const request = useCallback(async () => {
+  const cached = useRef<{ projectId: string; serialized: string; snapshot: GraphSnapshot } | null>(null);
+  const request = useCallback(async (automatic = false) => {
+    if (automatic && active.current !== null) return;
     active.current?.abort();
     const controller = new AbortController();
     active.current = controller;
     const revision = ++generation.current;
     setState((previous) => {
       const snapshot = previous.projectId === projectId ? previous.snapshot : null;
-      return { projectId, snapshot, status: snapshot === null ? "loading" : "ready", refreshing: snapshot !== null, error: null };
+      const error = previous.projectId === projectId && (automatic || snapshot !== null) ? previous.error : null;
+      return { projectId, snapshot, status: snapshot !== null ? "ready" : error === null ? "loading" : "error", refreshing: snapshot !== null && !automatic, error };
     });
     try {
       const graph = await getTaskGraph(projectId, controller.signal);
       if (controller.signal.aborted || revision !== generation.current) return;
-      const index = buildGraphIndex(graph);
-      setState({ projectId, snapshot: { graph, index, receivedAt: Date.now(), revision }, status: "ready", refreshing: false, error: null });
+      // API parsing constructs a fixed DTO shape, so serialization covers every field.
+      const serialized = JSON.stringify(graph);
+      const previous = cached.current;
+      const unchanged = previous?.projectId === projectId && previous.serialized === serialized;
+      const snapshot = {
+        graph: unchanged ? previous.snapshot.graph : graph,
+        index: unchanged ? previous.snapshot.index : buildGraphIndex(graph),
+        receivedAt: Date.now(), revision,
+      };
+      cached.current = { projectId, serialized, snapshot };
+      setState({ projectId, snapshot, status: "ready", refreshing: false, error: null });
     } catch (error) {
       if (controller.signal.aborted || revision !== generation.current || isAbortError(error)) return;
+      const missing = error instanceof ApiError && error.status === 404;
+      if (missing) cached.current = null;
       setState((previous) => {
-        const snapshot = previous.projectId === projectId ? previous.snapshot : null;
+        const snapshot = missing ? null : previous.projectId === projectId ? previous.snapshot : null;
         return { projectId, snapshot, status: snapshot === null ? "error" : "ready", refreshing: false, error };
       });
     } finally {
@@ -53,10 +67,29 @@ export const useTaskGraph = (projectId: string) => {
 
   useEffect(() => {
     void request();
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const pause = () => {
+      if (timer !== null) clearInterval(timer);
+      timer = null;
+    };
+    const resume = () => {
+      pause();
+      if (document.visibilityState === "hidden") return;
+      timer = setInterval(() => { void request(true); }, 5_000);
+    };
+    const onVisibilityChange = () => {
+      resume();
+      if (document.visibilityState !== "hidden") void request(true);
+    };
+    resume();
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
+      pause();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       ++generation.current;
       active.current?.abort();
       active.current = null;
+      cached.current = null;
     };
   }, [request]);
 

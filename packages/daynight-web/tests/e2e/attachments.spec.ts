@@ -1,11 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import type { Locator, Page, TestInfo } from '@playwright/test';
-import { attachmentDownloadUrl, attachmentPreviewUrl } from '../../src/api/client';
+import { attachmentDownloadUrl, attachmentPageUrl, attachmentPreviewUrl } from '../../src/api/client';
 import { createAcceptanceCli } from '../../scripts/acceptance/installed-cli.mts';
 import { createProject, createTask, expect, test, type Task } from './fixtures';
+import { expectCenteredTaskDetail } from './detail-dialog';
+import { hasPaintedPdfMarker, readPdfPixels, type PdfPixels } from './pdf-pixels';
 
 const exact = (value: string): RegExp => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
 const asset = (path: string): string => fileURLToPath(new URL(path, import.meta.url));
@@ -25,55 +28,39 @@ const selectFile = async (region: Locator, path: string): Promise<void> => {
   await expect(region.getByRole('heading', { name: path, exact: true })).toBeVisible();
 };
 
-type PdfPixels = { width: number; height: number; pixels: number; markerWidth: number; markerHeight: number; density: number; bounds: { left: number; top: number; right: number; bottom: number } | null };
-const paintedPdf = async (page: Page, frame: Locator, info: TestInfo, source: Buffer, url: string): Promise<PdfPixels> => {
+const settleScroll = async (owner: Locator): Promise<void> => {
+  // Native scrolling continues while task-polling timers are paused in the page.
+  const started = performance.now();
+  let quietSince = started;
+  let previous = await owner.evaluate((element) => element.scrollTop);
+  while (true) {
+    await delay(16);
+    const current = await owner.evaluate((element) => element.scrollTop);
+    const now = performance.now();
+    if (current !== previous) { previous = current; quietSince = now; }
+    if (now - quietSince >= 100) return;
+    if (now - started >= 3_000) throw new Error('The preview did not reach a stable scroll position.');
+  }
+};
+
+const paintedPdf = async (page: Page, frame: Locator, info: TestInfo, source: Buffer, url: string, prefix = 'task-attachments'): Promise<PdfPixels> => {
   let painted: Buffer | undefined;
   let metrics: PdfPixels | undefined;
   await expect.poll(async () => {
     const png = await frame.screenshot({ animations: 'disabled' });
-    const current = await page.evaluate(async (base64): Promise<PdfPixels> => {
-      const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
-      const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-      const context = canvas.getContext('2d');
-      if (context === null) throw new Error('PDF evidence requires a browser 2D canvas.');
-      context.drawImage(bitmap, 0, 0);
-      bitmap.close();
-      const { data, width, height } = context.getImageData(0, 0, canvas.width, canvas.height);
-      let pixels = 0;
-      let left = width;
-      let top = height;
-      let right = -1;
-      let bottom = -1;
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const offset = (y * width + x) * 4;
-          if (Math.abs(data[offset]! - 17) <= 4 && Math.abs(data[offset + 1]! - 203) <= 4
-            && Math.abs(data[offset + 2]! - 149) <= 4 && data[offset + 3]! >= 250) {
-            pixels += 1;
-            left = Math.min(left, x);
-            right = Math.max(right, x);
-            top = Math.min(top, y);
-            bottom = Math.max(bottom, y);
-          }
-        }
-      }
-      const markerWidth = pixels === 0 ? 0 : right - left + 1;
-      const markerHeight = pixels === 0 ? 0 : bottom - top + 1;
-      return { width, height, pixels, markerWidth, markerHeight, density: pixels === 0 ? 0 : pixels / (markerWidth * markerHeight), bounds: pixels === 0 ? null : { left, top, right, bottom } };
-    }, png.toString('base64'));
-    if (current.pixels < 1600 || current.markerWidth < 80 || current.markerHeight < 20 || current.density < 0.95) return false;
+    const current = await page.evaluate(readPdfPixels, png.toString('base64'));
+    if (!hasPaintedPdfMarker(current)) return false;
     painted = png;
     metrics = current;
     return true;
   }, { message: 'The native PDF viewer paints the solid fixture rectangle', timeout: 30_000, intervals: [100, 250, 500] }).toBe(true);
   if (painted === undefined || metrics === undefined) throw new Error('PDF paint evidence was not captured.');
-  const screenshot = info.outputPath('task-attachments-pdf.png');
-  const receipt = info.outputPath('task-attachments-pdf.json');
+  const screenshot = info.outputPath(`${prefix}-pdf.png`);
+  const receipt = info.outputPath(`${prefix}-pdf.json`);
   await writeFile(screenshot, painted);
   await writeFile(receipt, `${JSON.stringify({ schemaVersion: 1, path: 'reports/brief.pdf', url, sha256: createHash('sha256').update(source).digest('hex'), markerRgb: [17, 203, 149], tolerance: 4, ...metrics }, null, 2)}\n`);
-  await info.attach('painted-pdf', { path: screenshot, contentType: 'image/png' });
-  await info.attach('painted-pdf-pixels', { path: receipt, contentType: 'application/json' });
+  await info.attach(`${prefix}-painted-pdf`, { path: screenshot, contentType: 'image/png' });
+  await info.attach(`${prefix}-painted-pdf-pixels`, { path: receipt, contentType: 'application/json' });
   return metrics;
 };
 
@@ -99,17 +86,28 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
   };
   const binary = Buffer.from([0, 255, 1, 128, 13, 10, 200, 0, 254, 42]);
   const pdf = await readFile(asset('../mockups/files/brief.pdf'));
+  const wideColumns = Array.from({ length: 16 }, (_, index) => `Column ${index + 1}`);
+  const wideTable = `| ${wideColumns.join(' | ')} |\n| ${wideColumns.map(() => '---').join(' | ')} |\n| ${wideColumns.map(() => 'Long table content').join(' | ')} |`;
+  const longCode = `const attachmentContent = '${'unbroken-source-'.repeat(80)}';`;
+  const longPath = `long/${'long-file-name-'.repeat(12)}.txt`;
   const seeds = [
-    { path: 'docs/design.md', bytes: Buffer.from('# 附件设计\n\n| 文件 | 状态 |\n| --- | --- |\n| Web | 已连接 |\n\n![项目流程](../images/workflow.svg)\n\n[同名文本](../notes/one/same.txt)\n\n<script>window.attachmentLeak = true</script>\n') },
+    { path: 'docs/design.md', bytes: Buffer.from(`# 附件设计\n\n| 文件 | 状态 |\n| --- | --- |\n| Web | 已连接 |\n\n${wideTable}\n\n\`\`\`js\n${longCode}\n\`\`\`\n\n![项目流程](../images/workflow.svg)\n\n[同名文本](../notes/one/same.txt)\n\n<script>window.attachmentLeak = true</script>\n`) },
     { path: 'notes/one/same.txt', bytes: Buffer.from('First nested text\nSecond line\n') },
     { path: 'notes/two/same.txt', bytes: Buffer.from('Second same-name text\n') },
     { path: 'empty.txt', bytes: Buffer.alloc(0) },
+    { path: 'Docs/设计 #?%.json', bytes: Buffer.from('{\n  \"sameFile\": true\n}\n') },
     { path: 'binary/bytes.bin', bytes: binary },
     { path: 'images/workflow.svg', bytes: await readFile(asset('../mockups/files/images/workflow.svg')) },
     { path: 'reports/brief.pdf', bytes: pdf },
     { path: 'site/index.html', bytes: await readFile(asset('./attachment-files/site/index.html')) },
     { path: 'site/style.css', bytes: await readFile(asset('../mockups/files/site/style.css')) },
     { path: 'site/app.js', bytes: await readFile(asset('./attachment-files/site/app.js')) },
+    { path: longPath, bytes: Buffer.from('Long path attachment content\n'.repeat(200)) },
+    { path: 'long/reading.md', bytes: await readFile(asset('../mockups/files/docs/tall.md')) },
+    { path: 'long/reading.txt', bytes: await readFile(asset('../mockups/files/data/tall.txt')) },
+    { path: 'long/reading.svg', bytes: await readFile(asset('../mockups/files/images/tall.svg')) },
+    { path: 'long/reading.html', bytes: await readFile(asset('../mockups/files/site/tall.html')) },
+    { path: 'long/reading.pdf', bytes: await readFile(asset('../mockups/files/tall.pdf')) },
     { path: 'site/data.json', bytes: await readFile(asset('./attachment-files/site/data.json')) },
   ];
   for (const [index, seed] of seeds.entries()) await put(seed.path, seed.bytes, `seed-${index}`);
@@ -133,18 +131,41 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     if (path === `/api/v1/projects/${project.id}/task-graph`) graphReads += 1;
     if (path === `/api/v1/projects/${project.id}/tasks/${task.id}`) detailReads += 1;
   });
+  // Isolate attachment-triggered reads from the independently tested task polling timer.
+  const clockTime = new Date('2030-01-01T00:00:00Z');
+  await page.clock.install({ time: clockTime });
+  await page.clock.pauseAt(clockTime);
   await page.goto(`/projects/${project.id}`);
   await expect(page.getByRole('heading', { name: project.name, exact: true })).toBeVisible();
   await page.getByRole('tab', { name: '独立任务', exact: true }).click();
   const trigger = page.locator(`#standalone-task-${task.id}`);
   await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
+  const originalOverflow = await page.evaluate(() => ({ document: document.documentElement.style.overflow, body: document.body.style.overflow }));
   await trigger.click();
   const dialog = page.getByRole('dialog', { name: '任务详情' });
   const attachments = dialog.locator('.task-attachments');
+  await expect(dialog.getByRole('tab', { name: '概览', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await dialog.getByRole('tab', { name: '附件', exact: true }).click();
+  const expectReleased = async (): Promise<void> => {
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator('#root')).not.toHaveAttribute('inert', '');
+    await expect(trigger).toBeFocused();
+    expect(await page.evaluate(() => ({ document: document.documentElement.style.overflow, body: document.body.style.overflow }))).toEqual(originalOverflow);
+  };
   await expect(attachments.getByRole('heading', { name: `附件 · ${seeds.length}`, exact: true })).toBeVisible();
+  const uploadDisclosure = attachments.locator('.attachment-upload-disclosure');
+  const uploadSummary = uploadDisclosure.locator('summary');
+  await expect(uploadDisclosure).not.toHaveAttribute('open', '');
+  await expect(attachments.getByLabel('选择一个文件')).toBeHidden();
+  await uploadSummary.focus();
+  await page.keyboard.press('Enter');
+  await expect(uploadDisclosure).toHaveAttribute('open', '');
+  await expect(attachments.getByLabel('选择一个文件')).toBeVisible();
+  await page.keyboard.press('Space');
+  await expect(uploadDisclosure).not.toHaveAttribute('open', '');
 
   await selectFile(attachments, 'docs/design.md');
-  await expect(attachments.getByRole('table')).toContainText('Web已连接');
+  await expect(attachments.getByRole('table').first()).toContainText('Web已连接');
   const markdownImage = attachments.getByRole('img', { name: '项目流程' });
   await expect(markdownImage).toHaveAttribute('src', attachmentPreviewUrl(project.id, task.id, 'images/workflow.svg'));
   await expect.poll(() => markdownImage.evaluate((image) => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0)).toBe(true);
@@ -152,6 +173,205 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
   await expect(attachments.locator('script')).toHaveCount(0);
   await expect(attachments.getByText('<script>window.attachmentLeak = true</script>')).toBeVisible();
   expect(await page.evaluate(() => Object.hasOwn(window, 'attachmentLeak'))).toBe(false);
+  await expect(attachments.locator('.attachment-markdown pre')).toHaveText(longCode);
+  for (const width of [1440, 320]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expectCenteredTaskDetail(page, dialog);
+    expect(await dialog.locator('.task-detail-body').evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true);
+    const split = await attachments.locator('.attachment-split').boundingBox();
+    const left = await attachments.locator('.attachment-sidebar').boundingBox();
+    const right = await attachments.locator('.attachment-preview-pane').boundingBox();
+    expect(split && left && right && left.x + left.width <= right.x + 1 && left.y === right.y && right.height === left.height).toBeTruthy();
+    expect(await attachments.locator('.attachment-markdown pre').evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+    if (width === 320) expect(await attachments.getByRole('table').last().evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+  }
+  await page.setViewportSize({ width: 1440, height: 800 });
+  const openerViewport = page.viewportSize();
+  if (openerViewport === null) throw new Error('Attachment acceptance requires an explicit opener viewport.');
+  const readerUrl = attachmentPageUrl(project.id, task.id, 'docs/design.md');
+  const newTabLink = attachments.getByRole('link', { name: '在新标签页打开', exact: true });
+  await expect(newTabLink).toHaveAttribute('href', readerUrl);
+  await expect(newTabLink).toHaveAttribute('target', '_blank');
+  await expect(newTabLink).toHaveAttribute('rel', 'noopener noreferrer');
+  const [reader] = await Promise.all([page.waitForEvent('popup'), newTabLink.click()]);
+  const readerErrors: string[] = [];
+  reader.on('pageerror', (error) => readerErrors.push(error.name));
+  await expect(reader).toHaveURL(new URL(readerUrl, origin).href);
+  expect(await reader.evaluate(() => window.opener === null)).toBe(true);
+  await expect(reader.getByRole('table').first()).toContainText('Web已连接');
+  await expect(reader.getByRole('navigation', { name: '工作空间导航' })).toHaveCount(0);
+  await expect(reader.getByRole('dialog')).toHaveCount(0);
+  await expect(reader.getByRole('img', { name: '项目流程' })).toHaveJSProperty('complete', true);
+  await expect.poll(() => reader.getByRole('img', { name: '项目流程' }).evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect(reader.locator('.attachment-markdown pre')).toHaveText(longCode);
+  await expect(attachments.getByRole('heading', { name: 'docs/design.md', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('tab', { name: '附件', exact: true })).toHaveAttribute('aria-selected', 'true');
+  for (const method of ['get', 'head'] as const) {
+    const response = await request[method](readerUrl);
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toContain('text/html');
+    if (method === 'head') expect(await response.body()).toHaveLength(0);
+    else expect(await response.text()).toContain('<div id="root"></div>');
+  }
+  expect((await request.post(readerUrl)).status()).toBe(405);
+  expect((await request.get(`/projects/${project.id}/tasks/${task.id}/unknown/file.txt`)).status()).toBe(404);
+  const readerScrollEvidence: unknown[] = [];
+  for (const viewport of [{ width: 1440, height: 800 }, { width: 320, height: 800 }, { width: 844, height: 390 }]) {
+    await reader.setViewportSize(viewport);
+    for (const extension of ['md', 'txt', 'svg', 'html', 'pdf']) {
+      await reader.goto(attachmentPageUrl(project.id, task.id, `long/reading.${extension}`));
+      await expect(reader.getByRole('heading', { name: `long/reading.${extension}`, exact: true })).toBeVisible();
+      await expect(reader.getByRole('link', { name: '下载', exact: true })).toBeInViewport({ ratio: 1 });
+      await expect(reader.getByRole('combobox', { name: '语言 / Language', exact: true })).toBeInViewport({ ratio: 1 });
+      const body = reader.locator('.attachment-preview-body');
+      if (extension === 'svg') await expect.poll(() => reader.getByRole('img').evaluate((image) => (image as HTMLImageElement).naturalHeight)).toBeGreaterThan(0);
+      const native = extension === 'html' || extension === 'pdf';
+      if (native) {
+        const frame = reader.locator('iframe');
+        await expect(frame).toBeInViewport({ ratio: 1 });
+        const frameBounds = await frame.boundingBox();
+        const bodyBounds = await body.boundingBox();
+        expect(frameBounds!.height).toBeCloseTo(bodyBounds!.height, 0);
+        if (extension === 'html') {
+          await expect(frame.contentFrame().locator('#counter')).toBeVisible();
+          await frame.contentFrame().locator('#counter').click();
+          await expect(frame.contentFrame().locator('#counter')).toHaveText('1');
+          await reader.keyboard.press('Escape');
+          await expect(frame).toBeVisible();
+          expect(await frame.contentFrame().locator('html').evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+        }
+      } else await expect.poll(() => body.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+      const outer = await body.evaluate((element) => {
+        const chain = [];
+        for (let node: Element | null = element; node !== null; node = node.parentElement) chain.push({ className: node.className, height: node.clientHeight, scrollHeight: node.scrollHeight, overflow: getComputedStyle(node).overflowY });
+        return chain;
+      });
+      expect(outer.slice(1).filter((entry) => entry.scrollHeight > entry.height + 1)).toEqual([]);
+      if (native) expect(outer[0]!.scrollHeight).toBeLessThanOrEqual(outer[0]!.height + 1);
+      readerScrollEvidence.push({ viewport, extension, outer });
+    }
+    await reader.goto(attachmentPageUrl(project.id, task.id, longPath));
+    await expect(reader.getByRole('heading', { name: longPath, exact: true })).toHaveAttribute('title', longPath);
+    await expect(reader.getByRole('link', { name: '下载', exact: true })).toBeInViewport({ ratio: 1 });
+  }
+  await reader.goto(attachmentPageUrl(project.id, task.id, 'site/index.html'));
+  const readerHtml = reader.getByTitle('HTML 预览：site/index.html');
+  await expect(readerHtml.contentFrame().locator('#data')).toHaveText('Attachment same-data journey · in_progress');
+  await expect.poll(() => readerHtml.contentFrame().getByRole('img', { name: 'Project workflow' }).evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  expect(await readerHtml.contentFrame().locator('body').evaluate((body) => getComputedStyle(body).backgroundColor)).toBe('rgb(246, 247, 252)');
+  await readerHtml.contentFrame().getByRole('button', { name: '完成一个任务' }).click();
+  await expect(readerHtml.contentFrame().locator('#result')).toHaveText('已完成 3 个任务');
+  await reader.goto(attachmentPageUrl(project.id, task.id, 'notes/one/same.txt'));
+  await expect(reader.locator('pre')).toHaveText('First nested text\nSecond line\n');
+  await reader.goto(attachmentPageUrl(project.id, task.id, 'Docs/设计 #?%.json'));
+  await expect(reader.locator('pre')).toHaveText('{\n  \"sameFile\": true\n}\n');
+  await reader.reload();
+  await expect(reader.locator('pre')).toHaveText('{\n  \"sameFile\": true\n}\n');
+  await reader.goto(attachmentPageUrl(project.id, task.id, 'binary/bytes.bin'));
+  await expect(reader.getByText('此文件暂不支持预览，请下载后打开。')).toBeVisible();
+  await expect(reader.getByRole('link', { name: '下载' })).toHaveAttribute('href', attachmentDownloadUrl(project.id, task.id, 'binary/bytes.bin'));
+  const [binaryDownload] = await Promise.all([reader.waitForEvent('download'), reader.getByRole('link', { name: '下载' }).click()]);
+  const downloadedPath = await binaryDownload.path();
+  if (downloadedPath === null) throw new Error('The standalone unsupported-file download was not saved.');
+  expect(await readFile(downloadedPath)).toEqual(binary);
+  await reader.goto(attachmentPageUrl(project.id, task.id, 'reports/brief.pdf'));
+  await paintedPdf(reader, reader.getByTitle('PDF 预览：reports/brief.pdf'), info, pdf, new URL(attachmentPreviewUrl(project.id, task.id, 'reports/brief.pdf'), origin).href, 'standalone-attachments');
+  await reader.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('en');
+  await reader.reload();
+  await expect(reader.getByRole('link', { name: 'Download', exact: true })).toBeVisible();
+  await reader.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('zh-CN');
+  // Chromium tabs share native window bounds; return ownership to the opener before closing the resized reader.
+  await reader.setViewportSize(openerViewport);
+  await reader.close();
+  expect(readerErrors).toEqual([]);
+  await page.bringToFront();
+  await info.attach('standalone-attachment-scroll-owners', { body: Buffer.from(JSON.stringify(readerScrollEvidence, null, 2)), contentType: 'application/json' });
+  const scrollEvidence: unknown[] = [];
+  for (const viewport of [{ width: 1440, height: 800 }, { width: 768, height: 800 }, { width: 600, height: 800 }, { width: 320, height: 800 }, { width: 844, height: 390 }]) {
+    await page.setViewportSize(viewport);
+    for (const extension of ['md', 'txt', 'svg', 'html', 'pdf']) {
+      await selectFile(attachments, `long/reading.${extension}`);
+      const body = attachments.locator('.attachment-preview-body');
+      const native = extension === 'html' || extension === 'pdf';
+      if (extension === 'svg') await expect.poll(() => attachments.getByRole('img').evaluate((image) => (image as HTMLImageElement).naturalHeight)).toBeGreaterThan(0);
+      await expectCenteredTaskDetail(page, dialog);
+      const panes = await attachments.locator('.attachment-sidebar,.attachment-preview-pane').evaluateAll((elements) => elements.map((element) => {
+        const bounds = element.getBoundingClientRect(); return { left: bounds.left, right: bounds.right, top: bounds.top, height: bounds.height };
+      }));
+      expect(panes[0]!.right).toBeLessThanOrEqual(panes[1]!.left + 1);
+      expect(panes[0]!.top).toBe(panes[1]!.top);
+      expect(panes[1]!.height).toBeGreaterThan(80);
+      for (const action of ['下载', '删除']) await expect(attachments.getByRole(action === '下载' ? 'link' : 'button', { name: action, exact: true })).toBeInViewport({ ratio: 1 });
+      const outer = await body.evaluate((element) => {
+        const chain = [];
+        for (let node: Element | null = element; node !== null && !node.classList.contains('task-detail-backdrop'); node = node.parentElement) chain.push({ className: node.className, height: node.clientHeight, scrollHeight: node.scrollHeight, overflow: getComputedStyle(node).overflowY });
+        return chain;
+      });
+      expect(outer.slice(1).filter((entry) => entry.scrollHeight > entry.height + 1)).toEqual([]);
+      if (!native) {
+        expect(outer[0]!.scrollHeight).toBeGreaterThan(outer[0]!.height);
+        const bounds = await body.boundingBox();
+        if (bounds === null) throw new Error('The preview scroll owner has no bounds.');
+        await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+        await page.mouse.wheel(0, 180);
+        await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        await settleScroll(body);
+        await body.evaluate((element) => { element.scrollTop = 0; });
+        await body.focus();
+        await page.keyboard.press('PageDown');
+        await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        await settleScroll(body);
+        const position = await body.evaluate((element) => element.scrollTop);
+        const left = attachments.locator('.attachment-sidebar');
+        await left.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+        expect(await body.evaluate((element) => element.scrollTop)).toBe(position);
+        await left.evaluate((element) => { element.scrollTop = 0; });
+      } else {
+        const frame = attachments.locator('iframe');
+        await expect(frame).toBeInViewport({ ratio: 1 });
+        const frameBounds = await frame.boundingBox();
+        const bodyBounds = await body.boundingBox();
+        expect(frameBounds!.height).toBeCloseTo(bodyBounds!.height, 0);
+        expect(outer[0]!.scrollHeight).toBeLessThanOrEqual(outer[0]!.height + 1);
+        if (extension === 'html') {
+          const content = frame.contentFrame();
+          await expect(content.locator('#counter')).toBeVisible();
+          expect(await content.locator('html').evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+          await page.mouse.move(frameBounds!.x + frameBounds!.width / 2, frameBounds!.y + frameBounds!.height / 2);
+          await page.mouse.wheel(0, 180);
+          await expect.poll(() => content.locator('html').evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+          await settleScroll(content.locator('html'));
+          await content.locator('html').evaluate((element) => { element.scrollTop = 0; });
+          await content.locator('#counter').focus();
+          await page.keyboard.press('PageDown');
+          await expect.poll(() => content.locator('html').evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+          await settleScroll(content.locator('html'));
+        }
+      }
+      scrollEvidence.push({ viewport, extension, outer, panes });
+    }
+  }
+  await page.setViewportSize({ width: 844, height: 390 });
+  await selectFile(attachments, 'long/reading.md');
+  const language = page.locator('.task-detail-dialog').getByRole('combobox', { name: '语言 / Language', exact: true });
+  for (const locale of ['zh-CN', 'en']) {
+    await language.selectOption(locale);
+    const shortScreenshot = info.outputPath(`task-attachments-short-${locale}.png`);
+    await page.screenshot({ path: shortScreenshot, fullPage: false });
+    await info.attach(`task-attachments-short-${locale}`, { path: shortScreenshot, contentType: 'image/png' });
+  }
+  await language.selectOption('zh-CN');
+  await page.setViewportSize({ width: 320, height: 800 });
+  await selectFile(attachments, longPath);
+  await expect(attachments.getByRole('heading', { name: longPath, exact: true })).toHaveAttribute('title', longPath);
+  for (const action of ['下载', '删除']) await expect(attachments.getByRole(action === '下载' ? 'link' : 'button', { name: action, exact: true })).toBeInViewport({ ratio: 1 });
+  await info.attach('attachment-scroll-owners', { body: Buffer.from(JSON.stringify(scrollEvidence, null, 2)), contentType: 'application/json' });
+  await page.setViewportSize({ width: 320, height: 800 });
+  await selectFile(attachments, 'docs/design.md');
+  const narrowScreenshot = info.outputPath('task-attachments-narrow.png');
+  await page.screenshot({ path: narrowScreenshot, fullPage: false });
+  await info.attach('task-attachments-narrow', { path: narrowScreenshot, contentType: 'image/png' });
+  await page.setViewportSize({ width: 1600, height: 1100 });
   await selectFile(attachments, 'notes/one/same.txt');
   await expect(attachments.locator('pre')).toHaveText('First nested text\nSecond line\n');
   const refreshedText = Buffer.from('CLI replacement appears after attachment refresh\n');
@@ -175,15 +395,75 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
   await expect.poll(() => content.getByRole('img', { name: 'Project workflow' }).evaluate((image) => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0)).toBe(true);
   await content.getByRole('button', { name: '完成一个任务' }).click();
   await expect(content.locator('#result')).toHaveText('已完成 3 个任务');
+  const innerButton = content.getByRole('button', { name: '完成一个任务' });
+  const frameHandle = await html.elementHandle();
+  const input = attachments.getByLabel('选择一个文件');
+  const inputHandle = await input.elementHandle();
+  await uploadSummary.click();
+  await input.setInputFiles({ name: 'unsent.txt', mimeType: 'text/plain', buffer: Buffer.from('Unsent draft') });
+  await attachments.getByRole('textbox', { name: '目标相对路径' }).fill('drafts/unsent.txt');
+  await uploadSummary.click();
+  await expect(input).toBeHidden();
+  const notes = attachments.locator('summary').filter({ hasText: exact('▱ notes') }).locator('..');
+  await notes.locator('summary').first().click();
+  await expect(notes).not.toHaveAttribute('open', '');
+  await innerButton.focus();
+  await dialog.getByRole('tab', { name: '概览', exact: true }).click();
+  await expect(dialog.getByRole('tab', { name: '概览', exact: true })).toBeFocused();
+  await expect(dialog.locator('.task-detail-panel-attachments')).toHaveAttribute('inert', '');
+  await expect(html).toBeHidden();
+  await dialog.getByRole('tab', { name: '附件', exact: true }).click();
+  expect(await frameHandle!.evaluate((element) => element === document.querySelector('.task-attachments iframe'))).toBe(true);
+  expect(await inputHandle!.evaluate((element) => element === document.querySelector('.task-attachments input[type=file]'))).toBe(true);
+  await expect(content.locator('#result')).toHaveText('已完成 3 个任务');
+  await expect(uploadDisclosure).not.toHaveAttribute('open', '');
+  await uploadSummary.click();
+  await expect(attachments.getByRole('textbox', { name: '目标相对路径' })).toHaveValue('drafts/unsent.txt');
+  expect(await input.evaluate((element) => (element as HTMLInputElement).files?.[0]?.name)).toBe('unsent.txt');
+  await expect(notes).not.toHaveAttribute('open', '');
+  await frameHandle!.dispose();
+  await inputHandle!.dispose();
+
+  await innerButton.focus();
+  await page.keyboard.press('Tab');
+  await expect(dialog.getByRole('combobox', { name: '语言 / Language', exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
+  await innerButton.focus();
+  await page.keyboard.press('Shift+Tab');
+  await expect(attachments.getByRole('button', { name: '删除', exact: true })).toBeFocused();
+  await innerButton.focus();
+  await page.keyboard.press('Escape');
+  await expectReleased();
+  const freshReader = await page.context().newPage();
+  await freshReader.goto(readerUrl);
+  await expect(freshReader.getByRole('heading', { name: '附件设计', exact: true })).toBeVisible();
+  await freshReader.reload();
+  await expect(freshReader.getByRole('table').first()).toContainText('Web已连接');
+  await freshReader.close();
+  expect(graphReads).toBe(1);
+  expect(detailReads).toBe(1);
+  await trigger.click();
+  await dialog.getByRole('tab', { name: '附件', exact: true }).click();
+  await expect(attachments.getByRole('heading', { name: `附件 · ${seeds.length}`, exact: true })).toBeVisible();
 
   await selectFile(attachments, 'reports/brief.pdf');
   const pdfFrame = attachments.getByTitle('PDF 预览：reports/brief.pdf');
   await expect(pdfFrame).toBeVisible();
   await expect(pdfFrame).toHaveAttribute('src', attachmentPreviewUrl(project.id, task.id, 'reports/brief.pdf'));
   await paintedPdf(page, pdfFrame, info, pdf, new URL(attachmentPreviewUrl(project.id, task.id, 'reports/brief.pdf'), origin).href);
+  await expectCenteredTaskDetail(page, dialog);
+  await dialog.getByRole('button', { name: '关闭任务详情', exact: true }).click();
+  await expectReleased();
+  expect(graphReads).toBe(1);
+  expect(detailReads).toBe(2);
+  await trigger.click();
+  await dialog.getByRole('tab', { name: '附件', exact: true }).click();
+  await expect(attachments.getByRole('heading', { name: `附件 · ${seeds.length}`, exact: true })).toBeVisible();
 
   const uploadUrl = new URL(attachmentDownloadUrl(project.id, task.id, uploadedPath), origin).href;
   const upload = async (bytes: Buffer, expectedStatus: number): Promise<void> => {
+    if (await uploadDisclosure.getAttribute('open') === null) await uploadSummary.click();
     await attachments.getByLabel('选择一个文件').setInputFiles({ name: 'source.bin', mimeType: 'application/octet-stream', buffer: bytes });
     await expect(attachments.getByRole('textbox', { name: '目标相对路径' })).toHaveValue('source.bin');
     await attachments.getByRole('textbox', { name: '目标相对路径' }).fill(uploadedPath);
@@ -221,12 +501,10 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
   expect(finalTask.version).toBe(task.version);
   expect(finalTask.updatedAt).toBe(task.updatedAt);
   expect(graphReads, 'Attachment writes do not refresh the task graph').toBe(1);
-  expect(detailReads, 'Attachment writes do not refresh task details').toBe(1);
+  expect(detailReads, 'Attachment writes do not refresh task details beyond the three deliberate opens').toBe(3);
   const screenshot = info.outputPath('task-attachments.png');
   await page.screenshot({ path: screenshot, fullPage: false });
   await info.attach('task-attachments', { path: screenshot, contentType: 'image/png' });
   await page.keyboard.press('Escape');
-  await expect(dialog).toHaveCount(0);
-  await expect(page.locator('#root')).not.toHaveAttribute('inert', '');
-  await expect(trigger).toBeFocused();
+  await expectReleased();
 });

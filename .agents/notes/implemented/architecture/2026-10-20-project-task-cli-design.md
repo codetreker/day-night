@@ -30,10 +30,12 @@ candidate selection while preserving `task list --ready` traversal. The
 [task breakdown](../../../../docs/design/daynight-project-task-tasks.md) owns
 implementation status, dependencies, file ownership and completion evidence.
 
-The global YAML gains an additive `serverUrl` origin. Shared document reading
-and command-specific validation preserve the existing review fields and state
-locations. The server configuration projection can load only that field; help,
-update and review retain their independent execution requirements. The
+The global YAML has an additive `serverUrl` origin and an optional `serverToken`
+under the [credential decision](2026-10-22-cli-server-credentials.md). Shared
+document reading and command-specific validation preserve the existing review
+fields and state locations. A URL-only configuration remains valid; a configured
+token is validated with its transport and attached to existing API requests.
+Help, update and review retain their independent execution requirements. The
 [command composition decision](2026-10-20-client-command-composition.md) remains
 the owner of lazy command dispatch. Its original source reorganization preserved
 the existing YAML; this design adopts additional configuration without moving
@@ -43,7 +45,11 @@ required global configuration to exist before execution; the
 supersedes that prerequisite. Valid service calls guide only an absent file or
 `serverUrl`. Initial configuration I/O remains bounded; an actual setup releases
 that deadline, and the post-setup reload starts a fresh business budget. Invalid
-existing server values remain errors. Project definitions share
+existing server values remain errors. Server setup now accepts optional hidden
+or explicit stdin token input under the credential decision; origin and token
+share one concurrency observation and an origin change clears the old token
+atomically. Credential-bearing configuration uses POSIX `0600`, while the prior
+file-mode behavior remains for files without a token. Project definitions share
 parameter syntax with help and shell completion. Help and argument validation
 finish before the shared server runtime is loaded. Project creation takes one
 required positional name and an optional `--repo` option. The

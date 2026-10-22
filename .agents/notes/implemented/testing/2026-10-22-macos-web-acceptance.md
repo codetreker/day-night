@@ -13,7 +13,7 @@ survive the platform extension.
 
 ## Decision
 
-Keep one pipeline for Linux and macOS with the same 25 scenarios, four fixed
+Keep one pipeline for Linux and macOS with the same 31 scenarios, four fixed
 capacity datasets, five measurements and existing latency limits. Linux remains
 the full CI platform; macOS local acceptance requires native execution and does
 not imply a macOS CI job.

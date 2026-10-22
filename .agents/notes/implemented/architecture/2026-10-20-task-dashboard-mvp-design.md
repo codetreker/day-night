@@ -20,8 +20,10 @@ status, dependencies and completion criteria, and the [interactive preview](../.
 demonstrates the original appearance. The later [task view decision](../feature/2026-10-22-project-task-views.md)
 separates standalone task rows from root-chain graphs within project tabs, using
 the [task view mockup](../../../../docs/design/mockups/task-views.html). This note
-records the delivered MVP design;
-the complete graph read and [project browsing foundation](2026-10-20-web-project-browsing.md)
+records the delivered MVP design; the
+[centered detail decision](../feature/2026-10-22-centered-task-detail-dialog.md)
+partially supersedes its right-side reading layout while retaining snapshot and
+modal ownership. The complete graph read and [project browsing foundation](2026-10-20-web-project-browsing.md)
 and the [pure graph model and layout](../feature/2026-10-20-task-graph-projection.md)
 are implemented. The [project task dashboard](../feature/2026-10-20-project-task-dashboard.md)
 implements visualization and detail navigation. The
@@ -57,7 +59,9 @@ from the existing read-only REPEATABLE READ mechanism. Existing paged task
 reads do not share a cross-page snapshot. Graph nodes omit descriptions and
 contain bounded title previews; full content uses the existing detail endpoint.
 Reject graphs exceeding the declared size limits without returning a partial
-success. No schema, parent-child, or write-policy changes are required.
+success. The original graph read required no schema, parent-child or write-policy
+changes. The later [four-state reader decision](../feature/2026-10-22-proposed-task-readers.md)
+extends stored status and reader projections without activating new writes.
 
 The original MVP expanded each root and its forward-reachable descendants,
 adding explicit direct-boundary prerequisite nodes without expanding their
@@ -67,15 +71,21 @@ replaces that boundary with every required ancestor and dependency, excluding
 unrelated descendants of contextual tasks. Root progress still excludes external
 context; project totals count each task once. Only one root graph is mounted at a
 time. Pure indexing/projection and Dagre layout remain separate from React rendering and API requests. Page hooks own
-request cancellation and snapshot replacement; the drawer never mutates the
+request cancellation and snapshot replacement; the task detail dialog never mutates the
 project snapshot.
 
 The adopted MVP was read-only with manual refresh. Graph projection remained
 separate from API mutations and request triggers so editing and live subscriptions
 could be added independently. The later
+[automatic refresh decision](../feature/2026-10-22-project-task-auto-refresh.md)
+partially supersedes the manual trigger policy with visible-page periodic reads,
+retaining complete-snapshot ownership and resource isolation. The later
 [Web attachment decision](../feature/2026-10-21-task-attachment-web.md) uses that
-separation for file upload, overwrite and deletion in the drawer. Task fields and
-dependency editing remain outside the browser's delivered scope. Remote access
+separation for file upload, overwrite and deletion in task details. Task fields and
+dependency editing remain outside the browser's delivered scope. Proposed tasks
+are readable as Proposed or 待审批 in the current interface language, with matching
+statistics and aggregate chain status; the
+four-state reader decision preserves this read-only task-field boundary. Remote access
 is not an additive configuration change: authentication, authorization, and deployment boundaries require their
 own design. Graph filtering must retain dependency context; large-graph support
 needs a new closed-subgraph contract or measured limit changes.

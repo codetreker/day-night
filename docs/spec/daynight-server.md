@@ -21,8 +21,8 @@
 
 [鉴权需求](daynight-auth.md)单独定义规划中的 UniAuth 登录、Daynight 会话与个人
 访问令牌和项目成员授权；[架构](../design/daynight-auth.md)与
-[任务拆分](../design/daynight-auth-tasks.md)拥有机制和交付顺序。身份/凭据基础模块
-已有独立实现，尚未挂入主站路由，本文的本机未认证服务仍为当前运行基线。
+[任务拆分](../design/daynight-auth-tasks.md)拥有机制和交付顺序。身份/凭据与项目成员
+基础模块已有独立实现，尚未挂入主站路由，本文的本机未认证服务仍为当前运行基线。
 
 ## 目标与交付范围
 
@@ -32,7 +32,7 @@
 | R2 | 支持创建、列表查询和读取关联一个 repo 地址的 project |
 | R3 | 在 project 内支持创建、列表查询、读取和更新 task |
 | R4 | task 支持同 project 内的依赖关系，任何成功提交都必须保持无环 |
-| R5 | task 状态为 `todo`、`in_progress`、`done`，前置未完成时禁止开始或完成 |
+| R5 | task 存储与读取支持 `proposed`、`todo`、`in_progress`、`done`；前置未完成时禁止开始或完成；当前公开创建仍为 `todo`，写入状态仍限定为后三者 |
 | R6 | task 更新必须支持版本冲突检测，字段和依赖必须原子提交 |
 | R7 | 通过 HTTP JSON API 提供上述行为，错误和分页具有明确语义 |
 | R8 | 采用 `api / service / server / core` 分层，store 位于 `core` 内 |
@@ -73,7 +73,7 @@ Task 包含以下持久化字段：
 | `title` | 必填的非空 UTF-8 标题，不含 NUL |
 | `description` | 不含 NUL 的 UTF-8 描述，省略时为空字符串，允许更新为空字符串 |
 | `properties` | server 预定义属性；当前 `pullRequests` 为有序的 `{url, title}` 字符串记录数组，默认空数组 |
-| `status` | `todo / in_progress / done`，创建时为 `todo` |
+| `status` | 存储与读取为 `proposed / todo / in_progress / done`，公开创建时仍为 `todo` |
 | `version` | 从 `1` 开始的正整数，每次实际变更增加一次 |
 | `createdAt`、`updatedAt` | UTC 创建和最后实际变更时间 |
 
@@ -84,7 +84,8 @@ Task 响应还包含 `dependsOn`、`blockedBy` 和 `ready`：
 - `ready` 当且仅当本 task 为 `todo` 且 `blockedBy` 为空时为 `true`。
 
 这些派生字段来自读取时的一致状态；依赖任务变化不会自动修改本 task 的 `status`、
-`version` 或 `updatedAt`。`ready` 描述可开始条件，不代表已领取或已调度。
+`version` 或 `updatedAt`。`ready` 描述可开始条件，不代表已领取或已调度。`proposed` 可以有未完成前置，
+其 `blockedBy` 仍列出这些前置，但 `ready` 始终为 `false`，也不计入 todo 的阻塞数。
 
 依赖 `B dependsOn A` 表示 B 开始或完成前 A 必须完成。以下输入必须拒绝：
 
@@ -93,6 +94,13 @@ Task 响应还包含 `dependsOn`、`blockedBy` 和 `ready`：
 3. 直接或间接形成环的依赖，包括并发请求分别创建反向边的情形。
 
 ## 状态与更新规则
+
+存储与所有读取响应支持四种状态。当前公开创建及数据库默认值仍为 `todo`；
+列表状态筛选与通用更新候选状态只接受 `todo`、`in_progress`、`done`。`proposed`
+由存储夹具覆盖，不能通过创建输入或通用 PATCH 写入；proposed 状态筛选及保留
+proposed 候选状态的通用 PATCH 均返回 `400 invalid_input`。当前也不提供审批、领取和
+完成专用操作。[四状态读取决策](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
+说明此读取准备与后续生命周期启用的边界。
 
 `in_progress` 和 `done` 的 task 必须始终满足全部直接前置处于 `done`。
 任何更新都对更新后的完整 task 和依赖集合进行校验，包括标题或描述更新。
@@ -104,7 +112,7 @@ Task 响应还包含 `dependsOn`、`blockedBy` 和 `ready`：
 | `in_progress → todo` | 允许；仍按完整候选状态校验 |
 | `done → todo / in_progress` | 所有直接下游均为 `todo`；目标为 `in_progress` 时前置仍须全部完成 |
 | 修改 `in_progress / done` task 的依赖 | 修改后的全部前置已完成 |
-| 保持当前状态并修改字段 | 满足完整依赖与状态约束 |
+| 保持公开可写的当前状态并修改字段 | 满足完整依赖与状态约束 |
 
 拒绝操作必须返回可辨识的错误及相关阻塞 task ID，原有字段、依赖、属性、版本和时间戳均保留。
 重开前置与开始下游的并发请求也必须遵守同一规则。
@@ -183,9 +191,11 @@ project、完整 tasks 及 summary，不使用分页或状态筛选。任何非�
 字段、分页/筛选字段和无效编码，均返回 `400 invalid_input`。成功、拒绝和读取错误
 响应采用 `Cache-Control: no-store`；GET 同时支持 HEAD，其他方法返回 405 与 Allow。
 
-summary 包含 `total`、`todo`、`inProgress`、`done`、`ready`、`blocked`，按不同任务
-ID 计数，满足 `total = todo + inProgress + done` 和 `todo = ready + blocked`。
-blocked 只计入前置未全部完成的 todo；任务的状态、版本和时间不随此次读取变化。
+summary 必须包含 `total`、`proposed`、`todo`、`inProgress`、`done`、`ready`、
+`blocked`，零值也不能省略。按不同任务 ID 计数，满足
+`total = proposed + todo + inProgress + done` 和 `todo = ready + blocked`。
+proposed 只计入自身状态和总数；blocked 只计入前置未全部完成的 todo。任务的状态、
+版本和时间不随此次读取变化。
 
 图节点包含 `id`、`titlePreview`、`titleTruncated`、`status`、`dependsOn`、
 `blockedBy`、`ready`、`createdAt` 和 `updatedAt`。标题预览最多 160 Unicode code
@@ -228,7 +238,10 @@ points，截短时标记 titleTruncated；不返回完整标题、description �
 
 本文的任务管理接口范围不包含自动任务执行、PR 关联、review 调度、跨 project
 依赖或 project/task 删除接口。完整图读取由本文定义，浏览器页面及内嵌交付要求由
-[看板需求](daynight-web.md)拥有；现有分页接口继续遵循本文的快照边界。后续扩展必须保留现有 task 身份、
+[看板需求](daynight-web.md)拥有，包括独立附件阅读页的 GET/HEAD 深链接。页面只交付
+既有 index，完整附件清单与文件读取继续使用原接口；路径校验、未知路径和方法拒绝
+遵守[附件阅读要求](daynight-task-attachments.md#独立页面完整阅读)。现有分页接口继续
+遵循本文的快照边界。后续扩展必须保留现有 task 身份、
 状态约束、事务原子性和错误语义。源码构建需要先安装固定的 Node/pnpm workspace
 依赖并构建真实页面资源；缺少资源必须构建失败，不能交付占位页面。容器验收使用独立
 [dev-ci 部署](../../deployment/dev-ci/README.md)，正常、失败或取消均定向清理本次

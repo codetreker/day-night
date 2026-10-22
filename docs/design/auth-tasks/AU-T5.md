@@ -25,7 +25,7 @@ fixture。使用正常 UniAuth 协议取得 session/PAT；数值 loopback HTTP �
 - 两名用户/部分共享项目证明列表分页、任务/图/属性/每种附件入口隔离，session/PAT/
   成员撤销、最后 admin 和邀请并发，不能把首个集成安全证据延后。
 - 同一真实服务完成浏览器 callback/session、安装 CLI PAT project/task/单文件二进制
-  操作，同源 HTML/脚本/模块/相对资源/HEAD/下载及抽屉键盘仍通过。
+  操作，同源 HTML/脚本/模块/相对资源/HEAD/下载及详情对话框键盘仍通过。
 - 生产 HTTPS 配置与显式 numeric-loopback HTTP 开发配置分别验证；不从请求或随机
   listener 隐式推断生产地址。精确 callback、端口冲突和取消清理有证据。
 - Go build/vet/race/go-cov、未舍入覆盖率 >90%、CLI 原生安装/补全、Web 严格覆盖率/

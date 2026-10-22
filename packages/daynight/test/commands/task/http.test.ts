@@ -142,7 +142,7 @@ describe("task commands over HTTP", () => {
 
   it("renders complete graph data and exposes graph limit refusal details", async () => {
     let limit = false;
-    const graph: TaskGraph = { project, summary: { total: 2, todo: 2, inProgress: 0, done: 0, ready: 1, blocked: 1 }, tasks: [
+    const graph: TaskGraph = { project, summary: { total: 2, proposed: 0, todo: 2, inProgress: 0, done: 0, ready: 1, blocked: 1 }, tasks: [
       { id: taskId, titlePreview: "T".repeat(160), titleTruncated: true, status: "todo", ready: false, dependsOn: [otherId], blockedBy: [otherId], createdAt: time, updatedAt: time },
       { id: otherId, titlePreview: "Dependency", titleTruncated: false, status: "todo", ready: true, dependsOn: [], blockedBy: [], createdAt: time, updatedAt: time },
     ] };

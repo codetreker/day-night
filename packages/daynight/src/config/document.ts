@@ -1,4 +1,4 @@
-import { parseDocument } from "yaml";
+import { parseDocument, YAMLParseError, YAMLWarning } from "yaml";
 import { readConfigurationSource } from "./files.js";
 import type { ConfigurationPaths } from "./paths.js";
 
@@ -9,6 +9,7 @@ export type ConfigurationDocument = {
 
 export const supportedConfigurationFields = [
   "serverUrl",
+  "serverToken",
   "repositoryRoot",
   "repositories",
   "pollIntervalMs",
@@ -16,29 +17,45 @@ export const supportedConfigurationFields = [
   "agentTimeoutMs",
   "maxAttempts",
   "retryDelayMs",
+  "copilotModel",
+  "copilotReasoningEffort",
 ] as const;
+
+const safeYamlFailure = (cause: unknown): Error => {
+  // Parser messages can include secret scalar, alias, and tag text; retain only diagnostic metadata.
+  if (cause instanceof YAMLParseError || cause instanceof YAMLWarning) {
+    return new Error(`${cause.name}: ${cause.code} at offsets ${cause.pos.join(", ")}.`);
+  }
+  const category = cause instanceof ReferenceError ? "ReferenceError" : cause instanceof TypeError ? "TypeError" : cause instanceof RangeError ? "RangeError" : cause instanceof SyntaxError ? "SyntaxError" : "Error";
+  return new Error(`YAML value decoding failed (${category}).`);
+};
 
 export const parseConfigurationDocument = (
   source: string,
   paths: ConfigurationPaths,
 ): ConfigurationDocument => {
-  const document = parseDocument(source, {
-    strict: true,
-    uniqueKeys: true,
-    stringKeys: true,
-    prettyErrors: false,
-  });
+  let document: ReturnType<typeof parseDocument>;
+  try {
+    document = parseDocument(source, {
+      strict: true,
+      uniqueKeys: true,
+      stringKeys: true,
+      prettyErrors: false,
+    });
+  } catch (cause) {
+    throw new Error(`Cannot parse YAML in ${paths.configFile}.`, { cause: safeYamlFailure(cause) });
+  }
   const problems = [...document.errors, ...document.warnings];
   if (problems.length !== 0) {
     throw new Error(`Invalid YAML in ${paths.configFile}.`, {
-      cause: new AggregateError(problems, "YAML configuration was rejected."),
+      cause: new AggregateError(problems.map(safeYamlFailure), "YAML configuration was rejected."),
     });
   }
   let parsed: unknown;
   try {
     parsed = document.toJS();
   } catch (cause) {
-    throw new Error(`Cannot decode YAML in ${paths.configFile}.`, { cause });
+    throw new Error(`Cannot decode YAML in ${paths.configFile}.`, { cause: safeYamlFailure(cause) });
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error("Configuration must be a mapping.");
@@ -46,7 +63,7 @@ export const parseConfigurationDocument = (
   const mapping = parsed as Record<string, unknown>;
   for (const field of Object.keys(mapping)) {
     if (!(supportedConfigurationFields as readonly string[]).includes(field)) {
-      throw new Error(`Configuration contains unsupported field ${JSON.stringify(field)}.`);
+      throw new Error("Configuration contains an unsupported field.");
     }
   }
   return { document, mapping };

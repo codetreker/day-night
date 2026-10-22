@@ -34,6 +34,15 @@ Copilot 作为子进程启动。
 所在目录解析；每个仓库必须具有 `path`。并发审查 Worker 数量的配置项名为
 `maxConcurrentWorker`。每个配置的仓库分别维护自己的初始化状态和 PR 状态。
 
+可选顶层字段 `copilotModel` 和 `copilotReasoningEffort` 分别为本次进程的全部审查
+仓库指定 Copilot 模型与推理强度。两者相互独立，均可省略，也可只配置任意一项或
+同时配置；省略的字段不传对应参数，保留 Copilot 自身的选择。配置在启动时固定，
+修改后下次启动生效。每个显式值必须是含非空白内容且不含 NUL 的字符串；null、
+其他类型、空串和纯空白须报错，合法字符串原样保留。模型名称、强度等级及两者
+兼容性由 Copilot 判断，不使用静态枚举；`auto` 可用于交由 Copilot 选择模型。
+setup 及仓库登记保留这两个字段和注释；server 投影识别这些已登记键，但不校验其
+review 值。
+
 同一文件可包含已登记的其他客户端字段，例如 `serverUrl`；review 只校验自己的
 字段值。缺失或无效 server 地址不阻塞 review，YAML 语法、重复键和未知顶层字段
 仍须报错。运行和列表需要已登记 review 仓库；缺少文件或 `repositories` 字段时，
@@ -136,6 +145,13 @@ Daynight approval 时保持完成，修改 description 不撤销或 dismiss appr
 daemon 调用 Copilot CLI 作为本地 review agent。每个被审查的 PR 对应一个持久化的
 CLI 会话。该 PR 的每次后续审查，以及每次确认或重试，都必须恢复同一个会话，以保持
 审查上下文连续。会话标识在 daemon 重启后保留。
+
+每次正式审查都把已配置的 `copilotModel` 作为 `--model` 与原始值两个独立 argv
+参数传入，把已配置的 `copilotReasoningEffort` 作为 `--reasoning-effort` 与原始值
+两个独立 argv 参数传入；新会话、恢复、重试及后续修订使用同一规则。skill 发现
+不添加这两个覆盖参数，子进程继续使用 `shell: false`。型号或强度不支持、不可用
+或组合不兼容时，由 Copilot 的既有失败结果和审查错误流程暴露，不改写会话或任务
+状态协议。
 
 ### R9. Worktree 管理职责与生命周期
 
@@ -317,6 +333,8 @@ skill 的方法不能取代本次审查目标、发布资格、远端结果对�
 | 从任意目录执行带相对 `--path` 的添加命令。 | 按命令当前目录解析并保存绝对路径，保留已有配置设置与注释。 | R2 |
 | 重复添加同一仓库，或两个添加命令并发执行。 | 同仓库省略路径时复用已保存路径，显式同实际路径保持幂等，显式不同路径报错；并发写入不会丢失另一项修改，锁冲突明确失败。 | R2 |
 | daemon 运行时添加仓库。 | 当前进程保留已有配置，下次启动后按正常启动流程克隆并初始化新增仓库。 | R2, R3, R4 |
+| 两个模型选项均省略、仅配置 `copilotModel`、仅配置 `copilotReasoningEffort` 或同时配置，包括在运行中修改配置。 | 正式 argv 只包含已配置字段对应的独立 flag/value，不为省略项增加覆盖；本次进程使用启动原值，下次启动才读取修改。setup 和仓库登记保留字段及注释。 | R2, R8 |
+| `copilotModel` 或 `copilotReasoningEffort` 为 null、其他类型、空串、纯空白或含 NUL 的字符串。 | review 配置明确失败且不被引导覆盖；server 命令仅校验自己的配置值，未知顶层字段仍须报错。 | R2 |
 | 执行 `daynight review list` 或 `daynight review ls`。 | 两者输出相同的本地一致快照，按配置仓库顺序及 PR 编号排列，包含 Draft 与仍然 Open 的已完成或失败审查。 | R15 |
 | 已初始化仓库没有已跟踪的 Open PR，或仓库尚未初始化。 | 分别显示 `No tracked ongoing PRs.` 或 `Not initialized.`。 | R4, R15 |
 | 较新 head 的待审修订等待旧版本审查结束。 | 最新版本显示待处理，旧版本的保存状态、尝试预算、重试时间及错误单独显示；仅 base tip 变化仍保留已完成状态。 | R6, R14, R15 |
@@ -337,7 +355,7 @@ skill 的方法不能取代本次审查目标、发布资格、远端结果对�
 | 只有目标分支收到新提交。 | 仅此变化不会安排审查。 | R6 |
 | PR 在审查期间收到新提交。 | 同一 PR 不会同时运行第二个 agent；最新且符合审查资格的版本保持待处理状态。 | R7, R14 |
 | 首次审查符合条件的 PR。 | daemon 在该仓库根目录的 `.worktrees/` 下创建此 PR 的独立 worktree。 | R9 |
-| PR 需要再次审查，或需要从未完成的尝试中恢复。 | 只要 PR 仍然 Open，daemon 就恢复已有的 Copilot CLI 会话，并使用已有的 worktree。 | R8, R9, R12 |
+| PR 需要再次审查，或需要从未完成的尝试中恢复。 | 只要 PR 仍然 Open，daemon 就恢复已有的 Copilot CLI 会话，并使用已有的 worktree；配置的模型与推理强度继续分别作为独立 argv 传入，skill 发现保持原调用。 | R8, R9, R12 |
 | 从实际安装包启动 daemon，随后安装包内容被替换。 | 安装包包含完整 skill；同次 daemon 后续尝试继续使用启动时固定的内容，配置和已有状态格式保持一致。 | R16 |
 | 首次审查、同会话重试或更新后的 daemon 恢复已有会话。 | 每次确认已启用的 `daynight-review` 对应本次固定内容，并显式要求加载当前版本；PR 会话 UUID 保持一致。 | R8, R16 |
 | skill 缺失、禁用、被同名项目 skill 覆盖，或发现响应无效。 | 资源问题阻止启动；尝试中的发现问题阻止正式审查并按原预算重试，错误及日志可见。 | R12, R16 |

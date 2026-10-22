@@ -281,5 +281,5 @@ if [[ -z "\${BASH_VERSION-}" ]] || (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] 
   printf '%s\\n' 'daynight completion requires Bash >=4.2.' >&2
   return 1 2>/dev/null || exit 1
 fi
-${runtime.replaceAll("@{", "${").replaceAll("@PREFIX@", prefix).replace("@COMMAND@", () => shellQuote(root.name)).replace("@CASES@", () => commandCases(root))}`;
+${runtime.replaceAll("@{", "${").replaceAll("@PREFIX@", prefix).replace("@COMMAND@", () => [root.name, ...(root.aliases ?? [])].map(shellQuote).join(" ")).replace("@CASES@", () => commandCases(root))}`;
 };

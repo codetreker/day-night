@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaskGraph as TaskGraphData } from '../src/api/types';
@@ -7,7 +8,10 @@ import { RootList } from '../src/features/task-graph/RootList';
 import { getInitialTaskViewport, TaskGraph } from '../src/features/task-graph/TaskGraph';
 import { buildGraphIndex, projectRoot } from '../src/features/task-graph/model';
 import * as layoutModule from '../src/features/task-graph/layout';
+import { browsingProjects } from './mockups/browsing-fixture';
 import { installGraphMeasurements } from './graph-measurements';
+
+const render = createLocaleRender('zh-CN');
 
 const taskRenders = vi.hoisted(() => vi.fn<(id: string) => void>());
 vi.mock('../src/features/task-graph/TaskNode', async (importOriginal) => {
@@ -25,7 +29,7 @@ vi.mock('../src/features/task-graph/TaskNode', async (importOriginal) => {
 const time = '2026-10-20T00:00:00Z';
 const graph: TaskGraphData = {
   project: { id: 'project', name: '项目', repoUrl: 'https://github.com/example/repo', createdAt: time, updatedAt: time },
-  summary: { total: 6, todo: 3, inProgress: 1, done: 2, ready: 2, blocked: 1 },
+  summary: { total: 6, proposed: 0, todo: 3, inProgress: 1, done: 2, ready: 2, blocked: 1 },
   tasks: [
     { id: 'A', titlePreview: '基础 API', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
     { id: 'B', titlePreview: '设计方案', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
@@ -38,6 +42,7 @@ const graph: TaskGraphData = {
 const index = buildGraphIndex(graph);
 const noop = () => {};
 const nodeButton = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}，`) });
+const nodeShell = (name: string) => nodeButton(name).closest<HTMLElement>('.task-node')!;
 const viewport = (container: HTMLElement) => container.querySelector<HTMLElement>('.react-flow__viewport')!;
 const zoom = (container: HTMLElement) => Number(/scale\(([^)]+)\)/.exec(viewport(container).style.transform)![1]);
 const ready = async (container: HTMLElement) => {
@@ -48,6 +53,33 @@ const ready = async (container: HTMLElement) => {
 beforeEach(installGraphMeasurements);
 
 describe('task dependency canvas', () => {
+  it('omits the entire expansion footer for fully visible tasks and sizes every card to its body', async () => {
+    const view = render(<TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
+    await ready(view.container);
+    expect(view.container.querySelector('.task-node-expansions')).toBeNull();
+    for (const node of view.container.querySelectorAll<HTMLElement>('.react-flow__node')) {
+      expect(node.style.width).toBe('220px');
+      expect(node.style.height).toBe('96px');
+    }
+  });
+
+  it('exposes proposed main and external nodes with their own status and unfinished prerequisites', async () => {
+    const proposed = {
+      ...graph,
+      summary: { total: 6, proposed: 2, todo: 1, inProgress: 1, done: 2, ready: 1, blocked: 0 },
+      tasks: graph.tasks.map((task) => task.id === 'D' || task.id === 'F'
+        ? { ...task, status: 'proposed' as const, ready: false } : task),
+    };
+    const view = render(<TaskGraph index={buildGraphIndex(proposed)} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
+    await ready(view.container);
+    const main = screen.getByRole('button', { name: '最终验收，待审批，被阻塞，共享任务' });
+    expect(main.closest('.task-node')).toHaveClass('task-node-proposed');
+    expect(within(main).getByText('待审批')).toHaveClass('graph-status-proposed');
+    const external = screen.getByRole('button', { name: '发布检查，待审批，外部前置' });
+    expect(external.closest('.task-node')).toHaveClass('task-node-proposed', 'task-node-external');
+    expect(within(external).queryByText('被阻塞')).toBeNull();
+  });
+
   it('expands the existing canvas and restores its toolbar focus without changing the user viewport or layout', async () => {
     const layout = vi.spyOn(layoutModule, 'layoutGraph');
     const view = render(<TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
@@ -98,6 +130,10 @@ describe('task dependency canvas', () => {
     expect(view.container.querySelector('.task-graph')).toContainElement(last as HTMLElement);
     await user.tab();
     expect(exit).toHaveFocus();
+    await user.tab();
+    expect(within(screen.getByRole('dialog')).getByRole('combobox', { name: '语言 / Language' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: '收起到概览' })).toHaveFocus();
     await user.tab();
     expect(nodeButton('基础 API')).toHaveFocus();
     (last as HTMLElement).focus();
@@ -160,15 +196,15 @@ describe('task dependency canvas', () => {
     await waitFor(() => { expect(container.querySelectorAll('.react-flow__edge')).toHaveLength(4); });
     expect(container.querySelectorAll('.react-flow__node')).toHaveLength(5);
     expect(screen.getByText('3 个链内任务 · 2 个外部前置 · 4 条依赖')).toBeTruthy();
-    expect(nodeButton('基础 API').classList.contains('task-node-done')).toBe(true);
-    expect(nodeButton('合流实现…').classList.contains('task-node-in_progress')).toBe(true);
-    expect(nodeButton('合流实现…').classList.contains('task-node-selected')).toBe(true);
-    expect(nodeButton('最终验收').classList.contains('task-node-todo')).toBe(true);
+    expect(nodeShell('基础 API').classList.contains('task-node-done')).toBe(true);
+    expect(nodeShell('合流实现…').classList.contains('task-node-in_progress')).toBe(true);
+    expect(nodeShell('合流实现…').classList.contains('task-node-selected')).toBe(true);
+    expect(nodeShell('最终验收').classList.contains('task-node-todo')).toBe(true);
     expect(within(nodeButton('最终验收')).getByText('被阻塞')).toBeTruthy();
     expect(within(nodeButton('合流实现…')).getByText('共享')).toBeTruthy();
     expect(within(nodeButton('设计方案')).getByText('外部前置')).toBeTruthy();
-    expect(nodeButton('设计方案').classList.contains('task-node-done')).toBe(true);
-    expect(nodeButton('发布检查').classList.contains('task-node-external')).toBe(true);
+    expect(nodeShell('设计方案').classList.contains('task-node-done')).toBe(true);
+    expect(nodeShell('发布检查').classList.contains('task-node-external')).toBe(true);
     const paths = [...container.querySelectorAll<SVGPathElement>('.react-flow__edge-path')];
     expect(paths.every((path) => path.getAttribute('marker-end')?.startsWith('url('))).toBe(true);
     expect(paths.filter((path) => path.style.strokeDasharray === '5 4')).toHaveLength(2);
@@ -178,7 +214,7 @@ describe('task dependency canvas', () => {
   it('renders the entire external ancestor closure with its own count and keeps card details behavior', async () => {
     const completed = graph.tasks[1]!;
     const externalGraph: TaskGraphData = {
-      ...graph, summary: { total: 6, todo: 3, inProgress: 0, done: 3, ready: 2, blocked: 1 },
+      ...graph, summary: { total: 6, proposed: 0, todo: 3, inProgress: 0, done: 3, ready: 2, blocked: 1 },
       tasks: [
         graph.tasks[0]!,
         { ...completed, id: 'P', titlePreview: '已完成外部祖先', dependsOn: [] },
@@ -192,14 +228,14 @@ describe('task dependency canvas', () => {
     const { container } = render(<TaskGraph index={buildGraphIndex(externalGraph)} rootId="A" selectedTaskId={null} onSelectTask={onSelectTask} />);
     await waitFor(() => { expect(container.querySelectorAll('.react-flow__node')).toHaveLength(5); });
     expect(screen.getByText('3 个链内任务 · 2 个外部前置 · 4 条依赖')).toBeTruthy();
-    expect(nodeButton('已完成外部祖先')).toHaveClass('task-node-external', 'task-node-done');
+    expect(nodeShell('已完成外部祖先')).toHaveClass('task-node-external', 'task-node-done');
     expect(nodeButton('已完成外部前置')).toHaveAccessibleName('已完成外部前置，已完成，外部前置');
     expect(screen.queryByRole('button', { name: /外部前置的无关后续/ })).toBeNull();
     const externalRoute = container.querySelector('[data-id="P->B"] .react-flow__edge-path');
     expect(externalRoute).toHaveStyle({ strokeDasharray: '5 4' });
     fireEvent.click(nodeButton('已完成外部祖先'));
     expect(onSelectTask).toHaveBeenCalledWith('P', nodeButton('已完成外部祖先'));
-    expect(screen.getByText('虚线节点及连线：外部前置（已补齐全部上游）')).toBeTruthy();
+    expect(screen.getByText('虚线节点及连线：外部前置 · 展开仅影响当前画布')).toBeTruthy();
   });
 
   it('uses every exact Dagre point in an accessible noninteractive dependency layer', async () => {
@@ -391,7 +427,7 @@ describe('task dependency canvas', () => {
     expect(zoom(view.container)).toBeGreaterThanOrEqual(0.2);
     const userViewport = viewport(view.container).style.transform;
     view.rerender(<TaskGraph index={index} rootId="A" selectedTaskId="D" onSelectTask={noop} />);
-    expect(nodeButton('最终验收').classList.contains('task-node-selected')).toBe(true);
+    expect(nodeShell('最终验收').classList.contains('task-node-selected')).toBe(true);
     expect([...view.container.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => node.style.transform)).toEqual(positions);
     expect(viewport(view.container).style.transform).toBe(userViewport);
     expect(spy).toHaveBeenCalledTimes(1);
@@ -415,18 +451,18 @@ describe('task dependency canvas', () => {
 
     taskRenders.mockClear();
     view.rerender(<TaskGraph index={index} rootId="A" selectedTaskId="C" onSelectTask={noop} />);
-    await waitFor(() => { expect(nodeButton('合流实现…')).toHaveClass('task-node-selected'); });
+    await waitFor(() => { expect(nodeShell('合流实现…')).toHaveClass('task-node-selected'); });
     expectChangedTasks(['C']);
 
     taskRenders.mockClear();
     view.rerender(<TaskGraph index={index} rootId="A" selectedTaskId="D" onSelectTask={noop} />);
-    await waitFor(() => { expect(nodeButton('最终验收')).toHaveClass('task-node-selected'); });
-    expect(nodeButton('合流实现…')).not.toHaveClass('task-node-selected');
+    await waitFor(() => { expect(nodeShell('最终验收')).toHaveClass('task-node-selected'); });
+    expect(nodeShell('合流实现…')).not.toHaveClass('task-node-selected');
     expectChangedTasks(['C', 'D']);
 
     taskRenders.mockClear();
     view.rerender(<TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
-    await waitFor(() => { expect(nodeButton('最终验收')).not.toHaveClass('task-node-selected'); });
+    await waitFor(() => { expect(nodeShell('最终验收')).not.toHaveClass('task-node-selected'); });
     expectChangedTasks(['D']);
   });
 
@@ -436,7 +472,7 @@ describe('task dependency canvas', () => {
       dependsOn: position === 0 ? [] : [`N${position - 1}`],
       blockedBy: position === 0 ? [] : [`N${position - 1}`], ready: position === 0,
     }));
-    const longChain = buildGraphIndex({ ...graph, tasks, summary: { total: 10, todo: 10, inProgress: 0, done: 0, ready: 1, blocked: 9 } });
+    const longChain = buildGraphIndex({ ...graph, tasks, summary: { total: 10, proposed: 0, todo: 10, inProgress: 0, done: 0, ready: 1, blocked: 9 } });
     const { container } = render(<TaskGraph index={longChain} rootId="N0" selectedTaskId={null} onSelectTask={noop} />);
     await waitFor(() => { expect(container.querySelectorAll('.react-flow__edge')).toHaveLength(9); });
     await waitFor(() => { expect(zoom(container)).toBe(0.8); });
@@ -448,43 +484,50 @@ describe('task dependency canvas', () => {
     expect(sourceLeft).toBeGreaterThanOrEqual(0);
     expect(sourceLeft + layoutModule.TASK_NODE_WIDTH * zoom(container)).toBeLessThanOrEqual(800);
     expect(sourceTop).toBeGreaterThanOrEqual(0);
-    expect(sourceTop + layoutModule.TASK_NODE_HEIGHT * zoom(container)).toBeLessThanOrEqual(445);
+    expect(sourceTop + layoutModule.TASK_NODE_COMPACT_HEIGHT * zoom(container)).toBeLessThanOrEqual(445);
     fireEvent.click(screen.getByRole('button', { name: '适应画布' }));
     await waitFor(() => { expect(zoom(container)).toBeLessThan(0.8); });
     expect(zoom(container)).toBeGreaterThanOrEqual(0.2);
     expect(container.querySelectorAll('.react-flow__node')).toHaveLength(10);
   });
 
-  it('pans an offscreen keyboard-focused node into view while preserving zoom', async () => {
-    const view = render(<TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
-    await ready(view.container);
-    const button = nodeButton('最终验收');
-    const originalMatches = button.matches.bind(button);
-    const focused = vi.spyOn(button, 'matches').mockImplementation((selector) => selector === ':focus-visible' || originalMatches(selector));
-    const bounds = vi.fn(() => new DOMRect(2000, 10, 220, 96));
-    Object.defineProperty(button, 'getBoundingClientRect', { value: bounds, configurable: true });
-    const before = viewport(view.container).style.transform;
-    const beforeZoom = zoom(view.container);
-    fireEvent.focus(button);
-    expect(focused).toHaveBeenCalledWith(':focus-visible');
-    expect(bounds).toHaveBeenCalled();
-    await waitFor(() => { expect(viewport(view.container).style.transform).not.toBe(before); });
-    expect(zoom(view.container)).toBe(beforeZoom);
-  });
-
-  it('leaves visible keyboard focus and pointer focus stable', async () => {
-    const view = render(<TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
-    await ready(view.container);
-    const button = nodeButton('基础 API');
-    const originalMatches = button.matches.bind(button);
-    const focused = vi.spyOn(button, 'matches').mockImplementation((selector) => selector === ':focus-visible' || originalMatches(selector));
-    const bounds = vi.fn(() => new DOMRect(20, 20, 220, 96));
-    Object.defineProperty(button, 'getBoundingClientRect', { value: bounds, configurable: true });
+  it('reveals an offscreen keyboard-focused card body despite temporary native focus scrolling', async () => {
+    const tasks = Array.from({ length: 10 }, (_, position) => ({
+      ...graph.tasks[0]!, id: `N${position}`, titlePreview: `任务 ${position}`, status: 'todo' as const,
+      dependsOn: position === 0 ? [] : [`N${position - 1}`],
+      blockedBy: position === 0 ? [] : [`N${position - 1}`], ready: position === 0,
+    }));
+    const longChain = buildGraphIndex({ ...graph, tasks, summary: { total: 10, proposed: 0, todo: 10, inProgress: 0, done: 0, ready: 1, blocked: 9 } });
+    const view = render(<TaskGraph index={longChain} rootId="N0" selectedTaskId={null} onSelectTask={noop} />);
+    await waitFor(() => { expect(zoom(view.container)).toBe(0.8); });
+    const button = nodeButton('任务 9');
+    const focused = vi.spyOn(button, 'matches').mockReturnValue(false);
     const before = viewport(view.container).style.transform;
     fireEvent.focus(button);
     expect(viewport(view.container).style.transform).toBe(before);
-    focused.mockImplementation((selector) => selector !== ':focus-visible' && originalMatches(selector));
-    bounds.mockReturnValue(new DOMRect(2000, 0, 220, 96));
+    const flow = view.container.querySelector<HTMLElement>('.react-flow')!;
+    flow.scrollLeft = 2000;
+    Object.defineProperty(flow, 'scrollTo', { value: (options: ScrollToOptions) => { flow.scrollLeft = options.left!; flow.scrollTop = options.top!; }, configurable: true });
+    Object.defineProperty(button.closest('.task-node')!, 'getBoundingClientRect', { value: () => new DOMRect(20, 20, layoutModule.TASK_NODE_WIDTH, layoutModule.TASK_NODE_COMPACT_HEIGHT), configurable: true });
+    const beforeZoom = zoom(view.container);
+    focused.mockImplementation((selector) => selector === ':focus-visible');
+    fireEvent.focus(button);
+    fireEvent.scroll(flow);
+    await waitFor(() => { expect(viewport(view.container).style.transform).not.toBe(before); });
+    expect(flow.scrollLeft).toBe(0);
+    expect(zoom(view.container)).toBe(beforeZoom);
+    const nodePosition = /translate\(([^,]+)px,\s*([^)]+)px\)/.exec(button.closest<HTMLElement>('.react-flow__node')!.style.transform)!;
+    const currentViewport = /translate\(([^,]+)px,\s*([^)]+)px\)/.exec(viewport(view.container).style.transform)!;
+    expect(Number(currentViewport[1]) + (Number(nodePosition[1]) + 110) * beforeZoom).toBeCloseTo(400);
+    expect(Number(currentViewport[2]) + (Number(nodePosition[2]) + 48) * beforeZoom).toBeCloseTo(222.5);
+  });
+
+  it('keeps the intended viewport stable for an already visible keyboard-focused card body', async () => {
+    const view = render(<TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
+    await ready(view.container);
+    const button = nodeButton('基础 API');
+    vi.spyOn(button, 'matches').mockImplementation((selector) => selector === ':focus-visible');
+    const before = viewport(view.container).style.transform;
     fireEvent.focus(button);
     expect(viewport(view.container).style.transform).toBe(before);
   });
@@ -497,7 +540,171 @@ describe('task dependency canvas', () => {
   });
 });
 
+describe('progressive task visibility', () => {
+  const fixture = browsingProjects.progressive;
+  const progressiveIndex = buildGraphIndex(fixture);
+  const rootId = fixture.tasks.find((task) => task.titlePreview === '渐进展开 · 主链交付起点')!.id;
+  const joinId = fixture.tasks.find((task) => task.titlePreview === '合流任务 · 40 个外部前置')!.id;
+  const visibleIds = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => node.dataset.id!);
+  const expansion = (title: string, direction: string) => nodeShell(title).querySelector<HTMLButtonElement>(`.task-node-expand[data-direction="${direction}"]`)!;
+  const rendered = async (container: HTMLElement, nodes: number, edges: number) => {
+    await waitFor(() => { expect(container.querySelectorAll('.react-flow__node')).toHaveLength(nodes); });
+    await waitFor(() => { expect(container.querySelectorAll('.react-flow__edge-path')).toHaveLength(edges); });
+  };
+
+  it('shows a bounded root overview with full counts and opens details from the independent native body without changing visibility', async () => {
+    const open = vi.fn();
+    const layout = vi.spyOn(layoutModule, 'layoutGraph');
+    const view = render(<TaskGraph index={progressiveIndex} rootId={rootId} selectedTaskId={null} onSelectTask={open} />);
+    await rendered(view.container, 50, 49);
+    const initialIds = visibleIds(view.container);
+    const positions = [...view.container.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => node.style.transform);
+    const routes = [...view.container.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'));
+    const transform = viewport(view.container).style.transform;
+    expect(screen.getByText('61 个链内任务 · 40 个外部前置 · 100 条依赖')).toBeTruthy();
+    expect(view.container.querySelector('.task-graph')).toHaveAttribute('data-visible-task-count', '50');
+    expect(view.container.querySelector('.task-graph')).toHaveAttribute('data-total-task-count', '101');
+    const body = nodeButton('合流任务 · 40 个外部前置');
+    expect(body.parentElement).toBe(nodeShell('合流任务 · 40 个外部前置'));
+    expect(body).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(body).not.toHaveAttribute('aria-pressed');
+    expect(body.querySelector('button')).toBeNull();
+    fireEvent.click(body);
+    expect(open).toHaveBeenCalledExactlyOnceWith(joinId, body);
+    view.rerender(<TaskGraph index={progressiveIndex} rootId={rootId} selectedTaskId={joinId} onSelectTask={open} />);
+    expect(nodeShell('合流任务 · 40 个外部前置')).toHaveClass('task-node-selected');
+    expect(visibleIds(view.container)).toEqual(initialIds);
+    expect([...view.container.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => node.style.transform)).toEqual(positions);
+    expect([...view.container.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'))).toEqual(routes);
+    expect(viewport(view.container).style.transform).toBe(transform);
+    expect(layout).toHaveBeenCalledTimes(1);
+  });
+
+  it('expands direct neighbors with exact task, induced-edge and remaining counts, retains keyboard anchor focus, and resets deterministically', async () => {
+    const user = userEvent.setup();
+    const open = vi.fn();
+    const view = render(<TaskGraph index={progressiveIndex} rootId={rootId} selectedTaskId={null} onSelectTask={open} />);
+    await rendered(view.container, 50, 49);
+    await waitFor(() => { expect(zoom(view.container)).toBe(0.8); });
+    const initialIds = visibleIds(view.container);
+    const initialRoutes = [...view.container.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'));
+    const initialViewport = viewport(view.container).style.transform;
+    const upstream = expansion('合流任务 · 40 个外部前置', 'prerequisites');
+    expect(upstream.closest<HTMLElement>('.react-flow__node')!.style.height).toBe('136px');
+    expect(nodeShell('合流任务 · 40 个外部前置').querySelector('.task-node-expansions')?.children).toHaveLength(2);
+    expect(nodeShell('合流任务 · 40 个外部前置').querySelectorAll('.task-node-expand')).toHaveLength(1);
+    expect(upstream).toHaveAttribute('data-added-tasks', '20');
+    expect(upstream).toHaveAttribute('data-added-edges', '20');
+    expect(upstream).toHaveAttribute('data-remaining', '20');
+    expect(upstream).toHaveAccessibleName('展开前置 20 个任务、20 条依赖，剩余 20 个前置未展开');
+    upstream.focus();
+    await user.keyboard('{Enter}');
+    await rendered(view.container, 70, 69);
+    await waitFor(() => { expect(nodeButton('合流任务 · 40 个外部前置')).toHaveFocus(); });
+    expect(zoom(view.container)).toBe(0.8);
+    expect(open).not.toHaveBeenCalled();
+    const downstream = expansion('渐进展开 · 主链交付起点', 'successors');
+    expect(downstream).toHaveAttribute('data-added-tasks', '11');
+    expect(downstream).toHaveAttribute('data-added-edges', '11');
+    expect(downstream).toHaveAttribute('data-remaining', '0');
+    fireEvent.click(downstream);
+    await rendered(view.container, 81, 80);
+    await waitFor(() => { expect(nodeButton('渐进展开 · 主链交付起点')).toHaveFocus(); });
+    expect(nodeShell('渐进展开 · 主链交付起点').querySelector('.task-node-expansions')).toBeNull();
+    expect(nodeButton('渐进展开 · 主链交付起点').closest<HTMLElement>('.react-flow__node')!.style.height).toBe('96px');
+    fireEvent.click(expansion('合流任务 · 40 个外部前置', 'prerequisites'));
+    await rendered(view.container, 101, 100);
+    expect(view.container.querySelectorAll('.task-node-expand')).toHaveLength(0);
+    expect(view.container.querySelectorAll('.task-node-expansions')).toHaveLength(0);
+    await waitFor(() => { expect(nodeButton('合流任务 · 40 个外部前置')).toHaveFocus(); });
+    for (const node of view.container.querySelectorAll<HTMLElement>('.react-flow__node')) expect(node.style.height).toBe('96px');
+    expect(progressiveIndex.rootProgress.get(rootId)).toEqual({ total: 61, done: 0, status: 'todo' });
+    const reset = screen.getByRole('button', { name: '收起到概览' });
+    await user.click(reset);
+    await rendered(view.container, 50, 49);
+    expect(reset).toHaveFocus();
+    expect(expansion('合流任务 · 40 个外部前置', 'prerequisites').closest<HTMLElement>('.react-flow__node')!.style.height).toBe('136px');
+    expect(visibleIds(view.container)).toEqual(initialIds);
+    expect([...view.container.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'))).toEqual(initialRoutes);
+    expect(viewport(view.container).style.transform).toBe(initialViewport);
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('retains actual visible IDs through refresh without filling a new overview or stealing focus from details', async () => {
+    const view = render(<><button type="button">详情关闭控件</button><TaskGraph index={progressiveIndex} rootId={rootId} selectedTaskId={joinId} onSelectTask={noop} /></>);
+    await rendered(view.container, 50, 49);
+    fireEvent.click(expansion('合流任务 · 40 个外部前置', 'prerequisites'));
+    await rendered(view.container, 70, 69);
+    const retainedIds = visibleIds(view.container);
+    const sourcePosition = fixture.tasks.findIndex((task) => task.id === rootId);
+    const addition = { ...fixture.tasks[sourcePosition + 2]!, id: 'new-main', titlePreview: '新增直接后续' };
+    const refreshed = buildGraphIndex({ ...fixture, tasks: [...fixture.tasks.slice(0, sourcePosition + 1), addition, ...fixture.tasks.slice(sourcePosition + 1)], summary: { ...fixture.summary, total: 102, todo: 62, blocked: 61 } });
+    const outside = screen.getByRole('button', { name: '详情关闭控件' });
+    outside.focus();
+    const transform = viewport(view.container).style.transform;
+    view.rerender(<><button type="button">详情关闭控件</button><TaskGraph index={refreshed} rootId={rootId} selectedTaskId={joinId} onSelectTask={noop} /></>);
+    await rendered(view.container, 70, 69);
+    expect(visibleIds(view.container)).toEqual(retainedIds);
+    expect(screen.queryByRole('button', { name: /^新增直接后续，/ })).toBeNull();
+    expect(outside).toHaveFocus();
+    expect(viewport(view.container).style.transform).toBe(transform);
+    expect(nodeShell('合流任务 · 40 个外部前置')).toHaveClass('task-node-selected');
+    const reset = screen.getByRole('button', { name: '收起到概览' });
+    fireEvent.click(reset);
+    await rendered(view.container, 50, 49);
+    expect(nodeButton('新增直接后续')).toBeTruthy();
+    expect(reset).toHaveFocus();
+  });
+
+  it('recovers graph focus when refresh removes a focused visible card', async () => {
+    const view = render(<TaskGraph index={progressiveIndex} rootId={rootId} selectedTaskId={null} onSelectTask={noop} />);
+    await rendered(view.container, 50, 49);
+    fireEvent.click(expansion('合流任务 · 40 个外部前置', 'prerequisites'));
+    await rendered(view.container, 70, 69);
+    const removedId = fixture.tasks.find((task) => task.titlePreview === '外部前置 1 · 已完成共享协议')!.id;
+    nodeButton('外部前置 1 · 已完成共享协议').focus();
+    const tasks = fixture.tasks.filter((task) => task.id !== removedId).map((task) => ({ ...task, dependsOn: task.dependsOn.filter((id) => id !== removedId) }));
+    const refreshed = buildGraphIndex({ ...fixture, tasks, summary: { ...fixture.summary, total: 100, done: 39 } });
+    view.rerender(<TaskGraph index={refreshed} rootId={rootId} selectedTaskId={null} onSelectTask={noop} />);
+    await rendered(view.container, 69, 68);
+    expect(screen.getByRole('button', { name: '全屏查看' })).toHaveFocus();
+  });
+
+  it('reveals an offscreen expansion control using intended viewport coordinates before native scroll resets', async () => {
+    const view = render(<TaskGraph index={progressiveIndex} rootId={rootId} selectedTaskId={null} onSelectTask={noop} />);
+    await rendered(view.container, 50, 49);
+    await waitFor(() => { expect(zoom(view.container)).toBe(0.8); });
+    const button = expansion('合流任务 · 40 个外部前置', 'prerequisites');
+    vi.spyOn(button, 'matches').mockImplementation((selector) => selector === ':focus-visible');
+    const flow = view.container.querySelector<HTMLElement>('.react-flow')!;
+    flow.scrollLeft = 2000;
+    Object.defineProperty(flow, 'scrollTo', { value: (options: ScrollToOptions) => { flow.scrollLeft = options.left!; flow.scrollTop = options.top!; }, configurable: true });
+    Object.defineProperty(button, 'getBoundingClientRect', { value: () => new DOMRect(20, 20, layoutModule.TASK_NODE_WIDTH, layoutModule.TASK_NODE_COMPACT_HEIGHT), configurable: true });
+    const before = viewport(view.container).style.transform;
+    fireEvent.focus(button);
+    fireEvent.scroll(flow);
+    await waitFor(() => { expect(viewport(view.container).style.transform).not.toBe(before); });
+    expect(flow.scrollLeft).toBe(0);
+    expect(zoom(view.container)).toBe(0.8);
+  });
+});
+
 describe('initial task viewport policy', () => {
+  it('fits and centers the actual mixed-height card bounds', () => {
+    const geometry: layoutModule.CanvasLayout = {
+      nodes: [
+        { id: 'root', kind: 'main', width: 220, height: 96, position: { x: 32, y: 32 } },
+        { id: 'expandable', kind: 'main', width: 220, height: 136, position: { x: 316, y: 180 } },
+      ], edges: [], width: 568, height: 348,
+    };
+    const actual = getInitialTaskViewport(geometry, 'root', 800, 445);
+    const top = 32 * actual.zoom + actual.y;
+    const bottom = (180 + 136) * actual.zoom + actual.y;
+    expect(top).toBeGreaterThanOrEqual(0);
+    expect(bottom).toBeLessThanOrEqual(445);
+    expect((top + bottom) / 2).toBeCloseTo(222.5);
+  });
+
   it('centers a fitting graph normally rather than anchoring every root to the left', () => {
     const geometry = layoutModule.layoutGraph({ rootId: 'root', mainIds: new Set(['root']), externalIds: new Set(), edges: [], completed: 0 });
     const actual = getInitialTaskViewport(geometry, 'root', 800, 445);
@@ -506,16 +713,16 @@ describe('initial task viewport policy', () => {
     expect(actual.zoom).toBeLessThanOrEqual(1);
     expect(root.position.x * actual.zoom + actual.x).toBeGreaterThan(32);
     expect((root.position.x + layoutModule.TASK_NODE_WIDTH / 2) * actual.zoom + actual.x).toBeCloseTo(400);
-    expect((root.position.y + layoutModule.TASK_NODE_HEIGHT / 2) * actual.zoom + actual.y).toBeCloseTo(222.5);
+    expect((root.position.y + layoutModule.TASK_NODE_COMPACT_HEIGHT / 2) * actual.zoom + actual.y).toBeCloseTo(222.5);
   });
 
   it.each([320, 800])('starts with the complete leftmost upstream region when it lies before the root at width %s', (width) => {
     const geometry: layoutModule.CanvasLayout = {
       nodes: [
-        { id: 'root', kind: 'main', position: { x: 20000, y: 12000 } },
-        { id: 'later-upstream', kind: 'external', position: { x: 32, y: 9000 } },
-        { id: 'first-upstream', kind: 'external', position: { x: 32, y: 2000 } },
-        { id: 'tail', kind: 'main', position: { x: 20284, y: 12000 } },
+        { id: 'root', kind: 'main', width: 220, height: 96, position: { x: 20000, y: 12000 } },
+        { id: 'later-upstream', kind: 'external', width: 220, height: 136, position: { x: 32, y: 9000 } },
+        { id: 'first-upstream', kind: 'external', width: 220, height: 136, position: { x: 32, y: 2000 } },
+        { id: 'tail', kind: 'main', width: 220, height: 96, position: { x: 20284, y: 12000 } },
       ], edges: [], width: 20536, height: 13000,
     };
     const actual = getInitialTaskViewport(geometry, 'root', width, 445);
@@ -523,7 +730,7 @@ describe('initial task viewport policy', () => {
     expect(32 * actual.zoom + actual.x).toBe(32);
     expect(2000 * actual.zoom + actual.y).toBe(32);
     expect((32 + layoutModule.TASK_NODE_WIDTH) * actual.zoom + actual.x).toBeLessThan(width);
-    expect((2000 + layoutModule.TASK_NODE_HEIGHT) * actual.zoom + actual.y).toBeLessThan(445);
+    expect((2000 + layoutModule.TASK_NODE_COMPACT_HEIGHT) * actual.zoom + actual.y).toBeLessThan(445);
   });
 
   it.each([
@@ -532,14 +739,30 @@ describe('initial task viewport policy', () => {
   ])('keeps the source root visible when readable zoom cannot contain the %s bounds', (_kind, tailX, tailY) => {
     const geometry: layoutModule.CanvasLayout = {
       nodes: [
-        { id: 'root', kind: 'main', position: { x: 32, y: 6000 } },
-        { id: 'tail', kind: 'main', position: { x: tailX, y: tailY } },
+        { id: 'root', kind: 'main', width: 220, height: 96, position: { x: 32, y: 6000 } },
+        { id: 'tail', kind: 'main', width: 220, height: 96, position: { x: tailX, y: tailY } },
       ], edges: [], width: tailX + 252, height: tailY + 6128,
     };
     const actual = getInitialTaskViewport(geometry, 'root', 800, 445);
     expect(actual.zoom).toBe(0.8);
     expect(32 * actual.zoom + actual.x).toBe(32);
-    expect((6000 + layoutModule.TASK_NODE_HEIGHT / 2) * actual.zoom + actual.y).toBeCloseTo(222.5);
+    expect((6000 + layoutModule.TASK_NODE_COMPACT_HEIGHT / 2) * actual.zoom + actual.y).toBeCloseTo(222.5);
+  });
+  it('anchors a folded overview to its root even when visible prerequisites are far to the left', () => {
+    const geometry: layoutModule.CanvasLayout = {
+      nodes: [
+        { id: 'upstream', kind: 'external', width: 220, height: 136, position: { x: 32, y: 32 } },
+        { id: 'root', kind: 'main', width: 220, height: 136, position: { x: 20000, y: 4000 } },
+      ],
+      edges: [], width: 20252, height: 4168,
+    };
+    for (const width of [320, 800]) {
+      const actual = getInitialTaskViewport(geometry, 'root', width, 445, true);
+      expect(actual.zoom).toBe(0.8);
+      expect(actual.x + 20000 * actual.zoom).toBe(32);
+      expect(actual.y + (4000 + layoutModule.TASK_NODE_EXPANDABLE_HEIGHT / 2) * actual.zoom).toBe(445 / 2);
+      expect(32 + layoutModule.TASK_NODE_WIDTH * actual.zoom).toBeLessThan(width);
+    }
   });
 });
 
@@ -583,7 +806,7 @@ describe('root task accordion', () => {
     const refreshed = buildGraphIndex({
       ...graph,
       tasks: graph.tasks.map((task) => ({ ...task, status: 'done', blockedBy: [], ready: false })),
-      summary: { total: 6, todo: 0, inProgress: 0, done: 6, ready: 0, blocked: 0 },
+      summary: { total: 6, proposed: 0, todo: 0, inProgress: 0, done: 6, ready: 0, blocked: 0 },
     });
     view.rerender(<RootList showCompleted={true} onShowCompletedChange={noop} index={refreshed} allRootIds={refreshed.roots} rootIds={refreshed.roots} expandedRootId="A" onExpand={noop} selectedTaskId={null} onSelectTask={noop} />);
     expect(originalRoots[2]!.querySelector('.root-progress-label')).toHaveTextContent('1/1 已完成');
@@ -606,7 +829,7 @@ describe('root task accordion', () => {
     expect(roots[0]!.id).toBe('task-root-A');
     expect(roots[0]!.textContent).toContain('1/3 已完成');
     expect(roots[0]!.querySelector('.root-status')).toHaveTextContent('进行中');
-    expect(nodeButton('基础 API')).toHaveClass('task-node-done');
+    expect(nodeShell('基础 API')).toHaveClass('task-node-done');
     expect(roots[0]!.getAttribute('aria-expanded')).toBe('true');
     expect(container.querySelectorAll('.task-graph-canvas')).toHaveLength(1);
     const firstCanvas = container.querySelector('.task-graph-canvas');

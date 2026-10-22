@@ -21,8 +21,9 @@
 访问令牌及项目成员授权，行为由[鉴权需求](../spec/daynight-auth.md)拥有，
 交付顺序由[任务拆分](daynight-auth-tasks.md)拥有。
 [身份基础模块](../../.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
-提供独立的用户/凭据存储和 handler；生产 composition 尚未挂载，仍按本机未认证
-服务边界运行。
+提供独立的用户/凭据存储和 handler；[项目成员模块](../../.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
+提供事务内授权、私有创建和邀请。生产 composition 尚未挂载这些模块，仍按本机
+未认证服务边界运行。
 
 现有 `packages/daynight/` TypeScript CLI、YAML 配置和 SQLite review 状态继续独立
 运行。服务不读取或迁移这些状态；注册 project 也不启动现有 review 协调器。
@@ -73,7 +74,12 @@ HTTP 错误映射和服务生命周期。`internal/service` 拥有 project/task 
 `pgx`/`pgxpool` 类型实现 PostgreSQL 查询、事务和迁移。`internal/webui` 拥有
 `go:embed` 资源及页面/资源响应，server 在既有 mux 精确注册路由。静态处理不经过
 service/store；请求仍只经过一次现有日志包装。HTML、图及最新详情为 no-store，
-哈希资源为 immutable，缺失资源不回退 HTML。
+哈希资源为 immutable，缺失资源不回退 HTML。精确 UI 页面形状包含根路径、项目页
+及 `/projects/{projectId}/tasks/{taskId}/attachments/{path...}` 独立附件阅读页；GET
+沿用 HEAD 语义，其他方法返回 405，未知形状不回退 index。UI 的无效 ID 仍交付
+index 后由前端显示未找到页面。独立附件命名空间复用原始路径守卫，在 ServeMux
+清理和重定向前拒绝非法路径；数据与授权仍由已有附件接口负责，机制见
+[附件阅读设计](daynight-task-attachments.md#独立附件阅读页)。
 
 调用方向为 `server → service → core/store`。传输层将 API DTO 转换为 service
 参数，core 不依赖 HTTP，store 不决定状态转换或依赖规则。事务内查询所需的数据、
@@ -135,16 +141,19 @@ query 和 fragment。SSH 用户名是传输地址组成部分，可以保存；�
 
 ## 状态与依赖不变量
 
-任务状态为 `todo`、`in_progress`、`done`。创建任务固定使用 `todo`，允许同时提交
-`dependsOn`；状态变更通过更新接口完成。任务状态可以向前或向后修改，但每次写入
-都必须满足以下条件：
+存储和读取模型的任务状态为 `proposed`、`todo`、`in_progress`、`done`。迁移
+`007_task_proposed.sql` 仅替换状态 CHECK，不改动已应用迁移，也不重写既有任务、
+版本或时间。数据库默认值和公开创建仍为 `todo`，创建允许同时提交 `dependsOn`。
+公开列表状态筛选和通用更新的候选状态仍由既有三状态验证器限制；审批和专用
+生命周期操作尚未启用。该边界由[四状态读取决策](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
+拥有，存储夹具可提供 proposed 读取数据。每次公开写入都必须满足以下条件：
 
 - 依赖只能指向同 project 中已经存在的任务；拒绝自身依赖、重复 ID、缺失任务、跨
   project 引用和有向环。
 - `in_progress` 和 `done` 任务的所有直接前置任务必须为 `done`。
 - 给 `in_progress` 或 `done` 任务增加未完成前置任务时拒绝整个更新。
-- 将 `done` 任务改为 `todo` 或 `in_progress` 时，只要有直接下游任务处于
-  `in_progress` 或 `done`，就拒绝整个更新。
+- 将 `done` 任务改为 `todo` 或 `in_progress` 时，所有直接下游必须为 `todo`，
+  否则拒绝整个更新；四状态读取准备不改变此写入判定。
 
 检查直接下游足以保持状态不变量：每个活跃或已完成任务都要求其直接前置完成。
 不需要隐式回退下游任务，也不根据状态变更自动开始其他任务。依赖检查限制状态
@@ -153,7 +162,8 @@ query 和 fragment。SSH 用户名是传输地址组成部分，可以保存；�
 读取任务时派生两个字段：`blockedBy` 是按 ID 排序的、状态尚未达到 `done` 的直接
 前置任务 ID；`ready` 等于 `status == todo` 且 `blockedBy` 为空。`dependsOn` 返回
 按 ID 排序的全部直接前置任务 ID。这些字段由当前持久化依赖和状态计算，不另存
-可漂移的计数或 DAG 缓存。
+可漂移的计数或 DAG 缓存。`proposed` 读取保留未完成前置对应的 `blockedBy`，
+但 `ready` 始终为 false；只有 `in_progress` 和 `done` 要求直接前置全部完成。
 
 ## 写事务与并发
 

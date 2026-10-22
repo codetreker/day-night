@@ -1,10 +1,13 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../src/api/client';
 import type { Attachment, AttachmentPage } from '../src/api/types';
 import { TaskAttachments } from '../src/features/task-detail/attachments/TaskAttachments';
 import type { AttachmentApi } from '../src/features/task-detail/attachments/useAttachments';
+
+const render = createLocaleRender('zh-CN');
 
 const timestamp = '2026-10-21T00:00:00Z';
 const file = (path: string, contentType = 'text/plain'): Attachment => ({ path, contentType, sizeBytes: 12, createdAt: timestamp, updatedAt: timestamp });
@@ -32,6 +35,35 @@ const fixture = (initial: readonly Attachment[] = []) => {
 const open = (api: AttachmentApi, taskId = '00000000-0000-4000-8000-000000000001') => render(<TaskAttachments projectId="00000000-0000-4000-8000-000000000100" taskId={taskId} api={api} onClose={vi.fn()} />);
 
 describe('task attachments', () => {
+  it('starts with upload controls collapsed and retains the mounted draft when toggled', async () => {
+    const api = fixture();
+    open(api);
+    await screen.findByText('暂无附件，上传文件后即可在这里浏览。');
+    const user = userEvent.setup();
+    const summary = screen.getByText('上传文件', { selector: 'summary' });
+    const disclosure = summary.parentElement!;
+    const input = screen.getByLabelText('选择一个文件') as HTMLInputElement;
+    expect(disclosure).not.toHaveAttribute('open');
+    expect(input).not.toBeVisible();
+    expect(screen.getByLabelText('目标相对路径')).not.toBeVisible();
+    await user.click(summary);
+    expect(disclosure).toHaveAttribute('open');
+    expect(input).toBeVisible();
+    const source = new File(['draft'], 'draft.txt', { type: 'text/plain' });
+    await user.upload(input, source);
+    const path = screen.getByRole('textbox', { name: '目标相对路径' });
+    await user.clear(path);
+    await user.type(path, 'drafts/unsent.txt');
+    await user.click(summary);
+    expect(input).not.toBeVisible();
+    await user.click(summary);
+    expect(screen.getByLabelText('选择一个文件')).toBe(input);
+    expect(screen.getByRole('textbox', { name: '目标相对路径' })).toBe(path);
+    expect(input.files?.[0]).toBe(source);
+    expect(path).toHaveValue('drafts/unsent.txt');
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
   it('loads a native directory tree, keeps names as text, and selects files for preview and download', async () => {
     const first = deferred<AttachmentPage>();
     const api = { ...fixture(), list: vi.fn().mockReturnValue(first.promise) };
@@ -50,11 +82,32 @@ describe('task attachments', () => {
     expect(screen.getByRole('link', { name: '下载' })).toHaveAttribute('download');
   });
 
+  it('keeps a real new-tab link bound to the current selection while its content is pending', async () => {
+    const pending = deferred<string>();
+    const api = fixture([file('docs/设计 #?%.md', 'text/markdown'), file('next.txt')]);
+    const readText = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue('Next content');
+    open({ ...api, readText });
+    fireEvent.click(await screen.findByRole('button', { name: /设计/ }));
+    const link = screen.getByRole('link', { name: '在新标签页打开' });
+    expect(link).toHaveAttribute('href', '/projects/00000000-0000-4000-8000-000000000100/tasks/00000000-0000-4000-8000-000000000001/attachments/docs/%E8%AE%BE%E8%AE%A1%20%23%3F%25.md');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(link.previousElementSibling).toBe(screen.getByRole('link', { name: '下载' }));
+    expect(link.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.getByRole('status')).toHaveTextContent('正在加载预览');
+    fireEvent.click(screen.getByRole('button', { name: /next.txt/ }));
+    expect(link).toHaveAttribute('href', expect.stringContaining('/attachments/next.txt'));
+    await screen.findByText('Next content');
+    await act(async () => pending.resolve('Stale document'));
+    expect(screen.queryByText('Stale document')).toBeNull();
+  });
+
   it('uploads one file, validates the target path, directly overwrites, and deletes with attachment-only reloads', async () => {
     const api = fixture([file('docs/readme.md')]);
     open(api);
     await screen.findByRole('button', { name: /readme.md/ });
     const user = userEvent.setup();
+    await user.click(screen.getByText('上传文件', { selector: 'summary' }));
     const source = new File(['new contents'], 'readme.md', { type: 'text/markdown' });
     const input = screen.getByLabelText('选择一个文件') as HTMLInputElement;
     expect(input).not.toHaveAttribute('multiple');
@@ -92,6 +145,7 @@ describe('task attachments', () => {
     fireEvent.click(screen.getByRole('button', { name: /old.txt/ }));
     await screen.findByText('Contents of old.txt');
     const user = userEvent.setup();
+    await user.click(screen.getByText('上传文件', { selector: 'summary' }));
     const input = screen.getByLabelText('选择一个文件') as HTMLInputElement;
     const source = new File(['next'], 'next.txt', { type: 'text/plain' });
     await user.upload(input, source);
@@ -127,7 +181,7 @@ describe('task attachments', () => {
   it('retries text previews and uses injected native preview and download URLs', async () => {
     const api = fixture([file('text.txt'), file('image.svg', 'image/svg+xml')]);
     const readText = vi.fn().mockRejectedValueOnce(new Error('private preview')).mockResolvedValue('Recovered');
-    render(<TaskAttachments projectId="00000000-0000-4000-8000-000000000100" taskId="task" api={{ ...api, readText }} onClose={vi.fn()} urls={{ previewRoot: '/fixtures/', preview: (path) => `/fixtures/${path}`, download: (path) => `/downloads/${path}` }} />);
+    render(<TaskAttachments projectId="00000000-0000-4000-8000-000000000100" taskId="task" api={{ ...api, readText }} onClose={vi.fn()} urls={{ page: (path) => `/reader/${path}`, previewRoot: '/fixtures/', preview: (path) => `/fixtures/${path}`, download: (path) => `/downloads/${path}` }} />);
     fireEvent.click(await screen.findByRole('button', { name: /text.txt/ }));
     expect(await screen.findByRole('alert')).not.toHaveTextContent('private preview');
     fireEvent.click(screen.getByRole('button', { name: '重试预览' }));
@@ -149,6 +203,7 @@ describe('task attachments', () => {
     fireEvent.load(oldFrame);
     expect(checkPreview).toHaveBeenCalledTimes(2);
     const user = userEvent.setup();
+    await user.click(screen.getByText('上传文件', { selector: 'summary' }));
     await user.upload(screen.getByLabelText('选择一个文件'), new File(['<p>new</p>'], 'index.html', { type: 'text/html' }));
     const path = screen.getByRole('textbox', { name: '目标相对路径' });
     await user.clear(path);
@@ -167,10 +222,14 @@ describe('task attachments', () => {
     const view = open(injected);
     fireEvent.click(await screen.findByRole('button', { name: /old.txt/ }));
     await screen.findByText('Contents of old.txt');
-    await userEvent.setup().upload(screen.getByLabelText('选择一个文件'), new File(['old'], 'old-upload.txt'));
+    const user = userEvent.setup();
+    await user.click(screen.getByText('上传文件', { selector: 'summary' }));
+    await user.upload(screen.getByLabelText('选择一个文件'), new File(['old'], 'old-upload.txt'));
     view.rerender(<TaskAttachments projectId="00000000-0000-4000-8000-000000000100" taskId="00000000-0000-4000-8000-000000000002" api={injected} onClose={vi.fn()} />);
     expect(screen.queryByText('Contents of old.txt')).toBeNull();
-    expect(screen.getByRole('textbox', { name: '目标相对路径' })).toHaveValue('');
+    expect(screen.getByText('上传文件', { selector: 'summary' }).parentElement).not.toHaveAttribute('open');
+    expect(screen.getByLabelText('目标相对路径')).toHaveValue('');
+    expect(screen.getByLabelText('选择一个文件')).not.toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent('正在加载附件');
     expect(vi.mocked(api.readText).mock.calls[0]?.[3].aborted).toBe(true);
     await act(async () => next.resolve({ items: [], nextCursor: null }));

@@ -6,22 +6,29 @@ statistics, task dependency graphs, task details and file attachments from the
 same Go service origin. The read-only graph dashboard is delivered, including
 production-browser acceptance, embedded deployment and the subsequent focus-restoration repair. The
 [dashboard tasks](docs/design/daynight-web-tasks.md) record completion and link
-the corresponding PR and CI evidence. Complete prerequisite context is implemented.
+the corresponding PR and CI evidence. Complete prerequisite data is delivered. Progressive graph overviews are the
+current focused delivery, followed by dependency inspection in
+[PR #121](https://github.com/codetreker/daynight/pull/121).
 The [task inspection requirements](docs/spec/daynight-task-inspection.md),
 [architecture](docs/design/daynight-task-inspection.md),
 [focused task breakdown](docs/design/daynight-task-inspection-tasks.md) and
 [interactive preview](docs/design/mockups/task-inspection/index.html) cover
 complete prerequisite context, smooth highlighted dependency routes, a centered
 detail dialog and Markdown descriptions with matching public skill guidance.
-Graph inspection, smooth paths, centered details and Markdown remain pending.
-Card activation still opens the detail drawer, routes remain polylines, and descriptions remain plain text until
-their focused tasks are delivered.
+Centered task details are implemented with the existing modal, attachment and
+focus lifecycles. Graph inspection, smooth paths and Markdown descriptions remain
+pending. The progressive view starts at fifty tasks/one hundred induced edges, with
+explicit twenty-neighbor expansion and global reset; complete data and progress
+remain intact. Body activation still opens the delivered detail dialog with its
+Overview/Attachments split panels, routes remain polylines, and descriptions
+remain plain text. Both overview and inspection PRs must complete before UX-T2
+is done; production evidence for the current overview remains pending.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle and interactive Agent installation, shared configuration, server HTTP and repository binding foundations plus project, task and single-file attachment commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
-| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs with complete prerequisite context and task details, attachment management/preview, embedded delivery, graph production acceptance and strict coverage delivered | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
+| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs with complete prerequisite context and task details, attachment management/preview, embedded delivery, graph production acceptance and strict coverage delivered; English/Simplified Chinese interface and locale persistence implemented, combined bilingual production verification tracked separately | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [language requirements](docs/spec/daynight-web-i18n.md), [language design](docs/design/daynight-web-i18n.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The adopted [task attachment requirements](docs/spec/daynight-task-attachments.md),
 [architecture](docs/design/daynight-task-attachments.md) and
@@ -30,13 +37,27 @@ bucket/path file storage, single-file task attachments, same-origin browser
 preview and binary CLI reads. Generic local storage and startup, attachment
 metadata, file/preview HTTP APIs, CLI put/list/read/remove commands, browser file
 management, persistent deployment volumes and paired backup/restore are
-implemented. Installed CLI/service and production-browser attachment journeys
-share real service data on native and container targets; their
+implemented. Task details open on Overview and provide a separate Attachments
+tab with adjacent file and preview panes at every supported width. Each pane
+owns its scroll region; the preview has exactly one vertical scroll owner,
+including native HTML/PDF documents. A link beside Download opens the selected
+file in a reloadable full-page reader outside the workspace and dialog, with
+the same rendering and relative resources. Independent runtime acceptance of
+this reading group is complete against real embedded assets and service files,
+including native PDF reading to the final painted page. Installed CLI/service
+and production-browser attachment journeys share real service data on native
+and container targets; their
 [acceptance decision](.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
-owns byte, rendering and cleanup proof. Delivery progress remains tracked in
-Daynight, and successful runs remain tied to their tested source and CI. The
+owns byte, rendering, scroll, failure-recovery and cleanup proof. Delivery
+progress remains tracked in Daynight, and successful runs remain tied to their
+tested source, built artifacts and browser environment; local browser overrides
+do not establish hosted-CI browser results. The
 [Web attachment decision](.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)
 owns browser state, rendering and focus integration; the
+[split-view decision](.agents/notes/implemented/architecture/2026-10-22-task-attachment-split-view.md)
+owns detail tabs, retained attachment state and preview scroll ownership; the
+[full-reader decision](.agents/notes/implemented/architecture/2026-10-22-task-attachment-full-reader.md)
+owns standalone routing and nonmodal reading; the
 [deployment guide](deployment/localhost/README.md#persistence-and-backup) owns data
 retention and backup commands. Filesystem/PostgreSQL non-atomicity remains a known
 issue; consistency remediation is outside that scope.
@@ -46,15 +67,25 @@ The [authentication requirements](docs/spec/daynight-auth.md),
 [task breakdown](docs/design/daynight-auth-tasks.md) define UniAuth login, Daynight
 sessions and personal access tokens, private projects and membership. The
 [identity foundation](.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
-provides persistent users, credentials and callable authentication handlers. These
-handlers are not mounted in the application; membership and activation remain
-separately tracked, and the current application is unauthenticated and loopback-only. Trusted
+provides persistent users, credentials and callable authentication handlers. The
+[project membership module](.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
+adds private creation, filtered access, roles and invitations. Both modules remain
+unmounted. [CLI server credentials](.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
+are implemented. The opt-in [authenticated Web workspace](.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
+provides login, private project creation, account/token management, project
+members and invitation acceptance in English and Simplified Chinese through the
+existing locale runtime. Production `main.tsx` keeps `LocaleProvider` and `App`;
+the opt-in shell uses the same Provider. Coordinated activation switches the
+application entry and integrates provider discovery after upgrading the pinned
+UniAuth SDK to the delivered upstream capability. The current application is
+unauthenticated and loopback-only. Trusted
 same-origin executable HTML previews retain their existing execution model after
 authentication is delivered; attachment requests gain project-member checks.
 Existing projects will receive membership data manually outside that work.
 
-The `@codetreker/daynight` package provides the `daynight` client. Its root entry
-lists commands and reports the package version; each command owns its business
+The `@codetreker/daynight` package provides the `daynight` client and its `dn`
+short command. Both names use the same entry, commands and configuration. Its
+root entry lists commands and reports the package version; each command owns its business
 dependencies and lifecycle. `review` polls configured repositories, maintains
 dedicated local clones and PR worktrees, and launches Copilot in a retained
 session for each eligible PR using a bundled review skill. SQLite preserves initialization boundaries, review
@@ -89,13 +120,23 @@ The [public Agent skill design](docs/design/daynight-agent-skill.md) defines one
 npm-bundled `using-daynight` skill and interactive installation for Codex, Copilot
 CLI and Claude Code. Its [requirements](docs/spec/daynight-agent-skill.md) cover
 context-based routing, explicit continuous-execution intent, attachment-backed
-planning and complete replacement on reinstall. The entrypoint and four mode
-references are published under `dist/commands/skill/skills/using-daynight/`.
+planning and complete replacement on reinstall. The entrypoint, four mode
+references and shared `goal.md` protocol are published under
+`dist/commands/skill/skills/using-daynight/`. The
+[Goal workflow requirements](docs/spec/daynight-goal-workflow.md) and
+[design](docs/design/daynight-goal-workflow.md) define staged persistent work:
+`[Goal]<outcome>` clarifies the whole problem, behavior, scope, exclusions and
+acceptance, then a dependent architecture task completes design and registers
+all successors before design handover. Applicable UI Goals produce a final-style,
+frontend-only interactive prototype during clarification. Stage briefs are
+inputs; completed requirements, prototypes and architecture are their outputs.
+The [delivery tasks](docs/design/daynight-goal-workflow-tasks.md) distinguish
+protocol delivery from independent acceptance of the exact merged consumer artifact.
 
 | Mode | Responsibility |
 |---|---|
 | `handbook` | Command purposes and operational context; use CLI help for command usage |
-| `create-task` | With explicit user permission, skip one-off/trivial work and reuse or register a task with verified planning attachments |
+| `create-task` | With explicit user permission, skip one-off/trivial work and reuse or register an ordinary task or the two Goal seeds with verified stage inputs |
 | `run-task <task-id>` | Execute the designated task through validation and authorized delivery, then return |
 | `autopilot <goal or scope>` | Restore the current task or select one most relevant ready todo, and continue only after confirmed completion |
 
@@ -104,10 +145,13 @@ resolved with the user. Autopilot requires an explicit request for continuous
 execution. Creating tasks requires explicit user permission to create them;
 implementation requests and autopilot activation do not supply that permission.
 Existing explicit permission applies within its stated scope without repeated
-confirmation. Task descriptions contain the problem and real attachment references;
-one primary Markdown attachment owns solution and acceptance criteria. Frontend
-tasks also require an interactive mock UI matching intended final visuals and
-representative states. Dependencies use dependsOn, PR references use properties,
+confirmation. Task descriptions are self-contained briefs: concrete actions, scope, deliverables,
+constraints, observable completion summaries and actual input references. Each
+task-specific primary Markdown owns detailed solution, full acceptance and evidence.
+Shared Goal and design inputs stay at their source task ID and attachment path,
+or a verified immutable repository URL; attachments follow actual need. Frontend
+implementation tasks read the completed final-style interactive prototype and
+its representative states. Dependencies use dependsOn, PR references use properties,
 and execution progress uses an existing checkpoint. Necessary PRs must be
 platform-confirmed merged and acceptance satisfied before done. A request to
 retain a PR for review keeps the task in progress and returns control to the user.
@@ -143,7 +187,9 @@ CLI commands below apply to the client; server commands have their own module.
 The dashboard architecture presents project statistics and two in-project task
 tabs from one complete server snapshot. Standalone tasks open details directly;
 root-based task chains retain dependency graphs, shared successors and aggregate
-progress. Expanding a chain includes all upstream prerequisites of its root and
+progress. Both tab badges count unfinished tasks from the complete snapshot;
+shared chain tasks count once across all roots, and completed-item visibility
+does not affect the badges. Expanding a chain includes all upstream prerequisites of its root and
 reachable successors, without adding unrelated successors of contextual tasks.
 Only the root and its reachable successors contribute to chain progress and status. The first visit opens task chains, and each project retains its last
 tab, independent completed-item filters and browse positions. The [task view
@@ -151,7 +197,7 @@ preview](docs/design/mockups/task-views.html) demonstrates those interactions.
 The project list is implemented in the private web workspace, including task
 visualization and details. Its [design decision](.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)
 defines the original read-only MVP. Attachment upload, overwrite and deletion
-extend the task drawer without changing task fields or the graph snapshot. The
+extend the task detail dialog without changing task fields or the graph snapshot. The
 Go binary embeds the production UI and serves it alongside the APIs. The original
 standalone dashboard preview uses fixture data; the attachment development mockup
 uses the actual attachment components and styles with a frontend-only fixture.
@@ -188,7 +234,7 @@ same compiled output. `pnpm build` clears the package's `dist/` before emitting
 bundles into `dist/commands/review/skills/daynight-review/` and
 `dist/commands/skill/skills/using-daynight/`. Complete relative resources are included;
 repository workflow skills are not scanned for publication. The package's
-`daynight` bin points to the stable JavaScript entry.
+`daynight` and `dn` bins point to the same stable JavaScript entry.
 Source tests mirror `cli/`, `config/`, `api/`, `commands/` and `platform/`
 ownership, with build and version-policy tests in `test/tooling/`.
 The pnpm dependency store is local to `.tmp/pnpm-store`. Native skill terminal
@@ -369,8 +415,21 @@ binary identity, scenario results and resource cleanup.
 
 The private [web workspace](packages/daynight-web/README.md) implements the project
 list, cursor paging, safe API decoding, cancellation, project statistics, task
-graphs, detail drawers and single-file attachment management. With the
-Go API running on loopback, use:
+graphs, centered task detail dialogs and single-file attachment management. An open
+project refreshes its complete task snapshot every five seconds while the page is
+visible, pauses automatic reads while hidden and refreshes immediately on return.
+Refresh retains browsing state and an open detail dialog, including attachment
+inputs and previews. Failed reads keep prior data with an error and recover on a
+later successful read; unavailable resources are cleared. The
+[automatic refresh decision](.agents/notes/implemented/feature/2026-10-22-project-task-auto-refresh.md)
+owns scheduling, request priority and retained-state guarantees. Its
+[locale runtime](docs/design/daynight-web-i18n.md) provides English and Simplified
+Chinese across the shipped interface, native Intl formatting and an independent
+saved language preference. Navigation, the centered detail dialog and fullscreen
+graph share one language choice while preserving browsing and pending attachment
+state. The [bilingual requirements](docs/spec/daynight-web-i18n.md) own the full
+outcome; the separate acceptance task owns source-bound combined production
+verification. With the Go API running on loopback, use:
 
 ```text
 pnpm web:dev
@@ -382,9 +441,9 @@ pnpm web:test
 For the frontend-only attachment mockup, run `pnpm web:dev` and open
 `/tests/mockups/attachments.html` on the origin printed by Vite. It uses the real
 attachment UI with in-memory metadata and local fixture files; it needs no Go
-service or PostgreSQL. Scenario selection covers files, an empty task and upload
-failure. Production builds keep the single application index and exclude these
-fixture entry points. The [web README](packages/daynight-web/README.md#task-attachments)
+service or PostgreSQL. It exercises the detail tabs, adjacent panes, tall
+content and attachment loading, empty, failure and busy states. Production builds
+keep the single application index and exclude these fixture entry points. The [web README](packages/daynight-web/README.md#task-attachments)
 explains previews and the mockup's evidence limits.
 
 The frontend build emits `packages/daynight-web/dist/`, validates its HTML and
@@ -536,13 +595,17 @@ Install the CLI with npm:
 
 ```bash
 npm install --global @codetreker/daynight
-daynight --version
+dn --version
 ```
+
+The installation provides both `daynight` and `dn`; every command works with
+either name, for example `dn task list` or `dn skill install`. Help and diagnostics
+use the canonical `daynight` spelling.
 
 Update that npm global installation with:
 
 ```bash
-daynight update
+dn update
 ```
 
 The command checks `@codetreker/daynight`'s `latest` version in the configured npm
@@ -747,6 +810,7 @@ Setup checks file contents without executing them. Custom early returns or later
 commands that remove registrations can prevent a startup file from enabling
 completion; verify such configuration by starting the shell.
 
+The generated scripts register completion for both `daynight` and `dn`.
 Completion suggests commands, nested operations, aliases, options, shell names
 and local directories for `review add-repo --path` and `setup --review-path`.
 zsh also displays descriptions.
@@ -766,12 +830,13 @@ records startup-file ownership and installation limits.
 
 ## Configuration setup
 
-The first valid project or task command asks for a server origin when the
-configuration file or `serverUrl` is absent. The first `review run`, `review list`
-or `review ls` asks for a repository when the file or `repositories` field is
-absent. Each command asks only for its own capability. Machines that do not run
-review can keep only `serverUrl`. After saving, the original command runs once
-with its original arguments.
+The first valid project or task command asks for a server origin and an optional
+hidden personal access token when the configuration file or `serverUrl` is
+absent. The first `review run`, `review list` or `review ls` asks for a repository
+when the file or `repositories` field is absent. Each command asks only for its
+own capability. A server-only machine needs no review fields; `serverToken` is
+optional in configuration. After saving, the original command runs once with
+its original arguments.
 
 Run `daynight setup` to choose server access, review or both in advance. For scripts,
 use explicit options, which never prompt:
@@ -785,7 +850,27 @@ daynight setup --review-repo git@github.com:OWNER/OTHER.git --review-path ./revi
 The two capabilities can be configured in one invocation by combining
 `--server-url` and `--review-repo`; `--review-path` requires `--review-repo`.
 The server origin has no implicit default. Review registration uses the same
-remote and path rules as `review add-repo`.
+remote and path rules as `review add-repo`. Interactive server setup hides the
+token input. A blank answer keeps an existing token for the same normalized
+origin or skips the token for a new origin.
+
+For automation, use the boolean `--server-token-stdin` option with one nonempty
+line, optionally ending in LF or CRLF. It can accompany `--server-url` or reuse
+the saved server origin; without either origin setup fails. Explicit URL-only
+setup remains noninteractive. For example, a secret-producing command can pipe
+its output directly into setup:
+
+```bash
+secret-provider-command | daynight setup --server-url https://daynight.example.com --server-token-stdin
+```
+
+`secret-provider-command` represents an external secret source, not a Daynight
+command or environment setting. Stdin input rejects empty input, multiple lines,
+control characters and input larger than 1 MiB. Tokens are opaque visible ASCII. A token
+requires HTTPS except for HTTP origins whose host is literal `localhost`,
+a numeric IPv4 address in `127.0.0.0/8`, or `::1`. Changing the normalized origin
+removes its previous token in the same atomic save; an equivalent origin preserves it. Tokens stay out of
+command arguments, repository bindings and diagnostics.
 
 Interactive setup requires terminal stdin and stderr. Prompts and save messages
 go to stderr, so redirected stdout keeps its normal text or JSON results. Missing
@@ -798,15 +883,24 @@ Help, version, completion, update and invalid arguments do not prompt.
 
 Setup collects all selected values before one atomic save under the configuration
 write lock, preserving comments, other settings and concurrent completed changes
-to unrelated fields. If a selected field changed while input was collected, setup
-fails with a conflict and asks for setup to be run again.
+to unrelated fields. The server origin and token are checked together for
+concurrent changes; a selected-field conflict requires setup to be run again.
+Credential-bearing configuration files use POSIX mode `0600`, including writes
+by review setup or registration; files without a token retain existing mode
+behavior. Symlink rejection and atomic replacement continue to apply.
 Ctrl+C, termination signals or EOF cancel input without saving partial values or
 running the original command. Input time does not consume the business command's
-timeout. Setup saves configuration only; network access, authentication, cloning
-and review state initialization belong to the subsequent business command. A
+timeout. Setup saves configuration only; it makes no network request, login
+preflight or authentication check. Cloning and review state initialization belong
+to the subsequent business command. A
 connection failure after setup keeps the saved configuration. The
 [setup decision](.agents/notes/implemented/feature/2026-10-21-guided-configuration-setup.md)
-records the independent capabilities and persistence guarantees.
+records the independent capabilities and persistence guarantees; the
+[credential decision](.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
+owns token handling. Configured credentials are attached to existing project,
+task and attachment requests. Redirects are not followed with credentials. A
+`401` gives setup guidance without anonymous fallback or automatic write retry;
+reconcile an unconfirmed write before another mutation.
 
 ## Project management
 
@@ -879,7 +973,17 @@ server origin and repository identity, after ensuring `/.daynight/` is effective
 in the root `.gitignore`. A cached binding is verified against the server on each
 use and remains stable if another project later shares that repository.
 
-Creation starts in `todo`. `task ready` selects up to 10 actionable tasks by
+Tasks can be stored and read with `proposed`, `todo`, `in_progress` or `done`
+status. Proposed tasks appear in unfinished inventories, graph summaries and the
+Web workspace as Proposed or 待审批 in the selected language. The stored/read
+contract is prepared for approval; public
+creation and the database default still use `todo`, and public status filters
+and updates still accept `todo`, `in_progress` and `done`. Approval, claim and
+completion commands are not available. The
+[four-state reader decision](.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
+records this preparation boundary.
+
+`task ready` selects up to 10 actionable tasks by
 default; `--limit <N>` accepts decimal integers from 1 through 100. It makes one
 task-list request with `ready=true` and the chosen limit, without fetching later
 pages. The service orders results by creation time and then task ID, both
@@ -890,7 +994,7 @@ reads every matching page, including with `--ready`, and excludes `done` by
 default. `--all` includes every status; `--status <status>` selects one status,
 including `done`. These two options conflict. `--ready` intersects the selected
 statuses and can be combined with `--all`. List results place `in_progress`
-first, then ready tasks, other `todo` tasks, and `done`; each group retains
+first, then ready tasks, other `todo` tasks, `proposed`, and `done`; each group retains
 service order across all pages. This order applies to human and JSON results.
 `task ready` accepts neither `--status` nor `--cursor`.
 
@@ -990,9 +1094,10 @@ cloning, authentication checks, GitHub calls, SQLite initialization and PR bound
 selection belong to review startup. An already running reviewer keeps its loaded
 configuration until its next startup.
 
-The same YAML also accepts the server client's `serverUrl` field. Review validates
-its own fields independently of that value, while the server configuration
-projection requires only a valid HTTP(S) origin. The shared parser still rejects
+The same YAML also accepts the server client's `serverUrl` and optional
+`serverToken` fields. Review validates its own fields independently of server
+business values. The server projection requires a valid HTTP(S) origin and
+validates any configured token and its transport. The shared parser still rejects
 invalid YAML, duplicate keys and unknown root fields. Registration can add the
 first review repository to a server-only file while preserving its server
 settings and comments.
@@ -1001,10 +1106,24 @@ A configuration with an explicit addition root is:
 
 ```yaml
 repositoryRoot: ~/daynights
+copilotModel: auto
+copilotReasoningEffort: high
 repositories:
   - remote: https://github.com/OWNER/REPO.git
     path: /home/alice/daynights/github.com/owner/repo
 ```
+
+`copilotModel` and `copilotReasoningEffort` are independent optional fields for
+all review repositories in the running process. Each configured value must be a
+string containing non-whitespace text and no NUL; null and other value types are
+rejected. Accepted strings are preserved exactly. Copilot owns model availability,
+effort levels and model/effort compatibility; Daynight maintains no static lists.
+`auto` delegates model selection to Copilot. Omitting either field sends no
+corresponding override and preserves Copilot's choice, so neither, either or both
+may be configured. Changes take effect on the next `review run` startup. Setup
+and repository registration preserve both fields and YAML comments. The server
+configuration projection recognizes these shared keys without validating their
+review-owned values.
 
 `repositoryRoot` defaults to `~/daynights`. It is used only when `add-repo` has no
 `--path`: the command derives filesystem-safe components from the normalized
@@ -1027,8 +1146,9 @@ errors after replacement remain visible. A separate
 `~/.daynight/config.yml.lock` excludes another configuration writer and fails
 clearly when occupied; it is independent of the review instance lock. After an
 abnormal exit, confirm no configuration writer remains before removing this lock.
-Configuration mutation rejects symlinks and nonregular files and preserves an
-existing file's permission mode.
+Configuration mutation rejects symlinks and nonregular files. A resulting
+configuration containing `serverToken` uses POSIX mode `0600`; without a token,
+existing file-mode behavior is preserved.
 
 Numeric options use the documented [configuration defaults](docs/design/daynight-review.md#使用方式与配置)
 when omitted. Explicit invalid values, unsupported fields, duplicate YAML keys and
@@ -1219,6 +1339,16 @@ environment. It selects the persisted per-PR UUID on first launch and explicitly
 same session thereafter. An interrupted first launch also resumes existing
 history; missing established history is an error. Only opaque session-directory
 presence is inspected. Copilot history and agent JSONL are not parsed.
+
+Every review child receives configured `copilotModel` as separate `--model` and
+value arguments, and configured `copilotReasoningEffort` as separate
+`--reasoning-effort` and value arguments. New sessions, resumes, retries and later
+PR revisions use the same construction. Skill discovery receives neither override.
+Values pass through the existing `shell: false` execution path; unsupported or
+unavailable models, effort levels or combinations retain Copilot's normal failure
+result and the existing attempt/error handling. The
+[model options decision](.agents/notes/implemented/feature/2026-10-22-review-copilot-model.md)
+records the validation and default-selection choices.
 
 Prompts travel through stdin in noninteractive mode. `cross-spawn` handles native
 commands and Windows command shims; prompt text is not embedded in shell code or

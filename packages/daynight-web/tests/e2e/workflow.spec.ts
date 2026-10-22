@@ -3,11 +3,14 @@ import type { Locator, Page, TestInfo } from '@playwright/test';
 import { test, expect, createProject, createTask, updateTask, withDependencyFailure, withProjectsFailure } from './fixtures';
 import { parseTaskGraph } from '../../src/api/parse';
 import { buildGraphIndex, projectRoot } from '../../src/features/task-graph/model';
-import { layoutGraph, type CanvasLayout } from '../../src/features/task-graph/layout';
+import { layoutGraph } from '../../src/features/task-graph/layout';
 import type { PullRequestProperty } from '../../src/api/types';
+import { checkDependencyGeometry } from './dependency-geometry';
+import { expectCenteredTaskDetail, expectTaskDetailScroll } from './detail-dialog';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
-const node = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node`);
+const card = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] .task-node`);
+const node = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node-body`);
 const root = (page: Page, id: string): Locator => page.locator(`#task-root-${id}`);
 const standalone = (page: Page, id: string): Locator => page.locator(`#standalone-task-${id}`);
 const viewTab = (page: Page, name: '独立任务' | '任务链'): Locator => page.getByRole('tab', { name, exact: true });
@@ -25,10 +28,10 @@ const checkPullRequests = async (dialog: Locator, pullRequests: readonly PullReq
   const region = dialog.getByRole('region', { name: '关联 PR', exact: true });
   await expect(region.getByRole('heading')).toHaveText(`关联 PR · ${pullRequests.length}`);
   const visible = pullRequests.slice(page * 100, (page + 1) * 100);
-  const items = region.locator('.drawer-pr');
+  const items = region.locator('.task-detail-pr');
   await expect(items).toHaveCount(visible.length);
-  expect(await items.locator('.drawer-pr-title').allTextContents()).toEqual(visible.map(({ title }) => title === '' ? '（空字符串）' : title));
-  expect(await items.locator('.drawer-pr-value').allTextContents()).toEqual(visible.map(({ url }) => url === '' ? '（空字符串）' : url));
+  expect(await items.locator('.task-detail-pr-title').allTextContents()).toEqual(visible.map(({ title }) => title === '' ? '（空字符串）' : title));
+  expect(await items.locator('.task-detail-pr-value').allTextContents()).toEqual(visible.map(({ url }) => url === '' ? '（空字符串）' : url));
   if (pullRequests.length > 100) {
     await expect(region.getByRole('status')).toHaveText(`第 ${page * 100 + 1}–${page * 100 + visible.length} 项，共 ${pullRequests.length} 项`);
     await expect(region.getByRole('combobox', { name: '关联 PR 页码' })).toHaveValue(String(page));
@@ -73,6 +76,15 @@ const openProject = async (page: Page, id: string, name: string): Promise<void> 
   expect(response?.status()).toBe(200);
   expect(response?.headers()['content-type']).toContain('text/html');
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+};
+const pauseRefreshClock = async (page: Page): Promise<void> => {
+  await page.clock.pauseAt(new Date('2030-01-01T00:00:00Z'));
+  await expect(page.locator('.snapshot-time time')).toHaveAttribute('datetime', /^2030-/);
+};
+const nextAutomaticRefresh = async (page: Page, projectId: string): Promise<number> => {
+  const response = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/projects/${projectId}/task-graph`);
+  await page.clock.fastForward(5_000);
+  return (await response).status();
 };
 
 test('project-list', scenario('project-list'), async ({ page, request }, info) => {
@@ -147,11 +159,13 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   await updateTask(request, project.id, completed.id, { version: completed.version, status: 'done' });
   const independent = await createTask(request, project.id, { title: '独立待处理任务' });
   await openProject(page, project.id, project.name);
-  for (const [label, value] of [['任务总数', '9'], ['已完成', '5'], ['待处理', '3'], ['进行中', '1'], ['可开始', '1'], ['被阻塞', '2']] as const) {
+  for (const [label, value] of [['任务总数', '9'], ['已完成', '5'], ['待审批', '0'], ['待处理', '3'], ['进行中', '1'], ['可开始', '1'], ['被阻塞', '2']] as const) {
     await expect(stat(page, label)).toHaveText(value);
   }
   await expect(page.getByText('完成比例 56%')).toBeVisible();
   await expect(viewTab(page, '任务链')).toHaveAttribute('aria-selected', 'true');
+  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('3');
+  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('1');
   expect(await page.locator('.root-toggle').evaluateAll((items) => items.map((item) => item.id))).toEqual(
     [c, b, a].map(({ id }) => `task-root-${id}`),
   );
@@ -172,6 +186,8 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   await expect(standalone(page, completed.id)).toHaveCount(0);
   await completedStandaloneVisibility.check();
   await expect(standalone(page, completed.id)).toBeVisible();
+  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('3');
+  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('1');
   await expect(standalone(page, completed.id)).toContainText('已完成');
   await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
   await page.reload();
@@ -198,143 +214,7 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   const graphIndex = buildGraphIndex(parseTaskGraph(await graphResponse.json(), project.id));
   const checkEdges = async (rootId: string): Promise<void> => {
     const expected = layoutGraph(projectRoot(graphIndex, rootId));
-    await expect(page.locator('.task-dependency-edges')).toHaveCount(1);
-    await expect(page.locator('.task-dependency-edge')).toHaveCount(expected.edges.length);
-    const diagnostics = await page.evaluate((geometry: CanvasLayout) => {
-      const failures: string[] = [];
-      const svg = document.querySelector<SVGSVGElement>('.task-dependency-edges');
-      const viewport = document.querySelector('.react-flow__viewport');
-      if (svg === null || viewport === null) return ['The dependency layer or viewport is absent.'];
-      if (svg.closest('.react-flow__viewport') !== viewport) failures.push('Dependency SVG uses a different viewport.');
-      if (getComputedStyle(svg).pointerEvents !== 'none') failures.push('Dependency SVG captures pointer input.');
-      if (svg.hasAttribute('viewBox')) failures.push('Dependency SVG rescales the layout coordinates.');
-      const declaredPieces = svg.getAttribute('data-paint-piece-count');
-      const bodyPieces = svg.querySelectorAll('.task-dependency-paint-piece');
-      if (declaredPieces === null || !/^(0|[1-9]\d*)$/.test(declaredPieces) || !Number.isSafeInteger(Number(declaredPieces)) || Number(declaredPieces) !== bodyPieces.length) failures.push('Dependency paint pieces differ from the complete declared count.');
-      if (svg.querySelectorAll('[tabindex]:not([tabindex="-1"])').length !== 0) failures.push('Dependency SVG has a keyboard focus target.');
-      const expectedIds = new Set(geometry.edges.map((edge) => edge.id));
-      const actualIds = [...svg.querySelectorAll('.task-dependency-edge')].map((edge) => edge.getAttribute('data-id'));
-      if (actualIds.length !== expectedIds.size || actualIds.some((id) => id === null || !expectedIds.has(id))) failures.push('Dependency identities differ from the active projection.');
-      const expectedNodeIds = new Set(geometry.nodes.map((node) => node.id));
-      const actualNodeIds = [...viewport.querySelectorAll('.react-flow__node')].map((node) => node.getAttribute('data-id'));
-      if (actualNodeIds.length !== expectedNodeIds.size || actualNodeIds.some((id) => id === null || !expectedNodeIds.has(id))) failures.push('Task identities differ from the active projection.');
-      for (const expectedNode of geometry.nodes) {
-        const element = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${expectedNode.id}"]`);
-        if (element === null || element.closest('.react-flow__viewport') !== viewport) failures.push(`Node ${expectedNode.id} uses a different viewport.`);
-      }
-      const onBorder = (point: DOMPoint, bounds: DOMRect): boolean => {
-        const epsilon = 0.75;
-        return point.x >= bounds.left - epsilon && point.x <= bounds.right + epsilon
-          && point.y >= bounds.top - epsilon && point.y <= bounds.bottom + epsilon
-          && Math.min(Math.abs(point.x - bounds.left), Math.abs(point.x - bounds.right), Math.abs(point.y - bounds.top), Math.abs(point.y - bounds.bottom)) <= epsilon;
-      };
-      for (const edge of geometry.edges) {
-        const group = svg.querySelector<SVGGElement>(`.task-dependency-edge[data-id="${edge.id}"]`);
-        const path = group?.querySelector<SVGPathElement>('path.react-flow__edge-path');
-        const source = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${edge.source}"]`);
-        const target = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${edge.target}"]`);
-        if (group === null || path === undefined || path === null || source === null || target === null) {
-          failures.push(`Dependency ${edge.id} lacks its path or endpoint nodes.`);
-          continue;
-        }
-        if (group.getAttribute('role') !== 'img' || group.getAttribute('focusable') !== 'false' || !(group.getAttribute('aria-label') ?? '').includes(edge.source) || !(group.getAttribute('aria-label') ?? '').includes(edge.target)) failures.push(`Dependency ${edge.id} lost its accessible identity.`);
-        const expectedPath = edge.points.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ');
-        if (path.getAttribute('d') !== expectedPath || path.dataset.source !== edge.source || path.dataset.target !== edge.target) failures.push(`Dependency ${edge.id} lost layout points or endpoint identities.`);
-        if (path.getAttribute('aria-hidden') !== 'true' || getComputedStyle(path).pointerEvents !== 'none') failures.push(`Dependency ${edge.id} is interactive.`);
-        const dashed = getComputedStyle(path).strokeDasharray !== 'none';
-        if (dashed !== edge.external) failures.push(`Dependency ${edge.id} has an incorrect external style.`);
-        const pieces = [...group.querySelectorAll<SVGGraphicsElement>('.task-dependency-paint-piece')];
-        if (edge.external !== (pieces.length > 0) || (edge.external ? getComputedStyle(path).stroke !== 'none' : getComputedStyle(path).stroke === 'none')) failures.push(`Dependency ${edge.id} has incomplete or duplicate body paint.`);
-        if (edge.external) {
-          const epsilon = 0.001;
-          const svgMatrix = svg.getScreenCTM();
-          if (svgMatrix === null) {
-            failures.push(`Dependency ${edge.id} has no painted viewport matrix.`);
-            continue;
-          }
-          let accumulated = 0;
-          const segments: { from: CanvasLayout['edges'][number]['points'][number]; to: CanvasLayout['edges'][number]['points'][number]; start: number; length: number }[] = [];
-          for (let index = 1; index < edge.points.length; index++) {
-            const from = edge.points[index - 1]!;
-            const to = edge.points[index]!;
-            const length = Math.hypot(to.x - from.x, to.y - from.y);
-            if (length > 0) segments.push({ from, to, start: accumulated, length });
-            accumulated += length;
-          }
-          const alongRoute = (point: DOMPoint, minimum: number): number | null => {
-            for (const segment of segments) {
-              const dx = segment.to.x - segment.from.x;
-              const dy = segment.to.y - segment.from.y;
-              const fraction = ((point.x - segment.from.x) * dx + (point.y - segment.from.y) * dy) / (segment.length * segment.length);
-              const projected = { x: segment.from.x + dx * fraction, y: segment.from.y + dy * fraction };
-              const distance = segment.start + Math.max(0, Math.min(1, fraction)) * segment.length;
-              if (fraction >= -epsilon / segment.length && fraction <= 1 + epsilon / segment.length && Math.hypot(point.x - projected.x, point.y - projected.y) <= epsilon && distance >= minimum - epsilon) return distance;
-            }
-            return null;
-          };
-          let covered = 0;
-          for (const piece of pieces) {
-            const style = getComputedStyle(piece);
-            const dash = style.strokeDasharray.match(/[-+\d.]+/g)?.map(Number);
-            if (piece.getAttribute('aria-hidden') !== 'true' || piece.getAttribute('focusable') !== 'false' || style.pointerEvents !== 'none' || style.stroke !== 'rgb(171, 178, 199)' || Number.parseFloat(style.strokeWidth) !== 1.5 || style.strokeLinecap !== 'butt' || style.strokeLinejoin !== 'miter' || piece instanceof SVGPathElement && style.fill !== 'none' || dash?.length !== 2 || dash[0] !== 5 || dash[1] !== 4) failures.push(`Dependency ${edge.id} changed native dash paint semantics.`);
-            const pieceMatrix = piece.getScreenCTM();
-            if (pieceMatrix === null) {
-              failures.push(`Dependency ${edge.id} has a body piece without geometry.`);
-              continue;
-            }
-            const localToGraph = svgMatrix.inverse().multiply(pieceMatrix);
-            let localPoints: { x: number; y: number }[];
-            if (piece instanceof SVGLineElement && piece.dataset.pieceKind === 'line') {
-              localPoints = [{ x: piece.x1.baseVal.value, y: piece.y1.baseVal.value }, { x: piece.x2.baseVal.value, y: piece.y2.baseVal.value }];
-              if (localPoints[0]!.x !== 0 || localPoints[0]!.y !== 0 || localPoints[1]!.y !== 0 || localPoints[1]!.x <= 0 || Math.abs(Math.hypot(localToGraph.a, localToGraph.b) - 1) > epsilon || Math.abs(localToGraph.a - localToGraph.d) > epsilon || Math.abs(localToGraph.b + localToGraph.c) > epsilon) failures.push(`Dependency ${edge.id} has a non-axis or rescaled line body.`);
-            } else if (piece instanceof SVGPathElement && piece.dataset.pieceKind === 'path') {
-              const commands = [...(piece.getAttribute('d') ?? '').matchAll(/[ML]([^ML]+)/g)];
-              localPoints = commands.map((command) => {
-                const coordinates = command[1]!.trim().split(/[ ,]+/).map(Number);
-                return { x: coordinates[0]!, y: coordinates[1]! };
-              });
-            } else {
-              failures.push(`Dependency ${edge.id} has an unknown paint primitive.`);
-              continue;
-            }
-            if (localPoints.length < 2 || localPoints.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) {
-              failures.push(`Dependency ${edge.id} has an invalid native join path.`);
-              continue;
-            }
-            const points = localPoints.map((point) => new DOMPoint(point.x, point.y).matrixTransform(localToGraph));
-            const distances: number[] = [];
-            let previous = covered;
-            for (const point of points) {
-              const distance = alongRoute(point, previous);
-              if (distance === null) break;
-              distances.push(distance);
-              previous = distance;
-            }
-            if (distances.length !== points.length || Math.abs(distances[0]! - covered) > epsilon) {
-              failures.push(`Dependency ${edge.id} omits, overlaps or leaves its canonical route.`);
-              continue;
-            }
-            let paintedLength = 0;
-            for (let index = 1; index < points.length; index++) paintedLength += Math.hypot(points[index]!.x - points[index - 1]!.x, points[index]!.y - points[index - 1]!.y);
-            const start = distances[0]!;
-            const end = distances[distances.length - 1]!;
-            const phase = ((start % 9) + 9) % 9;
-            if (Math.abs(paintedLength - (end - start)) > epsilon || Math.abs(Number.parseFloat(style.strokeDashoffset) - phase) > epsilon) failures.push(`Dependency ${edge.id} changes route length or continuous dash phase.`);
-            if (start > epsilon && Math.abs(phase - 7) > epsilon) failures.push(`Dependency ${edge.id} separates native joins outside a dash gap.`);
-            covered = end;
-          }
-          if (Math.abs(covered - accumulated) > epsilon) failures.push(`Dependency ${edge.id} does not paint its complete canonical body.`);
-        }
-        const matrix = path.getScreenCTM();
-        const first = edge.points[0]!;
-        const last = edge.points[edge.points.length - 1]!;
-        if (matrix === null || !onBorder(new DOMPoint(first.x, first.y).matrixTransform(matrix), source.getBoundingClientRect()) || !onBorder(new DOMPoint(last.x, last.y).matrixTransform(matrix), target.getBoundingClientRect())) failures.push(`Dependency ${edge.id} does not meet its rendered endpoint boundaries.`);
-        const markerId = /#([^#)]+)\)/.exec(path.getAttribute('marker-end') ?? '')?.[1];
-        if (markerId === undefined || !svg.querySelectorAll('marker').values().some((marker) => marker.id === markerId)) failures.push(`Dependency ${edge.id} has no local arrow marker.`);
-      }
-      return failures;
-    }, expected);
-    expect(diagnostics, 'Every static dependency follows all Dagre points and the actual transformed task boundaries').toEqual([]);
+    await checkDependencyGeometry(page, expected);
   };
   await test.step('keeps every static dependency aligned with task nodes through zoom and pan', async () => {
     await checkEdges(a.id);
@@ -372,14 +252,14 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
     }).toBe(true);
     await expect(viewport).toHaveAttribute('style', beforeFullscreen!);
     expect(await viewportElement!.evaluate((element) => element === document.querySelector('.react-flow__viewport'))).toBe(true);
-    expect(await taskElement!.evaluate((element, id) => element === document.querySelector(`.react-flow__node[data-id="${id}"] button.task-node`), a.id)).toBe(true);
+    expect(await taskElement!.evaluate((element, id) => element === document.querySelector(`.react-flow__node[data-id="${id}"] button.task-node-body`), a.id)).toBe(true);
     await checkEdges(a.id);
     await fullscreen.getByRole('button', { name: '退出全屏', exact: true }).click();
     await expect(fullscreen).toHaveCount(0);
     await expect(enter).toBeFocused();
     await expect(viewport).toHaveAttribute('style', beforeFullscreen!);
     expect(await viewportElement!.evaluate((element) => element === document.querySelector('.react-flow__viewport'))).toBe(true);
-    expect(await taskElement!.evaluate((element, id) => element === document.querySelector(`.react-flow__node[data-id="${id}"] button.task-node`), a.id)).toBe(true);
+    expect(await taskElement!.evaluate((element, id) => element === document.querySelector(`.react-flow__node[data-id="${id}"] button.task-node-body`), a.id)).toBe(true);
     await checkEdges(a.id);
     await viewportElement!.dispose();
     await taskElement!.dispose();
@@ -389,11 +269,11 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   await expect(node(page, f.id).locator('.task-shared-label')).toHaveText('共享');
   await expect(node(page, g.id).locator('.task-shared-label')).toHaveText('共享');
   await expect(node(page, f.id).locator('.graph-blocked-badge')).toHaveText('被阻塞');
-  const colors = await Promise.all([a.id, b.id, f.id].map((id) => node(page, id).evaluate((button) => getComputedStyle(button).borderLeftColor)));
+  const colors = await Promise.all([a.id, b.id, f.id].map((id) => card(page, id).evaluate((shell) => getComputedStyle(shell).borderLeftColor)));
   expect(new Set(colors).size).toBe(3);
   for (const [source, target] of [[a.id, d.id], [a.id, e.id], [d.id, f.id], [e.id, f.id], [b.id, f.id], [c.id, f.id], [f.id, g.id]]) {
-    const from = await node(page, source!).boundingBox();
-    const to = await node(page, target!).boundingBox();
+    const from = await card(page, source!).boundingBox();
+    const to = await card(page, target!).boundingBox();
     expect(from).not.toBeNull(); expect(to).not.toBeNull();
     expect(from!.x + from!.width / 2).toBeLessThan(to!.x + to!.width / 2);
   }
@@ -456,8 +336,8 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
         await node(page, task.id).focus();
         await expect.poll(() => visibleInCanvas(task.id)).toBe(true);
         await page.keyboard.press('Enter');
-        const detail = page.locator('.drawer-backdrop').getByRole('dialog');
-        await expect(detail.locator('.drawer-title')).toHaveText(task.title);
+        const detail = page.locator('.task-detail-backdrop').getByRole('dialog');
+        await expect(detail.locator('.task-detail-title')).toHaveText(task.title);
         await page.keyboard.press('Escape');
         await expect(detail).toHaveCount(0);
         await expect(node(page, task.id)).toBeFocused();
@@ -470,6 +350,7 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
 });
 
 test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request }, info) => {
+  await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   await page.setViewportSize({ width: 1100, height: 700 });
   const project = await createProject(request, { name: `Task views ${randomUUID()}` });
   const predecessor = await createTask(request, project.id, { title: '已经完成但仍属于任务链的前置' });
@@ -490,8 +371,8 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
   await openProject(page, project.id, project.name);
   await expect(viewTab(page, '任务链')).toHaveAttribute('aria-selected', 'true');
   await expect(viewTab(page, '独立任务')).toHaveAttribute('aria-selected', 'false');
-  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('22');
-  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('14');
+  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('21');
+  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('25');
   await viewTab(page, '任务链').focus();
   await page.keyboard.press('ArrowLeft');
   await expect(viewTab(page, '独立任务')).toBeFocused();
@@ -509,6 +390,7 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
   const chainsCompleted = page.getByRole('checkbox', { name: '显示已完成任务链（1）' });
   await chainsCompleted.check();
   await expect(root(page, completedRoot.id)).toBeVisible();
+  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('25');
   await root(page, predecessor.id).click();
   await expect(node(page, predecessor.id)).toBeVisible();
   await expect(node(page, dependent.id)).toBeVisible();
@@ -525,11 +407,12 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
   await expect(standaloneCompleted).not.toBeChecked();
   await standaloneCompleted.check();
   await expect(standalone(page, completedIndependent.id)).toBeVisible();
+  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('21');
   const trigger = standalone(page, independent.id);
   await trigger.focus();
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: '任务详情' });
-  await expect(dialog.locator('.drawer-title')).toHaveText(independent.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(independent.title);
   await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
   await expect(page.locator('#root')).toHaveAttribute('inert', '');
   await page.keyboard.press('Escape');
@@ -572,26 +455,31 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
   await expect(viewTab(page, '独立任务')).toHaveAttribute('aria-selected', 'true');
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(320);
 
+  await pauseRefreshClock(page);
   independent = await updateTask(request, project.id, independent.id, { version: independent.version, dependsOn: [predecessor.id] });
   await standalone(page, independent.id).click();
-  await expect(dialog.locator('.drawer-stale')).toBeVisible();
+  await expect(dialog.locator('.task-detail-stale')).toBeVisible();
   await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(independent.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(independent.title);
   await expect(standalone(page, independent.id)).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(page.locator('.standalone-row').first()).toBeFocused();
   await expect(page.locator('#root')).not.toHaveAttribute('inert', '');
+  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('26');
+  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('20');
   await viewTab(page, '任务链').click();
   await expect(node(page, independent.id)).toBeVisible();
   independent = await updateTask(request, project.id, independent.id, { version: independent.version, dependsOn: [] });
   await node(page, independent.id).click();
-  await expect(dialog.locator('.drawer-stale')).toBeVisible();
+  await expect(dialog.locator('.task-detail-stale')).toBeVisible();
   await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(independent.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(independent.title);
   await expect(node(page, independent.id)).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(root(page, predecessor.id)).toBeFocused();
   await expect(page.locator('#root')).not.toHaveAttribute('inert', '');
+  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('25');
+  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('21');
   await viewTab(page, '独立任务').click();
   await expect(standalone(page, independent.id)).toBeVisible();
   await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
@@ -599,6 +487,7 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
 });
 
 test('detail-navigation', scenario('detail-navigation'), async ({ page, request }, info) => {
+  await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   const project = await createProject(request, { name: `Details ${randomUUID()}` });
   const a = await createTask(request, project.id, { title: '前置 <script>文本</script>', description: '前置说明' });
   await updateTask(request, project.id, a.id, { version: a.version, status: 'done' });
@@ -627,6 +516,7 @@ test('detail-navigation', scenario('detail-navigation'), async ({ page, request 
   expect(b.properties.pullRequests).toEqual(pullRequests);
   const c = await createTask(request, project.id, { title: '快照中的后续', description: '后续描述', dependsOn: [b.id] });
   await openProject(page, project.id, project.name);
+  await pauseRefreshClock(page);
   const graphResponse = await request.get(`/api/v1/projects/${project.id}/task-graph`);
   expect(graphResponse.status()).toBe(200);
   const graph = await graphResponse.json() as { tasks: Record<string, unknown>[] };
@@ -637,9 +527,9 @@ test('detail-navigation', scenario('detail-navigation'), async ({ page, request 
   page.on('request', (request) => { if (new URL(request.url()).pathname === `/api/v1/projects/${project.id}/tasks/${b.id}`) detailReads++; });
   await node(page, b.id).click();
   const dialog = page.getByRole('dialog', { name: '任务详情' });
-  await expect(dialog.locator('.drawer-title')).toHaveText(title);
-  expect(await dialog.getByRole('region', { name: '描述', exact: true }).locator('.drawer-description').textContent()).toBe(description);
-  await expect(dialog.locator('.drawer-full-id')).toHaveText(b.id);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(title);
+  expect(await dialog.getByRole('region', { name: '描述', exact: true }).locator('.task-detail-description').textContent()).toBe(description);
+  await expect(dialog.locator('.task-detail-full-id')).toHaveText(b.id);
   await expect(dialog.locator('time')).toHaveCount(2);
   await expect(dialog.locator('img,script')).toHaveCount(0);
   const properties = await checkPullRequests(dialog, pullRequests);
@@ -687,20 +577,21 @@ test('detail-navigation', scenario('detail-navigation'), async ({ page, request 
   await expect(unknownReference).toBeVisible();
   await expect(dialog.getByRole('region', { name: '任务图快照中的直接后续', exact: true }).getByRole('button', { name: c.title, exact: true })).toBeVisible();
   await dialog.getByRole('region', { name: '任务图快照中的直接后续', exact: true }).getByRole('button', { name: c.title, exact: true }).click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(c.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(c.title);
   await checkPullRequests(dialog, []);
   await expect(dialog.getByText('暂无关联 PR', { exact: true })).toBeVisible();
   await dialog.getByRole('region', { name: '前置依赖', exact: true }).getByRole('button', { name: `${Array.from(title).slice(0, 160).join('')}…`, exact: true }).click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(title);
   await checkPullRequests(dialog, pullRequests);
   await dialog.getByRole('region', { name: '前置依赖', exact: true }).getByRole('button', { name: unknown.id, exact: true }).click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(unknown.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(unknown.title);
   await expect(dialog.getByText('当前任务尚未包含在任务图中，请刷新任务图以查看后续关系。')).toBeVisible();
   await expect(stat(page, '任务总数')).toHaveText('3');
   await screenshot(page, info, 'detail-navigation');
 });
 
 test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request }, info) => {
+  await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   const project = await createProject(request, { name: `Freshness ${randomUUID()}` });
   const predecessor = await createTask(request, project.id, { title: '完成后解除阻塞的前置' });
   const dependent = await createTask(request, project.id, { title: '版本和时间保持不变的后续', dependsOn: [predecessor.id] });
@@ -710,6 +601,7 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   await expect(root(page, predecessor.id).locator('.root-status')).toHaveText('待处理');
   await expect(root(page, predecessor.id).locator('.root-progress-label')).toHaveText('0/2 已完成');
   await expect(node(page, dependent.id).locator('.graph-blocked-badge')).toBeVisible();
+  await pauseRefreshClock(page);
   await updateTask(request, project.id, predecessor.id, { version: predecessor.version, status: 'done' });
   const currentResponse = await request.get(`/api/v1/projects/${project.id}/tasks/${dependent.id}`);
   expect(currentResponse.status()).toBe(200);
@@ -720,8 +612,8 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   expect(current.blockedBy).toEqual([]);
   await node(page, dependent.id).click();
   const dialog = page.getByRole('dialog', { name: '任务详情' });
-  await expect(dialog.locator('.drawer-title')).toHaveText(dependent.title);
-  await expect(dialog.locator('.drawer-ready')).toHaveText('可开始');
+  await expect(dialog.locator('.task-detail-title')).toHaveText(dependent.title);
+  await expect(dialog.locator('.task-detail-ready')).toHaveText('可开始');
   await expect(dialog.getByText('任务详情与当前任务图不同，刷新后可查看一致的进度和关系。')).toBeVisible();
   await expect(stat(page, '已完成')).toHaveText('0');
   await expect(stat(page, '被阻塞')).toHaveText('1');
@@ -734,24 +626,69 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   await expect(root(page, predecessor.id).locator('.root-status')).toHaveText('进行中');
   await expect(root(page, predecessor.id).locator('.root-progress-label')).toHaveText('1/2 已完成');
   await expect(node(page, predecessor.id).locator('.graph-status')).toHaveText('已完成');
-  await expect(dialog.locator('.drawer-title')).toHaveText(dependent.title);
-  await expect(dialog.locator('.drawer-stale')).toHaveCount(0);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(dependent.title);
+  await expect(dialog.locator('.task-detail-stale')).toHaveCount(0);
   await expect(node(page, dependent.id).locator('.graph-blocked-badge')).toHaveCount(0);
   await page.keyboard.press('Escape');
   const pullRequests = Array.from({ length: 205 }, (_, index) => ({ title: `刷新前关联 ${index + 1}`, url: '  new arbitrary URL\0  ' }));
-  const changed = await updateTask(request, project.id, dependent.id, { version: current.version, properties: { pullRequests } });
+  let changed = await updateTask(request, project.id, dependent.id, { version: current.version, properties: { pullRequests } });
   expect(changed.properties.pullRequests).toEqual(pullRequests);
   await node(page, dependent.id).click();
   await checkPullRequests(dialog, pullRequests);
-  await expect(dialog.locator('.drawer-stale')).toBeVisible();
+  await expect(dialog.locator('.task-detail-stale')).toBeVisible();
   await dialog.getByRole('combobox', { name: '关联 PR 页码' }).selectOption('2');
+  await dialog.getByRole('combobox', { name: '关联 PR 页码' }).focus();
+  await checkPullRequests(dialog, pullRequests, 2);
+  const graphTransform = await page.locator('.react-flow__viewport').getAttribute('style');
+  const pagePosition = await page.evaluate(() => window.scrollY);
+  changed = await updateTask(request, project.id, dependent.id, { version: changed.version, status: 'in_progress' });
+  expect(await nextAutomaticRefresh(page, project.id)).toBe(200);
+  await expect(stat(page, '进行中')).toHaveText('1');
+  await expect(stat(page, '待处理')).toHaveText('0');
+  await expect(node(page, dependent.id).locator('.graph-status')).toHaveText('进行中');
+  await expect(dialog.locator('.task-detail-status')).toHaveText('进行中');
+  await expect(dialog.locator('.task-detail-stale')).toHaveCount(0);
+  await checkPullRequests(dialog, pullRequests, 2);
+  await expect(dialog.getByRole('combobox', { name: '关联 PR 页码' })).toBeFocused();
+  await expect(page.locator('.react-flow__viewport')).toHaveAttribute('style', graphTransform!);
+  expect(await page.evaluate(() => window.scrollY)).toBe(pagePosition);
+
+  const attachmentTab = dialog.getByRole('tab', { name: '附件', exact: true });
+  const attachmentPath = dialog.getByRole('textbox', { name: '目标相对路径', exact: true });
+  await attachmentTab.click();
+  await dialog.locator('.attachment-upload-disclosure>summary').click();
+  const fileInput = dialog.getByLabel('选择一个文件', { exact: true });
+  await fileInput.setInputFiles({ name: 'retained.txt', mimeType: 'text/plain', buffer: Buffer.from('Unsubmitted attachment draft') });
+  await attachmentPath.fill('draft/retained.txt');
+  changed = await updateTask(request, project.id, dependent.id, { version: changed.version, title: '自动刷新后的任务标题' });
+  expect(await nextAutomaticRefresh(page, project.id)).toBe(200);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(changed.title);
+  await expect(attachmentTab).toHaveAttribute('aria-selected', 'true');
+  await expect(attachmentPath).toHaveValue('draft/retained.txt');
+  await expect(attachmentPath).toBeFocused();
+  expect(await fileInput.evaluate((input: HTMLInputElement) => input.files?.[0]?.name)).toBe('retained.txt');
+  await dialog.getByRole('tab', { name: '概览', exact: true }).click();
+  await checkPullRequests(dialog, pullRequests, 2);
+
+  const successfulReceipt = await page.locator('.snapshot-time time').getAttribute('datetime');
+  await withDependencyFailure(async () => {
+    expect(await nextAutomaticRefresh(page, project.id)).toBe(500);
+    await expect(page.getByRole('heading', { name: '刷新失败' })).toBeVisible();
+    await expect(page.locator('.snapshot-time time')).toHaveAttribute('datetime', successfulReceipt!);
+    await expect(stat(page, '进行中')).toHaveText('1');
+    await expect(dialog.locator('.task-detail-title')).toHaveText(changed.title);
+    await checkPullRequests(dialog, pullRequests, 2);
+  });
+  expect(await nextAutomaticRefresh(page, project.id)).toBe(200);
+  await expect(page.locator('.snapshot-error')).toHaveCount(0);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(changed.title);
   await checkPullRequests(dialog, pullRequests, 2);
   const replacement = Array.from({ length: 101 }, (_, index) => ({ title: `刷新后关联 ${index + 1}`, url: 'arbitrary' }));
   const replaced = await updateTask(request, project.id, dependent.id, { version: changed.version, properties: { pullRequests: replacement } });
-  await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
+  expect(await nextAutomaticRefresh(page, project.id)).toBe(200);
   await checkPullRequests(dialog, replacement);
-  await expect(dialog.locator('.drawer-stale')).toHaveCount(0);
-  await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
+  await expect(dialog.locator('.task-detail-stale')).toHaveCount(0);
+  await expect(dialog.getByRole('tab', { name: '概览', exact: true })).toBeFocused();
   await screenshot(page, info, 'refresh-staleness');
   await page.keyboard.press('Escape');
   await updateTask(request, project.id, dependent.id, { version: replaced.version, status: 'done' });
@@ -769,6 +706,7 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
 });
 
 test('failure-recovery', scenario('failure-recovery'), async ({ page, request }, info) => {
+  await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   const project = await createProject(request, { name: `Recovery ${randomUUID()}` });
   await openProject(page, project.id, project.name);
   await expect(page.getByRole('heading', { name: '还没有任务' })).toBeVisible();
@@ -787,6 +725,7 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, request },
   await expect(root(page, task.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(root(page, task.id).locator('.root-status')).toHaveText('已完成');
   await expect(node(page, task.id)).toBeVisible();
+  await pauseRefreshClock(page);
   const receipt = await page.locator('.snapshot-time time').getAttribute('datetime');
   const dialog = page.getByRole('dialog', { name: '任务详情' });
   await withDependencyFailure(async () => {
@@ -795,6 +734,7 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, request },
     const response = await failedDetail;
     expect(response.status()).toBe(500);
     await expect(dialog.getByRole('heading', { name: '任务详情加载失败' })).toBeVisible();
+    await expectCenteredTaskDetail(page, dialog);
     await expect(dialog.getByRole('button', { name: '重试详情', exact: true })).toBeVisible();
     await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
     await expect(page.locator('.task-graph-canvas')).toBeVisible();
@@ -806,7 +746,7 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, request },
   const retriedDetail = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/projects/${project.id}/tasks/${task.id}`);
   await dialog.getByRole('button', { name: '重试详情', exact: true }).click();
   expect((await retriedDetail).status()).toBe(200);
-  await expect(dialog.locator('.drawer-title')).toHaveText(task.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(task.title);
   await expect(dialog.getByRole('alert')).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
@@ -902,6 +842,7 @@ test('deep-links', scenario('deep-links'), async ({ page, request }, info) => {
 });
 
 test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, info) => {
+  await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   const project = await createProject(request, { name: `Keyboard ${randomUUID()}` });
   const a = await createTask(request, project.id, { title: '键盘前置任务' });
   await updateTask(request, project.id, a.id, { version: a.version, status: 'done' });
@@ -911,6 +852,7 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   const c = await createTask(request, project.id, { title: '键盘后续任务', dependsOn: [b.id] });
   await createTask(request, project.id, { title: '保留原链根的另一分支', dependsOn: [a.id] });
   await openProject(page, project.id, project.name);
+  await pauseRefreshClock(page);
   const trigger = node(page, b.id);
   let detailReads = 0;
   page.on('request', (request) => { if (new URL(request.url()).pathname === `/api/v1/projects/${project.id}/tasks/${b.id}`) detailReads++; });
@@ -936,16 +878,26 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: '任务详情' });
   const close = dialog.getByRole('button', { name: '关闭任务详情', exact: true });
-  await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
+  const detailLanguage = dialog.getByRole('combobox', { name: '语言 / Language', exact: true });
+  await expect(dialog.locator('.task-detail-title')).toHaveText(b.title);
   expect(detailReads).toBe(1);
   await expect(close).toBeFocused();
   await expect(page.locator('#root')).toHaveAttribute('inert', '');
+  const overviewTab = dialog.getByRole('tab', { name: '概览', exact: true });
+  await page.keyboard.press('Tab');
+  await expect(overviewTab).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(dialog.getByRole('link', { name: b.properties.pullRequests[0]!.url, exact: true })).toBeFocused();
   await page.keyboard.press('Shift+Tab');
+  await expect(overviewTab).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
   await expect(close).toBeFocused();
   await page.keyboard.press('Shift+Tab');
+  await expect(detailLanguage).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
   await expect(dialog.getByRole('region', { name: '任务图快照中的直接后续', exact: true }).getByRole('button', { name: c.title, exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(detailLanguage).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(close).toBeFocused();
   for (let index = 0; index < 9; index++) {
@@ -957,7 +909,7 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   await expect(fullscreen).toBeVisible();
   await expect(trigger).toBeFocused();
   await page.keyboard.press('Space');
-  await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(b.title);
   expect(detailReads).toBe(2);
   await close.click();
   await expect(trigger).toBeFocused();
@@ -968,7 +920,7 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   expect(await page.evaluate(() => ({ document: document.documentElement.style.overflow, body: document.body.style.overflow }))).toEqual(originalOverflow);
 
   await trigger.click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(b.title);
   const fetched = deferred<void>();
   const release = deferred<void>();
   const pattern = `**/api/v1/projects/${project.id}/tasks/${a.id}`;
@@ -984,10 +936,11 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
     await dialog.getByRole('region', { name: '前置依赖', exact: true }).getByRole('button', { name: a.title, exact: true }).click();
     await within(fetched.promise, 'real task response fetch');
     await expect(dialog.getByText('正在加载任务详情', { exact: true })).toBeVisible();
+    await expectCenteredTaskDetail(page, dialog);
     await expect(close).toBeFocused();
     expect(await trigger.evaluate((button) => button === document.activeElement)).toBe(false);
     release.resolve();
-    await expect(dialog.locator('.drawer-title')).toHaveText(a.title);
+    await expect(dialog.locator('.task-detail-title')).toHaveText(a.title);
     await page.keyboard.press('Escape');
     await expect(trigger).toBeFocused();
   } finally {
@@ -995,8 +948,8 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
     await within(page.unrouteAll({ behavior: 'wait' }), 'delayed task route cleanup');
   }
   await trigger.click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
-  await page.locator('.drawer-backdrop').click({ position: { x: 5, y: 5 } });
+  await expect(dialog.locator('.task-detail-title')).toHaveText(b.title);
+  await page.locator('.task-detail-backdrop').click({ position: { x: 5, y: 5 } });
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
 
@@ -1008,14 +961,25 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
     if (fullscreenMode) {
       currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, dependsOn: [a.id] });
       await page.getByRole('button', { name: '刷新', exact: true }).click();
+      await expect(trigger).toHaveCount(0);
+      await expect(node(page, c.id)).toHaveCount(0);
+      await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '2');
+      await expect(page.locator('.task-graph')).toHaveAttribute('data-total-task-count', '4');
+      const expandSuccessors = card(page, a.id).getByRole('button', { name: '展开后续 1 个任务、1 条依赖', exact: true });
+      await expect(expandSuccessors).toHaveAttribute('data-added-tasks', '1');
+      await expect(expandSuccessors).toHaveAttribute('data-added-edges', '1');
+      await expandSuccessors.click();
       await expect(trigger).toBeVisible();
+      await expect(node(page, a.id)).toBeFocused();
+      await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '3');
+      await expect(node(page, c.id)).toHaveCount(0);
       await enterFullscreen.click();
     }
     currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, dependsOn: [] });
     await trigger.click();
-    await expect(dialog.locator('.drawer-stale')).toBeVisible();
+    await expect(dialog.locator('.task-detail-stale')).toBeVisible();
     await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
-    await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
+    await expect(dialog.locator('.task-detail-title')).toHaveText(b.title);
     await expect(trigger).toHaveCount(0);
     if (fullscreenMode) await expect(page.locator('.task-graph-fullscreen')).toHaveCount(1);
     await page.keyboard.press('Escape');
@@ -1048,10 +1012,10 @@ test('narrow-layout', scenario('narrow-layout'), async ({ page, request }, info)
   await openProject(page, project.id, project.name);
   await expect(page.getByRole('button', { name: '刷新', exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await expect(page.locator('.stats .stat')).toHaveCount(6);
+  await expect(page.locator('.stats .stat')).toHaveCount(7);
   await page.getByRole('button', { name: '全屏查看', exact: true }).click();
   const fullscreen = page.getByRole('dialog', { name: '任务依赖图全屏查看', exact: true });
-  for (const width of [320, 768, 1280, 320]) {
+  for (const width of [320, 768, 1280, 1440, 320]) {
     await page.setViewportSize({ width, height: 800 });
     await expect.poll(async () => {
       const bounds = await fullscreen.boundingBox();
@@ -1065,22 +1029,18 @@ test('narrow-layout', scenario('narrow-layout'), async ({ page, request }, info)
   await node(page, a.id).focus();
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: '任务详情' });
-  await expect(dialog.locator('.drawer-title')).toHaveText(a.title);
-  await expect(dialog.locator('.drawer-description').first()).toHaveText(a.description);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(a.title);
+  await expect(dialog.locator('.task-detail-description').first()).toHaveText(a.description);
   await checkPullRequests(dialog, pullRequests);
   await dialog.getByRole('combobox', { name: '关联 PR 页码' }).selectOption('1');
   await checkPullRequests(dialog, pullRequests, 1);
   await dialog.getByRole('button', { name: '上一页' }).click();
   await checkPullRequests(dialog, pullRequests);
   await expect(dialog.getByRole('combobox', { name: '关联 PR 页码' })).toBeFocused();
-  for (const width of [320, 768, 1280, 320]) {
+  for (const width of [320, 768, 1280, 1440, 320]) {
     await page.setViewportSize({ width, height: 800 });
-    await expect.poll(async () => {
-      const bounds = await dialog.boundingBox();
-      return bounds !== null && bounds.x >= -0.5 && bounds.x + bounds.width <= width + 0.5 && bounds.y >= -0.5 && bounds.height <= 800.5;
-    }).toBe(true);
-    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    expect(await dialog.locator('.drawer-body').evaluate((body) => body.scrollWidth <= body.clientWidth)).toBe(true);
+    await expectCenteredTaskDetail(page, dialog);
+    await expectTaskDetailScroll(page, dialog);
   }
   await dialog.getByRole('button', { name: '关闭任务详情', exact: true }).focus();
   await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
@@ -1093,7 +1053,8 @@ test('narrow-layout', scenario('narrow-layout'), async ({ page, request }, info)
   await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await standalone(page, independent.id).click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(independent.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(independent.title);
+  await expectCenteredTaskDetail(page, dialog);
   await screenshot(page, info, 'narrow-standalone');
   await page.keyboard.press('Escape');
   await expect(standalone(page, independent.id)).toBeFocused();

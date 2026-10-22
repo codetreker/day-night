@@ -1,6 +1,6 @@
 # UniAuth 登录与项目授权架构
 
-状态：身份/凭据模块已实现且可显式组合，尚未挂入生产路由；成员和统一启用继续交付。
+状态：身份/凭据与项目成员模块、CLI 凭据和可显式挂载的双语 Web 鉴权界面已实现；生产 main.tsx 继续以 LocaleProvider 挂载 App，鉴权入口切换与真实协议接线由统一启用交付。
 [需求](../spec/daynight-auth.md)拥有完整可观察行为，
 [任务入口](daynight-auth-tasks.md)连接执行资料，
 [鉴权决策](../../.agents/notes/implemented/architecture/2026-10-22-auth-architecture.md)
@@ -19,7 +19,8 @@
 当前主站 mux 继续注册 project/task/attachment/UI，尚未挂载鉴权模块；项目列表仍
 全局分页，配置强制 numeric loopback。身份迁移和独立 handlers 已由
 [身份/凭据决策](../../.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
-交付，成员授权与入口启用尚未完成。以下可复用机制的原始源码基线 `38b827fe644139f4e20989cd8e7740350566fb56`：
+交付；[项目成员模块](../../.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
+已提供可组合的授权、私有创建和邀请，正式资源入口尚未启用。以下可复用机制的原始源码基线 `38b827fe644139f4e20989cd8e7740350566fb56`：
 
 | 机制 | 固定源码 | 使用方式 |
 |---|---|---|
@@ -32,10 +33,11 @@
 UniAuth 基线 `c82c55c7fcd366824d0bc5ac6bdd17528c0300fa` 的
 [协议](https://github.com/codetreker/uniauth/blob/c82c55c7fcd366824d0bc5ac6bdd17528c0300fa/docs/reference/api.md)
 提供一次性身份，不替产品管理用户或会话。[SDK](https://github.com/codetreker/uniauth/blob/c82c55c7fcd366824d0bc5ac6bdd17528c0300fa/docs/reference/sdks.md)
-负责 URL、callback 解析与一次领取。依赖可固定为
+负责 URL、callback 解析与一次领取。当前集成固定为
 `github.com/codetreker/uniauth/sdk/go v0.0.0-20261022051636-c82c55c7fcd3`；
 [Go proxy 元数据](https://proxy.golang.org/github.com/codetreker/uniauth/sdk/go/@v/v0.0.0-20261022051636-c82c55c7fcd3.info)
-已确认，实施时校验 checksum，不使用工作站 replace。
+记录该基线。统一启用升级至包含上游 PR #19 的固定版本并校验 checksum，继续不使用
+工作站 replace；旧基线的历史能力与新上游能力分别说明。
 
 ## 职责与数据流
 
@@ -61,6 +63,25 @@ Principal 形状为 `{UserID, CredentialID, Kind}`，Kind 只有 session/PAT。�
 读取在原 repeatable-read 快照中检查成员再读取资源；写入取得现有项目行锁后重查
 成员/角色/观察版本与领域约束。列表以 membership JOIN 在原 SQL cursor/LIMIT 前
 筛选。任务版本、int64、图容量和现有分页合同保持。
+
+## 登录方式发现
+
+登录页的 API 客户端读取 `GET /api/v1/auth/providers`，结果为
+`{providers:["microsoft","google","github"]}` 的允许子集。该接口是未挂入生产的
+前端依赖，列表必须由服务端根据当前 UniAuth App 的允许范围与实际启用状态取得。
+客户端明确处理读取失败、重试和零 provider，不使用固定 provider 或本地配置回退。
+
+Daynight 当前固定的 UniAuth `c82c55c7` SDK 只有 authorize/retrieve 身份交接；
+该基线的 console provider 接口只有全局启用状态，不能证明当前 App 可用列表。
+上游 [PR #19](https://github.com/codetreker/uniauth/pull/19) 已在
+`0978963813fcefd9d553f6cb9bcc319084c764b3` 交付
+[App-aware discovery](https://github.com/codetreker/uniauth/blob/0978963813fcefd9d553f6cb9bcc319084c764b3/docs/reference/api.md#L28-L73)：
+后端以 App 凭据调用 POST /auth/providers，body 携带精确 redirect_uri，取得实时
+App allowlist 与 registry 的交集；空列表有效。Go SDK
+[Providers(ctx, redirectURI)](https://github.com/codetreker/uniauth/blob/0978963813fcefd9d553f6cb9bcc319084c764b3/sdk/go/providers.go#L14-L37)
+执行有界单次请求。统一启用任务升级 Daynight 的固定 SDK，以既有 callback
+调用真实协议并暴露服务端接口；不产生额外登录事务，前端受控响应只验证界面状态。[Web 决策](../../.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
+记录这一依赖及证据边界。
 
 ## 登录和凭据
 
@@ -102,14 +123,16 @@ localhost/numeric loopback HTTP，使用不带 __Host 前缀和 Secure 的开发
 | login_transactions | 事务 ID、state_hash、browser_binding_hash、provider、return_path、expires_at。 |
 | sessions | ID、唯一 token_hash、user_id、expires_at；注销删除。 |
 | personal_access_tokens | ID、唯一 token_hash、user_id、name、created_at、expires_at；撤销删除。 |
-| project_members | `(project_id,user_id)` 唯一；role 为 admin/member；独立 bigint version。 |
+| project_members | `(project_id,user_id)` 唯一；role 为 admin/member；bigint version 来自独立 sequence。 |
 | project_invitations | ID、project_id、唯一 token_hash、created_by、expires_at、consumed_by/at、revoked_at。 |
 
 使用既有迁移机制、唯一索引和角色 CHECK，不要求新增 foreign key；关联由业务事务
 验证。旧项目内容保持，不自动分配成员，空成员项目自然不可见，后续手工补齐。
 
 创建项目和首位 admin 原子提交。成员管理提交观察版本，锁项目后重查 admin/版本，
-变更增加成员版本，过期返回 version_conflict。删除/降级最后 admin 返回 409 last_admin。
+真实角色变更与新加入从 project_member_versions sequence 取得新版本，观察值不要求
+连续或每次恰好加一；无变化保持版本。移除后重加入不复用旧版本，过期返回
+version_conflict。删除/降级最后 admin 返回 409 last_admin。
 两个 admin 并发不能都离任；成员变更不改 task.version。
 
 邀请七天有效、只授予 member、可撤销。邀请属于项目，创建者离任不自动作废。
@@ -129,6 +152,7 @@ localhost/numeric loopback HTTP，使用不带 __Host 前缀和 Secure 的开发
 | 路由 | 行为 |
 |---|---|
 | GET /healthz、GET /readyz | 无业务数据的存活/就绪；就绪保留 store 可用性。 |
+| GET /api/v1/auth/providers | 登录页的 App 范围 provider 发现；前端依赖已实现，真实协议与服务端暴露由统一启用交付。 |
 | GET /api/v1/auth/login?provider=... | 创建 pending 并跳转 UniAuth。 |
 | GET /api/v1/auth/callback | 校验/消费 pending、领取身份、建立 session。 |
 | GET /api/v1/me | 当前用户最小资料。 |
@@ -143,10 +167,19 @@ localhost/numeric loopback HTTP，使用不带 __Host 前缀和 Secure 的开发
 新增 unauthenticated/forbidden/last_admin/invitation_unavailable 错误，保留原 envelope/
 requestId。非成员与不存在项目均 not_found；错误类别不能落入 internal_error。
 
-Web 登录壳通过 /me 取得身份，401 显示 UniAuth 入口；资源 404 不退出全局会话。
+`AuthenticatedApp` 为已实现的显式挂载入口，与现有应用共用 LocaleProvider；
+生产 `main.tsx` 保持 `LocaleProvider` 与原 `App`，统一启用只切换应用组件。
+它通过 /me 取得身份，401 显示 UniAuth 入口；资源 404 不退出全局会话。
 项目列表增加名称/仓库地址创建表单，复用原 API，成功进入空项目且创建者为 admin。
 账户页管理 PAT，项目页管理成员。角色确认后展示管理操作，服务端独立检查；冲突
-重取权威数据。401/换账号清除旧项目和附件快照，失败不伪装成空列表。
+重取权威数据。401/换账号使共享请求 generation 失效并卸载旧项目和附件内容，
+失败不伪装成空列表。成员 version 以 bigint 解码及序列化，保留完整正 int64。
+现有图、项目浏览偏好和居中 TaskDetailDialog 继续复用，不增加任务字段编辑。
+`messages.auth` 的英语与简体中文契约覆盖所有新界面、标题、校验、无障碍名称、
+错误和异步通知；通知存语义，渲染时取当前语言，日期/计数使用原生格式化器。
+登录、工作空间、邀请及管理模态均提供共用 LanguageSelector。切换不以 locale
+重建组件或进入请求依赖，保持输入、一次性秘密、成员版本、当前身份和 pending
+操作。[语言设计](daynight-web-i18n.md)拥有公共机制，鉴权组件遵守相同状态规则。
 
 邀请入口 /invitations#<secret> 读取后立即清除 fragment，以 tab 的临时 sessionStorage
 跨登录保存，确认/取消/失效后删除；秘密不进请求路径/Referer/日志。一次性 token/
@@ -157,11 +190,24 @@ Web 登录壳通过 /me 取得身份，401 显示 UniAuth 入口；资源 404 �
 处理；401 显示明确错误并引导重新登录，不返回登录 HTML。HTML 继续可信执行，
 主站 API 始终按当前浏览者实际身份授权，不宣称隔离上传代码。
 
-CLI server 投影增加 serverToken；setup 隐藏输入，明确 --server-token-stdin 从 stdin
-读取一行，互斥和输入错误先于 I/O。沿用配置锁/原子替换/受限权限，服务 origin 变更
-原子清除旧 token；仓库绑定仍只有 serverUrl/repoIdentity/projectId。HTTP 客户端向原
-请求附加 Bearer，保留 manual redirect、不跨 origin 转发、二进制 stdout、完整版本/
-分页、预算与不重试写入。review/update/help/version 保留各自依赖边界。
+CLI server 投影已实现可选 `serverToken`，为非空 opaque visible ASCII；仅 HTTPS
+或 host 为字面量 `localhost`、`127.0.0.0/8` 内的数值 IPv4、`::1` 的 HTTP 可配置。setup 隐藏
+输入，空回答保留同 origin 令牌或跳过新 origin 的令牌；布尔 `--server-token-stdin`
+读取不超过 1 MiB 的单行非空值，允许单个 LF/CRLF，拒绝空输入、多行和控制字符。
+显式 URL 配置保持不询问；stdin 可复用已有 URL，无 URL 时须显式提供。
+
+既有配置锁内共同比较 serverUrl/serverToken，正规化 origin 变化原子清除旧 token，
+同 origin 保留；其他 review 字段的并发完成修改保持。含令牌的文档由共享写入者
+统一保存为 POSIX `0600`，无令牌文档保持既有权限行为，普通文件/符号链接/锁和
+原子替换协议不变。YAML 错误只保留安全类别、代码和位置，不复制标量及原始
+parser cause；通用错误格式化器和其他错误链不承担凭据清洗。
+
+共享 API 边界向已有项目、任务和文件请求附加 Bearer，保留 manual redirect、
+不转发令牌、二进制 stdout、精确 int64、分页和预算。401 给出 setup 指导，不自动
+匿名回退、登录预检或写入重试；403/404/409 保持。仓库绑定仍只有
+serverUrl/repoIdentity/projectId。review/update/help/version 保留依赖边界；setup
+不访问网络。机制与备选由[CLI 凭据决策](../../.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
+拥有；Web 令牌管理已在显式挂载的组件中实现，生产启用继续由其任务交付。
 
 ## 配置、现有部署和启用
 
@@ -189,8 +235,20 @@ handler；public origin 是 fixture 显式输入，不是生产 fallback。
 真实网关集成 fixture 固定 UniAuth 源码并在其模块内编译 testdata 命令，实际 App
 注册、状态、PKCE、GitHub 适配器和一次性结果均参与 HTTP 链路；只控制上游响应。
 
-身份/成员模块先以真实 handler/store 验证，尚未挂入入口时维持当前本机行为；CLI
-凭据和 Web 新壳完成后，统一接线同时修改 composition、业务 actor 参数、Web 主入口、
+成员模块由 service.NewMemberships 和 server.NewMembershipRoutes 提供；RegisterRoutes
+显式组合 Auth.Require。RequireProjectRead/Write 接收调用者并在其 Snapshot/ProjectTx
+内检查成员，私有创建与过滤列表复用 Projects 的现有校验/cursor。正式资源入口接入
+时替换原无身份入口，不保留可信用户适配器。
+
+成员响应是 `{projectId,userId,email,name,avatarUrl,role,version,createdAt,updatedAt}`，
+名单包在 items；角色 PATCH 为 `{version,role}`，移除 DELETE 为 `{version}`，version
+使用完整正 int64，前端不得以有损 Number 重新编码。创建邀请 POST 接受空对象，
+响应仅这一次有 link，列表 items 仅元数据；inspect/accept POST body 为 `{token}`。
+inspect 返回 projectId/projectName，仅已有成员时包含 member；accept 返回成员资源。
+
+身份/成员模块先以真实 handler/store 验证；CLI 凭据和显式挂载的 Web 新壳已有
+实现，组件及受控 fetch fixture 分别验证。生产入口尚未接线，保持当前本机行为；
+统一接线同时修改 composition、业务 actor 参数、Web 主入口、
 部署配置/健康检查、Go 进程/安装 CLI/Web native/container/Docker fixture。测试通过
 正常协议取得 session/PAT，没有匿名豁免；既有选中 gate 同次通过。
 统一启用本身证明双用户隔离、撤销、管理员/邀请并发、正常浏览器登录和安装 CLI。

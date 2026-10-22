@@ -34,6 +34,19 @@ type ProjectPage struct {
 }
 
 func (s *Projects) Create(ctx context.Context, input CreateProject) (core.Project, error) {
+	return s.create(ctx, input, s.store.CreateProject)
+}
+
+func (s *Projects) CreatePrivate(ctx context.Context, principal core.Principal, input CreateProject) (core.Project, error) {
+	if err := requirePrincipal(principal); err != nil {
+		return core.Project{}, err
+	}
+	return s.create(ctx, input, func(ctx context.Context, id, name, repoURL string) (core.Project, error) {
+		return s.store.CreatePrivateProject(ctx, principal, id, name, repoURL)
+	})
+}
+
+func (s *Projects) create(ctx context.Context, input CreateProject, create func(context.Context, string, string, string) (core.Project, error)) (core.Project, error) {
 	if strings.TrimSpace(input.Name) == "" || !utf8.ValidString(input.Name) || strings.ContainsRune(input.Name, 0) {
 		return core.Project{}, invalidInput("Project name must be nonempty UTF-8 text without NUL characters.")
 	}
@@ -44,7 +57,7 @@ func (s *Projects) Create(ctx context.Context, input CreateProject) (core.Projec
 	if err != nil {
 		return core.Project{}, fmt.Errorf("generate project ID: %w", err)
 	}
-	project, err := s.store.CreateProject(ctx, id.String(), input.Name, input.RepoURL)
+	project, err := create(ctx, id.String(), input.Name, input.RepoURL)
 	if err != nil {
 		return core.Project{}, fmt.Errorf("create project: %w", err)
 	}
@@ -77,6 +90,21 @@ func (s *Projects) Get(ctx context.Context, id string) (core.Project, error) {
 }
 
 func (s *Projects) List(ctx context.Context, request PageRequest) (ProjectPage, error) {
+	return s.list(ctx, request, func(snapshot *store.Snapshot, page store.Page) (store.ProjectPage, error) {
+		return snapshot.Projects(ctx, page)
+	})
+}
+
+func (s *Projects) ListAccessible(ctx context.Context, principal core.Principal, request PageRequest) (ProjectPage, error) {
+	if err := requirePrincipal(principal); err != nil {
+		return ProjectPage{}, err
+	}
+	return s.list(ctx, request, func(snapshot *store.Snapshot, page store.Page) (store.ProjectPage, error) {
+		return snapshot.AccessibleProjects(ctx, principal, page)
+	})
+}
+
+func (s *Projects) list(ctx context.Context, request PageRequest, query func(*store.Snapshot, store.Page) (store.ProjectPage, error)) (ProjectPage, error) {
 	page, err := projectListPage(request)
 	if err != nil {
 		return ProjectPage{}, err
@@ -84,7 +112,7 @@ func (s *Projects) List(ctx context.Context, request PageRequest) (ProjectPage, 
 	var result store.ProjectPage
 	err = s.store.ReadSnapshot(ctx, func(snapshot *store.Snapshot) error {
 		var err error
-		result, err = snapshot.Projects(ctx, page)
+		result, err = query(snapshot, page)
 		return err
 	})
 	if err != nil {

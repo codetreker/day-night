@@ -15,8 +15,8 @@ a mismatched image or cleanup failures unless its receipts are validated.
 `pnpm web:acceptance` uses the shared acceptance runner to build real embedded
 assets and a fresh native Go executable, own an isolated PostgreSQL 18.6
 container/volume and wait for structured service readiness. The normal dev-ci
-source build/start runs concurrently. Browser phases run ten native functional
-scenarios, the same ten functional scenarios through the production image's
+source build/start runs concurrently. Browser phases run thirteen native functional
+scenarios, the same thirteen functional scenarios through the production image's
 stream gateway, then five native capacity/limit scenarios. The normal localhost
 stack and its data do not participate. The
 [pipeline decision](2026-10-21-web-acceptance-pipeline.md) partially supersedes the
@@ -38,34 +38,50 @@ details and independent per-project browsing preferences. The native target also
 runs four fixed capacity datasets and
 independent node/edge-limit rejections. The
 [complete context decision](../feature/2026-10-22-complete-prerequisite-context.md)
-adds dense external ancestry while preserving the original three datasets.
-Fixtures are created through real APIs;
+adds dense external ancestry while preserving the original three datasets. The
+[bilingual interface decision](../feature/2026-10-22-web-bilingual-interface.md)
+adds three targeted functional language scenarios to each target without
+replicating the capacity matrix. Fixtures are created through real APIs;
 the original graph scenarios and task-view scenario retain read-only browser
-request checks. Only the new
-attachment scenario permits exact fixture-scoped file PUT/DELETE requests;
+request checks. The attachment and `language-state-preservation` scenarios
+permit only their exact fixture-scoped file PUT/DELETE requests;
 uncaught exceptions remain failures in every scenario. Database
 fault injection verifies the disposable database's ownership before changing it
 and restores the resource in a finally path. Browser routing barriers control
 response ordering separately from actual backend-failure observations.
 
-Topology is fixed while API-generated UUIDs can change layout tie ordering
-between isomorphic runs. Five repetitions share the exact same graph and IDs.
-Each capacity dataset has exactly 1,000 nodes: the chain has 999 edges, and the
-merge, shared-root and dense-external datasets have 5,000 edges each. The dense
-external graph retains two main tasks, 998 contextual tasks and every dependency.
-Five expansions per dataset must
-all meet the 3,000ms click-to-painted complete-canvas budget. Task selection,
-zoom and pan must each provide visible local feedback within 300ms. Network
-readings remain separate. Each expansion records layout and painted-render
-durations from one bounded latest-root User Timing measure; complete `openMs`
-remains the performance gate. Each independent over-limit response must be a complete
-409 refusal, with accurate counts and no partial browser graph or statistics.
+The four complete API topologies retain their exact task and dependency inputs,
+with five repetitions on the same IDs. Each has 1,000 tasks: chain has 999 edges,
+merge/shared/external have 5,000, and external full context remains two main tasks
+plus 998 ancestors. Complete API snapshots compare all inputs. The
+[progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
+changes DOM readiness to its bounded visible S and every real induced edge,
+then checks explicit direct expansion/reset and exact counts. All-at-once
+rendering is no longer the required browser workload. The
+[automatic refresh decision](../feature/2026-10-22-project-task-auto-refresh.md)
+extends freshness coverage and preserves native timers in capacity tests.
+Test-side timer/fetch instrumentation attributes every graph request to initial
+loading or a periodic callback; collapse/reopen must add no request of its own.
+Attachment and language isolation phases use a controlled browser clock for
+exact operation counts, while scroll quiescence uses actual position samples and
+a bounded test-process monotonic clock.
+
+Five openings retain the 3,000ms click-to-painted operable-overview budget and
+existing detail/zoom/pan feedback ≤300ms. Details → close → immediate zoom/pan
+retains its sequence without reset, Fit view or extra wait; network and layout/
+render diagnostics remain separate. `visibility[5]` records ordered repetition,
+overview/added/expanded/reset node and edge counts, requiring bounds, exact
+deltas and reset consistency. The existing polyline/native-dash/marker oracles
+check every visible edge. Independent selection, H, selectMs and curved-capacity
+claims belong to the following inspection PR. Independent node/edge limits
+still require complete 409 refusals. Current focused source needs its own real
+native/container/capacity evidence; prior full-render results do not establish it.
 
 Playwright runs one worker with zero retries. Report validation rejects global
 errors, skipped/flaky/retried tests, duplicate/missing stable scenarios, missing
 PNG screenshots and inconsistent summary counts. Native functional/capacity
-reports form a strict fifteen-scenario union; container functional validation
-requires ten. Missing, extra or duplicate names fail both phase and aggregate
+reports form a strict eighteen-scenario union; container functional validation
+requires thirteen. Missing, extra or duplicate names fail both phase and aggregate
 validation, and browser identity must agree across a target's phases.
 Performance validation requires
 all fixed datasets, exactly five valid measurements per dataset, every budget
@@ -86,7 +102,7 @@ selects affected PR jobs without changing their internal gates; main pushes
 retain all native CLI, shell completion, Go and web checks.
 
 Timing begins at the trusted browser input event's performance-clock timestamp
-and ends after the full DOM/readable-initial-task or feedback condition and two
+and ends after the complete visible DOM/readable-root or feedback condition and two
 animation frames. Event queue time remains included; automation actionability and diagnostic
 snapshot work are excluded. All five repetitions and all original budgets remain
 required. A bounded latest-root User Timing measure separates projection/Dagre
@@ -148,8 +164,8 @@ keep the task-card bounds and the static SVG routes aligned through the public
 viewport portal. Every edge's identity, exact canonical Dagre points, native
 arrows and pan/zoom transform remain asserted; native node measurement remains
 enabled. The open/initial-ready count check includes the declared safe-integer
-paint-piece count and actual body-piece DOM, in addition to every node/button and
-canonical route. Independent CTM/arc reconstruction checks full ordered coverage,
+paint-piece count and actual body-piece DOM, in addition to every visible card/control and induced canonical route. Full
+API input comparison stays independent of visible geometry. Independent CTM/arc reconstruction checks full ordered coverage,
 phase continuity, gap-midpoint seams and native joins after the five timed
 repetitions, adding no readback or idle wait between drawer close and zoom.
 The [layout decision](../feature/2026-10-20-task-graph-projection.md) owns ranking,

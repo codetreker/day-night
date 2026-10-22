@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, checkAttachmentPreview, attachmentContentType, attachmentDownloadUrl, attachmentPreviewRoot, attachmentPreviewUrl, listAttachments, putAttachment, readAttachmentText, removeAttachment } from "../src/api/client";
+import { ApiError, attachmentPageUrl, checkAttachmentPreview, attachmentContentType, attachmentDownloadUrl, attachmentPreviewRoot, attachmentPreviewUrl, listAttachments, putAttachment, readAttachmentText, removeAttachment } from "../src/api/client";
 import { isAttachmentPath, parseAttachment, parseAttachmentPage } from "../src/api/parse";
 
 const project = "10000000-0000-0000-0000-00000000000a";
@@ -41,6 +41,10 @@ describe("attachment transport", () => {
   it("encodes every path segment exactly once with canonical scope IDs", () => {
     const encoded = "docs/%E8%AE%BE%E8%AE%A1%25%3F%23.md";
     expect(attachmentDownloadUrl(project.toUpperCase(), task.toUpperCase(), item.path)).toBe(`${base}/attachments/files/${encoded}`);
+    expect(attachmentPageUrl(project.toUpperCase(), task.toUpperCase(), item.path)).toBe(`/projects/${project}/tasks/${task}/attachments/${encoded}`);
+    expect(attachmentPageUrl(project, task, "%2F")).toBe(`/projects/${project}/tasks/${task}/attachments/%252F`);
+    expect(() => attachmentPageUrl("bad", task, "file")).toThrow(ApiError);
+    expect(() => attachmentPageUrl(project, task, "a/../file")).toThrow(ApiError);
     expect(attachmentPreviewRoot(project, task)).toBe(`${base}/preview/`);
     expect(attachmentPreviewUrl(project, task, item.path)).toBe(`${base}/preview/${encoded}`);
     expect(attachmentDownloadUrl(project, task, "%2F")).toBe(`${base}/attachments/files/%252F`);
@@ -50,7 +54,7 @@ describe("attachment transport", () => {
     const fetcher = mock(json({ items: [item], nextCursor: null }));
     const abortSignal = signal();
     await expect(listAttachments(project, task, { limit: 2, cursor: "opaque+/? &" }, abortSignal)).resolves.toEqual({ items: [item], nextCursor: null });
-    expect(fetcher).toHaveBeenCalledExactlyOnceWith(`${base}/attachments?limit=2&cursor=opaque%2B%2F%3F+%26`, { signal: abortSignal, cache: "no-store", headers: { Accept: "application/json" } });
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith(`${base}/attachments?limit=2&cursor=opaque%2B%2F%3F+%26`, { signal: abortSignal, cache: "no-store", credentials: "same-origin", redirect: "error", headers: { Accept: "application/json" } });
     fetcher.mockResolvedValue(json({ items: [], nextCursor: null }));
     await listAttachments(project, task, {}, signal());
     expect(fetcher.mock.calls[1]?.[0]).toBe(`${base}/attachments`);
@@ -70,7 +74,7 @@ describe("attachment transport", () => {
     const abortSignal = signal();
     await expect(putAttachment(project, task, item.path, file, abortSignal)).resolves.toEqual(item);
     expect(fetcher).toHaveBeenCalledExactlyOnceWith(attachmentDownloadUrl(project, task, item.path), {
-      method: "PUT", body: file, signal: abortSignal, cache: "no-store", redirect: "error", headers: { Accept: "application/json", "Content-Type": "text/markdown" },
+      method: "PUT", body: file, signal: abortSignal, cache: "no-store", credentials: "same-origin", redirect: "error", headers: { Accept: "application/json", "Content-Type": "text/markdown" },
     });
     expect(attachmentContentType("new.JSON")).toBe("application/json");
     expect(attachmentContentType("unknown.unregistered-extension")).toBe("application/octet-stream");
@@ -88,7 +92,7 @@ describe("attachment transport", () => {
     const abortSignal = signal();
     await expect(removeAttachment(project, task, item.path, abortSignal)).resolves.toBeUndefined();
     expect(parse).not.toHaveBeenCalled();
-    expect(fetcher).toHaveBeenCalledExactlyOnceWith(attachmentDownloadUrl(project, task, item.path), { method: "DELETE", redirect: "error", signal: abortSignal, cache: "no-store" });
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith(attachmentDownloadUrl(project, task, item.path), { method: "DELETE", signal: abortSignal, cache: "no-store", credentials: "same-origin", redirect: "error" });
     fetcher.mockResolvedValue(new Response("unexpected", { status: 200 }));
     await expect(removeAttachment(project, task, item.path, signal())).rejects.toMatchObject({ kind: "protocol", status: 200 });
   });
@@ -130,7 +134,7 @@ describe("native preview availability", () => {
     const fetcher = mock(response);
     const abortSignal = signal();
     await expect(checkAttachmentPreview(project, task, item.path, abortSignal)).resolves.toBeUndefined();
-    expect(fetcher).toHaveBeenCalledExactlyOnceWith(attachmentPreviewUrl(project, task, item.path), { method: "HEAD", signal: abortSignal, cache: "no-store" });
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith(attachmentPreviewUrl(project, task, item.path), { method: "HEAD", signal: abortSignal, cache: "no-store", credentials: "same-origin", redirect: "error" });
     expect(parse).not.toHaveBeenCalled();
   });
   it("retains status and safe request IDs without expecting an error response body", async () => {

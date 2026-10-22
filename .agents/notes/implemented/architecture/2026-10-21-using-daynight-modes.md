@@ -12,6 +12,12 @@ requirements harder to distinguish from the current execution position.
 
 ## Decision
 
+The [Goal workflow decision](../process/2026-10-22-goal-workflow-design.md)
+partially supersedes the original registration and task-content rules. It owns
+stage-specific inputs, self-contained task briefs, shared-input ownership and
+whole-Goal completion. Mode routing, command ownership, authorization and the
+installer decisions remain here.
+
 The public bundle is named `using-daynight`. Its entrypoint routes from the actual
 request and context to handbook, create-task, run-task or autopilot, with one
 reference document per mode. A bare invocation uses context; insufficient or
@@ -45,25 +51,36 @@ creation permission requires asking before creating a task, including during
 autopilot. This keeps the persistent backlog under the user's control.
 
 Create-task checks creation permission, skips one-off and trivial work, matches
-existing problem/scope and attached acceptance, and prepares artifacts before
-creating a durable task.
-The description contains the problem and real attachment references. One primary
-Markdown attachment owns solution and acceptance sections in the task's language.
-Frontend tasks also include an interactive mock UI matching the intended final
-visuals and representative states, with its necessary assets. Dependencies remain
-in dependsOn; PR URLs and titles remain in properties.pullRequests. Verification
-results and merge references belong with the attachment's acceptance items.
-Execution position, blockers and next steps use an existing session or project
-checkpoint. No new task state or ownership mechanism is introduced.
+existing problem/scope and acceptance, and registers ordinary single-outcome work
+or a staged Goal. Every description is a self-contained brief with concrete
+scope/actions, deliverables, constraints, an observable completion summary and
+real input references. A task-specific primary Markdown owns detailed solution,
+full acceptance and evidence. Shared Goal and design inputs remain at their
+source task ID and attachment path, or a verified immutable repository URL;
+registration does not copy the same document packet to every task. Independently
+required snapshots retain source version and purpose.
 
-Registration is complete only after necessary attachments and associations are
-read back. Partial creation retains the same task ID; uncertain writes are
-reconciled before retrying. Run-task reads the plan and applicable mock UI,
-executes only its designated task and returns after completion or an external
-blocker. Development and PR-delivered documentation require all necessary PRs
-platform-confirmed merged plus satisfied acceptance before done. User instructions
-to retain a PR keep the task in progress and return it for review; completion
-rules grant no merge authority.
+The original mode decision required complete solution and applicable frontend
+prototype before registration. That rule made ordinary implementation inputs
+explicit, but cannot apply to stages producing those artifacts. The Goal
+protocol now registers `[Goal]<outcome>` and its dependent architecture placeholder
+with stage briefs. Clarification produces complete requirements and applicable
+final-style interactive frontend-only UI; architecture completes design and
+registers all successors before handover. Implementation roots depend on design.
+Scoped Goal creation permission covers the initial pair and its in-scope breakdown.
+No new task state, service resource, CLI command or ownership mechanism is added.
+
+Dependencies remain in dependsOn; PR URLs and titles remain in
+properties.pullRequests. Results and merge references belong with the primary
+attachment's acceptance items. Execution position, blockers and next steps use
+an existing checkpoint. Registration is complete only after necessary task-owned
+artifacts and shared inputs are read back. Partial registration retains IDs;
+uncertain writes are reconciled before retrying. Run-task reads the self-contained
+brief, detailed plan and stage inputs, executes its designated task and returns
+after completion or an external blocker. Development and PR-delivered documentation
+require every necessary PR platform-confirmed merged and acceptance satisfied
+before done. Retaining a PR keeps the task in progress; completion grants no merge
+authority. A stage done does not establish whole-Goal completion.
 
 Autopilot restores the checkpoint's current task, otherwise picks exactly one
 ready todo most related to the authorized goal. In-progress inventory does not
@@ -105,8 +122,10 @@ and autopilot still has its explicit-request gate.
 
 **Put solution, acceptance and progress in the description.** This was convenient
 before attachment-backed planning was available, but keeps unrelated lifetimes in
-one field and encourages repeated copies. Problem text, attached requirements,
-structured dependencies and execution checkpoints each have one owner.
+one field and encourages repeated copies. At the original decision, problem text, attached requirements, structured
+dependencies and execution checkpoints received separate owners. The Goal decision
+keeps detailed ownership while allowing a concise assignment and completion summary
+in each description.
 
 **Delete the legacy entry before publishing the new bundle.** This reduces the
 period with two names but can remove working guidance before replacement succeeds.
@@ -115,7 +134,8 @@ cost of an explicit partial-migration error and a possible temporary duplicate.
 
 ## Consequences
 
-One installed directory contains the complete protocol and four mode references.
+One installed directory contains the entrypoint, four mode references and the
+shared Goal protocol.
 Command usage stays with the installed CLI, and the compact handbook explains
 the operational facts needed to choose and combine commands. Task execution and
 repeated selection share one completion gate. Explicit autopilot entry prevents ordinary skill use

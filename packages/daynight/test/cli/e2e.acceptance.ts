@@ -133,9 +133,9 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     const installedBin = path.join(consumer, "node_modules/.bin", process.platform === "win32" ? "daynight.cmd" : "daynight");
     expect(existsSync(installedBin)).toBe(true);
     const installedPackage = path.join(consumer, "node_modules", "@codetreker", "daynight");
-    const installed = JSON.parse(readFileSync(path.join(installedPackage, "package.json"), "utf8")) as { name: string; version: string; bin: { daynight: string } };
+    const installed = JSON.parse(readFileSync(path.join(installedPackage, "package.json"), "utf8")) as { name: string; version: string; bin: { daynight: string; dn: string } };
     expect(installed.name).toBe("@codetreker/daynight");
-    expect(installed.bin.daynight).toBe("dist/main.js");
+    expect(installed.bin).toEqual({ daynight: "dist/main.js", dn: "dist/main.js" });
     expect(installed.version).toBe((JSON.parse(readFileSync(path.join(packageDirectory, "package.json"), "utf8")) as { version: string }).version);
     const skillRelativeDirectory = "commands/review/skills/daynight-review";
     const sourceSkillDirectory = path.join(packageDirectory, "src", skillRelativeDirectory);
@@ -151,7 +151,7 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     const publicSkillRelativeDirectory = "commands/skill/skills/using-daynight";
     const publicBundle = bundleFiles(path.join(packageDirectory, "src", publicSkillRelativeDirectory));
     expect(publicBundle["SKILL.md"]).toBeDefined();
-    for (const reference of ["handbook", "autopilot", "run-task", "create-task"]) expect(publicBundle[`references/${reference}.md`]).toBeDefined();
+    for (const reference of ["handbook", "autopilot", "run-task", "create-task", "goal"]) expect(publicBundle[`references/${reference}.md`]).toBeDefined();
     expect(bundleFiles(path.join(installedPackage, "dist", publicSkillRelativeDirectory))).toEqual(publicBundle);
     const installedSkillFile = path.join(installedSkillDirectory, "SKILL.md");
     const originalSkillContents = originalBundle["SKILL.md"]!.toString("utf8");
@@ -176,8 +176,8 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       return result.stdout;
     };
     const helpHome = path.join(directory, "help-only home 中文");
-    const information = (args: string[]): string => {
-      const result = crossSpawn.sync(installedBin, args, {
+    const information = (args: string[], launcher = installedBin): string => {
+      const result = crossSpawn.sync(launcher, args, {
         cwd: secondCwd, encoding: "utf8", windowsHide: true, timeout: 30_000,
         env: { ...environment, PATH: listingExecutables, NODE_OPTIONS: "", HOME: helpHome, USERPROFILE: helpHome, XDG_CONFIG_HOME: path.join(helpHome, "config") },
       });
@@ -193,6 +193,12 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     expect(rootHelp).toMatch(/^  completion\s/m);
     expect(information(["--help"])).toBe(rootHelp);
     expect(information(["--version"])).toBe(`${installed.version}\n`);
+    const shortBin = path.join(consumer, "node_modules/.bin", process.platform === "win32" ? "dn.cmd" : "dn");
+    expect(information([], shortBin)).toBe(rootHelp);
+    expect(information(["--help"], shortBin)).toBe(rootHelp);
+    expect(information(["--version"], shortBin)).toBe(`${installed.version}\n`);
+    expect(information(["task", "create", "--help"], shortBin)).toBe(information(["task", "create", "--help"]));
+    for (const shell of ["bash", "zsh"]) expect(information(["completion", shell], shortBin)).toBe(information(["completion", shell]));
     const reviewHelp = information(["review"]);
     expect(reviewHelp).toContain("Usage: daynight review <command>");
     expect(information(["review", "--help"])).toBe(reviewHelp);
@@ -331,8 +337,10 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       writeFileSync(path.join(bin, "copilot"), `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(path.join(helpers, "copilot.mjs"))} "$@"\n`);
       chmodSync(path.join(bin, "copilot"), 0o755);
     }
+    const copilotModel = "configured-review-model";
+    const copilotReasoningEffort = "high";
     const lifecycleConfig = parseDocument(readFileSync(configFile, "utf8"));
-    for (const [key, value] of Object.entries({ pollIntervalMs: 200, maxConcurrentWorker: 1, agentTimeoutMs: 60000, maxAttempts: 3, retryDelayMs: 100 })) lifecycleConfig.set(key, value);
+    for (const [key, value] of Object.entries({ copilotModel, copilotReasoningEffort, pollIntervalMs: 200, maxConcurrentWorker: 1, agentTimeoutMs: 60000, maxAttempts: 3, retryDelayMs: 100 })) lifecycleConfig.set(key, value);
     writeFileSync(configFile, lifecycleConfig.toString());
     const start = (cwd: string): void => {
       rmSync(path.join(directory, "stop"), { force: true });
@@ -613,8 +621,15 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       const calls = agents();
       const discoveryCalls = discoveries();
       expect(calls).toHaveLength(8);
+      for (const item of calls) {
+        for (const [flag, value] of [["--model", copilotModel], ["--reasoning-effort", copilotReasoningEffort]] as const) {
+          expect(item.args.filter((argument) => argument === flag)).toHaveLength(1);
+          const index = item.args.indexOf(flag);
+          expect(item.args.slice(index, index + 2)).toEqual([flag, value]);
+        }
+      }
       expect(discoveryCalls).toHaveLength(calls.length);
-      expect(discoveryCalls.every((item) => item.args.slice(-3).join(" ") === "skill list --json" && item.args.includes("--no-auto-update") && item.args[item.args.indexOf("-C") + 1] === item.cwd && !item.args.some((argument) => /^--(?:session-id|resume)=/.test(argument)))).toBe(true);
+      expect(discoveryCalls.every((item) => item.args.slice(-3).join(" ") === "skill list --json" && item.args.includes("--no-auto-update") && item.args[item.args.indexOf("-C") + 1] === item.cwd && !item.args.some((argument) => /^--(?:session-id|resume)=/.test(argument) || /^--(?:model|reasoning-effort)(?:=|$)/.test(argument)))).toBe(true);
       expect([...discoveryCalls, ...calls].every((item) => item.args.includes(`--plugin-dir=${item.skill.rootDirectory}`))).toBe(true);
       expect(discoveryCalls.map((item) => ({ cwd: item.cwd, skill: item.skill })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))))
         .toEqual(calls.map((item) => ({ cwd: item.cwd, skill: item.skill })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))));
@@ -629,7 +644,8 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
         installedBin: path.relative(directory, installedBin).replaceAll("\\", "/"), packagePacked: true, consumerInstall: "registry",
         sqlite: "real", git: "real-local-origin", github: "controlled-native-executable", copilot: "controlled-default-command-shim",
         liveCopilotExercised: false, liveGitHubExercised: false, scenarios,
-        receipts: { agentInvocations: calls.length, skillDiscoveryInvocations: discoveryCalls.length, bundledSkillFiles: Object.keys(originalBundle), skillDigests: [initialSkill.digest, resumedUpdatedAgent.skill.digest],
+        receipts: { agentInvocations: calls.length, skillDiscoveryInvocations: discoveryCalls.length, configuredCopilotModel: copilotModel, modelArgumentInvocations: calls.length,
+          configuredCopilotReasoningEffort: copilotReasoningEffort, reasoningEffortArgumentInvocations: calls.length, bundledSkillFiles: Object.keys(originalBundle), skillDigests: [initialSkill.digest, resumedUpdatedAgent.skill.digest],
           originalSkillSha256: initialSkill.contentSha256, updatedSkillSha256: resumedUpdatedAgent.skill.contentSha256,
           runningDaemonSkillPreserved: true, sameSessionUpdatedSkillAfterRestart: true, reviewedCheckoutClean: true,
           publications: publications().length, commentReviews: publications().filter((item) => item.event === "COMMENT").length,

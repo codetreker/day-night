@@ -24,8 +24,11 @@ handoff, local users, browser sessions, personal access tokens and project
 membership. The [identity foundation](../../.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
 implements persistent users, browser-bound login transactions, sessions, PATs and
 callable HTTP handlers. NewIdentity/NewAuthentication/RegisterRoutes support
-explicit composition; the application mux does not mount them yet. Project
-membership and mandatory runtime activation remain separate work, so the current
+explicit composition. The [membership foundation](../../.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
+adds NewMemberships/NewMembershipRoutes, transaction-scoped access checks, private
+project creation, filtered project lists, administrator changes and invitations.
+The application mux does not mount these modules yet. Client integration and
+mandatory runtime activation remain separate work, so the current
 service remains unauthenticated and loopback-only. Trusted executable HTML retains its existing
 application origin when project-member checks are added to attachment requests.
 
@@ -39,9 +42,9 @@ application origin when project-member checks are added to attachment requests.
 | `internal/core/store/` | PostgreSQL migrations, transactions, scoped writes and consistent reads |
 | `internal/filestorage/` | Generic bucket/path byte operations and address validation |
 | `internal/filestorage/local/` | Root-confined local files, complete-file replacement and root lifecycle |
-| `api/` | Project/task/attachment DTOs and common HTTP error envelopes |
-| `internal/service/` | Project/task use cases, dependency/state/version policy and scoped cursors |
-| `internal/core/` | Shared project/task models and resource-not-found marker |
+| `api/` | Project/task/attachment, identity and membership DTOs; common HTTP error envelopes |
+| `internal/service/` | Project/task use cases, identity/credentials, project membership/invitations, state/version policy and scoped cursors |
+| `internal/core/` | Shared project/task, identity/member models and resource-not-found markers |
 
 HTTP startup prepares one local file-storage root and creates and verifies one
 concrete PostgreSQL store. The handler factory receives `server.Dependencies`
@@ -118,8 +121,17 @@ records include method, route template, status, and duration. A supplied
 `X-Request-ID` must contain 1–64 ASCII letters/digits with optional `.`, `_`, or
 `-` after the first character; invalid or absent values receive a generated ID.
 The response returns `X-Request-ID`. An unmatched route has an empty route template.
-UI and API requests use the same logging wrapper. Exact `/` and
-`/projects/{projectId}` reads return the index; `/assets/` serves actual generated
+UI and API requests use the same logging wrapper. Exact `/`,
+`/projects/{projectId}` and
+`/projects/{projectId}/tasks/{taskId}/attachments/{path...}` page shapes return
+the index; the last route opens the standalone attachment reader. Invalid page
+IDs retain the existing index response and frontend not-found behavior. The
+raw attachment path guard also protects this page namespace before ServeMux
+normalization, rejecting invalid segments without redirecting or repairing the
+address. File reads still use the existing scoped attachment APIs; no new
+metadata, authorization or storage format is introduced. The
+[attachment design](../../docs/design/daynight-task-attachments.md#独立附件阅读页)
+owns reader composition. Unknown page shapes return JSON 404; `/assets/` serves actual generated
 files without directory listings or an HTML fallback. Unknown API routes retain
 JSON 404 responses. GET routes support HEAD; other methods receive 405 with
 `Allow`. HTML, complete graphs and latest task details use
@@ -373,9 +385,21 @@ transaction. It returns `{project, summary, tasks}` with no pagination or filter
 Nonempty query strings fail with 400, including unsupported parameters and invalid
 encodings. Responses use `Cache-Control: no-store`.
 
-The summary has `total`, `todo`, `inProgress`, `done`, `ready` and `blocked` counts.
-Each task counts once, even when multiple roots share it. Todo consists of ready
-and blocked tasks; graph reads do not change stored status, revisions or times.
+The summary requires `total`, `proposed`, `todo`, `inProgress`, `done`, `ready`
+and `blocked` counts, including zero values. Each task counts once, even when
+multiple roots share it: `total = proposed + todo + inProgress + done` and
+`todo = ready + blocked`. Proposed tasks may have unfinished prerequisites; their
+`blockedBy` remains accurate, but they are never ready and do not contribute to
+`todo` or `blocked`. Graph reads do not change stored status, revisions or times.
+
+Migration `007_task_proposed.sql` expands the stored status check to include
+`proposed`, preserving existing records, versions and timestamps. Applied
+migrations remain unchanged. Task get/list/graph responses support all four
+states. Public creation and the database default remain `todo`; public list
+status filters and update candidate validation retain the original three values.
+Approval and lifecycle mutations are separate from this read contract. The
+[four-state reader decision](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
+records the rollout boundary.
 
 Nodes contain `id`, `titlePreview`, `titleTruncated`, `status`, `dependsOn`,
 `blockedBy`, `ready` and UTC timestamps. SQL produces at most 160 Unicode code

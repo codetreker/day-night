@@ -18,8 +18,14 @@ and aligned with its task nodes.
 The project page owns one validated graph/index snapshot, its client receipt time
 and revision. Requests are scoped by project identity and generation; a different
 resource cannot render an earlier resource's data. Same-project refresh retains
-the last successful snapshot with an explicit loading/error notice, and replaces
-statistics, indexes and both task-category lists together after success.
+the last successful snapshot. Manual refresh displays busy text in its disabled
+button, and recoverable failure displays an error beside prior data. The
+[refresh presentation decision](../simplification/2026-10-22-project-refresh-notice.md)
+partially supersedes the original separate loading notice while retaining its
+freshness feedback through the button and failure state. Changed data replaces
+statistics, indexes and both task-category lists together. The [automatic refresh decision](2026-10-22-project-task-auto-refresh.md)
+extends request scheduling with visible-page periodic reads, retains equivalent
+graph/index references and preserves the same-task detail body during refresh.
 
 The [task view decision](2026-10-22-project-task-views.md) separates standalone
 rows, which open details directly, from non-isolated root chains. Only one root
@@ -31,7 +37,9 @@ an explicitly collapsed list from per-project browser storage; the
 persistence, reconciliation and failure behavior. The project view shares one
 newest-first visible root sequence between list rendering and default-root selection;
 the [presentation decision](2026-10-21-task-chain-presentation.md) owns that order
-while the complete graph index retains its API order. React Flow owns fixed 220-by-96 task nodes,
+while the complete graph index retains its API order. React Flow owns 220px-wide
+task cards, 96px high without expansion controls and 136px with them, following
+the [conditional footer decision](../bug-fix/2026-10-22-task-card-expansion-footer.md),
 native node measurement, keyboard interaction, the viewport and its controls.
 Editing, connection, deletion, wrapper focus and interactive-lock controls remain
 disabled. Each task has one native button for pointer, Enter and Space activation;
@@ -70,18 +78,21 @@ zoom out further. Selection and viewport movement do not rerun layout.
 A layout/callback pair owns immutable ordinary and selected variants for each
 node. Selection reuses all unaffected references and swaps only the previous and
 next selected variants; closing swaps only the previous selection. React Flow
-can therefore update selection styling without rendering every task again. Full
-node/edge DOM and geometry remain present, which preserves focus, graph inspection
+can therefore update selection styling without rendering every task again. The [progressive overview decision](2026-10-22-progressive-task-graph.md) changes
+all-input rendering into explicit visible S. Every visible node and induced edge
+retains complete DOM and geometry, which preserves focus, graph inspection
 and complete-capacity assertions. Component tests check the changed-node rendering
 counts for open, switch and close transitions. This structure keeps detail-opening
 work proportional to changed styling while retaining the full graph.
 
 Each root row is memoized. Collapsed rows receive a stable null selection, so
 opening or switching task details does not rerender every unrelated root. Expanded
-state, callback and index changes still invalidate the relevant rows; a new
-snapshot index refreshes every row and its statistics.
+state, callback and index changes still invalidate the relevant rows; a changed
+snapshot index refreshes every row and its statistics. Equivalent responses
+retain the existing index while advancing the successful receipt revision.
 
-The detail drawer uses a portal outside the application root, background inertness,
+The centered task detail dialog uses a body portal outside the application root,
+background inertness,
 body scroll ownership and a dynamic focus trap. Its lifetime is independent of
 relation selection. Layout cleanup synchronously releases the keyboard listener,
 background inertness and scroll ownership. A separate passive unmount cleanup
@@ -93,6 +104,9 @@ records the failure and integration evidence. The
 [Web attachment decision](2026-10-21-task-attachment-web.md) extends this lifecycle
 with `tabbable` enumeration for form controls and same-origin frame keyboard
 bridges; background ownership and passive restoration remain unchanged.
+The [centered detail decision](2026-10-22-centered-task-detail-dialog.md)
+partially supersedes the original right-side layout with a centered reading shell
+and responsive content columns, while retaining this modal lifecycle.
 Latest detail data never patches graph statistics.
 Readiness, blocking, dependency, status, preview and timestamp differences produce
 a refresh notice; a new graph revision rereads the selected detail.

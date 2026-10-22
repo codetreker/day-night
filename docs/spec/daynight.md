@@ -6,7 +6,7 @@ task 命令、安装产物、真实服务及默认预算验收已完成并通过
 可用命令和验证入口见[仓库 README](../../README.md)，完整交付范围见
 [project/task 需求](daynight-project-task.md)及[任务清单](../design/daynight-project-task-tasks.md)。
 
-Daynight 是一个组合命令的客户端工具包。npm 包提供统一的 `daynight` 入口，命令模块
+Daynight 是一个组合命令的客户端工具包。npm 包提供统一的 `daynight` 入口及短命令 `dn`，命令模块
 拥有各自的业务行为、依赖和生命周期。`review` 是 GitHub PR 审查模块；`update` 管理
 整个客户端的 npm 全局安装；`setup` 按能力保存配置；`completion` 生成 Bash 和 zsh
 的原生补全脚本并安装启动配置；`skill` 安装随包分发的公开 `using-daynight` skill。独立的 Go 服务和浏览器应用保留自己的产品需求
@@ -23,8 +23,9 @@ Daynight 是一个组合命令的客户端工具包。npm 包提供统一的 `da
 
 ### C1. 包与平台
 
-npm 包名为 `@codetreker/daynight`，可执行命令为 `daynight`，TypeScript 应用代码放在
-`packages/daynight/`。包的可执行入口固定为 `dist/main.js`。Linux、macOS 和 Windows
+npm 包名为 `@codetreker/daynight`，可执行命令为 `daynight` 和 `dn`，TypeScript 应用代码放在
+`packages/daynight/`。两个名称均由包的 `bin` 声明指向 `dist/main.js`，安装后可直接使用，无需手动设置 shell alias。
+它们共享全部命令、参数、配置、副作用、输出和退出码；帮助及诊断使用规范名称 `daynight`。Linux、macOS 和 Windows
 必须支持同一组命令和对应的业务保证；平台相关的命令执行、输出处理和退出行为必须
 经过原生验证。shell 补全的运行环境由 C5 单独约束。
 
@@ -118,7 +119,7 @@ review 的目录 `--path` 保留原有拒绝规则。`project create` 接受一�
 10 个 ready task，`--limit <N>` 接受十进制整数 `1..100`；它只请求一页，不遍历
 后续 cursor。`task list` 读取全部匹配页，默认排除 `done`，通过互斥的 `--all` 或
 `--status` 调整所选状态；`--ready` 与所选状态取交集。列表按 `in_progress`、ready、
-其余 `todo`、`done` 稳定分组。文本列表省略描述、版本和时间；所有筛选形式的 JSON
+其余 `todo`、`proposed`、`done` 稳定分组。文本列表省略描述、版本和时间；所有筛选形式的 JSON
 列表仅省略 `description`，保留其余 API 字段、原始 PR 字符串、精确版本和时间戳。
 详情、ready、创建和更新结果仍保留完整 task 资源。
 `ready` 的参数、服务排序及响应校验
@@ -166,7 +167,7 @@ npm 替换失败；该失败必须明确报告。
 
 `daynight completion bash` 为 Bash ≥4.2 生成原生补全脚本，`daynight completion zsh`
 为已初始化 `compinit` 的 zsh 生成原生补全脚本。成功时 stdout 只能包含可加载的完整
-脚本；未知 shell、多余参数和未知选项按 C2 拒绝。脚本必须显式注册 `daynight` 的
+脚本；未知 shell、多余参数和未知选项按 C2 拒绝。脚本必须显式注册 `daynight` 和 `dn` 的
 补全。zsh 缺少初始化时给出明确诊断并加载失败；Bash 低于版本下限时同样明确拒绝。
 生成操作不修改 shell 启动文件。当前会话通过 `source <(daynight completion bash)`
 或在 `compinit` 之后执行 `source <(daynight completion zsh)` 启用。持久安装由 C7
@@ -191,11 +192,13 @@ review 配置或数据库，不访问网络。候选和输入必须作为数据�
 
 `project` 和 `task` 的有效业务调用只要求服务连接配置；`review run`、`review list`
 及 `review ls` 只要求 review 配置。机器仅使用 project/task 时，可以一直只有
-`serverUrl`，无需登记 review 仓库。各能力不共享“初始化完成”状态。
+`serverUrl` 和可选 `serverToken`，无需登记 review 仓库。各能力不共享“初始化完成”
+状态；令牌缺失本身不触发自动引导。
 
 当前命令缺少配置文件，或严格解析成功后缺少其必需字段时，若 stdin 与 stderr 均为
-TTY，必须询问所缺配置。服务命令只询问 `serverUrl`；review 只询问一个 GitHub 远程
-地址及可选本地克隆路径，复用仓库登记规则。当前能力已有的无效字段值、review 的
+TTY，必须询问所缺配置。服务引导询问 `serverUrl` 及可选隐藏令牌；review 只询问
+一个 GitHub 远程地址及可选本地克隆路径，复用仓库登记规则。隐藏输入不回显令牌，
+空回答保留同一正规化 origin 的现有令牌，或跳过新 origin 的令牌。当前能力已有的无效字段值、review 的
 空仓库列表、共享 YAML 语法或结构错误、重复键、未知字段和读取权限错误仍须显示
 原因；不得通过引导覆盖或修复这些输入。其他能力的业务字段值继续由其独立投影
 校验，不能阻塞当前能力。
@@ -205,17 +208,25 @@ TTY，必须询问所缺配置。服务命令只询问 `serverUrl`；review 只�
 显式 `--server-url <url>`、`--review-repo <remote>` 可单独或同时使用，仅设置选中的
 能力且不询问；`--review-path <path>` 必须与 `--review-repo` 一起使用。远程地址和
 路径语义与 `review add-repo` 相同；服务地址使用 PT2 的校验规则且没有隐含默认值。
+布尔选项 `--server-token-stdin` 从 stdin 接收一行非空令牌，可带一个 LF 或 CRLF；
+拒绝空输入、多行、控制字符及超过 1 MiB 的输入。该选项可同时指定 `--server-url`，
+也可复用已有服务地址；两者都没有时失败。显式地址配置保持不询问。令牌必须是
+opaque visible ASCII，HTTPS 可用，HTTP 仅允许字面量 `localhost`、`127.0.0.0/8` 内的数值 IPv4
+和 `::1`。正规化服务 origin 变化时，旧令牌与地址更新原子清除；origin 相同则保留。
 非交互调用缺少必要配置时，立即以状态码 1 失败，给出可执行的对应 setup 命令。
 
 提示、保存结果和取消诊断只写 stderr，业务结果保留 stdout 的原有格式，包括 JSON。
 必须先收集全部输入，再持配置写锁重新读取文件、合并所选字段、校验并原子保存；
-保留其他能力的字段、YAML 注释、已有仓库路径和文件权限。并发完成的无关字段修改
-必须保留；所选字段在收集输入期间变化时，明确报冲突并要求重新设置，不能覆盖。
+保留其他能力的字段、YAML 注释和已有仓库路径。含令牌的结果配置在 POSIX 上必须
+以 `0600` 保存，包括其他能力触发的写入；无令牌文件沿用既有权限行为。并发完成
+的无关字段修改必须保留；服务地址与令牌作为共同观察值检查，所选字段在收集输入
+期间变化时，明确报冲突并要求重新设置，不能覆盖。
 已有配置写锁被占用时明确失败。
 
 输入结束、Ctrl+C、SIGTERM 或 Windows SIGBREAK 取消尚未完成的引导；取消时不保存
 部分输入，也不执行原业务。引导不访问网络、不检查认证、不 clone、不初始化 SQLite
-或审查运行时。自动引导保存成功后，原命令以原参数执行且只执行一次；后续连接或运行
+或审查运行时。配置语法诊断只保留安全类别、代码和位置，不泄露 YAML 标量或原始
+解析器错误链；其他错误继续保留有效原因。自动引导保存成功后，原命令以原参数执行且只执行一次；后续连接或运行
 失败保留已保存的配置。人工输入时间不计入业务命令期限。帮助、版本、补全、自更新及
 无效参数不触发引导。
 
@@ -264,6 +275,7 @@ shell 的内存状态；输出对应的既有 `source <(daynight completion bash
 
 | 场景 | 必需结果 | 对应需求 |
 |---|---|---|
+| 安装 npm 包后通过 `daynight` 或 `dn` 调用相同参数，包括帮助、版本及自更新。 | 两个启动器使用同一入口，输出、配置与退出行为一致；更新后两者指向同一新版本。 | C1, C2, C4 |
 | 无配置、SQLite 不可加载且 PATH 缺少 review 工具时调用根帮助或版本。 | 输出帮助或当前包版本，退出 0，未解析用户主目录或触及 review 数据。 | C1, C2, C3 |
 | 调用裸 `review`、裸 `completion`、组帮助或任何操作帮助。 | 显示对应帮助，退出 0，未进入业务操作或加载审查运行时。 | C2, C3 |
 | 调用未知根命令、旧入口、不完整参数或未知操作选项。 | 输出错误及对应帮助命令，退出 2；未执行配置、审查或更新。 | C2, C3 |
