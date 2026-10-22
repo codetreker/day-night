@@ -19,7 +19,7 @@ requires. Do not load every mode by default.
 | Mode | Use when | Reference |
 |---|---|---|
 | `handbook` | Answering usage questions or performing requested task-management operations | [Handbook](references/handbook.md) |
-| `create-task <request>` | Preparing or registering a persistent task explicitly requested by the user | [Create task](references/create-task.md) |
+| `create-task <request>` | Preparing or registering persistent work explicitly requested by the user | [Create task](references/create-task.md) |
 | `run-task <task-id>` | Executing one specified task | [Run task](references/run-task.md) |
 | `autopilot <goal or scope>` | The user explicitly requests automatic execution of Daynight tasks | [Autopilot](references/autopilot.md) |
 
@@ -30,27 +30,32 @@ to `handbook` or select a task merely because one is ready.
 
 Enter `autopilot` only after an explicit user request for automatic Daynight task
 execution. A bare invocation may resume it when the conversation establishes
-that it is already active. Loading this skill, discovering tasks, creating a
-task, and completing `run-task` never activate it.
+that it is already active. Loading this skill, discovering tasks, creating work,
+and completing `run-task` never activate it.
 
 ## Shared constraints
 
-- Never create a task without the user's explicit permission to create tasks.
-  A direct creation request or existing explicit permission covers its stated
-  scope; do not ask again within it. Implementation requests, tracking needs,
-  inferred mode selection, and autopilot activation do not grant this permission.
-  If a new task is needed outside that permission, ask before creating it.
+- Create tasks only with explicit permission for their scope. Implementation
+  requests, tracking needs, inferred mode selection, and autopilot activation
+  do not grant creation permission. Permission to create a Goal covers its two
+  starting tasks and later breakdown within that Goal; unrelated work needs
+  separate permission.
+- Use a normal task for one independently tracked outcome. Work requiring
+  multiple independently tracked delivery stages is a Goal, expressed through
+  existing tasks and `dependsOn`. Read [the Goal protocol](references/goal.md)
+  when creating, executing, or advancing such a chain.
 - Advance one task at a time, including CI, review, and merge waits. Subagents
   collaborate on the same task. `autopilot` owns selection of subsequent work;
   `run-task` and `create-task` return when their own work ends.
-- Keep the problem and real attachment references in the task description. One
-  primary Markdown attachment owns the solution and acceptance criteria.
-  Frontend tasks also require an interactive mock UI with final visual styling.
-  Express prerequisites only through `dependsOn`.
-- Preserve the exact version observed when deciding a task update. Confirm
-  writes, reconcile uncertain results before further mutations, and preserve
-  actual failures. The handbook indexes commands and explains operational
-  context; the installed CLI help owns command usage.
-- Follow the target repository's execution and delivery rules and the user's
-  current authorization. In particular, an explicit request to leave a PR for
-  user review keeps that task pending; completion rules grant no merge authority.
+- Each task description states its concrete work, scope, deliverables,
+  constraints, observable completion summary, and real input references. Its own
+  primary Markdown owns the detailed solution, acceptance criteria, and evidence.
+  Attach resources according to actual task ownership and need; reference shared
+  inputs at their verified source. Express prerequisites only through `dependsOn`.
+- Preserve the exact version observed when deciding an update. Confirm writes,
+  reconcile uncertain results before further mutations, and preserve actual
+  failures. The handbook explains operational context; installed CLI help owns
+  command usage.
+- Follow the target repository's delivery rules and the user's authorization.
+  A request to leave a PR for user review keeps that task pending; completion
+  rules grant no merge authority.

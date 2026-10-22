@@ -115,21 +115,23 @@ The [public Agent skill design](docs/design/daynight-agent-skill.md) defines one
 npm-bundled `using-daynight` skill and interactive installation for Codex, Copilot
 CLI and Claude Code. Its [requirements](docs/spec/daynight-agent-skill.md) cover
 context-based routing, explicit continuous-execution intent, attachment-backed
-planning and complete replacement on reinstall. The entrypoint and four mode
-references are published under `dist/commands/skill/skills/using-daynight/`.
-The [Goal workflow requirements](docs/spec/daynight-goal-workflow.md) and
-[design](docs/design/daynight-goal-workflow.md) define a planned extension for
-multi-task work, with a Goal description followed by architecture and task
-breakdown. Its [delivery tasks](docs/design/daynight-goal-workflow-tasks.md)
-track protocol delivery and independent consumer acceptance; the published
-skill does not yet provide that protocol. The extension requires each task
-description to state its concrete scope, deliverables and completion conditions,
-with task-owned details and verified references to shared inputs.
+planning and complete replacement on reinstall. The entrypoint, four mode
+references and shared `goal.md` protocol are published under
+`dist/commands/skill/skills/using-daynight/`. The
+[Goal workflow requirements](docs/spec/daynight-goal-workflow.md) and
+[design](docs/design/daynight-goal-workflow.md) define staged persistent work:
+`[Goal]<outcome>` clarifies the whole problem, behavior, scope, exclusions and
+acceptance, then a dependent architecture task completes design and registers
+all successors before design handover. Applicable UI Goals produce a final-style,
+frontend-only interactive prototype during clarification. Stage briefs are
+inputs; completed requirements, prototypes and architecture are their outputs.
+The [delivery tasks](docs/design/daynight-goal-workflow-tasks.md) distinguish
+protocol delivery from independent acceptance of the exact merged consumer artifact.
 
 | Mode | Responsibility |
 |---|---|
 | `handbook` | Command purposes and operational context; use CLI help for command usage |
-| `create-task` | With explicit user permission, skip one-off/trivial work and reuse or register a task with verified planning attachments |
+| `create-task` | With explicit user permission, skip one-off/trivial work and reuse or register an ordinary task or the two Goal seeds with verified stage inputs |
 | `run-task <task-id>` | Execute the designated task through validation and authorized delivery, then return |
 | `autopilot <goal or scope>` | Restore the current task or select one most relevant ready todo, and continue only after confirmed completion |
 
@@ -138,10 +140,13 @@ resolved with the user. Autopilot requires an explicit request for continuous
 execution. Creating tasks requires explicit user permission to create them;
 implementation requests and autopilot activation do not supply that permission.
 Existing explicit permission applies within its stated scope without repeated
-confirmation. Task descriptions contain the problem and real attachment references;
-one primary Markdown attachment owns solution and acceptance criteria. Frontend
-tasks also require an interactive mock UI matching intended final visuals and
-representative states. Dependencies use dependsOn, PR references use properties,
+confirmation. Task descriptions are self-contained briefs: concrete actions, scope, deliverables,
+constraints, observable completion summaries and actual input references. Each
+task-specific primary Markdown owns detailed solution, full acceptance and evidence.
+Shared Goal and design inputs stay at their source task ID and attachment path,
+or a verified immutable repository URL; attachments follow actual need. Frontend
+implementation tasks read the completed final-style interactive prototype and
+its representative states. Dependencies use dependsOn, PR references use properties,
 and execution progress uses an existing checkpoint. Necessary PRs must be
 platform-confirmed merged and acceptance satisfied before done. A request to
 retain a PR for review keeps the task in progress and returns control to the user.

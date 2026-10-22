@@ -113,6 +113,7 @@ src/
         references/autopilot.md
         references/run-task.md
         references/create-task.md
+        references/goal.md
     setup/
       definition.ts
       command.ts

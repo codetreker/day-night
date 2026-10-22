@@ -55,9 +55,11 @@ properties, or versions. Read
 the selected task's details before acting. A graph-limit error still permits
 bounded candidate and individual task reads.
 
-**Task concurrency.** The states are `todo`, `in_progress`, and `done`; ready
-means todo with completed direct prerequisites. These facts grant no ownership
-or lock. Bind each update to the exact version read for that decision using
+**Task concurrency.** New tasks start in `todo`; execution uses `todo`,
+`in_progress`, and `done`. Reads may also return `proposed`, which is outside
+this skill's executable task flow. Preserve its actual state and resolve the
+authorized process before execution; do not implicitly promote it. Ready means
+`todo` with completed direct prerequisites. These facts grant no ownership or lock. Bind each update to the exact version read for that decision using
 `--if-version`; the CLI's default pre-submit read cannot protect an earlier
 decision. Preserve full int64 decimal digits without numeric rounding. On a
 conflict, reread and reconsider rather than merely swapping in a newer version.
@@ -82,4 +84,5 @@ actual errors and resource IDs rather than reporting success or blindly
 resending a write.
 
 Task registration, execution, and selection follow [create-task](create-task.md),
-[run-task](run-task.md), and [autopilot](autopilot.md), respectively.
+[run-task](run-task.md), and [autopilot](autopilot.md), respectively. For a chain
+of independently tracked delivery stages, use [the Goal protocol](goal.md).
