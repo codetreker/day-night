@@ -1,6 +1,6 @@
 {
   "name": "@codetreker/daynight",
-  "version": "0.8.17",
+  "version": "0.8.19",
   "description": "A client command toolkit for development workflows",
   "repository": {
     "type": "git",
@@ -9,7 +9,8 @@
   },
   "type": "module",
   "bin": {
-    "daynight": "dist/main.js"
+    "daynight": "dist/main.js",
+    "dn": "dist/main.js"
   },
   "files": [
     "dist"
