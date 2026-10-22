@@ -57,6 +57,20 @@ and completed in 26.7 seconds. Native/container functional phases, native
 capacity, the standalone attachment persistence check and cleanup all passed.
 This fast run validates the complete updated pipeline; it does not bound future
 archive or browser download latency below the 600-second command deadline.
+Main run
+[39804920251](https://github.com/codetreker/daynight/actions/runs/39804920251)
+on `f3a836161ad2d28b28642e6916fd2549fa79fb0a`, after
+[PR #153](https://github.com/codetreker/daynight/pull/153), later failed the same
+5-second progressive graph-visibility test while Playwright downloaded its
+191.1 MiB Chromium archive. Apt transfers finished in 7 seconds and 8 seconds
+for 12.5 MB of package indexes and 25.9 MB of dependencies. These repeated
+timeouts support keeping browser downloads outside coverage, though their
+timestamps do not identify the exact shared-runner resource that exceeded the
+test deadline.
+
+PR run 39803676876 used a merge checkout based on main `2ffce48`, before main
+advanced to `f3a8361`; the later main failure keeps the browser/coverage overlap
+relevant after that successful full acceptance.
 
 ## Decision
 
