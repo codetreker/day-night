@@ -99,8 +99,18 @@ endpoints, tangent/marker direction, node avoidance, complete coverage, transfor
 pieces and real curved dash phase. `dependency-geometry.test.ts` contains failing
 negative cases for missing edges, wrong arrows, node crossings, dash phase and
 paint coverage.
-Selection checks compare node positions, canonical paths and viewport before and
-after highlighting.
+Selection checks capture every node and edge in one browser evaluation and
+compare the complete sorted observation against independently derived expected
+values. The capture retains identity, native control semantics, pressed state,
+inspection state, status colors, borders/backgrounds, edge roles and passivity,
+marker state/stroke/fill, and all external-piece dash/paint fields. Batching
+avoids a separate Playwright protocol assertion and trace step for every graph
+element, whose accumulated controller work can exhaust the scenario deadline
+even when browser feedback meets its budget. It does not sample or omit graph
+elements. Independent geometry oracles and before/after node, route, paint-piece
+and viewport equality remain separate complete checks; timing thresholds,
+scenario timeouts, fixtures, repetition count and interaction sequence retain
+their existing values.
 
 The [requirements](../../../../docs/spec/daynight-task-inspection.md) own visible
 behavior, the [web design](../../../../docs/design/daynight-web.md) owns current

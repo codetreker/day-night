@@ -666,6 +666,8 @@ CDP timeline、User Timing、frame 与 GC 事件关联浏览器内的输入/条�
 `data-paint-piece-count` 为显式非负安全整数，且与实际 `.task-dependency-paint-piece`
 数量一致；1,000 节点及其主体/详情控件与完整 999/5,000 canonical 路线检查继续保留。独立
 几何判断解析标准 `M/L/Q`，用精确二次曲线/矩形交点验证节点避让，用独立的二次曲线速度解析积分及近直线几何界计算弧长，检查端点、最终切线和全部边覆盖；通过实际 CTM 将 pieces 映射回标准曲线弧长，验证有序覆盖、无跳段/重叠、5/4 相位、gap 中点切缝、单位旋转与 marker。`dependency-geometry.test.ts` 中缺边、错误箭头、穿节点曲线、相位偏差和 paint coverage 负例必须失败；判断器不导入生产路线生成器或图模型作为期望值。
+依赖选择的语义检查在一次 browser evaluation 中捕获全部节点和边，再与独立派生、按 ID 排序的期望值做完整精确比较；保留身份、控件/role、pressed、选择状态、状态色、边框/底色、marker、虚线 paint 和 passivity 等全部字段。批量观察避免每个元素分别产生 Playwright 协议断言及 trace step，不抽样、不减少检查。节点、标准路线、paint pieces 和视口稳定性及独立几何判断继续完整执行；交互顺序、固定图、五次重复、预算和场景 timeout 保持不变。
+
 大共享图的完整分解几何检查在五次计时之后执行，close → zoom 区间不增加读回或
 等待；正常 ready/count 判定与全部预算保持原义。
 

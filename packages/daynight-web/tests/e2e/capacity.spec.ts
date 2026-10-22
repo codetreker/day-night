@@ -321,20 +321,49 @@ const assertInspection = async (page: Page, fixture: CapacityFixture, selectedId
   const tasks = new Map(fixture.tasks.map((task) => [task.id, task]));
   const closure = new Set([selectedId]); const pending = [selectedId];
   while (pending.length > 0) for (const id of tasks.get(pending.pop()!)!.dependsOn) if (!closure.has(id)) { closure.add(id); pending.push(id); }
+  const geometry = expectedCapacityGeometry(fixture);
+  const external = new Set(geometry.edges.filter((edge) => edge.external).map((edge) => edge.source));
+  const states = { todo: { label: '待处理', color: 'rgb(114, 126, 144)' }, in_progress: { label: '进行中', color: 'rgb(72, 103, 181)' }, done: { label: '已完成', color: 'rgb(40, 116, 84)' } };
+  const expected = {
+    nodes: fixture.tasks.map((task) => ({
+      id: task.id, state: task.id === selectedId ? 'selected' : closure.has(task.id) ? 'prerequisite' : 'unrelated', pressed: String(task.id === selectedId),
+      background: task.id === selectedId ? 'rgb(240, 239, 255)' : closure.has(task.id) ? 'rgb(247, 246, 255)' : 'rgb(249, 250, 252)',
+      bodyTag: 'BUTTON', bodyType: 'button', detailsTag: 'BUTTON', detailsType: 'button', detailsPopup: 'dialog',
+      status: states[task.status].label, statusColor: states[task.status].color, borderColor: states[task.status].color, borderStyle: external.has(task.id) ? 'dashed' : 'solid',
+    })).sort((a, b) => a.id.localeCompare(b.id)),
+    edges: geometry.edges.map((edge) => {
+      const highlighted = closure.has(edge.target); const color = highlighted ? 'rgb(103, 98, 206)' : 'rgb(199, 205, 219)';
+      return { id: edge.id, source: edge.source, target: edge.target, state: highlighted ? 'highlighted' : 'unrelated', color,
+        markerState: highlighted ? 'highlighted' : 'unrelated', markerStroke: color, markerFill: color, role: 'img', focusable: 'false',
+        stroke: edge.external ? 'none' : color, dashed: edge.external, hasPaint: edge.external, paintValid: true, passive: true };
+    }).sort((a, b) => a.id.localeCompare(b.id)),
+  };
+  // One atomic observation and exact comparison retain every identity and field
+  // without emitting a separate Playwright trace step for each graph element.
   const actual = await page.evaluate(() => ({
-    nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => ({ id: node.dataset.id!, state: node.querySelector<HTMLElement>('.task-node')!.dataset.inspection,
-      pressed: node.querySelector('.task-node-body')!.getAttribute('aria-pressed'), background: getComputedStyle(node.querySelector('.task-node')!).backgroundColor })),
-    edges: [...document.querySelectorAll<SVGGElement>('.task-dependency-edge')].map((edge) => ({ id: edge.dataset.id!, target: edge.querySelector<SVGPathElement>('.react-flow__edge-path')!.dataset.target!, state: edge.dataset.inspection, color: getComputedStyle(edge).color, marker: edge.querySelector('.react-flow__edge-path')!.getAttribute('marker-end') })),
+    nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => {
+      const card = node.querySelector<HTMLElement>('.task-node')!; const body = card.querySelector<HTMLButtonElement>('.task-node-body')!;
+      const details = card.querySelector<HTMLButtonElement>('.task-node-details')!; const status = card.querySelector<HTMLElement>('.graph-status')!; const style = getComputedStyle(card);
+      return { id: node.dataset.id!, state: card.dataset.inspection, pressed: body.getAttribute('aria-pressed'), background: style.backgroundColor,
+        bodyTag: body.tagName, bodyType: body.getAttribute('type'), detailsTag: details.tagName, detailsType: details.getAttribute('type'), detailsPopup: details.getAttribute('aria-haspopup'),
+        status: status.textContent, statusColor: getComputedStyle(status).color, borderColor: style.borderLeftColor, borderStyle: style.borderLeftStyle };
+    }).sort((a, b) => a.id.localeCompare(b.id)),
+    edges: [...document.querySelectorAll<SVGGElement>('.task-dependency-edge')].map((edge) => {
+      const path = edge.querySelector<SVGPathElement>('.react-flow__edge-path')!; const style = getComputedStyle(path); const color = getComputedStyle(edge).color;
+      const markerUrl = path.getAttribute('marker-end')!; const markerId = /#([^#)]+)\)/.exec(markerUrl)?.[1];
+      const marker = markerId === undefined ? null : document.getElementById(markerId)?.querySelector('polyline'); const markerStyle = marker === null || marker === undefined ? null : getComputedStyle(marker);
+      const pieces = [...edge.querySelectorAll<SVGGraphicsElement>('.task-dependency-paint-piece')];
+      const dash = (value: string) => { const parts = value.match(/[-+\d.]+/g)?.map(Number); return parts?.length === 2 && parts[0] === 5 && parts[1] === 4; };
+      return { id: edge.dataset.id!, source: path.dataset.source!, target: path.dataset.target!, state: edge.dataset.inspection, color,
+        markerState: /-(normal|highlighted|unrelated)\)$/.exec(markerUrl)?.[1], markerStroke: markerStyle?.stroke, markerFill: markerStyle?.fill,
+        role: edge.getAttribute('role'), focusable: edge.getAttribute('focusable'), stroke: style.stroke, dashed: dash(style.strokeDasharray), hasPaint: pieces.length > 0,
+        paintValid: pieces.every((piece) => { const paint = getComputedStyle(piece); return paint.stroke === color && dash(paint.strokeDasharray) && Number.parseFloat(paint.strokeWidth) === 1.5
+          && paint.strokeLinecap === 'butt' && paint.strokeLinejoin === 'miter' && paint.pointerEvents === 'none'
+          && piece.getAttribute('aria-hidden') === 'true' && piece.getAttribute('focusable') === 'false'; }),
+        passive: path.getAttribute('aria-hidden') === 'true' && style.pointerEvents === 'none' };
+    }).sort((a, b) => a.id.localeCompare(b.id)),
   }));
-  expect(actual.nodes).toHaveLength(fixture.tasks.length);
-  for (const node of actual.nodes) { expect(node.state, node.id).toBe(node.id === selectedId ? 'selected' : closure.has(node.id) ? 'prerequisite' : 'unrelated'); expect(node.pressed, node.id).toBe(String(node.id === selectedId)); expect(node.background, node.id).toBe(node.id === selectedId ? 'rgb(240, 239, 255)' : closure.has(node.id) ? 'rgb(247, 246, 255)' : 'rgb(249, 250, 252)'); }
-  expect(actual.edges).toHaveLength(fixture.edgeCount);
-  for (const edge of actual.edges) {
-    const highlighted = closure.has(edge.target);
-    expect(edge.state, edge.id).toBe(highlighted ? 'highlighted' : 'unrelated');
-    expect(edge.color, edge.id).toBe(highlighted ? 'rgb(103, 98, 206)' : 'rgb(199, 205, 219)');
-    expect(edge.marker, edge.id).toMatch(highlighted ? /-highlighted\)$/ : /-unrelated\)$/);
-  }
+  expect(actual, 'Every node and dependency exactly matches the independent upstream closure and rendered inspection semantics').toEqual(expected);
 };
 
 type LocalFeedback = { detailMs: number; detailNetworkMs: number; zoomMs: number; panMs: number };

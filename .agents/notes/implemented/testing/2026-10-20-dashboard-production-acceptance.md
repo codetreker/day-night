@@ -118,8 +118,17 @@ independent analytic speed integration with near-straight geometric bounds, real
 curved dash phase and marker tangents. `dependency-geometry.test.ts` rejects
 missing edges, wrong arrows, node crossings, phase errors and paint-coverage
 errors without importing the production route compiler or graph model. Inspection must preserve node positions, canonical routes and viewport.
-Controller-side fixture, snapshot and repetition durations identify harness costs separately from the
-browser performance gate. The
+Inspection semantics are observed for all nodes and edges in one browser
+evaluation, then checked with one exact comparison against an independently
+derived sorted result. Identity, control/role semantics, pressed and inspection
+states, status/border/background colors, marker state/paint and external-piece
+dash/passivity fields remain mandatory. Per-element Playwright assertions would
+create protocol and trace work proportional to the full graph on every repeated
+observation; batching bounds that controller overhead without sampling data.
+Independent geometry, complete stable node/route/piece/viewport equality, all
+original timing gates and scenario timeouts remain unchanged. Controller-side
+fixture, snapshot and repetition durations identify harness costs separately
+from the browser performance gate. The
 [CI efficiency decision](2026-10-21-ci-validation-efficiency.md) records this
 capture-work optimization and the choice to retain the unsplit suite. This is
 test-side diagnosis for hosted zoom latency, without changing thresholds,
