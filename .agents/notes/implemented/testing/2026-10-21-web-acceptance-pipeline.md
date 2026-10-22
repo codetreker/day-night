@@ -8,7 +8,9 @@ Preparing a cache-only production build and later invoking the normal dev-ci
 build repeats work on the web critical path. Waiting for every preparation step
 before browser work also serializes independent native and container setup.
 Increasing overlap must preserve complete production validation and keep
-capacity timing free of competing builds, coverage and container cleanup.
+capacity timing free of competing builds, coverage and container cleanup. Network-
+dependent browser downloads must also stay outside the five-second UI-test
+deadline, while installation and coverage retain bounded command deadlines.
 
 The preceding optimizations and stability work are delivered through
 [PR #70](https://github.com/codetreker/daynight/pull/70) and
@@ -20,10 +22,23 @@ at `0a1510aa1af9482c7670a09c67096bbd391041a2` passed its complete workload in
 later failed in browser preparation: Playwright's apt phase needed 4 minutes 56
 seconds to download 25.9 MB, while the command had a 180-second deadline. PR run
 [39788510354](https://github.com/codetreker/daynight/actions/runs/39788510354)
-showed the same package set taking 8 minutes 31 seconds. While apt was still
-downloading, the concurrent coverage run failed one 5-second UI test in
-`graph-canvas.test.tsx`. Those logs establish timing overlap, not that apt was
-the sole cause of the test timeout.
+showed the same package set taking 8 minutes 31 seconds. PR run
+[39791820767](https://github.com/codetreker/daynight/actions/runs/39791820767)
+then spent 13 minutes 17 seconds fetching 23.1 MB from the Azure archive and
+exceeded its 600-second install deadline. [PR #148](https://github.com/codetreker/daynight/pull/148)
+selected official Ubuntu archives to remove that slow mirror from hosted
+preparation. PR run
+[39794986474](https://github.com/codetreker/daynight/actions/runs/39794986474)
+then fetched 25.9 MB of apt packages in 7 seconds, downloaded Chromium in about
+10 seconds under the original 180-second bound, and passed the complete web
+acceptance. The first main run after that fix,
+[39798535790](https://github.com/codetreker/daynight/actions/runs/39798535790),
+fetched 5.8 MB and 21.1 MB apt package sets in 5 and 3 seconds. During coverage,
+Playwright downloaded a 191.1 MiB Chromium archive while the 5-second progressive
+graph-visibility test timed out. The test failure was reported as the download
+reached 80%; the browser download then completed. These logs show that
+network-heavy browser preparation overlapped the timing-sensitive test; they do
+not isolate whether CPU, I/O or another shared-runner resource caused the timeout.
 
 ## Decision
 
@@ -35,21 +50,21 @@ pass explicit cancellation controllers to that runner. CI supplies callbacks for
 pinned Chromium installation and the unchanged `pnpm web:test` command; only the
 coverage child receives `VITEST_MAX_WORKERS=2`, retaining its `forks` pool and
 per-file isolation. Browser installation, including Playwright's Linux dependency
-installation, has a 600-second deadline. Coverage remains bounded at 180 seconds.
-Both commands remain required: a nonzero exit or timeout fails acceptance. The
-web job retains its 20-minute overall timeout. Controlled deployment fixtures run
-before the unified CI entry. This partially replaces the cache-only preparation
-and target sequencing of the [CI efficiency decision](2026-10-21-ci-validation-efficiency.md)
+installation, and coverage each retain a 180-second deadline. Both commands
+remain required: a nonzero exit or timeout fails acceptance. The web job retains
+its 20-minute overall timeout. Controlled deployment fixtures run before the
+unified CI entry. This partially replaces the cache-only preparation and target
+sequencing of the [CI efficiency decision](2026-10-21-ci-validation-efficiency.md)
 and the original schedule of the
 [dashboard acceptance decision](2026-10-20-dashboard-production-acceptance.md).
 Their real targets, complete scenarios, coverage, performance and cleanup
 requirements continue to apply.
 
-The runner starts coverage, native production UI/Go/PostgreSQL preparation and
-normal dev-ci source build/start concurrently. Browser and Linux dependency
-installation starts only after coverage passes, removing apt and browser downloads
-from the 5-second UI-test deadline. Browser installation still overlaps native
-and dev-ci preparation. The existing shell runner remains authoritative for the
+The runner starts coverage, native production UI/Go/PostgreSQL preparation,
+container callback and normal dev-ci source build/start concurrently. Browser and
+Linux dependency installation starts only after coverage passes, removing apt and
+browser downloads from the 5-second UI-test deadline. Browser installation still
+overlaps native and dev-ci preparation. The existing shell runner remains authoritative for the
 unique image, running-image check and full stack cleanup. Native functional
 browser work waits only for the native process, shared installed CLI and browser
 preparation. Its thirteen scenarios and immediate browser recovery must pass
@@ -151,27 +166,33 @@ Measured outcomes remain tied to their source, environment and PR/CI run.
 
 ## Alternatives
 
-**Keep the 180-second browser-install deadline.** It fails when apt package
-transfers exceed three minutes even though the required dependency installation
-can complete. Main run 39785915428 took 4 minutes 56 seconds to download packages
-alone, so the existing deadline cannot accommodate the observed case.
+**Run browser preparation concurrently with coverage.** This hides some setup
+time, but main run 39798535790 timed out a 5-second progressive visibility test
+while Playwright downloaded Chromium. Waiting for coverage isolates those tests
+from browser downloads and still overlaps browser setup with native and dev-ci
+preparation.
+
+**Raise the browser-install deadline to 600 seconds.** The longer bound was
+introduced for the Azure archive delay, but PR run 39791820767 still exceeded ten
+minutes while that mirror fetched packages. PR #148 selected official Ubuntu
+archives; PR run 39794986474 then passed complete web acceptance with the original
+180-second installation bound. Main run 39798535790 fetched apt package sets in
+8 seconds total, but a timing-sensitive test failed while Chromium downloaded.
+The larger deadline addresses neither the slow mirror nor this test overlap.
+
+**Wait for all preparations before starting browser installation.** This would
+also separate browser downloads from coverage, but would serialize independent
+native and dev-ci work. Waiting only for coverage protects the short UI-test
+deadline while retaining the other preparation overlap.
 
 **Remove `--with-deps` in CI.** This avoids apt work but leaves the runner without
 the Linux libraries and fonts that Playwright prepares for Chromium. Browser
 acceptance would depend on incidental runner-image contents rather than an
 explicit environment requirement.
 
-**Keep browser dependency installation concurrent with coverage.** The existing
-overlap hid some package-install time, but run 39788510354 timed out a wall-clock-
-sensitive graph-canvas test while apt was still fetching the packages. The logs do
-not prove direct causation; starting apt after coverage removes that shared-runner
-contention while preserving overlap with native and dev-ci preparation. The
-trade-off is that browser installation no longer hides the coverage duration.
-
 **Increase the whole job timeout.** That expands the deadline for every CI phase
-and does not repair the browser command's own deadline. The browser's 600-second
-deadline applies only to dependency preparation; the workflow's 20-minute cap
-remains.
+and does not remove shared-runner contention during coverage. The existing
+20-minute cap is retained; each preparation command has its own 180-second bound.
 
 **Keep cache-only preparation followed by a later normal build.** This allowed
 preparation overlap without changing deployment ownership, but scheduled a second
@@ -201,15 +222,13 @@ which builds fresh native artifacts and owns their exact identity and lifetime.
 ## Consequences
 
 Coverage completes before the network-dependent browser preparation begins, while
-both continue to overlap native service and dev-ci preparation. The browser command
-can absorb the observed apt delay and still has a finite deadline; the job-level
-limit bounds total CI time. In successful main run
-[39784492399](https://github.com/codetreker/daynight/actions/runs/39784492399),
-the full acceptance step took 4 minutes 50 seconds and coverage took 94 seconds.
-Replacing that run's fast package transfer with the observed 8-minute-31-second
-apt download and serializing coverage projects roughly 15 minutes end-to-end,
-within the workflow's 20-minute job limit. This is a projection from recorded
-runs, not a worst-case guarantee.
+both continue to overlap native service and dev-ci preparation. The official
+Ubuntu archive selection addresses the slow package mirror measured in runs
+39785915428 and 39791820767; the coverage gate keeps Chromium downloads away from
+the five-second UI-test timing budget observed in run 39798535790. Coverage and
+browser installation both retain 180-second command limits, and the complete web
+job retains its 20-minute limit. A Chromium transfer that exceeds its command
+bound fails acceptance; it does not lengthen CI without limit.
 
 The normal dev-ci runner keeps its existing public interface, production image
 checks and targeted cleanup. The native service lives longer because both native
@@ -218,4 +237,5 @@ explicit permission and recovery evidence. A complete result requires every
 phase, strict scenario union, matching browser identities and cleanup, not merely
 successful child exits. Hosted CI remains the authority for full acceptance;
 local validation and historical main runs retain their own source and environment
-limits.
+limits. A complete hosted acceptance run after this ordering change remains
+necessary to validate the production browser scenarios under the updated pipeline.

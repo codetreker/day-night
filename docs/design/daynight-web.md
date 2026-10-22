@@ -493,13 +493,16 @@ deployment/
 `verify-web` 和 `verify-server` 被选中时，都使用固定 Node/pnpm，在干净 checkout
 从锁文件安装依赖并构建真实 UI。Go 检查调用共享构建后继续负责 build/vet/race/go-cov；
 web job 在统一验收前执行 dev-ci 生命周期 fixture，随后仅调用 `scripts/ci.mts`。
-该入口把固定 Chromium 的 `install --with-deps chromium` 和既有 `pnpm web:test`
+workflow 先选择官方 Ubuntu package archives，再启动统一验收；该镜像源变更由
+[PR #148](https://github.com/codetreker/daynight/pull/148) 交付。
+入口把固定 Chromium 的 `install --with-deps chromium` 和既有 `pnpm web:test`
 作为准备 callback 交给共享 runner；仅覆盖率子进程设置 `VITEST_MAX_WORKERS=2`，
-保留 `forks` pool 和文件隔离。浏览器安装含 apt Linux 依赖与 Chromium 下载，限时
-600 秒；覆盖率命令仍限 180 秒，任一失败都使验收失败。runner 等覆盖率通过后
-再启动浏览器安装，避免 apt 下载与 5 秒 UI 测试时限争用。覆盖率和浏览器准备仍与
-原生 UI/Go/PostgreSQL 准备及正常 dev-ci 源码构建/启动并行。web job 总上限仍为
-20 分钟；dev-ci 继续拥有本次唯一镜像及运行镜像身份校验和完整 shell 清理。
+保留 `forks` pool 和文件隔离。runner 同时启动覆盖率、原生 UI/Go/PostgreSQL 准备、
+容器 callback 与正常 dev-ci 源码构建/启动；仅在覆盖率通过后启动浏览器安装，
+避免 apt 与 Chromium 下载争用 5 秒 UI 测试时限。浏览器安装（含 Linux 依赖）和
+覆盖率命令均限时 180 秒，任一失败都使验收失败。浏览器准备仍与原生及 dev-ci
+准备并行。web job 总上限仍为 20 分钟；dev-ci 继续拥有本次唯一镜像及运行镜像
+身份校验和完整 shell 清理。
 
 原生功能阶段只等待原生服务和浏览器就绪；其十三个场景及浏览器回收成功后，runner
 原子写入绑定 acceptance run ID、dev-ci run ID 和 source SHA 的容器执行许可。

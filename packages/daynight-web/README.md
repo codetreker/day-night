@@ -521,15 +521,15 @@ builds and production-browser acceptance. The CI entry
 `pnpm web:acceptance`. CI supplies pinned Chromium installation, including Linux
 dependencies, and the existing `pnpm web:test` command as preparation callbacks.
 The runner completes coverage before starting browser installation, so apt and
-Chromium downloads do not compete with the 5-second UI-test deadline. Only the
-coverage child receives `VITEST_MAX_WORKERS=2`, retaining its `forks` pool and
-per-file isolation. Browser installation has a 600-second deadline because
-Playwright may need to download Linux packages as well as Chromium; coverage
-remains bounded to 180 seconds. Both failures remain acceptance failures. Coverage
-and browser installation still overlap native production assets, Go/PostgreSQL
-and one normal dev-ci source build/start. The dev-ci runner remains the owner of
-the built/running image identity and full cleanup; the job retains its 20-minute
-overall bound.
+Chromium downloads do not compete with the 5-second UI-test deadline. The CI
+workflow selects official Ubuntu package archives before this step, as delivered
+in [PR #148](https://github.com/codetreker/daynight/pull/148). Only the coverage child receives
+`VITEST_MAX_WORKERS=2`, retaining its `forks` pool and per-file isolation. Browser
+installation, including Linux dependencies and Chromium, and coverage each retain
+a 180-second command deadline. Both failures remain acceptance failures. Browser
+installation still overlaps native production assets, Go/PostgreSQL and one normal
+dev-ci source build/start. The dev-ci runner remains the owner of the built/running
+image identity and full cleanup; the job retains its 20-minute overall bound.
 
 Native functional checks start after the native process and browser are ready.
 Their browser cleanup must pass before an atomic, run/source-bound permission
