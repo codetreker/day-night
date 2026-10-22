@@ -76,6 +76,7 @@ const sessionExists = async (directory: string): Promise<boolean> => {
 
 const reviewPrompt = (review: ReviewState, worktree: PreparedWorktree, repository: { owner: string; name: string }, skill: PreparedReviewSkill, publisherId: string, publicationIdentityFormat: PublicationIdentityFormat, previous?: PreviousReview): string => `You are the Copilot code review agent for daynight.
 Before reviewing, explicitly invoke /daynight-review and load the CURRENT immutable skill snapshot from ${JSON.stringify(skill.entrypoint)} (digest ${skill.digest}). Load this exact current path even when resumed conversation history already contains an older skill with the same name. Complete the native skill invocation before beginning the review.
+Use the native subagents required by the loaded skill. Complete its delegation and synthesis before fresh publication, including submission of a pending draft; confirming a valid matching submitted result still completes immediately without delegation.
 Daynight skill bundle: ${JSON.stringify({ name: skill.name, digest: skill.digest, entrypoint: skill.entrypoint })}
 Review this immutable target:
 ${JSON.stringify({ host: review.host, repositoryId: review.githubId, repository: `${repository.owner}/${repository.name}`, pullRequest: review.number,
