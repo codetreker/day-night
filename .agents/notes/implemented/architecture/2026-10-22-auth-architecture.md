@@ -19,7 +19,9 @@ implementation. This note records the adopted architecture; runtime delivery
 remains separately tracked and is not claimed by document completion. The
 [identity foundation](2026-10-22-identity-credentials.md) implements persistent
 users, sessions/PATs and callable handlers without mounting them into the current
-application; membership and full activation remain separately tracked.
+application. The [membership foundation](2026-10-22-project-membership.md) adds
+transaction-scoped access, private creation, roles and invitations without
+mounting them. Client integration and full activation remain separately tracked.
 
 Existing UniAuth and its Go SDK provide one-time identity handoff. Daynight owns
 stable local users, browser sessions, personal access tokens, project memberships

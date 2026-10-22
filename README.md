@@ -46,9 +46,11 @@ The [authentication requirements](docs/spec/daynight-auth.md),
 [task breakdown](docs/design/daynight-auth-tasks.md) define UniAuth login, Daynight
 sessions and personal access tokens, private projects and membership. The
 [identity foundation](.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
-provides persistent users, credentials and callable authentication handlers. These
-handlers are not mounted in the application; membership and activation remain
-separately tracked, and the current application is unauthenticated and loopback-only. Trusted
+provides persistent users, credentials and callable authentication handlers. The
+[project membership module](.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
+adds private creation, filtered access, roles and invitations. Both modules remain
+unmounted; client integration and coordinated activation are separately tracked,
+and the current application is unauthenticated and loopback-only. Trusted
 same-origin executable HTML previews retain their existing execution model after
 authentication is delivered; attachment requests gain project-member checks.
 Existing projects will receive membership data manually outside that work.

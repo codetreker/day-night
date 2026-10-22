@@ -21,8 +21,9 @@
 访问令牌及项目成员授权，行为由[鉴权需求](../spec/daynight-auth.md)拥有，
 交付顺序由[任务拆分](daynight-auth-tasks.md)拥有。
 [身份基础模块](../../.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
-提供独立的用户/凭据存储和 handler；生产 composition 尚未挂载，仍按本机未认证
-服务边界运行。
+提供独立的用户/凭据存储和 handler；[项目成员模块](../../.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
+提供事务内授权、私有创建和邀请。生产 composition 尚未挂载这些模块，仍按本机
+未认证服务边界运行。
 
 现有 `packages/daynight/` TypeScript CLI、YAML 配置和 SQLite review 状态继续独立
 运行。服务不读取或迁移这些状态；注册 project 也不启动现有 review 协调器。
