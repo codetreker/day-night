@@ -1,4 +1,4 @@
-import type { CreateTaskInput, Project, TaskFilters, TaskStatus, UpdateTaskInput } from "../../api/types.js";
+import type { CreateTaskInput, Project, Task, TaskFilters, TaskStatus, UpdateTaskInput } from "../../api/types.js";
 import { UsageError } from "../../cli/context.js";
 import type { CliContext } from "../../cli/context.js";
 import { parseCommand, renderCommandHelp } from "../../cli/schema.js";
@@ -16,6 +16,8 @@ const defaultDependencies: TaskCommandDependencies = {
   runServerCommand: async (...args) => (await import("../server/runtime.js")).runServerCommand(...args),
   resolveProject: async (...args) => (await import("../../repository/index.js")).resolveProject(...args),
 };
+
+const taskPriority = (task: Task): number => task.status === "in_progress" ? 0 : task.ready ? 1 : task.status === "todo" ? 2 : 3;
 
 export const runTaskCommand = async (
   args: readonly string[],
@@ -36,6 +38,8 @@ export const runTaskCommand = async (
   const title = command.options.get("--title") as string | undefined;
   const description = command.options.get("--description") as string | undefined;
   const status = command.options.get("--status") as TaskStatus | undefined;
+  const all = command.options.has("--all");
+  if (all && status !== undefined) throw new UsageError("--all conflicts with --status.", help);
   const dependsOn = command.options.get("--depends-on") as readonly string[] | undefined;
   const clearDependencies = command.options.has("--clear-dependencies");
   const pullRequestUrls = command.options.get("--pull-request-url") as readonly string[] | undefined;
@@ -90,7 +94,7 @@ export const runTaskCommand = async (
       project = await dependencies.resolveProject({ serverUrl, operation, api, workingDirectory: context.workingDirectory() });
     }
     operation.check();
-    const { renderTask, renderTaskGraph, renderTaskJson, renderTaskList } = await import("./rendering.js");
+    const { renderTask, renderTaskGraph, renderTaskJson, renderTaskList, renderTaskSummaryList } = await import("./rendering.js");
     operation.check();
     if (command.command.name === "create") {
       const input: CreateTaskInput = { title: title!, ...(description === undefined ? {} : { description }), ...(dependsOn === undefined ? {} : { dependsOn }), ...(properties === undefined ? {} : { properties }) };
@@ -100,9 +104,11 @@ export const runTaskCommand = async (
     }
     if (command.command.name === "list") {
       const filters: TaskFilters = { ...(status === undefined ? {} : { status }), ...(command.options.has("--ready") ? { ready: true } : {}) };
-      const tasks = await api.listTasks(project.id, filters);
+      const tasks = (await api.listTasks(project.id, filters))
+        .filter((task) => all || status !== undefined || task.status !== "done")
+        .toSorted((left, right) => taskPriority(left) - taskPriority(right));
       operation.check();
-      return command.options.has("--json") ? renderTaskJson(tasks) : renderTaskList(tasks);
+      return command.options.has("--json") ? renderTaskJson(tasks) : renderTaskSummaryList(tasks);
     }
     if (command.command.name === "ready") {
       const tasks = await api.listReadyTasks(project.id, readyLimit);

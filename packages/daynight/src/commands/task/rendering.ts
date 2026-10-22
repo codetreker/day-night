@@ -4,27 +4,47 @@ import { terminalText } from "../../platform/terminal.js";
 
 const identifiers = (values: readonly string[]): string => values.length === 0 ? "none" : values.map(terminalText).join(", ");
 
-export const renderTask = (task: Task): string => [
+const taskIdentity = (task: Task): readonly string[] => [
   `ID: ${terminalText(task.id)}`,
   `Project: ${terminalText(task.projectId)}`,
   `Title: ${terminalText(task.title)}`,
-  `Description: ${terminalText(task.description)}`,
+];
+
+const taskPullRequests = (task: Task): readonly string[] => [
   `Pull requests: ${task.properties.pullRequests.length}`,
   ...task.properties.pullRequests.flatMap((pullRequest, index) => [
     `  ${index + 1}. Title: ${terminalText(pullRequest.title)}`,
     `     URL: ${terminalText(pullRequest.url)}`,
   ]),
-  `Status: ${terminalText(task.status)}`,
-  `Version: ${task.version}`,
+];
+
+const taskDependencies = (task: Task): readonly string[] => [
   `Ready: ${task.ready}`,
   `Depends on: ${identifiers(task.dependsOn)}`,
   `Blocked by: ${identifiers(task.blockedBy)}`,
+];
+
+export const renderTask = (task: Task): string => [
+  ...taskIdentity(task),
+  `Description: ${terminalText(task.description)}`,
+  ...taskPullRequests(task),
+  `Status: ${terminalText(task.status)}`,
+  `Version: ${task.version}`,
+  ...taskDependencies(task),
   `Created: ${terminalText(task.createdAt)}`,
   `Updated: ${terminalText(task.updatedAt)}`,
   "",
 ].join("\n");
 
 export const renderTaskList = (tasks: readonly Task[]): string => tasks.length === 0 ? "No tasks.\n" : tasks.map(renderTask).join("\n");
+
+export const renderTaskSummaryList = (tasks: readonly Task[]): string => tasks.length === 0 ? "No tasks.\n" : tasks.map((task) => [
+  ...taskIdentity(task),
+  ...taskPullRequests(task),
+  `Status: ${terminalText(task.status)}`,
+  ...taskDependencies(task),
+  "",
+].join("\n")).join("\n");
 
 const renderGraphTask = (task: GraphTask): string => [
   `ID: ${terminalText(task.id)}`,

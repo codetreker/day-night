@@ -39,7 +39,7 @@ daynight project list [--json]
 daynight project show <project-id> [--json]
 daynight task
 daynight task create --title <title> [options]
-daynight task list [--status <status>] [--ready] [--json] [--project <project-id>]
+daynight task list [--all | --status <status>] [--ready] [--json] [--project <project-id>]
 daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
@@ -253,8 +253,11 @@ project 操作不读写仓库绑定或 ignore 规则。`rendering.ts` 使用完�
 进入这一取消源；配置读取接受同一 AbortSignal。Task 复用此执行层；它不控制 Go
 server 的启动或关闭。
 
-Task 的 definition、command 和 rendering 分别拥有共享语法、操作组合和完整
-资源输出。`ready` 的 `--limit` 在任何配置、Git 或 HTTP 访问前校验为十进制整数
+Task 的 definition、command 和 rendering 分别拥有共享语法、操作组合和
+可读/JSON 输出。`list` 在命令层选择状态并对完整分页结果稳定分组，默认排除
+`done`，互斥的 `--all` 与 `--status` 调整所选状态，`--ready` 与之取交集；
+文本列表使用精简标签块，JSON 保留完整资源。`ready` 的 `--limit` 在任何配置、Git
+或 HTTP 访问前校验为十进制整数
 `1..100`，默认 `10`。它调用 `api/client.ts` 的 `listReadyTasks`，仅发送一次带
 `ready=true` 和所选 `limit` 的 task GET；合法 `nextCursor` 不触发续页。该 API
 操作在返回前验证数量不超限、每项确为 ready 且 task ID 不重复。`list` 仍使用完整
