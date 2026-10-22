@@ -14,7 +14,7 @@ const evidenceRoot = join(temporaryRoot, 'acceptance');
 const runner = new URL('./runner.mts', import.meta.url).href;
 const cli = fileURLToPath(new URL('../acceptance.mts', import.meta.url));
 const sourceGitSha = '0123456789abcdef0123456789abcdef01234567';
-const sourceGitTreeSha = '89abcdef0123456789abcdef0123456789abcdef01';
+const sourceGitTreeSha = 'b'.repeat(40);
 const runId = (): string => `20261021123456-${randomUUID()}`;
 type Fixture = { directory: string; bin: string; commands: string; env: NodeJS.ProcessEnv };
 

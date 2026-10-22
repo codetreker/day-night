@@ -10,7 +10,7 @@ import { createAcceptanceCli, recordCliProcess, recoverCliProcesses, validateIns
 
 const repository = fileURLToPath(new URL('../../../../', import.meta.url));
 const acceptance = join(repository, 'packages/daynight-web/.tmp/acceptance');
-const source = { gitSha: '0123456789abcdef0123456789abcdef01234567', gitTreeSha: '89abcdef0123456789abcdef0123456789abcdef01', dirty: true };
+const source = { gitSha: '0123456789abcdef0123456789abcdef01234567', gitTreeSha: 'b'.repeat(40), dirty: true };
 const hash = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
 const fixture = async (run: (value: { directory: string; receiptPath: string; receipt: InstalledCliReceipt; evidence: Record<string, unknown> }) => Promise<void>): Promise<void> => {
   const directory = join(acceptance, `20261021123456-${randomUUID()}`);
