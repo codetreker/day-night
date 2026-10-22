@@ -50,7 +50,7 @@ flowchart LR
 
 保留已确认旧任务 Agent、新任务 Human、人工确认和已 claim 锁定；Web 使用该 task 已上传的角色原型，不增加通用任务编辑表单。人工 Human 生命周期仍有效，角色不与凭据类型或具体 agent 混淆。
 
-验收以该 task 主附件 `plan.md` 为准，必须包含迁移、确认、版本/claim 竞争、权限、CLI 与实际 Web 交互及适用 Go/CLI/Web 门禁。
+验收以该 task 主附件 `plan.md` 为准，包含迁移、确认、与既有手工 claim 的版本竞争、权限、角色筛选、CLI/Web 交互及适用门禁。自动领取的角色资格提供可复用领域校验；真正 worker-claim 的事务集成与启动门禁由 WR-T3/WR-T6 验证，不反向依赖后继接口。
 
 ### WR-T2：为任务增加执行平台要求
 
@@ -58,7 +58,7 @@ flowchart LR
 
 复用角色任务；原型是该 task 的 `mockui/index.html`。公开枚举为 windows/linux/macos，null 不限制；实际 worker 环境识别，WSL Linux 按 linux。
 
-验收以该 task 主附件 `plan.md` 为准，覆盖全部平台组合、清除/未提供语义、分页/游标、claim 竞争、已 claim 锁定及三端一致。
+验收以该 task 主附件 `plan.md` 为准，覆盖平台领域规则、清除/未提供语义、分页/游标、与既有手工 claim 的版本竞争、已 claim 锁定及三端一致。自动 worker-claim 的平台事务校验由 WR-T3 集成，真实资源启动由 WR-T6/WR-T8 验证。
 
 ### WR-T3：建立唯一的任务执行认领
 
