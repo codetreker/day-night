@@ -129,7 +129,7 @@ describe("packaged skill resource copy", () => {
     expect(autopilot).toContain("never auto-approves proposed");
     const goal = readFileSync(path.join(destination, "references/goal.md"), "utf8");
     expect(goal).toContain("two starting tasks");
-    expect(goal).toContain("Each task starts\nin `proposed`");
+    expect(goal).toMatch(/Each task starts\s+in `proposed`/);
     expect(goal).toContain("stage briefs");
     expect(goal).toContain("Completion satisfies dependencies but never approves the next stage");
     expect(goal).toContain("actual registered delivery tasks");
