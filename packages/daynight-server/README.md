@@ -233,7 +233,15 @@ DAYNIGHT_TEST_UNIAUTH_FIXTURE="$(node scripts/prepare-uniauth-fixture.mts)"
 export DAYNIGHT_TEST_UNIAUTH_FIXTURE
 ```
 
-The full check performs this preparation automatically. Controlled-provider proof is separate from a real upstream login.
+The full check performs this preparation automatically. The real wire-loss test in
+[`auth_transport_acceptance_test.go`](internal/server/auth_transport_acceptance_test.go)
+consumes a successful upstream result, closes the actual SDK-side TCP connection,
+and verifies upstream 410, callback replay 401, zero failed-login sessions and
+fresh-login recovery. Product, proxy and gateway cleanup is part of the test.
+The [combined authentication decision](../../.agents/notes/implemented/testing/2026-10-23-authentication-combined-acceptance.md)
+owns that proof and the separate native/container browser-plus-installed-CLI
+journeys. Focused results retain their recorded source scope; controlled-provider
+proof is separate from an actual upstream human login.
 
 ## File storage
 

@@ -306,8 +306,15 @@ docker compose logs --no-log-prefix server | jq -R 'fromjson? | select(.request_
 ```
 
 验证按 AU-V1–AU-V10 映射，保留真实 PG 并发、实际 SDK/受控 UniAuth、安装 CLI、
-生产浏览器、原生/容器和现有资源/容量预算。每次结果以当前源码回执为准；真实上游
-人工联调单独留证，缺少时不宣称全部完成。模型工具预算不适用：不新增 MCP；CLI 不增加认证预检往返，沿用
+生产浏览器、原生/容器和现有资源/容量预算。[最终验收设计](auth-tasks/AU-T6.md)与
+[组合验收决策](../../.agents/notes/implemented/testing/2026-10-23-authentication-combined-acceptance.md)
+拥有实际领取结果后 TCP 断连，以及原生/容器各自的浏览器和安装 CLI 同数据、原凭据
+重启、撤销、已准入上传和 socket 中断证明。两目标各有一份额外必需回执，原有
+23+23+5 共 51 项 Playwright inventory 与容量门槛保持。
+
+统一启用的源码绑定结果保留其原始范围，不作为新增代码的完整门禁证明。每次组合
+结果核对当前源码、安装包、进程/镜像与清理；真实上游人工联调单独留证，缺少时
+不宣称全部完成。模型工具预算不适用：不新增 MCP；CLI 不增加认证预检往返，沿用
 既有 request/operation/response/累计预算和 stdout 合同。
 
 ## 交付边界

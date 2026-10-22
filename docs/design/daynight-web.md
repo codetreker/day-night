@@ -791,6 +791,16 @@ PUT/DELETE；`task-approval`、`task-approval-conflicts`、`task-approval-recove
 组数据，按原始字节交叉验证写入、覆盖、下载与删除；具体机制由
 [附件组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
 拥有。
+
+`auth-combined.mts` 另在原生/容器各生成一份必需组合回执，复用正常 Alice/Bob 身份、
+真实安装 CLI 和同一目标数据，覆盖部分共享项目、原凭据服务重启、logout/PAT 独立、
+撤销、已准入上传、socket 中断、正常签发 PAT 到期与双语 pending/reveal。它接收
+runner 的服务重启 callback 与显式安装回执路径；目标 probe 在校验 run/source/
+容器标记后读取实际 staging/SQL，客户端发送成功不作为服务端准入证据。详细机制由
+[组合鉴权验收决策](../../.agents/notes/implemented/testing/2026-10-23-authentication-combined-acceptance.md)拥有。
+这两份回执与现有 51 项 Playwright 场景并列，不复制容量矩阵或改变测量、预算和
+清理屏障；运行结果与真实上游人工登录分别留证。
+
 双语功能的三个稳定场景由[语言设计](daynight-web-i18n.md#验证与证据归属)定义，使用同一受监控页面与场景级 locale；首屏和偏好、图/详情/附件状态、错误及窄屏布局分别提供定向检查。语言不会复制容量矩阵或改变阶段与清理屏障。
 
 单链先 POST 创建 1,000 个无依赖任务，再按索引从 999 到 1 PATCH 当前任务，
@@ -854,7 +864,11 @@ dirty 标记、tarball 和 entry 摘要，并重算实际产物摘要；dirty �
 起止时间、Playwright 进程/组、浏览器身份及 `browserCleanup`。
 `native/functional/`、`container/`、`native/capacity/` 分别保留原始 Playwright JSON、
 场景截图和浏览器身份；容量的原 schema 1 性能回执位于
-`native/capacity/performance.json`。CI 的 `daynight-web-acceptance` 产物同时归档
+`native/capacity/performance.json`。额外必需的 schema 1 `kind: auth-combined` 回执为
+`native/auth-combined/target.json` 和 `container/auth-combined/target.json`；每份
+严格要求十一项具名检查、源码/浏览器/安装包、重启前后进程身份及浏览器/资源清理。
+回执不保存凭据、配置 body 或原始日志，私有日志扫描只记录安全结果；既有场景
+报告校验保持独立。CI 的 `daynight-web-acceptance` 产物同时归档
 这些文件与 `.tmp/dev-ci/`、`.tmp/attachment-deployment-*/`，独立 `daynight-web-coverage` 归档原始语句报告及源码
 清单。web job 被选中后，任何执行或清理失败必须让该 job 失败。
 
@@ -862,7 +876,8 @@ dirty 标记、tarball 和 entry 摘要，并重算实际产物摘要；dirty �
 默认读取最近一次回执，缺失回执不操作资源。恢复只接受顶层 schema 2，schema 1
 及未知版本明确失败。恢复先确认原 runner、阶段命令身份和全部登记进程组均停止；
 浏览器按 `native/capacity`、`container`、`native/functional` 的逆序检查和回收。
-callback 和 Playwright 的进程及其组必须已停止，再依据记录的 Linux PID、
+两个 `auth-combined/` 目录同样加入已有浏览器与命令进程恢复扫描。callback 和
+Playwright 的进程及其组必须已停止，再依据记录的 Linux PID、
 executable、start ticks 与源码身份处理资源。仍存活的原生服务必须额外匹配二进制摘要，Docker 只按本次精确标记
 和名称清理。Chromium 单独记录隔离进程组、已验证 executable 和项目内 profile
 所有权 marker；只对已确认的组和 profile 恢复。启动窗口出现未登记进程、无有效

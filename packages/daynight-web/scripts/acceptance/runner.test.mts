@@ -2,12 +2,15 @@ import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { processIdentity } from './identity.mts';
-import { launchNativeServer } from './runner.mts';
+import { launchNativeServer, restartContainerServer } from './runner.mts';
+import type { CombinedCommand } from './auth-combined-target.mts';
+import type { RestartReceipt } from './auth-combined.mts';
 
 const packageRoot = fileURLToPath(new URL('../../', import.meta.url));
 const temporaryRoot = join(packageRoot, '.tmp');
@@ -516,6 +519,267 @@ test('recovery cleans only recorded native auth directories and refuses an unide
       } finally {
         await rm(directory, { recursive: true, force: true });
         await rm(join(temporaryRoot, 'acceptance-private', id), { recursive: true, force: true });
+      }
+    }
+  });
+});
+
+type RestartJournal = Omit<RestartReceipt, 'readyAt'> & { readyAt?: string };
+const restartContainerId = 'a'.repeat(64);
+const restartImageId = `sha256:${'b'.repeat(64)}`;
+const restartProject = 'daynight-dev-ci-20261023123456-12345-54321';
+const originalContainerProcess = { pid: 31001, start: '2026-10-23T01:00:00.000000000Z' };
+const replacementContainerProcess = { pid: 31002, start: '2026-10-23T01:00:01.000000000Z' };
+const containerInspection = (process: RestartReceipt['before'], image = restartImageId, project = restartProject, service = 'server', running = 'true'): string =>
+  `${process.pid}|${process.start}|${image}|${project}|${service}|${running}`;
+
+const withRestartReadiness = async (
+  probe: (request: IncomingMessage, response: ServerResponse) => Promise<void> | void,
+  run: (origin: string) => Promise<void>,
+): Promise<void> => {
+  const failures: unknown[] = [];
+  const server = createServer((request, response) => {
+    void Promise.resolve().then(() => probe(request, response)).catch((error: unknown) => {
+      failures.push(error);
+      response.statusCode = 200;
+      response.end();
+    });
+  });
+  await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+  const address = server.address();
+  assert.ok(address !== null && typeof address !== 'string');
+  try {
+    await run(`http://127.0.0.1:${address.port}`);
+    assert.deepEqual(failures, []);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
+  }
+};
+
+test('container restart persists both process identities before probing readiness on the same container and image', { timeout: 5_000 }, async () => {
+  await fixture(async (value) => {
+    const journalPath = join(value.directory, 'restart.json');
+    const replacementPending = Promise.withResolvers<void>();
+    const allowReplacementJournal = Promise.withResolvers<void>();
+    const cancellation = new AbortController();
+    const records: RestartJournal[] = [];
+    const operations: string[] = [];
+    let probes = 0;
+    let restarting: Promise<RestartReceipt> | undefined;
+    await withRestartReadiness(async (request, response) => {
+      probes += 1;
+      assert.equal(request.method, 'GET');
+      assert.equal(request.url, '/readyz');
+      const journal = JSON.parse(await readFile(journalPath, 'utf8')) as RestartJournal;
+      assert.deepEqual(journal.before, originalContainerProcess);
+      assert.deepEqual(journal.after, replacementContainerProcess);
+      assert.equal(journal.containerId, restartContainerId);
+      assert.equal(journal.binaryOrImage, restartImageId);
+      assert.equal(journal.readyAt, undefined);
+      response.statusCode = probes === 1 ? 503 : 200;
+      response.end('readiness');
+    }, async (origin) => {
+      let inspections = 0;
+      const run: CombinedCommand = async (file, args, options) => {
+        assert.equal(file, 'docker');
+        assert.equal(args.at(-1), restartContainerId);
+        assert.equal(options?.quiet, true);
+        operations.push(args[0]!);
+        if (args[0] === 'inspect') {
+          assert.equal(options?.timeoutMs, 10_000);
+          assert.match(args[2]!, /State\.Pid.*State\.StartedAt.*Image.*compose\.project.*compose\.service.*State\.Running/);
+          return containerInspection(inspections++ === 0 ? originalContainerProcess : replacementContainerProcess);
+        }
+        assert.deepEqual(args, ['restart', '--timeout', '20', restartContainerId]);
+        assert.equal(options?.timeoutMs, 30_000);
+        const journal = JSON.parse(await readFile(journalPath, 'utf8')) as RestartJournal;
+        assert.deepEqual(journal.before, originalContainerProcess);
+        assert.deepEqual(journal.after, originalContainerProcess);
+        assert.equal(journal.readyAt, undefined);
+        return restartContainerId;
+      };
+      restarting = restartContainerServer({ containerId: restartContainerId, imageId: restartImageId, project: restartProject,
+        origin, signal: cancellation.signal, run, record: async (entry) => {
+          if (entry.after.pid === replacementContainerProcess.pid && entry.readyAt === undefined) {
+            replacementPending.resolve();
+            await allowReplacementJournal.promise;
+          }
+          await writeFile(journalPath, JSON.stringify(entry));
+          records.push(structuredClone(entry));
+        } });
+      try {
+        await Promise.race([replacementPending.promise, restarting.then(() => { throw new Error('Restart completed before replacement ownership was recorded.'); })]);
+        assert.equal(probes, 0);
+        assert.equal(records.length, 1);
+        allowReplacementJournal.resolve();
+        const result = await restarting;
+        assert.deepEqual(operations, ['inspect', 'restart', 'inspect']);
+        assert.equal(probes, 2);
+        assert.equal(records.length, 3);
+        assert.deepEqual(result.before, originalContainerProcess);
+        assert.deepEqual(result.after, replacementContainerProcess);
+        assert.equal(result.containerId, restartContainerId);
+        assert.equal(result.binaryOrImage, restartImageId);
+        assert.equal(result.origin, origin);
+        assert.match(result.readyAt, /^\d{4}-\d{2}-\d{2}T/);
+        assert.deepEqual(JSON.parse(await readFile(journalPath, 'utf8')), result);
+      } finally {
+        cancellation.abort(new Error('Controlled restart test finished.'));
+        allowReplacementJournal.resolve();
+        await restarting.catch(() => {});
+      }
+    });
+  });
+});
+
+test('container restart refuses foreign ownership and image before mutation or readiness', { timeout: 5_000 }, async () => {
+  const variants = [
+    containerInspection(originalContainerProcess, `sha256:${'c'.repeat(64)}`),
+    containerInspection(originalContainerProcess, restartImageId, `${restartProject}-other`),
+    containerInspection(originalContainerProcess, restartImageId, restartProject, 'postgres'),
+    containerInspection(originalContainerProcess, restartImageId, restartProject, 'server', 'false'),
+  ];
+  let probes = 0;
+  await withRestartReadiness((_request, response) => { probes += 1; response.end(); }, async (origin) => {
+    for (const inspection of variants) {
+      const operations: string[] = [];
+      const records: RestartJournal[] = [];
+      const run: CombinedCommand = async (file, args) => {
+        assert.equal(file, 'docker');
+        operations.push(args[0]!);
+        assert.equal(args[0], 'inspect');
+        assert.equal(args.at(-1), restartContainerId);
+        return inspection;
+      };
+      await assert.rejects(restartContainerServer({ containerId: restartContainerId, imageId: restartImageId, project: restartProject,
+        origin, signal: new AbortController().signal, run, record: async (entry) => { records.push(entry); } }), /ownership or runtime differs/);
+      assert.deepEqual(operations, ['inspect']);
+      assert.deepEqual(records, []);
+    }
+    assert.equal(probes, 0);
+  });
+});
+
+test('restart command failure and changed container identity retain the pre-mutation journal', { timeout: 5_000 }, async () => {
+  await fixture(async (value) => {
+    let probes = 0;
+    await withRestartReadiness((_request, response) => { probes += 1; response.end(); }, async (origin) => {
+      for (const variant of ['command-failure', 'changed-container', 'changed-image', 'unchanged-process']) {
+        const journalPath = join(value.directory, `restart-${variant}.json`);
+        const failure = new Error('Controlled Docker restart failure.');
+        const operations: string[] = [];
+        let inspections = 0;
+        const run: CombinedCommand = async (_file, args) => {
+          operations.push(args[0]!);
+          if (args[0] === 'inspect') {
+            if (inspections++ === 0 || variant === 'unchanged-process') return containerInspection(originalContainerProcess);
+            return containerInspection(replacementContainerProcess, `sha256:${'c'.repeat(64)}`);
+          }
+          assert.deepEqual(args, ['restart', '--timeout', '20', restartContainerId]);
+          const journal = JSON.parse(await readFile(journalPath, 'utf8')) as RestartJournal;
+          assert.deepEqual(journal.after, originalContainerProcess);
+          if (variant === 'command-failure') throw failure;
+          return variant === 'changed-container' ? 'd'.repeat(64) : restartContainerId;
+        };
+        await assert.rejects(restartContainerServer({ containerId: restartContainerId, imageId: restartImageId, project: restartProject,
+          origin, signal: new AbortController().signal, run, record: async (entry) => { await writeFile(journalPath, JSON.stringify(entry)); } }),
+        (error: Error) => {
+          if (variant === 'command-failure') assert.equal(error, failure);
+          else assert.match(error.message, variant === 'changed-container' ? /replaced its owned identity/ : variant === 'changed-image' ? /ownership or runtime differs/ : /did not replace the service process/);
+          return true;
+        });
+        const journal = JSON.parse(await readFile(journalPath, 'utf8')) as RestartJournal;
+        assert.deepEqual(journal.before, originalContainerProcess);
+        assert.deepEqual(journal.after, originalContainerProcess);
+        assert.equal(journal.containerId, restartContainerId);
+        assert.equal(journal.binaryOrImage, restartImageId);
+        assert.equal(journal.readyAt, undefined);
+        assert.deepEqual(operations, variant === 'command-failure' || variant === 'changed-container'
+          ? ['inspect', 'restart'] : ['inspect', 'restart', 'inspect']);
+      }
+      assert.equal(probes, 0);
+    });
+  });
+});
+
+test('cancelling actual restart readiness retains the replacement journal without claiming readiness', { timeout: 5_000 }, async () => {
+  await fixture(async (value) => {
+    const journalPath = join(value.directory, 'restart-cancelled.json');
+    const cancellation = new AbortController();
+    const reason = new Error('Controlled restart readiness cancellation.');
+    let probes = 0;
+    await withRestartReadiness(async (_request, response) => {
+      probes += 1;
+      const journal = JSON.parse(await readFile(journalPath, 'utf8')) as RestartJournal;
+      assert.deepEqual(journal.after, replacementContainerProcess);
+      assert.equal(journal.readyAt, undefined);
+      cancellation.abort(reason);
+      response.destroy();
+    }, async (origin) => {
+      let inspections = 0;
+      const operations: string[] = [];
+      const run: CombinedCommand = async (_file, args) => {
+        operations.push(args[0]!);
+        return args[0] === 'restart' ? restartContainerId
+          : containerInspection(inspections++ === 0 ? originalContainerProcess : replacementContainerProcess);
+      };
+      await assert.rejects(restartContainerServer({ containerId: restartContainerId, imageId: restartImageId, project: restartProject,
+        origin, signal: cancellation.signal, run, record: async (entry) => { await writeFile(journalPath, JSON.stringify(entry)); } }), (error: unknown) => error === reason);
+      assert.equal(probes, 1);
+      assert.deepEqual(operations, ['inspect', 'restart', 'inspect']);
+      const journal = JSON.parse(await readFile(journalPath, 'utf8')) as RestartJournal;
+      assert.deepEqual(journal.before, originalContainerProcess);
+      assert.deepEqual(journal.after, replacementContainerProcess);
+      assert.equal(journal.containerId, restartContainerId);
+      assert.equal(journal.binaryOrImage, restartImageId);
+      assert.equal(journal.readyAt, undefined);
+    });
+  });
+});
+
+test('combined recovery refuses an active recorded command group before any resource cleanup and succeeds after it stops', { skip: process.platform !== 'linux', timeout: 10_000 }, async () => {
+  await fixture(async (value) => {
+    for (const targetDirectory of ['native/auth-combined', 'container/auth-combined']) {
+      const current = await installationRecoveryFixture(value, false);
+      const owned = spawn(process.execPath, ['--eval', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore' });
+      const spawned = new Promise<void>((resolve, reject) => { owned.once('spawn', resolve); owned.once('error', reject); });
+      const stopped = new Promise<void>((resolve) => owned.once('close', () => resolve()));
+      const targetPath = join(current.directory, targetDirectory, 'target.json');
+      const target = { kind: 'auth-combined', schemaVersion: 1, sourceGitSha, commands: [], commandGroups: [owned.pid] };
+      try {
+        await mkdir(join(current.directory, targetDirectory), { recursive: true });
+        await spawned;
+        const identity = await processIdentity(owned.pid!);
+        assert.ok(identity !== null);
+        assert.equal(identity.group, owned.pid);
+        await writeFile(targetPath, JSON.stringify(target));
+        await writeFile(value.commands, '');
+        const refused = await start([cli, '--cleanup', current.id], value).done;
+        assert.equal(refused.timedOut, false);
+        assert.equal(refused.code, 1);
+        assert.match(refused.stderr, /Original acceptance process group is still running/);
+        assert.equal(await readFile(value.commands, 'utf8'), '');
+        assert.equal(await readFile(join(current.root, 'partial-install'), 'utf8'), 'owned preparation');
+        assert.equal(await readFile(join(current.evidence.native.storageRoot, 'owned-file'), 'utf8'), 'owned native storage');
+        assert.deepEqual(JSON.parse(await readFile(targetPath, 'utf8')), target);
+        owned.kill('SIGTERM');
+        await stopped;
+        await writeFile(join(value.bin, 'docker'), '#!/bin/sh\nprintf \'%s\\n\' "$0 $*" >> "$DAYNIGHT_TEST_COMMAND_LOG"\nexit 0\n');
+        const recovered = await start([cli, '--cleanup', current.id], value).done;
+        assert.equal(recovered.timedOut, false);
+        assert.equal(recovered.code, 0, recovered.stderr);
+        await assert.rejects(readFile(join(current.root, 'partial-install')), { code: 'ENOENT' });
+        await assert.rejects(readFile(join(current.evidence.native.storageRoot, 'owned-file')), { code: 'ENOENT' });
+        assert.match(await readFile(value.commands, 'utf8'), /docker ps --all --quiet --filter label=io\.daynight\.acceptance\.run=/);
+        assert.deepEqual(JSON.parse(await readFile(targetPath, 'utf8')), target);
+        const recovery = JSON.parse(await readFile(join(current.directory, 'recovery.json'), 'utf8')) as { result: string; installedCli: string; nativeStorage: string };
+        assert.deepEqual({ result: recovery.result, installedCli: recovery.installedCli, nativeStorage: recovery.nativeStorage },
+          { result: 'passed', installedCli: 'passed', nativeStorage: 'passed' });
+      } finally {
+        if (owned.exitCode === null && owned.signalCode === null) owned.kill('SIGKILL');
+        await stopped;
+        await rm(current.directory, { recursive: true, force: true });
       }
     }
   });
