@@ -38,6 +38,38 @@ afterEach(async () => {
 });
 
 describe("operation-scoped API access", () => {
+  it.each([
+    { action: "approve", status: "todo", ready: true },
+    { action: "claim", status: "in_progress", ready: false },
+    { action: "complete", status: "done", ready: false },
+  ] as const)("submits one precise $action POST and reads the full resulting task", async ({ action, status, ready }) => {
+    const result = { ...task, status, ready, description: "Full result", version: 9_223_372_036_854_775_807n };
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse(result));
+    await expect(client(fetch)[`${action}Task`](projectId.toUpperCase(), taskId.toUpperCase(), { version: 9_007_199_254_740_993n })).resolves.toEqual(result);
+    expect(fetch).toHaveBeenCalledOnce();
+    const [url, options] = fetch.mock.calls[0]!;
+    expect(new URL(String(url)).pathname).toBe(`/api/v1/projects/${projectId}/tasks/${taskId}/${action}`);
+    expect(options).toMatchObject({ method: "POST", body: '{"version":9007199254740993}', redirect: "manual" });
+  });
+
+  it.each(["approve", "claim", "complete"] as const)("retains %s conflicts and unknown outcomes without retrying", async (action) => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(refusal("invalid_transition"), 409))
+      .mockResolvedValueOnce(jsonResponse({ ...task, id: otherId }));
+    const api = client(fetch);
+    await expect(api[`${action}Task`](projectId, taskId, { version: 1n })).rejects.toMatchObject({ operation: `task.${action}`, status: 409, code: "invalid_transition", confirmedRefusal: true, outcomeUnconfirmed: false });
+    await expect(api[`${action}Task`](projectId, taskId, { version: 9_223_372_036_854_775_807n })).rejects.toMatchObject({ operation: `task.${action}`, phase: "protocol", outcomeUnconfirmed: true });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1]![1]?.body).toBe('{"version":9223372036854775807}');
+  });
+
+  it("filters proposed tasks without making them ready", async () => {
+    const value = { ...task, status: "proposed", ready: false };
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({ items: [value], nextCursor: null }));
+    await expect(client(fetch).listTasks(projectId, { status: "proposed" })).resolves.toEqual([value]);
+    expect(new URL(String(fetch.mock.calls[0]![0])).searchParams.get("status")).toBe("proposed");
+  });
+
   it("uses the approved production budgets and checks synchronous work against the shared deadline", () => {
     expect(DEFAULT_OPERATION_LIMITS).toEqual({ totalMs: 300_000, requestMs: 30_000, responseBytes: 128 * 1_048_576, totalBytes: 256 * 1_048_576 });
     const op = operation({ limits: { totalMs: 5 } });
@@ -177,8 +209,8 @@ describe("operation-scoped API access", () => {
       .mockResolvedValueOnce(jsonResponse(refusal("dependency_unsatisfied", { taskIds: [otherId] }), 409))
       .mockResolvedValueOnce(jsonResponse(refusal("graph_limit_exceeded", { nodeCount: 1001, edgeCount: 0, maxNodes: 1000, maxEdges: 5000 }), 409));
     const api = client(fetch);
-    await expect(api.updateTask(projectId, taskId, { version: 1n, status: "done" })).rejects.toMatchObject({
-      operation: "task.update", phase: "response", projectId, taskId, status: 409, code: "dependency_unsatisfied", requestId: "req-1", details: { taskIds: [otherId] }, confirmedRefusal: true, outcomeUnconfirmed: false, cause: expect.any(Error),
+    await expect(api.completeTask(projectId, taskId, { version: 1n })).rejects.toMatchObject({
+      operation: "task.complete", phase: "response", projectId, taskId, status: 409, code: "dependency_unsatisfied", requestId: "req-1", details: { taskIds: [otherId] }, confirmedRefusal: true, outcomeUnconfirmed: false, cause: expect.any(Error),
     });
     await expect(api.getTaskGraph(projectId)).rejects.toMatchObject({ code: "graph_limit_exceeded", details: { nodeCount: 1001, edgeCount: 0, maxNodes: 1000, maxEdges: 5000 } });
   });

@@ -29,7 +29,8 @@ controller, while real hrefs retain native browser navigation. The
 [Markdown reading decision](.agents/notes/implemented/architecture/2026-10-22-task-description-markdown.md)
 owns root/document resolution, complete-inventory checks and focus integration.
 The published skill preserves self-contained briefs, primary-plan ownership and
-existing Goal, dependency, PR and permission semantics. Daynight task records and
+Goal, dependency, PR and separate approval/implementation/merge permissions.
+Daynight task records and
 task-specific primary plans own delivery status and source-bound acceptance.
 
 | Component | Location | Implementation status | Requirements and design |
@@ -115,7 +116,7 @@ confirmed behavior and implementation status. Shared YAML projections, the
 `serverUrl` configuration field, bounded HTTP client and repository discovery
 with ignored local bindings are implemented. `project create/list/show` manage
 remote projects through the configured server. Task create/list/ready/show/update/graph
-commands use explicit project selection or the current repository binding;
+and approve/claim/complete commands use explicit project selection or the current repository binding;
 installed real-service and resource-budget acceptance are implemented.
 [PR #55](https://github.com/codetreker/daynight/pull/55) records the original
 integration and real-default-budget validation. Current deadline tests use short
@@ -144,23 +145,26 @@ protocol delivery from independent acceptance of the exact merged consumer artif
 | Mode | Responsibility |
 |---|---|
 | `handbook` | Command purposes and operational context; use CLI help for command usage |
-| `create-task` | With explicit user permission, skip one-off/trivial work and reuse or register an ordinary task or the two Goal seeds with verified stage inputs |
+| `create-task` | With explicit creation permission, register proposed ordinary work or two Goal seeds with verified stage inputs; approval is separate |
 | `run-task <task-id>` | Execute the designated task through validation and authorized delivery, then return |
-| `autopilot <goal or scope>` | Restore the current task or select one most relevant ready todo, and continue only after confirmed completion |
+| `autopilot <goal or scope>` | Restore the current task or select one most relevant approved ready todo, and continue only after confirmed completion |
 
 Calling `using-daynight` without input uses the actual context; unclear intent is
 resolved with the user. Autopilot requires an explicit request for continuous
 execution. Creating tasks requires explicit user permission to create them;
 implementation requests and autopilot activation do not supply that permission.
 Existing explicit permission applies within its stated scope without repeated
-confirmation. Task descriptions are self-contained Markdown briefs: the concrete
-problem and action, scope, deliverables, constraints, observable completion
-summaries and actual input references. The Web renders that Markdown; API storage
-and CLI/Agent output preserve the original string bytes. Each task-specific
-primary Markdown owns its detailed Solution, full Acceptance criteria and
-evidence. Use relative references such as `[Solution and acceptance](plan.md)`
-only after confirming that the referenced file belongs to that task and has
-been uploaded successfully.
+confirmation. Goal creation covers its two starting tasks and later in-scope
+breakdown; task approval needs a separate explicit task or Goal-task scope.
+Creation, stage completion, run-task and autopilot do not supply approval. Approved
+ready work is claimed at the reviewed version. Task descriptions are self-contained
+Markdown briefs: the concrete problem and action, scope, deliverables, constraints,
+observable completion summaries and actual input references. The Web renders that
+Markdown; API storage and CLI/Agent output preserve the original string bytes.
+Each task-specific primary Markdown owns its detailed Solution, full Acceptance
+criteria and evidence. Use relative references such as
+`[Solution and acceptance](plan.md)` only after confirming that the referenced
+file belongs to that task and its uploaded contents are readable.
 Shared Goal and design inputs stay at their source task ID and attachment path,
 or a verified immutable repository URL; attachments follow actual need. Frontend
 implementation tasks read the completed final-style interactive prototype and
@@ -680,6 +684,9 @@ daynight task list [--all | --status <status>] [--ready] [--json] [--project <pr
 daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
+daynight task approve <task-id> [--if-version <version>] [--project <project-id>]
+daynight task claim <task-id> [--if-version <version>] [--project <project-id>]
+daynight task complete <task-id> [--if-version <version>] [--project <project-id>]
 daynight task graph [--json] [--project <project-id>]
 daynight task attachment
 daynight task attachment put <task-id> <file> [--path <relative-path>] [--project <project-id>]
@@ -978,7 +985,9 @@ daynight task list --all --json
 daynight task list --status in_progress --json
 daynight task show <task-id> --json
 daynight task update <task-id> --description=
-daynight task update <task-id> --status done
+daynight task approve <task-id> --if-version 1
+daynight task claim <task-id> --if-version 2
+daynight task complete <task-id> --if-version 3
 daynight task update <task-id> --depends-on <task-a> --depends-on <task-b>
 daynight task update <task-id> --clear-dependencies
 daynight task graph --json
@@ -994,15 +1003,22 @@ server origin and repository identity, after ensuring `/.daynight/` is effective
 in the root `.gitignore`. A cached binding is verified against the server on each
 use and remains stable if another project later shares that repository.
 
-Tasks can be stored and read with `proposed`, `todo`, `in_progress` or `done`
-status. Proposed tasks appear in unfinished inventories, graph summaries and the
-Web workspace as Proposed or 待审批 in the selected language. The stored/read
-contract is prepared for approval; public
-creation and the database default still use `todo`, and public status filters
-and updates still accept `todo`, `in_progress` and `done`. Approval, claim and
-completion commands are not available. The
-[four-state reader decision](.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
-records this preparation boundary.
+Tasks follow one forward lifecycle: creation starts in `proposed`; `task approve`
+moves it to `todo`; `task claim` moves ready todo to `in_progress`; `task complete`
+moves in-progress work to `done`. Approval permits unfinished prerequisites;
+claim and completion require every direct prerequisite to be done. Each action
+uses an expected version and increments it once. `--if-version` submits the exact
+observed int64 value; without it, the CLI reads once immediately before submitting.
+Conflicts and wrong states fail without retry. Generic updates cannot write
+status, and there is no reopen or direct todo-to-done operation. Existing todo,
+in-progress and done records keep their states, versions and timestamps.
+
+Proposed tasks appear in unfinished inventories and Web statistics. The Web task
+detail dialog offers Approve / 批准任务 for proposed tasks, using the reviewed
+full task's exact version; it refreshes the graph after confirmation. Approval
+makes work eligible for later claim and grants no implementation or merge
+permission. The [lifecycle decision](.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
+records the state and approval boundaries.
 
 `task ready` selects up to 10 actionable tasks by
 default; `--limit <N>` accepts decimal integers from 1 through 100. It makes one

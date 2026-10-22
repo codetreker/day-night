@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { APIRequestContext } from '@playwright/test';
-import { createProject, createTask, updateTask, type Project, type Task } from './fixtures';
+import { createProject, createApprovedTask, updateTask, type Project, type Task } from './fixtures';
 
 export type CapacityKind = 'chain' | 'merge' | 'shared' | 'external';
 export type CapacityFixture = {
@@ -29,11 +29,11 @@ export const boundedMap = async <Input, Output>(items: readonly Input[], operati
 
 export const seedCapacity = async (request: APIRequestContext, kind: CapacityKind): Promise<CapacityFixture> => {
   const project = await createProject(request, { name: `Capacity ${kind} ${randomUUID()}` });
-  const root = await createTask(request, project.id, { title: `${kind} source root` });
+  const root = await createApprovedTask(request, project.id, { title: `${kind} source root` });
   const tasks: Task[] = [root];
   if (kind === 'external') {
     let previous = await boundedMap(Array.from({ length: 99 }, (_, index) => index), (index) =>
-      createTask(request, project.id, { title: `external source ${index}` }));
+      createApprovedTask(request, project.id, { title: `external source ${index}` }));
     tasks.push(...previous);
     let additional = 397;
     for (let layer = 1; layer <= 9; layer++) {
@@ -43,19 +43,19 @@ export const seedCapacity = async (request: APIRequestContext, kind: CapacityKin
         return { index, dependsOn: Array.from({ length: count }, (_, offset) => previous[(index * 5 + offset) % previous.length]!.id) };
       });
       previous = await boundedMap(inputs, ({ index, dependsOn }) =>
-        createTask(request, project.id, { title: `external layer ${layer} task ${index}`, dependsOn }));
+        createApprovedTask(request, project.id, { title: `external layer ${layer} task ${index}`, dependsOn }));
       tasks.push(...previous);
     }
     const tails = await boundedMap(Array.from({ length: 8 }, (_, index) => index), (index) =>
-      createTask(request, project.id, { title: `external final prerequisite ${index}`, dependsOn: Array.from({ length: 5 }, (_, offset) => previous[index * 5 + offset]!.id) }));
+      createApprovedTask(request, project.id, { title: `external final prerequisite ${index}`, dependsOn: Array.from({ length: 5 }, (_, offset) => previous[index * 5 + offset]!.id) }));
     tasks.push(...tails);
-    tasks.push(await createTask(request, project.id, { title: 'external chain sink', dependsOn: [root.id, ...previous.map((task) => task.id), ...tails.map((task) => task.id)] }));
+    tasks.push(await createApprovedTask(request, project.id, { title: 'external chain sink', dependsOn: [root.id, ...previous.map((task) => task.id), ...tails.map((task) => task.id)] }));
     return { kind, project, root, tasks, edgeCount: 5000 };
   }
 
   if (kind === 'chain') {
     tasks.push(...await boundedMap(Array.from({ length: 999 }, (_, index) => index + 1), (index) =>
-      createTask(request, project.id, { title: `chain task ${index}` })));
+      createApprovedTask(request, project.id, { title: `chain task ${index}` })));
     // We attach the chain from its sink so each existing predecessor is still
     // independent when cycle validation traverses it. The final graph is built
     // entirely through the same public write API as the other capacity graphs.
@@ -68,7 +68,7 @@ export const seedCapacity = async (request: APIRequestContext, kind: CapacityKin
 
   if (kind === 'merge') {
     let previous = await boundedMap(Array.from({ length: 99 }, (_, index) => index), (index) =>
-      createTask(request, project.id, { title: `merge layer 1 task ${index}`, dependsOn: [root.id] }));
+      createApprovedTask(request, project.id, { title: `merge layer 1 task ${index}`, dependsOn: [root.id] }));
     tasks.push(...previous);
     let additional = 401;
     let extraEdge: CapacityFixture['additionalEdge'];
@@ -79,7 +79,7 @@ export const seedCapacity = async (request: APIRequestContext, kind: CapacityKin
         return { index, dependsOn: Array.from({ length: count }, (_, offset) => previous[(index * 5 + offset) % previous.length]!.id) };
       });
       const current = await boundedMap(layerInputs, ({ index, dependsOn }) =>
-        createTask(request, project.id, { title: `merge layer ${layer} task ${index}`, dependsOn }));
+        createApprovedTask(request, project.id, { title: `merge layer ${layer} task ${index}`, dependsOn }));
       if (layer === 10) {
         const task = current[current.length - 1]!;
         const predecessorId = previous.find((candidate) => !task.dependsOn.includes(candidate.id))!.id;
@@ -92,21 +92,21 @@ export const seedCapacity = async (request: APIRequestContext, kind: CapacityKin
   }
 
   const roots = [root, ...await boundedMap(Array.from({ length: 499 }, (_, index) => index), (index) =>
-    createTask(request, project.id, { title: `shared source ${index + 1}` }))];
+    createApprovedTask(request, project.id, { title: `shared source ${index + 1}` }))];
   tasks.push(...roots.slice(1));
   const middle = await boundedMap(Array.from({ length: 499 }, (_, index) => index), (index) => {
     const otherCount = index < 10 ? 9 : 8;
     const dependsOn = [root.id, ...Array.from({ length: otherCount }, (_, offset) => roots[1 + (index * 8 + offset) % 499]!.id)];
-    return createTask(request, project.id, { title: `shared middle ${index}`, dependsOn });
+    return createApprovedTask(request, project.id, { title: `shared middle ${index}`, dependsOn });
   });
   tasks.push(...middle);
-  tasks.push(await createTask(request, project.id, { title: 'shared sink', dependsOn: middle.map((task) => task.id) }));
+  tasks.push(await createApprovedTask(request, project.id, { title: 'shared sink', dependsOn: middle.map((task) => task.id) }));
   return { kind, project, root, tasks, edgeCount: 5000 };
 };
 
 export const seedNodeLimit = async (request: APIRequestContext): Promise<Project> => {
   const project = await createProject(request, { name: `Capacity node limit ${randomUUID()}` });
   await boundedMap(Array.from({ length: 1001 }, (_, index) => index), (index) =>
-    createTask(request, project.id, { title: `node limit task ${index}` }));
+    createApprovedTask(request, project.id, { title: `node limit task ${index}` }));
   return project;
 };

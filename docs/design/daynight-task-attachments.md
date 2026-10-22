@@ -564,8 +564,11 @@ Web 新增 `task-attachments` 功能场景，在原生和实际生产容器上�
 与页面操作同一批数据；原有八个图功能场景及四个原生容量/超限场景保持完整。
 完整上下文交付另加入 `capacity-external`，原生容量/超限共五个场景；机制与统计
 由[看板设计](daynight-web.md#验证与-ci)拥有。
-另有 `project-view-tabs` 验证项目内任务视图；[双语界面](daynight-web-i18n.md)增加三个功能场景，当前严格 inventory 为原生 18 个、
-容器 13 个。附件场景和 `language-state-preservation` 仅允许精确 fixture task/file 的 PUT/DELETE，后者验证切换期间待完成操作只执行一次；图、任务视图及其他语言场景继续 GET/HEAD。完整 Chromium channel `chromium` 对 PDF 的证明来自 iframe 实际
+另有 `project-view-tabs` 验证项目内任务视图；[双语界面](daynight-web-i18n.md)增加三个功能场景，
+[审批生命周期](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)另加三个审批场景，
+描述阅读另有 `task-description-markdown`；当前严格 inventory 为原生 22 个、容器 17 个。
+审批场景单独允许已登记 project/task 的
+POST approve 与精确请求次数。附件场景和 `language-state-preservation` 仅允许精确 fixture task/file 的 PUT/DELETE，后者验证切换期间待完成操作只执行一次；描述阅读、图、任务视图及其他语言场景继续 GET/HEAD。完整 Chromium channel `chromium` 对 PDF 的证明来自 iframe 实际
 compositor 像素中的 fixture 专用色块。判断器将匹配像素按连通区域分组，独立计算
 各个实心色块的像素数、边界和密度，并在延伸到 frame 右半区的页面候选中检查
 最大的色块。此位置规则基于 fixture 与固定查看器布局，排除仅缩略图已绘制的情形；

@@ -77,9 +77,12 @@ later [task view decision](../feature/2026-10-22-project-task-views.md) adds
 adds a dense-external capacity graph; native capacity preserves its four original
 scenarios and all timing/geometry gates. The
 [bilingual interface decision](../feature/2026-10-22-web-bilingual-interface.md)
-adds three functional language scenarios per target. Strict inventories require
-19 unique native scenarios and fourteen container scenarios, including the
-shared Markdown-description journey. One worker,
+adds three functional language scenarios per target. The later
+[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds three task approval
+scenarios per target with separate registered-task POST allowances. The
+[Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
+adds one browser-read scenario per target. Strict inventories require 22 unique
+native scenarios and seventeen container scenarios. One worker,
 zero retries, complete reports and cleanup remain mandatory.
 
 All phases use the full bundled Chromium channel `chromium`, retaining the

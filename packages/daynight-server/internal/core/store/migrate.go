@@ -32,12 +32,15 @@ var projectMembershipSQL string
 //go:embed migrations/007_task_proposed.sql
 var taskProposedSQL string
 
+//go:embed migrations/008_task_proposed_default.sql
+var taskProposedDefaultSQL string
+
 type migration struct {
 	version int64
 	sql     string
 }
 
-var schemaMigrations = []migration{{version: 1, sql: projectsSQL}, {version: 2, sql: tasksSQL}, {version: 3, sql: taskPropertiesSQL}, {version: 4, sql: taskAttachmentsSQL}, {version: 5, sql: identitySQL}, {version: 6, sql: projectMembershipSQL}, {version: 7, sql: taskProposedSQL}}
+var schemaMigrations = []migration{{version: 1, sql: projectsSQL}, {version: 2, sql: tasksSQL}, {version: 3, sql: taskPropertiesSQL}, {version: 4, sql: taskAttachmentsSQL}, {version: 5, sql: identitySQL}, {version: 6, sql: projectMembershipSQL}, {version: 7, sql: taskProposedSQL}, {version: 8, sql: taskProposedDefaultSQL}}
 
 const migrationLock int64 = 0x4441594e49474854
 

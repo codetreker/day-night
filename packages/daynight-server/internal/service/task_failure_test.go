@@ -72,7 +72,10 @@ func TestTaskReadAndWriteDatabaseFailures(t *testing.T) {
 			_, listErr := tasks.List(context.Background(), project.ID, TaskListRequest{PageRequest: PageRequest{Limit: 10}})
 			_, updateErr := tasks.Update(context.Background(), project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Changed")})
 			_, createErr := tasks.Create(context.Background(), project.ID, CreateTask{Title: "New"})
-			for _, err := range []error{getErr, listErr, updateErr, createErr} {
+			_, approveErr := tasks.Approve(context.Background(), project.ID, target.ID, target.Version)
+			_, claimErr := tasks.Claim(context.Background(), project.ID, target.ID, target.Version)
+			_, completeErr := tasks.Complete(context.Background(), project.ID, target.ID, target.Version)
+			for _, err := range []error{getErr, listErr, updateErr, createErr, approveErr, claimErr, completeErr} {
 				assertOperational(t, err)
 				var pgError *pgconn.PgError
 				if !errors.As(err, &pgError) || pgError.Code != "42P01" {
@@ -90,21 +93,20 @@ func TestTaskReadAndWriteDatabaseFailures(t *testing.T) {
 func TestTaskPolicyQueryCancellationPreservesCause(t *testing.T) {
 	tasks, _, project, databaseURL := taskService(t)
 	predecessor := createTask(t, tasks, project.ID, "Predecessor")
-	predecessor = updateTask(t, tasks, predecessor, UpdateTask{Status: pointer(core.TaskDone)})
+	predecessor = approveTask(t, tasks, predecessor)
+	predecessor = claimTask(t, tasks, predecessor)
+	predecessor = completeTask(t, tasks, predecessor)
 	target := createTask(t, tasks, project.ID, "Target", predecessor.ID)
-	target = updateTask(t, tasks, target, UpdateTask{Status: pointer(core.TaskDone)})
-	for _, fragment := range []string{"t.id = ANY($2::uuid[])", "WITH RECURSIVE edges", "d.depends_on_task_id = $2)"} {
+	target = approveTask(t, tasks, target)
+	target = claimTask(t, tasks, target)
+	target = completeTask(t, tasks, target)
+	for _, fragment := range []string{"t.id = ANY($2::uuid[])", "WITH RECURSIVE edges"} {
 		t.Run(fragment, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			traced := tracedTasks(t, databaseURL, taskQueryAction{match: func(sql string) bool { return strings.Contains(sql, fragment) }, start: cancel})
 			input := UpdateTask{Version: target.Version, Title: pointer("Rejected")}
-			id := target.ID
-			if strings.HasPrefix(fragment, "d.") {
-				id = predecessor.ID
-				input = UpdateTask{Version: predecessor.Version, Status: pointer(core.TaskTodo)}
-			}
-			_, err := traced.Update(ctx, project.ID, id, input)
+			_, err := traced.Update(ctx, project.ID, target.ID, input)
 			assertOperational(t, err)
 			if !errors.Is(err, context.Canceled) {
 				t.Fatalf("query cancellation cause: %v", err)
@@ -112,6 +114,54 @@ func TestTaskPolicyQueryCancellationPreservesCause(t *testing.T) {
 			assertTaskUnchanged(t, tasks, target)
 			assertTaskUnchanged(t, tasks, predecessor)
 		})
+	}
+}
+
+func TestTaskLifecycleQueryCancellationPreservesCauseAndState(t *testing.T) {
+	for _, action := range []string{"approve", "claim", "complete"} {
+		for _, query := range []struct {
+			fragment string
+			after    bool
+		}{{"FROM tasks t", false}, {"UPDATE tasks SET", false}, {"UPDATE tasks SET", true}} {
+			t.Run(fmt.Sprintf("%s %s after=%t", action, query.fragment, query.after), func(t *testing.T) {
+				tasks, _, project, databaseURL := taskService(t)
+				predecessor := createTask(t, tasks, project.ID, "Predecessor")
+				predecessor = approveTask(t, tasks, predecessor)
+				predecessor = claimTask(t, tasks, predecessor)
+				predecessor = completeTask(t, tasks, predecessor)
+				target := createTask(t, tasks, project.ID, "Target", predecessor.ID)
+				if action != "approve" {
+					target = approveTask(t, tasks, target)
+				}
+				if action == "complete" {
+					target = claimTask(t, tasks, target)
+				}
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				trace := taskQueryAction{match: func(sql string) bool { return strings.Contains(sql, query.fragment) }}
+				if query.after {
+					trace.end = cancel
+				} else {
+					trace.start = cancel
+				}
+				traced := tracedTasks(t, databaseURL, trace)
+				var err error
+				switch action {
+				case "approve":
+					_, err = traced.Approve(ctx, project.ID, target.ID, target.Version)
+				case "claim":
+					_, err = traced.Claim(ctx, project.ID, target.ID, target.Version)
+				case "complete":
+					_, err = traced.Complete(ctx, project.ID, target.ID, target.Version)
+				}
+				assertOperational(t, err)
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("lifecycle cancellation lost cause: %v", err)
+				}
+				assertTaskUnchanged(t, tasks, target)
+				assertTaskUnchanged(t, tasks, predecessor)
+			})
+		}
 	}
 }
 
@@ -131,6 +181,18 @@ func TestTaskTransactionCompletionFailureDominatesDomainFault(t *testing.T) {
 		}},
 		{"stale version update", "FROM tasks t", func(ctx context.Context, s *Tasks) error {
 			_, err := s.Update(ctx, project.ID, target.ID, UpdateTask{Version: 2, Title: pointer("Rejected")})
+			return err
+		}},
+		{"missing task approval", "FROM tasks t", func(ctx context.Context, s *Tasks) error {
+			_, err := s.Approve(ctx, project.ID, missing, 1)
+			return err
+		}},
+		{"stale version approval", "FROM tasks t", func(ctx context.Context, s *Tasks) error {
+			_, err := s.Approve(ctx, project.ID, target.ID, target.Version+1)
+			return err
+		}},
+		{"invalid transition claim", "FROM tasks t", func(ctx context.Context, s *Tasks) error {
+			_, err := s.Claim(ctx, project.ID, target.ID, target.Version)
 			return err
 		}},
 		{"invalid dependency create", "t.id = ANY($2::uuid[])", func(ctx context.Context, s *Tasks) error {
@@ -192,6 +254,7 @@ func TestTaskSnapshotKeepsProjectAndDerivedTaskStateConsistent(t *testing.T) {
 	tasks, database, project, databaseURL := taskService(t)
 	predecessor := createTask(t, tasks, project.ID, "Predecessor")
 	target := createTask(t, tasks, project.ID, "Target", predecessor.ID)
+	target = approveTask(t, tasks, target)
 	traced := tracedTasks(t, databaseURL, taskQueryAction{
 		match: func(sql string) bool { return strings.Contains(sql, "FROM projects WHERE id =") },
 		end: func() {

@@ -61,7 +61,7 @@ beforeEach(() => {
   graphRequest.mockReset();
   detailRequest.mockReset();
   detailRequest.mockImplementation(async (project, id) => ({
-    id, projectId: project, title: '所选任务详情', description: '', properties: { pullRequests: [] }, status: 'done',
+    id, projectId: project, title: '所选任务详情', description: '', properties: { pullRequests: [] }, status: 'done', version: 1n,
     dependsOn: [rootId], blockedBy: [], ready: false, createdAt: timestamp, updatedAt: timestamp,
   }));
 });

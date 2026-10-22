@@ -7,7 +7,7 @@ HTTP shutdown. Versioned migrations and transactional storage are implemented;
 project/task APIs and built-process acceptance are implemented; delivery status is in the
 [implementation tasks](../../docs/design/daynight-server-tasks.md); the current
 executable serves project, task and complete task-graph routes together with the
-embedded read-only dashboard. Generic bucket/path local storage, task attachment
+embedded task dashboard. Generic bucket/path local storage, task attachment
 metadata and file/preview HTTP endpoints are implemented. Attachment CLI and
 browser management remain tracked by the
 [attachment tasks](../../docs/design/daynight-task-attachments-tasks.md).
@@ -349,8 +349,9 @@ a response.
 
 ## Task service
 
-`service.NewTasks` exposes `Create`, `Get`, `List`, `Graph` and `Update` over the same
-concrete store. HTTP task routes use the same instance. Creation uses `todo`;
+`service.NewTasks` exposes create/read/update and dedicated approve, claim and
+complete operations over the same concrete store. HTTP routes use that instance.
+Creation uses `proposed`;
 its predefined `properties.pullRequests` list defaults to empty. Updates require
 a positive expected version and at least one mutable pointer field. Nil means omitted, while an empty description or supplied empty dependency
 or PR list clears that value. The task HTTP boundary rejects explicit JSON null
@@ -359,8 +360,11 @@ before constructing these Go parameters.
 Dependencies are canonicalized UUIDs, sorted and checked for duplicate identity,
 self-reference, missing/cross-project tasks and cycles. Every update validates
 its complete candidate, including metadata-only updates and semantic no-ops.
-Active/done tasks require done predecessors; reopening a done task is refused
-when a direct dependent is active or done. Fault task IDs are sorted and do not
+Active/done tasks require done predecessors; proposed and todo may have unfinished
+prerequisites. Lifecycle transitions are forward-only: approve moves proposed to
+todo, claim moves todo to in_progress, and complete moves in_progress to done.
+Approval permits unfinished prerequisites; claim and completion require them done.
+There is no reopening or direct todo-to-done transition. Fault task IDs are sorted and do not
 include other projects' task content.
 
 Task writes hold the project lock while comparing versions and validating the
@@ -395,11 +399,10 @@ multiple roots share it: `total = proposed + todo + inProgress + done` and
 Migration `007_task_proposed.sql` expands the stored status check to include
 `proposed`, preserving existing records, versions and timestamps. Applied
 migrations remain unchanged. Task get/list/graph responses support all four
-states. Public creation and the database default remain `todo`; public list
-status filters and update candidate validation retain the original three values.
-Approval and lifecycle mutations are separate from this read contract. The
-[four-state reader decision](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
-records the rollout boundary.
+states, including public list status filters. A later migration changes only the
+creation default to proposed, preserving all existing task fields, states, versions
+and timestamps. The [lifecycle decision](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
+activates dedicated transitions after the [reader preparation](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md).
 
 Nodes contain `id`, `titlePreview`, `titleTruncated`, `status`, `dependsOn`,
 `blockedBy`, `ready` and UTC timestamps. SQL produces at most 160 Unicode code
@@ -415,7 +418,7 @@ or transaction-completion failures take precedence over missing/limit refusals.
 Graph requests share the existing request ID and safe error handling. Logs add
 project identity and graph counts without recording task content or repository
 addresses. This endpoint supports the implemented
-[read-only dashboard](../../docs/design/daynight-web.md); the browser application
+[task dashboard](../../docs/design/daynight-web.md); the browser application
 and embedded static delivery are implemented. The
 [dashboard implementation tasks](../../docs/design/daynight-web-tasks.md)
 track production-browser, fixed-capacity and deployment-lifecycle validation
@@ -433,13 +436,17 @@ receipts and fixed-capacity gates are in the
 | `POST` | `/api/v1/projects/{projectId}/tasks` | `201`, task and `Location` |
 | `GET` | `/api/v1/projects/{projectId}/tasks` | `200`, task page |
 | `GET` | `/api/v1/projects/{projectId}/tasks/{taskId}` | `200`, task |
-| `PATCH` | `/api/v1/projects/{projectId}/tasks/{taskId}` | `200`, updated task |
+| `PATCH` | `/api/v1/projects/{projectId}/tasks/{taskId}` | `200`, updated metadata/dependencies |
+| `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/approve` | `200`, proposed→todo task |
+| `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/claim` | `200`, todo→in_progress task |
+| `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/complete` | `200`, in_progress→done task |
 
 Creation accepts required `title`, optional `description`, `dependsOn` and
 `properties`; omitted optional values mean empty text, an empty dependency set
 and an empty PR list. Status, version and identity are server-owned on creation.
 PATCH accepts a positive integer `version` and at least one mutation of `title`,
-`description`, `status`, `dependsOn` or `properties.pullRequests`. Omitted fields
+`description`, `dependsOn` or `properties.pullRequests`; a status field is rejected
+even alongside otherwise valid metadata. Omitted fields
 stay unchanged; explicit null (including null dependency or PR elements) fails.
 Empty description, `dependsOn: []` or `properties: {"pullRequests": []}` clears
 that value. `properties: {}` has no mutation intent and is accepted only with
@@ -467,8 +474,15 @@ literal `true` or `false`; filters combine with AND and remain bound to the
 cursor's canonical project scope. HTTP input uses the same strict JSON and
 query rules as project operations.
 
-Version conflicts, dependency cycles and unmet dependency/state rules return
-409 with `version_conflict`, `dependency_cycle` or `dependency_unsatisfied`.
+Lifecycle POST bodies require only the positive int64 expected version, as a
+JSON number. Missing, null, fractional, nonpositive and out-of-range versions fail.
+The project transaction checks version before predecessor state, then dependency
+rules; success increments once and preserves unrelated fields. Repeated actions
+fail, and refusals leave fields, versions and timestamps intact.
+
+Version conflicts, wrong predecessor states, dependency cycles and unmet
+dependencies return 409 with `version_conflict`, `invalid_transition`,
+`dependency_cycle` or `dependency_unsatisfied`.
 Relevant sorted IDs appear in `error.details.taskIds`. Operational failures
 remain 500, and cancelled requests write neither response body nor creation
 Location. Parsed project/task IDs and the request ID correlate safe logs; known
@@ -480,9 +494,15 @@ For example, after obtaining a project and task ID:
 curl --header 'Content-Type: application/json' \
   --data '{"title":"Implement API","dependsOn":[],"properties":{"pullRequests":[{"url":"https://github.com/owner/repo/pull/123","title":"Implement API"}]}}' \
   http://127.0.0.1:8787/api/v1/projects/PROJECT_ID/tasks
-curl --request PATCH --header 'Content-Type: application/json' \
-  --data '{"version":1,"status":"in_progress"}' \
-  http://127.0.0.1:8787/api/v1/projects/PROJECT_ID/tasks/TASK_ID
+curl --header 'Content-Type: application/json' \
+  --data '{"version":1}' \
+  http://127.0.0.1:8787/api/v1/projects/PROJECT_ID/tasks/TASK_ID/approve
+curl --header 'Content-Type: application/json' \
+  --data '{"version":2}' \
+  http://127.0.0.1:8787/api/v1/projects/PROJECT_ID/tasks/TASK_ID/claim
+curl --header 'Content-Type: application/json' \
+  --data '{"version":3}' \
+  http://127.0.0.1:8787/api/v1/projects/PROJECT_ID/tasks/TASK_ID/complete
 ```
 
 To inspect a failure, match its response `requestId` with JSON logs on stderr:
@@ -529,7 +549,7 @@ the [V1–V10 requirements](../../docs/spec/daynight-server.md) as follows:
 | V1: persistent resources | `workflow_restart_persistence`, `graceful_sigterm_drains_committed_request`, `forced_sigterm_cancels_without_late_write`; complete objects survive process restart and listener reuse |
 | V2: dependency refusal and rollback | `refusals_scopes_filters_and_cursors`, `partial_write_http_failure_rolls_back`; rejected writes preserve complete tasks, with a sequence proving metadata and the first edge changed before the injected failure |
 | V3: concurrency and project independence | `concurrent_reverse_dependencies`, `canceled_request_and_independent_project`; owned backend waiters prove competing requests and independent progress |
-| V4: state gates | Workflow/refusal scenarios and `concurrent_reopen_and_start`; [service tests](internal/service/task_test.go) cover all state pairs and candidate updates |
+| V4: state gates | Workflow/refusal scenarios, `concurrent_lifecycle_same_version` (approve/claim/complete) and `concurrent_dependency_update_and_claim`; [service tests](internal/service/task_test.go) and [HTTP transition tests](internal/server/task_transitions_test.go) cover wrong predecessor states, same-version action races and metadata candidates |
 | V5: revisions and no-ops | Workflow/refusal scenarios and `concurrent_same_version`; actual changes compete on one version and matching semantic no-ops retain fields/timestamps |
 | V6: listing and HTTP contract | `refusals_scopes_filters_and_cursors`, [HTTP tests](internal/server/tasks_test.go) and service tests cover tied keysets, scoped filters, initialized empty resources, DTOs and error mapping |
 | V7: transactions and lifecycle | Partial-failure, cancellation, graceful/forced-signal, unsupported/failed-migration-history and concurrent-startup scenarios; owning store tests prove finer snapshot and cross-migration interleavings |

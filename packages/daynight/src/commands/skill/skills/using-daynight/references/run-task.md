@@ -35,13 +35,21 @@ from a title, silently invent acceptance criteria, or move detailed plans into
 the description. Do not execute prerequisites as an implicit expansion of the
 requested task.
 
-For `todo`, begin only when dependencies are done and the work is authorized,
-then set `in_progress`. For `in_progress`, recover existing work and coordinate
-using the project's mechanisms; status is not an ownership claim. Report `done`
-as complete; reopening needs explicit intent. A readable `proposed` task is
-outside these executable states: preserve its actual state and resolve the
-required authorized process before execution. Do not implicitly promote it.
-Preserve the requested ID through recovery and waiting.
+For `proposed`, keep execution pending approval. A run request or autopilot
+activation does not authorize approval. Only if the user explicitly authorized
+approval of this task or stated scope, review its current content and use
+`task approve` with that exact observed version, then confirm the resulting todo
+state. The user can also approve directly through the CLI or Web. Approval does
+not expand implementation or delivery authorization.
+
+For ready `todo`, begin only when dependencies are done, required stage inputs are complete
+and the work is authorized. Use `task claim` with the exact version observed for
+that decision and confirm in_progress before starting. A stale version or
+changed prerequisite requires rereading and reconsidering, with no automatic
+claim retry. For `in_progress`, recover existing work and coordinate using the
+project's established mechanisms; the state is not an assignee lock or lease.
+A task already `done` is reported as such; there is no reopening operation.
+Preserve the requested task ID through recovery and waiting.
 
 ## Execute and maintain continuity
 
@@ -91,7 +99,9 @@ pending and successors blocked.
 
 For tasks without a development or PR delivery path, use their stated stage
 acceptance. In every case, confirm required evidence is recorded and readable,
-then reread the complete task and set `done` with its exact observed version.
+then reread the complete in-progress task and use `task complete` with its exact
+observed version. This applies to Goal description, design and every delivery
+task, using their own stage acceptance and required authorized PR merges.
 Only service confirmation establishes the status update; reconcile uncertain
 results before reporting success. A Goal description task's completion means
 problem definition is complete; design completion means architecture and actual
@@ -100,6 +110,7 @@ breakdown are delivered. Neither establishes whole-Goal completion.
 Continue ordinary CI and review waits as this task. When progress requires
 external intervention, preserve the target, actual state, concrete blocker,
 existing work, and next action in the checkpoint, then return the waiting result.
-An unstarted task stays `todo`; a started task stays `in_progress`. Do not declare
+Unapproved work stays `proposed`; approved unstarted work stays `todo`; claimed
+work stays `in_progress`. Do not declare
 completion or select other work to bypass a wait. After completion, return
 without selecting a successor. Whole-Goal acceptance follows the Goal protocol.

@@ -35,6 +35,8 @@ export const runTaskCommand = async (
     return;
   }
   const help = `${command.path.join(" ")} --help`;
+  const name = command.command.name;
+  const action = name === "approve" || name === "claim" || name === "complete" ? name : undefined;
   const title = command.options.get("--title") as string | undefined;
   const description = command.options.get("--description") as string | undefined;
   const status = command.options.get("--status") as TaskFilters["status"];
@@ -53,27 +55,25 @@ export const runTaskCommand = async (
   if (limitArgument !== undefined && (!/^[0-9]+$/.test(limitArgument) || !Number.isInteger(readyLimit) || readyLimit < 1 || readyLimit > 100)) throw new UsageError("Ready task limit must be a decimal integer from 1 to 100.", help);
   if (title !== undefined && !isNonemptyText(title)) throw new UsageError("Task title must be nonempty UTF-8 text without NUL characters.", help);
   if (description !== undefined && !isText(description)) throw new UsageError("Task description must be UTF-8 text without NUL characters.", help);
-  if (status !== undefined && !["todo", "in_progress", "done"].includes(status)) throw new UsageError("Task status must be todo, in_progress, or done.", help);
   if (dependsOn !== undefined && clearDependencies) throw new UsageError("Specify --depends-on or --clear-dependencies, not both.", help);
   const changes: Omit<UpdateTaskInput, "version"> = {
     ...(title === undefined ? {} : { title }),
     ...(description === undefined ? {} : { description }),
-    ...(status === undefined ? {} : { status }),
     ...(dependsOn === undefined ? {} : { dependsOn }),
     ...(clearDependencies ? { dependsOn: [] } : {}),
     ...(properties === undefined ? {} : { properties }),
   };
-  if (command.command.name === "update" && Object.keys(changes).length === 0) throw new UsageError("Task update requires a title, description, status, dependency, or PR reference change.", help);
+  if (name === "update" && Object.keys(changes).length === 0) throw new UsageError("Task update requires a title, description, dependency, or PR reference change.", help);
   const rawProjectId = command.options.get("--project") as string | undefined;
   let projectId: string | undefined;
   let taskId: string | undefined;
-  if (rawProjectId !== undefined || command.command.name === "show" || command.command.name === "update") {
+  if (rawProjectId !== undefined || name === "show" || name === "update" || action !== undefined) {
     const { canonicalId } = await import("../../api/parse.js");
     if (rawProjectId !== undefined) {
       projectId = canonicalId(rawProjectId) ?? undefined;
       if (projectId === undefined) throw new UsageError("project-id must be a hyphenated UUID.", help);
     }
-    if (command.command.name === "show" || command.command.name === "update") {
+    if (name === "show" || name === "update" || action !== undefined) {
       taskId = canonicalId(command.values[0]!) ?? undefined;
       if (taskId === undefined) throw new UsageError("task-id must be a hyphenated UUID.", help);
     }
@@ -127,6 +127,13 @@ export const runTaskCommand = async (
     }
     const version = expectedVersion === undefined ? (await api.getTask(project.id, taskId!)).version : expectedVersion;
     operation.check();
+    if (action !== undefined) {
+      const mutate = action === "approve" ? api.approveTask : action === "claim" ? api.claimTask : api.completeTask;
+      const task = await mutate(project.id, taskId!, { version });
+      operation.check();
+      const result = { approve: "approved", claim: "claimed", complete: "completed" }[action];
+      return `Task ${result}.\n${renderTask(task)}`;
+    }
     const task = await api.updateTask(project.id, taskId!, { ...changes, version });
     operation.check();
     return `Task updated.\n${renderTask(task)}`;

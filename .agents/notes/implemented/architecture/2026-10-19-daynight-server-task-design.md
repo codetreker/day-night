@@ -45,14 +45,16 @@ ownership of that execution model; this design does not supersede it.
 
 The original service exposed three states and created todo tasks through the
 generic write API. The [four-state reader decision](../feature/2026-10-22-proposed-task-readers.md)
-extends storage and readers with proposed while retaining the original public
-creation default and status inputs until lifecycle activation. It does not
-replace the project transaction or dependency policy.
+prepared storage and readers with proposed before public creation changed. The
+[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) now creates proposed
+and exposes only versioned approve, claim and complete transitions. This retains
+the project transaction and dependency policy while replacing arbitrary status
+updates and reopening.
 
 Task dependencies stay inside a project. Every `in_progress` or `done` task
-requires completed direct predecessors; reopening a predecessor requires every
-direct dependent to be todo. The original three-state write policy retains this
-condition while proposed support remains limited to storage and readers. Each task write
+requires completed direct predecessors. The original three-state policy allowed
+backward writes only when direct dependents stayed valid; the forward-only
+lifecycle removes that reopening path. Each task write
 locks its project row before fresh `READ COMMITTED` queries, validates the
 candidate graph and status, and commits fields and edges together. Task versions
 add client conflict detection without replacing cross-task exclusion.
@@ -86,7 +88,8 @@ rules, not just relaxing an input check.
 **Display dependencies without gating status writes.** That would allow a task
 to be started or completed while a predecessor is unfinished. The selected
 semantics require enforcement on every relevant state or dependency mutation,
-including concurrent changes and reopening.
+including concurrent lifecycle and dependency changes. The original policy also
+guarded reopening because general updates could move status backward.
 
 **Use serializable transactions instead of a project row lock.** Serializable
 isolation would require bounded whole-operation retries and an explicit policy

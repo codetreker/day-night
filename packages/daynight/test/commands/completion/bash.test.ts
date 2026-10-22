@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderBashCompletion } from "../../../src/commands/completion/bash.js";
 import { commandTree } from "../../../src/cli/commands.js";
 import type { CommandDefinition } from "../../../src/cli/schema.js";
+import { taskDefinition } from "../../../src/commands/task/definition.js";
 
 describe("Bash completion rendering", () => {
   it("registers both installed command names with the same completion function", () => {
@@ -20,6 +21,28 @@ describe("Bash completion rendering", () => {
     expect(script).toContain("dn_children=('put' 'list' 'read' 'remove')");
     expect(script).toContain("dn_options=('--path' '--project' '-h' '--help')");
     expect(script).toContain("dn_options=('--tree' '--project' '--json' '-h' '--help')");
+  });
+
+  it("offers explicit lifecycle commands and proposed filtering without metadata status updates", () => {
+    const script = renderBashCompletion(commandTree);
+    expect(script).toContain("complete -F _daynight_completion 'daynight' 'dn'\n");
+    expect(script).toContain("dn_children=('create' 'list' 'ready' 'show' 'update' 'approve' 'claim' 'complete' 'graph' 'attachment')");
+    expect(script).toContain("dn_value_choices=('proposed' 'todo' 'in_progress' 'done')");
+    const update = renderBashCompletion(taskDefinition.commands!.find(({ name }) => name === "update")!);
+    expect(update).not.toContain("'--status'");
+    expect(update).toContain("'--if-version'");
+    expect(update).toContain("'--depends-on'");
+  });
+
+  it.each(["approve", "claim", "complete"])("completes %s with one task ID and version/project text options", (action) => {
+    const script = renderBashCompletion(taskDefinition.commands!.find(({ name }) => name === action)!);
+    expect(script).toContain("dn_options=('--if-version' '--project' '-h' '--help')");
+    expect(script).toContain("dn_option_values=('text' 'text' '' '')");
+    expect(script).toContain("dn_option_actions=('' '' 'help' 'help')");
+    expect(script).toContain("dn_option_repeats=('0' '0' '0' '0')");
+    expect(script).toContain("dn_argument_count=1");
+    expect(script).not.toContain("'--status'");
+    expect(script).not.toContain("'--json'");
   });
 
   it("renders the supplied command tree, aliases, option identity, and argument choices", () => {
