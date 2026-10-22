@@ -9,6 +9,7 @@ import { MissingConfigurationFileError, isMissingConfiguration } from "../../src
 import { readConfigurationSource } from "../../src/config/files.js";
 import { resolveConfigurationPaths } from "../../src/config/paths.js";
 import { configure } from "../../src/config/setup.js";
+import { parseServerConfiguration } from "../../src/config/server.js";
 import { runServerCommand } from "../../src/commands/server/runtime.js";
 
 const directories: string[] = [];
@@ -288,6 +289,28 @@ describe("server token setup transactions", () => {
     expect(parseDocument(await readFile(paths.configFile, "utf8")).toJS()).toEqual({ serverUrl: "https://service.example", serverToken: "valid-secret" });
     expect(JSON.stringify(vi.mocked(context.stderr).mock.calls)).not.toContain("invalid secret");
     expect(JSON.stringify(vi.mocked(context.stderr).mock.calls)).not.toContain("valid-secret");
+  });
+
+  it.each([
+    undefined,
+    "serverUrl: http://service.example\n",
+    "serverUrl: https://previous.example\nserverToken: previous-secret\n",
+  ])("discards a rejected interactive token when the next answer skips token setup: %j", async (original) => {
+    const { context, paths } = await fixture(original);
+    answers(context, ["http://service.example"]);
+    const secret = "rejected-transport-secret";
+    const askSecret = vi.fn().mockResolvedValueOnce(secret).mockResolvedValueOnce("");
+    context.prompt!.askSecret = askSecret;
+    await configure(context, undefined, "server");
+    const source = await readFile(paths.configFile, "utf8");
+    expect(askSecret).toHaveBeenCalledTimes(2);
+    expect(parseDocument(source).toJS()).toEqual({ serverUrl: "http://service.example" });
+    expect(parseServerConfiguration(source, paths)).toEqual({ serverUrl: "http://service.example" });
+    const diagnostic = JSON.stringify(vi.mocked(context.stderr).mock.calls);
+    expect(diagnostic).toContain("HTTPS");
+    expect(diagnostic).not.toContain(secret);
+    expect(diagnostic).not.toContain("previous-secret");
+    expect(context.stdout).not.toHaveBeenCalled();
   });
 
   it("fails when an interactive prompt cannot read a secret", async () => {

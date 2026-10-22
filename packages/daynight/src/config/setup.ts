@@ -78,7 +78,12 @@ export const configure = async (
         const answer = await context.prompt.askSecret(question, signal);
         signal.throwIfAborted();
         if (answer === "") break;
-        try { serverToken = validateServerToken(answer); validateTokenTransport(serverUrl!); break; }
+        try {
+          const candidate = validateServerToken(answer);
+          validateTokenTransport(serverUrl!);
+          serverToken = candidate;
+          break;
+        }
         catch (cause) {
           if (cause instanceof CliCancelledError) throw cause;
           context.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
