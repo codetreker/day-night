@@ -19,7 +19,8 @@ func attachmentPathGuard(mux *http.ServeMux, logger *slog.Logger) http.Handler {
 		start := attachmentPathStart(decoded)
 		_, pattern := mux.Handler(request)
 		owned := start >= 0 || attachmentPathIntent(decoded) ||
-			strings.HasSuffix(pattern, "/attachments/files/{path...}") || strings.HasSuffix(pattern, "/preview/{path...}")
+			strings.HasSuffix(pattern, "/attachments/files/{path...}") || strings.HasSuffix(pattern, "/preview/{path...}") ||
+			strings.HasSuffix(pattern, "/attachments/{path...}")
 		if owned {
 			if err := validateAttachmentURL(decoded, start); err != nil {
 				w.Header().Set("Cache-Control", "no-store")
@@ -74,6 +75,10 @@ func attachmentPathIntent(segments []string) bool {
 }
 
 func attachmentPathStart(segments []string) int {
+	if len(segments) >= 6 && segments[0] == "" && segments[1] == "projects" &&
+		segments[3] == "tasks" && segments[5] == "attachments" {
+		return 6
+	}
 	if len(segments) < 8 || segments[0] != "" || segments[1] != "api" || segments[2] != "v1" ||
 		segments[3] != "projects" || segments[5] != "tasks" {
 		return -1

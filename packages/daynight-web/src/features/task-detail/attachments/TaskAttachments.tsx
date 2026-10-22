@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type FormEvent } from 'react';
-import { ApiError, attachmentDownloadUrl, attachmentPreviewRoot, attachmentPreviewUrl } from '../../../api/client';
+import { ApiError, attachmentPageUrl, attachmentDownloadUrl, attachmentPreviewRoot, attachmentPreviewUrl } from '../../../api/client';
 import { useI18n } from '../../../i18n/LocaleProvider';
 import { AttachmentPreview } from './AttachmentPreview';
 import { attachmentTree, isAttachmentPath, type AttachmentNode } from './model';
@@ -10,6 +10,7 @@ export type AttachmentUrls = {
   readonly preview: (path: string) => string;
   readonly download: (path: string) => string;
   readonly previewRoot: string;
+  readonly page: (path: string) => string;
 };
 
 type TaskAttachmentsProps = {
@@ -119,6 +120,7 @@ const TaskAttachmentContent = ({ projectId, taskId, api, urls, onClose }: TaskAt
                 <div><h5 title={selected.path}>{selected.path}</h5><p>{m.fileMetadata({ contentType: selected.contentType, size: format.bytes(selected.sizeBytes) })}</p></div>
                 <div className="attachment-preview-actions">
                   <a className="button" href={urls === undefined ? attachmentDownloadUrl(projectId, taskId, selected.path) : urls.download(selected.path)} download>{m.download}</a>
+                  <a className="button" href={urls === undefined ? attachmentPageUrl(projectId, taskId, selected.path) : urls.page(selected.path)} target="_blank" rel="noopener noreferrer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M14 3h7v7M21 3 10 14M10 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-6" /></svg>{m.openInNewTab}</a>
                   <button className="button attachment-delete" type="button" disabled={busy} onClick={() => { void attachments.remove(selected.path); }}>{attachments.write.status === 'deleting' ? m.deleting : m.delete}</button>
                 </div>
               </header>

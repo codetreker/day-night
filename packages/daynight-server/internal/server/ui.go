@@ -13,7 +13,7 @@ func uiRoutes(mux *http.ServeMux, logger *slog.Logger) {
 	ui := webui.New()
 	page := uiHandler(logger, ui.Page)
 	asset := uiHandler(logger, ui.Asset)
-	for _, pattern := range []string{"/{$}", "/projects/{projectId}"} {
+	for _, pattern := range []string{"/{$}", "/projects/{projectId}", "/projects/{projectId}/tasks/{taskId}/attachments/{path...}"} {
 		mux.HandleFunc("GET "+pattern, page)
 		mux.HandleFunc(pattern, methodNotAllowed(logger, "GET, HEAD"))
 	}

@@ -25,9 +25,12 @@ pnpm 11.28.6 workspace dependencies with the frozen lockfile. Go CI declares the
 same prerequisites explicitly.
 
 `internal/server` keeps one ServeMux and the existing single logging wrapper.
-Exact root and project-page routes return index HTML; asset routes serve only
-actual files. Missing resources and unknown pages do not become index HTML, and
-unknown APIs retain JSON errors. HTML, graph snapshots and latest task details
+Exact root, project-page and standalone attachment-reader page shapes return
+index HTML; asset routes serve only actual files. The
+[full-reader decision](2026-10-22-task-attachment-full-reader.md) extends exact
+page registration and the existing raw attachment path guard. Known page shapes
+keep frontend ID validation; missing resources and unknown page shapes do not
+become index HTML, and unknown APIs retain JSON errors. HTML, graph snapshots and latest task details
 use no-store; hashed resources use immutable caching. Static responses retain
 request IDs, HEAD/method behavior and the existing sanitized error handling.
 

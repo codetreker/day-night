@@ -1,7 +1,7 @@
 # Task 附件与通用文件存储设计
 
 状态：通用存储、附件元数据、文件 HTTP/预览入口、CLI 附件命令、Web 管理界面和
-部署持久卷已实现，停止写入后的配套备份恢复已有真实容器验证。跨层组合验收复用
+部署持久卷及独立附件完整阅读页已实现，停止写入后的配套备份恢复已有真实容器验证。跨层组合验收复用
 真实服务、安装 CLI 和生产浏览器，实施与交付进度在 Daynight 中维护。
 
 行为要求由[附件需求](../spec/daynight-task-attachments.md)拥有；本文解释通用存储接口、
@@ -329,9 +329,10 @@ Enter/空格继续有效。`TaskAttachments`、表单及目录控件保留组件
 
 短视口压缩公共标题行、标题、页签、预览标题及底部间距，844×390 仍保留正文、
 关闭按钮和所有操作。隐藏标题仍可取得完整内容；布局不通过恢复对话框纵向滚动
-容纳右侧预览。内容渲染和尺寸约定为独立标签页完整阅读保留可复用结构；该阅读
-入口及此阅读任务组的真实服务组合验收分别由后续任务交付，不在当前布局中提供
-占位操作。选择与滚动所有权的理由见[分屏决策](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-split-view.md)。
+容纳右侧预览。内嵌预览标题在下载后紧邻提供新标签页打开链接，再提供删除；链接
+使用当前选择的元数据路径，即使正文请求仍未完成也保持正确地址。
+`attachmentPageUrl` 沿用 ID 与路径校验，生成逐段编码的独立页面 URL。选择与
+滚动所有权的理由见[分屏决策](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-split-view.md)。
 
 用户选择一个文件，目标路径初始为文件名，可改为多层相对路径；`mime` 4.1.1 按
 目标路径确定上传 Content-Type，未知类型使用 `application/octet-stream`。同路径
@@ -379,10 +380,52 @@ body。成功后 frame 正常 GET 文件和其资源；HEAD 仅证明入口可�
 居中详情对话框拥有 body portal、背景 inert、共享滚动锁和被动卸载后的焦点恢复；其居中尺寸、概览滚动与详情页签由[看板设计](daynight-web.md#居中任务详情)说明，附件页签的分屏和右侧滚动由本节拥有。`dialogFocusables` 使用 `tabbable` 6.5.0 的生产默认可见性检查，统一枚举对话框与同源 frame 的可 Tab 元素；frame 的 load 监听桥接 Esc 与首末 Tab/Shift+Tab 到对话框，并在替换或卸载时释放。该桥仍属于预览组件，不因外壳居中另建键盘所有者。详细历史与取舍见 [Web 附件决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)。
 
 `tests/mockups/attachments.html` 仅由 Vite 开发服务提供，实际组件和 CSS 使用内存
-fixture API 与原生 fixture 文件，支持文件、空态和上传失败场景。fixture 分配的对象
+fixture API 与原生 fixture 文件，覆盖有文件、空态、加载、失败和忙碌状态及长内容。fixture 分配的对象
 URL 在删除后仍保持有效，到 fixture dispose 才释放，避免已加载组件使用失效地址。
 生产构建保留单一应用 index，不包含该入口或 fixture 文件。该 mockup 及本地浏览器
 探针验证前端交互；真实服务的安装 CLI/生产浏览器旅程另由组合验收覆盖。
+
+## 独立附件阅读页
+
+`router.ts` 将 `/projects/{projectId}/tasks/{taskId}/attachments/{path...}` 解析为
+`attachment` 路由。先按原始 `/` 分段再逐段解码，拒绝解码后含 `/` 的段，规范化
+UUID 并复用 `isAttachmentPath`；文件路径保持大小写和合法 Unicode 拼写，字面 `%2F`
+通过 `%252F` 表达。`attachmentPageUrl` 与原文件 URL builder 共用同一地址规则，
+不把文件路径或预览状态从来源页写入浏览器内存作为导航依赖。
+
+`App` 在工作空间外渲染 `AttachmentPage`，仍由生产根部的 `LocaleProvider` 提供
+文案、格式与保存偏好。页面以 `(projectId, taskId, path)` 为身份；进入时聚焦主阅读
+区域，语言切换仅更新展示，不重挂载资源或 frame。页面标题由路由消息目录提供，
+页面头包含返回项目链接、完整文件路径、元数据、下载和语言选择。
+
+`AttachmentPage` 复用 `useAttachments` 的完整分页读取。仅 `complete` 为 true 后
+在清单中精确匹配路径，找到后通过同一个控制器选择并读取预览；后续页失败保留
+不完整清单提示，不能退化为缺失。无文件、列表失败及内容失败使用各自状态与适用
+重试，继续展示可用的下载入口。页面复用 `AttachmentPreview`，Markdown/文本/
+图片及可信同源 frame 仍使用既有内容 URL 和相对资源处理，没有第二个渲染器、
+存储标识或元数据接口。
+
+`attachment-page` 是占满 `100dvh` 的 flex column，外壳隐藏外溢；实际高度的头部
+不收缩，正文通过 flex 占据余下高度，每一级保持零最小尺寸。共享预览正文承担
+Markdown、文本和图片的滚动；原生 HTML/PDF 由拟合正文的 iframe 内文档滚动。
+不使用固定头部高度减法、frame 最低高度或嵌套纵向滚动。路径显示可截断但完整值
+保留在可访问文本与 title，短视口压缩内边距。
+
+`AttachmentPreview` 的关闭能力是可选的。`TrustedFrame` 仅在存在实际 dialog 祖先
+并且调用方提供关闭回调时安装原有 Escape/边界 Tab 桥；独立页面不注册该监听，
+因此保留普通浏览器键盘行为。内嵌详情的焦点圈定、frame load/替换/卸载清理和
+关闭恢复继续按原规则执行。
+
+Go 的 `uiRoutes` 精确登记同一页面形状的 GET/HEAD index 及方法 fallback，继续由
+`internal/webui` 提供 no-store 页面。`attachmentPathGuard` 将新页面命名空间纳入
+既有原始路径检查，在 ServeMux 清理路径或重定向前验证每段和完整文件路径，
+保留中间 `..` 会掩盖命名空间的意图检查。页面 ID 无效仍先交付 index，由前端
+显示未找到页面；数据请求的 ID、归属、路径、授权检查继续由原接口负责。独立页
+及 UI 路由决策见[完整阅读决策](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-full-reader.md)。
+
+前端实际组件 mockup 提供可重新加载的本地文件阅读入口，fixture 上传产生的临时
+对象 URL 仅用于演示。功能与路由检查属于此实现；阅读任务组的真实服务生产组合
+验收继续由独立任务拥有。
 
 ## CLI
 

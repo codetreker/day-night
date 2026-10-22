@@ -19,7 +19,10 @@ the initial document language and route title, and mounts one persistent
 Navigation focus remains dependent on the route, so changing a language does
 not refocus the page. The navigation bar, centered `TaskDetailDialog` and
 fullscreen graph each expose the shared `LanguageSelector`; modal users can
-operate their own selector while the underlying application is inert.
+operate their own selector while the underlying application is inert. The
+[standalone attachment reader](../architecture/2026-10-22-task-attachment-full-reader.md)
+uses that same Provider and selector outside the workspace shell, with its own
+localized route title and ordinary browser keyboard behavior.
 
 The two typed catalogs cover all shipped first-party components. `common`
 owns task status labels and the request ID label; `workspace`, `graph` and

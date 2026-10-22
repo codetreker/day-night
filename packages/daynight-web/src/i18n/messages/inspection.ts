@@ -89,6 +89,9 @@ export type InspectionMessages = {
     readonly preview: string;
     readonly fileMetadata: (args: { contentType: string; size: string }) => string;
     readonly download: string;
+    readonly openInNewTab: string;
+    readonly missing: string;
+    readonly returnToTask: string;
     readonly deleting: string;
     readonly delete: string;
     readonly previewLoading: string;

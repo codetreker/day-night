@@ -64,6 +64,24 @@ describe('application navigation', () => {
     await screen.findByRole('heading', { name: '真实项目' });
   });
 
+  it('opens a standalone attachment route outside workspace chrome and the task dialog', async () => {
+    const taskId = '00000000-0000-4000-8000-000000000002';
+    window.history.replaceState(null, '', `/projects/${projectId}/tasks/${taskId}/attachments/docs/guide.md`);
+    const list = { items: [{ path: 'docs/guide.md', contentType: 'text/markdown', sizeBytes: 12, createdAt: '2026-10-20T09:00:00Z', updatedAt: '2026-10-20T09:00:00Z' }], nextCursor: null };
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url.includes('/attachments?') ? new Response(JSON.stringify(list), { headers: { 'Content-Type': 'application/json' } }) : new Response('# Standalone document')));
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Standalone document' });
+    expect(document.title).toBe('附件预览 · Daynight');
+    expect(screen.getByRole('main')).toHaveFocus();
+    expect(document.querySelector('.shell')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('combobox', { name: '语言 / Language' })).toBeVisible();
+    fireEvent.change(screen.getByRole('combobox', { name: '语言 / Language' }), { target: { value: 'en' } });
+    expect(document.title).toBe('Attachment preview · Daynight');
+    expect(screen.getByRole('link', { name: 'Download' })).toBeVisible();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it('uses the sidebar and breadcrumb as keyboard-accessible navigation controls', async () => {
     window.history.replaceState(null, '', '/unknown');
     render(<App />);

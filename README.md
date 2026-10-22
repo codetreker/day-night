@@ -6,7 +6,9 @@ statistics, task dependency graphs, task details and file attachments from the
 same Go service origin. The read-only graph dashboard is delivered, including
 production-browser acceptance, embedded deployment and the subsequent focus-restoration repair. The
 [dashboard tasks](docs/design/daynight-web-tasks.md) record completion and link
-the corresponding PR and CI evidence. Complete prerequisite context is implemented.
+the corresponding PR and CI evidence. Complete prerequisite data is delivered. Progressive graph overviews are the
+current focused delivery, followed by dependency inspection in
+[PR #121](https://github.com/codetreker/daynight/pull/121).
 The [task inspection requirements](docs/spec/daynight-task-inspection.md),
 [architecture](docs/design/daynight-task-inspection.md),
 [focused task breakdown](docs/design/daynight-task-inspection-tasks.md) and
@@ -15,8 +17,12 @@ complete prerequisite context, smooth highlighted dependency routes, a centered
 detail dialog and Markdown descriptions with matching public skill guidance.
 Centered task details are implemented with the existing modal, attachment and
 focus lifecycles. Graph inspection, smooth paths and Markdown descriptions remain
-pending. Card activation opens the centered dialog, routes remain polylines, and
-descriptions remain plain text.
+pending. The progressive view starts at fifty tasks/one hundred induced edges, with
+explicit twenty-neighbor expansion and global reset; complete data and progress
+remain intact. Body activation still opens the delivered detail dialog with its
+Overview/Attachments split panels, routes remain polylines, and descriptions
+remain plain text. Both overview and inspection PRs must complete before UX-T2
+is done; production evidence for the current overview remains pending.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
@@ -34,9 +40,10 @@ management, persistent deployment volumes and paired backup/restore are
 implemented. Task details open on Overview and provide a separate Attachments
 tab with adjacent file and preview panes at every supported width. Each pane
 owns its scroll region; the preview has exactly one vertical scroll owner,
-including native HTML/PDF documents. Full-page attachment reading in a new
-browser tab and independent integrated acceptance for that reading group
-remain separately tracked work. Installed CLI/service and production-browser
+including native HTML/PDF documents. A link beside Download opens the selected
+file in a reloadable full-page reader outside the workspace and dialog, with
+the same rendering and relative resources. Independent integrated acceptance
+for this reading group remains separately tracked work. Installed CLI/service and production-browser
 attachment journeys share real service data on native and container targets; their
 [acceptance decision](.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
 owns byte, rendering and cleanup proof. Delivery progress remains tracked in
@@ -45,6 +52,8 @@ Daynight, and successful runs remain tied to their tested source and CI. The
 owns browser state, rendering and focus integration; the
 [split-view decision](.agents/notes/implemented/architecture/2026-10-22-task-attachment-split-view.md)
 owns detail tabs, retained attachment state and preview scroll ownership; the
+[full-reader decision](.agents/notes/implemented/architecture/2026-10-22-task-attachment-full-reader.md)
+owns standalone routing and nonmodal reading; the
 [deployment guide](deployment/localhost/README.md#persistence-and-backup) owns data
 retention and backup commands. Filesystem/PostgreSQL non-atomicity remains a known
 issue; consistency remediation is outside that scope.

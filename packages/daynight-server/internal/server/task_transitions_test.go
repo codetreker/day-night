@@ -94,6 +94,7 @@ func TestTaskHTTPTransitionStrictBodiesQueriesAndMethods(t *testing.T) {
 			}
 			request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"version":1}`))
 			request.Header.Set("Content-Type", "text/plain")
+			request.Header.Set("X-Request-ID", "project-test")
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
 			assertProjectError(t, response, http.StatusBadRequest, "invalid_input")

@@ -9,6 +9,7 @@ import * as layoutModule from '../../src/features/task-graph/layout';
 import { LanguageSelector } from '../../src/i18n/LanguageSelector';
 import { messagesByLocale } from '../../src/i18n/messages';
 import { renderWithLocale } from '../helpers/renderWithLocale';
+import { browsingProjects } from '../mockups/browsing-fixture';
 import { installGraphMeasurements } from '../graph-measurements';
 
 const time = '2026-10-20T00:00:00Z';
@@ -73,7 +74,7 @@ describe('localized task graph presentation', () => {
     expect(screen.getByRole('checkbox', { name: 'Show completed task chains (0)' })).not.toBeChecked();
     expect(screen.getByText('3 chain tasks · 2 external prerequisites · 4 dependencies')).toBeTruthy();
     const selected = screen.getByRole('button', { name: '合流实现…, In progress, shared task' });
-    expect(selected).toHaveClass('task-node-selected');
+    expect(selected.closest('.task-node')).toHaveClass('task-node-selected');
     expect(screen.getByRole('button', { name: '最终验收, To do, blocked, shared task' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '设计方案, Done, external prerequisite' })).toBeTruthy();
     const initialTransform = viewport(view.container).style.transform;
@@ -93,7 +94,7 @@ describe('localized task graph presentation', () => {
     expect(screen.getAllByText('3 个任务 · 2 个未完成')).toHaveLength(2);
     expect(screen.getByRole('checkbox', { name: '显示已完成任务链（0）' })).not.toBeChecked();
     expect(screen.getByRole('button', { name: '合流实现…，进行中，共享任务' })).toBe(selected);
-    expect(selected).toHaveClass('task-node-selected');
+    expect(selected.closest('.task-node')).toHaveClass('task-node-selected');
     expect(screen.getByRole('button', { name: '最终验收，待处理，被阻塞，共享任务' })).toBeTruthy();
     expect(screen.getByRole('img', { name: '前置任务 A → 后续任务 C' })).toBe(relation);
     expect(screen.getByRole('group', { name: '任务依赖关系' })).toBeTruthy();
@@ -111,6 +112,51 @@ describe('localized task graph presentation', () => {
     expect(select).not.toHaveBeenCalled();
     fireEvent.click(selected);
     expect(select).toHaveBeenCalledExactlyOnceWith('C', selected);
+  });
+
+  it('retranslates expanded visibility controls without changing the actual visible graph, detail selection or viewport', async () => {
+    const user = userEvent.setup();
+    const fixture = browsingProjects.progressive;
+    const index = buildGraphIndex(fixture);
+    const rootId = fixture.tasks.find((task) => task.titlePreview === '渐进展开 · 主链交付起点')!.id;
+    const joinId = fixture.tasks.find((task) => task.titlePreview === '合流任务 · 40 个外部前置')!.id;
+    const open = vi.fn();
+    const layout = vi.spyOn(layoutModule, 'layoutGraph');
+    const view = renderWithLocale(<><LanguageSelector /><TaskGraph index={index} rootId={rootId} selectedTaskId={joinId} onSelectTask={open} /></>, { locale: 'en' });
+    await waitFor(() => { expect(view.container.querySelectorAll('.react-flow__node')).toHaveLength(50); });
+    const body = screen.getByRole('button', { name: '合流任务 · 40 个外部前置, To do, blocked, shared task' });
+    const expand = screen.getByRole('button', { name: 'Expand 20 prerequisite tasks and 20 dependencies, 20 prerequisites still hidden' });
+    await user.click(expand);
+    await waitFor(() => { expect(view.container.querySelectorAll('.react-flow__node')).toHaveLength(70); });
+    await waitFor(() => { expect(body).toHaveFocus(); });
+    expect(open).not.toHaveBeenCalled();
+    const nodes = [...view.container.querySelectorAll<HTMLElement>('.react-flow__node')];
+    const positions = nodes.map((node) => node.style.transform);
+    const paths = [...view.container.querySelectorAll('.react-flow__edge-path')];
+    const routes = paths.map((path) => path.getAttribute('d'));
+    const transform = viewport(view.container).style.transform;
+    expect(screen.getByRole('button', { name: 'Reset overview' })).toBeTruthy();
+    expect(screen.getByText('Showing 70/101 tasks · 69/100 dependencies. Use the card controls to expand prerequisites or successors.')).toBeTruthy();
+    await user.selectOptions(screen.getByRole('combobox'), 'zh-CN');
+    expect(screen.getByRole('button', { name: '合流任务 · 40 个外部前置，待处理，被阻塞，共享任务' })).toBe(body);
+    expect(body.closest('.task-node')).toHaveClass('task-node-selected');
+    expect(screen.getByRole('button', { name: '展开前置 20 个任务、20 条依赖' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '收起到概览' })).toBeTruthy();
+    expect(screen.getByText('当前显示 70/101 个任务 · 69/100 条依赖。通过卡片下方按钮展开更多前置或后续。')).toBeTruthy();
+    expect([...view.container.querySelectorAll('.react-flow__node')]).toEqual(nodes);
+    expect(nodes.map((node) => node.style.transform)).toEqual(positions);
+    expect([...view.container.querySelectorAll('.react-flow__edge-path')]).toEqual(paths);
+    expect(paths.map((path) => path.getAttribute('d'))).toEqual(routes);
+    expect(viewport(view.container).style.transform).toBe(transform);
+    expect(layout).toHaveBeenCalledTimes(2);
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('announces exact singular expansion counts in both languages', () => {
+    expect(messagesByLocale.en.graph.expandLabel({ direction: 'prerequisites', tasks: 1, edges: 1, remaining: 1 }))
+      .toBe('Expand 1 prerequisite task and 1 dependency, 1 prerequisite still hidden');
+    expect(messagesByLocale['zh-CN'].graph.expandLabel({ direction: 'successors', tasks: 1, edges: 1, remaining: 1 }))
+      .toBe('展开后续 1 个任务、1 条依赖，剩余 1 个后续未展开');
   });
 
   it('switches within fullscreen and preserves keyboard trapping, background inertness, canvas identity and restored focus', async () => {

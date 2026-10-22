@@ -44,6 +44,7 @@ export const inspection: InspectionMessages = {
     empty: "暂无关联 PR", emptyString: "（空字符串）", url: "URL",
   },
   attachments: {
+    openInNewTab: "在新标签页打开", missing: "找不到此附件，文件可能已被删除。", returnToTask: "返回任务所在项目",
     title: "附件", heading: ({ count }) => `附件 · ${count}`, refresh: "刷新附件", chooseFile: "选择一个文件", targetPath: "目标相对路径",
     pathPlaceholder: "例如 docs/design.md", uploading: "正在上传…", upload: "上传文件", uploadHint: "每次上传一个文件；相同路径会直接覆盖。",
     invalidPath: "请输入有效的相对文件路径，使用 / 分隔目录，不含空段、. 或 ..。", writeError: "附件操作失败，请检查后重试。",

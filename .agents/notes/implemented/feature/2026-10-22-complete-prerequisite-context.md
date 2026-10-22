@@ -14,9 +14,11 @@ prerequisites, so a root-anchored viewport can conceal the new context.
 
 For a selected root, `projectRoot` keeps the root and all forward-reachable
 successors in `mainIds`. It iteratively traverses `dependsOn` from that main set
-to include every ancestor; additional tasks are stored in `externalIds`. The
-visible set is their union. Every dependency ending at a visible task is included,
-and ancestor closure guarantees that its source is visible. An edge is external
+to include every ancestor; additional tasks are stored in `externalIds`. Their union is complete context P. Every dependency ending in P is retained,
+and ancestor closure guarantees its source is in P. UX1 originally displayed
+all P before inspection. The later
+[progressive overview decision](2026-10-22-progressive-task-graph.md) retains this
+data and adds explicit S for both main and external tasks. An edge is external
 when its source belongs to `externalIds`, including external-to-external edges.
 Stable task and dependency ordering follows the complete graph index.
 
@@ -27,10 +29,9 @@ each task appears once per canvas, and status, blocking and shared membership
 continue to come from the full snapshot. Root progress and aggregate status count
 only distinct main tasks; project totals count each project task once.
 
-External nodes retain dashed borders and the “外部前置” label. Connections from
-external nodes remain dashed, and the legend states that all upstream context is
-included. The toolbar reports main-task, external-task and dependency counts
-separately. Initial placement fits the complete layout at 0.8–1 zoom when it can;
+Visible external nodes retain dashed borders and the “外部前置” label. Connections from
+external nodes remain dashed, and full/visible counts distinguish display from data. UX1 initially reported
+complete counts and fit its complete layout at 0.8–1 zoom when possible;
 otherwise it anchors the leftmost rank at 0.8 zoom. A root already in that rank
 keeps the existing vertical centering. If upstream context extends left of the
 root, the topmost task in that upstream rank starts at a 32px canvas inset.
@@ -51,8 +52,10 @@ polylines and descriptions remain plain text.
 The production capacity matrix preserves its chain, merge and shared-root graphs
 and adds `capacity-external`: 1,000 nodes and 5,000 edges, with two main tasks and
 998 external ancestors. It uses the same five expansions, 3,000ms opening budget,
-300ms local-feedback budgets, complete geometry checks and independent size
-refusals. The new initial upstream task replaces only that dataset's readable
+300ms local-feedback budgets and independent size refusals. The progressive
+overview keeps those complete inputs while changing DOM readiness to the bounded
+visible graph, all real induced edges and explicit expansion/reset checks;
+body-open-details and the existing polyline renderer remain current. The new initial upstream task replaces only that dataset's readable
 root condition; existing datasets retain their root-visibility checks. Strict
 inventory validation retains five native capacity/limit scenarios. The later
 [bilingual interface decision](2026-10-22-web-bilingual-interface.md)
@@ -94,7 +97,7 @@ existing root placement when the root is already leftmost.
 A single expanded chain can approach the complete-project limit of 1,000 tasks
 and 5,000 dependencies. Closure and projection use visited sets and iterative
 traversal, remain linear in project nodes plus edges, and avoid deep recursive
-call stacks. Only the expanded chain is laid out; the existing all-root progress
+call stacks. Only the expanded chain's current visible induced graph is laid out; the existing all-root progress
 calculation remains based on main sets.
 
 Independent counts prevent external ancestors from changing chain completion,

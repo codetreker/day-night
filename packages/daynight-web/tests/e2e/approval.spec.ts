@@ -8,7 +8,7 @@ import { expectCenteredTaskDetail } from './detail-dialog';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
 const standalone = (page: Page, id: string): Locator => page.locator(`#standalone-task-${id}`);
-const node = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node`);
+const node = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node-body`);
 const detail = (page: Page): Locator => page.locator('.task-detail-dialog');
 const approval = (page: Page): Locator => detail(page).locator('.task-approval');
 const taskPath = (projectId: string, taskId: string): string => `/api/v1/projects/${projectId}/tasks/${taskId}`;
@@ -51,6 +51,9 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   const other = await createApprovedTask(request, project.id, { title: '审批期间查看的另一任务' });
   const prerequisite = await createProposedTask(request, project.id, { title: '仍未完成的前置任务' });
   const blocked = await createProposedTask(request, project.id, { title: '有未完成前置的待审批任务', dependsOn: [prerequisite.id] });
+  for (let index = 0; index < 79; index++) {
+    await createProposedTask(request, project.id, { title: `审批图后续 ${index}`, dependsOn: [prerequisite.id] });
+  }
   const exactVersion = 9223372036854775806n;
   await seedTaskVersion(project.id, exact.id, exactVersion);
   const exactResponse = await request.get(taskPath(project.id, exact.id));
@@ -112,13 +115,23 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   await page.getByRole('tab', { name: '任务链', exact: true }).click();
   await expect(page.locator(`#task-root-${prerequisite.id}`)).toHaveAttribute('aria-expanded', 'true');
   await expect(page.locator(`#task-root-${prerequisite.id} .root-status`)).toHaveText('待审批');
+  await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '50');
+  await expect(page.locator('.task-graph')).toHaveAttribute('data-total-task-count', '81');
+  await page.locator(`.react-flow__node[data-id="${prerequisite.id}"] .task-node-expand[data-direction="successors"]`).click();
+  await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '70');
+  const visibleGraph = () => page.evaluate(() => ({
+    nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((element) => element.dataset.id!).sort(),
+    edges: [...document.querySelectorAll<SVGGElement>('.task-dependency-edge')].map((element) => element.dataset.id!).sort(),
+  }));
+  const expandedGraph = await visibleGraph();
   await page.getByRole('button', { name: '放大', exact: true }).click();
   const transform = await page.locator('.react-flow__viewport').getAttribute('style');
   const preferences = await page.evaluate((projectId) => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.endsWith(projectId) && !key.includes('scroll'))), project.id);
   await page.getByRole('button', { name: '全屏查看', exact: true }).click();
   const fullscreen = page.locator('.task-graph-fullscreen');
   await expect(page.locator('.react-flow__viewport')).toHaveAttribute('style', transform!);
-  await node(page, blocked.id).click();
+  await node(page, blocked.id).focus();
+  await page.keyboard.press('Enter');
   await expectStatus(page, '待审批');
   await expect(approval(page)).toContainText('前置未完成时，任务仍会被阻塞');
   await expect(detail(page).getByRole('region', { name: '当前未完成的前置', exact: true })).toContainText(prerequisite.title);
@@ -165,6 +178,8 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   await expect(detail(page).locator('.task-detail-blocked')).toHaveText('Blocked');
   await expect(approval(page).getByRole('button', { name: 'Approve task', exact: true })).toHaveCount(0);
   await expect(fullscreen).toBeVisible();
+  expect(await visibleGraph()).toEqual(expandedGraph);
+  await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '70');
   await expect(page.locator('.react-flow__viewport')).toHaveAttribute('style', beforeApproval!);
   await screenshot(page, info, 'task-approval-narrow');
   await page.keyboard.press('Escape');
@@ -178,7 +193,7 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   expect(await page.evaluate((projectId) => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.endsWith(projectId) && !key.includes('scroll'))), project.id)).toEqual(preferences);
   await page.setViewportSize({ width: 1600, height: 1100 });
   await page.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('zh-CN');
-  await expect(page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^待审批$/ }) }).locator('.stat-number')).toHaveText('1');
+  await expect(page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^待审批$/ }) }).locator('.stat-number')).toHaveText('80');
   await expect(page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^被阻塞$/ }) }).locator('.stat-number')).toHaveText('1');
   await screenshot(page, info, 'task-approval');
 });

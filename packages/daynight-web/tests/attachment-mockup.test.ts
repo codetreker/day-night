@@ -4,7 +4,7 @@ import { createLocaleRender } from './helpers/renderWithLocale';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { TaskAttachments } from '../src/features/task-detail/attachments/TaskAttachments';
-import { createAttachmentFixture } from './mockups/fixture';
+import { createAttachmentFixture, mockupLongPath } from './mockups/fixture';
 
 const render = createLocaleRender('zh-CN');
 const signal = () => new AbortController().signal;
@@ -18,6 +18,9 @@ describe('development attachment fixture', () => {
     expect(await fixture.api.readText('project', 'task', 'docs/guide.md', signal())).toContain('| 文件 | 用途 |');
     expect(fixture.urls.preview('site/index.html')).toBe('/tests/mockups/files/site/index.html');
     expect(fixture.urls.download('brief.pdf')).toBe('/tests/mockups/files/brief.pdf');
+    expect(fixture.urls.page('docs/guide.md')).toBe('/tests/mockups/attachments.html?file=docs%2Fguide.md&scenario=files');
+    expect(await fixture.api.readText('project', 'task', mockupLongPath, signal())).toContain('Long text reading fixture');
+    expect(fixture.urls.preview(mockupLongPath)).toBe('/tests/mockups/files/data/tall.txt');
     expect(fixture.urls.previewRoot).toBe('/tests/mockups/files/');
     fixture.dispose();
   });

@@ -30,6 +30,30 @@ describe('production task browsing fixture', () => {
     expect(first.completed).toBe(0);
   });
 
+  it('keeps a complete progressive fixture with main and external work beyond the initial overview', () => {
+    const graph = browsingProjects.progressive;
+    const index = buildGraphIndex(graph);
+    const root = graph.tasks.find((task) => task.titlePreview === '渐进展开 · 主链交付起点')!;
+    const projection = projectRoot(index, root.id);
+    expect(graph.summary).toEqual({ total: 101, proposed: 0, todo: 61, inProgress: 0, done: 40, ready: 1, blocked: 60 });
+    expect(projection.mainIds.size).toBe(61);
+    expect(projection.externalIds.size).toBe(40);
+    expect(projection.edges).toHaveLength(100);
+    expect(index.rootProgress.get(root.id)).toEqual({ total: 61, done: 0, status: 'todo' });
+  });
+
+  it.each(['progressive', 'complete-context'] as const)('serves the complete %s graph and exact detail versions through production APIs', async (scenario) => {
+    const dispose = installBrowsingFixture();
+    try {
+      const source = browsingProjects[scenario];
+      const graph = await getTaskGraph(source.project.id, signal());
+      expect(graph).toEqual(source);
+      expect(graph.tasks.every((task) => !('version' in task))).toBe(true);
+      const task = await getTask(source.project.id, source.tasks[0]!.id, signal());
+      expect(task).toMatchObject({ id: source.tasks[0]!.id, status: source.tasks[0]!.status, version: 1n });
+    } finally { dispose(); }
+  });
+
   it('serves initial and refresh failures once so production retry can restore the snapshot', async () => {
     const dispose = installBrowsingFixture();
     try {

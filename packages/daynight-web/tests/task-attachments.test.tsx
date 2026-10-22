@@ -53,6 +53,26 @@ describe('task attachments', () => {
     expect(screen.getByRole('link', { name: '下载' })).toHaveAttribute('download');
   });
 
+  it('keeps a real new-tab link bound to the current selection while its content is pending', async () => {
+    const pending = deferred<string>();
+    const api = fixture([file('docs/设计 #?%.md', 'text/markdown'), file('next.txt')]);
+    const readText = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue('Next content');
+    open({ ...api, readText });
+    fireEvent.click(await screen.findByRole('button', { name: /设计/ }));
+    const link = screen.getByRole('link', { name: '在新标签页打开' });
+    expect(link).toHaveAttribute('href', '/projects/00000000-0000-4000-8000-000000000100/tasks/00000000-0000-4000-8000-000000000001/attachments/docs/%E8%AE%BE%E8%AE%A1%20%23%3F%25.md');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(link.previousElementSibling).toBe(screen.getByRole('link', { name: '下载' }));
+    expect(link.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.getByRole('status')).toHaveTextContent('正在加载预览');
+    fireEvent.click(screen.getByRole('button', { name: /next.txt/ }));
+    expect(link).toHaveAttribute('href', expect.stringContaining('/attachments/next.txt'));
+    await screen.findByText('Next content');
+    await act(async () => pending.resolve('Stale document'));
+    expect(screen.queryByText('Stale document')).toBeNull();
+  });
+
   it('uploads one file, validates the target path, directly overwrites, and deletes with attachment-only reloads', async () => {
     const api = fixture([file('docs/readme.md')]);
     open(api);
@@ -130,7 +150,7 @@ describe('task attachments', () => {
   it('retries text previews and uses injected native preview and download URLs', async () => {
     const api = fixture([file('text.txt'), file('image.svg', 'image/svg+xml')]);
     const readText = vi.fn().mockRejectedValueOnce(new Error('private preview')).mockResolvedValue('Recovered');
-    render(<TaskAttachments projectId="00000000-0000-4000-8000-000000000100" taskId="task" api={{ ...api, readText }} onClose={vi.fn()} urls={{ previewRoot: '/fixtures/', preview: (path) => `/fixtures/${path}`, download: (path) => `/downloads/${path}` }} />);
+    render(<TaskAttachments projectId="00000000-0000-4000-8000-000000000100" taskId="task" api={{ ...api, readText }} onClose={vi.fn()} urls={{ page: (path) => `/reader/${path}`, previewRoot: '/fixtures/', preview: (path) => `/fixtures/${path}`, download: (path) => `/downloads/${path}` }} />);
     fireEvent.click(await screen.findByRole('button', { name: /text.txt/ }));
     expect(await screen.findByRole('alert')).not.toHaveTextContent('private preview');
     fireEvent.click(screen.getByRole('button', { name: '重试预览' }));

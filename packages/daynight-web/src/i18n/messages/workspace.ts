@@ -16,7 +16,7 @@ export type WorkspaceMessages = {
     readonly notFound: string;
     readonly notFoundDetail: string;
     readonly returnToProjects: string;
-    readonly documentTitle: Readonly<Record<"projects" | "project" | "notFound", string>>;
+    readonly documentTitle: Readonly<Record<"projects" | "project" | "attachment" | "notFound", string>>;
   };
   readonly projects: {
     readonly subtitle: string;

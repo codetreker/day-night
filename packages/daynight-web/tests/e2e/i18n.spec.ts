@@ -5,7 +5,8 @@ import { createProject, createApprovedTask, expect, test, withDependencyFailure 
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
 const language = (scope: Page | Locator): Locator => scope.getByRole('combobox', { name: '语言 / Language', exact: true });
-const node = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node`);
+const card = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] .task-node`);
+const node = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node-body`);
 const screenshot = async (page: Page, info: TestInfo, name: string): Promise<void> => {
   const path = info.outputPath(`${name}.png`);
   await page.screenshot({ path, fullPage: false });
@@ -95,6 +96,7 @@ test.describe('Web language journeys', () => {
     const pullRequests = Array.from({ length: 101 }, (_, index) => ({ title: `原始 PR ${index + 1}`, url: `https://example.com/pull/${index + 1}` }));
     const task = await createApprovedTask(request, project.id, { title: '根任务 Raw root', description: '原始描述 Raw description', properties: { pullRequests } });
     await createApprovedTask(request, project.id, { title: '后续任务 Raw successor', dependsOn: [task.id] });
+    for (let index = 0; index < 79; index++) await createApprovedTask(request, project.id, { title: `Language successor ${index}`, dependsOn: [task.id] });
     const htmlPath = 'preview.html';
     const htmlUrl = attachmentDownloadUrl(project.id, task.id, htmlPath);
     const seeded = await request.put(htmlUrl, { headers: { 'content-type': 'text/html' }, data: '<!doctype html><html lang="en"><body><button id="counter" onclick="this.textContent=String(Number(this.textContent)+1)">0</button><p>原始附件 Raw attachment</p></body></html>' });
@@ -113,6 +115,19 @@ test.describe('Web language journeys', () => {
     });
     await page.goto(`/projects/${project.id}`);
     await expect(node(page, task.id)).toBeVisible();
+    await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '50');
+    await expect(page.locator('.task-graph')).toHaveAttribute('data-total-task-count', '81');
+    const expansion = card(page, task.id).locator('.task-node-expand[data-direction="successors"]');
+    await expect(expansion).toHaveAccessibleName('Expand 20 successor tasks and 20 dependencies, 11 successors still hidden');
+    await expansion.click();
+    await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '70');
+    await expect(expansion).toHaveAccessibleName('Expand 11 successor tasks and 11 dependencies');
+    const visibleState = () => page.evaluate(() => ({
+      nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => node.dataset.id!).sort(),
+      edges: [...document.querySelectorAll<SVGGElement>('.task-dependency-edge')].map((edge) => edge.dataset.id!).sort(),
+    }));
+    const expandedState = await visibleState();
+    await expect(page.locator('.graph-reset-overview')).toHaveText('Reset overview');
     await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
     const paneBounds = await page.locator('.react-flow__pane').boundingBox();
     if (paneBounds === null) throw new Error('Graph pane is absent.');
@@ -129,14 +144,20 @@ test.describe('Web language journeys', () => {
     const beforeSwitch = [...reads];
     await language(page).selectOption('zh-CN');
     await expect(node(page, task.id).locator('.graph-status')).toHaveText('待处理');
+    expect(await visibleState()).toEqual(expandedState);
+    await expect(expansion).toHaveAccessibleName('展开后续 11 个任务、11 条依赖');
+    await expect(page.locator('.graph-reset-overview')).toHaveText('收起到概览');
     await expect(viewport).toHaveAttribute('style', transform!);
-    expect(await taskElement.evaluate((element, id) => element === document.querySelector(`.react-flow__node[data-id="${id}"] button.task-node`), task.id)).toBe(true);
+    expect(await taskElement.evaluate((element, id) => element === document.querySelector(`.react-flow__node[data-id="${id}"] button.task-node-body`), task.id)).toBe(true);
     expect(await page.locator('.task-dependency-edge path.react-flow__edge-path').evaluateAll((elements) => elements.map((element) => element.getAttribute('d')))).toEqual(paths);
     expect(reads).toEqual(beforeSwitch);
     await page.getByRole('button', { name: '全屏查看', exact: true }).click();
     const fullscreen = page.locator('.task-graph-fullscreen');
     await language(fullscreen).selectOption('en');
     await expect(fullscreen).toHaveAttribute('aria-label', 'Task dependency graph fullscreen view');
+    expect(await visibleState()).toEqual(expandedState);
+    await expect(expansion).toHaveAccessibleName('Expand 11 successor tasks and 11 dependencies');
+    await expect(page.locator('.graph-reset-overview')).toHaveText('Reset overview');
     await expect(viewport).toHaveAttribute('style', transform!);
     expect(await viewportElement.evaluate((element) => element === document.querySelector('.react-flow__viewport'))).toBe(true);
     expect(reads).toEqual(beforeSwitch);

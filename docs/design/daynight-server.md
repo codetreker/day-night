@@ -74,7 +74,12 @@ HTTP 错误映射和服务生命周期。`internal/service` 拥有 project/task 
 `pgx`/`pgxpool` 类型实现 PostgreSQL 查询、事务和迁移。`internal/webui` 拥有
 `go:embed` 资源及页面/资源响应，server 在既有 mux 精确注册路由。静态处理不经过
 service/store；请求仍只经过一次现有日志包装。HTML、图及最新详情为 no-store，
-哈希资源为 immutable，缺失资源不回退 HTML。
+哈希资源为 immutable，缺失资源不回退 HTML。精确 UI 页面形状包含根路径、项目页
+及 `/projects/{projectId}/tasks/{taskId}/attachments/{path...}` 独立附件阅读页；GET
+沿用 HEAD 语义，其他方法返回 405，未知形状不回退 index。UI 的无效 ID 仍交付
+index 后由前端显示未找到页面。独立附件命名空间复用原始路径守卫，在 ServeMux
+清理和重定向前拒绝非法路径；数据与授权仍由已有附件接口负责，机制见
+[附件阅读设计](daynight-task-attachments.md#独立附件阅读页)。
 
 调用方向为 `server → service → core/store`。传输层将 API DTO 转换为 service
 参数，core 不依赖 HTTP，store 不决定状态转换或依赖规则。事务内查询所需的数据、

@@ -22,6 +22,14 @@ export const graph: GraphMessages = {
   blocked: '被阻塞',
   external: '外部前置',
   nodeLabel: ({ title, status, blocked, external, shared }) => [title, status, ...(blocked ? ['被阻塞'] : []), ...(external ? ['外部前置'] : []), ...(shared ? ['共享任务'] : [])].join('，'),
+  expandTitle: ({ direction, tasks }) => `展开${direction === 'prerequisites' ? '前置' : '后续'} ${number(tasks)}`,
+  expandSummary: ({ edges, remaining }) => `+${number(edges)} 条依赖${remaining > 0 ? ` · 余 ${number(remaining)}` : ''}`,
+  expandLabel: ({ direction, tasks, edges, remaining }) => {
+    const label = direction === 'prerequisites' ? '前置' : '后续';
+    return `展开${label} ${number(tasks)} 个任务、${number(edges)} 条依赖${remaining > 0 ? `，剩余 ${number(remaining)} 个${label}未展开` : ''}`;
+  },
+  resetOverview: '收起到概览',
+  visibilitySummary: ({ visible, total, edges, totalEdges }) => `当前显示 ${number(visible)}/${number(total)} 个任务 · ${number(edges)}/${number(totalEdges)} 条依赖。通过卡片下方按钮展开更多前置或后续。`,
   dependencyGroup: '任务依赖关系',
   dependencyLabel: ({ source, target }) => `前置任务 ${source} → 后续任务 ${target}`,
   fullscreenTitle: '任务依赖图全屏查看',
@@ -29,10 +37,10 @@ export const graph: GraphMessages = {
   counts: ({ main, external, dependencies }) => `${number(main)} 个链内任务 · ${number(external)} 个外部前置 · ${number(dependencies)} 条依赖`,
   enterFullscreen: '全屏查看',
   exitFullscreen: '退出全屏',
-  instructions: '拖动画布平移，滚轮或按钮缩放。Tab 选择任务，Enter 或空格查看详情。',
+  instructions: '点击卡片查看详情，通过卡片底部控件展开前置或后续。拖动画布平移，滚轮或按钮缩放。Tab 选择控件，Enter 或空格操作。',
   canvas: '任务依赖画布',
   directionLegend: '箭头表示前置 → 后续',
-  externalLegend: '虚线节点及连线：外部前置（已补齐全部上游）',
+  externalLegend: '虚线节点及连线：外部前置 · 展开仅影响当前画布',
   layoutErrorTitle: '任务图布局失败',
   layoutErrorDescription: '无法绘制此任务链，请刷新项目后重试。',
   flowAriaLabels: {
@@ -41,8 +49,8 @@ export const graph: GraphMessages = {
     'controls.zoomOut.ariaLabel': '缩小',
     'controls.fitView.ariaLabel': '适应画布',
     'controls.interactive.ariaLabel': '切换图交互',
-    'node.a11yDescription.default': '使用 Tab 选择任务，按 Enter 或空格查看任务详情。',
-    'node.a11yDescription.keyboardDisabled': '使用 Tab 选择任务，按 Enter 或空格查看任务详情。',
+    'node.a11yDescription.default': '使用 Tab 选择卡片主体或展开控件，按 Enter 或空格操作。',
+    'node.a11yDescription.keyboardDisabled': '使用 Tab 选择卡片主体或展开控件，按 Enter 或空格操作。',
     'node.a11yDescription.ariaLiveMessage': ({ x, y }) => `任务已移动至 x：${number(x)}，y：${number(y)}。`,
     'edge.a11yDescription.default': '依赖箭头从前置任务指向后续任务。',
     'minimap.ariaLabel': '任务图概览',

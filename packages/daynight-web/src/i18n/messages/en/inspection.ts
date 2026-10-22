@@ -48,6 +48,7 @@ export const inspection: InspectionMessages = {
     pageOption: ({ page, total }) => `${page} / ${total}`, empty: "No linked PRs", emptyString: "(empty string)", url: "URL",
   },
   attachments: {
+    openInNewTab: "Open in new tab", missing: "This attachment was not found. It may have been deleted.", returnToTask: "Return to task project",
     title: "Attachments", heading: ({ count }) => `Attachments · ${count}`, refresh: "Refresh attachments",
     chooseFile: "Choose one file", targetPath: "Target relative path", pathPlaceholder: "For example, docs/design.md",
     uploading: "Uploading…", upload: "Upload file", uploadHint: "Upload one file at a time. An existing path is overwritten directly.",

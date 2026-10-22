@@ -28,6 +28,8 @@ export const browsingScenarioLabels = {
   'graph-refresh-error': '批准成功 · 任务图刷新失败',
   'task-switch': '批准处理中切换任务 · 响应身份隔离',
   long320: '批准长标题任务 · 320px 键盘交互',
+  progressive: '渐进展开 · 主链与外部前置',
+  'complete-context': '完整上游与无关分支排除',
 } as const;
 export type BrowsingScenario = keyof typeof browsingScenarioLabels;
 export const readBrowsingScenario = (): BrowsingScenario => {
@@ -73,6 +75,25 @@ const mixed: readonly TaskSeed[] = [
   { number: 16, title: '讨论跨团队审批流程与任务描述：覆盖中文、English identifiers、长标题自然换行和窄屏下的完整访问能力', status: 'proposed', dependencies: [] },
 ];
 
+const completeContext: readonly TaskSeed[] = [
+  { number: 30, title: '外部上下文 · 链内交付起点', status: 'todo', dependencies: [] },
+  { number: 14, title: '外部祖先 · 已完成基础协议', status: 'done', dependencies: [] },
+  { number: 15, title: '外部前置 · 实现共享接口', status: 'done', dependencies: [14] },
+  { number: 16, title: '外部前置 · 验证共享接口', status: 'done', dependencies: [14] },
+  { number: 17, title: '外部前置 · 菱形合流', status: 'done', dependencies: [15, 16] },
+  { number: 31, title: '链内最终交付', status: 'todo', dependencies: [30, 17] },
+  { number: 32, title: '外部前置的无关后续 · 当前链不显示', status: 'todo', dependencies: [17] },
+];
+
+const progressive: readonly TaskSeed[] = [
+  ...Array.from({ length: 40 }, (_, position) => ({ number: 2000 + position, title: `外部前置 ${position + 1} · 已完成共享协议`, status: 'done' as const, dependencies: [] })),
+  { number: 3000, title: '渐进展开 · 主链交付起点', status: 'todo', dependencies: [] },
+  ...Array.from({ length: 60 }, (_, position) => ({
+    number: 3001 + position, title: position === 0 ? '合流任务 · 40 个外部前置' : `主链后续 ${position + 1}`,
+    status: 'todo' as const, dependencies: position === 0 ? [3000, ...Array.from({ length: 40 }, (_, index) => 2000 + index)] : [3000],
+  })),
+];
+
 const scenarioSeeds = (scenario: BrowsingScenario): readonly TaskSeed[] => {
   const selected = (numbers: readonly number[]) => mixed.filter((task) => numbers.includes(task.number));
   if (isApprovalScenario(scenario)) {
@@ -87,6 +108,8 @@ const scenarioSeeds = (scenario: BrowsingScenario): readonly TaskSeed[] => {
   }
   switch (scenario) {
     case 'empty': return [];
+    case 'progressive': return progressive;
+    case 'complete-context': return completeContext;
     case 'all-proposed': return selected([1, 2]).map((task) => ({ ...task, dependencies: task.dependencies.filter((number) => number !== 3) }));
     case 'approved-mixed': return selected([5, 6]);
     case 'active': return selected([7, 8, 9]);

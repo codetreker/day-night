@@ -210,7 +210,7 @@ func TestInstalledCLIAttachmentAcceptance(t *testing.T) {
 			if expected := []string{"todo", "in_progress", "done"}[index]; after.Status != expected || after.Version != before.Version+1 || !after.UpdatedAt.After(before.UpdatedAt) || !reflect.DeepEqual(preserved, before) {
 				t.Fatal("installed lifecycle action did not preserve the attachment task metadata")
 			}
-			if actual := acceptanceAttachmentList(t, process, task); !reflect.DeepEqual(actual, metadata) {
+			if actual := acceptanceCLIJSON[[]api.Attachment](t, cli.run(t, cli.repo, "task", "attachment", "list", task.ID, "--json")); !reflect.DeepEqual(actual, metadata) {
 				t.Fatal("installed lifecycle action changed attachment metadata")
 			}
 			before = after

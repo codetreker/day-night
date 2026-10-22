@@ -1,10 +1,10 @@
 # 任务依赖追踪与详情阅读设计
 
-状态：完整上游上下文（UX-T1）与居中详情（UX-T3）已实现；依赖选择与平滑连线（UX-T2）和 Markdown 描述（UX-T4）待实现。适用模块为 `daynight-web` 与 CLI 发布的 `using-daynight` skill。行为以[要求](../spec/daynight-task-inspection.md)为准，交付边界见[任务拆分](daynight-task-inspection-tasks.md)，视觉见[交互原型](mockups/task-inspection/index.html)。[决策记录](../../.agents/notes/implemented/architecture/2026-10-22-task-inspection-design.md)保留实际比较与范围选择。
+状态：UX-T1 与 UX-T3 已交付，TaskDetailDialog 及附件概览/附件页签、左右预览分屏由当前主线拥有。UX-T2 先交付渐进概览，再由 [#121](https://github.com/codetreker/daynight/pull/121) 交付依赖检查和曲线；两者合并才完成。当前概览 PR 保留卡片打开详情、既有 Dagre 折线与虚线 renderer。UX-T4 Markdown 待实现。[要求](../spec/daynight-task-inspection.md)、[拆分](daynight-task-inspection-tasks.md)和[目标原型](mockups/task-inspection/index.html)分别拥有最终行为、交付边界与最终视觉。
 
 ## 问题与当前结构
 
-当前任务节点是整张可点击按钮，点击后同时设置图的选中任务和打开详情。选择与阅读耦合，无法在画布上持续追踪依赖。投影已补齐链内任务的全部上游前置，并排除外部前置的无关后续；其机制由[完整上下文决策](../../.agents/notes/implemented/feature/2026-10-22-complete-prerequisite-context.md)拥有。依赖线仍按 Dagre 点列绘制为折线，描述仍以纯文本显示。详情已使用居中对话框，机制由[居中详情决策](../../.agents/notes/implemented/feature/2026-10-22-centered-task-detail-dialog.md)拥有；下文的选择、曲线和 Markdown 机制属于其余任务的目标结构。
+当前任务节点是整张可点击按钮，点击后同时设置图的选中任务和打开详情。选择与阅读耦合，无法在画布上持续追踪依赖。投影已补齐链内任务的全部上游前置，并排除外部前置的无关后续；其机制由[完整上下文决策](../../.agents/notes/implemented/feature/2026-10-22-complete-prerequisite-context.md)拥有。依赖线仍按 Dagre 点列绘制为折线，描述仍以纯文本显示。详情已使用居中对话框，机制由[居中详情决策](../../.agents/notes/implemented/feature/2026-10-22-centered-task-detail-dialog.md)拥有；下文的选择、曲线和 Markdown 机制属于后续 PR/任务的目标结构，不是当前概览交付事实。
 
 这些事实分别由 [TaskNode](../../packages/daynight-web/src/features/task-graph/TaskNode.tsx)、[ProjectPage](../../packages/daynight-web/src/features/projects/ProjectPage.tsx)、[投影模型](../../packages/daynight-web/src/features/task-graph/model.ts)、[TaskGraph](../../packages/daynight-web/src/features/task-graph/TaskGraph.tsx) 和 [TaskDetailDialog](../../packages/daynight-web/src/features/task-detail/TaskDetailDialog.tsx) 实现。图索引已包含完整项目的 `dependsOn` 和 `successors`，无需新增服务端读取接口。附件预览已使用 `react-markdown`、`remark-gfm` 及任务内相对 URL 解析。
 
@@ -14,13 +14,14 @@
 
 已实现的独立任务/任务链标签能力负责分类和浏览偏好。本设计只定义图内卡片的新交互，以及所有现有详情入口共用的阅读窗口。独立条目仍直接打开详情；图内新交互接入现有页签、完成项过滤与浏览偏好。文件重叠本身不构成功能前置。
 
-## 架构与职责
+## 最终目标架构
 
 ```mermaid
 flowchart LR
   Snapshot[完整项目快照] --> Index[GraphIndex]
   Index --> Projection[链内后续与全部前置闭包]
-  Projection --> Layout[Dagre 固定布局]
+  Projection --> Visible[渐进可见诱导图 S]
+  Visible --> Layout[Dagre 固定布局]
   Layout --> Routes[平滑标准路径与绘制分片]
   Index --> Inspect[当前画布依赖选择]
   Inspect --> Classes[节点与边的呈现状态]
@@ -33,21 +34,27 @@ flowchart LR
   Markdown -->|附件链接| Attachments
 ```
 
-`ProjectPage` 拥有详情资源选择、打开入口和焦点恢复；每个挂载的 `TaskGraph` 拥有局部依赖选择。使用不同的回调表达 `onInspectTask(id)` 与 `onOpenTask(id, trigger)`，关系导航只更新详情 ID。卡片外壳为非交互容器，主选择按钮与“详情”按钮互为兄弟；详情按钮采用链接视觉，继续使用按钮语义，因为它打开本页对话框。
+后续检查 PR 的目标结构中，`ProjectPage` 拥有详情资源选择、打开入口和焦点恢复，每个挂载的 `TaskGraph` 拥有局部依赖选择。使用不同的回调表达 `onInspectTask(id)` 与 `onOpenTask(id, trigger)`，关系导航只更新详情 ID。卡片外壳为非交互容器，主选择按钮与“详情”按钮互为兄弟；详情按钮采用链接视觉，继续使用按钮语义，因为它打开本页对话框。
 
 `model.ts` 拥有集合语义；`layout.ts` 只布局既定投影；路径模块把布局点列转换为标准曲线路径及绘制元数据；`TaskGraph` 组合这些结果和状态。标题、状态、共享与阻塞值继续来自完整索引，不能从淡化或过滤后的元素推导。
 
-## 完整依赖上下文
+## 当前交付：完整数据与渐进概览
 
-给定根 `r`，定义 `M = {r} ∪ descendants(r)`，`V = M ∪ ancestors(M)`，`C = V − M`。画布显示 `V` 中全部节点及终点位于 `V` 的每条依赖。祖先闭包保证这些边的起点也在 `V` 中。链内计数、完成数和聚合状态只基于 `M`；`C` 是外部前置上下文。
+根 r 的主集合 `M = {r} ∪ descendants(r)`，完整 `P = M ∪ ancestors(M)`，外部 `C = P−M`。`projectRoot` 不变，C 无关后续仍排除。完整 M 拥有进度/状态，项目七项统计与未完成页签数来自完整快照，proposed/todo/in_progress/done 保持原读取语义。可见 `S ⊆ P` 独立，绘制两端在 S 的全部真实诱导边，无聚合或捷径。
 
-例如 `A → D`、`B → C → D`、`C → X`，展开 A 显示链内 A、D，以及外部前置 B、C；不补入 X。实现使用带访问集合的迭代遍历，单个投影为 `O(V + E)`，保持稳定的节点和边排序，不建立所有节点两两可达的全局缓存。
+`visibility.ts` 的 `createGraphOverview(index, P)` 在 P≤50任务且≤100边时全显；其他情况从根做快照稳定顺序的无向 BFS，先后续再前置。候选加入后实际节点/诱导边仍满足 50/100 才接纳，仅从接纳任务继续。`projectVisibleTasks(P, S)` 只缩小布局输入，不能重算完整计数。
 
-投影和布局只在根或成功快照改变时计算。选择任务 `s` 时，遍历完整索引的 `dependsOn` 得到 `H = {s} ∪ ancestors(s)`。高亮边是终点在 `H` 的依赖边，闭包保证源也在 `H` 中；不高亮仅仅连接两个无关分支的边。状态为 `selected`、`prerequisite`、`unrelated` 或无选择时的 `normal`。去重集合保留共享前置和已完成任务。
+`getTaskExpansion(index, P, S, taskId, direction)` 返回该方向前 20 个隐藏直接邻居、剩余数及准确 `addedEdges`，包括批内真实边；不递归，无手动边上限。卡片 220×136（94px 主体、40px 恒定双列 footer、2px 边框），主体保持原详情触发，footer 方向控件为兄弟按钮，空方向留白。展开重排 S，当前缩放居中锚点并聚焦主体；全局“收起到概览”重算/定位并保留 reset 焦点。
 
-成功刷新时从新投影重算；所选节点不再可见则清除。失败不替换旧快照。局部状态随画布卸载释放，打开详情不会更新它。初始视口必须允许访问根左侧新增前置：能以 0.8–1 倍容纳时整体适应，否则以 0.8 倍锚定最左 rank，根已在该 rank 时保持垂直居中，外部上游位于根左侧时将该 rank 的最上方节点置于画布 32px 内边距，并提供“适应画布”；不得继续把根固定在最左侧而将全部外部前置放在初始视口外。完整前置已在画布中，选择时不进行自动重新适应。
+`reconcileVisibleTasks(P, oldVisible)` 在成功刷新保留有效实际 ID，加根后仅取诱导无向图的根连通分量，不自动合入新 baseline。刷新保持视口，失败保持旧 S/数据/视口；重置/remount 才计算新概览，项目/根/页签/卸载清除局部状态。详情打开时不抢焦点，丢失入口由既有关闭回退处理。主线 TaskDetailPanels、附件双 pane/单一右滚动、locale 及请求生命周期保持。
 
-## 平滑路由与绘制
+当前布局和边绘制继续使用原有 Dagre points、M/L canonical 路径和局部轴向虚线分解。概览 PR 不引入独立 inspection/H、Details sibling、Q 编译器或新的 marker 所有权。[渐进图决策](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)记录部分替代 UX1 全量同时展示的理由和范围切分。
+
+## 后续依赖检查目标
+
+后续 #121 将主体切换为局部依赖选择，新增独立详情入口。完整 H 从索引计算，可见 H 与真实边/箭头高亮并显示去重隐藏祖先数；选择不改 S、布局或视口。成功刷新保留仍可见的选择，否则清除，失败保留。本文下面的平滑路径与高亮机制是该 PR 的目标，必须由该 PR 自身验证。
+
+## 后续目标：平滑路由与绘制
 
 ### 路由选择
 
@@ -77,7 +84,7 @@ flowchart LR
 
 `TaskDetailDialog` 组合已有详情 hook、关系跳转、PR 和附件组件，样式由 `task-detail.css` 的 `task-detail-*` 命名空间拥有。外壳相对可用视口居中，宽度 `min(960px, 100% − 2 × gutter)`，桌面 `gutter = 24px`，600px 及以下为 12px；最大高度为 `min(880px, 100dvh − 2 × gutter)`。标题栏、详情页签、关闭按钮和底部说明处于滚动内容之外。默认“概览”正文独立滚动，包含描述、PR 与元数据/关系；桌面为阅读主栏与 265px 侧栏，850px 及以下侧栏收为 225px，600px 及以下堆叠。附件页签占用全部正文宽度，在所有宽度下保持左列表、右预览；尺寸链及唯一右侧滚动所有者由[附件设计](daynight-task-attachments.md#web-文件树与预览)拥有。长文本换行，代码和表格只在所属区域横向滚动。描述仍为纯文本，Markdown 与描述附件导航由 UX-T4 交付。
 
-继续复用 body portal、共享滚动锁、背景 inert、焦点循环、遮罩关闭和分层 Esc。清理 inert、滚动锁和监听器的同步阶段与 DOM 移除后恢复焦点的阶段保持既有职责。原入口消失时优先选择仍可用的全屏退出控件，否则使用当前页签内可见的任务或页签控件；整个项目为空时恢复项目标题。任务关系切换不卸载外壳，不中途恢复到旧入口。外壳不引入图重挂载。`dialogFocusables` 与同源附件 frame 共用可见控件枚举，frame 监听仍按原有 load/替换/卸载生命周期释放。
+继续复用 body portal、共享滚动锁、背景 inert、焦点循环、遮罩关闭和分层 Esc。清理 inert、滚动锁和监听器的同步阶段与 DOM 移除后恢复焦点的阶段保持既有职责。原入口消失时优先选择仍可用的全屏退出控件，否则使用当前页签内可见的任务或页签控件；整个项目为空时恢复项目标题。任务关系切换不卸载外壳，不中途恢复到旧入口。外壳不引入图重挂载。`dialogFocusables` 与实际对话框中的同源附件 frame 共用可见控件枚举，frame 监听仍按原有 load/替换/卸载生命周期释放。附件独立阅读页复用内容渲染，但保留普通浏览器键盘行为；其路由、完整清单与满视口阅读机制由[附件设计](daynight-task-attachments.md#独立附件阅读页)拥有。
 
 ## Markdown 与附件链接
 
@@ -97,18 +104,14 @@ flowchart LR
 
 ## 验证、失败与观测
 
-模型测试分别验证后续主体集合、祖先闭包、无关分支排除、去重计数、成功刷新与选择生命周期。路径测试覆盖直线、斜向转角、短段、共线、重复点、长边及 marker 切线；浏览器中检查全部真实节点和边，并比较选择前后的几何及视口。
+当前概览 PR 测试完整 P 与 S 分离、50/100 边界、快照稳定 accepted-only BFS、20 个直接邻居、精确诱导边及剩余数量、共享去重、四状态、无关后续、全局 reset 和实际集合的刷新根连通修剪。浏览器覆盖桌面/320px 的展开、reset framing/focus、既有详情/附件/全屏/locale 和刷新不抢焦点。
 
-组件与浏览器测试覆盖 sibling 控件、键盘选择/详情、根无依赖、跨链祖先、关系导航不改变依赖选择、详情关闭的焦点、全屏两层 Esc、刷新移除入口、附件 frame Tab/Esc、320px 无页面溢出、Markdown 表格/代码/HTML文本、相对链接和错误恢复。保留既有原生、容器与容量验收；每项任务完成自己的受影响检查，不把基本可用性留给单独的最终集成任务。
+四个固定 1,000 任务输入及 999/5,000 边保留，每图五次。完整 API 逐 ID 校验，DOM 判断改为有界概览和全部可见诱导边，并验证显式展开/reset；打开≤3,000ms，详情/缩放/平移≤300ms，保持详情关闭后立即缩放且无额外等待。37 项场景（原生 21、容器 16）、零重试、timeout、超限/覆盖率/清理保持。当前原有 polyline 与 dash 判断覆盖全部可见线；不声明 H、selectMs 或曲线容量结论。
 
-上限仍是完整项目 1,000 节点/5,000 边。完整闭包可使一条链显示接近整个项目，因此保留现有容量矩阵，新增外部祖先密集场景，并测量选择时完整重绘成本。展开五次最慢不超过 3,000ms；布局后交互本地反馈不超过 300ms；网络等待单独统计。
-
-本设计不引入服务端入口、后台调度或新的并发执行边界。图与详情继续通过 `projectId`、`taskId`、请求序号和既有 `requestId` 关联，保留 abort、资源身份检查和局部重试。附件控制器归属当前详情资源，切换 task 或关闭时取消待处理读取，晚到响应不能改写新资源。错误继续使用现有脱敏呈现，不记录描述或附件正文。生产核查可按具体项目/任务复现：打开浏览器网络面板，过滤该 project/task API 路径，确认只有一个附件清单读取所有者，切换任务后旧请求取消；遇到错误按显示的 requestId 对照现有服务日志。性能使用现有 `daynight:task-layout` 与验收报告，不新增遥测系统。
-
-模型工具成本不适用：没有新增或重塑模型工具、CLI 命令、参数或响应形状。Skill 只同步 Markdown 内容约定，保持现有 task/attachment 操作和读取边界，不声称节省 token 或往返次数。
+后续 #121 验证完整祖先/隐藏数、高亮同步、独立详情控件、选择稳定和曲线/paint/marker，并测量选择反馈；其几何判断独立于生产路径生成器。真实源码绑定生产回执仍是每个 PR 的门槛，原型与历史 full-render 结果不能代替。图/详情请求取消、资源身份、完整快照、脱敏错误和 requestId 保持现有所有权，无新遥测或服务接口。
 
 ## 交付与演进
 
-[任务拆分](daynight-task-inspection-tasks.md)定义四个独立验收的交付目的。实现时同步当前看板及 skill 的事实陈述、已有图投影/绘制/详情决策和生产验收文档；将本文件与要求的状态改为与实际交付一致。API 不引入格式标记或旧数据特判，现有字符串直接按 Markdown 展示；不批量改写已有任务描述。
+[任务拆分](daynight-task-inspection-tasks.md)定义四个交付目的，UX-T2 再按概览与检查两个 focused PR 串行验收；两者都合并才完成任务。实现时同步当前看板及 skill 的事实陈述、已有图投影/绘制/详情决策和生产验收文档；将本文件与要求的状态改为与实际交付一致。API 不引入格式标记或旧数据特判，现有字符串直接按 Markdown 展示；不批量改写已有任务描述。
 
 后续如需任务字段编辑或 Markdown 标题锚点，可沿现有原始字符串和链接回调增加能力；它们是可独立追加的功能。不得为未来编辑器加入新的数据格式，也不得把依赖选择与详情打开重新绑定。新增布局引擎、worker 或新的容量上限需要独立证据和授权，当前实现先满足既有真实预算。
