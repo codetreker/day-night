@@ -78,3 +78,5 @@ export const renderTaskGraph = (graph: TaskGraph): string => [
 ].join("\n");
 
 export const renderTaskJson = (value: Task | readonly Task[] | TaskGraph): string => `${stringifyApiJson(value)}\n`;
+
+export const renderTaskListJson = (tasks: readonly Task[]): string => `${stringifyApiJson(tasks.map(({ description: _description, ...task }) => task))}\n`;

@@ -48,14 +48,18 @@ scenarios and package-owned coverage.
 
 The mixed unfinished/completed fixture checks the list selection and rendering
 owned by the [task-list decision](../feature/2026-10-22-task-list-defaults.md).
-Default list JSON must equal the two unfinished full resources; `--all` JSON
-must equal all four full resources in presentation order, including raw PR
-strings and the exact int64 version from concurrent updates. Human lists retain
-identity, status, readiness, dependencies and visibly escaped PR references,
-while description, version and timestamps remain in detail output. Detail and
-all-status list output both reject raw NUL/ESC characters. This keeps complete
-resource fidelity and terminal escaping observable independently of default
-list membership and compact field selection.
+The [JSON description decision](../simplification/2026-10-22-task-list-json-description.md)
+replaces full-resource list equality with equality after removing only
+`description`. Default list JSON must contain the two unfinished tasks;
+`--all` JSON must contain all four tasks in presentation order. Every other
+field must equal the full resources, including raw PR strings, timestamps and
+the exact int64 version from concurrent updates. Human lists retain identity,
+status, readiness, dependencies and visibly escaped PR references, while
+description, version and timestamps remain in detail output. Detail and
+all-status human list output both reject raw NUL/ESC characters. This keeps the
+list projection, retained field fidelity and terminal escaping observable
+independently of default list membership. Full detail and mutation resources
+continue to establish that descriptions remain available.
 
 A Node orchestrator prepares the installation once for the service path, passes
 it to the Go acceptance scenarios, and reuses it for resource-budget probes.

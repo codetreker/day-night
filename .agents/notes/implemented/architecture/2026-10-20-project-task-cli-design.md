@@ -123,7 +123,7 @@ original text-output contract with streamed bytes and a void callback result.
 SIGINT, SIGTERM and Windows SIGBREAK cancel the same lifetime. Completion first
 closes any owned binary output helper, then removes owned signal listeners and
 disposes timers without removing other consumers' listeners. The JSON metadata
-budgets, exact task versions and complete JSON metadata output remain unchanged.
+budgets, exact task versions and refusal of partial metadata output remain unchanged.
 
 The original design used complete labeled resource blocks for all project and
 task human output. This kept every resource field available in the terminal
@@ -131,8 +131,13 @@ without column-width assumptions, with space proportional to total field content
 The [task-list defaults decision](../feature/2026-10-22-task-list-defaults.md)
 partially supersedes that output choice: task list presents operational fields
 and defaults to unfinished work in a stable activity/readiness order. Task show,
-ready, create and update still use complete resource blocks; task-list JSON
-retains complete API resources. A shared terminal helper escapes controls and
+ready, create and update still use complete resource blocks. The
+[JSON description decision](../simplification/2026-10-22-task-list-json-description.md)
+partially supersedes the original full-resource list JSON choice: task-list JSON
+omits only description, while the API DTO and show/ready JSON remain complete.
+The original choice gave scripts every field without a detail query; inventory
+now preserves all other fields and retrieves descriptions through task details.
+A shared terminal helper escapes controls and
 line separators while preserving ordinary Unicode. JSON uses the original API
 values. Shared text predicates match the Go Unicode White_Space
 rule rather than JavaScript trimming, so FEFF-only names remain valid and

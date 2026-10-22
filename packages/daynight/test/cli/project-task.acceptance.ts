@@ -21,6 +21,11 @@ const taskId = "b1b2c3d4-1111-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project = (projectId = id, repoUrl = "git@git.example:Org/Repo.git"): Project => ({ id: projectId, name: "Project 中文", repoUrl, createdAt: time, updatedAt: time });
 const task = (projectId = id): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true });
+const taskListItem = (value: Task): Omit<Task, "description"> => ({
+  id: value.id, projectId: value.projectId, title: value.title, properties: value.properties,
+  status: value.status, version: value.version, createdAt: value.createdAt, updatedAt: value.updatedAt,
+  dependsOn: value.dependsOn, blockedBy: value.blockedBy, ready: value.ready,
+});
 const send = (response: ServerResponse, value: unknown, status = 200): void => { response.writeHead(status, { "Content-Type": "application/json" }); response.end(stringifyApiJson(value)); };
 const fault = (response: ServerResponse, code: string, requestId: string, status: number, details?: unknown): void => send(response, { error: { code, message: "Native acceptance refusal.", requestId, ...(details === undefined ? {} : { details }) } }, status);
 type Result = { code: number | null; stdout: string; stderr: string };
@@ -48,6 +53,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
   let properties: Task["properties"] = { pullRequests: [] };
   let broken: "none" | "page" | "json" | "dependency" | "write" | "hold" | "conflict" = "none";
   let readyPage: { items: readonly Task[]; nextCursor: string | null } | undefined;
+  let listResponseTask: Task | undefined;
   let received: (() => void) | undefined;
   const configure = async (serverUrl: string): Promise<void> => { await mkdir(state, { recursive: true }); await writeFile(path.join(state, "config.yml"), `serverUrl: ${serverUrl}\nrepositories: invalid-for-review\n`); };
   const listen = async (): Promise<string> => {
@@ -83,7 +89,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
         if (parts.length === 7) { send(response, { ...task(projectId), properties, version: 9_007_199_254_740_993n }); return; }
         if (readyPage !== undefined && url.searchParams.get("ready") === "true") { send(response, readyPage); return; }
         if (broken === "page" && url.searchParams.has("cursor")) { fault(response, "internal_error", "native-later-page", 500); return; }
-        send(response, { items: [{ ...task(projectId), properties }], nextCursor: broken === "page" ? "native later page" : null });
+        send(response, { items: [listResponseTask ?? { ...task(projectId), properties }], nextCursor: broken === "page" ? "native later page" : null });
       });
     });
     servers.push(server);
@@ -156,7 +162,9 @@ it("runs the actual installed launcher through native project/task discovery, pe
     expect(JSON.parse((await invoke(["project", "show", id, "--json"], outside, 0, true)).stdout)).toEqual(project());
     expect(parseApiJson((await invoke(["task", "show", taskId, "--json", ...explicit], outside, 0, true)).stdout)).toEqual({ ...task(), version: 9_007_199_254_740_993n });
     await invoke(["task", "create", "--title", "Native task", ...explicit], outside, 0, true);
-    expect(parseApiJson((await invoke(["task", "list", "--status", "todo", "--ready", "--json", ...explicit], outside, 0, true)).stdout)).toEqual([task()]);
+    const emptyDescriptionList = parseApiJson((await invoke(["task", "list", "--status", "todo", "--ready", "--json", ...explicit], outside, 0, true)).stdout) as Record<string, unknown>[];
+    expect(emptyDescriptionList).toEqual([taskListItem(task())]);
+    expect(emptyDescriptionList[0]).not.toHaveProperty("description");
     expect(JSON.parse((await invoke(["task", "graph", "--json", ...explicit], outside, 0, true)).stdout).tasks).toEqual([]);
     scenarios.push("installed-project-task-operations-server-only-config-explicit-isolation");
 
@@ -171,7 +179,18 @@ it("runs the actual installed launcher through native project/task discovery, pe
     expect(createdWithPr.stdout).toContain(" 标题 ,=() ");
     properties = { pullRequests: [...pullRequests, { url: "\0 arbitrary\ttext", title: "\0\n\r\u001b[2J" }] };
     expect(parseApiJson((await invoke(["task", "show", taskId, "--json", ...explicit], outside, 0, true)).stdout)).toEqual({ ...task(), properties, version: 9_007_199_254_740_993n });
-    expect(parseApiJson((await invoke(["task", "list", "--json", ...explicit], outside, 0, true)).stdout)).toEqual([{ ...task(), properties }]);
+    expect(parseApiJson((await invoke(["task", "list", "--json", ...explicit], outside, 0, true)).stdout)).toEqual([taskListItem({ ...task(), properties })]);
+    listResponseTask = { ...task(), description: "List description\n\u001b[2J", properties, version: 9_223_372_036_854_775_807n };
+    for (const flags of [[], ["--all"], ["--status", "todo"], ["--ready"], ["--all", "--ready"], ["--status", "todo", "--ready"]]) {
+      const json = (await invoke(["task", "list", ...flags, "--json", ...explicit], outside, 0, true)).stdout;
+      const items = parseApiJson(json) as Record<string, unknown>[];
+      expect(items).toEqual([taskListItem(listResponseTask)]);
+      expect(items[0]).not.toHaveProperty("description");
+      expect(json).toContain('"version":9223372036854775807');
+      expect(json.endsWith("\n")).toBe(true);
+    }
+    listResponseTask = undefined;
+    scenarios.push("installed-list-json-omits-empty-and-nonempty-description-with-raw-pr-and-int64");
     for (const args of [["task", "show", taskId, ...explicit], ["task", "list", ...explicit]]) {
       const output = (await invoke(args, outside, 0, true)).stdout;
       expect(output).toContain("\\u0000 arbitrary\\ttext");
@@ -200,13 +219,13 @@ it("runs the actual installed launcher through native project/task discovery, pe
     expect(requests.at(-1)!.body).toEqual({ version: 9_007_199_254_740_993n, properties });
     for (const args of [["task", "show", taskId], ["task", "list"]]) {
       const json = await invoke([...args, "--json", ...explicit], outside, 0, true, "node-entry");
-      expect(parseApiJson(json.stdout)).toEqual(args[1] === "list" ? [{ ...task(), properties }] : { ...task(), properties, version: 9_007_199_254_740_993n });
+      expect(parseApiJson(json.stdout)).toEqual(args[1] === "list" ? [taskListItem({ ...task(), properties })] : { ...task(), properties, version: 9_007_199_254_740_993n });
       expect((await invoke([...args, ...explicit], outside, 0, true, "node-entry")).stdout).toContain(" 标题\\n\\r\\u001b[2J ");
     }
     properties = { pullRequests: [] };
     scenarios.push("installed-node-entry-pr-multiline-create-update-and-readback");
 
-    const readyTask = { ...task(), properties: { pullRequests: [{ url: "\0 arbitrary URL", title: "Ready\nPR" }] }, version: 9_223_372_036_854_775_807n };
+    const readyTask = { ...task(), description: "Ready details", properties: { pullRequests: [{ url: "\0 arbitrary URL", title: "Ready\nPR" }] }, version: 9_223_372_036_854_775_807n };
     readyPage = { items: [readyTask], nextCursor: "native unrequested next page" };
     const readyAt = requests.length;
     expect(parseApiJson((await invoke(["task", "ready", "--limit=1", "--json", ...explicit], outside, 0, true)).stdout)).toEqual([readyTask]);

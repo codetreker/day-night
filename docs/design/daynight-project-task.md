@@ -10,7 +10,8 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-20-project-task-cli-design.md)及
 [创建预检决策](../../.agents/notes/implemented/bug-fix/2026-10-21-project-create-repository-discovery.md)，
 有界 ready 选择见[选择决策](../../.agents/notes/implemented/feature/2026-10-21-bounded-ready-task-selection.md)，
-列表默认值与输出见[列表决策](../../.agents/notes/implemented/feature/2026-10-22-task-list-defaults.md)。
+列表默认值与文本输出见[列表决策](../../.agents/notes/implemented/feature/2026-10-22-task-list-defaults.md)，
+JSON 列表字段见[描述省略决策](../../.agents/notes/implemented/simplification/2026-10-22-task-list-json-description.md)。
 实现顺序与依赖见[交付任务](daynight-project-task-tasks.md)。
 
 [预定义属性设计](daynight-task-properties.md)的 server 接口、CLI 成对 PR 引用
@@ -20,8 +21,10 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 [附件架构](daynight-task-attachments.md)中的 `task attachment put/list/read/remove`
 及二进制传输通道已实现，行为见[附件需求](../spec/daynight-task-attachments.md)，
 范围与 Daynight 任务入口见[附件任务拆分](daynight-task-attachments-tasks.md)。
-Web 文件管理亦已实现，组合验收由 A-T6 维护。元数据命令输出完整 JSON，并按操作
-选择列表摘要或完整文本资源；原始内容逐段写入字节通道。
+Web 文件管理亦已实现，组合验收由 A-T6 维护。元数据查询按操作输出 JSON；
+task list 的 JSON 仅省略 `description`，其他元数据查询保留各自完整资源。
+文本输出选择列表摘要或完整资源，创建和更新输出完整文本资源；原始内容逐段写入
+字节通道。
 [CLI 决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-cli.md)记录
 流传输及输出辅助进程的选择。
 
@@ -426,9 +429,14 @@ Graph 展示完整 project、六个 summary 字段及全部节点；节点的 `t
 同时展示，保留状态、ready、依赖、阻塞和时间，不能把预览称为完整标题。所有字段
 使用终端转义且不补齐等宽列，空间随资源内容总长度线性增长。
 
-查询 `--json` 是脚本和模型调用 CLI 的稳定接口：show 为资源对象，list 为所有
-匹配资源的完整字段数组，不应用文本列表的字段省略；ready 为所选完整 task 的数组，
-graph 为服务原始完整响应对象。
+查询 `--json` 是脚本和模型调用 CLI 的稳定接口：show 为完整资源对象，project list
+为所有匹配资源的完整字段数组，task list 为所有匹配 task 仅省略 `description`
+的数组，ready 为所选完整 task 的数组，graph 为服务原始完整响应对象。
+Task 的 `renderTaskListJson` 在命令完成状态选择和稳定分组后建立输出投影，
+每个 task 只移除 `description`；默认及所有合法筛选共享该路径。其余字段保留
+API 名称、类型及原始值，包括 PR 列表、完整 int64 版本及时间戳，并继续使用
+`stringifyApiJson` 精确序列化。完整 API DTO、验证、分页、服务响应及其他操作
+不采用该投影，描述仍由 show、ready、create 和 update 返回。
 ready 空结果为 `[]`，不输出分页 envelope 或 cursor。仅序列化 API 字段，不加入
 渲染专用字符串、进度或诊断；无额外 model agent tool 或遥测框架。元数据查询在读取
 完成前保持 stdout 为空，确保脚本不会消费前半段成功结果。附件 list 同样完整输出
@@ -462,8 +470,9 @@ stderr 错误包含操作名、已确定的 project/task ID、失败阶段和可
 命令不读写绑定及 ignore，有效缓存后增加重复 project 仍使用原绑定，以及完整页
 失败时 stdout 为空。有界 ready 验证单次请求、合法 cursor 不续页、顺序保留、
 超量/非 ready/重复 ID 拒绝、空结果及完整 int64 JSON。List 验证完整翻页后的默认
-状态选择、`--all`/`--status` 互斥及 `--ready` 交集、跨页稳定分组、精简文本和
-完整 JSON，并确认 ready、详情及写入结果继续使用完整资源输出。
+状态选择、`--all`/`--status` 互斥及 `--ready` 交集、跨页稳定分组、精简文本，
+并验证所有筛选形式的 JSON 仅省略 `description`，其余字段逐字段保留。ready、详情
+及写入结果继续使用包含描述的完整资源输出。
 真实服务验收保留服务 request ID 与目标 ID，便于将错误对应到 API 及数据库事实。
 
 预算验证使用可控制时钟和流式响应，覆盖每页均在单次期限内且 cursor 唯一推进、
@@ -484,7 +493,7 @@ Project 命令的实际编译入口已在受控 HTTP 条件下验证创建、完
 
 PT-T5 的原生路径将 project/task 安装 suite 加入既有 `pnpm acceptance`，三个
 原生平台的必选 suite 使用实际 pack/install 产物、真实 Git 和受控 HTTP 验证配置、自动发现、
-缓存、锁、原子替换、错误及完整 JSON；既有 review/update 两套 suite 保留。可复用
+缓存、锁、原子替换、错误及各操作的 JSON 字段；既有 review/update 两套 suite 保留。可复用
 fixture [`installed-cli.ts`](../../packages/daynight/test/fixtures/installed-cli.ts) 统一
 拥有打包、安装、launcher 身份和任务目录；原生 suite 为
 [`project-task.acceptance.ts`](../../packages/daynight/test/cli/project-task.acceptance.ts)。根目录
@@ -502,9 +511,10 @@ race binary、隔离 PostgreSQL schema、listener、重启和数据库等待屏�
 source、包版本、tarball/entry hash、Node 和 launcher 身份；场景记录 CLI 启停
 数量、workspace 回收、拒绝 request ID 及并发请求的 200/409 结果。混合未完成和已完成
 任务的 fixture 同时验证默认列表与 `--all` 的精确成员和顺序；JSON 数组与完整任务资源
-逐字段相等，保留原始 PR 字符串及完整 int64 版本。可读列表验证身份、状态、ready、
-依赖和 PR 字段，并确认省略 description、version 与时间戳；这些完整字段仍由详情
-输出验证。详情与全部状态列表均验证 PR 控制字符可见转义及无原始终端控制字符输出。
+仅相差 `description`，其余字段逐字段相等，保留原始 PR 字符串、完整 int64 版本
+及时间戳。可读列表验证身份、状态、ready、依赖和 PR 字段，并确认省略 description、
+version 与时间戳；这些完整字段仍由详情输出验证。详情与全部状态文本列表均验证
+PR 控制字符可见转义及无原始终端控制字符输出。
 
 附件 `installed_cli_task_attachment_workflow` 复用同一服务安装及进程 fixture，覆盖
 原始字节、多页路径列表、拒绝、同根重启及完整 task 不变；清理 gate 同时要求存储
