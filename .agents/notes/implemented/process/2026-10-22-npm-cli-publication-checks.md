@@ -39,7 +39,7 @@ versions are accepted regardless of source SHA or tarball contents. A skip
 does not download or verify the existing package, move a tag or create a missing
 tag. Preparation attempts no longer select a different recovery path.
 
-If `npm publish` fails, the script checks the exact npm version again. A
+If upload fails, the script checks the exact npm version again. A
 confirmed existing version converts the duplicate-publication race into a
 successful skip. Confirmed absence preserves the original publication error;
 an unsuccessful lookup remains a failure and preserves its cause. A failed
@@ -52,6 +52,9 @@ immutable tagging owned by the
 replaces the direct HTTP lookup and strict existing-version recovery in the
 [preflight decision](2026-10-21-publication-version-preflight.md). It does not
 change package contents or the manual main-only release trigger.
+The [pnpm OIDC decision](2026-10-22-pnpm-oidc-publication.md) replaces the upload
+client with pnpm 11.28.6 while retaining npm 12.2.0 for these metadata queries
+and preserving the existence and duplicate-publication rules.
 
 ## Alternatives
 

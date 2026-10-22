@@ -1,8 +1,8 @@
 FROM node:24-bookworm-slim AS web
 
 WORKDIR /src
-RUN npm install --global pnpm@10.34.5
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+RUN npm install --global pnpm@11.28.6
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches ./patches
 COPY packages/daynight/package.json ./packages/daynight/package.json
 COPY packages/daynight-web/package.json ./packages/daynight-web/package.json

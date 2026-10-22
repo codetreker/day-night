@@ -82,10 +82,11 @@ a general transaction callback. A failure rolls back the whole observation;
 recording the failure itself is a separate operation.
 
 `better-sqlite3` 13.0.3 supplies Node-API binaries and has no install lifecycle
-script. pnpm 10.34.5 nevertheless detects its `binding.gyp` as requiring a build,
-without consulting `gypfile: false`. The workspace explicitly lists the package
-in `ignoredBuiltDependencies`, preserving the block on unnecessary implicit
-compilation. See the inspected
+script. The original pnpm 10.34.5 toolchain nevertheless detected its
+`binding.gyp` as requiring a build, without consulting `gypfile: false`. That
+observation motivated blocking unnecessary implicit compilation. The workspace
+retains that decision with `allowBuilds.better-sqlite3: false` under the
+[pnpm 11 toolchain](../process/2026-10-22-pnpm-oidc-publication.md). See the inspected
 [package manifest](https://github.com/WiseLibs/better-sqlite3/blob/dbc2ea1165fef1f599b9be12faea33fa5e9d7ffb/package.json),
 [pnpm build detection](https://github.com/pnpm/pnpm/blob/702ad5f860ffd50d64a3a711d9f8a3da16fc796e/exec/pkg-requires-build/src/index.ts#L3-L16),
 and [ignored-build behavior](https://github.com/pnpm/pnpm/blob/702ad5f860ffd50d64a3a711d9f8a3da16fc796e/exec/build-modules/src/index.ts#L83-L105).

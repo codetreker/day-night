@@ -388,7 +388,7 @@ addon 可能阻止替换，npm 失败直接可见。
 
 ## 构建、安装与交付
 
-开发使用 Node.js 24 LTS、pnpm 10.34.5、TypeScript ESM 和固定依赖版本。构建先执行
+开发使用 Node.js 24 LTS、pnpm 11.28.6、TypeScript ESM 和固定依赖版本。构建先执行
 `node scripts/clean-dist.ts` 删除包的 `dist/`，再通过 `tsc -p tsconfig.build.json`
 生成产物，防止模块移动后保留旧的可执行文件。构建还将 review 的完整内置 skill
 bundle 复制到 `dist/commands/review/skills/daynight-review/`，由既有 `dist` 发布规则
@@ -419,6 +419,13 @@ npm 元数据统一由固定版本的 npm 12.2.0 执行 `npm view <package>@<ver
 错误继续暴露。每次发布尝试，包括失败重跑，都会在下载产物前重复预检；发布脚本也会
 在上传前检查。已有版本不再比较源码与字节，不下载旧包或补齐缺失的 tag。上传失败后
 若重新查询确认精确版本存在，也成功跳过；确认不存在时保留原上传错误。
+上传由独立安装的 pnpm 11.28.6 执行，采用 Borgee 已验证的 OIDC 实现。
+发布命令直接接收已验证的 tarball，并使用 `--pm-on-fail=ignore` 保持该发布器版本；
+开发、构建、CI 与 Docker 统一使用 pnpm 11.28.6；`pnpm-workspace.yaml` 维护
+`engineStrict`、`storeDir` 和依赖构建权限。npm 12.2.0 继续负责元数据查询。`setup-node` 配置 npmjs
+registry，发布子进程继承其配置与 GitHub OIDC 环境。公开仓库保留 provenance。
+[pnpm OIDC 发布决策](../../.agents/notes/implemented/process/2026-10-22-pnpm-oidc-publication.md)
+维护客户端选择与配置职责。
 新上传仍要求同一份产物、源码和公共字节验证成功后才创建不可变 tag，元数据与 tarball
 共用十分钟验证期限。npm 查询限制三十秒，GitHub 与 tarball HTTP 请求限制二十秒，
 并受剩余总期限约束。

@@ -113,20 +113,16 @@ export const prepareRelease = async (sha: string, cwd = process.cwd()): Promise<
   return receipt;
 };
 
-export const runNpmPublish = async (tarball: string, cwd: string): Promise<void> => {
-  const emptyUserConfig = path.join(cwd, "user.npmrc");
-  const emptyGlobalConfig = path.join(cwd, "global.npmrc");
-  await writeFile(emptyUserConfig, "");
-  await writeFile(emptyGlobalConfig, "");
-  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^npm_config_/i.test(key) && !/^(NODE_AUTH_TOKEN|NPM_TOKEN)$/i.test(key)));
-  const args = ["publish", tarball, "--access=public", "--tag=latest", "--provenance", "--ignore-scripts", `--registry=${registry}/`, `--userconfig=${emptyUserConfig}`, `--globalconfig=${emptyGlobalConfig}`, `--cache=${path.join(cwd, "npm-cache")}`];
-  const npm = configuredNpmCommand();
+export const runPnpmPublish = async (tarball: string, cwd: string): Promise<void> => {
+  const cli = process.env.PNPM_CLI_JS;
+  if (cli === undefined || cli.length === 0) throw new Error("PNPM_CLI_JS must identify the pinned pnpm publication CLI.");
+  const args = ["publish", tarball, "--pm-on-fail=ignore", "--no-git-checks", "--access", "public", "--tag", "latest", "--provenance", "--ignore-scripts", "--registry", `${registry}/`];
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(npm.command, [...npm.prefix, ...args], {
-      cwd, env, stdio: "inherit", timeout: 180_000,
+    const child = spawn(process.execPath, [cli, ...args], {
+      cwd, stdio: "inherit", timeout: 180_000,
     });
     child.once("error", reject);
-    child.once("exit", (code, signal) => code === 0 ? resolve() : reject(new Error(`npm publish failed (${signal === null ? `exit ${code}` : `signal ${signal}`}).`)));
+    child.once("exit", (code, signal) => code === 0 ? resolve() : reject(new Error(`pnpm publish failed (${signal === null ? `exit ${code}` : `signal ${signal}`}).`)));
   });
 };
 
@@ -173,7 +169,7 @@ const defaultLookupServices = (): ReleaseLookupServices => {
 };
 const defaultServices = (): ReleaseServices => {
   return {
-    ...defaultLookupServices(), publish: runNpmPublish,
+    ...defaultLookupServices(), publish: runPnpmPublish,
     wait: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   };
 };
@@ -307,7 +303,7 @@ export const publishRelease = async (sha: string, cwd = process.cwd(), services 
   } catch (error) {
     let metadata: RecordValue | undefined;
     try { metadata = await services.npmView(receipt.version, cwd); } catch (lookupError) {
-      throw new AggregateError([error, lookupError], `npm publish failed and the publication status of ${receipt.name}@${receipt.version} could not be checked.`, { cause: error });
+      throw new AggregateError([error, lookupError], `Publication failed and the status of ${receipt.name}@${receipt.version} could not be checked.`, { cause: error });
     }
     if (metadata !== undefined) return skip();
     throw error;

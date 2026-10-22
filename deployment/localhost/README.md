@@ -15,7 +15,7 @@ bash deployment/localhost/up.sh
 ```
 
 The script works from any working directory when invoked with its path. It
-builds the frontend with Node.js 24 and pnpm 10.34.5, embeds its generated assets
+builds the frontend with Node.js 24 and pnpm 11.28.6, embeds its generated assets
 in the Go 1.27.2 binary, recreates all three service containers while preserving
 the PostgreSQL and attachment volumes, and waits up to 120 seconds for their
 health checks. Build time is separate from that readiness timeout. The final nonroot runtime

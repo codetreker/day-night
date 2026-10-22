@@ -422,7 +422,7 @@ describe("native validation environment probes", () => {
   it.each([false, true])("writes full provenance only after every native tool succeeds (gh failure=%s)", (fail) => {
     const f = fixture();
     f.tool("git", "process.stdout.write(process.argv[2]==='rev-parse'?'a'.repeat(40):process.argv[2]==='--version'?'git version fixture':'')");
-    f.tool("pnpm", "process.stdout.write('10.34.5')");
+    f.tool("pnpm", "process.stdout.write('11.28.6')");
     f.tool("gh", fail ? "process.stdout.write('partial gh');process.stderr.write('fixture gh failure');process.exitCode=23" : "process.stdout.write('gh version fixture')");
     const result = crossSpawn.sync(process.execPath, [path.resolve(import.meta.dirname, "../../scripts/validation-environment.ts")], {
       cwd: f.directory, env: f.environment, encoding: "utf8", shell: false, windowsHide: true, timeout: 30_000, maxBuffer: 1_048_576,
@@ -437,7 +437,7 @@ describe("native validation environment probes", () => {
     if (fail) expect(diagnostics.probes.at(-1)).toMatchObject({ state: "failed", exitCode: 23, stdout: "partial gh", stderr: "fixture gh failure" });
     else {
       const evidence = JSON.parse(readFileSync(path.join(evidenceDirectory, "validation-environment.json"), "utf8"));
-      expect(evidence).toMatchObject({ sourceRevision: "a".repeat(40), sourceDirty: false, versions: { node: process.version, pnpm: "10.34.5", git: "git version fixture", gh: "gh version fixture" } });
+      expect(evidence).toMatchObject({ sourceRevision: "a".repeat(40), sourceDirty: false, versions: { node: process.version, pnpm: "11.28.6", git: "git version fixture", gh: "gh version fixture" } });
       expect(evidence.sqlite.engineVersion).not.toBe("");
       expect(diagnostics.probes.every((probe) => probe.state === "completed")).toBe(true);
     }
