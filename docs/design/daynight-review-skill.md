@@ -7,12 +7,14 @@
 [内置 skill 决策](../../.agents/notes/implemented/architecture/2026-10-20-bundled-review-skill.md)和
 [PR 质量门槛决策](../../.agents/notes/implemented/process/2026-10-21-review-pr-quality-gates.md)及
 [conversation 轮次决策](../../.agents/notes/implemented/architecture/2026-10-21-review-conversation-cycle.md)。
+[多角度审查决策](../../.agents/notes/implemented/process/2026-10-22-pr-specific-review-perspectives.md)
+记录独立委派与汇总的选择依据。
 
 ## 目标与边界
 
 `review run` 的每次 Copilot 审查都使用随客户端发布的 `daynight-review` skill。
-skill 定义审查方法、证据标准、PR description 与原定范围的质量门槛，以及代码
-finding 的范围；每次调用的提示词保留 PR 身份、固定的 head/base、当前 PR 信息的
+skill 定义审查方法、按 PR 内容选择多个互补角度的独立委派、主 agent 汇总、证据标准、
+PR description 与原定范围的质量门槛，以及代码 finding 的范围；每次调用的提示词保留 PR 身份、固定的 head/base、当前 PR 信息的
 读取要求、发布前校验、重试对账和最终完成标记。两者共同构成一次审查的输入。
 
 skill 的打包与发现保留配置、已有数据位置和每个 PR 的会话 UUID；审查轮次和远端结果
@@ -54,6 +56,34 @@ conversation：越界修改和代码问题使用适合的 diff 行；description
 PR 级问题使用主要修改文件上的文件级 thread，并明确标注问题属于 PR 级。review
 正文或普通 PR comment 不能单独满足反馈要求。skill 不包含特定 PR 的值；动态提示词
 持有读取时机、发布结果选择、资格校验和重试确认协议。
+
+## 多角度审查与汇总
+
+每次新审查由主 agent 先检查捕获 merge-base 到 head 的完整 diff，并结合当前 PR
+信息、相关需求和风险选择至少两个互补角度。选择依据是本次修改中需要验证的具体
+问题；纯文档修改也要选择相互补充的角度，不用固定领域清单替代内容判断。主 agent
+实际调用独立 subagents，宜并行执行，继续对完整 diff 和 PR 质量门槛负责。
+
+每个委派任务携带确切的 host、仓库、PR、head、目标分支、捕获 base、merge-base 和
+diff 范围，以及交付范围、相关需求、适用仓库指示、指定角度和证据标准。特殊用途的
+subagent 不一定继承仓库指示，主 agent 必须显式传递。资源指示包括共享 worktree、
+获准临时目录及避免冲突的 probe 归属、前台进程、超时和清理要求。subagents 只读源码
+及 Git 状态，有边界的 probe 仅写获准临时文件；不另建 worktree、不修改远端 review
+或 thread、不发布结果或完成标记，结束前停止自己启动的工具和服务。
+
+subagent 返回角度与覆盖范围、候选问题的触发条件、调用者影响、引入证据和具体位置，
+以及修复/延后/不成立建议、验证限制和执行失败。没有候选问题也要说明检查范围和
+限制。主 agent 等待所有必要角度，独立验证候选、处理分歧、按根因去重，并把选择
+角度的理由、已完成覆盖、限制、候选处置及确认阻断项写入 attempt 输出。汇总位于
+最终标记之前，随既有 stdout 日志保留；GitHub 仅接收简洁、可操作的 findings。
+
+subagents 是一个正式审查进程内的委派，受同次 attempt 的截止时间和预算约束，不是
+daemon 的独立 Worker、审查轮次或持久化 PR 主会话。daemon 仍只登记一个正式审查
+直接子进程，沿用既有前台进程与清理契约；不解析委派对话或 findings 来断言方法已执行。
+工具不可用、必要角度失败或覆盖不完整时，主 agent 可在剩余预算内重试或重新委派；
+仍无法完成则报告操作失败，不发布 review 或完成标记。已有合法匹配已提交结果的
+恢复仅核对原结果，无须重新进行委派；仍需提交的 pending 草稿必须先完成新审查的
+委派与汇总。
 
 ## 固定运行时快照
 
@@ -109,6 +139,10 @@ skill 覆盖、禁用条目、意外路径、无效 JSON、截断或超限输出
 路径和 digest，并要求加载该路径的当前内容后才开始审查。恢复会话也带上这组输入；
 不能依赖对话历史里已经出现过同名 skill。Copilot 的标准 skill 调用负责加载内容，
 程序不解析其会话历史，也不将工具调用文本作为新的完成条件。
+
+提示词同时显式要求使用已加载 skill 的原生 subagent 委派与汇总，不重复定义角度、
+数量或方法细节。确认合法匹配的已提交结果仍只对账，不重新委派；需要新发布时适用
+完整方法要求。该调用指示让加载 skill 与执行其委派方法的要求同时出现在当前输入中。
 
 动态提示词要求 agent 读取当前 PR 标题、description 和链接的相关范围需求，并审查
 固定 head/base 对应的完整 diff。新发布前再次读取当前标题和 description，并结合
@@ -172,8 +206,9 @@ thread、同一轮恢复避免重复发布，以及两项质量门槛通过且�
 批准。conversation 和发布对账的状态测试覆盖同 SHA 重审、完成前 resolve、重启后
 消费一次反馈、核对失败不重复调用模型、没有发布的失败重试继续等待其他 feedback，
 以及 description 编辑保留已有 approval。
-初次读取 PR 信息、相关需求和检查完整 diff 的要求由加载的 skill 正文提供。这些指令断言不证明模型在任意 PR
-上的判断质量。
+初次读取 PR 信息、相关需求、检查完整 diff、按内容独立委派及汇总的要求由加载的
+skill 正文提供。打包、资源与提示词检查不证明模型实际完成委派或在任意 PR 上的判断
+质量；实际委派、固定目标传递、返回结果和汇总须由相应原生执行证据观察。
 
 安装包验收从打包产物启动，确认 `SKILL.md` 及相对资源实际存在，帮助和其他命令仍
 不加载 review 运行时。真实 Copilot 验收分别观察新会话和同 UUID 恢复时的原生 skill

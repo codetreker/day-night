@@ -1350,7 +1350,10 @@ a disabled skill, project override or malformed response fails the attempt.
 The review prompt explicitly invokes the skill and identifies its current
 absolute entrypoint and digest on both new sessions and resume. The bundled
 skill owns review methodology; the prompt owns the immutable target, publication
-eligibility, retry reconciliation and completion protocol.
+eligibility, retry reconciliation and completion protocol. The prompt also
+explicitly requests the skill's native subagent delegation and synthesis when
+fresh review is required; confirming a valid matching submitted result retains
+its reconciliation exception.
 
 The Copilot adapter then launches the review child in that same worktree and
 environment. It selects the persisted per-PR UUID on first launch and explicitly resumes that
@@ -1387,6 +1390,27 @@ changes block approval even without a Critical/Major code defect. Necessary
 implementation, structural changes, tests and documentation for the same outcome
 remain in scope; fixed line or file counts do not decide reviewability. Expanding
 the description alone cannot justify unrelated work.
+
+For every fresh review, the main agent first inspects that complete fixed diff,
+then chooses at least two complementary perspectives based on the PR's actual
+changes, contracts and risks. It invokes independent subagents, preferably in
+parallel, with exact head/base/merge-base context, scope, applicable repository
+instructions, evidence standards and shared worktree, temporary-file and process
+rules. Source and Git state remain read-only; subagents return findings and
+coverage limits to the main agent without publishing or emitting completion
+markers. The main agent waits for all required perspectives, verifies candidates,
+resolves disagreements and deduplicates root causes. It records the perspective
+rationale, completed coverage, limits, fix/defer/reject dispositions and confirmed
+blockers in attempt output, while GitHub comments contain concise findings only.
+An unavailable tool, failed child or incomplete required perspective is an
+operational failure; retries or reassignment stay within the attempt's existing
+budget. An incomplete review publishes neither a result nor a completion marker.
+
+These subagents belong to one attempt within the daemon-managed main review
+session; they do not create more review Workers, PR sessions or worktrees.
+Reconciliation of a valid matching submitted result confirms that result without
+repeating delegation. The selected questions must fit each PR, including
+documentation-only changes.
 
 Before new publication, the agent rereads the current PR information and
 reevaluates those gates. A successful review either approves or publishes
@@ -1428,7 +1452,9 @@ contract.
 The [execution decision](.agents/notes/implemented/architecture/2026-10-17-copilot-session-execution.md)
 records process and publication boundaries; the
 [PR-quality decision](.agents/notes/implemented/process/2026-10-21-review-pr-quality-gates.md)
-records the approval policy. The
+records the approval policy, and the
+[multi-perspective decision](.agents/notes/implemented/process/2026-10-22-pr-specific-review-perspectives.md)
+records delegation and synthesis. The
 [conversation-cycle decision](.agents/notes/implemented/architecture/2026-10-21-review-conversation-cycle.md)
 records durable follow-ups and publication verification. The
 [skill design](docs/design/daynight-review-skill.md) owns packaging, snapshots and
