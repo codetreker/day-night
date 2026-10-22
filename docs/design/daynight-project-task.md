@@ -351,10 +351,18 @@ flowchart TD
 `task list` 的状态选择和展示顺序属于命令层。默认从完整结果中排除 `done`；
 `--all` 保留所有状态，`--status` 使用既有单状态查询，两者互斥并在任何 I/O 前
 拒绝。`--ready` 沿用服务筛选，与所选状态取交集，包含 `--all --ready`。
-命令在全部分页成功后按 `in_progress`、ready、其余 `todo`、`done` 稳定分组，
+命令在全部分页成功后按 `in_progress`、ready、其余 `todo`、`proposed`、`done` 稳定分组，
 同一组保留服务按 `createdAt ASC, id ASC` 返回的跨页顺序。文本和 JSON 消费
 同一选择结果，因此分页边界不会改变组间优先顺序。此机制复用既有 API 筛选和分页，
 不增加服务排序或多状态查询契约。
+
+API 的响应状态解码与命令输入 choices 分别拥有不同契约：task 和 graph 的响应
+接受 `proposed`、`todo`、`in_progress`、`done`，图 summary 的 `proposed` 是必填
+整数；公开状态输入仍只接受后三者。默认清单保留 proposed，稳定分组置于 todo
+之后、done 之前；详情继续保留完整描述，列表 JSON 仍只省略 description。
+图文本输出单独显示 Proposed 计数。此准备不增加状态写入入口，避免在审批规则
+启用前绕过生命周期；[读取决策](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
+拥有存储与读取先于写入启用的取舍。
 
 `task ready` 将常见的下一项工作选择限制为前 N 项，避免项目积累任务后每次
 选择都读取完整 ready 集合。命令校验 `--limit` 为十进制整数 `1..100`，省略时

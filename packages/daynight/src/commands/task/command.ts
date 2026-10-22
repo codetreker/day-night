@@ -1,4 +1,4 @@
-import type { CreateTaskInput, Project, Task, TaskFilters, TaskStatus, UpdateTaskInput } from "../../api/types.js";
+import type { CreateTaskInput, Project, Task, TaskFilters, UpdateTaskInput } from "../../api/types.js";
 import { UsageError } from "../../cli/context.js";
 import type { CliContext } from "../../cli/context.js";
 import { parseCommand, renderCommandHelp } from "../../cli/schema.js";
@@ -17,7 +17,7 @@ const defaultDependencies: TaskCommandDependencies = {
   resolveProject: async (...args) => (await import("../../repository/index.js")).resolveProject(...args),
 };
 
-const taskPriority = (task: Task): number => task.status === "in_progress" ? 0 : task.ready ? 1 : task.status === "todo" ? 2 : 3;
+const taskPriority = (task: Task): number => task.status === "in_progress" ? 0 : task.ready ? 1 : task.status === "todo" ? 2 : task.status === "proposed" ? 3 : 4;
 
 export const runTaskCommand = async (
   args: readonly string[],
@@ -37,7 +37,7 @@ export const runTaskCommand = async (
   const help = `${command.path.join(" ")} --help`;
   const title = command.options.get("--title") as string | undefined;
   const description = command.options.get("--description") as string | undefined;
-  const status = command.options.get("--status") as TaskStatus | undefined;
+  const status = command.options.get("--status") as TaskFilters["status"];
   const all = command.options.has("--all");
   if (all && status !== undefined) throw new UsageError("--all conflicts with --status.", help);
   const dependsOn = command.options.get("--depends-on") as readonly string[] | undefined;

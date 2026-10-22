@@ -145,6 +145,7 @@ describe("operation-scoped API access", () => {
   it.each([
     { items: [task, { ...task, id: otherId }], nextCursor: null },
     { items: [{ ...task, status: "in_progress", ready: false }], nextCursor: null },
+    { items: [{ ...task, status: "proposed", ready: false }], nextCursor: null },
     { items: [{ ...task, projectId: otherId }], nextCursor: null },
     { items: [task, task], nextCursor: null },
     { items: [task], nextCursor: "" },
@@ -329,14 +330,72 @@ describe("operation-scoped API access", () => {
 
 const graph = (): TaskGraph => ({
   project,
-  summary: { total: 2, todo: 1, inProgress: 0, done: 1, ready: 1, blocked: 0 },
+  summary: { total: 2, proposed: 0, todo: 1, inProgress: 0, done: 1, ready: 1, blocked: 0 },
   tasks: [
     { id: taskId, titlePreview: "Task", titleTruncated: false, status: "todo", dependsOn: [otherId], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
     { id: otherId, titlePreview: "Done", titleTruncated: false, status: "done", dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
   ],
 });
 
+const fourStateGraph = (): TaskGraph => {
+  const ready = graph().tasks[0]!;
+  const done = graph().tasks[1]!;
+  const proposed = { ...ready, id: "44444444-4444-4444-4444-444444444444", status: "proposed" as const, ready: false, dependsOn: [], blockedBy: [] };
+  const proposedWithDoneDependency = { ...proposed, id: "55555555-5555-5555-5555-555555555555", dependsOn: [done.id] };
+  const proposedWithPendingDependency = { ...proposed, id: "66666666-6666-6666-6666-666666666666", dependsOn: [proposed.id], blockedBy: [proposed.id] };
+  const blocked = { ...ready, id: "77777777-7777-7777-7777-777777777777", ready: false, dependsOn: [proposed.id], blockedBy: [proposed.id] };
+  const inProgress = { ...ready, id: "88888888-8888-8888-8888-888888888888", status: "in_progress" as const, ready: false };
+  return {
+    project,
+    summary: { total: 7, proposed: 3, todo: 2, inProgress: 1, done: 1, ready: 1, blocked: 1 },
+    tasks: [proposed, proposedWithDoneDependency, proposedWithPendingDependency, blocked, inProgress, ready, done],
+  };
+};
+
 describe("response DTO contract", () => {
+  it.each(["proposed", "todo", "in_progress", "done"])("reads %s tasks and paginated inventories with lossless versions and complete descriptions", async (status) => {
+    const value = { ...task, status, ready: status === "todo", description: "Complete\nTask description", version: 9_223_372_036_854_775_807n };
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(value))
+      .mockResolvedValueOnce(jsonResponse({ items: [value], nextCursor: "second-page" }))
+      .mockResolvedValueOnce(jsonResponse({ items: [{ ...value, id: otherId }], nextCursor: null }));
+    const api = client(fetch);
+    expect(await api.getTask(projectId, taskId)).toEqual(value);
+    expect(await api.listTasks(projectId)).toEqual([value, { ...value, id: otherId }]);
+  });
+
+  it("retains unfinished prerequisites on proposed tasks while keeping them unready", async () => {
+    const value = { ...task, status: "proposed", ready: false, dependsOn: [otherId], blockedBy: [otherId] };
+    await expect(client(vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse(value))).getTask(projectId, taskId)).resolves.toEqual(value);
+  });
+
+  it("projects all four graph states and counts only blocked todo tasks as blocked", async () => {
+    const value = fourStateGraph();
+    await expect(client(vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse(value))).getTaskGraph(projectId)).resolves.toEqual(value);
+    const empty = { project, summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 }, tasks: [] };
+    await expect(client(vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse(empty))).getTaskGraph(projectId)).resolves.toEqual(empty);
+  });
+
+  it.each([
+    { proposed: undefined }, { proposed: null }, { proposed: "3" }, { proposed: -1 }, { proposed: 1.5 },
+    { total: 4 }, { proposed: 2 }, { todo: 5 }, { inProgress: 2 }, { done: 2 }, { ready: 2 }, { blocked: 2 },
+  ])("rejects missing, malformed or inconsistent four-state graph counters %#", async (changes) => {
+    const value = fourStateGraph();
+    await expect(client(vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({ ...value, summary: { ...value.summary, ...changes } }))).getTaskGraph(projectId)).rejects.toMatchObject({ phase: "protocol", outcomeUnconfirmed: false });
+  });
+
+  it.each(["proposed-ready", "proposed-blockers", "in-progress-blocked", "done-blocked"])("rejects invalid four-state graph dependency data: %s", async (failure) => {
+    const value = fourStateGraph();
+    const tasks = value.tasks.map((item) => ({ ...item }));
+    if (failure === "proposed-ready") tasks[0] = { ...tasks[0]!, ready: true };
+    if (failure === "proposed-blockers") tasks[2] = { ...tasks[2]!, blockedBy: [] };
+    if (failure === "in-progress-blocked" || failure === "done-blocked") {
+      const index = failure === "in-progress-blocked" ? 4 : 6;
+      tasks[index] = { ...tasks[index]!, dependsOn: [tasks[0]!.id], blockedBy: [tasks[0]!.id] };
+    }
+    await expect(client(vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({ ...value, tasks }))).getTaskGraph(projectId)).rejects.toMatchObject({ phase: "protocol", outcomeUnconfirmed: false });
+  });
+
   it("projects complete raw PR properties without interpreting their content or future fields", async () => {
     const pullRequests = [{ url: "", title: "\0\n\u0085\u001b[2J" }, { url: "  任意文本  ", title: "" }, { url: "  任意文本  ", title: "" }];
     const expected = { ...task, properties: { pullRequests } };
@@ -392,6 +451,9 @@ describe("response DTO contract", () => {
   });
   it.each([
     { ...task, version: "1" }, { ...task, version: 0 }, { ...task, version: 1.5 }, { ...task, status: "invalid" },
+    { ...task, status: "proposed" },
+    { ...task, status: "in_progress", ready: false, dependsOn: [otherId], blockedBy: [otherId] },
+    { ...task, status: "done", ready: false, dependsOn: [otherId], blockedBy: [otherId] },
     { ...task, description: "bad\0text" }, { ...task, ready: false },
     { ...task, dependsOn: [otherId, otherId] }, { ...task, blockedBy: [otherId] },
     { ...task, createdAt: "2026-02-30T01:02:03Z" }, { ...task, updatedAt: "2026-10-20T01:02:03+00:00" },

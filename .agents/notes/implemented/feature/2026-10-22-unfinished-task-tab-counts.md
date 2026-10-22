@@ -12,7 +12,9 @@ not communicate how many unfinished tasks remain in each view.
 ## Decision
 
 Both tab badges count unfinished tasks from the same complete graph snapshot.
-Pending and in-progress tasks contribute one; done tasks contribute zero.
+Proposed, pending and in-progress tasks contribute one; done tasks contribute
+zero. The [four-state reader decision](2026-10-22-proposed-task-readers.md)
+extends the original pending/in-progress inventory without changing its unit.
 A task with no prerequisites and no successors contributes to Standalone tasks;
 every other task contributes to Task chains. Each task ID is visited once, so
 shared successors contribute once across roots. A finished root does not remove
@@ -43,7 +45,7 @@ which roots are rendered and avoids repeated reachability traversals.
 
 ## Consequences
 
-The two badges use the same unit and sum to the project's pending plus
+The two badges use the same unit and sum to the project's proposed plus pending plus
 in-progress total. A dependency edit may move unfinished tasks between the two
 badges on refresh. A chain badge can exceed the number of chain rows because it
 counts their unique tasks. The root-based list, graph contexts, aggregate chain

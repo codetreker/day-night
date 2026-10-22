@@ -921,7 +921,17 @@ server origin and repository identity, after ensuring `/.daynight/` is effective
 in the root `.gitignore`. A cached binding is verified against the server on each
 use and remains stable if another project later shares that repository.
 
-Creation starts in `todo`. `task ready` selects up to 10 actionable tasks by
+Tasks can be stored and read with `proposed`, `todo`, `in_progress` or `done`
+status. Proposed tasks appear in unfinished inventories, graph summaries and the
+Web workspace as Proposed or 待审批 in the selected language. The stored/read
+contract is prepared for approval; public
+creation and the database default still use `todo`, and public status filters
+and updates still accept `todo`, `in_progress` and `done`. Approval, claim and
+completion commands are not available. The
+[four-state reader decision](.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
+records this preparation boundary.
+
+`task ready` selects up to 10 actionable tasks by
 default; `--limit <N>` accepts decimal integers from 1 through 100. It makes one
 task-list request with `ready=true` and the chosen limit, without fetching later
 pages. The service orders results by creation time and then task ID, both
@@ -932,7 +942,7 @@ reads every matching page, including with `--ready`, and excludes `done` by
 default. `--all` includes every status; `--status <status>` selects one status,
 including `done`. These two options conflict. `--ready` intersects the selected
 statuses and can be combined with `--all`. List results place `in_progress`
-first, then ready tasks, other `todo` tasks, and `done`; each group retains
+first, then ready tasks, other `todo` tasks, `proposed`, and `done`; each group retains
 service order across all pages. This order applies to human and JSON results.
 `task ready` accepts neither `--status` nor `--cursor`.
 

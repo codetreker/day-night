@@ -12,7 +12,7 @@ func taskGraphResponse(graph core.TaskGraph) api.TaskGraph {
 	response := api.TaskGraph{
 		Project: projectResponse(graph.Project),
 		Summary: api.TaskGraphSummary{
-			Total: graph.Summary.Total, Todo: graph.Summary.Todo, InProgress: graph.Summary.InProgress,
+			Total: graph.Summary.Total, Proposed: graph.Summary.Proposed, Todo: graph.Summary.Todo, InProgress: graph.Summary.InProgress,
 			Done: graph.Summary.Done, Ready: graph.Summary.Ready, Blocked: graph.Summary.Blocked,
 		},
 		Tasks: make([]api.GraphTask, 0, len(graph.Tasks)),

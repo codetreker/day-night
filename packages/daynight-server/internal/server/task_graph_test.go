@@ -17,6 +17,7 @@ import (
 
 	"github.com/codetreker/daynight/packages/daynight-server/api"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
+	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/service"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -97,7 +98,7 @@ func TestTaskGraphHTTPEmptyMissingQueryAndMethods(t *testing.T) {
 	project := taskProject(t, handler)
 	response := projectRequest(handler, http.MethodGet, graphPath(project.ID), "")
 	graph := decodeResponse[api.TaskGraph](t, response, http.StatusOK)
-	if graph.Project != project || graph.Summary != (api.TaskGraphSummary{}) || graph.Tasks == nil || len(graph.Tasks) != 0 || !strings.Contains(response.Body.String(), `"tasks":[]`) {
+	if graph.Project != project || graph.Summary != (api.TaskGraphSummary{}) || graph.Tasks == nil || len(graph.Tasks) != 0 || !strings.Contains(response.Body.String(), `"tasks":[]`) || !strings.Contains(response.Body.String(), `"proposed":0`) {
 		t.Fatalf("empty graph contract: %s", response.Body)
 	}
 	for _, query := range []string{"limit=50", "cursor=token-secret", "status=todo", "ready=true", "unknown=secret", "limit=", "%xx", "x=%xx", ";", "&", "=", "x=1&x=2"} {
@@ -266,5 +267,64 @@ func TestTaskGraphHTTPErrorPrecedenceAndDTOUTC(t *testing.T) {
 		result.Tasks[0].CreatedAt.Location() != time.UTC || result.Tasks[0].UpdatedAt.Location() != time.UTC ||
 		!result.Tasks[0].CreatedAt.Equal(instant) || !reflect.DeepEqual(result.Tasks[0].DependsOn, []string{}) || !reflect.DeepEqual(result.Tasks[0].BlockedBy, []string{}) {
 		t.Fatalf("graph DTO UTC and empty-array conversion: %+v", result)
+	}
+}
+
+func TestTaskHTTPProposedReadContractWithoutPublicStatusWrites(t *testing.T) {
+	database := projectTestStore(t)
+	var logs bytes.Buffer
+	handler := projectTestHandler(database, &logs)
+	project := taskProject(t, handler)
+	pending := createHTTPTask(t, handler, project.ID, "Pending")
+	done := createHTTPTask(t, handler, project.ID, "Done")
+	done = updateHTTPTask(t, handler, done, map[string]any{"status": "done"})
+	var proposed, proposedBlocked core.Task
+	if err := database.WriteProject(context.Background(), project.ID, func(tx *store.ProjectTx) error {
+		var err error
+		proposed, err = tx.CreateTask(context.Background(), "00000000-0000-4000-8000-000000000001", store.TaskWrite{
+			Title: "Proposed", Description: "Complete proposed description", Status: core.TaskProposed, DependsOn: []string{done.ID},
+		})
+		if err != nil {
+			return err
+		}
+		proposedBlocked, err = tx.CreateTask(context.Background(), "00000000-0000-4000-8000-000000000002", store.TaskWrite{
+			Title: "Proposed with prerequisite", Status: core.TaskProposed, DependsOn: []string{pending.ID},
+		})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, original := range []core.Task{proposed, proposedBlocked} {
+		read := readHTTPTask(t, handler, api.Task{ProjectID: project.ID, ID: original.ID})
+		if read.Status != "proposed" || read.Ready || read.Description != original.Description || read.Version != original.Version ||
+			!read.CreatedAt.Equal(original.CreatedAt) || !read.UpdatedAt.Equal(original.UpdatedAt) || !slices.Equal(read.BlockedBy, original.BlockedBy) {
+			t.Fatalf("proposed GET changed stored projection: %#v", read)
+		}
+	}
+	var listed []string
+	path := taskCollection(project.ID) + "?limit=1"
+	for {
+		page := decodeResponse[api.TaskPage](t, projectRequest(handler, http.MethodGet, path, ""), http.StatusOK)
+		for _, task := range page.Items {
+			listed = append(listed, task.ID)
+		}
+		if page.NextCursor == nil {
+			break
+		}
+		path = taskCollection(project.ID) + "?limit=1&cursor=" + *page.NextCursor
+	}
+	if !slices.Equal(listed, []string{pending.ID, done.ID, proposed.ID, proposedBlocked.ID}) {
+		t.Fatalf("HTTP paginated list omitted proposed: %#v", listed)
+	}
+	graph := decodeResponse[api.TaskGraph](t, projectRequest(handler, http.MethodGet, graphPath(project.ID), ""), http.StatusOK)
+	if graph.Summary != (api.TaskGraphSummary{Total: 4, Proposed: 2, Todo: 1, Done: 1, Ready: 1}) ||
+		len(graph.Tasks) != 4 || graph.Tasks[2].Ready || graph.Tasks[3].Ready ||
+		len(graph.Tasks[2].BlockedBy) != 0 || !slices.Equal(graph.Tasks[3].BlockedBy, []string{pending.ID}) {
+		t.Fatalf("HTTP proposed graph: %#v", graph)
+	}
+	assertProjectError(t, projectRequest(handler, http.MethodGet, taskCollection(project.ID)+"?status=proposed", ""), http.StatusBadRequest, "invalid_input")
+	assertProjectError(t, projectRequest(handler, http.MethodPatch, taskPath(pending), jsonBody(t, map[string]any{"version": pending.Version, "status": "proposed"})), http.StatusBadRequest, "invalid_input")
+	if read := readHTTPTask(t, handler, pending); !reflect.DeepEqual(read, pending) {
+		t.Fatalf("rejected proposed write changed existing task: %#v", read)
 	}
 }
