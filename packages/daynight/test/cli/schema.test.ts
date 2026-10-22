@@ -198,11 +198,11 @@ describe("shared command syntax", () => {
   });
 
   it("allows separate empty descriptions while keeping ordinary text scalar", () => {
-    const parsed = parseCommand(taskDefinition, ["update", "task-id", "--description", "", "--status", "todo"]);
-    expect(parsed.kind === "run" && [...parsed.options]).toEqual([["--description", ""], ["--status", "todo"]]);
+    const parsed = parseCommand(taskDefinition, ["update", "task-id", "--description", "", "--title", "Title"]);
+    expect(parsed.kind === "run" && [...parsed.options]).toEqual([["--description", ""], ["--title", "Title"]]);
   });
 
-  it.each(["todo", "in_progress", "done"])("accepts exact status choices in separate and inline values: %s", (status) => {
+  it.each(["proposed", "todo", "in_progress", "done"])("accepts exact status choices in separate and inline values: %s", (status) => {
     for (const args of [["list", "--status", status], ["list", `--status=${status}`]]) {
       const parsed = parseCommand(taskDefinition, args);
       expect(parsed.kind === "run" && parsed.options.get("--status")).toBe(status);

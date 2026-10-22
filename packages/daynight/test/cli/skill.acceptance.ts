@@ -63,10 +63,12 @@ const expectBundle = async (target: string): Promise<void> => {
   expect(example).toContain("## 完成条件");
   expect(example).toContain("[方案与验收](plan.md)");
   expect(example).toContain("[交互原型](mockui/index.html)");
-  expect(authoring).toContain("Use these paths only when those files actually");
+  expect(authoring).toMatch(/Use these paths only when those files actually\s+belong to that task/);
   expect(authoring).toContain("**Solution** and **Acceptance criteria**");
   expect(await readFile(path.join(target, "references/handbook.md"), "utf8")).toContain("**Markdown descriptions.**");
-  expect(await readFile(path.join(target, "references/goal.md"), "utf8")).toContain("self-contained Markdown description");
+  const goal = await readFile(path.join(target, "references/goal.md"), "utf8");
+  expect(goal).toMatch(/self-contained Markdown\s+description/);
+  expect(goal).toMatch(/Each task starts\s+in `proposed`/);
 };
 const untouched = async (fixture: SkillFixture): Promise<void> => {
   await expect(readFile(fixture.agentLog)).rejects.toMatchObject({ code: "ENOENT" });

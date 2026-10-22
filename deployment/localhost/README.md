@@ -28,7 +28,8 @@ as UID 10001 without a privileged startup process.
 Open `http://127.0.0.1:8787/` for the project list. Selecting a project opens
 `/projects/<projectId>`, with statistics, expandable dependency graphs and task
 details. The API is available at `http://127.0.0.1:8787/api/v1` on the same
-origin. The dashboard is read-only; use the API to create projects or tasks.
+origin. Task details can approve proposed work and manage attachments; use the
+CLI or API to create projects/tasks, claim or complete tasks, and edit metadata.
 
 To select a different host port, export it before starting the stack:
 

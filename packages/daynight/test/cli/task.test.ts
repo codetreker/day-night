@@ -268,7 +268,7 @@ describe("compiled task commands", () => {
     const f = await fixture();
     try {
       const helpBlocked = ["/api/", "/config/", "/repository/", "/commands/server/", "/commands/task/rendering.js", "better-sqlite3"];
-      for (const args of [[], ["--help"], ...["create", "list", "ready", "show", "update", "graph"].map((name) => [name, "--help"]), ["attachment"], ["attachment", "--help"], ...["put", "list", "read", "remove"].map((name) => ["attachment", name, "--help"])]) {
+      for (const args of [[], ["--help"], ...["create", "list", "ready", "show", "update", "approve", "claim", "complete", "graph"].map((name) => [name, "--help"]), ["attachment"], ["attachment", "--help"], ...["put", "list", "read", "remove"].map((name) => ["attachment", name, "--help"])]) {
         const result = await f.invoke(args, { blocked: helpBlocked });
         expect(result.code, result.stderr).toBe(0);
         expect(result.stdout).toContain("Usage: daynight task");
@@ -292,6 +292,7 @@ describe("compiled task commands", () => {
         ["update", taskId, "--status", "done", "--if-version", "9223372036854775808"],
         ["show", "invalid"], ["list", "--project", "invalid"], ["list", "--ready", "false"], ["list", "--all", "--status", "todo"], ["list", "--status", "done", "--all"], ["graph", "--unknown"],
         ["ready", "--limit", "0"], ["ready", "--limit", "101"], ["ready", "--limit=1e1"], ["ready", "--limit=1.5"], ["ready", "--limit=+1"], ["ready", "--status", "todo"],
+        ...["approve", "claim", "complete"].flatMap((action) => [[action], [action, "invalid"], [action, taskId, "--if-version=0"], [action, taskId, "--if-version=9223372036854775808"], [action, taskId, "--status=todo"]]),
         ["attachment", "list", "invalid"], ["attachment", "list", taskId, "--tree", "--json"],
         ["attachment", "put", taskId, "missing.txt", "--path", "../escape"],
         ["attachment", "read", taskId, "/absolute"], ["attachment", "remove", taskId, "a//b"],
@@ -304,6 +305,37 @@ describe("compiled task commands", () => {
       }
       await expect(readdir(f.home)).rejects.toMatchObject({ code: "ENOENT" });
       expect(await readdir(f.caller)).toEqual([]);
+    } finally { await f.close(); }
+  }, 60_000);
+
+  it("executes the proposed approval, claim and completion lifecycle with precise observed or supplied versions", async () => {
+    const f = await fixture();
+    try {
+      let current = task({ status: "proposed", ready: false, description: "Lifecycle details", version: 9_007_199_254_740_993n });
+      const { requests } = await f.serve((request, response) => {
+        if (request.method === "POST" && request.pathname !== taskPath) {
+          const action = request.pathname.split("/").at(-1)!;
+          const status = action === "approve" ? "todo" : action === "claim" ? "in_progress" : "done";
+          current = { ...current, status, ready: status === "todo", version: current.version + 1n };
+        }
+        respond(response, current, request.pathname === taskPath ? 201 : 200);
+      });
+      const created = await f.invoke(["create", "--title", "Lifecycle", ...explicit]);
+      expect(created.code, created.stderr).toBe(0);
+      expect(created.stdout).toContain("Status: proposed");
+      for (const [action, status] of [["approve", "todo"], ["claim", "in_progress"], ["complete", "done"]] as const) {
+        const version = current.version;
+        const before = requests.length;
+        const explicitVersion = action === "claim";
+        const result = await f.invoke([action, taskId.toUpperCase(), ...(explicitVersion ? ["--if-version", String(version)] : []), ...explicit]);
+        expect(result.code, result.stderr).toBe(0);
+        expect(result.stdout).toContain(`Status: ${status}`);
+        expect(result.stdout).toContain(`Version: ${version + 1n}`);
+        expect(result.stdout).toContain("Description: Lifecycle details");
+        expect(requests.slice(before).map(({ method, pathname }) => `${method} ${pathname}`)).toEqual([`GET ${projectPath}`, ...(explicitVersion ? [] : [`GET ${taskPath}/${taskId}`]), `POST ${taskPath}/${taskId}/${action}`]);
+        expect(requests.at(-1)!.body).toEqual({ version });
+        expect(requests.at(-1)!.bodyText).toBe(`{"version":${version}}`);
+      }
     } finally { await f.close(); }
   }, 60_000);
 
@@ -384,13 +416,16 @@ describe("compiled task commands", () => {
       const readyTask = task();
       const progressTask = task({ id: secondId, status: "in_progress", ready: false });
       const doneTask = task({ id: thirdId, status: "done", ready: false });
-      const items = [doneTask, readyTask, progressTask];
+      const proposedTask = task({ id: "b1b2c3d4-1111-4222-8333-123456789abf", status: "proposed", ready: false });
+      const items = [doneTask, proposedTask, readyTask, progressTask];
       const { requests } = await f.serve((request, response) => respond(response, {
         items: items.filter((item) => (!request.query.has("status") || item.status === request.query.get("status")) && (!request.query.has("ready") || item.ready)),
         nextCursor: null,
       }));
       const cases: readonly { args: readonly string[]; expected: readonly Task[]; query: Record<string, string> }[] = [
         { args: ["--status", "done"], expected: [doneTask], query: { status: "done", limit: "100" } },
+        { args: ["--status", "proposed"], expected: [proposedTask], query: { status: "proposed", limit: "100" } },
+        { args: ["--status", "proposed", "--ready"], expected: [], query: { status: "proposed", ready: "true", limit: "100" } },
         { args: ["--ready"], expected: [readyTask], query: { ready: "true", limit: "100" } },
         { args: ["--all", "--ready"], expected: [readyTask], query: { ready: "true", limit: "100" } },
         { args: ["--status", "todo", "--ready"], expected: [readyTask], query: { status: "todo", ready: "true", limit: "100" } },
@@ -570,12 +605,12 @@ describe("compiled task commands", () => {
       expect(requests[2]!.bodyText).toContain('"version":9007199254740993');
 
       requests.length = 0; refusal = "version";
-      const conflict = await f.invoke(["update", taskId, "--status", "done", "--if-version", "9223372036854775807", ...explicit]);
+      const conflict = await f.invoke(["complete", taskId, "--if-version", "9223372036854775807", ...explicit]);
       expect(conflict.code).toBe(1); expect(conflict.stdout).toBe("");
       expect(conflict.stderr).toContain("version_conflict"); expect(conflict.stderr).toContain("task-version-conflict");
-      expect(requests.map(({ method, pathname }) => `${method} ${pathname}`)).toEqual([`GET ${projectPath}`, `PATCH ${taskPath}/${taskId}`]);
+      expect(requests.map(({ method, pathname }) => `${method} ${pathname}`)).toEqual([`GET ${projectPath}`, `POST ${taskPath}/${taskId}/complete`]);
       expect(requests[1]!.bodyText).toContain('"version":9223372036854775807');
-      expect(requests[1]!.body).toEqual({ status: "done", version: 9_223_372_036_854_775_807n });
+      expect(requests[1]!.body).toEqual({ version: 9_223_372_036_854_775_807n });
 
       requests.length = 0; refusal = "dependencies";
       const rejected = await f.invoke(["update", taskId, "--if-version", "2", "--depends-on", thirdId, "--depends-on", secondId, "--depends-on", thirdId, ...explicit]);

@@ -1,5 +1,6 @@
 import { useEffect, useState, type MouseEvent } from 'react';
 import { createRoot } from 'react-dom/client';
+import { stringifyApiJson } from '../../src/api/json';
 import type { Attachment, GraphTask, TaskDetail, TaskGraph, TaskStatus } from '../../src/api/types';
 import { ProjectPage } from '../../src/features/projects/ProjectPage';
 import { LocaleProvider, useI18n } from '../../src/i18n/LocaleProvider';
@@ -51,6 +52,7 @@ const graph = (): TaskGraph => {
 };
 const detail = (task: GraphTask): TaskDetail => ({
   ...task,
+  version: BigInt(fixture.revision),
   projectId: base.project.id,
   title: fullTitle(base.tasks.find((candidate) => candidate.id === task.id)!),
   description: fixture.content === 'long'
@@ -93,7 +95,7 @@ const installFixture = () => {
       const snapshot = graph();
       if (graphRequest) return Response.json(snapshot);
       const task = snapshot.tasks.find((candidate) => candidate.id === taskRequest![1]);
-      return task === undefined ? Response.json({ error: { code: 'not_found', message: 'Task no longer exists.', requestId: 'preview-task-missing' } }, { status: 404 }) : Response.json(detail(task));
+      return task === undefined ? Response.json({ error: { code: 'not_found', message: 'Task no longer exists.', requestId: 'preview-task-missing' } }, { status: 404 }) : new Response(stringifyApiJson(detail(task)), { headers: { 'Content-Type': 'application/json' } });
     }
     if (taskRequest !== null && url.pathname.endsWith('/attachments') && method === 'GET') {
       return Response.json({ items: Array.from(attachmentFiles, ([path, file]) => attachment(path, file)), nextCursor: null });

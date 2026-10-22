@@ -16,12 +16,17 @@ The task service implements create, get, list and update over the existing
 concrete store. The [requirements](../../../../docs/spec/daynight-server.md)
 own the permitted states and refusals; the
 [design](../../../../docs/design/daynight-server.md) owns their transaction
-mechanism. HTTP exposure remains a separate task.
+mechanism. The [approval lifecycle](2026-10-22-task-approval-lifecycle.md) extends the original
+create/get/list/update boundary with dedicated forward transitions, replacing
+generic state writes without changing project exclusion or task revisions.
 
 The write callback reads the current target after acquiring its project lock,
 compares the expected version, and constructs a complete mutation plan. It
 canonicalizes and sorts dependency UUIDs, checks references and candidate
-reachability, and validates both predecessor and direct-dependent state rules.
+reachability, and validates predecessor-state rules. The original general status
+updates also validated direct dependents before reopening; that path no longer
+exists. Lifecycle operations compare version before checking predecessor state
+and dependencies, so same-version actions expose a concrete version conflict.
 Only a fully accepted plan reaches storage mutation. Errors from storage remain
 operational errors; expected domain refusals remain pending until the outer
 transaction has completed successfully.
@@ -47,7 +52,8 @@ and [shared project API mechanisms](2026-10-19-project-management-api.md).
 
 **Use task versions as the only concurrency control.** Two clients modifying
 different tasks can both have fresh versions while adding opposite graph edges
-or reopening a predecessor as a dependent starts. The project lock orders these
+or changing dependencies as work is claimed. Under the original backward-state
+policy, reopening a predecessor as a dependent started exposed the same risk. The project lock orders these
 operations; versions independently prevent overwriting one target's revision.
 
 **Treat expected refusals as transaction callback errors.** A rollback or
@@ -65,13 +71,16 @@ the selected per-task revision semantics.
 Every mutating path preserves one same-project DAG and the active/done state
 invariant, including metadata-only changes, retries and no-ops. Public faults
 contain fixed messages and sorted task IDs rather than other projects' content.
-The service retains pointer-based omission semantics without accepting JSON null
-as a fallback value at the future HTTP boundary.
+The service retains pointer-based metadata omission semantics without accepting
+JSON null as a fallback value at its HTTP boundary. Metadata updates allow
+proposed tasks and cannot advance lifecycle.
 
 Real PostgreSQL tests exercise all state pairs, candidate replacement, rejected
 mutations, canonical references, no-op/version behavior, snapshot reads and
 filter-bound pages. Distinct sessions with exact application-name barriers prove
-reverse-edge, reopen/start and same-version races. Database failure after partial
+reverse-edge, dependency-update/claim and same-version lifecycle races. Earlier
+reopen/start tests belonged to the original general-status contract; its
+replacement rejects every backward transition. Database failure after partial
 writes proves full rollback; lock/query cancellation proves no delayed mutation
 and reusable resources. No storage substitute or product coverage exclusion is
 needed.

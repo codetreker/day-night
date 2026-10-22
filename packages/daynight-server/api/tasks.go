@@ -27,8 +27,11 @@ type UpdateTaskRequest struct {
 	Version     int64                `json:"version"`
 	Title       *string              `json:"title,omitempty"`
 	Description *string              `json:"description,omitempty"`
-	Status      *string              `json:"status,omitempty"`
 	DependsOn   *[]string            `json:"dependsOn,omitempty"`
+}
+
+type TaskTransitionRequest struct {
+	Version int64 `json:"version"`
 }
 
 type Task struct {

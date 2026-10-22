@@ -32,19 +32,22 @@ When there is no current task, query:
 daynight task ready --json
 ```
 
-Pick exactly one ready `todo` task most relevant to the confirmed Goal and
+Pick exactly one approved ready `todo` task most relevant to the confirmed Goal and
 authorized work. Compare concrete actions, scope, deliverables, solution,
 acceptance criteria, and actual dependencies; creation order does not establish
 relevance. Read full details and actual task-specific and shared inputs for
 plausible candidates before choosing. Readiness checks prerequisites, not stage
 artifact completeness or execution authorization. Pass the selected ID to
-`run-task`.
+`run-task`, which claims the version observed for that decision before starting.
+Autopilot never auto-approves proposed work. Goal creation, completed description
+or design, and permission to execute do not authorize task approval.
 
 Ready returns at most 10 candidates by default, or the requested bounded
 `--limit`; it is not a complete backlog. If this page is empty or no candidate
 matches, obtain the additional context actually needed through selected reads,
 the graph, or a complete filtered list as described in the handbook. Distinguish
-completed scope, prerequisite-blocked work, other ongoing work, and insufficient
+completed scope, work awaiting explicit approval, prerequisite-blocked work, other
+ongoing work, and insufficient
 candidates. Do not take unrelated work to stay busy or report completion from an
 empty or unrelated bounded page.
 
@@ -53,7 +56,8 @@ ones. If the confirmed Goal requires missing tracked work, use explicit creation
 permission already granted for that scope or obtain it, then use
 [create-task](create-task.md). Permission to create a Goal already covers both
 starting tasks and its later in-scope breakdown; do not ask again for each one.
-Creation returns to this mode without starting execution. The design stage must
+Creation leaves proposed tasks pending separate explicit approval and returns
+to this mode without starting execution. The design stage must
 actually register and verify the complete delivery breakdown before handing over
 its required PR; successor execution waits for design completion.
 
@@ -63,8 +67,11 @@ Run one task at a time. Subagents collaborate on it; they do not each choose a
 separate task. Ordinary CI, review, and merge waits keep that target. After
 `run-task` confirms `done`, refresh readiness and select at most one next related
 task within the same authorized scope. Description completion permits design
-selection, and design completion permits delivery selection, only while this
-mode is explicitly active and the next task is authorized.
+selection, and design completion permits delivery selection, only when the next
+task is approved ready todo, its stage inputs are complete, this mode is explicitly
+active and execution is authorized. Stage completion satisfies a dependency; it
+never approves a successor. Explicit scoped user approval may cover stated Goal
+tasks, but the Goal-creation permission itself does not.
 
 If `run-task` returns a wait requiring external intervention, preserve its
 current-task checkpoint and report the blocker and required next action. An

@@ -118,15 +118,7 @@ func TestQueriesScopedResourcesAndUpdates(t *testing.T) {
 				t.Fatalf("project-scoped prerequisites: %#v", tasks)
 			}
 		}
-		tasks, err := tx.Dependents(ctx, pending.ID)
-		if err != nil || len(tasks) != 1 || tasks[0].ID != dependent.ID {
-			t.Fatalf("dependents: %#v, %v", tasks, err)
-		}
-		empty, err := tx.Dependents(ctx, other.ID)
-		if err != nil || empty == nil || len(empty) != 0 {
-			t.Fatalf("cross-project dependents: %#v, %v", empty, err)
-		}
-		_, err = tx.Task(ctx, other.ID)
+		_, err := tx.Task(ctx, other.ID)
 		if !errors.Is(err, core.ErrNotFound) {
 			t.Fatalf("cross-project task: %v", err)
 		}

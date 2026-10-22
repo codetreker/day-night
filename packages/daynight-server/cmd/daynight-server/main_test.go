@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -223,22 +224,19 @@ func TestRunServesProjectAndTaskAPI(t *testing.T) {
 	var task api.Task
 	err = json.NewDecoder(response.Body).Decode(&task)
 	response.Body.Close()
-	if err != nil || response.StatusCode != http.StatusCreated || task.ProjectID != project.ID || task.Title != "Process task" || !task.Ready || task.Version != 1 {
+	if err != nil || response.StatusCode != http.StatusCreated || task.ProjectID != project.ID || task.Title != "Process task" || task.Status != "proposed" || task.Ready || task.Version != 1 {
 		t.Fatalf("process task create: %d %+v %v", response.StatusCode, task, err)
 	}
-	request, err := http.NewRequest(http.MethodPatch, tasksURL+"/"+task.ID, strings.NewReader(`{"version":1,"status":"done"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.Header.Set("Content-Type", "application/json")
-	response, err = client.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = json.NewDecoder(response.Body).Decode(&task)
-	response.Body.Close()
-	if err != nil || response.StatusCode != http.StatusOK || task.Status != "done" || task.Version != 2 {
-		t.Fatalf("process task update: %d %+v %v", response.StatusCode, task, err)
+	for index, action := range []string{"approve", "claim", "complete"} {
+		response, err = client.Post(tasksURL+"/"+task.ID+"/"+action, "application/json", strings.NewReader(fmt.Sprintf(`{"version":%d}`, task.Version)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = json.NewDecoder(response.Body).Decode(&task)
+		response.Body.Close()
+		if expected := []string{"todo", "in_progress", "done"}[index]; err != nil || response.StatusCode != http.StatusOK || task.Status != expected || task.Version != int64(index+2) {
+			t.Fatalf("process task %s: %d %+v %v", action, response.StatusCode, task, err)
+		}
 	}
 	response, err = client.Get(tasksURL + "?status=done&ready=false")
 	if err != nil {

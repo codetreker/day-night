@@ -79,10 +79,10 @@ export type UpdateTaskInput = {
   readonly title?: string;
   readonly description?: string;
   readonly properties?: TaskProperties;
-  readonly status?: Exclude<TaskStatus, "proposed">;
   readonly dependsOn?: readonly string[];
 };
-export type TaskFilters = { readonly status?: Exclude<TaskStatus, "proposed">; readonly ready?: boolean };
+export type TaskActionInput = { readonly version: bigint };
+export type TaskFilters = { readonly status?: TaskStatus; readonly ready?: boolean };
 export type ErrorDetails = {
   readonly taskIds?: readonly string[];
   readonly nodeCount?: number;

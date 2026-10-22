@@ -92,8 +92,10 @@ meaningful distinctions. The service keeps its raw registered address and its
 existing API, schema, duplicate-project allowance and transaction policies.
 
 The adopted task composition uses the shared command schema and server runtime.
-Description values declare `allowEmpty`, status values declare fixed `choices`,
-and dependency options declare `repeatable`. Repeatable values form an ordered
+Description values declare `allowEmpty`, list status values declare four fixed
+`choices`, and dependency options declare `repeatable`. Generic update no longer
+declares status. The [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md)
+owns dedicated approve, claim and complete commands and proposed creation. Repeatable values form an ordered
 array from the first occurrence, retaining duplicate IDs for server validation.
 Text options accept inline assignment split at the first equals sign, preserving
 leading dashes and later equals signs. Separated dash-prefixed values remain
@@ -102,8 +104,10 @@ syntax facts belong to the definition consumed by parsing and static shell
 completion. Help uses the declared names, value names, required markers and
 option descriptions; it does not enumerate `value.choices`. Existing review directory syntax remains unchanged.
 
-Task updates retain expected-version checks, atomic field/dependency updates
-and server-side state gates. Local binding checks
+Task metadata updates retain expected-version checks, atomic field/dependency
+updates and server-side state gates. Lifecycle actions use the same shared
+configuration, repository resolution, int64 version handling and mutation output;
+explicit versions skip a pre-read, and omission performs one immediate read. Local binding checks
 cannot replace remote resource validation. Request cancellation and failures remain visible; failed
 writes are not automatically retried. Project and task `list` JSON is emitted
 only after every matching page has succeeded. `task ready` returns up

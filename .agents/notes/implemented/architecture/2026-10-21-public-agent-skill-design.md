@@ -42,8 +42,12 @@ preserving show for full details and graph or complete lists when needed.
 Selecting one task most related to authorized work and retaining it through
 CI/review/merge waits prevented candidates from becoming an implicit batch.
 The replacement mode decision assigns that selection to explicitly requested
-autopilot and assigns designated-task completion to run-task. Observed versions,
-readiness without ownership and unchanged CLI/service semantics remain required.
+autopilot and assigns designated-task completion to run-task. Observed versions and
+readiness without ownership remain required. The later
+[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) replaces direct
+status updates with proposed registration, explicit approval and versioned
+claim/complete; its packaged workflow preserves the original execution and
+delivery permission boundaries.
 
 Development and PR-delivered design/documentation tasks remain in progress while
 necessary PRs are open. All required PRs must be platform-confirmed merged and
@@ -119,7 +123,8 @@ transactions, rollback, automatic npm-to-skill synchronization and edit merging.
 
 Daynight stores the design task and dependent implementation tasks. Repository
 documents own requirements, mechanism and rationale; they do not mirror live task
-status. The task exercise proves current task creation and dependency gating.
+status. The original task exercise proved creation and dependency gating for its
+then-current service contract; lifecycle acceptance owns the new explicit actions.
 An open delivery PR keeps its task in progress and its implementation successors
 blocked. Installer acceptance does not require real Agent installation, account
 configuration, models, or a Daynight service/database; existing task tests own

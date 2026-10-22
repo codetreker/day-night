@@ -3,7 +3,7 @@
 状态：W-T1–W-T6 全部完成。实现与验收已交付，对应运行结果由交付 PR 与 CI 保存。
 
 本文拥有任务编号、状态、依赖、文件归属和完成条件。
-[需求](../spec/daynight-web.md)拥有 W1–W12 的行为与验收要求，
+[需求](../spec/daynight-web.md)拥有 W1–W13 的行为与验收要求；下列原看板任务对应 W1–W12，
 [架构设计](daynight-web.md)拥有 API、快照、图投影、请求和部署机制。
 任务完成时记录实际验证结果并同步状态；行为或机制变化先更新对应文档。下列任务与验收条件
 保留其交付时的范围；后续的项目内独立任务/任务链页签由[当前设计](daynight-web.md#项目详情-projectsprojectid)
@@ -56,8 +56,12 @@ W-T1 与 W-T2 可独立推进，客户端以架构中的 DTO 为共同契约。
 Go 与 web 的总语句覆盖率分别严格大于 90%，保留已有 Go package、function、
 critical-block 及所有原生 CLI 门槛；新增检查不能替换现有检查。
 
-只读看板沿用现有 project/task 写接口、schema、状态和依赖规则，不引入新的写入路径。
-本机监听、同源读取和完整快照保证贯穿全部任务。标题与仓库地址使用文本节点；描述按[任务阅读要求](../spec/daynight-task-inspection.md) TI8–TI10 使用保留原始 HTML 文本的 CommonMark/GFM。
+原只读看板交付时沿用现有 project/task 写接口、schema、状态和依赖规则。当前
+[生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)增加 proposed 详情审批，
+[看板规范](../spec/daynight-web.md)拥有该操作的版本、防重、核对与刷新要求；原基线
+完成证据不代表后续审批验收。本机监听、同源读取和完整快照保证贯穿全部任务。
+标题与仓库地址使用文本节点；描述按[任务阅读要求](../spec/daynight-task-inspection.md)
+TI8–TI10 使用保留原始 HTML 文本的 CommonMark/GFM。
 任务状态只按实际交付及验证证据更新；预览、模拟响应和单元覆盖率各自具有明确用途，
 不能作为生产 UI 或真实 PostgreSQL 集成完成的证据。
 

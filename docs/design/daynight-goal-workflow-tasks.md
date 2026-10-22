@@ -95,7 +95,7 @@ autopilot 指引以及普通任务和 Goal 阶段的自足简介、按需附件�
 - 既有资源复制与链接套件、实际 build、npm pack 和隔离本地安装确认新共享协议完整
   发布，既有安装覆盖与 scope 语义有效；适用 typecheck、test、build 和 CI 真正通过。
 - 必要实施 PR 经平台确认合并，主附件验收项记录必要证据与 merge commit 引用。
-  刷新实际版本设置 done 并确认服务结果后，将准确合并来源交接给 GW-T2；不宣称整个
+  读取实际版本并用 task complete 确认 done 后，将准确合并来源交接给 GW-T2；不宣称整个
   Goal 已完成。
 
 ## GW-T2：验收 using-daynight Goal 工作流
@@ -139,7 +139,7 @@ GW-T1 的自检代替独立结果。
   准确来源，不能擅自合并、发布 npm 或部署。
 - 核验描述、设计、GW-T1 等其他任务已确认 done，必要 PR 已平台确认合并；本任务
   的原始 Goal 验收逐项满足。将独立证据与结论写入主附件对应验收项，必要修复交付
-  保留 PR 与 merge commit；读取实际版本设置 GW-T2 done 并确认服务结果后，再核对
+  保留 PR 与 merge commit；读取实际版本并用 task complete 确认 GW-T2 done 后，再核对
   全部任务和完整 Goal 验收，报告整个 Goal 完成。
 
 设计整合后仅在相应授权内执行后继。任何阶段存在开放 PR、未通过检查或缺少合并许可

@@ -21,7 +21,8 @@ const script = fileURLToPath(new URL('../acceptance.mts', import.meta.url));
 const labelKey = 'io.daynight.acceptance.run';
 const functionalScenarios = ['project-list', 'project-graph', 'detail-navigation', 'refresh-staleness',
   'failure-recovery', 'deep-links', 'keyboard-focus', 'narrow-layout', 'task-attachments', 'project-view-tabs',
-  'language-startup-preferences', 'language-state-preservation', 'language-errors-and-narrow', 'task-description-markdown'] as const;
+  'language-startup-preferences', 'language-state-preservation', 'language-errors-and-narrow',
+  'task-description-markdown', 'task-approval', 'task-approval-conflicts', 'task-approval-recovery'] as const;
 const capacityScenarios = ['capacity-chain', 'capacity-merge', 'capacity-shared', 'capacity-external', 'capacity-limits'] as const;
 
 const json = async (path: string, value: unknown): Promise<void> => {

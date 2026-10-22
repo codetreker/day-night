@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { attachmentDownloadUrl, attachmentPreviewUrl } from '../../src/api/client';
-import { createProject, createTask, expect, test, withDependencyFailure } from './fixtures';
+import { createProject, createApprovedTask, expect, test, withDependencyFailure } from './fixtures';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
 const language = (scope: Page | Locator): Locator => scope.getByRole('combobox', { name: '语言 / Language', exact: true });
@@ -52,7 +52,7 @@ test.describe('Web language journeys', () => {
 
   test('language-startup-preferences', scenario('language-startup-preferences'), async ({ page, request }, info) => {
     const project = await createProject(request, { name: `原始项目 Raw project ${randomUUID()}` });
-    const task = await createTask(request, project.id, { title: '原始任务 Raw task', description: '原始描述 Raw description' });
+    const task = await createApprovedTask(request, project.id, { title: '原始任务 Raw task', description: '原始描述 Raw description' });
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
@@ -94,9 +94,9 @@ test.describe('Web language journeys', () => {
   test('language-state-preservation', scenario('language-state-preservation'), async ({ page, request, allowAttachmentWrites }, info) => {
     const project = await createProject(request, { name: `Language lifecycle ${randomUUID()}` });
     const pullRequests = Array.from({ length: 101 }, (_, index) => ({ title: `原始 PR ${index + 1}`, url: `https://example.com/pull/${index + 1}` }));
-    const task = await createTask(request, project.id, { title: '根任务 Raw root', description: '原始描述 Raw description', properties: { pullRequests } });
-    await createTask(request, project.id, { title: '后续任务 Raw successor', dependsOn: [task.id] });
-    for (let index = 0; index < 79; index++) await createTask(request, project.id, { title: `Language successor ${index}`, dependsOn: [task.id] });
+    const task = await createApprovedTask(request, project.id, { title: '根任务 Raw root', description: '原始描述 Raw description', properties: { pullRequests } });
+    await createApprovedTask(request, project.id, { title: '后续任务 Raw successor', dependsOn: [task.id] });
+    for (let index = 0; index < 79; index++) await createApprovedTask(request, project.id, { title: `Language successor ${index}`, dependsOn: [task.id] });
     const htmlPath = 'preview.html';
     const htmlUrl = attachmentDownloadUrl(project.id, task.id, htmlPath);
     const seeded = await request.put(htmlUrl, { headers: { 'content-type': 'text/html' }, data: '<!doctype html><html lang="en"><body><button id="counter" onclick="this.textContent=String(Number(this.textContent)+1)">0</button><p>原始附件 Raw attachment</p></body></html>' });
@@ -313,8 +313,8 @@ test.describe('Web language journeys', () => {
     expect(await page.evaluate(() => localStorage.getItem('daynight.web.locale'))).toBe('en');
 
     const project = await createProject(request, { name: `Narrow 原始项目 ${randomUUID()}` });
-    const task = await createTask(request, project.id, { title: 'Narrow 原始任务', description: '原始描述 Raw description\n'.repeat(100) });
-    await createTask(request, project.id, { title: '后续 Raw successor', dependsOn: [task.id] });
+    const task = await createApprovedTask(request, project.id, { title: 'Narrow 原始任务', description: '原始描述 Raw description\n'.repeat(100) });
+    await createApprovedTask(request, project.id, { title: '后续 Raw successor', dependsOn: [task.id] });
     const seed = await request.put(attachmentDownloadUrl(project.id, task.id, '原始.txt'), { headers: { 'content-type': 'text/plain' }, data: '原始附件 Raw attachment\n' });
     expect(seed.status()).toBe(201);
     await page.goto(`/projects/${project.id}`);

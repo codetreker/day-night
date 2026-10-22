@@ -112,32 +112,62 @@ func TestConcurrentReverseDependenciesCannotCreateCycle(t *testing.T) {
 	}
 }
 
-func TestConcurrentReopenAndStartPreserveStateInvariant(t *testing.T) {
+func TestConcurrentDependencyReplacementAndClaimPreserveStateInvariant(t *testing.T) {
 	tasks, database, project, _ := taskService(t)
-	predecessor := createTask(t, tasks, project.ID, "Predecessor")
-	predecessor = updateTask(t, tasks, predecessor, UpdateTask{Status: pointer(core.TaskDone)})
-	dependent := createTask(t, tasks, project.ID, "Dependent", predecessor.ID)
+	predecessor := createTask(t, tasks, project.ID, "Unfinished prerequisite")
+	dependent := createTask(t, tasks, project.ID, "Dependent")
+	dependent = approveTask(t, tasks, dependent)
 	results := competeTaskWrites(t, database, project.ID,
 		func(ctx context.Context) (core.Task, error) {
-			return tasks.Update(ctx, project.ID, predecessor.ID, UpdateTask{Version: predecessor.Version, Status: pointer(core.TaskTodo)})
+			return tasks.Update(ctx, project.ID, dependent.ID, UpdateTask{Version: dependent.Version, DependsOn: pointer([]string{predecessor.ID})})
 		},
 		func(ctx context.Context) (core.Task, error) {
-			return tasks.Update(ctx, project.ID, dependent.ID, UpdateTask{Version: dependent.Version, Status: pointer(core.TaskInProgress)})
+			return tasks.Claim(ctx, project.ID, dependent.ID, dependent.Version)
 		})
-	assertOneTaskWinner(t, results, "dependency_unsatisfied")
-	afterPredecessor, err := tasks.Get(context.Background(), project.ID, predecessor.ID)
-	if err != nil {
-		t.Fatal(err)
+	assertOneTaskWinner(t, results, "version_conflict")
+	after, err := tasks.Get(context.Background(), project.ID, dependent.ID)
+	if err != nil || after.Version != dependent.Version+1 {
+		t.Fatalf("concurrent dependency/claim result: %#v, %v", after, err)
 	}
-	afterDependent, err := tasks.Get(context.Background(), project.ID, dependent.ID)
-	if err != nil {
-		t.Fatal(err)
+	if after.Status == core.TaskInProgress {
+		if len(after.DependsOn) != 0 || len(after.BlockedBy) != 0 {
+			t.Fatalf("claimed task acquired unfinished prerequisite: %#v", after)
+		}
+	} else if after.Status != core.TaskTodo || len(after.DependsOn) != 1 || after.DependsOn[0] != predecessor.ID || after.Ready {
+		t.Fatalf("dependency replacement lost approved blocked state: %#v", after)
 	}
-	if afterDependent.Status == core.TaskInProgress && afterPredecessor.Status != core.TaskDone {
-		t.Fatalf("started task has unfinished prerequisite: %#v / %#v", afterPredecessor, afterDependent)
-	}
-	if afterPredecessor.Status == core.TaskTodo && (afterDependent.Status != core.TaskTodo || afterDependent.Ready) {
-		t.Fatalf("reopened prerequisite has invalid downstream state: %#v / %#v", afterPredecessor, afterDependent)
+	assertTaskUnchanged(t, tasks, predecessor)
+}
+
+func TestConcurrentLifecycleSameVersionOnlyChangesOnce(t *testing.T) {
+	tasks, database, project, _ := taskService(t)
+	for _, action := range []struct {
+		name  string
+		to    core.TaskStatus
+		apply func(context.Context, string, string, int64) (core.Task, error)
+	}{
+		{"approve", core.TaskTodo, tasks.Approve},
+		{"claim", core.TaskInProgress, tasks.Claim},
+		{"complete", core.TaskDone, tasks.Complete},
+	} {
+		t.Run(action.name, func(t *testing.T) {
+			target := createTask(t, tasks, project.ID, "Concurrent lifecycle")
+			if action.name != "approve" {
+				target = approveTask(t, tasks, target)
+			}
+			if action.name == "complete" {
+				target = claimTask(t, tasks, target)
+			}
+			write := func(ctx context.Context) (core.Task, error) {
+				return action.apply(ctx, project.ID, target.ID, target.Version)
+			}
+			results := competeTaskWrites(t, database, project.ID, write, write)
+			assertOneTaskWinner(t, results, "version_conflict")
+			after, err := tasks.Get(context.Background(), project.ID, target.ID)
+			if err != nil || after.Version != target.Version+1 || after.Status != action.to || !after.UpdatedAt.After(target.UpdatedAt) {
+				t.Fatalf("lifecycle competition: before %#v, after %#v, %v", target, after, err)
+			}
+		})
 	}
 }
 

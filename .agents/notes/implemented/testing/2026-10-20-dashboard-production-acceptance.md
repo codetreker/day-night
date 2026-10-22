@@ -15,8 +15,8 @@ a mismatched image or cleanup failures unless its receipts are validated.
 `pnpm web:acceptance` uses the shared acceptance runner to build real embedded
 assets and a fresh native Go executable, own an isolated PostgreSQL 18.6
 container/volume and wait for structured service readiness. The normal dev-ci
-source build/start runs concurrently. Browser phases run thirteen native functional
-scenarios, the same thirteen functional scenarios through the production image's
+source build/start runs concurrently. Browser phases run seventeen native functional
+scenarios, the same seventeen functional scenarios through the production image's
 stream gateway, then five native capacity/limit scenarios. The normal localhost
 stack and its data do not participate. The
 [pipeline decision](2026-10-21-web-acceptance-pipeline.md) partially supersedes the
@@ -44,7 +44,10 @@ adds three targeted functional language scenarios to each target without
 replicating the capacity matrix. Fixtures are created through real APIs;
 the original graph scenarios and task-view scenario retain read-only browser
 request checks. The attachment and `language-state-preservation` scenarios
-permit only their exact fixture-scoped file PUT/DELETE requests;
+permit only their exact fixture-scoped file PUT/DELETE requests. The
+[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds task-approval,
+task-approval-conflicts and task-approval-recovery, admitting only registered
+project/task POST approve operations and exact expected counts;
 uncaught exceptions remain failures in every scenario. Database
 fault injection verifies the disposable database's ownership before changing it
 and restores the resource in a finally path. Browser routing barriers control
@@ -80,8 +83,8 @@ native/container/capacity evidence; prior full-render results do not establish i
 Playwright runs one worker with zero retries. Report validation rejects global
 errors, skipped/flaky/retried tests, duplicate/missing stable scenarios, missing
 PNG screenshots and inconsistent summary counts. Native functional/capacity
-reports form a strict eighteen-scenario union; container functional validation
-requires thirteen. Missing, extra or duplicate names fail both phase and aggregate
+reports form a strict twenty-two-scenario union; container functional validation
+requires seventeen. Missing, extra or duplicate names fail both phase and aggregate
 validation, and browser identity must agree across a target's phases.
 Performance validation requires
 all fixed datasets, exactly five valid measurements per dataset, every budget

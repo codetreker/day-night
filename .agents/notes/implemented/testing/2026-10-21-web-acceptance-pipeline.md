@@ -81,7 +81,10 @@ signal handlers on import. The thin `scripts/acceptance.mts` CLI and `scripts/ci
 pass explicit cancellation controllers to that runner. CI supplies callbacks for
 pinned Chromium installation and the unchanged `pnpm web:test` command; only the
 coverage child receives `VITEST_MAX_WORKERS=2`, retaining its `forks` pool and
-per-file isolation. Browser installation, including Playwright's Linux dependency
+per-file isolation. The callback passes a copied environment to that child rather
+than changing `process.env`; browser installation, native preparation and the
+dev-ci callback do not inherit the coverage-only worker limit. Browser
+installation, including Playwright's Linux dependency
 installation, has a 600-second deadline; coverage remains bounded at 180 seconds.
 Both commands remain required: a nonzero exit or timeout fails acceptance. The
 web job retains its 20-minute overall timeout. Controlled deployment fixtures run
@@ -96,25 +99,28 @@ The runner starts coverage, native production UI/Go/PostgreSQL preparation,
 container callback and normal dev-ci source build/start concurrently. Browser and
 Linux dependency installation starts only after coverage passes, removing apt and
 browser downloads from the 5-second UI-test deadline. Browser installation still
-overlaps native and dev-ci preparation. The existing shell runner remains authoritative for the
-unique image, running-image check and full stack cleanup. Native functional
-browser work waits only for the native process, shared installed CLI and browser
-preparation. Its thirteen scenarios and immediate browser recovery must pass
-before the runner releases the container browser.
+overlaps native and dev-ci preparation. The existing shell runner remains
+authoritative for the unique image, running-image check and full stack cleanup.
+Native functional browser work waits only for the native process, shared installed
+CLI and browser preparation. Its seventeen scenarios and immediate browser
+recovery must pass before the runner releases the container browser.
 
 If coverage or another active phase fails while browser preparation is waiting,
 the pipeline marks cancellation and the browser callback checks it as soon as
-coverage drains; it never starts the installer. The [pipeline regressions](../../../../packages/daynight-web/scripts/acceptance/pipeline.test.mts)
+coverage drains; it never starts the installer. The
+[pipeline regressions](../../../../packages/daynight-web/scripts/acceptance/pipeline.test.mts)
 verify coverage-before-browser ordering, cancellation while waiting, continued
 native/container overlap, browser-install failure handling, and capacity after
-full container cleanup.
+full container cleanup. Their completion observer records rejection before
+controlled failures are released, so teardown waits do not leave a rejected
+pipeline promise unobserved.
 
 Release is an atomic `container/container-permission.json` receipt with schema 1,
 phase `native-functional-cleaned`, acceptance run ID, dev-ci run ID and source
 SHA. The container callback records its process identity before waiting and
 inventories browsers only after validating that exact permission. Its
 `ready.json` records diagnostic timing and grants no permission. The callback
-runs the thirteen container functional scenarios, confirms browser cleanup and
+runs the seventeen container functional scenarios, confirms browser cleanup and
 returns to the normal shell exit path. The outer stage waits for full dev-ci
 cleanup and browser recovery before completing.
 
@@ -124,14 +130,17 @@ Go process and PostgreSQL remain alive for this final phase. One browser worker,
 zero retries, all four fixed graphs with five repetitions, both independent
 limits, complete visible induced geometry, twenty CDP traces and all original
 timing gates remain required. Native functional and capacity phases strictly
-aggregate to eighteen unique scenarios; the container target requires thirteen.
+aggregate to twenty-two unique scenarios; the container target requires seventeen.
 Per-phase and aggregate validation reject missing, extra or duplicate scenarios
 and retries, and require matching browser identity within a target.
 
 The [progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
 retains those complete API inputs and existing timing thresholds while requiring
 bounded overview DOM, all induced visible edges and explicit expansion/reset.
-Phase ownership and the 31-scenario inventory remain unchanged.
+Phase ownership remains unchanged. The current inventory includes the three approval
+lifecycle scenarios and the [Markdown description scenario](../architecture/2026-10-22-task-description-markdown.md):
+seventeen functional scenarios per target and five native capacity/limit scenarios,
+for twenty-two native and seventeen container scenarios, thirty-nine in total.
 
 The top-level evidence and recovery receipts use schema 2. Pipeline stages record
 names, results, timestamps, observed managed-command process identities and their

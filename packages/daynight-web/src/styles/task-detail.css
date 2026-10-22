@@ -61,6 +61,20 @@
 .task-detail-ready { background: #eeeeff; color: #6060b1; }
 .task-detail-blocked { background: #fff4e5; color: #946b34; }
 
+.task-detail-approval { padding: 0 30px; }
+.task-approval { border: 1px solid #e2dced; background: #faf8fd; border-radius: 7px; padding: 14px; margin-top: 19px; }
+.task-approval h4 { margin: 0 0 7px; font-size: 11px; font-weight: 600; color: #71558e; }
+.task-approval-description, .task-approval-message, .task-approval-error { font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; color: #637087; }
+.task-approval-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.task-approval-controls:empty { display: none; }
+.task-approval-controls .button { font-size: 11px; padding: 7px 11px; }
+.task-approval-message { margin-top: 10px; outline: none; }
+.task-approval-error { color: #a05252; margin-top: 8px; }
+.task-approval-confirmed { background: #f3f9f5; border-color: #d7e8de; }
+.task-approval-confirmed h4 { color: #438365; }
+.task-detail-read-error { padding: 15px 30px 0; color: #a05252; font-size: 11px; line-height: 1.8; }
+.task-detail-read-error .button { margin-top: 8px; }
+
 .task-detail-columns { display: grid; grid-template-columns: minmax(0, 1fr) 265px; gap: 30px; padding: 25px 30px 30px; }
 .task-detail-main, .task-detail-aside { min-width: 0; }
 .task-detail-section { border-top: 1px solid #edf0f4; padding-top: 18px; margin: 21px 0 0; }
@@ -85,6 +99,7 @@
 .task-detail-footer { border-top: 1px solid var(--line); padding: 12px 26px; color: #737d8e; font-size: 10px; flex: none; line-height: 1.7; }
 .task-detail-state { min-height: 0; flex: 1; overflow: auto; padding: 30px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 13px; color: #637087; font-size: 12px; overflow-wrap: anywhere; }
 .task-detail-state h3 { color: #45516a; font-size: 16px; margin: 0; }
+.task-detail-refresh { margin-top: 13px; color: #737d8e; font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; }
 .task-detail-stale { border: 1px solid #e7d7c2; background: #fffaf1; border-radius: 7px; padding: 13px; margin-top: 20px; color: #79623d; font-size: 11px; line-height: 1.8; }
 .task-detail-stale .button { margin-top: 9px; font-size: 11px; }
 
@@ -122,6 +137,8 @@
   .task-detail-header .locale-control > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .task-detail-close { min-width: 36px; min-height: 36px; }
   .task-detail-heading { padding: 22px 19px 0; }
+  .task-detail-approval { padding: 0 19px; }
+  .task-detail-read-error { padding: 15px 19px 0; }
   .task-detail-title { font-size: 21px; }
   .task-detail-columns { display: block; padding: 20px 19px 24px; }
   .task-detail-aside { margin-top: 24px; }
@@ -137,6 +154,7 @@
   .task-detail-heading > .task-detail-id { display: none; }
   .task-detail-title { display: block; font-size: 17px; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .task-detail-badges { flex: none; }
+  .task-detail-refresh { margin: 0; font-size: 9px; line-height: 1.5; }
   .task-detail-stale { margin: 0; padding: 4px 7px; font-size: 9px; }
   .task-detail-stale .button { margin-top: 2px; padding: 3px 5px; }
   .task-detail-tabs { margin-top: 5px; padding: 0 18px; }

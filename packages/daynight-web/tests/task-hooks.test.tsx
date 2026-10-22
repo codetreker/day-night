@@ -1,13 +1,17 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook as renderHookWithoutSession, waitFor, type RenderHookOptions } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GraphTask, TaskDetail, TaskGraph } from "../src/api/types";
-import { ApiError, getTask, getTaskGraph } from "../src/api/client";
+import { ApiError, approveTask, getTask, getTaskGraph } from "../src/api/client";
 import { useTaskGraph } from "../src/features/projects/useTaskGraph";
 import { useTaskDetail } from "../src/features/task-detail/useTaskDetail";
-import { isTaskStale } from "../src/features/task-detail/freshness";
+import { TaskDetailSessionBoundary } from "../src/features/task-detail/TaskDetailSession";
+import { isTaskStale, taskDescriptor } from "../src/features/task-detail/freshness";
 import { GraphDataError } from "../src/features/task-graph/model";
 
-vi.mock("../src/api/client", async (original) => ({ ...await original<typeof import("../src/api/client")>(), getTask: vi.fn(), getTaskGraph: vi.fn() }));
+const renderHook = <Result, Props,>(render: (props: Props) => Result, options?: RenderHookOptions<Props>) =>
+  renderHookWithoutSession(render, { ...options, wrapper: TaskDetailSessionBoundary });
+
+vi.mock("../src/api/client", async (original) => ({ ...await original<typeof import("../src/api/client")>(), approveTask: vi.fn(), getTask: vi.fn(), getTaskGraph: vi.fn() }));
 const graphRequest = vi.mocked(getTaskGraph);
 const detailRequest = vi.mocked(getTask);
 const projectId = "10000000-0000-0000-0000-000000000001";
@@ -16,7 +20,7 @@ const taskId = "20000000-0000-0000-0000-000000000001";
 const otherTask = "20000000-0000-0000-0000-000000000002";
 const time = "2026-10-20T12:00:00.123456Z";
 const node: GraphTask = { id: taskId, titlePreview: "任务一", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
-const detail: TaskDetail = { id: taskId, projectId, title: "任务一", description: "完整描述", properties: { pullRequests: [] }, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
+const detail: TaskDetail = { id: taskId, projectId, title: "任务一", description: "完整描述", properties: { pullRequests: [] }, status: "todo", version: 1n, dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
 const graph = (id = projectId): TaskGraph => ({
   project: { id, name: `项目 ${id}`, repoUrl: "https://github.com/example/repo", createdAt: time, updatedAt: time },
   tasks: [node], summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
@@ -27,7 +31,7 @@ const deferred = <T,>() => {
   const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
   return { promise, resolve, reject };
 };
-beforeEach(() => { graphRequest.mockReset(); detailRequest.mockReset(); });
+beforeEach(() => { graphRequest.mockReset(); detailRequest.mockReset(); vi.mocked(approveTask).mockReset(); });
 
 describe("task graph snapshots", () => {
   it("polls every five seconds without replacing an unchanged graph or announcing background loading", async () => {
@@ -270,10 +274,60 @@ describe("task graph snapshots", () => {
 });
 
 describe("task details", () => {
+  it("keeps an observed proposed version usable through repeated six-second reads and five-second unchanged graph receipts", async () => {
+    vi.useFakeTimers();
+    const proposed = { ...detail, status: "proposed" as const, ready: false, dependsOn: [otherTask], blockedBy: [otherTask] };
+    const proposedNode = { ...node, status: "proposed" as const, ready: false, dependsOn: [otherTask], blockedBy: [otherTask] };
+    let observed: GraphTask = proposedNode;
+    let served: TaskDetail = proposed;
+    let predecessor: GraphTask = { ...node, id: otherTask, titlePreview: "Prerequisite" };
+    graphRequest.mockImplementation(async () => ({ ...graph(), tasks: [observed, predecessor], summary: {
+      total: 2, proposed: 1, todo: predecessor.status === "todo" ? 1 : 0, inProgress: 0,
+      done: predecessor.status === "done" ? 1 : 0, ready: predecessor.ready ? 1 : 0, blocked: 0,
+    } }));
+    let active = 0;
+    let maximumActive = 0;
+    detailRequest.mockImplementation(async (_project, _task, signal) => {
+      maximumActive = Math.max(maximumActive, ++active);
+      const response = served;
+      await new Promise((resolve) => setTimeout(resolve, 6_000));
+      active--;
+      expect(signal.aborted).toBe(false);
+      return response;
+    });
+    const { result } = renderHook(() => {
+      const { snapshot } = useTaskGraph(projectId);
+      return useTaskDetail(projectId, taskId, snapshot?.revision ?? 0, snapshot?.index.nodes.get(taskId));
+    });
+    for (let cycle = 1; cycle <= 3; cycle++) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(6_000); });
+      expect(result.current.detail).toEqual(proposed);
+      expect(result.current.canApprove).toBe(true);
+      expect(approveTask).not.toHaveBeenCalled();
+    }
+    expect(detailRequest).toHaveBeenCalledTimes(4);
+    expect(maximumActive).toBe(1);
+    expect(result.current.loadedRevision).toBeLessThan(result.current.revision);
+    predecessor = { ...predecessor, status: "done", ready: false };
+    observed = { ...proposedNode, blockedBy: [] };
+    served = { ...proposed, blockedBy: [] };
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    expect(result.current.canApprove).toBe(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4_000); });
+    expect(result.current.detail).toEqual(proposed);
+    expect(result.current.requiresFreshRead).toBe(true);
+    expect(result.current.canApprove).toBe(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(6_000); });
+    expect(result.current.detail).toEqual(served);
+    expect(result.current.canApprove).toBe(true);
+    expect(maximumActive).toBe(1);
+    expect(approveTask).not.toHaveBeenCalled();
+  });
+
   it("loads independently, retries failures locally and never exposes an old detail while retrying", async () => {
     const retry = deferred<TaskDetail>();
     detailRequest.mockRejectedValueOnce(new Error("detail unavailable")).mockReturnValueOnce(retry.promise);
-    const { result } = renderHook(() => useTaskDetail(projectId, taskId, 1));
+    const { result } = renderHook(() => useTaskDetail(projectId, taskId, 1, node));
     await waitFor(() => expect(result.current.status).toBe("error"));
     expect(result.current.detail).toBeNull();
     act(() => result.current.retry());
@@ -282,11 +336,11 @@ describe("task details", () => {
     expect(result.current).toMatchObject({ status: "ready", detail, error: null });
   });
 
-  it("clears immediately for project and task changes while retaining the same task on graph receipts", async () => {
+  it("clears immediately for identity changes and retains loaded details through a same-identity graph refresh", async () => {
     detailRequest.mockImplementation(async (project, task) => ({ ...detail, projectId: project, id: task }));
     const renders: Array<{ key: string; displayed: string | null }> = [];
     const { result, rerender } = renderHook(({ project, task, revision }) => {
-      const state = useTaskDetail(project, task, revision);
+      const state = useTaskDetail(project, task, revision, { ...node, id: task });
       renders.push({ key: `${project}/${task}/${revision}`, displayed: state.detail?.id ?? null });
       return state;
     }, { initialProps: { project: projectId, task: taskId, revision: 1 } });
@@ -298,7 +352,8 @@ describe("task details", () => {
       const first = renders.length;
       rerender(props);
       expect(renders[first]?.displayed).toBeNull();
-      await waitFor(() => expect(result.current.status).toBe("ready"));
+      await waitFor(() => expect(result.current.loadedRevision).toBe(props.revision));
+      expect(result.current.status).toBe("ready");
       expect(result.current.detail?.projectId).toBe(props.project);
       expect(result.current.detail?.id).toBe(props.task);
     }
@@ -309,10 +364,54 @@ describe("task details", () => {
     expect(detailRequest).toHaveBeenCalledTimes(4);
   });
 
+  it.each([new Error("Background detail read failed"), new DOMException("Background read cancelled", "AbortError")])("retains loaded details and the actual background error until a fresh retry succeeds %#", async (error) => {
+    const pending = deferred<TaskDetail>();
+    const recovery = deferred<TaskDetail>();
+    const proposed = { ...detail, status: "proposed" as const, ready: false };
+    const fresh = { ...proposed, version: proposed.version + 1n, title: "Updated task" };
+    detailRequest.mockResolvedValueOnce(proposed).mockReturnValueOnce(pending.promise).mockReturnValueOnce(recovery.promise);
+    const proposedNode = { ...node, status: "proposed" as const, ready: false };
+    const { result, rerender } = renderHook(({ revision, observed }) => useTaskDetail(projectId, taskId, revision, observed), { initialProps: { revision: 1, observed: proposedNode } });
+    await waitFor(() => expect(result.current.loadedRevision).toBe(1));
+    rerender({ revision: 2, observed: { ...proposedNode, titlePreview: fresh.title } });
+    expect(result.current.detail).toBe(proposed);
+    expect(result.current.refreshing).toBe(true);
+    expect(result.current.canApprove).toBe(false);
+    await act(async () => { pending.reject(error); });
+    expect(result.current).toMatchObject({ detail: proposed, status: "ready", loadedRevision: 1, revision: 2, refreshing: false, error });
+    expect(result.current.error).toBe(error);
+    expect(result.current.canApprove).toBe(false);
+    act(() => result.current.retry());
+    expect(result.current.detail).toBe(proposed);
+    await act(async () => { recovery.resolve(fresh); });
+    expect(result.current).toMatchObject({ detail: fresh, loadedRevision: 2, refreshing: false, error: null, canApprove: true });
+  });
+
+  it("performs the deferred background read when approval finishes after the graph revision changes", async () => {
+    const mutation = deferred<TaskDetail>();
+    const refresh = deferred<TaskDetail>();
+    const proposed = { ...detail, status: "proposed" as const, ready: false };
+    const approved = { ...detail, version: proposed.version + 1n };
+    detailRequest.mockResolvedValueOnce(proposed).mockReturnValueOnce(refresh.promise);
+    vi.mocked(approveTask).mockReturnValueOnce(mutation.promise);
+    const { result, rerender } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision, node), { initialProps: { revision: 1 } });
+    await waitFor(() => expect(result.current.loadedRevision).toBe(1));
+    act(() => result.current.approve());
+    rerender({ revision: 2 });
+    rerender({ revision: 3 });
+    expect(detailRequest).toHaveBeenCalledTimes(1);
+    expect(result.current.approval.phase).toBe("pending");
+    await act(async () => { mutation.resolve(approved); });
+    await waitFor(() => expect(detailRequest).toHaveBeenCalledTimes(2));
+    expect(result.current).toMatchObject({ detail: approved, refreshing: true, loadedRevision: 1 });
+    await act(async () => { refresh.resolve(approved); });
+    expect(result.current).toMatchObject({ detail: approved, refreshing: false, loadedRevision: 3, error: null });
+  });
+
   it("aborts superseded details and ignores late values without patching the graph", async () => {
     const late = deferred<TaskDetail>();
     detailRequest.mockReturnValueOnce(late.promise).mockResolvedValueOnce({ ...detail, id: otherTask });
-    const { result, rerender } = renderHook(({ task }) => useTaskDetail(projectId, task, 1), { initialProps: { task: taskId } });
+    const { result, rerender } = renderHook(({ task }) => useTaskDetail(projectId, task, 1, { ...node, id: task }), { initialProps: { task: taskId } });
     const oldSignal = detailRequest.mock.calls[0]![2];
     rerender({ task: otherTask });
     expect(oldSignal.aborted).toBe(true);
@@ -324,7 +423,7 @@ describe("task details", () => {
   it("ignores a cancelled failure and cleans up requests on unmount", async () => {
     const late = deferred<TaskDetail>();
     detailRequest.mockReturnValueOnce(late.promise).mockResolvedValueOnce(detail);
-    const { result, rerender, unmount } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision), { initialProps: { revision: 1 } });
+    const { result, rerender, unmount } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision, node), { initialProps: { revision: 1 } });
     rerender({ revision: 2 });
     expect(detailRequest).toHaveBeenCalledTimes(1);
     act(() => result.current.retry());
@@ -344,7 +443,7 @@ describe("task details", () => {
     const slow = deferred<TaskDetail>();
     const updated = { ...detail, description: "updated", properties: { pullRequests: [{ title: "PR", url: "https://example.com/pr/1" }] } };
     detailRequest.mockReturnValueOnce(slow.promise).mockResolvedValueOnce(updated);
-    const { result, rerender } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision), { initialProps: { revision: 1 } });
+    const { result, rerender } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision, node), { initialProps: { revision: 1 } });
     const signal = detailRequest.mock.calls[0]![2];
     rerender({ revision: 2 });
     rerender({ revision: 3 });
@@ -360,7 +459,7 @@ describe("task details", () => {
     const retry = deferred<TaskDetail>();
     const failure = new Error("offline");
     detailRequest.mockResolvedValueOnce(detail).mockRejectedValueOnce(failure).mockReturnValueOnce(retry.promise);
-    const { result, rerender } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision), { initialProps: { revision: 1 } });
+    const { result, rerender } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision, node), { initialProps: { revision: 1 } });
     await waitFor(() => expect(result.current.status).toBe("ready"));
     const first = result.current.detail!;
     rerender({ revision: 2 });
@@ -380,7 +479,7 @@ describe("task details", () => {
     const failure = new Error("offline");
     detailRequest.mockRejectedValueOnce(failure).mockReturnValueOnce(recovery.promise)
       .mockRejectedValueOnce(new ApiError("server", 404, "not_found"));
-    const { result, rerender } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision), { initialProps: { revision: 1 } });
+    const { result, rerender } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision, node), { initialProps: { revision: 1 } });
     await waitFor(() => expect(result.current.status).toBe("error"));
     rerender({ revision: 2 });
     expect(result.current).toMatchObject({ status: "error", detail: null, error: failure });
@@ -395,7 +494,7 @@ describe("task details", () => {
     const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
     const pending = deferred<TaskDetail>();
     detailRequest.mockReturnValueOnce(pending.promise).mockResolvedValueOnce({ ...detail, description: "latest" });
-    const { result, rerender } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision), { initialProps: { revision: 1 } });
+    const { result, rerender } = renderHook(({ revision }) => useTaskDetail(projectId, taskId, revision, node), { initialProps: { revision: 1 } });
     rerender({ revision: 2 });
     visibility.mockReturnValue("hidden");
     await act(async () => { pending.resolve(detail); });
@@ -410,7 +509,7 @@ describe("task details", () => {
 
   it("does not turn an AbortError into a displayed failure", async () => {
     detailRequest.mockRejectedValueOnce(new DOMException("Aborted", "AbortError"));
-    const { result } = renderHook(() => useTaskDetail(projectId, taskId, 1));
+    const { result } = renderHook(() => useTaskDetail(projectId, taskId, 1, node));
     await act(async () => { await Promise.resolve(); });
     expect(result.current.error).toBeNull();
     expect(result.current.detail).toBeNull();
@@ -420,6 +519,8 @@ describe("task details", () => {
 describe("detail freshness", () => {
   it("accepts the same fields and order-independent dependency sets", () => {
     expect(isTaskStale(node, detail)).toBe(false);
+    expect(taskDescriptor({ ...node, dependsOn: [taskId, otherTask], blockedBy: [taskId, otherTask] })).toBe(
+      taskDescriptor({ ...node, dependsOn: [otherTask, taskId], blockedBy: [otherTask, taskId] }));
     expect(isTaskStale({ ...node, dependsOn: [taskId, otherTask], blockedBy: [taskId, otherTask] },
       { ...detail, dependsOn: [otherTask, taskId], blockedBy: [otherTask, taskId] })).toBe(false);
   });
