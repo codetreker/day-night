@@ -18,8 +18,11 @@ and aligned with its task nodes.
 The project page owns one validated graph/index snapshot, its client receipt time
 and revision. Requests are scoped by project identity and generation; a different
 resource cannot render an earlier resource's data. Same-project refresh retains
-the last successful snapshot. Manual refresh displays its loading state, and
-recoverable failure displays an error beside prior data. Changed data replaces
+the last successful snapshot. Manual refresh displays busy text in its disabled
+button, and recoverable failure displays an error beside prior data. The
+[refresh presentation decision](../simplification/2026-10-22-project-refresh-notice.md)
+partially supersedes the original separate loading notice while retaining its
+freshness feedback through the button and failure state. Changed data replaces
 statistics, indexes and both task-category lists together. The [automatic refresh decision](2026-10-22-project-task-auto-refresh.md)
 extends request scheduling with visible-page periodic reads, retains equivalent
 graph/index references and preserves the same-task detail body during refresh.
