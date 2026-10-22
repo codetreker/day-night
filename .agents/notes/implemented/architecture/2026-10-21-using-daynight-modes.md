@@ -30,8 +30,16 @@ remain, while the public name and workflow ownership change. The
 continues to own query cost and candidate semantics; autopilot owns next-work
 selection, and run-task owns one task's delivery.
 
-Create-task skips one-off and trivial work, matches existing problem/scope and
-attached acceptance, and prepares artifacts before creating a durable task.
+Every task creation requires explicit user permission to create tasks. A direct
+creation request or existing explicit permission applies within its stated scope
+without repeated confirmation. Implementation requests, inferred routing,
+tracking needs and autopilot activation do not imply this permission. Missing
+creation permission requires asking before creating a task, including during
+autopilot. This keeps the persistent backlog under the user's control.
+
+Create-task checks creation permission, skips one-off and trivial work, matches
+existing problem/scope and attached acceptance, and prepares artifacts before
+creating a durable task.
 The description contains the problem and real attachment references. One primary
 Markdown attachment owns solution and acceptance sections in the task's language.
 Frontend tasks also include an interactive mock UI matching the intended final
@@ -104,7 +112,9 @@ One installed directory contains the complete protocol and four mode references.
 Command usage stays with the installed CLI, and the compact handbook explains
 the operational facts needed to choose and combine commands. Task execution and
 repeated selection share one completion gate. Explicit autopilot entry prevents ordinary skill use
-from silently becoming a continuous work queue. Task attachments become required
+from silently becoming a continuous work queue. Explicit task creation permission
+prevents autonomous execution from expanding the persistent backlog; missing
+permission requires user input before registration. Task attachments become required
 inputs to execution; create-task must reconcile partial registration and cannot
 claim readiness from an existing task ID alone.
 

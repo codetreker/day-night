@@ -68,13 +68,16 @@ references are published under `dist/commands/skill/skills/using-daynight/`.
 | Mode | Responsibility |
 |---|---|
 | `handbook` | Command purposes and operational context; use CLI help for command usage |
-| `create-task` | Skip one-off/trivial work, reuse or register a task with verified planning attachments |
+| `create-task` | With explicit user permission, skip one-off/trivial work and reuse or register a task with verified planning attachments |
 | `run-task <task-id>` | Execute the designated task through validation and authorized delivery, then return |
 | `autopilot <goal or scope>` | Restore the current task or select one most relevant ready todo, and continue only after confirmed completion |
 
 Calling `using-daynight` without input uses the actual context; unclear intent is
 resolved with the user. Autopilot requires an explicit request for continuous
-execution. Task descriptions contain the problem and real attachment references;
+execution. Creating tasks requires explicit user permission to create them;
+implementation requests and autopilot activation do not supply that permission.
+Existing explicit permission applies within its stated scope without repeated
+confirmation. Task descriptions contain the problem and real attachment references;
 one primary Markdown attachment owns solution and acceptance criteria. Frontend
 tasks also require an interactive mock UI matching intended final visuals and
 representative states. Dependencies use dependsOn, PR references use properties,

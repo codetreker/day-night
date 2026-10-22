@@ -46,10 +46,11 @@ completed scope, remaining work blocked by prerequisites, other ongoing work,
 and insufficient candidates. Do not report the scope complete from an empty or
 unrelated bounded page, or take unrelated work to stay busy.
 
-Task creation is a separate mode with its own registration checks. If the
-confirmed goal requires missing tracked work, use [create-task](create-task.md)
-only within the user's authorization. Its return does not itself start
-execution; selection and execution still follow this mode's rules.
+Autopilot permission covers execution of existing tasks, not creation of new
+ones. If the confirmed goal requires missing tracked work, obtain explicit task
+creation permission unless the user already granted it for that scope, then use
+[create-task](create-task.md). Its return does not itself start execution;
+selection and execution still follow this mode's rules.
 
 ## Advance serially
 

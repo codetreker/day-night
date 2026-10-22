@@ -5,12 +5,19 @@ Use this mode to prepare and register work that needs persistent tracking. Read
 registration; creating a task does not authorize implementation or activate
 autopilot.
 
+Create a task only with the user's explicit permission to create tasks, whether
+requested directly or already granted for the relevant scope.
+Loading this mode, needing durable tracking, or having permission to implement
+or run autopilot does not grant creation permission. If it is missing, ask
+before creating a task; do not repeat a request already covered by explicit
+permission.
+
 ## Decide whether to register
 
 One-off operations and trivial work do not need a task. Keep transient command
-steps in the existing execution plan. Register an independently understandable
-outcome when its delivery needs continued tracking, cross-session continuity,
-handoff, or dependency coordination. If the request does not merit a task,
+steps in the existing execution plan. With creation permission, register an
+independently understandable outcome when its delivery needs continued tracking,
+cross-session continuity, handoff, or dependency coordination. If the request does not merit a task,
 explain that conclusion without creating one or starting unrequested work.
 
 Look for an existing task that solves the same problem within the same scope.

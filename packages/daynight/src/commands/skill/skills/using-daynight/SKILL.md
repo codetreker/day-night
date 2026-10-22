@@ -19,7 +19,7 @@ requires. Do not load every mode by default.
 | Mode | Use when | Reference |
 |---|---|---|
 | `handbook` | Answering usage questions or performing requested task-management operations | [Handbook](references/handbook.md) |
-| `create-task <request>` | Preparing or registering work that merits a persistent task | [Create task](references/create-task.md) |
+| `create-task <request>` | Preparing or registering a persistent task explicitly requested by the user | [Create task](references/create-task.md) |
 | `run-task <task-id>` | Executing one specified task | [Run task](references/run-task.md) |
 | `autopilot <goal or scope>` | The user explicitly requests automatic execution of Daynight tasks | [Autopilot](references/autopilot.md) |
 
@@ -35,6 +35,11 @@ task, and completing `run-task` never activate it.
 
 ## Shared constraints
 
+- Never create a task without the user's explicit permission to create tasks.
+  A direct creation request or existing explicit permission covers its stated
+  scope; do not ask again within it. Implementation requests, tracking needs,
+  inferred mode selection, and autopilot activation do not grant this permission.
+  If a new task is needed outside that permission, ask before creating it.
 - Advance one task at a time, including CI, review, and merge waits. Subagents
   collaborate on the same task. `autopilot` owns selection of subsequent work;
   `run-task` and `create-task` return when their own work ends.
