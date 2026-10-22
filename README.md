@@ -892,11 +892,13 @@ Human task lists use labeled blocks containing ID, project, title, PR references
 status, readiness, dependencies and blocking. Description, version and timestamps
 remain available in show, ready, create and update output. Graph nodes include
 state, dependencies, blocking and title-preview truncation flags. Queries support
-`--json`: `list` returns every matching resource with all API fields in one array,
-`ready` returns only its selected tasks as an array, details return one resource,
-and graphs return the complete API object. A ready result retains every task
-field; an empty human result is `No ready tasks.` and empty JSON is `[]`. Versions
-remain JSON numbers with full int64 precision.
+`--json`: task `list` returns every matching task in one array, omitting only
+`description` while retaining every other API field, including raw PR strings,
+version and timestamps. This applies to the default list and every filter,
+including `--all`. Project lists retain all API fields. Task `ready` returns its
+selected full tasks as an array, details return one full resource, and graphs
+return the complete API object. An empty human ready result is `No ready tasks.`
+and empty JSON is `[]`. Versions remain JSON numbers with full int64 precision.
 Local preparation fails before any task mutation; a lost write response is
 reported as unconfirmed. The [task record](docs/design/daynight-project-task-tasks.md)
 owns validation status. Installed CLI integration uses the real Go/PostgreSQL

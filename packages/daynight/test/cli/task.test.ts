@@ -18,6 +18,11 @@ const thirdId = "b1b2c3d4-1111-4222-8333-123456789abe";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project: Project = { id: projectId, name: "Project 中文", repoUrl: "git@git.example:Org/Repo.git", createdAt: time, updatedAt: time };
 const task = (partial: Partial<Task> = {}): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true, ...partial });
+const taskListItem = (value: Task): Omit<Task, "description"> => ({
+  id: value.id, projectId: value.projectId, title: value.title, properties: value.properties,
+  status: value.status, version: value.version, createdAt: value.createdAt, updatedAt: value.updatedAt,
+  dependsOn: value.dependsOn, blockedBy: value.blockedBy, ready: value.ready,
+});
 const graph = (): TaskGraph => ({
   project,
   summary: { total: 1, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
@@ -268,6 +273,12 @@ describe("compiled task commands", () => {
         expect(result.code, result.stderr).toBe(0);
         expect(result.stdout).toContain("Usage: daynight task");
         expect(result.stderr).toBe("");
+        if (args[0] === "list") {
+          expect(result.stdout).toContain("Print task fields except description as JSON");
+          expect(result.stdout).toContain("--json omits description and preserves every other task field");
+        } else if (["ready", "show", "graph"].includes(args[0]!)) {
+          expect(result.stdout).toContain("Print the complete API resource data as JSON");
+        }
       }
       const validationBlocked = ["/api/client.js", "/api/operation.js", "/config/", "/repository/", "/commands/server/", "/commands/task/rendering.js", "better-sqlite3"];
       for (const args of [
@@ -302,7 +313,7 @@ describe("compiled task commands", () => {
       const identifiedTask = (suffix: string, title: string, partial: Partial<Task>): Task => task({ id: `b1b2c3d4-1111-4222-8333-123456789a${suffix}`, title, ...partial });
       const blockedFirst = identifiedTask("01", "Blocked first", { ready: false, dependsOn: [secondId], blockedBy: [secondId] });
       const doneFirst = identifiedTask("02", "Done first", { status: "done", ready: false });
-      const readyFirst = identifiedTask("03", "Ready first", { description: "Complete JSON details", version: 9_223_372_036_854_775_807n });
+      const readyFirst = identifiedTask("03", "Ready first", { description: "Description omitted from list JSON", version: 9_223_372_036_854_775_807n });
       const progressFirst = identifiedTask("04", "Progress first", { status: "in_progress", ready: false });
       const readySecond = identifiedTask("05", "Ready second", {});
       const progressSecond = identifiedTask("06", "Progress second", { status: "in_progress", ready: false });
@@ -318,7 +329,10 @@ describe("compiled task commands", () => {
         const expected = includeAll ? [...unfinished, doneFirst, doneSecond] : unfinished;
         const json = await f.invoke([...args, "--json"]);
         expect(json.code, json.stderr).toBe(0);
-        expect(parseApiJson(json.stdout)).toEqual(expected);
+        const listed = parseApiJson(json.stdout) as Record<string, unknown>[];
+        expect(listed).toEqual(expected.map(taskListItem));
+        for (const item of listed) expect(item).not.toHaveProperty("description");
+        expect(json.stdout.endsWith("\n")).toBe(true);
         expect(json.stdout).toContain('"version":9223372036854775807');
         const text = await f.invoke(args);
         expect(text.code, text.stderr).toBe(0);
@@ -355,7 +369,9 @@ describe("compiled task commands", () => {
       for (const { args, expected, query } of cases) {
         const result = await f.invoke(["list", ...args, "--json", ...explicit]);
         expect(result.code, result.stderr).toBe(0);
-        expect(parseApiJson(result.stdout)).toEqual(expected);
+        const listed = parseApiJson(result.stdout) as Record<string, unknown>[];
+        expect(listed).toEqual(expected.map(taskListItem));
+        for (const item of listed) expect(item).not.toHaveProperty("description");
         expect(Object.fromEntries(requests.at(-1)!.query)).toEqual(query);
       }
     } finally { await f.close(); }
@@ -371,6 +387,7 @@ describe("compiled task commands", () => {
       const json = await f.invoke(["list", "--json", ...explicit]);
       expect(json.code, json.stderr).toBe(0);
       expect(parseApiJson(json.stdout)).toEqual([]);
+      expect(json.stdout).toBe("[]\n");
     } finally { await f.close(); }
   }, 60_000);
 
@@ -399,7 +416,11 @@ describe("compiled task commands", () => {
       for (const command of [["show", taskId], ["list"]]) {
         const json = await f.invoke([...command, "--json", ...explicit]);
         expect(json.code, json.stderr).toBe(0);
-        expect(parseApiJson(json.stdout)).toEqual(command[0] === "list" ? [current] : current);
+        const parsed = parseApiJson(json.stdout);
+        expect(parsed).toEqual(command[0] === "list" ? [taskListItem(current)] : current);
+        if (command[0] === "list") expect((parsed as Record<string, unknown>[])[0]).not.toHaveProperty("description");
+        else expect(parsed).toHaveProperty("description", current.description);
+        expect(json.stdout).toContain('"version":9223372036854775807');
         const text = await f.invoke([...command, ...explicit]);
         expect(text.code, text.stderr).toBe(0);
         expect(text.stdout).toContain(" 标题\\n\\u001b[2J ");
@@ -484,7 +505,7 @@ describe("compiled task commands", () => {
 
       const listed = await f.invoke(["list", "--status", "todo", "--ready", "--json", ...explicit]);
       expect(listed.code, listed.stderr).toBe(0);
-      expect(parseApiJson(listed.stdout)).toEqual([task(), second]);
+      expect(parseApiJson(listed.stdout)).toEqual([task(), second].map(taskListItem));
       const pages = requests.filter(({ pathname }) => pathname === taskPath).filter(({ method }) => method === "GET");
       expect(pages.map(({ query }) => Object.fromEntries(query))).toEqual([
         { status: "todo", ready: "true", limit: "100" }, { status: "todo", ready: "true", limit: "100", cursor },
@@ -589,7 +610,7 @@ describe("compiled task commands", () => {
       const beforeCached = requests.length;
       const cached = await f.invoke(["list", "--json"], options);
       expect(cached.code, cached.stderr).toBe(0);
-      expect(parseApiJson(cached.stdout)).toEqual([task()]);
+      expect(parseApiJson(cached.stdout)).toEqual([taskListItem(task())]);
       expect(requests.slice(beforeCached).map(({ method, pathname }) => `${method} ${pathname}`)).toEqual([`GET ${projectPath}`, `GET ${taskPath}`]);
       const beforeReady = requests.length;
       const ready = await f.invoke(["ready", "--limit=1", "--json"], options);

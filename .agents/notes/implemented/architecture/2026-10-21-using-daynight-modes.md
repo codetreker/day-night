@@ -23,8 +23,11 @@ updates and attachment independence. Installed CLI help owns argument and option
 usage; the handbook does not duplicate invocation examples or decoding code.
 Task lists traverse matching pages but exclude completed work by default;
 complete inventories and prior-registration checks explicitly include completed
-tasks. Status/readiness grouping does not establish relevance, and JSON retains
-full task fields while human lists are summaries.
+tasks. Status/readiness grouping does not establish relevance. Human lists are
+summaries; JSON lists omit only description, as owned by the
+[JSON description decision](../simplification/2026-10-22-task-list-json-description.md).
+Ready, details and write results retain full task resources, and consumers read
+details when they need a description.
 
 This partially replaces the
 [original public distribution decision](2026-10-21-public-agent-skill-design.md):

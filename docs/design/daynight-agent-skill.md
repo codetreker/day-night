@@ -141,7 +141,8 @@ ready 默认最多 10 项，必要时使用 1..100 的 `--limit`。服务按创�
 限制不等于项目未关联，详情必须使用 show。task list 仍穷尽匹配分页，默认排除 `done`；
 需要包含已完成任务的完整清单或核对历史登记时显式包含已完成任务，选项从 CLI help
 查询。结果按 `in_progress`、ready、其余 `todo`、`done` 稳定分组，组内保留服务顺序，
-不表示相关性。文本列表是摘要，JSON 保留完整 task 字段。
+不表示相关性。文本列表是摘要；JSON 列表仅省略 `description`，保留其余 task
+字段。需要描述时读取 show，ready、详情和写入结果继续返回完整 task 资源。
 
 在仓库内可省略 `--project`，由 CLI 按 Git origin URL 匹配服务中的项目；显式指定的
 项目优先。handbook 说明项目定位规则，不展开本地绑定文件与忽略规则的内部实现。
