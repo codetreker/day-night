@@ -33,8 +33,9 @@ type acceptanceCLIReceipt struct {
 	EntrySHA256    string `json:"entrySha256"`
 	LauncherPath   string `json:"launcherPath"`
 	Source         struct {
-		GitSHA string `json:"gitSha"`
-		Dirty  bool   `json:"dirty"`
+		GitSHA     string `json:"gitSha"`
+		GitTreeSHA string `json:"gitTreeSha"`
+		Dirty      bool   `json:"dirty"`
 	} `json:"source"`
 }
 
@@ -54,7 +55,7 @@ func readAcceptanceCLI(t *testing.T) acceptanceCLIReceipt {
 		t.Fatal("cannot read installed CLI receipt")
 	}
 	var receipt acceptanceCLIReceipt
-	if err := json.Unmarshal(data, &receipt); err != nil || receipt.SchemaVersion != 1 || receipt.PackageVersion == "" || receipt.Source.GitSHA != binaryAcceptance.GitSHA || receipt.Source.Dirty != binaryAcceptance.Dirty {
+	if err := json.Unmarshal(data, &receipt); err != nil || receipt.SchemaVersion != 1 || receipt.PackageVersion == "" || receipt.Source.GitSHA != binaryAcceptance.GitSHA || receipt.Source.GitTreeSHA != binaryAcceptance.GitTreeSHA || receipt.Source.Dirty != binaryAcceptance.Dirty {
 		t.Fatal("installed CLI receipt does not match this source revision")
 	}
 	root, err := filepath.EvalSymlinks(receipt.Root)
@@ -153,6 +154,16 @@ func newAcceptanceCLI(t *testing.T, receipt acceptanceCLIReceipt, scenario *acce
 	fixture.git(t, "init", "--quiet", fixture.repo)
 	fixture.git(t, "-C", fixture.repo, "remote", "add", "origin", "git@git.example:Org/Repo.git")
 	return fixture
+}
+
+func (c *acceptanceCLI) configure(t *testing.T, process *acceptanceProcess) {
+	t.Helper()
+	if process.origin == "" || process.token == "" {
+		t.Fatal("installed CLI requires an authenticated acceptance process")
+	}
+	if err := os.WriteFile(filepath.Join(c.home, ".daynight", "config.yml"), []byte("serverUrl: "+process.origin+"\nserverToken: "+process.token+"\n"), 0o600); err != nil {
+		t.Fatal("cannot configure isolated authenticated CLI")
+	}
 }
 
 func (c *acceptanceCLI) environment() []string {
@@ -343,7 +354,7 @@ func acceptanceCLIWaitMutations(t *testing.T, process *acceptanceProcess, count 
 	return acceptanceCLIMutations(process)
 }
 
-func (c *acceptanceCLI) refuse(t *testing.T, process *acceptanceProcess, code, taskID string, arguments ...string) {
+func (c *acceptanceCLI) refuse(t *testing.T, process *acceptanceProcess, code, taskID string, arguments ...string) acceptanceCLIResult {
 	t.Helper()
 	before := len(acceptanceCLIMutations(process))
 	result := acceptanceCLIReceive(t, c.start(t, c.repo, arguments...))
@@ -359,6 +370,7 @@ func (c *acceptanceCLI) refuse(t *testing.T, process *acceptanceProcess, code, t
 	}); err != nil {
 		t.Fatal("cannot persist installed CLI refusal identity")
 	}
+	return result
 }
 
 func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
@@ -370,9 +382,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 			t.Fatal("fresh installed CLI version differs from its validated manifest")
 		}
 		process := fixture.launch(t, nil).started(t)
-		if err := os.WriteFile(filepath.Join(cli.home, ".daynight", "config.yml"), []byte("serverUrl: "+process.origin+"\nserverToken: "+process.token+"\n"), 0o600); err != nil {
-			t.Fatal("cannot configure isolated installed CLI")
-		}
+		cli.configure(t, process)
 		projectID := acceptanceCLIResourceID(t, cli.run(t, filepath.Join(cli.repo, "source"), "project", "create", "Installed CLI 项目"))
 		for _, arguments := range [][]string{
 			{"project", "create", "Preserve existing name"},

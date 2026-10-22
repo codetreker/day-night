@@ -124,7 +124,7 @@ const createRunner = (cancellation: AbortController) => {
   const run = (file: string, args: readonly string[], options: Omit<CommandOptions, 'cwd'> & { cwd?: string } = {}): Promise<string> =>
     command(file, args, { cwd: repositoryRoot, signal: cancellation.signal, ...options });
 
-  type Source = { gitSha: string; githubSha: string | null; dirty: boolean };
+  type Source = { gitSha: string; gitTreeSha: string; githubSha: string | null; dirty: boolean };
   type TargetIdentity = {
     target: 'native' | 'container'; baseUrl: string; postgresContainer: string;
     projectLabel: { key: string; value: string }; database: 'daynight';
@@ -161,11 +161,12 @@ const createRunner = (cancellation: AbortController) => {
 
   const sourceIdentity = async (): Promise<Source> => {
     const gitSha = await run('git', ['rev-parse', 'HEAD'], { quiet: true });
+    const gitTreeSha = await run('git', ['rev-parse', 'HEAD^{tree}'], { quiet: true });
     const dirty = (await run('git', ['status', '--porcelain', '--untracked-files=normal'], { quiet: true })) !== '';
     const githubSha = process.env.GITHUB_SHA ?? null;
-    if (!/^[a-f0-9]{40}$/.test(gitSha)) throw new Error('Invalid source revision.');
+    if (!/^[a-f0-9]{40}$/.test(gitSha) || !/^[a-f0-9]{40}$/.test(gitTreeSha)) throw new Error('Invalid source revision or tree.');
     if (process.env.CI && (dirty || githubSha !== gitSha)) throw new Error('CI acceptance requires a clean checkout at GITHUB_SHA.');
-    return { gitSha, githubSha, dirty };
+    return { gitSha, gitTreeSha, githubSha, dirty };
   };
 
   const playwright = async (target: BrowserPhase, directory: string, installed: ReadyInstalledEvidence): Promise<BrowserPhase> => {
@@ -248,7 +249,8 @@ const createRunner = (cancellation: AbortController) => {
     const acceptanceDirectory = dirname(directory);
     const evidence = await readJson(join(acceptanceDirectory, 'evidence.json')) as Evidence;
     if (evidence.schemaVersion !== 2 || directory !== join(evidenceRoot, evidence.runId, 'container')
-      || !/^\d{14}-[a-f0-9-]{36}$/.test(evidence.runId) || !/^[a-f0-9]{40}$/.test(evidence.source.gitSha)) {
+      || !/^\d{14}-[a-f0-9-]{36}$/.test(evidence.runId) || !/^[a-f0-9]{40}$/.test(evidence.source.gitSha)
+      || !/^[a-f0-9]{40}$/.test(evidence.source.gitTreeSha)) {
       throw new Error('Container callback does not belong to this acceptance source and run.');
     }
     const project = `daynight-dev-ci-${runId}`;
@@ -473,6 +475,7 @@ const createRunner = (cancellation: AbortController) => {
     }
     if (installed.receipt !== undefined && installed.receiptPath !== undefined) {
       if (installed.receipt.root !== installed.root || installed.receipt.source.gitSha !== evidence.source.gitSha
+        || installed.receipt.source.gitTreeSha !== evidence.source.gitTreeSha
         || installed.receipt.source.dirty !== evidence.source.dirty) throw new Error('Installed CLI artifact source differs from its owner.');
       const present = await optionalJson(installed.receiptPath);
       if (present !== undefined) await validateInstalledCli(installed.receiptPath, directory);
@@ -496,7 +499,7 @@ const createRunner = (cancellation: AbortController) => {
     const native = evidence.native;
     if (native.owner !== owner || native.postgresContainer !== `${owner}-postgres` || native.postgresVolume !== `${owner}-data`
       || native.binary !== join(directory, 'daynight-server') || native.storageRoot !== join(directory, 'native-storage')
-      || !/^[a-f0-9]{40}$/.test(evidence.source.gitSha)
+      || !/^[a-f0-9]{40}$/.test(evidence.source.gitSha) || !/^[a-f0-9]{40}$/.test(evidence.source.gitTreeSha)
       || (process.env.GITHUB_SHA !== undefined && evidence.source.githubSha !== process.env.GITHUB_SHA)) {
       throw new Error('Recovery receipt does not identify this run resources and source.');
     }

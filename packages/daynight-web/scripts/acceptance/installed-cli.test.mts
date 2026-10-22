@@ -11,7 +11,7 @@ import { createAcceptanceCli, recordCliProcess, recoverCliProcesses, validateIns
 const repository = fileURLToPath(new URL('../../../../', import.meta.url));
 const acceptance = join(repository, 'packages/daynight-web/.tmp/acceptance');
 const privateRoot = join(repository, 'packages/daynight-web/.tmp/acceptance-private');
-const source = { gitSha: '0123456789abcdef0123456789abcdef01234567', dirty: true };
+const source = { gitSha: '0123456789abcdef0123456789abcdef01234567', gitTreeSha: 'b'.repeat(40), dirty: true };
 const hash = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
 const fixture = async (run: (value: { directory: string; receiptPath: string; receipt: InstalledCliReceipt; evidence: Record<string, unknown> }) => Promise<void>): Promise<void> => {
   const directory = join(acceptance, `20261021123456-${randomUUID()}`);
@@ -92,6 +92,7 @@ test('receipt validation rejects source, package, hash and containment changes',
   await fixture(async ({ directory, receiptPath, receipt, evidence }) => {
     for (const changed of [
       { ...receipt, source: { ...source, gitSha: 'f'.repeat(40) } },
+      { ...receipt, source: { ...source, gitTreeSha: 'f'.repeat(40) } },
       { ...receipt, source: { ...source, dirty: false } },
       { ...receipt, packageVersion: '999.0.0' },
       { ...receipt, entryPath: process.execPath },
@@ -107,6 +108,20 @@ test('receipt validation rejects source, package, hash and containment changes',
     await writeFile(receipt.entryPath, 'changed entry');
     await assert.rejects(validateInstalledCli(receiptPath, directory), /hash/);
     await writeFile(join(directory, 'evidence.json'), JSON.stringify({ ...evidence, source: { ...source, dirty: false } }));
+    await assert.rejects(validateInstalledCli(receiptPath, directory), /source/);
+  });
+});
+
+test('receipt validation requires an exact valid tree identity in both source records', async () => {
+  await fixture(async ({ directory, receiptPath, receipt, evidence }) => {
+    for (const gitTreeSha of [undefined, 'invalid', 'f'.repeat(40)]) {
+      await writeFile(join(directory, 'evidence.json'), JSON.stringify({ ...evidence, source: { ...source, gitTreeSha } }));
+      await assert.rejects(validateInstalledCli(receiptPath, directory), /source/);
+    }
+    const withoutTree = { ...receipt, source: { gitSha: source.gitSha, dirty: source.dirty } };
+    await writeFile(receiptPath, JSON.stringify(withoutTree));
+    await writeFile(join(directory, 'evidence.json'), JSON.stringify({ ...evidence,
+      source: withoutTree.source, installedCli: { root: receipt.root, receiptPath, receipt: withoutTree } }));
     await assert.rejects(validateInstalledCli(receiptPath, directory), /source/);
   });
 });

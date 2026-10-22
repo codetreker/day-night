@@ -17,7 +17,7 @@ export type InstalledCliReceipt = {
   readonly entryPath: string;
   readonly entrySha256: string;
   readonly launcherPath: string;
-  readonly source: { readonly gitSha: string; readonly dirty: boolean };
+  readonly source: { readonly gitSha: string; readonly gitTreeSha: string; readonly dirty: boolean };
 };
 
 const repositoryRoot = fileURLToPath(new URL('../../../../', import.meta.url));
@@ -36,7 +36,7 @@ const prunePrivateParents = async (paths: readonly string[]): Promise<void> => {
 const digest = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
 const contained = (parent: string, child: string): boolean => child.startsWith(`${parent}${sep}`);
 const readJson = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, 'utf8'));
-type Source = { gitSha: string; dirty: boolean; githubSha?: string | null };
+type Source = { gitSha: string; gitTreeSha: string; dirty: boolean; githubSha?: string | null };
 type ParentEvidence = { runId: string; source: Source; installedCli?: { root: string; receiptPath?: string; receipt?: InstalledCliReceipt } };
 type CliProcess = { directory: string; receiptPath: string; group: number; identity?: ProcessIdentity };
 
@@ -50,12 +50,13 @@ export const validateInstalledCli = async (receiptPath: string, directory: strin
   const recordedReceipt = recorded?.receipt;
   const fields = ['schemaVersion', 'root', 'packageVersion', 'tarballPath', 'tarballSha256', 'nodePath', 'entryPath', 'entrySha256', 'launcherPath'] as const;
   if (recorded === undefined || recordedReceipt === undefined || recorded.root !== receipt.root || recorded.receiptPath !== receiptPath || fields.some((field) => recordedReceipt[field] !== receipt[field])
-    || recordedReceipt.source.gitSha !== receipt.source.gitSha || recordedReceipt.source.dirty !== receipt.source.dirty) throw new Error('Installed CLI receipt differs from its parent artifact evidence.');
+    || recordedReceipt.source.gitSha !== receipt.source.gitSha || recordedReceipt.source.gitTreeSha !== receipt.source.gitTreeSha
+    || recordedReceipt.source.dirty !== receipt.source.dirty) throw new Error('Installed CLI receipt differs from its parent artifact evidence.');
   if (receipt.schemaVersion !== 1 || typeof receipt.root !== 'string' || !isAbsolute(receipt.root)
     || receipt.root !== join(expectedDirectory, 'installed-cli') || receiptPath !== join(receipt.root, 'installed-cli.json')
-    || evidence.runId !== basename(expectedDirectory) || !/^[a-f0-9]{40}$/.test(evidence.source.gitSha)
+    || evidence.runId !== basename(expectedDirectory) || !/^[a-f0-9]{40}$/.test(evidence.source.gitSha) || !/^[a-f0-9]{40}$/.test(evidence.source.gitTreeSha)
     || typeof evidence.source.dirty !== 'boolean' || receipt.source.gitSha !== evidence.source.gitSha
-    || receipt.source.dirty !== evidence.source.dirty) throw new Error('Installed CLI source or ownership differs from its acceptance run.');
+    || receipt.source.gitTreeSha !== evidence.source.gitTreeSha || receipt.source.dirty !== evidence.source.dirty) throw new Error('Installed CLI source or ownership differs from its acceptance run.');
   if (process.env.CI && (receipt.source.dirty || evidence.source.githubSha !== receipt.source.gitSha || process.env.GITHUB_SHA !== receipt.source.gitSha)) throw new Error('CI installed CLI evidence must match the clean GITHUB_SHA checkout.');
   const root = await realpath(receipt.root);
   if (root !== receipt.root || !contained(await realpath(expectedDirectory), root)) throw new Error('Installed CLI root resolves outside the acceptance run.');

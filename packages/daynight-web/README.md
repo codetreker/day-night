@@ -199,10 +199,10 @@ bigint without passing through a rounded JavaScript Number. Lossless JSON reads
 and numeric request serialization retain exact digits above the safe-integer
 range through int64 maximum. `TaskDetailSession` owns project/task-keyed detail
 and approval state for the workspace lifetime: closing or reopening details does
-not permit a second pending submission. Legacy App owns the boundary. The opt-in
-authenticated branch owns a provider keyed by user ID and session generation,
-shared across workspace/invitation navigation; replacing identity, logout or
-anonymous state disposes it. Late responses cannot populate another identity. Confirmed responses must match identity,
+not permit a second pending submission. The production authenticated workspace
+owns a provider keyed by user ID and session generation, shared across
+workspace/invitation navigation; replacing identity, logout or anonymous state
+disposes it. Late responses cannot populate another identity. Confirmed responses must match identity,
 todo and the expected next version. Success retains that detail and refreshes
 the matching project's graph; a graph refresh failure keeps confirmed todo and
 an explicit stale-snapshot refresh action. Pre-approval reads cannot restore
@@ -282,8 +282,9 @@ viewport again. The [preference decision](../../.agents/notes/implemented/featur
 records storage ownership. Tab switching, filtering and scroll restoration make
 no API requests themselves and do not change the full project counters, graph
 index or API ordering. Independent periodic refresh continues while the page is
-visible. Nodes open a task detail dialog with dependency navigation,
-PR associations, stale-data detection and attachment management. Task metadata and graph interactions remain read-only; the detail dialog offers
+visible. The node's explicit Details action opens a task detail dialog with
+dependency navigation, PR associations, stale-data detection and attachment
+management; node-body activation selects prerequisite inspection. Task metadata and graph interactions remain read-only; the detail dialog offers
 the dedicated proposed approval action. The PR section follows the description and
 displays every ordered title/URL pair, including duplicates. Lists longer than 100 entries use local
 100-row pages with a range/total announcement, Previous/Next controls and direct
@@ -485,8 +486,11 @@ project, task and complete case-sensitive path, so loading preview content does
 not delay or stale the link. The source dialog, tab and selection stay intact.
 The URL survives copying, closing the source dialog and reloading.
 
-`App` renders `AttachmentPage` outside the workspace shell and modal at
-`/projects/{projectId}/tasks/{taskId}/attachments/{path...}`. The page has a return
+Production `AuthenticatedApp` renders `AttachmentPage` within its authenticated
+identity boundary, outside the workspace shell and modal, at
+`/projects/{projectId}/tasks/{taskId}/attachments/{path...}`. Session revalidation
+and identity replacement preserve their authenticated resource/isolation rules.
+The page has a return
 to project link, path, metadata, download and the shared language selector. Its
 initial focus enters the main reading region. The root locale Provider supplies
 first-party messages, HTML language and the route title without changing file
@@ -689,6 +693,51 @@ installed CLI or authenticated API request context. The three task-approval scen
 separately admit only registered project/task POST approve requests with exact expected
 counts. Six authentication scenarios declare only their exact expected management writes;
 unrelated browser mutations remain failures.
+
+The same three [approval journeys](tests/e2e/approval.spec.ts) reuse the packed
+CLI against each target's actual authenticated service. The existing normal
+factory gives browser and installed CLI the same Alice identity through UniAuth
+session/PAT flows. CLI credentials remain in private origin-matched configuration
+and are closed/removed by their existing finally/cleanup owner. Browser request
+forwarding uses the existing redacting authenticated API wrapper, preserving the
+original Origin, method, headers and body for actual CSRF checks and forwarding
+status/headers/body unchanged. Receipt diagnostics exclude credential material.
+An ordinary graph task is created with
+a prerequisite, Markdown description, PR references and readable plan/attachment
+bytes. Its real Details control opens task details; the card body retains the
+upstream-inspection behavior and focus returns to that Details control. Web
+approval of the blocked dependent is read back through CLI show,
+ready/list/graph; its refused claim preserves the whole task. CLI approval,
+claim and completion of the prerequisite then unlock the dependent's named
+progression without changing its own version/timestamp for derived readiness.
+Full-detail descriptions, list omission of only description,
+metadata/PR/dependency preservation, exact versions, timestamps and raw attachment
+bytes remain separate assertions. The browser observes the same graph, detail,
+completion visibility and retained browsing state.
+
+A CLI metadata update makes the reviewed Web version stale; refreshed content
+needs another deliberate click. The CLI/Web approval race uses one observed
+version and requires exactly one committed winner and one concrete version
+conflict, without automatic resubmission. Real SPA navigation holds the original
+approval response across project changes and return: pending reactivation sends
+no new POST, the other project's task stays unchanged, and the late original
+result cannot paint or trigger a read/approval in that project. Same-document
+identity and authoritative CLI reads distinguish this from a full page reload.
+
+The SQL-seeded above-safe-integer/int64-limit case remains separate from the
+multi-hop journey so version overflow cannot prevent the ordinary lifecycle.
+Its approval uses real GET/POST and database state. Response-loss checks first
+forward the actual approve request and confirm a commit, then abort its browser
+response; reconciliation GET failure is a separate controlled transport fault.
+Post-success graph failure temporarily changes the existing owned dependency
+table around the real graph request and forwards its actual failure before
+restoration and CLI readback. Timing/response barriers are explicit controls,
+not fabricated status-changing responses. The
+[cross-layer decision](../../.agents/notes/implemented/testing/2026-10-22-task-lifecycle-cross-layer-acceptance.md)
+owns these oracles and the distinction from deterministic service races,
+controlled client fixtures and offline mocks. No annotation, target topology,
+capacity, coverage or cleanup gate is added or removed by this extension.
+
 One packed/installed CLI is shared by the whole web run. On each target,
 `task-attachments` uploads through that CLI and consumes the same task/files in
 the production page, then checks Web mutations through raw CLI reads. It covers
@@ -775,7 +824,7 @@ scenario annotations validated in each target's report.
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
-| W13 | `task-approval`, `task-approval-conflicts`, `task-approval-recovery`: real versioned approval, blocked prerequisites, pending protection, exact int64 digits, reviewed-version conflicts, unknown-outcome reconciliation, graph refresh failure and identity/focus/browsing preservation |
+| W13 | `task-approval`, `task-approval-conflicts`, `task-approval-recovery`: same-data packed-CLI/ordinary-graph lifecycle, blocked prerequisites, stale CLI metadata, CLI/Web same-version competition, pending protection, exact int64 digits, real-commit response loss, real graph failure and task/SPA-project identity/focus/browsing preservation |
 | FA1–FA12 | `task-attachments`: installed CLI and production UI share real task/files on native and container targets; exact bytes, file mutations, detail tabs, adjacent panes, unique preview scroll owners, rendered formats and reloadable standalone reading. Independent real-service probes add end-of-document wheel/keyboard, native PDF final-page paint, fault/retry and unchanged task/graph proof |
 | TI8–TI9 | `task-description-markdown`: installed CLI and real API preserve Unicode/CRLF Markdown bytes and versioned full replacement; bilingual 1440px/320px rich rendering, escaped HTML, URL policy, task-root images/encoded references, paginated loading/list failure/retry, invalid/missing/preview failure states, one-controller navigation/focus, overwrite refresh, modified native href and HTML frame interaction; inspection→Details→relative attachment→close preserves graph selection/geometry/view |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
@@ -787,7 +836,8 @@ scenario annotations validated in each target's report.
 
 Receipts live in `packages/daynight-web/.tmp/acceptance/<run-id>/`, with the
 latest aggregate at `.tmp/acceptance/evidence.json` inside this package. They
-use top-level `schemaVersion: 2` and record source identity, the installed CLI
+use top-level `schemaVersion: 2` and record source identity, including required
+`source.gitTreeSha` from actual `git rev-parse HEAD^{tree}`, the installed CLI
 receipt and raw artifact identities, native binary
 SHA-256, PostgreSQL/browser versions, pipeline stages, target phases, capacity
 measurements, container image identity and cleanup outcomes. Each stage records
@@ -804,6 +854,13 @@ tested checkout identity, which is normally a merge revision for PR runs. A pass
 requires the strict union of twenty-three native functional and five native capacity/limit
 scenarios (28 native total), plus the twenty-three container functional scenarios. Every
 phase and target rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
+Installed-CLI handoff, container callbacks and recovery require matching source
+commit/tree/dirty state as well as existing package/artifact ownership. A missing
+or mismatched tree field fails; no old-receipt fallback is introduced. The tree
+identifies committed source and does not fingerprint local modifications or prove
+an executed platform/gate. Lifecycle attachments to each approval scenario retain
+CLI arguments/outputs/exits, raw-byte digests, task/graph snapshots, captured Web
+requests/responses and declared controlled faults under the same run identity.
 Browser identities must agree across a target's phases; every fixed graph's five
 timing repetitions, independent size refusals and cleanup/recovery must pass.
 Local receipts retain their source and browser identity; they do not establish

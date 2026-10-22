@@ -163,9 +163,12 @@ from the [accepted production source](https://github.com/codetreker/daynight/tre
 These unedited captures and their original probe qualifications preserve the
 lasting scroll/native-reader evidence; the task bundle retains the full ledger.
 
-Installed-package handoff validates the receipt's Git SHA/dirty state and
-recomputes tarball/entry hashes. The dirty boolean is not a digest of modified
-source contents. CI still requires a clean checkout at GITHUB_SHA; local dirty
+Installed-package handoff validates the receipt's Git SHA, required
+source.gitTreeSha and dirty state, and recomputes tarball/entry hashes. The
+[lifecycle cross-layer extension](2026-10-22-task-lifecycle-cross-layer-acceptance.md)
+uses the same handoff for same-data lifecycle journeys and installed instruction
+artifacts. The tree identifies committed contents; the dirty boolean is not a
+digest of modified source contents. CI still requires a clean checkout at GITHUB_SHA; local dirty
 receipts identify their artifacts and observed environment without claiming an
 exact modified-source fingerprint. Original binary bytes are captured without
 UTF-8 conversion, and CLI child/process-group ownership joins existing browser,

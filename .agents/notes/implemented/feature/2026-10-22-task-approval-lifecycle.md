@@ -145,6 +145,10 @@ Only registered project/task POST approve requests and exact expected counts
 are admitted, separately from fixture-scoped attachment writes. Existing browser
 identity, one-worker, no-retry, performance, coverage and cleanup gates remain.
 
-Static packaged-resource checks and independent workflow scenarios assess
-instructions; installed CLI, real PostgreSQL and production browser checks
-provide separate runtime evidence.
+The [cross-layer acceptance decision](../testing/2026-10-22-task-lifecycle-cross-layer-acceptance.md)
+owns the packed-CLI/production-browser lifecycle journey, genuine historical
+migration/restart and actual installed-process races. Installed-resource metadata,
+contained-reference and bounded instruction-contract checks assess the shipped
+artifact, alongside independent workflow scenarios; they do not execute an Agent
+or establish arbitrary model compliance. Actual CLI, PostgreSQL and production
+browser receipts retain separate runtime and cleanup provenance.
