@@ -98,6 +98,7 @@ describe("authenticated application shell", () => {
     vi.stubGlobal("fetch", fetcher);
     render(<AuthenticatedApp />);
     await screen.findByRole("link", { name: "账户设置：Alice" });
+    await waitFor(() => expect(projectCalls).toBe(1));
     const oldSignal = fetcher.mock.calls.find(([url]) => url.startsWith("/api/v1/projects"))![1] as RequestInit | undefined;
     currentUser = user(otherId, "Bob");
     fireEvent(window, new Event("focus"));

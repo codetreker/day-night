@@ -175,7 +175,6 @@ const ProjectView = ({ projectId, renderActions }: { readonly projectId: string;
       )}
       {snapshot !== null && summary !== undefined && (
         <>
-          {graph.refreshing && <p className="snapshot-notice" role="status">{m.refreshingSnapshot}</p>}
           {graph.error !== null && (
             <section className="snapshot-error" role="alert"><h2>{m.refreshFailed}</h2><p>{m.showingSnapshot}</p><ErrorDetail error={graph.error} />
               <button className="button" type="button" onClick={graph.refresh}>{m.retryRefresh}</button>

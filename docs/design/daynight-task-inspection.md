@@ -44,7 +44,7 @@ flowchart LR
 
 `visibility.ts` 的 `createGraphOverview(index, P)` 在 P≤50任务且≤100边时全显；其他情况从根做快照稳定顺序的无向 BFS，先后续再前置。候选加入后实际节点/诱导边仍满足 50/100 才接纳，仅从接纳任务继续。`projectVisibleTasks(P, S)` 只缩小布局输入，不能重算完整计数。
 
-`getTaskExpansion(index, P, S, taskId, direction)` 返回该方向前 20 个隐藏直接邻居、剩余数及准确 `addedEdges`，包括批内真实边；不递归，无手动边上限。卡片 220×136（94px 主体、40px 恒定双列 footer、2px 边框），主体保持原详情触发，footer 方向控件为兄弟按钮，空方向留白。展开重排 S，当前缩放居中锚点并聚焦主体；全局“收起到概览”重算/定位并保留 reset 焦点。
+`getTaskExpansion(index, P, S, taskId, direction)` 返回该方向前 20 个隐藏直接邻居、剩余数及准确 `addedEdges`，包括批内真实边；不递归，无手动边上限。卡片宽 220px；两方向都无可展开邻居时高 96px（94px 主体、2px 边框），不渲染 footer 或分隔线；至少一方向有控件时高 136px，包含 40px 双列 footer，另一空方向保留列位置。主体保持原详情触发，方向控件为兄弟按钮。每个可见快照只派生一次展开数据，布局、React Flow 尺寸、初始视口、锚点居中和键盘揭示共用每卡片的实际宽高。展开重排 S，当前缩放居中锚点并聚焦主体；全局“收起到概览”重算/定位并保留 reset 焦点。
 
 `reconcileVisibleTasks(P, oldVisible)` 在成功刷新保留有效实际 ID，加根后仅取诱导无向图的根连通分量，不自动合入新 baseline。刷新保持视口，失败保持旧 S/数据/视口；重置/remount 才计算新概览，项目/根/页签/卸载清除局部状态。详情打开时不抢焦点，丢失入口由既有关闭回退处理。主线 TaskDetailPanels、附件双 pane/单一右滚动、locale 及请求生命周期保持。
 

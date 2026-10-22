@@ -186,6 +186,7 @@ test.describe('Web language journeys', () => {
     const frameElement = await frame.elementHandle();
     const fileInput = attachments.locator('input[type=file]');
     const pathInput = attachments.locator('input[type=text]');
+    await attachments.locator('.attachment-upload-disclosure>summary').click();
     await fileInput.setInputFiles({ name: 'original.txt', mimeType: 'text/plain', buffer: Buffer.from('First 原始 bytes\n') });
     await pathInput.fill(uploadPath);
     const inputElement = await fileInput.elementHandle();

@@ -96,22 +96,25 @@ const TaskAttachmentContent = ({ projectId, taskId, api, urls, onClose }: TaskAt
           )}
           {attachments.complete && attachments.items.length === 0 && <p className="attachment-state">{m.empty}</p>}
           {attachments.items.length > 0 && <nav className="attachment-files" aria-label={m.files}><FileTree nodes={attachmentTree(attachments.items)} selectedPath={attachments.selectedPath} onSelect={attachments.select} /></nav>}
-          <form className="attachment-upload" onSubmit={(event) => { void upload(event); }}>
-            <label htmlFor={fileId}>{m.chooseFile}</label>
-            <input id={fileId} ref={fileInput} type="file" disabled={busy} onChange={(event) => {
-              const chosen = event.currentTarget.files?.[0];
-              setFile(chosen === undefined ? null : chosen);
-              setPath(chosen === undefined ? '' : chosen.name);
-              setPathError(false);
-            }} />
-            <label htmlFor={pathId}>{m.targetPath}</label>
-            <div className="attachment-upload-target">
-              <input id={pathId} type="text" value={path} placeholder={m.pathPlaceholder} disabled={busy} aria-invalid={pathError} onChange={(event) => { setPath(event.currentTarget.value); setPathError(false); }} />
-              <button className="button primary" type="submit" disabled={file === null || busy}>{attachments.write.status === 'saving' ? m.uploading : m.upload}</button>
-            </div>
-            <p className="attachment-hint">{m.uploadHint}</p>
-            {pathError && <p className="attachment-error" role="alert">{m.invalidPath}</p>}
-          </form>
+          <details className="attachment-upload-disclosure">
+            <summary>{m.upload}</summary>
+            <form className="attachment-upload" onSubmit={(event) => { void upload(event); }}>
+              <label htmlFor={fileId}>{m.chooseFile}</label>
+              <input id={fileId} ref={fileInput} type="file" disabled={busy} onChange={(event) => {
+                const chosen = event.currentTarget.files?.[0];
+                setFile(chosen === undefined ? null : chosen);
+                setPath(chosen === undefined ? '' : chosen.name);
+                setPathError(false);
+              }} />
+              <label htmlFor={pathId}>{m.targetPath}</label>
+              <div className="attachment-upload-target">
+                <input id={pathId} type="text" value={path} placeholder={m.pathPlaceholder} disabled={busy} aria-invalid={pathError} onChange={(event) => { setPath(event.currentTarget.value); setPathError(false); }} />
+                <button className="button primary" type="submit" disabled={file === null || busy}>{attachments.write.status === 'saving' ? m.uploading : m.upload}</button>
+              </div>
+              <p className="attachment-hint">{m.uploadHint}</p>
+              {pathError && <p className="attachment-error" role="alert">{m.invalidPath}</p>}
+            </form>
+          </details>
         </aside>
         <div className="attachment-preview-pane">
           {selected === undefined ? <div className="attachment-preview-body attachment-preview-empty"><p className="attachment-state">{m.choosePreview}</p></div> : (

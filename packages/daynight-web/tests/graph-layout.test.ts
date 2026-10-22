@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RootProjection } from '../src/features/task-graph/model';
-import { layoutGraph, TASK_NODE_HEIGHT, TASK_NODE_WIDTH, type CanvasLayout } from '../src/features/task-graph/layout';
+import { layoutGraph, TASK_NODE_COMPACT_HEIGHT, TASK_NODE_EXPANDABLE_HEIGHT, TASK_NODE_WIDTH, type CanvasLayout } from '../src/features/task-graph/layout';
 
 const projection = (
   mainIds: readonly string[],
@@ -25,7 +25,7 @@ const verifyGeometry = (actual: CanvasLayout, expected: RootProjection) => {
   expect(Number.isFinite(actual.width)).toBe(true);
   expect(Number.isFinite(actual.height)).toBe(true);
   expect(actual.width).toBeGreaterThan(TASK_NODE_WIDTH);
-  expect(actual.height).toBeGreaterThan(TASK_NODE_HEIGHT);
+  expect(actual.height).toBeGreaterThan(TASK_NODE_COMPACT_HEIGHT);
   const nodes = new Map(actual.nodes.map((node) => [node.id, node]));
   for (const node of actual.nodes) {
     expect(Number.isFinite(node.position.x)).toBe(true);
@@ -33,7 +33,7 @@ const verifyGeometry = (actual: CanvasLayout, expected: RootProjection) => {
     expect(node.position.x).toBeGreaterThan(0);
     expect(node.position.y).toBeGreaterThan(0);
     expect(node.position.x + TASK_NODE_WIDTH).toBeLessThan(actual.width);
-    expect(node.position.y + TASK_NODE_HEIGHT).toBeLessThan(actual.height);
+    expect(node.position.y + node.height).toBeLessThan(actual.height);
     expect(node.kind).toBe(expected.mainIds.has(node.id) ? 'main' : 'external');
   }
   for (const edge of actual.edges) {
@@ -57,21 +57,46 @@ const verifyGeometry = (actual: CanvasLayout, expected: RootProjection) => {
     for (const right of actual.nodes.slice(leftIndex + 1)) {
       const separateHorizontally = left.position.x + TASK_NODE_WIDTH <= right.position.x ||
         right.position.x + TASK_NODE_WIDTH <= left.position.x;
-      const separateVertically = left.position.y + TASK_NODE_HEIGHT <= right.position.y ||
-        right.position.y + TASK_NODE_HEIGHT <= left.position.y;
+      const separateVertically = left.position.y + left.height <= right.position.y ||
+        right.position.y + right.height <= left.position.y;
       expect(separateHorizontally || separateVertically).toBe(true);
     }
   }
 };
 
 describe('horizontal task graph layout', () => {
-  it('exports the fixed task node dimensions used by the canvas', () => {
+  it('exports compact and expandable task card dimensions', () => {
     expect(TASK_NODE_WIDTH).toBe(220);
-    expect(TASK_NODE_HEIGHT).toBe(136);
+    expect(TASK_NODE_COMPACT_HEIGHT).toBe(96);
+    expect(TASK_NODE_EXPANDABLE_HEIGHT).toBe(136);
   });
 
   it('returns an explicit empty layout without non-finite Dagre bounds', () => {
     expect(layoutGraph(projection([], []))).toEqual({ nodes: [], edges: [], width: 0, height: 0 });
+  });
+
+  it('routes mixed-height cards to their actual boundaries without overlapping cards', () => {
+    const input = projection(['A', 'B', 'C', 'D'], [['A', 'B'], ['A', 'C'], ['B', 'D'], ['C', 'D']]);
+    const heights = new Map([['A', 96], ['B', 136], ['C', 96], ['D', 136]]);
+    const actual = layoutGraph(input, heights);
+    verifyGeometry(actual, input);
+    const nodes = new Map(actual.nodes.map((node) => [node.id, node]));
+    for (const node of actual.nodes) expect(node.height).toBe(heights.get(node.id));
+    for (const edge of actual.edges) {
+      const source = nodes.get(edge.source)!;
+      const target = nodes.get(edge.target)!;
+      const first = edge.points[0]!;
+      const last = edge.points.at(-1)!;
+      for (const [point, node] of [[first, source], [last, target]] as const) {
+        expect(point.x).toBeGreaterThanOrEqual(node.position.x);
+        expect(point.x).toBeLessThanOrEqual(node.position.x + node.width);
+        expect(point.y).toBeGreaterThanOrEqual(node.position.y);
+        expect(point.y).toBeLessThanOrEqual(node.position.y + node.height);
+        const boundaryDistance = Math.min(Math.abs(point.x - node.position.x), Math.abs(point.x - node.position.x - node.width),
+          Math.abs(point.y - node.position.y), Math.abs(point.y - node.position.y - node.height));
+        expect(boundaryDistance).toBeCloseTo(0);
+      }
+    }
   });
 
   it.each([

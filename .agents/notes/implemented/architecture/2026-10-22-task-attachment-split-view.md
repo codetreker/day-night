@@ -24,9 +24,13 @@ preview state. A new project/task identity resets them. Future description
 attachment navigation activates this same panel and controller.
 
 The attachment panel is one bounded grid with a vertical divider. Its left
-sidebar contains the file tree, refresh and single-file upload and may scroll
-independently. Its right pane combines a non-scrolling preview header with a
-flexible body. The panes remain adjacent at all supported widths, including
+sidebar contains the file tree, refresh and a single-file upload disclosure and
+may scroll independently. Upload starts collapsed because file browsing is the
+frequent operation. Native `details` and `summary` provide pointer and keyboard
+activation while excluding hidden controls from focus navigation. The form stays
+mounted so collapsing retains the selected file, path and validation state. Tab
+round trips preserve expansion; project/task changes reset it to collapsed.
+Its right pane combines a non-scrolling preview header with a flexible body. The panes remain adjacent at all supported widths, including
 320px. Shrinkable descendants have explicit zero minimum sizes so their content
 does not enlarge the viewport chain. Short viewports use compact heading and
 control spacing, including at 844×390; they do not restore outer dialog scrolling
@@ -65,6 +69,10 @@ failure recovery and cleanup proof; HEAD alone remains insufficient.
 the initial composition, but leaves file browsing dependent on scrolling through
 task prose and allows the inventory and selected document to compete vertically.
 A dedicated tab keeps task reading and attachment browsing separately bounded.
+
+**Unmount the upload form when collapsed.** Removing its native file input
+would discard the selected file and break draft retention. A native disclosure
+hides the controls while preserving their identity.
 
 **Let an outer detail scrollbar compensate for a tall preview.** That permits a
 wrapper to scroll while a document or native reader also scrolls. Assigning one

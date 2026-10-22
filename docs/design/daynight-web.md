@@ -241,12 +241,12 @@ S ⊆ P，包含根，当前实际可见 ID
 
 `visibility.ts` 的 `createGraphOverview(index, P)` 在 P≤50任务且≤100依赖时全显；否则从根按快照稳定顺序无向 BFS，先后续再前置。只有加入后实际诱导图仍满足50/100才接纳，只从接纳者继续。`projectVisibleTasks(P,S)` 提供当前布局输入和全部诱导边，不画捷径或聚合节点。
 
-`getTaskExpansion` 按指定方向选 P 内前20个隐藏直接邻居，不递归，返回本批ID、新增诱导边和剩余数；新增边包含批内关系，无手动边上限。卡片220×136：94px主体、40px双列footer、2px边框。主体仍是详情触发，方向控件为兄弟原生按钮，空方向留白。显式展开在新布局以当前缩放居中锚点并聚焦主体；全局reset重算/定位概览并保留控件焦点。
+`getTaskExpansion` 按指定方向选 P 内前20个隐藏直接邻居，不递归，返回本批ID、新增诱导边和剩余数；新增边包含批内关系，无手动边上限。卡片宽220px，两方向都无可展开邻居时高96px（94px主体、2px边框），不渲染footer或分隔线；至少一方向有控件时高136px，包含40px双列footer，另一空方向保留列位置。主体仍是详情触发，方向控件为兄弟原生按钮。每个可见快照只派生一次展开数据，布局、React Flow、视口适配与键盘揭示共用实际卡片尺寸。显式展开在新布局以当前缩放居中锚点并聚焦主体；全局reset重算/定位概览并保留控件焦点。
 
 `reconcileVisibleTasks` 在成功刷新保留旧实际S中仍属于新P的任务，加根后仅留诱导无向图的根连通分量，不自动并入新基线。刷新保持视口，失败保留旧视图；reset/remount计算新概览，项目/根/页签/卸载清除局部状态。详情打开时不抢焦点，丢失入口由既有关闭回退处理。当前概览保留 body-open-details 和原折线/箭头/虚线renderer；依赖主体选择和曲线由后续#121交付。
 
 布局适配器使用固定 Dagre 3.1.1，统一设置 `rankdir: "LR"` 和
-`ranker: "longest-path"`，节点固定为 220×136，按 ID 稳定输入节点和边，减少同一
+`ranker: "longest-path"`，节点宽度为 220px，高度按可展开邻居为 96px 或 136px，按 ID 稳定输入节点和边，减少同一
 输入重复布局时的跳动。返回坐标转换为左上角位置并保留边路径点；空投影在调用
 Dagre 前返回零尺寸，非空几何无效时明确失败。只在展开或新快照到达后计算布局；
 视口缩放与选择不触发重新布局。
@@ -314,7 +314,7 @@ declare const layoutGraph: (projection: RootProjection) => CanvasLayout;
 依据：[React Flow 布局指南](https://reactflow.dev/learn/layouting/layouting)、[Dagre 示例](https://reactflow.dev/examples/layout/dagre)、[可访问性](https://reactflow.dev/learn/advanced-use/accessibility)、[Vue Flow](https://vueflow.dev/guide/)、[Vite 构建](https://vite.dev/guide/build)。Dagre 对外联子图的限制针对嵌套分组；这里每个根条目是独立平面图，不使用嵌套 subflow。
 
 React Flow 固定为 12.12.0，使用单个原生任务按钮处理鼠标/Enter/Space，关闭 wrapper
-焦点与所有编辑入口，控件不提供解锁开关。React Flow 拥有 220×136 节点、键盘
+焦点与所有编辑入口，控件不提供解锁开关。React Flow 拥有 220px 宽、96px 或 136px 高的节点、键盘
 焦点、选择、视口、背景与控件；边由公开 `ViewportPortal` 中一个 memoized SVG
 拥有。SVG 位于任务节点图层下方，使用同一 `CanvasLayout` 的全部 Dagre points，保留每条边的稳定 ID、
 source/target 身份、原生箭头 marker 及可访问语义，不在交互期间省略或裁剪路线。
@@ -709,8 +709,10 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 请求；页面隐藏时自动详情读取与后续队列等待，已有读取可以完成。正文、附件和预览不重新挂载。相同有序 PR 值保持引用和分页，内容变化才
 按既有规则回到第一页。task/project 切换立即隔离旧内容并卸载旧附件状态。
 
-首次加载显示 skeleton。手动刷新显示忙碌状态；自动周期更新最近成功读取时间。
-刷新保留上次成功图和详情；恢复性失败保留旧数据、上次成功时间及明确错误，
+首次加载显示 skeleton。手动刷新仅由刷新按钮显示忙碌文字并禁用，不插入刷新提示条，
+统计和任务内容保持原有位置；自动周期更新最近成功读取时间。
+[刷新提示决策](../../.agents/notes/implemented/simplification/2026-10-22-project-refresh-notice.md)
+记录该呈现方式。刷新保留上次成功图和详情；恢复性失败保留旧数据、上次成功时间及明确错误，
 自动重试期间错误继续可见，首次读取失败后也保留错误而不重复进入加载播报，成功后清除。成功图数据变化时
 一次替换统计、索引和两类条目；当前展开根仍可见则保留，否则选择最新可见根；
 没有可见根时保留原偏好，明确的全部折叠继续保留。偏好保存不参与图 API 请求；

@@ -34,9 +34,15 @@ the initial fifty/one-hundred limits. Shared IDs appear once.
 
 `projectVisibleTasks(P, S)` retains membership and every real dependency with
 both endpoints in S. No shortcut edges, aggregate cards or synthetic links are
-introduced. Toolbar counts distinguish visible from full context. Cards are
-220 by 136 pixels: a 94px body, 40px two-column expansion footer and two border
-pixels; an unused direction column stays blank. The body remains the native
+introduced. Toolbar counts distinguish visible from full context. The original
+card decision reserved 220 by 136 pixels for every task: a 94px body, 40px
+two-column footer and two border pixels. Uniform heights kept all controls in
+consistent columns during progressive expansion, but also left an empty ruled
+footer when both directions had no hidden neighbors. The
+[conditional footer decision](../bug-fix/2026-10-22-task-card-expansion-footer.md)
+partially supersedes that geometry: cards without controls are 220 by 96 and
+omit the footer; cards with controls remain 220 by 136, retaining the empty
+column when only one direction is available. The body remains the native
 TaskDetailDialog trigger, and direction controls are siblings. The existing
 Dagre polyline/native-arrow/local-dash renderer consumes only the visible graph.
 
