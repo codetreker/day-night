@@ -168,7 +168,7 @@ func (cli *identityInstalledCLI) run(t *testing.T, input string, success bool, a
 }
 
 type identityCLIRequests struct {
-	all, bearer, anonymous, authenticatedPAT atomic.Int64
+	all, bearer, anonymous, authenticatedPAT, unauthorized atomic.Int64
 }
 
 func identityCLIProjectRoutes(mux *http.ServeMux, authentication *Authentication, database *store.Store, requests *identityCLIRequests) {
@@ -182,7 +182,11 @@ func identityCLIProjectRoutes(mux *http.ServeMux, authentication *Authentication
 			} else if request.Header.Get("Authorization") == "" {
 				requests.anonymous.Add(1)
 			}
-			protected(w, request)
+			response := &responseRecorder{ResponseWriter: w}
+			protected(response, request)
+			if response.status == http.StatusUnauthorized {
+				requests.unauthorized.Add(1)
+			}
 		})
 	}
 	countPAT := func(principal core.Principal) {
@@ -289,19 +293,21 @@ func TestAuthenticationInstalledCLIUsesPersonalAccessToken(t *testing.T) {
 	}
 	identityRequest(t, aliceBrowser, http.MethodDelete, integration.server.URL+"/api/v1/me/tokens/"+token.ID, "", origin, http.StatusNoContent)
 	before, anonymous, bearer := requests.all.Load(), requests.anonymous.Load(), requests.bearer.Load()
+	unauthorized := requests.unauthorized.Load()
 	stdout, stderr := cli.run(t, "", false, "project", "list", "--json")
-	if stdout != "" || !strings.Contains(stderr, "401") || !strings.Contains(stderr, "daynight setup --server-token-stdin") {
-		t.Fatal("revoked PAT must produce a failed installed CLI command with setup guidance and no result")
+	if stdout != "" || !strings.Contains(stderr, "unauthenticated:") || !strings.Contains(stderr, "daynight setup --server-token-stdin") {
+		t.Fatalf("revoked PAT failure: stdoutEmpty=%t unauthenticatedCode=%t setupGuidance=%t", stdout == "", strings.Contains(stderr, "unauthenticated:"), strings.Contains(stderr, "daynight setup --server-token-stdin"))
 	}
-	if requests.all.Load() != before+1 || requests.bearer.Load() != bearer+1 || requests.anonymous.Load() != anonymous {
-		t.Fatal("revoked PAT must cause exactly one authenticated request with no anonymous retry")
+	if requests.all.Load() != before+1 || requests.bearer.Load() != bearer+1 || requests.anonymous.Load() != anonymous || requests.unauthorized.Load() != unauthorized+1 {
+		t.Fatal("revoked PAT must cause exactly one HTTP 401 bearer request with no anonymous retry")
 	}
 	unauthenticated := newIdentityInstalledCLI(t, receipt, token.Token)
 	unauthenticated.run(t, "", true, "setup", "--server-url", integration.server.URL)
 	before, anonymous = requests.all.Load(), requests.anonymous.Load()
+	unauthorized = requests.unauthorized.Load()
 	stdout, stderr = unauthenticated.run(t, "", false, "project", "list", "--json")
-	if stdout != "" || !strings.Contains(stderr, "401") || !strings.Contains(stderr, "daynight setup --server-token-stdin") || requests.all.Load() != before+1 || requests.anonymous.Load() != anonymous+1 {
-		t.Fatal("missing token must produce one unauthorized request and installed CLI setup guidance")
+	if stdout != "" || !strings.Contains(stderr, "unauthenticated:") || !strings.Contains(stderr, "daynight setup --server-token-stdin") || requests.all.Load() != before+1 || requests.anonymous.Load() != anonymous+1 || requests.unauthorized.Load() != unauthorized+1 {
+		t.Fatal("missing token must produce one HTTP 401 request, unauthenticated error code, and installed CLI setup guidance")
 	}
 	for _, secret := range integration.secrets {
 		if secret != "" && integration.logs.contains(secret) {
