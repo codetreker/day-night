@@ -8,7 +8,7 @@ production-browser acceptance, embedded deployment and the subsequent focus-rest
 [dashboard tasks](docs/design/daynight-web-tasks.md) record completion and link
 the corresponding PR and CI evidence. Complete prerequisite data is delivered. Progressive graph overviews are delivered by
 [PR #134](https://github.com/codetreker/daynight/pull/134). Dependency inspection
-is being rebuilt from current main for a new replacement PR;
+is being rebuilt in [PR #143](https://github.com/codetreker/daynight/pull/143);
 [PR #121](https://github.com/codetreker/daynight/pull/121) is abandoned. The clean replacement code supplies independent inspection/Details,
 visible/hidden ancestor semantics and smooth synchronized routes; fresh runtime
 validation and its new PR delivery remain pending.
@@ -19,12 +19,12 @@ The [task inspection requirements](docs/spec/daynight-task-inspection.md),
 complete prerequisite context, smooth highlighted dependency routes, a centered
 detail dialog and Markdown descriptions with matching public skill guidance.
 Centered task details are implemented with the existing modal, attachment and
-focus lifecycles. Graph inspection, smooth paths and Markdown descriptions remain
-pending. The progressive view starts at fifty tasks/one hundred induced edges, with
+focus lifecycles. Inspection and smooth paths await current-source acceptance and delivery;
+Markdown descriptions remain pending. The progressive view starts at fifty tasks/one hundred induced edges, with
 explicit twenty-neighbor expansion and global reset; complete data and progress
-remain intact. Body activation still opens the delivered detail dialog with its
-Overview/Attachments split panels, routes remain polylines, and descriptions
-remain plain text. The replacement inspection must pass fresh source-bound acceptance and merge
+remain intact. The replacement separates body inspection from Details while preserving the
+delivered Overview/Attachments split panels and standalone reader. Cards use
+220×96 compact or 220×136 expandable geometry; descriptions remain plain text. The replacement inspection must pass fresh source-bound acceptance and merge
 before UX-T2 completes; historical inspection results do not establish it.
 
 | Component | Location | Implementation status | Requirements and design |

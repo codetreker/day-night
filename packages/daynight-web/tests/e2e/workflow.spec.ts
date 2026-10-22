@@ -4,6 +4,7 @@ import { test, expect, createProject, createTask, updateTask, withDependencyFail
 import { parseTaskGraph } from '../../src/api/parse';
 import type { PullRequestProperty } from '../../src/api/types';
 import { captureStableDependencyGeometry, checkDependencyGeometry, expectedDependencyTopology } from './dependency-geometry';
+import { expectedNodeHeights } from './visible-topology';
 import { expectCenteredTaskDetail, expectTaskDetailScroll } from './detail-dialog';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
@@ -213,6 +214,8 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   const graphSnapshot = parseTaskGraph(await graphResponse.json(), project.id);
   const checkEdges = async (rootId: string): Promise<void> => {
     const expected = expectedDependencyTopology(graphSnapshot.tasks, rootId);
+    const heights = expectedNodeHeights(expected, expected.nodes.map(({ id }) => id)).map(({ id, height }) => ({ id, height: `${height}px` })).sort((a, b) => a.id.localeCompare(b.id));
+    expect(await page.locator('.react-flow__node').evaluateAll((nodes) => nodes.map((node) => ({ id: (node as HTMLElement).dataset.id!, height: (node as HTMLElement).style.height })).sort((a, b) => a.id.localeCompare(b.id))), 'Every visible card uses its API-derived compact or expandable height').toEqual(heights);
     expect(await checkDependencyGeometry(page, expected, info), 'Every visible API dependency preserves complete native geometry').toEqual({ total: 0, examples: [] });
   };
   await test.step('keeps every static dependency aligned with task nodes through zoom and pan', async () => {
@@ -316,6 +319,8 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
       await expect(page.locator('.react-flow__node')).toHaveCount(4);
       await expect(page.locator('.task-dependency-edge')).toHaveCount(3);
       await expect(page.locator('.task-node-external')).toHaveCount(2);
+      expect(await page.locator('.react-flow__node').evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).style.height))).toEqual(['96px', '96px', '96px', '96px']);
+      await expect(card(page, prerequisite.id).locator('.task-node-expansions')).toHaveCount(0);
       await expect(page.getByText('2 个链内任务 · 2 个外部前置 · 3 条依赖')).toBeVisible();
       await expect(card(page, unrelated.id)).toHaveCount(0);
       await expect(inspectTask(page, ancestor.id)).toHaveAccessibleName('B completed external ancestor，已完成，外部前置');
@@ -706,6 +711,7 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   const attachmentTab = dialog.getByRole('tab', { name: '附件', exact: true });
   const attachmentPath = dialog.getByRole('textbox', { name: '目标相对路径', exact: true });
   await attachmentTab.click();
+  await dialog.locator('.attachment-upload-disclosure>summary').click();
   const fileInput = dialog.getByLabel('选择一个文件', { exact: true });
   await fileInput.setInputFiles({ name: 'retained.txt', mimeType: 'text/plain', buffer: Buffer.from('Unsubmitted attachment draft') });
   await attachmentPath.fill('draft/retained.txt');

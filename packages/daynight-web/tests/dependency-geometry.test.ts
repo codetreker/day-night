@@ -31,6 +31,15 @@ describe('independent production dependency geometry oracle', () => {
     value.edges[0]!.d = route; value.edges[0]!.pieces[0]!.d = route;
     expect(inspectDependencySnapshot(value, { ...expected, nodes: value.nodes.map(({ id }) => ({ id })) })).toEqual([]);
   });
+  it('checks fixed ports against each actual compact or expandable card height', () => {
+    const value = snapshot();
+    value.nodes[0]!.bottom = 136; value.nodes[1]!.bottom = 96;
+    const route = 'M100,68 L192,68 Q200,68 200,60 L200,56 Q200,48 208,48 L300,48';
+    value.edges[0]!.d = route; value.edges[0]!.pieces[0]!.d = route;
+    expect(inspectDependencySnapshot(value, expected)).toEqual([]);
+    value.nodes[0]!.bottom = 96;
+    expect(inspectDependencySnapshot(value, expected)).toContain('source->target: wrong fixed left-to-right ports');
+  });
   it('derives projection identities only from API dependencies, including complete upstream context', () => {
     expect(expectedDependencyTopology([
       { id: 'A', dependsOn: [] }, { id: 'C', dependsOn: ['A', 'X'] }, { id: 'P', dependsOn: [] },

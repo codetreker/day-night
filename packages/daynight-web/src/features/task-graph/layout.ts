@@ -1,9 +1,14 @@
 import { Graph, layout, type EdgeLabel, type GraphLabel, type NodeLabel } from '@dagrejs/dagre';
 import type { RootProjection } from './model';
 import { planDependencyRoutes } from './routing';
+import type { TaskExpansions } from './visibility';
 
 export const TASK_NODE_WIDTH = 220;
-export const TASK_NODE_HEIGHT = 136;
+export const TASK_NODE_COMPACT_HEIGHT = 96;
+export const TASK_NODE_EXPANDABLE_HEIGHT = 136;
+export const getTaskNodeHeight = (expansions: TaskExpansions): number =>
+  expansions.prerequisites.ids.length > 0 || expansions.successors.ids.length > 0
+    ? TASK_NODE_EXPANDABLE_HEIGHT : TASK_NODE_COMPACT_HEIGHT;
 
 export type CanvasPoint = {
   readonly x: number;
@@ -14,6 +19,8 @@ export type CanvasNode = {
   readonly id: string;
   readonly position: CanvasPoint;
   readonly kind: 'main' | 'external';
+  readonly width: number;
+  readonly height: number;
 };
 
 export type CanvasEdge = {
@@ -38,13 +45,15 @@ const finite = (value: number | undefined): number => {
   return value;
 };
 
-export const layoutGraph = (projection: RootProjection): CanvasLayout => {
+export const layoutGraph = (projection: RootProjection, nodeHeights: ReadonlyMap<string, number> = new Map(
+  [...projection.mainIds, ...projection.externalIds].map((id) => [id, TASK_NODE_COMPACT_HEIGHT]),
+)): CanvasLayout => {
   const ids = [...projection.mainIds, ...projection.externalIds].sort(compare);
   if (ids.length === 0) return { nodes: [], edges: [], width: 0, height: 0 };
 
   const graph = new Graph<GraphLabel, NodeLabel, EdgeLabel>({ directed: true });
   graph.setGraph({ rankdir: 'LR', ranker: 'longest-path', nodesep: 32, ranksep: 64, marginx: 32, marginy: 32 });
-  for (const id of ids) graph.setNode(id, { width: TASK_NODE_WIDTH, height: TASK_NODE_HEIGHT });
+  for (const id of ids) graph.setNode(id, { width: TASK_NODE_WIDTH, height: finite(nodeHeights.get(id)) });
   const sortedEdges = [...projection.edges].sort((left, right) =>
     compare(left.source, right.source) || compare(left.target, right.target));
   for (const edge of sortedEdges) graph.setEdge(edge.source, edge.target, {});
@@ -56,12 +65,13 @@ export const layoutGraph = (projection: RootProjection): CanvasLayout => {
 
   const nodes: CanvasNode[] = ids.map((id) => {
     const node = graph.node(id);
+    const nodeHeight = finite(node.height);
     const x = finite(node.x) - TASK_NODE_WIDTH / 2;
-    const y = finite(node.y) - TASK_NODE_HEIGHT / 2;
-    if (x < 0 || y < 0 || x + TASK_NODE_WIDTH > width || y + TASK_NODE_HEIGHT > height) {
+    const y = finite(node.y) - nodeHeight / 2;
+    if (x < 0 || y < 0 || x + TASK_NODE_WIDTH > width || y + nodeHeight > height) {
       throw new Error('Task graph layout placed a node outside its bounds.');
     }
-    return { id, position: { x, y }, kind: projection.mainIds.has(id) ? 'main' : 'external' };
+    return { id, position: { x, y }, width: TASK_NODE_WIDTH, height: nodeHeight, kind: projection.mainIds.has(id) ? 'main' : 'external' };
   });
 
   const edges: CanvasEdge[] = sortedEdges.map((edge) => {
@@ -78,6 +88,6 @@ export const layoutGraph = (projection: RootProjection): CanvasLayout => {
 
   return { nodes, edges: planDependencyRoutes(nodes.map((node) => ({
     id: node.id, left: node.position.x, top: node.position.y,
-    right: node.position.x + TASK_NODE_WIDTH, bottom: node.position.y + TASK_NODE_HEIGHT,
+    right: node.position.x + node.width, bottom: node.position.y + node.height,
   })), edges), width, height };
 };

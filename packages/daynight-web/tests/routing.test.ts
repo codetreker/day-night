@@ -1,6 +1,6 @@
 import { Graph, layout } from '@dagrejs/dagre';
 import { describe, expect, it } from 'vitest';
-import { layoutGraph, TASK_NODE_HEIGHT, TASK_NODE_WIDTH, type CanvasEdge, type CanvasLayout } from '../src/features/task-graph/layout';
+import { layoutGraph, TASK_NODE_COMPACT_HEIGHT, TASK_NODE_EXPANDABLE_HEIGHT, TASK_NODE_WIDTH, type CanvasEdge, type CanvasLayout } from '../src/features/task-graph/layout';
 import type { RootProjection } from '../src/features/task-graph/model';
 import { planDependencyRoutes, type RoutingNode } from '../src/features/task-graph/routing';
 import { compileDependencyRoute } from '../src/features/task-graph/routes';
@@ -9,7 +9,7 @@ import { entersRectangle, parseRoute } from './route-geometry';
 const rectangle = (id: string, left: number, top: number): RoutingNode => ({ id, left, top, right: left + 220, bottom: top + 96 });
 const edge = (source: string, target: string, points: CanvasEdge['points']): CanvasEdge => ({ id: `${source}->${target}`, source, target, external: false, points });
 const layoutRectangles = (actual: CanvasLayout): readonly RoutingNode[] => actual.nodes.map((node) => ({
-  id: node.id, left: node.position.x, right: node.position.x + TASK_NODE_WIDTH, top: node.position.y, bottom: node.position.y + TASK_NODE_HEIGHT,
+  id: node.id, left: node.position.x, right: node.position.x + node.width, top: node.position.y, bottom: node.position.y + node.height,
 }));
 const verify = (nodes: readonly RoutingNode[], edges: readonly CanvasEdge[]) => {
   const byId = new Map(nodes.map((node) => [node.id, node]));
@@ -115,14 +115,18 @@ describe('uniform node-safe dependency channels', () => {
     expect(high[0]!.points.some((point) => point.y === 252)).toBe(true);
     expect(low[0]!.points.some((point) => point.y === 252)).toBe(true);
   });
-  it('preserves native Dagre node placement and bounds exactly', () => {
+  it('preserves native Dagre placement and bounds with mixed compact and expandable cards', () => {
     const input = projection(6, [[0, 1], [0, 2], [1, 3], [2, 3], [0, 5], [3, 4], [5, 4]]);
+    const heights = new Map([...input.mainIds].map((id, index) => [id, index % 2 === 0 ? TASK_NODE_COMPACT_HEIGHT : TASK_NODE_EXPANDABLE_HEIGHT]));
     const raw = new Graph({ directed: true }); raw.setGraph({ rankdir: 'LR', ranker: 'longest-path', nodesep: 32, ranksep: 64, marginx: 32, marginy: 32 });
-    for (const id of [...input.mainIds].sort()) raw.setNode(id, { width: TASK_NODE_WIDTH, height: TASK_NODE_HEIGHT });
+    for (const id of [...input.mainIds].sort()) raw.setNode(id, { width: TASK_NODE_WIDTH, height: heights.get(id)! });
     for (const edge of [...input.edges].sort((a, b) => a.source.localeCompare(b.source) || a.target.localeCompare(b.target))) raw.setEdge(edge.source, edge.target, {});
-    layout(raw); const actual = layoutGraph(input);
+    layout(raw); const actual = layoutGraph(input, heights);
     expect(actual.width).toBe(raw.graph().width); expect(actual.height).toBe(raw.graph().height);
-    for (const node of actual.nodes) expect(node.position).toEqual({ x: raw.node(node.id).x! - TASK_NODE_WIDTH / 2, y: raw.node(node.id).y! - TASK_NODE_HEIGHT / 2 });
+    for (const node of actual.nodes) {
+      expect(node.position).toEqual({ x: raw.node(node.id).x! - node.width / 2, y: raw.node(node.id).y! - node.height / 2 });
+      expect(node.width).toBe(TASK_NODE_WIDTH); expect(node.height).toBe(heights.get(node.id));
+    }
     verify(layoutRectangles(actual), actual.edges);
   });
   it.each(['chain', 'merge', 'shared', 'external'] as const)('proves all real routes and quadratics avoid cards in the complete %s input', (kind) => {
@@ -134,12 +138,23 @@ describe('uniform node-safe dependency channels', () => {
       expect(point.y).toBeGreaterThanOrEqual(0); expect(point.y).toBeLessThanOrEqual(actual.height);
     }
   }, 60_000);
+  it.each(['chain', 'merge', 'shared', 'external'] as const)('proves the complete %s input with mixed card heights', (kind) => {
+    const input = capacity(kind);
+    const heights = new Map([...input.mainIds, ...input.externalIds].map((id, index) => [id, index % 2 === 0 ? TASK_NODE_COMPACT_HEIGHT : TASK_NODE_EXPANDABLE_HEIGHT]));
+    const actual = layoutGraph(input, heights);
+    expect(actual.nodes).toHaveLength(1000); expect(actual.edges).toHaveLength(kind === 'chain' ? 999 : 5000);
+    const cost = verify(layoutRectangles(actual), actual.edges);
+    expect(cost.curves).toBeLessThan(kind === 'chain' ? 1 : 30_000); expect(cost.pieces).toBeLessThan(30_000);
+    for (const node of actual.nodes) expect(node.height).toBe(heights.get(node.id));
+  }, 60_000);
   it('proves varied forward routes in deterministic random DAGs', () => {
     let state = 0x7316ab; const random = () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state / 2 ** 32; };
     for (let attempt = 0; attempt < 24; attempt++) {
       const edges: [number, number][] = [];
       for (let target = 1; target < 30; target++) for (let source = 0; source < target; source++) if (random() < 0.16) edges.push([source, target]);
-      const actual = layoutGraph(projection(30, edges, true)); verify(layoutRectangles(actual), actual.edges);
+      const input = projection(30, edges, true);
+      const heights = new Map([...input.mainIds].map((id, index) => [id, index % 2 === 0 ? TASK_NODE_COMPACT_HEIGHT : TASK_NODE_EXPANDABLE_HEIGHT]));
+      const actual = layoutGraph(input, heights); verify(layoutRectangles(actual), actual.edges);
     }
   }, 60_000);
   it('rejects invalid nodes, unsupported columns and invalid forward geometry', () => {

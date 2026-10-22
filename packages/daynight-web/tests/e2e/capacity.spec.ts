@@ -5,7 +5,7 @@ import { evidenceDirectory, expect, test, updateTask } from './fixtures';
 import { seedCapacity, seedNodeLimit, type CapacityFixture, type CapacityKind } from './capacity-data';
 import { withCapacityTrace } from './capacity-trace';
 import { captureStableDependencyGeometry, checkDependencyGeometry, type GeometryExpectation } from './dependency-geometry';
-import { expectedBatch, expectedDependencyTopology, expectedOverview } from './visible-topology';
+import { expectedBatch, expectedDependencyTopology, expectedNodeHeights, expectedOverview } from './visible-topology';
 import { parseTaskGraph } from '../../src/api/parse';
 
 // Repeated DOM snapshots of capacity views add controller work between
@@ -312,10 +312,10 @@ const visibleGraph = async (page: Page, rootId: string, overview: GeometryExpect
 };
 
 const assertVisibleTopology = async (page: Page, expected: GeometryExpectation, full: GeometryExpectation) => {
-  const actual = await page.evaluate(() => ({ stats: { shown: document.querySelector<HTMLElement>('.task-graph')!.dataset.visibleTaskCount, total: document.querySelector<HTMLElement>('.task-graph')!.dataset.totalTaskCount, summary: document.querySelector('.graph-visibility-summary')!.textContent, projection: document.querySelector('.graph-toolbar-actions > span')!.textContent }, nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => ({ id: node.dataset.id! })).sort((a, b) => a.id.localeCompare(b.id)),
+  const actual = await page.evaluate(() => ({ stats: { shown: document.querySelector<HTMLElement>('.task-graph')!.dataset.visibleTaskCount, total: document.querySelector<HTMLElement>('.task-graph')!.dataset.totalTaskCount, summary: document.querySelector('.graph-visibility-summary')!.textContent, projection: document.querySelector('.graph-toolbar-actions > span')!.textContent }, nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => ({ id: node.dataset.id!, height: node.style.height })).sort((a, b) => a.id.localeCompare(b.id)),
     edges: [...document.querySelectorAll<SVGGElement>('.task-dependency-edge')].map((edge) => { const path = edge.querySelector<SVGPathElement>('.react-flow__edge-path')!; return { id: edge.dataset.id!, source: path.dataset.source!, target: path.dataset.target!, external: edge.getAttribute('data-external') === 'true' }; }).sort((a, b) => a.id.localeCompare(b.id)) }));
   const external = new Set(full.edges.filter((edge) => edge.external).map((edge) => edge.source));
-  expect(actual, 'Every visible task, induced dependency and full projection statistic exactly matches the API graph').toEqual({ stats: { shown: String(expected.nodes.length), total: String(full.nodes.length), summary: `当前显示 ${count(expected.nodes.length)}/${count(full.nodes.length)} 个任务 · ${count(expected.edges.length)}/${count(full.edges.length)} 条依赖。通过卡片下方按钮展开更多前置或后续。`, projection: `${count(full.nodes.length - external.size)} 个链内任务 · ${count(external.size)} 个外部前置 · ${count(full.edges.length)} 条依赖` }, nodes: [...expected.nodes].sort((a, b) => a.id.localeCompare(b.id)), edges: [...expected.edges].sort((a, b) => a.id.localeCompare(b.id)) });
+  expect(actual, 'Every visible task, induced dependency and full projection statistic exactly matches the API graph').toEqual({ stats: { shown: String(expected.nodes.length), total: String(full.nodes.length), summary: `当前显示 ${count(expected.nodes.length)}/${count(full.nodes.length)} 个任务 · ${count(expected.edges.length)}/${count(full.edges.length)} 条依赖。通过卡片下方按钮展开更多前置或后续。`, projection: `${count(full.nodes.length - external.size)} 个链内任务 · ${count(external.size)} 个外部前置 · ${count(full.edges.length)} 条依赖` }, nodes: expectedNodeHeights(full, expected.nodes.map(({ id }) => id)).map(({ id, height }) => ({ id, height: `${height}px` })).sort((a, b) => a.id.localeCompare(b.id)), edges: [...expected.edges].sort((a, b) => a.id.localeCompare(b.id)) });
 };
 const ancestorClosure = (fixture: CapacityFixture, selectedId: string): Set<string> => {
   const tasks = new Map(fixture.tasks.map((task) => [task.id, task])); const closure = new Set([selectedId]); const pending = [selectedId];

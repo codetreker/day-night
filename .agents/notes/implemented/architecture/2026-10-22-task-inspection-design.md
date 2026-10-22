@@ -23,9 +23,9 @@ upstream-aware initial viewport. The
 implements the reading shell while retaining existing modal and attachment
 ownership. The [attachment split-view decision](2026-10-22-task-attachment-split-view.md)
 extends that shell with Overview/Attachments tabs, retained attachment state and
-a bounded two-pane preview. Graph inspection, smooth paths and Markdown
-descriptions remain pending in their Daynight tasks. Existing paint and detail notes describe their
-current mechanisms.
+a bounded two-pane preview. The replacement inspection and smooth-route source
+awaits current-source runtime acceptance and delivery; Markdown remains a separate
+pending task. Existing paint and detail notes describe their current mechanisms.
 
 The [progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
 partially supersedes all-context-at-once rendering. PR134 delivered bounded visible graphs and explicit expansion/reset, retaining

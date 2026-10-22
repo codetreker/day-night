@@ -25,7 +25,9 @@ and completed tasks keep their normal topology and full-data statistics.
 
 TaskInspectionContext carries selectedTaskId and highlightedIds. TaskNode shells
 read normal/selected/prerequisite/unrelated state while memoized content and
-controlled React Flow geometry/data remain stable. Inspection and Details never
+controlled React Flow geometry/data remain stable. Each node carries its actual
+220-by-96 compact or 220-by-136 expandable dimensions; layout, lateral ports,
+viewport fitting and focus reveal consume the same dimensions. Inspection and Details never
 expand S, relayout, compile routes or move the viewport. Details and relation
 navigation retain independent resource ownership.
 
@@ -53,7 +55,7 @@ focus. Locale changes update presentation without changing S, selection,
 geometry, details, attachments or business requests.
 
 Implementation is present; current-source production validation and replacement
-PR delivery remain pending. [PR #121](https://github.com/codetreker/daynight/pull/121)
+[PR #143](https://github.com/codetreker/daynight/pull/143) delivery remain pending. [PR #121](https://github.com/codetreker/daynight/pull/121)
 is abandoned, not a required merge or current proof. The
 [requirements](../../../../docs/spec/daynight-task-inspection.md) and
 [design](../../../../docs/design/daynight-task-inspection.md) own fresh acceptance.

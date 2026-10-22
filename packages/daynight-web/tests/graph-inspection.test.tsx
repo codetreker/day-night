@@ -44,7 +44,7 @@ const ready = async (container: HTMLElement, count = 4) => {
   await waitFor(() => { expect(container.querySelector<HTMLElement>('.react-flow__viewport')!.style.transform).not.toBe('translate(0px,0px) scale(1)'); });
 };
 const geometry = (container: HTMLElement) => ({
-  nodes: [...container.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => [node.dataset.id, node.style.transform]),
+  nodes: [...container.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => [node.dataset.id, node.style.transform, node.style.width, node.style.height]),
   shapes: [...container.querySelectorAll<SVGElement>('.react-flow__edge-path,.task-dependency-paint-piece')].map((shape) => [shape.tagName,
     ...['d', 'transform', 'x1', 'y1', 'x2', 'y2'].map((name) => shape.getAttribute(name)), shape.style.strokeDashoffset]),
   view: container.querySelector<HTMLElement>('.react-flow__viewport')!.style.transform,

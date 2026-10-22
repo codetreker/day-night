@@ -42,9 +42,11 @@ per snapshot without a global mutable cache.
 
 The separate Dagre adapter uses a new flat directed graph for each calculation,
 sorted node and edge insertion, left-to-right ranks, one global longest-path
-ranker and fixed cards. The original 220-by-96 cards are now 220 by 136 to
-provide explicit direction controls in the
-[progressive overview](2026-10-22-progressive-task-graph.md).
+ranker and 220px-wide cards. The original cards were 220 by 96; the
+[progressive overview](2026-10-22-progressive-task-graph.md) introduced 136px
+heights for direction controls. The [conditional footer decision](../bug-fix/2026-10-22-task-card-expansion-footer.md)
+uses 96px when no expansion is available and 136px when controls are present,
+with the actual dimensions shared by layout and rendering.
 It converts returned node centers to top-left positions and retains the routed
 edge points. Empty projections return explicit zero bounds before calling Dagre;
 nonempty output must have finite coordinates and valid node bounds. No React,

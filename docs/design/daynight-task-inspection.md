@@ -1,6 +1,6 @@
 # 任务依赖追踪与详情阅读设计
 
-状态：UX1、UX3与[PR134](https://github.com/codetreker/daynight/pull/134)渐进概览已交付。依赖检查从当前主线重建，替代PR待创建；[旧#121](https://github.com/codetreker/daynight/pull/121)已关闭弃用，不是完成前置，其运行仅作历史。新实现通过当前源码验收并合并后完成UX2，Markdown/skill仍属UX4。[要求](../spec/daynight-task-inspection.md)、[拆分](daynight-task-inspection-tasks.md)和[原型](mockups/task-inspection/index.html)拥有确认行为、交付边界与最终视觉。
+状态：UX1、UX3与[PR134](https://github.com/codetreker/daynight/pull/134)渐进概览已交付。依赖检查从当前主线重建，[替代PR #143](https://github.com/codetreker/daynight/pull/143)进行中；[旧#121](https://github.com/codetreker/daynight/pull/121)已关闭弃用，不是完成前置，其运行仅作历史。新实现通过当前源码验收并合并后完成UX2，Markdown/skill仍属UX4。[要求](../spec/daynight-task-inspection.md)、[拆分](daynight-task-inspection-tasks.md)和[原型](mockups/task-inspection/index.html)拥有确认行为、交付边界与最终视觉。
 
 ## 继承基线与替代实现
 
@@ -35,9 +35,11 @@ ProjectPage保持详情资源和入口/关闭恢复所有权。当前画布拥�
 
 显式方向展开和reset仍可改变结构及其既有锚点/视口/焦点；检查本身不能触发这些动作。普通失败保留旧图仅限同一身份/项目/鉴权作用域，401、会话/身份和资源转换沿用主线失效/取消/私有内容卸载。对话框打开时不抢焦点；消失入口使用既有关闭回退。locale重译新文案和可访问说明，不替换S、几何、视口或资源。
 
+`getTaskExpansion(index, P, S, taskId, direction)` 返回该方向前 20 个隐藏直接邻居、剩余数及准确 `addedEdges`，包括批内真实边；不递归，无手动边上限。卡片宽 220px；两方向都无可展开邻居时高 96px（94px 主体、2px 边框），不渲染 footer 或分隔线；至少一方向有控件时高 136px，包含 40px 双列 footer，另一空方向保留列位置。主体切换检查，Details 与方向控件为兄弟原生按钮。每个可见快照只派生一次展开数据，布局、React Flow 尺寸、初始视口、锚点居中和键盘揭示共用每卡片的实际宽高。展开重排 S，当前缩放居中锚点并聚焦主体；全局“收起到概览”重算/定位并保留 reset 焦点。
+
 ## 平滑路线
 
-采用统一列间水平/垂直通道，不延续旧尝试的端点修补分支。保留可见节点布局和顺序，全部边从源右中心到目标左中心，规划器统一拥有边几何和节点避让。`planDependencyRoutes(nodes, edges)`按实际220×136卡片一次建立列和16单位扩张的占用行区间，各中间列按Dagre意图插值选择最近自由行，仅在gap中点作HV转接并合并等高段，无条件碰撞修补/旧端口兼容分支；净空为≤12单位Q圆角留出空间。[统一路线决策](../../.agents/notes/implemented/architecture/2026-10-22-uniform-task-dependency-routing.md)保留原始raw-Dagre圆角选择的理由与替代方案。此为替代实现的采用设计，不是已验证运行结论。
+采用统一列间水平/垂直通道，不延续旧尝试的端点修补分支。保留可见节点布局和顺序，全部边从源右中心到目标左中心，规划器统一拥有边几何和节点避让。`planDependencyRoutes(nodes, edges)`按每个 CanvasNode 的实际 width/height（220×96 或 220×136）一次建立列和16单位扩张的占用行区间，各中间列按Dagre意图插值选择最近自由行，仅在gap中点作HV转接并合并等高段，无条件碰撞修补/旧端口兼容分支；净空为≤12单位Q圆角留出空间。[统一路线决策](../../.agents/notes/implemented/architecture/2026-10-22-uniform-task-dependency-routing.md)保留原始raw-Dagre圆角选择的理由与替代方案。此为替代实现的采用设计，不是已验证运行结论。
 
 编译器消费规划路线，产生canonical平滑路径与外部paint pieces。所有可见依赖、方向、实际body和箭头完整；外部高亮仍为5/4虚线。曲线弧长/分片在几何变化时计算，最大支持缩放的累计相位误差满足既有≤0.1CSSpx要求。选中/前置/无关呈现引用同一份几何，不能以删边、降为实线或临时返回折角掩盖失败。
 
@@ -61,7 +63,7 @@ ProjectPage保持详情资源和入口/关闭恢复所有权。当前画布拥�
 
 PR134的完整输入、50/100/20、mandatory visibility行和已交付渲染政策保持。替代实现独立验证完整P/S/H、可见role/真实边、隐藏祖先去重、同卡片/空白清除、兄弟控件与键盘/焦点，以及选择/Details/关系前后的S、节点位置、canonical路径、actual pieces和viewport完全稳定。覆盖共享、外部、完成/proposed、根无依赖、刷新消失、普通失败和鉴权失效。
 
-实际DOM路线的端点/方向、平滑相切、全部可见卡片避让、真实CTM、完整body coverage、参考弧长/phase及原生箭头独立判断，不能由生产规划器输出充当有效预期。可选输入只做编译忠实度，负例覆盖缺/多边、错误箭头、穿卡片和相位/覆盖失败。稳定性比较使用图坐标/相对变换，页面滚动诊断单独保留，不能把一致的文档平移误判为图变化。
+独立地从完整 API 投影 P 和实际 S 推导每个卡片是否存在隐藏直接邻居，验证 96/136px 高度；P 外无关后续不产生 footer。实际DOM路线的端点/方向、平滑相切、全部可见卡片避让、真实CTM、完整body coverage、参考弧长/phase及原生箭头独立判断，不能由生产规划器输出充当有效预期。可选输入只做编译忠实度，负例覆盖缺/多边、错误箭头、穿卡片和相位/覆盖失败。稳定性比较使用图坐标/相对变换，页面滚动诊断单独保留，不能把一致的文档平移误判为图变化。
 
 当前主线31场景（18原生/13容器）、四个完整1000任务输入及999/5000边、每图五次、mandatory visibility、超限、coverage、零retry、timeout和cleanup保持。新实现验证selected/hidden上游并加入selectMs≤300，保留open≤3000及detail/zoom/pan≤300。普通Details→close→立即zoom/pan、可信可见任务选择、高亮态同序列，每项取较慢state、网络单独计量；close与zoom间不加等待/reset/fit。
 

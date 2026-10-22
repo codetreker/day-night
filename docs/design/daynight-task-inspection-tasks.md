@@ -1,6 +1,6 @@
 # 任务依赖追踪与详情阅读任务拆分
 
-状态：UX1、UX3和[PR134](https://github.com/codetreker/daynight/pull/134)渐进概览已交付。依赖检查从当前主线重建，替代PR待创建；[旧#121](https://github.com/codetreker/daynight/pull/121)已关闭弃用，不是完成前置。UX2在新实现通过当前源码验收并合并后完成，UX4待实现。[要求](../spec/daynight-task-inspection.md)、[设计](daynight-task-inspection.md)和[原型](mockups/task-inspection/index.html)拥有最终行为、机制与目标视觉。task状态及dependsOn以Daynight为准。
+状态：UX1、UX3和[PR134](https://github.com/codetreker/daynight/pull/134)渐进概览已交付。依赖检查从当前主线重建，[替代PR #143](https://github.com/codetreker/daynight/pull/143)进行中；[旧#121](https://github.com/codetreker/daynight/pull/121)已关闭弃用，不是完成前置。UX2在新实现通过当前源码验收并合并后完成，UX4待实现。[要求](../spec/daynight-task-inspection.md)、[设计](daynight-task-inspection.md)和[原型](mockups/task-inspection/index.html)拥有最终行为、机制与目标视觉。task状态及dependsOn以Daynight为准。
 
 | 任务 | 目的 | 状态 |
 |---|---|---|

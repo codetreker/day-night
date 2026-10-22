@@ -15,7 +15,9 @@ multiple per-edge repair strategies make that requirement difficult to verify.
 The adopted replacement design keeps current visible-node placement and order,
 and gives every visible dependency the same horizontal/vertical column-channel
 planning rule. Source ports are right-center and target ports left-center.
-Shared placed-card geometry owns the available column gaps and free passages;
+Shared placed-card geometry uses each CanvasNode's actual width and height:
+220 by 96 without expansion controls, or 220 by 136 with the footer. It owns
+the available column gaps and free passages;
 route planning retains sixteen units of clearance for bounded quadratic corner
 rounding of at most twelve units. Every visible real induced edge is retained,
 with forward horizontal endpoint direction and no card-interior crossing.
@@ -53,7 +55,7 @@ not a required integration or current verification artifact. Its runtime results
 do not establish this replacement's geometry or performance. The
 [requirements](../../../../docs/spec/daynight-task-inspection.md) and
 [design](../../../../docs/design/daynight-task-inspection.md) own the new observable
-acceptance and mechanism; a fresh replacement PR owns production evidence.
+acceptance and mechanism; [PR #143](https://github.com/codetreker/daynight/pull/143) owns fresh production evidence.
 
 ## Alternatives
 

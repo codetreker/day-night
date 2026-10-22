@@ -55,6 +55,16 @@ const ready = async (container: HTMLElement) => {
 beforeEach(installGraphMeasurements);
 
 describe('task dependency canvas', () => {
+  it('omits the entire expansion footer for fully visible tasks and sizes every card to its body', async () => {
+    const view = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    await ready(view.container);
+    expect(view.container.querySelector('.task-node-expansions')).toBeNull();
+    for (const node of view.container.querySelectorAll<HTMLElement>('.react-flow__node')) {
+      expect(node.style.width).toBe('220px');
+      expect(node.style.height).toBe('96px');
+    }
+  });
+
   it('exposes proposed main and external nodes with their own status and unfinished prerequisites', async () => {
     const proposed = {
       ...graph,
@@ -480,7 +490,7 @@ describe('task dependency canvas', () => {
     expect(sourceLeft).toBeGreaterThanOrEqual(0);
     expect(sourceLeft + layoutModule.TASK_NODE_WIDTH * zoom(container)).toBeLessThanOrEqual(800);
     expect(sourceTop).toBeGreaterThanOrEqual(0);
-    expect(sourceTop + layoutModule.TASK_NODE_HEIGHT * zoom(container)).toBeLessThanOrEqual(445);
+    expect(sourceTop + layoutModule.TASK_NODE_COMPACT_HEIGHT * zoom(container)).toBeLessThanOrEqual(445);
     fireEvent.click(screen.getByRole('button', { name: '适应画布' }));
     await waitFor(() => { expect(zoom(container)).toBeLessThan(0.8); });
     expect(zoom(container)).toBeGreaterThanOrEqual(0.2);
@@ -504,7 +514,7 @@ describe('task dependency canvas', () => {
     const flow = view.container.querySelector<HTMLElement>('.react-flow')!;
     flow.scrollLeft = 2000;
     Object.defineProperty(flow, 'scrollTo', { value: (options: ScrollToOptions) => { flow.scrollLeft = options.left!; flow.scrollTop = options.top!; }, configurable: true });
-    Object.defineProperty(button.closest('.task-node')!, 'getBoundingClientRect', { value: () => new DOMRect(20, 20, layoutModule.TASK_NODE_WIDTH, layoutModule.TASK_NODE_HEIGHT), configurable: true });
+    Object.defineProperty(button.closest('.task-node')!, 'getBoundingClientRect', { value: () => new DOMRect(20, 20, layoutModule.TASK_NODE_WIDTH, layoutModule.TASK_NODE_COMPACT_HEIGHT), configurable: true });
     const beforeZoom = zoom(view.container);
     focused.mockImplementation((selector) => selector === ':focus-visible');
     fireEvent.focus(button);
@@ -512,6 +522,10 @@ describe('task dependency canvas', () => {
     await waitFor(() => { expect(viewport(view.container).style.transform).not.toBe(before); });
     expect(flow.scrollLeft).toBe(0);
     expect(zoom(view.container)).toBe(beforeZoom);
+    const nodePosition = /translate\(([^,]+)px,\s*([^)]+)px\)/.exec(button.closest<HTMLElement>('.react-flow__node')!.style.transform)!;
+    const currentViewport = /translate\(([^,]+)px,\s*([^)]+)px\)/.exec(viewport(view.container).style.transform)!;
+    expect(Number(currentViewport[1]) + (Number(nodePosition[1]) + 110) * beforeZoom).toBeCloseTo(400);
+    expect(Number(currentViewport[2]) + (Number(nodePosition[2]) + 48) * beforeZoom).toBeCloseTo(222.5);
   });
 
   it.each(['body', 'details'])('keeps the intended viewport stable for an already visible keyboard-focused %s', async (control) => {
@@ -583,6 +597,9 @@ describe('progressive task visibility', () => {
     const initialRoutes = [...view.container.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'));
     const initialViewport = viewport(view.container).style.transform;
     const upstream = expansion('合流任务 · 40 个外部前置', 'prerequisites');
+    expect(upstream.closest<HTMLElement>('.react-flow__node')!.style.height).toBe('136px');
+    expect(nodeShell('合流任务 · 40 个外部前置').querySelector('.task-node-expansions')?.children).toHaveLength(2);
+    expect(nodeShell('合流任务 · 40 个外部前置').querySelectorAll('.task-node-expand')).toHaveLength(1);
     expect(upstream).toHaveAttribute('data-added-tasks', '20');
     expect(upstream).toHaveAttribute('data-added-edges', '20');
     expect(upstream).toHaveAttribute('data-remaining', '20');
@@ -600,14 +617,20 @@ describe('progressive task visibility', () => {
     fireEvent.click(downstream);
     await rendered(view.container, 81, 80);
     await waitFor(() => { expect(nodeButton('渐进展开 · 主链交付起点')).toHaveFocus(); });
+    expect(nodeShell('渐进展开 · 主链交付起点').querySelector('.task-node-expansions')).toBeNull();
+    expect(nodeButton('渐进展开 · 主链交付起点').closest<HTMLElement>('.react-flow__node')!.style.height).toBe('96px');
     fireEvent.click(expansion('合流任务 · 40 个外部前置', 'prerequisites'));
     await rendered(view.container, 101, 100);
     expect(view.container.querySelectorAll('.task-node-expand')).toHaveLength(0);
+    expect(view.container.querySelectorAll('.task-node-expansions')).toHaveLength(0);
+    await waitFor(() => { expect(nodeButton('合流任务 · 40 个外部前置')).toHaveFocus(); });
+    for (const node of view.container.querySelectorAll<HTMLElement>('.react-flow__node')) expect(node.style.height).toBe('96px');
     expect(progressiveIndex.rootProgress.get(rootId)).toEqual({ total: 61, done: 0, status: 'todo' });
     const reset = screen.getByRole('button', { name: '收起到概览' });
     await user.click(reset);
     await rendered(view.container, 50, 49);
     expect(reset).toHaveFocus();
+    expect(expansion('合流任务 · 40 个外部前置', 'prerequisites').closest<HTMLElement>('.react-flow__node')!.style.height).toBe('136px');
     expect(visibleIds(view.container)).toEqual(initialIds);
     expect([...view.container.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'))).toEqual(initialRoutes);
     expect(viewport(view.container).style.transform).toBe(initialViewport);
@@ -664,7 +687,7 @@ describe('progressive task visibility', () => {
     const flow = view.container.querySelector<HTMLElement>('.react-flow')!;
     flow.scrollLeft = 2000;
     Object.defineProperty(flow, 'scrollTo', { value: (options: ScrollToOptions) => { flow.scrollLeft = options.left!; flow.scrollTop = options.top!; }, configurable: true });
-    Object.defineProperty(button, 'getBoundingClientRect', { value: () => new DOMRect(20, 20, layoutModule.TASK_NODE_WIDTH, layoutModule.TASK_NODE_HEIGHT), configurable: true });
+    Object.defineProperty(button, 'getBoundingClientRect', { value: () => new DOMRect(20, 20, layoutModule.TASK_NODE_WIDTH, layoutModule.TASK_NODE_COMPACT_HEIGHT), configurable: true });
     const before = viewport(view.container).style.transform;
     fireEvent.focus(button);
     fireEvent.scroll(flow);
@@ -675,6 +698,21 @@ describe('progressive task visibility', () => {
 });
 
 describe('initial task viewport policy', () => {
+  it('fits and centers the actual mixed-height card bounds', () => {
+    const geometry: layoutModule.CanvasLayout = {
+      nodes: [
+        { id: 'root', kind: 'main', width: 220, height: 96, position: { x: 32, y: 32 } },
+        { id: 'expandable', kind: 'main', width: 220, height: 136, position: { x: 316, y: 180 } },
+      ], edges: [], width: 568, height: 348,
+    };
+    const actual = getInitialTaskViewport(geometry, 'root', 800, 445);
+    const top = 32 * actual.zoom + actual.y;
+    const bottom = (180 + 136) * actual.zoom + actual.y;
+    expect(top).toBeGreaterThanOrEqual(0);
+    expect(bottom).toBeLessThanOrEqual(445);
+    expect((top + bottom) / 2).toBeCloseTo(222.5);
+  });
+
   it('centers a fitting graph normally rather than anchoring every root to the left', () => {
     const geometry = layoutModule.layoutGraph({ rootId: 'root', mainIds: new Set(['root']), externalIds: new Set(), edges: [], completed: 0 });
     const actual = getInitialTaskViewport(geometry, 'root', 800, 445);
@@ -683,16 +721,16 @@ describe('initial task viewport policy', () => {
     expect(actual.zoom).toBeLessThanOrEqual(1);
     expect(root.position.x * actual.zoom + actual.x).toBeGreaterThan(32);
     expect((root.position.x + layoutModule.TASK_NODE_WIDTH / 2) * actual.zoom + actual.x).toBeCloseTo(400);
-    expect((root.position.y + layoutModule.TASK_NODE_HEIGHT / 2) * actual.zoom + actual.y).toBeCloseTo(222.5);
+    expect((root.position.y + layoutModule.TASK_NODE_COMPACT_HEIGHT / 2) * actual.zoom + actual.y).toBeCloseTo(222.5);
   });
 
   it.each([320, 800])('starts with the complete leftmost upstream region when it lies before the root at width %s', (width) => {
     const geometry: layoutModule.CanvasLayout = {
       nodes: [
-        { id: 'root', kind: 'main', position: { x: 20000, y: 12000 } },
-        { id: 'later-upstream', kind: 'external', position: { x: 32, y: 9000 } },
-        { id: 'first-upstream', kind: 'external', position: { x: 32, y: 2000 } },
-        { id: 'tail', kind: 'main', position: { x: 20284, y: 12000 } },
+        { id: 'root', kind: 'main', width: 220, height: 96, position: { x: 20000, y: 12000 } },
+        { id: 'later-upstream', kind: 'external', width: 220, height: 136, position: { x: 32, y: 9000 } },
+        { id: 'first-upstream', kind: 'external', width: 220, height: 136, position: { x: 32, y: 2000 } },
+        { id: 'tail', kind: 'main', width: 220, height: 96, position: { x: 20284, y: 12000 } },
       ], edges: [], width: 20536, height: 13000,
     };
     const actual = getInitialTaskViewport(geometry, 'root', width, 445);
@@ -700,7 +738,7 @@ describe('initial task viewport policy', () => {
     expect(32 * actual.zoom + actual.x).toBe(32);
     expect(2000 * actual.zoom + actual.y).toBe(32);
     expect((32 + layoutModule.TASK_NODE_WIDTH) * actual.zoom + actual.x).toBeLessThan(width);
-    expect((2000 + layoutModule.TASK_NODE_HEIGHT) * actual.zoom + actual.y).toBeLessThan(445);
+    expect((2000 + geometry.nodes.find((node) => node.id === 'first-upstream')!.height) * actual.zoom + actual.y).toBeLessThan(445);
   });
 
   it.each([
@@ -709,20 +747,20 @@ describe('initial task viewport policy', () => {
   ])('keeps the source root visible when readable zoom cannot contain the %s bounds', (_kind, tailX, tailY) => {
     const geometry: layoutModule.CanvasLayout = {
       nodes: [
-        { id: 'root', kind: 'main', position: { x: 32, y: 6000 } },
-        { id: 'tail', kind: 'main', position: { x: tailX, y: tailY } },
+        { id: 'root', kind: 'main', width: 220, height: 96, position: { x: 32, y: 6000 } },
+        { id: 'tail', kind: 'main', width: 220, height: 96, position: { x: tailX, y: tailY } },
       ], edges: [], width: tailX + 252, height: tailY + 6128,
     };
     const actual = getInitialTaskViewport(geometry, 'root', 800, 445);
     expect(actual.zoom).toBe(0.8);
     expect(32 * actual.zoom + actual.x).toBe(32);
-    expect((6000 + layoutModule.TASK_NODE_HEIGHT / 2) * actual.zoom + actual.y).toBeCloseTo(222.5);
+    expect((6000 + layoutModule.TASK_NODE_COMPACT_HEIGHT / 2) * actual.zoom + actual.y).toBeCloseTo(222.5);
   });
   it('anchors a folded overview to its root even when visible prerequisites are far to the left', () => {
     const geometry: layoutModule.CanvasLayout = {
       nodes: [
-        { id: 'upstream', kind: 'external', position: { x: 32, y: 32 } },
-        { id: 'root', kind: 'main', position: { x: 20000, y: 4000 } },
+        { id: 'upstream', kind: 'external', width: 220, height: 136, position: { x: 32, y: 32 } },
+        { id: 'root', kind: 'main', width: 220, height: 136, position: { x: 20000, y: 4000 } },
       ],
       edges: [], width: 20252, height: 4168,
     };
@@ -730,7 +768,7 @@ describe('initial task viewport policy', () => {
       const actual = getInitialTaskViewport(geometry, 'root', width, 445, true);
       expect(actual.zoom).toBe(0.8);
       expect(actual.x + 20000 * actual.zoom).toBe(32);
-      expect(actual.y + (4000 + layoutModule.TASK_NODE_HEIGHT / 2) * actual.zoom).toBe(445 / 2);
+      expect(actual.y + (4000 + layoutModule.TASK_NODE_EXPANDABLE_HEIGHT / 2) * actual.zoom).toBe(445 / 2);
       expect(32 + layoutModule.TASK_NODE_WIDTH * actual.zoom).toBeLessThan(width);
     }
   });

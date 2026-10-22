@@ -196,8 +196,12 @@ controls adding at most twenty hidden direct neighbors in P, with exact new-task
 new-induced-edge and remaining counts. Manual expansion has no edge cap. Every
 real edge with both endpoints in S appears, without shortcuts or aggregate cards.
 
-Cards are 220 by 136 pixels: 94px body, 40px two-column expansion footer and two
-border pixels; unused directions remain blank. The replacement code separates native body inspection from sibling Details
+Cards are 220 by 96 pixels without hidden direct neighbors, using a 94px body
+and two border pixels with no footer or separator. Cards with expansion controls
+are 220 by 136, including a 40px two-column footer; an unused direction retains
+its column. Each visible snapshot derives expansion data once. Layout, React
+Flow, route ports, viewport fitting and keyboard reveal share actual dimensions.
+The replacement code separates native body inspection from sibling Details
 and direction controls. Complete H drives visible ancestor/real-edge/arrow
 highlighting and deduplicated hidden counts; same-card/blank clears. Inspection
 does not expand, relayout, compile geometry or move the viewport. Details opens
@@ -336,9 +340,12 @@ loaded state, preview and an unsent file/path draft. Changing project/task reset
 the tab and attachment scope. Description-to-attachment navigation, when
 implemented, activates this same panel and controller.
 
-Select one local file, accept its name as the initial target or edit the relative
-path, then upload. MIME is selected from the target path with `mime`
-4.1.1. Uploading the same path overwrites that file. Each preview offers Download,
+The upload section starts collapsed. Activate Upload with a click or the
+keyboard to expand it, then select one local file, accept its name as the initial
+target or edit the relative path, and upload. Activating the disclosure again
+collapses it while retaining the file, path and validation state. Tab round trips
+retain its expansion; a new project/task starts collapsed. MIME is selected
+from the target path with `mime` 4.1.1. Uploading the same path overwrites that file. Each preview offers Download,
 a neighboring Open in new tab link with an external-link icon, and Delete; successful writes refresh only the attachment list and preview.
 They do not change the task version, timestamp or graph snapshot.
 
@@ -633,7 +640,9 @@ visibility rows, adding selectedId/hiddenUpstream and selectMs≤300. open≤300
 detail/zoom/pan≤300 remain. Normal Details→close→immediatezoom/pan precedes trusted
 visible-task selection and the highlighted sequence; each metric uses the worse
 state with independent network timing, and no close-to-zoom reset/fit/wait.
-Independent API/S topology, actual DOM fixed ports, Q≤12/tangency, card avoidance,
+Independent API/P/S topology derives compact/expandable heights from hidden direct
+neighbors inside P; unrelated outside-P successors cannot create a footer.
+Actual DOM fixed ports, Q≤12/tangency, card avoidance,
 body/marker coverage and analytic curved dash phase cover every visible edge.
 Stable owner transforms are graph-relative real root/owner CTMs; raw screen,
 page-scroll and canvas diagnostics stay separate from reset equality.
@@ -801,13 +810,14 @@ S and all real edges with both endpoints in S; external classification still
 depends on source membership in P−M. It derives distinct root progress and aggregate chain status from main
 tasks in the same traversal, and marks shared tasks. The Dagre
 adapter returns finite left-to-right node positions and routed edge points for
-220-by-136 visible cards. The read-only React Flow canvas consumes these results without changing domain
-objects. React Flow owns fixed task nodes, native ResizeObserver measurement,
+220px-wide visible cards with 96px compact or 136px expandable heights. The
+read-only React Flow canvas consumes these results without changing domain
+objects. React Flow owns task nodes with those exact dimensions, native ResizeObserver measurement,
 keyboard behavior, viewport and controls. One memoized SVG in its public
-ViewportPortal renders every exact Dagre path, with stable edge identity,
+ViewportPortal renders every planned smooth M/L/Q path, with stable edge identity,
 arrowheads, external-context dashes and accessibility semantics. It shares the viewport's
 transform, so selection/pan/zoom reuse geometry without per-edge reactive state.
-Canonical routes retain native arrow markers and full Dagre points. Dashed body
+Canonical routes retain native arrow markers and the full planned geometry. Dashed body
 paint uses `dashes.ts` to derive locally horizontal rotated lines and short native
 vertex paths, with the original 5/4 pattern and continuous positive arc-length
 phase. Solid bodies remain native. Pieces are noninteractive and hidden from the
@@ -819,8 +829,9 @@ measured canvas dimensions are ready, fitting within 0.8–1 zoom or anchoring t
 leftmost rank at 0.8 zoom. The root remains vertically centered when already
 leftmost; otherwise the topmost upstream node starts at a 32px canvas inset.
 Dependency geometry does not require connection-port DOM or per-edge endpoint readiness.
-Ordinary/selected canonical node variants retain unaffected references, and
-memoized collapsed root rows keep a null selection until expanded. Changed snapshot indexes
+Graph-local inspection Context supplies presentation roles while controlled node
+geometry/data and memoized content retain stable references. Memoized collapsed
+root rows keep their existing detail-selection behavior until expanded. Changed snapshot indexes
 refresh all rows; equivalent graph responses retain the existing index. The one-time initial viewport policy is separate
 from explicit fit controls and does not run again on selection or pan.
 
