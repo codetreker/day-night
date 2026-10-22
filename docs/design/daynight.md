@@ -3,7 +3,7 @@
 状态：`packages/daynight/` 是通过 `@codetreker/daynight` 分发的 TypeScript 客户端
 命令工具包，支持 Linux、macOS 和 Windows。`review` 提供 GitHub PR 审查，`update`
 管理当前 npm 全局安装，`setup` 提供按能力配置的引导，`completion` 生成 Bash 和 zsh
-的原生补全脚本并安装启动配置；`skill` 提供公开项目任务 skill 的交互安装。project/task
+的原生补全脚本并安装启动配置；`skill` 提供公开 `using-daynight` skill 的交互安装。project/task
 CLI 的共享配置、HTTP、仓库关联基础及 project/task 命令已完成，安装产物、真实服务
 与默认预算验收已通过托管验证；集成状态见[PR #55](https://github.com/codetreker/daynight/pull/55)。
 [专属设计](daynight-project-task.md)拥有机制，[实现任务](daynight-project-task-tasks.md)
@@ -107,9 +107,12 @@ src/
       agents.ts
       targets.ts
       install.ts
-      skills/daynight/
+      skills/using-daynight/
         SKILL.md
-        references/commands.md
+        references/handbook.md
+        references/autopilot.md
+        references/run-task.md
+        references/create-task.md
     setup/
       definition.ts
       command.ts

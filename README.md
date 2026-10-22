@@ -64,27 +64,44 @@ test-side budgets under the
 Controlled native-platform tests and live Copilot/GitHub acceptance provide separate evidence; live acceptance remains
 outstanding.
 
-The adopted [public Agent skill design](docs/design/daynight-agent-skill.md)
-defines an npm-bundled `daynight` skill and interactive installation for Codex,
-Copilot CLI and Claude Code. Its [requirements](docs/spec/daynight-agent-skill.md)
-cover active task management in associated projects, agent and scope selection,
-and complete replacement on reinstall. The public skill and its command reference
-are included in the npm package build under
-`dist/commands/skill/skills/daynight/`. Interactive
-[`daynight skill install`](#agent-skill-installation) detects supported Agent
-launchers and installs that bundle at the selected scope. The skill guides task recovery, dependency and observed-version updates, and
-completion only after required PRs are confirmed merged and acceptance passes.
-Each session resumes its current task or selects one ready todo task most
-relevant to the authorized work, retaining that single task through delivery.
-The design links implementation tasks tracked in the real Daynight project;
-their live status belongs to Daynight. Installation acceptance uses simulated
-Agent launchers in an isolated PATH and the actual packed CLI in PTY/ConPTY. It
-checks all three agents at both scopes, complete bundle bytes, direct overwrite,
-stale-file removal, and preservation of sibling skills and the other scope. The
-launchers fail if executed; real Agent installations, models, and Daynight services
-are not part of this installer acceptance. The
+The [public Agent skill design](docs/design/daynight-agent-skill.md) defines one
+npm-bundled `using-daynight` skill and interactive installation for Codex, Copilot
+CLI and Claude Code. Its [requirements](docs/spec/daynight-agent-skill.md) cover
+context-based routing, explicit continuous-execution intent, attachment-backed
+planning and complete replacement on reinstall. The entrypoint and four mode
+references are published under `dist/commands/skill/skills/using-daynight/`.
+
+| Mode | Responsibility |
+|---|---|
+| `handbook` | Command purposes and operational context; use CLI help for command usage |
+| `create-task` | With explicit user permission, skip one-off/trivial work and reuse or register a task with verified planning attachments |
+| `run-task <task-id>` | Execute the designated task through validation and authorized delivery, then return |
+| `autopilot <goal or scope>` | Restore the current task or select one most relevant ready todo, and continue only after confirmed completion |
+
+Calling `using-daynight` without input uses the actual context; unclear intent is
+resolved with the user. Autopilot requires an explicit request for continuous
+execution. Creating tasks requires explicit user permission to create them;
+implementation requests and autopilot activation do not supply that permission.
+Existing explicit permission applies within its stated scope without repeated
+confirmation. Task descriptions contain the problem and real attachment references;
+one primary Markdown attachment owns solution and acceptance criteria. Frontend
+tasks also require an interactive mock UI matching intended final visuals and
+representative states. Dependencies use dependsOn, PR references use properties,
+and execution progress uses an existing checkpoint. Necessary PRs must be
+platform-confirmed merged and acceptance satisfied before done. A request to
+retain a PR for review keeps the task in progress and returns control to the user.
+
+[`daynight skill install`](#agent-skill-installation) detects supported launchers
+and installs the selected scope. Once the complete using-daynight bundle is
+published, it removes the old daynight leaf only in the same selected physical
+skill root. Installation acceptance uses isolated simulated launchers and the
+actual packed CLI in PTY/ConPTY. It checks all three Agents at both scopes,
+complete bytes, overwrite, migration and preservation of unrelated resources.
+Launchers fail if executed; real Agents, models and task services are outside
+installer acceptance. Static bundle checks and independent workflow scenarios
+provide separate instruction review. The
 [acceptance decision](.agents/notes/implemented/testing/2026-10-21-simulated-agent-installation-acceptance.md)
-owns that boundary.
+owns this evidence boundary.
 
 The [task property requirements](docs/spec/daynight-task-properties.md),
 [design](docs/design/daynight-task-properties.md),
@@ -139,7 +156,7 @@ typechecks and builds once, then invokes both Vitest configurations against that
 same compiled output. `pnpm build` clears the package's `dist/` before emitting
 `packages/daynight/dist/main.js` and copying the explicit review and public skill
 bundles into `dist/commands/review/skills/daynight-review/` and
-`dist/commands/skill/skills/daynight/`. Complete relative resources are included;
+`dist/commands/skill/skills/using-daynight/`. Complete relative resources are included;
 repository workflow skills are not scanned for publication. The package's
 `daynight` bin points to the stable JavaScript entry.
 Source tests mirror `cli/`, `config/`, `api/`, `commands/` and `platform/`
@@ -154,7 +171,7 @@ missing Darwin helper executable bits in the stable terminal dependency. The
 [native terminal decision](.agents/notes/implemented/testing/2026-10-21-native-skill-terminal-acceptance.md)
 records the test isolation and stream separation. Installer acceptance constructs
 Agent launcher fixtures and verifies they are never run. Static bundle tests own
-frontmatter, local references and published task-command guidance; existing
+frontmatter, mode references and published task-command guidance; existing
 project/task suites own service and task semantics. `pnpm acceptance`
 separately packs and installs the CLI in a local consumer and requires package-
 registry access. The review lifecycle suite uses controlled GitHub/Copilot
@@ -565,51 +582,55 @@ records module ownership and the preserved data layout.
 
 ## Agent skill installation
 
-Install the public project/task skill through an interactive terminal:
+Install the public `using-daynight` skill through an interactive terminal:
 
 ```bash
 daynight skill install
 ```
 
-The command detects available `codex`, `copilot` and `claude` launchers without
+The command detects available codex, copilot and claude launchers without
 starting them or checking login. Select one or more detected Agents with Space,
-then Enter; the initial selection is empty. Next select `User` or `Project`,
+then Enter; the initial selection is empty. Next select User or Project,
 with User initially selected. Installation starts after the scope is submitted.
-Repeating the same command refreshes installed content from the running package.
+Repeating the command refreshes the full bundle from the running package.
 
 | Agent | User destination | Project destination |
 |---|---|---|
-| Codex | `~/.agents/skills/daynight/` | `<worktree>/.agents/skills/daynight/` |
-| Copilot CLI | `~/.agents/skills/daynight/` | `<worktree>/.agents/skills/daynight/` |
-| Claude Code | `~/.claude/skills/daynight/` | `<worktree>/.claude/skills/daynight/` |
+| Codex | `~/.agents/skills/using-daynight/` | `<worktree>/.agents/skills/using-daynight/` |
+| Copilot CLI | `~/.agents/skills/using-daynight/` | `<worktree>/.agents/skills/using-daynight/` |
+| Claude Code | `~/.claude/skills/using-daynight/` | `<worktree>/.claude/skills/using-daynight/` |
 
 User scope works outside Git. Project scope uses the current Git worktree root,
-including calls from subdirectories or linked worktrees, and does not require
-an origin, server configuration or Daynight project association. Installing the
-skill and associating a project remain separate operations. Terminal stdin and
-stderr are required; prompts use stderr and installation results use stdout.
-Help and installation do not depend on review configuration or credentials.
+including calls from subdirectories or linked worktrees, without requiring an
+origin, server configuration or project association. Installing the skill and
+associating a project remain separate operations. Terminal stdin and stderr are
+required; prompts use stderr and installation results use stdout. Help and
+installation do not depend on review configuration or credentials.
 
-Every installation replaces the complete destination `daynight` entry, including
-local edits and obsolete files. Other skills and existing parent-directory links
-are preserved. Several Agent paths that resolve to the same physical directory
-share one write; strictly nested targets are rejected before writing. A selected
-Agent's discovery directory can also be visible to another Agent. Installing at
-one scope does not change a same-named skill at another scope; host precedence
-still applies.
+Each installation replaces the complete using-daynight leaf, including local
+edits and obsolete files. It then removes the legacy daynight leaf in the same
+selected physical skill root. The old name is retained until publication
+succeeds. Other skills, opposite-scope copies and parent-directory links are
+preserved; leaf links are replaced or removed without following their targets.
+Several Agent paths resolving to one physical root share one write. Destructive
+nesting involving an installation or legacy-cleanup path is rejected before
+writing. Discovery paths may be shared with unselected Agents, and host precedence
+continues to govern copies at other scopes.
 
-The command reports per-Agent destinations and results. A failure stops later
-targets, retains earlier successful installations and exits nonzero. A failure
-after removing the old directory can leave that target absent; the diagnostic
-states the result and rerunning installs the packaged content again. Ctrl+C
-before publication cleans the operation's stage and newly created empty parents.
+The command reports per-Agent destinations and results. Failure stops later
+targets, retains earlier completed installations and exits nonzero. If legacy
+cleanup fails after publication, the new bundle stays installed and the command
+reports the incomplete migration. Replacement failure after removing an existing
+using-daynight leaf may leave that destination absent; diagnostics preserve the
+actual phase and reason. Rerunning installs the complete packaged bundle.
+Cancellation before publication cleans its stage and newly created empty parents.
 
 Codex normally discovers changed skills automatically; restart its session if
-needed. For Copilot CLI run `/skills reload` and inspect `/skills info daynight`.
-Claude Code watches existing roots; use `/reload-skills` when a top-level skills
-directory was created during the session. The
-[skill design](docs/design/daynight-agent-skill.md) owns installation mechanisms
-and the simulated-launcher installation acceptance matrix.
+needed. For Copilot CLI run `/skills reload` and inspect
+`/skills info using-daynight`. Claude Code watches existing roots; use
+`/reload-skills` when a top-level skills directory was created during the session.
+The [skill design](docs/design/daynight-agent-skill.md) owns mechanisms, routing
+and the simulated-launcher native installation matrix.
 
 ## Shell completion
 

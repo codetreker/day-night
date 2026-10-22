@@ -43,13 +43,13 @@ export const runSkillCommand = async (
     signal.throwIfAborted();
     if (detected.length === 0) throw new Error("No supported agent launchers were detected on PATH (codex, copilot, claude). Install an agent and run daynight skill install again.");
     const selection = await prompt.selectMany<SkillAgentId>({
-      message: "Install the Daynight skill for which agents?",
+      message: "Install the using-daynight skill for which agents?",
       choices: detected.map(({ id, name }) => ({ name, value: id })),
       requiredMessage: "Select at least one agent.",
     }, signal);
     signal.throwIfAborted();
     const agents = detected.filter(({ id }) => selection.includes(id));
-    if (agents.length === 0) throw new Error("Select at least one detected agent to install the Daynight skill.");
+    if (agents.length === 0) throw new Error("Select at least one detected agent to install the using-daynight skill.");
     const scope = await prompt.select<SkillScope>({
       message: "Where should the skill be installed?",
       choices: [{ name: "User", value: "user" }, { name: "Project", value: "project" }],
@@ -64,14 +64,16 @@ export const runSkillCommand = async (
     try {
       await dependencies.install(targets, bundle, signal, (target) => {
         for (const [index, agent] of target.agents.entries()) {
-          context.stdout(`Installed ${agent.name}: ${scopeName} skill at ${target.path} (package ${context.version}${index === 0 ? "" : "; shared installation"}).\n${agent.reload}\n`);
+          context.stdout(`Installed ${agent.name}: ${scopeName} using-daynight skill at ${target.path} (package ${context.version}${index === 0 ? "" : "; shared installation"}).\n${agent.reload}\n`);
         }
       });
     } catch (cause) {
       const { SkillInstallationError } = await import("./install.js");
       if (cause instanceof SkillInstallationError) {
-        if (cause.failed !== undefined) for (const agent of cause.failed.agents) context.stderr(`Failed ${agent.name}: ${scopeName} skill at ${cause.failed.path}.\n`);
-        for (const target of cause.unattempted) for (const agent of target.agents) context.stderr(`Not attempted ${agent.name}: ${scopeName} skill at ${target.path}.\n`);
+        if (cause.failed !== undefined) for (const agent of cause.failed.agents) context.stderr(cause.installedAtFailedTarget
+          ? `Installed ${agent.name}: ${scopeName} using-daynight skill at ${cause.failed.path}; legacy daynight cleanup failed at ${cause.failed.legacyPath}.\n`
+          : `Failed ${agent.name}: ${scopeName} using-daynight skill at ${cause.failed.path}.\n`);
+        for (const target of cause.unattempted) for (const agent of target.agents) context.stderr(`Not attempted ${agent.name}: ${scopeName} using-daynight skill at ${target.path}.\n`);
       }
       throw cause;
     }

@@ -1,374 +1,306 @@
-# Daynight 项目任务 skill 与交互安装设计
+# using-daynight 项目任务 Skill 设计
 
-状态：公开 skill bundle 与交互安装器已实现。安装验收使用模拟 Agent launcher 与
-实际打包 CLI，覆盖终端交互和文件行为。任务完成以交付验收及对应 PR 合并为准。
+[需求](../spec/daynight-agent-skill.md)拥有公开行为，
+[模式决策](../../.agents/notes/implemented/architecture/2026-10-21-using-daynight-modes.md)
+拥有本次职责划分与替代方案；[原分发决策](../../.agents/notes/implemented/architecture/2026-10-21-public-agent-skill-design.md)
+保留安装机制的原始理由。[Project/Task CLI](daynight-project-task.md)与
+[附件设计](daynight-task-attachments.md)继续拥有服务访问、版本、依赖和文件操作。
 
-[需求](../spec/daynight-agent-skill.md)拥有安装、覆盖和任务管理的可观察行为，
-[决策记录](../../.agents/notes/implemented/architecture/2026-10-21-public-agent-skill-design.md)
-拥有方案比较与范围取舍。现有
-[Project 与 Task CLI](daynight-project-task.md)继续拥有服务访问、仓库关联、版本和依赖机制。
+## 一个入口与按需加载
 
-## 目标与当前结构
-
-`@codetreker/daynight` 发布一份名为 `daynight` 的公开 skill，使 Codex、Copilot CLI
-和 Claude Code 在已关联 Daynight 的仓库中主动恢复、组织和维护项目任务。
-安装命令由使用者运行，依次选择已安装的 Agent 和安装范围。
-
-现有 `daynight-review` 是 review 命令启动 Copilot 时使用的内部审查策略。公开 skill
-由新的 `skill` 命令持有，两个 bundle 独立发布和验证；review 的 plugin wrapper、固定
-快照和发现校验保持原有职责。
-
-| 现有机制 | 证据与复用方式 |
-|---|---|
-| 轻量命令登记 | [命令表](../../packages/daynight/src/cli/commands.ts)按命令延迟加载运行时；新增 `skill` 定义和 loader |
-| 交互输入 | [CliPrompt](../../packages/daynight/src/cli/prompts.ts)共享 `ask`、类型化 `select` / `selectMany`、交互检查与关闭，选择器按需加载 |
-| 中断生命周期 | [cancellation.ts](../../packages/daynight/src/cli/cancellation.ts)为 setup 与 skill 管理终端信号、取消和 prompt 关闭 |
-| 资源打包 | [copy-skills.ts](../../packages/daynight/scripts/copy-skills.ts)按明确清单将内部 review 与公开 daynight 两个完整 bundle 复制到 `dist`，重复构建目标明确失败 |
-| 路径解析 | [filesystem.ts](../../packages/daynight/src/platform/filesystem.ts)的 `resolvePhysicalDirectory` 能解析已有祖先和未创建部分；用于安装目标去重 |
-| 仓库定位 | [git.ts](../../packages/daynight/src/repository/git.ts)的 `discoverWorktreeRoot`仅定位根目录；项目发现另行读取 origin，安装器无需项目关联 |
-| 已安装 CLI 验收 | [installed-cli.ts](../../packages/daynight/test/fixtures/installed-cli.ts)提供真实打包、安装与 launcher fixture |
-
-## 总体结构
-
-```mermaid
-flowchart TD
-    A[发布的 npm 包] --> B[公开 daynight skill bundle]
-    A --> C[daynight skill install]
-    C --> D[检测三个 Agent launcher]
-    D --> E[多选 Agent]
-    E --> F[单选 User 或 Project]
-    F --> G[读取 bundle 并规划物理目标]
-    G --> H[逐个整体替换 daynight 目录]
-    H --> I[输出路径与重新加载方式]
-    B --> G
-    I --> J[Agent 发现 SKILL.md]
-    J --> K[通过现有 daynight CLI 管理任务]
-```
-
-源码与产物归属：
+npm 包发布一份英文 `using-daynight` skill。`SKILL.md` 只负责发现说明、路由和共同
+约束，各模式按需读取自己的引用文档。handbook 提供命令用途索引，以及项目发现、
+并发更新等操作背景；参数和调用方法由已安装 CLI 的 `--help` 提供。这样普通查询只需
+加载简短背景，连续调度与指定任务执行仍共用完成要求。
 
 ```text
 packages/daynight/
-  src/cli/
-    prompts.ts
-    cancellation.ts
   src/commands/skill/
     definition.ts
     command.ts
     agents.ts
     targets.ts
     install.ts
-    skills/daynight/
+    skills/using-daynight/
       SKILL.md
-      references/commands.md
+      references/
+        handbook.md
+        autopilot.md
+        run-task.md
+        create-task.md
   src/platform/skill-bundle.ts
-  dist/commands/skill/skills/daynight/
+  dist/commands/skill/skills/using-daynight/
     SKILL.md
-    references/commands.md
+    references/
+      handbook.md
+      autopilot.md
+      run-task.md
+      create-task.md
 ```
 
-`agents.ts`拥有固定的三个 Agent 标识、命令名和发现目录映射；`targets.ts`规划目标；
-`install.ts`捕获 bundle 并替换目录。`platform/skill-bundle.ts`共享目录捕获和 entrypoint
-校验；review 的快照、哈希和执行协议留在 review 内。
+`using-daynight handbook` 等表达是 Agent 的模式选择协议，不是新增 Daynight CLI。
+宿主加载入口后，Agent 使用实际请求与上下文路由。裸调用可能进入任一有充分依据的
+模式；上下文不足或歧义时询问意图。autopilot 额外要求用户明确请求自动连续执行，
+不能由主题关键词、任务存在或单任务完成推断启动。
 
-## 安装入口与交互
+task 创建许可是所有模式共享的独立前提。用户直接要求创建，或已有指定范围的明确
+创建许可时，才允许创建 task；普通实现请求、上下文路由和 autopilot 启动不能替代
+该许可。需要创建而没有许可时先询问用户，已有许可范围内无需重复确认。
 
-### 命令与检测
+```mermaid
+flowchart TD
+    A[using-daynight 与实际上下文] --> B{请求意图}
+    B -->|使用或管理| H[handbook]
+    B -->|明确许可登记工作| C[create-task]
+    B -->|指定任务| R[run-task]
+    B -->|明确自动连续执行| P[autopilot]
+    B -->|不足或歧义| Q[询问用户意图]
+    P --> S[恢复当前任务或选择最相关的一个 ready todo]
+    S --> R
+    R --> T{结果}
+    T -->|确认 done 且由 autopilot 调用| P
+    T -->|需要外部介入| W[保留当前任务与检查点后返回]
+    T -->|单独调用完成| E[返回]
+    C --> E
+    H --> E
+```
 
-公开入口为 `daynight skill install`。本交付不增加非交互安装参数、卸载命令、
-skill 注册中心或用户修改检测。非交互终端明确失败，提示在交互终端执行该命令。
-命令帮助仅访问命令元数据，不探测 Agent、不读取配置、不创建目录。
+skill、任务和附件均不授予额外权限。run-task 的合并完成要求与用户保留 PR 的要求
+可以同时成立：完成允许的交付准备，保留 `in_progress` 与等待事项，交回用户审阅。
 
-Agent 检测依固定顺序查找 `codex`、`copilot`、`claude`。检测指当前环境的原生命令
-查找规则下存在可执行 launcher，不启动 Agent，不执行 `--version`，也不检查登录
-或账号状态。
-静态查找通过直接依赖 `which` 的薄适配器实现，复用 PATHEXT、npm `.cmd` launcher、
-带引号 PATH 和 POSIX 执行权限规则，不启动外部进程；Windows 也遵循当前目录优先的
-原生命令查找规则。界面使用“未检测到”，不把无法执行的候选诊断为已卸载。
+## 文档职责与任务资料
+
+| 文档 | 所拥有的规则 |
+|---|---|
+| `SKILL.md` | 触发说明、上下文路由、明确 autopilot、共同授权和单任务约束 |
+| `handbook.md` | 命令用途索引与项目定位、查询范围、精确版本、替换和附件独立性等背景 |
+| `create-task.md` | 明确创建许可、追踪价值、已有任务匹配、资料准备与登记完整性 |
+| `run-task.md` | 指定任务恢复、实现验证、交付与完成、阻塞返回 |
+| `autopilot.md` | 当前任务恢复、相关性选择、串行循环及停止条件 |
+
+问题放在 task 描述，方案和验收放在一个 Markdown 主附件。描述只保存问题与真实附件
+引用；依赖由 `dependsOn` 维护，PR URL/title 由 `properties.pullRequests` 维护。
+不在描述中复制方案、验收、依赖或执行日志。主附件使用任务语言的“方案”和“验收标准”
+两个必填 section，文件名由任务引用决定。
+
+```text
+task.description
+  要解决的问题
+  已上传附件的实际引用
+attachments/
+  proposal.md
+    方案
+    验收标准（含验证方法及完成后的必要证据）
+  mockui/index.html       # 前端任务
+  mockui/assets/...      # 原型需要的资源
+```
+
+前端原型匹配最终视觉、支持纯前端交互，按任务覆盖主要数据与交互状态。方案引用原型，
+必要图片、脚本和样式保持相对资源可用。run-task 读取主附件并查看、操作原型，不能仅凭
+附件文件名认为已理解方案。完成证据和 merge commit 引用写入主附件对应验收项。
+当前执行位置、阻塞、等待和下一步进入会话或项目已有检查点，不引入专用服务字段。
+
+create-task 先确认用户的明确创建许可，再判断是否值得持久追踪。单次、trivial 操作
+和临时命令步骤不建任务；在许可范围内，需要跨会话、交接、依赖或持续追踪的交付成果
+才登记。已有任务的匹配比较问题、范围、方案
+和验收目标。准备所有资料后创建或复用，再用既有附件命令上传、关联、读回核验：
+
+```bash
+daynight task attachment put <task-id> ./proposal.md --path proposal.md
+daynight task attachment put <task-id> ./mockui/index.html --path mockui/index.html
+daynight task attachment list <task-id> --json
+daynight task attachment read <task-id> proposal.md
+```
+
+实际选项与调用方法查询已安装 CLI 的 help，完整读取与错误契约由附件规范拥有；
+handbook 只保留附件独立性与不确定结果核对等背景。这里消费既有附件能力，不扩展 API
+或 CLI。成功创建任务但附件失败时，保留同一 ID 补全；写入结果
+不确定先查询核对。全部必要资料可读才报告登记完整，未完成登记保持 `todo`。
+
+## 单任务执行与调度
+
+run-task 的输入是明确 task ID。它刷新完整任务、主附件、必要资源，检查授权、依赖和
+资料后恢复或开始工作。已完成任务只报告结果；重新打开需要明确意图。开始后保持
+`in_progress`，按目标仓库规则实现、验证并完成授权交付。
+
+开发任务和通过 PR 交付的设计、文档任务，必须等全部必要 PR 平台确认合并、验收满足，
+保留 PR 属性与验收证据后，才按实际读取版本设置 done。无需 PR 的任务使用自身明确
+验收条件。CI、review 和合并等待继续属于当前任务；subagents 协作该任务。阻塞需要
+外部介入时保留实际状态与检查点后返回；run-task 完成也返回，不选择后继。
+
+autopilot 只在用户明确要求后运行。当前任务由已有检查点关联并刷新，`in_progress`
+清单只是恢复线索，不是所有权。无当前任务时读取有界 `task ready --json`，按问题、
+范围、方案、验收和依赖选择与已授权目标最相关的一个 ready todo，再调用 run-task。
+只有确认 done 后才开始下一项。外部阻塞保留当前任务；不会为保持忙碌换做无关工作。
+发现目标范围缺少 task 时，只有取得或确认已有的明确创建许可后才能调用 create-task；
+自动执行已有任务的许可不包含创建许可。
+
+ready 默认最多 10 项，必要时使用 1..100 的 `--limit`。服务按创建时间和 ID 升序排序，
+顺序不表达相关性。空页和不匹配页不能证明 backlog 完成；按需查询范围相关清单和图，
+区分全部交付、依赖阻塞、其他工作进行中及当前候选不足。graph 的 1,000 节点 / 5,000 边
+限制不等于项目未关联，详情必须使用 show。task list 仍穷尽匹配分页，默认排除 `done`；
+需要包含已完成任务的完整清单或核对历史登记时显式包含已完成任务，选项从 CLI help
+查询。结果按 `in_progress`、ready、其余 `todo`、`done` 稳定分组，组内保留服务顺序，
+不表示相关性。文本列表是摘要，JSON 保留完整 task 字段。
+
+在仓库内可省略 `--project`，由 CLI 按 Git origin URL 匹配服务中的项目；显式指定的
+项目优先。handbook 说明项目定位规则，不展开本地绑定文件与忽略规则的内部实现。
+无匹配不自动创建项目，配置缺失保留 setup 指引；网络、配置与歧义错误按真实原因处理。
+
+handbook 规定基于已读内容的修改必须携带精确 `--if-version`，包括完整 int64 十进制
+精度。默认 update 的临时 GET 不能替代读写关联。description、依赖和 PR 列表是完整字段
+替换；冲突后重读并重新决策。未确认写入先核对结果，不自动重复提交；具体选项及
+输出格式通过 CLI help 查询。ready、状态及版本机制不提供锁、原子 claim 或额外执行权限。
+
+## 安装命令与既有机制
+
+`daynight-review` 仍是 review runtime 的内部审查资源，其 plugin wrapper、快照、哈希
+和发现校验独立。公开 skill 由 `skill` 命令持有，只共享普通 bundle 捕获和校验。
+
+| 机制 | 所在位置与职责 |
+|---|---|
+| 轻量命令登记 | [命令表](../../packages/daynight/src/cli/commands.ts)延迟加载运行时，帮助只访问元数据 |
+| 交互输入 | [CliPrompt](../../packages/daynight/src/cli/prompts.ts)共享 ask/select/selectMany，选择器按需加载 |
+| 取消生命周期 | [cancellation.ts](../../packages/daynight/src/cli/cancellation.ts)管理终端信号、取消与关闭 |
+| 资源打包 | [copy-skills.ts](../../packages/daynight/scripts/copy-skills.ts)明确列举公开与 review 两个完整 bundle，不扫描仓库 skill |
+| 物理路径 | [filesystem.ts](../../packages/daynight/src/platform/filesystem.ts)解析已有祖先和未创建部分 |
+| worktree 定位 | [git.ts](../../packages/daynight/src/repository/git.ts)只定位根，安装不依赖 origin 或服务 |
+| 打包验收 | [installed-cli.ts](../../packages/daynight/test/fixtures/installed-cli.ts)真实打包安装与 launcher fixture |
+
+入口保持 `daynight skill install`，不增加非交互参数、卸载命令、注册中心或用户修改
+检测。`agents.ts` 拥有 Codex/Copilot CLI/Claude Code 的命令、路径、重载说明；
+`targets.ts` 规划物理目标；`install.ts` 捕获字节、发布和清理旧名称；
+`platform/skill-bundle.ts` 校验资源树与入口。`CliContext.packageDirectory` 定位包内资源，
+不依赖 cwd。`files: ["dist"]` 包含完整相对资源。
+
+检测依固定顺序查找 codex、copilot、claude，通过直接依赖 `which` 的薄适配器遵守原生
+PATH、POSIX 执行权限、Windows 当前目录/PATHEXT/npm `.cmd`/带引号 PATH；不运行
+launcher、`--version`、认证或模型调用。
 [固定源码](https://github.com/npm/node-which/blob/2009c9dce0e9b0dae024192731987df752c6b4f0/lib/index.js)
-说明该过程只检查文件。实现时锁定与现有 Node `>=24.0.0 <25` 兼容的发布版本，不因
-安装器缩窄 Node 支持范围。检测不触发 Agent 自更新、认证或模型调用。
+说明它只检查文件。仅展示检测到的选项，初始不勾选，Space 切换、方向键移动、Enter
+提交且至少选一项；再单选 User/Project，默认 User。无可用 Agent 或终端不可用明确失败。
 
-没有可用 Agent 时输出明确诊断并以非零状态结束。只有检测到的 Agent 进入多选列表。
-检测顺序固定，初始均不勾选；Space 切换、方向键移动、Enter 提交，至少选择一项。
-随后显示 User / Project 单选，初始定位 User。一个安装操作的全部 Agent 共用该 scope。
-scope 提交后直接执行安装。
+`@inquirer/prompts` 延迟加载 checkbox/select，setup 保留 readline ask。类型化 value
+不从显示文本反推标识。stdin 提供输入，stderr 负责 UI，stdout 提供结果。共享执行器
+管理 AbortController、SIGINT/SIGTERM、Windows SIGBREAK 和 finally 关闭；readline
+占用 stdin 时进入选择器前暂停、退出恢复。仅已知取消异常转为既有取消错误，其余保留
+原因链。依据为
+[信号与 readline 协作](https://github.com/SBoudrias/Inquirer.js/blob/92ef32f5b3d9633933bd20bb8ef6ff434c1316bb/packages/prompts/README.md#advanced-usage)
+及[checkbox 必选约束](https://github.com/SBoudrias/Inquirer.js/blob/92ef32f5b3d9633933bd20bb8ef6ff434c1316bb/packages/checkbox/README.md#options)。
 
-### Prompt 与取消
-
-在已有 `CliPrompt`上增加 `select`、`selectMany`，使用延迟加载的
-`@inquirer/prompts`实现 select 与 checkbox，保留 setup 的 readline `ask`。
-选择题接收固定类型的 value，不从展示文本反推业务标识。输入来自 stdin，交互 UI
-写 stderr，安装结果写 stdout。
-
-交互执行器管理 AbortController、SIGINT / SIGTERM、Windows SIGBREAK 和 `finally`
-关闭；setup 与 skill 共用这个生命周期，业务配置仍由 setup 持有。
-若 readline 已占用 stdin，进入选择器前暂停，退出后恢复。仅已知的取消异常转为
-既有 CLI 取消错误，其他错误保留原始原因链。
-
-在两轮选择完成前不创建安装目录。取消、EOF、空选择、无可用 Agent、无效 bundle、
-无效项目范围等预检失败都保持目标 skill 不变。空选择留在选择界面等待有效选择或取消。
-
-Inquirer 的
-[上下文、信号与 readline 协作](https://github.com/SBoudrias/Inquirer.js/blob/92ef32f5b3d9633933bd20bb8ef6ff434c1316bb/packages/prompts/README.md#advanced-usage)
-和[checkbox 必选约束](https://github.com/SBoudrias/Inquirer.js/blob/92ef32f5b3d9633933bd20bb8ef6ff434c1316bb/packages/checkbox/README.md#options)
-提供维护中的终端实现，避免自建按键和 raw-mode 生命周期。
-
-## 安装范围与 Agent 目录
+## 安装目录、所有权与迁移
 
 | Agent | User | Project |
 |---|---|---|
-| Codex | `~/.agents/skills/daynight/` | `<worktree>/.agents/skills/daynight/` |
-| Copilot CLI | `~/.agents/skills/daynight/` | `<worktree>/.agents/skills/daynight/` |
-| Claude Code | `~/.claude/skills/daynight/` | `<worktree>/.claude/skills/daynight/` |
+| Codex | `~/.agents/skills/using-daynight/` | `<worktree>/.agents/skills/using-daynight/` |
+| Copilot CLI | `~/.agents/skills/using-daynight/` | `<worktree>/.agents/skills/using-daynight/` |
+| Claude Code | `~/.claude/skills/using-daynight/` | `<worktree>/.claude/skills/using-daynight/` |
 
-Codex 与 Copilot 使用共同支持的 `.agents/skills`，减少相同内容的复制。
-依据为 [Codex skills](https://developers.openai.com/codex/skills/)、
-[Copilot CLI skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills)
-与 [Claude Code skills](https://code.claude.com/docs/en/skills)。
-User 的基准目录使用 Node 的用户主目录发现机制；Project 使用当前 Git worktree 根目录，
-在子目录、linked worktree 和 submodule 中都定位到各自的根。该过程不要求 origin、
-Daynight 项目关联、serverUrl、GitHub 或 review 配置。User 可在 Git 仓库外安装；
-Project 在非仓库或 bare repository 中明确失败。
+User 使用 Node 用户主目录发现，可在仓库外安装。Project 使用当前 Git worktree 根，
+子目录、linked worktree、submodule 各定位自身根；非 Git/bare 明确失败。安装不读取
+server/review 配置，不要求 origin 或项目关联。支持目录和重载说明按
+[Codex](https://developers.openai.com/codex/skills/)、
+[Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills)、
+[Claude Code](https://code.claude.com/docs/en/skills) 维护。
 
-规划先解析父级 skill 目录的已有符号链接，再拼接固定的 `daynight` leaf，按物理
-目标去重。同一个物理目标保留它服务的全部 Agent 标签。例如本仓库的
-`.claude/skills -> ../.agents/skills`使三个 Agent 共用一次物理写入。
-目标 leaf 自身不通过 realpath 跟随；若它是符号链接，替换该链接本身。
-安装只拥有指定父目录下的 `daynight`条目和本次 stage，不删除其他 skill 或父目录链接。
-去重后按路径分量检查每对物理目标；严格的祖先/后代关系在任何目录或 stage 创建前
-拒绝，并列出对应 Agent 与两条目标。不能只比较字符串前缀。例如 `.agents/skills`
-指向 `.claude/skills/daynight`时，两个目标分别是 `daynight/daynight`和 `daynight`，
-后续整体替换会删除前一安装，故两种安装顺序都必须拒绝。
+先解析父级 skill 根的物理位置，再拼接 using-daynight 和旧 daynight 叶节点。父级链接
+保留，leaf 不 realpath 跟随；替换或清理 leaf 链接保留原指向对象。同一物理根只写一次
+并保留逐 Agent 结果；涉及新名称和旧名称的拥有路径出现严格祖先/后代冲突时，在任何
+目录或 stage 创建前拒绝，并列出对应目标。路径按分量比较，不能使用字符串前缀。
+共享父根链接允许去重；清理不得越过所选物理根或删除另一安装目标。
 
-选择 Agent 表示为该 Agent 安装兼容资源，发现目录可能同时被其他 Agent 扫描。
-安装器不限制其他 Agent 的可见性，也不改写同名 skill 在其他 scope 的副本。
-Claude Code 的 personal scope 优先于 project scope；安装到 Project 不会改变这一规则。
-设计期间的 Copilot 探针曾观察到，所测版本对独立的 `.agents` / `.claude`同名副本与
-共享父目录链接均选择 `.agents`的一项候选；该版本和场景的 receipt 随设计 PR 保留。
-这是历史观察，不能推广为所有宿主版本的发现保证。安装验收按文档映射验证路径和
-完整文件内容，宿主自行决定如何发现同名副本。
+选择 Agent 表达兼容目标，不承诺发现隔离。Codex 和 Copilot 共用路径；项目中的
+`.claude/skills -> ../.agents/skills` 也可使三者共用一次写入。其他 scope 不被修改，
+同名副本不合并，Claude personal 优先于 project。原设计的 Copilot 探针曾在特定版本
+观察到独立 `.agents`/`.claude` 同名副本与共享父链接均选择 `.agents` 候选，该 receipt
+随原设计 PR 保留，仅为历史观察，不是跨宿主版本的保证。
 
-## 完整覆盖与失败语义
+安装先捕获包内完整 bundle 一次，验证 SKILL.md UTF-8、固定 frontmatter 名称
+`using-daynight`、非空 description 和仅目录/普通文件的树；其他文件保持原始字节。
+构建与验收校验相对引用，运行时不引入 Markdown 解析器。所有目标使用相同捕获字节。
 
-资源定位基于已有 `CliContext.packageDirectory`，不依赖当前目录或源码 checkout。
-构建脚本仅列出公开 daynight 与内部 daynight-review 两个允许发布的 bundle，不扫描
-仓库开发 skill。npm 的 `files: ["dist"]`覆盖完整公开 bundle 及相对引用资源。
+预检后按 Agent 顺序串行处理唯一物理目标：
 
-每次安装捕获当前包内的完整 bundle 一次；验证 SKILL.md 的合法 UTF-8、frontmatter 固定名称
-`daynight`和非空 description，目录树只含目录与普通文件；其他资源按原始字节保留。构建与安装验收校验全部相对引用可用，安装运行时不另建通用 Markdown 解析器。
-同次选择的目标使用同一批字节。已安装目录与包版本的对应由操作输出记录，不维护
-独立版本注册文件。更新 npm 包后再次运行安装命令即可同步 skill。
+1. 首次写入前检查取消；创建并记录必要父目录，创建专属 stage，写入全部资源。
+2. 再检查取消；取消则删除 stage，逆序清理本次新建且仍为空的父目录。
+3. 删除 using-daynight leaf 并 rename stage 发布完整目录；两步之间不主动取消。
+4. 发布成功后清理同一物理 skill 根内的旧 daynight leaf，再报告此目标完整成功。
+5. 处理取消或继续下一目标。已经完成的目标保留，不跨目标回滚。
 
-全部 scope 和物理目标规划成功后，按 Agent 顺序对应的唯一物理目标串行执行：
+发布前不删除旧 daynight，避免重命名迁移先损失原入口。旧名称清理失败时新 bundle
+保留，报告部分迁移及实际失败，停止后续目标并非零退出。完整替换不比较修改、不合并、
+不备份；覆盖新名称时删除后 rename 失败仍可能使目标缺失。清理 stage 的错误保留
+原因链，不能静默吞掉。重跑使用当前包完整恢复，安装不自动重试。
 
-1. 在首次文件系统变更前检查 AbortSignal；已取消则直接退出。随后创建需要的父目录，
-   记录本次真正创建的目录，在父目录中创建本次专属 stage，写入全部已捕获资源。
-2. 检查取消；若取消，清理 stage，并按反向顺序清理本次新建且仍为空的父目录，保留
-   目标及其他进程或既有内容。两轮选择之后、首次写入之前到达的信号同样不能留下目录。
-3. 删除目标 `daynight`条目，将完整 stage rename 到该位置。删除和发布之间不插入
-   主动取消点，完成当前目标后处理取消。
-4. 立即记录该目标成功及全部对应 Agent；继续下一个目标。已完成目标之后取消时，
-   保留其成功结果，停止后续目标，以既有取消语义结束。
+结果逐 Agent 给出 scope、路径、包版本和重载指引，共享目标标明同一次写入。Codex
+通常自动发现，必要时重启会话；Copilot 使用 `/skills reload`、
+`/skills info using-daynight`；Claude 已有根通常自动发现，新建顶层根时使用
+`/reload-skills`。清理旧名称成功不表示其他 scope 的旧入口也被移除。
 
-覆盖不比较本地修改，不保留备份，不合并文件；旧版多余文件随整个条目替换而消失。
-源目录和目标目录不建立指向 npm 包的链接，`npx`缓存回收或包路径变化不影响已安装文件。
+## 历史任务映射与调用成本
 
-这不是跨目标事务。遇到文件系统错误立即停止，保留已完成目标，输出失败 Agent、scope、
-目标路径、阶段与原因，并整体返回非零。没有备份时，删除旧目录后的 rename 失败可能
-使该目标缺失；诊断需明确这一结果，重新运行安装可恢复。清理 stage 的失败保留错误链，
-不能用空 catch 隐藏；未开始的目标保持原状。安装不静默重试失败。
+原分发功能在真实 Daynight 项目中使用以下身份，保留其交付顺序；实时状态由服务拥有，
+不从表格推断当前执行目标：
 
-成功结果逐 Agent 展示安装路径、运行包版本、scope 和重新加载方式；共享目标标明复用
-同一次写入。Codex 通常自动发现，未出现时重启会话；Copilot 使用 `/skills reload`
-并可通过 `/skills info daynight`检查；Claude Code 对已有目录自动发现，新增顶层目录时
-使用 `/reload-skills`。不同 Agent 的重新发现方式按其官方文档维护。
-
-## Skill 的工作协议
-
-公开正文位于
-[SKILL.md](../../packages/daynight/src/commands/skill/skills/daynight/SKILL.md)，
-详细语法与错误处理位于
-[命令参考](../../packages/daynight/src/commands/skill/skills/daynight/references/commands.md)。
-构建复制整个目录，npm 消费者无需源码 checkout 即可获得这些相对资源。
-
-
-### 触发与上下文
-
-`SKILL.md`使用英文、标准 `name` / `description` frontmatter。
-description 明确适用于已关联 Daynight 的仓库中的日常开发和任务恢复，允许 host 自动
-选择；不设置仅显式调用策略。静态 bundle 检查验证名称、description 和相对引用，
-并核对正文及命令参考中的工作协议。安装器将文件放入对应发现目录；具体会话中的
-选择、加载和执行由宿主负责。
-
-日常选择下一项工作时使用非交互 shell 执行 `daynight task ready --json`，默认最多
-10 项，需要更多候选时用 `--limit <N>` 指定 1..100。命令只取服务端按创建时间、ID
-升序筛选出的第一页；ready 为空不代表项目没有进行中或被阻塞的工作。它沿用现有
-readiness，不表达优先级或独占领取。已知恢复目标时 `task show <id> --json` 刷新任务；
-身份未知时按需查询 `task list --status in_progress --json`，再 show 选定任务。
-
-选择策略由 skill 表达：每个 Agent 会话优先恢复当前任务；选择新工作时，比较候选的
-范围、描述与依赖，从已授权范围内挑一个最相关的 ready `todo`，再 show 完整详情。
-创建时间决定返回顺序，不是相关性排名；候选数量上限不表示可以同时推进多个任务。
-没有匹配候选时沿用范围匹配或建任务规则，不自动扩大工作范围。
-
-同一会话保持一个当前任务，等待 CI、review 或合并期间也保持该任务；subagents
-协作完成同一个任务。全部必要交付 PR 确认合并且验收满足、任务确认 done 后，才按
-相同相关性规则在授权范围内选择下一项。这是 Agent 的工作协议，不增加服务端的
-全局并发限制、优先级字段或独占领取机制。
-
-这些命令均让现有 CLI 解析 Git origin 与绑定。新 worktree 没有 `.daynight/project.yml`
-是正常情况，不能用文件存在性阻止恢复。首次发现可能按现有协议保存被忽略的绑定
-并维护 `.gitignore`。无关联时不自动创建项目；缺少 server 配置时保留 setup 指引，
-不能猜测地址。网络错误、歧义、协议和绑定错误均按实际原因报告。
-
-需要理解整体依赖时使用 graph。它提供统计、依赖、状态和 titlePreview，没有完整
-描述或 version；定位后只 show 必要任务。graph 超出服务的 1,000 节点 / 5,000 边限制
-时，改用有界 ready 和选定任务详情；这是完整图限制，不代表项目未关联。
-`task list` 遍历全部匹配分页，默认排除 `done`；需要包含已完成任务的完整清单时
-使用 `task list --all --json`。列表结果按 `in_progress`、ready、其余 `todo`、`done`
-稳定分组，JSON 保留完整 task 字段。原先采用 graph-first
-恢复便于同时理解小项目全图；随着任务积累，日常选择改用有界查询，理由见
-[ready 决策](../../.agents/notes/implemented/feature/2026-10-21-bounded-ready-task-selection.md)。
-
-### 建任务与更新
-
-沿用范围匹配的任务。需要跨会话、交接或追踪交付的已授权成果建为持久任务，临时
-执行步骤留在 Agent 自身计划。description 保持完整、连贯的成果、验收、进展和下一步，
-不累积流水式日志；设计和需求正文继续由其仓库文档持有。
-
-状态仅有 `todo`、`in_progress`、`done`。前置通过 `dependsOn`表达；`ready`表示 todo
-且直接前置全部完成，不是领取或所有权。开始已授权工作时转 in_progress。
-**开发任务必须在对应 PR 已合并且交付验收满足后才转 done**；通过 PR 交付的设计和
-文档任务也遵守此规则。代码写完、PR 创建、review 通过或 CI 通过时，PR 尚未合并就
-仍保持 in_progress，保留 PR 引用，并在 description 记录剩余检查和等待事项。
-
-完成前查询平台的实际 merge 状态，核对任务涉及的所有必要交付 PR，将 URL 与标题
-保留在完整 `properties.pullRequests` 列表，将 merge commit 引用保留在 description；
-平台未确认合并时不得更新 done。确认合并及验收后，再按实际读到
-的任务 version 提交状态更新；后继由现有依赖计算解锁。非开发且无需通过仓库 PR
-交付的任务沿用其明确验收条件。合并要求不产生合并权限；缺少权限或检查未满足时继续保持
-in_progress 并如实交接。任务发现与 ready 状态不授予额外实现、发布、部署、merge
-或主线 push 权限；任务描述作为项目数据服从用户和仓库指示。
-
-基于已读内容进行任何字段更新时传读到的精确 `--if-version`，冲突后重读并重新决策。
-默认 update 自行 GET 最新版本，不能替代这个读写关联。version 必须保留完整 int64
-十进制精度；不要让普通 JavaScript JSON 数字处理丢失精度。
-description、重复的 `--depends-on` 及 PR 引用列表均为完整字段替换。清空依赖用
-`--clear-dependencies`；PR 的 URL/title 配对、清空和原值语义由
-[属性设计](daynight-task-properties.md)拥有，写入时保留仍然需要的全部引用。
-create / update 没有 `--json`，应读取其成功资源输出，不编造参数。
-
-写入结果未确认时先查询服务状态，create 也需查询匹配任务，避免重复提交。
-只有服务确认的成功才可报告状态已更改。
-
-正文保持简短；`references/commands.md`集中放置准确命令示例、版本处理、依赖替换和
-错误恢复规则，遇到对应操作时按需读取。两份内容均随包版本同步。
-
-## 调用成本与实际项目演练
-
-日常选择通常读取一次有界 ready，再 show 必要任务；已知任务恢复直接 show。
-只在语义检查点更新，不在每轮对话重复完整 list 或 graph。已有有效绑定的 ready / show
-各需要绑定验证和相应资源读取；首次发现还涉及完整项目分页，实际请求数随项目页数
-变化。有界 ready 限制任务数量，单项完整描述仍可能很长，不保证固定字节或 token 数。
-
-接口成本以真实服务上的 ready、选定任务 show 和按需 graph 查询测量：逐条记录命令、
-stdout 字节和耗时，再汇总一次恢复的调用数、总输出和粗略 token 预算。英文输出可用
-字符数 / 4 作估算，必须标注这不是 tokenizer 精确计数或性能承诺。设计 PR 曾以
-已发布 CLI 测量 graph / show / 完整 ready 列表；该历史测量不证明有界命令或公开 skill
-加载行为。完整图不携带 description；有界 ready 返回完整 Task，其输出随选定任务
-正文增长，均不能替代真实调用观测。
-
-本功能的持久执行顺序由真实 Daynight 项目拥有：
-
-| 任务 | Daynight task ID | 前置与文件归属 |
+| 原任务 | Daynight task ID | 原交付归属 |
 |---|---|---|
-| 整体设计 | `d5ac82bb-bc74-48f4-9d13-205c1937c47a` | 当前设计交付；需求、设计、决策与 README |
-| 发布公开 skill | `35081440-a120-4fb4-9225-c893bb243b8e` | 设计完成；公开 bundle、资源打包、行为评估 |
-| 交互安装器 | `668910a4-470b-4ca5-bf52-0a47788c8ce6` | bundle 完成；skill command、选择器、目标与覆盖、对应测试 |
-| 有界 ready 查询 | `ada23216-a6e6-45de-89f4-67f1f71fbbfc` | 安装器完成；task ready、公开 skill 查询策略及相应命令验收 |
-| 安装组合验收 | `852473fd-c078-4d18-83a1-b34e37dc731f` | 安装器与有界 ready 完成；模拟 launcher、六种 Agent/scope 选择、完整资源及覆盖证据 |
+| 整体设计 | `d5ac82bb-bc74-48f4-9d13-205c1937c47a` | 需求、设计、决策与 README |
+| 发布公开 skill | `35081440-a120-4fb4-9225-c893bb243b8e` | bundle、打包、行为评估 |
+| 交互安装器 | `668910a4-470b-4ca5-bf52-0a47788c8ce6` | 命令、选择器、目标覆盖与测试 |
+| 有界 ready | `ada23216-a6e6-45de-89f4-67f1f71fbbfc` | ready 命令、选择策略与命令验收 |
+| 组合安装验收 | `852473fd-c078-4d18-83a1-b34e37dc731f` | 模拟 launcher、六组合与完整资源 |
 
-项目 ID 为 `fb1a3e30-f945-4c48-ab0f-55be117e098e`。表格是任务身份与交付顺序的映射，
-实时状态从 Daynight 查询；执行需要用户授权，ready 本身不是授权。
-每项实现以单一目的交付，不把独立的 ownership/claim、评论、优先级或附件能力并入安装器。
+项目 ID 为 `fb1a3e30-f945-4c48-ab0f-55be117e098e`。这些历史任务不为本次执行授予权限。
+原演练要求设计 PR 确认合并前任务保持 in_progress，后继由依赖机制阻塞，不能为了
+演示 ready 提前 done。当前同类任务按 run-task 完成规则保存 PR 和附件中的验收证据。
 
-设计任务的完成条件是需求、设计与决策文档通过审查及必需检查，且平台确认对应
-设计 PR 已合并。PR 仍打开时设计任务保持 in_progress，其实现后继保持 todo 且被阻塞。
-不能为演示 ready 流转而提前完成真实交付任务。
+常规选择读取一次有界 ready，再 show 必要任务及读取附件；已知任务直接 show。
+只在语义检查点更新，不每轮完整 list/graph。有效绑定的读取仍涉及绑定验证；首次
+发现可能读取多页 project。任务数量有界不代表输出字节或 token 固定，附件也会增加
+实际读取成本。需要评估时记录真实命令、字节、耗时与总调用数；字符数/4 仅为英文
+粗估，不是 tokenizer 计数或性能承诺。原设计对 graph/show/完整 ready 列表的测量不能
+证明当前有界命令、附件读取或模型加载成本。
 
-项目演练使用实际 Daynight 任务管理交付：前置 PR 未合并时保持 in_progress，后继由
-现有依赖机制阻塞；平台确认合并、交付验收满足后，使用所读版本更新为 done，再查询
-有界 ready。任务 PR 属性保留 URL 与标题，描述保留 merge commit 引用，便于接手者
-核验交付。这是项目开发流程，安装器测试无需启动任务服务或让 Agent 执行它。
+## 验证与诊断
 
-## 验证与交付
+安装验收运行实际 npm pack 和本地安装 CLI，隔离 User、Project、PATH 和全部临时
+资源。模拟 codex/copilot/claude launcher 启动即写 sentinel 并失败，场景结束要求
+sentinel 不存在。不安装真实 Agent、不读取账号、不调用模型、不启动任务服务或数据库。
+[模拟验收决策](../../.agents/notes/implemented/testing/2026-10-21-simulated-agent-installation-acceptance.md)
+保留此边界。
 
-验收的被测对象是随 npm 包发布的 skill 文件和 `daynight skill install`。组合验收复用
-[已安装 CLI fixture](../../packages/daynight/test/fixtures/installed-cli.ts)，执行真实
-npm pack、安装和 launcher。隔离的 User、Project 与 PATH 全部位于项目测试目录中；
-PATH 中仅构造所需的 `codex`、`copilot`、`claude`模拟 launcher。每个模拟 launcher
-若被执行就写入 sentinel 并失败，全部安装场景结束后断言 sentinel 不存在，证明检测
-只查找命令。测试环境不安装或运行真实 Agent，不读取其账号配置或调用模型，也不
-启动 Daynight 服务或数据库。范围依据见
-[模拟安装验收决策](../../.agents/notes/implemented/testing/2026-10-21-simulated-agent-installation-acceptance.md)。
+开发依赖 `node-pty@1.1.0` 在 Linux/macOS 使用 PTY，Windows 使用 ConPTY。终端内
+Node bridge 启动安装 launcher，stdin/stderr 继承终端，stdout 单独落结果文件，证明
+真实 isTTY 与流分离。按键包含 Space、方向键、Enter、Ctrl+C；kill 只用于超时清理。
+ConPTY 可能将尾随空白编码为光标移动，匹配稳定可见文本并保留原始终端流。pnpm 仅
+允许固定 node-pty 的构建 hook，保留 SQLite 既有禁用选择；稳定包 Darwin helper 的
+0755 修正使用版本限定 mode-only 补丁，测试不临时修复依赖。
+[原生终端决策](../../.agents/notes/implemented/testing/2026-10-21-native-skill-terminal-acceptance.md)
+拥有这些平台理由和来源。
 
-真实终端 fixture 使用开发依赖 `node-pty@1.1.0`，在 Linux、macOS、Windows 驱动
-PTY / ConPTY。PTY 内的 Node bridge 启动实际安装 launcher，stdin 与 stderr 继承
-终端，stdout 单独指向结果文件，分别证明生产 `isTTY`条件、界面输出和结果输出。
-发送 Space、方向键、Enter 与 Ctrl+C；`pty.kill()`只用于超时收尾，不能充当取消验证。
-版本受限的 pnpm `allowBuilds`仅允许该终端依赖构建，保留 SQLite 的既有禁止构建选择；
-版本固定的 pnpm mode-only 补丁修正稳定包中 Darwin helper 的可执行位，测试不自行
-修复依赖。依据见
-[原生终端验收决策](../../.agents/notes/implemented/testing/2026-10-21-native-skill-terminal-acceptance.md)。
+六种 Agent/scope 组合验证完整相对路径与每个文件字节、重装清除修改和旧文件、保留
+sibling 与另一 scope。迁移增加旧名称存在、leaf 链接、清理失败后新 bundle 仍可读及
+准确部分结果。单元测试覆盖预检、scope 后首次写入前信号、stage 取消、新建空目录、
+parent/leaf 链接、安装/清理路径嵌套、部分失败、监听清理和 completion 回归。Windows
+必须有原生结果；Linux 投影不能替代 `.cmd`、ConPTY 或平台链接证据。
 
-终端组合验收逐一选择三个 Agent × User/Project 的六种组合，断言选项、默认 User、
-实际目标与成功结果。每种组合都比较安装目录和包内 bundle 的完整相对路径集合及每个
-文件的原始字节，再修改安装内容、加入旧文件并重装，验证直接覆盖及旧文件移除。
-同时验证 sibling skills 与另一 scope 的副本保留。额外场景覆盖零个和多个 launcher、
-空选择约束、交互取消、无终端拒绝、共享目录去重，以及子目录和 linked worktree 定位。
-Windows 的交互和 `.cmd`检测需要真实 Windows runner 的结果，POSIX PTY 结果不能代替。
+静态检查验证入口 frontmatter、四份引用、全部本地链接、英文、打包 allowlist 和关键
+规则；既有 project/task/attachment 套件拥有命令可执行语义。独立情境演练另外核对
+裸调用、缺少创建许可、已有范围内许可、autopilot 不隐含创建许可、显式 autopilot、
+trivial、资料缺失/部分失败、前端原型、禁止 merge、阻塞和
+单任务返回。它是指令行为审查，不冒充安装自动测试或对模型执行的保证。review bundle
+的快照、原生 Copilot 加载与配置隔离继续独立验证。
 
-单元测试继续拥有更细的预检、scope 提交后首次写入前信号、stage 期间取消、新建空目录
-清理、parent/leaf symlink、两个方向的嵌套目标拒绝、部分失败结果、信号监听清理及
-completion 回归。静态 bundle 测试验证 frontmatter、全部相对引用及构建资源来源。
-内容审查核对公开 skill 与命令参考中的有界 ready、每次选择一个与已授权工作最相关的
-ready todo、当前任务恢复、交付等待与 subagent 协作期间保持单任务、精确版本、依赖
-替换、不确定写入恢复和 PR 合并后才能完成的规则。现有 project/task 测试继续验证
-命令与服务语义；原有 review skill
-的快照身份、配置、原生 Copilot 加载及命令隔离保留其独立验收。
+普通原生 CI 运行 typecheck、test、build、acceptance，receipt 记录源码、平台、场景
+和清理结果。文件证据证明安装结果，不能证明宿主发现或模型遵循。PR 是否合并由用户
+授权及平台事实决定，不由 skill 测试通过决定。
 
-普通原生 CI 继续运行 typecheck、test、build、acceptance。发布要求包版本递增、当前
-提交的必需 CI 与独立审查通过。receipt 记录被测源码、平台、场景和资源清理结果；
-完整安装文件证明复制结果，不承担模型自动触发或任务执行结果的证明。
+逻辑操作范围是一个 skill install 进程；共享上下文传递 Agent、scope、包版本、逻辑
+路径和物理根。唯一目标串行 await，无后台队列、服务或 detached promise。诊断区分
+检测、选择、规划、stage、替换、旧名称清理及收尾，保留错误链及部分结果，不记录
+用户输入、token、配置全文或认证环境。单进程无需额外 operation ID 或 telemetry 后端。
 
-## 操作结果与可诊断性
-
-逻辑操作范围是一次 `skill install`进程。共享交互执行器持有取消信号，`CliContext`
-提供输出、包版本与目录；各边界传播 scope、Agent 标识、包版本、逻辑路径与物理目标，
-文件错误保持原始原因链。
-唯一物理目标串行执行，不引入后台服务、detached promise、队列或定时任务。
-选择器 Promise 和文件写入均被 await，信号由共享交互执行器管理；发布目标的两个
-文件操作完成后才处理取消，清理始终属于本次进程。
-
-诊断按 phase 区分 detection、selection、planning、staging、replacement、cleanup，
-输出错误类别、原因和受影响资源；不记录用户输入、token、配置全文或认证环境。
-该功能沿用终端诊断，没有集中 telemetry transport，也不新增追踪后端；单进程无需
-额外 operation ID，共享上下文的 Agent / scope / target 足以对应一次运行的输出。
-
-部署后的具体核查方式是：在隔离终端运行已安装版本的 `daynight skill install`，选择
-Codex 与 Copilot、User scope，观察两条 Agent 成功结果指向同一物理路径，并比较目标
-与包内 bundle 的完整文件集合和字节。失败探针让目标父目录不可写，确认 stderr 含
-selection 之后的 planning / staging 阶段、scope、Agent、目标和原始权限原因，退出码
-非零且没有虚报成功。
-
-## 风险与重新评估条件
-
-host 的发现规则、scope 优先级及重新加载命令可能变化，官方目录映射与操作指引需同步
-维护。相同名称在多个 scope 中存在时，安装器只更新所选目标，使用者需按宿主规则
-管理其余副本。skill 的 description 为宿主选择提供上下文；安装测试验证所交付的
-文件与说明，具体模型行为不属于安装器保证。
-
-整体覆盖承担本地定制丢失及失败时目标可能缺失的明确成本；使用者可重新安装。
-跨目标原子性、修改保护、自动同步 npm 更新和独占领取均不属于这个交付。
-未来确实需要这些能力时应分别形成有明确触发条件的设计，避免把它们暗藏在安装流程。
+具体人工核查可在隔离终端选择 Codex 与 Copilot/User，确认两条结果共用物理路径并
+比较完整 bundle；通过不可写父目录或旧入口探针核对阶段、scope、Agent、目标、原因
+和非零退出。重新发现与 scope 优先级随宿主规则维护。自动同步、修改保护、跨目标
+原子性、全局任务互斥等独立能力需要各自需求，不隐含在本设计中。

@@ -2,7 +2,7 @@ import which from "which";
 
 export const skillAgents = [
   { id: "codex", name: "Codex", command: "codex", directory: ".agents", reload: "Codex discovers skills automatically; restart the session if it is not listed." },
-  { id: "copilot", name: "Copilot CLI", command: "copilot", directory: ".agents", reload: "In Copilot CLI, run /skills reload and /skills info daynight." },
+  { id: "copilot", name: "Copilot CLI", command: "copilot", directory: ".agents", reload: "In Copilot CLI, run /skills reload and /skills info using-daynight." },
   { id: "claude", name: "Claude Code", command: "claude", directory: ".claude", reload: "Claude Code discovers existing skill directories automatically; run /reload-skills after creating a new top-level directory." },
 ] as const;
 

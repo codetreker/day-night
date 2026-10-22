@@ -22,11 +22,17 @@ PTY/ConPTY input. A three-Agent by two-scope matrix compares each destination's
 complete files with the packaged bundle, then repeats installation after local
 edits and obsolete files are added. Sibling skills and an existing installation
 at the opposite scope remain unchanged. Existing cases cover shared targets,
-parent links, linked worktrees, unavailable Agents and cancellation.
+parent links, linked worktrees, unavailable Agents and cancellation. Migration
+cases publish using-daynight before removing the legacy daynight leaf, preserve
+other scopes and link targets, and report cleanup failures with the new bundle
+still installed.
 
-Static checks preserve skill frontmatter, relative resources and instructions
-for bounded task selection, observed-version updates and completion after PR
-merge. Existing task-command tests own those commands' executable contracts.
+Static checks preserve using-daynight frontmatter, the four mode references
+and guidance for explicit autopilot entry, bounded single-task selection,
+attachment-backed registration, observed-version updates and merge-bound
+completion. The [mode decision](../architecture/2026-10-21-using-daynight-modes.md)
+owns those instructions and legacy-name migration. Independent scenario review
+assesses routing and workflow meaning separately from file installation. Existing task-command tests own those commands' executable contracts.
 Agent installation, login, runtime execution and model behavior are outside
 this installer's acceptance boundary.
 

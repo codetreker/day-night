@@ -6,7 +6,7 @@ import { parse as parseYaml } from "yaml";
 
 const root = path.resolve(import.meta.dirname, "../../../../.tmp/copy-skill-tests");
 const packageDirectory = path.resolve(import.meta.dirname, "../..");
-const bundles = ["commands/review/skills/daynight-review", "commands/skill/skills/daynight"] as const;
+const bundles = ["commands/review/skills/daynight-review", "commands/skill/skills/using-daynight"] as const;
 type Bundle = typeof bundles[number];
 const directories: string[] = [];
 
