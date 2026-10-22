@@ -1,17 +1,15 @@
 # 任务依赖追踪与详情阅读任务拆分
 
-状态：UX-T1 的完整上游上下文与 UX-T3 的居中详情已实现；UX-T2 以渐进概览及依赖检查两个 focused PR 交付，当前先推进概览，后续 #121 完成检查；两者均合并才完成该任务。UX-T4 待实现。交付目标以[要求](../spec/daynight-task-inspection.md)为准，机制见[设计](daynight-task-inspection.md)，最终交互见[原型](mockups/task-inspection/index.html)。本文拥有每项任务的目的、范围及验收划分；实际状态、任务 ID 和前置关系以 Daynight 为准，前置关系只保存在 `dependsOn`。
+状态：UX1、UX3和[PR134](https://github.com/codetreker/daynight/pull/134)渐进概览已交付。依赖检查从当前主线重建，替代PR待创建；[旧#121](https://github.com/codetreker/daynight/pull/121)已关闭弃用，不是完成前置。UX2在新实现通过当前源码验收并合并后完成，UX4待实现。[要求](../spec/daynight-task-inspection.md)、[设计](daynight-task-inspection.md)和[原型](mockups/task-inspection/index.html)拥有最终行为、机制与目标视觉。task状态及dependsOn以Daynight为准。
 
-## 交付清单
+| 任务 | 目的 | 状态 |
+|---|---|---|
+| UX-T1 | 完整上游数据与上下文 | 已交付 |
+| UX-T2 | 渐进图上的独立依赖检查 | PR134基线已交付，替代检查实现与新源码验收进行中 |
+| UX-T3 | 居中详情 | 已交付，面板/分屏/独立预览采用当前主线 |
+| UX-T4 | Markdown描述和bundled skill | 方案已准备，实施待开始 |
 
-| 标识 | 独立交付目的 | 要求 | 预计工作量 |
-|---|---|---|---|
-| UX-T1 | 完整展示任务链所需的全部上游上下文 | TI1、TI2 | 60–100 分钟 |
-| UX-T2 | 渐进概览及稳定依赖追踪（两个 PR） | TI1–TI5 的当前图目标 | 140–220 分钟 |
-| UX-T3 | 在居中浮层中阅读任务详情 | TI6、TI7 | 70–110 分钟 |
-| UX-T4 | 用 Markdown 阅读和维护任务描述 | TI8–TI11 | 100–160 分钟 |
-
-估算包含实现、受影响文档、独立审查和本地验证；远端 CI、评审和排队的实际等待另计。执行时一次推进一项任务，各自完成受影响的真实验收，不设置承接基础正确性的独立收尾任务。创建任务不授权开始实现，也不授权合并或主线推送。
+每项主附件拥有本任务Solution和Acceptance criteria，描述自足说明行动/范围/交付物/约束/简明完成条件与实际输入。共享规范/设计引用真实所有者，不将复制整包恢复为登记规则。新检查代码、review与运行证据独立于旧PR，不复用旧检查通过结论。
 
 ## UX-T1：完整上游上下文
 
@@ -31,25 +29,26 @@
 - 桌面和 320px 下可通过初始视口、平移、缩放及键盘访问全部节点；原有根排序、展开偏好、过滤和独立任务行为正确。
 - 受影响模型、布局、组件与生产浏览器检查通过，保留现有容量矩阵，补充外部祖先密集场景的真实测量。
 
-## UX-T2：渐进概览与稳定依赖追踪
+## UX-T2：在当前主线上重建依赖检查
 
-本任务分两个 focused PR，仍是同一个 Daynight 任务。当前概览 PR 集成后，继续 [#121](https://github.com/codetreker/daynight/pull/121) 的检查交付；两者都合并且各自验收满足才完成 UX-T2。共享[目标原型](mockups/task-inspection/index.html)表达最终组合行为，不表示当前概览 PR 已有主体选择/曲线功能。
+### 已交付基线
 
-### 当前 PR：渐进概览
+PR134已交付50真实任务/100诱导边初始概览、稳定后续优先accepted-only BFS、显式20直接邻居方向批次、准确增量/剩余数、无手动边上限、全局reset和实际S刷新根连通修剪。完整P、M进度/状态和七项统计保持；31真实场景、四个原输入×五次及原预算是其源码绑定交付证据。该已合并工作不重做。
 
-保留完整 `projectRoot` P 和 M 计数。P≤50任务且≤100边时全显，其余从根做快照稳定、后续优先、只遍历接纳节点的无向 BFS，接纳后实际诱导图仍满足 50/100。卡片方向控件一次显式加入最多 20 个隐藏直接邻居，准确显示新增任务/边和剩余数；无手动边上限。全局 reset 重算/定位概览，成功刷新仅保留有效实际 ID 加根的连通分量，不自动补基线。
+### 替代实现范围
 
-主体仍打开当前 TaskDetailDialog，footer 方向控件为兄弟按钮，既有 Dagre 折线/原生箭头/局部虚线 renderer 保留。当前主线的详情尺寸、概览/附件页签、左右分屏与唯一右侧滚动、七项统计/proposed、locale 和焦点生命周期保持。
+主体切换图局部选择，独立Details以链接视觉打开现有居中详情。完整H从全数据计算，只高亮当前可见祖先及它们的全部真实可见路线/箭头，隐藏H−S按任务ID去重提示。选中/前置样式不同，状态色/共享/阻塞/外部虚线保持。同卡片/空白清除，另卡片替换；高亮、Details开关和关系导航不展开、不布局、不编译几何或改变视口。
 
-验收覆盖 50/100 边界、诱导边预算、稳定 BFS、20 直接批次、共享/外部/四态、无手动边上限、展开锚点、reset framing/focus、实际 ID 刷新连通修剪与失败保留。四个完整 1,000 任务/999或5,000边输入各五次不变，改验有界初始 DOM 和全部可见诱导边、显式展开/reset；`openMs≤3000`、原有 detail/zoom/pan≤300，详情关闭后立即缩放序列、31 场景、零重试、既有 timeout、coverage 和清理要求保持。不声明 selectMs、隐藏 H 或曲线容量结论。
+采用统一列间HV通道、源右中心/目标左中心、16单位净空与≤12单位Q圆角，保留全部可见真实边及平滑/虚线/箭头语义。图局部Context与稳定受控几何分离。当前TaskDetailPanels、附件分屏/独立预览、locale、鉴权边界与手动/定时刷新触发保持，不扩大为Markdown或skill实施。
 
-### 后续 PR #121：依赖检查
+### 验收与完成
 
-在已交付概览上分离主体选择与 Details 入口，完整 H 的可见成员和边/箭头同步高亮，隐藏上游按 ID 去重提示；选择不展开、不布局、不移动视口。交付平滑路线、外部虚线相位和独立几何判断，覆盖刷新选择生命周期、键盘、关系导航及焦点。该 PR 添加独立选择反馈和曲线/body/marker 验收；保持已确立的可见工作负载、原输入与预算。
-
-### 两个 PR 的交付要求
-
-每个 PR 同步自身当前事实、note、组件原型和有效测试，完成真实原生/容器/容量及独立审查。审批、required checks、resolved threads 和受保护合并遵守会话授权；前一个 PR 的通过不替后一个建立结论。详情已交付，不重复实现；Markdown 和 skill 属于 UX-T4。
+- 独立复算P/S/H、可见role/边及隐藏去重，覆盖链、菱形、共享、外部/无关后续、proposed/完成与无依赖根。
+- 验证无嵌套兄弟控件、鼠标/键盘/两语言/桌面320px；高亮、Details和关系前后S、节点、路线、pieces与viewport保持。
+- 保留50/100/20、reset/展开焦点、actualS刷新、mandatory visibility；普通失败只在同身份/项目/authscope保留，401/会话/资源转换沿用私有数据失效规则，dialog焦点不被抢。
+- 所有实际路线/端点/相切/避让/CTM/bodycoverage/弧长/phase/箭头由独立判断器验证，无生产planner/curve预期；缺/多边、错误箭头、穿卡片和phase/coverage负例失败。
+- 保留当前31场景、四个完整1000任务/999或5000边输入×五次、超限/coverage/timeout/零retry/cleanup；新增selectMs≤300及精确hidden上游，保持open≤3000与detail/zoom/pan≤300和普通/高亮close→立即zoom/pan序列，无额外等待/reset/fit。
+- 当前新head完成build/typecheck/tests/coverage、真实component/native/container/capacity、独立review、真实approval及required checks后受保护合并，平台确认替代PR已合并才完成UX2。旧#121运行、CI和review只作历史，不是新实现证据。
 
 ## UX-T3：居中任务详情
 

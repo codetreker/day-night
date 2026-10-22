@@ -178,7 +178,7 @@ S ⊆ P，包含根，当前实际可见 ID
 
 `getTaskExpansion` 按指定方向选 P 内前20个隐藏直接邻居，不递归，返回本批ID、新增诱导边和剩余数；新增边包含批内关系，无手动边上限。卡片220×136：94px主体、40px双列footer、2px边框。主体仍是详情触发，方向控件为兄弟原生按钮，空方向留白。显式展开在新布局以当前缩放居中锚点并聚焦主体；全局reset重算/定位概览并保留控件焦点。
 
-`reconcileVisibleTasks` 在成功刷新保留旧实际S中仍属于新P的任务，加根后仅留诱导无向图的根连通分量，不自动并入新基线。刷新保持视口，失败保留旧视图；reset/remount计算新概览，项目/根/页签/卸载清除局部状态。详情打开时不抢焦点，丢失入口由既有关闭回退处理。当前概览保留 body-open-details 和原折线/箭头/虚线renderer；依赖主体选择和曲线由后续#121交付。
+`reconcileVisibleTasks` 在成功刷新保留旧实际S中仍属于新P的任务，加根后仅留诱导无向图的根连通分量，不自动并入新基线。刷新保持视口，失败保留旧视图；reset/remount计算新概览，项目/根/页签/卸载清除局部状态。详情打开时不抢焦点，丢失入口由既有关闭回退处理。当前概览保留 body-open-details 和原折线/箭头/虚线renderer；主体检查/Details分离和曲线由当前主线重建后的替代PR交付；旧#121已弃用。
 
 布局适配器使用固定 Dagre 3.1.1，统一设置 `rankdir: "LR"` 和
 `ranker: "longest-path"`，节点固定为 220×136，按 ID 稳定输入节点和边，减少同一
@@ -248,33 +248,11 @@ declare const layoutGraph: (projection: RootProjection) => CanvasLayout;
 
 依据：[React Flow 布局指南](https://reactflow.dev/learn/layouting/layouting)、[Dagre 示例](https://reactflow.dev/examples/layout/dagre)、[可访问性](https://reactflow.dev/learn/advanced-use/accessibility)、[Vue Flow](https://vueflow.dev/guide/)、[Vite 构建](https://vite.dev/guide/build)。Dagre 对外联子图的限制针对嵌套分组；这里每个根条目是独立平面图，不使用嵌套 subflow。
 
-React Flow 固定为 12.12.0，使用单个原生任务按钮处理鼠标/Enter/Space，关闭 wrapper
-焦点与所有编辑入口，控件不提供解锁开关。React Flow 拥有 220×136 节点、键盘
-焦点、选择、视口、背景与控件；边由公开 `ViewportPortal` 中一个 memoized SVG
-拥有。SVG 位于任务节点图层下方，使用同一 `CanvasLayout` 的全部 Dagre points，保留每条边的稳定 ID、
-source/target 身份、原生箭头 marker 及可访问语义，不在交互期间省略或裁剪路线。
-实线路线保持原生描边；外部前置的完整 canonical 路线关闭自身 body stroke，保留
-原生 marker 与 1.5 描边宽度，虚线 body 由独立 paint pieces 绘制。
+React Flow 12.12.0保留220×136可见卡片、原生测量、视口及只读控件。替代代码将主体检查、Details与方向展开分为兄弟原生控件；前两者不改变S或视口，方向/reset沿用PR134。TaskInspectionContext提供selectedTaskId/highlightedIds，稳定受控node/data和memoized内容隔离检查呈现与几何。完整H决定可见前置/真实边/箭头高亮及按ID去重隐藏数，详情资源独立。
 
-`task-graph/dashes.ts` 的纯函数 `decomposeDashedRoute(points)` 返回只读 `DashPiece`：
-局部水平 `line` 包含 from、length、cosine、sine 和 startDistance，短原生 `path`
-包含 points 和 startDistance。每段沿路线累计弧长，用 5/4、周期 9 的原生虚线；
-内部切点位于相位 7 的 gap 中点，各 piece 使用正 `startDistance % 9` offset。
-转角保留至少 12 单位的原生路径空间，提取后的长直线至少 128 单位，首尾端点
-保持原路线端点；重复零长度段不增加弧长。helper 复用已验证布局的有限坐标，
-空、单点或全零长度路线没有 body paint，不修改 canonical 路线数据。
+路由由[统一通道决策](../../.agents/notes/implemented/architecture/2026-10-22-uniform-task-dependency-routing.md)拥有：一次建立列与16单位扩张占用行，按中间列意图选最近自由行，仅gap中点HV转接，保留节点布局，固定源右中心/目标左中心，≤12单位Q圆角。routes编译M/L/Q及真实弧长分片，5/4相位保持，最大1.8缩放累计误差≤0.025CSSpx。DependencyEdges声明式渲染三个恒定RGB原生marker和body组局部stroke继承，保留全部可见真实边及实际paint pieces；检查不重算几何。
 
-长段在局部坐标中为 `(0,0) → (length,0)`，通过单位旋转/平移矩阵还原世界坐标。
-Skia 因此可以在局部轴向线上裁剪 dash 生成，短 path 保留原生转角与接合；绘制
-并未删除离屏依赖或改变完整路由。paint pieces 在 canonical marker 路径之前绘制，
-不接受指针、不增加可访问节点。新增[绘制决策](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
-拥有 SVG 相位、固定 Chromium/Skia 证据及替代方案。虚线分解属于布局后的渲染准备，
-其成本计入 renderMs/openMs。
-
-`ViewportPortal` 随 React Flow 视口使用相同的 pan/zoom transform，SVG 在图坐标
-中绘制，不自行订阅或重算每条边的视口状态。布局更换才替换静态 SVG 内容；选择、
-平移和缩放复用同一批路径。图中仍有全部任务节点与全部依赖路径，交互目标及焦点
-保持在任务按钮，边不接收指针事件。
+普通键盘reveal用布局/卡片/viewport坐标，避免原生focus临时overflow滚动误判；footer消失但卡片仍在时，最终DOM commit恢复主体并抑制reveal，整卡片消失用既有回退，不抢dialog焦点。普通失败保留只限同身份/项目/authscope；current401/会话/资源转换保留私有数据失效规则。当前手动/定时刷新和locale触发保持。机制详见[检查决策](../../.agents/notes/implemented/feature/2026-10-22-task-dependency-inspection.md)；新源码运行与替代PR交付仍待完成。
 
 初始视口根据已知 Dagre 几何计算，等待 React Flow viewport 初始化且实际测得的
 画布宽高为正后一次应用。完整图可在 0.8–1 倍显示时整体适应；否则使用 0.8 倍锚定最左 rank，根已在该 rank 时保持垂直居中；外部上游位于根左侧时，将该 rank 的最上方节点放在画布 32px 内边距处。不能将根固定在左侧而把新增祖先放到不可见区域；平移、缩放、适应画布和键盘节点聚焦可访问其余内容。该策略只在初始化运行，选择和详情不重新适应。节点保留 React Flow 的原生 ResizeObserver；固定尺寸

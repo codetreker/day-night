@@ -28,21 +28,25 @@ descriptions remain pending in their Daynight tasks. Existing paint and detail n
 current mechanisms.
 
 The [progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
-partially supersedes all-context-at-once rendering. UX-T2 first delivers bounded
-visible graphs and explicit expansion/reset while body activation still opens
-TaskDetailDialog and paths remain polylines. The following inspection PR owns
-selection/Details separation and smooth highlighting; both PRs must be integrated
-before UX-T2 completion.
+partially supersedes all-context-at-once rendering. PR134 delivered bounded visible graphs and explicit expansion/reset, retaining
+body-open-details and polylines. The first inspection PR #121 was abandoned; a
+clean current-main replacement owns independent selection/Details and smooth
+highlighting. Its fresh source-bound acceptance and integration complete UX-T2,
+without requiring the abandoned PR or reusing its runtime results.
 
 The root and its descendants remain the chain's counted membership. Rendering
 adds the complete prerequisite closure without importing unrelated descendants
 of contextual tasks. Selection belongs to the mounted graph and highlights the
-selected task, all ancestors and their connecting edges. Detail resource
+selected task's visible ancestors and all their real visible routes/arrows,
+with a deduplicated hidden-ancestor count from complete data. Detail resource
 selection remains independent, with sibling card controls and one centered
 dialog shared by all detail entry points.
 
-Smooth routes retain Dagre's intermediate points, rounding local bends with
-bounded quadratic curves. Long straight spans retain the local-axis dash
+The original smooth-route target retained raw Dagre points to preserve lane
+intent and long paint spans. The
+[uniform-routing decision](2026-10-22-uniform-task-dependency-routing.md)
+partially replaces that target with one fixed-side-port column H/V planner and
+bounded quadratic corners. It keeps node placement separate from edge validity. Long straight spans retain the local-axis dash
 painting strategy. One compiled route owns body geometry and marker direction;
 independent acceptance must understand curves and continue checking complete
 coverage, dash continuity and real production timing.

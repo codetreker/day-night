@@ -6,9 +6,12 @@ statistics, task dependency graphs, task details and file attachments from the
 same Go service origin. The read-only graph dashboard is delivered, including
 production-browser acceptance, embedded deployment and the subsequent focus-restoration repair. The
 [dashboard tasks](docs/design/daynight-web-tasks.md) record completion and link
-the corresponding PR and CI evidence. Complete prerequisite data is delivered. Progressive graph overviews are the
-current focused delivery, followed by dependency inspection in
-[PR #121](https://github.com/codetreker/daynight/pull/121).
+the corresponding PR and CI evidence. Complete prerequisite data is delivered. Progressive graph overviews are delivered by
+[PR #134](https://github.com/codetreker/daynight/pull/134). Dependency inspection
+is being rebuilt from current main for a new replacement PR;
+[PR #121](https://github.com/codetreker/daynight/pull/121) is abandoned. The clean replacement code supplies independent inspection/Details,
+visible/hidden ancestor semantics and smooth synchronized routes; fresh runtime
+validation and its new PR delivery remain pending.
 The [task inspection requirements](docs/spec/daynight-task-inspection.md),
 [architecture](docs/design/daynight-task-inspection.md),
 [focused task breakdown](docs/design/daynight-task-inspection-tasks.md) and
@@ -21,8 +24,8 @@ pending. The progressive view starts at fifty tasks/one hundred induced edges, w
 explicit twenty-neighbor expansion and global reset; complete data and progress
 remain intact. Body activation still opens the delivered detail dialog with its
 Overview/Attachments split panels, routes remain polylines, and descriptions
-remain plain text. Both overview and inspection PRs must complete before UX-T2
-is done; production evidence for the current overview remains pending.
+remain plain text. The replacement inspection must pass fresh source-bound acceptance and merge
+before UX-T2 completes; historical inspection results do not establish it.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|

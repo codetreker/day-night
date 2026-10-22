@@ -197,16 +197,20 @@ new-induced-edge and remaining counts. Manual expansion has no edge cap. Every
 real edge with both endpoints in S appears, without shortcuts or aggregate cards.
 
 Cards are 220 by 136 pixels: 94px body, 40px two-column expansion footer and two
-border pixels; unused directions remain blank. Body activation still opens the
-current TaskDetailDialog, and expansion controls are sibling native buttons.
-The existing Dagre polyline/native-arrow/local-dash renderer is retained.
+border pixels; unused directions remain blank. The replacement code separates native body inspection from sibling Details
+and direction controls. Complete H drives visible ancestor/real-edge/arrow
+highlighting and deduplicated hidden counts; same-card/blank clears. Inspection
+does not expand, relayout, compile geometry or move the viewport. Details opens
+the current dialog and relation navigation preserves graph selection.
 Expansion centers its anchor at current zoom and focuses its body. Global reset
 “收起到概览” recomputes/frames overview and retains reset focus.
 
 Successful refresh keeps actual visible IDs still in new P plus root, prunes to
 the induced undirected root component and preserves viewport. It does not add a
 new baseline or newly arrived tasks. Reset/remount computes a new baseline;
-failure keeps old data/S/view, and project/root/tab/unmount releases local S.
+ordinary failure keeps old data/S/view only in the same identity/project/auth
+scope; inherited current401 and session/resource invalidation still unmount
+private content. Project/root/tab/unmount releases local S and inspection.
 An open dialog retains focus and existing close-time fallback. Locale translates
 new controls/counts without changing S or business requests. The
 [progressive decision](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)
@@ -294,7 +298,7 @@ closes details before exiting fullscreen. Both views share a counted body scroll
 lock so either unmount order restores the original scrolling state. Fullscreen
 is local to the mounted graph and is not saved as a browsing preference. The
 [fullscreen decision](../../.agents/notes/implemented/feature/2026-10-22-task-graph-fullscreen.md)
-records the modal and viewport ownership. Each node is one native keyboard button. A long graph starts with its
+records the modal and viewport ownership. Each node has sibling native inspection, Details and direction controls. A long graph starts with its
 root visible at readable zoom; keyboard focus brings offscreen nodes into view.
 The centered body-portal dialog has a 960px maximum width, 24px viewport gutters
 (12px at 600px and below), and a maximum height of
@@ -624,16 +628,19 @@ every task and dependency. Browser readiness now checks bounded overview S and
 all real induced visible edges, followed by explicit expansion/reset and exact
 counts; it no longer requires every input task/edge in the DOM simultaneously.
 
-Five samples per graph retain `openMs ≤ 3000` and existing detail/zoom/pan ≤300.
-Details → close → immediate zoom/pan retains its sequence without reset, Fit view
-or extra waiting. `visibility[5]` records ordered repetition, overview node/edge,
-added node/edge, expanded node/edge and reset node/edge counts. Validation requires
-bounded overviews, exact deltas and reset counts. Independent existing polyline,
-native marker and dash-body checks cover every visible edge. Independent selection/H/selectMs and smooth-curve acceptance remain with the
-following inspection delivery. Current readiness uses the existing polyline renderer.
-31 scenarios, real native/container targets, zero retries, timeouts, coverage,
-1,001-task/5,001-edge refusals and cleanup remain; current production evidence is
-pending. The following inspection PR adds its own behavior and validation.
+The clean inspection replacement retains five samples and all PR134 mandatory
+visibility rows, adding selectedId/hiddenUpstream and selectMs≤300. open≤3000 and
+detail/zoom/pan≤300 remain. Normal Details→close→immediatezoom/pan precedes trusted
+visible-task selection and the highlighted sequence; each metric uses the worse
+state with independent network timing, and no close-to-zoom reset/fit/wait.
+Independent API/S topology, actual DOM fixed ports, Q≤12/tangency, card avoidance,
+body/marker coverage and analytic curved dash phase cover every visible edge.
+Stable owner transforms are graph-relative real root/owner CTMs; raw screen,
+page-scroll and canvas diagnostics stay separate from reset equality.
+31 scenarios, current manual/periodic refresh, attachment tabs/standalone reader,
+bilingual/auth boundaries, zero retries, timeouts, coverage, size refusals and
+cleanup remain. PR134 is delivered; all previous PR121 inspection evidence is
+historical. The new replacement needs fresh complete runtime receipts.
 
 The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [attachment journey](tests/e2e/attachments.spec.ts),

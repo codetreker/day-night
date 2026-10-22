@@ -1,143 +1,300 @@
-import type { Page } from '@playwright/test';
-import { expect } from './fixtures';
-import type { CanvasLayout } from '../../src/features/task-graph/layout';
+import { writeFile } from 'node:fs/promises';
+import type { Page, TestInfo } from '@playwright/test';
 
-export const checkDependencyGeometry = async (page: Page, expected: CanvasLayout): Promise<void> => {
-  await expect(page.locator('.task-dependency-edges')).toHaveCount(1);
-  await expect(page.locator('.task-dependency-edge')).toHaveCount(expected.edges.length);
-  const diagnostics = await page.evaluate((geometry: CanvasLayout) => {
-    const failures: string[] = [];
-    const svg = document.querySelector<SVGSVGElement>('.task-dependency-edges');
-    const viewport = document.querySelector('.react-flow__viewport');
-    if (svg === null || viewport === null) return ['The dependency layer or viewport is absent.'];
-    if (svg.closest('.react-flow__viewport') !== viewport) failures.push('Dependency SVG uses a different viewport.');
-    if (getComputedStyle(svg).pointerEvents !== 'none') failures.push('Dependency SVG captures pointer input.');
-    if (svg.hasAttribute('viewBox')) failures.push('Dependency SVG rescales the layout coordinates.');
-    const declaredPieces = svg.getAttribute('data-paint-piece-count');
-    const bodyPieces = svg.querySelectorAll('.task-dependency-paint-piece');
-    if (declaredPieces === null || !/^(0|[1-9]\d*)$/.test(declaredPieces) || !Number.isSafeInteger(Number(declaredPieces)) || Number(declaredPieces) !== bodyPieces.length) failures.push('Dependency paint pieces differ from the complete declared count.');
-    if (svg.querySelectorAll('[tabindex]:not([tabindex="-1"])').length !== 0) failures.push('Dependency SVG has a keyboard focus target.');
-    const expectedIds = new Set(geometry.edges.map((edge) => edge.id));
-    const actualIds = [...svg.querySelectorAll('.task-dependency-edge')].map((edge) => edge.getAttribute('data-id'));
-    if (actualIds.length !== expectedIds.size || new Set(actualIds).size !== expectedIds.size || actualIds.some((id) => id === null || !expectedIds.has(id))) failures.push('Dependency identities differ from the active projection.');
-    const expectedNodeIds = new Set(geometry.nodes.map((node) => node.id));
-    const actualNodeIds = [...viewport.querySelectorAll('.react-flow__node')].map((node) => node.getAttribute('data-id'));
-    if (actualNodeIds.length !== expectedNodeIds.size || new Set(actualNodeIds).size !== expectedNodeIds.size || actualNodeIds.some((id) => id === null || !expectedNodeIds.has(id))) failures.push('Task identities differ from the active projection.');
-    for (const expectedNode of geometry.nodes) {
-      const element = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${expectedNode.id}"]`);
-      if (element === null || element.closest('.react-flow__viewport') !== viewport) failures.push(`Node ${expectedNode.id} uses a different viewport.`);
-    }
-    const onBorder = (point: DOMPoint, bounds: DOMRect): boolean => {
-      const epsilon = 0.75;
-      return point.x >= bounds.left - epsilon && point.x <= bounds.right + epsilon
-        && point.y >= bounds.top - epsilon && point.y <= bounds.bottom + epsilon
-        && Math.min(Math.abs(point.x - bounds.left), Math.abs(point.x - bounds.right), Math.abs(point.y - bounds.top), Math.abs(point.y - bounds.bottom)) <= epsilon;
-    };
-    for (const edge of geometry.edges) {
-      const group = svg.querySelector<SVGGElement>(`.task-dependency-edge[data-id="${edge.id}"]`);
-      const path = group?.querySelector<SVGPathElement>('path.react-flow__edge-path');
-      const source = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${edge.source}"]`);
-      const target = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${edge.target}"]`);
-      if (group === null || path === undefined || path === null || source === null || target === null) {
-        failures.push(`Dependency ${edge.id} lacks its path or endpoint nodes.`);
-        continue;
+type Point = { x: number; y: number };
+type Segment = { kind: 'L' | 'Q'; from: Point; to: Point; control?: Point };
+type Rect = { id: string; left: number; top: number; right: number; bottom: number };
+export type GeometryExpectation = import('./visible-topology').DependencyTopology;
+export { expectedDependencyTopology } from './visible-topology';
+export type DeclaredCurveInput = { id: string; points: readonly Point[] };
+
+type Paint = { d: string; matrix: number[]; line: boolean; phase: number; dash: string; stroke: string; width: number; cap: string; join: string; hidden: boolean };
+export type DependencySnapshot = {
+  nodes: Rect[];
+  edges: { id: string; source: string; target: string; d: string; external: string | null; stroke: string; fill: string; color: string; bodyMatrix: number[]; bodyVisible: boolean; marker: string | null; canonicalVisible: boolean; pieces: Paint[] }[];
+  markers: { id: string; orient: string | null; units: string | null; viewBox: string | null; width: string | null; height: string | null; refX: string | null; refY: string | null; points: string | null; stroke: string; fill: string; strokeWidth: number; cap: string; join: string }[];
+  declaredPieces: number; viewport: boolean; passive: boolean;
+};
+const epsilon = 0.04;
+const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+const point = (a: Point, b: Point, t: number): Point => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+const at = (s: Segment, t: number): Point => s.kind === 'L' ? point(s.from, s.to, t) : point(point(s.from, s.control!, t), point(s.control!, s.to, t), t);
+const tangent = (s: Segment, t: number): Point => s.kind === 'L' ? { x: s.to.x - s.from.x, y: s.to.y - s.from.y }
+  : { x: 2 * ((1 - t) * (s.control!.x - s.from.x) + t * (s.to.x - s.control!.x)), y: 2 * ((1 - t) * (s.control!.y - s.from.y) + t * (s.to.y - s.control!.y)) };
+const parallel = (a: Point, b: Point): boolean => Math.abs(a.x * b.y - a.y * b.x) <= epsilon * Math.max(1, Math.hypot(a.x, a.y), Math.hypot(b.x, b.y)) && a.x * b.x + a.y * b.y > 0;
+export const parseCurve = (d: string): Segment[] => {
+  const tokens = d.match(/[MLQ]|[-+]?(?:\d*\.\d+|\d+\.?\d*)(?:e[-+]?\d+)?/gi) ?? [];
+  if (tokens.join('').toLowerCase() !== d.replace(/[\s,]/g, '').toLowerCase()) throw new Error('Unsupported or invalid curve path.');
+  let cursor = 0;
+  const coordinate = (): Point => {
+    const x = Number(tokens[cursor++]); const y = Number(tokens[cursor++]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error('Nonfinite curve coordinate.');
+    return { x, y };
+  };
+  if (tokens[cursor++] !== 'M') throw new Error('Curve must start with one absolute move.');
+  let from = coordinate();
+  const result: Segment[] = [];
+  while (cursor < tokens.length) {
+    const kind = tokens[cursor++];
+    if (kind !== 'L' && kind !== 'Q') throw new Error('Curve must use absolute line or quadratic commands.');
+    const control = kind === 'Q' ? coordinate() : undefined;
+    const to = coordinate();
+    if (distance(from, to) === 0) throw new Error('Zero length curve segment.');
+    result.push(control === undefined ? { kind, from, to } : { kind, from, to, control });
+    from = to;
+  }
+  if (result.length === 0) throw new Error('Curve has no body.');
+  return result;
+};
+// Integrate the quadratic's speed analytically in coordinates parallel to its
+// acceleration. Almost straight curves use their geometric length bracket to
+// avoid cancellation; this reference does not share the renderer's subdivision.
+export const referenceLength = (s: Segment, tolerance = 0.0001): number => {
+  const chord = distance(s.from, s.to);
+  if (s.kind === 'L') return chord;
+  const polygon = distance(s.from, s.control!) + distance(s.control!, s.to);
+  if (polygon - chord <= tolerance) return (polygon + chord) / 2;
+  const v = { x: s.control!.x - s.from.x, y: s.control!.y - s.from.y };
+  const w = { x: s.to.x - s.control!.x - v.x, y: s.to.y - s.control!.y - v.y };
+  const acceleration = Math.hypot(w.x, w.y);
+  const start = (v.x * w.x + v.y * w.y) / acceleration;
+  const end = start + acceleration;
+  const height = Math.abs(v.x * w.y - v.y * w.x) / acceleration;
+  const primitive = (u: number) => height === 0 ? u * Math.abs(u)
+    : u * Math.hypot(u, height) + height * height * Math.asinh(u / height);
+  const length = (primitive(end) - primitive(start)) / acceleration;
+  if (!Number.isFinite(length) || length < chord - tolerance || length > polygon + tolerance) throw new Error('Analytic curve-length reference lost its geometric bound.');
+  return length;
+};
+const roots = (a: number, b: number, c: number): number[] => {
+  if (Math.abs(a) < 1e-12) return Math.abs(b) < 1e-12 ? [] : [-c / b];
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return [];
+  const q = -0.5 * (b + (b < 0 ? -1 : 1) * Math.sqrt(disc));
+  return q === 0 ? [-b / (2 * a)] : [q / a, c / q];
+};
+const parameters = (s: Segment, p: Point): number[] => {
+  // SVG numeric DOM values and transformed matrices can round a painted endpoint
+  // to either side of its canonical endpoint. Resolve that boundary in graph
+  // units; a fixed parameter tolerance would vary with the segment's length.
+  if (distance(s.to, p) <= epsilon) return [1];
+  if (distance(s.from, p) <= epsilon) return [0];
+  const axis = Math.abs(s.to.x - s.from.x) >= Math.abs(s.to.y - s.from.y) ? 'x' : 'y';
+  return (s.kind === 'L' ? [(p[axis] - s.from[axis]) / (s.to[axis] - s.from[axis])]
+    : roots(s.from[axis] - 2 * s.control![axis] + s.to[axis], 2 * (s.control![axis] - s.from[axis]), s.from[axis] - p[axis]))
+    .filter((t) => t >= 0 && t <= 1 && distance(at(s, t), p) <= epsilon).sort((a, b) => a - b);
+};
+const slice = (s: Segment, from: number, to: number): Segment => {
+  const start = at(s, from); const end = at(s, to);
+  if (s.kind === 'L') return { kind: 'L', from: start, to: end };
+  const derivative = tangent(s, from);
+  return { kind: 'Q', from: start, to: end, control: { x: start.x + derivative.x * (to - from) / 2, y: start.y + derivative.y * (to - from) / 2 } };
+};
+const penetrates = (s: Segment, r: Rect): boolean => {
+  const box = { left: r.left + 0.4, top: r.top + 0.4, right: r.right - 0.4, bottom: r.bottom - 0.4 };
+  const breaks = [0, 1];
+  for (const [axis, values] of [['x', [box.left, box.right]], ['y', [box.top, box.bottom]]] as const) {
+    for (const value of values) breaks.push(...(s.kind === 'L'
+      ? [(value - s.from[axis]) / (s.to[axis] - s.from[axis])]
+      : roots(s.from[axis] - 2 * s.control![axis] + s.to[axis], 2 * (s.control![axis] - s.from[axis]), s.from[axis] - value)).filter((t) => t > 0 && t < 1));
+  }
+  breaks.sort((a, b) => a - b);
+  return breaks.slice(1).some((t, i) => { const p = at(s, (t + breaks[i]!) / 2); return p.x > box.left && p.x < box.right && p.y > box.top && p.y < box.bottom; });
+};
+const transform = (p: Point, m: number[]): Point => ({ x: m[0]! * p.x + m[2]! * p.y + m[4]!, y: m[1]! * p.x + m[3]! * p.y + m[5]! });
+
+
+export const inspectDependencySnapshot = (snapshot: DependencySnapshot, expected: GeometryExpectation, compilerInputs?: readonly DeclaredCurveInput[]): string[] => {
+  const failures: string[] = [];
+  const fail = (id: string, reason: string) => { failures.push(`${id}: ${reason}`); };
+  if (!snapshot.viewport || !snapshot.passive) fail('layer', 'incorrect viewport or interaction semantics');
+  const nodes = new Map(snapshot.nodes.map((node) => [node.id, node]));
+  const edges = new Map(snapshot.edges.map((edge) => [edge.id, edge]));
+  if (nodes.size !== expected.nodes.length || snapshot.nodes.length !== nodes.size || expected.nodes.some((node) => !nodes.has(node.id))) fail('nodes', 'incomplete node coverage');
+  if (edges.size !== expected.edges.length || snapshot.edges.length !== edges.size || expected.edges.some((edge) => !edges.has(edge.id))) fail('edges', 'incomplete edge coverage');
+  if (snapshot.declaredPieces !== snapshot.edges.reduce((total, edge) => total + edge.pieces.length, 0)) fail('pieces', 'incomplete declared paint coverage');
+
+  const inputs = new Map(compilerInputs?.map((input) => [input.id, input.points]));
+  if (compilerInputs !== undefined && (inputs.size !== compilerInputs.length || inputs.size !== expected.edges.length || expected.edges.some((edge) => !inputs.has(edge.id)))) fail('curve inputs', 'incomplete declared edge coverage');
+  const sortedNodes = [...nodes.values()].sort((a, b) => a.left - b.left);
+  for (const expectation of expected.edges) {
+    const edge = edges.get(expectation.id); const source = nodes.get(expectation.source); const target = nodes.get(expectation.target);
+    if (edge === undefined || source === undefined || target === undefined) continue;
+    try {
+      const route = parseCurve(edge.d); const first = route[0]!.from; const last = route.at(-1)!.to;
+      if (edge.source !== expectation.source || edge.target !== expectation.target) fail(edge.id, 'wrong dependency topology');
+      if (distance(first, { x: source.right, y: (source.top + source.bottom) / 2 }) > epsilon
+        || distance(last, { x: target.left, y: (target.top + target.bottom) / 2 }) > epsilon) fail(edge.id, 'wrong fixed left-to-right ports');
+      const initial = tangent(route[0]!, 0); const final = tangent(route.at(-1)!, 1);
+      if (initial.x <= 0 || final.x <= 0 || Math.abs(initial.y) > epsilon || Math.abs(final.y) > epsilon) fail(edge.id, 'endpoint direction is not horizontal left-to-right');
+      const controls = route.filter((segment) => segment.kind === 'Q');
+      for (const segment of controls) {
+        if (distance(segment.from, segment.control!) > 12 + epsilon || Math.abs(distance(segment.from, segment.control!) - distance(segment.control!, segment.to)) > epsilon) fail(edge.id, 'curve exceeds its bounded symmetric corner');
       }
-      if (group.getAttribute('role') !== 'img' || group.getAttribute('focusable') !== 'false' || !(group.getAttribute('aria-label') ?? '').includes(edge.source) || !(group.getAttribute('aria-label') ?? '').includes(edge.target)) failures.push(`Dependency ${edge.id} lost its accessible identity.`);
-      const expectedPath = edge.points.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ');
-      if (path.getAttribute('d') !== expectedPath || path.dataset.source !== edge.source || path.dataset.target !== edge.target) failures.push(`Dependency ${edge.id} lost layout points or endpoint identities.`);
-      if (path.getAttribute('aria-hidden') !== 'true' || getComputedStyle(path).pointerEvents !== 'none') failures.push(`Dependency ${edge.id} is interactive.`);
-      const dashed = getComputedStyle(path).strokeDasharray !== 'none';
-      if (dashed !== edge.external) failures.push(`Dependency ${edge.id} has an incorrect external style.`);
-      const pieces = [...group.querySelectorAll<SVGGraphicsElement>('.task-dependency-paint-piece')];
-      if (edge.external !== (pieces.length > 0) || (edge.external ? getComputedStyle(path).stroke !== 'none' : getComputedStyle(path).stroke === 'none')) failures.push(`Dependency ${edge.id} has incomplete or duplicate body paint.`);
-      if (edge.external) {
-        const epsilon = 0.001;
-        const svgMatrix = svg.getScreenCTM();
-        if (svgMatrix === null) {
-          failures.push(`Dependency ${edge.id} has no painted viewport matrix.`);
-          continue;
+      const points = inputs.get(expectation.id);
+      if (points !== undefined) {
+        if (distance(first, points[0]!) > epsilon || distance(last, points.at(-1)!) > epsilon
+          || !parallel(tangent(route[0]!, 0), { x: points[1]!.x - points[0]!.x, y: points[1]!.y - points[0]!.y })
+          || !parallel(tangent(route.at(-1)!, 1), { x: points.at(-1)!.x - points.at(-2)!.x, y: points.at(-1)!.y - points.at(-2)!.y })) fail(edge.id, 'lost declared input endpoints or tangents');
+        for (const segment of controls) if (!points.some((p) => distance(p, segment.control!) <= epsilon)) fail(edge.id, 'curve control leaves declared compiler input');
+        const distinct = points.filter((p, i) => i === 0 || distance(p, points[i - 1]!) > 1e-8);
+        for (let i = 1; i < distinct.length - 1; i++) {
+          const before = distinct[i - 1]!; const corner = distinct[i]!; const after = distinct[i + 1]!;
+          const incoming = { x: corner.x - before.x, y: corner.y - before.y }; const outgoing = { x: after.x - corner.x, y: after.y - corner.y };
+          const turn = Math.abs(incoming.x * outgoing.y - incoming.y * outgoing.x) / (distance(before, corner) * distance(corner, after));
+          if (turn <= 1e-8) continue;
+          const curve = controls.find((segment) => distance(segment.control!, corner) <= epsilon);
+          if (curve === undefined || !parallel(tangent(curve, 0), incoming) || !parallel(tangent(curve, 1), outgoing)) fail(edge.id, 'curve omits declared input corner or changes its tangents');
         }
-        let accumulated = 0;
-        const segments: { from: CanvasLayout['edges'][number]['points'][number]; to: CanvasLayout['edges'][number]['points'][number]; start: number; length: number }[] = [];
-        for (let index = 1; index < edge.points.length; index++) {
-          const from = edge.points[index - 1]!;
-          const to = edge.points[index]!;
-          const length = Math.hypot(to.x - from.x, to.y - from.y);
-          if (length > 0) segments.push({ from, to, start: accumulated, length });
-          accumulated += length;
-        }
-        const alongRoute = (point: DOMPoint, minimum: number): number | null => {
-          for (const segment of segments) {
-            const dx = segment.to.x - segment.from.x;
-            const dy = segment.to.y - segment.from.y;
-            const fraction = ((point.x - segment.from.x) * dx + (point.y - segment.from.y) * dy) / (segment.length * segment.length);
-            const projected = { x: segment.from.x + dx * fraction, y: segment.from.y + dy * fraction };
-            const distance = segment.start + Math.max(0, Math.min(1, fraction)) * segment.length;
-            if (fraction >= -epsilon / segment.length && fraction <= 1 + epsilon / segment.length && Math.hypot(point.x - projected.x, point.y - projected.y) <= epsilon && distance >= minimum - epsilon) return distance;
-          }
-          return null;
-        };
-        let covered = 0;
-        for (const piece of pieces) {
-          const style = getComputedStyle(piece);
-          const dash = style.strokeDasharray.match(/[-+\d.]+/g)?.map(Number);
-          if (piece.getAttribute('aria-hidden') !== 'true' || piece.getAttribute('focusable') !== 'false' || style.pointerEvents !== 'none' || style.stroke !== 'rgb(171, 178, 199)' || Number.parseFloat(style.strokeWidth) !== 1.5 || style.strokeLinecap !== 'butt' || style.strokeLinejoin !== 'miter' || piece instanceof SVGPathElement && style.fill !== 'none' || dash?.length !== 2 || dash[0] !== 5 || dash[1] !== 4) failures.push(`Dependency ${edge.id} changed native dash paint semantics.`);
-          const pieceMatrix = piece.getScreenCTM();
-          if (pieceMatrix === null) {
-            failures.push(`Dependency ${edge.id} has a body piece without geometry.`);
-            continue;
-          }
-          const localToGraph = svgMatrix.inverse().multiply(pieceMatrix);
-          let localPoints: { x: number; y: number }[];
-          if (piece instanceof SVGLineElement && piece.dataset.pieceKind === 'line') {
-            localPoints = [{ x: piece.x1.baseVal.value, y: piece.y1.baseVal.value }, { x: piece.x2.baseVal.value, y: piece.y2.baseVal.value }];
-            if (localPoints[0]!.x !== 0 || localPoints[0]!.y !== 0 || localPoints[1]!.y !== 0 || localPoints[1]!.x <= 0 || Math.abs(Math.hypot(localToGraph.a, localToGraph.b) - 1) > epsilon || Math.abs(localToGraph.a - localToGraph.d) > epsilon || Math.abs(localToGraph.b + localToGraph.c) > epsilon) failures.push(`Dependency ${edge.id} has a non-axis or rescaled line body.`);
-          } else if (piece instanceof SVGPathElement && piece.dataset.pieceKind === 'path') {
-            const commands = [...(piece.getAttribute('d') ?? '').matchAll(/[ML]([^ML]+)/g)];
-            localPoints = commands.map((command) => {
-              const coordinates = command[1]!.trim().split(/[ ,]+/).map(Number);
-              return { x: coordinates[0]!, y: coordinates[1]! };
-            });
-          } else {
-            failures.push(`Dependency ${edge.id} has an unknown paint primitive.`);
-            continue;
-          }
-          if (localPoints.length < 2 || localPoints.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) {
-            failures.push(`Dependency ${edge.id} has an invalid native join path.`);
-            continue;
-          }
-          const points = localPoints.map((point) => new DOMPoint(point.x, point.y).matrixTransform(localToGraph));
-          const distances: number[] = [];
-          let previous = covered;
-          for (const point of points) {
-            const distance = alongRoute(point, previous);
-            if (distance === null) break;
-            distances.push(distance);
-            previous = distance;
-          }
-          if (distances.length !== points.length || Math.abs(distances[0]! - covered) > epsilon) {
-            failures.push(`Dependency ${edge.id} omits, overlaps or leaves its canonical route.`);
-            continue;
-          }
-          let paintedLength = 0;
-          for (let index = 1; index < points.length; index++) paintedLength += Math.hypot(points[index]!.x - points[index - 1]!.x, points[index]!.y - points[index - 1]!.y);
-          const start = distances[0]!;
-          const end = distances[distances.length - 1]!;
-          const phase = ((start % 9) + 9) % 9;
-          if (Math.abs(paintedLength - (end - start)) > epsilon || Math.abs(Number.parseFloat(style.strokeDashoffset) - phase) > epsilon) failures.push(`Dependency ${edge.id} changes route length or continuous dash phase.`);
-          if (start > epsilon && Math.abs(phase - 7) > epsilon) failures.push(`Dependency ${edge.id} separates native joins outside a dash gap.`);
-          covered = end;
-        }
-        if (Math.abs(covered - accumulated) > epsilon) failures.push(`Dependency ${edge.id} does not paint its complete canonical body.`);
       }
-      const matrix = path.getScreenCTM();
-      const first = edge.points[0]!;
-      const last = edge.points[edge.points.length - 1]!;
-      if (matrix === null || !onBorder(new DOMPoint(first.x, first.y).matrixTransform(matrix), source.getBoundingClientRect()) || !onBorder(new DOMPoint(last.x, last.y).matrixTransform(matrix), target.getBoundingClientRect())) failures.push(`Dependency ${edge.id} does not meet its rendered endpoint boundaries.`);
-      const markerId = /#([^#)]+)\)/.exec(path.getAttribute('marker-end') ?? '')?.[1];
-      if (markerId === undefined || !svg.querySelectorAll('marker').values().some((marker) => marker.id === markerId)) failures.push(`Dependency ${edge.id} has no local arrow marker.`);
-    }
-    return failures;
-  }, expected);
-  expect(diagnostics, 'Every static dependency follows all Dagre points and the actual transformed task boundaries').toEqual([]);
+      for (let i = 1; i < route.length; i++) if (!parallel(tangent(route[i - 1]!, 1), tangent(route[i]!, 0))) fail(edge.id, 'nonsmooth route join');
+      for (const segment of route) {
+        const xs = [segment.from.x, segment.to.x, ...(segment.control === undefined ? [] : [segment.control.x])];
+        const ys = [segment.from.y, segment.to.y, ...(segment.control === undefined ? [] : [segment.control.y])];
+        const left = Math.min(...xs); const right = Math.max(...xs); const top = Math.min(...ys); const bottom = Math.max(...ys);
+        for (const node of sortedNodes) { if (node.left >= right) break; if (node.right <= left || node.top >= bottom || node.bottom <= top) continue; if (penetrates(segment, node)) fail(edge.id, `curve passes through node ${node.id}`); }
+      }
+      if (!edge.bodyVisible || edge.bodyMatrix.length !== 6 || edge.bodyMatrix.some((value, index) => !Number.isFinite(value) || Math.abs(value - [1, 0, 0, 1, 0, 0][index]!) > epsilon)) fail(edge.id, 'body owner does not paint in graph coordinates');
+      if (!edge.canonicalVisible) fail(edge.id, 'canonical native arrow owner is hidden');
+      const markerId = /(?:^|\()#([^#)]+)\)?$/.exec(edge.marker ?? '')?.[1];
+      const marker = snapshot.markers.find((item) => item.id === markerId);
+      if (marker === undefined || marker.orient !== 'auto-start-reverse' || marker.units !== 'strokeWidth' || marker.viewBox !== '-10 -10 20 20'
+        || marker.width !== '16' || marker.height !== '16' || marker.refX !== '0' || marker.refY !== '0' || marker.points?.replace(/[\s,]+/g, ' ').trim() !== '-5 -4 0 0 -5 4 -5 -4'
+        || marker.stroke !== edge.color || marker.fill !== edge.color || marker.strokeWidth !== 1 || marker.cap !== 'round' || marker.join !== 'round') fail(edge.id, 'wrong native arrow marker or color');
+      if (edge.fill !== 'none' || edge.external !== String(expectation.external) || expectation.external !== (edge.pieces.length > 0) || (expectation.external ? edge.stroke !== 'none' : edge.stroke !== edge.color)) fail(edge.id, 'incorrect external dash or body semantics');
+      let index = 0; let t = 0; let covered = 0;
+      for (const paint of edge.pieces) {
+        if (!paint.hidden || paint.stroke !== edge.color || paint.width !== 1.5 || paint.cap !== 'butt' || paint.join !== 'miter' || !/^5(?:px)?[, ]+4(?:px)?$/.test(paint.dash)) fail(edge.id, 'changed paint semantics');
+        const phase = (covered % 9 + 9) % 9;
+        const phaseError = Math.abs(paint.phase - phase);
+        if (Math.min(phaseError, Math.abs(phaseError - 9)) > epsilon) fail(edge.id, 'dash phase deviates from true curve arclength');
+        if (covered > epsilon && Math.min(Math.abs(phase - 7), Math.abs(phase + 2)) > epsilon) fail(edge.id, 'paint seam lies outside dash gap');
+        const local = parseCurve(paint.d);
+        if (paint.line && (local.length !== 1 || local[0]!.kind !== 'L' || local[0]!.from.x !== 0 || local[0]!.from.y !== 0 || local[0]!.to.y !== 0 || local[0]!.to.x <= 0
+          || Math.abs(Math.hypot(paint.matrix[0]!, paint.matrix[1]!) - 1) > epsilon || Math.abs(paint.matrix[0]! - paint.matrix[3]!) > epsilon || Math.abs(paint.matrix[1]! + paint.matrix[2]!) > epsilon)) fail(edge.id, 'line is not an unscaled local horizontal stroke');
+        for (const segment of local) {
+          const actual: Segment = { ...segment, from: transform(segment.from, paint.matrix), to: transform(segment.to, paint.matrix), ...(segment.control === undefined ? {} : { control: transform(segment.control, paint.matrix) }) };
+          const canonical = route[index];
+          if (canonical === undefined || distance(actual.from, at(canonical, t)) > epsilon || actual.kind !== canonical.kind) throw new Error('paint loses canonical coverage');
+          const end = parameters(canonical, actual.to).find((candidate) => candidate > t);
+          if (end === undefined) throw new Error('paint leaves canonical route');
+          const reference = slice(canonical, t, end);
+          if (actual.control !== undefined && distance(actual.control, reference.control!) > epsilon) throw new Error('paint curve differs from canonical curve');
+          covered += referenceLength(reference);
+          t = end;
+          if (t === 1) { index++; t = 0; }
+        }
+      }
+      if (expectation.external && (index !== route.length || t !== 0)) fail(edge.id, 'incomplete canonical paint coverage');
+    } catch (error) { fail(edge.id, error instanceof Error ? error.message : 'invalid geometry'); }
+  }
+  return failures;
+};
+
+export const captureStableDependencyGeometry = () => {
+  const svg = document.querySelector<SVGSVGElement>('.task-dependency-edges');
+  const viewport = document.querySelector<HTMLElement>('.react-flow__viewport');
+  const canvas = document.querySelector<HTMLElement>('.task-graph-canvas');
+  if (svg === null || viewport === null || canvas === null) throw new Error('Dependency stability observation requires its SVG, viewport and canvas.');
+  const values = (matrix: DOMMatrix | null): number[] => {
+    if (matrix === null) throw new Error('Dependency stability observation has no actual screen matrix.');
+    const result = [matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f];
+    if (!result.every(Number.isFinite)) throw new Error('Dependency stability observation has a nonfinite matrix.');
+    return result;
+  };
+  const rootScreen = svg.getScreenCTM();
+  const rootValues = values(rootScreen);
+  const inverse = rootScreen!.inverse(); values(inverse);
+  const ownerScreens: number[][] = [];
+  const owners = [...svg.querySelectorAll<SVGGElement>('.task-dependency-edge,.task-dependency-body')].map((owner) => {
+    const screen = owner.getScreenCTM(); ownerScreens.push(values(screen));
+    const da = screen!.a - rootScreen!.a; const db = screen!.b - rootScreen!.b;
+    const dc = screen!.c - rootScreen!.c; const dd = screen!.d - rootScreen!.d;
+    const dx = screen!.e - rootScreen!.e; const dy = screen!.f - rootScreen!.f;
+    // Subtract the shared screen origin before inversion. For affine R=[A,t]
+    // and O=[B,u], R^-1 O=[I+A^-1(B-A), A^-1(u-t)] avoids cancellation.
+    const relative = [
+      1 + inverse.a * da + inverse.c * db, inverse.b * da + inverse.d * db,
+      inverse.a * dc + inverse.c * dd, 1 + inverse.b * dc + inverse.d * dd,
+      inverse.a * dx + inverse.c * dy, inverse.b * dx + inverse.d * dy,
+    ];
+    if (!relative.every(Number.isFinite)) throw new Error('Dependency stability observation has a nonfinite matrix.');
+    return relative;
+  });
+  const bounds = canvas.getBoundingClientRect();
+  return {
+    geometry: {
+      viewport: viewport.style.transform,
+      nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => [node.dataset.id, node.style.transform, node.style.width, node.style.height]),
+      paths: [...svg.querySelectorAll('.react-flow__edge-path')].map((path) => [path.getAttribute('data-source'), path.getAttribute('data-target'), path.getAttribute('d')]),
+      pieces: [...svg.querySelectorAll('.task-dependency-paint-piece')].map((piece) => ['d', 'transform', 'x1', 'x2', 'y1', 'y2'].map((attribute) => piece.getAttribute(attribute))),
+      owners,
+    },
+    diagnostics: { rootScreen: rootValues, ownerScreens, scroll: { x: window.scrollX, y: window.scrollY },
+      canvas: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height } },
+  };
+};
+
+export const captureDependencySnapshot = (page: Page): Promise<DependencySnapshot> => page.evaluate(() => {
+  const svg = document.querySelector<SVGSVGElement>('.task-dependency-edges'); const viewport = document.querySelector('.react-flow__viewport');
+  if (svg === null) throw new Error('Dependency SVG absent.');
+  const matrix = svg.getScreenCTM(); if (matrix === null) throw new Error('Dependency SVG has no geometry.');
+  const inverse = matrix.inverse();
+  const relativeMatrix = (element: SVGGraphicsElement): number[] => {
+    const screen = element.getScreenCTM(); if (screen === null) throw new Error('A visible dependency paint owner has no viewport geometry.');
+    const m = inverse.multiply(screen); return [m.a, m.b, m.c, m.d, m.e, m.f];
+  };
+  const visible = (element: SVGGraphicsElement): boolean => {
+    const style = getComputedStyle(element); const bounds = element.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && (bounds.width > 0 || bounds.height > 0);
+  };
+  return {
+    nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => {
+      const bounds = node.getBoundingClientRect(); const a = new DOMPoint(bounds.left, bounds.top).matrixTransform(inverse); const b = new DOMPoint(bounds.right, bounds.bottom).matrixTransform(inverse);
+      return { id: node.dataset.id!, left: a.x, top: a.y, right: b.x, bottom: b.y };
+    }),
+    edges: [...svg.querySelectorAll<SVGGElement>('.task-dependency-edge')].map((group) => {
+      const path = group.querySelector<SVGPathElement>('.react-flow__edge-path')!; const body = group.querySelector<SVGGElement>('.task-dependency-body')!; const style = getComputedStyle(path);
+      return { id: group.dataset.id!, source: path.dataset.source!, target: path.dataset.target!, d: path.getAttribute('d')!, external: group.getAttribute('data-external'), stroke: style.stroke, fill: style.fill,
+        color: getComputedStyle(body).stroke, bodyMatrix: relativeMatrix(body), bodyVisible: visible(body), marker: path.getAttribute('marker-end'), canonicalVisible: visible(path),
+        pieces: [...body.querySelectorAll<SVGGraphicsElement>('.task-dependency-paint-piece')].map((piece) => {
+          const paint = getComputedStyle(piece); const line = piece instanceof SVGLineElement;
+          return { d: line ? `M${piece.x1.baseVal.value},${piece.y1.baseVal.value} L${piece.x2.baseVal.value},${piece.y2.baseVal.value}` : piece.getAttribute('d')!, matrix: relativeMatrix(piece), line,
+            phase: Number.parseFloat(paint.strokeDashoffset), dash: paint.strokeDasharray, stroke: paint.stroke, width: Number.parseFloat(paint.strokeWidth), cap: paint.strokeLinecap, join: paint.strokeLinejoin,
+            hidden: visible(piece) && piece.getAttribute('aria-hidden') === 'true' && piece.getAttribute('focusable') === 'false' && paint.pointerEvents === 'none' && (!(piece instanceof SVGPathElement) || paint.fill === 'none') };
+        }) };
+    }),
+    markers: [...svg.querySelectorAll<SVGMarkerElement>('marker')].map((marker) => { const shape = marker.querySelector('polyline')!; const style = getComputedStyle(shape); return {
+      id: marker.id, orient: marker.getAttribute('orient'), units: marker.getAttribute('markerUnits'), viewBox: marker.getAttribute('viewBox'), width: marker.getAttribute('markerWidth'), height: marker.getAttribute('markerHeight'), refX: marker.getAttribute('refX'), refY: marker.getAttribute('refY'), points: shape.getAttribute('points'), stroke: style.stroke, fill: style.fill,
+      strokeWidth: Number.parseFloat(style.strokeWidth), cap: style.strokeLinecap, join: style.strokeLinejoin,
+    }; }),
+    declaredPieces: Number(svg.dataset.paintPieceCount),
+    viewport: svg.closest('.react-flow__viewport') === viewport && !svg.hasAttribute('viewBox'),
+    passive: getComputedStyle(svg).pointerEvents === 'none' && svg.querySelectorAll('[tabindex]:not([tabindex="-1"])').length === 0
+      && [...svg.querySelectorAll<SVGGElement>('.task-dependency-edge')].every((group) => {
+        const path = group.querySelector<SVGPathElement>('.react-flow__edge-path'); if (path === null) return false;
+        // The canonical world-coordinate d may be non-painted. Its actual edge
+        // owner supplies the viewport matrix; no synthetic identity is inferred.
+        const owner = group.getScreenCTM(); if (owner === null) return false;
+        const relative = inverse.multiply(owner);
+        return group.getAttribute('role') === 'img' && group.getAttribute('focusable') === 'false'
+          && (group.getAttribute('aria-label') ?? '').includes(path.dataset.source!) && (group.getAttribute('aria-label') ?? '').includes(path.dataset.target!)
+          && path.getAttribute('aria-hidden') === 'true' && path.getAttribute('focusable') === 'false' && getComputedStyle(path).pointerEvents === 'none' && getComputedStyle(path).transform === 'none' && !path.hasAttribute('transform')
+          && [relative.a - 1, relative.b, relative.c, relative.d - 1, relative.e, relative.f].every((value) => Math.abs(value) < 0.00001);
+      }),
+  };
+});
+
+export const summarizeGeometryFailures = (failures: readonly string[]): { total: number; examples: string[] } => ({ total: failures.length, examples: failures.slice(0, 12) });
+let failureSequence = 0;
+export const checkDependencyGeometry = async (page: Page, expected: GeometryExpectation, info: TestInfo, compilerInputs?: readonly DeclaredCurveInput[]): Promise<{ total: number; examples: string[] }> => {
+  const snapshot = await captureDependencySnapshot(page);
+  const failures = inspectDependencySnapshot(snapshot, expected, compilerInputs);
+  if (failures.length > 0) {
+    const name = `dependency-geometry-failure-${++failureSequence}`;
+    const path = info.outputPath(`${name}.json`);
+    await writeFile(path, `${JSON.stringify({ total: failures.length, failures, snapshot, expected, compilerInputs })}\n`);
+    await info.attach(name, { path, contentType: 'application/json' });
+  }
+  return summarizeGeometryFailures(failures);
 };
