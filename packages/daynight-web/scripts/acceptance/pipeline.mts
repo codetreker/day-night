@@ -28,8 +28,12 @@ export const runPipeline = async (cancellation: AbortController, phases: Pipelin
   cancellation.signal.addEventListener('abort', aborted, { once: true });
   try {
     cancellation.signal.throwIfAborted();
-    const browser = start(phases.browser);
     const coverage = start(phases.coverage);
+    const browser = start(async () => {
+      await coverage;
+      cancellation.signal.throwIfAborted();
+      await phases.browser();
+    });
     const nativePreparation = start(phases.nativePreparation);
     const container = start(phases.container);
     const nativeFunctional = start(async () => {
