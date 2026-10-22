@@ -228,8 +228,9 @@ persist detail selection, graph coordinates, zoom or pan. Inactive panel content
 so returning to a chain retains its root choice and initializes its canvas
 viewport again. The [preference decision](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)
 records storage ownership. Tab switching, filtering and scroll restoration make
-no API request and do not change the full project counters, graph index or API
-ordering. Nodes open a task detail dialog with dependency navigation,
+no API requests themselves and do not change the full project counters, graph
+index or API ordering. Independent periodic refresh continues while the page is
+visible. Nodes open a task detail dialog with dependency navigation,
 PR associations, stale-data detection and attachment management. Task fields and
 graph interactions remain read-only. The PR section follows the description and
 displays every ordered title/URL pair, including duplicates. Lists longer than 100 entries use local
@@ -268,7 +269,9 @@ without Go or PostgreSQL. Production verification uses the real-service journeys
 
 Same-resource graph and detail refresh retain successful data while loading and
 on recoverable failure. Errors stay visible during automatic retries until a
-successful response clears them. A 404 clears unavailable graph or detail data;
+successful response clears them, including a failure before any successful read.
+Automatic detail reads and queued follow-ups wait while the document is hidden;
+requests already in flight may finish. A 404 clears unavailable graph or detail data;
 401 follows the authentication lifecycle and releases the workspace. A resource
 change clears previous-resource content immediately. Same-task refresh keeps the
 detail body mounted, preserving the active tab, PR page when its ordered values

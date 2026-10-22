@@ -271,6 +271,7 @@ test.describe('Web language journeys', () => {
   });
 
   test('language-errors-and-narrow', scenario('language-errors-and-narrow'), async ({ page, request }, info) => {
+    await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
     await page.addInitScript(() => {
       const fault = new URL(location.href).searchParams.get('localeFault');
       const getItem = Storage.prototype.getItem;
@@ -317,6 +318,8 @@ test.describe('Web language journeys', () => {
     expect(seed.status()).toBe(201);
     await page.goto(`/projects/${project.id}`);
     await expect(node(page, task.id)).toBeVisible();
+    await page.clock.pauseAt(new Date('2030-01-01T00:00:00Z'));
+    await expect(page.locator('.snapshot-time time')).toHaveAttribute('datetime', /^2030-/);
     await withDependencyFailure(async () => {
       const failed = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/projects/${project.id}/task-graph`);
       await page.getByRole('button', { name: 'Refresh', exact: true }).click();
@@ -334,6 +337,7 @@ test.describe('Web language journeys', () => {
     });
     await page.getByRole('button', { name: '重试刷新', exact: true }).click();
     await expect(page.locator('.snapshot-error')).toHaveCount(0);
+    await page.clock.resume();
     for (const locale of ['en', 'zh-CN'] as const) {
       await language(page).selectOption(locale);
       for (const width of [1440, 320]) {

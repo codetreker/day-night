@@ -487,6 +487,7 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
 });
 
 test('detail-navigation', scenario('detail-navigation'), async ({ page, request }, info) => {
+  await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   const project = await createProject(request, { name: `Details ${randomUUID()}` });
   const a = await createTask(request, project.id, { title: '前置 <script>文本</script>', description: '前置说明' });
   await updateTask(request, project.id, a.id, { version: a.version, status: 'done' });
@@ -515,6 +516,7 @@ test('detail-navigation', scenario('detail-navigation'), async ({ page, request 
   expect(b.properties.pullRequests).toEqual(pullRequests);
   const c = await createTask(request, project.id, { title: '快照中的后续', description: '后续描述', dependsOn: [b.id] });
   await openProject(page, project.id, project.name);
+  await pauseRefreshClock(page);
   const graphResponse = await request.get(`/api/v1/projects/${project.id}/task-graph`);
   expect(graphResponse.status()).toBe(200);
   const graph = await graphResponse.json() as { tasks: Record<string, unknown>[] };
@@ -849,6 +851,7 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   const c = await createTask(request, project.id, { title: '键盘后续任务', dependsOn: [b.id] });
   await createTask(request, project.id, { title: '保留原链根的另一分支', dependsOn: [a.id] });
   await openProject(page, project.id, project.name);
+  await pauseRefreshClock(page);
   const trigger = node(page, b.id);
   let detailReads = 0;
   page.on('request', (request) => { if (new URL(request.url()).pathname === `/api/v1/projects/${project.id}/tasks/${b.id}`) detailReads++; });
@@ -950,7 +953,6 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   await expect(trigger).toBeFocused();
 
   const completedVisibility = page.getByRole('checkbox', { name: '显示已完成任务链（0）' });
-  await pauseRefreshClock(page);
   await completedVisibility.check();
   await expect(completedVisibility).toBeChecked();
   let currentTask = b;
