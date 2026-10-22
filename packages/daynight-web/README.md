@@ -217,21 +217,25 @@ controls adding at most twenty hidden direct neighbors in P, with exact new-task
 new-induced-edge and remaining counts. Manual expansion has no edge cap. Every
 real edge with both endpoints in S appears, without shortcuts or aggregate cards.
 
-Cards are 220 by 96 pixels when no hidden direct neighbors can be expanded:
-a 94px body and two border pixels, with no footer or separator. Cards with at
-least one expansion control are 220 by 136 pixels, including a 40px two-column
-footer; an unused direction retains its column. Body activation opens the current
-TaskDetailDialog, and expansion controls are sibling native buttons. Each visible
-snapshot derives expansion data once; Dagre, React Flow, viewport fitting and
-keyboard reveal share each card's actual dimensions.
-The existing Dagre polyline/native-arrow/local-dash renderer is retained.
+Cards are 220 by 96 pixels without hidden direct neighbors, using a 94px body
+and two border pixels with no footer or separator. Cards with expansion controls
+are 220 by 136, including a 40px two-column footer; an unused direction retains
+its column. Each visible snapshot derives expansion data once. Layout, React
+Flow, route ports, viewport fitting and keyboard reveal share actual dimensions.
+The canvas separates native body inspection from sibling Details
+and direction controls. Complete H drives visible ancestor/real-edge/arrow
+highlighting and deduplicated hidden counts; same-card/blank clears. Inspection
+does not expand, relayout, compile geometry or move the viewport. Details opens
+the current dialog and relation navigation preserves graph selection.
 Expansion centers its anchor at current zoom and focuses its body. Global reset
 “收起到概览” recomputes/frames overview and retains reset focus.
 
 Successful refresh keeps actual visible IDs still in new P plus root, prunes to
 the induced undirected root component and preserves viewport. It does not add a
 new baseline or newly arrived tasks. Reset/remount computes a new baseline;
-failure keeps old data/S/view, and project/root/tab/unmount releases local S.
+ordinary failure keeps old data/S/view only in the same identity/project/auth
+scope; inherited current401 and session/resource invalidation still unmount
+private content. Project/root/tab/unmount releases local S and inspection.
 An open dialog retains focus and existing close-time fallback. Locale translates
 new controls/counts without changing S or business requests. The
 [progressive decision](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)
@@ -319,7 +323,7 @@ closes details before exiting fullscreen. Both views share a counted body scroll
 lock so either unmount order restores the original scrolling state. Fullscreen
 is local to the mounted graph and is not saved as a browsing preference. The
 [fullscreen decision](../../.agents/notes/implemented/feature/2026-10-22-task-graph-fullscreen.md)
-records the modal and viewport ownership. Each node is one native keyboard button. A long graph starts with its
+records the modal and viewport ownership. Each node has sibling native inspection, Details and direction controls. A long graph starts with its
 root visible at readable zoom; keyboard focus brings offscreen nodes into view.
 The centered body-portal dialog has a 960px maximum width, 24px viewport gutters
 (12px at 600px and below), and a maximum height of
@@ -699,17 +703,21 @@ every task and dependency. Browser readiness now checks bounded overview S and
 all real induced visible edges, followed by explicit expansion/reset and exact
 counts; it no longer requires every input task/edge in the DOM simultaneously.
 
-Five samples per graph retain `openMs ≤ 3000` and existing detail/zoom/pan ≤300.
-Details → close → immediate zoom/pan retains its sequence without reset, Fit view
-or extra waiting. `visibility[5]` records ordered repetition, overview node/edge,
-added node/edge, expanded node/edge and reset node/edge counts. Validation requires
-bounded overviews, exact deltas and reset counts. Independent existing polyline,
-native marker and dash-body checks cover every visible edge. Independent selection/H/selectMs and smooth-curve acceptance remain with the
-following inspection delivery. Current readiness uses the existing polyline renderer.
-The 39-scenario inventory (22 native, 17 container), real targets, zero retries,
-timeouts, coverage,
-1,001-task/5,001-edge refusals and cleanup remain; current production evidence is
-pending. The following inspection PR adds its own behavior and validation.
+Inspection acceptance retains five samples and all mandatory
+visibility rows, adding selectedId/hiddenUpstream and selectMs≤300. open≤3000 and
+detail/zoom/pan≤300 remain. Normal Details→close→immediatezoom/pan precedes trusted
+visible-task selection and the highlighted sequence; each metric uses the worse
+state with independent network timing, and no close-to-zoom reset/fit/wait.
+Independent API/P/S topology derives compact/expandable heights from hidden direct
+neighbors inside P; unrelated outside-P successors cannot create a footer.
+Actual DOM fixed ports, Q≤12/tangency, card avoidance,
+body/marker coverage and analytic curved dash phase cover every visible edge.
+Stable owner transforms are graph-relative real root/owner CTMs; raw screen,
+page-scroll and canvas diagnostics stay separate from reset equality.
+39 scenarios, current manual/periodic refresh, attachment tabs/standalone reader,
+bilingual/auth boundaries, zero retries, timeouts, coverage, size refusals and
+cleanup remain. Runtime receipts bind results to their exact tested source;
+Daynight task records and primary plans own delivery evidence.
 
 The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [attachment journey](tests/e2e/attachments.spec.ts),
@@ -735,7 +743,7 @@ scenario annotations validated in each target's report.
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
 | W13 | `task-approval`, `task-approval-conflicts`, `task-approval-recovery`: real versioned approval, blocked prerequisites, pending protection, exact int64 digits, reviewed-version conflicts, unknown-outcome reconciliation, graph refresh failure and identity/focus/browsing preservation |
 | FA1–FA12 | `task-attachments`: installed CLI and production UI share real task/files on native and container targets; exact bytes, file mutations, detail tabs, adjacent panes, unique preview scroll owners, rendered formats and reloadable standalone reading. Independent real-service probes add end-of-document wheel/keyboard, native PDF final-page paint, fault/retry and unchanged task/graph proof |
-| TI8–TI9 | `task-description-markdown`: installed CLI and real API preserve Unicode/CRLF Markdown bytes and versioned full replacement; bilingual 1440px/320px rich rendering, escaped HTML, URL policy, task-root images/encoded references, paginated loading/list failure/retry, invalid/missing/preview failure states, one-controller navigation/focus, overwrite refresh, modified native href and HTML frame interaction |
+| TI8–TI9 | `task-description-markdown`: installed CLI and real API preserve Unicode/CRLF Markdown bytes and versioned full replacement; bilingual 1440px/320px rich rendering, escaped HTML, URL policy, task-root images/encoded references, paginated loading/list failure/retry, invalid/missing/preview failure states, one-controller navigation/focus, overwrite refresh, modified native href and HTML frame interaction; inspection→Details→relative attachment→close preserves graph selection/geometry/view |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
 | L1–L4 | `language-startup-preferences`: browser default, saved override, reload, route metadata, shared selectors and unchanged user data |
 | L2, L4–L5 | `language-state-preservation`: graph geometry/viewport, fullscreen and modal focus, PR page, file input and iframe identity; pending upload, overwrite and deletion execute once |
@@ -888,10 +896,10 @@ adapter returns finite left-to-right node positions and routed edge points for
 read-only React Flow canvas consumes these results without changing domain
 objects. React Flow owns task nodes with those exact dimensions, native ResizeObserver measurement,
 keyboard behavior, viewport and controls. One memoized SVG in its public
-ViewportPortal renders every exact Dagre path, with stable edge identity,
+ViewportPortal renders every planned smooth M/L/Q path, with stable edge identity,
 arrowheads, external-context dashes and accessibility semantics. It shares the viewport's
 transform, so selection/pan/zoom reuse geometry without per-edge reactive state.
-Canonical routes retain native arrow markers and full Dagre points. Dashed body
+Canonical routes retain native arrow markers and the full planned geometry. Dashed body
 paint uses `dashes.ts` to derive locally horizontal rotated lines and short native
 vertex paths, with the original 5/4 pattern and continuous positive arc-length
 phase. Solid bodies remain native. Pieces are noninteractive and hidden from the
@@ -903,8 +911,9 @@ measured canvas dimensions are ready, fitting within 0.8–1 zoom or anchoring t
 leftmost rank at 0.8 zoom. The root remains vertically centered when already
 leftmost; otherwise the topmost upstream node starts at a 32px canvas inset.
 Dependency geometry does not require connection-port DOM or per-edge endpoint readiness.
-Ordinary/selected canonical node variants retain unaffected references, and
-memoized collapsed root rows keep a null selection until expanded. Changed snapshot indexes
+Graph-local inspection Context supplies presentation roles while controlled node
+geometry/data and memoized content retain stable references. Memoized collapsed
+root rows keep their existing detail-selection behavior until expanded. Changed snapshot indexes
 refresh all rows; equivalent graph responses retain the existing index. The one-time initial viewport policy is separate
 from explicit fit controls and does not run again on selection or pan.
 

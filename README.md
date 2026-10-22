@@ -6,32 +6,32 @@ statistics, task dependency graphs, task details and file attachments from the
 same Go service origin. The read-only graph dashboard is delivered, including
 production-browser acceptance, embedded deployment and the subsequent focus-restoration repair. The
 [dashboard tasks](docs/design/daynight-web-tasks.md) record completion and link
-the corresponding PR and CI evidence. Complete prerequisite data and the
-[PR #134](https://github.com/codetreker/daynight/pull/134) progressive graph
-overview are delivered. Dependency inspection is being rebuilt in
-[PR #143](https://github.com/codetreker/daynight/pull/143); the closed
-[PR #121](https://github.com/codetreker/daynight/pull/121) is historical and is
-not a completion prerequisite.
+the corresponding PR and CI evidence. The task graph implements complete
+prerequisite context, progressive overviews and dependency inspection. Its body
+action selects a task and highlights visible upstream cards, routes and arrows;
+a separate Details action opens the centered dialog. Hidden upstream tasks are
+counted without expanding or moving the graph.
+
 The [task inspection requirements](docs/spec/daynight-task-inspection.md),
 [architecture](docs/design/daynight-task-inspection.md),
 [focused task breakdown](docs/design/daynight-task-inspection-tasks.md) and
-[interactive preview](docs/design/mockups/task-inspection/index.html) cover
-complete prerequisite context, smooth highlighted dependency routes, a centered
-detail dialog and Markdown descriptions with matching public skill guidance.
-Centered task details retain the existing modal, attachment and focus
-lifecycles. Descriptions render CommonMark/GFM through the shared attachment
-Markdown renderer. Relative description links and images resolve from the task
-attachment root; ordinary relative file links select the existing Attachments
-preview through one controller, while real URLs retain browser navigation.
-The [Markdown reading decision](.agents/notes/implemented/architecture/2026-10-22-task-description-markdown.md)
-owns root resolution, complete-inventory checks and focus integration. UX-T4
-remains in progress until its source-bound acceptance and authorized delivery
-complete. Graph inspection and smooth paths remain with UX-T2. Its delivered
-overview starts at fifty tasks/one hundred induced edges, with explicit
-twenty-neighbor expansion and global reset; complete data and progress remain
-intact. The current mainline card body still opens the detail dialog and routes
-remain polylines. PR #143 requires its own current-source acceptance and merge
-before UX-T2 is done.
+[interactive preview](docs/design/mockups/task-inspection/index.html) cover these
+interactions and Markdown description/skill behavior. The progressive
+view starts at fifty tasks/one hundred induced edges, with explicit twenty-neighbor
+expansion and global reset; complete data, statistics and progress remain intact.
+Smooth routes retain direction, card clearance and external dashes. Cards use
+220×96 compact or 220×136 expandable geometry. The centered dialog preserves
+Overview/Attachments split panels, the standalone reader and existing modal,
+attachment and focus lifecycles. Descriptions render CommonMark/GFM through the
+shared renderer. Relative links/images resolve from the task attachment root;
+ordinary relative file links select the existing Attachments preview through one
+controller, while real hrefs retain native browser navigation. The
+[Markdown reading decision](.agents/notes/implemented/architecture/2026-10-22-task-description-markdown.md)
+owns root/document resolution, complete-inventory checks and focus integration.
+The published skill preserves self-contained briefs, primary-plan ownership and
+Goal, dependency, PR and separate approval/implementation/merge permissions.
+Daynight task records and
+task-specific primary plans own delivery status and source-bound acceptance.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
@@ -1625,9 +1625,13 @@ fails explicitly. The [mirror decision](.agents/notes/implemented/testing/2026-1
 records the provisioning failure and the retained acceptance limits.
 Native CLI jobs typecheck and build once before
 running ordinary and installed tests against the same output. After deployment
-fixture checks, the web job uses one acceptance pipeline. Pinned Chromium,
-unit/coverage checks, native UI/Go/PostgreSQL preparation and the normal dev-ci
-source build can overlap. Only the coverage subprocess uses two Vitest workers,
+fixture checks, the web job uses one acceptance pipeline. Unit/coverage checks,
+native UI/Go/PostgreSQL preparation and the normal dev-ci source build start
+concurrently. Installation of pinned Chromium and Linux dependencies starts only
+after coverage passes, then overlaps the remaining native/dev-ci preparation. Browser
+installation has a 600-second deadline, coverage 180 seconds, and the web job
+20 minutes; a nonzero exit or timeout fails acceptance. Only the coverage
+subprocess uses two Vitest workers,
 retaining its `forks` pool and file isolation. Native functional checks and their
 browser cleanup precede the container browser checks; full container cleanup
 and all preparation/check commands finish before the native capacity phase.

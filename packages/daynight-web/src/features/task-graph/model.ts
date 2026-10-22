@@ -158,3 +158,16 @@ export const projectRoot = (index: GraphIndex, rootId: string): RootProjection =
   }
   return { rootId, mainIds, externalIds, edges, completed: index.rootProgress.get(rootId)!.done };
 };
+
+export const tracePrerequisites = (index: GraphIndex, taskId: string): ReadonlySet<string> => {
+  if (!index.nodes.has(taskId)) return rejectGraph();
+  const result = new Set<string>();
+  const pending = [taskId];
+  while (pending.length > 0) {
+    const id = pending.pop()!;
+    if (result.has(id)) continue;
+    result.add(id);
+    for (const source of index.nodes.get(id)!.dependsOn) pending.push(source);
+  }
+  return result;
+};

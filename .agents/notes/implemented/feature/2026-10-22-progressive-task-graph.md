@@ -71,11 +71,14 @@ choice rendered the closure before inspection so later selection would not
 change geometry. Explicit visibility makes structure changes deliberate while
 bounding the initial graph.
 
-UX-T2 uses two focused PRs: overview/render-workload policy first, then
-[dependency inspection](https://github.com/codetreker/daynight/pull/121). The
-latter owns independent selection/Details controls, full ancestor highlighting,
-hidden-upstream counts and smooth paths. They remain target behavior, not claims
-of this overview delivery. Both PRs must be integrated before UX-T2 is done.
+This overview is delivered by [PR #134](https://github.com/codetreker/daynight/pull/134),
+merged as `53e3a0c0ff4ec821f74a2401a3bfa7de24a3f4ea`, with source-bound production
+and required CI/approval evidence. The first inspection attempt,
+[PR #121](https://github.com/codetreker/daynight/pull/121), was abandoned without
+integration. A replacement rebuilt from current main owns independent body/
+Details actions, full/hidden ancestor semantics and smooth routes. UX-T2 completes
+when that replacement is verified and integrated; the abandoned PR is not a
+required merge and its runtime results remain historical.
 
 The four complete API capacity inputs retain 1,000 tasks each and their exact
 999/5,000 edges, with five samples. The browser workload now requires bounded
@@ -86,11 +89,11 @@ scenarios; the [approval lifecycle](2026-10-22-task-approval-lifecycle.md) adds
 three functional scenarios per target. The
 [Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
 adds one per target, producing 39 (22 native, 17 container).
-Zero retries, timeouts,
-size refusals, coverage and cleanup gates remain. Independent existing polyline
-and dash checks cover every visible edge; selection timing and curved oracles
-belong to the inspection PR. Runtime evidence remains source-bound and pending
-until real checks establish it.
+Zero retries, timeouts, size refusals,
+coverage and cleanup gates remain. Independent visible-route and paint checks
+cover every edge; inspection additionally verifies selection timing and curves.
+PR134 evidence remains bound to its delivered overview source; combined inspection
+and Markdown evidence must come from its own source.
 
 The [requirements](../../../../docs/spec/daynight-task-inspection.md),
 [design](../../../../docs/design/daynight-task-inspection.md) and

@@ -3,9 +3,12 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { attachmentDownloadUrl, attachmentPreviewUrl } from '../../src/api/client';
+import { parseTaskGraph } from '../../src/api/parse';
 import { createAcceptanceCli } from '../../scripts/acceptance/installed-cli.mts';
-import { createProject, createTask, expect, test } from './fixtures';
+import { createProject, createTask, expect, test, updateTask } from './fixtures';
+import { captureStableDependencyGeometry, checkDependencyGeometry, expectedDependencyTopology } from './dependency-geometry';
 import { expectCenteredTaskDetail } from './detail-dialog';
+import { observeGraphCardVisibility } from './task-card-visibility';
 
 const capture = async (page: Page, info: TestInfo, name: string): Promise<void> => {
   const path = info.outputPath(`${name}.png`);
@@ -13,6 +16,25 @@ const capture = async (page: Page, info: TestInfo, name: string): Promise<void> 
   await info.attach(name, { path, contentType: 'image/png' });
 };
 const overview = (dialog: Locator): Locator => dialog.locator('.task-detail-panel-overview');
+
+const expectGraphCardFullyVisible = async (body: Locator, info: TestInfo): Promise<void> => {
+  let observation: ReturnType<typeof observeGraphCardVisibility> | undefined;
+  try {
+    // The transformed body fills its parent's clip exactly. Check containment
+    // before and after scaling; IntersectionObserver remaps its rectangles.
+    // https://www.w3.org/TR/intersection-observer/#calculate-intersection-rect-algo
+    await expect.poll(async () => {
+      observation = await body.evaluate(observeGraphCardVisibility);
+      return observation.failures;
+    }, { message: 'The full card and native inspection control fit every actual clip without a geometric tolerance' }).toEqual([]);
+    await expect(body).toBeVisible();
+    await expect(body).toBeInViewport();
+    await expect(body).toBeFocused();
+  } catch (error) {
+    await info.attach('markdown-graph-card-visibility', { body: Buffer.from(JSON.stringify({ observation, error: String(error) }, null, 2)), contentType: 'application/json' });
+    throw error;
+  }
+};
 
 const columns = Array.from({ length: 12 }, (_, index) => `Column ${index + 1}`);
 const wideTable = `| ${columns.join(' | ')} |\r\n| ${columns.map(() => '---').join(' | ')} |\r\n| ${columns.map(() => 'Long unbroken table content').join(' | ')} |`;
@@ -188,6 +210,73 @@ test('task-description-markdown', { annotation: { type: 'scenario', description:
   await page.locator(`#standalone-task-${emptyTask.id}`).click();
   await expect(overview(page.getByRole('dialog')).getByRole('region', { name: '描述', exact: true })).toContainText('暂无描述');
   await page.keyboard.press('Escape');
+  await test.step('preserves graph inspection while description links open the shared attachment reader', async () => {
+    const ancestor = await createTask(request, project.id, { title: 'Markdown graph ancestor' });
+    const prerequisite = await createTask(request, project.id, { title: 'Markdown graph prerequisite', dependsOn: [ancestor.id] });
+    await updateTask(request, project.id, task.id, { version: after.version, dependsOn: [prerequisite.id] });
+    await createTask(request, project.id, { title: 'Markdown graph successor', dependsOn: [task.id] });
+    await createTask(request, project.id, { title: 'Markdown graph sibling', dependsOn: [ancestor.id] });
+    const graphResponse = await request.get(`/api/v1/projects/${project.id}/task-graph`);
+    expect(graphResponse.status()).toBe(200);
+    const snapshot = parseTaskGraph(await graphResponse.json(), project.id);
+    const expected = expectedDependencyTopology(snapshot.tasks, ancestor.id);
+    const byId = new Map(snapshot.tasks.map((entry) => [entry.id, entry]));
+    const upstream = new Set<string>(); const pending = [task.id];
+    while (pending.length > 0) for (const id of byId.get(pending.pop()!)!.dependsOn) {
+      if (!upstream.has(id)) { upstream.add(id); pending.push(id); }
+    }
+    const highlighted = new Set([task.id, ...upstream]);
+    await page.goto(`/projects/${project.id}`);
+    await page.getByRole('tab', { name: '任务链', exact: true }).click();
+    await expect(page.locator(`#task-root-${ancestor.id}`)).toHaveAttribute('aria-expanded', 'true');
+    const graph = page.locator('.task-graph');
+    await expect(graph).toHaveAttribute('data-visible-task-count', String(expected.nodes.length));
+    await expect(graph).toHaveAttribute('data-total-task-count', String(expected.nodes.length));
+    const body = page.locator(`.react-flow__node[data-id="${task.id}"] .task-node-body`);
+    const details = page.locator(`.react-flow__node[data-id="${task.id}"] .task-node-details`);
+    await page.keyboard.press('Tab');
+    const canvas = graph.locator('.task-graph-canvas');
+    await canvas.scrollIntoViewIfNeeded();
+    await expect(canvas).toBeInViewport({ ratio: 1 });
+    await body.focus();
+    await expectGraphCardFullyVisible(body, info);
+    const beforeSelection = (await page.evaluate(captureStableDependencyGeometry)).geometry;
+    await page.keyboard.press('Enter');
+    await expect(body).toHaveAttribute('aria-pressed', 'true');
+    await expect(graph).toHaveAttribute('data-hidden-upstream-count', '0');
+    const inspection = () => page.evaluate(() => ({
+      nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => ({
+        id: node.dataset.id!, state: node.querySelector<HTMLElement>('.task-node')!.dataset.inspection,
+        pressed: node.querySelector('.task-node-body')!.getAttribute('aria-pressed'),
+      })).sort((a, b) => a.id.localeCompare(b.id)),
+      edges: [...document.querySelectorAll<SVGGElement>('.task-dependency-edge')].map((edge) => ({ id: edge.dataset.id!, state: edge.dataset.inspection })).sort((a, b) => a.id.localeCompare(b.id)),
+      hidden: document.querySelector<HTMLElement>('.task-graph')!.dataset.hiddenUpstreamCount,
+    }));
+    const selectedState = {
+      nodes: expected.nodes.map(({ id }) => ({ id, state: id === task.id ? 'selected' : upstream.has(id) ? 'prerequisite' : 'unrelated', pressed: String(id === task.id) })).sort((a, b) => a.id.localeCompare(b.id)),
+      edges: expected.edges.map(({ id, source, target }) => ({ id, state: highlighted.has(source) && highlighted.has(target) ? 'highlighted' : 'unrelated' })).sort((a, b) => a.id.localeCompare(b.id)),
+      hidden: '0',
+    };
+    expect(await inspection()).toEqual(selectedState);
+    expect((await page.evaluate(captureStableDependencyGeometry)).geometry).toEqual(beforeSelection);
+    expect(await checkDependencyGeometry(page, expected, info)).toEqual({ total: 0, examples: [] });
+    const readsBeforeDetails = listRequests.length;
+    await details.click();
+    await expectCenteredTaskDetail(page, dialog);
+    await expect(description.getByRole('heading', { name: '交付说明 Delivery', exact: true })).toBeVisible();
+    await description.getByRole('link', { name: '方案与验收', exact: true }).click();
+    await expect(dialog.getByRole('tab', { name: '附件', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(previewPane).toBeFocused();
+    await expect(attachments.getByRole('heading', { name: '方案与验收', exact: true })).toBeVisible();
+    expect(listRequests.length, 'Graph Details and Markdown navigation share one complete attachment inventory').toBe(readsBeforeDetails + 2);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(details).toBeFocused();
+    expect(await inspection(), 'Closing the attachment reader retains every graph inspection role').toEqual(selectedState);
+    expect((await page.evaluate(captureStableDependencyGeometry)).geometry, 'Description attachment navigation retains all visible nodes, routes, paint owners and viewport').toEqual(beforeSelection);
+    expect(await checkDependencyGeometry(page, expected, info)).toEqual({ total: 0, examples: [] });
+    await capture(page, info, 'task-description-graph-inspection');
+  });
   const directory = info.outputPath('markdown-evidence');
   await mkdir(directory, { recursive: true });
   const receipt = join(directory, 'source.json');

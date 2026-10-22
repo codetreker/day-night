@@ -9,12 +9,12 @@ import { projectRoot, type GraphIndex } from '../src/features/task-graph/model';
 const render = createLocaleRender('zh-CN');
 
 vi.mock('../src/api/client', async (original) => ({ ...await original<typeof import('../src/api/client')>(), getTaskGraph: vi.fn() }));
-vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, rootId, onSelectTask }: {
-  index: GraphIndex; rootId: string; onSelectTask: (id: string, trigger: HTMLElement) => void;
+vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, rootId, onOpenTask }: {
+  index: GraphIndex; rootId: string; onOpenTask: (id: string, trigger: HTMLElement) => void;
 }) => {
   const projection = projectRoot(index, rootId);
   return <div data-testid="projection" data-root-id={rootId}>
-    {[...projection.mainIds, ...projection.externalIds].map((id) => <button key={id} data-node-id={id} onClick={(event) => { onSelectTask(id, event.currentTarget); }}>{index.nodes.get(id)!.titlePreview}</button>)}
+    {[...projection.mainIds, ...projection.externalIds].map((id) => <button key={id} data-node-id={id} onClick={(event) => { onOpenTask(id, event.currentTarget); }}>{index.nodes.get(id)!.titlePreview}</button>)}
     {projection.edges.map(({ source, target }) => <span key={`${source}->${target}`} data-edge={`${source}->${target}`} />)}
   </div>;
 } }));

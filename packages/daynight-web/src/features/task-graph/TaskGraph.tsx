@@ -1,11 +1,12 @@
-import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../i18n/LocaleProvider';
 import { LanguageSelector } from '../../i18n/LanguageSelector';
-import { Background, BackgroundVariant, Controls, getViewportForBounds, ReactFlow, useReactFlow, useStore, ViewportPortal, type Viewport } from '@xyflow/react';
-import { decomposeDashedRoute, DEPENDENCY_DASH_ARRAY, DEPENDENCY_DASH_PERIOD } from './dashes';
-import { getTaskNodeHeight, layoutGraph, type CanvasLayout, type CanvasPoint } from './layout';
-import { projectRoot, type GraphIndex, type RootProjection } from './model';
+import { Background, BackgroundVariant, Controls, getViewportForBounds, ReactFlow, useReactFlow, useStore, type Viewport } from '@xyflow/react';
+import { getTaskNodeHeight, layoutGraph, type CanvasLayout } from './layout';
+import { projectRoot, tracePrerequisites, type GraphIndex, type RootProjection } from './model';
 import { TaskNode, type TaskFlowNode } from './TaskNode';
+import { DependencyEdges } from './DependencyEdges';
+import { TaskInspectionContext, useTaskInspection } from './inspection';
 import { createGraphOverview, getTaskExpansion, projectVisibleTasks, reconcileVisibleTasks, type TaskExpansionDirection, type TaskExpansions } from './visibility';
 import { useGraphFullscreen } from './useGraphFullscreen';
 import '@xyflow/react/dist/style.css';
@@ -13,56 +14,13 @@ import '@xyflow/react/dist/style.css';
 type TaskGraphProps = {
   index: GraphIndex;
   rootId: string;
-  selectedTaskId: string | null;
-  onSelectTask: (id: string, trigger: HTMLElement) => void;
+  onOpenTask: (id: string, trigger: HTMLElement) => void;
 };
 
-const pathData = (points: readonly CanvasPoint[]) => points.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x},${point.y}`).join(' ');
-const dashStyle = {
-  fill: 'none', stroke: '#abb2c7', strokeWidth: 1.5, strokeDasharray: DEPENDENCY_DASH_ARRAY,
-  strokeLinecap: 'butt', strokeLinejoin: 'miter', pointerEvents: 'none',
-} as const;
-
-const DependencyEdges = memo(({ geometry }: { geometry: CanvasLayout }) => {
-  const { messages: { graph: m } } = useI18n();
-  const markerId = `task-dependency-arrow-${useId()}`;
-  const routes = useMemo(() => geometry.edges.map((edge) => ({
-    edge, pieces: edge.external ? decomposeDashedRoute(edge.points) : [],
-  })), [geometry]);
-  return (
-    <ViewportPortal>
-      <svg className="task-dependency-edges" data-testid="task-dependency-edges" data-paint-piece-count={routes.reduce((count, route) => count + route.pieces.length, 0)} width="100%" height="100%" role="group" aria-label={m.dependencyGroup} focusable="false">
-        <defs>
-          <marker id={markerId} markerWidth="16" markerHeight="16" viewBox="-10 -10 20 20" markerUnits="strokeWidth" orient="auto-start-reverse" refX="0" refY="0">
-            <polyline className="arrowclosed" points="-5,-4 0,0 -5,4 -5,-4" stroke="#abb2c7" fill="#abb2c7" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
-          </marker>
-        </defs>
-        {routes.map(({ edge, pieces }) => (
-          <g key={edge.id} className="react-flow__edge task-dependency-edge" data-id={edge.id} role="img" aria-label={m.dependencyLabel({ source: edge.source, target: edge.target })} focusable="false">
-            {pieces.map((piece, position) => {
-              const properties = {
-                className: 'task-dependency-paint-piece', 'data-piece-kind': piece.kind,
-                'aria-hidden': true as const, focusable: false as const,
-                style: { ...dashStyle, strokeDashoffset: piece.startDistance % DEPENDENCY_DASH_PERIOD },
-              };
-              return piece.kind === 'line'
-                ? <line key={position} {...properties} x1="0" y1="0" x2={piece.length} y2="0" transform={`matrix(${piece.cosine} ${piece.sine} ${-piece.sine} ${piece.cosine} ${piece.from.x} ${piece.from.y})`} />
-                : <path key={position} {...properties} d={pathData(piece.points)} />;
-            })}
-            <path
-              className="react-flow__edge-path"
-              data-source={edge.source}
-              data-target={edge.target}
-              d={pathData(edge.points)}
-              markerEnd={`url(#${markerId})`}
-              aria-hidden="true"
-              style={{ fill: 'none', stroke: edge.external ? 'none' : '#abb2c7', strokeWidth: 1.5, strokeDasharray: edge.external ? DEPENDENCY_DASH_ARRAY : undefined }}
-            />
-          </g>
-        ))}
-      </svg>
-    </ViewportPortal>
-  );
+const emptyHighlight: ReadonlySet<string> = new Set();
+const InspectedEdges = memo(({ geometry }: { geometry: CanvasLayout }) => {
+  const inspection = useTaskInspection();
+  return <DependencyEdges geometry={geometry} inspection={inspection} />;
 });
 
 const nodeTypes = { task: TaskNode };
@@ -109,7 +67,7 @@ const InitialViewport = ({ geometry, rootId, folded, action, resetButton }: { ge
 
 type CanvasProps = TaskGraphProps & { geometry: CanvasLayout; projection: RootProjection; visibleIds: ReadonlySet<string>; expansions: ReadonlyMap<string, TaskExpansions>; action: ViewportAction | null; onExpandTask: (id: string, direction: TaskExpansionDirection) => void; onResetOverview: () => void };
 
-const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry, projection, visibleIds, expansions, action, onExpandTask, onResetOverview }: CanvasProps) => {
+const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleIds, expansions, action, onExpandTask, onResetOverview }: CanvasProps) => {
   const { messages: { graph: m } } = useI18n();
   const { fullscreen, containerRef, toggleRef, onKeyDown, toggle } = useGraphFullscreen();
   const resetButton = useRef<HTMLButtonElement>(null);
@@ -121,25 +79,30 @@ const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry, pro
     const detachedControl = focusedControl.current !== null && !focusedControl.current.isConnected && document.activeElement === document.body;
     if (removedNode || detachedControl) toggleRef.current?.focus();
   }, [geometry, containerRef, toggleRef]);
+  const [inspectionId, setInspectionId] = useState<string | null>(null);
+  const selectedTaskId = inspectionId !== null && visibleIds.has(inspectionId) ? inspectionId : null;
+  const highlightedIds = useMemo(() => selectedTaskId === null ? emptyHighlight : tracePrerequisites(index, selectedTaskId), [index, selectedTaskId]);
+  const inspection = useMemo(() => ({ selectedTaskId, highlightedIds }), [selectedTaskId, highlightedIds]);
+  const hiddenUpstreamCount = useMemo(() => [...highlightedIds].filter((id) => !visibleIds.has(id)).length, [highlightedIds, visibleIds]);
+  useEffect(() => {
+    setInspectionId((current) => current !== null && !visibleIds.has(current) ? null : current);
+  }, [visibleIds]);
+  const onInspectTask = useCallback((id: string) => { setInspectionId((current) => current === id ? null : id); }, []);
+  const clearInspection = useCallback(() => { setInspectionId(null); }, []);
   const totalTasks = projection.mainIds.size + projection.externalIds.size;
   const folded = visibleIds.size < totalTasks;
-  // Stable node identities restrict detail-selection renders to affected tasks.
-  const nodeVariants = useMemo(() => geometry.nodes.map((node) => {
-    const base: TaskFlowNode = {
-      id: node.id, position: node.position, type: 'task', width: node.width, height: node.height,
-      style: { width: node.width, height: node.height },
-      data: {
-        task: index.nodes.get(node.id)!, kind: node.kind, shared: index.sharedIds.has(node.id), selected: false,
-        center: { x: node.position.x + node.width / 2, y: node.position.y + node.height / 2 },
-        size: { width: node.width, height: node.height },
-        onSelectTask, onExpandTask,
-        revealRequest: action?.kind === 'expand' && action.anchorId === node.id ? action.sequence : null,
-        expansions: expansions.get(node.id)!,
-      },
-    };
-    return { base, selected: { ...base, data: { ...base.data, selected: true } } };
-  }), [geometry, index, expansions, action, onSelectTask, onExpandTask]);
-  const nodes = useMemo<TaskFlowNode[]>(() => nodeVariants.map(({ base, selected }) => base.id === selectedTaskId ? selected : base), [nodeVariants, selectedTaskId]);
+  const nodes = useMemo<TaskFlowNode[]>(() => geometry.nodes.map((node) => ({
+    id: node.id, position: node.position, type: 'task', width: node.width, height: node.height,
+    style: { width: node.width, height: node.height },
+    data: {
+      task: index.nodes.get(node.id)!, kind: node.kind, shared: index.sharedIds.has(node.id),
+      center: { x: node.position.x + node.width / 2, y: node.position.y + node.height / 2 },
+      size: { width: node.width, height: node.height },
+      onInspectTask, onOpenTask, onExpandTask,
+      revealRequest: action?.kind === 'expand' && action.anchorId === node.id ? action.sequence : null,
+      expansions: expansions.get(node.id)!,
+    },
+  })), [geometry, index, expansions, action, onInspectTask, onOpenTask, onExpandTask]);
   const canvas = useMemo(() => (
     <ReactFlow<TaskFlowNode>
       id={`flow-${rootId}`}
@@ -155,6 +118,7 @@ const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry, pro
       edgesFocusable={false}
       edgesReconnectable={false}
       elementsSelectable={false}
+      onPaneClick={clearInspection}
       connectOnClick={false}
       deleteKeyCode={null}
       panActivationKeyCode={null}
@@ -166,13 +130,13 @@ const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry, pro
       attributionPosition="bottom-right"
     >
       <InitialViewport geometry={geometry} rootId={rootId} folded={folded} action={action} resetButton={resetButton} />
-      <DependencyEdges geometry={geometry} />
+      <InspectedEdges geometry={geometry} />
       <Background variant={BackgroundVariant.Dots} gap={18} size={0.8} color="#d9dee9" bgColor="#fafbfe" />
       <Controls position="top-right" orientation="horizontal" showInteractive={false} fitViewOptions={viewportFitOptions} />
     </ReactFlow>
-  ), [nodes, rootId, geometry, folded, action, m]);
+  ), [nodes, rootId, geometry, folded, action, clearInspection, m]);
   return (
-    <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} data-visible-task-count={visibleIds.size} data-total-task-count={totalTasks} ref={containerRef} role={fullscreen ? 'dialog' : undefined} aria-modal={fullscreen ? true : undefined} aria-label={fullscreen ? m.fullscreenTitle : undefined} onKeyDown={onKeyDown} onFocusCapture={(event) => { focusedControl.current = event.target as HTMLElement; }}>
+    <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} data-hidden-upstream-count={hiddenUpstreamCount} data-visible-task-count={visibleIds.size} data-total-task-count={totalTasks} ref={containerRef} role={fullscreen ? 'dialog' : undefined} aria-modal={fullscreen ? true : undefined} aria-label={fullscreen ? m.fullscreenTitle : undefined} onKeyDown={onKeyDown} onFocusCapture={(event) => { focusedControl.current = event.target as HTMLElement; }}>
       <div className="graph-toolbar">
         <span>{m.title}</span>
         <div className="graph-toolbar-actions">
@@ -188,9 +152,10 @@ const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry, pro
         </div>
       </div>
       <p className="graph-visibility-summary">{m.visibilitySummary({ visible: visibleIds.size, total: totalTasks, edges: geometry.edges.length, totalEdges: projection.edges.length })}</p>
+      <p className="graph-hidden-prerequisites" role="status">{hiddenUpstreamCount === 0 ? '' : m.hiddenPrerequisites({ count: hiddenUpstreamCount })}</p>
       <p className="graph-instructions" id={`graph-instructions-${rootId}`}>{m.instructions}</p>
       <div className="task-graph-canvas">
-        {canvas}
+        <TaskInspectionContext value={inspection}>{canvas}</TaskInspectionContext>
       </div>
       <div className="graph-foot"><span>{m.directionLegend}</span><span>{m.externalLegend}</span></div>
     </div>
