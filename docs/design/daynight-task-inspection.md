@@ -1,12 +1,12 @@
 # 任务依赖追踪与详情阅读设计
 
-状态：UX1、UX3与[PR134](https://github.com/codetreker/daynight/pull/134)渐进概览已交付。依赖检查从当前主线重建，[替代PR #143](https://github.com/codetreker/daynight/pull/143)进行中；[旧#121](https://github.com/codetreker/daynight/pull/121)已关闭弃用，不是完成前置，其运行仅作历史。新实现通过当前源码验收并合并后完成UX2，Markdown/skill仍属UX4。[要求](../spec/daynight-task-inspection.md)、[拆分](daynight-task-inspection-tasks.md)和[原型](mockups/task-inspection/index.html)拥有确认行为、交付边界与最终视觉。
+完整前置上下文、渐进概览、局部依赖检查、独立 Details 与平滑路线已实现。Markdown 描述与 skill 属于待实现的 UX-T4。[要求](../spec/daynight-task-inspection.md)、[拆分](daynight-task-inspection-tasks.md)和[原型](mockups/task-inspection/index.html)分别拥有行为、范围与视觉；任务状态与源码绑定验收记录归 Daynight 和任务专属主附件。
 
-## 继承基线与替代实现
+## 实现范围
 
-重建前主线的主体打开TaskDetailDialog和既有折线是继承基线；替代代码现已提供独立检查/Details与统一平滑路线，完整当前源码运行验收待完成。完整P、渐进S、50/100概览、显式20直接邻居批次、真实诱导边、reset及实际S刷新保留由PR134拥有，数据/进度和七项统计不因展示缩小。当前主线的TaskDetailPanels、附件分屏/独立预览、四态读取、locale、鉴权/资源失效及手动/定时刷新策略保持；检查不新增业务请求或刷新触发。
+完整 P、渐进 S、50/100 概览、显式 20 直接邻居批次、真实诱导边、reset 和实际 S 刷新保留共同构成图浏览机制。完整数据、进度和七项统计不因展示缩小。TaskDetailPanels、附件分屏/独立预览、四态读取、locale、鉴权/资源失效及手动/定时刷新策略保持；检查不新增业务请求或刷新触发。
 
-目标是主体只切换图局部检查，独立Details入口阅读当前详情。完整H从完整索引计算，可见H和它们的全部真实可见路线/箭头同步高亮，隐藏H−S按ID去重计数。选择不展开、不布局、不编译几何、不适应或移动视口。Details与方向控件均为主体的兄弟原生按钮，键盘动作明确。
+主体切换图局部检查，独立 Details 入口阅读详情。完整 H 从完整索引计算，可见 H 和它们的全部真实可见路线/箭头同步高亮，隐藏 H−S 按 ID 去重计数。选择不展开、不布局、不编译几何、不适应或移动视口。Details 与方向控件均为主体的兄弟原生按钮，键盘动作明确。
 
 ## 责任与数据流
 
@@ -14,7 +14,7 @@
 flowchart LR
   Snapshot[完整项目快照] --> Index[GraphIndex]
   Index --> P[完整投影P]
-  P --> S[已交付可见S]
+  P --> S[实际可见S]
   S --> Layout[节点布局]
   Layout --> Channels[统一列间HV通道与圆角]
   Index --> H[完整祖先H]
@@ -25,7 +25,7 @@ flowchart LR
   Canvas -->|独立Details| Detail[现有居中详情与附件面板]
 ```
 
-ProjectPage保持详情资源和入口/关闭恢复所有权。当前画布拥有局部检查状态，不与详情ID绑定。图局部Context为节点/边提供呈现状态，受控节点几何和布局输入保持稳定。完整索引拥有H，PR134可见规则拥有S；不能从已淡化或已显示元素反推完整依赖和统计。
+ProjectPage保持详情资源和入口/关闭恢复所有权。当前画布拥有局部检查状态，不与详情ID绑定。图局部Context为节点/边提供呈现状态，受控节点几何和布局输入保持稳定。完整索引拥有H，渐进可见规则拥有S；不能从已淡化或已显示元素反推完整依赖和统计。
 
 ## 完整依赖与可见交互
 
@@ -39,7 +39,7 @@ ProjectPage保持详情资源和入口/关闭恢复所有权。当前画布拥�
 
 ## 平滑路线
 
-采用统一列间水平/垂直通道，不延续旧尝试的端点修补分支。保留可见节点布局和顺序，全部边从源右中心到目标左中心，规划器统一拥有边几何和节点避让。`planDependencyRoutes(nodes, edges)`按每个 CanvasNode 的实际 width/height（220×96 或 220×136）一次建立列和16单位扩张的占用行区间，各中间列按Dagre意图插值选择最近自由行，仅在gap中点作HV转接并合并等高段，无条件碰撞修补/旧端口兼容分支；净空为≤12单位Q圆角留出空间。[统一路线决策](../../.agents/notes/implemented/architecture/2026-10-22-uniform-task-dependency-routing.md)保留原始raw-Dagre圆角选择的理由与替代方案。此为替代实现的采用设计，不是已验证运行结论。
+路由采用统一列间水平/垂直通道。保留可见节点布局和顺序，全部边从源右中心到目标左中心，规划器统一拥有边几何和节点避让。`planDependencyRoutes(nodes, edges)`按每个 CanvasNode 的实际 width/height（220×96 或 220×136）一次建立列和16单位扩张的占用行区间，各中间列按Dagre意图插值选择最近自由行，仅在gap中点作HV转接并合并等高段，无条件碰撞修补/旧端口兼容分支；净空为≤12单位Q圆角留出空间。[统一路线决策](../../.agents/notes/implemented/architecture/2026-10-22-uniform-task-dependency-routing.md)保留原始raw-Dagre圆角选择的理由与替代方案。
 
 编译器消费规划路线，产生canonical平滑路径与外部paint pieces。所有可见依赖、方向、实际body和箭头完整；外部高亮仍为5/4虚线。曲线弧长/分片在几何变化时计算，最大支持缩放的累计相位误差满足既有≤0.1CSSpx要求。选中/前置/无关呈现引用同一份几何，不能以删边、降为实线或临时返回折角掩盖失败。
 
@@ -49,7 +49,7 @@ ProjectPage保持详情资源和入口/关闭恢复所有权。当前画布拥�
 
 继续复用 body portal、共享滚动锁、背景 inert、焦点循环、遮罩关闭和分层 Esc。清理 inert、滚动锁和监听器的同步阶段与 DOM 移除后恢复焦点的阶段保持既有职责。原入口消失时优先选择仍可用的全屏退出控件，否则使用当前页签内可见的任务或页签控件；整个项目为空时恢复项目标题。任务关系切换不卸载外壳，不中途恢复到旧入口。外壳不引入图重挂载。`dialogFocusables` 与实际对话框中的同源附件 frame 共用可见控件枚举，frame 监听仍按原有 load/替换/卸载生命周期释放。附件独立阅读页复用内容渲染，但保留普通浏览器键盘行为；其路由、完整清单与满视口阅读机制由[附件设计](daynight-task-attachments.md#独立附件阅读页)拥有。
 
-## Markdown 与附件链接
+## 待实现：Markdown 与附件链接
 
 从 `AttachmentPreview` 提取只负责 CommonMark/GFM 渲染和样式的 Markdown 视图；URL 转换及链接激活由调用方提供。描述调用方使用附件根为基准，Markdown 附件调用方使用实际文档目录，不能给描述虚构一个文件名或目录。原始 HTML、协议处理和图片规则沿用现有附件规则。
 
@@ -61,10 +61,10 @@ ProjectPage保持详情资源和入口/关闭恢复所有权。当前画布拥�
 
 ## 验证与交付
 
-PR134的完整输入、50/100/20、mandatory visibility行和已交付渲染政策保持。替代实现独立验证完整P/S/H、可见role/真实边、隐藏祖先去重、同卡片/空白清除、兄弟控件与键盘/焦点，以及选择/Details/关系前后的S、节点位置、canonical路径、actual pieces和viewport完全稳定。覆盖共享、外部、完成/proposed、根无依赖、刷新消失、普通失败和鉴权失效。
+完整输入、50/100/20、mandatory visibility行和渐进渲染政策保持。验收独立验证完整P/S/H、可见role/真实边、隐藏祖先去重、同卡片/空白清除、兄弟控件与键盘/焦点，以及选择/Details/关系前后的S、节点位置、canonical路径、actual pieces和viewport完全稳定。覆盖共享、外部、完成/proposed、根无依赖、刷新消失、普通失败和鉴权失效。
 
 独立地从完整 API 投影 P 和实际 S 推导每个卡片是否存在隐藏直接邻居，验证 96/136px 高度；P 外无关后续不产生 footer。实际DOM路线的端点/方向、平滑相切、全部可见卡片避让、真实CTM、完整body coverage、参考弧长/phase及原生箭头独立判断，不能由生产规划器输出充当有效预期。可选输入只做编译忠实度，负例覆盖缺/多边、错误箭头、穿卡片和相位/覆盖失败。稳定性比较使用图坐标/相对变换，页面滚动诊断单独保留，不能把一致的文档平移误判为图变化。
 
-当前主线31场景（18原生/13容器）、四个完整1000任务输入及999/5000边、每图五次、mandatory visibility、超限、coverage、零retry、timeout和cleanup保持。新实现验证selected/hidden上游并加入selectMs≤300，保留open≤3000及detail/zoom/pan≤300。普通Details→close→立即zoom/pan、可信可见任务选择、高亮态同序列，每项取较慢state、网络单独计量；close与zoom间不加等待/reset/fit。
+31场景（18原生/13容器）、四个完整1000任务输入及999/5000边、每图五次、mandatory visibility、超限、coverage、零retry、timeout和cleanup保持。验收验证selected/hidden上游及selectMs≤300，保留open≤3000及detail/zoom/pan≤300。普通Details→close→立即zoom/pan、可信可见任务选择、高亮态同序列，每项取较慢state、网络单独计量；close与zoom间不加等待/reset/fit。
 
-旧#121的运行、review和CI均为历史，不构成新证明。原型也不替代生产验收。替代PR在确切新head完成typecheck、测试/coverage、build、真实component/native/container/capacity和独立审查，满足required checks、真实approval及受保护合并后，才完成UX2。所有task说明/主附件继续遵守当前自足描述与Solution/Acceptance criteria所有权；共享文档与已完成任务资料不因重建被改写。
+原型不替代生产验收。生产验证覆盖 typecheck、测试/coverage、build、真实 component/native/container/capacity 和独立审查。结果必须绑定确切源码，任务状态、PR、审批、required checks 与合并证据归 Daynight 和任务专属主附件。任务说明保持自足，专属主附件拥有 Solution/Acceptance criteria。

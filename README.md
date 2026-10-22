@@ -6,26 +6,25 @@ statistics, task dependency graphs, task details and file attachments from the
 same Go service origin. The read-only graph dashboard is delivered, including
 production-browser acceptance, embedded deployment and the subsequent focus-restoration repair. The
 [dashboard tasks](docs/design/daynight-web-tasks.md) record completion and link
-the corresponding PR and CI evidence. Complete prerequisite data is delivered. Progressive graph overviews are delivered by
-[PR #134](https://github.com/codetreker/daynight/pull/134). Dependency inspection
-is being rebuilt in [PR #143](https://github.com/codetreker/daynight/pull/143);
-[PR #121](https://github.com/codetreker/daynight/pull/121) is abandoned. The clean replacement code supplies independent inspection/Details,
-visible/hidden ancestor semantics and smooth synchronized routes; fresh runtime
-validation and its new PR delivery remain pending.
+the corresponding PR and CI evidence. The task graph implements complete
+prerequisite context, progressive overviews and dependency inspection. Its body
+action selects a task and highlights visible upstream cards, routes and arrows;
+a separate Details action opens the centered dialog. Hidden upstream tasks are
+counted without expanding or moving the graph.
+
 The [task inspection requirements](docs/spec/daynight-task-inspection.md),
 [architecture](docs/design/daynight-task-inspection.md),
 [focused task breakdown](docs/design/daynight-task-inspection-tasks.md) and
-[interactive preview](docs/design/mockups/task-inspection/index.html) cover
-complete prerequisite context, smooth highlighted dependency routes, a centered
-detail dialog and Markdown descriptions with matching public skill guidance.
-Centered task details are implemented with the existing modal, attachment and
-focus lifecycles. Inspection and smooth paths await current-source acceptance and delivery;
-Markdown descriptions remain pending. The progressive view starts at fifty tasks/one hundred induced edges, with
-explicit twenty-neighbor expansion and global reset; complete data and progress
-remain intact. The replacement separates body inspection from Details while preserving the
-delivered Overview/Attachments split panels and standalone reader. Cards use
-220×96 compact or 220×136 expandable geometry; descriptions remain plain text. The replacement inspection must pass fresh source-bound acceptance and merge
-before UX-T2 completes; historical inspection results do not establish it.
+[interactive preview](docs/design/mockups/task-inspection/index.html) cover these
+interactions and the planned Markdown description/skill work. The progressive
+view starts at fifty tasks/one hundred induced edges, with explicit twenty-neighbor
+expansion and global reset; complete data, statistics and progress remain intact.
+Smooth routes retain direction, card clearance and external dashes. Cards use
+220×96 compact or 220×136 expandable geometry. The centered dialog preserves
+Overview/Attachments split panels, the standalone reader and existing modal,
+attachment and focus lifecycles. Descriptions remain plain text; Markdown and
+matching public skill guidance belong to pending UX4. Daynight task records and
+task-specific primary plans own delivery status and source-bound acceptance.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|

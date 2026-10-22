@@ -54,8 +54,8 @@ reveal. Whole-card removal retains graph/fullscreen fallback; open dialogs keep
 focus. Locale changes update presentation without changing S, selection,
 geometry, details, attachments or business requests.
 
-Implementation is present; current-source production validation and replacement
-[PR #143](https://github.com/codetreker/daynight/pull/143) delivery remain pending. [PR #121](https://github.com/codetreker/daynight/pull/121)
+Source-bound runtime and delivery records belong to the task and its primary
+plan. [PR #121](https://github.com/codetreker/daynight/pull/121)
 is abandoned, not a required merge or current proof. The
 [requirements](../../../../docs/spec/daynight-task-inspection.md) and
 [design](../../../../docs/design/daynight-task-inspection.md) own fresh acceptance.

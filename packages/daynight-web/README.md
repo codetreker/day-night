@@ -201,7 +201,7 @@ and two border pixels with no footer or separator. Cards with expansion controls
 are 220 by 136, including a 40px two-column footer; an unused direction retains
 its column. Each visible snapshot derives expansion data once. Layout, React
 Flow, route ports, viewport fitting and keyboard reveal share actual dimensions.
-The replacement code separates native body inspection from sibling Details
+The canvas separates native body inspection from sibling Details
 and direction controls. Complete H drives visible ancestor/real-edge/arrow
 highlighting and deduplicated hidden counts; same-card/blank clears. Inspection
 does not expand, relayout, compile geometry or move the viewport. Details opens
@@ -635,7 +635,7 @@ every task and dependency. Browser readiness now checks bounded overview S and
 all real induced visible edges, followed by explicit expansion/reset and exact
 counts; it no longer requires every input task/edge in the DOM simultaneously.
 
-The clean inspection replacement retains five samples and all PR134 mandatory
+Inspection acceptance retains five samples and all mandatory
 visibility rows, adding selectedId/hiddenUpstream and selectMs≤300. open≤3000 and
 detail/zoom/pan≤300 remain. Normal Details→close→immediatezoom/pan precedes trusted
 visible-task selection and the highlighted sequence; each metric uses the worse
@@ -648,8 +648,8 @@ Stable owner transforms are graph-relative real root/owner CTMs; raw screen,
 page-scroll and canvas diagnostics stay separate from reset equality.
 31 scenarios, current manual/periodic refresh, attachment tabs/standalone reader,
 bilingual/auth boundaries, zero retries, timeouts, coverage, size refusals and
-cleanup remain. PR134 is delivered; all previous PR121 inspection evidence is
-historical. The new replacement needs fresh complete runtime receipts.
+cleanup remain. Runtime receipts bind results to their exact tested source;
+Daynight task records and primary plans own delivery evidence.
 
 The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [attachment journey](tests/e2e/attachments.spec.ts),

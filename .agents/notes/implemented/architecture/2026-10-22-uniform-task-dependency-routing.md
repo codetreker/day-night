@@ -21,8 +21,7 @@ the available column gaps and free passages;
 route planning retains sixteen units of clearance for bounded quadratic corner
 rounding of at most twelve units. Every visible real induced edge is retained,
 with forward horizontal endpoint direction and no card-interior crossing.
-The clean replacement implements this adopted mechanism; final source-bound
-production validation remains pending. The planner builds columns and sixteen-unit
+The planner implements this mechanism and builds columns and sixteen-unit
 expanded occupied-row intervals once, interpolates intended height at each
 intermediate column center, picks the nearest free row and transitions only at
 gap midpoints, coalescing equal rows. There is no conditional collision-repair

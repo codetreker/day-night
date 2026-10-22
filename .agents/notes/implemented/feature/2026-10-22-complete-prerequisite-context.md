@@ -44,12 +44,12 @@ decision kept direct blockers visible without recursively expanding ancestry;
 it remains the owner of complete-snapshot validation, main-set counting and the
 pinned Dagre layout choices. The
 [inspection design](../architecture/2026-10-22-task-inspection-design.md) owns the
-remaining task-card selection, smooth-route and Markdown goals. The
+task-card selection and smooth-route mechanisms, plus the pending Markdown goals. The
 [centered detail decision](2026-10-22-centered-task-detail-dialog.md) implements
 the reading shell. The [inspection decision](2026-10-22-task-dependency-inspection.md)
 owns sibling selection/Details actions and smooth routes on the progressive graph;
-its current-source runtime validation and delivery remain pending. Descriptions
-remain plain text.
+source-bound runtime and delivery evidence belongs to the task records.
+Descriptions remain plain text.
 
 The production capacity matrix preserves its chain, merge and shared-root graphs
 and adds `capacity-external`: 1,000 nodes and 5,000 edges, with two main tasks and

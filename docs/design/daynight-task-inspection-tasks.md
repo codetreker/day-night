@@ -1,15 +1,15 @@
 # 任务依赖追踪与详情阅读任务拆分
 
-状态：UX1、UX3和[PR134](https://github.com/codetreker/daynight/pull/134)渐进概览已交付。依赖检查从当前主线重建，[替代PR #143](https://github.com/codetreker/daynight/pull/143)进行中；[旧#121](https://github.com/codetreker/daynight/pull/121)已关闭弃用，不是完成前置。UX2在新实现通过当前源码验收并合并后完成，UX4待实现。[要求](../spec/daynight-task-inspection.md)、[设计](daynight-task-inspection.md)和[原型](mockups/task-inspection/index.html)拥有最终行为、机制与目标视觉。task状态及dependsOn以Daynight为准。
+本文记录各项实现范围与验收责任；[要求](../spec/daynight-task-inspection.md)、[设计](daynight-task-inspection.md)和[原型](mockups/task-inspection/index.html)拥有行为、机制与视觉。完整上下文、渐进图检查、独立 Details、平滑路线与居中详情已实现；Markdown 描述和 bundled skill 属于待实现的 UX-T4。任务状态、dependsOn、PR 与源码绑定交付证据以 Daynight 和任务专属主附件为准。
 
-| 任务 | 目的 | 状态 |
+| 任务 | 目的 | 实现情况 |
 |---|---|---|
-| UX-T1 | 完整上游数据与上下文 | 已交付 |
-| UX-T2 | 渐进图上的独立依赖检查 | PR134基线已交付，替代检查实现与新源码验收进行中 |
-| UX-T3 | 居中详情 | 已交付，面板/分屏/独立预览采用当前主线 |
-| UX-T4 | Markdown描述和bundled skill | 方案已准备，实施待开始 |
+| UX-T1 | 完整上游数据与上下文 | 已实现 |
+| UX-T2 | 渐进图上的独立依赖检查 | 已实现 |
+| UX-T3 | 居中详情 | 已实现，保留附件面板/分屏/独立预览 |
+| UX-T4 | Markdown描述和bundled skill | 方案已准备，待实现 |
 
-每项主附件拥有本任务Solution和Acceptance criteria，描述自足说明行动/范围/交付物/约束/简明完成条件与实际输入。共享规范/设计引用真实所有者，不将复制整包恢复为登记规则。新检查代码、review与运行证据独立于旧PR，不复用旧检查通过结论。
+每项主附件拥有本任务 Solution 和 Acceptance criteria，描述自足说明行动、范围、交付物、约束、简明完成条件与实际输入。共享规范/设计引用真实所有者。验收证据必须绑定被测源码。
 
 ## UX-T1：完整上游上下文
 
@@ -29,13 +29,13 @@
 - 桌面和 320px 下可通过初始视口、平移、缩放及键盘访问全部节点；原有根排序、展开偏好、过滤和独立任务行为正确。
 - 受影响模型、布局、组件与生产浏览器检查通过，保留现有容量矩阵，补充外部祖先密集场景的真实测量。
 
-## UX-T2：在当前主线上重建依赖检查
+## UX-T2：渐进图上的独立依赖检查
 
-### 已交付基线
+### 渐进浏览
 
-PR134已交付50真实任务/100诱导边初始概览、稳定后续优先accepted-only BFS、显式20直接邻居方向批次、准确增量/剩余数、无手动边上限、全局reset和实际S刷新根连通修剪。完整P、M进度/状态和七项统计保持；31真实场景、四个原输入×五次及原预算是其源码绑定交付证据。该已合并工作不重做。
+采用50真实任务/100诱导边初始概览、稳定后续优先accepted-only BFS、显式20直接邻居方向批次、准确增量/剩余数、无手动边上限、全局reset和实际S刷新根连通修剪。完整P、M进度/状态和七项统计保持。31真实场景、四个完整输入×五次及原预算继续作为验收要求。
 
-### 替代实现范围
+### 检查与详情
 
 主体切换图局部选择，独立Details以链接视觉打开现有居中详情。完整H从全数据计算，只高亮当前可见祖先及它们的全部真实可见路线/箭头，隐藏H−S按任务ID去重提示。选中/前置样式不同，状态色/共享/阻塞/外部虚线保持。同卡片/空白清除，另卡片替换；高亮、Details开关和关系导航不展开、不布局、不编译几何或改变视口。
 
@@ -48,7 +48,7 @@ PR134已交付50真实任务/100诱导边初始概览、稳定后续优先accept
 - 保留50/100/20、reset/展开焦点、actualS刷新、mandatory visibility；普通失败只在同身份/项目/authscope保留，401/会话/资源转换沿用私有数据失效规则，dialog焦点不被抢。
 - 所有实际路线/端点/相切/避让/CTM/bodycoverage/弧长/phase/箭头由独立判断器验证，无生产planner/curve预期；缺/多边、错误箭头、穿卡片和phase/coverage负例失败。
 - 保留当前31场景、四个完整1000任务/999或5000边输入×五次、超限/coverage/timeout/零retry/cleanup；新增selectMs≤300及精确hidden上游，保持open≤3000与detail/zoom/pan≤300和普通/高亮close→立即zoom/pan序列，无额外等待/reset/fit。
-- 当前新head完成build/typecheck/tests/coverage、真实component/native/container/capacity、独立review、真实approval及required checks后受保护合并，平台确认替代PR已合并才完成UX2。旧#121运行、CI和review只作历史，不是新实现证据。
+- 验收覆盖 build/typecheck/tests/coverage、真实 component/native/container/capacity 和独立审查。实际审批、required checks 和合并结果记录在 Daynight 与任务专属主附件中。
 
 ## UX-T3：居中任务详情
 
@@ -56,7 +56,7 @@ PR134已交付50真实任务/100诱导边初始概览、稳定后续优先accept
 
 ### 方案
 
-`TaskDetailDialog` 使用设计中的居中尺寸、视口边距和内部滚动。保留 PR、附件、完整文本、关系、元数据、局部错误与快照差异提示。所有已有打开详情的回调继续调用同一外壳；图内独立入口可用后自然接入，独立任务条目仍直接打开。
+`TaskDetailDialog` 使用设计中的居中尺寸、视口边距和内部滚动。保留 PR、附件、完整文本、关系、元数据、局部错误与快照差异提示。所有已有打开详情的回调继续调用同一外壳；图内独立 Details 和独立任务条目均打开同一外壳。
 
 复用 portal、共享滚动锁、inert、焦点循环和分层 Esc，保留框架卸载阶段与恢复焦点阶段的既有区分。同步详情、全屏、附件 frame 生命周期文档和生产组件原型。图内选择和独立任务/任务链标签分类不归本项。
 
