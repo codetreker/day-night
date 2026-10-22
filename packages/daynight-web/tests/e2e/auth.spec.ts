@@ -355,6 +355,10 @@ test('auth-resource-session', scenario('auth-resource-session'), async ({ page, 
   const detail = page.getByRole('dialog', { name: '任务详情', exact: true });
   await detail.getByRole('tab', { name: '附件', exact: true }).click();
   const attachments = detail.getByRole('region', { name: /附件/ });
+  const uploadDisclosure = attachments.locator('.attachment-upload-disclosure');
+  await uploadDisclosure.locator('summary').click();
+  await expect(uploadDisclosure).toHaveAttribute('open', '');
+  await expect(attachments.locator('input[type=text]')).toBeVisible();
   await attachments.getByRole('button', { name: /index\.html/ }).click();
   const frame = detail.frameLocator('iframe');
   await expect(frame.locator('body')).toHaveAttribute('data-value', 'relative-authenticated');
