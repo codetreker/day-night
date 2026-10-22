@@ -1,8 +1,9 @@
-import type { GraphTask, TaskGraph, TaskGraphSummary } from "../../api/types";
+import type { GraphTask, TaskGraph, TaskGraphSummary, TaskStatus } from "../../api/types";
 
 export type RootProgress = {
   readonly total: number;
   readonly done: number;
+  readonly status: TaskStatus;
 };
 
 export type GraphIndex = {
@@ -116,13 +117,17 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
   for (const root of roots) {
     const mainIds = reachable(successors, root);
     let done = 0;
+    let inProgress = false;
     for (const id of mainIds) {
-      if (nodes.get(id)!.status === "done") done++;
+      const status = nodes.get(id)!.status;
+      if (status === "done") done++;
+      else if (status === "in_progress") inProgress = true;
       const count = (rootCount.get(id) ?? 0) + 1;
       rootCount.set(id, count);
       if (count > 1) sharedIds.add(id);
     }
-    rootProgress.set(root, { total: mainIds.size, done });
+    const status = done === mainIds.size ? "done" : done > 0 || inProgress ? "in_progress" : "todo";
+    rootProgress.set(root, { total: mainIds.size, done, status });
   }
   return { nodes, successors, roots, sharedIds, rootProgress };
 };

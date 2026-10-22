@@ -42,7 +42,16 @@ from one complete graph snapshot. Root rows appear newest creation first, with
 descending IDs breaking equal-time ties. The view reverses the exact API root
 sequence without reducing timestamp precision; updates do not move older roots.
 Fully completed chains are hidden by default, including completed standalone
-tasks. A completed root with unfinished descendants remains visible. The native
+tasks. Each row shows aggregate chain status: done only when every distinct root
+and reachable successor task is done; in progress when any of those tasks is
+done or in progress and the chain is unfinished; otherwise pending. A completed
+root with unfinished descendants remains visible with an in-progress chain
+badge. External prerequisite context does not contribute to the chain status.
+Node and detail status still describe individual tasks. Row badges, completed
+counts and filtering consume the same model-derived chain status, recalculated
+with each graph snapshot. The
+[chain status decision](../../.agents/notes/implemented/bug-fix/2026-10-22-task-chain-status.md)
+records the scope and rationale. The native
 Show completed chains checkbox reports the completed-chain count and remembers
 its per-project choice; the heading shows visible/total chains. Project counters
 and every displayed graph retain the complete snapshot. Filtering rows makes no
@@ -464,7 +473,8 @@ and server diagnostics do not reach the page. Project names and addresses render
 as text. The API parser verifies DTO shape and resource identity. The implemented graph
 model separately verifies dependency closure, acyclicity, status/readiness and
 summary consistency. It projects root descendants plus direct external
-prerequisites, caches distinct root progress, and marks shared tasks. The Dagre
+prerequisites, derives distinct root progress and aggregate chain status in the
+same traversal, and marks shared tasks. The Dagre
 adapter returns finite left-to-right node positions and routed edge points for
 220-by-96 cards. The read-only React Flow canvas consumes these results without changing domain
 objects. React Flow owns fixed task nodes, native ResizeObserver measurement,

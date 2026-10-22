@@ -53,7 +53,7 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
   // Database timestamp precision is retained by reversing the server's exact order.
   const rootIds = useMemo(() => snapshot === null ? null : snapshot.index.roots.toReversed().filter((id) => {
     const progress = snapshot.index.rootProgress.get(id)!;
-    return showCompleted || progress.done < progress.total;
+    return showCompleted || progress.status !== "done";
   }), [snapshot, showCompleted]);
   const { expandedRootId, setExpandedRootId, issue: preferenceIssue } = useProjectViewPreferences(projectId, rootIds);
   expandedRoot.current = expandedRootId;

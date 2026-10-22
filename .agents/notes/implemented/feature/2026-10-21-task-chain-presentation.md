@@ -21,7 +21,11 @@ order, so the presentation is descending on both fields without decoding dates.
 Updates to an older task do not change its position.
 
 A root row is hidden by default only when its distinct main-set progress has
-`done === total`. This includes completed standalone tasks. A completed root
+`status === "done"`, which is equivalent to every distinct main task being
+complete. Status badges, completed counts and visibility share that model-derived
+status. The [chain status decision](../bug-fix/2026-10-22-task-chain-status.md)
+replaces the original root-status badge with an aggregate chain badge. This
+includes completed standalone tasks. A completed root
 with unfinished descendants stays visible. The native Show completed chains
 checkbox includes the completed-chain count and reveals those rows; the heading
 reports visible and total chains. The all-complete state remains distinct from
