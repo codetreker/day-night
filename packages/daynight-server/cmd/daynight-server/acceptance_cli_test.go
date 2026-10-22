@@ -156,6 +156,16 @@ func newAcceptanceCLI(t *testing.T, receipt acceptanceCLIReceipt, scenario *acce
 	return fixture
 }
 
+func (c *acceptanceCLI) configure(t *testing.T, process *acceptanceProcess) {
+	t.Helper()
+	if process.origin == "" || process.token == "" {
+		t.Fatal("installed CLI requires an authenticated acceptance process")
+	}
+	if err := os.WriteFile(filepath.Join(c.home, ".daynight", "config.yml"), []byte("serverUrl: "+process.origin+"\nserverToken: "+process.token+"\n"), 0o600); err != nil {
+		t.Fatal("cannot configure isolated authenticated CLI")
+	}
+}
+
 func (c *acceptanceCLI) environment() []string {
 	values := map[string]string{
 		"HOME": c.home, "USERPROFILE": c.home, "XDG_CONFIG_HOME": filepath.Join(c.home, "config"),
@@ -372,9 +382,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 			t.Fatal("fresh installed CLI version differs from its validated manifest")
 		}
 		process := fixture.launch(t, nil).started(t)
-		if err := os.WriteFile(filepath.Join(cli.home, ".daynight", "config.yml"), []byte("serverUrl: http://"+process.address+"\n"), 0o600); err != nil {
-			t.Fatal("cannot configure isolated installed CLI")
-		}
+		cli.configure(t, process)
 		projectID := acceptanceCLIResourceID(t, cli.run(t, filepath.Join(cli.repo, "source"), "project", "create", "Installed CLI 项目"))
 		for _, arguments := range [][]string{
 			{"project", "create", "Preserve existing name"},
@@ -406,7 +414,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		}
 		bindingPath := filepath.Join(cli.repo, ".daynight", "project.yml")
 		binding, err := os.ReadFile(bindingPath)
-		if err != nil || !bytes.Contains(binding, []byte("repoIdentity: git.example/Org/Repo\n")) || !bytes.Contains(binding, []byte("projectId: "+projectID+"\n")) || !bytes.Contains(binding, []byte("serverUrl: http://"+process.address+"\n")) {
+		if err != nil || !bytes.Contains(binding, []byte("repoIdentity: git.example/Org/Repo\n")) || !bytes.Contains(binding, []byte("projectId: "+projectID+"\n")) || !bytes.Contains(binding, []byte("serverUrl: "+process.origin+"\n")) || bytes.Contains(binding, []byte(process.token)) {
 			t.Fatal("installed CLI did not persist its discovered repository association")
 		}
 		cli.git(t, "-C", cli.repo, "check-ignore", "--quiet", ".daynight/project.yml")

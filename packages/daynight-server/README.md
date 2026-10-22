@@ -17,20 +17,23 @@ the [design](../../docs/design/daynight-server.md) owns architecture and concurr
 The TypeScript review command retains its separate configuration, storage and
 lifecycle. The client HTTP foundation targets this service's API.
 
-The planned [authentication requirements](../../docs/spec/daynight-auth.md),
+The [authentication requirements](../../docs/spec/daynight-auth.md),
 [architecture](../../docs/design/daynight-auth.md) and
 [task breakdown](../../docs/design/daynight-auth-tasks.md) define UniAuth identity
 handoff, local users, browser sessions, personal access tokens and project
 membership. The [identity foundation](../../.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
 implements persistent users, browser-bound login transactions, sessions, PATs and
-callable HTTP handlers. NewIdentity/NewAuthentication/RegisterRoutes support
-explicit composition. The [membership foundation](../../.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
+callable HTTP handlers. NewIdentity/NewAuthentication/RegisterRoutes are composed by the runtime. The [membership foundation](../../.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
 adds NewMemberships/NewMembershipRoutes, transaction-scoped access checks, private
 project creation, filtered project lists, administrator changes and invitations.
-The application mux does not mount these modules yet. Client integration and
-mandatory runtime activation remain separate work, so the current
-service remains unauthenticated and loopback-only. Trusted executable HTML retains its existing
-application origin when project-member checks are added to attachment requests.
+The application mux mounts all of these modules and requires authentication for
+every project, task, graph and attachment route. The production dashboard mounts
+`AuthenticatedApp`; the CLI uses user PATs. Existing projects are assigned members
+manually and remain inaccessible while they have no members. Trusted executable
+HTML retains its application origin, relative resources and keyboard behavior.
+The [activation decision](../../.agents/notes/implemented/architecture/2026-10-22-authentication-activation.md)
+owns composition and credential-private validation; current delivery results
+require receipts bound to the tested source.
 
 ## Layout
 
@@ -47,8 +50,10 @@ application origin when project-member checks are added to attachment requests.
 | `internal/core/` | Shared project/task, identity/member models and resource-not-found markers |
 
 HTTP startup prepares one local file-storage root and creates and verifies one
-concrete PostgreSQL store. The handler factory receives `server.Dependencies`
-with `Store` and `Files` before the listener accepts requests. The composition
+concrete PostgreSQL store. The handler factory `server.New(Dependencies, Config, logger)` returns
+`(http.Handler, error)`, validating mandatory authentication configuration before
+assembling the mux. `Dependencies` supplies `Store` and `Files` before the listener
+accepts requests. The composition
 root assembles services without opening another pool or file root. The runtime
 owns HTTP shutdown, storage closure and pool closure. Startup applies the embedded migrations before accepting requests.
 One pinned connection holds a session advisory lock across version checks and all
@@ -56,9 +61,11 @@ migration transactions; unknown versions, gaps and checksum mismatches stop star
 
 ## Local Docker deployment
 
-From the repository root, run `bash deployment/localhost/up.sh` to build and
-start the dashboard and API with PostgreSQL and wait for readiness. Only Docker
-is required on the host. The [deployment guide](../../deployment/localhost/README.md) owns
+Configure the required UniAuth App and origin settings using the
+[deployment guide](../../deployment/localhost/README.md), then run
+`bash deployment/localhost/up.sh` from the repository root to build and start the
+dashboard and API with PostgreSQL and wait for readiness. Only Docker is required
+on the host; valid authentication settings remain mandatory. The [deployment guide](../../deployment/localhost/README.md) owns
 prerequisites, API examples, port selection and persistence/teardown commands.
 The gateway publishes host `127.0.0.1:8787` and forwards TCP to the server's
 loopback listener in their shared network namespace; the database has no
@@ -80,6 +87,12 @@ source scripts/env.sh
 go build -o .tmp/daynight-server ./cmd/daynight-server
 export DAYNIGHT_DATABASE_URL='postgres://daynight:password@127.0.0.1:5432/daynight?sslmode=disable'
 export DAYNIGHT_STORAGE_ROOT="$PWD/.tmp/storage"
+export DAYNIGHT_PUBLIC_ORIGIN='http://127.0.0.1:8787'
+export DAYNIGHT_UNIAUTH_URL='https://identity.example.com'
+export DAYNIGHT_UNIAUTH_APP_ID='<registered-app-id>'
+export DAYNIGHT_UNIAUTH_APP_SECRET='<server-side-app-secret>'
+export DAYNIGHT_UNIAUTH_CALLBACK_URL='http://127.0.0.1:8787/api/v1/auth/callback'
+export DAYNIGHT_ALLOW_HTTP_TEST_ORIGIN=1
 .tmp/daynight-server
 ```
 
@@ -87,7 +100,12 @@ export DAYNIGHT_STORAGE_ROOT="$PWD/.tmp/storage"
 publishes it to `internal/webui/dist/`. Generated files are ignored by Git; a
 clean Go build without them fails at `go:embed`. No placeholder index or frontend
 runtime is used. Once built, the binary requires PostgreSQL and a writable,
-case-sensitive local storage directory at runtime.
+case-sensitive local storage directory and valid UniAuth App settings at runtime.
+The example explicitly enables a controlled local HTTP origin. Production uses
+HTTPS and leaves that exception disabled. Register the exact callback URL with
+UniAuth and supply real credentials through private environment configuration;
+never commit them. The [deployment guide](../../deployment/localhost/README.md)
+owns the shared authentication setup.
 
 Use credentials suitable for the local PostgreSQL instance. The process validates
 the connection before listening and exits nonzero on startup or shutdown failure.
@@ -99,12 +117,25 @@ diagnostics and cause categories.
 |---|---|---|
 | `DAYNIGHT_DATABASE_URL` | Explicit PostgreSQL connection string | Required |
 | `DAYNIGHT_STORAGE_ROOT` | Writable, case-sensitive local file-storage directory | Required |
+| `DAYNIGHT_PUBLIC_ORIGIN` | Exact main-site origin, HTTPS in production | Required |
+| `DAYNIGHT_UNIAUTH_URL` | UniAuth gateway origin | Required |
+| `DAYNIGHT_UNIAUTH_APP_ID` | Registered UniAuth backend App ID | Required |
+| `DAYNIGHT_UNIAUTH_APP_SECRET` | Server-only UniAuth App secret | Required |
+| `DAYNIGHT_UNIAUTH_CALLBACK_URL` | Exact same-origin callback URL with a canonical non-root path and no query/fragment | Required |
+| `DAYNIGHT_ALLOW_HTTP_TEST_ORIGIN` | Explicit main-site HTTP test-origin policy (`0` or `1`) | `0` |
+| `DAYNIGHT_ALLOW_LOOPBACK_HTTP` | Separate SDK permission for a literal loopback UniAuth HTTP gateway (`0` or `1`) | `0` |
 | `DAYNIGHT_LISTEN_ADDR` | Numeric loopback IP and port, including IPv6 syntax | `127.0.0.1:8787` |
 | `DAYNIGHT_STARTUP_TIMEOUT` | Positive Go duration for database connection and listener startup | `10s` |
 | `DAYNIGHT_SHUTDOWN_TIMEOUT` | Positive Go duration for draining HTTP requests | `10s` |
 
 Wildcard, non-loopback, hostname, scoped IPv6, and malformed listen addresses are
-rejected. Port `0` requests an ephemeral loopback port; the bound address appears
+rejected. Callback paths that collide with application routes and login return
+loops are rejected before a login transaction is created. Only the configured
+callback path is routed; there is no fixed-path alias or authentication-disable
+mode. The two HTTP exceptions control different origins and do not imply each
+other. `/healthz` and `/readyz` are public GET/HEAD endpoints; readiness checks
+only PostgreSQL, so it does not establish UniAuth connectivity or login success.
+Port `0` requests an ephemeral loopback port; the bound address appears
 in the startup log. Invalid timeout values fail validation.
 
 `SIGINT` and `SIGTERM` stop accepting connections and begin draining requests.
@@ -184,12 +215,14 @@ database connection/query cancellation, HTTP cancellation, graceful and forced
 drain, listener/pool reuse, process configuration/exit status, and log redaction.
 
 Authentication integration prepares the exact UniAuth gateway source at
-`c82c55c7fcd366824d0bc5ac6bdd17528c0300fa` with
+`0978963813fcefd9d553f6cb9bcc319084c764b3` with
 `scripts/prepare-uniauth-fixture.mts`, using Git/module registry access. Its checked-in
 `testdata/uniauth-fixture` command is built inside that source module; the real
 gateway, App registry and GitHub adapter run on loopback, with only external
 provider HTTP responses controlled. Private App credentials cross a task-local
-0600 IPC file and are removed after reading. The fixture process, SQLite files,
+0600 IPC file and are removed after reading. Built-process, installed-CLI, browser
+and budget fixtures obtain normal Daynight sessions and PATs through this gateway;
+private fixture metadata stays outside public receipts and artifact trees. The fixture process, SQLite files,
 checkout and executable remain under the module `.tmp/`; tests close their own
 process and file resources. No application module replacement or global tool
 installation is required. For focused authentication integration tests after
@@ -245,13 +278,12 @@ For `T=/api/v1/projects/{projectId}/tasks/{taskId}`, the service provides:
 | `DELETE T/attachments/files/{path...}` | Delete one registered file (204), missing record 404 |
 | `GET T/preview/{path...}` | Inline same-origin content and relative resources |
 
-With the server origin in `BASE_URL` and existing `PROJECT_ID`/`TASK_ID` values,
-upload a local document:
+Log in through the Web workspace, create a PAT and save it using the hidden
+`daynight setup` prompt or its explicit stdin option. With the configured service
+and existing project/task IDs, upload a local document:
 
 ```bash
-curl --request PUT --header 'Content-Type: text/markdown' \
-  --data-binary @design.md \
-  "$BASE_URL/api/v1/projects/$PROJECT_ID/tasks/$TASK_ID/attachments/files/docs/design.md"
+daynight task attachment put TASK_ID ./design.md --project PROJECT_ID --path docs/design.md
 ```
 
 The path is relative to the task, preserves case, and each URL segment is encoded
@@ -273,22 +305,28 @@ stream begins, failures use the existing JSON error envelope; after commitment,
 the server logs one correlated error and aborts the transfer without a JSON
 suffix. Trusted HTML preview runs with the application origin permissions.
 Relative CSS, scripts, images and data URLs resolve under the fixed preview
-path; ordinary query parameters do not change the file name. The planned
-[authentication architecture](../../docs/design/daynight-auth.md) adds session
-and project-member checks to these requests while retaining trusted same-origin
-execution and the existing preview routes.
+path; ordinary query parameters do not change the file name. The
+[authentication architecture](../../docs/design/daynight-auth.md) requires a fresh
+session/PAT check at HTTP admission and project membership in the pre-I/O
+snapshot. An admitted file operation may finish; membership is not rechecked
+after file I/O. These checks retain trusted same-origin execution, existing
+preview routes and K1 filesystem/PostgreSQL non-atomicity.
 
 ## PostgreSQL storage boundaries
 
 `Store.WriteProject` locks one project in a `READ COMMITTED` transaction before
-calling the supplied operation. The operation receives a project-scoped
+calling the supplied operation. Resource services require an explicit principal
+and check membership after acquiring this lock; administrator actions also
+require the admin role. Credential validation occurs at HTTP admission and is
+not repeated inside the business transaction. The operation receives a project-scoped
 `ProjectTx`; its subsequent reads observe commits made while it waited for the
 lock. Returning an error rolls back fields, properties, dependencies, version and
 timestamps together. Only expose a captured resource after the outer call
 succeeds.
 
 `Store.ReadSnapshot` uses read-only `REPEATABLE READ` for project/task queries and
-derived readiness. Pages use a validated limit and optional `(createdAt, id)`
+derived readiness, with membership and resource reads in the same snapshot.
+Project-list membership filtering precedes pagination. Pages use a validated limit and optional `(createdAt, id)`
 position; status/readiness filters run before keyset pagination. Page lookahead
 is returned as `HasMore`; HTTP cursor encoding belongs to the API layer.
 
@@ -318,8 +356,9 @@ advisory unlock use independent bounded contexts and preserve original causes.
 | `GET` | `/api/v1/projects` | `200`, project page |
 | `GET` | `/api/v1/projects/{projectId}` | `200`, project |
 
-Creation accepts `name` and `repoUrl`. Names preserve accepted text and must be
-nonempty UTF-8 without NUL. Repository addresses accept HTTPS, SSH URL and SCP
+Creation accepts `name` and `repoUrl` and atomically makes its caller the first
+project administrator. Lists contain only the caller's member projects.
+Names preserve accepted text and must be nonempty UTF-8 without NUL. Repository addresses accept HTTPS, SSH URL and SCP
 syntax, including SSH aliases and `@` inside repository paths. HTTPS userinfo,
 SSH passwords, controls, query and fragment are refused. Credential-like
 ambiguous SCP forms are rejected; use explicit SSH URL syntax when needed.
@@ -339,8 +378,9 @@ on the final page. Individual reads use one snapshot; pagination does not retain
 a cross-request snapshot.
 
 Errors use `{"error":{"code":"not_found","message":"...","requestId":"..."}}`:
-input 400, missing
-resource 404, unsupported method 405 with `Allow`, and internal failure 500.
+input 400, missing/invalid credentials 401, insufficient administrator role or
+invalid Cookie-write Origin 403, missing or inaccessible resource 404,
+unsupported method 405 with `Allow`, and internal failure 500.
 Responses and logs do not echo submitted URLs, bodies, SQL or driver messages.
 The request ID matches `X-Request-ID`; parsed resource operations log the
 canonical project ID. Database/transaction completion failures take precedence
@@ -350,7 +390,12 @@ a response.
 ## Task service
 
 `service.NewTasks` exposes create/read/update and dedicated approve, claim and
-complete operations over the same concrete store. HTTP routes use that instance.
+complete operations over the same concrete store. `Approve`, `Claim` and
+`Complete` explicitly receive `(ctx, principal, projectID, taskID, version)`.
+All project members, including administrators, can perform these resource writes;
+only member and invitation management requires the administrator role. HTTP
+routes use that instance. Lifecycle POST routes and method-refusal handlers
+require authentication, enforce exact Origin for Cookie writes and return no-store.
 Creation uses `proposed`;
 its predefined `properties.pullRequests` list defaults to empty. Updates require
 a positive expected version and at least one mutable pointer field. Nil means omitted, while an empty description or supplied empty dependency
@@ -367,8 +412,8 @@ Approval permits unfinished prerequisites; claim and completion require them don
 There is no reopening or direct todo-to-done transition. Fault task IDs are sorted and do not
 include other projects' task content.
 
-Task writes hold the project lock while comparing versions and validating the
-graph. A stale version conflicts even when values match. A matching semantic
+Task writes acquire the project lock, check current membership, then compare
+versions and validate the graph. A stale version conflicts even when values match. A matching semantic
 no-op preserves version and update time; any actual change increments once.
 Dependency order/case spelling does not create a change after canonicalization.
 PR order and duplicate entries are retained; changing their order is a real change.
@@ -476,8 +521,8 @@ query rules as project operations.
 
 Lifecycle POST bodies require only the positive int64 expected version, as a
 JSON number. Missing, null, fractional, nonpositive and out-of-range versions fail.
-The project transaction checks version before predecessor state, then dependency
-rules; success increments once and preserves unrelated fields. Repeated actions
+The project transaction checks version before the current task lifecycle state,
+then dependency rules; success increments once and preserves unrelated fields. Repeated actions
 fail, and refusals leave fields, versions and timestamps intact.
 
 Version conflicts, wrong predecessor states, dependency cycles and unmet
@@ -488,21 +533,13 @@ remain 500, and cancelled requests write neither response body nor creation
 Location. Parsed project/task IDs and the request ID correlate safe logs; known
 refusals use their domain `error_code` and cause instead of an internal label.
 
-For example, after obtaining a project and task ID:
+For example, after saving a PAT through setup and obtaining a project ID:
 
 ```bash
-curl --header 'Content-Type: application/json' \
-  --data '{"title":"Implement API","dependsOn":[],"properties":{"pullRequests":[{"url":"https://github.com/owner/repo/pull/123","title":"Implement API"}]}}' \
-  http://127.0.0.1:8787/api/v1/projects/PROJECT_ID/tasks
-curl --header 'Content-Type: application/json' \
-  --data '{"version":1}' \
-  http://127.0.0.1:8787/api/v1/projects/PROJECT_ID/tasks/TASK_ID/approve
-curl --header 'Content-Type: application/json' \
-  --data '{"version":2}' \
-  http://127.0.0.1:8787/api/v1/projects/PROJECT_ID/tasks/TASK_ID/claim
-curl --header 'Content-Type: application/json' \
-  --data '{"version":3}' \
-  http://127.0.0.1:8787/api/v1/projects/PROJECT_ID/tasks/TASK_ID/complete
+daynight task create --project PROJECT_ID --title "Implement API"
+daynight task approve TASK_ID --project PROJECT_ID --if-version 1
+daynight task claim TASK_ID --project PROJECT_ID --if-version 2
+daynight task complete TASK_ID --project PROJECT_ID --if-version 3
 ```
 
 To inspect a failure, match its response `requestId` with JSON logs on stderr:
@@ -519,7 +556,9 @@ URLs, bodies, SQL and credentials are excluded from logs.
 The same check retains the original actual-process scenarios, installed CLI
 project/task and attachment workflows, and the
 [installed lifecycle migration/race scenarios](cmd/daynight-server/acceptance_lifecycle_cli_test.go).
-TestMain freshly builds a
+The normal real-UniAuth fixture supplies sessions/PATs and explicit membership;
+installed commands use private origin-matched PAT configuration. Authentication
+and authorization remain on the production resource path. TestMain freshly builds a
 race-enabled server, starts only owned loopback children against isolated real
 PostgreSQL schemas, and checks HTTP workflows, restart persistence, competing
 mutations, PR string/NUL/order/duplicate persistence, partial-write rollback,
@@ -598,8 +637,12 @@ The [lifecycle scenarios](cmd/daynight-server/acceptance_lifecycle_cli_test.go)
 reuse this installation and actual-process fixture. The migration journey
 executes checked-in migrations 001 through 006 and records their raw-byte
 checksum ledger and old todo/in-progress/done rows before startup. The current
-built service applies 007/008 through its production migration engine. Packed CLI
-reads verify old records, new proposed creation, explicit prerequisite/dependent
+built service applies 007/008 through its production migration engine. An
+unassigned legacy project first returns 404 to the authenticated nonmember. The
+fixture then explicitly provisions admin membership for the actual `/api/v1/me`
+user, verifies membership through the API and compares the original raw task
+rows unchanged. This prepares authorized test access, not automatic ownership
+adoption or rewritten task/migration history. Packed CLI reads verify old records, new proposed creation, explicit prerequisite/dependent
 progression, blocked/stale refusals and readable plan attachment bytes. Actual
 restart compares the historical rows and ledger plus new task and attachment
 state. Preparing the current schema and rewriting its history is not this oracle.

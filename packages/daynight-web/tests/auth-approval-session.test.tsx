@@ -19,6 +19,11 @@ const stamp = '2026-10-22T00:00:00Z';
 const alice: CurrentUser = { id: id(501), name: 'Alice', email: 'alice@example.com', emailVerified: true, avatarUrl: null };
 const bob: CurrentUser = { ...alice, id: id(502), name: 'Bob', email: 'bob@example.com' };
 let currentUser: CurrentUser;
+let topLevelFocused = true;
+const returnFromAnotherWindow = () => {
+  topLevelFocused = false; fireEvent(window, new Event('blur'));
+  topLevelFocused = true; fireEvent(window, new Event('focus'));
+};
 const proposed = (projectId = project): TaskDetail => ({ id: projectId === project ? task : otherTask, projectId,
   version: 9007199254740993n, title: `${currentUser.name} task ${projectId === project ? 'P' : 'Q'}`, description: `${currentUser.name} reviewed content`,
   properties: { pullRequests: [] }, status: 'proposed', dependsOn: [], blockedBy: [], ready: false, createdAt: stamp, updatedAt: stamp });
@@ -34,7 +39,9 @@ const deferred = <T,>() => {
 };
 let root: HTMLDivElement;
 beforeEach(() => {
-  currentUser = alice;
+  currentUser = alice; topLevelFocused = true;
+  vi.spyOn(document, 'hasFocus').mockImplementation(() => topLevelFocused);
+  vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
   root = document.createElement('div'); root.id = 'root'; document.body.append(root);
   window.history.replaceState(null, '', `/projects/${project}`);
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.open = true; } });
@@ -72,7 +79,7 @@ describe('authenticated approval ownership', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve task' }));
     const attachmentTab = within(dialog).getByRole('tab', { name: 'Attachments' });
     fireEvent.click(attachmentTab);
-    fireEvent(window, new Event('focus'));
+    returnFromAnotherWindow();
     await waitFor(() => expect(me).toHaveBeenCalledTimes(2));
     expect(dialog.isConnected).toBe(true);
     await act(async () => { revalidation.resolve(alice); });
@@ -98,7 +105,7 @@ describe('authenticated approval ownership', () => {
     mount(); await screen.findByRole('heading', { name: 'Alice project P' });
     let dialog = await open('Alice task P');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve task' })); close(dialog);
-    currentUser = bob; fireEvent(window, new Event('focus'));
+    currentUser = bob; returnFromAnotherWindow();
     await screen.findByRole('heading', { name: 'Bob project P' });
     dialog = await open('Bob task P');
     expect(within(dialog).getByRole('button', { name: 'Approve task' })).toBeEnabled();

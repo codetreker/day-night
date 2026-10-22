@@ -7,8 +7,8 @@ const report = () => ({ schemaVersion: 1, result: 'passed', datasets: [
   { scenario: 'capacity-merge', nodes: 1000, edges: 5000 },
   { scenario: 'capacity-shared', nodes: 1000, edges: 5000 },
   { scenario: 'capacity-external', nodes: 1000, edges: 5000 },
-].map((dataset) => ({ ...dataset, networkMs: 1, result: 'passed', visibility: Array.from({ length: 5 }, (_, repetition) => ({ repetition, overviewNodes: 50, overviewEdges: 100, addedNodes: 20, addedEdges: 120, expandedNodes: 70, expandedEdges: 220, resetNodes: 50, resetEdges: 100 })), measurements: Array.from({ length: 5 }, () => ({
-  openMs: 3000, detailMs: 300, detailNetworkMs: 1, zoomMs: 300, panMs: 300, layoutMs: 10, renderMs: 20,
+].map((dataset) => ({ ...dataset, networkMs: 1, result: 'passed', visibility: Array.from({ length: 5 }, (_, repetition) => ({ repetition, selectedId: `task-${repetition}`, hiddenUpstream: 30, overviewNodes: 50, overviewEdges: 100, addedNodes: 20, addedEdges: 120, expandedNodes: 70, expandedEdges: 220, resetNodes: 50, resetEdges: 100 })), measurements: Array.from({ length: 5 }, () => ({
+  openMs: 3000, selectMs: 300, detailMs: 300, detailNetworkMs: 1, zoomMs: 300, panMs: 300, layoutMs: 10, renderMs: 20,
 })) })), limits: {
   node: { status: 409, nodeCount: 1001, edgeCount: 0, maxNodes: 1000, maxEdges: 5000 },
   edge: { status: 409, nodeCount: 1000, edgeCount: 5001, maxNodes: 1000, maxEdges: 5000 },
@@ -22,6 +22,8 @@ test('rejects absent, partial, mislabeled, slow, and invalid capacity receipts',
     (value: ReturnType<typeof report>) => { value.datasets[0]!.nodes = 999; },
     (value: ReturnType<typeof report>) => { value.datasets[0]!.measurements.pop(); },
     (value: ReturnType<typeof report>) => { value.datasets[0]!.measurements[0]!.openMs = 3000.01; },
+    (value: ReturnType<typeof report>) => { value.datasets[0]!.measurements[0]!.selectMs = 300.01; },
+    (value: ReturnType<typeof report>) => { value.datasets[0]!.measurements[0]!.selectMs = NaN; },
     (value: ReturnType<typeof report>) => { value.datasets[0]!.measurements[0]!.detailMs = 300.01; },
     (value: ReturnType<typeof report>) => { value.datasets[0]!.networkMs = NaN; },
     (value: ReturnType<typeof report>) => { value.datasets[0]!.measurements[0]!.detailNetworkMs = -1; },
@@ -30,6 +32,9 @@ test('rejects absent, partial, mislabeled, slow, and invalid capacity receipts',
     (value: ReturnType<typeof report>) => { value.limits.edge.edgeCount = 5000; },
     (value: ReturnType<typeof report>) => { value.limits.node.status = 200; },
   ]) { const value = report(); mutate(value); assert.throws(() => validatePerformance(value)); }
+  const missingSelection = report() as unknown as { datasets: { measurements: Record<string, unknown>[] }[] };
+  delete missingSelection.datasets[0]!.measurements[0]!.selectMs;
+  assert.throws(() => validatePerformance(missingSelection));
   for (const value of [undefined, {}, { schemaVersion: 1, result: 'passed' }]) assert.throws(() => validatePerformance(value));
 });
 
@@ -48,5 +53,16 @@ test('requires complete ordered visibility evidence even when all timed interact
     (value: ReturnType<typeof report>) => { value.datasets[0]!.visibility[0]!.resetNodes = 49; },
     (value: ReturnType<typeof report>) => { value.datasets[0]!.visibility[0]!.resetEdges = 99; },
     (value: ReturnType<typeof report>) => { value.datasets[0]!.visibility[0]!.addedEdges = NaN; },
+  ]) { const value = report(); mutate(value); assert.throws(() => validatePerformance(value)); }
+});
+
+test('rejects missing or impossible inspection evidence without accepting the progressive receipt alone', () => {
+  for (const mutate of [
+    (value: ReturnType<typeof report>) => { delete (value.datasets[0]!.visibility[0] as { selectedId?: string }).selectedId; },
+    (value: ReturnType<typeof report>) => { value.datasets[0]!.visibility[0]!.selectedId = ''; },
+    (value: ReturnType<typeof report>) => { delete (value.datasets[0]!.visibility[0] as { hiddenUpstream?: number }).hiddenUpstream; },
+    (value: ReturnType<typeof report>) => { value.datasets[0]!.visibility[0]!.hiddenUpstream = -1; },
+    (value: ReturnType<typeof report>) => { value.datasets[0]!.visibility[0]!.hiddenUpstream = 951; },
+    (value: ReturnType<typeof report>) => { value.datasets[0]!.visibility[0]!.hiddenUpstream = 0.5; },
   ]) { const value = report(); mutate(value); assert.throws(() => validatePerformance(value)); }
 });

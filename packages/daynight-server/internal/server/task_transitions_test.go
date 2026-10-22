@@ -14,7 +14,7 @@ import (
 
 func TestTaskHTTPTransitionsRejectWrongPredecessorsAndStaleVersions(t *testing.T) {
 	var logs bytes.Buffer
-	handler := projectTestHandler(projectTestStore(t), &logs)
+	handler := projectTestHandler(t, projectTestStore(t), &logs)
 	project := taskProject(t, handler)
 	states := []struct {
 		name    string
@@ -63,7 +63,7 @@ func TestTaskHTTPTransitionsRejectWrongPredecessorsAndStaleVersions(t *testing.T
 }
 
 func TestTaskHTTPTransitionStrictBodiesQueriesAndMethods(t *testing.T) {
-	handler := projectTestHandler(projectTestStore(t), io.Discard)
+	handler := projectTestHandler(t, projectTestStore(t), io.Discard)
 	project := taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "Original")
 	for _, action := range []string{"approve", "claim", "complete"} {
@@ -93,6 +93,7 @@ func TestTaskHTTPTransitionStrictBodiesQueriesAndMethods(t *testing.T) {
 				}
 			}
 			request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"version":1}`))
+			authorizeResourceRequest(handler, request)
 			request.Header.Set("Content-Type", "text/plain")
 			request.Header.Set("X-Request-ID", "project-test")
 			response := httptest.NewRecorder()
@@ -108,7 +109,7 @@ func TestTaskHTTPTransitionStrictBodiesQueriesAndMethods(t *testing.T) {
 
 func TestTaskHTTPTransitionResourceScopeAndCanonicalIDs(t *testing.T) {
 	var logs bytes.Buffer
-	handler := projectTestHandler(projectTestStore(t), &logs)
+	handler := projectTestHandler(t, projectTestStore(t), &logs)
 	project, other := taskProject(t, handler), taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "private-title-secret")
 	missing := "00000000-0000-4000-8000-000000000099"
@@ -132,7 +133,7 @@ func TestTaskHTTPTransitionResourceScopeAndCanonicalIDs(t *testing.T) {
 }
 
 func TestTaskHTTPTransitionRacesHaveOneWinner(t *testing.T) {
-	handler := projectTestHandler(projectTestStore(t), io.Discard)
+	handler := projectTestHandler(t, projectTestStore(t), io.Discard)
 	project := taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "Concurrent lifecycle")
 	for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"claim", "in_progress"}, {"complete", "done"}} {

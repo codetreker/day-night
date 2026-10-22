@@ -19,6 +19,11 @@ export type GraphMessages = {
   readonly blocked: string;
   readonly external: string;
   readonly nodeLabel: (args: { title: string; status: string; blocked: boolean; external: boolean; shared: boolean }) => string;
+  readonly details: string;
+  readonly detailsLabel: (args: { title: string }) => string;
+  readonly inspectionSuffix: Readonly<Record<'normal' | 'selected' | 'prerequisite' | 'unrelated', string>>;
+  readonly hiddenPrerequisites: (args: { count: number }) => string;
+  readonly dependencyHighlightedSuffix: string;
   readonly expandTitle: (args: { direction: 'prerequisites' | 'successors'; tasks: number }) => string;
   readonly expandSummary: (args: { edges: number; remaining: number }) => string;
   readonly expandLabel: (args: { direction: 'prerequisites' | 'successors'; tasks: number; edges: number; remaining: number }) => string;

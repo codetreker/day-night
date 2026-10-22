@@ -1,7 +1,8 @@
 # 鉴权实现任务入口
 
-状态：架构与执行资料已准备并登记，运行时尚未实现。任务状态、真实前置关系和交付 PR 由
-Daynight 持有；task show 读取完整任务，task attachment list 单独读取附件目录。
+状态：身份、成员、CLI 与 Web 已接入强制鉴权的正式 composition，统一启用源码及
+验收调用方已更新；实际 gate、组合回执和任务完成状态由 Daynight 与对应 PR/CI
+持有，本文不因代码接线而宣称验证全部通过。task show 读取完整任务，task attachment list 单独读取附件目录。
 [需求](../spec/daynight-auth.md)拥有 AU1–AU12 和验收，[架构](daynight-auth.md)拥有
 机制，[决策](../../.agents/notes/implemented/architecture/2026-10-22-auth-architecture.md)
 拥有取舍。每个任务有一个方案/验收主附件，前端资料包含[原型](mockups/auth/index.html)
@@ -27,9 +28,10 @@ Daynight 持有；task show 读取完整任务，task attachment list 单独读�
 
 ## 文件归属与启用
 
-身份/成员先作为真实 handler/store 模块验证，保持现有本机入口；CLI 凭据和认证 Web
-壳按协议验证。统一启用一次接入全部业务身份与成员检查，并更新所有配置/健康检查/
-既有 fixture，包含集成正反例。组合验收补充跨目标证据，不延后首次安全验证。
+身份/成员先独立验证的阶段保留在原任务与决策历史中。当前统一 composition 已接入
+全部业务身份和成员检查、CLI 与双语 Web、必需配置、公开健康检查及正常 UniAuth
+协议 fixture。启用任务拥有集成正反例和当前源码 gate；组合验收继续补充跨目标
+回执，不能替代启用交付本身需要的证明。
 
 附件保留可信同源 HTML、普通 iframe、相对资源和原键盘桥，复用主站 session；
 该已采纳决策约束每个任务，不增加预览域名、凭据、bootstrap 或配套设施。

@@ -15,7 +15,10 @@ const (
 	graphTitlePreviewCharacters = 160
 )
 
-func (s *Tasks) Graph(ctx context.Context, projectID string) (core.TaskGraph, error) {
+func (s *Tasks) Graph(ctx context.Context, principal core.Principal, projectID string) (core.TaskGraph, error) {
+	if err := requirePrincipal(principal); err != nil {
+		return core.TaskGraph{}, err
+	}
 	projectID, err := CanonicalID(projectID)
 	if err != nil {
 		return core.TaskGraph{}, err
@@ -23,6 +26,12 @@ func (s *Tasks) Graph(ctx context.Context, projectID string) (core.TaskGraph, er
 	var graph core.TaskGraph
 	var refusal *Fault
 	err = s.store.ReadSnapshot(ctx, func(snapshot *store.Snapshot) error {
+		if _, err := RequireProjectRead(ctx, snapshot, principal, projectID); err != nil {
+			if errors.As(err, &refusal) {
+				return nil
+			}
+			return err
+		}
 		var err error
 		graph.Project, err = snapshot.Project(ctx, projectID)
 		if errors.Is(err, core.ErrNotFound) {

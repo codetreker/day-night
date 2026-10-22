@@ -44,12 +44,13 @@ decision kept direct blockers visible without recursively expanding ancestry;
 it remains the owner of complete-snapshot validation, main-set counting and the
 pinned Dagre layout choices. The
 [inspection design](../architecture/2026-10-22-task-inspection-design.md) owns the
-remaining task-card selection, smooth-route and Markdown goals. The
+task-card selection and smooth-route mechanisms, plus the pending Markdown goals. The
 [centered detail decision](2026-10-22-centered-task-detail-dialog.md) implements
-the reading shell; card activation opens that dialog, routes remain Dagre
-polylines. The [Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
-now owns CommonMark/GFM descriptions and root-based attachment navigation,
-without changing the projection or graph delivery boundary.
+the reading shell. The [inspection decision](2026-10-22-task-dependency-inspection.md)
+owns sibling selection/Details actions and smooth routes on the progressive graph;
+source-bound runtime and delivery evidence belongs to the task records.
+The [Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
+owns shared CommonMark/GFM and root-based attachment navigation.
 
 The production capacity matrix preserves its chain, merge and shared-root graphs
 and adds `capacity-external`: 1,000 nodes and 5,000 edges, with two main tasks and
@@ -57,15 +58,21 @@ and adds `capacity-external`: 1,000 nodes and 5,000 edges, with two main tasks a
 300ms local-feedback budgets and independent size refusals. The progressive
 overview keeps those complete inputs while changing DOM readiness to the bounded
 visible graph, all real induced edges and explicit expansion/reset checks;
-body-open-details and the existing polyline renderer remain current. The new initial upstream task replaces only that dataset's readable
+PR134 retained body-open-details and the existing polyline renderer as its
+delivered baseline. Later inspection evidence must separately prove selection
+and curved routes. The new initial upstream task replaces only that dataset's readable
 root condition; existing datasets retain their root-visibility checks. Strict
 inventory validation retains five native capacity/limit scenarios. The later
-[bilingual interface decision](2026-10-22-web-bilingual-interface.md)
-expanded functional checks to thirteen per target. The later
-[approval lifecycle](2026-10-22-task-approval-lifecycle.md) adds three approval
-scenarios. The [Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
-adds one functional scenario per target, requiring twenty-two unique native
-scenarios and seventeen container scenarios without changing that capacity matrix.
+[bilingual interface decision](2026-10-22-web-bilingual-interface.md) expanded
+functional checks to thirteen per target, producing eighteen native and thirteen
+container scenarios at that stage. The
+[authentication activation](../architecture/2026-10-22-authentication-activation.md)
+added six functional scenarios per target, and the
+[Markdown description delivery](../architecture/2026-10-22-task-description-markdown.md)
+added one, producing the earlier twenty-five-native/twenty-container inventory.
+The [approval lifecycle](2026-10-22-task-approval-lifecycle.md) adds three approval
+scenarios per target. Current strict inventories are twenty-eight native and
+twenty-three container scenarios, with these same five capacity/limit cases.
 
 The [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 the [web design](../../../../docs/design/daynight-web.md) owns model and viewport

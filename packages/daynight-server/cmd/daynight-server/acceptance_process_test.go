@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/codetreker/daynight/packages/daynight-server/api"
+	"github.com/codetreker/daynight/packages/daynight-server/testdata/testauth"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -437,26 +438,47 @@ func (l *acceptanceLogs) safe(t *testing.T, secrets ...string) {
 }
 
 type acceptanceProcess struct {
-	command     *exec.Cmd
-	logs        *acceptanceLogs
-	application string
-	address     string
-	done        chan struct{}
-	err         error
-	cancel      context.CancelFunc
-	scenario    *acceptanceScenario
+	command       *exec.Cmd
+	logs          *acceptanceLogs
+	application   string
+	address       string
+	done          chan struct{}
+	err           error
+	cancel        context.CancelFunc
+	scenario      *acceptanceScenario
+	fixture       *acceptanceFixture
+	configuration map[string]string
+	attempt       int
+	origin        string
+	token         string
+	appSecret     string
+	gateway       *testauth.Fixture
 }
 
 func (f *acceptanceFixture) launch(t *testing.T, configuration map[string]string) *acceptanceProcess {
 	t.Helper()
 	application := fmt.Sprintf("%s_%d", f.schema, len(f.applications)+1)
 	f.applications = append(f.applications, application)
-	values := map[string]string{"DAYNIGHT_DATABASE_URL": f.url(t, application), "DAYNIGHT_STORAGE_ROOT": f.storageRoot, "DAYNIGHT_LISTEN_ADDR": "127.0.0.1:0", "DAYNIGHT_STARTUP_TIMEOUT": "5s", "DAYNIGHT_SHUTDOWN_TIMEOUT": "2s"}
+	address := configuration["DAYNIGHT_LISTEN_ADDR"]
+	if address == "" {
+		address = acceptanceAddress(t)
+	}
+	origin := "http://" + address
+	callback := origin + "/api/v1/auth/callback"
+	gateway := testauth.StartGateway(t, callback)
+	values := map[string]string{
+		"DAYNIGHT_DATABASE_URL": f.url(t, application), "DAYNIGHT_STORAGE_ROOT": f.storageRoot,
+		"DAYNIGHT_LISTEN_ADDR": address, "DAYNIGHT_STARTUP_TIMEOUT": "5s", "DAYNIGHT_SHUTDOWN_TIMEOUT": "2s",
+		"DAYNIGHT_PUBLIC_ORIGIN": origin, "DAYNIGHT_UNIAUTH_URL": gateway.Origin,
+		"DAYNIGHT_UNIAUTH_APP_ID": gateway.AppID, "DAYNIGHT_UNIAUTH_APP_SECRET": gateway.AppSecret,
+		"DAYNIGHT_UNIAUTH_CALLBACK_URL":   callback,
+		"DAYNIGHT_ALLOW_HTTP_TEST_ORIGIN": "1", "DAYNIGHT_ALLOW_LOOPBACK_HTTP": "1",
+	}
 	for key, value := range configuration {
 		values[key] = value
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-	process := &acceptanceProcess{logs: &acceptanceLogs{ready: make(chan string, 1)}, application: application, done: make(chan struct{}), cancel: cancel, scenario: f.scenario}
+	process := &acceptanceProcess{logs: &acceptanceLogs{ready: make(chan string, 1)}, application: application, done: make(chan struct{}), cancel: cancel, scenario: f.scenario, fixture: f, configuration: configuration, origin: origin, appSecret: gateway.AppSecret, gateway: gateway}
 	process.command = exec.CommandContext(ctx, binaryAcceptance.Binary)
 	process.command.Env, process.command.Stdout, process.command.Stderr = acceptanceEnvironment(values), process.logs, process.logs
 	process.command.WaitDelay = time.Second
@@ -493,24 +515,55 @@ func (f *acceptanceFixture) launch(t *testing.T, configuration map[string]string
 				t.Error("owned process required forced cleanup")
 			}
 		}
-		process.logs.safe(t, "acceptance-secret", f.databaseURL, "daynight-test", "SELECT ", "INSERT ", "UPDATE ", "CREATE TABLE")
+		process.logs.safe(t, "acceptance-secret", f.databaseURL, "daynight-test", "SELECT ", "INSERT ", "UPDATE ", "CREATE TABLE", process.token, process.appSecret)
 	})
 	return process
+}
+
+func acceptanceAddress(t *testing.T) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal("cannot reserve a candidate acceptance address")
+	}
+	address := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatal("cannot release candidate acceptance listener")
+	}
+	return address
 }
 
 func (p *acceptanceProcess) started(t *testing.T) *acceptanceProcess {
 	t.Helper()
 	select {
 	case address := <-p.logs.ready:
-		if host, _, err := net.SplitHostPort(address); err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
-			t.Fatal("binary listened outside the loopback boundary")
+		if host, _, err := net.SplitHostPort(address); err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() || "http://"+address != p.origin {
+			t.Fatal("binary listener differs from its configured numeric loopback origin")
 		}
 		p.address = address
 	case <-p.done:
+		if p.configuration["DAYNIGHT_LISTEN_ADDR"] == "" && p.attempt < 2 && p.logs.matches(map[string]any{"phase": "startup", "diagnostic": "HTTP listen failed", "cause": "address_in_use"}) {
+			p.gateway.Close(t)
+			retry := p.fixture.launch(t, p.configuration)
+			retry.attempt = p.attempt + 1
+			return retry.started(t)
+		}
 		t.Fatal("acceptance binary exited before HTTP readiness")
 	case <-time.After(8 * time.Second):
 		t.Fatal("acceptance binary did not become ready")
 	}
+	browser := testauth.Browser(t)
+	response, err := browser.Get(p.origin + "/api/v1/projects")
+	if err != nil {
+		t.Fatal("cannot verify anonymous built-binary admission")
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatal("built binary accepted an anonymous project request")
+	}
+	testauth.Login(t, browser, p.origin, "alice")
+	p.token = testauth.CreatePAT(t, browser, p.origin)
+	browser.CloseIdleConnections()
 	return p
 }
 
@@ -537,7 +590,15 @@ func (p *acceptanceProcess) stopped(t *testing.T, expected int) {
 		actual = exitError.ExitCode()
 	}
 	if actual != expected {
-		t.Fatalf("process exit code %d, expected %d", actual, expected)
+		p.logs.mu.Lock()
+		var lifecycle []map[string]any
+		for _, event := range p.logs.events {
+			if event["type"] == "operation_error" && event["component"] == "server" {
+				lifecycle = append(lifecycle, map[string]any{"phase": event["phase"], "cause": event["cause"], "diagnostic": event["diagnostic"]})
+			}
+		}
+		p.logs.mu.Unlock()
+		t.Fatalf("process exit code %d, expected %d; lifecycle failures: %v", actual, expected, lifecycle)
 	}
 }
 
@@ -564,6 +625,7 @@ func (p *acceptanceProcess) request(ctx context.Context, method, path string, in
 	if input != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
+	request.Header.Set("Authorization", "Bearer "+p.token)
 	if id != "" {
 		request.Header.Set("X-Request-ID", id)
 	}

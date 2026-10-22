@@ -121,9 +121,14 @@ Project/task sessions retain operation identity independently of dialog lifetime
 The lifecycle is deliberately forward-only. Rejection, reset, reopen, release,
 assignee ownership, audit actors, bulk actions and Web claim/complete require
 separate transition and permission decisions. They are not inferred from this
-approval capability. Existing identity and membership foundations retain their
-current composition and activation status; lifecycle operations preserve their
-access checks when mounted and do not activate authentication.
+approval capability. Lifecycle delivery itself did not change the then-current
+identity or membership composition. The
+[authentication activation](../architecture/2026-10-22-authentication-activation.md)
+now mounts every lifecycle POST and 405 path under the existing authentication,
+Origin and resource-member checks. Approve/Claim/Complete accept an explicit
+Principal and check membership after the project lock. Both member and admin
+can perform these resource operations; admin adds only membership/invite
+management, with no lifecycle-specific role.
 
 The HTTP generic-status contract and CLI status update option are removed,
 with no legacy branch or compatibility fallback. Stored task identities and
@@ -132,8 +137,10 @@ read and coordinated refresh; graph projections alone cannot authorize writes.
 The three task-approval, task-approval-conflicts and task-approval-recovery
 scenarios add three functional scenarios per production target. The
 [Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
-adds another scenario, making seventeen functional scenarios per target; native
-also retains five capacity/limit scenarios, for twenty-two unique scenarios.
+adds another scenario, making seventeen functional scenarios per target before
+authentication integration. Its six auth scenarios bring the current inventory
+to twenty-three functional per target, twenty-eight native including five
+capacity/limit cases, and fifty-one results across both targets.
 Only registered project/task POST approve requests and exact expected counts
 are admitted, separately from fixture-scoped attachment writes. Existing browser
 identity, one-worker, no-retry, performance, coverage and cleanup gates remain.

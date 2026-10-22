@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GraphTask, TaskGraph, TaskStatus } from "../src/api/types";
-import { buildGraphIndex, GraphDataError, projectRoot } from "../src/features/task-graph/model";
+import { buildGraphIndex, GraphDataError, projectRoot, tracePrerequisites } from "../src/features/task-graph/model";
 
 const id = (letter: string): string => `00000000-0000-0000-0000-${letter.charCodeAt(0).toString(16).padStart(12, "0")}`;
 const [A, B, C, D, E, F, G, H, I] = ["A", "B", "C", "D", "E", "F", "G", "H", "I"].map(id) as [string, string, string, string, string, string, string, string, string];
@@ -268,6 +268,37 @@ describe("complete prerequisite projection", () => {
     const index = buildGraphIndex(graph([{ id: A }, { id: B, dependsOn: [A] }]));
     expect(() => projectRoot(index, B)).toThrow(GraphDataError);
     expect(() => projectRoot(index, C)).toThrow(GraphDataError);
+  });
+});
+
+describe("complete prerequisite inspection", () => {
+  it("deduplicates shared completed and proposed prerequisites without following successors", () => {
+    const input = deepFreeze(graph([
+      { id: A, status: "done" }, { id: B, status: "done", dependsOn: [A] },
+      { id: C, status: "proposed", dependsOn: [A] }, { id: D, dependsOn: [B, C] },
+      { id: E, dependsOn: [A] }, { id: F, dependsOn: [D] },
+    ]));
+    const index = buildGraphIndex(input);
+    expect(tracePrerequisites(index, D)).toEqual(new Set([D, B, C, A]));
+    expect(tracePrerequisites(index, A)).toEqual(new Set([A]));
+    expect(index.rootProgress.get(A)).toEqual({ total: 6, done: 2, status: "in_progress" });
+    expect(input.tasks.find((task) => task.id === D)!.dependsOn).toEqual([B, C]);
+  });
+
+  it("traverses the full index iteratively even when nearly every ancestor is folded", () => {
+    const seeds = Array.from({ length: 1000 }, (_, position) => ({
+      id: `ancestor-${position}`, dependsOn: position === 0 ? [] : [`ancestor-${position - 1}`],
+    }));
+    const index = buildGraphIndex(graph(seeds));
+    expect(tracePrerequisites(index, "ancestor-999")).toEqual(new Set(seeds.map((seed) => seed.id)));
+    expect(tracePrerequisites(index, "ancestor-0")).toEqual(new Set(["ancestor-0"]));
+  });
+
+  it("returns independent inspection sets and rejects unknown selection identities", () => {
+    const index = buildGraphIndex(graph([{ id: A }, { id: B, dependsOn: [A] }]));
+    const first = tracePrerequisites(index, B);
+    expect(tracePrerequisites(index, B)).not.toBe(first);
+    expect(() => tracePrerequisites(index, C)).toThrow(GraphDataError);
   });
 });
 

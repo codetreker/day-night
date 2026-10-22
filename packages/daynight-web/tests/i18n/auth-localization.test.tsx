@@ -264,6 +264,7 @@ describe("authentication language changes", () => {
   });
 
   it("retranslates the account revalidation modal without restarting it or removing a revealed token", async () => {
+    const focused = vi.spyOn(document, "hasFocus").mockReturnValue(true);
     window.history.replaceState(null, "", "/account");
     const pending = deferred<Response>();
     let checks = 0;
@@ -281,6 +282,9 @@ describe("authentication language changes", () => {
     await interaction.click(within(creating).getByRole("button", { name: en.auth.management.account.createToken }));
     const secret = await screen.findByLabelText(en.auth.management.secret.tokenLabel);
     const reveal = screen.getByRole("dialog");
+    focused.mockReturnValue(false);
+    fireEvent(window, new Event("blur"));
+    focused.mockReturnValue(true);
     fireEvent(window, new Event("focus"));
     const overlay = await screen.findByRole("dialog", { name: en.auth.shell.revalidationLabel });
     const requests = fetcher.mock.calls.length;

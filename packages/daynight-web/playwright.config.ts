@@ -24,7 +24,7 @@ export default defineConfig({
     channel: "chromium",
     viewport: { width: 1600, height: 1100 },
     locale: "zh-CN",
-    trace: "retain-on-failure",
+    trace: "off",
     screenshot: "only-on-failure",
     actionTimeout: 15_000,
     navigationTimeout: 30_000,

@@ -7,6 +7,12 @@ export const inducedTopology = (full: DependencyTopology, nodeIds: readonly stri
   return { nodes: full.nodes.filter((node) => visible.has(node.id)), edges: full.edges.filter((edge) => visible.has(edge.source) && visible.has(edge.target)) };
 };
 
+export const expectedNodeHeights = (full: DependencyTopology, nodeIds: readonly string[]): { id: string; height: number }[] => {
+  const visible = new Set(nodeIds);
+  return inducedTopology(full, nodeIds).nodes.map(({ id }) => ({ id, height: full.edges.some(({ source, target }) =>
+    source === id && !visible.has(target) || target === id && !visible.has(source)) ? 136 : 96 }));
+};
+
 export const expectedOverview = (full: DependencyTopology, rootId: string, snapshotOrder: readonly string[]): DependencyTopology => {
   if (full.nodes.length <= 50 && full.edges.length <= 100) return full;
   const order = new Map(snapshotOrder.map((id, position) => [id, position]));

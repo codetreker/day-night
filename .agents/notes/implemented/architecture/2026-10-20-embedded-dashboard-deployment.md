@@ -41,13 +41,21 @@ A Go stage embeds the published
 assets; the final nonroot runtime contains only the server executable. Host Node
 or Go is unnecessary. The existing startup command launches UI/API, PostgreSQL
 and the stream gateway together, preserving loopback publication, shared network
-namespace, readiness and the normal persistent volume. The
+namespace, readiness and the normal persistent volumes. Mandatory
+[authentication activation](2026-10-22-authentication-activation.md) adds explicit
+private App/origin/callback configuration and public database readiness while
+preserving the production runtime image and single application origin. The
 [localhost topology decision](2026-10-20-localhost-compose.md) owns those rules.
 
 The independent [dev-ci stack](../../../../deployment/dev-ci/README.md) reuses that
 exact Dockerfile and nginx file. A unique explicit Compose project and image tag,
 random host-loopback port and project-owned database volume/network permit
-concurrent runs. The runner registers cleanup before creating resources, checks
+concurrent runs. Mandatory auth now stages gateway/PostgreSQL and port discovery
+before starting a pinned real UniAuth fixture sidecar, private configuration and
+Daynight readiness. Dev-ci fixture preparation requires host Node 24 and Go or
+an architecture-matching Linux binary; this does not change the normal Docker-only
+production build. Fixture App/SQLite/credentials remain private run-owned data,
+not another persistent Daynight backup volume. The runner registers cleanup before creating resources, checks
 the built/running image identity, then passes the discovered `DAYNIGHT_BASE_URL`
 to an argument-preserving callback. Lifecycle commands are bounded. Callback
 process-group ownership survives its leader's exit; cleanup terminates remaining

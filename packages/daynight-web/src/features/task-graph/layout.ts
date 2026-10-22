@@ -1,5 +1,6 @@
 import { Graph, layout, type EdgeLabel, type GraphLabel, type NodeLabel } from '@dagrejs/dagre';
 import type { RootProjection } from './model';
+import { planDependencyRoutes } from './routing';
 import type { TaskExpansions } from './visibility';
 
 export const TASK_NODE_WIDTH = 220;
@@ -85,5 +86,8 @@ export const layoutGraph = (projection: RootProjection, nodeHeights: ReadonlyMap
     };
   });
 
-  return { nodes, edges, width, height };
+  return { nodes, edges: planDependencyRoutes(nodes.map((node) => ({
+    id: node.id, left: node.position.x, top: node.position.y,
+    right: node.position.x + node.width, bottom: node.position.y + node.height,
+  })), edges), width, height };
 };

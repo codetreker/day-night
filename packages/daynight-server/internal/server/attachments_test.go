@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log/slog"
 	"mime"
 	"net/http"
 	"net/http/httptest"
@@ -21,7 +20,6 @@ import (
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/filestorage"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/filestorage/local"
-	"github.com/codetreker/daynight/packages/daynight-server/internal/service"
 )
 
 func attachmentTestFiles(t *testing.T) *local.Storage {
@@ -38,13 +36,14 @@ func attachmentTestFiles(t *testing.T) *local.Storage {
 	return files
 }
 
-func attachmentTestHandler(database *store.Store, files filestorage.Storage, output io.Writer) http.Handler {
-	logger := slog.New(slog.NewJSONHandler(output, nil))
-	return RequestLogging(logger, New(service.NewProjects(database), service.NewTasks(database), service.NewAttachments(database, files), logger))
+func attachmentTestHandler(t *testing.T, database *store.Store, files filestorage.Storage, output io.Writer) *resourceTestHandler {
+	t.Helper()
+	return resourceTestServer(t, database, files, output)
 }
 
 func attachmentRequest(handler http.Handler, method, target, contentType string, content []byte) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, target, bytes.NewReader(content))
+	authorizeResourceRequest(handler, request)
 	if contentType != "" {
 		request.Header.Set("Content-Type", contentType)
 	}
@@ -65,7 +64,7 @@ func attachmentFilePath(task api.Task, file string) string {
 func TestAttachmentHTTPFileLifecycleAndActualContent(t *testing.T) {
 	database, files := projectTestStore(t), attachmentTestFiles(t)
 	var logs bytes.Buffer
-	handler := attachmentTestHandler(database, files, &logs)
+	handler := attachmentTestHandler(t, database, files, &logs)
 	project := taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "Attached task")
 	file := "文档 space/设计 ?# %2F.bin"
@@ -121,7 +120,7 @@ func TestAttachmentHTTPFileLifecycleAndActualContent(t *testing.T) {
 }
 
 func TestAttachmentHTTPListsAndNestedPreview(t *testing.T) {
-	handler := attachmentTestHandler(projectTestStore(t), attachmentTestFiles(t), io.Discard)
+	handler := attachmentTestHandler(t, projectTestStore(t), attachmentTestFiles(t), io.Discard)
 	project := taskProject(t, handler)
 	task, other := createHTTPTask(t, handler, project.ID, "Mockup"), createHTTPTask(t, handler, project.ID, "Other")
 	collection := taskPath(task) + "/attachments"
@@ -166,7 +165,7 @@ func TestAttachmentHTTPListsAndNestedPreview(t *testing.T) {
 }
 
 func TestAttachmentHTTPRejectsOriginalPathsBeforeRedirect(t *testing.T) {
-	handler := attachmentTestHandler(projectTestStore(t), attachmentTestFiles(t), io.Discard)
+	handler := attachmentTestHandler(t, projectTestStore(t), attachmentTestFiles(t), io.Discard)
 	project := taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "Original")
 	base := taskPath(task) + "/attachments/files/"
@@ -196,7 +195,7 @@ func TestAttachmentHTTPRejectsOriginalPathsBeforeRedirect(t *testing.T) {
 func TestAttachmentHTTPScopesConflictsAndFailures(t *testing.T) {
 	database, files := projectTestStore(t), attachmentTestFiles(t)
 	var logs bytes.Buffer
-	handler := attachmentTestHandler(database, files, &logs)
+	handler := attachmentTestHandler(t, database, files, &logs)
 	project, other := taskProject(t, handler), taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "Owner")
 	file := attachmentFilePath(task, "docs/design.md")
@@ -282,7 +281,7 @@ func (w attachmentFailingWriter) Write([]byte) (int, error) {
 
 func TestAttachmentHTTPStreamErrorsAndCancellation(t *testing.T) {
 	database, files := projectTestStore(t), attachmentTestFiles(t)
-	handler := attachmentTestHandler(database, files, io.Discard)
+	handler := attachmentTestHandler(t, database, files, io.Discard)
 	project := taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "Streaming")
 	location := attachmentFilePath(task, "stream.txt")
@@ -311,8 +310,9 @@ func TestAttachmentHTTPStreamErrorsAndCancellation(t *testing.T) {
 			}
 			storage := attachmentOpenStorage{Storage: files, object: filestorage.Object{Body: body, Info: filestorage.FileInfo{Size: item.length}}}
 			var logs bytes.Buffer
-			handler := attachmentTestHandler(database, storage, &logs)
+			handler := attachmentTestHandler(t, database, storage, &logs)
 			request := httptest.NewRequest(http.MethodGet, location, nil).WithContext(ctx)
+			authorizeResourceRequest(handler, request)
 			request.Header.Set("X-Request-ID", "project-test")
 			response := httptest.NewRecorder()
 			var writer http.ResponseWriter = response
@@ -351,7 +351,7 @@ func TestAttachmentHTTPStreamErrorsAndCancellation(t *testing.T) {
 func TestAttachmentHTTPUploadStreamFailureAndCancel(t *testing.T) {
 	database, files := projectTestStore(t), attachmentTestFiles(t)
 	var logs bytes.Buffer
-	handler := attachmentTestHandler(database, files, &logs)
+	handler := attachmentTestHandler(t, database, files, &logs)
 	project := taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "Upload")
 	location := attachmentFilePath(task, "upload.bin")
@@ -362,6 +362,7 @@ func TestAttachmentHTTPUploadStreamFailureAndCancel(t *testing.T) {
 			body.cancel = cancel
 		}
 		request := httptest.NewRequest(http.MethodPut, location, body).WithContext(ctx)
+		authorizeResourceRequest(handler, request)
 		request.Header.Set("Content-Type", "application/octet-stream")
 		request.Header.Set("X-Request-ID", "project-test")
 		response := httptest.NewRecorder()
@@ -377,6 +378,7 @@ func TestAttachmentHTTPUploadStreamFailureAndCancel(t *testing.T) {
 		assertProjectError(t, attachmentRequest(handler, http.MethodGet, location, "", nil), http.StatusNotFound, "not_found")
 	}
 	request := httptest.NewRequest(http.MethodPut, location, nil)
+	authorizeResourceRequest(handler, request)
 	request.Header["Content-Type"] = []string{"text/plain", "image/png"}
 	request.Header.Set("X-Request-ID", "project-test")
 	response := httptest.NewRecorder()
@@ -389,7 +391,7 @@ func TestAttachmentHTTPUploadStreamFailureAndCancel(t *testing.T) {
 
 func TestAttachmentHTTPTransportAbortsTruncatedContent(t *testing.T) {
 	database, files := projectTestStore(t), attachmentTestFiles(t)
-	handler := attachmentTestHandler(database, files, io.Discard)
+	handler := attachmentTestHandler(t, database, files, io.Discard)
 	project := taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "Transport")
 	location := attachmentFilePath(task, "stream.bin")
@@ -397,11 +399,17 @@ func TestAttachmentHTTPTransportAbortsTruncatedContent(t *testing.T) {
 	payload := bytes.Repeat([]byte{255}, 16*1024)
 	body := &attachmentFailingBody{data: payload, readErr: errors.New("private-stream-secret")}
 	storage := attachmentOpenStorage{Storage: files, object: filestorage.Object{Body: body, Info: filestorage.FileInfo{Size: int64(len(payload) + 10)}}}
-	server := httptest.NewServer(attachmentTestHandler(database, storage, io.Discard))
+	streamHandler := attachmentTestHandler(t, database, storage, io.Discard)
+	server := httptest.NewServer(streamHandler)
 	defer server.Close()
 	client := server.Client()
 	client.Timeout = 5 * time.Second
-	response, err := client.Get(server.URL + location)
+	request, err := http.NewRequest(http.MethodGet, server.URL+location, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorizeResourceRequest(streamHandler, request)
+	response, err := client.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,7 +421,7 @@ func TestAttachmentHTTPTransportAbortsTruncatedContent(t *testing.T) {
 }
 
 func TestAttachmentHTTPMalformedPrefixCannotRedirectIntoTask(t *testing.T) {
-	handler := attachmentTestHandler(projectTestStore(t), attachmentTestFiles(t), io.Discard)
+	handler := attachmentTestHandler(t, projectTestStore(t), attachmentTestFiles(t), io.Discard)
 	project := taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "Original JSON task")
 	body := []byte(jsonBody(t, map[string]any{"version": task.Version, "title": "unintended redirected mutation"}))
@@ -453,7 +461,7 @@ func TestAttachmentHTTPMalformedPrefixCannotRedirectIntoTask(t *testing.T) {
 }
 
 func TestAttachmentHTTPPendingTaskAndLifecyclePreserveAttachment(t *testing.T) {
-	handler := attachmentTestHandler(projectTestStore(t), attachmentTestFiles(t), io.Discard)
+	handler := attachmentTestHandler(t, projectTestStore(t), attachmentTestFiles(t), io.Discard)
 	project := taskProject(t, handler)
 	prerequisite := createHTTPTask(t, handler, project.ID, "Prerequisite")
 	task := createHTTPTask(t, handler, project.ID, "Attached proposed task", prerequisite.ID)

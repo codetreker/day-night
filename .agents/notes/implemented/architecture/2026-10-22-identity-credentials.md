@@ -13,9 +13,11 @@ must not create conflicting identities or silently repeat consumed operations.
 
 The identity foundation implements the adopted
 [authentication architecture](../../../../docs/design/daynight-auth.md) as an
-independently composable module. Existing resource routes and startup requirements
-remain unchanged until the complete authentication composition is activated.
-The module does not provide an anonymous or trusted-user shortcut.
+independently composable module. That initial staging kept existing resource
+routes unchanged while identity and membership could be verified separately.
+The [activation decision](2026-10-22-authentication-activation.md) now mounts the
+module with all resource checks and required config; no anonymous or trusted-user
+shortcut is exposed.
 
 The existing UniAuth Go SDK is pinned to an immutable pseudo-version. A browser-
 bound pending login is atomically validated and consumed in PostgreSQL before
@@ -33,7 +35,9 @@ does not fall back to a browser cookie.
 
 HTTP handlers validate exact main-site Origin on cookie-authenticated mutations
 and use host-only session cookies. Production uses Secure, HttpOnly and Lax;
-explicit numeric-loopback HTTP development follows the SDK's existing allowance.
+the initial module allowed explicit numeric-loopback HTTP development. The
+activation decision now separates configured main-site HTTP testing from the
+SDK gateway's literal-loopback allowance and owns current callback routing.
 The [trusted same-origin attachment decision](2026-10-21-task-attachment-storage-design.md)
 continues to apply without a preview domain, credential or gateway.
 
@@ -71,7 +75,9 @@ existing projects. Expiry is checked during access, with bounded request-owned
 cleanup rather than a new scheduler. Errors preserve their causes while logs
 omit secrets, callbacks and raw upstream identity payloads.
 
-The foundation is callable and testable before mounting it into the production
-mux. Membership, frontend/CLI integration and mandatory runtime configuration
-remain in their own tasks. Controlled upstream integration does not claim a real
-third-party account login; that acceptance remains separately recorded.
+The foundation was callable and testable before production mounting; that
+sequence preserved reviewable identity semantics while other components were
+prepared. Mandatory composition, membership and frontend/CLI integration now use
+this foundation through the activation decision. Controlled upstream integration
+does not claim a real third-party account login; that acceptance remains separately
+recorded and current-source gate outcomes require their own receipts.

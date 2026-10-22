@@ -17,37 +17,37 @@ func propertyPatch(items ...core.PullRequestProperty) core.TaskPropertiesPatch {
 }
 
 func TestTaskPropertiesCandidateFailureAndPartialWriteRollback(t *testing.T) {
-	tasks, database, project, databaseURL := taskService(t)
+	tasks, database, project, databaseURL, principal := taskService(t)
 	ctx := context.Background()
-	prerequisite := createTask(t, tasks, project.ID, "Prerequisite")
-	old := createTask(t, tasks, project.ID, "Old")
-	old = approveTask(t, tasks, old)
-	old = claimTask(t, tasks, old)
-	old = completeTask(t, tasks, old)
-	target, err := tasks.Create(ctx, project.ID, CreateTask{Title: "Original", DependsOn: []string{old.ID}, Properties: core.TaskProperties{PullRequests: []core.PullRequestProperty{{URL: "old\x00", Title: "Old"}}}})
+	prerequisite := createTask(t, tasks, principal, project.ID, "Prerequisite")
+	old := createTask(t, tasks, principal, project.ID, "Old")
+	old = approveTask(t, tasks, principal, old)
+	old = claimTask(t, tasks, principal, old)
+	old = completeTask(t, tasks, principal, old)
+	target, err := tasks.Create(ctx, principal, project.ID, CreateTask{Title: "Original", DependsOn: []string{old.ID}, Properties: core.TaskProperties{PullRequests: []core.PullRequestProperty{{URL: "old\x00", Title: "Old"}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	target = approveTask(t, tasks, target)
-	target = claimTask(t, tasks, target)
+	target = approveTask(t, tasks, principal, target)
+	target = claimTask(t, tasks, principal, target)
 	properties := propertyPatch(core.PullRequestProperty{URL: "changed\x00", Title: "Changed"})
-	_, err = tasks.Update(ctx, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Changed"), DependsOn: pointer([]string{prerequisite.ID}), Properties: properties})
+	_, err = tasks.Update(ctx, principal, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Changed"), DependsOn: pointer([]string{prerequisite.ID}), Properties: properties})
 	requireFault(t, err, "dependency_unsatisfied")
-	assertTaskUnchanged(t, tasks, target)
-	prerequisite = approveTask(t, tasks, prerequisite)
-	prerequisite = claimTask(t, tasks, prerequisite)
-	prerequisite = completeTask(t, tasks, prerequisite)
+	assertTaskUnchanged(t, tasks, principal, target)
+	prerequisite = approveTask(t, tasks, principal, prerequisite)
+	prerequisite = claimTask(t, tasks, principal, prerequisite)
+	prerequisite = completeTask(t, tasks, principal, prerequisite)
 	for _, fragment := range []string{"UPDATE tasks SET", "INSERT INTO task_dependencies"} {
 		t.Run("cancel after "+fragment, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			traced := tracedTasks(t, databaseURL, taskQueryAction{match: func(sql string) bool { return strings.Contains(sql, fragment) }, end: cancel})
-			_, err := traced.Update(ctx, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Changed"), DependsOn: pointer([]string{prerequisite.ID}), Properties: properties})
+			_, err := traced.Update(ctx, principal, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Changed"), DependsOn: pointer([]string{prerequisite.ID}), Properties: properties})
 			assertOperational(t, err)
 			if !errors.Is(err, context.Canceled) {
 				t.Fatalf("partial-write cancellation lost cause: %v", err)
 			}
-			assertTaskUnchanged(t, tasks, target)
+			assertTaskUnchanged(t, tasks, principal, target)
 		})
 	}
 	if _, err := database.Pool.Exec(ctx, `CREATE FUNCTION reject_property_edge() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -55,35 +55,35 @@ func TestTaskPropertiesCandidateFailureAndPartialWriteRollback(t *testing.T) {
 		CREATE TRIGGER reject_property_edge BEFORE INSERT ON task_dependencies FOR EACH ROW EXECUTE FUNCTION reject_property_edge()`); err != nil {
 		t.Fatal(err)
 	}
-	_, err = tasks.Update(ctx, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Changed"), Description: pointer("Changed"), DependsOn: pointer([]string{prerequisite.ID}), Properties: properties})
+	_, err = tasks.Update(ctx, principal, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Changed"), Description: pointer("Changed"), DependsOn: pointer([]string{prerequisite.ID}), Properties: properties})
 	assertOperational(t, err)
-	assertTaskUnchanged(t, tasks, target)
-	_, err = tasks.Create(ctx, project.ID, CreateTask{Title: "Rejected", DependsOn: []string{prerequisite.ID}, Properties: core.TaskProperties{PullRequests: *properties.PullRequests}})
+	assertTaskUnchanged(t, tasks, principal, target)
+	_, err = tasks.Create(ctx, principal, project.ID, CreateTask{Title: "Rejected", DependsOn: []string{prerequisite.ID}, Properties: core.TaskProperties{PullRequests: *properties.PullRequests}})
 	assertOperational(t, err)
-	page, err := tasks.List(ctx, project.ID, TaskListRequest{PageRequest: PageRequest{Limit: 100}})
+	page, err := tasks.List(ctx, principal, project.ID, TaskListRequest{PageRequest: PageRequest{Limit: 100}})
 	if err != nil || len(page.Items) != 3 {
 		t.Fatalf("partial create persisted: %+v, %v", page, err)
 	}
 }
 
 func TestTaskPropertiesConcurrentVersionAndSnapshot(t *testing.T) {
-	tasks, database, project, databaseURL := taskService(t)
-	target := createTask(t, tasks, project.ID, "Original")
+	tasks, database, project, databaseURL, principal := taskService(t)
+	target := createTask(t, tasks, principal, project.ID, "Original")
 	first, second := propertyPatch(core.PullRequestProperty{URL: "first", Title: "First"}), propertyPatch(core.PullRequestProperty{URL: "second", Title: "Second"})
 	results := competeTaskWrites(t, database, project.ID,
 		func(ctx context.Context) (core.Task, error) {
-			return tasks.Update(ctx, project.ID, target.ID, UpdateTask{Version: target.Version, Properties: first})
+			return tasks.Update(ctx, principal, project.ID, target.ID, UpdateTask{Version: target.Version, Properties: first})
 		},
 		func(ctx context.Context) (core.Task, error) {
-			return tasks.Update(ctx, project.ID, target.ID, UpdateTask{Version: target.Version, Properties: second})
+			return tasks.Update(ctx, principal, project.ID, target.ID, UpdateTask{Version: target.Version, Properties: second})
 		})
 	assertOneTaskWinner(t, results, "version_conflict")
-	before, err := tasks.Get(context.Background(), project.ID, target.ID)
+	before, err := tasks.Get(context.Background(), principal, project.ID, target.ID)
 	if err != nil || before.Version != target.Version+1 || !(slices.Equal(before.Properties.PullRequests, *first.PullRequests) || slices.Equal(before.Properties.PullRequests, *second.PullRequests)) {
 		t.Fatalf("concurrent property result: %+v, %v", before, err)
 	}
 	traced := tracedTasks(t, databaseURL, taskQueryAction{
-		match: func(sql string) bool { return strings.Contains(sql, "FROM projects WHERE id =") },
+		match: func(sql string) bool { return strings.Contains(sql, "FROM project_members m") },
 		end: func() {
 			if err := database.WriteProject(context.Background(), project.ID, func(tx *store.ProjectTx) error {
 				_, err := tx.UpdateTask(context.Background(), before.ID, store.TaskWrite{Title: "New snapshot", Status: before.Status, Properties: core.TaskProperties{PullRequests: []core.PullRequestProperty{{URL: "new", Title: "New"}}}})
@@ -93,11 +93,11 @@ func TestTaskPropertiesConcurrentVersionAndSnapshot(t *testing.T) {
 			}
 		},
 	})
-	read, err := traced.Get(context.Background(), project.ID, target.ID)
+	read, err := traced.Get(context.Background(), principal, project.ID, target.ID)
 	if err != nil || !reflect.DeepEqual(read, before) {
 		t.Fatalf("snapshot mixed task fields and properties: %+v, %v", read, err)
 	}
-	after, err := tasks.Get(context.Background(), project.ID, target.ID)
+	after, err := tasks.Get(context.Background(), principal, project.ID, target.ID)
 	if err != nil || after.Title != "New snapshot" || after.Version != before.Version+1 || !slices.Equal(after.Properties.PullRequests, []core.PullRequestProperty{{URL: "new", Title: "New"}}) {
 		t.Fatalf("fresh properties snapshot: %+v, %v", after, err)
 	}

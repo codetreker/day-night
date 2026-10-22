@@ -17,13 +17,16 @@
 及 Daynight 进度入口。
 现有 PostgreSQL task 事务规则不扩展为文件与元数据的原子提交保证。
 
-[鉴权架构](daynight-auth.md)定义规划中的 UniAuth 身份交接、本地用户、会话、
+[鉴权架构](daynight-auth.md)定义已接入运行时的 UniAuth 身份交接、本地用户、会话、
 访问令牌及项目成员授权，行为由[鉴权需求](../spec/daynight-auth.md)拥有，
-交付顺序由[任务拆分](daynight-auth-tasks.md)拥有。
+交付条件由[任务拆分](daynight-auth-tasks.md)拥有。
 [身份基础模块](../../.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
 提供独立的用户/凭据存储和 handler；[项目成员模块](../../.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
-提供事务内授权、私有创建和邀请。生产 composition 尚未挂载这些模块，仍按本机
-未认证服务边界运行。
+提供事务内授权、私有创建和邀请。`server.New(Dependencies, Config, logger)`
+返回 `(http.Handler, error)`，验证配置并统一注册身份、成员和全部业务路由。
+每个资源 service 方法显式接收 `core.Principal`；不保留匿名业务入口或私有创建/列表
+别名。[统一启用决策](../../.agents/notes/implemented/architecture/2026-10-22-authentication-activation.md)
+记录组合、凭据隐私与验证边界。
 
 现有 `packages/daynight/` TypeScript CLI、YAML 配置和 SQLite review 状态继续独立
 运行。服务不读取或迁移这些状态；注册 project 也不启动现有 review 协调器。
@@ -35,8 +38,8 @@
 
 ## 完整图读取
 
-`Tasks.Graph` 复用既有具体 store 与只读 `ReadSnapshot`：先读取 project，随后获取
-精确节点和边数量，检查 1,000/5,000 上限，再读取轻量图节点并折叠统计。core 的
+`Tasks.Graph` 复用既有具体 store 与只读 `ReadSnapshot`：先在同一快照检查项目成员
+关系并读取 project，随后获取精确节点和边数量，检查 1,000/5,000 上限，再读取轻量图节点并折叠统计。core 的
 `GraphTask`、`TaskGraphSummary`、`TaskGraph` 与 HTTP DTO 分离；store 的 SQL
 直接截取 160 code points 的标题预览，不加载 description 或完整标题。
 
@@ -165,7 +168,8 @@ todo→in_progress、in_progress→done。审批允许未完成前置；领取�
 所有 task 创建、元数据更新及生命周期操作，包括语义空更新，都遵循相同事务协议：
 
 1. 以 `READ COMMITTED` 开启事务，用 `SELECT ... FOR UPDATE` 查找并锁定 project
-   行；不存在时返回 `not_found`。
+   行；不存在时返回 `not_found`。获得锁后检查当前成员关系，非成员同样返回
+   `not_found`，管理员操作另行要求 `admin`。
 2. 在获得锁后执行新的查询，读取目标任务、现有依赖和校验所需任务状态。更新检查
    请求中的 `version`，与当前任务版本不一致则返回 `version_conflict`。
 3. 元数据更新构造完整候选依赖与字段；生命周期操作先验证当前版本，再验证前态和
@@ -254,6 +258,12 @@ project 中存在的 `taskId` 仍返回 `not_found`。依赖输入中的缺失�
 
 ## 列表与读取一致性
 
+项目列表在数据库中先按调用者成员关系过滤，再执行分页；项目、task 与完整图的
+读取在同一 `ReadSnapshot` 内检查成员关系并读取资源。HTTP 入口每次重新验证
+会话或 PAT，数据库成员检查遵循所属快照或项目写锁的时点；凭据验证不属于业务
+事务中的再次校验。附件在文件 I/O 前完成快照授权，随后按已准入操作完成，详见
+[附件架构](daynight-task-attachments.md)。
+
 两个列表接口接受 `limit` 和不透明 `cursor`。`limit` 默认 50，范围为 1 至 100，
 使用 `(createdAt, id)` 升序 keyset 分页；响应为 `items` 和 `nextCursor`，没有
 下一页时后者为 `null`。
@@ -278,7 +288,9 @@ service 返回可识别的领域错误；server 负责唯一的 HTTP 映射。�
 | 错误码 | HTTP | 情形 |
 |---|---|---|
 | `invalid_input` | `400` | JSON、字段、分页、地址或依赖引用非法，含自身及重复依赖 |
-| `not_found` | `404` | 指定 project 或其范围内的 task 不存在 |
+| `unauthenticated` | `401` | 会话或 PAT 缺失、失效或撤销 |
+| `forbidden` | `403` | 缺少项目管理员角色或 Cookie 会话写请求来源不合法 |
+| `not_found` | `404` | 指定 project 不存在、调用者不是成员或其范围内的 task 不存在 |
 | `method_not_allowed` | `405` | 已知路径不支持该方法，`Allow` 提供允许的方法 |
 | `version_conflict` | `409` | 元数据更新或生命周期动作的期望版本过期 |
 | `invalid_transition` | `409` | 生命周期动作的当前状态不符合前态要求 |
@@ -306,13 +318,20 @@ driver 错误或完整请求体。成功日志提供方法、路由模板、状�
 
 ## 启动、迁移与关闭
 
-启动配置明确提供 PostgreSQL 连接信息和 `DAYNIGHT_STORAGE_ROOT`；HTTP 默认监听
-`127.0.0.1`。LocalStorage 在打开数据库和监听前准备根目录，要求可写且区分大小写。
+启动配置明确提供 PostgreSQL 连接信息、`DAYNIGHT_STORAGE_ROOT` 及五个必填鉴权
+变量：`DAYNIGHT_PUBLIC_ORIGIN`、`DAYNIGHT_UNIAUTH_URL`、`DAYNIGHT_UNIAUTH_APP_ID`、
+`DAYNIGHT_UNIAUTH_APP_SECRET`、`DAYNIGHT_UNIAUTH_CALLBACK_URL`。公开 origin 与
+callback 必须同 origin；callback 无 query/fragment，使用规范的非根路径，并在
+创建登录事务前拒绝路由冲突和返回循环。仅该配置路径接收 callback，不保留旧路径
+别名。生产使用 HTTPS；`DAYNIGHT_ALLOW_HTTP_TEST_ORIGIN` 仅控制主站受控 HTTP
+测试策略，`DAYNIGHT_ALLOW_LOOPBACK_HTTP` 单独传给 UniAuth SDK，允许字面量
+loopback gateway HTTP，两者不能互相替代。
+
+HTTP 默认监听 `127.0.0.1`。LocalStorage 在打开数据库和监听前准备根目录，要求可写且区分大小写。
 运行时以 `Dependencies` 向装配层提供数据库与文件存储，并在启动失败或 HTTP
-排空结束后关闭已取得的文件根句柄。批准范围为本机
-CLI 和内部程序调用，服务只接受 loopback 监听地址。规划中的远程认证、授权及
-对外部署由[鉴权架构](daynight-auth.md)拥有，须完成其交付才能替换本机运行边界；
-当前接口中的 project ID 不作为认证凭据。
+排空结束后关闭已取得的文件根句柄。服务继续只接受 loopback 监听地址，公开
+origin 不改变绑定策略。项目 ID 只标识资源，不能代替身份或成员权限。具体配置
+与部署操作见[鉴权架构](daynight-auth.md)及[部署指南](../../deployment/localhost/README.md)。
 
 [本地 Compose 部署](../../deployment/localhost/README.md)将 PostgreSQL、Go 服务与
 TCP 网关组合启动，Go 服务同时提供内嵌任务看板和 JSON API。生产 Dockerfile 以
@@ -324,7 +343,8 @@ TCP 网关组合启动，Go 服务同时提供内嵌任务看板和 JSON API。�
 转发不解析 HTTP，响应、请求大小限制和错误语义继续由服务处理。数据库通过内部
 Compose 网络访问，PostgreSQL 18 数据卷挂到 `/var/lib/postgresql`。
 服务等待数据库健康后启动，由既有流程执行迁移；两条 HTTP 健康检查分别通过
-服务回环端口和网关访问已有的 project 列表接口。网关配置或网络拓扑变化时整体
+服务回环端口和网关访问公开 `/readyz`，只验证数据库就绪；`/healthz` 提供进程存活
+响应，二者均支持 HEAD，不要求登录。网关配置或网络拓扑变化时整体
 重建容器并保留数据卷。部署脚本每次重新构建并整体重建容器，用相同命令完成启动、
 源码更新及转发恢复；数据卷持续保留。网关意外单独重启时，Docker 不会自动重启
 共享命名空间的服务，健康检查会暴露转发失败，需要重新运行脚本恢复。
@@ -371,8 +391,11 @@ PostgreSQL 实例及隔离数据库或 schema，验证 SQL、锁和事务行为�
 反向依赖、同版本领取及依赖更新/领取竞争最终仍保持不变量，同时证明不同 project 可以并行。
 
 HTTP 测试验证路由、DTO、错误映射、project 范围查找、分页筛选和 cursor 范围。
-整体验收运行实际构建的服务，通过 HTTP 创建 project/task，停止并重新启动服务后
-再读取已提交资源，证明跨重启持久化。关键数据库验证采用以下可观察场景：
+整体验收运行实际构建的服务，通过固定到 `0978963813fc` 的真实 UniAuth gateway
+夹具获取会话/PAT，再通过 HTTP 创建 project/task，停止并重新启动服务后
+再读取已提交资源，证明跨重启持久化。凭据只保存在权限为 0600 的私有夹具
+元数据中，日志与产物只记录非秘密身份。
+关键数据库验证采用以下可观察场景：
 
 - 回滚：在已更新 task 元数据并写入至少一条依赖后，通过测试数据库中的受控失败
   使后续写入出错，断言 task、全部依赖、版本和更新时间均恢复为提交前状态。仅在

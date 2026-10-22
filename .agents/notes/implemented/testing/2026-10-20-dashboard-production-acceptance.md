@@ -15,8 +15,8 @@ a mismatched image or cleanup failures unless its receipts are validated.
 `pnpm web:acceptance` uses the shared acceptance runner to build real embedded
 assets and a fresh native Go executable, own an isolated PostgreSQL 18.6
 container/volume and wait for structured service readiness. The normal dev-ci
-source build/start runs concurrently. Browser phases run seventeen native functional
-scenarios, the same seventeen functional scenarios through the production image's
+source build/start runs concurrently. Browser phases run twenty-three native functional
+scenarios, the same twenty-three functional scenarios through the production image's
 stream gateway, then five native capacity/limit scenarios. The normal localhost
 stack and its data do not participate. The
 [pipeline decision](2026-10-21-web-acceptance-pipeline.md) partially supersedes the
@@ -41,7 +41,15 @@ independent node/edge-limit rejections. The
 adds dense external ancestry while preserving the original three datasets. The
 [bilingual interface decision](../feature/2026-10-22-web-bilingual-interface.md)
 adds three targeted functional language scenarios to each target without
-replicating the capacity matrix. Fixtures are created through real APIs;
+replicating the capacity matrix. The
+[authentication activation](../architecture/2026-10-22-authentication-activation.md)
+adds six functional scenarios per target, authoritative provider discovery and
+normal UniAuth session/PAT bootstrap. The
+[Markdown description delivery](../architecture/2026-10-22-task-description-markdown.md)
+adds `task-description-markdown` to each functional target, producing the earlier
+forty-five-result inventory. Its browser reads remain GET/HEAD-only after
+authenticated fixture setup. The three approval journeys bring the current strict
+aggregate to fifty-one. Fixture data is created through real authenticated APIs;
 the original graph scenarios and task-view scenario retain read-only browser
 request checks. The attachment and `language-state-preservation` scenarios
 permit only their exact fixture-scoped file PUT/DELETE requests. The
@@ -74,21 +82,27 @@ exact operation counts, while scroll quiescence uses actual position samples and
 a bounded test-process monotonic clock.
 
 Five openings retain the 3,000ms click-to-painted operable-overview budget and
-existing detail/zoom/pan feedback ≤300ms. Details → close → immediate zoom/pan
-retains its sequence without reset, Fit view or extra wait; network and layout/
-render diagnostics remain separate. `visibility[5]` records ordered repetition,
-overview/added/expanded/reset node and edge counts, requiring bounds, exact
-deltas and reset consistency. The existing polyline/native-dash/marker oracles
-check every visible edge. Independent selection, H, selectMs and curved-capacity
-claims belong to the following inspection PR. Independent node/edge limits
-still require complete 409 refusals. Current focused source needs its own real
-native/container/capacity evidence; prior full-render results do not establish it.
+detail/zoom/pan feedback ≤300ms. The
+[inspection delivery](../feature/2026-10-22-task-dependency-inspection.md) also
+requires selection ≤300ms, complete H and deduplicated hidden-upstream checks.
+Ordinary Details → close → immediate zoom/pan precedes trusted visible-task
+selection and the highlighted sequence; each metric takes the slower state,
+with network and layout/render timing separate and no close-to-zoom reset, Fit
+view or extra wait. `visibility[5]` retains ordered overview/expansion/reset counts
+plus selectedId/hiddenUpstream, requiring bounds, exact deltas and reset consistency.
+Independent curved-route, actual paint/native-arrow, body coverage and dash-phase
+oracles cover every visible edge and fixed port; graph-relative transforms keep
+page scrolling separate from geometry stability. Capacity retains twenty
+visibility/H rows and 160 feedback observations. Independent node/edge limits
+still require complete 409 refusals. Current merged source needs its own real
+native/container/capacity evidence; prior full-render or polyline runs do not
+establish inspection or curved-route results for it.
 
 Playwright runs one worker with zero retries. Report validation rejects global
 errors, skipped/flaky/retried tests, duplicate/missing stable scenarios, missing
 PNG screenshots and inconsistent summary counts. Native functional/capacity
-reports form a strict twenty-two-scenario union; container functional validation
-requires seventeen. Missing, extra or duplicate names fail both phase and aggregate
+reports form a strict twenty-eight-scenario union; container functional validation
+requires twenty-three. Missing, extra or duplicate names fail both phase and aggregate
 validation, and browser identity must agree across a target's phases.
 Performance validation requires
 all fixed datasets, exactly five valid measurements per dataset, every budget
@@ -126,8 +140,10 @@ One streamed CDP timeline/User Timing/frame/GC JSON trace per repetition correla
 those markers with browser work. The trace does not enable CPU sampling or CDP
 screenshots; scenario PNG evidence stays separate. Bounded completion and resource
 closure are required. Capacity tests disable Playwright's repeated DOM snapshots
-and filmstrip while retaining failure action/network traces, all 20 CDP traces,
-scenario PNGs and complete graph/geometry checks. Controller-side fixture,
+and filmstrip. Authentication additionally disables Playwright action/network
+traces because the pinned recorder captures credential headers and bodies;
+the activation decision owns that privacy evidence and diagnostic cost. All
+20 custom CDP traces, safe scenario PNGs and complete graph/geometry checks remain. Controller-side fixture,
 snapshot and repetition durations identify harness costs separately from the
 browser performance gate. The
 [CI efficiency decision](2026-10-21-ci-validation-efficiency.md) records this

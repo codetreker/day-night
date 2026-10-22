@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -81,13 +82,6 @@ func newLifecycleEvidence(t *testing.T, scenario *acceptanceScenario) *acceptanc
 		t.Fatal("cannot persist lifecycle scenario identity")
 	}
 	return evidence
-}
-
-func configureLifecycleCLI(t *testing.T, cli *acceptanceCLI, process *acceptanceProcess) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(cli.home, ".daynight", "config.yml"), []byte("serverUrl: http://"+process.address+"\n"), 0o600); err != nil {
-		t.Fatal("cannot configure isolated lifecycle CLI")
-	}
 }
 
 func acceptanceCLIAction(t *testing.T, cli *acceptanceCLI, process *acceptanceProcess, evidence *acceptanceLifecycleEvidence, before api.Task, action, status string) api.Task {
@@ -261,7 +255,7 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 			t.Fatal("cannot persist pre-migration resource snapshots")
 		}
 		process := fixture.launch(t, nil).started(t)
-		configureLifecycleCLI(t, cli, process)
+		cli.configure(t, process)
 		afterLedger := acceptanceMigrationLedger(t, fixture)
 		afterRows := acceptanceHistoricalRows(t, fixture, ids)
 		if err := binaryAcceptance.update(func() { migration.AfterLedger, migration.AfterRows = afterLedger, afterRows }); err != nil {
@@ -270,6 +264,16 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		if len(migration.AfterLedger) != 8 || !reflect.DeepEqual(migration.AfterLedger[:6], migration.BeforeLedger) ||
 			migration.AfterLedger[6].Version != 7 || migration.AfterLedger[7].Version != 8 || !reflect.DeepEqual(migration.AfterRows, migration.BeforeRows) {
 			t.Fatal("built startup did not append genuine migrations while preserving old rows and ledger")
+		}
+		acceptanceError(t, process.request(context.Background(), http.MethodGet, "/api/v1/projects/"+projectID, nil, ""), http.StatusNotFound, "not_found")
+		user := acceptanceDecode[api.User](t, process.request(context.Background(), http.MethodGet, "/api/v1/me", nil, ""), http.StatusOK)
+		if user.ID == "" {
+			t.Fatal("authenticated historical fixture has no local user identity")
+		}
+		fixture.exec(t, "INSERT INTO project_members (project_id, user_id, role) VALUES ($1, $2, 'admin')", projectID, user.ID)
+		members := acceptanceDecode[api.ProjectMemberList](t, process.request(context.Background(), http.MethodGet, "/api/v1/projects/"+projectID+"/members", nil, ""), http.StatusOK)
+		if len(members.Items) != 1 || members.Items[0].UserID != user.ID || members.Items[0].Role != "admin" || !reflect.DeepEqual(acceptanceHistoricalRows(t, fixture, ids), migration.BeforeRows) {
+			t.Fatal("historical fixture access did not preserve the authenticated project membership and original task rows")
 		}
 		old := make([]api.Task, len(ids))
 		for index, id := range ids {
@@ -373,7 +377,7 @@ func TestInstalledCLILifecycleRacesAcceptance(t *testing.T) {
 			cli := newAcceptanceCLI(t, receipt, scenario)
 			evidence := newLifecycleEvidence(t, scenario)
 			process := fixture.launch(t, nil).started(t)
-			configureLifecycleCLI(t, cli, process)
+			cli.configure(t, process)
 			projectID := acceptanceCLIResourceID(t, cli.run(t, cli.repo, "project", "create", "Installed lifecycle race"))
 			prerequisiteID := acceptanceCLIResourceID(t, cli.run(t, cli.repo, "task", "create", "--title", "Unfinished prerequisite"))
 			id := acceptanceCLIResourceID(t, cli.run(t, cli.repo, "task", "create", "--title", "Competing accepted work", "--description", "Complete preserved description. Attachment: plans/lifecycle.md\nReview before claiming.", "--pull-request-url", "https://github.com/example/race/pull/9", "--pull-request-title", "Preserved PR reference"))

@@ -67,13 +67,14 @@ func projectTestStore(t *testing.T) *store.Store {
 	return database
 }
 
-func projectTestHandler(database *store.Store, output io.Writer) http.Handler {
-	logger := slog.New(slog.NewJSONHandler(output, nil))
-	return RequestLogging(logger, New(service.NewProjects(database), service.NewTasks(database), nil, logger))
+func projectTestHandler(t *testing.T, database *store.Store, output io.Writer) *resourceTestHandler {
+	t.Helper()
+	return resourceTestServer(t, database, attachmentTestFiles(t), output)
 }
 
 func projectRequest(handler http.Handler, method, path, body string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, path, strings.NewReader(body))
+	authorizeResourceRequest(handler, request)
 	request.Header.Set("Content-Type", "application/json; charset=UTF-8")
 	request.Header.Set("X-Request-ID", "project-test")
 	response := httptest.NewRecorder()
@@ -104,7 +105,7 @@ func assertProjectError(t *testing.T, response *httptest.ResponseRecorder, statu
 func TestProjectHTTPCreateReadAndEmptyList(t *testing.T) {
 	database := projectTestStore(t)
 	var logs bytes.Buffer
-	handler := projectTestHandler(database, &logs)
+	handler := projectTestHandler(t, database, &logs)
 	empty := projectRequest(handler, http.MethodGet, "/api/v1/projects", "")
 	page := decodeResponse[api.ProjectPage](t, empty, http.StatusOK)
 	if page.Items == nil || len(page.Items) != 0 || page.NextCursor != nil || !strings.Contains(empty.Body.String(), `"items":[]`) || !strings.Contains(empty.Body.String(), `"nextCursor":null`) {
@@ -143,7 +144,7 @@ func TestProjectHTTPCreateReadAndEmptyList(t *testing.T) {
 func TestProjectHTTPRejectsInvalidBodies(t *testing.T) {
 	database := projectTestStore(t)
 	var logs bytes.Buffer
-	handler := projectTestHandler(database, &logs)
+	handler := projectTestHandler(t, database, &logs)
 	for _, body := range []string{
 		"", "null", "[]", `"value"`, `true`, `{`, `{"name":`, `{"name"}`, `{"name":"ok"`, `{"name":"ok"]`,
 		`{"name":"ok","repoUrl":"https://github.com/example/repo"} {}`,
@@ -172,6 +173,7 @@ func TestProjectHTTPRejectsInvalidBodies(t *testing.T) {
 	}
 	for _, contentType := range []string{"", "text/plain", "application/json; charset=iso-8859-1", "application/json; charset=", "application/json; charset=utf-8; charset=us-ascii"} {
 		request := httptest.NewRequest(http.MethodPost, "/api/v1/projects", strings.NewReader(`{"name":"ok","repoUrl":"https://github.com/example/repo"}`))
+		authorizeResourceRequest(handler, request)
 		request.Header.Set("Content-Type", contentType)
 		request.Header.Set("X-Request-ID", "project-test")
 		response := httptest.NewRecorder()
@@ -189,10 +191,10 @@ func TestProjectHTTPRejectsInvalidBodies(t *testing.T) {
 
 func TestProjectHTTPPaginationWithTiedTimestamps(t *testing.T) {
 	database := projectTestStore(t)
-	handler := projectTestHandler(database, io.Discard)
+	handler := projectTestHandler(t, database, io.Discard)
 	ids := []string{"00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002", "00000000-0000-4000-8000-000000000003"}
 	for _, id := range ids {
-		if _, err := database.CreateProject(context.Background(), id, "same time", "https://github.com/example/repo"); err != nil {
+		if _, err := database.CreatePrivateProject(context.Background(), handler.principal, id, "same time", "https://github.com/example/repo"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -218,7 +220,7 @@ func TestProjectHTTPPaginationWithTiedTimestamps(t *testing.T) {
 }
 
 func TestProjectHTTPInvalidQueriesAndMissingResources(t *testing.T) {
-	handler := projectTestHandler(projectTestStore(t), io.Discard)
+	handler := projectTestHandler(t, projectTestStore(t), io.Discard)
 	for _, query := range []string{
 		"limit=", "limit=0", "limit=101", "limit=-1", "limit=1.5", "limit=invalid", "limit=1&limit=2",
 		"cursor=", "cursor=bad", "cursor=one&cursor=two", "status=todo", "limit=%xx", "limit=1;cursor=x",
@@ -242,7 +244,7 @@ func TestProjectHTTPInvalidQueriesAndMissingResources(t *testing.T) {
 func TestProjectHTTPDatabaseFailuresAreVisibleAndSafe(t *testing.T) {
 	database := projectTestStore(t)
 	var logs bytes.Buffer
-	handler := projectTestHandler(database, &logs)
+	handler := projectTestHandler(t, database, &logs)
 	if _, err := database.Pool.Exec(context.Background(), "ALTER TABLE projects RENAME TO private_sql_secret"); err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +267,7 @@ func TestProjectHTTPDatabaseFailuresAreVisibleAndSafe(t *testing.T) {
 func TestProjectHTTPCanceledDatabaseRequestDoesNotWrite(t *testing.T) {
 	database := projectTestStore(t)
 	var logs bytes.Buffer
-	handler := projectTestHandler(database, &logs)
+	handler := projectTestHandler(t, database, &logs)
 	transaction, err := database.Pool.Begin(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -277,6 +279,7 @@ func TestProjectHTTPCanceledDatabaseRequestDoesNotWrite(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/projects", nil).WithContext(ctx)
+	authorizeResourceRequest(handler, request)
 	request.Header.Set("X-Request-ID", "project-test")
 	response, finished := httptest.NewRecorder(), make(chan struct{})
 	go func() { handler.ServeHTTP(response, request); close(finished) }()
@@ -350,4 +353,39 @@ func TestHTTPErrorMappingAndWriteFailure(t *testing.T) {
 	if strings.Contains(logs.String(), "secret") || !strings.Contains(logs.String(), `"phase":"response"`) {
 		t.Fatalf("write failure not safely diagnosed: %s", &logs)
 	}
+}
+
+func TestPublicHealthAndReadinessUseLiveDatabase(t *testing.T) {
+	database := projectTestStore(t)
+	handler := projectTestHandler(t, database, io.Discard)
+	created := projectRequest(handler, http.MethodPost, "/api/v1/projects", `{"name":"private-health-project","repoUrl":"https://example.test/private.git"}`)
+	decodeResponse[api.Project](t, created, http.StatusCreated)
+	request := func(method, path string) *httptest.ResponseRecorder {
+		t.Helper()
+		r := httptest.NewRequest(method, path, nil)
+		r.Header.Set("X-Request-ID", "project-test")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, r)
+		return response
+	}
+	assertProjectError(t, request(http.MethodGet, "/api/v1/projects"), http.StatusUnauthorized, "unauthenticated")
+	for path, status := range map[string]string{"/healthz": "ok", "/readyz": "ready"} {
+		response := request(http.MethodGet, path)
+		value := decodeResponse[map[string]string](t, response, http.StatusOK)
+		if len(value) != 1 || value["status"] != status || response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("health response exposed data or cached state: %s %+v", response.Body, response.Header())
+		}
+		unsupported := request(http.MethodPost, path)
+		assertProjectError(t, unsupported, http.StatusMethodNotAllowed, "method_not_allowed")
+		if unsupported.Header().Get("Allow") != "GET, HEAD" {
+			t.Fatalf("health method boundary: %+v", unsupported.Header())
+		}
+	}
+	database.Close()
+	response := request(http.MethodGet, "/readyz")
+	assertProjectError(t, response, http.StatusServiceUnavailable, "service_unavailable")
+	if strings.Contains(response.Body.String(), "private-health-project") || strings.Contains(response.Body.String(), "database") || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("readiness failure exposed data or cached state: %s %+v", response.Body, response.Header())
+	}
+	decodeResponse[map[string]string](t, request(http.MethodGet, "/healthz"), http.StatusOK)
 }

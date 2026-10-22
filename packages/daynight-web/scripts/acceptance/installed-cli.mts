@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
-import { mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, realpath, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ChildProcess } from 'node:child_process';
@@ -22,6 +22,17 @@ export type InstalledCliReceipt = {
 
 const repositoryRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 const acceptanceRoot = join(repositoryRoot, 'packages/daynight-web/.tmp/acceptance');
+const privateCliRoot = (directory: string): string => join(repositoryRoot, 'packages/daynight-web/.tmp/acceptance-private', basename(directory), 'cli');
+const prunePrivateParents = async (paths: readonly string[]): Promise<void> => {
+  for (const path of paths) {
+    try { await rmdir(path); }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOTEMPTY') return;
+      if (code !== 'ENOENT') throw error;
+    }
+  }
+};
 const digest = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
 const contained = (parent: string, child: string): boolean => child.startsWith(`${parent}${sep}`);
 const readJson = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, 'utf8'));
@@ -144,9 +155,11 @@ export const recoverCliProcesses = async (directory: string, receiptPath: string
     requireGroupStopped(record.group);
   }
   if ((await ownedCliProcesses(directory, receipt, receiptPath)).length > 0) throw new Error('Installed CLI processes remain after recovery.');
+  await rm(privateCliRoot(directory), { recursive: true, force: true });
+  await prunePrivateParents([dirname(privateCliRoot(directory))]);
 };
 
-export const createAcceptanceCli = async (baseURL: string, directory: string) => {
+export const createAcceptanceCli = async (baseURL: string, directory: string, serverToken?: string) => {
   const receiptPath = process.env.DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT;
   if (receiptPath === undefined || !isAbsolute(receiptPath)) throw new Error('Acceptance requires an absolute installed CLI receipt path.');
   const raw = await readJson(receiptPath) as InstalledCliReceipt;
@@ -158,23 +171,41 @@ export const createAcceptanceCli = async (baseURL: string, directory: string) =>
   await mkdir(directory, { recursive: true });
   const working = await realpath(directory);
   if (!contained(runDirectory, working) || contained(receipt.root, working)) throw new Error('CLI workspace is outside its acceptance target.');
-  const home = join(working, 'home');
+  const privateDirectory = join(privateCliRoot(runDirectory), randomUUID());
+  const home = join(privateDirectory, 'home');
   const cwd = join(working, 'workspace');
-  await mkdir(join(home, '.daynight'), { recursive: true });
+  const token = serverToken ?? await (async () => {
+    const { login } = await import('./auth-fixture.mts');
+    return await (await login({ origin: baseURL, persona: 'alice' })).createPAT('Web installed CLI acceptance');
+  })();
+  if (!/^[\x21-\x7e]+$/.test(token)) throw new Error('Acceptance CLI requires a header-safe server token.');
+  await mkdir(join(home, '.daynight'), { recursive: true, mode: 0o700 });
   await mkdir(cwd, { recursive: true });
-  await writeFile(join(home, '.daynight/config.yml'), `serverUrl: ${JSON.stringify(baseURL)}\n`);
+  const configuration = join(home, '.daynight/config.yml');
+  const preparedConfiguration = `${configuration}.${randomUUID()}`;
+  await writeFile(preparedConfiguration, `serverUrl: ${JSON.stringify(baseURL)}\nserverToken: ${JSON.stringify(token)}\n`, { mode: 0o600, flag: 'wx' });
+  await rename(preparedConfiguration, configuration);
+  let closing: Promise<void> | undefined;
+  const close = (): Promise<void> => closing ??= (async () => {
+    await rm(privateDirectory, { recursive: true, force: true });
+    await prunePrivateParents([dirname(privateDirectory), dirname(dirname(privateDirectory))]);
+  })();
   const execute = async (args: readonly string[]) => {
+    if (closing !== undefined) throw new Error('Acceptance CLI has already closed.');
     let group: number | undefined;
     let original: unknown;
     const env: NodeJS.ProcessEnv = { ...process.env, NO_COLOR: '1', HOME: home, USERPROFILE: home,
       DAYNIGHT_ACCEPTANCE_RUN_DIRECTORY: runDirectory, DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT: receiptPath };
     delete env.FORCE_COLOR;
     try {
-      return await commandBytes(receipt.nodePath, [receipt.entryPath, ...args], {
+      const result = await commandBytes(receipt.nodePath, [receipt.entryPath, ...args], {
         cwd, timeoutMs: 60_000,
         env,
         onSpawn: (child) => { group = child.pid; return recordCliProcess(runDirectory, receiptPath, child); },
       });
+      const credential = Buffer.from(token);
+      if (result.stdout.includes(credential) || result.stderr.includes(credential)) throw new Error('Installed CLI exposed its private acceptance credential.');
+      return result;
     } catch (cause) { original = cause; throw cause; }
     finally {
       if (group !== undefined) {
@@ -184,6 +215,7 @@ export const createAcceptanceCli = async (baseURL: string, directory: string) =>
     }
   };
   return {
+    close,
     run: async (args: readonly string[]) => {
       const result = await execute(args);
       return { exitCode: result.exitCode, stdout: result.stdout.toString('utf8'), stderr: result.stderr.toString('utf8') };

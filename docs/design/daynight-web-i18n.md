@@ -1,6 +1,6 @@
 # Web 语言运行时与界面接入设计
 
-状态：生产 `main.tsx`、`App` 与现有全部第一方组件接入 `packages/daynight-web/src/i18n/`，提供英语与简体中文界面，包括居中 `TaskDetailDialog`。语言运行时、功能接入及定向验收场景已实现；I18N-T3 拥有源码绑定的组合验收结论。[语言需求](../spec/daynight-web-i18n.md)拥有完整 L1–L10 条件，[看板架构](daynight-web.md)继续拥有业务数据、图和生命周期。
+状态：生产 `main.tsx`、`AuthenticatedApp` 与现有全部第一方组件接入 `packages/daynight-web/src/i18n/`，提供英语与简体中文界面，包括居中 `TaskDetailDialog`。语言运行时、功能接入及定向验收场景已实现；I18N-T3 拥有源码绑定的组合验收结论。[语言需求](../spec/daynight-web-i18n.md)拥有完整 L1–L10 条件，[看板架构](daynight-web.md)继续拥有业务数据、图和生命周期。
 
 ## 运行时结构
 
@@ -25,10 +25,11 @@ packages/daynight-web/
 
 隔离的[运行时预览](../../packages/daynight-web/tests/mockups/locale-runtime.html)继续演示多个选择器共享语言与 fixture 状态。实际组件的[任务浏览预览](../../packages/daynight-web/tests/mockups/browsing.html)和[附件预览](../../packages/daynight-web/tests/mockups/attachments.html)均显式挂载 Provider，复用生产组件及样式；完整页面原型由双语界面任务的附件拥有。这些 fixture 的前端交互不替代真实服务验收。
 
-显式挂载的[AuthenticatedApp](daynight-auth.md)使用同一个 LocaleProvider；
-messages.auth 的完整英语/简体中文契约拥有登录、账户、项目创建、成员、邀请和
-令牌文案。生产入口仍在 Provider 下渲染原 App，统一启用只切换应用组件。鉴权
-fixture 同样显式挂载 Provider，不通过生产鉴权接线来取得语言能力。
+生产[AuthenticatedApp](daynight-auth.md)使用常驻 LocaleProvider；messages.auth
+的完整英语/简体中文契约拥有登录、账户、项目创建、成员、邀请和令牌文案。
+入口在绘制前设置当前语言的鉴权加载标题，后续路由和会话状态按当前目录更新。
+身份变化释放用户内容，但不重建语言 Provider。独立鉴权 fixture 仍显式挂载
+Provider，其内存交互验证与真实 UniAuth 生产验收分别保留证据。
 
 ## 初始语言与偏好
 
@@ -108,6 +109,8 @@ Provider 使用一份当前 issue 状态，初始值来自 `initial.issue`。选
 | `language-errors-and-narrow` | 读/无效值/写入故障与重试、真实隔离数据库故障下错误重译及相同 request ID，两种语言的 1440px/320px 图、对话框与附件布局。 |
 
 三个场景使用现有受监控页面与场景级 `en-US` 浏览器 locale，继续由单一 Playwright project 执行一次、零 retry。需要精确比较语言切换前后业务请求数量的隔离阶段控制浏览器时钟，排除独立项目定时器触发；真实周期刷新由 `refresh-staleness` 单独验证。滚动恢复读取实际 `scrollTop`，以测试进程单调时钟观察其连续稳定状态，不依赖受控浏览器定时器。functional inventory、报告聚合与严格预期测试使用相同 annotation；双语接入时每目标 13 个功能场景；当前[审批生命周期](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
-增加三个审批场景，[描述阅读](daynight-task-inspection.md#markdown-与附件链接)增加一个功能场景。当前每目标 17 个功能场景，原生保留 5 个容量/超限场景，共 22 个；容器 17 个，总计 39 个。容量矩阵、性能预算、覆盖率与清理规则保持原要求。
+增加三个审批场景，[描述阅读](daynight-task-inspection.md#markdown-与附件链接)增加一个功能场景，
+鉴权增加六个功能场景。当前每目标 23 个功能场景，原生保留 5 个容量/超限场景，共 28 个；
+容器 23 个，总计 51 个。容量矩阵、性能预算、覆盖率与清理规则保持原要求。
 
 I18N-T3 核对相同源码的真实嵌入式服务与生产容器组合回执，验证完整 L1–L10，包括首屏、持久保存、键盘操作、两种语言的 1440px/320px 视觉、错误恢复、业务请求数量和资源清理。原型、隔离组件、JSDOM 与本地浏览器各有其证据范围，不能替代真实服务和对应源码的生产验收。

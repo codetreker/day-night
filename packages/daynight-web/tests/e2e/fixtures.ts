@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { test as base, expect, type APIRequestContext } from '@playwright/test';
+import { test as base, expect } from '@playwright/test';
 import { command } from '../../scripts/acceptance/process.mts';
 import { recordBrowserOwnership } from '../../scripts/acceptance/browser.mts';
 import type { TaskProperties } from '../../src/api/types';
 import { attachmentDownloadUrl } from '../../src/api/client';
+import { bearerContext, browserAuthentication, type AuthenticatedAPI } from './authentication';
 
 export { expect };
 export type AttachmentWriteExpectation = {
@@ -28,18 +29,46 @@ type AttachmentWritePolicy = {
   readonly unexpected: string[];
   readonly register: (entries: readonly AttachmentWriteExpectation[]) => void;
   readonly registerApprovals: (entries: readonly ApprovalWriteExpectation[]) => void;
+  readonly registerBrowser: (entries: readonly BrowserWriteExpectation[]) => void;
 };
+export type BrowserWriteExpectation = { readonly method: 'POST' | 'PATCH' | 'PUT' | 'DELETE'; readonly url: string; readonly count: number };
 export const test = base.extend<{
+  api: AuthenticatedAPI;
+  authentication: 'automatic' | 'visible';
+  authenticatedContext: void;
   acceptanceEvidence: void;
   allowAttachmentWrites: AttachmentWritePolicy['register'];
   allowApprovalWrites: AttachmentWritePolicy['registerApprovals'];
   attachmentWritePolicy: AttachmentWritePolicy;
+  allowBrowserWrites: AttachmentWritePolicy['registerBrowser'];
 }>({
+  authentication: ['automatic', { option: true }],
+  authenticatedContext: async ({ context, baseURL, authentication }, use) => {
+    if (baseURL === undefined) throw new Error('Browser authentication requires the exact product origin.');
+    if (authentication === 'automatic') await browserAuthentication(context, baseURL);
+    await use();
+  },
+  page: async ({ page, authenticatedContext }, use) => { void authenticatedContext; await use(page); },
+  api: async ({ playwright, baseURL }, use) => {
+    if (baseURL === undefined) throw new Error('API fixture authentication requires the exact product origin.');
+    const context = await bearerContext(playwright.request, baseURL);
+    try { await use(context); } finally { await context.dispose(); }
+  },
   attachmentWritePolicy: async ({}, use) => {
     const allowed: AttachmentWritePolicy['allowed'] = new Map();
     const approvals: AttachmentWritePolicy['approvals'] = new Map();
     const unexpected: string[] = [];
-    await use({ allowed, approvals, unexpected, register: (entries) => {
+    const registerBrowser = (entries: readonly BrowserWriteExpectation[]) => {
+      for (const entry of entries) {
+        const url = new URL(entry.url);
+        if (!['http:', 'https:'].includes(url.protocol) || url.href !== entry.url || url.username !== '' || url.password !== '' || url.hash !== ''
+          || !['POST', 'PATCH', 'PUT', 'DELETE'].includes(entry.method) || !Number.isInteger(entry.count) || entry.count < 1) throw new Error('Invalid exact browser write expectation.');
+        const key = `${entry.method} ${url.href}`;
+        if (allowed.has(key)) throw new Error('Duplicate exact browser write expectation.');
+        allowed.set(key, { count: entry.count, observed: 0 });
+      }
+    };
+    await use({ allowed, approvals, unexpected, registerBrowser, register: (entries) => {
       if (allowed.size !== 0) throw new Error('Attachment write expectations are registered once per scenario.');
       for (const entry of entries) {
         const origin = new URL(entry.origin);
@@ -68,6 +97,7 @@ export const test = base.extend<{
   },
   allowAttachmentWrites: async ({ attachmentWritePolicy }, use) => { await use(attachmentWritePolicy.register); },
   allowApprovalWrites: async ({ attachmentWritePolicy }, use) => { await use(attachmentWritePolicy.registerApprovals); },
+  allowBrowserWrites: async ({ attachmentWritePolicy }, use) => { await use(attachmentWritePolicy.registerBrowser); },
   acceptanceEvidence: [async ({ browser, page, attachmentWritePolicy }, use) => {
     const directory = evidenceDirectory();
     await mkdir(directory, { recursive: true });
@@ -88,7 +118,7 @@ export const test = base.extend<{
     });
     await use();
     expect(pageErrors, 'Production page has no uncaught exceptions').toEqual([]);
-    expect(attachmentWritePolicy.unexpected, 'Browser writes match only exact registered attachment or approval URLs').toEqual([]);
+    expect(attachmentWritePolicy.unexpected, 'Browser writes match only exact registered URLs and methods').toEqual([]);
     for (const [key, entry] of [...attachmentWritePolicy.allowed, ...attachmentWritePolicy.approvals]) {
       expect(entry.observed, `Exact browser write count: ${key}`).toBe(entry.count);
     }
@@ -101,7 +131,7 @@ export type Task = {
   properties: TaskProperties;
 };
 
-export const createProject = async (request: APIRequestContext, input: { name?: string; repoUrl?: string } = {}): Promise<Project> => {
+export const createProject = async (request: AuthenticatedAPI, input: { name?: string; repoUrl?: string } = {}): Promise<Project> => {
   const response = await request.post('/api/v1/projects', {
     data: { name: input.name ?? `Browser ${randomUUID()}`, repoUrl: input.repoUrl ?? 'https://github.com/example/browser-fixture' },
   });
@@ -109,7 +139,7 @@ export const createProject = async (request: APIRequestContext, input: { name?: 
   return await response.json() as Project;
 };
 
-export const createTask = async (request: APIRequestContext, projectId: string, input: {
+export const createTask = async (request: AuthenticatedAPI, projectId: string, input: {
   title: string; description?: string; dependsOn?: string[]; properties?: TaskProperties;
 }): Promise<Task> => {
   const response = await request.post(`/api/v1/projects/${projectId}/tasks`, {
@@ -125,7 +155,7 @@ export const createProposedTask = createTask;
 
 type TaskInput = Parameters<typeof createTask>[2];
 type TaskVersion = Pick<Task, 'id' | 'version'>;
-const transitionTask = async (request: APIRequestContext, projectId: string, task: TaskVersion, action: 'approve' | 'claim' | 'complete'): Promise<Task> => {
+const transitionTask = async (request: AuthenticatedAPI, projectId: string, task: TaskVersion, action: 'approve' | 'claim' | 'complete'): Promise<Task> => {
   const response = await request.post(`/api/v1/projects/${projectId}/tasks/${task.id}/${action}`, { data: { version: task.version } });
   expect(response.status(), `Task fixture ${action} succeeds`).toBe(200);
   const result = await response.json() as Task;
@@ -133,15 +163,15 @@ const transitionTask = async (request: APIRequestContext, projectId: string, tas
   expect(result.version, `Task fixture ${action} increments the observed version once`).toBe(task.version + 1);
   return result;
 };
-export const approveTask = async (request: APIRequestContext, projectId: string, task: TaskVersion): Promise<Task> => transitionTask(request, projectId, task, 'approve');
-export const claimTask = async (request: APIRequestContext, projectId: string, task: TaskVersion): Promise<Task> => transitionTask(request, projectId, task, 'claim');
-export const completeTask = async (request: APIRequestContext, projectId: string, task: TaskVersion): Promise<Task> => transitionTask(request, projectId, task, 'complete');
-export const createApprovedTask = async (request: APIRequestContext, projectId: string, input: TaskInput): Promise<Task> =>
+export const approveTask = async (request: AuthenticatedAPI, projectId: string, task: TaskVersion): Promise<Task> => transitionTask(request, projectId, task, 'approve');
+export const claimTask = async (request: AuthenticatedAPI, projectId: string, task: TaskVersion): Promise<Task> => transitionTask(request, projectId, task, 'claim');
+export const completeTask = async (request: AuthenticatedAPI, projectId: string, task: TaskVersion): Promise<Task> => transitionTask(request, projectId, task, 'complete');
+export const createApprovedTask = async (request: AuthenticatedAPI, projectId: string, input: TaskInput): Promise<Task> =>
   approveTask(request, projectId, await createProposedTask(request, projectId, input));
-export const completeApprovedTask = async (request: APIRequestContext, projectId: string, task: TaskVersion): Promise<Task> =>
+export const completeApprovedTask = async (request: AuthenticatedAPI, projectId: string, task: TaskVersion): Promise<Task> =>
   completeTask(request, projectId, await claimTask(request, projectId, task));
 
-export const updateTask = async (request: APIRequestContext, projectId: string, taskId: string, input: {
+export const updateTask = async (request: AuthenticatedAPI, projectId: string, taskId: string, input: {
   version: number; title?: string; description?: string; dependsOn?: string[]; properties?: TaskProperties;
 }): Promise<Task> => {
   const response = await request.patch(`/api/v1/projects/${projectId}/tasks/${taskId}`, { data: input });

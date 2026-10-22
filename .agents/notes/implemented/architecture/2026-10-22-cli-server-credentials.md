@@ -73,14 +73,17 @@ failure and location without copying source values into error objects.
 ## Consequences
 
 The client stores one token in the existing YAML format, with no new registry,
-keychain, project-local secret or provider dependency. Missing tokens remain an
-ordinary unauthenticated request outcome until server activation; configured
-invalid tokens fail without another request.
+keychain, project-local secret or provider dependency. Configuration still permits
+an absent token, while the mandatory server composition returns 401 for missing
+or invalid credentials without another request. The
+[activation decision](2026-10-22-authentication-activation.md) owns that server
+requirement and normal-protocol session/PAT bootstrap for acceptance.
 
 Actual installed-client validation pairs the normal UniAuth/Go session-to-PAT
 flow with stdin setup, project creation/filtered listing and revocation. Native
-terminal and shell checks remain separate platform evidence. Production server
-activation and Web account management remain in their own tasks.
+terminal and shell checks remain separate platform evidence. Server activation
+and Web account management now use these credentials through the shared
+composition; current-source gate outcomes remain separately recorded.
 
 Explicit URL replacement currently reports an invalid previously stored origin
 before writing its replacement. Restoring the earlier manual-repair behavior is

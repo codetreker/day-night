@@ -23,34 +23,31 @@ upstream-aware initial viewport. The
 implements the reading shell while retaining existing modal and attachment
 ownership. The [attachment split-view decision](2026-10-22-task-attachment-split-view.md)
 extends that shell with Overview/Attachments tabs, retained attachment state and
-a bounded two-pane preview. The
-[Markdown description decision](2026-10-22-task-description-markdown.md) extends
-that reader with shared CommonMark/GFM and root-based attachment navigation.
-Graph inspection and smooth paths remain separate work. Existing paint and
-detail notes describe the mainline mechanisms; each task retains its own
-source-bound acceptance and delivery state.
+a bounded two-pane preview. Inspection and smooth routes use the mechanisms
+recorded below. The [Markdown description decision](2026-10-22-task-description-markdown.md)
+extends the reader with shared CommonMark/GFM and root-based attachment
+navigation. Existing paint and detail notes describe their current mechanisms.
 
 The [progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
-partially supersedes all-context-at-once rendering. PR #134 delivered bounded
-visible graphs and explicit expansion/reset while body activation still opens
-TaskDetailDialog and paths remain polylines. Replacement
-[PR #143](https://github.com/codetreker/daynight/pull/143) owns selection/Details
-separation, routing and smooth highlighting; it remains in progress. Closed
-[PR #121](https://github.com/codetreker/daynight/pull/121) is historical and is
-not a completion prerequisite or evidence for replacement source. UX-T2 completes
-only after the replacement satisfies its own acceptance and integration rule.
+partially supersedes all-context-at-once rendering. PR134 delivered bounded visible graphs and explicit expansion/reset, retaining
+body-open-details and polylines. The first inspection PR #121 was abandoned; a
+clean current-main replacement owns independent selection/Details and smooth
+highlighting. Its fresh source-bound acceptance and integration complete UX-T2,
+without requiring the abandoned PR or reusing its runtime results.
 
 The root and its descendants remain the chain's counted membership. Rendering
 adds the complete prerequisite closure without importing unrelated descendants
 of contextual tasks. Selection belongs to the mounted graph and highlights the
-selected task, all ancestors and their connecting edges. Detail resource
+selected task's visible ancestors and all their real visible routes/arrows,
+with a deduplicated hidden-ancestor count from complete data. Detail resource
 selection remains independent, with sibling card controls and one centered
 dialog shared by all detail entry points.
 
-The original design retained Dagre's intermediate points, rounding local bends
-with bounded quadratic curves. Its routing rationale and alternatives below
-remain the original decision record; the replacement PR owns its routing design
-and source-bound validation. Long straight spans retain the local-axis dash
+The original smooth-route target retained raw Dagre points to preserve lane
+intent and long paint spans. The
+[uniform-routing decision](2026-10-22-uniform-task-dependency-routing.md)
+partially replaces that target with one fixed-side-port column H/V planner and
+bounded quadratic corners. It keeps node placement separate from edge validity. Long straight spans retain the local-axis dash
 painting strategy. One compiled route owns body geometry and marker direction;
 independent acceptance must understand curves and continue checking complete
 coverage, dash continuity and real production timing.

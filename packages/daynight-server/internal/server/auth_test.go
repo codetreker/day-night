@@ -65,7 +65,7 @@ func authTestHarness(t *testing.T) *authHarness {
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.NewJSONHandler(&h.logs, nil))
-	h.auth, err = NewAuthentication(service.NewIdentity(h.database, client, "http://127.0.0.1:8787/api/v1/auth/callback"), AuthConfig{PublicOrigin: "http://127.0.0.1:8787", AllowLoopbackHTTP: true}, logger)
+	h.auth, err = NewAuthentication(service.NewIdentity(h.database, client, "http://127.0.0.1:8787/api/v1/auth/callback"), AuthConfig{PublicOrigin: "http://127.0.0.1:8787", AllowHTTPTestOrigin: true}, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,8 @@ func TestIdentityHTTPInputAndOperationalFailures(t *testing.T) {
 			t.Fatal("HEAD consumed login")
 		}
 	}
-	if got := h.request("PUT", "/api/v1/me", "", nil, nil, ""); got.Code != 405 {
+	assertProjectError(t, h.request("PUT", "/api/v1/me", "", nil, nil, ""), http.StatusUnauthorized, "unauthenticated")
+	if got := h.request("PUT", "/api/v1/me", "", cookies, nil, h.auth.origin); got.Code != 405 {
 		t.Fatal("method routing")
 	}
 	if _, err := h.database.Pool.Exec(context.Background(), `DROP TABLE personal_access_tokens`); err != nil {
@@ -312,10 +313,10 @@ func TestIdentityAuthenticationConfiguration(t *testing.T) {
 		origin       string
 		allow, valid bool
 	}{
-		{"https://daynight.example.com", false, true}, {"https://daynight.example.com", true, false}, {"http://localhost:8787", true, true}, {"http://127.0.0.1:8787", true, true}, {"http://[::1]:8787", true, true}, {"http://127.0.0.1:8787", false, false}, {"http://dev.localhost:8787", true, false}, {"http://localhost.example.com", true, false}, {"http://192.168.1.1", true, false}, {"https://example.com/", false, false}, {"https://example.com?x=1", false, false}, {"https://user@example.com", false, false}, {"https://example.com#secret", false, false}, {"invalid", false, false}, {"https://%zz", false, false}, {"https://example.com:443", false, false}, {"https://EXAMPLE.com", false, false}, {"https://:443", false, false}, {"https://example.com:65536", false, false}, {"https://example.com:", false, false}, {"https://example.com:0443", false, false}, {"http://127.0.0.1:80", true, false},
+		{"https://daynight.example.com", false, true}, {"https://daynight.example.com", true, true}, {"http://localhost:8787", true, true}, {"http://127.0.0.1:8787", true, true}, {"http://[::1]:8787", true, true}, {"http://127.0.0.1:8787", false, false}, {"http://dev.localhost:8787", true, true}, {"http://localhost.example.com", true, true}, {"http://192.168.1.1", true, true}, {"https://example.com/", false, false}, {"https://example.com?x=1", false, false}, {"https://user@example.com", false, false}, {"https://example.com#secret", false, false}, {"invalid", false, false}, {"https://%zz", false, false}, {"https://example.com:443", false, false}, {"https://EXAMPLE.com", false, false}, {"https://:443", false, false}, {"https://example.com:65536", false, false}, {"https://example.com:", false, false}, {"https://example.com:0443", false, false}, {"http://127.0.0.1:80", true, false},
 	} {
 		identity := service.NewIdentity(nil, client, test.origin+"/api/v1/auth/callback")
-		auth, err := NewAuthentication(identity, AuthConfig{PublicOrigin: test.origin, AllowLoopbackHTTP: test.allow}, logger)
+		auth, err := NewAuthentication(identity, AuthConfig{PublicOrigin: test.origin, AllowHTTPTestOrigin: test.allow}, logger)
 		if (err == nil) != test.valid {
 			t.Fatalf("origin %s allow=%t: %v", test.origin, test.allow, err)
 		}

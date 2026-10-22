@@ -26,6 +26,9 @@ export type BudgetProbeReceipt = {
   elapsedMs: number;
   deadlines: DeadlineLimits & { mocked: boolean };
   requests: number;
+  bearerRequests: number;
+  credentialSource: "normal-uniauth-session-pat";
+  authenticationScope: "bearer-transport-only";
   completedPages: number;
   uniqueCursors: number;
   responseBodyBytes: number[];
@@ -100,7 +103,7 @@ const expectedDisconnect = (error: unknown): boolean => typeof error === "object
 
 type TerminateInstalledProcess = typeof import("../test/fixtures/installed-cli.js").terminateInstalledProcess;
 
-const runInstalledList = async (installed: InstalledCliReceipt, home: string, cwd: string, watchdogMs: number, receipt: BudgetProbeReceipt, terminate: TerminateInstalledProcess, preload: string | undefined, signal?: AbortSignal): Promise<void> => {
+const runInstalledList = async (installed: InstalledCliReceipt, home: string, cwd: string, watchdogMs: number, receipt: BudgetProbeReceipt, terminate: TerminateInstalledProcess, preload: string | undefined, serverToken: string, signal?: AbortSignal): Promise<void> => {
   signal?.throwIfAborted();
   const started = performance.now();
   const child = spawn(installed.nodePath, [...(preload === undefined ? [] : ["--import", preload]), installed.entryPath, "project", "list", "--json"], {
@@ -119,6 +122,11 @@ const runInstalledList = async (installed: InstalledCliReceipt, home: string, cw
     receipt.signal = childSignal;
     receipt.stderr = Buffer.concat(stderr).toString("utf8");
     receipt.stdout = Buffer.concat(stdout).toString("utf8");
+    if (receipt.stderr.includes(serverToken) || receipt.stdout.includes(serverToken)) {
+      receipt.stderr = "";
+      receipt.stdout = "";
+      stop(new Error("The installed CLI exposed its credential in captured output."));
+    }
     receipt.childReaped = true;
     resolve();
   }));
@@ -239,9 +247,9 @@ export class BudgetAcceptanceError extends AggregateError {
   }
 }
 
-const runProbe = async (definition: ProbeDefinition, installed: InstalledCliReceipt, temporaryRoot: string, terminate: TerminateInstalledProcess, signal?: AbortSignal): Promise<{ receipt: BudgetProbeReceipt; errors: unknown[] }> => {
+const runProbe = async (definition: ProbeDefinition, installed: InstalledCliReceipt, temporaryRoot: string, terminate: TerminateInstalledProcess, serverToken: string, signal?: AbortSignal): Promise<{ receipt: BudgetProbeReceipt; errors: unknown[] }> => {
   const receipt: BudgetProbeReceipt = {
-    name: definition.name, passed: false, elapsedMs: 0, requests: 0, completedPages: 0, uniqueCursors: 0,
+    name: definition.name, passed: false, elapsedMs: 0, requests: 0, bearerRequests: 0, credentialSource: "normal-uniauth-session-pat", authenticationScope: "bearer-transport-only", completedPages: 0, uniqueCursors: 0,
     deadlines: { ...(definition.deadlineLimits ?? { totalMs, requestMs }), mocked: definition.deadlineLimits !== undefined },
     responseBodyBytes: [], generatedDecodedBytes: 0, compressedBytes: 0,
     exitCode: null, signal: null, stdoutBytes: 0, stdout: "", stderr: "", childReaped: false,
@@ -257,6 +265,8 @@ const runProbe = async (definition: ProbeDefinition, installed: InstalledCliRece
     const handle = async (): Promise<void> => {
       receipt.requests += 1;
       const index = receipt.requests;
+      requireCondition(request.headers.authorization === `Bearer ${serverToken}`, "The installed CLI must attach its normally issued PAT to every budget transport request.");
+      receipt.bearerRequests += 1;
       const url = new URL(request.url!, "http://127.0.0.1");
       requireCondition(request.method === "GET" && url.pathname === "/api/v1/projects" && url.searchParams.get("limit") === "100", "The installed CLI must use the real paginated project-list endpoint.");
       const cursor = url.searchParams.get("cursor") ?? "";
@@ -285,14 +295,14 @@ const runProbe = async (definition: ProbeDefinition, installed: InstalledCliRece
     });
     const address = server.address();
     if (address === null || typeof address === "string") throw new Error("The controlled HTTP server did not acquire a TCP port.");
-    await writeFile(path.join(home, ".daynight/config.yml"), `serverUrl: http://127.0.0.1:${address.port}\n`);
+    await writeFile(path.join(home, ".daynight/config.yml"), `serverUrl: http://127.0.0.1:${address.port}\nserverToken: ${JSON.stringify(serverToken)}\n`, { mode: 0o600 });
     let preload: string | undefined;
     if (definition.deadlineLimits !== undefined) {
       const mock: typeof import("../test/fixtures/installed-operation-limits.js") = await import(new URL("../test/fixtures/installed-operation-limits.ts", import.meta.url).href);
       preload = await mock.createInstalledDeadlineMock(fixture, installed.entryPath, definition.deadlineLimits);
     }
     console.log(`Checking installed CLI resource budget: ${definition.name}.`);
-    await runInstalledList(installed, home, fixture, definition.watchdogMs, receipt, terminate, preload, signal);
+    await runInstalledList(installed, home, fixture, definition.watchdogMs, receipt, terminate, preload, serverToken, signal);
     requireCondition(receipt.exitCode === definition.expected.exitCode && receipt.signal === null, `${definition.name} must exit ${definition.expected.exitCode}.\n${receipt.stderr}`);
     if (definition.expected.exitCode === 1) {
       requireCondition(receipt.stdoutBytes === 0, `${definition.name} must not emit a partial JSON result.`);
@@ -303,6 +313,7 @@ const runProbe = async (definition: ProbeDefinition, installed: InstalledCliRece
     if (definition.minimumMs !== undefined) requireCondition(receipt.elapsedMs >= definition.minimumMs, `${definition.name} completed before its configured deadline.`);
     if (definition.expectedRequests !== undefined) requireCondition(receipt.requests === definition.expectedRequests, `${definition.name} made an unexpected request count.`);
     requireCondition(receipt.requests === receipt.uniqueCursors, `${definition.name} must not retry a request.`);
+    requireCondition(receipt.bearerRequests === receipt.requests, "Every budget request must carry the expected normally issued PAT.");
     definition.verify(receipt);
     await Promise.all([...handlers]);
     // The child has exited; all of its sockets must close without the fixture forcing them shut.
@@ -335,7 +346,8 @@ const runProbe = async (definition: ProbeDefinition, installed: InstalledCliRece
   return { receipt, errors };
 };
 
-export const runProductionBudgetProbes = async (installed: InstalledCliReceipt, repositoryRoot: string, signal?: AbortSignal): Promise<BudgetProbeReceipt[]> => {
+export const runProductionBudgetProbes = async (installed: InstalledCliReceipt, repositoryRoot: string, serverToken: string, signal?: AbortSignal): Promise<BudgetProbeReceipt[]> => {
+  requireCondition(typeof serverToken === "string" && /^[\x21-\x7e]+$/.test(serverToken), "Budget probes require a header-safe PAT issued by the normal service fixture.");
   const fixture: typeof import("../test/fixtures/installed-cli.js") = await import(new URL("../test/fixtures/installed-cli.ts", import.meta.url).href);
   let temporaryRoot: string | undefined;
   const receipts: BudgetProbeReceipt[] = [];
@@ -346,7 +358,7 @@ export const runProductionBudgetProbes = async (installed: InstalledCliReceipt, 
     const byteProbes = [singleResponse(false), singleResponse(true), cumulativeResponses(false), cumulativeResponses(true)];
     const run = async (definition: ProbeDefinition): Promise<void> => {
       try {
-        const outcome = await runProbe(definition, installed, temporaryRoot!, fixture.terminateInstalledProcess, signal);
+        const outcome = await runProbe(definition, installed, temporaryRoot!, fixture.terminateInstalledProcess, serverToken, signal);
         receipts.push(outcome.receipt);
         errors.push(...outcome.errors);
       } catch (error) { errors.push(error); }

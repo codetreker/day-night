@@ -38,7 +38,7 @@ type runtimeError struct {
 func (e *runtimeError) Error() string { return fmt.Sprintf("HTTP %s failed", e.phase) }
 func (e *runtimeError) Unwrap() error { return e.cause }
 
-func Start(ctx context.Context, config Config, logger *slog.Logger, handler func(Dependencies) http.Handler) (*Runtime, error) {
+func Start(ctx context.Context, config Config, logger *slog.Logger, handler func(Dependencies) (http.Handler, error)) (*Runtime, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
@@ -57,13 +57,21 @@ func Start(ctx context.Context, config Config, logger *slog.Logger, handler func
 		database.Close()
 		return nil, &runtimeError{phase: "listen", cause: errors.Join(err, files.Close())}
 	}
-	requests, cancelRequests := context.WithCancel(context.Background())
 	dependencies := Dependencies{Store: database, Files: files}
+	application, err := handler(dependencies)
+	if application == nil && err == nil {
+		err = errors.New("HTTP handler is required")
+	}
+	if err != nil {
+		database.Close()
+		return nil, &runtimeError{phase: "composition", cause: errors.Join(err, listener.Close(), files.Close())}
+	}
+	requests, cancelRequests := context.WithCancel(context.Background())
 	runtime := &Runtime{
 		Dependencies: dependencies, files: files, listener: listener, logger: logger, shutdownTimeout: config.ShutdownTimeout,
 		cancelRequests: cancelRequests,
 		http: &http.Server{
-			Handler:           RequestLogging(logger, handler(dependencies)),
+			Handler:           RequestLogging(logger, application),
 			ReadHeaderTimeout: 5 * time.Second,
 			IdleTimeout:       60 * time.Second,
 			BaseContext:       func(net.Listener) context.Context { return requests },

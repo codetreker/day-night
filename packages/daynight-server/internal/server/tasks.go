@@ -16,24 +16,21 @@ type taskHandler struct {
 	logger *slog.Logger
 }
 
-func taskRoutes(mux *http.ServeMux, tasks *service.Tasks, logger *slog.Logger) {
+func taskRoutes(mux *http.ServeMux, tasks *service.Tasks, auth *Authentication, logger *slog.Logger) {
 	handler := &taskHandler{tasks: tasks, logger: logger}
-	mux.HandleFunc("POST /api/v1/projects/{projectId}/tasks", handler.create)
-	mux.HandleFunc("GET /api/v1/projects/{projectId}/tasks", handler.list)
-	mux.HandleFunc("GET /api/v1/projects/{projectId}/tasks/{taskId}", handler.get)
-	mux.HandleFunc("PATCH /api/v1/projects/{projectId}/tasks/{taskId}", handler.update)
+	mux.HandleFunc("POST /api/v1/projects/{projectId}/tasks", auth.Require(handler.create))
+	mux.HandleFunc("GET /api/v1/projects/{projectId}/tasks", auth.Require(handler.list))
+	mux.HandleFunc("GET /api/v1/projects/{projectId}/tasks/{taskId}", auth.Require(handler.get))
+	mux.HandleFunc("PATCH /api/v1/projects/{projectId}/tasks/{taskId}", auth.Require(handler.update))
 	for name, action := range map[string]taskAction{"approve": tasks.Approve, "claim": tasks.Claim, "complete": tasks.Complete} {
 		path := "/api/v1/projects/{projectId}/tasks/{taskId}/" + name
-		mux.HandleFunc("POST "+path, handler.lifecycle(name, action))
-		mux.HandleFunc(path, methodNotAllowed(logger, "POST"))
+		mux.HandleFunc("POST "+path, auth.Require(handler.lifecycle(name, action)))
+		mux.HandleFunc(path, auth.Require(resourceMethodNotAllowed(logger, "POST")))
 	}
-	mux.HandleFunc("GET /api/v1/projects/{projectId}/task-graph", handler.graph)
-	mux.HandleFunc("/api/v1/projects/{projectId}/task-graph", func(w http.ResponseWriter, request *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
-		methodNotAllowed(logger, "GET, HEAD")(w, request)
-	})
-	mux.HandleFunc("/api/v1/projects/{projectId}/tasks", methodNotAllowed(logger, "GET, HEAD, POST"))
-	mux.HandleFunc("/api/v1/projects/{projectId}/tasks/{taskId}", methodNotAllowed(logger, "GET, HEAD, PATCH"))
+	mux.HandleFunc("GET /api/v1/projects/{projectId}/task-graph", auth.Require(handler.graph))
+	mux.HandleFunc("/api/v1/projects/{projectId}/task-graph", auth.Require(resourceMethodNotAllowed(logger, "GET, HEAD")))
+	mux.HandleFunc("/api/v1/projects/{projectId}/tasks", auth.Require(resourceMethodNotAllowed(logger, "GET, HEAD, POST")))
+	mux.HandleFunc("/api/v1/projects/{projectId}/tasks/{taskId}", auth.Require(resourceMethodNotAllowed(logger, "GET, HEAD, PATCH")))
 }
 
 func taskResponse(task core.Task) api.Task {
@@ -75,12 +72,13 @@ func optionalProperties(fields map[string]json.RawMessage) (*api.TaskPropertiesP
 	return result, nil
 }
 
-func (h *taskHandler) resource(request *http.Request) (string, string, *slog.Logger, error) {
+func (h *taskHandler) resource(request *http.Request, principal core.Principal) (string, string, *slog.Logger, error) {
+	logger := h.logger.With("user_id", principal.UserID)
 	projectID, err := service.CanonicalID(request.PathValue("projectId"))
 	if err != nil {
-		return "", "", h.logger, err
+		return "", "", logger, err
 	}
-	logger := h.logger.With("project_id", projectID)
+	logger = logger.With("project_id", projectID)
 	id := request.PathValue("taskId")
 	if id != "" {
 		id, err = service.CanonicalID(id)
@@ -177,8 +175,9 @@ func taskListRequest(request *http.Request) (service.TaskListRequest, error) {
 	return result, nil
 }
 
-func (h *taskHandler) create(w http.ResponseWriter, request *http.Request) {
-	projectID, _, logger, err := h.resource(request)
+func (h *taskHandler) create(w http.ResponseWriter, request *http.Request, principal core.Principal) {
+	w.Header().Set("Cache-Control", "no-store")
+	projectID, _, logger, err := h.resource(request, principal)
 	if err != nil {
 		writeError(w, request, logger, "task", "create", err)
 		return
@@ -193,7 +192,7 @@ func (h *taskHandler) create(w http.ResponseWriter, request *http.Request) {
 		writeError(w, request, logger, "task", "create", err)
 		return
 	}
-	task, err := h.tasks.Create(request.Context(), projectID, service.CreateTask{
+	task, err := h.tasks.Create(request.Context(), principal, projectID, service.CreateTask{
 		Title: input.Title, Description: input.Description, DependsOn: input.DependsOn, Properties: propertyValues(input.Properties),
 	})
 	if err != nil {
@@ -205,8 +204,9 @@ func (h *taskHandler) create(w http.ResponseWriter, request *http.Request) {
 	writeCreated(w, request, logger, "/api/v1/projects/"+projectID+"/tasks/"+task.ID, taskResponse(task))
 }
 
-func (h *taskHandler) list(w http.ResponseWriter, request *http.Request) {
-	projectID, _, logger, err := h.resource(request)
+func (h *taskHandler) list(w http.ResponseWriter, request *http.Request, principal core.Principal) {
+	w.Header().Set("Cache-Control", "no-store")
+	projectID, _, logger, err := h.resource(request, principal)
 	if err != nil {
 		writeError(w, request, logger, "task", "list", err)
 		return
@@ -216,7 +216,7 @@ func (h *taskHandler) list(w http.ResponseWriter, request *http.Request) {
 		writeError(w, request, logger, "task", "list", err)
 		return
 	}
-	page, err := h.tasks.List(request.Context(), projectID, input)
+	page, err := h.tasks.List(request.Context(), principal, projectID, input)
 	if err != nil {
 		writeError(w, request, logger, "task", "list", err)
 		return
@@ -228,14 +228,14 @@ func (h *taskHandler) list(w http.ResponseWriter, request *http.Request) {
 	writeJSON(w, request, logger, http.StatusOK, response)
 }
 
-func (h *taskHandler) get(w http.ResponseWriter, request *http.Request) {
+func (h *taskHandler) get(w http.ResponseWriter, request *http.Request, principal core.Principal) {
 	w.Header().Set("Cache-Control", "no-store")
-	projectID, id, logger, err := h.resource(request)
+	projectID, id, logger, err := h.resource(request, principal)
 	if err != nil {
 		writeError(w, request, logger, "task", "get", err)
 		return
 	}
-	task, err := h.tasks.Get(request.Context(), projectID, id)
+	task, err := h.tasks.Get(request.Context(), principal, projectID, id)
 	if err != nil {
 		writeError(w, request, logger, "task", "get", err)
 		return
@@ -244,8 +244,9 @@ func (h *taskHandler) get(w http.ResponseWriter, request *http.Request) {
 	writeJSON(w, request, logger, http.StatusOK, taskResponse(task))
 }
 
-func (h *taskHandler) update(w http.ResponseWriter, request *http.Request) {
-	projectID, id, logger, err := h.resource(request)
+func (h *taskHandler) update(w http.ResponseWriter, request *http.Request, principal core.Principal) {
+	w.Header().Set("Cache-Control", "no-store")
+	projectID, id, logger, err := h.resource(request, principal)
 	if err != nil {
 		writeError(w, request, logger, "task", "update", err)
 		return
@@ -265,7 +266,7 @@ func (h *taskHandler) update(w http.ResponseWriter, request *http.Request) {
 		properties := propertyValues(api.TaskProperties{PullRequests: *input.Properties.PullRequests})
 		values.Properties.PullRequests = &properties.PullRequests
 	}
-	task, err := h.tasks.Update(request.Context(), projectID, id, values)
+	task, err := h.tasks.Update(request.Context(), principal, projectID, id, values)
 	if err != nil {
 		writeError(w, request, logger, "task", "update", err)
 		return

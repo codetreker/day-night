@@ -44,12 +44,11 @@ func attachmentAddress(projectID, taskID, path string) (string, string, error) {
 	return projectID, taskID, nil
 }
 
-func (s *Attachments) read(ctx context.Context, projectID, taskID string, operation func(*store.Snapshot) error) error {
+func (s *Attachments) read(ctx context.Context, principal core.Principal, projectID, taskID string, operation func(*store.Snapshot) error) error {
 	var missing *Fault
 	err := s.store.ReadSnapshot(ctx, func(snapshot *store.Snapshot) error {
-		if _, err := snapshot.Project(ctx, projectID); err != nil {
-			if errors.Is(err, core.ErrNotFound) {
-				missing = &Fault{Code: "not_found", Message: "Project was not found.", Cause: err}
+		if _, err := RequireProjectRead(ctx, snapshot, principal, projectID); err != nil {
+			if errors.As(err, &missing) {
 				return nil
 			}
 			return err
@@ -80,7 +79,10 @@ func (s *Attachments) read(ctx context.Context, projectID, taskID string, operat
 	return nil
 }
 
-func (s *Attachments) Put(ctx context.Context, projectID, taskID, path, contentType string, content io.Reader) (core.Attachment, bool, error) {
+func (s *Attachments) Put(ctx context.Context, principal core.Principal, projectID, taskID, path, contentType string, content io.Reader) (core.Attachment, bool, error) {
+	if err := requirePrincipal(principal); err != nil {
+		return core.Attachment{}, false, err
+	}
 	projectID, taskID, err := attachmentAddress(projectID, taskID, path)
 	if err != nil {
 		return core.Attachment{}, false, err
@@ -89,7 +91,7 @@ func (s *Attachments) Put(ctx context.Context, projectID, taskID, path, contentT
 	if err != nil || !strings.Contains(mediaType, "/") {
 		return core.Attachment{}, false, invalidInput("Attachment content type is invalid.")
 	}
-	err = s.read(ctx, projectID, taskID, func(snapshot *store.Snapshot) error {
+	err = s.read(ctx, principal, projectID, taskID, func(snapshot *store.Snapshot) error {
 		conflict, err := snapshot.AttachmentPathConflict(ctx, projectID, taskID, path)
 		if err != nil {
 			return err
@@ -114,13 +116,16 @@ func (s *Attachments) Put(ctx context.Context, projectID, taskID, path, contentT
 	return attachment, created, nil
 }
 
-func (s *Attachments) Open(ctx context.Context, projectID, taskID, path string) (core.Attachment, filestorage.Object, error) {
+func (s *Attachments) Open(ctx context.Context, principal core.Principal, projectID, taskID, path string) (core.Attachment, filestorage.Object, error) {
+	if err := requirePrincipal(principal); err != nil {
+		return core.Attachment{}, filestorage.Object{}, err
+	}
 	projectID, taskID, err := attachmentAddress(projectID, taskID, path)
 	if err != nil {
 		return core.Attachment{}, filestorage.Object{}, err
 	}
 	var attachment core.Attachment
-	err = s.read(ctx, projectID, taskID, func(snapshot *store.Snapshot) error {
+	err = s.read(ctx, principal, projectID, taskID, func(snapshot *store.Snapshot) error {
 		var err error
 		attachment, err = snapshot.Attachment(ctx, projectID, taskID, path)
 		return err
@@ -135,12 +140,15 @@ func (s *Attachments) Open(ctx context.Context, projectID, taskID, path string) 
 	return attachment, object, nil
 }
 
-func (s *Attachments) Delete(ctx context.Context, projectID, taskID, path string) error {
+func (s *Attachments) Delete(ctx context.Context, principal core.Principal, projectID, taskID, path string) error {
+	if err := requirePrincipal(principal); err != nil {
+		return err
+	}
 	projectID, taskID, err := attachmentAddress(projectID, taskID, path)
 	if err != nil {
 		return err
 	}
-	err = s.read(ctx, projectID, taskID, func(snapshot *store.Snapshot) error {
+	err = s.read(ctx, principal, projectID, taskID, func(snapshot *store.Snapshot) error {
 		_, err := snapshot.Attachment(ctx, projectID, taskID, path)
 		return err
 	})

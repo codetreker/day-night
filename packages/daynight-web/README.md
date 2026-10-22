@@ -25,12 +25,15 @@ The [authentication requirements](../../docs/spec/daynight-auth.md),
 [architecture](../../docs/design/daynight-auth.md) and
 [task breakdown](../../docs/design/daynight-auth-tasks.md) define login, private
 projects, member and invitation management, and personal access tokens. The
-opt-in `AuthenticatedApp` implements their browser components and API client.
-Production `main.tsx` still renders `App` under `LocaleProvider`; the deployed workspace remains
-unauthenticated and loopback-only until coordinated activation. Trusted
-same-origin previews, relative resources and keyboard behavior remain unchanged.
+`AuthenticatedApp` implements their browser components and API client. Production
+`main.tsx` renders it under the persistent `LocaleProvider`; every business API
+requires a browser session or PAT and current project membership. The Go service
+retains loopback-only listening. Trusted same-origin previews, relative resources
+and keyboard behavior remain unchanged.
 The [Web workspace decision](../../.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
-owns this integration boundary and its lifecycle choices.
+owns the frontend lifecycle choices; the
+[activation decision](../../.agents/notes/implemented/architecture/2026-10-22-authentication-activation.md)
+owns production composition and credential-private acceptance.
 
 ## Authenticated workspace
 
@@ -43,8 +46,17 @@ render dates and counts. Language changes retain form inputs, dialog and
 one-time secrets, identity and pending requests without restarting operations.
 It composes the existing project list, graph and centered `TaskDetailDialog` with
 private project creation, account/token pages, member/invitation management and
-explicit invitation acceptance. Identity changes invalidate outstanding requests
-and unmount user-owned content; a project 404 stays a resource error. Requests
+explicit invitation acceptance. `TaskDetailSessionProvider` owns detail and approval
+state within the authenticated branch, keyed by user identity/session generation.
+Same-user verification and project navigation retain it; identity replacement,
+logout and anonymous state dispose it so old results cannot reach a new identity. Identity changes invalidate outstanding requests
+and unmount user-owned content; a project 404 stays a resource error. Returning
+from a hidden or unfocused top-level page conceals the workspace until `/me`
+confirms identity. Each new qualifying return aborts and replaces pending
+verification, so an earlier response cannot uncover the latest return. Failure
+retains state behind the retry overlay; the same user keeps their forms and
+view, while a changed user remounts user-owned content. Ordinary same-origin
+iframe focus changes do not count as top-level returns. Requests
 use same-origin browser credentials and preserve request IDs, cancellation and
 explicit failures. Member versions remain `bigint` from JSON decoding through
 mutation encoding, including values above the safe JavaScript integer range.
@@ -57,20 +69,18 @@ accept an invitation. The UI retains ordinary same-origin attachment iframes,
 relative resources and their existing keyboard bridge.
 
 The login page reads `GET /api/v1/auth/providers` with response
-`{providers: [providerId, ...]}`. This is an unmounted client dependency, not an
-implemented production backend route. The response must reflect the configured
-UniAuth App's allowed and enabled providers. Discovery failures and an empty
-provider set have explicit states; the UI does not invent a provider list. Real
-App-aware UniAuth discovery and backend exposure belong to coordinated activation.
-UniAuth [PR #19](https://github.com/codetreker/uniauth/pull/19) supplies the upstream
-capability; Daynight retains its older SDK pin until that activation upgrades and
-connects it, as described in the
-[authentication architecture](../../docs/design/daynight-auth.md#登录方式发现).
+`{providers: [providerId, ...]}`. The production backend uses public UniAuth SDK
+`v0.0.0-20261022095215-0978963813fc` to discover the configured App's allowed and
+enabled providers with its registered callback. This result is authoritative;
+the UI does not invent a provider list. Configuration failures return 503,
+network/protocol failures 502 and discovery timeout 504, separately from a
+user-session 401. Discovery failures and an empty provider set have explicit
+states. The [authentication architecture](../../docs/design/daynight-auth.md#登录方式发现)
+owns the discovery protocol.
 
 With `pnpm web:dev`, open `/tests/mockups/auth.html` for actual components with
 controlled fetch responses, the same locale Provider and final styles. This fixture validates frontend
-interaction separately from production service mounting and real third-party
-login. The [static design prototype](../../docs/design/mockups/auth/index.html)
+interaction separately from real UniAuth service and upstream-provider login. The [static design prototype](../../docs/design/mockups/auth/index.html)
 retains the broader scenario reference.
 
 ## Languages
@@ -80,7 +90,8 @@ implemented English and Simplified Chinese interface. The
 [language design](../../docs/design/daynight-web-i18n.md) owns typed catalogs,
 cached native Intl formatters, initial resolution, a Provider and the shared
 native selector under `src/i18n/`. Production `main.tsx` resolves language and
-sets HTML `lang` and the route title before React renders. `App` updates document
+sets HTML `lang` and the authentication loading title before React renders.
+`AuthenticatedApp` and the workspace update document
 metadata on navigation and language changes. The top bar, centered detail dialog
 and fullscreen graph expose selectors using the same saved language. Combined
 source-bound production verification is separately tracked in Daynight.
@@ -127,13 +138,24 @@ pnpm web:dev
 
 Run the Go API separately on `127.0.0.1:8787`, using its
 [configuration](../daynight-server/README.md). Vite proxies `/api` to that address
-and listens on loopback. The project list requests 50 items per page, preserves
+and listens on loopback. For real login through Vite, set the same
+`DAYNIGHT_UNIAUTH_CALLBACK_URL` in the Vite and Go environments, registered with
+UniAuth for the development browser origin. Vite proxies exactly that callback
+path through the same Go API target. When unset, no callback proxy is added and
+frontend-only mockups remain independent of the Go service. The five required
+backend authentication settings and explicit HTTP test policy follow the
+[deployment guide](../../deployment/localhost/README.md); changing the browser
+origin does not relax callback or Cookie-write Origin checks.
+
+The project list requests 50 items per page, preserves
 server order, and follows `nextCursor` through Load more. Repeated IDs count once.
 Refresh discards old pages and cursors; late responses cannot repopulate them.
 
-The application implements `/`, `/projects/{projectId}` and the standalone
+The application implements `/`, `/projects/{projectId}`, `/account`,
+`/invitations` and the standalone
 `/projects/{projectId}/tasks/{taskId}/attachments/{path...}` reader, direct URL
-reload, browser back/forward and a generic not-found page. A project shows seven statistics
+reload, browser back/forward and a generic not-found page. All resource reads use
+the current authenticated identity. A project shows seven statistics
 from one complete graph snapshot and two in-project tabs: Standalone tasks and
 Task chains. The first visit opens Task chains; subsequent visits restore the
 project's last tab. Both tab badges count unfinished tasks (proposed, pending and in
@@ -167,7 +189,8 @@ required graph summary includes `proposed`; totals satisfy
 `total = proposed + todo + inProgress + done`. Only todo tasks contribute to ready
 or blocked counts. Proposed tasks remain unfinished even when all prerequisites
 are complete. Creation starts in proposed. Full task details offer Approve /
-批准任务, including for proposed tasks with unfinished prerequisites; success
+批准任务 to every project member, including administrators, even for proposed
+tasks with unfinished prerequisites; success
 changes only the lifecycle to todo. The [lifecycle decision](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
 extends the original [reader preparation](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md).
 
@@ -176,10 +199,10 @@ bigint without passing through a rounded JavaScript Number. Lossless JSON reads
 and numeric request serialization retain exact digits above the safe-integer
 range through int64 maximum. `TaskDetailSession` owns project/task-keyed detail
 and approval state for the workspace lifetime: closing or reopening details does
-not permit a second pending submission. Legacy App owns the boundary. The opt-in
-authenticated branch owns a provider keyed by user ID and session generation,
-shared across workspace/invitation navigation; replacing identity, logout or
-anonymous state disposes it. Late responses cannot populate another identity. Confirmed responses must match identity,
+not permit a second pending submission. The production authenticated workspace
+owns a provider keyed by user ID and session generation, shared across
+workspace/invitation navigation; replacing identity, logout or anonymous state
+disposes it. Late responses cannot populate another identity. Confirmed responses must match identity,
 todo and the expected next version. Success retains that detail and refreshes
 the matching project's graph; a graph refresh failure keeps confirmed todo and
 an explicit stale-snapshot refresh action. Pre-approval reads cannot restore
@@ -217,21 +240,25 @@ controls adding at most twenty hidden direct neighbors in P, with exact new-task
 new-induced-edge and remaining counts. Manual expansion has no edge cap. Every
 real edge with both endpoints in S appears, without shortcuts or aggregate cards.
 
-Cards are 220 by 96 pixels when no hidden direct neighbors can be expanded:
-a 94px body and two border pixels, with no footer or separator. Cards with at
-least one expansion control are 220 by 136 pixels, including a 40px two-column
-footer; an unused direction retains its column. Body activation opens the current
-TaskDetailDialog, and expansion controls are sibling native buttons. Each visible
-snapshot derives expansion data once; Dagre, React Flow, viewport fitting and
-keyboard reveal share each card's actual dimensions.
-The existing Dagre polyline/native-arrow/local-dash renderer is retained.
+Cards are 220 by 96 pixels without hidden direct neighbors, using a 94px body
+and two border pixels with no footer or separator. Cards with expansion controls
+are 220 by 136, including a 40px two-column footer; an unused direction retains
+its column. Each visible snapshot derives expansion data once. Layout, React
+Flow, route ports, viewport fitting and keyboard reveal share actual dimensions.
+The canvas separates native body inspection from sibling Details
+and direction controls. Complete H drives visible ancestor/real-edge/arrow
+highlighting and deduplicated hidden counts; same-card/blank clears. Inspection
+does not expand, relayout, compile geometry or move the viewport. Details opens
+the current dialog and relation navigation preserves graph selection.
 Expansion centers its anchor at current zoom and focuses its body. Global reset
 “收起到概览” recomputes/frames overview and retains reset focus.
 
 Successful refresh keeps actual visible IDs still in new P plus root, prunes to
 the induced undirected root component and preserves viewport. It does not add a
 new baseline or newly arrived tasks. Reset/remount computes a new baseline;
-failure keeps old data/S/view, and project/root/tab/unmount releases local S.
+ordinary failure keeps old data/S/view only in the same identity/project/auth
+scope; inherited current401 and session/resource invalidation still unmount
+private content. Project/root/tab/unmount releases local S and inspection.
 An open dialog retains focus and existing close-time fallback. Locale translates
 new controls/counts without changing S or business requests. The
 [progressive decision](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)
@@ -255,8 +282,9 @@ viewport again. The [preference decision](../../.agents/notes/implemented/featur
 records storage ownership. Tab switching, filtering and scroll restoration make
 no API requests themselves and do not change the full project counters, graph
 index or API ordering. Independent periodic refresh continues while the page is
-visible. Nodes open a task detail dialog with dependency navigation,
-PR associations, stale-data detection and attachment management. Task metadata and graph interactions remain read-only; the detail dialog offers
+visible. The node's explicit Details action opens a task detail dialog with
+dependency navigation, PR associations, stale-data detection and attachment
+management; node-body activation selects prerequisite inspection. Task metadata and graph interactions remain read-only; the detail dialog offers
 the dedicated proposed approval action. The PR section follows the description and
 displays every ordered title/URL pair, including duplicates. Lists longer than 100 entries use local
 100-row pages with a range/total announcement, Previous/Next controls and direct
@@ -319,7 +347,7 @@ closes details before exiting fullscreen. Both views share a counted body scroll
 lock so either unmount order restores the original scrolling state. Fullscreen
 is local to the mounted graph and is not saved as a browsing preference. The
 [fullscreen decision](../../.agents/notes/implemented/feature/2026-10-22-task-graph-fullscreen.md)
-records the modal and viewport ownership. Each node is one native keyboard button. A long graph starts with its
+records the modal and viewport ownership. Each node has sibling native inspection, Details and direction controls. A long graph starts with its
 root visible at readable zoom; keyboard focus brings offscreen nodes into view.
 The centered body-portal dialog has a 960px maximum width, 24px viewport gutters
 (12px at 600px and below), and a maximum height of
@@ -441,9 +469,11 @@ HTML loads the fixed same-origin
 images and relative fetches follow normal browser URL rules. HTML is trusted
 project code with main-origin privileges; the ordinary iframe has no sandbox.
 There is no separate preview modal, session token, domain or Service Worker.
-The planned [authentication architecture](../../docs/design/daynight-auth.md)
-adds project-member checks to attachment requests while retaining this trusted
-same-origin execution model, relative resources and keyboard behavior.
+The [authentication architecture](../../docs/design/daynight-auth.md) enforces
+credentials at HTTP admission and project membership in the pre-I/O snapshot.
+Admitted operations may finish without a later membership recheck, retaining
+this trusted same-origin execution model, relative resources, keyboard behavior
+and the K1 filesystem/PostgreSQL limitation.
 Other formats show metadata and a download link. Files and metadata can diverge
 after a failed write under the accepted K1 limitation; the UI reports errors and
 does not implement reconciliation or rollback.
@@ -456,8 +486,11 @@ project, task and complete case-sensitive path, so loading preview content does
 not delay or stale the link. The source dialog, tab and selection stay intact.
 The URL survives copying, closing the source dialog and reloading.
 
-`App` renders `AttachmentPage` outside the workspace shell and modal at
-`/projects/{projectId}/tasks/{taskId}/attachments/{path...}`. The page has a return
+Production `AuthenticatedApp` renders `AttachmentPage` within its authenticated
+identity boundary, outside the workspace shell and modal, at
+`/projects/{projectId}/tasks/{taskId}/attachments/{path...}`. Session revalidation
+and identity replacement preserve their authenticated resource/isolation rules.
+The page has a return
 to project link, path, metadata, download and the shared language selector. Its
 initial focus enters the main reading region. The root locale Provider supplies
 first-party messages, HTML language and the route title without changing file
@@ -593,7 +626,7 @@ image identity and full cleanup; the job retains its 20-minute overall bound.
 
 Native functional checks start after the native process and browser are ready.
 Their browser cleanup must pass before an atomic, run/source-bound permission
-releases the container's seventeen functional checks. Capacity runs last, after all
+releases the container's twenty-three functional checks. Capacity runs last, after all
 preparation and coverage commands, container checks, full dev-ci cleanup and
 container browser recovery have finished. Every browser phase retains one
 worker and zero retries. CI runs controlled deployment fixtures before the
@@ -640,25 +673,40 @@ the same browser identity.
 The command builds real embedded assets and a new Go executable and owns a
 separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
 the normal dev-ci runner builds and starts the actual production image. Browser
-execution proceeds through seventeen native functional scenarios, the same seventeen
+execution proceeds through twenty-three native functional scenarios, the same twenty-three
 functional scenarios through the production image's stream gateway, then five
 native capacity/limit scenarios. The native process and PostgreSQL remain alive
 through the capacity phase; other preparation commands and the complete
 container stack have finished before that phase starts. No normal localhost service or dataset is used. Functional and
-capacity fixtures use the real write APIs. The original eight graph scenarios and `project-view-tabs` retain
+capacity fixtures use normal UniAuth-acquired sessions/PATs and real write APIs.
+The shared gateway fixture is pinned to
+`0978963813fcefd9d553f6cb9bcc319084c764b3`; App credentials, browser session and PAT
+metadata remain in private 0600 files outside public artifact trees. External
+provider HTTP responses are controlled, so this proves the real gateway/SDK
+protocol and differs from a real upstream-provider login. The original eight graph scenarios and `project-view-tabs` retain
 their GET/HEAD-only browser checks. `task-attachments` and
 `language-state-preservation` allow exact fixture-scoped PUT/DELETE file routes;
 the latter holds each upload, overwrite and deletion while changing language to
 verify one write and retained state. `task-description-markdown` and the other
 language scenarios remain GET/HEAD-only in the browser; fixture writes use the
-installed CLI or API request context. The three task-approval scenarios separately
-admit only registered project/task POST approve requests with exact expected counts;
+installed CLI or authenticated API request context. The three task-approval scenarios
+separately admit only registered project/task POST approve requests with exact expected
+counts. Six authentication scenarios declare only their exact expected management writes;
 unrelated browser mutations remain failures.
 
 The same three [approval journeys](tests/e2e/approval.spec.ts) reuse the packed
-CLI against each target's actual service. An ordinary graph task is created with
+CLI against each target's actual authenticated service. The existing normal
+factory gives browser and installed CLI the same Alice identity through UniAuth
+session/PAT flows. CLI credentials remain in private origin-matched configuration
+and are closed/removed by their existing finally/cleanup owner. Browser request
+forwarding uses the existing redacting authenticated API wrapper, preserving the
+original Origin, method, headers and body for actual CSRF checks and forwarding
+status/headers/body unchanged. Receipt diagnostics exclude credential material.
+An ordinary graph task is created with
 a prerequisite, Markdown description, PR references and readable plan/attachment
-bytes. Web approval of the blocked dependent is read back through CLI show,
+bytes. Its real Details control opens task details; the card body retains the
+upstream-inspection behavior and focus returns to that Details control. Web
+approval of the blocked dependent is read back through CLI show,
 ready/list/graph; its refused claim preserves the whole task. CLI approval,
 claim and completion of the prerequisite then unlock the dependent's named
 progression without changing its own version/timestamp for derived readiness.
@@ -735,22 +783,29 @@ every task and dependency. Browser readiness now checks bounded overview S and
 all real induced visible edges, followed by explicit expansion/reset and exact
 counts; it no longer requires every input task/edge in the DOM simultaneously.
 
-Five samples per graph retain `openMs ≤ 3000` and existing detail/zoom/pan ≤300.
-Details → close → immediate zoom/pan retains its sequence without reset, Fit view
-or extra waiting. `visibility[5]` records ordered repetition, overview node/edge,
-added node/edge, expanded node/edge and reset node/edge counts. Validation requires
-bounded overviews, exact deltas and reset counts. Independent existing polyline,
-native marker and dash-body checks cover every visible edge. Independent selection/H/selectMs and smooth-curve acceptance remain with the
-following inspection delivery. Current readiness uses the existing polyline renderer.
-The 39-scenario inventory (22 native, 17 container), real targets, zero retries,
-timeouts, coverage,
-1,001-task/5,001-edge refusals and cleanup remain; current production evidence is
-pending. The following inspection PR adds its own behavior and validation.
+Inspection acceptance retains five samples and all mandatory
+visibility rows, adding selectedId/hiddenUpstream and selectMs≤300. open≤3000 and
+detail/zoom/pan≤300 remain. Normal Details→close→immediate zoom/pan precedes trusted
+visible-task selection and the highlighted sequence; each metric uses the worse
+state with independent network timing, and no close-to-zoom reset/fit/wait.
+Independent API/P/S topology derives compact/expandable heights from hidden direct
+neighbors inside P; unrelated outside-P successors cannot create a footer.
+Actual DOM fixed ports, Q≤12/tangency, card avoidance,
+body/marker coverage and analytic curved dash phase cover every visible edge.
+Stable owner transforms are graph-relative real root/owner CTMs; raw screen,
+page-scroll and canvas diagnostics stay separate from reset equality.
+The 51-scenario inventory (28 native, 23 container), current manual/periodic refresh,
+attachment tabs/standalone reader, bilingual/auth boundaries, zero retries, timeouts,
+coverage, size refusals and cleanup remain. PR #143 delivered dependency inspection;
+its receipts bind results to that exact tested source. The authentication/lifecycle
+merge requires its own complete receipts. Daynight task records and primary plans
+own delivery evidence.
 
 The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [attachment journey](tests/e2e/attachments.spec.ts),
 [Markdown description journey](tests/e2e/markdown.spec.ts),
 [language journeys](tests/e2e/i18n.spec.ts),
+[authentication journeys](tests/e2e/auth.spec.ts),
 [approval journeys](tests/e2e/approval.spec.ts),
 [capacity scenarios](tests/e2e/capacity.spec.ts) and
 [acceptance runner](scripts/acceptance.mts) map to the
@@ -771,12 +826,13 @@ scenario annotations validated in each target's report.
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
 | W13 | `task-approval`, `task-approval-conflicts`, `task-approval-recovery`: same-data packed-CLI/ordinary-graph lifecycle, blocked prerequisites, stale CLI metadata, CLI/Web same-version competition, pending protection, exact int64 digits, real-commit response loss, real graph failure and task/SPA-project identity/focus/browsing preservation |
 | FA1–FA12 | `task-attachments`: installed CLI and production UI share real task/files on native and container targets; exact bytes, file mutations, detail tabs, adjacent panes, unique preview scroll owners, rendered formats and reloadable standalone reading. Independent real-service probes add end-of-document wheel/keyboard, native PDF final-page paint, fault/retry and unchanged task/graph proof |
-| TI8–TI9 | `task-description-markdown`: installed CLI and real API preserve Unicode/CRLF Markdown bytes and versioned full replacement; bilingual 1440px/320px rich rendering, escaped HTML, URL policy, task-root images/encoded references, paginated loading/list failure/retry, invalid/missing/preview failure states, one-controller navigation/focus, overwrite refresh, modified native href and HTML frame interaction |
+| TI8–TI9 | `task-description-markdown`: installed CLI and real API preserve Unicode/CRLF Markdown bytes and versioned full replacement; bilingual 1440px/320px rich rendering, escaped HTML, URL policy, task-root images/encoded references, paginated loading/list failure/retry, invalid/missing/preview failure states, one-controller navigation/focus, overwrite refresh, modified native href and HTML frame interaction; inspection→Details→relative attachment→close preserves graph selection/geometry/view |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
 | L1–L4 | `language-startup-preferences`: browser default, saved override, reload, route metadata, shared selectors and unchanged user data |
 | L2, L4–L5 | `language-state-preservation`: graph geometry/viewport, fullscreen and modal focus, PR page, file input and iframe identity; pending upload, overwrite and deletion execute once |
 | L3–L4, L6–L8 | `language-errors-and-narrow`: storage failures/retry, owned-database failure with current-language safe text and unchanged request ID, English/Chinese 1440px/320px graph/dialog/attachment layout |
 | L9–L10 | Task-attached offline mockup checks, typed catalog/component checks, and complete native/container production receipts with the existing coverage and cleanup gates |
+| Authentication | `auth-login-session`, `auth-project-isolation`, `auth-project-members`, `auth-personal-tokens`, `auth-invitations`, `auth-resource-session`: normal login/logout, private project access, roles and removal, PAT creation/revocation, explicit invitation acceptance, protected files and resource-session loss |
 
 Receipts live in `packages/daynight-web/.tmp/acceptance/<run-id>/`, with the
 latest aggregate at `.tmp/acceptance/evidence.json` inside this package. They
@@ -795,8 +851,8 @@ retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validati
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
 tested checkout identity, which is normally a merge revision for PR runs. A pass
-requires the strict union of seventeen native functional and five native capacity/limit
-scenarios (22 native total), plus the seventeen container functional scenarios. Every
+requires the strict union of twenty-three native functional and five native capacity/limit
+scenarios (28 native total), plus the twenty-three container functional scenarios. Every
 phase and target rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
 Installed-CLI handoff, container callbacks and recovery require matching source
 commit/tree/dirty state as well as existing package/artifact ownership. A missing
@@ -821,9 +877,11 @@ attaches `*-chromium-trace.json` from CDP timeline/frame/GC/User Timing events,
 without CPU sampling or CDP screenshots. These diagnostics preserve all original
 total timing/readiness gates; they do not subtract queue/frame time or turn a
 failed measurement into success. Scenario PNG evidence remains independent.
-Capacity tests disable Playwright's repeated DOM snapshots and trace filmstrip;
-action/network traces remain available on failure alongside all 15 streamed CDP
-traces, scenario PNGs and complete graph/geometry checks. Controller-side
+All production browser tests disable Playwright action/network traces to keep
+session Cookies, PATs and invitation contents out of published artifacts. The
+[activation decision](../../.agents/notes/implemented/architecture/2026-10-22-authentication-activation.md)
+owns that privacy requirement. The custom streamed CDP traces, scenario PNGs and
+complete graph/geometry checks remain. Controller-side
 `controllerDurations` records fixture creation, graph snapshot validation and
 per-repetition interaction/total durations. These diagnostics locate harness
 costs outside the browser input-to-feedback gates; they do not alter those gates.
@@ -932,10 +990,10 @@ adapter returns finite left-to-right node positions and routed edge points for
 read-only React Flow canvas consumes these results without changing domain
 objects. React Flow owns task nodes with those exact dimensions, native ResizeObserver measurement,
 keyboard behavior, viewport and controls. One memoized SVG in its public
-ViewportPortal renders every exact Dagre path, with stable edge identity,
+ViewportPortal renders every planned smooth M/L/Q path, with stable edge identity,
 arrowheads, external-context dashes and accessibility semantics. It shares the viewport's
 transform, so selection/pan/zoom reuse geometry without per-edge reactive state.
-Canonical routes retain native arrow markers and full Dagre points. Dashed body
+Canonical routes retain native arrow markers and the full planned geometry. Dashed body
 paint uses `dashes.ts` to derive locally horizontal rotated lines and short native
 vertex paths, with the original 5/4 pattern and continuous positive arc-length
 phase. Solid bodies remain native. Pieces are noninteractive and hidden from the
@@ -947,8 +1005,9 @@ measured canvas dimensions are ready, fitting within 0.8–1 zoom or anchoring t
 leftmost rank at 0.8 zoom. The root remains vertically centered when already
 leftmost; otherwise the topmost upstream node starts at a 32px canvas inset.
 Dependency geometry does not require connection-port DOM or per-edge endpoint readiness.
-Ordinary/selected canonical node variants retain unaffected references, and
-memoized collapsed root rows keep a null selection until expanded. Changed snapshot indexes
+Graph-local inspection Context supplies presentation roles while controlled node
+geometry/data and memoized content retain stable references. Memoized collapsed
+root rows keep their existing detail-selection behavior until expanded. Changed snapshot indexes
 refresh all rows; equivalent graph responses retain the existing index. The one-time initial viewport policy is separate
 from explicit fit controls and does not run again on selection or pan.
 
@@ -960,6 +1019,8 @@ project hook owns its visible-page timer; navigation and unmount clear the timer
 and cancel owned reads. Automatic graph reads never overlap, and same-task detail
 refreshes coalesce an in-flight follow-up. There is no global task cache or
 task-field editor. Push subscriptions remain deferred; they can trigger the same
-complete-snapshot refresh without changing graph projection. The opt-in
-`AuthenticatedApp` owns the authentication flow; production `main.tsx` continues
-to mount the existing `App` until coordinated activation.
+complete-snapshot refresh without changing graph projection. Production
+`AuthenticatedApp` owns identity loading, authentication and account/membership
+flows under the persistent locale Provider. New identities discard user-owned
+requests and content; project 404 and discovery failures retain their distinct
+resource and provider meanings.

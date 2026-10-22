@@ -19,8 +19,14 @@ command fixture retains its built race binary, isolated PostgreSQL schema,
 project-row barriers, structured request logs and restart/cleanup ownership. The
 production Web runner reuses its existing packed CLI, native and container
 services, browser phases and request allowlists. Native CLI acceptance validates
-the actual installed package. No second runner, test-only service API, database
-configuration channel or production transition is added.
+the actual installed package. The
+[authentication activation](../architecture/2026-10-22-authentication-activation.md)
+provides normal real-UniAuth sessions/PATs and explicit membership. Browser and
+packed CLI share the fixture's actual Alice identity; private origin-matched
+configuration remains with the existing credential/cleanup owner. Controlled
+upstream-provider responses remain distinct from the real gateway/SDK flow.
+No second runner, test-only service API, database configuration channel,
+authorization bypass or production transition is added.
 
 ### Historical migration and real CLI processes
 
@@ -28,7 +34,12 @@ configuration channel or production transition is added.
 with the checked-in SQL migrations through 006 and their exact raw-byte checksum
 ledger. It captures the original ledger and todo/in_progress/done rows before
 starting the current built service. Production startup applies 007 and 008.
-Packed CLI show/list/ready/graph reads verify preserved historical resources and
+The logged-in nonmember first observes 404 for the legacy project. The fixture
+then explicitly provisions admin membership for the actual `/api/v1/me` user,
+verifies the members API and confirms the raw historical task rows remain
+unchanged. This is authorized fixture preparation; startup does not automatically
+adopt legacy resources or invent an identity. Packed CLI show/list/ready/graph
+reads verify preserved historical resources and
 new proposed creation; explicit actions exercise blocked refusal and the complete
 prerequisite/dependent lifecycle. Actual restart compares old rows and ledger,
 new states, metadata and readable attachment contents again. The fixture never
@@ -51,8 +62,9 @@ The existing `task-approval`, `task-approval-conflicts` and
 `task-approval-recovery` annotations include the same-data lifecycle journey,
 reviewed-version competition and response/identity recovery. The installed CLI
 creates an ordinary prerequisite/dependent graph with meaningful descriptions,
-PR references and attachment bytes. The production browser approves the blocked
-dependent; CLI reads verify todo, blockedBy and readiness. CLI progression of the
+PR references and attachment bytes. The production Details control opens the
+ordinary graph task; body activation retains prerequisite inspection. The browser
+approves the blocked dependent; CLI reads verify todo, blockedBy and readiness. CLI progression of the
 prerequisite unlocks dependent claim/completion; that derived readiness change
 preserves the dependent's own version and timestamp. Graph/detail/list checks
 observe the same resources. Completion visibility and graph browsing state
@@ -71,6 +83,11 @@ Its actual GET/POST digits and database result remain the oracle. Response loss
 is injected after a real service commit; graph-read failure uses the owned real
 failure path. Timing barriers and browser response handling are declared
 controls, not substitutes for actual state-changing service/database requests.
+Forwarded browser requests use the existing credential-redacting authenticated
+API wrapper, preserve original request/CSRF fields and return actual status,
+headers and body. Action evidence retains identities and outcomes without tokens
+or private configuration contents. Authentication retains its own management
+annotations; this extension changes only the three existing approval annotations.
 The production native/container inventory, capacity topology, strict coverage,
 performance, one-worker/no-retry and cleanup gates remain unchanged.
 

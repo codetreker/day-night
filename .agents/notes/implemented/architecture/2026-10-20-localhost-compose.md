@@ -37,8 +37,12 @@ ownership of the local-only runtime and independent reviewer lifecycle.
 
 The PostgreSQL 18 volume mounts at `/var/lib/postgresql`, containing its
 version-specific data directory. Ordinary `down` preserves the named volume;
-`down --volumes` explicitly deletes it. The guide owns development credentials,
-port selection and the whole-stack recreation procedure for gateway changes.
+`down --volumes` explicitly deletes it. The guide owns development database credentials, port selection and the
+whole-stack recreation procedure for gateway changes. The
+[authentication activation](2026-10-22-authentication-activation.md) now requires
+a private `.env` with explicit App/public-origin/callback configuration and
+uses public `/readyz` rather than a project-list health check. The listener,
+namespace sharing, UID and two-volume persistence choices remain unchanged.
 
 ## Alternatives
 

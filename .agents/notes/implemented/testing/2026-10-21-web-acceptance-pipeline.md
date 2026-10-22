@@ -102,7 +102,7 @@ browser downloads from the 5-second UI-test deadline. Browser installation still
 overlaps native and dev-ci preparation. The existing shell runner remains
 authoritative for the unique image, running-image check and full stack cleanup.
 Native functional browser work waits only for the native process, shared installed
-CLI and browser preparation. Its seventeen scenarios and immediate browser
+CLI and browser preparation. Its twenty-three scenarios and immediate browser
 recovery must pass before the runner releases the container browser.
 
 If coverage or another active phase fails while browser preparation is waiting,
@@ -120,7 +120,7 @@ phase `native-functional-cleaned`, acceptance run ID, dev-ci run ID and source
 SHA. The container callback records its process identity before waiting and
 inventories browsers only after validating that exact permission. Its
 `ready.json` records diagnostic timing and grants no permission. The callback
-runs the seventeen container functional scenarios, confirms browser cleanup and
+runs the twenty-three container functional scenarios, confirms browser cleanup and
 returns to the normal shell exit path. The outer stage waits for full dev-ci
 cleanup and browser recovery before completing.
 
@@ -130,17 +130,29 @@ Go process and PostgreSQL remain alive for this final phase. One browser worker,
 zero retries, all four fixed graphs with five repetitions, both independent
 limits, complete visible induced geometry, twenty CDP traces and all original
 timing gates remain required. Native functional and capacity phases strictly
-aggregate to twenty-two unique scenarios; the container target requires seventeen.
+aggregate to twenty-eight unique scenarios; the container target requires twenty-three.
 Per-phase and aggregate validation reject missing, extra or duplicate scenarios
 and retries, and require matching browser identity within a target.
 
 The [progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
 retains those complete API inputs and existing timing thresholds while requiring
 bounded overview DOM, all induced visible edges and explicit expansion/reset.
-Phase ownership remains unchanged. The current inventory includes the three approval
-lifecycle scenarios and the [Markdown description scenario](../architecture/2026-10-22-task-description-markdown.md):
-seventeen functional scenarios per target and five native capacity/limit scenarios,
-for twenty-two native and seventeen container scenarios, thirty-nine in total.
+Phase ownership and the original thirty-one-scenario inventory were unchanged
+by progressive graph delivery. Authentication added six functional scenarios per
+target and [Markdown description](../architecture/2026-10-22-task-description-markdown.md)
+added one, producing the earlier forty-five-result inventory. The
+[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds three
+approval scenarios per target. Current inventory is twenty-three functional per
+target and five native capacity/limit scenarios: twenty-eight native and
+twenty-three container, fifty-one in total. Normal UniAuth session/PAT bootstrap
+uses private run-owned credentials; graph/read-only policies apply after bootstrap,
+and approval journeys admit only their registered task POST operations.
+Capacity retains twenty visibility/H records and 160 feedback observations, eight
+per sample, including full upstream/hidden-count checks and independent smooth-route,
+actual paint and native-arrow checks. The 50/100 overview, explicit twenty-neighbor
+expansion, no-autoexpand inspection rule and strict opening/selection/local-feedback
+budgets are unchanged; their detailed requirements belong to the
+[inspection requirements](../../../../docs/spec/daynight-task-inspection.md).
 
 The top-level evidence and recovery receipts use schema 2. Pipeline stages record
 names, results, timestamps, observed managed-command process identities and their
@@ -208,7 +220,11 @@ proof. Required source.gitTreeSha joins the existing callback/recovery identity
 checks; phase permissions, scheduling, capacity isolation and cleanup ownership
 remain here. The
 [web design](../../../../docs/design/daynight-web.md#验证与-ci) owns mechanisms.
-Measured outcomes remain tied to their source, environment and PR/CI run.
+Authentication also keeps ordinary Playwright action/network tracing off to avoid
+capturing credential headers/bodies; custom CDP performance diagnostics, PNG
+oracles, strict raw validators and budgets remain. The activation decision owns
+that source-verified privacy tradeoff and private fixture cleanup. Measured
+outcomes remain tied to their source, environment and PR/CI run.
 
 ## Alternatives
 
