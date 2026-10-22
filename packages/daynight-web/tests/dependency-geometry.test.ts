@@ -148,37 +148,58 @@ describe('independent production dependency geometry oracle', () => {
 });
 
 describe('chart-relative dependency stability observation', () => {
+  const affine = (a: number, b: number, c: number, d: number, e: number, f: number): DOMMatrix => ({
+    a, b, c, d, e, f,
+    inverse: () => {
+      const determinant = a * d - b * c;
+      return affine(d / determinant, -b / determinant, -c / determinant, a / determinant, (c * f - d * e) / determinant, (b * e - a * f) / determinant);
+    },
+    multiply: (other: DOMMatrix) => affine(a * other.a + c * other.b, b * other.a + d * other.b, a * other.c + c * other.d, b * other.c + d * other.d, a * other.e + c * other.f + e, b * other.e + d * other.f + f),
+  }) as DOMMatrix;
+  const screen = (x: number, y: number) => affine(0.800000011920929, 0, 0, 0.800000011920929, x, y);
   const fixture = () => {
     document.body.innerHTML = '<div class="task-graph-canvas"><div class="react-flow__viewport" style="transform:translate(6.4px,-3083.1px) scale(0.8)"><svg class="task-dependency-edges"><g class="task-dependency-edge"><g class="task-dependency-body"></g></g></svg></div></div>';
-    const screen = (x: number, y: number): DOMMatrix => ({
-      a: 0.8, b: 0, c: 0, d: 0.8, e: x, f: y,
-      inverse: () => ({
-        a: 1.25, b: 0, c: 0, d: 1.25, e: -x / 0.8, f: -y / 0.8,
-        multiply: (owner: DOMMatrix) => ({ a: owner.a / 0.8, b: owner.b / 0.8, c: owner.c / 0.8, d: owner.d / 0.8, e: (owner.e - x) / 0.8, f: (owner.f - y) / 0.8 }),
-      }),
-    }) as DOMMatrix;
-    let root: DOMMatrix | null = screen(237.4, -1907.5078125);
-    let owner: DOMMatrix | null = screen(237.4, -1907.5078125);
+    let root: DOMMatrix | null = screen(237.39999389648438, -1907.5078125);
+    let owner: DOMMatrix | null = screen(237.39999389648438, -1907.5078125);
     Object.defineProperty(document.querySelector('svg'), 'getScreenCTM', { value: () => root });
     for (const element of document.querySelectorAll('g')) Object.defineProperty(element, 'getScreenCTM', { value: () => owner });
-    return { screen, setRoot: (value: DOMMatrix | null) => { root = value; }, setOwner: (value: DOMMatrix | null) => { owner = value; } };
+    return { setRoot: (value: DOMMatrix | null) => { root = value; }, setOwner: (value: DOMMatrix | null) => { owner = value; } };
   };
-  it('retains identical chart geometry across the hosted 621px page translation and records raw screen movement', () => {
+  it('retains exact chart geometry for actual hosted matrices whose naive inverse product has a residual', () => {
+    const initialMatrix = screen(237.39999389648438, -1907.5078125);
+    const resetMatrix = screen(237.39999389648438, -2528.5078125);
+    expect(initialMatrix.inverse().multiply(initialMatrix).f).toBe(0);
+    expect(resetMatrix.inverse().multiply(resetMatrix).f).toBe(4.547473508864641e-13);
     const value = fixture(); const initial = captureStableDependencyGeometry();
-    value.setRoot(value.screen(237.4, -2528.5078125)); value.setOwner(value.screen(237.4, -2528.5078125));
+    value.setRoot(resetMatrix); value.setOwner(resetMatrix);
     const scrolled = captureStableDependencyGeometry();
     expect(scrolled.geometry).toEqual(initial.geometry);
     expect(scrolled.geometry.owners).toEqual([[1, 0, 0, 1, 0, 0], [1, 0, 0, 1, 0, 0]]);
     expect(scrolled.diagnostics.rootScreen[5]! - initial.diagnostics.rootScreen[5]!).toBe(-621);
     expect(scrolled.diagnostics.ownerScreens.map((matrix, index) => matrix[5]! - initial.diagnostics.ownerScreens[index]![5]!)).toEqual([-621, -621]);
-    value.setOwner(value.screen(237.4, -2527.5078125));
-    expect(captureStableDependencyGeometry().geometry).not.toEqual(scrolled.geometry);
+    value.setOwner(screen(237.39999389648438, -2527.5078125));
+    const changed = captureStableDependencyGeometry();
+    expect(changed.geometry).not.toEqual(scrolled.geometry);
+    const invalid = snapshot(); invalid.edges[0]!.bodyMatrix = changed.geometry.owners[1]!;
+    expect(inspectDependencySnapshot(invalid, expected).some((failure) => failure.includes('body owner does not paint in graph coordinates'))).toBe(true);
   });
-  it('rejects missing and nonfinite actual root or owner matrices', () => {
+  it('preserves a nonidentity owner rotation, shear and offset in the actual root coordinate system', () => {
+    const value = fixture();
+    value.setRoot(affine(1, 1, -1, 1, 100, -200));
+    value.setOwner(affine(0.5, 1.5, -0.75, 1.25, 110, -202));
+    const initial = captureStableDependencyGeometry();
+    expect(initial.geometry.owners).toEqual([[1, 0.5, 0.25, 1, 4, -6], [1, 0.5, 0.25, 1, 4, -6]]);
+    value.setRoot(affine(1, 1, -1, 1, 100, -821));
+    value.setOwner(affine(0.5, 1.5, -0.75, 1.25, 110, -823));
+    expect(captureStableDependencyGeometry().geometry).toEqual(initial.geometry);
+  });
+  it('rejects missing or nonfinite actual matrices and noninvertible roots', () => {
     for (const missing of [true, false]) for (const which of ['root', 'owner'] as const) {
-      const value = fixture(); const matrix = missing ? null : value.screen(237.4, Number.NaN);
+      const value = fixture(); const matrix = missing ? null : screen(237.4, Number.NaN);
       if (which === 'root') value.setRoot(matrix); else value.setOwner(matrix);
       expect(() => captureStableDependencyGeometry()).toThrow(missing ? /no actual screen matrix/ : /nonfinite matrix/);
     }
+    const value = fixture(); value.setRoot(affine(0, 0, 0, 0, 0, 0));
+    expect(() => captureStableDependencyGeometry()).toThrow(/nonfinite matrix/);
   });
 });

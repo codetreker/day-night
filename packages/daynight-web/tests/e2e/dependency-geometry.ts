@@ -208,7 +208,18 @@ export const captureStableDependencyGeometry = () => {
   const ownerScreens: number[][] = [];
   const owners = [...svg.querySelectorAll<SVGGElement>('.task-dependency-edge,.task-dependency-body')].map((owner) => {
     const screen = owner.getScreenCTM(); ownerScreens.push(values(screen));
-    return values(inverse.multiply(screen!));
+    const da = screen!.a - rootScreen!.a; const db = screen!.b - rootScreen!.b;
+    const dc = screen!.c - rootScreen!.c; const dd = screen!.d - rootScreen!.d;
+    const dx = screen!.e - rootScreen!.e; const dy = screen!.f - rootScreen!.f;
+    // Subtract the shared screen origin before inversion. For affine R=[A,t]
+    // and O=[B,u], R^-1 O=[I+A^-1(B-A), A^-1(u-t)] avoids cancellation.
+    const relative = [
+      1 + inverse.a * da + inverse.c * db, inverse.b * da + inverse.d * db,
+      inverse.a * dc + inverse.c * dd, 1 + inverse.b * dc + inverse.d * dd,
+      inverse.a * dx + inverse.c * dy, inverse.b * dx + inverse.d * dy,
+    ];
+    if (!relative.every(Number.isFinite)) throw new Error('Dependency stability observation has a nonfinite matrix.');
+    return relative;
   });
   const bounds = canvas.getBoundingClientRect();
   return {
