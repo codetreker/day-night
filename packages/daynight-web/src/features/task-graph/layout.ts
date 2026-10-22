@@ -3,7 +3,7 @@ import type { RootProjection } from './model';
 import { planDependencyRoutes } from './routing';
 
 export const TASK_NODE_WIDTH = 220;
-export const TASK_NODE_HEIGHT = 96;
+export const TASK_NODE_HEIGHT = 136;
 
 export type CanvasPoint = {
   readonly x: number;

@@ -42,7 +42,8 @@ per snapshot without a global mutable cache.
 
 The separate Dagre adapter uses a new flat directed graph for each calculation,
 sorted node and edge insertion, left-to-right ranks, one global longest-path
-ranker and fixed 220-by-96 cards.
+ranker and fixed cards. Current visible cards are 220 by 136 to accommodate
+explicit direction controls; the original model used 220 by 96.
 It converts returned node centers to top-left positions. The original adapter
 also retained raw edge points; the later
 [routing decision](../architecture/2026-10-22-task-dependency-routing.md) retains
@@ -89,7 +90,10 @@ The [production acceptance decision](../testing/2026-10-20-dashboard-production-
 owns browser measurements and source/image receipts. Pure algorithm probes do not
 establish production browser timing.
 
-The [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
+The [progressive-view decision](2026-10-22-progressive-task-graph.md) adds an
+explicit visible subset after complete root projection, preserving full main-set
+counts and all project data. The
+[requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 the [architecture](../../../../docs/design/daynight-web.md) owns module contracts,
 and the [task document](../../../../docs/design/daynight-web-tasks.md) tracks UI
 integration and browser performance acceptance separately.

@@ -282,7 +282,7 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   }
   const paths = page.locator('.task-dependency-edges path.react-flow__edge-path');
   expect(await paths.evaluateAll((items) => items.every((path) => (path.getAttribute('marker-end') ?? '').startsWith('url(')))).toBe(true);
-  expect(await paths.evaluateAll((items) => items.filter((path) => getComputedStyle(path).strokeDasharray !== 'none').length)).toBe(2);
+  await expect(page.locator('.task-dependency-edge[data-external="true"]')).toHaveCount(2);
   await root(page, b.id).click();
   await expect(root(page, a.id)).toHaveAttribute('aria-expanded', 'false');
   await expect(root(page, b.id)).toHaveAttribute('aria-expanded', 'true');
@@ -348,7 +348,7 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
       await expect(inspectTask(page, prerequisite.id)).toHaveAttribute('aria-pressed', 'true');
       await expect(page.locator(`.react-flow__node[data-id="${ancestor.id}"] .task-node`)).toHaveAttribute('data-inspection', 'prerequisite');
       for (const task of [source, sink]) await expect(page.locator(`.react-flow__node[data-id="${task.id}"] .task-node`)).toHaveAttribute('data-inspection', 'unrelated');
-      await expect(page.locator('.task-dependency-highlighted')).toHaveCount(1);
+      await expect(page.locator('.task-dependency-edge[data-inspection="highlighted"]')).toHaveCount(1);
       await expect(page.locator('.drawer-backdrop')).toHaveCount(0);
       expect(await appearance()).toEqual(beforeSelection);
       await page.keyboard.press('Space');
@@ -362,7 +362,7 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
       const beforeDetail = await appearance();
       await inspectTask(page, sink.id).click();
       await expect(page.locator('.task-node-prerequisite')).toHaveCount(3);
-      await expect(page.locator('.task-dependency-highlighted')).toHaveCount(3);
+      await expect(page.locator('.task-dependency-edge[data-inspection="highlighted"]')).toHaveCount(3);
       await details(page, sink.id).click();
       const inspectionDetail = page.locator('.drawer-backdrop').getByRole('dialog');
       await expect(inspectionDetail.locator('.drawer-title')).toHaveText(sink.title);
@@ -782,7 +782,7 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, request },
     await expect(page.getByRole('alert')).not.toContainText('task_dependencies');
     await expect(inspectTask(page, successor.id)).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('.task-node-prerequisite')).toHaveCount(1);
-    await expect(page.locator('.task-dependency-highlighted')).toHaveCount(1);
+    await expect(page.locator('.task-dependency-edge[data-inspection="highlighted"]')).toHaveCount(1);
     await expect(page.locator('.react-flow__viewport')).toHaveAttribute('style', retainedViewport!);
     expect(await page.locator('.react-flow__edge-path').evaluateAll((paths) => paths.map((path) => path.getAttribute('d')))).toEqual(retainedRoutes);
     await page.reload();

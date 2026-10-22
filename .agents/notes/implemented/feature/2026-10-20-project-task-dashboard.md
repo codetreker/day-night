@@ -31,7 +31,7 @@ an explicitly collapsed list from per-project browser storage; the
 persistence, reconciliation and failure behavior. The project view shares one
 newest-first visible root sequence between list rendering and default-root selection;
 the [presentation decision](2026-10-21-task-chain-presentation.md) owns that order
-while the complete graph index retains its API order. React Flow owns fixed 220-by-96 task nodes,
+while the complete graph index retains its API order. React Flow owns fixed 220-by-136 visible task cards,
 native node measurement, keyboard interaction, the viewport and its controls.
 Editing, connection, deletion, wrapper focus and interactive-lock controls remain
 disabled. The
@@ -80,13 +80,16 @@ starting point; ancestors extending left of it start at the top of their rank.
 The policy runs once after initialization, while explicit overview controls may
 zoom out further. Selection and viewport movement do not rerun layout.
 
-Immutable node presentation variants preserve references whose inspection state
-is unchanged. The original detail-coupled selection changed at most two tasks;
-complete upstream inspection can restyle many prerequisites and unrelated tasks.
-The inspection decision replaces that two-node cost assumption with measured
-`selectMs` for all four capacity datasets. Full node/edge DOM, routes and viewport
-remain present, and detail opening does not alter inspection. This retains focus
-and complete-capacity assertions while measuring the actual changed styling.
+Controlled React Flow node/data and the canvas element remain stable during
+inspection. Graph-local context supplies task-shell state while memoized task
+content preserves title, status and membership markup. The original two-task
+selection and later role-bearing variants remain historical approaches; the
+[inspection decision](2026-10-22-task-dependency-inspection.md) owns the current
+state boundary. The [progressive-view decision](2026-10-22-progressive-task-graph.md)
+retains complete projection data while bounding initial visible geometry and
+adding explicit neighbor expansion/reset. Current DOM completeness means every
+visible task and induced edge, not every task in the complete project at once.
+Actual selection feedback remains measured under the existing budgets.
 
 Each root row is memoized. Collapsed rows hold no graph-local inspection, so
 opening or switching task details does not change their dependency selection. Expanded
@@ -145,8 +148,8 @@ continues to own nodes, viewport interaction and controls.
 
 **Recreate every node data object on selection.** The selection becomes visible,
 but all task props change and a detail action can rerender the complete
-1,000-node graph. Immutable presentation variants preserve the layout and
-references whose styling is unchanged, including the expanded inspection states.
+1,000-node graph. Stable framework node/data plus local inspection context
+preserve geometry ownership while task shells render their presentation state.
 
 **Always center the complete graph at a clamped readable zoom.** In a thousand-node
 chain, its root falls far outside the viewport. Root anchoring preserves the

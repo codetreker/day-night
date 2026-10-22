@@ -16,8 +16,8 @@ establish the product's complete node-avoidance requirement.
 `routing.ts` exports `RoutingNode` rectangles (`id`, `left`, `top`, `right`,
 `bottom`) and `planDependencyRoutes(nodes, edges)`. The layout adapter builds
 those rectangles from the fixed node dimensions and invokes the planner once.
-Dagre remains the owner of node coordinates, rank order and intermediate lane
-intent. The planner connects every dependency from its source right-center port
+Dagre remains the owner of coordinates, rank order and intermediate lane intent
+for the current visible induced graph. The planner connects every dependency from its source right-center port
 to target left-center port, preserving task positions/order and graph membership.
 Explicit lateral ports make departure and entry horizontal across ordinary,
 shared and external prerequisites.
@@ -33,8 +33,10 @@ fails explicitly.
 
 The planned point sequence is the input to smooth-route compilation. Bounded
 quadratic corner rounding, actual curved arc length, the 5/4 dash phase,
-axis-local long-line body paint and native marker ownership remain governed by
-the [inspection decision](../feature/2026-10-22-task-dependency-inspection.md).
+axis-local long-line body paint remain governed by the
+[inspection decision](../feature/2026-10-22-task-dependency-inspection.md). The [progressive-view decision](../feature/2026-10-22-progressive-task-graph.md)
+owns the visible subset; canonical routes use the inspection renderer's three
+constant direct-RGB native markers and local body stroke inheritance.
 Selection still reuses immutable geometry and changes only presentation. The
 existing viewport policy and all interaction, graph-membership and progress
 semantics remain unchanged.
@@ -58,7 +60,7 @@ longest-path ranker and the pinned redundant-scan patch. Its patched/unpatched
 Dagre differential checks continue comparing raw library output. Product-route
 checks independently compare fixed source-right-center and target-left-center
 ports with actual DOM card rectangles and require positive horizontal first and
-last tangents. They verify the complete edge set and avoidance of every card,
+last tangents. They verify the complete visible induced edge set and avoidance of every visible card,
 then validate the smoothed canonical path and paint pieces.
 `GeometryExpectation` contains only independently derived API task IDs,
 `dependsOn` closure and edge/external membership; workflow and capacity build
@@ -73,7 +75,10 @@ compiler inputs are supplied. No cloned planner or expected compiled curve
 establishes validity.
 
 Real-service, container and complete capacity validation remain delivery gates
-for this adopted routing mechanism. The four fixed capacity graphs, five repetitions, 3,000ms opening budget, 300ms local-feedback
+for this adopted routing mechanism. The four fixed complete input graphs and five repetitions remain unchanged.
+The progressive view validates bounded overviews and complete visible induced
+edges rather than requiring every input edge in the DOM at once. The 3,000ms
+opening budget and 300ms local-feedback
 budgets, original normal/highlighted interaction sequences, strict scenario
 inventory and timeouts remain required. No revised performance or all-capacity
 pass is inferred from the design or pure geometry tests.

@@ -1,10 +1,11 @@
-import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Background, BackgroundVariant, Controls, getViewportForBounds, ReactFlow, useReactFlow, useStore, ViewportPortal, type Viewport } from '@xyflow/react';
-import { DEPENDENCY_DASH_ARRAY, DEPENDENCY_DASH_PERIOD } from './dashes';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Background, BackgroundVariant, Controls, getViewportForBounds, ReactFlow, useReactFlow, useStore, type Viewport } from '@xyflow/react';
 import { layoutGraph, TASK_NODE_HEIGHT, TASK_NODE_WIDTH, type CanvasLayout } from './layout';
-import { projectRoot, tracePrerequisites, type GraphIndex } from './model';
-import { TaskNode, type InspectionState, type TaskFlowNode } from './TaskNode';
-import { compileDependencyRoute } from './routes';
+import { projectRoot, tracePrerequisites, type GraphIndex, type RootProjection } from './model';
+import { TaskNode, type TaskFlowNode } from './TaskNode';
+import { DependencyEdges } from './DependencyEdges';
+import { TaskInspectionContext, useTaskInspection } from './inspection';
+import { createGraphOverview, getTaskExpansion, projectVisibleTasks, reconcileVisibleTasks, type TaskExpansionDirection } from './visibility';
 import { useGraphFullscreen } from './useGraphFullscreen';
 import '@xyflow/react/dist/style.css';
 
@@ -14,47 +15,9 @@ type TaskGraphProps = {
   onOpenTask: (id: string, trigger: HTMLElement) => void;
 };
 
-const edgeColors = { normal: '#abb2c7', highlighted: '#6762ce', unrelated: '#c7cddb' };
-const dashStyle = {
-  fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeDasharray: DEPENDENCY_DASH_ARRAY,
-  strokeLinecap: 'butt', strokeLinejoin: 'miter', pointerEvents: 'none',
-} as const;
-
-const DependencyPaint = memo(({ route }: { route: ReturnType<typeof compileDependencyRoute> }) => <>
-  {route.pieces.map((piece, position) => {
-    const properties = {
-      className: 'task-dependency-paint-piece', 'data-piece-kind': piece.kind,
-      'aria-hidden': true as const, focusable: false as const,
-      style: { ...dashStyle, strokeDashoffset: piece.startDistance % DEPENDENCY_DASH_PERIOD },
-    };
-    return piece.kind === 'line'
-      ? <line key={position} {...properties} x1="0" y1="0" x2={piece.length} y2="0" transform={`matrix(${piece.cos} ${piece.sin} ${-piece.sin} ${piece.cos} ${piece.from.x} ${piece.from.y})`} />
-      : <path key={position} {...properties} d={piece.d} />;
-  })}
-</>);
-
-const DependencyEdges = memo(({ geometry, highlighted }: { geometry: CanvasLayout; highlighted: ReadonlySet<string> | null }) => {
-  const markerId = `task-dependency-arrow-${useId()}`;
-  const routes = useMemo(() => geometry.edges.map((edge) => ({ edge, route: compileDependencyRoute(edge.points, edge.external) })), [geometry]);
-  return (
-    <ViewportPortal>
-      <svg className="task-dependency-edges" data-testid="task-dependency-edges" data-paint-piece-count={routes.reduce((count, item) => count + item.route.pieces.length, 0)} width="100%" height="100%" role="group" aria-label="任务依赖关系" focusable="false">
-        <defs>
-          {(Object.keys(edgeColors) as (keyof typeof edgeColors)[]).map((state) => <marker key={state} id={`${markerId}-${state}`} markerWidth="16" markerHeight="16" viewBox="-10 -10 20 20" markerUnits="strokeWidth" orient="auto-start-reverse" refX="0" refY="0">
-            <polyline className="arrowclosed" points="-5,-4 0,0 -5,4 -5,-4" stroke={edgeColors[state]} fill={edgeColors[state]} strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
-          </marker>)}
-        </defs>
-        {routes.map(({ edge, route }) => {
-          const state = highlighted === null ? 'normal' : highlighted.has(edge.target) ? 'highlighted' : 'unrelated';
-          return <g key={edge.id} className={`react-flow__edge task-dependency-edge task-dependency-${state}`} data-id={edge.id} data-source={edge.source} data-target={edge.target} data-inspection={state} role="img" aria-label={`前置任务 ${edge.source} → 后续任务 ${edge.target}${state === 'highlighted' ? '，所选依赖路径' : ''}`} focusable="false" style={{ color: edgeColors[state] }}>
-            <DependencyPaint route={route} />
-            <path className="react-flow__edge-path" data-source={edge.source} data-target={edge.target} d={route.d} markerEnd={`url(#${markerId}-${state})`} aria-hidden="true"
-              style={{ fill: 'none', stroke: edge.external ? 'none' : 'currentColor', strokeWidth: 1.5, strokeDasharray: edge.external ? DEPENDENCY_DASH_ARRAY : undefined }} />
-          </g>;
-        })}
-      </svg>
-    </ViewportPortal>
-  );
+const InspectedEdges = memo(({ geometry }: { geometry: CanvasLayout }) => {
+  const inspection = useTaskInspection();
+  return <DependencyEdges geometry={geometry} inspection={inspection} />;
 });
 
 const nodeTypes = { task: TaskNode };
@@ -68,7 +31,7 @@ const ariaLabels = {
   'node.a11yDescription.keyboardDisabled': '使用 Tab 聚焦卡片主体或详情，按 Enter 或空格追踪依赖或打开详情。',
 };
 
-export const getInitialTaskViewport = (geometry: CanvasLayout, rootId: string, width: number, height: number): Viewport => {
+export const getInitialTaskViewport = (geometry: CanvasLayout, rootId: string, width: number, height: number, anchorRoot = false): Viewport => {
   const left = Math.min(...geometry.nodes.map((node) => node.position.x));
   const top = Math.min(...geometry.nodes.map((node) => node.position.y));
   const right = Math.max(...geometry.nodes.map((node) => node.position.x + TASK_NODE_WIDTH));
@@ -78,6 +41,7 @@ export const getInitialTaskViewport = (geometry: CanvasLayout, rootId: string, w
   if (bounds.width * fitted.zoom <= width && bounds.height * fitted.zoom <= height) return fitted;
   const root = geometry.nodes.find((node) => node.id === rootId)!;
   const upstreamTop = Math.min(...geometry.nodes.filter((node) => node.position.x === left).map((node) => node.position.y));
+  if (anchorRoot) return { x: 32 - root.position.x * fitted.zoom, y: height / 2 - (root.position.y + TASK_NODE_HEIGHT / 2) * fitted.zoom, zoom: fitted.zoom };
   return {
     x: 32 - left * fitted.zoom,
     y: root.position.x === left
@@ -87,23 +51,33 @@ export const getInitialTaskViewport = (geometry: CanvasLayout, rootId: string, w
   };
 };
 
-const InitialViewport = ({ geometry, rootId }: { geometry: CanvasLayout; rootId: string }) => {
+type ViewportAction = { readonly kind: 'expand'; readonly sequence: number; readonly anchorId: string } | { readonly kind: 'reset'; readonly sequence: number };
+
+const InitialViewport = ({ geometry, rootId, folded, action, resetButton }: { geometry: CanvasLayout; rootId: string; folded: boolean; action: ViewportAction | null; resetButton: { current: HTMLButtonElement | null } }) => {
   const { setViewport, viewportInitialized } = useReactFlow();
   const width = useStore((state) => state.width);
   const height = useStore((state) => state.height);
   const applied = useRef(false);
+  const resetSequence = useRef<number | null>(null);
   useLayoutEffect(() => {
-    if (applied.current || !viewportInitialized || width <= 0 || height <= 0) return;
+    if (!viewportInitialized || width <= 0 || height <= 0) return;
+    const reset = action?.kind === 'reset' && action.sequence !== resetSequence.current;
+    if (applied.current && !reset) return;
     applied.current = true;
-    void setViewport(getInitialTaskViewport(geometry, rootId, width, height), { duration: 0 });
-  }, [geometry, rootId, viewportInitialized, width, height, setViewport]);
+    if (reset) resetSequence.current = action.sequence;
+    void setViewport(getInitialTaskViewport(geometry, rootId, width, height, folded), { duration: 0 });
+    if (reset) resetButton.current?.focus({ preventScroll: true });
+  }, [geometry, rootId, folded, action, resetButton, viewportInitialized, width, height, setViewport]);
   return null;
 };
 
-const TaskCanvas = ({ index, rootId, onOpenTask, geometry }: TaskGraphProps & { geometry: CanvasLayout }) => {
+type CanvasProps = TaskGraphProps & { geometry: CanvasLayout; projection: RootProjection; visibleIds: ReadonlySet<string>; action: ViewportAction | null; onExpandTask: (id: string, direction: TaskExpansionDirection) => void; onResetOverview: () => void };
+
+const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleIds, action, onExpandTask, onResetOverview }: CanvasProps) => {
   const { fullscreen, containerRef, toggleRef, onKeyDown, toggle } = useGraphFullscreen();
+  const resetButton = useRef<HTMLButtonElement>(null);
   const [inspection, setInspection] = useState<{ id: string; trigger: HTMLElement } | null>(null);
-  const selectedTaskId = inspection !== null && geometry.nodes.some((node) => node.id === inspection.id) ? inspection.id : null;
+  const selectedTaskId = inspection !== null && visibleIds.has(inspection.id) ? inspection.id : null;
   const highlighted = useMemo(() => selectedTaskId === null ? null : tracePrerequisites(index, selectedTaskId), [index, selectedTaskId]);
   useLayoutEffect(() => {
     const focusedNode = document.activeElement?.closest<HTMLElement>('.react-flow__node');
@@ -119,90 +93,116 @@ const TaskCanvas = ({ index, rootId, onOpenTask, geometry }: TaskGraphProps & { 
     setInspection((current) => current?.id === id ? null : { id, trigger });
   }, []);
   const clearInspection = useCallback(() => { setInspection(null); }, []);
-  const nodeVariants = useMemo(() => geometry.nodes.map((node) => {
-    const base: TaskFlowNode = {
-      id: node.id, position: node.position, type: 'task', width: TASK_NODE_WIDTH, height: TASK_NODE_HEIGHT,
-      style: { width: TASK_NODE_WIDTH, height: TASK_NODE_HEIGHT },
-      data: {
-        task: index.nodes.get(node.id)!, kind: node.kind, shared: index.sharedIds.has(node.id), inspection: 'normal',
-        center: { x: node.position.x + TASK_NODE_WIDTH / 2, y: node.position.y + TASK_NODE_HEIGHT / 2 },
-        onInspectTask, onOpenTask,
-      },
-    };
-    const variant = (inspection: InspectionState): TaskFlowNode => ({ ...base, data: { ...base.data, inspection } });
-    return { normal: base, selected: variant('selected'), prerequisite: variant('prerequisite'), unrelated: variant('unrelated') };
-  }), [geometry, index, onInspectTask, onOpenTask]);
-  const nodes = useMemo<TaskFlowNode[]>(() => nodeVariants.map((variants) => highlighted === null ? variants.normal
-    : variants.normal.id === selectedTaskId ? variants.selected
-      : highlighted.has(variants.normal.id) ? variants.prerequisite : variants.unrelated), [nodeVariants, highlighted, selectedTaskId]);
+  const hiddenUpstreamCount = highlighted === null ? 0 : [...highlighted].filter((id) => !visibleIds.has(id)).length;
+  const totalTasks = projection.mainIds.size + projection.externalIds.size;
+  const folded = visibleIds.size < totalTasks;
+  const nodes = useMemo<TaskFlowNode[]>(() => geometry.nodes.map((node) => ({
+    id: node.id, position: node.position, type: 'task', width: TASK_NODE_WIDTH, height: TASK_NODE_HEIGHT,
+    style: { width: TASK_NODE_WIDTH, height: TASK_NODE_HEIGHT },
+    data: {
+      task: index.nodes.get(node.id)!, kind: node.kind, shared: index.sharedIds.has(node.id),
+      center: { x: node.position.x + TASK_NODE_WIDTH / 2, y: node.position.y + TASK_NODE_HEIGHT / 2 },
+      onInspectTask, onOpenTask, onExpandTask,
+      revealRequest: action?.kind === 'expand' && action.anchorId === node.id ? action.sequence : null,
+      expansions: { prerequisites: getTaskExpansion(index, projection, visibleIds, node.id, 'prerequisites'), successors: getTaskExpansion(index, projection, visibleIds, node.id, 'successors') },
+    },
+  })), [geometry, index, projection, visibleIds, action, onInspectTask, onOpenTask, onExpandTask]);
+  const presentation = useMemo(() => ({ selectedTaskId, highlighted }), [selectedTaskId, highlighted]);
+  const canvas = useMemo(() => (
+    <ReactFlow<TaskFlowNode>
+      id={`flow-${rootId}`}
+      aria-label="任务依赖画布"
+      aria-describedby={`graph-instructions-${rootId}`}
+      nodes={nodes}
+      nodeTypes={nodeTypes}
+      minZoom={0.2}
+      maxZoom={1.8}
+      nodesDraggable={false}
+      nodesConnectable={false}
+      nodesFocusable={false}
+      edgesFocusable={false}
+      edgesReconnectable={false}
+      elementsSelectable={false}
+      onPaneClick={clearInspection}
+      connectOnClick={false}
+      deleteKeyCode={null}
+      panActivationKeyCode={null}
+      selectionKeyCode={null}
+      multiSelectionKeyCode={null}
+      autoPanOnNodeFocus={false}
+      onlyRenderVisibleElements={false}
+      ariaLabelConfig={ariaLabels}
+      attributionPosition="bottom-right"
+    >
+      <InitialViewport geometry={geometry} rootId={rootId} folded={folded} action={action} resetButton={resetButton} />
+      <InspectedEdges geometry={geometry} />
+      <Background variant={BackgroundVariant.Dots} gap={18} size={0.8} color="#d9dee9" bgColor="#fafbfe" />
+      <Controls position="top-right" orientation="horizontal" showInteractive={false} fitViewOptions={viewportFitOptions} />
+    </ReactFlow>
+  ), [nodes, rootId, geometry, folded, action, clearInspection]);
   return (
-    <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} ref={containerRef} role={fullscreen ? 'dialog' : undefined} aria-modal={fullscreen ? true : undefined} aria-label={fullscreen ? '任务依赖图全屏查看' : undefined} onKeyDown={onKeyDown}>
+    <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} data-hidden-upstream-count={hiddenUpstreamCount} data-visible-task-count={visibleIds.size} data-total-task-count={totalTasks} ref={containerRef} role={fullscreen ? 'dialog' : undefined} aria-modal={fullscreen ? true : undefined} aria-label={fullscreen ? '任务依赖图全屏查看' : undefined} onKeyDown={onKeyDown}>
       <div className="graph-toolbar">
         <span>横向依赖图</span>
         <div className="graph-toolbar-actions">
-          <span>{geometry.nodes.filter((node) => node.kind === 'main').length} 个链内任务 · {geometry.nodes.filter((node) => node.kind === 'external').length} 个外部前置 · {geometry.edges.length} 条依赖</span>
+          <span>{projection.mainIds.size} 个链内任务 · {projection.externalIds.size} 个外部前置 · {projection.edges.length} 条依赖</span>
           <button className="button graph-fullscreen-toggle" type="button" ref={toggleRef} onClick={toggle}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
               <path d={fullscreen ? 'M4 9h5V4m6 0v5h5M4 15h5v5m6 0v-5h5' : 'M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5'} />
             </svg>
             {fullscreen ? '退出全屏' : '全屏查看'}
           </button>
+          <button className="button graph-reset-overview" type="button" ref={resetButton} onClick={onResetOverview}>收起到概览</button>
         </div>
       </div>
+      <p className="graph-visibility-summary">当前显示 {visibleIds.size}/{totalTasks} 个任务 · {geometry.edges.length}/{projection.edges.length} 条依赖。通过卡片下方按钮展开更多前置或后续。</p>
+      <p className="graph-hidden-prerequisites" role="status">{hiddenUpstreamCount > 0 ? `另有${hiddenUpstreamCount}个上游未展开` : ''}</p>
       <p className="graph-instructions" id={`graph-instructions-${rootId}`}>点击卡片追踪全部前置，再次点击或点击空白处清除；详情单独打开。拖动平移，滚轮缩放；Tab 聚焦后按 Enter 或空格操作。</p>
       <div className="task-graph-canvas">
-        <ReactFlow<TaskFlowNode>
-          id={`flow-${rootId}`}
-          aria-label="任务依赖画布"
-          aria-describedby={`graph-instructions-${rootId}`}
-          nodes={nodes}
-          nodeTypes={nodeTypes}
-          minZoom={0.2}
-          maxZoom={1.8}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          nodesFocusable={false}
-          edgesFocusable={false}
-          edgesReconnectable={false}
-          elementsSelectable={false}
-          onPaneClick={clearInspection}
-          connectOnClick={false}
-          deleteKeyCode={null}
-          panActivationKeyCode={null}
-          selectionKeyCode={null}
-          multiSelectionKeyCode={null}
-          autoPanOnNodeFocus={false}
-          onlyRenderVisibleElements={false}
-          ariaLabelConfig={ariaLabels}
-          attributionPosition="bottom-right"
-        >
-          <InitialViewport geometry={geometry} rootId={rootId} />
-          <DependencyEdges geometry={geometry} highlighted={highlighted} />
-          <Background variant={BackgroundVariant.Dots} gap={18} size={0.8} color="#d9dee9" bgColor="#fafbfe" />
-          <Controls position="top-right" orientation="horizontal" showInteractive={false} fitViewOptions={viewportFitOptions} />
-        </ReactFlow>
+        <TaskInspectionContext value={presentation}>{canvas}</TaskInspectionContext>
       </div>
-      <div className="graph-foot"><span>箭头表示前置 → 后续</span><span>虚线节点及连线：外部前置（已补齐全部上游）</span></div>
+      <div className="graph-foot"><span>箭头表示前置 → 后续</span><span>虚线节点及连线：外部前置 · 展开仅影响当前画布</span></div>
     </div>
   );
 };
 
-export const TaskGraph = (props: TaskGraphProps) => {
+const LayoutError = () => <div className="graph-error" role="alert"><h3>任务图布局失败</h3><p>无法绘制此任务链，请刷新项目后重试。</p></div>;
+
+const VisibleTaskGraph = ({ projection, ...props }: TaskGraphProps & { projection: RootProjection }) => {
+  const [visibility, setVisibility] = useState(() => ({ projection, ids: createGraphOverview(props.index, projection) }));
+  const sequence = useRef(0);
+  const [action, setAction] = useState<ViewportAction | null>(null);
+  const visibleIds = useMemo(() => visibility.projection === projection ? visibility.ids : reconcileVisibleTasks(projection, visibility.ids), [projection, visibility]);
+  useEffect(() => {
+    if (visibility.projection !== projection) setVisibility({ projection, ids: visibleIds });
+  }, [projection, visibility.projection, visibleIds]);
+  const visibleProjection = useMemo(() => projectVisibleTasks(projection, visibleIds), [projection, visibleIds]);
   const result = useMemo(() => {
     try {
       performance.clearMeasures('daynight:task-layout');
       const started = performance.now();
-      const geometry = layoutGraph(projectRoot(props.index, props.rootId));
-      performance.measure('daynight:task-layout', {
-        start: started, end: performance.now(), detail: { rootId: props.rootId },
-      });
+      const geometry = layoutGraph(visibleProjection);
+      performance.measure('daynight:task-layout', { start: started, end: performance.now(), detail: { rootId: props.rootId } });
       return { kind: 'ready' as const, geometry };
-    } catch (error) {
-      return { kind: 'error' as const, error };
-    }
+    } catch (error) { return { kind: 'error' as const, error }; }
+  }, [visibleProjection, props.rootId]);
+  const onExpandTask = useCallback((id: string, direction: TaskExpansionDirection) => {
+    const expansion = getTaskExpansion(props.index, projection, visibleIds, id, direction);
+    if (expansion.ids.length === 0) return;
+    setVisibility({ projection, ids: new Set([...visibleIds, ...expansion.ids]) });
+    setAction({ kind: 'expand', sequence: ++sequence.current, anchorId: id });
+  }, [props.index, projection, visibleIds]);
+  const onResetOverview = useCallback(() => {
+    setVisibility({ projection, ids: createGraphOverview(props.index, projection) });
+    setAction({ kind: 'reset', sequence: ++sequence.current });
+  }, [props.index, projection]);
+  return result.kind === 'error' ? <LayoutError /> : <TaskCanvas {...props} geometry={result.geometry} projection={projection} visibleIds={visibleIds} action={action} onExpandTask={onExpandTask} onResetOverview={onResetOverview} />;
+};
+
+export const TaskGraph = (props: TaskGraphProps) => {
+  const result = useMemo(() => {
+    try { return { kind: 'ready' as const, projection: projectRoot(props.index, props.rootId) }; }
+    catch (error) { return { kind: 'error' as const, error }; }
   }, [props.index, props.rootId]);
-  if (result.kind === 'error') {
-    return <div className="graph-error" role="alert"><h3>任务图布局失败</h3><p>无法绘制此任务链，请刷新项目后重试。</p></div>;
-  }
-  return <TaskCanvas key={props.rootId} {...props} geometry={result.geometry} />;
+  return result.kind === 'error' ? <LayoutError /> : <VisibleTaskGraph key={props.rootId} {...props} projection={result.projection} />;
 };

@@ -22,8 +22,9 @@ as one replacement with the project statistics.
 
 Standalone rows are compact native buttons showing title, status, ID and
 creation time, and open details directly. Chain rows keep root-based progress,
-aggregate status, complete DAG projection, external prerequisites, fullscreen and
-details. For `A → C ← B`, A and B remain two chains, each including C once;
+aggregate status, complete DAG data, external prerequisites, fullscreen and
+details. The [progressive-view decision](2026-10-22-progressive-task-graph.md)
+derives bounded visible overviews and explicit neighbor expansion from that data. For `A → C ← B`, A and B remain two chains, each including C once;
 project statistics count C once. The original tab counts represented total
 standalone tasks and non-isolated roots to describe the available entries. The
 [unfinished task count decision](2026-10-22-unfinished-task-tab-counts.md)

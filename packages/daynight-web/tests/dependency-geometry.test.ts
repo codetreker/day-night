@@ -7,10 +7,10 @@ const expected: GeometryExpectation = { nodes: [{ id: 'source' }, { id: 'target'
 const compilerInputs = [{ id: 'source->target', points: [{ x: 100, y: 50 }, { x: 200, y: 50 }, { x: 200, y: 100 }, { x: 250, y: 100 }, { x: 250, y: 50 }, { x: 300, y: 50 }] }];
 const snapshot = (): DependencySnapshot => ({
   nodes: [{ id: 'source', left: 0, top: 0, right: 100, bottom: 100 }, { id: 'target', left: 300, top: 0, right: 400, bottom: 100 }],
-  edges: [{ id: 'source->target', source: 'source', target: 'target', d, dashed: true, stroke: 'none', color, marker: '#arrow', pieces: [
+  edges: [{ id: 'source->target', source: 'source', target: 'target', d, external: 'true', stroke: 'none', fill: 'none', color, bodyMatrix: [1, 0, 0, 1, 0, 0], bodyVisible: true, marker: '#arrow', canonicalVisible: true, pieces: [
     { d, matrix: [1, 0, 0, 1, 0, 0], line: false, phase: 0, dash: '5px, 4px', stroke: color, width: 1.5, cap: 'butt', join: 'miter', hidden: true },
   ] }],
-  markers: [{ id: 'arrow', orient: 'auto-start-reverse', units: 'strokeWidth', viewBox: '-10 -10 20 20', width: '16', height: '16', refX: '0', refY: '0', points: '-5,-4 0,0 -5,4 -5,-4', stroke: color, fill: color }],
+  markers: [{ id: 'arrow', orient: 'auto-start-reverse', units: 'strokeWidth', viewBox: '-10 -10 20 20', width: '16', height: '16', refX: '0', refY: '0', points: '-5,-4 0,0 -5,4 -5,-4', stroke: color, fill: color, strokeWidth: 1, cap: 'round', join: 'round' }],
   declaredPieces: 1, viewport: true, passive: true,
 });
 
@@ -44,7 +44,7 @@ describe('independent production dependency geometry oracle', () => {
     const missing = snapshot(); missing.edges = []; missing.declaredPieces = 0;
     expect(inspectDependencySnapshot(missing, expected)).toContain('edges: incomplete edge coverage');
     const arrow = snapshot(); arrow.markers[0]!.points = '5,-4 0,0 5,4';
-    expect(inspectDependencySnapshot(arrow, expected).some((failure) => failure.includes('wrong arrow'))).toBe(true);
+    expect(inspectDependencySnapshot(arrow, expected).some((failure) => failure.includes('wrong native arrow marker'))).toBe(true);
     const crossing = snapshot(); crossing.nodes.push({ id: 'obstacle', left: 196, top: 54, right: 201, bottom: 62 });
     expect(inspectDependencySnapshot(crossing, { ...expected, nodes: [...expected.nodes, { id: 'obstacle' }] }).some((failure) => failure.includes('curve passes through node obstacle'))).toBe(true);
     const phase = snapshot(); phase.edges[0]!.pieces[0]!.phase = 0.2;
@@ -117,6 +117,16 @@ describe('independent production dependency geometry oracle', () => {
     expect(summarizeGeometryFailures(failures)).toEqual({ total: 25, examples: failures.slice(0, 12) });
     expect(failures).toHaveLength(25);
     expect(summarizeGeometryFailures([])).toEqual({ total: 0, examples: [] });
+  });
+  it('requires visible native arrow owners, graph-coordinate body paint and matching marker color', () => {
+    for (const mutate of [
+      (value: DependencySnapshot) => { value.edges[0]!.marker = null; },
+      (value: DependencySnapshot) => { value.edges[0]!.canonicalVisible = false; },
+      (value: DependencySnapshot) => { value.edges[0]!.bodyVisible = false; },
+      (value: DependencySnapshot) => { value.edges[0]!.bodyMatrix[4] = 1; },
+      (value: DependencySnapshot) => { value.markers[0]!.fill = 'rgb(103, 98, 206)'; },
+      (value: DependencySnapshot) => { value.markers[0]!.units = 'userSpaceOnUse'; },
+    ]) { const value = snapshot(); mutate(value); expect(inspectDependencySnapshot(value, expected).length).toBeGreaterThan(0); }
   });
   it('rejects real endpoint gaps on long lines without a length-dependent parameter allowance', () => {
     const value = snapshot();

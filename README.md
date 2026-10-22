@@ -6,15 +6,18 @@ statistics, task dependency graphs, task details and file attachments from the
 same Go service origin. The read-only graph dashboard is delivered, including
 production-browser acceptance, embedded deployment and the subsequent focus-restoration repair. The
 [dashboard tasks](docs/design/daynight-web-tasks.md) record completion and link
-the corresponding PR and CI evidence. Complete prerequisite context and graph dependency inspection are implemented.
+the corresponding PR and CI evidence. Complete prerequisite context is delivered; graph dependency inspection adopts
+progressive visibility with runtime validation pending.
 The [task inspection requirements](docs/spec/daynight-task-inspection.md),
 [architecture](docs/design/daynight-task-inspection.md),
 [focused task breakdown](docs/design/daynight-task-inspection-tasks.md) and
 [interactive preview](docs/design/mockups/task-inspection/index.html) cover
 complete prerequisite context, smooth highlighted dependency routes, a centered
 detail dialog and Markdown descriptions with matching public skill guidance.
-Graph cards select their complete upstream path, with smooth synchronized
-node, line and arrow highlighting and a separate detail action. Centered details
+Graph cards select the complete upstream path while painting visible members
+and counting hidden ancestors. A 50-task/100-edge overview and explicit
+20-neighbor expansion keep both main and external context progressive, with
+smooth synchronized line/arrow highlighting and a separate detail action. Centered details
 and Markdown remain pending; details still use the drawer and plain descriptions.
 
 | Component | Location | Implementation status | Requirements and design |
@@ -147,8 +150,10 @@ tabs from one complete server snapshot. Standalone tasks open details directly;
 root-based task chains retain dependency graphs, shared successors and aggregate
 progress. Both tab badges count unfinished tasks from the complete snapshot;
 shared chain tasks count once across all roots, and completed-item visibility
-does not affect the badges. Expanding a chain includes all upstream prerequisites of its root and
-reachable successors, without adding unrelated successors of contextual tasks.
+does not affect the badges. The complete chain projection includes all upstream prerequisites of its root
+and reachable successors, without adding unrelated successors of contextual
+tasks. The canvas starts from a bounded overview and expands real direct
+neighbors explicitly; chain progress and statistics use full data.
 Only the root and its reachable successors contribute to chain progress and status. The first visit opens task chains, and each project retains its last
 tab, independent completed-item filters and browse positions. The [task view
 preview](docs/design/mockups/task-views.html) demonstrates those interactions.

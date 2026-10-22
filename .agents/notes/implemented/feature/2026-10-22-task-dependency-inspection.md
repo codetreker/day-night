@@ -4,177 +4,124 @@ Status: implemented
 
 ## Problem
 
-Opening task details on every graph-card activation interrupts tracing a task's
-prerequisite path. A shared or externally blocked task can have many ancestors,
-so marking only the activated card does not explain that path. Routed polyline
-corners also make long dependencies harder to follow. Inspection must retain
-all tasks and edges, readable state, stable geometry and a responsive viewport
-at the existing project capacity limits.
+Opening details on every graph-card activation interrupts tracing prerequisite
+paths. Marking only the activated task cannot explain shared and external
+ancestry. Inspection needs readable task state, synchronized dependencies and
+stable geometry, with reading available as an independent action.
 
 ## Decision
 
-Each graph card has a noninteractive shell with sibling native controls. The
-body toggles graph-local dependency inspection and exposes `aria-pressed`; the
-Details action exposes `aria-haspopup="dialog"` and opens the existing drawer.
-Mouse, Enter and Space activate the focused control. Both controls retain
-keyboard offscreen-node positioning. Visibility is computed from the task
-layout center, fixed dimensions and current React Flow viewport against the
-canvas size. Native focus can temporarily scroll the hidden-overflow container
-before React Flow resets that scroll; task DOM bounds during focus can therefore
-appear visible and then move offscreen. Layout coordinates retain the intended
-view and let either control pan into view at the current readable zoom without
-timers or native-scroll mutations. Pointer focus and keyboard focus on an already
-visible card leave the viewport unchanged. Standalone rows continue to open
-details directly. The project page owns detail resource selection, while the mounted
-graph owns inspection; detail opening, closing and relation navigation do not
-change inspection, graph coordinates or viewport.
+Cards use a noninteractive shell with sibling native body, Details and
+prerequisite/successor expansion controls. Body toggles inspection and exposes
+`aria-pressed`; Details exposes `aria-haspopup="dialog"` and opens the existing
+drawer. Pointer, Enter and Space operate the focused control. Standalone rows
+still open details directly. The project page owns detail resources; the mounted
+graph separately owns inspection and progressive visible IDs.
 
-`tracePrerequisites(index, taskId)` returns the selected task and every ancestor
-through iterative `dependsOn` traversal. It rejects unknown tasks. The complete
-projection already contains those ancestors under the
-[context decision](2026-10-22-complete-prerequisite-context.md). A card's state is
-normal, selected, prerequisite or unrelated; selection and prerequisites use
-distinct borders/backgrounds, unrelated tasks are dimmed, and task status colors,
-blocking and shared markers remain readable. Every edge whose target is in the
-closure is highlighted, including external-to-external links; arrows and all
-paint pieces share the same state. Highlighted external routes remain dashed.
-The same card or blank canvas clears inspection, while another card replaces it.
+`tracePrerequisites(index, taskId)` returns the selected task plus every ancestor
+from complete data, rejecting unknown IDs. Under the
+[progressive-view decision](2026-10-22-progressive-task-graph.md), only visible H
+and their real induced connections are highlighted, while |H−S| reports hidden
+ancestors once by ID. Selection never expands, relayouts or moves the viewport.
+The same card or blank canvas clears it, and another card replaces it. Selected,
+prerequisite, unrelated and normal states preserve status colors, blocking,
+sharing and external dashes. Details and relation navigation leave it unchanged.
 
-Inspection is not persisted. Project, root, tab and graph unmounts clear it.
-Successful snapshots recompute a surviving selection against the new index and
-projection; a task removed from that projection clears it. A removed focused
-control returns focus to an available graph toolbar control. Failed refreshes
-retain the last snapshot and its inspection. No selection changes projection,
-layout or initial placement.
+Graph-local `TaskInspectionContext` supplies inspection state directly to task
+shells. Controlled React Flow node/data keeps task, geometry, membership and
+stable callbacks, and the canvas element is memoized. `TaskNodeContent` preserves
+title/status/shared/external content. The original detail-coupled selection
+changed at most two tasks; complete inspection can change many shell styles,
+so its actual `selectMs` remains a measured gate rather than a two-node assumption.
+
+Keyboard visibility uses layout center, fixed 220-by-136 card dimensions and the
+current viewport. Native focus can temporarily scroll the hidden-overflow
+container before React Flow resets it, making task DOM bounds an unreliable
+visibility input. Either focus control can pan into view at the existing zoom;
+pointer and already-visible keyboard focus preserve the viewport. Explicit
+expansion centers the anchor at current zoom and focuses its body; global reset
+frames the overview and retains reset focus. These structural actions are
+separate from selection.
+
+Successful refresh retains valid actual visible IDs plus root and prunes to its
+induced root-connected component; it adds no new baseline automatically. A still
+visible selection recomputes full H; an invisible one clears. Failed refresh
+keeps old data, visible IDs, selection and viewport. Project/root/tab changes or
+unmount release local state. Reconciliation never steals an open drawer's focus;
+a vanished trigger uses existing close-time fallback.
 
 The [routing decision](../architecture/2026-10-22-task-dependency-routing.md)
-keeps Dagre node coordinates and order, then connects fixed source-right-center
-and target-left-center ports through obstacle-free rank-gap channels. It retains
-intermediate lane intent and owns avoidance of all task cards. `routes.ts`
-compiles each planned route through
-`compileDependencyRoute(points, dashed)`, returning canonical `d` and paint
-`pieces`. Consecutive duplicates and forward-collinear redundant points are
-removed. Every noncollinear corner trims each adjoining span by
-`min(12, incomingLength/2, outgoingLength/2)` and uses the original corner as a
-quadratic Bézier control point. Canonical `M/L/Q` geometry preserves the
-planned endpoints and horizontal side-port direction; nonfinite input fails
-explicitly. The original design rounded raw Dagre points to preserve its routing
-intent and long-line paint. The routing decision replaces that exact-point
-assumption because raw endpoint spans can cross other task cards before any
-corner smoothing occurs.
+keeps Dagre positions/order for the visible graph and plans right-center to
+left-center obstacle-free connections. `compileDependencyRoute(points, dashed)`
+then generates canonical M/L/Q and optional paint pieces, rounding noncollinear
+corners with symmetric `min(12, incoming/2, outgoing/2)` trim. Invalid coordinates
+fail. This replaced the original raw-Dagre endpoint/waypoint retention because
+existing straight endpoint spans could cross other cards before rounding.
 
-Solid routes use native body paint. Dashed routes retain locally horizontal
-rotated long lines and short curve paths, while the canonical route retains
-semantics and marker ownership. `dashes.ts` owns `DashPiece` and the 5/4 pattern
-with nine-unit period. Adaptive de Casteljau subdivision brackets each quadratic
-length between chord and control-polygon bounds. Curves share a per-route length
-error budget of 0.025 CSS px at maximum supported zoom 1.8, below the required
-0.1 CSS px. Cumulative actual curved length determines the positive dash offset;
-long-line cuts remain at gap midpoint phase seven with twelve units of join
-room. Solid routes skip arc-length work used only for dashed bodies.
+Dashed bodies keep locally horizontal rotated long lines and short native curve
+paths under the [paint decision](../bug-fix/2026-10-20-long-dashed-dependency-paint.md).
+Adaptive de Casteljau chord/control-polygon bounds allocate a per-route curve
+length error of 0.025 CSS px at maximum 1.8 zoom. Actual cumulative arc length
+preserves the 5/4 phase and gap-midpoint seams. The declarative native SVG uses
+three constant direct-RGB normal/highlighted/unrelated markers on canonical
+paths. `.task-dependency-body` owns local stroke, with primitive inheritance.
+Geometry compiles only when the visible layout changes; selection reuses paths
+and pieces while body and arrow presentation change together.
 
-Routes, lengths and pieces compile with layout changes, not inspection. Three
-bounded normal/highlighted/unrelated marker variants and matching body styles
-provide synchronized edge/arrow presentation. Immutable node presentation
-variants retain references whose state does not change, but complete inspection
-can restyle many ancestors and unrelated tasks. Its measured cost replaces the
-original two-node selection assumption.
+This partially supersedes the single action and role-bearing node variants in
+the [dashboard decision](2026-10-20-project-task-dashboard.md). Stable framework
+geometry and local context separate presentation from layout without changing
+portal, inertness, scroll ownership or focus restoration.
 
-This partially supersedes the single-card action and selection assumptions in
-the [dashboard decision](2026-10-20-project-task-dashboard.md), and the polyline
-compilation in the
-[local-coordinate paint decision](../bug-fix/2026-10-20-long-dashed-dependency-paint.md).
-The latter retains its pinned Chromium/Skia evidence: full native dashing of long
-oblique paths can create raster backpressure, while local-axis long lines permit
-culling. Smooth routes preserve that strategy and its 5/4 phase semantics.
+Four complete 1,000-task capacity input matrices retain their exact 999/5,000
+edges and five samples. The progressive view changes readiness to its complete
+bounded overview and induced edge set, plus explicit expansion/reset and hidden
+ancestor correctness. `openMs ≤ 3000` and selection/detail/zoom/pan ≤300 remain;
+normal Details → close → immediate zoom/pan precedes visible-task selection and
+the highlighted sequence. Per-metric worse-state values and independent network
+timing remain, with no reset, Fit view or waiting between close and zoom.
 
-The existing four 1,000-node capacity datasets and five expansions per dataset
-remain intact. Each adds five `selectMs` observations, each no greater than
-300ms, alongside the existing 3,000ms opening and 300ms detail/zoom/pan gates.
-Each sample first preserves the original initial-viewport Details → close →
-immediate zoom/pan sequence, then focuses a deep sink before trusted selection
-timing, and repeats Details → close → immediate zoom/pan while highlighted.
-`detailMs`, `zoomMs` and `panMs` retain the worse normal/highlighted value;
-`detailNetworkMs` retains the larger observed network duration. Neither
-close-to-zoom sequence inserts Fit view, a viewport reset or an extra wait.
-The strict inventory stays fifteen native and ten container scenarios. Independent
-geometry validation parses `M/L/Q`. `GeometryExpectation` contains independent
-API identities, `dependsOn` closure and edge/external membership only. A separate
-optional `compilerInputs` value declares layout points for compiler-fidelity
-checks; it never supplies expected valid planner geometry or a compiled curve.
-Exact quadratic/rectangle intersections and independent analytic speed
-integration with near-straight geometric bounds always check DOM side ports,
-horizontal ends, every quadratic's symmetric trim no greater than twelve units
-and tangency, node avoidance, complete paint coverage, real arc length, dash
-phase and markers, including all capacity cases. These validity checks run
-without compiler inputs and do not clone the production planner. `dependency-geometry.test.ts` contains failing
-negative cases for missing edges, wrong arrows, node crossings, dash phase and
-paint coverage.
-Selection checks capture every node and edge in one browser evaluation and
-compare the complete sorted observation against independently derived expected
-values. The capture retains identity, native control semantics, pressed state,
-inspection state, status colors, borders/backgrounds, edge roles and passivity,
-marker state/stroke/fill, and all external-piece dash/paint fields. Batching
-avoids a separate Playwright protocol assertion and trace step for every graph
-element, whose accumulated controller work can exhaust the scenario deadline
-even when browser feedback meets its budget. It does not sample or omit graph
-elements. Independent geometry oracles and before/after node, route, paint-piece
-and viewport equality remain separate complete checks; timing thresholds,
-scenario timeouts, fixtures, repetition count and interaction sequence retain
-their existing values.
-
-The [requirements](../../../../docs/spec/daynight-task-inspection.md) own visible
-behavior, the [web design](../../../../docs/design/daynight-web.md) owns current
-composition, and the
-[acceptance decision](../testing/2026-10-20-dashboard-production-acceptance.md)
-owns production execution and receipt interpretation. Centered details and
-Markdown descriptions remain separate tasks; the existing drawer and plain
-strings continue to serve those paths.
+Independent topology expectations use API identities, complete dependsOn and
+intended visible IDs/induced edges. Optional declared compiler inputs check only
+fidelity, never planner validity. Fixed DOM ports, horizontal ends, every Q's
+symmetric twelve-unit trim/tangency, visible-card avoidance, complete visible
+body coverage, true arc length, dash phase and native markers remain independent
+and unconditional. Missing/extra edges, wrong arrows, crossings and phase/coverage
+negative cases fail. Runtime and capacity evidence remain source-bound delivery
+gates; neither this decision nor pure tests establish a pass.
 
 ## Alternatives
 
-**Keep card activation coupled to opening details.** This preserves a single
-control but prevents persistent upstream inspection without a modal covering
-the graph. Sibling controls give inspection and reading independent keyboard
-and pointer actions without nested interactive elements.
+**Keep one card action coupled to details.** This preserves a simple button but
+cannot leave an upstream path under inspection without a modal covering it.
+Sibling native controls distinguish reading, selection and structural expansion.
 
-**Highlight direct predecessors or load ancestors on demand.** Direct-only
-highlighting omits the requested transitive path. Adding missing nodes after
-selection changes layout while it is being inspected. Pre-expanded ancestor
-closure makes selection a presentation update.
+**Highlight only direct or currently visible prerequisites.** This hides the
+transitive dependency meaning. Full H plus visible paint and a deduplicated hidden
+count retains complete semantics without automatically expanding the graph.
 
-**Use endpoint-only cubic Bézier or smoothstep routes.** The original design
-preferred local rounding because those helpers discard Dagre intermediate
-waypoints and would renew long dashed-paint work. The routing decision retains
-that rationale for long spans and lane intent while explicitly planning fixed
-side ports and obstacle-free channels; raw endpoint retention does not establish
-node avoidance.
+**Keep inspection roles in controlled node data.** Ordinary component updates
+preserve coordinate values but change framework geometry objects on selection.
+Local context keeps those objects stable while shells update their own state.
 
-**Draw one full native dashed curved path.** This removes paint-piece handling,
-but reintroduces the long oblique native dash-generation cost established by
-the earlier raster investigation. Axis-local lines preserve culling while short
-paths handle the bounded corners.
+**Retain the complete projection always rendered.** The original decision made
+all ancestors immediately available and selection purely presentational. The
+progressive-view decision keeps complete data and presentation-only selection
+while making expansion explicit for both main and external tasks.
 
-**Give every edge a separate marker or recompile routes on selection.** Marker
-copies scale with edge count and recomputation repeats immutable geometry work.
-Three shared variants provide the needed states while compilation remains tied
-to layout.
+**Use endpoint-only curves or retain raw endpoints.** The original local-rounding
+choice preserved lane intent and efficient long spans. The routing decision
+retains those benefits while making fixed ports and complete visible-card
+avoidance a product responsibility.
 
 ## Consequences
 
-Inspection and detail resource state now have separate owners and lifecycle
-rules. Selection can update a large fraction of the graph; five measurements
-per fixed dataset verify the actual local response without weakening the
-complete project workload or timing gates. Clearing or changing selection keeps
-the same compiled paths, nodes and viewport.
+Visibility, inspection, detail resources and geometry have separate owners.
+Structural expansion/reset and snapshot reconciliation can change layout;
+selection and reading cannot. Hidden ancestors remain observable by exact count,
+and all displayed connections remain real induced dependencies.
 
-Quadratic length bounds and independent curve oracles add algorithm and
-verification obligations. Dependency and rendering changes must retain complete
-coverage, tangent arrows, node avoidance, dash continuity and the maximum-zoom
-length tolerance. The original polyline raster measurements remain historical
-evidence for axis-local paint, not new-source production results; runtime and
-hosted conclusions remain attached to their corresponding PR and CI.
-
-Centered reading and Markdown can be added through the existing Details action
-and independent drawer resource lifecycle. They do not need to change graph
-selection, route compilation or the complete context model.
+Centered reading and Markdown stay in their own tasks. They use the existing
+Details action and resource lifecycle without changing visible-set ownership,
+selection semantics or route compilation. API, task fields and persisted browser
+preferences retain their formats.

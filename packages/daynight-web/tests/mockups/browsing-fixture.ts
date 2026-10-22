@@ -1,6 +1,6 @@
 import type { GraphTask, TaskDetail, TaskGraph, TaskGraphSummary, TaskStatus } from '../../src/api/types';
 
-export type BrowsingScenario = 'mixed' | 'external' | 'complete' | 'empty';
+export type BrowsingScenario = 'mixed' | 'external' | 'progressive' | 'complete' | 'empty';
 type TaskSeed = {
   readonly number: number;
   readonly title: string;
@@ -35,8 +35,17 @@ const external: readonly TaskSeed[] = [
   { number: 32, title: '外部前置的无关后续 · 当前链不显示', status: 'todo', dependencies: [17] },
 ];
 
+const progressive: readonly TaskSeed[] = [
+  ...Array.from({ length: 40 }, (_, position) => ({ number: 2000 + position, title: `外部前置 ${position + 1} · 已完成共享协议`, status: 'done' as const, dependencies: [] })),
+  { number: 3000, title: '渐进展开 · 主链交付起点', status: 'todo', dependencies: [] },
+  ...Array.from({ length: 60 }, (_, position) => ({
+    number: 3001 + position, title: position === 0 ? '合流任务 · 40 个外部前置' : `主链后续 ${position + 1}`,
+    status: 'todo' as const, dependencies: position === 0 ? [3000, ...Array.from({ length: 40 }, (_, index) => 2000 + index)] : [3000],
+  })),
+];
+
 const createGraph = (scenario: BrowsingScenario, name: string, number: number): TaskGraph => {
-  const seeds = scenario === 'empty' ? [] : scenario === 'complete' ? mixed.slice(0, 3) : scenario === 'external' ? external : mixed;
+  const seeds = scenario === 'empty' ? [] : scenario === 'complete' ? mixed.slice(0, 3) : scenario === 'external' ? external : scenario === 'progressive' ? progressive : mixed;
   const statuses = new Map(seeds.map((task) => [task.number, task.status]));
   const tasks: GraphTask[] = seeds.map((task) => {
     const blockedBy = task.dependencies.filter((dependency) => statuses.get(dependency) !== 'done').map(id);
@@ -67,6 +76,7 @@ const createGraph = (scenario: BrowsingScenario, name: string, number: number): 
 export const browsingProjects: Readonly<Record<BrowsingScenario, TaskGraph>> = {
   mixed: createGraph('mixed', 'Daynight · 任务链浏览', 101),
   external: createGraph('external', '完整上游上下文', 104),
+  progressive: createGraph('progressive', '渐进任务图 · 101 个任务', 105),
   complete: createGraph('complete', '已交付项目', 102),
   empty: createGraph('empty', '新项目', 103),
 };

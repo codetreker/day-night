@@ -48,25 +48,26 @@ fault injection verifies the disposable database's ownership before changing it
 and restores the resource in a finally path. Browser routing barriers control
 response ordering separately from actual backend-failure observations.
 
-Topology is fixed while API-generated UUIDs can change layout tie ordering
-between isomorphic runs. Five repetitions share the exact same graph and IDs.
-Each capacity dataset has exactly 1,000 nodes: the chain has 999 edges, and the
-merge, shared-root and dense-external datasets have 5,000 edges each. The dense
-external graph retains two main tasks, 998 contextual tasks and every dependency.
-Five expansions per dataset must all meet the 3,000ms click-to-painted complete-canvas budget. Task selection,
-detail opening, zoom and pan must each provide visible local feedback within
-300ms. Each of the four datasets additionally records five `selectMs` values
-for transitive dependency inspection, each within 300ms; the stable scenario
-inventory remains fifteen native and ten container checks. Each sample first
-preserves initial-viewport Details → close → immediate zoom/pan, then focuses
-the deep sink before trusted selection timing, and repeats the detail/close/zoom/pan
-sequence while highlighted. `detailMs`, `zoomMs` and `panMs` retain the worse
-normal/highlighted value, and `detailNetworkMs` retains the larger observed
-network duration. Neither close-to-zoom sequence inserts Fit view, viewport
-reset or extra waiting. Network readings remain separate. Each expansion records layout and painted-render
-durations from one bounded latest-root User Timing measure; complete `openMs`
-remains the performance gate. Each independent over-limit response must be a complete
-409 refusal, with accurate counts and no partial browser graph or statistics.
+The four input topologies remain fixed while API-generated UUIDs can change
+layout tie order across runs. Each contains 1,000 tasks: chain has 999 edges and
+merge/shared/external have 5,000. External complete data remains two main tasks
+and 998 ancestors. Complete API snapshots compare all input IDs and dependencies.
+The [progressive-view decision](../feature/2026-10-22-progressive-task-graph.md)
+changes browser readiness from all input DOM to the bounded visible overview and
+its exact real induced edges. Tests also exercise explicit expansion/reset,
+precise batch deltas and deduplicated hidden ancestors. Each dataset records
+five `visibility` observations for overview, hidden ancestry, expansion and
+reset counts alongside its five timing samples. Full input data remains
+intact; all-at-once rendering is no longer the required product workload.
+
+Five samples per input retain `openMs ≤ 3000` and selection/detail/zoom/pan
+feedback ≤300ms. Each first runs normal Details → close → immediate zoom/pan,
+then trusted selection of a visible task and the highlighted sequence. Per-metric
+detail/zoom/pan values retain the worse state, with separate observed network
+duration. Neither close-to-zoom sequence inserts Fit view, reset or waiting.
+Projection/layout and painted-render diagnostics do not replace the full opening
+gate. Independent 1,001-task and 5,001-edge responses remain complete 409 refusals.
+Revised native/container/capacity results remain source-bound delivery evidence.
 
 Playwright runs one worker with zero retries. Report validation rejects global
 errors, skipped/flaky/retried tests, duplicate/missing stable scenarios, missing
@@ -93,7 +94,7 @@ selects affected PR jobs without changing their internal gates; main pushes
 retain all native CLI, shell completion, Go and web checks.
 
 Timing begins at the trusted browser input event's performance-clock timestamp
-and ends after the full DOM/readable-initial-task or feedback condition and two
+and ends after the complete visible DOM/readable-root or feedback condition and two
 animation frames. Event queue time remains included; automation actionability and diagnostic
 snapshot work are excluded. All five repetitions and all original budgets remain
 required. A bounded latest-root User Timing measure separates projection/Dagre
@@ -111,22 +112,26 @@ those markers with browser work. The trace does not enable CPU sampling or CDP
 screenshots; scenario PNG evidence stays separate. Bounded completion and resource
 closure are required. Capacity tests disable Playwright's repeated DOM snapshots
 and filmstrip while retaining failure action/network traces, all 20 CDP traces,
-scenario PNGs and complete graph/geometry checks. The
+scenario PNGs and complete visible graph/geometry checks. The
 [inspection decision](../feature/2026-10-22-task-dependency-inspection.md) extends
 independent geometry parsing to `M/L/Q`, exact quadratic/rectangle intersections,
 independent analytic speed integration with near-straight geometric bounds, real
 curved dash phase and marker tangents. `dependency-geometry.test.ts` rejects
 missing edges, wrong arrows, node crossings, phase errors and paint-coverage
 errors. `GeometryExpectation` holds only independent API task identities,
-`dependsOn` closure and edge/external membership; workflow and capacity use
-`expectedDependencyTopology(tasks, rootId)` to derive it from the API fixture. Optional `compilerInputs` are separately declared layout
+`dependsOn` closure and current visible induced edge/external membership.
+Workflow and capacity independently derive complete P and the intended visible
+set from API fixtures; production visibility helpers are not the oracle. Optional `compilerInputs` are separately declared layout
 point sequences used only to check compiler fidelity, never as expected valid
 planner geometry or expected compiled curves. DOM side ports, horizontal ends,
-every quadratic's twelve-unit symmetric-trim/tangency rule, all-node avoidance,
+every quadratic's twelve-unit symmetric-trim/tangency rule, all-visible-card avoidance,
 complete paint coverage, real arc length, dash phase and markers remain
 unconditional, including capacity runs without compiler inputs. Inspection
-must preserve node positions, canonical routes and viewport.
-Inspection semantics are observed for all nodes and edges in one browser
+must preserve node positions, canonical routes and viewport. The [inspection decision](../feature/2026-10-22-task-dependency-inspection.md)
+retains stable controlled-node data and graph-local context. The declarative SVG
+checks every current visible canonical dependency, body piece and native marker,
+with all three paint states and passive semantics.
+Inspection semantics are observed for all visible nodes and induced edges in one browser
 evaluation, then checked with one exact comparison against an independently
 derived sorted result. Identity, control/role semantics, pressed and inspection
 states, status/border/background colors, marker state/paint and external-piece
@@ -140,7 +145,8 @@ from the browser performance gate. The
 [CI efficiency decision](2026-10-21-ci-validation-efficiency.md) records this
 capture-work optimization and the choice to retain the unsplit suite. This is
 test-side diagnosis for hosted zoom latency, without changing thresholds,
-complete graph readiness or success rules.
+timed readiness or success rules; current readiness uses the complete visible
+overview defined by the progressive-view decision.
 Hosted traces show that earlier drawer-close raster/commit work can delay later
 zoom frames even when the zoom handler is prompt. The budget still includes any
 backlog visible after trusted input; work is not deducted because an earlier
@@ -180,8 +186,8 @@ source-right-center/target-left-center ports against DOM card rectangles,
 positive horizontal first/last tangents, node avoidance, native arrows and
 pan/zoom transform remain asserted; native node measurement remains
 enabled. The open/initial-ready count check includes the declared safe-integer
-paint-piece count and actual body-piece DOM, in addition to every node/button and
-canonical route. Independent CTM/arc reconstruction checks full ordered coverage,
+paint-piece count and actual body-piece DOM, in addition to every visible card/control and induced canonical route. Complete
+input IDs and edges remain independently checked through the API. Independent CTM/arc reconstruction checks full ordered coverage,
 phase continuity, gap-midpoint seams and native joins after the five timed
 repetitions, adding no readback or idle wait between drawer close and zoom.
 The [layout decision](../feature/2026-10-20-task-graph-projection.md) owns ranking,

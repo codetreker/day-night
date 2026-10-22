@@ -55,11 +55,14 @@ Capacity runs last, after every preparation/check command, native functional
 phase, container functional phase and complete container cleanup. The native
 Go process and PostgreSQL remain alive for this final phase. One browser worker,
 zero retries, all four fixed graphs with five repetitions, both independent
-limits, complete geometry, twenty CDP traces and all original timing gates
+limits, complete visible induced geometry, twenty CDP traces and all original timing gates
 remain required. Native functional and capacity phases strictly aggregate to
 fifteen unique scenarios; the container target requires ten. Per-phase and
 aggregate validation reject missing, extra or duplicate scenarios and retries,
-and require matching browser identity within a target.
+and require matching browser identity within a target. The
+[progressive-view decision](../feature/2026-10-22-progressive-task-graph.md) retains
+complete API fixture inputs and phase ownership while defining bounded visible
+overviews, expansion/reset and hidden-ancestor readiness checks.
 
 The top-level evidence and recovery receipts use schema 2. Pipeline stages record
 names, results, timestamps, observed managed-command process identities and their

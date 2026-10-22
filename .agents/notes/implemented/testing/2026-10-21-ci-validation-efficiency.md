@@ -188,7 +188,7 @@ remove waiting and diagnostic duplication while preserving those tested limits.
 Installed deadline probes take seconds rather than minutes and explicitly expose
 their mock scope in evidence. Service concurrency can use spare CPU and database
 capacity, while the four-slot bound limits contention. Browser capture removes
-repeated large DOM serialization without changing timed input, complete-canvas
+repeated large DOM serialization without changing timed input or visible-canvas
 readiness or failure criteria.
 
 The test-only loader depends on Node.js 24 and the installed module location;

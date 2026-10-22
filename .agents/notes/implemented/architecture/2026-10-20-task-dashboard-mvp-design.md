@@ -64,7 +64,10 @@ adding explicit direct-boundary prerequisite nodes without expanding their
 ancestors. The later
 [complete context decision](../feature/2026-10-22-complete-prerequisite-context.md)
 replaces that boundary with every required ancestor and dependency, excluding
-unrelated descendants of contextual tasks. Root progress still excludes external
+unrelated descendants of contextual tasks. The
+[progressive-view decision](../feature/2026-10-22-progressive-task-graph.md) then
+separates complete data from bounded visible overviews and explicit expansion.
+Root progress still excludes external
 context; project totals count each task once. Only one root graph is mounted at a
 time. Pure indexing/projection and Dagre layout remain separate from React rendering and API requests. Page hooks own
 request cancellation and snapshot replacement; the drawer never mutates the

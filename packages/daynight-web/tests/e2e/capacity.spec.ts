@@ -5,17 +5,19 @@ import { evidenceDirectory, expect, test, updateTask } from './fixtures';
 import { seedCapacity, seedNodeLimit, type CapacityFixture, type CapacityKind } from './capacity-data';
 import { withCapacityTrace } from './capacity-trace';
 import { checkDependencyGeometry, type GeometryExpectation } from './dependency-geometry';
+import { expectedBatch, expectedOverview } from './visible-topology';
 
-// Repeated DOM snapshots of complete capacity graphs add controller work between
+// Repeated DOM snapshots of capacity views add controller work between
 // measured interactions. Dedicated CDP timelines and scenario PNGs retain the
 // rendering evidence alongside Playwright's action and network trace.
 test.use({ trace: { mode: 'retain-on-failure', snapshots: false, screenshots: false } });
 
 type ExpansionMeasurement = { openMs: number; layoutMs: number; renderMs: number };
 type Measurement = ExpansionMeasurement & { selectMs: number; detailMs: number; detailNetworkMs: number; zoomMs: number; panMs: number };
+type VisibilityMeasurement = { repetition: number; selectedId: string; overviewNodes: number; overviewEdges: number; hiddenUpstream: number; addedNodes: number; addedEdges: number; expandedNodes: number; expandedEdges: number; resetNodes: number; resetEdges: number };
 type Dataset = {
   scenario: string; nodes: 1000; edges: number; result: 'running' | 'passed' | 'failed';
-  networkMs?: number; coldOpenMs?: number; measurements: Measurement[]; feedbackDiagnostics: FeedbackDiagnostic[]; error?: string;
+  networkMs?: number; coldOpenMs?: number; measurements: Measurement[]; visibility: VisibilityMeasurement[]; feedbackDiagnostics: FeedbackDiagnostic[]; error?: string;
   controllerDurations: { fixtureMs?: number; snapshotMs?: number; repetitions: { interactionMs: number; totalMs: number }[] };
 };
 type Limit = { status: number; nodeCount: number; edgeCount: number; maxNodes: number; maxEdges: number };
@@ -58,7 +60,7 @@ const painted = (page: Page) => page.evaluate(() => new Promise<number>((resolve
 const transform = (page: Page) => page.locator('.react-flow__viewport').evaluate((element) => (element as HTMLElement).style.transform);
 
 type TimingCondition =
-  | { kind: 'open'; rootId: string; edges: number; upstream: boolean }
+  | { kind: 'open'; rootId: string; nodes: number; edges: number }
   | { kind: 'select'; rootId: string }
   | { kind: 'detail'; rootId: string }
   | { kind: 'zoom' | 'pan'; previousTransform: string };
@@ -114,21 +116,16 @@ const measureBrowserFeedback = async (page: Page, condition: TimingCondition, ac
         const expectedPaintPieces = svg?.getAttribute('data-paint-piece-count');
         const validPaintCount = expectedPaintPieces !== null && expectedPaintPieces !== undefined
           && /^(0|[1-9]\d*)$/.test(expectedPaintPieces) && Number.isSafeInteger(Number(expectedPaintPieces));
-        countsReady = document.querySelectorAll('.react-flow__node').length === 1000
-          && document.querySelectorAll('.react-flow__node .task-node').length === 1000
+        countsReady = document.querySelectorAll('.react-flow__node').length === condition.nodes
+          && document.querySelectorAll('.react-flow__node .task-node').length === condition.nodes
           && document.querySelectorAll('.react-flow__edge-path').length === condition.edges
+          && document.querySelectorAll('.react-flow__edge-path[marker-end]').length === condition.edges
           && validPaintCount && svg!.querySelectorAll('.task-dependency-paint-piece').length === Number(expectedPaintPieces);
         countsDirty = false;
       }
       if (!countsReady) return false;
       const canvas = document.querySelector('.task-graph-canvas');
-      const source = condition.upstream
-        ? [...document.querySelectorAll<HTMLElement>('.react-flow__node')].reduce((first, node) => {
-          const position = /translate\(([^,]+)px,\s*([^)]+)px\)/.exec(node.style.transform)!;
-          const previous = /translate\(([^,]+)px,\s*([^)]+)px\)/.exec(first.style.transform)!;
-          return Number(position[1]) < Number(previous[1]) || Number(position[1]) === Number(previous[1]) && Number(position[2]) < Number(previous[2]) ? node : first;
-        }).querySelector('.task-node')
-        : document.querySelector(`.react-flow__node[data-id="${condition.rootId}"] .task-node`);
+      const source = document.querySelector(`.react-flow__node[data-id="${condition.rootId}"] .task-node`);
       if (canvas === null || source === null) return false;
       const bounds = canvas.getBoundingClientRect();
       const node = source.getBoundingClientRect();
@@ -262,32 +259,35 @@ const measureBrowserFeedback = async (page: Page, condition: TimingCondition, ac
   }
 };
 
-const visibleGraph = async (page: Page, rootId: string, edges: number, upstream: boolean) => {
-  await expect(page.locator('.react-flow__node')).toHaveCount(1000);
-  await expect(page.locator('.react-flow__node .task-node')).toHaveCount(1000);
-  await expect(page.locator('.react-flow__edge-path')).toHaveCount(edges);
-  await page.waitForFunction(({ id, upstream }) => {
+const visibleGraph = async (page: Page, rootId: string, overview: GeometryExpectation) => {
+  await expect(page.locator('.react-flow__node')).toHaveCount(overview.nodes.length);
+  await expect(page.locator('.react-flow__node .task-node')).toHaveCount(overview.nodes.length);
+  await expect(page.locator('.react-flow__edge-path')).toHaveCount(overview.edges.length);
+  await expect(page.locator('.react-flow__edge-path[marker-end]')).toHaveCount(overview.edges.length);
+  await page.waitForFunction((id) => {
     const svg = document.querySelector<SVGSVGElement>('.task-dependency-edges');
-    const expectedPaintPieces = svg?.getAttribute('data-paint-piece-count');
-    if (expectedPaintPieces === null || expectedPaintPieces === undefined || !/^(0|[1-9]\d*)$/.test(expectedPaintPieces)
-      || !Number.isSafeInteger(Number(expectedPaintPieces)) || svg!.querySelectorAll('.task-dependency-paint-piece').length !== Number(expectedPaintPieces)) return false;
-    const canvas = document.querySelector('.task-graph-canvas');
-    const source = upstream
-      ? [...document.querySelectorAll<HTMLElement>('.react-flow__node')].reduce((first, node) => {
-        const position = /translate\(([^,]+)px,\s*([^)]+)px\)/.exec(node.style.transform)!;
-        const previous = /translate\(([^,]+)px,\s*([^)]+)px\)/.exec(first.style.transform)!;
-        return Number(position[1]) < Number(previous[1]) || Number(position[1]) === Number(previous[1]) && Number(position[2]) < Number(previous[2]) ? node : first;
-      }).querySelector('.task-node')
-      : document.querySelector(`.react-flow__node[data-id="${id}"] .task-node`);
+    const count = svg?.getAttribute('data-paint-piece-count');
+    if (count === null || count === undefined || !/^(0|[1-9]\d*)$/.test(count) || !Number.isSafeInteger(Number(count)) || svg!.querySelectorAll('.task-dependency-paint-piece').length !== Number(count)) return false;
+    const canvas = document.querySelector('.task-graph-canvas'); const source = document.querySelector(`.react-flow__node[data-id="${id}"] .task-node`);
     if (canvas === null || source === null) return false;
-    const bounds = canvas.getBoundingClientRect();
-    const node = source.getBoundingClientRect();
+    const bounds = canvas.getBoundingClientRect(); const node = source.getBoundingClientRect();
     const viewport = document.querySelector('.react-flow__viewport') as HTMLElement;
     const zoom = Number(/scale\(([^)]+)\)/.exec(viewport.style.transform)?.[1]);
-    return zoom >= 0.8 && zoom <= 1 && node.left >= bounds.left && node.top >= bounds.top
-      && node.right <= bounds.right && node.bottom <= bounds.bottom;
-  }, { id: rootId, upstream });
+    return zoom >= 0.8 && zoom <= 1 && node.left >= bounds.left && node.top >= bounds.top && node.right <= bounds.right && node.bottom <= bounds.bottom;
+  }, rootId);
   return painted(page);
+};
+
+const assertVisibleTopology = async (page: Page, expected: GeometryExpectation, full: GeometryExpectation) => {
+  const actual = await page.evaluate(() => ({ stats: { shown: document.querySelector<HTMLElement>('.task-graph')!.dataset.visibleTaskCount, total: document.querySelector<HTMLElement>('.task-graph')!.dataset.totalTaskCount, summary: document.querySelector('.graph-visibility-summary')!.textContent, projection: document.querySelector('.graph-toolbar-actions > span')!.textContent }, nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => ({ id: node.dataset.id! })).sort((a, b) => a.id.localeCompare(b.id)),
+    edges: [...document.querySelectorAll<SVGGElement>('.task-dependency-edge')].map((edge) => { const path = edge.querySelector<SVGPathElement>('.react-flow__edge-path')!; return { id: edge.dataset.id!, source: path.dataset.source!, target: path.dataset.target!, external: edge.getAttribute('data-external') === 'true' }; }).sort((a, b) => a.id.localeCompare(b.id)) }));
+  const external = new Set(full.edges.filter((edge) => edge.external).map((edge) => edge.source));
+  expect(actual, 'Every visible task, induced dependency and full projection statistic exactly matches the API graph').toEqual({ stats: { shown: String(expected.nodes.length), total: String(full.nodes.length), summary: `当前显示 ${expected.nodes.length}/${full.nodes.length} 个任务 · ${expected.edges.length}/${full.edges.length} 条依赖。通过卡片下方按钮展开更多前置或后续。`, projection: `${full.nodes.length - external.size} 个链内任务 · ${external.size} 个外部前置 · ${full.edges.length} 条依赖` }, nodes: [...expected.nodes].sort((a, b) => a.id.localeCompare(b.id)), edges: [...expected.edges].sort((a, b) => a.id.localeCompare(b.id)) });
+};
+const ancestorClosure = (fixture: CapacityFixture, selectedId: string): Set<string> => {
+  const tasks = new Map(fixture.tasks.map((task) => [task.id, task])); const closure = new Set([selectedId]); const pending = [selectedId];
+  while (pending.length > 0) for (const id of tasks.get(pending.pop()!)!.dependsOn) if (!closure.has(id)) { closure.add(id); pending.push(id); }
+  return closure;
 };
 
 const panPoint = (page: Page) => page.evaluate(() => {
@@ -316,8 +316,12 @@ const stableGeometry = (page: Page) => page.evaluate(() => ({
   nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => [node.dataset.id, node.style.transform, node.style.width, node.style.height]),
   paths: [...document.querySelectorAll('.react-flow__edge-path')].map((path) => [path.getAttribute('data-source'), path.getAttribute('data-target'), path.getAttribute('d')]),
   pieces: [...document.querySelectorAll('.task-dependency-paint-piece')].map((piece) => ['d', 'transform', 'x1', 'x2', 'y1', 'y2'].map((attribute) => piece.getAttribute(attribute))),
+  owners: [...document.querySelectorAll<SVGGElement>('.task-dependency-edge,.task-dependency-body')].map((owner) => {
+    const m = owner.getScreenCTM(); if (m === null) throw new Error('Dependency owner has no viewport geometry.');
+    return [m.a, m.b, m.c, m.d, m.e, m.f];
+  }),
 }));
-const assertInspection = async (page: Page, fixture: CapacityFixture, selectedId: string) => {
+const assertInspection = async (page: Page, fixture: CapacityFixture, selectedId: string, visible: GeometryExpectation) => {
   const tasks = new Map(fixture.tasks.map((task) => [task.id, task]));
   const closure = new Set([selectedId]); const pending = [selectedId];
   while (pending.length > 0) for (const id of tasks.get(pending.pop()!)!.dependsOn) if (!closure.has(id)) { closure.add(id); pending.push(id); }
@@ -325,16 +329,16 @@ const assertInspection = async (page: Page, fixture: CapacityFixture, selectedId
   const external = new Set(geometry.edges.filter((edge) => edge.external).map((edge) => edge.source));
   const states = { todo: { label: '待处理', color: 'rgb(114, 126, 144)' }, in_progress: { label: '进行中', color: 'rgb(72, 103, 181)' }, done: { label: '已完成', color: 'rgb(40, 116, 84)' } };
   const expected = {
-    nodes: fixture.tasks.map((task) => ({
+    nodes: fixture.tasks.filter((task) => visible.nodes.some((node) => node.id === task.id)).map((task) => ({
       id: task.id, state: task.id === selectedId ? 'selected' : closure.has(task.id) ? 'prerequisite' : 'unrelated', pressed: String(task.id === selectedId),
       background: task.id === selectedId ? 'rgb(240, 239, 255)' : closure.has(task.id) ? 'rgb(247, 246, 255)' : 'rgb(249, 250, 252)',
       bodyTag: 'BUTTON', bodyType: 'button', detailsTag: 'BUTTON', detailsType: 'button', detailsPopup: 'dialog',
       status: states[task.status].label, statusColor: states[task.status].color, borderColor: states[task.status].color, borderStyle: external.has(task.id) ? 'dashed' : 'solid',
     })).sort((a, b) => a.id.localeCompare(b.id)),
-    edges: geometry.edges.map((edge) => {
+    edges: visible.edges.map((edge) => {
       const highlighted = closure.has(edge.target); const color = highlighted ? 'rgb(103, 98, 206)' : 'rgb(199, 205, 219)';
       return { id: edge.id, source: edge.source, target: edge.target, state: highlighted ? 'highlighted' : 'unrelated', color,
-        markerState: highlighted ? 'highlighted' : 'unrelated', markerStroke: color, markerFill: color, role: 'img', focusable: 'false',
+        markerStroke: color, markerFill: color, markerLocal: true, external: String(edge.external), role: 'img', focusable: 'false',
         stroke: edge.external ? 'none' : color, dashed: edge.external, hasPaint: edge.external, paintValid: true, passive: true };
     }).sort((a, b) => a.id.localeCompare(b.id)),
   };
@@ -349,21 +353,27 @@ const assertInspection = async (page: Page, fixture: CapacityFixture, selectedId
         status: status.textContent, statusColor: getComputedStyle(status).color, borderColor: style.borderLeftColor, borderStyle: style.borderLeftStyle };
     }).sort((a, b) => a.id.localeCompare(b.id)),
     edges: [...document.querySelectorAll<SVGGElement>('.task-dependency-edge')].map((edge) => {
-      const path = edge.querySelector<SVGPathElement>('.react-flow__edge-path')!; const style = getComputedStyle(path); const color = getComputedStyle(edge).color;
+      const path = edge.querySelector<SVGPathElement>('.react-flow__edge-path')!; const style = getComputedStyle(path); const color = getComputedStyle(edge.querySelector('.task-dependency-body')!).stroke;
       const markerUrl = path.getAttribute('marker-end')!; const markerId = /#([^#)]+)\)/.exec(markerUrl)?.[1];
       const marker = markerId === undefined ? null : document.getElementById(markerId)?.querySelector('polyline'); const markerStyle = marker === null || marker === undefined ? null : getComputedStyle(marker);
       const pieces = [...edge.querySelectorAll<SVGGraphicsElement>('.task-dependency-paint-piece')];
       const dash = (value: string) => { const parts = value.match(/[-+\d.]+/g)?.map(Number); return parts?.length === 2 && parts[0] === 5 && parts[1] === 4; };
       return { id: edge.dataset.id!, source: path.dataset.source!, target: path.dataset.target!, state: edge.dataset.inspection, color,
-        markerState: /-(normal|highlighted|unrelated)\)$/.exec(markerUrl)?.[1], markerStroke: markerStyle?.stroke, markerFill: markerStyle?.fill,
-        role: edge.getAttribute('role'), focusable: edge.getAttribute('focusable'), stroke: style.stroke, dashed: dash(style.strokeDasharray), hasPaint: pieces.length > 0,
+        markerStroke: markerStyle?.stroke, markerFill: markerStyle?.fill, markerLocal: marker !== null && marker !== undefined && edge.closest('svg')!.contains(marker), external: edge.getAttribute('data-external'),
+        role: edge.getAttribute('role'), focusable: edge.getAttribute('focusable'), stroke: style.stroke, dashed: pieces.length > 0 && pieces.every((piece) => dash(getComputedStyle(piece).strokeDasharray)), hasPaint: pieces.length > 0,
         paintValid: pieces.every((piece) => { const paint = getComputedStyle(piece); return paint.stroke === color && dash(paint.strokeDasharray) && Number.parseFloat(paint.strokeWidth) === 1.5
           && paint.strokeLinecap === 'butt' && paint.strokeLinejoin === 'miter' && paint.pointerEvents === 'none'
           && piece.getAttribute('aria-hidden') === 'true' && piece.getAttribute('focusable') === 'false'; }),
         passive: path.getAttribute('aria-hidden') === 'true' && style.pointerEvents === 'none' };
     }).sort((a, b) => a.id.localeCompare(b.id)),
   }));
-  expect(actual, 'Every node and dependency exactly matches the independent upstream closure and rendered inspection semantics').toEqual(expected);
+  expect(actual, 'Every visible node and dependency exactly matches the full upstream closure and rendered inspection semantics').toEqual(expected);
+  const shown = new Set(visible.nodes.map(({ id }) => id));
+  const hidden = [...closure].filter((id) => !shown.has(id)).length;
+  await expect(page.locator('.task-graph')).toHaveAttribute('data-hidden-upstream-count', String(hidden));
+  if (hidden > 0) await expect(page.locator('.graph-hidden-prerequisites')).toHaveText(`另有${hidden}个上游未展开`);
+  else await expect(page.locator('.graph-hidden-prerequisites')).toHaveText('');
+  return hidden;
 };
 
 type LocalFeedback = { detailMs: number; detailNetworkMs: number; zoomMs: number; panMs: number };
@@ -397,33 +407,60 @@ const measureDetailsZoomPan = async (page: Page, fixture: CapacityFixture, taskI
   return { detailMs: detail.duration, detailNetworkMs, zoomMs: zoom.duration, panMs: pan.duration };
 };
 
-const measureInteractions = async (page: Page, fixture: CapacityFixture, expansion: ExpansionMeasurement, dataset: Dataset, repetition: number, info: TestInfo): Promise<Measurement> => {
-  const expected = expectedCapacityGeometry(fixture);
-  if (repetition === 0) expect(await checkDependencyGeometry(page, expected, info), 'Every normal dependency has independent complete geometry').toEqual({ total: 0, examples: [] });
-  const initialDetailTask = fixture.kind === 'external' ? await page.locator('.task-node-external').evaluateAll((nodes) => {
-    const canvas = document.querySelector('.task-graph-canvas')!.getBoundingClientRect();
-    const visible = nodes.find((node) => { const bounds = node.getBoundingClientRect(); return bounds.left >= canvas.left && bounds.top >= canvas.top && bounds.right <= canvas.right && bounds.bottom <= canvas.bottom; });
-    if (visible === undefined) throw new Error('The initial external prerequisite is not accessible.');
-    return visible.closest('.react-flow__node')!.getAttribute('data-id')!;
-  }) : fixture.root.id;
-  // Keep the original raster-regression sequence at its initial viewport.
-  const normal = await measureDetailsZoomPan(page, fixture, initialDetailTask, dataset, repetition);
+const measureInteractions = async (page: Page, fixture: CapacityFixture, expansion: ExpansionMeasurement, dataset: Dataset, repetition: number, info: TestInfo, overview: GeometryExpectation, snapshotOrder: readonly string[]): Promise<Measurement> => {
+  const full = expectedCapacityGeometry(fixture);
+  await assertVisibleTopology(page, overview, full);
+  expect(overview.nodes.length).toBeLessThanOrEqual(50); expect(overview.edges.length).toBeLessThanOrEqual(100);
+  const initialGeometry = await stableGeometry(page);
+  expect(await checkDependencyGeometry(page, overview, info), 'Every overview dependency has independent complete geometry').toEqual({ total: 0, examples: [] });
+  // The root stays accessible in the initial overview. Keep the original
+  // details-close-immediate-zoom/pan sequence before changing inspection.
+  const normal = await measureDetailsZoomPan(page, fixture, fixture.root.id, dataset, repetition);
 
-  // Revealing the sink through the production keyboard-focus path happens before
-  // timing. Its click exercises the deep upstream closure at the current view.
-  const selectedId = fixture.tasks.at(-1)!.id;
+  const selectedId = [...overview.nodes].sort((a, b) => ancestorClosure(fixture, b.id).size - ancestorClosure(fixture, a.id).size || a.id.localeCompare(b.id))[0]!.id;
   const body = page.locator(`.react-flow__node[data-id="${selectedId}"] .task-node-body`);
-  await page.keyboard.press('Tab');
-  await body.focus();
-  await painted(page);
+  await page.keyboard.press('Tab'); await body.focus(); await painted(page);
   const beforeSelection = await stableGeometry(page);
   const selection = await measureBrowserFeedback(page, { kind: 'select', rootId: selectedId }, () => body.click(), dataset, repetition);
-  await assertInspection(page, fixture, selectedId);
-  expect(await stableGeometry(page), 'Selecting upstream dependencies changes no node, route, paint-piece geometry or viewport').toEqual(beforeSelection);
-  if (repetition === 4) expect(await checkDependencyGeometry(page, expected, info), 'Every highlighted dependency, arrow and external curve preserves complete native paint').toEqual({ total: 0, examples: [] });
+  const hiddenUpstream = await assertInspection(page, fixture, selectedId, overview);
+  await assertVisibleTopology(page, overview, full);
+  expect(await stableGeometry(page), 'Selection never expands hidden tasks or changes nodes, routes, paint geometry or viewport').toEqual(beforeSelection);
+  expect(await checkDependencyGeometry(page, overview, info), 'All visible highlighted dependencies retain their native geometry and paint').toEqual({ total: 0, examples: [] });
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const highlighted = await measureDetailsZoomPan(page, fixture, selectedId, dataset, repetition);
-  await assertInspection(page, fixture, selectedId);
+  await assertInspection(page, fixture, selectedId, overview);
+  await assertVisibleTopology(page, overview, full);
+
+  const currentIds = overview.nodes.map(({ id }) => id);
+  const batches = overview.nodes.flatMap((node) => (['upstream', 'downstream'] as const).map((direction) => ({
+    id: node.id, direction, expanded: expectedBatch(full, currentIds, node.id, direction, snapshotOrder),
+  }))).filter((batch) => batch.expanded.nodes.length > overview.nodes.length).sort((a, b) => b.expanded.edges.length - a.expanded.edges.length || b.expanded.nodes.length - a.expanded.nodes.length || a.id.localeCompare(b.id));
+  const batch = batches[0]; if (batch === undefined) throw new Error('A bounded overview of this connected capacity graph must expose a hidden direct neighbor.');
+  const addedNodes = batch.expanded.nodes.length - overview.nodes.length; const addedEdges = batch.expanded.edges.length - overview.edges.length;
+  const direction = batch.direction === 'upstream' ? 'prerequisites' : 'successors'; const label = batch.direction === 'upstream' ? '前置' : '后续';
+  const control = page.locator(`.react-flow__node[data-id="${batch.id}"] .task-node-expand[data-direction="${direction}"]`);
+  await expect(control).toHaveAttribute('data-added-tasks', String(addedNodes)); await expect(control).toHaveAttribute('data-added-edges', String(addedEdges));
+  const current = new Set(currentIds);
+  const totalHidden = full.edges.filter((edge) => batch.direction === 'upstream' ? edge.target === batch.id && !current.has(edge.source) : edge.source === batch.id && !current.has(edge.target)).length;
+  const remaining = totalHidden - addedNodes;
+  await expect(control).toHaveAttribute('data-remaining', String(remaining));
+  await expect(control).toHaveAccessibleName(`展开${label} ${addedNodes} 个任务、${addedEdges} 条依赖${remaining > 0 ? `，剩余 ${remaining} 个${label}未展开` : ''}`);
+  expect(addedNodes).toBeGreaterThan(0); expect(addedNodes).toBeLessThanOrEqual(20);
+  await page.keyboard.press('Tab'); await control.focus(); await control.click();
+  await expect(page.locator('.react-flow__node')).toHaveCount(batch.expanded.nodes.length);
+  await assertVisibleTopology(page, batch.expanded, full);
+  await expect(page.locator(`.react-flow__node[data-id="${batch.id}"] .task-node-body`)).toBeFocused();
+  expect(await checkDependencyGeometry(page, batch.expanded, info), 'Explicit expansion paints every newly induced API relation without an edge limit').toEqual({ total: 0, examples: [] });
+  await assertInspection(page, fixture, selectedId, batch.expanded);
+  await page.locator('.graph-reset-overview').click();
+  await expect(page.locator('.react-flow__node')).toHaveCount(overview.nodes.length);
+  await visibleGraph(page, fixture.root.id, overview);
+  await expect(page.locator('.graph-reset-overview')).toBeFocused();
+  await assertVisibleTopology(page, overview, full);
+  expect(await stableGeometry(page), 'Reset restores the deterministic overview and reframes its original viewport').toEqual(initialGeometry);
+  expect(await checkDependencyGeometry(page, overview, info), 'Reset retains complete visible graph geometry').toEqual({ total: 0, examples: [] });
+  dataset.visibility.push({ repetition, selectedId, overviewNodes: overview.nodes.length, overviewEdges: overview.edges.length, hiddenUpstream, addedNodes, addedEdges,
+    expandedNodes: batch.expanded.nodes.length, expandedEdges: batch.expanded.edges.length, resetNodes: overview.nodes.length, resetEdges: overview.edges.length });
   return { ...expansion, selectMs: selection.duration,
     detailMs: Math.max(normal.detailMs, highlighted.detailMs), detailNetworkMs: Math.max(normal.detailNetworkMs, highlighted.detailNetworkMs),
     zoomMs: Math.max(normal.zoomMs, highlighted.zoomMs), panMs: Math.max(normal.panMs, highlighted.panMs) };
@@ -446,16 +483,16 @@ test.describe('fixed capacity and performance @capacity', () => {
   test.beforeAll(persist);
   test.afterAll(async () => {
     receipt.result = receipt.result !== 'failed' && receipt.datasets.length === 4
-      && receipt.datasets.every((dataset) => dataset.result === 'passed' && dataset.measurements.length === 5)
+      && receipt.datasets.every((dataset) => dataset.result === 'passed' && dataset.measurements.length === 5 && dataset.visibility.length === 5)
       && receipt.limits.node !== undefined && receipt.limits.edge !== undefined ? 'passed' : 'failed';
     await persist();
   });
 
   for (const kind of ['chain', 'merge', 'shared', 'external'] as const satisfies readonly CapacityKind[]) {
     const scenario = `capacity-${kind}`;
-    test(`renders and operates the complete ${kind} capacity graph`, { annotation: { type: 'scenario', description: scenario } }, async ({ page, request }, info) => {
+    test(`operates bounded ${kind} views of the complete API graph`, { annotation: { type: 'scenario', description: scenario } }, async ({ page, request }, info) => {
       test.setTimeout(240_000);
-      const dataset: Dataset = { scenario, nodes: 1000, edges: kind === 'chain' ? 999 : 5000, result: 'running', measurements: [], feedbackDiagnostics: [],
+      const dataset: Dataset = { scenario, nodes: 1000, edges: kind === 'chain' ? 999 : 5000, result: 'running', measurements: [], visibility: [], feedbackDiagnostics: [],
         controllerDurations: { repetitions: [] } };
       receipt.datasets.push(dataset);
       await persist();
@@ -485,6 +522,8 @@ test.describe('fixed capacity and performance @capacity', () => {
             new Map(fixture.tasks.map((task) => [task.id, [...task.dependsOn].sort()])),
           );
           dataset.controllerDurations.snapshotMs = performance.now() - snapshotStart;
+          const snapshotOrder = graph.tasks.map(({ id }) => id);
+          const full = expectedCapacityGeometry(fixture); const overview = expectedOverview(full, fixture.root.id, snapshotOrder);
           let graphRequests = 0;
           const trackGraph = (request: { url: () => string }) => { if (request.url().endsWith(`/api/v1/projects/${fixture.project.id}/task-graph`)) graphRequests++; };
           page.on('request', trackGraph);
@@ -492,12 +531,13 @@ test.describe('fixed capacity and performance @capacity', () => {
           const coldStart = performance.now();
           await page.goto(`/projects/${fixture.project.id}`, { waitUntil: 'domcontentloaded' });
           if (kind === 'shared' || kind === 'external') await page.locator(`#task-root-${fixture.root.id}`).click();
-          await visibleGraph(page, fixture.root.id, dataset.edges, kind === 'external');
-          if (kind === 'external') {
-            await expect(page.locator('.task-node-external')).toHaveCount(998);
-            await expect(page.getByText('2 个链内任务 · 998 个外部前置 · 5000 条依赖')).toBeVisible();
-            await expect(page.locator(`#task-root-${fixture.root.id} .root-progress-label`)).toHaveText('0/2 已完成');
-          }
+          await visibleGraph(page, fixture.root.id, overview);
+          await assertVisibleTopology(page, overview, full);
+          const total = page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^任务总数$/ }) }).locator('.stat-number');
+          await expect(total).toHaveText('1000');
+          const externalIds = new Set(full.edges.filter((edge) => edge.external).map((edge) => edge.source));
+          await expect(page.locator(`#task-root-${fixture.root.id} .root-progress-label`)).toHaveText(`0/${1000 - externalIds.size} 已完成`);
+          await expect(page.locator('.task-node-external')).toHaveCount(overview.nodes.filter((node) => externalIds.has(node.id)).length);
           dataset.coldOpenMs = performance.now() - coldStart;
           const initialResponse = await graphResponse;
           expect(initialResponse.status()).toBe(200);
@@ -520,7 +560,7 @@ test.describe('fixed capacity and performance @capacity', () => {
             let interactionMs!: number;
             await withCapacityTrace(page, info, `${scenario}-repetition-${repetition}`, async () => {
               const interactionStart = performance.now();
-              const opened = await measureBrowserFeedback(page, { kind: 'open', rootId: fixture.root.id, edges: dataset.edges, upstream: kind === 'external' }, () => root.click(), dataset, repetition);
+              const opened = await measureBrowserFeedback(page, { kind: 'open', rootId: fixture.root.id, nodes: overview.nodes.length, edges: overview.edges.length }, () => root.click(), dataset, repetition);
               const expansion = await page.evaluate(({ rootId, start, paintedTime }) => {
                 const measures = (performance.getEntriesByName('daynight:task-layout', 'measure') as PerformanceMeasure[])
                   .filter((measure) => measure.detail?.rootId === rootId && measure.startTime >= start);
@@ -532,7 +572,7 @@ test.describe('fixed capacity and performance @capacity', () => {
                   renderMs: paintedTime - (measure.startTime + measure.duration),
                 };
               }, { rootId: fixture.root.id, start: opened.start, paintedTime: opened.end });
-              const measurement = await measureInteractions(page, fixture, expansion, dataset, repetition, info);
+              const measurement = await measureInteractions(page, fixture, expansion, dataset, repetition, info, overview, snapshotOrder);
               dataset.measurements.push(measurement);
               await persist();
               checkMeasurement(measurement);

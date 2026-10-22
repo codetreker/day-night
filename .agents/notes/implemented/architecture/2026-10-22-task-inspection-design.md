@@ -21,13 +21,16 @@ implements complete ancestors, separate counts and a readable upstream-aware
 initial viewport. The
 [dependency inspection decision](../feature/2026-10-22-task-dependency-inspection.md)
 implements independent card controls, transitive node/edge inspection and smooth
-routes. Centered reading and Markdown descriptions remain pending in their
+routes. The [progressive-view decision](../feature/2026-10-22-progressive-task-graph.md)
+replaces simultaneous full rendering with bounded overviews and explicit direct
+neighbor expansion for both main and external tasks. Centered reading and Markdown descriptions remain pending in their
 Daynight tasks; existing detail notes describe the current drawer mechanism.
 
 The root and its descendants remain the chain's counted membership. Rendering
 adds the complete prerequisite closure without importing unrelated descendants
 of contextual tasks. Selection belongs to the mounted graph and highlights the
-selected task, all ancestors and their connecting edges. Detail resource
+selected task's visible ancestors and their real connecting edges, with a
+deduplicated hidden-ancestor count derived from complete data. Detail resource
 selection remains independent, with sibling card controls and one centered
 dialog shared by all detail entry points.
 
@@ -85,8 +88,9 @@ delivery reviewable and responsible for its own observable acceptance.
 
 ## Consequences
 
-Complete ancestry can make one expanded chain approach the complete-project
-limit, so the existing capacity matrix and performance budgets remain required.
+Complete ancestry data can approach the project limit. Progressive visibility
+bounds initial geometry while retaining the complete capacity inputs, five
+samples and existing timing budgets. All visible induced edges remain required.
 Many nodes and edges may change style during selection; the former two-node
 selection cost assumption no longer establishes feedback time. Curved dash
 length and independent geometry validation are substantive work.

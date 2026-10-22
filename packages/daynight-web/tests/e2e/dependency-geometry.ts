@@ -25,8 +25,9 @@ export const expectedDependencyTopology = (tasks: readonly { id: string; depends
 
 type Paint = { d: string; matrix: number[]; line: boolean; phase: number; dash: string; stroke: string; width: number; cap: string; join: string; hidden: boolean };
 export type DependencySnapshot = {
-  nodes: Rect[]; edges: { id: string; source: string; target: string; d: string; dashed: boolean; stroke: string; color: string; marker: string; pieces: Paint[] }[];
-  markers: { id: string; orient: string | null; units: string | null; viewBox: string | null; width: string | null; height: string | null; refX: string | null; refY: string | null; points: string | null; stroke: string; fill: string }[];
+  nodes: Rect[];
+  edges: { id: string; source: string; target: string; d: string; external: string | null; stroke: string; fill: string; color: string; bodyMatrix: number[]; bodyVisible: boolean; marker: string | null; canonicalVisible: boolean; pieces: Paint[] }[];
+  markers: { id: string; orient: string | null; units: string | null; viewBox: string | null; width: string | null; height: string | null; refX: string | null; refY: string | null; points: string | null; stroke: string; fill: string; strokeWidth: number; cap: string; join: string }[];
   declaredPieces: number; viewport: boolean; passive: boolean;
 };
 const epsilon = 0.04;
@@ -127,6 +128,7 @@ export const inspectDependencySnapshot = (snapshot: DependencySnapshot, expected
   if (nodes.size !== expected.nodes.length || snapshot.nodes.length !== nodes.size || expected.nodes.some((node) => !nodes.has(node.id))) fail('nodes', 'incomplete node coverage');
   if (edges.size !== expected.edges.length || snapshot.edges.length !== edges.size || expected.edges.some((edge) => !edges.has(edge.id))) fail('edges', 'incomplete edge coverage');
   if (snapshot.declaredPieces !== snapshot.edges.reduce((total, edge) => total + edge.pieces.length, 0)) fail('pieces', 'incomplete declared paint coverage');
+
   const inputs = new Map(compilerInputs?.map((input) => [input.id, input.points]));
   if (compilerInputs !== undefined && (inputs.size !== compilerInputs.length || inputs.size !== expected.edges.length || expected.edges.some((edge) => !inputs.has(edge.id)))) fail('curve inputs', 'incomplete declared edge coverage');
   const sortedNodes = [...nodes.values()].sort((a, b) => a.left - b.left);
@@ -167,12 +169,14 @@ export const inspectDependencySnapshot = (snapshot: DependencySnapshot, expected
         const left = Math.min(...xs); const right = Math.max(...xs); const top = Math.min(...ys); const bottom = Math.max(...ys);
         for (const node of sortedNodes) { if (node.left >= right) break; if (node.right <= left || node.top >= bottom || node.bottom <= top) continue; if (penetrates(segment, node)) fail(edge.id, `curve passes through node ${node.id}`); }
       }
-      const markerId = /(?:^|\()#([^#)]+)\)?$/.exec(edge.marker)?.[1];
+      if (!edge.bodyVisible || edge.bodyMatrix.length !== 6 || edge.bodyMatrix.some((value, index) => !Number.isFinite(value) || Math.abs(value - [1, 0, 0, 1, 0, 0][index]!) > epsilon)) fail(edge.id, 'body owner does not paint in graph coordinates');
+      if (!edge.canonicalVisible) fail(edge.id, 'canonical native arrow owner is hidden');
+      const markerId = /(?:^|\()#([^#)]+)\)?$/.exec(edge.marker ?? '')?.[1];
       const marker = snapshot.markers.find((item) => item.id === markerId);
       if (marker === undefined || marker.orient !== 'auto-start-reverse' || marker.units !== 'strokeWidth' || marker.viewBox !== '-10 -10 20 20'
         || marker.width !== '16' || marker.height !== '16' || marker.refX !== '0' || marker.refY !== '0' || marker.points?.replace(/[\s,]+/g, ' ').trim() !== '-5 -4 0 0 -5 4 -5 -4'
-        || marker.stroke !== edge.color || marker.fill !== edge.color) fail(edge.id, 'wrong arrow marker or color');
-      if (edge.dashed !== expectation.external || expectation.external !== (edge.pieces.length > 0) || (expectation.external ? edge.stroke !== 'none' : edge.stroke !== edge.color)) fail(edge.id, 'incorrect external dash or body semantics');
+        || marker.stroke !== edge.color || marker.fill !== edge.color || marker.strokeWidth !== 1 || marker.cap !== 'round' || marker.join !== 'round') fail(edge.id, 'wrong native arrow marker or color');
+      if (edge.fill !== 'none' || edge.external !== String(expectation.external) || expectation.external !== (edge.pieces.length > 0) || (expectation.external ? edge.stroke !== 'none' : edge.stroke !== edge.color)) fail(edge.id, 'incorrect external dash or body semantics');
       let index = 0; let t = 0; let covered = 0;
       for (const paint of edge.pieces) {
         if (!paint.hidden || paint.stroke !== edge.color || paint.width !== 1.5 || paint.cap !== 'butt' || paint.join !== 'miter' || !/^5(?:px)?[, ]+4(?:px)?$/.test(paint.dash)) fail(edge.id, 'changed paint semantics');
@@ -207,37 +211,51 @@ export const captureDependencySnapshot = (page: Page): Promise<DependencySnapsho
   if (svg === null) throw new Error('Dependency SVG absent.');
   const matrix = svg.getScreenCTM(); if (matrix === null) throw new Error('Dependency SVG has no geometry.');
   const inverse = matrix.inverse();
+  const relativeMatrix = (element: SVGGraphicsElement): number[] => {
+    const screen = element.getScreenCTM(); if (screen === null) throw new Error('A visible dependency paint owner has no viewport geometry.');
+    const m = inverse.multiply(screen); return [m.a, m.b, m.c, m.d, m.e, m.f];
+  };
+  const visible = (element: SVGGraphicsElement): boolean => {
+    const style = getComputedStyle(element); const bounds = element.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && (bounds.width > 0 || bounds.height > 0);
+  };
   return {
     nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => {
       const bounds = node.getBoundingClientRect(); const a = new DOMPoint(bounds.left, bounds.top).matrixTransform(inverse); const b = new DOMPoint(bounds.right, bounds.bottom).matrixTransform(inverse);
       return { id: node.dataset.id!, left: a.x, top: a.y, right: b.x, bottom: b.y };
     }),
     edges: [...svg.querySelectorAll<SVGGElement>('.task-dependency-edge')].map((group) => {
-      const path = group.querySelector<SVGPathElement>('.react-flow__edge-path')!; const style = getComputedStyle(path);
-      return { id: group.dataset.id!, source: path.dataset.source!, target: path.dataset.target!, d: path.getAttribute('d')!, dashed: style.strokeDasharray !== 'none', stroke: style.stroke, color: getComputedStyle(group).color,
-        marker: path.getAttribute('marker-end')!.replace('url(', '').replace(')', ''), pieces: [...group.querySelectorAll<SVGGraphicsElement>('.task-dependency-paint-piece')].map((piece) => {
-          const m = inverse.multiply(piece.getScreenCTM()!); const paint = getComputedStyle(piece); const line = piece instanceof SVGLineElement;
-          return { d: line ? `M${piece.x1.baseVal.value},${piece.y1.baseVal.value} L${piece.x2.baseVal.value},${piece.y2.baseVal.value}` : piece.getAttribute('d')!, matrix: [m.a, m.b, m.c, m.d, m.e, m.f], line,
+      const path = group.querySelector<SVGPathElement>('.react-flow__edge-path')!; const body = group.querySelector<SVGGElement>('.task-dependency-body')!; const style = getComputedStyle(path);
+      return { id: group.dataset.id!, source: path.dataset.source!, target: path.dataset.target!, d: path.getAttribute('d')!, external: group.getAttribute('data-external'), stroke: style.stroke, fill: style.fill,
+        color: getComputedStyle(body).stroke, bodyMatrix: relativeMatrix(body), bodyVisible: visible(body), marker: path.getAttribute('marker-end'), canonicalVisible: visible(path),
+        pieces: [...body.querySelectorAll<SVGGraphicsElement>('.task-dependency-paint-piece')].map((piece) => {
+          const paint = getComputedStyle(piece); const line = piece instanceof SVGLineElement;
+          return { d: line ? `M${piece.x1.baseVal.value},${piece.y1.baseVal.value} L${piece.x2.baseVal.value},${piece.y2.baseVal.value}` : piece.getAttribute('d')!, matrix: relativeMatrix(piece), line,
             phase: Number.parseFloat(paint.strokeDashoffset), dash: paint.strokeDasharray, stroke: paint.stroke, width: Number.parseFloat(paint.strokeWidth), cap: paint.strokeLinecap, join: paint.strokeLinejoin,
-            hidden: piece.getAttribute('aria-hidden') === 'true' && piece.getAttribute('focusable') === 'false' && paint.pointerEvents === 'none' && (!(piece instanceof SVGPathElement) || paint.fill === 'none') };
+            hidden: visible(piece) && piece.getAttribute('aria-hidden') === 'true' && piece.getAttribute('focusable') === 'false' && paint.pointerEvents === 'none' && (!(piece instanceof SVGPathElement) || paint.fill === 'none') };
         }) };
     }),
     markers: [...svg.querySelectorAll<SVGMarkerElement>('marker')].map((marker) => { const shape = marker.querySelector('polyline')!; const style = getComputedStyle(shape); return {
       id: marker.id, orient: marker.getAttribute('orient'), units: marker.getAttribute('markerUnits'), viewBox: marker.getAttribute('viewBox'), width: marker.getAttribute('markerWidth'), height: marker.getAttribute('markerHeight'), refX: marker.getAttribute('refX'), refY: marker.getAttribute('refY'), points: shape.getAttribute('points'), stroke: style.stroke, fill: style.fill,
+      strokeWidth: Number.parseFloat(style.strokeWidth), cap: style.strokeLinecap, join: style.strokeLinejoin,
     }; }),
-    declaredPieces: Number(svg.dataset.paintPieceCount), viewport: svg.closest('.react-flow__viewport') === viewport && !svg.hasAttribute('viewBox'),
+    declaredPieces: Number(svg.dataset.paintPieceCount),
+    viewport: svg.closest('.react-flow__viewport') === viewport && !svg.hasAttribute('viewBox'),
     passive: getComputedStyle(svg).pointerEvents === 'none' && svg.querySelectorAll('[tabindex]:not([tabindex="-1"])').length === 0
       && [...svg.querySelectorAll<SVGGElement>('.task-dependency-edge')].every((group) => {
         const path = group.querySelector<SVGPathElement>('.react-flow__edge-path'); if (path === null) return false;
-        const pathMatrix = path.getScreenCTM(); if (pathMatrix === null) return false;
-        const relative = inverse.multiply(pathMatrix);
+        // The canonical world-coordinate d may be non-painted. Its actual edge
+        // owner supplies the viewport matrix; no synthetic identity is inferred.
+        const owner = group.getScreenCTM(); if (owner === null) return false;
+        const relative = inverse.multiply(owner);
         return group.getAttribute('role') === 'img' && group.getAttribute('focusable') === 'false'
           && (group.getAttribute('aria-label') ?? '').includes(path.dataset.source!) && (group.getAttribute('aria-label') ?? '').includes(path.dataset.target!)
-          && path.getAttribute('aria-hidden') === 'true' && getComputedStyle(path).pointerEvents === 'none'
+          && path.getAttribute('aria-hidden') === 'true' && path.getAttribute('focusable') === 'false' && getComputedStyle(path).pointerEvents === 'none' && getComputedStyle(path).transform === 'none' && !path.hasAttribute('transform')
           && [relative.a - 1, relative.b, relative.c, relative.d - 1, relative.e, relative.f].every((value) => Math.abs(value) < 0.00001);
       }),
   };
 });
+
 export const summarizeGeometryFailures = (failures: readonly string[]): { total: number; examples: string[] } => ({ total: failures.length, examples: failures.slice(0, 12) });
 let failureSequence = 0;
 export const checkDependencyGeometry = async (page: Page, expected: GeometryExpectation, info: TestInfo, compilerInputs?: readonly DeclaredCurveInput[]): Promise<{ total: number; examples: string[] }> => {

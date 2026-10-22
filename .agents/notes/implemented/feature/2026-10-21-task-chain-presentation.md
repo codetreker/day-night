@@ -48,8 +48,9 @@ visible roots, the stored root or explicit collapse is retained for revealing
 rows again; an explicitly collapsed list stays collapsed.
 
 Graph projection, progress and API order retain the responsibilities in the
-[projection decision](2026-10-20-task-graph-projection.md). Every displayed graph
-keeps completed nodes, shared descendants and external prerequisites. Project
+[projection decision](2026-10-20-task-graph-projection.md). Complete graph data keeps completed tasks, shared descendants and external
+prerequisites. The [progressive-view decision](2026-10-22-progressive-task-graph.md)
+controls the visible subset without changing those data or progress semantics. Project
 counters and selected details use the full snapshot. Row filtering makes no
 request and does not change dependency direction or layout. A detail remains
 open when its graph disappears but the task still exists; closing restores a
