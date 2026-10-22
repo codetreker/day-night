@@ -98,8 +98,8 @@ The [Goal workflow requirements](docs/spec/daynight-goal-workflow.md) and
 [design](docs/design/daynight-goal-workflow.md) define a planned extension for
 multi-task work, with a Goal description followed by architecture and task
 breakdown. Its [delivery tasks](docs/design/daynight-goal-workflow-tasks.md)
-track the separate skill implementation; the published skill does not yet
-provide that protocol.
+track protocol delivery and independent consumer acceptance; the published
+skill does not yet provide that protocol.
 
 | Mode | Responsibility |
 |---|---|
