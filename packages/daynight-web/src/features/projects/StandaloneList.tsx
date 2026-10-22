@@ -11,7 +11,7 @@ type StandaloneListProps = {
   readonly onShowCompletedChange: (show: boolean) => void;
 };
 
-const labels = { todo: "待处理", in_progress: "进行中", done: "已完成" };
+const labels = { proposed: "待审批", todo: "待处理", in_progress: "进行中", done: "已完成" };
 
 export const StandaloneList = ({ index, taskIds, allTaskIds, onSelectTask, showCompleted, onShowCompletedChange }: StandaloneListProps) => {
   const checkbox = useRef<HTMLInputElement>(null);

@@ -25,7 +25,7 @@ const taskListItem = (value: Task): Omit<Task, "description"> => ({
 });
 const graph = (): TaskGraph => ({
   project,
-  summary: { total: 1, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
+  summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
   tasks: [{ id: taskId, titlePreview: "Task 中文", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time }],
 });
 const taskPath = `/api/v1/projects/${projectId}/tasks`;
@@ -319,11 +319,13 @@ describe("compiled task commands", () => {
       const progressSecond = identifiedTask("06", "Progress second", { status: "in_progress", ready: false });
       const blockedSecond = identifiedTask("07", "Blocked second", { ready: false, dependsOn: [thirdId], blockedBy: [thirdId] });
       const doneSecond = identifiedTask("08", "Done second", { status: "done", ready: false });
+      const proposedFirst = identifiedTask("09", "Proposed first", { status: "proposed", ready: false });
+      const proposedSecond = identifiedTask("10", "Proposed second", { status: "proposed", ready: false, dependsOn: [thirdId], blockedBy: [thirdId] });
       const cursor = "next priority page+/=?";
       const { requests } = await f.serve((request, response) => respond(response, request.query.has("cursor")
-        ? { items: [readySecond, progressSecond, blockedSecond, doneSecond], nextCursor: null }
-        : { items: [blockedFirst, doneFirst, readyFirst, progressFirst], nextCursor: cursor }));
-      const unfinished = [progressFirst, progressSecond, readyFirst, readySecond, blockedFirst, blockedSecond];
+        ? { items: [readySecond, progressSecond, blockedSecond, doneSecond, proposedSecond], nextCursor: null }
+        : { items: [blockedFirst, doneFirst, proposedFirst, readyFirst, progressFirst], nextCursor: cursor }));
+      const unfinished = [progressFirst, progressSecond, readyFirst, readySecond, blockedFirst, blockedSecond, proposedFirst, proposedSecond];
       for (const includeAll of [false, true]) {
         const args = ["list", ...(includeAll ? ["--all"] : []), ...explicit];
         const expected = includeAll ? [...unfinished, doneFirst, doneSecond] : unfinished;
@@ -344,6 +346,35 @@ describe("compiled task commands", () => {
       expect(requests.filter(({ pathname }) => pathname === taskPath).map(({ query }) => Object.fromEntries(query))).toEqual(Array.from({ length: 4 }, () => [
         { limit: "100" }, { limit: "100", cursor },
       ]).flat());
+    } finally { await f.close(); }
+  }, 60_000);
+
+  it("shows complete proposed tasks and includes their distinct counter in human and JSON graph output", async () => {
+    const f = await fixture();
+    try {
+      const proposed = task({ status: "proposed", ready: false, description: "Complete proposed description\nsecond line", version: 9_223_372_036_854_775_807n, dependsOn: [secondId], blockedBy: [secondId] });
+      const value: TaskGraph = {
+        project,
+        summary: { total: 2, proposed: 2, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
+        tasks: [
+          { ...graph().tasks[0]!, status: "proposed", ready: false, dependsOn: [secondId], blockedBy: [secondId] },
+          { ...graph().tasks[0]!, id: secondId, titlePreview: "Proposed prerequisite", status: "proposed", ready: false },
+        ],
+      };
+      await f.serve((request, response) => respond(response, request.pathname.endsWith("/task-graph") ? value : proposed));
+      const shown = await f.invoke(["show", taskId, ...explicit]);
+      expect(shown.code, shown.stderr).toBe(0);
+      for (const field of ["Status: proposed", "Ready: false", "Description: Complete proposed description\\nsecond line", "Version: 9223372036854775807", `Blocked by: ${secondId}`]) expect(shown.stdout).toContain(field);
+      const json = await f.invoke(["show", taskId, "--json", ...explicit]);
+      expect(json.code, json.stderr).toBe(0);
+      expect(parseApiJson(json.stdout)).toEqual(proposed);
+      expect(json.stdout).toContain('"version":9223372036854775807');
+      const graphed = await f.invoke(["graph", ...explicit]);
+      expect(graphed.code, graphed.stderr).toBe(0);
+      for (const field of ["Total: 2", "Proposed: 2", "Todo: 0", "In progress: 0", "Done: 0", "Ready: 0", "Blocked: 0", "Status: proposed", `Blocked by: ${secondId}`]) expect(graphed.stdout).toContain(field);
+      const graphJson = await f.invoke(["graph", "--json", ...explicit]);
+      expect(graphJson.code, graphJson.stderr).toBe(0);
+      expect(parseApiJson(graphJson.stdout)).toEqual(value);
     } finally { await f.close(); }
   }, 60_000);
 

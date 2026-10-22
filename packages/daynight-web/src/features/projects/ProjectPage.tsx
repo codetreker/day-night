@@ -175,6 +175,7 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
           <section className="stats" aria-label="项目任务统计">
             <div className="stat"><p className="stat-label">任务总数</p><p className="stat-number">{summary.total}</p><p className="stat-foot">按任务 ID 去重</p></div>
             <div className="stat done"><p className="stat-label">已完成</p><p className="stat-number">{summary.done}</p><p className="stat-foot">完成比例 {completion}%</p></div>
+            <div className="stat proposed"><p className="stat-label">待审批</p><p className="stat-number">{summary.proposed}</p><p className="stat-foot">等待批准</p></div>
             <div className="stat"><p className="stat-label">待处理</p><p className="stat-number">{summary.todo}</p><p className="stat-foot">等待开始</p></div>
             <div className="stat active"><p className="stat-label">进行中</p><p className="stat-number">{summary.inProgress}</p><p className="stat-foot">正在推进</p></div>
             <div className="stat ready"><p className="stat-label">可开始</p><p className="stat-number">{summary.ready}</p><p className="stat-foot">待处理的子集</p></div>

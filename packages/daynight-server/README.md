@@ -376,9 +376,21 @@ transaction. It returns `{project, summary, tasks}` with no pagination or filter
 Nonempty query strings fail with 400, including unsupported parameters and invalid
 encodings. Responses use `Cache-Control: no-store`.
 
-The summary has `total`, `todo`, `inProgress`, `done`, `ready` and `blocked` counts.
-Each task counts once, even when multiple roots share it. Todo consists of ready
-and blocked tasks; graph reads do not change stored status, revisions or times.
+The summary requires `total`, `proposed`, `todo`, `inProgress`, `done`, `ready`
+and `blocked` counts, including zero values. Each task counts once, even when
+multiple roots share it: `total = proposed + todo + inProgress + done` and
+`todo = ready + blocked`. Proposed tasks may have unfinished prerequisites; their
+`blockedBy` remains accurate, but they are never ready and do not contribute to
+`todo` or `blocked`. Graph reads do not change stored status, revisions or times.
+
+Migration `007_task_proposed.sql` expands the stored status check to include
+`proposed`, preserving existing records, versions and timestamps. Applied
+migrations remain unchanged. Task get/list/graph responses support all four
+states. Public creation and the database default remain `todo`; public list
+status filters and update candidate validation retain the original three values.
+Approval and lifecycle mutations are separate from this read contract. The
+[four-state reader decision](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
+records the rollout boundary.
 
 Nodes contain `id`, `titlePreview`, `titleTruncated`, `status`, `dependsOn`,
 `blockedBy`, `ready` and UTC timestamps. SQL produces at most 160 Unicode code

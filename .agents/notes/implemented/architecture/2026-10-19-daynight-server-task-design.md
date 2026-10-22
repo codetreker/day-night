@@ -43,9 +43,16 @@ operations. They do not change the existing client review configuration or SQLit
 state. The [foreground CLI decision](2026-10-16-foreground-review-cli.md) retains
 ownership of that execution model; this design does not supersede it.
 
+The original service exposed three states and created todo tasks through the
+generic write API. The [four-state reader decision](../feature/2026-10-22-proposed-task-readers.md)
+extends storage and readers with proposed while retaining the original public
+creation default and status inputs until lifecycle activation. It does not
+replace the project transaction or dependency policy.
+
 Task dependencies stay inside a project. Every `in_progress` or `done` task
-requires completed direct predecessors; reopening a predecessor is refused when
-an active or completed direct dependent would violate that rule. Each task write
+requires completed direct predecessors; reopening a predecessor requires every
+direct dependent to be todo. The original three-state write policy retains this
+condition while proposed support remains limited to storage and readers. Each task write
 locks its project row before fresh `READ COMMITTED` queries, validates the
 candidate graph and status, and commits fields and edges together. Task versions
 add client conflict detection without replacing cross-task exclusion.

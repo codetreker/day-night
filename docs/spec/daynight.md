@@ -118,7 +118,7 @@ review 的目录 `--path` 保留原有拒绝规则。`project create` 接受一�
 10 个 ready task，`--limit <N>` 接受十进制整数 `1..100`；它只请求一页，不遍历
 后续 cursor。`task list` 读取全部匹配页，默认排除 `done`，通过互斥的 `--all` 或
 `--status` 调整所选状态；`--ready` 与所选状态取交集。列表按 `in_progress`、ready、
-其余 `todo`、`done` 稳定分组。文本列表省略描述、版本和时间；所有筛选形式的 JSON
+其余 `todo`、`proposed`、`done` 稳定分组。文本列表省略描述、版本和时间；所有筛选形式的 JSON
 列表仅省略 `description`，保留其余 API 字段、原始 PR 字符串、精确版本和时间戳。
 详情、ready、创建和更新结果仍保留完整 task 资源。
 `ready` 的参数、服务排序及响应校验

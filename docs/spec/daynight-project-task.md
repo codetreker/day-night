@@ -199,12 +199,13 @@ daynight task graph
 创建必需符合 PT6 文本规则的非空 task 标题，可选描述、重复的 `--depends-on` 和
 PR URL/title 配对；省略描述、依赖和 PR 引用分别使用服务规定的空字符串、空集合
 和空数组，新 task 总为 `todo`。PR 标题只要求字符串类型，不使用 task 标题的内容
-校验。列表默认只选择未完成的 `todo` 和 `in_progress`；`--all` 选择所有状态，
+校验。任务响应解码接受 `proposed`、`todo`、`in_progress`、`done`，列表默认选择
+所有未完成任务，包含 `proposed`；`--all` 选择所有状态，
 单个 `--status` 选择指定状态，包括 `done`。`--all` 与 `--status` 互斥，组合使用
 属于参数错误；状态值为 `todo`、`in_progress`、`done`，共享语法负责校验和静态候选，
 帮助显示选项说明。`--ready` 表示 `ready=true`，与所选状态按 AND 组合，支持
 `--all --ready`。列表读完全部匹配分页后，按 `in_progress`、ready、其余 `todo`、
-`done` 分组排序；组内保留跨页的服务顺序，文本和 JSON 使用同一顺序。详情按选定
+`proposed`、`done` 分组排序；组内保留跨页的服务顺序，文本和 JSON 使用同一顺序。详情按选定
 project 和 task ID 查询。显式 project ID、show/update 的 task ID、标题、描述、状态、
 版本及修改字段组合的参数错误必须先于配置读取、Git 和网络访问拒绝；依赖 ID 原样传给服务，
 其语法、引用是否存在及合法性由服务验证。
@@ -240,8 +241,12 @@ PR 的 `--pull-request-url` 和 `--pull-request-title` 在 create/update 中分�
 `1..9223372036854775807`，客户端必须保留完整精度，HTTP 与 JSON 输出仍使用数字。冲突必须
 报告失败，不自动读取新版本重试。无变化更新、版本递增和时间戳遵循服务语义。
 
-`graph` 使用现有完整图接口，呈现节点状态、依赖、阻塞和汇总；标题预览、快照
-边界、节点和边上限均继承服务要求。超限时报告数量及上限，不返回部分图。
+`graph` 使用现有完整图接口，呈现四种节点状态、依赖、阻塞和汇总；文本汇总
+包含 Proposed，JSON summary 必须包含 `proposed`，总数满足
+`total = proposed + todo + inProgress + done`。proposed 任务无论前置是否完成均不可
+ready，默认清单、show 和 graph 保留其状态。公开 `--status` 输入仍为既有三个
+choices，不提供 proposed 筛选或审批、领取、完成命令。标题预览、快照边界、
+节点和边上限均继承服务要求。超限时报告数量及上限，不返回部分图。
 
 附件 `put/list/read/remove` 继承相同的 project 选择，逐文件处理完整相对路径。
 目标 basename、MIME 推导、目录拒绝与原始内容输出的完整要求由

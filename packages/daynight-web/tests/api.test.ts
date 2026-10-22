@@ -15,7 +15,7 @@ const graphTask = {
   id: taskId, titlePreview: "A task", titleTruncated: false, status: "todo",
   dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
 };
-const summary = { total: 1, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 };
+const summary = { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 };
 const graph = { project, summary, tasks: [graphTask] };
 const signal = (): AbortSignal => new AbortController().signal;
 const response = (value: unknown, status = 200): Response => new Response(JSON.stringify(value), {
@@ -65,6 +65,14 @@ describe("response parsing", () => {
     expect(parseTaskDetail({ ...task, status: "in_progress" }, projectId, taskId).status).toBe("in_progress");
   });
 
+  it("accepts proposed tasks with unfinished prerequisites without marking them ready", () => {
+    const proposed = { ...graphTask, status: "proposed", ready: false, dependsOn: [otherId], blockedBy: [otherId] };
+    const input = { ...graph, tasks: [proposed], summary: { total: 1, proposed: 1, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } };
+    expect(parseTaskGraph(input, projectId)).toEqual(input);
+    expect(parseTaskDetail({ ...task, ...proposed }, projectId, taskId)).toMatchObject({ status: "proposed", ready: false, dependsOn: [otherId], blockedBy: [otherId] });
+    expect(() => parseTaskDetail({ ...task, status: "proposed", ready: true }, projectId, taskId)).toThrow("invalid response");
+  });
+
   it("preserves complete ordered PR strings and duplicates without interpreting their content", () => {
     const pullRequests = [
       { url: '', title: '' },
@@ -93,7 +101,10 @@ describe("response parsing", () => {
     { ...graph, tasks: null },
     { ...graph, tasks: [graphTask, graphTask] },
     { ...graph, summary: null },
-    ...["total", "todo", "inProgress", "done", "ready", "blocked"].flatMap((field) => [-1, 0.5, Number.MAX_SAFE_INTEGER + 1, "1", null].map((value) =>
+    { ...graph, summary: { ...summary, proposed: undefined } },
+    { ...graph, summary: { ...summary, proposed: 1 } },
+    { ...graph, summary: { ...summary, ready: 0 } },
+    ...["total", "proposed", "todo", "inProgress", "done", "ready", "blocked"].flatMap((field) => [-1, 0.5, Number.MAX_SAFE_INTEGER + 1, "1", null].map((value) =>
       ({ ...graph, summary: { ...summary, [field]: value } }))),
     ...["titlePreview", "titleTruncated", "ready", "status", "dependsOn", "blockedBy", "id", "createdAt", "updatedAt"].map((field) =>
       ({ ...graph, tasks: [{ ...graphTask, [field]: null }] })),

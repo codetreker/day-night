@@ -40,7 +40,7 @@ const graph = (tasks = [task(rootId, '原任务链'), task(selectedId, '所选�
   project: { id: projectId, name: '核心项目', repoUrl: '', createdAt: timestamp, updatedAt: timestamp },
   tasks,
   summary: {
-    total: tasks.length, todo: tasks.filter((item) => item.status === 'todo').length, done: tasks.filter((item) => item.status === 'done').length, inProgress: tasks.filter((item) => item.status === 'in_progress').length,
+    total: tasks.length, proposed: tasks.filter((task) => task.status === "proposed").length, todo: tasks.filter((item) => item.status === 'todo').length, done: tasks.filter((item) => item.status === 'done').length, inProgress: tasks.filter((item) => item.status === 'in_progress').length,
     ready: tasks.filter((item) => item.ready).length, blocked: tasks.filter((item) => item.status === 'todo' && !item.ready).length,
   },
 });

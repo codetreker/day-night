@@ -14,7 +14,7 @@ export type TaskNodeData = {
 
 export type TaskFlowNode = Node<TaskNodeData, 'task'>;
 
-const labels = { todo: '待处理', in_progress: '进行中', done: '已完成' };
+const labels = { proposed: '待审批', todo: '待处理', in_progress: '进行中', done: '已完成' };
 
 export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
   const { setCenter, getViewport } = useReactFlow();

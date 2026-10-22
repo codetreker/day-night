@@ -25,7 +25,7 @@ const node = (task: TaskDetail): GraphTask => ({
 const snapshot = (tasks = [detail()], revision = 1): GraphSnapshot => {
   const graph: TaskGraph = {
     project, tasks: tasks.map(node), summary: {
-      total: tasks.length, todo: tasks.filter((task) => task.status === 'todo').length,
+      total: tasks.length, proposed: tasks.filter((task) => task.status === "proposed").length, todo: tasks.filter((task) => task.status === 'todo').length,
       inProgress: tasks.filter((task) => task.status === 'in_progress').length,
       done: tasks.filter((task) => task.status === 'done').length,
       ready: tasks.filter((task) => task.ready).length,
@@ -67,6 +67,25 @@ beforeEach(() => {
 afterEach(() => { cleanup(); root.remove(); document.body.style.overflow = ''; });
 
 describe('task detail dialog', () => {
+  it('renders a proposed task and its unfinished proposed prerequisite without a ready badge', async () => {
+    const prerequisite = detail(2, { status: 'proposed', ready: false });
+    const proposed = detail(1, { status: 'proposed', dependsOn: [id(2)], blockedBy: [id(2)], ready: false });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(proposed)));
+    const options = props({ snapshot: snapshot([proposed, prerequisite]) });
+    const view = open(options);
+    await screen.findByRole('heading', { name: '任务 1' });
+    const dialog = screen.getByRole('dialog', { name: '任务详情' });
+    expect(within(dialog).getByText('待审批')).toHaveClass('task-detail-status-proposed');
+    expect(within(dialog).queryByText('可开始')).toBeNull();
+    const relation = within(screen.getByRole('region', { name: '当前未完成的前置' })).getByRole('button', { name: '任务 2' });
+    expect(relation.querySelector('.task-detail-relation-dot')).toHaveClass('task-detail-dot-proposed');
+    fireEvent.click(relation);
+    expect(options.onSelectTask).toHaveBeenCalledWith(id(2));
+    expect(screen.getByRole('button', { name: '关闭任务详情' })).toHaveFocus();
+    view.unmount();
+    expect(trigger).toHaveFocus();
+  });
+
   it('groups description, pull requests, and task-scoped attachments before the relationship sidebar', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(detail())));
     open();

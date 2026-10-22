@@ -1,20 +1,15 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ProjectPage } from '../../src/features/projects/ProjectPage';
-import { browsingProjects, installBrowsingFixture, readBrowsingDetailScenario, type BrowsingDetailScenario, type BrowsingScenario } from './browsing-fixture';
+import { browsingProjects, browsingScenarioLabels, installBrowsingFixture, readBrowsingDetailScenario, readBrowsingScenario, type BrowsingDetailScenario, type BrowsingScenario } from './browsing-fixture';
 import '../../src/styles/app.css';
 
-const readScenario = (): BrowsingScenario => {
-  const hash = location.hash.slice(1);
-  return hash === 'external' || hash === 'complete' || hash === 'empty' ? hash : 'mixed';
-};
-
 const BrowsingMockup = () => {
-  const [scenario, setScenario] = useState(readScenario);
+  const [scenario, setScenario] = useState(readBrowsingScenario);
   const [detailScenario, setDetailScenario] = useState(readBrowsingDetailScenario);
   const scenarioSelect = useRef<HTMLSelectElement>(null);
   useEffect(() => {
-    const updateScenario = () => setScenario(readScenario());
+    const updateScenario = () => setScenario(readBrowsingScenario());
     window.addEventListener('hashchange', updateScenario);
     return () => window.removeEventListener('hashchange', updateScenario);
   }, []);
@@ -64,10 +59,7 @@ const BrowsingMockup = () => {
               id="browsing-scenario" ref={scenarioSelect} value={scenario}
               onChange={(event) => { location.hash = event.currentTarget.value; }}
             >
-              <option value="mixed">混合状态与共享依赖</option>
-              <option value="external">完整上游与无关分支排除</option>
-              <option value="complete">全部完成</option>
-              <option value="empty">尚无任务</option>
+              {(Object.keys(browsingScenarioLabels) as BrowsingScenario[]).map((key) => <option key={key} value={key}>{browsingScenarioLabels[key]}</option>)}
             </select>
             <label htmlFor="browsing-detail-scenario"> 详情内容 </label>
             <select id="browsing-detail-scenario" value={detailScenario} onChange={(event) => {
@@ -83,7 +75,7 @@ const BrowsingMockup = () => {
               <option value="loading">详情加载中</option>
               <option value="error">详情加载失败</option>
             </select>
-            <p>两个页签旁的数字均表示未完成任务数，任务链中的共享任务跨链只计一次，显示已完成项不改变数字。任务链状态汇总根及全部后续任务：全部完成才显示已完成，有任务开始或完成后显示进行中，全部待处理时显示待处理。图中补齐全部上游前置，外部前置保留自身状态，不计入链内进度，也不引入其无关后续。任务链按创建时间倒序排列，浏览设置按项目保存；展开图后可全屏查看、缩放和打开详情，Esc 先关闭详情，再退出全屏。</p>
+            <p>两个页签旁的数字均表示未完成任务数，任务链中的共享任务跨链只计一次，显示已完成项不改变数字。任务链状态汇总根及全部后续任务：全部完成才显示已完成，有任务开始或完成后显示进行中，有待处理任务时显示待处理，其余全部待审批时显示待审批。待审批任务始终不可开始，未完成前置仍完整显示。图中补齐全部上游前置，外部前置保留自身状态，不计入链内进度，也不引入其无关后续。任务链按创建时间倒序排列，浏览设置按项目保存；展开图后可全屏查看、缩放和打开详情，Esc 先关闭详情，再退出全屏。</p>
           </section>
           <ProjectPage key={scenario} projectId={browsingProjects[scenario].project.id} />
         </main>

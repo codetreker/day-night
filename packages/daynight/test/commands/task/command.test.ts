@@ -13,7 +13,7 @@ const dependencyId = "abcdefab-3333-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project: Project = { id: projectId, name: "Project", repoUrl: "git@git.example:Org/Repo.git", createdAt: time, updatedAt: time };
 const task: Task = { id: taskId, projectId, title: "Task title", description: "Description", properties: { pullRequests: [] }, status: "todo", version: 9_007_199_254_740_993n, ready: true, dependsOn: [], blockedBy: [], createdAt: time, updatedAt: time };
-const graph: TaskGraph = { project, summary: { total: 1, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 }, tasks: [{ id: taskId, titlePreview: `Task title${"T".repeat(150)}`, titleTruncated: true, status: "todo", ready: true, dependsOn: [], blockedBy: [], createdAt: time, updatedAt: time }] };
+const graph: TaskGraph = { project, summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 }, tasks: [{ id: taskId, titlePreview: `Task title${"T".repeat(150)}`, titleTruncated: true, status: "todo", ready: true, dependsOn: [], blockedBy: [], createdAt: time, updatedAt: time }] };
 const operations: Operation[] = [];
 afterEach(() => { operations.splice(0).forEach((operation) => operation.dispose()); });
 const fixture = (operation = createOperation()) => {
@@ -63,7 +63,7 @@ describe("task parameter boundaries", () => {
   it.each([
     ["create"], ["create", "--title", "\u0085"], ["create", "--title", "\0"], ["create", "--title", "\ud800"],
     ["create", "--title", "Title", "--description", "\ud800"], ["create", "--title", "Title", "--description", "\0"],
-    ["list", "--status", "blocked"], ["list", "--project", "invalid"], ["show", "invalid"], ["show", taskId, "--project", "invalid"],
+    ["list", "--status", "blocked"], ["list", "--status", "proposed"], ["update", taskId, "--status", "proposed"], ["list", "--project", "invalid"], ["show", "invalid"], ["show", taskId, "--project", "invalid"],
     ["update", taskId], ["update", taskId, "--if-version", "1"], ["update", taskId, "--status", "done", "--if-version", "0"],
     ["update", taskId, "--title", "\u2003"], ["update", taskId, "--status", "done", "--if-version", "9223372036854775808"],
     ["update", taskId, "--status", "done", "--if-version", "1.5"], ["update", taskId, "--depends-on", dependencyId, "--clear-dependencies"],
@@ -242,7 +242,7 @@ describe("task output contracts", () => {
     const f = fixture();
     await runTaskCommand(["graph", "--project", projectId], f.context, f.dependencies);
     const output = f.context.stdout.mock.calls[0]![0];
-    for (const field of [`Project: ${projectId}`, "Name: Project", `Repository: ${project.repoUrl}`, "Summary:", "Total: 1", "Todo: 1", "In progress: 0", "Done: 0", "Ready: 1", "Blocked: 0", `ID: ${taskId}`, "Title preview: Task title", "Title truncated: true", "Depends on: none", "Blocked by: none"]) expect(output).toContain(field);
+    for (const field of [`Project: ${projectId}`, "Name: Project", `Repository: ${project.repoUrl}`, "Summary:", "Total: 1", "Proposed: 0", "Todo: 1", "In progress: 0", "Done: 0", "Ready: 1", "Blocked: 0", `ID: ${taskId}`, "Title preview: Task title", "Title truncated: true", "Depends on: none", "Blocked by: none"]) expect(output).toContain(field);
   });
 
   it("keeps terminal control characters visible and preserves raw JSON strings", async () => {
@@ -259,7 +259,7 @@ describe("task output contracts", () => {
 
   it("renders an empty task list and empty graph explicitly", async () => {
     const f = fixture(); f.api.listTasks.mockResolvedValue([]);
-    f.api.getTaskGraph.mockResolvedValue({ project, tasks: [], summary: { total: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } });
+    f.api.getTaskGraph.mockResolvedValue({ project, tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } });
     await runTaskCommand(["list", "--project", projectId], f.context, f.dependencies);
     expect(f.context.stdout).toHaveBeenLastCalledWith("No tasks.\n");
     await runTaskCommand(["graph", "--project", projectId], f.context, f.dependencies);

@@ -22,7 +22,7 @@ export type TaskDetailDialogProps = {
 };
 
 const statusLabels: Record<TaskStatus, string> = {
-  todo: '待处理', in_progress: '进行中', done: '已完成',
+  proposed: '待审批', todo: '待处理', in_progress: '进行中', done: '已完成',
 };
 
 const StatusBadge = ({ status }: { readonly status: TaskStatus }) => (

@@ -85,7 +85,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
           if (broken === "dependency") { fault(response, "dependency_unsatisfied", "native-dependency-refusal", 409, { taskIds: [taskId] }); return; }
           send(response, { ...task(projectId), ...(body as object), version: request.method === "PATCH" ? 9_007_199_254_740_994n : 1n }, request.method === "POST" ? 201 : 200); return;
         }
-        if (parts[5] === "task-graph") { send(response, { project: project(projectId), summary: { total: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 }, tasks: [] }); return; }
+        if (parts[5] === "task-graph") { send(response, { project: project(projectId), summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 }, tasks: [] }); return; }
         if (parts.length === 7) { send(response, { ...task(projectId), properties, version: 9_007_199_254_740_993n }); return; }
         if (readyPage !== undefined && url.searchParams.get("ready") === "true") { send(response, readyPage); return; }
         if (broken === "page" && url.searchParams.has("cursor")) { fault(response, "internal_error", "native-later-page", 500); return; }

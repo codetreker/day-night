@@ -15,7 +15,7 @@ type RootListProps = {
   readonly onShowCompletedChange: (show: boolean) => void;
 };
 
-const labels = { todo: '待处理', in_progress: '进行中', done: '已完成' };
+const labels = { proposed: '待审批', todo: '待处理', in_progress: '进行中', done: '已完成' };
 
 type RootRowProps = Pick<RootListProps, 'index' | 'onExpand' | 'selectedTaskId' | 'onSelectTask'> & {
   readonly rootId: string;
