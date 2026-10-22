@@ -48,8 +48,13 @@ The application implements `/` and `/projects/{projectId}`, direct URL reload,
 browser back/forward and a generic not-found page. A project shows six statistics
 from one complete graph snapshot and two in-project tabs: Standalone tasks and
 Task chains. The first visit opens Task chains; subsequent visits restore the
-project's last tab. Counts on the tabs include all items in that category,
-independent of completed-item visibility. A standalone task has no prerequisites
+project's last tab. Both tab badges count unfinished tasks (pending and in
+progress) from the complete snapshot. Standalone tasks count individually;
+Task chains counts every non-standalone task once across all roots, including
+shared successors. Counts ignore completed-item visibility, the active tab and
+the expanded chain; all-completed categories display zero. Their sum equals the
+project's pending plus in-progress total. List toolbars retain visible/total
+standalone-item or root-chain counts. A standalone task has no prerequisites
 and no successors in the complete graph. Every other root remains a root-based
 chain entry, including multiple roots with shared successors. Task status never
 changes this classification. The [task view decision](../../.agents/notes/implemented/feature/2026-10-22-project-task-views.md)

@@ -24,8 +24,11 @@ Standalone rows are compact native buttons showing title, status, ID and
 creation time, and open details directly. Chain rows keep root-based progress,
 aggregate status, complete DAG projection, external prerequisites, fullscreen and
 details. For `A → C ← B`, A and B remain two chains, each including C once;
-project statistics count C once. Category counts are total standalone tasks and
-non-isolated roots, not disjoint task totals or connected-component counts.
+project statistics count C once. The original tab counts represented total
+standalone tasks and non-isolated roots to describe the available entries. The
+[unfinished task count decision](2026-10-22-unfinished-task-tab-counts.md)
+replaces those badge semantics: both count unfinished tasks, with shared chain
+tasks counted once across roots. List toolbars retain visible/total entry counts.
 
 Each tab has its own completed-item filter and page scroll position. The chain
 view retains its expanded-root or explicit-collapse choice when tabs change.
@@ -70,9 +73,11 @@ confirmed workflow needs one entry for a multi-root dependency component.
 
 Standalone tasks reach details in one action. Dependency workflows retain the
 complete graph context and existing progress rules. Completion and readiness do
-not move work between categories. Tab counts cannot be added as project task
-totals, because a chain entry can contain many tasks and share successors with
-other chains. Filters and tab choices make no API requests or server changes.
+not move work between categories. Root-chain entry counts cannot be added as
+project task totals, because a chain entry can contain many tasks and share
+successors with other chains. The two tab badges instead sum to the project
+unfinished-task total. Filters and tab choices make no API requests or server
+changes.
 
 Per-project browser records preserve browsing intent across visits while the
 server remains authoritative for a freshly read snapshot. New dependency edits

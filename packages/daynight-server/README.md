@@ -21,8 +21,15 @@ The planned [authentication requirements](../../docs/spec/daynight-auth.md),
 [architecture](../../docs/design/daynight-auth.md) and
 [task breakdown](../../docs/design/daynight-auth-tasks.md) define UniAuth identity
 handoff, local users, browser sessions, personal access tokens and project
-membership. Those capabilities are not implemented; the current service remains
-unauthenticated and loopback-only. Trusted executable HTML retains its existing
+membership. The [identity foundation](../../.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
+implements persistent users, browser-bound login transactions, sessions, PATs and
+callable HTTP handlers. NewIdentity/NewAuthentication/RegisterRoutes support
+explicit composition. The [membership foundation](../../.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
+adds NewMemberships/NewMembershipRoutes, transaction-scoped access checks, private
+project creation, filtered project lists, administrator changes and invitations.
+The application mux does not mount these modules yet. Client integration and
+mandatory runtime activation remain separate work, so the current
+service remains unauthenticated and loopback-only. Trusted executable HTML retains its existing
 application origin when project-member checks are added to attachment requests.
 
 ## Layout
@@ -35,9 +42,9 @@ application origin when project-member checks are added to attachment requests.
 | `internal/core/store/` | PostgreSQL migrations, transactions, scoped writes and consistent reads |
 | `internal/filestorage/` | Generic bucket/path byte operations and address validation |
 | `internal/filestorage/local/` | Root-confined local files, complete-file replacement and root lifecycle |
-| `api/` | Project/task/attachment DTOs and common HTTP error envelopes |
-| `internal/service/` | Project/task use cases, dependency/state/version policy and scoped cursors |
-| `internal/core/` | Shared project/task models and resource-not-found marker |
+| `api/` | Project/task/attachment, identity and membership DTOs; common HTTP error envelopes |
+| `internal/service/` | Project/task use cases, identity/credentials, project membership/invitations, state/version policy and scoped cursors |
+| `internal/core/` | Shared project/task, identity/member models and resource-not-found markers |
 
 HTTP startup prepares one local file-storage root and creates and verifies one
 concrete PostgreSQL store. The handler factory receives `server.Dependencies`
@@ -148,7 +155,7 @@ docker rm --force --volumes daynight-server-tests
 ```
 
 The check first runs the shared root `pnpm web:build`, then builds the executable,
-runs `go vet`, expires project-local Go test
+runs `go vet`, prepares the pinned real-UniAuth integration fixture, and expires project-local Go test
 results so database changes cannot be hidden by cached coverage, and executes race-enabled package
 tests through `go-cov` pinned to commit
 `d6caf2759e330b48d69a543695e37002a48feb1d`. The checked-in `.go-cov.toml`
@@ -166,6 +173,25 @@ again. Both local validation and CI use
 `scripts/check.sh` and the same coverage configuration. The tests cover real
 database connection/query cancellation, HTTP cancellation, graceful and forced
 drain, listener/pool reuse, process configuration/exit status, and log redaction.
+
+Authentication integration prepares the exact UniAuth gateway source at
+`c82c55c7fcd366824d0bc5ac6bdd17528c0300fa` with
+`scripts/prepare-uniauth-fixture.mts`, using Git/module registry access. Its checked-in
+`testdata/uniauth-fixture` command is built inside that source module; the real
+gateway, App registry and GitHub adapter run on loopback, with only external
+provider HTTP responses controlled. Private App credentials cross a task-local
+0600 IPC file and are removed after reading. The fixture process, SQLite files,
+checkout and executable remain under the module `.tmp/`; tests close their own
+process and file resources. No application module replacement or global tool
+installation is required. For focused authentication integration tests after
+`scripts/env.sh`, keep `DAYNIGHT_TEST_DATABASE_URL` set and prepare the fixture:
+
+```bash
+DAYNIGHT_TEST_UNIAUTH_FIXTURE="$(node scripts/prepare-uniauth-fixture.mts)"
+export DAYNIGHT_TEST_UNIAUTH_FIXTURE
+```
+
+The full check performs this preparation automatically. Controlled-provider proof is separate from a real upstream login.
 
 ## File storage
 

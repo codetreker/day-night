@@ -43,10 +43,14 @@ issue; consistency remediation is outside that scope.
 
 The [authentication requirements](docs/spec/daynight-auth.md),
 [architecture](docs/design/daynight-auth.md) and
-[task breakdown](docs/design/daynight-auth-tasks.md) define planned UniAuth login,
-Daynight sessions and personal access tokens, private projects with administrator
-and member roles, and invitations. This design is separate from runtime delivery:
-the current application remains unauthenticated and loopback-only. Trusted
+[task breakdown](docs/design/daynight-auth-tasks.md) define UniAuth login, Daynight
+sessions and personal access tokens, private projects and membership. The
+[identity foundation](.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
+provides persistent users, credentials and callable authentication handlers. The
+[project membership module](.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
+adds private creation, filtered access, roles and invitations. Both modules remain
+unmounted; client integration and coordinated activation are separately tracked,
+and the current application is unauthenticated and loopback-only. Trusted
 same-origin executable HTML previews retain their existing execution model after
 authentication is delivered; attachment requests gain project-member checks.
 Existing projects will receive membership data manually outside that work.
@@ -141,7 +145,9 @@ CLI commands below apply to the client; server commands have their own module.
 The dashboard architecture presents project statistics and two in-project task
 tabs from one complete server snapshot. Standalone tasks open details directly;
 root-based task chains retain dependency graphs, shared successors and aggregate
-progress. Expanding a chain includes all upstream prerequisites of its root and
+progress. Both tab badges count unfinished tasks from the complete snapshot;
+shared chain tasks count once across all roots, and completed-item visibility
+does not affect the badges. Expanding a chain includes all upstream prerequisites of its root and
 reachable successors, without adding unrelated successors of contextual tasks.
 Only the root and its reachable successors contribute to chain progress and status. The first visit opens task chains, and each project retains its last
 tab, independent completed-item filters and browse positions. The [task view

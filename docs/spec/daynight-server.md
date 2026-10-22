@@ -21,8 +21,8 @@
 
 [鉴权需求](daynight-auth.md)单独定义规划中的 UniAuth 登录、Daynight 会话与个人
 访问令牌和项目成员授权；[架构](../design/daynight-auth.md)与
-[任务拆分](../design/daynight-auth-tasks.md)拥有机制和交付顺序。该能力尚未实现，
-本文的本机未认证服务仍为当前运行基线。
+[任务拆分](../design/daynight-auth-tasks.md)拥有机制和交付顺序。身份/凭据与项目成员
+基础模块已有独立实现，尚未挂入主站路由，本文的本机未认证服务仍为当前运行基线。
 
 ## 目标与交付范围
 

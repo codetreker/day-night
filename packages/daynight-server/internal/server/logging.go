@@ -11,6 +11,7 @@ import (
 
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/service"
+	uniauth "github.com/codetreker/uniauth/sdk/go"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -39,7 +40,11 @@ func validRequestID(value string) bool {
 
 func ErrorKind(err error) string {
 	var databaseError *pgconn.PgError
+	var storeError *store.Error
 	var networkError *net.OpError
+	var protocolError *uniauth.ProtocolError
+	var requestError *uniauth.RequestError
+	var apiError *uniauth.APIError
 	switch {
 	case errors.Is(err, context.Canceled):
 		return "canceled"
@@ -47,11 +52,18 @@ func ErrorKind(err error) string {
 		return "deadline"
 	case errors.As(err, &databaseError):
 		return "database"
+	case errors.As(err, &protocolError), errors.As(err, &apiError):
+		return "protocol"
+	case errors.As(err, &requestError):
+		return "network"
 	case errors.As(err, &networkError):
 		return "network"
 	default:
 		if fault, ok := knownFault(err); ok {
 			return fault.Code
+		}
+		if errors.As(err, &storeError) {
+			return "database"
 		}
 		return "internal"
 	}
@@ -61,7 +73,7 @@ func knownFault(err error) (*service.Fault, bool) {
 	var fault *service.Fault
 	if errors.As(err, &fault) {
 		switch fault.Code {
-		case "invalid_input", "not_found", "path_conflict", "version_conflict", "dependency_cycle", "dependency_unsatisfied", "graph_limit_exceeded":
+		case "unauthenticated", "forbidden", "last_admin", "invitation_unavailable", "invalid_input", "not_found", "path_conflict", "version_conflict", "dependency_cycle", "dependency_unsatisfied", "graph_limit_exceeded":
 			return fault, true
 		}
 	}
@@ -85,8 +97,17 @@ func LogFailure(logger *slog.Logger, ctx context.Context, component, phase strin
 	case errors.As(err, &runtimeFailure):
 		diagnostic = runtimeFailure.Error()
 	}
+	upstreamID := ""
+	var protocolFailure *uniauth.ProtocolError
+	var gatewayFailure *uniauth.APIError
+	if errors.As(err, &protocolFailure) && validRequestID(protocolFailure.RequestID) {
+		upstreamID = protocolFailure.RequestID
+	}
+	if errors.As(err, &gatewayFailure) && validRequestID(gatewayFailure.RequestID) {
+		upstreamID = gatewayFailure.RequestID
+	}
 	logger.ErrorContext(ctx, "operation failed", "type", "operation_error", "component", component,
-		"phase", phase, "cause", kind, "error_code", code, "diagnostic", diagnostic, "request_id", RequestID(ctx))
+		"phase", phase, "cause", kind, "error_code", code, "diagnostic", diagnostic, "request_id", RequestID(ctx), "upstream_request_id", upstreamID)
 }
 
 type responseRecorder struct {
