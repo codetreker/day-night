@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { ApiError } from "../../api/client";
 import { navigate } from "../../app/router";
-import { TaskDrawer } from "../task-detail/TaskDrawer";
+import { TaskDetailDialog } from "../task-detail/TaskDetailDialog";
 import { RootList } from "../task-graph/RootList";
 import { GraphDataError } from "../task-graph/model";
 import { ProjectTaskTabs } from "./ProjectTaskTabs";
@@ -59,9 +59,18 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
   const { showCompleted, onShowCompletedChange, issue: visibilityIssue } = useCompletedChainVisibility(projectId);
   const { showCompleted: showCompletedStandalone, onShowCompletedChange: onStandaloneVisibilityChange, issue: standaloneIssue } = useStandaloneVisibility(projectId);
   // Database timestamp precision is retained by reversing the server's exact order.
-  const categories = useMemo(() => snapshot === null ? null : {
-    chains: snapshot.index.roots.toReversed().filter((id) => snapshot.index.successors.get(id)!.length > 0),
-    standalone: snapshot.index.roots.toReversed().filter((id) => snapshot.index.successors.get(id)!.length === 0),
+  const categories = useMemo(() => {
+    if (snapshot === null) return null;
+    const chains = snapshot.index.roots.toReversed().filter((id) => snapshot.index.successors.get(id)!.length > 0);
+    const standalone = snapshot.index.roots.toReversed().filter((id) => snapshot.index.successors.get(id)!.length === 0);
+    let unfinishedChainTaskCount = 0;
+    let unfinishedStandaloneTaskCount = 0;
+    for (const task of snapshot.index.nodes.values()) {
+      if (task.status === "done") continue;
+      if (task.dependsOn.length === 0 && snapshot.index.successors.get(task.id)!.length === 0) unfinishedStandaloneTaskCount++;
+      else unfinishedChainTaskCount++;
+    }
+    return { chains, standalone, unfinishedChainTaskCount, unfinishedStandaloneTaskCount };
   }, [snapshot]);
   const rootIds = useMemo(() => snapshot === null || categories === null ? null : categories.chains.filter((id) => {
     const progress = snapshot.index.rootProgress.get(id)!;
@@ -175,7 +184,8 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
             <section className="state-box"><h2>还没有任务</h2><p>项目中的任务会显示在这里。创建任务后，点击刷新查看。</p></section>
           ) : (
             <>
-              <ProjectTaskTabs activeView={activeView} standaloneCount={categories!.standalone.length} chainCount={categories!.chains.length} onViewChange={selectView} />
+              <ProjectTaskTabs activeView={activeView} unfinishedStandaloneTaskCount={categories!.unfinishedStandaloneTaskCount}
+                unfinishedChainTaskCount={categories!.unfinishedChainTaskCount} onViewChange={selectView} />
               <div role="tabpanel" id="project-task-panel-chains" aria-labelledby="project-task-tab-chains" hidden={activeView !== "chains"}>
                 {activeView === "chains" && <section aria-label="任务依赖链">
                   <RootList index={snapshot.index} rootIds={rootIds!} allRootIds={categories!.chains} expandedRootId={expandedRootId} onExpand={setExpandedRootId} selectedTaskId={selectedTaskId} onSelectTask={onSelectTask}
@@ -188,7 +198,7 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
               </div>
             </>
           )}
-          {selectedTaskId !== null && <TaskDrawer projectId={projectId} taskId={selectedTaskId} snapshot={snapshot} onSelectTask={onSelectRelation}
+          {selectedTaskId !== null && <TaskDetailDialog projectId={projectId} taskId={selectedTaskId} snapshot={snapshot} onSelectTask={onSelectRelation}
             onClose={onClose} onRestoreFocus={restoreFocus} onRefreshGraph={graph.refresh} />}
         </>
       )}

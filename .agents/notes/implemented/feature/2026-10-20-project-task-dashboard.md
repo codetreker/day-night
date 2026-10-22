@@ -81,7 +81,8 @@ opening or switching task details does not rerender every unrelated root. Expand
 state, callback and index changes still invalidate the relevant rows; a new
 snapshot index refreshes every row and its statistics.
 
-The detail drawer uses a portal outside the application root, background inertness,
+The centered task detail dialog uses a body portal outside the application root,
+background inertness,
 body scroll ownership and a dynamic focus trap. Its lifetime is independent of
 relation selection. Layout cleanup synchronously releases the keyboard listener,
 background inertness and scroll ownership. A separate passive unmount cleanup
@@ -93,6 +94,9 @@ records the failure and integration evidence. The
 [Web attachment decision](2026-10-21-task-attachment-web.md) extends this lifecycle
 with `tabbable` enumeration for form controls and same-origin frame keyboard
 bridges; background ownership and passive restoration remain unchanged.
+The [centered detail decision](2026-10-22-centered-task-detail-dialog.md)
+partially supersedes the original right-side layout with a centered reading shell
+and responsive content columns, while retaining this modal lifecycle.
 Latest detail data never patches graph statistics.
 Readiness, blocking, dependency, status, preview and timestamp differences produce
 a refresh notice; a new graph revision rereads the selected detail.

@@ -6,12 +6,12 @@ const labels = { standalone: "独立任务", chains: "任务链" };
 
 type ProjectTaskTabsProps = {
   readonly activeView: TaskView;
-  readonly standaloneCount: number;
-  readonly chainCount: number;
+  readonly unfinishedStandaloneTaskCount: number;
+  readonly unfinishedChainTaskCount: number;
   readonly onViewChange: (view: TaskView) => void;
 };
 
-export const ProjectTaskTabs = ({ activeView, standaloneCount, chainCount, onViewChange }: ProjectTaskTabsProps) => {
+export const ProjectTaskTabs = ({ activeView, unfinishedStandaloneTaskCount, unfinishedChainTaskCount, onViewChange }: ProjectTaskTabsProps) => {
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, view: TaskView) => {
     const position = views.indexOf(view);
     const target = event.key === "ArrowRight" ? views[(position + 1) % views.length]
@@ -26,7 +26,7 @@ export const ProjectTaskTabs = ({ activeView, standaloneCount, chainCount, onVie
     <button className="project-task-tab" type="button" role="tab" id={`project-task-tab-${view}`} key={view}
       aria-label={labels[view]} aria-selected={activeView === view} aria-controls={`project-task-panel-${view}`} tabIndex={activeView === view ? 0 : -1}
       onClick={() => { onViewChange(view); }} onKeyDown={(event) => { onKeyDown(event, view); }}>
-      {labels[view]}<span className="graph-count-pill" aria-hidden="true">{view === "standalone" ? standaloneCount : chainCount}</span>
+      {labels[view]}<span className="graph-count-pill" title="未完成任务数" aria-hidden="true">{view === "standalone" ? unfinishedStandaloneTaskCount : unfinishedChainTaskCount}</span>
     </button>
   ))}</div>;
 };

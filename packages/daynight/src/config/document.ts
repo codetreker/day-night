@@ -17,6 +17,8 @@ export const supportedConfigurationFields = [
   "agentTimeoutMs",
   "maxAttempts",
   "retryDelayMs",
+  "copilotModel",
+  "copilotReasoningEffort",
 ] as const;
 
 const safeYamlFailure = (cause: unknown): Error => {

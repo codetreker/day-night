@@ -169,6 +169,34 @@ describe("Copilot persisted sessions and direct attempts", () => {
     expect(f.store.getPullRequest(f.pr)).toMatchObject({ sessionId: uuid(500), sessionEstablished: true, completedRevision: 0 });
   });
 
+  it.each([
+    { name: "default", options: {}, arguments: [] },
+    { name: "model", options: { model: "auto" }, arguments: ["--model", "auto"] },
+    { name: "opaque model", options: { model: 'future/model $(literal) & | %PATH% "quote"' }, arguments: ["--model", 'future/model $(literal) & | %PATH% "quote"'] },
+    { name: "effort", options: { reasoningEffort: "high" }, arguments: ["--reasoning-effort", "high"] },
+    { name: "both", options: { model: "auto", reasoningEffort: 'future effort $(literal) & | %PATH% "quote"' }, arguments: ["--model", "auto", "--reasoning-effort", 'future effort $(literal) & | %PATH% "quote"'] },
+  ])("passes independent settings as formal-review arguments while keeping discovery unchanged: $name", async ({ options, arguments: extraArguments }) => {
+    const f = fixture();
+    const outcome = await f.run("success", options);
+    expect(outcome).toMatchObject({ completed: true, sessionMode: "create", errors: [] });
+    const report = JSON.parse(readFileSync(f.report, "utf8")) as { args: string[] };
+    expect(report.args).toEqual(["-C", f.worktree.path, `--plugin-dir=${f.skill.rootDirectory}`, `--session-id=${uuid(500)}`, "-s", "--output-format", "text", "--stream", "on", "--no-color",
+      "--no-ask-user", "--no-auto-update", "--allow-all-tools", "--log-dir", path.dirname(outcome.stdoutLogPath), ...extraArguments]);
+    const discovery = JSON.parse(readFileSync(`${f.report}.discovery`, "utf8")) as { args: string[]; prompt: string };
+    expect(discovery).toMatchObject({
+      args: ["-C", f.worktree.path, `--plugin-dir=${f.skill.rootDirectory}`, "--no-auto-update", "skill", "list", "--json"], prompt: "",
+    });
+  });
+
+  it("preserves Copilot's nonzero result and diagnostics for configured model and reasoning effort", async () => {
+    const f = fixture();
+    const outcome = await f.run("nonzero", { model: "opaque-unavailable-model", reasoningEffort: "unsupported-effort" });
+    expect(outcome).toMatchObject({ completed: false, directProcessClosed: true, captureComplete: true, exitCode: 7, signal: null, interruption: null });
+    expect(readFileSync(outcome.stderrLogPath, "utf8")).toBe("independent diagnostics\n");
+    const report = JSON.parse(readFileSync(f.report, "utf8")) as { args: string[] };
+    expect(report.args.slice(-4)).toEqual(["--model", "opaque-unavailable-model", "--reasoning-effort", "unsupported-effort"]);
+  });
+
   it("passes immutable review context over stdin and preserves auth while isolating Git and runtime paths", async () => {
     const f = fixture();
     const outcome = await f.run("success", { environment: { ...process.env, FIXTURE_REPORT: f.report,
@@ -223,13 +251,18 @@ describe("Copilot persisted sessions and direct attempts", () => {
 
   it("resumes exactly the persisted session after an incomplete attempt with fresh retained logs", async () => {
     const f = fixture();
-    const first = await f.run("missing");
+    const model = "future-provider/model-v9";
+    const reasoningEffort = "xhigh";
+    const first = await f.run("missing", { model, reasoningEffort });
+    const firstReport = JSON.parse(readFileSync(f.report, "utf8")) as { args: string[] };
+    expect(firstReport.args.slice(-4)).toEqual(["--model", model, "--reasoning-effort", reasoningEffort]);
     f.retry();
-    const second = await f.run();
+    const second = await f.run("success", { model, reasoningEffort });
     expect(first.completed).toBe(false);
     expect(second).toMatchObject({ completed: true, sessionMode: "resume", sessionId: first.sessionId, attempt: { reviewId: first.attempt.reviewId, attempt: 2 } });
     const report = JSON.parse(readFileSync(f.report, "utf8")) as { args: string[] };
     expect(report.args).toContain(`--resume=${first.sessionId}`);
+    expect(report.args.slice(-4)).toEqual(["--model", model, "--reasoning-effort", reasoningEffort]);
     expect(report.args.some((arg) => arg.startsWith("--session-id"))).toBe(false);
     expect(second.stdoutLogPath).not.toBe(first.stdoutLogPath);
     expect(readFileSync(first.stdoutLogPath, "utf8")).toBe("incomplete\n");
@@ -239,24 +272,28 @@ describe("Copilot persisted sessions and direct attempts", () => {
     const f = fixture();
     mkdirSync(f.sessionDirectory, { recursive: true });
     writeFileSync(path.join(f.sessionDirectory, "events.jsonl"), Buffer.from([0xff, 0xfe]));
-    const outcome = await f.run();
+    const outcome = await f.run("success", { model: "auto", reasoningEffort: "high" });
     expect(outcome).toMatchObject({ completed: true, sessionMode: "resume" });
+    const report = JSON.parse(readFileSync(f.report, "utf8")) as { args: string[] };
+    expect(report.args).toContain(`--resume=${uuid(500)}`);
+    expect(report.args.slice(-4)).toEqual(["--model", "auto", "--reasoning-effort", "high"]);
     expect(readFileSync(path.join(f.sessionDirectory, "events.jsonl"))).toEqual(Buffer.from([0xff, 0xfe]));
   });
 
   it("reuses the same session for a later revision and supplies the old unfinished identity", async () => {
     const f = fixture();
-    const first = await f.run("missing");
+    const first = await f.run("missing", { model: "auto", reasoningEffort: "high" });
     const previous = f.store.getReview(f.review.id)!;
     f.store.observePullRequest(f.repository, { number: 101, state: "open", draft: false, headSha: "d".repeat(40), baseSha: "e".repeat(40), baseRef: "release" }, 20);
     f.store.retryReview(first.attempt, proof, { error: "Old target", retryAt: 20 }, 20);
     const next = f.store.reserveReview(f.pr, { reviewId: uuid(2), sessionId: uuid(999), maxAttempts: 3 }, 20)!;
     f.store.pinReviewBase(next.id, "e".repeat(40), 21);
-    const outcome = await createCopilotRunner({ skill: f.skill, paths: f.paths, processOwner: uuid(700), timeoutMs: 10_000, command: { file: process.execPath, args: [f.script] },
+    const outcome = await createCopilotRunner({ skill: f.skill, paths: f.paths, processOwner: uuid(700), timeoutMs: 10_000, model: "auto", reasoningEffort: "high", command: { file: process.execPath, args: [f.script] },
       environment: { ...process.env, FIXTURE_REPORT: f.report }, now: () => 30 }).run(f.store, next.id,
     { ...f.worktree, headSha: "d".repeat(40), baseSha: "e".repeat(40) }, f.supervise({ previousReview: previous }));
     expect(outcome).toMatchObject({ completed: true, sessionMode: "resume", sessionId: uuid(500), attempt: { reviewId: next.id, attempt: 1 } });
-    const report = JSON.parse(readFileSync(f.report, "utf8")) as { prompt: string };
+    const report = JSON.parse(readFileSync(f.report, "utf8")) as { prompt: string; args: string[] };
+    expect(report.args.slice(-4)).toEqual(["--model", "auto", "--reasoning-effort", "high"]);
     expect(report.prompt).toContain(f.review.id);
     expect(report.prompt).toContain(next.id);
     expect(report.prompt).toContain('"revision":2');

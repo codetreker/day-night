@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTask, getTaskGraph } from '../src/api/client';
 import type { GraphTask, TaskGraph } from '../src/api/types';
@@ -33,6 +33,10 @@ const snapshot = (items = seeds, id = project): TaskGraph => {
 };
 const graphRequest = vi.mocked(getTaskGraph);
 const tab = (view: 'chains' | 'standalone') => screen.getByRole('tab', { name: view === 'chains' ? '任务链' : '独立任务' });
+const expectUnfinishedCounts = (chains: number, standalone: number) => {
+  expect(tab('chains').querySelector('.graph-count-pill')).toHaveTextContent(new RegExp(`^${chains}$`));
+  expect(tab('standalone').querySelector('.graph-count-pill')).toHaveTextContent(new RegExp(`^${standalone}$`));
+};
 const row = (id: string) => document.getElementById(`standalone-task-${id}`)!;
 const key = (kind: string, id = project) => `daynight:${kind}:${id}`;
 let root: HTMLDivElement;
@@ -65,7 +69,7 @@ describe('project task views', () => {
     const complete = snapshot(); graphRequest.mockResolvedValue(complete);
     mount(); await screen.findByRole('tab', { name: '任务链' });
     expect(tab('chains')).toHaveAttribute('aria-selected', 'true');
-    expect(tab('chains')).toHaveTextContent('任务链1'); expect(tab('standalone')).toHaveTextContent('独立任务3');
+    expectUnfinishedCounts(1, 2);
     expect(document.querySelectorAll('.root-toggle')).toHaveLength(1);
     expect(document.getElementById('task-root-A')).toBeVisible();
     expect(screen.getByLabelText('显示 1 条，共 1 条任务链')).toHaveTextContent('1 / 1');
@@ -80,7 +84,75 @@ describe('project task views', () => {
     expect(graphRequest).toHaveBeenCalledTimes(1);
   });
 
-  it('opens the real drawer directly and returns focus to its standalone row', async () => {
+  it('counts unfinished tasks once across shared chains and keeps both counts independent of visible rows', async () => {
+    graphRequest.mockResolvedValue(snapshot([
+      seed('A', 'done'), seed('B', 'done'), seed('C', 'in_progress', ['A', 'B']), seed('D', 'todo', ['C']),
+      seed('E'), seed('F', 'todo', ['E']), seed('G'), seed('H', 'in_progress'), seed('I', 'done'),
+      seed('J', 'done'), seed('K', 'done', ['J']),
+    ]));
+    mount(); await screen.findByRole('tab', { name: '任务链' });
+    expectUnfinishedCounts(4, 2);
+    expect(tab('chains').querySelector('.graph-count-pill')).toHaveAttribute('title', '未完成任务数');
+    expect(document.querySelectorAll('.root-toggle')).toHaveLength(3);
+    expect(document.getElementById('task-root-A')).toBeVisible();
+    expect(document.getElementById('task-root-B')).toBeVisible();
+    expect(document.getElementById('task-root-J')).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: '显示已完成任务链（1）' }));
+    expect(document.querySelectorAll('.root-toggle')).toHaveLength(4);
+    expectUnfinishedCounts(4, 2);
+    fireEvent.click(tab('standalone'));
+    expect([...document.querySelectorAll('.standalone-row')].map((item) => item.id)).toEqual(['standalone-task-H', 'standalone-task-G']);
+    expect(tab('standalone').querySelector('.graph-count-pill')).toHaveAttribute('title', '未完成任务数');
+    fireEvent.click(screen.getByRole('checkbox', { name: '显示已完成独立任务（1）' }));
+    expect(row('I')).toBeVisible();
+    expectUnfinishedCounts(4, 2);
+    fireEvent.click(tab('chains'));
+    expectUnfinishedCounts(4, 2);
+    expect(graphRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows zero unfinished tasks for completed chains and standalone tasks with either filter setting', async () => {
+    graphRequest.mockResolvedValue(snapshot([seed('A', 'done'), seed('B', 'done', ['A']), seed('D', 'done')]));
+    mount(); await screen.findByRole('heading', { name: '所有任务链已完成' });
+    expectUnfinishedCounts(0, 0);
+    fireEvent.click(screen.getByRole('button', { name: '显示已完成任务链' }));
+    expect(document.getElementById('task-root-A')).toBeVisible();
+    expectUnfinishedCounts(0, 0);
+    fireEvent.click(tab('standalone'));
+    expect(screen.getByRole('heading', { name: '所有独立任务已完成' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '显示已完成独立任务' }));
+    expect(row('D')).toBeVisible();
+    expectUnfinishedCounts(0, 0);
+  });
+
+  it('updates counts and categories from one successful snapshot and retains them while refreshing or after failure', async () => {
+    let resolve!: (value: TaskGraph) => void;
+    const refreshed = new Promise<TaskGraph>((done) => { resolve = done; });
+    graphRequest.mockResolvedValueOnce(snapshot()).mockReturnValueOnce(refreshed).mockRejectedValueOnce(new Error('Refresh failed'));
+    mount(); await screen.findByRole('tab', { name: '独立任务' });
+    fireEvent.click(tab('standalone'));
+    expectUnfinishedCounts(1, 2);
+    fireEvent.click(screen.getByRole('button', { name: '刷新' }));
+    expect(screen.getByRole('button', { name: '正在刷新…' })).toBeDisabled();
+    expect(row('C')).toBeVisible(); expect(row('E')).toBeVisible();
+    expectUnfinishedCounts(1, 2);
+    await act(async () => { resolve(snapshot([
+      seed('A', 'done'), seed('B', 'todo', ['A']), seed('C', 'todo', ['A']), seed('D', 'done'), seed('E', 'in_progress', ['A']),
+    ])); });
+    expect(screen.getByRole('heading', { name: '所有独立任务已完成' })).toBeVisible();
+    expect(document.getElementById('standalone-task-C')).toBeNull();
+    expect(document.getElementById('standalone-task-E')).toBeNull();
+    expectUnfinishedCounts(3, 0);
+    fireEvent.click(screen.getByRole('button', { name: '刷新' }));
+    await screen.findByRole('heading', { name: '刷新失败' });
+    expect(screen.getByRole('heading', { name: '所有独立任务已完成' })).toBeVisible();
+    expectUnfinishedCounts(3, 0);
+    fireEvent.click(tab('chains'));
+    expect(document.getElementById('task-root-A')).toBeVisible();
+    expectUnfinishedCounts(3, 0);
+  });
+
+  it('opens the real dialog directly and returns focus to its standalone row', async () => {
     mount(); await screen.findByRole('tab', { name: '独立任务' });
     const { trigger, dialog } = await openStandalone('C');
     expect(screen.queryByTestId('graph-node')).toBeNull();
@@ -144,6 +216,7 @@ describe('project task views', () => {
   it('distinguishes absent categories, hidden completed rows and an entirely empty project', async () => {
     graphRequest.mockResolvedValueOnce(snapshot([seed('D', 'done')])).mockResolvedValueOnce(snapshot([]));
     mount(); await screen.findByRole('heading', { name: '暂无任务链' });
+    expectUnfinishedCounts(0, 0);
     expect(screen.queryByRole('checkbox')).toBeNull();
     fireEvent.click(tab('standalone')); expect(screen.getByRole('heading', { name: '所有独立任务已完成' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: '显示已完成独立任务' }));
@@ -157,6 +230,7 @@ describe('project task views', () => {
     mount(); await screen.findByRole('tab', { name: '独立任务' }); const { trigger, dialog } = await openStandalone('C');
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     await screen.findByRole('heading', { name: '暂无独立任务' });
+    expectUnfinishedCounts(2, 0);
     expect(trigger.isConnected).toBe(false); expect(dialog).toBeVisible();
     await waitFor(() => expect(getTask).toHaveBeenCalledTimes(2));
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
@@ -170,6 +244,7 @@ describe('project task views', () => {
     const dialog = await screen.findByRole('dialog', { name: '任务详情' }); await within(dialog).findByRole('heading', { name: '详情 A' });
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     await screen.findByRole('heading', { name: '暂无任务链' }); expect(dialog).toBeVisible();
+    expectUnfinishedCounts(0, 2);
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' }); await waitFor(() => expect(tab('chains')).toHaveFocus());
     fireEvent.click(tab('standalone')); expect(row('A')).toBeVisible(); expect(row('B')).toBeVisible();
   });

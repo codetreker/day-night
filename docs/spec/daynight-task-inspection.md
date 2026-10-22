@@ -1,12 +1,12 @@
 # 任务依赖追踪与详情阅读
 
-状态：完整上游上下文（UX-T1，对应 TI1–TI2）已实现；依赖选择与平滑连线、居中详情和 Markdown 描述（UX-T2–UX-T4）待实现。本文拥有任务卡片选择、完整上游展示、平滑依赖连线、居中详情和 Markdown 描述的目标行为。[设计](../design/daynight-task-inspection.md)说明机制，[任务拆分](../design/daynight-task-inspection-tasks.md)定义交付边界，[交互原型](../design/mockups/task-inspection/index.html)展示最终视觉与主要交互。已实现上下文与现有详情行为由[看板基线](daynight-web.md)和[附件要求](daynight-task-attachments.md)描述。
+状态：完整上游上下文（UX-T1，对应 TI1–TI2）与居中详情（UX-T3，对应 TI6–TI7）已实现；依赖选择与平滑连线（UX-T2）和 Markdown 描述（UX-T4）待实现。本文拥有任务卡片选择、完整上游展示、平滑依赖连线、居中详情和 Markdown 描述的目标行为。[设计](../design/daynight-task-inspection.md)说明机制，[任务拆分](../design/daynight-task-inspection-tasks.md)定义交付边界，[交互原型](../design/mockups/task-inspection/index.html)展示最终视觉与主要交互。已实现上下文与居中详情行为由[看板基线](daynight-web.md)和[附件要求](daynight-task-attachments.md)描述。
 
 ## 目的与适用范围
 
 在任务图中直接查看一个任务依赖哪些前置任务，再通过独立入口阅读完整内容。图内卡片承担依赖追踪，详情使用居中浮层。任务的 `description` 作为 Markdown 展示，公开 `using-daynight` skill 同步描述写法和实际附件链接。
 
-图内卡片的选择规则适用于任务依赖画布。独立任务列表若已交付，仍可点击条目直接打开同一详情浮层；独立任务与任务链的标签分类、过滤、计数和浏览偏好由其原任务负责。
+图内卡片的选择规则适用于任务依赖画布。独立任务列表点击条目直接打开同一详情浮层；独立任务与任务链的标签分类、过滤、计数和浏览偏好由其原任务负责。
 
 ## 必须交付的行为
 

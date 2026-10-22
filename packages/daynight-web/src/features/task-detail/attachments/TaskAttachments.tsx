@@ -73,7 +73,7 @@ const TaskAttachmentContent = ({ projectId, taskId, api, urls, onClose }: TaskAt
   };
 
   return (
-    <section className="drawer-section task-attachments" aria-labelledby={headingId}>
+    <section className="task-detail-section task-attachments" aria-labelledby={headingId}>
       <div className="attachment-section-heading">
         <h4 id={headingId}>附件{attachments.complete ? ` · ${attachments.items.length}` : ''}</h4>
         <button className="button" type="button" disabled={attachments.loading || busy} onClick={attachments.reload}>刷新附件</button>

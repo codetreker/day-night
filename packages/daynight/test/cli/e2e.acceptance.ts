@@ -331,8 +331,10 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       writeFileSync(path.join(bin, "copilot"), `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(path.join(helpers, "copilot.mjs"))} "$@"\n`);
       chmodSync(path.join(bin, "copilot"), 0o755);
     }
+    const copilotModel = "configured-review-model";
+    const copilotReasoningEffort = "high";
     const lifecycleConfig = parseDocument(readFileSync(configFile, "utf8"));
-    for (const [key, value] of Object.entries({ pollIntervalMs: 200, maxConcurrentWorker: 1, agentTimeoutMs: 60000, maxAttempts: 3, retryDelayMs: 100 })) lifecycleConfig.set(key, value);
+    for (const [key, value] of Object.entries({ copilotModel, copilotReasoningEffort, pollIntervalMs: 200, maxConcurrentWorker: 1, agentTimeoutMs: 60000, maxAttempts: 3, retryDelayMs: 100 })) lifecycleConfig.set(key, value);
     writeFileSync(configFile, lifecycleConfig.toString());
     const start = (cwd: string): void => {
       rmSync(path.join(directory, "stop"), { force: true });
@@ -613,8 +615,15 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       const calls = agents();
       const discoveryCalls = discoveries();
       expect(calls).toHaveLength(8);
+      for (const item of calls) {
+        for (const [flag, value] of [["--model", copilotModel], ["--reasoning-effort", copilotReasoningEffort]] as const) {
+          expect(item.args.filter((argument) => argument === flag)).toHaveLength(1);
+          const index = item.args.indexOf(flag);
+          expect(item.args.slice(index, index + 2)).toEqual([flag, value]);
+        }
+      }
       expect(discoveryCalls).toHaveLength(calls.length);
-      expect(discoveryCalls.every((item) => item.args.slice(-3).join(" ") === "skill list --json" && item.args.includes("--no-auto-update") && item.args[item.args.indexOf("-C") + 1] === item.cwd && !item.args.some((argument) => /^--(?:session-id|resume)=/.test(argument)))).toBe(true);
+      expect(discoveryCalls.every((item) => item.args.slice(-3).join(" ") === "skill list --json" && item.args.includes("--no-auto-update") && item.args[item.args.indexOf("-C") + 1] === item.cwd && !item.args.some((argument) => /^--(?:session-id|resume)=/.test(argument) || /^--(?:model|reasoning-effort)(?:=|$)/.test(argument)))).toBe(true);
       expect([...discoveryCalls, ...calls].every((item) => item.args.includes(`--plugin-dir=${item.skill.rootDirectory}`))).toBe(true);
       expect(discoveryCalls.map((item) => ({ cwd: item.cwd, skill: item.skill })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))))
         .toEqual(calls.map((item) => ({ cwd: item.cwd, skill: item.skill })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))));
@@ -629,7 +638,8 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
         installedBin: path.relative(directory, installedBin).replaceAll("\\", "/"), packagePacked: true, consumerInstall: "registry",
         sqlite: "real", git: "real-local-origin", github: "controlled-native-executable", copilot: "controlled-default-command-shim",
         liveCopilotExercised: false, liveGitHubExercised: false, scenarios,
-        receipts: { agentInvocations: calls.length, skillDiscoveryInvocations: discoveryCalls.length, bundledSkillFiles: Object.keys(originalBundle), skillDigests: [initialSkill.digest, resumedUpdatedAgent.skill.digest],
+        receipts: { agentInvocations: calls.length, skillDiscoveryInvocations: discoveryCalls.length, configuredCopilotModel: copilotModel, modelArgumentInvocations: calls.length,
+          configuredCopilotReasoningEffort: copilotReasoningEffort, reasoningEffortArgumentInvocations: calls.length, bundledSkillFiles: Object.keys(originalBundle), skillDigests: [initialSkill.digest, resumedUpdatedAgent.skill.digest],
           originalSkillSha256: initialSkill.contentSha256, updatedSkillSha256: resumedUpdatedAgent.skill.contentSha256,
           runningDaemonSkillPreserved: true, sameSessionUpdatedSkillAfterRestart: true, reviewedCheckoutClean: true,
           publications: publications().length, commentReviews: publications().filter((item) => item.event === "COMMENT").length,
