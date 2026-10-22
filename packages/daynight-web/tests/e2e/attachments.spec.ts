@@ -172,6 +172,8 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     if (width === 320) expect(await attachments.getByRole('table').last().evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
   }
   await page.setViewportSize({ width: 1440, height: 800 });
+  const openerViewport = page.viewportSize();
+  if (openerViewport === null) throw new Error('Attachment acceptance requires an explicit opener viewport.');
   const readerUrl = attachmentPageUrl(project.id, task.id, 'docs/design.md');
   const newTabLink = attachments.getByRole('link', { name: '在新标签页打开', exact: true });
   await expect(newTabLink).toHaveAttribute('href', readerUrl);
@@ -264,6 +266,8 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
   await reader.reload();
   await expect(reader.getByRole('link', { name: 'Download', exact: true })).toBeVisible();
   await reader.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('zh-CN');
+  // Chromium tabs share native window bounds; return ownership to the opener before closing the resized reader.
+  await reader.setViewportSize(openerViewport);
   await reader.close();
   expect(readerErrors).toEqual([]);
   await page.bringToFront();
