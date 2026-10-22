@@ -9,7 +9,8 @@
   },
   "type": "module",
   "bin": {
-    "daynight": "dist/main.js"
+    "daynight": "dist/main.js",
+    "dn": "dist/main.js"
   },
   "files": [
     "dist"

@@ -47,7 +47,7 @@ const DetailError = ({ error }: { readonly error: unknown }) => {
 const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, onRestoreFocus, onRefreshGraph }: TaskDetailDialogProps) => {
   const { messages, format } = useI18n();
   const m = messages.inspection.detail;
-  const task = useTaskDetail(projectId, taskId, snapshot.revision);
+  const task = useTaskDetail(projectId, taskId, snapshot.revision, snapshot.index.nodes.get(taskId));
   const { detail, status, error, retry } = task;
   const headingId = useId();
   const dialogRef = useRef<HTMLElement>(null);
@@ -96,10 +96,10 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
 
   useLayoutEffect(() => {
     if (!dialogRef.current!.contains(document.activeElement)) closeRef.current!.focus();
-  }, [taskId, status, snapshot.revision]);
+  }, [taskId, status, error, snapshot.revision]);
 
   const snapshotNode = snapshot.index.nodes.get(taskId);
-  const retainedDetail = detail !== null && (task.refreshing || error !== null || task.loadedRevision !== snapshot.revision);
+  const retainedDetail = detail !== null && (task.refreshing || error !== null || task.requiresFreshRead);
   const stale = detail !== null && !retainedDetail && isTaskStale(snapshotNode, detail);
   const successors = snapshot.index.successors.get(taskId);
   const relation = (id: string) => {
@@ -136,6 +136,17 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
               <button className="button primary" type="button" onClick={retry}>{m.retry}</button>
             </div>
           )}
+          {detail !== null && error !== null && (
+            <div className="task-detail-read-error" role="alert">
+              <h3>{m.refreshFailed}</h3>
+              <DetailError error={error} />
+              <p>{m.retainedData}</p>
+              <button className="button" type="button" onClick={retry}>{m.retry}</button>
+            </div>
+          )}
+          {detail === null && task.approval.phase !== 'idle' && <div className="task-detail-approval">
+            <TaskApproval detail={null} approval={task.approval} canApprove={false} onApprove={task.approve} onReconcile={task.reconcile} />
+          </div>}
           {detail !== null && (
             <>
               <div className="task-detail-heading">
@@ -155,7 +166,6 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
               </div>
               <TaskDetailPanels key={`${projectId}/${taskId}`} overview={<>
                 <div className="task-detail-approval"><TaskApproval detail={detail} approval={task.approval} canApprove={task.canApprove} onApprove={task.approve} onReconcile={task.reconcile} /></div>
-                {error !== null && status === 'ready' && <div className="task-detail-read-error" role="alert"><p>{m.refreshFailed}</p><DetailError error={error} /><button className="button" type="button" onClick={retry}>{m.retry}</button></div>}
                 <div className="task-detail-columns">
                   <div className="task-detail-main">
                     <section className="task-detail-section" aria-label={m.description}>

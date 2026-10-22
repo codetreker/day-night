@@ -11,3 +11,7 @@ export const isTaskStale = (snapshotNode: GraphTask | undefined, detail: TaskDet
     !sameIds(snapshotNode.blockedBy, detail.blockedBy) || snapshotNode.titlePreview !== title.slice(0, 160).join("") ||
     snapshotNode.titleTruncated !== (title.length > 160);
 };
+
+export const taskDescriptor = (task: GraphTask | undefined): string => task === undefined ? "" : JSON.stringify([
+  task.id, task.updatedAt, task.status, task.ready, [...task.dependsOn].sort(), [...task.blockedBy].sort(), task.titlePreview, task.titleTruncated,
+]);

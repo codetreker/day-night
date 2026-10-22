@@ -42,12 +42,16 @@ tab with adjacent file and preview panes at every supported width. Each pane
 owns its scroll region; the preview has exactly one vertical scroll owner,
 including native HTML/PDF documents. A link beside Download opens the selected
 file in a reloadable full-page reader outside the workspace and dialog, with
-the same rendering and relative resources. Independent integrated acceptance
-for this reading group remains separately tracked work. Installed CLI/service and production-browser
-attachment journeys share real service data on native and container targets; their
+the same rendering and relative resources. Independent runtime acceptance of
+this reading group is complete against real embedded assets and service files,
+including native PDF reading to the final painted page. Installed CLI/service
+and production-browser attachment journeys share real service data on native
+and container targets; their
 [acceptance decision](.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
-owns byte, rendering and cleanup proof. Delivery progress remains tracked in
-Daynight, and successful runs remain tied to their tested source and CI. The
+owns byte, rendering, scroll, failure-recovery and cleanup proof. Delivery
+progress remains tracked in Daynight, and successful runs remain tied to their
+tested source, built artifacts and browser environment; local browser overrides
+do not establish hosted-CI browser results. The
 [Web attachment decision](.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)
 owns browser state, rendering and focus integration; the
 [split-view decision](.agents/notes/implemented/architecture/2026-10-22-task-attachment-split-view.md)
@@ -79,8 +83,9 @@ same-origin executable HTML previews retain their existing execution model after
 authentication is delivered; attachment requests gain project-member checks.
 Existing projects will receive membership data manually outside that work.
 
-The `@codetreker/daynight` package provides the `daynight` client. Its root entry
-lists commands and reports the package version; each command owns its business
+The `@codetreker/daynight` package provides the `daynight` client and its `dn`
+short command. Both names use the same entry, commands and configuration. Its
+root entry lists commands and reports the package version; each command owns its business
 dependencies and lifecycle. `review` polls configured repositories, maintains
 dedicated local clones and PR worktrees, and launches Copilot in a retained
 session for each eligible PR using a bundled review skill. SQLite preserves initialization boundaries, review
@@ -115,13 +120,23 @@ The [public Agent skill design](docs/design/daynight-agent-skill.md) defines one
 npm-bundled `using-daynight` skill and interactive installation for Codex, Copilot
 CLI and Claude Code. Its [requirements](docs/spec/daynight-agent-skill.md) cover
 context-based routing, explicit continuous-execution intent, attachment-backed
-planning and complete replacement on reinstall. The entrypoint and four mode
-references are published under `dist/commands/skill/skills/using-daynight/`.
+planning and complete replacement on reinstall. The entrypoint, four mode
+references and shared `goal.md` protocol are published under
+`dist/commands/skill/skills/using-daynight/`. The
+[Goal workflow requirements](docs/spec/daynight-goal-workflow.md) and
+[design](docs/design/daynight-goal-workflow.md) define staged persistent work:
+`[Goal]<outcome>` clarifies the whole problem, behavior, scope, exclusions and
+acceptance, then a dependent architecture task completes design and registers
+all successors before design handover. Applicable UI Goals produce a final-style,
+frontend-only interactive prototype during clarification. Stage briefs are
+inputs; completed requirements, prototypes and architecture are their outputs.
+The [delivery tasks](docs/design/daynight-goal-workflow-tasks.md) distinguish
+protocol delivery from independent acceptance of the exact merged consumer artifact.
 
 | Mode | Responsibility |
 |---|---|
 | `handbook` | Command purposes and operational context; use CLI help for command usage |
-| `create-task` | With explicit creation permission, register proposed work and verify planning attachments; approval is a separate decision |
+| `create-task` | With explicit creation permission, register proposed ordinary work or two Goal seeds with verified stage inputs; approval is separate |
 | `run-task <task-id>` | Execute the designated task through validation and authorized delivery, then return |
 | `autopilot <goal or scope>` | Restore the current task or select one most relevant approved ready todo, and continue only after confirmed completion |
 
@@ -130,12 +145,16 @@ resolved with the user. Autopilot requires an explicit request for continuous
 execution. Creating tasks requires explicit user permission to create them;
 implementation requests and autopilot activation do not supply that permission.
 Existing explicit permission applies within its stated scope without repeated
-confirmation. Task approval also needs explicit authorization for that task or
-scope; creation, run-task and autopilot do not supply it. Approved ready work is
-claimed at the version actually reviewed. Task descriptions contain the problem and real attachment references;
-one primary Markdown attachment owns solution and acceptance criteria. Frontend
-tasks also require an interactive mock UI matching intended final visuals and
-representative states. Dependencies use dependsOn, PR references use properties,
+confirmation. Goal creation covers its two starting tasks and later in-scope
+breakdown; task approval needs a separate explicit task or Goal-task scope.
+Creation, stage completion, run-task and autopilot do not supply approval. Approved
+ready work is claimed at the reviewed version. Task descriptions are self-contained briefs: concrete actions, scope, deliverables,
+constraints, observable completion summaries and actual input references. Each
+task-specific primary Markdown owns detailed solution, full acceptance and evidence.
+Shared Goal and design inputs stay at their source task ID and attachment path,
+or a verified immutable repository URL; attachments follow actual need. Frontend
+implementation tasks read the completed final-style interactive prototype and
+its representative states. Dependencies use dependsOn, PR references use properties,
 and execution progress uses an existing checkpoint. Necessary PRs must be
 platform-confirmed merged and acceptance satisfied before done. A request to
 retain a PR for review keeps the task in progress and returns control to the user.
@@ -218,7 +237,7 @@ same compiled output. `pnpm build` clears the package's `dist/` before emitting
 bundles into `dist/commands/review/skills/daynight-review/` and
 `dist/commands/skill/skills/using-daynight/`. Complete relative resources are included;
 repository workflow skills are not scanned for publication. The package's
-`daynight` bin points to the stable JavaScript entry.
+`daynight` and `dn` bins point to the same stable JavaScript entry.
 Source tests mirror `cli/`, `config/`, `api/`, `commands/` and `platform/`
 ownership, with build and version-policy tests in `test/tooling/`.
 The pnpm dependency store is local to `.tmp/pnpm-store`. Native skill terminal
@@ -399,7 +418,14 @@ binary identity, scenario results and resource cleanup.
 
 The private [web workspace](packages/daynight-web/README.md) implements the project
 list, cursor paging, safe API decoding, cancellation, project statistics, task
-graphs, centered task detail dialogs and single-file attachment management. Its
+graphs, centered task detail dialogs and single-file attachment management. An open
+project refreshes its complete task snapshot every five seconds while the page is
+visible, pauses automatic reads while hidden and refreshes immediately on return.
+Refresh retains browsing state and an open detail dialog, including attachment
+inputs and previews. Failed reads keep prior data with an error and recover on a
+later successful read; unavailable resources are cleared. The
+[automatic refresh decision](.agents/notes/implemented/feature/2026-10-22-project-task-auto-refresh.md)
+owns scheduling, request priority and retained-state guarantees. Its
 [locale runtime](docs/design/daynight-web-i18n.md) provides English and Simplified
 Chinese across the shipped interface, native Intl formatting and an independent
 saved language preference. Navigation, the centered detail dialog and fullscreen
@@ -572,13 +598,17 @@ Install the CLI with npm:
 
 ```bash
 npm install --global @codetreker/daynight
-daynight --version
+dn --version
 ```
+
+The installation provides both `daynight` and `dn`; every command works with
+either name, for example `dn task list` or `dn skill install`. Help and diagnostics
+use the canonical `daynight` spelling.
 
 Update that npm global installation with:
 
 ```bash
-daynight update
+dn update
 ```
 
 The command checks `@codetreker/daynight`'s `latest` version in the configured npm
@@ -786,6 +816,7 @@ Setup checks file contents without executing them. Custom early returns or later
 commands that remove registrations can prevent a startup file from enabling
 completion; verify such configuration by starting the shell.
 
+The generated scripts register completion for both `daynight` and `dn`.
 Completion suggests commands, nested operations, aliases, options, shell names
 and local directories for `review add-repo --path` and `setup --review-path`.
 zsh also displays descriptions.

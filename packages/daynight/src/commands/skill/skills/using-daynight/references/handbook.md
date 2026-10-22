@@ -2,7 +2,7 @@
 
 Use the installed `daynight` CLI. Discover command groups with `daynight --help`
 and read the relevant command's `--help` for arguments, options, and output
-formats. This reference indexes project/task commands and explains the context
+formats. The installed `dn` alias accepts the same commands. This reference indexes project/task commands and explains the context
 needed to use them correctly.
 
 ## Command index
@@ -100,4 +100,7 @@ title or an empty lookup alone is insufficient. Preserve actual errors and
 resource IDs rather than reporting success or blindly resending a write.
 
 Task registration, execution, and selection follow [create-task](create-task.md),
-[run-task](run-task.md), and [autopilot](autopilot.md), respectively.
+[run-task](run-task.md), and [autopilot](autopilot.md), respectively. For a chain
+of independently tracked delivery stages, use [the Goal protocol](goal.md).
+Goal scope grants no implicit approval: every stage and delivery task follows the
+same proposed/approve/claim/complete lifecycle.

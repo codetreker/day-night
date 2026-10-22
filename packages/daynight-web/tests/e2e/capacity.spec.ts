@@ -21,6 +21,7 @@ type Dataset = {
   scenario: string; nodes: 1000; edges: number; result: 'running' | 'passed' | 'failed';
   visibility: { repetition: number; overviewNodes: number; overviewEdges: number; addedNodes: number; addedEdges: number; expandedNodes: number; expandedEdges: number; resetNodes: number; resetEdges: number }[];
   networkMs?: number; coldOpenMs?: number; measurements: Measurement[]; feedbackDiagnostics: FeedbackDiagnostic[]; error?: string;
+  graphReads?: { initial: number; periodic: number; network: number };
   controllerDurations: { fixtureMs?: number; snapshotMs?: number; repetitions: { interactionMs: number; totalMs: number }[] };
 };
 type Limit = { status: number; nodeCount: number; edgeCount: number; maxNodes: number; maxEdges: number };
@@ -79,7 +80,36 @@ type FeedbackDiagnostic = {
   phases: { inputQueueMs: number | null; conditionMs: number | null; firstFrameMs: number | null; secondFrameMs: number | null };
 };
 type TimingWindow = Window & { __daynightCapacityTiming?: Record<string, BrowserTiming> };
+type GraphFetchWindow = Window & { __daynightCapacityGraphFetches: { periodic: boolean; start: number }[] };
 let timingSequence = 0;
+
+const observeGraphFetches = async (page: Page, projectId: string): Promise<void> => {
+  await page.addInitScript(({ projectId }) => {
+    const host = window as unknown as GraphFetchWindow;
+    host.__daynightCapacityGraphFetches = [];
+    let periodic = false;
+    const nativeInterval = window.setInterval.bind(window);
+    const nativeFetch = window.fetch.bind(window);
+    // Preserve native timing while distinguishing polling from interaction-triggered reads.
+    window.setInterval = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+      if (typeof handler !== 'function' || timeout !== 5_000) return nativeInterval(handler, timeout, ...args);
+      return nativeInterval(function (this: Window, ...parameters: unknown[]) {
+        const previous = periodic;
+        periodic = true;
+        try { return Reflect.apply(handler, this, parameters); }
+        finally { periodic = previous; }
+      }, timeout, ...args);
+    }) as typeof window.setInterval;
+    window.fetch = (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), window.location.href);
+      const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+      if (url.href === new URL(`/api/v1/projects/${projectId}/task-graph`, window.location.origin).href && method.toUpperCase() === 'GET') {
+        host.__daynightCapacityGraphFetches.push({ periodic, start: performance.now() });
+      }
+      return nativeFetch(input, init);
+    };
+  }, { projectId });
+};
 
 const measureBrowserFeedback = async (page: Page, condition: TimingCondition, action: () => Promise<void>, dataset: Dataset, repetition: number) => {
   const key = `${dataset.scenario}:repetition-${repetition}:${condition.kind}:${++timingSequence}`;
@@ -445,7 +475,10 @@ test.describe('fixed capacity and performance @capacity', () => {
           );
           dataset.controllerDurations.snapshotMs = performance.now() - snapshotStart;
           let graphRequests = 0;
-          const trackGraph = (request: { url: () => string }) => { if (request.url().endsWith(`/api/v1/projects/${fixture.project.id}/task-graph`)) graphRequests++; };
+          await observeGraphFetches(page, fixture.project.id);
+          const trackGraph = (request: { url: () => string; method: () => string }) => {
+            if (request.url().endsWith(`/api/v1/projects/${fixture.project.id}/task-graph`) && request.method() === 'GET') graphRequests++;
+          };
           page.on('request', trackGraph);
           const graphResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/projects/${fixture.project.id}/task-graph`));
           const coldStart = performance.now();
@@ -468,8 +501,9 @@ test.describe('fixed capacity and performance @capacity', () => {
           await initialResponse.finished();
           dataset.networkMs = await page.evaluate((url) => {
             const entries = performance.getEntriesByName(url, 'resource') as PerformanceResourceTiming[];
-            if (entries.length !== 1) throw new Error('Expected one task graph network resource timing.');
-            return entries[0]!.duration;
+            const initial = entries[0];
+            if (initial === undefined || initial.initiatorType !== 'fetch') throw new Error('Initial task graph network resource timing is missing.');
+            return initial.duration;
           }, initialResponse.url());
           expect(Number.isFinite(dataset.networkMs)).toBe(true);
           expect(dataset.networkMs).toBeGreaterThanOrEqual(0);
@@ -505,7 +539,20 @@ test.describe('fixed capacity and performance @capacity', () => {
             dataset.controllerDurations.repetitions.push({ interactionMs, totalMs: performance.now() - repetitionStart });
             await persist();
           }
-          expect(graphRequests, 'Collapse and reopen reuse the complete project snapshot').toBe(1);
+          let reads!: GraphFetchWindow['__daynightCapacityGraphFetches'];
+          let network!: number;
+          await expect.poll(async () => {
+            reads = await page.evaluate(() => (window as unknown as GraphFetchWindow).__daynightCapacityGraphFetches);
+            network = graphRequests;
+            return reads.length === network;
+          }, { message: 'Every observed graph fetch reaches the real network' }).toBe(true);
+          const initial = reads.filter((read) => !read.periodic).length;
+          const periodic = reads.filter((read) => read.periodic).length;
+          expect(initial, 'Collapse and reopen reuse the snapshot; only initial load reads outside the polling callback').toBe(1);
+          expect(reads[0]!.periodic).toBe(false);
+          expect(network, 'Only initial load and actual periodic callbacks read the graph').toBe(initial + periodic);
+          dataset.graphReads = { initial, periodic, network };
+          await persist();
           page.off('request', trackGraph);
         });
         dataset.result = 'passed';

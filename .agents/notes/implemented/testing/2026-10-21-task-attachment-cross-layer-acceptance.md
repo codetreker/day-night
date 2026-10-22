@@ -8,17 +8,22 @@ Storage, HTTP, CLI, browser components and deployment checks can each succeed
 without proving that an installed CLI and production page consume the same
 service files. Frontend-only fixtures cannot establish backend persistence or
 cross-client bytes. A PDF response with the right MIME type and a loaded iframe
-can also succeed without the PDF page visibly painting. Combined delivery needs
-observable content and resource cleanup tied to the tested artifacts.
+can also succeed without the PDF page visibly painting. Inline and standalone
+readers additionally need proof that real input reaches the document end without
+competing ancestor scrollbars. Combined delivery needs observable content,
+service failures and resource cleanup tied to the tested artifacts.
 
 ## Decision
 
 The [attachment requirements](../../../../docs/spec/daynight-task-attachments.md)
 and [architecture](../../../../docs/design/daynight-task-attachments.md) own the
-feature and accepted K1 limitation. This note owns A-T6's combined proof from the
-[breakdown](../../../../docs/design/daynight-task-attachments-tasks.md), extending
+feature and accepted K1 limitation. This note owns combined attachment proof,
+originating with A-T6 in the
+[breakdown](../../../../docs/design/daynight-task-attachments-tasks.md) and extending
 the [production browser acceptance](2026-10-20-dashboard-production-acceptance.md)
-with one attachment journey. The existing
+with an attachment journey. Independent runtime acceptance now also establishes
+the integrated [split view](../architecture/2026-10-22-task-attachment-split-view.md)
+and [standalone reader](../architecture/2026-10-22-task-attachment-full-reader.md). The existing
 [pipeline decision](2026-10-21-web-acceptance-pipeline.md) continues to own stage
 scheduling, permissions, isolated capacity timing and interrupted-run recovery.
 The [Web delivery note](../feature/2026-10-21-task-attachment-web.md) retains
@@ -56,6 +61,9 @@ uploads with that CLI and opens the same task/files
 in the production page; Web mutations are checked with raw CLI reads. It covers
 original binary downloads, single-file mutations, directory paths, Markdown
 relative images, image/text/PDF and HTML relative styles/scripts/data behavior.
+The same journey covers detail tabs and retained file state, adjacent pane
+geometry, preview scroll owners and real new-tab opening/direct reload without
+originating-dialog state.
 The original eight graph scenarios and the later `project-view-tabs` scenario
 keep GET/HEAD-only browser checks. Exact
 fixture-scoped file PUT/DELETE requests are admitted by the attachment scenario
@@ -95,8 +103,60 @@ screenshot and component metrics identify the expected PDF hash and preview URL
 in `task-attachments-pdf.png` and `task-attachments-pdf.json`; the main UI capture
 is `task-attachments.png`. MIME success, load, a fixed delay or an empty outer
 MIME document cannot satisfy the pixel oracle.
-The oracle avoids depending on PDF viewer extension IDs, internal plugin APIs or
-browser-specific text-layer DOM.
+The paint oracle avoids depending on PDF viewer extension IDs, internal plugin
+APIs or browser-specific text-layer DOM.
+
+Independent reading acceptance uses a fresh evaluator and production-built Web
+assets served by the actual Go application, with real service files and isolated
+storage/database resources. It retains the strict native functional, container
+functional and native capacity pipeline, zero retries, coverage, timeouts and
+cleanup gates. Frontend-only fixtures and implementation self-reports remain
+separate from the independent verdict.
+
+The reading matrix covers the prescribed desktop, tablet, narrow and short
+viewports in both languages. Geometry checks inspect actual client/scroll sizes
+through the document and ancestor chain, then exercise wheel and keyboard input.
+Markdown, text, images and HTML must reach their document end; fitting content
+must not expose an extra scrollbar. Keyboard-only Tab navigation must reach the
+scrollable body, and left-pane scrolling must preserve the right reading
+position. Real new-tab navigation, standalone reload, relative resources,
+unsupported-file download and normal standalone keys remain part of the same
+reading proof.
+
+Native multi-page PDF acceptance enters the actual plugin through real keyboard
+navigation from the dialog actions. Wheel input and Home/PageDown/End must move
+that reader, reach the end and visibly paint a unique final-page footer. The
+same proof applies to standalone reading. Private viewer DOM may supply
+read-only offset diagnostics; it never drives focus or scrolling and does not
+replace input plus compositor evidence. A painted first page or a changing
+wrapper offset alone cannot prove that the final document page is reachable.
+
+Failure probes synchronize request timing without replacing responses. An
+unavailable owned metadata table produces an actual later-page 500 after an
+earlier successful page, preserving the incomplete-list state and retry. An
+actual stored file made temporarily unavailable produces preview 404 and
+restoration/retry. A held PUT exposes busy controls, then an actual database
+failure must preserve the upload form before retry. Missing-file recovery,
+delayed responses and unchanged task version/graph remain observable checks.
+Fault restoration and confirmed removal of all owned browser, service, database
+and storage resources are required.
+
+Daynight task `daf08f1c-a822-44b2-bfeb-8dec80896ec3` owns the independent
+criterion verdict and source/build/browser/cleanup receipts alongside its
+associated PR/CI artifacts. Runtime measurements, hashes and probe histories
+remain source-bound artifacts under the
+[validation evidence decision](../process/2026-10-20-source-bound-validation-evidence.md),
+not rolling Markdown snapshots. Independent runtime acceptance is complete
+within that recorded environment; a local browser override establishes no
+hosted-CI browser result. Formal task delivery still follows its required PR
+integration and evidence retention conditions. An immutable
+[source-qualified evidence selection](../../../../docs/research/evidence/daynight-attachment-reading-ad16d6f.json)
+retains the [narrow split view](../../../../docs/research/assets/daynight-attachment-reading-ad16d6f-320.png),
+[short-viewport split view](../../../../docs/research/assets/daynight-attachment-reading-ad16d6f-844.png)
+and [native final-page footer](../../../../docs/research/assets/daynight-attachment-reading-ad16d6f-pdf-end.png)
+from the [accepted production source](https://github.com/codetreker/daynight/tree/ad16d6f9e5c4c081b038d18fa243e77683bf6bc3).
+These unedited captures and their original probe qualifications preserve the
+lasting scroll/native-reader evidence; the task bundle retains the full ledger.
 
 Installed-package handoff validates the receipt's Git SHA/dirty state and
 recomputes tarball/entry hashes. The dirty boolean is not a digest of modified
@@ -141,8 +201,11 @@ production page against one target's real data.
 
 **Accept PDF HTTP success, iframe load or a screenshot without assertions.**
 Those observations can describe a blank or failed viewer. A distinctive painted
-marker makes expected document content an automatic assertion. Viewer-internal
-DOM would instead tie the test to browser implementation details.
+marker makes expected document content an automatic assertion; a first-page
+marker alone still cannot establish reading to the document end. Real input and
+a unique final-page marker provide that additional proof. Viewer-internal state
+alone would tie the verdict to browser implementation details, so private DOM
+is restricted to read-only diagnostics rather than behavioral control or proof.
 
 **Statically import CLI test fixture types into Web.** That makes the production
 Web build depend on source and dependencies deliberately absent from its Docker
@@ -165,8 +228,10 @@ insufficient evidence.
 Painted-PDF proof requires the full browser channel; the recorded executable
 identity must match the run's selected environment. Pixel evidence proves the
 fixture page painted under those conditions, without asserting arbitrary PDF
-compatibility. CI and local receipts retain their own source/environment limits;
-source inspection cannot substitute for successfully validated run receipts.
+compatibility. Independent reading proof also establishes real-input access to
+the fixture's final page, not arbitrary viewer or document compatibility. CI and
+local receipts retain their own source/environment limits; source inspection
+cannot substitute for successfully validated run receipts.
 
 K1 stays recorded only. Ordinary storage/PG/transfer failures remain visible,
 but cross-store rollback, compensation, reconciliation and recovery are not

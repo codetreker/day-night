@@ -21,7 +21,7 @@ vi.mock("../src/features/task-graph/RootList", () => ({ RootList: ({ index, root
 vi.mock("../src/features/task-detail/TaskDetailDialog", () => ({ TaskDetailDialog: ({ projectId, taskId, snapshot, onSelectTask, onClose, onRestoreFocus, onRefreshGraph }: {
   projectId: string; taskId: string; snapshot: GraphSnapshot; onSelectTask: (id: string) => void; onClose: () => void; onRestoreFocus: () => void; onRefreshGraph: () => void;
 }) => {
-  const state = useTaskDetail(projectId, taskId, snapshot.revision);
+  const state = useTaskDetail(projectId, taskId, snapshot.revision, snapshot.index.nodes.get(taskId));
   useEffect(() => () => onRestoreFocus(), [onRestoreFocus]);
   return <aside aria-label="详情测试外壳"><p data-testid="selected-task">{taskId}</p><p data-testid="detail-state">{state.status}</p><p>{state.detail?.title}</p><p data-testid="detail-business-status">{state.detail?.status}</p>
     <button onClick={() => onSelectTask(C)}>关系跳转</button><button onClick={() => onSelectTask(X)}>未知关系</button>

@@ -65,7 +65,8 @@ const openChild = async () => {
 };
 
 describe('approval in shared production task details', () => {
-  it('keeps another task attachment draft and upload mounted during a background detail refresh triggered by approval', async () => {
+  it.each(['approval', 'automatic poll'] as const)('keeps another task attachment draft and upload mounted during a background detail refresh triggered by %s', async (trigger) => {
+    if (trigger === 'automatic poll') vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const mutation = deferred<TaskDetail>();
     const refresh = deferred<TaskDetail>();
     const kept = { path: 'kept.txt', contentType: 'text/plain', sizeBytes: 27, createdAt: time, updatedAt: time };
@@ -99,7 +100,10 @@ describe('approval in shared production task details', () => {
     const prior = records.get(standalone)!;
     const changed = { ...prior, title: 'Task 3 revised', description: 'Fresh task metadata', version: prior.version + 1n, updatedAt: '2026-10-22T00:02:00Z' };
     records.set(standalone, changed);
-    await act(async () => { mutation.resolve(commit()); });
+    await act(async () => {
+      if (trigger === 'approval') mutation.resolve(commit());
+      else await vi.advanceTimersByTimeAsync(5_000);
+    });
     await waitFor(() => expect(otherReads).toBe(2));
     expect(tab.isConnected).toBe(true);
     expect(dialog.querySelector('.task-attachments')).toBe(attachments);
@@ -125,6 +129,41 @@ describe('approval in shared production task details', () => {
     await act(async () => { upload.resolve(uploaded); });
     await waitFor(() => expect(path).toHaveValue(''));
     expect(putAttachment).toHaveBeenCalledTimes(1);
+  });
+
+  it('reconciles an uncertain approval again after a not-found detail response removes the cached panels', async () => {
+    const original = new ApiError('network');
+    const missing = new ApiError('server', 404, 'not_found', 'lost-detail-reconciliation');
+    let reads = 0;
+    vi.mocked(getTask).mockImplementation(async (_project, taskId) => {
+      if (taskId === child && ++reads === 2) throw missing;
+      return records.get(taskId)!;
+    });
+    vi.mocked(approveTask).mockRejectedValueOnce(original);
+    mount(); const dialog = await openChild();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve task' }));
+    const failed = await within(dialog).findByRole('heading', { name: 'Task details could not be loaded' });
+    const alert = failed.parentElement!;
+    expect(alert).toHaveTextContent('This task can no longer be read. Refresh the task graph.');
+    expect(alert).toHaveTextContent('lost-detail-reconciliation');
+    const operation = within(dialog).getByRole('region', { name: 'Task approval' });
+    expect(operation).toHaveTextContent('The approval outcome is unknown. Check the current task state before another approval.');
+    expect(operation).toHaveTextContent('The approval request could not reach a confirmed response from the service.');
+    expect(operation).toHaveTextContent('The current task state could not be confirmed. Approval remains unavailable until it can be read.');
+    expect(operation).toHaveTextContent('The task or project is no longer available.');
+    expect(operation).toHaveTextContent('lost-detail-reconciliation');
+    expect(within(operation).getByRole('button', { name: 'Check task state' })).toBeEnabled();
+    expect(within(dialog).queryByRole('button', { name: 'Approve task' })).toBeNull();
+    expect(operation.querySelector('.task-approval-description')).toBeNull();
+    expect(within(dialog).queryByRole('heading', { name: 'Task 2' })).toBeNull();
+    expect(within(dialog).queryByText('Complete description 2')).toBeNull();
+    expect(dialog.querySelector('.task-detail-panels')).toBeNull();
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry details' }));
+    await within(dialog).findByRole('heading', { name: 'Task 2' });
+    expect(reads).toBe(4);
+    expect(approveTask).toHaveBeenCalledTimes(1);
+    expect(within(dialog).getByRole('button', { name: 'Approve task' })).toBeEnabled();
+    expect(within(dialog).getByText('The approval request could not reach a confirmed response from the service.')).toBeVisible();
   });
 
   it('owns pending approval across real App project routes and isolates its late result from the current project', async () => {

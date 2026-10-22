@@ -121,12 +121,19 @@ describe("packaged skill resource copy", () => {
     const create = readFileSync(path.join(destination, "references/create-task.md"), "utf8");
     const run = readFileSync(path.join(destination, "references/run-task.md"), "utf8");
     const autopilot = readFileSync(path.join(destination, "references/autopilot.md"), "utf8");
-    expect(create).toContain("it in `proposed`");
-    expect(create).toContain("approval is pending");
+    expect(create).toContain("Create new tasks in `proposed`");
+    expect(create).toMatch(/approval\s+is pending/);
     expect(run).toContain("keep execution pending approval");
     expect(run).toContain("every necessary delivery PR");
     expect(run).toContain("is merged");
     expect(autopilot).toContain("never auto-approves proposed");
+    const goal = readFileSync(path.join(destination, "references/goal.md"), "utf8");
+    expect(goal).toContain("two starting tasks");
+    expect(goal).toContain("Each task starts\nin `proposed`");
+    expect(goal).toContain("stage briefs");
+    expect(goal).toContain("Completion satisfies dependencies but never approves the next stage");
+    expect(goal).toContain("actual registered delivery tasks");
+    expect(goal).not.toMatch(/starts\s+in `todo`/);
   });
 
   it("ships valid skill metadata and resolves every local resource link inside each copied bundle", () => {

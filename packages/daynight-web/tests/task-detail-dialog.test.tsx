@@ -11,7 +11,7 @@ import { buildGraphIndex } from '../src/features/task-graph/model';
 const render = createLocaleRender('zh-CN');
 
 vi.mock('../src/features/task-detail/attachments/TaskAttachments', () => ({
-  TaskAttachments: ({ projectId, taskId }: { readonly projectId: string; readonly taskId: string }) => <section aria-label="附件" data-project-id={projectId} data-task-id={taskId} />,
+  TaskAttachments: ({ projectId, taskId }: { readonly projectId: string; readonly taskId: string }) => <section aria-label="附件" data-project-id={projectId} data-task-id={taskId}><input aria-label="附件草稿" defaultValue="" /></section>,
 }));
 
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
@@ -286,6 +286,81 @@ describe('task detail dialog', () => {
     await screen.findByRole('heading', { name: fresh.title });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole('button', { name: '刷新任务图' })).toBeNull();
+  });
+
+  it('preserves the selected attachment panel, draft, focus and scroll through refresh errors and recovery', async () => {
+    const update = deferred<Response>();
+    const recovery = deferred<Response>();
+    const fetch = vi.fn().mockResolvedValueOnce(response(detail())).mockReturnValueOnce(update.promise).mockReturnValueOnce(recovery.promise);
+    vi.stubGlobal('fetch', fetch);
+    const initial = props();
+    const view = open(initial);
+    await screen.findByRole('heading', { name: '任务 1' });
+    fireEvent.click(screen.getByRole('tab', { name: '附件' }));
+    const panel = screen.getByRole('tabpanel', { name: '附件' });
+    const attachment = screen.getByRole('region', { name: '附件' });
+    const draft = screen.getByRole('textbox', { name: '附件草稿' });
+    fireEvent.change(draft, { target: { value: 'notes/working.md' } });
+    draft.focus();
+    const body = document.querySelector('.task-detail-body')!;
+    body.scrollTop = 140;
+    view.rerender(<TaskDetailDialog {...initial} snapshot={snapshot([detail()], 2)} />);
+    expect(screen.queryByText('正在加载任务详情')).toBeNull();
+    expect(screen.getByRole('tabpanel', { name: '附件' })).toBe(panel);
+    expect(screen.getByRole('region', { name: '附件' })).toBe(attachment);
+    expect(draft).toHaveFocus();
+    await act(async () => { update.resolve(failure()); });
+    expect(screen.getByRole('alert')).toHaveTextContent('任务详情更新失败');
+    expect(screen.getByRole('alert')).toHaveTextContent('正在显示上次成功读取的详情，将自动重试更新。');
+    expect(screen.getByRole('region', { name: '附件' })).toBe(attachment);
+    expect(draft).toHaveValue('notes/working.md');
+    expect(draft).toHaveFocus();
+    view.rerender(<TaskDetailDialog {...initial} snapshot={snapshot([detail()], 3)} />);
+    expect(screen.getByRole('alert')).toBeVisible();
+    await act(async () => { recovery.resolve(response(detail(1, { description: '新的描述' }))); });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('tabpanel', { name: '附件' })).toBe(panel);
+    expect(screen.getByRole('region', { name: '附件' })).toBe(attachment);
+    expect(draft).toHaveValue('notes/working.md');
+    expect(draft).toHaveFocus();
+    expect(body.scrollTop).toBe(140);
+    fireEvent.click(screen.getByRole('tab', { name: '概览' }));
+    expect(screen.getByText('新的描述')).toBeVisible();
+  });
+
+  it('retains the selected PR page when a receipt changes other detail fields', async () => {
+    const pullRequests = Array.from({ length: 101 }, (_, index) => ({ title: `PR ${index}`, url: `https://example.com/pr/${index}` }));
+    const original = detail(1, { properties: { pullRequests } });
+    const update = deferred<Response>();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(response(original)).mockReturnValueOnce(update.promise));
+    const initial = props({ snapshot: snapshot([original]) });
+    const view = open(initial);
+    const next = await screen.findByRole('button', { name: '下一页' });
+    fireEvent.click(next);
+    const page = screen.getByRole('combobox', { name: '关联 PR 页码' });
+    page.focus();
+    expect(page).toHaveValue('1');
+    expect(screen.getByText('PR 100')).toBeVisible();
+    view.rerender(<TaskDetailDialog {...initial} snapshot={snapshot([original], 2)} />);
+    await act(async () => { update.resolve(response({ ...original, description: '新的描述' })); });
+    expect(screen.getByRole('combobox', { name: '关联 PR 页码' })).toBe(page);
+    expect(page).toHaveValue('1');
+    expect(page).toHaveFocus();
+    expect(screen.getByText('PR 100')).toBeVisible();
+    expect(screen.getByText('新的描述')).toBeVisible();
+  });
+
+  it('removes retained content and attachments when a refresh reports a missing task', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(response(detail())).mockResolvedValueOnce(failure('not_found'));
+    vi.stubGlobal('fetch', fetch);
+    const initial = props();
+    const view = open(initial);
+    await screen.findByRole('heading', { name: '任务 1' });
+    view.rerender(<TaskDetailDialog {...initial} snapshot={snapshot([detail()], 2)} />);
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('heading', { name: '任务 1' })).toBeNull();
+    expect(document.querySelector('[data-task-id]')).toBeNull();
+    expect(screen.queryByText('正在显示上次成功读取的详情，将自动重试更新。')).toBeNull();
   });
 
   it('clears the previous identity immediately, cancels old reads, and ignores late results', async () => {

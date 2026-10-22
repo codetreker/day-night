@@ -39,6 +39,7 @@ export const commands: readonly CommandRegistration[] = [
 
 export const commandTree: CommandDefinition = {
   name: "daynight",
+  aliases: ["dn"],
   description: "A client command toolkit for development workflows",
   commands: commands.map(({ load, ...definition }) => definition),
   options: [

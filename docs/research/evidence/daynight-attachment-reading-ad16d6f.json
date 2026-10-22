@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "kind": "immutable-attachment-reading-decision-evidence",
+  "purpose": "Selected lasting evidence for single preview scroll ownership and usable native PDF end reading; not a rolling acceptance ledger.",
+  "provenance": {
+    "source": "ad16d6f9e5c4c081b038d18fa243e77683bf6bc3",
+    "sourceUrl": "https://github.com/codetreker/daynight/tree/ad16d6f9e5c4c081b038d18fa243e77683bf6bc3",
+    "sourceCleanAtCapture": true,
+    "method": "Independent evaluator, actual Go-served production assets, real PostgreSQL/storage and synthetic attachment files; real browser input and compositor capture.",
+    "nativeBinarySha256": "61896f8455ec08f3470999a33f508a40aa06ce0cf5e7b5d1e6fc08a49795b10b",
+    "assets": [
+      {
+        "path": "packages/daynight-web/dist/index.html",
+        "sha256": "9f93474bd9000785e309ffa2b26fee645b990aec4a0ec06bcd0760a3ea1330c2"
+      },
+      {
+        "path": "packages/daynight-web/dist/assets/index-DT_yRhwB.css",
+        "sha256": "361ff834fe683da9155955adc0a70d80cb58db248dd9d6643880703b03c701b4"
+      },
+      {
+        "path": "packages/daynight-web/dist/assets/index-D_q9fWNh.js",
+        "sha256": "90ec07dcc36185338d914bce9f2ac77a5cecec7cf02c7dd15579bf7766db977e"
+      }
+    ],
+    "browser": {
+      "name": "chromium",
+      "version": "156.0.8078.4",
+      "platform": "linux",
+      "arch": "x64",
+      "node": "v24.19.0",
+      "ci": false,
+      "executableOverride": true
+    },
+    "geometryCaptureQualification": "The selected geometry step passed in attempt-05; that enclosing probe later failed during a native PDF focus/shortcut observation which remains unclassified. Native PDF conclusions here come from the passed attempt-09 probe. Failed attempts remain in the full diagnostic record.",
+    "scope": "Local production evidence for this exact source/artifact/browser combination. No hosted-CI browser or arbitrary PDF compatibility claim."
+  },
+  "fixtures": [
+    {
+      "path": "long/reading.md",
+      "sha256": "4f68a646b18b2322da8a4988150056bebdaa6a5bc91a1b1d921c125cf37fbd8e",
+      "description": "Synthetic tall Markdown shown in the two selected split-view captures."
+    },
+    {
+      "path": "long/reading.pdf",
+      "sha256": "eda86e0e46fe3a3f4dfc6a729456a691b39856b1d110ba43fea74ed4fcba7a57",
+      "description": "Synthetic six-page PDF uploaded for native reading; only its last page contains RGB 143,66,238 and FINAL VISIBLE FOOTER."
+    }
+  ],
+  "decisionEvidence": {
+    "singleScroll": {
+      "method": "Inspect client/scroll geometry through the active right-side modal chain, then use wheel, PageDown and document-end keyboard input. Body-locked background document geometry is recorded separately from active modal overflow.",
+      "selectedObservations": [
+        {
+          "viewport": {
+            "width": 320,
+            "height": 800
+          },
+          "owner": "attachment-preview-body",
+          "ownerOverflows": true,
+          "modalAncestorsFit": true,
+          "wheelAndPageDownMoveOwner": true,
+          "documentEndReached": true
+        },
+        {
+          "viewport": {
+            "width": 844,
+            "height": 390
+          },
+          "owner": "attachment-preview-body",
+          "ownerOverflows": true,
+          "modalAncestorsFit": true,
+          "wheelAndPageDownMoveOwner": true,
+          "documentEndReached": true
+        }
+      ],
+      "rawArtifact": "attempt-05/geometry-scroll.json"
+    },
+    "nativePdf": {
+      "method": "Real wheel and Home/PageDown/End after actual native plugin focus; a separate keyboard-only entry uses real Tab navigation from Delete. Viewer DOM is read only for focus/offset diagnosis, never to drive focus or scroll.",
+      "allPrescribedDialogViewportsReachFinalPaint": true,
+      "standaloneFinalPaintObserved": true,
+      "activeModalAncestorsFit": true,
+      "shortViewportObservation": {
+        "viewport": {
+          "width": 844,
+          "height": 390
+        },
+        "wheelOffset": 650,
+        "pageDownOffsetAfterHome": 112,
+        "endOffset": 3833,
+        "maximumOffset": 3833,
+        "uniqueFinalFooterRgb": [
+          143,
+          66,
+          238
+        ],
+        "uniqueFinalFooterPixels": 16248
+      },
+      "rawArtifact": "attempt-09/native-pdf-scroll.json"
+    },
+    "realFailureBoundary": {
+      "method": "Hold request timing while an owned metadata table becomes unavailable or an actual stored file is temporarily moved; restore and explicitly retry. Responses come from the actual service.",
+      "observed": "Incomplete inventory on a later-page 500, visible preview 404, busy upload then real PUT 500 with retained form, recovery/retry, stale-response rejection and unchanged task/graph. K1 remains accepted.",
+      "rawArtifact": "attempt-08/receipt.json"
+    },
+    "cleanup": "The independent cleanup receipt confirms owned runtime resources absent; full details remain in cleanup.json."
+  },
+  "images": [
+    {
+      "path": "../assets/daynight-attachment-reading-ad16d6f-320.png",
+      "sourceArtifact": "attempt-05/geometry-320x800-zh-CN.png",
+      "sha256": "d2884b3960690bab2ad79b7cb955ba4021e68d06547cf788254b40b4120788b0",
+      "pixelDimensions": {
+        "width": 320,
+        "height": 800
+      },
+      "viewport": {
+        "width": 320,
+        "height": 800
+      },
+      "locale": "zh-CN",
+      "description": "Real embedded split view with synthetic Markdown at narrow width."
+    },
+    {
+      "path": "../assets/daynight-attachment-reading-ad16d6f-844.png",
+      "sourceArtifact": "attempt-05/geometry-844x390-en.png",
+      "sha256": "b926a3edb6c1d715955cd8b7077c499158a9f0a0112e01a8a7f922d5ed305f31",
+      "pixelDimensions": {
+        "width": 844,
+        "height": 390
+      },
+      "viewport": {
+        "width": 844,
+        "height": 390
+      },
+      "locale": "en",
+      "description": "Real embedded split view with synthetic Markdown in a short viewport."
+    },
+    {
+      "path": "../assets/daynight-attachment-reading-ad16d6f-pdf-end.png",
+      "sourceArtifact": "attempt-09/dialog-844x390-final-footer.png",
+      "sha256": "06316d10825735bd22049e21cf887d72db2375741af12717b14186c821b4b52b",
+      "pixelDimensions": {
+        "width": 510,
+        "height": 129
+      },
+      "viewport": {
+        "width": 844,
+        "height": 390
+      },
+      "locale": "en",
+      "description": "Native frame compositor capture after real End input; the final-page footer is visible."
+    }
+  ],
+  "fullEvidence": {
+    "daynightTaskId": "daf08f1c-a822-44b2-bfeb-8dec80896ec3",
+    "attachmentPath": "evidence/bundles/av-t3-ad16-essential-evidence.tar.gz",
+    "records": [
+      "final-report.md",
+      "verdict.json",
+      "source-build-identity.json",
+      "diagnostic-attempts.json",
+      "attempt-05/geometry-scroll.json",
+      "attempt-08/receipt.json",
+      "attempt-09/native-pdf-scroll.json",
+      "cleanup.json"
+    ],
+    "sizeBytes": 984644,
+    "sha256": "22be8d462e9e6bd66f64fca3eeefee5cd0129675ec0ab97b1e82e32944fa2b7c"
+  },
+  "limits": [
+    "These are byte-identical real production screenshots of synthetic fixtures, not mockup images.",
+    "Selected images illustrate observations; input traces, hashes, native diagnostics and full criterion verdict remain in the task bundle.",
+    "Source qualification is immutable; later code revisions require their own evidence.",
+    "No product correction or K1 remediation is represented by this evidence."
+  ]
+}

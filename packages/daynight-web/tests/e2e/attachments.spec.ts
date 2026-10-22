@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { attachmentDownloadUrl, attachmentPageUrl, attachmentPreviewUrl } from '../../src/api/client';
@@ -28,19 +29,18 @@ const selectFile = async (region: Locator, path: string): Promise<void> => {
 };
 
 const settleScroll = async (owner: Locator): Promise<void> => {
-  await owner.evaluate((element) => new Promise<void>((resolve, reject) => {
-    const started = performance.now();
-    let quietSince = started;
-    let previous = element.scrollTop;
-    const sample = (now: number) => {
-      const current = element.scrollTop;
-      if (current !== previous) { previous = current; quietSince = now; }
-      if (now - quietSince >= 100) { resolve(); return; }
-      if (now - started >= 3_000) { reject(new Error('The preview did not reach a stable scroll position.')); return; }
-      requestAnimationFrame(sample);
-    };
-    requestAnimationFrame(sample);
-  }));
+  // Native scrolling continues while task-polling timers are paused in the page.
+  const started = performance.now();
+  let quietSince = started;
+  let previous = await owner.evaluate((element) => element.scrollTop);
+  while (true) {
+    await delay(16);
+    const current = await owner.evaluate((element) => element.scrollTop);
+    const now = performance.now();
+    if (current !== previous) { previous = current; quietSince = now; }
+    if (now - quietSince >= 100) return;
+    if (now - started >= 3_000) throw new Error('The preview did not reach a stable scroll position.');
+  }
 };
 
 const paintedPdf = async (page: Page, frame: Locator, info: TestInfo, source: Buffer, url: string, prefix = 'task-attachments'): Promise<PdfPixels> => {
@@ -131,6 +131,10 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     if (path === `/api/v1/projects/${project.id}/task-graph`) graphReads += 1;
     if (path === `/api/v1/projects/${project.id}/tasks/${task.id}`) detailReads += 1;
   });
+  // Isolate attachment-triggered reads from the independently tested task polling timer.
+  const clockTime = new Date('2030-01-01T00:00:00Z');
+  await page.clock.install({ time: clockTime });
+  await page.clock.pauseAt(clockTime);
   await page.goto(`/projects/${project.id}`);
   await expect(page.getByRole('heading', { name: project.name, exact: true })).toBeVisible();
   await page.getByRole('tab', { name: '独立任务', exact: true }).click();

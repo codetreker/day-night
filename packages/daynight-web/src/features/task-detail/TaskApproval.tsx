@@ -15,7 +15,7 @@ const ApprovalError = ({ error }: { readonly error: unknown }) => {
 };
 
 export const TaskApproval = ({ detail, approval, canApprove, onApprove, onReconcile }: {
-  readonly detail: TaskDetail;
+  readonly detail: TaskDetail | null;
   readonly approval: ApprovalState;
   readonly canApprove: boolean;
   readonly onApprove: () => void;
@@ -28,8 +28,8 @@ export const TaskApproval = ({ detail, approval, canApprove, onApprove, onReconc
   useLayoutEffect(() => {
     if (previousAction.current !== null && !previousAction.current.isConnected && document.activeElement === document.body) message.current?.focus();
     previousAction.current = action.current;
-  }, [approval.phase, detail.status]);
-  if (detail.status !== 'proposed' && approval.phase === 'idle') return null;
+  }, [approval.phase, detail?.status]);
+  if (detail?.status !== 'proposed' && approval.phase === 'idle') return null;
   const busy = approval.phase === 'pending' || approval.reconciling;
   const unresolved = approval.phase === 'unknown' || approval.reconciliationError !== null;
   const summary = approval.reconciling ? m.checking : approval.phase === 'pending' ? m.pending
@@ -37,9 +37,9 @@ export const TaskApproval = ({ detail, approval, canApprove, onApprove, onReconc
       : approval.phase === 'conflict' ? m.conflict : approval.phase === 'reconciled' ? m.reconciled : null;
   return <section className={`task-approval${approval.phase === 'confirmed' ? ' task-approval-confirmed' : ''}`} aria-label={m.title} aria-busy={busy}>
     <h4>{m.title}</h4>
-    <p className="task-approval-description">{detail.status === 'proposed' ? m.explanation : detail.status !== 'todo' ? m.currentState : detail.ready ? m.approvedReady : m.approvedBlocked}</p>
+    {detail !== null && <p className="task-approval-description">{detail.status === 'proposed' ? m.explanation : detail.status !== 'todo' ? m.currentState : detail.ready ? m.approvedReady : m.approvedBlocked}</p>}
     <div className="task-approval-controls">
-      {detail.status === 'proposed' && <button ref={action} className="button primary" type="button" disabled={!canApprove} onClick={onApprove}>{approval.phase === 'pending' ? m.submitting : m.approve}</button>}
+      {detail?.status === 'proposed' && <button ref={action} className="button primary" type="button" disabled={!canApprove} onClick={onApprove}>{approval.phase === 'pending' ? m.submitting : m.approve}</button>}
       {unresolved && <button className="button" type="button" disabled={busy} onClick={onReconcile}>{approval.reconciling ? m.checking : m.checkState}</button>}
     </div>
     {summary !== null && <p className="task-approval-message" ref={message} tabIndex={-1} role={unresolved || approval.phase === 'conflict' ? 'alert' : 'status'}>{summary}</p>}

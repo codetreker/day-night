@@ -424,8 +424,10 @@ Go 的 `uiRoutes` 精确登记同一页面形状的 GET/HEAD index 及方法 fal
 及 UI 路由决策见[完整阅读决策](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-full-reader.md)。
 
 前端实际组件 mockup 提供可重新加载的本地文件阅读入口，fixture 上传产生的临时
-对象 URL 仅用于演示。功能与路由检查属于此实现；阅读任务组的真实服务生产组合
-验收继续由独立任务拥有。
+对象 URL 仅用于演示。独立真实服务运行时验收已覆盖内嵌与完整阅读页面的真实输入、
+内容绘制、滚动与失败恢复；mockup 不承担该证明。运行方法与证据边界由
+[附件组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+拥有，详细回执归属对应任务及 PR/CI。
 
 ## CLI
 
@@ -534,8 +536,9 @@ Windows/macOS 托管结果。Web 管理界面交付组件、状态及前端 fixt
   非法路径拒绝，以及失败明确暴露；不以跨介质原子性作为验收条件。
 - CLI：实际构建入口的上传、完整列表、文本和二进制 stdout、背压、取消、管道中断、
   既有 project 选择、帮助及补全。
-- Web：目录树与单文件操作、Markdown 相对图片、HTML 相对 CSS/JS/modules/fetch、
-  图片/PDF/文本展示、失败反馈与切换文件时的过期请求取消。
+- Web：详情页签与状态保留、左右分屏和独立完整阅读、单文件操作、相对资源、真实
+  内容绘制、唯一纵向滚动与读至结尾、键盘与原生 frame 行为，以及失败恢复和
+  切换文件时的过期请求取消。
 - 部署：真实非 root 容器写入、同源 gateway 传输、正常重建保留附件、dev-ci 卷隔离
   及清理、配套备份恢复。
 
@@ -558,7 +561,10 @@ compositor 像素中的 fixture 专用色块。判断器将匹配像素按连通
 最大的色块。此位置规则基于 fixture 与固定查看器布局，排除仅缩略图已绘制的情形；
 独立边界也使单独绘制的缩略图不会稀释页面色块的密度。成功 PNG 与区域指标保留在绘制回执中，
 匹配阈值由[组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
-拥有。成功状态、load 和固定等待均不能代替绘制。
+拥有。成功状态、load 和固定等待均不能代替绘制。独立阅读验收另以真实滚轮、
+键盘及多页 PDF 的末页专用绘制标记证明内容可读至末尾；私有查看器 DOM 只提供
+只读偏移诊断，不能替代真实输入和绘制。实际故障来自隔离数据库与存储文件，
+请求屏障仅控制时序，不伪造服务响应。判定与环境限制继续由该决策拥有。
 
 运行回执校验 Git SHA/dirty 标记及实际 tarball/entry 摘要；dirty 标记不是脏源码内容
 指纹。CI 继续要求干净 checkout 等于 `GITHUB_SHA`。浏览器、CLI 和辅助子进程/组均

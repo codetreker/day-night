@@ -179,9 +179,12 @@ it("replaces its real npm global installation and preserves npm configuration an
     success(await npm(["install", oldTarball, "--global", "--prefix", prefix, "--engine-strict", "--force=false", "--no-audit", "--no-fund"]));
     const installedPackage = process.platform === "win32" ? path.join(prefix, "node_modules", packageName) : path.join(prefix, "lib/node_modules", packageName);
     const installedBin = process.platform === "win32" ? path.join(prefix, "daynight.cmd") : path.join(prefix, "bin/daynight");
+    const shortBin = process.platform === "win32" ? path.join(prefix, "dn.cmd") : path.join(prefix, "bin/dn");
+    const shortCli = (args: string[]): Promise<Result> => run(shortBin, args, caller);
     const installedSkill = path.join(installedPackage, "dist", skillRelativeFile);
     const cli = (args: string[], commandEnvironment = environment): Promise<Result> => run(installedBin, args, caller, commandEnvironment);
     expect(success(await cli(["--version"])).stdout.trim()).toBe("1.0.0");
+    expect(success(await shortCli(["--version"])).stdout.trim()).toBe("1.0.0");
     expect(readFileSync(installedSkill, "utf8")).toBe(fixtureSkills.get("1.0.0"));
     const emptyHome = path.join(directory, "empty home 中文");
     mkdirSync(emptyHome);
@@ -191,9 +194,10 @@ it("replaces its real npm global installation and preserves npm configuration an
     const queriedVersion: unknown = JSON.parse(metadata.stdout);
     expect(Array.isArray(queriedVersion) ? queriedVersion : [queriedVersion]).toEqual(["1.0.1"]);
     advanceLatestAfterQuery = true;
-    const upgraded = success(await cli(["update"]));
+    const upgraded = success(await shortCli(["update"]));
     expect(upgraded.stdout).toContain("Updated daynight from 1.0.0 to 1.0.1.\nRestart any running reviewer to use the new version.\n");
     expect(success(await cli(["--version"])).stdout.trim()).toBe("1.0.1");
+    expect(success(await shortCli(["--version"])).stdout.trim()).toBe("1.0.1");
     expect(latest).toBe("1.0.2");
     expect((JSON.parse(readFileSync(path.join(installedPackage, "package.json"), "utf8")) as Manifest).version).toBe("1.0.1");
     expect(readFileSync(installedSkill, "utf8")).toBe(fixtureSkills.get("1.0.1"));
@@ -239,7 +243,7 @@ it("replaces its real npm global installation and preserves npm configuration an
       installedBin: path.relative(prefix, installedBin).replaceAll("\\", "/"), npmCli: "current Node.js installation outside updated package",
       packagePrefix: "original npm prefix 中文", conflictingDefaultPrefixIgnored: true, callerProjectConfigurationIgnored: true,
       userNpmConfigurationPreserved: true, reviewConfigurationAndStateUnchanged: true, runtimeScripts: "disabled by isolated npm user configuration",
-      scenarios: ["npm-global-shim-before-update", "spaces-and-unicode-prefix", "same-installation-replacement", "resolved-target-pinned-after-latest-moves", "npm-global-shim-after-update",
+      scenarios: ["dn-before-update", "dn-update", "dn-after-update", "npm-global-shim-before-update", "spaces-and-unicode-prefix", "same-installation-replacement", "resolved-target-pinned-after-latest-moves", "npm-global-shim-after-update",
         "configured-scoped-registry", "conflicting-default-prefix", "conflicting-caller-project-npmrc", "update-help-without-state",
         "invalid-review-state-untouched", "already-current-without-install", "ahead-without-downgrade", "metadata-failure-visible", "installation-failure-visible",
         "bundled-skill-in-installed-npm-tarball", "self-update-replaces-skill-bytes", "failed-update-preserves-installed-skill"],

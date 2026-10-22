@@ -45,8 +45,14 @@ const openStandalone = async (page: Page, id: string): Promise<void> => {
   await standalone(page, id).click();
   await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
 };
+const pauseAutomaticRefresh = async (page: Page): Promise<void> => {
+  const time = new Date('2030-01-01T00:00:00Z');
+  await page.clock.install({ time });
+  await page.clock.pauseAt(time);
+};
 
 test('task-approval', scenario('task-approval'), async ({ page, request, allowApprovalWrites, allowAttachmentWrites }, info) => {
+  await pauseAutomaticRefresh(page);
   const project = await createProject(request, { name: `Approval ${randomUUID()}` });
   const exact = await createProposedTask(request, project.id, { title: '精确版本审批', description: '保留完整说明与任务内容。' });
   const other = await createProposedTask(request, project.id, { title: '审批期间查看的另一任务', description: '刷新前审阅的完整详情' });
@@ -239,11 +245,13 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   }
   await page.keyboard.press('Escape');
   await page.getByRole('tab', { name: '任务链', exact: true }).click();
+  await page.clock.runFor(100);
   await expect(page.locator(`#task-root-${prerequisite.id}`)).toHaveAttribute('aria-expanded', 'true');
   await expect(page.locator(`#task-root-${prerequisite.id} .root-status`)).toHaveText('待审批');
   await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '50');
   await expect(page.locator('.task-graph')).toHaveAttribute('data-total-task-count', '81');
   await page.locator(`.react-flow__node[data-id="${prerequisite.id}"] .task-node-expand[data-direction="successors"]`).click();
+  await page.clock.runFor(100);
   await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '70');
   const visibleGraph = () => page.evaluate(() => ({
     nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((element) => element.dataset.id!).sort(),
@@ -251,6 +259,7 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   }));
   const expandedGraph = await visibleGraph();
   await page.getByRole('button', { name: '放大', exact: true }).click();
+  await page.clock.runFor(500);
   const transform = await page.locator('.react-flow__viewport').getAttribute('style');
   const preferences = await page.evaluate((projectId) => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.endsWith(projectId) && !key.includes('scroll'))), project.id);
   await page.getByRole('button', { name: '全屏查看', exact: true }).click();
@@ -325,6 +334,7 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
 });
 
 test('task-approval-conflicts', scenario('task-approval-conflicts'), async ({ page, request, allowApprovalWrites }, info) => {
+  await pauseAutomaticRefresh(page);
   const project = await createProject(request, { name: `Approval conflict ${randomUUID()}` });
   const changed = await createProposedTask(request, project.id, { title: '批准前内容变化', description: '最初审阅的说明' });
   const external = await createProposedTask(request, project.id, { title: '已被其他调用方批准' });
@@ -361,6 +371,7 @@ test('task-approval-conflicts', scenario('task-approval-conflicts'), async ({ pa
 });
 
 test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page, request, allowApprovalWrites }, info) => {
+  await pauseAutomaticRefresh(page);
   const project = await createProject(request, { name: `Approval recovery ${randomUUID()}` });
   const unknown = await createProposedTask(request, project.id, { title: '响应丢失但已批准' });
   const graphFailure = await createProposedTask(request, project.id, { title: '保留已确认批准结果' });

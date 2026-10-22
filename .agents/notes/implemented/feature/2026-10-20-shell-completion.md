@@ -16,8 +16,9 @@ review configuration, a database, network access or a process launch on every Ta
 scripts for Bash 4.2 or newer and zsh. Bare `completion` and its help options show
 usage. Script generation writes only the script to stdout and does not resolve
 user-home or working-directory queries, load review dependencies or execute
-external tools. Scripts register `daynight` when sourced; zsh requires an already
-initialized `compinit` and reports its absence. The original loading contract
+external tools. Scripts register `daynight` and its root alias `dn` when sourced,
+as defined by the [short-command decision](2026-10-22-dn-short-command.md); zsh
+requires an already initialized `compinit` and reports its absence. The original loading contract
 left startup-file changes to the operator so generated stdout remained a pure
 sourceable script. The [setup decision](2026-10-21-completion-setup.md) partially
 supersedes that installation choice with an explicit installer; generation

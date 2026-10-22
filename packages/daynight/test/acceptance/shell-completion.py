@@ -220,6 +220,7 @@ def shell_setup(kind, script):
         setup += "source " + shlex.quote(str(script)) + " || exit 90; "
     # Completion must not invoke these functions. Enter invokes only this harmless argv recorder.
     setup += "daynight() { printf x >>daynight-invocations.log; printf '\\n'; for _dn_arg in \"$@\"; do printf '" + ARGUMENT + "%s" + ARGUMENT + "END\\n' \"$_dn_arg\"; done; printf '" + FINISHED + "\\n'; }; "
+    setup += "dn() { daynight \"$@\"; }; "
     setup += "node() { printf x >>forbidden-executions.log; printf '__DAYNIGHT_FORBIDDEN_NODE__\\n'; return 99; }; "
     setup += "PROMPT_COMMAND=_daynight_prompt" if kind == "bash" else "precmd_functions+=(_daynight_prompt)"
     return setup
@@ -280,6 +281,10 @@ def open_quote(line):
 def scenarios():
     cases = [
         ("root command and local directory collision", "daynight rev\t", ["review"]),
+        ("short root command and local directory collision", "dn rev\t", ["review"]),
+        ("short command nested operation", "dn task attachment rea\t", ["task", "attachment", "read"]),
+        ("short command inline choice", "dn task list --status=do\t", ["task", "list", "--status=done"]),
+        ("short command directory", "dn review add-repo --path nor\t", ["review", "add-repo", "--path", "normal-directory/"]),
         ("root update", "daynight upd\t", ["update"]),
         ("root completion", "daynight comp\t", ["completion"]),
         ("root setup and local directory collision", "daynight set\t", ["setup"]),
@@ -386,6 +391,8 @@ def scenarios():
         ("Unicode cursor before following option", "daynight review add-repo --path 中 --bad\x01" + "\x06" * len("daynight review add-repo --path 中") + "\t", ["review", "add-repo", "--path", "中文目录/", "--bad"]),
     ]
     unchanged = [
+        ("short command text has no file fallback", "dn task create --title nor"),
+        ("short command invalid status stops completion", "dn task list --status=invalid --rea"),
         ("setup server URL has no file fallback", "daynight setup --server-url nor"),
         ("setup review repository has no file fallback", "daynight setup --review-repo nor"),
         ("used setup server URL is hidden", "daynight setup --server-url https://service.example --server-u"),
@@ -462,6 +469,26 @@ def scenarios():
             (f"task {action} status has no candidate", f"daynight task {action} task-id --sta"),
             (f"task {action} terminal help stops completion", f"daynight task {action} --help --pro"),
         ])
+    lifecycle_commands = ("task approve", "task claim", "task complete")
+    lifecycle_choices = {"task list separate proposed status", "task list inline proposed status"}
+    lifecycle_rejections = {
+        "removed task update status has no candidate",
+        "removed inline task update status has no candidate",
+        "removed task update status stops completion",
+        "removed inline task update status stops completion",
+        "ambiguous task approval prefix stays incomplete",
+        "ambiguous task creation prefix stays incomplete",
+    }
+    cases.extend([
+        ("short command " + name, "dn " + keys.removeprefix("daynight "), expected)
+        for name, keys, expected in cases
+        if name.startswith(lifecycle_commands) or name in lifecycle_choices
+    ])
+    unchanged.extend([
+        ("short command " + name, "dn " + line.removeprefix("daynight "))
+        for name, line in unchanged
+        if name.startswith(lifecycle_commands) or name in lifecycle_rejections
+    ])
     return cases, unchanged
 
 
@@ -491,7 +518,7 @@ def run_shell(label, binary, kind, script, directory, evidence, zsh_root):
             receipt["scenarios"].append(result)
             if actual != native_expected:
                 raise AssertionError(f"{label}: {name}: expected {native_expected!r}, received {actual!r}, line={line!r}, terminal={output!r}")
-            if name == "root command and local directory collision" and line != "daynight review ":
+            if name in ["root command and local directory collision", "short root command and local directory collision"] and line != keys.split()[0] + " review ":
                 raise AssertionError(f"{label}: command completion must append a space despite the local review directory: {line!r}")
             print(f"PASS {label}: {name}", flush=True)
         for name, line in unchanged:
@@ -504,6 +531,7 @@ def run_shell(label, binary, kind, script, directory, evidence, zsh_root):
             print(f"PASS {label}: {name}", flush=True)
         for name, line, candidates in [
             ("empty root prefix", "daynight ", ["review", "update", "completion", "project", "task", "setup"]),
+            ("empty short root prefix", "dn ", ["review", "update", "completion", "project", "task", "setup"]),
             ("empty setup prefix", "daynight setup ", ["--server-url", "--server-token-stdin", "--review-repo", "--review-path"]),
             ("empty review prefix", "daynight review ", ["run", "list", "ls", "add-repo"]),
             ("empty project prefix", "daynight project ", ["create", "list", "show"]),
@@ -514,6 +542,11 @@ def run_shell(label, binary, kind, script, directory, evidence, zsh_root):
             ("empty task attachment prefix", "daynight task attachment ", ["put", "list", "read", "remove"]),
             ("empty separate task status", "daynight task list --status ", ["proposed", "todo", "in_progress", "done"]),
             ("empty inline task status", "daynight task list --status=", ["proposed", "todo", "in_progress", "done"]),
+            ("short command empty task prefix", "dn task ", ["create", "list", "ready", "show", "update", "approve", "claim", "complete", "graph", "attachment"]),
+            ("short command ambiguous task approval prefix", "dn task a", ["approve", "attachment"]),
+            ("short command ambiguous task creation prefix", "dn task c", ["claim", "complete", "create"]),
+            ("short command empty separate task status", "dn task list --status ", ["proposed", "todo", "in_progress", "done"]),
+            ("short command empty inline task status", "dn task list --status=", ["proposed", "todo", "in_progress", "done"]),
             ("empty shell prefix", "daynight completion ", ["bash", "zsh", "setup"]),
             ("empty setup shell choice", "daynight completion setup --shell ", ["bash", "zsh"]),
         ]:
@@ -564,7 +597,7 @@ def generation_count(directory):
 
 def startup_probe(label, binary, kind, directory, environment, profile, login=False, repeat=True, explicit_source=False):
     # Neither registration nor compinit is installed by the editor harness: startup owns both.
-    registered = "complete -p daynight >/dev/null 2>&1" if kind == "bash" else '(( $+functions[compdef] )) && [[ -n ${_comps[daynight]-} ]]'
+    registered = "complete -p daynight >/dev/null 2>&1 && complete -p dn >/dev/null 2>&1" if kind == "bash" else '(( $+functions[compdef] )) && [[ -n ${_comps[daynight]-} && ${_comps[dn]-} == ${_comps[daynight]} ]]'
     guard = "source " + shlex.quote(str(profile)) + " || exit 93; " if explicit_source else ""
     guard += registered + " || exit 92; "
     if repeat:
@@ -575,13 +608,16 @@ def startup_probe(label, binary, kind, directory, environment, profile, login=Fa
         loads = generation_count(directory)
         if loads != 1:
             raise AssertionError(f"{label}: startup and repeated sourcing must load exactly once, received {loads}")
-        line, cursor, output = shell.complete("daynight comp\t")
-        actual = shell.execute()
-        if actual != ["completion"]:
-            raise AssertionError(f"{label}: installed startup completion failed: {actual!r}, {output!r}")
+        completions = []
+        for command in ["daynight", "dn"]:
+            line, cursor, output = shell.complete(command + " comp\t")
+            actual = shell.execute()
+            if actual != ["completion"]:
+                raise AssertionError(f"{label}: installed startup completion failed for {command}: {actual!r}, {output!r}")
+            completions.append({"command": command, "line": line, "cursor": cursor, "argv": actual})
         if generation_count(directory) != loads:
             raise AssertionError(f"{label}: Tab completion started the CLI")
-        return {"login": login, "line": line, "cursor": cursor, "argv": actual, "generationCalls": loads, "editor_readiness_proof": shell.readiness_proof, "capture_reset_proof": shell.capture_reset_proof, "transcript": bytes(shell.transcript).decode(errors="replace"), "passed": True}
+        return {"login": login, "completions": completions, "generationCalls": loads, "editor_readiness_proof": shell.readiness_proof, "capture_reset_proof": shell.capture_reset_proof, "transcript": bytes(shell.transcript).decode(errors="replace"), "passed": True}
     finally:
         shell.close()
 

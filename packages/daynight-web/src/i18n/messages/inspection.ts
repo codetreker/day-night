@@ -30,6 +30,8 @@ export type InspectionMessages = {
     readonly close: string;
     readonly loading: string;
     readonly failed: string;
+    readonly refreshFailed: string;
+    readonly retainedData: string;
     readonly networkError: string;
     readonly notFoundError: string;
     readonly loadError: string;
@@ -39,7 +41,6 @@ export type InspectionMessages = {
     readonly stale: string;
     readonly refreshingDetail: string;
     readonly retainedDetail: string;
-    readonly refreshFailed: string;
     readonly refreshGraph: string;
     readonly description: string;
     readonly noDescription: string;

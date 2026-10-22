@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { ApiError, approveTask, getTask, isAbortError } from "../../api/client";
-import type { TaskDetail } from "../../api/types";
+import { isTaskStale, taskDescriptor } from "./freshness";
+import type { GraphTask, TaskDetail } from "../../api/types";
 
 export type ApprovalState = {
   readonly phase: "idle" | "pending" | "confirmed" | "refused" | "conflict" | "unknown" | "reconciled";
@@ -14,6 +15,7 @@ export type DetailState = {
   readonly detail: TaskDetail | null;
   readonly status: "loading" | "ready" | "error";
   readonly refreshing: boolean;
+  readonly requiresFreshRead: boolean;
   readonly error: unknown;
   readonly approval: ApprovalState;
 };
@@ -22,12 +24,23 @@ type Entry = {
   generation: number;
   read: AbortController | null;
   committedVersion: bigint | null;
+  queuedRevision: number | null;
+  observedDescriptor: string | null;
+  observedTask: GraphTask | undefined;
   readonly listeners: Set<() => void>;
 };
+const preserveCollection = (previous: TaskDetail | null, detail: TaskDetail): TaskDetail => {
+  if (previous === null) return detail;
+  const old = previous.properties.pullRequests;
+  const fresh = detail.properties.pullRequests;
+  if (old === fresh) return detail;
+  const unchanged = old.length === fresh.length && old.every((item, index) => item.url === fresh[index]!.url && item.title === fresh[index]!.title);
+  return unchanged ? { ...detail, properties: { ...detail.properties, pullRequests: old } } : detail;
+};
 const idleApproval = (): ApprovalState => ({ phase: "idle", error: null, reconciling: false, reconciliationError: null });
-const initialState = (): DetailState => ({ revision: 0, loadedRevision: null, detail: null, status: "loading", refreshing: false, error: null, approval: idleApproval() });
+const initialState = (): DetailState => ({ revision: 0, loadedRevision: null, detail: null, status: "loading", refreshing: false, requiresFreshRead: true, error: null, approval: idleApproval() });
 export const canApprove = (state: DetailState): boolean => state.detail?.status === "proposed" && state.status === "ready" &&
-  state.approval.phase !== "pending" && state.approval.phase !== "unknown" && !state.approval.reconciling && state.approval.reconciliationError === null && !state.refreshing && state.error === null;
+  state.approval.phase !== "pending" && state.approval.phase !== "unknown" && !state.approval.reconciling && state.approval.reconciliationError === null && !state.requiresFreshRead && state.error === null;
 
 export class TaskDetailSessions {
   private readonly entries = new Map<string, Entry>();
@@ -38,7 +51,7 @@ export class TaskDetailSessions {
     const key = `${projectId}/${taskId}`;
     let entry = this.entries.get(key);
     if (entry === undefined) {
-      entry = { state: initialState(), generation: 0, read: null, committedVersion: null, listeners: new Set() };
+      entry = { state: initialState(), generation: 0, read: null, committedVersion: null, queuedRevision: null, observedDescriptor: null, observedTask: undefined, listeners: new Set() };
       this.entries.set(key, entry);
     }
     return entry;
@@ -48,6 +61,19 @@ export class TaskDetailSessions {
     for (const listener of entry.listeners) listener();
   }
   snapshot = (projectId: string, taskId: string): DetailState => this.entry(projectId, taskId).state;
+  // Unchanged polling receipts do not invalidate an observed task version.
+  requiresFreshRead(projectId: string, taskId: string, task: GraphTask | undefined): boolean {
+    const entry = this.entry(projectId, taskId);
+    return entry.state.requiresFreshRead || entry.observedDescriptor !== taskDescriptor(task) &&
+      entry.state.detail !== null && task !== undefined && isTaskStale(task, entry.state.detail);
+  }
+  observe(projectId: string, taskId: string, task: GraphTask | undefined): void {
+    const entry = this.entry(projectId, taskId);
+    const requiresFreshRead = this.requiresFreshRead(projectId, taskId, task);
+    entry.observedDescriptor = taskDescriptor(task);
+    entry.observedTask = task;
+    if (requiresFreshRead !== entry.state.requiresFreshRead) this.publish(entry, { ...entry.state, requiresFreshRead });
+  }
   subscribe = (projectId: string, taskId: string, listener: () => void): (() => void) => {
     const entry = this.entry(projectId, taskId);
     entry.listeners.add(listener);
@@ -72,32 +98,39 @@ export class TaskDetailSessions {
   cancelRead(projectId: string, taskId: string): void {
     const entry = this.entry(projectId, taskId);
     entry.generation++;
+    entry.queuedRevision = null;
     entry.read?.abort();
     entry.read = null;
   }
   releaseRead(projectId: string, taskId: string): void {
     if (!this.entry(projectId, taskId).state.approval.reconciling) this.cancelRead(projectId, taskId);
   }
-  load(projectId: string, taskId: string, revision: number, mode: "open" | "refresh" = "refresh"): void {
+  load(projectId: string, taskId: string, revision: number, mode: "open" | "refresh" | "automatic" = "refresh"): void {
     const entry = this.entry(projectId, taskId);
     if (entry.state.approval.phase === "pending" || entry.state.approval.phase === "unknown" || entry.state.approval.reconciling) return;
-    void this.read(projectId, taskId, revision, false, mode === "refresh");
+    if (mode === "automatic") {
+      if (document.visibilityState === "hidden") return;
+      if (entry.read !== null) { entry.queuedRevision = revision; return; }
+    }
+    void this.read(projectId, taskId, revision, false, mode !== "open", mode === "automatic");
   }
   reconcile(projectId: string, taskId: string): void {
     const entry = this.entry(projectId, taskId);
     if (entry.state.approval.phase === "pending" || entry.state.approval.reconciling) return;
     void this.read(projectId, taskId, entry.state.revision, true, true);
   }
-  private async read(projectId: string, taskId: string, revision: number, reconciliation: boolean, retainLoaded: boolean): Promise<void> {
+  private async read(projectId: string, taskId: string, revision: number, reconciliation: boolean, retainLoaded: boolean, automatic = false): Promise<void> {
     if (this.disposed) return;
     const entry = this.entry(projectId, taskId);
     this.cancelRead(projectId, taskId);
     const controller = new AbortController();
     entry.read = controller;
     const generation = entry.generation;
+    const observedDescriptor = entry.observedDescriptor;
     const retain = entry.state.detail !== null && (retainLoaded || entry.state.approval.phase !== "idle");
     this.publish(entry, { ...entry.state, revision, loadedRevision: retain ? entry.state.loadedRevision : null, detail: retain ? entry.state.detail : null,
-      status: retain ? "ready" : "loading", refreshing: retain, error: null,
+      requiresFreshRead: !automatic || entry.state.requiresFreshRead,
+      status: retain ? "ready" : automatic && entry.state.error !== null ? "error" : "loading", refreshing: retain, error: automatic ? entry.state.error : null,
       approval: reconciliation ? { ...entry.state.approval, reconciling: true, reconciliationError: null } : entry.state.approval });
     try {
       const detail = await getTask(projectId, taskId, controller.signal);
@@ -106,15 +139,24 @@ export class TaskDetailSessions {
       const approval = reconciliation
         ? { ...entry.state.approval, phase: entry.state.approval.phase === "unknown" ? "reconciled" as const : entry.state.approval.phase, reconciling: false, reconciliationError: null }
         : entry.state.approval;
-      this.publish(entry, { revision, loadedRevision: revision, detail, status: "ready", refreshing: false, error: null, approval });
+      // A descriptor changed during this read must match its response before approval can use that version.
+      const requiresFreshRead = entry.observedDescriptor !== observedDescriptor && entry.observedTask !== undefined && isTaskStale(entry.observedTask, detail);
+      this.publish(entry, { revision, loadedRevision: revision, detail: preserveCollection(entry.state.detail, detail), status: "ready", refreshing: false, requiresFreshRead, error: null, approval });
       if (reconciliation) this.refreshProject(projectId);
     } catch (error) {
       if (controller.signal.aborted || generation !== entry.generation || this.disposed || !retain && !reconciliation && isAbortError(error)) return;
-      this.publish(entry, { ...entry.state, status: retain ? "ready" : "error", refreshing: false,
-        error: reconciliation ? null : error,
+      const missing = error instanceof ApiError && error.status === 404;
+      const detail = missing ? null : entry.state.detail;
+      this.publish(entry, { ...entry.state, detail, loadedRevision: missing ? null : entry.state.loadedRevision, status: detail !== null ? "ready" : "error", refreshing: false,
+        error: reconciliation && detail !== null ? null : error,
         approval: reconciliation ? { ...entry.state.approval, reconciling: false, reconciliationError: error } : entry.state.approval });
     } finally {
-      if (generation === entry.generation) entry.read = null;
+      if (generation === entry.generation) {
+        entry.read = null;
+        const queued = entry.queuedRevision;
+        entry.queuedRevision = null;
+        if (queued !== null && entry.listeners.size > 0 && !this.disposed) this.load(projectId, taskId, queued, "automatic");
+      }
     }
   }
   approve(projectId: string, taskId: string): void {
@@ -129,7 +171,7 @@ export class TaskDetailSessions {
         const detail = await approveTask(projectId, taskId, version, new AbortController().signal);
         if (detail.projectId !== projectId || detail.id !== taskId || detail.status !== "todo" || detail.version !== version + 1n) throw new ApiError("protocol");
         entry.committedVersion = detail.version;
-        this.publish(entry, { ...entry.state, detail, loadedRevision: entry.state.revision, status: "ready", refreshing: false, error: null,
+        this.publish(entry, { ...entry.state, detail, status: "ready", refreshing: false, requiresFreshRead: false, error: null,
           approval: { phase: "confirmed", error: null, reconciling: false, reconciliationError: null } });
         this.refreshProject(projectId);
       } catch (error) {

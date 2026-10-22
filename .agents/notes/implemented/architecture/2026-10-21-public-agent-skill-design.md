@@ -17,7 +17,8 @@ and an interactive `daynight skill install` command. The
 [mode and attachment decision](2026-10-21-using-daynight-modes.md) partially
 supersedes its public name and task-protocol ownership. The current bundle is
 `using-daynight` under `src/commands/skill/skills/using-daynight/`, with an
-entrypoint and four mode references. The
+entrypoint, four mode references and the
+[shared Goal protocol](../process/2026-10-22-goal-workflow-design.md). The
 [requirements](../../../../docs/spec/daynight-agent-skill.md) and
 [design](../../../../docs/design/daynight-agent-skill.md) own the current contract.
 The original design task required a merged PR and satisfied acceptance; document

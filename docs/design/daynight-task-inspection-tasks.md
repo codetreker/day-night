@@ -75,7 +75,7 @@
 
 提取共享 Markdown 渲染视图，描述按 CommonMark/GFM 展示，使用任务附件根解析相对 URL；附件 Markdown 继续使用文档目录。描述普通相对附件链接激活附件页签，复用详情内唯一附件控制器选中已有预览，保留真实 href 与浏览器原生特殊点击。完整清单、路径和预览错误保持可见，切换 task 或关闭时取消读取。
 
-同步仓库发布源中的 `using-daynight` 入口与模式指引、skill 需求/设计及 README，明确 Markdown 问题描述和已确认附件链接的写法。一个主 Markdown 附件继续拥有方案、验收和执行证据。API/CLI 原始字符串、完整替换字段及版本控制语义保持一致。同步看板、附件 Markdown 文档、相应决策和生产组件原型。
+同步仓库发布源中的 `using-daynight` 入口与模式指引、skill 需求/设计及 README，明确 Markdown 自足任务简介和已确认资料引用的写法，正文包含具体动作、范围、交付物、约束及简明完成条件。任务专属主 Markdown 附件继续拥有详细方案、完整验收和执行证据。API/CLI 原始字符串、完整替换字段及版本控制语义保持一致。同步看板、附件 Markdown 文档、相应决策和生产组件原型。
 
 ### 验收标准
 
@@ -88,6 +88,14 @@
 
 ## 任务资料与实现文档
 
-每项 Daynight 任务上传自己的 `plan.md`、本要求与设计的副本，以及可独立运行的 `mockui/index.html` 和所需资源。任务 description 只说明问题与实际上传链接；验收和方案留在主附件。登记后读回任务与附件内容，确认引用和资源路径可用。
+本组 UX 任务的原登记要求是每项准备 `plan.md`、要求与设计副本、可独立运行的
+`mockui/index.html` 及资源，正文保留问题与实际上传链接。该历史要求保留原任务的
+资料背景，不将复制整包作为新的通用登记规则，也不据此推断既有服务附件已迁移。
+
+当前和后续登记遵守 [skill 要求](../spec/daynight-agent-skill.md)：description 自足说明
+具体问题、行动、范围、交付物、约束和简明可观察完成条件；详细方案、完整验收与证据
+归任务专属主附件。共享要求、设计和适用原型引用实际来源，附件按任务需要归属，独立
+快照记录来源版本与目的。执行前读回真实任务、专属附件与共享输入，确认内容和资源
+可用。
 
 实现时维护 [Web 要求](../spec/daynight-web.md)、[Web 设计](daynight-web.md)、[Web 验收说明](../../packages/daynight-web/README.md)、图投影/虚线绘制/详情与全屏的相关决策。Markdown 任务同时维护 [skill 要求](../spec/daynight-agent-skill.md)、[skill 设计](daynight-agent-skill.md)、[附件要求](../spec/daynight-task-attachments.md)和[附件设计](daynight-task-attachments.md)的适用条款。各项只更新自己的当前事实，保留历史决策的原始理由。

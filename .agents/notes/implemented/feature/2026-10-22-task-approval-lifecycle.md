@@ -42,9 +42,21 @@ remain version-free. App-lifetime project/task sessions prevent repeat pending
 submissions across close/reopen. Background reads of the same active task retain
 any loaded detail and mounted attachment panels, regardless of approval phase.
 Approving one task can refresh another currently displayed task without discarding
-its attachment draft or upload. Requested revision and loadedRevision distinguish
-new graph context from cached detail; refresh and read errors remain visible,
-and approval stays disabled until a successful current read. Cold, different-task
+its attachment draft or upload. loadedRevision records the successful GET's
+starting receipt, never the latest receipt or an approval POST. Receipt-only
+polls do not invalidate an observed exact CAS version: unchanged task descriptors
+permit approval even while an optional GET runs. Known disagreement in status,
+update time, readiness, title preview or unordered prerequisite/blocker IDs
+requires a fresh read, including dependency changes without a task-version change.
+Reads started after that observation are authoritative; descriptors changed during
+an active read must match its result or keep the next read required. Explicit
+retry, current read errors and unresolved outcomes also block approval. This
+separates network activity from required freshness without starving the action
+when reads take longer than the polling interval. Automatic reads coalesce the
+newest receipt behind an active GET; explicit retries keep priority. Read failures
+remain visible outside the panels. A 404 clears task content, panels and the
+approval action; unknown-outcome feedback retains the original write error and
+GET failure, with GET-only state checks and retry. Cold, different-task
 and identity opens retain their loading/isolation boundaries. Confirmed todo
 responses remain authoritative while the graph refreshes; a failed graph refresh
 retains that detail and an explicit stale-snapshot refresh action. Conflicts reread current content and
@@ -53,9 +65,14 @@ state reconciliation before another submission. Old reads and late results
 cannot restore proposed or populate another task. Existing language, attachment,
 fullscreen, viewport and focus ownership is retained.
 
-Packaged using-daynight creates proposed tasks and verifies real attachments
-before reporting complete registration. Creation permission, execution requests,
-run-task and autopilot never imply approval permission. Explicit user approval
+Packaged using-daynight creates proposed tasks and verifies current stage-owned
+artifacts and real shared inputs before reporting complete registration. The
+[Goal protocol](../process/2026-10-22-goal-workflow-design.md) registers two starting
+tasks from stage briefs; complete requirements, prototypes and architecture are
+outputs of their respective stages, not prerequisites for registering their
+producers. Goal-creation permission covers that pair and in-scope later breakdown,
+but approval remains a separate explicit task or stated Goal-task-scope decision. Creation permission, execution requests,
+run-task, Goal/design completion and autopilot never imply approval permission. Explicit user approval
 of the task or stated scope permits a versioned approve, or the user can approve
 directly through CLI/Web. Ready todo work is claimed at its reviewed version;
 in-progress work can resume after checking actual work and authorization. Claim
