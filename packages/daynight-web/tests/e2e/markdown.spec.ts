@@ -8,6 +8,7 @@ import { createAcceptanceCli } from '../../scripts/acceptance/installed-cli.mts'
 import { createProject, createTask, expect, test, updateTask } from './fixtures';
 import { captureStableDependencyGeometry, checkDependencyGeometry, expectedDependencyTopology } from './dependency-geometry';
 import { expectCenteredTaskDetail } from './detail-dialog';
+import { observeGraphCardVisibility } from './task-card-visibility';
 
 const capture = async (page: Page, info: TestInfo, name: string): Promise<void> => {
   const path = info.outputPath(`${name}.png`);
@@ -15,6 +16,25 @@ const capture = async (page: Page, info: TestInfo, name: string): Promise<void> 
   await info.attach(name, { path, contentType: 'image/png' });
 };
 const overview = (dialog: Locator): Locator => dialog.locator('.task-detail-panel-overview');
+
+const expectGraphCardFullyVisible = async (body: Locator, info: TestInfo): Promise<void> => {
+  let observation: ReturnType<typeof observeGraphCardVisibility> | undefined;
+  try {
+    // The transformed body fills its parent's clip exactly. Check containment
+    // before and after scaling; IntersectionObserver remaps its rectangles.
+    // https://www.w3.org/TR/intersection-observer/#calculate-intersection-rect-algo
+    await expect.poll(async () => {
+      observation = await body.evaluate(observeGraphCardVisibility);
+      return observation.failures;
+    }, { message: 'The full card and native inspection control fit every actual clip without a geometric tolerance' }).toEqual([]);
+    await expect(body).toBeVisible();
+    await expect(body).toBeInViewport();
+    await expect(body).toBeFocused();
+  } catch (error) {
+    await info.attach('markdown-graph-card-visibility', { body: Buffer.from(JSON.stringify({ observation, error: String(error) }, null, 2)), contentType: 'application/json' });
+    throw error;
+  }
+};
 
 const columns = Array.from({ length: 12 }, (_, index) => `Column ${index + 1}`);
 const wideTable = `| ${columns.join(' | ')} |\r\n| ${columns.map(() => '---').join(' | ')} |\r\n| ${columns.map(() => 'Long unbroken table content').join(' | ')} |`;
@@ -219,7 +239,7 @@ test('task-description-markdown', { annotation: { type: 'scenario', description:
     await canvas.scrollIntoViewIfNeeded();
     await expect(canvas).toBeInViewport({ ratio: 1 });
     await body.focus();
-    await expect(body).toBeInViewport({ ratio: 1 });
+    await expectGraphCardFullyVisible(body, info);
     const beforeSelection = (await page.evaluate(captureStableDependencyGeometry)).geometry;
     await page.keyboard.press('Enter');
     await expect(body).toHaveAttribute('aria-pressed', 'true');
