@@ -151,12 +151,16 @@ Release 是 worker 专用的受控重入例外，不恢复通用 status PATCH。
 
 | 表 | 主要字段 |
 |---|---|
-| `worker_state`（单例） | worker_id、machine_id/name、platform、Herdr session/实例关联、下一个仓库轮转位置、共享 pending_action。 |
+| `worker_state`（单例） | worker_id、machine_id/name、platform、Herdr session/实例关联、下一个仓库轮转位置；pending_action 仅保存专用 Herdr 服务本身的 start/stop。 |
 | `executions`（保留结束记录） | execution_id、server_origin/project_id/task_id、claim_id、worktree_id/路径/分支/所有权、仓库物理身份、冻结配置、Herdr/native session、phase、pause_reason、最新状态/观察时间、恢复次数/上限、retry_at、一次人工恢复授权、pending_action、最后错误、交付引用、创建/结束时间。 |
 
 同一任务最多一个未结束本地执行，claimId 唯一。已释放/移交的记录结束但保留原 worktree 信息；新执行只有在确认同一 worktreeId 和原成果可继续后引用它。任务键包含 server origin，不能配置换服后把旧执行发送到新服务器；认证用户变化同样需要核对。
 
-每个执行一次只推进一个外部动作，`pending_action` 只需保存当前动作：
+`worker_state.pending_action` 只属于专用 Herdr 服务的 start/stop，串行推进；未核实该服务动作前不启动新的 pane/agent。它不承载任何 task 级动作。
+
+`executions.pending_action` 分别属于各自执行，覆盖 claim、worktree、pane/agent 启动、prompt、完成及清理。同一执行只推进一个动作，不同任务可各自有未决动作；服务 start/stop 不覆盖或清空它们。恢复先核对服务级动作，再核对各 task 动作。两个执行并发及服务退出交错必须验证互不覆盖。
+
+每条检查点只需保存当前动作：
 
 ```json
 {"id":"uuid","kind":"start_agent","expected":{"claimId":"...","paneId":"..."},"startedAt":"..."}

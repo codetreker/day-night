@@ -40,7 +40,7 @@ flowchart LR
 
 依赖由真实 task 的 `dependsOn` 表达；图是登记结果的投影，执行前读取实际资源。AU-T5 为 `ce2f8cd5-daab-40f2-8637-c1a8ae17e445`，ST-T2 为 `6db17ca5-5090-4ba0-8531-e1715b4e1c97`；当前基线主线尚未交付两者的激活契约。
 
-所有本 Goal 交付根经设计 task 把关；Herdr 和本地状态可在角色/平台链完成后之外独立交付，但最终 coordinator 同时消费三条已完成能力。每个 task 一个明确结果，内部 CI、review 和修复属于原 task，不另建步骤型 task。
+所有本 Goal 交付根经设计 task 把关；Herdr 适配与本地状态不依赖角色/平台实现，可并行交付；最终 coordinator 同时消费三条已完成能力。每个 task 一个明确结果，内部 CI、review 和修复属于原 task，不另建步骤型 task。
 
 ## 每项交付的范围与验收
 
@@ -102,14 +102,14 @@ flowchart LR
 
 主要动作：
 
-- 实现 worker_state 与 executions，WAL/FULL/短事务、身份、轮转、配置/技能快照、claim/session、phase、计数、pending_action、错误和结束记录。
+- 实现 worker_state 与 executions，WAL/FULL/短事务、身份、轮转、配置/技能快照、claim/session、phase、计数、错误和结束记录。单例 pending_action 只记 Herdr 服务 start/stop，task 动作分别归各 executions，不能跨任务覆盖。
 - 一个 task 仅一个未结束本地执行，动作意图先落库；不创建报告 inbox、事件表或通用任务引擎。
 - 稳定 task branch/worktree 与 worktreeId，创建前登记预期资源，恢复验证 Git common directory、原分支和标记，保留未完成成果。
 - 完成后安全清理、清理失败单独恢复、旧执行结束记录保留；只读导入选定任务的原执行记录时保留成果/冻结配置而不复制 worker 身份。
 
 完成条件：
 
-- 状态/冻结配置/恢复预算/未知动作跨进程重启保持；并发 retry 授权只被消费一次，损坏和高版本 schema 明确拒绝。
+- 状态/冻结配置/恢复预算/未知动作跨进程重启保持；验证两任务未决动作与服务 start/stop 交错互不覆盖；并发 retry 授权只被消费一次，损坏和高版本 schema 明确拒绝。
 - Git 真 worktree 验证创建前/创建后崩溃、原成果恢复、不同 task 隔离、路径/身份不符暂停、删除失败恢复。
 - 不会使用 review reset/clean 重置 worker 数据，不以保存 PID 直接杀其他进程。
 - 适用 SQLite/native Git/CLI 门禁通过，严格检查新文件和同步 note/文档。
@@ -128,11 +128,11 @@ flowchart LR
 
 完成条件：
 
-- 安装 CLI 在三平台持续运行，两种 agent 完整经过 task→PR→CI/review→merge→验收→done→worktree 清理。
+- 安装 CLI 在三平台通过受控服务/agent fixture 验证完整执行与中断链路，原生 Herdr/agent 能力消费 WR-T4 的证据；真实双 agent、三平台完整交付由 WR-T8 独立验收。
 - 多仓库轮转公平、同仓库候选顺序、过滤分页完整、全局名额跨 waiting/paused/restart 不丢失；配置重载只影响新领取。
 - worker/Herdr/机器重启、各外部动作响应丢失与半途停止均不启动重复 agent，不丢原成果，不重做已交付任务。
 - 原 task skill 单任务/Goal、权限、open-PR 等待规则保持；没有通用验收解析器，缺失或人验证据保持 pending。
-- 适用 CLI typecheck/test/build/installed/completion 与原生端到端通过，README/规格/设计/技能说明同步。
+- 适用 CLI typecheck/test/build/installed/completion、原生入口与受控端到端通过，README/规格/设计/技能说明同步。
 
 ### WR-T7：提供已领取任务的人工接管
 
