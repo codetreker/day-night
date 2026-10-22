@@ -3,7 +3,7 @@
 The private React/TypeScript workspace implements project browsing, cursor
 pagination, request cancellation, runtime API decoding, native browser routing
 and a pure dependency graph model with horizontal layout.
-The project dashboard, task canvas and detail drawer are embedded into the Go
+The project dashboard, task canvas and task detail dialog are embedded into the Go
 server for single-origin delivery. The [localhost deployment](../../deployment/localhost/README.md)
 starts the full UI/API/database stack; [dev-ci](../../deployment/dev-ci/README.md)
 provides an isolated instance of the same production build. Production-browser,
@@ -61,7 +61,7 @@ changes this classification. The [task view decision](../../.agents/notes/implem
 records the presentation boundary.
 
 Standalone rows display the title, individual status, ID and creation time and
-open the existing detail drawer directly. Chain rows display aggregate progress
+open the existing task detail dialog directly. Chain rows display aggregate progress
 and status: done only when every distinct root and reachable successor task is
 done; in progress when any is done or in progress and the chain is unfinished;
 otherwise pending. A completed root with unfinished descendants stays visible.
@@ -113,7 +113,7 @@ so returning to a chain retains its root choice and initializes its canvas
 viewport again. The [preference decision](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)
 records storage ownership. Tab switching, filtering and scroll restoration make
 no API request and do not change the full project counters, graph index or API
-ordering. Nodes open a detail drawer with dependency navigation,
+ordering. Nodes open a task detail dialog with dependency navigation,
 PR associations, stale-data detection and attachment management. Task fields and
 graph interactions remain read-only. The PR section follows the description and
 displays every ordered title/URL pair, including duplicates. Lists longer than 100 entries use local
@@ -123,7 +123,7 @@ no requests and imposes no storage or content limit. Replacing the task or
 property collection returns to the first page. Focus stays on current pagination
 controls or moves to the section heading when those controls disappear.
 Empty strings have a display-only marker;
-whitespace and long content remain selectable text and wrap within the drawer.
+whitespace and long content remain selectable text and wrap within the dialog.
 Only absolute HTTP(S) addresses recognized by the browser URL parser become
 links, with a new tab and `noopener noreferrer`. Other strings remain plain
 text; values are never interpreted as HTML or fetched for metadata. Property
@@ -139,7 +139,7 @@ Refresh retains the last successful snapshot with an explicit loading/error
 notice and replaces the full graph only on success. A resource change clears
 previous-resource content immediately. Live detail never changes graph counters;
 a changed prerequisite can alter readiness without revising the task itself.
-The drawer offers a full graph refresh when that difference is observed.
+The dialog offers a full graph refresh when that difference is observed.
 Reopening or refreshing details reads current PR associations; an attribute
 update changes the task timestamp and uses the same stale-snapshot prompt.
 
@@ -155,11 +155,17 @@ is local to the mounted graph and is not saved as a browsing preference. The
 [fullscreen decision](../../.agents/notes/implemented/feature/2026-10-22-task-graph-fullscreen.md)
 records the modal and viewport ownership. Each node is one native keyboard button. A long graph starts with its
 root visible at readable zoom; keyboard focus brings offscreen nodes into view.
-The portal drawer locks background focus and scrolling, supports Escape and Tab,
+The centered body-portal dialog has a 960px maximum width, 24px viewport gutters
+(12px at 600px and below), and a maximum height of
+`min(880px, 100dvh - 2 × gutter)`. A single content region scrolls independently
+of the persistent header and footer. Desktop content pairs a reading column with
+a 265px metadata/relationship column (225px at 850px and below); at 600px and
+below it stacks into one column. The dialog locks background focus and scrolling,
+supports its close button, backdrop, Escape and Tab,
 and restores a surviving original trigger or a visible control in the active task view on close. Focusable
 controls are enumerated with `tabbable` 6.5.0 using its normal browser visibility
 checks. Same-origin preview frames bridge Escape and first/last Tab boundaries
-back into that drawer lifecycle. Passive unmount restoration remains responsible
+back into that dialog lifecycle. Passive unmount restoration remains responsible
 for focusing a surviving trigger after DOM removal.
 
 ## Task attachments
@@ -213,7 +219,7 @@ disposed. This development entry is excluded from the single-index production
 build.
 
 The mockup validates appearance and frontend behavior. Local browser probes also
-exercise the actual portal drawer, background inertness, CSS-hidden controls,
+exercise the actual portal dialog, background inertness, CSS-hidden controls,
 contenteditable frame boundaries, Escape/Tab release and trigger restoration.
 The probe receipts and screenshots live under the task's `.tmp/a-t4/`; a local
 existing Chromium override is recorded and does not establish pinned CI-browser
@@ -353,8 +359,12 @@ One packed/installed CLI is shared by the whole web run. On each target,
 the production page, then checks Web mutations through raw CLI reads. It covers
 Markdown relative images, image/text/PDF and interactive HTML resources. PDF
 acceptance polls compositor screenshots for a substantial fixture-only colored
-marker, retaining the successful PNG and marker evidence; HTTP success or an
-iframe load cannot satisfy this check. The
+marker. It measures matching connected components independently and checks the
+largest main-page candidate extending into the frame's right half. This
+fixture/viewer location rule excludes thumbnail-only paint; independent bounds
+also prevent a separate thumbnail from diluting the page marker's density. The
+successful PNG and component metrics remain in the marker evidence; HTTP success
+or an iframe load cannot satisfy this check. The
 [combined acceptance decision](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
 owns the data-sharing and rendering proof.
 The chain fixture creates 1,000 independent tasks, then attaches its 999 edges
@@ -389,11 +399,11 @@ scenario annotations validated in each target's report.
 | W2 | `project-graph`, `deep-links`: project entry, direct HTML reload and browser history |
 | W3–W4 | `project-graph`, `project-view-tabs`, `refresh-staleness`, `failure-recovery`: exact statistics, topology-based tabs, distinct root progress, direct standalone details, independent completion filters, per-project tab/scroll/expansion restoration, dependency reclassification and consistent full refresh |
 | W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`, `capacity-external`: complete root projections, shared/external prerequisites, state markers and viewport/node actions |
-| W8 | `detail-navigation`, `refresh-staleness`: complete current content, ordered PR associations, relation navigation, property refresh and readiness differences without revising a dependent task |
+| W8 | `detail-navigation`, `refresh-staleness`: complete centered-dialog content, ordered PR associations, relation navigation, property refresh and readiness differences without revising a dependent task |
 | W9 | `failure-recovery`, `deep-links`, `capacity-limits`: owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
-| W12 | `keyboard-focus`, `narrow-layout`: modal focus lifecycle including PR links, keyboard node activation and 320px page/drawer geometry |
+| W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
 | FA1–FA12 | `task-attachments`: installed CLI and production UI operate on the same real task/files on native and container targets, exact binary round trips, independent mutations/previews, visible PDF content and full task state unchanged |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
 

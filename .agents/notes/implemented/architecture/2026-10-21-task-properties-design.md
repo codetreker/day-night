@@ -38,7 +38,7 @@ CLI URL and title options repeat independently and pair by their occurrence
 index. This reuses existing ordered repeatable text options, including empty
 values. The bundled public task skill preserves required PR URLs and titles in
 the complete property list while retaining merge evidence in the description.
-The web drawer presents all values as text and enables navigation only
+The web task detail dialog presents all values as text and enables navigation only
 for HTTP(S) absolute URLs, independently of storage acceptance. Local pages mount
 at most 100 records while retaining the complete array, its order and duplicates.
 Native paging controls expose every record without another request; task or

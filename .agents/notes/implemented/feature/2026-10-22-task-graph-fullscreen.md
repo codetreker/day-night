@@ -19,16 +19,19 @@ restores focus to the same toolbar button. Layout geometry, node identity and
 React Flow viewport survive the switch. The mode belongs to the mounted graph
 and is not persisted.
 
-The detail drawer retains its body portal and appears above the fullscreen
+The centered task detail dialog retains its body portal and appears above the fullscreen
 graph. Its keyboard events do not reach the graph container, so Escape closes
 only the active detail view. When a refresh removes the original node but keeps
-the fullscreen graph, drawer focus returns to its exit control before the
+the fullscreen graph, detail focus returns to its exit control before the
 ordinary root/page fallback. Both views acquire the same counted body scroll
 lock: the final release restores the original overflow value even when a graph
 refresh removes the graph while details remain open. Background inertness is
 restored to its observed state when the graph exits or unmounts.
 
-The [requirements](../../../../docs/spec/daynight-web.md) own the interaction,
+The [centered detail decision](2026-10-22-centered-task-detail-dialog.md) owns
+the dialog geometry and reading columns while retaining this layering,
+keyboard-event boundary and shared scroll lock. The
+[requirements](../../../../docs/spec/daynight-web.md) own the interaction,
 and the [design](../../../../docs/design/daynight-web.md) owns its structure.
 The existing frontend-only browsing mockup renders the production components
 and CSS. Production browser assertions extend existing journeys without
@@ -56,7 +59,7 @@ A shared ownership count makes release order irrelevant.
 The graph gains the browser's available width and height while preserving its
 current inspection position. The browser's own chrome remains available.
 Narrow screens use the same controls and flexible canvas height. Graph and
-drawer modal lifecycles must continue to coordinate scroll ownership; graph
+detail-dialog modal lifecycles must continue to coordinate scroll ownership; graph
 keyboard handling stays local so detail shortcuts retain precedence. Future
 changes that remount the canvas on mode switches would violate viewport and
 node identity preservation.

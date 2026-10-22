@@ -227,7 +227,7 @@
       "interactions": [
         "Load local relative CSS, JavaScript and fetch data",
         "Use in-frame progress button",
-        "Move Tab between preview and drawer",
+        "Move Tab between preview and task details",
         "Close using Escape from iframe"
       ]
     },
@@ -235,7 +235,7 @@
       "id": "preview-loading",
       "label": "Attachment preview loading",
       "interactions": [
-        "Close drawer"
+        "Close task details"
       ]
     },
     {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { ApiError } from "../../api/client";
 import { navigate } from "../../app/router";
-import { TaskDrawer } from "../task-detail/TaskDrawer";
+import { TaskDetailDialog } from "../task-detail/TaskDetailDialog";
 import { RootList } from "../task-graph/RootList";
 import { GraphDataError } from "../task-graph/model";
 import { ProjectTaskTabs } from "./ProjectTaskTabs";
@@ -198,7 +198,7 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
               </div>
             </>
           )}
-          {selectedTaskId !== null && <TaskDrawer projectId={projectId} taskId={selectedTaskId} snapshot={snapshot} onSelectTask={onSelectRelation}
+          {selectedTaskId !== null && <TaskDetailDialog projectId={projectId} taskId={selectedTaskId} snapshot={snapshot} onSelectTask={onSelectRelation}
             onClose={onClose} onRestoreFocus={restoreFocus} onRefreshGraph={graph.refresh} />}
         </>
       )}

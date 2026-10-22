@@ -73,12 +73,23 @@ zero retries, complete reports and cleanup remain mandatory.
 All phases use the full bundled Chromium channel `chromium`, retaining the
 pinned Playwright version and matching native/container browser identity. PDF
 acceptance polls actual iframe compositor screenshots for a substantial
-fixture-specific colored rectangle. The existing browser decodes the PNG and
-checks pixel count, bounds and density; the successful screenshot and marker
-metrics identify the expected PDF hash and preview URL in
-`task-attachments-pdf.png` and `task-attachments-pdf.json`; the main UI capture is
-`task-attachments.png`. MIME success, load,
-a fixed delay or an empty outer MIME document cannot satisfy the pixel oracle.
+fixture-specific colored rectangle. The existing browser decodes the PNG,
+groups pixels matching RGB `(17, 203, 149)` within a per-channel tolerance of 4
+and alpha at least 250 into connected components, then measures each solid
+marker independently. A main-page candidate must extend into the screenshot's
+right half (`bounds.right >= width / 2`); the largest such component must contain
+at least 1,600 matching pixels, span at least 80px by 20px and have density at
+least 0.95 within its bounds. The fixture's 360-by-220 PDF page has a horizontally
+centered 290-by-70 marker at `(35, 35)`. In the pinned native viewer, that page
+marker reaches the frame's right half while left-side thumbnail markers do not.
+This fixture/viewer location rule rejects thumbnail-only paint even when its
+size and density meet the thresholds. Independent bounds also prevent a separate
+thumbnail from diluting the page marker's density. The location assumption must
+be revalidated when the fixture or viewer layout changes. The successful
+screenshot and component metrics identify the expected PDF hash and preview URL
+in `task-attachments-pdf.png` and `task-attachments-pdf.json`; the main UI capture
+is `task-attachments.png`. MIME success, load, a fixed delay or an empty outer
+MIME document cannot satisfy the pixel oracle.
 The oracle avoids depending on PDF viewer extension IDs, internal plugin APIs or
 browser-specific text-layer DOM.
 
