@@ -279,6 +279,12 @@ otherwise it downloads Debian packages with `apt-get download` and extracts them
 locally with `dpkg-deb`. It installs no global packages. First-time preparation
 requires network access; subsequent runs reuse the local toolchains.
 
+The Ubuntu shell-completion CI step selects the canonical HTTPS Ubuntu archive
+in the runner's existing APT mirror-list file before invoking that unchanged
+helper. This applies only to the ephemeral CI runner. APT candidate/index and
+signature/hash verification, the 120-second package-download bound, the pinned
+Bash checksum/version checks and all real-shell acceptance remain unchanged.
+
 On other POSIX hosts, or to select existing executables, set `DAYNIGHT_TEST_BASH42`
 to the Bash 4.2 executable before running `pnpm completion:acceptance`.
 `DAYNIGHT_TEST_BASH` and `DAYNIGHT_TEST_ZSH` select the other executables and default

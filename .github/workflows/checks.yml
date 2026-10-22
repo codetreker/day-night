@@ -132,7 +132,9 @@ jobs:
           dest: ${{ github.workspace }}/.tmp/pnpm
       - run: pnpm install --frozen-lockfile --store-dir .tmp/pnpm-store
       - name: Prepare isolated Bash 4.2 and zsh toolchains
-        run: bash packages/daynight/scripts/prepare-completion-shells.sh
+        run: |
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt
+          bash packages/daynight/scripts/prepare-completion-shells.sh
       - name: Exercise actual Tab completion in Bash 4.2, modern Bash and zsh
         id: completion-validation
         run: pnpm completion:acceptance
