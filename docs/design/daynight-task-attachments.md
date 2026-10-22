@@ -304,13 +304,15 @@ docker compose -f deployment/localhost/compose.yaml logs server | rg '"request_i
 
 ## Web 文件树与预览
 
-`TaskDetailDialog` 在公共标题下组合 `TaskDetailPanels`，以概览和附件两个稳定面板
-分开任务阅读与文件浏览。详情与面板以 `(projectId, taskId)` 为身份，每个新身份默认
+`TaskDetailDialog` 通过 `TaskDetailReading` 在公共标题下组合 `TaskDetailPanels`，
+以概览和附件两个稳定面板分开任务阅读与文件浏览。详情与面板以 `(projectId, taskId)` 为身份，每个新身份默认
 概览；两个面板保持挂载，非当前面板同时使用 `hidden` 与 `inert`。页签按钮关联
 `tabpanel`，使用 roving tabindex，方向键和 Home/End 自动激活并聚焦目标页签，原生
-Enter/空格继续有效。`TaskAttachments`、表单及目录控件保留组件身份，因此往返页签
-保留选中路径、目录展开、列表/预览状态和未提交上传。未来描述附件导航复用同一
-控制器并激活附件页签，不建立第二份清单状态。
+Enter/空格继续有效。`TaskAttachmentsPanel`、表单及目录控件保留组件身份，因此往返页签
+保留选中路径、目录展开、列表/预览状态和未提交上传。`TaskDetailReading` 持有唯一的
+`useAttachments` 控制器，并将同一实例交给描述导航与 `TaskAttachmentsPanel`。描述的
+普通主键无 query/hash 相对文件链接选择该控制器中的路径、激活附件面板并聚焦
+预览区域，不建立第二份清单、选择或请求状态。
 
 附件面板使用占满可用正文的 `attachment-split` grid：左侧
 `attachment-sidebar` 放置文件树、刷新和上传；右侧 `attachment-preview-pane`
@@ -345,8 +347,9 @@ Enter/空格继续有效。`TaskAttachments`、表单及目录控件保留组件
 页面沿用看板样式。
 
 `useAttachments` 分开持有列表、写操作、选中路径和预览。列表逐页读取，并检查路径
-树冲突与重复游标；续页失败保留已经读取的文件并标明不完整，提供重试。结果绑定
-project/task，内容状态同时绑定 path；切换身份、选择或卸载通过 AbortController 和
+树冲突与重复游标；续页失败保留已经读取的文件并标明不完整，提供重试。描述
+导航也等待这份完整清单后才判定缺失，列表加载、列表错误、非法路径、确认缺失与
+预览失败各自可见，不将错误转换成空列表。结果绑定 project/task，内容状态同时绑定 path；切换身份、选择或卸载通过 AbortController 和
 请求 generation 排除旧结果。写操作不自动重试，普通错误在附件区域明确展示。
 
 覆盖成功增加预览 revision。手动刷新发现所选文件的 `updatedAt` 改变时重新请求正文；
@@ -362,10 +365,14 @@ project/task，内容状态同时绑定 path；切换身份、选择或卸载通
 | HTML | HEAD 检查后在普通同源 iframe 中加载执行 |
 | 其他格式 | 元数据及下载链接 |
 
-Markdown 的相对图片和链接从当前文件所在目录解析到 task 预览路径；逐段处理 URL
-编码和 parent 段，拒绝越过 task 根目录，保留 query/hash。独立 `#fragment` 保持原值，
-不改成文件请求。绝对 URL 和根相对 URL 继续遵循正常 URL 语义，并通过渲染库的
-默认 URL 安全规则；不把原始 HTML 作为可执行节点插入 Markdown。
+`MarkdownContent` 只负责 CommonMark/GFM 渲染及样式，URL 转换与链接激活由
+调用方提供。`MarkdownAttachmentBase` 区分 `document` 与 `root`：附件调用方使用
+当前文件的目录作为资源基准，描述调用方使用任务附件根；不虚构描述文件名。路径解析逐段处理 URL 编码和 parent 段，拒绝
+越过任务根，保留 query/hash。独立 `#fragment` 保持原值，不改成文件请求。绝对、
+协议和根相对 URL 保持正常 URL 语义，并经过渲染库的默认安全规则；原始 HTML
+不作为可执行节点插入 Markdown。描述的内嵌导航和原生点击规则见
+[阅读设计](daynight-task-inspection.md#markdown-与附件链接)，决策见
+[Markdown 描述决策](../../.agents/notes/implemented/architecture/2026-10-22-task-description-markdown.md)。
 
 HTML 入口是固定同源 URL，例如：
 

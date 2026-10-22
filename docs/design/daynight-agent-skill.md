@@ -86,9 +86,22 @@ skill、任务和附件均不授予额外权限。run-task 的合并完成要求
 | `autopilot.md` | 当前任务恢复、相关性选择、串行循环及停止条件 |
 | `goal.md` | Goal 判断、双起始任务、阶段资料、实际拆分、登记恢复和整体验收 |
 
-task 描述是自足简介，直接说明具体问题、行动、范围、交付物、约束、简明可观察完成
-条件和实际资料引用。读者无需打开附件即可理解当前任务；正文可概括方案与验收，
-详细做法、完整验收及证据由任务专属主 Markdown 附件拥有，避免竞争的完整副本。
+task 描述是 Markdown 自足简介，直接说明具体问题、行动、范围、交付物、约束、简明
+可观察完成条件和实际资料引用。读者无需打开附件即可理解当前任务；正文可概括方案
+与验收，详细做法、完整验收及证据由任务专属主 Markdown 附件拥有，避免竞争的完整副本。
+create-task 拥有标题、段落、列表、引用、围栏代码、表格、链接和图片的写作指引与任务
+示例；入口声明共同格式，run-task 保留更新后的完整 Markdown 和有效引用，handbook
+说明原始字符串、完整替换与路径基准，Goal 协议将同样规则应用到每个阶段。
+
+Web 复用附件的 CommonMark/GFM 阅读能力；API、CLI 和 Agent 仍读写原始描述字符串，
+不增加格式字段。相对描述链接及图片从当前任务附件根解析，Markdown 附件内部引用
+从文件目录解析。真实大小写、任务根约束与来源身份保持有效；确认上传并读回内容后
+才把资源写入正文。示例 `[方案与验收](plan.md)` 与 `[交互原型](mockui/index.html)`
+只在这些文件实际属于该任务时适用，共享 Goal 资料保留在其唯一来源；阶段尚未生成的
+输出不成为可用链接。Web 的链接激活、URL 策略和预览状态由
+[任务阅读设计](daynight-task-inspection.md#markdown-与附件链接)及
+[附件设计](daynight-task-attachments.md)拥有。
+
 依赖由 `dependsOn` 维护，PR URL/title 由 `properties.pullRequests` 维护；执行位置、
 阻塞、等待和下一步属于既有检查点。
 
@@ -292,11 +305,14 @@ sibling 与另一 scope。迁移增加旧名称存在、leaf 链接、清理失�
 parent/leaf 链接、安装/清理路径嵌套、部分失败、监听清理和 completion 回归。Windows
 必须有原生结果；Linux 投影不能替代 `.cmd`、ConPTY 或平台链接证据。
 
-静态检查验证入口 frontmatter、四份模式引用及共享 Goal 协议、全部本地链接、英文、打包 allowlist 和关键
-规则；既有 project/task/attachment 套件拥有命令可执行语义。独立情境演练另外核对
+静态检查验证入口 frontmatter、四份模式引用及共享 Goal 协议、全部实际本地链接、英文
+指引、打包 allowlist 和关键规则。围栏代码中的任务 Markdown 示例属于写作示例，不
+作为 bundle 资源链接；打包产物和安装副本保留这些内容，并与源码完整字节比较。既有
+project/task/attachment 套件验证命令语义，创建、更新和 JSON 读取包含中英文、CRLF、
+围栏代码、GFM 与链接的描述，确认原始字符串及精确版本完整替换。独立情境演练另外核对
 裸调用、缺少创建许可、已有范围内许可、autopilot 不隐含创建许可、显式 autopilot、
-trivial、阶段资料与输出、实际拆分、部分登记恢复、自足正文、资料所有权、前端原型、
-禁止 merge、阻塞和单任务返回。它是指令行为审查，不冒充安装自动测试或对模型执行的保证。review bundle
+trivial、阶段资料与输出、实际拆分、部分登记恢复、Markdown 自足正文及有效引用、资料
+所有权、前端原型、禁止 merge、阻塞和单任务返回。它是指令行为审查，不冒充安装自动测试或对模型执行的保证。review bundle
 的快照、原生 Copilot 加载与配置隔离继续独立验证。
 
 普通原生 CI 运行 typecheck、test、build、acceptance，receipt 记录源码、平台、场景

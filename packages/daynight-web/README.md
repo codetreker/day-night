@@ -318,6 +318,44 @@ checks. Same-origin preview frames bridge Escape and first/last Tab boundaries
 back into that dialog lifecycle. Passive unmount restoration remains responsible
 for focusing a surviving trigger after DOM removal.
 
+## Markdown task descriptions
+
+Task descriptions render CommonMark and GFM using the same `MarkdownContent`
+renderer and styles as Markdown attachments: headings, paragraphs, lists,
+checkboxes, quotes, fenced code, tables, links and images. Raw HTML remains text;
+URL protocols retain the renderer's existing policy. Empty descriptions use the
+current interface language. Markdown and localized messages do not change the
+stored string or CLI/API output. Wide tables and code scroll within their local
+regions, and long words wrap inside the Overview reading column at 320px.
+
+Description-relative links and images resolve from the task attachment root.
+Markdown attachments resolve from their containing file's directory. Both use
+the actual preview URL and reject references that escape the root. An ordinary
+primary click on a relative attachment link without a query or fragment opens
+the existing Attachments tab, selects that exact path through its shared
+controller, and focuses the preview pane. The anchor retains its real preview
+href for modified clicks, context menus and native navigation. Absolute,
+root-relative, protocol, fragment and query/fragment links retain native behavior.
+The selected file's separate Open in new tab action continues to use the
+standalone reader.
+
+Pending inventory, incomplete-list failure with retry, invalid references,
+missing files and preview failures remain visible and distinct. Only the
+complete paginated inventory can establish that a path is missing. Description
+navigation does not create another inventory or preview owner; task changes,
+close and existing authentication invalidation release its requests and state.
+Same-path overwrite and explicit attachment refresh retain the existing revision
+and preview reload behavior.
+
+Run `pnpm web:dev` and open `/tests/mockups/markdown.html` for the production
+`TaskDetailReading` composition and final styles with the existing frontend-only
+attachment fixture. Its controls select rich, empty or long descriptions and
+attachment loading, empty, list-error, preview-error, upload-error or busy states.
+Actual root-relative image/document links, missing/upward references, detail
+panels and the standalone fixture reader are interactive without Go or
+PostgreSQL. This entry and `/tests/mockups/attachments.html` share
+`tests/mockups/main.tsx`; neither belongs to the production single-index build.
+
 ## Task attachments
 
 Every task detail opens on Overview, which retains descriptions, PR
@@ -333,8 +371,8 @@ active tab is the sole roving tab stop; arrows and Home/End activate its neighbo
 or endpoint, and native Enter/Space work normally. Hidden panels are both hidden
 and inert. Returning to Attachments retains selection, expanded directories,
 loaded state, preview and an unsent file/path draft. Changing project/task resets
-the tab and attachment scope. Description-to-attachment navigation, when
-implemented, activates this same panel and controller.
+the tab and attachment scope. Description-to-attachment navigation activates this
+same panel and controller.
 
 The upload section starts collapsed. Activate Upload with a click or the
 keyboard to expand it, then select one local file, accept its name as the initial
@@ -575,7 +613,7 @@ the same browser identity.
 The command builds real embedded assets and a new Go executable and owns a
 separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
 the normal dev-ci runner builds and starts the actual production image. Browser
-execution proceeds through thirteen native functional scenarios, the same thirteen
+execution proceeds through fourteen native functional scenarios, the same fourteen
 functional scenarios through the production image's stream gateway, then five
 native capacity/limit scenarios. The native process and PostgreSQL remain alive
 through the capacity phase; other preparation commands and the complete
@@ -584,8 +622,9 @@ capacity fixtures use the real write APIs. The original eight graph scenarios an
 their GET/HEAD-only browser checks. `task-attachments` and
 `language-state-preservation` allow exact fixture-scoped PUT/DELETE file routes;
 the latter holds each upload, overwrite and deletion while changing language to
-verify one write and retained state. Other language scenarios remain GET/HEAD-only,
-and unrelated mutations remain failures.
+verify one write and retained state. `task-description-markdown` and the other
+language scenarios remain GET/HEAD-only in the browser; fixture writes use the
+installed CLI or API request context. Unrelated browser mutations remain failures.
 One packed/installed CLI is shared by the whole web run. On each target,
 `task-attachments` uploads through that CLI and consumes the same task/files in
 the production page, then checks Web mutations through raw CLI reads. It covers
@@ -638,12 +677,13 @@ added node/edge, expanded node/edge and reset node/edge counts. Validation requi
 bounded overviews, exact deltas and reset counts. Independent existing polyline,
 native marker and dash-body checks cover every visible edge. Independent selection/H/selectMs and smooth-curve acceptance remain with the
 following inspection delivery. Current readiness uses the existing polyline renderer.
-31 scenarios, real native/container targets, zero retries, timeouts, coverage,
+33 scenarios, real native/container targets, zero retries, timeouts, coverage,
 1,001-task/5,001-edge refusals and cleanup remain; current production evidence is
 pending. The following inspection PR adds its own behavior and validation.
 
 The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [attachment journey](tests/e2e/attachments.spec.ts),
+[Markdown description journey](tests/e2e/markdown.spec.ts),
 [language journeys](tests/e2e/i18n.spec.ts),
 [capacity scenarios](tests/e2e/capacity.spec.ts) and
 [acceptance runner](scripts/acceptance.mts) map to the
@@ -663,6 +703,7 @@ scenario annotations validated in each target's report.
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
 | FA1–FA12 | `task-attachments`: installed CLI and production UI share real task/files on native and container targets; exact bytes, file mutations, detail tabs, adjacent panes, unique preview scroll owners, rendered formats and reloadable standalone reading. Independent real-service probes add end-of-document wheel/keyboard, native PDF final-page paint, fault/retry and unchanged task/graph proof |
+| TI8–TI9 | `task-description-markdown`: installed CLI and real API preserve Unicode/CRLF Markdown bytes and versioned full replacement; bilingual 1440px/320px rich rendering, escaped HTML, URL policy, task-root images/encoded references, paginated loading/list failure/retry, invalid/missing/preview failure states, one-controller navigation/focus, overwrite refresh, modified native href and HTML frame interaction |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
 | L1–L4 | `language-startup-preferences`: browser default, saved override, reload, route metadata, shared selectors and unchanged user data |
 | L2, L4–L5 | `language-state-preservation`: graph geometry/viewport, fullscreen and modal focus, PR page, file input and iframe identity; pending upload, overwrite and deletion execute once |

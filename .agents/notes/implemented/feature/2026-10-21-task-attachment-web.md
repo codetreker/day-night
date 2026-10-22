@@ -38,17 +38,23 @@ initializes a target path from the filename; users may edit it to a nested path.
 does not silently determine the saved path's type. Same-path upload overwrites;
 files provide download and deletion. Success refreshes only attachment data.
 
-The hook keeps scoped list, write, selection and preview state. It follows all
-pages, validates tree conflicts and repeated cursors, and labels continuation
-failures as an incomplete list while retaining already-read files. Abort and
+The hook keeps scoped list, write, selection and preview state. The
+[Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
+places one hook in `TaskDetailReading`, shared by description navigation and
+`TaskAttachmentsPanel`; the independent `TaskAttachments` wrapper retains its
+own hook. It follows all pages, validates tree conflicts and repeated cursors,
+and labels continuation failures as an incomplete list while retaining already-read files. Abort and
 request generations prevent old scopes or selections from replacing current
 results. Preview depends on both path and metadata `updatedAt`; manual refresh
 therefore rereads changed text, while successful mutations also advance preview
 revision. Path/timestamp identity remounts native previews after overwrite.
 
-`react-markdown` 10.1.0 and `remark-gfm` 4.0.1 provide CommonMark and GFM tables.
-Raw HTML remains escaped. Relative Markdown images and links resolve within the
-task preview tree; standalone fragments remain fragments. Text uses plain nodes,
+`MarkdownContent` shares `react-markdown` 10.1.0 and `remark-gfm` 4.0.1 for
+CommonMark and GFM tables. Raw HTML remains escaped. Attachment Markdown images
+and links resolve from the actual document directory within the task preview
+tree; descriptions explicitly use the task root. Standalone fragments remain
+fragments. The Markdown description decision owns ordinary in-dialog attachment
+navigation and complete-inventory failure handling. Text uses plain nodes,
 images use native loading/error feedback, and HTML/PDF use a normal iframe after
 a HEAD availability check. HEAD failures use status and request ID without
 attempting JSON body decoding. The frame's GET and relative-resource requests

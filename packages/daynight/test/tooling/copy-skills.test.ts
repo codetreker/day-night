@@ -120,7 +120,17 @@ describe("packaged skill resource copy", () => {
       for (const relative of files(destination).filter((name) => name.endsWith(".md"))) {
         const document = path.join(destination, relative);
         const content = readFileSync(document, "utf8");
-        for (const match of content.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
+        let fence: { marker: string; length: number } | undefined;
+        const prose = content.split(/\r?\n/).filter((line) => {
+          const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+          if (marker !== undefined) {
+            if (fence === undefined) fence = { marker: marker[0]!, length: marker.length };
+            else if (marker[0] === fence.marker && marker.length >= fence.length && line.trim() === marker) fence = undefined;
+            return false;
+          }
+          return fence === undefined;
+        }).join("\n");
+        for (const match of prose.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
           const target = match[1]!;
           if (target.startsWith("#") || /^[a-z][a-z0-9+.-]*:/i.test(target)) continue;
           const resource = path.resolve(path.dirname(document), target.split("#")[0]!);

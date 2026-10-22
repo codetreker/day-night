@@ -82,7 +82,7 @@ test.describe('Web language journeys', () => {
     await trigger.click();
     const dialog = page.getByRole('dialog', { name: '任务详情', exact: true });
     await expect(dialog.locator('.task-detail-title')).toHaveText(task.title);
-    await expect(dialog.locator('.task-detail-description').first()).toHaveText(task.description);
+    await expect(dialog.locator('.task-description')).toHaveText(task.description);
     await page.keyboard.press('Escape');
     await page.getByRole('link', { name: '← 项目', exact: true }).click();
     await expect(page.getByRole('heading', { name: '项目', exact: true })).toBeVisible();
