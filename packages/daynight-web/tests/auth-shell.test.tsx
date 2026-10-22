@@ -232,17 +232,24 @@ describe("authenticated application shell", () => {
     vi.stubGlobal("fetch", fetcher);
     render(<AuthenticatedApp />);
     await screen.findByRole("link", { name: "账户设置：Alice" });
-    const oldSignal = fetcher.mock.calls.find(([url]) => url.startsWith("/api/v1/projects"))![1] as RequestInit | undefined;
+    await waitFor(() => expect(projectCalls).toBe(1));
+    const oldSignal = fetcher.mock.calls.find(([url]) => url.startsWith("/api/v1/projects"))![1]!.signal!;
+    expect(oldSignal).toBeInstanceOf(AbortSignal);
+    expect(oldSignal.aborted).toBe(false);
+    expect(pendingProject).toBeTypeOf("function");
+    expect(screen.getByRole("status", { name: "正在加载项目" })).toBeInTheDocument();
     currentUser = user(otherId, "Bob");
     returnFromAnotherWindow();
     expect(screen.queryByRole("link", { name: "账户设置：Alice" })).toBeNull();
     expect(document.body).toHaveClass("auth-session-checking");
+    await waitFor(() => expect(fetcher.mock.calls.filter(([url]) => url === "/api/v1/me")).toHaveLength(2));
+    expect(pendingMe).toBeTypeOf("function");
     await act(async () => pendingMe(json(currentUser)));
     await screen.findByRole("heading", { name: "Bob 的项目" });
     await act(async () => pendingProject(json({ items: [project("Alice 的旧项目")], nextCursor: null })));
     expect(screen.queryByRole("heading", { name: "Alice 的旧项目" })).toBeNull();
     expect(screen.getByRole("link", { name: "账户设置：Bob" })).toBeInTheDocument();
-    expect(oldSignal?.signal?.aborted).toBe(true);
+    expect(oldSignal.aborted).toBe(true);
   });
 
   it("keeps a one-time PAT reveal mounted through same-user focus revalidation", async () => {
@@ -459,10 +466,12 @@ describe("authenticated standalone attachment reader", () => {
     expect(document.body).toHaveClass("auth-session-checking");
     expect(screen.queryByRole("main")).toBeNull();
     expect(frame.isConnected).toBe(true);
+    await waitFor(() => expect(meCalls).toBe(2));
     await act(async () => identify(json(user())));
     expect(screen.getByTitle("HTML 预览：site/index.html")).toBe(frame);
     expect(fetcher.mock.calls.filter(([, options]) => options?.method === "HEAD")).toHaveLength(1);
     returnFromAnotherWindow();
+    await waitFor(() => expect(meCalls).toBe(3));
     bob = true;
     await act(async () => identify(json(user(otherId, "Bob"))));
     await screen.findByRole("alert");
