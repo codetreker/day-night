@@ -418,7 +418,7 @@ gh workflow run publish.yml --ref main
 ```
 
 The workflow accepts only `main` and freezes that run's source commit. Before
-waiting for CI or installing project dependencies, preflight checks the exact
+validating the CLI or installing project dependencies, preflight checks the exact
 `daynight-v<package-version>` tag and npm package version. Either existing
 marker makes every dispatch and retry succeed with an explicit skip message,
 regardless of its source or contents. A tag alone is sufficient to skip. A skip
@@ -431,10 +431,11 @@ This uses npm's package-document lookup and version selection. Only npm's JSON
 Authentication, network, timeout and malformed-response errors fail visibly.
 Queries use a project-local cache and have a 30-second process limit.
 
-When both markers are absent, preparation waits for the latest main-push
-`checks.yml` run at the frozen commit to succeed; a missing or failed run stops
-publication. It then installs frozen dependencies, runs type checking, tests and
-installed acceptance, and smoke-installs the packed release tarball. The
+When both markers are absent, preparation installs frozen dependencies and runs
+type checking, tests and installed acceptance explicitly for
+`@codetreker/daynight` at the frozen commit. It then smoke-installs the packed
+release tarball. Publication validates the CLI independently of the full
+`checks.yml` workflow; Go server and Web results do not gate the npm release. The
 publishing job is titled `Publish daynight v<version>`, using the version from the
 prepared artifact's release receipt. Every publication attempt repeats preflight
 before downloading the artifact, so versions that appeared during preparation
@@ -469,7 +470,9 @@ releases and keeps in-progress releases running. The
 [npm CLI publication-check decision](.agents/notes/implemented/process/2026-10-22-npm-cli-publication-checks.md)
 owns lookup, skip and duplicate-publication behavior; the
 [trusted-publishing decision](.agents/notes/implemented/process/2026-10-20-npm-trusted-publishing.md)
-owns new-artifact identity, OIDC and public verification.
+owns new-artifact identity, OIDC and public verification. The
+[CLI publication-validation decision](.agents/notes/implemented/process/2026-10-22-cli-publication-validation.md)
+owns the release validation scope.
 
 ## Install and update
 
@@ -1382,8 +1385,9 @@ only `success` or `skipped` from every preceding job; failures, cancellations an
 other results fail the gate. It uses those job results without comparing module
 selection flags. Documentation-only PRs run routing tests and this final gate
 without installing application dependencies or running application tests. Every
-`main` push retains full application validation, including the exact-commit workflow run required for npm
-publication. Package-version enforcement belongs to PR validation. The
+`main` push retains full application validation. npm publication runs its own
+CLI validation at the frozen release commit. Package-version enforcement belongs
+to PR validation. The
 [selection decision](.agents/notes/implemented/process/2026-10-21-module-scoped-pr-ci.md)
 records the routing alternatives and maintenance costs; the
 [CI simplification decision](.agents/notes/implemented/simplification/2026-10-21-ci-gate-simplification.md)

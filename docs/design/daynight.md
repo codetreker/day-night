@@ -406,7 +406,11 @@ bundle 复制到 `dist/commands/review/skills/daynight-review/`，由既有 `dis
 选中 CLI 时，全部原生检查和独立 shell completion 检查必须成功，PR 的 Linux CLI
 任务还检查包版本；main push 保留全量应用门禁。最终 `checks` 只接受所有前置 job 的
 `success` 或 `skipped`，失败、取消及其他结果使汇总失败。
-发布在等待 CI 与安装项目依赖前检查精确版本的 tag 和 npm 记录；任一存在则成功跳过。
+发布在验证 CLI 与安装项目依赖前检查精确版本的 tag 和 npm 记录；任一存在则成功跳过。
+新版本在冻结的源码提交上独立执行 `@codetreker/daynight` 的类型检查、测试、安装验收和
+发布包安装检查。发布不依赖全仓 `checks.yml` 的结果，Go server 与 Web 检查不会阻止
+npm 发布；[CLI 发布验证决策](../../.agents/notes/implemented/process/2026-10-22-cli-publication-validation.md)
+维护验证范围。
 npm 元数据统一由固定版本的 npm 12.2.0 执行 `npm view <package>@<version> --json`
 读取完整包记录并选择版本，仅 JSON `E404` 表示版本不存在。鉴权、网络、超时和格式
 错误继续暴露。每次发布尝试，包括失败重跑，都会在下载产物前重复预检；发布脚本也会

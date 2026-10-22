@@ -127,7 +127,8 @@ PR revisions supplied by the event; it does not publish packages or schedule
 release tags. Native-platform checks still own application validation. The
 separate [npm publishing decision](2026-10-20-npm-trusted-publishing.md) owns
 manual release authorization, OIDC, artifact identity, and post-publication tags;
-its workflow consumes successful main-push validation at the selected commit.
+its workflow validates the CLI at the selected commit under the
+[CLI publication-validation decision](2026-10-22-cli-publication-validation.md).
 
 All implementation tasks share concrete build and validation commands. Tests
 can inject home resolution and command boundaries without modifying an actual

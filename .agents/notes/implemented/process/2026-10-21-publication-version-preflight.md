@@ -13,8 +13,8 @@ exists. Maintainers need a successful early skip for that case.
 ## Decision
 
 The manual [publication workflow](../../../../.github/workflows/publish.yml)
-checks the exact `daynight-v<version>` tag and npm version before waiting for
-main CI, installing dependencies or preparing an artifact. Either marker
+checks the exact `daynight-v<version>` tag and npm version before installing
+dependencies, validating the CLI or preparing an artifact. Either marker
 produces an explicit successful skip regardless of its source or contents.
 Tag presence short-circuits the npm lookup. A skip reports existence and does
 not verify the existing package or create a missing tag.

@@ -27,10 +27,11 @@ workflow publishes stable releases to `latest`. A previously unpublished version
 must have greater precedence than the registry's current stable `latest` version.
 
 After the [version preflight](2026-10-22-npm-cli-publication-checks.md) admits
-a new release, a read-only preparation job waits for the latest main-push
-`checks.yml` run at the captured commit to succeed. A missing or failed matching run stops the
-release. Preparation then uses Node.js 24 and pnpm 10.34.5 for a frozen
-install, type checking, tests and installed acceptance. It packs the staged CLI
+a new release, a read-only preparation job uses Node.js 24 and pnpm 10.34.5 for a
+frozen install, CLI type checking, tests and installed acceptance at the captured
+commit. The [CLI publication-validation decision](2026-10-22-cli-publication-validation.md)
+replaces the original whole-main-checks prerequisite with this independent CLI
+validation. It packs the staged CLI
 with the captured commit in `gitHead`, smoke-installs the resulting tarball, and
 uploads `.tmp/npm-release/artifact/package.tgz` together with `release.json` as
 an immutable Actions artifact. The receipt binds package name, version, source,
@@ -118,8 +119,8 @@ the configured GitHub workflow.
 
 **Publish on every main merge.** This makes each merge a release authorization,
 including documentation-only changes whose package version is unchanged. A
-manual dispatch keeps publication intent separate from integration while using
-the same exact-commit validation gate.
+manual dispatch keeps publication intent separate from integration while
+validating the CLI at the exact release commit.
 
 **Retain a two-minute public visibility limit.** This ends a failed release
 sooner, but the first live publication required longer registry processing after

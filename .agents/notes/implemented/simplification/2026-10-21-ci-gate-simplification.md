@@ -27,10 +27,12 @@ checkout, runtime setup or repository helper. The selection-aware result helper,
 its CLI path and dedicated tests are removed; routing tests remain in the
 lightweight job.
 
-The main ruleset requires no named check context, and
-[npm publication](../process/2026-10-20-npm-trusted-publishing.md) consumes a
-successful whole `checks.yml` main-push run at the exact source commit. These
-consumers require no configuration or publication-workflow change.
+At the time of this decision, the main ruleset required no named check context,
+and npm publication consumed a successful whole `checks.yml` main-push run at
+the exact source commit. Those consumers needed no configuration or publication
+change for this simplification. The later
+[CLI publication-validation decision](../process/2026-10-22-cli-publication-validation.md)
+replaces the publication dependency with independent CLI validation.
 
 This partially supersedes the
 [CLI toolchain decision](../process/2026-10-16-typescript-cli-toolchain.md), which
@@ -54,8 +56,8 @@ work without another selection calculation and repository helper.
 ## Consequences
 
 Version failures remain visible in the PR's Linux CLI job and fail the final gate.
-Main-push runs provide the same full application evidence required for publication
-without repeating the PR version policy. Documentation-only PRs run routing tests
+Main-push runs provide full application evidence without repeating the PR version
+policy. Documentation-only PRs run routing tests
 and the final gate while application jobs are skipped. Job selection, coverage
 thresholds, real-service acceptance and cleanup requirements are unchanged.
 
