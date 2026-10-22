@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import Markdown, { defaultUrlTransform } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { ApiError } from '../../../api/client';
 import { useI18n } from '../../../i18n/LocaleProvider';
 import type { Attachment } from '../../../api/types';
 import { dialogFocusables } from '../focus';
+import { MarkdownContent } from '../MarkdownContent';
 import { attachmentKind, resolveAttachmentUrl } from './model';
 
 export type AttachmentPreviewState = {
@@ -93,12 +92,7 @@ const PreviewContent = ({ attachment, preview, url, previewRoot, onRetry, onClos
   );
   if (preview.status !== 'ready') return null;
   if (kind === 'markdown') return (
-    <div className="attachment-markdown">
-      <Markdown remarkPlugins={[remarkGfm]} urlTransform={(value) => {
-        const resolved = resolveAttachmentUrl(value, attachment.path, previewRoot);
-        return resolved === null ? '' : defaultUrlTransform(resolved);
-      }}>{preview.text}</Markdown>
-    </div>
+    <MarkdownContent className="attachment-markdown" text={preview.text!} resolveUrl={(value) => resolveAttachmentUrl(value, attachment.path, previewRoot)} />
   );
   if (kind === 'text') return <pre className="attachment-text">{preview.text}</pre>;
   if (kind === 'image') return <ImagePreview key={url} url={url} path={attachment.path} />;

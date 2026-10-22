@@ -47,7 +47,9 @@ pinned Dagre layout choices. The
 remaining task-card selection, smooth-route and Markdown goals. The
 [centered detail decision](2026-10-22-centered-task-detail-dialog.md) implements
 the reading shell; card activation opens that dialog, routes remain Dagre
-polylines and descriptions remain plain text.
+polylines. The [Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
+now owns CommonMark/GFM descriptions and root-based attachment navigation,
+without changing the projection or graph delivery boundary.
 
 The production capacity matrix preserves its chain, merge and shared-root graphs
 and adds `capacity-external`: 1,000 nodes and 5,000 edges, with two main tasks and
@@ -62,9 +64,10 @@ inventory validation retains five native capacity/limit scenarios. The later
 functional checks to thirteen per target, producing eighteen unique native
 scenarios and thirteen container scenarios without changing that matrix. The
 [authentication activation](../architecture/2026-10-22-authentication-activation.md)
-subsequently adds six functional scenarios per target; current strict inventories
-are twenty-four native and nineteen container scenarios, with these same five
-capacity/limit cases.
+subsequently adds six functional scenarios per target. The
+[Markdown description delivery](../architecture/2026-10-22-task-description-markdown.md)
+adds one more; current strict inventories are twenty-five native and twenty
+container scenarios, with these same five capacity/limit cases.
 
 The [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 the [web design](../../../../docs/design/daynight-web.md) owns model and viewport

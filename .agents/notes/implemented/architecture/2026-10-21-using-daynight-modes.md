@@ -52,11 +52,16 @@ autopilot. This keeps the persistent backlog under the user's control.
 
 Create-task checks creation permission, skips one-off and trivial work, matches
 existing problem/scope and acceptance, and registers ordinary single-outcome work
-or a staged Goal. Every description is a self-contained brief with concrete
-scope/actions, deliverables, constraints, an observable completion summary and
-real input references. A task-specific primary Markdown owns detailed solution,
-full acceptance and evidence. Shared Goal and design inputs remain at their
-source task ID and attachment path, or a verified immutable repository URL;
+or a staged Goal. Every description is a self-contained Markdown brief with a
+concrete problem, scope/actions, deliverables, constraints, an observable completion
+summary and real input references. Description-relative links and images start at
+the current task's attachment root; attachment Markdown retains its document
+directory. Uploaded contents are confirmed before linking, and full-field updates
+preserve Markdown and valid references. The create-task reference owns authoring
+examples; no new stored format or format flag is introduced. A task-specific
+primary Markdown owns detailed solution, full acceptance and evidence. Shared Goal
+and design inputs remain at their source task ID and attachment path, or a verified
+immutable repository URL;
 registration does not copy the same document packet to every task. Independently
 required snapshots retain source version and purpose.
 

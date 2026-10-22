@@ -39,7 +39,7 @@ The runner starts normal dev-ci source build/start once, concurrently with nativ
 production UI/Go/PostgreSQL preparation and CI browser/coverage callbacks. The
 existing shell runner remains authoritative for the unique image, running-image
 check and full stack cleanup. Native functional browser work waits only for the
-native process, shared installed CLI and browser preparation. Its nineteen scenarios and immediate
+native process, shared installed CLI and browser preparation. Its twenty scenarios and immediate
 browser recovery must pass before the runner releases the container browser.
 
 Release is an atomic `container/container-permission.json` receipt with schema 1,
@@ -47,7 +47,7 @@ phase `native-functional-cleaned`, acceptance run ID, dev-ci run ID and source
 SHA. The container callback records its process identity before waiting and
 inventories browsers only after validating that exact permission. Its
 `ready.json` records diagnostic timing and grants no permission. The callback
-runs the nineteen container functional scenarios, confirms browser cleanup and
+runs the twenty container functional scenarios, confirms browser cleanup and
 returns to the normal shell exit path. The outer stage waits for full dev-ci
 cleanup and browser recovery before completing.
 
@@ -57,7 +57,7 @@ Go process and PostgreSQL remain alive for this final phase. One browser worker,
 zero retries, all four fixed graphs with five repetitions, both independent
 limits, complete visible induced geometry, twenty CDP traces and all original timing gates
 remain required. Native functional and capacity phases strictly aggregate to
-twenty-four unique scenarios; the container target requires nineteen. Per-phase and
+twenty-five unique scenarios; the container target requires twenty. Per-phase and
 aggregate validation reject missing, extra or duplicate scenarios and retries,
 and require matching browser identity within a target.
 
@@ -67,9 +67,11 @@ bounded overview DOM, all induced visible edges and explicit expansion/reset.
 Phase ownership and the original thirty-one-scenario inventory were unchanged
 by progressive graph delivery. The
 [authentication activation](../architecture/2026-10-22-authentication-activation.md)
-adds six functional scenarios per target, making the current inventory forty-three.
-It also requires normal UniAuth session/PAT bootstrap with private run-owned
-credentials; graph/read-only request policies apply after that bootstrap.
+added six functional scenarios per target. The
+[Markdown description delivery](../architecture/2026-10-22-task-description-markdown.md)
+adds one per target, making the current inventory forty-five. Normal UniAuth
+session/PAT bootstrap uses private run-owned credentials; graph/read-only request
+policies, including the Markdown journey, apply after that bootstrap.
 
 The top-level evidence and recovery receipts use schema 2. Pipeline stages record
 names, results, timestamps, observed managed-command process identities and their
@@ -91,9 +93,30 @@ Any task failure cancels siblings and drains every started task before final
 cleanup; an unexpected native-server exit follows the same path. Browser phase
 cleanup verifies actual process groups and owned profiles immediately. Final
 and interrupted-run recovery examine browser phases in reverse order, then use
-the existing exact native-process and Docker ownership checks. CI recovery and
-both artifact uploads share the unified acceptance step's attempted-execution
-condition, so partial preparation remains attributable and recoverable.
+the existing exact native-process and Docker ownership checks.
+
+Installed-CLI recovery first verifies the recorded leader and discovered owned
+members before sending SIGTERM to the recorded group. Each of the existing two
+50-attempt, 100ms polling phases completes only when no owned members remain and
+`kill(-PGID, 0)` reports ESRCH for that original group. Empty `/proc` ownership
+results or an absent executable do not prove that the group has disappeared:
+an exited child can await its parent's reap while the kernel still reports the
+group. Both conditions are awaited within the existing budget. Remaining owned
+members retain the exact identity check before SIGKILL. An initially live group
+with no verified owned members still fails immediately; EPERM and other probe
+errors propagate. Recovery neither signals an unidentified group nor treats
+process-discovery absence as cleanup success.
+
+A controlled real-kernel reproduction exercises this exit/reap interval through
+`recoverCliProcesses`. The hosted failure that motivated the repair retained no
+child-state observation, so the reproduction establishes the mechanism without
+asserting that the CI child was a zombie. The broader process-discovery and
+privileged-permission questions in [issue #86](https://github.com/codetreker/daynight/issues/86)
+remain outside this bounded recovery correction.
+
+CI recovery and both artifact uploads share the unified acceptance step's
+attempted-execution condition, so partial preparation remains attributable and
+recoverable.
 
 The [web README](../../../../packages/daynight-web/README.md#production-browser-acceptance)
 owns commands and evidence interpretation. The
@@ -131,6 +154,11 @@ competing work and full stack cleanup before capacity.
 **Shard the job.** Additional runners duplicate setup and require independent
 identity and report aggregation rules. The adopted scope excludes shards and
 retains one complete job with explicit phase dependencies.
+
+**Stop waiting when owned-process discovery becomes empty.** The discovery scan
+can lose executable/environment ownership data before the parent reaps an exited
+child. Returning then makes a final group probe race with reaping. Polling both
+absence conditions preserves the original cleanup requirement and deadline.
 
 **Introduce a generic scheduler or pass previously built binaries between
 entries.** These add scheduling configuration or artifact-identity rules beyond

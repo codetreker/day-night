@@ -184,7 +184,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
       const right = await attachments.locator('.attachment-preview-pane').boundingBox();
       expect(split && left && right && left.x + left.width <= right.x + 1 && left.y === right.y && right.height === left.height).toBeTruthy();
       expect(await attachments.locator('.attachment-markdown pre').evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
-      if (width === 320) expect(await attachments.getByRole('table').last().evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+      if (width === 320) expect(await attachments.locator('.attachment-markdown .markdown-table').last().evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
     }
     await page.setViewportSize({ width: 1440, height: 800 });
     const openerViewport = page.viewportSize();

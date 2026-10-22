@@ -5,6 +5,7 @@ import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { processIdentity, requireGroupStopped } from './identity.mts';
 import { createAcceptanceCli, recordCliProcess, recoverCliProcesses, validateInstalledCli, type InstalledCliReceipt } from './installed-cli.mts';
 
 const repository = fileURLToPath(new URL('../../../../', import.meta.url));
@@ -48,6 +49,14 @@ const fixture = async (run: (value: { directory: string; receiptPath: string; re
     await rm(directory, { recursive: true, force: true });
     await rm(join(privateRoot, basename(directory)), { recursive: true, force: true });
   }
+};
+
+const within = async <T,>(promise: Promise<T>, label: string): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try { return await Promise.race([promise, new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label}.`)), 5_000);
+  })]); }
+  finally { clearTimeout(timer); }
 };
 
 test('installed bridge validates parent artifact evidence and preserves installed CLI output', { skip: process.platform !== 'linux' }, async () => {
@@ -121,6 +130,131 @@ test('recovery terminates only recorded installed CLI groups', { skip: process.p
       await closed;
       assert.equal(child.signalCode, 'SIGTERM');
     } finally { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); await closed; }
+  });
+});
+
+test('recovery waits for the parent to reap a terminated installed CLI child', { skip: process.platform !== 'linux' }, async (context) => {
+  await fixture(async ({ directory, receiptPath, receipt }) => {
+    const module = new URL('./installed-cli.mts', import.meta.url).href;
+    const env = { ...process.env };
+    delete env.DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT;
+    delete env.DAYNIGHT_ACCEPTANCE_RUN_DIRECTORY;
+    const supervisor = spawn(process.execPath, ['--input-type=module', '--eval', `
+      import { spawn } from 'node:child_process';
+      import { readSync } from 'node:fs';
+      import { recordCliProcess } from ${JSON.stringify(module)};
+      const [directory, receiptPath] = process.argv.slice(1);
+      const child = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { detached: true, stdio: 'ignore',
+        env: { ...process.env, DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT: receiptPath, DAYNIGHT_ACCEPTANCE_RUN_DIRECTORY: directory } });
+      const closed = new Promise((resolve) => child.once('close', resolve));
+      const send = (message) => new Promise((resolve, reject) => process.send(message, (error) => error ? reject(error) : resolve()));
+      try {
+        await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+        await recordCliProcess(directory, receiptPath, child);
+        await send({ kind: 'registered', pid: child.pid });
+        readSync(0, Buffer.alloc(1), 0, 1, null);
+      } finally {
+        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+        await closed;
+        await send({ kind: 'closed', signal: child.signalCode });
+        process.disconnect();
+      }
+    `, directory, receiptPath], { detached: true, env, stdio: ['pipe', 'ignore', 'pipe', 'ipc'] });
+    let stderr = '';
+    supervisor.stderr!.on('data', (bytes: Buffer) => { stderr += bytes.toString(); });
+    const done = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => supervisor.once('close', (code, signal) => resolve({ code, signal })));
+    let closedSignal: unknown;
+    supervisor.on('message', (message) => { if ((message as { kind: string }).kind === 'closed') closedSignal = (message as { signal: unknown }).signal; });
+    const registered = new Promise<number>((resolve, reject) => {
+      supervisor.once('error', reject);
+      supervisor.once('message', (message) => {
+        const value = message as { kind: string; pid: number };
+        if (value.kind !== 'registered' || !Number.isSafeInteger(value.pid)) reject(new Error('Supervisor did not register its CLI child.'));
+        else resolve(value.pid);
+      });
+    });
+    let recovering: Promise<{ error?: unknown }> | undefined;
+    let restoreKill = () => {};
+    let failure: unknown;
+    const cleanupFailures: unknown[] = [];
+    try {
+      const pid = await within(registered, 'supervised CLI registration');
+      const identity = await processIdentity(pid);
+      assert.notEqual(identity, null);
+      await writeFile(join(directory, 'held-reap-processes.json'), JSON.stringify({ supervisor: await processIdentity(supervisor.pid!), child: identity }));
+      const checked = Promise.withResolvers<void>();
+      const nativeKill = process.kill;
+      const kill = context.mock.method(process, 'kill', (group: number, signal?: NodeJS.Signals | number) => {
+        const result = nativeKill(group, signal);
+        if (group === -pid && signal === 0) checked.resolve();
+        return result;
+      });
+      restoreKill = () => kill.mock.restore();
+      let settled = false;
+      recovering = recoverCliProcesses(directory, receiptPath, receipt).then(() => { settled = true; return {}; }, (error: unknown) => { settled = true; return { error }; });
+      await within(checked.promise, 'terminated CLI group probe');
+      const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
+      assert.equal(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[0], 'Z');
+      assert.equal(await processIdentity(pid), null);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(settled, false, 'Recovery must wait until the parent reaps the terminated group member.');
+      // The synchronous read prevents the supervisor's event loop from reaping its child.
+      supervisor.stdin!.end(Buffer.of(1));
+      const result = await within(recovering, 'reaped CLI recovery');
+      assert.equal(result.error, undefined);
+      assert.deepEqual(await within(done, 'supervisor cleanup'), { code: 0, signal: null }, stderr);
+      assert.equal(closedSignal, 'SIGTERM');
+      requireGroupStopped(pid);
+    } catch (error) { failure = error; }
+    finally {
+      try { if (!supervisor.stdin!.destroyed) supervisor.stdin!.end(Buffer.of(1)); }
+      catch (error) { cleanupFailures.push(error); }
+      try { await within(done, 'supervisor final cleanup'); }
+      catch (error) { cleanupFailures.push(error); }
+      if (recovering !== undefined) {
+        try { const result = await within(recovering, 'recovery final cleanup'); if (result.error !== undefined) cleanupFailures.push(result.error); }
+        catch (error) { cleanupFailures.push(error); }
+      }
+      restoreKill();
+    }
+    if (cleanupFailures.length > 0) throw new AggregateError(failure === undefined ? cleanupFailures : [failure, ...cleanupFailures], 'CLI recovery assertion or fixture cleanup failed.');
+    if (failure !== undefined) throw failure;
+  });
+});
+
+test('recovery preserves live groups without ownership and rejects changed receipts before signalling', { skip: process.platform !== 'linux' }, async (context) => {
+  for (const refusal of ['unowned', 'identity', 'executable', 'ownership', 'path'] as const) await fixture(async ({ directory, receiptPath, receipt }) => {
+    const env = { ...process.env };
+    delete env.DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT;
+    delete env.DAYNIGHT_ACCEPTANCE_RUN_DIRECTORY;
+    if (refusal !== 'unowned') Object.assign(env, { DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT: receiptPath, DAYNIGHT_ACCEPTANCE_RUN_DIRECTORY: directory });
+    const child = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { detached: true, stdio: 'ignore', env });
+    const closed = new Promise<void>((resolve) => child.once('close', resolve));
+    const signals: unknown[] = [];
+    const nativeKill = process.kill;
+    const kill = context.mock.method(process, 'kill', (pid: number, signal?: NodeJS.Signals | number) => { if (signal !== 0) signals.push([pid, signal]); return nativeKill(pid, signal); });
+    try {
+      await new Promise<void>((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+      await recordCliProcess(directory, receiptPath, child);
+      if (refusal === 'identity' || refusal === 'ownership') {
+        const names = await readdir(join(directory, 'cli-processes'));
+        assert.equal(names.length, 1);
+        const path = join(directory, 'cli-processes', names[0]!);
+        const record = JSON.parse(await readFile(path, 'utf8')) as { directory: string; identity: { startTicks: string } };
+        if (refusal === 'identity') record.identity.startTicks = '0'; else record.directory = dirname(directory);
+        await writeFile(path, JSON.stringify(record));
+      }
+      const expected = { unowned: /group is still running/, identity: /leader identity changed/, executable: /unexpected executable/, ownership: /receipt ownership differs/, path: /paths do not belong/ };
+      await assert.rejects(recoverCliProcesses(directory, refusal === 'path' ? join(directory, 'wrong.json') : receiptPath,
+        refusal === 'executable' ? { ...receipt, nodePath: '/bin/sh' } : receipt), expected[refusal]);
+      assert.deepEqual(signals, []);
+      assert.notEqual(await processIdentity(child.pid!), null);
+      assert.equal(child.signalCode, null);
+    } finally {
+      kill.mock.restore();
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+      await closed;
+    }
   });
 });
 

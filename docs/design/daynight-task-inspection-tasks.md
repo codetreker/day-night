@@ -1,6 +1,6 @@
 # 任务依赖追踪与详情阅读任务拆分
 
-状态：UX-T1 的完整上游上下文与 UX-T3 的居中详情已实现；UX-T2 以渐进概览及依赖检查两个 focused PR 交付，当前先推进概览，后续 #121 完成检查；两者均合并才完成该任务。UX-T4 待实现。交付目标以[要求](../spec/daynight-task-inspection.md)为准，机制见[设计](daynight-task-inspection.md)，最终交互见[原型](mockups/task-inspection/index.html)。本文拥有每项任务的目的、范围及验收划分；实际状态、任务 ID 和前置关系以 Daynight 为准，前置关系只保存在 `dependsOn`。
+状态：UX-T1 完整上游上下文、UX-T3 居中详情与 [PR #134](https://github.com/codetreker/daynight/pull/134) 渐进概览已交付。UX-T2 的依赖检查从当前主线重建，[替代 PR #143](https://github.com/codetreker/daynight/pull/143)进行中；旧 [#121](https://github.com/codetreker/daynight/pull/121) 已关闭弃用，不是完成前置。UX-T4 的 Markdown 与 bundled skill 验收和交付进行中。交付目标以[要求](../spec/daynight-task-inspection.md)为准，机制见[设计](daynight-task-inspection.md)，最终交互见[原型](mockups/task-inspection/index.html)。本文拥有每项任务的目的、范围及验收划分；实际状态、任务 ID 和前置关系以 Daynight 为准，前置关系只保存在 `dependsOn`。
 
 ## 交付清单
 
@@ -33,9 +33,9 @@
 
 ## UX-T2：渐进概览与稳定依赖追踪
 
-本任务分两个 focused PR，仍是同一个 Daynight 任务。当前概览 PR 集成后，继续 [#121](https://github.com/codetreker/daynight/pull/121) 的检查交付；两者都合并且各自验收满足才完成 UX-T2。共享[目标原型](mockups/task-inspection/index.html)表达最终组合行为，不表示当前概览 PR 已有主体选择/曲线功能。
+本任务保留已交付的 PR #134 概览基线，由替代 PR #143 交付依赖检查，仍是同一个 Daynight 任务。替代实现完成自身当前源码验收并合并后才完成 UX-T2；旧 #121 的运行、CI 和 review 不构成新源码证明。共享[目标原型](mockups/task-inspection/index.html)表达最终组合行为，不表示当前概览 PR 已有主体选择/曲线功能。
 
-### 当前 PR：渐进概览
+### 已交付基线：渐进概览
 
 保留完整 `projectRoot` P 和 M 计数。P≤50任务且≤100边时全显，其余从根做快照稳定、后续优先、只遍历接纳节点的无向 BFS，接纳后实际诱导图仍满足 50/100。卡片方向控件一次显式加入最多 20 个隐藏直接邻居，准确显示新增任务/边和剩余数；无手动边上限。全局 reset 重算/定位概览，成功刷新仅保留有效实际 ID 加根的连通分量，不自动补基线。
 
@@ -43,7 +43,7 @@
 
 验收覆盖 50/100 边界、诱导边预算、稳定 BFS、20 直接批次、共享/外部/四态、无手动边上限、展开锚点、reset framing/focus、实际 ID 刷新连通修剪与失败保留。四个完整 1,000 任务/999或5,000边输入各五次不变，改验有界初始 DOM 和全部可见诱导边、显式展开/reset；`openMs≤3000`、原有 detail/zoom/pan≤300，详情关闭后立即缩放序列、31 场景、零重试、既有 timeout、coverage 和清理要求保持。不声明 selectMs、隐藏 H 或曲线容量结论。
 
-### 后续 PR #121：依赖检查
+### 替代 PR #143：依赖检查
 
 在已交付概览上分离主体选择与 Details 入口，完整 H 的可见成员和边/箭头同步高亮，隐藏上游按 ID 去重提示；选择不展开、不布局、不移动视口。交付平滑路线、外部虚线相位和独立几何判断，覆盖刷新选择生命周期、键盘、关系导航及焦点。该 PR 添加独立选择反馈和曲线/body/marker 验收；保持已确立的可见工作负载、原输入与预算。
 
@@ -73,18 +73,18 @@
 
 ### 方案
 
-提取共享 Markdown 渲染视图，描述按 CommonMark/GFM 展示，使用任务附件根解析相对 URL；附件 Markdown 继续使用文档目录。描述普通相对附件链接激活附件页签，复用详情内唯一附件控制器选中已有预览，保留真实 href 与浏览器原生特殊点击。完整清单、路径和预览错误保持可见，切换 task 或关闭时取消读取。
+`TaskDetailReading` 持有单个 `useAttachments`，将同一控制器传给描述导航、`TaskDetailPanels` 与 `TaskAttachmentsPanel`。`MarkdownContent` 共享 CommonMark/GFM 渲染及样式，描述显式以任务附件根解析相对 URL；附件 Markdown 继续使用实际文档目录。描述普通相对附件链接激活附件页签，复用详情内唯一附件控制器选中已有预览，保留真实 href 与浏览器原生特殊点击。普通链接使用真实 href；修饰键、非主键、上下文菜单及 query/hash 导航保持浏览器行为。完整清单之前不报告缺失，加载、清单失败、非法路径、缺失与预览错误分别可见并保留适用重试；切换 task、关闭详情或鉴权/资源失效取消读取并排除晚到响应。
 
 同步仓库发布源中的 `using-daynight` 入口与模式指引、skill 需求/设计及 README，明确 Markdown 自足任务简介和已确认资料引用的写法，正文包含具体动作、范围、交付物、约束及简明完成条件。任务专属主 Markdown 附件继续拥有详细方案、完整验收和执行证据。API/CLI 原始字符串、完整替换字段及版本控制语义保持一致。同步看板、附件 Markdown 文档、相应决策和生产组件原型。
 
 ### 验收标准
 
-- 标题、列表、代码、引用、表格、链接、中文长文本及空描述正确显示；原始 HTML 按文本呈现，代码/表格局部滚动。
+- 中英文标题、列表、代码、引用、表格、链接、图片、长文本及空描述正确显示；原始 HTML 按文本呈现，unsafe URL 沿用原策略，320px 无页面溢出且代码/表格局部横向滚动。
 - `[方案与验收](plan.md)`、`[交互原型](mockui/index.html)` 和相对图片从当前任务根解析；附件文件内的相对引用继续以文档目录解析。
 - 普通无 query/hash 的相对附件链接激活当前详情的附件页签，选择并聚焦预览；修饰键、非主键、绝对 URL、fragment 和 query/hash 保留设计定义的 URL 行为。
-- 加载、清单失败、缺失附件、非法上越路径、内容失败以及切换 task 后旧响应均有正确行为；不重复建立附件控制器。
+- 分页未完成、续页失败/重试、缺失附件、非法上越路径、预览失败、同路径覆盖 revision 以及 task/关闭/auth 失效后的旧响应均有正确行为；不重复建立附件控制器，保持 split pane、唯一右滚动、frame 键盘与焦点恢复。
 - CLI 写入/读取保留原始 Markdown 字节，实际 npm 包含同步后的 skill 全部资源，frontmatter、相对链接、create-task/run-task 行为及安装后内容验证通过。
-- 受影响 CLI/Web 检查及真实服务/浏览器描述与附件引用路径通过；现有主附件所有权和独立附件写入语义保持正确。
+- 受影响 CLI/Web 检查及真实服务/浏览器描述与附件引用路径通过，保留当前场景/容量输入、阈值、零重试和清理；普通/Goal 自足简介、主附件所有权、权限规则和独立附件写入语义保持正确。当前 head 独立审查、真实 approval、所需 checks 和授权受保护合并完成后才将 UX-T4 标记完成。
 
 ## 任务资料与实现文档
 

@@ -7,13 +7,16 @@ or activating autopilot.
 
 ## Establish the task and stage
 
-Read the complete task with `daynight task show <task-id> --json`. Its description
-must make the current actions, scope, deliverables, constraints, and observable
-completion summary understandable. Read its own primary Markdown's Solution and
-Acceptance criteria; equivalent headings in the task's language are valid.
-Resolve real shared input references using the source task ID and attachment
-path or a verified immutable repository reference. Read required contents rather
-than assuming a task read loads attachment inventory or bytes.
+Read the complete task with `daynight task show <task-id> --json`. Its Markdown
+description must make the problem, current actions, scope, deliverables,
+constraints, and observable completion summary understandable. Read its own primary
+Markdown's Solution and Acceptance criteria; equivalent headings in the task's
+language are valid.
+Resolve description-relative links and images from the current task's attachment
+root; links inside a Markdown attachment use its own directory. Resolve real
+shared input references using the source task ID and attachment path or a verified
+immutable repository reference. Read required contents rather than assuming a
+task read loads attachment inventory or bytes.
 
 For a Goal stage or delivery task, read [the Goal protocol](goal.md) and identify
 its role from the actual task content and context. Apply that stage's input and
@@ -53,8 +56,11 @@ while running either stage.
 Resolve material changes to the agreed solution or acceptance within the current
 authorization. Rewrite the owning artifact and affected task summaries and input
 references coherently. Preserve requirements; do not silently weaken acceptance.
-Descriptions remain concrete task summaries. Each primary Markdown owns its
-detailed plan and evidence; shared inputs remain at their verified source.
+Descriptions remain self-contained Markdown task summaries. Preserve valid
+syntax, original content, and actual resource references during full-field
+updates; confirm new or replaced resources before linking them. Each primary
+Markdown owns its detailed plan and evidence; shared inputs remain at their
+verified source.
 
 Advance only this task. Subagents collaborate on it, and waiting for CI, review,
 approval, or merge remains part of it. Keep all required delivery PR URLs and

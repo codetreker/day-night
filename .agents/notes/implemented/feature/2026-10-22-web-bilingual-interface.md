@@ -56,9 +56,10 @@ Three stable functional annotations cover the integration on both production
 targets: `language-startup-preferences`, `language-state-preservation` and
 `language-errors-and-narrow`. That interface delivery expanded each target to
 thirteen functional scenarios and eighteen unique native scenarios including
-five capacity/limit cases. Authentication adds six functional scenarios per
-target; the current strict inventory is nineteen functional per target and
-twenty-four native scenarios, forty-three across both targets. The existing single project, one worker, zero retries,
+five capacity/limit cases. Authentication added six functional scenarios per
+target. The later [Markdown description delivery](../architecture/2026-10-22-task-description-markdown.md)
+adds one more; the current strict inventory is twenty functional per target and
+twenty-five native scenarios, forty-five across both targets. The existing single project, one worker, zero retries,
 capacity matrix, strict coverage and cleanup gates remain required. The
 [pipeline decision](../testing/2026-10-21-web-acceptance-pipeline.md) owns phase
 scheduling; the [Web README](../../../../packages/daynight-web/README.md#production-browser-acceptance)

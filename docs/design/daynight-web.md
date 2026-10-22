@@ -116,7 +116,7 @@ project/task 身份切换重新从概览开始。下载旁的新标签页入口�
 共享内容渲染、locale、非模态键盘与满视口滚动机制由
 [独立附件阅读页](daynight-task-attachments.md#独立附件阅读页)拥有。
 
-概览是详情中任务内容的滚动所有者。阅读主栏展示纯文本描述和关联 PR，265px 辅栏
+概览是详情中任务内容的滚动所有者。阅读主栏展示共享 CommonMark/GFM 视图渲染的描述和关联 PR，265px 辅栏
 展示时间、完整 ID、直接前置、当前阻塞项和直接后续。850px 及以下辅栏为 225px，
 600px 及以下堆叠为单栏；长文本换行，表格和代码在局部横向滚动。附件页签占满正文
 宽度，在所有支持宽度保持左列表、右预览；父级正文、面板及右侧外壳隐藏溢出，每侧
@@ -128,6 +128,16 @@ iframe 内文档纵向滚动。短视口压缩标题与间距以保留内容，�
 [居中详情决策](../../.agents/notes/implemented/feature/2026-10-22-centered-task-detail-dialog.md)
 保留外壳和生命周期的理由，[分屏决策](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-split-view.md)
 拥有页签及滚动所有权。
+
+描述与附件复用 `MarkdownContent` 及样式。`MarkdownAttachmentBase` 显式区分资源基准：描述使用
+任务附件根，附件使用实际文档目录，不为描述构造虚拟文件名。`TaskDetailReading` 持有一个
+`useAttachments` 控制器，描述导航与 `TaskAttachmentsPanel` 共享完整分页清单、
+选择、预览和错误。
+普通主键无 query/hash 的相对文件链接通过该控制器选择路径、激活附件页签并聚焦
+预览；完整清单读取前不报告缺失。路径错误、清单错误、缺失和正文错误分别展示，
+其重试与资源失效继续属于原附件请求生命周期。真实 href 及其余浏览器导航行为
+保留。Markdown 的机制与范围由[描述阅读设计](daynight-task-inspection.md#markdown-与附件链接)
+及[决策](../../.agents/notes/implemented/architecture/2026-10-22-task-description-markdown.md)拥有。
 
 PR 区域在描述之后，标题与 URL 分别使用文本节点，空字符串显示专用标记，重复项
 保留独立行，长文本按阅读主栏宽度换行。`TaskPullRequests` 用本地 100 行分页
@@ -178,7 +188,7 @@ S ⊆ P，包含根，当前实际可见 ID
 
 `getTaskExpansion` 按指定方向选 P 内前20个隐藏直接邻居，不递归，返回本批ID、新增诱导边和剩余数；新增边包含批内关系，无手动边上限。卡片宽220px，两方向都无可展开邻居时高96px（94px主体、2px边框），不渲染footer或分隔线；至少一方向有控件时高136px，包含40px双列footer，另一空方向保留列位置。主体仍是详情触发，方向控件为兄弟原生按钮。每个可见快照只派生一次展开数据，布局、React Flow、视口适配与键盘揭示共用实际卡片尺寸。显式展开在新布局以当前缩放居中锚点并聚焦主体；全局reset重算/定位概览并保留控件焦点。
 
-`reconcileVisibleTasks` 在成功刷新保留旧实际S中仍属于新P的任务，加根后仅留诱导无向图的根连通分量，不自动并入新基线。刷新保持视口，失败保留旧视图；reset/remount计算新概览，项目/根/页签/卸载清除局部状态。详情打开时不抢焦点，丢失入口由既有关闭回退处理。当前概览保留 body-open-details 和原折线/箭头/虚线renderer；依赖主体选择和曲线由后续#121交付。
+`reconcileVisibleTasks` 在成功刷新保留旧实际S中仍属于新P的任务，加根后仅留诱导无向图的根连通分量，不自动并入新基线。刷新保持视口，失败保留旧视图；reset/remount计算新概览，项目/根/页签/卸载清除局部状态。详情打开时不抢焦点，丢失入口由既有关闭回退处理。当前概览保留 body-open-details 和原折线/箭头/虚线renderer；依赖主体选择和曲线由进行中的替代 PR #143 交付；旧 #121 已关闭弃用，其运行结果不构成替代源码证据。
 
 布局适配器使用固定 Dagre 3.1.1，统一设置 `rankdir: "LR"` 和
 `ranker: "longest-path"`，节点宽度为 220px，高度按可展开邻居为 96px 或 136px，按 ID 稳定输入节点和边，减少同一
@@ -333,7 +343,8 @@ packages/daynight-server/
 | React Flow 组件 | 视口、只读节点、缩放、平移和节点选择 | 接收布局与 onSelectTask，不调用 API |
 | 虚线绘制分解 | 保留弧长/相位的局部轴向 line 与短原生转角 path | 只依赖布局坐标类型，不访问 DOM、视口或 API |
 | 静态依赖 SVG | 公开 ViewportPortal 内的完整 canonical 路线、原生箭头、派生 body paint 与可访问语义 | 接收不可变布局，复用 React Flow 视口变换，不订阅逐边状态 |
-| TaskDetailDialog、TaskDetailPanels | 当前 taskId 的详情、居中外壳、概览/附件页签、关系跳转、body portal、焦点和关闭 | 概览组合阅读主栏、元数据/关系栏及 PR，附件组合独立左右分屏；不修改图快照 |
+| TaskDetailDialog、TaskDetailPanels | 当前 taskId 的详情、居中外壳、概览/附件页签、关系跳转、body portal、焦点和关闭 | 通过 TaskDetailReading 组合概览与附件，不修改图快照 |
+| TaskDetailReading、MarkdownContent | 共享 Markdown 视图、明确的资源基准、描述附件导航与单一控制器组合 | 调用同一个 useAttachments，将其交给描述导航和 TaskAttachmentsPanel；渲染器接收 URL 与点击策略 |
 | 附件 hook/model | 当前 project/task 的分页、写状态、选择、预览状态及目录树 | 调用 api；不修改详情或图快照 |
 | 附件预览、AttachmentPage | 共享 Markdown、文本、图片和可信同源 frame；独立阅读页的完整清单与文件身份 | 使用原有文件/预览路径；仅实际对话框中的 frame 复用 focus helper 安装键盘桥 |
 | Go server | HTTP 解析、响应、路由与方法语义 | 调用 service 或 webui |
@@ -651,10 +662,11 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 
 后端图超限是可解释的页面拒绝。HTTP 404 清除对应不可访问图或详情，项目错误
 提供返回入口；401 由认证层结束会话并卸载工作空间，详情同样清除旧内容。其他
-错误提供重试和 requestId，避免渲染原始响应内容。标题、描述和仓库地址以纯文本
-显示，不渲染 HTML 或 Markdown。附件内容按
-[附件预览规则](daynight-task-attachments.md#web-文件树与预览)处理，不能把任务正文
-的纯文本规则误用于 Markdown 文件或可信 HTML。
+错误提供重试和 requestId，避免渲染原始响应内容。标题和仓库地址使用文本节点；
+描述使用 CommonMark/GFM，原始 HTML 保持文本，URL 沿用已有安全处理。描述与附件
+Markdown 复用渲染器，分别使用任务根与文档目录；其他附件内容按
+[附件预览规则](daynight-task-attachments.md#web-文件树与预览)处理。可信同源 HTML
+仍只属于附件预览的既有执行模型。
 
 ## 观测与生命周期
 
@@ -700,8 +712,8 @@ API 数据和固定图集。
 gateway 夹具取得正常浏览器会话和 PAT，数据准备与安装 CLI 使用同一授权通道。
 App 与用户凭据只保存在私有 0600 元数据，公开回执和截图不包含秘密。受控外部
 provider 响应证明 gateway/SDK 协议，不等同于真实上游账号登录。
-原生目标分成十九个功能场景和五个容量/超限场景，容器目标经实际生产镜像 gateway
-执行同一个十九场景功能集合。`refresh-staleness` 验证自动读取后图、统计和当前详情
+原生目标分成二十个功能场景和五个容量/超限场景，容器目标经实际生产镜像 gateway
+执行同一个二十场景功能集合。`refresh-staleness` 验证自动读取后图、统计和当前详情
 的一致更新，以及保留浏览、焦点和附件状态的故障恢复；定时器、可见性、请求串行与
 资源切换另由 hook/组件测试验证。浏览器顺序和清理屏障由[CI 构建归属](#ci-构建归属)定义。日常 localhost 栈
 不参与测试。`project-view-tabs` 覆盖两类分类及依赖迁移、独立任务直接详情、独立完成筛选、
@@ -732,7 +744,7 @@ PDF 预览通过轮询 iframe 的实际 compositor 截图，验证 fixture 专�
 
 性能目标是原生 Go 生产进程。四个完整输入仍为1,000任务，单链999边，merge/shared/external各5,000边，external全数据为2 main/998 external。完整API逐ID/依赖比较；同图五次复用原ID。DOM工作负载改为≤50任务/100诱导边的概览及其全部可见边，并验证显式20直接批次和reset，不要求所有输入同时渲染。
 
-每次从trusted输入到完整可见概览、根可操作和两次animation frame，openMs≤3,000；原detail/zoom/pan≤300。保留详情关闭后立即zoom/pan，不增加fit/reset/等待。当前没有独立inspection/selectMs或曲线容量结论。`visibility[5]`逐次保留repetition、overviewNodes/Edges、addedNodes/Edges、expandedNodes/Edges及resetNodes/Edges，要求顺序、预算、精确增量和reset计数正确。布局/渲染诊断、网络分开计时，1,001节点和5,001边仍完整409拒绝。43场景（24原生、19容器）、锁定浏览器、coverage、timeout、零retry和清理保持；当前运行结果待完成。
+每次从trusted输入到完整可见概览、根可操作和两次animation frame，openMs≤3,000；原detail/zoom/pan≤300。保留详情关闭后立即zoom/pan，不增加fit/reset/等待。当前没有独立inspection/selectMs或曲线容量结论。`visibility[5]`逐次保留repetition、overviewNodes/Edges、addedNodes/Edges、expandedNodes/Edges及resetNodes/Edges，要求顺序、预算、精确增量和reset计数正确。布局/渲染诊断、网络分开计时，1,001节点和5,001边仍完整409拒绝。45场景（25原生、20容器）、锁定浏览器、coverage、timeout、零retry和清理保持；当前运行结果待完成。
 
 每个容量 dataset 的 `feedbackDiagnostics` 增量保存每次 open/detail/zoom/pan 的
 `kind`、`repetition`、`start`、`capturedAt`、`conditionAt`、`frame1At`、

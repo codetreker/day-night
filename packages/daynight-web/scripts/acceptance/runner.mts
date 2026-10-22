@@ -23,7 +23,7 @@ const script = fileURLToPath(new URL('../acceptance.mts', import.meta.url));
 const labelKey = 'io.daynight.acceptance.run';
 const functionalScenarios = ['project-list', 'project-graph', 'detail-navigation', 'refresh-staleness',
   'failure-recovery', 'deep-links', 'keyboard-focus', 'narrow-layout', 'task-attachments', 'project-view-tabs',
-  'language-startup-preferences', 'language-state-preservation', 'language-errors-and-narrow',
+  'language-startup-preferences', 'language-state-preservation', 'language-errors-and-narrow', 'task-description-markdown',
   'auth-login-session', 'auth-project-isolation', 'auth-project-members', 'auth-personal-tokens',
   'auth-invitations', 'auth-resource-session'] as const;
 const capacityScenarios = ['capacity-chain', 'capacity-merge', 'capacity-shared', 'capacity-external', 'capacity-limits'] as const;
