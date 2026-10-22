@@ -333,6 +333,36 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
     await expect.poll(() => viewport.getAttribute('style')).not.toBe(beforePan);
     await checkEdges(a.id);
   });
+  await test.step('fills the viewport without replacing the active graph or resetting its view', async () => {
+    const viewport = page.locator('.react-flow__viewport');
+    const beforeFullscreen = await viewport.getAttribute('style');
+    const viewportElement = await viewport.elementHandle();
+    const taskElement = await node(page, a.id).elementHandle();
+    expect(viewportElement).not.toBeNull();
+    expect(taskElement).not.toBeNull();
+    const enter = page.getByRole('button', { name: '全屏查看', exact: true });
+    await enter.click();
+    const fullscreen = page.getByRole('dialog', { name: '任务依赖图全屏查看', exact: true });
+    await expect(fullscreen).toHaveAttribute('aria-modal', 'true');
+    await expect.poll(async () => {
+      const bounds = await fullscreen.boundingBox();
+      return bounds !== null && Math.abs(bounds.x) <= 0.5 && Math.abs(bounds.y) <= 0.5
+        && Math.abs(bounds.width - 1600) <= 0.5 && Math.abs(bounds.height - 1100) <= 0.5;
+    }).toBe(true);
+    await expect(viewport).toHaveAttribute('style', beforeFullscreen!);
+    expect(await viewportElement!.evaluate((element) => element === document.querySelector('.react-flow__viewport'))).toBe(true);
+    expect(await taskElement!.evaluate((element, id) => element === document.querySelector(`.react-flow__node[data-id="${id}"] button.task-node`), a.id)).toBe(true);
+    await checkEdges(a.id);
+    await fullscreen.getByRole('button', { name: '退出全屏', exact: true }).click();
+    await expect(fullscreen).toHaveCount(0);
+    await expect(enter).toBeFocused();
+    await expect(viewport).toHaveAttribute('style', beforeFullscreen!);
+    expect(await viewportElement!.evaluate((element) => element === document.querySelector('.react-flow__viewport'))).toBe(true);
+    expect(await taskElement!.evaluate((element, id) => element === document.querySelector(`.react-flow__node[data-id="${id}"] button.task-node`), a.id)).toBe(true);
+    await checkEdges(a.id);
+    await viewportElement!.dispose();
+    await taskElement!.dispose();
+  });
   await expect(page.locator('.task-node-boundary')).toHaveCount(2);
   await expect(page.locator('.task-boundary-label')).toHaveText(['外部前置，上游已省略', '外部前置，上游已省略']);
   await expect(node(page, f.id).locator('.task-shared-label')).toHaveText('共享');
@@ -664,7 +694,23 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   const trigger = node(page, b.id);
   let detailReads = 0;
   page.on('request', (request) => { if (new URL(request.url()).pathname === `/api/v1/projects/${project.id}/tasks/${b.id}`) detailReads++; });
+  const originalOverflow = await page.evaluate(() => ({ document: document.documentElement.style.overflow, body: document.body.style.overflow }));
+  const enterFullscreen = page.getByRole('button', { name: '全屏查看', exact: true });
+  await enterFullscreen.focus();
+  await page.keyboard.press('Enter');
+  const fullscreen = page.getByRole('dialog', { name: '任务依赖图全屏查看', exact: true });
+  const exitFullscreen = fullscreen.getByRole('button', { name: '退出全屏', exact: true });
+  await expect(exitFullscreen).toBeFocused();
+  expect(await root(page, a.id).evaluate((element) => element.closest('[inert]') !== null)).toBe(true);
+  expect(await page.getByRole('button', { name: '刷新', exact: true, includeHidden: true }).evaluate((element) => element.closest('[inert]') !== null)).toBe(true);
+  await page.keyboard.press('Shift+Tab');
+  expect(await fullscreen.evaluate((element) => element.contains(document.activeElement))).toBe(true);
   await page.keyboard.press('Tab');
+  await expect(exitFullscreen).toBeFocused();
+  for (let index = 0; index < 10; index++) {
+    await page.keyboard.press('Tab');
+    expect(await fullscreen.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  }
   await trigger.focus();
   await expect(trigger).toBeFocused();
   await page.keyboard.press('Enter');
@@ -688,12 +734,18 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   }
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
+  await expect(fullscreen).toBeVisible();
   await expect(trigger).toBeFocused();
   await page.keyboard.press('Space');
   await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
   expect(detailReads).toBe(2);
   await close.click();
   await expect(trigger).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(fullscreen).toHaveCount(0);
+  await expect(enterFullscreen).toBeFocused();
+  expect(await root(page, a.id).evaluate((element) => element.closest('[inert]') !== null)).toBe(false);
+  expect(await page.evaluate(() => ({ document: document.documentElement.style.overflow, body: document.body.style.overflow }))).toEqual(originalOverflow);
 
   await trigger.click();
   await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
@@ -731,16 +783,33 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   const completedVisibility = page.getByRole('checkbox', { name: '显示已完成任务链（0）' });
   await completedVisibility.check();
   await expect(completedVisibility).toBeChecked();
-  await updateTask(request, project.id, b.id, { version: b.version, dependsOn: [] });
-  await trigger.click();
-  await expect(dialog.locator('.drawer-stale')).toBeVisible();
-  await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
-  await expect(trigger).toHaveCount(0);
-  await page.keyboard.press('Escape');
-  await expect(dialog).toHaveCount(0);
-  await expect(root(page, a.id)).toBeFocused();
-  await expect(page.locator('#root')).not.toHaveAttribute('inert', '');
+  let currentTask = b;
+  for (const fullscreenMode of [false, true]) {
+    if (fullscreenMode) {
+      currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, dependsOn: [a.id] });
+      await page.getByRole('button', { name: '刷新', exact: true }).click();
+      await expect(trigger).toBeVisible();
+      await enterFullscreen.click();
+    }
+    currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, dependsOn: [] });
+    await trigger.click();
+    await expect(dialog.locator('.drawer-stale')).toBeVisible();
+    await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
+    await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
+    await expect(trigger).toHaveCount(0);
+    if (fullscreenMode) await expect(page.locator('.task-graph-fullscreen')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    if (fullscreenMode) {
+      await expect(fullscreen).toBeVisible();
+      await expect(exitFullscreen).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(fullscreen).toHaveCount(0);
+      await expect(enterFullscreen).toBeFocused();
+    } else await expect(root(page, a.id)).toBeFocused();
+    await expect(page.locator('#root')).not.toHaveAttribute('inert', '');
+    expect(await page.evaluate(() => ({ document: document.documentElement.style.overflow, body: document.body.style.overflow }))).toEqual(originalOverflow);
+  }
   await screenshot(page, info, 'keyboard-focus');
 });
 
@@ -759,7 +828,19 @@ test('narrow-layout', scenario('narrow-layout'), async ({ page, request }, info)
   await expect(page.getByRole('button', { name: '刷新', exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expect(page.locator('.stats .stat')).toHaveCount(6);
-  await page.keyboard.press('Tab');
+  await page.getByRole('button', { name: '全屏查看', exact: true }).click();
+  const fullscreen = page.getByRole('dialog', { name: '任务依赖图全屏查看', exact: true });
+  for (const width of [320, 768, 1280, 320]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect.poll(async () => {
+      const bounds = await fullscreen.boundingBox();
+      return bounds !== null && Math.abs(bounds.x) <= 0.5 && Math.abs(bounds.y) <= 0.5
+        && Math.abs(bounds.width - width) <= 0.5 && Math.abs(bounds.height - 800) <= 0.5;
+    }).toBe(true);
+    await expect(fullscreen.getByRole('button', { name: '退出全屏', exact: true })).toBeVisible();
+    expect(await fullscreen.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
   await node(page, a.id).focus();
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: '任务详情' });
