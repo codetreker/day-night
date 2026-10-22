@@ -5,7 +5,8 @@ import { evidenceDirectory, expect, test, updateTask } from './fixtures';
 import { seedCapacity, seedNodeLimit, type CapacityFixture, type CapacityKind } from './capacity-data';
 import { withCapacityTrace } from './capacity-trace';
 import { checkDependencyGeometry, type GeometryExpectation } from './dependency-geometry';
-import { expectedBatch, expectedOverview } from './visible-topology';
+import { expectedBatch, expectedDependencyTopology, expectedOverview } from './visible-topology';
+import { parseTaskGraph } from '../../src/api/parse';
 
 // Repeated DOM snapshots of capacity views add controller work between
 // measured interactions. Dedicated CDP timelines and scenario PNGs retain the
@@ -303,15 +304,7 @@ const panPoint = (page: Page) => page.evaluate(() => {
   throw new Error('No accessible blank canvas position is available for the pan interaction.');
 });
 
-const expectedCapacityGeometry = (fixture: CapacityFixture): GeometryExpectation => {
-  const successors = new Map(fixture.tasks.map((task) => [task.id, [] as string[]]));
-  for (const task of fixture.tasks) for (const source of task.dependsOn) successors.get(source)!.push(task.id);
-  const main = new Set([fixture.root.id]); const pending = [fixture.root.id];
-  for (let i = 0; i < pending.length; i++) for (const id of successors.get(pending[i]!)!) if (!main.has(id)) { main.add(id); pending.push(id); }
-  return { nodes: fixture.tasks.map(({ id }) => ({ id })), edges: fixture.tasks.flatMap((task) => task.dependsOn.map((source) => ({
-    id: `${source}->${task.id}`, source, target: task.id, external: !main.has(source),
-  }))) };
-};
+const expectedCapacityGeometry = (fixture: CapacityFixture): GeometryExpectation => expectedDependencyTopology(fixture.tasks, fixture.root.id);
 const stableGeometry = (page: Page) => page.evaluate(() => ({
   viewport: (document.querySelector('.react-flow__viewport') as HTMLElement).style.transform,
   nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => [node.dataset.id, node.style.transform, node.style.width, node.style.height]),
@@ -322,6 +315,7 @@ const stableGeometry = (page: Page) => page.evaluate(() => ({
     return [m.a, m.b, m.c, m.d, m.e, m.f];
   }),
 }));
+const bodyGeometry = (geometry: Awaited<ReturnType<typeof stableGeometry>>) => ({ nodes: geometry.nodes, paths: geometry.paths, pieces: geometry.pieces });
 const assertInspection = async (page: Page, fixture: CapacityFixture, selectedId: string, visible: GeometryExpectation) => {
   const tasks = new Map(fixture.tasks.map((task) => [task.id, task]));
   const closure = new Set([selectedId]); const pending = [selectedId];
@@ -378,7 +372,7 @@ const assertInspection = async (page: Page, fixture: CapacityFixture, selectedId
 };
 
 type LocalFeedback = { detailMs: number; detailNetworkMs: number; zoomMs: number; panMs: number };
-const measureDetailsZoomPan = async (page: Page, fixture: CapacityFixture, taskId: string, dataset: Dataset, repetition: number): Promise<LocalFeedback> => {
+const measureDetailsZoomPan = async (page: Page, fixture: CapacityFixture, taskId: string, dataset: Dataset, repetition: number, expected: GeometryExpectation, full: GeometryExpectation): Promise<LocalFeedback> => {
   const dialog = page.locator('.task-detail-backdrop').getByRole('dialog');
   const detailResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/projects/${fixture.project.id}/tasks/${taskId}`));
   const detail = await measureBrowserFeedback(page, { kind: 'detail', rootId: taskId }, () =>
@@ -390,6 +384,7 @@ const measureDetailsZoomPan = async (page: Page, fixture: CapacityFixture, taskI
   const timing = response.request().timing();
   const detailNetworkMs = timing.responseEnd - timing.requestStart;
   await expect(page.locator('.task-detail-title')).toHaveText(fixture.tasks.find((task) => task.id === taskId)!.title);
+  await assertVisibleTopology(page, expected, full);
   await dialog.locator('.task-detail-header').getByRole('button', { name: '关闭任务详情', exact: true }).click();
   await expect(dialog).toHaveCount(0);
 
@@ -408,15 +403,18 @@ const measureDetailsZoomPan = async (page: Page, fixture: CapacityFixture, taskI
   return { detailMs: detail.duration, detailNetworkMs, zoomMs: zoom.duration, panMs: pan.duration };
 };
 
-const measureInteractions = async (page: Page, fixture: CapacityFixture, expansion: ExpansionMeasurement, dataset: Dataset, repetition: number, info: TestInfo, overview: GeometryExpectation, snapshotOrder: readonly string[]): Promise<Measurement> => {
-  const full = expectedCapacityGeometry(fixture);
+const measureInteractions = async (page: Page, fixture: CapacityFixture, expansion: ExpansionMeasurement, dataset: Dataset, repetition: number, info: TestInfo, overview: GeometryExpectation, full: GeometryExpectation, snapshotOrder: readonly string[]): Promise<Measurement> => {
   await assertVisibleTopology(page, overview, full);
   expect(overview.nodes.length).toBeLessThanOrEqual(50); expect(overview.edges.length).toBeLessThanOrEqual(100);
   const initialGeometry = await stableGeometry(page);
   expect(await checkDependencyGeometry(page, overview, info), 'Every overview dependency has independent complete geometry').toEqual({ total: 0, examples: [] });
   // The root stays accessible in the initial overview. Keep the original
   // details-close-immediate-zoom/pan sequence before changing inspection.
-  const normal = await measureDetailsZoomPan(page, fixture, fixture.root.id, dataset, repetition);
+  const normal = await measureDetailsZoomPan(page, fixture, fixture.root.id, dataset, repetition, overview, full);
+  await assertVisibleTopology(page, overview, full);
+  const normalGeometry = await stableGeometry(page);
+  expect(bodyGeometry(normalGeometry), 'Normal Details and navigation retain every visible node and route').toEqual(bodyGeometry(initialGeometry));
+  expect(await checkDependencyGeometry(page, overview, info), 'All normal dependencies retain complete geometry after immediate zoom and pan').toEqual({ total: 0, examples: [] });
 
   const selectedId = [...overview.nodes].sort((a, b) => ancestorClosure(fixture, b.id).size - ancestorClosure(fixture, a.id).size || a.id.localeCompare(b.id))[0]!.id;
   const body = page.locator(`.react-flow__node[data-id="${selectedId}"] .task-node-body`);
@@ -428,7 +426,9 @@ const measureInteractions = async (page: Page, fixture: CapacityFixture, expansi
   expect(await stableGeometry(page), 'Selection never expands hidden tasks or changes nodes, routes, paint geometry or viewport').toEqual(beforeSelection);
   expect(await checkDependencyGeometry(page, overview, info), 'All visible highlighted dependencies retain their native geometry and paint').toEqual({ total: 0, examples: [] });
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  const highlighted = await measureDetailsZoomPan(page, fixture, selectedId, dataset, repetition);
+  const highlighted = await measureDetailsZoomPan(page, fixture, selectedId, dataset, repetition, overview, full);
+  expect(bodyGeometry(await stableGeometry(page)), 'Highlighted Details and navigation retain every visible node and route').toEqual(bodyGeometry(beforeSelection));
+  expect(await checkDependencyGeometry(page, overview, info), 'All highlighted dependencies retain complete geometry after immediate zoom and pan').toEqual({ total: 0, examples: [] });
   await assertInspection(page, fixture, selectedId, overview);
   await assertVisibleTopology(page, overview, full);
 
@@ -514,7 +514,7 @@ test.describe('fixed capacity and performance @capacity', () => {
           const snapshotStart = performance.now();
           const snapshot = await request.get(`/api/v1/projects/${fixture.project.id}/task-graph`);
           expect(snapshot.status()).toBe(200);
-          const graph = await snapshot.json() as { summary: { total: number; proposed: number; todo: number }; tasks: { id: string; dependsOn: string[] }[] };
+          const graph = parseTaskGraph(await snapshot.json(), fixture.project.id);
           expect(graph.summary.total).toBe(1000);
           expect(graph.summary.proposed).toBe(0);
           expect(graph.summary.todo).toBe(1000);
@@ -526,7 +526,7 @@ test.describe('fixed capacity and performance @capacity', () => {
           );
           dataset.controllerDurations.snapshotMs = performance.now() - snapshotStart;
           const snapshotOrder = graph.tasks.map(({ id }) => id);
-          const full = expectedCapacityGeometry(fixture); const overview = expectedOverview(full, fixture.root.id, snapshotOrder);
+          const full = expectedDependencyTopology(graph.tasks, fixture.root.id); const overview = expectedOverview(full, fixture.root.id, snapshotOrder);
           let graphRequests = 0;
           const trackGraph = (request: { url: () => string }) => { if (request.url().endsWith(`/api/v1/projects/${fixture.project.id}/task-graph`)) graphRequests++; };
           page.on('request', trackGraph);
@@ -577,7 +577,7 @@ test.describe('fixed capacity and performance @capacity', () => {
                   renderMs: paintedTime - (measure.startTime + measure.duration),
                 };
               }, { rootId: fixture.root.id, start: opened.start, paintedTime: opened.end });
-              const measurement = await measureInteractions(page, fixture, expansion, dataset, repetition, info, overview, snapshotOrder);
+              const measurement = await measureInteractions(page, fixture, expansion, dataset, repetition, info, overview, full, snapshotOrder);
               dataset.measurements.push(measurement);
               await persist();
               checkMeasurement(measurement);

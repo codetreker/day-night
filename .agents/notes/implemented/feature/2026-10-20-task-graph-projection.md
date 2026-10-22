@@ -42,14 +42,11 @@ per snapshot without a global mutable cache.
 
 The separate Dagre adapter uses a new flat directed graph for each calculation,
 sorted node and edge insertion, left-to-right ranks, one global longest-path
-ranker and fixed cards. Current visible cards are 220 by 136 to accommodate
-explicit direction controls; the original model used 220 by 96.
-It converts returned node centers to top-left positions. The original adapter
-also retained raw edge points; the later
-[routing decision](../architecture/2026-10-22-task-dependency-routing.md) retains
-node coordinates/order and lane intent while planning fixed side ports and
-obstacle-free rank-gap channels. Empty projections return explicit zero bounds
-before calling Dagre;
+ranker and fixed cards. The original 220-by-96 cards are now 220 by 136 to
+provide explicit direction controls in the
+[progressive overview](2026-10-22-progressive-task-graph.md).
+It converts returned node centers to top-left positions and retains the routed
+edge points. Empty projections return explicit zero bounds before calling Dagre;
 nonempty output must have finite coordinates and valid node bounds. No React,
 DOM, network or task mutation is involved in these modules.
 
@@ -90,9 +87,9 @@ The [production acceptance decision](../testing/2026-10-20-dashboard-production-
 owns browser measurements and source/image receipts. Pure algorithm probes do not
 establish production browser timing.
 
-The [progressive-view decision](2026-10-22-progressive-task-graph.md) adds an
-explicit visible subset after complete root projection, preserving full main-set
-counts and all project data. The
+The [progressive overview decision](2026-10-22-progressive-task-graph.md) derives
+a visible subset after complete root projection; it does not change full main-set
+progress, state aggregation or project statistics. The
 [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 the [architecture](../../../../docs/design/daynight-web.md) owns module contracts,
 and the [task document](../../../../docs/design/daynight-web-tasks.md) tracks UI

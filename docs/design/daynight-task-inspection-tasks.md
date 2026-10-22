@@ -1,21 +1,19 @@
 # 任务依赖追踪与详情阅读任务拆分
 
-状态：UX-T1 已交付完整上下文；UX-T2 在同一交付目标内增加渐进概览及显式展开，运行和交付证据待完成；UX-T3 居中详情已交付；UX-T4 待实现。[要求](../spec/daynight-task-inspection.md)拥有行为，[设计](daynight-task-inspection.md)拥有机制，[原型](mockups/task-inspection/index.html)展示最终交互。本文拥有目的、范围和验收划分；实际任务状态和依赖以 Daynight 为准，前置关系只保存在 `dependsOn`。
+状态：UX1、UX3与渐进概览 [PR #134](https://github.com/codetreker/daynight/pull/134) 已交付，后者合并为 `53e3a0c0ff4ec821f74a2401a3bfa7de24a3f4ea`。当前 #121 实现独立检查/Details/平滑路线，当前 head 验收待完成；合并后才将 UX2 完成。UX4 待实现。[要求](../spec/daynight-task-inspection.md)、[设计](daynight-task-inspection.md)和[原型](mockups/task-inspection/index.html)拥有行为、机制与最终视觉。实际 task 状态和依赖以 Daynight 为准，dependsOn 是前置关系唯一记录。
 
-## 交付清单
+| 任务 | 目的 | 交付状态 |
+|---|---|---|
+| UX-T1 | 完整依赖上下文数据 | PR #119 已交付 |
+| UX-T2 | 渐进概览上的稳定依赖检查 | PR #134 已交付，#121 当前 head 验收及合并待完成 |
+| UX-T3 | 居中任务详情 | PR #124 已交付；当前面板/附件分屏由主线后续交付拥有 |
+| UX-T4 | Markdown 描述及发布 skill | 待实现 |
 
-| 标识 | 独立交付目的 | 要求 | 范围状态 |
-|---|---|---|---|
-| UX-T1 | 完整任务链前置数据与上下文 | TI1–TI2 的完整数据基础 | 原始范围已交付，历史记录保留 |
-| UX-T2 | 渐进可见图中的稳定依赖追踪 | TI1–TI5 的当前展示与交互 | 实现及真实验收进行中 |
-| UX-T3 | 在居中浮层中阅读任务详情 | TI6、TI7 | 已由 PR #124 交付 |
-| UX-T4 | 用 Markdown 阅读和维护任务描述 | TI8–TI11 | 待实现 |
-
-每项负责自身受影响代码、文档、独立审查和真实验收；不设置承接基础正确性的收尾任务。执行保持单任务串行交付。创建任务不授予实现或合并许可；自主交付遵守会话已有授权。Daynight 主附件拥有本任务的执行方案、验收及交付证据。
+每个 PR 负责自己的代码、文档、note、组件原型、独立审查及真实验收；已有基线通过不证明后续 head 通过。Daynight 主附件保留方案、验收和源码绑定交付证据。
 
 ## UX-T1：完整上游上下文
 
-历史交付：完整上下文、独立计数与可访问初始视口已由 [PR #119](https://github.com/codetreker/daynight/pull/119) 交付，机制和取舍见[完整上下文决策](../../.agents/notes/implemented/feature/2026-10-22-complete-prerequisite-context.md)。其完整数据保证继续有效；UX-T2 的[渐进图决策](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)替代全量同时可见的展示要求，以下保留原交付范围与验收。
+历史交付：完整上下文、独立计数与可访问初始视口已交付，机制和取舍见[完整上下文决策](../../.agents/notes/implemented/feature/2026-10-22-complete-prerequisite-context.md)。完整 P 数据保证继续有效；[渐进图决策](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)部分替代其全量同时可见规则，以下保留原始范围和验收。
 
 ### 原始交付范围
 
@@ -31,29 +29,26 @@
 - 桌面和 320px 下可通过初始视口、平移、缩放及键盘访问全部节点；原有根排序、展开偏好、过滤和独立任务行为正确。
 - 受影响模型、布局、组件与生产浏览器检查通过，保留现有容量矩阵，补充外部祖先密集场景的真实测量。
 
-## UX-T2：渐进画布中的依赖追踪
+## UX-T2：渐进概览上的依赖检查
 
-范围：完整 P 数据、主集合进度和项目统计保持 UX1 语义；链内及外部任务都可渐进展示。选择、平滑连线和独立详情是本项交互，已交付的居中 `TaskDetailDialog` 及纯文本描述继续保留。当前生产验收尚未完成，机制见[渐进图决策](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)、[依赖追踪决策](../../.agents/notes/implemented/feature/2026-10-22-task-dependency-inspection.md)与[路线决策](../../.agents/notes/implemented/architecture/2026-10-22-task-dependency-routing.md)。
+### 已交付：PR #134 渐进概览
 
-### 方案
+PR134已完成50/100概览、20直接邻居显式批次、完整诱导边、全局reset、实际S刷新根连通协调及mandatory visibility[5]，并以31项真实native/container场景和原始四个完整输入×五次、既有预算验证，CI/approval后平台确认合并。它拥有渲染工作负载政策；当前检查PR继承该基线，不重新交付它。原进度/七统计/四状态、locale、TaskDetailPanels/附件分屏和鉴权资源边界保持。
 
-P 不超过 50 个任务且 100 条依赖时全显；否则从根按快照稳定顺序做后续优先、前置其次的无向 BFS，只接纳实际诱导图仍满足 50/100 的任务，只从接纳任务继续。每个可见卡片有前置/后续方向入口，一次加入 P 内该方向前 20 个隐藏直接邻居，预告本批准确新增任务和依赖数。手动展开无边数上限，可超过概览阈值。所有可见边均为两端可见的全部真实边，不生成捷径或聚合节点。
+### 当前：#121 独立检查、Details 与平滑连线
 
-一个“收起到概览”重新计算概览并定位视口，无逐分支折叠。成功刷新保留实际可见 ID 中仍属于 P 的任务，加根后只留根连通分量，不自动并入新概览或新任务；重置/remount 才计算新基线。失败保持旧 S、选择和视口。显式展开可以布局并保持操作卡片可访问；选择和详情不改变可见集合、布局或视口。
+主体从打开详情改为切换图局部检查，Details是独立兄弟按钮，方向按钮沿用PR134。从完整数据算H，只高亮可见H及真实连接线/箭头，按ID去重显示隐藏上游；检查不改S/位置/路线/pieces/视口。Details与关系导航仅更新原详情资源。reset或同作用域刷新后选择仍可见则重算，否则清除，普通失败保留旧图；鉴权401/会话/身份或项目转换继续清理私有状态。
 
-选择从完整数据计算 H，只高亮可见 H 和其真实边/箭头，显示去重隐藏祖先数。主体、详情和方向入口为兄弟原生控件。受控节点数据保持稳定，局部 inspection context 提供状态；边使用声明式原生 SVG、三个 direct-RGB marker、body wrapper 局部 stroke 继承。平滑路线保留固定左右中心端口、可见节点避让、有界 Q 圆角和真实弧长 5/4 相位。相关文档、生产组件原型和独立判断器随本项同步。
+保留可见Dagre节点布局，规划固定源右中心/目标左中心及无障碍rank通道，Q对称裁切≤12，真实曲线弧长保持5/4相位和≤0.025CSSpx最大缩放误差。声明式原生SVG、三个恒定RGBmarker和body局部stroke继承保留每条可见真实边/箭头。TaskInspectionContext隔离检查状态与受控节点几何，memoized内容保持稳定。
 
-### 验收标准
+### 当前 PR 验收
 
-- 独立验证 50/100 临界、小链在大项目、接纳后才遍历、稳定后续优先 BFS、根连通和实际诱导边预算。
-- 每方向最多 20 个直接邻居，不递归；准确新增任务/边、共享去重、外部无关后续排除、完成任务及超过 100 条新增边的手动批次正确。
-- 显式重置 framing、可见选择保留/清除、成功刷新实际集合连通修剪且不自动加基线、失败保留、项目/根/页签生命周期正确；详情打开时不抢焦点。
-- 完整 H 与隐藏祖先去重数准确，高亮只改变可见样式；同卡片/空白清除、关系导航、Details 关闭及选择前后 S/节点/路线/分片/视口稳定。
-- 桌面/320px 鼠标和键盘可用，全部兄弟控件、离屏聚焦、全屏分层 Esc 和入口消失后的焦点回退正确。
-- 独立当前可见拓扑预期、DOM 左右端口、水平首尾、所有 Q 的 12 单位对称裁切及相切、可见卡片避让、body/虚线/marker 全部覆盖通过；缺边/多边、错误箭头、穿卡片、相位或 coverage 负例失败。
-- 四个原 1,000 任务容量输入及 999/5,000 依赖保持不变，每图五次。改验有界概览、全部可见诱导边及展开/重置/隐藏上游准确性，不要求输入全部同时渲染。
-- `openMs ≤ 3000`，`selectMs/detailMs/zoomMs/panMs ≤ 300`；保留普通态详情→关闭→立即缩放/平移、可见任务可信选择、高亮态同序列，两态详情/缩放/平移各取较慢值。关闭到缩放之间不增加适应、重置或等待。
-- 严格 Web/覆盖率、真实原生/容器/容量、十八原生/十三容器场景（共 31 项）、零重试、既有 timeout、规模拒绝和资源清理通过；独立审查与受保护 PR 交付由会话授权执行。静态检查不等于运行通过。
+- 完整H、共享/外部/proposed/完成祖先、隐藏数、可见role与边准确；同卡片/空白清除和切换正确，不自动展开或变更几何/视口。
+- 主体/Details/方向控件鼠标与键盘、桌面/320px、locale、全屏层级Escape、关系导航和现有附件面板正确；刷新不抢dialog焦点，footer消失/整卡片移除恢复合理。
+- PR134可见基线、精确增量/reset/actualS刷新及mandatory visibility行保持。所有普通失败保留只在原authscope；401/身份/项目转换保留私有资源失效规则。
+- 独立API可见拓扑与真实DOM端口/Q相切/避让/CTM/bodycoverage/弧长/phase/原生marker判断全部执行，无生产planner预期。compilerInputs只做忠实度，缺/多边、错误箭头、穿节点及phase/coverage负例失败。
+- 四个完整1000任务/999或5000边输入各五次不变，visibility[5]增加非空selectedId、精确hiddenUpstream，selectMs≤300；open≤3000和detail/zoom/pan≤300。普通详情→close→立即zoom/pan，可信选择后高亮态重复；每metric取较慢state，network独立，不加等待/reset/fit。
+- 31场景、双语、真实目标、超限、coverage、timeout、零retry及cleanup保持；当前head需build/typecheck/unit/component/native/container/capacity与exact-head review。required checks、非作者approval、处理阻塞线程及mergeability后受保护合并，平台确认#121已合并才将任务完成。
 
 ## UX-T3：居中任务详情
 
@@ -77,7 +72,7 @@ P 不超过 50 个任务且 100 条依赖时全显；否则从根按快照稳定
 
 ### 方案
 
-提取共享 Markdown 渲染视图，描述按 CommonMark/GFM 展示，使用任务附件根解析相对 URL；附件 Markdown 继续使用文档目录。描述普通相对附件链接复用详情内唯一附件控制器，选中已有预览，保留真实 href 与浏览器原生特殊点击。完整清单、路径和预览错误保持可见，切换 task 或关闭时取消读取。
+提取共享 Markdown 渲染视图，描述按 CommonMark/GFM 展示，使用任务附件根解析相对 URL；附件 Markdown 继续使用文档目录。描述普通相对附件链接激活附件页签，复用详情内唯一附件控制器选中已有预览，保留真实 href 与浏览器原生特殊点击。完整清单、路径和预览错误保持可见，切换 task 或关闭时取消读取。
 
 同步仓库发布源中的 `using-daynight` 入口与模式指引、skill 需求/设计及 README，明确 Markdown 问题描述和已确认附件链接的写法。一个主 Markdown 附件继续拥有方案、验收和执行证据。API/CLI 原始字符串、完整替换字段及版本控制语义保持一致。同步看板、附件 Markdown 文档、相应决策和生产组件原型。
 
@@ -85,7 +80,7 @@ P 不超过 50 个任务且 100 条依赖时全显；否则从根按快照稳定
 
 - 标题、列表、代码、引用、表格、链接、中文长文本及空描述正确显示；原始 HTML 按文本呈现，代码/表格局部滚动。
 - `[方案与验收](plan.md)`、`[交互原型](mockui/index.html)` 和相对图片从当前任务根解析；附件文件内的相对引用继续以文档目录解析。
-- 普通无 query/hash 的相对附件链接在当前详情中选择并聚焦预览；修饰键、非主键、绝对 URL、fragment 和 query/hash 保留设计定义的 URL 行为。
+- 普通无 query/hash 的相对附件链接激活当前详情的附件页签，选择并聚焦预览；修饰键、非主键、绝对 URL、fragment 和 query/hash 保留设计定义的 URL 行为。
 - 加载、清单失败、缺失附件、非法上越路径、内容失败以及切换 task 后旧响应均有正确行为；不重复建立附件控制器。
 - CLI 写入/读取保留原始 Markdown 字节，实际 npm 包含同步后的 skill 全部资源，frontmatter、相对链接、create-task/run-task 行为及安装后内容验证通过。
 - 受影响 CLI/Web 检查及真实服务/浏览器描述与附件引用路径通过；现有主附件所有权和独立附件写入语义保持正确。

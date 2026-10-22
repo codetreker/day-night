@@ -12,6 +12,28 @@ const duration = (value: unknown): number => {
   return value;
 };
 
+const integer = (value: unknown): number => {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Error('Invalid visible graph count.');
+  return value;
+};
+const validateVisibility = (value: unknown): void => {
+  const samples = array(value);
+  if (samples.length !== 5) throw new Error('Capacity requires exactly five visible graph samples.');
+  for (const [index, raw] of samples.entries()) {
+    const sample = object(raw);
+    if (typeof sample.selectedId !== 'string' || sample.selectedId.length === 0) throw new Error('Inspection evidence is missing its visible selected task.');
+    const hiddenUpstream = integer(sample.hiddenUpstream);
+    const overviewNodes = integer(sample.overviewNodes); const overviewEdges = integer(sample.overviewEdges);
+    const addedNodes = integer(sample.addedNodes); const addedEdges = integer(sample.addedEdges);
+    if (sample.repetition !== index || hiddenUpstream > 1000 - overviewNodes || overviewNodes < 1 || overviewNodes > 50 || overviewEdges > 100
+      || addedNodes < 1 || addedNodes > 20 || addedEdges < 1
+      || integer(sample.expandedNodes) !== overviewNodes + addedNodes || integer(sample.expandedEdges) !== overviewEdges + addedEdges
+      || sample.resetNodes !== overviewNodes || sample.resetEdges !== overviewEdges) {
+      throw new Error('Visible graph evidence differs from the bounded overview, explicit batch, or reset.');
+    }
+  }
+};
+
 export const validatePerformance = (value: unknown): void => {
   const report = object(value);
   if (report.schemaVersion !== 1 || report.result !== 'passed') throw new Error('Capacity receipt did not pass.');
@@ -27,6 +49,7 @@ export const validatePerformance = (value: unknown): void => {
     }
     names.add(dataset.scenario);
     duration(dataset.networkMs);
+    validateVisibility(dataset.visibility);
     const measurements = array(dataset.measurements);
     if (measurements.length !== 5) throw new Error('Capacity requires exactly five expansion measurements.');
     for (const rawMeasurement of measurements) {

@@ -73,10 +73,13 @@ const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleId
   const [inspection, setInspection] = useState<{ id: string; trigger: HTMLElement } | null>(null);
   const selectedTaskId = inspection !== null && visibleIds.has(inspection.id) ? inspection.id : null;
   const highlighted = useMemo(() => selectedTaskId === null ? null : tracePrerequisites(index, selectedTaskId), [index, selectedTaskId]);
+  const focusedControl = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     const focusedNode = document.activeElement?.closest<HTMLElement>('.react-flow__node');
-    if (focusedNode !== undefined && focusedNode !== null && containerRef.current?.contains(focusedNode) &&
-      !geometry.nodes.some((node) => node.id === focusedNode.dataset.id)) toggleRef.current?.focus();
+    const removedNode = focusedNode != null && containerRef.current?.contains(focusedNode) &&
+      !geometry.nodes.some((node) => node.id === focusedNode.dataset.id);
+    const detachedControl = focusedControl.current !== null && !focusedControl.current.isConnected && document.activeElement === document.body;
+    if (removedNode || detachedControl) toggleRef.current?.focus();
   }, [geometry, containerRef, toggleRef]);
   useEffect(() => {
     if (inspection === null || selectedTaskId !== null) return;
@@ -135,7 +138,7 @@ const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleId
     </ReactFlow>
   ), [nodes, rootId, geometry, folded, action, clearInspection, m]);
   return (
-    <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} data-hidden-upstream-count={hiddenUpstreamCount} data-visible-task-count={visibleIds.size} data-total-task-count={totalTasks} ref={containerRef} role={fullscreen ? 'dialog' : undefined} aria-modal={fullscreen ? true : undefined} aria-label={fullscreen ? m.fullscreenTitle : undefined} onKeyDown={onKeyDown}>
+    <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} data-hidden-upstream-count={hiddenUpstreamCount} data-visible-task-count={visibleIds.size} data-total-task-count={totalTasks} ref={containerRef} role={fullscreen ? 'dialog' : undefined} aria-modal={fullscreen ? true : undefined} aria-label={fullscreen ? m.fullscreenTitle : undefined} onKeyDown={onKeyDown} onFocusCapture={(event) => { focusedControl.current = event.target as HTMLElement; }}>
       <div className="graph-toolbar">
         <span>{m.title}</span>
         <div className="graph-toolbar-actions">

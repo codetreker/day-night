@@ -13,20 +13,23 @@ structured descriptions and planning attachments.
 ## Decision
 
 The adopted [requirements](../../../../docs/spec/daynight-task-inspection.md)
-and [design](../../../../docs/design/daynight-task-inspection.md) define the
-target behavior. This delivery consists of that design, an interactive visual
-prototype and a four-task implementation breakdown. The
-[complete prerequisite context decision](../feature/2026-10-22-complete-prerequisite-context.md)
-implements complete ancestors, separate counts and a readable upstream-aware
-initial viewport. The
-[dependency inspection decision](../feature/2026-10-22-task-dependency-inspection.md)
-implements independent card controls, transitive node/edge inspection and smooth
-routes. The [progressive-view decision](../feature/2026-10-22-progressive-task-graph.md)
-replaces simultaneous full rendering with bounded overviews and explicit direct
-neighbor expansion for both main and external tasks. The
-[centered detail decision](../feature/2026-10-22-centered-task-detail-dialog.md)
-implements the reading shell with retained modal and attachment ownership.
-Markdown descriptions remain pending in their Daynight task.
+and [design](../../../../docs/design/daynight-task-inspection.md) own the target
+behavior. The original design delivery supplied a visual prototype and four-task
+breakdown. UX1 delivered complete ancestor data, and UX3 delivered the centered
+TaskDetailDialog; the [attachment split-view decision](2026-10-22-task-attachment-split-view.md)
+subsequently added retained Overview/Attachments panels and bounded preview panes.
+Their modal, request and focus ownership remain unchanged.
+
+The [progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
+was delivered by PR #134, merged as `53e3a0c0ff4ec821f74a2401a3bfa7de24a3f4ea`.
+It owns bounded initial visibility, explicit neighbor expansion/reset, actual-S
+refresh retention and the changed browser workload. The
+[inspection decision](../feature/2026-10-22-task-dependency-inspection.md) now owns
+#121's independent card controls, full/hidden ancestor inspection and smooth
+node/edge/arrow presentation on that base. Current-head acceptance remains
+separate from PR134's pass; #121 integration completes UX-T2. Markdown and skill
+work remain UX4. AuthenticatedApp's inherited identity/request boundaries and
+current detail-panel composition are preserved.
 
 The root and its descendants remain the chain's counted membership. Rendering
 adds the complete prerequisite closure without importing unrelated descendants
@@ -47,8 +50,8 @@ coverage, dash continuity and real production timing.
 Descriptions use the existing CommonMark/GFM stack. Relative links resolve
 from the task attachment root, while attachment documents retain their own
 directory base. Ordinary relative attachment links select the existing preview
-through one attachment-state owner. The published skill teaches Markdown
-problem statements and verified attachment references without moving solution
+through one attachment-state owner and activates its attachment tab. The
+published skill teaches Markdown problem statements and verified attachment references without moving solution
 or acceptance ownership out of the primary Markdown attachment.
 
 The [breakdown](../../../../docs/design/daynight-task-inspection-tasks.md)

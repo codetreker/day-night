@@ -131,7 +131,7 @@ describe('task dependency canvas', () => {
     await user.tab();
     expect(exit).toHaveFocus();
     await user.tab();
-    expect(screen.getByRole('combobox', { name: '语言 / Language' })).toHaveFocus();
+    expect(within(screen.getByRole('dialog')).getByRole('combobox', { name: '语言 / Language' })).toHaveFocus();
     await user.tab();
     expect(screen.getByRole('button', { name: '收起到概览' })).toHaveFocus();
     await user.tab();
@@ -709,6 +709,56 @@ describe('progressive task visibility', () => {
     expect(visibleIds(view.container)).not.toEqual(initialIds);
     expect(reset).toHaveFocus();
   });
+  it('recovers graph focus when refresh removes a focused visible card', async () => {
+    const view = render(<TaskGraph index={progressiveIndex} rootId={rootId} onOpenTask={noop} />);
+    await rendered(view.container, 50, 49);
+    fireEvent.click(expansion(view.container, '合流任务 · 40 个外部前置', 'prerequisites'));
+    await rendered(view.container, 70, 69);
+    const removedId = fixture.tasks.find((task) => task.titlePreview === '外部前置 1 · 已完成共享协议')!.id;
+    nodeButton('外部前置 1 · 已完成共享协议').focus();
+    const tasks = fixture.tasks.filter((task) => task.id !== removedId).map((task) => ({ ...task, dependsOn: task.dependsOn.filter((id) => id !== removedId) }));
+    const refreshed = buildGraphIndex({ ...fixture, tasks, summary: { ...fixture.summary, total: 100, done: 39 } });
+    view.rerender(<TaskGraph index={refreshed} rootId={rootId} onOpenTask={noop} />);
+    await rendered(view.container, 69, 68);
+    expect(screen.getByRole('button', { name: '全屏查看' })).toHaveFocus();
+  });
+
+  it.each([false, true])('recovers a removed expansion control without taking focus from an open dialog (dialog=%s)', async (dialogFocused) => {
+    const ui = (index: ReturnType<typeof buildGraphIndex>) => <><div role="dialog" aria-label="详情测试窗口"><button type="button">详情关闭控件</button></div><TaskGraph index={index} rootId={rootId} onOpenTask={noop} /></>;
+    const view = render(ui(progressiveIndex));
+    await rendered(view.container, 50, 49);
+    const footer = expansion(view.container, '渐进展开 · 主链交付起点', 'successors');
+    footer.focus();
+    const dialogButton = screen.getByRole('button', { name: '详情关闭控件' });
+    if (dialogFocused) dialogButton.focus();
+    const transform = viewport(view.container).style.transform;
+    const tasks = fixture.tasks.filter((task) => !task.titlePreview.startsWith('主链后续 ') || Number(task.titlePreview.slice('主链后续 '.length)) <= 49);
+    const refreshed = buildGraphIndex({ ...fixture, tasks, summary: { ...fixture.summary, total: 90, todo: 50, blocked: 49 } });
+    view.rerender(ui(refreshed));
+    await rendered(view.container, 50, 49);
+    await waitFor(() => { expect(footer.isConnected).toBe(false); });
+    await waitFor(() => { expect(dialogFocused ? dialogButton : nodeButton('渐进展开 · 主链交付起点')).toHaveFocus(); });
+    expect(nodeButton('渐进展开 · 主链交付起点')).toBeTruthy();
+    expect(viewport(view.container).style.transform).toBe(transform);
+  });
+
+  it('reveals an offscreen expansion control using intended viewport coordinates before native scroll resets', async () => {
+    const view = render(<TaskGraph index={progressiveIndex} rootId={rootId} onOpenTask={noop} />);
+    await rendered(view.container, 50, 49);
+    await waitFor(() => { expect(zoom(view.container)).toBe(0.8); });
+    const button = expansion(view.container, '合流任务 · 40 个外部前置', 'prerequisites');
+    vi.spyOn(button, 'matches').mockImplementation((selector) => selector === ':focus-visible');
+    const flow = view.container.querySelector<HTMLElement>('.react-flow')!;
+    flow.scrollLeft = 2000;
+    Object.defineProperty(flow, 'scrollTo', { value: (options: ScrollToOptions) => { flow.scrollLeft = options.left!; flow.scrollTop = options.top!; }, configurable: true });
+    Object.defineProperty(button, 'getBoundingClientRect', { value: () => new DOMRect(20, 20, layoutModule.TASK_NODE_WIDTH, layoutModule.TASK_NODE_HEIGHT), configurable: true });
+    const before = viewport(view.container).style.transform;
+    fireEvent.focus(button);
+    fireEvent.scroll(flow);
+    await waitFor(() => { expect(viewport(view.container).style.transform).not.toBe(before); });
+    expect(flow.scrollLeft).toBe(0);
+    expect(zoom(view.container)).toBe(0.8);
+  });
 });
 
 describe('initial task viewport policy', () => {
@@ -754,6 +804,22 @@ describe('initial task viewport policy', () => {
     expect(actual.zoom).toBe(0.8);
     expect(32 * actual.zoom + actual.x).toBe(32);
     expect((6000 + layoutModule.TASK_NODE_HEIGHT / 2) * actual.zoom + actual.y).toBeCloseTo(222.5);
+  });
+  it('anchors a folded overview to its root even when visible prerequisites are far to the left', () => {
+    const geometry: layoutModule.CanvasLayout = {
+      nodes: [
+        { id: 'upstream', kind: 'external', position: { x: 32, y: 32 } },
+        { id: 'root', kind: 'main', position: { x: 20000, y: 4000 } },
+      ],
+      edges: [], width: 20252, height: 4168,
+    };
+    for (const width of [320, 800]) {
+      const actual = getInitialTaskViewport(geometry, 'root', width, 445, true);
+      expect(actual.zoom).toBe(0.8);
+      expect(actual.x + 20000 * actual.zoom).toBe(32);
+      expect(actual.y + (4000 + layoutModule.TASK_NODE_HEIGHT / 2) * actual.zoom).toBe(445 / 2);
+      expect(32 + layoutModule.TASK_NODE_WIDTH * actual.zoom).toBeLessThan(width);
+    }
   });
 });
 

@@ -64,6 +64,11 @@ and require matching browser identity within a target. The
 complete API fixture inputs and phase ownership while defining bounded visible
 overviews, expansion/reset and hidden-ancestor readiness checks.
 
+The [progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
+retains those complete API inputs and existing timing thresholds while requiring
+bounded overview DOM, all induced visible edges and explicit expansion/reset.
+Phase ownership and the 31-scenario inventory remain unchanged.
+
 The top-level evidence and recovery receipts use schema 2. Pipeline stages record
 names, results, timestamps, observed managed-command process identities and their
 spawned process groups. Short-lived commands retain their observed group without a

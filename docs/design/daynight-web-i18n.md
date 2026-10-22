@@ -25,7 +25,10 @@ packages/daynight-web/
 
 隔离的[运行时预览](../../packages/daynight-web/tests/mockups/locale-runtime.html)继续演示多个选择器共享语言与 fixture 状态。实际组件的[任务浏览预览](../../packages/daynight-web/tests/mockups/browsing.html)和[附件预览](../../packages/daynight-web/tests/mockups/attachments.html)均显式挂载 Provider，复用生产组件及样式；完整页面原型由双语界面任务的附件拥有。这些 fixture 的前端交互不替代真实服务验收。
 
-渐进图的可见 ID 集合、依赖选择、隐藏上游数量、视口与详情资源不随语言变化重置。方向展开、批次/剩余数量及全局重置通过相同 typed catalogs 重译，不把 locale 加入可见投影或布局输入。
+显式挂载的[AuthenticatedApp](daynight-auth.md)使用同一个 LocaleProvider；
+messages.auth 的完整英语/简体中文契约拥有登录、账户、项目创建、成员、邀请和
+令牌文案。生产入口仍在 Provider 下渲染原 App，统一启用只切换应用组件。鉴权
+fixture 同样显式挂载 Provider，不通过生产鉴权接线来取得语言能力。
 
 ## 初始语言与偏好
 
@@ -69,7 +72,8 @@ Provider 使用一份当前 issue 状态，初始值来自 `initial.issue`。选
 
 ## 消息与格式化
 
-`Messages` 是两个目录共同满足的 TypeScript 契约。`common` 拥有 `retrySave`、按 `TaskStatus` 索引的 `status` 和 `requestId`；`language` 拥有标签、选项和保存错误；`workspace`、`graph` 与 `inspection` 分别拥有导航/项目、图和详情/PR/附件消息。组件通过 `useI18n()` 取得领域消息、公共状态与格式化器；相同 task 状态和请求 ID 标签不在领域中重复定义。
+`Messages` 是两个目录共同满足的 TypeScript 契约。`common` 拥有 `retrySave`、按 `TaskStatus` 索引的 `status` 和 `requestId`；`language` 拥有标签、选项和保存错误；`workspace`、`graph` 与 `inspection` 分别拥有导航/项目、图和详情/PR/附件消息；
+`auth` 拥有登录、账户、项目创建、成员、邀请、令牌及管理对话框消息。组件通过 `useI18n()` 取得领域消息、公共状态与格式化器；相同 task 状态和请求 ID 标签不在领域中重复定义。
 
 固定文本使用字符串；动态文本使用带具名参数的函数，返回完整句子，目录负责语序、标点、单位和复数。调用方不拼接零散英语片段，不提供缺失键时使用另一种语言的静默替代。产品计数消息及格式测试覆盖 0、1 与多项；测试专用消息不进入产品目录。
 
@@ -87,7 +91,9 @@ Provider 使用一份当前 issue 状态，初始值来自 `initial.issue`。选
 
 错误与通知状态保存语义，渲染时翻译。API client 继续返回结构化 `ApiError`、图规模详情和 request ID；服务原始正文不进入安全提示。项目刷新后所选任务被移除的通知保存为 `{ kind: 'selected-task-removed' }`，渲染时读取当前目录。附件异步结果沿用语义状态，完成时以当前语言呈现。既有每项目浏览偏好错误沿用自身的状态与存储格式，由展示层映射当前语言。
 
-语言切换保留页签、筛选、展开链、滚动、图平移/缩放、全屏、详情、PR 页码、预览和输入。它不主动重置浏览位置；英文自然换行的高度变化需要浏览器几何检查。页签徽标沿用未完成任务数语义，跨根任务按 ID 去重，与完成项显示开关无关。
+语言切换保留页签、筛选、展开链、滚动、图平移/缩放、全屏、详情、PR 页码、预览和输入。
+鉴权界面还保留当前身份、成员观察版本、模态、一次性秘密及进行中的管理请求；
+校验、登出/会话、邀请清理和复制通知保存语义值，渲染时查询当前目录。它不主动重置浏览位置；英文自然换行的高度变化需要浏览器几何检查。页签徽标沿用未完成任务数语义，跨根任务按 ID 去重，与完成项显示开关无关。
 
 ## 验证与证据归属
 

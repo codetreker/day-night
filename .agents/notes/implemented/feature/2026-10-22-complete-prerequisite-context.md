@@ -14,11 +14,11 @@ prerequisites, so a root-anchored viewport can conceal the new context.
 
 For a selected root, `projectRoot` keeps the root and all forward-reachable
 successors in `mainIds`. It iteratively traverses `dependsOn` from that main set
-to include every ancestor; additional tasks are stored in `externalIds`. Their union is the complete context P. Every dependency ending in P is included,
-and ancestor closure guarantees that its source is in P. UX1 originally rendered
+to include every ancestor; additional tasks are stored in `externalIds`. Their union is complete context P. Every dependency ending in P is retained,
+and ancestor closure guarantees its source is in P. UX1 originally displayed
 all P before inspection. The later
-[progressive-view decision](2026-10-22-progressive-task-graph.md) keeps this full
-data and adds an explicit visible subset for both main and external tasks. An edge is external
+[progressive overview decision](2026-10-22-progressive-task-graph.md) retains this
+data and adds explicit S for both main and external tasks. An edge is external
 when its source belongs to `externalIds`, including external-to-external edges.
 Stable task and dependency ordering follows the complete graph index.
 
@@ -29,14 +29,12 @@ each task appears once per canvas, and status, blocking and shared membership
 continue to come from the full snapshot. Root progress and aggregate status count
 only distinct main tasks; project totals count each project task once.
 
-Visible external nodes retain dashed borders and the “外部前置” label. Visible
-connections from external nodes remain dashed. Complete data, current visible
-counts and hidden-ancestor counts keep omitted display distinct from missing
-dependency data. The original toolbar reported complete main-task, external-task and dependency
-counts separately. The progressive view distinguishes visible from full counts.
-UX1 initial placement fit the complete layout at 0.8–1 zoom when it could;
-otherwise it anchored the leftmost rank at 0.8 zoom. A root in that rank stayed
-vertically centered; an upstream rank to its left started at a 32px canvas inset.
+Visible external nodes retain dashed borders and the “外部前置” label. Connections from
+external nodes remain dashed, and full/visible counts distinguish display from data. UX1 initially reported
+complete counts and fit its complete layout at 0.8–1 zoom when possible;
+otherwise it anchors the leftmost rank at 0.8 zoom. A root already in that rank
+keeps the existing vertical centering. If upstream context extends left of the
+root, the topmost task in that upstream rank starts at a 32px canvas inset.
 Pan, zoom, Fit view and keyboard task navigation keep the remaining graph
 accessible. That initial policy established readable upstream access. Progressive visibility
 applies framing to its visible overview and reset; selection remains purely
@@ -57,16 +55,16 @@ TaskDetailDialog reading; descriptions remain plain until UX-T4.
 
 The production capacity matrix preserves its chain, merge and shared-root graphs
 and adds `capacity-external`: 1,000 nodes and 5,000 edges, with two main tasks and
-998 external ancestors. Its original acceptance used five full expansions with 3,000ms/300ms budgets.
-The progressive-view decision retains the complete input, five samples and
-budgets while checking bounded visible overviews, complete induced edges and
-explicit expansion/reset. Independent size refusals remain unchanged. The original full-context initial upstream task and its root-visibility
-conditions belong to that source-bound delivery; progressive overviews start
-from their root-connected visible set. Strict
-inventory retains five native capacity/limit scenarios. The
-[bilingual interface decision](2026-10-22-web-bilingual-interface.md) adds three
-functional scenarios per target, giving thirteen functional checks on each target,
-eighteen native scenarios and thirteen container scenarios.
+998 external ancestors. It uses the same five expansions, 3,000ms opening budget,
+300ms local-feedback budgets and independent size refusals. The progressive
+overview keeps those complete inputs while changing DOM readiness to the bounded
+visible graph, all real induced edges and explicit expansion/reset checks;
+body-open-details and the existing polyline renderer remain current. The new initial upstream task replaces only that dataset's readable
+root condition; existing datasets retain their root-visibility checks. Strict
+inventory validation retains five native capacity/limit scenarios. The later
+[bilingual interface decision](2026-10-22-web-bilingual-interface.md) expands
+functional checks to thirteen per target, producing eighteen unique native
+scenarios and thirteen container scenarios without changing that matrix.
 
 The [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 the [web design](../../../../docs/design/daynight-web.md) owns model and viewport
@@ -101,7 +99,7 @@ existing root placement when the root is already leftmost.
 Complete context for a chain can approach the complete-project limit of 1,000 tasks
 and 5,000 dependencies. Closure and projection use visited sets and iterative
 traversal, remain linear in project nodes plus edges, and avoid deep recursive
-call stacks. The progressive view lays out only its current induced subset; the existing all-root progress
+call stacks. Only the expanded chain's current visible induced graph is laid out; the existing all-root progress
 calculation remains based on main sets.
 
 Independent counts prevent external ancestors from changing chain completion,

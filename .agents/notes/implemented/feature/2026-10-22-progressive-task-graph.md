@@ -4,150 +4,143 @@ Status: implemented
 
 ## Problem
 
-A complete chain context can contain nearly every task and dependency in a
-project. Rendering all of it at once makes the initial view difficult to read
-and makes a local selection repaint the entire graph. A useful task inspection
-view must keep complete dependency data and accurate progress while letting the
-reader control how much graph is visible.
+A complete chain context can approach an entire project's tasks and dependencies.
+Rendering all of it at once makes the first view difficult to read and ties
+local interaction cost to the complete graph. Task browsing needs complete data
+and accurate progress while letting the reader control visible detail.
 
 ## Decision
 
-`projectRoot` continues to compute complete context P: the root and all reachable
-successors form main set M; every ancestor of M is included, and P−M is external
-context. Unrelated successors of external tasks remain outside P. Project
-statistics and root progress/status retain their full-data meanings. Only the
-visible set S is progressive, for both main and external tasks.
+`projectRoot` retains complete context P: root plus every reachable successor
+form main M, every ancestor of M is included, and P−M is external context.
+Unrelated successors of external tasks stay outside P. Only visible task IDs S
+are progressive, for both main and external tasks. Full M still owns chain
+progress/status; complete snapshots own seven project counters and unfinished
+tab counts. Proposed/todo/in_progress/done keep their existing read meanings.
 
-If P has at most fifty tasks and one hundred dependencies, S initially contains
-all P. Otherwise the overview starts at the root and runs stable undirected BFS:
-for each accepted task, consider direct successors first and prerequisites
-second, each in snapshot order and restricted to P. Accept a candidate only if
-S remains at most fifty tasks and its complete induced edge set remains at most
-one hundred dependencies. Queue only accepted tasks. Consider each candidate
-once. These are initial overview limits, not task-data or manual expansion limits.
+If P has at most fifty tasks and one hundred dependencies, initial S contains
+all P. Otherwise `createGraphOverview(index, P)` starts at root and performs
+stable undirected BFS, considering direct successors before prerequisites, each
+direction in snapshot insertion order. Consider a candidate once, accept it only
+if resulting S has at most fifty tasks and its complete induced edge set at most
+one hundred dependencies, and queue only accepted tasks. These limits apply to
+the initial overview of P, not the whole project or manual expansion.
 
-Each visible card has explicit prerequisite and successor expansion controls.
-One activation adds at most twenty currently hidden direct neighbors in the
-chosen direction, within P and in stable snapshot order. It does not recurse.
-The control states the exact number of new tasks and new real dependencies for
-that batch, including edges among added tasks. There is no manual edge cap, so a
-dense neighbor remains reachable and explicit expansion can exceed the initial
-fifty/one-hundred overview. Shared tasks are added once by ID.
+`getTaskExpansion(index, P, S, taskId, direction)` chooses at most twenty hidden
+direct neighbors within P in stable snapshot order, without recursion. Controls
+report exact new tasks, new induced edges and remaining neighbors. Edge deltas
+include links among added tasks. Manual expansion has no edge cap and may exceed
+the initial fifty/one-hundred limits. Shared IDs appear once.
 
-The graph always draws every real dependency with both endpoints in S. It draws
-no shortcut edges, aggregate nodes or invented dependency links. Cards are 220 by 136 pixels: a 94px body, a constant 40px two-column expansion
-footer and two border pixels; an unused direction column stays blank. Toolbar
-counts distinguish visible tasks/dependencies from complete P; full M progress and
-project totals remain independent of S. Proposed, todo, in-progress and done tasks follow the same topology rules and
-may be expanded. The [four-state reader decision](2026-10-22-proposed-task-readers.md)
-owns purple proposed presentation, full seven-counter statistics and unfinished
-counts; external task state never changes the complete main-set aggregate.
-Visibility and inspection add no approval or status-write operation.
+`projectVisibleTasks(P, S)` retains membership and every real dependency with
+both endpoints in S. No shortcut edges, aggregate cards or synthetic links are
+introduced. Toolbar counts distinguish visible from full context. Cards are
+220 by 136 pixels: a 94px body, 40px two-column expansion footer and two border
+pixels; an unused direction column stays blank. The body remains the native
+TaskDetailDialog trigger, and direction controls are siblings. The existing
+Dagre polyline/native-arrow/local-dash renderer consumes only the visible graph.
 
-Selection computes H, the selected task plus all its ancestors, from complete
-data. Visible members of H and their real induced edges receive the established
-node/body/arrow highlight. The view also reports |H−S|, counting hidden ancestors
-once by task ID. Selection never adds tasks, changes layout or moves the viewport.
-Details and relation navigation remain independent. The delivered centered
-TaskDetailDialog retains its resource and focus lifecycle. English/Simplified
-Chinese locale changes translate controls and counts while preserving S,
-selection, hidden-ancestor semantics and viewport.
+Explicit expansion may relayout S, centers its anchor at current zoom and
+focuses the anchor body. One “收起到概览” control recomputes the current overview,
+frames it and retains reset-button focus. There is no branch ownership or
+per-branch collapse.
 
-A single “收起到概览” control recomputes the initial overview and frames its
-viewport. It retains selection only if that task remains visible, otherwise
-clears it; focus remains on the stable reset control. Per-card expansion may
-relayout S, centers its anchor at the current zoom and focuses the anchor body. There is no per-branch fold.
+Successful refresh intersects actual old visible IDs with new P, adds root and
+keeps only the root-connected component of the induced undirected graph.
+Disconnected nodes leave S permanently; refresh does not union a new baseline
+or add newly arrived tasks. It preserves viewport. Reset or remount computes a
+new baseline. Ordinary failure keeps old data, S and view only within the same identity,
+project and auth scope; inherited401/session transitions invalidate private
+resource owners. Project/root/tab changes and
+unmount discard local visibility state.
 
-Successful refresh intersects the actual old visible IDs with new P, adds the
-root, and keeps only the root-connected component through real undirected
-induced edges. Removed or disconnected tasks leave S permanently. It does not
-union a newly computed baseline or silently introduce newly arrived tasks.
-Reset or remount computes a new baseline. A surviving visible selection is
-recomputed against the full new context; an invisible selection clears. Failed
-refresh retains prior data, S, selection and viewport. Project, root, tab and
-canvas unmounts discard local visibility state.
-
-Refresh and visibility changes do not steal focus from an open detail dialog.
-Existing close-time fallback handles a vanished detail trigger. Keyboard focus
-on visible card controls keeps the existing readable-zoom behavior; selection
-itself does not focus or reveal hidden tasks.
+The delivered TaskDetailDialog, Overview/Attachments panels, adjacent attachment
+panes, one right-side scroll owner, request state and modal focus ownership
+remain intact. Refresh does not steal focus from an open dialog; a vanished
+trigger uses existing close-time fallback. Language changes translate controls
+and counts while preserving S, detail/attachment resources and viewport.
 
 This partially supersedes always-visible complete context in the
-[UX1 context decision](2026-10-22-complete-prerequisite-context.md). UX1 supplied
-complete, deduplicated ancestors and removed ambiguous omitted-upstream labels;
-those data guarantees remain. The original choice rendered that closure before
-inspection so selection could be purely presentational. Progressive visibility
-retains that property with explicit expansion and hidden-ancestor counts, while
-making the initial diagram bounded. The
-[inspection decision](2026-10-22-task-dependency-inspection.md) owns selection and
-smooth highlighting, and the [routing decision](../architecture/2026-10-22-task-dependency-routing.md)
-owns geometry for the current visible induced graph.
+[UX1 decision](2026-10-22-complete-prerequisite-context.md). UX1 delivered complete
+ancestors and unambiguous context; those data guarantees remain. Its original
+choice rendered the closure before inspection so later selection would not
+change geometry. Explicit visibility makes structure changes deliberate while
+bounding the initial graph.
 
-Production inputs remain the four existing 1,000-task capacity datasets, their
-exact 999/5,000 dependency counts, five samples, 3,000ms opening and 300ms local
-feedback budgets. Browser checks now establish the bounded visible overview,
-complete induced edges, explicit expansion/reset and accurate hidden upstream
-counts, rather than requiring all input tasks and dependencies in the DOM at
-once. The API still rejects projects exceeding 1,000 tasks or 5,000 dependencies.
-Every visible route, body piece and arrow retains independent geometry checks.
-The current bilingual runner has thirteen functional scenarios per target,
-five additional native capacity/limit scenarios and 31 total scenarios
-(eighteen native, thirteen container). Source-bound production evidence remains
-a delivery requirement.
+This overview and render-workload policy was delivered by
+[PR #134](https://github.com/codetreker/daynight/pull/134), merged as
+`53e3a0c0ff4ec821f74a2401a3bfa7de24a3f4ea`. Its source-bound local and required CI
+checks passed, with actual approval before platform integration. UX-T2 uses two
+focused PRs: this delivered overview, then
+[dependency inspection](https://github.com/codetreker/daynight/pull/121). The
+latter owns independent selection/Details controls, full ancestor highlighting,
+hidden-upstream counts and smooth paths. They were deferred from this overview delivery; the
+[inspection decision](2026-10-22-task-dependency-inspection.md) now owns their
+implementation and separate current-head acceptance. Both PRs must be integrated before UX-T2 is done.
 
-The [requirements](../../../../docs/spec/daynight-task-inspection.md) own visible
-behavior; the [design](../../../../docs/design/daynight-task-inspection.md)
-explains the model and the [task breakdown](../../../../docs/design/daynight-task-inspection-tasks.md)
-keeps UX1's historical delivery separate from the revised UX2 scope.
+The four complete API capacity inputs retain 1,000 tasks each and their exact
+999/5,000 edges, with five samples. The browser workload now requires bounded
+initial S, all real induced visible edges and explicit expansion/reset, rather
+than all input tasks/edges simultaneously in the DOM. `openMs ≤ 3000` and existing
+detail/zoom/pan feedback ≤300ms remain. All 31 scenarios, zero retries, timeouts,
+size refusals, coverage and cleanup gates remain. Independent existing polyline
+and dash checks cover every visible edge; selection timing and curved oracles
+belong to the inspection PR. The delivered overview evidence remains source-bound to PR #134. The later
+inspection head requires its own selection/curve and real production evidence;
+that evidence cannot be inferred from the overview pass.
+
+The [requirements](../../../../docs/spec/daynight-task-inspection.md),
+[design](../../../../docs/design/daynight-task-inspection.md) and
+[breakdown](../../../../docs/design/daynight-task-inspection-tasks.md) own behavior,
+mechanisms and the two-part UX-T2 scope.
 
 ## Alternatives
 
-**Keep the complete projection always visible.** This made ancestry immediately
-available and preserved a single graph geometry, but initial density and full
-selection paint scaled with the complete context. Progressive visibility keeps
-all data while making expansion an explicit operation.
+**Keep the complete projection always visible.** This made every ancestor
+immediately available, but initial density and paint cost scaled with complete
+context. Keeping complete P and explicit S retains data while bounding first
+rendering.
 
-**Fold only external context.** This leaves long chains, dense merges and shared
-main tasks fully rendered. Applying one visibility rule to M and external
-context addresses all four capacity shapes without changing their data.
+**Fold only external tasks.** Long chains, dense merges and shared main tasks
+would remain fully rendered. One visibility rule for both memberships addresses
+all existing capacity shapes.
 
-**Use aggregate nodes and shortcut edges.** Aggregates can summarize density,
-but require a task-to-group partition, shared ownership, hidden-edge accounting
-and rules preventing artificial cycles. Real cards and induced edges provide
-progressive access without introducing a second graph semantics.
+**Add aggregate cards and shortcut edges.** This requires shared-task ownership,
+hidden-edge accounting and rules preventing artificial cycles. Real cards and
+induced edges provide progressive access without a second graph semantics.
 
-**Add per-branch collapse.** Shared descendants and ancestors make branch
+**Add per-branch collapse.** Shared ancestors and descendants make branch
 ownership ambiguous. A global reset has a deterministic root-connected result
-and avoids a persistent branch ownership model.
+and no persistent ownership model.
 
-**Cap manually added edges at one hundred.** A highly connected hidden task
-could never be expanded. The twenty-task manual batch limits additions while
-retaining every resulting real edge.
+**Cap manually added edges.** Highly connected hidden tasks could become
+impossible to expand. A twenty-task batch bounds added cards while retaining all
+resulting real dependencies.
 
-**Rebuild the baseline automatically on refresh.** This can replace a reader's
-chosen visible region and introduce tasks without an explicit action. Retaining
-actual visible IDs and pruning disconnections preserves browsing intent; reset
-or remount deliberately adopts a new overview.
+**Refill the baseline on refresh.** This can replace the reader's chosen region
+or introduce tasks without explicit action. Actual-visible reconciliation keeps
+browsing intent; reset/remount adopts a new overview deliberately.
+
+**Combine workload policy and dependency inspection in one PR.** That couples a
+material change in rendered workload with new selection, curve geometry and
+acceptance mechanisms. Separate focused PRs establish progressive behavior and
+its original-primitive budgets before adding inspection; the Daynight task still
+requires both deliveries.
 
 ## Consequences
 
-Complete context and visible geometry have separate owners. Only explicit
-expansion, reset, successful snapshot reconciliation and lifecycle changes can
-change S; inspection and details cannot. Initial limits bound first rendering,
-while repeated manual expansion can intentionally reach the complete context.
-That state is observable and carries no promise that arbitrary full-project
-rendering fits the initial interaction budgets.
+Complete data and visible geometry have separate owners. Only explicit
+expansion/reset, successful snapshot reconciliation and lifecycle changes alter
+S. Opening details does not. Repeated manual expansion can reach complete P, but
+arbitrary full-project rendering does not inherit the initial overview budget.
 
-Per-branch folding and aggregates are deferred additive interactions. Adding
-branch folding would require defining shared-task ownership and collapse effects;
-adding aggregates would require independent group/edge semantics. Their cost
-remains bounded by keeping real task IDs, full P and induced edges separate from
-visibility, and by avoiding hidden shortcut or group state in the current model.
-Neither capability is implied by the reset control.
+Per-branch folding and aggregates are deferred additive interactions. Branch
+folding needs shared-task/collapse ownership; aggregates need independent group
+and group-edge semantics. Keeping real IDs, complete P and induced S separate
+preserves their extension points without implying those capabilities.
 
-Acceptance must independently derive initial BFS membership, full induced edges,
-exact batch deltas, root-connected refresh retention and hidden ancestor counts.
-It must cover 50/100 boundaries, shared neighbors, dense manual expansion,
-completed tasks, external unrelated successors, failed refresh and dialog focus.
-Performance and runtime conclusions remain attached to their tested source and
-corresponding PR or CI run.
+Acceptance independently derives initial membership, induced edges, batch deltas
+and root-connected refresh retention. It covers 50/100 boundaries, stable order,
+shared neighbors, proposed/completed states, dense manual expansion, unrelated
+external successors, failure retention and dialog focus. The existing body-open
+and polyline behavior remains observable until the subsequent inspection PR.

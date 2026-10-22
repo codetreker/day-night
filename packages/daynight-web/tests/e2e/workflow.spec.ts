@@ -899,8 +899,13 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   expect(detailReads).toBe(1);
   await expect(close).toBeFocused();
   await expect(page.locator('#root')).toHaveAttribute('inert', '');
+  const overviewTab = dialog.getByRole('tab', { name: '概览', exact: true });
+  await page.keyboard.press('Tab');
+  await expect(overviewTab).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(dialog.getByRole('link', { name: b.properties.pullRequests[0]!.url, exact: true })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(overviewTab).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(close).toBeFocused();
   await page.keyboard.press('Shift+Tab');

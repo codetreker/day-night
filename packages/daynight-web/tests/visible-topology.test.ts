@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { expectedBatch, expectedOverview, inducedTopology } from './e2e/visible-topology';
-import type { GeometryExpectation } from './e2e/dependency-geometry';
-const graph = (count: number): GeometryExpectation => ({ nodes: Array.from({ length: count }, (_, index) => ({ id: String(index) })), edges: Array.from({ length: count - 1 }, (_, index) => ({ id: `0->${index + 1}`, source: '0', target: String(index + 1), external: false })) });
+import { expectedBatch, expectedDependencyTopology, expectedOverview, inducedTopology } from './e2e/visible-topology';
+import type { DependencyTopology } from './e2e/visible-topology';
+const graph = (count: number): DependencyTopology => ({ nodes: Array.from({ length: count }, (_, index) => ({ id: String(index) })), edges: Array.from({ length: count - 1 }, (_, index) => ({ id: `0->${index + 1}`, source: '0', target: String(index + 1), external: false })) });
 describe('independent visible API topology expectations', () => {
+  it('derives complete root descendants and their ancestors without adding external sibling branches', () => {
+    const full = expectedDependencyTopology([
+      { id: 'root', dependsOn: [] }, { id: 'child', dependsOn: ['root', 'external'] },
+      { id: 'external', dependsOn: ['ancestor'] }, { id: 'ancestor', dependsOn: [] },
+      { id: 'sibling', dependsOn: ['external'] }, { id: 'unrelated', dependsOn: [] },
+    ], 'root');
+    expect(full.nodes.map(({ id }) => id)).toEqual(['root', 'child', 'external', 'ancestor']);
+    expect(full.edges).toEqual([
+      { id: 'root->child', source: 'root', target: 'child', external: false },
+      { id: 'external->child', source: 'external', target: 'child', external: true },
+      { id: 'ancestor->external', source: 'ancestor', target: 'external', external: true },
+    ]);
+  });
   it('retains exact small graphs and bounds the deterministic root-anchored overview', () => {
     const fifty = graph(50); expect(expectedOverview(fifty, '0', fifty.nodes.map(({ id }) => id))).toEqual(fifty);
     const fiftyOne = graph(51); const overview = expectedOverview(fiftyOne, '0', fiftyOne.nodes.map(({ id }) => id));
@@ -24,7 +37,7 @@ describe('independent visible API topology expectations', () => {
   it('expands at most twenty hidden direct neighbors without a manual edge limit', () => {
     const full = graph(80); const order = full.nodes.map(({ id }) => id);
     expect(expectedBatch(full, ['0'], '0', 'downstream', order).nodes).toHaveLength(21);
-    const dense: GeometryExpectation = { nodes: full.nodes, edges: full.nodes.flatMap((node, index) => index === 0 ? [] : [
+    const dense: DependencyTopology = { nodes: full.nodes, edges: full.nodes.flatMap((node, index) => index === 0 ? [] : [
       { id: `0->${node.id}`, source: '0', target: node.id, external: false },
       ...full.nodes.slice(1, index).map((previous) => ({ id: `${previous.id}->${node.id}`, source: previous.id, target: node.id, external: false })),
     ]) };

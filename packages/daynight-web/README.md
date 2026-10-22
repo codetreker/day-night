@@ -21,13 +21,57 @@ own single-file management, previews and their independent state. The original
 offline dashboard mockups remain separate from the application; the attachment
 development mockup below reuses the real components with a frontend-only fixture.
 
-The planned [authentication requirements](../../docs/spec/daynight-auth.md),
+The [authentication requirements](../../docs/spec/daynight-auth.md),
 [architecture](../../docs/design/daynight-auth.md) and
 [task breakdown](../../docs/design/daynight-auth-tasks.md) define login, private
-projects, member and invitation management, and personal access tokens. These
-capabilities are not implemented. The current browser workspace uses the
-unauthenticated local service. Trusted same-origin previews, relative resources
-and keyboard behavior continue after authentication is delivered.
+projects, member and invitation management, and personal access tokens. The
+opt-in `AuthenticatedApp` implements their browser components and API client.
+Production `main.tsx` still renders `App` under `LocaleProvider`; the deployed workspace remains
+unauthenticated and loopback-only until coordinated activation. Trusted
+same-origin previews, relative resources and keyboard behavior remain unchanged.
+The [Web workspace decision](../../.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
+owns this integration boundary and its lifecycle choices.
+
+## Authenticated workspace
+
+`AuthenticatedApp` runs under the same `LocaleProvider` as the existing
+workspace and owns current-user loading, login navigation and session loss. Both
+complete catalogs provide its `messages.auth` domain, including accessible names,
+validation, notices and already displayed errors. Login, workspace, invitation
+and management dialogs expose the shared language selector; native formatters
+render dates and counts. Language changes retain form inputs, dialog and
+one-time secrets, identity and pending requests without restarting operations.
+It composes the existing project list, graph and centered `TaskDetailDialog` with
+private project creation, account/token pages, member/invitation management and
+explicit invitation acceptance. Identity changes invalidate outstanding requests
+and unmount user-owned content; a project 404 stays a resource error. Requests
+use same-origin browser credentials and preserve request IDs, cancellation and
+explicit failures. Member versions remain `bigint` from JSON decoding through
+mutation encoding, including values above the safe JavaScript integer range.
+
+PAT values and invitation links are displayed only after creation. Copy failure
+keeps a recoverable action; closing the secret dialog requires confirmation. The
+invitation entry removes its fragment immediately, uses tab-local temporary
+storage across login, and clears it when the workflow ends. Inspection does not
+accept an invitation. The UI retains ordinary same-origin attachment iframes,
+relative resources and their existing keyboard bridge.
+
+The login page reads `GET /api/v1/auth/providers` with response
+`{providers: [providerId, ...]}`. This is an unmounted client dependency, not an
+implemented production backend route. The response must reflect the configured
+UniAuth App's allowed and enabled providers. Discovery failures and an empty
+provider set have explicit states; the UI does not invent a provider list. Real
+App-aware UniAuth discovery and backend exposure belong to coordinated activation.
+UniAuth [PR #19](https://github.com/codetreker/uniauth/pull/19) supplies the upstream
+capability; Daynight retains its older SDK pin until that activation upgrades and
+connects it, as described in the
+[authentication architecture](../../docs/design/daynight-auth.md#登录方式发现).
+
+With `pnpm web:dev`, open `/tests/mockups/auth.html` for actual components with
+controlled fetch responses, the same locale Provider and final styles. This fixture validates frontend
+interaction separately from production service mounting and real third-party
+login. The [static design prototype](../../docs/design/mockups/auth/index.html)
+retains the broader scenario reference.
 
 ## Languages
 
@@ -138,36 +182,40 @@ minimum height and 7px row gaps; a single-line bordered row is about 64px.
 Desktop titles stay 13px and narrow-screen titles 12px, with readable
 metadata/status sizes of 11px/10px.
 
-Rows open one horizontal task graph at a time. Complete projection P includes
-the root, reachable successors and all their ancestors, excluding unrelated
-successors of external context. The visible set S is progressive for both main
-and external tasks. P at or below fifty tasks and one hundred edges is shown in
-full; larger P starts from a root-anchored, stable undirected BFS, successors
-before prerequisites. Only accept candidates whose complete induced graph stays
-within fifty tasks and one hundred edges, and traverse only accepted tasks.
+Rows open one horizontal graph at a time. Complete P retains the root,
+reachable successors and every required ancestor, without unrelated successors
+of external context. Main progress and seven project counters still use full
+data. Actual visible S is progressive for main and external tasks alike.
 
-Cards have explicit prerequisite/successor controls adding at most twenty hidden
-direct neighbors in P, in snapshot order. Controls report exact new-task/new-edge
-counts, including edges among the batch. Manual expansion has no edge cap and
-can exceed initial limits. Every displayed edge is a real dependency with both
-endpoints in S, and all such edges appear; there are no aggregate nodes or
-shortcuts. Cards are 220 by 136 pixels: 94px body, 40px constant two-column
-expansion footer and two border pixels. An empty direction column stays blank.
-External cards and links retain their labels/dashes; completed tasks follow the
-same visibility rules. Toolbar counts distinguish visible from complete context,
-while chain progress and project statistics keep their complete-data meaning.
+P with at most fifty tasks and one hundred dependencies is fully visible.
+Larger P starts at root with stable undirected BFS, successors before prerequisites
+in snapshot order; accept a task only when the complete induced graph remains
+within fifty/one hundred, and traverse only accepted tasks. Cards expose direction
+controls adding at most twenty hidden direct neighbors in P, with exact new-task,
+new-induced-edge and remaining counts. Manual expansion has no edge cap. Every
+real edge with both endpoints in S appears, without shortcuts or aggregate cards.
 
-“收起到概览” recomputes the overview and frames it, retaining reset focus.
-Explicit expansion centers its anchor at the current zoom and focuses that card
-body. Successful refresh keeps actual old visible IDs still in new P plus the
-root, then prunes the visible induced graph to its root-connected component.
-It preserves the viewport and never fills from a new baseline automatically.
-Reset or remount computes a new baseline; failure preserves the old view. Open
-details retain focus while graph reconciliation uses existing close-time fallback.
-The [progressive-view decision](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)
-owns visibility and partially replaces the original full-render
-[context decision](../../.agents/notes/implemented/feature/2026-10-22-complete-prerequisite-context.md),
-whose complete-data semantics remain intact.
+Cards are 220 by 136 pixels: 94px body, 40px two-column expansion footer and two
+border pixels; unused directions remain blank. The progressive baseline was delivered by PR #134. On that baseline, body
+activation now toggles graph-local inspection and a sibling Details control opens
+the existing TaskDetailDialog; direction controls keep their delivered behavior.
+Complete H comes from full data: visible ancestors and real edges/arrows highlight,
+with |H−S| reported once by task ID. Same-card/blank clears, another task replaces
+selection, and inspection never expands or changes geometry/viewport.
+Expansion centers its anchor at current zoom and focuses its body. Global reset
+“收起到概览” recomputes/frames overview and retains reset focus.
+
+Successful refresh keeps actual visible IDs still in new P plus root, prunes to
+the induced undirected root component and preserves viewport. It does not add a
+new baseline or newly arrived tasks. Reset/remount computes a new baseline;
+ordinary failure keeps old data/S/view only in the same identity/project/auth
+scope; project/root/tab/unmount releases local S. Current-generation401 or
+identity/session/project transitions retain inherited AuthenticatedApp
+invalidation and private-resource unmount behavior.
+An open dialog retains focus and existing close-time fallback. Locale translates
+new controls/counts without changing S or business requests. The
+[progressive decision](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)
+partially supersedes UX1's full-render policy while retaining its complete data.
 
 Per-project browser preferences retain the selected tab,
 each tab's page scroll position and completed-item choice, and the chain's
@@ -197,8 +245,9 @@ never expands or relayouts. Mouse, Enter and Space operate the focused control. 
 closing and relationship navigation preserve inspection and viewport. Inspection
 belongs to the mounted canvas, clears on project/root/tab changes or unmount,
 and is recomputed after a successful snapshot refresh when the task remains
-visible; an invisible selection clears. Failed refresh preserves the prior selection and
-snapshot. The dialog retains dependency navigation,
+visible; an invisible selection clears. Ordinary failed refresh preserves selection and snapshot only in the same
+identity/project/auth scope; inherited401/session invalidation still clears
+private resource owners. The dialog retains dependency navigation,
 PR associations, stale-data detection and attachment management. Task fields and
 graph interactions remain read-only. The PR section follows the description and
 displays every ordered title/URL pair, including duplicates. Lists longer than 100 entries use local
@@ -247,10 +296,15 @@ container before React Flow resets its scroll. Pointer focus and keyboard focus
 on an already visible card preserve the viewport.
 The centered body-portal dialog has a 960px maximum width, 24px viewport gutters
 (12px at 600px and below), and a maximum height of
-`min(880px, 100dvh - 2 × gutter)`. A single content region scrolls independently
-of the persistent header and footer. Desktop content pairs a reading column with
-a 265px metadata/relationship column (225px at 850px and below); at 600px and
-below it stacks into one column. The dialog locks background focus and scrolling,
+`min(880px, 100dvh - 2 × gutter)`. The persistent heading, tabs and footer
+surround an Overview panel and an Attachments panel. Overview owns its content
+scrolling and pairs a reading column with a 265px metadata/relationship column
+(225px at 850px and below); at 600px and below it stacks into one column.
+Attachments fills the panel with adjacent file and preview panes at every
+supported width, including 320px. Its parent body and panels do not scroll.
+Short viewports, including 844×390, use compact heading and control spacing to
+retain usable content without a second outer scrollbar. The dialog locks
+background focus and scrolling,
 supports its close button, backdrop, Escape and Tab,
 and restores a surviving original trigger or a visible control in the active task view on close. Focusable
 controls are enumerated with `tabbable` 6.5.0 using its normal browser visibility
@@ -260,9 +314,24 @@ for focusing a surviving trigger after DOM removal.
 
 ## Task attachments
 
-The section after PR associations lists the task's path-addressed files as a
-nested tree. Select one local file, accept its name as the initial target or edit
-the relative path, then upload. MIME is selected from the target path with `mime`
+Every task detail opens on Overview, which retains descriptions, PR
+associations, relationships and metadata. The separate Attachments tab places
+the path-addressed file tree, refresh and upload on the left and the selected
+file's preview on the right. A vertical divider separates independently
+scrollable panes; narrow layouts retain this left/right placement. The
+[split-view decision](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-split-view.md)
+owns this composition and its scroll rules.
+
+`TaskDetailPanels` keeps both panels mounted with stable tab relationships. The
+active tab is the sole roving tab stop; arrows and Home/End activate its neighbor
+or endpoint, and native Enter/Space work normally. Hidden panels are both hidden
+and inert. Returning to Attachments retains selection, expanded directories,
+loaded state, preview and an unsent file/path draft. Changing project/task resets
+the tab and attachment scope. Description-to-attachment navigation, when
+implemented, activates this same panel and controller.
+
+Select one local file, accept its name as the initial target or edit the relative
+path, then upload. MIME is selected from the target path with `mime`
 4.1.1. Uploading the same path overwrites that file. Each file offers download
 and deletion; successful writes refresh only the attachment list and preview.
 They do not change the task version, timestamp or graph snapshot.
@@ -273,7 +342,19 @@ later page fails and labels the result incomplete with a retry action. Scope
 changes and unmount cancel requests; generations discard late results. List,
 write and preview errors stay local. An overwrite or a refreshed `updatedAt`
 reloads the selected content and remounts native previews; the server's
-`Cache-Control: no-store` keeps mutable paths current.
+`Cache-Control: no-store` keeps mutable paths current. Empty inventory and no
+selection have distinct states; deleting the selected file clears its preview.
+
+The right preview has one vertical scroll owner. Markdown, text/JSON/source and
+large images use `attachment-preview-body`; their renderers have no nested
+vertical height limits. Tables and code can scroll horizontally. For ready
+HTML/PDF, the body and fitted frame wrapper hide overflow and the embedded
+document or native reader owns scrolling. The preview header never scrolls
+independently, exposes the complete path and keeps download/delete reachable.
+Left-pane scrolling does not move right-side content or its reading position.
+Full-page reading in a new browser tab and independent real-service acceptance
+for this reading group remain separate pending tasks. The renderer sizing and
+fixed service URLs remain reusable by that delivery.
 
 Markdown uses `react-markdown` 10.1.0 with `remark-gfm` 4.0.1 for CommonMark and GFM
 including tables. Raw HTML remains escaped. Relative images and links resolve
@@ -282,7 +363,9 @@ links remain on the rendered document. Paths that escape the task root are
 rejected. Text, JSON and source previews preserve text and newlines. Images use
 native image loading with error/retry feedback; PDF and HTML use native iframes.
 HTML/PDF first check preview availability with HEAD and never decode a HEAD error
-as a JSON body. The frame then performs normal resource requests.
+as a JSON body. The frame then performs normal resource requests. HEAD success
+does not prove that native content has rendered; integrated acceptance must
+observe actual HTML interaction and PDF output.
 
 HTML loads the fixed same-origin
 `/api/v1/projects/{projectId}/tasks/{taskId}/preview/{path...}` URL. Its CSS, JS,
@@ -301,8 +384,9 @@ does not implement reconciliation or rollback.
 Run `pnpm web:dev` and open `/tests/mockups/attachments.html` on Vite's printed
 origin. `tests/mockups/main.tsx` renders the production attachment components and
 CSS with `tests/mockups/fixture.ts`; metadata changes remain in memory and native
-previews use local fixture files. Choose files, empty or upload-error scenarios,
-and exercise upload, overwrite, preview, download and deletion without Go,
+previews use local fixture files. Exercise detail tabs, adjacent panes and tall
+content along with loading, empty, failure and busy states, plus upload,
+overwrite, preview, download and deletion without Go,
 PostgreSQL or network API calls. Refreshing the page resets fixture state.
 Object URLs stay valid through deletion and are released when the fixture is
 disposed. This development entry is excluded from the single-index production
@@ -465,25 +549,27 @@ with versioned PATCH requests from sink to root, avoiding repeated traversal of
 a growing ancestor chain during setup. Complete snapshots compare every node's
 dependencies with the fixture, including the chain's exact predecessor sequence.
 
-Capacity retains four complete 1,000-task inputs: a 999-edge chain and three
-5,000-edge merge/shared/external graphs. The external input remains two main
-tasks plus 998 contextual ancestors. Complete API snapshots still compare every
-input task and dependency. Browser checks now verify bounded initial S and all
-its induced edges, explicit expansion/reset and exact hidden-upstream counts,
-rather than requiring the complete input in the DOM at once. Each dataset
-records five `visibility` observations for overview, hidden ancestry, explicit
-expansion and reset counts alongside its five timing samples.
+PR #134 delivered the bounded render-workload policy and mandatory visibility
+receipts, with its own passed real/CI source-bound evidence. Current inspection
+retains the four complete 1,000-task API inputs (999-edge chain, three 5,000-edge
+graphs), five samples and overview/expansion/reset count/delta checks.
 
-Each dataset has five samples. Every opening reaches a painted, operable overview
-within 3,000ms; local selection/detail/zoom/pan feedback stays within 300ms.
-Samples run normal Details → close → immediate zoom/pan, trusted selection of a
-visible task, then the highlighted Details → close → immediate zoom/pan sequence.
-`detailMs`, `zoomMs` and `panMs` report the worse of both states, with independent
-network duration. No close-to-zoom sequence inserts Fit view, reset or extra wait.
-Projection/layout and painted-render diagnostics remain separate from the full
-opening budget. Independent 1,001-node and 5,001-edge cases still require complete
-409 rejection. Revised real native/container/capacity evidence remains pending;
-static model or prototype checks do not establish the production result.
+Each visibility row additionally requires nonempty `selectedId` and integer
+`hiddenUpstream` bounded by `1000 - overviewNodes`; browser checks independently
+verify exact full-H roles and hidden counts. `selectMs ≤ 300` is required. Keep
+`openMs ≤ 3000` and detail/zoom/pan ≤300. Run normal Details → close → immediate
+zoom/pan, trusted deep-visible selection, then the highlighted sequence; per-metric
+values use the worse state, with independent network values. Insert no reset,
+Fit view or waiting between close and zoom.
+
+Independent visible-topology expectations use API identities/dependsOn and the
+intended S, with no production planner/curve expected geometry. Optional declared
+compilerInputs check fidelity only. Actual DOM side ports, horizontal ends, every
+Q's twelve-unit symmetric trim/tangent joins, visible-card avoidance, CTMs,
+complete body/true-arc/dash coverage and native RGB markers remain unconditional.
+31 scenarios, real runtime targets, bilingual checks, zero retries, timeouts,
+coverage, size refusals and cleanup remain. PR134 passing does not establish the
+current inspection head; complete current source-bound acceptance is pending.
 
 The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [attachment journey](tests/e2e/attachments.spec.ts),
@@ -499,8 +585,8 @@ scenario annotations validated in each target's report.
 | W1 | `project-list`: more than 50 projects, cursor requests, unique cards and navigation to a later-page project |
 | W2 | `project-graph`, `deep-links`: project entry, direct HTML reload and browser history |
 | W3–W4 | `project-graph`, `project-view-tabs`, `refresh-staleness`, `failure-recovery`: exact statistics, topology-based tabs, distinct root progress, direct standalone details, independent completion filters, per-project tab/scroll/expansion restoration, dependency reclassification and consistent full refresh |
-| W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`, `capacity-external`: complete projection data, bounded visible overviews, induced edges, expansion/reset, hidden-upstream counts, smooth inspection and viewport/node actions |
-| W8 | `detail-navigation`, `refresh-staleness`: complete current content, ordered PR associations, relation navigation, property refresh and readiness differences without revising a dependent task |
+| W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`, `capacity-external`: complete projection data, bounded overview/induced edges, explicit expansion/reset, state markers and existing detail/viewport actions |
+| W8 | `detail-navigation`, `refresh-staleness`: complete centered-dialog content, ordered PR associations, relation navigation, property refresh and readiness differences without revising a dependent task |
 | W9 | `failure-recovery`, `deep-links`, `capacity-limits`: owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
@@ -548,7 +634,7 @@ without CPU sampling or CDP screenshots. These diagnostics preserve all original
 total timing/readiness gates; they do not subtract queue/frame time or turn a
 failed measurement into success. Scenario PNG evidence remains independent.
 Capacity tests disable Playwright's repeated DOM snapshots and trace filmstrip;
-action/network traces remain available on failure alongside all 15 streamed CDP
+action/network traces remain available on failure alongside all 20 streamed CDP
 traces, scenario PNGs and complete graph/geometry checks. Controller-side
 `controllerDurations` records fixture creation, graph snapshot validation and
 per-repetition interaction/total durations. These diagnostics locate harness
@@ -639,73 +725,42 @@ as text. The API parser verifies DTO shape and resource identity. The implemente
 model separately verifies dependency closure, acyclicity, status/readiness and
 summary consistency. It projects root descendants plus their complete ancestor
 closure, excluding unrelated descendants of contextual tasks. `mainIds` retains
-chain membership; `externalIds` identifies additional ancestors. Every dependency ending in complete P is retained there; visible edges require
-both endpoints in S. An edge is external when its source is external. It derives distinct root progress and aggregate chain status from main
-tasks in the same traversal, and marks shared tasks. The Dagre
-adapter retains finite left-to-right Dagre node positions and order for
-220-by-136 visible cards. A route planner connects source right-center to target left-center
-through obstacle-free rank-gap channels, retaining intermediate lane intent while
-avoiding every task card. `routing.ts` exports `RoutingNode` rectangles and
-`planDependencyRoutes(nodes, edges)`; the adapter builds rectangles from fixed
-card dimensions and calls the planner once. Shared column/interval indexes keep
-clear spans and intermediate-column anchors, routing blocked spans along free
-rows and rank-gap midpoints with clearance for quadratic corners. The read-only React Flow canvas consumes these results without changing domain
-objects. React Flow owns fixed task nodes, native ResizeObserver measurement,
-keyboard behavior, viewport and controls. One memoized SVG in its public
-ViewportPortal renders every compiled route, with stable edge identity,
-arrowheads, external-context dashes and accessibility semantics. `routes.ts`
-exports `compileDependencyRoute(points, dashed)`, returning canonical `d` and
-immutable paint `pieces`. It consumes the planned route, whose endpoints and
-horizontal direction follow fixed source-right/target-left side ports, while
-rounding noncollinear corners with quadratic `Q` segments and at most 12 units
-trimmed from either adjoining span. Duplicate and forward-collinear redundant
-points are removed before compilation; invalid coordinates fail explicitly.
+chain membership; `externalIds` identifies additional ancestors. Complete projection P retains every required dependency. Visibility selects
+S and all real edges with both endpoints in S; external classification still
+depends on source membership in P−M. It derives distinct root progress and aggregate chain status from main
+tasks in the same traversal, and marks shared tasks. The Dagre adapter keeps visible node placement/order for 220-by-136 cards.
+`routing.ts` plans fixed right-center/left-center ports through free card-column
+rows and rank-gap channels, retaining lane intent and avoiding every visible
+card. `routes.ts` compiles planned points to canonical M/L/Q plus external DashPiece
+paint with symmetric corner trim ≤12 and explicit invalid-geometry failure.
+True curved length uses adaptive chord/control-polygon bounds with cumulative
+error ≤0.025 CSS px at maximum 1.8 zoom. Axis-local long lines and short Q pieces
+retain the real 5/4 phase and gap-midpoint seams.
 
-Canonical routes use `M/L/Q`. Solid bodies remain native. Dashed bodies retain
-locally horizontal rotated long lines and short paths around curves, with the
-original 5/4 pattern. `dashes.ts` owns `DashPiece` and dash constants. Adaptive de
-Casteljau subdivision bounds quadratic arc length between chord and control
-polygon lengths; each curve receives an equal share of the route error budget,
-which is at most 0.025 CSS px at maximum 1.8 zoom. Cumulative real arc length
-sets each piece's positive dash offset, preserving the phase across curves and
-gap-midpoint cuts. Solid routes skip dash arc-length work. Pieces are
-noninteractive and hidden from the accessibility tree; canonical edges retain
-semantics and native marker ownership.
+DependencyEdges renders native SVG declaratively, with three constant direct-RGB
+normal/highlighted/unrelated markers on canonical paths and locally inherited
+body-group stroke. Every visible real edge, semantic identity and actual paint
+piece remains. Inspection reuses geometry; pan/zoom share the viewport transform.
+TaskInspectionContext supplies task-shell state while controlled React Flow
+node/data and memoized content remain stable. Ordinary keyboard reveal uses
+layout/viewport coordinates. If refresh removes a focused footer but its task
+survives, TaskNode restores its body after the actual DOM commit without viewport
+reveal; whole-card removal retains graph/fullscreen fallback and open dialog
+focus is preserved.
 
-Routes and pieces compile when visible layout changes. `DependencyEdges` renders
-the current visible induced edges declaratively using three constant direct-RGB
-normal/highlighted/unrelated markers on canonical paths. The
-`.task-dependency-body` group owns stroke and body primitives inherit it;
-external highlighted routes remain dashed. Pan and zoom share the viewport
-transform without per-edge store subscriptions. The
+The [inspection decision](../../.agents/notes/implemented/feature/2026-10-22-task-dependency-inspection.md)
+and [routing decision](../../.agents/notes/implemented/architecture/2026-10-22-task-dependency-routing.md)
+own these mechanisms. The
+[progressive decision](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)
+retains PR134's delivered workload, and the
 [paint decision](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
-retains original raster evidence, and the
-[inspection decision](../../.agents/notes/implemented/feature/2026-10-22-task-dependency-inspection.md)
-owns smooth selection. The
-[routing decision](../../.agents/notes/implemented/architecture/2026-10-22-task-dependency-routing.md)
-owns side ports and card avoidance in the current visible graph. Those mechanisms
-require source-bound production validation with progressive visibility.
-
-Initial placement uses known layout bounds after the viewport and positive
-measured canvas dimensions are ready, fitting the current visible graph within 0.8–1 zoom or anchoring the
-leftmost rank at 0.8 zoom. The root remains vertically centered when already
-leftmost; otherwise the topmost upstream node starts at a 32px canvas inset.
-Dependency geometry does not require connection-port DOM or per-edge endpoint
-readiness. Controlled React Flow node/data references contain task, geometry
-and stable callbacks; inspection does not replace them. `inspection.tsx` owns
-`TaskInspectionContext`; TaskNode reads its role directly, while memoized
-`TaskNodeContent` retains title/status/shared/external content. The React Flow
-element is memoized by geometry, index and callbacks, and `InspectedEdges` bridges
-context to the edge presentation owner. Selecting a task may restyle many
-ancestors and unrelated tasks without updating React Flow geometry data. The five `selectMs` measurements in each capacity dataset verify
-that work directly. Memoized collapsed root rows do not own graph selection;
-new snapshot indexes still refresh their data. Initial viewport placement is
-separate from explicit Fit view and does not rerun on selection or pan; global
-reset frames the new overview.
+retains original raster history. Current route/selection budgets require current
+head production evidence.
 
 Page hooks own requests and cancellation. Navigation or refresh invalidates the
 previous request generation, continuation failures preserve loaded cards, and
 unmount aborts owned work. Attachments have independent scoped list, write and
 preview state, while project statistics continue to use complete graph snapshots.
-There is no global task cache, task-field editor, polling loop or remote
-authentication flow in this workspace.
+There is no global task cache, task-field editor or polling loop. The opt-in
+`AuthenticatedApp` owns the authentication flow; production `main.tsx` continues
+to mount the existing `App` until coordinated activation.

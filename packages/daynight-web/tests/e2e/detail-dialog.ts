@@ -19,7 +19,7 @@ export const expectCenteredTaskDetail = async (page: Page, dialog: Locator): Pro
 };
 
 export const expectTaskDetailScroll = async (page: Page, dialog: Locator): Promise<void> => {
-  const body = dialog.locator('.task-detail-body');
+  const body = dialog.locator('.task-detail-panel-overview');
   expect(await body.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
   const fixedBefore = await dialog.locator('.task-detail-header,.task-detail-footer').evaluateAll((elements) =>
     elements.map((element) => { const bounds = element.getBoundingClientRect(); return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }; }));

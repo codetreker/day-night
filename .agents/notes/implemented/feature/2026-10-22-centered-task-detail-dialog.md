@@ -20,11 +20,16 @@ pagination, attachment state and stale-snapshot notice. `task-detail.css` owns o
 
 The body portal centers the dialog in the available viewport, with a maximum
 width of 960px and 24px gutters, reduced to 12px at 600px and below. Maximum height
-is `min(880px, 100dvh - 2 × gutter)`. The content region scrolls independently of
-the header and footer, keeping the close control accessible. Desktop content pairs
-a reading column with a 265px metadata/relationship column; the latter becomes
-225px at 850px and below, and both columns stack at 600px and below. Long text
-wraps and preformatted content scrolls within its own region.
+is `min(880px, 100dvh - 2 × gutter)`. The original centered composition used one
+content scroller to keep the heading and footer accessible while preserving all
+task content. The [split-view decision](../architecture/2026-10-22-task-attachment-split-view.md)
+partially supersedes that content ownership: Overview scrolls the task reading
+columns, while the separate Attachments tab bounds adjacent file and preview
+panes with one right-side vertical scroll owner. Heading, tabs, close and footer
+remain outside panel scrolling. Overview pairs a reading column with a 265px
+metadata/relationship column; the latter becomes 225px at 850px and below, and
+both columns stack at 600px and below. Long text wraps and tables/code retain
+local horizontal scrolling.
 
 The [dashboard decision](2026-10-20-project-task-dashboard.md) and
 [original dashboard design](../architecture/2026-10-20-task-dashboard-mvp-design.md)
@@ -62,10 +67,12 @@ centered shell preserves the lifecycle without retaining the original geometry.
 
 ## Consequences
 
-Reading and preview content gain a wider desktop column while metadata remains
-nearby. Narrow screens retain visible gutters and stack the same content without
-page-wide horizontal overflow. The fixed header and footer reduce the available
-reading height, so long content requires scrolling within the dialog.
+Task reading gains a wider desktop column while metadata remains nearby.
+Overview retains visible gutters and stacks its columns on narrow screens without
+page-wide horizontal overflow. Attachments retain left/right placement at those
+widths. The persistent heading, tabs and footer reduce available content height;
+the split-view decision owns compact short-viewport spacing and per-pane scroll
+rules while preserving this shell's geometry.
 
 The dialog remains an independent live detail read and never patches the graph
 snapshot. Descriptions remain plain text; Markdown descriptions and relative

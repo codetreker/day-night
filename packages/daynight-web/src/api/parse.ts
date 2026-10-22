@@ -13,27 +13,27 @@ import type {
   TaskStatus,
 } from "./types";
 
-const malformed = (): never => {
+export const malformed = (): never => {
   throw new Error("The server returned an invalid response.");
 };
 
-const record = (value: unknown): Record<string, unknown> => {
+export const record = (value: unknown): Record<string, unknown> => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return malformed();
   return value as Record<string, unknown>;
 };
 
-const string = (value: unknown): string => {
+export const string = (value: unknown): string => {
   if (typeof value !== "string") return malformed();
   return value;
 };
 
-const nonemptyString = (value: unknown): string => {
+export const nonemptyString = (value: unknown): string => {
   const parsed = string(value);
   if (parsed.trim() === "" || parsed.includes("\0")) return malformed();
   return parsed;
 };
 
-const boolean = (value: unknown): boolean => {
+export const boolean = (value: unknown): boolean => {
   if (typeof value !== "boolean") return malformed();
   return value;
 };
@@ -48,13 +48,13 @@ export const canonicalId = (value: string): string | null =>
     ? value.toLowerCase()
     : null;
 
-const id = (value: unknown): string => {
+export const id = (value: unknown): string => {
   const parsed = canonicalId(string(value));
   if (parsed === null) return malformed();
   return parsed;
 };
 
-const timestamp = (value: unknown): string => {
+export const timestamp = (value: unknown): string => {
   const parsed = string(value);
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(parsed)) return malformed();
   const milliseconds = Date.parse(parsed);
@@ -64,7 +64,7 @@ const timestamp = (value: unknown): string => {
   return parsed;
 };
 
-const array = <T>(value: unknown, parse: (item: unknown) => T): T[] => {
+export const array = <T>(value: unknown, parse: (item: unknown) => T): T[] => {
   if (!Array.isArray(value)) return malformed();
   return value.map(parse);
 };
@@ -80,7 +80,7 @@ const status = (value: unknown): TaskStatus => {
   return value;
 };
 
-const project = (value: unknown): Project => {
+export const project = (value: unknown): Project => {
   const data = record(value);
   return {
     id: id(data.id),

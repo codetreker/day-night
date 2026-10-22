@@ -46,12 +46,23 @@ expansion centers the anchor at current zoom and focuses its body; global reset
 frames the overview and retains reset focus. These structural actions are
 separate from selection.
 
-Successful refresh retains valid actual visible IDs plus root and prunes to its
+The progressive baseline is delivered by
+[PR #134](https://github.com/codetreker/daynight/pull/134), merged as
+`53e3a0c0ff4ec821f74a2401a3bfa7de24a3f4ea`. This inspection decision adds behavior
+on that workload; it does not introduce the render-policy change.
+
+Successful same-identity/project/auth-scope refresh retains valid actual visible IDs plus root and prunes to its
 induced root-connected component; it adds no new baseline automatically. A still
-visible selection recomputes full H; an invisible one clears. Failed refresh
-keeps old data, visible IDs, selection and viewport. Project/root/tab changes or
+visible selection recomputes full H; an invisible one clears. Ordinary failed refresh
+keeps old data, visible IDs, selection and viewport only in that scope. Current
+generation401 and session/identity/project transitions retain inherited
+AuthenticatedApp invalidation, cancellation and private-resource unmount rules. Project/root/tab changes or
 unmount release local state. Reconciliation never steals an open dialog's focus;
-a vanished trigger uses existing close-time fallback.
+a vanished trigger uses existing close-time fallback. If only the focused
+expansion footer disappears, TaskNode restores the surviving body during its
+actual DOM-commit layout effect with viewport reveal suppressed. React Flow can
+commit controlled nodes after the parent geometry effect, so that effect alone
+would restore focus too early. Whole-card removal keeps graph/fullscreen fallback.
 
 The [routing decision](../architecture/2026-10-22-task-dependency-routing.md)
 keeps Dagre positions/order for the visible graph and plans right-center to
@@ -77,9 +88,9 @@ geometry and local context separate presentation from layout without changing
 portal, inertness, scroll ownership or focus restoration.
 
 Four complete 1,000-task capacity input matrices retain their exact 999/5,000
-edges and five samples. The progressive view changes readiness to its complete
-bounded overview and induced edge set, plus explicit expansion/reset and hidden
-ancestor correctness. `openMs ≤ 3000` and selection/detail/zoom/pan ≤300 remain;
+edges and five samples. PR134 already established bounded-overview readiness, induced edges and
+expansion/reset correctness. Current inspection keeps its mandatory visibility
+rows and adds selectedId/hiddenUpstream plus independent full-H role checks. `openMs ≤ 3000` and selection/detail/zoom/pan ≤300 remain;
 normal Details → close → immediate zoom/pan precedes visible-task selection and
 the highlighted sequence. Per-metric worse-state values and independent network
 timing remain, with no reset, Fit view or waiting between close and zoom.

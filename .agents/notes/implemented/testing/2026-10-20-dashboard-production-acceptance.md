@@ -50,26 +50,30 @@ fault injection verifies the disposable database's ownership before changing it
 and restores the resource in a finally path. Browser routing barriers control
 response ordering separately from actual backend-failure observations.
 
-The four input topologies remain fixed while API-generated UUIDs can change
-layout tie order across runs. Each contains 1,000 tasks: chain has 999 edges and
-merge/shared/external have 5,000. External complete data remains two main tasks
-and 998 ancestors. Complete API snapshots compare all input IDs and dependencies.
-The [progressive-view decision](../feature/2026-10-22-progressive-task-graph.md)
-changes browser readiness from all input DOM to the bounded visible overview and
-its exact real induced edges. Tests also exercise explicit expansion/reset,
-precise batch deltas and deduplicated hidden ancestors. Each dataset records
-five `visibility` observations for overview, hidden ancestry, expansion and
-reset counts alongside its five timing samples. Full input data remains
-intact; all-at-once rendering is no longer the required product workload.
+The [progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
+and PR #134 delivered bounded DOM readiness and exact visible induced edges on
+four unchanged complete API inputs: 1,000 tasks each, a 999-edge chain and three
+5,000-edge merge/shared/external graphs. Five samples preserve complete API
+comparison and mandatory ordered visibility rows for overview, added, expanded
+and reset node/edge counts, with exact bounds/delta/reset validation.
 
-Five samples per input retain `openMs ≤ 3000` and selection/detail/zoom/pan
-feedback ≤300ms. Each first runs normal Details → close → immediate zoom/pan,
-then trusted selection of a visible task and the highlighted sequence. Per-metric
-detail/zoom/pan values retain the worse state, with separate observed network
-duration. Neither close-to-zoom sequence inserts Fit view, reset or waiting.
-Projection/layout and painted-render diagnostics do not replace the full opening
-gate. Independent 1,001-task and 5,001-edge responses remain complete 409 refusals.
-Revised native/container/capacity results remain source-bound delivery evidence.
+The current inspection head preserves that delivered workload and adds required
+nonempty selectedId, integer hiddenUpstream in `0..1000-overviewNodes` and exact
+browser full-H roles/counts. selectMs≤300 is required; open≤3000 and detail/zoom/
+pan≤300 remain. Normal Details→close→immediatezoom/pan precedes trusted deep-visible
+selection and the highlighted sequence. Each detail/zoom/pan metric uses the
+worse state, with independent network values; close-to-zoom gains no wait/reset/fit.
+
+GeometryExpectation aliases independent visible-topology DependencyTopology,
+derived from raw API identities/dependsOn and expected visible IDs, with no
+production planner/curve imports. Optional compilerInputs test only fidelity.
+DOM side ports, positive horizontal ends, every Q's twelve-unit symmetric trim/
+smooth joins, all-visible-card avoidance, actual CTMs, complete piece coverage,
+independent analytic arc length/dash phase and native RGB markers remain
+unconditional. Negative edge/arrow/crossing/phase/coverage cases must fail.
+31 scenarios, size refusals, coverage, zero retries, timeouts and cleanup remain.
+PR134's passed source and platform integration do not establish the current
+inspection head's real native/container/capacity or exact-head review result.
 
 Playwright runs one worker with zero retries. Report validation rejects global
 errors, skipped/flaky/retried tests, duplicate/missing stable scenarios, missing
@@ -188,8 +192,8 @@ source-right-center/target-left-center ports against DOM card rectangles,
 positive horizontal first/last tangents, node avoidance, native arrows and
 pan/zoom transform remain asserted; native node measurement remains
 enabled. The open/initial-ready count check includes the declared safe-integer
-paint-piece count and actual body-piece DOM, in addition to every visible card/control and induced canonical route. Complete
-input IDs and edges remain independently checked through the API. Independent CTM/arc reconstruction checks full ordered coverage,
+paint-piece count and actual body-piece DOM, in addition to every visible card/control and induced canonical route. Full
+API input comparison stays independent of visible geometry. Independent CTM/arc reconstruction checks full ordered coverage,
 phase continuity, gap-midpoint seams and native joins after the five timed
 repetitions, adding no readback or idle wait between drawer close and zoom.
 The [layout decision](../feature/2026-10-20-task-graph-projection.md) owns ranking,

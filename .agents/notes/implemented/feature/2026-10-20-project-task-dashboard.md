@@ -31,7 +31,7 @@ an explicitly collapsed list from per-project browser storage; the
 persistence, reconciliation and failure behavior. The project view shares one
 newest-first visible root sequence between list rendering and default-root selection;
 the [presentation decision](2026-10-21-task-chain-presentation.md) owns that order
-while the complete graph index retains its API order. React Flow owns fixed 220-by-136 visible task cards,
+while the complete graph index retains its API order. React Flow owns fixed 220-by-136 task cards,
 native node measurement, keyboard interaction, the viewport and its controls.
 Editing, connection, deletion, wrapper focus and interactive-lock controls remain
 disabled. The
@@ -80,16 +80,15 @@ starting point; ancestors extending left of it start at the top of their rank.
 The policy runs once after initialization, while explicit overview controls may
 zoom out further. Selection and viewport movement do not rerun layout.
 
-Controlled React Flow node/data and the canvas element remain stable during
-inspection. Graph-local context supplies task-shell state while memoized task
-content preserves title, status and membership markup. The original two-task
-selection and later role-bearing variants remain historical approaches; the
-[inspection decision](2026-10-22-task-dependency-inspection.md) owns the current
-state boundary. The [progressive-view decision](2026-10-22-progressive-task-graph.md)
-retains complete projection data while bounding initial visible geometry and
-adding explicit neighbor expansion/reset. Current DOM completeness means every
-visible task and induced edge, not every task in the complete project at once.
-Actual selection feedback remains measured under the existing budgets.
+The original detail-coupled implementation used ordinary/selected node variants
+and changed at most two references. The
+[inspection decision](2026-10-22-task-dependency-inspection.md) replaces that cost
+assumption with full-ancestor inspection through graph-local context, stable
+controlled node/data and memoized content. The
+[progressive decision](2026-10-22-progressive-task-graph.md), already delivered by
+PR134, owns visible S and complete induced geometry. Actual selection latency
+is measured on the current inspection head; inherited overview timing does not
+establish the new behavior's performance.
 
 Each root row is memoized. Collapsed rows hold no graph-local inspection, so
 opening or switching task details does not change their dependency selection. Expanded

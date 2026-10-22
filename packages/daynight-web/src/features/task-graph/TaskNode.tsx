@@ -54,6 +54,8 @@ export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
   const { setCenter, getViewport } = useReactFlow();
   const inspection = useTaskInspectionState(data.task.id);
   const body = useRef<HTMLButtonElement>(null);
+  const focusedControl = useRef<HTMLButtonElement | null>(null);
+  const restoringFocus = useRef(false);
   const revealed = useRef<number | null>(null);
   useLayoutEffect(() => {
     if (data.revealRequest === null || data.revealRequest === revealed.current) return;
@@ -61,9 +63,19 @@ export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
     void setCenter(data.center.x, data.center.y, { zoom: getViewport().zoom, duration: 0 });
     body.current!.focus({ preventScroll: true });
   }, [data.revealRequest, data.center, getViewport, setCenter]);
+  useLayoutEffect(() => {
+    // React Flow commits controlled node data after the graph owner's render.
+    // Recover a removed footer control at its task's actual DOM commit boundary.
+    if (focusedControl.current !== null && !focusedControl.current.isConnected && document.activeElement === document.body) {
+      restoringFocus.current = true;
+      body.current!.focus({ preventScroll: true });
+      restoringFocus.current = false;
+    }
+  }, [data.expansions]);
   const title = `${data.task.titlePreview}${data.task.titleTruncated ? '…' : ''}`;
   const revealOnFocus = useCallback((event: FocusEvent<HTMLButtonElement>) => {
-    if (!event.currentTarget.matches(':focus-visible')) return;
+    focusedControl.current = event.currentTarget;
+    if (restoringFocus.current || !event.currentTarget.matches(':focus-visible')) return;
     const bounds = event.currentTarget.closest('.task-graph-canvas')!.getBoundingClientRect();
     const { x, y, zoom } = getViewport();
     // Native focus can temporarily scroll React Flow's overflow container before

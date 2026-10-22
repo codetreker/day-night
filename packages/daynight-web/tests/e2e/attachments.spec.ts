@@ -6,7 +6,7 @@ import type { Locator, Page, TestInfo } from '@playwright/test';
 import { attachmentDownloadUrl, attachmentPreviewUrl } from '../../src/api/client';
 import { createAcceptanceCli } from '../../scripts/acceptance/installed-cli.mts';
 import { createProject, createTask, expect, test, type Task } from './fixtures';
-import { expectCenteredTaskDetail, expectTaskDetailScroll } from './detail-dialog';
+import { expectCenteredTaskDetail } from './detail-dialog';
 import { hasPaintedPdfMarker, readPdfPixels, type PdfPixels } from './pdf-pixels';
 
 const exact = (value: string): RegExp => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
@@ -25,6 +25,22 @@ const selectFile = async (region: Locator, path: string): Promise<void> => {
   await expect(name).toHaveCount(1);
   await name.locator('..').click();
   await expect(region.getByRole('heading', { name: path, exact: true })).toBeVisible();
+};
+
+const settleScroll = async (owner: Locator): Promise<void> => {
+  await owner.evaluate((element) => new Promise<void>((resolve, reject) => {
+    const started = performance.now();
+    let quietSince = started;
+    let previous = element.scrollTop;
+    const sample = (now: number) => {
+      const current = element.scrollTop;
+      if (current !== previous) { previous = current; quietSince = now; }
+      if (now - quietSince >= 100) { resolve(); return; }
+      if (now - started >= 3_000) { reject(new Error('The preview did not reach a stable scroll position.')); return; }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }));
 };
 
 const paintedPdf = async (page: Page, frame: Locator, info: TestInfo, source: Buffer, url: string): Promise<PdfPixels> => {
@@ -73,6 +89,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
   const wideColumns = Array.from({ length: 16 }, (_, index) => `Column ${index + 1}`);
   const wideTable = `| ${wideColumns.join(' | ')} |\n| ${wideColumns.map(() => '---').join(' | ')} |\n| ${wideColumns.map(() => 'Long table content').join(' | ')} |`;
   const longCode = `const attachmentContent = '${'unbroken-source-'.repeat(80)}';`;
+  const longPath = `long/${'long-file-name-'.repeat(12)}.txt`;
   const seeds = [
     { path: 'docs/design.md', bytes: Buffer.from(`# 附件设计\n\n| 文件 | 状态 |\n| --- | --- |\n| Web | 已连接 |\n\n${wideTable}\n\n\`\`\`js\n${longCode}\n\`\`\`\n\n![项目流程](../images/workflow.svg)\n\n[同名文本](../notes/one/same.txt)\n\n<script>window.attachmentLeak = true</script>\n`) },
     { path: 'notes/one/same.txt', bytes: Buffer.from('First nested text\nSecond line\n') },
@@ -84,6 +101,12 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     { path: 'site/index.html', bytes: await readFile(asset('./attachment-files/site/index.html')) },
     { path: 'site/style.css', bytes: await readFile(asset('../mockups/files/site/style.css')) },
     { path: 'site/app.js', bytes: await readFile(asset('./attachment-files/site/app.js')) },
+    { path: longPath, bytes: Buffer.from('Long path attachment content\n'.repeat(200)) },
+    { path: 'long/reading.md', bytes: await readFile(asset('../mockups/files/docs/tall.md')) },
+    { path: 'long/reading.txt', bytes: await readFile(asset('../mockups/files/data/tall.txt')) },
+    { path: 'long/reading.svg', bytes: await readFile(asset('../mockups/files/images/tall.svg')) },
+    { path: 'long/reading.html', bytes: await readFile(asset('../mockups/files/site/tall.html')) },
+    { path: 'long/reading.pdf', bytes: await readFile(asset('../mockups/files/tall.pdf')) },
     { path: 'site/data.json', bytes: await readFile(asset('./attachment-files/site/data.json')) },
   ];
   for (const [index, seed] of seeds.entries()) await put(seed.path, seed.bytes, `seed-${index}`);
@@ -116,6 +139,8 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
   await trigger.click();
   const dialog = page.getByRole('dialog', { name: '任务详情' });
   const attachments = dialog.locator('.task-attachments');
+  await expect(dialog.getByRole('tab', { name: '概览', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await dialog.getByRole('tab', { name: '附件', exact: true }).click();
   const expectReleased = async (): Promise<void> => {
     await expect(dialog).toHaveCount(0);
     await expect(page.locator('#root')).not.toHaveAttribute('inert', '');
@@ -137,10 +162,96 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
   for (const width of [1440, 320]) {
     await page.setViewportSize({ width, height: 800 });
     await expectCenteredTaskDetail(page, dialog);
-    await expectTaskDetailScroll(page, dialog);
+    expect(await dialog.locator('.task-detail-body').evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true);
+    const split = await attachments.locator('.attachment-split').boundingBox();
+    const left = await attachments.locator('.attachment-sidebar').boundingBox();
+    const right = await attachments.locator('.attachment-preview-pane').boundingBox();
+    expect(split && left && right && left.x + left.width <= right.x + 1 && left.y === right.y && right.height === left.height).toBeTruthy();
     expect(await attachments.locator('.attachment-markdown pre').evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
     if (width === 320) expect(await attachments.getByRole('table').last().evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
   }
+  const scrollEvidence: unknown[] = [];
+  for (const viewport of [{ width: 1440, height: 800 }, { width: 768, height: 800 }, { width: 600, height: 800 }, { width: 320, height: 800 }, { width: 844, height: 390 }]) {
+    await page.setViewportSize(viewport);
+    for (const extension of ['md', 'txt', 'svg', 'html', 'pdf']) {
+      await selectFile(attachments, `long/reading.${extension}`);
+      const body = attachments.locator('.attachment-preview-body');
+      const native = extension === 'html' || extension === 'pdf';
+      if (extension === 'svg') await expect.poll(() => attachments.getByRole('img').evaluate((image) => (image as HTMLImageElement).naturalHeight)).toBeGreaterThan(0);
+      await expectCenteredTaskDetail(page, dialog);
+      const panes = await attachments.locator('.attachment-sidebar,.attachment-preview-pane').evaluateAll((elements) => elements.map((element) => {
+        const bounds = element.getBoundingClientRect(); return { left: bounds.left, right: bounds.right, top: bounds.top, height: bounds.height };
+      }));
+      expect(panes[0]!.right).toBeLessThanOrEqual(panes[1]!.left + 1);
+      expect(panes[0]!.top).toBe(panes[1]!.top);
+      expect(panes[1]!.height).toBeGreaterThan(80);
+      for (const action of ['下载', '删除']) await expect(attachments.getByRole(action === '下载' ? 'link' : 'button', { name: action, exact: true })).toBeInViewport({ ratio: 1 });
+      const outer = await body.evaluate((element) => {
+        const chain = [];
+        for (let node: Element | null = element; node !== null && !node.classList.contains('task-detail-backdrop'); node = node.parentElement) chain.push({ className: node.className, height: node.clientHeight, scrollHeight: node.scrollHeight, overflow: getComputedStyle(node).overflowY });
+        return chain;
+      });
+      expect(outer.slice(1).filter((entry) => entry.scrollHeight > entry.height + 1)).toEqual([]);
+      if (!native) {
+        expect(outer[0]!.scrollHeight).toBeGreaterThan(outer[0]!.height);
+        const bounds = await body.boundingBox();
+        if (bounds === null) throw new Error('The preview scroll owner has no bounds.');
+        await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+        await page.mouse.wheel(0, 180);
+        await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        await settleScroll(body);
+        await body.evaluate((element) => { element.scrollTop = 0; });
+        await body.focus();
+        await page.keyboard.press('PageDown');
+        await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        await settleScroll(body);
+        const position = await body.evaluate((element) => element.scrollTop);
+        const left = attachments.locator('.attachment-sidebar');
+        await left.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+        expect(await body.evaluate((element) => element.scrollTop)).toBe(position);
+        await left.evaluate((element) => { element.scrollTop = 0; });
+      } else {
+        const frame = attachments.locator('iframe');
+        await expect(frame).toBeInViewport({ ratio: 1 });
+        const frameBounds = await frame.boundingBox();
+        const bodyBounds = await body.boundingBox();
+        expect(frameBounds!.height).toBeCloseTo(bodyBounds!.height, 0);
+        expect(outer[0]!.scrollHeight).toBeLessThanOrEqual(outer[0]!.height + 1);
+        if (extension === 'html') {
+          const content = frame.contentFrame();
+          await expect(content.locator('#counter')).toBeVisible();
+          expect(await content.locator('html').evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+          await page.mouse.move(frameBounds!.x + frameBounds!.width / 2, frameBounds!.y + frameBounds!.height / 2);
+          await page.mouse.wheel(0, 180);
+          await expect.poll(() => content.locator('html').evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+          await settleScroll(content.locator('html'));
+          await content.locator('html').evaluate((element) => { element.scrollTop = 0; });
+          await content.locator('#counter').focus();
+          await page.keyboard.press('PageDown');
+          await expect.poll(() => content.locator('html').evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+          await settleScroll(content.locator('html'));
+        }
+      }
+      scrollEvidence.push({ viewport, extension, outer, panes });
+    }
+  }
+  await page.setViewportSize({ width: 844, height: 390 });
+  await selectFile(attachments, 'long/reading.md');
+  const language = page.locator('.task-detail-dialog').getByRole('combobox', { name: '语言 / Language', exact: true });
+  for (const locale of ['zh-CN', 'en']) {
+    await language.selectOption(locale);
+    const shortScreenshot = info.outputPath(`task-attachments-short-${locale}.png`);
+    await page.screenshot({ path: shortScreenshot, fullPage: false });
+    await info.attach(`task-attachments-short-${locale}`, { path: shortScreenshot, contentType: 'image/png' });
+  }
+  await language.selectOption('zh-CN');
+  await page.setViewportSize({ width: 320, height: 800 });
+  await selectFile(attachments, longPath);
+  await expect(attachments.getByRole('heading', { name: longPath, exact: true })).toHaveAttribute('title', longPath);
+  for (const action of ['下载', '删除']) await expect(attachments.getByRole(action === '下载' ? 'link' : 'button', { name: action, exact: true })).toBeInViewport({ ratio: 1 });
+  await info.attach('attachment-scroll-owners', { body: Buffer.from(JSON.stringify(scrollEvidence, null, 2)), contentType: 'application/json' });
+  await page.setViewportSize({ width: 320, height: 800 });
+  await selectFile(attachments, 'docs/design.md');
   const narrowScreenshot = info.outputPath('task-attachments-narrow.png');
   await page.screenshot({ path: narrowScreenshot, fullPage: false });
   await info.attach('task-attachments-narrow', { path: narrowScreenshot, contentType: 'image/png' });
@@ -169,6 +280,29 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
   await content.getByRole('button', { name: '完成一个任务' }).click();
   await expect(content.locator('#result')).toHaveText('已完成 3 个任务');
   const innerButton = content.getByRole('button', { name: '完成一个任务' });
+  const frameHandle = await html.elementHandle();
+  const input = attachments.getByLabel('选择一个文件');
+  const inputHandle = await input.elementHandle();
+  await input.setInputFiles({ name: 'unsent.txt', mimeType: 'text/plain', buffer: Buffer.from('Unsent draft') });
+  await attachments.getByRole('textbox', { name: '目标相对路径' }).fill('drafts/unsent.txt');
+  const notes = attachments.locator('summary').filter({ hasText: exact('▱ notes') }).locator('..');
+  await notes.locator('summary').first().click();
+  await expect(notes).not.toHaveAttribute('open', '');
+  await innerButton.focus();
+  await dialog.getByRole('tab', { name: '概览', exact: true }).click();
+  await expect(dialog.getByRole('tab', { name: '概览', exact: true })).toBeFocused();
+  await expect(dialog.locator('.task-detail-panel-attachments')).toHaveAttribute('inert', '');
+  await expect(html).toBeHidden();
+  await dialog.getByRole('tab', { name: '附件', exact: true }).click();
+  expect(await frameHandle!.evaluate((element) => element === document.querySelector('.task-attachments iframe'))).toBe(true);
+  expect(await inputHandle!.evaluate((element) => element === document.querySelector('.task-attachments input[type=file]'))).toBe(true);
+  await expect(content.locator('#result')).toHaveText('已完成 3 个任务');
+  await expect(attachments.getByRole('textbox', { name: '目标相对路径' })).toHaveValue('drafts/unsent.txt');
+  expect(await input.evaluate((element) => (element as HTMLInputElement).files?.[0]?.name)).toBe('unsent.txt');
+  await expect(notes).not.toHaveAttribute('open', '');
+  await frameHandle!.dispose();
+  await inputHandle!.dispose();
+
   await innerButton.focus();
   await page.keyboard.press('Tab');
   await expect(dialog.getByRole('combobox', { name: '语言 / Language', exact: true })).toBeFocused();
@@ -183,6 +317,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
   expect(graphReads).toBe(1);
   expect(detailReads).toBe(1);
   await trigger.click();
+  await dialog.getByRole('tab', { name: '附件', exact: true }).click();
   await expect(attachments.getByRole('heading', { name: `附件 · ${seeds.length}`, exact: true })).toBeVisible();
 
   await selectFile(attachments, 'reports/brief.pdf');
@@ -196,6 +331,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
   expect(graphReads).toBe(1);
   expect(detailReads).toBe(2);
   await trigger.click();
+  await dialog.getByRole('tab', { name: '附件', exact: true }).click();
   await expect(attachments.getByRole('heading', { name: `附件 · ${seeds.length}`, exact: true })).toBeVisible();
 
   const uploadUrl = new URL(attachmentDownloadUrl(project.id, task.id, uploadedPath), origin).href;

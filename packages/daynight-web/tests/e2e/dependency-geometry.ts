@@ -4,24 +4,9 @@ import type { Page, TestInfo } from '@playwright/test';
 type Point = { x: number; y: number };
 type Segment = { kind: 'L' | 'Q'; from: Point; to: Point; control?: Point };
 type Rect = { id: string; left: number; top: number; right: number; bottom: number };
-export type GeometryExpectation = {
-  nodes: readonly { id: string }[];
-  edges: readonly { id: string; source: string; target: string; external: boolean }[];
-};
+export type GeometryExpectation = import('./visible-topology').DependencyTopology;
+export { expectedDependencyTopology } from './visible-topology';
 export type DeclaredCurveInput = { id: string; points: readonly Point[] };
-export const expectedDependencyTopology = (tasks: readonly { id: string; dependsOn: readonly string[] }[], rootId: string): GeometryExpectation => {
-  const byId = new Map(tasks.map((task) => [task.id, task]));
-  const successors = new Map(tasks.map((task) => [task.id, [] as string[]]));
-  for (const task of tasks) for (const source of task.dependsOn) successors.get(source)!.push(task.id);
-  const main = new Set([rootId]); const descendants = [rootId];
-  for (let i = 0; i < descendants.length; i++) for (const id of successors.get(descendants[i]!)!) if (!main.has(id)) { main.add(id); descendants.push(id); }
-  const visible = new Set(main); const ancestors = [...main];
-  while (ancestors.length > 0) for (const id of byId.get(ancestors.pop()!)!.dependsOn) if (!visible.has(id)) { visible.add(id); ancestors.push(id); }
-  return {
-    nodes: tasks.filter((task) => visible.has(task.id)).map(({ id }) => ({ id })),
-    edges: tasks.filter((task) => visible.has(task.id)).flatMap((task) => task.dependsOn.map((source) => ({ id: `${source}->${task.id}`, source, target: task.id, external: !main.has(source) }))),
-  };
-};
 
 type Paint = { d: string; matrix: number[]; line: boolean; phase: number; dash: string; stroke: string; width: number; cap: string; join: string; hidden: boolean };
 export type DependencySnapshot = {
