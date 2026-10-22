@@ -152,6 +152,8 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   }
   await expect(page.getByText('完成比例 56%')).toBeVisible();
   await expect(viewTab(page, '任务链')).toHaveAttribute('aria-selected', 'true');
+  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('3');
+  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('1');
   expect(await page.locator('.root-toggle').evaluateAll((items) => items.map((item) => item.id))).toEqual(
     [c, b, a].map(({ id }) => `task-root-${id}`),
   );
@@ -172,6 +174,8 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   await expect(standalone(page, completed.id)).toHaveCount(0);
   await completedStandaloneVisibility.check();
   await expect(standalone(page, completed.id)).toBeVisible();
+  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('3');
+  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('1');
   await expect(standalone(page, completed.id)).toContainText('已完成');
   await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
   await page.reload();
@@ -490,8 +494,8 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
   await openProject(page, project.id, project.name);
   await expect(viewTab(page, '任务链')).toHaveAttribute('aria-selected', 'true');
   await expect(viewTab(page, '独立任务')).toHaveAttribute('aria-selected', 'false');
-  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('22');
-  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('14');
+  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('21');
+  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('25');
   await viewTab(page, '任务链').focus();
   await page.keyboard.press('ArrowLeft');
   await expect(viewTab(page, '独立任务')).toBeFocused();
@@ -509,6 +513,7 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
   const chainsCompleted = page.getByRole('checkbox', { name: '显示已完成任务链（1）' });
   await chainsCompleted.check();
   await expect(root(page, completedRoot.id)).toBeVisible();
+  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('25');
   await root(page, predecessor.id).click();
   await expect(node(page, predecessor.id)).toBeVisible();
   await expect(node(page, dependent.id)).toBeVisible();
@@ -525,6 +530,7 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
   await expect(standaloneCompleted).not.toBeChecked();
   await standaloneCompleted.check();
   await expect(standalone(page, completedIndependent.id)).toBeVisible();
+  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('21');
   const trigger = standalone(page, independent.id);
   await trigger.focus();
   await page.keyboard.press('Enter');
@@ -581,6 +587,8 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
   await page.keyboard.press('Escape');
   await expect(page.locator('.standalone-row').first()).toBeFocused();
   await expect(page.locator('#root')).not.toHaveAttribute('inert', '');
+  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('26');
+  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('20');
   await viewTab(page, '任务链').click();
   await expect(node(page, independent.id)).toBeVisible();
   independent = await updateTask(request, project.id, independent.id, { version: independent.version, dependsOn: [] });
@@ -592,6 +600,8 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
   await page.keyboard.press('Escape');
   await expect(root(page, predecessor.id)).toBeFocused();
   await expect(page.locator('#root')).not.toHaveAttribute('inert', '');
+  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('25');
+  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('21');
   await viewTab(page, '独立任务').click();
   await expect(standalone(page, independent.id)).toBeVisible();
   await expect(page.locator('.task-graph-canvas')).toHaveCount(0);

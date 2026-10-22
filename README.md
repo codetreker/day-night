@@ -143,7 +143,9 @@ CLI commands below apply to the client; server commands have their own module.
 The dashboard architecture presents project statistics and two in-project task
 tabs from one complete server snapshot. Standalone tasks open details directly;
 root-based task chains retain dependency graphs, shared successors and aggregate
-progress. Expanding a chain includes all upstream prerequisites of its root and
+progress. Both tab badges count unfinished tasks from the complete snapshot;
+shared chain tasks count once across all roots, and completed-item visibility
+does not affect the badges. Expanding a chain includes all upstream prerequisites of its root and
 reachable successors, without adding unrelated successors of contextual tasks.
 Only the root and its reachable successors contribute to chain progress and status. The first visit opens task chains, and each project retains its last
 tab, independent completed-item filters and browse positions. The [task view
