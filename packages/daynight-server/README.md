@@ -488,7 +488,14 @@ Other original bytes and nested requestId fields remain diagnostic content. The 
 explains why a legal opaque ID may contain the SQL marker.
 
 The installed CLI project/task scenario and its artifact/source validation live
-in [`acceptance_cli_test.go`](cmd/daynight-server/acceptance_cli_test.go).
+in [`acceptance_cli_test.go`](cmd/daynight-server/acceptance_cli_test.go). Its
+mixed unfinished/completed fixture verifies the exact default and `--all` list
+membership and order. Each JSON array must equal the complete task resources,
+including raw PR strings and full int64 versions. Human lists retain identity,
+status, readiness, dependencies and escaped PR references while omitting
+description, version and timestamps; `task show` retains those detail fields.
+Both detail and all-status list output preserve visible PR control-character
+escaping without emitting raw terminal controls.
 The [attachment scenario](cmd/daynight-server/acceptance_attachment_cli_test.go)
 reuses the same packed/installed CLI and real-process fixture. It checks exact
 text, empty and multi-chunk binary bytes above 1 MiB; nested/special paths,

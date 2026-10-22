@@ -500,7 +500,11 @@ race binary、隔离 PostgreSQL schema、listener、重启和数据库等待屏�
 `PT.V6`、`PT.V7`、`PT.V8`、`PT.V9`、`PT.V10` 与 CLI 验收对应，保留原有服务
 场景及所属 package 覆盖率。Go receipt 的 `installedCli` 保存共享 helper 的 schema、
 source、包版本、tarball/entry hash、Node 和 launcher 身份；场景记录 CLI 启停
-数量、workspace 回收、拒绝 request ID 及并发请求的 200/409 结果。
+数量、workspace 回收、拒绝 request ID 及并发请求的 200/409 结果。混合未完成和已完成
+任务的 fixture 同时验证默认列表与 `--all` 的精确成员和顺序；JSON 数组与完整任务资源
+逐字段相等，保留原始 PR 字符串及完整 int64 版本。可读列表验证身份、状态、ready、
+依赖和 PR 字段，并确认省略 description、version 与时间戳；这些完整字段仍由详情
+输出验证。详情与全部状态列表均验证 PR 控制字符可见转义及无原始终端控制字符输出。
 
 附件 `installed_cli_task_attachment_workflow` 复用同一服务安装及进程 fixture，覆盖
 原始字节、多页路径列表、拒绝、同根重启及完整 task 不变；清理 gate 同时要求存储
