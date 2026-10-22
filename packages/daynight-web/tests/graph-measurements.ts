@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { TASK_NODE_HEIGHT, TASK_NODE_WIDTH } from '../src/features/task-graph/layout';
+import { TASK_NODE_COMPACT_HEIGHT, TASK_NODE_WIDTH } from '../src/features/task-graph/layout';
 
 export const installGraphMeasurements = () => {
   vi.stubGlobal('ResizeObserver', class {
@@ -29,7 +29,7 @@ export const installGraphMeasurements = () => {
     return this.classList.contains('react-flow') || this.classList.contains('react-flow__renderer') ? 800 : this.classList.contains('react-flow__handle') ? 6 : 220;
   });
   vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
-    return this.classList.contains('react-flow') || this.classList.contains('react-flow__renderer') ? 445 : this.classList.contains('react-flow__handle') ? 6 : TASK_NODE_HEIGHT;
+    return this.classList.contains('react-flow') || this.classList.contains('react-flow__renderer') ? 445 : this.classList.contains('react-flow__handle') ? 6 : Number(this.closest<HTMLElement>('.react-flow__node')?.style.height.replace('px', '') ?? TASK_NODE_COMPACT_HEIGHT);
   });
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     if (this.classList.contains('react-flow') || this.classList.contains('task-graph-canvas')) return new DOMRect(0, 0, 800, 445);
@@ -38,6 +38,6 @@ export const installGraphMeasurements = () => {
     const x = Number(position?.[1] ?? 0);
     const y = Number(position?.[2] ?? 0);
     if (this.classList.contains('react-flow__handle')) return new DOMRect(x, y, 6, 6);
-    return new DOMRect(x, y, TASK_NODE_WIDTH, TASK_NODE_HEIGHT);
+    return new DOMRect(x, y, TASK_NODE_WIDTH, Number(node?.style.height.replace('px', '') ?? TASK_NODE_COMPACT_HEIGHT));
   });
 };

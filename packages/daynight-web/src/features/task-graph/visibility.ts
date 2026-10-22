@@ -9,6 +9,7 @@ export type TaskExpansion = {
   readonly totalHidden: number;
   readonly addedEdges: number;
 };
+export type TaskExpansions = Readonly<Record<TaskExpansionDirection, TaskExpansion>>;
 
 const projectionIds = (projection: RootProjection): Set<string> => new Set([...projection.mainIds, ...projection.externalIds]);
 const snapshotOrder = (index: GraphIndex): ReadonlyMap<string, number> => new Map([...index.nodes.keys()].map((id, position) => [id, position]));

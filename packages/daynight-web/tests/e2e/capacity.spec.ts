@@ -369,8 +369,10 @@ const stableGeometry = (page: Page) => page.evaluate(() => ({
 }));
 const layoutVisible = (projection: RootProjection, expected: DependencyTopology) => {
   const ids = new Set(expected.nodes.map(({ id }) => id));
+  const heights = new Map([...ids].map((id) => [id, projection.edges.some(({ source, target }) =>
+    source === id && !ids.has(target) || target === id && !ids.has(source)) ? 136 : 96]));
   return layoutGraph({ ...projection, mainIds: new Set([...projection.mainIds].filter((id) => ids.has(id))),
-    externalIds: new Set([...projection.externalIds].filter((id) => ids.has(id))), edges: expected.edges });
+    externalIds: new Set([...projection.externalIds].filter((id) => ids.has(id))), edges: expected.edges }, heights);
 };
 const measureInteractions = async (page: Page, fixture: CapacityFixture, expansion: ExpansionMeasurement, dataset: Dataset, repetition: number,
   overview: DependencyTopology, full: DependencyTopology, snapshotOrder: readonly string[], projection: RootProjection): Promise<Measurement> => {
