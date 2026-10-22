@@ -215,6 +215,9 @@ test('task-description-markdown', { annotation: { type: 'scenario', description:
     const body = page.locator(`.react-flow__node[data-id="${task.id}"] .task-node-body`);
     const details = page.locator(`.react-flow__node[data-id="${task.id}"] .task-node-details`);
     await page.keyboard.press('Tab');
+    const canvas = graph.locator('.task-graph-canvas');
+    await canvas.scrollIntoViewIfNeeded();
+    await expect(canvas).toBeInViewport({ ratio: 1 });
     await body.focus();
     await expect(body).toBeInViewport({ ratio: 1 });
     const beforeSelection = (await page.evaluate(captureStableDependencyGeometry)).geometry;
