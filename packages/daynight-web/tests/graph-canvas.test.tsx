@@ -48,6 +48,95 @@ const ready = async (container: HTMLElement) => {
 beforeEach(installGraphMeasurements);
 
 describe('task dependency canvas', () => {
+  it('expands the existing canvas and restores its toolbar focus without changing the user viewport or layout', async () => {
+    const layout = vi.spyOn(layoutModule, 'layoutGraph');
+    const view = render(<TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} />);
+    await ready(view.container);
+    const initialZoom = zoom(view.container);
+    fireEvent.click(screen.getByRole('button', { name: '放大' }));
+    await waitFor(() => { expect(zoom(view.container)).toBeGreaterThan(initialZoom); });
+    const canvas = view.container.querySelector('.task-graph-canvas');
+    const nodes = [...view.container.querySelectorAll('.react-flow__node')];
+    const paths = [...view.container.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'));
+    const positions = nodes.map((node) => (node as HTMLElement).style.transform);
+    const transform = viewport(view.container).style.transform;
+    const enter = screen.getByRole('button', { name: '全屏查看' });
+    fireEvent.click(enter);
+    const dialog = screen.getByRole('dialog', { name: '任务依赖图全屏查看' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(dialog).toHaveClass('task-graph-fullscreen');
+    expect(screen.getByRole('button', { name: '退出全屏' })).toBe(enter);
+    expect(enter).toHaveFocus();
+    expect(view.container.querySelector('.task-graph-canvas')).toBe(canvas);
+    [...view.container.querySelectorAll('.react-flow__node')].forEach((node, position) => { expect(node).toBe(nodes[position]); });
+    expect(nodes.map((node) => (node as HTMLElement).style.transform)).toEqual(positions);
+    expect([...view.container.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'))).toEqual(paths);
+    expect(viewport(view.container).style.transform).toBe(transform);
+    nodeButton('基础 API').focus();
+    fireEvent.keyDown(nodeButton('基础 API'), { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(enter).toHaveAccessibleName('全屏查看');
+    expect(enter).toHaveFocus();
+    expect(view.container.querySelector('.task-graph-canvas')).toBe(canvas);
+    expect(viewport(view.container).style.transform).toBe(transform);
+    expect(layout).toHaveBeenCalledTimes(1);
+    fireEvent.click(enter);
+    fireEvent.click(screen.getByRole('button', { name: '退出全屏' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(viewport(view.container).style.transform).toBe(transform);
+  });
+
+  it('wraps keyboard focus inside fullscreen and leaves Escape outside the graph alone', async () => {
+    const user = userEvent.setup();
+    const view = render(<><button type="button">图外按钮</button><TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} /></>);
+    await ready(view.container);
+    fireEvent.click(screen.getByRole('button', { name: '全屏查看' }));
+    const exit = screen.getByRole('button', { name: '退出全屏' });
+    await user.tab({ shift: true });
+    const last = document.activeElement;
+    expect(last).not.toBe(exit);
+    expect(view.container.querySelector('.task-graph')).toContainElement(last as HTMLElement);
+    await user.tab();
+    expect(exit).toHaveFocus();
+    await user.tab();
+    expect(nodeButton('基础 API')).toHaveFocus();
+    (last as HTMLElement).focus();
+    await user.tab();
+    expect(exit).toHaveFocus();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(screen.getByRole('dialog', { name: '任务依赖图全屏查看' })).toBeTruthy();
+    fireEvent.keyDown(exit, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('inerts background ancestors and restores their original state on exit and unmount without touching body portals', async () => {
+    document.body.style.overflow = 'scroll';
+    const portal = document.createElement('div');
+    portal.textContent = 'body portal';
+    document.body.append(portal);
+    const view = render(<><button type="button" data-testid="outer-background">项目导航</button><section><div data-testid="preexisting-inert" inert={true} /><TaskGraph index={index} rootId="A" selectedTaskId={null} onSelectTask={noop} /><button type="button" data-testid="inner-background">任务链</button></section></>);
+    await ready(view.container);
+    const background = [screen.getByTestId('outer-background'), screen.getByTestId('inner-background')];
+    const existing = screen.getByTestId('preexisting-inert');
+    existing.setAttribute('inert', 'preserve-this-value');
+    const enter = screen.getByRole('button', { name: '全屏查看' });
+    fireEvent.click(enter);
+    background.forEach((element) => { expect(element).toHaveAttribute('inert'); });
+    expect(document.body.style.overflow).toBe('hidden');
+    expect(portal).not.toHaveAttribute('inert');
+    fireEvent.click(screen.getByRole('button', { name: '退出全屏' }));
+    background.forEach((element) => { expect(element).not.toHaveAttribute('inert'); });
+    expect(existing).toHaveAttribute('inert', 'preserve-this-value');
+    expect(document.body.style.overflow).toBe('scroll');
+    fireEvent.click(enter);
+    view.unmount();
+    background.forEach((element) => { expect(element).not.toHaveAttribute('inert'); });
+    expect(existing).toHaveAttribute('inert', 'preserve-this-value');
+    expect(document.body.style.overflow).toBe('scroll');
+    portal.remove();
+    document.body.style.overflow = '';
+  });
+
   it('renders all dependency paths without endpoint measurements and still observes the task nodes', () => {
     const observed = new Set<Element>();
     vi.stubGlobal('ResizeObserver', class {

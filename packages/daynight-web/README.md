@@ -95,7 +95,16 @@ Reopening or refreshing details reads current PR associations; an attribute
 update changes the task timestamp and uses the same stale-snapshot prompt.
 
 The canvas supports pan, zoom and fit while editing and connection controls stay
-disabled. Each node is one native keyboard button. A long graph starts with its
+disabled. The toolbar offers Fullscreen viewing, which fills the browser viewport
+with the same mounted canvas. Exit fullscreen or Escape returns to the inline
+graph without resetting pan, zoom or nodes. Fullscreen isolates background
+controls and cycles Tab through its visible controls; exit restores focus to the
+fullscreen button. Task details remain available above the graph, and Escape
+closes details before exiting fullscreen. Both views share a counted body scroll
+lock so either unmount order restores the original scrolling state. Fullscreen
+is local to the mounted graph and is not saved as a browsing preference. The
+[fullscreen decision](../../.agents/notes/implemented/feature/2026-10-22-task-graph-fullscreen.md)
+records the modal and viewport ownership. Each node is one native keyboard button. A long graph starts with its
 root visible at readable zoom; keyboard focus brings offscreen nodes into view.
 The portal drawer locks background focus and scrolling, supports Escape and Tab,
 and restores the original node or a current root/page heading on close. Focusable
@@ -169,7 +178,9 @@ fully completed and empty project graphs. It demonstrates the exact
 newest-first root order, shared dependencies, current task details and per-project
 expanded/collapsed and completed-chain visibility preferences across reloads.
 It uses the final compact row CSS directly, including naturally growing long
-titles and complete status/progress fields. It distinguishes hidden all-complete
+titles and complete status/progress fields. Each expanded graph provides the
+production fullscreen controls, retained pan/zoom, keyboard focus isolation and
+task details above the fullscreen canvas, including on narrow screens. It distinguishes hidden all-complete
 chains from a truly empty project and
 preserves focus when the reveal action disappears. The scenario stays in the URL hash.
 Graph, detail and empty attachment-list reads are served in memory; unexpected

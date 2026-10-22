@@ -82,6 +82,12 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
       originalTrigger.current.focus();
       return;
     }
+    const fullscreenToggle = expandedRoot.current === null ? null : document.getElementById(`task-graph-${expandedRoot.current}`)
+      ?.querySelector<HTMLButtonElement>('.task-graph-fullscreen .graph-fullscreen-toggle');
+    if (fullscreenToggle != null) {
+      fullscreenToggle.focus();
+      return;
+    }
     const root = expandedRoot.current === null ? null : document.getElementById(`task-root-${expandedRoot.current}`);
     if (root !== null) root.focus();
     else heading.current?.focus();
