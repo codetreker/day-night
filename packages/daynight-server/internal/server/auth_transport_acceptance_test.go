@@ -24,6 +24,7 @@ type identityResultWireCut struct {
 	closed    atomic.Int64
 	active    atomic.Int64
 	hijacked  atomic.Int64
+	cutDone   chan struct{}
 	transport *http.Transport
 	server    *httptest.Server
 }
@@ -34,7 +35,7 @@ func newIdentityResultWireCut(t *testing.T, origin string) *identityResultWireCu
 	if err != nil {
 		t.Fatal("parse real gateway origin failed")
 	}
-	cut := &identityResultWireCut{transport: http.DefaultTransport.(*http.Transport).Clone()}
+	cut := &identityResultWireCut{cutDone: make(chan struct{}), transport: http.DefaultTransport.(*http.Transport).Clone()}
 	cut.transport.Proxy = nil
 	cut.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		cut.active.Add(1)
@@ -54,6 +55,7 @@ func newIdentityResultWireCut(t *testing.T, origin string) *identityResultWireCu
 		}
 		defer response.Body.Close()
 		if resultRequest && cut.armed.CompareAndSwap(true, false) {
+			defer close(cut.cutDone)
 			body, readErr := io.ReadAll(io.LimitReader(response.Body, (1<<20)+1))
 			var identity struct {
 				Provider string `json:"provider"`
@@ -161,12 +163,17 @@ func TestAuthenticationRealUniAuthResultWireLoss(t *testing.T) {
 	if response.Header.Get("Location") != "/?authError=login_failed" || response.Header.Get("Cache-Control") != "no-store" {
 		t.Fatal("lost identity response did not safely return to the login UI")
 	}
+	select {
+	case <-cut.cutDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("wire-loss proxy did not finish closing the SDK connection")
+	}
 	cookies := response.Cookies()
 	if len(cookies) != 1 || !strings.HasPrefix(cookies[0].Name, "daynight_login_") || cookies[0].MaxAge != -1 {
 		t.Fatal("lost identity response did not clear only its browser binding")
 	}
 	if cut.requests.Load() != 1 || cut.consumed.Load() != 1 || cut.closed.Load() != 1 {
-		t.Fatal("the SDK did not encounter exactly one actual connection cut after successful upstream consumption")
+		t.Fatalf("the SDK did not encounter exactly one actual connection cut after successful upstream consumption: requests=%d consumed=%d closed=%d", cut.requests.Load(), cut.consumed.Load(), cut.closed.Load())
 	}
 	_, err = direct.Retrieve(t.Context(), callback.Query().Get("code"))
 	var unavailable *uniauth.APIError
