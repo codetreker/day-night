@@ -158,8 +158,8 @@ export const recoverCliProcesses = async (directory: string, receiptPath: string
   await prunePrivateParents([dirname(privateCliRoot(directory))]);
 };
 
-export const createAcceptanceCli = async (baseURL: string, directory: string, serverToken?: string) => {
-  const receiptPath = process.env.DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT;
+export const createAcceptanceCli = async (baseURL: string, directory: string, serverToken?: string,
+  receiptPath = process.env.DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT) => {
   if (receiptPath === undefined || !isAbsolute(receiptPath)) throw new Error('Acceptance requires an absolute installed CLI receipt path.');
   const raw = await readJson(receiptPath) as InstalledCliReceipt;
   if (typeof raw.root !== 'string' || !isAbsolute(raw.root)) throw new Error('Invalid installed CLI root.');

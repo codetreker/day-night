@@ -88,6 +88,22 @@ test('installed bridge validates parent artifact evidence and preserves installe
   });
 });
 
+test('an explicit installed receipt is independent of the ambient receipt without changing its default', { skip: process.platform !== 'linux' }, async () => {
+  await fixture(async ({ directory, receiptPath }) => {
+    const ambientReceipt = join(directory, 'unrelated-receipt.json');
+    process.env.DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT = ambientReceipt;
+    const workspace = join(directory, 'native/auth-combined/cli');
+    const cli = await createAcceptanceCli('http://127.0.0.1:12345', workspace, 'dnpat_explicit-receipt-token', receiptPath);
+    try {
+      assert.deepEqual(await cli.read(['bytes']), Buffer.from([0, 255, 128, 10]));
+      assert.equal(process.env.DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT, ambientReceipt);
+      await assert.rejects(createAcceptanceCli('http://127.0.0.1:12345', join(directory, 'default-receipt'),
+        'dnpat_explicit-receipt-token'), { code: 'ENOENT' });
+      assert.equal(process.env.DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT, ambientReceipt);
+    } finally { await cli.close(); }
+  });
+});
+
 test('receipt validation rejects source, package, hash and containment changes', async () => {
   await fixture(async ({ directory, receiptPath, receipt, evidence }) => {
     for (const changed of [

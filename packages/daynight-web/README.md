@@ -704,6 +704,23 @@ or an iframe load cannot satisfy this check. The
 [combined acceptance decision](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
 owns data-sharing, rendering and independent reading proof.
 
+The additional [combined authentication journey](scripts/acceptance/auth-combined.mts)
+requires a separate receipt on each runtime target, alongside the unchanged 51
+Playwright cases. It reuses the same installed package and normal Alice/Bob
+identities, records their initial project sets, and crosses browser and CLI data
+through shared/private projects, original-credential service restart, logout/PAT
+independence, revocation, admitted upload, real socket interruption and normally
+minted PAT expiry. The bilingual token journey holds a real server response and
+checks retained pending input and one-time reveal; screenshots follow secret
+closure or masking. The runner supplies service-only restart callbacks and the
+explicit validated installed-package receipt. Actual staging bytes and metadata
+are observed independently of client write completion. The
+[authentication acceptance decision](../../.agents/notes/implemented/testing/2026-10-23-authentication-combined-acceptance.md)
+owns these mechanisms, failure/cleanup rules and the separate actual-upstream
+human login requirement. Implemented checks and source-bound run results remain
+distinct; a focused pass or historical baseline does not establish full current
+acceptance.
+
 Independent reading acceptance supplements the strict pipeline with real-service
 probes across desktop, tablet, narrow and short viewports in both languages. It
 checks wheel and keyboard access to the document end, fitting-content overflow,
@@ -795,7 +812,13 @@ its result, start/end times, observed command process identities and spawned
 process groups. Each browser phase records its own result, browser identity,
 Playwright process/group and `browserCleanup` result. Raw reports and screenshots
 live under `native/functional/`, `container/` and `native/capacity/`; the unchanged
-schema 1 capacity receipt is `native/capacity/performance.json`. `CI` requires a clean checkout matching
+schema 1 capacity receipt is `native/capacity/performance.json`. Additional mandatory
+combined receipts are `native/auth-combined/target.json` and
+`container/auth-combined/target.json`, both schema 1 with `kind: auth-combined`.
+They require all eleven named checks, source/browser/installed-package identity,
+old/new restart process identity and passed browser/resource cleanup. They retain
+safe observations and hashes, not credential/configuration bodies or raw logs.
+The existing 51-case report validator remains independent. `CI` requires a clean checkout matching
 `GITHUB_SHA`, Linux and the pinned browser. Playwright uses one worker and no
 retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validation.
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
@@ -832,6 +855,12 @@ The [CI efficiency decision](../../.agents/notes/implemented/testing/2026-10-21-
 records why this avoids duplicate capture work without splitting the suite.
 
 ### Cleanup and interrupted-run recovery
+
+Combined browser and command recovery includes both `native/auth-combined/` and
+`container/auth-combined/` alongside the existing phase directories. The runner
+retains the same service origin, UniAuth, PostgreSQL and file root during each
+service-only restart, and verifies original credentials before intentional
+logout, revocation or expiry.
 
 The runner registers owned-resource cleanup before creating its database or
 native process. Timeouts and cancellation stop owned command groups; browser

@@ -190,9 +190,15 @@ outcome and uses no separate preparation journal. Credential-bearing CLI homes
 now live in the run's private sibling root rather than the uploaded installation
 receipt tree; the installation artifacts and hashes retain their original owner.
 Session/PAT bootstrap uses normal UniAuth, and cleanup/recovery removes those
-private homes after their CLI processes stop. The activation decision owns
-private fixture metadata and the disabled credential-bearing browser trace;
-compositor/PNG and custom CDP evidence keep their existing validation rules.
+private homes after their CLI processes stop. The
+[combined authentication decision](2026-10-23-authentication-combined-acceptance.md)
+reuses this validated installation through an explicit receipt path for its
+native/container journeys; source, parent receipt and artifact hash checks keep
+their force. It adds original-credential restart and admitted-transfer revocation
+proof without replacing the attachment byte/restore results or the 51-case
+Playwright inventory. The activation decision owns private fixture metadata and
+the disabled credential-bearing browser trace; compositor/PNG and custom CDP
+evidence keep their existing validation rules.
 
 The Ubuntu web job invokes the existing
 [real-container attachment check](../../../../deployment/dev-ci/tests/attachments.mts)
