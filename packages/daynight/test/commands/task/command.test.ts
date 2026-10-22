@@ -224,13 +224,17 @@ describe("task output contracts", () => {
     expect(output).toContain("Pull requests: 3\n  1. Title: First\n     URL: arbitrary text\n  2. Title: First\n     URL: arbitrary text\n  3. Title: \n     URL: \n");
   });
 
-  it.each(["list", "ready", "show", "graph"])("preserves complete %s JSON with numeric full-int64 versions", async (command) => {
+  it.each(["list", "ready", "show", "graph"])("preserves %s JSON fields with numeric full-int64 versions", async (command) => {
     const f = fixture();
     const base = command === "show" ? [command, taskId] : [command];
     await runTaskCommand([...base, "--json", "--project", projectId], f.context, f.dependencies);
     const output = f.context.stdout.mock.calls[0]![0];
     expect(output.endsWith("\n")).toBe(true);
-    expect(parseApiJson(output)).toEqual(command === "list" || command === "ready" ? [task] : command === "graph" ? graph : task);
+    const parsed = parseApiJson(output);
+    const { description: _description, ...listItem } = task;
+    expect(parsed).toEqual(command === "list" ? [listItem] : command === "ready" ? [task] : command === "graph" ? graph : task);
+    if (command === "list") expect(parsed).not.toHaveProperty("0.description");
+    if (command === "ready") expect(parsed).toHaveProperty("0.description", task.description);
     if (command !== "graph") expect(output).toContain('"version":9007199254740993');
   });
 

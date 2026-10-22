@@ -94,7 +94,7 @@ export const runTaskCommand = async (
       project = await dependencies.resolveProject({ serverUrl, operation, api, workingDirectory: context.workingDirectory() });
     }
     operation.check();
-    const { renderTask, renderTaskGraph, renderTaskJson, renderTaskList, renderTaskSummaryList } = await import("./rendering.js");
+    const { renderTask, renderTaskGraph, renderTaskJson, renderTaskList, renderTaskListJson, renderTaskSummaryList } = await import("./rendering.js");
     operation.check();
     if (command.command.name === "create") {
       const input: CreateTaskInput = { title: title!, ...(description === undefined ? {} : { description }), ...(dependsOn === undefined ? {} : { dependsOn }), ...(properties === undefined ? {} : { properties }) };
@@ -108,7 +108,7 @@ export const runTaskCommand = async (
         .filter((task) => all || status !== undefined || task.status !== "done")
         .toSorted((left, right) => taskPriority(left) - taskPriority(right));
       operation.check();
-      return command.options.has("--json") ? renderTaskJson(tasks) : renderTaskSummaryList(tasks);
+      return command.options.has("--json") ? renderTaskListJson(tasks) : renderTaskSummaryList(tasks);
     }
     if (command.command.name === "ready") {
       const tasks = await api.listReadyTasks(project.id, readyLimit);

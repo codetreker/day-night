@@ -285,6 +285,22 @@ func acceptanceCLIJSON[T any](t *testing.T, text string) T {
 	return result
 }
 
+func acceptanceCLITaskListJSON(t *testing.T, text string, expected []api.Task) {
+	t.Helper()
+	for _, task := range acceptanceCLIJSON[[]map[string]json.RawMessage](t, text) {
+		if _, included := task["description"]; included {
+			t.Fatal("installed CLI list JSON included description")
+		}
+	}
+	projected := slices.Clone(expected)
+	for index := range projected {
+		projected[index].Description = ""
+	}
+	if listed := acceptanceCLIJSON[[]api.Task](t, text); !reflect.DeepEqual(listed, projected) {
+		t.Fatal("installed CLI list JSON changed the selected task membership, order or fields other than description")
+	}
+}
+
 func acceptanceCLIResourceID(t *testing.T, text string) string {
 	t.Helper()
 	for _, line := range strings.Split(text, "\n") {
@@ -404,17 +420,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		}
 		cli.refuse(t, process, "dependency_unsatisfied", first, "task", "update", target, "--status", "in_progress")
 		cli.run(t, cli.repo, "task", "update", first, "--status", "done")
-		ready := acceptanceCLIJSON[[]api.Task](t, cli.run(t, cli.repo, "task", "list", "--status", "todo", "--ready", "--json"))
-		readyIDs := make([]string, len(ready))
-		for index, task := range ready {
-			readyIDs[index] = task.ID
-		}
-		slices.Sort(readyIDs)
-		expectedReady := []string{second, target}
-		slices.Sort(expectedReady)
-		if !slices.Equal(readyIDs, expectedReady) {
-			t.Fatal("installed ready and status filters did not intersect")
-		}
+		acceptanceCLITaskListJSON(t, cli.run(t, cli.repo, "task", "list", "--status", "todo", "--ready", "--json"), []api.Task{cli.task(t, second), cli.task(t, target)})
 		cli.run(t, cli.repo, "task", "update", target, "--status", "in_progress", "--description", "Completed description")
 		cli.refuse(t, process, "dependency_unsatisfied", target, "task", "update", first, "--status", "todo")
 		cli.run(t, cli.repo, "task", "update", target, "--status", "done", "--description", "")
@@ -552,10 +558,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 			{[]string{"task", "list"}, unfinished},
 			{[]string{"task", "list", "--all"}, append(slices.Clone(unfinished), firstWithPR, cli.task(t, target))},
 		} {
-			listed := acceptanceCLIJSON[[]api.Task](t, cli.run(t, cli.repo, append(slices.Clone(listing.arguments), "--json")...))
-			if !reflect.DeepEqual(listed, listing.expected) {
-				t.Fatal("installed CLI list JSON changed the selected task membership, order or full resource fields")
-			}
+			acceptanceCLITaskListJSON(t, cli.run(t, cli.repo, append(slices.Clone(listing.arguments), "--json")...), listing.expected)
 			output := cli.run(t, cli.repo, listing.arguments...)
 			var listedIDs, expectedIDs []string
 			for _, line := range strings.Split(output, "\n") {
