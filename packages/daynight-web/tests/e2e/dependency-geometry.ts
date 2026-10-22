@@ -191,6 +191,39 @@ export const inspectDependencySnapshot = (snapshot: DependencySnapshot, expected
   return failures;
 };
 
+export const captureStableDependencyGeometry = () => {
+  const svg = document.querySelector<SVGSVGElement>('.task-dependency-edges');
+  const viewport = document.querySelector<HTMLElement>('.react-flow__viewport');
+  const canvas = document.querySelector<HTMLElement>('.task-graph-canvas');
+  if (svg === null || viewport === null || canvas === null) throw new Error('Dependency stability observation requires its SVG, viewport and canvas.');
+  const values = (matrix: DOMMatrix | null): number[] => {
+    if (matrix === null) throw new Error('Dependency stability observation has no actual screen matrix.');
+    const result = [matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f];
+    if (!result.every(Number.isFinite)) throw new Error('Dependency stability observation has a nonfinite matrix.');
+    return result;
+  };
+  const rootScreen = svg.getScreenCTM();
+  const rootValues = values(rootScreen);
+  const inverse = rootScreen!.inverse(); values(inverse);
+  const ownerScreens: number[][] = [];
+  const owners = [...svg.querySelectorAll<SVGGElement>('.task-dependency-edge,.task-dependency-body')].map((owner) => {
+    const screen = owner.getScreenCTM(); ownerScreens.push(values(screen));
+    return values(inverse.multiply(screen!));
+  });
+  const bounds = canvas.getBoundingClientRect();
+  return {
+    geometry: {
+      viewport: viewport.style.transform,
+      nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => [node.dataset.id, node.style.transform, node.style.width, node.style.height]),
+      paths: [...svg.querySelectorAll('.react-flow__edge-path')].map((path) => [path.getAttribute('data-source'), path.getAttribute('data-target'), path.getAttribute('d')]),
+      pieces: [...svg.querySelectorAll('.task-dependency-paint-piece')].map((piece) => ['d', 'transform', 'x1', 'x2', 'y1', 'y2'].map((attribute) => piece.getAttribute(attribute))),
+      owners,
+    },
+    diagnostics: { rootScreen: rootValues, ownerScreens, scroll: { x: window.scrollX, y: window.scrollY },
+      canvas: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height } },
+  };
+};
+
 export const captureDependencySnapshot = (page: Page): Promise<DependencySnapshot> => page.evaluate(() => {
   const svg = document.querySelector<SVGSVGElement>('.task-dependency-edges'); const viewport = document.querySelector('.react-flow__viewport');
   if (svg === null) throw new Error('Dependency SVG absent.');

@@ -4,7 +4,7 @@ import type { Page, TestInfo } from '@playwright/test';
 import { evidenceDirectory, expect, test, updateTask } from './fixtures';
 import { seedCapacity, seedNodeLimit, type CapacityFixture, type CapacityKind } from './capacity-data';
 import { withCapacityTrace } from './capacity-trace';
-import { checkDependencyGeometry, type GeometryExpectation } from './dependency-geometry';
+import { captureStableDependencyGeometry, checkDependencyGeometry, type GeometryExpectation } from './dependency-geometry';
 import { expectedBatch, expectedDependencyTopology, expectedOverview } from './visible-topology';
 import { parseTaskGraph } from '../../src/api/parse';
 
@@ -305,17 +305,9 @@ const panPoint = (page: Page) => page.evaluate(() => {
 });
 
 const expectedCapacityGeometry = (fixture: CapacityFixture): GeometryExpectation => expectedDependencyTopology(fixture.tasks, fixture.root.id);
-const stableGeometry = (page: Page) => page.evaluate(() => ({
-  viewport: (document.querySelector('.react-flow__viewport') as HTMLElement).style.transform,
-  nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => [node.dataset.id, node.style.transform, node.style.width, node.style.height]),
-  paths: [...document.querySelectorAll('.react-flow__edge-path')].map((path) => [path.getAttribute('data-source'), path.getAttribute('data-target'), path.getAttribute('d')]),
-  pieces: [...document.querySelectorAll('.task-dependency-paint-piece')].map((piece) => ['d', 'transform', 'x1', 'x2', 'y1', 'y2'].map((attribute) => piece.getAttribute(attribute))),
-  owners: [...document.querySelectorAll<SVGGElement>('.task-dependency-edge,.task-dependency-body')].map((owner) => {
-    const m = owner.getScreenCTM(); if (m === null) throw new Error('Dependency owner has no viewport geometry.');
-    return [m.a, m.b, m.c, m.d, m.e, m.f];
-  }),
-}));
-const bodyGeometry = (geometry: Awaited<ReturnType<typeof stableGeometry>>) => ({ nodes: geometry.nodes, paths: geometry.paths, pieces: geometry.pieces });
+const stableGeometry = (page: Page) => page.evaluate(captureStableDependencyGeometry);
+const bodyGeometry = (snapshot: Awaited<ReturnType<typeof stableGeometry>>) => ({ nodes: snapshot.geometry.nodes, paths: snapshot.geometry.paths, pieces: snapshot.geometry.pieces });
+
 const assertInspection = async (page: Page, fixture: CapacityFixture, selectedId: string, visible: GeometryExpectation) => {
   const tasks = new Map(fixture.tasks.map((task) => [task.id, task]));
   const closure = new Set([selectedId]); const pending = [selectedId];
@@ -423,7 +415,7 @@ const measureInteractions = async (page: Page, fixture: CapacityFixture, expansi
   const selection = await measureBrowserFeedback(page, { kind: 'select', rootId: selectedId }, () => body.click(), dataset, repetition);
   const hiddenUpstream = await assertInspection(page, fixture, selectedId, overview);
   await assertVisibleTopology(page, overview, full);
-  expect(await stableGeometry(page), 'Selection never expands hidden tasks or changes nodes, routes, paint geometry or viewport').toEqual(beforeSelection);
+  expect((await stableGeometry(page)).geometry, 'Selection never expands hidden tasks or changes nodes, routes, paint geometry or viewport').toEqual(beforeSelection.geometry);
   expect(await checkDependencyGeometry(page, overview, info), 'All visible highlighted dependencies retain their native geometry and paint').toEqual({ total: 0, examples: [] });
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const highlighted = await measureDetailsZoomPan(page, fixture, selectedId, dataset, repetition, overview, full);
@@ -458,7 +450,7 @@ const measureInteractions = async (page: Page, fixture: CapacityFixture, expansi
   await visibleGraph(page, fixture.root.id, overview);
   await expect(page.locator('.graph-reset-overview')).toBeFocused();
   await assertVisibleTopology(page, overview, full);
-  expect(await stableGeometry(page), 'Reset restores the deterministic overview and reframes its original viewport').toEqual(initialGeometry);
+  expect((await stableGeometry(page)).geometry, 'Reset restores the deterministic overview and reframes its original viewport').toEqual(initialGeometry.geometry);
   expect(await checkDependencyGeometry(page, overview, info), 'Reset retains complete visible graph geometry').toEqual({ total: 0, examples: [] });
   dataset.visibility.push({ repetition, selectedId, overviewNodes: overview.nodes.length, overviewEdges: overview.edges.length, hiddenUpstream, addedNodes, addedEdges,
     expandedNodes: batch.expanded.nodes.length, expandedEdges: batch.expanded.edges.length, resetNodes: overview.nodes.length, resetEdges: overview.edges.length });

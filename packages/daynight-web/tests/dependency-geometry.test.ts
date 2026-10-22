@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expectedDependencyTopology, inspectDependencySnapshot, parseCurve, referenceLength, summarizeGeometryFailures, type DependencySnapshot, type GeometryExpectation } from './e2e/dependency-geometry';
+import { captureStableDependencyGeometry, expectedDependencyTopology, inspectDependencySnapshot, parseCurve, referenceLength, summarizeGeometryFailures, type DependencySnapshot, type GeometryExpectation } from './e2e/dependency-geometry';
 
 const d = 'M100,50 L188,50 Q200,50 200,62 L200,88 Q200,100 212,100 L238,100 Q250,100 250,88 L250,62 Q250,50 262,50 L300,50';
 const color = 'rgb(171, 178, 199)';
@@ -144,5 +144,41 @@ describe('independent production dependency geometry oracle', () => {
     expect(Math.abs(referenceLength(segment) - exact)).toBeLessThan(0.0001);
     expect(referenceLength(parseCurve('M0,0 L68000000,0')[0]!)).toBe(68000000);
     for (const invalid of ['', 'M0,0 LNaN,2', 'M0,0 C1,2 3,4 5,6', 'M0,0 L0,0', 'm0,0 l1,1']) expect(() => parseCurve(invalid)).toThrow();
+  });
+});
+
+describe('chart-relative dependency stability observation', () => {
+  const fixture = () => {
+    document.body.innerHTML = '<div class="task-graph-canvas"><div class="react-flow__viewport" style="transform:translate(6.4px,-3083.1px) scale(0.8)"><svg class="task-dependency-edges"><g class="task-dependency-edge"><g class="task-dependency-body"></g></g></svg></div></div>';
+    const screen = (x: number, y: number): DOMMatrix => ({
+      a: 0.8, b: 0, c: 0, d: 0.8, e: x, f: y,
+      inverse: () => ({
+        a: 1.25, b: 0, c: 0, d: 1.25, e: -x / 0.8, f: -y / 0.8,
+        multiply: (owner: DOMMatrix) => ({ a: owner.a / 0.8, b: owner.b / 0.8, c: owner.c / 0.8, d: owner.d / 0.8, e: (owner.e - x) / 0.8, f: (owner.f - y) / 0.8 }),
+      }),
+    }) as DOMMatrix;
+    let root: DOMMatrix | null = screen(237.4, -1907.5078125);
+    let owner: DOMMatrix | null = screen(237.4, -1907.5078125);
+    Object.defineProperty(document.querySelector('svg'), 'getScreenCTM', { value: () => root });
+    for (const element of document.querySelectorAll('g')) Object.defineProperty(element, 'getScreenCTM', { value: () => owner });
+    return { screen, setRoot: (value: DOMMatrix | null) => { root = value; }, setOwner: (value: DOMMatrix | null) => { owner = value; } };
+  };
+  it('retains identical chart geometry across the hosted 621px page translation and records raw screen movement', () => {
+    const value = fixture(); const initial = captureStableDependencyGeometry();
+    value.setRoot(value.screen(237.4, -2528.5078125)); value.setOwner(value.screen(237.4, -2528.5078125));
+    const scrolled = captureStableDependencyGeometry();
+    expect(scrolled.geometry).toEqual(initial.geometry);
+    expect(scrolled.geometry.owners).toEqual([[1, 0, 0, 1, 0, 0], [1, 0, 0, 1, 0, 0]]);
+    expect(scrolled.diagnostics.rootScreen[5]! - initial.diagnostics.rootScreen[5]!).toBe(-621);
+    expect(scrolled.diagnostics.ownerScreens.map((matrix, index) => matrix[5]! - initial.diagnostics.ownerScreens[index]![5]!)).toEqual([-621, -621]);
+    value.setOwner(value.screen(237.4, -2527.5078125));
+    expect(captureStableDependencyGeometry().geometry).not.toEqual(scrolled.geometry);
+  });
+  it('rejects missing and nonfinite actual root or owner matrices', () => {
+    for (const missing of [true, false]) for (const which of ['root', 'owner'] as const) {
+      const value = fixture(); const matrix = missing ? null : value.screen(237.4, Number.NaN);
+      if (which === 'root') value.setRoot(matrix); else value.setOwner(matrix);
+      expect(() => captureStableDependencyGeometry()).toThrow(missing ? /no actual screen matrix/ : /nonfinite matrix/);
+    }
   });
 });
