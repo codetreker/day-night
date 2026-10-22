@@ -17,6 +17,11 @@
 及 Daynight 进度入口。
 现有 PostgreSQL task 事务规则不扩展为文件与元数据的原子提交保证。
 
+[鉴权架构](daynight-auth.md)定义规划中的 UniAuth 身份交接、本地用户、会话、
+访问令牌及项目成员授权，行为由[鉴权需求](../spec/daynight-auth.md)拥有，
+交付顺序由[任务拆分](daynight-auth-tasks.md)拥有。当前运行时尚未实现该扩展，
+仍按本文的本机未认证服务边界运行。
+
 现有 `packages/daynight/` TypeScript CLI、YAML 配置和 SQLite review 状态继续独立
 运行。服务不读取或迁移这些状态；注册 project 也不启动现有 review 协调器。
 
@@ -289,8 +294,9 @@ driver 错误或完整请求体。成功日志提供方法、路由模板、状�
 `127.0.0.1`。LocalStorage 在打开数据库和监听前准备根目录，要求可写且区分大小写。
 运行时以 `Dependencies` 向装配层提供数据库与文件存储，并在启动失败或 HTTP
 排空结束后关闭已取得的文件根句柄。批准范围为本机
-CLI 和内部程序调用，服务只接受 loopback 监听地址。远程认证、授权及对外部署需要
-独立设计，当前接口中的 project ID 不作为认证凭据。
+CLI 和内部程序调用，服务只接受 loopback 监听地址。规划中的远程认证、授权及
+对外部署由[鉴权架构](daynight-auth.md)拥有，须完成其交付才能替换本机运行边界；
+当前接口中的 project ID 不作为认证凭据。
 
 [本地 Compose 部署](../../deployment/localhost/README.md)将 PostgreSQL、Go 服务与
 TCP 网关组合启动，Go 服务同时提供内嵌只读看板和 JSON API。生产 Dockerfile 以

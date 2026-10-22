@@ -38,6 +38,16 @@ owns browser state, rendering and focus integration; the
 retention and backup commands. Filesystem/PostgreSQL non-atomicity remains a known
 issue; consistency remediation is outside that scope.
 
+The [authentication requirements](docs/spec/daynight-auth.md),
+[architecture](docs/design/daynight-auth.md) and
+[task breakdown](docs/design/daynight-auth-tasks.md) define planned UniAuth login,
+Daynight sessions and personal access tokens, private projects with administrator
+and member roles, and invitations. This design is separate from runtime delivery:
+the current application remains unauthenticated and loopback-only. Trusted
+same-origin executable HTML previews retain their existing execution model after
+authentication is delivered; attachment requests gain project-member checks.
+Existing projects will receive membership data manually outside that work.
+
 The `@codetreker/daynight` package provides the `daynight` client. Its root entry
 lists commands and reports the package version; each command owns its business
 dependencies and lifecycle. `review` polls configured repositories, maintains
@@ -949,7 +959,10 @@ daynight task attachment read --project <project-id> <task-id> -- -design.md
 Failed writes are not retried. File storage and PostgreSQL metadata are not
 atomic; an unsuccessful operation may already have changed storage. The
 [attachment requirements](docs/spec/daynight-task-attachments.md) define this
-known issue and the trusted same-origin preview model. The
+known issue and the trusted same-origin preview model. The planned
+[authentication architecture](docs/design/daynight-auth.md) adds project-member
+checks to attachment requests while retaining trusted executable HTML at the
+application origin. The
 [CLI delivery decision](.agents/notes/implemented/feature/2026-10-21-task-attachment-cli.md)
 records binary transport and output ownership.
 

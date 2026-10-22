@@ -197,5 +197,15 @@ PostgreSQL has no published host port. The stack uses fixed development-only
 database credentials (`daynight` / `daynight-local`, database `daynight`).
 The gateway forwards TCP to the server's strict `127.0.0.1:8787` listener
 inside their shared container network namespace, preserving the server's
-HTTP handling. The review CLI has its own
+HTTP handling.
+
+The planned [authentication requirements](../../docs/spec/daynight-auth.md) and
+[architecture](../../docs/design/daynight-auth.md) define UniAuth login and
+project authorization. Those capabilities are not implemented in this stack.
+Their [task breakdown](../../docs/design/daynight-auth-tasks.md) owns coordinated
+authentication activation and fixture updates in the existing same-origin
+deployment. The present loopback binding and TCP gateway remain the supported
+configuration; trusted same-origin HTML previews keep their execution model.
+
+The review CLI has its own
 [review configuration and startup](../../README.md#review-configuration-and-startup).

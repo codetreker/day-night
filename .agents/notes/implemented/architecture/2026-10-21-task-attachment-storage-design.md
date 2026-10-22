@@ -43,8 +43,20 @@ own task policy or a generic PostgreSQL metadata platform.
 
 Web and CLI share path-addressed HTTP APIs. Preview uses the existing application
 origin and a fixed task-scoped path; HTML is trusted project code executed in an
-ordinary iframe. CLI content reads use a binary streaming channel with
-backpressure, cancellation and explicit partial-failure semantics. The
+ordinary iframe with the viewer's current main-origin authority. This is an adopted
+architecture boundary, including for multi-user authentication: attachment requests
+reuse the main browser session and current project membership checks. Authentication
+does not turn uploaded project code into sandboxed content.
+
+Independent preview domains or origins, preview-specific credentials, bootstrap
+exchanges and their DNS/TLS or gateway infrastructure are outside this design.
+Adding authentication must preserve this boundary. A different preview trust model
+requires a separately authorized architecture decision; it is not a prerequisite
+inferred from project membership. The [authentication decision](2026-10-22-auth-architecture.md)
+and its requirements inherit this constraint.
+
+CLI content reads use a binary streaming channel with backpressure, cancellation
+and explicit partial-failure semantics. The
 [server baseline](2026-10-19-daynight-server-task-design.md),
 [CLI baseline](2026-10-20-project-task-cli-design.md) and
 [read-only dashboard baseline](2026-10-20-task-dashboard-mvp-design.md) retain

@@ -19,6 +19,11 @@
 [架构](../design/daynight-task-attachments.md)与
 [任务拆分](../design/daynight-task-attachments-tasks.md)单独拥有附件机制及实施状态。
 
+[鉴权需求](daynight-auth.md)单独定义规划中的 UniAuth 登录、Daynight 会话与个人
+访问令牌和项目成员授权；[架构](../design/daynight-auth.md)与
+[任务拆分](../design/daynight-auth-tasks.md)拥有机制和交付顺序。该能力尚未实现，
+本文的本机未认证服务仍为当前运行基线。
+
 ## 目标与交付范围
 
 | 编号 | 要求 |
@@ -211,7 +216,8 @@ points，截短时标记 titleTruncated；不返回完整标题、description �
 ## 运行与范围
 
 支持的运行边界是本机调用，默认监听 `127.0.0.1`；不提供未认证的远程监听。
-跨机器访问的认证和部署是单独的功能，不能仅通过扩大监听范围绕过。
+跨机器访问必须按[鉴权需求](daynight-auth.md)交付认证、项目授权和部署边界；
+这些规划尚未改变当前监听约束，不能仅通过扩大监听范围绕过。
 [本地 Docker Compose 部署](../../deployment/localhost/README.md)提供一条命令构建
 并启动内嵌只读看板、API 和 PostgreSQL，等待数据库及完整 API 转发路径健康后返回。
 页面和 API 共用服务 origin，宿主机 HTTP 端口只发布到 `127.0.0.1`，数据库不发布宿主机端口；容器重建和普通停止必须

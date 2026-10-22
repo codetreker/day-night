@@ -62,6 +62,11 @@ network API calls. Allocated object URLs remain valid through file deletion and
 are revoked when the fixture is disposed. Production builds retain one application
 index and exclude fixture entry points and files.
 
+The [authentication decision](../architecture/2026-10-22-auth-architecture.md)
+preserves this trusted same-origin execution model. Authentication uses the main
+session for normal attachment requests and does not introduce a preview domain,
+preview credential or cross-origin keyboard bridge.
+
 ## Alternatives
 
 **Keep the drawer's compact selector enumeration.** It does not represent the

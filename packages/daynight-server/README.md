@@ -17,6 +17,14 @@ the [design](../../docs/design/daynight-server.md) owns architecture and concurr
 The TypeScript review command retains its separate configuration, storage and
 lifecycle. The client HTTP foundation targets this service's API.
 
+The planned [authentication requirements](../../docs/spec/daynight-auth.md),
+[architecture](../../docs/design/daynight-auth.md) and
+[task breakdown](../../docs/design/daynight-auth-tasks.md) define UniAuth identity
+handoff, local users, browser sessions, personal access tokens and project
+membership. Those capabilities are not implemented; the current service remains
+unauthenticated and loopback-only. Trusted executable HTML retains its existing
+application origin when project-member checks are added to attachment requests.
+
 ## Layout
 
 | Path | Responsibility |
@@ -230,7 +238,10 @@ stream begins, failures use the existing JSON error envelope; after commitment,
 the server logs one correlated error and aborts the transfer without a JSON
 suffix. Trusted HTML preview runs with the application origin permissions.
 Relative CSS, scripts, images and data URLs resolve under the fixed preview
-path; ordinary query parameters do not change the file name.
+path; ordinary query parameters do not change the file name. The planned
+[authentication architecture](../../docs/design/daynight-auth.md) adds session
+and project-member checks to these requests while retaining trusted same-origin
+execution and the existing preview routes.
 
 ## PostgreSQL storage boundaries
 
