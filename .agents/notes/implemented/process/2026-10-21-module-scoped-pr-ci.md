@@ -39,8 +39,10 @@ exclusions do not suppress jobs selected by other changed paths.
 The Go job retains real web builds and installed-CLI acceptance. The web job
 retains production Go builds, browser and deployment acceptance. Module selection
 changes job scheduling without separating or weakening these integration suites.
-Every main push runs all jobs, preserving the successful exact-commit main run
-consumed by [npm publication](2026-10-20-npm-trusted-publishing.md).
+Every main push runs all jobs. This originally also supplied the exact-commit
+main run required by npm publication. The
+[CLI publication-validation decision](2026-10-22-cli-publication-validation.md)
+removes that release dependency while retaining full main-push validation.
 
 The workflow starts on every PR, including changes only to documentation or the
 root `.gitignore`. Routing tests run in the lightweight job without installing

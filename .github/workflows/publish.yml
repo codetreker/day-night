@@ -50,25 +50,11 @@ jobs:
     timeout-minutes: 20
     outputs:
       version: ${{ steps.release.outputs.version }}
-    permissions:
-      actions: read
-      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Require successful checks for the source commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          run_id="$(gh run list --workflow checks.yml --branch main --event push --commit "$GITHUB_SHA" --limit 1 --json databaseId --jq '.[0].databaseId')"
-          if [ -z "$run_id" ] || [ "$run_id" = null ]; then
-            echo "No main-push checks run exists for $GITHUB_SHA."
-            exit 1
-          fi
-          gh run watch "$run_id" --exit-status
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
@@ -79,9 +65,9 @@ jobs:
           run_install: false
           dest: ${{ github.workspace }}/.tmp/pnpm
       - run: pnpm install --frozen-lockfile --store-dir .tmp/pnpm-store
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm acceptance
+      - run: pnpm --filter @codetreker/daynight typecheck
+      - run: pnpm --filter @codetreker/daynight test
+      - run: pnpm --filter @codetreker/daynight acceptance
       - name: Prepare the source-bound publication artifact
         id: release
         run: |

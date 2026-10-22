@@ -4,12 +4,15 @@ Status: implemented
 
 ## Problem
 
-Publication requires successful mainline checks for the exact source commit.
+At the time of this incident, publication required successful mainline checks
+for the exact source commit.
 The Windows job in [run 39394480855](https://github.com/codetreker/daynight/actions/runs/39394480855/job/118533679906)
 failed before tests when native `gh --version` exceeded its 10-second deadline.
 The corresponding [publication run](https://github.com/codetreker/daynight/actions/runs/39395114847)
 therefore stopped at its source-check gate. Native tool versions and the complete
-validation workload remain required.
+validation workload remain required. The later
+[CLI publication-validation decision](../process/2026-10-22-cli-publication-validation.md)
+removes the publication dependency on the full mainline run.
 
 The earlier [probe isolation decision](2026-10-19-native-environment-probe-isolation.md)
 isolated gh configuration and state, disabled telemetry and preserved failures.
