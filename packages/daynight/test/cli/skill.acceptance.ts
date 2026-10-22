@@ -3,6 +3,8 @@ import path from "node:path";
 import crossSpawn from "cross-spawn";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createInstalledCli, terminateInstalledProcess } from "../fixtures/installed-cli.js";
+import { inspectInstalledSkill, instructionScenarios, verifyInstructionScenario } from "../fixtures/skill-contract.js";
+import type { InstalledSkillContract } from "../fixtures/skill-contract.js";
 import { createSkillFixture, skillPipe, skillTerminal, skillTerminalEvidence, skillTerminalSessionsClosed } from "../fixtures/skill-terminal.js";
 import type { SkillFixture, TerminalAction } from "../fixtures/skill-terminal.js";
 
@@ -10,14 +12,17 @@ const agentsPrompt = "Install the using-daynight skill for which agents?";
 const scopePrompt = "Where should the skill be installed?";
 const down = "\u001b[B";
 let installed: Awaited<ReturnType<typeof createInstalledCli>>;
+let instructionBundle: InstalledSkillContract | undefined;
 let sequence = 0;
 const scenarios: string[] = [];
+const instructionOutcomes: { id: string; input: string; obligation: string; references: readonly string[] }[] = [];
 const evidencePath = path.resolve(import.meta.dirname, "../../../../.tmp/skill-install-evidence.json");
 beforeAll(async () => {
   await rm(evidencePath, { force: true });
   installed = await createInstalledCli();
   const source = path.resolve(import.meta.dirname, "../../src/commands/skill/skills/using-daynight");
   expect(await tree(bundle())).toEqual(await tree(source));
+  instructionBundle = await inspectInstalledSkill(bundle());
 });
 afterAll(async () => {
   if (installed === undefined) return;
@@ -28,7 +33,7 @@ afterAll(async () => {
   catch (cause) { if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") installationRemoved = true; else failures.push(cause); }
   const { packageVersion, tarballSha256, entrySha256, source } = installed.receipt;
   const terminalSessionsClosed = skillTerminalSessionsClosed();
-  await writeFile(evidencePath, `${JSON.stringify({ schemaVersion: 1, success: scenarios.length === 15 && failures.length === 0 && installationRemoved && terminalSessionsClosed, platform: process.platform, nodeVersion: process.version, artifact: { packageVersion, tarballSha256, entrySha256, source }, scenarios, terminals: skillTerminalEvidence, cleanup: { installationRemoved, terminalSessionsClosed, errors: failures.length } }, null, 2)}\n`, { mode: 0o600 });
+  await writeFile(evidencePath, `${JSON.stringify({ schemaVersion: 1, success: scenarios.length === 15 && instructionOutcomes.length === instructionScenarios.length && failures.length === 0 && installationRemoved && terminalSessionsClosed, platform: process.platform, nodeVersion: process.version, artifact: { packageVersion, tarballSha256, entrySha256, source }, scenarios, terminals: skillTerminalEvidence, instructionContracts: { kind: "installed-instruction-artifact", agentExecution: false, limitation: "Validates shipped instructions and resources; no Agent or model behavior was executed.", metadata: instructionBundle?.metadata, resources: instructionBundle?.resources, scenarios: instructionOutcomes }, cleanup: { installationRemoved, terminalSessionsClosed, errors: failures.length } }, null, 2)}\n`, { mode: 0o600 });
   if (failures.length !== 0) throw new AggregateError(failures, "Installed skill acceptance cleanup failed.");
   expect(installationRemoved).toBe(true);
   expect(terminalSessionsClosed).toBe(true);
@@ -90,6 +95,12 @@ const git = async (fixture: SkillFixture, args: readonly string[], cwd: string):
     if (code !== 0) throw new Error(`Fixture Git ${args.join(" ")} failed (${String(code)}): ${output}`);
   } finally { if (timer !== undefined) clearTimeout(timer); }
 };
+
+it.each(instructionScenarios)("checks the installed instruction artifact for $id", (scenario) => {
+  expect(instructionBundle).toBeDefined();
+  const references = verifyInstructionScenario(instructionBundle!, scenario);
+  instructionOutcomes.push({ id: scenario.id, input: scenario.input, obligation: scenario.obligation, references });
+});
 
 it("isolates help, argument errors, noninteractive refusal and unavailable-agent detection from installation and configuration", async () => {
   const fixture = await fresh(["codex", "copilot", "claude"]);

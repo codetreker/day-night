@@ -654,6 +654,42 @@ language scenarios remain GET/HEAD-only in the browser; fixture writes use the
 installed CLI or API request context. The three task-approval scenarios separately
 admit only registered project/task POST approve requests with exact expected counts;
 unrelated browser mutations remain failures.
+
+The same three [approval journeys](tests/e2e/approval.spec.ts) reuse the packed
+CLI against each target's actual service. An ordinary graph task is created with
+a prerequisite, Markdown description, PR references and readable plan/attachment
+bytes. Web approval of the blocked dependent is read back through CLI show,
+ready/list/graph; its refused claim preserves the whole task. CLI approval,
+claim and completion of the prerequisite then unlock the dependent's named
+progression without changing its own version/timestamp for derived readiness.
+Full-detail descriptions, list omission of only description,
+metadata/PR/dependency preservation, exact versions, timestamps and raw attachment
+bytes remain separate assertions. The browser observes the same graph, detail,
+completion visibility and retained browsing state.
+
+A CLI metadata update makes the reviewed Web version stale; refreshed content
+needs another deliberate click. The CLI/Web approval race uses one observed
+version and requires exactly one committed winner and one concrete version
+conflict, without automatic resubmission. Real SPA navigation holds the original
+approval response across project changes and return: pending reactivation sends
+no new POST, the other project's task stays unchanged, and the late original
+result cannot paint or trigger a read/approval in that project. Same-document
+identity and authoritative CLI reads distinguish this from a full page reload.
+
+The SQL-seeded above-safe-integer/int64-limit case remains separate from the
+multi-hop journey so version overflow cannot prevent the ordinary lifecycle.
+Its approval uses real GET/POST and database state. Response-loss checks first
+forward the actual approve request and confirm a commit, then abort its browser
+response; reconciliation GET failure is a separate controlled transport fault.
+Post-success graph failure temporarily changes the existing owned dependency
+table around the real graph request and forwards its actual failure before
+restoration and CLI readback. Timing/response barriers are explicit controls,
+not fabricated status-changing responses. The
+[cross-layer decision](../../.agents/notes/implemented/testing/2026-10-22-task-lifecycle-cross-layer-acceptance.md)
+owns these oracles and the distinction from deterministic service races,
+controlled client fixtures and offline mocks. No annotation, target topology,
+capacity, coverage or cleanup gate is added or removed by this extension.
+
 One packed/installed CLI is shared by the whole web run. On each target,
 `task-attachments` uploads through that CLI and consumes the same task/files in
 the production page, then checks Web mutations through raw CLI reads. It covers
@@ -733,7 +769,7 @@ scenario annotations validated in each target's report.
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
-| W13 | `task-approval`, `task-approval-conflicts`, `task-approval-recovery`: real versioned approval, blocked prerequisites, pending protection, exact int64 digits, reviewed-version conflicts, unknown-outcome reconciliation, graph refresh failure and identity/focus/browsing preservation |
+| W13 | `task-approval`, `task-approval-conflicts`, `task-approval-recovery`: same-data packed-CLI/ordinary-graph lifecycle, blocked prerequisites, stale CLI metadata, CLI/Web same-version competition, pending protection, exact int64 digits, real-commit response loss, real graph failure and task/SPA-project identity/focus/browsing preservation |
 | FA1–FA12 | `task-attachments`: installed CLI and production UI share real task/files on native and container targets; exact bytes, file mutations, detail tabs, adjacent panes, unique preview scroll owners, rendered formats and reloadable standalone reading. Independent real-service probes add end-of-document wheel/keyboard, native PDF final-page paint, fault/retry and unchanged task/graph proof |
 | TI8–TI9 | `task-description-markdown`: installed CLI and real API preserve Unicode/CRLF Markdown bytes and versioned full replacement; bilingual 1440px/320px rich rendering, escaped HTML, URL policy, task-root images/encoded references, paginated loading/list failure/retry, invalid/missing/preview failure states, one-controller navigation/focus, overwrite refresh, modified native href and HTML frame interaction |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
@@ -744,7 +780,8 @@ scenario annotations validated in each target's report.
 
 Receipts live in `packages/daynight-web/.tmp/acceptance/<run-id>/`, with the
 latest aggregate at `.tmp/acceptance/evidence.json` inside this package. They
-use top-level `schemaVersion: 2` and record source identity, the installed CLI
+use top-level `schemaVersion: 2` and record source identity, including required
+`source.gitTreeSha` from actual `git rev-parse HEAD^{tree}`, the installed CLI
 receipt and raw artifact identities, native binary
 SHA-256, PostgreSQL/browser versions, pipeline stages, target phases, capacity
 measurements, container image identity and cleanup outcomes. Each stage records
@@ -761,6 +798,13 @@ tested checkout identity, which is normally a merge revision for PR runs. A pass
 requires the strict union of seventeen native functional and five native capacity/limit
 scenarios (22 native total), plus the seventeen container functional scenarios. Every
 phase and target rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
+Installed-CLI handoff, container callbacks and recovery require matching source
+commit/tree/dirty state as well as existing package/artifact ownership. A missing
+or mismatched tree field fails; no old-receipt fallback is introduced. The tree
+identifies committed source and does not fingerprint local modifications or prove
+an executed platform/gate. Lifecycle attachments to each approval scenario retain
+CLI arguments/outputs/exits, raw-byte digests, task/graph snapshots, captured Web
+requests/responses and declared controlled faults under the same run identity.
 Browser identities must agree across a target's phases; every fixed graph's five
 timing repetitions, independent size refusals and cleanup/recovery must pass.
 Local receipts retain their source and browser identity; they do not establish

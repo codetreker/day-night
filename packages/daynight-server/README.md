@@ -516,8 +516,10 @@ URLs, bodies, SQL and credentials are excluded from logs.
 
 ## Built-process acceptance and CI evidence
 
-The same check runs the 12 original actual-process scenario groups, the installed
-CLI project/task workflow and `installed_cli_task_attachment_workflow`. TestMain freshly builds a
+The same check retains the original actual-process scenarios, installed CLI
+project/task and attachment workflows, and the
+[installed lifecycle migration/race scenarios](cmd/daynight-server/acceptance_lifecycle_cli_test.go).
+TestMain freshly builds a
 race-enabled server, starts only owned loopback children against isolated real
 PostgreSQL schemas, and checks HTTP workflows, restart persistence, competing
 mutations, PR string/NUL/order/duplicate persistence, partial-write rollback,
@@ -532,9 +534,12 @@ Existing three-platform CLI validation remains separate. The
 records the validation-cost trade-offs.
 
 The test process incrementally writes `.tmp/acceptance-evidence.json` with the
-checked-out Git/GitHub SHA, dirty state, Go/PostgreSQL versions, tested binary
-SHA-256, named results and cleanup counts. CI requires a clean checkout and a
-revision matching `GITHUB_SHA`. All children stop before schemas are removed;
+checked-out Git/GitHub SHA, required root `gitTreeSha` from
+`git rev-parse HEAD^{tree}`, dirty state, Go/PostgreSQL versions, tested binary
+SHA-256, named results and cleanup counts. The installed CLI receipt's
+`source.gitTreeSha` must match that tree as well as the existing revision,
+package and artifact checks. Missing or mismatched source identity fails. CI
+requires a clean checkout and a revision matching `GITHUB_SHA`. All children stop before schemas are removed;
 the receipt records reaping, removed schemas and disappearance of owned sessions.
 Every fixture also requires `storageRootRemoved`: the owned root is removed and
 its absence is checked before cleanup can pass. The temporary tested binary is removed after the run; its hash remains in the
@@ -549,10 +554,10 @@ the [V1–V10 requirements](../../docs/spec/daynight-server.md) as follows:
 | V1: persistent resources | `workflow_restart_persistence`, `graceful_sigterm_drains_committed_request`, `forced_sigterm_cancels_without_late_write`; complete objects survive process restart and listener reuse |
 | V2: dependency refusal and rollback | `refusals_scopes_filters_and_cursors`, `partial_write_http_failure_rolls_back`; rejected writes preserve complete tasks, with a sequence proving metadata and the first edge changed before the injected failure |
 | V3: concurrency and project independence | `concurrent_reverse_dependencies`, `canceled_request_and_independent_project`; owned backend waiters prove competing requests and independent progress |
-| V4: state gates | Workflow/refusal scenarios, `concurrent_lifecycle_same_version` (approve/claim/complete) and `concurrent_dependency_update_and_claim`; [service tests](internal/service/task_test.go) and [HTTP transition tests](internal/server/task_transitions_test.go) cover wrong predecessor states, same-version action races and metadata candidates |
+| V4: state gates | Workflow/refusal scenarios, `concurrent_lifecycle_same_version` (approve/claim/complete), `concurrent_dependency_update_and_claim`, `installed_cli_same_version_claim` and `installed_cli_same_version_dependency_edit_and_claim`; [service tests](internal/service/task_test.go) and [HTTP transition tests](internal/server/task_transitions_test.go) cover wrong predecessor states, same-version action races and metadata candidates |
 | V5: revisions and no-ops | Workflow/refusal scenarios and `concurrent_same_version`; actual changes compete on one version and matching semantic no-ops retain fields/timestamps |
 | V6: listing and HTTP contract | `refusals_scopes_filters_and_cursors`, [HTTP tests](internal/server/tasks_test.go) and service tests cover tied keysets, scoped filters, initialized empty resources, DTOs and error mapping |
-| V7: transactions and lifecycle | Partial-failure, cancellation, graceful/forced-signal, unsupported/failed-migration-history and concurrent-startup scenarios; owning store tests prove finer snapshot and cross-migration interleavings |
+| V7: transactions and lifecycle | Partial-failure, cancellation, graceful/forced-signal, unsupported/failed-migration-history, concurrent-startup and `installed_cli_pre_lifecycle_migration_restart` scenarios; owning store tests prove finer snapshot and cross-migration interleavings |
 | V8: coverage and race gates | [`scripts/check.sh`](scripts/check.sh), [`.go-cov.toml`](.go-cov.toml), the raw profile and [exact-boundary/malformed-profile tests](scripts/coverage.test.mts) |
 | V9: mandatory infrastructure and complete CI | Missing/unavailable PostgreSQL fails the check; test-result expiration preserves real observations; the [final `checks` job](../../.github/workflows/checks.yml) accepts only `success` or `skipped` from every preceding job and rejects failures, cancellations and other results under the [repository CI rules](../../README.md#ci-selection); main pushes run all modules |
 | V10: correlation and privacy | Workflow/refusal/partial-failure/cancellation/startup scenarios verify HTTP request IDs, canonical resource IDs, structured categories and absence of submitted secret markers from logs |
@@ -568,8 +573,9 @@ explains why a legal opaque ID may contain the SQL marker.
 The installed CLI project/task scenario and its artifact/source validation live
 in [`acceptance_cli_test.go`](cmd/daynight-server/acceptance_cli_test.go). Its
 mixed unfinished/completed fixture verifies the exact default and `--all` list
-membership and order. Each JSON array must equal the complete task resources,
-including raw PR strings and full int64 versions. Human lists retain identity,
+membership and order. Each JSON array equals the complete task resources after
+removing only `description`, retaining raw PR strings, timestamps and exact int64
+versions; task show retains the full description. Human lists retain identity,
 status, readiness, dependencies and escaped PR references while omitting
 description, version and timestamps; `task show` retains those detail fields.
 Both detail and all-status list output preserve visible PR control-character
@@ -587,6 +593,29 @@ restart reuses the same root and compares all remaining metadata and bytes.
 K1 remains recorded only, without asserting cross-store rollback.
 The [combined acceptance decision](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
 owns this proof alongside the same-data CLI/browser journeys.
+
+The [lifecycle scenarios](cmd/daynight-server/acceptance_lifecycle_cli_test.go)
+reuse this installation and actual-process fixture. The migration journey
+executes checked-in migrations 001 through 006 and records their raw-byte
+checksum ledger and old todo/in-progress/done rows before startup. The current
+built service applies 007/008 through its production migration engine. Packed CLI
+reads verify old records, new proposed creation, explicit prerequisite/dependent
+progression, blocked/stale refusals and readable plan attachment bytes. Actual
+restart compares the historical rows and ledger plus new task and attachment
+state. Preparing the current schema and rewriting its history is not this oracle.
+
+The claim and dependency-edit/claim competitions launch two real installed CLI
+processes with one observed version. An actual project-row lock and observed
+waiters order the requests. Distinct correlated request IDs, exactly one
+successful mutation, one visible `version_conflict` and process exits prove the
+winner/refusal without an automatic retry. Complete before/after snapshots and
+attachment bytes establish preserved metadata, version/timestamp progression and
+the active/done prerequisite invariant. Deterministic service/HTTP races remain
+separate interleaving evidence; one observed process order does not prove all
+orders. Optional scenario `lifecycle` evidence records platform/scope, migration
+ledgers/rows, action/refusal snapshots and outputs, and race request/process
+results. The [cross-layer decision](../../.agents/notes/implemented/testing/2026-10-22-task-lifecycle-cross-layer-acceptance.md)
+owns these methods and their relationship to production browser journeys.
 
 The Node orchestrator reuses that installation for six budget probes after the
 Go coverage gate. Deadline probes load a test-only preload with 1-second request

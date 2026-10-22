@@ -202,6 +202,11 @@ adds the dense-external capacity graph while preserving that isolation. The
 [bilingual interface decision](../feature/2026-10-22-web-bilingual-interface.md)
 adds three functional scenarios per target, preserving phase ownership, strict
 aggregation and all capacity conditions. The
+[lifecycle cross-layer extension](2026-10-22-task-lifecycle-cross-layer-acceptance.md)
+reuses the installed CLI and existing approval annotations for same-data lifecycle
+proof. Required source.gitTreeSha joins the existing callback/recovery identity
+checks; phase permissions, scheduling, capacity isolation and cleanup ownership
+remain here. The
 [web design](../../../../docs/design/daynight-web.md#验证与-ci) owns mechanisms.
 Measured outcomes remain tied to their source, environment and PR/CI run.
 

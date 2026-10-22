@@ -47,8 +47,12 @@ request checks. The attachment and `language-state-preservation` scenarios
 permit only their exact fixture-scoped file PUT/DELETE requests. The
 [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds task-approval,
 task-approval-conflicts and task-approval-recovery, admitting only registered
-project/task POST approve operations and exact expected counts;
-uncaught exceptions remain failures in every scenario. Database
+project/task POST approve operations and exact expected counts. The
+[lifecycle cross-layer extension](2026-10-22-task-lifecycle-cross-layer-acceptance.md)
+strengthens those same annotations with a packed-CLI/ordinary-graph journey,
+reviewed-version CLI/Web competition and SPA project isolation. It adds no
+browser annotation or runner topology. Uncaught exceptions remain failures in
+every scenario. Database
 fault injection verifies the disposable database's ownership before changing it
 and restores the resource in a finally path. Browser routing barriers control
 response ordering separately from actual backend-failure observations.

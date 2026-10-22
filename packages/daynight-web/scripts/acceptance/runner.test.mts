@@ -14,6 +14,7 @@ const evidenceRoot = join(temporaryRoot, 'acceptance');
 const runner = new URL('./runner.mts', import.meta.url).href;
 const cli = fileURLToPath(new URL('../acceptance.mts', import.meta.url));
 const sourceGitSha = '0123456789abcdef0123456789abcdef01234567';
+const sourceGitTreeSha = '89abcdef0123456789abcdef0123456789abcdef01';
 const runId = (): string => `20261021123456-${randomUUID()}`;
 type Fixture = { directory: string; bin: string; commands: string; env: NodeJS.ProcessEnv };
 
@@ -108,6 +109,27 @@ test('the thin CLI rejects unknown arguments before starting acceptance', { skip
   });
 });
 
+test('source identity reads the Git tree independently and refuses malformed tree output before preparation', { skip: process.platform !== 'linux' }, async () => {
+  await fixture(async (value) => {
+    await writeFile(join(value.bin, 'git'), `#!/bin/sh
+printf '%s\\n' "$*" >> "$DAYNIGHT_TEST_COMMAND_LOG"
+case "$*" in
+  'rev-parse HEAD') printf '%s\\n' '${sourceGitSha}' ;;
+  'rev-parse HEAD^{tree}') printf '%s\\n' 'invalid-tree' ;;
+  'status --porcelain --untracked-files=normal') ;;
+  *) exit 91 ;;
+esac
+`);
+    const result = await start([cli], value).done;
+    assert.equal(result.timedOut, false);
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Invalid source revision or tree/);
+    assert.deepEqual((await readFile(value.commands, 'utf8')).trim().split('\n'), [
+      'rev-parse HEAD', 'rev-parse HEAD^{tree}', 'status --porcelain --untracked-files=normal',
+    ]);
+  });
+});
+
 test('recovery rejects unsupported receipt schemas before issuing Docker commands', { skip: process.platform === 'win32' }, async () => {
   await fixture(async (value) => {
     for (const schemaVersion of [1, 99]) {
@@ -135,7 +157,7 @@ test('recovery removes only the recorded native storage after confirming the nat
     const operatorStorage = join(value.directory, 'operator-storage');
     const owner = `daynight-web-${id}`;
     const evidence = {
-      schemaVersion: 2, runId: id, source: { gitSha: sourceGitSha, githubSha: process.env.GITHUB_SHA ?? null },
+      schemaVersion: 2, runId: id, source: { gitSha: sourceGitSha, gitTreeSha: sourceGitTreeSha, githubSha: process.env.GITHUB_SHA ?? null },
       runner: { pid: 2_147_483_647, executable: process.execPath, startTicks: '1', group: 2_147_483_647 }, stages: [],
       native: { owner, postgresContainer: `${owner}-postgres`, postgresVolume: `${owner}-data`,
         binary: join(directory, 'daynight-server'), storageRoot },
@@ -169,7 +191,7 @@ test('recovery refuses a storage path outside its run and preserves storage whil
       const storageRoot = join(directory, 'native-storage');
       const owner = `daynight-web-${id}`;
       const evidence = {
-        schemaVersion: 2, runId: id, source: { gitSha: sourceGitSha, githubSha: process.env.GITHUB_SHA ?? null },
+        schemaVersion: 2, runId: id, source: { gitSha: sourceGitSha, gitTreeSha: sourceGitTreeSha, githubSha: process.env.GITHUB_SHA ?? null },
         runner: { pid: 2_147_483_647, executable: process.execPath, startTicks: '1', group: 2_147_483_647 }, stages: [],
         native: { owner, postgresContainer: `${owner}-postgres`, postgresVolume: `${owner}-data`,
           binary: join(directory, 'daynight-server'), storageRoot: invalid === 'path' ? value.directory : storageRoot,
@@ -197,7 +219,7 @@ test('an early container callback records readiness and waits for permission bef
     const directory = join(evidenceRoot, id);
     const containerDirectory = join(directory, 'container');
     await mkdir(directory, { recursive: true });
-    await writeFile(join(directory, 'evidence.json'), JSON.stringify({ schemaVersion: 2, runId: id, source: { gitSha: sourceGitSha } }));
+    await writeFile(join(directory, 'evidence.json'), JSON.stringify({ schemaVersion: 2, runId: id, source: { gitSha: sourceGitSha, gitTreeSha: sourceGitTreeSha } }));
     await writeFile(join(value.bin, 'docker'), '#!/bin/sh\nprintf \'%s\\n\' "$0 $*" >> "$DAYNIGHT_TEST_COMMAND_LOG"\nif [ "$1" != ps ]; then exit 91; fi\nprintf \'%s\\n\' aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n');
     value.env = { ...value.env, DAYNIGHT_ACCEPTANCE_DIRECTORY: containerDirectory, DAYNIGHT_DEV_CI_RUN_ID: devCiRunId,
       DAYNIGHT_BASE_URL: 'http://127.0.0.1:12345' };
@@ -268,7 +290,7 @@ const installationRecoveryFixture = async (value: Fixture, completed: boolean) =
   const root = join(directory, 'installed-cli');
   const storageRoot = join(directory, 'native-storage');
   const owner = `daynight-web-${id}`;
-  const source = { gitSha: sourceGitSha, dirty: true, githubSha: process.env.GITHUB_SHA ?? null };
+  const source = { gitSha: sourceGitSha, gitTreeSha: sourceGitTreeSha, dirty: true, githubSha: process.env.GITHUB_SHA ?? null };
   const installedCli: Record<string, unknown> = { root, cleanup: 'pending' };
   await mkdir(root, { recursive: true });
   await mkdir(storageRoot);
@@ -287,7 +309,8 @@ const installationRecoveryFixture = async (value: Fixture, completed: boolean) =
     await writeFile(join(root, 'consumer install/node_modules/@codetreker/daynight/package.json'), JSON.stringify({ name: '@codetreker/daynight', version, bin: { daynight: 'dist/main.js' } }));
     const digest = async (path: string) => createHash('sha256').update(await readFile(path)).digest('hex');
     const receipt = { schemaVersion: 1, root, packageVersion: version, entryPath, entrySha256: await digest(entryPath),
-      launcherPath, tarballPath, tarballSha256: await digest(tarballPath), nodePath: process.execPath, source: { gitSha: source.gitSha, dirty: source.dirty } };
+      launcherPath, tarballPath, tarballSha256: await digest(tarballPath), nodePath: process.execPath,
+      source: { gitSha: source.gitSha, gitTreeSha: source.gitTreeSha, dirty: source.dirty } };
     const receiptPath = join(root, 'installed-cli.json');
     installedCli.receipt = receipt;
     installedCli.receiptPath = receiptPath;

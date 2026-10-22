@@ -1625,9 +1625,11 @@ fails explicitly. The [mirror decision](.agents/notes/implemented/testing/2026-1
 records the provisioning failure and the retained acceptance limits.
 Native CLI jobs typecheck and build once before
 running ordinary and installed tests against the same output. After deployment
-fixture checks, the web job uses one acceptance pipeline. Pinned Chromium,
-unit/coverage checks, native UI/Go/PostgreSQL preparation and the normal dev-ci
-source build can overlap. Only the coverage subprocess uses two Vitest workers,
+fixture checks, the web job uses one acceptance pipeline. Coverage, native
+UI/Go/PostgreSQL preparation and the normal dev-ci source build can overlap.
+Pinned Chromium and Linux dependency installation begins only after coverage
+passes, then overlaps the remaining native/dev-ci preparation. Only the coverage
+subprocess uses two Vitest workers through its copied child environment,
 retaining its `forks` pool and file isolation. Native functional checks and their
 browser cleanup precede the container browser checks; full container cleanup
 and all preparation/check commands finish before the native capacity phase.
@@ -1673,8 +1675,26 @@ job uploads `.tmp/validation-environment.json`, `.tmp/e2e-evidence.json`,
 tested source and platform, scenario outcomes and owned-resource cleanup. Shell
 completion has a separate `.tmp/completion-evidence.json` receipt. Match each
 receipt to its tested revision and execution scope; local or controlled receipts
-do not establish a successful current-source hosted run. A failed scenario or
-cleanup remains a failure even when other results pass.
+do not establish a successful current-source hosted run. Shared packed-CLI and
+Web source records require `source.gitTreeSha` from actual
+`git rev-parse HEAD^{tree}`; Go acceptance records the same tree as root
+`gitTreeSha` and verifies it against the installed CLI. Commit, tree, dirty state,
+package and artifact identities must agree at handoff and recovery. Missing or
+mismatched tree data fails validation. Tree equality identifies committed content;
+it does not fingerprint dirty changes or prove an executed gate, platform result
+or reviewer decision. A failed scenario or cleanup remains a failure even when
+other results pass.
+
+The [lifecycle cross-layer acceptance decision](.agents/notes/implemented/testing/2026-10-22-task-lifecycle-cross-layer-acceptance.md)
+owns the same-data packed-CLI/production-Web journey, real installed-process
+competition and genuine historical-SQL startup/restart proof. These extend the
+existing service and browser fixtures, with their normal source, fault and cleanup
+ownership. Native project/task HTTP fixtures remain controlled client evidence;
+actual Go/PostgreSQL and native/container browser receipts remain separate.
+Installed skill checks validate the six shipped resources, metadata, contained
+references and bounded cross-resource instruction contracts on actual package and
+target copies. Simulated launchers and instruction artifacts do not establish
+live Agent behavior or waive the existing native terminal checks.
 
 The review lifecycle uses controlled GitHub and Copilot processes. Native Copilot
 loading probes establish skill activation under their recorded conditions.

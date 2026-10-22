@@ -1,8 +1,13 @@
-import { randomUUID } from 'node:crypto';
-import type { Locator, Page, TestInfo } from '@playwright/test';
+import { createHash, randomUUID } from 'node:crypto';
+import { readFile, writeFile } from 'node:fs/promises';
+import type { APIResponse, Locator, Page, Route, TestInfo } from '@playwright/test';
+import { createAcceptanceCli } from '../../scripts/acceptance/installed-cli.mts';
+import { parseApiJson } from '../../src/api/json';
+import { parseTaskDetail, parseTaskGraph } from '../../src/api/parse';
+import type { TaskDetail } from '../../src/api/types';
 import { attachmentDownloadUrl } from '../../src/api/client';
 import {
-  approveTask, createProject, createProposedTask, expect, seedTaskVersion, test,
+  createProject, createProposedTask, expect, seedTaskVersion, test,
   updateTask, withDependencyFailure,
 } from './fixtures';
 import { expectCenteredTaskDetail } from './detail-dialog';
@@ -51,8 +56,107 @@ const pauseAutomaticRefresh = async (page: Page): Promise<void> => {
   await page.clock.pauseAt(time);
 };
 
+type LifecycleCommand = {
+  readonly argv: readonly string[];
+  readonly exitCode: number;
+  readonly stdout?: string;
+  readonly stdoutSha256?: string;
+  readonly stderr: string;
+  readonly requestIds: readonly string[];
+};
+type LifecycleWebWrite = {
+  readonly taskId: string;
+  readonly expectedBody: string;
+  readonly status: number;
+  readonly responseBody: string;
+  readonly requestId: string | null;
+};
+const resourceId = (output: string): string => {
+  const matches = [...output.matchAll(/^ID: ([0-9a-f-]{36})$/gm)];
+  expect(matches, 'A successful installed mutation identifies exactly one resource').toHaveLength(1);
+  return matches[0]![1]!;
+};
+const lifecycleActor = async (info: TestInfo, name: string) => {
+  const cli = await createAcceptanceCli(origin(info), info.outputPath(`installed-cli-${name}`));
+  const receiptPath = process.env.DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT;
+  if (receiptPath === undefined) throw new Error('Lifecycle evidence requires the validated installed CLI receipt.');
+  const installedCli: unknown = JSON.parse(await readFile(receiptPath, 'utf8'));
+  const evidence = {
+    scenario: name, topology: process.env.DAYNIGHT_ACCEPTANCE_TARGET, serviceOrigin: origin(info), installedCli,
+    commands: [] as LifecycleCommand[], webWrites: [] as LifecycleWebWrite[],
+    snapshots: [] as { label: string; task: TaskDetail }[],
+    rawReads: [] as { label: string; path: string; body: string }[],
+    attachmentSnapshots: [] as { label: string; bytes: number; sha256: string }[],
+    controlledFaults: [] as string[],
+  };
+  const run = async (argv: readonly string[]) => {
+    const result = await cli.run(argv);
+    evidence.commands.push({ argv, ...result, requestIds: [...result.stderr.matchAll(/requestId=([A-Za-z0-9_.:-]+)/g)].map((match) => match[1]!) });
+    return result;
+  };
+  const success = async (argv: readonly string[]): Promise<string> => {
+    const result = await run(argv);
+    expect(result.exitCode, `Installed CLI succeeds: ${argv.join(' ')}`).toBe(0);
+    expect(result.stderr).toBe('');
+    return result.stdout;
+  };
+  const show = async (projectId: string, taskId: string, label: string): Promise<TaskDetail> => {
+    const task = parseTaskDetail(parseApiJson(await success(['task', 'show', taskId, '--project', projectId, '--json'])), projectId, taskId);
+    evidence.snapshots.push({ label, task });
+    return task;
+  };
+  const bytes = async (projectId: string, taskId: string, path: string, label: string): Promise<Buffer> => {
+    const argv = ['task', 'attachment', 'read', taskId, path, '--project', projectId];
+    const content = await cli.read(argv);
+    const sha256 = createHash('sha256').update(content).digest('hex');
+    evidence.commands.push({ argv, exitCode: 0, stdoutSha256: sha256, stderr: '', requestIds: [] });
+    evidence.attachmentSnapshots.push({ label, bytes: content.length, sha256 });
+    return content;
+  };
+  const capture = async (route: Route, taskId: string): Promise<APIResponse> => {
+    const response = await route.fetch({ timeout: 15_000, maxRetries: 0 });
+    const responseBody = await response.text();
+    const error = response.status() === 409 ? JSON.parse(responseBody) as { error: { code: string; requestId: string } } : null;
+    evidence.webWrites.push({ taskId, expectedBody: route.request().postData()!, status: response.status(), responseBody,
+      requestId: error === null ? response.headers()['x-request-id'] ?? null : error.error.requestId });
+    return response;
+  };
+  const attach = async (): Promise<void> => {
+    await info.attach(`${name}-lifecycle`, { contentType: 'application/json',
+      body: Buffer.from(JSON.stringify(evidence, (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value, 2)) });
+  };
+  return { run, success, show, bytes, capture, attach, evidence };
+};
+const invariantFields = (task: TaskDetail) => ({
+  id: task.id, projectId: task.projectId, title: task.title, description: task.description,
+  properties: task.properties, dependsOn: task.dependsOn, createdAt: task.createdAt,
+});
+const navigateProject = async (page: Page, projectId: string): Promise<void> => {
+  await page.getByRole('link', { name: '← 项目', exact: true }).click();
+  await expect(page.getByRole('list', { name: '项目列表', exact: true })).toBeVisible();
+  const card = page.locator(`.project-card[href="/projects/${projectId}"]`);
+  while (await card.count() === 0) {
+    const before = await page.locator('.project-card').count();
+    await page.getByRole('button', { name: '加载更多', exact: true }).click();
+    await expect.poll(() => page.locator('.project-card').count()).toBeGreaterThan(before);
+  }
+  await card.click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`));
+};
+
 test('task-approval', scenario('task-approval'), async ({ page, request, allowApprovalWrites, allowAttachmentWrites }, info) => {
   await pauseAutomaticRefresh(page);
+  const lifecycle = await lifecycleActor(info, 'task-approval');
+  const sharedProjectId = resourceId(await lifecycle.success(['project', 'create', `Installed lifecycle ${randomUUID()}`, '--repo', `https://example.com/lifecycle/${randomUUID()}`]));
+  const prerequisiteDescription = '# Prerequisite\n\nGoal: finish the dependency before starting the dependent task.\n\nAcceptance: approved, claimed and completed through the installed CLI.';
+  const sharedDescription = '# Lifecycle delivery\n\nGoal: verify the same task through the installed CLI, production Web and PostgreSQL.\n\nAcceptance: blocked approval, refused premature claim, completed prerequisite and named claim/complete.\n\nMaterials: [Plan](plan.md) and binary evidence payload.bin.';
+  const sharedPrerequisiteId = resourceId(await lifecycle.success(['task', 'create', '--project', sharedProjectId, '--title', 'CLI prerequisite 中文', '--description', prerequisiteDescription]));
+  const sharedDependentId = resourceId(await lifecycle.success(['task', 'create', '--project', sharedProjectId, '--title', 'CLI dependent 中文', '--description', sharedDescription,
+    '--depends-on', sharedPrerequisiteId, '--pull-request-url', 'https://example.com/pull/17', '--pull-request-title', 'Preserved lifecycle reference']));
+  const sharedPrerequisite = await lifecycle.show(sharedProjectId, sharedPrerequisiteId, 'prerequisite-created-proposed');
+  const sharedDependent = await lifecycle.show(sharedProjectId, sharedDependentId, 'dependent-created-proposed');
+  expect(sharedPrerequisite).toMatchObject({ status: 'proposed', version: 1n, ready: false, blockedBy: [] });
+  expect(sharedDependent).toMatchObject({ status: 'proposed', version: 1n, ready: false, blockedBy: [sharedPrerequisiteId], description: sharedDescription });
   const project = await createProject(request, { name: `Approval ${randomUUID()}` });
   const exact = await createProposedTask(request, project.id, { title: '精确版本审批', description: '保留完整说明与任务内容。' });
   const other = await createProposedTask(request, project.id, { title: '审批期间查看的另一任务', description: '刷新前审阅的完整详情' });
@@ -64,8 +168,11 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   const exactVersion = 9223372036854775806n;
   await seedTaskVersion(project.id, exact.id, exactVersion);
   const exactResponse = await request.get(taskPath(project.id, exact.id));
-  expect(await exactResponse.text()).toMatch(new RegExp(`"version"\\s*:\\s*${exactVersion}(?:,|})`));
-  allowApprovalWrites([exact, blocked].map(({ id }) => ({ origin: origin(info), projectId: project.id, taskId: id, count: 1 })));
+  const exactRaw = await exactResponse.text();
+  lifecycle.evidence.rawReads.push({ label: 'real-SQL-seeded-task-GET', path: taskPath(project.id, exact.id), body: exactRaw });
+  expect(exactRaw).toMatch(new RegExp(`"version"\\s*:\\s*${exactVersion}(?:,|})`));
+  allowApprovalWrites([...[exact, blocked].map(({ id }) => ({ origin: origin(info), projectId: project.id, taskId: id, count: 1 })),
+    { origin: origin(info), projectId: sharedProjectId, taskId: sharedDependentId, count: 1 }]);
   const previewPath = 'preview.txt';
   const previewText = 'Attachment preview retained through another task approval.\n';
   const seededPreview = await request.put(attachmentDownloadUrl(project.id, other.id, previewPath), {
@@ -133,7 +240,7 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   const pattern = `**${taskPath(project.id, exact.id)}/approve`;
   await page.route(pattern, async (route) => {
     submitted.push(route.request().postData()!);
-    const response = await route.fetch({ timeout: 15_000, maxRetries: 0 });
+    const response = await lifecycle.capture(route, exact.id);
     expect(response.status()).toBe(200);
     expect(await response.text()).toMatch(new RegExp(`"version"\\s*:\\s*${exactVersion + 1n}(?:,|})`));
     fetched.resolve();
@@ -298,7 +405,7 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   const graphFinished = deferred();
   const graphApprovalPattern = `**${taskPath(project.id, blocked.id)}/approve`;
   await page.route(graphApprovalPattern, async (route) => {
-    const response = await route.fetch({ timeout: 15_000, maxRetries: 0 });
+    const response = await lifecycle.capture(route, blocked.id);
     expect(response.status()).toBe(200);
     graphSubmitted.resolve();
     await within(graphRelease.promise, 'graph approval response release');
@@ -345,52 +452,228 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   await expect(page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^待审批$/ }) }).locator('.stat-number')).toHaveText('81');
   await expect(page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^被阻塞$/ }) }).locator('.stat-number')).toHaveText('1');
   await screenshot(page, info, 'task-approval');
+  await test.step('installed CLI creation, ordinary graph Web approval and installed claim/complete', async () => {
+    const exactShown = await lifecycle.success(['task', 'show', exact.id, '--project', project.id, '--json']);
+    expect(exactShown).toMatch(/"version"\s*:\s*9223372036854775807(?:,|})/);
+    expect(parseTaskDetail(parseApiJson(exactShown), project.id, exact.id).version).toBe(exactVersion + 1n);
+    const plan = Buffer.from('# Acceptance plan\n\nPreserve every lifecycle field and the attached original bytes.\n');
+    const binary = Buffer.from([0, 255, 128, 13, 10, 1, 254, 42, 0]);
+    for (const [path, content] of [['plan.md', plan], ['payload.bin', binary]] as const) {
+      const local = info.outputPath(`lifecycle-${path}`);
+      await writeFile(local, content);
+      await lifecycle.success(['task', 'attachment', 'put', sharedDependentId, local, '--path', path, '--project', sharedProjectId]);
+      expect(await lifecycle.bytes(sharedProjectId, sharedDependentId, path, `created-${path}`)).toEqual(content);
+    }
+    expect(JSON.parse(await lifecycle.success(['task', 'ready', '--project', sharedProjectId, '--json']))).toEqual([]);
+    const inventory = JSON.parse(await lifecycle.success(['task', 'list', '--project', sharedProjectId, '--status', 'proposed', '--json'])) as Record<string, unknown>[];
+    expect(inventory).toHaveLength(2);
+    for (const task of [sharedPrerequisite, sharedDependent]) {
+      const { description: _description, version: _version, ...fields } = task;
+      expect(inventory.find((item) => item.id === task.id)).toEqual({ ...fields, version: 1 });
+    }
+    const createdGraph = parseTaskGraph(JSON.parse(await lifecycle.success(['task', 'graph', '--project', sharedProjectId, '--json'])), sharedProjectId);
+    expect(createdGraph.summary).toEqual({ total: 2, proposed: 2, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 });
+    expect(createdGraph.tasks.find((task) => task.id === sharedDependentId)).toMatchObject({ status: 'proposed', dependsOn: [sharedPrerequisiteId], blockedBy: [sharedPrerequisiteId], ready: false });
+    await page.goto(`/projects/${sharedProjectId}`);
+    await page.clock.runFor(100);
+    await expect(page.locator('.task-graph-fullscreen')).toHaveCount(0);
+    await node(page, sharedDependentId).click();
+    await expectStatus(page, '待审批');
+    await expect(detail(page).locator('.task-description')).toContainText('Lifecycle delivery');
+    const ordinaryPattern = `**${taskPath(sharedProjectId, sharedDependentId)}/approve`;
+    await page.route(ordinaryPattern, async (route) => {
+      const response = await lifecycle.capture(route, sharedDependentId);
+      expect(response.status()).toBe(200);
+      expect(route.request().postData()).toBe('{"version":1}');
+      await route.fulfill({ response });
+    });
+    try {
+      await approval(page).getByRole('button', { name: '批准任务', exact: true }).click();
+      await expectStatus(page, '待处理');
+      await expect(detail(page).locator('.task-detail-blocked')).toHaveText('被阻塞');
+      const approved = await lifecycle.show(sharedProjectId, sharedDependentId, 'web-approved-blocked');
+      expect(approved).toMatchObject({ status: 'todo', version: 2n, ready: false, blockedBy: [sharedPrerequisiteId] });
+      expect(invariantFields(approved)).toEqual(invariantFields(sharedDependent));
+      expect(approved.updatedAt).not.toBe(sharedDependent.updatedAt);
+      const refused = await lifecycle.run(['task', 'claim', sharedDependentId, '--project', sharedProjectId, '--if-version', '2']);
+      expect(refused.exitCode).toBe(1); expect(refused.stdout).toBe('');
+      expect(refused.stderr).toContain('dependency_unsatisfied'); expect(refused.stderr).toContain(sharedPrerequisiteId);
+      expect(await lifecycle.show(sharedProjectId, sharedDependentId, 'refused-claim-unchanged')).toEqual(approved);
+      expect(JSON.parse(await lifecycle.success(['task', 'ready', '--project', sharedProjectId, '--json']))).toEqual([]);
+      await page.keyboard.press('Escape');
+      await expect(node(page, sharedDependentId)).toBeFocused();
+      let prior = sharedPrerequisite;
+      for (const [action, status, expected] of [['approve', 'todo', 2n], ['claim', 'in_progress', 3n], ['complete', 'done', 4n]] as const) {
+        await lifecycle.success(['task', action, sharedPrerequisiteId, '--project', sharedProjectId, '--if-version', String(prior.version)]);
+        const current = await lifecycle.show(sharedProjectId, sharedPrerequisiteId, `prerequisite-${action}`);
+        expect(current).toMatchObject({ status, version: expected });
+        expect(invariantFields(current)).toEqual(invariantFields(sharedPrerequisite));
+        expect(current.updatedAt).not.toBe(prior.updatedAt); prior = current;
+      }
+      const ready = await lifecycle.show(sharedProjectId, sharedDependentId, 'dependency-completed-ready');
+      expect(ready).toEqual({ ...approved, ready: true, blockedBy: [] });
+      const candidates = JSON.parse(await lifecycle.success(['task', 'ready', '--project', sharedProjectId, '--json'])) as Record<string, unknown>[];
+      expect(candidates).toHaveLength(1); expect(candidates[0]).toMatchObject({ id: sharedDependentId, version: 2, description: sharedDescription, ready: true });
+      await page.getByRole('button', { name: '刷新', exact: true }).click();
+      await page.clock.runFor(100);
+      await node(page, sharedDependentId).click();
+      await expect(detail(page).locator('.task-detail-ready')).toHaveText('可开始');
+      await page.keyboard.press('Escape');
+      prior = ready;
+      for (const [action, status, expected] of [['claim', 'in_progress', 3n], ['complete', 'done', 4n]] as const) {
+        await lifecycle.success(['task', action, sharedDependentId, '--project', sharedProjectId, '--if-version', String(prior.version)]);
+        const current = await lifecycle.show(sharedProjectId, sharedDependentId, `dependent-${action}`);
+        expect(current).toMatchObject({ status, version: expected, ready: false, blockedBy: [] });
+        expect(invariantFields(current)).toEqual(invariantFields(sharedDependent));
+        expect(current.updatedAt).not.toBe(prior.updatedAt); prior = current;
+      }
+      expect(prior.description).toBe(sharedDescription);
+      expect(JSON.parse(await lifecycle.success(['task', 'list', '--project', sharedProjectId, '--json']))).toEqual([]);
+      const all = JSON.parse(await lifecycle.success(['task', 'list', '--project', sharedProjectId, '--all', '--json'])) as Record<string, unknown>[];
+      expect(all).toHaveLength(2); expect(all.every((item) => item.status === 'done' && item.version === 4 && !Object.hasOwn(item, 'description'))).toBe(true);
+      const completedGraph = parseTaskGraph(JSON.parse(await lifecycle.success(['task', 'graph', '--project', sharedProjectId, '--json'])), sharedProjectId);
+      expect(completedGraph.summary).toEqual({ total: 2, proposed: 0, todo: 0, inProgress: 0, done: 2, ready: 0, blocked: 0 });
+      for (const [path, content] of [['plan.md', plan], ['payload.bin', binary]] as const) expect(await lifecycle.bytes(sharedProjectId, sharedDependentId, path, `completed-${path}`)).toEqual(content);
+      await page.getByRole('button', { name: '刷新', exact: true }).click();
+      await expect(page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^已完成$/ }) }).locator('.stat-number')).toHaveText('2');
+      await page.getByRole('checkbox', { name: '显示已完成任务链（1）', exact: true }).check();
+      const root = page.locator(`#task-root-${sharedPrerequisiteId}`);
+      if (await root.getAttribute('aria-expanded') !== 'true') await root.click();
+      await page.clock.runFor(100);
+      await node(page, sharedDependentId).click();
+      await expect(detail(page).locator('.task-detail-status')).toHaveText('已完成');
+      await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
+      await screenshot(page, info, 'task-approval-installed-lifecycle');
+    } finally { await page.unroute(ordinaryPattern); }
+  });
+  await lifecycle.attach();
 });
 
 test('task-approval-conflicts', scenario('task-approval-conflicts'), async ({ page, request, allowApprovalWrites }, info) => {
   await pauseAutomaticRefresh(page);
+  const lifecycle = await lifecycleActor(info, 'task-approval-conflicts');
   const project = await createProject(request, { name: `Approval conflict ${randomUUID()}` });
   const changed = await createProposedTask(request, project.id, { title: '批准前内容变化', description: '最初审阅的说明' });
   const external = await createProposedTask(request, project.id, { title: '已被其他调用方批准' });
+  const raceId = resourceId(await lifecycle.success(['task', 'create', '--project', project.id, '--title', 'CLI/Web same observed version', '--description', 'Two actual clients approve one observed proposal.']));
+  const raceBefore = await lifecycle.show(project.id, raceId, 'race-created-and-observed');
   allowApprovalWrites([
     { origin: origin(info), projectId: project.id, taskId: changed.id, count: 2 },
     { origin: origin(info), projectId: project.id, taskId: external.id, count: 1 },
+    { origin: origin(info), projectId: project.id, taskId: raceId, count: 1 },
   ]);
   const posts: string[] = [];
   page.on('request', (value) => { if (value.method() === 'POST') posts.push(value.url()); });
   await page.goto(`/projects/${project.id}`);
   await openStandalone(page, changed.id);
-  const updated = await updateTask(request, project.id, changed.id, { version: changed.version, description: '需要重新审阅的当前说明' });
+  const changedBefore = await lifecycle.show(project.id, changed.id, 'browser-reviewed-before-CLI-update');
+  await lifecycle.success(['task', 'update', changed.id, '--project', project.id, '--if-version', String(changedBefore.version), '--description', '需要重新审阅的当前说明']);
+  const updated = await lifecycle.show(project.id, changed.id, 'CLI-metadata-updated');
+  expect(updated.version).toBe(changedBefore.version + 1n);
+  const stalePattern = `**${taskPath(project.id, changed.id)}/approve`;
+  await page.route(stalePattern, async (route) => {
+    const response = await lifecycle.capture(route, changed.id);
+    await route.fulfill({ response });
+  });
   await approval(page).getByRole('button', { name: '批准任务', exact: true }).click();
   await expect(detail(page).locator('.task-description')).toHaveText(updated.description);
   await expect(approval(page).getByRole('alert').first()).toContainText('任务已变化');
   await expect(approval(page)).toContainText('任务版本已变化');
   await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
   expect(posts).toHaveLength(1);
+  expect(lifecycle.evidence.webWrites[0]).toMatchObject({ taskId: changed.id, expectedBody: `{"version":${changedBefore.version}}`, status: 409 });
+  expect(JSON.parse(lifecycle.evidence.webWrites[0]!.responseBody).error.code).toBe('version_conflict');
   const current = await request.get(taskPath(project.id, changed.id));
   expect((await current.json() as { status: string }).status).toBe('proposed');
   await screenshot(page, info, 'task-approval-version-conflict');
   await approval(page).getByRole('button', { name: '批准任务', exact: true }).click();
   await expectStatus(page, '待处理');
   expect(posts).toHaveLength(2);
+  expect(lifecycle.evidence.webWrites[1]).toMatchObject({ expectedBody: `{"version":${updated.version}}`, status: 200 });
+  await page.unroute(stalePattern);
   await page.keyboard.press('Escape');
   await standalone(page, external.id).click();
   await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
-  await approveTask(request, project.id, external);
+  const externalPattern = `**${taskPath(project.id, external.id)}/approve`;
+  await page.route(externalPattern, async (route) => {
+    const response = await lifecycle.capture(route, external.id);
+    expect(response.status()).toBe(409);
+    await route.fulfill({ response });
+  });
+  await lifecycle.success(['task', 'approve', external.id, '--project', project.id, '--if-version', String(external.version)]);
+  expect(await lifecycle.show(project.id, external.id, 'CLI-approved-other-caller')).toMatchObject({ status: 'todo', version: 2n });
   await approval(page).getByRole('button', { name: '批准任务', exact: true }).click();
   await expectStatus(page, '待处理');
   await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
   expect(posts).toHaveLength(3);
+  await page.unroute(externalPattern);
   await screenshot(page, info, 'task-approval-conflicts');
+  await test.step('CLI and Web approve one observed version without automatic retry', async () => {
+    await page.keyboard.press('Escape');
+    await standalone(page, raceId).click();
+    await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
+    const browserStarted = deferred(); const release = deferred(); const finished = deferred();
+    const racePattern = `**${taskPath(project.id, raceId)}/approve`;
+    lifecycle.evidence.controlledFaults.push('The browser request is held before forwarding only as a dispatch barrier; the CLI and Web submit the same observed version to the real service, which chooses the winner.');
+    await page.route(racePattern, async (route) => {
+      expect(route.request().postData()).toBe(`{"version":${raceBefore.version}}`);
+      browserStarted.resolve();
+      await within(release.promise, 'concurrent approval dispatch');
+      const response = await lifecycle.capture(route, raceId);
+      expect([200, 409]).toContain(response.status());
+      await route.fulfill({ response }); finished.resolve();
+    });
+    try {
+      await approval(page).getByRole('button', { name: '批准任务', exact: true }).click();
+      await within(browserStarted.promise, 'browser observed-version submission');
+      await expect(approval(page).getByRole('button', { name: '正在批准…', exact: true })).toBeDisabled();
+      await approval(page).getByRole('button', { name: '正在批准…', exact: true }).evaluate((button: HTMLButtonElement) => button.click());
+      await page.keyboard.press('Enter');
+      const cliAttempt = lifecycle.run(['task', 'approve', raceId, '--project', project.id, '--if-version', String(raceBefore.version)]);
+      release.resolve();
+      const [cliResult] = await Promise.all([cliAttempt, within(finished.promise, 'real concurrent browser approval result')]);
+      const browserResult = lifecycle.evidence.webWrites.filter((row) => row.taskId === raceId);
+      expect(browserResult).toHaveLength(1);
+      const browserStatus = browserResult[0]!.status;
+      if (browserStatus === 200) {
+        expect(cliResult.exitCode).toBe(1); expect(cliResult.stdout).toBe('');
+        expect(cliResult.stderr).toContain('version_conflict');
+        expect(cliResult.stderr).toContain(raceId);
+      } else {
+        expect(cliResult.exitCode).toBe(0); expect(cliResult.stderr).toBe('');
+        expect(cliResult.stdout).toContain('Task approved.');
+        expect(cliResult.stdout).toContain('Status: todo');
+        expect(JSON.parse(browserResult[0]!.responseBody).error.code).toBe('version_conflict');
+        await expect(approval(page)).toContainText('任务版本已变化');
+      }
+      await expectStatus(page, '待处理');
+      await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
+      const persisted = await lifecycle.show(project.id, raceId, 'one-authoritative-approval-winner');
+      expect(persisted).toMatchObject({ status: 'todo', version: raceBefore.version + 1n });
+      expect(invariantFields(persisted)).toEqual(invariantFields(raceBefore));
+      expect(persisted.updatedAt).not.toBe(raceBefore.updatedAt);
+      expect(posts).toHaveLength(4);
+      await screenshot(page, info, 'task-approval-CLI-Web-race');
+    } finally { release.resolve(); await page.unroute(racePattern); }
+  });
+  await lifecycle.attach();
 });
 
 test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page, request, allowApprovalWrites }, info) => {
   await pauseAutomaticRefresh(page);
+  const lifecycle = await lifecycleActor(info, 'task-approval-recovery');
   const project = await createProject(request, { name: `Approval recovery ${randomUUID()}` });
   const unknown = await createProposedTask(request, project.id, { title: '响应丢失但已批准' });
   const graphFailure = await createProposedTask(request, project.id, { title: '保留已确认批准结果' });
   const stale = await createProposedTask(request, project.id, { title: '迟到的详情响应' });
-  allowApprovalWrites([unknown, graphFailure].map(({ id }) => ({ origin: origin(info), projectId: project.id, taskId: id, count: 1 })));
+  const pendingId = resourceId(await lifecycle.success(['task', 'create', '--project', project.id, '--title', 'Pending approval across real project navigation']));
+  const otherProject = await createProject(request, { name: `Isolated approval project ${randomUUID()}` });
+  const otherId = resourceId(await lifecycle.success(['task', 'create', '--project', otherProject.id, '--title', 'Other project stays proposed']));
+  const otherBefore = await lifecycle.show(otherProject.id, otherId, 'other-project-before-pending-navigation');
+  allowApprovalWrites([...[unknown, graphFailure].map(({ id }) => ({ origin: origin(info), projectId: project.id, taskId: id, count: 1 })),
+    { origin: origin(info), projectId: project.id, taskId: pendingId, count: 1 }]);
+  lifecycle.evidence.controlledFaults.push('Actual approval POST is forwarded with route.fetch and commits before its response is aborted; reconciliation GET is temporarily aborted separately.');
+  lifecycle.evidence.controlledFaults.push('The existing owned dependency table is temporarily renamed only around the real graph GET; its real500 response is forwarded, then the table is restored before CLI readback.');
   await page.goto(`/projects/${project.id}`);
   await openStandalone(page, unknown.id);
   let rejectReconciliation = true;
@@ -401,7 +684,7 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
     else await route.continue();
   });
   await page.route(unknownPostPattern, async (route) => {
-    const response = await route.fetch({ timeout: 15_000, maxRetries: 0 });
+    const response = await lifecycle.capture(route, unknown.id);
     expect(response.status()).toBe(200);
     await route.abort('connectionfailed');
   });
@@ -413,6 +696,7 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
     await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toBeDisabled();
     const persisted = await request.get(taskPath(project.id, unknown.id));
     expect((await persisted.json() as { status: string }).status).toBe('todo');
+    expect(await lifecycle.show(project.id, unknown.id, 'committed-before-lost-browser-response')).toMatchObject({ status: 'todo', version: 2n });
     await screenshot(page, info, 'task-approval-unknown');
     rejectReconciliation = false;
     await approval(page).getByRole('button', { name: '检查任务状态', exact: true }).click();
@@ -428,6 +712,12 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
   await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
   let failGraph = true;
   const graphPattern = `**${graphPath(project.id)}`;
+  const graphPostPattern = `**${taskPath(project.id, graphFailure.id)}/approve`;
+  await page.route(graphPostPattern, async (route) => {
+    const response = await lifecycle.capture(route, graphFailure.id);
+    expect(response.status()).toBe(200);
+    await route.fulfill({ response });
+  });
   await page.route(graphPattern, async (route) => {
     if (!failGraph) { await route.continue(); return; }
     const response = await withDependencyFailure(async () => route.fetch({ timeout: 15_000, maxRetries: 0 }));
@@ -442,11 +732,12 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
     await expect(page.locator('.snapshot-error')).toBeVisible();
     await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
     await screenshot(page, info, 'task-approval-confirmed-graph-failure');
+    expect(await lifecycle.show(project.id, graphFailure.id, 'confirmed-todo-despite-graph-failure')).toMatchObject({ status: 'todo', version: 2n });
     failGraph = false;
     await detail(page).getByRole('button', { name: '刷新任务图', exact: true }).click();
     await expect(detail(page).locator('.task-detail-stale')).toHaveCount(0);
     await expectStatus(page, '待处理');
-  } finally { await page.unroute(graphPattern); }
+  } finally { await page.unroute(graphPattern); await page.unroute(graphPostPattern); }
   await page.keyboard.press('Escape');
   const fetched = deferred();
   const release = deferred();
@@ -478,4 +769,65 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
     release.resolve();
     await page.unroute(stalePattern);
   }
+  await test.step('pending approval survives SPA project changes and never paints another project', async () => {
+    await page.keyboard.press('Escape');
+    await standalone(page, pendingId).click();
+    await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
+    const fetched = deferred(); const release = deferred(); const finished = deferred();
+    const pattern = `**${taskPath(project.id, pendingId)}/approve`;
+    const documentId = randomUUID();
+    await page.evaluate((value) => { Reflect.set(window, 'approvalLifecycleDocument', value); }, documentId);
+    const otherReads: string[] = [];
+    page.on('request', (read) => {
+      if (read.method() === 'GET' && [graphPath(otherProject.id), taskPath(otherProject.id, otherId)].includes(new URL(read.url()).pathname)) otherReads.push(read.url());
+    });
+    lifecycle.evidence.controlledFaults.push('A real committed200 approval response is held across same-document project navigation; its status/body are forwarded unchanged on explicit release.');
+    await page.route(pattern, async (route) => {
+      expect(route.request().postData()).toBe('{"version":1}');
+      const response = await lifecycle.capture(route, pendingId);
+      expect(response.status()).toBe(200);
+      fetched.resolve();
+      await within(release.promise, 'pending approval across project navigation', 60_000);
+      await route.fulfill({ response }); finished.resolve();
+    });
+    try {
+      await approval(page).getByRole('button', { name: '批准任务', exact: true }).click();
+      await within(fetched.promise, 'real pending project approval commit');
+      await expect(approval(page)).toHaveAttribute('aria-busy', 'true');
+      await page.keyboard.press('Escape');
+      await navigateProject(page, otherProject.id);
+      await openStandalone(page, otherId);
+      await expect(detail(page).locator('.task-detail-title')).toHaveText(otherBefore.title);
+      await expectStatus(page, '待审批');
+      await page.keyboard.press('Escape');
+      await navigateProject(page, project.id);
+      await page.getByRole('tab', { name: '独立任务', exact: true }).click();
+      await standalone(page, pendingId).click();
+      await expect(approval(page)).toHaveAttribute('aria-busy', 'true');
+      await expect(approval(page).getByRole('button', { name: '正在批准…', exact: true })).toBeDisabled();
+      await approval(page).getByRole('button', { name: '正在批准…', exact: true }).evaluate((button: HTMLButtonElement) => button.click());
+      expect(lifecycle.evidence.webWrites.filter((row) => row.taskId === pendingId)).toHaveLength(1);
+      await page.keyboard.press('Escape');
+      await navigateProject(page, otherProject.id);
+      await openStandalone(page, otherId);
+      const readsBeforeSettlement = otherReads.length;
+      release.resolve();
+      await within(finished.promise, 'late original-project response');
+      expect(await lifecycle.show(project.id, pendingId, 'original-project-authoritative-todo')).toMatchObject({ status: 'todo', version: 2n });
+      expect(await lifecycle.show(otherProject.id, otherId, 'other-project-after-late-response')).toEqual(otherBefore);
+      expect(otherReads).toHaveLength(readsBeforeSettlement);
+      await expect(detail(page).locator('.task-detail-title')).toHaveText(otherBefore.title);
+      await expectStatus(page, '待审批');
+      expect(await page.evaluate(() => Reflect.get(window, 'approvalLifecycleDocument'))).toBe(documentId);
+      await page.keyboard.press('Escape');
+      await navigateProject(page, project.id);
+      await page.getByRole('tab', { name: '独立任务', exact: true }).click();
+      await standalone(page, pendingId).click();
+      await expectStatus(page, '待处理');
+      await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
+      expect(lifecycle.evidence.webWrites.filter((row) => row.taskId === pendingId)).toHaveLength(1);
+      await screenshot(page, info, 'task-approval-real-project-navigation');
+    } finally { release.resolve(); await page.unroute(pattern); }
+  });
+  await lifecycle.attach();
 });

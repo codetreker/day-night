@@ -16,7 +16,7 @@ export type InstalledCliReceipt = {
   readonly entryPath: string;
   readonly entrySha256: string;
   readonly launcherPath: string;
-  readonly source: { readonly gitSha: string; readonly dirty: boolean };
+  readonly source: { readonly gitSha: string; readonly gitTreeSha: string; readonly dirty: boolean };
 };
 
 const workspace = path.resolve(import.meta.dirname, "../../../..");
@@ -141,7 +141,7 @@ export const createInstalledCli = async (options: { readonly signal?: AbortSigna
       schemaVersion: 1, root, packageVersion: installed.version, tarballPath,
       tarballSha256: digest(await readFile(tarballPath)), nodePath: process.execPath, entryPath,
       entrySha256: digest(await readFile(entryPath)), launcherPath,
-      source: { gitSha: git(["rev-parse", "HEAD"]), dirty: git(["status", "--porcelain"]) !== "" },
+      source: { gitSha: git(["rev-parse", "HEAD"]), gitTreeSha: git(["rev-parse", "HEAD^{tree}"]), dirty: git(["status", "--porcelain"]) !== "" },
     };
     check();
     const receiptPath = path.join(root, "installed-cli.json");

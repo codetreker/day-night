@@ -34,6 +34,7 @@ type acceptanceEvidence struct {
 	path         string
 	Binary       string                `json:"-"`
 	GitSHA       string                `json:"gitSha"`
+	GitTreeSHA   string                `json:"gitTreeSha"`
 	GitHubSHA    string                `json:"githubSha,omitempty"`
 	Dirty        bool                  `json:"dirty"`
 	GoVersion    string                `json:"goVersion"`
@@ -64,6 +65,7 @@ type acceptanceScenario struct {
 	AttachmentsListed      int                            `json:"attachmentsListed,omitempty"`
 	AttachmentPageRequests int                            `json:"attachmentPageRequests,omitempty"`
 	Cleanup                string                         `json:"cleanup"`
+	Lifecycle              *acceptanceLifecycleEvidence   `json:"lifecycle,omitempty"`
 }
 
 var binaryAcceptance *acceptanceEvidence
@@ -121,15 +123,16 @@ func TestMain(m *testing.M) {
 		return strings.TrimSpace(string(output)), err
 	}
 	sha, shaErr := git("rev-parse", "HEAD")
+	tree, treeErr := git("rev-parse", "HEAD^{tree}")
 	status, statusErr := git("status", "--porcelain")
 	githubSHA := os.Getenv("GITHUB_SHA")
-	if shaErr != nil || statusErr != nil || githubSHA != "" && githubSHA != sha || os.Getenv("GITHUB_ACTIONS") == "true" && status != "" {
+	if shaErr != nil || treeErr != nil || statusErr != nil || githubSHA != "" && githubSHA != sha || os.Getenv("GITHUB_ACTIONS") == "true" && status != "" {
 		_ = binaryAcceptance.update(func() { binaryAcceptance.Build = "source_provenance_failed" })
 		fmt.Fprintln(os.Stderr, "acceptance: source provenance does not match the checked-out revision")
 		finish(1)
 	}
 	_ = binaryAcceptance.update(func() {
-		binaryAcceptance.GitSHA, binaryAcceptance.GitHubSHA, binaryAcceptance.Dirty = sha, githubSHA, status != ""
+		binaryAcceptance.GitSHA, binaryAcceptance.GitTreeSHA, binaryAcceptance.GitHubSHA, binaryAcceptance.Dirty = sha, tree, githubSHA, status != ""
 	})
 	buildDirectory, err := os.MkdirTemp(temporary, "acceptance-build-")
 	if err != nil {

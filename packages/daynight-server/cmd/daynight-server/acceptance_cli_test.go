@@ -33,8 +33,9 @@ type acceptanceCLIReceipt struct {
 	EntrySHA256    string `json:"entrySha256"`
 	LauncherPath   string `json:"launcherPath"`
 	Source         struct {
-		GitSHA string `json:"gitSha"`
-		Dirty  bool   `json:"dirty"`
+		GitSHA     string `json:"gitSha"`
+		GitTreeSHA string `json:"gitTreeSha"`
+		Dirty      bool   `json:"dirty"`
 	} `json:"source"`
 }
 
@@ -54,7 +55,7 @@ func readAcceptanceCLI(t *testing.T) acceptanceCLIReceipt {
 		t.Fatal("cannot read installed CLI receipt")
 	}
 	var receipt acceptanceCLIReceipt
-	if err := json.Unmarshal(data, &receipt); err != nil || receipt.SchemaVersion != 1 || receipt.PackageVersion == "" || receipt.Source.GitSHA != binaryAcceptance.GitSHA || receipt.Source.Dirty != binaryAcceptance.Dirty {
+	if err := json.Unmarshal(data, &receipt); err != nil || receipt.SchemaVersion != 1 || receipt.PackageVersion == "" || receipt.Source.GitSHA != binaryAcceptance.GitSHA || receipt.Source.GitTreeSHA != binaryAcceptance.GitTreeSHA || receipt.Source.Dirty != binaryAcceptance.Dirty {
 		t.Fatal("installed CLI receipt does not match this source revision")
 	}
 	root, err := filepath.EvalSymlinks(receipt.Root)
@@ -343,7 +344,7 @@ func acceptanceCLIWaitMutations(t *testing.T, process *acceptanceProcess, count 
 	return acceptanceCLIMutations(process)
 }
 
-func (c *acceptanceCLI) refuse(t *testing.T, process *acceptanceProcess, code, taskID string, arguments ...string) {
+func (c *acceptanceCLI) refuse(t *testing.T, process *acceptanceProcess, code, taskID string, arguments ...string) acceptanceCLIResult {
 	t.Helper()
 	before := len(acceptanceCLIMutations(process))
 	result := acceptanceCLIReceive(t, c.start(t, c.repo, arguments...))
@@ -359,6 +360,7 @@ func (c *acceptanceCLI) refuse(t *testing.T, process *acceptanceProcess, code, t
 	}); err != nil {
 		t.Fatal("cannot persist installed CLI refusal identity")
 	}
+	return result
 }
 
 func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
