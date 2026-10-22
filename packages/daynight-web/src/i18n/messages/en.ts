@@ -1,8 +1,16 @@
+import { workspace } from "./en/workspace";
+import { graph } from "./en/graph";
+import { inspection } from "./en/inspection";
 import type { Messages } from "../messages";
 
 export const en: Messages = {
+  workspace,
+  graph,
+  inspection,
   common: {
     retrySave: "Retry saving language",
+    status: { todo: "To do", in_progress: "In progress", done: "Done" },
+    requestId: "Request ID:",
   },
   language: {
     label: "语言 / Language",

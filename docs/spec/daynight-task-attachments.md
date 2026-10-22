@@ -182,7 +182,7 @@ Web 前端 mockup 复用实际组件与 CSS，通过内存元数据和本地文�
 Go/PG。它及本地现有浏览器探针验证前端状态、视觉和焦点。实际服务验收在原生和
 生产容器两个目标上由已安装 CLI 与页面交叉读取同一 task 文件；二进制按原始字节
 比较，PDF 必须在 compositor 截图中出现预期色块，HTML 相对资源通过可见交互验证。
-原有图场景仍只读；仅新附件场景允许精确 task/file PUT/DELETE。JSDOM 不具备布局，
+原有图场景仍只读；附件场景和[双语需求](daynight-web-i18n.md)的 `language-state-preservation` 仅允许精确 fixture task/file 的 PUT/DELETE，后者检查切换期间操作只执行一次。JSDOM 不具备布局，
 不能证明隐藏元素的浏览器焦点行为。
 
 Go 的独立安装 CLI 旅程覆盖超过一页的附件列表、原始内容、拒绝及 requestId、同根

@@ -1,4 +1,6 @@
 import { memo, useId, useLayoutEffect, useMemo, useRef } from 'react';
+import { useI18n } from '../../i18n/LocaleProvider';
+import { LanguageSelector } from '../../i18n/LanguageSelector';
 import { Background, BackgroundVariant, Controls, getViewportForBounds, ReactFlow, useReactFlow, useStore, ViewportPortal, type Viewport } from '@xyflow/react';
 import { decomposeDashedRoute, DEPENDENCY_DASH_ARRAY, DEPENDENCY_DASH_PERIOD } from './dashes';
 import { layoutGraph, TASK_NODE_HEIGHT, TASK_NODE_WIDTH, type CanvasLayout, type CanvasPoint } from './layout';
@@ -21,20 +23,21 @@ const dashStyle = {
 } as const;
 
 const DependencyEdges = memo(({ geometry }: { geometry: CanvasLayout }) => {
+  const { messages: { graph: m } } = useI18n();
   const markerId = `task-dependency-arrow-${useId()}`;
   const routes = useMemo(() => geometry.edges.map((edge) => ({
     edge, pieces: edge.external ? decomposeDashedRoute(edge.points) : [],
   })), [geometry]);
   return (
     <ViewportPortal>
-      <svg className="task-dependency-edges" data-testid="task-dependency-edges" data-paint-piece-count={routes.reduce((count, route) => count + route.pieces.length, 0)} width="100%" height="100%" role="group" aria-label="任务依赖关系" focusable="false">
+      <svg className="task-dependency-edges" data-testid="task-dependency-edges" data-paint-piece-count={routes.reduce((count, route) => count + route.pieces.length, 0)} width="100%" height="100%" role="group" aria-label={m.dependencyGroup} focusable="false">
         <defs>
           <marker id={markerId} markerWidth="16" markerHeight="16" viewBox="-10 -10 20 20" markerUnits="strokeWidth" orient="auto-start-reverse" refX="0" refY="0">
             <polyline className="arrowclosed" points="-5,-4 0,0 -5,4 -5,-4" stroke="#abb2c7" fill="#abb2c7" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
           </marker>
         </defs>
         {routes.map(({ edge, pieces }) => (
-          <g key={edge.id} className="react-flow__edge task-dependency-edge" data-id={edge.id} role="img" aria-label={`前置任务 ${edge.source} → 后续任务 ${edge.target}`} focusable="false">
+          <g key={edge.id} className="react-flow__edge task-dependency-edge" data-id={edge.id} role="img" aria-label={m.dependencyLabel({ source: edge.source, target: edge.target })} focusable="false">
             {pieces.map((piece, position) => {
               const properties = {
                 className: 'task-dependency-paint-piece', 'data-piece-kind': piece.kind,
@@ -63,14 +66,6 @@ const DependencyEdges = memo(({ geometry }: { geometry: CanvasLayout }) => {
 
 const nodeTypes = { task: TaskNode };
 const viewportFitOptions = { minZoom: 0.2, maxZoom: 1, padding: 0.15 };
-const ariaLabels = {
-  'controls.ariaLabel': '任务图视口控制',
-  'controls.zoomIn.ariaLabel': '放大',
-  'controls.zoomOut.ariaLabel': '缩小',
-  'controls.fitView.ariaLabel': '适应画布',
-  'node.a11yDescription.default': '使用 Tab 选择任务，按 Enter 或空格查看任务详情。',
-  'node.a11yDescription.keyboardDisabled': '使用 Tab 选择任务，按 Enter 或空格查看任务详情。',
-};
 
 export const getInitialTaskViewport = (geometry: CanvasLayout, rootId: string, width: number, height: number): Viewport => {
   const left = Math.min(...geometry.nodes.map((node) => node.position.x));
@@ -105,6 +100,7 @@ const InitialViewport = ({ geometry, rootId }: { geometry: CanvasLayout; rootId:
 };
 
 const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry }: TaskGraphProps & { geometry: CanvasLayout }) => {
+  const { messages: { graph: m } } = useI18n();
   const { fullscreen, containerRef, toggleRef, onKeyDown, toggle } = useGraphFullscreen();
   // Stable node identities restrict selection renders to the previous and next tasks.
   const nodeVariants = useMemo(() => geometry.nodes.map((node) => {
@@ -127,24 +123,25 @@ const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry }: T
   const nodes = useMemo<TaskFlowNode[]>(() => nodeVariants.map(({ base, selected }) =>
     base.id === selectedTaskId ? selected : base), [nodeVariants, selectedTaskId]);
   return (
-    <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} ref={containerRef} role={fullscreen ? 'dialog' : undefined} aria-modal={fullscreen ? true : undefined} aria-label={fullscreen ? '任务依赖图全屏查看' : undefined} onKeyDown={onKeyDown}>
+    <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} ref={containerRef} role={fullscreen ? 'dialog' : undefined} aria-modal={fullscreen ? true : undefined} aria-label={fullscreen ? m.fullscreenTitle : undefined} onKeyDown={onKeyDown}>
       <div className="graph-toolbar">
-        <span>横向依赖图</span>
+        <span>{m.title}</span>
         <div className="graph-toolbar-actions">
-          <span>{geometry.nodes.filter((node) => node.kind === 'main').length} 个链内任务 · {geometry.nodes.filter((node) => node.kind === 'external').length} 个外部前置 · {geometry.edges.length} 条依赖</span>
+          <span>{m.counts({ main: geometry.nodes.filter((node) => node.kind === 'main').length, external: geometry.nodes.filter((node) => node.kind === 'external').length, dependencies: geometry.edges.length })}</span>
           <button className="button graph-fullscreen-toggle" type="button" ref={toggleRef} onClick={toggle}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
               <path d={fullscreen ? 'M4 9h5V4m6 0v5h5M4 15h5v5m6 0v-5h5' : 'M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5'} />
             </svg>
-            {fullscreen ? '退出全屏' : '全屏查看'}
+            {fullscreen ? m.exitFullscreen : m.enterFullscreen}
           </button>
+          {fullscreen && <LanguageSelector />}
         </div>
       </div>
-      <p className="graph-instructions" id={`graph-instructions-${rootId}`}>拖动画布平移，滚轮或按钮缩放。Tab 选择任务，Enter 或空格查看详情。</p>
+      <p className="graph-instructions" id={`graph-instructions-${rootId}`}>{m.instructions}</p>
       <div className="task-graph-canvas">
         <ReactFlow<TaskFlowNode>
           id={`flow-${rootId}`}
-          aria-label="任务依赖画布"
+          aria-label={m.canvas}
           aria-describedby={`graph-instructions-${rootId}`}
           nodes={nodes}
           nodeTypes={nodeTypes}
@@ -163,7 +160,7 @@ const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry }: T
           multiSelectionKeyCode={null}
           autoPanOnNodeFocus={false}
           onlyRenderVisibleElements={false}
-          ariaLabelConfig={ariaLabels}
+          ariaLabelConfig={m.flowAriaLabels}
           attributionPosition="bottom-right"
         >
           <InitialViewport geometry={geometry} rootId={rootId} />
@@ -172,12 +169,13 @@ const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry }: T
           <Controls position="top-right" orientation="horizontal" showInteractive={false} fitViewOptions={viewportFitOptions} />
         </ReactFlow>
       </div>
-      <div className="graph-foot"><span>箭头表示前置 → 后续</span><span>虚线节点及连线：外部前置（已补齐全部上游）</span></div>
+      <div className="graph-foot"><span>{m.directionLegend}</span><span>{m.externalLegend}</span></div>
     </div>
   );
 };
 
 export const TaskGraph = (props: TaskGraphProps) => {
+  const { messages: { graph: m } } = useI18n();
   const result = useMemo(() => {
     try {
       performance.clearMeasures('daynight:task-layout');
@@ -192,7 +190,7 @@ export const TaskGraph = (props: TaskGraphProps) => {
     }
   }, [props.index, props.rootId]);
   if (result.kind === 'error') {
-    return <div className="graph-error" role="alert"><h3>任务图布局失败</h3><p>无法绘制此任务链，请刷新项目后重试。</p></div>;
+    return <div className="graph-error" role="alert"><h3>{m.layoutErrorTitle}</h3><p>{m.layoutErrorDescription}</p></div>;
   }
   return <TaskCanvas {...props} geometry={result.geometry} />;
 };

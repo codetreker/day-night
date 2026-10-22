@@ -19,7 +19,7 @@
 仍为本机未认证看板。鉴权接入后继续保留本文的可信同源 frame、相对资源及键盘
 机制，附件请求增加项目成员检查。
 
-[语言设计](daynight-web-i18n.md)拥有已实现的类型化目录、Intl 格式化器、显式初始解析、Provider 和共用选择器，以及后续生产界面接入约束；[双语需求](../spec/daynight-web-i18n.md)拥有完整覆盖和验收。基础运行时尚未挂载到生产入口，现有产品仍使用中文。语言偏好使用独立的 origin-local 键，不改变本文的项目浏览记录、API、图或附件生命周期。
+[语言设计](daynight-web-i18n.md)拥有已实现的类型化目录、Intl 格式化器、首屏解析、常驻 Provider、共享选择器和全部现有第一方组件的双语呈现；[双语需求](../spec/daynight-web-i18n.md)拥有完整覆盖与验收。源码绑定的组合生产验收由独立任务核对。语言偏好使用独立的 origin-local 键，不改变本文的项目浏览记录、API、图或附件生命周期。
 
 ## 目标与现有基础
 
@@ -45,7 +45,7 @@
 
 ## 页面与视觉
 
-采用浅色内容区、白色卡片、深色窄导航栏和克制的靛蓝强调色。节点颜色始终表达业务状态；选中态使用描边，不覆盖状态颜色。当前已接入的产品组件使用中文标签，代码标识和仓库地址保留原文；完整英语与中文接入遵守[语言设计](daynight-web-i18n.md)的状态、焦点和布局约束。
+采用浅色内容区、白色卡片、深色窄导航栏和克制的靛蓝强调色。节点颜色始终表达业务状态；选中态使用描边，不覆盖状态颜色。产品标签使用当前英语或简体中文目录，用户内容、代码标识和仓库地址保留原文；切换遵守[语言设计](daynight-web-i18n.md)的状态、焦点和布局约束。
 
 ### 项目列表 `/`
 
@@ -268,7 +268,7 @@ packages/daynight-web/
   src/main.tsx                      浏览器入口
   src/app/{App,router}.tsx           两个页面的路由与组合
   src/api/{types,client,parse}.ts    DTO、请求、运行时解析与错误
-  src/i18n/                         可显式挂载的语言目录、格式化器、Provider 与选择器
+  src/i18n/                         语言目录、格式化器、生产根 Provider 与共享选择器
   src/features/projects/           ProjectsPage、ProjectPage、ProjectTaskTabs、StandaloneList、偏好 hooks、统计卡
   src/features/task-graph/          model.ts、layout.ts、dashes.ts、RootList、TaskGraph、TaskNode
   src/features/task-detail/         TaskDetailDialog、详情请求 hook、PR 展示及 focus helper
@@ -291,7 +291,7 @@ packages/daynight-server/
 |---|---|---|
 | 浏览器 app/router | URL 解析、history/popstate、页面装卸与 404 | 组合页面，不直接 fetch |
 | api/client、api/parse | 相对 `/api` 请求、AbortSignal、JSON/附件 DTO 校验、文件传输、HEAD 与 typed error | 不引用组件和图布局 |
-| i18n | 两种目录、格式化、当前语言、独立保存与偏好错误、共用选择器 | 显式 Provider 挂载；不调用业务 API 或图布局，生产入口接入待交付 |
+| i18n | 两种目录、格式化、当前语言、独立保存与偏好错误、共用选择器 | 生产根及独立入口显式挂载；领域组件订阅展示，不调用业务 API 或图布局 |
 | projects hooks | 列表游标、完整图快照、加载/刷新状态、按项目隔离的视图偏好 | 图读取调用 api 并交给 model；偏好只访问浏览器存储 |
 | task-graph/model | 根、可达集合、外部前置、统计与共享关系 | 仅依赖 DTO 类型与标准集合 |
 | task-graph/layout | 将投影映射为确定的节点坐标和边 | 依赖 model 与 Dagre |
@@ -459,10 +459,10 @@ web job 在统一验收前执行 dev-ci 生命周期 fixture，随后仅调用 `
 PostgreSQL 准备及正常 dev-ci 源码构建/启动并行。dev-ci 继续拥有本次唯一镜像
 及运行镜像身份校验和完整 shell 清理。
 
-原生功能阶段只等待原生服务和浏览器就绪；其十个场景及浏览器回收成功后，runner
+原生功能阶段只等待原生服务和浏览器就绪；其十三个场景及浏览器回收成功后，runner
 原子写入绑定 acceptance run ID、dev-ci run ID 和 source SHA 的容器执行许可。
 容器 callback 已登记身份后等待该许可，通过后才记录浏览器 inventory 并执行
-十个功能场景。完整 dev-ci 退出清理、容器浏览器回收和全部准备/覆盖率命令结束
+十三个功能场景。完整 dev-ci 退出清理、容器浏览器回收和全部准备/覆盖率命令结束
 后，才在仍存活的原生 Go/PostgreSQL 上执行五个容量/超限场景。任一失败取消并
 等待已启动的所有任务；原生进程意外退出同样取消其他任务。容量阶段保持单浏览器
 worker，并与构建、单元测试、功能测试及容器清理隔离。
@@ -625,15 +625,17 @@ API 数据和固定图集。
 
 每次运行生成真实 UI 与 Go 可执行文件、启动独立 PostgreSQL 18.6，等待服务
 结构化就绪日志并记录二进制摘要；正常 dev-ci 生产构建/启动与这些工作并行。
-原生目标分成十个功能场景和五个容量/超限场景，容器目标经实际生产镜像 gateway
-执行同一个十场景功能集合。浏览器顺序和清理屏障由[CI 构建归属](#ci-构建归属)定义。日常 localhost 栈
+原生目标分成十三个功能场景和五个容量/超限场景，容器目标经实际生产镜像 gateway
+执行同一个十三场景功能集合。浏览器顺序和清理屏障由[CI 构建归属](#ci-构建归属)定义。日常 localhost 栈
 不参与测试。`project-view-tabs` 覆盖两类分类及依赖迁移、独立任务直接详情、独立完成筛选、
 页签/滚动/展开的跨刷新与项目隔离。功能数据和容量数据均通过真实写 API 建立；原有八个图场景及新增 `project-view-tabs` 的浏览器
-继续只发起 GET/HEAD。新增 `task-attachments` 仅允许精确 fixture task 内的文件
-PUT/DELETE，其他写请求仍失败。该场景在两目标上都让安装 CLI 与生产页面操作同一
+继续只发起 GET/HEAD。`task-attachments` 与 `language-state-preservation` 仅允许精确 fixture task 内的文件
+PUT/DELETE，其他写请求仍失败。附件场景在两目标上都让安装 CLI 与生产页面操作同一
 组数据，按原始字节交叉验证写入、覆盖、下载与删除；具体机制由
 [附件组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
 拥有。
+双语功能的三个稳定场景由[语言设计](daynight-web-i18n.md#验证与证据归属)定义，使用同一受监控页面与场景级 locale；首屏和偏好、图/详情/附件状态、错误及窄屏布局分别提供定向检查。语言不会复制容量矩阵或改变阶段与清理屏障。
+
 单链先 POST 创建 1,000 个无依赖任务，再按索引从 999 到 1 PATCH 当前任务，
 将依赖设为前一任务；每次保留实际返回的版本和字段。此顺序使每次环校验遇到的
 前置仍为独立任务，避免 fixture 重复遍历不断增长的祖先链。最终仍是相同的
@@ -644,8 +646,8 @@ PUT/DELETE，其他写请求仍失败。该场景在两目标上都让安装 CLI
 
 Playwright 固定单 worker、零 retry；报告必须包含全部要求的唯一场景、一次成功
 执行、有效 PNG 附件及一致的汇总，跳过、重试、flaky、缺失、多余或重复场景及
-全局错误均失败。原生 functional/capacity 两份报告严格合并为十五个唯一场景，
-容器目标严格要求十个；原生与容器及同目标各阶段浏览器身份必须一致。
+全局错误均失败。原生 functional/capacity 两份报告严格合并为十八个唯一场景，
+容器目标严格要求十三个；原生与容器及同目标各阶段浏览器身份必须一致。
 CI 只接受 Linux、锁定 Playwright 的完整 Chromium channel `chromium`、干净 checkout，且 git SHA 必须
 等于 `GITHUB_SHA`；本机可以显式选择现有 Chromium，回执必须记录这一差异。
 PDF 预览通过轮询 iframe 的实际 compositor 截图，验证 fixture 专用色块已经绘制，

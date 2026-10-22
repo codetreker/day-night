@@ -22,7 +22,7 @@ descriptions remain plain text.
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle and interactive Agent installation, shared configuration, server HTTP and repository binding foundations plus project, task and single-file attachment commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
-| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs with complete prerequisite context and task details, attachment management/preview, embedded delivery, graph production acceptance and strict coverage delivered; opt-in English/Simplified Chinese locale runtime implemented, full interface integration pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [language requirements](docs/spec/daynight-web-i18n.md), [language design](docs/design/daynight-web-i18n.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
+| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs with complete prerequisite context and task details, attachment management/preview, embedded delivery, graph production acceptance and strict coverage delivered; English/Simplified Chinese interface and locale persistence implemented, combined bilingual production verification tracked separately | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [language requirements](docs/spec/daynight-web-i18n.md), [language design](docs/design/daynight-web-i18n.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The adopted [task attachment requirements](docs/spec/daynight-task-attachments.md),
 [architecture](docs/design/daynight-task-attachments.md) and
@@ -376,11 +376,13 @@ binary identity, scenario results and resource cleanup.
 The private [web workspace](packages/daynight-web/README.md) implements the project
 list, cursor paging, safe API decoding, cancellation, project statistics, task
 graphs, centered task detail dialogs and single-file attachment management. Its
-opt-in [locale runtime](docs/design/daynight-web-i18n.md) provides typed English
-and Simplified Chinese catalogs, native Intl formatting and an independent saved
-language preference. Production components retain their current Chinese text
-until the tracked [bilingual interface requirements](docs/spec/daynight-web-i18n.md)
-are integrated and verified. With the Go API running on loopback, use:
+[locale runtime](docs/design/daynight-web-i18n.md) provides English and Simplified
+Chinese across the shipped interface, native Intl formatting and an independent
+saved language preference. Navigation, the centered detail dialog and fullscreen
+graph share one language choice while preserving browsing and pending attachment
+state. The [bilingual requirements](docs/spec/daynight-web-i18n.md) own the full
+outcome; the separate acceptance task owns source-bound combined production
+verification. With the Go API running on loopback, use:
 
 ```text
 pnpm web:dev

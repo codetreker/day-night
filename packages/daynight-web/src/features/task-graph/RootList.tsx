@@ -1,4 +1,5 @@
 import { memo, useMemo, useRef } from 'react';
+import { useI18n } from '../../i18n/LocaleProvider';
 import type { GraphIndex } from './model';
 import { TaskGraph } from './TaskGraph';
 import '../../styles/graph.css';
@@ -15,14 +16,13 @@ type RootListProps = {
   readonly onShowCompletedChange: (show: boolean) => void;
 };
 
-const labels = { todo: '待处理', in_progress: '进行中', done: '已完成' };
-
 type RootRowProps = Pick<RootListProps, 'index' | 'onExpand' | 'selectedTaskId' | 'onSelectTask'> & {
   readonly rootId: string;
   readonly expanded: boolean;
 };
 
 const RootRow = memo(({ index, rootId, expanded, onExpand, selectedTaskId, onSelectTask }: RootRowProps) => {
+  const { messages: { graph: m, common } } = useI18n();
   const task = index.nodes.get(rootId)!;
   const progress = index.rootProgress.get(rootId)!;
   return (
@@ -38,16 +38,16 @@ const RootRow = memo(({ index, rootId, expanded, onExpand, selectedTaskId, onSel
         <svg className="root-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
         <span className="root-heading">
           <span className="root-title">{task.titlePreview}{task.titleTruncated ? '…' : ''}</span>
-          <span className="root-meta">{progress.total === 1 ? '独立任务' : `${progress.total} 个任务 · ${progress.total - progress.done} 个未完成`}</span>
+          <span className="root-meta">{progress.total === 1 ? m.standaloneTask : m.rootSummary({ total: progress.total, remaining: progress.total - progress.done })}</span>
         </span>
         <span className="root-progress">
-          <span className="root-progress-label">{progress.done}/{progress.total} 已完成</span>
+          <span className="root-progress-label">{m.progress({ done: progress.done, total: progress.total })}</span>
           <span className="root-progress-track" aria-hidden="true"><i style={{ width: `${progress.done / progress.total * 100}%` }} /></span>
         </span>
-        <span className={`root-status graph-status-${progress.status}`}>{labels[progress.status]}</span>
+        <span className={`root-status graph-status-${progress.status}`}>{common.status[progress.status]}</span>
       </button>
       {expanded && (
-        <div id={`task-graph-${rootId}`} role="region" aria-label={`${task.titlePreview} 的任务依赖图`}>
+        <div id={`task-graph-${rootId}`} role="region" aria-label={m.rootRegion({ title: task.titlePreview })}>
           <TaskGraph index={index} rootId={rootId} selectedTaskId={selectedTaskId} onSelectTask={onSelectTask} />
         </div>
       )}
@@ -56,23 +56,24 @@ const RootRow = memo(({ index, rootId, expanded, onExpand, selectedTaskId, onSel
 });
 
 export const RootList = ({ index, rootIds, allRootIds, expandedRootId, onExpand, selectedTaskId, onSelectTask, showCompleted, onShowCompletedChange }: RootListProps) => {
+  const { messages: { graph: m } } = useI18n();
   const checkbox = useRef<HTMLInputElement>(null);
   const completedCount = useMemo(() => allRootIds.filter((id) => {
     const progress = index.rootProgress.get(id)!;
     return progress.status === 'done';
   }).length, [index, allRootIds]);
   return (
-  <section aria-label="任务链列表">
+  <section aria-label={m.chainList}>
     <div className="task-view-toolbar">
-      {allRootIds.length > 0 && <label className="completed-chain-control"><input ref={checkbox} type="checkbox" checked={showCompleted} onChange={(event) => { onShowCompletedChange(event.currentTarget.checked); }} />显示已完成任务链（{completedCount}）</label>}
-      <span className="task-view-summary">最新创建在前 · <span aria-label={`显示 ${rootIds.length} 条，共 ${allRootIds.length} 条任务链`}>{rootIds.length} / {allRootIds.length}</span> 条任务链</span>
+      {allRootIds.length > 0 && <label className="completed-chain-control"><input ref={checkbox} type="checkbox" checked={showCompleted} onChange={(event) => { onShowCompletedChange(event.currentTarget.checked); }} />{m.showCompletedCount({ count: completedCount })}</label>}
+      <span className="task-view-summary" aria-label={m.chainSummaryLabel({ shown: rootIds.length, total: allRootIds.length })}>{m.chainSummary({ shown: rootIds.length, total: allRootIds.length })}</span>
     </div>
-    <p className="graph-note">按根任务创建时间倒序排列，从没有前置依赖的任务开始展开。共享任务可能出现在多条任务链中，各链进度不能相加作为项目总数。</p>
+    <p className="graph-note">{m.chainNote}</p>
     {allRootIds.length === 0 ? (
-      <div className="state-box"><h3>暂无任务链</h3><p>存在依赖关系的任务会显示在这里，独立任务可在另一个页签查看。</p></div>
+      <div className="state-box"><h3>{m.emptyTitle}</h3><p>{m.emptyDescription}</p></div>
     ) : rootIds.length === 0 ? (
-      <div className="state-box completed-chains-empty"><h3>所有任务链已完成</h3><p>已隐藏 {completedCount} 条已完成任务链，项目统计仍包含全部任务。</p>
-        <button className="button" type="button" onClick={() => { checkbox.current!.focus(); onShowCompletedChange(true); }}>显示已完成任务链</button>
+      <div className="state-box completed-chains-empty"><h3>{m.completedTitle}</h3><p>{m.completedDescription({ count: completedCount })}</p>
+        <button className="button" type="button" onClick={() => { checkbox.current!.focus(); onShowCompletedChange(true); }}>{m.showCompleted}</button>
       </div>
     ) : <ul className="root-list">
       {rootIds.map((rootId) => (

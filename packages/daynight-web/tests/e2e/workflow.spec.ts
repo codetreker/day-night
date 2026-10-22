@@ -948,6 +948,7 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: '任务详情' });
   const close = dialog.getByRole('button', { name: '关闭任务详情', exact: true });
+  const detailLanguage = dialog.getByRole('combobox', { name: '语言 / Language', exact: true });
   await expect(dialog.locator('.task-detail-title')).toHaveText(b.title);
   expect(detailReads).toBe(1);
   await expect(close).toBeFocused();
@@ -957,7 +958,11 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   await page.keyboard.press('Shift+Tab');
   await expect(close).toBeFocused();
   await page.keyboard.press('Shift+Tab');
+  await expect(detailLanguage).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
   await expect(dialog.getByRole('region', { name: '任务图快照中的直接后续', exact: true }).getByRole('button', { name: c.title, exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(detailLanguage).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(close).toBeFocused();
   for (let index = 0; index < 9; index++) {

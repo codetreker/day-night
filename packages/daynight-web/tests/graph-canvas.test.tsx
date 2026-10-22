@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaskGraph as TaskGraphData } from '../src/api/types';
@@ -8,6 +9,8 @@ import { getInitialTaskViewport, TaskGraph } from '../src/features/task-graph/Ta
 import { buildGraphIndex, projectRoot } from '../src/features/task-graph/model';
 import * as layoutModule from '../src/features/task-graph/layout';
 import { installGraphMeasurements } from './graph-measurements';
+
+const render = createLocaleRender('zh-CN');
 
 const taskRenders = vi.hoisted(() => vi.fn<(id: string) => void>());
 vi.mock('../src/features/task-graph/TaskNode', async (importOriginal) => {
@@ -98,6 +101,8 @@ describe('task dependency canvas', () => {
     expect(view.container.querySelector('.task-graph')).toContainElement(last as HTMLElement);
     await user.tab();
     expect(exit).toHaveFocus();
+    await user.tab();
+    expect(within(screen.getByRole('dialog')).getByRole('combobox', { name: '语言 / Language' })).toHaveFocus();
     await user.tab();
     expect(nodeButton('基础 API')).toHaveFocus();
     (last as HTMLElement).focus();

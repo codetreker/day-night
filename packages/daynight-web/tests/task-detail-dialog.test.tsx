@@ -1,10 +1,13 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GraphTask, Project, TaskDetail, TaskGraph } from '../src/api/types';
 import type { GraphSnapshot } from '../src/features/projects/useTaskGraph';
 import { TaskDetailDialog, type TaskDetailDialogProps } from '../src/features/task-detail/TaskDetailDialog';
 import { buildGraphIndex } from '../src/features/task-graph/model';
+
+const render = createLocaleRender('zh-CN');
 
 vi.mock('../src/features/task-detail/attachments/TaskAttachments', () => ({
   TaskAttachments: ({ projectId, taskId }: { readonly projectId: string; readonly taskId: string }) => <section aria-label="附件" data-project-id={projectId} data-task-id={taskId} />,
@@ -160,7 +163,12 @@ describe('task detail dialog', () => {
     await user.tab();
     expect(links[1]).toHaveFocus();
     await user.tab();
+    const language = screen.getByRole('combobox', { name: '语言 / Language' });
+    expect(language).toHaveFocus();
+    await user.tab();
     expect(close).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(language).toHaveFocus();
     await user.tab({ shift: true });
     expect(links[1]).toHaveFocus();
   });
@@ -316,24 +324,33 @@ describe('task detail dialog', () => {
     const options = props({ onClose });
     open(options);
     const close = screen.getByRole('button', { name: '关闭任务详情' });
-    fireEvent.keyDown(close, { key: 'Tab' });
+    const language = screen.getByRole('combobox', { name: '语言 / Language' });
+    const user = userEvent.setup();
+    await user.tab();
+    expect(language).toHaveFocus();
+    await user.tab();
     expect(close).toHaveFocus();
-    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+    await user.tab({ shift: true });
+    expect(language).toHaveFocus();
+    await user.tab({ shift: true });
     expect(close).toHaveFocus();
     await act(async () => { loading.resolve(failure()); });
     const retryButton = await screen.findByRole('button', { name: '重试详情' });
-    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+    await user.tab({ shift: true });
+    expect(language).toHaveFocus();
+    await user.tab({ shift: true });
     expect(retryButton).toHaveFocus();
-    fireEvent.keyDown(retryButton, { key: 'Tab' });
+    await user.tab();
+    expect(language).toHaveFocus();
+    await user.tab();
     expect(close).toHaveFocus();
-    const user = userEvent.setup();
     await user.tab();
     expect(retryButton).toHaveFocus();
     await user.click(retryButton);
     expect(close).toHaveFocus();
     trigger.focus();
     fireEvent.keyDown(document, { key: 'Tab' });
-    expect(close).toHaveFocus();
+    expect(language).toHaveFocus();
     await act(async () => { retry.resolve(response(detail())); });
     await screen.findByRole('heading', { name: '任务 1' });
     fireEvent.click(screen.getByRole('heading', { name: '任务 1' }));
@@ -412,7 +429,12 @@ describe('task detail dialog', () => {
     await user.tab();
     expect(successor).toHaveFocus();
     await user.tab();
+    const language = screen.getByRole('combobox', { name: '语言 / Language' });
+    expect(language).toHaveFocus();
+    await user.tab();
     expect(close).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(language).toHaveFocus();
     await user.tab({ shift: true });
     expect(successor).toHaveFocus();
   });
