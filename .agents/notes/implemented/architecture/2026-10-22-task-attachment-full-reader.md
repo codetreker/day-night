@@ -97,5 +97,8 @@ filesystem/PostgreSQL boundary remain unchanged.
 The production-component fixture supplies reloadable bundled-file reader URLs
 for visual and interaction checks. Implementation checks own this feature's
 route, rendering, failure and sizing behavior on their tested source. Independent
-real-service production acceptance for the attachment-reading task group remains
-separately tracked; implementation and fixture evidence do not complete it.
+real-service runtime acceptance of the reading task group is complete; the
+[cross-layer acceptance decision](../testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+owns its real-input, native-content, failure-recovery and cleanup methods.
+Results retain their tested source, artifact and browser limits. Fixture evidence
+remains distinct and a local browser override is not hosted-CI browser proof.

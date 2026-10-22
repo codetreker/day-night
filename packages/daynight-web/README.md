@@ -330,8 +330,9 @@ document or native reader owns scrolling. The preview header never scrolls
 independently, exposes the complete path and keeps download/delete reachable.
 Left-pane scrolling does not move right-side content or its reading position.
 The standalone reader uses this same rendering and sizing. Independent
-real-service acceptance for the attachment-reading group remains a separate
-pending task.
+real-service runtime acceptance of the attachment-reading group is complete.
+Its source, build, browser and cleanup receipts retain the scope of that result;
+a local browser override does not establish hosted-CI browser behavior.
 
 Markdown uses `react-markdown` 10.1.0 with `remark-gfm` 4.0.1 for CommonMark and GFM
 including tables. Raw HTML remains escaped. Relative images and links resolve
@@ -556,8 +557,9 @@ and unrelated mutations remain failures.
 One packed/installed CLI is shared by the whole web run. On each target,
 `task-attachments` uploads through that CLI and consumes the same task/files in
 the production page, then checks Web mutations through raw CLI reads. It covers
-Markdown relative images, image/text/PDF and interactive HTML resources. PDF
-acceptance polls compositor screenshots for a substantial fixture-only colored
+Markdown relative images, image/text/PDF and interactive HTML resources, detail
+tabs and retained attachment state, adjacent panes, scroll-owner geometry, and
+reloadable standalone navigation. PDF acceptance polls compositor screenshots for a substantial fixture-only colored
 marker. It measures matching connected components independently and checks the
 largest main-page candidate extending into the frame's right half. This
 fixture/viewer location rule excludes thumbnail-only paint; independent bounds
@@ -565,7 +567,27 @@ also prevent a separate thumbnail from diluting the page marker's density. The
 successful PNG and component metrics remain in the marker evidence; HTTP success
 or an iframe load cannot satisfy this check. The
 [combined acceptance decision](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
-owns the data-sharing and rendering proof.
+owns data-sharing, rendering and independent reading proof.
+
+Independent reading acceptance supplements the strict pipeline with real-service
+probes across desktop, tablet, narrow and short viewports in both languages. It
+checks wheel and keyboard access to the document end, fitting-content overflow,
+left/right independence, and ordinary standalone focus behavior. Native PDF
+input reaches the actual viewer through keyboard navigation; real wheel and
+Home/PageDown/End input plus the unique painted final-page footer establish
+usable reading. Private viewer DOM is used only for read-only offset diagnostics.
+
+Failure probes hold request timing while an owned metadata-table failure or an
+unavailable stored file produces actual service errors. Partial-list failure
+remains incomplete, preview 404 remains a visible error, and upload failure
+retains the busy/form lifecycle before retry. Missing-file recovery, delayed
+responses and unchanged task/graph state remain explicit checks. Restored faults
+and all owned browser, service, database and storage resources require confirmed
+cleanup. These source-bound probe receipts belong to Daynight task
+`daf08f1c-a822-44b2-bfeb-8dec80896ec3` and the corresponding PR/CI artifacts;
+first-party fixture checks remain distinct. The probe's local browser identity
+is recorded and is not a hosted-CI browser claim.
+
 The chain fixture creates 1,000 independent tasks, then attaches its 999 edges
 with versioned PATCH requests from sink to root, avoiding repeated traversal of
 a growing ancestor chain during setup. Complete snapshots compare every node's
@@ -600,7 +622,7 @@ scenario annotations validated in each target's report.
 | Requirement | Production checks |
 |---|---|
 | W1 | `project-list`: more than 50 projects, cursor requests, unique cards and navigation to a later-page project |
-| W2 | `project-graph`, `deep-links`: project entry, direct HTML reload and browser history |
+| W2 | `project-graph`, `deep-links`, `task-attachments`: project entry, direct HTML reload, browser history and standalone attachment opening/reload without source-tab state |
 | W3–W4 | `project-graph`, `project-view-tabs`, `refresh-staleness`, `failure-recovery`: exact statistics, topology-based tabs, distinct root progress, direct standalone details, independent completion filters, per-project tab/scroll/expansion restoration, dependency reclassification and consistent full refresh |
 | W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`, `capacity-external`: complete projection data, bounded overview/induced edges, explicit expansion/reset, state markers and existing detail/viewport actions |
 | W8 | `detail-navigation`, `refresh-staleness`: complete centered-dialog content, ordered PR associations, relation navigation, property refresh and readiness differences without revising a dependent task |
@@ -608,7 +630,7 @@ scenario annotations validated in each target's report.
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
-| FA1–FA12 | `task-attachments`: installed CLI and production UI operate on the same real task/files on native and container targets, exact binary round trips, independent mutations/previews, visible PDF content and full task state unchanged |
+| FA1–FA12 | `task-attachments`: installed CLI and production UI share real task/files on native and container targets; exact bytes, file mutations, detail tabs, adjacent panes, unique preview scroll owners, rendered formats and reloadable standalone reading. Independent real-service probes add end-of-document wheel/keyboard, native PDF final-page paint, fault/retry and unchanged task/graph proof |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
 | L1–L4 | `language-startup-preferences`: browser default, saved override, reload, route metadata, shared selectors and unchanged user data |
 | L2, L4–L5 | `language-state-preservation`: graph geometry/viewport, fullscreen and modal focus, PR page, file input and iframe identity; pending upload, overwrite and deletion execute once |
