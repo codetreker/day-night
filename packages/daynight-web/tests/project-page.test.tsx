@@ -111,7 +111,7 @@ describe("project dashboard", () => {
     const receipt = screen.getByText(/最近成功刷新/).closest("time")?.getAttribute("datetime");
     fireEvent.click(screen.getByRole("button", { name: "刷新" }));
     expect(screen.getByRole("button", { name: "正在刷新…" })).toBeDisabled();
-    expect(screen.getByText("正在刷新，当前显示上次成功读取的数据。")).toBeTruthy();
+    expect(screen.queryByRole("status")).toBeNull();
     expect(number("任务总数")).toBe("4");
     await act(async () => { pending.reject(new ApiError("server", 500, "internal_error", "refresh-request")); });
     expect((await screen.findByRole("alert")).textContent).toContain("仍显示上次成功读取的数据");
