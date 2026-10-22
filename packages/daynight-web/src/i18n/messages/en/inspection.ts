@@ -4,6 +4,8 @@ export const inspection: InspectionMessages = {
   detail: {
     overview: "Overview",
     title: "Task details", close: "Close task details", loading: "Loading task details", failed: "Task details could not be loaded",
+    refreshFailed: "Task details could not be refreshed",
+    retainedData: "Showing the last successfully loaded details. Updates will retry automatically.",
     networkError: "Unable to connect to the service. Check the local service and try again.",
     notFoundError: "This task can no longer be read. Refresh the task graph.",
     loadError: "Unable to read task details. Please try again.", retry: "Retry details", ready: "Ready", blocked: "Blocked",
@@ -23,6 +25,7 @@ export const inspection: InspectionMessages = {
     pageOption: ({ page, total }) => `${page} / ${total}`, empty: "No linked PRs", emptyString: "(empty string)", url: "URL",
   },
   attachments: {
+    openInNewTab: "Open in new tab", missing: "This attachment was not found. It may have been deleted.", returnToTask: "Return to task project",
     title: "Attachments", heading: ({ count }) => `Attachments · ${count}`, refresh: "Refresh attachments",
     chooseFile: "Choose one file", targetPath: "Target relative path", pathPlaceholder: "For example, docs/design.md",
     uploading: "Uploading…", upload: "Upload file", uploadHint: "Upload one file at a time. An existing path is overwritten directly.",

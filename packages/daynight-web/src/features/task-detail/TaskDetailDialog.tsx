@@ -93,7 +93,7 @@ export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, on
 
   useLayoutEffect(() => {
     if (!dialogRef.current!.contains(document.activeElement)) closeRef.current!.focus();
-  }, [taskId, status, snapshot.revision]);
+  }, [taskId, status, error, snapshot.revision]);
 
   const snapshotNode = snapshot.index.nodes.get(taskId);
   const stale = detail !== null && isTaskStale(snapshotNode, detail);
@@ -130,6 +130,14 @@ export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, on
               <h3>{m.failed}</h3>
               <DetailError error={error} />
               <button className="button primary" type="button" onClick={retry}>{m.retry}</button>
+            </div>
+          )}
+          {detail !== null && error !== null && (
+            <div className="task-detail-state task-detail-error" role="alert">
+              <h3>{m.refreshFailed}</h3>
+              <DetailError error={error} />
+              <p>{m.retainedData}</p>
+              <button className="button" type="button" onClick={retry}>{m.retry}</button>
             </div>
           )}
           {detail !== null && (

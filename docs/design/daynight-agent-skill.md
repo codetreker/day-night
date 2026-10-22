@@ -6,6 +6,11 @@
 保留安装机制的原始理由。[Project/Task CLI](daynight-project-task.md)与
 [附件设计](daynight-task-attachments.md)继续拥有服务访问、版本、依赖和文件操作。
 
+[Goal 流程设计](daynight-goal-workflow.md)拥有描述、架构与实际拆分、实施和整体验收的
+阶段协议，[任务拆分](daynight-goal-workflow-tasks.md)关联其真实交付任务。普通任务与
+Goal 阶段使用同一自足正文与资料所有权规则，共享输入通过已核验源 task ID 和附件路径
+读取，阶段结果不能成为开始其生产阶段的前提。
+
 ## 一个入口与按需加载
 
 npm 包发布一份英文 `using-daynight` skill。`SKILL.md` 只负责发现说明、路由和共同
@@ -28,6 +33,7 @@ packages/daynight/
         autopilot.md
         run-task.md
         create-task.md
+        goal.md
   src/platform/skill-bundle.ts
   dist/commands/skill/skills/using-daynight/
     SKILL.md
@@ -36,6 +42,7 @@ packages/daynight/
       autopilot.md
       run-task.md
       create-task.md
+      goal.md
 ```
 
 `using-daynight handbook` 等表达是 Agent 的模式选择协议，不是新增 Daynight CLI。
@@ -77,51 +84,51 @@ skill、任务和附件均不授予额外权限。run-task 的合并完成要求
 | `create-task.md` | 明确创建许可、追踪价值、已有任务匹配、资料准备与登记完整性 |
 | `run-task.md` | 指定任务恢复、实现验证、交付与完成、阻塞返回 |
 | `autopilot.md` | 当前任务恢复、相关性选择、串行循环及停止条件 |
+| `goal.md` | Goal 判断、双起始任务、阶段资料、实际拆分、登记恢复和整体验收 |
 
-问题放在 task 描述，方案和验收放在一个 Markdown 主附件。描述只保存问题与真实附件
-引用；依赖由 `dependsOn` 维护，PR URL/title 由 `properties.pullRequests` 维护。
-不在描述中复制方案、验收、依赖或执行日志。主附件使用任务语言的“方案”和“验收标准”
-两个必填 section，文件名由任务引用决定。
+task 描述是自足简介，直接说明具体问题、行动、范围、交付物、约束、简明可观察完成
+条件和实际资料引用。读者无需打开附件即可理解当前任务；正文可概括方案与验收，
+详细做法、完整验收及证据由任务专属主 Markdown 附件拥有，避免竞争的完整副本。
+依赖由 `dependsOn` 维护，PR URL/title 由 `properties.pullRequests` 维护；执行位置、
+阻塞、等待和下一步属于既有检查点。
+
+主附件包含任务语言的“方案”和“验收标准”，文件名由真实引用决定。共享 Goal 要求
+保留在描述任务，设计与拆分保留在架构任务；后继引用来源 task ID 与附件路径，或
+已核验的不可变仓库 URL，不默认复制相同整套资料。独立快照必须有实际需要，并记录
+来源版本与目的；不增加 `task://`、跨任务相对链接或固定主机约定。
 
 ```text
 task.description
-  要解决的问题
-  已上传附件的实际引用
+  具体问题、行动、范围、交付物与约束
+  简明可观察完成条件、实际输入引用
 attachments/
-  proposal.md
-    方案
-    验收标准（含验证方法及完成后的必要证据）
-  mockui/index.html       # 前端任务
-  mockui/assets/...      # 原型需要的资源
+  plan.md                 # 本任务的详细方案、完整验收及证据
+shared inputs/
+  source task ID + path    # 使用既有附件读取命令
 ```
 
-前端原型匹配最终视觉、支持纯前端交互，按任务覆盖主要数据与交互状态。方案引用原型，
-必要图片、脚本和样式保持相对资源可用。run-task 读取主附件并查看、操作原型，不能仅凭
-附件文件名认为已理解方案。完成证据和 merge commit 引用写入主附件对应验收项。
-当前执行位置、阻塞、等待和下一步进入会话或项目已有检查点，不引入专用服务字段。
+create-task 在明确许可内区分普通单成果与多阶段 Goal，复用前核对任务、资料和目标。
+普通任务准备当前必需资料；Goal 注册两个阶段 brief 和真实依赖后返回。描述任务的标题
+采用 `[Goal]<outcome>`，产出整体要求与适用的最终样式、纯前端交互原型，不作生产实现
+或架构决策。后继架构任务完成设计，并在设计 PR 交接前实际登记全部后继、上传专属
+资料并读回核验；实施根任务依赖设计。完整阶段输入与输出由 Goal 设计拥有。
 
-create-task 先确认用户的明确创建许可，再判断是否值得持久追踪。单次、trivial 操作
-和临时命令步骤不建任务；在许可范围内，需要跨会话、交接、依赖或持续追踪的交付成果
-才登记。已有任务的匹配比较问题、范围、方案
-和验收目标。准备所有资料后创建或复用，再用既有附件命令上传、关联、读回核验：
+适用原型覆盖最终视觉、主要数据与交互状态及必要资源。它是 UI Goal 描述阶段的产出，
+随后供设计和相关实施任务复用；执行者查看并操作原型，不能凭文件名认为已理解。
+普通前端实施任务同样读取其已有原型。完成证据及 merge commit 写入专属主附件对应
+验收项。
 
-```bash
-daynight task attachment put <task-id> ./proposal.md --path proposal.md
-daynight task attachment put <task-id> ./mockui/index.html --path mockui/index.html
-daynight task attachment list <task-id> --json
-daynight task attachment read <task-id> proposal.md
-```
-
-实际选项与调用方法查询已安装 CLI 的 help，完整读取与错误契约由附件规范拥有；
-handbook 只保留附件独立性与不确定结果核对等背景。这里消费既有附件能力，不扩展 API
-或 CLI。成功创建任务但附件失败时，保留同一 ID 补全；写入结果
-不确定先查询核对。全部必要资料可读才报告登记完整，未完成登记保持 `todo`。
+任务创建、附件和引用更新仍是独立操作。成功创建后部分失败保留原 ID 补全，不确定
+写入先核对真实结果；使用决策时读取的精确版本更新完整字段。全部当前必需资料与
+共享来源可读才报告登记完整，未完整保持 `todo`。handbook 提供数据与错误背景，实际
+参数和调用方法仍由已安装 CLI help 拥有；不扩展服务、API 或 CLI。
 
 ## 单任务执行与调度
 
-run-task 的输入是明确 task ID。它刷新完整任务、主附件、必要资源，检查授权、依赖和
-资料后恢复或开始工作。已完成任务只报告结果；重新打开需要明确意图。开始后保持
-`in_progress`，按目标仓库规则实现、验证并完成授权交付。
+run-task 的输入是明确 task ID。它刷新自足正文、专属主附件、真实共享输入与必要资源，
+按阶段检查授权、依赖和资料后恢复或开始工作。已完成任务只报告结果；重新打开需要
+明确意图。可读的 `proposed` 不自动提升为可执行任务，保留实际状态及既有授权处理。
+可执行任务开始后保持 `in_progress`，按目标仓库规则完成当前阶段工作、验证和授权交付。
 
 开发任务和通过 PR 交付的设计、文档任务，必须等全部必要 PR 平台确认合并、验收满足，
 保留 PR 属性与验收证据后，才按实际读取版本设置 done。无需 PR 的任务使用自身明确
@@ -285,11 +292,11 @@ sibling 与另一 scope。迁移增加旧名称存在、leaf 链接、清理失�
 parent/leaf 链接、安装/清理路径嵌套、部分失败、监听清理和 completion 回归。Windows
 必须有原生结果；Linux 投影不能替代 `.cmd`、ConPTY 或平台链接证据。
 
-静态检查验证入口 frontmatter、四份引用、全部本地链接、英文、打包 allowlist 和关键
+静态检查验证入口 frontmatter、四份模式引用及共享 Goal 协议、全部本地链接、英文、打包 allowlist 和关键
 规则；既有 project/task/attachment 套件拥有命令可执行语义。独立情境演练另外核对
 裸调用、缺少创建许可、已有范围内许可、autopilot 不隐含创建许可、显式 autopilot、
-trivial、资料缺失/部分失败、前端原型、禁止 merge、阻塞和
-单任务返回。它是指令行为审查，不冒充安装自动测试或对模型执行的保证。review bundle
+trivial、阶段资料与输出、实际拆分、部分登记恢复、自足正文、资料所有权、前端原型、
+禁止 merge、阻塞和单任务返回。它是指令行为审查，不冒充安装自动测试或对模型执行的保证。review bundle
 的快照、原生 Copilot 加载与配置隔离继续独立验证。
 
 普通原生 CI 运行 typecheck、test、build、acceptance，receipt 记录源码、平台、场景

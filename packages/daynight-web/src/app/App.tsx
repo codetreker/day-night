@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
+import { AttachmentPage } from '../features/task-detail/attachments/AttachmentPage';
 import { ProjectsPage } from '../features/projects/ProjectsPage';
 import { ProjectPage } from '../features/projects/ProjectPage';
 import { navigate, parseRoute } from './router';
@@ -31,6 +32,8 @@ export const App = () => {
     document.documentElement.lang = locale;
     document.title = m.documentTitle[route.kind];
   }, [locale, m, route.kind]);
+
+  if (route.kind === 'attachment') return <AttachmentPage key={`${route.projectId}/${route.taskId}/${route.path}`} projectId={route.projectId} taskId={route.taskId} path={route.path} />;
 
   return (
     <div className="shell">

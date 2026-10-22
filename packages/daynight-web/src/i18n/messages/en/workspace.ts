@@ -8,7 +8,7 @@ export const workspace: WorkspaceMessages = {
     skipToContent: "Skip to main content", workspaceNavigation: "Workspace navigation", projectHome: "Daynight project home", mainNavigation: "Main navigation",
     workspace: "Workspace", projects: "Projects", projectTasks: "Project tasks", localWorkspace: "Local workspace", localWorkspaceDetail: "Tasks and dependencies at a glance",
     localLabel: "Workspace · Local", breadcrumb: "Breadcrumb", notFound: "Page not found", notFoundDetail: "Check the page address or return to the project list.", returnToProjects: "Back to projects",
-    documentTitle: { projects: "Projects · Daynight", project: "Project tasks · Daynight", notFound: "Page not found · Daynight" },
+    documentTitle: { attachment: "Attachment preview · Daynight", projects: "Projects · Daynight", project: "Project tasks · Daynight", notFound: "Page not found · Daynight" },
   },
   projects: {
     subtitle: "Explore task progress and dependencies by project.", refresh: "Refresh", retry: "Retry", loading: "Loading projects", loadingDetail: "Reading projects in this workspace.",
@@ -22,7 +22,7 @@ export const workspace: WorkspaceMessages = {
     networkError: "Cannot connect to the service. Check the local service and try again.", protocolError: "Task graph data is incomplete or inconsistent. Try again.",
     notFoundDetail: "This project does not exist. Return to the project list.", graphLimitDetail: "The complete task graph exceeds the supported display size.", readError: "The task graph cannot be read right now. Try again.",
     graphLimitCounts: ({ nodes, edges, maxNodes, maxEdges }) => `The graph has ${number(nodes)} ${nodes === 1 ? "task" : "tasks"} and ${number(edges)} ${edges === 1 ? "dependency" : "dependencies"}; up to ${number(maxNodes)} ${maxNodes === 1 ? "task" : "tasks"} and ${number(maxEdges)} ${maxEdges === 1 ? "dependency" : "dependencies"} are supported.`,
-    refreshingSnapshot: "Refreshing. Showing the last successfully loaded data.", refreshFailed: "Refresh failed", showingSnapshot: "Showing the last successfully loaded data.", retryRefresh: "Retry refresh", selectedTaskRemoved: "The selected task is no longer in the updated task graph. Its details have been closed.",
+    refreshFailed: "Refresh failed", showingSnapshot: "Showing the last successfully loaded data.", retryRefresh: "Retry refresh", selectedTaskRemoved: "The selected task is no longer in the updated task graph. Its details have been closed.",
     statistics: "Project task statistics", totalTasks: "Total tasks", uniqueTasks: "Unique task IDs", completion: ({ percent }) => `${number(percent)}% complete`, awaitingApproval: "Awaiting approval", waiting: "Waiting to start", advancing: "Work in progress", ready: "Ready", blocked: "Blocked", todoSubset: "A subset of to-do tasks", empty: "No tasks yet", emptyDetail: "Project tasks will appear here. Create a task, then refresh to see it.", chains: "Task dependency chains",
   },
   standalone: {

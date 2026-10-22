@@ -13,7 +13,9 @@ adding an independent command require changes to unrelated review assumptions.
 
 ## Decision
 
-`@codetreker/daynight` is a client command toolkit with a stable `daynight` bin.
+`@codetreker/daynight` is a client command toolkit with `daynight` and `dn` bins
+pointing to the same stable entry. The [short-command decision](../feature/2026-10-22-dn-short-command.md)
+owns the additional installed name and completion registration.
 The root application owns help, version, command selection and general exit
 results. Its context contains package version, the package directory determined
 by the stable `main.ts` entry, input/output, and lazy home/working-directory

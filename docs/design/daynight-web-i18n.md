@@ -13,7 +13,7 @@ packages/daynight-web/
     messages.ts            公共消息、领域契约与目录选择
     messages/en.ts         英语目录
     messages/zh-CN.ts      简体中文目录
-    messages/workspace.ts  导航、项目、统计、页签与偏好消息
+    messages/workspace.ts  导航、页面标题、项目、统计、页签与偏好消息
     messages/graph.ts      图、节点、依赖与 React Flow 消息
     messages/inspection.ts 详情、PR、附件与预览消息
     formats.ts             按语言缓存的 Intl 格式化器
@@ -84,7 +84,7 @@ Provider 使用一份当前 issue 状态，初始值来自 `initial.issue`。选
 
 生产入口在 `createRoot()` 前执行初始解析，再把常驻 Provider 放在应用根部。首屏 HTML `lang` 和标题使用解析结果，后续导航与切换同步更新。Provider 不以 locale 作为 `key`，领域组件也不使用 locale 重置实例。
 
-导航、居中 `TaskDetailDialog` 和全屏工具栏共用 `LanguageSelector`。详情打开时底层页面处于 `inert`，对话框自己的选择器继续可操作。所有入口继续使用现有焦点圈定、Escape 分层和关闭后恢复机制；切换本身不移动焦点。
+导航、居中 `TaskDetailDialog`、全屏工具栏和独立 `AttachmentPage` 共用 `LanguageSelector`。详情打开时底层页面处于 `inert`，对话框自己的选择器继续可操作。模态入口继续使用现有焦点圈定、Escape 分层和关闭后恢复机制；独立阅读页保留普通浏览器键盘行为。切换语言本身不移动焦点。
 
 项目、图、详情与附件请求仍由资源 ID、revision 和原有操作触发。locale 不进入业务 hook 的请求、取消或订阅依赖；上传、覆盖、删除和刷新期间切换只更新展示。附件预览继续使用原来的 key、URL、DOM 和 iframe 身份，输入与已选文件保持不变。
 
@@ -108,6 +108,6 @@ Provider 使用一份当前 issue 状态，初始值来自 `initial.issue`。选
 | `language-state-preservation` | 图节点/边/视口、全屏与模态焦点、PR 页码、附件输入/iframe 身份及内容；待完成上传、覆盖和删除期间切换，每项写入只执行一次。 |
 | `language-errors-and-narrow` | 读/无效值/写入故障与重试、真实隔离数据库故障下错误重译及相同 request ID，两种语言的 1440px/320px 图、对话框与附件布局。 |
 
-三个场景使用现有受监控页面与场景级 `en-US` 浏览器 locale，继续由单一 Playwright project 执行一次、零 retry。functional inventory、报告聚合与严格预期测试使用相同 annotation；鉴权统一启用后原生及容器各为 19 个功能场景，原生保留 5 个容量/超限场景，原生严格合集为 24 个，双目标共 43 个场景结果。容量矩阵、性能预算、覆盖率与清理规则保持原要求。
+三个场景使用现有受监控页面与场景级 `en-US` 浏览器 locale，继续由单一 Playwright project 执行一次、零 retry。需要精确比较语言切换前后业务请求数量的隔离阶段控制浏览器时钟，排除独立项目定时器触发；真实周期刷新由 `refresh-staleness` 单独验证。滚动恢复读取实际 `scrollTop`，以测试进程单调时钟观察其连续稳定状态，不依赖受控浏览器定时器。functional inventory、报告聚合与严格预期测试使用相同 annotation；鉴权统一启用后原生及容器各为 19 个功能场景，原生保留 5 个容量/超限场景，原生严格合集为 24 个，双目标共 43 个场景结果。容量矩阵、性能预算、覆盖率与清理规则保持原要求。
 
 I18N-T3 核对相同源码的真实嵌入式服务与生产容器组合回执，验证完整 L1–L10，包括首屏、持久保存、键盘操作、两种语言的 1440px/320px 视觉、错误恢复、业务请求数量和资源清理。原型、隔离组件、JSDOM 与本地浏览器各有其证据范围，不能替代真实服务和对应源码的生产验收。

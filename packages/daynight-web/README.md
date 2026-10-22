@@ -148,9 +148,11 @@ The project list requests 50 items per page, preserves
 server order, and follows `nextCursor` through Load more. Repeated IDs count once.
 Refresh discards old pages and cursors; late responses cannot repopulate them.
 
-The application implements `/`, `/projects/{projectId}`, `/account` and
-`/invitations`, direct URL reload,
-browser back/forward and a generic not-found page. A project shows seven statistics
+The application implements `/`, `/projects/{projectId}`, `/account`,
+`/invitations` and the standalone
+`/projects/{projectId}/tasks/{taskId}/attachments/{path...}` reader, direct URL
+reload, browser back/forward and a generic not-found page. All resource reads use
+the current authenticated identity. A project shows seven statistics
 from one complete graph snapshot and two in-project tabs: Standalone tasks and
 Task chains. The first visit opens Task chains; subsequent visits restore the
 project's last tab. Both tab badges count unfinished tasks (proposed, pending and in
@@ -213,9 +215,13 @@ controls adding at most twenty hidden direct neighbors in P, with exact new-task
 new-induced-edge and remaining counts. Manual expansion has no edge cap. Every
 real edge with both endpoints in S appears, without shortcuts or aggregate cards.
 
-Cards are 220 by 136 pixels: 94px body, 40px two-column expansion footer and two
-border pixels; unused directions remain blank. Body activation still opens the
-current TaskDetailDialog, and expansion controls are sibling native buttons.
+Cards are 220 by 96 pixels when no hidden direct neighbors can be expanded:
+a 94px body and two border pixels, with no footer or separator. Cards with at
+least one expansion control are 220 by 136 pixels, including a 40px two-column
+footer; an unused direction retains its column. Body activation opens the current
+TaskDetailDialog, and expansion controls are sibling native buttons. Each visible
+snapshot derives expansion data once; Dagre, React Flow, viewport fitting and
+keyboard reveal share each card's actual dimensions.
 The existing Dagre polyline/native-arrow/local-dash renderer is retained.
 Expansion centers its anchor at current zoom and focuses its body. Global reset
 “收起到概览” recomputes/frames overview and retains reset focus.
@@ -245,15 +251,17 @@ persist detail selection, graph coordinates, zoom or pan. Inactive panel content
 so returning to a chain retains its root choice and initializes its canvas
 viewport again. The [preference decision](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)
 records storage ownership. Tab switching, filtering and scroll restoration make
-no API request and do not change the full project counters, graph index or API
-ordering. Nodes open a task detail dialog with dependency navigation,
+no API requests themselves and do not change the full project counters, graph
+index or API ordering. Independent periodic refresh continues while the page is
+visible. Nodes open a task detail dialog with dependency navigation,
 PR associations, stale-data detection and attachment management. Task fields and
 graph interactions remain read-only. The PR section follows the description and
 displays every ordered title/URL pair, including duplicates. Lists longer than 100 entries use local
 100-row pages with a range/total announcement, Previous/Next controls and direct
 page selection. The complete ordered list stays in memory; changing pages makes
-no requests and imposes no storage or content limit. Replacing the task or
-property collection returns to the first page. Focus stays on current pagination
+no requests and imposes no storage or content limit. Replacing the task or changing the
+ordered property values returns to the first page; equivalent refresh results
+preserve the current page. Focus stays on current pagination
 controls or moves to the section heading when those controls disappear.
 Empty strings have a display-only marker;
 whitespace and long content remain selectable text and wrap within the dialog.
@@ -268,9 +276,32 @@ error and retry state. It preserves string content, including NUL and arbitrary
 address text, without defaults or content validation. The graph decoder retains
 its compact projection and never copies properties into graph nodes.
 
-Refresh retains the last successful snapshot with an explicit loading/error
-notice and replaces the full graph only on success. A resource change clears
-previous-resource content immediately. Live detail never changes graph counters;
+An open project automatically requests its complete graph every five seconds
+while the document is visible. Hidden documents start no periodic reads; returning
+to a visible document requests immediately unless a graph read is already active.
+Automatic ticks skip active graph requests. Manual refresh cancels an active graph
+request and starts immediately. Every successful response updates the last received
+time and rereads the selected task even when graph data is unchanged. Equivalent
+graph data retains its index and layout; changed graph data replaces statistics
+and both task-category lists together. The
+[automatic refresh decision](../../.agents/notes/implemented/feature/2026-10-22-project-task-auto-refresh.md)
+owns the scheduling and scope. With `pnpm web:dev`,
+`/tests/mockups/auto-refresh.html` uses the real project page, styles and controlled
+responses to explore periodic changes, delayed reads and recoverable failures
+without Go or PostgreSQL. Production verification uses the real-service journeys.
+
+Same-resource graph and detail refresh retain successful data while loading and
+on recoverable failure. Errors stay visible during automatic retries until a
+successful response clears them, including a failure before any successful read.
+Automatic detail reads and queued follow-ups wait while the document is hidden;
+requests already in flight may finish. A 404 clears unavailable graph or detail data;
+401 follows the authentication lifecycle and releases the workspace. A resource
+change clears previous-resource content immediately. Same-task refresh keeps the
+detail body mounted, preserving the active tab, PR page when its ordered values
+are unchanged, focus, attachment selection, upload inputs, pending writes and
+preview frame. Project and task changes release the old resource state. Project
+listing and attachment metadata/content keep their independent refresh actions.
+Live detail never changes graph counters;
 a changed prerequisite can alter readiness without revising the task itself.
 The dialog offers a full graph refresh when that difference is observed.
 Reopening or refreshing details reads current PR associations; an attribute
@@ -324,10 +355,13 @@ loaded state, preview and an unsent file/path draft. Changing project/task reset
 the tab and attachment scope. Description-to-attachment navigation, when
 implemented, activates this same panel and controller.
 
-Select one local file, accept its name as the initial target or edit the relative
-path, then upload. MIME is selected from the target path with `mime`
-4.1.1. Uploading the same path overwrites that file. Each file offers download
-and deletion; successful writes refresh only the attachment list and preview.
+The upload section starts collapsed. Activate Upload with a click or the
+keyboard to expand it, then select one local file, accept its name as the initial
+target or edit the relative path, and upload. Activating the disclosure again
+collapses it while retaining the file, path and validation state. Tab round trips
+retain its expansion; a new project/task starts collapsed. MIME is selected
+from the target path with `mime` 4.1.1. Uploading the same path overwrites that file. Each preview offers Download,
+a neighboring Open in new tab link with an external-link icon, and Delete; successful writes refresh only the attachment list and preview.
 They do not change the task version, timestamp or graph snapshot.
 
 The attachment hook owns list, write, selection and preview state for one
@@ -346,9 +380,10 @@ HTML/PDF, the body and fitted frame wrapper hide overflow and the embedded
 document or native reader owns scrolling. The preview header never scrolls
 independently, exposes the complete path and keeps download/delete reachable.
 Left-pane scrolling does not move right-side content or its reading position.
-Full-page reading in a new browser tab and independent real-service acceptance
-for this reading group remain separate pending tasks. The renderer sizing and
-fixed service URLs remain reusable by that delivery.
+The standalone reader uses this same rendering and sizing. Independent
+real-service runtime acceptance of the attachment-reading group is complete.
+Its source, build, browser and cleanup receipts retain the scope of that result;
+a local browser override does not establish hosted-CI browser behavior.
 
 Markdown uses `react-markdown` 10.1.0 with `remark-gfm` 4.0.1 for CommonMark and GFM
 including tables. Raw HTML remains escaped. Relative images and links resolve
@@ -375,6 +410,48 @@ Other formats show metadata and a download link. Files and metadata can diverge
 after a failed write under the accepted K1 limitation; the UI reports errors and
 does not implement reconciliation or rollback.
 
+### Standalone attachment reader
+
+The new-tab action is a real anchor with `target="_blank"` and
+`rel="noopener noreferrer"`. `attachmentPageUrl` uses the selected metadata's
+project, task and complete case-sensitive path, so loading preview content does
+not delay or stale the link. The source dialog, tab and selection stay intact.
+The URL survives copying, closing the source dialog and reloading.
+
+`App` renders `AttachmentPage` outside the workspace shell and modal at
+`/projects/{projectId}/tasks/{taskId}/attachments/{path...}`. The page has a return
+to project link, path, metadata, download and the shared language selector. Its
+initial focus enters the main reading region. The root locale Provider supplies
+first-party messages, HTML language and the route title without changing file
+bytes, resource identity or normal browser keyboard behavior.
+
+The reader reuses `useAttachments` and waits for its complete paginated inventory
+before matching the exact path. Initial and partial-list failures remain errors
+with retry; only a complete inventory can establish a missing file. The existing
+`AttachmentPreview` handles all formats and content failures. The route owns
+project/task/path identity, cancellation and stale-result rejection independently
+of any originating tab. No metadata API, object-URL navigation contract or
+second renderer is introduced.
+
+The parser splits the raw path before decoding segments once and applies the
+existing canonical-ID and attachment-path validators. Encoded separators and
+traversal are rejected; encoded `%252F` represents a valid literal `%2F` in a
+filename. Go serves index HTML for GET/HEAD of this exact page shape, returns
+405 with `Allow: GET, HEAD` for other methods, and keeps unknown page shapes as
+JSON 404. Invalid page IDs retain the existing index plus frontend not-found
+behavior. The raw attachment path guard rejects invalid paths before ServeMux
+normalization can redirect or repair them; file endpoints retain their existing
+scope checks.
+
+The page is a `100dvh` flex column with an actual-height header and remaining-height
+renderer. Its outer wrapper does not scroll. Documents, text and images use the
+shared preview body; HTML/PDF use a fitted native frame whose document owns
+vertical scrolling. There is no fixed header-height subtraction or modal height
+cap. The iframe Escape/Tab bridge is installed only when a real dialog ancestor
+and close callback exist; standalone frames keep ordinary browser keys. The
+[full-reader decision](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-full-reader.md)
+owns the routing and nonmodal composition.
+
 ### Frontend-only attachment mockup
 
 Run `pnpm web:dev` and open `/tests/mockups/attachments.html` on Vite's printed
@@ -385,8 +462,11 @@ content along with loading, empty, failure and busy states, plus upload,
 overwrite, preview, download and deletion without Go,
 PostgreSQL or network API calls. Refreshing the page resets fixture state.
 Object URLs stay valid through deletion and are released when the fixture is
-disposed. This development entry is excluded from the single-index production
-build.
+disposed. Open `/tests/mockups/attachments.html?file=docs%2Fguide.md&scenario=files`
+for the same production reader with a bundled file; it reloads independently
+using the injected fixture API and URLs. Uploaded object URLs remain simulation
+resources and do not define production navigation. This development entry is
+excluded from the single-index production build.
 
 The mockup validates appearance and frontend behavior. Local browser probes also
 exercise the actual portal dialog, background inertness, CSS-hidden controls,
@@ -536,8 +616,9 @@ only their exact expected management writes.
 One packed/installed CLI is shared by the whole web run. On each target,
 `task-attachments` uploads through that CLI and consumes the same task/files in
 the production page, then checks Web mutations through raw CLI reads. It covers
-Markdown relative images, image/text/PDF and interactive HTML resources. PDF
-acceptance polls compositor screenshots for a substantial fixture-only colored
+Markdown relative images, image/text/PDF and interactive HTML resources, detail
+tabs and retained attachment state, adjacent panes, scroll-owner geometry, and
+reloadable standalone navigation. PDF acceptance polls compositor screenshots for a substantial fixture-only colored
 marker. It measures matching connected components independently and checks the
 largest main-page candidate extending into the frame's right half. This
 fixture/viewer location rule excludes thumbnail-only paint; independent bounds
@@ -545,7 +626,27 @@ also prevent a separate thumbnail from diluting the page marker's density. The
 successful PNG and component metrics remain in the marker evidence; HTTP success
 or an iframe load cannot satisfy this check. The
 [combined acceptance decision](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
-owns the data-sharing and rendering proof.
+owns data-sharing, rendering and independent reading proof.
+
+Independent reading acceptance supplements the strict pipeline with real-service
+probes across desktop, tablet, narrow and short viewports in both languages. It
+checks wheel and keyboard access to the document end, fitting-content overflow,
+left/right independence, and ordinary standalone focus behavior. Native PDF
+input reaches the actual viewer through keyboard navigation; real wheel and
+Home/PageDown/End input plus the unique painted final-page footer establish
+usable reading. Private viewer DOM is used only for read-only offset diagnostics.
+
+Failure probes hold request timing while an owned metadata-table failure or an
+unavailable stored file produces actual service errors. Partial-list failure
+remains incomplete, preview 404 remains a visible error, and upload failure
+retains the busy/form lifecycle before retry. Missing-file recovery, delayed
+responses and unchanged task/graph state remain explicit checks. Restored faults
+and all owned browser, service, database and storage resources require confirmed
+cleanup. These source-bound probe receipts belong to Daynight task
+`daf08f1c-a822-44b2-bfeb-8dec80896ec3` and the corresponding PR/CI artifacts;
+first-party fixture checks remain distinct. The probe's local browser identity
+is recorded and is not a hosted-CI browser claim.
+
 The chain fixture creates 1,000 independent tasks, then attaches its 999 edges
 with versioned PATCH requests from sink to root, avoiding repeated traversal of
 a growing ancestor chain during setup. Complete snapshots compare every node's
@@ -581,15 +682,15 @@ scenario annotations validated in each target's report.
 | Requirement | Production checks |
 |---|---|
 | W1 | `project-list`: more than 50 projects, cursor requests, unique cards and navigation to a later-page project |
-| W2 | `project-graph`, `deep-links`: project entry, direct HTML reload and browser history |
+| W2 | `project-graph`, `deep-links`, `task-attachments`: project entry, direct HTML reload, browser history and standalone attachment opening/reload without source-tab state |
 | W3–W4 | `project-graph`, `project-view-tabs`, `refresh-staleness`, `failure-recovery`: exact statistics, topology-based tabs, distinct root progress, direct standalone details, independent completion filters, per-project tab/scroll/expansion restoration, dependency reclassification and consistent full refresh |
 | W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`, `capacity-external`: complete projection data, bounded overview/induced edges, explicit expansion/reset, state markers and existing detail/viewport actions |
-| W8 | `detail-navigation`, `refresh-staleness`: complete centered-dialog content, ordered PR associations, relation navigation, property refresh and readiness differences without revising a dependent task |
-| W9 | `failure-recovery`, `deep-links`, `capacity-limits`: owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |
+| W8 | `detail-navigation`, `refresh-staleness`: complete centered-dialog content, ordered PR associations, relation navigation, automatic detail refresh with retained dialog/attachment state, property refresh and readiness differences without revising a dependent task |
+| W9 | `refresh-staleness`, `failure-recovery`, `deep-links`, `capacity-limits`: periodic status updates and automatic recovery, owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
-| FA1–FA12 | `task-attachments`: installed CLI and production UI operate on the same real task/files on native and container targets, exact binary round trips, independent mutations/previews, visible PDF content and full task state unchanged |
+| FA1–FA12 | `task-attachments`: installed CLI and production UI share real task/files on native and container targets; exact bytes, file mutations, detail tabs, adjacent panes, unique preview scroll owners, rendered formats and reloadable standalone reading. Independent real-service probes add end-of-document wheel/keyboard, native PDF final-page paint, fault/retry and unchanged task/graph proof |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
 | L1–L4 | `language-startup-preferences`: browser default, saved override, reload, route metadata, shared selectors and unchanged user data |
 | L2, L4–L5 | `language-state-preservation`: graph geometry/viewport, fullscreen and modal focus, PR page, file input and iframe identity; pending upload, overwrite and deletion execute once |
@@ -731,8 +832,9 @@ S and all real edges with both endpoints in S; external classification still
 depends on source membership in P−M. It derives distinct root progress and aggregate chain status from main
 tasks in the same traversal, and marks shared tasks. The Dagre
 adapter returns finite left-to-right node positions and routed edge points for
-220-by-136 visible cards. The read-only React Flow canvas consumes these results without changing domain
-objects. React Flow owns fixed task nodes, native ResizeObserver measurement,
+220px-wide visible cards with 96px compact or 136px expandable heights. The
+read-only React Flow canvas consumes these results without changing domain
+objects. React Flow owns task nodes with those exact dimensions, native ResizeObserver measurement,
 keyboard behavior, viewport and controls. One memoized SVG in its public
 ViewportPortal renders every exact Dagre path, with stable edge identity,
 arrowheads, external-context dashes and accessibility semantics. It shares the viewport's
@@ -750,15 +852,19 @@ leftmost rank at 0.8 zoom. The root remains vertically centered when already
 leftmost; otherwise the topmost upstream node starts at a 32px canvas inset.
 Dependency geometry does not require connection-port DOM or per-edge endpoint readiness.
 Ordinary/selected canonical node variants retain unaffected references, and
-memoized collapsed root rows keep a null selection until expanded. New snapshot
-indexes still refresh all rows. The one-time initial viewport policy is separate
+memoized collapsed root rows keep a null selection until expanded. Changed snapshot indexes
+refresh all rows; equivalent graph responses retain the existing index. The one-time initial viewport policy is separate
 from explicit fit controls and does not run again on selection or pan.
 
 Page hooks own requests and cancellation. Navigation or refresh invalidates the
 previous request generation, continuation failures preserve loaded cards, and
 unmount aborts owned work. Attachments have independent scoped list, write and
-preview state, while project statistics continue to use complete graph snapshots.
-There is no global task cache, task-field editor or polling loop. Production
+preview state, while project statistics continue to use complete graph snapshots. The
+project hook owns its visible-page timer; navigation and unmount clear the timer
+and cancel owned reads. Automatic graph reads never overlap, and same-task detail
+refreshes coalesce an in-flight follow-up. There is no global task cache or
+task-field editor. Push subscriptions remain deferred; they can trigger the same
+complete-snapshot refresh without changing graph projection. Production
 `AuthenticatedApp` owns identity loading, authentication and account/membership
 flows under the persistent locale Provider. New identities discard user-owned
 requests and content; project 404 and discovery failures retain their distinct

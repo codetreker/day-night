@@ -12,7 +12,7 @@
 
 ## 目标与范围
 
-客户端为 Bash ≥4.2 和 zsh 提供原生补全，覆盖登记的命令、子命令、别名、选项、
+客户端为 `daynight` 和 `dn` 在 Bash ≥4.2 和 zsh 中提供同一套原生补全，覆盖登记的命令、子命令、别名、选项、
 `completion` 的 shell 参数、`review add-repo --path` 和 `setup --review-path` 的目录参数。zsh 使用原生描述
 展示能力。目录候选不限制运行时合法值；`--path` 继续接受尚未创建的目标目录。
 
@@ -107,7 +107,7 @@ flowchart LR
 ### Bash
 
 [`completion/bash.ts`](../../packages/daynight/src/commands/completion/bash.ts) 在检查
-版本下限后，通过 `complete -F` 注册函数。函数维护 `COMPREPLY` 数组，利用 Bash
+版本下限后，通过 `complete -F` 为根命令名称及其 `aliases` 注册同一函数。函数维护 `COMPREPLY` 数组，利用 Bash
 ≥4.2 的 `compopt` 按当前语义启用文件名处理、目录后缀和引号。命令候选不沿用
 目录补全选项，避免同名本地目录改变命令补全的结果。
 
@@ -133,7 +133,7 @@ directory 使用目录枚举；text 声明 choices 时只给出固定候选，�
 明确的值状态，通过 `_message` 显示值说明并成功返回，不产生候选；choices 值使用
 声明的静态候选。repeatable 选项使用允许重复的原生声明，不加入自身排除项。
 前缀校验同时理解空描述、重复依赖和 text 内联赋值，directory 继续使用 `_files -/`。脚本显式
-调用 `compdef` 关联 `daynight`；仅输出 `#compdef daynight` 注释不足以支持直接 source。
+调用 `compdef` 将根命令名称及其 `aliases`（`daynight` 和 `dn`）关联到同一函数；仅输出 `#compdef daynight` 注释不足以支持直接 source。
 
 自由文本位置参数尚未开始且当前词为空时，生成器暂不向 `_arguments` 提供该位置的
 动作状态，让原生助手展示尚未使用的选项。否则默认 `prefix-needed` 规则会抑制空词

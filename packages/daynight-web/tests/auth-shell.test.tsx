@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as auth from "../src/api/auth";
 import { AuthenticatedApp, parseAuthRoute } from "../src/app/AuthenticatedApp";
+import { parseRoute } from "../src/app/router";
 import { createLocaleRender } from "./helpers/renderWithLocale";
 import { invitationStorageKey } from "../src/features/auth/invitation";
 
@@ -366,6 +367,23 @@ describe("authenticated application shell", () => {
     await screen.findByRole("heading", { name: "登录你的工作空间" });
   });
 
+  it("clears the workspace and stops automatic graph reads after a resource401", async () => {
+    vi.useFakeTimers();
+    window.history.replaceState(null, "", `/projects/${projectId}`);
+    let expired = false;
+    const fetcher = install((url) => expired && url.endsWith("/task-graph") ? fail(401, "unauthenticated") : defaults(url));
+    await act(async () => { render(<AuthenticatedApp />); });
+    expect(screen.getByRole("heading", { name: "私有项目" })).toBeInTheDocument();
+    expired = true;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(screen.getByRole("heading", { name: "登录你的工作空间" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "私有项目" })).toBeNull();
+    const graphReads = () => fetcher.mock.calls.filter(([url]) => url.endsWith("/task-graph")).length;
+    expect(graphReads()).toBe(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    expect(graphReads()).toBe(2);
+  });
+
   it("shows project membership access from the authoritative current membership", async () => {
     window.history.replaceState(null, "", `/projects/${projectId}`);
     install((url) => url.endsWith("/members") ? json({ items: [member(userId, "member")] }) : defaults(url));
@@ -381,6 +399,92 @@ describe("authenticated application shell", () => {
     expect(parseAuthRoute("/projects/%E0%A4%A")).toEqual({ kind: "notFound" });
     expect(parseAuthRoute("/projects/no/members")).toEqual({ kind: "notFound" });
     expect(parseAuthRoute("/unknown")).toEqual({ kind: "notFound" });
+  });
+});
+
+describe("authenticated standalone attachment reader", () => {
+  const taskId = "00000000-0000-4000-8000-000000000004";
+  const location = (path: string) => `/projects/${projectId}/tasks/${taskId}/attachments/${path}`;
+  const inventory = (path: string, contentType = "text/markdown") => json({ items: [{ path, contentType, sizeBytes: 12, createdAt: now, updatedAt: now }], nextCursor: null });
+
+  it("uses canonical resource routing while retaining account, invitation and member extensions", () => {
+    const valid = location("docs/%E6%8C%87%E5%8D%97%20v1.md");
+    expect(parseAuthRoute(valid)).toEqual(parseRoute(valid));
+    expect(parseAuthRoute(valid)).toMatchObject({ kind: "attachment", projectId, taskId, path: "docs/指南 v1.md" });
+    for (const malformed of [location("docs%2Fguide.md"), location("../secret.md"), location("%E0%A4%A"), `/projects/no/tasks/${taskId}/attachments/a.md`]) {
+      expect(parseAuthRoute(malformed)).toEqual({ kind: "notFound" });
+    }
+    expect(parseAuthRoute("/account")).toEqual({ kind: "account" });
+    expect(parseAuthRoute("/invitations")).toEqual({ kind: "invitations" });
+    expect(parseAuthRoute(`/projects/${projectId}/members`)).toEqual({ kind: "members", projectId });
+  });
+
+  it("checks the session before opening a deep link outside workspace chrome and keeps the reader on a locale change", async () => {
+    window.history.replaceState(null, "", location("docs/guide.md"));
+    let identify!: (response: Response) => void;
+    const fetcher = vi.fn((url: string) => url === "/api/v1/me" ? new Promise<Response>((done) => { identify = done; })
+      : Promise.resolve(url.includes("/attachments?") ? inventory("docs/guide.md") : new Response("# Authenticated document")));
+    vi.stubGlobal("fetch", fetcher);
+    render(<AuthenticatedApp />);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await act(async () => identify(json(user())));
+    await screen.findByRole("heading", { name: "Authenticated document" });
+    expect(document.querySelector(".shell")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.title).toBe("附件预览 · Daynight");
+    const reader = screen.getByRole("main");
+    fireEvent.change(screen.getByRole("combobox", { name: "语言 / Language" }), { target: { value: "en" } });
+    expect(document.title).toBe("Attachment preview · Daynight");
+    expect(screen.getByRole("main")).toBe(reader);
+    expect(screen.getByRole("link", { name: "Download" })).toHaveAttribute("href", `/api/v1/projects/${projectId}/tasks/${taskId}/attachments/files/docs/guide.md`);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
+  it("retains the same-origin HTML frame through same-user revalidation and removes it on an account change", async () => {
+    window.history.replaceState(null, "", location("site/index.html"));
+    let identify!: (response: Response) => void;
+    let meCalls = 0;
+    let bob = false;
+    const fetcher = vi.fn((url: string, options?: RequestInit) => {
+      if (url === "/api/v1/me") return ++meCalls === 1 ? Promise.resolve(json(user())) : new Promise<Response>((done) => { identify = done; });
+      if (url.includes("/attachments?")) return Promise.resolve(bob ? fail(404, "not_found") : inventory("site/index.html", "text/html"));
+      if (options?.method === "HEAD") return Promise.resolve(new Response(null));
+      throw new Error(`Unexpected request ${url}`);
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(<AuthenticatedApp />);
+    const frame = await screen.findByTitle("HTML 预览：site/index.html");
+    expect(frame).toHaveAttribute("src", `/api/v1/projects/${projectId}/tasks/${taskId}/preview/site/index.html`);
+    returnFromAnotherWindow();
+    expect(document.body).toHaveClass("auth-session-checking");
+    expect(screen.queryByRole("main")).toBeNull();
+    expect(frame.isConnected).toBe(true);
+    await act(async () => identify(json(user())));
+    expect(screen.getByTitle("HTML 预览：site/index.html")).toBe(frame);
+    expect(fetcher.mock.calls.filter(([, options]) => options?.method === "HEAD")).toHaveLength(1);
+    returnFromAnotherWindow();
+    bob = true;
+    await act(async () => identify(json(user(otherId, "Bob"))));
+    await screen.findByRole("alert");
+    expect(frame.isConnected).toBe(false);
+    expect(screen.queryByTitle("HTML 预览：site/index.html")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "登录你的工作空间" })).toBeNull();
+  });
+
+  it.each([404, 401])("keeps resource404 local and applies the global boundary to resource401 (%i)", async (status) => {
+    window.history.replaceState(null, "", location("docs/guide.md"));
+    install((url) => url.includes("/attachments?") ? fail(status, status === 401 ? "unauthenticated" : "not_found") : defaults(url));
+    render(<AuthenticatedApp />);
+    if (status === 401) {
+      await screen.findByRole("heading", { name: "登录你的工作空间" });
+      expect(screen.queryByRole("heading", { name: "docs/guide.md" })).toBeNull();
+      expect(document.querySelector(".attachment-page")).toBeNull();
+    } else {
+      await screen.findByRole("alert");
+      expect(screen.getByRole("heading", { name: "docs/guide.md" })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "登录你的工作空间" })).toBeNull();
+      expect(document.title).toBe("附件预览 · Daynight");
+    }
   });
 });
 

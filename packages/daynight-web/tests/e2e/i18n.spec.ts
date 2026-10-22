@@ -113,7 +113,13 @@ test.describe('Web language journeys', () => {
     page.on('request', (request) => {
       if (['GET', 'HEAD'].includes(request.method()) && new URL(request.url()).pathname.startsWith('/api/v1/')) reads.push(`${request.method()} ${request.url()}`);
     });
+    // Keep locale request-isolation assertions independent of the task polling timer.
+    const clockTime = new Date('2030-01-01T00:00:00Z');
+    await page.clock.install({ time: clockTime });
+    await page.clock.pauseAt(clockTime);
     await page.goto(`/projects/${project.id}`);
+    await expect(page.getByRole('heading', { name: project.name, exact: true })).toBeVisible();
+    await page.clock.runFor(100);
     await expect(node(page, task.id)).toBeVisible();
     await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '50');
     await expect(page.locator('.task-graph')).toHaveAttribute('data-total-task-count', '81');
@@ -129,12 +135,14 @@ test.describe('Web language journeys', () => {
     const expandedState = await visibleState();
     await expect(page.locator('.graph-reset-overview')).toHaveText('Reset overview');
     await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+    await page.clock.runFor(500);
     const paneBounds = await page.locator('.react-flow__pane').boundingBox();
     if (paneBounds === null) throw new Error('Graph pane is absent.');
     await page.mouse.move(paneBounds.x + 15, paneBounds.y + paneBounds.height - 15);
     await page.mouse.down();
     await page.mouse.move(paneBounds.x + 75, paneBounds.y + paneBounds.height - 50, { steps: 4 });
     await page.mouse.up();
+    await page.clock.runFor(100);
     const viewport = page.locator('.react-flow__viewport');
     const viewportElement = await viewport.elementHandle();
     const taskElement = await node(page, task.id).elementHandle();
@@ -178,6 +186,7 @@ test.describe('Web language journeys', () => {
     const frameElement = await frame.elementHandle();
     const fileInput = attachments.locator('input[type=file]');
     const pathInput = attachments.locator('input[type=text]');
+    await attachments.locator('.attachment-upload-disclosure>summary').click();
     await fileInput.setInputFiles({ name: 'original.txt', mimeType: 'text/plain', buffer: Buffer.from('First 原始 bytes\n') });
     await pathInput.fill(uploadPath);
     const inputElement = await fileInput.elementHandle();
@@ -263,6 +272,7 @@ test.describe('Web language journeys', () => {
   });
 
   test('language-errors-and-narrow', scenario('language-errors-and-narrow'), async ({ page, api: request }, info) => {
+    await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
     await page.addInitScript(() => {
       const fault = new URL(location.href).searchParams.get('localeFault');
       const getItem = Storage.prototype.getItem;
@@ -309,6 +319,8 @@ test.describe('Web language journeys', () => {
     expect(seed.status()).toBe(201);
     await page.goto(`/projects/${project.id}`);
     await expect(node(page, task.id)).toBeVisible();
+    await page.clock.pauseAt(new Date('2030-01-01T00:00:00Z'));
+    await expect(page.locator('.snapshot-time time')).toHaveAttribute('datetime', /^2030-/);
     await withDependencyFailure(async () => {
       const failed = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/projects/${project.id}/task-graph`);
       await page.getByRole('button', { name: 'Refresh', exact: true }).click();
@@ -326,6 +338,7 @@ test.describe('Web language journeys', () => {
     });
     await page.getByRole('button', { name: '重试刷新', exact: true }).click();
     await expect(page.locator('.snapshot-error')).toHaveCount(0);
+    await page.clock.resume();
     for (const locale of ['en', 'zh-CN'] as const) {
       await language(page).selectOption(locale);
       for (const width of [1440, 320]) {

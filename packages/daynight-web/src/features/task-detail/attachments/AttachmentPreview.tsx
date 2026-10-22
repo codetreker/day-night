@@ -20,10 +20,10 @@ type AttachmentPreviewProps = {
   readonly url: string;
   readonly previewRoot: string;
   readonly onRetry: () => void;
-  readonly onClose: () => void;
+  readonly onClose?: () => void;
 };
 
-const TrustedFrame = ({ url, title, onClose }: { readonly url: string; readonly title: string; readonly onClose: () => void }) => {
+const TrustedFrame = ({ url, title, onClose }: { readonly url: string; readonly title: string; readonly onClose: (() => void) | undefined }) => {
   const { messages } = useI18n();
   const m = messages.inspection.attachments;
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -38,17 +38,16 @@ const TrustedFrame = ({ url, title, onClose }: { readonly url: string; readonly 
     removeListener.current?.();
     const frame = frameRef.current!;
     const content = frame.contentDocument;
-    if (content === null) return;
+    const dialog = frame.closest<HTMLElement>('[role="dialog"]');
+    if (content === null || dialog === null || close.current === undefined) return;
     const keyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        close.current();
+        close.current!();
       } else if (event.key === 'Tab') {
         const inner = dialogFocusables(content);
         const active = content.activeElement;
         if (inner.length !== 0 && (event.shiftKey ? active !== inner[0] : active !== inner[inner.length - 1])) return;
-        const dialog = frame.closest<HTMLElement>('[role="dialog"]');
-        if (dialog === null) return;
         const outer = dialogFocusables(dialog);
         const index = outer.indexOf(frame);
         const target = outer[(index + (event.shiftKey ? -1 : 1) + outer.length) % outer.length]!;

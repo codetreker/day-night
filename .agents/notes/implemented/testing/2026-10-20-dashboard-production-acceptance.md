@@ -61,7 +61,14 @@ plus 998 ancestors. Complete API snapshots compare all inputs. The
 [progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
 changes DOM readiness to its bounded visible S and every real induced edge,
 then checks explicit direct expansion/reset and exact counts. All-at-once
-rendering is no longer the required browser workload.
+rendering is no longer the required browser workload. The
+[automatic refresh decision](../feature/2026-10-22-project-task-auto-refresh.md)
+extends freshness coverage and preserves native timers in capacity tests.
+Test-side timer/fetch instrumentation attributes every graph request to initial
+loading or a periodic callback; collapse/reopen must add no request of its own.
+Attachment and language isolation phases use a controlled browser clock for
+exact operation counts, while scroll quiescence uses actual position samples and
+a bounded test-process monotonic clock.
 
 Five openings retain the 3,000ms click-to-painted operable-overview budget and
 existing detail/zoom/pan feedback ≤300ms. Details → close → immediate zoom/pan

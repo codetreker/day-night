@@ -2,18 +2,19 @@ import { memo, useCallback, useLayoutEffect, useRef, type FocusEvent, type Mouse
 import { useReactFlow, type Node, type NodeProps } from '@xyflow/react';
 import { useI18n } from '../../i18n/LocaleProvider';
 import type { GraphTask } from '../../api/types';
-import type { TaskExpansion, TaskExpansionDirection } from './visibility';
-import { TASK_NODE_HEIGHT, TASK_NODE_WIDTH, type CanvasPoint } from './layout';
+import type { TaskExpansion, TaskExpansionDirection, TaskExpansions } from './visibility';
+import type { CanvasNode, CanvasPoint } from './layout';
 
 export type TaskNodeData = {
   task: GraphTask;
   kind: 'main' | 'external';
   shared: boolean;
   center: CanvasPoint;
+  size: Pick<CanvasNode, 'width' | 'height'>;
   selected: boolean;
   onSelectTask: (id: string, trigger: HTMLElement) => void;
   onExpandTask: (id: string, direction: TaskExpansionDirection) => void;
-  expansions: Readonly<Record<TaskExpansionDirection, TaskExpansion>>;
+  expansions: TaskExpansions;
   revealRequest: number | null;
 };
 
@@ -66,12 +67,13 @@ export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
     const { x, y, zoom } = getViewport();
     // Native focus can temporarily scroll React Flow's overflow container before
     // its scroll handler resets it. Layout coordinates retain the intended view.
-    const left = x + (data.center.x - TASK_NODE_WIDTH / 2) * zoom;
-    const top = y + (data.center.y - TASK_NODE_HEIGHT / 2) * zoom;
-    if (left < 0 || top < 0 || left + TASK_NODE_WIDTH * zoom > bounds.width || top + TASK_NODE_HEIGHT * zoom > bounds.height) {
+    const left = x + (data.center.x - data.size.width / 2) * zoom;
+    const top = y + (data.center.y - data.size.height / 2) * zoom;
+    if (left < 0 || top < 0 || left + data.size.width * zoom > bounds.width || top + data.size.height * zoom > bounds.height) {
       void setCenter(data.center.x, data.center.y, { zoom, duration: 0 });
     }
-  }, [data.center, getViewport, setCenter]);
+  }, [data.center, data.size, getViewport, setCenter]);
+  const expandable = data.expansions.prerequisites.ids.length > 0 || data.expansions.successors.ids.length > 0;
   const open = useCallback((event: MouseEvent<HTMLButtonElement>) => { data.onSelectTask(data.task.id, event.currentTarget); }, [data.onSelectTask, data.task.id]);
   return (
     <div className={`task-node task-node-${data.task.status}${data.selected ? ' task-node-selected' : ''}${data.kind === 'external' ? ' task-node-external' : ''} nodrag nopan`} style={{ pointerEvents: 'auto' }}>
@@ -80,10 +82,10 @@ export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
         aria-haspopup="dialog" onClick={open} onFocus={revealOnFocus}>
         <TaskNodeContent task={data.task} kind={data.kind} shared={data.shared} />
       </button>
-      <div className="task-node-expansions">
+      {expandable && <div className="task-node-expansions">
         <ExpansionControl direction="prerequisites" expansion={data.expansions.prerequisites} onFocus={revealOnFocus} onExpand={() => { data.onExpandTask(data.task.id, 'prerequisites'); }} />
         <ExpansionControl direction="successors" expansion={data.expansions.successors} onFocus={revealOnFocus} onExpand={() => { data.onExpandTask(data.task.id, 'successors'); }} />
-      </div>
+      </div>}
     </div>
   );
 });

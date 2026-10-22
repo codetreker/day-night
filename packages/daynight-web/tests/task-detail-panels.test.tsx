@@ -11,7 +11,7 @@ import { createLocaleRender } from './helpers/renderWithLocale';
 const render = createLocaleRender('zh-CN');
 const item: Attachment = { path: 'site/index.html', contentType: 'text/html', sizeBytes: 10, createdAt: '2026-10-21T00:00:00Z', updatedAt: '2026-10-21T00:00:00Z' };
 const fixture = (): AttachmentApi => ({ list: vi.fn(async () => ({ items: [item], nextCursor: null })), checkPreview: vi.fn(async () => {}), readText: vi.fn(async () => ''), put: vi.fn(), remove: vi.fn() });
-const panels = (api: AttachmentApi, task = 'first') => <TaskDetailPanels key={task} overview={<a href="#overview">Overview link</a>} attachments={<TaskAttachments projectId="project" taskId={task} api={api} urls={{ previewRoot: "/fixtures/", preview: (path) => `/fixtures/${path}`, download: (path) => `/fixtures/${path}` }} onClose={vi.fn()} />} />;
+const panels = (api: AttachmentApi, task = 'first') => <TaskDetailPanels key={task} overview={<a href="#overview">Overview link</a>} attachments={<TaskAttachments projectId="project" taskId={task} api={api} urls={{ page: (path) => `/reader/${path}`, previewRoot: "/fixtures/", preview: (path) => `/fixtures/${path}`, download: (path) => `/fixtures/${path}` }} onClose={vi.fn()} />} />;
 
 describe('task detail panels', () => {
   it('associates panels, supports automatic arrow/Home/End activation and native Enter/Space, and excludes hidden controls', async () => {
@@ -57,10 +57,17 @@ describe('task detail panels', () => {
     directory.removeAttribute('open');
     fireEvent(directory, new Event('toggle'));
     const source = new File(['draft'], 'draft.txt');
+    const user = userEvent.setup();
+    const summary = screen.getByText('上传文件', { selector: 'summary' });
     const input = screen.getByLabelText('选择一个文件') as HTMLInputElement;
-    await userEvent.setup().upload(input, source);
+    expect(input).not.toBeVisible();
+    expect(dialogFocusables(view.container)).toContain(summary);
+    expect(dialogFocusables(view.container)).not.toContain(input);
+    await user.click(summary);
+    await user.upload(input, source);
     const path = screen.getByRole('textbox', { name: '目标相对路径' });
     fireEvent.change(path, { target: { value: 'drafts/unsent.txt' } });
+    await user.click(summary);
     content.getElementById('inner')!.focus();
     expect(document.activeElement).toBe(frame);
     fireEvent.click(screen.getByRole('tab', { name: '概览' }));
@@ -69,6 +76,10 @@ describe('task detail panels', () => {
     expect(dialogFocusables(view.container)).not.toContain(frame);
     fireEvent.click(screen.getByRole('tab', { name: '附件' }));
     expect(screen.getByTitle('HTML 预览：site/index.html')).toBe(frame);
+    expect(screen.getByText('上传文件', { selector: 'summary' })).toBe(summary);
+    expect(summary.parentElement).not.toHaveAttribute('open');
+    expect(input).not.toBeVisible();
+    await user.click(summary);
     expect(screen.getByRole('textbox', { name: '目标相对路径' })).toBe(path);
     expect(path).toHaveValue('drafts/unsent.txt');
     expect(input.files?.[0]).toBe(source);
@@ -79,7 +90,8 @@ describe('task detail panels', () => {
     expect(screen.getByRole('tab', { name: '概览' })).toHaveAttribute('aria-selected', 'true');
     expect(view.container.querySelector('iframe')).toBeNull();
     fireEvent.click(screen.getByRole('tab', { name: '附件' }));
-    expect(screen.getByRole('textbox', { name: '目标相对路径' })).toHaveValue('');
+    expect(screen.getByText('上传文件', { selector: 'summary' }).parentElement).not.toHaveAttribute('open');
+    expect(screen.getByLabelText('目标相对路径')).toHaveValue('');
     expect((screen.getByLabelText('选择一个文件') as HTMLInputElement).files).toHaveLength(0);
     await act(async () => {});
     expect(api.list).toHaveBeenCalledTimes(2);

@@ -24,9 +24,13 @@ preview state. A new project/task identity resets them. Future description
 attachment navigation activates this same panel and controller.
 
 The attachment panel is one bounded grid with a vertical divider. Its left
-sidebar contains the file tree, refresh and single-file upload and may scroll
-independently. Its right pane combines a non-scrolling preview header with a
-flexible body. The panes remain adjacent at all supported widths, including
+sidebar contains the file tree, refresh and a single-file upload disclosure and
+may scroll independently. Upload starts collapsed because file browsing is the
+frequent operation. Native `details` and `summary` provide pointer and keyboard
+activation while excluding hidden controls from focus navigation. The form stays
+mounted so collapsing retains the selected file, path and validation state. Tab
+round trips preserve expansion; project/task changes reset it to collapsed.
+Its right pane combines a non-scrolling preview header with a flexible body. The panes remain adjacent at all supported widths, including
 320px. Shrinkable descendants have explicit zero minimum sizes so their content
 does not enlarge the viewport chain. Short viewports use compact heading and
 control spacing, including at 844×390; they do not restore outer dialog scrolling
@@ -36,7 +40,7 @@ There is one right-side vertical scroll owner. Markdown, text/JSON/source and
 large images use the preview body without child vertical height caps. Tables
 and code retain local horizontal scrolling. Ready HTML/PDF use a fitted iframe;
 the preview body and frame wrapper hide overflow while the embedded document or
-native reader scrolls. The header exposes the full path and keeps download and
+native reader scrolls. The header exposes the full path and keeps download, standalone opening and
 delete reachable. Overview has its own normal content scrollbar.
 
 The [requirements](../../../../docs/spec/daynight-task-attachments.md#web-管理与预览)
@@ -48,14 +52,16 @@ Their file, request, trusted-origin and modal lifecycle decisions remain valid.
 
 The confirmed reading delivery separates the tab/split layout, full-page reading
 in a new browser tab, and independent integrated real-service acceptance. The
-layout delivery includes local behavior and regression validation. The full
-reader remains a later capability: the current preview offers working download
-and delete actions without a placeholder new-tab button. Its later cost remains
-additive because renderer sizing is explicit and file identity continues to use
-project, task and the complete relative path; the reader need not replace the
-attachment controller, invent another storage address or alter service preview
-URLs. Independent acceptance observes the integrated production page and actual
-native rendering rather than inferring frame success from HEAD.
+layout delivery included its own behavior and regression validation while
+leaving the full reader as an additive capability. Explicit renderer sizing and
+project/task/full-path identity kept that deferral affordable without another
+storage address or altered service preview URL. The
+[full-reader decision](2026-10-22-task-attachment-full-reader.md) now implements
+the download-adjacent action and standalone route using that shared structure.
+Independent runtime acceptance is complete for the integrated production page
+and actual native rendering. The [cross-layer acceptance decision](../testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+owns its source/environment limits, real-input scrolling, final-page paint,
+failure recovery and cleanup proof; HEAD alone remains insufficient.
 
 ## Alternatives
 
@@ -63,6 +69,10 @@ native rendering rather than inferring frame success from HEAD.
 the initial composition, but leaves file browsing dependent on scrolling through
 task prose and allows the inventory and selected document to compete vertically.
 A dedicated tab keeps task reading and attachment browsing separately bounded.
+
+**Unmount the upload form when collapsed.** Removing its native file input
+would discard the selected file and break draft retention. A native disclosure
+hides the controls while preserving their identity.
 
 **Let an outer detail scrollbar compensate for a tall preview.** That permits a
 wrapper to scroll while a document or native reader also scrolls. Assigning one
@@ -92,7 +102,9 @@ the accepted K1 filesystem/PostgreSQL boundary remain unchanged.
 
 The frontend-only production-component mockup proves its own visual and
 interaction behavior. Source-bound UI and browser checks establish the layout
-on their tested artifact; neither replaces the separately tracked real-service
-acceptance or claims the pending full-page reader has shipped. Changes that
-remove explicit renderer sizing, mount a second attachment controller or add
+on their tested artifact. Independent real-service runtime acceptance establishes
+the integrated behavior within its recorded source and browser environment;
+fixture evidence remains distinct. The full-reader decision owns the implemented
+standalone capability. Changes that remove explicit renderer sizing, mount a
+second attachment controller or add
 another vertical overflow ancestor require revisiting this decision.

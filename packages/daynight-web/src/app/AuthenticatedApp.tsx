@@ -11,23 +11,22 @@ import { LoginPage } from "../features/auth/LoginPage";
 import { captureInvitation, clearInvitation } from "../features/auth/invitation";
 import { ProjectPage } from "../features/projects/ProjectPage";
 import { ProjectsPage } from "../features/projects/ProjectsPage";
-import { canonicalId } from "../api/parse";
-import { navigate } from "./router";
+import { AttachmentPage } from "../features/task-detail/attachments/AttachmentPage";
+import { navigate, parseRoute, type Route } from "./router";
 import { useI18n } from "../i18n/LocaleProvider";
 import { LanguageSelector } from "../i18n/LanguageSelector";
 import "../styles/auth.css";
 
-type AuthRoute = { readonly kind: "projects" | "account" | "invitations" | "notFound" } | { readonly kind: "project" | "members"; readonly projectId: string };
+type AuthRoute = Route | { readonly kind: "account" | "invitations" } | { readonly kind: "members"; readonly projectId: string };
 export const parseAuthRoute = (pathname: string): AuthRoute => {
-  if (pathname === "/") return { kind: "projects" };
   if (pathname === "/account") return { kind: "account" };
   if (pathname === "/invitations") return { kind: "invitations" };
-  const match = /^\/projects\/([^/]+)(\/members)?$/.exec(pathname);
-  if (match === null) return { kind: "notFound" };
-  let decoded: string;
-  try { decoded = decodeURIComponent(match[1]!); } catch { return { kind: "notFound" }; }
-  const projectId = canonicalId(decoded);
-  return projectId === null ? { kind: "notFound" } : { kind: match[2] === undefined ? "project" : "members", projectId };
+  const members = /^(\/projects\/[^/]+)\/members$/.exec(pathname);
+  if (members !== null) {
+    const project = parseRoute(members[1]!);
+    return project.kind === "project" ? { kind: "members", projectId: project.projectId } : { kind: "notFound" };
+  }
+  return parseRoute(pathname);
 };
 
 const followLink = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -107,8 +106,9 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
   const route = parseAuthRoute(pathname);
   useLayoutEffect(() => {
     document.documentElement.lang = locale;
-    document.title = m.documentTitle[session.status === "authenticated" ? route.kind : session.status === "anonymous" ? "login" : session.status];
-  }, [locale, m.documentTitle, route.kind, session.status]);
+    const page = session.status === "authenticated" ? route.kind : session.status === "anonymous" ? "login" : session.status;
+    document.title = page === "attachment" ? app.documentTitle.attachment : m.documentTitle[page];
+  }, [locale, m.documentTitle, app.documentTitle.attachment, route.kind, session.status]);
   const [loginError] = useState(() => {
     const parameters = new URLSearchParams(window.location.search);
     const failed = parameters.get("authError") === "login_failed";
@@ -218,6 +218,9 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
   const identity = `${session.user.id}:${session.generation}`;
   const checking = revalidation !== "idle";
   const revalidationOverlay = checking ? <RevalidationOverlay failed={revalidation === "error"} onRetry={recheckIdentity} /> : null;
+  if (route.kind === "attachment") return <>{revalidationOverlay}{cleanupWarning}<div className="auth-shell" key={identity} aria-hidden={checking} inert={checking}>
+    <AttachmentPage key={`${route.projectId}/${route.taskId}/${route.path}`} projectId={route.projectId} taskId={route.taskId} path={route.path} />
+  </div></>;
   if (route.kind === "invitations") return <>{revalidationOverlay}{cleanupWarning}<div aria-hidden={checking} inert={checking}><InvitationPage key={`${identity}:${invitationRevision}`} lifetime={invitationLifetime.current.signal} invitation={invitation} user={session.user} onComplete={completeInvitation} onCancel={cancelInvitation} onSwitchAccount={signOut} onUnavailable={unavailableInvitation} /></div></>;
   return <>{revalidationOverlay}<Workspace key={identity} user={session.user} route={route} onSignOut={signOut} checking={checking}>
     {cleanupWarning}{route.kind === "projects" ? <ProjectsPage onCreate={() => setCreating(true)} /> : route.kind === "project" ? <AuthorizedProject key={route.projectId} projectId={route.projectId} user={session.user} onOpenMembers={(project) => { setProjectName(project.name); navigate(`/projects/${project.id}/members`); }} /> : route.kind === "members" ? <MembersPanel key={route.projectId} projectId={route.projectId} projectName={projectName ?? m.genericProject} user={session.user} onRemoved={() => navigate("/")} /> : route.kind === "account" ? <AccountPage user={session.user} onSignOut={signOut} /> : <section className="state-box"><h1>{app.notFound}</h1><a className="button primary" href="/" onClick={followLink}>{app.returnToProjects}</a></section>}

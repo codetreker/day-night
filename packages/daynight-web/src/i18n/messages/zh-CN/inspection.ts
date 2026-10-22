@@ -4,6 +4,8 @@ export const inspection: InspectionMessages = {
   detail: {
     overview: "概览",
     title: "任务详情", close: "关闭任务详情", loading: "正在加载任务详情", failed: "任务详情加载失败",
+    refreshFailed: "任务详情更新失败",
+    retainedData: "正在显示上次成功读取的详情，将自动重试更新。",
     networkError: "无法连接服务，请检查本地服务后重试。", notFoundError: "这个任务已无法读取，请刷新任务图。",
     loadError: "暂时无法读取任务详情，请重试。", retry: "重试详情", ready: "可开始", blocked: "被阻塞",
     stale: "任务详情与当前任务图不同，刷新后可查看一致的进度和关系。", refreshGraph: "刷新任务图",
@@ -19,6 +21,7 @@ export const inspection: InspectionMessages = {
     empty: "暂无关联 PR", emptyString: "（空字符串）", url: "URL",
   },
   attachments: {
+    openInNewTab: "在新标签页打开", missing: "找不到此附件，文件可能已被删除。", returnToTask: "返回任务所在项目",
     title: "附件", heading: ({ count }) => `附件 · ${count}`, refresh: "刷新附件", chooseFile: "选择一个文件", targetPath: "目标相对路径",
     pathPlaceholder: "例如 docs/design.md", uploading: "正在上传…", upload: "上传文件", uploadHint: "每次上传一个文件；相同路径会直接覆盖。",
     invalidPath: "请输入有效的相对文件路径，使用 / 分隔目录，不含空段、. 或 ..。", writeError: "附件操作失败，请检查后重试。",

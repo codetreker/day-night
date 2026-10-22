@@ -16,7 +16,7 @@ export type WorkspaceMessages = {
     readonly notFound: string;
     readonly notFoundDetail: string;
     readonly returnToProjects: string;
-    readonly documentTitle: Readonly<Record<"projects" | "project" | "notFound", string>>;
+    readonly documentTitle: Readonly<Record<"projects" | "project" | "attachment" | "notFound", string>>;
   };
   readonly projects: {
     readonly subtitle: string;
@@ -54,7 +54,6 @@ export type WorkspaceMessages = {
     readonly graphLimitDetail: string;
     readonly readError: string;
     readonly graphLimitCounts: (args: { readonly nodes: number; readonly edges: number; readonly maxNodes: number; readonly maxEdges: number }) => string;
-    readonly refreshingSnapshot: string;
     readonly refreshFailed: string;
     readonly showingSnapshot: string;
     readonly retryRefresh: string;
