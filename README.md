@@ -1572,7 +1572,13 @@ Selected jobs keep their complete checks, coverage thresholds, acceptance suites
 timeouts and cleanup requirements. The Go job still builds real web assets and
 exercises the installed CLI; the web job still builds and exercises the Go
 service and production deployment. Selecting one module does not split these
-existing integration suites. Native CLI jobs typecheck and build once before
+existing integration suites. The Ubuntu shell-completion and Web jobs select the
+official HTTPS Ubuntu archive and security services before package preparation.
+Their shared command changes only the runner's referenced mirror list; signed
+source stanzas and package indices remain intact. An unexpected source layout
+fails explicitly. The [mirror decision](.agents/notes/implemented/testing/2026-10-22-ubuntu-package-mirrors.md)
+records the provisioning failure and the retained acceptance limits.
+Native CLI jobs typecheck and build once before
 running ordinary and installed tests against the same output. After deployment
 fixture checks, the web job uses one acceptance pipeline. Pinned Chromium,
 unit/coverage checks, native UI/Go/PostgreSQL preparation and the normal dev-ci
