@@ -96,17 +96,22 @@ describe('task detail dialog', () => {
     expect(trigger).toHaveFocus();
   });
 
-  it('groups description, pull requests, and task-scoped attachments before the relationship sidebar', async () => {
+  it('opens on overview and keeps task-scoped attachments in their own mounted panel', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(detail())));
     open();
     await screen.findByRole('heading', { name: '任务 1' });
-    const attachments = screen.getByRole('region', { name: '附件' });
+    const overview = screen.getByRole('tabpanel', { name: '概览' });
+    expect(overview).toContainElement(screen.getByRole('region', { name: '关联 PR' }));
+    expect(overview).toContainElement(screen.getByRole('complementary', { name: '任务关系与元数据' }));
+    expect(screen.queryByRole('region', { name: '附件' })).toBeNull();
+    const attachments = document.querySelector('[data-task-id]')!;
     expect(attachments).toHaveAttribute('data-project-id', projectId);
     expect(attachments).toHaveAttribute('data-task-id', id(1));
-    expect(screen.getByRole('region', { name: '关联 PR' }).nextElementSibling).toBe(attachments);
-    const sidebar = screen.getByRole('complementary', { name: '任务关系与元数据' });
-    expect(attachments.parentElement?.nextElementSibling).toBe(sidebar);
-    expect(sidebar).toContainElement(screen.getByRole('region', { name: '前置依赖' }));
+    fireEvent.click(screen.getByRole('tab', { name: '附件' }));
+    expect(screen.getByRole('tabpanel', { name: '附件' })).toContainElement(attachments as HTMLElement);
+    expect(screen.getByRole('region', { name: '附件' })).toBe(attachments);
+    expect(overview).toHaveAttribute('hidden');
+    expect(overview).toHaveAttribute('inert');
   });
 
   it('loads real detail outside the inert application, locks scrolling, and restores focus on close', async () => {
@@ -184,6 +189,8 @@ describe('task detail dialog', () => {
     }
     const close = screen.getByRole('button', { name: '关闭任务详情' });
     const user = userEvent.setup();
+    await user.tab();
+    expect(screen.getByRole('tab', { name: '概览' })).toHaveFocus();
     await user.tab();
     expect(links[0]).toHaveFocus();
     await user.tab();
@@ -452,6 +459,8 @@ describe('task detail dialog', () => {
     const user = userEvent.setup();
     await user.tab();
     expect(refresh).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('tab', { name: '概览' })).toHaveFocus();
     await user.tab();
     expect(successor).toHaveFocus();
     await user.tab();

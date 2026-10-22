@@ -2,6 +2,7 @@ import type { InspectionMessages } from "../inspection";
 
 export const inspection: InspectionMessages = {
   detail: {
+    overview: "Overview",
     title: "Task details", close: "Close task details", loading: "Loading task details", failed: "Task details could not be loaded",
     networkError: "Unable to connect to the service. Check the local service and try again.",
     notFoundError: "This task can no longer be read. Refresh the task graph.",

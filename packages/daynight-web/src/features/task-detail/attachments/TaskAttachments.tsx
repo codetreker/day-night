@@ -78,49 +78,55 @@ const TaskAttachmentContent = ({ projectId, taskId, api, urls, onClose }: TaskAt
   };
 
   return (
-    <section className="task-detail-section task-attachments" aria-labelledby={headingId}>
-      <div className="attachment-section-heading">
-        <h4 id={headingId}>{attachments.complete ? m.heading({ count: format.number(attachments.items.length) }) : m.title}</h4>
-        <button className="button" type="button" disabled={attachments.loading || busy} onClick={attachments.reload}>{m.refresh}</button>
-      </div>
-      <form className="attachment-upload" onSubmit={(event) => { void upload(event); }}>
-        <label htmlFor={fileId}>{m.chooseFile}</label>
-        <input id={fileId} ref={fileInput} type="file" disabled={busy} onChange={(event) => {
-          const chosen = event.currentTarget.files?.[0];
-          setFile(chosen === undefined ? null : chosen);
-          setPath(chosen === undefined ? '' : chosen.name);
-          setPathError(false);
-        }} />
-        <label htmlFor={pathId}>{m.targetPath}</label>
-        <div className="attachment-upload-target">
-          <input id={pathId} type="text" value={path} placeholder={m.pathPlaceholder} disabled={busy} aria-invalid={pathError} onChange={(event) => { setPath(event.currentTarget.value); setPathError(false); }} />
-          <button className="button primary" type="submit" disabled={file === null || busy}>{attachments.write.status === 'saving' ? m.uploading : m.upload}</button>
-        </div>
-        <p className="attachment-hint">{m.uploadHint}</p>
-        {pathError && <p className="attachment-error" role="alert">{m.invalidPath}</p>}
-      </form>
-      {attachments.write.error !== null && <div className="attachment-error attachment-state" role="alert"><ErrorMessage error={attachments.write.error} message={m.writeError} /></div>}
-      {attachments.loading && <p className="attachment-state" role="status">{m.loading}</p>}
-      {attachments.error !== null && (
-        <div className="attachment-state attachment-error" role="alert">
-          <ErrorMessage error={attachments.error} message={attachments.items.length === 0 ? m.listError : m.incompleteList} />
-          <button className="button" type="button" disabled={busy} onClick={attachments.reload}>{m.retry}</button>
-        </div>
-      )}
-      {attachments.complete && attachments.items.length === 0 && <p className="attachment-state">{m.empty}</p>}
-      {attachments.items.length > 0 && <nav className="attachment-files" aria-label={m.files}><FileTree nodes={attachmentTree(attachments.items)} selectedPath={attachments.selectedPath} onSelect={attachments.select} /></nav>}
-      {selected === undefined ? (attachments.items.length > 0 && <p className="attachment-state">{m.choosePreview}</p>) : (
-        <section className="attachment-preview" aria-label={m.preview}>
-          <header className="attachment-preview-header">
-            <div><h5>{selected.path}</h5><p>{m.fileMetadata({ contentType: selected.contentType, size: format.bytes(selected.sizeBytes) })}</p></div>
-            <div className="attachment-preview-actions">
-              <a className="button" href={urls === undefined ? attachmentDownloadUrl(projectId, taskId, selected.path) : urls.download(selected.path)} download>{m.download}</a>
-              <button className="button attachment-delete" type="button" disabled={busy} onClick={() => { void attachments.remove(selected.path); }}>{attachments.write.status === 'deleting' ? m.deleting : m.delete}</button>
+    <section className="task-attachments" aria-labelledby={headingId}>
+      <div className="attachment-split">
+        <aside className="attachment-sidebar">
+          <div className="attachment-section-heading">
+            <h4 id={headingId}>{attachments.complete ? m.heading({ count: format.number(attachments.items.length) }) : m.title}</h4>
+            <button className="button" type="button" disabled={attachments.loading || busy} onClick={attachments.reload}>{m.refresh}</button>
+          </div>
+          {attachments.write.error !== null && <div className="attachment-error attachment-state" role="alert"><ErrorMessage error={attachments.write.error} message={m.writeError} /></div>}
+          {attachments.loading && <p className="attachment-state" role="status">{m.loading}</p>}
+          {attachments.error !== null && (
+            <div className="attachment-state attachment-error" role="alert">
+              <ErrorMessage error={attachments.error} message={attachments.items.length === 0 ? m.listError : m.incompleteList} />
+              <button className="button" type="button" disabled={busy} onClick={attachments.reload}>{m.retry}</button>
             </div>
-          </header>
-          <AttachmentPreview key={`${selected.path}/${selected.updatedAt}`} attachment={selected} preview={attachments.preview} url={urls === undefined ? attachmentPreviewUrl(projectId, taskId, selected.path) : urls.preview(selected.path)} previewRoot={urls === undefined ? attachmentPreviewRoot(projectId, taskId) : urls.previewRoot} onRetry={attachments.retryPreview} onClose={onClose} />
-        </section>
-      )}
+          )}
+          {attachments.complete && attachments.items.length === 0 && <p className="attachment-state">{m.empty}</p>}
+          {attachments.items.length > 0 && <nav className="attachment-files" aria-label={m.files}><FileTree nodes={attachmentTree(attachments.items)} selectedPath={attachments.selectedPath} onSelect={attachments.select} /></nav>}
+          <form className="attachment-upload" onSubmit={(event) => { void upload(event); }}>
+            <label htmlFor={fileId}>{m.chooseFile}</label>
+            <input id={fileId} ref={fileInput} type="file" disabled={busy} onChange={(event) => {
+              const chosen = event.currentTarget.files?.[0];
+              setFile(chosen === undefined ? null : chosen);
+              setPath(chosen === undefined ? '' : chosen.name);
+              setPathError(false);
+            }} />
+            <label htmlFor={pathId}>{m.targetPath}</label>
+            <div className="attachment-upload-target">
+              <input id={pathId} type="text" value={path} placeholder={m.pathPlaceholder} disabled={busy} aria-invalid={pathError} onChange={(event) => { setPath(event.currentTarget.value); setPathError(false); }} />
+              <button className="button primary" type="submit" disabled={file === null || busy}>{attachments.write.status === 'saving' ? m.uploading : m.upload}</button>
+            </div>
+            <p className="attachment-hint">{m.uploadHint}</p>
+            {pathError && <p className="attachment-error" role="alert">{m.invalidPath}</p>}
+          </form>
+        </aside>
+        <div className="attachment-preview-pane">
+          {selected === undefined ? <div className="attachment-preview-body attachment-preview-empty"><p className="attachment-state">{m.choosePreview}</p></div> : (
+            <section className="attachment-preview" aria-label={m.preview}>
+              <header className="attachment-preview-header">
+                <div><h5 title={selected.path}>{selected.path}</h5><p>{m.fileMetadata({ contentType: selected.contentType, size: format.bytes(selected.sizeBytes) })}</p></div>
+                <div className="attachment-preview-actions">
+                  <a className="button" href={urls === undefined ? attachmentDownloadUrl(projectId, taskId, selected.path) : urls.download(selected.path)} download>{m.download}</a>
+                  <button className="button attachment-delete" type="button" disabled={busy} onClick={() => { void attachments.remove(selected.path); }}>{attachments.write.status === 'deleting' ? m.deleting : m.delete}</button>
+                </div>
+              </header>
+              <AttachmentPreview key={`${selected.path}/${selected.updatedAt}`} attachment={selected} preview={attachments.preview} url={urls === undefined ? attachmentPreviewUrl(projectId, taskId, selected.path) : urls.preview(selected.path)} previewRoot={urls === undefined ? attachmentPreviewRoot(projectId, taskId) : urls.previewRoot} onRetry={attachments.retryPreview} onClose={onClose} />
+            </section>
+          )}
+        </div>
+      </div>
     </section>
   );
 };
