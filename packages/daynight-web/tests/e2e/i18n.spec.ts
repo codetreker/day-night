@@ -56,7 +56,7 @@ test.describe('Web language journeys', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-    await expect(page).toHaveTitle('Projects · Daynight');
+    await expect(page).toHaveTitle('My projects · Daynight');
     await expect(language(page)).toHaveValue('en');
     expect(await page.evaluate(() => localStorage.getItem('daynight.web.locale'))).toBeNull();
     const link = page.locator(`a.project-card[href="/projects/${project.id}"]`);
@@ -86,7 +86,7 @@ test.describe('Web language journeys', () => {
     await page.keyboard.press('Escape');
     await page.getByRole('link', { name: '← 项目', exact: true }).click();
     await expect(page.getByRole('heading', { name: '项目', exact: true })).toBeVisible();
-    await expect(page).toHaveTitle('项目 · Daynight');
+    await expect(page).toHaveTitle('我的项目 · Daynight');
     await expect(language(page)).toHaveValue('zh-CN');
     await screenshot(page, info, 'language-startup-preferences');
   });

@@ -41,6 +41,7 @@ func (p *acceptanceProcess) attachmentRequest(method, target, contentType string
 	if err != nil {
 		return acceptanceResponse{err: err}
 	}
+	request.Header.Set("Authorization", "Bearer "+p.token)
 	if contentType != "" {
 		request.Header.Set("Content-Type", contentType)
 	}
@@ -129,7 +130,7 @@ func TestInstalledCLIAttachmentAcceptance(t *testing.T) {
 		fixture := newAcceptanceFixture(t, scenario)
 		cli := newAcceptanceCLI(t, receipt, scenario)
 		process := fixture.launch(t, nil).started(t)
-		if err := os.WriteFile(filepath.Join(cli.home, ".daynight", "config.yml"), []byte("serverUrl: http://"+process.address+"\n"), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(cli.home, ".daynight", "config.yml"), []byte("serverUrl: "+process.origin+"\nserverToken: "+process.token+"\n"), 0o600); err != nil {
 			t.Fatal("cannot configure isolated attachment CLI")
 		}
 		project := acceptanceDecode[api.Project](t, process.request(context.Background(), http.MethodPost, "/api/v1/projects", api.CreateProjectRequest{Name: "Attachment CLI", RepoURL: "git@git.example:Org/Repo.git"}, ""), http.StatusCreated)

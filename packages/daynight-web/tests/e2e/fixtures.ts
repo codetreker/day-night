@@ -6,6 +6,7 @@ import { command } from '../../scripts/acceptance/process.mts';
 import { recordBrowserOwnership } from '../../scripts/acceptance/browser.mts';
 import type { TaskProperties } from '../../src/api/types';
 import { attachmentDownloadUrl } from '../../src/api/client';
+import { bearerContext, browserAuthentication } from './authentication';
 
 export { expect };
 export type AttachmentWriteExpectation = {
@@ -20,30 +21,58 @@ type AttachmentWritePolicy = {
   readonly allowed: Map<string, { readonly count: number; observed: number }>;
   readonly unexpected: string[];
   readonly register: (entries: readonly AttachmentWriteExpectation[]) => void;
+  readonly registerBrowser: (entries: readonly BrowserWriteExpectation[]) => void;
 };
+export type BrowserWriteExpectation = { readonly method: 'POST' | 'PATCH' | 'PUT' | 'DELETE'; readonly url: string; readonly count: number };
 export const test = base.extend<{
+  authentication: 'automatic' | 'visible';
+  authenticatedContext: void;
   acceptanceEvidence: void;
   allowAttachmentWrites: AttachmentWritePolicy['register'];
   attachmentWritePolicy: AttachmentWritePolicy;
+  allowBrowserWrites: AttachmentWritePolicy['registerBrowser'];
 }>({
+  authentication: ['automatic', { option: true }],
+  authenticatedContext: async ({ context, baseURL, authentication }, use) => {
+    if (baseURL === undefined) throw new Error('Browser authentication requires the exact product origin.');
+    if (authentication === 'automatic') await browserAuthentication(context, baseURL);
+    await use();
+  },
+  page: async ({ page, authenticatedContext }, use) => { void authenticatedContext; await use(page); },
+  request: async ({ playwright, baseURL }, use) => {
+    if (baseURL === undefined) throw new Error('API fixture authentication requires the exact product origin.');
+    const context = await bearerContext(playwright.request, baseURL);
+    try { await use(context); } finally { await context.dispose(); }
+  },
   attachmentWritePolicy: async ({}, use) => {
     const allowed: AttachmentWritePolicy['allowed'] = new Map();
     const unexpected: string[] = [];
-    await use({ allowed, unexpected, register: (entries) => {
+    const registerBrowser = (entries: readonly BrowserWriteExpectation[]) => {
+      for (const entry of entries) {
+        const url = new URL(entry.url);
+        if (!['http:', 'https:'].includes(url.protocol) || url.href !== entry.url || url.username !== '' || url.password !== '' || url.hash !== ''
+          || !['POST', 'PATCH', 'PUT', 'DELETE'].includes(entry.method) || !Number.isInteger(entry.count) || entry.count < 1) throw new Error('Invalid exact browser write expectation.');
+        const key = `${entry.method} ${url.href}`;
+        if (allowed.has(key)) throw new Error('Duplicate exact browser write expectation.');
+        allowed.set(key, { count: entry.count, observed: 0 });
+      }
+    };
+    await use({ allowed, unexpected, registerBrowser, register: (entries) => {
       if (allowed.size !== 0) throw new Error('Attachment write expectations are registered once per scenario.');
+      const writes: BrowserWriteExpectation[] = [];
       for (const entry of entries) {
         const origin = new URL(entry.origin);
         if (!['http:', 'https:'].includes(origin.protocol) || origin.origin !== entry.origin
           || !['PUT', 'DELETE'].includes(entry.method) || !Number.isInteger(entry.count) || entry.count < 1) {
           throw new Error('Invalid exact attachment write expectation.');
         }
-        const key = `${entry.method} ${new URL(attachmentDownloadUrl(entry.projectId, entry.taskId, entry.path), origin).href}`;
-        if (allowed.has(key)) throw new Error('Duplicate exact attachment write expectation.');
-        allowed.set(key, { count: entry.count, observed: 0 });
+        writes.push({ method: entry.method, url: new URL(attachmentDownloadUrl(entry.projectId, entry.taskId, entry.path), origin).href, count: entry.count });
       }
+      registerBrowser(writes);
     } });
   },
   allowAttachmentWrites: async ({ attachmentWritePolicy }, use) => { await use(attachmentWritePolicy.register); },
+  allowBrowserWrites: async ({ attachmentWritePolicy }, use) => { await use(attachmentWritePolicy.registerBrowser); },
   acceptanceEvidence: [async ({ browser, page, attachmentWritePolicy }, use) => {
     const directory = evidenceDirectory();
     await mkdir(directory, { recursive: true });
@@ -65,7 +94,7 @@ export const test = base.extend<{
     await use();
     expect(pageErrors, 'Production page has no uncaught exceptions').toEqual([]);
     expect(attachmentWritePolicy.unexpected, attachmentWritePolicy.allowed.size === 0
-      ? 'Dashboard remains read-only' : 'Browser writes match only the exact registered attachment URLs').toEqual([]);
+      ? 'Dashboard remains read-only' : 'Browser writes match only the exact registered URLs and methods').toEqual([]);
     for (const [key, entry] of attachmentWritePolicy.allowed) {
       expect(entry.observed, `Exact browser write count: ${key}`).toBe(entry.count);
     }

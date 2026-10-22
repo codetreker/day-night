@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve, sep } from 'node:path';
+import { mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { command, type CommandOptions } from './process.mts';
@@ -12,16 +12,20 @@ import { browserInventory, recoverBrowsers, type BrowserInventory } from './brow
 import { waitForContainerPermission, writeContainerPermission } from './permission.mts';
 import { runPipeline } from './pipeline.mts';
 import { recoverCliProcesses, validateInstalledCli, type InstalledCliReceipt } from './installed-cli.mts';
+import { reserveLoopbackPort, startAuthFixture, type AuthFixture } from './auth-fixture.mts';
 
 const packageRoot = fileURLToPath(new URL('../../', import.meta.url));
 const repositoryRoot = resolve(packageRoot, '../..');
 const serverRoot = resolve(packageRoot, '../daynight-server');
 const evidenceRoot = join(packageRoot, '.tmp/acceptance');
+const privateRoot = join(packageRoot, '.tmp/acceptance-private');
 const script = fileURLToPath(new URL('../acceptance.mts', import.meta.url));
 const labelKey = 'io.daynight.acceptance.run';
 const functionalScenarios = ['project-list', 'project-graph', 'detail-navigation', 'refresh-staleness',
   'failure-recovery', 'deep-links', 'keyboard-focus', 'narrow-layout', 'task-attachments', 'project-view-tabs',
-  'language-startup-preferences', 'language-state-preservation', 'language-errors-and-narrow'] as const;
+  'language-startup-preferences', 'language-state-preservation', 'language-errors-and-narrow',
+  'auth-login-session', 'auth-project-isolation', 'auth-project-members', 'auth-personal-tokens',
+  'auth-invitations', 'auth-resource-session'] as const;
 const capacityScenarios = ['capacity-chain', 'capacity-merge', 'capacity-shared', 'capacity-external', 'capacity-limits'] as const;
 
 const json = async (path: string, value: unknown): Promise<void> => {
@@ -40,6 +44,78 @@ const prepareInstalledCli = async (options: InstalledFactoryOptions): Promise<In
   if (typeof fixture.createInstalledCli !== 'function') throw new Error('The installed CLI preparation fixture is unavailable.');
   const create = fixture.createInstalledCli as (options: InstalledFactoryOptions) => Promise<InstalledPreparation>;
   return await create(options);
+};
+
+class NativeAddressInUseError extends Error {}
+
+type NativeLaunchOptions = {
+  binary: string; databaseUrl: string; storageRoot: string; baseUrl: string;
+  auth: Pick<AuthFixture, 'origin' | 'appId' | 'appSecret'>; signal: AbortSignal;
+  onSpawn(child: ChildProcess): Promise<void>;
+  onUnexpectedExit(child: ChildProcess, code: number | null, signal: NodeJS.Signals | null): void;
+};
+
+export const launchNativeServer = async (options: NativeLaunchOptions): Promise<ChildProcess> => {
+  options.signal.throwIfAborted();
+  const origin = new URL(options.baseUrl);
+  if (origin.origin !== options.baseUrl || origin.protocol !== 'http:' || origin.hostname !== '127.0.0.1' || origin.port === '') {
+    throw new Error('Native acceptance requires an exact numeric loopback HTTP origin.');
+  }
+  await mkdir(options.storageRoot, { recursive: true });
+  const child = spawn(options.binary, [], { cwd: serverRoot, env: { ...process.env,
+    DAYNIGHT_DATABASE_URL: options.databaseUrl, DAYNIGHT_LISTEN_ADDR: origin.host, DAYNIGHT_STORAGE_ROOT: options.storageRoot,
+    DAYNIGHT_PUBLIC_ORIGIN: origin.origin, DAYNIGHT_UNIAUTH_URL: options.auth.origin,
+    DAYNIGHT_UNIAUTH_APP_ID: options.auth.appId, DAYNIGHT_UNIAUTH_APP_SECRET: options.auth.appSecret,
+    DAYNIGHT_UNIAUTH_CALLBACK_URL: `${origin.origin}/api/v1/auth/callback`,
+    DAYNIGHT_ALLOW_HTTP_TEST_ORIGIN: '1', DAYNIGHT_ALLOW_LOOPBACK_HTTP: '1',
+  }, stdio: ['ignore', 'ignore', 'pipe'] });
+  let registration = Promise.resolve();
+  let ready = false;
+  let addressInUse = false;
+  let partial = '';
+  return await new Promise<ChildProcess>((resolveReady, reject) => {
+    const finish = (): void => { clearTimeout(timer); options.signal.removeEventListener('abort', abort); };
+    const fail = (error: unknown): void => { finish(); void registration.then(() => reject(error), reject); };
+    const timer = setTimeout(() => fail(new Error('Native Go readiness timed out.')), 45_000);
+    const abort = (): void => fail(new Error('Native Go startup cancelled.', { cause: options.signal.reason }));
+    options.signal.addEventListener('abort', abort, { once: true });
+    child.once('spawn', () => {
+      try { registration = options.onSpawn(child); }
+      catch (error) { registration = Promise.reject(error); }
+      void registration.catch(fail);
+    });
+    child.once('error', fail);
+    child.once('exit', (code, signal) => {
+      finish();
+      if (!ready) fail(addressInUse ? new NativeAddressInUseError('Native Go loopback port is already in use.') : new Error('Native Go process exited before readiness.'));
+      else options.onUnexpectedExit(child, code, signal);
+    });
+    child.stderr!.on('data', (data: Buffer) => {
+      partial += data.toString('utf8');
+      if (partial.length > 65_536) { fail(new Error('Native Go emitted an oversized structured log line.')); return; }
+      let boundary: number;
+      while ((boundary = partial.indexOf('\n')) !== -1) {
+        const line = partial.slice(0, boundary); partial = partial.slice(boundary + 1);
+        let record: { phase?: unknown; address?: unknown; diagnostic?: unknown; cause?: unknown };
+        try {
+          const decoded: unknown = JSON.parse(line);
+          if (decoded === null || typeof decoded !== 'object' || Array.isArray(decoded)) throw new Error('Invalid structured log.');
+          record = decoded as typeof record;
+        } catch { fail(new Error('Native Go emitted invalid structured logs.')); return; }
+        if (record.phase === 'startup' && record.diagnostic === 'HTTP listen failed' && record.cause === 'address_in_use') addressInUse = true;
+        if (record.phase === 'listening') {
+          if (record.address !== origin.host) { fail(new Error('Native Go listener differs from its registered public origin.')); return; }
+          ready = true; finish();
+          void registration.then(() => {
+            options.signal.throwIfAborted();
+            if (child.exitCode !== null || child.signalCode !== null) throw new Error('Native Go exited while recording readiness.');
+            resolveReady(child);
+          }).catch(reject);
+        }
+      }
+    });
+    if (options.signal.aborted) abort();
+  });
 };
 
 const createRunner = (cancellation: AbortController) => {
@@ -65,8 +141,9 @@ const createRunner = (cancellation: AbortController) => {
   type NativeEvidence = {
     owner: string; postgresContainer: string; postgresVolume: string; binary: string; storageRoot: string; binarySha256?: string;
     processPid?: number; postgresImage: string; postgresImageId?: string; postgresVersion?: string; cleanup: 'pending' | 'passed' | 'failed';
-    processIdentity?: ProcessIdentity;
+    processIdentity?: ProcessIdentity; authFixtures?: AuthFixtureEvidence[];
   };
+  type AuthFixtureEvidence = { directory: string; binary: string; binarySha256: string; processPid?: number; processIdentity?: ProcessIdentity; cleanup: 'pending' | 'passed' | 'failed' };
   type InstalledEvidence = { root: string; receiptPath?: string; receipt?: InstalledCliReceipt; cleanup: 'pending' | 'passed' | 'failed' };
   type ReadyInstalledEvidence = InstalledEvidence & { receiptPath: string; receipt: InstalledCliReceipt };
   const readyInstallation = (installed: InstalledEvidence | undefined): ReadyInstalledEvidence => {
@@ -204,59 +281,60 @@ const createRunner = (cancellation: AbortController) => {
   };
 
   const startServer = async (binary: string, databaseUrl: string, evidence: NativeEvidence, register: (child: ChildProcess) => void,
-    persist: () => Promise<void>): Promise<{ child: ChildProcess; baseUrl: string }> => {
-    cancellation.signal.throwIfAborted();
-    await mkdir(evidence.storageRoot, { recursive: true });
-    const child = spawn(binary, [], { cwd: serverRoot, env: { ...process.env, DAYNIGHT_DATABASE_URL: databaseUrl,
-      DAYNIGHT_LISTEN_ADDR: '127.0.0.1:0', DAYNIGHT_STORAGE_ROOT: evidence.storageRoot },
-      stdio: ['ignore', 'ignore', 'pipe'] });
-    register(child);
-    if (child.pid !== undefined) evidence.processPid = child.pid;
-    const identityReady = new Promise<void>((resolveIdentity, rejectIdentity) => {
-      child.once('spawn', () => {
-        void processIdentity(child.pid!).then((identity) => {
-          if (identity === null || identity.executable !== binary) throw new Error('Native Go executable identity differs from the owned binary.');
-          evidence.processIdentity = identity;
-        }).then(persist).then(resolveIdentity, rejectIdentity);
-      });
-      child.once('error', rejectIdentity);
-    });
-    void identityReady.catch(() => {});
-    return await new Promise((resolveReady, reject) => {
-      let partial = '';
-      let ready = false;
-      const timer = setTimeout(() => reject(new Error('Native Go readiness timed out.')), 45_000);
-      const abort = (): void => { clearTimeout(timer); reject(new Error('Native Go startup cancelled.')); };
-      cancellation.signal.addEventListener('abort', abort, { once: true });
-      const finish = (): void => { clearTimeout(timer); cancellation.signal.removeEventListener('abort', abort); };
-      child.once('error', (error) => { finish(); reject(error); });
-      child.once('exit', (code, signal) => {
-        finish();
-        if (!ready) reject(new Error('Native Go process exited before readiness.'));
-        else if (!expectedServerShutdowns.has(child)) {
-          cancellation.abort(new Error(`Native Go exited unexpectedly (exit=${code}, signal=${signal}).`));
-        }
-      });
-      child.stderr!.on('data', (data: Buffer) => {
-        partial += data.toString('utf8');
-        if (partial.length > 65_536) { finish(); reject(new Error('Native Go emitted an oversized structured log line.')); return; }
-        let boundary: number;
-        while ((boundary = partial.indexOf('\n')) !== -1) {
-          const line = partial.slice(0, boundary); partial = partial.slice(boundary + 1);
-          let record: { phase?: unknown; address?: unknown };
-          try {
-            const decoded: unknown = JSON.parse(line);
-            if (decoded === null || typeof decoded !== 'object' || Array.isArray(decoded)) throw new Error('Invalid structured log.');
-            record = decoded as typeof record;
-          }
-          catch { finish(); reject(new Error('Native Go emitted invalid structured logs.')); return; }
-          if (record.phase === 'listening' && typeof record.address === 'string' && /^127\.0\.0\.1:[1-9]\d*$/.test(record.address)) {
-            ready = true; finish();
-            void identityReady.then(() => resolveReady({ child, baseUrl: `http://${record.address}` }), reject);
-          }
-        }
-      });
-    });
+    persist: () => Promise<void>, fixtureBinary: string, fixtureBinarySha256: string): Promise<{ child: ChildProcess; baseUrl: string; fixture: AuthFixture }> => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      cancellation.signal.throwIfAborted();
+      const baseUrl = `http://127.0.0.1:${await reserveLoopbackPort()}`;
+      const owned: AuthFixtureEvidence = { directory: join(privateRoot, basename(dirname(evidence.binary)), 'auth', `native-auth-${attempt}`),
+        binary: fixtureBinary, binarySha256: fixtureBinarySha256, cleanup: 'pending' };
+      evidence.authFixtures ??= [];
+      evidence.authFixtures.push(owned);
+      await persist();
+      let fixture: AuthFixture | undefined;
+      try {
+        fixture = await startAuthFixture({ binary: fixtureBinary, directory: owned.directory,
+          callbackURL: `${baseUrl}/api/v1/auth/callback`, signal: cancellation.signal,
+          onSpawn: async (fixtureChild) => {
+            owned.processPid = fixtureChild.pid!;
+            await persist();
+            const identity = await processIdentity(fixtureChild.pid!);
+            if (identity !== null) {
+              if (identity.executable !== fixtureBinary) throw new Error('UniAuth fixture identity differs from the prepared binary.');
+              owned.processIdentity = identity;
+            }
+            await persist();
+          },
+        });
+        const child = await launchNativeServer({ binary, databaseUrl, storageRoot: evidence.storageRoot, baseUrl, auth: fixture,
+          signal: cancellation.signal,
+          onSpawn: async (nativeChild) => {
+            register(nativeChild);
+            evidence.processPid = nativeChild.pid!;
+            delete evidence.processIdentity;
+            await persist();
+            const identity = await processIdentity(nativeChild.pid!);
+            if (identity !== null) {
+              if (identity.executable !== binary) throw new Error('Native Go executable identity differs from the owned binary.');
+              evidence.processIdentity = identity;
+            }
+            await persist();
+          },
+          onUnexpectedExit: (nativeChild, code, signal) => {
+            if (!expectedServerShutdowns.has(nativeChild)) cancellation.abort(new Error(`Native Go exited unexpectedly (exit=${code}, signal=${signal}).`));
+          },
+        });
+        return { child, baseUrl, fixture };
+      } catch (error) {
+        const cleanupFailures: unknown[] = [];
+        try { await fixture?.close(); } catch (cleanup) { cleanupFailures.push(cleanup); }
+        try { await cleanupAuthFixture(owned, dirname(evidence.binary)); owned.cleanup = 'passed'; }
+        catch (cleanup) { owned.cleanup = 'failed'; cleanupFailures.push(cleanup); }
+        try { await persist(); } catch (cleanup) { cleanupFailures.push(cleanup); }
+        if (cleanupFailures.length > 0) throw new AggregateError([error, ...cleanupFailures], 'Native startup and UniAuth fixture cleanup failed.');
+        if (!(error instanceof NativeAddressInUseError) || attempt === 2) throw error;
+      }
+    }
+    throw new Error('Native Go exhausted proven loopback port conflicts.');
   };
 
   const stopServer = async (child: ChildProcess | undefined): Promise<void> => {
@@ -311,6 +389,30 @@ const createRunner = (cancellation: AbortController) => {
     await rm(storageRoot, { recursive: true, force: true });
   };
 
+  const validateAuthFixtureOwnership = (fixture: AuthFixtureEvidence, directory: string): void => {
+    if (!/^native-auth-[0-2]$/.test(fixture.directory.split('/').at(-1)!)
+      || dirname(fixture.directory) !== join(privateRoot, basename(directory), 'auth') || dirname(directory) !== evidenceRoot
+      || !/^\d{14}-[a-f0-9-]{36}$/.test(directory.split('/').at(-1)!)
+      || fixture.binary !== join(serverRoot, '.tmp/uniauth-fixture') || !/^[a-f0-9]{64}$/.test(fixture.binarySha256)) {
+      throw new Error('UniAuth fixture ownership differs from the prepared binary.');
+    }
+  };
+
+  const cleanupAuthFixture = async (fixture: AuthFixtureEvidence, directory: string): Promise<void> => {
+    validateAuthFixtureOwnership(fixture, directory);
+    if (fixture.processIdentity !== undefined) await requireStopped(validIdentity(fixture.processIdentity));
+    else if (fixture.processPid !== undefined && await processIdentity(fixture.processPid) !== null) throw new Error('UniAuth fixture lacks enough identity evidence for cleanup.');
+    await rm(fixture.directory, { recursive: true, force: true });
+    for (const path of [dirname(fixture.directory), dirname(dirname(fixture.directory))]) {
+      try { await rmdir(path); }
+      catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'ENOTEMPTY') break;
+        if (code !== 'ENOENT') throw error;
+      }
+    }
+  };
+
   const validIdentity = (value: unknown): ProcessIdentity => {
     if (value === null || typeof value !== 'object') throw new Error('Missing recorded process identity.');
     const identity = value as ProcessIdentity;
@@ -320,6 +422,35 @@ const createRunner = (cancellation: AbortController) => {
       throw new Error('Invalid recorded process identity.');
     }
     return identity;
+  };
+
+  const recoverProcess = async (owned: { processPid?: number; processIdentity?: ProcessIdentity; binary: string; binarySha256?: string }): Promise<{ result: string; forced?: boolean }> => {
+    if (owned.processIdentity === undefined) {
+      if (owned.processPid !== undefined && await processIdentity(owned.processPid) !== null) throw new Error('Owned process lacks enough identity evidence for recovery.');
+      return { result: 'not-started' };
+    }
+    const identity = validIdentity(owned.processIdentity);
+    if (identity.pid !== owned.processPid || identity.executable !== owned.binary) throw new Error('Owned process receipt does not match its binary.');
+    const observed = await processIdentity(identity.pid);
+    if (observed !== null && observed.startTicks === identity.startTicks && !sameProcess(identity, observed)) throw new Error('Owned executable identity changed before recovery.');
+    if (!sameProcess(identity, observed)) return { result: 'absent' };
+    if (owned.binarySha256 === undefined || !/^[a-f0-9]{64}$/.test(owned.binarySha256)
+      || createHash('sha256').update(await readFile(owned.binary)).digest('hex') !== owned.binarySha256) {
+      throw new Error('Owned recovery executable hash differs from the built artifact.');
+    }
+    if (!sameProcess(identity, await processIdentity(identity.pid))) throw new Error('Owned process changed during recovery verification.');
+    process.kill(identity.pid, 'SIGTERM');
+    let deadline = Date.now() + 20_000;
+    while (sameProcess(identity, await processIdentity(identity.pid)) && Date.now() < deadline) await new Promise((done) => setTimeout(done, 100));
+    let forced = false;
+    if (sameProcess(identity, await processIdentity(identity.pid))) {
+      process.kill(identity.pid, 'SIGKILL');
+      forced = true;
+      deadline = Date.now() + 5_000;
+      while (sameProcess(identity, await processIdentity(identity.pid)) && Date.now() < deadline) await new Promise((done) => setTimeout(done, 100));
+    }
+    if (sameProcess(identity, await processIdentity(identity.pid))) throw new Error('Verified owned process remains after bounded recovery.');
+    return forced ? { result: 'stopped', forced } : { result: 'stopped' };
   };
 
   const optionalJson = async (path: string): Promise<unknown | undefined> => {
@@ -412,32 +543,22 @@ const createRunner = (cancellation: AbortController) => {
         });
         receipt.installedCli = 'passed';
       }
-      if (native.processIdentity !== undefined) {
-        const identity = validIdentity(native.processIdentity);
-        if (identity.pid !== native.processPid || identity.executable !== native.binary) throw new Error('Native process receipt does not match its binary.');
-        const observed = await processIdentity(identity.pid);
-        if (observed !== null && observed.startTicks === identity.startTicks && !sameProcess(identity, observed)) throw new Error('Native executable identity changed before recovery.');
-        if (sameProcess(identity, observed)) {
-          if (native.binarySha256 === undefined || !/^[a-f0-9]{64}$/.test(native.binarySha256)
-            || createHash('sha256').update(await readFile(native.binary)).digest('hex') !== native.binarySha256) {
-            throw new Error('Native recovery executable hash differs from the built artifact.');
-          }
-          if (!sameProcess(identity, await processIdentity(identity.pid))) throw new Error('Native process changed during recovery verification.');
-          process.kill(identity.pid, 'SIGTERM');
-          let deadline = Date.now() + 20_000;
-          while (sameProcess(identity, await processIdentity(identity.pid)) && Date.now() < deadline) await new Promise((done) => setTimeout(done, 100));
-          if (sameProcess(identity, await processIdentity(identity.pid))) {
-            process.kill(identity.pid, 'SIGKILL');
-            receipt.nativeForced = true;
-            deadline = Date.now() + 5_000;
-            while (sameProcess(identity, await processIdentity(identity.pid)) && Date.now() < deadline) await new Promise((done) => setTimeout(done, 100));
-          }
-          if (sameProcess(identity, await processIdentity(identity.pid))) throw new Error('Verified native process remains after bounded recovery.');
-          receipt.nativeProcess = 'stopped';
-        } else receipt.nativeProcess = 'absent';
-      } else {
-        if (native.processPid !== undefined && await processIdentity(native.processPid) !== null) throw new Error('Native process lacks enough identity evidence for recovery.');
-        receipt.nativeProcess = 'not-started';
+      const nativeProcess = await recoverProcess(native);
+      receipt.nativeProcess = nativeProcess.result;
+      if (nativeProcess.forced) receipt.nativeForced = true;
+      if (native.authFixtures !== undefined) {
+        if (!Array.isArray(native.authFixtures) || native.authFixtures.length > 3) throw new Error('Invalid native UniAuth fixture ownership.');
+        receipt.authFixtures = [];
+        for (const fixture of native.authFixtures) {
+          validateAuthFixtureOwnership(fixture, directory);
+          const process = await recoverProcess(fixture);
+          await cleanupAuthFixture(fixture, directory);
+          fixture.cleanup = 'passed';
+          (receipt.authFixtures as unknown[]).push({ directory: fixture.directory, ...process });
+        }
+        await json(join(directory, 'evidence.json'), evidence);
+        const latest = await optionalJson(join(evidenceRoot, 'evidence.json')) as Evidence | undefined;
+        if (latest?.runId === evidence.runId) await json(join(evidenceRoot, 'evidence.json'), evidence);
       }
       await cleanupNative(native);
       receipt.nativeDocker = 'passed';
@@ -526,6 +647,7 @@ const createRunner = (cancellation: AbortController) => {
     };
     const installedEvidence = (): ReadyInstalledEvidence => readyInstallation(evidence.installedCli);
     let child: ChildProcess | undefined;
+    let authFixture: AuthFixture | undefined;
     let nativeTarget: Target | undefined;
     let devCiRunId: string | undefined;
     let failure: unknown;
@@ -577,6 +699,9 @@ const createRunner = (cancellation: AbortController) => {
             { cwd: serverRoot, timeoutMs: 300_000 });
           evidence.native.binarySha256 = createHash('sha256').update(await readFile(evidence.native.binary)).digest('hex');
           await save();
+          const fixtureBinary = await ownedRun(process.execPath, ['scripts/prepare-uniauth-fixture.mts'], { cwd: serverRoot, quiet: true, timeoutMs: 600_000 });
+          if (fixtureBinary !== join(serverRoot, '.tmp/uniauth-fixture')) throw new Error('Canonical UniAuth preparation returned an unexpected binary path.');
+          const fixtureBinarySha256 = createHash('sha256').update(await readFile(fixtureBinary)).digest('hex');
           await ownedRun('docker', ['volume', 'create', '--label', `${labelKey}=${owner}`, evidence.native.postgresVolume], { quiet: true });
           await ownedRun('docker', ['run', '--detach', '--name', evidence.native.postgresContainer, '--label', `${labelKey}=${owner}`,
             '--publish', '127.0.0.1::5432', '--mount', `type=volume,src=${evidence.native.postgresVolume},dst=/var/lib/postgresql`,
@@ -597,8 +722,9 @@ const createRunner = (cancellation: AbortController) => {
           if (!/^127\.0\.0\.1:[1-9]\d*$/.test(endpoint)) throw new Error('Native PostgreSQL lacks a unique loopback port.');
           const started = await startServer(evidence.native.binary,
             `postgres://daynight:daynight-browser-fixture@${endpoint}/daynight?sslmode=disable`, evidence.native,
-            (ownedChild) => { child = ownedChild; }, save);
+            (ownedChild) => { child = ownedChild; }, save, fixtureBinary, fixtureBinarySha256);
           child = started.child;
+          authFixture = started.fixture;
           nativeTarget = { target: 'native', result: 'running', baseUrl: started.baseUrl,
             postgresContainer: evidence.native.postgresContainer, projectLabel: { key: labelKey, value: owner }, database: 'daynight', phases: [] };
           evidence.targets.push(nativeTarget);
@@ -710,6 +836,11 @@ const createRunner = (cancellation: AbortController) => {
       }
       const beforeNativeCleanup = cleanupFailures.length;
       try { await stopServer(child); } catch (error) { cleanupFailures.push(error); }
+      try { await authFixture?.close(); } catch (error) { cleanupFailures.push(error); }
+      for (const fixture of evidence.native.authFixtures ?? []) {
+        try { await cleanupAuthFixture(fixture, directory); fixture.cleanup = 'passed'; }
+        catch (error) { fixture.cleanup = 'failed'; cleanupFailures.push(error); }
+      }
       try { await cleanupNativeStorage(evidence.native, runId); }
       catch (error) { cleanupFailures.push(error); }
       try { await cleanupNative(evidence.native); }

@@ -27,15 +27,16 @@ Web 附件管理亦已实现，组合验收由 A-T6 维护。
 [鉴权需求](daynight-auth.md)定义完整的个人访问令牌、项目成员授权和私有项目发现。
 CLI 的令牌配置与 HTTP 传输已实现；[凭据决策](../../.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
 记录其机制。[架构](../design/daynight-auth.md)与[任务拆分](../design/daynight-auth-tasks.md)
-拥有服务组合与交付条件；生产服务尚未启用鉴权。仓库关联只选择项目，不授予访问
-权限，也不保存认证凭据。
+拥有服务组合与交付条件；生产服务对全部项目、任务、图和附件请求强制鉴权。
+使用当前服务前，通过 Web 登录并创建 PAT，再运行 setup 保存令牌。仓库关联只选择
+项目，不授予访问权限，也不保存认证凭据。
 
 ## PT1. 范围与命令边界
 
 交付包含 project 创建、列表和详情，以及 project 内 task 的创建、列表、有界 ready
 选择、详情、更新和完整图查询。本文已交付的命令复用现有服务接口，不新增 server API、数据库字段、project 唯一
-约束或任务执行能力。可选个人令牌复用既有 HTTP 请求，允许配置地址不改变服务
-现有的本机访问边界。
+约束或任务执行能力。个人令牌复用既有 HTTP 请求；客户端配置允许省略令牌，
+强制鉴权的服务将对应请求拒绝为 401。地址配置不改变服务现有的 loopback 监听边界。
 
 顶层、命令组和操作帮助必须先于配置加载、Git、文件写入和网络访问执行。裸
 `project`、`task` 显示各自帮助。新增业务依赖不得成为 review、自更新、帮助或版本
@@ -58,7 +59,11 @@ ASCII；配置令牌时服务必须是 HTTPS，或 host 为字面量 `localhost`
 仅引导服务连接；保存成功后执行原命令。无效值和读取错误须说明配置文件、字段及原因，
 非交互环境缺配置时给出 `daynight setup --server-url <url>` 指引。
 
-仅使用 project/task 时，上述配置即足够，不要求 `repositories`、review 路径、
+使用强制鉴权服务时还须通过 setup 的隐藏输入或显式 stdin 方式保存 Web 创建的
+个人访问令牌；令牌不出现在命令参数、仓库关联文件、任务或附件中。配置保存本身
+不登录，也不验证令牌或成员权限。
+
+仅使用 project/task 时，不要求 `repositories`、review 路径、
 SQLite、GitHub CLI 或 Copilot。共享层读取严格 YAML 并识别已登记的顶层字段；各
 命令只校验和解析自己的配置投影。project/task 不因无关 review 字段的业务校验失败
 而拒绝执行，review 也不要求有效的 `serverUrl`。YAML 语法错误、重复 key 和未知

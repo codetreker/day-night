@@ -39,7 +39,7 @@ The runner starts normal dev-ci source build/start once, concurrently with nativ
 production UI/Go/PostgreSQL preparation and CI browser/coverage callbacks. The
 existing shell runner remains authoritative for the unique image, running-image
 check and full stack cleanup. Native functional browser work waits only for the
-native process, shared installed CLI and browser preparation. Its thirteen scenarios and immediate
+native process, shared installed CLI and browser preparation. Its nineteen scenarios and immediate
 browser recovery must pass before the runner releases the container browser.
 
 Release is an atomic `container/container-permission.json` receipt with schema 1,
@@ -47,7 +47,7 @@ phase `native-functional-cleaned`, acceptance run ID, dev-ci run ID and source
 SHA. The container callback records its process identity before waiting and
 inventories browsers only after validating that exact permission. Its
 `ready.json` records diagnostic timing and grants no permission. The callback
-runs the thirteen container functional scenarios, confirms browser cleanup and
+runs the nineteen container functional scenarios, confirms browser cleanup and
 returns to the normal shell exit path. The outer stage waits for full dev-ci
 cleanup and browser recovery before completing.
 
@@ -57,14 +57,19 @@ Go process and PostgreSQL remain alive for this final phase. One browser worker,
 zero retries, all four fixed graphs with five repetitions, both independent
 limits, complete visible induced geometry, twenty CDP traces and all original timing gates
 remain required. Native functional and capacity phases strictly aggregate to
-eighteen unique scenarios; the container target requires thirteen. Per-phase and
+twenty-four unique scenarios; the container target requires nineteen. Per-phase and
 aggregate validation reject missing, extra or duplicate scenarios and retries,
 and require matching browser identity within a target.
 
 The [progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
 retains those complete API inputs and existing timing thresholds while requiring
 bounded overview DOM, all induced visible edges and explicit expansion/reset.
-Phase ownership and the 31-scenario inventory remain unchanged.
+Phase ownership and the original thirty-one-scenario inventory were unchanged
+by progressive graph delivery. The
+[authentication activation](../architecture/2026-10-22-authentication-activation.md)
+adds six functional scenarios per target, making the current inventory forty-three.
+It also requires normal UniAuth session/PAT bootstrap with private run-owned
+credentials; graph/read-only request policies apply after that bootstrap.
 
 The top-level evidence and recovery receipts use schema 2. Pipeline stages record
 names, results, timestamps, observed managed-command process identities and their
@@ -104,7 +109,11 @@ adds the dense-external capacity graph while preserving that isolation. The
 adds three functional scenarios per target, preserving phase ownership, strict
 aggregation and all capacity conditions. The
 [web design](../../../../docs/design/daynight-web.md#验证与-ci) owns mechanisms.
-Measured outcomes remain tied to their source, environment and PR/CI run.
+Authentication also keeps ordinary Playwright action/network tracing off to avoid
+capturing credential headers/bodies; custom CDP performance diagnostics, PNG
+oracles, strict raw validators and budgets remain. The activation decision owns
+that source-verified privacy tradeoff and private fixture cleanup. Measured
+outcomes remain tied to their source, environment and PR/CI run.
 
 ## Alternatives
 

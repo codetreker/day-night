@@ -19,10 +19,12 @@
 [架构](../design/daynight-task-attachments.md)与
 [任务拆分](../design/daynight-task-attachments-tasks.md)单独拥有附件机制及实施状态。
 
-[鉴权需求](daynight-auth.md)单独定义规划中的 UniAuth 登录、Daynight 会话与个人
+[鉴权需求](daynight-auth.md)定义已接入主站的 UniAuth 登录、Daynight 会话、个人
 访问令牌和项目成员授权；[架构](../design/daynight-auth.md)与
-[任务拆分](../design/daynight-auth-tasks.md)拥有机制和交付顺序。身份/凭据与项目成员
-基础模块已有独立实现，尚未挂入主站路由，本文的本机未认证服务仍为当前运行基线。
+[任务拆分](../design/daynight-auth-tasks.md)拥有机制和交付条件。全部 project、task、
+图和附件业务请求必须通过认证，并按项目成员关系授权。已有项目后续手工补齐成员，
+零成员项目不可访问。[统一启用决策](../../.agents/notes/implemented/architecture/2026-10-22-authentication-activation.md)
+记录运行时接线与验收凭据边界；对应源码的验证结论仍以完整运行回执为准。
 
 ## 目标与交付范围
 
@@ -60,7 +62,8 @@ SSH URL 和 SCP 风格 SSH 地址，地址必须包含主机和仓库路径；�
 但不得包含密码；查询参数和 fragment
 不属于仓库地址。无效地址作为输入错误拒绝，地址中 SSH 用户名不作为业务身份。
 
-当前接口只提供创建、列表查询和单项读取；创建后 `repoUrl` 不可通过 task 更新改变。
+当前接口只提供创建、列表查询和单项读取；创建者在同一事务中成为项目管理员，
+列表在数据库中先按当前成员关系过滤，再进行分页。创建后 `repoUrl` 不可通过 task 更新改变。
 
 ## Task 与依赖
 
@@ -215,7 +218,9 @@ points，截短时标记 titleTruncated；不返回完整标题、description �
 | HTTP 状态 | `error.code` | 场景 |
 |---|---|---|
 | `400` | `invalid_input` | 格式、字段、分页参数、依赖引用、自身或重复依赖不合法 |
-| `404` | `not_found` | 路径资源缺失或 task 不属于指定 project |
+| `401` | `unauthenticated` | 会话或个人访问令牌缺失、失效或已撤销 |
+| `403` | `forbidden` | 普通成员执行管理员操作，或 Cookie 会话写请求来源不符合要求 |
+| `404` | `not_found` | 路径资源缺失、当前用户不是项目成员或 task 不属于指定 project |
 | `405` | `method_not_allowed` | 已知路径使用不支持的方法，并返回 `Allow` |
 | `409` | `version_conflict` | PATCH 版本过期 |
 | `409` | `dependency_cycle` | 候选依赖图成环 |
@@ -225,15 +230,18 @@ points，截短时标记 titleTruncated；不返回完整标题、description �
 
 ## 运行与范围
 
-支持的运行边界是本机调用，默认监听 `127.0.0.1`；不提供未认证的远程监听。
-跨机器访问必须按[鉴权需求](daynight-auth.md)交付认证、项目授权和部署边界；
-这些规划尚未改变当前监听约束，不能仅通过扩大监听范围绕过。
+服务默认监听 `127.0.0.1`，继续只接受数值 loopback 监听地址；认证对全部业务
+请求强制启用。启动必须配置公开 origin、UniAuth 服务地址、App ID、App Secret
+和同 origin 的 callback URL，要求见[鉴权需求](daynight-auth.md)，操作配置由
+[部署指南](../../deployment/localhost/README.md)拥有。生产公开 origin 使用 HTTPS；
+受控 HTTP 测试例外与 UniAuth loopback HTTP 例外分别显式配置，不提供关闭鉴权模式。
+`/healthz` 和 `/readyz` 公开可读，后者仅检查数据库可用性，不检查用户登录或 UniAuth。
 [本地 Docker Compose 部署](../../deployment/localhost/README.md)提供一条命令构建
-并启动内嵌只读看板、API 和 PostgreSQL，等待数据库及完整 API 转发路径健康后返回。
+并启动内嵌只读看板、API 和 PostgreSQL，等待数据库及完整 readiness 转发路径健康后返回。
 页面和 API 共用服务 origin，宿主机 HTTP 端口只发布到 `127.0.0.1`，数据库不发布宿主机端口；容器重建和普通停止必须
 保留项目与任务，删除持久卷须使用单独的显式命令。
-本文已交付的 project/task 管理状态仅由 PostgreSQL 持久化，启动失败必须非零退出。
-后续附件扩展将文件内容保存到独立存储，其非原子性边界由附件需求记录。
+项目、任务及身份/成员状态由 PostgreSQL 持久化，启动失败必须非零退出。
+附件扩展将文件内容保存到独立存储，其非原子性边界由附件需求记录。
 关闭时停止接收新请求，在有界期限内排空请求，再关闭数据库连接。
 
 本文的任务管理接口范围不包含自动任务执行、PR 关联、review 调度、跨 project
@@ -258,6 +266,10 @@ points，截短时标记 titleTruncated；不返回完整标题、description �
 | V8 | `go vet`、race 测试和 `go-cov --ci` 通过；覆盖率总计严格大于 90%、每包至少 85%、每函数至少 80%，保留关键代码块检查 |
 | V9 | 覆盖率不足或 PostgreSQL 不可用使 Go 检查失败；[CI 路由](../../README.md#ci-selection)选择的检查必须成功，未选中的检查必须为 `skipped`，main push 保留全量门禁 |
 | V10 | 请求日志可按 request ID 关联业务和存储失败，记录错误类别、组件和阶段，敏感值不进入日志 |
+
+实际进程与安装 CLI 验收通过固定的真实 UniAuth gateway 夹具取得浏览器会话与 PAT，
+再执行原有 V1–V10 业务场景。受控外部 provider 响应与真实上游登录具有不同证据
+范围；认证配置、私有夹具元数据和凭据不得写入公开产物。
 
 覆盖率是验证门禁，不能替代 V2–V7 的行为证据。测试归属及工具版本固定规则由
 [设计](../design/daynight-server.md)定义。

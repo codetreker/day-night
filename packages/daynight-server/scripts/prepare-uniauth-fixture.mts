@@ -4,14 +4,25 @@ import { access, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } fro
 import { constants } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { withPreparationLock } from "./preparation-lock.mts";
 
-const revision = "c82c55c7fcd366824d0bc5ac6bdd17528c0300fa";
+const revision = "0978963813fcefd9d553f6cb9bcc319084c764b3";
 const upstream = "https://github.com/codetreker/uniauth.git";
 const moduleRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const temporaryRoot = join(moduleRoot, ".tmp");
 const checkout = join(temporaryRoot, "uniauth-fixture-source");
 const fixtureSource = join(moduleRoot, "testdata", "uniauth-fixture");
-const binary = join(temporaryRoot, process.platform === "win32" ? "uniauth-fixture.exe" : "uniauth-fixture");
+const targetArguments = process.argv.slice(2);
+const targetArgument = targetArguments[0];
+if (targetArguments.length > 1 || targetArgument !== undefined && !/^--target=linux\/(?:amd64|arm64)$/.test(targetArgument)) {
+  throw new Error("Usage: node prepare-uniauth-fixture.mts [--target=linux/amd64|--target=linux/arm64]");
+}
+const goos = targetArgument === undefined ? process.platform === "win32" ? "windows" : process.platform : "linux";
+const goarch = targetArgument === undefined ? process.arch === "x64" ? "amd64" : process.arch === "ia32" ? "386" : process.arch : targetArgument.slice("--target=linux/".length);
+const targetPlatform = targetArgument === undefined ? process.platform : "linux";
+const targetArchitecture = targetArgument === undefined ? process.arch : goarch === "amd64" ? "x64" : "arm64";
+const binaryName = targetArgument === undefined ? "uniauth-fixture" : `uniauth-fixture-${goos}-${goarch}`;
+const binary = join(temporaryRoot, goos === "windows" ? `${binaryName}.exe` : binaryName);
 const manifest = `${binary}.json`;
 const cancellation = new AbortController();
 const cancel = () => cancellation.abort(new Error("UniAuth fixture preparation interrupted"));
@@ -30,6 +41,9 @@ const environment = {
   GOENV: "off",
   GOTOOLCHAIN: "go1.27.2",
   GIT_TERMINAL_PROMPT: "0",
+  CGO_ENABLED: "0",
+  GOOS: goos,
+  GOARCH: goarch,
 };
 
 const run = async (command: string, args: string[], cwd: string, timeout: number, capture = false, acceptedCodes = [0]): Promise<string> => {
@@ -101,7 +115,7 @@ const prepare = async () => {
   await mkdir(temporaryRoot, { recursive: true });
   await Promise.all(Object.entries(environment).filter(([key]) => ["GOCACHE", "GOMODCACHE", "GOPATH", "GOBIN", "TMPDIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME"].includes(key)).map(([, path]) => mkdir(path!, { recursive: true })));
   const sourceHash = await sourceDigest();
-  const preparationHash = digest(await readFile(fileURLToPath(import.meta.url)));
+  const preparationHash = digest(Buffer.concat([await readFile(fileURLToPath(import.meta.url)), await readFile(new URL("./preparation-lock.mts", import.meta.url))]));
   let initialized = true;
   try { await access(join(checkout, ".git")); }
   catch (error) {
@@ -124,7 +138,7 @@ const prepare = async () => {
   try {
     const cached = JSON.parse(await readFile(manifest, "utf8"));
     await access(binary, constants.X_OK);
-    if ((await stat(binary)).isFile() && cached.revision === revision && cached.sourceHash === sourceHash && cached.preparationHash === preparationHash && cached.toolchain === environment.GOTOOLCHAIN && cached.platform === process.platform && cached.architecture === process.arch && cached.binaryHash === digest(await readFile(binary))) return;
+    if ((await stat(binary)).isFile() && cached.revision === revision && cached.sourceHash === sourceHash && cached.preparationHash === preparationHash && cached.toolchain === environment.GOTOOLCHAIN && cached.platform === targetPlatform && cached.architecture === targetArchitecture && cached.goos === goos && cached.goarch === goarch && cached.binaryHash === digest(await readFile(binary))) return;
   } catch (error) {
     if (!(error instanceof SyntaxError) && (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
@@ -136,7 +150,7 @@ const prepare = async () => {
     await run("go", ["build", "-mod=readonly", "-trimpath", "-buildvcs=false", "-o", stagedBinary, "./cmd/daynight-fixture"], checkout, 300_000);
     const binaryHash = digest(await readFile(stagedBinary));
     await rename(stagedBinary, binary);
-    await writeFile(`${manifest}.building`, JSON.stringify({ revision, sourceHash, preparationHash, toolchain: environment.GOTOOLCHAIN, platform: process.platform, architecture: process.arch, binaryHash }) + "\n");
+    await writeFile(`${manifest}.building`, JSON.stringify({ revision, sourceHash, preparationHash, toolchain: environment.GOTOOLCHAIN, platform: targetPlatform, architecture: targetArchitecture, goos, goarch, binaryHash }) + "\n");
     await rename(`${manifest}.building`, manifest);
   } finally {
     await rm(stagedBinary, { force: true });
@@ -145,7 +159,7 @@ const prepare = async () => {
 };
 
 try {
-  await prepare();
+  await withPreparationLock(join(temporaryRoot, "uniauth-fixture-preparation.sqlite"), prepare, { signal: cancellation.signal });
   cancellation.signal.throwIfAborted();
   process.stdout.write(`${binary}\n`);
 } catch (error) {

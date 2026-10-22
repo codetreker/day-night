@@ -109,11 +109,13 @@ keys: the locked service write path validates references, local constraints
 guard individual rows, and there is no deletion API. Introducing another writer
 or deletion requires a corresponding reference-maintenance design.
 
-The selected deployment is loopback-only for local CLI and internal program
-callers. Authenticated remote access can be added at the HTTP boundary, but
-authorization must also reach resource lookups before broader exposure; the
-current project ID is never an authorization credential. Remote deployment is
-not delivered by changing the listener alone.
+The original deployment was loopback-only for local CLI and internal program
+callers. The [authentication activation](2026-10-22-authentication-activation.md)
+now authenticates HTTP callers and checks project membership in resource
+lookups while preserving the numeric-loopback listener. Its configured public
+origin and existing entry point are independent of that listener. A project ID
+is never an authorization credential; changing a listener alone does not deliver
+authenticated deployment.
 
 UI, task execution and PR/review integration are additive capabilities outside
 the task-management contract. Their affordable addition depends on keeping

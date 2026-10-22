@@ -31,8 +31,10 @@ task list 的 JSON 仅省略 `description`，其他元数据查询保留各自�
 个人访问令牌配置和共享 HTTP Bearer 传输已实现，机制由
 [凭据决策](../../.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)拥有。
 [鉴权架构](daynight-auth.md)、[需求](../spec/daynight-auth.md)和
-[任务拆分](daynight-auth-tasks.md)拥有完整项目授权与统一启用；当前生产服务尚未
-挂载鉴权模块。仓库关联不保存凭据、不授予项目访问权。
+[任务拆分](daynight-auth-tasks.md)拥有完整项目授权与交付条件；生产服务对全部
+项目、任务、图和附件业务请求强制鉴权。安装 CLI 的真实服务及预算验收通过 UniAuth
+夹具取得用户 PAT，并复用正常配置与 Bearer 请求通道。仓库关联不保存凭据、
+不授予项目访问权；旧项目由部署者手工补齐成员关系。
 
 ## 现有基础与交付边界
 

@@ -14,12 +14,11 @@ import (
 )
 
 type Tasks struct {
-	store    *store.Store
-	projects *Projects
+	store *store.Store
 }
 
 func NewTasks(database *store.Store) *Tasks {
-	return &Tasks{store: database, projects: NewProjects(database)}
+	return &Tasks{store: database}
 }
 
 type CreateTask struct {
@@ -57,7 +56,10 @@ type taskMutation struct {
 	changed bool
 }
 
-func (s *Tasks) Create(ctx context.Context, projectID string, input CreateTask) (core.Task, error) {
+func (s *Tasks) Create(ctx context.Context, principal core.Principal, projectID string, input CreateTask) (core.Task, error) {
+	if err := requirePrincipal(principal); err != nil {
+		return core.Task{}, err
+	}
 	projectID, err := CanonicalID(projectID)
 	if err != nil {
 		return core.Task{}, err
@@ -74,7 +76,7 @@ func (s *Tasks) Create(ctx context.Context, projectID string, input CreateTask) 
 	if err := validateTaskText(values); err != nil {
 		return core.Task{}, err
 	}
-	return s.write(ctx, projectID, func(tx *store.ProjectTx) (taskMutation, error) {
+	return s.write(ctx, principal, projectID, func(tx *store.ProjectTx) (taskMutation, error) {
 		if err := validateCandidate(ctx, tx, id.String(), values, nil); err != nil {
 			return taskMutation{}, err
 		}
@@ -82,7 +84,10 @@ func (s *Tasks) Create(ctx context.Context, projectID string, input CreateTask) 
 	})
 }
 
-func (s *Tasks) Update(ctx context.Context, projectID, id string, input UpdateTask) (core.Task, error) {
+func (s *Tasks) Update(ctx context.Context, principal core.Principal, projectID, id string, input UpdateTask) (core.Task, error) {
+	if err := requirePrincipal(principal); err != nil {
+		return core.Task{}, err
+	}
 	projectID, err := CanonicalID(projectID)
 	if err != nil {
 		return core.Task{}, err
@@ -97,7 +102,7 @@ func (s *Tasks) Update(ctx context.Context, projectID, id string, input UpdateTa
 	if input.Title == nil && input.Description == nil && input.Status == nil && input.DependsOn == nil && input.Properties.PullRequests == nil {
 		return core.Task{}, invalidInput("At least one task field must be provided.")
 	}
-	return s.write(ctx, projectID, func(tx *store.ProjectTx) (taskMutation, error) {
+	return s.write(ctx, principal, projectID, func(tx *store.ProjectTx) (taskMutation, error) {
 		current, err := tx.Task(ctx, id)
 		if errors.Is(err, core.ErrNotFound) {
 			return taskMutation{}, taskNotFound(err)
@@ -121,13 +126,16 @@ func (s *Tasks) Update(ctx context.Context, projectID, id string, input UpdateTa
 	})
 }
 
-func (s *Tasks) write(ctx context.Context, projectID string, prepare func(*store.ProjectTx) (taskMutation, error)) (core.Task, error) {
-	if _, err := s.projects.Get(ctx, projectID); err != nil {
-		return core.Task{}, err
-	}
+func (s *Tasks) write(ctx context.Context, principal core.Principal, projectID string, prepare func(*store.ProjectTx) (taskMutation, error)) (core.Task, error) {
 	var result core.Task
 	var refusal *Fault
 	err := s.store.WriteProject(ctx, projectID, func(tx *store.ProjectTx) error {
+		if _, err := RequireProjectWrite(ctx, tx, principal); err != nil {
+			if errors.As(err, &refusal) {
+				return nil
+			}
+			return err
+		}
 		mutation, err := prepare(tx)
 		if errors.As(err, &refusal) {
 			return nil
@@ -146,6 +154,9 @@ func (s *Tasks) write(ctx context.Context, projectID string, prepare func(*store
 		}
 		return err
 	})
+	if errors.Is(err, core.ErrNotFound) {
+		return core.Task{}, projectNotFound(err)
+	}
 	if err != nil {
 		return core.Task{}, fmt.Errorf("write task: %w", err)
 	}

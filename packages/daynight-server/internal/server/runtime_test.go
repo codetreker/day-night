@@ -23,7 +23,10 @@ func testConfig(t *testing.T) Config {
 	if url == "" {
 		t.Fatal("DAYNIGHT_TEST_DATABASE_URL is required for PostgreSQL tests")
 	}
-	return Config{DatabaseURL: url, StorageRoot: testStorageRoot(t), ListenAddress: "127.0.0.1:0", StartupTimeout: 5 * time.Second, ShutdownTimeout: time.Second}
+	config := configuredTestConfig()
+	config.DatabaseURL = url
+	config.StorageRoot = testStorageRoot(t)
+	return config
 }
 
 func testStorageRoot(t *testing.T) string {
@@ -153,7 +156,7 @@ func TestStartupFailures(t *testing.T) {
 func TestGracefulDrainPreservesActiveRequestsAndReleasesResources(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	canceled := make(chan bool, 1)
-	runtime, err := Start(context.Background(), testConfig(t), testLogger(), func(dependencies Dependencies) http.Handler {
+	runtime, err := Start(context.Background(), testConfig(t), testLogger(), func(dependencies Dependencies) (http.Handler, error) {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			close(entered)
 			select {
@@ -169,7 +172,7 @@ func TestGracefulDrainPreservesActiveRequestsAndReleasesResources(t *testing.T) 
 				}
 				_, _ = io.WriteString(w, "complete")
 			}
-		})
+		}), nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -227,7 +230,7 @@ func TestForcedDrainCancelsDatabaseWork(t *testing.T) {
 	config.ShutdownTimeout = 30 * time.Millisecond
 	query := "select pg_sleep(10) /* " + uuid.NewString() + " */"
 	queryResult := make(chan error, 1)
-	runtime, err := Start(context.Background(), config, testLogger(), func(dependencies Dependencies) http.Handler {
+	runtime, err := Start(context.Background(), config, testLogger(), func(dependencies Dependencies) (http.Handler, error) {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			connection, err := dependencies.Store.Pool.Acquire(r.Context())
 			if err != nil {
@@ -237,7 +240,7 @@ func TestForcedDrainCancelsDatabaseWork(t *testing.T) {
 			defer connection.Release()
 			_, err = connection.Exec(r.Context(), query)
 			queryResult <- err
-		})
+		}), nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -282,11 +285,11 @@ func TestClientCancellationReachesDatabase(t *testing.T) {
 	config := testConfig(t)
 	query := "select pg_sleep(10) /* " + uuid.NewString() + " */"
 	queryResult := make(chan error, 1)
-	runtime, err := Start(context.Background(), config, testLogger(), func(dependencies Dependencies) http.Handler {
+	runtime, err := Start(context.Background(), config, testLogger(), func(dependencies Dependencies) (http.Handler, error) {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, err := dependencies.Store.Pool.Exec(r.Context(), query)
 			queryResult <- err
-		})
+		}), nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -333,7 +336,7 @@ func TestClientCancellationReachesDatabase(t *testing.T) {
 
 func TestServeFailureAndAlreadyClosed(t *testing.T) {
 	for _, closed := range []bool{false, true} {
-		runtime, err := Start(context.Background(), testConfig(t), testLogger(), func(Dependencies) http.Handler { return http.NotFoundHandler() })
+		runtime, err := Start(context.Background(), testConfig(t), testLogger(), func(Dependencies) (http.Handler, error) { return http.NotFoundHandler(), nil })
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -351,6 +354,50 @@ func TestServeFailureAndAlreadyClosed(t *testing.T) {
 		}
 		if _, err := runtime.Store.Pool.Acquire(context.Background()); err == nil {
 			t.Fatal("failed server leaked pool")
+		}
+	}
+}
+
+func TestCompositionFailureReleasesOpenedResources(t *testing.T) {
+	for _, missingHandler := range []bool{false, true} {
+		config := testConfig(t)
+		listener, err := net.Listen("tcp", config.ListenAddress)
+		if err != nil {
+			t.Fatal(err)
+		}
+		config.ListenAddress = listener.Addr().String()
+		if err := listener.Close(); err != nil {
+			t.Fatal(err)
+		}
+		cause := errors.New("composition failed")
+		var opened Dependencies
+		_, err = Start(context.Background(), config, testLogger(), func(dependencies Dependencies) (http.Handler, error) {
+			opened = dependencies
+			if _, err := dependencies.Files.Put(context.Background(), "runtime", "composition.txt", strings.NewReader("allocated")); err != nil {
+				return nil, err
+			}
+			if missingHandler {
+				return nil, nil
+			}
+			return nil, cause
+		})
+		var failure *runtimeError
+		if !errors.As(err, &failure) || failure.phase != "composition" || !missingHandler && !errors.Is(err, cause) {
+			t.Fatalf("composition failure lost phase/cause: %v", err)
+		}
+		if _, err := opened.Store.Pool.Acquire(context.Background()); err == nil {
+			t.Fatal("composition failure retained database pool")
+		}
+		if object, err := opened.Files.Open(context.Background(), "runtime", "composition.txt"); err == nil {
+			object.Body.Close()
+			t.Fatal("composition failure retained file storage")
+		}
+		listener, err = net.Listen("tcp", config.ListenAddress)
+		if err != nil {
+			t.Fatalf("composition failure retained listener: %v", err)
+		}
+		if err := listener.Close(); err != nil {
+			t.Fatal(err)
 		}
 	}
 }

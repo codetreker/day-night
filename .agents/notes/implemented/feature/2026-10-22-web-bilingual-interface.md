@@ -15,7 +15,10 @@ current language.
 
 The production entry resolves the initial locale before React rendering, sets
 the initial document language and route title, and mounts one persistent
-`LocaleProvider`. `App` updates document metadata on language or route changes.
+`LocaleProvider`. The initial interface used `App`; the
+[authentication activation](../architecture/2026-10-22-authentication-activation.md)
+now mounts `AuthenticatedApp` under that same Provider and updates document
+metadata on language or route changes.
 Navigation focus remains dependent on the route, so changing a language does
 not refocus the page. The navigation bar, centered `TaskDetailDialog` and
 fullscreen graph each expose the shared `LanguageSelector`; modal users can
@@ -23,10 +26,10 @@ operate their own selector while the underlying application is inert.
 
 The two typed catalogs cover all shipped first-party components. `common`
 owns task status labels and the request ID label; `workspace`, `graph` and
-`inspection` own their domain messages. The opt-in
+`inspection` own their domain messages. The
 [authenticated workspace](2026-10-22-web-auth-workspace.md) extends the same
-contract with `auth` for login, account and project collaboration, while the
-production entry still renders the original `App` under the persistent Provider.
+contract with `auth` for login, account and project collaboration. The mandatory
+production entry preserves the Provider and complete language/state contracts.
 Dates, times, numbers and exact bytes
 use the runtime formatters. User content, API field values, state values,
 request IDs and attachment bytes remain unchanged. The
@@ -48,9 +51,11 @@ remain outside safe error messages, and request IDs retain their original value.
 
 Three stable functional annotations cover the integration on both production
 targets: `language-startup-preferences`, `language-state-preservation` and
-`language-errors-and-narrow`. Each target has thirteen functional scenarios;
-the native target also retains five capacity/limit scenarios, for eighteen
-unique scenarios. The existing single project, one worker, zero retries,
+`language-errors-and-narrow`. That interface delivery expanded each target to
+thirteen functional scenarios and eighteen unique native scenarios including
+five capacity/limit cases. Authentication adds six functional scenarios per
+target; the current strict inventory is nineteen functional per target and
+twenty-four native scenarios, forty-three across both targets. The existing single project, one worker, zero retries,
 capacity matrix, strict coverage and cleanup gates remain required. The
 [pipeline decision](../testing/2026-10-21-web-acceptance-pipeline.md) owns phase
 scheduling; the [Web README](../../../../packages/daynight-web/README.md#production-browser-acceptance)

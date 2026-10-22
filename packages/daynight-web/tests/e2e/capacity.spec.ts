@@ -13,7 +13,7 @@ import { layoutGraph } from '../../src/features/task-graph/layout';
 // Repeated DOM snapshots of capacity graphs add controller work between
 // measured interactions. Dedicated CDP timelines and scenario PNGs retain the
 // rendering evidence alongside Playwright's action and network trace.
-test.use({ trace: { mode: 'retain-on-failure', snapshots: false, screenshots: false } });
+test.use({ trace: 'off' });
 
 type ExpansionMeasurement = { openMs: number; layoutMs: number; renderMs: number };
 type Measurement = ExpansionMeasurement & { detailMs: number; detailNetworkMs: number; zoomMs: number; panMs: number };

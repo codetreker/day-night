@@ -27,7 +27,7 @@ func graphPath(projectID string) string { return "/api/v1/projects/" + projectID
 func TestTaskGraphHTTPCompleteProjectionAndSafeLogs(t *testing.T) {
 	database := projectTestStore(t)
 	var logs bytes.Buffer
-	handler := projectTestHandler(database, &logs)
+	handler := projectTestHandler(t, database, &logs)
 	project := taskProject(t, handler)
 	root := createHTTPTask(t, handler, project.ID, "root-private-title")
 	root = updateHTTPTask(t, handler, root, map[string]any{"status": "done"})
@@ -94,7 +94,7 @@ func TestTaskGraphHTTPCompleteProjectionAndSafeLogs(t *testing.T) {
 
 func TestTaskGraphHTTPEmptyMissingQueryAndMethods(t *testing.T) {
 	var logs bytes.Buffer
-	handler := projectTestHandler(projectTestStore(t), &logs)
+	handler := projectTestHandler(t, projectTestStore(t), &logs)
 	project := taskProject(t, handler)
 	response := projectRequest(handler, http.MethodGet, graphPath(project.ID), "")
 	graph := decodeResponse[api.TaskGraph](t, response, http.StatusOK)
@@ -127,6 +127,7 @@ func TestTaskGraphHTTPEmptyMissingQueryAndMethods(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	authorizeResourceRequest(handler, request)
 	request.Header.Set("X-Request-ID", "project-test")
 	head, err := server.Client().Do(request)
 	if err != nil {
@@ -147,7 +148,7 @@ func TestTaskGraphHTTPLimitDetailsAndDomainClassification(t *testing.T) {
 		t.Run(map[bool]string{false: "nodes", true: "edges"}[edges], func(t *testing.T) {
 			database := projectTestStore(t)
 			var logs bytes.Buffer
-			handler := projectTestHandler(database, &logs)
+			handler := projectTestHandler(t, database, &logs)
 			project := taskProject(t, handler)
 			count := 1001
 			if edges {
@@ -187,7 +188,7 @@ func TestTaskGraphHTTPLimitDetailsAndDomainClassification(t *testing.T) {
 func TestTaskGraphHTTPDatabaseFailureAndCancellation(t *testing.T) {
 	database := projectTestStore(t)
 	var logs bytes.Buffer
-	handler := projectTestHandler(database, &logs)
+	handler := projectTestHandler(t, database, &logs)
 	project := taskProject(t, handler)
 	transaction, err := database.Pool.Begin(context.Background())
 	if err != nil {
@@ -200,6 +201,7 @@ func TestTaskGraphHTTPDatabaseFailureAndCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	request := httptest.NewRequest(http.MethodGet, graphPath(project.ID), nil).WithContext(ctx)
+	authorizeResourceRequest(handler, request)
 	request.Header.Set("X-Request-ID", "project-test")
 	response, finished := httptest.NewRecorder(), make(chan struct{})
 	go func() { handler.ServeHTTP(response, request); close(finished) }()
@@ -207,7 +209,7 @@ func TestTaskGraphHTTPDatabaseFailureAndCancellation(t *testing.T) {
 		var waiting bool
 		if err := database.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_stat_activity
 			WHERE pid <> pg_backend_pid() AND application_name=current_setting('application_name')
-			AND wait_event_type='Lock' AND query LIKE '%FROM projects%')`).Scan(&waiting); err != nil {
+			AND wait_event_type='Lock' AND $1::integer=ANY(pg_blocking_pids(pid)))`, int32(transaction.Conn().PgConn().PID())).Scan(&waiting); err != nil {
 			t.Fatal(err)
 		}
 		if waiting {
@@ -273,7 +275,7 @@ func TestTaskGraphHTTPErrorPrecedenceAndDTOUTC(t *testing.T) {
 func TestTaskHTTPProposedReadContractWithoutPublicStatusWrites(t *testing.T) {
 	database := projectTestStore(t)
 	var logs bytes.Buffer
-	handler := projectTestHandler(database, &logs)
+	handler := projectTestHandler(t, database, &logs)
 	project := taskProject(t, handler)
 	pending := createHTTPTask(t, handler, project.ID, "Pending")
 	done := createHTTPTask(t, handler, project.ID, "Done")

@@ -5,6 +5,7 @@ import { closeSync, openSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { login } from '../../../packages/daynight-server/scripts/auth-fixture.mts';
 
 const script = fileURLToPath(import.meta.url);
 const repository = path.resolve(path.dirname(script), '../../..');
@@ -66,7 +67,10 @@ const projectCheck = async (name: string, root: string) => {
   const runId = process.env.DAYNIGHT_DEV_CI_RUN_ID;
   assert.match(runId!, /^[0-9]{14}-[0-9]+-[0-9]{5}$/);
   const project = `daynight-dev-ci-${runId}`;
-  const compose = ['compose', '--env-file', '/dev/null', '--project-directory', deployment,
+  const authEnvironment = process.env.DAYNIGHT_DEV_CI_AUTH_ENV_FILE;
+  assert.ok(authEnvironment, 'dev-ci runner must provide its private authentication environment');
+  assert.ok(process.env.DAYNIGHT_AUTH_FIXTURE_DESCRIPTOR, 'dev-ci runner must provide its private authentication fixture descriptor');
+  const compose = ['compose', '--env-file', authEnvironment, '--project-directory', deployment,
     '--file', path.join(deployment, 'compose.yaml'), '--project-name', project];
   const directory = path.join(root, name);
   await mkdir(directory);
@@ -84,10 +88,21 @@ const projectCheck = async (name: string, root: string) => {
     assert.match(endpoint, /^127\.0\.0\.1:[0-9]+$/);
     return `http://${endpoint}`;
   };
+  const reconfigure = async (bootstrap = false) => await new Promise<void>((resolve, reject) => {
+    const child = spawn('bash', [runner, '--reconfigure', runId!, ...(bootstrap ? ['--bootstrap'] : [])], {
+      cwd: repository, stdio: 'inherit', timeout: 180_000,
+    });
+    child.on('error', reject);
+    child.on('exit', (code, signal) => code === 0
+      ? resolve()
+      : reject(new Error(`dev-ci reconfiguration failed: ${code ?? signal}`)));
+  });
   let origin = await discoverOrigin();
+  let authenticated = await login({ origin });
   const request = async (route: string, init?: RequestInit, status = 200) => {
-    const response = await fetch(`${origin}${route}`, { ...init, signal: AbortSignal.timeout(15_000) });
-    assert.equal(response.status, status, `${init?.method ?? 'GET'} ${route}: ${await response.clone().text()}`);
+    const response = await authenticated.request(route, { ...init, signal: AbortSignal.timeout(15_000) });
+    if (response.status !== status) await response.body?.cancel();
+    assert.equal(response.status, status, `${init?.method ?? 'GET'} ${route}`);
     return response;
   };
   const volumeCheck = async () => {
@@ -163,7 +178,7 @@ const projectCheck = async (name: string, root: string) => {
       }
     }
     const htmlUrl = new URL(`${origin}${prefix}/preview/mockup/index.html`);
-    const css = await fetch(new URL('./assets/style.css', htmlUrl), { signal: AbortSignal.timeout(15_000) });
+    const css = await request(new URL('./assets/style.css', htmlUrl).href);
     assert.equal(css.status, 200);
     assert.equal(hash(new Uint8Array(await css.arrayBuffer())), hash(files[3].bytes));
   };
@@ -182,12 +197,14 @@ const projectCheck = async (name: string, root: string) => {
     if (name === 'primary') {
       await act('stop and restart server, then verify exact metadata and bytes');
       await composeCommand(['stop', '--timeout', '20', 'server']);
-      await composeCommand(['up', '--no-build', '--detach', '--wait', '--wait-timeout', '120']);
-      origin = await discoverOrigin();
+      await composeCommand(['up', '--no-build', '--detach', '--wait', '--wait-timeout', '120', 'server']);
+      assert.equal(await discoverOrigin(), origin);
       await verify();
       await act('force recreate production stack while retaining both volumes');
-      await composeCommand(['up', '--no-build', '--force-recreate', '--detach', '--wait', '--wait-timeout', '120']);
+      await composeCommand(['down', '--remove-orphans', '--timeout', '20']);
+      await reconfigure();
       origin = await discoverOrigin();
+      authenticated = await login({ origin });
       assert.equal(await volumeCheck(), attachmentVolume);
       await verify();
       await act('stop server writes and capture paired PostgreSQL dump and attachment archive');
@@ -203,7 +220,7 @@ const projectCheck = async (name: string, root: string) => {
       await act('destroy only this project and its volumes, then restore the matching pair into fresh volumes');
       await composeCommand(['down', '--volumes', '--remove-orphans', '--timeout', '20']);
       assert.equal(await command(['volume', 'ls', '--quiet', '--filter', `label=com.docker.compose.project=${project}`]), '');
-      await composeCommand(['up', '--no-build', '--detach', 'postgres', 'gateway']);
+      await reconfigure(true);
       await waitFor(async () => {
         const id = await composeCommand(['ps', '--quiet', 'postgres']);
         const [state] = JSON.parse(await command(['inspect', id]));
@@ -211,8 +228,9 @@ const projectCheck = async (name: string, root: string) => {
       }, 'fresh PostgreSQL health');
       await composeCommand(['exec', '-T', 'postgres', 'psql', '--set', 'ON_ERROR_STOP=1', '-U', 'daynight', '-d', 'daynight'], { input: dump });
       await composeCommand(['run', '--rm', '--no-deps', '-T', '--entrypoint', 'tar', 'server', '-C', storageRoot, '-xpf', '-'], { input: archive });
-      await composeCommand(['up', '--no-build', '--detach', '--wait', '--wait-timeout', '120']);
+      await reconfigure();
       origin = await discoverOrigin();
+      authenticated = await login({ origin });
       await volumeCheck();
       await verify();
       await newUpload('restored/new.txt');
@@ -251,9 +269,12 @@ const main = async () => {
   await mkdir(path.join(repository, '.tmp'), { recursive: true });
   const root = await mkdtemp(path.join(repository, '.tmp/attachment-deployment-'));
   const sources = [
-    'deployment/dev-ci/tests/attachments.mts', 'deployment/dev-ci/run.sh',
+    'deployment/dev-ci/tests/attachments.mts', 'deployment/dev-ci/run.sh', 'deployment/dev-ci/auth.mts',
     'deployment/dev-ci/compose.yaml', 'deployment/localhost/compose.yaml',
     'deployment/localhost/Dockerfile', 'deployment/localhost/nginx.conf',
+    'packages/daynight-server/scripts/auth-fixture.mts',
+    'packages/daynight-server/scripts/prepare-uniauth-fixture.mts',
+    'packages/daynight-server/testdata/uniauth-fixture/main.go',
   ];
   await json(path.join(root, 'ownership.json'), {
     owner: 'attachment-deployment-check', createdAt: new Date().toISOString(),

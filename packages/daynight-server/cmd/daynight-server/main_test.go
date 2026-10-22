@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/codetreker/daynight/packages/daynight-server/api"
+	"github.com/codetreker/daynight/packages/daynight-server/internal/testauth"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -27,7 +28,15 @@ func testEnvironment(t *testing.T) map[string]string {
 	if url == "" {
 		t.Fatal("DAYNIGHT_TEST_DATABASE_URL is required for PostgreSQL tests")
 	}
-	return map[string]string{"DAYNIGHT_DATABASE_URL": url, "DAYNIGHT_STORAGE_ROOT": testStorageRoot(t), "DAYNIGHT_LISTEN_ADDR": "127.0.0.1:0"}
+	address := acceptanceAddress(t)
+	origin := "http://" + address
+	return map[string]string{
+		"DAYNIGHT_DATABASE_URL": url, "DAYNIGHT_STORAGE_ROOT": testStorageRoot(t), "DAYNIGHT_LISTEN_ADDR": address,
+		"DAYNIGHT_PUBLIC_ORIGIN": origin, "DAYNIGHT_UNIAUTH_URL": "https://identity.example",
+		"DAYNIGHT_UNIAUTH_APP_ID": rand.Text(), "DAYNIGHT_UNIAUTH_APP_SECRET": rand.Text(),
+		"DAYNIGHT_UNIAUTH_CALLBACK_URL":   origin + "/api/v1/auth/callback",
+		"DAYNIGHT_ALLOW_HTTP_TEST_ORIGIN": "1", "DAYNIGHT_ALLOW_LOOPBACK_HTTP": "1",
+	}
 }
 
 func testStorageRoot(t *testing.T) string {
@@ -84,12 +93,16 @@ func processAPIEnvironment(t *testing.T) map[string]string {
 }
 
 func TestRunStartupFailures(t *testing.T) {
-	for _, values := range []map[string]string{
-		{},
-		{"DAYNIGHT_DATABASE_URL": "postgres://user:top-secret@bad%host/db", "DAYNIGHT_STORAGE_ROOT": testStorageRoot(t)},
-		{"DAYNIGHT_DATABASE_URL": "postgres://user:top-secret@127.0.0.1:1/db?connect_timeout=1", "DAYNIGHT_STORAGE_ROOT": testStorageRoot(t)},
-		{"DAYNIGHT_DATABASE_URL": "postgres://top-secret", "DAYNIGHT_STORAGE_ROOT": testStorageRoot(t), "DAYNIGHT_LISTEN_ADDR": "0.0.0.0:80"},
+	for _, override := range []map[string]string{
+		{"DAYNIGHT_DATABASE_URL": ""},
+		{"DAYNIGHT_DATABASE_URL": "postgres://user:top-secret@bad%host/db"},
+		{"DAYNIGHT_DATABASE_URL": "postgres://user:top-secret@127.0.0.1:1/db?connect_timeout=1"},
+		{"DAYNIGHT_DATABASE_URL": "postgres://top-secret", "DAYNIGHT_LISTEN_ADDR": "0.0.0.0:80"},
 	} {
+		values := testEnvironment(t)
+		for key, value := range override {
+			values[key] = value
+		}
 		var output bytes.Buffer
 		if code := run(context.Background(), func(key string) string { return values[key] }, &output); code != 1 {
 			t.Fatalf("startup failure returned %d", code)
@@ -172,11 +185,25 @@ func (w *startupWriter) Write(value []byte) (int, error) {
 
 func TestRunServesProjectAndTaskAPI(t *testing.T) {
 	values := processAPIEnvironment(t)
+	gateway := testauth.StartGateway(t, values["DAYNIGHT_UNIAUTH_CALLBACK_URL"])
+	values["DAYNIGHT_UNIAUTH_URL"], values["DAYNIGHT_UNIAUTH_APP_ID"], values["DAYNIGHT_UNIAUTH_APP_SECRET"] = gateway.Origin, gateway.AppID, gateway.AppSecret
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	output := &startupWriter{started: make(chan string, 1)}
 	finished := make(chan int, 1)
-	go func() { finished <- run(ctx, func(key string) string { return values[key] }, output) }()
+	stopped := make(chan struct{})
+	go func() {
+		finished <- run(ctx, func(key string) string { return values[key] }, output)
+		close(stopped)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-stopped:
+		case <-time.After(5 * time.Second):
+			t.Error("owned in-process server did not stop during cleanup")
+		}
+	})
 	var address string
 	select {
 	case address = <-output.started:
@@ -185,7 +212,14 @@ func TestRunServesProjectAndTaskAPI(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("server did not start")
 	}
-	client := &http.Client{Timeout: 3 * time.Second}
+	if "http://"+address != values["DAYNIGHT_PUBLIC_ORIGIN"] {
+		t.Fatal("process listener differs from its explicit callback origin")
+	}
+	browser := testauth.Browser(t)
+	testauth.Login(t, browser, values["DAYNIGHT_PUBLIC_ORIGIN"], "alice")
+	token := testauth.CreatePAT(t, browser, values["DAYNIGHT_PUBLIC_ORIGIN"])
+	browser.CloseIdleConnections()
+	client := &http.Client{Timeout: 3 * time.Second, Transport: acceptanceBearerTransport{token: token, next: http.DefaultTransport}}
 	response, err := client.Get("http://" + address + "/api/v1/projects")
 	if err != nil {
 		t.Fatal(err)
@@ -259,4 +293,15 @@ func TestRunServesProjectAndTaskAPI(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("server did not stop")
 	}
+}
+
+type acceptanceBearerTransport struct {
+	token string
+	next  http.RoundTripper
+}
+
+func (t acceptanceBearerTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	authenticated := request.Clone(request.Context())
+	authenticated.Header.Set("Authorization", "Bearer "+t.token)
+	return t.next.RoundTrip(authenticated)
 }

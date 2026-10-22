@@ -1,13 +1,12 @@
 # 用户登录与项目权限需求
 
-状态：身份/凭据及项目成员基础模块已实现，均未挂入生产路由；CLI 凭据配置和
-HTTP 传输及可显式挂载的 Web 鉴权界面已实现。生产 Web 主入口及服务鉴权统一
-启用仍由后续任务交付；UniAuth 的 App-aware discovery 已在上游交付，Daynight
-当前旧 SDK 固定版本的升级与接线仍由统一启用任务完成。
-本文定义接入现有 UniAuth 后的完整交付行为，
-[架构设计](../design/daynight-auth.md)拥有实现机制，
-[任务入口](../design/daynight-auth-tasks.md)连接 Daynight 中的执行资料。
-现有服务继续按[本机服务要求](daynight-server.md)运行，本文不表示鉴权已交付。
+状态：UniAuth 身份交接、本地会话/PAT、项目成员授权、CLI 凭据和双语 Web 已接入
+正式服务入口。运行配置必填，业务请求强制认证。本文定义当前实现的行为；
+[架构设计](../design/daynight-auth.md)拥有机制，
+[启用决策](../../.agents/notes/implemented/architecture/2026-10-22-authentication-activation.md)
+记录组合、配置与验收隐私的取舍，[任务入口](../design/daynight-auth-tasks.md)连接
+执行资料。验证结果及真实上游人工登录以对应源码和回执为准，代码接线不代表全部
+组合验收已经通过。
 
 ## 目标与范围
 
@@ -45,11 +44,13 @@ CLI 创建私有项目，创建者自动成为管理员；Web 表单复用现有
 资料更新不改变本地用户和成员关系。登录页只能展示当前 UniAuth App 同时允许且
 已启用的 provider。前端通过 `GET /api/v1/auth/providers` 读取 `{providers:[ids]}`；
 读取失败显示可重试错误，空列表显示无可用登录方式，不能硬编码 provider 或以
-全局启用状态代替 App 范围。该客户端依赖尚未挂入生产后端，真实 discovery 及
-协议接线由统一启用任务交付。
+全局启用状态代替 App 范围。服务使用固定版本的 UniAuth SDK 实时读取当前 App
+与 registry 的交集；上游 App 配置/凭据错误返回 503，网络或协议错误返回 502，
+超时返回 504，与当前用户会话的 401 分开处理。
 
 浏览器使用服务端持久化的主站会话。生产 Cookie 为 host-only、Secure、HttpOnly、
-SameSite=Lax；本机 loopback HTTP 使用明确的开发配置和适合 HTTP 的 Cookie 名称。
+SameSite=Lax；显式 HTTP 主站测试配置使用不带 Secure/`__Host-` 的测试 Cookie
+名称，仍为 host-only、HttpOnly、Lax。它与 SDK gateway 的回环 HTTP 开关独立。
 返回位置限主站内部路径。注销终止当前 Daynight 会话，上游登录状态由 UniAuth 管理。
 Cookie 写请求校验精确主站 Origin；明确提供无效 Bearer 时拒绝，不回退到 Cookie。
 
@@ -85,10 +86,10 @@ CLI 使用可选 `serverToken`。setup 提供隐藏输入与布尔 `--server-tok
 
 ## Web 交互与状态
 
-可显式挂载的 `AuthenticatedApp` 提供登录、私有项目创建、账户与令牌、项目成员
-和邀请接受界面，复用既有项目列表、任务图及居中的任务详情对话框。生产 `main.tsx`
-继续挂载原 `App`，独立组件和受控前端 fixture 不代表生产鉴权或真实第三方登录
-已经完成。
+正式 `main.tsx` 在常驻 LocaleProvider 下挂载 `AuthenticatedApp`，提供登录、
+私有项目创建、账户与令牌、项目成员和邀请接受界面。现有项目页签、附件页签、
+渐进任务图与居中任务详情对话框继续复用。独立前端 fixture 只证明组件行为，真实
+服务、SDK 协议和第三方人工登录具有各自证据。
 
 会话失效和切换身份清除先前用户内容并使旧请求失效；项目 404 仅影响对应资源。
 成员修改使用完整正 int64 观察版本，前端解码、展示和提交不经过有损 Number。
@@ -115,27 +116,60 @@ GET 都执行鉴权。会话失效返回明确的 401，不将登录 HTML 当成
 继续一次一个文件、bucket/path 和原预算。文件系统与 PG 非原子性保留 K1，普通
 IO/数据库错误可见；不承诺撤回已发送字节或中止已准入的文件操作。
 
-## 错误与运行边界
+## 配置与运行边界
+
+下列五项服务端鉴权配置均必填，缺少或无效时启动失败；App Secret 不下发到前端。
+数据库、存储根目录和既有生命周期配置继续遵守服务要求。
+
+| 配置 | 要求 |
+|---|---|
+| `DAYNIGHT_PUBLIC_ORIGIN` | 主站的精确 canonical origin；无路径、凭据、query 或 fragment，host 小写，默认端口省略。 |
+| `DAYNIGHT_UNIAUTH_URL` | UniAuth gateway origin，交由 SDK 校验。 |
+| `DAYNIGHT_UNIAUTH_APP_ID` | 后端 App ID。 |
+| `DAYNIGHT_UNIAUTH_APP_SECRET` | 后端 App Secret。 |
+| `DAYNIGHT_UNIAUTH_CALLBACK_URL` | 与主站同源的完整精确 callback；无凭据、query、fragment，使用 canonical 非根路径。 |
+
+服务只注册配置的 callback 路径，包括 `/auth/callback` 这样的已登记路径，不额外
+挂载旧别名。路径不能与应用 API、页面、静态资源或健康检查冲突，不接受编码别名、
+路由通配符或 dot-segment。返回位置在建立登录事务前拒绝登录入口和实际 callback
+路径，避免认证循环。callback URL 与 UniAuth App 登记值精确匹配，主站 origin
+及 callback 不从 Host、转发 header 或随机 listener 推导。
+
+生产默认 HTTPS。两个开关分别接受未设置/`0` 或 `1`，其他值明确拒绝：
+
+| 开关 | 唯一作用 |
+|---|---|
+| `DAYNIGHT_ALLOW_HTTP_TEST_ORIGIN=1` | 允许明确配置的 HTTP 主站测试 origin，按其实际 scheme 选择测试 Cookie。命名测试域名不会被当作 loopback。 |
+| `DAYNIGHT_ALLOW_LOOPBACK_HTTP=1` | 启用 SDK gateway 的 literal localhost/numeric-loopback HTTP 例外；不允许普通命名 HTTP gateway。 |
+
+两个开关互不替代。HTTPS 主站可搭配显式允许的回环 HTTP gateway；HTTP 主站测试
+仍需自己的开关。Go listener 保持数值 loopback；沿用一个应用 origin、现有部署
+入口和附件执行模型，没有关闭鉴权或匿名业务模式。`/healthz` 与 `/readyz` 为公开、
+无业务数据的健康入口；readyz 仅检查数据库可用性，不以匿名项目列表或上游登录
+探测作为就绪条件。
+
+## 错误与准入
 
 | 场景 | 对外结果 |
 |---|---|
-| 缺失、无效、撤销或到期凭据 | 401 unauthenticated JSON |
+| 缺失、无效、撤销或到期用户凭据 | 401 unauthenticated JSON |
 | 项目不存在或不是成员 | 404 not_found JSON |
 | member 调用 admin 功能、Cookie 写请求来源错误 | 403 forbidden JSON |
 | 观察版本过期、最后 admin 条件不满足 | 409 version_conflict / last_admin |
 | 邀请已消费、到期或撤销 | 410 invitation_unavailable |
+| provider discovery 的 App 配置/凭据错误 | 503 identity_configuration |
+| provider discovery 的上游网络/协议错误 | 502 identity_unavailable |
+| provider discovery 超时 | 504 identity_timeout |
 
-数据 API 不跳转登录 HTML。登录和 callback 是浏览器导航入口；已验证并消费的
-callback 失败会返回主站的通用登录错误状态，错误绑定仍明确拒绝。Web 自己处理登录
-状态，CLI 提示配置令牌；失败不能伪装成空
-项目或空成员。生产继续一个应用 origin，经现有入口提供 HTTPS；Go 保持 loopback。
-健康检查使用无业务数据的独立入口，不匿名读取项目列表。启用后缺少必需鉴权配置
-拒绝启动，所有业务入口强制认证。
+每个业务 HTTP 请求读取当前凭据取得 Principal；资源服务在其读取快照或项目写锁内
+检查成员关系。凭据检查和业务事务具有各自的准入时点；不承诺将凭据撤销与全部
+业务提交串行化。附件在短快照完成成员与资源检查后准入文件 IO，已准入操作允许
+完成，后续请求重新认证和授权。保留 K1，不在文件 IO 之后追加成员复查。
 
-开发/CI 复用数值 loopback 的同源 HTTP 与现有进程/容器结构，显式启用 SDK 已支持的
-AllowLoopbackHTTP。固定 public origin 与 listener 分开配置，注册精确 callback；
-不增加域名、证书或网关。真实 UniAuth 能力不足时记录具体协议缺口与证据，交由
-UniAuth 维护者处理，不推导额外架构。
+数据 API 不跳转登录 HTML。已验证并消费的 callback 失败时返回主站通用登录错误
+状态，错误绑定明确拒绝。Web 处理登录状态，CLI 提示配置令牌；失败不得伪装成空
+项目或空成员。日志及验收回执不包含 Cookie、Authorization、Set-Cookie、PAT、
+App Secret、一次性 code 或邀请秘密。
 
 ## 验收标准
 

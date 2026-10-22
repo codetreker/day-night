@@ -31,23 +31,23 @@ func seedGraph(t *testing.T, database *store.Store, projectID string, nodes, edg
 }
 
 func TestTaskGraphEmptyScopedAndSummary(t *testing.T) {
-	tasks, database, project, _ := taskService(t)
+	tasks, database, project, _, principal := taskService(t)
 	ctx := context.Background()
-	empty, err := tasks.Graph(ctx, strings.ToUpper(project.ID))
+	empty, err := tasks.Graph(ctx, principal, strings.ToUpper(project.ID))
 	if err != nil || empty.Project.ID != project.ID || empty.Tasks == nil || len(empty.Tasks) != 0 || empty.Summary != (core.TaskGraphSummary{}) {
 		t.Fatalf("empty graph: %#v, %v", empty, err)
 	}
-	other, err := NewProjects(database).Create(ctx, CreateProject{Name: "Other", RepoURL: "host:other"})
+	other, err := NewProjects(database).Create(ctx, principal, CreateProject{Name: "Other", RepoURL: "host:other"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	createTask(t, tasks, other.ID, "Out of scope")
-	done := createTask(t, tasks, project.ID, "Done")
-	done = updateTask(t, tasks, done, UpdateTask{Status: pointer(core.TaskDone)})
-	active := createTask(t, tasks, project.ID, "Active", done.ID)
-	active = updateTask(t, tasks, active, UpdateTask{Status: pointer(core.TaskInProgress)})
-	ready := createTask(t, tasks, project.ID, "Ready", done.ID)
-	blocked := createTask(t, tasks, project.ID, "Blocked", active.ID, ready.ID)
+	createTask(t, tasks, principal, other.ID, "Out of scope")
+	done := createTask(t, tasks, principal, project.ID, "Done")
+	done = updateTask(t, tasks, principal, done, UpdateTask{Status: pointer(core.TaskDone)})
+	active := createTask(t, tasks, principal, project.ID, "Active", done.ID)
+	active = updateTask(t, tasks, principal, active, UpdateTask{Status: pointer(core.TaskInProgress)})
+	ready := createTask(t, tasks, principal, project.ID, "Ready", done.ID)
+	blocked := createTask(t, tasks, principal, project.ID, "Blocked", active.ID, ready.ID)
 	var proposed, proposedBlocked core.Task
 	if err := database.WriteProject(ctx, project.ID, func(tx *store.ProjectTx) error {
 		var err error
@@ -60,7 +60,7 @@ func TestTaskGraphEmptyScopedAndSummary(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	graph, err := tasks.Graph(ctx, project.ID)
+	graph, err := tasks.Graph(ctx, principal, project.ID)
 	wantSummary := core.TaskGraphSummary{Total: 6, Proposed: 2, Todo: 2, InProgress: 1, Done: 1, Ready: 1, Blocked: 1}
 	if err != nil || graph.Summary != wantSummary || len(graph.Tasks) != 6 || !reflect.DeepEqual(graph.Project, project) {
 		t.Fatalf("complete graph: %#v, %v", graph, err)
@@ -73,9 +73,9 @@ func TestTaskGraphEmptyScopedAndSummary(t *testing.T) {
 			t.Fatalf("projection differs from task %d: %#v versus %#v", index, got, original)
 		}
 	}
-	_, err = tasks.Graph(ctx, "invalid")
+	_, err = tasks.Graph(ctx, principal, "invalid")
 	requireFault(t, err, "invalid_input")
-	_, err = tasks.Graph(ctx, "00000000-0000-0000-0000-000000000000")
+	_, err = tasks.Graph(ctx, principal, "00000000-0000-0000-0000-000000000000")
 	fault := requireFault(t, err, "not_found")
 	if !errors.Is(fault, core.ErrNotFound) || fault.GraphLimit != nil {
 		t.Fatalf("missing graph cause: %#v", fault)
@@ -90,14 +90,14 @@ func TestTaskGraphExactLimitsAndIndependentRejections(t *testing.T) {
 		{1000, 5000, false}, {1001, 0, true}, {101, 5001, true},
 	} {
 		t.Run(fmt.Sprintf("%d_nodes_%d_edges", test.nodes, test.edges), func(t *testing.T) {
-			_, database, project, databaseURL := taskService(t)
+			_, database, project, databaseURL, principal := taskService(t)
 			seedGraph(t, database, project.ID, test.nodes, test.edges)
 			readProjection := false
 			traced := tracedTasks(t, databaseURL, taskQueryAction{
 				match: func(sql string) bool { return strings.Contains(sql, "left(t.title, $2)") },
 				start: func() { readProjection = true },
 			})
-			graph, err := traced.Graph(context.Background(), project.ID)
+			graph, err := traced.Graph(context.Background(), principal, project.ID)
 			if test.refused {
 				fault := requireFault(t, err, "graph_limit_exceeded")
 				want := &GraphLimitDetails{NodeCount: int64(test.nodes), EdgeCount: int64(test.edges), MaxNodes: 1000, MaxEdges: 5000}
@@ -121,10 +121,10 @@ func TestTaskGraphExactLimitsAndIndependentRejections(t *testing.T) {
 }
 
 func TestTaskGraphInterleavedWriteKeepsOneSnapshot(t *testing.T) {
-	tasks, database, project, databaseURL := taskService(t)
+	tasks, database, project, databaseURL, principal := taskService(t)
 	ctx := context.Background()
-	predecessor := createTask(t, tasks, project.ID, "Predecessor")
-	dependent := createTask(t, tasks, project.ID, "Dependent", predecessor.ID)
+	predecessor := createTask(t, tasks, principal, project.ID, "Predecessor")
+	dependent := createTask(t, tasks, principal, project.ID, "Dependent", predecessor.ID)
 	writes := 0
 	traced := tracedTasks(t, databaseURL, taskQueryAction{
 		match: func(sql string) bool { return strings.Contains(sql, "SELECT count(*) FROM tasks") },
@@ -141,12 +141,12 @@ func TestTaskGraphInterleavedWriteKeepsOneSnapshot(t *testing.T) {
 			}
 		},
 	})
-	old, err := traced.Graph(ctx, project.ID)
+	old, err := traced.Graph(ctx, principal, project.ID)
 	if err != nil || writes != 1 || len(old.Tasks) != 2 || old.Tasks[0].TitlePreview != predecessor.Title || old.Tasks[0].Status != core.TaskTodo ||
 		old.Tasks[1].Ready || !slices.Equal(old.Tasks[1].BlockedBy, []string{predecessor.ID}) || old.Summary != (core.TaskGraphSummary{Total: 2, Todo: 2, Ready: 1, Blocked: 1}) {
 		t.Fatalf("mixed snapshot: %#v, writes %d, %v", old, writes, err)
 	}
-	fresh, err := tasks.Graph(ctx, project.ID)
+	fresh, err := tasks.Graph(ctx, principal, project.ID)
 	if err != nil || len(fresh.Tasks) != 3 || fresh.Tasks[0].TitlePreview != "Completed" || !fresh.Tasks[1].Ready ||
 		fresh.Summary != (core.TaskGraphSummary{Total: 3, Todo: 2, Done: 1, Ready: 1, Blocked: 1}) {
 		t.Fatalf("fresh snapshot: %#v, %v", fresh, err)
@@ -161,12 +161,12 @@ func TestTaskGraphOperationalFailuresAndCompletionPrecedence(t *testing.T) {
 		{name: "project query", fragment: "FROM projects WHERE id ="},
 		{name: "count query", fragment: "SELECT count(*) FROM tasks"},
 		{name: "projection query", fragment: "left(t.title, $2)"},
-		{name: "missing project completion", fragment: "FROM projects WHERE id =", missing: true, cancelAfter: true},
+		{name: "missing project completion", fragment: "FROM project_members m", missing: true, cancelAfter: true},
 		{name: "limit refusal completion", fragment: "SELECT count(*) FROM tasks", overLimit: true, cancelAfter: true},
 		{name: "success completion", fragment: "left(t.title, $2)", cancelAfter: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, database, project, databaseURL := taskService(t)
+			_, database, project, databaseURL, principal := taskService(t)
 			if test.overLimit {
 				seedGraph(t, database, project.ID, 1001, 0)
 			}
@@ -183,7 +183,7 @@ func TestTaskGraphOperationalFailuresAndCompletionPrecedence(t *testing.T) {
 			if test.missing {
 				id = "00000000-0000-0000-0000-000000000000"
 			}
-			graph, err := traced.Graph(ctx, id)
+			graph, err := traced.Graph(ctx, principal, id)
 			assertOperational(t, err)
 			if !errors.Is(err, context.Canceled) || !reflect.DeepEqual(graph, core.TaskGraph{}) {
 				t.Fatalf("cancellation cause or partial result: %#v, %v", graph, err)
@@ -192,16 +192,16 @@ func TestTaskGraphOperationalFailuresAndCompletionPrecedence(t *testing.T) {
 	}
 	for _, table := range []string{"projects", "tasks", "task_dependencies"} {
 		t.Run("missing "+table, func(t *testing.T) {
-			tasks, database, project, _ := taskService(t)
+			tasks, database, project, _, principal := taskService(t)
 			if _, err := database.Pool.Exec(context.Background(), "DROP TABLE "+table); err != nil {
 				t.Fatal(err)
 			}
-			_, err := tasks.Graph(context.Background(), project.ID)
+			_, err := tasks.Graph(context.Background(), principal, project.ID)
 			assertOperational(t, err)
 		})
 	}
-	tasks, database, project, _ := taskService(t)
+	tasks, database, project, _, principal := taskService(t)
 	database.Close()
-	_, err := tasks.Graph(context.Background(), project.ID)
+	_, err := tasks.Graph(context.Background(), principal, project.ID)
 	assertOperational(t, err)
 }

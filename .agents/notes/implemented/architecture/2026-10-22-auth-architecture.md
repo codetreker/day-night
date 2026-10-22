@@ -16,21 +16,17 @@ The adopted [requirements](../../../../docs/spec/daynight-auth.md),
 [architecture](../../../../docs/design/daynight-auth.md),
 [interactive UI](../../../../docs/design/mockups/auth/index.html) and
 [task entry point](../../../../docs/design/daynight-auth-tasks.md) define the
-implementation. This note records the adopted architecture; runtime delivery
-remains separately tracked and is not claimed by document completion. The
-[identity foundation](2026-10-22-identity-credentials.md) implements persistent
-users, sessions/PATs and callable handlers without mounting them into the current
-application. The [membership foundation](2026-10-22-project-membership.md) adds
-transaction-scoped access, private creation, roles and invitations without
-mounting them. [CLI credentials](2026-10-22-cli-server-credentials.md) implement
-origin-bound optional tokens, hidden/stdin setup, safe persistence and shared
-HTTP Bearer transport. The opt-in [Web workspace](../feature/2026-10-22-web-auth-workspace.md)
-implements authentication and project-management components without replacing
-production `main.tsx`, which now mounts `LocaleProvider` around `App`. The opt-in
-shell uses that same Provider and both complete catalogs. UniAuth
-[PR #19](https://github.com/codetreker/uniauth/pull/19) supplies App-aware provider
-discovery upstream; upgrading Daynight's existing SDK pin, production mounting
-and full activation remain separately tracked.
+implementation. The [identity foundation](2026-10-22-identity-credentials.md) and
+[membership foundation](2026-10-22-project-membership.md) first delivered callable,
+unmounted modules so their transaction and identity behavior could be reviewed
+without partially changing production access. [CLI credentials](2026-10-22-cli-server-credentials.md)
+and the [Web workspace](../feature/2026-10-22-web-auth-workspace.md) followed that
+staged boundary. The [activation decision](2026-10-22-authentication-activation.md)
+now mounts all of them: resource Principal checks, required runtime config and
+`AuthenticatedApp` under the persistent locale Provider. It also fixes the SDK
+to the delivered App-aware discovery capability from UniAuth
+[PR #19](https://github.com/codetreker/uniauth/pull/19). This note retains original
+choices; actual runtime/acceptance results require their own source-bound receipts.
 
 Existing UniAuth and its Go SDK provide one-time identity handoff. Daynight owns
 stable local users, browser sessions, personal access tokens, project memberships
@@ -56,14 +52,17 @@ it does not promise to sandbox trusted uploaded HTML.
 
 ### Integration and scope
 
-Identity and membership modules are tested before mounting them. One activation
-integrates resource checks, clients, required config, health checks and all
-existing acceptance callers. It already proves the integrated security contract;
-a final combined receipt supplements those proofs.
+Identity and membership were first tested without mounting them. The mandatory
+activation now integrates resource checks, clients, required config, public
+health checks and normal-protocol acceptance callers together. Its delivery
+requires integrated security proofs; a final combined receipt supplements those
+proofs and cannot replace them. Code or document completion alone does not assert
+that a gate passed.
 
 Development and CI reuse same-origin numeric-loopback HTTP and UniAuth's existing
-explicit AllowLoopbackHTTP support. Production uses the application's configured
-HTTPS origin and existing entry point. A concrete UniAuth limitation must be
+explicit SDK AllowLoopbackHTTP support. Current activation separately configures
+HTTP main-site test origins and the exact callback while production defaults to
+the application's configured HTTPS origin and existing entry point. A concrete UniAuth limitation must be
 reported with evidence to its maintainer; an assumed gap does not authorize a
 workaround architecture or changes to UniAuth.
 
@@ -92,8 +91,9 @@ whole authenticated composition is ready, without an auth-disable flag.
 The implementation adds local users, memberships, invitations and two ordinary
 credential types, with final-style frontend artifacts. CLI credential transport
 is implemented without a new provider-login flow or credential framework;
-Web token management is implemented in the opt-in workspace. Production mounting
-and actual App-aware provider discovery remain separate work. It reuses the
+Web token management and App-aware provider discovery are mounted in the
+mandatory composition. The activation decision owns current configuration,
+fixture privacy and gate requirements. It reuses the
 existing application origin, file storage, project locks, runtime and deployment topology.
 No preview-specific lifecycle or infrastructure is introduced.
 
@@ -104,6 +104,6 @@ transfers may finish and previously downloaded data cannot be recalled.
 Filesystem/PostgreSQL atomicity remains the accepted K1 limitation.
 
 The trusted HTML decision is a constraint on implementation and review, not an
-untracked future promise to add isolation. Runtime implementation, actual upstream
-login and complete acceptance remain unfulfilled until their own evidence and
-required PR integration are confirmed.
+untracked future promise to add isolation. Current composition is implemented;
+actual upstream login and complete acceptance remain unfulfilled until their
+own evidence and required PR integration are confirmed.

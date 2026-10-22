@@ -184,9 +184,26 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
   }, [revalidation]);
   useEffect(() => {
     if (session.status !== "authenticated") return;
-    const refreshIdentity = () => { if (revalidationRef.current === "idle") recheckIdentity(); };
-    window.addEventListener("focus", refreshIdentity);
-    return () => window.removeEventListener("focus", refreshIdentity);
+    let topLevelAway = document.visibilityState === "hidden" || !document.hasFocus();
+    const lostFocus = () => { if (!document.hasFocus()) topLevelAway = true; };
+    const returned = () => {
+      // Iframe-to-parent focus changes keep the top-level document focused.
+      if (!topLevelAway || document.visibilityState === "hidden" || !document.hasFocus()) return;
+      topLevelAway = false;
+      if (revalidationRef.current === "idle") recheckIdentity();
+    };
+    const visibilityChanged = () => {
+      if (document.visibilityState === "hidden") topLevelAway = true;
+      else returned();
+    };
+    window.addEventListener("blur", lostFocus);
+    window.addEventListener("focus", returned);
+    document.addEventListener("visibilitychange", visibilityChanged);
+    return () => {
+      window.removeEventListener("blur", lostFocus);
+      window.removeEventListener("focus", returned);
+      document.removeEventListener("visibilitychange", visibilityChanged);
+    };
   }, [session.status, recheckIdentity]);
   const startLogin = (provider: AuthProvider) => {
     const returnPath = route.kind === "invitations" ? "/invitations" : pathname;

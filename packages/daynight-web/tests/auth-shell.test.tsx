@@ -5,6 +5,14 @@ import { createLocaleRender } from "./helpers/renderWithLocale";
 import { invitationStorageKey } from "../src/features/auth/invitation";
 
 const render = createLocaleRender("zh-CN");
+let topLevelFocused = true;
+let visibility: DocumentVisibilityState = "visible";
+const returnFromAnotherWindow = () => {
+  topLevelFocused = false;
+  fireEvent(window, new Event("blur"));
+  topLevelFocused = true;
+  fireEvent(window, new Event("focus"));
+};
 
 const userId = "00000000-0000-4000-8000-000000000001";
 const otherId = "00000000-0000-4000-8000-000000000002";
@@ -32,6 +40,9 @@ const install = (handler = defaults) => {
 
 beforeEach(() => {
   window.sessionStorage.clear();
+  topLevelFocused = true; visibility = "visible";
+  vi.spyOn(document, "hasFocus").mockImplementation(() => topLevelFocused);
+  vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: function (this: HTMLDialogElement) { this.open = true; } });
 });
 
@@ -81,6 +92,67 @@ describe("authenticated application shell", () => {
     await screen.findByRole("heading", { name: "私有项目" });
   });
 
+  it("keeps an iframe-to-parent pointer gesture intact without revalidating the account", async () => {
+    const fetcher = install();
+    render(<AuthenticatedApp />);
+    await screen.findByRole("heading", { name: "私有项目" });
+    const refresh = screen.getByRole("button", { name: "刷新" });
+    const frame = document.createElement("iframe");
+    document.body.append(frame);
+    try {
+      frame.focus();
+      fireEvent(window, new Event("blur"));
+      expect(document.hasFocus()).toBe(true);
+      fireEvent.pointerDown(refresh);
+      frame.blur();
+      expect(document.activeElement).toBe(document.body);
+      fireEvent(window, new Event("focus"));
+      fireEvent.pointerUp(refresh);
+      fireEvent.click(refresh);
+      await waitFor(() => expect(fetcher.mock.calls.filter(([url]) => url.startsWith("/api/v1/projects")).length).toBe(2));
+      expect(fetcher.mock.calls.filter(([url]) => url === "/api/v1/me")).toHaveLength(1);
+      expect(document.body).not.toHaveClass("auth-session-checking");
+      expect(screen.getByRole("link", { name: "账户设置：Alice" })).toBeInTheDocument();
+    } finally { frame.remove(); }
+  });
+
+  it.each(["focus-first", "visibility-first"])("conceals a changed account on an external tab return (%s) and checks once", async (order) => {
+    let meCalls = 0;
+    let finishCheck!: (response: Response) => void;
+    const fetcher = vi.fn((url: string) => {
+      if (url === "/api/v1/me") return ++meCalls === 1 ? Promise.resolve(json(user())) : new Promise<Response>((done) => { finishCheck = done; });
+      return Promise.resolve(defaults(url));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(<AuthenticatedApp />);
+    await screen.findByRole("heading", { name: "私有项目" });
+    topLevelFocused = false; visibility = "hidden";
+    fireEvent(document, new Event("visibilitychange"));
+    fireEvent(window, new Event("blur"));
+    if (order === "focus-first") {
+      topLevelFocused = true;
+      fireEvent(window, new Event("focus"));
+      expect(meCalls).toBe(1);
+      visibility = "visible";
+      fireEvent(document, new Event("visibilitychange"));
+    } else {
+      visibility = "visible";
+      fireEvent(document, new Event("visibilitychange"));
+      expect(meCalls).toBe(1);
+      topLevelFocused = true;
+      fireEvent(window, new Event("focus"));
+    }
+    expect(document.body).toHaveClass("auth-session-checking");
+    expect(screen.queryByRole("link", { name: "账户设置：Alice" })).toBeNull();
+    await waitFor(() => expect(meCalls).toBe(2));
+    fireEvent(window, new Event("focus"));
+    fireEvent(document, new Event("visibilitychange"));
+    expect(meCalls).toBe(2);
+    await act(async () => finishCheck(json(user(otherId, "Bob"))));
+    await screen.findByRole("link", { name: "账户设置：Bob" });
+    expect(screen.queryByRole("link", { name: "账户设置：Alice" })).toBeNull();
+  });
+
   it("replaces the workspace when revalidation confirms a different identity and ignores late old data", async () => {
     let currentUser = user();
     let pendingProject!: (response: Response) => void;
@@ -100,7 +172,7 @@ describe("authenticated application shell", () => {
     await screen.findByRole("link", { name: "账户设置：Alice" });
     const oldSignal = fetcher.mock.calls.find(([url]) => url.startsWith("/api/v1/projects"))![1] as RequestInit | undefined;
     currentUser = user(otherId, "Bob");
-    fireEvent(window, new Event("focus"));
+    returnFromAnotherWindow();
     expect(screen.queryByRole("link", { name: "账户设置：Alice" })).toBeNull();
     expect(document.body).toHaveClass("auth-session-checking");
     await act(async () => pendingMe(json(currentUser)));
@@ -130,7 +202,7 @@ describe("authenticated application shell", () => {
     fireEvent.change(screen.getByLabelText(/令牌名称/), { target: { value: "Device" } });
     fireEvent.submit(document.getElementById("create-token-form")!);
     const reveal = await screen.findByRole("dialog", { name: "访问令牌已创建" });
-    fireEvent(window, new Event("focus"));
+    returnFromAnotherWindow();
     await waitFor(() => expect(meCalls).toBe(2));
     expect(document.body).toHaveClass("auth-session-checking");
     expect(reveal.isConnected).toBe(true);
@@ -169,7 +241,7 @@ describe("authenticated application shell", () => {
     await waitFor(() => expect(fetcher.mock.calls.some(([, options]) => options?.method === "POST")).toBe(true));
     const dialog = screen.getByRole("dialog", { name: "创建私有项目" });
     const signal = fetcher.mock.calls.find(([, options]) => options?.method === "POST")![1]!.signal!;
-    fireEvent(window, new Event("focus"));
+    returnFromAnotherWindow();
     await screen.findByRole("heading", { name: "暂时无法重新确认当前账户" });
     expect(document.body).toHaveClass("auth-session-checking");
     expect(screen.queryByRole("dialog", { name: "创建私有项目" })).toBeNull();
@@ -196,7 +268,7 @@ describe("authenticated application shell", () => {
     await screen.findByRole("heading", { name: "项目成员" });
     expect(document.body.textContent).toContain("私有项目");
     switched = true;
-    fireEvent(window, new Event("focus"));
+    returnFromAnotherWindow();
     await screen.findByRole("link", { name: "账户设置：Bob" });
     await waitFor(() => expect(document.body.textContent).not.toContain("私有项目"));
     expect(document.body.textContent).not.toContain("私有项目");

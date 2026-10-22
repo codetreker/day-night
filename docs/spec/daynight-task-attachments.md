@@ -12,10 +12,12 @@
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-task-attachment-storage-design.md)
 记录范围和取舍。各组件的实际验证结果归属对应源码、PR 与 CI。
 
-[鉴权需求](daynight-auth.md)规划附件请求继承项目成员权限；
-[架构](../design/daynight-auth.md)和[任务拆分](../design/daynight-auth-tasks.md)拥有
-认证与授权机制及交付条件。该扩展尚未实现。本文的可信同源 HTML、普通 iframe、
-相对资源及键盘交互在鉴权接入后继续保留，单文件操作和 K1 边界继续有效。
+[鉴权需求](daynight-auth.md)要求附件请求继承项目成员权限，已在全部附件和预览
+入口强制启用；[架构](../design/daynight-auth.md)和
+[任务拆分](../design/daynight-auth-tasks.md)拥有认证、授权机制与交付条件。HTTP
+入口每次验证会话或 PAT；文件 I/O 前在同一快照确认成员及 task 归属，已准入的
+单文件操作允许完成，I/O 后不再重新检查成员关系。本文的可信同源 HTML、普通
+iframe、相对资源及键盘交互继续保留，单文件操作和 K1 边界继续有效。
 
 ## 目标与范围
 
@@ -150,7 +152,7 @@ Esc、Tab 操作
 预览入口为 `/api/v1/projects/{projectId}/tasks/{taskId}/preview/{path...}`，
 不增加专用预览 token、预览会话、子域名、端口或 Service Worker。HTML 被视为
 可信项目代码，运行在主站同源环境；该方案不提供上传脚本与主应用之间的权限隔离。
-规划中的[鉴权需求](daynight-auth.md)在附件请求入口检查登录态和项目成员关系，
+已接入的[鉴权需求](daynight-auth.md)在附件请求入口检查登录态和项目成员关系，
 继续保留这一可信代码执行约定。
 
 ## CLI
@@ -209,7 +211,8 @@ Web 前端 mockup 复用实际组件与 CSS，通过内存元数据和本地文�
 Go/PG。它及本地现有浏览器探针验证前端状态、视觉和焦点。实际服务验收在原生和
 生产容器两个目标上由已安装 CLI 与页面交叉读取同一 task 文件；二进制按原始字节
 比较，PDF 必须在 compositor 截图中出现预期色块，HTML 相对资源通过可见交互验证。
-原有图场景仍只读；附件场景和[双语需求](daynight-web-i18n.md)的 `language-state-preservation` 仅允许精确 fixture task/file 的 PUT/DELETE，后者检查切换期间操作只执行一次。JSDOM 不具备布局，
+验收通过正常 UniAuth 登录取得会话或 PAT，API 数据准备和安装 CLI 复用当前用户
+凭据，凭据只写私有夹具元数据。原有图场景仍只读；附件场景和[双语需求](daynight-web-i18n.md)的 `language-state-preservation` 仅允许精确 fixture task/file 的 PUT/DELETE，后者检查切换期间操作只执行一次。JSDOM 不具备布局，
 不能证明隐藏元素的浏览器焦点行为。
 
 Go 的独立安装 CLI 旅程覆盖超过一页的附件列表、原始内容、拒绝及 requestId、同根

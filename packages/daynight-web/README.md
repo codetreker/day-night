@@ -25,12 +25,15 @@ The [authentication requirements](../../docs/spec/daynight-auth.md),
 [architecture](../../docs/design/daynight-auth.md) and
 [task breakdown](../../docs/design/daynight-auth-tasks.md) define login, private
 projects, member and invitation management, and personal access tokens. The
-opt-in `AuthenticatedApp` implements their browser components and API client.
-Production `main.tsx` still renders `App` under `LocaleProvider`; the deployed workspace remains
-unauthenticated and loopback-only until coordinated activation. Trusted
-same-origin previews, relative resources and keyboard behavior remain unchanged.
+`AuthenticatedApp` implements their browser components and API client. Production
+`main.tsx` renders it under the persistent `LocaleProvider`; every business API
+requires a browser session or PAT and current project membership. The Go service
+retains loopback-only listening. Trusted same-origin previews, relative resources
+and keyboard behavior remain unchanged.
 The [Web workspace decision](../../.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
-owns this integration boundary and its lifecycle choices.
+owns the frontend lifecycle choices; the
+[activation decision](../../.agents/notes/implemented/architecture/2026-10-22-authentication-activation.md)
+owns production composition and credential-private acceptance.
 
 ## Authenticated workspace
 
@@ -57,20 +60,18 @@ accept an invitation. The UI retains ordinary same-origin attachment iframes,
 relative resources and their existing keyboard bridge.
 
 The login page reads `GET /api/v1/auth/providers` with response
-`{providers: [providerId, ...]}`. This is an unmounted client dependency, not an
-implemented production backend route. The response must reflect the configured
-UniAuth App's allowed and enabled providers. Discovery failures and an empty
-provider set have explicit states; the UI does not invent a provider list. Real
-App-aware UniAuth discovery and backend exposure belong to coordinated activation.
-UniAuth [PR #19](https://github.com/codetreker/uniauth/pull/19) supplies the upstream
-capability; Daynight retains its older SDK pin until that activation upgrades and
-connects it, as described in the
-[authentication architecture](../../docs/design/daynight-auth.md#登录方式发现).
+`{providers: [providerId, ...]}`. The production backend uses public UniAuth SDK
+`v0.0.0-20261022095215-0978963813fc` to discover the configured App's allowed and
+enabled providers with its registered callback. This result is authoritative;
+the UI does not invent a provider list. Configuration failures return 503,
+network/protocol failures 502 and discovery timeout 504, separately from a
+user-session 401. Discovery failures and an empty provider set have explicit
+states. The [authentication architecture](../../docs/design/daynight-auth.md#登录方式发现)
+owns the discovery protocol.
 
 With `pnpm web:dev`, open `/tests/mockups/auth.html` for actual components with
 controlled fetch responses, the same locale Provider and final styles. This fixture validates frontend
-interaction separately from production service mounting and real third-party
-login. The [static design prototype](../../docs/design/mockups/auth/index.html)
+interaction separately from real UniAuth service and upstream-provider login. The [static design prototype](../../docs/design/mockups/auth/index.html)
 retains the broader scenario reference.
 
 ## Languages
@@ -80,7 +81,8 @@ implemented English and Simplified Chinese interface. The
 [language design](../../docs/design/daynight-web-i18n.md) owns typed catalogs,
 cached native Intl formatters, initial resolution, a Provider and the shared
 native selector under `src/i18n/`. Production `main.tsx` resolves language and
-sets HTML `lang` and the route title before React renders. `App` updates document
+sets HTML `lang` and the authentication loading title before React renders.
+`AuthenticatedApp` and the workspace update document
 metadata on navigation and language changes. The top bar, centered detail dialog
 and fullscreen graph expose selectors using the same saved language. Combined
 source-bound production verification is separately tracked in Daynight.
@@ -127,11 +129,21 @@ pnpm web:dev
 
 Run the Go API separately on `127.0.0.1:8787`, using its
 [configuration](../daynight-server/README.md). Vite proxies `/api` to that address
-and listens on loopback. The project list requests 50 items per page, preserves
+and listens on loopback. For real login through Vite, set the same
+`DAYNIGHT_UNIAUTH_CALLBACK_URL` in the Vite and Go environments, registered with
+UniAuth for the development browser origin. Vite proxies exactly that callback
+path through the same Go API target. When unset, no callback proxy is added and
+frontend-only mockups remain independent of the Go service. The five required
+backend authentication settings and explicit HTTP test policy follow the
+[deployment guide](../../deployment/localhost/README.md); changing the browser
+origin does not relax callback or Cookie-write Origin checks.
+
+The project list requests 50 items per page, preserves
 server order, and follows `nextCursor` through Load more. Repeated IDs count once.
 Refresh discards old pages and cursors; late responses cannot repopulate them.
 
-The application implements `/` and `/projects/{projectId}`, direct URL reload,
+The application implements `/`, `/projects/{projectId}`, `/account` and
+`/invitations`, direct URL reload,
 browser back/forward and a generic not-found page. A project shows seven statistics
 from one complete graph snapshot and two in-project tabs: Standalone tasks and
 Task chains. The first visit opens Task chains; subsequent visits restore the
@@ -348,9 +360,11 @@ HTML loads the fixed same-origin
 images and relative fetches follow normal browser URL rules. HTML is trusted
 project code with main-origin privileges; the ordinary iframe has no sandbox.
 There is no separate preview modal, session token, domain or Service Worker.
-The planned [authentication architecture](../../docs/design/daynight-auth.md)
-adds project-member checks to attachment requests while retaining this trusted
-same-origin execution model, relative resources and keyboard behavior.
+The [authentication architecture](../../docs/design/daynight-auth.md) enforces
+credentials at HTTP admission and project membership in the pre-I/O snapshot.
+Admitted operations may finish without a later membership recheck, retaining
+this trusted same-origin execution model, relative resources, keyboard behavior
+and the K1 filesystem/PostgreSQL limitation.
 Other formats show metadata and a download link. Files and metadata can diverge
 after a failed write under the accepted K1 limitation; the UI reports errors and
 does not implement reconciliation or rollback.
@@ -449,7 +463,7 @@ runner remains the owner of the built/running image identity and full cleanup.
 
 Native functional checks start after the native process and browser are ready.
 Their browser cleanup must pass before an atomic, run/source-bound permission
-releases the container's thirteen functional checks. Capacity runs last, after all
+releases the container's nineteen functional checks. Capacity runs last, after all
 preparation and coverage commands, container checks, full dev-ci cleanup and
 container browser recovery have finished. Every browser phase retains one
 worker and zero retries. CI runs controlled deployment fixtures before the
@@ -496,17 +510,23 @@ the same browser identity.
 The command builds real embedded assets and a new Go executable and owns a
 separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
 the normal dev-ci runner builds and starts the actual production image. Browser
-execution proceeds through thirteen native functional scenarios, the same thirteen
+execution proceeds through nineteen native functional scenarios, the same nineteen
 functional scenarios through the production image's stream gateway, then five
 native capacity/limit scenarios. The native process and PostgreSQL remain alive
 through the capacity phase; other preparation commands and the complete
 container stack have finished before that phase starts. No normal localhost service or dataset is used. Functional and
-capacity fixtures use the real write APIs. The original eight graph scenarios and `project-view-tabs` retain
+capacity fixtures use normal UniAuth-acquired sessions/PATs and real write APIs.
+The shared gateway fixture is pinned to
+`0978963813fcefd9d553f6cb9bcc319084c764b3`; App credentials, browser session and PAT
+metadata remain in private 0600 files outside public artifact trees. External
+provider HTTP responses are controlled, so this proves the real gateway/SDK
+protocol and differs from a real upstream-provider login. The original eight graph scenarios and `project-view-tabs` retain
 their GET/HEAD-only browser checks. `task-attachments` and
 `language-state-preservation` allow exact fixture-scoped PUT/DELETE file routes;
 the latter holds each upload, overwrite and deletion while changing language to
 verify one write and retained state. Other language scenarios remain GET/HEAD-only,
-and unrelated mutations remain failures.
+and unrelated mutations remain failures. Six authentication scenarios declare
+only their exact expected management writes.
 One packed/installed CLI is shared by the whole web run. On each target,
 `task-attachments` uploads through that CLI and consumes the same task/files in
 the production page, then checks Web mutations through raw CLI reads. It covers
@@ -538,13 +558,14 @@ added node/edge, expanded node/edge and reset node/edge counts. Validation requi
 bounded overviews, exact deltas and reset counts. Independent existing polyline,
 native marker and dash-body checks cover every visible edge. Independent selection/H/selectMs and smooth-curve acceptance remain with the
 following inspection delivery. Current readiness uses the existing polyline renderer.
-31 scenarios, real native/container targets, zero retries, timeouts, coverage,
+43 scenario results, real native/container targets, zero retries, timeouts, coverage,
 1,001-task/5,001-edge refusals and cleanup remain; current production evidence is
 pending. The following inspection PR adds its own behavior and validation.
 
 The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [attachment journey](tests/e2e/attachments.spec.ts),
 [language journeys](tests/e2e/i18n.spec.ts),
+[authentication journeys](tests/e2e/auth.spec.ts),
 [capacity scenarios](tests/e2e/capacity.spec.ts) and
 [acceptance runner](scripts/acceptance.mts) map to the
 [W1–W12 requirements](../../docs/spec/daynight-web.md) and
@@ -568,6 +589,7 @@ scenario annotations validated in each target's report.
 | L2, L4–L5 | `language-state-preservation`: graph geometry/viewport, fullscreen and modal focus, PR page, file input and iframe identity; pending upload, overwrite and deletion execute once |
 | L3–L4, L6–L8 | `language-errors-and-narrow`: storage failures/retry, owned-database failure with current-language safe text and unchanged request ID, English/Chinese 1440px/320px graph/dialog/attachment layout |
 | L9–L10 | Task-attached offline mockup checks, typed catalog/component checks, and complete native/container production receipts with the existing coverage and cleanup gates |
+| Authentication | `auth-login-session`, `auth-project-isolation`, `auth-project-members`, `auth-personal-tokens`, `auth-invitations`, `auth-resource-session`: normal login/logout, private project access, roles and removal, PAT creation/revocation, explicit invitation acceptance, protected files and resource-session loss |
 
 Receipts live in `packages/daynight-web/.tmp/acceptance/<run-id>/`, with the
 latest aggregate at `.tmp/acceptance/evidence.json` inside this package. They
@@ -585,8 +607,8 @@ retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validati
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
 tested checkout identity, which is normally a merge revision for PR runs. A pass
-requires the strict union of thirteen native functional and five native capacity/limit
-scenarios (18 native total), plus the thirteen container functional scenarios. Every
+requires the strict union of nineteen native functional and five native capacity/limit
+scenarios (24 native total), plus the nineteen container functional scenarios. Every
 phase and target rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
 Browser identities must agree across a target's phases; every fixed graph's five
 timing repetitions, independent size refusals and cleanup/recovery must pass.
@@ -604,9 +626,11 @@ attaches `*-chromium-trace.json` from CDP timeline/frame/GC/User Timing events,
 without CPU sampling or CDP screenshots. These diagnostics preserve all original
 total timing/readiness gates; they do not subtract queue/frame time or turn a
 failed measurement into success. Scenario PNG evidence remains independent.
-Capacity tests disable Playwright's repeated DOM snapshots and trace filmstrip;
-action/network traces remain available on failure alongside all 15 streamed CDP
-traces, scenario PNGs and complete graph/geometry checks. Controller-side
+All production browser tests disable Playwright action/network traces to keep
+session Cookies, PATs and invitation contents out of published artifacts. The
+[activation decision](../../.agents/notes/implemented/architecture/2026-10-22-authentication-activation.md)
+owns that privacy requirement. The custom streamed CDP traces, scenario PNGs and
+complete graph/geometry checks remain. Controller-side
 `controllerDurations` records fixture creation, graph snapshot validation and
 per-repetition interaction/total durations. These diagnostics locate harness
 costs outside the browser input-to-feedback gates; they do not alter those gates.
@@ -728,6 +752,8 @@ Page hooks own requests and cancellation. Navigation or refresh invalidates the
 previous request generation, continuation failures preserve loaded cards, and
 unmount aborts owned work. Attachments have independent scoped list, write and
 preview state, while project statistics continue to use complete graph snapshots.
-There is no global task cache, task-field editor or polling loop. The opt-in
-`AuthenticatedApp` owns the authentication flow; production `main.tsx` continues
-to mount the existing `App` until coordinated activation.
+There is no global task cache, task-field editor or polling loop. Production
+`AuthenticatedApp` owns identity loading, authentication and account/membership
+flows under the persistent locale Provider. New identities discard user-owned
+requests and content; project 404 and discovery failures retain their distinct
+resource and provider meanings.

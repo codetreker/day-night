@@ -15,8 +15,8 @@ a mismatched image or cleanup failures unless its receipts are validated.
 `pnpm web:acceptance` uses the shared acceptance runner to build real embedded
 assets and a fresh native Go executable, own an isolated PostgreSQL 18.6
 container/volume and wait for structured service readiness. The normal dev-ci
-source build/start runs concurrently. Browser phases run thirteen native functional
-scenarios, the same thirteen functional scenarios through the production image's
+source build/start runs concurrently. Browser phases run nineteen native functional
+scenarios, the same nineteen functional scenarios through the production image's
 stream gateway, then five native capacity/limit scenarios. The normal localhost
 stack and its data do not participate. The
 [pipeline decision](2026-10-21-web-acceptance-pipeline.md) partially supersedes the
@@ -41,7 +41,11 @@ independent node/edge-limit rejections. The
 adds dense external ancestry while preserving the original three datasets. The
 [bilingual interface decision](../feature/2026-10-22-web-bilingual-interface.md)
 adds three targeted functional language scenarios to each target without
-replicating the capacity matrix. Fixtures are created through real APIs;
+replicating the capacity matrix. The
+[authentication activation](../architecture/2026-10-22-authentication-activation.md)
+adds six functional scenarios per target, authoritative provider discovery and
+normal UniAuth session/PAT bootstrap; the current strict aggregate is forty-three.
+Fixture data is created through real authenticated APIs;
 the original graph scenarios and task-view scenario retain read-only browser
 request checks. The attachment and `language-state-preservation` scenarios
 permit only their exact fixture-scoped file PUT/DELETE requests;
@@ -73,8 +77,8 @@ native/container/capacity evidence; prior full-render results do not establish i
 Playwright runs one worker with zero retries. Report validation rejects global
 errors, skipped/flaky/retried tests, duplicate/missing stable scenarios, missing
 PNG screenshots and inconsistent summary counts. Native functional/capacity
-reports form a strict eighteen-scenario union; container functional validation
-requires thirteen. Missing, extra or duplicate names fail both phase and aggregate
+reports form a strict twenty-four-scenario union; container functional validation
+requires nineteen. Missing, extra or duplicate names fail both phase and aggregate
 validation, and browser identity must agree across a target's phases.
 Performance validation requires
 all fixed datasets, exactly five valid measurements per dataset, every budget
@@ -112,8 +116,10 @@ One streamed CDP timeline/User Timing/frame/GC JSON trace per repetition correla
 those markers with browser work. The trace does not enable CPU sampling or CDP
 screenshots; scenario PNG evidence stays separate. Bounded completion and resource
 closure are required. Capacity tests disable Playwright's repeated DOM snapshots
-and filmstrip while retaining failure action/network traces, all 20 CDP traces,
-scenario PNGs and complete graph/geometry checks. Controller-side fixture,
+and filmstrip. Authentication additionally disables Playwright action/network
+traces because the pinned recorder captures credential headers and bodies;
+the activation decision owns that privacy evidence and diagnostic cost. All
+20 custom CDP traces, safe scenario PNGs and complete graph/geometry checks remain. Controller-side fixture,
 snapshot and repetition durations identify harness costs separately from the
 browser performance gate. The
 [CI efficiency decision](2026-10-21-ci-validation-efficiency.md) records this

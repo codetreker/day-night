@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -163,8 +164,9 @@ func run(ctx context.Context) (err error) {
 			return fmt.Errorf("%s is required", name)
 		}
 	}
-	if os.Getenv("DAYNIGHT_FIXTURE_LISTEN_ADDRESS") != "127.0.0.1:0" {
-		return errors.New("fixture listener must be 127.0.0.1:0")
+	host, _, err := net.SplitHostPort(os.Getenv("DAYNIGHT_FIXTURE_LISTEN_ADDRESS"))
+	if err != nil || host != "127.0.0.1" && host != "0.0.0.0" {
+		return errors.New("fixture listener must use 127.0.0.1 or an explicitly configured container wildcard")
 	}
 	listener, err := net.Listen("tcp", os.Getenv("DAYNIGHT_FIXTURE_LISTEN_ADDRESS"))
 	if err != nil {
@@ -172,9 +174,19 @@ func run(ctx context.Context) (err error) {
 	}
 	defer listener.Close()
 	origin := "http://" + listener.Addr().String()
+	if configured := os.Getenv("DAYNIGHT_FIXTURE_PUBLIC_URL"); configured != "" {
+		public, parseErr := url.Parse(configured)
+		_, boundPort, _ := net.SplitHostPort(listener.Addr().String())
+		if parseErr != nil || public.Scheme != "http" || public.Hostname() != "127.0.0.1" || public.Port() != boundPort || public.Path != "" || public.RawQuery != "" || public.Fragment != "" || public.User != nil {
+			return errors.New("fixture public URL must be the exact numeric loopback HTTP origin using its bound port")
+		}
+		origin = configured
+	} else if host != "127.0.0.1" {
+		return errors.New("container fixture listener requires an explicit public URL")
+	}
 	startup, cancelStartup := context.WithTimeout(ctx, 10*time.Second)
 	defer cancelStartup()
-	store, err := apps.Open(startup, apps.Config{Path: os.Getenv("DAYNIGHT_FIXTURE_DATABASE_PATH"), AllowLoopbackHTTP: true})
+	store, err := apps.Open(startup, apps.Config{Path: os.Getenv("DAYNIGHT_FIXTURE_DATABASE_PATH")})
 	if err != nil {
 		return err
 	}
@@ -186,7 +198,7 @@ func run(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	app, err := store.Create(startup, owner.ID, apps.CreateAppInput{AppInput: apps.AppInput{Name: "Daynight integration fixture", Enabled: true, RedirectURIs: []string{os.Getenv("DAYNIGHT_FIXTURE_CALLBACK_URL")}, Providers: []string{"github"}}, InitialSecret: apps.SecretInput{Name: "Daynight integration backend"}})
+	app, err := store.Create(startup, owner.ID, apps.CreateAppInput{AppInput: apps.AppInput{Name: "Daynight integration fixture", Enabled: true, RedirectURIs: []string{os.Getenv("DAYNIGHT_FIXTURE_CALLBACK_URL")}, Providers: []string{"github"}}, InitialSecret: &apps.SecretInput{Name: "Daynight integration backend"}})
 	if err != nil {
 		return err
 	}
@@ -202,7 +214,12 @@ func run(ctx context.Context) (err error) {
 	defer func() { err = errors.Join(err, handler.Close()) }()
 	mux := http.NewServeMux()
 	handler.Register(mux)
-	server := &http.Server{Handler: mux, ReadHeaderTimeout: 3 * time.Second}
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodPost && request.URL.Path == "/auth/result" {
+			slog.Info("fixture result request", "type", "fixture_result_request")
+		}
+		mux.ServeHTTP(w, request)
+	}), ReadHeaderTimeout: 3 * time.Second}
 	defer func() { err = errors.Join(err, server.Close()) }()
 	served := make(chan error, 1)
 	go func() { served <- server.Serve(listener) }()

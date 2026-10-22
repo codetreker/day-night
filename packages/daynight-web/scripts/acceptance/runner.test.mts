@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -7,6 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { processIdentity } from './identity.mts';
+import { launchNativeServer } from './runner.mts';
 
 const packageRoot = fileURLToPath(new URL('../../', import.meta.url));
 const temporaryRoot = join(packageRoot, '.tmp');
@@ -182,7 +183,7 @@ test('recovery refuses a storage path outside its run and preserves storage whil
         const result = await start([cli, '--cleanup', id], value).done;
         assert.equal(result.timedOut, false);
         assert.equal(result.code, 1);
-        assert.match(result.stderr, invalid === 'path' ? /Recovery receipt does not identify/ : /Native process lacks enough identity/);
+        assert.match(result.stderr, invalid === 'path' ? /Recovery receipt does not identify/ : /Owned process lacks enough identity/);
         assert.equal(await readFile(join(storageRoot, 'owned-file'), 'utf8'), 'owned');
         assert.equal(await readFile(value.commands, 'utf8'), '');
       } finally { await rm(directory, { recursive: true, force: true }); }
@@ -368,5 +369,131 @@ test('partial installation is retained while a recorded preparation process is s
       assert.equal(await readFile(join(current.root, 'partial-install'), 'utf8'), 'owned preparation');
       assert.equal(await readFile(value.commands, 'utf8'), '');
     } finally { await rm(current.directory, { recursive: true, force: true }); }
+  });
+});
+
+const nativeProgram = async (directory: string, body: string): Promise<string> => {
+  const path = join(directory, 'native-program');
+  await writeFile(path, `#!${process.execPath}\n${body}\n`);
+  await chmod(path, 0o755);
+  return path;
+};
+
+const stopNativeProgram = async (child: ChildProcess | undefined): Promise<void> => {
+  if (child === undefined || child.exitCode !== null || child.signalCode !== null) return;
+  const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
+  child.kill('SIGTERM');
+  await closed;
+};
+
+test('native startup supplies normal auth configuration and waits for persisted ownership before readiness', { skip: process.platform === 'win32' }, async () => {
+  await fixture(async (value) => {
+    const configuration = join(value.directory, 'native-environment.json');
+    const binary = await nativeProgram(value.directory, `
+      const { writeFileSync } = await import('node:fs');
+      const keys = ['DAYNIGHT_DATABASE_URL', 'DAYNIGHT_LISTEN_ADDR', 'DAYNIGHT_STORAGE_ROOT', 'DAYNIGHT_PUBLIC_ORIGIN',
+        'DAYNIGHT_UNIAUTH_URL', 'DAYNIGHT_UNIAUTH_APP_ID', 'DAYNIGHT_UNIAUTH_APP_SECRET', 'DAYNIGHT_UNIAUTH_CALLBACK_URL',
+        'DAYNIGHT_ALLOW_HTTP_TEST_ORIGIN', 'DAYNIGHT_ALLOW_LOOPBACK_HTTP'];
+      writeFileSync(${JSON.stringify(configuration)}, JSON.stringify(Object.fromEntries(keys.map(key => [key, process.env[key]]))), {mode: 0o600});
+      process.stderr.write(JSON.stringify({phase: 'listening', address: process.env.DAYNIGHT_LISTEN_ADDR}) + '\\n');
+      process.on('SIGTERM', () => process.exit(0));
+      setInterval(() => {}, 1000);
+    `);
+    let release = (): void => {};
+    const recorded = new Promise<void>((resolve) => { release = resolve; });
+    let child: ChildProcess | undefined;
+    let settled = false;
+    const cancellation = new AbortController();
+    const started = launchNativeServer({ binary, databaseUrl: 'postgres://fixture', storageRoot: join(value.directory, 'storage'),
+      baseUrl: 'http://127.0.0.1:23456', auth: { origin: 'http://127.0.0.1:23457', appId: 'fixture-app', appSecret: 'private-app-secret' },
+      signal: cancellation.signal, onSpawn: async (owned) => { child = owned; await recorded; }, onUnexpectedExit: () => {} });
+    void started.then(() => { settled = true; }, () => { settled = true; });
+    try {
+      const deadline = performance.now() + 2_000;
+      let environment: Record<string, string> | undefined;
+      while (environment === undefined) {
+        try { environment = JSON.parse(await readFile(configuration, 'utf8')) as Record<string, string>; }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+        if (performance.now() >= deadline) throw new Error('Native program did not receive its configuration.');
+        if (environment === undefined) await delay(10);
+      }
+      assert.equal(settled, false);
+      assert.deepEqual(environment, { DAYNIGHT_DATABASE_URL: 'postgres://fixture', DAYNIGHT_LISTEN_ADDR: '127.0.0.1:23456',
+        DAYNIGHT_STORAGE_ROOT: join(value.directory, 'storage'), DAYNIGHT_PUBLIC_ORIGIN: 'http://127.0.0.1:23456',
+        DAYNIGHT_UNIAUTH_URL: 'http://127.0.0.1:23457', DAYNIGHT_UNIAUTH_APP_ID: 'fixture-app', DAYNIGHT_UNIAUTH_APP_SECRET: 'private-app-secret',
+        DAYNIGHT_UNIAUTH_CALLBACK_URL: 'http://127.0.0.1:23456/api/v1/auth/callback', DAYNIGHT_ALLOW_HTTP_TEST_ORIGIN: '1', DAYNIGHT_ALLOW_LOOPBACK_HTTP: '1' });
+      release();
+      assert.equal(await started, child);
+      assert.equal(await readFile(value.commands, 'utf8'), '');
+    } finally {
+      release();
+      await stopNativeProgram(child);
+      await started.catch(() => {});
+    }
+  });
+});
+
+test('native startup rejects mismatched origins and classifies only a proven address conflict for retry', { skip: process.platform === 'win32' }, async () => {
+  await fixture(async (value) => {
+    for (const kind of ['mismatched-origin', 'address-in-use', 'database-failure']) {
+      const record = kind === 'mismatched-origin' ? { phase: 'listening', address: '127.0.0.1:23458' }
+        : { phase: 'startup', diagnostic: kind === 'address-in-use' ? 'HTTP listen failed' : 'database open failed', cause: 'address_in_use' };
+      const binary = await nativeProgram(value.directory, `
+        process.stderr.write(${JSON.stringify(JSON.stringify(record) + '\n')});
+        process.exitCode = 1;
+      `);
+      let child: ChildProcess | undefined;
+      try {
+        await assert.rejects(launchNativeServer({ binary, databaseUrl: 'postgres://fixture', storageRoot: join(value.directory, 'storage'),
+          baseUrl: 'http://127.0.0.1:23456', auth: { origin: 'http://127.0.0.1:23457', appId: 'fixture-app', appSecret: 'private-app-secret' },
+          signal: new AbortController().signal, onSpawn: async (owned) => { child = owned; }, onUnexpectedExit: () => {} }),
+          (error: Error) => {
+            assert.equal(error.constructor.name === 'NativeAddressInUseError', kind === 'address-in-use');
+            assert.match(error.message, kind === 'mismatched-origin' ? /listener differs/ : kind === 'address-in-use' ? /port is already in use/ : /exited before readiness/);
+            return true;
+          });
+      } finally { await stopNativeProgram(child); }
+    }
+  });
+});
+
+test('recovery cleans only recorded native auth directories and refuses an unidentified live fixture', { skip: process.platform !== 'linux' }, async () => {
+  await fixture(async (value) => {
+    for (const kind of ['absent', 'outside', 'live']) {
+      const id = runId();
+      const directory = join(evidenceRoot, id);
+      const authDirectory = kind === 'outside' ? join(value.directory, 'operator-auth') : join(temporaryRoot, 'acceptance-private', id, 'auth/native-auth-0');
+      const storageRoot = join(directory, 'native-storage');
+      const owner = `daynight-web-${id}`;
+      await mkdir(authDirectory, { recursive: true });
+      await mkdir(storageRoot, { recursive: true });
+      await writeFile(join(authDirectory, 'apps.db'), 'owned private fixture database');
+      const auth = { directory: authDirectory, binary: fileURLToPath(new URL('../../../daynight-server/.tmp/uniauth-fixture', import.meta.url)),
+        binarySha256: 'a'.repeat(64), cleanup: 'pending', ...(kind === 'live' ? { processPid: process.pid } : {}) };
+      await writeFile(join(directory, 'evidence.json'), JSON.stringify({ schemaVersion: 2, runId: id,
+        source: { gitSha: sourceGitSha, githubSha: process.env.GITHUB_SHA ?? null },
+        runner: { pid: 2_147_483_647, executable: process.execPath, startTicks: '1', group: 2_147_483_647 }, stages: [],
+        native: { owner, postgresContainer: `${owner}-postgres`, postgresVolume: `${owner}-data`,
+          binary: join(directory, 'daynight-server'), storageRoot, authFixtures: [auth] } }));
+      await writeFile(join(value.bin, 'docker'), '#!/bin/sh\nexit 0\n');
+      try {
+        const result = await start([cli, '--cleanup', id], value).done;
+        assert.equal(result.timedOut, false);
+        if (kind === 'absent') {
+          assert.equal(result.code, 0, result.stderr);
+          await assert.rejects(readFile(join(authDirectory, 'apps.db')), { code: 'ENOENT' });
+          const receipt = JSON.parse(await readFile(join(directory, 'recovery.json'), 'utf8')) as { authFixtures: unknown[]; result: string };
+          assert.equal(receipt.result, 'passed');
+          assert.deepEqual(receipt.authFixtures, [{ directory: authDirectory, result: 'not-started' }]);
+        } else {
+          assert.equal(result.code, 1);
+          assert.match(result.stderr, kind === 'outside' ? /UniAuth fixture ownership differs/ : /Owned process lacks enough identity/);
+          assert.equal(await readFile(join(authDirectory, 'apps.db'), 'utf8'), 'owned private fixture database');
+        }
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+        await rm(join(temporaryRoot, 'acceptance-private', id), { recursive: true, force: true });
+      }
+    }
   });
 });

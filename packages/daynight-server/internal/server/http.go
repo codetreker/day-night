@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"mime"
@@ -188,6 +189,18 @@ func writeError(w http.ResponseWriter, request *http.Request, logger *slog.Logge
 					MaxNodes: &limits.MaxNodes, MaxEdges: &limits.MaxEdges}
 			}
 		}
+	}
+	var identityError *service.IdentityProviderError
+	if errors.As(err, &identityError) {
+		switch identityError.Code {
+		case "identity_configuration":
+			status = http.StatusServiceUnavailable
+		case "identity_timeout":
+			status = http.StatusGatewayTimeout
+		default:
+			status = http.StatusBadGateway
+		}
+		response.Code, response.Message = identityError.Code, identityError.Error()
 	}
 	writeJSON(w, request, logger, status, api.ErrorResponse{Error: response})
 }
