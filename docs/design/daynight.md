@@ -403,10 +403,17 @@ bundle 复制到 `dist/commands/review/skills/daynight-review/`，由既有 `dis
 选中 CLI 时，全部原生检查和独立 shell completion 检查必须成功，PR 的 Linux CLI
 任务还检查包版本；main push 保留全量应用门禁。最终 `checks` 只接受所有前置 job 的
 `success` 或 `skipped`，失败、取消及其他结果使汇总失败。
-发布在等待 CI 与安装依赖前检查精确版本的 tag 和 npm 记录；任一存在则成功跳过新发布。首次使用准备好的产物发布前重复检查，同一次 run 的发布失败重试
-保留严格的源码、字节验证与补齐 tag 能力。
-[版本预检决策](../../.agents/notes/implemented/process/2026-10-21-publication-version-preflight.md)
-维护跳过与重试规则；发布授权、npm OIDC、产物身份及公共验证由
+发布在等待 CI 与安装项目依赖前检查精确版本的 tag 和 npm 记录；任一存在则成功跳过。
+npm 元数据统一由固定版本的 npm 12.2.0 执行 `npm view <package>@<version> --json`
+读取完整包记录并选择版本，仅 JSON `E404` 表示版本不存在。鉴权、网络、超时和格式
+错误继续暴露。每次发布尝试，包括失败重跑，都会在下载产物前重复预检；发布脚本也会
+在上传前检查。已有版本不再比较源码与字节，不下载旧包或补齐缺失的 tag。上传失败后
+若重新查询确认精确版本存在，也成功跳过；确认不存在时保留原上传错误。
+新上传仍要求同一份产物、源码和公共字节验证成功后才创建不可变 tag，元数据与 tarball
+共用十分钟验证期限。npm 查询限制三十秒，GitHub 与 tarball HTTP 请求限制二十秒，
+并受剩余总期限约束。
+[npm CLI 发布检查决策](../../.agents/notes/implemented/process/2026-10-22-npm-cli-publication-checks.md)
+维护查询、跳过与重复发布规则；发布授权、npm OIDC、产物身份及公共验证由
 [发布决策](../../.agents/notes/implemented/process/2026-10-20-npm-trusted-publishing.md)维护。
 
 ## 验证与交付
