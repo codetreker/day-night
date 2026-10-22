@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
-import { createLocaleRender } from './helpers/renderWithLocale';
+import { createLocaleRender, renderWithLocale } from './helpers/renderWithLocale';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GraphTask, Project, TaskDetail, TaskGraph } from '../src/api/types';
@@ -28,7 +28,7 @@ const node = (task: TaskDetail): GraphTask => ({
 const snapshot = (tasks = [detail()], revision = 1): GraphSnapshot => {
   const graph: TaskGraph = {
     project, tasks: tasks.map(node), summary: {
-      total: tasks.length, todo: tasks.filter((task) => task.status === 'todo').length,
+      total: tasks.length, proposed: tasks.filter((task) => task.status === "proposed").length, todo: tasks.filter((task) => task.status === 'todo').length,
       inProgress: tasks.filter((task) => task.status === 'in_progress').length,
       done: tasks.filter((task) => task.status === 'done').length,
       ready: tasks.filter((task) => task.ready).length,
@@ -70,6 +70,32 @@ beforeEach(() => {
 afterEach(() => { cleanup(); root.remove(); document.body.style.overflow = ''; });
 
 describe('task detail dialog', () => {
+  it('retranslates a proposed task and its unfinished proposed prerequisite without a ready badge or refetch', async () => {
+    const prerequisite = detail(2, { status: 'proposed', ready: false });
+    const proposed = detail(1, { status: 'proposed', dependsOn: [id(2)], blockedBy: [id(2)], ready: false });
+    const fetch = vi.fn().mockResolvedValue(response(proposed));
+    vi.stubGlobal('fetch', fetch);
+    const options = props({ snapshot: snapshot([proposed, prerequisite]) });
+    const view = renderWithLocale(<TaskDetailDialog {...options} />, { locale: 'en', container: host });
+    await screen.findByRole('heading', { name: '任务 1' });
+    const original = screen.getByRole('dialog', { name: 'Task details' });
+    expect(within(original).getByText('Proposed')).toHaveClass('task-detail-status-proposed');
+    expect(within(original).queryByText('Ready')).toBeNull();
+    fireEvent.change(within(original).getByRole('combobox', { name: '语言 / Language' }), { target: { value: 'zh-CN' } });
+    const dialog = screen.getByRole('dialog', { name: '任务详情' });
+    expect(dialog).toBe(original);
+    expect(within(dialog).getByText('待审批')).toHaveClass('task-detail-status-proposed');
+    expect(within(dialog).queryByText('可开始')).toBeNull();
+    const relation = within(screen.getByRole('region', { name: '当前未完成的前置' })).getByRole('button', { name: '任务 2' });
+    expect(relation.querySelector('.task-detail-relation-dot')).toHaveClass('task-detail-dot-proposed');
+    fireEvent.click(relation);
+    expect(options.onSelectTask).toHaveBeenCalledWith(id(2));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: '关闭任务详情' })).toHaveFocus();
+    view.unmount();
+    expect(trigger).toHaveFocus();
+  });
+
   it('opens on overview and keeps task-scoped attachments in their own mounted panel', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(detail())));
     open();

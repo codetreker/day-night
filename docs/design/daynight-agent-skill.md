@@ -140,7 +140,7 @@ ready 默认最多 10 项，必要时使用 1..100 的 `--limit`。服务按创�
 区分全部交付、依赖阻塞、其他工作进行中及当前候选不足。graph 的 1,000 节点 / 5,000 边
 限制不等于项目未关联，详情必须使用 show。task list 仍穷尽匹配分页，默认排除 `done`；
 需要包含已完成任务的完整清单或核对历史登记时显式包含已完成任务，选项从 CLI help
-查询。结果按 `in_progress`、ready、其余 `todo`、`done` 稳定分组，组内保留服务顺序，
+查询。结果按 `in_progress`、ready、其余 `todo`、`proposed`、`done` 稳定分组，组内保留服务顺序，
 不表示相关性。文本列表是摘要；JSON 列表仅省略 `description`，保留其余 task
 字段。需要描述时读取 show，ready、详情和写入结果继续返回完整 task 资源。
 

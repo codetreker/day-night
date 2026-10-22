@@ -237,13 +237,14 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
   }
   await page.setViewportSize({ width: 844, height: 390 });
   await selectFile(attachments, 'long/reading.md');
+  const language = page.locator('.task-detail-dialog').getByRole('combobox', { name: '语言 / Language', exact: true });
   for (const locale of ['zh-CN', 'en']) {
-    await dialog.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption(locale);
+    await language.selectOption(locale);
     const shortScreenshot = info.outputPath(`task-attachments-short-${locale}.png`);
     await page.screenshot({ path: shortScreenshot, fullPage: false });
     await info.attach(`task-attachments-short-${locale}`, { path: shortScreenshot, contentType: 'image/png' });
   }
-  await dialog.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('zh-CN');
+  await language.selectOption('zh-CN');
   await page.setViewportSize({ width: 320, height: 800 });
   await selectFile(attachments, longPath);
   await expect(attachments.getByRole('heading', { name: longPath, exact: true })).toHaveAttribute('title', longPath);

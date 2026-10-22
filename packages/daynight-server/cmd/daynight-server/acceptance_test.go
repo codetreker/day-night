@@ -15,6 +15,7 @@ import (
 )
 
 func TestBuiltBinaryAcceptance(t *testing.T) {
+	acceptanceCase(t, "proposed_read_projection", []string{"V1", "V5", "V6", "V7"}, acceptanceProposedReads)
 	acceptanceCase(t, "workflow_restart_persistence", []string{"V1", "V4", "V5", "V6", "V10", "TP-V1", "TP-V3"}, acceptanceWorkflow)
 	acceptanceCase(t, "refusals_scopes_filters_and_cursors", []string{"V2", "V4", "V5", "V6", "V10"}, acceptanceRefusals)
 	acceptanceCase(t, "concurrent_reverse_dependencies", []string{"V3"}, acceptanceReverseDependencies)
@@ -520,7 +521,7 @@ func acceptanceConcurrentStartup(t *testing.T, scenario *acceptanceScenario) {
 	first.started(t)
 	second.started(t)
 	var versions []int64
-	if err := fixture.admin.QueryRow(ctx, "SELECT array_agg(version ORDER BY version) FROM schema_migrations").Scan(&versions); err != nil || !slices.Equal(versions, []int64{1, 2, 3, 4, 5, 6}) {
+	if err := fixture.admin.QueryRow(ctx, "SELECT array_agg(version ORDER BY version) FROM schema_migrations").Scan(&versions); err != nil || !slices.Equal(versions, []int64{1, 2, 3, 4, 5, 6, 7}) {
 		t.Fatal("concurrent processes did not share exactly one migration ledger")
 	}
 	project := first.project(t, "Shared process state")
@@ -532,4 +533,79 @@ func acceptanceConcurrentStartup(t *testing.T, scenario *acceptanceScenario) {
 	second.signal(t)
 	first.stopped(t, 0)
 	second.stopped(t, 0)
+}
+
+func acceptanceProposedReads(t *testing.T, scenario *acceptanceScenario) {
+	fixture := newAcceptanceFixture(t, scenario)
+	process := fixture.launch(t, nil).started(t)
+	project := process.project(t, "Proposed read projection")
+	pending := process.task(t, project, "Pending prerequisite")
+	done := process.task(t, project, "Completed prerequisite")
+	done = process.update(t, done, map[string]any{"status": "done"})
+	proposed := api.Task{ID: "00000000-0000-4000-8000-000000000001", ProjectID: project.ID}
+	proposedBlocked := api.Task{ID: "00000000-0000-4000-8000-000000000002", ProjectID: project.ID}
+	fixture.exec(t, `INSERT INTO tasks (id, project_id, title, description, status, version)
+		VALUES ($1, $3, 'Proposed', 'Complete proposed description', 'proposed', 17),
+		($2, $3, 'Proposed with prerequisite', '', 'proposed', 19)`, proposed.ID, proposedBlocked.ID, project.ID)
+	fixture.exec(t, `INSERT INTO task_dependencies (project_id, task_id, depends_on_task_id)
+		VALUES ($1, $2, $4), ($1, $3, $5)`, project.ID, proposed.ID, proposedBlocked.ID, done.ID, pending.ID)
+	proposed = process.readTask(t, proposed)
+	proposedBlocked = process.readTask(t, proposedBlocked)
+	if proposed.Status != "proposed" || proposed.Ready || proposed.Version != 17 || proposed.Description != "Complete proposed description" ||
+		len(proposed.BlockedBy) != 0 || proposedBlocked.Status != "proposed" || proposedBlocked.Ready || proposedBlocked.Version != 19 ||
+		!slices.Equal(proposedBlocked.BlockedBy, []string{pending.ID}) {
+		t.Fatal("migrated proposed rows did not retain detail/readiness projection")
+	}
+	dependent := process.task(t, project, "Waiting for proposal", proposed.ID)
+	if dependent.Status != "todo" || dependent.Ready || !slices.Equal(dependent.BlockedBy, []string{proposed.ID}) {
+		t.Fatal("proposed prerequisite did not block the existing todo creation path")
+	}
+	var ids []string
+	path := acceptanceTasksPath(project.ID) + "?limit=2"
+	for {
+		page := acceptanceDecode[api.TaskPage](t, process.request(context.Background(), http.MethodGet, path, nil, ""), http.StatusOK)
+		for _, task := range page.Items {
+			ids = append(ids, task.ID)
+			if task.ID == proposed.ID && (task.Status != "proposed" || task.Ready || task.Version != 17 || task.Description != proposed.Description) {
+				t.Fatal("paginated proposed task lost its detail projection")
+			}
+		}
+		if page.NextCursor == nil {
+			break
+		}
+		path = acceptanceTasksPath(project.ID) + "?limit=2&cursor=" + url.QueryEscape(*page.NextCursor)
+	}
+	wantIDs := []string{pending.ID, done.ID, proposed.ID, proposedBlocked.ID, dependent.ID}
+	slices.Sort(ids)
+	slices.Sort(wantIDs)
+	if !slices.Equal(ids, wantIDs) {
+		t.Fatal("paginated inventory omitted or repeated a proposed row")
+	}
+	ready := acceptanceDecode[api.TaskPage](t, process.request(context.Background(), http.MethodGet, acceptanceTasksPath(project.ID)+"?ready=true", nil, ""), http.StatusOK)
+	if len(ready.Items) != 1 || ready.Items[0].ID != pending.ID {
+		t.Fatal("proposed row appeared in the ready inventory")
+	}
+	graph := acceptanceDecode[api.TaskGraph](t, process.request(context.Background(), http.MethodGet, "/api/v1/projects/"+project.ID+"/task-graph", nil, ""), http.StatusOK)
+	if graph.Summary != (api.TaskGraphSummary{Total: 5, Proposed: 2, Todo: 2, Done: 1, Ready: 1, Blocked: 1}) || len(graph.Tasks) != 5 {
+		t.Fatal("built process did not project the complete four-state summary")
+	}
+	for _, task := range graph.Tasks {
+		if task.ID == proposed.ID && (task.Status != "proposed" || task.Ready || len(task.BlockedBy) != 0) ||
+			task.ID == proposedBlocked.ID && (task.Status != "proposed" || task.Ready || !slices.Equal(task.BlockedBy, proposedBlocked.BlockedBy)) {
+			t.Fatal("built graph changed proposed readiness or prerequisite projection")
+		}
+	}
+	acceptanceError(t, process.request(context.Background(), http.MethodGet, acceptanceTasksPath(project.ID)+"?status=proposed", nil, ""), http.StatusBadRequest, "invalid_input")
+	acceptanceError(t, process.request(context.Background(), http.MethodPatch, acceptanceTaskPath(pending), map[string]any{"version": pending.Version, "status": "proposed"}, ""), http.StatusBadRequest, "invalid_input")
+	if after := process.readTask(t, pending); !reflect.DeepEqual(after, pending) {
+		t.Fatal("rejected proposed status write changed the existing creation result")
+	}
+	process.signal(t)
+	process.stopped(t, 0)
+	restarted := fixture.launch(t, nil).started(t)
+	if !reflect.DeepEqual(restarted.readTask(t, proposed), proposed) || !reflect.DeepEqual(restarted.readTask(t, proposedBlocked), proposedBlocked) {
+		t.Fatal("proposed detail projection changed across migration recheck and restart")
+	}
+	restarted.signal(t)
+	restarted.stopped(t, 0)
 }

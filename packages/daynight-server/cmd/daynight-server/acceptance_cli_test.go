@@ -550,7 +550,25 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		if strings.ContainsAny(detail, "\x00\x1b") {
 			t.Fatal("installed full-resource text output emitted raw PR terminal controls")
 		}
-		unfinished := []api.Task{cli.task(t, second), before}
+		proposedID, proposedBlockedID := "00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"
+		fixture.exec(t, `INSERT INTO tasks (id, project_id, title, description, status, version)
+			VALUES ($1, $3, 'Proposed task', 'Persistent proposed description', 'proposed', 17),
+			($2, $3, 'Blocked proposal', '', 'proposed', 19)`, proposedID, proposedBlockedID, projectID)
+		fixture.exec(t, `INSERT INTO task_dependencies (project_id, task_id, depends_on_task_id)
+			VALUES ($1, $2, $3)`, projectID, proposedBlockedID, second)
+		proposed, proposedBlocked := cli.task(t, proposedID), cli.task(t, proposedBlockedID)
+		if proposed.Status != "proposed" || proposed.Ready || proposed.Version != 17 || proposed.Description != "Persistent proposed description" ||
+			len(proposed.BlockedBy) != 0 || proposedBlocked.Status != "proposed" || proposedBlocked.Ready ||
+			!slices.Equal(proposedBlocked.BlockedBy, []string{second}) {
+			t.Fatal("installed CLI show lost proposed detail or prerequisite projection")
+		}
+		proposedDetail := cli.run(t, cli.repo, "task", "show", proposedID)
+		for _, field := range []string{"Status: proposed\n", "Ready: false\n", "Description: " + proposed.Description + "\n", "Version: 17\n"} {
+			if !strings.Contains(proposedDetail, field) {
+				t.Fatal("installed CLI text detail lost proposed status or full description")
+			}
+		}
+		unfinished := []api.Task{cli.task(t, second), before, proposed, proposedBlocked}
 		for _, listing := range []struct {
 			arguments []string
 			expected  []api.Task
@@ -597,8 +615,12 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		if !reflect.DeepEqual(graph, expectedGraph) {
 			t.Fatal("installed CLI graph omitted or changed server response fields")
 		}
-		if graph.Project.ID != projectID || graph.Summary.Total != 4 || graph.Summary.Done != 2 || graph.Summary.Todo != 2 || graph.Summary.Ready != 2 || len(graph.Tasks) != 4 {
+		if graph.Project.ID != projectID || graph.Summary.Total != 6 || graph.Summary.Proposed != 2 || graph.Summary.Done != 2 || graph.Summary.Todo != 2 || graph.Summary.Ready != 2 || graph.Summary.Blocked != 0 || len(graph.Tasks) != 6 {
 			t.Fatal("installed CLI graph lost the complete server summary or tasks")
+		}
+		graphText := cli.run(t, cli.repo, "task", "graph")
+		if !strings.Contains(graphText, "Proposed: 2\n") || !strings.Contains(graphText, "proposed") || !strings.Contains(graphText, proposedID) || !strings.Contains(graphText, proposedBlockedID) {
+			t.Fatal("installed CLI graph text lost proposed count or tasks")
 		}
 		if strings.Contains(cli.run(t, cli.repo, "task", "graph", "--json"), `"properties"`) {
 			t.Fatal("installed graph included full-resource properties")
@@ -609,6 +631,9 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		restarted := fixture.launch(t, map[string]string{"DAYNIGHT_LISTEN_ADDR": process.address}).started(t)
 		if restarted.address != process.address {
 			t.Fatal("restarted real service did not reuse its released address")
+		}
+		if !reflect.DeepEqual(cli.task(t, proposedID), proposed) || !reflect.DeepEqual(cli.task(t, proposedBlockedID), proposedBlocked) {
+			t.Fatal("installed CLI proposed tasks changed across actual process restart")
 		}
 		if after := cli.task(t, editable); !reflect.DeepEqual(after, before) {
 			t.Fatal("installed CLI task data did not persist across actual process restart")

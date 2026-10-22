@@ -23,7 +23,8 @@
 
 ## 目标与现有基础
 
-浏览器完成“项目列表 → 项目统计 → 独立任务列表或根任务链 → 任务详情”的完整读取路径。数据继续归属 `daynight-server`，不接入 客户端的 review 命令，不新增父子任务或新的任务状态。
+浏览器完成“项目列表 → 项目统计 → 独立任务列表或根任务链 → 任务详情”的完整读取路径。数据继续归属 `daynight-server`，不接入 客户端的 review 命令，不新增父子任务。读取模型支持 proposed、todo、in_progress 和 done；公开创建仍为
+todo，任务字段继续只读。
 
 已有基础与集成位置：
 
@@ -47,6 +48,8 @@
 
 采用浅色内容区、白色卡片、深色窄导航栏和克制的靛蓝强调色。节点颜色始终表达业务状态；选中态使用描边，不覆盖状态颜色。产品标签使用当前英语或简体中文目录，用户内容、代码标识和仓库地址保留原文；切换遵守[语言设计](daynight-web-i18n.md)的状态、焦点和布局约束。
 
+proposed 按当前语言使用“Proposed”或“待审批”及独立的紫色，应用于项目统计、独立行、整链标签、图节点与详情；颜色同时配有文字。统计使用七项网格，窄屏保留自然换行。现有[任务视图预览](mockups/task-views.html)保留四状态和整链聚合的中文视觉基线，真实组件开发入口使用生产目录提供双语浏览夹具。[四状态读取决策](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)拥有存储与读取准备的边界，图模型与组件不提供状态写入控制。
+
 ### 项目列表 `/`
 
 - 页首显示“项目”和刷新按钮。
@@ -62,7 +65,7 @@
 项目名称
 仓库地址
 
-[任务总数] [已完成] [待处理] [进行中] [可开始] [被阻塞]
+[任务总数] [已完成] [待审批] [待处理] [进行中] [可开始] [被阻塞]
 可开始与被阻塞均为待处理的子集；已完成卡展示完成比例
 
 [独立任务 2] [任务链 7]
@@ -80,7 +83,7 @@
   独立任务 G        进行中       创建时间
 ```
 
-- 两个页签位于项目统计下方，共用 `/projects/{projectId}`、完整快照、居中详情对话框和项目刷新。页签采用原生按钮、`tablist`/`tab`/`tabpanel` 语义及关联 ID，键盘可切换选择。两个 panel 容器始终保留稳定 ID，非当前容器带 `hidden`；只有当前容器挂载列表内容。首次访问默认选择任务链，之后按项目恢复上次选择；两个页签数字均表示完整快照中的未完成任务数，包含待处理和进行中；独立任务只计无前置且无后续的任务，任务链只计其余任务。遍历完整索引中的唯一 task，按前置/后续关系归类后仅计入状态非 `done` 的任务，共享后续跨根链只计一次。数字不依赖当前页签、展开根或完成筛选，全部完成显示 0；两者之和等于项目 `todo + inProgress`。列表工具栏继续以独立任务或根链条目显示可见/全部数量。新快照同时更新分类和数字，刷新失败保留上次成功值；机制与取舍见[页签计数决策](../../.agents/notes/implemented/feature/2026-10-22-unfinished-task-tab-counts.md)。
+- 两个页签位于项目统计下方，共用 `/projects/{projectId}`、完整快照、居中详情对话框和项目刷新。页签采用原生按钮、`tablist`/`tab`/`tabpanel` 语义及关联 ID，键盘可切换选择。两个 panel 容器始终保留稳定 ID，非当前容器带 `hidden`；只有当前容器挂载列表内容。首次访问默认选择任务链，之后按项目恢复上次选择；两个页签数字均表示完整快照中的未完成任务数，包含待审批、待处理和进行中；独立任务只计无前置且无后续的任务，任务链只计其余任务。遍历完整索引中的唯一 task，按前置/后续关系归类后仅计入状态非 `done` 的任务，共享后续跨根链只计一次。数字不依赖当前页签、展开根或完成筛选，全部完成显示 0；两者之和等于项目 `proposed + todo + inProgress`。列表工具栏继续以独立任务或根链条目显示可见/全部数量。新快照同时更新分类和数字，刷新失败保留上次成功值；机制与取舍见[页签计数决策](../../.agents/notes/implemented/feature/2026-10-22-unfinished-task-tab-counts.md)。
 - 独立任务在完整图中既无前置也无后续；状态和 `blockedBy` 不参与分类。任务链页签保留有后续的根任务条目及原根投影，多根共享后续仍显示多条根链。依赖增删后的新快照统一重新分类；完成前置仍属于链。分类只派生展示序列，不新增 task 类型、API 或路由。机制与取舍见[任务视图决策](../../.agents/notes/implemented/feature/2026-10-22-project-task-views.md)。
 - 独立任务使用紧凑原生整行按钮，显示标题、自身状态、ID 与创建时间，点击直接打开详情，不挂载单节点画布。任务链条目继续显示整链状态与进度。两类均默认隐藏已完成项，各自的紧凑工具栏左侧为带完成数量的原生复选框，右侧显示最新创建在前及可见/全部数量；任务链按 `rootProgress.status === "done"` 判断完成，独立任务按自身状态判断。完成根仍有未完成后续时继续显示。统计、完整索引、已显示图内的全部前置和后续均保留，切换与筛选不增加 API 请求。
 - 两类分别保留页面浏览位置及完成项显示选择，任务链另外保留展开根或明确全部折叠。现有展开 JSON 及完成链 JSON 布尔记录保持原格式；新增选择独立保存。加载、首次读取失败与无可见根不会把自动选择保存为全部折叠。读取、格式或写入失败显示本地偏好提示，并保留本次页面内操作。机制见[浏览偏好决策](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)。浏览位置是页面滚动位置，不是图坐标、缩放或平移；详情选择和全屏也不持久化。非当前页签的内容卸载，返回任务链时保留展开根并重新初始化画布视口。
@@ -158,7 +161,7 @@ C = V − M
 边 = 所有终点在 V 的依赖边，祖先闭包保证起点也在 V
 外部连线 = 起点属于 C 的边，包括 C 内部的依赖
 任务链进度 = M 内已完成的去重任务数 / |M|
-任务链状态 = 全部 M 已完成时 done；否则已有 done 或 in_progress 时 in_progress；其余为 todo
+任务链状态 = 全部 M 已完成时 done；否则已有 done 或 in_progress 时 in_progress；否则有 todo 时 todo；其余全部 proposed 时 proposed
 ```
 
 `buildGraphIndex` 在每个根的同一次可达集合遍历中计算完成数和整链状态，保存在 `RootProgress`；`RootList` 的状态标签、已完成链数量和项目视图的显示过滤共用该状态。状态只统计 M，外部前置 C 的任务不改变整链进度或状态；共享后续在每条链内仅计一次。刷新快照重建这些派生值，缩放和选择不重算。语义变更与取舍见[整链状态决策](../../.agents/notes/implemented/bug-fix/2026-10-22-task-chain-status.md)。
@@ -218,7 +221,10 @@ declare const projectRoot: (index: GraphIndex, rootId: string) => RootProjection
 declare const layoutGraph: (projection: RootProjection) => CanvasLayout;
 ```
 
-`buildGraphIndex` 用 Kahn 遍历校验无环，同时建立后续索引。必须验证唯一 ID、前置引用闭包、合法状态、blockedBy 与未完成前置相符、ready 与状态相符、summary 与节点折叠一致。无效数据整体拒绝，不能靠默认空数组或删除坏边继续展示。
+`buildGraphIndex` 用 Kahn 遍历校验无环，同时建立后续索引。必须验证唯一 ID、前置引用闭包、合法状态、blockedBy 与未完成前置相符、ready 与状态相符、summary 与节点折叠一致。四种状态均可读取，summary 必须含 proposed，满足
+`total = proposed + todo + inProgress + done` 与 `todo = ready + blocked`。proposed
+的 blockedBy 保留未完成直接前置，但永不 ready 且不计入 blocked；仅 in_progress
+和 done 需要前置全部完成。无效数据整体拒绝，不能靠默认空数组或删除坏边继续展示。
 
 索引构建与单根投影均为 `O(V+E)`。主节点与祖先闭包分别用迭代栈或队列和 Set 访问，防止菱形路径重复及深链递归溢出；每个快照计算一次各根的进度与共享归属，最坏 `O(K(V+E))`，其中 K 为根数。根统计可缓存到当前快照，布局只为正在展开的一条任务链生成。替换快照时整体释放索引、投影缓存与旧布局，不保存跨快照可变图。
 
@@ -515,6 +521,7 @@ type TaskGraph = {
   project: Project;
   summary: {
     total: number;
+    proposed: number;
     todo: number;
     inProgress: number;
     done: number;
@@ -525,7 +532,7 @@ type TaskGraph = {
     id: string;
     titlePreview: string;
     titleTruncated: boolean;
-    status: "todo" | "in_progress" | "done";
+    status: "proposed" | "todo" | "in_progress" | "done";
     dependsOn: string[];
     blockedBy: string[];
     ready: boolean;
@@ -553,7 +560,7 @@ type GraphTask struct {
 }
 
 type TaskGraphSummary struct {
-    Total, Todo, InProgress, Done, Ready, Blocked int64
+    Total, Proposed, Todo, InProgress, Done, Ready, Blocked int64
 }
 
 type TaskGraph struct {
@@ -771,7 +778,7 @@ CI 无论验收成功、失败或取消都执行恢复与归档；恢复成功�
 保留，覆盖混合图、全部完成、空项目与项目隔离；展示与生产相同的两个页签、
 拓扑分类、独立行详情、倒序条目、展开/全部折叠、两类完成显示及浏览位置偏好、
 紧凑条目与长标题换行，并区分类别为空、全部完成和没有任务。[自包含任务视图预览](mockups/task-views.html)
-提供无需服务或构建的同样式交互演示。该开发入口不进入生产构建，真实服务验收仍由既有
+保留无需服务或构建的中文视觉基线；实际组件入口与生产共享英语和简体中文目录。该开发入口不进入生产构建，真实服务验收仍由既有
 原生、容器和容量场景拥有。
 
 附件的前端 mockup 通过 `pnpm web:dev` 下的 `/tests/mockups/attachments.html` 打开，

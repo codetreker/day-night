@@ -76,7 +76,7 @@ const ids = (value: unknown): string[] => {
 };
 
 const status = (value: unknown): TaskStatus => {
-  if (value !== "todo" && value !== "in_progress" && value !== "done") return malformed();
+  if (value !== "proposed" && value !== "todo" && value !== "in_progress" && value !== "done") return malformed();
   return value;
 };
 
@@ -115,14 +115,17 @@ const graphTask = (value: unknown): GraphTask => {
 
 const summary = (value: unknown): TaskGraphSummary => {
   const data = record(value);
-  return {
+  const parsed = {
     total: count(data.total),
+    proposed: count(data.proposed),
     todo: count(data.todo),
     inProgress: count(data.inProgress),
     done: count(data.done),
     ready: count(data.ready),
     blocked: count(data.blocked),
   };
+  if (parsed.total !== parsed.proposed + parsed.todo + parsed.inProgress + parsed.done || parsed.todo !== parsed.ready + parsed.blocked) return malformed();
+  return parsed;
 };
 
 export const parseTaskGraph = (value: unknown, projectId: string): TaskGraph => {
@@ -159,7 +162,7 @@ export const parseTaskDetail = (value: unknown, projectId: string, taskId: strin
     createdAt: timestamp(data.createdAt),
     updatedAt: timestamp(data.updatedAt),
   };
-  if (parsed.projectId !== projectId || parsed.id !== taskId) return malformed();
+  if (parsed.projectId !== projectId || parsed.id !== taskId || parsed.status === "proposed" && parsed.ready) return malformed();
   return parsed;
 };
 
