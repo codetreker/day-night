@@ -534,21 +534,60 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		if task := cli.task(t, first); !reflect.DeepEqual(task, firstWithPR) {
 			t.Fatal("installed CLI JSON did not preserve HTTP-supplied NUL PR strings")
 		}
-		for _, arguments := range [][]string{{"task", "show", first}, {"task", "list"}} {
-			output := cli.run(t, cli.repo, arguments...)
-			if !strings.Contains(output, "4. Title: 标题\\u0000\\n\n     URL: \\u0000 arbitrary\\tURL") {
-				t.Fatal("installed full-resource text output lost or executed PR control characters")
+		escapedPR := "4. Title: 标题\\u0000\\n\n     URL: \\u0000 arbitrary\\tURL"
+		detail := cli.run(t, cli.repo, "task", "show", first)
+		for _, field := range []string{escapedPR, "Description: " + firstWithPR.Description, "Version: " + strconv.FormatInt(firstWithPR.Version, 10), "Created: " + firstWithPR.CreatedAt.Format(time.RFC3339Nano), "Updated: " + firstWithPR.UpdatedAt.Format(time.RFC3339Nano)} {
+			if !strings.Contains(detail, field) {
+				t.Fatal("installed full-resource text output lost details or escaped PR control characters")
 			}
 		}
-		listed := acceptanceCLIJSON[[]api.Task](t, cli.run(t, cli.repo, "task", "list", "--json"))
-		found := false
-		for _, task := range listed {
-			if task.ID == first {
-				found = reflect.DeepEqual(task, firstWithPR)
-			}
+		if strings.ContainsAny(detail, "\x00\x1b") {
+			t.Fatal("installed full-resource text output emitted raw PR terminal controls")
 		}
-		if !found {
-			t.Fatal("installed CLI list JSON omitted the task or changed raw properties")
+		unfinished := []api.Task{cli.task(t, second), before}
+		for _, listing := range []struct {
+			arguments []string
+			expected  []api.Task
+		}{
+			{[]string{"task", "list"}, unfinished},
+			{[]string{"task", "list", "--all"}, append(slices.Clone(unfinished), firstWithPR, cli.task(t, target))},
+		} {
+			listed := acceptanceCLIJSON[[]api.Task](t, cli.run(t, cli.repo, append(slices.Clone(listing.arguments), "--json")...))
+			if !reflect.DeepEqual(listed, listing.expected) {
+				t.Fatal("installed CLI list JSON changed the selected task membership, order or full resource fields")
+			}
+			output := cli.run(t, cli.repo, listing.arguments...)
+			var listedIDs, expectedIDs []string
+			for _, line := range strings.Split(output, "\n") {
+				if id, found := strings.CutPrefix(line, "ID: "); found {
+					listedIDs = append(listedIDs, id)
+				}
+			}
+			for _, task := range listing.expected {
+				expectedIDs = append(expectedIDs, task.ID)
+				if !strings.Contains(output, "ID: "+task.ID+"\nProject: "+task.ProjectID+"\nTitle: "+task.Title+"\n") {
+					t.Fatal("installed compact task list lost task identity fields")
+				}
+			}
+			if !slices.Equal(listedIDs, expectedIDs) {
+				t.Fatal("installed compact task list changed the selected task membership or order")
+			}
+			for _, field := range []string{"Description:", "Version:", "Created:", "Updated:"} {
+				if strings.Contains(output, field) {
+					t.Fatal("installed compact task list included full-resource detail fields")
+				}
+			}
+			for _, field := range []string{"Pull requests: 0\n", "Status: todo\n", "Ready: true\nDepends on: none\nBlocked by: none\n"} {
+				if !strings.Contains(output, field) {
+					t.Fatal("installed compact task list lost task status, PR or dependency fields")
+				}
+			}
+			if slices.Contains(listing.arguments, "--all") && (!strings.Contains(output, escapedPR) || !strings.Contains(output, "Status: done\n") || !strings.Contains(output, "Depends on: "+first+"\n")) {
+				t.Fatal("installed all-status compact task list lost completed tasks, dependencies or escaped PR strings")
+			}
+			if strings.ContainsAny(output, "\x00\x1b") {
+				t.Fatal("installed compact task list emitted raw PR terminal controls")
+			}
 		}
 		graph := acceptanceCLIJSON[api.TaskGraph](t, cli.run(t, cli.repo, "task", "graph", "--json"))
 		expectedGraph := acceptanceDecode[api.TaskGraph](t, process.request(context.Background(), http.MethodGet, "/api/v1/projects/"+projectID+"/task-graph", nil, ""), http.StatusOK)
