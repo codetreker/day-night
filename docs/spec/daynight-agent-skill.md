@@ -6,6 +6,10 @@
 [客户端需求](daynight-project-task.md)与[附件需求](daynight-task-attachments.md)
 继续拥有命令、项目发现、版本和附件操作语义。
 
+[Goal 流程要求](daynight-goal-workflow.md)定义多任务工作的分阶段扩展，
+以整体问题定义先于架构设计与任务拆解。该扩展已完成设计、尚待单独实现；本文下面的
+公开 skill 行为仍描述当前发布源。
+
 ## AS1. 发布产物与路由
 
 产品只发布一个公开 `using-daynight` skill。英文 `SKILL.md` 使用标准 frontmatter，

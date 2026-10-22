@@ -94,6 +94,12 @@ CLI and Claude Code. Its [requirements](docs/spec/daynight-agent-skill.md) cover
 context-based routing, explicit continuous-execution intent, attachment-backed
 planning and complete replacement on reinstall. The entrypoint and four mode
 references are published under `dist/commands/skill/skills/using-daynight/`.
+The [Goal workflow requirements](docs/spec/daynight-goal-workflow.md) and
+[design](docs/design/daynight-goal-workflow.md) define a planned extension for
+multi-task work, with a Goal description followed by architecture and task
+breakdown. Its [delivery tasks](docs/design/daynight-goal-workflow-tasks.md)
+track the separate skill implementation; the published skill does not yet
+provide that protocol.
 
 | Mode | Responsibility |
 |---|---|

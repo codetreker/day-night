@@ -6,6 +6,10 @@
 保留安装机制的原始理由。[Project/Task CLI](daynight-project-task.md)与
 [附件设计](daynight-task-attachments.md)继续拥有服务访问、版本、依赖和文件操作。
 
+[Goal 流程设计](daynight-goal-workflow.md)说明待实现的两阶段前置流程及阶段资料规则，
+[任务拆分](daynight-goal-workflow-tasks.md)关联实际 Daynight 任务。该扩展按独立设计 PR
+交付；当前 skill 的实现机制仍以下文为准。
+
 ## 一个入口与按需加载
 
 npm 包发布一份英文 `using-daynight` skill。`SKILL.md` 只负责发现说明、路由和共同
