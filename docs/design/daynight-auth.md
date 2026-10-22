@@ -79,7 +79,7 @@ Daynight 当前固定的 UniAuth `c82c55c7` SDK 只有 authorize/retrieve 身份
 后端以 App 凭据调用 POST /auth/providers，body 携带精确 redirect_uri，取得实时
 App allowlist 与 registry 的交集；空列表有效。Go SDK
 [Providers(ctx, redirectURI)](https://github.com/codetreker/uniauth/blob/0978963813fcefd9d553f6cb9bcc319084c764b3/sdk/go/providers.go#L14-L37)
-执行有界单次请求。统一启用任务升级 Daynight 的固定 SDK、使用配置的 callback
+执行有界单次请求。统一启用任务升级 Daynight 的固定 SDK，以既有 callback
 调用真实协议并暴露服务端接口；不产生额外登录事务，前端受控响应只验证界面状态。[Web 决策](../../.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
 记录这一依赖及证据边界。
 
@@ -154,7 +154,7 @@ version_conflict。删除/降级最后 admin 返回 409 last_admin。
 | GET /healthz、GET /readyz | 无业务数据的存活/就绪；就绪保留 store 可用性。 |
 | GET /api/v1/auth/providers | 登录页的 App 范围 provider 发现；前端依赖已实现，真实协议与服务端暴露由统一启用交付。 |
 | GET /api/v1/auth/login?provider=... | 创建 pending 并跳转 UniAuth。 |
-| GET {配置的 callback 路径} | 校验/消费 pending、领取身份、建立 session；既有未挂载模块使用 /api/v1/auth/callback，统一启用支持配置路径。 |
+| GET /api/v1/auth/callback | 校验/消费 pending、领取身份、建立 session。 |
 | GET /api/v1/me | 当前用户最小资料。 |
 | POST /api/v1/auth/logout | 主站会话注销，验证 Origin。 |
 | GET/POST /api/v1/me/tokens、DELETE .../{tokenId} | 主站会话管理自己的 PAT。 |
@@ -211,30 +211,16 @@ serverUrl/repoIdentity/projectId。review/update/help/version 保留依赖边界
 
 ## 配置、现有部署和启用
 
-统一启用新增 PUBLIC_ORIGIN、UNIAUTH_URL、UNIAUTH_APP_ID、UNIAUTH_APP_SECRET
-及 UNIAUTH_CALLBACK_URL，均使用 DAYNIGHT_ 前缀。完整 callback URL 是必需配置，
-与 PUBLIC_ORIGIN 保持同源，路径可为 `/auth/callback` 等已登记值；不含用户信息
-或 fragment，并拒绝 SDK 保留的 code/state/error query。服务按该精确路径注册
-handler，并将完整 URL 原样传给 SDK，与 UniAuth App 的 redirect URI 精确匹配。当前未挂载模块固定 `/api/v1/auth/callback`
-的行为由统一启用替换，不保留另一条硬编码别名。
-
-生产 public origin 显式配置，不从 Host/转发 header/listener 推导。已授权的 HTTP
-测试 origin、callback 与显式开发配置也由同一部署配置提供；测试域名不能被自动
-判为回环。升级后的 SDK 分别验证 gateway URL 与 callback：gateway 默认 HTTPS，
-显式 AllowLoopbackHTTP 只允许 localhost/numeric loopback；callback 允许已精确
-登记的绝对 HTTP/HTTPS URL，包含自定义路径。
-[SDK URL 校验](https://github.com/codetreker/uniauth/blob/0978963813fcefd9d553f6cb9bcc319084c764b3/sdk/go/validation.go#L19-L64)
-拥有协议限制。统一启用须分别验证这些配置及 HTTP 测试应用的 Cookie/Origin 策略，
-不以 gateway 的回环选项代替应用测试配置。当前 loopback-only 实现规则仍有效，
-本文不声明 HTTP 测试域名或自定义 callback 已启用。
-Go 保持 loopback；沿用一个应用 origin 和现有入口。已有 localhost/dev-ci 卷、
-网络和清理机制继续，健康检查改 /readyz。缺必需鉴权配置拒绝启动，启用后没有匿名业务访问模式。
+新增 PUBLIC_ORIGIN、UNIAUTH_URL、UNIAUTH_APP_ID、UNIAUTH_APP_SECRET，使用
+DAYNIGHT_ 前缀；callback 固定为 public origin 加 /api/v1/auth/callback。生产 public
+origin 显式配置，不从 Host/转发 header/listener 推导。Go 保持 loopback；沿用一个
+应用 origin 和现有入口。已有 localhost/dev-ci 卷、网络和清理机制继续，健康检查改
+/readyz。缺必需鉴权配置拒绝启动，启用后没有匿名业务访问模式。
 
 本地/CI 使用同源数值回环 HTTP，如 http://127.0.0.1:P，受控 UniAuth fixture 使用
 另一回环端口。显式 DAYNIGHT_ALLOW_LOOPBACK_HTTP=1 同时要求相关 HTTP origin 为
 literal localhost/numeric loopback，传给 SDK 的 AllowLoopbackHTTP；生产禁止该开关。
-该 gateway 回环规则保持；配置 callback 的扩展来自上游已交付的 SDK，统一启用
-升级固定版本后验证。
+现有 SDK 与 callback 注册已支持此规则，不需要修改 UniAuth。
 
 进程验收先临时监听 127.0.0.1:0 选出候选端口，关闭后以固定 ListenAddress 和相同
 PUBLIC_ORIGIN 启动真实二进制；只对已证明的 EADDRINUSE 重选，其他失败原样暴露。

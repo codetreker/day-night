@@ -49,9 +49,7 @@ CLI 创建私有项目，创建者自动成为管理员；Web 表单复用现有
 协议接线由统一启用任务交付。
 
 浏览器使用服务端持久化的主站会话。生产 Cookie 为 host-only、Secure、HttpOnly、
-SameSite=Lax；本机 loopback 或明确授权的受控 HTTP 测试 origin 使用显式开发配置
-和适合 HTTP 的 Cookie 名称。自定义测试 origin 的接线由统一启用任务交付，当前
-生产运行边界保持不变。
+SameSite=Lax；本机 loopback HTTP 使用明确的开发配置和适合 HTTP 的 Cookie 名称。
 返回位置限主站内部路径。注销终止当前 Daynight 会话，上游登录状态由 UniAuth 管理。
 Cookie 写请求校验精确主站 Origin；明确提供无效 Bearer 时拒绝，不回退到 Cookie。
 
@@ -133,12 +131,6 @@ callback 失败会返回主站的通用登录错误状态，错误绑定仍明�
 项目或空成员。生产继续一个应用 origin，经现有入口提供 HTTPS；Go 保持 loopback。
 健康检查使用无业务数据的独立入口，不匿名读取项目列表。启用后缺少必需鉴权配置
 拒绝启动，所有业务入口强制认证。
-
-UniAuth 服务地址、App ID/Secret、公开应用 origin 和完整 callback URI 均由部署
-配置提供，不写死已注册路径。callback 与公开 origin 一致并与 UniAuth App 登记值
-精确匹配，支持 `/auth/callback` 等自定义路径。显式受控 HTTP 测试 origin 的配置
-和 SDK 验证由统一启用任务交付，不能将测试域名自动当作 literal loopback；这些
-要求不表示当前生产配置已启用。
 
 开发/CI 复用数值 loopback 的同源 HTTP 与现有进程/容器结构，显式启用 SDK 已支持的
 AllowLoopbackHTTP。固定 public origin 与 listener 分开配置，注册精确 callback；

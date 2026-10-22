@@ -62,13 +62,8 @@ existing acceptance callers. It already proves the integrated security contract;
 a final combined receipt supplements those proofs.
 
 Development and CI reuse same-origin numeric-loopback HTTP and UniAuth's existing
-explicit AllowLoopbackHTTP support for the gateway. Production uses the
-application's configured HTTPS origin and existing entry point. The activation
-design makes the complete registered callback URL configurable, including a
-custom `/auth/callback` path. Explicitly configured HTTP test application origins
-require the upgraded SDK and Daynight test cookie/origin policy; they do not
-change the current loopback-only implementation or imply that a test hostname
-is a loopback address. A concrete UniAuth limitation must be
+explicit AllowLoopbackHTTP support. Production uses the application's configured
+HTTPS origin and existing entry point. A concrete UniAuth limitation must be
 reported with evidence to its maintainer; an assumed gap does not authorize a
 workaround architecture or changes to UniAuth.
 
