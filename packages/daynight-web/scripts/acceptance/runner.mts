@@ -74,7 +74,7 @@ export const restartContainerServer = async (options: {
   const before = await inspect();
   const startedAt = new Date().toISOString();
   await options.record({ target: 'container', origin: options.origin, startedAt, before, after: before, binaryOrImage: options.imageId, containerId: options.containerId });
-  const id = await options.run('docker', ['restart', '--time', '20', options.containerId], { quiet: true, timeoutMs: 30_000 });
+  const id = await options.run('docker', ['restart', '--timeout', '20', options.containerId], { quiet: true, timeoutMs: 30_000 });
   if (id !== options.containerId) throw new Error('Container restart replaced its owned identity.');
   const after = await inspect();
   if (after.pid === before.pid || after.start === before.start) throw new Error('Container restart did not replace the service process.');

@@ -568,7 +568,7 @@ test('container restart persists both process identities before probing readines
           assert.match(args[2]!, /State\.Pid.*State\.StartedAt.*Image.*compose\.project.*compose\.service.*State\.Running/);
           return containerInspection(inspections++ === 0 ? originalContainerProcess : replacementContainerProcess);
         }
-        assert.deepEqual(args, ['restart', '--time', '20', restartContainerId]);
+        assert.deepEqual(args, ['restart', '--timeout', '20', restartContainerId]);
         assert.equal(options?.timeoutMs, 30_000);
         const journal = JSON.parse(await readFile(journalPath, 'utf8')) as RestartJournal;
         assert.deepEqual(journal.before, originalContainerProcess);
@@ -653,7 +653,7 @@ test('restart command failure and changed container identity retain the pre-muta
             if (inspections++ === 0 || variant === 'unchanged-process') return containerInspection(originalContainerProcess);
             return containerInspection(replacementContainerProcess, `sha256:${'c'.repeat(64)}`);
           }
-          assert.deepEqual(args, ['restart', '--time', '20', restartContainerId]);
+          assert.deepEqual(args, ['restart', '--timeout', '20', restartContainerId]);
           const journal = JSON.parse(await readFile(journalPath, 'utf8')) as RestartJournal;
           assert.deepEqual(journal.after, originalContainerProcess);
           if (variant === 'command-failure') throw failure;
