@@ -19,6 +19,11 @@ export type GraphMessages = {
   readonly blocked: string;
   readonly external: string;
   readonly nodeLabel: (args: { title: string; status: string; blocked: boolean; external: boolean; shared: boolean }) => string;
+  readonly expandTitle: (args: { direction: 'prerequisites' | 'successors'; tasks: number }) => string;
+  readonly expandSummary: (args: { edges: number; remaining: number }) => string;
+  readonly expandLabel: (args: { direction: 'prerequisites' | 'successors'; tasks: number; edges: number; remaining: number }) => string;
+  readonly resetOverview: string;
+  readonly visibilitySummary: (args: { visible: number; total: number; edges: number; totalEdges: number }) => string;
   readonly dependencyGroup: string;
   readonly dependencyLabel: (args: { source: string; target: string }) => string;
   readonly fullscreenTitle: string;

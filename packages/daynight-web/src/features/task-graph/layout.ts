@@ -2,7 +2,7 @@ import { Graph, layout, type EdgeLabel, type GraphLabel, type NodeLabel } from '
 import type { RootProjection } from './model';
 
 export const TASK_NODE_WIDTH = 220;
-export const TASK_NODE_HEIGHT = 96;
+export const TASK_NODE_HEIGHT = 136;
 
 export type CanvasPoint = {
   readonly x: number;

@@ -58,9 +58,13 @@ retain arrow behavior when dashed body paint is separated. The route's stroke
 width and native marker definition stay intact; arrow flattening is unnecessary.
 
 The [acceptance decision](../testing/2026-10-20-dashboard-production-acceptance.md)
-retains all 1,000 task nodes/buttons, exact canonical route counts, complete paint
-piece readiness, five repetitions and unchanged 3,000ms/300ms gates. Modal root
-inertness, focus restoration, native node measurement and tracing stay enabled.
+originally retained all 1,000 task nodes/buttons, exact canonical route counts
+and complete paint
+piece readiness, five repetitions and unchanged 3,000ms/300ms gates. The [progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
+retains complete capacity input data and timing gates, replacing all-input DOM
+readiness with bounded visible graphs and explicit expansion/reset. Every
+visible polyline, native arrow and dashed piece remains checked. Modal root
+inertness, focus restoration, native measurement and tracing stay enabled.
 The committed [dashed-paint evidence](../../../../docs/research/evidence/daynight-web-dashed-paint.json)
 retains captured graph/resource and investigation-script hashes, the pixel
 comparison, whole-trace and scoped close-frame statistics, and actual product
