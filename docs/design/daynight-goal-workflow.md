@@ -1,6 +1,6 @@
 # using-daynight Goal 工作流设计
 
-状态：已采用设计，公开 skill 实施待交付。
+公开 skill 以共享协议实现分阶段 Goal，保留现有四种模式与安装机制。
 [Goal 需求](../spec/daynight-goal-workflow.md)拥有 GW1–GW13，
 [任务拆分](daynight-goal-workflow-tasks.md)拥有实际交付任务与文件归属，
 [设计决策](../../.agents/notes/implemented/process/2026-10-22-goal-workflow-design.md)
@@ -22,7 +22,7 @@ packages/daynight/src/commands/skill/skills/using-daynight/
     create-task.md
     run-task.md
     autopilot.md
-    goal.md                 # 拟新增的共享 Goal 协议
+    goal.md                 # 共享 Goal 协议
 ```
 
 | 文件 | 设计职责 |
@@ -189,9 +189,8 @@ autopilot 沿用已有当前任务和有界 ready 选择机制，一次只推进
 设计交付检查本文、需求、任务拆分和 note 的链接、语言、状态及结构，实际任务资料与
 依赖由 Daynight 读回核验。逐项单独阅读正文，确认不打开附件也能理解具体工作与完成
 条件；随后核验专属主附件及共享来源的所有权、可读内容和实际需要，不能只检查统一
-附件包的文件是否存在。独立设计审查确认无阻塞的 Critical/Major。设计 PR 只交付
-设计资料和已完成登记、附件核验的后续任务，不修改 skill、测试、包版本或当前安装
-行为。本 Goal 的完整后继为协议交付 GW-T1 和依赖它的独立整体验收 GW-T2；真实 ID、
+附件包的文件是否存在。独立设计审查确认无阻塞的 Critical/Major。设计交付拥有
+设计资料和已完成登记、附件核验的后续任务，实施由依赖它的交付任务负责。本 Goal 的完整后继为协议交付 GW-T1 和依赖它的独立整体验收 GW-T2；真实 ID、
 范围与验收由任务拆分拥有，不能将后继登记推迟到实施阶段。
 
 实施交付在同一个目的下更新 bundle 和相关 active 文档，按既有 CLI 包版本规则处理；

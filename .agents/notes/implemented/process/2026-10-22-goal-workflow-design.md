@@ -5,9 +5,9 @@ Status: implemented
 ## Problem
 
 Multi-task work needs a clear statement of the complete outcome before architecture
-and delivery tasks are fixed. The current skill requires finished solutions and
-frontend prototypes before registration, so applying that rule to problem-definition
-or design tasks makes their outputs prerequisites to starting them. A root task's
+and delivery tasks are fixed. The earlier registration rule required finished solutions
+and frontend prototypes, so applying that rule to problem-definition or design
+tasks makes their outputs prerequisites to starting them. A root task's
 completion also needs to remain distinct from delivery of the entire task chain.
 A task whose description only names a general problem and links cannot communicate
 its concrete assignment without opening a packet of attachments. Repeating common
@@ -17,17 +17,16 @@ ownership and independent update lifetimes.
 ## Decision
 
 The [Goal requirements](../../../../docs/spec/daynight-goal-workflow.md) and
-[design](../../../../docs/design/daynight-goal-workflow.md) adopt a staged task-chain
-protocol for subsequent skill implementation. This record marks the design decision
-as implemented; the published skill remains unchanged until its separate
-[delivery task](../../../../docs/design/daynight-goal-workflow-tasks.md) is delivered.
+[design](../../../../docs/design/daynight-goal-workflow.md) own the staged task-chain
+protocol implemented by the public skill. The architecture was delivered separately
+from its dependent protocol implementation and independent consumer acceptance,
+as recorded in the [delivery breakdown](../../../../docs/design/daynight-goal-workflow-tasks.md).
 The [mode decision](../architecture/2026-10-21-using-daynight-modes.md) continues to
 own the current entrypoint and authorization rules.
 
 A Goal uses existing tasks, attachments and dependsOn. Registration establishes a
 Goal description task titled `[Goal]<outcome>` and a dependent architecture-and-breakdown
-placeholder.
-Stage briefs define the work and stage acceptance; final requirements, UI prototypes
+placeholder. Stage briefs define the work and stage acceptance; final requirements, UI prototypes
 and architecture are outputs of their producing stages. Goal description fixes the
 problem, outcomes, scope, exclusions and verification without production implementation
 or architecture work. Applicable UI requirements include a final-style interactive
@@ -58,8 +57,8 @@ execution, external-action or merge authority. PR-delivered planning work remain
 in progress until all necessary PRs are platform-confirmed merged and acceptance
 is satisfied. Completing Goal description does not complete the whole Goal.
 
-The architecture stage registers two concrete delivery outcomes before handing over
-the design PR. GW-T1 delivers the complete protocol, coupled current-state documents,
+For this Goal, the architecture stage registered two concrete delivery outcomes
+before handing over the design PR. GW-T1 delivers the complete protocol, coupled current-state documents,
 required version changes and every necessary premerge validation in one implementation
 PR. GW-T2 independently accepts the exact merged consumer artifact and reconciles the
 whole Goal against its original acceptance criteria. Its work includes isolated package
@@ -69,9 +68,9 @@ criteria during design; neither is a placeholder for later decomposition.
 
 GW-T1 depends on the design task, and GW-T2 depends on GW-T1. Finishing protocol delivery
 therefore does not imply whole-Goal completion. Independent acceptance does not defer
-or reduce GW-T1's own premerge checks. The design remains reviewable without changing
-the published skill protocol, and source-bound consumer evidence can be assessed after
-the implementation is actually integrated.
+or reduce GW-T1's own premerge checks. The separate design delivery kept architecture reviewable before protocol
+implementation, and source-bound consumer evidence is assessed after implementation
+is integrated.
 
 ## Alternatives
 
@@ -115,8 +114,8 @@ completion, description-only assignment comprehension, and attachment ownership;
 recursive copy and installer checks establish artifact integrity
 separately from instruction behavior.
 
-This design adds no server-side enforcement, lock, state, telemetry or migration.
+The protocol adds no server-side enforcement, lock, state, telemetry or migration.
 Existing version and attachment concurrency rules still apply. The current task
-chain provides a concrete registration exercise, not proof that the future skill
-will always be followed. Publishing, deployment and PR merging remain subject to
+chain provides a concrete registration exercise, not proof that every model
+will follow the skill. Publishing, deployment and PR merging remain subject to
 their own authorization and observed platform state.
