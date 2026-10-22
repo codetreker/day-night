@@ -27,6 +27,22 @@ const selectFile = async (region: Locator, path: string): Promise<void> => {
   await expect(region.getByRole('heading', { name: path, exact: true })).toBeVisible();
 };
 
+const settleScroll = async (owner: Locator): Promise<void> => {
+  await owner.evaluate((element) => new Promise<void>((resolve, reject) => {
+    const started = performance.now();
+    let quietSince = started;
+    let previous = element.scrollTop;
+    const sample = (now: number) => {
+      const current = element.scrollTop;
+      if (current !== previous) { previous = current; quietSince = now; }
+      if (now - quietSince >= 100) { resolve(); return; }
+      if (now - started >= 3_000) { reject(new Error('The preview did not reach a stable scroll position.')); return; }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }));
+};
+
 const paintedPdf = async (page: Page, frame: Locator, info: TestInfo, source: Buffer, url: string): Promise<PdfPixels> => {
   let painted: Buffer | undefined;
   let metrics: PdfPixels | undefined;
@@ -183,10 +199,12 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
         await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
         await page.mouse.wheel(0, 180);
         await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        await settleScroll(body);
         await body.evaluate((element) => { element.scrollTop = 0; });
         await body.focus();
         await page.keyboard.press('PageDown');
         await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        await settleScroll(body);
         const position = await body.evaluate((element) => element.scrollTop);
         const left = attachments.locator('.attachment-sidebar');
         await left.evaluate((element) => { element.scrollTop = element.scrollHeight; });
@@ -206,15 +224,26 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
           await page.mouse.move(frameBounds!.x + frameBounds!.width / 2, frameBounds!.y + frameBounds!.height / 2);
           await page.mouse.wheel(0, 180);
           await expect.poll(() => content.locator('html').evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+          await settleScroll(content.locator('html'));
           await content.locator('html').evaluate((element) => { element.scrollTop = 0; });
           await content.locator('#counter').focus();
           await page.keyboard.press('PageDown');
           await expect.poll(() => content.locator('html').evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+          await settleScroll(content.locator('html'));
         }
       }
       scrollEvidence.push({ viewport, extension, outer, panes });
     }
   }
+  await page.setViewportSize({ width: 844, height: 390 });
+  await selectFile(attachments, 'long/reading.md');
+  for (const locale of ['zh-CN', 'en']) {
+    await dialog.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption(locale);
+    const shortScreenshot = info.outputPath(`task-attachments-short-${locale}.png`);
+    await page.screenshot({ path: shortScreenshot, fullPage: false });
+    await info.attach(`task-attachments-short-${locale}`, { path: shortScreenshot, contentType: 'image/png' });
+  }
+  await dialog.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('zh-CN');
   await page.setViewportSize({ width: 320, height: 800 });
   await selectFile(attachments, longPath);
   await expect(attachments.getByRole('heading', { name: longPath, exact: true })).toHaveAttribute('title', longPath);
