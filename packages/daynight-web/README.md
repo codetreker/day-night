@@ -520,13 +520,15 @@ builds and production-browser acceptance. The CI entry
 `node packages/daynight-web/scripts/ci.mts` uses the same acceptance runner as
 `pnpm web:acceptance`. CI supplies pinned Chromium installation, including Linux
 dependencies, and the existing `pnpm web:test` command as preparation callbacks.
-Only the coverage child receives `VITEST_MAX_WORKERS=2`, retaining its `forks`
-pool and per-file isolation. Browser installation has a 600-second bound because
+The runner completes coverage before starting browser installation, so apt and
+Chromium downloads do not compete with the 5-second UI-test deadline. Only the
+coverage child receives `VITEST_MAX_WORKERS=2`, retaining its `forks` pool and
+per-file isolation. Browser installation has a 600-second deadline because
 Playwright may need to download Linux packages as well as Chromium; coverage
-remains bounded to 180 seconds. Both failures remain acceptance failures. Native
-production assets, Go/PostgreSQL and one normal dev-ci source build/start proceed
-concurrently with those callbacks. The dev-ci runner remains the owner of the
-built/running image identity and full cleanup; the job retains its 20-minute
+remains bounded to 180 seconds. Both failures remain acceptance failures. Coverage
+and browser installation still overlap native production assets, Go/PostgreSQL
+and one normal dev-ci source build/start. The dev-ci runner remains the owner of
+the built/running image identity and full cleanup; the job retains its 20-minute
 overall bound.
 
 Native functional checks start after the native process and browser are ready.
