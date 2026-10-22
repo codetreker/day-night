@@ -1,8 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import { describe, expect, it, vi } from 'vitest';
 import type { Attachment } from '../src/api/types';
 import { AttachmentPreview, type AttachmentPreviewState } from '../src/features/task-detail/attachments/AttachmentPreview';
-import { drawerFocusables } from '../src/features/task-detail/focus';
+import { dialogFocusables } from '../src/features/task-detail/focus';
+
+const render = createLocaleRender('zh-CN');
 
 const attachment = (path: string, contentType: string): Attachment => ({ path, contentType, sizeBytes: 10, createdAt: '2026-10-21T00:00:00Z', updatedAt: '2026-10-21T00:00:00Z' });
 const ready: AttachmentPreviewState = { path: 'docs/guide.md', status: 'ready', text: null, error: null };
@@ -66,7 +69,7 @@ describe('attachment preview', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
-  it('bridges iframe Escape and boundary Tab to drawer controls and removes old listeners', () => {
+  it('bridges iframe Escape and boundary Tab to dialog controls and removes old listeners', () => {
     const close = vi.fn();
     const file = attachment('index.html', 'text/html');
     const view = render(<section role="dialog"><button type="button">关闭</button><AttachmentPreview attachment={file} preview={ready} url={`${root}index.html`} previewRoot={root} onRetry={vi.fn()} onClose={close} /><button type="button">后续</button></section>);
@@ -95,7 +98,7 @@ describe('attachment preview', () => {
     expect(close).toHaveBeenCalledTimes(2);
   });
 
-  it('handles empty frames without taking focus outside the drawer and ignores detached frames', () => {
+  it('handles empty frames without taking focus outside the dialog and ignores detached frames', () => {
     const file = attachment('index.html', 'text/html');
     const view = render(<section role="dialog"><AttachmentPreview attachment={file} preview={ready} url={`${root}index.html`} previewRoot={root} onRetry={vi.fn()} onClose={vi.fn()} /></section>);
     const frame = screen.getByTitle('HTML 预览：index.html') as HTMLIFrameElement;
@@ -110,6 +113,6 @@ describe('attachment preview', () => {
 
   it('uses sequential native controls and editing hosts while excluding inert and collapsed descendants', () => {
     const view = render(<div><button type="button" disabled>Disabled</button><div inert><a href="#">Inert</a></div><details><summary>Directory</summary><button type="button">Hidden file</button><details><summary>Nested</summary><button type="button">Nested file</button></details></details><details open><summary>Open directory</summary><button type="button">Visible file</button></details><input type="hidden" /><a href="#" tabIndex={-1}>Skipped link</a><div contentEditable suppressContentEditableWarning>Editable</div></div>);
-    expect(drawerFocusables(view.container).map((element) => element.textContent)).toEqual(['Directory', 'Open directory', 'Visible file', 'Editable']);
+    expect(dialogFocusables(view.container).map((element) => element.textContent)).toEqual(['Directory', 'Open directory', 'Visible file', 'Editable']);
   });
 });

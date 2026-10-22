@@ -51,8 +51,9 @@ pinned Dagre layout choices. The
 overall task-card, routing, centered-detail and Markdown goals. The later
 [dependency inspection decision](2026-10-22-task-dependency-inspection.md) adds
 card selection, a separate Details action and smooth highlighted routes on this
-complete projection. Details continue to use the drawer and plain descriptions
-until the remaining reading tasks deliver their changes.
+complete projection. The
+[centered detail decision](2026-10-22-centered-task-detail-dialog.md) implements
+TaskDetailDialog reading; descriptions remain plain until UX-T4.
 
 The production capacity matrix preserves its chain, merge and shared-root graphs
 and adds `capacity-external`: 1,000 nodes and 5,000 edges, with two main tasks and
@@ -62,8 +63,10 @@ budgets while checking bounded visible overviews, complete induced edges and
 explicit expansion/reset. Independent size refusals remain unchanged. The original full-context initial upstream task and its root-visibility
 conditions belong to that source-bound delivery; progressive overviews start
 from their root-connected visible set. Strict
-inventory validation requires ten native functional scenarios plus five native
-capacity/limit scenarios and ten container functional scenarios.
+inventory retains five native capacity/limit scenarios. The
+[bilingual interface decision](2026-10-22-web-bilingual-interface.md) adds three
+functional scenarios per target, giving thirteen functional checks on each target,
+eighteen native scenarios and thirteen container scenarios.
 
 The [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 the [web design](../../../../docs/design/daynight-web.md) owns model and viewport

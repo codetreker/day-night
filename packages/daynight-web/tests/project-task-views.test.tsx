@@ -1,9 +1,12 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTask, getTaskGraph } from '../src/api/client';
 import type { GraphTask, TaskGraph } from '../src/api/types';
 import { ProjectPage } from '../src/features/projects/ProjectPage';
 import type { GraphIndex } from '../src/features/task-graph/model';
+
+const render = createLocaleRender('zh-CN');
 
 vi.mock('../src/api/client', async (original) => ({
   ...await original<typeof import('../src/api/client')>(), getTask: vi.fn(), getTaskGraph: vi.fn(),
@@ -152,7 +155,7 @@ describe('project task views', () => {
     expectUnfinishedCounts(3, 0);
   });
 
-  it('opens the real drawer directly and returns focus to its standalone row', async () => {
+  it('opens the real dialog directly and returns focus to its standalone row', async () => {
     mount(); await screen.findByRole('tab', { name: '独立任务' });
     const { trigger, dialog } = await openStandalone('C');
     expect(screen.queryByTestId('graph-node')).toBeNull();

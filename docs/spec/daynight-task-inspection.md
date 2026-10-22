@@ -1,12 +1,12 @@
 # 任务依赖追踪与详情阅读
 
-状态：UX-T1 的完整依赖数据已交付；UX-T2 采用渐进图概览、完整依赖追踪、平滑高亮连线和独立详情入口，运行与交付证据待完成。居中详情和 Markdown 描述（UX-T3–UX-T4）待实现。本文拥有任务卡片选择、渐进任务图、完整上游追踪和平滑依赖连线、居中详情和 Markdown 描述的目标行为。[设计](../design/daynight-task-inspection.md)说明机制，[任务拆分](../design/daynight-task-inspection-tasks.md)定义交付边界，[交互原型](../design/mockups/task-inspection/index.html)展示最终视觉与主要交互。已实现上下文与现有详情行为由[看板基线](daynight-web.md)和[附件要求](daynight-task-attachments.md)描述。
+状态：UX-T1 的完整依赖数据已交付；UX-T2 采用渐进图概览、完整依赖追踪、平滑高亮连线和独立详情入口，运行与交付证据待完成。UX-T3 居中详情已由 [PR #124](https://github.com/codetreker/daynight/pull/124) 交付；UX-T4 Markdown 描述待实现。本文拥有任务卡片选择、渐进任务图、完整上游追踪和平滑依赖连线、居中详情和 Markdown 描述的目标行为。[设计](../design/daynight-task-inspection.md)说明机制，[任务拆分](../design/daynight-task-inspection-tasks.md)定义交付边界，[交互原型](../design/mockups/task-inspection/index.html)展示最终视觉与主要交互。已实现上下文与居中详情行为由[看板基线](daynight-web.md)和[附件要求](daynight-task-attachments.md)描述。
 
 ## 目的与适用范围
 
 在任务图中直接查看一个任务依赖哪些前置任务，再通过独立入口阅读完整内容。图内卡片承担依赖追踪，详情使用居中浮层。任务的 `description` 作为 Markdown 展示，公开 `using-daynight` skill 同步描述写法和实际附件链接。
 
-图内卡片的选择规则适用于任务依赖画布。独立任务列表继续点击条目直接打开详情；居中浮层交付后共用该外壳。独立任务与任务链的标签分类、过滤、计数和浏览偏好由其原任务负责。
+图内卡片的选择规则适用于任务依赖画布。独立任务列表点击条目直接打开同一详情浮层；独立任务与任务链的标签分类、过滤、计数和浏览偏好由其原任务负责。
 
 ## 必须交付的行为
 
@@ -23,6 +23,8 @@
 | TI9 | 描述中的相对附件链接及图片以当前任务附件根目录为基准；Markdown 附件内部链接仍以该文件所在目录为基准。普通左键点击不带 query/hash 的相对附件链接，在当前详情的附件区域预览文件并将该区域带入视野和焦点。链接保留真实 preview URL，修饰键、非主键和上下文菜单保留浏览器行为。带 query/hash 的链接按真实 URL 导航，不承诺新增 Markdown 标题锚点功能。 |
 | TI10 | 相对链接不能越过当前任务附件根。附件清单尚未完整读取时保留加载或错误状态；只有完整清单才能判定引用不存在。无效路径、文件缺失或预览失败提供可见说明及适用的重试入口。描述导航与附件区域共用同一个附件状态所有者，不发起相互独立的重复清单读取。 |
 | TI11 | npm 中的 `using-daynight` skill 要求任务描述使用 Markdown 表达问题与真实附件链接；方案和验收继续归一个主 Markdown 附件，依赖仍只写入 `dependsOn`，PR 仍写入 `properties.pullRequests`。创建后确认上传成功再加入真实引用；执行与更新任务时保留完整 Markdown 和仍有效的引用。 |
+
+所有新增控件、批次/隐藏数量、通知和可访问说明接入既有英语/简体中文目录；语言切换保留 S、依赖选择、视口及详情资源，不增加业务请求或改变布局输入。语言契约由[双语需求](daynight-web-i18n.md)拥有。
 
 ## 生命周期与刷新
 

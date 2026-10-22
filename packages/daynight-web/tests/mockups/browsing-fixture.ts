@@ -1,6 +1,11 @@
 import type { GraphTask, TaskDetail, TaskGraph, TaskGraphSummary, TaskStatus } from '../../src/api/types';
 
 export type BrowsingScenario = 'mixed' | 'external' | 'progressive' | 'complete' | 'empty';
+export type BrowsingDetailScenario = 'normal' | 'long' | 'empty' | 'loading' | 'error';
+export const readBrowsingDetailScenario = (): BrowsingDetailScenario => {
+  const value = new URLSearchParams(location.search).get('detail');
+  return value === 'long' || value === 'empty' || value === 'loading' || value === 'error' ? value : 'normal';
+};
 type TaskSeed = {
   readonly number: number;
   readonly title: string;
@@ -81,9 +86,11 @@ export const browsingProjects: Readonly<Record<BrowsingScenario, TaskGraph>> = {
   empty: createGraph('empty', '新项目', 103),
 };
 
-const detail = (graph: TaskGraph, task: GraphTask): TaskDetail => ({
+const detail = (graph: TaskGraph, task: GraphTask, scenario: BrowsingDetailScenario): TaskDetail => ({
   ...task, projectId: graph.project.id, title: task.titlePreview,
-  description: '完成任务范围内的实现与验证，确认依赖关系、任务状态与实际交付结果一致。\n\n共享任务可出现在多条任务链中；已完成的前置任务保留在依赖图中。',
+  description: scenario === 'empty' ? '' : scenario === 'long'
+    ? Array.from({ length: 24 }, (_, index) => `验收记录 ${index + 1}：完成任务范围内的实现与验证，确认依赖关系、任务状态与实际交付结果一致。共享任务可出现在多条任务链中；已完成的前置任务保留在依赖图中。完整内容在详情窗口内滚动，标题栏、关闭按钮和底部说明持续可见。`).join('\n\n')
+    : '完成任务范围内的实现与验证，确认依赖关系、任务状态与实际交付结果一致。\n\n共享任务可出现在多条任务链中；已完成的前置任务保留在依赖图中。',
   properties: { pullRequests: [] },
 });
 
@@ -93,7 +100,8 @@ export const installBrowsingFixture = (): (() => void) => {
     const request = input instanceof Request ? input : null;
     const method = init?.method ?? request?.method ?? 'GET';
     if (method !== 'GET') throw new Error(`Browsing preview does not support ${method} requests.`);
-    (init?.signal ?? request?.signal)?.throwIfAborted();
+    const signal = init?.signal ?? request?.signal;
+    signal?.throwIfAborted();
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.origin);
     if (url.origin !== location.origin) throw new Error(`Unknown browsing preview origin: ${url.origin}`);
     const graphMatch = /^\/api\/v1\/projects\/([^/]+)\/task-graph$/.exec(url.pathname);
@@ -103,7 +111,13 @@ export const installBrowsingFixture = (): (() => void) => {
     if (graph !== undefined && graphMatch !== null) return Response.json(graph);
     const task = graph?.tasks.find((candidate) => candidate.id === taskMatch?.[2]);
     if (graph !== undefined && task !== undefined && taskMatch !== null) {
-      return Response.json(taskMatch[3] === undefined ? detail(graph, task) : { items: [], nextCursor: null });
+      if (taskMatch[3] !== undefined) return Response.json({ items: [], nextCursor: null });
+      const scenario = readBrowsingDetailScenario();
+      if (scenario === 'loading') return new Promise<Response>((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+      if (scenario === 'error') return Response.json({ error: { code: 'internal_error', message: 'Mockup detail request failed.', requestId: 'mockup-detail-error' } }, { status: 500 });
+      return Response.json(detail(graph, task, scenario));
     }
     throw new Error(`Unknown browsing preview request: ${url.pathname}`);
   };

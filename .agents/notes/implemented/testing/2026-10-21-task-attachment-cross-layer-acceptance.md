@@ -58,27 +58,41 @@ original binary downloads, single-file mutations, directory paths, Markdown
 relative images, image/text/PDF and HTML relative styles/scripts/data behavior.
 The original eight graph scenarios and the later `project-view-tabs` scenario
 keep GET/HEAD-only browser checks. Exact
-fixture-scoped file PUT/DELETE requests are admitted only by the attachment
-scenario, retaining the existing failure rule for every unrelated mutation.
+fixture-scoped file PUT/DELETE requests are admitted by the attachment scenario
+and the later `language-state-preservation` scenario, which verifies pending
+writes across language changes. Every unrelated mutation remains a failure.
 
 The attachment delivery expanded each target to nine functional scenarios. The
 later [task view decision](../feature/2026-10-22-project-task-views.md) adds
-`project-view-tabs`, so each target now has ten. The
+`project-view-tabs`, expanding each target to ten. The
 [complete context decision](../feature/2026-10-22-complete-prerequisite-context.md)
 adds a dense-external capacity graph; native capacity preserves its four original
-scenarios and all timing/geometry gates. Strict inventories therefore require 15
-unique native scenarios and ten container scenarios. One worker,
+scenarios and all timing/geometry gates. The
+[bilingual interface decision](../feature/2026-10-22-web-bilingual-interface.md)
+adds three functional language scenarios per target. Strict inventories require
+18 unique native scenarios and thirteen container scenarios. One worker,
 zero retries, complete reports and cleanup remain mandatory.
 
 All phases use the full bundled Chromium channel `chromium`, retaining the
 pinned Playwright version and matching native/container browser identity. PDF
 acceptance polls actual iframe compositor screenshots for a substantial
-fixture-specific colored rectangle. The existing browser decodes the PNG and
-checks pixel count, bounds and density; the successful screenshot and marker
-metrics identify the expected PDF hash and preview URL in
-`task-attachments-pdf.png` and `task-attachments-pdf.json`; the main UI capture is
-`task-attachments.png`. MIME success, load,
-a fixed delay or an empty outer MIME document cannot satisfy the pixel oracle.
+fixture-specific colored rectangle. The existing browser decodes the PNG,
+groups pixels matching RGB `(17, 203, 149)` within a per-channel tolerance of 4
+and alpha at least 250 into connected components, then measures each solid
+marker independently. A main-page candidate must extend into the screenshot's
+right half (`bounds.right >= width / 2`); the largest such component must contain
+at least 1,600 matching pixels, span at least 80px by 20px and have density at
+least 0.95 within its bounds. The fixture's 360-by-220 PDF page has a horizontally
+centered 290-by-70 marker at `(35, 35)`. In the pinned native viewer, that page
+marker reaches the frame's right half while left-side thumbnail markers do not.
+This fixture/viewer location rule rejects thumbnail-only paint even when its
+size and density meet the thresholds. Independent bounds also prevent a separate
+thumbnail from diluting the page marker's density. The location assumption must
+be revalidated when the fixture or viewer layout changes. The successful
+screenshot and component metrics identify the expected PDF hash and preview URL
+in `task-attachments-pdf.png` and `task-attachments-pdf.json`; the main UI capture
+is `task-attachments.png`. MIME success, load, a fixed delay or an empty outer
+MIME document cannot satisfy the pixel oracle.
 The oracle avoids depending on PDF viewer extension IDs, internal plugin APIs or
 browser-specific text-layer DOM.
 

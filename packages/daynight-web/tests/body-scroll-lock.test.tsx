@@ -26,10 +26,10 @@ describe('body scroll locks', () => {
     const graph = render(<Lock active={false} />);
     expect(document.body.style.overflow).toBe('auto');
     graph.rerender(<Lock active={true} />);
-    const drawer = render(<Lock />);
+    const dialog = render(<Lock />);
     graph.rerender(<Lock active={false} />);
     expect(document.body.style.overflow).toBe('hidden');
-    drawer.unmount();
+    dialog.unmount();
     expect(document.body.style.overflow).toBe('auto');
     graph.unmount();
     document.body.style.overflow = '';

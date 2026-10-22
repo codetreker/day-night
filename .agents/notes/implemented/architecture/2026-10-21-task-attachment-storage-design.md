@@ -24,7 +24,7 @@ put/list/read/remove and byte-stream output. The
 [persistence delivery](2026-10-21-task-attachment-persistence.md) implements
 deployment volumes, isolation and paired backup/restore validation. The
 [Web attachment delivery](../feature/2026-10-21-task-attachment-web.md) implements
-file management, typed previews and drawer focus integration. This note owns the
+file management, typed previews and task-detail focus integration. This note owns the
 adopted cross-component design; the CLI and Web notes own their transport,
 rendering and output choices. Combined acceptance remains tracked in Daynight.
 

@@ -1,6 +1,6 @@
 # UniAuth 登录与项目授权架构
 
-状态：身份/凭据与项目成员模块已实现且可显式组合，均未挂入生产路由；客户端与统一启用继续交付。
+状态：身份/凭据与项目成员模块已实现且可显式组合，均未挂入生产路由；CLI 凭据配置与 HTTP 传输已实现，Web 与统一启用继续交付。
 [需求](../spec/daynight-auth.md)拥有完整可观察行为，
 [任务入口](daynight-auth-tasks.md)连接执行资料，
 [鉴权决策](../../.agents/notes/implemented/architecture/2026-10-22-auth-architecture.md)
@@ -160,11 +160,24 @@ Web 登录壳通过 /me 取得身份，401 显示 UniAuth 入口；资源 404 �
 处理；401 显示明确错误并引导重新登录，不返回登录 HTML。HTML 继续可信执行，
 主站 API 始终按当前浏览者实际身份授权，不宣称隔离上传代码。
 
-CLI server 投影增加 serverToken；setup 隐藏输入，明确 --server-token-stdin 从 stdin
-读取一行，互斥和输入错误先于 I/O。沿用配置锁/原子替换/受限权限，服务 origin 变更
-原子清除旧 token；仓库绑定仍只有 serverUrl/repoIdentity/projectId。HTTP 客户端向原
-请求附加 Bearer，保留 manual redirect、不跨 origin 转发、二进制 stdout、完整版本/
-分页、预算与不重试写入。review/update/help/version 保留各自依赖边界。
+CLI server 投影已实现可选 `serverToken`，为非空 opaque visible ASCII；仅 HTTPS
+或 host 为字面量 `localhost`、`127.0.0.0/8` 内的数值 IPv4、`::1` 的 HTTP 可配置。setup 隐藏
+输入，空回答保留同 origin 令牌或跳过新 origin 的令牌；布尔 `--server-token-stdin`
+读取不超过 1 MiB 的单行非空值，允许单个 LF/CRLF，拒绝空输入、多行和控制字符。
+显式 URL 配置保持不询问；stdin 可复用已有 URL，无 URL 时须显式提供。
+
+既有配置锁内共同比较 serverUrl/serverToken，正规化 origin 变化原子清除旧 token，
+同 origin 保留；其他 review 字段的并发完成修改保持。含令牌的文档由共享写入者
+统一保存为 POSIX `0600`，无令牌文档保持既有权限行为，普通文件/符号链接/锁和
+原子替换协议不变。YAML 错误只保留安全类别、代码和位置，不复制标量及原始
+parser cause；通用错误格式化器和其他错误链不承担凭据清洗。
+
+共享 API 边界向已有项目、任务和文件请求附加 Bearer，保留 manual redirect、
+不转发令牌、二进制 stdout、精确 int64、分页和预算。401 给出 setup 指导，不自动
+匿名回退、登录预检或写入重试；403/404/409 保持。仓库绑定仍只有
+serverUrl/repoIdentity/projectId。review/update/help/version 保留依赖边界；setup
+不访问网络。机制与备选由[CLI 凭据决策](../../.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
+拥有；Web 令牌管理及生产启用继续由其任务交付。
 
 ## 配置、现有部署和启用
 

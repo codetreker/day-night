@@ -45,7 +45,10 @@ Selection computes H, the selected task plus all its ancestors, from complete
 data. Visible members of H and their real induced edges receive the established
 node/body/arrow highlight. The view also reports |H−S|, counting hidden ancestors
 once by task ID. Selection never adds tasks, changes layout or moves the viewport.
-Details and relation navigation remain independent.
+Details and relation navigation remain independent. The delivered centered
+TaskDetailDialog retains its resource and focus lifecycle. English/Simplified
+Chinese locale changes translate controls and counts while preserving S,
+selection, hidden-ancestor semantics and viewport.
 
 A single “收起到概览” control recomputes the initial overview and frames its
 viewport. It retains selection only if that task remains visible, otherwise
@@ -84,7 +87,10 @@ complete induced edges, explicit expansion/reset and accurate hidden upstream
 counts, rather than requiring all input tasks and dependencies in the DOM at
 once. The API still rejects projects exceeding 1,000 tasks or 5,000 dependencies.
 Every visible route, body piece and arrow retains independent geometry checks.
-Source-bound production evidence remains a delivery requirement.
+The current bilingual runner has thirteen functional scenarios per target,
+five additional native capacity/limit scenarios and 31 total scenarios
+(eighteen native, thirteen container). Source-bound production evidence remains
+a delivery requirement.
 
 The [requirements](../../../../docs/spec/daynight-task-inspection.md) own visible
 behavior; the [design](../../../../docs/design/daynight-task-inspection.md)

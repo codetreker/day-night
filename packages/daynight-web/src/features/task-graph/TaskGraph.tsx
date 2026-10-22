@@ -1,5 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Background, BackgroundVariant, Controls, getViewportForBounds, ReactFlow, useReactFlow, useStore, type Viewport } from '@xyflow/react';
+import { useI18n } from '../../i18n/LocaleProvider';
+import { LanguageSelector } from '../../i18n/LanguageSelector';
 import { layoutGraph, TASK_NODE_HEIGHT, TASK_NODE_WIDTH, type CanvasLayout } from './layout';
 import { projectRoot, tracePrerequisites, type GraphIndex, type RootProjection } from './model';
 import { TaskNode, type TaskFlowNode } from './TaskNode';
@@ -22,15 +24,6 @@ const InspectedEdges = memo(({ geometry }: { geometry: CanvasLayout }) => {
 
 const nodeTypes = { task: TaskNode };
 const viewportFitOptions = { minZoom: 0.2, maxZoom: 1, padding: 0.15 };
-const ariaLabels = {
-  'controls.ariaLabel': '任务图视口控制',
-  'controls.zoomIn.ariaLabel': '放大',
-  'controls.zoomOut.ariaLabel': '缩小',
-  'controls.fitView.ariaLabel': '适应画布',
-  'node.a11yDescription.default': '使用 Tab 聚焦卡片主体或详情，按 Enter 或空格追踪依赖或打开详情。',
-  'node.a11yDescription.keyboardDisabled': '使用 Tab 聚焦卡片主体或详情，按 Enter 或空格追踪依赖或打开详情。',
-};
-
 export const getInitialTaskViewport = (geometry: CanvasLayout, rootId: string, width: number, height: number, anchorRoot = false): Viewport => {
   const left = Math.min(...geometry.nodes.map((node) => node.position.x));
   const top = Math.min(...geometry.nodes.map((node) => node.position.y));
@@ -74,6 +67,7 @@ const InitialViewport = ({ geometry, rootId, folded, action, resetButton }: { ge
 type CanvasProps = TaskGraphProps & { geometry: CanvasLayout; projection: RootProjection; visibleIds: ReadonlySet<string>; action: ViewportAction | null; onExpandTask: (id: string, direction: TaskExpansionDirection) => void; onResetOverview: () => void };
 
 const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleIds, action, onExpandTask, onResetOverview }: CanvasProps) => {
+  const { messages: { graph: m } } = useI18n();
   const { fullscreen, containerRef, toggleRef, onKeyDown, toggle } = useGraphFullscreen();
   const resetButton = useRef<HTMLButtonElement>(null);
   const [inspection, setInspection] = useState<{ id: string; trigger: HTMLElement } | null>(null);
@@ -111,7 +105,7 @@ const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleId
   const canvas = useMemo(() => (
     <ReactFlow<TaskFlowNode>
       id={`flow-${rootId}`}
-      aria-label="任务依赖画布"
+      aria-label={m.canvas}
       aria-describedby={`graph-instructions-${rootId}`}
       nodes={nodes}
       nodeTypes={nodeTypes}
@@ -131,7 +125,7 @@ const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleId
       multiSelectionKeyCode={null}
       autoPanOnNodeFocus={false}
       onlyRenderVisibleElements={false}
-      ariaLabelConfig={ariaLabels}
+      ariaLabelConfig={m.flowAriaLabels}
       attributionPosition="bottom-right"
     >
       <InitialViewport geometry={geometry} rootId={rootId} folded={folded} action={action} resetButton={resetButton} />
@@ -139,34 +133,38 @@ const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleId
       <Background variant={BackgroundVariant.Dots} gap={18} size={0.8} color="#d9dee9" bgColor="#fafbfe" />
       <Controls position="top-right" orientation="horizontal" showInteractive={false} fitViewOptions={viewportFitOptions} />
     </ReactFlow>
-  ), [nodes, rootId, geometry, folded, action, clearInspection]);
+  ), [nodes, rootId, geometry, folded, action, clearInspection, m]);
   return (
-    <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} data-hidden-upstream-count={hiddenUpstreamCount} data-visible-task-count={visibleIds.size} data-total-task-count={totalTasks} ref={containerRef} role={fullscreen ? 'dialog' : undefined} aria-modal={fullscreen ? true : undefined} aria-label={fullscreen ? '任务依赖图全屏查看' : undefined} onKeyDown={onKeyDown}>
+    <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} data-hidden-upstream-count={hiddenUpstreamCount} data-visible-task-count={visibleIds.size} data-total-task-count={totalTasks} ref={containerRef} role={fullscreen ? 'dialog' : undefined} aria-modal={fullscreen ? true : undefined} aria-label={fullscreen ? m.fullscreenTitle : undefined} onKeyDown={onKeyDown}>
       <div className="graph-toolbar">
-        <span>横向依赖图</span>
+        <span>{m.title}</span>
         <div className="graph-toolbar-actions">
-          <span>{projection.mainIds.size} 个链内任务 · {projection.externalIds.size} 个外部前置 · {projection.edges.length} 条依赖</span>
+          <span>{m.counts({ main: projection.mainIds.size, external: projection.externalIds.size, dependencies: projection.edges.length })}</span>
           <button className="button graph-fullscreen-toggle" type="button" ref={toggleRef} onClick={toggle}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
               <path d={fullscreen ? 'M4 9h5V4m6 0v5h5M4 15h5v5m6 0v-5h5' : 'M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5'} />
             </svg>
-            {fullscreen ? '退出全屏' : '全屏查看'}
+            {fullscreen ? m.exitFullscreen : m.enterFullscreen}
           </button>
-          <button className="button graph-reset-overview" type="button" ref={resetButton} onClick={onResetOverview}>收起到概览</button>
+          {fullscreen && <LanguageSelector />}
+          <button className="button graph-reset-overview" type="button" ref={resetButton} onClick={onResetOverview}>{m.resetOverview}</button>
         </div>
       </div>
-      <p className="graph-visibility-summary">当前显示 {visibleIds.size}/{totalTasks} 个任务 · {geometry.edges.length}/{projection.edges.length} 条依赖。通过卡片下方按钮展开更多前置或后续。</p>
-      <p className="graph-hidden-prerequisites" role="status">{hiddenUpstreamCount > 0 ? `另有${hiddenUpstreamCount}个上游未展开` : ''}</p>
-      <p className="graph-instructions" id={`graph-instructions-${rootId}`}>点击卡片追踪全部前置，再次点击或点击空白处清除；详情单独打开。拖动平移，滚轮缩放；Tab 聚焦后按 Enter 或空格操作。</p>
+      <p className="graph-visibility-summary">{m.visibilitySummary({ visible: visibleIds.size, total: totalTasks, edges: geometry.edges.length, totalEdges: projection.edges.length })}</p>
+      <p className="graph-hidden-prerequisites" role="status">{hiddenUpstreamCount > 0 ? m.hiddenPrerequisites({ count: hiddenUpstreamCount }) : ''}</p>
+      <p className="graph-instructions" id={`graph-instructions-${rootId}`}>{m.instructions}</p>
       <div className="task-graph-canvas">
         <TaskInspectionContext value={presentation}>{canvas}</TaskInspectionContext>
       </div>
-      <div className="graph-foot"><span>箭头表示前置 → 后续</span><span>虚线节点及连线：外部前置 · 展开仅影响当前画布</span></div>
+      <div className="graph-foot"><span>{m.directionLegend}</span><span>{m.externalLegend}</span></div>
     </div>
   );
 };
 
-const LayoutError = () => <div className="graph-error" role="alert"><h3>任务图布局失败</h3><p>无法绘制此任务链，请刷新项目后重试。</p></div>;
+const LayoutError = () => {
+  const { messages: { graph: m } } = useI18n();
+  return <div className="graph-error" role="alert"><h3>{m.layoutErrorTitle}</h3><p>{m.layoutErrorDescription}</p></div>;
+};
 
 const VisibleTaskGraph = ({ projection, ...props }: TaskGraphProps & { projection: RootProjection }) => {
   const [visibility, setVisibility] = useState(() => ({ projection, ids: createGraphOverview(props.index, projection) }));

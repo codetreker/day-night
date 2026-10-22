@@ -1,11 +1,12 @@
 import { StrictMode, type ReactNode } from 'react';
-import { render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import { DependencyEdges } from '../src/features/task-graph/DependencyEdges';
 import type { TaskInspection } from '../src/features/task-graph/inspection';
 import type { CanvasLayout } from '../src/features/task-graph/layout';
 
 const portal = vi.hoisted(() => ({ mounted: true }));
+const render = createLocaleRender('zh-CN');
 vi.mock('@xyflow/react', () => ({ ViewportPortal: ({ children }: { children: ReactNode }) => portal.mounted ? children : null }));
 const normal: TaskInspection = { selectedTaskId: null, highlighted: null };
 const selected: TaskInspection = { selectedTaskId: 'B', highlighted: new Set(['A', 'B']) };
@@ -32,6 +33,15 @@ const expectPaint = (container: HTMLElement, expected: readonly string[]) => {
 };
 
 describe('dependency presentation', () => {
+  it('uses the active locale for dependency names without changing their geometry', () => {
+    const view = createLocaleRender('en')(<DependencyEdges geometry={geometry()} inspection={selected} />);
+    expect(view.getByRole('group', { name: 'Task dependencies' })).toBeTruthy();
+    const edges = view.getAllByRole('img');
+    expect(edges[0]!.getAttribute('aria-label')).toMatch(/^Prerequisite task A → subsequent task B/);
+    expect(edges[1]!.getAttribute('aria-label')).toBe('Prerequisite task B → subsequent task C');
+    expectPaint(view.container, ['#6762ce', '#c7cddb']);
+  });
+
   it('paints solid bodies and local dashed primitives with native arrows on the complete routes', () => {
     const { container } = render(<DependencyEdges geometry={geometry()} inspection={normal} />);
     const groups = [...container.querySelectorAll<SVGGElement>('.task-dependency-edge')];

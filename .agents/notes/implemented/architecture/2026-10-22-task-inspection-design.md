@@ -23,8 +23,10 @@ initial viewport. The
 implements independent card controls, transitive node/edge inspection and smooth
 routes. The [progressive-view decision](../feature/2026-10-22-progressive-task-graph.md)
 replaces simultaneous full rendering with bounded overviews and explicit direct
-neighbor expansion for both main and external tasks. Centered reading and Markdown descriptions remain pending in their
-Daynight tasks; existing detail notes describe the current drawer mechanism.
+neighbor expansion for both main and external tasks. The
+[centered detail decision](../feature/2026-10-22-centered-task-detail-dialog.md)
+implements the reading shell with retained modal and attachment ownership.
+Markdown descriptions remain pending in their Daynight task.
 
 The root and its descendants remain the chain's counted membership. Rendering
 adds the complete prerequisite closure without importing unrelated descendants
@@ -106,5 +108,7 @@ original direct-boundary rationale and links its replacement. The existing
 [paint repair](../bug-fix/2026-10-20-long-dashed-dependency-paint.md) retains its
 original raster investigation and links the smooth-route replacement. The
 [fullscreen](../feature/2026-10-22-task-graph-fullscreen.md) note remains the owner
-of viewport-preserving graph expansion and modal layering. The standalone prototype proves its own
+of viewport-preserving graph expansion and modal layering. The centered detail
+decision extends that composition without changing those lifecycles. The
+standalone prototype proves its own
 interaction, not production behavior or capacity.

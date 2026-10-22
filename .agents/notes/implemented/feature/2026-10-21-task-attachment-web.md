@@ -23,7 +23,9 @@ This decision implements the browser portion of that design. It extends the
 and [project browsing foundation](../architecture/2026-10-20-web-project-browsing.md)
 without changing task fields, dependency policy or graph snapshots.
 
-`TaskDrawer` composes `TaskAttachments` after PR associations. One file input
+`TaskDetailDialog` composes `TaskAttachments` after PR associations in its
+reading column. The [centered detail decision](2026-10-22-centered-task-detail-dialog.md)
+owns the outer shell and responsive layout. One file input
 initializes a target path from the filename; users may edit it to a nested path.
 `mime` 4.1.1 derives Content-Type from that target, so changing a source filename
 does not silently determine the saved path's type. Same-path upload overwrites;
@@ -51,7 +53,7 @@ The [dashboard lifecycle](2026-10-20-project-task-dashboard.md) retains portal,
 background inertness and scroll ownership. `tabbable` 6.5.0 supplies normal
 production visibility and keyboard-order checks for form controls, CSS-hidden
 elements, iframes and contenteditable. Same-origin frame load registers Escape
-and boundary Tab/Shift+Tab bridges into the drawer and releases them on replace
+and boundary Tab/Shift+Tab bridges into the dialog and releases them on replace
 or unmount. The [passive restoration decision](../bug-fix/2026-10-20-drawer-focus-restoration.md)
 continues to restore a surviving trigger after sibling DOM removal.
 

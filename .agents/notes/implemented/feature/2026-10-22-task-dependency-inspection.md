@@ -13,8 +13,8 @@ stable geometry, with reading available as an independent action.
 
 Cards use a noninteractive shell with sibling native body, Details and
 prerequisite/successor expansion controls. Body toggles inspection and exposes
-`aria-pressed`; Details exposes `aria-haspopup="dialog"` and opens the existing
-drawer. Pointer, Enter and Space operate the focused control. Standalone rows
+`aria-pressed`; Details exposes `aria-haspopup="dialog"` and opens the delivered
+centered TaskDetailDialog. Pointer, Enter and Space operate the focused control. Standalone rows
 still open details directly. The project page owns detail resources; the mounted
 graph separately owns inspection and progressive visible IDs.
 
@@ -47,7 +47,7 @@ Successful refresh retains valid actual visible IDs plus root and prunes to its
 induced root-connected component; it adds no new baseline automatically. A still
 visible selection recomputes full H; an invisible one clears. Failed refresh
 keeps old data, visible IDs, selection and viewport. Project/root/tab changes or
-unmount release local state. Reconciliation never steals an open drawer's focus;
+unmount release local state. Reconciliation never steals an open dialog's focus;
 a vanished trigger uses existing close-time fallback.
 
 The [routing decision](../architecture/2026-10-22-task-dependency-routing.md)

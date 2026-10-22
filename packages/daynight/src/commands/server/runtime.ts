@@ -43,7 +43,7 @@ export const runServerCommand = async (
     }
     operation.check();
     const paths = resolveConfigurationPaths(context.homeDirectory());
-    const { serverUrl } = await guideMissingConfiguration(context, "server", async () => {
+    const { serverUrl, serverToken } = await guideMissingConfiguration(context, "server", async () => {
       operation ??= startOperation();
       try { return await loadServerConfiguration(paths, operation.signal); }
       catch (cause) {
@@ -53,7 +53,7 @@ export const runServerCommand = async (
     }, cancellation.signal);
     operation ??= startOperation();
     operation.check();
-    const api = createApiClient({ serverUrl, operation, ...(options.fetch === undefined ? {} : { fetch: options.fetch }) });
+    const api = createApiClient({ serverUrl, ...(serverToken === undefined ? {} : { serverToken }), operation, ...(options.fetch === undefined ? {} : { fetch: options.fetch }) });
     const output = await command({ api, operation, serverUrl });
     operation.check();
     if (typeof output === "string") context.stdout(output);

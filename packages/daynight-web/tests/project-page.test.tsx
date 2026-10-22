@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { createLocaleRender } from "./helpers/renderWithLocale";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, getTask, getTaskGraph } from "../src/api/client";
 import type { GraphTask, TaskDetail, TaskGraph, TaskStatus } from "../src/api/types";
@@ -8,6 +9,8 @@ import type { GraphSnapshot } from "../src/features/projects/useTaskGraph";
 import { useTaskDetail } from "../src/features/task-detail/useTaskDetail";
 import { projectRoot, type GraphIndex } from "../src/features/task-graph/model";
 
+const render = createLocaleRender("zh-CN");
+
 vi.mock("../src/api/client", async (original) => ({ ...await original<typeof import("../src/api/client")>(), getTask: vi.fn(), getTaskGraph: vi.fn() }));
 vi.mock("../src/features/task-graph/RootList", () => ({ RootList: ({ index, rootIds, expandedRootId, onExpand, onOpenTask }: {
   index: GraphIndex; rootIds: readonly string[]; expandedRootId: string | null; onExpand: (id: string | null) => void; onOpenTask: (id: string, trigger: HTMLElement) => void;
@@ -15,7 +18,7 @@ vi.mock("../src/features/task-graph/RootList", () => ({ RootList: ({ index, root
   <button id={`task-root-${root}`} onClick={() => onExpand(expandedRootId === root ? null : root)}>{index.nodes.get(root)!.titlePreview}</button>
   {expandedRootId === root && <div data-testid={`chain-${root}`}>{[...projectRoot(index, root).mainIds].map((id) => <button key={id} onClick={(event) => onOpenTask(id, event.currentTarget)}>节点 {index.nodes.get(id)!.titlePreview}</button>)}</div>}
 </div>)}</div> }));
-vi.mock("../src/features/task-detail/TaskDrawer", () => ({ TaskDrawer: ({ projectId, taskId, snapshot, onSelectTask, onClose, onRestoreFocus, onRefreshGraph }: {
+vi.mock("../src/features/task-detail/TaskDetailDialog", () => ({ TaskDetailDialog: ({ projectId, taskId, snapshot, onSelectTask, onClose, onRestoreFocus, onRefreshGraph }: {
   projectId: string; taskId: string; snapshot: GraphSnapshot; onSelectTask: (id: string) => void; onClose: () => void; onRestoreFocus: () => void; onRefreshGraph: () => void;
 }) => {
   const state = useTaskDetail(projectId, taskId, snapshot.revision);
@@ -91,7 +94,7 @@ describe("project dashboard", () => {
     expect(screen.getByTestId(`chain-${C}`)).toBeTruthy();
     expect(screen.queryByTestId(`chain-${A}`)).toBeNull();
     expect(screen.getByText("git@github.com:example/project.git")).toBeTruthy();
-    expect(screen.getByText(/最近成功刷新/).querySelector("time")?.getAttribute("datetime")).not.toBe(time);
+    expect(screen.getByText(/最近成功刷新/).closest("time")?.getAttribute("datetime")).not.toBe(time);
     fireEvent.click(screen.getByRole("button", { name: "已完成根" }));
     expect(screen.getByTestId(`chain-${A}`)).toBeTruthy();
     expect(screen.queryByTestId(`chain-${C}`)).toBeNull();
@@ -105,7 +108,7 @@ describe("project dashboard", () => {
     render(<ProjectPage projectId={projectId} />);
     await screen.findByRole("heading", { name: "核心项目" });
     fireEvent.click(screen.getByRole("button", { name: "另一任务链" }));
-    const receipt = screen.getByText(/最近成功刷新/).querySelector("time")?.getAttribute("datetime");
+    const receipt = screen.getByText(/最近成功刷新/).closest("time")?.getAttribute("datetime");
     fireEvent.click(screen.getByRole("button", { name: "刷新" }));
     expect(screen.getByRole("button", { name: "正在刷新…" })).toBeDisabled();
     expect(screen.getByText("正在刷新，当前显示上次成功读取的数据。")).toBeTruthy();
@@ -113,7 +116,7 @@ describe("project dashboard", () => {
     await act(async () => { pending.reject(new ApiError("server", 500, "internal_error", "refresh-request")); });
     expect((await screen.findByRole("alert")).textContent).toContain("仍显示上次成功读取的数据");
     expect(screen.getByText("refresh-request")).toBeTruthy();
-    expect(screen.getByText(/最近成功刷新/).querySelector("time")?.getAttribute("datetime")).toBe(receipt);
+    expect(screen.getByText(/最近成功刷新/).closest("time")?.getAttribute("datetime")).toBe(receipt);
     expect(screen.getByTestId(`chain-${C}`)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "重试刷新" }));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
@@ -217,7 +220,7 @@ describe("project dashboard", () => {
     render(<ProjectPage projectId={projectId} />);
     const alert = await screen.findByRole("alert");
     expect(within(alert).getByRole("heading", { name: "任务图超过展示上限" })).toBeTruthy();
-    expect(alert.textContent).toContain("当前 1001 个任务、5100 条依赖；支持最多 1000 个任务、5000 条依赖。");
+    expect(alert.textContent).toContain("当前 1,001 个任务、5,100 条依赖；支持最多 1,000 个任务、5,000 条依赖。");
     expect(alert.textContent).toContain("large-graph");
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await screen.findByRole("heading", { name: "任务图数据不完整" });

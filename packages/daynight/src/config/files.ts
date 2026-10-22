@@ -3,6 +3,7 @@ import path from "node:path";
 import type { ConfigurationPaths } from "./paths.js";
 import { replaceFileAtomically } from "../platform/files.js";
 import { MissingConfigurationFileError } from "./errors.js";
+import { parseConfigurationDocument } from "./document.js";
 
 const hasCode = (error: unknown, code: string): boolean =>
   error instanceof Error && "code" in error && error.code === code;
@@ -74,7 +75,9 @@ export const updateConfigurationFile = async <Result>(
     const updated = await update(source);
     signal?.throwIfAborted();
     if (updated.source !== undefined) {
-      await replaceFileAtomically(paths.configFile, updated.source, existingEntry?.mode);
+      const { mapping } = parseConfigurationDocument(updated.source, paths);
+      const mode = process.platform !== "win32" && Object.hasOwn(mapping, "serverToken") ? 0o600 : existingEntry?.mode;
+      await replaceFileAtomically(paths.configFile, updated.source, mode);
     }
     return updated.result;
   } catch (cause) {

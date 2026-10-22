@@ -19,6 +19,8 @@
 仍为本机未认证看板。鉴权接入后继续保留本文的可信同源 frame、相对资源及键盘
 机制，附件请求增加项目成员检查。
 
+[语言设计](daynight-web-i18n.md)拥有已实现的类型化目录、Intl 格式化器、首屏解析、常驻 Provider、共享选择器和全部现有第一方组件的双语呈现；[双语需求](../spec/daynight-web-i18n.md)拥有完整覆盖与验收。源码绑定的组合生产验收由独立任务核对。语言偏好使用独立的 origin-local 键，不改变本文的项目浏览记录、API、图或附件生命周期。
+
 ## 目标与现有基础
 
 浏览器完成“项目列表 → 项目统计 → 独立任务列表或根任务链 → 任务详情”的完整读取路径。数据继续归属 `daynight-server`，不接入 客户端的 review 命令，不新增父子任务或新的任务状态。
@@ -43,7 +45,7 @@
 
 ## 页面与视觉
 
-采用浅色内容区、白色卡片、深色窄导航栏和克制的靛蓝强调色。节点颜色始终表达业务状态；选中态使用描边，不覆盖状态颜色。所有内容使用中文标签，代码标识和仓库地址保留原文。
+采用浅色内容区、白色卡片、深色窄导航栏和克制的靛蓝强调色。节点颜色始终表达业务状态；选中态使用描边，不覆盖状态颜色。产品标签使用当前英语或简体中文目录，用户内容、代码标识和仓库地址保留原文；切换遵守[语言设计](daynight-web-i18n.md)的状态、焦点和布局约束。
 
 ### 项目列表 `/`
 
@@ -78,28 +80,26 @@
   独立任务 G        进行中       创建时间
 ```
 
-- 两个页签位于项目统计下方，共用 `/projects/{projectId}`、完整快照、详情侧栏和项目刷新。页签采用原生按钮、`tablist`/`tab`/`tabpanel` 语义及关联 ID，键盘可切换选择。两个 panel 容器始终保留稳定 ID，非当前容器带 `hidden`；只有当前容器挂载列表内容。首次访问默认选择任务链，之后按项目恢复上次选择；两个页签数字均表示完整快照中的未完成任务数，包含待处理和进行中；独立任务只计无前置且无后续的任务，任务链只计其余任务。遍历完整索引中的唯一 task，按前置/后续关系归类后仅计入状态非 `done` 的任务，共享后续跨根链只计一次。数字不依赖当前页签、展开根或完成筛选，全部完成显示 0；两者之和等于项目 `todo + inProgress`。列表工具栏继续以独立任务或根链条目显示可见/全部数量。新快照同时更新分类和数字，刷新失败保留上次成功值；机制与取舍见[页签计数决策](../../.agents/notes/implemented/feature/2026-10-22-unfinished-task-tab-counts.md)。
+- 两个页签位于项目统计下方，共用 `/projects/{projectId}`、完整快照、居中详情对话框和项目刷新。页签采用原生按钮、`tablist`/`tab`/`tabpanel` 语义及关联 ID，键盘可切换选择。两个 panel 容器始终保留稳定 ID，非当前容器带 `hidden`；只有当前容器挂载列表内容。首次访问默认选择任务链，之后按项目恢复上次选择；两个页签数字均表示完整快照中的未完成任务数，包含待处理和进行中；独立任务只计无前置且无后续的任务，任务链只计其余任务。遍历完整索引中的唯一 task，按前置/后续关系归类后仅计入状态非 `done` 的任务，共享后续跨根链只计一次。数字不依赖当前页签、展开根或完成筛选，全部完成显示 0；两者之和等于项目 `todo + inProgress`。列表工具栏继续以独立任务或根链条目显示可见/全部数量。新快照同时更新分类和数字，刷新失败保留上次成功值；机制与取舍见[页签计数决策](../../.agents/notes/implemented/feature/2026-10-22-unfinished-task-tab-counts.md)。
 - 独立任务在完整图中既无前置也无后续；状态和 `blockedBy` 不参与分类。任务链页签保留有后续的根任务条目及原根投影，多根共享后续仍显示多条根链。依赖增删后的新快照统一重新分类；完成前置仍属于链。分类只派生展示序列，不新增 task 类型、API 或路由。机制与取舍见[任务视图决策](../../.agents/notes/implemented/feature/2026-10-22-project-task-views.md)。
 - 独立任务使用紧凑原生整行按钮，显示标题、自身状态、ID 与创建时间，点击直接打开详情，不挂载单节点画布。任务链条目继续显示整链状态与进度。两类均默认隐藏已完成项，各自的紧凑工具栏左侧为带完成数量的原生复选框，右侧显示最新创建在前及可见/全部数量；任务链按 `rootProgress.status === "done"` 判断完成，独立任务按自身状态判断。完成根仍有未完成后续时继续显示。统计与完整索引保留，图的渐进可见集合独立协调，切换与筛选不增加 API 请求。
 - 两类分别保留页面浏览位置及完成项显示选择，任务链另外保留展开根或明确全部折叠。现有展开 JSON 及完成链 JSON 布尔记录保持原格式；新增选择独立保存。加载、首次读取失败与无可见根不会把自动选择保存为全部折叠。读取、格式或写入失败显示本地偏好提示，并保留本次页面内操作。机制见[浏览偏好决策](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)。浏览位置是页面滚动位置，不是图坐标、缩放或平移；详情选择和全屏也不持久化。非当前页签的内容卸载，返回任务链时保留展开根并重新初始化画布视口。
 - 首次进入任务链页签展开当前首个可见非独立根，之后同时最多展开一条。保存根消失或被隐藏时选择最新可见根；没有可见根时仅派生无展开图，保留此前保存的根或明确全部折叠，重新显示后恢复。切换页签保留展开选择。真正空项目、当前类别为空与当前类别全部完成且隐藏有不同空态；全部完成空态的显示入口先聚焦持续存在的复选框，再显示列表。
 - 完整图索引保留服务端 `(createdAt,id)` 升序。两类展示序列均从完整顺序生成倒序副本，得到创建时间与相同时间 ID 的倒序展示；更新时间不影响位置。任务链列表和偏好 hook 的首次选择、缺失/隐藏根替代共用相同可见序列，仍有效且可见的已保存根继续保留。前端不通过 JavaScript 毫秒时间重新排序，避免丢失数据库时间精度。职责与取舍见[任务链展示决策](../../.agents/notes/implemented/feature/2026-10-21-task-chain-presentation.md)。
 - 紧凑条目保留自然换行、原生整行操作及可见焦点。任务链折叠条目使用 7px 行间距；根按钮桌面内边距为 10px 15px、最小高度为 62px，窄屏内边距为 9px 11px。单行标题条目外框约 64px，长标题允许自然增高。标题保持桌面 13px、窄屏 12px；元信息与状态使用桌面 11px、窄屏 10px，进度区按断点收窄。独立任务保留同一紧凑视觉，不显示链进度。
-- 图节点使用固定尺寸和两行标题；省略内容在详情侧栏中完整展示。
+- 图节点使用固定尺寸和两行标题；省略内容在详情对话框中完整展示。
 - 默认从左到右布局，前置在左、后续在右，箭头始终表达执行方向。
 - 图内提供缩放、平移、适应画布，触屏和窄屏可滚动。初始缩放范围为 0.8–1；若此缩放无法容纳全图，将当前根放在左侧 32px 并垂直居中，避免长链打开在中段。显式适应画布允许缩小至 0.2，保留平移查看。初始化仅执行一次，选择与平移不重新居中或计算布局。
 - `TaskCanvas` 的工具栏提供“全屏查看”及“退出全屏”。全屏容器通过固定定位铺满浏览器视口，画布以 flex 占据工具栏、操作提示和图例之外的高度；保持同一 React Flow 实例，切换时不重算布局或重置缩放和平移。容器使用具名 modal dialog 语义，隔离祖先路径上的兄弟元素并保存原 inert 状态，Tab 在实际可见控件间循环；本地 Escape 处理退出并聚焦原按钮。详情继续 portal 到 body 并覆盖全屏图，详情事件不经过图容器，因此 Esc 按详情、图的次序关闭。图和详情共用引用计数的 body 滚动锁，任一卸载顺序都在最后一个持有者释放后恢复原值。全屏状态仅属于当前挂载的图。机制取舍见[全屏查看决策](../../.agents/notes/implemented/feature/2026-10-22-task-graph-fullscreen.md)。
 - 保留 React Flow attribution；禁用节点拖动、连线、重连、删除，保留焦点与选择。
 - 页面展示最近一次成功快照的本机接收时间，不把 project.updatedAt 当作任务图更新时间。
 
-### 详情侧栏
+### 居中任务详情
 
-桌面从右侧打开，窄屏占满可用宽度。显示完整标题、纯文本描述、关联 PR、附件、
-状态、时间、完整 ID、直接前置、当前阻塞项和直接后续。依赖引用可以切换侧栏内容；
-全部依赖标签使用可访问的按钮。
+`TaskDetailDialog` 通过 body portal 相对可用视口居中，最大宽度 960px，桌面四周至少 24px；600px 及以下边距为 12px。外壳最大高度为 `min(880px, 100dvh − 2 × gutter)`，标题栏和底部说明固定在正文滚动区域之外，关闭入口始终可访问。`task-detail.css` 使用统一的 `task-detail-*` 类名；正文上方展示完整标题与状态，阅读主栏展示纯文本描述、关联 PR 和附件，265px 辅栏展示时间、完整 ID、直接前置、当前阻塞项和直接后续。850px 及以下辅栏为 225px，600px 及以下堆叠为单栏，长文本换行，预格式文本和表格在局部滚动。依赖引用可以切换同一对话框内容，全部依赖标签使用可访问的按钮。尺寸和生命周期的取舍由[居中详情决策](../../.agents/notes/implemented/feature/2026-10-22-centered-task-detail-dialog.md)记录。
 
 PR 区域在描述之后，标题与 URL 分别使用文本节点，空字符串显示专用标记，重复项
-保留独立行，长文本按现有抽屉宽度换行。`TaskPullRequests` 用本地 100 行分页
+保留独立行，长文本按阅读主栏宽度换行。`TaskPullRequests` 用本地 100 行分页
 限制挂载规模，保留完整数组和原顺序，并提供可访问的范围/总数与分页控制。HTTP(S)
 绝对地址提供 `_blank` 与
 `noopener noreferrer` 导航，其他字符串仍展示原文。属性格式、原值保存和导航资格
@@ -114,14 +114,14 @@ PR 区域在描述之后，标题与 URL 分别使用文本节点，空字符串
 路径；同路径覆盖，成功后只刷新附件数据。具体分页、错误和内容机制由
 [附件设计](daynight-task-attachments.md#web-文件树与预览)拥有。
 
-侧栏打开后焦点进入关闭按钮，Tab 在侧栏内循环，Esc 和关闭按钮关闭。
-`focus.ts` 统一调用 `tabbable` 6.5.0，使用生产默认的完整可见性检查，按实际可 Tab
+对话框打开后焦点进入关闭按钮，Tab 在对话框内循环，Esc、关闭按钮和遮罩点击关闭。
+`focus.ts` 的 `dialogFocusables` 统一调用 `tabbable` 6.5.0，使用生产默认的完整可见性检查，按实际可 Tab
 次序识别表单、链接、iframe 和 contenteditable。可信同源 frame 在 load 后登记
-键盘桥接：Esc 调用当前关闭回调，首末 Tab/Shift+Tab 回到侧栏相邻可聚焦元素；监听
+键盘桥接：Esc 调用当前关闭回调，首末 Tab/Shift+Tab 回到对话框相邻可聚焦元素；监听
 随 frame 替换或卸载释放。关闭后优先恢复仍连接 DOM 的原节点；节点已随刷新消失时，
 若全屏图仍在则恢复其退出按钮，否则使用当前页签内仍可见的任务或页签控件；整个项目为空时恢复项目 H1。
 
-卸载时，`useLayoutEffect` 同步移除键盘监听、恢复背景 inert 与 body 滚动状态；独立的 `useEffect([])` cleanup 在 DOM 删除后，调用 ref 中最新的焦点恢复回调。刷新可能同时卸载侧栏和相邻任务链，恢复必须等旧节点真正移除后再检查 `isConnected`，否则焦点会先落到即将删除的节点，随后丢失到 body。关系跳转继续复用侧栏，不触发卸载恢复。具体失败机制与验证由[焦点恢复决策](../../.agents/notes/implemented/bug-fix/2026-10-20-drawer-focus-restoration.md)记录。
+卸载时，`useLayoutEffect` 同步移除键盘监听、恢复背景 inert 与 body 滚动状态；独立的 `useEffect([])` cleanup 在 DOM 删除后，调用 ref 中最新的焦点恢复回调。刷新可能同时卸载对话框和相邻任务链，恢复必须等旧节点真正移除后再检查 `isConnected`，否则焦点会先落到即将删除的节点，随后丢失到 body。关系跳转继续复用对话框，不触发卸载恢复。具体失败机制与验证由[焦点恢复决策](../../.agents/notes/implemented/bug-fix/2026-10-20-drawer-focus-restoration.md)记录。
 
 ## 图投影与统计
 
@@ -213,7 +213,7 @@ declare const layoutGraph: (projection: RootProjection) => CanvasLayout;
 
 依据：[React Flow 布局指南](https://reactflow.dev/learn/layouting/layouting)、[Dagre 示例](https://reactflow.dev/examples/layout/dagre)、[可访问性](https://reactflow.dev/learn/advanced-use/accessibility)、[Vue Flow](https://vueflow.dev/guide/)、[Vite 构建](https://vite.dev/guide/build)。Dagre 对外联子图的限制针对嵌套分组；这里每个根条目是独立平面图，不使用嵌套 subflow。
 
-React Flow 固定为 12.12.0，拥有 220×136 节点、原生测量、视口、背景与控件。关闭 wrapper 焦点与所有编辑入口，控件不提供解锁开关。每张卡片由非交互外壳及主体、详情、方向展开的兄弟原生按钮组成：主体以鼠标、Enter 或空格切换依赖选择，“详情”打开详情侧栏。两个控件的键盘聚焦均可平移到离屏节点，保留缩放。可见性由布局中心、固定节点尺寸及当前 viewport 的 x/y/zoom 相对画布尺寸计算；原生 focus 可短暂滚动 hidden-overflow 容器，随后 React Flow 归零该滚动，因此不能用此时任务 DOM 的边界判断可见。布局坐标不受该临时滚动影响；鼠标聚焦和已可见卡片的键盘聚焦保持视口，不通过 timer 或修改原生滚动位置修正。卡片的 `data-inspection` 为 `normal`、`selected`、`prerequisite` 或 `unrelated`，主体通过 `aria-pressed` 表达当前选择，详情通过 `aria-haspopup="dialog"` 表达阅读入口。
+React Flow 固定为 12.12.0，拥有 220×136 节点、原生测量、视口、背景与控件。关闭 wrapper 焦点与所有编辑入口，控件不提供解锁开关。每张卡片由非交互外壳及主体、详情、方向展开的兄弟原生按钮组成：主体以鼠标、Enter 或空格切换依赖选择，“详情”打开居中 TaskDetailDialog。各卡片控件的键盘聚焦均可平移到离屏节点，保留缩放。可见性由布局中心、固定节点尺寸及当前 viewport 的 x/y/zoom 相对画布尺寸计算；原生 focus 可短暂滚动 hidden-overflow 容器，随后 React Flow 归零该滚动，因此不能用此时任务 DOM 的边界判断可见。布局坐标不受该临时滚动影响；鼠标聚焦和已可见卡片的键盘聚焦保持视口，不通过 timer 或修改原生滚动位置修正。卡片的 `data-inspection` 为 `normal`、`selected`、`prerequisite` 或 `unrelated`，主体通过 `aria-pressed` 表达当前选择，详情通过 `aria-haspopup="dialog"` 表达阅读入口。
 
 `TaskGraph` 保存当前挂载画布的依赖选择；`tracePrerequisites(index, taskId)` 从完整数据迭代返回所选任务和全部祖先，未知 ID 显式失败。仅绘制当前可见 H，隐藏上游以 `|H−S|` 按 ID 去重计数，选择不展开。依赖边的终点位于该闭包时高亮，源也必在闭包。选中任务与前置采用不同边框和底色，无关任务适度淡化，保留状态色、阻塞、共享和完成信息。再次选择同一任务或点击空白清除选择。详情资源选择归 `ProjectPage`，`onOpenTask(id, trigger)` 只打开或切换详情；关闭与关系导航不改变依赖选择。
 
@@ -240,14 +240,15 @@ packages/daynight-web/
   src/main.tsx                      浏览器入口
   src/app/{App,router}.tsx           两个页面的路由与组合
   src/api/{types,client,parse}.ts    DTO、请求、运行时解析与错误
+  src/i18n/                         语言目录、格式化器、生产根 Provider 与共享选择器
   src/features/projects/           ProjectsPage、ProjectPage、ProjectTaskTabs、StandaloneList、偏好 hooks、统计卡
   src/features/task-graph/          model.ts、layout.ts、dashes.ts、RootList、TaskGraph、TaskNode
-  src/features/task-detail/         TaskDrawer、详情请求 hook、PR 展示及 focus helper
+  src/features/task-detail/         TaskDetailDialog、详情请求 hook、PR 展示及 focus helper
   src/features/task-detail/attachments/  路径树、附件 hook、操作和内容预览
   src/styles/                      设计变量、排版与样式
   scripts/                         构建发布、严格覆盖率、生产验收及布局差分检查
   tests/                           组件、算法与真实浏览器验收
-  tests/mockups/                   仅开发使用的实际看板、附件组件及前端 fixture
+  tests/mockups/                   仅开发使用的实际看板、附件、语言组件及前端 fixture
 
 packages/daynight-server/
   api/task_graph.go                 HTTP 图 DTO
@@ -262,15 +263,16 @@ packages/daynight-server/
 |---|---|---|
 | 浏览器 app/router | URL 解析、history/popstate、页面装卸与 404 | 组合页面，不直接 fetch |
 | api/client、api/parse | 相对 `/api` 请求、AbortSignal、JSON/附件 DTO 校验、文件传输、HEAD 与 typed error | 不引用组件和图布局 |
+| i18n | 两种目录、格式化、当前语言、独立保存与偏好错误、共用选择器 | 生产根及独立入口显式挂载；领域组件订阅展示，不调用业务 API 或图布局 |
 | projects hooks | 列表游标、完整图快照、加载/刷新状态、按项目隔离的视图偏好 | 图读取调用 api 并交给 model；偏好只访问浏览器存储 |
 | task-graph/model | 根、可达集合、外部前置、统计与共享关系 | 仅依赖 DTO 类型与标准集合 |
 | task-graph/layout 与路线规划 | 保留 Dagre 节点布局，生成固定侧端口及避让全部卡片的 rank 通道路线 | 依赖 model、Dagre 与纯几何规划 |
 | React Flow 组件 | 视口、只读节点、缩放、平移、局部依赖选择与独立详情入口 | 接收完整索引、布局和 onOpenTask，不调用 API |
 | 路线编译与虚线分解 | 规划后点列的 M/L/Q 圆角标准路径、实际曲线弧长和局部轴向 paint pieces | 只依赖布局坐标类型，不访问 DOM、视口或 API |
 | 依赖 SVG | 当前可见诱导边的 canonical 路线、body pieces、三个原生 marker 与语义 | 声明式呈现，编译几何随可见布局改变，选择仅更新外观 |
-| TaskDrawer | 当前 taskId 的详情、关系跳转、portal、焦点和关闭 | 组合详情、PR 与附件区域；不修改图快照 |
+| TaskDetailDialog | 当前 taskId 的详情、居中外壳、关系跳转、body portal、焦点和关闭 | 组合阅读主栏、元数据/关系栏、PR 与附件；不修改图快照 |
 | 附件 hook/model | 当前 project/task 的分页、写状态、选择、预览状态及目录树 | 调用 api；不修改详情或图快照 |
-| 附件预览 | Markdown、文本、图片和可信同源 frame | 使用服务预览路径；frame 键盘桥接复用侧栏 focus helper |
+| 附件预览 | Markdown、文本、图片和可信同源 frame | 使用服务预览路径；frame 键盘桥接复用对话框 focus helper |
 | Go server | HTTP 解析、响应、路由与方法语义 | 调用 service 或 webui |
 | Go service | 具体 store 的读取事务、领域拒绝、图摘要 | 调用 core/store，返回 core 模型 |
 | core/store | 同一快照内的具体 SQL 查询与扫描 | 使用 pgx，不依赖 HTTP、React 或 API DTO |
@@ -287,8 +289,8 @@ flowchart LR
   Layout --> SVG[完整路线与原生箭头]
   Paint --> SVG
   Canvas -->|共享视口变换| SVG
-  Canvas --> Drawer[详情侧栏]
-  Drawer --> Client
+  Canvas --> Detail[居中任务详情]
+  Detail --> Client
   Client --> Mux[Go ServeMux]
   Mux --> HTTP[图与详情 handler]
   Mux --> Assets[webui 内嵌资源]
@@ -305,9 +307,9 @@ flowchart LR
 - `useTaskGraph(projectId)` 拥有完整 `TaskGraph`、接收时间、请求序号和 refresh 动作。新请求成功后一次替换快照与索引，不能逐节点补丁式混合两次响应。
 - `ProjectPage` 管理详情资源选择、当前页签、独立任务与非独立根的倒序展示序列、各自完成项筛选和浏览位置。任务链列表通过 `rootIds` 使用其可见序列，图投影继续使用完整且未改写的 `GraphIndex`。偏好 hook 负责按项目读取、校验并保存本地选择。图刷新后沿用仍可见的根，根隐藏、消失或变成独立任务后选择最新可见链根；没有可见链根时保留原偏好，明确的全部折叠继续保留。详情选择按完整快照判断存在性，分类和完成项过滤不关闭仍存在的任务。
 - `TaskGraph` 管理当前画布的依赖选择，按完整索引派生全部祖先和边的呈现状态；打开详情与关系导航不写入此状态。
-- `useTaskDetail(projectId, taskId)` 拥有最新详情与局部加载/错误。侧栏换节点不改变页面路由，关闭侧栏释放请求；前置引用在侧栏内部切换同一个选择。
+- `useTaskDetail(projectId, taskId)` 拥有最新详情与局部加载/错误。对话框换节点不改变页面路由，关闭对话框释放请求；前置引用在对话框内部切换同一个详情资源。
 - `useAttachments(projectId, taskId)` 独立拥有按页加载的文件、选择、写操作与预览；所有结果绑定 project/task，预览还绑定 path。列表校验重复游标和目录冲突，续页失败保留已读取文件并明确标记不完整；刷新取消旧列表请求。所选路径或 `updatedAt` 改变时取消并重新读取内容，同路径覆盖后增加预览 revision。
-- 图与详情的已加载数据分别绑定 projectId 与 `(projectId,taskId)`。渲染时只显示 key 相符的数据；key 变化立即显示新资源的加载状态，不能等 effect 清理后再去掉旧内容。同资源刷新才保留旧快照，取消/序号检查不能代替这一显示身份约束。侧栏的焦点外壳保持独立，关系跳转不把焦点临时恢复到旧节点。
+- 图与详情的已加载数据分别绑定 projectId 与 `(projectId,taskId)`。渲染时只显示 key 相符的数据；key 变化立即显示新资源的加载状态，不能等 effect 清理后再去掉旧内容。同资源刷新才保留旧快照，取消/序号检查不能代替这一显示身份约束。对话框的焦点外壳保持独立，关系跳转不把焦点临时恢复到旧节点。
 - API client 的明确入口为 `listProjects(query, signal)`、`getTaskGraph(projectId, signal)`、`getTask(projectId, taskId, signal)`。错误类型区分已取消、网络/解析失败和服务端错误码；错误页面只展示脱敏文案及 requestId。图响应的 project.id、详情响应的 projectId/id 必须与规范化后的请求资源匹配，否则按协议错误拒绝显示。
 - 页面导航使用 `pushState`，浏览器返回使用 `popstate`；在组件装卸边界取消请求。未知路径、无法解码的路径或无效 projectId 有明确错误页面，不发起拼接后的非法请求。
 
@@ -430,10 +432,10 @@ web job 在统一验收前执行 dev-ci 生命周期 fixture，随后仅调用 `
 PostgreSQL 准备及正常 dev-ci 源码构建/启动并行。dev-ci 继续拥有本次唯一镜像
 及运行镜像身份校验和完整 shell 清理。
 
-原生功能阶段只等待原生服务和浏览器就绪；其十个场景及浏览器回收成功后，runner
+原生功能阶段只等待原生服务和浏览器就绪；其十三个场景及浏览器回收成功后，runner
 原子写入绑定 acceptance run ID、dev-ci run ID 和 source SHA 的容器执行许可。
 容器 callback 已登记身份后等待该许可，通过后才记录浏览器 inventory 并执行
-十个功能场景。完整 dev-ci 退出清理、容器浏览器回收和全部准备/覆盖率命令结束
+十三个功能场景。完整 dev-ci 退出清理、容器浏览器回收和全部准备/覆盖率命令结束
 后，才在仍存活的原生 Go/PostgreSQL 上执行五个容量/超限场景。任一失败取消并
 等待已启动的所有任务；原生进程意外退出同样取消其他任务。容量阶段保持单浏览器
 worker，并与构建、单元测试、功能测试及容器清理隔离。
@@ -596,15 +598,17 @@ API 数据和固定图集。
 
 每次运行生成真实 UI 与 Go 可执行文件、启动独立 PostgreSQL 18.6，等待服务
 结构化就绪日志并记录二进制摘要；正常 dev-ci 生产构建/启动与这些工作并行。
-原生目标分成十个功能场景和五个容量/超限场景，容器目标经实际生产镜像 gateway
-执行同一个十场景功能集合。浏览器顺序和清理屏障由[CI 构建归属](#ci-构建归属)定义。日常 localhost 栈
+原生目标分成十三个功能场景和五个容量/超限场景，容器目标经实际生产镜像 gateway
+执行同一个十三场景功能集合。浏览器顺序和清理屏障由[CI 构建归属](#ci-构建归属)定义。日常 localhost 栈
 不参与测试。`project-view-tabs` 覆盖两类分类及依赖迁移、独立任务直接详情、独立完成筛选、
 页签/滚动/展开的跨刷新与项目隔离。功能数据和容量数据均通过真实写 API 建立；原有八个图场景及新增 `project-view-tabs` 的浏览器
-继续只发起 GET/HEAD。新增 `task-attachments` 仅允许精确 fixture task 内的文件
-PUT/DELETE，其他写请求仍失败。该场景在两目标上都让安装 CLI 与生产页面操作同一
+继续只发起 GET/HEAD。`task-attachments` 与 `language-state-preservation` 仅允许精确 fixture task 内的文件
+PUT/DELETE，其他写请求仍失败。附件场景在两目标上都让安装 CLI 与生产页面操作同一
 组数据，按原始字节交叉验证写入、覆盖、下载与删除；具体机制由
 [附件组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
 拥有。
+双语功能的三个稳定场景由[语言设计](daynight-web-i18n.md#验证与证据归属)定义，使用同一受监控页面与场景级 locale；首屏和偏好、图/详情/附件状态、错误及窄屏布局分别提供定向检查。语言不会复制容量矩阵或改变阶段与清理屏障。
+
 单链先 POST 创建 1,000 个无依赖任务，再按索引从 999 到 1 PATCH 当前任务，
 将依赖设为前一任务；每次保留实际返回的版本和字段。此顺序使每次环校验遇到的
 前置仍为独立任务，避免 fixture 重复遍历不断增长的祖先链。最终仍是相同的
@@ -615,8 +619,8 @@ PUT/DELETE，其他写请求仍失败。该场景在两目标上都让安装 CLI
 
 Playwright 固定单 worker、零 retry；报告必须包含全部要求的唯一场景、一次成功
 执行、有效 PNG 附件及一致的汇总，跳过、重试、flaky、缺失、多余或重复场景及
-全局错误均失败。原生 functional/capacity 两份报告严格合并为十五个唯一场景，
-容器目标严格要求十个；原生与容器及同目标各阶段浏览器身份必须一致。
+全局错误均失败。原生 functional/capacity 两份报告严格合并为十八个唯一场景，
+容器目标严格要求十三个；原生与容器及同目标各阶段浏览器身份必须一致。
 CI 只接受 Linux、锁定 Playwright 的完整 Chromium channel `chromium`、干净 checkout，且 git SHA 必须
 等于 `GITHUB_SHA`；本机可以显式选择现有 Chromium，回执必须记录这一差异。
 PDF 预览通过轮询 iframe 的实际 compositor 截图，验证 fixture 专用色块已经绘制，
@@ -692,10 +696,10 @@ CI 无论验收成功、失败或取消都执行恢复与归档；恢复成功�
 ### 验证矩阵
 
 1. Go：真实 PostgreSQL 测试完整图与统计一致性、空项目、不存在、规模边界、长文本预览、并发写期间的一致快照、取消与数据库失败；增加静态资源、深链接、API 优先级、缺失资源与方法测试。
-2. web：Vitest + Testing Library，重点测完整图独立分类、页签未完成任务数与默认/恢复、跨根链共享后续去重、筛选计数稳定、全部完成归零及刷新后的状态/分类计数、独立任务直接详情、分类迁移、独立筛选与浏览位置、根识别、闭包、菱形去重、共享节点、外部前置、统计口径、请求取消/晚到、失败重试和侧栏焦点。项目列表必须覆盖续页游标、末页隐藏加载按钮、去重及下一页失败重试，证明所有项目可访问。断言可见行为，不依赖框架内部坐标。
+2. web：Vitest + Testing Library，重点测完整图独立分类、页签未完成任务数与默认/恢复、跨根链共享后续去重、筛选计数稳定、全部完成归零及刷新后的状态/分类计数、独立任务直接详情、分类迁移、独立筛选与浏览位置、根识别、闭包、菱形去重、共享节点、外部前置、统计口径、请求取消/晚到、失败重试和居中详情焦点。项目列表必须覆盖续页游标、末页隐藏加载按钮、去重及下一页失败重试，证明所有项目可访问。断言可见行为，不依赖框架内部坐标。
 3. 覆盖率：保留 Go go-cov 和原始 profile 的严格 `covered * 10 > total * 9`。web job 使用 Vitest V8 provider 输出的 `coverage-final.json`，按产品文件的语句命中表汇总计数并用整数执行同样严格比较。显式设置 `coverage.include` 为 `src/**/*.{ts,tsx}`；检查脚本另行枚举同一源码清单并逐文件核对报告，含未被测试导入的产品文件，缺失即失败。纯类型文件只有在确认没有运行语句时允许零语句；API、图算法和入口没有排除项。拒绝空、畸形报告，测试恰好 90%、舍入、未导入文件和遗漏文件等失败边界。第三方库与构建产物不属于产品源码。
 4. 两个模块分别大于 90%，因此加权总体也大于 90%；不能靠 Go 的高覆盖率掩盖 web 缺口。现有 Go package/function/critical-block 与所有 CLI 原生平台门槛保持。
-5. 浏览器验收使用 Playwright、构建后的真实页面、真实服务与隔离 PostgreSQL。通过 API 建立项目和任务，验证完整点击路径、共享/外部前置、空项目、局部失败与重试、深链接刷新、键盘节点操作，以及侧栏实际焦点进入/Tab 循环/Esc、关闭按钮和关闭后恢复焦点；收集截图、测试 SHA、通过结果和资源清理证据。
+5. 浏览器验收使用 Playwright、构建后的真实页面、真实服务与隔离 PostgreSQL。通过 API 建立项目和任务，验证完整点击路径、共享/外部前置、空项目、局部失败与重试、深链接刷新、键盘节点操作，以及居中详情的实际几何、正文独立滚动、焦点进入/Tab 循环/Esc、遮罩/关闭按钮和关闭后恢复焦点；收集截图、测试 SHA、通过结果和资源清理证据。
 6. PR 按[仓库 CI 路由](../../README.md#ci-selection)选择受影响模块，main push 执行全量应用检查。最终 `checks` 只接受所有前置 job 的 `success` 或 `skipped`，失败、取消及其他结果使汇总失败；未选中的 job 为 `skipped`。Go job 与 web job 被选中时，各自在干净 checkout 中生成真实 UI 产物并完成既有集成验收；跨模块构建前置不改变模块路由。依赖变更遵守现有 workspace 与 PR 的 CLI 版本检查规则。
 7. 性能验收使用 Linux CI 的固定 Chromium、生产构建和固定拓扑图集，覆盖 1,000 节点的单链，以及恰好同时具有 1,000 节点和 5,000 边的分叉合流、多根共享和外部祖先密集图；外部图的链内 2 项与上下文 998 项分别计数。每次从折叠状态打开，重复五次，最慢一次从点击到可操作概览不超过 3,000ms；布局后依赖选择、打开详情、缩放或平移的可见反馈不超过 300ms。四个固定输入各五次记录 `selectMs`，验证有界概览、显式展开/重置和隐藏上游准确性；选择前后的节点位置、标准路线和视口必须保持一致。单独保存布局/渲染耗时和完整测试环境，接口耗时与详情网络时间分开记录。失败必须优化或重新评审支持上限，不能把超时结果当成已支持，也不默认引入后台 worker。
 

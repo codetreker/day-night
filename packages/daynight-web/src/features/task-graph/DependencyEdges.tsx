@@ -1,5 +1,6 @@
 import { memo, useId, useMemo } from 'react';
 import { ViewportPortal } from '@xyflow/react';
+import { useI18n } from '../../i18n/LocaleProvider';
 import { DEPENDENCY_DASH_ARRAY, DEPENDENCY_DASH_PERIOD } from './dashes';
 import type { TaskInspection } from './inspection';
 import type { CanvasEdge, CanvasLayout } from './layout';
@@ -26,10 +27,10 @@ const DependencyPaint = memo(({ route }: Pick<EdgeRoute, 'route'>) => <>
   })}
 </>);
 
-const DependencyEdge = memo(({ edge, route, presentation, markerId }: EdgeRoute & { presentation: Presentation; markerId: string }) => (
+const DependencyEdge = memo(({ edge, route, presentation, markerId, label }: EdgeRoute & { presentation: Presentation; markerId: string; label: string }) => (
   <g className="react-flow__edge task-dependency-edge"
     data-id={edge.id} data-source={edge.source} data-target={edge.target} data-external={edge.external} data-inspection={presentation}
-    role="img" aria-label={`前置任务 ${edge.source} → 后续任务 ${edge.target}${presentation === 'highlighted' ? '，所选依赖路径' : ''}`}
+    role="img" aria-label={label}
     focusable="false" style={{ pointerEvents: 'none' }}>
     <g className="task-dependency-body" stroke={colors[presentation]} aria-hidden="true" focusable="false">
       {edge.external && <DependencyPaint route={route} />}
@@ -41,12 +42,13 @@ const DependencyEdge = memo(({ edge, route, presentation, markerId }: EdgeRoute 
 ));
 
 export const DependencyEdges = memo(({ geometry, inspection }: Props) => {
+  const { messages: { graph: messages } } = useI18n();
   const markerId = `task-dependency-arrow-${useId()}`;
   const routes = useMemo(() => geometry.edges.map((edge) => ({ edge, route: compileDependencyRoute(edge.points, edge.external) })), [geometry]);
   return <ViewportPortal>
     <svg className="task-dependency-edges" data-testid="task-dependency-edges"
       data-paint-piece-count={routes.reduce((count, view) => count + view.route.pieces.length, 0)}
-      width="100%" height="100%" role="group" aria-label="任务依赖关系" focusable="false" style={{ pointerEvents: 'none' }}>
+      width="100%" height="100%" role="group" aria-label={messages.dependencyGroup} focusable="false" style={{ pointerEvents: 'none' }}>
       <defs>
         {(Object.keys(colors) as Presentation[]).map((presentation) => <marker key={presentation} id={`${markerId}-${presentation}`}
           markerWidth="16" markerHeight="16" viewBox="-10 -10 20 20" markerUnits="strokeWidth" orient="auto-start-reverse" refX="0" refY="0">
@@ -54,8 +56,11 @@ export const DependencyEdges = memo(({ geometry, inspection }: Props) => {
             strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
         </marker>)}
       </defs>
-      {routes.map((view) => <DependencyEdge key={view.edge.id} {...view} markerId={markerId}
-        presentation={inspection.highlighted === null ? 'normal' : inspection.highlighted.has(view.edge.target) ? 'highlighted' : 'unrelated'} />)}
+      {routes.map((view) => {
+        const presentation = inspection.highlighted === null ? 'normal' : inspection.highlighted.has(view.edge.target) ? 'highlighted' : 'unrelated';
+        return <DependencyEdge key={view.edge.id} {...view} markerId={markerId} presentation={presentation}
+          label={`${messages.dependencyLabel({ source: view.edge.source, target: view.edge.target })}${presentation === 'highlighted' ? messages.dependencyHighlightedSuffix : ''}`} />;
+      })}
     </svg>
   </ViewportPortal>;
 });

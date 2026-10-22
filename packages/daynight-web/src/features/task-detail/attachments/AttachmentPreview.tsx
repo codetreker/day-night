@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { ApiError } from '../../../api/client';
+import { useI18n } from '../../../i18n/LocaleProvider';
 import type { Attachment } from '../../../api/types';
-import { drawerFocusables } from '../focus';
+import { dialogFocusables } from '../focus';
 import { attachmentKind, resolveAttachmentUrl } from './model';
 
 export type AttachmentPreviewState = {
@@ -22,6 +24,8 @@ type AttachmentPreviewProps = {
 };
 
 const TrustedFrame = ({ url, title, onClose }: { readonly url: string; readonly title: string; readonly onClose: () => void }) => {
+  const { messages } = useI18n();
+  const m = messages.inspection.attachments;
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [loadedFrame, setLoadedFrame] = useState(false);
   const removeListener = useRef<(() => void) | null>(null);
@@ -40,12 +44,12 @@ const TrustedFrame = ({ url, title, onClose }: { readonly url: string; readonly 
         event.preventDefault();
         close.current();
       } else if (event.key === 'Tab') {
-        const inner = drawerFocusables(content);
+        const inner = dialogFocusables(content);
         const active = content.activeElement;
         if (inner.length !== 0 && (event.shiftKey ? active !== inner[0] : active !== inner[inner.length - 1])) return;
         const dialog = frame.closest<HTMLElement>('[role="dialog"]');
         if (dialog === null) return;
-        const outer = drawerFocusables(dialog);
+        const outer = dialogFocusables(dialog);
         const index = outer.indexOf(frame);
         const target = outer[(index + (event.shiftKey ? -1 : 1) + outer.length) % outer.length]!;
         event.preventDefault();
@@ -57,14 +61,18 @@ const TrustedFrame = ({ url, title, onClose }: { readonly url: string; readonly 
   };
 
   return <div>
-    {!loadedFrame && <p className="attachment-state attachment-native-state" role="status">正在加载预览…</p>}
+    {!loadedFrame && <p className="attachment-state attachment-native-state" role="status">{m.previewLoading}</p>}
     <iframe className="attachment-frame" ref={frameRef} src={url} title={title} tabIndex={0} onLoad={loaded} />
   </div>;
 };
 
-const NativeStatus = ({ status, onRetry }: { readonly status: 'loading' | 'ready' | 'error'; readonly onRetry: () => void }) => status === 'ready' ? null : status === 'loading'
-  ? <p className="attachment-state attachment-native-state" role="status">正在加载预览…</p>
-  : <div className="attachment-state attachment-native-state attachment-error" role="alert"><p>无法加载文件预览，请重试或下载文件。</p><button className="button" type="button" onClick={onRetry}>重试预览</button></div>;
+const NativeStatus = ({ status, onRetry }: { readonly status: 'loading' | 'ready' | 'error'; readonly onRetry: () => void }) => {
+  const { messages } = useI18n();
+  const m = messages.inspection.attachments;
+  return status === 'ready' ? null : status === 'loading'
+    ? <p className="attachment-state attachment-native-state" role="status">{m.previewLoading}</p>
+    : <div className="attachment-state attachment-native-state attachment-error" role="alert"><p>{m.previewLoadError}</p><button className="button" type="button" onClick={onRetry}>{m.retryPreview}</button></div>;
+};
 
 const ImagePreview = ({ url, path }: { readonly url: string; readonly path: string }) => {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -73,12 +81,15 @@ const ImagePreview = ({ url, path }: { readonly url: string; readonly path: stri
 };
 
 export const AttachmentPreview = ({ attachment, preview, url, previewRoot, onRetry, onClose }: AttachmentPreviewProps) => {
+  const { messages } = useI18n();
+  const m = messages.inspection.attachments;
   const kind = attachmentKind(attachment);
-  if (preview.status === 'loading') return <p className="attachment-state" role="status">正在加载预览…</p>;
+  if (preview.status === 'loading') return <p className="attachment-state" role="status">{m.previewLoading}</p>;
   if (preview.status === 'error') return (
     <div className="attachment-state attachment-error" role="alert">
-      <p>无法读取文件预览，请重试或下载文件。</p>
-      <button className="button" type="button" onClick={onRetry}>重试预览</button>
+      <p>{m.previewReadError}</p>
+      {preview.error instanceof ApiError && preview.error.requestId !== null && <p className="request-id">{messages.common.requestId}{' '}<code>{preview.error.requestId}</code></p>}
+      <button className="button" type="button" onClick={onRetry}>{m.retryPreview}</button>
     </div>
   );
   if (preview.status !== 'ready') return null;
@@ -92,6 +103,6 @@ export const AttachmentPreview = ({ attachment, preview, url, previewRoot, onRet
   );
   if (kind === 'text') return <pre className="attachment-text">{preview.text}</pre>;
   if (kind === 'image') return <ImagePreview key={url} url={url} path={attachment.path} />;
-  if (kind === 'pdf' || kind === 'html') return <TrustedFrame key={url} url={url} title={`${kind === 'pdf' ? 'PDF' : 'HTML'} 预览：${attachment.path}`} onClose={onClose} />;
-  return <p className="attachment-state">此文件暂不支持预览，请下载后打开。</p>;
+  if (kind === 'pdf' || kind === 'html') return <TrustedFrame key={url} url={url} title={m.frameTitle({ kind: kind === 'pdf' ? 'PDF' : 'HTML', path: attachment.path })} onClose={onClose} />;
+  return <p className="attachment-state">{m.unsupportedPreview}</p>;
 };

@@ -31,14 +31,14 @@ Task 需要记录关联的多个 PR。把引用写进 description 会混合任�
 | [server/http.go](../../packages/daynight-server/internal/server/http.go)，第 19 行起 | 已有请求大小、UTF-8 与严格对象校验；需将对象级严格规则复用到属性嵌套层。 |
 | [CLI schema.ts](../../packages/daynight/src/cli/schema.ts)，第 105 行起 | 可重复选项按出现顺序形成数组，支持按位置配对 URL 与标题。 |
 | [CLI parse.ts](../../packages/daynight/src/api/parse.ts)，第 52 行起 | `parseTask` 投影已知字段；需显式解析属性，否则会丢弃 server 返回的新数据。 |
-| [TaskDrawer.tsx](../../packages/daynight-web/src/features/task-detail/TaskDrawer.tsx)，第 146 行起 | 详情已有描述与关系区域；PR 列表放在描述之后。 |
+| [TaskDetailDialog.tsx](../../packages/daynight-web/src/features/task-detail/TaskDetailDialog.tsx) | 详情已有描述与关系区域；PR 列表放在描述之后。 |
 
 ## 模块与数据流
 
 ```mermaid
 flowchart LR
   CLI[CLI 参数与资源输出] --> HTTP[严格 HTTP DTO]
-  Web[只读详情抽屉] --> HTTP
+  Web[任务详情对话框] --> HTTP
   HTTP --> Service[Task 候选状态与 version]
   Service --> Store[既有 project 写事务 / 读取快照]
   Store --> DB[(tasks.properties: text)]
@@ -180,8 +180,7 @@ Shell 补全从相同命令定义取得三个固定选项，不增加远端数�
 
 ## 网页与交互预览
 
-`TaskDrawer` 在描述之后渲染“关联 PR · N”。沿用现有白色抽屉、460px 宽度、关系
-卡片边框、字体、间距和窄屏规则；每张 PR 卡分别显示 title 与 URL。
+`TaskDetailDialog` 在描述之后渲染“关联 PR · N”，PR 位于居中对话框的阅读主栏。外壳尺寸、双栏/窄屏堆叠与滚动机制由[看板设计](daynight-web.md#居中任务详情)拥有；PR 卡沿用关系卡片边框、字体和间距，每张分别显示 title 与 URL。
 `TaskPullRequests` 保留完整属性数组，按原顺序每页最多挂载 100 行；超过 100 项时
 显示当前范围、总数及原生页码选择、上一页/下一页。分页只改变本地展示，不增加
 请求、丢弃数据或改变 server 属性限制。任务或集合替换时同步回到第一页，分页

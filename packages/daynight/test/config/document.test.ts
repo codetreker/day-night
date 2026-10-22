@@ -1,5 +1,6 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { inspect } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { parseConfigurationDocument, readConfiguration } from "../../src/config/document.js";
 import { resolveConfigurationPaths } from "../../src/config/paths.js";
@@ -13,9 +14,9 @@ afterEach(async () => {
 
 describe("shared YAML document boundary", () => {
   it("recognizes each command's fields without imposing its value rules", () => {
-    const source = "# Server settings\nserverUrl: &server nonsense\nrepositoryRoot: *server # preserved alias\nrepositories: malformed\npollIntervalMs: null\nmaxConcurrentWorker: false\nagentTimeoutMs: []\nmaxAttempts: {}\nretryDelayMs: -1\n";
+    const source = "# Server settings\nserverUrl: &server nonsense\nrepositoryRoot: *server # preserved alias\nrepositories: malformed\npollIntervalMs: null\nmaxConcurrentWorker: false\nagentTimeoutMs: []\nmaxAttempts: {}\nretryDelayMs: -1\ncopilotModel: null\ncopilotReasoningEffort: false\n";
     const { document, mapping } = parseConfigurationDocument(source, paths);
-    expect(mapping).toEqual({ serverUrl: "nonsense", repositoryRoot: "nonsense", repositories: "malformed", pollIntervalMs: null, maxConcurrentWorker: false, agentTimeoutMs: [], maxAttempts: {}, retryDelayMs: -1 });
+    expect(mapping).toEqual({ serverUrl: "nonsense", repositoryRoot: "nonsense", repositories: "malformed", pollIntervalMs: null, maxConcurrentWorker: false, agentTimeoutMs: [], maxAttempts: {}, retryDelayMs: -1, copilotModel: null, copilotReasoningEffort: false });
     expect(document.toString()).toContain("serverUrl: &server nonsense");
     expect(document.toString()).toContain("repositoryRoot: *server # preserved alias");
   });
@@ -47,6 +48,26 @@ describe("shared YAML document boundary", () => {
 
   it("preserves an unresolved alias as a decode failure", () => {
     expect(() => parseConfigurationDocument("serverUrl: *missing", paths)).toThrow(`Cannot decode YAML in ${paths.configFile}.`);
+  });
+
+  it.each([
+    ["unresolved alias", (secret: string) => `serverUrl: https://service.example\nserverToken: *${secret}\n`, "ReferenceError"],
+    ["verbatim tag warning", (secret: string) => `serverUrl: https://service.example\nserverToken: !<${secret}> value\n`, "TAG_RESOLVE_FAILED at offsets"],
+    ["local tag warning", (secret: string) => `serverUrl: https://service.example\nserverToken: !${secret} value\n`, "TAG_RESOLVE_FAILED at offsets"],
+    ["duplicate secret key", (secret: string) => `${secret}: first\n${secret}: second\n`, "DUPLICATE_KEY at offsets"],
+    ["secret root key", (secret: string) => `${secret}: value\n`, "unsupported field"],
+    ["malformed scalar", (secret: string) => `serverToken: "${secret}\n`, "MISSING_CHAR at offsets"],
+    ["malformed collection", (secret: string) => `serverToken: [${secret}\n`, "BAD_INDENT at offsets"],
+  ])("reports %s without retaining secret bytes anywhere in the diagnostic chain", (_name, source, category) => {
+    const secret = "synthetic_PAT_do_not_disclose_7362";
+    let failure: unknown;
+    try { parseConfigurationDocument(source(secret), paths); }
+    catch (cause) { failure = cause; }
+    expect(failure).toBeInstanceOf(Error);
+    const diagnostic = formatError(failure);
+    expect(diagnostic).toContain(category);
+    expect(diagnostic).not.toContain(secret);
+    expect(inspect(failure, { depth: Infinity })).not.toContain(secret);
   });
 
   it("reads a document without mutating global configuration or creating runtime data", async () => {

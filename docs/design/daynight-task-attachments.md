@@ -58,7 +58,7 @@ mockup/
 | [附件迁移](../../packages/daynight-server/internal/core/store/migrations/004_task_attachments.sql)定义独立附件表 | 既有迁移机制维护该表，归属由服务校验 |
 | [CLI API 客户端](../../packages/daynight/src/api/client.ts)区分 JSON、字节与空响应 | 复用期限、取消、错误及元数据预算；原始文件流不经过 JSON 解码 |
 | [CLI 上下文](../../packages/daynight/src/cli/context.ts)提供 text 与 bytes 输出 | `stdoutBytes` 可等待且保留背压，`closeStdoutBytes` 负责命令结束前的输出清理 |
-| [任务详情](../../packages/daynight-web/src/features/task-detail/TaskDrawer.tsx)独立加载 task | 组合附件区域，附件 hook 独立持有分页、写状态和预览，保持图和详情读取行为 |
+| [任务详情](../../packages/daynight-web/src/features/task-detail/TaskDetailDialog.tsx)独立加载 task | 组合附件区域，附件 hook 独立持有分页、写状态和预览，保持图和详情读取行为 |
 | [localhost Compose](../../deployment/localhost/compose.yaml)经 gateway 同源交付，服务使用 [UID 10001](../../deployment/localhost/Dockerfile) | 项目独立的附件持久卷挂载到服务可写根目录，沿用同一 Web 服务及监听端口 |
 
 ## 模块职责与依赖
@@ -304,7 +304,7 @@ docker compose -f deployment/localhost/compose.yaml logs server | rg '"request_i
 
 ## Web 文件树与预览
 
-`TaskDrawer` 在关联 PR 后组合 `TaskAttachments`。用户选择一个文件，目标路径初始为
+`TaskDetailDialog` 在关联 PR 后组合 `TaskAttachments`。用户选择一个文件，目标路径初始为
 文件名，可改为多层相对路径；`mime` 4.1.1 按目标路径确定上传 Content-Type，未知
 类型使用 `application/octet-stream`。同路径直接覆盖，单文件提供下载和删除，成功
 后刷新附件区域，不修改详情、task 版本或图。页面沿用看板样式，没有独立预览弹窗。
@@ -346,10 +346,7 @@ body。成功后 frame 正常 GET 文件和其资源。入口中的 `./assets/st
 端口、Service Worker 或离线文件系统。规划中的[鉴权架构](daynight-auth.md)为
 附件请求增加登录态和项目成员检查，继续保留可信 HTML 的同源执行约定。
 
-原侧栏继续拥有 portal、背景 inert、滚动和被动卸载后的焦点恢复。`tabbable` 6.5.0
-的生产默认可见性检查统一枚举侧栏与同源 frame 的可 Tab 元素；frame 的 load
-监听桥接 Esc 与首末 Tab/Shift+Tab 到侧栏，并在替换或卸载时释放。详细历史与取舍
-见 [Web 附件决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)。
+居中详情对话框拥有 body portal、背景 inert、共享滚动锁和被动卸载后的焦点恢复；其尺寸与正文独立滚动由[看板设计](daynight-web.md#居中任务详情)拥有。`dialogFocusables` 使用 `tabbable` 6.5.0 的生产默认可见性检查，统一枚举对话框与同源 frame 的可 Tab 元素；frame 的 load 监听桥接 Esc 与首末 Tab/Shift+Tab 到对话框，并在替换或卸载时释放。该桥仍属于预览组件，不因外壳居中另建键盘所有者。详细历史与取舍见 [Web 附件决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)。
 
 `tests/mockups/attachments.html` 仅由 Vite 开发服务提供，实际组件和 CSS 使用内存
 fixture API 与原生 fixture 文件，支持文件、空态和上传失败场景。fixture 分配的对象
@@ -479,10 +476,14 @@ Web 新增 `task-attachments` 功能场景，在原生和实际生产容器上�
 与页面操作同一批数据；原有八个图功能场景及四个原生容量/超限场景保持完整。
 完整上下文交付另加入 `capacity-external`，原生容量/超限共五个场景；机制与统计
 由[看板设计](daynight-web.md#验证与-ci)拥有。
-另有 `project-view-tabs` 验证项目内任务视图，当前严格 inventory 为原生 14 个、
-容器 10 个。只有附件场景精确的 task/file PUT/DELETE 获准，图与任务视图场景
-继续 GET/HEAD。完整 Chromium channel `chromium` 对 PDF 的证明来自 iframe 实际
-compositor 像素中的 fixture 专用色块，成功状态、load 和固定等待均不能代替绘制。
+另有 `project-view-tabs` 验证项目内任务视图；[双语界面](daynight-web-i18n.md)增加三个功能场景，当前严格 inventory 为原生 18 个、
+容器 13 个。附件场景和 `language-state-preservation` 仅允许精确 fixture task/file 的 PUT/DELETE，后者验证切换期间待完成操作只执行一次；图、任务视图及其他语言场景继续 GET/HEAD。完整 Chromium channel `chromium` 对 PDF 的证明来自 iframe 实际
+compositor 像素中的 fixture 专用色块。判断器将匹配像素按连通区域分组，独立计算
+各个实心色块的像素数、边界和密度，并在延伸到 frame 右半区的页面候选中检查
+最大的色块。此位置规则基于 fixture 与固定查看器布局，排除仅缩略图已绘制的情形；
+独立边界也使单独绘制的缩略图不会稀释页面色块的密度。成功 PNG 与区域指标保留在绘制回执中，
+匹配阈值由[组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+拥有。成功状态、load 和固定等待均不能代替绘制。
 
 运行回执校验 Git SHA/dirty 标记及实际 tarball/entry 摘要；dirty 标记不是脏源码内容
 指纹。CI 继续要求干净 checkout 等于 `GITHUB_SHA`。浏览器、CLI 和辅助子进程/组均

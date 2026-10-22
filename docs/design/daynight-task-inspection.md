@@ -1,12 +1,12 @@
 # 任务依赖追踪与详情阅读设计
 
-状态：UX-T1 的完整上下文数据已交付。UX-T2 采用渐进可见图、独立依赖选择和平滑连线，真实运行与交付证据待完成；UX-T3 居中详情与 UX-T4 Markdown 描述待实现。[要求](../spec/daynight-task-inspection.md)拥有行为，[任务拆分](daynight-task-inspection-tasks.md)拥有范围，[原型](mockups/task-inspection/index.html)拥有最终视觉交互。[渐进图决策](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)替代全部数据同时可见的展示要求，保留[完整上下文决策](../../.agents/notes/implemented/feature/2026-10-22-complete-prerequisite-context.md)的原始理由和数据保证。
+状态：UX-T1 的完整上下文数据已交付。UX-T2 采用渐进可见图、独立依赖选择和平滑连线，真实运行与交付证据待完成；UX-T3 居中详情已由 [PR #124](https://github.com/codetreker/daynight/pull/124) 交付；UX-T4 Markdown 描述待实现。[要求](../spec/daynight-task-inspection.md)拥有行为，[任务拆分](daynight-task-inspection-tasks.md)拥有范围，[原型](mockups/task-inspection/index.html)拥有最终视觉交互。[渐进图决策](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)替代全部数据同时可见的展示要求，保留[完整上下文决策](../../.agents/notes/implemented/feature/2026-10-22-complete-prerequisite-context.md)的原始理由和数据保证。
 
 ## 目标与当前结构
 
 任务链保留完整依赖数据，画布从可读概览开始，读者通过明确控件逐步加入任务。卡片主体只追踪依赖，“详情”打开独立阅读界面。选择高亮可见路径并准确说明隐藏祖先，选择本身不展开或移动图。独立任务条目继续直接打开详情；页签分类、未完成任务计数、筛选和持久化偏好保留现有语义。
 
-完整项目快照与索引已有 `dependsOn` 和 successors，不增加服务端接口、数据格式或新的 task 状态。`projectRoot` 保留 UX-T1 的完整链上下文；新的可见投影只改变布局和渲染输入。详情仍是 `TaskDrawer` 和纯文本描述，居中与 Markdown 由各自任务交付。
+完整项目快照与索引已有 `dependsOn` 和 successors，不增加服务端接口、数据格式或新的 task 状态。`projectRoot` 保留 UX-T1 的完整链上下文；新的可见投影只改变布局和渲染输入。详情使用已交付的 `TaskDetailDialog` 居中外壳，保留纯文本描述；Markdown 由 UX-T4 交付。现有语言运行时和英语/简体中文界面保持：新增控件和计数进入相同 typed catalogs，切换语言不改变 S、选择、几何、视口或业务资源。
 
 ## 数据与职责
 
@@ -22,7 +22,7 @@ flowchart LR
   Visibility --> Counts[隐藏祖先计数]
   Inspect --> Counts
   Inspect --> Canvas
-  Canvas -->|独立详情入口| Drawer[现有 TaskDrawer]
+  Canvas -->|独立详情入口| Dialog[已交付 TaskDetailDialog]
 ```
 
 `ProjectPage` 拥有详情 ID、入口及关闭后焦点恢复。当前挂载画布拥有实际可见 ID 集合和依赖选择；项目、根、页签变化或卸载时释放。`TaskInspectionContext` 提供选择状态，受控 React Flow node/data 保持 task、几何、分类和稳定回调，memoized `TaskNodeContent` 保留标题、状态及共享/外部标记。方向展开、主体选择和详情是兄弟原生控件；两个原有控件及新增展开入口均保留键盘访问。
@@ -59,9 +59,9 @@ Dagre 拥有当前 S 的坐标、rank、排序及中间 lane 意图。`routing.t
 
 ## 居中详情
 
-详情外壳更名为 `TaskDetailDialog`，保留已有详情 hook、关系跳转、PR 和附件组件。内容区位于视口居中容器，宽度 `min(960px, 100% − 2 × gutter)`，桌面 `gutter = 24px`，600px 以下为 12px；高度不超过 `100dvh − 2 × gutter`。内部内容滚动，标题栏、关闭按钮及既有底部说明保持可访问。长代码和表格局部横向滚动。
+`TaskDetailDialog` 组合已有详情 hook、关系跳转、PR 和附件组件，样式由 `task-detail.css` 的 `task-detail-*` 命名空间拥有。外壳相对可用视口居中，宽度 `min(960px, 100% − 2 × gutter)`，桌面 `gutter = 24px`，600px 及以下为 12px；最大高度为 `min(880px, 100dvh − 2 × gutter)`。标题栏、关闭按钮和底部说明处于滚动内容之外，正文独立滚动。桌面正文包含阅读主栏与 265px 元数据/关系栏，850px 及以下侧栏收为 225px，600px 及以下堆叠；长文本换行，代码和表格在所属区域横向滚动。描述仍为纯文本，Markdown 与描述附件导航由 UX-T4 交付。
 
-继续复用 body portal、共享滚动锁、背景 inert、焦点循环、遮罩关闭和分层 Esc。清理 inert、滚动锁和监听器的同步阶段与 DOM 移除后恢复焦点的阶段保持既有职责。原入口消失时仍依次选择可用的全屏退出控件、当前根和项目标题；独立任务标签集成后，保留其当前可用条目或标签回退。任务关系切换不卸载外壳，不中途恢复到旧入口。原型的窗口动画仅作用于外壳，不引入图重挂载。
+继续复用 body portal、共享滚动锁、背景 inert、焦点循环、遮罩关闭和分层 Esc。清理 inert、滚动锁和监听器的同步阶段与 DOM 移除后恢复焦点的阶段保持既有职责。原入口消失时优先选择仍可用的全屏退出控件，否则使用当前页签内可见的任务或页签控件；整个项目为空时恢复项目标题。任务关系切换不卸载外壳，不中途恢复到旧入口。外壳不引入图重挂载。`dialogFocusables` 与同源附件 frame 共用可见控件枚举，frame 监听仍按原有 load/替换/卸载生命周期释放。
 
 ## Markdown 与附件链接
 

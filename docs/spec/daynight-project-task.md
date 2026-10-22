@@ -24,17 +24,18 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 [任务拆分](../design/daynight-task-attachments-tasks.md)记录扩展范围和 Daynight 任务入口；
 Web 附件管理亦已实现，组合验收由 A-T6 维护。
 
-[鉴权需求](daynight-auth.md)定义规划中的个人访问令牌、按当前成员关系授权和
-私有项目发现；[架构](../design/daynight-auth.md)及
-[任务拆分](../design/daynight-auth-tasks.md)拥有凭据配置、HTTP 集成和交付条件。
-该能力尚未实现，本文描述的当前命令继续使用本机未认证服务。仓库关联只选择项目，
-不授予访问权限，也不保存认证凭据。
+[鉴权需求](daynight-auth.md)定义完整的个人访问令牌、项目成员授权和私有项目发现。
+CLI 的令牌配置与 HTTP 传输已实现；[凭据决策](../../.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
+记录其机制。[架构](../design/daynight-auth.md)与[任务拆分](../design/daynight-auth-tasks.md)
+拥有服务组合与交付条件；生产服务尚未启用鉴权。仓库关联只选择项目，不授予访问
+权限，也不保存认证凭据。
 
 ## PT1. 范围与命令边界
 
 交付包含 project 创建、列表和详情，以及 project 内 task 的创建、列表、有界 ready
 选择、详情、更新和完整图查询。本文已交付的命令复用现有服务接口，不新增 server API、数据库字段、project 唯一
-约束、认证方式或任务执行能力。允许配置地址不改变服务现有的本机访问边界。
+约束或任务执行能力。可选个人令牌复用既有 HTTP 请求，允许配置地址不改变服务
+现有的本机访问边界。
 
 顶层、命令组和操作帮助必须先于配置加载、Git、文件写入和网络访问执行。裸
 `project`、`task` 显示各自帮助。新增业务依赖不得成为 review、自更新、帮助或版本
@@ -50,7 +51,10 @@ serverUrl: http://127.0.0.1:8787
 
 该值是包含协议、主机和可选端口的 HTTP 或 HTTPS 服务根地址；省略端口使用协议的
 默认端口。允许结尾根斜线，拒绝凭据、非根路径、query、fragment、空值及错误类型。
-客户端添加 `/api/v1`。缺少文件或 `serverUrl` 时，按[客户端 C6](daynight.md#c6-按需配置引导)
+客户端添加 `/api/v1`。同一配置可有可选 `serverToken`，其值为非空 opaque visible
+ASCII；配置令牌时服务必须是 HTTPS，或 host 为字面量 `localhost`、`127.0.0.0/8` 内的数值 IPv4
+或 `::1` 的 HTTP。未知主机即使解析为 loopback 也不获得 HTTP 例外。令牌缺失不
+触发自动引导。缺少文件或 `serverUrl` 时，按[客户端 C6](daynight.md#c6-按需配置引导)
 仅引导服务连接；保存成功后执行原命令。无效值和读取错误须说明配置文件、字段及原因，
 非交互环境缺配置时给出 `daynight setup --server-url <url>` 指引。
 
@@ -274,7 +278,10 @@ API 字段的名称、类型和原始字符串，不应用终端显示转义或�
 
 结果写入 stdout，错误及诊断写入 stderr。成功退出 `0`，参数错误退出 `2`，操作
 失败退出 `1`。诊断须标识操作及相关 project/task；服务错误保留 `code`、`message`、
-`requestId` 和有关 details。不得输出凭据、请求环境或数据库细节。
+`requestId` 和有关 details。401 追加 setup 配置令牌的指导，不回退匿名、不执行
+登录预检或重放原请求。403、404、409 继续既有结果及重新发现规则。
+不得输出凭据、请求环境或数据库细节；YAML 诊断仅含安全类别、代码和位置，不
+携带标量或原始解析器错误链。
 
 ## PT9. 请求生命周期
 
@@ -300,7 +307,7 @@ API 字段的名称、类型和原始字符串，不应用终端显示转义或�
 
 | 编号 | 必须提供的证据 |
 |---|---|
-| V1 | 仅有 `serverUrl` 的配置可执行服务命令；review 与服务配置分别校验，缺失或业务值无效的 `serverUrl` 不影响 review、帮助、版本及 update 的依赖隔离 |
+| V1 | `serverToken` 可选；配置时验证可见 ASCII 和 HTTPS/字面量 loopback HTTP，全部项目/任务/附件请求附加 Bearer，不跟随重定向；401 给出 setup 指导且不重试；review、帮助、版本及 update 保持配置与依赖隔离 |
 | V2 | 从真实 Git 仓库根目录、子目录、linked worktree 和 submodule 正确读取有效 origin；缺少仓库或 origin 时错误可辨 |
 | V3 | HTTPS、SSH、SCP 等价 fixture 得到同一身份；单独 `.git` 路径有可比较身份，路径大小写、自定义端口、特殊用户、alias 和显式相对路径不被误合并 |
 | V4 | 受控 HTTP 验证创建预检与 task discover 跨全部 project 页区分零、唯一、多匹配；创建唯一匹配保留原资源，多匹配列出 ID；后续页失败不保存关联、不输出成功、不发送 project POST 或 task 写入；project 操作不写绑定或 ignore |

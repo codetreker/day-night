@@ -61,6 +61,21 @@ describe("foreground runtime ownership", () => {
     const reopened = openStore(paths.databaseFile); reopened.close();
   });
 
+  it.each([
+    { name: "model", settings: { copilotModel: "future-provider/model-v9" }, runnerOptions: { model: "future-provider/model-v9" } },
+    { name: "effort", settings: { copilotReasoningEffort: "high" }, runnerOptions: { reasoningEffort: "high" } },
+    { name: "both", settings: { copilotModel: "auto", copilotReasoningEffort: "future-effort" }, runnerOptions: { model: "auto", reasoningEffort: "future-effort" } },
+  ])("forwards independent Copilot settings when constructing the startup runner: $name", async ({ name, settings, runnerOptions }) => {
+    const { configuration, paths } = input(`copilot-${name}`);
+    const deps = dependencies(async () => ({ safeToReleaseLock: true }));
+    deps.createRunner = vi.fn(createCopilotRunner);
+    await runForegroundReview({ ...configuration, ...settings }, paths, { packageDirectory, dependencies: deps, log: () => {} });
+    expect(deps.createRunner).toHaveBeenCalledExactlyOnceWith({
+      paths, skill: expect.objectContaining({ name: "daynight-review" }), processOwner: expect.any(String), timeoutMs: configuration.agentTimeoutMs, ...runnerOptions,
+    });
+    await expect(readFile(paths.lockFile)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("retains the lock after uncertainty until an operator excludes the previous processes and removes it", async () => {
     const { configuration, paths } = input("uncertain");
     await expect(runForegroundReview(configuration, paths, { packageDirectory, dependencies: dependencies(async () => ({ safeToReleaseLock: false })), log: () => {} })).rejects.toThrow("Instance lock");

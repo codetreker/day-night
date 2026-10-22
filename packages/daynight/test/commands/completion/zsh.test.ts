@@ -4,6 +4,12 @@ import type { CommandDefinition } from "../../../src/cli/schema.js";
 import { renderZshCompletion } from "../../../src/commands/completion/zsh.js";
 
 describe("native zsh completion", () => {
+  it("offers the server token stdin option without a token value completion", () => {
+    const script = renderZshCompletion(commandTree);
+    expect(script).toContain("(--server-token-stdin)--server-token-stdin[Read one personal access token from piped stdin]");
+    expect(script).not.toContain("--server-token-stdin=");
+  });
+
   it("registers attachment operations below the task command", () => {
     const script = renderZshCompletion(commandTree);
     expect(script).toContain("'attachment:Manage files attached to a task'");

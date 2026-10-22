@@ -14,7 +14,7 @@ project snapshot and avoid reclassifying a task when its prerequisites finish.
 
 The project has Standalone tasks and Task chains tabs within its existing URL.
 Both share project statistics, refresh, the complete graph index and the detail
-drawer. First visits open Task chains; the selected tab is retained per project.
+dialog. First visits open Task chains; the selected tab is retained per project.
 A standalone task has zero incoming and outgoing dependency edges in the full
 snapshot. All remaining roots enter the chain view. Membership ignores task
 status and completed-item filters. A new snapshot reclassifies dependency edits

@@ -1,5 +1,6 @@
 import { memo, useCallback, useLayoutEffect, useRef, type FocusEvent, type MouseEvent } from 'react';
 import { useReactFlow, type Node, type NodeProps } from '@xyflow/react';
+import { useI18n } from '../../i18n/LocaleProvider';
 import type { GraphTask } from '../../api/types';
 import { useTaskInspectionState } from './inspection';
 import type { TaskExpansion, TaskExpansionDirection } from './visibility';
@@ -19,38 +20,37 @@ export type TaskNodeData = {
 
 export type TaskFlowNode = Node<TaskNodeData, 'task'>;
 
-const labels = { todo: '待处理', in_progress: '进行中', done: '已完成' };
-const inspectionLabels = { normal: '', selected: '，已选中', prerequisite: '，所选任务的前置', unrelated: '，不在所选依赖路径中' };
-
 const TaskNodeContent = memo(({ task, kind, shared }: Pick<TaskNodeData, 'task' | 'kind' | 'shared'>) => {
+  const { messages: { graph: m, common } } = useI18n();
   const title = `${task.titlePreview}${task.titleTruncated ? '…' : ''}`;
   return <>
     <span className="task-node-meta">
       <span className="task-node-id">{task.id.slice(0, 8)}</span>
-      {shared && <span className="task-shared-label">共享</span>}
+      {shared && <span className="task-shared-label">{m.shared}</span>}
     </span>
     <span className="task-node-title">{title}</span>
     <span className="task-node-bottom">
-      <span className={`graph-status graph-status-${task.status}`}><i aria-hidden="true" />{labels[task.status]}</span>
-      {task.blockedBy.length > 0 && <span className="graph-blocked-badge">被阻塞</span>}
+      <span className={`graph-status graph-status-${task.status}`}><i aria-hidden="true" />{common.status[task.status]}</span>
+      {task.blockedBy.length > 0 && <span className="graph-blocked-badge">{m.blocked}</span>}
     </span>
-    {kind === 'external' && <span className="task-external-label">外部前置</span>}
+    {kind === 'external' && <span className="task-external-label">{m.external}</span>}
   </>;
 });
 
 const ExpansionControl = ({ direction, expansion, onExpand, onFocus }: { direction: TaskExpansionDirection; expansion: TaskExpansion; onExpand: () => void; onFocus: (event: FocusEvent<HTMLButtonElement>) => void }) => {
+  const { messages: { graph: m } } = useI18n();
   if (expansion.ids.length === 0) return <span aria-hidden="true" />;
-  const label = direction === 'prerequisites' ? '前置' : '后续';
   const remaining = expansion.totalHidden - expansion.ids.length;
   return <button type="button" className="task-node-expand nodrag nopan" data-direction={direction}
     data-added-tasks={expansion.ids.length} data-added-edges={expansion.addedEdges} data-remaining={remaining}
-    aria-label={`展开${label} ${expansion.ids.length} 个任务、${expansion.addedEdges} 条依赖${remaining > 0 ? `，剩余 ${remaining} 个${label}未展开` : ''}`} onClick={onExpand} onFocus={onFocus}>
-    <span>展开{label} {expansion.ids.length}</span>
-    <small>+{expansion.addedEdges} 条依赖{remaining > 0 ? ` · 余 ${remaining}` : ''}</small>
+    aria-label={m.expandLabel({ direction, tasks: expansion.ids.length, edges: expansion.addedEdges, remaining })} onClick={onExpand} onFocus={onFocus}>
+    <span>{m.expandTitle({ direction, tasks: expansion.ids.length })}</span>
+    <small>{m.expandSummary({ edges: expansion.addedEdges, remaining })}</small>
   </button>;
 };
 
 export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
+  const { messages: { graph: m, common } } = useI18n();
   const { setCenter, getViewport } = useReactFlow();
   const inspection = useTaskInspectionState(data.task.id);
   const body = useRef<HTMLButtonElement>(null);
@@ -79,11 +79,11 @@ export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
   return (
     <div className={`task-node task-node-${data.task.status} task-node-${inspection}${data.kind === 'external' ? ' task-node-external' : ''} nodrag nopan`} data-inspection={inspection} style={{ pointerEvents: 'auto' }}>
       <button type="button" ref={body} className="task-node-body nodrag nopan"
-        aria-label={`${title}，${labels[data.task.status]}${data.task.blockedBy.length > 0 ? '，被阻塞' : ''}${data.kind === 'external' ? '，外部前置' : ''}${data.shared ? '，共享任务' : ''}${inspectionLabels[inspection]}`}
+        aria-label={`${m.nodeLabel({ title, status: common.status[data.task.status], blocked: data.task.blockedBy.length > 0, external: data.kind === 'external', shared: data.shared })}${m.inspectionSuffix[inspection]}`}
         aria-pressed={inspection === 'selected'} onClick={inspect} onFocus={revealOnFocus}>
         <TaskNodeContent task={data.task} kind={data.kind} shared={data.shared} />
       </button>
-      <button type="button" className="task-node-details nodrag nopan" aria-label={`${title}，详情`} aria-haspopup="dialog" onClick={open} onFocus={revealOnFocus}>详情</button>
+      <button type="button" className="task-node-details nodrag nopan" aria-label={m.detailsLabel({ title })} aria-haspopup="dialog" onClick={open} onFocus={revealOnFocus}>{m.details}</button>
       <div className="task-node-expansions">
         <ExpansionControl direction="prerequisites" expansion={data.expansions.prerequisites} onFocus={revealOnFocus} onExpand={() => { data.onExpandTask(data.task.id, 'prerequisites'); }} />
         <ExpansionControl direction="successors" expansion={data.expansions.successors} onFocus={revealOnFocus} onExpand={() => { data.onExpandTask(data.task.id, 'successors'); }} />

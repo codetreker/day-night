@@ -283,7 +283,10 @@ def scenarios():
         ("root update", "daynight upd\t", ["update"]),
         ("root completion", "daynight comp\t", ["completion"]),
         ("root setup and local directory collision", "daynight set\t", ["setup"]),
-        ("setup server URL option", "daynight setup --ser\t", ["setup", "--server-url"]),
+        ("setup server URL option", "daynight setup --server-u\t", ["setup", "--server-url"]),
+        ("setup server options common prefix", "daynight setup --ser\t", ["setup", "--server-"]),
+        ("setup token stdin option", "daynight setup --server-t\t", ["setup", "--server-token-stdin"]),
+        ("setup server URL after token stdin flag", "daynight setup --server-token-stdin --server-u\t", ["setup", "--server-token-stdin", "--server-url"]),
         ("setup review repository option", "daynight setup --review-r\t", ["setup", "--review-repo"]),
         ("setup review path option", "daynight setup --review-p\t", ["setup", "--review-path"]),
         ("setup review directory", "daynight setup --review-path nor\t", ["setup", "--review-path", "normal-directory/"]),
@@ -381,7 +384,9 @@ def scenarios():
     unchanged = [
         ("setup server URL has no file fallback", "daynight setup --server-url nor"),
         ("setup review repository has no file fallback", "daynight setup --review-repo nor"),
-        ("used setup server URL is hidden", "daynight setup --server-url https://service.example --ser"),
+        ("used setup server URL is hidden", "daynight setup --server-url https://service.example --server-u"),
+        ("used setup token stdin flag is hidden", "daynight setup --server-token-stdin --server-t"),
+        ("setup token stdin flag has no secret value completion", "daynight setup --server-token-stdin nor"),
         ("remote has no file fallback", "daynight review add-repo nor"),
         ("project name has no file fallback", "daynight project create nor"),
         ("project repo has no file fallback", "daynight project create --repo nor"),
@@ -471,7 +476,7 @@ def run_shell(label, binary, kind, script, directory, evidence, zsh_root):
             print(f"PASS {label}: {name}", flush=True)
         for name, line, candidates in [
             ("empty root prefix", "daynight ", ["review", "update", "completion", "project", "task", "setup"]),
-            ("empty setup prefix", "daynight setup ", ["--server-url", "--review-repo", "--review-path"]),
+            ("empty setup prefix", "daynight setup ", ["--server-url", "--server-token-stdin", "--review-repo", "--review-path"]),
             ("empty review prefix", "daynight review ", ["run", "list", "ls", "add-repo"]),
             ("empty project prefix", "daynight project ", ["create", "list", "show"]),
             ("empty project create prefix", "daynight project create ", ["--repo"]),

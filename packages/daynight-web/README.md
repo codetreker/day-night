@@ -3,7 +3,7 @@
 The private React/TypeScript workspace implements project browsing, cursor
 pagination, request cancellation, runtime API decoding, native browser routing
 and a pure dependency graph model with horizontal layout.
-The project dashboard, task canvas and detail drawer are embedded into the Go
+The project dashboard, task canvas and task detail dialog are embedded into the Go
 server for single-origin delivery. The [localhost deployment](../../deployment/localhost/README.md)
 starts the full UI/API/database stack; [dev-ci](../../deployment/dev-ci/README.md)
 provides an isolated instance of the same production build. Production-browser,
@@ -28,6 +28,49 @@ projects, member and invitation management, and personal access tokens. These
 capabilities are not implemented. The current browser workspace uses the
 unauthenticated local service. Trusted same-origin previews, relative resources
 and keyboard behavior continue after authentication is delivered.
+
+## Languages
+
+The [language requirements](../../docs/spec/daynight-web-i18n.md) define the
+implemented English and Simplified Chinese interface. The
+[language design](../../docs/design/daynight-web-i18n.md) owns typed catalogs,
+cached native Intl formatters, initial resolution, a Provider and the shared
+native selector under `src/i18n/`. Production `main.tsx` resolves language and
+sets HTML `lang` and the route title before React renders. `App` updates document
+metadata on navigation and language changes. The top bar, centered detail dialog
+and fullscreen graph expose selectors using the same saved language. Combined
+source-bound production verification is separately tracked in Daynight.
+
+`LocaleProvider` requires an explicit initial locale result. `useI18n()` reads
+`locale`, `messages` and `format`; `useLocaleCommands()` exposes selection and
+save retry; `useLocalePreference()` additionally exposes the current storage
+issue. Hooks fail clearly outside the Provider. Component tests can use
+`tests/helpers/renderWithLocale.tsx` to choose deterministic language and storage
+behavior. `common.status` and `common.requestId` own shared task labels;
+`workspace`, `graph` and `inspection` own navigation/project, graph and
+detail/PR/attachment messages in both complete catalogs. Structured errors and
+semantic notices render in the current language, including operations completed
+after switching. User content, request IDs and exact file bytes keep their values.
+
+Initial resolution prefers a valid explicit value, then the first supported
+browser language, then English. Chinese language variants use Simplified Chinese.
+Automatic detection does not save a choice. Explicit selection saves raw `en` or
+`zh-CN` under the origin-local `daynight.web.locale` key, independently of all
+per-project browsing records. Read, invalid-value and write failures remain
+visible in localized selector text; a successful save clears the current issue,
+including startup errors. Cross-tab live synchronization and account preferences
+are outside this runtime's persistence guarantee.
+
+With `pnpm web:dev`, open `/tests/mockups/locale-runtime.html` for the
+[actual-component runtime preview](tests/mockups/locale-runtime.html). It shows
+shared selectors and retained fixture state with production selector styles
+and no Go API or PostgreSQL. The actual-component
+[browsing](tests/mockups/browsing.html) and
+[attachment](tests/mockups/attachments.html) previews also mount the Provider
+explicitly. The full bilingual mockup remains attached to Daynight task
+`8759f829-dc0c-4aec-9d83-e0fd9e5bd009`. Fixtures verify frontend behavior;
+production claims require real service receipts. Web typecheck, test and build
+include all translated components under the existing coverage gate.
 
 ## Development
 
@@ -61,7 +104,7 @@ changes this classification. The [task view decision](../../.agents/notes/implem
 records the presentation boundary.
 
 Standalone rows display the title, individual status, ID and creation time and
-open the existing detail drawer directly. Chain rows display aggregate progress
+open the existing task detail dialog directly. Chain rows display aggregate progress
 and status: done only when every distinct root and reachable successor task is
 done; in progress when any is done or in progress and the chain is unfinished;
 otherwise pending. A completed root with unfinished descendants stays visible.
@@ -132,7 +175,7 @@ viewport again. The [preference decision](../../.agents/notes/implemented/featur
 records storage ownership. Tab switching, filtering and scroll restoration make
 no API request and do not change the full project counters, graph index or API
 ordering. Each graph card has sibling native controls: its body selects the task
-and its complete upstream path, while Details opens the detail drawer. Selected
+and its complete upstream path, while Details opens the centered TaskDetailDialog. Selected
 tasks and prerequisites have distinct borders/backgrounds, unrelated elements
 are dimmed without hiding text or status, and edges and arrows share the same
 highlight. Visible completed and external prerequisites retain their state; external routes
@@ -143,7 +186,7 @@ closing and relationship navigation preserve inspection and viewport. Inspection
 belongs to the mounted canvas, clears on project/root/tab changes or unmount,
 and is recomputed after a successful snapshot refresh when the task remains
 visible; an invisible selection clears. Failed refresh preserves the prior selection and
-snapshot. The drawer retains dependency navigation,
+snapshot. The dialog retains dependency navigation,
 PR associations, stale-data detection and attachment management. Task fields and
 graph interactions remain read-only. The PR section follows the description and
 displays every ordered title/URL pair, including duplicates. Lists longer than 100 entries use local
@@ -153,7 +196,7 @@ no requests and imposes no storage or content limit. Replacing the task or
 property collection returns to the first page. Focus stays on current pagination
 controls or moves to the section heading when those controls disappear.
 Empty strings have a display-only marker;
-whitespace and long content remain selectable text and wrap within the drawer.
+whitespace and long content remain selectable text and wrap within the dialog.
 Only absolute HTTP(S) addresses recognized by the browser URL parser become
 links, with a new tab and `noopener noreferrer`. Other strings remain plain
 text; values are never interpreted as HTML or fetched for metadata. Property
@@ -169,7 +212,7 @@ Refresh retains the last successful snapshot with an explicit loading/error
 notice and replaces the full graph only on success. A resource change clears
 previous-resource content immediately. Live detail never changes graph counters;
 a changed prerequisite can alter readiness without revising the task itself.
-The drawer offers a full graph refresh when that difference is observed.
+The dialog offers a full graph refresh when that difference is observed.
 Reopening or refreshing details reads current PR associations; an attribute
 update changes the task timestamp and uses the same stale-snapshot prompt.
 
@@ -190,11 +233,17 @@ card into view without changing zoom. Visibility uses layout coordinates and the
 current viewport, because native focus can temporarily scroll the overflow
 container before React Flow resets its scroll. Pointer focus and keyboard focus
 on an already visible card preserve the viewport.
-The portal drawer locks background focus and scrolling, supports Escape and Tab,
+The centered body-portal dialog has a 960px maximum width, 24px viewport gutters
+(12px at 600px and below), and a maximum height of
+`min(880px, 100dvh - 2 × gutter)`. A single content region scrolls independently
+of the persistent header and footer. Desktop content pairs a reading column with
+a 265px metadata/relationship column (225px at 850px and below); at 600px and
+below it stacks into one column. The dialog locks background focus and scrolling,
+supports its close button, backdrop, Escape and Tab,
 and restores a surviving original trigger or a visible control in the active task view on close. Focusable
 controls are enumerated with `tabbable` 6.5.0 using its normal browser visibility
 checks. Same-origin preview frames bridge Escape and first/last Tab boundaries
-back into that drawer lifecycle. Passive unmount restoration remains responsible
+back into that dialog lifecycle. Passive unmount restoration remains responsible
 for focusing a surviving trigger after DOM removal.
 
 ## Task attachments
@@ -248,7 +297,7 @@ disposed. This development entry is excluded from the single-index production
 build.
 
 The mockup validates appearance and frontend behavior. Local browser probes also
-exercise the actual portal drawer, background inertness, CSS-hidden controls,
+exercise the actual portal dialog, background inertness, CSS-hidden controls,
 contenteditable frame boundaries, Escape/Tab release and trigger restoration.
 The probe receipts and screenshots live under the task's `.tmp/a-t4/`; a local
 existing Chromium override is recorded and does not establish pinned CI-browser
@@ -328,7 +377,7 @@ runner remains the owner of the built/running image identity and full cleanup.
 
 Native functional checks start after the native process and browser are ready.
 Their browser cleanup must pass before an atomic, run/source-bound permission
-releases the container's ten functional checks. Capacity runs last, after all
+releases the container's thirteen functional checks. Capacity runs last, after all
 preparation and coverage commands, container checks, full dev-ci cleanup and
 container browser recovery have finished. Every browser phase retains one
 worker and zero retries. CI runs controlled deployment fixtures before the
@@ -375,21 +424,28 @@ the same browser identity.
 The command builds real embedded assets and a new Go executable and owns a
 separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
 the normal dev-ci runner builds and starts the actual production image. Browser
-execution proceeds through ten native functional scenarios, the same ten
+execution proceeds through thirteen native functional scenarios, the same thirteen
 functional scenarios through the production image's stream gateway, then five
 native capacity/limit scenarios. The native process and PostgreSQL remain alive
 through the capacity phase; other preparation commands and the complete
 container stack have finished before that phase starts. No normal localhost service or dataset is used. Functional and
 capacity fixtures use the real write APIs. The original eight graph scenarios and `project-view-tabs` retain
-their GET/HEAD-only browser checks. Only `task-attachments` allows exact
-fixture-scoped PUT/DELETE file routes; unrelated mutations remain failures.
+their GET/HEAD-only browser checks. `task-attachments` and
+`language-state-preservation` allow exact fixture-scoped PUT/DELETE file routes;
+the latter holds each upload, overwrite and deletion while changing language to
+verify one write and retained state. Other language scenarios remain GET/HEAD-only,
+and unrelated mutations remain failures.
 One packed/installed CLI is shared by the whole web run. On each target,
 `task-attachments` uploads through that CLI and consumes the same task/files in
 the production page, then checks Web mutations through raw CLI reads. It covers
 Markdown relative images, image/text/PDF and interactive HTML resources. PDF
 acceptance polls compositor screenshots for a substantial fixture-only colored
-marker, retaining the successful PNG and marker evidence; HTTP success or an
-iframe load cannot satisfy this check. The
+marker. It measures matching connected components independently and checks the
+largest main-page candidate extending into the frame's right half. This
+fixture/viewer location rule excludes thumbnail-only paint; independent bounds
+also prevent a separate thumbnail from diluting the page marker's density. The
+successful PNG and component metrics remain in the marker evidence; HTTP success
+or an iframe load cannot satisfy this check. The
 [combined acceptance decision](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
 owns the data-sharing and rendering proof.
 The chain fixture creates 1,000 independent tasks, then attaches its 999 edges
@@ -419,9 +475,11 @@ static model or prototype checks do not establish the production result.
 
 The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [attachment journey](tests/e2e/attachments.spec.ts),
+[language journeys](tests/e2e/i18n.spec.ts),
 [capacity scenarios](tests/e2e/capacity.spec.ts) and
 [acceptance runner](scripts/acceptance.mts) map to the
-[W1–W12 requirements](../../docs/spec/daynight-web.md) as follows. Names are stable
+[W1–W12 requirements](../../docs/spec/daynight-web.md) and
+[language requirements](../../docs/spec/daynight-web-i18n.md) as follows. Names are stable
 scenario annotations validated in each target's report.
 
 | Requirement | Production checks |
@@ -434,9 +492,13 @@ scenario annotations validated in each target's report.
 | W9 | `failure-recovery`, `deep-links`, `capacity-limits`: owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
-| W12 | `keyboard-focus`, `narrow-layout`: modal focus lifecycle including PR links, keyboard node activation and 320px page/drawer geometry |
+| W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
 | FA1–FA12 | `task-attachments`: installed CLI and production UI operate on the same real task/files on native and container targets, exact binary round trips, independent mutations/previews, visible PDF content and full task state unchanged |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
+| L1–L4 | `language-startup-preferences`: browser default, saved override, reload, route metadata, shared selectors and unchanged user data |
+| L2, L4–L5 | `language-state-preservation`: graph geometry/viewport, fullscreen and modal focus, PR page, file input and iframe identity; pending upload, overwrite and deletion execute once |
+| L3–L4, L6–L8 | `language-errors-and-narrow`: storage failures/retry, owned-database failure with current-language safe text and unchanged request ID, English/Chinese 1440px/320px graph/dialog/attachment layout |
+| L9–L10 | Task-attached offline mockup checks, typed catalog/component checks, and complete native/container production receipts with the existing coverage and cleanup gates |
 
 Receipts live in `packages/daynight-web/.tmp/acceptance/<run-id>/`, with the
 latest aggregate at `.tmp/acceptance/evidence.json` inside this package. They
@@ -454,8 +516,8 @@ retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validati
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
 tested checkout identity, which is normally a merge revision for PR runs. A pass
-requires the strict union of ten native functional and five native capacity/limit
-scenarios (15 native total), plus the ten container functional scenarios. Every
+requires the strict union of thirteen native functional and five native capacity/limit
+scenarios (18 native total), plus the thirteen container functional scenarios. Every
 phase and target rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
 Browser identities must agree across a target's phases; every fixed graph's five
 timing repetitions, independent size refusals and cleanup/recovery must pass.

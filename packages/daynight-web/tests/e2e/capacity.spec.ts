@@ -57,6 +57,7 @@ const withScreenshot = async (page: Page, info: TestInfo, name: string, operatio
 const painted = (page: Page) => page.evaluate(() => new Promise<number>((resolve) => {
   requestAnimationFrame(() => { requestAnimationFrame(() => { resolve(performance.now()); }); });
 }));
+const count = (value: number): string => new Intl.NumberFormat('zh-CN').format(value);
 const transform = (page: Page) => page.locator('.react-flow__viewport').evaluate((element) => (element as HTMLElement).style.transform);
 
 type TimingCondition =
@@ -282,7 +283,7 @@ const assertVisibleTopology = async (page: Page, expected: GeometryExpectation, 
   const actual = await page.evaluate(() => ({ stats: { shown: document.querySelector<HTMLElement>('.task-graph')!.dataset.visibleTaskCount, total: document.querySelector<HTMLElement>('.task-graph')!.dataset.totalTaskCount, summary: document.querySelector('.graph-visibility-summary')!.textContent, projection: document.querySelector('.graph-toolbar-actions > span')!.textContent }, nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => ({ id: node.dataset.id! })).sort((a, b) => a.id.localeCompare(b.id)),
     edges: [...document.querySelectorAll<SVGGElement>('.task-dependency-edge')].map((edge) => { const path = edge.querySelector<SVGPathElement>('.react-flow__edge-path')!; return { id: edge.dataset.id!, source: path.dataset.source!, target: path.dataset.target!, external: edge.getAttribute('data-external') === 'true' }; }).sort((a, b) => a.id.localeCompare(b.id)) }));
   const external = new Set(full.edges.filter((edge) => edge.external).map((edge) => edge.source));
-  expect(actual, 'Every visible task, induced dependency and full projection statistic exactly matches the API graph').toEqual({ stats: { shown: String(expected.nodes.length), total: String(full.nodes.length), summary: `当前显示 ${expected.nodes.length}/${full.nodes.length} 个任务 · ${expected.edges.length}/${full.edges.length} 条依赖。通过卡片下方按钮展开更多前置或后续。`, projection: `${full.nodes.length - external.size} 个链内任务 · ${external.size} 个外部前置 · ${full.edges.length} 条依赖` }, nodes: [...expected.nodes].sort((a, b) => a.id.localeCompare(b.id)), edges: [...expected.edges].sort((a, b) => a.id.localeCompare(b.id)) });
+  expect(actual, 'Every visible task, induced dependency and full projection statistic exactly matches the API graph').toEqual({ stats: { shown: String(expected.nodes.length), total: String(full.nodes.length), summary: `当前显示 ${count(expected.nodes.length)}/${count(full.nodes.length)} 个任务 · ${count(expected.edges.length)}/${count(full.edges.length)} 条依赖。通过卡片下方按钮展开更多前置或后续。`, projection: `${count(full.nodes.length - external.size)} 个链内任务 · ${count(external.size)} 个外部前置 · ${count(full.edges.length)} 条依赖` }, nodes: [...expected.nodes].sort((a, b) => a.id.localeCompare(b.id)), edges: [...expected.edges].sort((a, b) => a.id.localeCompare(b.id)) });
 };
 const ancestorClosure = (fixture: CapacityFixture, selectedId: string): Set<string> => {
   const tasks = new Map(fixture.tasks.map((task) => [task.id, task])); const closure = new Set([selectedId]); const pending = [selectedId];
@@ -378,7 +379,7 @@ const assertInspection = async (page: Page, fixture: CapacityFixture, selectedId
 
 type LocalFeedback = { detailMs: number; detailNetworkMs: number; zoomMs: number; panMs: number };
 const measureDetailsZoomPan = async (page: Page, fixture: CapacityFixture, taskId: string, dataset: Dataset, repetition: number): Promise<LocalFeedback> => {
-  const dialog = page.locator('.drawer-backdrop').getByRole('dialog');
+  const dialog = page.locator('.task-detail-backdrop').getByRole('dialog');
   const detailResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/projects/${fixture.project.id}/tasks/${taskId}`));
   const detail = await measureBrowserFeedback(page, { kind: 'detail', rootId: taskId }, () =>
     page.locator(`.react-flow__node[data-id="${taskId}"] .task-node-details`).click(), dataset, repetition);
@@ -388,8 +389,8 @@ const measureDetailsZoomPan = async (page: Page, fixture: CapacityFixture, taskI
   await response.finished();
   const timing = response.request().timing();
   const detailNetworkMs = timing.responseEnd - timing.requestStart;
-  await expect(page.locator('.drawer-title')).toHaveText(fixture.tasks.find((task) => task.id === taskId)!.title);
-  await dialog.locator('.drawer-header').getByRole('button', { name: '关闭任务详情', exact: true }).click();
+  await expect(page.locator('.task-detail-title')).toHaveText(fixture.tasks.find((task) => task.id === taskId)!.title);
+  await dialog.locator('.task-detail-header').getByRole('button', { name: '关闭任务详情', exact: true }).click();
   await expect(dialog).toHaveCount(0);
 
   const beforeZoom = await transform(page);
@@ -444,7 +445,7 @@ const measureInteractions = async (page: Page, fixture: CapacityFixture, expansi
   const totalHidden = full.edges.filter((edge) => batch.direction === 'upstream' ? edge.target === batch.id && !current.has(edge.source) : edge.source === batch.id && !current.has(edge.target)).length;
   const remaining = totalHidden - addedNodes;
   await expect(control).toHaveAttribute('data-remaining', String(remaining));
-  await expect(control).toHaveAccessibleName(`展开${label} ${addedNodes} 个任务、${addedEdges} 条依赖${remaining > 0 ? `，剩余 ${remaining} 个${label}未展开` : ''}`);
+  await expect(control).toHaveAccessibleName(`展开${label} ${count(addedNodes)} 个任务、${count(addedEdges)} 条依赖${remaining > 0 ? `，剩余 ${count(remaining)} 个${label}未展开` : ''}`);
   expect(addedNodes).toBeGreaterThan(0); expect(addedNodes).toBeLessThanOrEqual(20);
   await page.keyboard.press('Tab'); await control.focus(); await control.click();
   await expect(page.locator('.react-flow__node')).toHaveCount(batch.expanded.nodes.length);
@@ -534,9 +535,9 @@ test.describe('fixed capacity and performance @capacity', () => {
           await visibleGraph(page, fixture.root.id, overview);
           await assertVisibleTopology(page, overview, full);
           const total = page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^任务总数$/ }) }).locator('.stat-number');
-          await expect(total).toHaveText('1000');
+          await expect(total).toHaveText(count(1000));
           const externalIds = new Set(full.edges.filter((edge) => edge.external).map((edge) => edge.source));
-          await expect(page.locator(`#task-root-${fixture.root.id} .root-progress-label`)).toHaveText(`0/${1000 - externalIds.size} 已完成`);
+          await expect(page.locator(`#task-root-${fixture.root.id} .root-progress-label`)).toHaveText(`0/${count(1000 - externalIds.size)} 已完成`);
           await expect(page.locator('.task-node-external')).toHaveCount(overview.nodes.filter((node) => externalIds.has(node.id)).length);
           dataset.coldOpenMs = performance.now() - coldStart;
           const initialResponse = await graphResponse;
@@ -607,7 +608,7 @@ test.describe('fixed capacity and performance @capacity', () => {
       await page.goto(`/projects/${projectId}`, { waitUntil: 'domcontentloaded' });
       expect((await browserResponse).status()).toBe(409);
       await expect(page.getByRole('alert')).toContainText('任务图超过展示上限');
-      await expect(page.getByRole('alert')).toContainText(`当前 ${nodes} 个任务、${edges} 条依赖`);
+      await expect(page.getByRole('alert')).toContainText(`当前 ${nodes.toLocaleString('zh-CN')} 个任务、${edges.toLocaleString('zh-CN')} 条依赖`);
       await expect(page.getByRole('region', { name: '项目任务统计' })).toHaveCount(0);
       await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
       await expect(page.locator('.root-list')).toHaveCount(0);

@@ -1,10 +1,13 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../src/api/client';
 import type { Attachment, AttachmentPage } from '../src/api/types';
 import { TaskAttachments } from '../src/features/task-detail/attachments/TaskAttachments';
 import type { AttachmentApi } from '../src/features/task-detail/attachments/useAttachments';
+
+const render = createLocaleRender('zh-CN');
 
 const timestamp = '2026-10-21T00:00:00Z';
 const file = (path: string, contentType = 'text/plain'): Attachment => ({ path, contentType, sizeBytes: 12, createdAt: timestamp, updatedAt: timestamp });

@@ -1,9 +1,12 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTask, getTaskGraph } from '../src/api/client';
 import type { GraphTask, TaskGraph } from '../src/api/types';
 import { ProjectPage } from '../src/features/projects/ProjectPage';
 import { projectRoot, type GraphIndex } from '../src/features/task-graph/model';
+
+const render = createLocaleRender('zh-CN');
 
 vi.mock('../src/api/client', async (original) => ({
   ...await original<typeof import('../src/api/client')>(), getTask: vi.fn(), getTaskGraph: vi.fn(),
@@ -69,7 +72,7 @@ afterEach(() => {
   document.body.style.overflow = previousOverflow;
 });
 
-const openDrawer = async (fullscreen = false) => {
+const openDialog = async (fullscreen = false) => {
   render(<ProjectPage projectId={projectId} />, { container: root });
   fireEvent.click(await screen.findByRole('button', { name: /^原任务链/ }));
   if (fullscreen) fireEvent.click(screen.getByRole('button', { name: '全屏查看' }));
@@ -91,10 +94,10 @@ const expectModalReleased = () => {
   expect(document.body.style.overflow).toBe('scroll');
 };
 
-describe('project drawer focus restoration', () => {
+describe('project dialog focus restoration', () => {
   it('returns focus to fullscreen exit when refresh removes the selected node but retains its graph', async () => {
     graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([task(rootId, '原任务链'), task('surviving-child', '保留图节点', [rootId]), ...remainingChain]));
-    const { trigger, dialog } = await openDrawer(true);
+    const { trigger, dialog } = await openDialog(true);
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     const fullscreen = await screen.findByRole('dialog', { name: '任务依赖图全屏查看' });
     await waitFor(() => expect(within(fullscreen).getByRole('button', { name: '退出全屏' })).toHaveFocus());
@@ -106,12 +109,12 @@ describe('project drawer focus restoration', () => {
     expectModalReleased();
   });
 
-  it('keeps scrolling locked when refresh unmounts fullscreen while the drawer stays open', async () => {
+  it('keeps scrolling locked when refresh unmounts fullscreen while the dialog stays open', async () => {
     const completed = [task(rootId, '原任务链'), task(selectedId, '所选任务', [rootId])].map((item) => ({
       ...item, status: 'done' as const, ready: false, blockedBy: [],
     }));
     graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([...completed, ...remainingChain]));
-    const { trigger, dialog } = await openDrawer(true);
+    const { trigger, dialog } = await openDialog(true);
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     await waitFor(() => expect(trigger.isConnected).toBe(false));
     expect(screen.queryByRole('dialog', { name: '任务依赖图全屏查看' })).toBeNull();
@@ -128,7 +131,7 @@ describe('project drawer focus restoration', () => {
       ...item, status: 'done' as const, ready: false, blockedBy: [],
     }));
     graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph(keepRemaining ? [...completed, ...remainingChain] : completed));
-    const { trigger, dialog } = await openDrawer();
+    const { trigger, dialog } = await openDialog();
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     await waitFor(() => expect(trigger.isConnected).toBe(false));
     expect(dialog).toBeVisible();
@@ -146,7 +149,7 @@ describe('project drawer focus restoration', () => {
 
   it('focuses the page heading after refresh removes the selected chain and every task', async () => {
     graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([]));
-    const { trigger, dialog } = await openDrawer();
+    const { trigger, dialog } = await openDialog();
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     await screen.findByRole('heading', { name: '还没有任务' });
     await waitFor(() => expect(screen.getByRole('heading', { name: '核心项目' })).toHaveFocus());
@@ -159,7 +162,7 @@ describe('project drawer focus restoration', () => {
 
   it('focuses the newly expanded root after refresh removes the selected chain', async () => {
     graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph(remainingChain));
-    const { trigger, dialog } = await openDrawer();
+    const { trigger, dialog } = await openDialog();
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     const remainingRoot = await screen.findByRole('button', { name: /^保留任务链/ });
     await waitFor(() => expect(remainingRoot).toHaveFocus());
@@ -169,9 +172,9 @@ describe('project drawer focus restoration', () => {
     expectModalReleased();
   });
 
-  it('returns focus to a surviving task when the drawer closes normally', async () => {
+  it('returns focus to a surviving task when the dialog closes normally', async () => {
     graphRequest.mockResolvedValueOnce(graph());
-    const { trigger, dialog } = await openDrawer();
+    const { trigger, dialog } = await openDialog();
     fireEvent.click(within(dialog).getByRole('button', { name: '关闭任务详情' }));
     await waitFor(() => expect(trigger).toHaveFocus());
     expectModalReleased();
