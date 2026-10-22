@@ -138,18 +138,34 @@ minimum height and 7px row gaps; a single-line bordered row is about 64px.
 Desktop titles stay 13px and narrow-screen titles 12px, with readable
 metadata/status sizes of 11px/10px.
 
-Rows expand one horizontal graph at a time, including shared tasks and all
-transitive prerequisites of the root and its reachable successors. External
-prerequisites add context without importing their unrelated successors. Each task
-and required dependency appears once per canvas. Dashed external nodes use the
-label “外部前置”; edges originating at external nodes remain dashed, including
-links between external nodes. The toolbar separates chain-task, external-task and
-dependency counts. Initial placement fits the complete graph at 0.8–1 zoom when
-possible; otherwise it anchors the leftmost rank at 0.8 zoom. A root in that rank
-remains vertically centered; when context extends left of the root, its topmost
-upstream node starts at a 32px canvas inset. Pan, zoom, Fit view and keyboard
-node navigation keep the rest accessible. The [context decision](../../.agents/notes/implemented/feature/2026-10-22-complete-prerequisite-context.md)
-owns these projection and viewport choices.
+Rows open one horizontal graph at a time. Complete P retains the root,
+reachable successors and every required ancestor, without unrelated successors
+of external context. Main progress and seven project counters still use full
+data. Actual visible S is progressive for main and external tasks alike.
+
+P with at most fifty tasks and one hundred dependencies is fully visible.
+Larger P starts at root with stable undirected BFS, successors before prerequisites
+in snapshot order; accept a task only when the complete induced graph remains
+within fifty/one hundred, and traverse only accepted tasks. Cards expose direction
+controls adding at most twenty hidden direct neighbors in P, with exact new-task,
+new-induced-edge and remaining counts. Manual expansion has no edge cap. Every
+real edge with both endpoints in S appears, without shortcuts or aggregate cards.
+
+Cards are 220 by 136 pixels: 94px body, 40px two-column expansion footer and two
+border pixels; unused directions remain blank. Body activation still opens the
+current TaskDetailDialog, and expansion controls are sibling native buttons.
+The existing Dagre polyline/native-arrow/local-dash renderer is retained.
+Expansion centers its anchor at current zoom and focuses its body. Global reset
+“收起到概览” recomputes/frames overview and retains reset focus.
+
+Successful refresh keeps actual visible IDs still in new P plus root, prunes to
+the induced undirected root component and preserves viewport. It does not add a
+new baseline or newly arrived tasks. Reset/remount computes a new baseline;
+failure keeps old data/S/view, and project/root/tab/unmount releases local S.
+An open dialog retains focus and existing close-time fallback. Locale translates
+new controls/counts without changing S or business requests. The
+[progressive decision](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)
+partially supersedes UX1's full-render policy while retaining its complete data.
 
 Per-project browser preferences retain the selected tab,
 each tab's page scroll position and completed-item choice, and the chain's
@@ -465,19 +481,22 @@ with versioned PATCH requests from sink to root, avoiding repeated traversal of
 a growing ancestor chain during setup. Complete snapshots compare every node's
 dependencies with the fixture, including the chain's exact predecessor sequence.
 
-Capacity uses four fixed 1,000-node graphs: a 999-edge chain and three
-5,000-edge graphs for merges, shared roots and dense external ancestry. The dense
-external graph displays two chain tasks and 998 external prerequisites, retaining
-all 5,000 dependencies. The browser explicitly selects the fixture root so
-newest-first browsing does not change the graph workload. Each graph expands five times, with every opening
-at most 3,000ms and local task/zoom/pan feedback at most 300ms. Network timings are
-recorded separately. Each expansion also records projection/layout duration and
-subsequent painted-render duration; these diagnostics do not replace the complete
-opening budget. Independent 1,001-node and 5,001-edge cases require complete
-409 rejection. Full node/edge DOM counts, readable initial focus-task visibility
-and painted feedback are checked; the dense external case starts at an upstream task, while
-the original datasets retain root visibility. A successful process exit without
-complete reports fails.
+Capacity keeps four exact complete API inputs: 1,000 tasks each, a 999-edge chain
+and 5,000-edge merge/shared/external graphs. Complete snapshots still compare
+every task and dependency. Browser readiness now checks bounded overview S and
+all real induced visible edges, followed by explicit expansion/reset and exact
+counts; it no longer requires every input task/edge in the DOM simultaneously.
+
+Five samples per graph retain `openMs ≤ 3000` and existing detail/zoom/pan ≤300.
+Details → close → immediate zoom/pan retains its sequence without reset, Fit view
+or extra waiting. `visibility[5]` records ordered repetition, overview node/edge,
+added node/edge, expanded node/edge and reset node/edge counts. Validation requires
+bounded overviews, exact deltas and reset counts. Independent existing polyline,
+native marker and dash-body checks cover every visible edge. Independent selection/H/selectMs and smooth-curve acceptance remain with the
+following inspection delivery. Current readiness uses the existing polyline renderer.
+31 scenarios, real native/container targets, zero retries, timeouts, coverage,
+1,001-task/5,001-edge refusals and cleanup remain; current production evidence is
+pending. The following inspection PR adds its own behavior and validation.
 
 The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [attachment journey](tests/e2e/attachments.spec.ts),
@@ -493,7 +512,7 @@ scenario annotations validated in each target's report.
 | W1 | `project-list`: more than 50 projects, cursor requests, unique cards and navigation to a later-page project |
 | W2 | `project-graph`, `deep-links`: project entry, direct HTML reload and browser history |
 | W3–W4 | `project-graph`, `project-view-tabs`, `refresh-staleness`, `failure-recovery`: exact statistics, topology-based tabs, distinct root progress, direct standalone details, independent completion filters, per-project tab/scroll/expansion restoration, dependency reclassification and consistent full refresh |
-| W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`, `capacity-external`: complete root projections, shared/external prerequisites, state markers and viewport/node actions |
+| W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`, `capacity-external`: complete projection data, bounded overview/induced edges, explicit expansion/reset, state markers and existing detail/viewport actions |
 | W8 | `detail-navigation`, `refresh-staleness`: complete centered-dialog content, ordered PR associations, relation navigation, property refresh and readiness differences without revising a dependent task |
 | W9 | `failure-recovery`, `deep-links`, `capacity-limits`: owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
@@ -633,12 +652,12 @@ as text. The API parser verifies DTO shape and resource identity. The implemente
 model separately verifies dependency closure, acyclicity, status/readiness and
 summary consistency. It projects root descendants plus their complete ancestor
 closure, excluding unrelated descendants of contextual tasks. `mainIds` retains
-chain membership; `externalIds` identifies additional ancestors. Every dependency
-ending at a visible task is retained, and an edge is external when its source is
-external. It derives distinct root progress and aggregate chain status from main
+chain membership; `externalIds` identifies additional ancestors. Complete projection P retains every required dependency. Visibility selects
+S and all real edges with both endpoints in S; external classification still
+depends on source membership in P−M. It derives distinct root progress and aggregate chain status from main
 tasks in the same traversal, and marks shared tasks. The Dagre
 adapter returns finite left-to-right node positions and routed edge points for
-220-by-96 cards. The read-only React Flow canvas consumes these results without changing domain
+220-by-136 visible cards. The read-only React Flow canvas consumes these results without changing domain
 objects. React Flow owns fixed task nodes, native ResizeObserver measurement,
 keyboard behavior, viewport and controls. One memoized SVG in its public
 ViewportPortal renders every exact Dagre path, with stable edge identity,
@@ -651,7 +670,7 @@ phase. Solid bodies remain native. Pieces are noninteractive and hidden from the
 accessibility tree; canonical edges keep their existing identity/semantics. The
 [paint decision](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
 owns the pinned raster evidence, phase preservation and visual tolerances.
-Initial placement uses known layout bounds after the viewport and positive
+Initial placement uses current visible layout bounds after the viewport and positive
 measured canvas dimensions are ready, fitting within 0.8–1 zoom or anchoring the
 leftmost rank at 0.8 zoom. The root remains vertically centered when already
 leftmost; otherwise the topmost upstream node starts at a 32px canvas inset.

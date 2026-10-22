@@ -31,7 +31,7 @@ an explicitly collapsed list from per-project browser storage; the
 persistence, reconciliation and failure behavior. The project view shares one
 newest-first visible root sequence between list rendering and default-root selection;
 the [presentation decision](2026-10-21-task-chain-presentation.md) owns that order
-while the complete graph index retains its API order. React Flow owns fixed 220-by-96 task nodes,
+while the complete graph index retains its API order. React Flow owns fixed 220-by-136 task cards,
 native node measurement, keyboard interaction, the viewport and its controls.
 Editing, connection, deletion, wrapper focus and interactive-lock controls remain
 disabled. Each task has one native button for pointer, Enter and Space activation;
@@ -70,8 +70,9 @@ zoom out further. Selection and viewport movement do not rerun layout.
 A layout/callback pair owns immutable ordinary and selected variants for each
 node. Selection reuses all unaffected references and swaps only the previous and
 next selected variants; closing swaps only the previous selection. React Flow
-can therefore update selection styling without rendering every task again. Full
-node/edge DOM and geometry remain present, which preserves focus, graph inspection
+can therefore update selection styling without rendering every task again. The [progressive overview decision](2026-10-22-progressive-task-graph.md) changes
+all-input rendering into explicit visible S. Every visible node and induced edge
+retains complete DOM and geometry, which preserves focus, graph inspection
 and complete-capacity assertions. Component tests check the changed-node rendering
 counts for open, switch and close transitions. This structure keeps detail-opening
 work proportional to changed styling while retaining the full graph.

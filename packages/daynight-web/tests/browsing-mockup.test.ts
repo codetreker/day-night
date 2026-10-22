@@ -23,6 +23,18 @@ describe('production task browsing fixture', () => {
     expect(first.completed).toBe(0);
   });
 
+  it('keeps a complete progressive fixture with main and external work beyond the initial overview', () => {
+    const graph = browsingProjects.progressive;
+    const index = buildGraphIndex(graph);
+    const root = graph.tasks.find((task) => task.titlePreview === '渐进展开 · 主链交付起点')!;
+    const projection = projectRoot(index, root.id);
+    expect(graph.summary).toEqual({ total: 101, proposed: 0, todo: 61, inProgress: 0, done: 40, ready: 1, blocked: 60 });
+    expect(projection.mainIds.size).toBe(61);
+    expect(projection.externalIds.size).toBe(40);
+    expect(projection.edges).toHaveLength(100);
+    expect(index.rootProgress.get(root.id)).toEqual({ total: 61, done: 0, status: 'todo' });
+  });
+
   it('serves initial and refresh failures once so production retry can restore the snapshot', async () => {
     const dispose = installBrowsingFixture();
     try {

@@ -67,7 +67,7 @@ const verifyGeometry = (actual: CanvasLayout, expected: RootProjection) => {
 describe('horizontal task graph layout', () => {
   it('exports the fixed task node dimensions used by the canvas', () => {
     expect(TASK_NODE_WIDTH).toBe(220);
-    expect(TASK_NODE_HEIGHT).toBe(96);
+    expect(TASK_NODE_HEIGHT).toBe(136);
   });
 
   it('returns an explicit empty layout without non-finite Dagre bounds', () => {

@@ -1,52 +1,89 @@
-import { memo } from 'react';
-import { useI18n } from '../../i18n/LocaleProvider';
+import { memo, useCallback, useLayoutEffect, useRef, type FocusEvent, type MouseEvent } from 'react';
 import { useReactFlow, type Node, type NodeProps } from '@xyflow/react';
+import { useI18n } from '../../i18n/LocaleProvider';
 import type { GraphTask } from '../../api/types';
-import type { CanvasPoint } from './layout';
+import type { TaskExpansion, TaskExpansionDirection } from './visibility';
+import { TASK_NODE_HEIGHT, TASK_NODE_WIDTH, type CanvasPoint } from './layout';
 
 export type TaskNodeData = {
   task: GraphTask;
   kind: 'main' | 'external';
   shared: boolean;
-  selected: boolean;
   center: CanvasPoint;
+  selected: boolean;
   onSelectTask: (id: string, trigger: HTMLElement) => void;
+  onExpandTask: (id: string, direction: TaskExpansionDirection) => void;
+  expansions: Readonly<Record<TaskExpansionDirection, TaskExpansion>>;
+  revealRequest: number | null;
 };
 
 export type TaskFlowNode = Node<TaskNodeData, 'task'>;
 
+const TaskNodeContent = memo(({ task, kind, shared }: Pick<TaskNodeData, 'task' | 'kind' | 'shared'>) => {
+  const { messages: { graph: m, common } } = useI18n();
+  const title = `${task.titlePreview}${task.titleTruncated ? '…' : ''}`;
+  return <>
+    <span className="task-node-meta">
+      <span className="task-node-id">{task.id.slice(0, 8)}</span>
+      {shared && <span className="task-shared-label">{m.shared}</span>}
+    </span>
+    <span className="task-node-title">{title}</span>
+    <span className="task-node-bottom">
+      <span className={`graph-status graph-status-${task.status}`}><i aria-hidden="true" />{common.status[task.status]}</span>
+      {task.blockedBy.length > 0 && <span className="graph-blocked-badge">{m.blocked}</span>}
+    </span>
+    {kind === 'external' && <span className="task-external-label">{m.external}</span>}
+  </>;
+});
+
+const ExpansionControl = ({ direction, expansion, onExpand, onFocus }: { direction: TaskExpansionDirection; expansion: TaskExpansion; onExpand: () => void; onFocus: (event: FocusEvent<HTMLButtonElement>) => void }) => {
+  const { messages: { graph: m } } = useI18n();
+  if (expansion.ids.length === 0) return <span aria-hidden="true" />;
+  const remaining = expansion.totalHidden - expansion.ids.length;
+  return <button type="button" className="task-node-expand nodrag nopan" data-direction={direction}
+    data-added-tasks={expansion.ids.length} data-added-edges={expansion.addedEdges} data-remaining={remaining}
+    aria-label={m.expandLabel({ direction, tasks: expansion.ids.length, edges: expansion.addedEdges, remaining })} onClick={onExpand} onFocus={onFocus}>
+    <span>{m.expandTitle({ direction, tasks: expansion.ids.length })}</span>
+    <small>{m.expandSummary({ edges: expansion.addedEdges, remaining })}</small>
+  </button>;
+};
+
 export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
   const { messages: { graph: m, common } } = useI18n();
   const { setCenter, getViewport } = useReactFlow();
+  const body = useRef<HTMLButtonElement>(null);
+  const revealed = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (data.revealRequest === null || data.revealRequest === revealed.current) return;
+    revealed.current = data.revealRequest;
+    void setCenter(data.center.x, data.center.y, { zoom: getViewport().zoom, duration: 0 });
+    body.current!.focus({ preventScroll: true });
+  }, [data.revealRequest, data.center, getViewport, setCenter]);
   const title = `${data.task.titlePreview}${data.task.titleTruncated ? '…' : ''}`;
+  const revealOnFocus = useCallback((event: FocusEvent<HTMLButtonElement>) => {
+    if (!event.currentTarget.matches(':focus-visible')) return;
+    const bounds = event.currentTarget.closest('.task-graph-canvas')!.getBoundingClientRect();
+    const { x, y, zoom } = getViewport();
+    // Native focus can temporarily scroll React Flow's overflow container before
+    // its scroll handler resets it. Layout coordinates retain the intended view.
+    const left = x + (data.center.x - TASK_NODE_WIDTH / 2) * zoom;
+    const top = y + (data.center.y - TASK_NODE_HEIGHT / 2) * zoom;
+    if (left < 0 || top < 0 || left + TASK_NODE_WIDTH * zoom > bounds.width || top + TASK_NODE_HEIGHT * zoom > bounds.height) {
+      void setCenter(data.center.x, data.center.y, { zoom, duration: 0 });
+    }
+  }, [data.center, getViewport, setCenter]);
+  const open = useCallback((event: MouseEvent<HTMLButtonElement>) => { data.onSelectTask(data.task.id, event.currentTarget); }, [data.onSelectTask, data.task.id]);
   return (
-    <button
-      type="button"
-      className={`task-node task-node-${data.task.status}${data.kind === 'external' ? ' task-node-external' : ''}${data.selected ? ' task-node-selected' : ''} nodrag nopan`}
-      style={{ pointerEvents: 'auto' }}
-      aria-label={m.nodeLabel({ title, status: common.status[data.task.status], blocked: data.task.blockedBy.length > 0, external: data.kind === 'external', shared: data.shared })}
-      aria-haspopup="dialog"
-      onClick={(event) => { data.onSelectTask(data.task.id, event.currentTarget); }}
-      onFocus={(event) => {
-        if (!event.currentTarget.matches(':focus-visible')) return;
-        const nodeBounds = event.currentTarget.getBoundingClientRect();
-        const viewportBounds = event.currentTarget.closest('.task-graph-canvas')!.getBoundingClientRect();
-        if (nodeBounds.left < viewportBounds.left || nodeBounds.top < viewportBounds.top ||
-          nodeBounds.right > viewportBounds.right || nodeBounds.bottom > viewportBounds.bottom) {
-          void setCenter(data.center.x, data.center.y, { zoom: getViewport().zoom, duration: 0 });
-        }
-      }}
-    >
-      <span className="task-node-meta">
-        <span className="task-node-id">{data.task.id.slice(0, 8)}</span>
-        {data.shared && <span className="task-shared-label">{m.shared}</span>}
-      </span>
-      <span className="task-node-title">{title}</span>
-      <span className="task-node-bottom">
-        <span className={`graph-status graph-status-${data.task.status}`}><i aria-hidden="true" />{common.status[data.task.status]}</span>
-        {data.task.blockedBy.length > 0 && <span className="graph-blocked-badge">{m.blocked}</span>}
-      </span>
-      {data.kind === 'external' && <span className="task-external-label">{m.external}</span>}
-    </button>
+    <div className={`task-node task-node-${data.task.status}${data.selected ? ' task-node-selected' : ''}${data.kind === 'external' ? ' task-node-external' : ''} nodrag nopan`} style={{ pointerEvents: 'auto' }}>
+      <button type="button" ref={body} className="task-node-body nodrag nopan"
+        aria-label={m.nodeLabel({ title, status: common.status[data.task.status], blocked: data.task.blockedBy.length > 0, external: data.kind === 'external', shared: data.shared })}
+        aria-haspopup="dialog" onClick={open} onFocus={revealOnFocus}>
+        <TaskNodeContent task={data.task} kind={data.kind} shared={data.shared} />
+      </button>
+      <div className="task-node-expansions">
+        <ExpansionControl direction="prerequisites" expansion={data.expansions.prerequisites} onFocus={revealOnFocus} onExpand={() => { data.onExpandTask(data.task.id, 'prerequisites'); }} />
+        <ExpansionControl direction="successors" expansion={data.expansions.successors} onFocus={revealOnFocus} onExpand={() => { data.onExpandTask(data.task.id, 'successors'); }} />
+      </div>
+    </div>
   );
 });

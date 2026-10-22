@@ -50,18 +50,25 @@ fault injection verifies the disposable database's ownership before changing it
 and restores the resource in a finally path. Browser routing barriers control
 response ordering separately from actual backend-failure observations.
 
-Topology is fixed while API-generated UUIDs can change layout tie ordering
-between isomorphic runs. Five repetitions share the exact same graph and IDs.
-Each capacity dataset has exactly 1,000 nodes: the chain has 999 edges, and the
-merge, shared-root and dense-external datasets have 5,000 edges each. The dense
-external graph retains two main tasks, 998 contextual tasks and every dependency.
-Five expansions per dataset must
-all meet the 3,000ms click-to-painted complete-canvas budget. Task selection,
-zoom and pan must each provide visible local feedback within 300ms. Network
-readings remain separate. Each expansion records layout and painted-render
-durations from one bounded latest-root User Timing measure; complete `openMs`
-remains the performance gate. Each independent over-limit response must be a complete
-409 refusal, with accurate counts and no partial browser graph or statistics.
+The four complete API topologies retain their exact task and dependency inputs,
+with five repetitions on the same IDs. Each has 1,000 tasks: chain has 999 edges,
+merge/shared/external have 5,000, and external full context remains two main tasks
+plus 998 ancestors. Complete API snapshots compare all inputs. The
+[progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
+changes DOM readiness to its bounded visible S and every real induced edge,
+then checks explicit direct expansion/reset and exact counts. All-at-once
+rendering is no longer the required browser workload.
+
+Five openings retain the 3,000ms click-to-painted operable-overview budget and
+existing detail/zoom/pan feedback ≤300ms. Details → close → immediate zoom/pan
+retains its sequence without reset, Fit view or extra wait; network and layout/
+render diagnostics remain separate. `visibility[5]` records ordered repetition,
+overview/added/expanded/reset node and edge counts, requiring bounds, exact
+deltas and reset consistency. The existing polyline/native-dash/marker oracles
+check every visible edge. Independent selection, H, selectMs and curved-capacity
+claims belong to the following inspection PR. Independent node/edge limits
+still require complete 409 refusals. Current focused source needs its own real
+native/container/capacity evidence; prior full-render results do not establish it.
 
 Playwright runs one worker with zero retries. Report validation rejects global
 errors, skipped/flaky/retried tests, duplicate/missing stable scenarios, missing
@@ -88,7 +95,7 @@ selects affected PR jobs without changing their internal gates; main pushes
 retain all native CLI, shell completion, Go and web checks.
 
 Timing begins at the trusted browser input event's performance-clock timestamp
-and ends after the full DOM/readable-initial-task or feedback condition and two
+and ends after the complete visible DOM/readable-root or feedback condition and two
 animation frames. Event queue time remains included; automation actionability and diagnostic
 snapshot work are excluded. All five repetitions and all original budgets remain
 required. A bounded latest-root User Timing measure separates projection/Dagre
@@ -150,8 +157,8 @@ keep the task-card bounds and the static SVG routes aligned through the public
 viewport portal. Every edge's identity, exact canonical Dagre points, native
 arrows and pan/zoom transform remain asserted; native node measurement remains
 enabled. The open/initial-ready count check includes the declared safe-integer
-paint-piece count and actual body-piece DOM, in addition to every node/button and
-canonical route. Independent CTM/arc reconstruction checks full ordered coverage,
+paint-piece count and actual body-piece DOM, in addition to every visible card/control and induced canonical route. Full
+API input comparison stays independent of visible geometry. Independent CTM/arc reconstruction checks full ordered coverage,
 phase continuity, gap-midpoint seams and native joins after the five timed
 repetitions, adding no readback or idle wait between drawer close and zoom.
 The [layout decision](../feature/2026-10-20-task-graph-projection.md) owns ranking,

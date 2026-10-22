@@ -27,6 +27,13 @@ a bounded two-pane preview. Graph inspection, smooth paths and Markdown
 descriptions remain pending in their Daynight tasks. Existing paint and detail notes describe their
 current mechanisms.
 
+The [progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
+partially supersedes all-context-at-once rendering. UX-T2 first delivers bounded
+visible graphs and explicit expansion/reset while body activation still opens
+TaskDetailDialog and paths remain polylines. The following inspection PR owns
+selection/Details separation and smooth highlighting; both PRs must be integrated
+before UX-T2 completion.
+
 The root and its descendants remain the chain's counted membership. Rendering
 adds the complete prerequisite closure without importing unrelated descendants
 of contextual tasks. Selection belongs to the mounted graph and highlights the
