@@ -77,6 +77,13 @@ describe('inspection language changes', () => {
     fireEvent.load(frame);
     const src = frame.getAttribute('src');
     const user = userEvent.setup();
+    const disclosure = screen.getByText('上传文件', { selector: 'summary' });
+    expect(disclosure.parentElement).not.toHaveAttribute('open');
+    switchTo('en');
+    expect(screen.getByText('Upload file', { selector: 'summary' })).toBe(disclosure);
+    expect(disclosure.parentElement).not.toHaveAttribute('open');
+    await user.click(disclosure);
+    switchTo('zh-CN');
     const input = screen.getByLabelText('选择一个文件') as HTMLInputElement;
     const source = new File(['<p>更新</p>'], 'index.html', { type: 'text/html' });
     await user.upload(input, source);
@@ -85,6 +92,8 @@ describe('inspection language changes', () => {
     await user.click(screen.getByRole('button', { name: '上传文件' }));
     const signal = put.mock.calls[0]![4];
     switchTo('en');
+    expect(disclosure).toHaveTextContent('Upload file');
+    expect(disclosure.parentElement).toHaveAttribute('open');
     expect(screen.getByLabelText('Choose one file')).toBe(input);
     expect(input.files?.[0]).toBe(source);
     expect(path).toHaveValue('site/index.html');

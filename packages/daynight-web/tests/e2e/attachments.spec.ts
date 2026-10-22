@@ -153,6 +153,16 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     expect(await page.evaluate(() => ({ document: document.documentElement.style.overflow, body: document.body.style.overflow }))).toEqual(originalOverflow);
   };
   await expect(attachments.getByRole('heading', { name: `附件 · ${seeds.length}`, exact: true })).toBeVisible();
+  const uploadDisclosure = attachments.locator('.attachment-upload-disclosure');
+  const uploadSummary = uploadDisclosure.locator('summary');
+  await expect(uploadDisclosure).not.toHaveAttribute('open', '');
+  await expect(attachments.getByLabel('选择一个文件')).toBeHidden();
+  await uploadSummary.focus();
+  await page.keyboard.press('Enter');
+  await expect(uploadDisclosure).toHaveAttribute('open', '');
+  await expect(attachments.getByLabel('选择一个文件')).toBeVisible();
+  await page.keyboard.press('Space');
+  await expect(uploadDisclosure).not.toHaveAttribute('open', '');
 
   await selectFile(attachments, 'docs/design.md');
   await expect(attachments.getByRole('table').first()).toContainText('Web已连接');
@@ -389,8 +399,11 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
   const frameHandle = await html.elementHandle();
   const input = attachments.getByLabel('选择一个文件');
   const inputHandle = await input.elementHandle();
+  await uploadSummary.click();
   await input.setInputFiles({ name: 'unsent.txt', mimeType: 'text/plain', buffer: Buffer.from('Unsent draft') });
   await attachments.getByRole('textbox', { name: '目标相对路径' }).fill('drafts/unsent.txt');
+  await uploadSummary.click();
+  await expect(input).toBeHidden();
   const notes = attachments.locator('summary').filter({ hasText: exact('▱ notes') }).locator('..');
   await notes.locator('summary').first().click();
   await expect(notes).not.toHaveAttribute('open', '');
@@ -403,6 +416,8 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
   expect(await frameHandle!.evaluate((element) => element === document.querySelector('.task-attachments iframe'))).toBe(true);
   expect(await inputHandle!.evaluate((element) => element === document.querySelector('.task-attachments input[type=file]'))).toBe(true);
   await expect(content.locator('#result')).toHaveText('已完成 3 个任务');
+  await expect(uploadDisclosure).not.toHaveAttribute('open', '');
+  await uploadSummary.click();
   await expect(attachments.getByRole('textbox', { name: '目标相对路径' })).toHaveValue('drafts/unsent.txt');
   expect(await input.evaluate((element) => (element as HTMLInputElement).files?.[0]?.name)).toBe('unsent.txt');
   await expect(notes).not.toHaveAttribute('open', '');
@@ -448,6 +463,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
 
   const uploadUrl = new URL(attachmentDownloadUrl(project.id, task.id, uploadedPath), origin).href;
   const upload = async (bytes: Buffer, expectedStatus: number): Promise<void> => {
+    if (await uploadDisclosure.getAttribute('open') === null) await uploadSummary.click();
     await attachments.getByLabel('选择一个文件').setInputFiles({ name: 'source.bin', mimeType: 'application/octet-stream', buffer: bytes });
     await expect(attachments.getByRole('textbox', { name: '目标相对路径' })).toHaveValue('source.bin');
     await attachments.getByRole('textbox', { name: '目标相对路径' }).fill(uploadedPath);
