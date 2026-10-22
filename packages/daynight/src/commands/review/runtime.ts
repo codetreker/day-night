@@ -63,7 +63,8 @@ export const runForegroundReview = async (
     const client = dependencies.createClient();
     const git = dependencies.createGit({ temporaryDirectory: paths.temporaryDirectory, client });
     const processes = dependencies.createProcesses(lock.previousProcessesExcluded ? { previousProcessesExcluded: true } : {});
-    const runner = dependencies.createRunner({ paths, skill, processOwner: lock.owner, timeoutMs: configuration.agentTimeoutMs });
+    const runner = dependencies.createRunner({ paths, skill, processOwner: lock.owner, timeoutMs: configuration.agentTimeoutMs,
+      ...(configuration.copilotModel === undefined ? {} : { model: configuration.copilotModel }) });
     log({ level: "info", phase: "startup", message: `Foreground review started; state=${paths.stateDirectory}; skill=${skill.name} digest=${skill.digest}.` });
     safe = false;
     const result = await dependencies.coordinate({ configuration, store, client, git, runner, processes, signal, log });

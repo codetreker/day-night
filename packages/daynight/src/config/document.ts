@@ -16,6 +16,7 @@ export const supportedConfigurationFields = [
   "agentTimeoutMs",
   "maxAttempts",
   "retryDelayMs",
+  "copilotModel",
 ] as const;
 
 export const parseConfigurationDocument = (
