@@ -90,7 +90,9 @@ describe("task commands over HTTP", () => {
     const f = await fixture((request, response) => respond(response, request.query.has("cursor") ? { items: [next], nextCursor: null } : { items: [task], nextCursor: "next page+/=?" }));
     await f.run(["list", "--status", "todo", "--ready", "--json"]);
     expect(f.context.stdout).toHaveBeenCalledOnce();
-    expect(parseApiJson(f.context.stdout.mock.calls[0]![0])).toEqual([task, next]);
+    const parsed = parseApiJson(f.context.stdout.mock.calls[0]![0]);
+    expect(parsed).toEqual([task, next].map(({ description: _description, ...item }) => item));
+    for (const index of [0, 1]) expect(parsed).not.toHaveProperty(`${index}.description`);
     expect(f.context.stdout.mock.calls[0]![0]).toMatch(/\n$/);
     const pages = f.requests.filter(({ path }) => path.endsWith("/tasks"));
     expect(pages.map(({ query }) => Object.fromEntries(query))).toEqual([{ status: "todo", ready: "true", limit: "100" }, { status: "todo", ready: "true", limit: "100", cursor: "next page+/=?" }]);
