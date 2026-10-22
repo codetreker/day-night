@@ -12,6 +12,10 @@ requirements harder to distinguish from the current execution position.
 
 ## Decision
 
+The [Goal workflow design](../process/2026-10-22-goal-workflow-design.md) adopts a
+future stage-specific registration and execution extension. Its skill implementation
+is tracked separately; the current mode behavior remains the decision below.
+
 The public bundle is named `using-daynight`. Its entrypoint routes from the actual
 request and context to handbook, create-task, run-task or autopilot, with one
 reference document per mode. A bare invocation uses context; insufficient or
