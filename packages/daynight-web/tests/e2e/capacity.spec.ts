@@ -397,9 +397,9 @@ const measureDetailsZoomPan = async (page: Page, fixture: CapacityFixture, taskI
   return { detailMs: detail.duration, detailNetworkMs, zoomMs: zoom.duration, panMs: pan.duration };
 };
 
-const measureInteractions = async (page: Page, fixture: CapacityFixture, expansion: ExpansionMeasurement, dataset: Dataset, repetition: number): Promise<Measurement> => {
+const measureInteractions = async (page: Page, fixture: CapacityFixture, expansion: ExpansionMeasurement, dataset: Dataset, repetition: number, info: TestInfo): Promise<Measurement> => {
   const expected = expectedCapacityGeometry(fixture);
-  if (repetition === 0) expect(await checkDependencyGeometry(page, expected), 'Every normal dependency has independent complete geometry').toEqual([]);
+  if (repetition === 0) expect(await checkDependencyGeometry(page, expected, info), 'Every normal dependency has independent complete geometry').toEqual({ total: 0, examples: [] });
   const initialDetailTask = fixture.kind === 'external' ? await page.locator('.task-node-external').evaluateAll((nodes) => {
     const canvas = document.querySelector('.task-graph-canvas')!.getBoundingClientRect();
     const visible = nodes.find((node) => { const bounds = node.getBoundingClientRect(); return bounds.left >= canvas.left && bounds.top >= canvas.top && bounds.right <= canvas.right && bounds.bottom <= canvas.bottom; });
@@ -420,7 +420,7 @@ const measureInteractions = async (page: Page, fixture: CapacityFixture, expansi
   const selection = await measureBrowserFeedback(page, { kind: 'select', rootId: selectedId }, () => body.click(), dataset, repetition);
   await assertInspection(page, fixture, selectedId);
   expect(await stableGeometry(page), 'Selecting upstream dependencies changes no node, route, paint-piece geometry or viewport').toEqual(beforeSelection);
-  if (repetition === 4) expect(await checkDependencyGeometry(page, expected), 'Every highlighted dependency, arrow and external curve preserves complete native paint').toEqual([]);
+  if (repetition === 4) expect(await checkDependencyGeometry(page, expected, info), 'Every highlighted dependency, arrow and external curve preserves complete native paint').toEqual({ total: 0, examples: [] });
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const highlighted = await measureDetailsZoomPan(page, fixture, selectedId, dataset, repetition);
   await assertInspection(page, fixture, selectedId);
@@ -532,7 +532,7 @@ test.describe('fixed capacity and performance @capacity', () => {
                   renderMs: paintedTime - (measure.startTime + measure.duration),
                 };
               }, { rootId: fixture.root.id, start: opened.start, paintedTime: opened.end });
-              const measurement = await measureInteractions(page, fixture, expansion, dataset, repetition);
+              const measurement = await measureInteractions(page, fixture, expansion, dataset, repetition, info);
               dataset.measurements.push(measurement);
               await persist();
               checkMeasurement(measurement);

@@ -546,14 +546,21 @@ chain membership; `externalIds` identifies additional ancestors. Every dependenc
 ending at a visible task is retained, and an edge is external when its source is
 external. It derives distinct root progress and aggregate chain status from main
 tasks in the same traversal, and marks shared tasks. The Dagre
-adapter returns finite left-to-right node positions and routed edge points for
-220-by-96 cards. The read-only React Flow canvas consumes these results without changing domain
+adapter retains finite left-to-right Dagre node positions and order for
+220-by-96 cards. A route planner connects source right-center to target left-center
+through obstacle-free rank-gap channels, retaining intermediate lane intent while
+avoiding every task card. `routing.ts` exports `RoutingNode` rectangles and
+`planDependencyRoutes(nodes, edges)`; the adapter builds rectangles from fixed
+card dimensions and calls the planner once. Shared column/interval indexes keep
+clear spans and intermediate-column anchors, routing blocked spans along free
+rows and rank-gap midpoints with clearance for quadratic corners. The read-only React Flow canvas consumes these results without changing domain
 objects. React Flow owns fixed task nodes, native ResizeObserver measurement,
 keyboard behavior, viewport and controls. One memoized SVG in its public
 ViewportPortal renders every compiled route, with stable edge identity,
 arrowheads, external-context dashes and accessibility semantics. `routes.ts`
 exports `compileDependencyRoute(points, dashed)`, returning canonical `d` and
-immutable paint `pieces`. It retains Dagre endpoints and route direction while
+immutable paint `pieces`. It consumes the planned route, whose endpoints and
+horizontal direction follow fixed source-right/target-left side ports, while
 rounding noncollinear corners with quadratic `Q` segments and at most 12 units
 trimmed from either adjoining span. Duplicate and forward-collinear redundant
 points are removed before compilation; invalid coordinates fail explicitly.
@@ -576,7 +583,11 @@ Pan and zoom share the viewport transform without per-edge store subscriptions.
 The [paint decision](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
 retains the original pinned raster evidence and phase rationale; the
 [inspection decision](../../.agents/notes/implemented/feature/2026-10-22-task-dependency-inspection.md)
-owns smooth compilation and synchronized presentation.
+owns smooth compilation and synchronized presentation. The
+[routing decision](../../.agents/notes/implemented/architecture/2026-10-22-task-dependency-routing.md)
+owns the boundary between unchanged Dagre node layout and obstacle-free planned
+routes; runtime validation of that revised mechanism belongs to its source-bound
+production checks.
 
 Initial placement uses known layout bounds after the viewport and positive
 measured canvas dimensions are ready, fitting within 0.8–1 zoom or anchoring the

@@ -47,15 +47,21 @@ control returns focus to an available graph toolbar control. Failed refreshes
 retain the last snapshot and its inspection. No selection changes projection,
 layout or initial placement.
 
-`routes.ts` compiles each Dagre route through
+The [routing decision](../architecture/2026-10-22-task-dependency-routing.md)
+keeps Dagre node coordinates and order, then connects fixed source-right-center
+and target-left-center ports through obstacle-free rank-gap channels. It retains
+intermediate lane intent and owns avoidance of all task cards. `routes.ts`
+compiles each planned route through
 `compileDependencyRoute(points, dashed)`, returning canonical `d` and paint
 `pieces`. Consecutive duplicates and forward-collinear redundant points are
 removed. Every noncollinear corner trims each adjoining span by
 `min(12, incomingLength/2, outgoingLength/2)` and uses the original corner as a
-quadratic Bézier control point. Canonical `M/L/Q` geometry preserves route
-endpoints and initial/final tangent direction; nonfinite input fails explicitly.
-It continues consuming Dagre waypoints rather than introducing endpoint-only
-routing.
+quadratic Bézier control point. Canonical `M/L/Q` geometry preserves the
+planned endpoints and horizontal side-port direction; nonfinite input fails
+explicitly. The original design rounded raw Dagre points to preserve its routing
+intent and long-line paint. The routing decision replaces that exact-point
+assumption because raw endpoint spans can cross other task cards before any
+corner smoothing occurs.
 
 Solid routes use native body paint. Dashed routes retain locally horizontal
 rotated long lines and short curve paths, while the canonical route retains
@@ -92,11 +98,16 @@ timing, and repeats Details → close → immediate zoom/pan while highlighted.
 `detailNetworkMs` retains the larger observed network duration. Neither
 close-to-zoom sequence inserts Fit view, a viewport reset or an extra wait.
 The strict inventory stays fifteen native and ten container scenarios. Independent
-geometry validation parses `M/L/Q` without importing the production compiler or
-graph model as its expected result. Exact quadratic/rectangle intersections and
-independent analytic speed integration with near-straight geometric bounds check
-endpoints, tangent/marker direction, node avoidance, complete coverage, transformed
-pieces and real curved dash phase. `dependency-geometry.test.ts` contains failing
+geometry validation parses `M/L/Q`. `GeometryExpectation` contains independent
+API identities, `dependsOn` closure and edge/external membership only. A separate
+optional `compilerInputs` value declares layout points for compiler-fidelity
+checks; it never supplies expected valid planner geometry or a compiled curve.
+Exact quadratic/rectangle intersections and independent analytic speed
+integration with near-straight geometric bounds always check DOM side ports,
+horizontal ends, every quadratic's symmetric trim no greater than twelve units
+and tangency, node avoidance, complete paint coverage, real arc length, dash
+phase and markers, including all capacity cases. These validity checks run
+without compiler inputs and do not clone the production planner. `dependency-geometry.test.ts` contains failing
 negative cases for missing edges, wrong arrows, node crossings, dash phase and
 paint coverage.
 Selection checks capture every node and edge in one browser evaluation and
@@ -132,9 +143,12 @@ highlighting omits the requested transitive path. Adding missing nodes after
 selection changes layout while it is being inspected. Pre-expanded ancestor
 closure makes selection a presentation update.
 
-**Use endpoint-only cubic Bézier or smoothstep routes.** These helpers replace
-Dagre's intermediate route with a new route. Local quadratic rounding retains
-its waypoint intent, endpoints and long spans needed for efficient dash paint.
+**Use endpoint-only cubic Bézier or smoothstep routes.** The original design
+preferred local rounding because those helpers discard Dagre intermediate
+waypoints and would renew long dashed-paint work. The routing decision retains
+that rationale for long spans and lane intent while explicitly planning fixed
+side ports and obstacle-free channels; raw endpoint retention does not establish
+node avoidance.
 
 **Draw one full native dashed curved path.** This removes paint-piece handling,
 but reintroduces the long oblique native dash-generation cost established by

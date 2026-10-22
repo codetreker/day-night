@@ -42,8 +42,10 @@ zoom. Graph inspection belongs to the mounted canvas; detail resource selection
 belongs to the project page.
 
 One memoized SVG beneath task nodes in the public `ViewportPortal` renders every
-dependency from the immutable Dagre layout. The inspection decision compiles
-its points into bounded quadratic corners while preserving route endpoints,
+dependency from the immutable Dagre layout. The [routing decision](../architecture/2026-10-22-task-dependency-routing.md)
+retains node positions/order while planning right-center to left-center routes
+through obstacle-free channels. The inspection decision compiles the planned
+points into bounded quadratic corners while preserving those side ports,
 stable edge/source/target identity, native markers and accessibility semantics.
 Solid bodies keep native paint. Long dashed bodies retain immutable locally
 horizontal lines and short curved paths, preserving actual curve arc length
@@ -58,9 +60,11 @@ input, so task buttons and the canvas remain the interaction targets.
 
 The original W-T4 custom-edge integration used invisible framework ports for
 edge admission. That choice preserved Dagre's noncentral rectangle intersections:
-framework port centers never defined the visible line endpoints. The static SVG
-retains that geometry rationale while giving immutable dependency routes their
-own rendering owner. The initial single-SVG implementation used native dashing
+framework port centers never defined the visible line endpoints. That original
+geometry rationale favored retaining the layout output. The later routing
+decision replaces raw endpoints with explicit side ports to guarantee
+node avoidance, while immutable dependency routes keep their rendering owner.
+The initial single-SVG implementation used native dashing
 on each full route, preserving direct geometry without per-edge reactive state.
 The long-dashed paint decision partially replaces that body-paint choice after
 pinned-engine raster evidence, while canonical routes and native arrows remain.

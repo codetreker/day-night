@@ -43,8 +43,12 @@ per snapshot without a global mutable cache.
 The separate Dagre adapter uses a new flat directed graph for each calculation,
 sorted node and edge insertion, left-to-right ranks, one global longest-path
 ranker and fixed 220-by-96 cards.
-It converts returned node centers to top-left positions and retains the routed
-edge points. Empty projections return explicit zero bounds before calling Dagre;
+It converts returned node centers to top-left positions. The original adapter
+also retained raw edge points; the later
+[routing decision](../architecture/2026-10-22-task-dependency-routing.md) retains
+node coordinates/order and lane intent while planning fixed side ports and
+obstacle-free rank-gap channels. Empty projections return explicit zero bounds
+before calling Dagre;
 nonempty output must have finite coordinates and valid node bounds. No React,
 DOM, network or task mutation is involved in these modules.
 

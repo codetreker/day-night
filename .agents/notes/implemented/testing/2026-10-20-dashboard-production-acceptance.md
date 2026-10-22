@@ -117,7 +117,15 @@ independent geometry parsing to `M/L/Q`, exact quadratic/rectangle intersections
 independent analytic speed integration with near-straight geometric bounds, real
 curved dash phase and marker tangents. `dependency-geometry.test.ts` rejects
 missing edges, wrong arrows, node crossings, phase errors and paint-coverage
-errors without importing the production route compiler or graph model. Inspection must preserve node positions, canonical routes and viewport.
+errors. `GeometryExpectation` holds only independent API task identities,
+`dependsOn` closure and edge/external membership; workflow and capacity use
+`expectedDependencyTopology(tasks, rootId)` to derive it from the API fixture. Optional `compilerInputs` are separately declared layout
+point sequences used only to check compiler fidelity, never as expected valid
+planner geometry or expected compiled curves. DOM side ports, horizontal ends,
+every quadratic's twelve-unit symmetric-trim/tangency rule, all-node avoidance,
+complete paint coverage, real arc length, dash phase and markers remain
+unconditional, including capacity runs without compiler inputs. Inspection
+must preserve node positions, canonical routes and viewport.
 Inspection semantics are observed for all nodes and edges in one browser
 evaluation, then checked with one exact comparison against an independently
 derived sorted result. Identity, control/role semantics, pressed and inspection
@@ -167,15 +175,21 @@ four-direction, three-ranker matrix compares complete coordinates, edge routes,
 bounds and repeated geometry through both public exports; direct tie/removal and
 usedBias cases protect the ordered scan semantics. Real-browser graph checks also
 keep the task-card bounds and the static SVG routes aligned through the public
-viewport portal. Every edge's identity, exact canonical Dagre points, native
-arrows and pan/zoom transform remain asserted; native node measurement remains
+viewport portal. Every edge's identity, planned canonical geometry, fixed
+source-right-center/target-left-center ports against DOM card rectangles,
+positive horizontal first/last tangents, node avoidance, native arrows and
+pan/zoom transform remain asserted; native node measurement remains
 enabled. The open/initial-ready count check includes the declared safe-integer
 paint-piece count and actual body-piece DOM, in addition to every node/button and
 canonical route. Independent CTM/arc reconstruction checks full ordered coverage,
 phase continuity, gap-midpoint seams and native joins after the five timed
 repetitions, adding no readback or idle wait between drawer close and zoom.
 The [layout decision](../feature/2026-10-20-task-graph-projection.md) owns ranking,
-normalization costs and the version-specific redundant-scan patch. Neither the
+normalization costs and the version-specific redundant-scan patch. The
+[routing decision](../architecture/2026-10-22-task-dependency-routing.md) owns the
+fixed side-port and obstacle-free channel contract after Dagre node placement;
+that product routing is distinct from the patched/unpatched library equivalence
+check. Neither the
 pure benchmark matrix nor geometry equivalence establishes arbitrary-DAG browser
 latency; the full production gate still owns its fixed capacity verdict.
 

@@ -7,7 +7,7 @@ type Segment = Line | Quadratic;
 
 export type DependencyRoute = { readonly d: string; readonly pieces: readonly DashPiece[] };
 
-const cornerRadius = 12;
+export const DEPENDENCY_CORNER_RADIUS = 12;
 const gapMiddle = 7;
 const joinRoom = 12;
 const minimumLine = 128;
@@ -74,7 +74,7 @@ const roundedSegments = (points: readonly CanvasPoint[]): readonly Segment[] => 
     }
     const incoming = direction(before, corner);
     const outgoing = direction(corner, after);
-    const trim = Math.min(cornerRadius, distance(before, corner) / 2, distance(corner, after) / 2);
+    const trim = Math.min(DEPENDENCY_CORNER_RADIUS, distance(before, corner) / 2, distance(corner, after) / 2);
     const from = { x: corner.x - incoming.x * trim, y: corner.y - incoming.y * trim };
     const to = { x: corner.x + outgoing.x * trim, y: corner.y + outgoing.y * trim };
     appendLine(from);

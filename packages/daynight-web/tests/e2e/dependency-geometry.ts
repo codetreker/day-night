@@ -1,12 +1,28 @@
-import type { Page } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
+import type { Page, TestInfo } from '@playwright/test';
 
 type Point = { x: number; y: number };
 type Segment = { kind: 'L' | 'Q'; from: Point; to: Point; control?: Point };
 type Rect = { id: string; left: number; top: number; right: number; bottom: number };
 export type GeometryExpectation = {
   nodes: readonly { id: string }[];
-  edges: readonly { id: string; source: string; target: string; external: boolean; points?: readonly Point[] }[];
+  edges: readonly { id: string; source: string; target: string; external: boolean }[];
 };
+export type DeclaredCurveInput = { id: string; points: readonly Point[] };
+export const expectedDependencyTopology = (tasks: readonly { id: string; dependsOn: readonly string[] }[], rootId: string): GeometryExpectation => {
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  const successors = new Map(tasks.map((task) => [task.id, [] as string[]]));
+  for (const task of tasks) for (const source of task.dependsOn) successors.get(source)!.push(task.id);
+  const main = new Set([rootId]); const descendants = [rootId];
+  for (let i = 0; i < descendants.length; i++) for (const id of successors.get(descendants[i]!)!) if (!main.has(id)) { main.add(id); descendants.push(id); }
+  const visible = new Set(main); const ancestors = [...main];
+  while (ancestors.length > 0) for (const id of byId.get(ancestors.pop()!)!.dependsOn) if (!visible.has(id)) { visible.add(id); ancestors.push(id); }
+  return {
+    nodes: tasks.filter((task) => visible.has(task.id)).map(({ id }) => ({ id })),
+    edges: tasks.filter((task) => visible.has(task.id)).flatMap((task) => task.dependsOn.map((source) => ({ id: `${source}->${task.id}`, source, target: task.id, external: !main.has(source) }))),
+  };
+};
+
 type Paint = { d: string; matrix: number[]; line: boolean; phase: number; dash: string; stroke: string; width: number; cap: string; join: string; hidden: boolean };
 export type DependencySnapshot = {
   nodes: Rect[]; edges: { id: string; source: string; target: string; d: string; dashed: boolean; stroke: string; color: string; marker: string; pieces: Paint[] }[];
@@ -100,10 +116,9 @@ const penetrates = (s: Segment, r: Rect): boolean => {
   return breaks.slice(1).some((t, i) => { const p = at(s, (t + breaks[i]!) / 2); return p.x > box.left && p.x < box.right && p.y > box.top && p.y < box.bottom; });
 };
 const transform = (p: Point, m: number[]): Point => ({ x: m[0]! * p.x + m[2]! * p.y + m[4]!, y: m[1]! * p.x + m[3]! * p.y + m[5]! });
-const border = (p: Point, r: Rect): boolean => p.x >= r.left - 0.75 && p.x <= r.right + 0.75 && p.y >= r.top - 0.75 && p.y <= r.bottom + 0.75
-  && Math.min(Math.abs(p.x - r.left), Math.abs(p.x - r.right), Math.abs(p.y - r.top), Math.abs(p.y - r.bottom)) <= 0.75;
 
-export const inspectDependencySnapshot = (snapshot: DependencySnapshot, expected: GeometryExpectation): string[] => {
+
+export const inspectDependencySnapshot = (snapshot: DependencySnapshot, expected: GeometryExpectation, compilerInputs?: readonly DeclaredCurveInput[]): string[] => {
   const failures: string[] = [];
   const fail = (id: string, reason: string) => { failures.push(`${id}: ${reason}`); };
   if (!snapshot.viewport || !snapshot.passive) fail('layer', 'incorrect viewport or interaction semantics');
@@ -112,25 +127,29 @@ export const inspectDependencySnapshot = (snapshot: DependencySnapshot, expected
   if (nodes.size !== expected.nodes.length || snapshot.nodes.length !== nodes.size || expected.nodes.some((node) => !nodes.has(node.id))) fail('nodes', 'incomplete node coverage');
   if (edges.size !== expected.edges.length || snapshot.edges.length !== edges.size || expected.edges.some((edge) => !edges.has(edge.id))) fail('edges', 'incomplete edge coverage');
   if (snapshot.declaredPieces !== snapshot.edges.reduce((total, edge) => total + edge.pieces.length, 0)) fail('pieces', 'incomplete declared paint coverage');
+  const inputs = new Map(compilerInputs?.map((input) => [input.id, input.points]));
+  if (compilerInputs !== undefined && (inputs.size !== compilerInputs.length || inputs.size !== expected.edges.length || expected.edges.some((edge) => !inputs.has(edge.id)))) fail('curve inputs', 'incomplete declared edge coverage');
   const sortedNodes = [...nodes.values()].sort((a, b) => a.left - b.left);
   for (const expectation of expected.edges) {
     const edge = edges.get(expectation.id); const source = nodes.get(expectation.source); const target = nodes.get(expectation.target);
     if (edge === undefined || source === undefined || target === undefined) continue;
     try {
       const route = parseCurve(edge.d); const first = route[0]!.from; const last = route.at(-1)!.to;
-      if (edge.source !== expectation.source || edge.target !== expectation.target || !border(first, source) || !border(last, target)) fail(edge.id, 'wrong endpoints');
-      if (!parallel(tangent(route[0]!, 0), { x: first.x - (source.left + source.right) / 2, y: first.y - (source.top + source.bottom) / 2 })
-        || !parallel(tangent(route.at(-1)!, 1), { x: (target.left + target.right) / 2 - last.x, y: (target.top + target.bottom) / 2 - last.y })) fail(edge.id, 'wrong final or initial tangent');
-      if (expectation.points !== undefined) {
-        const points = expectation.points;
+      if (edge.source !== expectation.source || edge.target !== expectation.target) fail(edge.id, 'wrong dependency topology');
+      if (distance(first, { x: source.right, y: (source.top + source.bottom) / 2 }) > epsilon
+        || distance(last, { x: target.left, y: (target.top + target.bottom) / 2 }) > epsilon) fail(edge.id, 'wrong fixed left-to-right ports');
+      const initial = tangent(route[0]!, 0); const final = tangent(route.at(-1)!, 1);
+      if (initial.x <= 0 || final.x <= 0 || Math.abs(initial.y) > epsilon || Math.abs(final.y) > epsilon) fail(edge.id, 'endpoint direction is not horizontal left-to-right');
+      const controls = route.filter((segment) => segment.kind === 'Q');
+      for (const segment of controls) {
+        if (distance(segment.from, segment.control!) > 12 + epsilon || Math.abs(distance(segment.from, segment.control!) - distance(segment.control!, segment.to)) > epsilon) fail(edge.id, 'curve exceeds its bounded symmetric corner');
+      }
+      const points = inputs.get(expectation.id);
+      if (points !== undefined) {
         if (distance(first, points[0]!) > epsilon || distance(last, points.at(-1)!) > epsilon
           || !parallel(tangent(route[0]!, 0), { x: points[1]!.x - points[0]!.x, y: points[1]!.y - points[0]!.y })
-          || !parallel(tangent(route.at(-1)!, 1), { x: points.at(-1)!.x - points.at(-2)!.x, y: points.at(-1)!.y - points.at(-2)!.y })) fail(edge.id, 'lost layout endpoints or routing tangents');
-        const controls = route.filter((segment) => segment.kind === 'Q');
-        for (const segment of controls) {
-          if (!points.some((p) => distance(p, segment.control!) <= epsilon)) fail(edge.id, 'curve control leaves layout route');
-          if (distance(segment.from, segment.control!) > 12 + epsilon || Math.abs(distance(segment.from, segment.control!) - distance(segment.control!, segment.to)) > epsilon) fail(edge.id, 'curve exceeds its bounded symmetric corner');
-        }
+          || !parallel(tangent(route.at(-1)!, 1), { x: points.at(-1)!.x - points.at(-2)!.x, y: points.at(-1)!.y - points.at(-2)!.y })) fail(edge.id, 'lost declared input endpoints or tangents');
+        for (const segment of controls) if (!points.some((p) => distance(p, segment.control!) <= epsilon)) fail(edge.id, 'curve control leaves declared compiler input');
         const distinct = points.filter((p, i) => i === 0 || distance(p, points[i - 1]!) > 1e-8);
         for (let i = 1; i < distinct.length - 1; i++) {
           const before = distinct[i - 1]!; const corner = distinct[i]!; const after = distinct[i + 1]!;
@@ -138,7 +157,7 @@ export const inspectDependencySnapshot = (snapshot: DependencySnapshot, expected
           const turn = Math.abs(incoming.x * outgoing.y - incoming.y * outgoing.x) / (distance(before, corner) * distance(corner, after));
           if (turn <= 1e-8) continue;
           const curve = controls.find((segment) => distance(segment.control!, corner) <= epsilon);
-          if (curve === undefined || !parallel(tangent(curve, 0), incoming) || !parallel(tangent(curve, 1), outgoing)) fail(edge.id, 'missing layout corner or wrong corner tangents');
+          if (curve === undefined || !parallel(tangent(curve, 0), incoming) || !parallel(tangent(curve, 1), outgoing)) fail(edge.id, 'curve omits declared input corner or changes its tangents');
         }
       }
       for (let i = 1; i < route.length; i++) if (!parallel(tangent(route[i - 1]!, 1), tangent(route[i]!, 0))) fail(edge.id, 'nonsmooth route join');
@@ -219,4 +238,16 @@ export const captureDependencySnapshot = (page: Page): Promise<DependencySnapsho
       }),
   };
 });
-export const checkDependencyGeometry = async (page: Page, expected: GeometryExpectation): Promise<string[]> => inspectDependencySnapshot(await captureDependencySnapshot(page), expected);
+export const summarizeGeometryFailures = (failures: readonly string[]): { total: number; examples: string[] } => ({ total: failures.length, examples: failures.slice(0, 12) });
+let failureSequence = 0;
+export const checkDependencyGeometry = async (page: Page, expected: GeometryExpectation, info: TestInfo, compilerInputs?: readonly DeclaredCurveInput[]): Promise<{ total: number; examples: string[] }> => {
+  const snapshot = await captureDependencySnapshot(page);
+  const failures = inspectDependencySnapshot(snapshot, expected, compilerInputs);
+  if (failures.length > 0) {
+    const name = `dependency-geometry-failure-${++failureSequence}`;
+    const path = info.outputPath(`${name}.json`);
+    await writeFile(path, `${JSON.stringify({ total: failures.length, failures, snapshot, expected, compilerInputs })}\n`);
+    await info.attach(name, { path, contentType: 'application/json' });
+  }
+  return summarizeGeometryFailures(failures);
+};

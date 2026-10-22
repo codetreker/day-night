@@ -31,9 +31,11 @@ selected task, all ancestors and their connecting edges. Detail resource
 selection remains independent, with sibling card controls and one centered
 dialog shared by all detail entry points.
 
-Smooth routes retain Dagre's intermediate points, rounding local bends with
-bounded quadratic curves. Long straight spans retain the local-axis dash
-painting strategy. One compiled route owns body geometry and marker direction;
+The [routing decision](2026-10-22-task-dependency-routing.md) retains Dagre
+node positions/order and intermediate lane intent while planning fixed
+source-right-center and target-left-center ports through obstacle-free rank-gap
+channels. Bounded quadratic curves round that planned route; long straight
+spans retain the local-axis dash painting strategy. One compiled route owns body geometry and marker direction;
 independent acceptance must understand curves and continue checking complete
 coverage, dash continuity and real production timing.
 
@@ -64,7 +66,9 @@ opens keeps later selection purely presentational.
 **Use endpoint-only cubic Bézier or smoothstep paths.** Both are established
 curve mechanisms, but their endpoint-based helpers discard Dagre's routed
 waypoints. They would require renewed routing and long dashed-paint behavior.
-Local rounding preserves the layout's route intent and long straight spans.
+The original local-rounding choice preserved the layout's route intent and long
+straight spans. The later routing decision gives fixed side ports and complete
+node avoidance their own planner while retaining lane intent and long spans.
 
 **Keep one card button and add a detail link inside it.** Nested interactive
 controls have conflicting activation and keyboard behavior. Sibling native

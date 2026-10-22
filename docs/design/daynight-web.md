@@ -151,7 +151,7 @@ C 使用虚线边框与“外部前置”标签；节点仍可打开详情。投
 
 布局适配器使用固定 Dagre 3.1.1，统一设置 `rankdir: "LR"` 和
 `ranker: "longest-path"`，节点固定为 220×96，按 ID 稳定输入节点和边，减少同一
-输入重复布局时的跳动。返回坐标转换为左上角位置并保留边路径点；空投影在调用
+输入重复布局时的跳动。返回坐标转换为左上角位置；路线规划保留中间 lane 意图，以右侧中心到左侧中心的固定端口，经无障碍 rank 间通道避让全部卡片。空投影在调用
 Dagre 前返回零尺寸，非空几何无效时明确失败。只在展开或新快照到达后计算布局；
 视口缩放与选择不触发重新布局。
 
@@ -221,7 +221,7 @@ React Flow 固定为 12.12.0，拥有 220×96 节点、原生测量、视口、�
 
 选择不持久化，切换项目、根或页签以及卸载画布时清除。成功刷新仍可见的 ID 时重算闭包，已移出投影则清除；若焦点控件随刷新删除，恢复到可用图工具栏。失败保留旧快照和选择。完整上下文早于选择完成，选择不增删节点、投影、布局或重新适应视口。
 
-边由公开 `ViewportPortal` 中一个 memoized SVG 拥有。`task-graph/routes.ts` 的 `compileDependencyRoute(points, dashed)` 消费同一 `CanvasLayout` 的 Dagre points，生成整条标准 `d` 和外部虚线 `pieces`。保留稳定 ID、source/target 身份、首尾矩形交点及原生 marker；连续重复点和同向共线冗余点先移除，非共线转角的入、出段分别裁切 `min(12, 入段长度/2, 出段长度/2)`，以原转角为控制点生成二次 Bézier `Q`。标准路径使用 `M/L/Q`，保留首尾方向；无效非有限坐标显式失败。
+边由公开 `ViewportPortal` 中一个 memoized SVG 拥有。Dagre 保留节点坐标、左右 rank、排序及中间 lane 意图；`routing.ts` 的 `planDependencyRoutes(nodes, edges)` 接收包含 id/left/top/right/bottom 的 `RoutingNode` 矩形和边，从前置右侧中心到后续左侧中心规划路线；布局适配器按固定尺寸建立矩形并调用一次。规划器复用列及纵向间隔索引，保留卡片列内的中间 Dagre anchor 与已畅通直段，受阻路段经列内自由行和 rank 间中点通道避让；自由行距卡片至少 16 单位，12 单位扩张矩形检查保护圆角，x 始终向前。规划后点列放入 `CanvasLayout`。`task-graph/routes.ts` 的 `compileDependencyRoute(points, dashed)` 将该点列编译成整条标准 `d` 和外部虚线 `pieces`。保留稳定 ID、source/target 身份及原生 marker；连续重复点和同向共线冗余点先移除，非共线转角的入、出段分别裁切 `min(12, 入段长度/2, 出段长度/2)`，以原转角为控制点生成二次 Bézier `Q`。标准路径使用 `M/L/Q`，首尾水平方向遵循固定左右侧端口；无效非有限坐标显式失败。
 
 实线使用标准路径原生描边，外部 canonical 路线关闭自身 body stroke，保留 marker 和 1.5 描边宽度，虚线 body 由独立 paint pieces 绘制。长直线继续使用局部水平 `<line>` 和单位旋转/平移，短曲线使用局部 `path`。`dashes.ts` 拥有只读 `DashPiece` 类型和 5/4、周期 9 的常量；line 保存起点、长度、旋转和 `startDistance`，path 保存 `d` 与 `startDistance`。
 
@@ -270,9 +270,9 @@ packages/daynight-server/
 | api/client、api/parse | 相对 `/api` 请求、AbortSignal、JSON/附件 DTO 校验、文件传输、HEAD 与 typed error | 不引用组件和图布局 |
 | projects hooks | 列表游标、完整图快照、加载/刷新状态、按项目隔离的视图偏好 | 图读取调用 api 并交给 model；偏好只访问浏览器存储 |
 | task-graph/model | 根、可达集合、外部前置、统计与共享关系 | 仅依赖 DTO 类型与标准集合 |
-| task-graph/layout | 将投影映射为确定的节点坐标和边 | 依赖 model 与 Dagre |
+| task-graph/layout 与路线规划 | 保留 Dagre 节点布局，生成固定侧端口及避让全部卡片的 rank 通道路线 | 依赖 model、Dagre 与纯几何规划 |
 | React Flow 组件 | 视口、只读节点、缩放、平移、局部依赖选择与独立详情入口 | 接收完整索引、布局和 onOpenTask，不调用 API |
-| 路线编译与虚线分解 | Dagre 点列的 M/L/Q 圆角标准路径、实际曲线弧长和局部轴向 paint pieces | 只依赖布局坐标类型，不访问 DOM、视口或 API |
+| 路线编译与虚线分解 | 规划后点列的 M/L/Q 圆角标准路径、实际曲线弧长和局部轴向 paint pieces | 只依赖布局坐标类型，不访问 DOM、视口或 API |
 | 依赖 SVG | 公开 ViewportPortal 内的完整标准路线、三种 marker、派生 body paint 与可访问语义 | 复用编译后几何和视口变换，选择只更新样式，不订阅逐边 store 状态 |
 | TaskDrawer | 当前 taskId 的详情、关系跳转、portal、焦点和关闭 | 组合详情、PR 与附件区域；不修改图快照 |
 | 附件 hook/model | 当前 project/task 的分页、写状态、选择、预览状态及目录树 | 调用 api；不修改详情或图快照 |
@@ -665,7 +665,7 @@ CDP timeline、User Timing、frame 与 GC 事件关联浏览器内的输入/条�
 绘制分解后，已有 open/初始 readiness 的 countsDirty 检查还要求 SVG 声明的
 `data-paint-piece-count` 为显式非负安全整数，且与实际 `.task-dependency-paint-piece`
 数量一致；1,000 节点及其主体/详情控件与完整 999/5,000 canonical 路线检查继续保留。独立
-几何判断解析标准 `M/L/Q`，用精确二次曲线/矩形交点验证节点避让，用独立的二次曲线速度解析积分及近直线几何界计算弧长，检查端点、最终切线和全部边覆盖；通过实际 CTM 将 pieces 映射回标准曲线弧长，验证有序覆盖、无跳段/重叠、5/4 相位、gap 中点切缝、单位旋转与 marker。`dependency-geometry.test.ts` 中缺边、错误箭头、穿节点曲线、相位偏差和 paint coverage 负例必须失败；判断器不导入生产路线生成器或图模型作为期望值。
+几何判断解析标准 `M/L/Q`，用精确二次曲线/矩形交点验证节点避让，用独立的二次曲线速度解析积分及近直线几何界计算弧长，按实际 DOM 卡片矩形检查固定右侧中心/左侧中心端口，要求首尾为正向水平切线，并检查全部边覆盖；通过实际 CTM 将 pieces 映射回标准曲线弧长，验证有序覆盖、无跳段/重叠、5/4 相位、gap 中点切缝、单位旋转与 marker。`dependency-geometry.test.ts` 中缺边、错误箭头、穿节点曲线、相位偏差和 paint coverage 负例必须失败。`GeometryExpectation` 仅含从 API 任务身份、`dependsOn` 闭包独立派生的节点/边与 external 标志，功能和容量场景以 `expectedDependencyTopology(tasks, rootId)` 从 API fixture 建立该预期。`checkDependencyGeometry(page, expected, info, compilerInputs?)` 的可选 `compilerInputs` 单独声明布局传入编译器的点列，只检验编译忠实度，不能作为规划器几何有效或预期编译曲线的依据。实际 DOM 固定左右端口、首尾正向水平切线、全部节点避让、每条 Q 的不超过 12 单位对称裁切及相切、完整 paint coverage、真实弧长、虚线相位和 marker 检查始终执行；容量场景及未提供 compiler inputs 时也保持完整。判断器不复制生产规划器。
 依赖选择的语义检查在一次 browser evaluation 中捕获全部节点和边，再与独立派生、按 ID 排序的期望值做完整精确比较；保留身份、控件/role、pressed、选择状态、状态色、边框/底色、marker、虚线 paint 和 passivity 等全部字段。批量观察避免每个元素分别产生 Playwright 协议断言及 trace step，不抽样、不减少检查。节点、标准路线、paint pieces 和视口稳定性及独立几何判断继续完整执行；交互顺序、固定图、五次重复、预算和场景 timeout 保持不变。
 
 大共享图的完整分解几何检查在五次计时之后执行，close → zoom 区间不增加读回或

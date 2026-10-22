@@ -1,5 +1,6 @@
 import { Graph, layout, type EdgeLabel, type GraphLabel, type NodeLabel } from '@dagrejs/dagre';
 import type { RootProjection } from './model';
+import { planDependencyRoutes } from './routing';
 
 export const TASK_NODE_WIDTH = 220;
 export const TASK_NODE_HEIGHT = 96;
@@ -75,5 +76,12 @@ export const layoutGraph = (projection: RootProjection): CanvasLayout => {
     };
   });
 
-  return { nodes, edges, width, height };
+  const routedEdges = planDependencyRoutes(nodes.map((node) => ({
+    id: node.id,
+    left: node.position.x,
+    top: node.position.y,
+    right: node.position.x + TASK_NODE_WIDTH,
+    bottom: node.position.y + TASK_NODE_HEIGHT,
+  })), edges);
+  return { nodes, edges: routedEdges, width, height };
 };

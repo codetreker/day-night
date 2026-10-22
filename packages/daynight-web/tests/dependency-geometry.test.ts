@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { inspectDependencySnapshot, parseCurve, referenceLength, type DependencySnapshot, type GeometryExpectation } from './e2e/dependency-geometry';
+import { expectedDependencyTopology, inspectDependencySnapshot, parseCurve, referenceLength, summarizeGeometryFailures, type DependencySnapshot, type GeometryExpectation } from './e2e/dependency-geometry';
 
 const d = 'M100,50 L188,50 Q200,50 200,62 L200,88 Q200,100 212,100 L238,100 Q250,100 250,88 L250,62 Q250,50 262,50 L300,50';
 const color = 'rgb(171, 178, 199)';
-const expected: GeometryExpectation = { nodes: [{ id: 'source' }, { id: 'target' }], edges: [{ id: 'source->target', source: 'source', target: 'target', external: true, points: [{ x: 100, y: 50 }, { x: 200, y: 50 }, { x: 200, y: 100 }, { x: 250, y: 100 }, { x: 250, y: 50 }, { x: 300, y: 50 }] }] };
+const expected: GeometryExpectation = { nodes: [{ id: 'source' }, { id: 'target' }], edges: [{ id: 'source->target', source: 'source', target: 'target', external: true }] };
+const compilerInputs = [{ id: 'source->target', points: [{ x: 100, y: 50 }, { x: 200, y: 50 }, { x: 200, y: 100 }, { x: 250, y: 100 }, { x: 250, y: 50 }, { x: 300, y: 50 }] }];
 const snapshot = (): DependencySnapshot => ({
   nodes: [{ id: 'source', left: 0, top: 0, right: 100, bottom: 100 }, { id: 'target', left: 300, top: 0, right: 400, bottom: 100 }],
   edges: [{ id: 'source->target', source: 'source', target: 'target', d, dashed: true, stroke: 'none', color, marker: '#arrow', pieces: [
@@ -16,6 +17,28 @@ const snapshot = (): DependencySnapshot => ({
 describe('independent production dependency geometry oracle', () => {
   it('accepts smooth complete quadratics and native dashed paint independently of production routes', () => {
     expect(inspectDependencySnapshot(snapshot(), expected)).toEqual([]);
+  });
+  it('derives projection identities only from API dependencies, including complete upstream context', () => {
+    expect(expectedDependencyTopology([
+      { id: 'A', dependsOn: [] }, { id: 'C', dependsOn: ['A', 'X'] }, { id: 'P', dependsOn: [] },
+      { id: 'X', dependsOn: ['P'] }, { id: 'Y', dependsOn: ['X'] }, { id: 'Z', dependsOn: [] },
+    ], 'A')).toEqual({
+      nodes: [{ id: 'A' }, { id: 'C' }, { id: 'P' }, { id: 'X' }],
+      edges: [{ id: 'A->C', source: 'A', target: 'C', external: false }, { id: 'X->C', source: 'X', target: 'C', external: true }, { id: 'P->X', source: 'P', target: 'X', external: true }],
+    });
+  });
+  it('checks actual quadratic bounds without any declared compiler input', () => {
+    const value = snapshot(); value.edges[0]!.d = d.replace('Q200,50', 'Q205,50');
+    expect(inspectDependencySnapshot(value, expected).some((failure) => failure.includes('bounded symmetric corner'))).toBe(true);
+  });
+  it('separates declared compiler-input fidelity from independent topology and route validity', () => {
+    const value = snapshot();
+    expect(inspectDependencySnapshot(value, expected)).toEqual([]);
+    expect(inspectDependencySnapshot(value, expected, compilerInputs)).toEqual([]);
+    const changedInput = [{ id: 'source->target', points: compilerInputs[0]!.points.map((p) => p.x === 200 && p.y === 50 ? { x: 201, y: 50 } : p) }];
+    expect(inspectDependencySnapshot(value, expected, changedInput).some((failure) => failure.includes('declared compiler input'))).toBe(true);
+    const wrongTopology: GeometryExpectation = { nodes: expected.nodes, edges: [{ ...expected.edges[0]!, source: 'target', target: 'source' }] };
+    expect(inspectDependencySnapshot(value, wrongTopology, compilerInputs).some((failure) => failure.includes('wrong dependency topology'))).toBe(true);
   });
   it('rejects missing edges, wrong arrows, curves through nodes, and true-arclength phase deviations', () => {
     const missing = snapshot(); missing.edges = []; missing.declaredPieces = 0;
@@ -33,9 +56,9 @@ describe('independent production dependency geometry oracle', () => {
     const changed = snapshot(); changed.edges[0]!.pieces[0]!.d = d.replace('Q200,50', 'Q199,50');
     expect(inspectDependencySnapshot(changed, expected).some((failure) => failure.includes('paint curve differs'))).toBe(true);
   });
-  it('rejects smooth shortcuts that drop a Dagre routing corner', () => {
+  it('rejects smooth shortcuts that drop a planned routing corner', () => {
     const value = snapshot(); value.edges[0]!.d = 'M100,50 L300,50'; value.edges[0]!.pieces[0]!.d = 'M100,50 L300,50';
-    expect(inspectDependencySnapshot(value, expected).some((failure) => failure.includes('missing layout corner'))).toBe(true);
+    expect(inspectDependencySnapshot(value, expected, compilerInputs).some((failure) => failure.includes('declared input corner'))).toBe(true);
   });
   it('checks paint seams and phase after a quadratic using true curve arclength', () => {
     const value = snapshot();
@@ -52,7 +75,7 @@ describe('independent production dependency geometry oracle', () => {
     value.edges[0]!.pieces[1]!.phase = 7.2;
     expect(inspectDependencySnapshot(value, expected).some((failure) => failure.includes('dash phase'))).toBe(true);
   });
-  it('resolves the hosted diagonal SVG endpoint using graph distance after native numeric rounding', () => {
+  it('rejects obsolete top-port geometry without mistaking native rounding for missing paint', () => {
     const value = snapshot();
     value.nodes = [{ id: 'source', left: 316, top: 32, right: 536, bottom: 128 }, { id: 'target', left: 600, top: 224, right: 820, bottom: 320 }];
     const edge = value.edges[0]!;
@@ -64,24 +87,46 @@ describe('independent production dependency geometry oracle', () => {
         matrix: [0.5946265459060669, 0.8040021061897278, -0.8040021061897278, 0.5946265459060669, 586.2503051757812, 104.67650604248047] },
     ];
     value.declaredPieces = 2;
-    const routed: GeometryExpectation = { nodes: expected.nodes, edges: [{ ...expected.edges[0]!, points: [{ x: 536, y: 80 }, { x: 568, y: 80 }, { x: 674.5, y: 224 }] }] };
-    expect(inspectDependencySnapshot(value, routed)).toEqual([]);
+    const inputs = [{ id: expected.edges[0]!.id, points: [{ x: 536, y: 80 }, { x: 568, y: 80 }, { x: 674.5, y: 224 }] }];
+    const failures = inspectDependencySnapshot(value, expected, inputs);
+    expect(failures).toEqual(['source->target: wrong fixed left-to-right ports', 'source->target: endpoint direction is not horizontal left-to-right']);
     const gap = structuredClone(value); gap.edges[0]!.pieces[1]!.d = 'M0,0 L148.31192626953125,0';
-    expect(inspectDependencySnapshot(gap, routed).some((failure) => failure.includes('incomplete canonical paint coverage'))).toBe(true);
+    expect(inspectDependencySnapshot(gap, expected, inputs).some((failure) => failure.includes('incomplete canonical paint coverage'))).toBe(true);
     const offRoute = structuredClone(value); offRoute.edges[0]!.pieces[1]!.matrix[4]! += 0.05;
-    expect(inspectDependencySnapshot(offRoute, routed).some((failure) => failure.includes('canonical coverage'))).toBe(true);
+    expect(inspectDependencySnapshot(offRoute, expected, inputs).some((failure) => failure.includes('canonical coverage'))).toBe(true);
     const phase = structuredClone(value); phase.edges[0]!.pieces[1]!.phase = 7.2;
-    expect(inspectDependencySnapshot(phase, routed).some((failure) => failure.includes('dash phase'))).toBe(true);
+    expect(inspectDependencySnapshot(phase, expected, inputs).some((failure) => failure.includes('dash phase'))).toBe(true);
+  });
+  it('resolves native SVG rounding at fixed horizontal ports in graph units', () => {
+    const value = snapshot();
+    const start = 675.12345; const end = start + 148.41192927402753;
+    value.nodes = [{ id: 'source', left: start - 220, top: 32, right: start, bottom: 128 }, { id: 'target', left: end, top: 32, right: end + 220, bottom: 128 }];
+    value.edges[0]!.d = `M${start},80 L${end},80`;
+    value.edges[0]!.pieces[0] = { ...value.edges[0]!.pieces[0]!, d: 'M0,0 L148.41192626953125,0', line: true, matrix: [1, 0, 0, 1, 675.1234741210938, 80] };
+    const inputs = [{ id: expected.edges[0]!.id, points: [{ x: start, y: 80 }, { x: end, y: 80 }] }];
+    expect(inspectDependencySnapshot(value, expected, inputs)).toEqual([]);
+  });
+  it('rejects shifted ports and diagonal arrival even when endpoints remain on a card border', () => {
+    const shifted = snapshot(); shifted.edges[0]!.d = d.replace('M100,50', 'M100,49');
+    expect(inspectDependencySnapshot(shifted, expected).some((failure) => failure.includes('wrong fixed left-to-right ports'))).toBe(true);
+    const diagonal = snapshot(); diagonal.edges[0]!.d = d.replace('L300,50', 'Q280,60 300,50');
+    expect(inspectDependencySnapshot(diagonal, expected).some((failure) => failure.includes('endpoint direction is not horizontal'))).toBe(true);
+  });
+  it('reports the full failure count with bounded examples without discarding any input failures', () => {
+    const failures = Array.from({ length: 25 }, (_, index) => `edge-${index}: collision`);
+    expect(summarizeGeometryFailures(failures)).toEqual({ total: 25, examples: failures.slice(0, 12) });
+    expect(failures).toHaveLength(25);
+    expect(summarizeGeometryFailures([])).toEqual({ total: 0, examples: [] });
   });
   it('rejects real endpoint gaps on long lines without a length-dependent parameter allowance', () => {
     const value = snapshot();
     value.nodes[1] = { id: 'target', left: 68000100, top: 0, right: 68000200, bottom: 100 };
     value.edges[0]!.d = 'M100,50 L68000100,50';
     value.edges[0]!.pieces[0] = { ...value.edges[0]!.pieces[0]!, d: 'M0,0 L68000000,0', line: true, matrix: [1, 0, 0, 1, 100, 50] };
-    const routed: GeometryExpectation = { nodes: expected.nodes, edges: [{ ...expected.edges[0]!, points: [{ x: 100, y: 50 }, { x: 68000100, y: 50 }] }] };
-    expect(inspectDependencySnapshot(value, routed)).toEqual([]);
+    const inputs = [{ id: expected.edges[0]!.id, points: [{ x: 100, y: 50 }, { x: 68000100, y: 50 }] }];
+    expect(inspectDependencySnapshot(value, expected, inputs)).toEqual([]);
     value.edges[0]!.pieces[0]!.d = 'M0,0 L67999999.9,0';
-    expect(inspectDependencySnapshot(value, routed).some((failure) => failure.includes('incomplete canonical paint coverage'))).toBe(true);
+    expect(inspectDependencySnapshot(value, expected, inputs).some((failure) => failure.includes('incomplete canonical paint coverage'))).toBe(true);
   });
   it('bounds a quadratic arc independently and handles enormous straight distances without sampling them', () => {
     const segment = parseCurve('M0,0 Q0,1 1,1')[0]!;

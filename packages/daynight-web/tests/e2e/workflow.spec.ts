@@ -4,7 +4,7 @@ import { test, expect, createProject, createTask, updateTask, withDependencyFail
 import { parseTaskGraph } from '../../src/api/parse';
 import { buildGraphIndex, projectRoot } from '../../src/features/task-graph/model';
 import { layoutGraph } from '../../src/features/task-graph/layout';
-import { checkDependencyGeometry } from './dependency-geometry';
+import { checkDependencyGeometry, expectedDependencyTopology } from './dependency-geometry';
 import type { PullRequestProperty } from '../../src/api/types';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
@@ -198,13 +198,15 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   await expect(page.locator('.react-flow__edge')).toHaveCount(7);
   const graphResponse = await request.get(`/api/v1/projects/${project.id}/task-graph`);
   expect(graphResponse.status()).toBe(200);
-  const graphIndex = buildGraphIndex(parseTaskGraph(await graphResponse.json(), project.id));
+  const graph = await graphResponse.json() as { tasks: { id: string; dependsOn: string[] }[] };
+  const graphIndex = buildGraphIndex(parseTaskGraph(graph, project.id));
   const checkEdges = async (rootId: string): Promise<void> => {
-    const expected = layoutGraph(projectRoot(graphIndex, rootId));
+    const expected = expectedDependencyTopology(graph.tasks, rootId);
+    const compilerInputs = layoutGraph(projectRoot(graphIndex, rootId)).edges.map(({ id, points }) => ({ id, points }));
     await expect(page.locator('.task-dependency-edges')).toHaveCount(1);
     await expect(page.locator('.task-dependency-edge')).toHaveCount(expected.edges.length);
-    const diagnostics = await checkDependencyGeometry(page, expected);
-    expect(diagnostics, 'Every smooth dependency follows its routed endpoints and transformed task boundaries').toEqual([]);
+    const diagnostics = await checkDependencyGeometry(page, expected, info, compilerInputs);
+    expect(diagnostics, 'Every smooth dependency uses fixed left-to-right ports, avoids every card and preserves complete native paint').toEqual({ total: 0, examples: [] });
   };
   await test.step('keeps every static dependency aligned with task nodes through zoom and pan', async () => {
     await checkEdges(a.id);

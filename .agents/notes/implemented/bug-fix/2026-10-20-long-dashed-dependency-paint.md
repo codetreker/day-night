@@ -26,7 +26,10 @@ The later
 replaces canonical polyline corners with bounded quadratic curves and compiles
 actual curved arc length, while retaining the axis-local long-line strategy,
 5/4 phase and native marker ownership. It also adds synchronized body/arrow
-styles through three bounded marker variants. This note preserves the original
+styles through three bounded marker variants. The
+[routing decision](../architecture/2026-10-22-task-dependency-routing.md) separately
+replaces raw Dagre endpoints with fixed side ports and obstacle-free rank-gap
+channels while retaining node layout and local-axis long-line paint. This note preserves the original
 raster evidence and the reasons the rendering strategy remains necessary.
 
 The original `decomposeDashedRoute` helper used the existing 5/4 dash pattern and
