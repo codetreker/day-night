@@ -171,7 +171,9 @@ src/
 ```
 
 `main.ts` 是稳定的可执行入口，向应用传递包版本和从该入口确定的包目录；编译后仍为
-`dist/main.js`。`cli/context.ts` 只描述客户端上下文：版本、包目录、输入输出，以及
+`dist/main.js`。包的 `bin` 将 `daynight` 和短命令 `dn` 同时指向该文件，
+两者共用分发、配置和生命周期；帮助及诊断沿用 `daynight`。根命令树的 `aliases`
+登记 `dn`，供两种补全生成器使用。`cli/context.ts` 只描述客户端上下文：版本、包目录、输入输出，以及
 用户主目录和工作目录的惰性查询函数；不放入已解析的 review 路径、配置或运行函数。
 `cli/commands.ts` 组合各命令的轻量定义并保存异步执行入口；`cli/application.ts`
 只在选中命令时调用加载函数。`cli/schema.ts` 定义命令、别名、选项和值类型、位置
@@ -221,7 +223,7 @@ review 的配置和路径类型明确以 `ReviewConfiguration`、`ReviewPaths` �
 普通子进程不能修改父 shell 的函数注册，`completion setup` 输出既有 source 命令
 供当前会话启用。
 
-脚本在 source 时注册 `daynight` 补全，Bash 检查版本下限，zsh 要求调用者已完成
+脚本在 source 时为 `daynight` 和 `dn` 注册同一组补全函数，Bash 检查版本下限，zsh 要求调用者已完成
 `compinit`，缺少初始化时明确报错并加载失败。按 Tab 时只使用 shell 内存中的语法
 和本地目录枚举，不启动 Node、
 daynight 或网络请求。参数语法保留原有唯一帮助参数、remote 前后一次 `--path`、
@@ -406,7 +408,7 @@ addon 可能阻止替换，npm 失败直接可见。
 生成产物，防止模块移动后保留旧的可执行文件。构建还将 review 的完整内置 skill
 bundle 复制到 `dist/commands/review/skills/daynight-review/`，由既有 `dist` 发布规则
 纳入安装包。清理和资源复制脚本从自身位置定位目录，调用者工作目录不会改变目标。
-包的 bin 及发布入口保持 `dist/main.js`。资源定位沿用稳定入口传入的包目录；
+包的 `daynight` 和 `dn` bin 及发布入口均为 `dist/main.js`。资源定位沿用稳定入口传入的包目录；
 [review skill 设计](daynight-review-skill.md)定义捕获、快照和加载流程。
 
 独立的普通测试及安装验收命令各自先构建包，既验证源码职责，也通过编译产物验证

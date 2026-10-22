@@ -6,7 +6,7 @@ task 命令、安装产物、真实服务及默认预算验收已完成并通过
 可用命令和验证入口见[仓库 README](../../README.md)，完整交付范围见
 [project/task 需求](daynight-project-task.md)及[任务清单](../design/daynight-project-task-tasks.md)。
 
-Daynight 是一个组合命令的客户端工具包。npm 包提供统一的 `daynight` 入口，命令模块
+Daynight 是一个组合命令的客户端工具包。npm 包提供统一的 `daynight` 入口及短命令 `dn`，命令模块
 拥有各自的业务行为、依赖和生命周期。`review` 是 GitHub PR 审查模块；`update` 管理
 整个客户端的 npm 全局安装；`setup` 按能力保存配置；`completion` 生成 Bash 和 zsh
 的原生补全脚本并安装启动配置；`skill` 安装随包分发的公开 `using-daynight` skill。独立的 Go 服务和浏览器应用保留自己的产品需求
@@ -23,8 +23,9 @@ Daynight 是一个组合命令的客户端工具包。npm 包提供统一的 `da
 
 ### C1. 包与平台
 
-npm 包名为 `@codetreker/daynight`，可执行命令为 `daynight`，TypeScript 应用代码放在
-`packages/daynight/`。包的可执行入口固定为 `dist/main.js`。Linux、macOS 和 Windows
+npm 包名为 `@codetreker/daynight`，可执行命令为 `daynight` 和 `dn`，TypeScript 应用代码放在
+`packages/daynight/`。两个名称均由包的 `bin` 声明指向 `dist/main.js`，安装后可直接使用，无需手动设置 shell alias。
+它们共享全部命令、参数、配置、副作用、输出和退出码；帮助及诊断使用规范名称 `daynight`。Linux、macOS 和 Windows
 必须支持同一组命令和对应的业务保证；平台相关的命令执行、输出处理和退出行为必须
 经过原生验证。shell 补全的运行环境由 C5 单独约束。
 
@@ -166,7 +167,7 @@ npm 替换失败；该失败必须明确报告。
 
 `daynight completion bash` 为 Bash ≥4.2 生成原生补全脚本，`daynight completion zsh`
 为已初始化 `compinit` 的 zsh 生成原生补全脚本。成功时 stdout 只能包含可加载的完整
-脚本；未知 shell、多余参数和未知选项按 C2 拒绝。脚本必须显式注册 `daynight` 的
+脚本；未知 shell、多余参数和未知选项按 C2 拒绝。脚本必须显式注册 `daynight` 和 `dn` 的
 补全。zsh 缺少初始化时给出明确诊断并加载失败；Bash 低于版本下限时同样明确拒绝。
 生成操作不修改 shell 启动文件。当前会话通过 `source <(daynight completion bash)`
 或在 `compinit` 之后执行 `source <(daynight completion zsh)` 启用。持久安装由 C7
@@ -274,6 +275,7 @@ shell 的内存状态；输出对应的既有 `source <(daynight completion bash
 
 | 场景 | 必需结果 | 对应需求 |
 |---|---|---|
+| 安装 npm 包后通过 `daynight` 或 `dn` 调用相同参数，包括帮助、版本及自更新。 | 两个启动器使用同一入口，输出、配置与退出行为一致；更新后两者指向同一新版本。 | C1, C2, C4 |
 | 无配置、SQLite 不可加载且 PATH 缺少 review 工具时调用根帮助或版本。 | 输出帮助或当前包版本，退出 0，未解析用户主目录或触及 review 数据。 | C1, C2, C3 |
 | 调用裸 `review`、裸 `completion`、组帮助或任何操作帮助。 | 显示对应帮助，退出 0，未进入业务操作或加载审查运行时。 | C2, C3 |
 | 调用未知根命令、旧入口、不完整参数或未知操作选项。 | 输出错误及对应帮助命令，退出 2；未执行配置、审查或更新。 | C2, C3 |

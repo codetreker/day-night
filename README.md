@@ -83,8 +83,9 @@ same-origin executable HTML previews retain their existing execution model after
 authentication is delivered; attachment requests gain project-member checks.
 Existing projects will receive membership data manually outside that work.
 
-The `@codetreker/daynight` package provides the `daynight` client. Its root entry
-lists commands and reports the package version; each command owns its business
+The `@codetreker/daynight` package provides the `daynight` client and its `dn`
+short command. Both names use the same entry, commands and configuration. Its
+root entry lists commands and reports the package version; each command owns its business
 dependencies and lifecycle. `review` polls configured repositories, maintains
 dedicated local clones and PR worktrees, and launches Copilot in a retained
 session for each eligible PR using a bundled review skill. SQLite preserves initialization boundaries, review
@@ -233,7 +234,7 @@ same compiled output. `pnpm build` clears the package's `dist/` before emitting
 bundles into `dist/commands/review/skills/daynight-review/` and
 `dist/commands/skill/skills/using-daynight/`. Complete relative resources are included;
 repository workflow skills are not scanned for publication. The package's
-`daynight` bin points to the stable JavaScript entry.
+`daynight` and `dn` bins point to the same stable JavaScript entry.
 Source tests mirror `cli/`, `config/`, `api/`, `commands/` and `platform/`
 ownership, with build and version-policy tests in `test/tooling/`.
 The pnpm dependency store is local to `.tmp/pnpm-store`. Native skill terminal
@@ -587,13 +588,17 @@ Install the CLI with npm:
 
 ```bash
 npm install --global @codetreker/daynight
-daynight --version
+dn --version
 ```
+
+The installation provides both `daynight` and `dn`; every command works with
+either name, for example `dn task list` or `dn skill install`. Help and diagnostics
+use the canonical `daynight` spelling.
 
 Update that npm global installation with:
 
 ```bash
-daynight update
+dn update
 ```
 
 The command checks `@codetreker/daynight`'s `latest` version in the configured npm
@@ -798,6 +803,7 @@ Setup checks file contents without executing them. Custom early returns or later
 commands that remove registrations can prevent a startup file from enabling
 completion; verify such configuration by starting the shell.
 
+The generated scripts register completion for both `daynight` and `dn`.
 Completion suggests commands, nested operations, aliases, options, shell names
 and local directories for `review add-repo --path` and `setup --review-path`.
 zsh also displays descriptions.

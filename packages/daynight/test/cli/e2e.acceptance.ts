@@ -133,9 +133,9 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     const installedBin = path.join(consumer, "node_modules/.bin", process.platform === "win32" ? "daynight.cmd" : "daynight");
     expect(existsSync(installedBin)).toBe(true);
     const installedPackage = path.join(consumer, "node_modules", "@codetreker", "daynight");
-    const installed = JSON.parse(readFileSync(path.join(installedPackage, "package.json"), "utf8")) as { name: string; version: string; bin: { daynight: string } };
+    const installed = JSON.parse(readFileSync(path.join(installedPackage, "package.json"), "utf8")) as { name: string; version: string; bin: { daynight: string; dn: string } };
     expect(installed.name).toBe("@codetreker/daynight");
-    expect(installed.bin.daynight).toBe("dist/main.js");
+    expect(installed.bin).toEqual({ daynight: "dist/main.js", dn: "dist/main.js" });
     expect(installed.version).toBe((JSON.parse(readFileSync(path.join(packageDirectory, "package.json"), "utf8")) as { version: string }).version);
     const skillRelativeDirectory = "commands/review/skills/daynight-review";
     const sourceSkillDirectory = path.join(packageDirectory, "src", skillRelativeDirectory);
@@ -176,8 +176,8 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
       return result.stdout;
     };
     const helpHome = path.join(directory, "help-only home 中文");
-    const information = (args: string[]): string => {
-      const result = crossSpawn.sync(installedBin, args, {
+    const information = (args: string[], launcher = installedBin): string => {
+      const result = crossSpawn.sync(launcher, args, {
         cwd: secondCwd, encoding: "utf8", windowsHide: true, timeout: 30_000,
         env: { ...environment, PATH: listingExecutables, NODE_OPTIONS: "", HOME: helpHome, USERPROFILE: helpHome, XDG_CONFIG_HOME: path.join(helpHome, "config") },
       });
@@ -193,6 +193,12 @@ it("runs the packed and installed CLI through a persistent native Git and SQLite
     expect(rootHelp).toMatch(/^  completion\s/m);
     expect(information(["--help"])).toBe(rootHelp);
     expect(information(["--version"])).toBe(`${installed.version}\n`);
+    const shortBin = path.join(consumer, "node_modules/.bin", process.platform === "win32" ? "dn.cmd" : "dn");
+    expect(information([], shortBin)).toBe(rootHelp);
+    expect(information(["--help"], shortBin)).toBe(rootHelp);
+    expect(information(["--version"], shortBin)).toBe(`${installed.version}\n`);
+    expect(information(["task", "create", "--help"], shortBin)).toBe(information(["task", "create", "--help"]));
+    for (const shell of ["bash", "zsh"]) expect(information(["completion", shell], shortBin)).toBe(information(["completion", shell]));
     const reviewHelp = information(["review"]);
     expect(reviewHelp).toContain("Usage: daynight review <command>");
     expect(information(["review", "--help"])).toBe(reviewHelp);

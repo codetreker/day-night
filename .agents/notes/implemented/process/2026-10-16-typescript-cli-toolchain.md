@@ -12,9 +12,9 @@ components can share its configuration and command boundary.
 
 The repository uses a pnpm workspace with application code in
 `packages/daynight/`, Node.js 24 LTS, pinned dependencies, TypeScript ESM with
-NodeNext module resolution, and emitted JavaScript. The package bin points to
-the shebang-bearing `dist/main.js`. Vitest executes source tests and compiled CLI
-probes; the test command builds before running them. A script-relative cleanup
+NodeNext module resolution, and emitted JavaScript. The `daynight` and `dn`
+package bins point to the shebang-bearing `dist/main.js`. Vitest executes source
+tests and compiled CLI probes; the test command builds before running them. A script-relative cleanup
 removes `dist/` before compilation so moved modules cannot remain in packed
 artifacts. Source tests follow client, command and platform module ownership;
 tooling tests retain build and version-policy validation. The pnpm dependency store
