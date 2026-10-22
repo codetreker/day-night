@@ -28,11 +28,9 @@ needed to use them correctly.
 
 **Project discovery.** Inside a Git worktree, task commands can omit `--project`:
 the CLI matches the origin repository URL to a project on the configured
-service. A new worktree without `.daynight/project.yml` can still discover the
-project; discovery may save the ignored binding and update `.gitignore`.
-An explicit project overrides discovery for that invocation. Keep binding files
-CLI-managed, and resolve missing or ambiguous matches rather than guessing an
-ID or creating a project to make a query succeed.
+service. An explicit project overrides discovery for that invocation. Resolve
+missing or ambiguous matches rather than guessing an ID or creating a project
+to make a query succeed.
 
 **Read scope.** Ready is a candidate page, ordered by creation rather than
 relevance. An empty page does not rule out in-progress or dependency-blocked
