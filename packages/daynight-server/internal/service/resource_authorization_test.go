@@ -13,6 +13,7 @@ import (
 	"github.com/codetreker/daynight/packages/daynight-server/internal/filestorage"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/filestorage/local"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestResourceServicesRejectAbsentPrincipals(t *testing.T) {
@@ -260,18 +261,28 @@ func TestRevokedPATCannotAuthenticateForAnotherResourceRequest(t *testing.T) {
 }
 
 func TestTaskWriteChecksMembershipAfterAcquiringProjectLock(t *testing.T) {
+	const writerCount = 5
 	f := newMembershipFixture(t)
+	config := f.database.Pool.Config()
+	// The lock holder and observer need connections while every writer is blocked.
+	config.MaxConns = writerCount + 2
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	database := &store.Store{Pool: pool}
 	admin, member := f.user(t), f.user(t)
 	project := f.project(t, admin, "Membership write ordering")
 	f.join(t, admin, member, project.ID)
-	tasks := NewTasks(f.database)
+	tasks := NewTasks(database)
 	task := createTask(t, tasks, admin, project.ID, "Unchanged")
 	todo := approveTask(t, tasks, admin, createTask(t, tasks, admin, project.ID, "Unclaimed"))
 	active := claimTask(t, tasks, admin, approveTask(t, tasks, admin, createTask(t, tasks, admin, project.ID, "Incomplete")))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	results := make(chan taskResult, 5)
-	if err := f.database.WriteProject(ctx, project.ID, func(tx *store.ProjectTx) error {
+	results := make(chan taskResult, writerCount)
+	if err := database.WriteProject(ctx, project.ID, func(tx *store.ProjectTx) error {
 		if err := tx.RemoveMember(ctx, member.UserID); err != nil {
 			return err
 		}
@@ -292,12 +303,12 @@ func TestTaskWriteChecksMembershipAfterAcquiringProjectLock(t *testing.T) {
 				results <- taskResult{task: updated, err: err}
 			}()
 		}
-		waitForTaskWriters(t, ctx, f.database, 5)
+		waitForTaskWriters(t, ctx, database, writerCount)
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for range 5 {
+	for range writerCount {
 		requireFault(t, receiveTaskResult(t, ctx, results).err, "not_found")
 	}
 	assertTaskUnchanged(t, tasks, admin, task)
