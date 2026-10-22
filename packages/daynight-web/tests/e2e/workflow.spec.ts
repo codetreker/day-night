@@ -78,7 +78,7 @@ const openProject = async (page: Page, id: string, name: string): Promise<void> 
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
 };
 
-test('project-list', scenario('project-list'), async ({ page, request }, info) => {
+test('project-list', scenario('project-list'), async ({ page, api: request }, info) => {
   const prefix = `Pagination ${randomUUID()}`;
   const projects = [];
   for (let index = 0; index < 51; index++) {
@@ -132,7 +132,7 @@ test('project-list', scenario('project-list'), async ({ page, request }, info) =
   await expect(page.getByRole('heading', { name: '还没有任务' })).toBeVisible();
 });
 
-test('project-graph', scenario('project-graph'), async ({ page, request }, info) => {
+test('project-graph', scenario('project-graph'), async ({ page, api: request }, info) => {
   const project = await createProject(request, { name: `Shared graph ${randomUUID()}` });
   const a = await createTask(request, project.id, { title: 'A 已完成根' });
   const b = await createTask(request, project.id, { title: 'B 进行中根' });
@@ -340,7 +340,7 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   });
 });
 
-test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request }, info) => {
+test('project-view-tabs', scenario('project-view-tabs'), async ({ page, api: request }, info) => {
   await page.setViewportSize({ width: 1100, height: 700 });
   const project = await createProject(request, { name: `Task views ${randomUUID()}` });
   const predecessor = await createTask(request, project.id, { title: '已经完成但仍属于任务链的前置' });
@@ -475,7 +475,7 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
   await screenshot(page, info, 'project-view-tabs');
 });
 
-test('detail-navigation', scenario('detail-navigation'), async ({ page, request }, info) => {
+test('detail-navigation', scenario('detail-navigation'), async ({ page, api: request }, info) => {
   const project = await createProject(request, { name: `Details ${randomUUID()}` });
   const a = await createTask(request, project.id, { title: '前置 <script>文本</script>', description: '前置说明' });
   await updateTask(request, project.id, a.id, { version: a.version, status: 'done' });
@@ -577,7 +577,7 @@ test('detail-navigation', scenario('detail-navigation'), async ({ page, request 
   await screenshot(page, info, 'detail-navigation');
 });
 
-test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request }, info) => {
+test('refresh-staleness', scenario('refresh-staleness'), async ({ page, api: request }, info) => {
   const project = await createProject(request, { name: `Freshness ${randomUUID()}` });
   const predecessor = await createTask(request, project.id, { title: '完成后解除阻塞的前置' });
   const dependent = await createTask(request, project.id, { title: '版本和时间保持不变的后续', dependsOn: [predecessor.id] });
@@ -645,7 +645,7 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   await screenshot(page, info, 'refresh-chain-complete');
 });
 
-test('failure-recovery', scenario('failure-recovery'), async ({ page, request }, info) => {
+test('failure-recovery', scenario('failure-recovery'), async ({ page, api: request }, info) => {
   const project = await createProject(request, { name: `Recovery ${randomUUID()}` });
   await openProject(page, project.id, project.name);
   await expect(page.getByRole('heading', { name: '还没有任务' })).toBeVisible();
@@ -722,7 +722,7 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, request },
   await expect(page.getByRole('link', { name: '返回项目列表' })).toBeVisible();
 });
 
-test('deep-links', scenario('deep-links'), async ({ page, request }, info) => {
+test('deep-links', scenario('deep-links'), async ({ page, api: request }, info) => {
   const first = await createProject(request, { name: `Route first ${randomUUID()}` });
   const second = await createProject(request, { name: `Route second ${randomUUID()}` });
   await createTask(request, first.id, { title: '首项目任务' });
@@ -779,7 +779,7 @@ test('deep-links', scenario('deep-links'), async ({ page, request }, info) => {
   await screenshot(page, info, 'deep-links');
 });
 
-test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, info) => {
+test('keyboard-focus', scenario('keyboard-focus'), async ({ page, api: request }, info) => {
   const project = await createProject(request, { name: `Keyboard ${randomUUID()}` });
   const a = await createTask(request, project.id, { title: '键盘前置任务' });
   await updateTask(request, project.id, a.id, { version: a.version, status: 'done' });
@@ -933,7 +933,7 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   await screenshot(page, info, 'keyboard-focus');
 });
 
-test('narrow-layout', scenario('narrow-layout'), async ({ page, request }, info) => {
+test('narrow-layout', scenario('narrow-layout'), async ({ page, api: request }, info) => {
   const project = await createProject(request, { name: `窄屏项目 ${'很长的项目名称😀'.repeat(12)}` });
   const pullRequests = [
     { title: '  多行标题\n第二行\t\0  ', url: `https://example.com/${'long-path-'.repeat(500)}` },

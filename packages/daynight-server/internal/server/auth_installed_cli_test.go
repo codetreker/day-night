@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/codetreker/daynight/packages/daynight-server/api"
-	"github.com/codetreker/daynight/packages/daynight-server/internal/testauth"
+	"github.com/codetreker/daynight/packages/daynight-server/testdata/testauth"
 )
 
 type identityCLIReceipt struct {

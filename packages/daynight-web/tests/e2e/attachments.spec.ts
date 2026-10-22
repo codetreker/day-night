@@ -64,7 +64,7 @@ const paintedPdf = async (page: Page, frame: Locator, info: TestInfo, source: Bu
   return metrics;
 };
 
-test('task-attachments', { annotation: { type: 'scenario', description: 'task-attachments' } }, async ({ page, request, allowAttachmentWrites }, info) => {
+test('task-attachments', { annotation: { type: 'scenario', description: 'task-attachments' } }, async ({ page, api: request, allowAttachmentWrites }, info) => {
   const project = await createProject(request, { name: `Attachments ${randomUUID()}` });
   const task = await createTask(request, project.id, { title: 'CLI 与 Web 共享同一任务附件', description: '验证文件内容、预览和单文件操作。' });
   const baseURL = info.project.use.baseURL;

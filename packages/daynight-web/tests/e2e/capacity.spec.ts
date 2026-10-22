@@ -407,7 +407,7 @@ test.describe('fixed capacity and performance @capacity', () => {
 
   for (const kind of ['chain', 'merge', 'shared', 'external'] as const satisfies readonly CapacityKind[]) {
     const scenario = `capacity-${kind}`;
-    test(`renders and operates the bounded ${kind} capacity overview`, { annotation: { type: 'scenario', description: scenario } }, async ({ page, request }, info) => {
+    test(`renders and operates the bounded ${kind} capacity overview`, { annotation: { type: 'scenario', description: scenario } }, async ({ page, api: request }, info) => {
       test.setTimeout(240_000);
       const dataset: Dataset = { scenario, nodes: 1000, edges: kind === 'chain' ? 999 : 5000, result: 'running', measurements: [], visibility: [], feedbackDiagnostics: [],
         controllerDurations: { repetitions: [] } };
@@ -518,7 +518,7 @@ test.describe('fixed capacity and performance @capacity', () => {
     });
   }
 
-  test('rejects each independent graph capacity limit without partial data', { annotation: { type: 'scenario', description: 'capacity-limits' } }, async ({ page, request }, info) => {
+  test('rejects each independent graph capacity limit without partial data', { annotation: { type: 'scenario', description: 'capacity-limits' } }, async ({ page, api: request }, info) => {
     test.setTimeout(240_000);
     const assertRefusal = async (projectId: string, nodes: number, edges: number) => {
       const response = await request.get(`/api/v1/projects/${projectId}/task-graph`);

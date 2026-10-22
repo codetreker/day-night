@@ -87,7 +87,8 @@ Acceptance uses one pinned real UniAuth fixture executable and normal browser
 handoff to obtain sessions and PATs. Only the external provider HTTP responses
 are controlled. Targets own independent App/SQLite/port/session state; they do
 not insert Daynight users, tokens or memberships to bypass the protocol.
-The preparer builds `CGO_ENABLED=0` native or architecture-specific Linux binaries
+The Go `testing.T` bootstrap helper lives under `testdata/testauth` and is
+imported only by tests, keeping it outside production packages. The preparer builds `CGO_ENABLED=0` native or architecture-specific Linux binaries
 and binds caches to target, source, toolchain and output hashes. Node.js 24's
 built-in SQLite `BEGIN IMMEDIATE` serializes shared preparation across processes,
 including checkout, source installation and binary replacement.
@@ -130,8 +131,13 @@ The ordinary Playwright trace and capacity override are therefore off. Secret
 screens are captured only after closing or masking the one-time value. Existing
 PNG/compositor oracles, custom CDP timing/frame/GC diagnostics, all assertions,
 raw report validators, capacity inputs, deadlines and resource budgets remain.
-The cost is loss of Playwright action/network trace replay on failures. Private
-protocol diagnostics and safe structured errors provide narrower investigation
+The cost is loss of Playwright action/network trace replay on failures. The
+narrow authenticated Playwright API wrapper replaces request and response-reading
+failures with safe operation/method/path/category/status/request-ID metadata;
+raw Playwright error text and causes cannot carry credential call logs into
+receipts. Invitation fragment assertions compare booleans rather than exposing
+the secret as an assertion value. Private protocol diagnostics and safe
+structured errors provide narrower investigation
 without uploading credential traffic or introducing a general artifact-redaction
 framework.
 

@@ -1,6 +1,11 @@
 package server
 
 import (
+	"context"
+	"errors"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -131,5 +136,45 @@ func TestAuthenticationConfigurationIsRequiredAndFlagsAreExplicit(t *testing.T) 
 	}))
 	if err != nil || config.AllowHTTPTestOrigin || !config.AllowLoopbackHTTP {
 		t.Fatalf("HTTPS primary origin and explicit numeric-loopback gateway rejected: %+v %v", config, err)
+	}
+}
+
+func TestInvalidAppCredentialConfigurationPrecedesResourceOpening(t *testing.T) {
+	const invalidAppID = "private:invalid-app-id"
+	const secret = "credential-not-for-diagnostics"
+	config := configuredTestConfig()
+	config.UniAuthAppID, config.UniAuthAppSecret = invalidAppID, secret
+	config.DatabaseURL = "invalid-database-configuration"
+	config.StorageRoot = filepath.Join(testStorageRoot(t), "unopened-auth-storage")
+	_, loadErr := LoadConfig(configEnvironment(map[string]string{
+		"DAYNIGHT_UNIAUTH_APP_ID":     invalidAppID,
+		"DAYNIGHT_UNIAUTH_APP_SECRET": secret,
+	}))
+	validateErr := config.Validate()
+	factoryCalled := false
+	runtime, startErr := Start(context.Background(), config, testLogger(), func(Dependencies) (http.Handler, error) {
+		factoryCalled = true
+		return http.NotFoundHandler(), nil
+	})
+	if runtime != nil || factoryCalled {
+		t.Fatal("invalid App credentials reached runtime composition")
+	}
+	for _, err := range []error{loadErr, validateErr, startErr} {
+		var failure *ConfigurationError
+		if !errors.As(err, &failure) || !strings.Contains(failure.Field, "DAYNIGHT_UNIAUTH_APP_ID") {
+			t.Fatalf("App credential syntax did not retain a configuration error: %v", err)
+		}
+		cause := errors.Unwrap(failure)
+		if cause == nil || !strings.Contains(cause.Error(), "App ID") {
+			t.Fatalf("SDK credential validation cause was lost: %v", err)
+		}
+		for _, message := range []string{err.Error(), cause.Error()} {
+			if strings.Contains(message, invalidAppID) || strings.Contains(message, secret) {
+				t.Fatal("configuration diagnostics exposed credential values")
+			}
+		}
+	}
+	if _, err := os.Stat(config.StorageRoot); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("invalid authentication configuration touched storage: %v", err)
 	}
 }

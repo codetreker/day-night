@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { test as base, expect, type APIRequestContext } from '@playwright/test';
+import { test as base, expect } from '@playwright/test';
 import { command } from '../../scripts/acceptance/process.mts';
 import { recordBrowserOwnership } from '../../scripts/acceptance/browser.mts';
 import type { TaskProperties } from '../../src/api/types';
 import { attachmentDownloadUrl } from '../../src/api/client';
-import { bearerContext, browserAuthentication } from './authentication';
+import { bearerContext, browserAuthentication, type AuthenticatedAPI } from './authentication';
 
 export { expect };
 export type AttachmentWriteExpectation = {
@@ -25,6 +25,7 @@ type AttachmentWritePolicy = {
 };
 export type BrowserWriteExpectation = { readonly method: 'POST' | 'PATCH' | 'PUT' | 'DELETE'; readonly url: string; readonly count: number };
 export const test = base.extend<{
+  api: AuthenticatedAPI;
   authentication: 'automatic' | 'visible';
   authenticatedContext: void;
   acceptanceEvidence: void;
@@ -39,7 +40,7 @@ export const test = base.extend<{
     await use();
   },
   page: async ({ page, authenticatedContext }, use) => { void authenticatedContext; await use(page); },
-  request: async ({ playwright, baseURL }, use) => {
+  api: async ({ playwright, baseURL }, use) => {
     if (baseURL === undefined) throw new Error('API fixture authentication requires the exact product origin.');
     const context = await bearerContext(playwright.request, baseURL);
     try { await use(context); } finally { await context.dispose(); }
@@ -107,7 +108,7 @@ export type Task = {
   properties: TaskProperties;
 };
 
-export const createProject = async (request: APIRequestContext, input: { name?: string; repoUrl?: string } = {}): Promise<Project> => {
+export const createProject = async (request: AuthenticatedAPI, input: { name?: string; repoUrl?: string } = {}): Promise<Project> => {
   const response = await request.post('/api/v1/projects', {
     data: { name: input.name ?? `Browser ${randomUUID()}`, repoUrl: input.repoUrl ?? 'https://github.com/example/browser-fixture' },
   });
@@ -115,7 +116,7 @@ export const createProject = async (request: APIRequestContext, input: { name?: 
   return await response.json() as Project;
 };
 
-export const createTask = async (request: APIRequestContext, projectId: string, input: {
+export const createTask = async (request: AuthenticatedAPI, projectId: string, input: {
   title: string; description?: string; dependsOn?: string[]; properties?: TaskProperties;
 }): Promise<Task> => {
   const response = await request.post(`/api/v1/projects/${projectId}/tasks`, {
@@ -125,7 +126,7 @@ export const createTask = async (request: APIRequestContext, projectId: string, 
   return await response.json() as Task;
 };
 
-export const updateTask = async (request: APIRequestContext, projectId: string, taskId: string, input: {
+export const updateTask = async (request: AuthenticatedAPI, projectId: string, taskId: string, input: {
   version: number; title?: string; description?: string; status?: Task['status']; dependsOn?: string[]; properties?: TaskProperties;
 }): Promise<Task> => {
   const response = await request.patch(`/api/v1/projects/${projectId}/tasks/${taskId}`, { data: input });

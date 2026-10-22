@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as auth from "../src/api/auth";
 import { AuthenticatedApp, parseAuthRoute } from "../src/app/AuthenticatedApp";
 import { createLocaleRender } from "./helpers/renderWithLocale";
 import { invitationStorageKey } from "../src/features/auth/invitation";
@@ -151,6 +152,66 @@ describe("authenticated application shell", () => {
     await act(async () => finishCheck(json(user(otherId, "Bob"))));
     await screen.findByRole("link", { name: "账户设置：Bob" });
     expect(screen.queryByRole("link", { name: "账户设置：Alice" })).toBeNull();
+  });
+
+  it("synchronously supersedes a pending identity check on a second external return before stale Alice data can reveal her PAT", async () => {
+    window.history.replaceState(null, "", "/account");
+    const checks: Array<{ readonly signal: AbortSignal; readonly resolve: (value: ReturnType<typeof user>) => void }> = [];
+    let identityCalls = 0;
+    vi.spyOn(auth, "me").mockImplementation((signal) => {
+      if (++identityCalls === 1) return Promise.resolve(user());
+      return new Promise<ReturnType<typeof user>>((resolve) => { checks.push({ signal, resolve }); });
+    });
+    const fetcher = vi.fn((url: string, options?: RequestInit) => Promise.resolve(url === "/api/v1/me/tokens"
+      ? options?.method === "POST" ? json({ id: otherId, name: "Device", createdAt: now, expiresAt: "2099-10-22T10:00:00Z", token: "alice-once-only" }, 201) : json({ items: [] })
+      : defaults(url)));
+    vi.stubGlobal("fetch", fetcher);
+    render(<AuthenticatedApp />);
+    fireEvent.click(await screen.findByRole("button", { name: "访问令牌" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "创建令牌" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "创建令牌" }));
+    fireEvent.change(screen.getByLabelText(/令牌名称/), { target: { value: "Device" } });
+    fireEvent.submit(document.getElementById("create-token-form")!);
+    const reveal = await screen.findByRole("dialog", { name: "访问令牌已创建" });
+    returnFromAnotherWindow();
+    await waitFor(() => expect(checks).toHaveLength(1));
+    const stale = checks[0]!;
+    let abortedDuringReturn = false;
+    const finishStaleDuringReturn = () => {
+      abortedDuringReturn = stale.signal.aborted;
+      stale.resolve(user());
+    };
+    window.addEventListener("focus", finishStaleDuringReturn);
+    try { returnFromAnotherWindow(); }
+    finally { window.removeEventListener("focus", finishStaleDuringReturn); }
+    expect(abortedDuringReturn).toBe(true);
+    await waitFor(() => expect(checks).toHaveLength(2));
+    expect(document.body).toHaveClass("auth-session-checking");
+    expect(screen.queryByRole("link", { name: "账户设置：Alice" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "重新确认当前账户" })).toBeInTheDocument();
+    expect(reveal.isConnected).toBe(true);
+    await act(async () => checks[1]!.resolve(user(otherId, "Bob")));
+    await screen.findByRole("link", { name: "账户设置：Bob" });
+    expect(reveal.isConnected).toBe(false);
+    expect(screen.queryByLabelText("一次性访问令牌")).toBeNull();
+    expect(document.body).not.toHaveClass("auth-session-checking");
+    expect(identityCalls).toBe(3);
+  });
+
+  it("starts a fresh identity check on a qualified external return after revalidation failed", async () => {
+    let identityCalls = 0;
+    install((url) => url === "/api/v1/me"
+      ? ++identityCalls === 1 ? json(user()) : identityCalls === 2 ? fail(503, "internal") : json(user(otherId, "Bob"))
+      : defaults(url));
+    render(<AuthenticatedApp />);
+    await screen.findByRole("heading", { name: "私有项目" });
+    returnFromAnotherWindow();
+    await screen.findByRole("heading", { name: "暂时无法重新确认当前账户" });
+    expect(document.body).toHaveClass("auth-session-checking");
+    returnFromAnotherWindow();
+    await screen.findByRole("link", { name: "账户设置：Bob" });
+    expect(document.body).not.toHaveClass("auth-session-checking");
+    expect(identityCalls).toBe(3);
   });
 
   it("replaces the workspace when revalidation confirms a different identity and ignores late old data", async () => {

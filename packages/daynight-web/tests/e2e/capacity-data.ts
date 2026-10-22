@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { APIRequestContext } from '@playwright/test';
+import type { AuthenticatedAPI } from './authentication';
 import { createProject, createTask, updateTask, type Project, type Task } from './fixtures';
 
 export type CapacityKind = 'chain' | 'merge' | 'shared' | 'external';
@@ -27,7 +27,7 @@ export const boundedMap = async <Input, Output>(items: readonly Input[], operati
   return result;
 };
 
-export const seedCapacity = async (request: APIRequestContext, kind: CapacityKind): Promise<CapacityFixture> => {
+export const seedCapacity = async (request: AuthenticatedAPI, kind: CapacityKind): Promise<CapacityFixture> => {
   const project = await createProject(request, { name: `Capacity ${kind} ${randomUUID()}` });
   const root = await createTask(request, project.id, { title: `${kind} source root` });
   const tasks: Task[] = [root];
@@ -104,7 +104,7 @@ export const seedCapacity = async (request: APIRequestContext, kind: CapacityKin
   return { kind, project, root, tasks, edgeCount: 5000 };
 };
 
-export const seedNodeLimit = async (request: APIRequestContext): Promise<Project> => {
+export const seedNodeLimit = async (request: AuthenticatedAPI): Promise<Project> => {
   const project = await createProject(request, { name: `Capacity node limit ${randomUUID()}` });
   await boundedMap(Array.from({ length: 1001 }, (_, index) => index), (index) =>
     createTask(request, project.id, { title: `node limit task ${index}` }));

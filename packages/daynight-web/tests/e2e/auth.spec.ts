@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { APIRequestContext, Page, TestInfo } from '@playwright/test';
+import type { Page, TestInfo } from '@playwright/test';
 import { attachmentDownloadUrl, attachmentPreviewUrl } from '../../src/api/client';
-import { bearerContext, browserAuthentication } from './authentication';
+import { authenticatedAPI, bearerContext, browserAuthentication, tokenContext, type AuthenticatedAPI } from './authentication';
 import { createProject, createTask, expect, test } from './fixtures';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
@@ -19,18 +19,18 @@ const openInvitation = async (page: Page, link: string): Promise<void> => {
   try { await page.goto(link); }
   catch { throw new Error('The invitation document could not be opened.'); }
 };
-const user = async (request: APIRequestContext): Promise<{ id: string; name: string; email: string }> => {
+const user = async (request: AuthenticatedAPI): Promise<{ id: string; name: string; email: string }> => {
   const response = await request.get('/api/v1/me');
   expect(response.status()).toBe(200);
   return await response.json() as { id: string; name: string; email: string };
 };
-const invitation = async (request: APIRequestContext, projectId: string): Promise<{ id: string; token: string }> => {
+const invitation = async (request: AuthenticatedAPI, projectId: string): Promise<{ id: string; token: string }> => {
   const response = await request.post(`/api/v1/projects/${projectId}/invitations`, { data: {} });
   expect(response.status()).toBe(201);
   const value = await response.json() as { id: string; link: string };
   return { id: value.id, token: new URL(value.link).hash.slice(1) };
 };
-const memberList = async (request: APIRequestContext, projectId: string): Promise<{ userId: string; role: string; version: number }[]> => {
+const memberList = async (request: AuthenticatedAPI, projectId: string): Promise<{ userId: string; role: string; version: number }[]> => {
   const response = await request.get(`/api/v1/projects/${projectId}/members`);
   expect(response.status()).toBe(200);
   return (await response.json() as { items: { userId: string; role: string; version: number }[] }).items;
@@ -43,7 +43,7 @@ test.afterEach(async ({ context }, info) => {
 
 test.describe('visible authentication protocol', () => {
   test.use({ authentication: 'visible' });
-  test('auth-login-session', scenario('auth-login-session'), async ({ page, context, request, allowBrowserWrites }, info) => {
+  test('auth-login-session', scenario('auth-login-session'), async ({ page, context, api: request, allowBrowserWrites }, info) => {
     const baseURL = origin(info);
     const project = await createProject(request, { name: `Visible login ${randomUUID()}` });
     allowBrowserWrites([{ method: 'POST', url: `${baseURL}/api/v1/auth/logout`, count: 1 }]);
@@ -75,14 +75,14 @@ test.describe('visible authentication protocol', () => {
       await Promise.all([page.getByRole('button', { name: '使用 GitHub 登录', exact: true }).click(), controlledProvider]);
       await expect(page.getByRole('heading', { name: project.name, exact: true })).toBeVisible();
       await expect(page).toHaveURL(`${baseURL}/projects/${project.id}`);
-      expect((await context.request.get('/api/v1/me')).status()).toBe(200);
+      expect((await authenticatedAPI(context.request).get('/api/v1/me')).status()).toBe(200);
       await page.reload();
       await expect(page.getByRole('heading', { name: project.name, exact: true })).toBeVisible();
       const signedOut = page.waitForResponse((response) => response.url() === `${baseURL}/api/v1/auth/logout` && response.request().method() === 'POST');
       await page.getByRole('button', { name: '退出登录', exact: true }).click();
       await expect(page.getByRole('heading', { name: '登录你的工作空间' })).toBeVisible();
       expect((await signedOut).status()).toBe(204);
-      expect((await context.request.get('/api/v1/me')).status()).toBe(401);
+      expect((await authenticatedAPI(context.request).get('/api/v1/me')).status()).toBe(401);
       await picture(page, info, 'auth-login-session');
     } finally {
       clearTimeout(deadline);
@@ -92,11 +92,12 @@ test.describe('visible authentication protocol', () => {
   });
 });
 
-test('auth-project-isolation', scenario('auth-project-isolation'), async ({ page, context, request, playwright }, info) => {
+test('auth-project-isolation', scenario('auth-project-isolation'), async ({ page, context, api: request, playwright }, info) => {
   const baseURL = origin(info);
   const bob = await bearerContext(playwright.request, baseURL, 'bob');
   const anonymous = await playwright.request.newContext({ baseURL });
   let otherTab: Page | undefined;
+  const heldChecks: { readonly identity: string; readonly release: () => void; readonly completed: Promise<void> }[] = [];
   try {
     const own = await createProject(request, { name: `Alice private ${randomUUID()}` });
     const other = await createProject(bob, { name: `Bob private ${randomUUID()}` });
@@ -119,7 +120,7 @@ test('auth-project-isolation', scenario('auth-project-isolation'), async ({ page
     }
     expect((await bob.head(preview)).status()).toBe(404);
     expect((await anonymous.head(preview)).status()).toBe(401);
-    const list = async (actor: APIRequestContext): Promise<string[]> => {
+    const list = async (actor: AuthenticatedAPI): Promise<string[]> => {
       const ids: string[] = [];
       let cursor: string | null = null;
       do {
@@ -162,21 +163,52 @@ test('auth-project-isolation', scenario('auth-project-isolation'), async ({ page
     await secondaryFocus.detach();
     await otherTab.bringToFront();
     await expect.poll(() => page.evaluate(() => document.hasFocus())).toBe(false);
+    await page.route(`${baseURL}/api/v1/me`, async (route) => {
+      const response = await authenticatedAPI(context.request).get('/api/v1/me');
+      expect(response.status()).toBe(200);
+      const body = await response.body();
+      const release = Promise.withResolvers<void>();
+      const completed = Promise.withResolvers<void>();
+      heldChecks.push({ identity: (JSON.parse(body.toString()) as { id: string }).id, release: release.resolve, completed: completed.promise });
+      try {
+        await release.promise;
+        await route.fulfill({ status: response.status(), headers: response.headers(), body });
+      } finally { completed.resolve(); }
+    });
+    await page.bringToFront();
+    await expect.poll(() => heldChecks.length).toBe(1);
+    expect(heldChecks[0]!.identity).toBe(aliceUser.id);
+    await expect(page.locator('body')).toHaveClass(/auth-session-checking/);
+    await expect(page.getByRole('heading', { name: own.name, exact: true })).toBeHidden();
+    await otherTab.bringToFront();
+    await expect.poll(() => page.evaluate(() => document.hasFocus())).toBe(false);
     await browserAuthentication(context, baseURL, 'bob');
     await page.bringToFront();
+    await expect.poll(() => heldChecks.length).toBe(2);
+    expect(heldChecks[1]!.identity).toBe(bobUser.id);
+    heldChecks[0]!.release();
+    await heldChecks[0]!.completed;
+    await expect(page.locator('body')).toHaveClass(/auth-session-checking/);
+    await expect(page.getByRole('heading', { name: own.name, exact: true })).toBeHidden();
+    heldChecks[1]!.release();
+    await heldChecks[1]!.completed;
     await expect(page.getByRole('link', { name: '账户设置：Bob', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: own.name, exact: true })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: '项目不存在或你没有访问权限' })).toBeVisible();
-    expect(identityRequests).toEqual(['GET']);
+    expect(identityRequests).toEqual(['GET', 'GET']);
     const concealment = await page.evaluate(() => (window as unknown as { authConcealment: boolean[] }).authConcealment);
     expect(concealment.length).toBeGreaterThan(0);
     expect(concealment.every(Boolean)).toBe(true);
     await info.attach('auth-real-tab-return', { body: Buffer.from(JSON.stringify({ identityRequests, concealment })), contentType: 'application/json' });
     await picture(page, info, 'auth-account-return');
-  } finally { await otherTab?.close(); await bob.dispose(); await anonymous.dispose(); }
+  } finally {
+    for (const check of heldChecks) check.release();
+    await page.unrouteAll({ behavior: 'wait' });
+    await otherTab?.close(); await bob.dispose(); await anonymous.dispose();
+  }
 });
 
-test('auth-project-members', scenario('auth-project-members'), async ({ page, context, request, playwright, allowBrowserWrites }, info) => {
+test('auth-project-members', scenario('auth-project-members'), async ({ page, context, api: request, playwright, allowBrowserWrites }, info) => {
   const baseURL = origin(info);
   const bob = await bearerContext(playwright.request, baseURL, 'bob');
   try {
@@ -220,12 +252,12 @@ test('auth-project-members', scenario('auth-project-members'), async ({ page, co
     expect((await bob.get(`/api/v1/projects/${project.id}/tasks/${collaborative.id}`)).status()).toBe(404);
     await page.goto(`/projects/${project.id}`);
     await expect(page.getByRole('heading', { name: '项目不存在或你没有访问权限' })).toBeVisible();
-    expect((await context.request.get('/api/v1/me')).status()).toBe(200);
+    expect((await authenticatedAPI(context.request).get('/api/v1/me')).status()).toBe(200);
     await picture(page, info, 'auth-member-removed');
   } finally { await bob.dispose(); }
 });
 
-test('auth-personal-tokens', scenario('auth-personal-tokens'), async ({ page, request, playwright, allowBrowserWrites }, info) => {
+test('auth-personal-tokens', scenario('auth-personal-tokens'), async ({ page, api: request, playwright, allowBrowserWrites }, info) => {
   const baseURL = origin(info);
   const project = await createProject(request, { name: `Token access ${randomUUID()}` });
   allowBrowserWrites([{ method: 'POST', url: `${baseURL}/api/v1/me/tokens`, count: 1 }]);
@@ -242,7 +274,7 @@ test('auth-personal-tokens', scenario('auth-personal-tokens'), async ({ page, re
   const metadata = await response.json() as { id: string; token: string };
   const secret = page.getByLabel('一次性访问令牌', { exact: true });
   expect(await secret.inputValue() === metadata.token, 'The one-time field displays the newly issued token').toBe(true);
-  const tokenClient = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { Authorization: `Bearer ${metadata.token}` } });
+  const tokenClient = await tokenContext(playwright.request, baseURL, metadata.token);
   try {
     expect((await tokenClient.get(`/api/v1/projects/${project.id}`)).status()).toBe(200);
     await page.getByRole('dialog').getByRole('button', { name: '我已保存，关闭', exact: true }).click();
@@ -257,7 +289,7 @@ test('auth-personal-tokens', scenario('auth-personal-tokens'), async ({ page, re
   } finally { await tokenClient.dispose(); }
 });
 
-test('auth-invitations', scenario('auth-invitations'), async ({ page, context, request, playwright, allowBrowserWrites }, info) => {
+test('auth-invitations', scenario('auth-invitations'), async ({ page, context, api: request, playwright, allowBrowserWrites }, info) => {
   const baseURL = origin(info);
   const project = await createProject(request, { name: `Invitation ${randomUUID()}` });
   allowBrowserWrites([
@@ -274,7 +306,7 @@ test('auth-invitations', scenario('auth-invitations'), async ({ page, context, r
   await page.getByRole('dialog').getByRole('button', { name: '我已保存，关闭', exact: true }).click();
   await openInvitation(page, metadata.link);
   await expect(page.getByRole('heading', { name: '你已经是项目成员' })).toBeVisible();
-  expect(new URL(page.url()).hash).toBe('');
+  expect(new URL(page.url()).hash === '', 'Invitation navigation removes the one-time fragment').toBe(true);
   const active = await request.get(`/api/v1/projects/${project.id}/invitations`);
   expect((await active.json() as { items: { id: string }[] }).items.map((item) => item.id)).toContain(metadata.id);
   await browserAuthentication(context, baseURL, 'bob');
@@ -283,7 +315,7 @@ test('auth-invitations', scenario('auth-invitations'), async ({ page, context, r
   await openInvitation(page, metadata.link);
   await expect(page.getByRole('heading', { name: '你受邀加入一个项目' })).toBeVisible();
   await expect(page.locator('.invite-account .person-name')).toHaveText('Bob');
-  expect(new URL(page.url()).hash).toBe('');
+  expect(new URL(page.url()).hash === '', 'Invitation navigation removes the one-time fragment').toBe(true);
   const inspectionOnly = await request.get(`/api/v1/projects/${project.id}/invitations`);
   expect((await inspectionOnly.json() as { items: { id: string }[] }).items.map((item) => item.id)).toContain(metadata.id);
   await page.getByRole('button', { name: '接受邀请并加入', exact: true }).click();
@@ -301,7 +333,7 @@ test('auth-invitations', scenario('auth-invitations'), async ({ page, context, r
   } finally { await bob.dispose(); }
 });
 
-test('auth-resource-session', scenario('auth-resource-session'), async ({ page, context, request, allowBrowserWrites }, info) => {
+test('auth-resource-session', scenario('auth-resource-session'), async ({ page, context, api: request, allowBrowserWrites }, info) => {
   const baseURL = origin(info);
   const project = await createProject(request, { name: `Session resources ${randomUUID()}` });
   const task = await createTask(request, project.id, { title: 'Authenticated executable preview' });
@@ -339,8 +371,8 @@ test('auth-resource-session', scenario('auth-resource-session'), async ({ page, 
   expect(identityRequests).toHaveLength(checksBeforeGesture);
   await attachments.getByRole('button', { name: /index\.html/ }).click();
   await expect(frame.locator('body')).toHaveAttribute('data-value', 'relative-authenticated');
-  expect((await context.request.head(preview)).status()).toBe(200);
-  expect((await context.request.post('/api/v1/me/tokens', { headers: { Origin: 'https://wrong-origin.example' }, data: { name: 'Rejected browser origin', days: 1 } })).status()).toBe(403);
+  expect((await authenticatedAPI(context.request).head(preview)).status()).toBe(200);
+  expect((await authenticatedAPI(context.request).post('/api/v1/me/tokens', { headers: { Origin: 'https://wrong-origin.example' }, data: { name: 'Rejected browser origin', days: 1 } })).status()).toBe(403);
   await frame.locator('#counter').press('Escape');
   await expect(detail).toHaveCount(0);
   const signedOut = page.waitForResponse((response) => response.url() === `${baseURL}/api/v1/auth/logout` && response.request().method() === 'POST');
@@ -348,12 +380,12 @@ test('auth-resource-session', scenario('auth-resource-session'), async ({ page, 
   await expect(page.getByRole('heading', { name: '登录你的工作空间' })).toBeVisible();
   expect((await signedOut).status()).toBe(204);
   for (const resource of [preview, attachmentDownloadUrl(project.id, task.id, path), attachmentPreviewUrl(project.id, task.id, 'site/app.js')]) {
-    const response = await context.request.get(resource);
+    const response = await authenticatedAPI(context.request).get(resource);
     expect(response.status()).toBe(401);
     expect(response.headers()['content-type']).toMatch(/^application\/json/);
     expect((await response.body()).includes(Buffer.from('<!doctype html>'))).toBe(false);
   }
-  expect((await context.request.head(preview)).status()).toBe(401);
+  expect((await authenticatedAPI(context.request).head(preview)).status()).toBe(401);
   expect((await request.get(preview)).status()).toBe(200);
   await picture(page, info, 'auth-resource-session');
 });

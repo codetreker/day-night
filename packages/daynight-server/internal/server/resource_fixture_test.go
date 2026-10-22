@@ -12,7 +12,7 @@ import (
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/filestorage"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/service"
-	"github.com/codetreker/daynight/packages/daynight-server/internal/testauth"
+	"github.com/codetreker/daynight/packages/daynight-server/testdata/testauth"
 )
 
 type resourceTestHandler struct {

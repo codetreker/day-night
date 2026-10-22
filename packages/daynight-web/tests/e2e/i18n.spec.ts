@@ -50,7 +50,7 @@ const expectDialogLayout = async (page: Page, dialog: Locator): Promise<void> =>
 test.describe('Web language journeys', () => {
   test.use({ locale: 'en-US' });
 
-  test('language-startup-preferences', scenario('language-startup-preferences'), async ({ page, request }, info) => {
+  test('language-startup-preferences', scenario('language-startup-preferences'), async ({ page, api: request }, info) => {
     const project = await createProject(request, { name: `原始项目 Raw project ${randomUUID()}` });
     const task = await createTask(request, project.id, { title: '原始任务 Raw task', description: '原始描述 Raw description' });
     await page.goto('/');
@@ -91,7 +91,7 @@ test.describe('Web language journeys', () => {
     await screenshot(page, info, 'language-startup-preferences');
   });
 
-  test('language-state-preservation', scenario('language-state-preservation'), async ({ page, request, allowAttachmentWrites }, info) => {
+  test('language-state-preservation', scenario('language-state-preservation'), async ({ page, api: request, allowAttachmentWrites }, info) => {
     const project = await createProject(request, { name: `Language lifecycle ${randomUUID()}` });
     const pullRequests = Array.from({ length: 101 }, (_, index) => ({ title: `原始 PR ${index + 1}`, url: `https://example.com/pull/${index + 1}` }));
     const task = await createTask(request, project.id, { title: '根任务 Raw root', description: '原始描述 Raw description', properties: { pullRequests } });
@@ -262,7 +262,7 @@ test.describe('Web language journeys', () => {
     await inputElement.dispose();
   });
 
-  test('language-errors-and-narrow', scenario('language-errors-and-narrow'), async ({ page, request }, info) => {
+  test('language-errors-and-narrow', scenario('language-errors-and-narrow'), async ({ page, api: request }, info) => {
     await page.addInitScript(() => {
       const fault = new URL(location.href).searchParams.get('localeFault');
       const getItem = Storage.prototype.getItem;

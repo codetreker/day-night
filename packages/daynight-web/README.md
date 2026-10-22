@@ -47,7 +47,13 @@ one-time secrets, identity and pending requests without restarting operations.
 It composes the existing project list, graph and centered `TaskDetailDialog` with
 private project creation, account/token pages, member/invitation management and
 explicit invitation acceptance. Identity changes invalidate outstanding requests
-and unmount user-owned content; a project 404 stays a resource error. Requests
+and unmount user-owned content; a project 404 stays a resource error. Returning
+from a hidden or unfocused top-level page conceals the workspace until `/me`
+confirms identity. Each new qualifying return aborts and replaces pending
+verification, so an earlier response cannot uncover the latest return. Failure
+retains state behind the retry overlay; the same user keeps their forms and
+view, while a changed user remounts user-owned content. Ordinary same-origin
+iframe focus changes do not count as top-level returns. Requests
 use same-origin browser credentials and preserve request IDs, cancellation and
 explicit failures. Member versions remain `bigint` from JSON decoding through
 mutation encoding, including values above the safe JavaScript integer range.

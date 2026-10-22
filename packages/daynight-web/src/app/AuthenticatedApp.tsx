@@ -95,8 +95,6 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
   const [session, setSession] = useState<Session>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [revalidation, setRevalidation] = useState<"idle" | "loading" | "error">("idle");
-  const revalidationRef = useRef(revalidation);
-  revalidationRef.current = revalidation;
   const sessionRef = useRef(session);
   sessionRef.current = session;
   const [creating, setCreating] = useState(false);
@@ -177,7 +175,10 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
       if (mounted.current && !isAbortError(error) && !(error instanceof ApiError && error.status === 401)) { setLogoutFailed(true); setSession({ status: "anonymous", notice: "logoutFailed" }); }
     });
   }, [clearSession]);
-  const recheckIdentity = useCallback(() => { revalidationRef.current = "loading"; setRevalidation("loading"); setAttempt((value) => value + 1); }, []);
+  const recheckIdentity = useCallback(() => {
+    active.current?.abort(); active.current = null; ++generation.current;
+    setRevalidation("loading"); setAttempt((value) => value + 1);
+  }, []);
   useLayoutEffect(() => {
     document.body.classList.toggle("auth-session-checking", revalidation !== "idle");
     return () => document.body.classList.remove("auth-session-checking");
@@ -190,7 +191,7 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
       // Iframe-to-parent focus changes keep the top-level document focused.
       if (!topLevelAway || document.visibilityState === "hidden" || !document.hasFocus()) return;
       topLevelAway = false;
-      if (revalidationRef.current === "idle") recheckIdentity();
+      recheckIdentity();
     };
     const visibilityChanged = () => {
       if (document.visibilityState === "hidden") topLevelAway = true;
