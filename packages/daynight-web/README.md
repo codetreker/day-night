@@ -88,15 +88,15 @@ server order, and follows `nextCursor` through Load more. Repeated IDs count onc
 Refresh discards old pages and cursors; late responses cannot repopulate them.
 
 The application implements `/` and `/projects/{projectId}`, direct URL reload,
-browser back/forward and a generic not-found page. A project shows six statistics
+browser back/forward and a generic not-found page. A project shows seven statistics
 from one complete graph snapshot and two in-project tabs: Standalone tasks and
 Task chains. The first visit opens Task chains; subsequent visits restore the
-project's last tab. Both tab badges count unfinished tasks (pending and in
+project's last tab. Both tab badges count unfinished tasks (proposed, pending and in
 progress) from the complete snapshot. Standalone tasks count individually;
 Task chains counts every non-standalone task once across all roots, including
 shared successors. Counts ignore completed-item visibility, the active tab and
 the expanded chain; all-completed categories display zero. Their sum equals the
-project's pending plus in-progress total. List toolbars retain visible/total
+project's proposed plus pending plus in-progress total. List toolbars retain visible/total
 standalone-item or root-chain counts. A standalone task has no prerequisites
 and no successors in the complete graph. Every other root remains a root-based
 chain entry, including multiple roots with shared successors. Task status never
@@ -107,12 +107,24 @@ Standalone rows display the title, individual status, ID and creation time and
 open the existing task detail dialog directly. Chain rows display aggregate progress
 and status: done only when every distinct root and reachable successor task is
 done; in progress when any is done or in progress and the chain is unfinished;
-otherwise pending. A completed root with unfinished descendants stays visible.
+otherwise pending when any main task is todo; otherwise every main task is
+proposed. A completed root with unfinished descendants stays visible.
 External prerequisite context does not contribute to chain status. Node and
 detail status continue to describe individual tasks. Chain badges, completed
 counts and filtering share the same model-derived status, rebuilt with each
 snapshot; the [chain status decision](../../.agents/notes/implemented/bug-fix/2026-10-22-task-chain-status.md)
 records its rationale.
+
+Proposed tasks use the current catalog label, Proposed or 待审批, and a distinct
+purple status color in
+statistics, standalone rows, chain badges, graph nodes and task details. The
+required graph summary includes `proposed`; totals satisfy
+`total = proposed + todo + inProgress + done`. Only todo tasks contribute to ready
+or blocked counts. Proposed tasks remain unfinished even when all prerequisites
+are complete. Task fields remain read-only; the prepared reader contract does
+not expose an approval control. Creation still starts in todo through the public
+API. The [four-state reader decision](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
+explains the storage/read preparation and lifecycle boundary.
 
 Both lists use newest creation first, with descending IDs breaking equal-time
 ties. Presentation reverses the exact API sequence without reducing timestamp

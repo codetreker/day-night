@@ -33,6 +33,8 @@ flowchart LR
 
 给定根 r，`M = {r} ∪ descendants(r)`，`P = M ∪ ancestors(M)`，外部集合为 `C = P − M`。P 包含全部所需前置和依赖，不引入 C 的无关后续。链内进度和状态只计算 M，项目统计仍按完整快照去重。可见集合 `S ⊆ P` 始终包含根；可见边是 P 中两端都属于 S 的全部真实边，无捷径、聚合节点或合成依赖。
 
+读取包含 proposed、todo、in_progress 和 done，四态按同一拓扑参与渐进展示和完整祖先追踪。proposed 保留现有紫色及双语文案，外部任务状态不改变完整 M 聚合；七项统计和未完成页签计数仍来自完整快照，公开创建/写入与审批边界由[读取决策](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)拥有。
+
 `createGraphOverview(index, P)` 在 P 不超过 50 个任务且 100 条依赖时返回全部 P。其余情况从根开始，按稳定无向 BFS 接纳任务：每个已接纳节点先看后续、再看前置，各方向按 `index.nodes` 的快照顺序。候选只有在加入后 S 仍不超过 50 个节点、实际诱导边仍不超过 100 条时才接纳；只从接纳节点继续，拒绝者不继续遍历，也不反复尝试。判断针对当前 P，小链不会因项目很大而被折叠。
 
 `getTaskExpansion(index, P, S, taskId, direction)` 返回 P 内指定方向前 20 个隐藏直接邻居、全部隐藏直接邻居数及本批 `addedEdges`。只加入本批 ID，不递归。新增边数为 `E(S ∪ batch) − E(S)`，包含新增任务之间及其与原可见集合之间的全部真实边；手动展开不设边数上限，可超过初始 50/100。相同任务从不同入口展开仍只出现一次。`projectVisibleTasks(P, S)` 将完整 main/external 归属带入可见投影，布局不能用可见任务重算完整链进度。

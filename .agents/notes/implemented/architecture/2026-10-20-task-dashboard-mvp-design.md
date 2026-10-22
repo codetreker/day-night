@@ -59,7 +59,9 @@ from the existing read-only REPEATABLE READ mechanism. Existing paged task
 reads do not share a cross-page snapshot. Graph nodes omit descriptions and
 contain bounded title previews; full content uses the existing detail endpoint.
 Reject graphs exceeding the declared size limits without returning a partial
-success. No schema, parent-child, or write-policy changes are required.
+success. The original graph read required no schema, parent-child or write-policy
+changes. The later [four-state reader decision](../feature/2026-10-22-proposed-task-readers.md)
+extends stored status and reader projections without activating new writes.
 
 The original MVP expanded each root and its forward-reachable descendants,
 adding explicit direct-boundary prerequisite nodes without expanding their
@@ -80,7 +82,10 @@ separate from API mutations and request triggers so editing and live subscriptio
 could be added independently. The later
 [Web attachment decision](../feature/2026-10-21-task-attachment-web.md) uses that
 separation for file upload, overwrite and deletion in task details. Task fields and
-dependency editing remain outside the browser's delivered scope. Remote access
+dependency editing remain outside the browser's delivered scope. Proposed tasks
+are readable as Proposed or 待审批 in the current interface language, with matching
+statistics and aggregate chain status; the
+four-state reader decision preserves this read-only task-field boundary. Remote access
 is not an additive configuration change: authentication, authorization, and deployment boundaries require their
 own design. Graph filtering must retain dependency context; large-graph support
 needs a new closed-subgraph contract or measured limit changes.

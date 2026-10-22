@@ -1,4 +1,4 @@
-export type TaskStatus = "todo" | "in_progress" | "done";
+export type TaskStatus = "proposed" | "todo" | "in_progress" | "done";
 
 export type TaskAttachment = {
   readonly path: string;
@@ -52,6 +52,7 @@ export type GraphTask = Omit<Task, "projectId" | "title" | "description" | "vers
 
 export type TaskGraphSummary = {
   readonly total: number;
+  readonly proposed: number;
   readonly todo: number;
   readonly inProgress: number;
   readonly done: number;
@@ -78,10 +79,10 @@ export type UpdateTaskInput = {
   readonly title?: string;
   readonly description?: string;
   readonly properties?: TaskProperties;
-  readonly status?: TaskStatus;
+  readonly status?: Exclude<TaskStatus, "proposed">;
   readonly dependsOn?: readonly string[];
 };
-export type TaskFilters = { readonly status?: TaskStatus; readonly ready?: boolean };
+export type TaskFilters = { readonly status?: Exclude<TaskStatus, "proposed">; readonly ready?: boolean };
 export type ErrorDetails = {
   readonly taskIds?: readonly string[];
   readonly nodeCount?: number;

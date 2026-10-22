@@ -48,12 +48,24 @@ func TestTaskGraphEmptyScopedAndSummary(t *testing.T) {
 	active = updateTask(t, tasks, active, UpdateTask{Status: pointer(core.TaskInProgress)})
 	ready := createTask(t, tasks, project.ID, "Ready", done.ID)
 	blocked := createTask(t, tasks, project.ID, "Blocked", active.ID, ready.ID)
+	var proposed, proposedBlocked core.Task
+	if err := database.WriteProject(ctx, project.ID, func(tx *store.ProjectTx) error {
+		var err error
+		proposed, err = tx.CreateTask(ctx, "00000000-0000-4000-8000-000000000001", store.TaskWrite{Title: "Proposed", Status: core.TaskProposed, DependsOn: []string{done.ID}})
+		if err != nil {
+			return err
+		}
+		proposedBlocked, err = tx.CreateTask(ctx, "00000000-0000-4000-8000-000000000002", store.TaskWrite{Title: "Proposed blocked", Status: core.TaskProposed, DependsOn: []string{active.ID}})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
 	graph, err := tasks.Graph(ctx, project.ID)
-	wantSummary := core.TaskGraphSummary{Total: 4, Todo: 2, InProgress: 1, Done: 1, Ready: 1, Blocked: 1}
-	if err != nil || graph.Summary != wantSummary || len(graph.Tasks) != 4 || !reflect.DeepEqual(graph.Project, project) {
+	wantSummary := core.TaskGraphSummary{Total: 6, Proposed: 2, Todo: 2, InProgress: 1, Done: 1, Ready: 1, Blocked: 1}
+	if err != nil || graph.Summary != wantSummary || len(graph.Tasks) != 6 || !reflect.DeepEqual(graph.Project, project) {
 		t.Fatalf("complete graph: %#v, %v", graph, err)
 	}
-	for index, original := range []core.Task{done, active, ready, blocked} {
+	for index, original := range []core.Task{done, active, ready, blocked, proposed, proposedBlocked} {
 		got := graph.Tasks[index]
 		if got.ID != original.ID || got.TitlePreview != original.Title || got.TitleTruncated || got.Status != original.Status ||
 			!slices.Equal(got.DependsOn, original.DependsOn) || !slices.Equal(got.BlockedBy, original.BlockedBy) || got.Ready != original.Ready ||

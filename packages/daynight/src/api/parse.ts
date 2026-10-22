@@ -34,7 +34,7 @@ const ids = (value: unknown): string[] => {
   if (new Set(parsed).size !== parsed.length) return malformed();
   return parsed;
 };
-const status = (value: unknown): TaskStatus => value === "todo" || value === "in_progress" || value === "done" ? value : malformed();
+const status = (value: unknown): TaskStatus => value === "proposed" || value === "todo" || value === "in_progress" || value === "done" ? value : malformed();
 
 const validAttachmentPath = (value: string): boolean => isText(value) && !/^[A-Za-z]:\//.test(value) && !/[\\\p{Cc}]/u.test(value) && value.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..");
 export const validateAttachmentPath = (value: string): string => {
@@ -61,6 +61,7 @@ export const parseProject = (value: unknown, expectedId?: string): Project => {
 const dependencyState = (data: Record<string, unknown>) => {
   const parsed = { id: id(data.id), status: status(data.status), dependsOn: ids(data.dependsOn), blockedBy: ids(data.blockedBy), ready: bool(data.ready), createdAt: timestamp(data.createdAt), updatedAt: timestamp(data.updatedAt) };
   if (parsed.dependsOn.includes(parsed.id) || parsed.blockedBy.some((item) => !parsed.dependsOn.includes(item)) || parsed.ready !== (parsed.status === "todo" && parsed.blockedBy.length === 0)) return malformed();
+  if ((parsed.status === "in_progress" || parsed.status === "done") && parsed.blockedBy.length > 0) return malformed();
   return parsed;
 };
 
@@ -103,7 +104,7 @@ const graphTask = (value: unknown): GraphTask => {
 };
 const summary = (value: unknown): TaskGraphSummary => {
   const data = record(value);
-  return { total: count(data.total), todo: count(data.todo), inProgress: count(data.inProgress), done: count(data.done), ready: count(data.ready), blocked: count(data.blocked) };
+  return { total: count(data.total), proposed: count(data.proposed), todo: count(data.todo), inProgress: count(data.inProgress), done: count(data.done), ready: count(data.ready), blocked: count(data.blocked) };
 };
 
 export const parseTaskGraph = (value: unknown, projectId: string): TaskGraph => {
@@ -111,9 +112,10 @@ export const parseTaskGraph = (value: unknown, projectId: string): TaskGraph => 
   const parsed = { project: parseProject(data.project, projectId), summary: summary(data.summary), tasks: array(data.tasks, graphTask) };
   const byId = new Map(parsed.tasks.map((task) => [task.id, task]));
   if (parsed.tasks.length > 1000 || byId.size !== parsed.tasks.length || parsed.tasks.reduce((sum, task) => sum + task.dependsOn.length, 0) > 5000) return malformed();
-  const expected = { total: parsed.tasks.length, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 };
+  const expected = { total: parsed.tasks.length, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 };
   for (const task of parsed.tasks) {
-    if (task.status === "todo") { expected.todo++; if (task.ready) expected.ready++; else expected.blocked++; }
+    if (task.status === "proposed") expected.proposed++;
+    else if (task.status === "todo") { expected.todo++; if (task.ready) expected.ready++; else expected.blocked++; }
     else if (task.status === "in_progress") expected.inProgress++;
     else expected.done++;
     const blocked = task.dependsOn.filter((dependency) => {

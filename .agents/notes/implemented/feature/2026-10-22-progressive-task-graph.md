@@ -38,8 +38,11 @@ The graph always draws every real dependency with both endpoints in S. It draws
 no shortcut edges, aggregate nodes or invented dependency links. Cards are 220 by 136 pixels: a 94px body, a constant 40px two-column expansion
 footer and two border pixels; an unused direction column stays blank. Toolbar
 counts distinguish visible tasks/dependencies from complete P; full M progress and
-project totals remain independent of S. Completed tasks follow the same topology
-rules and may be expanded like any other task.
+project totals remain independent of S. Proposed, todo, in-progress and done tasks follow the same topology rules and
+may be expanded. The [four-state reader decision](2026-10-22-proposed-task-readers.md)
+owns purple proposed presentation, full seven-counter statistics and unfinished
+counts; external task state never changes the complete main-set aggregate.
+Visibility and inspection add no approval or status-write operation.
 
 Selection computes H, the selected task plus all its ancestors, from complete
 data. Visible members of H and their real induced edges receive the established

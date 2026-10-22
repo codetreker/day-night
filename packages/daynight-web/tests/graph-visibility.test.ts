@@ -1,21 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import type { GraphTask, TaskGraph } from '../src/api/types';
+import type { GraphTask, TaskGraph, TaskStatus } from '../src/api/types';
 import { buildGraphIndex, GraphDataError, projectRoot, type RootProjection } from '../src/features/task-graph/model';
 import {
   createGraphOverview, getTaskExpansion, projectVisibleTasks, reconcileVisibleTasks,
   GRAPH_EXPANSION_BATCH_SIZE, GRAPH_OVERVIEW_EDGE_LIMIT, GRAPH_OVERVIEW_TASK_LIMIT,
 } from '../src/features/task-graph/visibility';
 
-type Seed = { id: string; dependsOn?: readonly string[] };
-const indexOf = (seeds: readonly Seed[], done = false) => {
-  const tasks: GraphTask[] = seeds.map(({ id, dependsOn = [] }) => ({
-    id, dependsOn, blockedBy: done ? [] : dependsOn, ready: !done && dependsOn.length === 0, status: done ? 'done' : 'todo',
-    titlePreview: id, titleTruncated: false, createdAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:00:00Z',
-  }));
+type Seed = { id: string; dependsOn?: readonly string[]; status?: TaskStatus };
+const indexOf = (seeds: readonly Seed[], defaultStatus: TaskStatus = 'todo') => {
+  const statuses = new Map(seeds.map((seed) => [seed.id, seed.status ?? defaultStatus]));
+  const tasks: GraphTask[] = seeds.map(({ id, dependsOn = [] }) => {
+    const status = statuses.get(id)!;
+    const blockedBy = dependsOn.filter((source) => statuses.get(source) !== 'done');
+    return {
+      id, dependsOn, blockedBy, ready: status === 'todo' && blockedBy.length === 0, status,
+      titlePreview: id, titleTruncated: false, createdAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:00:00Z',
+    };
+  });
+  const count = (status: TaskStatus) => tasks.filter((task) => task.status === status).length;
   const graph: TaskGraph = {
     project: { id: 'project', name: 'Project', repoUrl: '', createdAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:00:00Z' }, tasks,
-    summary: { total: tasks.length, todo: done ? 0 : tasks.length, inProgress: 0, done: done ? tasks.length : 0,
-      ready: tasks.filter((task) => task.ready).length, blocked: done ? 0 : tasks.filter((task) => !task.ready).length },
+    summary: { total: tasks.length, proposed: count('proposed'), todo: count('todo'), inProgress: count('in_progress'), done: count('done'),
+      ready: tasks.filter((task) => task.ready).length, blocked: tasks.filter((task) => task.status === 'todo' && task.blockedBy.length > 0).length },
   };
   return buildGraphIndex(graph);
 };
@@ -134,10 +140,23 @@ describe('progressive task graph visibility', () => {
   });
 
   it('keeps complete-chain completion and progress independent from rendered membership', () => {
-    const index = indexOf(chain(80), true); const projection = projectRoot(index, 'n0'); const visible = createGraphOverview(index, projection);
+    const index = indexOf(chain(80), 'done'); const projection = projectRoot(index, 'n0'); const visible = createGraphOverview(index, projection);
     const view = projectVisibleTasks(projection, visible);
     expect(projection.mainIds.size).toBe(80); expect(view.mainIds.size).toBe(50);
     expect(view.completed).toBe(80); expect(index.rootProgress.get('n0')).toEqual({ total: 80, done: 80, status: 'done' });
+  });
+
+  it('retains proposed ancestors and hidden todo members in the full-chain progress', () => {
+    const seeds: Seed[] = [{ id: 'external', status: 'proposed' }, ...chain(80).map((seed, index): Seed => ({
+      ...seed, status: index === 79 ? 'todo' : 'proposed', dependsOn: index === 79 ? ['n78', 'external'] : seed.dependsOn!,
+    }))];
+    const index = indexOf(seeds); const projection = projectRoot(index, 'n0'); const visible = createGraphOverview(index, projection);
+    expect([...visible].every((id) => index.nodes.get(id)!.status === 'proposed')).toBe(true);
+    expect(visible.has('external')).toBe(false); expect(visible.has('n79')).toBe(false);
+    expect(projection.externalIds).toEqual(new Set(['external'])); expect(projection.mainIds.size).toBe(80);
+    expect(getTaskExpansion(index, projection, visible, 'n49', 'successors')).toEqual({ ids: ['n50'], totalHidden: 1, addedEdges: 1 });
+    expect(projectVisibleTasks(projection, visible).completed).toBe(0);
+    expect(index.rootProgress.get('n0')).toEqual({ total: 80, done: 0, status: 'todo' });
   });
 
   it('prunes disconnected retained nodes after refresh without adding a new connecting path or new neighbors', () => {

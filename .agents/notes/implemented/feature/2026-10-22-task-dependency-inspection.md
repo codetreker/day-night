@@ -25,7 +25,10 @@ and their real induced connections are highlighted, while |H−S| reports hidden
 ancestors once by ID. Selection never expands, relayouts or moves the viewport.
 The same card or blank canvas clears it, and another card replaces it. Selected,
 prerequisite, unrelated and normal states preserve status colors, blocking,
-sharing and external dashes. Details and relation navigation leave it unchanged.
+sharing and external dashes, including the proposed reader state. The existing
+four-state main-set aggregation and seven project statistics remain independent
+of visible S; inspection adds no lifecycle writes. Details and relation
+navigation leave it unchanged.
 
 Graph-local `TaskInspectionContext` supplies inspection state directly to task
 shells. Controlled React Flow node/data keeps task, geometry, membership and

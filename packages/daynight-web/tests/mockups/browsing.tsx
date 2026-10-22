@@ -4,13 +4,8 @@ import { ProjectPage } from '../../src/features/projects/ProjectPage';
 import { LocaleProvider, useI18n } from '../../src/i18n/LocaleProvider';
 import { LanguageSelector } from '../../src/i18n/LanguageSelector';
 import { resolveInitialLocale } from '../../src/i18n/locale';
-import { browsingProjects, installBrowsingFixture, readBrowsingDetailScenario, type BrowsingDetailScenario, type BrowsingScenario } from './browsing-fixture';
+import { browsingProjects, browsingScenarioLabels, installBrowsingFixture, readBrowsingDetailScenario, readBrowsingScenario, type BrowsingDetailScenario, type BrowsingScenario } from './browsing-fixture';
 import '../../src/styles/app.css';
-
-const readScenario = (): BrowsingScenario => {
-  const hash = location.hash.slice(1);
-  return hash === 'external' || hash === 'progressive' || hash === 'complete' || hash === 'empty' ? hash : 'mixed';
-};
 
 const BrowsingMockup = () => {
   const { locale, messages } = useI18n();
@@ -19,11 +14,11 @@ const BrowsingMockup = () => {
     document.documentElement.lang = locale;
     document.title = m.documentTitle.project;
   }, [locale, m]);
-  const [scenario, setScenario] = useState(readScenario);
+  const [scenario, setScenario] = useState(readBrowsingScenario);
   const [detailScenario, setDetailScenario] = useState(readBrowsingDetailScenario);
   const scenarioSelect = useRef<HTMLSelectElement>(null);
   useEffect(() => {
-    const updateScenario = () => setScenario(readScenario());
+    const updateScenario = () => setScenario(readBrowsingScenario());
     window.addEventListener('hashchange', updateScenario);
     return () => window.removeEventListener('hashchange', updateScenario);
   }, []);
@@ -73,11 +68,7 @@ const BrowsingMockup = () => {
               id="browsing-scenario" ref={scenarioSelect} value={scenario}
               onChange={(event) => { location.hash = event.currentTarget.value; }}
             >
-              <option value="mixed">混合状态与共享依赖</option>
-              <option value="external">完整上游与无关分支排除</option>
-              <option value="progressive">渐进展开 · 主链与外部前置</option>
-              <option value="complete">全部完成</option>
-              <option value="empty">尚无任务</option>
+              {(Object.keys(browsingScenarioLabels) as BrowsingScenario[]).map((key) => <option key={key} value={key}>{browsingScenarioLabels[key]}</option>)}
             </select>
             <label htmlFor="browsing-detail-scenario"> 详情内容 </label>
             <select id="browsing-detail-scenario" value={detailScenario} onChange={(event) => {
@@ -93,7 +84,7 @@ const BrowsingMockup = () => {
               <option value="loading">详情加载中</option>
               <option value="error">详情加载失败</option>
             </select>
-            <p>两个页签旁的数字均表示未完成任务数，任务链中的共享任务跨链只计一次，显示已完成项不改变数字。任务链状态和进度始终计算完整链内任务。超过 50 个任务或 100 条依赖时，画布先显示根附近的概览；用卡片下方的前置、后续按钮分批展开，每次最多新增 20 个直接关联任务。“收起到概览”恢复初始范围。点击卡片仅追踪依赖，未展开上游单独计数；点击独立的“详情”入口阅读任务。Tab 聚焦各控件，Enter/空格操作；展开保留任务锚点，依赖选择及详情不会展开或移动画布。Esc 先关闭详情，再退出全屏。</p>
+            <p>两个页签旁的数字均表示未完成任务数，任务链中的共享任务跨链只计一次，显示已完成项不改变数字。任务链状态和进度始终计算完整链内任务：全部完成时显示已完成，有任务开始或完成时显示进行中，有待处理任务时显示待处理，其余全部待审批时显示待审批。待审批任务始终不可开始，未完成前置仍显示。超过 50 个任务或 100 条依赖时，画布先显示根附近的概览；用卡片下方的前置、后续按钮分批展开，每次最多新增 20 个直接关联任务。“收起到概览”恢复初始范围。点击卡片仅追踪依赖，未展开上游单独计数；点击独立的“详情”入口阅读任务。Tab 聚焦各控件，Enter/空格操作；展开保留任务锚点，依赖选择及详情不会展开或移动画布。Esc 先关闭详情，再退出全屏。</p>
           </section>
           <ProjectPage key={scenario} projectId={browsingProjects[scenario].project.id} />
         </main>

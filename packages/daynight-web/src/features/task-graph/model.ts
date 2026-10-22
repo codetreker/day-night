@@ -62,7 +62,7 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
   for (const task of graph.tasks) {
     if (typeof task !== "object" || task === null || typeof task.id !== "string" || task.id === "" || nodes.has(task.id) ||
       !Array.isArray(task.dependsOn) || !Array.isArray(task.blockedBy) ||
-      (task.status !== "todo" && task.status !== "in_progress" && task.status !== "done") || typeof task.ready !== "boolean") {
+      (task.status !== "proposed" && task.status !== "todo" && task.status !== "in_progress" && task.status !== "done") || typeof task.ready !== "boolean") {
       return rejectGraph();
     }
     edgeCount += task.dependsOn.length;
@@ -76,7 +76,7 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
   }
 
   const actual: { -readonly [Key in keyof TaskGraphSummary]: number } = {
-    total: nodes.size, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0,
+    total: nodes.size, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0,
   };
   for (const task of nodes.values()) {
     const blocked = new Set<string>();
@@ -88,8 +88,9 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
     }
     if (blocked.size !== task.blockedBy.length || task.blockedBy.some((id) => !blocked.has(id)) ||
       task.ready !== (task.status === "todo" && blocked.size === 0) ||
-      (task.status !== "todo" && blocked.size !== 0)) return rejectGraph();
-    if (task.status === "todo") {
+      ((task.status === "in_progress" || task.status === "done") && blocked.size !== 0)) return rejectGraph();
+    if (task.status === "proposed") actual.proposed++;
+    else if (task.status === "todo") {
       actual.todo++;
       if (task.ready) actual.ready++;
       else actual.blocked++;
@@ -118,15 +119,17 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
     const mainIds = reachable(successors, root);
     let done = 0;
     let inProgress = false;
+    let todo = false;
     for (const id of mainIds) {
       const status = nodes.get(id)!.status;
       if (status === "done") done++;
       else if (status === "in_progress") inProgress = true;
+      else if (status === "todo") todo = true;
       const count = (rootCount.get(id) ?? 0) + 1;
       rootCount.set(id, count);
       if (count > 1) sharedIds.add(id);
     }
-    const status = done === mainIds.size ? "done" : done > 0 || inProgress ? "in_progress" : "todo";
+    const status = done === mainIds.size ? "done" : done > 0 || inProgress ? "in_progress" : todo ? "todo" : "proposed";
     rootProgress.set(root, { total: mainIds.size, done, status });
   }
   return { nodes, successors, roots, sharedIds, rootProgress };

@@ -15,7 +15,7 @@ import { installGraphMeasurements } from '../graph-measurements';
 const time = '2026-10-20T00:00:00Z';
 const graph: GraphData = {
   project: { id: 'project', name: '项目', repoUrl: 'https://github.com/example/repo', createdAt: time, updatedAt: time },
-  summary: { total: 5, todo: 2, inProgress: 1, done: 2, ready: 1, blocked: 1 },
+  summary: { total: 5, proposed: 0, todo: 2, inProgress: 1, done: 2, ready: 1, blocked: 1 },
   tasks: [
     { id: 'A', titlePreview: '基础 API', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
     { id: 'B', titlePreview: '设计方案', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
@@ -36,6 +36,32 @@ const ready = async (container: HTMLElement) => {
 beforeEach(installGraphMeasurements);
 
 describe('localized task graph presentation', () => {
+  it('retranslates proposed chain roots and nodes while preserving external context, node identity and layout', async () => {
+    const user = userEvent.setup();
+    const layout = vi.spyOn(layoutModule, 'layoutGraph');
+    const proposedGraph: GraphData = {
+      ...graph,
+      summary: { total: 3, proposed: 2, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
+      tasks: [
+        { ...graph.tasks[0]!, status: 'proposed' },
+        { ...graph.tasks[3]!, status: 'proposed', dependsOn: ['A', 'F'], blockedBy: ['A', 'F'] },
+        graph.tasks[4]!,
+      ],
+    };
+    const proposedIndex = buildGraphIndex(proposedGraph);
+    const view = renderWithLocale(<><LanguageSelector /><RootList index={proposedIndex} rootIds={['A', 'F']} allRootIds={['A', 'F']}
+      expandedRootId="A" onExpand={noop} onOpenTask={noop} showCompleted={false} onShowCompletedChange={noop} /></>, { locale: 'en' });
+    const selected = await screen.findByRole('button', { name: '最终验收, Proposed, blocked, shared task' });
+    expect(view.container.querySelector('#task-root-A .root-status')).toHaveTextContent('Proposed');
+    expect(view.container.querySelector('#task-root-A .root-progress-label')).toHaveTextContent('0/2 completed');
+    expect(screen.getByRole('button', { name: '发布检查, To do, external prerequisite' })).toBeVisible();
+    await user.selectOptions(screen.getByRole('combobox'), 'zh-CN');
+    expect(view.container.querySelector('#task-root-A .root-status')).toHaveTextContent('待审批');
+    expect(screen.getByRole('button', { name: '最终验收，待审批，被阻塞，共享任务' })).toBe(selected);
+    expect(screen.getByRole('button', { name: '发布检查，待处理，外部前置' })).toBeVisible();
+    expect(layout).toHaveBeenCalledTimes(1);
+  });
+
   it('retranslates mounted memoized rows, nodes, dependencies and controls while retaining layout, selection and viewport', async () => {
     const user = userEvent.setup();
     const layout = vi.spyOn(layoutModule, 'layoutGraph');
@@ -180,7 +206,7 @@ describe('localized task graph presentation', () => {
     const view = renderWithLocale(<RootList {...props} />, { locale: 'en' });
     expect(screen.getByRole('heading', { name: 'No task chains' })).toBeTruthy();
     expect(screen.getByLabelText('Showing 0 of 0 task chains')).toHaveTextContent('Newest first · 0 / 0 task chains');
-    const completeIndex = buildGraphIndex({ ...graph, summary: { total: 5, todo: 0, inProgress: 0, done: 5, ready: 0, blocked: 0 }, tasks: graph.tasks.map((task) => ({ ...task, status: 'done', blockedBy: [], ready: false })) });
+    const completeIndex = buildGraphIndex({ ...graph, summary: { total: 5, proposed: 0, todo: 0, inProgress: 0, done: 5, ready: 0, blocked: 0 }, tasks: graph.tasks.map((task) => ({ ...task, status: 'done', blockedBy: [], ready: false })) });
     view.rerender(<RootList {...props} index={completeIndex} allRootIds={rootIds} />);
     expect(screen.getByRole('heading', { name: 'All task chains are complete' })).toBeTruthy();
     expect(screen.getByText('3 completed task chains are hidden. Project statistics still include all tasks.')).toBeTruthy();

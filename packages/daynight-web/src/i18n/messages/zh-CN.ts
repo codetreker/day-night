@@ -9,7 +9,7 @@ export const zhCN: Messages = {
   inspection,
   common: {
     retrySave: "重试保存语言",
-    status: { todo: "待处理", in_progress: "进行中", done: "已完成" },
+    status: { proposed: "待审批", todo: "待处理", in_progress: "进行中", done: "已完成" },
     requestId: "请求 ID：",
   },
   language: {

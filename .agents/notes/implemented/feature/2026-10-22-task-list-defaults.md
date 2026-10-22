@@ -17,10 +17,13 @@ statuses, while `--status <status>` explicitly selects one status, including
 network I/O. `--ready` intersects the selected statuses, including with `--all`.
 
 The command reads every matching page before selecting and stably grouping the
-results: `in_progress`, ready tasks, remaining `todo`, then `done`. Each group
-preserves the service order across pages. Human and JSON output consume the
-same result sequence. The API client's pagination and the service's existing
-single-status and readiness filters retain their contracts.
+results: `in_progress`, ready tasks, remaining `todo`, `proposed`, then `done`.
+Each group preserves the service order across pages. Human and JSON output consume the
+same result sequence. The original three-state grouping had no proposed tasks;
+the [four-state reader decision](2026-10-22-proposed-task-readers.md) adds them to
+unfinished inventories between todo and done while preserving public status
+inputs. The API client's pagination and the service's existing single-status and
+readiness filters retain their contracts.
 
 Human task lists contain ID, project, title, status, readiness, dependencies,
 blocking and all PR references. They omit description, version, creation time

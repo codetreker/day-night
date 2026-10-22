@@ -9,7 +9,7 @@ export const en: Messages = {
   inspection,
   common: {
     retrySave: "Retry saving language",
-    status: { todo: "To do", in_progress: "In progress", done: "Done" },
+    status: { proposed: "Proposed", todo: "To do", in_progress: "In progress", done: "Done" },
     requestId: "Request ID:",
   },
   language: {

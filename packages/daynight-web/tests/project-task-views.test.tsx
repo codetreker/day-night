@@ -30,7 +30,7 @@ const snapshot = (items = seeds, id = project): TaskGraph => {
     return { ...item, blockedBy, ready: item.status === 'todo' && blockedBy.length === 0 };
   });
   return { project: { id, name: id, repoUrl: '', createdAt: timestamp, updatedAt: timestamp }, tasks,
-    summary: { total: tasks.length, todo: tasks.filter((item) => item.status === 'todo').length,
+    summary: { total: tasks.length, proposed: tasks.filter((task) => task.status === "proposed").length, todo: tasks.filter((item) => item.status === 'todo').length,
       done: tasks.filter((item) => item.status === 'done').length, inProgress: tasks.filter((item) => item.status === 'in_progress').length,
       ready: tasks.filter((item) => item.ready).length, blocked: tasks.filter((item) => item.status === 'todo' && !item.ready).length } };
 };
@@ -68,6 +68,30 @@ const openStandalone = async (id: string) => {
 };
 
 describe('project task views', () => {
+  it('shows proposed tasks in unfinished counts, chain summaries, statistics and standalone rows', async () => {
+    graphRequest.mockResolvedValue(snapshot([
+      seed('A', 'proposed'), seed('B', 'proposed', ['A', 'C']), seed('C'), seed('D', 'proposed'),
+      seed('E', 'done'), seed('F', 'proposed', ['E']), seed('G', 'done'),
+    ]));
+    mount(); await screen.findByRole('tab', { name: '任务链' });
+    expectUnfinishedCounts(4, 1);
+    const stats = screen.getByRole('region', { name: '项目任务统计' });
+    expect(stats.querySelectorAll('.stat')).toHaveLength(7);
+    expect(stats.querySelector('.stat.proposed')).toHaveTextContent('待审批4等待批准');
+    expect(document.getElementById('task-root-A')?.querySelector('.root-status')).toHaveTextContent('待审批');
+    expect(document.getElementById('task-root-A')?.querySelector('.root-progress-label')).toHaveTextContent('0/2 已完成');
+    expect(document.getElementById('task-root-C')?.querySelector('.root-status')).toHaveTextContent('待处理');
+    expect(document.getElementById('task-root-E')?.querySelector('.root-status')).toHaveTextContent('进行中');
+    fireEvent.click(tab('standalone'));
+    expect(row('D')).toHaveTextContent('待审批');
+    expect(row('D').querySelector('.root-status')).toHaveClass('graph-status-proposed');
+    expect(row('D')).not.toHaveTextContent('可开始');
+    expect(document.getElementById('standalone-task-G')).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: '显示已完成独立任务（1）' }));
+    expect(row('G')).toBeVisible();
+    expectUnfinishedCounts(4, 1);
+  });
+
   it('classifies complete dependencies independently from status and keeps summary and API order intact', async () => {
     const complete = snapshot(); graphRequest.mockResolvedValue(complete);
     mount(); await screen.findByRole('tab', { name: '任务链' });

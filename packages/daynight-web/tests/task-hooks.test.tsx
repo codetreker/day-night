@@ -19,7 +19,7 @@ const node: GraphTask = { id: taskId, titlePreview: "任务一", titleTruncated:
 const detail: TaskDetail = { id: taskId, projectId, title: "任务一", description: "完整描述", properties: { pullRequests: [] }, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
 const graph = (id = projectId): TaskGraph => ({
   project: { id, name: `项目 ${id}`, repoUrl: "https://github.com/example/repo", createdAt: time, updatedAt: time },
-  tasks: [node], summary: { total: 1, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
+  tasks: [node], summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
 });
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -47,7 +47,7 @@ describe("task graph snapshots", () => {
   it("retains a same-project snapshot through refresh and failure, then replaces it whole on success", async () => {
     const update = deferred<TaskGraph>();
     graphRequest.mockResolvedValueOnce(graph()).mockReturnValueOnce(update.promise).mockResolvedValueOnce({ ...graph(), tasks: [],
-      summary: { total: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } });
+      summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } });
     const { result } = renderHook(() => useTaskGraph(projectId));
     await waitFor(() => expect(result.current.status).toBe("ready"));
     const first = result.current.snapshot;
