@@ -67,7 +67,7 @@ references are published under `dist/commands/skill/skills/using-daynight/`.
 
 | Mode | Responsibility |
 |---|---|
-| `handbook` | Daynight commands, project discovery, data semantics and errors |
+| `handbook` | Command purposes and operational context; use CLI help for command usage |
 | `create-task` | Skip one-off/trivial work, reuse or register a task with verified planning attachments |
 | `run-task <task-id>` | Execute the designated task through validation and authorized delivery, then return |
 | `autopilot <goal or scope>` | Restore the current task or select one most relevant ready todo, and continue only after confirmed completion |

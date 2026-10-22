@@ -44,7 +44,8 @@ task, and completing `run-task` never activate it.
   Express prerequisites only through `dependsOn`.
 - Preserve the exact version observed when deciding a task update. Confirm
   writes, reconcile uncertain results before further mutations, and preserve
-  actual failures. The handbook owns command syntax and data semantics.
+  actual failures. The handbook indexes commands and explains operational
+  context; the installed CLI help owns command usage.
 - Follow the target repository's execution and delivery rules and the user's
   current authorization. In particular, an explicit request to leave a PR for
   user review keeps that task pending; completion rules grant no merge authority.

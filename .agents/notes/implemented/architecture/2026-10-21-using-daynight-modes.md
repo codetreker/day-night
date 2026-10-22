@@ -17,7 +17,10 @@ request and context to handbook, create-task, run-task or autopilot, with one
 reference document per mode. A bare invocation uses context; insufficient or
 ambiguous context prompts for intent. Autopilot requires an explicit user request
 for continuous execution. Mentioning automation, loading the skill or finishing
-a task does not activate it. The handbook owns command and data semantics.
+a task does not activate it. The handbook provides a command-purpose index and
+operational context such as repository discovery, read scope, observed-version
+updates and attachment independence. Installed CLI help owns argument and option
+usage; the handbook does not duplicate invocation examples or decoding code.
 
 This partially replaces the
 [original public distribution decision](2026-10-21-public-agent-skill-design.md):
@@ -98,8 +101,9 @@ cost of an explicit partial-migration error and a possible temporary duplicate.
 ## Consequences
 
 One installed directory contains the complete protocol and four mode references.
-Command guidance updates in one place, while task execution and repeated selection
-share one completion gate. Explicit autopilot entry prevents ordinary skill use
+Command usage stays with the installed CLI, and the compact handbook explains
+the operational facts needed to choose and combine commands. Task execution and
+repeated selection share one completion gate. Explicit autopilot entry prevents ordinary skill use
 from silently becoming a continuous work queue. Task attachments become required
 inputs to execution; create-task must reconcile partial registration and cannot
 claim readiness from an existing task ID alone.
