@@ -17,7 +17,10 @@ expandable source-root graphs, and a task detail drawer. The
 [design](../../../../docs/design/daynight-web.md) owns implementation contracts,
 the [task breakdown](../../../../docs/design/daynight-web-tasks.md) owns execution
 status, dependencies and completion criteria, and the [interactive preview](../../../../docs/design/mockups/task-dashboard.html)
-demonstrates the intended appearance. This note records a delivered design;
+demonstrates the original appearance. The later [task view decision](../feature/2026-10-22-project-task-views.md)
+separates standalone task rows from root-chain graphs within project tabs, using
+the [task view mockup](../../../../docs/design/mockups/task-views.html). This note
+records the delivered MVP design;
 the complete graph read and [project browsing foundation](2026-10-20-web-project-browsing.md)
 and the [pure graph model and layout](../feature/2026-10-20-task-graph-projection.md)
 are implemented. The [project task dashboard](../feature/2026-10-20-project-task-dashboard.md)

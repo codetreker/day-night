@@ -20,7 +20,7 @@ const evidenceRoot = join(packageRoot, '.tmp/acceptance');
 const script = fileURLToPath(new URL('../acceptance.mts', import.meta.url));
 const labelKey = 'io.daynight.acceptance.run';
 const functionalScenarios = ['project-list', 'project-graph', 'detail-navigation', 'refresh-staleness',
-  'failure-recovery', 'deep-links', 'keyboard-focus', 'narrow-layout', 'task-attachments'] as const;
+  'failure-recovery', 'deep-links', 'keyboard-focus', 'narrow-layout', 'task-attachments', 'project-view-tabs'] as const;
 const capacityScenarios = ['capacity-chain', 'capacity-merge', 'capacity-shared', 'capacity-limits'] as const;
 
 const json = async (path: string, value: unknown): Promise<void> => {

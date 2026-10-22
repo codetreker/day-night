@@ -119,9 +119,14 @@ records the adopted scope and concurrency choices. The
 [server task breakdown](docs/design/daynight-server-tasks.md) owns implementation
 scope, dependencies, status and acceptance criteria. The development and runtime
 CLI commands below apply to the client; server commands have their own module.
-The dashboard architecture presents source-root dependency graphs and project
-statistics from the server. The project list is implemented in the private web
-workspace, including task visualization and details. Its [design decision](.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)
+The dashboard architecture presents project statistics and two in-project task
+tabs from one complete server snapshot. Standalone tasks open details directly;
+root-based task chains retain dependency graphs, shared successors and aggregate
+progress. The first visit opens task chains, and each project retains its last
+tab, independent completed-item filters and browse positions. The [task view
+preview](docs/design/mockups/task-views.html) demonstrates those interactions.
+The project list is implemented in the private web workspace, including task
+visualization and details. Its [design decision](.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)
 defines the original read-only MVP. Attachment upload, overwrite and deletion
 extend the task drawer without changing task fields or the graph snapshot. The
 Go binary embeds the production UI and serves it alongside the APIs. The original

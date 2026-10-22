@@ -520,6 +520,8 @@ test.describe('fixed capacity and performance @capacity', () => {
       await expect(page.getByRole('region', { name: '项目任务统计' })).toHaveCount(0);
       await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
       await expect(page.locator('.root-list')).toHaveCount(0);
+      await expect(page.locator('.standalone-list')).toHaveCount(0);
+      await expect(page.getByRole('tablist', { name: '项目任务视图', exact: true })).toHaveCount(0);
       return observed;
     };
     try {

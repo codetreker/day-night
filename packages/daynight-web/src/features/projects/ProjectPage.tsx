@@ -4,7 +4,10 @@ import { navigate } from "../../app/router";
 import { TaskDrawer } from "../task-detail/TaskDrawer";
 import { RootList } from "../task-graph/RootList";
 import { GraphDataError } from "../task-graph/model";
-import { completedChainPreferenceNotice, projectViewPreferenceNotice, useCompletedChainVisibility, useProjectViewPreferences } from "./useProjectViewPreferences";
+import { ProjectTaskTabs } from "./ProjectTaskTabs";
+import { StandaloneList } from "./StandaloneList";
+import { completedChainPreferenceNotice, projectViewPreferenceNotice, standaloneVisibilityNotice, taskViewPreferenceNotice, taskViewScrollNotice,
+  useCompletedChainVisibility, useProjectViewPreferences, useStandaloneVisibility, useTaskView, useTaskViewScroll, type TaskView } from "./useProjectViewPreferences";
 import { useTaskGraph } from "./useTaskGraph";
 import "../../styles/project.css";
 
@@ -48,13 +51,24 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
   const heading = useRef<HTMLHeadingElement>(null);
   const originalTrigger = useRef<HTMLElement | null>(null);
   const expandedRoot = useRef<string | null>(null);
+  const currentView = useRef<TaskView>("chains");
   const snapshot = graph.snapshot;
+  const { activeView, onViewChange, issue: tabIssue } = useTaskView(projectId);
+  const { savePosition, issue: scrollIssue } = useTaskViewScroll(projectId, activeView, snapshot !== null);
+  currentView.current = activeView;
   const { showCompleted, onShowCompletedChange, issue: visibilityIssue } = useCompletedChainVisibility(projectId);
+  const { showCompleted: showCompletedStandalone, onShowCompletedChange: onStandaloneVisibilityChange, issue: standaloneIssue } = useStandaloneVisibility(projectId);
   // Database timestamp precision is retained by reversing the server's exact order.
-  const rootIds = useMemo(() => snapshot === null ? null : snapshot.index.roots.toReversed().filter((id) => {
+  const categories = useMemo(() => snapshot === null ? null : {
+    chains: snapshot.index.roots.toReversed().filter((id) => snapshot.index.successors.get(id)!.length > 0),
+    standalone: snapshot.index.roots.toReversed().filter((id) => snapshot.index.successors.get(id)!.length === 0),
+  }, [snapshot]);
+  const rootIds = useMemo(() => snapshot === null || categories === null ? null : categories.chains.filter((id) => {
     const progress = snapshot.index.rootProgress.get(id)!;
     return showCompleted || progress.status !== "done";
-  }), [snapshot, showCompleted]);
+  }), [snapshot, categories, showCompleted]);
+  const standaloneIds = useMemo(() => snapshot === null || categories === null ? [] : categories.standalone.filter((id) =>
+    showCompletedStandalone || snapshot.index.nodes.get(id)!.status !== "done"), [snapshot, categories, showCompletedStandalone]);
   const { expandedRootId, setExpandedRootId, issue: preferenceIssue } = useProjectViewPreferences(projectId, rootIds);
   expandedRoot.current = expandedRootId;
   const selectedTaskId = selection !== null && snapshot !== null &&
@@ -82,16 +96,28 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
       originalTrigger.current.focus();
       return;
     }
-    const fullscreenToggle = expandedRoot.current === null ? null : document.getElementById(`task-graph-${expandedRoot.current}`)
+    const fullscreenToggle = currentView.current !== "chains" || expandedRoot.current === null ? null : document.getElementById(`task-graph-${expandedRoot.current}`)
       ?.querySelector<HTMLButtonElement>('.task-graph-fullscreen .graph-fullscreen-toggle');
     if (fullscreenToggle != null) {
       fullscreenToggle.focus();
       return;
     }
-    const root = expandedRoot.current === null ? null : document.getElementById(`task-root-${expandedRoot.current}`);
+    const root = currentView.current !== "chains" || expandedRoot.current === null ? null : document.getElementById(`task-root-${expandedRoot.current}`);
     if (root !== null) root.focus();
-    else heading.current?.focus();
+    else {
+      const standalone = currentView.current === "standalone" ? document.querySelector<HTMLButtonElement>(".standalone-row") : null;
+      const tab = document.getElementById(`project-task-tab-${currentView.current}`);
+      if (standalone !== null) standalone.focus();
+      else if (tab !== null) tab.focus();
+      else heading.current?.focus();
+    }
   }, []);
+
+  const selectView = useCallback((view: TaskView) => {
+    if (view === activeView) return;
+    savePosition();
+    onViewChange(view);
+  }, [activeView, savePosition, onViewChange]);
 
   const summary = snapshot?.graph.summary;
   const completion = summary === undefined || summary.total === 0 ? 0 : Math.round(summary.done * 100 / summary.total);
@@ -113,6 +139,9 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
       </div>
       {preferenceIssue !== null && <p className="snapshot-notice" role="status">{projectViewPreferenceNotice(preferenceIssue)}</p>}
       {visibilityIssue !== null && <p className="snapshot-notice" role="status">{completedChainPreferenceNotice(visibilityIssue)}</p>}
+      {tabIssue !== null && <p className="snapshot-notice" role="status">{taskViewPreferenceNotice(tabIssue)}</p>}
+      {standaloneIssue !== null && <p className="snapshot-notice" role="status">{standaloneVisibilityNotice(standaloneIssue)}</p>}
+      {scrollIssue !== null && <p className="snapshot-notice" role="status">{taskViewScrollNotice(scrollIssue)}</p>}
       {graph.status === "loading" && (
         <section className="state-box" role="status" aria-label="正在加载任务图">
           <span className="spinner" aria-hidden="true" /><h2>正在加载任务图</h2><p>正在读取项目任务和依赖关系。</p>
@@ -145,10 +174,19 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
           {summary.total === 0 ? (
             <section className="state-box"><h2>还没有任务</h2><p>项目中的任务会显示在这里。创建任务后，点击刷新查看。</p></section>
           ) : (
-            <section aria-label="任务依赖链">
-              <RootList index={snapshot.index} rootIds={rootIds!} expandedRootId={expandedRootId} onExpand={setExpandedRootId} selectedTaskId={selectedTaskId} onSelectTask={onSelectTask}
-                showCompleted={showCompleted} onShowCompletedChange={onShowCompletedChange} />
-            </section>
+            <>
+              <ProjectTaskTabs activeView={activeView} standaloneCount={categories!.standalone.length} chainCount={categories!.chains.length} onViewChange={selectView} />
+              <div role="tabpanel" id="project-task-panel-chains" aria-labelledby="project-task-tab-chains" hidden={activeView !== "chains"}>
+                {activeView === "chains" && <section aria-label="任务依赖链">
+                  <RootList index={snapshot.index} rootIds={rootIds!} allRootIds={categories!.chains} expandedRootId={expandedRootId} onExpand={setExpandedRootId} selectedTaskId={selectedTaskId} onSelectTask={onSelectTask}
+                    showCompleted={showCompleted} onShowCompletedChange={onShowCompletedChange} />
+                </section>}
+              </div>
+              <div role="tabpanel" id="project-task-panel-standalone" aria-labelledby="project-task-tab-standalone" hidden={activeView !== "standalone"}>
+                {activeView === "standalone" && <StandaloneList index={snapshot.index} taskIds={standaloneIds} allTaskIds={categories!.standalone} onSelectTask={onSelectTask}
+                  showCompleted={showCompletedStandalone} onShowCompletedChange={onStandaloneVisibilityChange} />}
+              </div>
+            </>
           )}
           {selectedTaskId !== null && <TaskDrawer projectId={projectId} taskId={selectedTaskId} snapshot={snapshot} onSelectTask={onSelectRelation}
             onClose={onClose} onRestoreFocus={restoreFocus} onRefreshGraph={graph.refresh} />}

@@ -1,7 +1,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import type { TestingLibraryMatchers } from "@testing-library/jest-dom/matchers";
 import { cleanup } from "@testing-library/react";
-import { afterEach, expect, vi } from "vitest";
+import { afterEach, beforeEach, expect, vi } from "vitest";
 
 declare module "vitest" {
   interface Matchers<R, T> extends TestingLibraryMatchers<unknown, R> {}
@@ -16,6 +16,8 @@ vi.mock("tabbable", async (original) => {
 });
 
 expect.extend(matchers);
+
+beforeEach(() => { vi.spyOn(window, "scrollTo").mockImplementation(() => {}); });
 
 afterEach(() => {
   cleanup();
