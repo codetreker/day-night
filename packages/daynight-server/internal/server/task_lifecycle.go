@@ -9,7 +9,7 @@ import (
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
 )
 
-type taskAction func(context.Context, string, string, int64) (core.Task, error)
+type taskAction func(context.Context, core.Principal, string, string, int64) (core.Task, error)
 
 func taskVersionInput(fields map[string]json.RawMessage) (int64, error) {
 	var version int64
@@ -19,9 +19,10 @@ func taskVersionInput(fields map[string]json.RawMessage) (int64, error) {
 	return version, nil
 }
 
-func (h *taskHandler) lifecycle(name string, action taskAction) http.HandlerFunc {
-	return func(w http.ResponseWriter, request *http.Request) {
-		projectID, id, logger, err := h.resource(request)
+func (h *taskHandler) lifecycle(name string, action taskAction) AuthenticatedHandler {
+	return func(w http.ResponseWriter, request *http.Request, principal core.Principal) {
+		w.Header().Set("Cache-Control", "no-store")
+		projectID, id, logger, err := h.resource(request, principal)
 		if err != nil {
 			writeError(w, request, logger, "task", name, err)
 			return
@@ -41,7 +42,7 @@ func (h *taskHandler) lifecycle(name string, action taskAction) http.HandlerFunc
 			writeError(w, request, logger, "task", name, err)
 			return
 		}
-		task, err := action(request.Context(), projectID, id, input.Version)
+		task, err := action(request.Context(), principal, projectID, id, input.Version)
 		if err != nil {
 			writeError(w, request, logger, "task", name, err)
 			return

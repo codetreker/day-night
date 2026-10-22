@@ -16,7 +16,7 @@ import (
 func TestTaskHTTPPropertiesRoundTripAndMutationSemantics(t *testing.T) {
 	database := projectTestStore(t)
 	var logs bytes.Buffer
-	handler := projectTestHandler(database, &logs)
+	handler := projectTestHandler(t, database, &logs)
 	project := taskProject(t, handler)
 	for _, body := range []string{`{"title":"Default"}`, `{"title":"Default","properties":{}}`, `{"title":"Default","properties":{"pullRequests":[]}}`} {
 		task := decodeResponse[api.Task](t, projectRequest(handler, http.MethodPost, taskCollection(project.ID), body), http.StatusCreated)
@@ -74,7 +74,7 @@ func TestTaskHTTPPropertiesRoundTripAndMutationSemantics(t *testing.T) {
 }
 
 func TestTaskHTTPPropertiesRejectInvalidStructure(t *testing.T) {
-	handler := projectTestHandler(projectTestStore(t), io.Discard)
+	handler := projectTestHandler(t, projectTestStore(t), io.Discard)
 	project := taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "Original")
 	for _, properties := range []string{
@@ -105,7 +105,7 @@ func TestTaskHTTPPropertiesRejectInvalidStructure(t *testing.T) {
 
 func TestTaskHTTPCorruptPropertiesFailWithoutFallback(t *testing.T) {
 	database := projectTestStore(t)
-	handler := projectTestHandler(database, io.Discard)
+	handler := projectTestHandler(t, database, io.Discard)
 	project := taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "Original")
 	for _, corrupt := range []string{`not JSON`, `{}`, `{"pullRequests":null}`, `{"pullRequests":[{"url":"x"}]}`, `{"pullRequests":[],"unknown":1}`, `{"pullRequests":[],"pullRequests":[]}`} {

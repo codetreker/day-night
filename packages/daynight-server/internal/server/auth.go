@@ -6,9 +6,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"net/netip"
-	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -18,48 +15,24 @@ import (
 )
 
 type AuthConfig struct {
-	PublicOrigin      string
-	AllowLoopbackHTTP bool
+	PublicOrigin        string
+	AllowHTTPTestOrigin bool
 }
 
 type Authentication struct {
-	identity *service.Identity
-	origin   string
-	secure   bool
-	logger   *slog.Logger
+	identity     *service.Identity
+	origin       string
+	secure       bool
+	callbackPath string
+	logger       *slog.Logger
 }
 
-// NewAuthentication composes callable identity handlers without activating the application mux.
 func NewAuthentication(identity *service.Identity, config AuthConfig, logger *slog.Logger) (*Authentication, error) {
-	parsed, err := url.Parse(config.PublicOrigin)
-	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.Path != "" || parsed.Opaque != "" || config.PublicOrigin != parsed.Scheme+"://"+parsed.Host {
-		return nil, &ConfigurationError{Field: "public origin", Rule: "must be an exact origin without a path, query, or user information"}
+	origin, callbackPath, err := validateAuthSettings(config, identity.CallbackURL())
+	if err != nil {
+		return nil, err
 	}
-	hostname, port := parsed.Hostname(), parsed.Port()
-	if hostname == "" || hostname != strings.ToLower(hostname) || strings.HasSuffix(parsed.Host, ":") {
-		return nil, &ConfigurationError{Field: "public origin", Rule: "requires a nonempty canonical lower-case host"}
-	}
-	if port != "" {
-		number, parseErr := strconv.Atoi(port)
-		if parseErr != nil || number < 1 || number > 65535 || strconv.Itoa(number) != port || parsed.Scheme == "https" && number == 443 || parsed.Scheme == "http" && number == 80 {
-			return nil, &ConfigurationError{Field: "public origin", Rule: "requires a canonical port from 1 to 65535 with the scheme-default port omitted"}
-		}
-	}
-	secure := parsed.Scheme == "https"
-	if secure && config.AllowLoopbackHTTP {
-		return nil, &ConfigurationError{Field: "loopback HTTP", Rule: "must be disabled for an HTTPS main site"}
-	}
-	if !secure {
-		address, addressErr := netip.ParseAddr(parsed.Hostname())
-		loopback := parsed.Hostname() == "localhost" || addressErr == nil && address.IsLoopback() && address.Zone() == ""
-		if parsed.Scheme != "http" || !config.AllowLoopbackHTTP || !loopback {
-			return nil, &ConfigurationError{Field: "public origin", Rule: "requires HTTPS or explicit literal-loopback HTTP development"}
-		}
-	}
-	if identity.CallbackURL() != config.PublicOrigin+"/api/v1/auth/callback" {
-		return nil, &ConfigurationError{Field: "callback URL", Rule: "must match the main-site origin and authentication callback path"}
-	}
-	return &Authentication{identity: identity, origin: config.PublicOrigin, secure: secure, logger: logger}, nil
+	return &Authentication{identity: identity, origin: config.PublicOrigin, secure: origin.Scheme == "https", callbackPath: callbackPath, logger: logger}, nil
 }
 
 func (h *Authentication) SessionCookieName() string {
@@ -128,6 +101,7 @@ type AuthenticatedHandler func(http.ResponseWriter, *http.Request, core.Principa
 
 func (h *Authentication) Require(next AuthenticatedHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, request *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
 		principal, err := h.AuthenticateRequest(request)
 		if err != nil {
 			writeError(w, request, h.logger, "auth", "authenticate", err)
@@ -140,16 +114,22 @@ func (h *Authentication) Require(next AuthenticatedHandler) http.HandlerFunc {
 
 func (h *Authentication) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/auth/login", h.login)
-	mux.HandleFunc("GET /api/v1/auth/callback", h.callback)
+	mux.HandleFunc("GET "+h.callbackPath, h.callback)
+	mux.HandleFunc("GET /api/v1/auth/providers", h.providers)
 	mux.HandleFunc("HEAD /api/v1/auth/login", methodNotAllowed(h.logger, "GET"))
-	mux.HandleFunc("HEAD /api/v1/auth/callback", methodNotAllowed(h.logger, "GET"))
+	mux.HandleFunc("HEAD "+h.callbackPath, methodNotAllowed(h.logger, "GET"))
 	mux.HandleFunc("GET /api/v1/me", h.Require(h.me))
 	mux.HandleFunc("POST /api/v1/auth/logout", h.Require(h.logout))
 	mux.HandleFunc("GET /api/v1/me/tokens", h.Require(h.listTokens))
 	mux.HandleFunc("POST /api/v1/me/tokens", h.Require(h.createToken))
 	mux.HandleFunc("DELETE /api/v1/me/tokens/{tokenId}", h.Require(h.revokeToken))
-	for path, methods := range map[string]string{"/api/v1/auth/login": "GET", "/api/v1/auth/callback": "GET", "/api/v1/me": "GET, HEAD", "/api/v1/auth/logout": "POST", "/api/v1/me/tokens": "GET, HEAD, POST", "/api/v1/me/tokens/{tokenId}": "DELETE"} {
-		mux.HandleFunc(path, methodNotAllowed(h.logger, methods))
+	for path, methods := range map[string]string{"/api/v1/auth/login": "GET", h.callbackPath: "GET", "/api/v1/auth/providers": "GET, HEAD", "/api/v1/me": "GET, HEAD", "/api/v1/auth/logout": "POST", "/api/v1/me/tokens": "GET, HEAD, POST", "/api/v1/me/tokens/{tokenId}": "DELETE"} {
+		fallback := methodNotAllowed(h.logger, methods)
+		if path == "/api/v1/auth/logout" || strings.HasPrefix(path, "/api/v1/me") {
+			mux.HandleFunc(path, h.Require(func(w http.ResponseWriter, request *http.Request, _ core.Principal) { fallback(w, request) }))
+		} else {
+			mux.HandleFunc(path, fallback)
+		}
 	}
 }
 
@@ -272,4 +252,20 @@ func (h *Authentication) revokeToken(w http.ResponseWriter, request *http.Reques
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Authentication) providers(w http.ResponseWriter, request *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if _, err := queryValues(request); err != nil {
+		writeError(w, request, h.logger, "auth", "providers", err)
+		return
+	}
+	providers, err := h.identity.Providers(request.Context())
+	if err != nil {
+		writeError(w, request, h.logger, "auth", "providers", err)
+		return
+	}
+	writeJSON(w, request, h.logger, http.StatusOK, struct {
+		Providers []string `json:"providers"`
+	}{Providers: providers})
 }

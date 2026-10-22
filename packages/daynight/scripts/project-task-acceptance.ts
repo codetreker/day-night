@@ -1,5 +1,5 @@
 import crossSpawn from "cross-spawn";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import type { InstalledCliReceipt } from "../test/fixtures/installed-cli.js";
@@ -24,6 +24,17 @@ type ServiceEvidence = {
 };
 
 type TerminateInstalledProcess = typeof import("../test/fixtures/installed-cli.js").terminateInstalledProcess;
+
+export const readBudgetToken = async (file: string): Promise<string> => {
+  const entry = await lstat(file);
+  if (!entry.isFile() || process.platform !== "win32" && (entry.mode & 0o777) !== 0o600) throw new Error("Installed CLI budget credentials must be stored in a private regular file.");
+  const source = await readFile(file, "utf8");
+  let value: unknown;
+  try { value = JSON.parse(source); }
+  catch { throw new Error("Installed CLI budget credential metadata is invalid."); }
+  if (typeof value !== "object" || value === null || Array.isArray(value) || !("serverToken" in value) || typeof value.serverToken !== "string" || !/^[\x21-\x7e]+$/.test(value.serverToken)) throw new Error("Installed CLI budget credential metadata is invalid.");
+  return value.serverToken;
+};
 
 const runCommand = async (command: string, args: readonly string[], cwd: string, env: NodeJS.ProcessEnv, terminate: TerminateInstalledProcess, signal: AbortSignal, watchdogMs: number): Promise<CommandReceipt> => {
   signal.throwIfAborted();
@@ -77,7 +88,8 @@ export const runProjectTaskAcceptance = async (): Promise<void> => {
     }
     fixture = await fixtureModule.createInstalledCli({ signal: cancellation.signal });
     evidence.installed = fixture.receipt;
-    const env = { ...process.env, DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT: fixture.receiptPath };
+    const budgetTokenFile = path.join(fixture.receipt.root, "budget-token.json");
+    const env = { ...process.env, DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT: fixture.receiptPath, DAYNIGHT_TEST_CLI_BUDGET_TOKEN_FILE: budgetTokenFile };
     try { evidence.goCoverage = await runCommand("go", coverageArgs, serverRoot, env, fixtureModule.terminateInstalledProcess, cancellation.signal, 12 * 60_000); }
     catch (error) {
       if (typeof error === "object" && error !== null && "commandReceipt" in error) evidence.goCoverage = error.commandReceipt as CommandReceipt;
@@ -88,7 +100,9 @@ export const runProjectTaskAcceptance = async (): Promise<void> => {
       if (typeof error === "object" && error !== null && "commandReceipt" in error) evidence.strictCoverage = error.commandReceipt as CommandReceipt;
       throw error;
     }
-    try { evidence.probes = await budgets.runProductionBudgetProbes(fixture.receipt, repositoryRoot, cancellation.signal); }
+    const serverToken = await readBudgetToken(budgetTokenFile);
+    await rm(budgetTokenFile);
+    try { evidence.probes = await budgets.runProductionBudgetProbes(fixture.receipt, repositoryRoot, serverToken, cancellation.signal); }
     catch (error) {
       if (error instanceof budgets.BudgetAcceptanceError) evidence.probes = error.receipts;
       throw error;

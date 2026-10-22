@@ -36,7 +36,7 @@ task-specific primary plans own delivery status and source-bound acceptance.
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle and interactive Agent installation, shared configuration, server HTTP and repository binding foundations plus project, task and single-file attachment commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
-| `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
+| `daynight-server` | `packages/daynight-server/` | Project/task/graph APIs, mandatory UniAuth/session/PAT authentication, project memberships, PostgreSQL transactions and embedded browser assets implemented; source-bound activation acceptance tracked separately | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs with complete prerequisite context and task details, attachment management/preview, embedded delivery, graph production acceptance and strict coverage delivered; English/Simplified Chinese interface and locale persistence implemented, combined bilingual production verification tracked separately | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [language requirements](docs/spec/daynight-web-i18n.md), [language design](docs/design/daynight-web-i18n.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The adopted [task attachment requirements](docs/spec/daynight-task-attachments.md),
@@ -75,22 +75,26 @@ The [authentication requirements](docs/spec/daynight-auth.md),
 [architecture](docs/design/daynight-auth.md) and
 [task breakdown](docs/design/daynight-auth-tasks.md) define UniAuth login, Daynight
 sessions and personal access tokens, private projects and membership. The
-[identity foundation](.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
-provides persistent users, credentials and callable authentication handlers. The
-[project membership module](.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
-adds private creation, filtered access, roles and invitations. Both modules remain
-unmounted. [CLI server credentials](.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
-are implemented. The opt-in [authenticated Web workspace](.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
-provides login, private project creation, account/token management, project
-members and invitation acceptance in English and Simplified Chinese through the
-existing locale runtime. Production `main.tsx` keeps `LocaleProvider` and `App`;
-the opt-in shell uses the same Provider. Coordinated activation switches the
-application entry and integrates provider discovery after upgrading the pinned
-UniAuth SDK to the delivered upstream capability. The current application is
-unauthenticated and loopback-only. Trusted
-same-origin executable HTML previews retain their existing execution model after
-authentication is delivered; attachment requests gain project-member checks.
-Existing projects will receive membership data manually outside that work.
+[identity foundation](.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md),
+[project membership module](.agents/notes/implemented/architecture/2026-10-22-project-membership.md),
+[CLI credentials](.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
+and [bilingual Web workspace](.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
+are connected by the mandatory
+[authentication composition](.agents/notes/implemented/architecture/2026-10-22-authentication-activation.md).
+Production `main.tsx` mounts `AuthenticatedApp` under the persistent locale
+Provider; all business APIs authenticate their caller and check current project
+membership. The pinned UniAuth SDK supplies authoritative App-aware provider
+discovery. Five server-side authentication settings are required; configured
+callback routing and the two independent HTTP test allowances are documented in
+the architecture and deployment guide. Source-bound acceptance results remain
+with the corresponding PR and CI; implementation status does not claim every
+combined or real-provider login check has passed.
+
+Trusted same-origin executable HTML retains its existing authority, relative
+resources and keyboard behavior; attachment requests use normal session and
+project checks. Existing projects keep zero memberships until manually assigned;
+there is no automatic owner migration or anonymous business mode. The Go listener
+continues to bind only numeric loopback addresses.
 
 The `@codetreker/daynight` package provides the `daynight` client and its `dn`
 short command. Both names use the same entry, commands and configuration. Its
@@ -380,12 +384,16 @@ Run the dashboard, project/task API and PostgreSQL with Docker Engine 28+ and Do
 Compose 2.20+ using Linux containers:
 
 ```bash
+cp deployment/localhost/.env.example deployment/localhost/.env
+# Configure the private .env using the deployment guide before starting.
 bash deployment/localhost/up.sh
 ```
 
-The command builds the UI and server inside Docker, applies embedded migrations
-and waits for healthy services. Open `http://127.0.0.1:8787/` for the dashboard;
-the API is available at `http://127.0.0.1:8787/api/v1` on that same origin.
+The command requires the five authentication settings in that private file,
+builds the UI and server inside Docker, applies embedded migrations and waits for
+`/readyz`. Open the configured public origin and log in through UniAuth. APIs and
+trusted attachment previews share that origin; CLI access uses a Web-created
+personal access token configured through hidden or stdin setup.
 PostgreSQL data persists across container recreation. The
 [localhost deployment guide](deployment/localhost/README.md) owns port selection,
 API examples, logs, updates and volume removal.
@@ -396,8 +404,10 @@ Use Go 1.27.2, PostgreSQL 18.6, Node.js 24 LTS and pnpm 11.28.6. Run
 `pnpm install --frozen-lockfile` from the repository root before source builds. The
 [server module](packages/daynight-server/README.md) owns configuration, startup,
 the isolated database setup and complete validation commands. Its HTTP runtime
-binds only loopback addresses and serves project creation/list/get, task
-create/list/get/update, complete task-graph routes and embedded UI assets. Delivery
+binds only numeric loopback addresses and serves authenticated project/task,
+complete graph, membership, invitation and attachment routes with embedded UI.
+The five mandatory authentication settings and independent HTTP test switches
+are described in the server module and deployment guides. Delivery
 status and complete process acceptance
 are recorded in the
 [task breakdown](docs/design/daynight-server-tasks.md).
@@ -1006,7 +1016,9 @@ use and remains stable if another project later shares that repository.
 Tasks follow one forward lifecycle: creation starts in `proposed`; `task approve`
 moves it to `todo`; `task claim` moves ready todo to `in_progress`; `task complete`
 moves in-progress work to `done`. Approval permits unfinished prerequisites;
-claim and completion require every direct prerequisite to be done. Each action
+claim and completion require every direct prerequisite to be done. Every project
+member, including administrators, may use these resource operations; the
+administrator role additionally manages members and invitations. Each action
 uses an expected version and increments it once. `--if-version` submits the exact
 observed int64 value; without it, the CLI reads once immediately before submitting.
 Conflicts and wrong states fail without retry. Generic updates cannot write
@@ -1693,8 +1705,9 @@ owns the lifecycle rationale; the [bundled-skill decision](.agents/notes/impleme
 owns native loading evidence.
 
 The [dev-ci attachment check](deployment/dev-ci/README.md#attachment-persistence-check)
-runs with `node deployment/dev-ci/tests/attachments.mts` using Node.js 24 and
-Docker. Two isolated production builds verify attachment-volume permissions,
+runs with `node deployment/dev-ci/tests/attachments.mts` using Node.js 24,
+Go 1.27.2 and a supported Linux-container Docker engine. An architecture-matching
+prebuilt fixture can replace host preparation as documented by dev-ci. Two isolated production builds verify attachment-volume permissions,
 restart/recreation persistence, project isolation, paired PostgreSQL/file restore
 and targeted cleanup. The Bash runner fixture remains a separate orchestration
 check; real-container evidence is required for persistence claims.

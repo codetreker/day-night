@@ -66,7 +66,7 @@ func readHTTPTask(t *testing.T, handler http.Handler, task api.Task) api.Task {
 func TestTaskHTTPLifecycleDefaultsAndUpdateSemantics(t *testing.T) {
 	database := projectTestStore(t)
 	var logs bytes.Buffer
-	handler := projectTestHandler(database, &logs)
+	handler := projectTestHandler(t, database, &logs)
 	project := taskProject(t, handler)
 	collection := taskCollection(project.ID)
 	empty := projectRequest(handler, http.MethodGet, collection, "")
@@ -133,7 +133,7 @@ func TestTaskHTTPLifecycleDefaultsAndUpdateSemantics(t *testing.T) {
 }
 
 func TestTaskHTTPStrictInputsDoNotMutate(t *testing.T) {
-	handler := projectTestHandler(projectTestStore(t), io.Discard)
+	handler := projectTestHandler(t, projectTestStore(t), io.Discard)
 	project := taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "Original")
 	for _, body := range []string{
@@ -180,7 +180,7 @@ func TestTaskHTTPStrictInputsDoNotMutate(t *testing.T) {
 
 func TestTaskHTTPDependencyErrorsAndDerivedFields(t *testing.T) {
 	var logs bytes.Buffer
-	handler := projectTestHandler(projectTestStore(t), &logs)
+	handler := projectTestHandler(t, projectTestStore(t), &logs)
 	project := taskProject(t, handler)
 	first := createHTTPTask(t, handler, project.ID, "First")
 	second := createHTTPTask(t, handler, project.ID, "Second")
@@ -248,7 +248,7 @@ func TestTaskHTTPDependencyErrorsAndDerivedFields(t *testing.T) {
 
 func TestTaskHTTPScopesIDsAndMethods(t *testing.T) {
 	var logs bytes.Buffer
-	handler := projectTestHandler(projectTestStore(t), &logs)
+	handler := projectTestHandler(t, projectTestStore(t), &logs)
 	project, other := taskProject(t, handler), taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "private-title-secret")
 	foreign := createHTTPTask(t, handler, other.ID, "foreign-title-secret")
@@ -295,7 +295,7 @@ func TestTaskHTTPScopesIDsAndMethods(t *testing.T) {
 
 func TestTaskHTTPListFiltersKeysetsAndCursorScopes(t *testing.T) {
 	database := projectTestStore(t)
-	handler := projectTestHandler(database, io.Discard)
+	handler := projectTestHandler(t, database, io.Discard)
 	project, other := taskProject(t, handler), taskProject(t, handler)
 	first := createHTTPTask(t, handler, project.ID, "Ready one")
 	first = transitionHTTPTask(t, handler, first, "approve")
@@ -365,7 +365,7 @@ func TestTaskHTTPListFiltersKeysetsAndCursorScopes(t *testing.T) {
 func TestTaskHTTPDatabaseFailuresAndCancellation(t *testing.T) {
 	database := projectTestStore(t)
 	var logs bytes.Buffer
-	handler := projectTestHandler(database, &logs)
+	handler := projectTestHandler(t, database, &logs)
 	project := taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "private-task-secret")
 	if _, err := database.Pool.Exec(context.Background(), "ALTER TABLE tasks RENAME TO private_table_secret"); err != nil {
@@ -402,6 +402,7 @@ func TestTaskHTTPDatabaseFailuresAndCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	request := httptest.NewRequest(http.MethodPatch, taskPath(task), strings.NewReader(`{"version":1,"title":"canceled-update"}`)).WithContext(ctx)
+	authorizeResourceRequest(handler, request)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-Request-ID", "project-test")
 	response, finished := httptest.NewRecorder(), make(chan struct{})

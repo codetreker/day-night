@@ -6,6 +6,7 @@ import {
   updateTask, withDependencyFailure,
 } from './fixtures';
 import { expectCenteredTaskDetail } from './detail-dialog';
+import { authenticatedAPI } from './authentication';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
 const standalone = (page: Page, id: string): Locator => page.locator(`#standalone-task-${id}`);
@@ -52,7 +53,7 @@ const pauseAutomaticRefresh = async (page: Page): Promise<void> => {
   await page.clock.pauseAt(time);
 };
 
-test('task-approval', scenario('task-approval'), async ({ page, request, allowApprovalWrites, allowAttachmentWrites }, info) => {
+test('task-approval', scenario('task-approval'), async ({ page, api: request, allowApprovalWrites, allowAttachmentWrites }, info) => {
   await pauseAutomaticRefresh(page);
   const project = await createProject(request, { name: `Approval ${randomUUID()}` });
   const exact = await createProposedTask(request, project.id, { title: '精确版本审批', description: '保留完整说明与任务内容。' });
@@ -113,33 +114,33 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   await page.route(uploadUrl, async (route) => {
     if (route.request().method() !== 'PUT') { await route.fallback(); return; }
     expect(route.request().postDataBuffer()).toEqual(uploadBytes);
-    const response = await route.fetch({ timeout: 15_000, maxRetries: 0 });
+    const response = await authenticatedAPI(page.context().request).fetch(route.request(), { timeout: 15_000, maxRetries: 0 });
     expect(response.status()).toBe(201);
     uploadFetched.resolve();
     await within(uploadRelease.promise, 'active attachment upload response release', 60_000);
-    await route.fulfill({ response });
+    await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
     uploadFinished.resolve();
   });
   await page.route(otherPattern, async (route) => {
     if (!holdOtherRead) { await route.continue(); return; }
-    const response = await route.fetch({ timeout: 15_000, maxRetries: 0 });
+    const response = await authenticatedAPI(page.context().request).fetch(route.request(), { timeout: 15_000, maxRetries: 0 });
     expect(response.status()).toBe(200);
     expect((await response.json() as { title: string }).title).toBe(otherTitle);
     otherFetched.resolve();
     await within(otherRelease.promise, 'background task detail response release', 60_000);
-    await route.fulfill({ response });
+    await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
     otherFinished.resolve();
   });
   const submitted: string[] = [];
   const pattern = `**${taskPath(project.id, exact.id)}/approve`;
   await page.route(pattern, async (route) => {
     submitted.push(route.request().postData()!);
-    const response = await route.fetch({ timeout: 15_000, maxRetries: 0 });
+    const response = await authenticatedAPI(page.context().request).fetch(route.request(), { timeout: 15_000, maxRetries: 0 });
     expect(response.status()).toBe(200);
     expect(await response.text()).toMatch(new RegExp(`"version"\\s*:\\s*${exactVersion + 1n}(?:,|})`));
     fetched.resolve();
     await within(release.promise, 'pending approval response release', 60_000);
-    await route.fulfill({ response });
+    await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
     finished.resolve();
   });
   try {
@@ -299,11 +300,11 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   const graphFinished = deferred();
   const graphApprovalPattern = `**${taskPath(project.id, blocked.id)}/approve`;
   await page.route(graphApprovalPattern, async (route) => {
-    const response = await route.fetch({ timeout: 15_000, maxRetries: 0 });
+    const response = await authenticatedAPI(page.context().request).fetch(route.request(), { timeout: 15_000, maxRetries: 0 });
     expect(response.status()).toBe(200);
     graphSubmitted.resolve();
     await within(graphRelease.promise, 'graph approval response release');
-    await route.fulfill({ response });
+    await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
     graphFinished.resolve();
   });
   try {
@@ -348,7 +349,7 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   await screenshot(page, info, 'task-approval');
 });
 
-test('task-approval-conflicts', scenario('task-approval-conflicts'), async ({ page, request, allowApprovalWrites }, info) => {
+test('task-approval-conflicts', scenario('task-approval-conflicts'), async ({ page, api: request, allowApprovalWrites }, info) => {
   await pauseAutomaticRefresh(page);
   const project = await createProject(request, { name: `Approval conflict ${randomUUID()}` });
   const changed = await createProposedTask(request, project.id, { title: '批准前内容变化', description: '最初审阅的说明' });
@@ -385,7 +386,7 @@ test('task-approval-conflicts', scenario('task-approval-conflicts'), async ({ pa
   await screenshot(page, info, 'task-approval-conflicts');
 });
 
-test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page, request, allowApprovalWrites }, info) => {
+test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page, api: request, allowApprovalWrites }, info) => {
   await pauseAutomaticRefresh(page);
   const project = await createProject(request, { name: `Approval recovery ${randomUUID()}` });
   const unknown = await createProposedTask(request, project.id, { title: '响应丢失但已批准' });
@@ -402,7 +403,7 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
     else await route.continue();
   });
   await page.route(unknownPostPattern, async (route) => {
-    const response = await route.fetch({ timeout: 15_000, maxRetries: 0 });
+    const response = await authenticatedAPI(page.context().request).fetch(route.request(), { timeout: 15_000, maxRetries: 0 });
     expect(response.status()).toBe(200);
     await route.abort('connectionfailed');
   });
@@ -431,9 +432,9 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
   const graphPattern = `**${graphPath(project.id)}`;
   await page.route(graphPattern, async (route) => {
     if (!failGraph) { await route.continue(); return; }
-    const response = await withDependencyFailure(async () => route.fetch({ timeout: 15_000, maxRetries: 0 }));
+    const response = await withDependencyFailure(async () => authenticatedAPI(page.context().request).fetch(route.request(), { timeout: 15_000, maxRetries: 0 }));
     expect(response.status()).toBe(500);
-    await route.fulfill({ response });
+    await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
   });
   try {
     await approval(page).getByRole('button', { name: '批准任务', exact: true }).click();
@@ -454,12 +455,12 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
   const finished = deferred();
   const stalePattern = `**${taskPath(project.id, stale.id)}`;
   await page.route(stalePattern, async (route) => {
-    const response = await route.fetch({ timeout: 15_000, maxRetries: 0 });
+    const response = await authenticatedAPI(page.context().request).fetch(route.request(), { timeout: 15_000, maxRetries: 0 });
     expect(response.status()).toBe(200);
     fetched.resolve();
     await within(release.promise, 'stale task detail release');
     if (route.request().failure() !== null) await route.abort('aborted');
-    else await route.fulfill({ response });
+    else await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
     finished.resolve();
   });
   try {

@@ -14,12 +14,12 @@
 实施与组合验收范围，进度由 Daynight 维护。图、统计与 task 元数据保留读取约定；proposed 的审批是独立版本化操作。
 
 [鉴权架构](daynight-auth.md)拥有 UniAuth 登录、项目权限、成员与邀请及个人访问
-令牌；显式挂载的 `AuthenticatedApp` 和 API 客户端已实现。
+令牌；`AuthenticatedApp` 和 API 客户端已接入生产入口。
 [需求](../spec/daynight-auth.md)与[任务拆分](daynight-auth-tasks.md)拥有完整行为和
-统一启用顺序。生产 `main.tsx` 在常驻 LocaleProvider 中继续渲染原 `App`，当前
-交付仍为本机未认证看板；AuthenticatedApp 复用该 Provider 和 messages.auth 的
-英语/简体中文目录。真实 provider discovery 的 SDK 升级与生产挂载由统一启用交付。新壳复用现有任务页签、图和居中
-`TaskDetailDialog`，保留可信同源 frame、相对资源及键盘机制。
+交付条件。生产 `main.tsx` 在常驻 LocaleProvider 中渲染 `AuthenticatedApp`，复用
+messages.auth 的英语/简体中文目录及同一语言偏好。后端使用升级后的公开 UniAuth
+SDK 提供 App-aware provider discovery；发现失败与用户会话失效分开呈现。新壳
+复用现有任务页签、渐进图和居中 `TaskDetailDialog`，保留可信同源 frame、相对资源及键盘机制。
 [Web 鉴权决策](../../.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
 记录组件、会话生命周期和验证边界。
 
@@ -48,7 +48,7 @@
 部分取代原基线的手动触发策略。附件是独立的文件资源扩展，使用自己的
 元数据、HTTP 接口和局部状态，不把文件写入混入 task PATCH 或图快照。
 
-项目列表只展示项目元数据，不为每张卡额外请求任务统计。统计集中在项目详情，避免列表产生 N 次图查询。创建编辑、实时推送和大图分片的延后成本及保留条件由[要求文档](../spec/daynight-web.md#明确延后的能力)定义；显式挂载鉴权壳和待完成的生产统一启用由[鉴权架构](daynight-auth.md)拥有。
+项目列表只展示项目元数据，不为每张卡额外请求任务统计。统计集中在项目详情，避免列表产生 N 次图查询。创建编辑、实时推送和大图分片的延后成本及保留条件由[要求文档](../spec/daynight-web.md#明确延后的能力)定义；生产鉴权壳、项目创建、成员与邀请管理由[鉴权架构](daynight-auth.md)拥有。
 
 ## 页面与视觉
 
@@ -61,7 +61,7 @@ proposed 按当前语言使用“Proposed”或“待审批”及独立的紫色
 
 - 页首显示“项目”和刷新按钮。
 - 卡片显示项目名称、仓库地址、创建日期和“查看任务”。长名称、地址允许换行，仓库地址按普通文本展示。
-- 复用 `GET /api/v1/projects?limit=50&cursor=...`，以“加载更多”遍历，按 ID 去重。
+- 复用 `GET /api/v1/projects?limit=50&cursor=...`，服务端先按成员关系过滤，再以“加载更多”遍历，按 ID 去重。
 - 加载下一页失败时保留已加载卡片，错误和重试定位在列表末尾；首次加载失败使用整页错误。
 - 刷新重置分页，从新列表开始。列表没有跨页一致性承诺，不显示未经完整读取的项目总数。
 
@@ -175,8 +175,8 @@ PR 区域在描述之后，标题与 URL 分别使用文本节点，空字符串
 ### 版本化审批与任务会话
 
 `TaskDetailSession.tsx` 在工作空间生命周期中按 `(projectId, taskId)` 保存详情读取、审批
-提交和核对状态，独立行、图节点及全屏详情消费同一键。原 App 拥有常驻 boundary；
-显式鉴权壳用 TaskDetailSessionProvider 包裹已认证分支，key 为现有 user ID/会话
+提交和核对状态，独立行、图节点及全屏详情消费同一键。独立 App 拥有常驻 boundary；
+生产 AuthenticatedApp 用 TaskDetailSessionProvider 包裹已认证分支，key 为现有 user ID/会话
 generation，Workspace 和邀请路由复用该 owner。相同身份跨项目导航保留防重状态，
 同用户重新核对不改变 generation；身份替换、登出或匿名分支卸载并释放旧 owner，
 旧操作结果不能进入新身份。审批控件及审批结果反馈位于概览的滚动区域；详情读取错误
@@ -184,7 +184,8 @@ generation，Workspace 和邀请路由复用该 owner。相同身份跨项目导
 进行中操作、公共标题/状态、附件选择与焦点。它只协调当前工作空间，不是
 服务器所有权锁。用户主动点击 Approve / 批准任务时，发送其已审阅完整详情的 version
 至 `POST /api/v1/projects/{projectId}/tasks/{taskId}/approve`；请求体只含 version。
-proposed 可以含未完成前置，批准后仍可能是 blocked todo，不隐式 claim。
+proposed 可以含未完成前置，批准后仍可能是 blocked todo，不隐式 claim。普通
+成员与管理员均可审批；管理员角色仅增加成员与邀请管理权限。
 
 详情模型以 bigint 保存 version。任务详情 codec 先用原生 JSON 语法校验，再非递归扫描根对象的
 键和值范围，仅保留根 TaskDetail.version 的整数数字 lexeme 并转为 bigint；字符串
@@ -510,7 +511,7 @@ DAYNIGHT_TEST_DATABASE_URL=... bash scripts/check.sh
 
 `deployment/localhost/compose.yaml` 使用仓库根 context 并显式指定 `deployment/localhost/Dockerfile`。Dockerfile 专属 `.dockerignore` 使用根相对 allowlist，纳入 workspace/root/web/Go manifests、锁文件、`patches/` 中的 Dagre 运行时与 XYFlow 声明补丁、实际构建脚本与源码，排除宿主 `node_modules`、`.tmp`、生成 dist 和无关工作区内容。安装层只下载 web 所需依赖；镜像内部执行同一 `web:build`，不依赖宿主预构建产物。
 
-保留 nginx stream/TCP 转发、服务与 gateway 共享网络命名空间、服务 loopback 监听、宿主 loopback 端口发布、现有 project API 健康检查和命名卷。nginx 不增加 SPA fallback，HTML、资源和 API 都由同一个 Go mux 处理。正常重建栈继续保留数据库数据。操作细节由 `deployment/localhost/README.md` 拥有，拓扑与内嵌交付选择分别由[本机部署决策](../../.agents/notes/implemented/architecture/2026-10-20-localhost-compose.md)和[内嵌交付决策](../../.agents/notes/implemented/architecture/2026-10-20-embedded-dashboard-deployment.md)拥有。
+保留 nginx stream/TCP 转发、服务与 gateway 共享网络命名空间、服务 loopback 监听、宿主 loopback 端口发布、公开 `/readyz` 数据库就绪检查和命名卷。nginx 不增加 SPA fallback，HTML、资源和 API 都由同一个 Go mux 处理。正常重建栈继续保留数据库数据。操作细节由 `deployment/localhost/README.md` 拥有，拓扑与内嵌交付选择分别由[本机部署决策](../../.agents/notes/implemented/architecture/2026-10-20-localhost-compose.md)和[内嵌交付决策](../../.agents/notes/implemented/architecture/2026-10-20-embedded-dashboard-deployment.md)拥有。
 
 ### dev-ci 验收部署
 
@@ -542,7 +543,14 @@ deployment/
 | 网络与卷 | 现有日常项目资源 | Compose 项目作用域；不设全局资源 name 或 external |
 | 结束 | 保留业务数据 | 只清理当前 run 的容器、卷和网络 |
 
-`run.sh` 在创建任何资源前生成并校验项目名、注册有界清理，固定同一组 file/project-directory/project-name 参数。使用生产 Dockerfile 构建本次唯一镜像标签，记录 image ID，等待数据库及 API 健康后发现 base URL，通过 `DAYNIGHT_BASE_URL` 交给子命令。`pnpm web:acceptance` 调用该入口运行容器浏览器用例，不启动、重建或清理日常 localhost 栈；Go 覆盖率和直接二进制测试继续使用已有独立 PostgreSQL 测试机制。
+`run.sh` 在创建任何资源前生成并校验项目名、注册有界清理，固定同一组
+file/project-directory/project-name 参数。使用生产 Dockerfile 构建本次唯一镜像标签，
+记录 image ID；先启动 gateway/PostgreSQL 并发现主站 base URL，再配置精确 callback、
+真实 UniAuth fixture 与私有 auth.env，最后启动服务并等待公开 readyz。
+`DAYNIGHT_BASE_URL`、本 run 的私有配置/descriptor 交给子命令，凭据不进入公开回执。
+`pnpm web:acceptance` 调用该入口运行容器浏览器用例，不启动、重建或清理日常
+localhost 栈；Go 覆盖率和直接二进制测试继续使用已有独立 PostgreSQL 测试机制。
+详细配置和重建恢复顺序由[dev-ci 指南](../../deployment/dev-ci/README.md)拥有。
 
 正常退出、测试失败和信号取消都先终止本次子命令进程组，再收集本项目的必要日志及状态，执行仅针对该项目的 `down --volumes --remove-orphans`。进程组在 leader 退出后仍受管理，避免成功或失败的 callback 留下继续使用资源的后代。清理拒绝空项目名、非 dev-ci 前缀和 `daynight-localhost`，不执行全局 prune；本次镜像标签也只在确认本次容器退出后移除。取消后的清理采用独立有界步骤，清理失败必须使验收失败并保留原测试失败。run ID、base URL、image ID、资源清单和结果记录在任务 `.tmp/`，诊断不输出环境凭据、原始连接串或任务正文。恢复入口 `run.sh --cleanup RUN_ID` 只接受已有本地回执的有效身份，保留原 manifest，另写 recovery-manifest；执行恢复前必须先停止原 runner 与子命令进程组。W-T6 的 CI 外层始终执行定向清理步骤，复用已登记的 run 身份；进程被强制终止而无法确认清理时，保留资源清单并报告未完成，不能宣称已回收。
 
@@ -568,10 +576,10 @@ workflow 先选择官方 Ubuntu package archives，再启动统一验收；该�
 仍与原生及 dev-ci 准备并行。dev-ci 继续拥有本次唯一镜像及运行镜像身份校验和完整
 shell 清理。
 
-原生功能阶段只等待原生服务和浏览器就绪；其十七个场景及浏览器回收成功后，runner
+原生功能阶段只等待原生服务和浏览器就绪；其二十三个场景及浏览器回收成功后，runner
 原子写入绑定 acceptance run ID、dev-ci run ID 和 source SHA 的容器执行许可。
 容器 callback 已登记身份后等待该许可，通过后才记录浏览器 inventory 并执行
-十七个功能场景。完整 dev-ci 退出清理、容器浏览器回收和全部准备/覆盖率命令结束
+二十三个功能场景。完整 dev-ci 退出清理、容器浏览器回收和全部准备/覆盖率命令结束
 后，才在仍存活的原生 Go/PostgreSQL 上执行五个容量/超限场景。任一失败取消并
 等待已启动的所有任务；原生进程意外退出同样取消其他任务。容量阶段保持单浏览器
 worker，并与构建、单元测试、功能测试及容器清理隔离。
@@ -665,7 +673,7 @@ func (s *Snapshot) TaskGraphTasks(ctx context.Context, projectID string, preview
 
 `store.TaskGraphSize` 包含 int64 的 NodeCount 和 EdgeCount；它只描述查询结果。`Tasks.Graph` 使用现有具体 store，拥有 1,000/5,000/160 的策略常量，不新增可配置项、连接池或存储接口。
 
-事务顺序固定为：规范化 projectId → `ReadSnapshot` → `Project` 确认项目并确立快照 → 精确节点/边计数 → 检查上限 → 查询轻量完整节点及前置 → 从节点折叠 summary → 完成事务 → 返回资源或待返回的领域错误。
+事务顺序固定为：规范化 projectId → `ReadSnapshot` → 同快照内检查成员关系并读取 `Project` → 精确节点/边计数 → 检查上限 → 查询轻量完整节点及前置 → 从节点折叠 summary → 完成事务 → 返回资源或待返回的领域错误。
 
 store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(title) > previewCharacters`，不先读取完整 title 或 description。复用现有 project 范围的有序 dependsOn/blockedBy 与 ready SQL 语义，避免另写一套阻塞规则。查询使用现有 project 前缀索引和 `(created_at,id)` 排序；空数组和空节点列表保持 `[]`。计数与长文本扫描仍有数据库成本，上限保证的是返回与渲染规模，不是数据库查询已经有常数耗时。
 
@@ -682,7 +690,7 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 ### 图 API 行为
 
 - 无分页、无筛选。`tasks` 是完整项目图；edges 从 `dependsOn` 推导，不再重复传一份边。
-- 在一个 `ReadSnapshot` 中读取项目、节点数、边数、节点与依赖，最终推导统计。回调内领域拒绝仍沿用服务现有事务收尾约定，数据库及清理错误不被领域错误覆盖。
+- 在一个 `ReadSnapshot` 中检查成员关系并读取项目、节点数、边数、节点与依赖，最终推导统计。回调内领域拒绝仍沿用服务现有事务收尾约定，数据库及清理错误不被领域错误覆盖。
 - 快照内先查询数量；超过 1,000 节点或 5,000 边时返回 `409 graph_limit_exceeded`，details 包含 `nodeCount/edgeCount/maxNodes/maxEdges`。不返回部分成功数据，不改变既有写入规则。
 - 标题预览限制为 160 Unicode code points，并返回 `titleTruncated`；查询直接投影预览，避免先加载所有完整标题。GraphTask 不含 description；完整文本在点击详情时读取。
 - 查询 `dependsOn` 与 `blockedBy` 只覆盖该项目。数组排序、任务排序与既有 API 规则保持稳定。HTTP 400/404/500 沿用现有 typed Fault 和错误脱敏。
@@ -766,13 +774,20 @@ API 数据和固定图集。
 
 每次运行生成真实 UI 与 Go 可执行文件、启动独立 PostgreSQL 18.6，等待服务
 结构化就绪日志并记录二进制摘要；正常 dev-ci 生产构建/启动与这些工作并行。
-原生目标分成十六个功能场景和五个容量/超限场景，容器目标经实际生产镜像 gateway
-执行同一个十六场景功能集合。`refresh-staleness` 验证自动读取后图、统计和当前详情的一致更新，以及保留浏览、焦点和附件状态的故障恢复；定时器、可见性、请求串行与资源切换另由 hook/组件测试验证。浏览器顺序和清理屏障由[CI 构建归属](#ci-构建归属)定义。日常 localhost 栈
+两目标通过固定到 `0978963813fcefd9d553f6cb9bcc319084c764b3` 的真实 UniAuth
+gateway 夹具取得正常浏览器会话和 PAT，数据准备与安装 CLI 使用同一授权通道。
+App 与用户凭据只保存在私有 0600 元数据，公开回执和截图不包含秘密。受控外部
+provider 响应证明 gateway/SDK 协议，不等同于真实上游账号登录。
+原生目标分成二十三个功能场景和五个容量/超限场景，容器目标经实际生产镜像 gateway
+执行同一个二十三场景功能集合。`refresh-staleness` 验证自动读取后图、统计和当前详情
+的一致更新，以及保留浏览、焦点和附件状态的故障恢复；定时器、可见性、请求串行与
+资源切换另由 hook/组件测试验证。浏览器顺序和清理屏障由[CI 构建归属](#ci-构建归属)定义。日常 localhost 栈
 不参与测试。`project-view-tabs` 覆盖两类分类及依赖迁移、独立任务直接详情、独立完成筛选、
 页签/滚动/展开的跨刷新与项目隔离。功能数据和容量数据均通过真实写 API 建立；原有八个图场景及新增 `project-view-tabs` 的浏览器
 继续只发起 GET/HEAD。`task-attachments` 与 `language-state-preservation` 仅允许精确 fixture task 内的文件
 PUT/DELETE；`task-approval`、`task-approval-conflicts`、`task-approval-recovery`
-单独允许已登记 project/task 的 POST approve 和精确请求次数，其他写请求仍失败。附件场景在两目标上都让安装 CLI 与生产页面操作同一
+单独允许已登记 project/task 的 POST approve 和精确请求次数；六个鉴权场景仅放行各自
+登记的精确管理请求，其他写请求仍失败。附件场景在两目标上都让安装 CLI 与生产页面操作同一
 组数据，按原始字节交叉验证写入、覆盖、下载与删除；具体机制由
 [附件组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
 拥有。
@@ -788,8 +803,8 @@ PUT/DELETE；`task-approval`、`task-approval-conflicts`、`task-approval-recove
 
 Playwright 固定单 worker、零 retry；报告必须包含全部要求的唯一场景、一次成功
 执行、有效 PNG 附件及一致的汇总，跳过、重试、flaky、缺失、多余或重复场景及
-全局错误均失败。原生 functional/capacity 两份报告严格合并为二十二个唯一场景，
-容器目标严格要求十七个；原生与容器及同目标各阶段浏览器身份必须一致。
+全局错误均失败。原生 functional/capacity 两份报告严格合并为二十八个唯一场景，
+容器目标严格要求二十三个；原生与容器及同目标各阶段浏览器身份必须一致。
 CI 只接受 Linux、锁定 Playwright 的完整 Chromium channel `chromium`、干净 checkout，且 git SHA 必须
 等于 `GITHUB_SHA`；本机可以显式选择现有 Chromium，回执必须记录这一差异。
 PDF 预览通过轮询 iframe 的实际 compositor 截图，验证 fixture 专用色块已经绘制，
@@ -797,7 +812,7 @@ PDF 预览通过轮询 iframe 的实际 compositor 截图，验证 fixture 专�
 
 性能目标是原生 Go 生产进程。四个完整输入仍为1,000任务，单链999边，merge/shared/external各5,000边，external全数据为2 main/998 external。完整API逐ID/依赖比较；同图五次复用原ID。DOM工作负载改为≤50任务/100诱导边的概览及其全部可见边，并验证显式20直接批次和reset，不要求所有输入同时渲染。
 
-每次从trusted输入到完整可见概览、根可操作和两次animation frame，openMs≤3,000；原detail/zoom/pan≤300。保留详情关闭后立即zoom/pan，不增加fit/reset/等待。依赖检查还验证完整H、隐藏祖先去重、selectMs≤300及独立曲线/paint/marker。`visibility[5]`逐次保留repetition、overviewNodes/Edges、addedNodes/Edges、expandedNodes/Edges及resetNodes/Edges，要求顺序、预算、精确增量和reset计数正确。布局/渲染诊断、网络分开计时，1,001节点和5,001边仍完整409拒绝。39场景、锁定浏览器、coverage、timeout、零retry和清理保持；源码绑定运行结果由任务记录与主附件保存。
+每次从 trusted 输入到完整可见概览、根可操作和两次 animation frame，openMs≤3,000；select/detail/zoom/pan≤300。普通 Details→关闭→立即缩放/平移之后，可信选择可见任务，再执行高亮态同序列；每项取两态较慢值，网络分开计时，关闭与缩放间不插入 reset、fit 或等待。依赖检查验证完整 H、隐藏祖先去重及独立曲线/paint/marker。`visibility[5]` 逐次保留 repetition、overviewNodes/Edges、addedNodes/Edges、expandedNodes/Edges、resetNodes/Edges、selectedId 和 hiddenUpstream，要求顺序、预算、精确增量和 reset 计数正确。布局/渲染诊断与网络独立计量，1,001 节点和 5,001 边仍完整 409 拒绝。51 场景（原生 28、容器 23）、锁定浏览器、coverage、timeout、零 retry 和清理保持。PR #143 的源码绑定运行结果由任务记录与主附件保存；鉴权和生命周期合并后源码仍需完整运行回执。
 
 每个容量 dataset 的 `feedbackDiagnostics` 增量保存每次 open/detail/zoom/pan 的
 `kind`、`repetition`、`start`、`capturedAt`、`conditionAt`、`frame1At`、
@@ -812,9 +827,10 @@ CDP timeline、User Timing、frame 与 GC 事件关联浏览器内的输入/条�
 它不启用 CPU sampling profiler 或 CDP screenshot category；既有场景 PNG 证据
 保持独立。trace 通过有界完成等待和流式文件写入保存，CDP/文件资源必须关闭。
 这些测试侧诊断用于定位 hosted 超时，不属于产品遥测，也不改变容量、交互或
-成功判定标准。容量用例关闭 Playwright trace 的重复 DOM snapshot 与 filmstrip，
-失败时仍保留 action/network trace；二十份 CDP trace、场景 PNG 和全部图/几何检查
-继续保留。`controllerDurations` 记录 fixture 创建、完整图 snapshot 校验，以及每次
+成功判定标准。全部生产浏览器场景关闭 Playwright action/network trace，防止
+会话 Cookie、PAT 与邀请内容进入产物；这项隐私约束由
+[统一启用决策](../../.agents/notes/implemented/architecture/2026-10-22-authentication-activation.md)拥有。
+定制 CDP trace、场景 PNG 和全部图/几何检查继续保留。`controllerDurations` 记录 fixture 创建、完整图 snapshot 校验，以及每次
 重复的 interaction/total 耗时，用于区分浏览器交互与测试控制器成本；不参与性能
 通过判定。此取舍由
 [CI 验证效率决策](../../.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md)拥有。

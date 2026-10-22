@@ -7,14 +7,23 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	uniauth "github.com/codetreker/uniauth/sdk/go"
 )
 
 type Config struct {
-	DatabaseURL     string
-	StorageRoot     string
-	ListenAddress   string
-	StartupTimeout  time.Duration
-	ShutdownTimeout time.Duration
+	PublicOrigin        string
+	UniAuthURL          string
+	UniAuthAppID        string
+	UniAuthAppSecret    string
+	UniAuthCallbackURL  string
+	AllowHTTPTestOrigin bool
+	AllowLoopbackHTTP   bool
+	DatabaseURL         string
+	StorageRoot         string
+	ListenAddress       string
+	StartupTimeout      time.Duration
+	ShutdownTimeout     time.Duration
 }
 
 type ConfigurationError struct {
@@ -35,18 +44,52 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	allowHTTP, err := loadFlag(getenv, "DAYNIGHT_ALLOW_HTTP_TEST_ORIGIN")
+	if err != nil {
+		return Config{}, err
+	}
+	allowLoopback, err := loadFlag(getenv, "DAYNIGHT_ALLOW_LOOPBACK_HTTP")
+	if err != nil {
+		return Config{}, err
+	}
 	address := getenv("DAYNIGHT_LISTEN_ADDR")
 	if address == "" {
 		address = "127.0.0.1:8787"
 	}
 	config := Config{
-		DatabaseURL:     getenv("DAYNIGHT_DATABASE_URL"),
-		StorageRoot:     getenv("DAYNIGHT_STORAGE_ROOT"),
-		ListenAddress:   address,
-		StartupTimeout:  startupTimeout,
-		ShutdownTimeout: shutdownTimeout,
+		PublicOrigin:        getenv("DAYNIGHT_PUBLIC_ORIGIN"),
+		UniAuthURL:          getenv("DAYNIGHT_UNIAUTH_URL"),
+		UniAuthAppID:        getenv("DAYNIGHT_UNIAUTH_APP_ID"),
+		UniAuthAppSecret:    getenv("DAYNIGHT_UNIAUTH_APP_SECRET"),
+		UniAuthCallbackURL:  getenv("DAYNIGHT_UNIAUTH_CALLBACK_URL"),
+		AllowHTTPTestOrigin: allowHTTP,
+		AllowLoopbackHTTP:   allowLoopback,
+		DatabaseURL:         getenv("DAYNIGHT_DATABASE_URL"),
+		StorageRoot:         getenv("DAYNIGHT_STORAGE_ROOT"),
+		ListenAddress:       address,
+		StartupTimeout:      startupTimeout,
+		ShutdownTimeout:     shutdownTimeout,
 	}
 	return config, config.Validate()
+}
+
+func loadFlag(getenv func(string) string, field string) (bool, error) {
+	switch getenv(field) {
+	case "", "0":
+		return false, nil
+	case "1":
+		return true, nil
+	default:
+		return false, &ConfigurationError{Field: field, Rule: "must be 0 or 1"}
+	}
+}
+
+func (c Config) identityClient() (*uniauth.Client, error) {
+	client, err := uniauth.New(uniauth.Config{BaseURL: c.UniAuthURL, AppID: c.UniAuthAppID, AppSecret: c.UniAuthAppSecret, AllowLoopbackHTTP: c.AllowLoopbackHTTP})
+	if err != nil {
+		return nil, &ConfigurationError{Field: "DAYNIGHT_UNIAUTH_URL / DAYNIGHT_UNIAUTH_APP_ID / DAYNIGHT_UNIAUTH_APP_SECRET", Rule: "must identify a valid UniAuth origin and backend App credentials", cause: err}
+	}
+	return client, nil
 }
 
 func loadTimeout(getenv func(string) string, field string) (time.Duration, error) {
@@ -67,6 +110,19 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.StorageRoot) == "" {
 		return &ConfigurationError{Field: "DAYNIGHT_STORAGE_ROOT", Rule: "is required"}
+	}
+	for _, required := range []struct{ field, value string }{
+		{"DAYNIGHT_PUBLIC_ORIGIN", c.PublicOrigin}, {"DAYNIGHT_UNIAUTH_URL", c.UniAuthURL}, {"DAYNIGHT_UNIAUTH_APP_ID", c.UniAuthAppID}, {"DAYNIGHT_UNIAUTH_APP_SECRET", c.UniAuthAppSecret}, {"DAYNIGHT_UNIAUTH_CALLBACK_URL", c.UniAuthCallbackURL},
+	} {
+		if strings.TrimSpace(required.value) == "" {
+			return &ConfigurationError{Field: required.field, Rule: "is required"}
+		}
+	}
+	if _, _, err := validateAuthSettings(AuthConfig{PublicOrigin: c.PublicOrigin, AllowHTTPTestOrigin: c.AllowHTTPTestOrigin}, c.UniAuthCallbackURL); err != nil {
+		return err
+	}
+	if _, err := c.identityClient(); err != nil {
+		return err
 	}
 	host, port, err := net.SplitHostPort(c.ListenAddress)
 	if err != nil {

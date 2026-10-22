@@ -77,12 +77,15 @@ later [task view decision](../feature/2026-10-22-project-task-views.md) adds
 adds a dense-external capacity graph; native capacity preserves its four original
 scenarios and all timing/geometry gates. The
 [bilingual interface decision](../feature/2026-10-22-web-bilingual-interface.md)
-adds three functional language scenarios per target. The later
-[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds three task approval
-scenarios per target with separate registered-task POST allowances. The
-[Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
-adds one browser-read scenario per target. Strict inventories require 22 unique
-native scenarios and seventeen container scenarios. One worker,
+adds three functional language scenarios per target. Those deliveries produced
+18 unique native scenarios and thirteen container scenarios. The
+[authentication activation](../architecture/2026-10-22-authentication-activation.md)
+adds six functional scenarios per target and normal protocol bootstrap. The
+[Markdown description delivery](../architecture/2026-10-22-task-description-markdown.md)
+adds one read-only browser journey per target. The later
+[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds three
+approval journeys with separate registered-task POST allowances. Current strict
+inventories require 28 unique native and twenty-three container scenarios. One worker,
 zero retries, complete reports and cleanup remain mandatory.
 
 All phases use the full bundled Chromium channel `chromium`, retaining the
@@ -183,7 +186,13 @@ native/Docker cleanup. A partial installation needs no completed package receipt
 to establish that root's ownership. Recovery can therefore repeat after partial
 preparation or a later Docker failure; a live preparation command retains the
 root and causes refusal. Updating cleanup state preserves the original test
-outcome and uses no separate preparation journal.
+outcome and uses no separate preparation journal. Credential-bearing CLI homes
+now live in the run's private sibling root rather than the uploaded installation
+receipt tree; the installation artifacts and hashes retain their original owner.
+Session/PAT bootstrap uses normal UniAuth, and cleanup/recovery removes those
+private homes after their CLI processes stop. The activation decision owns
+private fixture metadata and the disabled credential-bearing browser trace;
+compositor/PNG and custom CDP evidence keep their existing validation rules.
 
 The Ubuntu web job invokes the existing
 [real-container attachment check](../../../../deployment/dev-ci/tests/attachments.mts)

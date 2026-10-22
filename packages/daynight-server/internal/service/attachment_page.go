@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 
+	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/filestorage"
 )
@@ -48,7 +49,10 @@ func attachmentListPage(request PageRequest, projectID, taskID string) (store.At
 	return query, nil
 }
 
-func (s *Attachments) List(ctx context.Context, projectID, taskID string, request PageRequest) (AttachmentPage, error) {
+func (s *Attachments) List(ctx context.Context, principal core.Principal, projectID, taskID string, request PageRequest) (AttachmentPage, error) {
+	if err := requirePrincipal(principal); err != nil {
+		return AttachmentPage{}, err
+	}
 	projectID, err := CanonicalID(projectID)
 	if err != nil {
 		return AttachmentPage{}, err
@@ -62,7 +66,7 @@ func (s *Attachments) List(ctx context.Context, projectID, taskID string, reques
 		return AttachmentPage{}, err
 	}
 	var result store.AttachmentPage
-	err = s.read(ctx, projectID, taskID, func(snapshot *store.Snapshot) error {
+	err = s.read(ctx, principal, projectID, taskID, func(snapshot *store.Snapshot) error {
 		var err error
 		result, err = snapshot.Attachments(ctx, projectID, taskID, query)
 		return err

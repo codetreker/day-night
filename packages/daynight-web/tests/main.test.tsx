@@ -22,9 +22,9 @@ describe('application bootstrap', () => {
   });
 
   it.each([
-    { locale: 'en', path: '/', title: 'Projects · Daynight' },
-    { locale: 'zh-CN', path: '/projects/00000000-0000-4000-8000-000000000001', title: '项目任务 · Daynight' },
-  ])('resolves $locale before creating one React root with the actual App', async ({ locale, path, title }) => {
+    { locale: 'en', path: '/', title: 'Checking sign-in · Daynight' },
+    { locale: 'zh-CN', path: '/projects/00000000-0000-4000-8000-000000000001', title: '正在确认登录 · Daynight' },
+  ])('resolves $locale before creating one React root with the authenticated application', async ({ locale, path, title }) => {
     window.localStorage.setItem('daynight.web.locale', locale);
     window.history.replaceState(null, '', path);
     document.body.innerHTML = '<div id="root"></div>';
@@ -35,7 +35,7 @@ describe('application bootstrap', () => {
     const element = render.mock.calls[0]?.[0] as ReactElement<LocaleProviderProps>;
     expect(element.type).toHaveProperty('name', 'LocaleProvider');
     expect(element.props.initial).toEqual({ locale, issue: null });
-    expect((element.props.children as ReactElement).type).toHaveProperty('name', 'App');
+    expect((element.props.children as ReactElement).type).toHaveProperty('name', 'AuthenticatedApp');
   });
 
   it('fails clearly when the HTML root element is missing', async () => {

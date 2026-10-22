@@ -11,7 +11,7 @@ import { parseTaskGraph } from '../../src/api/parse';
 // Repeated DOM snapshots of capacity views add controller work between
 // measured interactions. Dedicated CDP timelines and scenario PNGs retain the
 // rendering evidence alongside Playwright's action and network trace.
-test.use({ trace: { mode: 'retain-on-failure', snapshots: false, screenshots: false } });
+test.use({ trace: 'off' });
 
 type ExpansionMeasurement = { openMs: number; layoutMs: number; renderMs: number };
 type Measurement = ExpansionMeasurement & { selectMs: number; detailMs: number; detailNetworkMs: number; zoomMs: number; panMs: number };
@@ -515,7 +515,7 @@ test.describe('fixed capacity and performance @capacity', () => {
 
   for (const kind of ['chain', 'merge', 'shared', 'external'] as const satisfies readonly CapacityKind[]) {
     const scenario = `capacity-${kind}`;
-    test(`operates bounded ${kind} views of the complete API graph`, { annotation: { type: 'scenario', description: scenario } }, async ({ page, request }, info) => {
+    test(`operates bounded ${kind} views of the complete API graph`, { annotation: { type: 'scenario', description: scenario } }, async ({ page, api: request }, info) => {
       test.setTimeout(240_000);
       const dataset: Dataset = { scenario, nodes: 1000, edges: kind === 'chain' ? 999 : 5000, result: 'running', measurements: [], visibility: [], feedbackDiagnostics: [],
         controllerDurations: { repetitions: [] } };
@@ -638,7 +638,7 @@ test.describe('fixed capacity and performance @capacity', () => {
     });
   }
 
-  test('rejects each independent graph capacity limit without partial data', { annotation: { type: 'scenario', description: 'capacity-limits' } }, async ({ page, request }, info) => {
+  test('rejects each independent graph capacity limit without partial data', { annotation: { type: 'scenario', description: 'capacity-limits' } }, async ({ page, api: request }, info) => {
     test.setTimeout(240_000);
     const assertRefusal = async (projectId: string, nodes: number, edges: number) => {
       const response = await request.get(`/api/v1/projects/${projectId}/task-graph`);

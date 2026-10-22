@@ -14,13 +14,20 @@ type projectHandler struct {
 	logger   *slog.Logger
 }
 
-func projectRoutes(mux *http.ServeMux, projects *service.Projects, logger *slog.Logger) {
+func projectRoutes(mux *http.ServeMux, projects *service.Projects, auth *Authentication, logger *slog.Logger) {
 	handler := &projectHandler{projects: projects, logger: logger}
-	mux.HandleFunc("POST /api/v1/projects", handler.create)
-	mux.HandleFunc("GET /api/v1/projects", handler.list)
-	mux.HandleFunc("GET /api/v1/projects/{projectId}", handler.get)
-	mux.HandleFunc("/api/v1/projects", methodNotAllowed(logger, "GET, HEAD, POST"))
-	mux.HandleFunc("/api/v1/projects/{projectId}", methodNotAllowed(logger, "GET, HEAD"))
+	mux.HandleFunc("POST /api/v1/projects", auth.Require(handler.create))
+	mux.HandleFunc("GET /api/v1/projects", auth.Require(handler.list))
+	mux.HandleFunc("GET /api/v1/projects/{projectId}", auth.Require(handler.get))
+	mux.HandleFunc("/api/v1/projects", auth.Require(resourceMethodNotAllowed(logger, "GET, HEAD, POST")))
+	mux.HandleFunc("/api/v1/projects/{projectId}", auth.Require(resourceMethodNotAllowed(logger, "GET, HEAD")))
+}
+
+func resourceMethodNotAllowed(logger *slog.Logger, allowed string) AuthenticatedHandler {
+	return func(w http.ResponseWriter, request *http.Request, principal core.Principal) {
+		w.Header().Set("Cache-Control", "no-store")
+		methodNotAllowed(logger.With("user_id", principal.UserID), allowed)(w, request)
+	}
 }
 
 func projectResponse(project core.Project) api.Project {
@@ -28,64 +35,69 @@ func projectResponse(project core.Project) api.Project {
 		CreatedAt: project.CreatedAt.UTC(), UpdatedAt: project.UpdatedAt.UTC()}
 }
 
-func (h *projectHandler) create(w http.ResponseWriter, request *http.Request) {
+func (h *projectHandler) create(w http.ResponseWriter, request *http.Request, principal core.Principal) {
+	w.Header().Set("Cache-Control", "no-store")
+	logger := h.logger.With("user_id", principal.UserID)
 	fields, err := decodeObject(w, request, "name", "repoUrl")
 	if err != nil {
-		writeError(w, request, h.logger, "project", "create", err)
+		writeError(w, request, logger, "project", "create", err)
 		return
 	}
 	name, err := requiredString(fields, "name")
 	if err != nil {
-		writeError(w, request, h.logger, "project", "create", err)
+		writeError(w, request, logger, "project", "create", err)
 		return
 	}
 	repoURL, err := requiredString(fields, "repoUrl")
 	if err != nil {
-		writeError(w, request, h.logger, "project", "create", err)
+		writeError(w, request, logger, "project", "create", err)
 		return
 	}
 	input := api.CreateProjectRequest{Name: name, RepoURL: repoURL}
-	project, err := h.projects.Create(request.Context(), service.CreateProject{Name: input.Name, RepoURL: input.RepoURL})
+	project, err := h.projects.Create(request.Context(), principal, service.CreateProject{Name: input.Name, RepoURL: input.RepoURL})
 	if err != nil {
-		writeError(w, request, h.logger, "project", "create", err)
+		writeError(w, request, logger, "project", "create", err)
 		return
 	}
-	h.logger.InfoContext(request.Context(), "project created", "type", "resource", "component", "project", "phase", "create",
-		"project_id", project.ID, "request_id", RequestID(request.Context()))
-	writeCreated(w, request, h.logger.With("project_id", project.ID), "/api/v1/projects/"+project.ID, projectResponse(project))
+	logger = logger.With("project_id", project.ID)
+	logger.InfoContext(request.Context(), "project created", "type", "resource", "component", "project", "phase", "create", "request_id", RequestID(request.Context()))
+	writeCreated(w, request, logger, "/api/v1/projects/"+project.ID, projectResponse(project))
 }
 
-func (h *projectHandler) list(w http.ResponseWriter, request *http.Request) {
+func (h *projectHandler) list(w http.ResponseWriter, request *http.Request, principal core.Principal) {
+	w.Header().Set("Cache-Control", "no-store")
+	logger := h.logger.With("user_id", principal.UserID)
 	page, err := pageRequest(request)
 	if err != nil {
-		writeError(w, request, h.logger, "project", "list", err)
+		writeError(w, request, logger, "project", "list", err)
 		return
 	}
-	result, err := h.projects.List(request.Context(), page)
+	result, err := h.projects.List(request.Context(), principal, page)
 	if err != nil {
-		writeError(w, request, h.logger, "project", "list", err)
+		writeError(w, request, logger, "project", "list", err)
 		return
 	}
 	response := api.ProjectPage{Items: make([]api.Project, 0, len(result.Items)), NextCursor: result.NextCursor}
 	for _, project := range result.Items {
 		response.Items = append(response.Items, projectResponse(project))
 	}
-	writeJSON(w, request, h.logger, http.StatusOK, response)
+	writeJSON(w, request, logger, http.StatusOK, response)
 }
 
-func (h *projectHandler) get(w http.ResponseWriter, request *http.Request) {
+func (h *projectHandler) get(w http.ResponseWriter, request *http.Request, principal core.Principal) {
+	w.Header().Set("Cache-Control", "no-store")
+	logger := h.logger.With("user_id", principal.UserID)
 	id, err := service.CanonicalID(request.PathValue("projectId"))
-	if err != nil {
-		writeError(w, request, h.logger, "project", "get", err)
-		return
-	}
-	logger := h.logger.With("project_id", id)
-	project, err := h.projects.Get(request.Context(), id)
 	if err != nil {
 		writeError(w, request, logger, "project", "get", err)
 		return
 	}
-	h.logger.InfoContext(request.Context(), "project read", "type", "resource", "component", "project", "phase", "get",
-		"project_id", id, "request_id", RequestID(request.Context()))
+	logger = logger.With("project_id", id)
+	project, err := h.projects.Get(request.Context(), principal, id)
+	if err != nil {
+		writeError(w, request, logger, "project", "get", err)
+		return
+	}
+	logger.InfoContext(request.Context(), "project read", "type", "resource", "component", "project", "phase", "get", "request_id", RequestID(request.Context()))
 	writeJSON(w, request, logger, http.StatusOK, projectResponse(project))
 }

@@ -63,12 +63,16 @@ delivered baseline. Later inspection evidence must separately prove selection
 and curved routes. The new initial upstream task replaces only that dataset's readable
 root condition; existing datasets retain their root-visibility checks. Strict
 inventory validation retains five native capacity/limit scenarios. The later
-[bilingual interface decision](2026-10-22-web-bilingual-interface.md)
-expanded functional checks to thirteen per target. The later
-[approval lifecycle](2026-10-22-task-approval-lifecycle.md) adds three approval
-scenarios. The [Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
-adds one functional scenario per target, requiring twenty-two unique native
-scenarios and seventeen container scenarios without changing that capacity matrix.
+[bilingual interface decision](2026-10-22-web-bilingual-interface.md) expanded
+functional checks to thirteen per target, producing eighteen native and thirteen
+container scenarios at that stage. The
+[authentication activation](../architecture/2026-10-22-authentication-activation.md)
+added six functional scenarios per target, and the
+[Markdown description delivery](../architecture/2026-10-22-task-description-markdown.md)
+added one, producing the earlier twenty-five-native/twenty-container inventory.
+The [approval lifecycle](2026-10-22-task-approval-lifecycle.md) adds three approval
+scenarios per target. Current strict inventories are twenty-eight native and
+twenty-three container scenarios, with these same five capacity/limit cases.
 
 The [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 the [web design](../../../../docs/design/daynight-web.md) owns model and viewport

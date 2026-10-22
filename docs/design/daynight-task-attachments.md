@@ -10,10 +10,13 @@
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-task-attachment-storage-design.md)
 保存选择依据、已接受的限制及重新评估条件。决策采用不表示功能已经交付。
 
-[鉴权架构](daynight-auth.md)规划由项目成员权限保护附件请求；行为见
-[鉴权需求](../spec/daynight-auth.md)，交付条件见[任务拆分](daynight-auth-tasks.md)。
-该扩展尚未实现。本文的可信同源执行、普通 iframe、相对资源、键盘机制和单 gateway
-部署在鉴权接入后继续保留；通用存储、单文件操作和 K1 边界继续有效。
+[鉴权架构](daynight-auth.md)通过当前会话或 PAT 与项目成员权限保护所有附件
+请求；行为见[鉴权需求](../spec/daynight-auth.md)，交付条件见
+[任务拆分](daynight-auth-tasks.md)。`Attachments` 方法显式接收 principal，在
+文件 I/O 前的 `ReadSnapshot` 中检查成员、task 和附件归属；快照完成后执行存储
+及元数据操作，允许已准入操作完成，I/O 后不重新检查成员。凭据在 HTTP 准入
+时验证，不与后续文件/PG 操作组成原子事务。本文的可信同源执行、普通 iframe、
+相对资源、键盘机制和单 gateway 部署继续保留；单文件操作和 K1 边界继续有效。
 
 ## 目标与操作单位
 
@@ -386,8 +389,8 @@ body。成功后 frame 正常 GET 文件和其资源；HEAD 仅证明入口可�
 `./assets/app.js` 和相对 fetch URL 按浏览器规则读取同目录结构，不改写文件内容；
 以 `/` 开头的地址仍指向主站根目录。HTML 附件属于可信项目代码，拥有主应用同源
 权限，普通 iframe 不使用 sandbox；不增加专用预览 session/token、独立 origin/
-端口、Service Worker 或离线文件系统。规划中的[鉴权架构](daynight-auth.md)为
-附件请求增加登录态和项目成员检查，继续保留可信 HTML 的同源执行约定。
+端口、Service Worker 或离线文件系统。[鉴权架构](daynight-auth.md)在附件请求
+准入时验证登录态，并在文件 I/O 前检查项目成员，保留可信 HTML 的同源执行约定。
 
 居中详情对话框拥有 body portal、背景 inert、共享滚动锁和被动卸载后的焦点恢复；其居中尺寸、概览滚动与详情页签由[看板设计](daynight-web.md#居中任务详情)说明，附件页签的分屏和右侧滚动由本节拥有。`dialogFocusables` 使用 `tabbable` 6.5.0 的生产默认可见性检查，统一枚举对话框与同源 frame 的可 Tab 元素；frame 的 load 监听桥接 Esc 与首末 Tab/Shift+Tab 到对话框，并在替换或卸载时释放。该桥仍属于预览组件，不因外壳居中另建键盘所有者。详细历史与取舍见 [Web 附件决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)。
 
@@ -566,9 +569,12 @@ Web 新增 `task-attachments` 功能场景，在原生和实际生产容器上�
 由[看板设计](daynight-web.md#验证与-ci)拥有。
 另有 `project-view-tabs` 验证项目内任务视图；[双语界面](daynight-web-i18n.md)增加三个功能场景，
 [审批生命周期](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)另加三个审批场景，
-描述阅读另有 `task-description-markdown`；当前严格 inventory 为原生 22 个、容器 17 个。
-审批场景单独允许已登记 project/task 的
-POST approve 与精确请求次数。附件场景和 `language-state-preservation` 仅允许精确 fixture task/file 的 PUT/DELETE，后者验证切换期间待完成操作只执行一次；描述阅读、图、任务视图及其他语言场景继续 GET/HEAD。完整 Chromium channel `chromium` 对 PDF 的证明来自 iframe 实际
+描述阅读另有 `task-description-markdown`，鉴权增加六个功能场景。当前严格 inventory 为原生 28 个、
+容器 23 个，共 51 个场景结果。审批场景单独允许已登记 project/task 的 POST approve 与
+精确请求次数，鉴权场景仅允许各自登记的精确管理请求。附件场景和
+`language-state-preservation` 仅允许精确 fixture task/file 的 PUT/DELETE，后者验证切换期间
+待完成操作只执行一次；描述阅读、图、任务视图及其他语言场景继续 GET/HEAD。
+完整 Chromium channel `chromium` 对 PDF 的证明来自 iframe 实际
 compositor 像素中的 fixture 专用色块。判断器将匹配像素按连通区域分组，独立计算
 各个实心色块的像素数、边界和密度，并在延伸到 frame 右半区的页面候选中检查
 最大的色块。此位置规则基于 fixture 与固定查看器布局，排除仅缩略图已绘制的情形；

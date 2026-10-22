@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { test, expect, createProject, createApprovedTask, updateTask, claimTask, completeTask, completeApprovedTask, withDependencyFailure, withProjectsFailure } from './fixtures';
+import { authenticatedAPI } from './authentication';
 import { parseTaskGraph } from '../../src/api/parse';
 import type { PullRequestProperty } from '../../src/api/types';
 import { captureStableDependencyGeometry, checkDependencyGeometry, expectedDependencyTopology } from './dependency-geometry';
@@ -87,7 +88,7 @@ const nextAutomaticRefresh = async (page: Page, projectId: string): Promise<numb
   return (await response).status();
 };
 
-test('project-list', scenario('project-list'), async ({ page, request }, info) => {
+test('project-list', scenario('project-list'), async ({ page, api: request }, info) => {
   const prefix = `Pagination ${randomUUID()}`;
   const projects = [];
   for (let index = 0; index < 51; index++) {
@@ -141,7 +142,7 @@ test('project-list', scenario('project-list'), async ({ page, request }, info) =
   await expect(page.getByRole('heading', { name: '还没有任务' })).toBeVisible();
 });
 
-test('project-graph', scenario('project-graph'), async ({ page, request }, info) => {
+test('project-graph', scenario('project-graph'), async ({ page, api: request }, info) => {
   const project = await createProject(request, { name: `Shared graph ${randomUUID()}` });
   const a = await createApprovedTask(request, project.id, { title: 'A 已完成根' });
   const b = await createApprovedTask(request, project.id, { title: 'B 进行中根' });
@@ -401,7 +402,7 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   });
 });
 
-test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request }, info) => {
+test('project-view-tabs', scenario('project-view-tabs'), async ({ page, api: request }, info) => {
   await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   await page.setViewportSize({ width: 1100, height: 700 });
   const project = await createProject(request, { name: `Task views ${randomUUID()}` });
@@ -538,7 +539,7 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
   await screenshot(page, info, 'project-view-tabs');
 });
 
-test('detail-navigation', scenario('detail-navigation'), async ({ page, request }, info) => {
+test('detail-navigation', scenario('detail-navigation'), async ({ page, api: request }, info) => {
   await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   const project = await createProject(request, { name: `Details ${randomUUID()}` });
   const a = await createApprovedTask(request, project.id, { title: '前置 <script>文本</script>', description: '前置说明' });
@@ -642,7 +643,7 @@ test('detail-navigation', scenario('detail-navigation'), async ({ page, request 
   await screenshot(page, info, 'detail-navigation');
 });
 
-test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request }, info) => {
+test('refresh-staleness', scenario('refresh-staleness'), async ({ page, api: request }, info) => {
   await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   const project = await createProject(request, { name: `Freshness ${randomUUID()}` });
   const predecessor = await createApprovedTask(request, project.id, { title: '完成后解除阻塞的前置' });
@@ -760,7 +761,7 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   await screenshot(page, info, 'refresh-chain-complete');
 });
 
-test('failure-recovery', scenario('failure-recovery'), async ({ page, request }, info) => {
+test('failure-recovery', scenario('failure-recovery'), async ({ page, api: request }, info) => {
   await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   const project = await createProject(request, { name: `Recovery ${randomUUID()}` });
   await openProject(page, project.id, project.name);
@@ -839,7 +840,7 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, request },
   await expect(page.getByRole('link', { name: '返回项目列表' })).toBeVisible();
 });
 
-test('deep-links', scenario('deep-links'), async ({ page, request }, info) => {
+test('deep-links', scenario('deep-links'), async ({ page, api: request }, info) => {
   const first = await createProject(request, { name: `Route first ${randomUUID()}` });
   const second = await createProject(request, { name: `Route second ${randomUUID()}` });
   await createApprovedTask(request, first.id, { title: '首项目任务' });
@@ -865,12 +866,12 @@ test('deep-links', scenario('deep-links'), async ({ page, request }, info) => {
     if (new URL(request.url()).pathname === `/api/v1/projects/${first.id}/task-graph`) aborted.push(request.failure()?.errorText ?? 'missing-error');
   });
   await page.route(pattern, async (route) => {
-    const response = await route.fetch({ timeout: 15_000, maxRetries: 0 });
+    const response = await authenticatedAPI(page.context().request).fetch(route.request(), { timeout: 15_000, maxRetries: 0 });
     expect(response.status()).toBe(200);
     fetched.resolve();
     await within(release.promise, 'delayed graph response release', 30_000);
     if (route.request().failure() !== null) await route.abort('aborted');
-    else await route.fulfill({ response });
+    else await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
   });
   try {
     await page.evaluate((path) => { history.pushState(null, '', path); window.dispatchEvent(new PopStateEvent('popstate')); }, `/projects/${first.id}`);
@@ -896,7 +897,7 @@ test('deep-links', scenario('deep-links'), async ({ page, request }, info) => {
   await screenshot(page, info, 'deep-links');
 });
 
-test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, info) => {
+test('keyboard-focus', scenario('keyboard-focus'), async ({ page, api: request }, info) => {
   await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   const project = await createProject(request, { name: `Keyboard ${randomUUID()}` });
   const a = await createApprovedTask(request, project.id, { title: '键盘前置任务' });
@@ -980,12 +981,12 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   const release = deferred<void>();
   const pattern = `**/api/v1/projects/${project.id}/tasks/${a.id}`;
   await page.route(pattern, async (route) => {
-    const response = await route.fetch({ timeout: 15_000, maxRetries: 0 });
+    const response = await authenticatedAPI(page.context().request).fetch(route.request(), { timeout: 15_000, maxRetries: 0 });
     expect(response.status()).toBe(200);
     fetched.resolve();
     await within(release.promise, 'delayed task response release', 30_000);
     if (route.request().failure() !== null) await route.abort('aborted');
-    else await route.fulfill({ response });
+    else await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
   });
   try {
     await dialog.getByRole('region', { name: '前置依赖', exact: true }).getByRole('button', { name: a.title, exact: true }).click();
@@ -1055,7 +1056,7 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   await screenshot(page, info, 'keyboard-focus');
 });
 
-test('narrow-layout', scenario('narrow-layout'), async ({ page, request }, info) => {
+test('narrow-layout', scenario('narrow-layout'), async ({ page, api: request }, info) => {
   const project = await createProject(request, { name: `窄屏项目 ${'很长的项目名称😀'.repeat(12)}` });
   const pullRequests = [
     { title: '  多行标题\n第二行\t\0  ', url: `https://example.com/${'long-path-'.repeat(500)}` },

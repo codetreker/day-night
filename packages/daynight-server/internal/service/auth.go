@@ -71,7 +71,7 @@ func validSecret(secret, prefix string) bool {
 	return err == nil && len(decoded) == 32 && base64.RawURLEncoding.EncodeToString(decoded) == raw
 }
 
-func validReturnPath(value string) bool {
+func (s *Identity) validReturnPath(value string) bool {
 	if !utf8.ValidString(value) || strings.ContainsAny(value, "\\\r\n\x00") {
 		return false
 	}
@@ -80,7 +80,15 @@ func validReturnPath(value string) bool {
 		return false
 	}
 	decoded, err := url.PathUnescape(u.Path)
-	return err == nil && !strings.ContainsAny(decoded, "\\\r\n\x00") && !strings.HasPrefix(decoded, "//") && !strings.HasPrefix(path.Clean(decoded), "/api/v1/auth")
+	if err != nil || strings.ContainsAny(decoded, "\\\r\n\x00") || strings.HasPrefix(decoded, "//") || strings.HasPrefix(path.Clean(decoded), "/api/v1/auth") {
+		return false
+	}
+	callback, err := url.Parse(s.callbackURL)
+	if err != nil {
+		return false
+	}
+	target := path.Clean(decoded)
+	return target != callback.Path && !strings.HasPrefix(target, callback.Path+"/")
 }
 
 func (s *Identity) StartLogin(ctx context.Context, provider, returnPath string) (LoginStart, error) {
@@ -90,7 +98,7 @@ func (s *Identity) StartLogin(ctx context.Context, provider, returnPath string) 
 	if returnPath == "" {
 		returnPath = "/"
 	}
-	if !validReturnPath(returnPath) {
+	if !s.validReturnPath(returnPath) {
 		return LoginStart{}, invalidInput("Return path must be a main-site path outside authentication routes.")
 	}
 	start := LoginStart{ID: uuid.NewString(), State: randomSecret(""), BrowserBinding: randomSecret(""), ExpiresAt: s.now().UTC().Add(LoginLifetime)}
@@ -230,4 +238,45 @@ func (s *Identity) RevokePAT(ctx context.Context, principal core.Principal, id s
 		return err
 	}
 	return authLookupError(s.store.RevokePAT(ctx, principal, id, s.now().UTC()))
+}
+
+// IdentityProviderError separates backend integration failures from an expired
+// product credential while retaining the SDK or context cause.
+type IdentityProviderError struct {
+	Code  string
+	Cause error
+}
+
+func (e *IdentityProviderError) Error() string {
+	switch e.Code {
+	case "identity_configuration":
+		return "The identity provider configuration is unavailable."
+	case "identity_timeout":
+		return "The identity provider request timed out."
+	default:
+		return "The identity provider is unavailable."
+	}
+}
+func (e *IdentityProviderError) Unwrap() error { return e.Cause }
+
+func (s *Identity) Providers(ctx context.Context) ([]string, error) {
+	discovery, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	providers, err := s.client.Providers(discovery, s.callbackURL)
+	if err != nil {
+		code := "identity_unavailable"
+		var upstream *uniauth.APIError
+		if errors.As(err, &upstream) && (upstream.StatusCode == 400 || upstream.StatusCode == 401) {
+			code = "identity_configuration"
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			code = "identity_timeout"
+		}
+		return nil, &IdentityProviderError{Code: code, Cause: err}
+	}
+	result := make([]string, 0, len(providers))
+	for _, provider := range providers {
+		result = append(result, string(provider))
+	}
+	return result, nil
 }

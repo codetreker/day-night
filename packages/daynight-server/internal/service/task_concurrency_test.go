@@ -91,41 +91,41 @@ func assertOneTaskWinner(t *testing.T, results []taskResult, code string) {
 }
 
 func TestConcurrentReverseDependenciesCannotCreateCycle(t *testing.T) {
-	tasks, database, project, _ := taskService(t)
-	a := createTask(t, tasks, project.ID, "A")
-	b := createTask(t, tasks, project.ID, "B")
+	tasks, database, project, _, principal := taskService(t)
+	a := createTask(t, tasks, principal, project.ID, "A")
+	b := createTask(t, tasks, principal, project.ID, "B")
 	results := competeTaskWrites(t, database, project.ID,
 		func(ctx context.Context) (core.Task, error) {
-			return tasks.Update(ctx, project.ID, a.ID, UpdateTask{Version: a.Version, DependsOn: pointer([]string{b.ID})})
+			return tasks.Update(ctx, principal, project.ID, a.ID, UpdateTask{Version: a.Version, DependsOn: pointer([]string{b.ID})})
 		},
 		func(ctx context.Context) (core.Task, error) {
-			return tasks.Update(ctx, project.ID, b.ID, UpdateTask{Version: b.Version, DependsOn: pointer([]string{a.ID})})
+			return tasks.Update(ctx, principal, project.ID, b.ID, UpdateTask{Version: b.Version, DependsOn: pointer([]string{a.ID})})
 		})
 	assertOneTaskWinner(t, results, "dependency_cycle")
-	afterA, err := tasks.Get(context.Background(), project.ID, a.ID)
+	afterA, err := tasks.Get(context.Background(), principal, project.ID, a.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	afterB, err := tasks.Get(context.Background(), project.ID, b.ID)
+	afterB, err := tasks.Get(context.Background(), principal, project.ID, b.ID)
 	if err != nil || len(afterA.DependsOn)+len(afterB.DependsOn) != 1 || afterA.Version+afterB.Version != 3 {
 		t.Fatalf("reverse edges persisted an invalid graph: A %#v, B %#v, %v", afterA, afterB, err)
 	}
 }
 
 func TestConcurrentDependencyReplacementAndClaimPreserveStateInvariant(t *testing.T) {
-	tasks, database, project, _ := taskService(t)
-	predecessor := createTask(t, tasks, project.ID, "Unfinished prerequisite")
-	dependent := createTask(t, tasks, project.ID, "Dependent")
-	dependent = approveTask(t, tasks, dependent)
+	tasks, database, project, _, principal := taskService(t)
+	predecessor := createTask(t, tasks, principal, project.ID, "Unfinished prerequisite")
+	dependent := createTask(t, tasks, principal, project.ID, "Dependent")
+	dependent = approveTask(t, tasks, principal, dependent)
 	results := competeTaskWrites(t, database, project.ID,
 		func(ctx context.Context) (core.Task, error) {
-			return tasks.Update(ctx, project.ID, dependent.ID, UpdateTask{Version: dependent.Version, DependsOn: pointer([]string{predecessor.ID})})
+			return tasks.Update(ctx, principal, project.ID, dependent.ID, UpdateTask{Version: dependent.Version, DependsOn: pointer([]string{predecessor.ID})})
 		},
 		func(ctx context.Context) (core.Task, error) {
-			return tasks.Claim(ctx, project.ID, dependent.ID, dependent.Version)
+			return tasks.Claim(ctx, principal, project.ID, dependent.ID, dependent.Version)
 		})
 	assertOneTaskWinner(t, results, "version_conflict")
-	after, err := tasks.Get(context.Background(), project.ID, dependent.ID)
+	after, err := tasks.Get(context.Background(), principal, project.ID, dependent.ID)
 	if err != nil || after.Version != dependent.Version+1 {
 		t.Fatalf("concurrent dependency/claim result: %#v, %v", after, err)
 	}
@@ -136,34 +136,34 @@ func TestConcurrentDependencyReplacementAndClaimPreserveStateInvariant(t *testin
 	} else if after.Status != core.TaskTodo || len(after.DependsOn) != 1 || after.DependsOn[0] != predecessor.ID || after.Ready {
 		t.Fatalf("dependency replacement lost approved blocked state: %#v", after)
 	}
-	assertTaskUnchanged(t, tasks, predecessor)
+	assertTaskUnchanged(t, tasks, principal, predecessor)
 }
 
 func TestConcurrentLifecycleSameVersionOnlyChangesOnce(t *testing.T) {
-	tasks, database, project, _ := taskService(t)
+	tasks, database, project, _, principal := taskService(t)
 	for _, action := range []struct {
 		name  string
 		to    core.TaskStatus
-		apply func(context.Context, string, string, int64) (core.Task, error)
+		apply func(context.Context, core.Principal, string, string, int64) (core.Task, error)
 	}{
 		{"approve", core.TaskTodo, tasks.Approve},
 		{"claim", core.TaskInProgress, tasks.Claim},
 		{"complete", core.TaskDone, tasks.Complete},
 	} {
 		t.Run(action.name, func(t *testing.T) {
-			target := createTask(t, tasks, project.ID, "Concurrent lifecycle")
+			target := createTask(t, tasks, principal, project.ID, "Concurrent lifecycle")
 			if action.name != "approve" {
-				target = approveTask(t, tasks, target)
+				target = approveTask(t, tasks, principal, target)
 			}
 			if action.name == "complete" {
-				target = claimTask(t, tasks, target)
+				target = claimTask(t, tasks, principal, target)
 			}
 			write := func(ctx context.Context) (core.Task, error) {
-				return action.apply(ctx, project.ID, target.ID, target.Version)
+				return action.apply(ctx, principal, project.ID, target.ID, target.Version)
 			}
 			results := competeTaskWrites(t, database, project.ID, write, write)
 			assertOneTaskWinner(t, results, "version_conflict")
-			after, err := tasks.Get(context.Background(), project.ID, target.ID)
+			after, err := tasks.Get(context.Background(), principal, project.ID, target.ID)
 			if err != nil || after.Version != target.Version+1 || after.Status != action.to || !after.UpdatedAt.After(target.UpdatedAt) {
 				t.Fatalf("lifecycle competition: before %#v, after %#v, %v", target, after, err)
 			}
@@ -172,30 +172,30 @@ func TestConcurrentLifecycleSameVersionOnlyChangesOnce(t *testing.T) {
 }
 
 func TestConcurrentSameVersionUpdatesOnlyChangeOnce(t *testing.T) {
-	tasks, database, project, _ := taskService(t)
-	target := createTask(t, tasks, project.ID, "Original")
+	tasks, database, project, _, principal := taskService(t)
+	target := createTask(t, tasks, principal, project.ID, "Original")
 	results := competeTaskWrites(t, database, project.ID,
 		func(ctx context.Context) (core.Task, error) {
-			return tasks.Update(ctx, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("First")})
+			return tasks.Update(ctx, principal, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("First")})
 		},
 		func(ctx context.Context) (core.Task, error) {
-			return tasks.Update(ctx, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Second")})
+			return tasks.Update(ctx, principal, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Second")})
 		})
 	assertOneTaskWinner(t, results, "version_conflict")
-	after, err := tasks.Get(context.Background(), project.ID, target.ID)
+	after, err := tasks.Get(context.Background(), principal, project.ID, target.ID)
 	if err != nil || after.Version != target.Version+1 || (after.Title != "First" && after.Title != "Second") {
 		t.Fatalf("version competition: %#v, %v", after, err)
 	}
 }
 
 func TestTaskLockWaitCancellationAndIndependentProjectProgress(t *testing.T) {
-	tasks, database, project, _ := taskService(t)
-	target := createTask(t, tasks, project.ID, "Target")
-	otherProject, err := NewProjects(database).Create(context.Background(), CreateProject{Name: "Other", RepoURL: "host:repo"})
+	tasks, database, project, _, principal := taskService(t)
+	target := createTask(t, tasks, principal, project.ID, "Target")
+	otherProject, err := NewProjects(database).Create(context.Background(), principal, CreateProject{Name: "Other", RepoURL: "host:repo"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	other := createTask(t, tasks, otherProject.ID, "Other task")
+	other := createTask(t, tasks, principal, otherProject.ID, "Other task")
 	ctx, finish := context.WithTimeout(context.Background(), 10*time.Second)
 	defer finish()
 	result := make(chan taskResult, 1)
@@ -203,13 +203,13 @@ func TestTaskLockWaitCancellationAndIndependentProjectProgress(t *testing.T) {
 		waiting, cancel := context.WithCancel(ctx)
 		defer cancel()
 		go func() {
-			task, err := tasks.Update(waiting, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Late write")})
+			task, err := tasks.Update(waiting, principal, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Late write")})
 			result <- taskResult{task: task, err: err}
 		}()
 		waitForTaskWriters(t, ctx, database, 1)
 		independent, done := context.WithTimeout(ctx, 2*time.Second)
 		defer done()
-		updated, err := tasks.Update(independent, otherProject.ID, other.ID, UpdateTask{Version: other.Version, Title: pointer("Independent")})
+		updated, err := tasks.Update(independent, principal, otherProject.ID, other.ID, UpdateTask{Version: other.Version, Title: pointer("Independent")})
 		if err != nil || updated.Title != "Independent" {
 			t.Fatalf("unrelated project write was blocked: %#v, %v", updated, err)
 		}
@@ -223,8 +223,8 @@ func TestTaskLockWaitCancellationAndIndependentProjectProgress(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	assertTaskUnchanged(t, tasks, target)
-	after := updateTask(t, tasks, target, UpdateTask{Title: pointer("Reused lock")})
+	assertTaskUnchanged(t, tasks, principal, target)
+	after := updateTask(t, tasks, principal, target, UpdateTask{Title: pointer("Reused lock")})
 	if after.Version != target.Version+1 || after.Title != "Reused lock" {
 		t.Fatalf("lock could not be reused after cancellation: %#v", after)
 	}

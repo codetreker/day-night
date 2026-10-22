@@ -51,13 +51,13 @@ const expectDialogLayout = async (page: Page, dialog: Locator): Promise<void> =>
 test.describe('Web language journeys', () => {
   test.use({ locale: 'en-US' });
 
-  test('language-startup-preferences', scenario('language-startup-preferences'), async ({ page, request }, info) => {
+  test('language-startup-preferences', scenario('language-startup-preferences'), async ({ page, api: request }, info) => {
     const project = await createProject(request, { name: `原始项目 Raw project ${randomUUID()}` });
     const task = await createApprovedTask(request, project.id, { title: '原始任务 Raw task', description: '原始描述 Raw description' });
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-    await expect(page).toHaveTitle('Projects · Daynight');
+    await expect(page).toHaveTitle('My projects · Daynight');
     await expect(language(page)).toHaveValue('en');
     expect(await page.evaluate(() => localStorage.getItem('daynight.web.locale'))).toBeNull();
     const link = page.locator(`a.project-card[href="/projects/${project.id}"]`);
@@ -87,12 +87,12 @@ test.describe('Web language journeys', () => {
     await page.keyboard.press('Escape');
     await page.getByRole('link', { name: '← 项目', exact: true }).click();
     await expect(page.getByRole('heading', { name: '项目', exact: true })).toBeVisible();
-    await expect(page).toHaveTitle('项目 · Daynight');
+    await expect(page).toHaveTitle('我的项目 · Daynight');
     await expect(language(page)).toHaveValue('zh-CN');
     await screenshot(page, info, 'language-startup-preferences');
   });
 
-  test('language-state-preservation', scenario('language-state-preservation'), async ({ page, request, allowAttachmentWrites }, info) => {
+  test('language-state-preservation', scenario('language-state-preservation'), async ({ page, api: request, allowAttachmentWrites }, info) => {
     const project = await createProject(request, { name: `Language lifecycle ${randomUUID()}` });
     const pullRequests = Array.from({ length: 101 }, (_, index) => ({ title: `原始 PR ${index + 1}`, url: `https://example.com/pull/${index + 1}` }));
     const task = await createApprovedTask(request, project.id, { title: '根任务 Raw root', description: '原始描述 Raw description', properties: { pullRequests } });
@@ -276,7 +276,7 @@ test.describe('Web language journeys', () => {
     await inputElement.dispose();
   });
 
-  test('language-errors-and-narrow', scenario('language-errors-and-narrow'), async ({ page, request }, info) => {
+  test('language-errors-and-narrow', scenario('language-errors-and-narrow'), async ({ page, api: request }, info) => {
     await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
     await page.addInitScript(() => {
       const fault = new URL(location.href).searchParams.get('localeFault');

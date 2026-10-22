@@ -27,10 +27,10 @@ func taskGraphResponse(graph core.TaskGraph) api.TaskGraph {
 	return response
 }
 
-func (h *taskHandler) graph(w http.ResponseWriter, request *http.Request) {
+func (h *taskHandler) graph(w http.ResponseWriter, request *http.Request, principal core.Principal) {
 	w.Header().Set("Cache-Control", "no-store")
 	start := time.Now()
-	projectID, _, logger, err := h.resource(request)
+	projectID, _, logger, err := h.resource(request, principal)
 	if err != nil {
 		writeError(w, request, logger, "task_graph", "get", err)
 		return
@@ -39,7 +39,7 @@ func (h *taskHandler) graph(w http.ResponseWriter, request *http.Request) {
 		writeError(w, request, logger, "task_graph", "get", invalidInput("task graph does not accept query parameters"))
 		return
 	}
-	graph, err := h.tasks.Graph(request.Context(), projectID)
+	graph, err := h.tasks.Graph(request.Context(), principal, projectID)
 	if err != nil {
 		if fault, ok := knownFault(err); ok && ErrorKind(err) == fault.Code && fault.GraphLimit != nil {
 			logger = logger.With("node_count", fault.GraphLimit.NodeCount, "edge_count", fault.GraphLimit.EdgeCount)

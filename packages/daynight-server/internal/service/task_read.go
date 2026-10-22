@@ -9,7 +9,10 @@ import (
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
 )
 
-func (s *Tasks) Get(ctx context.Context, projectID, id string) (core.Task, error) {
+func (s *Tasks) Get(ctx context.Context, principal core.Principal, projectID, id string) (core.Task, error) {
+	if err := requirePrincipal(principal); err != nil {
+		return core.Task{}, err
+	}
 	projectID, err := CanonicalID(projectID)
 	if err != nil {
 		return core.Task{}, err
@@ -21,9 +24,8 @@ func (s *Tasks) Get(ctx context.Context, projectID, id string) (core.Task, error
 	var result core.Task
 	var missing *Fault
 	err = s.store.ReadSnapshot(ctx, func(snapshot *store.Snapshot) error {
-		if _, err := snapshot.Project(ctx, projectID); err != nil {
-			if errors.Is(err, core.ErrNotFound) {
-				missing = &Fault{Code: "not_found", Message: "Project was not found.", Cause: err}
+		if _, err := RequireProjectRead(ctx, snapshot, principal, projectID); err != nil {
+			if errors.As(err, &missing) {
 				return nil
 			}
 			return err
@@ -45,7 +47,10 @@ func (s *Tasks) Get(ctx context.Context, projectID, id string) (core.Task, error
 	return result, nil
 }
 
-func (s *Tasks) List(ctx context.Context, projectID string, request TaskListRequest) (TaskPage, error) {
+func (s *Tasks) List(ctx context.Context, principal core.Principal, projectID string, request TaskListRequest) (TaskPage, error) {
+	if err := requirePrincipal(principal); err != nil {
+		return TaskPage{}, err
+	}
 	projectID, err := CanonicalID(projectID)
 	if err != nil {
 		return TaskPage{}, err
@@ -63,11 +68,10 @@ func (s *Tasks) List(ctx context.Context, projectID string, request TaskListRequ
 		return TaskPage{}, err
 	}
 	var result store.TaskPage
-	var missing error
+	var missing *Fault
 	err = s.store.ReadSnapshot(ctx, func(snapshot *store.Snapshot) error {
-		if _, err := snapshot.Project(ctx, projectID); err != nil {
-			if errors.Is(err, core.ErrNotFound) {
-				missing = err
+		if _, err := RequireProjectRead(ctx, snapshot, principal, projectID); err != nil {
+			if errors.As(err, &missing) {
 				return nil
 			}
 			return err
@@ -80,7 +84,7 @@ func (s *Tasks) List(ctx context.Context, projectID string, request TaskListRequ
 		return TaskPage{}, fmt.Errorf("list tasks: %w", err)
 	}
 	if missing != nil {
-		return TaskPage{}, &Fault{Code: "not_found", Message: "Project was not found.", Cause: missing}
+		return TaskPage{}, missing
 	}
 	response := TaskPage{Items: result.Items}
 	if result.HasMore {
