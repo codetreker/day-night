@@ -26,6 +26,17 @@ needed to use them correctly.
 
 ## Operational context
 
+**Service credentials.** Read the installed `daynight setup --help` for credential
+configuration. Use setup's hidden interactive token prompt or its explicit
+stdin option; never put a token in command arguments, chat, task descriptions,
+checkpoints or attachments. A configured token is bound to the normalized service
+origin: changing the origin removes the previous token. Tokens require HTTPS
+except for literal localhost or loopback HTTP addresses. Project discovery and
+explicit project IDs grant no access; the service decides from current
+membership. A 401 points to setup and does not permit an anonymous retry or a
+blind repeat of a mutation. Reconcile an unconfirmed write before another
+mutation. Setup only saves configuration and performs no login or network check.
+
 **Project discovery.** Inside a Git worktree, task commands can omit `--project`:
 the CLI matches the origin repository URL to a project on the configured
 service. An explicit project overrides discovery for that invocation. Resolve

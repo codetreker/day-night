@@ -4,6 +4,12 @@ import { commandTree } from "../../../src/cli/commands.js";
 import type { CommandDefinition } from "../../../src/cli/schema.js";
 
 describe("Bash completion rendering", () => {
+  it("treats the server token stdin option as a boolean without a secret value completion", () => {
+    const script = renderBashCompletion(commandTree);
+    expect(script).toContain("dn_options=('--server-url' '--server-token-stdin' '--review-repo' '--review-path' '-h' '--help')");
+    expect(script).toContain("dn_option_values=('text' '' 'text' 'directory' '' '')");
+  });
+
   it("registers all three attachment command levels and operation options", () => {
     const script = renderBashCompletion(commandTree);
     expect(script).toContain("'attachment'");

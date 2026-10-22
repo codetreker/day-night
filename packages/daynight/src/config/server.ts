@@ -2,8 +2,9 @@ import { parseConfigurationDocument } from "./document.js";
 import { readConfigurationSource } from "./files.js";
 import type { ConfigurationPaths } from "./paths.js";
 import { MissingConfigurationFieldError } from "./errors.js";
+import { validateServerToken, validateTokenTransport } from "./server-token.js";
 
-export type ServerConfiguration = { serverUrl: string };
+export type ServerConfiguration = { serverUrl: string; serverToken?: string };
 
 export const normalizeServerUrl = (value: unknown): string => {
   const invalid = (): Error => new Error("serverUrl must be an HTTP(S) origin without credentials, a non-root path, query, fragment, whitespace, or backslashes.");
@@ -29,7 +30,11 @@ export const parseServerConfiguration = (source: string, paths: ConfigurationPat
     if (!Object.hasOwn(mapping, "serverUrl")) {
       throw new MissingConfigurationFieldError("serverUrl", "serverUrl is not configured; use daynight setup --server-url <url> to set the daynight-server HTTP(S) origin.");
     }
-    return { serverUrl: normalizeServerUrl(mapping.serverUrl) };
+    const serverUrl = normalizeServerUrl(mapping.serverUrl);
+    if (!Object.hasOwn(mapping, "serverToken")) return { serverUrl };
+    const serverToken = validateServerToken(mapping.serverToken);
+    validateTokenTransport(serverUrl);
+    return { serverUrl, serverToken };
   } catch (cause) {
     throw new Error(`Invalid configuration file ${paths.configFile}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
   }

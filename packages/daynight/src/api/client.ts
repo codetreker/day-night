@@ -1,6 +1,7 @@
 import { performance } from "node:perf_hooks";
 import { parseApiJson, stringifyApiJson } from "./json.js";
 import { OperationError } from "./operation.js";
+import { validateServerToken, validateTokenTransport } from "../config/server-token.js";
 import type { Operation } from "./operation.js";
 import { canonicalId, parsePage, parseProject, parseServerError, parseTask, parseTaskGraph, parseTaskAttachment, ProtocolError, validateAttachmentPath } from "./parse.js";
 import type { AttachmentConsumer, CreateProjectInput, CreateTaskInput, ErrorDetails, Project, PutTaskAttachmentInput, ServerError, Task, TaskAttachment, TaskFilters, TaskGraph, UpdateTaskInput } from "./types.js";
@@ -34,7 +35,7 @@ export class ApiError extends Error {
       : `${server.code}: ${server.message} (requestId=${server.requestId})`;
     const details = server?.details;
     const detailText = details === undefined ? "" : ` details=${JSON.stringify(details)}`;
-    super(`${context.operation}${target} [${phase}]: ${reason}${detailText}${options.outcomeUnconfirmed === true ? " Remote mutation outcome is unconfirmed; query the target before retrying." : ""}`, { cause: options.cause });
+    super(`${context.operation}${target} [${phase}]: ${reason}${detailText}${options.status === 401 ? " Configure a personal access token with daynight setup --server-token-stdin (or interactive daynight setup)." : ""}${options.outcomeUnconfirmed === true ? " Remote mutation outcome is unconfirmed; query the target before retrying." : ""}`, { cause: options.cause });
     this.name = "ApiError";
     this.operation = context.operation;
     this.phase = phase;
@@ -75,11 +76,14 @@ const encodeAttachmentPath = (path: string): string => path.split("/").map(encod
 
 export const createApiClient = (options: {
   readonly serverUrl: string;
+  readonly serverToken?: string;
   readonly operation: Operation;
   readonly fetch?: typeof globalThis.fetch;
 }): ApiClient => {
   const origin = new URL(options.serverUrl);
   if (!/^https?:$/.test(origin.protocol) || origin.username !== "" || origin.password !== "" || origin.pathname !== "/" || origin.search !== "" || origin.hash !== "") throw new Error("serverUrl must be an HTTP(S) service origin without credentials, path, query or fragment.");
+  const serverToken = options.serverToken === undefined ? undefined : validateServerToken(options.serverToken);
+  if (serverToken !== undefined) validateTokenTransport(origin.origin);
   const operation = options.operation;
   const fetch = options.fetch ?? globalThis.fetch;
 
@@ -164,7 +168,7 @@ export const createApiClient = (options: {
         dispatched = true;
         return fetch(url, {
         method,
-        headers: { Accept: mode.kind === "bytes" ? "*/*" : "application/json", ...(contentType === undefined ? {} : { "Content-Type": contentType }) },
+        headers: { Accept: mode.kind === "bytes" ? "*/*" : "application/json", ...(contentType === undefined ? {} : { "Content-Type": contentType }), ...(serverToken === undefined ? {} : { Authorization: `Bearer ${serverToken}` }) },
         ...(payload === undefined ? {} : { body: payload }),
         ...(body?.kind === "bytes" ? { duplex: "half" } : {}),
         ...(mutable ? { cache: "no-store" } : {}),

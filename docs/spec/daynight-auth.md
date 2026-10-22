@@ -1,7 +1,8 @@
 # 用户登录与项目权限需求
 
-状态：身份/凭据及项目成员基础模块已实现，均未挂入生产路由；客户端与统一启用
-继续按任务交付。本文定义接入现有 UniAuth 后的完整交付行为，
+状态：身份/凭据及项目成员基础模块已实现，均未挂入生产路由；CLI 凭据配置和
+HTTP 传输已实现，Web 与统一启用继续按任务交付。本文定义接入现有 UniAuth 后的
+完整交付行为，
 [架构设计](../design/daynight-auth.md)拥有实现机制，
 [任务入口](../design/daynight-auth-tasks.md)连接 Daynight 中的执行资料。
 现有服务继续按[本机服务要求](daynight-server.md)运行，本文不表示鉴权已交付。
@@ -49,6 +50,14 @@ Cookie 写请求校验精确主站 Origin；明确提供无效 Bearer 时拒绝�
 PAT 由 Web 会话创建，只显示用户自己的元数据。撤销/到期后新请求返回未认证，不
 影响其他会话或令牌。PAT 代表用户当前全部项目权限，不另设令牌角色。CLI 凭据绑定
 配置的服务 origin，不进入仓库绑定、明文命令参数或日志；重定向不得转发凭据。
+
+CLI 使用可选 `serverToken`。setup 提供隐藏输入与布尔 `--server-token-stdin` 的
+单行读取，保持无网络检查；HTTPS 或字面量 localhost/numeric loopback HTTP 才能
+配置令牌。正规化 origin 变更原子清除旧令牌，同 origin 保留。含令牌配置在 POSIX
+上为 `0600`，其他能力写入也遵守；YAML 错误不泄露标量或原始 parser cause。
+完整输入、并发和持久化要求由[客户端 C6](daynight.md#c6-按需配置引导)及
+[客户端配置要求](daynight-project-task.md#pt2-服务配置)拥有。401 只提供 setup 指导，
+不自动匿名回退、登录预检或重试写入。
 
 ## 项目、成员与邀请
 

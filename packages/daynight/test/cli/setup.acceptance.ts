@@ -14,6 +14,8 @@ let installed: Awaited<ReturnType<typeof createInstalledCli>>;
 let sequence = 0;
 const remote = "https://github.com/Setup-Acceptance/Repository.git";
 const serverPrompt = "Server URL (for example http://127.0.0.1:8787): ";
+const tokenPrompt = "Server token (hidden; blank to skip): ";
+const keepTokenPrompt = "Server token (hidden; blank to keep current token): ";
 const reviewPrompt = "Review repository (HTTPS or SSH GitHub address): ";
 const pathPrompt = "Review clone path (blank for configured default): ";
 
@@ -47,9 +49,9 @@ const capture = async (child: ChildProcess, input?: string): Promise<Result> => 
     return { code, stdout, stderr };
   } finally { if (timer !== undefined) clearTimeout(timer); }
 };
-const pipe = (args: string[], home: string, cwd = home): Promise<Result> => capture(crossSpawn(installed.receipt.launcherPath, args, {
-  cwd, env: environment(home), windowsHide: true, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"],
-}));
+const pipe = (args: string[], home: string, cwd = home, input?: string): Promise<Result> => capture(crossSpawn(installed.receipt.launcherPath, args, {
+  cwd, env: environment(home), windowsHide: true, detached: process.platform !== "win32", stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+}), input);
 const terminal = async (args: string[], home: string, actions: Action[], extraEnvironment: NodeJS.ProcessEnv = {}, stderrTerminal = true): Promise<Result> => {
   const result = await capture(spawn("python3", ["-u", path.join(import.meta.dirname, "setup-pty.py")], {
     cwd: home, detached: true, stdio: ["pipe", "pipe", "pipe"],
@@ -104,7 +106,7 @@ it.skipIf(process.platform === "win32")("uses real terminal setup for server and
     if (address === null || typeof address === "string") throw new Error("Missing setup acceptance HTTP listener.");
     const serverUrl = `http://127.0.0.1:${address.port}`;
     const first = await fresh();
-    const listed = await terminal(["project", "list", "--json"], first.home, [{ waitFor: serverPrompt, input: `${serverUrl}\n` }]);
+    const listed = await terminal(["project", "list", "--json"], first.home, [{ waitFor: serverPrompt, input: `${serverUrl}\n` }, { waitFor: tokenPrompt, input: "\n" }]);
     expect(listed.code, listed.stderr).toBe(0);
     expect(JSON.parse(listed.stdout)).toEqual([]);
     expect(listed.stderr).not.toContain(reviewPrompt);
@@ -147,6 +149,7 @@ it.skipIf(process.platform === "win32")("commits an interactive combined setup o
   const selectedServer = await terminal(["setup"], serverOnly.home, [
     { waitFor: "Configure (server/review/both): ", input: "server\n" },
     { waitFor: serverPrompt, input: "https://service.example\n" },
+    { waitFor: tokenPrompt, input: "\n" },
   ]);
   expect(selectedServer.code, selectedServer.stderr).toBe(0);
   expect(selectedServer.stderr).not.toContain(reviewPrompt);
@@ -164,6 +167,7 @@ it.skipIf(process.platform === "win32")("commits an interactive combined setup o
   const configured = await terminal(["setup"], combined.home, [
     { waitFor: "Configure (server/review/both): ", input: "both\n" },
     { waitFor: serverPrompt, input: "https://service.example\n" },
+    { waitFor: tokenPrompt, input: "\n" },
     { waitFor: reviewPrompt, input: `${remote}\n` },
     { waitFor: pathPrompt, input: "\n" },
   ]);
@@ -184,6 +188,7 @@ it.skipIf(process.platform === "win32")("commits an interactive combined setup o
     const result = await terminal(["setup"], fixture.home, [
       { waitFor: "Configure (server/review/both): ", input: "both\n" },
       { waitFor: serverPrompt, input: "https://replacement.example\n" },
+      { waitFor: tokenPrompt, input: "\n" },
       { waitFor: reviewPrompt, ...cancellation },
     ]);
     expect(result.code).toBe(1);
@@ -199,4 +204,55 @@ it.skipIf(process.platform === "win32")("commits an interactive combined setup o
   expect(failed.stdout).toBe("");
   expect(failed.stderr).not.toContain(serverPrompt);
   expect(await readFile(corrupt.configuration, "utf8")).toBe("serverUrl: [\n");
+});
+
+it("reads token stdin through the installed launcher and rejects invalid input without disclosing credentials", async () => {
+  const fixture = await fresh();
+  const secret = "installed-stdin-secret";
+  const configured = await pipe(["setup", "--server-url", "https://service.example", "--server-token-stdin"], fixture.home, fixture.home, `${secret}\r\n`);
+  expect(configured.code, configured.stderr).toBe(0);
+  expect(await decoded(fixture.configuration)).toEqual({ serverUrl: "https://service.example", serverToken: secret });
+  expect(configured.stdout).toBe("");
+  expect(configured.stderr).not.toContain(secret);
+  expect(configured.stderr).not.toContain(serverPrompt);
+  expect(configured.stderr).not.toContain(tokenPrompt);
+  const original = await readFile(fixture.configuration, "utf8");
+  for (const input of ["", "\n", "invalid-secret\nsecond-line\n", "oversized-secret-" + "x".repeat(1024 * 1024)]) {
+    const failed = await pipe(["setup", "--server-token-stdin"], fixture.home, fixture.home, input);
+    expect(failed.code).toBe(1);
+    expect(failed.stdout).toBe("");
+    expect(failed.stderr).toContain("serverToken");
+    expect(failed.stderr).not.toContain(secret);
+    expect(failed.stderr).not.toContain("invalid-secret");
+    expect(failed.stderr).not.toContain("oversized-secret-");
+    expect(await readFile(fixture.configuration, "utf8")).toBe(original);
+    expect(await readdir(path.dirname(fixture.configuration))).toEqual(["config.yml"]);
+  }
+});
+
+it.skipIf(process.platform === "win32")("hides token terminal input and preserves the original configuration when the secret prompt is cancelled", async () => {
+  const fixture = await fresh();
+  const secret = "native-terminal-secret";
+  const configured = await terminal(["setup"], fixture.home, [
+    { waitFor: "Configure (server/review/both): ", input: "server\n" },
+    { waitFor: serverPrompt, input: "https://service.example\n" },
+    { waitFor: tokenPrompt, input: `${secret}\n` },
+  ]);
+  expect(configured.code, configured.stderr).toBe(0);
+  expect(await decoded(fixture.configuration)).toEqual({ serverUrl: "https://service.example", serverToken: secret });
+  expect(configured.stderr).not.toContain(secret);
+  expect(configured.stdout).toBe("");
+  const original = await readFile(fixture.configuration, "utf8");
+  for (const cancellation of [{ input: "\u0003" }, { input: "\u0004" }, { signal: "SIGTERM" as const }]) {
+    const cancelled = await terminal(["setup"], fixture.home, [
+      { waitFor: "Configure (server/review/both): ", input: "server\n" },
+      { waitFor: serverPrompt, input: "https://service.example\n" },
+      { waitFor: keepTokenPrompt, ...cancellation },
+    ]);
+    expect(cancelled.code).toBe(1);
+    expect(cancelled.stderr).toContain("Setup cancelled.");
+    expect(cancelled.stderr).not.toContain(secret);
+    expect(await readFile(fixture.configuration, "utf8")).toBe(original);
+    expect(await readdir(path.dirname(fixture.configuration))).toEqual(["config.yml"]);
+  }
 });

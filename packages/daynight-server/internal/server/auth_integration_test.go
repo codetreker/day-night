@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/codetreker/daynight/packages/daynight-server/api"
+	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/service"
 	uniauth "github.com/codetreker/uniauth/sdk/go"
 )
@@ -69,7 +70,7 @@ type identityIntegration struct {
 	secrets       []string
 }
 
-func newIdentityIntegration(t *testing.T) *identityIntegration {
+func newIdentityIntegration(t *testing.T, register ...func(*http.ServeMux, *Authentication, *store.Store)) *identityIntegration {
 	t.Helper()
 	binary := os.Getenv("DAYNIGHT_TEST_UNIAUTH_FIXTURE")
 	if binary == "" {
@@ -166,6 +167,9 @@ readiness:
 	}
 	mux := http.NewServeMux()
 	authentication.RegisterRoutes(mux)
+	for _, routes := range register {
+		routes(mux, authentication, database)
+	}
 	server.Config.Handler = RequestLogging(logger, mux)
 	server.Start()
 	return &identityIntegration{server: server, gateway: ready.Origin, client: client, transport: transport, logs: logs, sessionCookie: authentication.SessionCookieName(), secrets: []string{ready.AppSecret}}

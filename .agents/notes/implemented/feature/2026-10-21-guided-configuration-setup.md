@@ -27,16 +27,23 @@ owns composition and persistence.
 
 `daynight setup` selects server access, review or both. Explicit `--server-url`,
 `--review-repo` and optional `--review-path` configure the selected capabilities
-without prompts. The path option requires a repository. There is no common
-initialization-complete marker and no implicit server origin. A server-only
-machine never needs review configuration.
+without prompts. The path option requires a repository. The
+[credential decision](../architecture/2026-10-22-cli-server-credentials.md) extends
+server setup with optional hidden token input and the explicit boolean
+`--server-token-stdin` path. Missing tokens do not trigger automatic setup. There
+is no common initialization-complete marker and no implicit server origin. A
+server-only machine never needs review configuration.
 
 Input collection precedes configuration mutation. A single write transaction
 acquires the configuration lock and rereads the latest document. Changes to
 unrelated fields are preserved; a changed selected field fails with an explicit
-conflict rather than overwriting intervening input. The merged selected values
-are validated before atomic replacement. It preserves comments, other
-capabilities, existing repository paths and permission modes. The
+conflict rather than overwriting intervening input. Server origin and token are
+observed together; changing the normalized origin atomically removes the old
+token. The merged selected values are validated before atomic replacement. It
+preserves comments, other capabilities and existing repository paths. The
+credential decision requires a resulting token-bearing file to use POSIX mode
+`0600`, including writes by other capability owners; files without a token retain
+the existing permission behavior. The
 [registration decision](2026-10-18-add-repo-configuration.md) continues to own
 remote identity, saved paths, idempotency and configuration-only registration.
 It supplies the shared repository updater rather than a second registration path.
@@ -98,9 +105,10 @@ Concurrent writers can fail on the existing fail-fast configuration lock. Manual
 editors remain outside that lock protocol; abnormal lock recovery retains its
 existing operator checks.
 
-Credential setup, service deployment, connectivity validation and live reviewer
-reload are outside configuration setup. They are additive capabilities with
-separate runtime owners; keeping setup independent of network and runtime state
-allows them to be considered without changing saved field meanings. The requested
-business operation still reports its own connection, authentication and runtime
-errors after configuration is saved.
+The original decision left credential input outside setup because only a service
+origin was required. The credential decision adds hidden and stdin input while
+keeping setup independent of network and runtime state. Service deployment,
+connectivity validation and live reviewer reload retain separate owners. The
+requested business operation reports its own connection, authentication and
+runtime errors after configuration is saved; a 401 gives setup guidance without
+an anonymous retry or mutation replay.
