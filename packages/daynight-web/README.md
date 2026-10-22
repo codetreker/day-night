@@ -228,15 +228,17 @@ persist detail selection, graph coordinates, zoom or pan. Inactive panel content
 so returning to a chain retains its root choice and initializes its canvas
 viewport again. The [preference decision](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)
 records storage ownership. Tab switching, filtering and scroll restoration make
-no API request and do not change the full project counters, graph index or API
-ordering. Nodes open a task detail dialog with dependency navigation,
+no API requests themselves and do not change the full project counters, graph
+index or API ordering. Independent periodic refresh continues while the page is
+visible. Nodes open a task detail dialog with dependency navigation,
 PR associations, stale-data detection and attachment management. Task fields and
 graph interactions remain read-only. The PR section follows the description and
 displays every ordered title/URL pair, including duplicates. Lists longer than 100 entries use local
 100-row pages with a range/total announcement, Previous/Next controls and direct
 page selection. The complete ordered list stays in memory; changing pages makes
-no requests and imposes no storage or content limit. Replacing the task or
-property collection returns to the first page. Focus stays on current pagination
+no requests and imposes no storage or content limit. Replacing the task or changing the
+ordered property values returns to the first page; equivalent refresh results
+preserve the current page. Focus stays on current pagination
 controls or moves to the section heading when those controls disappear.
 Empty strings have a display-only marker;
 whitespace and long content remain selectable text and wrap within the dialog.
@@ -251,9 +253,32 @@ error and retry state. It preserves string content, including NUL and arbitrary
 address text, without defaults or content validation. The graph decoder retains
 its compact projection and never copies properties into graph nodes.
 
-Refresh retains the last successful snapshot with an explicit loading/error
-notice and replaces the full graph only on success. A resource change clears
-previous-resource content immediately. Live detail never changes graph counters;
+An open project automatically requests its complete graph every five seconds
+while the document is visible. Hidden documents start no periodic reads; returning
+to a visible document requests immediately unless a graph read is already active.
+Automatic ticks skip active graph requests. Manual refresh cancels an active graph
+request and starts immediately. Every successful response updates the last received
+time and rereads the selected task even when graph data is unchanged. Equivalent
+graph data retains its index and layout; changed graph data replaces statistics
+and both task-category lists together. The
+[automatic refresh decision](../../.agents/notes/implemented/feature/2026-10-22-project-task-auto-refresh.md)
+owns the scheduling and scope. With `pnpm web:dev`,
+`/tests/mockups/auto-refresh.html` uses the real project page, styles and controlled
+responses to explore periodic changes, delayed reads and recoverable failures
+without Go or PostgreSQL. Production verification uses the real-service journeys.
+
+Same-resource graph and detail refresh retain successful data while loading and
+on recoverable failure. Errors stay visible during automatic retries until a
+successful response clears them, including a failure before any successful read.
+Automatic detail reads and queued follow-ups wait while the document is hidden;
+requests already in flight may finish. A 404 clears unavailable graph or detail data;
+401 follows the authentication lifecycle and releases the workspace. A resource
+change clears previous-resource content immediately. Same-task refresh keeps the
+detail body mounted, preserving the active tab, PR page when its ordered values
+are unchanged, focus, attachment selection, upload inputs, pending writes and
+preview frame. Project and task changes release the old resource state. Project
+listing and attachment metadata/content keep their independent refresh actions.
+Live detail never changes graph counters;
 a changed prerequisite can alter readiness without revising the task itself.
 The dialog offers a full graph refresh when that difference is observed.
 Reopening or refreshing details reads current PR associations; an attribute
@@ -625,8 +650,8 @@ scenario annotations validated in each target's report.
 | W2 | `project-graph`, `deep-links`, `task-attachments`: project entry, direct HTML reload, browser history and standalone attachment opening/reload without source-tab state |
 | W3–W4 | `project-graph`, `project-view-tabs`, `refresh-staleness`, `failure-recovery`: exact statistics, topology-based tabs, distinct root progress, direct standalone details, independent completion filters, per-project tab/scroll/expansion restoration, dependency reclassification and consistent full refresh |
 | W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`, `capacity-external`: complete projection data, bounded overview/induced edges, explicit expansion/reset, state markers and existing detail/viewport actions |
-| W8 | `detail-navigation`, `refresh-staleness`: complete centered-dialog content, ordered PR associations, relation navigation, property refresh and readiness differences without revising a dependent task |
-| W9 | `failure-recovery`, `deep-links`, `capacity-limits`: owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |
+| W8 | `detail-navigation`, `refresh-staleness`: complete centered-dialog content, ordered PR associations, relation navigation, automatic detail refresh with retained dialog/attachment state, property refresh and readiness differences without revising a dependent task |
+| W9 | `refresh-staleness`, `failure-recovery`, `deep-links`, `capacity-limits`: periodic status updates and automatic recovery, owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
@@ -788,14 +813,18 @@ leftmost rank at 0.8 zoom. The root remains vertically centered when already
 leftmost; otherwise the topmost upstream node starts at a 32px canvas inset.
 Dependency geometry does not require connection-port DOM or per-edge endpoint readiness.
 Ordinary/selected canonical node variants retain unaffected references, and
-memoized collapsed root rows keep a null selection until expanded. New snapshot
-indexes still refresh all rows. The one-time initial viewport policy is separate
+memoized collapsed root rows keep a null selection until expanded. Changed snapshot indexes
+refresh all rows; equivalent graph responses retain the existing index. The one-time initial viewport policy is separate
 from explicit fit controls and does not run again on selection or pan.
 
 Page hooks own requests and cancellation. Navigation or refresh invalidates the
 previous request generation, continuation failures preserve loaded cards, and
 unmount aborts owned work. Attachments have independent scoped list, write and
-preview state, while project statistics continue to use complete graph snapshots.
-There is no global task cache, task-field editor or polling loop. The opt-in
+preview state, while project statistics continue to use complete graph snapshots. The
+project hook owns its visible-page timer; navigation and unmount clear the timer
+and cancel owned reads. Automatic graph reads never overlap, and same-task detail
+refreshes coalesce an in-flight follow-up. There is no global task cache or
+task-field editor. Push subscriptions remain deferred; they can trigger the same
+complete-snapshot refresh without changing graph projection. The opt-in
 `AuthenticatedApp` owns the authentication flow; production `main.tsx` continues
 to mount the existing `App` until coordinated activation.

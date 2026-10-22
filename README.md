@@ -415,7 +415,14 @@ binary identity, scenario results and resource cleanup.
 
 The private [web workspace](packages/daynight-web/README.md) implements the project
 list, cursor paging, safe API decoding, cancellation, project statistics, task
-graphs, centered task detail dialogs and single-file attachment management. Its
+graphs, centered task detail dialogs and single-file attachment management. An open
+project refreshes its complete task snapshot every five seconds while the page is
+visible, pauses automatic reads while hidden and refreshes immediately on return.
+Refresh retains browsing state and an open detail dialog, including attachment
+inputs and previews. Failed reads keep prior data with an error and recover on a
+later successful read; unavailable resources are cleared. The
+[automatic refresh decision](.agents/notes/implemented/feature/2026-10-22-project-task-auto-refresh.md)
+owns scheduling, request priority and retained-state guarantees. Its
 [locale runtime](docs/design/daynight-web-i18n.md) provides English and Simplified
 Chinese across the shipped interface, native Intl formatting and an independent
 saved language preference. Navigation, the centered detail dialog and fullscreen

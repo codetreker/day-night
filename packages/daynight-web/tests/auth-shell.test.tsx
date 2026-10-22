@@ -233,6 +233,23 @@ describe("authenticated application shell", () => {
     await screen.findByRole("heading", { name: "登录你的工作空间" });
   });
 
+  it("clears the workspace and stops automatic graph reads after a resource401", async () => {
+    vi.useFakeTimers();
+    window.history.replaceState(null, "", `/projects/${projectId}`);
+    let expired = false;
+    const fetcher = install((url) => expired && url.endsWith("/task-graph") ? fail(401, "unauthenticated") : defaults(url));
+    await act(async () => { render(<AuthenticatedApp />); });
+    expect(screen.getByRole("heading", { name: "私有项目" })).toBeInTheDocument();
+    expired = true;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(screen.getByRole("heading", { name: "登录你的工作空间" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "私有项目" })).toBeNull();
+    const graphReads = () => fetcher.mock.calls.filter(([url]) => url.endsWith("/task-graph")).length;
+    expect(graphReads()).toBe(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    expect(graphReads()).toBe(2);
+  });
+
   it("shows project membership access from the authoritative current membership", async () => {
     window.history.replaceState(null, "", `/projects/${projectId}`);
     install((url) => url.endsWith("/members") ? json({ items: [member(userId, "member")] }) : defaults(url));

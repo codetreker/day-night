@@ -77,6 +77,9 @@ project snapshot.
 The adopted MVP was read-only with manual refresh. Graph projection remained
 separate from API mutations and request triggers so editing and live subscriptions
 could be added independently. The later
+[automatic refresh decision](../feature/2026-10-22-project-task-auto-refresh.md)
+partially supersedes the manual trigger policy with visible-page periodic reads,
+retaining complete-snapshot ownership and resource isolation. The later
 [Web attachment decision](../feature/2026-10-21-task-attachment-web.md) uses that
 separation for file upload, overwrite and deletion in task details. Task fields and
 dependency editing remain outside the browser's delivered scope. Proposed tasks

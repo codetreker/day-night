@@ -18,8 +18,11 @@ and aligned with its task nodes.
 The project page owns one validated graph/index snapshot, its client receipt time
 and revision. Requests are scoped by project identity and generation; a different
 resource cannot render an earlier resource's data. Same-project refresh retains
-the last successful snapshot with an explicit loading/error notice, and replaces
-statistics, indexes and both task-category lists together after success.
+the last successful snapshot. Manual refresh displays its loading state, and
+recoverable failure displays an error beside prior data. Changed data replaces
+statistics, indexes and both task-category lists together. The [automatic refresh decision](2026-10-22-project-task-auto-refresh.md)
+extends request scheduling with visible-page periodic reads, retains equivalent
+graph/index references and preserves the same-task detail body during refresh.
 
 The [task view decision](2026-10-22-project-task-views.md) separates standalone
 rows, which open details directly, from non-isolated root chains. Only one root
@@ -79,8 +82,9 @@ work proportional to changed styling while retaining the full graph.
 
 Each root row is memoized. Collapsed rows receive a stable null selection, so
 opening or switching task details does not rerender every unrelated root. Expanded
-state, callback and index changes still invalidate the relevant rows; a new
-snapshot index refreshes every row and its statistics.
+state, callback and index changes still invalidate the relevant rows; a changed
+snapshot index refreshes every row and its statistics. Equivalent responses
+retain the existing index while advancing the successful receipt revision.
 
 The centered task detail dialog uses a body portal outside the application root,
 background inertness,
