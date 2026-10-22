@@ -9,6 +9,10 @@ and delivery tasks are fixed. The current skill requires finished solutions and
 frontend prototypes before registration, so applying that rule to problem-definition
 or design tasks makes their outputs prerequisites to starting them. A root task's
 completion also needs to remain distinct from delivery of the entire task chain.
+A task whose description only names a general problem and links cannot communicate
+its concrete assignment without opening a packet of attachments. Repeating common
+requirements and designs on each task also creates several copies with unclear
+ownership and independent update lifetimes.
 
 ## Decision
 
@@ -29,6 +33,22 @@ problem, outcomes, scope, exclusions and verification without production impleme
 or architecture work. Applicable UI requirements include a final-style interactive
 frontend-only prototype. Architecture then fixes mechanisms and registers the actual
 delivery breakdown before implementation can become ready.
+
+Every task description is a self-contained brief for that task: its problem, concrete
+scope and actions, deliverables, constraints, and observable completion summary must
+be visible before following attachments. Goal descriptions state the complete Goal;
+implementation and acceptance descriptions state their own assignments. Detailed
+solution, complete acceptance and evidence remain with the task-specific primary
+Markdown attachment. Summaries and details have distinct roles and are maintained
+together within the owning task.
+
+Attachments follow content ownership. The Goal owns goal.md; architecture owns its
+phase plan, design and registered breakdown; implementation and acceptance own only
+their respective plans and later evidence. Shared inputs are read from the confirmed
+source task ID and attachment path, or a verified immutable repository URL. Existing
+CLI reads support those references; no new link scheme or API is introduced. Copying
+an entire common packet to every task is not the registration default. An independently
+required snapshot must name its source version and purpose.
 
 Four skill modes remain. A shared Goal reference supplies stage-specific guidance;
 create-task registers and returns, run-task executes one task, and explicitly
@@ -75,6 +95,12 @@ checking the immutable delivered artifact and reconciling the complete Goal. Sep
 post-delivery acceptance makes that result explicit while retaining every required
 implementation check before merge.
 
+**Restrict descriptions to problems and distribute the common document packet.**
+This keeps detailed prose in attachments, but hides each concrete assignment and
+replicates documents owned by the Goal or architecture. A self-contained brief plus
+owned detail and verified shared references makes the work readable while retaining
+one source for common inputs.
+
 ## Consequences
 
 Multi-task registration needs two initial tasks and recoverable attachment writes.
@@ -85,7 +111,8 @@ have different completion evidence and both remain in the same Goal scope.
 Definition and design can start with honest stage briefs, while implementation
 retains completed requirements and design as inputs. Instruction review must cover
 stage transitions, permission boundaries, partial registration and whole-Goal
-completion; recursive copy and installer checks establish artifact integrity
+completion, description-only assignment comprehension, and attachment ownership;
+recursive copy and installer checks establish artifact integrity
 separately from instruction behavior.
 
 This design adds no server-side enforcement, lock, state, telemetry or migration.

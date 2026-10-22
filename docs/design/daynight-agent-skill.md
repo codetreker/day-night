@@ -8,7 +8,9 @@
 
 [Goal 流程设计](daynight-goal-workflow.md)说明待实现的两阶段前置流程及阶段资料规则，
 [任务拆分](daynight-goal-workflow-tasks.md)关联实际 Daynight 任务。该扩展按独立设计 PR
-交付；当前 skill 的实现机制仍以下文为准。
+交付。扩展采用自包含的任务 description 与按任务归属的详细附件；共享输入通过已核验
+的源 task ID 和附件路径读取。当前 skill 的实现机制仍以下文为准，资料分工在实施时
+由该扩展替换。
 
 ## 一个入口与按需加载
 

@@ -99,7 +99,9 @@ The [Goal workflow requirements](docs/spec/daynight-goal-workflow.md) and
 multi-task work, with a Goal description followed by architecture and task
 breakdown. Its [delivery tasks](docs/design/daynight-goal-workflow-tasks.md)
 track protocol delivery and independent consumer acceptance; the published
-skill does not yet provide that protocol.
+skill does not yet provide that protocol. The extension requires each task
+description to state its concrete scope, deliverables and completion conditions,
+with task-owned details and verified references to shared inputs.
 
 | Mode | Responsibility |
 |---|---|
