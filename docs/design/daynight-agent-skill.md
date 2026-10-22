@@ -224,8 +224,10 @@ readiness，不表达优先级或独占领取。已知恢复目标时 `task show
 
 需要理解整体依赖时使用 graph。它提供统计、依赖、状态和 titlePreview，没有完整
 描述或 version；定位后只 show 必要任务。graph 超出服务的 1,000 节点 / 5,000 边限制
-时，改用有界 ready 和选定任务详情；这是完整图限制，不代表项目未关联。完整
-`task list` 保留遍历全部分页的语义，只有需要完整清单时才使用。原先采用 graph-first
+时，改用有界 ready 和选定任务详情；这是完整图限制，不代表项目未关联。
+`task list` 遍历全部匹配分页，默认排除 `done`；需要包含已完成任务的完整清单时
+使用 `task list --all --json`。列表结果按 `in_progress`、ready、其余 `todo`、`done`
+稳定分组，JSON 保留完整 task 字段。原先采用 graph-first
 恢复便于同时理解小项目全图；随着任务积累，日常选择改用有界查询，理由见
 [ready 决策](../../.agents/notes/implemented/feature/2026-10-21-bounded-ready-task-selection.md)。
 

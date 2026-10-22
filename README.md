@@ -534,7 +534,7 @@ daynight project list [--json]
 daynight project show <project-id> [--json]
 daynight task
 daynight task create --title <title> [options]
-daynight task list [--status <status>] [--ready] [--json] [--project <project-id>]
+daynight task list [--all | --status <status>] [--ready] [--json] [--project <project-id>]
 daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
@@ -793,6 +793,7 @@ daynight task create --title "Build the sign-in page" --depends-on <task-id>
 daynight task ready
 daynight task ready --limit 5 --json
 daynight task list --ready
+daynight task list --all --json
 daynight task list --status in_progress --json
 daynight task show <task-id> --json
 daynight task update <task-id> --description=
@@ -819,9 +820,13 @@ pages. The service orders results by creation time and then task ID, both
 ascending. A ready task is `todo` with all direct dependencies `done`. This
 bounded selection supports choosing the next work without retrieving the whole
 project; `task graph` provides a dependency overview when needed. `task list`
-continues to read every matching page, including with `--ready`; its status and
-ready filters combine with AND. `task ready` accepts neither `--status` nor
-`--cursor`.
+reads every matching page, including with `--ready`, and excludes `done` by
+default. `--all` includes every status; `--status <status>` selects one status,
+including `done`. These two options conflict. `--ready` intersects the selected
+statuses and can be combined with `--all`. List results place `in_progress`
+first, then ready tasks, other `todo` tasks, and `done`; each group retains
+service order across all pages. This order applies to human and JSON results.
+`task ready` accepts neither `--status` nor `--cursor`.
 
 Updates preserve omitted fields; an empty description clears it. Repeated
 `--depends-on` values replace the complete dependency set and retain input order
@@ -839,13 +844,15 @@ inline assignment. Attachment `put` declares its `--path` as text, accepting
 `--path=value`; attachment `put/read/remove` also accept `--` before positional
 paths starting with a dash. Other task operations retain their declared syntax.
 
-Human results use complete labeled task blocks and graph nodes, including task
+Human task lists use labeled blocks containing ID, project, title, PR references,
+status, readiness, dependencies and blocking. Description, version and timestamps
+remain available in show, ready, create and update output. Graph nodes include
 state, dependencies, blocking and title-preview truncation flags. Queries support
-`--json`: `list` returns every matching resource in one array, `ready` returns
-only its selected tasks as an array, details return one resource, and graphs
-return the complete API object. A ready result retains every task field; an
-empty human result is `No ready tasks.` and empty JSON is `[]`. Versions remain
-JSON numbers with full int64 precision.
+`--json`: `list` returns every matching resource with all API fields in one array,
+`ready` returns only its selected tasks as an array, details return one resource,
+and graphs return the complete API object. A ready result retains every task
+field; an empty human result is `No ready tasks.` and empty JSON is `[]`. Versions
+remain JSON numbers with full int64 precision.
 Local preparation fails before any task mutation; a lost write response is
 reported as unconfirmed. The [task record](docs/design/daynight-project-task-tasks.md)
 owns validation status. Installed CLI integration uses the real Go/PostgreSQL

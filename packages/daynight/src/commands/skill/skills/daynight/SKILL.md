@@ -51,8 +51,9 @@ Use `daynight task graph --json` when dependency or project-wide context is
 needed; it has title previews and omits full
 descriptions, PR properties, and versions. If it reports `graph_limit_exceeded`,
 continue with bounded ready and selected task reads; the error does not mean the
-project is unlinked. Full lists traverse every page, so request them only when a
-complete inventory is needed.
+project is unlinked. `task list` traverses every matching page and defaults to
+unfinished work. Use `daynight task list --all --json` only when a complete
+inventory including completed tasks is needed.
 
 If configuration, discovery, or a service request fails, preserve its actual
 cause. Follow the CLI's setup guidance or obtain an explicit project selection

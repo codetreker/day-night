@@ -13,6 +13,7 @@ daynight task show <task-id> --json
 daynight task list --status in_progress --json
 daynight task graph --json
 daynight task list --ready --json
+daynight task list --all --json
 daynight project list --json
 daynight project show <project-id> --json
 ```
@@ -47,10 +48,16 @@ selected task with show before acting, and advance only that task through CI,
 review, and merge waits. Subagents collaborate on the same task. Multiple
 candidates do not authorize starting a batch or unrelated work.
 
-`task list`, including `task list --ready`, reads every page and returns
-a complete array; reserve it for a complete inventory. List filters combine
-with AND. Task counts are bounded by ready, but full titles/descriptions and
-project discovery can still produce substantial output or additional requests.
+`task list`, including `task list --ready`, reads every matching page and returns
+one array. It excludes `done` by default. Use `--all` for all statuses, including
+completed work, or `--status <status>` for one status; these options conflict.
+`--ready` intersects the selected statuses and supports `--all --ready`. Human
+and JSON lists group `in_progress` first, then ready tasks, other `todo` tasks,
+and `done`, preserving service order within each group across pages. Human lists
+omit description, version and timestamps; JSON keeps every task field. Reserve
+`task list --all --json` for a complete inventory. Task counts are bounded by
+ready, but full titles/descriptions and project discovery can still produce
+substantial output or additional requests.
 
 Use the graph when an overall dependency view is needed. It is one complete
 snapshot containing project metadata, summary, task IDs, title previews, status,

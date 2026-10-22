@@ -279,7 +279,7 @@ describe("compiled task commands", () => {
         ["update", taskId, "--pull-request-title=", "--clear-pull-requests"],
         ["update", taskId, "--status", "invalid"],
         ["update", taskId, "--status", "done", "--if-version", "9223372036854775808"],
-        ["show", "invalid"], ["list", "--project", "invalid"], ["list", "--ready", "false"], ["graph", "--unknown"],
+        ["show", "invalid"], ["list", "--project", "invalid"], ["list", "--ready", "false"], ["list", "--all", "--status", "todo"], ["list", "--status", "done", "--all"], ["graph", "--unknown"],
         ["ready", "--limit", "0"], ["ready", "--limit", "101"], ["ready", "--limit=1e1"], ["ready", "--limit=1.5"], ["ready", "--limit=+1"], ["ready", "--status", "todo"],
         ["attachment", "list", "invalid"], ["attachment", "list", taskId, "--tree", "--json"],
         ["attachment", "put", taskId, "missing.txt", "--path", "../escape"],
@@ -296,12 +296,90 @@ describe("compiled task commands", () => {
     } finally { await f.close(); }
   }, 60_000);
 
-  it("preserves ordered raw PR lists through compiled mutations and complete text or JSON reads", async () => {
+  it("lists unfinished tasks in stable global priority order and includes done tasks with --all", async () => {
+    const f = await fixture();
+    try {
+      const identifiedTask = (suffix: string, title: string, partial: Partial<Task>): Task => task({ id: `b1b2c3d4-1111-4222-8333-123456789a${suffix}`, title, ...partial });
+      const blockedFirst = identifiedTask("01", "Blocked first", { ready: false, dependsOn: [secondId], blockedBy: [secondId] });
+      const doneFirst = identifiedTask("02", "Done first", { status: "done", ready: false });
+      const readyFirst = identifiedTask("03", "Ready first", { description: "Complete JSON details", version: 9_223_372_036_854_775_807n });
+      const progressFirst = identifiedTask("04", "Progress first", { status: "in_progress", ready: false });
+      const readySecond = identifiedTask("05", "Ready second", {});
+      const progressSecond = identifiedTask("06", "Progress second", { status: "in_progress", ready: false });
+      const blockedSecond = identifiedTask("07", "Blocked second", { ready: false, dependsOn: [thirdId], blockedBy: [thirdId] });
+      const doneSecond = identifiedTask("08", "Done second", { status: "done", ready: false });
+      const cursor = "next priority page+/=?";
+      const { requests } = await f.serve((request, response) => respond(response, request.query.has("cursor")
+        ? { items: [readySecond, progressSecond, blockedSecond, doneSecond], nextCursor: null }
+        : { items: [blockedFirst, doneFirst, readyFirst, progressFirst], nextCursor: cursor }));
+      const unfinished = [progressFirst, progressSecond, readyFirst, readySecond, blockedFirst, blockedSecond];
+      for (const includeAll of [false, true]) {
+        const args = ["list", ...(includeAll ? ["--all"] : []), ...explicit];
+        const expected = includeAll ? [...unfinished, doneFirst, doneSecond] : unfinished;
+        const json = await f.invoke([...args, "--json"]);
+        expect(json.code, json.stderr).toBe(0);
+        expect(parseApiJson(json.stdout)).toEqual(expected);
+        expect(json.stdout).toContain('"version":9223372036854775807');
+        const text = await f.invoke(args);
+        expect(text.code, text.stderr).toBe(0);
+        expect(text.stdout.match(/^Title: .*$/gm)).toEqual(expected.map(({ title }) => `Title: ${title}`));
+        for (const field of ["Description:", "Version:", "Created:", "Updated:"]) expect(text.stdout).not.toContain(field);
+        expect(text.stdout).toContain(`Depends on: ${secondId}`);
+        expect(text.stdout).toContain(`Blocked by: ${thirdId}`);
+      }
+      expect(requests.filter(({ pathname }) => pathname === taskPath).map(({ query }) => Object.fromEntries(query))).toEqual(Array.from({ length: 4 }, () => [
+        { limit: "100" }, { limit: "100", cursor },
+      ]).flat());
+    } finally { await f.close(); }
+  }, 60_000);
+
+  it("keeps explicit status and readiness filters conjunctive with unfinished and all-state lists", async () => {
+    const f = await fixture();
+    try {
+      const readyTask = task();
+      const progressTask = task({ id: secondId, status: "in_progress", ready: false });
+      const doneTask = task({ id: thirdId, status: "done", ready: false });
+      const items = [doneTask, readyTask, progressTask];
+      const { requests } = await f.serve((request, response) => respond(response, {
+        items: items.filter((item) => (!request.query.has("status") || item.status === request.query.get("status")) && (!request.query.has("ready") || item.ready)),
+        nextCursor: null,
+      }));
+      const cases: readonly { args: readonly string[]; expected: readonly Task[]; query: Record<string, string> }[] = [
+        { args: ["--status", "done"], expected: [doneTask], query: { status: "done", limit: "100" } },
+        { args: ["--ready"], expected: [readyTask], query: { ready: "true", limit: "100" } },
+        { args: ["--all", "--ready"], expected: [readyTask], query: { ready: "true", limit: "100" } },
+        { args: ["--status", "todo", "--ready"], expected: [readyTask], query: { status: "todo", ready: "true", limit: "100" } },
+        { args: ["--status", "in_progress", "--ready"], expected: [], query: { status: "in_progress", ready: "true", limit: "100" } },
+        { args: ["--status", "done", "--ready"], expected: [], query: { status: "done", ready: "true", limit: "100" } },
+      ];
+      for (const { args, expected, query } of cases) {
+        const result = await f.invoke(["list", ...args, "--json", ...explicit]);
+        expect(result.code, result.stderr).toBe(0);
+        expect(parseApiJson(result.stdout)).toEqual(expected);
+        expect(Object.fromEntries(requests.at(-1)!.query)).toEqual(query);
+      }
+    } finally { await f.close(); }
+  }, 60_000);
+
+  it("prints empty text and JSON when only completed tasks remain", async () => {
+    const f = await fixture();
+    try {
+      await f.serve((_request, response) => respond(response, { items: [task({ status: "done", ready: false })], nextCursor: null }));
+      const text = await f.invoke(["list", ...explicit]);
+      expect(text.code, text.stderr).toBe(0);
+      expect(text.stdout).toBe("No tasks.\n");
+      const json = await f.invoke(["list", "--json", ...explicit]);
+      expect(json.code, json.stderr).toBe(0);
+      expect(parseApiJson(json.stdout)).toEqual([]);
+    } finally { await f.close(); }
+  }, 60_000);
+
+  it("preserves ordered raw PR lists and full JSON through mutations, full task reads, and compact lists", async () => {
     const f = await fixture();
     try {
       const supplied = [{ url: "", title: "" }, { url: "-arbitrary=a,b", title: " 标题\n\u001b[2J " }, { url: "-arbitrary=a,b", title: " 标题\n\u001b[2J " }];
       const returned = { pullRequests: [...supplied, { url: "\0not a URL", title: "\0" }] };
-      let current = task({ properties: returned, version: 9_223_372_036_854_775_807n });
+      let current = task({ title: "Task 中文\n\u001b[2J", description: "Full description\n\u001b[2J", properties: returned, version: 9_223_372_036_854_775_807n });
       let conflict = false;
       const { requests } = await f.serve((request, response) => {
         if (request.method === "POST") respond(response, current, 201);
@@ -317,6 +395,7 @@ describe("compiled task commands", () => {
       expect(requests.find(({ method }) => method === "POST")!.body).toEqual({ title: "Title", properties: { pullRequests: supplied } });
       expect(created.stdout).toContain("Pull requests: 4");
       expect(created.stdout).toContain("4. Title: \\u0000\n     URL: \\u0000not a URL");
+      for (const field of ["Description: Full description\\n\\u001b[2J", "Version: 9223372036854775807", `Created: ${time}`, `Updated: ${time}`]) expect(created.stdout).toContain(field);
       for (const command of [["show", taskId], ["list"]]) {
         const json = await f.invoke([...command, "--json", ...explicit]);
         expect(json.code, json.stderr).toBe(0);
@@ -325,10 +404,17 @@ describe("compiled task commands", () => {
         expect(text.code, text.stderr).toBe(0);
         expect(text.stdout).toContain(" 标题\\n\\u001b[2J ");
         expect(text.stdout).toContain("\\u0000not a URL");
+        for (const field of [`ID: ${taskId}`, `Project: ${projectId}`, "Title: Task 中文\\n\\u001b[2J", "Pull requests: 4", "Status: todo", "Ready: true", "Depends on: none", "Blocked by: none"]) expect(text.stdout).toContain(field);
+        for (const field of ["Description:", "Version:", "Created:", "Updated:"]) {
+          if (command[0] === "list") expect(text.stdout).not.toContain(field);
+          else expect(text.stdout).toContain(field);
+        }
+        expect(text.stdout).not.toContain("\u001b");
       }
       const before = requests.length;
       const replaced = await f.invoke(["update", taskId, ...pairs, ...explicit]);
       expect(replaced.code, replaced.stderr).toBe(0);
+      for (const field of ["Description: Full description\\n\\u001b[2J", "Version: 9223372036854775807", `Created: ${time}`, `Updated: ${time}`]) expect(replaced.stdout).toContain(field);
       expect(requests.slice(before).map(({ method }) => method)).toEqual(["GET", "GET", "PATCH"]);
       expect(requests.at(-1)!.body).toEqual({ version: 9_223_372_036_854_775_807n, properties: { pullRequests: supplied } });
       const clearAt = requests.length;
@@ -348,7 +434,7 @@ describe("compiled task commands", () => {
   it("requests a single bounded ready page and preserves full task JSON and empty output", async () => {
     const f = await fixture();
     try {
-      let items = [task({ properties: { pullRequests: [{ url: "\0 arbitrary URL", title: "Ready\nPR" }] }, version: 9_223_372_036_854_775_807n })];
+      let items = [task({ description: "Ready details", properties: { pullRequests: [{ url: "\0 arbitrary URL", title: "Ready\nPR" }] }, version: 9_223_372_036_854_775_807n })];
       let cursor: string | null = "unrequested next page";
       const { requests } = await f.serve((request, response) => {
         if (request.query.has("cursor")) refuse(response, "internal_error", "unexpected-ready-cursor", 500);
@@ -363,6 +449,7 @@ describe("compiled task commands", () => {
       const text = await f.invoke(["ready", "--limit", "1", ...explicit]);
       expect(text.code, text.stderr).toBe(0);
       expect(text.stdout).toContain("1. Title: Ready\\nPR\n     URL: \\u0000 arbitrary URL");
+      for (const field of ["Description: Ready details", "Version: 9223372036854775807", `Created: ${time}`, `Updated: ${time}`]) expect(text.stdout).toContain(field);
       items = []; cursor = null;
       const empty = await f.invoke(["ready", ...explicit]);
       expect(empty.code, empty.stderr).toBe(0); expect(empty.stdout).toBe("No ready tasks.\n");
