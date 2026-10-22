@@ -97,6 +97,37 @@ describe("guided configuration transactions", () => {
     expect(await readdir(paths.stateDirectory)).toEqual(["config.yml"]);
   });
 
+  it.each(["server", "review"] as const)("preserves Copilot settings and their comments during %s setup", async (capability) => {
+    const settingsSource = "# Review model\ncopilotModel: future-provider/model-v9 # keep model\ncopilotReasoningEffort: high # keep reasoning effort\n";
+    const { context, paths } = await fixture(settingsSource);
+    await configure(context, capability === "server" ? { serverUrl: "http://localhost:8787" } : { reviewRepository: { remote: "https://github.com/o/r" } });
+    const source = await readFile(paths.configFile, "utf8");
+    expect(source).toContain(settingsSource);
+    expect(parseDocument(source).toJS().copilotModel).toBe("future-provider/model-v9");
+    expect(parseDocument(source).toJS().copilotReasoningEffort).toBe("high");
+    expect(await readdir(paths.stateDirectory)).toEqual(["config.yml"]);
+  });
+
+  it.each(["null", '""', '" "', "false", '"model\\u0000name"'])("preserves invalid review model configuration without prompting: %s", async (value) => {
+    const source = `copilotModel: ${value}\n`;
+    const { context, paths } = await fixture(source);
+    const ask = answers(context, []);
+    await expect(configure(context, undefined, "review")).rejects.toThrow("copilotModel must be a nonempty string without NUL characters");
+    expect(ask).not.toHaveBeenCalled();
+    expect(await readFile(paths.configFile, "utf8")).toBe(source);
+    expect(await readdir(paths.stateDirectory)).toEqual(["config.yml"]);
+  });
+
+  it.each(["null", '""', '" "', "false", '"effort\\u0000name"'])("preserves invalid review reasoning effort configuration without prompting: %s", async (value) => {
+    const source = `copilotReasoningEffort: ${value}\n`;
+    const { context, paths } = await fixture(source);
+    const ask = answers(context, []);
+    await expect(configure(context, undefined, "review")).rejects.toThrow("copilotReasoningEffort must be a nonempty string without NUL characters");
+    expect(ask).not.toHaveBeenCalled();
+    expect(await readFile(paths.configFile, "utf8")).toBe(source);
+    expect(await readdir(paths.stateDirectory)).toEqual(["config.yml"]);
+  });
+
   it("rejects cancellation after an answer before saving", async () => {
     const { context, paths } = await fixture();
     const cancellation = new AbortController();

@@ -21,6 +21,8 @@ export type ReviewConfiguration = {
   agentTimeoutMs: number;
   maxAttempts: number;
   retryDelayMs: number;
+  copilotModel?: string;
+  copilotReasoningEffort?: string;
   repositories: RepositoryConfiguration[];
 };
 
@@ -212,6 +214,8 @@ const parseReviewConfiguration = (
     agentTimeoutMs: positiveInteger(mapping, "agentTimeoutMs"),
     maxAttempts: positiveInteger(mapping, "maxAttempts"),
     retryDelayMs: positiveInteger(mapping, "retryDelayMs"),
+    ...(Object.hasOwn(mapping, "copilotModel") ? { copilotModel: nonEmptyString(mapping.copilotModel, "copilotModel") } : {}),
+    ...(Object.hasOwn(mapping, "copilotReasoningEffort") ? { copilotReasoningEffort: nonEmptyString(mapping.copilotReasoningEffort, "copilotReasoningEffort") } : {}),
   };
   if (!Object.hasOwn(mapping, "repositories")) {
     if (allowMissingRepositories) {

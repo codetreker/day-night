@@ -1019,10 +1019,24 @@ A configuration with an explicit addition root is:
 
 ```yaml
 repositoryRoot: ~/daynights
+copilotModel: auto
+copilotReasoningEffort: high
 repositories:
   - remote: https://github.com/OWNER/REPO.git
     path: /home/alice/daynights/github.com/owner/repo
 ```
+
+`copilotModel` and `copilotReasoningEffort` are independent optional fields for
+all review repositories in the running process. Each configured value must be a
+string containing non-whitespace text and no NUL; null and other value types are
+rejected. Accepted strings are preserved exactly. Copilot owns model availability,
+effort levels and model/effort compatibility; Daynight maintains no static lists.
+`auto` delegates model selection to Copilot. Omitting either field sends no
+corresponding override and preserves Copilot's choice, so neither, either or both
+may be configured. Changes take effect on the next `review run` startup. Setup
+and repository registration preserve both fields and YAML comments. The server
+configuration projection recognizes these shared keys without validating their
+review-owned values.
 
 `repositoryRoot` defaults to `~/daynights`. It is used only when `add-repo` has no
 `--path`: the command derives filesystem-safe components from the normalized
@@ -1237,6 +1251,16 @@ environment. It selects the persisted per-PR UUID on first launch and explicitly
 same session thereafter. An interrupted first launch also resumes existing
 history; missing established history is an error. Only opaque session-directory
 presence is inspected. Copilot history and agent JSONL are not parsed.
+
+Every review child receives configured `copilotModel` as separate `--model` and
+value arguments, and configured `copilotReasoningEffort` as separate
+`--reasoning-effort` and value arguments. New sessions, resumes, retries and later
+PR revisions use the same construction. Skill discovery receives neither override.
+Values pass through the existing `shell: false` execution path; unsupported or
+unavailable models, effort levels or combinations retain Copilot's normal failure
+result and the existing attempt/error handling. The
+[model options decision](.agents/notes/implemented/feature/2026-10-22-review-copilot-model.md)
+records the validation and default-selection choices.
 
 Prompts travel through stdin in noninteractive mode. `cross-spawn` handles native
 commands and Windows command shims; prompt text is not embedded in shell code or

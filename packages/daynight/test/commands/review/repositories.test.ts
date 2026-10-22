@@ -42,14 +42,16 @@ describe("repository registration", () => {
   });
 
   it("resolves explicit relative paths against cwd and keeps YAML comments and settings", async () => {
-    const { paths, options } = await setup("existing", "# Review settings\npollIntervalMs: 120000 # keep interval\nrepositories:\n  # Existing repository\n  - remote: https://github.com/o/old\n    path: ../old # keep path\n");
+    const { paths, options } = await setup("existing", "# Review settings\npollIntervalMs: 120000 # keep interval\ncopilotModel: auto # keep model\ncopilotReasoningEffort: high # keep reasoning effort\nrepositories:\n  # Existing repository\n  - remote: https://github.com/o/old\n    path: ../old # keep path\n");
     const result = await addRepository({ remote, path: "../my-clone" }, paths, options);
     expect(result.repository.path).toBe(path.resolve(options.workingDirectory, "../my-clone"));
     const source = await readFile(paths.configFile, "utf8");
-    for (const retained of ["# Review settings", "pollIntervalMs: 120000 # keep interval", "# Existing repository", "path: ../old # keep path", "repositoryRoot: ~/daynights"]) {
+    for (const retained of ["# Review settings", "pollIntervalMs: 120000 # keep interval", "copilotModel: auto # keep model", "copilotReasoningEffort: high # keep reasoning effort", "# Existing repository", "path: ../old # keep path", "repositoryRoot: ~/daynights"]) {
       expect(source).toContain(retained);
     }
     expect((await loadConfiguration(paths)).pollIntervalMs).toBe(120000);
+    expect((await loadConfiguration(paths)).copilotModel).toBe("auto");
+    expect((await loadConfiguration(paths)).copilotReasoningEffort).toBe("high");
   });
 
   it("adds the first review repository to server-only configuration and preserves its YAML and idempotence", async () => {
@@ -79,6 +81,8 @@ describe("repository registration", () => {
   it.each([
     "maxConcurrentWorker: 0",
     "repositoryRoot: null",
+    "copilotModel: null",
+    "copilotReasoningEffort: null",
     "repositories: []",
     "repositories: null",
     "repositories: false",

@@ -19,6 +19,10 @@ Manually written relative repository paths resolve against the configuration
 directory. The [repository registration decision](../feature/2026-10-18-add-repo-configuration.md)
 defines `review add-repo`, its addition-only `repositoryRoot` and the absolute repository
 paths it saves. Configuration changes take effect at the next review startup.
+The [model options decision](../feature/2026-10-22-review-copilot-model.md) adds
+independent optional `copilotModel` and `copilotReasoningEffort` strings to the
+review projection; server validation remains independent and the existing YAML
+update mechanism preserves both fields and comments.
 
 Configuration and coordination state reside under `~/.daynight/`: SQLite and
 its sidecar files, retained Copilot sessions, the instance lock, logs, caches,
