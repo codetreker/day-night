@@ -334,6 +334,11 @@ Enter/空格继续有效。`TaskAttachments`、表单及目录控件保留组件
 `attachmentPageUrl` 沿用 ID 与路径校验，生成逐段编码的独立页面 URL。选择与
 滚动所有权的理由见[分屏决策](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-split-view.md)。
 
+上传表单位于默认关闭的原生 `details` 内，`summary` 使用当前语言的“上传文件”
+文案。浏览器提供鼠标与键盘展开/收起以及折叠内容的焦点排除。表单始终挂载，收起
+不会清空文件、目标路径或校验状态；页签往返保留展开状态，project/task 身份变化
+随整个附件组件重置为收起。上传入口与文件树保留各自的展开状态。
+
 用户选择一个文件，目标路径初始为文件名，可改为多层相对路径；`mime` 4.1.1 按
 目标路径确定上传 Content-Type，未知类型使用 `application/octet-stream`。同路径
 直接覆盖，单文件提供下载和删除，成功后刷新附件区域，不修改详情、task 版本或图。

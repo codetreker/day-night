@@ -57,6 +57,9 @@ describe('development attachment fixture', () => {
     const view = render(createElement(TaskAttachments, { projectId: 'mockup-project', taskId: 'mockup-task', api: fixture.api, urls: fixture.urls, onClose: vi.fn() }));
     await screen.findByText('暂无附件，上传文件后即可在这里浏览。');
     const user = userEvent.setup();
+    const summary = screen.getByText('上传文件', { selector: 'summary' });
+    expect(screen.getByLabelText('选择一个文件')).not.toBeVisible();
+    await user.click(summary);
     const upload = async (contents: string) => {
       await user.upload(screen.getByLabelText('选择一个文件'), new File([contents], 'new.txt', { type: 'text/plain' }));
       const path = screen.getByRole('textbox', { name: '目标相对路径' });

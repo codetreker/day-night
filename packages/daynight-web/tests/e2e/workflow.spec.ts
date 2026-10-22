@@ -656,6 +656,7 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   const attachmentTab = dialog.getByRole('tab', { name: '附件', exact: true });
   const attachmentPath = dialog.getByRole('textbox', { name: '目标相对路径', exact: true });
   await attachmentTab.click();
+  await dialog.locator('.attachment-upload-disclosure>summary').click();
   const fileInput = dialog.getByLabel('选择一个文件', { exact: true });
   await fileInput.setInputFiles({ name: 'retained.txt', mimeType: 'text/plain', buffer: Buffer.from('Unsubmitted attachment draft') });
   await attachmentPath.fill('draft/retained.txt');

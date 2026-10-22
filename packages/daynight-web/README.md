@@ -332,9 +332,12 @@ loaded state, preview and an unsent file/path draft. Changing project/task reset
 the tab and attachment scope. Description-to-attachment navigation, when
 implemented, activates this same panel and controller.
 
-Select one local file, accept its name as the initial target or edit the relative
-path, then upload. MIME is selected from the target path with `mime`
-4.1.1. Uploading the same path overwrites that file. Each preview offers Download,
+The upload section starts collapsed. Activate Upload with a click or the
+keyboard to expand it, then select one local file, accept its name as the initial
+target or edit the relative path, and upload. Activating the disclosure again
+collapses it while retaining the file, path and validation state. Tab round trips
+retain its expansion; a new project/task starts collapsed. MIME is selected
+from the target path with `mime` 4.1.1. Uploading the same path overwrites that file. Each preview offers Download,
 a neighboring Open in new tab link with an external-link icon, and Delete; successful writes refresh only the attachment list and preview.
 They do not change the task version, timestamp or graph snapshot.
 
