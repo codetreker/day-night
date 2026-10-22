@@ -44,7 +44,7 @@ test('raw capture returns ordinary failure status and awaits process identity re
   });
 });
 
-test('raw output retains the 8 MiB bound', { skip: process.platform !== 'linux' }, async () => {
+test('raw output retains the 8 MiB bound', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
   await fixture(async (cwd) => {
     let group: number | undefined;
     await assert.rejects(commandBytes(process.execPath, ['-e', 'process.stdout.write(Buffer.alloc(8*1024*1024+1))'], {
@@ -55,7 +55,7 @@ test('raw output retains the 8 MiB bound', { skip: process.platform !== 'linux' 
   });
 });
 
-test('timeout and cancellation reap the owned command group', { skip: process.platform !== 'linux' }, async () => {
+test('timeout and cancellation reap the owned command group', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
   await fixture(async (cwd) => {
     for (const cancelled of [false, true]) {
       const controller = new AbortController();
@@ -75,7 +75,7 @@ test('timeout and cancellation reap the owned command group', { skip: process.pl
   });
 });
 
-test('failed spawn registration terminates and reaps the process', { skip: process.platform !== 'linux' }, async () => {
+test('failed spawn registration terminates and reaps the process', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
   await fixture(async (cwd) => {
     let group: number | undefined;
     const failure = new Error('identity persistence failed');
@@ -86,7 +86,7 @@ test('failed spawn registration terminates and reaps the process', { skip: proce
   });
 });
 
-test('the command deadline also bounds identity registration after process exit', { skip: process.platform !== 'linux' }, async () => {
+test('the command deadline also bounds identity registration after process exit', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
   await fixture(async (cwd) => {
     const before = process.getActiveResourcesInfo().filter((name) => name === 'Timeout').length;
     await assert.rejects(commandBytes(process.execPath, ['-e', ''], {
@@ -96,7 +96,7 @@ test('the command deadline also bounds identity registration after process exit'
   });
 });
 
-test('late identity recording failure leaves no delayed process-group kill', { skip: process.platform !== 'linux' }, async (context) => {
+test('late identity recording failure leaves no delayed process-group kill', { skip: !['linux', 'darwin'].includes(process.platform) }, async (context) => {
   await fixture(async (cwd) => {
     const failure = new Error('late identity failure');
     let closed = false;

@@ -6,7 +6,10 @@ Compose project. It uses the [localhost Dockerfile](../localhost/Dockerfile) and
 build, embedded Go assets and nonroot runtime as the normal deployment. It
 requires Bash, standard shell utilities, Docker Engine 28 or newer, Linux
 containers and Docker Compose 2.20 or newer. Host Node.js, Go, PostgreSQL and jq
-are not required by the runner.
+are not required by the runner. Linux and macOS with Docker Desktop are supported.
+For an npm mirror, export `DAYNIGHT_NPM_REGISTRY` before invoking the runner;
+its build argument and default are shared with the
+[localhost deployment](../localhost/README.md#start).
 
 This stack currently uses the unauthenticated loopback service and trusted
 same-origin previews. The planned [authentication architecture](../../docs/design/daynight-auth.md)

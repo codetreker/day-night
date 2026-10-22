@@ -310,7 +310,7 @@ checks require no live model invocation or GitHub publication.
 ## Local server deployment
 
 Run the dashboard, project/task API and PostgreSQL with Docker Engine 28+ and Docker
-Compose 2.20+ using Linux containers:
+Compose 2.20+ using Linux containers on Linux or macOS (Docker Desktop):
 
 ```bash
 bash deployment/localhost/up.sh
@@ -320,7 +320,7 @@ The command builds the UI and server inside Docker, applies embedded migrations
 and waits for healthy services. Open `http://127.0.0.1:8787/` for the dashboard;
 the API is available at `http://127.0.0.1:8787/api/v1` on that same origin.
 PostgreSQL data persists across container recreation. The
-[localhost deployment guide](deployment/localhost/README.md) owns port selection,
+[localhost deployment guide](deployment/localhost/README.md) owns port and npm build-registry selection,
 API examples, logs, updates and volume removal.
 
 ## Server development

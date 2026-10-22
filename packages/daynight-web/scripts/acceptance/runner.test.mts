@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
@@ -16,6 +16,14 @@ const cli = fileURLToPath(new URL('../acceptance.mts', import.meta.url));
 const sourceGitSha = '0123456789abcdef0123456789abcdef01234567';
 const runId = (): string => `20261021123456-${randomUUID()}`;
 type Fixture = { directory: string; bin: string; commands: string; env: NodeJS.ProcessEnv };
+
+const storageFixture = async (directory: string): Promise<void> => {
+  await mkdir(directory, { recursive: true });
+  const identity = await lstat(directory, { bigint: true });
+  await writeFile(join(directory, 'storage-receipt.json'), JSON.stringify({ schemaVersion: 1,
+    platform: process.platform, directory, directoryIdentity: { device: String(identity.dev), inode: String(identity.ino) },
+    root: join(directory, 'data'), mode: 'directory', phase: 'planned' }));
+};
 
 const fixture = async (run: (value: Fixture) => Promise<void>): Promise<void> => {
   await mkdir(temporaryRoot, { recursive: true });
@@ -110,7 +118,7 @@ test('the thin CLI rejects unknown arguments before starting acceptance', { skip
 
 test('recovery rejects unsupported receipt schemas before issuing Docker commands', { skip: process.platform === 'win32' }, async () => {
   await fixture(async (value) => {
-    for (const schemaVersion of [1, 99]) {
+    for (const schemaVersion of [1, 2, 99]) {
       const id = runId();
       const directory = join(evidenceRoot, id);
       await mkdir(directory, { recursive: true });
@@ -127,7 +135,7 @@ test('recovery rejects unsupported receipt schemas before issuing Docker command
   });
 });
 
-test('recovery removes only the recorded native storage after confirming the native process is absent', { skip: process.platform !== 'linux' }, async () => {
+test('recovery removes only the recorded native storage after confirming the native process is absent', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
   await fixture(async (value) => {
     const id = runId();
     const directory = join(evidenceRoot, id);
@@ -135,12 +143,12 @@ test('recovery removes only the recorded native storage after confirming the nat
     const operatorStorage = join(value.directory, 'operator-storage');
     const owner = `daynight-web-${id}`;
     const evidence = {
-      schemaVersion: 2, runId: id, source: { gitSha: sourceGitSha, githubSha: process.env.GITHUB_SHA ?? null },
-      runner: { pid: 2_147_483_647, executable: process.execPath, startTicks: '1', group: 2_147_483_647 }, stages: [],
+      schemaVersion: 3, runId: id, source: { gitSha: sourceGitSha, githubSha: process.env.GITHUB_SHA ?? null },
+      runner: { platform: process.platform, pid: 2_147_483_647, executable: process.execPath, startTicks: '1', group: 2_147_483_647 }, stages: [],
       native: { owner, postgresContainer: `${owner}-postgres`, postgresVolume: `${owner}-data`,
         binary: join(directory, 'daynight-server'), storageRoot },
     };
-    await mkdir(storageRoot, { recursive: true });
+    await storageFixture(storageRoot);
     await mkdir(operatorStorage);
     await writeFile(join(storageRoot, 'owned-file'), 'owned');
     await writeFile(join(operatorStorage, 'preserved-file'), 'operator');
@@ -161,7 +169,7 @@ test('recovery removes only the recorded native storage after confirming the nat
   });
 });
 
-test('recovery refuses a storage path outside its run and preserves storage while the native process is live', { skip: process.platform !== 'linux' }, async () => {
+test('recovery refuses a storage path outside its run and preserves storage while the native process is live', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
   await fixture(async (value) => {
     for (const invalid of ['path', 'process']) {
       const id = runId();
@@ -169,13 +177,13 @@ test('recovery refuses a storage path outside its run and preserves storage whil
       const storageRoot = join(directory, 'native-storage');
       const owner = `daynight-web-${id}`;
       const evidence = {
-        schemaVersion: 2, runId: id, source: { gitSha: sourceGitSha, githubSha: process.env.GITHUB_SHA ?? null },
-        runner: { pid: 2_147_483_647, executable: process.execPath, startTicks: '1', group: 2_147_483_647 }, stages: [],
+        schemaVersion: 3, runId: id, source: { gitSha: sourceGitSha, githubSha: process.env.GITHUB_SHA ?? null },
+        runner: { platform: process.platform, pid: 2_147_483_647, executable: process.execPath, startTicks: '1', group: 2_147_483_647 }, stages: [],
         native: { owner, postgresContainer: `${owner}-postgres`, postgresVolume: `${owner}-data`,
           binary: join(directory, 'daynight-server'), storageRoot: invalid === 'path' ? value.directory : storageRoot,
           ...(invalid === 'process' ? { processPid: process.pid } : {}) },
       };
-      await mkdir(storageRoot, { recursive: true });
+      await storageFixture(storageRoot);
       await writeFile(join(storageRoot, 'owned-file'), 'owned');
       try {
         await writeFile(join(directory, 'evidence.json'), JSON.stringify(evidence));
@@ -190,14 +198,14 @@ test('recovery refuses a storage path outside its run and preserves storage whil
   });
 });
 
-test('an early container callback records readiness and waits for permission before inspecting Chromium', { skip: process.platform !== 'linux' }, async () => {
+test('an early container callback records readiness and waits for permission before inspecting Chromium', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
   await fixture(async (value) => {
     const id = runId();
     const devCiRunId = '20261021123457-1234-56789';
     const directory = join(evidenceRoot, id);
     const containerDirectory = join(directory, 'container');
     await mkdir(directory, { recursive: true });
-    await writeFile(join(directory, 'evidence.json'), JSON.stringify({ schemaVersion: 2, runId: id, source: { gitSha: sourceGitSha } }));
+    await writeFile(join(directory, 'evidence.json'), JSON.stringify({ schemaVersion: 3, runId: id, source: { gitSha: sourceGitSha } }));
     await writeFile(join(value.bin, 'docker'), '#!/bin/sh\nprintf \'%s\\n\' "$0 $*" >> "$DAYNIGHT_TEST_COMMAND_LOG"\nif [ "$1" != ps ]; then exit 91; fi\nprintf \'%s\\n\' aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n');
     value.env = { ...value.env, DAYNIGHT_ACCEPTANCE_DIRECTORY: containerDirectory, DAYNIGHT_DEV_CI_RUN_ID: devCiRunId,
       DAYNIGHT_BASE_URL: 'http://127.0.0.1:12345' };
@@ -271,7 +279,7 @@ const installationRecoveryFixture = async (value: Fixture, completed: boolean) =
   const source = { gitSha: sourceGitSha, dirty: true, githubSha: process.env.GITHUB_SHA ?? null };
   const installedCli: Record<string, unknown> = { root, cleanup: 'pending' };
   await mkdir(root, { recursive: true });
-  await mkdir(storageRoot);
+  await storageFixture(storageRoot);
   await writeFile(join(root, 'partial-install'), 'owned preparation');
   await writeFile(join(storageRoot, 'owned-file'), 'owned native storage');
   if (completed) {
@@ -293,15 +301,15 @@ const installationRecoveryFixture = async (value: Fixture, completed: boolean) =
     installedCli.receiptPath = receiptPath;
     await writeFile(receiptPath, JSON.stringify(receipt));
   }
-  const evidence = { schemaVersion: 2, runId: id, source, installedCli,
-    runner: { pid: 2_147_483_647, executable: process.execPath, startTicks: '1', group: 2_147_483_647 }, stages: [],
+  const evidence = { schemaVersion: 3, runId: id, source, installedCli,
+    runner: { platform: process.platform, pid: 2_147_483_647, executable: process.execPath, startTicks: '1', group: 2_147_483_647 }, stages: [],
     native: { owner, postgresContainer: `${owner}-postgres`, postgresVolume: `${owner}-data`, binary: join(directory, 'daynight-server'), storageRoot } };
   await writeFile(join(directory, 'evidence.json'), JSON.stringify(evidence));
   value.env.CI = undefined;
   return { id, directory, root, evidence };
 };
 
-test('recovery owns an interrupted preparation root before any installed receipt exists and is repeatable', { skip: process.platform !== 'linux' }, async () => {
+test('recovery owns an interrupted preparation root before any installed receipt exists and is repeatable', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
   await fixture(async (value) => {
     const current = await installationRecoveryFixture(value, false);
     const operator = join(value.directory, 'operator-installed-cli');
@@ -321,7 +329,7 @@ test('recovery owns an interrupted preparation root before any installed receipt
   });
 });
 
-test('installed cleanup remains committed when later Docker cleanup fails and a new recovery retries', { skip: process.platform !== 'linux' }, async () => {
+test('installed cleanup remains committed when later Docker cleanup fails and a new recovery retries', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
   await fixture(async (value) => {
     const current = await installationRecoveryFixture(value, true);
     await writeFile(join(value.bin, 'docker'), '#!/bin/sh\nexit 91\n');
@@ -340,7 +348,7 @@ test('installed cleanup remains committed when later Docker cleanup fails and a 
   });
 });
 
-test('partial installation cleanup rejects a root outside the recorded run', { skip: process.platform !== 'linux' }, async () => {
+test('partial installation cleanup rejects a root outside the recorded run', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
   await fixture(async (value) => {
     const current = await installationRecoveryFixture(value, false);
     current.evidence.installedCli.root = value.directory;
@@ -355,7 +363,7 @@ test('partial installation cleanup rejects a root outside the recorded run', { s
   });
 });
 
-test('partial installation is retained while a recorded preparation process is still alive', { skip: process.platform !== 'linux' }, async () => {
+test('partial installation is retained while a recorded preparation process is still alive', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
   await fixture(async (value) => {
     const current = await installationRecoveryFixture(value, false);
     const identity = await processIdentity(process.pid);
@@ -367,6 +375,36 @@ test('partial installation is retained while a recorded preparation process is s
       assert.match(result.stderr, /Original acceptance process is still running/);
       assert.equal(await readFile(join(current.root, 'partial-install'), 'utf8'), 'owned preparation');
       assert.equal(await readFile(value.commands, 'utf8'), '');
+    } finally { await rm(current.directory, { recursive: true, force: true }); }
+  });
+});
+
+
+test('recovery refuses process receipts from another platform before cleanup', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
+  await fixture(async (value) => {
+    const current = await installationRecoveryFixture(value, false);
+    current.evidence.runner.platform = process.platform === 'darwin' ? 'linux' : 'darwin';
+    await writeFile(join(current.directory, 'evidence.json'), JSON.stringify(current.evidence));
+    try {
+      const result = await start([cli, '--cleanup', current.id], value).done;
+      assert.equal(result.code, 1);
+      assert.match(result.stderr, /Invalid recorded process identity/);
+      assert.equal(await readFile(join(current.root, 'partial-install'), 'utf8'), 'owned preparation');
+      assert.equal(await readFile(value.commands, 'utf8'), '');
+    } finally { await rm(current.directory, { recursive: true, force: true }); }
+  });
+});
+
+test('recovery preserves storage when its ownership receipt is missing', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
+  await fixture(async (value) => {
+    const current = await installationRecoveryFixture(value, false);
+    await rm(join(current.evidence.native.storageRoot, 'storage-receipt.json'));
+    await writeFile(join(value.bin, 'docker'), '#!/bin/sh\nexit 0\n');
+    try {
+      const result = await start([cli, '--cleanup', current.id], value).done;
+      assert.equal(result.code, 1);
+      assert.match(result.stderr, /Native storage is missing its ownership receipt/);
+      assert.equal(await readFile(join(current.evidence.native.storageRoot, 'owned-file'), 'utf8'), 'owned native storage');
     } finally { await rm(current.directory, { recursive: true, force: true }); }
   });
 });

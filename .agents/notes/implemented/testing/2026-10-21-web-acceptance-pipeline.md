@@ -61,7 +61,9 @@ fifteen unique scenarios; the container target requires ten. Per-phase and
 aggregate validation reject missing, extra or duplicate scenarios and retries,
 and require matching browser identity within a target.
 
-The top-level evidence and recovery receipts use schema 2. Pipeline stages record
+The pipeline originally introduced top-level schema 2. The
+[macOS acceptance decision](2026-10-22-macos-web-acceptance.md) advances current
+evidence and recovery receipts to schema 3 with platform and storage identity. Pipeline stages record
 names, results, timestamps, observed managed-command process identities and their
 spawned process groups. Short-lived commands retain their observed group without a
 fabricated process identity. Identity lookup treats both ENOENT and ESRCH as an
@@ -74,7 +76,7 @@ failures retain their original error object. Target aggregates contain `phases` 
 each browser phase records its functional/capacity kind, timestamps, actual
 Playwright process/group, browser identity and `browserCleanup`. Raw phase data
 lives under `native/functional`, `container` and `native/capacity`; capacity
-`performance.json` retains schema 1. Top-level schema 1 and unknown versions are
+`performance.json` retains schema 1. Top-level schema 1, schema 2 and unknown versions are
 rejected rather than interpreted through a compatibility fallback.
 
 Any task failure cancels siblings and drains every started task before final

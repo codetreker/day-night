@@ -5,7 +5,7 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ChildProcess } from 'node:child_process';
 import { commandBytes } from './process.mts';
-import { processIdentity, requireGroupStopped, sameProcess, type ProcessIdentity } from './identity.mts';
+import { findProcesses, processIdentity, requireGroupStopped, sameProcess, type ProcessIdentity } from './identity.mts';
 
 export type InstalledCliReceipt = {
   readonly schemaVersion: 1;
@@ -80,22 +80,10 @@ export const recordCliProcess = (directory: string, receiptPath: string, child: 
 };
 
 const ownedCliProcesses = async (directory: string, receipt: InstalledCliReceipt, receiptPath: string): Promise<ProcessIdentity[]> => {
-  const result: ProcessIdentity[] = [];
   const node = await realpath(receipt.nodePath);
-  for (const name of await readdir('/proc')) {
-    if (!/^\d+$/.test(name) || Number(name) <= 1) continue;
-    try {
-      const environment = (await readFile(`/proc/${name}/environ`)).toString().split('\0');
-      if (!environment.includes(`DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT=${receiptPath}`)
-        || !environment.includes(`DAYNIGHT_ACCEPTANCE_RUN_DIRECTORY=${directory}`)) continue;
-      const identity = await processIdentity(Number(name));
-      if (identity === null) continue;
-      if (identity.executable !== node) throw new Error('An owned CLI process has an unexpected executable.');
-      result.push(identity);
-    } catch (error) {
-      if (!(error instanceof Error && 'code' in error && ['ENOENT', 'ESRCH', 'EACCES'].includes(String(error.code)))) throw error;
-    }
-  }
+  const result = await findProcesses({ DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT: receiptPath,
+    DAYNIGHT_ACCEPTANCE_RUN_DIRECTORY: directory });
+  if (result.some((identity) => identity.executable !== node)) throw new Error('An owned CLI process has an unexpected executable.');
   return result;
 };
 
@@ -115,7 +103,7 @@ export const recoverCliProcesses = async (directory: string, receiptPath: string
   if (observed.some((identity) => !groups.has(identity.group))) throw new Error('An installed CLI process lacks its persisted group receipt.');
   for (const record of records) {
     if (record.directory !== directory || record.receiptPath !== receiptPath || !Number.isSafeInteger(record.group) || record.group <= 1
-      || (record.identity !== undefined && (record.identity.pid !== record.group || record.identity.group !== record.group))) throw new Error('Installed CLI process receipt ownership differs.');
+      || (record.identity !== undefined && (record.identity.platform !== process.platform || record.identity.pid !== record.group || record.identity.group !== record.group))) throw new Error('Installed CLI process receipt ownership differs.');
     const members = observed.filter((identity) => identity.group === record.group);
     if (members.length > 0) {
       if (record.identity !== undefined) {

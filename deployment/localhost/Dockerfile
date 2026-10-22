@@ -1,12 +1,13 @@
 FROM node:24-bookworm-slim AS web
 
 WORKDIR /src
-RUN npm install --global pnpm@11.28.6
+ARG DAYNIGHT_NPM_REGISTRY=https://registry.npmjs.org/
+RUN npm_config_registry="$DAYNIGHT_NPM_REGISTRY" npm install --global pnpm@11.28.6
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches ./patches
 COPY packages/daynight/package.json ./packages/daynight/package.json
 COPY packages/daynight-web/package.json ./packages/daynight-web/package.json
-RUN pnpm install --frozen-lockfile --filter @codetreker/daynight-web...
+RUN pnpm install --registry="$DAYNIGHT_NPM_REGISTRY" --frozen-lockfile --filter @codetreker/daynight-web...
 COPY packages/daynight-web ./packages/daynight-web
 RUN pnpm web:build
 

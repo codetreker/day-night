@@ -313,7 +313,7 @@ fault testing and controlled fixtures each retain their own evidence scope.
 
 ## Production browser acceptance
 
-On a Linux host, with Go 1.27.2, Docker Engine 28+, Compose 2.20+ and Linux
+On a Linux or macOS host, with Go 1.27.2, Docker Engine 28+, Compose 2.20+ and Linux
 containers available, run from the repository root to install the pinned browser
 into the project:
 
@@ -324,13 +324,40 @@ pnpm web:acceptance
 ```
 
 Use Node 24, pnpm 11.28.6 and a frozen dependency install first. Chromium requires
-its normal Linux runtime libraries; CI installs them with Playwright's
+its normal runtime libraries on Linux; CI installs them with Playwright's
 `--with-deps` option. Locally, `DAYNIGHT_BROWSER_EXECUTABLE` can select an existing
 Chromium executable. That override is recorded and is forbidden for CI delivery
 evidence, which must use the full bundled Chromium channel (`chromium`) pinned by
 Playwright 1.64.1. This channel renders PDF pages; MIME-document readiness alone
 is not a painted-content oracle. Native and container phases record and require
-the same browser identity.
+the same browser identity. macOS also requires Xcode Command Line Tools (the Apple
+SDK and `xcrun clang`) and permission to mount disk images. The runner compiles its
+process inspection helper into the project temporary directory. It prepares
+case-sensitive storage automatically: a verified directory on a case-sensitive
+filesystem, or an owned case-sensitive APFS sparse image on macOS. Storage receipts
+are persisted before attaching the image and starting the native server. Cleanup
+confirms the server stopped, validates image/mount ownership, detaches the owned
+image, and only then removes the storage directory. A busy image is retried at
+one-second intervals within one 30-second cleanup deadline, rechecking ownership
+before each detach attempt. Ambiguous ownership fails
+without recursive removal. Windows native Web acceptance is unsupported.
+
+Routine `pnpm web:test` does not attach disk images on macOS. It checks storage
+receipts and refusal paths without requesting disk authorization. Run the explicit
+`pnpm web:test:storage-native` suite for APFS lifecycle checks; its cases share
+one mounted image, including a real read-only file holder that prevents the first
+detach and releases the file before cleanup retries. Complete `pnpm web:acceptance` also creates only one native
+storage image per run on a case-insensitive filesystem. macOS may request
+administrator authorization for that attachment. Receipt-only tests do not prove
+APFS mounting or complete native acceptance.
+
+The full CI workflow remains on Linux. macOS local acceptance runs the same 25
+scenarios and fixed performance budgets; a local pass does not establish macOS CI
+coverage. For networks requiring an npm mirror, use
+`pnpm install --frozen-lockfile --registry=https://mirrors.cloud.tencent.com/npm/`
+for the workspace. Export `pnpm_config_registry=https://mirrors.cloud.tencent.com/npm/` for the
+acceptance CLI installation, and `DAYNIGHT_NPM_REGISTRY` for Docker builds. Both Compose stacks default to the official
+npm registry unless the build variable is explicitly supplied.
 
 The command builds real embedded assets and a new Go executable and owns a
 separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
@@ -394,7 +421,7 @@ scenario annotations validated in each target's report.
 
 Receipts live in `packages/daynight-web/.tmp/acceptance/<run-id>/`, with the
 latest aggregate at `.tmp/acceptance/evidence.json` inside this package. They
-use top-level `schemaVersion: 2` and record source identity, the installed CLI
+use top-level `schemaVersion: 3` and record source identity, the installed CLI
 receipt and raw artifact identities, native binary
 SHA-256, PostgreSQL/browser versions, pipeline stages, target phases, capacity
 measurements, container image identity and cleanup outcomes. Each stage records
@@ -403,7 +430,7 @@ process groups. Each browser phase records its own result, browser identity,
 Playwright process/group and `browserCleanup` result. Raw reports and screenshots
 live under `native/functional/`, `container/` and `native/capacity/`; the unchanged
 schema 1 capacity receipt is `native/capacity/performance.json`. `CI` requires a clean checkout matching
-`GITHUB_SHA`, Linux and the pinned browser. Playwright uses one worker and no
+`GITHUB_SHA` and the pinned browser for the current Linux or macOS host. Playwright uses one worker and no
 retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validation.
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
@@ -461,10 +488,11 @@ node packages/daynight-web/scripts/acceptance.mts --cleanup
 node packages/daynight-web/scripts/acceptance.mts --cleanup RUN_ID
 ```
 
-No receipt is a no-op. Recovery accepts only top-level schema 2 receipts;
-schema 1 and unknown versions fail without a compatibility fallback. Valid
-receipts constrain recovery to recorded run/source identities, exact Docker labels and names, and Linux PID/executable/start-time
-identity. It verifies recorded stage command identities/groups and visits browser
+No receipt is a no-op. Recovery accepts only top-level schema 3 receipts;
+schema 1, schema 2 and unknown versions fail without a compatibility fallback. Valid
+receipts constrain recovery to recorded run/source identities, exact Docker labels and names, and host platform/PID/executable/start-time
+identity. Linux uses procfs ticks; macOS uses kernel start time in microseconds,
+actual executable paths and process groups. Receipts from another platform are rejected. It verifies recorded stage command identities/groups and visits browser
 phases in reverse order: `native/capacity`, `container`, `native/functional`.
 A still-running native Go process also requires its recorded binary
 hash before targeted termination. Browser recovery checks its recorded executable,
@@ -533,10 +561,14 @@ transform, so selection/pan/zoom reuse geometry without per-edge reactive state.
 Canonical routes retain native arrow markers and full Dagre points. Dashed body
 paint uses `dashes.ts` to derive locally horizontal rotated lines and short native
 vertex paths, with the original 5/4 pattern and continuous positive arc-length
-phase. Solid bodies remain native. Pieces are noninteractive and hidden from the
+phase. Each line is at most 8,192 graph units long; additional cuts fall inside
+the existing dash gaps to bound GPU work without removing route geometry.
+Solid bodies remain native. Pieces are noninteractive and hidden from the
 accessibility tree; canonical edges keep their existing identity/semantics. The
 [paint decision](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
-owns the pinned raster evidence, phase preservation and visual tolerances.
+owns the pinned raster evidence, phase preservation and visual tolerances; the
+[bounded-line extension](../../.agents/notes/implemented/bug-fix/2026-10-22-bounded-dashed-dependency-lines.md)
+owns the GPU stroke limit and its added DOM cost.
 Initial placement uses known layout bounds after the viewport and positive
 measured canvas dimensions are ready, fitting within 0.8–1 zoom or anchoring the
 leftmost rank at 0.8 zoom. The root remains vertically centered when already

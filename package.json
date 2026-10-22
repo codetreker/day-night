@@ -15,6 +15,7 @@
     "version:check": "node packages/daynight/scripts/check-version.ts",
     "web:dev": "pnpm --filter @codetreker/daynight-web dev",
     "web:typecheck": "pnpm --filter @codetreker/daynight-web typecheck",
+    "web:test:storage-native": "pnpm --filter @codetreker/daynight-web test:storage-native",
     "web:test": "pnpm --filter @codetreker/daynight-web test",
     "web:build": "pnpm --filter @codetreker/daynight-web build && pnpm --filter @codetreker/daynight-web exec node scripts/publish-assets.mts",
     "completion:acceptance": "pnpm --filter @codetreker/daynight completion:acceptance",

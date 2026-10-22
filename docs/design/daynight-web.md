@@ -226,15 +226,18 @@ source/target 身份、原生箭头 marker 及可访问语义，不在交互期�
 局部水平 `line` 包含 from、length、cosine、sine 和 startDistance，短原生 `path`
 包含 points 和 startDistance。每段沿路线累计弧长，用 5/4、周期 9 的原生虚线；
 内部切点位于相位 7 的 gap 中点，各 piece 使用正 `startDistance % 9` offset。
-转角保留至少 12 单位的原生路径空间，提取后的长直线至少 128 单位，首尾端点
+转角保留至少 12 单位的原生路径空间，提取后的长直线至少 128 单位；每条直线进一步
+拆成不超过 8,192 单位的片段，新增切点仍落在全局 gap 中点，末片可以短于 128 单位。首尾端点
 保持原路线端点；重复零长度段不增加弧长。helper 复用已验证布局的有限坐标，
 空、单点或全零长度路线没有 body paint，不修改 canonical 路线数据。
 
 长段在局部坐标中为 `(0,0) → (length,0)`，通过单位旋转/平移矩阵还原世界坐标。
-Skia 因此可以在局部轴向线上裁剪 dash 生成，短 path 保留原生转角与接合；绘制
+Skia 的 CPU 绘制路径因此可以在局部轴向线上裁剪 dash 生成；片段长度上限同时约束
+macOS Metal 后端仍可能执行的长线 dash 工作。短 path 保留原生转角与接合；绘制
 并未删除离屏依赖或改变完整路由。paint pieces 在 canonical marker 路径之前绘制，
 不接受指针、不增加可访问节点。新增[绘制决策](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
-拥有 SVG 相位、固定 Chromium/Skia 证据及替代方案。虚线分解属于布局后的渲染准备，
+拥有 SVG 相位、固定 Chromium/Skia 证据及替代方案；[线段长度上限决策](../../.agents/notes/implemented/bug-fix/2026-10-22-bounded-dashed-dependency-lines.md)
+记录 macOS GPU 的额外约束与 DOM 成本。虚线分解属于布局后的渲染准备，
 其成本计入 renderMs/openMs。
 
 `ViewportPortal` 随 React Flow 视口使用相同的 pan/zoom transform，SVG 在图坐标
@@ -644,8 +647,20 @@ Playwright 固定单 worker、零 retry；报告必须包含全部要求的唯�
 执行、有效 PNG 附件及一致的汇总，跳过、重试、flaky、缺失、多余或重复场景及
 全局错误均失败。原生 functional/capacity 两份报告严格合并为十五个唯一场景，
 容器目标严格要求十个；原生与容器及同目标各阶段浏览器身份必须一致。
-CI 只接受 Linux、锁定 Playwright 的完整 Chromium channel `chromium`、干净 checkout，且 git SHA 必须
+CI 要求当前 Linux 或 macOS 平台与浏览器回执一致、锁定 Playwright 的完整 Chromium channel `chromium`、干净 checkout，且 git SHA 必须
 等于 `GITHUB_SHA`；本机可以显式选择现有 Chromium，回执必须记录这一差异。
+完整 CI 工作流仍在 Linux 上执行；macOS 本机运行相同功能、容量与恢复验收，不放宽预算。
+Linux 进程身份由 procfs 提供；macOS 使用项目临时目录内编译的 Apple SDK helper，
+通过内核读取微秒级启动时间、实际 executable、PGID、argv 和精确环境标记。
+浏览器 profile 按 argv 项匹配，macOS inventory 包含 Chromium bundle 内的 Helper 与 Crashpad。
+原生服务存储使用独占控制目录；大小写敏感文件系统直接使用其 data 子目录，macOS 默认
+大小写不敏感文件系统使用 Case-sensitive APFS sparseimage。准备每个阶段都先写本地与
+主回执，attach 前持久化意图；只有服务停止、目录/image inode 和挂载拓扑一致时才卸载，
+卸载遇到明确的 busy 错误时，在同一 30 秒清理期限内每秒重试，并在每次尝试前重新核验
+归属；确认不存在挂载后才递归删除。未知资源保留并报错。日常 `web:test` 在 macOS 上只运行
+无挂载的存储回执测试；显式 `web:test:storage-native` 共享一个 APFS 卷验证完整存储生命周期，
+完整验收每次也只创建一个原生存储卷，避免按测试用例反复请求管理员授权。构建镜像可显式传入
+`DAYNIGHT_NPM_REGISTRY`，默认仍为官方 npm registry。
 PDF 预览通过轮询 iframe 的实际 compositor 截图，验证 fixture 专用色块已经绘制，
 保留成功 PNG、色块计数/范围及 PDF 摘要；不能只依赖 MIME、load 或固定等待。
 
@@ -692,7 +707,7 @@ CDP timeline、User Timing、frame 与 GC 事件关联浏览器内的输入/条�
 等待；正常 ready/count 判定与全部预算保持原义。
 
 回执增量写入 `packages/daynight-web/.tmp/acceptance/<run-id>/`，顶层
-`evidence.json` 指向最近一次结果，顶层 `schemaVersion: 2` 包含源码、二进制、
+`evidence.json` 指向最近一次结果，顶层 `schemaVersion: 3` 包含源码、二进制、
 数据库/浏览器版本、两目标结果、生产镜像与清理状态。已安装 CLI 回执核对 Git SHA、
 dirty 标记、tarball 和 entry 摘要，并重算实际产物摘要；dirty 标记不代表工作区文件
 内容指纹，CI 的干净源码与 `GITHUB_SHA` 检查继续承担源码归属。`stages` 逐阶段记录名称、
@@ -707,10 +722,10 @@ dirty 标记、tarball 和 entry 摘要，并重算实际产物摘要；dirty �
 清单。web job 被选中后，任何执行或清理失败必须让该 job 失败。
 
 恢复命令为 `node packages/daynight-web/scripts/acceptance.mts --cleanup [run-id]`，
-默认读取最近一次回执，缺失回执不操作资源。恢复只接受顶层 schema 2，schema 1
+默认读取最近一次回执，缺失回执不操作资源。恢复只接受顶层 schema 3，schema 1、schema 2
 及未知版本明确失败。恢复先确认原 runner、阶段命令身份和全部登记进程组均停止；
 浏览器按 `native/capacity`、`container`、`native/functional` 的逆序检查和回收。
-callback 和 Playwright 的进程及其组必须已停止，再依据记录的 Linux PID、
+callback 和 Playwright 的进程及其组必须已停止，再依据记录的平台、PID、
 executable、start ticks 与源码身份处理资源。仍存活的原生服务必须额外匹配二进制摘要，Docker 只按本次精确标记
 和名称清理。Chromium 单独记录隔离进程组、已验证 executable 和项目内 profile
 所有权 marker；只对已确认的组和 profile 恢复。启动窗口出现未登记进程、无有效

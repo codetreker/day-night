@@ -2,7 +2,8 @@
 
 This Docker Compose stack builds and runs the task dashboard, project/task HTTP
 API and PostgreSQL together. Docker Engine 28 or newer, Linux containers and
-Docker Compose 2.20 or newer are required. The first build accesses Docker Hub,
+Docker Compose 2.20 or newer are required. Linux hosts and macOS with Docker Desktop
+using Linux containers can run this stack. The first build accesses Docker Hub,
 the npm registry and the Go module registry. No host Go, Node.js or PostgreSQL
 installation is needed.
 
@@ -13,6 +14,15 @@ From the repository root:
 ```bash
 bash deployment/localhost/up.sh
 ```
+
+To use an npm mirror for the image build, pass it explicitly:
+
+```bash
+DAYNIGHT_NPM_REGISTRY=https://mirrors.cloud.tencent.com/npm/ bash deployment/localhost/up.sh
+```
+
+The default is `https://registry.npmjs.org/`. A host `.npmrc` does not configure
+Docker build steps. The same variable is supported by `deployment/dev-ci/run.sh`.
 
 The script works from any working directory when invoked with its path. It
 builds the frontend with Node.js 24 and pnpm 11.28.6, embeds its generated assets

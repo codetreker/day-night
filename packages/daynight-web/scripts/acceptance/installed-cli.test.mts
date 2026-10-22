@@ -47,7 +47,7 @@ const fixture = async (run: (value: { directory: string; receiptPath: string; re
   }
 };
 
-test('installed bridge validates parent artifact evidence and preserves installed CLI output', { skip: process.platform !== 'linux' }, async () => {
+test('installed bridge validates parent artifact evidence and preserves installed CLI output', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
   await fixture(async ({ directory, receiptPath, receipt }) => {
     assert.deepEqual(await validateInstalledCli(receiptPath, directory), receipt);
     const workspace = join(directory, 'native/functional/test-results/cli');
@@ -95,7 +95,7 @@ test('CI receipt validation requires the clean exact GitHub source', async () =>
   });
 });
 
-test('recovery terminates only recorded installed CLI groups', { skip: process.platform !== 'linux' }, async () => {
+test('recovery terminates only recorded installed CLI groups', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
   await fixture(async ({ directory, receiptPath, receipt }) => {
     const child = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { detached: true, stdio: 'ignore', env: { ...process.env,
       DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT: receiptPath, DAYNIGHT_ACCEPTANCE_RUN_DIRECTORY: directory } });
@@ -122,7 +122,7 @@ test('an exclusive fixture root failure preserves a preexisting installation', a
   });
 });
 
-test('captured CLI output disables inherited forced color without changing the parent environment', { skip: process.platform !== 'linux' }, async () => {
+test('captured CLI output disables inherited forced color without changing the parent environment', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
   await fixture(async ({ directory }) => {
     const previousForce = process.env.FORCE_COLOR;
     const previousNoColor = process.env.NO_COLOR;
