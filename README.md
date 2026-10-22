@@ -92,6 +92,20 @@ same-origin executable HTML previews retain their existing execution model after
 authentication is delivered; attachment requests gain project-member checks.
 Existing projects will receive membership data manually outside that work.
 
+The proposed `daynight worker run` is specified in the
+[worker requirements](docs/spec/daynight-worker.md),
+[architecture](docs/design/daynight-worker.md) and
+[task breakdown](docs/design/daynight-worker-tasks.md). It uses the service's
+exclusive task claims, a foreground multi-repository coordinator, per-task
+worktrees, dedicated Herdr sessions and SQLite recovery. Agents own delivery;
+the worker owns resources, recovery and completion verification from existing
+task evidence. The [design decision](.agents/notes/implemented/architecture/2026-10-22-worker-design.md)
+records that responsibility split and the choice to observe current Herdr status
+without another reporting protocol. These documents deliver the architecture;
+the worker runtime, task role/platform controls and claim integration remain
+implementation work, with authentication and lifecycle activation as existing
+prerequisites.
+
 The `@codetreker/daynight` package provides the `daynight` client and its `dn`
 short command. Both names use the same entry, commands and configuration. Its
 root entry lists commands and reports the package version; each command owns its business
