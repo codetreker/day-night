@@ -1,0 +1,36 @@
+import type { AriaLabelConfig } from '@xyflow/react';
+
+export type GraphMessages = {
+  readonly chainList: string;
+  readonly standaloneTask: string;
+  readonly rootSummary: (args: { total: number; remaining: number }) => string;
+  readonly progress: (args: { done: number; total: number }) => string;
+  readonly rootRegion: (args: { title: string }) => string;
+  readonly showCompletedCount: (args: { count: number }) => string;
+  readonly chainSummary: (args: { shown: number; total: number }) => string;
+  readonly chainSummaryLabel: (args: { shown: number; total: number }) => string;
+  readonly chainNote: string;
+  readonly emptyTitle: string;
+  readonly emptyDescription: string;
+  readonly completedTitle: string;
+  readonly completedDescription: (args: { count: number }) => string;
+  readonly showCompleted: string;
+  readonly shared: string;
+  readonly blocked: string;
+  readonly external: string;
+  readonly nodeLabel: (args: { title: string; status: string; blocked: boolean; external: boolean; shared: boolean }) => string;
+  readonly dependencyGroup: string;
+  readonly dependencyLabel: (args: { source: string; target: string }) => string;
+  readonly fullscreenTitle: string;
+  readonly title: string;
+  readonly counts: (args: { main: number; external: number; dependencies: number }) => string;
+  readonly enterFullscreen: string;
+  readonly exitFullscreen: string;
+  readonly instructions: string;
+  readonly canvas: string;
+  readonly directionLegend: string;
+  readonly externalLegend: string;
+  readonly layoutErrorTitle: string;
+  readonly layoutErrorDescription: string;
+  readonly flowAriaLabels: AriaLabelConfig;
+};

@@ -15,3 +15,6 @@ export const renderWithLocale = (ui: ReactElement, { locale, issue = null, getSt
     {...(getStorage === undefined ? {} : { getStorage })}>{children}</LocaleProvider>;
   return render(ui, { ...options, wrapper });
 };
+
+export const createLocaleRender = (locale: Locale) =>
+  (ui: ReactElement, options: Omit<LocaleRenderOptions, "locale"> = {}) => renderWithLocale(ui, { ...options, locale });

@@ -58,16 +58,19 @@ original binary downloads, single-file mutations, directory paths, Markdown
 relative images, image/text/PDF and HTML relative styles/scripts/data behavior.
 The original eight graph scenarios and the later `project-view-tabs` scenario
 keep GET/HEAD-only browser checks. Exact
-fixture-scoped file PUT/DELETE requests are admitted only by the attachment
-scenario, retaining the existing failure rule for every unrelated mutation.
+fixture-scoped file PUT/DELETE requests are admitted by the attachment scenario
+and the later `language-state-preservation` scenario, which verifies pending
+writes across language changes. Every unrelated mutation remains a failure.
 
 The attachment delivery expanded each target to nine functional scenarios. The
 later [task view decision](../feature/2026-10-22-project-task-views.md) adds
-`project-view-tabs`, so each target now has ten. The
+`project-view-tabs`, expanding each target to ten. The
 [complete context decision](../feature/2026-10-22-complete-prerequisite-context.md)
 adds a dense-external capacity graph; native capacity preserves its four original
-scenarios and all timing/geometry gates. Strict inventories therefore require 15
-unique native scenarios and ten container scenarios. One worker,
+scenarios and all timing/geometry gates. The
+[bilingual interface decision](../feature/2026-10-22-web-bilingual-interface.md)
+adds three functional language scenarios per target. Strict inventories require
+18 unique native scenarios and thirteen container scenarios. One worker,
 zero retries, complete reports and cleanup remain mandatory.
 
 All phases use the full bundled Chromium channel `chromium`, retaining the

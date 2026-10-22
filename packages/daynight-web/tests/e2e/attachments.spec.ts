@@ -171,6 +171,8 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
   const innerButton = content.getByRole('button', { name: '完成一个任务' });
   await innerButton.focus();
   await page.keyboard.press('Tab');
+  await expect(dialog.getByRole('combobox', { name: '语言 / Language', exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
   await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
   await innerButton.focus();
   await page.keyboard.press('Shift+Tab');

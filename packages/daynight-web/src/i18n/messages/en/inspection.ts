@@ -1,0 +1,39 @@
+import type { InspectionMessages } from "../inspection";
+
+export const inspection: InspectionMessages = {
+  detail: {
+    title: "Task details", close: "Close task details", loading: "Loading task details", failed: "Task details could not be loaded",
+    networkError: "Unable to connect to the service. Check the local service and try again.",
+    notFoundError: "This task can no longer be read. Refresh the task graph.",
+    loadError: "Unable to read task details. Please try again.", retry: "Retry details", ready: "Ready", blocked: "Blocked",
+    stale: "Task details differ from the current task graph. Refresh to see consistent progress and relationships.",
+    refreshGraph: "Refresh task graph", description: "Description", noDescription: "No description",
+    relationsMetadata: "Task relationships and metadata", dependencies: "Prerequisites", noDependencies: "No prerequisites",
+    blockers: "Unfinished prerequisites", noBlockers: "All prerequisites are complete", successors: "Direct successors in the graph snapshot",
+    successorsMissing: "This task is not in the current graph. Refresh the task graph to see its successors.", noSuccessors: "No successor tasks",
+    created: "Created", updated: "Updated", taskId: "Task ID",
+    footer: "Prerequisites and blockers come from the latest details; names and successors come from the task graph snapshot.",
+    countedHeading: ({ label, count }) => `${label} · ${count}`,
+  },
+  pr: {
+    title: "Linked PRs", heading: ({ count }) => `Linked PRs · ${count}`,
+    range: ({ start, end, total }) => `Items ${start}–${end} of ${total}`,
+    previous: "Previous page", next: "Next page", page: "Page", pageLabel: "Linked PR page",
+    pageOption: ({ page, total }) => `${page} / ${total}`, empty: "No linked PRs", emptyString: "(empty string)", url: "URL",
+  },
+  attachments: {
+    title: "Attachments", heading: ({ count }) => `Attachments · ${count}`, refresh: "Refresh attachments",
+    chooseFile: "Choose one file", targetPath: "Target relative path", pathPlaceholder: "For example, docs/design.md",
+    uploading: "Uploading…", upload: "Upload file", uploadHint: "Upload one file at a time. An existing path is overwritten directly.",
+    invalidPath: "Enter a valid relative file path, using / between directories, without empty segments or the . and .. segments.",
+    writeError: "The attachment operation failed. Check and try again.", loading: "Loading attachments…",
+    listError: "The attachment list could not be loaded.", incompleteList: "The attachment list is incomplete. Only files already read are shown below.",
+    retry: "Retry attachments", empty: "No attachments. Upload a file to browse it here.", files: "Attachment files",
+    choosePreview: "Select a file to preview, download or delete it.", preview: "Attachment preview",
+    fileMetadata: ({ contentType, size }) => `${contentType} · ${size}`,
+    download: "Download", deleting: "Deleting…", delete: "Delete", previewLoading: "Loading preview…",
+    previewLoadError: "Unable to load the file preview. Try again or download the file.",
+    previewReadError: "Unable to read the file preview. Try again or download the file.", retryPreview: "Retry preview",
+    frameTitle: ({ kind, path }) => `${kind} preview: ${path}`, unsupportedPreview: "A preview is not available for this file. Download it to open it.",
+  },
+};

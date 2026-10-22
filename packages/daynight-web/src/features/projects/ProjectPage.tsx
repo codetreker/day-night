@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { ApiError } from "../../api/client";
 import { navigate } from "../../app/router";
+import { useI18n } from "../../i18n/LocaleProvider";
+import type { WorkspaceMessages } from "../../i18n/messages/workspace";
 import { TaskDetailDialog } from "../task-detail/TaskDetailDialog";
 import { RootList } from "../task-graph/RootList";
 import { GraphDataError } from "../task-graph/model";
 import { ProjectTaskTabs } from "./ProjectTaskTabs";
 import { StandaloneList } from "./StandaloneList";
-import { completedChainPreferenceNotice, projectViewPreferenceNotice, standaloneVisibilityNotice, taskViewPreferenceNotice, taskViewScrollNotice,
-  useCompletedChainVisibility, useProjectViewPreferences, useStandaloneVisibility, useTaskView, useTaskViewScroll, type TaskView } from "./useProjectViewPreferences";
+import { useCompletedChainVisibility, useProjectViewPreferences, useStandaloneVisibility, useTaskView, useTaskViewScroll, type TaskView } from "./useProjectViewPreferences";
 import { useTaskGraph } from "./useTaskGraph";
 import "../../styles/project.css";
 
@@ -17,37 +18,42 @@ const backToProjects = (event: MouseEvent<HTMLAnchorElement>) => {
   navigate("/");
 };
 
-const errorTitle = (error: unknown): string => {
-  if (error instanceof ApiError && error.code === "not_found") return "项目不存在";
-  if (error instanceof ApiError && error.code === "graph_limit_exceeded") return "任务图超过展示上限";
-  if (error instanceof GraphDataError || error instanceof ApiError && error.kind === "protocol") return "任务图数据不完整";
-  return "项目加载失败";
+const errorTitle = (error: unknown, m: WorkspaceMessages["project"]): string => {
+  if (error instanceof ApiError && error.code === "not_found") return m.notFound;
+  if (error instanceof ApiError && error.code === "graph_limit_exceeded") return m.graphLimit;
+  if (error instanceof GraphDataError || error instanceof ApiError && error.kind === "protocol") return m.incomplete;
+  return m.loadingFailed;
 };
 
-const ErrorDetail = ({ error }: { readonly error: unknown }) => (
-  <>
+const ErrorDetail = ({ error }: { readonly error: unknown }) => {
+  const { messages: { workspace: { project: m }, common } } = useI18n();
+  return <>
     <p>{error instanceof ApiError && error.kind === "network"
-      ? "无法连接服务，请检查本地服务后重试。"
+      ? m.networkError
       : error instanceof GraphDataError || error instanceof ApiError && error.kind === "protocol"
-        ? "任务图数据不完整或不一致，请重试。"
+        ? m.protocolError
         : error instanceof ApiError && error.code === "not_found"
-          ? "这个项目不存在，请返回项目列表。"
+          ? m.notFoundDetail
           : error instanceof ApiError && error.code === "graph_limit_exceeded"
-            ? "完整任务图超过当前支持的展示规模。"
-            : "暂时无法读取任务图，请重试。"}</p>
+            ? m.graphLimitDetail
+            : m.readError}</p>
     {error instanceof ApiError && error.graphLimit !== undefined && (
-      <p>当前 {error.graphLimit.nodeCount} 个任务、{error.graphLimit.edgeCount} 条依赖；支持最多 {error.graphLimit.maxNodes} 个任务、{error.graphLimit.maxEdges} 条依赖。</p>
+      <p>{m.graphLimitCounts({ nodes: error.graphLimit.nodeCount, edges: error.graphLimit.edgeCount,
+        maxNodes: error.graphLimit.maxNodes, maxEdges: error.graphLimit.maxEdges })}</p>
     )}
     {error instanceof ApiError && error.requestId !== null && (
-      <p className="request-id">请求 ID：<code>{error.requestId}</code></p>
+      <p className="request-id">{common.requestId}<code>{error.requestId}</code></p>
     )}
-  </>
-);
+  </>;
+};
+
+type ProjectNotice = { readonly kind: "selected-task-removed" };
 
 const ProjectView = ({ projectId }: { readonly projectId: string }) => {
   const graph = useTaskGraph(projectId);
+  const { messages: { workspace: { project: m, projects, app, preferences }, common }, format } = useI18n();
   const [selection, setSelection] = useState<{ readonly id: string; readonly revision: number } | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<ProjectNotice | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const originalTrigger = useRef<HTMLElement | null>(null);
   const expandedRoot = useRef<string | null>(null);
@@ -87,7 +93,7 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
     if (snapshot === null) return;
     if (selection !== null && selection.revision !== snapshot.revision && !snapshot.index.nodes.has(selection.id)) {
       setSelection(null);
-      setNotice("所选任务已不在新的任务图中，详情已关闭。");
+      setNotice({ kind: "selected-task-removed" });
     }
   }, [snapshot, selection]);
 
@@ -133,61 +139,61 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
   return (
     <>
       <div className="project-navigation">
-        <a className="back-link" href="/" onClick={backToProjects}>← 项目</a>
+        <a className="back-link" href="/" onClick={backToProjects}>{m.back}</a>
         {snapshot !== null && (
-          <p className="snapshot-time">最近成功刷新 <time dateTime={new Date(snapshot.receivedAt).toISOString()}>{new Date(snapshot.receivedAt).toLocaleTimeString("zh-CN", { hour12: false })}</time></p>
+          <p className="snapshot-time"><time dateTime={new Date(snapshot.receivedAt).toISOString()}>{m.lastRefreshed({ time: format.time(snapshot.receivedAt) })}</time></p>
         )}
       </div>
       <div className="page-heading project-heading">
         <div>
-          <p className="eyebrow">项目任务</p>
-          <h1 ref={heading} tabIndex={-1}>{snapshot === null ? "项目任务" : snapshot.graph.project.name}</h1>
+          <p className="eyebrow">{app.projectTasks}</p>
+          <h1 ref={heading} tabIndex={-1}>{snapshot === null ? app.projectTasks : snapshot.graph.project.name}</h1>
           {snapshot !== null && <p className="project-repository">{snapshot.graph.project.repoUrl}</p>}
         </div>
-        <button className="button" type="button" onClick={graph.refresh} disabled={graph.refreshing}>{graph.refreshing ? "正在刷新…" : "刷新"}</button>
+        <button className="button" type="button" onClick={graph.refresh} disabled={graph.refreshing}>{graph.refreshing ? m.refreshing : projects.refresh}</button>
       </div>
-      {preferenceIssue !== null && <p className="snapshot-notice" role="status">{projectViewPreferenceNotice(preferenceIssue)}</p>}
-      {visibilityIssue !== null && <p className="snapshot-notice" role="status">{completedChainPreferenceNotice(visibilityIssue)}</p>}
-      {tabIssue !== null && <p className="snapshot-notice" role="status">{taskViewPreferenceNotice(tabIssue)}</p>}
-      {standaloneIssue !== null && <p className="snapshot-notice" role="status">{standaloneVisibilityNotice(standaloneIssue)}</p>}
-      {scrollIssue !== null && <p className="snapshot-notice" role="status">{taskViewScrollNotice(scrollIssue)}</p>}
+      {preferenceIssue !== null && <p className="snapshot-notice" role="status">{preferences.expanded[preferenceIssue.kind]}</p>}
+      {visibilityIssue !== null && <p className="snapshot-notice" role="status">{preferences.completedChains[visibilityIssue.kind]}</p>}
+      {tabIssue !== null && <p className="snapshot-notice" role="status">{preferences.tab[tabIssue.kind]}</p>}
+      {standaloneIssue !== null && <p className="snapshot-notice" role="status">{preferences.standalone[standaloneIssue.kind]}</p>}
+      {scrollIssue !== null && <p className="snapshot-notice" role="status">{preferences.scroll[scrollIssue.kind]}</p>}
       {graph.status === "loading" && (
-        <section className="state-box" role="status" aria-label="正在加载任务图">
-          <span className="spinner" aria-hidden="true" /><h2>正在加载任务图</h2><p>正在读取项目任务和依赖关系。</p>
+        <section className="state-box" role="status" aria-label={m.loading}>
+          <span className="spinner" aria-hidden="true" /><h2>{m.loading}</h2><p>{m.loadingDetail}</p>
         </section>
       )}
       {graph.status === "error" && (
         <section className="state-box" role="alert">
-          <h2>{errorTitle(graph.error)}</h2><ErrorDetail error={graph.error} />
-          <button className="button primary" type="button" onClick={graph.refresh}>重试</button>
-          <a className="back-link" href="/" onClick={backToProjects}>返回项目列表</a>
+          <h2>{errorTitle(graph.error, m)}</h2><ErrorDetail error={graph.error} />
+          <button className="button primary" type="button" onClick={graph.refresh}>{projects.retry}</button>
+          <a className="back-link" href="/" onClick={backToProjects}>{app.returnToProjects}</a>
         </section>
       )}
       {snapshot !== null && summary !== undefined && (
         <>
-          {graph.refreshing && <p className="snapshot-notice" role="status">正在刷新，当前显示上次成功读取的数据。</p>}
+          {graph.refreshing && <p className="snapshot-notice" role="status">{m.refreshingSnapshot}</p>}
           {graph.error !== null && (
-            <section className="snapshot-error" role="alert"><h2>刷新失败</h2><p>仍显示上次成功读取的数据。</p><ErrorDetail error={graph.error} />
-              <button className="button" type="button" onClick={graph.refresh}>重试刷新</button>
+            <section className="snapshot-error" role="alert"><h2>{m.refreshFailed}</h2><p>{m.showingSnapshot}</p><ErrorDetail error={graph.error} />
+              <button className="button" type="button" onClick={graph.refresh}>{m.retryRefresh}</button>
             </section>
           )}
-          {notice !== null && <p className="snapshot-notice" role="status">{notice}</p>}
-          <section className="stats" aria-label="项目任务统计">
-            <div className="stat"><p className="stat-label">任务总数</p><p className="stat-number">{summary.total}</p><p className="stat-foot">按任务 ID 去重</p></div>
-            <div className="stat done"><p className="stat-label">已完成</p><p className="stat-number">{summary.done}</p><p className="stat-foot">完成比例 {completion}%</p></div>
-            <div className="stat"><p className="stat-label">待处理</p><p className="stat-number">{summary.todo}</p><p className="stat-foot">等待开始</p></div>
-            <div className="stat active"><p className="stat-label">进行中</p><p className="stat-number">{summary.inProgress}</p><p className="stat-foot">正在推进</p></div>
-            <div className="stat ready"><p className="stat-label">可开始</p><p className="stat-number">{summary.ready}</p><p className="stat-foot">待处理的子集</p></div>
-            <div className="stat blocked"><p className="stat-label">被阻塞</p><p className="stat-number">{summary.blocked}</p><p className="stat-foot">待处理的子集</p></div>
+          {notice !== null && <p className="snapshot-notice" role="status">{m.selectedTaskRemoved}</p>}
+          <section className="stats" aria-label={m.statistics}>
+            <div className="stat"><p className="stat-label">{m.totalTasks}</p><p className="stat-number">{format.number(summary.total)}</p><p className="stat-foot">{m.uniqueTasks}</p></div>
+            <div className="stat done"><p className="stat-label">{common.status.done}</p><p className="stat-number">{format.number(summary.done)}</p><p className="stat-foot">{m.completion({ percent: completion })}</p></div>
+            <div className="stat"><p className="stat-label">{common.status.todo}</p><p className="stat-number">{format.number(summary.todo)}</p><p className="stat-foot">{m.waiting}</p></div>
+            <div className="stat active"><p className="stat-label">{common.status.in_progress}</p><p className="stat-number">{format.number(summary.inProgress)}</p><p className="stat-foot">{m.advancing}</p></div>
+            <div className="stat ready"><p className="stat-label">{m.ready}</p><p className="stat-number">{format.number(summary.ready)}</p><p className="stat-foot">{m.todoSubset}</p></div>
+            <div className="stat blocked"><p className="stat-label">{m.blocked}</p><p className="stat-number">{format.number(summary.blocked)}</p><p className="stat-foot">{m.todoSubset}</p></div>
           </section>
           {summary.total === 0 ? (
-            <section className="state-box"><h2>还没有任务</h2><p>项目中的任务会显示在这里。创建任务后，点击刷新查看。</p></section>
+            <section className="state-box"><h2>{m.empty}</h2><p>{m.emptyDetail}</p></section>
           ) : (
             <>
               <ProjectTaskTabs activeView={activeView} unfinishedStandaloneTaskCount={categories!.unfinishedStandaloneTaskCount}
                 unfinishedChainTaskCount={categories!.unfinishedChainTaskCount} onViewChange={selectView} />
               <div role="tabpanel" id="project-task-panel-chains" aria-labelledby="project-task-tab-chains" hidden={activeView !== "chains"}>
-                {activeView === "chains" && <section aria-label="任务依赖链">
+                {activeView === "chains" && <section aria-label={m.chains}>
                   <RootList index={snapshot.index} rootIds={rootIds!} allRootIds={categories!.chains} expandedRootId={expandedRootId} onExpand={setExpandedRootId} selectedTaskId={selectedTaskId} onSelectTask={onSelectTask}
                     showCompleted={showCompleted} onShowCompletedChange={onShowCompletedChange} />
                 </section>}

@@ -36,18 +36,6 @@ const completedChainPreference = (value: unknown): boolean => {
   return value;
 };
 
-export const projectViewPreferenceNotice = (issue: PreferenceIssue): string => {
-  if (issue.kind === "read") return "无法读取浏览器保存的任务链展开状态，本次浏览仍可正常使用。";
-  if (issue.kind === "invalid") return "浏览器保存的任务链展开状态无效，已使用默认状态，本次浏览仍可正常使用。";
-  return "任务链展开状态无法保存到浏览器，刷新后可能无法恢复，本次浏览仍可正常使用。";
-};
-
-export const completedChainPreferenceNotice = (issue: PreferenceIssue): string => {
-  if (issue.kind === "read") return "无法读取浏览器保存的已完成任务链显示偏好，本次浏览仍可正常使用。";
-  if (issue.kind === "invalid") return "浏览器保存的已完成任务链显示偏好无效，已默认隐藏，本次浏览仍可正常使用。";
-  return "已完成任务链显示偏好无法保存到浏览器，刷新后可能无法恢复，本次浏览仍可正常使用。";
-};
-
 export const useCompletedChainVisibility = (projectId: string) => {
   const key = `daynight:completed-chains:${projectId}`;
   const [initial] = useState(() => readPreference(key, completedChainPreference));
@@ -108,24 +96,6 @@ const scrollPreference = (value: unknown): ScrollPositions => {
     throw new Error("Invalid project task view scroll positions.");
   }
   return { chains: value.chains, standalone: value.standalone };
-};
-
-export const taskViewPreferenceNotice = (issue: PreferenceIssue): string => {
-  if (issue.kind === "read") return "无法读取浏览器保存的任务页签，本次浏览仍可正常使用。";
-  if (issue.kind === "invalid") return "浏览器保存的任务页签无效，已默认显示任务链，本次浏览仍可正常使用。";
-  return "任务页签无法保存到浏览器，刷新后可能无法恢复，本次浏览仍可正常使用。";
-};
-
-export const standaloneVisibilityNotice = (issue: PreferenceIssue): string => {
-  if (issue.kind === "read") return "无法读取浏览器保存的已完成独立任务显示偏好，本次浏览仍可正常使用。";
-  if (issue.kind === "invalid") return "浏览器保存的已完成独立任务显示偏好无效，已默认隐藏，本次浏览仍可正常使用。";
-  return "已完成独立任务显示偏好无法保存到浏览器，刷新后可能无法恢复，本次浏览仍可正常使用。";
-};
-
-export const taskViewScrollNotice = (issue: PreferenceIssue): string => {
-  if (issue.kind === "read") return "无法读取浏览器保存的任务浏览位置，本次浏览仍可正常使用。";
-  if (issue.kind === "invalid") return "浏览器保存的任务浏览位置无效，已从顶部开始，本次浏览仍可正常使用。";
-  return "任务浏览位置无法保存到浏览器，刷新后可能无法恢复，本次浏览仍可正常使用。";
 };
 
 const useNamedPreference = <Value,>(key: string, decode: (value: unknown) => Value, defaultValue: Value) => {

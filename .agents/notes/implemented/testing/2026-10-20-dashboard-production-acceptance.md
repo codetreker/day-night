@@ -15,8 +15,8 @@ a mismatched image or cleanup failures unless its receipts are validated.
 `pnpm web:acceptance` uses the shared acceptance runner to build real embedded
 assets and a fresh native Go executable, own an isolated PostgreSQL 18.6
 container/volume and wait for structured service readiness. The normal dev-ci
-source build/start runs concurrently. Browser phases run ten native functional
-scenarios, the same ten functional scenarios through the production image's
+source build/start runs concurrently. Browser phases run thirteen native functional
+scenarios, the same thirteen functional scenarios through the production image's
 stream gateway, then five native capacity/limit scenarios. The normal localhost
 stack and its data do not participate. The
 [pipeline decision](2026-10-21-web-acceptance-pipeline.md) partially supersedes the
@@ -38,11 +38,13 @@ details and independent per-project browsing preferences. The native target also
 runs four fixed capacity datasets and
 independent node/edge-limit rejections. The
 [complete context decision](../feature/2026-10-22-complete-prerequisite-context.md)
-adds dense external ancestry while preserving the original three datasets.
-Fixtures are created through real APIs;
+adds dense external ancestry while preserving the original three datasets. The
+[bilingual interface decision](../feature/2026-10-22-web-bilingual-interface.md)
+adds three targeted functional language scenarios to each target without
+replicating the capacity matrix. Fixtures are created through real APIs;
 the original graph scenarios and task-view scenario retain read-only browser
-request checks. Only the new
-attachment scenario permits exact fixture-scoped file PUT/DELETE requests;
+request checks. The attachment and `language-state-preservation` scenarios
+permit only their exact fixture-scoped file PUT/DELETE requests;
 uncaught exceptions remain failures in every scenario. Database
 fault injection verifies the disposable database's ownership before changing it
 and restores the resource in a finally path. Browser routing barriers control
@@ -64,8 +66,8 @@ remains the performance gate. Each independent over-limit response must be a com
 Playwright runs one worker with zero retries. Report validation rejects global
 errors, skipped/flaky/retried tests, duplicate/missing stable scenarios, missing
 PNG screenshots and inconsistent summary counts. Native functional/capacity
-reports form a strict fifteen-scenario union; container functional validation
-requires ten. Missing, extra or duplicate names fail both phase and aggregate
+reports form a strict eighteen-scenario union; container functional validation
+requires thirteen. Missing, extra or duplicate names fail both phase and aggregate
 validation, and browser identity must agree across a target's phases.
 Performance validation requires
 all fixed datasets, exactly five valid measurements per dataset, every budget
