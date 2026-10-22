@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { APIRequestContext } from '@playwright/test';
 import { createProject, createTask, updateTask, type Project, type Task } from './fixtures';
 
-export type CapacityKind = 'chain' | 'merge' | 'shared';
+export type CapacityKind = 'chain' | 'merge' | 'shared' | 'external';
 export type CapacityFixture = {
   kind: CapacityKind;
   project: Project;
@@ -31,6 +31,28 @@ export const seedCapacity = async (request: APIRequestContext, kind: CapacityKin
   const project = await createProject(request, { name: `Capacity ${kind} ${randomUUID()}` });
   const root = await createTask(request, project.id, { title: `${kind} source root` });
   const tasks: Task[] = [root];
+  if (kind === 'external') {
+    let previous = await boundedMap(Array.from({ length: 99 }, (_, index) => index), (index) =>
+      createTask(request, project.id, { title: `external source ${index}` }));
+    tasks.push(...previous);
+    let additional = 397;
+    for (let layer = 1; layer <= 9; layer++) {
+      const inputs = Array.from({ length: 99 }, (_, index) => {
+        const count = additional > 0 ? 6 : 5;
+        if (additional > 0) additional--;
+        return { index, dependsOn: Array.from({ length: count }, (_, offset) => previous[(index * 5 + offset) % previous.length]!.id) };
+      });
+      previous = await boundedMap(inputs, ({ index, dependsOn }) =>
+        createTask(request, project.id, { title: `external layer ${layer} task ${index}`, dependsOn }));
+      tasks.push(...previous);
+    }
+    const tails = await boundedMap(Array.from({ length: 8 }, (_, index) => index), (index) =>
+      createTask(request, project.id, { title: `external final prerequisite ${index}`, dependsOn: Array.from({ length: 5 }, (_, offset) => previous[index * 5 + offset]!.id) }));
+    tasks.push(...tails);
+    tasks.push(await createTask(request, project.id, { title: 'external chain sink', dependsOn: [root.id, ...previous.map((task) => task.id), ...tails.map((task) => task.id)] }));
+    return { kind, project, root, tasks, edgeCount: 5000 };
+  }
+
   if (kind === 'chain') {
     tasks.push(...await boundedMap(Array.from({ length: 999 }, (_, index) => index + 1), (index) =>
       createTask(request, project.id, { title: `chain task ${index}` })));

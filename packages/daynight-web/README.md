@@ -78,8 +78,20 @@ minimum height and 7px row gaps; a single-line bordered row is about 64px.
 Desktop titles stay 13px and narrow-screen titles 12px, with readable
 metadata/status sizes of 11px/10px.
 
-Rows expand one horizontal graph at a time, including shared tasks and direct
-external prerequisites. Per-project browser preferences retain the selected tab,
+Rows expand one horizontal graph at a time, including shared tasks and all
+transitive prerequisites of the root and its reachable successors. External
+prerequisites add context without importing their unrelated successors. Each task
+and required dependency appears once per canvas. Dashed external nodes use the
+label “外部前置”; edges originating at external nodes remain dashed, including
+links between external nodes. The toolbar separates chain-task, external-task and
+dependency counts. Initial placement fits the complete graph at 0.8–1 zoom when
+possible; otherwise it anchors the leftmost rank at 0.8 zoom. A root in that rank
+remains vertically centered; when context extends left of the root, its topmost
+upstream node starts at a 32px canvas inset. Pan, zoom, Fit view and keyboard
+node navigation keep the rest accessible. The [context decision](../../.agents/notes/implemented/feature/2026-10-22-complete-prerequisite-context.md)
+owns these projection and viewport choices.
+
+Per-project browser preferences retain the selected tab,
 each tab's page scroll position and completed-item choice, and the chain's
 expanded root or explicit collapse across reloads and navigation. First visits
 to chains open the newest visible chain root; a missing or hidden saved root
@@ -324,7 +336,7 @@ The command builds real embedded assets and a new Go executable and owns a
 separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
 the normal dev-ci runner builds and starts the actual production image. Browser
 execution proceeds through ten native functional scenarios, the same ten
-functional scenarios through the production image's stream gateway, then four
+functional scenarios through the production image's stream gateway, then five
 native capacity/limit scenarios. The native process and PostgreSQL remain alive
 through the capacity phase; other preparation commands and the complete
 container stack have finished before that phase starts. No normal localhost service or dataset is used. Functional and
@@ -345,15 +357,19 @@ with versioned PATCH requests from sink to root, avoiding repeated traversal of
 a growing ancestor chain during setup. Complete snapshots compare every node's
 dependencies with the fixture, including the chain's exact predecessor sequence.
 
-Capacity uses fixed 1,000-node graphs: a 999-edge chain and two 5,000-edge graphs
-for merges and shared roots. The browser explicitly selects the fixture root so newest-first browsing does not
-change the graph workload. Each graph expands five times, with every opening
+Capacity uses four fixed 1,000-node graphs: a 999-edge chain and three
+5,000-edge graphs for merges, shared roots and dense external ancestry. The dense
+external graph displays two chain tasks and 998 external prerequisites, retaining
+all 5,000 dependencies. The browser explicitly selects the fixture root so
+newest-first browsing does not change the graph workload. Each graph expands five times, with every opening
 at most 3,000ms and local task/zoom/pan feedback at most 300ms. Network timings are
 recorded separately. Each expansion also records projection/layout duration and
 subsequent painted-render duration; these diagnostics do not replace the complete
 opening budget. Independent 1,001-node and 5,001-edge cases require complete
-409 rejection. Full node/edge DOM counts, readable root visibility and painted
-feedback are checked; a successful process exit without complete reports fails.
+409 rejection. Full node/edge DOM counts, readable initial focus-task visibility
+and painted feedback are checked; the dense external case starts at an upstream task, while
+the original datasets retain root visibility. A successful process exit without
+complete reports fails.
 
 The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [attachment journey](tests/e2e/attachments.spec.ts),
@@ -367,7 +383,7 @@ scenario annotations validated in each target's report.
 | W1 | `project-list`: more than 50 projects, cursor requests, unique cards and navigation to a later-page project |
 | W2 | `project-graph`, `deep-links`: project entry, direct HTML reload and browser history |
 | W3–W4 | `project-graph`, `project-view-tabs`, `refresh-staleness`, `failure-recovery`: exact statistics, topology-based tabs, distinct root progress, direct standalone details, independent completion filters, per-project tab/scroll/expansion restoration, dependency reclassification and consistent full refresh |
-| W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`: complete root projections, shared/external prerequisites, state markers and viewport/node actions |
+| W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`, `capacity-external`: complete root projections, shared/external prerequisites, state markers and viewport/node actions |
 | W8 | `detail-navigation`, `refresh-staleness`: complete current content, ordered PR associations, relation navigation, property refresh and readiness differences without revising a dependent task |
 | W9 | `failure-recovery`, `deep-links`, `capacity-limits`: owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
@@ -392,9 +408,9 @@ retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validati
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
 tested checkout identity, which is normally a merge revision for PR runs. A pass
-requires the strict union of ten native functional and four native capacity
-scenarios (14 native total), plus the ten container functional scenarios. Every phase and target
-rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
+requires the strict union of ten native functional and five native capacity/limit
+scenarios (15 native total), plus the ten container functional scenarios. Every
+phase and target rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
 Browser identities must agree across a target's phases; every fixed graph's five
 timing repetitions, independent size refusals and cleanup/recovery must pass.
 Local receipts retain their source and browser identity; they do not establish
@@ -501,15 +517,18 @@ API errors expose fixed safe text and a validated request ID; raw response bodie
 and server diagnostics do not reach the page. Project names and addresses render
 as text. The API parser verifies DTO shape and resource identity. The implemented graph
 model separately verifies dependency closure, acyclicity, status/readiness and
-summary consistency. It projects root descendants plus direct external
-prerequisites, derives distinct root progress and aggregate chain status in the
-same traversal, and marks shared tasks. The Dagre
+summary consistency. It projects root descendants plus their complete ancestor
+closure, excluding unrelated descendants of contextual tasks. `mainIds` retains
+chain membership; `externalIds` identifies additional ancestors. Every dependency
+ending at a visible task is retained, and an edge is external when its source is
+external. It derives distinct root progress and aggregate chain status from main
+tasks in the same traversal, and marks shared tasks. The Dagre
 adapter returns finite left-to-right node positions and routed edge points for
 220-by-96 cards. The read-only React Flow canvas consumes these results without changing domain
 objects. React Flow owns fixed task nodes, native ResizeObserver measurement,
 keyboard behavior, viewport and controls. One memoized SVG in its public
 ViewportPortal renders every exact Dagre path, with stable edge identity,
-arrowheads, boundary dashes and accessibility semantics. It shares the viewport's
+arrowheads, external-context dashes and accessibility semantics. It shares the viewport's
 transform, so selection/pan/zoom reuse geometry without per-edge reactive state.
 Canonical routes retain native arrow markers and full Dagre points. Dashed body
 paint uses `dashes.ts` to derive locally horizontal rotated lines and short native
@@ -519,8 +538,10 @@ accessibility tree; canonical edges keep their existing identity/semantics. The
 [paint decision](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
 owns the pinned raster evidence, phase preservation and visual tolerances.
 Initial placement uses known layout bounds after the viewport and positive
-measured canvas dimensions are ready. Dependency geometry does not require
-connection-port DOM or per-edge endpoint readiness.
+measured canvas dimensions are ready, fitting within 0.8–1 zoom or anchoring the
+leftmost rank at 0.8 zoom. The root remains vertically centered when already
+leftmost; otherwise the topmost upstream node starts at a 32px canvas inset.
+Dependency geometry does not require connection-port DOM or per-edge endpoint readiness.
 Ordinary/selected canonical node variants retain unaffected references, and
 memoized collapsed root rows keep a null selection until expanded. New snapshot
 indexes still refresh all rows. The one-time initial viewport policy is separate

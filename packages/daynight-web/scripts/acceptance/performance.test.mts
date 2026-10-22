@@ -6,6 +6,7 @@ const report = () => ({ schemaVersion: 1, result: 'passed', datasets: [
   { scenario: 'capacity-chain', nodes: 1000, edges: 999 },
   { scenario: 'capacity-merge', nodes: 1000, edges: 5000 },
   { scenario: 'capacity-shared', nodes: 1000, edges: 5000 },
+  { scenario: 'capacity-external', nodes: 1000, edges: 5000 },
 ].map((dataset) => ({ ...dataset, networkMs: 1, result: 'passed', measurements: Array.from({ length: 5 }, () => ({
   openMs: 3000, detailMs: 300, detailNetworkMs: 1, zoomMs: 300, panMs: 300, layoutMs: 10, renderMs: 20,
 })) })), limits: {

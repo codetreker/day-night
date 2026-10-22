@@ -57,7 +57,7 @@ const painted = (page: Page) => page.evaluate(() => new Promise<number>((resolve
 const transform = (page: Page) => page.locator('.react-flow__viewport').evaluate((element) => (element as HTMLElement).style.transform);
 
 type TimingCondition =
-  | { kind: 'open'; rootId: string; edges: number }
+  | { kind: 'open'; rootId: string; edges: number; upstream: boolean }
   | { kind: 'detail'; rootId: string }
   | { kind: 'zoom' | 'pan'; previousTransform: string };
 type BrowserTiming = {
@@ -119,7 +119,13 @@ const measureBrowserFeedback = async (page: Page, condition: TimingCondition, ac
       }
       if (!countsReady) return false;
       const canvas = document.querySelector('.task-graph-canvas');
-      const source = document.querySelector(`.react-flow__node[data-id="${condition.rootId}"] .task-node`);
+      const source = condition.upstream
+        ? [...document.querySelectorAll<HTMLElement>('.react-flow__node')].reduce((first, node) => {
+          const position = /translate\(([^,]+)px,\s*([^)]+)px\)/.exec(node.style.transform)!;
+          const previous = /translate\(([^,]+)px,\s*([^)]+)px\)/.exec(first.style.transform)!;
+          return Number(position[1]) < Number(previous[1]) || Number(position[1]) === Number(previous[1]) && Number(position[2]) < Number(previous[2]) ? node : first;
+        }).querySelector('.task-node')
+        : document.querySelector(`.react-flow__node[data-id="${condition.rootId}"] .task-node`);
       if (canvas === null || source === null) return false;
       const bounds = canvas.getBoundingClientRect();
       const node = source.getBoundingClientRect();
@@ -252,17 +258,23 @@ const measureBrowserFeedback = async (page: Page, condition: TimingCondition, ac
   }
 };
 
-const visibleGraph = async (page: Page, rootId: string, edges: number) => {
+const visibleGraph = async (page: Page, rootId: string, edges: number, upstream: boolean) => {
   await expect(page.locator('.react-flow__node')).toHaveCount(1000);
   await expect(page.locator('.react-flow__node .task-node')).toHaveCount(1000);
   await expect(page.locator('.react-flow__edge-path')).toHaveCount(edges);
-  await page.waitForFunction((id) => {
+  await page.waitForFunction(({ id, upstream }) => {
     const svg = document.querySelector<SVGSVGElement>('.task-dependency-edges');
     const expectedPaintPieces = svg?.getAttribute('data-paint-piece-count');
     if (expectedPaintPieces === null || expectedPaintPieces === undefined || !/^(0|[1-9]\d*)$/.test(expectedPaintPieces)
       || !Number.isSafeInteger(Number(expectedPaintPieces)) || svg!.querySelectorAll('.task-dependency-paint-piece').length !== Number(expectedPaintPieces)) return false;
     const canvas = document.querySelector('.task-graph-canvas');
-    const source = document.querySelector(`.react-flow__node[data-id="${id}"] .task-node`);
+    const source = upstream
+      ? [...document.querySelectorAll<HTMLElement>('.react-flow__node')].reduce((first, node) => {
+        const position = /translate\(([^,]+)px,\s*([^)]+)px\)/.exec(node.style.transform)!;
+        const previous = /translate\(([^,]+)px,\s*([^)]+)px\)/.exec(first.style.transform)!;
+        return Number(position[1]) < Number(previous[1]) || Number(position[1]) === Number(previous[1]) && Number(position[2]) < Number(previous[2]) ? node : first;
+      }).querySelector('.task-node')
+      : document.querySelector(`.react-flow__node[data-id="${id}"] .task-node`);
     if (canvas === null || source === null) return false;
     const bounds = canvas.getBoundingClientRect();
     const node = source.getBoundingClientRect();
@@ -270,7 +282,7 @@ const visibleGraph = async (page: Page, rootId: string, edges: number) => {
     const zoom = Number(/scale\(([^)]+)\)/.exec(viewport.style.transform)?.[1]);
     return zoom >= 0.8 && zoom <= 1 && node.left >= bounds.left && node.top >= bounds.top
       && node.right <= bounds.right && node.bottom <= bounds.bottom;
-  }, rootId);
+  }, { id: rootId, upstream });
   return painted(page);
 };
 
@@ -287,10 +299,17 @@ const panPoint = (page: Page) => page.evaluate(() => {
 });
 
 const measureInteractions = async (page: Page, fixture: CapacityFixture, expansion: ExpansionMeasurement, dataset: Dataset, repetition: number): Promise<Measurement> => {
+  const detailTask = fixture.kind === 'external' ? await page.locator('.task-node-external').evaluateAll((buttons) => {
+    const canvas = document.querySelector('.task-graph-canvas')!.getBoundingClientRect();
+    const visible = buttons.find((button) => { const bounds = button.getBoundingClientRect(); return bounds.left >= canvas.left && bounds.top >= canvas.top && bounds.right <= canvas.right && bounds.bottom <= canvas.bottom; });
+    if (visible === undefined) throw new Error('The initial external prerequisite is not accessible.');
+    return visible.closest('.react-flow__node')!.getAttribute('data-id')!;
+  }) : fixture.root.id;
+  const detailTitle = fixture.tasks.find((task) => task.id === detailTask)!.title;
   const dialog = page.locator('.drawer-backdrop').getByRole('dialog');
-  const detailResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/projects/${fixture.project.id}/tasks/${fixture.root.id}`));
-  const detail = await measureBrowserFeedback(page, { kind: 'detail', rootId: fixture.root.id }, () =>
-    page.locator(`.react-flow__node[data-id="${fixture.root.id}"] .task-node`).click(), dataset, repetition);
+  const detailResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/projects/${fixture.project.id}/tasks/${detailTask}`));
+  const detail = await measureBrowserFeedback(page, { kind: 'detail', rootId: detailTask }, () =>
+    page.locator(`.react-flow__node[data-id="${detailTask}"] .task-node`).click(), dataset, repetition);
   await expect(dialog).toBeVisible();
   const detailMs = detail.duration;
   const response = await detailResponse;
@@ -298,7 +317,7 @@ const measureInteractions = async (page: Page, fixture: CapacityFixture, expansi
   await response.finished();
   const timing = response.request().timing();
   const detailNetworkMs = timing.responseEnd - timing.requestStart;
-  await expect(page.locator('.drawer-title')).toHaveText(fixture.root.title);
+  await expect(page.locator('.drawer-title')).toHaveText(detailTitle);
   await dialog.locator('.drawer-header').getByRole('button', { name: '关闭任务详情', exact: true }).click();
   await expect(dialog).toHaveCount(0);
 
@@ -334,13 +353,13 @@ test.describe('fixed capacity and performance @capacity', () => {
   test.describe.configure({ mode: 'serial' });
   test.beforeAll(persist);
   test.afterAll(async () => {
-    receipt.result = receipt.result !== 'failed' && receipt.datasets.length === 3
+    receipt.result = receipt.result !== 'failed' && receipt.datasets.length === 4
       && receipt.datasets.every((dataset) => dataset.result === 'passed' && dataset.measurements.length === 5)
       && receipt.limits.node !== undefined && receipt.limits.edge !== undefined ? 'passed' : 'failed';
     await persist();
   });
 
-  for (const kind of ['chain', 'merge', 'shared'] as const satisfies readonly CapacityKind[]) {
+  for (const kind of ['chain', 'merge', 'shared', 'external'] as const satisfies readonly CapacityKind[]) {
     const scenario = `capacity-${kind}`;
     test(`renders and operates the complete ${kind} capacity graph`, { annotation: { type: 'scenario', description: scenario } }, async ({ page, request }, info) => {
       test.setTimeout(240_000);
@@ -357,6 +376,10 @@ test.describe('fixed capacity and performance @capacity', () => {
           expect(fixture.tasks).toHaveLength(1000);
           if (kind === 'chain') {
             expect(fixture.tasks.slice(1).map((task) => task.dependsOn)).toEqual(fixture.tasks.slice(0, -1).map((task) => [task.id]));
+          }
+          if (kind === 'external') {
+            expect(fixture.tasks.filter((task) => task.dependsOn.includes(fixture.root.id))).toHaveLength(1);
+            expect(fixture.tasks.at(-1)!.dependsOn).toHaveLength(108);
           }
           const snapshotStart = performance.now();
           const snapshot = await request.get(`/api/v1/projects/${fixture.project.id}/task-graph`);
@@ -376,8 +399,13 @@ test.describe('fixed capacity and performance @capacity', () => {
           const graphResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/projects/${fixture.project.id}/task-graph`));
           const coldStart = performance.now();
           await page.goto(`/projects/${fixture.project.id}`, { waitUntil: 'domcontentloaded' });
-          if (kind === 'shared') await page.locator(`#task-root-${fixture.root.id}`).click();
-          await visibleGraph(page, fixture.root.id, dataset.edges);
+          if (kind === 'shared' || kind === 'external') await page.locator(`#task-root-${fixture.root.id}`).click();
+          await visibleGraph(page, fixture.root.id, dataset.edges, kind === 'external');
+          if (kind === 'external') {
+            await expect(page.locator('.task-node-external')).toHaveCount(998);
+            await expect(page.getByText('2 个链内任务 · 998 个外部前置 · 5000 条依赖')).toBeVisible();
+            await expect(page.locator(`#task-root-${fixture.root.id} .root-progress-label`)).toHaveText('0/2 已完成');
+          }
           dataset.coldOpenMs = performance.now() - coldStart;
           const initialResponse = await graphResponse;
           expect(initialResponse.status()).toBe(200);
@@ -400,7 +428,7 @@ test.describe('fixed capacity and performance @capacity', () => {
             let interactionMs!: number;
             await withCapacityTrace(page, info, `${scenario}-repetition-${repetition}`, async () => {
               const interactionStart = performance.now();
-              const opened = await measureBrowserFeedback(page, { kind: 'open', rootId: fixture.root.id, edges: dataset.edges }, () => root.click(), dataset, repetition);
+              const opened = await measureBrowserFeedback(page, { kind: 'open', rootId: fixture.root.id, edges: dataset.edges, upstream: kind === 'external' }, () => root.click(), dataset, repetition);
               const expansion = await page.evaluate(({ rootId, start, paintedTime }) => {
                 const measures = (performance.getEntriesByName('daynight:task-layout', 'measure') as PerformanceMeasure[])
                   .filter((measure) => measure.detail?.rootId === rootId && measure.startTime >= start);

@@ -100,7 +100,7 @@ All five timed repetitions use the completed graph unchanged.
 
 Capacity browser tests keep one worker and zero retries. They disable
 Playwright's repeated DOM snapshots and filmstrip, retaining failure
-action/network traces, all 15 streamed CDP timeline traces, scenario PNGs and
+action/network traces, all per-repetition streamed CDP timeline traces, scenario PNGs and
 complete node, route and paint-geometry checks. Controller diagnostics record
 fixture creation, snapshot validation and each repetition's interaction and
 total duration separately from browser input-to-feedback timing. The

@@ -11,7 +11,7 @@ vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, ro
 }) => {
   const projection = projectRoot(index, rootId);
   return <div data-testid="projection" data-root-id={rootId}>
-    {[...projection.mainIds, ...projection.boundaryIds].map((id) => <button key={id} data-node-id={id} onClick={(event) => { onSelectTask(id, event.currentTarget); }}>{index.nodes.get(id)!.titlePreview}</button>)}
+    {[...projection.mainIds, ...projection.externalIds].map((id) => <button key={id} data-node-id={id} onClick={(event) => { onSelectTask(id, event.currentTarget); }}>{index.nodes.get(id)!.titlePreview}</button>)}
     {projection.edges.map(({ source, target }) => <span key={`${source}->${target}`} data-edge={`${source}->${target}`} />)}
   </div>;
 } }));

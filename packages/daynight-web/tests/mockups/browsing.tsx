@@ -6,7 +6,7 @@ import '../../src/styles/app.css';
 
 const readScenario = (): BrowsingScenario => {
   const hash = location.hash.slice(1);
-  return hash === 'complete' || hash === 'empty' ? hash : 'mixed';
+  return hash === 'external' || hash === 'complete' || hash === 'empty' ? hash : 'mixed';
 };
 
 const BrowsingMockup = () => {
@@ -64,10 +64,11 @@ const BrowsingMockup = () => {
               onChange={(event) => { location.hash = event.currentTarget.value; }}
             >
               <option value="mixed">混合状态与共享依赖</option>
+              <option value="external">完整上游与无关分支排除</option>
               <option value="complete">全部完成</option>
               <option value="empty">尚无任务</option>
             </select>
-            <p>任务链状态汇总根及全部后续任务：全部完成才显示已完成，有任务开始或完成后显示进行中，全部待处理时显示待处理。图中节点保留各自状态。任务链按创建时间倒序排列，浏览设置按项目保存；展开图后可全屏查看、缩放和打开详情，Esc 先关闭详情，再退出全屏。</p>
+            <p>任务链状态汇总根及全部后续任务：全部完成才显示已完成，有任务开始或完成后显示进行中，全部待处理时显示待处理。图中补齐全部上游前置，外部前置保留自身状态，不计入链内进度，也不引入其无关后续。任务链按创建时间倒序排列，浏览设置按项目保存；展开图后可全屏查看、缩放和打开详情，Esc 先关闭详情，再退出全屏。</p>
           </section>
           <ProjectPage key={scenario} projectId={browsingProjects[scenario].project.id} />
         </main>

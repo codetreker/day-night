@@ -90,7 +90,7 @@ describe("graph indexing", () => {
     expect(index.sharedIds.size).toBe(0);
     const projection = projectRoot(index, A);
     expect(projection.mainIds).toEqual(new Set([A, B, C, D]));
-    expect(projection.boundaryIds.size).toBe(0);
+    expect(projection.externalIds.size).toBe(0);
     expect(projection.completed).toBe(3);
     expect(projection.edges).toHaveLength(4);
     expect(projection.edges.every((edge) => !edge.external)).toBe(true);
@@ -111,7 +111,7 @@ describe("graph indexing", () => {
     ]);
     const projection = projectRoot(index, A);
     expect(projection.mainIds).toEqual(new Set([A, D, E, F]));
-    expect(projection.boundaryIds).toEqual(new Set([B, C]));
+    expect(projection.externalIds).toEqual(new Set([B, C]));
     expect(projection.completed).toBe(2);
   });
 
@@ -122,7 +122,7 @@ describe("graph indexing", () => {
     ]));
     expect(projectRoot(index, A).completed).toBe(2);
     expect(index.rootProgress.get(A)).toEqual({ total: 2, done: 2, status: "done" });
-    expect(projectRoot(index, C)).toMatchObject({ rootId: C, mainIds: new Set([C]), boundaryIds: new Set(), edges: [], completed: 0 });
+    expect(projectRoot(index, C)).toMatchObject({ rootId: C, mainIds: new Set([C]), externalIds: new Set(), edges: [], completed: 0 });
     expect(index.rootProgress.get(C)).toEqual({ total: 1, done: 0, status: "todo" });
     expect(index.rootProgress.get(D)).toEqual({ total: 1, done: 0, status: "in_progress" });
   });
@@ -150,8 +150,8 @@ describe("graph indexing", () => {
   });
 });
 
-describe("root projection boundaries", () => {
-  it("includes only immediate external predecessors, with no upstream ancestors or boundary progress", () => {
+describe("complete prerequisite projection", () => {
+  it("includes recursive external prerequisites without unrelated successors or external progress", () => {
     const index = buildGraphIndex(graph([
       { id: A, status: "done" }, { id: B }, { id: C, status: "done" },
       { id: D, status: "done", dependsOn: [A] }, { id: E, dependsOn: [B] }, { id: F, status: "done", dependsOn: [C] },
@@ -159,35 +159,75 @@ describe("root projection boundaries", () => {
     ]));
     const projection = projectRoot(index, A);
     expect(projection.mainIds).toEqual(new Set([A, D, G, H]));
-    expect(projection.boundaryIds).toEqual(new Set([E, F]));
+    expect(projection.externalIds).toEqual(new Set([B, C, E, F]));
     expect(projection.mainIds.has(B)).toBe(false);
-    expect(projection.boundaryIds.has(B)).toBe(false);
-    expect(projection.boundaryIds.has(C)).toBe(false);
-    expect(projection.boundaryIds.has(I)).toBe(false);
+    expect(projection.externalIds.has(B)).toBe(true);
+    expect(projection.externalIds.has(C)).toBe(true);
+    expect(projection.externalIds.has(I)).toBe(false);
     expect(projection.completed).toBe(2);
     expect(index.rootProgress.get(A)).toEqual({ total: 4, done: 2, status: "in_progress" });
     expect(projection.edges).toEqual(expect.arrayContaining([
       { source: A, target: D, external: false }, { source: D, target: G, external: false },
       { source: E, target: G, external: true }, { source: F, target: G, external: true },
       { source: G, target: H, external: false },
+      { source: B, target: E, external: true }, { source: C, target: F, external: true },
     ]));
-    expect(projection.edges).toHaveLength(5);
-    expect(projection.edges.every((edge) => projection.mainIds.has(edge.target))).toBe(true);
+    expect(projection.edges).toHaveLength(7);
+    expect(projection.edges.every((edge) => projection.mainIds.has(edge.target) || projection.externalIds.has(edge.target))).toBe(true);
     expect(index.nodes.get(E)?.blockedBy).toEqual([B]);
+  });
+
+  it("keeps A→D and B→C→D complete while excluding C→X", () => {
+    const X = id("X");
+    const input = graph([
+      { id: D, dependsOn: [A, C] }, { id: B }, { id: C, dependsOn: [B] },
+      { id: A }, { id: X, dependsOn: [C] },
+    ]);
+    const index = buildGraphIndex(input);
+    const projection = projectRoot(index, A);
+    expect(projection.mainIds).toEqual(new Set([A, D]));
+    expect([...projection.externalIds]).toEqual([B, C]);
+    expect(projection.edges).toEqual([
+      { source: A, target: D, external: false }, { source: C, target: D, external: true },
+      { source: B, target: C, external: true },
+    ]);
+    expect(index.rootProgress.get(A)).toEqual({ total: 2, done: 0, status: "todo" });
+    expect(input.tasks.map((task) => task.id)).toEqual([D, B, C, A, X]);
+  });
+
+  it("deduplicates completed shared ancestors and follows deep external chains iteratively", () => {
+    const ancestors = Array.from({ length: 996 }, (_, position) => ({
+      id: `external-${position}`, status: "done" as const,
+      dependsOn: position === 0 ? [] : [`external-${position - 1}`],
+    }));
+    const index = buildGraphIndex(graph([
+      { id: A }, ...ancestors,
+      { id: B, status: "done", dependsOn: [ancestors.at(-1)!.id] },
+      { id: C, status: "done", dependsOn: [ancestors.at(-1)!.id] },
+      { id: D, dependsOn: [A, B, C] },
+    ]));
+    const projection = projectRoot(index, A);
+    expect(projection.mainIds).toEqual(new Set([A, D]));
+    expect(projection.externalIds.size).toBe(998);
+    expect(projection.edges).toHaveLength(1000);
+    expect(projection.completed).toBe(0);
+    expect(index.rootProgress.get(A)).toEqual({ total: 2, done: 0, status: "todo" });
+    expect(index.sharedIds).toEqual(new Set([D]));
+    expect(projection.edges.filter((edge) => edge.external)).toHaveLength(999);
   });
 
   it("shows a shared successor once per root while maintaining a unique project index", () => {
     const index = buildGraphIndex(graph([{ id: A }, { id: B }, { id: C, dependsOn: [A, B] }]));
     expect(projectRoot(index, A).mainIds).toEqual(new Set([A, C]));
     expect(projectRoot(index, B).mainIds).toEqual(new Set([B, C]));
-    expect(projectRoot(index, A).boundaryIds).toEqual(new Set([B]));
-    expect(projectRoot(index, B).boundaryIds).toEqual(new Set([A]));
+    expect(projectRoot(index, A).externalIds).toEqual(new Set([B]));
+    expect(projectRoot(index, B).externalIds).toEqual(new Set([A]));
     expect(index.nodes.size).toBe(3);
   });
 
   it.each(["done", "in_progress"] as const)("excludes an external %s prerequisite from a chain's status", (status) => {
     const index = buildGraphIndex(graph([{ id: A }, { id: B, status }, { id: C, dependsOn: [A, B] }]));
-    expect(projectRoot(index, A).boundaryIds).toEqual(new Set([B]));
+    expect(projectRoot(index, A).externalIds).toEqual(new Set([B]));
     expect(index.sharedIds).toEqual(new Set([C]));
     expect(index.rootProgress.get(A)).toEqual({ total: 2, done: 0, status: "todo" });
     expect(index.rootProgress.get(B)).toEqual({ total: 2, done: status === "done" ? 1 : 0, status: "in_progress" });

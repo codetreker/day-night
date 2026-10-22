@@ -54,10 +54,10 @@ cleanup and browser recovery before completing.
 Capacity runs last, after every preparation/check command, native functional
 phase, container functional phase and complete container cleanup. The native
 Go process and PostgreSQL remain alive for this final phase. One browser worker,
-zero retries, all three fixed graphs with five repetitions, both independent
-limits, complete geometry, fifteen CDP traces and all original timing gates
+zero retries, all four fixed graphs with five repetitions, both independent
+limits, complete geometry, twenty CDP traces and all original timing gates
 remain required. Native functional and capacity phases strictly aggregate to
-fourteen unique scenarios; the container target requires ten. Per-phase and
+fifteen unique scenarios; the container target requires ten. Per-phase and
 aggregate validation reject missing, extra or duplicate scenarios and retries,
 and require matching browser identity within a target.
 
@@ -89,10 +89,12 @@ The [web README](../../../../packages/daynight-web/README.md#production-browser-
 owns commands and evidence interpretation. The
 [attachment acceptance decision](2026-10-21-task-attachment-cross-layer-acceptance.md)
 adds one shared installed CLI and one same-data attachment scenario per functional
-target; it retains this schedule and all four capacity scenarios. The later
+target; it retains this schedule and the original capacity scenarios. The later
 [task view decision](../feature/2026-10-22-project-task-views.md) adds
 `project-view-tabs` to both functional targets without changing phase ownership
 or capacity isolation. The
+[complete context decision](../feature/2026-10-22-complete-prerequisite-context.md)
+adds the dense-external capacity graph while preserving that isolation. The
 [web design](../../../../docs/design/daynight-web.md#验证与-ci) owns mechanisms.
 Measured outcomes remain tied to their source, environment and PR/CI run.
 

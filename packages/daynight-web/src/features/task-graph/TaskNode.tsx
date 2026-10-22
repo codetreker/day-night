@@ -5,7 +5,7 @@ import type { CanvasPoint } from './layout';
 
 export type TaskNodeData = {
   task: GraphTask;
-  kind: 'main' | 'boundary';
+  kind: 'main' | 'external';
   shared: boolean;
   selected: boolean;
   center: CanvasPoint;
@@ -22,9 +22,9 @@ export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
   return (
     <button
       type="button"
-      className={`task-node task-node-${data.task.status}${data.kind === 'boundary' ? ' task-node-boundary' : ''}${data.selected ? ' task-node-selected' : ''} nodrag nopan`}
+      className={`task-node task-node-${data.task.status}${data.kind === 'external' ? ' task-node-external' : ''}${data.selected ? ' task-node-selected' : ''} nodrag nopan`}
       style={{ pointerEvents: 'auto' }}
-      aria-label={`${title}，${labels[data.task.status]}${data.task.blockedBy.length > 0 ? '，被阻塞' : ''}${data.kind === 'boundary' ? '，外部前置，上游已省略' : ''}${data.shared ? '，共享任务' : ''}`}
+      aria-label={`${title}，${labels[data.task.status]}${data.task.blockedBy.length > 0 ? '，被阻塞' : ''}${data.kind === 'external' ? '，外部前置' : ''}${data.shared ? '，共享任务' : ''}`}
       aria-haspopup="dialog"
       onClick={(event) => { data.onSelectTask(data.task.id, event.currentTarget); }}
       onFocus={(event) => {
@@ -46,7 +46,7 @@ export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
         <span className={`graph-status graph-status-${data.task.status}`}><i aria-hidden="true" />{labels[data.task.status]}</span>
         {data.task.blockedBy.length > 0 && <span className="graph-blocked-badge">被阻塞</span>}
       </span>
-      {data.kind === 'boundary' && <span className="task-boundary-label">外部前置，上游已省略</span>}
+      {data.kind === 'external' && <span className="task-external-label">外部前置</span>}
     </button>
   );
 });

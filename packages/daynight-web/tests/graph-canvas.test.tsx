@@ -159,24 +159,51 @@ describe('task dependency canvas', () => {
     const { container } = render(<TaskGraph index={index} rootId="A" selectedTaskId="C" onSelectTask={noop} />);
     await waitFor(() => { expect(container.querySelectorAll('.react-flow__edge')).toHaveLength(4); });
     expect(container.querySelectorAll('.react-flow__node')).toHaveLength(5);
-    expect(screen.getByText('5 个节点 · 4 条依赖')).toBeTruthy();
+    expect(screen.getByText('3 个链内任务 · 2 个外部前置 · 4 条依赖')).toBeTruthy();
     expect(nodeButton('基础 API').classList.contains('task-node-done')).toBe(true);
     expect(nodeButton('合流实现…').classList.contains('task-node-in_progress')).toBe(true);
     expect(nodeButton('合流实现…').classList.contains('task-node-selected')).toBe(true);
     expect(nodeButton('最终验收').classList.contains('task-node-todo')).toBe(true);
     expect(within(nodeButton('最终验收')).getByText('被阻塞')).toBeTruthy();
     expect(within(nodeButton('合流实现…')).getByText('共享')).toBeTruthy();
-    expect(within(nodeButton('设计方案')).getByText('外部前置，上游已省略')).toBeTruthy();
+    expect(within(nodeButton('设计方案')).getByText('外部前置')).toBeTruthy();
     expect(nodeButton('设计方案').classList.contains('task-node-done')).toBe(true);
-    expect(nodeButton('发布检查').classList.contains('task-node-boundary')).toBe(true);
+    expect(nodeButton('发布检查').classList.contains('task-node-external')).toBe(true);
     const paths = [...container.querySelectorAll<SVGPathElement>('.react-flow__edge-path')];
     expect(paths.every((path) => path.getAttribute('marker-end')?.startsWith('url('))).toBe(true);
     expect(paths.filter((path) => path.style.strokeDasharray === '5 4')).toHaveLength(2);
     expect(screen.queryByRole('button', { name: /^独立任务，/ })).toBeNull();
   });
 
+  it('renders the entire external ancestor closure with its own count and keeps card details behavior', async () => {
+    const completed = graph.tasks[1]!;
+    const externalGraph: TaskGraphData = {
+      ...graph, summary: { total: 6, todo: 3, inProgress: 0, done: 3, ready: 2, blocked: 1 },
+      tasks: [
+        graph.tasks[0]!,
+        { ...completed, id: 'P', titlePreview: '已完成外部祖先', dependsOn: [] },
+        { ...completed, id: 'B', titlePreview: '已完成外部前置', dependsOn: ['P'] },
+        { ...graph.tasks[3]!, dependsOn: ['A', 'B'], blockedBy: [], ready: true },
+        { ...graph.tasks[4]!, id: 'X', titlePreview: '外部前置的无关后续', dependsOn: ['B'], blockedBy: [], ready: true },
+        { ...graph.tasks[5]!, id: 'Y', dependsOn: ['D'], blockedBy: ['D'], ready: false },
+      ],
+    };
+    const onSelectTask = vi.fn();
+    const { container } = render(<TaskGraph index={buildGraphIndex(externalGraph)} rootId="A" selectedTaskId={null} onSelectTask={onSelectTask} />);
+    await waitFor(() => { expect(container.querySelectorAll('.react-flow__node')).toHaveLength(5); });
+    expect(screen.getByText('3 个链内任务 · 2 个外部前置 · 4 条依赖')).toBeTruthy();
+    expect(nodeButton('已完成外部祖先')).toHaveClass('task-node-external', 'task-node-done');
+    expect(nodeButton('已完成外部前置')).toHaveAccessibleName('已完成外部前置，已完成，外部前置');
+    expect(screen.queryByRole('button', { name: /外部前置的无关后续/ })).toBeNull();
+    const externalRoute = container.querySelector('[data-id="P->B"] .react-flow__edge-path');
+    expect(externalRoute).toHaveStyle({ strokeDasharray: '5 4' });
+    fireEvent.click(nodeButton('已完成外部祖先'));
+    expect(onSelectTask).toHaveBeenCalledWith('P', nodeButton('已完成外部祖先'));
+    expect(screen.getByText('虚线节点及连线：外部前置（已补齐全部上游）')).toBeTruthy();
+  });
+
   it('uses every exact Dagre point in an accessible noninteractive dependency layer', async () => {
-    const expected = layoutModule.layoutGraph({ rootId: 'A', mainIds: new Set(['A', 'C', 'D']), boundaryIds: new Set(['B', 'F']), edges: [
+    const expected = layoutModule.layoutGraph({ rootId: 'A', mainIds: new Set(['A', 'C', 'D']), externalIds: new Set(['B', 'F']), edges: [
       { source: 'A', target: 'C', external: false }, { source: 'B', target: 'C', external: true },
       { source: 'C', target: 'D', external: false }, { source: 'F', target: 'D', external: true },
     ], completed: 1 });
@@ -472,7 +499,7 @@ describe('task dependency canvas', () => {
 
 describe('initial task viewport policy', () => {
   it('centers a fitting graph normally rather than anchoring every root to the left', () => {
-    const geometry = layoutModule.layoutGraph({ rootId: 'root', mainIds: new Set(['root']), boundaryIds: new Set(), edges: [], completed: 0 });
+    const geometry = layoutModule.layoutGraph({ rootId: 'root', mainIds: new Set(['root']), externalIds: new Set(), edges: [], completed: 0 });
     const actual = getInitialTaskViewport(geometry, 'root', 800, 445);
     const root = geometry.nodes[0]!;
     expect(actual.zoom).toBeGreaterThanOrEqual(0.8);
@@ -480,6 +507,23 @@ describe('initial task viewport policy', () => {
     expect(root.position.x * actual.zoom + actual.x).toBeGreaterThan(32);
     expect((root.position.x + layoutModule.TASK_NODE_WIDTH / 2) * actual.zoom + actual.x).toBeCloseTo(400);
     expect((root.position.y + layoutModule.TASK_NODE_HEIGHT / 2) * actual.zoom + actual.y).toBeCloseTo(222.5);
+  });
+
+  it.each([320, 800])('starts with the complete leftmost upstream region when it lies before the root at width %s', (width) => {
+    const geometry: layoutModule.CanvasLayout = {
+      nodes: [
+        { id: 'root', kind: 'main', position: { x: 20000, y: 12000 } },
+        { id: 'later-upstream', kind: 'external', position: { x: 32, y: 9000 } },
+        { id: 'first-upstream', kind: 'external', position: { x: 32, y: 2000 } },
+        { id: 'tail', kind: 'main', position: { x: 20284, y: 12000 } },
+      ], edges: [], width: 20536, height: 13000,
+    };
+    const actual = getInitialTaskViewport(geometry, 'root', width, 445);
+    expect(actual.zoom).toBe(0.8);
+    expect(32 * actual.zoom + actual.x).toBe(32);
+    expect(2000 * actual.zoom + actual.y).toBe(32);
+    expect((32 + layoutModule.TASK_NODE_WIDTH) * actual.zoom + actual.x).toBeLessThan(width);
+    expect((2000 + layoutModule.TASK_NODE_HEIGHT) * actual.zoom + actual.y).toBeLessThan(445);
   });
 
   it.each([

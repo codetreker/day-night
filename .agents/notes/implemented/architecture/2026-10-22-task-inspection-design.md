@@ -15,9 +15,12 @@ structured descriptions and planning attachments.
 The adopted [requirements](../../../../docs/spec/daynight-task-inspection.md)
 and [design](../../../../docs/design/daynight-task-inspection.md) define the
 target behavior. This delivery consists of that design, an interactive visual
-prototype and a four-task implementation breakdown. Runtime changes remain
-pending in their Daynight tasks; existing implemented notes still describe the
-current projection, paint and detail mechanisms.
+prototype and a four-task implementation breakdown. The
+[complete prerequisite context decision](../feature/2026-10-22-complete-prerequisite-context.md)
+implements the first task: complete ancestors, separate counts and a readable
+upstream-aware initial viewport. Graph inspection and smooth paths, centered
+reading, and Markdown descriptions remain pending in their Daynight tasks.
+Existing paint and detail notes describe their current mechanisms.
 
 The root and its descendants remain the chain's counted membership. Rendering
 adds the complete prerequisite closure without importing unrelated descendants
@@ -88,9 +91,10 @@ or separate structural decisions. Keeping raw description strings, independent
 selection/resource state, caller-owned URL handling and immutable route
 geometry preserves affordable extension points without claiming those features.
 
-The existing [projection](../feature/2026-10-20-task-graph-projection.md),
+The [projection](../feature/2026-10-20-task-graph-projection.md) note retains the
+original direct-boundary rationale and links its replacement. The existing
 [paint repair](../bug-fix/2026-10-20-long-dashed-dependency-paint.md) and
-[fullscreen](../feature/2026-10-22-task-graph-fullscreen.md) notes remain
-current until their implementation tasks revise the affected mechanisms and
-cross-link any replacement decisions. The standalone prototype proves its own
+[fullscreen](../feature/2026-10-22-task-graph-fullscreen.md) notes remain current
+until their implementation tasks revise the affected mechanisms and cross-link
+any replacement decisions. The standalone prototype proves its own
 interaction, not production behavior or capacity.

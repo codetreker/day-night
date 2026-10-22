@@ -63,9 +63,11 @@ scenario, retaining the existing failure rule for every unrelated mutation.
 
 The attachment delivery expanded each target to nine functional scenarios. The
 later [task view decision](../feature/2026-10-22-project-task-views.md) adds
-`project-view-tabs`, so each target now has ten. Native capacity retains its four
-original scenarios and all timing/geometry gates. Strict inventories therefore
-require 14 unique native scenarios and ten container scenarios. One worker,
+`project-view-tabs`, so each target now has ten. The
+[complete context decision](../feature/2026-10-22-complete-prerequisite-context.md)
+adds a dense-external capacity graph; native capacity preserves its four original
+scenarios and all timing/geometry gates. Strict inventories therefore require 15
+unique native scenarios and ten container scenarios. One worker,
 zero retries, complete reports and cleanup remain mandatory.
 
 All phases use the full bundled Chromium channel `chromium`, retaining the

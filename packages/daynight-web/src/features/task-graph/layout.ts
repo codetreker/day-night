@@ -12,7 +12,7 @@ export type CanvasPoint = {
 export type CanvasNode = {
   readonly id: string;
   readonly position: CanvasPoint;
-  readonly kind: 'main' | 'boundary';
+  readonly kind: 'main' | 'external';
 };
 
 export type CanvasEdge = {
@@ -38,7 +38,7 @@ const finite = (value: number | undefined): number => {
 };
 
 export const layoutGraph = (projection: RootProjection): CanvasLayout => {
-  const ids = [...projection.mainIds, ...projection.boundaryIds].sort(compare);
+  const ids = [...projection.mainIds, ...projection.externalIds].sort(compare);
   if (ids.length === 0) return { nodes: [], edges: [], width: 0, height: 0 };
 
   const graph = new Graph<GraphLabel, NodeLabel, EdgeLabel>({ directed: true });
@@ -60,7 +60,7 @@ export const layoutGraph = (projection: RootProjection): CanvasLayout => {
     if (x < 0 || y < 0 || x + TASK_NODE_WIDTH > width || y + TASK_NODE_HEIGHT > height) {
       throw new Error('Task graph layout placed a node outside its bounds.');
     }
-    return { id, position: { x, y }, kind: projection.mainIds.has(id) ? 'main' : 'boundary' };
+    return { id, position: { x, y }, kind: projection.mainIds.has(id) ? 'main' : 'external' };
   });
 
   const edges: CanvasEdge[] = sortedEdges.map((edge) => {

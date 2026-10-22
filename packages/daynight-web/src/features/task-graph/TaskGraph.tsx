@@ -81,9 +81,12 @@ export const getInitialTaskViewport = (geometry: CanvasLayout, rootId: string, w
   const fitted = getViewportForBounds(bounds, width, height, 0.8, 1, 0.15);
   if (bounds.width * fitted.zoom <= width && bounds.height * fitted.zoom <= height) return fitted;
   const root = geometry.nodes.find((node) => node.id === rootId)!;
+  const upstreamTop = Math.min(...geometry.nodes.filter((node) => node.position.x === left).map((node) => node.position.y));
   return {
-    x: 32 - root.position.x * fitted.zoom,
-    y: height / 2 - (root.position.y + TASK_NODE_HEIGHT / 2) * fitted.zoom,
+    x: 32 - left * fitted.zoom,
+    y: root.position.x === left
+      ? height / 2 - (root.position.y + TASK_NODE_HEIGHT / 2) * fitted.zoom
+      : 32 - upstreamTop * fitted.zoom,
     zoom: fitted.zoom,
   };
 };
@@ -128,7 +131,7 @@ const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry }: T
       <div className="graph-toolbar">
         <span>横向依赖图</span>
         <div className="graph-toolbar-actions">
-          <span>{nodes.length} 个节点 · {geometry.edges.length} 条依赖</span>
+          <span>{geometry.nodes.filter((node) => node.kind === 'main').length} 个链内任务 · {geometry.nodes.filter((node) => node.kind === 'external').length} 个外部前置 · {geometry.edges.length} 条依赖</span>
           <button className="button graph-fullscreen-toggle" type="button" ref={toggleRef} onClick={toggle}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
               <path d={fullscreen ? 'M4 9h5V4m6 0v5h5M4 15h5v5m6 0v-5h5' : 'M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5'} />
@@ -169,7 +172,7 @@ const TaskCanvas = ({ index, rootId, selectedTaskId, onSelectTask, geometry }: T
           <Controls position="top-right" orientation="horizontal" showInteractive={false} fitViewOptions={viewportFitOptions} />
         </ReactFlow>
       </div>
-      <div className="graph-foot"><span>箭头表示前置 → 后续</span><span>虚线节点：外部前置，上游已省略</span></div>
+      <div className="graph-foot"><span>箭头表示前置 → 后续</span><span>虚线节点及连线：外部前置（已补齐全部上游）</span></div>
     </div>
   );
 };

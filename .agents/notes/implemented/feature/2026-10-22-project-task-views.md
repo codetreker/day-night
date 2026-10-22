@@ -83,4 +83,6 @@ return. Keyboard tabs, native row actions and active-view focus restoration are
 part of the delivered interaction, including empty and all-completed views.
 The actual-backend `project-view-tabs` scenario runs on native and production
 container targets; the [acceptance pipeline](../testing/2026-10-21-web-acceptance-pipeline.md)
-retains strict inventory validation and all four capacity/limit scenarios.
+retains strict inventory validation and the original capacity/limit scenarios.
+The [complete context decision](2026-10-22-complete-prerequisite-context.md) adds
+dense external ancestry without changing tab classification or chain membership.
