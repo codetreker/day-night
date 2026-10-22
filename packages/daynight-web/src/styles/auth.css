@@ -34,12 +34,13 @@
 }
 
 .account-name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.account-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; min-width: 0; max-width: 100%; }
+.account-actions > .locale-preference { max-width: 380px; }
+.account-actions > .inline-link { flex: none; }
 .avatar { width: 30px; height: 30px; border-radius: 50%; background: #eaeafa; color: #6664ad; display: inline-flex; align-items: center; justify-content: center; flex: none; font-size: 11px; font-weight: 650; }
 .avatar.green { background: #e6f3ee; color: #3e806a; }
 .avatar.amber { background: #fbefdf; color: #987244; }
-.actions, .heading-actions, .project-title-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
-.heading-actions { justify-content: flex-end; }
-.project-title-actions { gap: 8px; }
+.actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 .badge { display: inline-flex; align-items: center; font-size: 10px; padding: 3px 7px; border-radius: 4px; background: #f0f1f6; color: #707b8d; white-space: nowrap; }
 .badge.admin { background: #efeffd; color: #6361b0; }
 .badge.success { background: #eaf5ef; color: #398567; }
@@ -129,7 +130,10 @@
 .auth-visual span { border: 1px solid #ffffff16; border-radius: 7px; min-height: 73px; padding: 15px 12px; color: #afbad0; font-size: 10px; }
 .auth-visual span::before { content: ""; display: block; width: 26px; height: 3px; border-radius: 2px; background: #8e8be0; margin-bottom: 13px; }
 .auth-main { display: flex; align-items: center; justify-content: center; padding: 48px 32px 90px; min-width: 0; }
+.auth-main .state-box { min-width: 0; max-width: 100%; }
+.auth-main .locale-preference { max-width: 100%; }
 .auth-card { width: 100%; max-width: 370px; }
+.auth-card > .locale-preference, .invite-card > .locale-preference { max-width: 100%; margin-bottom: 24px; }
 .auth-card h1 { font-size: 27px; margin-bottom: 11px; overflow-wrap: anywhere; }
 .auth-card .subtitle { line-height: 1.8; }
 .provider-list { display: flex; flex-direction: column; gap: 12px; margin: 30px 0 21px; }
@@ -174,8 +178,9 @@ dialog.auth-dialog { max-width: calc(100vw - 32px); }
 dialog.auth-dialog:not([open]) { display: none; }
 dialog.auth-dialog::backdrop { background: #19233560; backdrop-filter: blur(2px); }
 .auth-dialog > form { display: flex; flex-direction: column; min-height: 0; max-height: inherit; }
-.auth-dialog .dialog-header { padding: 22px 25px 17px; display: flex; justify-content: space-between; gap: 15px; align-items: center; border-bottom: 1px solid var(--line); flex: none; }
-.auth-dialog .dialog-header h2 { font-size: 18px; margin: 0; overflow-wrap: anywhere; }
+.auth-dialog .dialog-header { padding: 22px 25px 17px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 15px; align-items: center; border-bottom: 1px solid var(--line); flex: none; }
+.auth-dialog .dialog-header h2 { font-size: 18px; margin: 0; overflow-wrap: anywhere; min-width: 0; }
+.auth-dialog .dialog-header > .locale-preference { max-width: 190px; }
 .auth-dialog .close-button { border: 0; background: none; color: #7a8598; width: 28px; height: 28px; border-radius: 5px; display: flex; align-items: center; justify-content: center; flex: none; }
 .auth-dialog .close-button:hover:not(:disabled) { background: #f3f4f8; }
 .auth-dialog .dialog-body { padding: 23px 25px; color: #637087; font-size: 12px; overflow: auto; overscroll-behavior: contain; min-height: 0; }
@@ -240,6 +245,9 @@ dialog.auth-revalidation-overlay:not([open]) { display: none; }
 dialog.auth-revalidation-overlay::backdrop { background: var(--bg); }
 .auth-revalidation-overlay > :is([role="status"], [role="alert"]) { display: flex; flex-direction: column; align-items: center; gap: 16px; max-width: 640px; }
 .auth-revalidation-overlay h1 { margin: 0; }
+.auth-revalidation-overlay > .locale-preference { width: max-content; max-width: 100%; margin-bottom: 8px; }
+.auth-revalidation-overlay .locale-control { justify-content: center; }
+:where(.auth-main, .invite-page, .auth-dialog, .auth-revalidation-overlay) .locale-control { flex-wrap: wrap; white-space: normal; }
 
 :where(.auth-shell, .auth-page, .invite-page, .auth-dialog) :is(input, select, textarea):focus-visible { outline: 3px solid #8c8cf0; outline-offset: 3px; }
 :where(.auth-shell, .auth-page, .invite-page) h1:focus { outline: none; }
@@ -275,9 +283,12 @@ dialog.auth-revalidation-overlay::backdrop { background: var(--bg); }
   .auth-shell .nav-button.account-nav { display: none; }
   .auth-shell .content { padding-bottom: 80px; }
   .account-button { font-size: 11px; gap: 6px; }
+  .account-actions { width: 100%; justify-content: flex-start; gap: 10px; }
+  .account-actions > .locale-preference { max-width: 100%; }
+  .account-actions > .locale-preference:has(.locale-notice) { flex-basis: 100%; }
+  .account-actions .locale-control { flex-wrap: wrap; white-space: normal; }
   .account-button .avatar { width: 26px; height: 26px; font-size: 10px; }
   .account-name { display: none; }
-  .heading-actions { gap: 7px; }
   .notice { font-size: 11px; padding: 11px 13px; }
   .notice > .button { margin: 8px 0 0; }
   .row { display: flex; flex-wrap: wrap; gap: 12px; padding: 17px; }
@@ -301,8 +312,10 @@ dialog.auth-revalidation-overlay::backdrop { background: var(--bg); }
   .invite-card h1 { font-size: 22px; }
   .invite-account .person { gap: 8px; }
   .invite-account .person-name { font-size: 11px; }
-  .auth-dialog .dialog-header { padding: 18px 20px 15px; }
+  .auth-dialog .dialog-header { padding: 18px 20px 15px; grid-template-columns: minmax(0, 1fr) auto; }
   .auth-dialog .dialog-header h2 { font-size: 17px; }
+  .auth-dialog .dialog-header > .locale-preference { grid-column: 1 / -1; grid-row: 2; max-width: 100%; }
+  .auth-dialog .dialog-header > .close-button { grid-column: 2; grid-row: 1; }
   .auth-dialog .dialog-body { padding: 20px; }
   .auth-dialog .dialog-footer { padding: 15px 20px; }
   .credential { flex-direction: column; }

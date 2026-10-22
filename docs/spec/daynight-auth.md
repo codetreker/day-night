@@ -2,7 +2,8 @@
 
 状态：身份/凭据及项目成员基础模块已实现，均未挂入生产路由；CLI 凭据配置和
 HTTP 传输及可显式挂载的 Web 鉴权界面已实现。生产 Web 主入口及服务鉴权统一
-启用仍由后续任务交付，登录方式的真实 App-aware discovery 依赖 UniAuth 能力。
+启用仍由后续任务交付；UniAuth 的 App-aware discovery 已在上游交付，Daynight
+当前旧 SDK 固定版本的升级与接线仍由统一启用任务完成。
 本文定义接入现有 UniAuth 后的完整交付行为，
 [架构设计](../design/daynight-auth.md)拥有实现机制，
 [任务入口](../design/daynight-auth-tasks.md)连接 Daynight 中的执行资料。
@@ -48,7 +49,9 @@ CLI 创建私有项目，创建者自动成为管理员；Web 表单复用现有
 协议接线由统一启用任务交付。
 
 浏览器使用服务端持久化的主站会话。生产 Cookie 为 host-only、Secure、HttpOnly、
-SameSite=Lax；本机 loopback HTTP 使用明确的开发配置和适合 HTTP 的 Cookie 名称。
+SameSite=Lax；本机 loopback 或明确授权的受控 HTTP 测试 origin 使用显式开发配置
+和适合 HTTP 的 Cookie 名称。自定义测试 origin 的接线由统一启用任务交付，当前
+生产运行边界保持不变。
 返回位置限主站内部路径。注销终止当前 Daynight 会话，上游登录状态由 UniAuth 管理。
 Cookie 写请求校验精确主站 Origin；明确提供无效 Bearer 时拒绝，不回退到 Cookie。
 
@@ -95,6 +98,12 @@ CLI 使用可选 `serverToken`。setup 提供隐藏输入与布尔 `--server-tok
 明确确认才 accept，结束后清理。PAT 和邀请链接仅在创建时展示，复制失败可恢复，
 关闭前提示并确认一次性秘密无法重新读取。错误保留 requestId，不伪装成空列表。
 
+全部第一方鉴权界面遵守[双语要求](daynight-web-i18n.md)：登录、项目创建、账户、
+成员、邀请、令牌、管理对话框及其文档标题、无障碍文案、错误、校验和异步通知
+同时覆盖英语与简体中文。复用同一 LocaleProvider、语言选择器和原生格式化器，
+语言只改变展示；输入、一次性秘密、成员观察版本、当前身份及进行中的请求保持，
+切换不触发请求重试或重复提交。
+
 ## 同源附件
 
 HTML 附件继续作为可信项目代码，拥有浏览者当前的主站权限。这沿用既有附件决策；
@@ -125,6 +134,12 @@ callback 失败会返回主站的通用登录错误状态，错误绑定仍明�
 健康检查使用无业务数据的独立入口，不匿名读取项目列表。启用后缺少必需鉴权配置
 拒绝启动，所有业务入口强制认证。
 
+UniAuth 服务地址、App ID/Secret、公开应用 origin 和完整 callback URI 均由部署
+配置提供，不写死已注册路径。callback 与公开 origin 一致并与 UniAuth App 登记值
+精确匹配，支持 `/auth/callback` 等自定义路径。显式受控 HTTP 测试 origin 的配置
+和 SDK 验证由统一启用任务交付，不能将测试域名自动当作 literal loopback；这些
+要求不表示当前生产配置已启用。
+
 开发/CI 复用数值 loopback 的同源 HTTP 与现有进程/容器结构，显式启用 SDK 已支持的
 AllowLoopbackHTTP。固定 public origin 与 listener 分开配置，注册精确 callback；
 不增加域名、证书或网关。真实 UniAuth 能力不足时记录具体协议缺口与证据，交由
@@ -141,7 +156,7 @@ UniAuth 维护者处理，不推导额外架构。
 | AU-V5 | 邀请 GET/inspect 不消费；明确确认、过期、撤销、并发、已有成员和创建者离任符合规则。 |
 | AU-V6 | 注销、PAT 撤销/到期、成员移除覆盖 Web、安装 CLI 和文件资源；已准入传输边界有证据。 |
 | AU-V7 | 同源可执行 HTML、脚本/模块/相对资源、直接预览、HEAD、图片/PDF、二进制下载、Esc/Tab/焦点及窄屏保持；未认证资源访问拒绝。 |
-| AU-V8 | 最终样式原型覆盖登录、项目、成员、邀请、令牌、预览的成功/空/加载/失败/失效/禁用/长内容，最终 UI 与其一致。 |
+| AU-V8 | 最终样式原型覆盖登录、项目、成员、邀请、令牌、预览的成功/空/加载/失败/失效/禁用/长内容；英语和简体中文均遵守原型、双语 L1–L10、状态与请求保持要求。 |
 | AU-V9 | 启用的同一版本通过原有适用 Go/CLI/Web/部署门禁、严格覆盖率、原生安装/补全、生产浏览器及资源预算。 |
 | AU-V10 | 日志按请求/用户/项目关联登录、授权和错误；Cookie、PAT、App Secret、code 与邀请秘密不进入诊断或持久 URL。 |
 

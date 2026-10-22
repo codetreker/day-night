@@ -54,8 +54,10 @@ and adds `capacity-external`: 1,000 nodes and 5,000 edges, with two main tasks a
 300ms local-feedback budgets, complete geometry checks and independent size
 refusals. The new initial upstream task replaces only that dataset's readable
 root condition; existing datasets retain their root-visibility checks. Strict
-inventory validation requires ten native functional scenarios plus five native
-capacity/limit scenarios and ten container functional scenarios.
+inventory validation retains five native capacity/limit scenarios. The later
+[bilingual interface decision](2026-10-22-web-bilingual-interface.md) expands
+functional checks to thirteen per target, producing eighteen unique native
+scenarios and thirteen container scenarios without changing that matrix.
 
 The [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 the [web design](../../../../docs/design/daynight-web.md) owns model and viewport

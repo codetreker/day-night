@@ -26,8 +26,11 @@ mounting them. [CLI credentials](2026-10-22-cli-server-credentials.md) implement
 origin-bound optional tokens, hidden/stdin setup, safe persistence and shared
 HTTP Bearer transport. The opt-in [Web workspace](../feature/2026-10-22-web-auth-workspace.md)
 implements authentication and project-management components without replacing
-production `main.tsx`. App-aware provider discovery, production mounting and
-full activation remain separately tracked.
+production `main.tsx`, which now mounts `LocaleProvider` around `App`. The opt-in
+shell uses that same Provider and both complete catalogs. UniAuth
+[PR #19](https://github.com/codetreker/uniauth/pull/19) supplies App-aware provider
+discovery upstream; upgrading Daynight's existing SDK pin, production mounting
+and full activation remain separately tracked.
 
 Existing UniAuth and its Go SDK provide one-time identity handoff. Daynight owns
 stable local users, browser sessions, personal access tokens, project memberships
@@ -59,8 +62,13 @@ existing acceptance callers. It already proves the integrated security contract;
 a final combined receipt supplements those proofs.
 
 Development and CI reuse same-origin numeric-loopback HTTP and UniAuth's existing
-explicit AllowLoopbackHTTP support. Production uses the application's configured
-HTTPS origin and existing entry point. A concrete UniAuth limitation must be
+explicit AllowLoopbackHTTP support for the gateway. Production uses the
+application's configured HTTPS origin and existing entry point. The activation
+design makes the complete registered callback URL configurable, including a
+custom `/auth/callback` path. Explicitly configured HTTP test application origins
+require the upgraded SDK and Daynight test cookie/origin policy; they do not
+change the current loopback-only implementation or imply that a test hostname
+is a loopback address. A concrete UniAuth limitation must be
 reported with evidence to its maintainer; an assumed gap does not authorize a
 workaround architecture or changes to UniAuth.
 

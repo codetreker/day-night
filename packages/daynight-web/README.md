@@ -26,7 +26,7 @@ The [authentication requirements](../../docs/spec/daynight-auth.md),
 [task breakdown](../../docs/design/daynight-auth-tasks.md) define login, private
 projects, member and invitation management, and personal access tokens. The
 opt-in `AuthenticatedApp` implements their browser components and API client.
-Production `main.tsx` still renders `App`; the deployed workspace remains
+Production `main.tsx` still renders `App` under `LocaleProvider`; the deployed workspace remains
 unauthenticated and loopback-only until coordinated activation. Trusted
 same-origin previews, relative resources and keyboard behavior remain unchanged.
 The [Web workspace decision](../../.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
@@ -34,7 +34,13 @@ owns this integration boundary and its lifecycle choices.
 
 ## Authenticated workspace
 
-`AuthenticatedApp` owns current-user loading, login navigation and session loss.
+`AuthenticatedApp` runs under the same `LocaleProvider` as the existing
+workspace and owns current-user loading, login navigation and session loss. Both
+complete catalogs provide its `messages.auth` domain, including accessible names,
+validation, notices and already displayed errors. Login, workspace, invitation
+and management dialogs expose the shared language selector; native formatters
+render dates and counts. Language changes retain form inputs, dialog and
+one-time secrets, identity and pending requests without restarting operations.
 It composes the existing project list, graph and centered `TaskDetailDialog` with
 private project creation, account/token pages, member/invitation management and
 explicit invitation acceptance. Identity changes invalidate outstanding requests
@@ -55,34 +61,40 @@ The login page reads `GET /api/v1/auth/providers` with response
 implemented production backend route. The response must reflect the configured
 UniAuth App's allowed and enabled providers. Discovery failures and an empty
 provider set have explicit states; the UI does not invent a provider list. Real
-App-aware UniAuth discovery and backend exposure belong to coordinated activation
-and require the upstream capability described in the
+App-aware UniAuth discovery and backend exposure belong to coordinated activation.
+UniAuth [PR #19](https://github.com/codetreker/uniauth/pull/19) supplies the upstream
+capability; Daynight retains its older SDK pin until that activation upgrades and
+connects it, as described in the
 [authentication architecture](../../docs/design/daynight-auth.md#登录方式发现).
 
 With `pnpm web:dev`, open `/tests/mockups/auth.html` for actual components with
-controlled fetch responses and final styles. This fixture validates frontend
+controlled fetch responses, the same locale Provider and final styles. This fixture validates frontend
 interaction separately from production service mounting and real third-party
 login. The [static design prototype](../../docs/design/mockups/auth/index.html)
 retains the broader scenario reference.
 
-## Language runtime
+## Languages
 
-The [language requirements](../../docs/spec/daynight-web-i18n.md) define the full
-English and Simplified Chinese interface. The implemented
-[runtime design](../../docs/design/daynight-web-i18n.md) provides typed catalogs,
-cached native Intl formatters, explicit initial resolution, a Provider and a
-shared native language selector under `src/i18n/`. Production `main.tsx`, `App`
-and feature components are not yet mounted under that Provider and retain their
-current Chinese behavior. Complete interface integration and real production
-acceptance are separately tracked in Daynight.
+The [language requirements](../../docs/spec/daynight-web-i18n.md) define the
+implemented English and Simplified Chinese interface. The
+[language design](../../docs/design/daynight-web-i18n.md) owns typed catalogs,
+cached native Intl formatters, initial resolution, a Provider and the shared
+native selector under `src/i18n/`. Production `main.tsx` resolves language and
+sets HTML `lang` and the route title before React renders. `App` updates document
+metadata on navigation and language changes. The top bar, centered detail dialog
+and fullscreen graph expose selectors using the same saved language. Combined
+source-bound production verification is separately tracked in Daynight.
 
 `LocaleProvider` requires an explicit initial locale result. `useI18n()` reads
 `locale`, `messages` and `format`; `useLocaleCommands()` exposes selection and
 save retry; `useLocalePreference()` additionally exposes the current storage
 issue. Hooks fail clearly outside the Provider. Component tests can use
 `tests/helpers/renderWithLocale.tsx` to choose deterministic language and storage
-behavior. The base message contract includes runtime messages only; feature
-integration extends the same complete contract in both catalogs.
+behavior. `common.status` and `common.requestId` own shared task labels;
+`workspace`, `graph` and `inspection` own navigation/project, graph and
+detail/PR/attachment messages in both complete catalogs. Structured errors and
+semantic notices render in the current language, including operations completed
+after switching. User content, request IDs and exact file bytes keep their values.
 
 Initial resolution prefers a valid explicit value, then the first supported
 browser language, then English. Chinese language variants use Simplified Chinese.
@@ -96,9 +108,13 @@ are outside this runtime's persistence guarantee.
 With `pnpm web:dev`, open `/tests/mockups/locale-runtime.html` for the
 [actual-component runtime preview](tests/mockups/locale-runtime.html). It shows
 shared selectors and retained fixture state with production selector styles
-and no Go API or PostgreSQL. This isolated preview verifies the foundation;
-the full bilingual interface mockup remains attached to its Daynight task. Web
-typecheck, test and build include the runtime under the existing coverage gate.
+and no Go API or PostgreSQL. The actual-component
+[browsing](tests/mockups/browsing.html) and
+[attachment](tests/mockups/attachments.html) previews also mount the Provider
+explicitly. The full bilingual mockup remains attached to Daynight task
+`8759f829-dc0c-4aec-9d83-e0fd9e5bd009`. Fixtures verify frontend behavior;
+production claims require real service receipts. Web typecheck, test and build
+include all translated components under the existing coverage gate.
 
 ## Development
 
@@ -116,15 +132,15 @@ server order, and follows `nextCursor` through Load more. Repeated IDs count onc
 Refresh discards old pages and cursors; late responses cannot repopulate them.
 
 The application implements `/` and `/projects/{projectId}`, direct URL reload,
-browser back/forward and a generic not-found page. A project shows six statistics
+browser back/forward and a generic not-found page. A project shows seven statistics
 from one complete graph snapshot and two in-project tabs: Standalone tasks and
 Task chains. The first visit opens Task chains; subsequent visits restore the
-project's last tab. Both tab badges count unfinished tasks (pending and in
+project's last tab. Both tab badges count unfinished tasks (proposed, pending and in
 progress) from the complete snapshot. Standalone tasks count individually;
 Task chains counts every non-standalone task once across all roots, including
 shared successors. Counts ignore completed-item visibility, the active tab and
 the expanded chain; all-completed categories display zero. Their sum equals the
-project's pending plus in-progress total. List toolbars retain visible/total
+project's proposed plus pending plus in-progress total. List toolbars retain visible/total
 standalone-item or root-chain counts. A standalone task has no prerequisites
 and no successors in the complete graph. Every other root remains a root-based
 chain entry, including multiple roots with shared successors. Task status never
@@ -135,12 +151,24 @@ Standalone rows display the title, individual status, ID and creation time and
 open the existing task detail dialog directly. Chain rows display aggregate progress
 and status: done only when every distinct root and reachable successor task is
 done; in progress when any is done or in progress and the chain is unfinished;
-otherwise pending. A completed root with unfinished descendants stays visible.
+otherwise pending when any main task is todo; otherwise every main task is
+proposed. A completed root with unfinished descendants stays visible.
 External prerequisite context does not contribute to chain status. Node and
 detail status continue to describe individual tasks. Chain badges, completed
 counts and filtering share the same model-derived status, rebuilt with each
 snapshot; the [chain status decision](../../.agents/notes/implemented/bug-fix/2026-10-22-task-chain-status.md)
 records its rationale.
+
+Proposed tasks use the current catalog label, Proposed or 待审批, and a distinct
+purple status color in
+statistics, standalone rows, chain badges, graph nodes and task details. The
+required graph summary includes `proposed`; totals satisfy
+`total = proposed + todo + inProgress + done`. Only todo tasks contribute to ready
+or blocked counts. Proposed tasks remain unfinished even when all prerequisites
+are complete. Task fields remain read-only; the prepared reader contract does
+not expose an approval control. Creation still starts in todo through the public
+API. The [four-state reader decision](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
+explains the storage/read preparation and lifecycle boundary.
 
 Both lists use newest creation first, with descending IDs breaking equal-time
 ties. Presentation reverses the exact API sequence without reducing timestamp
@@ -370,7 +398,7 @@ runner remains the owner of the built/running image identity and full cleanup.
 
 Native functional checks start after the native process and browser are ready.
 Their browser cleanup must pass before an atomic, run/source-bound permission
-releases the container's ten functional checks. Capacity runs last, after all
+releases the container's thirteen functional checks. Capacity runs last, after all
 preparation and coverage commands, container checks, full dev-ci cleanup and
 container browser recovery have finished. Every browser phase retains one
 worker and zero retries. CI runs controlled deployment fixtures before the
@@ -417,14 +445,17 @@ the same browser identity.
 The command builds real embedded assets and a new Go executable and owns a
 separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
 the normal dev-ci runner builds and starts the actual production image. Browser
-execution proceeds through ten native functional scenarios, the same ten
+execution proceeds through thirteen native functional scenarios, the same thirteen
 functional scenarios through the production image's stream gateway, then five
 native capacity/limit scenarios. The native process and PostgreSQL remain alive
 through the capacity phase; other preparation commands and the complete
 container stack have finished before that phase starts. No normal localhost service or dataset is used. Functional and
 capacity fixtures use the real write APIs. The original eight graph scenarios and `project-view-tabs` retain
-their GET/HEAD-only browser checks. Only `task-attachments` allows exact
-fixture-scoped PUT/DELETE file routes; unrelated mutations remain failures.
+their GET/HEAD-only browser checks. `task-attachments` and
+`language-state-preservation` allow exact fixture-scoped PUT/DELETE file routes;
+the latter holds each upload, overwrite and deletion while changing language to
+verify one write and retained state. Other language scenarios remain GET/HEAD-only,
+and unrelated mutations remain failures.
 One packed/installed CLI is shared by the whole web run. On each target,
 `task-attachments` uploads through that CLI and consumes the same task/files in
 the production page, then checks Web mutations through raw CLI reads. It covers
@@ -459,9 +490,11 @@ complete reports fails.
 
 The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [attachment journey](tests/e2e/attachments.spec.ts),
+[language journeys](tests/e2e/i18n.spec.ts),
 [capacity scenarios](tests/e2e/capacity.spec.ts) and
 [acceptance runner](scripts/acceptance.mts) map to the
-[W1–W12 requirements](../../docs/spec/daynight-web.md) as follows. Names are stable
+[W1–W12 requirements](../../docs/spec/daynight-web.md) and
+[language requirements](../../docs/spec/daynight-web-i18n.md) as follows. Names are stable
 scenario annotations validated in each target's report.
 
 | Requirement | Production checks |
@@ -477,6 +510,10 @@ scenario annotations validated in each target's report.
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
 | FA1–FA12 | `task-attachments`: installed CLI and production UI operate on the same real task/files on native and container targets, exact binary round trips, independent mutations/previews, visible PDF content and full task state unchanged |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
+| L1–L4 | `language-startup-preferences`: browser default, saved override, reload, route metadata, shared selectors and unchanged user data |
+| L2, L4–L5 | `language-state-preservation`: graph geometry/viewport, fullscreen and modal focus, PR page, file input and iframe identity; pending upload, overwrite and deletion execute once |
+| L3–L4, L6–L8 | `language-errors-and-narrow`: storage failures/retry, owned-database failure with current-language safe text and unchanged request ID, English/Chinese 1440px/320px graph/dialog/attachment layout |
+| L9–L10 | Task-attached offline mockup checks, typed catalog/component checks, and complete native/container production receipts with the existing coverage and cleanup gates |
 
 Receipts live in `packages/daynight-web/.tmp/acceptance/<run-id>/`, with the
 latest aggregate at `.tmp/acceptance/evidence.json` inside this package. They
@@ -494,8 +531,8 @@ retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validati
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
 tested checkout identity, which is normally a merge revision for PR runs. A pass
-requires the strict union of ten native functional and five native capacity/limit
-scenarios (15 native total), plus the ten container functional scenarios. Every
+requires the strict union of thirteen native functional and five native capacity/limit
+scenarios (18 native total), plus the thirteen container functional scenarios. Every
 phase and target rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
 Browser identities must agree across a target's phases; every fixed graph's five
 timing repetitions, independent size refusals and cleanup/recovery must pass.

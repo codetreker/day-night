@@ -17,7 +17,14 @@ look successful.
 private project creation, account/token pages, member and invitation management,
 and explicit invitation acceptance. It composes the existing project list,
 project task tabs, graph and centered `TaskDetailDialog`. Production `main.tsx`
-continues to render `App`; the
+continues to render `App` under the persistent `LocaleProvider`; the opt-in shell
+uses the same Provider. Both catalogs extend their complete `messages.auth`
+contract to login, project creation, account, members, invitations, tokens and
+management dialogs. Selectors remain available on login, invitation, workspace
+and modal surfaces. Semantic notifications and validation render through the
+current catalog, while native formatters render dates and counts. Changing
+language preserves inputs, one-time secrets, current identity and pending
+requests. The
 [authentication architecture](../../../../docs/design/daynight-auth.md) owns the
 coordinated production activation. This implements the browser components, not
 production authentication or real third-party login.
@@ -48,7 +55,8 @@ loading, retryable failure or an explicit empty-provider state. The authoritativ
 list must reflect the configured UniAuth App's allowed and enabled providers.
 There is no fixed provider list or local configuration fallback. The frontend API
 is unmounted; actual App-aware discovery and backend exposure belong to the
-coordinated activation task and depend on the required UniAuth capability.
+coordinated activation task. UniAuth's upstream capability is now delivered;
+Daynight still uses the earlier SDK baseline until that task upgrades the pin.
 
 The integrated UniAuth baseline is commit
 `c82c55c7fcd366824d0bc5ac6bdd17528c0300fa`, Go SDK version
@@ -60,8 +68,16 @@ list. The [console provider response](https://github.com/codetreker/uniauth/blob
 reads global availability flags without an App ID. The
 [authorization eligibility predicate](https://github.com/codetreker/uniauth/blob/c82c55c7fcd366824d0bc5ac6bdd17528c0300fa/internal/auth/handler.go#L345-L346)
 also requires an enabled App, the provider in its allowlist and the registered
-redirect URI. Global flags therefore cannot supply the authoritative App-scoped
-list required by the login page.
+redirect URI. These sources preserve the reason discovery was unavailable at
+that historical baseline; global flags cannot supply the required App-scoped
+list. UniAuth [PR #19](https://github.com/codetreker/uniauth/pull/19), merged as
+`0978963813fcefd9d553f6cb9bcc319084c764b3`, now supplies authenticated App-aware
+[provider discovery](https://github.com/codetreker/uniauth/blob/0978963813fcefd9d553f6cb9bcc319084c764b3/docs/reference/api.md#L28-L73)
+and the Go SDK
+[Providers method](https://github.com/codetreker/uniauth/blob/0978963813fcefd9d553f6cb9bcc319084c764b3/sdk/go/providers.go#L14-L37).
+It uses the exact registered redirect URI and returns the live App allowlist/
+registry intersection. The old Daynight pin is deliberately unchanged in the
+frontend task; activation upgrades it and connects the real provider contract.
 
 ### Validation ownership
 
@@ -71,8 +87,11 @@ mounts the opt-in shell with controlled fetch responses and final styles. The
 [static design prototype](../../../../docs/design/mockups/auth/index.html) retains
 the broader scenario reference. Browser interaction against controlled responses
 proves frontend behavior; real service composition and third-party login require
-separate evidence. Locale runtime integration and full bilingual production
-coverage retain their own scope.
+separate evidence. The
+[bilingual requirements](../../../../docs/spec/daynight-web-i18n.md) apply to all
+new authentication components, including their failure and pending-operation
+states. Controlled bilingual frontend evidence does not replace the separately
+tracked combined production acceptance.
 
 ## Alternatives
 
@@ -85,7 +104,9 @@ This preserves the integration sequence selected by the
 
 **Hardcode known login providers or use global provider flags.** Neither proves
 that the configured App permits the displayed provider. Explicit discovery
-failures preserve the protocol gap until the upstream capability is available.
+failures made the protocol gap visible at the historical SDK baseline. The
+upstream discovery capability is now delivered, and activation must use it rather
+than substituting global flags or a fixed provider list.
 
 ## Consequences
 
@@ -96,8 +117,8 @@ system. Member versions remain exact, user content has a session lifetime, and
 copy failures do not destroy the only displayed secret.
 
 Provider discovery remains an explicit integration dependency. Production
-activation must obtain the App-scoped list through the real UniAuth contract and
-expose it through the Daynight route. Controlled frontend fixtures do not satisfy
+activation must upgrade the old SDK pin, obtain the App-scoped list through the
+delivered UniAuth contract and expose it through the Daynight route. Controlled frontend fixtures do not satisfy
 that requirement or demonstrate a successful real provider login. Existing
 project browsing formats, graph behavior and trusted attachment execution remain
 unchanged.

@@ -403,7 +403,7 @@ test.describe('fixed capacity and performance @capacity', () => {
           await visibleGraph(page, fixture.root.id, dataset.edges, kind === 'external');
           if (kind === 'external') {
             await expect(page.locator('.task-node-external')).toHaveCount(998);
-            await expect(page.getByText('2 个链内任务 · 998 个外部前置 · 5000 条依赖')).toBeVisible();
+            await expect(page.getByText('2 个链内任务 · 998 个外部前置 · 5,000 条依赖')).toBeVisible();
             await expect(page.locator(`#task-root-${fixture.root.id} .root-progress-label`)).toHaveText('0/2 已完成');
           }
           dataset.coldOpenMs = performance.now() - coldStart;
@@ -544,7 +544,7 @@ test.describe('fixed capacity and performance @capacity', () => {
       await page.goto(`/projects/${projectId}`, { waitUntil: 'domcontentloaded' });
       expect((await browserResponse).status()).toBe(409);
       await expect(page.getByRole('alert')).toContainText('任务图超过展示上限');
-      await expect(page.getByRole('alert')).toContainText(`当前 ${nodes} 个任务、${edges} 条依赖`);
+      await expect(page.getByRole('alert')).toContainText(`当前 ${nodes.toLocaleString('zh-CN')} 个任务、${edges.toLocaleString('zh-CN')} 条依赖`);
       await expect(page.getByRole('region', { name: '项目任务统计' })).toHaveCount(0);
       await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
       await expect(page.locator('.root-list')).toHaveCount(0);

@@ -22,7 +22,7 @@ descriptions remain plain text.
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle and interactive Agent installation, shared configuration, server HTTP and repository binding foundations plus project, task and single-file attachment commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
 | `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
-| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs with complete prerequisite context and task details, attachment management/preview, embedded delivery, graph production acceptance and strict coverage delivered; opt-in English/Simplified Chinese locale runtime implemented, full interface integration pending | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [language requirements](docs/spec/daynight-web-i18n.md), [language design](docs/design/daynight-web-i18n.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
+| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs with complete prerequisite context and task details, attachment management/preview, embedded delivery, graph production acceptance and strict coverage delivered; English/Simplified Chinese interface and locale persistence implemented, combined bilingual production verification tracked separately | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [language requirements](docs/spec/daynight-web-i18n.md), [language design](docs/design/daynight-web-i18n.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The adopted [task attachment requirements](docs/spec/daynight-task-attachments.md),
 [architecture](docs/design/daynight-task-attachments.md) and
@@ -53,10 +53,12 @@ adds private creation, filtered access, roles and invitations. Both modules rema
 unmounted. [CLI server credentials](.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
 are implemented. The opt-in [authenticated Web workspace](.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
 provides login, private project creation, account/token management, project
-members and invitation acceptance. Its components and API client are independent
-of the production entry point; coordinated activation and real provider discovery
-remain separately tracked. The current application is unauthenticated and
-loopback-only. Trusted
+members and invitation acceptance in English and Simplified Chinese through the
+existing locale runtime. Production `main.tsx` keeps `LocaleProvider` and `App`;
+the opt-in shell uses the same Provider. Coordinated activation switches the
+application entry and integrates provider discovery after upgrading the pinned
+UniAuth SDK to the delivered upstream capability. The current application is
+unauthenticated and loopback-only. Trusted
 same-origin executable HTML previews retain their existing execution model after
 authentication is delivered; attachment requests gain project-member checks.
 Existing projects will receive membership data manually outside that work.
@@ -380,11 +382,13 @@ binary identity, scenario results and resource cleanup.
 The private [web workspace](packages/daynight-web/README.md) implements the project
 list, cursor paging, safe API decoding, cancellation, project statistics, task
 graphs, centered task detail dialogs and single-file attachment management. Its
-opt-in [locale runtime](docs/design/daynight-web-i18n.md) provides typed English
-and Simplified Chinese catalogs, native Intl formatting and an independent saved
-language preference. Production components retain their current Chinese text
-until the tracked [bilingual interface requirements](docs/spec/daynight-web-i18n.md)
-are integrated and verified. With the Go API running on loopback, use:
+[locale runtime](docs/design/daynight-web-i18n.md) provides English and Simplified
+Chinese across the shipped interface, native Intl formatting and an independent
+saved language preference. Navigation, the centered detail dialog and fullscreen
+graph share one language choice while preserving browsing and pending attachment
+state. The [bilingual requirements](docs/spec/daynight-web-i18n.md) own the full
+outcome; the separate acceptance task owns source-bound combined production
+verification. With the Go API running on loopback, use:
 
 ```text
 pnpm web:dev
@@ -923,7 +927,17 @@ server origin and repository identity, after ensuring `/.daynight/` is effective
 in the root `.gitignore`. A cached binding is verified against the server on each
 use and remains stable if another project later shares that repository.
 
-Creation starts in `todo`. `task ready` selects up to 10 actionable tasks by
+Tasks can be stored and read with `proposed`, `todo`, `in_progress` or `done`
+status. Proposed tasks appear in unfinished inventories, graph summaries and the
+Web workspace as Proposed or 待审批 in the selected language. The stored/read
+contract is prepared for approval; public
+creation and the database default still use `todo`, and public status filters
+and updates still accept `todo`, `in_progress` and `done`. Approval, claim and
+completion commands are not available. The
+[four-state reader decision](.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
+records this preparation boundary.
+
+`task ready` selects up to 10 actionable tasks by
 default; `--limit <N>` accepts decimal integers from 1 through 100. It makes one
 task-list request with `ready=true` and the chosen limit, without fetching later
 pages. The service orders results by creation time and then task ID, both
@@ -934,7 +948,7 @@ reads every matching page, including with `--ready`, and excludes `done` by
 default. `--all` includes every status; `--status <status>` selects one status,
 including `done`. These two options conflict. `--ready` intersects the selected
 statuses and can be combined with `--all`. List results place `in_progress`
-first, then ready tasks, other `todo` tasks, and `done`; each group retains
+first, then ready tasks, other `todo` tasks, `proposed`, and `done`; each group retains
 service order across all pages. This order applies to human and JSON results.
 `task ready` accepts neither `--status` nor `--cursor`.
 

@@ -1,0 +1,52 @@
+import { getFormats } from '../../formats';
+import type { GraphMessages } from '../graph';
+
+const { number } = getFormats('en');
+const count = (value: number, singular: string, plural: string) => `${number(value)} ${value === 1 ? singular : plural}`;
+
+export const graph: GraphMessages = {
+  chainList: 'Task chains',
+  standaloneTask: 'Standalone task',
+  rootSummary: ({ total, remaining }) => `${count(total, 'task', 'tasks')} · ${number(remaining)} unfinished`,
+  progress: ({ done, total }) => `${number(done)}/${number(total)} completed`,
+  rootRegion: ({ title }) => `Task dependency graph for ${title}`,
+  showCompletedCount: ({ count: value }) => `Show completed task chains (${number(value)})`,
+  chainSummary: ({ shown, total }) => `Newest first · ${number(shown)} / ${count(total, 'task chain', 'task chains')}`,
+  chainSummaryLabel: ({ shown, total }) => `Showing ${number(shown)} of ${count(total, 'task chain', 'task chains')}`,
+  chainNote: 'Sorted by root task creation time, newest first. Expand from tasks without prerequisites. Shared tasks may appear in several chains; chain progress cannot be added to obtain project totals.',
+  emptyTitle: 'No task chains',
+  emptyDescription: 'Tasks with dependencies appear here. Standalone tasks are available in the other tab.',
+  completedTitle: 'All task chains are complete',
+  completedDescription: ({ count: value }) => `${count(value, 'completed task chain is', 'completed task chains are')} hidden. Project statistics still include all tasks.`,
+  showCompleted: 'Show completed task chains',
+  shared: 'Shared',
+  blocked: 'Blocked',
+  external: 'External prerequisite',
+  nodeLabel: ({ title, status, blocked, external, shared }) => [title, status, ...(blocked ? ['blocked'] : []), ...(external ? ['external prerequisite'] : []), ...(shared ? ['shared task'] : [])].join(', '),
+  dependencyGroup: 'Task dependencies',
+  dependencyLabel: ({ source, target }) => `Prerequisite task ${source} → subsequent task ${target}`,
+  fullscreenTitle: 'Task dependency graph fullscreen view',
+  title: 'Horizontal dependency graph',
+  counts: ({ main, external, dependencies }) => `${count(main, 'chain task', 'chain tasks')} · ${count(external, 'external prerequisite', 'external prerequisites')} · ${count(dependencies, 'dependency', 'dependencies')}`,
+  enterFullscreen: 'View fullscreen',
+  exitFullscreen: 'Exit fullscreen',
+  instructions: 'Drag the canvas to pan; use the wheel or buttons to zoom. Tab to select a task, then press Enter or Space to view details.',
+  canvas: 'Task dependency canvas',
+  directionLegend: 'Arrows show prerequisite → subsequent task',
+  externalLegend: 'Dashed nodes and lines: external prerequisites (all upstream tasks included)',
+  layoutErrorTitle: 'Task graph layout failed',
+  layoutErrorDescription: 'This task chain could not be drawn. Refresh the project and try again.',
+  flowAriaLabels: {
+    'controls.ariaLabel': 'Task graph viewport controls',
+    'controls.zoomIn.ariaLabel': 'Zoom in',
+    'controls.zoomOut.ariaLabel': 'Zoom out',
+    'controls.fitView.ariaLabel': 'Fit to canvas',
+    'controls.interactive.ariaLabel': 'Toggle graph interaction',
+    'node.a11yDescription.default': 'Tab to select a task, then press Enter or Space to view task details.',
+    'node.a11yDescription.keyboardDisabled': 'Tab to select a task, then press Enter or Space to view task details.',
+    'node.a11yDescription.ariaLiveMessage': ({ x, y }) => `Task moved to x: ${number(x)}, y: ${number(y)}.`,
+    'edge.a11yDescription.default': 'Dependency arrows connect prerequisite tasks to subsequent tasks.',
+    'minimap.ariaLabel': 'Task graph overview',
+    'handle.ariaLabel': 'Task dependency connection',
+  },
+};

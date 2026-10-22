@@ -1,9 +1,12 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, getTaskGraph } from '../src/api/client';
 import type { GraphTask, TaskGraph } from '../src/api/types';
 import { ProjectPage } from '../src/features/projects/ProjectPage';
 import { projectRoot, type GraphIndex } from '../src/features/task-graph/model';
+
+const render = createLocaleRender('zh-CN');
 
 vi.mock('../src/api/client', async (original) => ({ ...await original<typeof import('../src/api/client')>(), getTaskGraph: vi.fn() }));
 vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, rootId, onSelectTask }: {
@@ -29,7 +32,7 @@ const graph = (items = seeds, id = projectId): TaskGraph => {
     return { ...item, blockedBy, ready: item.status === 'todo' && blockedBy.length === 0 };
   });
   return { project: { id, name: `项目 ${id}`, repoUrl: '', createdAt: time, updatedAt: time }, tasks,
-    summary: { total: tasks.length, todo: tasks.filter((item) => item.status === 'todo').length, done: tasks.filter((item) => item.status === 'done').length,
+    summary: { total: tasks.length, proposed: tasks.filter((task) => task.status === "proposed").length, todo: tasks.filter((item) => item.status === 'todo').length, done: tasks.filter((item) => item.status === 'done').length,
       inProgress: tasks.filter((item) => item.status === 'in_progress').length, ready: tasks.filter((item) => item.ready).length,
       blocked: tasks.filter((item) => item.status === 'todo' && !item.ready).length } };
 };

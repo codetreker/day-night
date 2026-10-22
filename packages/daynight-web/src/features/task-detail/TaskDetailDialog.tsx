@@ -1,6 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ApiError } from '../../api/client';
+import { LanguageSelector } from '../../i18n/LanguageSelector';
+import { useI18n } from '../../i18n/LocaleProvider';
 import { useBodyScrollLock } from '../../app/useBodyScrollLock';
 import type { TaskStatus } from '../../api/types';
 import type { GraphSnapshot } from '../projects/useTaskGraph';
@@ -21,28 +23,27 @@ export type TaskDetailDialogProps = {
   readonly onRefreshGraph: () => void;
 };
 
-const statusLabels: Record<TaskStatus, string> = {
-  todo: '待处理', in_progress: '进行中', done: '已完成',
+const StatusBadge = ({ status }: { readonly status: TaskStatus }) => {
+  const { messages } = useI18n();
+  return <span className={`task-detail-status task-detail-status-${status}`}>{messages.common.status[status]}</span>;
 };
 
-const StatusBadge = ({ status }: { readonly status: TaskStatus }) => (
-  <span className={`task-detail-status task-detail-status-${status}`}>{statusLabels[status]}</span>
-);
-
-const DetailError = ({ error }: { readonly error: unknown }) => (
-  <>
+const DetailError = ({ error }: { readonly error: unknown }) => {
+  const { messages } = useI18n();
+  const m = messages.inspection.detail;
+  return <>
     <p>{error instanceof ApiError && error.kind === 'network'
-      ? '无法连接服务，请检查本地服务后重试。'
-      : error instanceof ApiError && error.code === 'not_found'
-        ? '这个任务已无法读取，请刷新任务图。'
-        : '暂时无法读取任务详情，请重试。'}</p>
+      ? m.networkError
+      : error instanceof ApiError && error.code === 'not_found' ? m.notFoundError : m.loadError}</p>
     {error instanceof ApiError && error.requestId !== null && (
-      <p className="request-id">请求 ID：<code>{error.requestId}</code></p>
+      <p className="request-id">{messages.common.requestId}{' '}<code>{error.requestId}</code></p>
     )}
-  </>
-);
+  </>;
+};
 
 export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, onClose, onRestoreFocus, onRefreshGraph }: TaskDetailDialogProps) => {
+  const { messages, format } = useI18n();
+  const m = messages.inspection.detail;
   const { detail, status, error, retry } = useTaskDetail(projectId, taskId, snapshot.revision);
   const headingId = useId();
   const dialogRef = useRef<HTMLElement>(null);
@@ -113,20 +114,21 @@ export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, on
     <div className="task-detail-backdrop" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="task-detail-dialog" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={headingId}>
         <header className="task-detail-header">
-          <h2 id={headingId}>任务详情</h2>
-          <button className="button task-detail-close" type="button" ref={closeRef} aria-label="关闭任务详情" onClick={onClose}>
+          <h2 id={headingId}>{m.title}</h2>
+          <LanguageSelector />
+          <button className="button task-detail-close" type="button" ref={closeRef} aria-label={m.close} onClick={onClose}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
           </button>
         </header>
         <div className="task-detail-body">
           {status === 'loading' && (
-            <div className="task-detail-state" role="status"><span className="spinner" aria-hidden="true" /><p>正在加载任务详情</p></div>
+            <div className="task-detail-state" role="status"><span className="spinner" aria-hidden="true" /><p>{m.loading}</p></div>
           )}
           {status === 'error' && (
             <div className="task-detail-state task-detail-error" role="alert">
-              <h3>任务详情加载失败</h3>
+              <h3>{m.failed}</h3>
               <DetailError error={error} />
-              <button className="button primary" type="button" onClick={retry}>重试详情</button>
+              <button className="button primary" type="button" onClick={retry}>{m.retry}</button>
             </div>
           )}
           {detail !== null && (
@@ -136,50 +138,50 @@ export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, on
                 <h3 className="task-detail-title">{detail.title}</h3>
                 <div className="task-detail-badges">
                   <StatusBadge status={detail.status} />
-                  {detail.status === 'todo' && <span className={detail.ready ? 'task-detail-ready' : 'task-detail-blocked'}>{detail.ready ? '可开始' : '被阻塞'}</span>}
+                  {detail.status === 'todo' && <span className={detail.ready ? 'task-detail-ready' : 'task-detail-blocked'}>{detail.ready ? m.ready : m.blocked}</span>}
                 </div>
                 {stale && (
                   <div className="task-detail-stale" role="status">
-                    <p>任务详情与当前任务图不同，刷新后可查看一致的进度和关系。</p>
-                    <button className="button" type="button" onClick={onRefreshGraph}>刷新任务图</button>
+                    <p>{m.stale}</p>
+                    <button className="button" type="button" onClick={onRefreshGraph}>{m.refreshGraph}</button>
                   </div>
                 )}
               </div>
               <div className="task-detail-columns">
                 <div className="task-detail-main">
-                  <section className="task-detail-section" aria-label="描述">
-                    <h4>描述</h4>
-                    <p className="task-detail-description">{detail.description === '' ? '暂无描述' : detail.description}</p>
+                  <section className="task-detail-section" aria-label={m.description}>
+                    <h4>{m.description}</h4>
+                    <p className="task-detail-description">{detail.description === '' ? m.noDescription : detail.description}</p>
                   </section>
                   <TaskPullRequests pullRequests={detail.properties.pullRequests} />
                   <TaskAttachments projectId={projectId} taskId={taskId} onClose={onClose} />
                 </div>
-                <aside className="task-detail-aside" aria-label="任务关系与元数据">
-                  <section className="task-detail-section" aria-label="前置依赖">
-                    <h4>前置依赖 · {detail.dependsOn.length}</h4>
-                    {detail.dependsOn.length === 0 ? <p className="task-detail-description">无前置依赖</p> : <ul className="task-detail-relations">{detail.dependsOn.map(relation)}</ul>}
+                <aside className="task-detail-aside" aria-label={m.relationsMetadata}>
+                  <section className="task-detail-section" aria-label={m.dependencies}>
+                    <h4>{m.countedHeading({ label: m.dependencies, count: format.number(detail.dependsOn.length) })}</h4>
+                    {detail.dependsOn.length === 0 ? <p className="task-detail-description">{m.noDependencies}</p> : <ul className="task-detail-relations">{detail.dependsOn.map(relation)}</ul>}
                   </section>
-                  <section className="task-detail-section" aria-label="当前未完成的前置">
-                    <h4>当前未完成的前置 · {detail.blockedBy.length}</h4>
-                    {detail.blockedBy.length === 0 ? <p className="task-detail-description">所有前置已完成</p> : <ul className="task-detail-relations">{detail.blockedBy.map(relation)}</ul>}
+                  <section className="task-detail-section" aria-label={m.blockers}>
+                    <h4>{m.countedHeading({ label: m.blockers, count: format.number(detail.blockedBy.length) })}</h4>
+                    {detail.blockedBy.length === 0 ? <p className="task-detail-description">{m.noBlockers}</p> : <ul className="task-detail-relations">{detail.blockedBy.map(relation)}</ul>}
                   </section>
-                  <section className="task-detail-section" aria-label="任务图快照中的直接后续">
-                    <h4>任务图快照中的直接后续{successors === undefined ? '' : ` · ${successors.length}`}</h4>
+                  <section className="task-detail-section" aria-label={m.successors}>
+                    <h4>{successors === undefined ? m.successors : m.countedHeading({ label: m.successors, count: format.number(successors.length) })}</h4>
                     {successors === undefined
-                      ? <p className="task-detail-description">当前任务尚未包含在任务图中，请刷新任务图以查看后续关系。</p>
-                      : successors.length === 0 ? <p className="task-detail-description">无后续任务</p> : <ul className="task-detail-relations">{successors.map(relation)}</ul>}
+                      ? <p className="task-detail-description">{m.successorsMissing}</p>
+                      : successors.length === 0 ? <p className="task-detail-description">{m.noSuccessors}</p> : <ul className="task-detail-relations">{successors.map(relation)}</ul>}
                   </section>
                   <dl className="task-detail-section task-detail-metadata">
-                    <div><dt>创建时间</dt><dd><time dateTime={detail.createdAt}>{new Date(detail.createdAt).toLocaleString('zh-CN', { hour12: false })}</time></dd></div>
-                    <div><dt>更新时间</dt><dd><time dateTime={detail.updatedAt}>{new Date(detail.updatedAt).toLocaleString('zh-CN', { hour12: false })}</time></dd></div>
-                    <div><dt>任务 ID</dt><dd className="task-detail-full-id">{detail.id}</dd></div>
+                    <div><dt>{m.created}</dt><dd><time dateTime={detail.createdAt}>{format.dateTime(detail.createdAt)}</time></dd></div>
+                    <div><dt>{m.updated}</dt><dd><time dateTime={detail.updatedAt}>{format.dateTime(detail.updatedAt)}</time></dd></div>
+                    <div><dt>{m.taskId}</dt><dd className="task-detail-full-id">{detail.id}</dd></div>
                   </dl>
                 </aside>
               </div>
             </>
           )}
         </div>
-        <footer className="task-detail-footer">前置与阻塞项来自最新详情，名称与后续关系来自任务图快照。</footer>
+        <footer className="task-detail-footer">{m.footer}</footer>
       </section>
     </div>,
     document.body,

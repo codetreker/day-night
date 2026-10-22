@@ -13,6 +13,8 @@ import { ProjectPage } from "../features/projects/ProjectPage";
 import { ProjectsPage } from "../features/projects/ProjectsPage";
 import { canonicalId } from "../api/parse";
 import { navigate } from "./router";
+import { useI18n } from "../i18n/LocaleProvider";
+import { LanguageSelector } from "../i18n/LanguageSelector";
 import "../styles/auth.css";
 
 type AuthRoute = { readonly kind: "projects" | "account" | "invitations" | "notFound" } | { readonly kind: "project" | "members"; readonly projectId: string };
@@ -32,10 +34,14 @@ const followLink = (event: MouseEvent<HTMLAnchorElement>) => {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   event.preventDefault(); navigate(event.currentTarget.pathname);
 };
-const accountLabel = (user: CurrentUser) => user.name ?? user.email ?? "当前账户";
-const AccessUnavailable = () => <section className="state-box" role="alert"><h1>项目不存在或你没有访问权限</h1><p>如果你认为应该可以访问，请联系项目管理员获取邀请。</p><a className="button primary" href="/" onClick={followLink}>返回我的项目</a></section>;
+const accountLabel = (user: CurrentUser, currentAccount: string) => user.name ?? user.email ?? currentAccount;
+const AccessUnavailable = () => {
+  const { messages: { auth: { shell: m }, workspace: { app } } } = useI18n();
+  return <section className="state-box" role="alert"><h1>{m.accessUnavailable}</h1><p>{m.accessUnavailableDetail}</p><a className="button primary" href="/" onClick={followLink}>{app.returnToProjects}</a></section>;
+};
 
 const AuthorizedProject = ({ projectId, user, onOpenMembers }: { readonly projectId: string; readonly user: CurrentUser; readonly onOpenMembers: (project: Project) => void }) => {
+  const { messages: { auth: { shell: m, roles } } } = useI18n();
   const [membership, setMembership] = useState<{ status: "loading" | "ready" | "error" | "unavailable"; role: ProjectRole | null }>({ status: "loading", role: null });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -51,33 +57,37 @@ const AuthorizedProject = ({ projectId, user, onOpenMembers }: { readonly projec
     return () => controller.abort();
   }, [projectId, user.id, attempt]);
   if (membership.status === "unavailable") return <AccessUnavailable />;
-  return <>{membership.status === "error" && <div className="notice error" role="alert"><p>暂时无法读取项目权限。</p><button className="button" type="button" onClick={() => setAttempt((value) => value + 1)}>重试读取权限</button></div>}<ProjectPage projectId={projectId} renderActions={(project) => membership.status === "ready" ? <><span className={`badge ${membership.role}`}>{membership.role === "admin" ? "管理员" : "成员"}</span><a className="button" href={`/projects/${projectId}/members`} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onOpenMembers(project); }}>项目成员</a></> : null} /></>;
+  return <>{membership.status === "error" && <div className="notice error" role="alert"><p>{m.permissionsError}</p><button className="button" type="button" onClick={() => setAttempt((value) => value + 1)}>{m.retryPermissions}</button></div>}<ProjectPage projectId={projectId} renderActions={(project) => membership.status === "ready" ? <><span className={`badge ${membership.role}`}>{roles[membership.role!]}</span><a className="button" href={`/projects/${projectId}/members`} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onOpenMembers(project); }}>{m.members}</a></> : null} /></>;
 };
 
 const Workspace = ({ user, children, route, onSignOut, checking }: { readonly user: CurrentUser; readonly children: ReactNode; readonly route: AuthRoute; readonly onSignOut: () => void; readonly checking: boolean }) => {
+  const { messages: { auth: { shell: m }, workspace: { app } } } = useI18n();
   const content = useRef<HTMLElement>(null);
-  const label = route.kind === "projects" ? "我的项目" : route.kind === "account" ? "账户设置" : route.kind === "members" ? "项目成员" : route.kind === "project" ? "项目任务" : "页面不存在";
+  const label = route.kind === "projects" ? m.myProjects : route.kind === "account" ? m.accountSettings : route.kind === "members" ? m.members : route.kind === "project" ? app.projectTasks : app.notFound;
   useLayoutEffect(() => { content.current?.focus(); }, [route.kind, "projectId" in route ? route.projectId : null]);
-  useEffect(() => { document.title = `${label} · Daynight`; }, [label]);
-  return <div className="shell auth-shell" aria-hidden={checking} inert={checking}><a className="skip-link" href="#main-content">跳到主要内容</a><aside className="sidebar" aria-label="工作空间导航"><a className="brand" href="/" onClick={followLink} aria-label="Daynight 项目首页"><span className="brand-mark" aria-hidden="true" />daynight</a><nav aria-label="主导航"><p className="nav-label">工作空间</p><a className="nav-button" href="/" onClick={followLink} aria-current={route.kind === "projects" || route.kind === "project" || route.kind === "members" ? "page" : undefined}>▦　我的项目</a><a className="nav-button account-nav" href="/account" onClick={followLink} aria-current={route.kind === "account" ? "page" : undefined}>◎　账户设置</a></nav><div className="sidebar-bottom">团队工作空间<small>任务与依赖，一处看清</small></div></aside><div className="workspace"><header className="topbar"><nav className="crumb" aria-label="面包屑"><a href="/" onClick={followLink}>工作空间</a><span aria-hidden="true">/</span><span className="crumb-current" aria-current="page">{label}</span></nav><div className="account-actions"><a className="account-button" href="/account" onClick={followLink} aria-label={`账户设置：${accountLabel(user)}`}><span className="avatar" aria-hidden="true">{accountLabel(user).slice(0, 1).toUpperCase()}</span><span className="account-name">{accountLabel(user)}</span></a><button className="inline-link" type="button" onClick={onSignOut}>退出登录</button></div></header><main className="content" id="main-content" ref={content} tabIndex={-1}>{children}</main></div></div>;
+  return <div className="shell auth-shell" aria-hidden={checking} inert={checking}><a className="skip-link" href="#main-content">{app.skipToContent}</a><aside className="sidebar" aria-label={app.workspaceNavigation}><a className="brand" href="/" onClick={followLink} aria-label={app.projectHome}><span className="brand-mark" aria-hidden="true" />daynight</a><nav aria-label={app.mainNavigation}><p className="nav-label">{app.workspace}</p><a className="nav-button" href="/" onClick={followLink} aria-current={route.kind === "projects" || route.kind === "project" || route.kind === "members" ? "page" : undefined}>▦　{m.myProjects}</a><a className="nav-button account-nav" href="/account" onClick={followLink} aria-current={route.kind === "account" ? "page" : undefined}>◎　{m.accountSettings}</a></nav><div className="sidebar-bottom">{m.teamWorkspace}<small>{app.localWorkspaceDetail}</small></div></aside><div className="workspace"><header className="topbar"><nav className="crumb" aria-label={app.breadcrumb}><a href="/" onClick={followLink}>{app.workspace}</a><span aria-hidden="true">/</span><span className="crumb-current" aria-current="page">{label}</span></nav><div className="account-actions"><LanguageSelector /><a className="account-button" href="/account" onClick={followLink} aria-label={m.accountLink({ name: accountLabel(user, m.currentAccount) })}><span className="avatar" aria-hidden="true">{accountLabel(user, m.currentAccount).slice(0, 1).toUpperCase()}</span><span className="account-name">{accountLabel(user, m.currentAccount)}</span></a><button className="inline-link" type="button" onClick={onSignOut}>{m.signOut}</button></div></header><main className="content" id="main-content" ref={content} tabIndex={-1}>{children}</main></div></div>;
 };
 
 const RevalidationOverlay = ({ failed, onRetry }: { readonly failed: boolean; readonly onRetry: () => void }) => {
+  const { messages: { auth: { shell: m } } } = useI18n();
   const dialog = useRef<HTMLDialogElement>(null);
   useLayoutEffect(() => {
     const opener = document.activeElement;
     dialog.current!.showModal();
     return () => queueMicrotask(() => { if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); });
   }, []);
-  return <dialog ref={dialog} className="auth-revalidation-overlay" aria-label="重新确认当前账户" onCancel={(event) => event.preventDefault()} onKeyDown={(event) => event.stopPropagation()}>
-    {failed ? <div role="alert"><h1>暂时无法重新确认当前账户</h1><p>当前工作已保留。确认账户后可继续。</p><button className="button primary" type="button" onClick={onRetry}>重新确认账户</button></div> : <div role="status"><span className="spinner" aria-hidden="true" /><p>正在确认当前账户…</p></div>}
+  return <dialog ref={dialog} className="auth-revalidation-overlay" aria-label={m.revalidationLabel} onCancel={(event) => event.preventDefault()} onKeyDown={(event) => event.stopPropagation()}>
+    <LanguageSelector />
+    {failed ? <div role="alert"><h1>{m.revalidationError}</h1><p>{m.revalidationRetained}</p><button className="button primary" type="button" onClick={onRetry}>{m.revalidationRetry}</button></div> : <div role="status"><span className="spinner" aria-hidden="true" /><p>{m.revalidationLoading}</p></div>}
   </dialog>;
 };
 
-type Session = { readonly status: "loading" } | { readonly status: "error" } | { readonly status: "anonymous"; readonly notice?: string } | { readonly status: "authenticated"; readonly user: CurrentUser; readonly generation: number };
+type SessionNotice = "expired" | "signedOut" | "logoutFailed";
+type Session = { readonly status: "loading" } | { readonly status: "error" } | { readonly status: "anonymous"; readonly notice?: SessionNotice } | { readonly status: "authenticated"; readonly user: CurrentUser; readonly generation: number };
 const assignLogin = (url: string) => window.location.assign(url);
 
 export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly navigateToLogin?: (url: string) => void }) => {
+  const { locale, messages: { auth: { shell: m }, workspace: { app, projects } } } = useI18n();
   const [invitation, setInvitation] = useState(captureInvitation);
   const [pathname, setPathname] = useState(window.location.pathname);
   const [invitationRevision, setInvitationRevision] = useState(0);
@@ -92,22 +102,26 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
   const [creating, setCreating] = useState(false);
   const [logoutFailed, setLogoutFailed] = useState(false);
   const [cleanupFailed, setCleanupFailed] = useState(false);
-  const [projectName, setProjectName] = useState("项目");
+  const [projectName, setProjectName] = useState<string | null>(null);
   const generation = useRef(0);
   const active = useRef<AbortController | null>(null);
   const mounted = useRef(true);
   const route = parseAuthRoute(pathname);
+  useLayoutEffect(() => {
+    document.documentElement.lang = locale;
+    document.title = m.documentTitle[session.status === "authenticated" ? route.kind : session.status === "anonymous" ? "login" : session.status];
+  }, [locale, m.documentTitle, route.kind, session.status]);
   const [loginError] = useState(() => {
     const parameters = new URLSearchParams(window.location.search);
     const failed = parameters.get("authError") === "login_failed";
     if (parameters.has("authError")) { parameters.delete("authError"); window.history.replaceState(window.history.state, "", window.location.pathname + (parameters.size === 0 ? "" : `?${parameters}`)); }
     return failed;
   });
-  const clearSession = useCallback((notice?: string) => {
+  const clearSession = useCallback((notice?: SessionNotice) => {
     invalidateAuthRequests(); ++generation.current; active.current?.abort(); active.current = null;
-    setCreating(false); setProjectName("项目"); setRevalidation("idle"); setSession({ status: "anonymous", ...(notice === undefined ? {} : { notice }) });
+    setCreating(false); setProjectName(null); setRevalidation("idle"); setSession({ status: "anonymous", ...(notice === undefined ? {} : { notice }) });
   }, []);
-  useEffect(() => subscribeUnauthorized(() => clearSession(sessionRef.current.status === "authenticated" ? "登录状态已过期。重新登录后可继续访问项目。" : undefined)), [clearSession]);
+  useEffect(() => subscribeUnauthorized(() => clearSession(sessionRef.current.status === "authenticated" ? "expired" : undefined)), [clearSession]);
   useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; active.current?.abort(); invalidateAuthRequests(); };
@@ -137,13 +151,13 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
       if (previous.status === "authenticated" && previous.user.id === user.id) {
         setSession({ ...previous, user });
       } else {
-        invalidateAuthRequests(); setCreating(false); setProjectName("项目");
+        invalidateAuthRequests(); setCreating(false); setProjectName(null);
         setSession({ status: "authenticated", user, generation: current });
       }
       setRevalidation("idle");
     }).catch((error: unknown) => {
       if (controller.signal.aborted || current !== generation.current || isAbortError(error)) return;
-      if (error instanceof ApiError && error.status === 401) clearSession(sessionRef.current.status === "authenticated" ? "登录状态已过期。重新登录后可继续访问项目。" : undefined);
+      if (error instanceof ApiError && error.status === 401) clearSession(sessionRef.current.status === "authenticated" ? "expired" : undefined);
       else if (sessionRef.current.status === "authenticated") setRevalidation("error");
       else setSession({ status: "error" });
     });
@@ -158,9 +172,9 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
     setLogoutFailed(false);
     const controller = new AbortController();
     const request = logout(controller.signal);
-    clearSession("你已退出登录。");
+    clearSession("signedOut");
     void request.catch((error: unknown) => {
-      if (mounted.current && !isAbortError(error) && !(error instanceof ApiError && error.status === 401)) { setLogoutFailed(true); setSession({ status: "anonymous", notice: "本地账户数据已清除，但服务暂时无法确认退出。请重试退出登录。" }); }
+      if (mounted.current && !isAbortError(error) && !(error instanceof ApiError && error.status === 401)) { setLogoutFailed(true); setSession({ status: "anonymous", notice: "logoutFailed" }); }
     });
   }, [clearSession]);
   const recheckIdentity = useCallback(() => { revalidationRef.current = "loading"; setRevalidation("loading"); setAttempt((value) => value + 1); }, []);
@@ -179,16 +193,16 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
     const parameters = new URLSearchParams({ provider, returnPath });
     navigateToLogin(`/api/v1/auth/login?${parameters}`);
   };
-  const cleanupWarning = cleanupFailed ? <div className="notice warning" role="alert">浏览器无法清除邀请临时数据。请关闭此标签页以清除邀请。</div> : null;
-  if (session.status === "loading") return <main className="auth-main"><section className="state-box" role="status"><span className="spinner" aria-hidden="true" /><h1>正在确认登录状态</h1></section></main>;
-  if (session.status === "error") return <main className="auth-main"><section className="state-box" role="alert"><h1>暂时无法确认登录状态</h1><p>请检查网络连接后重试。</p><button className="button primary" type="button" onClick={() => setAttempt((value) => value + 1)}>重试</button></section></main>;
-  if (session.status === "anonymous") return <>{cleanupWarning}{route.kind === "invitations" && invitation.storageUnavailable && <div className="notice warning" role="alert">浏览器无法保存邀请。登录后请重新打开邀请链接。</div>}<LoginPage invitation={route.kind === "invitations"} {...(session.notice !== undefined ? { notice: session.notice } : loginError ? { notice: "登录未完成。身份服务暂时无法确认你的身份，请重新登录。" } : {})} onLogin={startLogin} />{logoutFailed && <button className="button" type="button" onClick={signOut}>重试退出登录</button>}</>;
+  const cleanupWarning = cleanupFailed ? <div className="notice warning" role="alert">{m.invitationCleanupError}</div> : null;
+  if (session.status === "loading") return <main className="auth-main"><section className="state-box" role="status"><span className="spinner" aria-hidden="true" /><h1>{m.identityLoading}</h1><LanguageSelector /></section></main>;
+  if (session.status === "error") return <main className="auth-main"><section className="state-box" role="alert"><h1>{m.identityError}</h1><p>{m.networkRetry}</p><LanguageSelector /><button className="button primary" type="button" onClick={() => setAttempt((value) => value + 1)}>{projects.retry}</button></section></main>;
+  if (session.status === "anonymous") return <>{cleanupWarning}{route.kind === "invitations" && invitation.storageUnavailable && <div className="notice warning" role="alert">{m.invitationStorageError}</div>}<LoginPage invitation={route.kind === "invitations"} {...(session.notice !== undefined ? { notice: m.notice[session.notice] } : loginError ? { notice: m.notice.loginFailed } : {})} onLogin={startLogin} />{logoutFailed && <button className="button" type="button" onClick={signOut}>{m.retryLogout}</button>}</>;
   const identity = `${session.user.id}:${session.generation}`;
   const checking = revalidation !== "idle";
   const revalidationOverlay = checking ? <RevalidationOverlay failed={revalidation === "error"} onRetry={recheckIdentity} /> : null;
   if (route.kind === "invitations") return <>{revalidationOverlay}{cleanupWarning}<div aria-hidden={checking} inert={checking}><InvitationPage key={`${identity}:${invitationRevision}`} lifetime={invitationLifetime.current.signal} invitation={invitation} user={session.user} onComplete={completeInvitation} onCancel={cancelInvitation} onSwitchAccount={signOut} onUnavailable={unavailableInvitation} /></div></>;
   return <>{revalidationOverlay}<Workspace key={identity} user={session.user} route={route} onSignOut={signOut} checking={checking}>
-    {cleanupWarning}{route.kind === "projects" ? <ProjectsPage onCreate={() => setCreating(true)} /> : route.kind === "project" ? <AuthorizedProject key={route.projectId} projectId={route.projectId} user={session.user} onOpenMembers={(project) => { setProjectName(project.name); navigate(`/projects/${project.id}/members`); }} /> : route.kind === "members" ? <MembersPanel key={route.projectId} projectId={route.projectId} projectName={projectName} user={session.user} onRemoved={() => navigate("/")} /> : route.kind === "account" ? <AccountPage user={session.user} onSignOut={signOut} /> : <section className="state-box"><h1>页面不存在</h1><a className="button primary" href="/" onClick={followLink}>返回我的项目</a></section>}
+    {cleanupWarning}{route.kind === "projects" ? <ProjectsPage onCreate={() => setCreating(true)} /> : route.kind === "project" ? <AuthorizedProject key={route.projectId} projectId={route.projectId} user={session.user} onOpenMembers={(project) => { setProjectName(project.name); navigate(`/projects/${project.id}/members`); }} /> : route.kind === "members" ? <MembersPanel key={route.projectId} projectId={route.projectId} projectName={projectName ?? m.genericProject} user={session.user} onRemoved={() => navigate("/")} /> : route.kind === "account" ? <AccountPage user={session.user} onSignOut={signOut} /> : <section className="state-box"><h1>{app.notFound}</h1><a className="button primary" href="/" onClick={followLink}>{app.returnToProjects}</a></section>}
     {creating && <CreateProjectDialog onClose={() => setCreating(false)} onCreated={(project) => { setCreating(false); navigate(`/projects/${project.id}`); }} />}
   </Workspace></>;
 };

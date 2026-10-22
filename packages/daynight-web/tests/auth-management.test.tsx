@@ -1,6 +1,8 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import * as auth from '../src/api/auth';
+import { messagesByLocale } from '../src/i18n/messages';
 import { ApiError } from '../src/api/client';
 import { AccountPage } from '../src/features/management/AccountPage';
 import { MembersPanel } from '../src/features/management/MembersPanel';
@@ -11,6 +13,8 @@ vi.mock('../src/api/auth', () => ({
   listTokens: vi.fn(), createToken: vi.fn(), revokeToken: vi.fn(),
   listMembers: vi.fn(), listInvitations: vi.fn(), createInvitation: vi.fn(), revokeInvitation: vi.fn(), setMemberRole: vi.fn(), removeMember: vi.fn(),
 }));
+
+const render = createLocaleRender('zh-CN');
 
 const user: CurrentUser = { id: 'user-a', name: 'Jianjun', email: 'a@example.com', emailVerified: true, avatarUrl: null };
 const token: PersonalAccessToken = { id: 'token-a', name: 'MacBook', createdAt: '2026-10-22T12:00:00Z', expiresAt: '2099-10-22T12:00:00Z' };
@@ -120,7 +124,7 @@ describe('account credentials', () => {
     dialogClick('取消'); click('撤销令牌 MacBook');
     const pending = deferred<void>(); vi.mocked(auth.revokeToken).mockReturnValueOnce(pending.promise).mockRejectedValueOnce(new ApiError('server', 401));
     dialogClick('撤销令牌'); expect(screen.getByRole('button', { name: '正在撤销…' })).toBeDisabled();
-    fireEvent.keyDown(document, { key: 'Escape' }); fireEvent.keyDown(document, { key: 'Tab' }); expect(screen.getByRole('dialog')).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Escape' }); fireEvent.keyDown(document, { key: 'Tab' }); expect(within(screen.getByRole('dialog')).getByRole('combobox', { name: '语言 / Language' })).toHaveFocus();
     await act(async () => pending.reject(new Error('internal raw secret')));
     expect(within(screen.getByRole('dialog')).getByRole('alert')).toHaveTextContent('操作未能完成');
     dialogClick('撤销令牌'); await screen.findByText('登录状态已失效，请重新登录。');
@@ -151,6 +155,34 @@ describe('account credentials', () => {
     const signal = vi.mocked(auth.createToken).mock.calls[0]![1]; view.unmount(); expect(signal.aborted).toBe(true);
     await act(async () => creation.resolve({ ...token, token: 'must-not-reappear' }));
     expect(screen.queryByDisplayValue('must-not-reappear')).toBeNull();
+  });
+
+  it('switches an active form, pending request and secret dialog without losing user state or repeating requests', async () => {
+    const pending = deferred<auth.CreatedPersonalAccessToken>(); vi.mocked(auth.createToken).mockReturnValue(pending.promise);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn().mockRejectedValue(new Error('clipboard denied')) } });
+    account(); await tokensTab(); await createForm('  unchanged name 😀  ', '0');
+    const en = messagesByLocale.en.auth.management;
+    fireEvent.change(within(screen.getByRole('dialog')).getByRole('combobox'), { target: { value: 'en' } });
+    expect(screen.getByRole('dialog', { name: en.account.createTitle })).toBeInTheDocument();
+    expect(document.getElementById('token-name')).toHaveValue('  unchanged name 😀  ');
+    expect(document.getElementById('token-days')).toHaveValue(0); expect(screen.getByRole('alert')).toHaveTextContent(en.account.validation);
+    expect(auth.listTokens).toHaveBeenCalledOnce();
+    fireEvent.change(document.getElementById('token-days')!, { target: { value: '31' } });
+    fireEvent.submit(document.getElementById('create-token-form')!);
+    fireEvent.change(within(screen.getByRole('dialog')).getByRole('combobox'), { target: { value: 'zh-CN' } });
+    expect(screen.getByRole('button', { name: '正在创建…' })).toBeDisabled();
+    expect(auth.createToken).toHaveBeenCalledOnce();
+    await act(async () => pending.resolve({ ...token, token: 'unaltered-secret-value' }));
+    dialogClick('复制'); await screen.findByText(/浏览器未允许自动复制/);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.change(within(screen.getByRole('dialog')).getByRole('combobox'), { target: { value: 'en' } });
+    expect(screen.getByRole('dialog', { name: en.secret.tokenTitle })).toBeInTheDocument();
+    expect(screen.getByLabelText(en.secret.tokenLabel)).toHaveValue('unaltered-secret-value');
+    expect(screen.getByRole('alert')).toHaveTextContent(en.secret.tokenCloseWarning);
+    expect(screen.getByRole('status')).toHaveTextContent(en.secret.copyFailed);
+    expect(auth.createToken).toHaveBeenCalledWith({ name: '  unchanged name 😀  ', days: 31 }, expect.any(AbortSignal));
+    expect(auth.createToken).toHaveBeenCalledOnce();
+    dialogClick(en.secret.confirmClose); expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('aborts stale loads and never renders old account metadata after account replacement', async () => {
@@ -193,6 +225,20 @@ describe('authoritative project management', () => {
     expect(screen.queryByRole('dialog')).toBeNull(); expect(screen.queryByRole('combobox')).toBeNull();
     expect(auth.listInvitations).toHaveBeenCalledOnce(); expect(auth.setMemberRole).toHaveBeenCalledOnce(); expect(auth.listMembers).toHaveBeenCalledTimes(2);
     expect(screen.getByRole('status')).toHaveTextContent(status === 409 ? '成员状态已变化' : '项目权限已变化');
+  });
+
+  it('localizes a conflict notice and the current role without reloading network state on language change', async () => {
+    vi.mocked(auth.listMembers).mockResolvedValueOnce([member(user.id, 'admin'), member('Alice')]).mockResolvedValue([member(user.id), member('Alice', 'admin')]);
+    vi.mocked(auth.setMemberRole).mockRejectedValue(new ApiError('server', 409, 'conflict'));
+    members(); await readyMembers();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Alice 的项目角色' }), { target: { value: 'admin' } });
+    const en = messagesByLocale.en.auth.management;
+    fireEvent.change(within(screen.getByRole('dialog')).getByRole('combobox', { name: '语言 / Language' }), { target: { value: 'en' } });
+    expect(screen.getByRole('dialog', { name: en.members.roleTitle({ name: 'Alice' }) })).toBeInTheDocument();
+    dialogClick(en.members.saveRole);
+    await screen.findByText(en.members.memberNotice);
+    expect(screen.getByRole('status')).toHaveTextContent(en.members.notice.conflictReloaded);
+    expect(auth.listMembers).toHaveBeenCalledTimes(2); expect(auth.listInvitations).toHaveBeenCalledOnce(); expect(auth.setMemberRole).toHaveBeenCalledOnce();
   });
 
   it('reloads after self-demotion and gives up its admin actions immediately', async () => {
@@ -309,7 +355,7 @@ describe('management feedback', () => {
     const root = document.createElement('div'); root.id = 'root'; document.body.append(root);
     const view = render(<AccountPage user={user} onSignOut={vi.fn()} />, { container: root }); await tokensTab(); click('创建令牌');
     expect(root).toHaveAttribute('inert'); const dialog = screen.getByRole('dialog'); const buttons = within(dialog).getAllByRole('button');
-    buttons.at(-1)!.focus(); fireEvent.keyDown(document, { key: 'Tab' }); expect(buttons[0]).toHaveFocus();
+    buttons.at(-1)!.focus(); fireEvent.keyDown(document, { key: 'Tab' }); expect(within(dialog).getByRole('combobox', { name: '语言 / Language' })).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true }); expect(buttons.at(-1)).toHaveFocus();
     dialogClick('取消'); expect(root).not.toHaveAttribute('inert'); view.unmount(); root.remove();
   });

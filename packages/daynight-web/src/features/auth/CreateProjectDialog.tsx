@@ -2,9 +2,12 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "re
 import { createProject } from "../../api/auth";
 import { ApiError, isAbortError } from "../../api/client";
 import type { Project } from "../../api/types";
+import { useI18n } from "../../i18n/LocaleProvider";
+import { LanguageSelector } from "../../i18n/LanguageSelector";
 import { useBodyScrollLock } from "../../app/useBodyScrollLock";
 
 export const CreateProjectDialog = ({ onClose, onCreated }: { readonly onClose: () => void; readonly onCreated: (project: Project) => void }) => {
+  const { messages: { auth: { createProject: m }, common } } = useI18n();
   const dialog = useRef<HTMLDialogElement>(null);
   const name = useRef<HTMLInputElement>(null);
   const active = useRef<AbortController | null>(null);
@@ -32,10 +35,10 @@ export const CreateProjectDialog = ({ onClose, onCreated }: { readonly onClose: 
     }).finally(() => { if (active.current === controller) active.current = null; });
   };
   return <dialog ref={dialog} className="auth-dialog" aria-labelledby="create-project-title" onCancel={(event) => { event.preventDefault(); if (!busy) onClose(); }}>
-    <form onSubmit={submit}><header className="dialog-header"><h2 id="create-project-title">创建私有项目</h2><button className="close-button" type="button" aria-label="关闭创建项目" disabled={busy} onClick={onClose}>×</button></header><div className="dialog-body"><p>项目仅对你和项目成员可见。创建后，你将成为项目管理员。</p>
-      <div className="field"><label htmlFor="project-name">项目名称 <span className="required">*</span></label><input ref={name} id="project-name" name="name" required autoComplete="off" disabled={busy} /></div>
-      <div className="field"><label htmlFor="project-repository">仓库地址 <span className="required">*</span></label><input id="project-repository" name="repoUrl" required type="text" autoComplete="off" placeholder="https://github.com/team/project" disabled={busy} /><p className="hint">支持 HTTPS、SSH URL 或 git@host:team/project.git 格式。</p></div>
-      {error !== null && <div className="notice error" role="alert"><p>项目创建失败，请检查输入后重试。</p>{error instanceof ApiError && error.requestId !== null && <p>请求 ID：<code>{error.requestId}</code></p>}</div>}
-    </div><footer className="dialog-footer"><button className="button" type="button" disabled={busy} onClick={onClose}>取消</button><button className="button primary" type="submit" disabled={busy}>{busy ? "正在创建…" : "创建项目"}</button></footer></form>
+    <form onSubmit={submit}><header className="dialog-header"><h2 id="create-project-title">{m.title}</h2><LanguageSelector /><button className="close-button" type="button" aria-label={m.close} disabled={busy} onClick={onClose}>×</button></header><div className="dialog-body"><p>{m.intro}</p>
+      <div className="field"><label htmlFor="project-name">{m.name} <span className="required">*</span></label><input ref={name} id="project-name" name="name" required autoComplete="off" disabled={busy} /></div>
+      <div className="field"><label htmlFor="project-repository">{m.repository} <span className="required">*</span></label><input id="project-repository" name="repoUrl" required type="text" autoComplete="off" placeholder="https://github.com/team/project" disabled={busy} /><p className="hint">{m.repositoryHint}</p></div>
+      {error !== null && <div className="notice error" role="alert"><p>{m.error}</p>{error instanceof ApiError && error.requestId !== null && <p>{common.requestId}<code>{error.requestId}</code></p>}</div>}
+    </div><footer className="dialog-footer"><button className="button" type="button" disabled={busy} onClick={onClose}>{m.cancel}</button><button className="button primary" type="submit" disabled={busy}>{busy ? m.busy : m.submit}</button></footer></form>
   </dialog>;
 };

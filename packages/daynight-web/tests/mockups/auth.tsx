@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AuthenticatedApp } from '../../src/app/AuthenticatedApp';
+import { LocaleProvider } from '../../src/i18n/LocaleProvider';
+import { resolveInitialLocale } from '../../src/i18n/locale';
 import { authScenarios, installAuthFixture, readAuthScenario, type AuthScenario } from './auth-fixture';
 import '../../src/styles/app.css';
 
 const initial = readAuthScenario();
+const initialLocale = resolveInitialLocale();
+document.documentElement.lang = initialLocale.locale;
 export const authFixture = installAuthFixture(initial);
 const fixture = authFixture;
 const AuthMockup = () => {
@@ -29,5 +33,5 @@ const AuthMockup = () => {
 const container = document.getElementById('root');
 if (container === null) throw new Error('The authentication fixture root is required.');
 const root = createRoot(container);
-root.render(<AuthMockup />);
+root.render(<LocaleProvider initial={initialLocale}><AuthMockup /></LocaleProvider>);
 import.meta.hot?.dispose(() => { root.unmount(); fixture.dispose(); });

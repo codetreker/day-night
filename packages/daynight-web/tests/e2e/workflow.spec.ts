@@ -148,7 +148,7 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
   await updateTask(request, project.id, completed.id, { version: completed.version, status: 'done' });
   const independent = await createTask(request, project.id, { title: '独立待处理任务' });
   await openProject(page, project.id, project.name);
-  for (const [label, value] of [['任务总数', '9'], ['已完成', '5'], ['待处理', '3'], ['进行中', '1'], ['可开始', '1'], ['被阻塞', '2']] as const) {
+  for (const [label, value] of [['任务总数', '9'], ['已完成', '5'], ['待审批', '0'], ['待处理', '3'], ['进行中', '1'], ['可开始', '1'], ['被阻塞', '2']] as const) {
     await expect(stat(page, label)).toHaveText(value);
   }
   await expect(page.getByText('完成比例 56%')).toBeVisible();
@@ -948,6 +948,7 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: '任务详情' });
   const close = dialog.getByRole('button', { name: '关闭任务详情', exact: true });
+  const detailLanguage = dialog.getByRole('combobox', { name: '语言 / Language', exact: true });
   await expect(dialog.locator('.task-detail-title')).toHaveText(b.title);
   expect(detailReads).toBe(1);
   await expect(close).toBeFocused();
@@ -957,7 +958,11 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   await page.keyboard.press('Shift+Tab');
   await expect(close).toBeFocused();
   await page.keyboard.press('Shift+Tab');
+  await expect(detailLanguage).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
   await expect(dialog.getByRole('region', { name: '任务图快照中的直接后续', exact: true }).getByRole('button', { name: c.title, exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(detailLanguage).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(close).toBeFocused();
   for (let index = 0; index < 9; index++) {
@@ -1061,7 +1066,7 @@ test('narrow-layout', scenario('narrow-layout'), async ({ page, request }, info)
   await openProject(page, project.id, project.name);
   await expect(page.getByRole('button', { name: '刷新', exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await expect(page.locator('.stats .stat')).toHaveCount(6);
+  await expect(page.locator('.stats .stat')).toHaveCount(7);
   await page.getByRole('button', { name: '全屏查看', exact: true }).click();
   const fullscreen = page.getByRole('dialog', { name: '任务依赖图全屏查看', exact: true });
   for (const width of [320, 768, 1280, 1440, 320]) {

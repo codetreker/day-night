@@ -1,7 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthenticatedApp, parseAuthRoute } from "../src/app/AuthenticatedApp";
+import { createLocaleRender } from "./helpers/renderWithLocale";
 import { invitationStorageKey } from "../src/features/auth/invitation";
+
+const render = createLocaleRender("zh-CN");
 
 const userId = "00000000-0000-4000-8000-000000000001";
 const otherId = "00000000-0000-4000-8000-000000000002";
@@ -9,10 +12,10 @@ const projectId = "00000000-0000-4000-8000-000000000003";
 const now = "2026-10-22T10:00:00Z";
 const user = (id = userId, name = "Alice") => ({ id, name, email: `${name}@example.com`, emailVerified: true, avatarUrl: null });
 const project = (name = "私有项目") => ({ id: projectId, name, repoUrl: "https://github.com/example/repo", createdAt: now, updatedAt: now });
-const member = (id = userId, role = "admin") => ({ projectId, userId: id, name: "账户设置：Alice", email: "alice@example.com", avatarUrl: null, role, version: 12, createdAt: now, updatedAt: now });
+const member = (id = userId, role = "admin") => ({ projectId, userId: id, name: "Alice", email: "alice@example.com", avatarUrl: null, role, version: 12, createdAt: now, updatedAt: now });
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 const fail = (status: number, code: string) => json({ error: { code, message: "hidden server details", requestId: "rq-safe" } }, status);
-const graph = () => json({ project: project(), tasks: [], summary: { total: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } });
+const graph = () => json({ project: project(), tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } });
 const defaults = (url: string): Response => {
   if (url === "/api/v1/me") return json(user());
   if (url === "/api/v1/auth/providers") return json({ providers: ["github"] });

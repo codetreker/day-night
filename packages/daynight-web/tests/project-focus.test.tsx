@@ -1,9 +1,12 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { createLocaleRender } from './helpers/renderWithLocale';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTask, getTaskGraph } from '../src/api/client';
 import type { GraphTask, TaskGraph } from '../src/api/types';
 import { ProjectPage } from '../src/features/projects/ProjectPage';
 import { projectRoot, type GraphIndex } from '../src/features/task-graph/model';
+
+const render = createLocaleRender('zh-CN');
 
 vi.mock('../src/api/client', async (original) => ({
   ...await original<typeof import('../src/api/client')>(), getTask: vi.fn(), getTaskGraph: vi.fn(),
@@ -40,7 +43,7 @@ const graph = (tasks = [task(rootId, '原任务链'), task(selectedId, '所选�
   project: { id: projectId, name: '核心项目', repoUrl: '', createdAt: timestamp, updatedAt: timestamp },
   tasks,
   summary: {
-    total: tasks.length, todo: tasks.filter((item) => item.status === 'todo').length, done: tasks.filter((item) => item.status === 'done').length, inProgress: tasks.filter((item) => item.status === 'in_progress').length,
+    total: tasks.length, proposed: tasks.filter((task) => task.status === "proposed").length, todo: tasks.filter((item) => item.status === 'todo').length, done: tasks.filter((item) => item.status === 'done').length, inProgress: tasks.filter((item) => item.status === 'in_progress').length,
     ready: tasks.filter((item) => item.ready).length, blocked: tasks.filter((item) => item.status === 'todo' && !item.ready).length,
   },
 });
@@ -153,7 +156,7 @@ describe('project dialog focus restoration', () => {
     expect(trigger.isConnected).toBe(false);
     expectModalReleased();
     expect(screen.getByText('所选任务已不在新的任务图中，详情已关闭。')).toBeVisible();
-    expect(within(screen.getByRole('region', { name: '项目任务统计' })).getAllByText('0', { selector: '.stat-number' })).toHaveLength(6);
+    expect(within(screen.getByRole('region', { name: '项目任务统计' })).getAllByText('0', { selector: '.stat-number' })).toHaveLength(7);
     expect(screen.queryByRole('region', { name: '任务依赖链' })).toBeNull();
   });
 

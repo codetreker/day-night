@@ -1,6 +1,6 @@
 # UniAuth 登录与项目授权架构
 
-状态：身份/凭据与项目成员模块、CLI 凭据和可显式挂载的 Web 鉴权界面已实现；生产主入口尚未接线，统一启用和真实登录方式 discovery 继续按任务交付。
+状态：身份/凭据与项目成员模块、CLI 凭据和可显式挂载的双语 Web 鉴权界面已实现；生产 main.tsx 继续以 LocaleProvider 挂载 App，鉴权入口切换与真实协议接线由统一启用交付。
 [需求](../spec/daynight-auth.md)拥有完整可观察行为，
 [任务入口](daynight-auth-tasks.md)连接执行资料，
 [鉴权决策](../../.agents/notes/implemented/architecture/2026-10-22-auth-architecture.md)
@@ -33,10 +33,11 @@
 UniAuth 基线 `c82c55c7fcd366824d0bc5ac6bdd17528c0300fa` 的
 [协议](https://github.com/codetreker/uniauth/blob/c82c55c7fcd366824d0bc5ac6bdd17528c0300fa/docs/reference/api.md)
 提供一次性身份，不替产品管理用户或会话。[SDK](https://github.com/codetreker/uniauth/blob/c82c55c7fcd366824d0bc5ac6bdd17528c0300fa/docs/reference/sdks.md)
-负责 URL、callback 解析与一次领取。依赖可固定为
+负责 URL、callback 解析与一次领取。当前集成固定为
 `github.com/codetreker/uniauth/sdk/go v0.0.0-20261022051636-c82c55c7fcd3`；
 [Go proxy 元数据](https://proxy.golang.org/github.com/codetreker/uniauth/sdk/go/@v/v0.0.0-20261022051636-c82c55c7fcd3.info)
-已确认，实施时校验 checksum，不使用工作站 replace。
+记录该基线。统一启用升级至包含上游 PR #19 的固定版本并校验 checksum，继续不使用
+工作站 replace；旧基线的历史能力与新上游能力分别说明。
 
 ## 职责与数据流
 
@@ -70,10 +71,16 @@ Principal 形状为 `{UserID, CredentialID, Kind}`，Kind 只有 session/PAT。�
 前端依赖，列表必须由服务端根据当前 UniAuth App 的允许范围与实际启用状态取得。
 客户端明确处理读取失败、重试和零 provider，不使用固定 provider 或本地配置回退。
 
-当前 UniAuth SDK 提供 authorize/retrieve 身份交接，尚无满足 App 范围的 provider
-discovery。已有 console provider 接口只描述全局启用状态，不能证明当前 App 可用
-列表。真实协议能力、服务端暴露及其验证归统一启用任务；前端受控响应只验证界面
-状态。[Web 决策](../../.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
+Daynight 当前固定的 UniAuth `c82c55c7` SDK 只有 authorize/retrieve 身份交接；
+该基线的 console provider 接口只有全局启用状态，不能证明当前 App 可用列表。
+上游 [PR #19](https://github.com/codetreker/uniauth/pull/19) 已在
+`0978963813fcefd9d553f6cb9bcc319084c764b3` 交付
+[App-aware discovery](https://github.com/codetreker/uniauth/blob/0978963813fcefd9d553f6cb9bcc319084c764b3/docs/reference/api.md#L28-L73)：
+后端以 App 凭据调用 POST /auth/providers，body 携带精确 redirect_uri，取得实时
+App allowlist 与 registry 的交集；空列表有效。Go SDK
+[Providers(ctx, redirectURI)](https://github.com/codetreker/uniauth/blob/0978963813fcefd9d553f6cb9bcc319084c764b3/sdk/go/providers.go#L14-L37)
+执行有界单次请求。统一启用任务升级 Daynight 的固定 SDK、使用配置的 callback
+调用真实协议并暴露服务端接口；不产生额外登录事务，前端受控响应只验证界面状态。[Web 决策](../../.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
 记录这一依赖及证据边界。
 
 ## 登录和凭据
@@ -147,7 +154,7 @@ version_conflict。删除/降级最后 admin 返回 409 last_admin。
 | GET /healthz、GET /readyz | 无业务数据的存活/就绪；就绪保留 store 可用性。 |
 | GET /api/v1/auth/providers | 登录页的 App 范围 provider 发现；前端依赖已实现，真实协议与服务端暴露由统一启用交付。 |
 | GET /api/v1/auth/login?provider=... | 创建 pending 并跳转 UniAuth。 |
-| GET /api/v1/auth/callback | 校验/消费 pending、领取身份、建立 session。 |
+| GET {配置的 callback 路径} | 校验/消费 pending、领取身份、建立 session；既有未挂载模块使用 /api/v1/auth/callback，统一启用支持配置路径。 |
 | GET /api/v1/me | 当前用户最小资料。 |
 | POST /api/v1/auth/logout | 主站会话注销，验证 Origin。 |
 | GET/POST /api/v1/me/tokens、DELETE .../{tokenId} | 主站会话管理自己的 PAT。 |
@@ -160,13 +167,19 @@ version_conflict。删除/降级最后 admin 返回 409 last_admin。
 新增 unauthenticated/forbidden/last_admin/invitation_unavailable 错误，保留原 envelope/
 requestId。非成员与不存在项目均 not_found；错误类别不能落入 internal_error。
 
-`AuthenticatedApp` 为已实现的显式挂载入口，生产 `main.tsx` 仍挂载原 `App`。
+`AuthenticatedApp` 为已实现的显式挂载入口，与现有应用共用 LocaleProvider；
+生产 `main.tsx` 保持 `LocaleProvider` 与原 `App`，统一启用只切换应用组件。
 它通过 /me 取得身份，401 显示 UniAuth 入口；资源 404 不退出全局会话。
 项目列表增加名称/仓库地址创建表单，复用原 API，成功进入空项目且创建者为 admin。
 账户页管理 PAT，项目页管理成员。角色确认后展示管理操作，服务端独立检查；冲突
 重取权威数据。401/换账号使共享请求 generation 失效并卸载旧项目和附件内容，
 失败不伪装成空列表。成员 version 以 bigint 解码及序列化，保留完整正 int64。
 现有图、项目浏览偏好和居中 TaskDetailDialog 继续复用，不增加任务字段编辑。
+`messages.auth` 的英语与简体中文契约覆盖所有新界面、标题、校验、无障碍名称、
+错误和异步通知；通知存语义，渲染时取当前语言，日期/计数使用原生格式化器。
+登录、工作空间、邀请及管理模态均提供共用 LanguageSelector。切换不以 locale
+重建组件或进入请求依赖，保持输入、一次性秘密、成员版本、当前身份和 pending
+操作。[语言设计](daynight-web-i18n.md)拥有公共机制，鉴权组件遵守相同状态规则。
 
 邀请入口 /invitations#<secret> 读取后立即清除 fragment，以 tab 的临时 sessionStorage
 跨登录保存，确认/取消/失效后删除；秘密不进请求路径/Referer/日志。一次性 token/
@@ -198,16 +211,30 @@ serverUrl/repoIdentity/projectId。review/update/help/version 保留依赖边界
 
 ## 配置、现有部署和启用
 
-新增 PUBLIC_ORIGIN、UNIAUTH_URL、UNIAUTH_APP_ID、UNIAUTH_APP_SECRET，使用
-DAYNIGHT_ 前缀；callback 固定为 public origin 加 /api/v1/auth/callback。生产 public
-origin 显式配置，不从 Host/转发 header/listener 推导。Go 保持 loopback；沿用一个
-应用 origin 和现有入口。已有 localhost/dev-ci 卷、网络和清理机制继续，健康检查改
-/readyz。缺必需鉴权配置拒绝启动，启用后没有匿名业务访问模式。
+统一启用新增 PUBLIC_ORIGIN、UNIAUTH_URL、UNIAUTH_APP_ID、UNIAUTH_APP_SECRET
+及 UNIAUTH_CALLBACK_URL，均使用 DAYNIGHT_ 前缀。完整 callback URL 是必需配置，
+与 PUBLIC_ORIGIN 保持同源，路径可为 `/auth/callback` 等已登记值；不含用户信息
+或 fragment，并拒绝 SDK 保留的 code/state/error query。服务按该精确路径注册
+handler，并将完整 URL 原样传给 SDK，与 UniAuth App 的 redirect URI 精确匹配。当前未挂载模块固定 `/api/v1/auth/callback`
+的行为由统一启用替换，不保留另一条硬编码别名。
+
+生产 public origin 显式配置，不从 Host/转发 header/listener 推导。已授权的 HTTP
+测试 origin、callback 与显式开发配置也由同一部署配置提供；测试域名不能被自动
+判为回环。升级后的 SDK 分别验证 gateway URL 与 callback：gateway 默认 HTTPS，
+显式 AllowLoopbackHTTP 只允许 localhost/numeric loopback；callback 允许已精确
+登记的绝对 HTTP/HTTPS URL，包含自定义路径。
+[SDK URL 校验](https://github.com/codetreker/uniauth/blob/0978963813fcefd9d553f6cb9bcc319084c764b3/sdk/go/validation.go#L19-L64)
+拥有协议限制。统一启用须分别验证这些配置及 HTTP 测试应用的 Cookie/Origin 策略，
+不以 gateway 的回环选项代替应用测试配置。当前 loopback-only 实现规则仍有效，
+本文不声明 HTTP 测试域名或自定义 callback 已启用。
+Go 保持 loopback；沿用一个应用 origin 和现有入口。已有 localhost/dev-ci 卷、
+网络和清理机制继续，健康检查改 /readyz。缺必需鉴权配置拒绝启动，启用后没有匿名业务访问模式。
 
 本地/CI 使用同源数值回环 HTTP，如 http://127.0.0.1:P，受控 UniAuth fixture 使用
 另一回环端口。显式 DAYNIGHT_ALLOW_LOOPBACK_HTTP=1 同时要求相关 HTTP origin 为
 literal localhost/numeric loopback，传给 SDK 的 AllowLoopbackHTTP；生产禁止该开关。
-现有 SDK 与 callback 注册已支持此规则，不需要修改 UniAuth。
+该 gateway 回环规则保持；配置 callback 的扩展来自上游已交付的 SDK，统一启用
+升级固定版本后验证。
 
 进程验收先临时监听 127.0.0.1:0 选出候选端口，关闭后以固定 ListenAddress 和相同
 PUBLIC_ORIGIN 启动真实二进制；只对已证明的 EADDRINUSE 重选，其他失败原样暴露。

@@ -1,6 +1,6 @@
 # Web 语言运行时与界面接入设计
 
-状态：`packages/daynight-web/src/i18n/` 提供可显式挂载的英语与简体中文运行时，隔离组件和测试可以使用它。生产 `main.tsx`、`App` 与领域组件尚未接入，当前产品仍使用中文。完整界面接入由 I18N-T2 交付，真实生产验收由 I18N-T3 交付；[语言需求](../spec/daynight-web-i18n.md)拥有完整 L1–L10 条件，[看板架构](daynight-web.md)继续拥有业务数据、图和生命周期。
+状态：生产 `main.tsx`、`App` 与现有全部第一方组件接入 `packages/daynight-web/src/i18n/`，提供英语与简体中文界面，包括居中 `TaskDetailDialog`。语言运行时、功能接入及定向验收场景已实现；I18N-T3 拥有源码绑定的组合验收结论。[语言需求](../spec/daynight-web-i18n.md)拥有完整 L1–L10 条件，[看板架构](daynight-web.md)继续拥有业务数据、图和生命周期。
 
 ## 运行时结构
 
@@ -10,9 +10,12 @@
 packages/daynight-web/
   src/i18n/
     locale.ts              语言类型、浏览器匹配与初始偏好读取
-    messages.ts            完整消息契约与目录选择
+    messages.ts            公共消息、领域契约与目录选择
     messages/en.ts         英语目录
     messages/zh-CN.ts      简体中文目录
+    messages/workspace.ts  导航、项目、统计、页签与偏好消息
+    messages/graph.ts      图、节点、依赖与 React Flow 消息
+    messages/inspection.ts 详情、PR、附件与预览消息
     formats.ts             按语言缓存的 Intl 格式化器
     LocaleProvider.tsx     展示值、偏好错误及保存操作
     LanguageSelector.tsx   共用原生选择器、错误提示与重试
@@ -20,7 +23,12 @@ packages/daynight-web/
   tests/mockups/locale-runtime.html
 ```
 
-隔离的[运行时预览](../../packages/daynight-web/tests/mockups/locale-runtime.html)复用实际选择器与产品样式，演示多个入口共享语言及切换时保留 fixture 状态。它证明基础组件的交互，完整页面的最终视觉仍由双语界面任务的交互原型拥有。
+隔离的[运行时预览](../../packages/daynight-web/tests/mockups/locale-runtime.html)继续演示多个选择器共享语言与 fixture 状态。实际组件的[任务浏览预览](../../packages/daynight-web/tests/mockups/browsing.html)和[附件预览](../../packages/daynight-web/tests/mockups/attachments.html)均显式挂载 Provider，复用生产组件及样式；完整页面原型由双语界面任务的附件拥有。这些 fixture 的前端交互不替代真实服务验收。
+
+显式挂载的[AuthenticatedApp](daynight-auth.md)使用同一个 LocaleProvider；
+messages.auth 的完整英语/简体中文契约拥有登录、账户、项目创建、成员、邀请和
+令牌文案。生产入口仍在 Provider 下渲染原 App，统一启用只切换应用组件。鉴权
+fixture 同样显式挂载 Provider，不通过生产鉴权接线来取得语言能力。
 
 ## 初始语言与偏好
 
@@ -46,7 +54,7 @@ type LocaleIssue = {
 
 ## Provider 与订阅
 
-`LocaleProvider` 要求调用方显式传入 `initial: InitialLocale`，可选传入 `getStorage`。这样，入口可以在渲染前解析一次语言，测试也能提供确定的初始状态和故障存储。基础运行时不主动挂载到生产入口，也不修改 HTML `lang` 或页面标题。
+`LocaleProvider` 要求调用方显式传入 `initial: InitialLocale`，可选传入 `getStorage`。这样，入口可以在渲染前解析一次语言，测试也能提供确定的初始状态和故障存储。生产 `main.tsx` 在 `createRoot()` 前完成解析并设置文档信息，再将 `LocaleProvider` 常驻应用根部；独立入口与测试使用相同的显式挂载方式。
 
 展示与偏好通过专用 hooks 访问：
 
@@ -64,32 +72,41 @@ Provider 使用一份当前 issue 状态，初始值来自 `initial.issue`。选
 
 ## 消息与格式化
 
-`Messages` 是两个目录共同满足的 TypeScript 契约。当前基础目录只包含 `common.retrySave`、语言标签、选项和偏好错误消息等实际调用方需要的键。后续领域接入按组件需要扩充同一接口，两个目录同时实现；不预先加入没有调用方的任务文案。
+`Messages` 是两个目录共同满足的 TypeScript 契约。`common` 拥有 `retrySave`、按 `TaskStatus` 索引的 `status` 和 `requestId`；`language` 拥有标签、选项和保存错误；`workspace`、`graph` 与 `inspection` 分别拥有导航/项目、图和详情/PR/附件消息；
+`auth` 拥有登录、账户、项目创建、成员、邀请、令牌及管理对话框消息。组件通过 `useI18n()` 取得领域消息、公共状态与格式化器；相同 task 状态和请求 ID 标签不在领域中重复定义。
 
-固定文本使用字符串；动态文本使用带具名参数的函数，返回完整句子，目录负责语序、标点、单位和复数。调用方不拼接零散英语片段，不提供缺失键时使用另一种语言的静默替代。测试中的独立类型化计数消息覆盖 0、1 与多项，验证扩充消息契约的方式而不向产品目录加入测试专用键。
+固定文本使用字符串；动态文本使用带具名参数的函数，返回完整句子，目录负责语序、标点、单位和复数。调用方不拼接零散英语片段，不提供缺失键时使用另一种语言的静默替代。产品计数消息及格式测试覆盖 0、1 与多项；测试专用消息不进入产品目录。
 
 `getFormats(locale)` 按两种 locale 缓存 `Intl.DateTimeFormat`、`Intl.NumberFormat` 和 `Intl.PluralRules`，提供 `date`、`time`、`dateTime`、`number`、`bytes` 与 `plural`。日期输入接受 `Date`、字符串或数字，沿用本地时区与 `hour12: false`；格式改变不修改输入时间戳。数字按语言分组；字节以精确值加 `B` 展示，不转换为会丢失精度的近似容量。格式化接口保留原生 `Intl` 的输入语义，不增加替代缺失数据的默认值；日期无效时由原生格式化器抛出错误。
 
-## 完整界面接入约束
-
-本节是 I18N-T2 的接入设计，描述生产交付必须遵守的结构；当前运行时并不代表这些组件已完成翻译。
+## 生产界面与生命周期
 
 生产入口在 `createRoot()` 前执行初始解析，再把常驻 Provider 放在应用根部。首屏 HTML `lang` 和标题使用解析结果，后续导航与切换同步更新。Provider 不以 locale 作为 `key`，领域组件也不使用 locale 重置实例。
 
-导航、详情和全屏工具栏共用 `LanguageSelector`。详情打开时底层页面处于 `inert`，所以详情内必须有自己的可操作入口。所有入口继续使用现有焦点圈定、Escape 分层和关闭后恢复机制；切换本身不移动焦点。
+导航、居中 `TaskDetailDialog` 和全屏工具栏共用 `LanguageSelector`。详情打开时底层页面处于 `inert`，对话框自己的选择器继续可操作。所有入口继续使用现有焦点圈定、Escape 分层和关闭后恢复机制；切换本身不移动焦点。
 
 项目、图、详情与附件请求仍由资源 ID、revision 和原有操作触发。locale 不进入业务 hook 的请求、取消或订阅依赖；上传、覆盖、删除和刷新期间切换只更新展示。附件预览继续使用原来的 key、URL、DOM 和 iframe 身份，输入与已选文件保持不变。
 
-图结构与几何继续只依赖 `index/rootId` 和原有布局输入。memoized 的任务节点、任务链行和依赖边在内部订阅展示 Context，更新文案与 ARIA，同时保留节点数据、边路径、视口和初始定位机制。React Flow 的无障碍配置由当前消息生成；英文文案必须适配现有节点尺寸。
+图结构与几何继续只依赖 `index/rootId` 和原有布局输入。memoized 的 `TaskNode`、`RootRow` 和 `DependencyEdges` 在内部订阅展示 Context，更新文案与 ARIA，同时保留节点数据、边路径、视口和初始定位机制。依赖边的昂贵绘制分解以 geometry 为 memo 依赖，语言变化更新可访问文本，同时保留 canonical 路线坐标与绘制片段。React Flow 的无障碍配置由当前消息生成；英文文案必须适配现有节点尺寸。
 
-错误与通知状态保存语义，渲染时翻译。API client 继续返回结构化 `ApiError`、图规模详情和 request ID；服务原始正文不进入安全提示。项目刷新后所选任务被移除的通知保存为通知原因，避免将中文句子冻结在状态中。附件异步结果沿用语义状态，完成时以当前语言呈现。既有每项目浏览偏好错误沿用自身的状态与存储格式，由展示层映射当前语言。
+错误与通知状态保存语义，渲染时翻译。API client 继续返回结构化 `ApiError`、图规模详情和 request ID；服务原始正文不进入安全提示。项目刷新后所选任务被移除的通知保存为 `{ kind: 'selected-task-removed' }`，渲染时读取当前目录。附件异步结果沿用语义状态，完成时以当前语言呈现。既有每项目浏览偏好错误沿用自身的状态与存储格式，由展示层映射当前语言。
 
-语言切换保留页签、筛选、展开链、滚动、图平移/缩放、全屏、详情、PR 页码、预览和输入。它不主动重置浏览位置；英文自然换行的高度变化需要浏览器几何检查。页签徽标沿用未完成任务数语义，跨根任务按 ID 去重，与完成项显示开关无关。
+语言切换保留页签、筛选、展开链、滚动、图平移/缩放、全屏、详情、PR 页码、预览和输入。
+鉴权界面还保留当前身份、成员观察版本、模态、一次性秘密及进行中的管理请求；
+校验、登出/会话、邀请清理和复制通知保存语义值，渲染时查询当前目录。它不主动重置浏览位置；英文自然换行的高度变化需要浏览器几何检查。页签徽标沿用未完成任务数语义，跨根任务按 ID 去重，与完成项显示开关无关。
 
-## 验证归属
+## 验证与证据归属
 
 基础测试提供显式 `renderWithLocale` helper、可控 storage 和隔离组件 fixture，覆盖浏览器匹配、显式选择优先、自动检测不保存、读写故障、无效值、成功清除错误、多个选择器共享状态、缺少 Provider 失败、完整目录与格式化。使用 `pnpm web:typecheck`、`pnpm web:test` 与 `pnpm web:build` 保持所有产品源码的严格语句覆盖率门槛。
 
-I18N-T2 验证领域文案、已显示错误重翻译、待完成附件操作期间切换、DOM/预览身份和浏览状态保持。它同步更新现有组件测试与 standalone 入口的 Provider 包装，并为两个语言增加定向浏览器场景，保留单一 Playwright project、容量矩阵和性能预算。新增功能场景必须同步注册 annotation、runner inventory、报告聚合与严格预期测试。
+组件测试验证领域文案、已显示错误重翻译、待完成附件操作期间切换、DOM/预览身份和浏览状态保持。现有组件测试与 standalone 入口显式使用 Provider。生产浏览器增加三个场景：
 
-I18N-T3 使用真实嵌入式服务与生产容器验证完整 L1–L10，包括首屏、持久保存、键盘操作、两种语言的 1440px/320px 视觉、错误恢复、业务请求数量和资源清理。原型、隔离组件、JSDOM 与本地浏览器各有其证据范围，不能替代真实服务和对应源码的生产验收。
+| 场景 | 验证内容 |
+|---|---|
+| `language-startup-preferences` | 浏览器语言、显式保存、重载与路由、标题和 HTML `lang`，以及用户原始数据。 |
+| `language-state-preservation` | 图节点/边/视口、全屏与模态焦点、PR 页码、附件输入/iframe 身份及内容；待完成上传、覆盖和删除期间切换，每项写入只执行一次。 |
+| `language-errors-and-narrow` | 读/无效值/写入故障与重试、真实隔离数据库故障下错误重译及相同 request ID，两种语言的 1440px/320px 图、对话框与附件布局。 |
+
+三个场景使用现有受监控页面与场景级 `en-US` 浏览器 locale，继续由单一 Playwright project 执行一次、零 retry。functional inventory、报告聚合与严格预期测试使用相同 annotation；原生及容器各为 13 个功能场景，原生保留 5 个容量/超限场景，严格合集为 18 个。容量矩阵、性能预算、覆盖率与清理规则保持原要求。
+
+I18N-T3 核对相同源码的真实嵌入式服务与生产容器组合回执，验证完整 L1–L10，包括首屏、持久保存、键盘操作、两种语言的 1440px/320px 视觉、错误恢复、业务请求数量和资源清理。原型、隔离组件、JSDOM 与本地浏览器各有其证据范围，不能替代真实服务和对应源码的生产验收。

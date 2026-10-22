@@ -28,7 +28,7 @@ export const taskDefinition: CommandDefinition = {
       name: "list",
       description: "List unfinished tasks, with in-progress and ready tasks first",
       options: [{ names: ["--all"], description: "Include completed tasks; conflicts with --status" }, statusOption, { names: ["--ready"], description: "Include only tasks ready to start" }, projectOption, listJsonOption, helpOption],
-      details: "By default, exclude done tasks. Use --all for every status or --status for a specific status.\nCombine --ready with the selected statuses using AND. Read every page before printing.\nOrder in_progress first, then ready tasks, then remaining tasks; preserve server order within each group.\nText lists omit description, version, and timestamps. --json omits description and preserves every other task field with the same filtering and ordering.",
+      details: "By default, exclude done tasks. Use --all for every status or --status for a specific status.\nCombine --ready with the selected statuses using AND. Read every page before printing.\nOrder in_progress first, then ready todo, blocked todo, proposed, and done tasks; preserve server order within each group.\nText lists omit description, version, and timestamps. --json omits description and preserves every other task field with the same filtering and ordering.",
     },
     {
       name: "ready",

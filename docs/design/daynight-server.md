@@ -136,16 +136,19 @@ query 和 fragment。SSH 用户名是传输地址组成部分，可以保存；�
 
 ## 状态与依赖不变量
 
-任务状态为 `todo`、`in_progress`、`done`。创建任务固定使用 `todo`，允许同时提交
-`dependsOn`；状态变更通过更新接口完成。任务状态可以向前或向后修改，但每次写入
-都必须满足以下条件：
+存储和读取模型的任务状态为 `proposed`、`todo`、`in_progress`、`done`。迁移
+`007_task_proposed.sql` 仅替换状态 CHECK，不改动已应用迁移，也不重写既有任务、
+版本或时间。数据库默认值和公开创建仍为 `todo`，创建允许同时提交 `dependsOn`。
+公开列表状态筛选和通用更新的候选状态仍由既有三状态验证器限制；审批和专用
+生命周期操作尚未启用。该边界由[四状态读取决策](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
+拥有，存储夹具可提供 proposed 读取数据。每次公开写入都必须满足以下条件：
 
 - 依赖只能指向同 project 中已经存在的任务；拒绝自身依赖、重复 ID、缺失任务、跨
   project 引用和有向环。
 - `in_progress` 和 `done` 任务的所有直接前置任务必须为 `done`。
 - 给 `in_progress` 或 `done` 任务增加未完成前置任务时拒绝整个更新。
-- 将 `done` 任务改为 `todo` 或 `in_progress` 时，只要有直接下游任务处于
-  `in_progress` 或 `done`，就拒绝整个更新。
+- 将 `done` 任务改为 `todo` 或 `in_progress` 时，所有直接下游必须为 `todo`，
+  否则拒绝整个更新；四状态读取准备不改变此写入判定。
 
 检查直接下游足以保持状态不变量：每个活跃或已完成任务都要求其直接前置完成。
 不需要隐式回退下游任务，也不根据状态变更自动开始其他任务。依赖检查限制状态
@@ -154,7 +157,8 @@ query 和 fragment。SSH 用户名是传输地址组成部分，可以保存；�
 读取任务时派生两个字段：`blockedBy` 是按 ID 排序的、状态尚未达到 `done` 的直接
 前置任务 ID；`ready` 等于 `status == todo` 且 `blockedBy` 为空。`dependsOn` 返回
 按 ID 排序的全部直接前置任务 ID。这些字段由当前持久化依赖和状态计算，不另存
-可漂移的计数或 DAG 缓存。
+可漂移的计数或 DAG 缓存。`proposed` 读取保留未完成前置对应的 `blockedBy`，
+但 `ready` 始终为 false；只有 `in_progress` 和 `done` 要求直接前置全部完成。
 
 ## 写事务与并发
 
