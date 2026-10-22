@@ -20,8 +20,9 @@
 依赖设计，GW-T2 通过 `dependsOn` 依赖 GW-T1。执行前使用
 `daynight task show <task-id> --json` 刷新实际状态与精确版本，再读取真实附件。
 
-两个起始任务、GW-T1 与 GW-T2 均已登记。设计交接按下表整理并核验六份附件，不向
-所有任务复制相同资料包。每个正文是自足简介，明确自己的具体问题、动作、范围、
+两个起始任务、GW-T1 与 GW-T2 均已登记。下表是设计交接时六份计划与设计附件的
+所有权，不是通用配额；后续实际产出的专属资源与验收证据由所属任务增加。共享输入
+引用来源，不向所有任务复制相同资料包。每个正文是自足简介，明确自己的具体问题、动作、范围、
 交付物、约束、简明完成条件及来源引用；任务专属主附件拥有详细方案和完整验收。
 
 | 资料所有者 | 本任务的附件 | 对外职责与共享输入 |
@@ -40,9 +41,9 @@
 设计 PR 交接前，专属主附件、设计产出和所有引用均须上传或确认已有来源后读回；
 任务标题、本文表格或 ready 分页不能替代任务、附件内容与依赖的实际核验。
 
-本次设计 PR 只交付规范、架构、任务拆分、决策及必要入口，不修改已发布 skill、测试或
-包版本。设计 PR 保持可审阅时，设计任务继续 in_progress，GW-T1 继续依赖阻塞，
-GW-T2 依赖 GW-T1。创建后继任务不代表执行授权，也不授予设计或实施 PR 的合并权限。
+描述和设计交付分别完成问题定义及架构与拆分，不能代替协议实施或独立消费者验收。
+设计 PR 未合并时，设计任务保持 in_progress，GW-T1 受其依赖阻塞；GW-T2 依赖 GW-T1。
+创建后继任务不代表执行授权，也不授予设计或实施 PR 的合并权限。
 
 ## GW-T1：交付 using-daynight Goal 协议
 
@@ -61,8 +62,8 @@ autopilot 指引以及普通任务和 Goal 阶段的自足简介、按需附件�
 
 | 文件或位置 | 负责内容 |
 |---|---|
-| `packages/daynight/src/commands/skill/skills/using-daynight/SKILL.md` | 保留四模式路由与授权边界，增加共享 Goal 协议入口。 |
-| 同目录 `references/goal.md` | 新增完整阶段协议，包括登记、阶段输入与输出、设计拆分、依赖、恢复及整体验收。 |
+| `packages/daynight/src/commands/skill/skills/using-daynight/SKILL.md` | 保留四模式路由与授权边界，持有共享 Goal 协议入口。 |
+| 同目录 `references/goal.md` | 完整阶段协议，包括登记、阶段输入与输出、设计拆分、依赖、恢复及整体验收。 |
 | 同目录 `references/create-task.md`、`run-task.md`、`autopilot.md` | 按职责引用协议，采用阶段资料门槛，保留登记返回、单任务返回和显式 autopilot。 |
 | 同目录 `references/handbook.md` | 保留现有命令与数据语义；仅在新的跨文档引用实际需要时同步，不扩展 CLI。 |
 | 根 `README.md`、`docs/spec/daynight-agent-skill.md`、`docs/design/daynight-agent-skill.md`、`docs/design/daynight.md`、`docs/spec/daynight-task-inspection.md` | 同步发布资源树、当前行为、资料归属及 Goal 入口，不将单任务规则误用于生产该资料的阶段。 |
@@ -86,7 +87,7 @@ autopilot 指引以及普通任务和 Goal 阶段的自足简介、按需附件�
   描述 done、设计 done 和整个 Goal 完成能够分别判断。
 - 普通任务和 Goal 各阶段正文都可独立理解，包含具体工作、产出、约束与简明可观察
   完成条件；详细方案和完整验收由各自主附件拥有。共享要求和设计按真实来源引用，
-  附件按任务实际需要组织，六份资料归属明确，无默认重复整包上传。
+  附件按任务实际需要组织，计划资料及后续证据归属明确，无默认重复整包上传。
 - 相关 active 文档和决策同一交付同步；发布入口 frontmatter、本地链接、英文、note
   结构和新增文件检查通过，`git diff --check` 无错误。
 - 独立情境审查覆盖需求列出的场景，无未处理的 Critical/Major；较小或无关改进延后，
