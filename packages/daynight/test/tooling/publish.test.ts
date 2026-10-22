@@ -5,7 +5,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { preflightRelease, prepareRelease, publishRelease, runNpmPublish } from "../../scripts/publish.js";
+import { parse as parseYaml } from "yaml";
+import { preflightRelease, prepareRelease, publishRelease, runNpmPublish, runNpmView } from "../../scripts/publish.js";
 import type { ReleaseReceipt, ReleaseServices } from "../../scripts/publish.js";
 
 const root = path.resolve(import.meta.dirname, "../../../../.tmp/publish-tests");
@@ -59,7 +60,7 @@ const metadata = (receipt: ReleaseReceipt): Metadata => ({
 });
 const harness = (receipt: ReleaseReceipt) => {
   const state: {
-    metadata: Metadata | undefined; latest: unknown; tag: string | undefined; tagType: string; tarball: Uint8Array;
+    metadata: Metadata | undefined; latest: { version: string } | undefined; tag: string | undefined; tagType: string; tarball: Uint8Array;
     postStatus: number; publicationError: Error | undefined; delay: number; tarballDelay: number; tarballStatus: number;
   } = { metadata: undefined, latest: { version: "1.2.2" }, tag: undefined, tagType: "commit", tarball: bytes, postStatus: 201, publicationError: undefined, delay: 0, tarballDelay: 0, tarballStatus: 200 };
   const events: string[] = [];
@@ -77,16 +78,18 @@ const harness = (receipt: ReleaseReceipt) => {
       events.push("tag:lookup");
       return state.tag === undefined ? json({}, 404) : json({ ref: `refs/tags/${receipt.tag}`, object: { type: state.tagType, sha: state.tag } });
     }
+    expect(url.endsWith(".tgz")).toBe(true);
     expect(new Headers(init?.headers).has("Authorization")).toBe(false);
-    if (url.endsWith("/latest")) { events.push("registry:latest"); return state.latest === undefined ? json({}, 404) : json(state.latest); }
-    if (url.endsWith(".tgz")) {
-      events.push("tarball:download");
-      if (state.tarballDelay > 0) { state.tarballDelay--; return json({}, 404); }
-      return new Response(Buffer.from(state.tarball), { status: state.tarballStatus });
-    }
+    events.push("tarball:download");
+    if (state.tarballDelay > 0) { state.tarballDelay--; return json({}, 404); }
+    return new Response(Buffer.from(state.tarball), { status: state.tarballStatus });
+  });
+  const npmView = vi.fn(async (version: string, _cwd: string, _signal?: AbortSignal) => {
+    if (version === "latest") { events.push("registry:latest"); return state.latest; }
+    expect(version).toBe(receipt.version);
     events.push("registry:version");
-    if (state.delay > 0) { state.delay--; return json({}, 404); }
-    return state.metadata === undefined ? json({}, 404) : json(state.metadata);
+    if (state.delay > 0) { state.delay--; return undefined; }
+    return state.metadata;
   });
   const publish = vi.fn(async () => {
     events.push("npm:publish");
@@ -94,8 +97,13 @@ const harness = (receipt: ReleaseReceipt) => {
     state.metadata = metadata(receipt);
   });
   const wait = vi.fn(async (_milliseconds: number) => { events.push("wait"); });
-  const services: ReleaseServices = { fetch: fetchMock as typeof fetch, publish, wait, token: "test-github-token", apiUrl: "https://api.github.com" };
-  return { state, events, services, publish, wait, fetchMock };
+  const services: ReleaseServices = { fetch: fetchMock as typeof fetch, npmView, publish, wait, token: "test-github-token", apiUrl: "https://api.github.com" };
+  return { state, events, services, publish, wait, fetchMock, npmView };
+};
+const npmStub = (cwd: string, body: string) => {
+  const filename = path.join(cwd, "npm-cli.mjs");
+  writeFileSync(filename, body);
+  vi.stubEnv("NPM_CLI_JS", filename);
 };
 
 afterEach(() => {
@@ -104,79 +112,103 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
+describe("npm view publication lookup", () => {
+  it.each([false, true])("reads JSON metadata through the npm subprocess (singleton array: %s)", async (array) => {
+    const f = fixture();
+    const output = path.join(f.cwd, "invocation.json");
+    npmStub(f.cwd, `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(output)}, JSON.stringify(process.argv.slice(2)));\nconsole.log(${JSON.stringify(JSON.stringify(array ? [metadata(f.receipt)] : metadata(f.receipt)))});\n`);
+    await expect(runNpmView("1.2.3", f.cwd)).resolves.toEqual(metadata(f.receipt));
+    expect(JSON.parse(readFileSync(output, "utf8"))).toEqual([
+      "view", "@codetreker/daynight@1.2.3", "--json", "--registry", "https://registry.npmjs.org", `--cache=${path.join(f.cwd, ".tmp/npm-view-cache")}`,
+    ]);
+    await expect(runNpmView("latest", f.cwd)).resolves.toEqual(metadata(f.receipt));
+  });
+
+  it("treats only npm's structured E404 failure as absent", async () => {
+    const f = fixture();
+    npmStub(f.cwd, `console.log(JSON.stringify({error: {code: 'E404'}})); process.exit(1);`);
+    await expect(runNpmView("1.2.3", f.cwd)).resolves.toBeUndefined();
+    for (const failure of ["E401", "E403", "ECONNRESET", "ETIMEDOUT"]) {
+      npmStub(f.cwd, `console.log(JSON.stringify({error: {code: '${failure}'}})); process.exit(1);`);
+      await expect(runNpmView("1.2.3", f.cwd)).rejects.toThrow(failure);
+    }
+    npmStub(f.cwd, `console.error('network E404 without JSON'); process.exit(1);`);
+    await expect(runNpmView("1.2.3", f.cwd)).rejects.toThrow("network E404 without JSON");
+  });
+
+  it.each(["not JSON", "null", "[]", "[{}, {}]", "{}", '{"error":{"code":"E404"}}', '{"name":"another","version":"1.2.3"}', '{"name":"@codetreker/daynight","version":"1.2.4"}'])("rejects malformed successful npm output %s", async (output) => {
+    const f = fixture();
+    npmStub(f.cwd, `console.log(${JSON.stringify(output)});`);
+    await expect(runNpmView("1.2.3", f.cwd)).rejects.toThrow();
+  });
+
+  it.each(["request", "visibility"])("terminates a stalled npm subprocess at its %s deadline", async (deadline) => {
+    const f = fixture();
+    npmStub(f.cwd, "setInterval(() => {}, 1000);");
+    const originalTimeout = AbortSignal.timeout;
+    const expiration = new DOMException("npm lookup deadline expired", "TimeoutError");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(expiration), 100);
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      expect(milliseconds).toBe(30_000);
+      return deadline === "request" ? controller.signal : originalTimeout(milliseconds);
+    });
+    try {
+      await expect(runNpmView("1.2.3", f.cwd, deadline === "visibility" ? controller.signal : undefined)).rejects.toMatchObject({ message: "npm view @codetreker/daynight@1.2.3 failed.", cause: expiration });
+    } finally { clearTimeout(timer); }
+  });
+
+  it("exposes a missing npm CLI", async () => {
+    const f = fixture();
+    vi.stubEnv("NPM_CLI_JS", path.join(f.cwd, "missing.mjs"));
+    await expect(runNpmView("1.2.3", f.cwd)).rejects.toThrow("Unable to read npm publication metadata");
+  });
+});
+
 describe("release version preflight", () => {
-  it.each([
-    { tag: false, npm: false }, { tag: true, npm: false }, { tag: false, npm: true }, { tag: true, npm: true },
-  ])("skips exactly when a release marker exists ($tag tag, $npm npm)", async ({ tag, npm }) => {
+  it.each([{ tag: false, npm: false }, { tag: true, npm: false }, { tag: false, npm: true }, { tag: true, npm: true }])("skips exactly when a release marker exists ($tag tag, $npm npm)", async ({ tag, npm }) => {
     const f = preflightFixture();
     const h = harness(f.receipt);
     if (tag) h.state.tag = otherSha;
-    if (npm) {
-      h.state.metadata = metadata(f.receipt);
-      h.state.metadata.gitHead = otherSha;
-      h.state.metadata.dist = { integrity: "unrelated content", tarball: "not a URL" };
-    }
-    await expect(preflightRelease(f.sha, f.cwd, h.services)).resolves.toEqual({ version: f.receipt.version, skip: tag || npm });
+    if (npm) h.state.metadata = { ...metadata(f.receipt), gitHead: otherSha, dist: { integrity: "different bytes", tarball: "not a URL" } };
+    await expect(preflightRelease(f.sha, f.cwd, h.services)).resolves.toEqual({ version: "1.2.3", skip: tag || npm });
     expect(h.events).toEqual(tag ? ["tag:lookup"] : ["tag:lookup", "registry:version"]);
-    expect(h.fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
-      `https://api.github.com/repos/codetreker/daynight/git/ref/tags/${f.receipt.tag}`,
-      ...(tag ? [] : ["https://registry.npmjs.org/%40codetreker%2Fdaynight/1.2.3"]),
-    ]);
     expect(h.publish).not.toHaveBeenCalled();
     expect(h.wait).not.toHaveBeenCalled();
   });
 
-  it.each(["commit", "tag", "tree", "blob"])("accepts an existing %s tag target without source or package verification", async (type) => {
+  it.each(["commit", "tag", "tree", "blob"])("accepts an existing %s tag target", async (type) => {
     const f = preflightFixture();
     const h = harness(f.receipt);
     h.state.tag = otherSha;
     h.state.tagType = type;
-    await expect(preflightRelease(f.sha, f.cwd, h.services)).resolves.toEqual({ version: "1.2.3", skip: true });
-    expect(h.events).toEqual(["tag:lookup"]);
+    await expect(preflightRelease(f.sha, f.cwd, h.services)).resolves.toMatchObject({ skip: true });
+    expect(h.npmView).not.toHaveBeenCalled();
   });
 
-  it.each(["tag", "npm"])("exposes %s lookup HTTP and network errors", async (lookup) => {
+  it("exposes tag and npm lookup errors", async () => {
     const f = preflightFixture();
     const h = harness(f.receipt);
-    const original = h.services.fetch;
-    const failure = new Error("lookup connection reset");
-    for (const status of [401, 403, 429, 500, undefined]) {
-      h.services.fetch = (async (input, init) => {
-        expect(init?.signal).toBeInstanceOf(AbortSignal);
-        if (String(input).startsWith(lookup === "tag" ? "https://api.github.com/" : "https://registry.npmjs.org/")) {
-          if (status === undefined) throw failure;
-          return json({}, status);
-        }
-        return original(input, init);
-      }) as typeof fetch;
-      const result = preflightRelease(f.sha, f.cwd, h.services);
-      if (status === undefined) await expect(result).rejects.toBe(failure);
-      else await expect(result).rejects.toThrow(`HTTP ${status}`);
+    for (const status of [401, 403, 429, 500]) {
+      h.services.fetch = vi.fn(async () => json({}, status)) as typeof fetch;
+      await expect(preflightRelease(f.sha, f.cwd, h.services)).rejects.toThrow(`HTTP ${status}`);
     }
+    const tagFailure = new Error("GitHub connection reset");
+    h.services.fetch = vi.fn(async () => { throw tagFailure; }) as typeof fetch;
+    await expect(preflightRelease(f.sha, f.cwd, h.services)).rejects.toBe(tagFailure);
+    h.services.fetch = h.fetchMock as typeof fetch;
+    const failure = new Error("npm lookup connection reset");
+    h.services.npmView = vi.fn(async () => { throw failure; });
+    await expect(preflightRelease(f.sha, f.cwd, h.services)).rejects.toBe(failure);
     expect(h.publish).not.toHaveBeenCalled();
-    expect(h.wait).not.toHaveBeenCalled();
-    expect(h.events).not.toContain("tag:create");
   });
 
-  it.each([
-    null, [], {}, { ref: "refs/tags/another", object: { type: "tag", sha: otherSha } },
-    { ref: "refs/tags/daynight-v1.2.3", object: { type: "tag", sha: "invalid" } },
-  ])("rejects malformed successful tag lookup %j", async (response) => {
+  it.each([null, [], {}, { ref: "refs/tags/another", object: { type: "tag", sha: otherSha } }, { ref: "refs/tags/daynight-v1.2.3", object: { type: "tag", sha: "invalid" } }])("rejects malformed successful tag lookup %j", async (response) => {
     const f = preflightFixture();
     const h = harness(f.receipt);
     h.services.fetch = vi.fn(async () => json(response)) as typeof fetch;
     await expect(preflightRelease(f.sha, f.cwd, h.services)).rejects.toThrow();
     expect(h.services.fetch).toHaveBeenCalledTimes(1);
-    expect(h.publish).not.toHaveBeenCalled();
-  });
-
-  it.each([null, [], {}, { name: "another", version: "1.2.3" }, { name: "@codetreker/daynight", version: "1.2.4" }])("rejects malformed successful npm lookup %j", async (response) => {
-    const f = preflightFixture();
-    const h = harness(f.receipt);
-    const original = h.services.fetch;
-    h.services.fetch = (async (input, init) => String(input).startsWith("https://registry.npmjs.org/") ? json(response) : original(input, init)) as typeof fetch;
-    await expect(preflightRelease(f.sha, f.cwd, h.services)).rejects.toThrow();
-    expect(h.publish).not.toHaveBeenCalled();
   });
 
   it("rejects a different checkout source before external requests", async () => {
@@ -186,7 +218,7 @@ describe("release version preflight", () => {
     expect(h.fetchMock).not.toHaveBeenCalled();
   });
 
-  it("exports a successful skip as Actions outputs without requiring publication artifacts", () => {
+  it("exports a successful skip as Actions outputs without publication artifacts", () => {
     const f = preflightFixture();
     const stub = path.join(f.cwd, "fetch.mjs");
     const output = path.join(f.cwd, "github-output");
@@ -198,10 +230,51 @@ describe("release version preflight", () => {
     expect(result.stdout).toContain("Skipping existing release @codetreker/daynight@1.2.3.");
     expect(readFileSync(output, "utf8")).toBe("version=1.2.3\nskip=true\n");
   });
+
+  it.each(["\n", "\r\n"])("rechecks every workflow attempt and gates publication on the skip output (%j line endings)", (newline) => {
+    type Step = { id?: string; run?: string; if?: string; uses?: string; env?: Record<string, string> };
+    type Job = { if?: string; outputs?: Record<string, string>; steps: Step[] };
+    const content = readFileSync(path.resolve(import.meta.dirname, "../../../../.github/workflows/publish.yml"), "utf8");
+    const { jobs } = parseYaml(content.replace(/\r?\n/g, newline)) as { jobs: { preflight: Job; prepare: Job; publish: Job } };
+    expect(jobs.preflight.if).toBeUndefined();
+    expect(jobs.preflight.outputs?.skip).toBe("${{ steps.release.outputs.skip }}");
+    expect(jobs.prepare.outputs).not.toHaveProperty("attempt");
+    for (const job of [jobs.prepare, jobs.publish]) expect(job.if).toBe("needs.preflight.outputs.skip == 'false'");
+    const recheckIndex = jobs.publish.steps.findIndex((step) => step.id === "preflight");
+    const publicationIndex = jobs.publish.steps.findIndex((step) => step.run === 'node packages/daynight/scripts/publish.ts publish "$GITHUB_SHA"');
+    const downloadIndex = jobs.publish.steps.findIndex((step) => step.uses?.startsWith("actions/download-artifact@"));
+    expect(recheckIndex).toBeGreaterThan(-1);
+    for (const index of [downloadIndex, publicationIndex]) {
+      expect(index).toBeGreaterThan(recheckIndex);
+      expect(jobs.publish.steps[index]!.if).toBe("steps.preflight.outputs.skip != 'true'");
+    }
+    const npmCli = "${{ github.workspace }}/.tmp/npm-cli/node_modules/npm/bin/npm-cli.js";
+    expect(jobs.publish.steps[publicationIndex]!.env?.NPM_CLI_JS).toBe(npmCli);
+    for (const [job, lookupId] of [[jobs.preflight, "release"], [jobs.publish, "preflight"]] as const) {
+      const lookupIndex = job.steps.findIndex((step) => step.id === lookupId);
+      const installIndex = job.steps.findIndex((step) => step.run?.startsWith("npm install --prefix .tmp/npm-cli ") && step.run.endsWith(" npm@12.2.0"));
+      expect(installIndex).toBeGreaterThan(-1);
+      expect(lookupIndex).toBeGreaterThan(installIndex);
+      expect(job.steps[installIndex]!.if).toBeUndefined();
+      expect(job.steps[lookupIndex]).toMatchObject({ run: 'node packages/daynight/scripts/publish.ts preflight "$GITHUB_SHA"', env: { NPM_CLI_JS: npmCli } });
+      expect(job.steps[lookupIndex]!.if).toBeUndefined();
+    }
+  });
 });
 
 describe("npm release publication", () => {
-  it("waits beyond two minutes of public registry propagation, verifies downloaded bytes, then tags the prepared source", async () => {
+  it.each(["tag", "npm"])("successfully skips an existing %s despite different source or bytes and a missing local tarball", async (marker) => {
+    const f = fixture();
+    const h = harness(f.receipt);
+    rmSync(path.join(f.artifact, "package.tgz"));
+    if (marker === "tag") { h.state.tag = otherSha; h.state.tagType = "tag"; }
+    else h.state.metadata = { ...metadata(f.receipt), gitHead: otherSha, dist: { integrity: "unrelated bytes", tarball: "not a URL" } };
+    await expect(publishRelease(sourceSha, f.cwd, h.services)).resolves.toEqual(f.receipt);
+    expect(h.events).toEqual(marker === "tag" ? ["tag:lookup"] : ["tag:lookup", "registry:version"]);
+    expect(h.publish).not.toHaveBeenCalled();
+  });
+
+  it("waits beyond two minutes for metadata, verifies downloaded bytes, then tags the prepared source", async () => {
     const f = fixture();
     const h = harness(f.receipt);
     h.state.delay = 28;
@@ -212,9 +285,23 @@ describe("npm release publication", () => {
     expect(h.state.tag).toBe(sourceSha);
     expect(h.events.indexOf("npm:publish")).toBeLessThan(h.events.indexOf("tarball:download"));
     expect(h.events.indexOf("tarball:download")).toBeLessThan(h.events.indexOf("tag:create"));
+    expect(h.npmView.mock.calls.slice(2).every(([, cwd, signal]) => cwd === f.cwd && signal instanceof AbortSignal)).toBe(true);
   });
 
-  it("preserves publication failure and never tags an unsuccessful publication", async () => {
+  it("treats a concurrent existing npm version after a rejected publish as a successful skip", async () => {
+    const f = fixture();
+    const h = harness(f.receipt);
+    h.services.publish = async () => {
+      h.state.metadata = { ...metadata(f.receipt), gitHead: otherSha, dist: { integrity: "another artifact", tarball: "not a URL" } };
+      throw new Error("npm version already exists");
+    };
+    await expect(publishRelease(sourceSha, f.cwd, h.services)).resolves.toEqual(f.receipt);
+    expect(h.events).not.toContain("tarball:download");
+    expect(h.events).not.toContain("tag:create");
+    expect(h.npmView.mock.calls.map(([version]) => version)).toEqual(["1.2.3", "latest", "1.2.3"]);
+  });
+
+  it("preserves a publish failure when npm confirms the version remains absent", async () => {
     const f = fixture();
     const h = harness(f.receipt);
     const failure = new Error("npm rejected OIDC credentials");
@@ -223,92 +310,52 @@ describe("npm release publication", () => {
     expect(h.events).not.toContain("tag:create");
   });
 
-  it.each([false, true])("waits for tarball propagation with existing publication %s, then verifies bytes before tagging", async (existing) => {
+  it("exposes both publish and status lookup failures", async () => {
     const f = fixture();
     const h = harness(f.receipt);
-    if (existing) h.state.metadata = metadata(f.receipt);
-    h.state.tarballDelay = 2;
-    await publishRelease(sourceSha, f.cwd, h.services);
-    expect(h.publish).toHaveBeenCalledTimes(existing ? 0 : 1);
-    expect(h.wait).toHaveBeenCalledTimes(2);
-    expect(h.events.filter((event) => event === "tarball:download")).toHaveLength(3);
-    expect(h.events.lastIndexOf("tarball:download")).toBeLessThan(h.events.indexOf("tag:create"));
-    expect(h.state.tag).toBe(sourceSha);
-    expect(h.events.filter((event) => event === "registry:latest")).toHaveLength(existing ? 0 : 1);
+    const failure = new Error("npm rejected OIDC credentials");
+    const lookupFailure = new Error("registry unavailable");
+    h.state.publicationError = failure;
+    const original = h.services.npmView;
+    h.services.npmView = async (...args) => {
+      if (h.publish.mock.calls.length > 0) throw lookupFailure;
+      return original(...args);
+    };
+    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toMatchObject({ errors: [failure, lookupFailure], cause: failure });
   });
 
-  it("recovers a completed publication after tag creation fails without publishing again or changing npm latest", async () => {
+  it("skips a previously published version after tag creation failed without repairing the tag", async () => {
     const f = fixture();
     const h = harness(f.receipt);
     h.state.postStatus = 403;
     await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("tag creation failed: HTTP 403");
-    expect(h.publish).toHaveBeenCalledTimes(1);
     h.state.postStatus = 201;
     h.state.latest = { version: "9.0.0" };
     await publishRelease(sourceSha, f.cwd, h.services);
     expect(h.publish).toHaveBeenCalledTimes(1);
     expect(h.events.filter((event) => event === "registry:latest")).toHaveLength(1);
-    expect(h.state.tag).toBe(sourceSha);
+    expect(h.state.tag).toBeUndefined();
+    expect(h.events.filter((event) => event === "tag:create")).toHaveLength(1);
   });
 
-  it.each(["source", "integrity"])("rejects existing version with mismatched %s before publication or tagging", async (field) => {
+  it.each(["source", "integrity", "bytes", "url"])("rejects a fresh publication's mismatched %s before tagging", async (field) => {
     const f = fixture();
     const h = harness(f.receipt);
-    h.state.metadata = metadata(f.receipt);
-    if (field === "source") h.state.metadata.gitHead = otherSha;
-    else h.state.metadata.dist.integrity = hash(Buffer.from("another package"));
-    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("differs from the prepared source or tarball integrity");
-    expect(h.publish).not.toHaveBeenCalled();
-    expect(h.wait).not.toHaveBeenCalled();
+    h.services.publish = async () => {
+      await h.publish();
+      if (field === "source") h.state.metadata!.gitHead = otherSha;
+      if (field === "integrity") h.state.metadata!.dist.integrity = hash(Buffer.from("another package"));
+      if (field === "bytes") h.state.tarball = Buffer.from("wrong public bytes");
+      if (field === "url") h.state.metadata!.dist.tarball = "https://example.com/package.tgz";
+    };
+    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow(field === "source" || field === "integrity"
+      ? "differs from the prepared source or tarball integrity" : field === "bytes" ? "Public npm tarball bytes differ" : "Published tarball URL must use the public npm registry");
     expect(h.events).not.toContain("tag:create");
   });
 
-  it("rejects altered public tarball bytes even when registry metadata matches", async () => {
+  it.each([sourceSha, otherSha])("accepts only the same source during concurrent tag creation (%s)", async (concurrentSha) => {
     const f = fixture();
     const h = harness(f.receipt);
-    h.state.metadata = metadata(f.receipt);
-    h.state.tarball = Buffer.from("wrong public bytes");
-    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("Public npm tarball bytes differ");
-    expect(h.wait).not.toHaveBeenCalled();
-    expect(h.events.filter((event) => event === "tarball:download")).toHaveLength(1);
-    expect(h.events).not.toContain("tag:create");
-  });
-
-  it.each(["not a URL", "http://registry.npmjs.org/package.tgz", "https://example.com/package.tgz"])("rejects invalid tarball URL %s without waiting or tagging", async (url) => {
-    const f = fixture();
-    const h = harness(f.receipt);
-    h.state.metadata = metadata(f.receipt);
-    h.state.metadata.dist.tarball = url;
-    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow();
-    expect(h.wait).not.toHaveBeenCalled();
-    expect(h.events).not.toContain("tarball:download");
-    expect(h.events).not.toContain("tag:create");
-  });
-
-  it("preserves a conflicting existing tag and fails before npm publication", async () => {
-    const f = fixture();
-    const h = harness(f.receipt);
-    h.state.tag = otherSha;
-    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("already points to a different target");
-    expect(h.publish).not.toHaveBeenCalled();
-    expect(h.state.tag).toBe(otherSha);
-  });
-
-  it("accepts an existing matching tag only after verifying the public package", async () => {
-    const f = fixture();
-    const h = harness(f.receipt);
-    h.state.tag = sourceSha;
-    h.state.metadata = metadata(f.receipt);
-    await publishRelease(sourceSha, f.cwd, h.services);
-    expect(h.publish).not.toHaveBeenCalled();
-    expect(h.events).toContain("tarball:download");
-    expect(h.events).not.toContain("tag:create");
-  });
-
-  it.each([sourceSha, otherSha])("handles concurrent tag creation by accepting only the same source (%s)", async (concurrentSha) => {
-    const f = fixture();
-    const h = harness(f.receipt);
-    h.state.metadata = metadata(f.receipt);
     const original = h.services.fetch;
     h.services.fetch = (async (input, init) => {
       if (init?.method === "POST") { h.state.tag = concurrentSha; return json({}, 422); }
@@ -320,7 +367,17 @@ describe("npm release publication", () => {
     expect(h.state.tag).toBe(concurrentSha);
   });
 
-  it.each(["1.2.3", "1.2.4", "2.0.0", "1.2.4-beta.1"])("rejects publishing a new version behind or equal to latest %s", async (latest) => {
+  it("skips a version that becomes latest between the initial version and latest lookups", async () => {
+    const f = fixture();
+    const h = harness(f.receipt);
+    h.state.latest = { version: f.receipt.version };
+    rmSync(path.join(f.artifact, "package.tgz"));
+    await expect(publishRelease(sourceSha, f.cwd, h.services)).resolves.toEqual(f.receipt);
+    expect(h.publish).not.toHaveBeenCalled();
+    expect(h.events).toEqual(["tag:lookup", "registry:version", "registry:latest"]);
+  });
+
+  it.each(["1.2.4", "2.0.0", "1.2.4-beta.1"])("rejects a new version that does not advance stable latest %s", async (latest) => {
     const f = fixture();
     const h = harness(f.receipt);
     h.state.latest = { version: latest };
@@ -328,7 +385,7 @@ describe("npm release publication", () => {
     expect(h.publish).not.toHaveBeenCalled();
   });
 
-  it("supports an initially absent package and compares stable version components numerically", async () => {
+  it("supports an absent package and compares stable version components numerically", async () => {
     const f = fixture();
     const h = harness(f.receipt);
     f.receipt.version = "1.10.0";
@@ -343,154 +400,89 @@ describe("npm release publication", () => {
     expect(h.publish).toHaveBeenCalledTimes(2);
   });
 
-  it("bounds persistent registry 404 propagation and never creates a tag on timeout", async () => {
+  it.each(["metadata", "tarball", "shared"])("bounds persistent %s propagation by the shared ten-minute budget", async (target) => {
     const f = fixture();
     const h = harness(f.receipt);
-    h.services.publish = async () => { h.events.push("npm:publish"); };
+    if (target === "metadata") h.services.publish = async () => { h.events.push("npm:publish"); };
+    if (target === "tarball") h.state.tarballStatus = 404;
+    if (target === "shared") { h.state.delay = 61; h.state.tarballDelay = 100; }
     await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("and tarball within 10 minutes");
     expect(h.wait).toHaveBeenCalledTimes(120);
     expect(h.wait.mock.calls.reduce((elapsed, [milliseconds]) => elapsed + milliseconds, 0)).toBe(600_000);
-    expect(h.events.filter((event) => event === "registry:version")).toHaveLength(122);
+    expect(h.events.filter((event) => event === "registry:version")).toHaveLength(target === "metadata" ? 122 : target === "shared" ? 62 : 2);
+    expect(h.events.filter((event) => event === "tarball:download")).toHaveLength(target === "metadata" ? 0 : target === "shared" ? 61 : 121);
     expect(h.events).not.toContain("tag:create");
   });
 
-  it("shares one retry budget between metadata and tarball propagation", async () => {
+  it("waits for public tarball propagation before tagging", async () => {
     const f = fixture();
     const h = harness(f.receipt);
-    h.state.delay = 61;
-    h.state.tarballDelay = 100;
-    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("and tarball within 10 minutes");
-    expect(h.wait).toHaveBeenCalledTimes(120);
-    expect(h.wait.mock.calls.reduce((elapsed, [milliseconds]) => elapsed + milliseconds, 0)).toBe(600_000);
-    expect(h.events.filter((event) => event === "registry:version")).toHaveLength(62);
-    expect(h.events.filter((event) => event === "tarball:download")).toHaveLength(61);
-    expect(h.events).not.toContain("tag:create");
+    h.state.tarballDelay = 2;
+    await publishRelease(sourceSha, f.cwd, h.services);
+    expect(h.wait).toHaveBeenCalledTimes(2);
+    expect(h.events.filter((event) => event === "tarball:download")).toHaveLength(3);
+    expect(h.events.lastIndexOf("tarball:download")).toBeLessThan(h.events.indexOf("tag:create"));
   });
 
-  it.each([false, true])("bounds persistent tarball 404 with existing publication %s and never tags", async (existing) => {
-    const f = fixture();
-    const h = harness(f.receipt);
-    if (existing) h.state.metadata = metadata(f.receipt);
-    h.state.tarballStatus = 404;
-    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("and tarball within 10 minutes");
-    expect(h.publish).toHaveBeenCalledTimes(existing ? 0 : 1);
-    expect(h.wait).toHaveBeenCalledTimes(120);
-    expect(h.events.filter((event) => event === "tarball:download")).toHaveLength(121);
-    expect(h.events).not.toContain("tag:create");
-  });
-
-  it.each([401, 429, 500])("exposes tarball HTTP %s immediately after publication", async (status) => {
+  it.each([401, 429, 500])("exposes tarball HTTP %s immediately", async (status) => {
     const f = fixture();
     const h = harness(f.receipt);
     h.state.tarballStatus = status;
     await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow(`Public npm tarball download failed: HTTP ${status}`);
-    expect(h.publish).toHaveBeenCalledTimes(1);
-    expect(h.wait).not.toHaveBeenCalled();
-    expect(h.events.filter((event) => event === "tarball:download")).toHaveLength(1);
-    expect(h.events).not.toContain("tag:create");
-  });
-
-  it.each(["metadata", "tarball"])("bounds a stalled %s response body with the request deadline", async (body) => {
-    const f = fixture();
-    const h = harness(f.receipt);
-    const expiration = new DOMException("Request deadline expired", "TimeoutError");
-    const requests: AbortController[] = [];
-    const timeout = AbortSignal.timeout;
-    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
-      if (milliseconds !== 20_000) return timeout(milliseconds);
-      const controller = new AbortController();
-      requests.push(controller);
-      return controller.signal;
-    });
-    const original = h.services.fetch;
-    h.services.fetch = (async (input, init) => {
-      const response = await original(input, init);
-      const stalled = h.publish.mock.calls.length > 0 && (body === "tarball" ? String(input).endsWith(".tgz") : !String(input).endsWith(".tgz"));
-      if (stalled) {
-        const controller = requests.at(-1)!;
-        const read = vi.fn(() => {
-          controller.abort(expiration);
-          return new Promise<never>(() => {});
-        });
-        if (body === "metadata") vi.spyOn(response, "json").mockImplementation(read);
-        else vi.spyOn(response, "arrayBuffer").mockImplementation(read);
-      }
-      return response;
-    }) as typeof fetch;
-    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toBe(expiration);
     expect(h.wait).not.toHaveBeenCalled();
     expect(h.events).not.toContain("tag:create");
   });
 
-  it("keeps the shared visibility deadline through metadata propagation and a stalled tarball body", async () => {
+  it.each([false, true])("bounds a stalled tarball response by the request or shared deadline (%s)", async (shared) => {
     const f = fixture();
     const h = harness(f.receipt);
-    h.state.delay = 2;
     const deadline = new AbortController();
     const expiration = new DOMException("Visibility deadline expired", "TimeoutError");
-    const signals: AbortSignal[] = [];
-    const timeout = AbortSignal.timeout;
-    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => milliseconds === 600_000 ? deadline.signal : timeout(milliseconds));
+    const originalTimeout = AbortSignal.timeout;
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => milliseconds === (shared ? 600_000 : 20_000) ? deadline.signal : originalTimeout(milliseconds));
     const original = h.services.fetch;
     h.services.fetch = (async (input, init) => {
       const response = await original(input, init);
-      if (h.publish.mock.calls.length > 0 && init?.signal !== undefined && init.signal !== null) signals.push(init.signal);
-      if (String(input).endsWith(".tgz")) {
-        vi.spyOn(response, "arrayBuffer").mockImplementation(() => {
-          deadline.abort(expiration);
-          return new Promise<never>(() => {});
-        });
-      }
+      if (String(input).endsWith(".tgz")) vi.spyOn(response, "arrayBuffer").mockImplementation(() => {
+        deadline.abort(expiration);
+        return new Promise<never>(() => {});
+      });
       return response;
     }) as typeof fetch;
-    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toMatchObject({
-      message: `Timed out waiting for public npm version ${f.receipt.name}@${f.receipt.version} and tarball within 10 minutes.`, cause: expiration,
-    });
-    expect(h.wait).toHaveBeenCalledTimes(1);
-    expect(signals).toHaveLength(3);
-    expect(signals.every((signal) => signal.aborted)).toBe(true);
+    const result = publishRelease(sourceSha, f.cwd, h.services);
+    if (shared) await expect(result).rejects.toMatchObject({ message: `Timed out waiting for public npm version ${f.receipt.name}@${f.receipt.version} and tarball within 10 minutes.`, cause: expiration });
+    else await expect(result).rejects.toBe(expiration);
     expect(h.events).not.toContain("tag:create");
   });
 
-  it.each([401, 429, 500])("exposes registry HTTP %s while waiting for an accepted publication", async (status) => {
-    const f = fixture();
-    const h = harness(f.receipt);
-    const original = h.services.fetch;
-    h.services.fetch = (async (input, init) => String(input).startsWith("https://registry.npmjs.org/") && h.publish.mock.calls.length > 0 ? json({}, status) : original(input, init)) as typeof fetch;
-    await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow(`HTTP ${status}`);
-    expect(h.publish).toHaveBeenCalledTimes(1);
-    expect(h.events).not.toContain("tag:create");
-  });
-
-  it("preserves network errors and request time bounds while waiting for an accepted publication", async () => {
+  it("exposes npm metadata failure after publication", async () => {
     const f = fixture();
     const h = harness(f.receipt);
     const failure = new Error("registry connection reset");
-    const original = h.services.fetch;
-    h.services.fetch = (async (input, init) => {
-      expect(init?.signal).toBeInstanceOf(AbortSignal);
-      if (String(input).startsWith("https://registry.npmjs.org/") && h.publish.mock.calls.length > 0) throw failure;
-      return original(input, init);
-    }) as typeof fetch;
+    const original = h.services.npmView;
+    h.services.npmView = async (...args) => {
+      if (h.publish.mock.calls.length > 0) throw failure;
+      return original(...args);
+    };
     await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toBe(failure);
-    expect(h.publish).toHaveBeenCalledTimes(1);
     expect(h.events).not.toContain("tag:create");
   });
 
-  it("rejects tampered local artifacts before making external requests", async () => {
+  it("rejects a tampered local tarball before publishing a new version", async () => {
     const f = fixture();
     const h = harness(f.receipt);
     writeFileSync(path.join(f.artifact, "package.tgz"), "tampered");
     await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("Prepared tarball integrity differs");
-    expect(h.fetchMock).not.toHaveBeenCalled();
+    expect(h.publish).not.toHaveBeenCalled();
   });
 
-  it.each(["name", "version", "sourceSha", "repository", "tag", "tarball", "integrity"])("rejects invalid receipt field %s before any external request", async (field) => {
+  it.each(["name", "version", "sourceSha", "repository", "tag", "tarball", "integrity"])("rejects invalid receipt field %s before external requests", async (field) => {
     const f = fixture();
     const h = harness(f.receipt);
     writeFileSync(path.join(f.artifact, "release.json"), JSON.stringify({ ...f.receipt, [field]: "invalid" }));
     await expect(publishRelease(sourceSha, f.cwd, h.services)).rejects.toThrow("Release receipt does not match");
     expect(h.fetchMock).not.toHaveBeenCalled();
+    expect(h.npmView).not.toHaveBeenCalled();
   });
 });
 

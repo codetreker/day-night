@@ -418,55 +418,58 @@ gh workflow run publish.yml --ref main
 ```
 
 The workflow accepts only `main` and freezes that run's source commit. Before
-waiting for CI or installing dependencies, a read-only preflight reads the
-package version and checks the exact `daynight-v<package-version>` tag and the
-exact `@codetreker/daynight` version on npmjs. Either existing marker makes the
-new dispatch succeed with an explicit skip message, even when it belongs to an
-earlier commit. A skip does not publish, download or verify the existing package,
-or create a missing tag. A tag alone is sufficient to skip. Only HTTP 404 means
-absence; lookup failures and malformed responses fail the run.
+waiting for CI or installing project dependencies, preflight checks the exact
+`daynight-v<package-version>` tag and npm package version. Either existing
+marker makes every dispatch and retry succeed with an explicit skip message,
+regardless of its source or contents. A tag alone is sufficient to skip. A skip
+does not download or verify the existing package, or create a missing tag.
+
+npm metadata queries use pinned npm 12.2.0 through
+`npm view @codetreker/daynight@<version> --json --registry=https://registry.npmjs.org`.
+This uses npm's package-document lookup and version selection. Only npm's JSON
+`E404` means the version is absent; GitHub tag absence requires HTTP 404.
+Authentication, network, timeout and malformed-response errors fail visibly.
+Queries use a project-local cache and have a 30-second process limit.
 
 When both markers are absent, preparation waits for the latest main-push
 `checks.yml` run at the frozen commit to succeed; a missing or failed run stops
 publication. It then installs frozen dependencies, runs type checking, tests and
 installed acceptance, and smoke-installs the packed release tarball. The
 publishing job is titled `Publish daynight v<version>`, using the version from the
-prepared artifact's release receipt. Before its first publication attempt with
-that artifact, it repeats the preflight so a version that appeared during
-preparation also skips successfully. That separate GitHub-hosted job uses
-Node.js 24 and pinned npm 12.2.0 to publish the same artifact publicly with
+prepared artifact's release receipt. Every publication attempt repeats preflight
+before downloading the artifact, so versions that appeared during preparation
+or an earlier attempt also skip successfully. That separate GitHub-hosted job
+uses Node.js 24 and pinned npm 12.2.0 to publish the same artifact publicly with
 provenance and the `latest` dist-tag. No npm token is required. Stable releases
 are supported; prerelease versions are rejected, and a new version must advance
 the public registry's current `latest` version.
 
-Only after the public registry's source commit, SHA-512 integrity and downloaded
-tarball bytes match the artifact does publication create
-`daynight-v<package-version>` at the frozen source commit. Existing versions and
-tags are never overwritten. Public metadata and tarball visibility share one
-ten-minute verification deadline after npm accepts publication, or from
-verification start when recovering an existing version. HTTP 404 responses for
-either resource are polled within that deadline, with each attempt logged. Other
-HTTP errors and source or integrity mismatches fail immediately. Individual
-requests, including response bodies, have a 20-second limit and share the
-remaining verification deadline; the publishing job has a 15-minute limit. A
-visibility timeout leaves the tag uncreated and reports failure even if npm has
-accepted the package.
+The publication script checks existence again before upload. If an upload
+fails, it queries the exact npm version: a confirmed existing version succeeds
+as a skip, covering a concurrent duplicate publication; confirmed absence
+preserves the original upload error. Failed queries remain failures.
 
-If npm accepts the package but registry verification or tag creation fails,
-re-run the failed jobs of the same Actions run while its validated artifact
-remains available for 30 days. A publishing-job retry with that retained artifact
-bypasses the fresh-publication preflight, verifies an existing version against
-the same source and bytes, and creates the missing tag. Conflicting source,
-contents or tag targets fail recovery. If preparation itself is retried, the
-first publication attempt with its newly prepared artifact still runs the second
-preflight. Re-running all jobs or creating a new dispatch repeats the initial
-preflight and skips any existing marker; these operations do not complete an
-interrupted release. The workflow serializes releases and keeps in-progress
-releases running. The
-[preflight decision](.agents/notes/implemented/process/2026-10-21-publication-version-preflight.md)
-owns skip and retry behavior; the
+For a new upload, publication creates `daynight-v<package-version>` at the frozen
+source commit only after the public registry's source commit, SHA-512 integrity
+and downloaded tarball bytes match the artifact. Existing versions and tags are
+never overwritten. Public metadata and tarball visibility share one ten-minute
+verification deadline after npm accepts publication. npm `E404` and tarball HTTP
+404 responses are polled within that deadline, with each attempt logged. Other
+errors and source or integrity mismatches fail. npm queries have a 30-second
+limit; GitHub and tarball HTTP requests, including response bodies, have a
+20-second limit. Verification operations share the remaining overall deadline;
+the publishing job has a 15-minute limit.
+
+A verification or tag-creation failure can leave an accepted npm package without
+a tag. Re-running failed jobs, re-running all jobs and new dispatches all skip
+successfully once the exact npm version or tag exists. These skips do not
+complete a missing tag or claim that the existing package matches the retained
+artifact. Artifacts remain available for 30 days. The workflow serializes
+releases and keeps in-progress releases running. The
+[npm CLI publication-check decision](.agents/notes/implemented/process/2026-10-22-npm-cli-publication-checks.md)
+owns lookup, skip and duplicate-publication behavior; the
 [trusted-publishing decision](.agents/notes/implemented/process/2026-10-20-npm-trusted-publishing.md)
-owns artifact identity, OIDC and public verification.
+owns new-artifact identity, OIDC and public verification.
 
 ## Install and update
 
