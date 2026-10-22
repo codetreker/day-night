@@ -346,7 +346,10 @@ describe("foreground review coordination", () => {
     f.store.registerWorktree(f.pr(), path.join(f.configurations[0]!.path, ".worktrees", "pr-1"));
     f.store.pinReviewBase(old.id, "b".repeat(40), Date.now());
     f.store.startAttempt(old.id, { processOwner: "old-runtime", stdoutLogPath: path.join(f.directory, "old-out"), stderrLogPath: path.join(f.directory, "old-err") }, Date.now());
-    if (status === "retry_wait") f.store.retryReview({ reviewId: old.id, attempt: 1 }, proof, { error: "old final marker missing", retryAt: Date.now() }, Date.now());
+    if (status === "retry_wait") {
+      const endedAt = Date.now();
+      f.store.retryReview({ reviewId: old.id, attempt: 1 }, proof, { error: "old final marker missing", retryAt: endedAt }, endedAt);
+    }
     f.publications.push({ id: "old-submitted-review", authorId: "historical-publisher", headSha: old.headSha, state: outcome,
       body: `number=1 fixture\nStable review identity: daynight review=${old.id} revision=1 head=${old.headSha}` });
     if (outcome === "COMMENTED") f.threads.push({ id: "legacy-feedback", reviewId: "old-submitted-review", isResolved: false });
