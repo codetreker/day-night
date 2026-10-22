@@ -164,6 +164,10 @@ func writeError(w http.ResponseWriter, request *http.Request, logger *slog.Logge
 	response := api.Error{Code: "internal_error", Message: "internal server error", RequestID: RequestID(request.Context())}
 	if fault, ok := knownFault(err); ok && ErrorKind(err) == fault.Code {
 		switch fault.Code {
+		case "unauthenticated":
+			status = http.StatusUnauthorized
+		case "forbidden":
+			status = http.StatusForbidden
 		case "invalid_input":
 			status = http.StatusBadRequest
 		case "not_found":

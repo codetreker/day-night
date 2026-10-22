@@ -1,6 +1,7 @@
 # UniAuth 登录与项目授权架构
 
-状态：已选定方案，等待运行时实现。[需求](../spec/daynight-auth.md)拥有可观察行为，
+状态：身份/凭据模块已实现且可显式组合，尚未挂入生产路由；成员和统一启用继续交付。
+[需求](../spec/daynight-auth.md)拥有完整可观察行为，
 [任务入口](daynight-auth-tasks.md)连接执行资料，
 [鉴权决策](../../.agents/notes/implemented/architecture/2026-10-22-auth-architecture.md)
 保存取舍，[交互原型](mockups/auth/index.html)拥有最终视觉和交互。
@@ -15,8 +16,10 @@
 
 ## 现状与可复用机制
 
-当前同一 mux 注册 project/task/attachment/UI，没有用户或成员，项目列表全局分页，
-配置强制 numeric loopback。源码基线 `38b827fe644139f4e20989cd8e7740350566fb56`：
+当前主站 mux 继续注册 project/task/attachment/UI，尚未挂载鉴权模块；项目列表仍
+全局分页，配置强制 numeric loopback。身份迁移和独立 handlers 已由
+[身份/凭据决策](../../.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
+交付，成员授权与入口启用尚未完成。以下可复用机制的原始源码基线 `38b827fe644139f4e20989cd8e7740350566fb56`：
 
 | 机制 | 固定源码 | 使用方式 |
 |---|---|---|
@@ -82,8 +85,12 @@ __Host-daynight_session、Path=/、Secure、HttpOnly、SameSite=Lax、无 Domain
 创建/到期时间。撤销自己的 PAT 幂等，不影响其他凭据。
 
 明确的 Authorization 优先；重复、格式错误或无效 Bearer 返回 401，不回退 Cookie。
-Cookie 写请求要求精确主站 Origin，PAT 写请求按其 header 凭据验证。API 401 始终
-JSON，Web 发起登录导航。生产配置要求 HTTPS；显式本机开发模式仅接受 literal
+PublicOrigin 使用规范的小写主机、有效端口并省略 scheme 默认端口，使配置值与浏览器
+Origin 序列化一致；不规范配置明确拒绝。Cookie 写请求要求精确主站 Origin，PAT 写
+请求按其 header 凭据验证。数据 API 401
+始终 JSON，Web 发起登录导航。已验证并消费的 callback 若失败，清除绑定 Cookie、
+记录清洗后的错误并 303 到固定主站 `/?authError=login_failed`；错误/未绑定 callback
+保留 JSON 拒绝。登录壳读取并清除该通用标记，显示重试入口，不带回原始 code/错误。生产配置要求 HTTPS；显式本机开发模式仅接受 literal
 localhost/numeric loopback HTTP，使用不带 __Host 前缀和 Secure 的开发 Cookie 名称。
 同源预览使用同一 Cookie 和授权规则，没有第二种浏览器凭据。
 
@@ -91,7 +98,7 @@ localhost/numeric loopback HTTP，使用不带 __Host 前缀和 Secure 的开发
 
 | 表 | 关键字段与约束 |
 |---|---|
-| users | 本地 UUID；唯一 uniauth_id；可空 email/name/avatar_url；时间。 |
+| users | 本地 UUID；唯一 uniauth_id；可空 email/email_verified/name/avatar_url；时间。 |
 | login_transactions | 事务 ID、state_hash、browser_binding_hash、provider、return_path、expires_at。 |
 | sessions | ID、唯一 token_hash、user_id、expires_at；注销删除。 |
 | personal_access_tokens | ID、唯一 token_hash、user_id、name、created_at、expires_at；撤销删除。 |
@@ -176,6 +183,11 @@ PUBLIC_ORIGIN 启动真实二进制；只对已证明的 EADDRINUSE 重选，其
 handler；public origin 是 fixture 显式输入，不是生产 fallback。
 不增加网关、证书或域名。若实际 UniAuth 有缺口，提供具体限制/复现交由其维护者
 处理，不自行扩展架构绕过。
+
+身份基础模块以 service.NewIdentity、server.NewAuthentication 和 RegisterRoutes 提供
+显式组合，Require/AuthenticateRequest 产生 Principal；当前生产 New 不挂载它。
+真实网关集成 fixture 固定 UniAuth 源码并在其模块内编译 testdata 命令，实际 App
+注册、状态、PKCE、GitHub 适配器和一次性结果均参与 HTTP 链路；只控制上游响应。
 
 身份/成员模块先以真实 handler/store 验证，尚未挂入入口时维持当前本机行为；CLI
 凭据和 Web 新壳完成后，统一接线同时修改 composition、业务 actor 参数、Web 主入口、
