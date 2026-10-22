@@ -19,10 +19,14 @@ if [[ ! -f "$mirror_file" ]]; then
 fi
 
 if ! mirror_list="$(awk '
-  $1 == "http://azure.archive.ubuntu.com/ubuntu" || $1 == "https://azure.archive.ubuntu.com/ubuntu" { next }
-  $1 == "https://archive.ubuntu.com/ubuntu" { archive = 1 }
-  $1 == "https://security.ubuntu.com/ubuntu" { security = 1 }
-  { print }
+  {
+    uri = $1
+    sub(/\/$/, "", uri)
+    if (uri == "http://azure.archive.ubuntu.com/ubuntu" || uri == "https://azure.archive.ubuntu.com/ubuntu") next
+    if (uri == "https://archive.ubuntu.com/ubuntu") archive = 1
+    if (uri == "https://security.ubuntu.com/ubuntu") security = 1
+    print
+  }
   END { exit !(archive && security) }
 ' "$mirror_file")"; then
   printf '%s\n' 'Ubuntu mirror list must include the official HTTPS archive and security services.' >&2
