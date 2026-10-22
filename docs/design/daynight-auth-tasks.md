@@ -1,6 +1,6 @@
 # 鉴权实现任务入口
 
-状态：设计与任务资料准备，运行时尚未实现。任务状态、真实前置关系和交付 PR 由
+状态：架构与执行资料已准备并登记，运行时尚未实现。任务状态、真实前置关系和交付 PR 由
 Daynight 持有；task show 读取完整任务，task attachment list 单独读取附件目录。
 [需求](../spec/daynight-auth.md)拥有 AU1–AU12 和验收，[架构](daynight-auth.md)拥有
 机制，[决策](../../.agents/notes/implemented/architecture/2026-10-22-auth-architecture.md)
@@ -11,13 +11,16 @@ Daynight 持有；task show 读取完整任务，task attachment list 单独读�
 
 | 编号 | 独立交付目的 | 主资料 | Daynight task |
 |---|---|---|---|
-| AU-D0 | 固定鉴权架构与执行资料 | [AU-D0.md](auth-tasks/AU-D0.md) | 待登记 |
-| AU-T1 | 建立 UniAuth 身份与凭据模块 | [AU-T1.md](auth-tasks/AU-T1.md) | 待登记 |
-| AU-T2 | 建立项目成员授权模块 | [AU-T2.md](auth-tasks/AU-T2.md) | 待登记 |
-| AU-T3 | 为 CLI 配置服务访问凭据 | [AU-T3.md](auth-tasks/AU-T3.md) | 待登记 |
-| AU-T4 | 交付 Web 登录与项目协作界面 | [AU-T4.md](auth-tasks/AU-T4.md) | 待登记 |
-| AU-T5 | 统一启用鉴权与项目权限 | [AU-T5.md](auth-tasks/AU-T5.md) | 待登记 |
-| AU-T6 | 验证完整多人鉴权链路 | [AU-T6.md](auth-tasks/AU-T6.md) | 待登记 |
+| AU-D0 | 固定鉴权架构与执行资料 | [AU-D0.md](auth-tasks/AU-D0.md) | `7b5a71f5-27a8-412d-afc0-31430f613c77` |
+| AU-T1 | 建立 UniAuth 身份与凭据模块 | [AU-T1.md](auth-tasks/AU-T1.md) | `7a5481ce-27f7-4a8c-91dd-14a5ea9656a7` |
+| AU-T2 | 建立项目成员授权模块 | [AU-T2.md](auth-tasks/AU-T2.md) | `690db685-7261-4cc5-a570-fc2d52bb2de9` |
+| AU-T3 | 为 CLI 配置服务访问凭据 | [AU-T3.md](auth-tasks/AU-T3.md) | `5b03e907-5a59-4013-ad30-341d17225a0d` |
+| AU-T4 | 交付 Web 登录与项目协作界面 | [AU-T4.md](auth-tasks/AU-T4.md) | `e9a26625-0758-4e35-b047-44235e1b101c` |
+| AU-T5 | 统一启用鉴权与项目权限 | [AU-T5.md](auth-tasks/AU-T5.md) | `ce2f8cd5-daab-40f2-8637-c1a8ae17e445` |
+| AU-T6 | 验证完整多人鉴权链路 | [AU-T6.md](auth-tasks/AU-T6.md) | `35b9ba3d-97aa-41c7-ad5b-4bd4b08d5c2e` |
+
+每项任务已上传 `proposal.md`。AU-D0、AU-T4、AU-T5、AU-T6 另有 `mockui/index.html`
+及全部相对资源；登记时逐文件读回验证内容和元数据。
 
 前置关系只保存在服务的 dependsOn，不在 Markdown 重复维护。按授权一次推进一项，
 创建任务不启动实现或自动调度。设计任务只记录架构交付，不声称运行时功能完成。
