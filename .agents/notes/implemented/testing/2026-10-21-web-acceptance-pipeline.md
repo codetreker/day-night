@@ -147,6 +147,12 @@ target and five native capacity/limit scenarios: twenty-eight native and
 twenty-three container, fifty-one in total. Normal UniAuth session/PAT bootstrap
 uses private run-owned credentials; graph/read-only policies apply after bootstrap,
 and approval journeys admit only their registered task POST operations.
+Capacity retains twenty visibility/H records and 160 feedback observations, eight
+per sample, including full upstream/hidden-count checks and independent smooth-route,
+actual paint and native-arrow checks. The 50/100 overview, explicit twenty-neighbor
+expansion, no-autoexpand inspection rule and strict opening/selection/local-feedback
+budgets are unchanged; their detailed requirements belong to the
+[inspection requirements](../../../../docs/spec/daynight-task-inspection.md).
 
 The top-level evidence and recovery receipts use schema 2. Pipeline stages record
 names, results, timestamps, observed managed-command process identities and their

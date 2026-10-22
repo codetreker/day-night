@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expectedBatch, expectedDependencyTopology, expectedOverview, inducedTopology } from './e2e/visible-topology';
+import { expectedBatch, expectedDependencyTopology, expectedNodeHeights, expectedOverview, inducedTopology } from './e2e/visible-topology';
 import type { DependencyTopology } from './e2e/visible-topology';
 const graph = (count: number): DependencyTopology => ({ nodes: Array.from({ length: count }, (_, index) => ({ id: String(index) })), edges: Array.from({ length: count - 1 }, (_, index) => ({ id: `0->${index + 1}`, source: '0', target: String(index + 1), external: false })) });
 describe('independent visible API topology expectations', () => {
@@ -15,6 +15,17 @@ describe('independent visible API topology expectations', () => {
       { id: 'external->child', source: 'external', target: 'child', external: true },
       { id: 'ancestor->external', source: 'ancestor', target: 'external', external: true },
     ]);
+  });
+  it('derives card heights from hidden direct neighbors within the root projection only', () => {
+    const full = expectedDependencyTopology([
+      { id: 'root', dependsOn: [] }, { id: 'child', dependsOn: ['root', 'external'] },
+      { id: 'external', dependsOn: [] }, { id: 'unrelated', dependsOn: ['external'] },
+    ], 'root');
+    expect(expectedNodeHeights(full, ['root', 'child'])).toEqual([{ id: 'root', height: 96 }, { id: 'child', height: 136 }]);
+    expect(expectedNodeHeights(full, ['root', 'child', 'external'])).toEqual([
+      { id: 'root', height: 96 }, { id: 'child', height: 96 }, { id: 'external', height: 96 },
+    ]);
+    expect(expectedNodeHeights(full, ['external'])).toEqual([{ id: 'external', height: 136 }]);
   });
   it('retains exact small graphs and bounds the deterministic root-anchored overview', () => {
     const fifty = graph(50); expect(expectedOverview(fifty, '0', fifty.nodes.map(({ id }) => id))).toEqual(fifty);

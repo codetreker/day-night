@@ -11,6 +11,7 @@ import { authenticatedAPI } from './authentication';
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
 const standalone = (page: Page, id: string): Locator => page.locator(`#standalone-task-${id}`);
 const node = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node-body`);
+const details = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node-details`);
 const detail = (page: Page): Locator => page.locator('.task-detail-dialog');
 const approval = (page: Page): Locator => detail(page).locator('.task-approval');
 const taskPath = (projectId: string, taskId: string): string => `/api/v1/projects/${projectId}/tasks/${taskId}`;
@@ -280,7 +281,7 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
   await page.getByRole('button', { name: '全屏查看', exact: true }).click();
   const fullscreen = page.locator('.task-graph-fullscreen');
   await expect(page.locator('.react-flow__viewport')).toHaveAttribute('style', transform!);
-  await node(page, blocked.id).focus();
+  await details(page, blocked.id).focus();
   await page.keyboard.press('Enter');
   await expectStatus(page, '待审批');
   await expect(approval(page)).toContainText('前置未完成时，任务仍会被阻塞');
@@ -333,7 +334,7 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
   await expect(page.locator('.react-flow__viewport')).toHaveAttribute('style', beforeApproval!);
   await screenshot(page, info, 'task-approval-narrow');
   await page.keyboard.press('Escape');
-  await expect(node(page, blocked.id)).toBeFocused();
+  await expect(details(page, blocked.id)).toBeFocused();
   await expect(node(page, blocked.id).locator('.graph-status')).toHaveText('To do');
   await expect(page.locator(`#task-root-${prerequisite.id} .root-status`)).toHaveText('To do');
   expect(await page.locator('.react-flow__viewport').evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).a)).toBe(zoom);

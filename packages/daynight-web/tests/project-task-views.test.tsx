@@ -13,9 +13,9 @@ vi.mock('../src/api/client', async (original) => ({
   listAttachments: vi.fn(async () => ({ items: [], nextCursor: null })),
   attachmentPreviewRoot: (projectId: string, taskId: string) => `/fixtures/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/preview/`,
 }));
-vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, rootId, onSelectTask }: {
-  index: GraphIndex; rootId: string; onSelectTask: (id: string, trigger: HTMLElement) => void;
-}) => <button data-testid="graph-node" onClick={(event) => { onSelectTask(rootId, event.currentTarget); }}>图节点 {index.nodes.get(rootId)!.titlePreview}</button> }));
+vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, rootId, onOpenTask }: {
+  index: GraphIndex; rootId: string; onOpenTask: (id: string, trigger: HTMLElement) => void;
+}) => <button data-testid="graph-node" onClick={(event) => { onOpenTask(rootId, event.currentTarget); }}>图节点 {index.nodes.get(rootId)!.titlePreview}</button> }));
 
 const project = 'project-one';
 const otherProject = 'project-two';

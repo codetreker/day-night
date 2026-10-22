@@ -57,7 +57,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); root.remove(); });
 const mount = () => renderWithLocale(<ProjectPage projectId={project} />, { locale: 'en', container: root });
 const openChild = async () => {
-  const node = await screen.findByRole('button', { name: 'Task 2, Proposed, blocked' });
+  const node = await screen.findByRole('button', { name: 'Task 2, Details' });
   fireEvent.click(node);
   const dialog = screen.getByRole('dialog', { name: 'Task details' });
   await within(dialog).findByRole('heading', { name: 'Task 2' });
@@ -252,7 +252,12 @@ describe('approval in shared production task details', () => {
 
   it('approves a blocked graph task once across close/reopen and refreshes rows/counts without losing fullscreen or zoom', async () => {
     const mutation = deferred<TaskDetail>(); vi.mocked(approveTask).mockReturnValueOnce(mutation.promise);
-    mount(); await screen.findByRole('button', { name: 'Task 2, Proposed, blocked' });
+    mount();
+    const inspected = await screen.findByRole('button', { name: 'Task 2, Proposed, blocked' });
+    fireEvent.click(inspected);
+    expect(inspected).toHaveAttribute('aria-pressed', 'true');
+    const inspection = () => [...document.querySelectorAll<HTMLElement>('.task-node,.task-dependency-edge')].map((node) => [node.closest<HTMLElement>('.react-flow__node')?.dataset.id ?? node.dataset.id, node.dataset.inspection]);
+    const beforeInspection = inspection();
     const canvas = document.querySelector('.task-graph-canvas');
     const viewport = () => document.querySelector<HTMLElement>('.react-flow__viewport')!.style.transform;
     const initial = viewport(); fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
@@ -280,7 +285,9 @@ describe('approval in shared production task details', () => {
     expect(document.querySelector('.task-graph-canvas')).toBe(canvas); expect(viewport()).toBe(transform);
     expect(screen.getByRole('dialog', { name: 'Task dependency graph fullscreen view', hidden: true })).toBeTruthy();
     fireEvent.keyDown(document, { key: 'Escape' });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Task 2, To do, blocked' })).toHaveFocus());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Task 2, Details' })).toHaveFocus());
+    expect(inspected).toHaveAttribute('aria-pressed', 'true');
+    expect(inspection()).toEqual(beforeInspection);
     expect(viewport()).toBe(transform);
   });
 

@@ -1,6 +1,7 @@
 import { memo, useCallback, useLayoutEffect, useRef, type FocusEvent, type MouseEvent } from 'react';
 import { useReactFlow, type Node, type NodeProps } from '@xyflow/react';
 import { useI18n } from '../../i18n/LocaleProvider';
+import { useTaskInspectionState } from './inspection';
 import type { GraphTask } from '../../api/types';
 import type { TaskExpansion, TaskExpansionDirection, TaskExpansions } from './visibility';
 import type { CanvasNode, CanvasPoint } from './layout';
@@ -11,8 +12,8 @@ export type TaskNodeData = {
   shared: boolean;
   center: CanvasPoint;
   size: Pick<CanvasNode, 'width' | 'height'>;
-  selected: boolean;
-  onSelectTask: (id: string, trigger: HTMLElement) => void;
+  onInspectTask: (id: string) => void;
+  onOpenTask: (id: string, trigger: HTMLElement) => void;
   onExpandTask: (id: string, direction: TaskExpansionDirection) => void;
   expansions: TaskExpansions;
   revealRequest: number | null;
@@ -52,6 +53,9 @@ const ExpansionControl = ({ direction, expansion, onExpand, onFocus }: { directi
 export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
   const { messages: { graph: m, common } } = useI18n();
   const { setCenter, getViewport } = useReactFlow();
+  const inspection = useTaskInspectionState(data.task.id);
+  const focusedControl = useRef<HTMLButtonElement | null>(null);
+  const recoveringFocus = useRef(false);
   const body = useRef<HTMLButtonElement>(null);
   const revealed = useRef<number | null>(null);
   useLayoutEffect(() => {
@@ -60,9 +64,19 @@ export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
     void setCenter(data.center.x, data.center.y, { zoom: getViewport().zoom, duration: 0 });
     body.current!.focus({ preventScroll: true });
   }, [data.revealRequest, data.center, getViewport, setCenter]);
+  useLayoutEffect(() => {
+    // Controlled node data commits after the graph owner; restore a removed
+    // footer at the task's DOM boundary without changing the viewport.
+    if (focusedControl.current !== null && !focusedControl.current.isConnected && document.activeElement === document.body) {
+      recoveringFocus.current = true;
+      body.current!.focus({ preventScroll: true });
+      recoveringFocus.current = false;
+    }
+  }, [data.expansions]);
   const title = `${data.task.titlePreview}${data.task.titleTruncated ? '…' : ''}`;
   const revealOnFocus = useCallback((event: FocusEvent<HTMLButtonElement>) => {
-    if (!event.currentTarget.matches(':focus-visible')) return;
+    focusedControl.current = event.currentTarget;
+    if (recoveringFocus.current || !event.currentTarget.matches(':focus-visible')) return;
     const bounds = event.currentTarget.closest('.task-graph-canvas')!.getBoundingClientRect();
     const { x, y, zoom } = getViewport();
     // Native focus can temporarily scroll React Flow's overflow container before
@@ -73,15 +87,17 @@ export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
       void setCenter(data.center.x, data.center.y, { zoom, duration: 0 });
     }
   }, [data.center, data.size, getViewport, setCenter]);
+  const open = useCallback((event: MouseEvent<HTMLButtonElement>) => { data.onOpenTask(data.task.id, event.currentTarget); }, [data.onOpenTask, data.task.id]);
+  const inspect = useCallback(() => { data.onInspectTask(data.task.id); }, [data.onInspectTask, data.task.id]);
   const expandable = data.expansions.prerequisites.ids.length > 0 || data.expansions.successors.ids.length > 0;
-  const open = useCallback((event: MouseEvent<HTMLButtonElement>) => { data.onSelectTask(data.task.id, event.currentTarget); }, [data.onSelectTask, data.task.id]);
   return (
-    <div className={`task-node task-node-${data.task.status}${data.selected ? ' task-node-selected' : ''}${data.kind === 'external' ? ' task-node-external' : ''} nodrag nopan`} style={{ pointerEvents: 'auto' }}>
+    <div className={`task-node task-node-${data.task.status} task-node-${inspection}${data.kind === 'external' ? ' task-node-external' : ''} nodrag nopan`} data-inspection={inspection} style={{ pointerEvents: 'auto' }}>
       <button type="button" ref={body} className="task-node-body nodrag nopan"
-        aria-label={m.nodeLabel({ title, status: common.status[data.task.status], blocked: data.task.blockedBy.length > 0, external: data.kind === 'external', shared: data.shared })}
-        aria-haspopup="dialog" onClick={open} onFocus={revealOnFocus}>
+        aria-label={`${m.nodeLabel({ title, status: common.status[data.task.status], blocked: data.task.blockedBy.length > 0, external: data.kind === 'external', shared: data.shared })}${m.inspectionSuffix[inspection]}`}
+        aria-pressed={inspection === 'selected'} onClick={inspect} onFocus={revealOnFocus}>
         <TaskNodeContent task={data.task} kind={data.kind} shared={data.shared} />
       </button>
+      <button type="button" className="task-node-details nodrag nopan" aria-haspopup="dialog" aria-label={m.detailsLabel({ title })} onClick={open} onFocus={revealOnFocus}>{m.details}</button>
       {expandable && <div className="task-node-expansions">
         <ExpansionControl direction="prerequisites" expansion={data.expansions.prerequisites} onFocus={revealOnFocus} onExpand={() => { data.onExpandTask(data.task.id, 'prerequisites'); }} />
         <ExpansionControl direction="successors" expansion={data.expansions.successors} onFocus={revealOnFocus} onExpand={() => { data.onExpandTask(data.task.id, 'successors'); }} />

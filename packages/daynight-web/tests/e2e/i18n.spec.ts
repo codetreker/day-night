@@ -6,7 +6,8 @@ import { createProject, createApprovedTask, expect, test, withDependencyFailure 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
 const language = (scope: Page | Locator): Locator => scope.getByRole('combobox', { name: '语言 / Language', exact: true });
 const card = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] .task-node`);
-const node = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node-body`);
+const inspectTask = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node-body`);
+const details = (page: Page, id: string): Locator => card(page, id).locator('button.task-node-details');
 const screenshot = async (page: Page, info: TestInfo, name: string): Promise<void> => {
   const path = info.outputPath(`${name}.png`);
   await page.screenshot({ path, fullPage: false });
@@ -120,7 +121,7 @@ test.describe('Web language journeys', () => {
     await page.goto(`/projects/${project.id}`);
     await expect(page.getByRole('heading', { name: project.name, exact: true })).toBeVisible();
     await page.clock.runFor(100);
-    await expect(node(page, task.id)).toBeVisible();
+    await expect(inspectTask(page, task.id)).toBeVisible();
     await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '50');
     await expect(page.locator('.task-graph')).toHaveAttribute('data-total-task-count', '81');
     const expansion = card(page, task.id).locator('.task-node-expand[data-direction="successors"]');
@@ -128,9 +129,13 @@ test.describe('Web language journeys', () => {
     await expansion.click();
     await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '70');
     await expect(expansion).toHaveAccessibleName('Expand 11 successor tasks and 11 dependencies');
+    await inspectTask(page, task.id).click();
+    await expect(inspectTask(page, task.id)).toHaveAttribute('aria-pressed', 'true');
     const visibleState = () => page.evaluate(() => ({
       nodes: [...document.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => node.dataset.id!).sort(),
-      edges: [...document.querySelectorAll<SVGGElement>('.task-dependency-edge')].map((edge) => edge.dataset.id!).sort(),
+      edges: [...document.querySelectorAll<SVGGElement>('.task-dependency-edge')].map((edge) => [edge.dataset.id, edge.dataset.inspection]).sort(),
+      selected: document.querySelector<HTMLElement>('.task-node-selected')?.closest<HTMLElement>('.react-flow__node')?.dataset.id,
+      hidden: document.querySelector<HTMLElement>('.task-graph')!.dataset.hiddenUpstreamCount,
     }));
     const expandedState = await visibleState();
     await expect(page.locator('.graph-reset-overview')).toHaveText('Reset overview');
@@ -145,13 +150,13 @@ test.describe('Web language journeys', () => {
     await page.clock.runFor(100);
     const viewport = page.locator('.react-flow__viewport');
     const viewportElement = await viewport.elementHandle();
-    const taskElement = await node(page, task.id).elementHandle();
+    const taskElement = await inspectTask(page, task.id).elementHandle();
     if (viewportElement === null || taskElement === null) throw new Error('Graph elements are absent.');
     const transform = await viewport.getAttribute('style');
     const paths = await page.locator('.task-dependency-edge path.react-flow__edge-path').evaluateAll((elements) => elements.map((element) => element.getAttribute('d')));
     const beforeSwitch = [...reads];
     await language(page).selectOption('zh-CN');
-    await expect(node(page, task.id).locator('.graph-status')).toHaveText('待处理');
+    await expect(inspectTask(page, task.id).locator('.graph-status')).toHaveText('待处理');
     expect(await visibleState()).toEqual(expandedState);
     await expect(expansion).toHaveAccessibleName('展开后续 11 个任务、11 条依赖');
     await expect(page.locator('.graph-reset-overview')).toHaveText('收起到概览');
@@ -169,7 +174,7 @@ test.describe('Web language journeys', () => {
     await expect(viewport).toHaveAttribute('style', transform!);
     expect(await viewportElement.evaluate((element) => element === document.querySelector('.react-flow__viewport'))).toBe(true);
     expect(reads).toEqual(beforeSwitch);
-    await node(page, task.id).click();
+    await details(page, task.id).click();
     const dialog = page.locator('.task-detail-dialog');
     await expect(dialog.locator('.task-detail-title')).toHaveText(task.title);
     await expect(page.locator('#root')).toHaveAttribute('inert', '');
@@ -262,7 +267,7 @@ test.describe('Web language journeys', () => {
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
     await expect(fullscreen).toHaveCount(1);
-    await expect(node(page, task.id)).toBeFocused();
+    await expect(details(page, task.id)).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(fullscreen).toHaveCount(0);
     await viewportElement.dispose();
@@ -318,7 +323,7 @@ test.describe('Web language journeys', () => {
     const seed = await request.put(attachmentDownloadUrl(project.id, task.id, '原始.txt'), { headers: { 'content-type': 'text/plain' }, data: '原始附件 Raw attachment\n' });
     expect(seed.status()).toBe(201);
     await page.goto(`/projects/${project.id}`);
-    await expect(node(page, task.id)).toBeVisible();
+    await expect(inspectTask(page, task.id)).toBeVisible();
     await page.clock.pauseAt(new Date('2030-01-01T00:00:00Z'));
     await expect(page.locator('.snapshot-time time')).toHaveAttribute('datetime', /^2030-/);
     await withDependencyFailure(async () => {
@@ -345,7 +350,7 @@ test.describe('Web language journeys', () => {
         await page.setViewportSize({ width, height: 800 });
         await expectPageWidth(page);
         await expect(page.locator('.graph-fullscreen-toggle')).toBeVisible();
-        await node(page, task.id).click();
+        await details(page, task.id).click();
         const dialog = page.locator('.task-detail-dialog');
         await expect(dialog.locator('.task-detail-title')).toHaveText(task.title);
         await expect(language(dialog)).toHaveValue(locale);
@@ -358,7 +363,7 @@ test.describe('Web language journeys', () => {
         await screenshot(page, info, `language-layout-${locale}-${width}`);
         await page.keyboard.press('Escape');
         await expect(dialog).toHaveCount(0);
-        await expect(node(page, task.id)).toBeFocused();
+        await expect(details(page, task.id)).toBeFocused();
       }
     }
   });

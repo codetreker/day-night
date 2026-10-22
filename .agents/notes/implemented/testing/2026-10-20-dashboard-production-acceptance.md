@@ -78,15 +78,21 @@ exact operation counts, while scroll quiescence uses actual position samples and
 a bounded test-process monotonic clock.
 
 Five openings retain the 3,000ms click-to-painted operable-overview budget and
-existing detail/zoom/pan feedback ≤300ms. Details → close → immediate zoom/pan
-retains its sequence without reset, Fit view or extra wait; network and layout/
-render diagnostics remain separate. `visibility[5]` records ordered repetition,
-overview/added/expanded/reset node and edge counts, requiring bounds, exact
-deltas and reset consistency. The existing polyline/native-dash/marker oracles
-check every visible edge. Independent selection, H, selectMs and curved-capacity
-claims belong to the following inspection PR. Independent node/edge limits
-still require complete 409 refusals. Current focused source needs its own real
-native/container/capacity evidence; prior full-render results do not establish it.
+detail/zoom/pan feedback ≤300ms. The
+[inspection delivery](../feature/2026-10-22-task-dependency-inspection.md) also
+requires selection ≤300ms, complete H and deduplicated hidden-upstream checks.
+Ordinary Details → close → immediate zoom/pan precedes trusted visible-task
+selection and the highlighted sequence; each metric takes the slower state,
+with network and layout/render timing separate and no close-to-zoom reset, Fit
+view or extra wait. `visibility[5]` retains ordered overview/expansion/reset counts
+plus selectedId/hiddenUpstream, requiring bounds, exact deltas and reset consistency.
+Independent curved-route, actual paint/native-arrow, body coverage and dash-phase
+oracles cover every visible edge and fixed port; graph-relative transforms keep
+page scrolling separate from geometry stability. Capacity retains twenty
+visibility/H rows and 160 feedback observations. Independent node/edge limits
+still require complete 409 refusals. Current merged source needs its own real
+native/container/capacity evidence; prior full-render or polyline runs do not
+establish inspection or curved-route results for it.
 
 Playwright runs one worker with zero retries. Report validation rejects global
 errors, skipped/flaky/retried tests, duplicate/missing stable scenarios, missing
