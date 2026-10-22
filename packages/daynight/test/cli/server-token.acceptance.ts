@@ -15,8 +15,8 @@ it("hides personal access tokens in native terminal input through the installed 
   const fixture = await fresh();
   const secret = "native-secret-ASCII_~!";
   const result = await skillTerminal(installed.receipt, fixture, [
-    { waitFor: "Configure (server/review/both): ", keys: ["server\r"] },
-    { waitFor: "Server URL (for example http://127.0.0.1:8787): ", keys: ["https://service.example\r"] },
+    { waitFor: "Configure (server/review/both):", keys: ["server\r"] },
+    { waitFor: "Server URL (for example http://127.0.0.1:8787):", keys: ["https://service.example\r"] },
     { waitFor: "Server token (hidden; blank to skip):", keys: [secret, "\r"] },
   ], fixture.home, { launcherPath: installed.receipt.launcherPath, args: ["setup"] });
   expect(result.code, result.stderr).toBe(0);
@@ -35,8 +35,8 @@ it.each(["\u0003", "\u0004"])("cancels hidden native terminal input and preserve
   await writeFile(configuration, original);
   const secret = "cancelled-input";
   const result = await skillTerminal(installed.receipt, fixture, [
-    { waitFor: "Configure (server/review/both): ", keys: ["server\r"] },
-    { waitFor: "Server URL (for example http://127.0.0.1:8787): ", keys: ["https://service.example\r"] },
+    { waitFor: "Configure (server/review/both):", keys: ["server\r"] },
+    { waitFor: "Server URL (for example http://127.0.0.1:8787):", keys: ["https://service.example\r"] },
     { waitFor: "Server token (hidden; blank to keep current token):", keys: [secret, key] },
   ], fixture.home, { launcherPath: installed.receipt.launcherPath, args: ["setup"] });
   expect(result.code, result.stderr).toBe(1);
