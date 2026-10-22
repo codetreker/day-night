@@ -759,6 +759,16 @@ state in the original evidence before later native/Docker cleanup. Recovery can
 repeat after interrupted preparation or a subsequent cleanup failure; a live
 preparation process blocks removal.
 
+After verifying owned installed-CLI members and sending SIGTERM, recovery waits
+for both an empty owned-member scan and ESRCH from `kill(-PGID, 0)` on the original
+group. It uses the existing two phases of fifty 100ms polls; an exited but unreaped
+group cannot satisfy cleanup merely because `/proc` ownership or executable data
+has disappeared. Remaining members require unchanged identities before SIGKILL.
+An initially live group without verified owned members fails immediately, and
+EPERM or other probe errors remain failures. The
+[pipeline decision](../../.agents/notes/implemented/testing/2026-10-21-web-acceptance-pipeline.md)
+owns the recovery rationale and real-kernel reproduction.
+
 Recovery writes separate per-run/latest `recovery.json` receipts and preserves
 the original acceptance outcome while retaining completed cleanup state. A successful recovery does not turn a failed
 browser or performance result into acceptance. The CI `always()` recovery step
