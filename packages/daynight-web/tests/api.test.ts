@@ -140,7 +140,7 @@ describe("API requests", () => {
     const abortSignal = signal();
     await expect(listProjects({ limit: 50, cursor: "opaque+/= &?" }, abortSignal)).resolves.toEqual({ items: [project], nextCursor: "next" });
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith("/api/v1/projects?limit=50&cursor=opaque%2B%2F%3D+%26%3F", {
-      signal: abortSignal, headers: { Accept: "application/json" }, cache: "no-store",
+      signal: abortSignal, headers: { Accept: "application/json" }, cache: "no-store", credentials: "same-origin", redirect: "error",
     });
     await listProjects({}, abortSignal);
     expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/v1/projects");

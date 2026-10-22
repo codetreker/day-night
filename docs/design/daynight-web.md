@@ -13,11 +13,14 @@
 记录状态、渲染和焦点机制；[附件任务拆分](daynight-task-attachments-tasks.md)拥有
 实施与组合验收范围，进度由 Daynight 维护。图、统计与 task 字段保留原只读约定。
 
-[鉴权架构](daynight-auth.md)单独定义规划中的 UniAuth 登录、项目权限、成员与
-邀请界面及个人访问令牌；[需求](../spec/daynight-auth.md)和
-[任务拆分](daynight-auth-tasks.md)拥有行为与交付顺序。当前页面尚未实现这些能力，
-仍为本机未认证看板。鉴权接入后继续保留本文的可信同源 frame、相对资源及键盘
-机制，附件请求增加项目成员检查。
+[鉴权架构](daynight-auth.md)拥有 UniAuth 登录、项目权限、成员与邀请及个人访问
+令牌；显式挂载的 `AuthenticatedApp` 和 API 客户端已实现。
+[需求](../spec/daynight-auth.md)与[任务拆分](daynight-auth-tasks.md)拥有完整行为和
+统一启用顺序。生产 `main.tsx` 继续渲染原 `App`，当前交付仍为本机未认证看板；
+真实 provider discovery 及生产挂载另行交付。新壳复用现有任务页签、图和居中
+`TaskDetailDialog`，保留可信同源 frame、相对资源及键盘机制。
+[Web 鉴权决策](../../.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
+记录组件、会话生命周期和验证边界。
 
 [语言设计](daynight-web-i18n.md)拥有已实现的类型化目录、Intl 格式化器、显式初始解析、Provider 和共用选择器，以及后续生产界面接入约束；[双语需求](../spec/daynight-web-i18n.md)拥有完整覆盖和验收。基础运行时尚未挂载到生产入口，现有产品仍使用中文。语言偏好使用独立的 origin-local 键，不改变本文的项目浏览记录、API、图或附件生命周期。
 
@@ -41,7 +44,7 @@
 原有写入接口、依赖规则与本机监听方式。附件是独立的文件资源扩展，使用自己的
 元数据、HTTP 接口和局部状态，不把文件写入混入 task PATCH 或图快照。
 
-项目列表只展示项目元数据，不为每张卡额外请求任务统计。统计集中在项目详情，避免列表产生 N 次图查询。创建编辑、实时推送和大图分片的延后成本及保留条件由[要求文档](../spec/daynight-web.md#明确延后的能力)定义；身份认证与项目成员授权的待实施机制由[鉴权架构](daynight-auth.md)拥有。
+项目列表只展示项目元数据，不为每张卡额外请求任务统计。统计集中在项目详情，避免列表产生 N 次图查询。创建编辑、实时推送和大图分片的延后成本及保留条件由[要求文档](../spec/daynight-web.md#明确延后的能力)定义；显式挂载鉴权壳和待完成的生产统一启用由[鉴权架构](daynight-auth.md)拥有。
 
 ## 页面与视觉
 

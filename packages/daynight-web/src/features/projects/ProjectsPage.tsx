@@ -33,7 +33,7 @@ const ErrorDetail = ({ error }: { error: unknown }) => (
   </>
 );
 
-export const ProjectsPage = () => {
+export const ProjectsPage = ({ onCreate }: { readonly onCreate?: () => void }) => {
   const projects = useProjects();
 
   return (
@@ -44,12 +44,12 @@ export const ProjectsPage = () => {
           <h1 id="page-title" tabIndex={-1}>项目</h1>
           <p className="subtitle">从项目出发，查看任务进度与执行依赖。</p>
         </div>
-        <button className="button" type="button" onClick={projects.refresh}>
+        <div className="heading-actions">{onCreate !== undefined && <button className="button primary" type="button" onClick={onCreate}>＋ 创建项目</button>}<button className="button" type="button" onClick={projects.refresh}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
             <path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1" />
           </svg>
           刷新
-        </button>
+        </button></div>
       </div>
 
       {projects.status === 'loading' && (
@@ -73,7 +73,7 @@ export const ProjectsPage = () => {
         <section className="state-box">
           <div className="state-icon"><FolderIcon /></div>
           <h2>还没有项目</h2>
-          <p>通过 API 创建项目后，点击刷新即可在这里查看。</p>
+          <p>{onCreate === undefined ? "通过 API 创建项目后，点击刷新即可在这里查看。" : "创建私有项目来整理工作，或使用管理员发给你的邀请链接加入团队。"}</p>{onCreate !== undefined && <button className="button primary" type="button" onClick={onCreate}>创建第一个项目</button>}
         </section>
       )}
 

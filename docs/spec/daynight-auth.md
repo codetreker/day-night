@@ -1,8 +1,9 @@
 # 用户登录与项目权限需求
 
 状态：身份/凭据及项目成员基础模块已实现，均未挂入生产路由；CLI 凭据配置和
-HTTP 传输已实现，Web 与统一启用继续按任务交付。本文定义接入现有 UniAuth 后的
-完整交付行为，
+HTTP 传输及可显式挂载的 Web 鉴权界面已实现。生产 Web 主入口及服务鉴权统一
+启用仍由后续任务交付，登录方式的真实 App-aware discovery 依赖 UniAuth 能力。
+本文定义接入现有 UniAuth 后的完整交付行为，
 [架构设计](../design/daynight-auth.md)拥有实现机制，
 [任务入口](../design/daynight-auth-tasks.md)连接 Daynight 中的执行资料。
 现有服务继续按[本机服务要求](daynight-server.md)运行，本文不表示鉴权已交付。
@@ -40,7 +41,11 @@ CLI 创建私有项目，创建者自动成为管理员；Web 表单复用现有
 
 配置一个 UniAuth 服务和已注册 App，使用该 App 允许的 Microsoft/Google/GitHub
 入口。完整 provider-qualified id 映射到本地 UUID，不同身份不按同邮箱自动合并。
-资料更新不改变本地用户和成员关系。
+资料更新不改变本地用户和成员关系。登录页只能展示当前 UniAuth App 同时允许且
+已启用的 provider。前端通过 `GET /api/v1/auth/providers` 读取 `{providers:[ids]}`；
+读取失败显示可重试错误，空列表显示无可用登录方式，不能硬编码 provider 或以
+全局启用状态代替 App 范围。该客户端依赖尚未挂入生产后端，真实 discovery 及
+协议接线由统一启用任务交付。
 
 浏览器使用服务端持久化的主站会话。生产 Cookie 为 host-only、Secure、HttpOnly、
 SameSite=Lax；本机 loopback HTTP 使用明确的开发配置和适合 HTTP 的 Cookie 名称。
@@ -76,6 +81,19 @@ CLI 使用可选 `serverToken`。setup 提供隐藏输入与布尔 `--server-tok
 只显示元数据和撤销入口。有效期至消费、到期或管理员撤销。接受者必须登录并明确
 确认，GET、链接预览、inspect 和登录跳转不消费。有效邀请只允许查看项目名称等最小
 摘要。接受与消费原子提交，并发只增加一名新成员；已有成员不升级角色且不消费邀请。
+
+## Web 交互与状态
+
+可显式挂载的 `AuthenticatedApp` 提供登录、私有项目创建、账户与令牌、项目成员
+和邀请接受界面，复用既有项目列表、任务图及居中的任务详情对话框。生产 `main.tsx`
+继续挂载原 `App`，独立组件和受控前端 fixture 不代表生产鉴权或真实第三方登录
+已经完成。
+
+会话失效和切换身份清除先前用户内容并使旧请求失效；项目 404 仅影响对应资源。
+成员修改使用完整正 int64 观察版本，前端解码、展示和提交不经过有损 Number。
+邀请 fragment 立即移出地址，以 tab 内临时存储跨登录；inspect 不消费邀请，只有
+明确确认才 accept，结束后清理。PAT 和邀请链接仅在创建时展示，复制失败可恢复，
+关闭前提示并确认一次性秘密无法重新读取。错误保留 requestId，不伪装成空列表。
 
 ## 同源附件
 

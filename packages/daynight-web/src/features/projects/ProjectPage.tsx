@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import type { Project } from "../../api/types";
 import { ApiError } from "../../api/client";
 import { navigate } from "../../app/router";
 import { TaskDetailDialog } from "../task-detail/TaskDetailDialog";
@@ -44,7 +45,7 @@ const ErrorDetail = ({ error }: { readonly error: unknown }) => (
   </>
 );
 
-const ProjectView = ({ projectId }: { readonly projectId: string }) => {
+const ProjectView = ({ projectId, renderActions }: { readonly projectId: string; readonly renderActions?: (project: Project) => ReactNode }) => {
   const graph = useTaskGraph(projectId);
   const [selection, setSelection] = useState<{ readonly id: string; readonly revision: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -144,7 +145,7 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
           <h1 ref={heading} tabIndex={-1}>{snapshot === null ? "项目任务" : snapshot.graph.project.name}</h1>
           {snapshot !== null && <p className="project-repository">{snapshot.graph.project.repoUrl}</p>}
         </div>
-        <button className="button" type="button" onClick={graph.refresh} disabled={graph.refreshing}>{graph.refreshing ? "正在刷新…" : "刷新"}</button>
+        <div className="project-title-actions">{snapshot !== null && renderActions?.(snapshot.graph.project)}<button className="button" type="button" onClick={graph.refresh} disabled={graph.refreshing}>{graph.refreshing ? "正在刷新…" : "刷新"}</button></div>
       </div>
       {preferenceIssue !== null && <p className="snapshot-notice" role="status">{projectViewPreferenceNotice(preferenceIssue)}</p>}
       {visibilityIssue !== null && <p className="snapshot-notice" role="status">{completedChainPreferenceNotice(visibilityIssue)}</p>}
@@ -206,4 +207,4 @@ const ProjectView = ({ projectId }: { readonly projectId: string }) => {
   );
 };
 
-export const ProjectPage = ({ projectId }: { readonly projectId: string }) => <ProjectView key={projectId} projectId={projectId} />;
+export const ProjectPage = ({ projectId, renderActions }: { readonly projectId: string; readonly renderActions?: (project: Project) => ReactNode }) => <ProjectView key={projectId} projectId={projectId} {...(renderActions === undefined ? {} : { renderActions })} />;

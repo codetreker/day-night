@@ -1,6 +1,6 @@
 # UniAuth 登录与项目授权架构
 
-状态：身份/凭据与项目成员模块已实现且可显式组合，均未挂入生产路由；CLI 凭据配置与 HTTP 传输已实现，Web 与统一启用继续交付。
+状态：身份/凭据与项目成员模块、CLI 凭据和可显式挂载的 Web 鉴权界面已实现；生产主入口尚未接线，统一启用和真实登录方式 discovery 继续按任务交付。
 [需求](../spec/daynight-auth.md)拥有完整可观察行为，
 [任务入口](daynight-auth-tasks.md)连接执行资料，
 [鉴权决策](../../.agents/notes/implemented/architecture/2026-10-22-auth-architecture.md)
@@ -62,6 +62,19 @@ Principal 形状为 `{UserID, CredentialID, Kind}`，Kind 只有 session/PAT。�
 读取在原 repeatable-read 快照中检查成员再读取资源；写入取得现有项目行锁后重查
 成员/角色/观察版本与领域约束。列表以 membership JOIN 在原 SQL cursor/LIMIT 前
 筛选。任务版本、int64、图容量和现有分页合同保持。
+
+## 登录方式发现
+
+登录页的 API 客户端读取 `GET /api/v1/auth/providers`，结果为
+`{providers:["microsoft","google","github"]}` 的允许子集。该接口是未挂入生产的
+前端依赖，列表必须由服务端根据当前 UniAuth App 的允许范围与实际启用状态取得。
+客户端明确处理读取失败、重试和零 provider，不使用固定 provider 或本地配置回退。
+
+当前 UniAuth SDK 提供 authorize/retrieve 身份交接，尚无满足 App 范围的 provider
+discovery。已有 console provider 接口只描述全局启用状态，不能证明当前 App 可用
+列表。真实协议能力、服务端暴露及其验证归统一启用任务；前端受控响应只验证界面
+状态。[Web 决策](../../.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
+记录这一依赖及证据边界。
 
 ## 登录和凭据
 
@@ -132,6 +145,7 @@ version_conflict。删除/降级最后 admin 返回 409 last_admin。
 | 路由 | 行为 |
 |---|---|
 | GET /healthz、GET /readyz | 无业务数据的存活/就绪；就绪保留 store 可用性。 |
+| GET /api/v1/auth/providers | 登录页的 App 范围 provider 发现；前端依赖已实现，真实协议与服务端暴露由统一启用交付。 |
 | GET /api/v1/auth/login?provider=... | 创建 pending 并跳转 UniAuth。 |
 | GET /api/v1/auth/callback | 校验/消费 pending、领取身份、建立 session。 |
 | GET /api/v1/me | 当前用户最小资料。 |
@@ -146,10 +160,13 @@ version_conflict。删除/降级最后 admin 返回 409 last_admin。
 新增 unauthenticated/forbidden/last_admin/invitation_unavailable 错误，保留原 envelope/
 requestId。非成员与不存在项目均 not_found；错误类别不能落入 internal_error。
 
-Web 登录壳通过 /me 取得身份，401 显示 UniAuth 入口；资源 404 不退出全局会话。
+`AuthenticatedApp` 为已实现的显式挂载入口，生产 `main.tsx` 仍挂载原 `App`。
+它通过 /me 取得身份，401 显示 UniAuth 入口；资源 404 不退出全局会话。
 项目列表增加名称/仓库地址创建表单，复用原 API，成功进入空项目且创建者为 admin。
 账户页管理 PAT，项目页管理成员。角色确认后展示管理操作，服务端独立检查；冲突
-重取权威数据。401/换账号清除旧项目和附件快照，失败不伪装成空列表。
+重取权威数据。401/换账号使共享请求 generation 失效并卸载旧项目和附件内容，
+失败不伪装成空列表。成员 version 以 bigint 解码及序列化，保留完整正 int64。
+现有图、项目浏览偏好和居中 TaskDetailDialog 继续复用，不增加任务字段编辑。
 
 邀请入口 /invitations#<secret> 读取后立即清除 fragment，以 tab 的临时 sessionStorage
 跨登录保存，确认/取消/失效后删除；秘密不进请求路径/Referer/日志。一次性 token/
@@ -177,7 +194,7 @@ parser cause；通用错误格式化器和其他错误链不承担凭据清洗�
 匿名回退、登录预检或写入重试；403/404/409 保持。仓库绑定仍只有
 serverUrl/repoIdentity/projectId。review/update/help/version 保留依赖边界；setup
 不访问网络。机制与备选由[CLI 凭据决策](../../.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
-拥有；Web 令牌管理及生产启用继续由其任务交付。
+拥有；Web 令牌管理已在显式挂载的组件中实现，生产启用继续由其任务交付。
 
 ## 配置、现有部署和启用
 
@@ -216,8 +233,9 @@ handler；public origin 是 fixture 显式输入，不是生产 fallback。
 响应仅这一次有 link，列表 items 仅元数据；inspect/accept POST body 为 `{token}`。
 inspect 返回 projectId/projectName，仅已有成员时包含 member；accept 返回成员资源。
 
-身份/成员模块先以真实 handler/store 验证，尚未挂入入口时维持当前本机行为；CLI
-凭据和 Web 新壳完成后，统一接线同时修改 composition、业务 actor 参数、Web 主入口、
+身份/成员模块先以真实 handler/store 验证；CLI 凭据和显式挂载的 Web 新壳已有
+实现，组件及受控 fetch fixture 分别验证。生产入口尚未接线，保持当前本机行为；
+统一接线同时修改 composition、业务 actor 参数、Web 主入口、
 部署配置/健康检查、Go 进程/安装 CLI/Web native/container/Docker fixture。测试通过
 正常协议取得 session/PAT，没有匿名豁免；既有选中 gate 同次通过。
 统一启用本身证明双用户隔离、撤销、管理员/邀请并发、正常浏览器登录和安装 CLI。

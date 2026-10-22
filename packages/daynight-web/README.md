@@ -21,13 +21,49 @@ own single-file management, previews and their independent state. The original
 offline dashboard mockups remain separate from the application; the attachment
 development mockup below reuses the real components with a frontend-only fixture.
 
-The planned [authentication requirements](../../docs/spec/daynight-auth.md),
+The [authentication requirements](../../docs/spec/daynight-auth.md),
 [architecture](../../docs/design/daynight-auth.md) and
 [task breakdown](../../docs/design/daynight-auth-tasks.md) define login, private
-projects, member and invitation management, and personal access tokens. These
-capabilities are not implemented. The current browser workspace uses the
-unauthenticated local service. Trusted same-origin previews, relative resources
-and keyboard behavior continue after authentication is delivered.
+projects, member and invitation management, and personal access tokens. The
+opt-in `AuthenticatedApp` implements their browser components and API client.
+Production `main.tsx` still renders `App`; the deployed workspace remains
+unauthenticated and loopback-only until coordinated activation. Trusted
+same-origin previews, relative resources and keyboard behavior remain unchanged.
+The [Web workspace decision](../../.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
+owns this integration boundary and its lifecycle choices.
+
+## Authenticated workspace
+
+`AuthenticatedApp` owns current-user loading, login navigation and session loss.
+It composes the existing project list, graph and centered `TaskDetailDialog` with
+private project creation, account/token pages, member/invitation management and
+explicit invitation acceptance. Identity changes invalidate outstanding requests
+and unmount user-owned content; a project 404 stays a resource error. Requests
+use same-origin browser credentials and preserve request IDs, cancellation and
+explicit failures. Member versions remain `bigint` from JSON decoding through
+mutation encoding, including values above the safe JavaScript integer range.
+
+PAT values and invitation links are displayed only after creation. Copy failure
+keeps a recoverable action; closing the secret dialog requires confirmation. The
+invitation entry removes its fragment immediately, uses tab-local temporary
+storage across login, and clears it when the workflow ends. Inspection does not
+accept an invitation. The UI retains ordinary same-origin attachment iframes,
+relative resources and their existing keyboard bridge.
+
+The login page reads `GET /api/v1/auth/providers` with response
+`{providers: [providerId, ...]}`. This is an unmounted client dependency, not an
+implemented production backend route. The response must reflect the configured
+UniAuth App's allowed and enabled providers. Discovery failures and an empty
+provider set have explicit states; the UI does not invent a provider list. Real
+App-aware UniAuth discovery and backend exposure belong to coordinated activation
+and require the upstream capability described in the
+[authentication architecture](../../docs/design/daynight-auth.md#登录方式发现).
+
+With `pnpm web:dev`, open `/tests/mockups/auth.html` for actual components with
+controlled fetch responses and final styles. This fixture validates frontend
+interaction separately from production service mounting and real third-party
+login. The [static design prototype](../../docs/design/mockups/auth/index.html)
+retains the broader scenario reference.
 
 ## Language runtime
 
@@ -601,5 +637,6 @@ Page hooks own requests and cancellation. Navigation or refresh invalidates the
 previous request generation, continuation failures preserve loaded cards, and
 unmount aborts owned work. Attachments have independent scoped list, write and
 preview state, while project statistics continue to use complete graph snapshots.
-There is no global task cache, task-field editor, polling loop or remote
-authentication flow in this workspace.
+There is no global task cache, task-field editor or polling loop. The opt-in
+`AuthenticatedApp` owns the authentication flow; production `main.tsx` continues
+to mount the existing `App` until coordinated activation.

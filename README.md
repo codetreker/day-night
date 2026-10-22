@@ -51,8 +51,12 @@ provides persistent users, credentials and callable authentication handlers. The
 [project membership module](.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
 adds private creation, filtered access, roles and invitations. Both modules remain
 unmounted. [CLI server credentials](.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
-are implemented; Web integration and coordinated activation are separately
-tracked, and the current application is unauthenticated and loopback-only. Trusted
+are implemented. The opt-in [authenticated Web workspace](.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
+provides login, private project creation, account/token management, project
+members and invitation acceptance. Its components and API client are independent
+of the production entry point; coordinated activation and real provider discovery
+remain separately tracked. The current application is unauthenticated and
+loopback-only. Trusted
 same-origin executable HTML previews retain their existing execution model after
 authentication is delivered; attachment requests gain project-member checks.
 Existing projects will receive membership data manually outside that work.

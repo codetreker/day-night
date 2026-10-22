@@ -1,0 +1,57 @@
+import { useId, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { useBodyScrollLock } from '../../app/useBodyScrollLock';
+import { dialogFocusables } from '../task-detail/focus';
+
+export const ManagementDialog = ({ title, children, footer, onClose, busy = false }: {
+  readonly title: string;
+  readonly children: ReactNode;
+  readonly footer: ReactNode;
+  readonly onClose: () => void;
+  readonly busy?: boolean;
+}) => {
+  const titleId = useId();
+  const dialog = useRef<HTMLElement>(null);
+  const close = useRef<HTMLButtonElement>(null);
+  const callbacks = useRef({ onClose, busy });
+  callbacks.current = { onClose, busy };
+  useBodyScrollLock(true);
+  useLayoutEffect(() => {
+    const opener = document.activeElement;
+    const root = document.getElementById('root');
+    const wasInert = root?.hasAttribute('inert');
+    root?.setAttribute('inert', '');
+    const first = dialog.current!.querySelector<HTMLElement>('input, textarea, select');
+    (first ?? close.current!).focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (!callbacks.current.busy) callbacks.current.onClose();
+      }
+      if (event.key === 'Tab') {
+        const items = dialogFocusables(dialog.current!);
+        if (items.length === 0) { event.preventDefault(); dialog.current!.focus(); return; }
+        const firstItem = items[0]!;
+        const lastItem = items[items.length - 1]!;
+        if (!dialog.current!.contains(document.activeElement) || (!event.shiftKey && document.activeElement === lastItem)) {
+          event.preventDefault(); firstItem.focus();
+        } else if (event.shiftKey && document.activeElement === firstItem) {
+          event.preventDefault(); lastItem.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', keydown);
+    return () => {
+      document.removeEventListener('keydown', keydown);
+      if (!wasInert) root?.removeAttribute('inert');
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+    };
+  }, []);
+  return createPortal(<div className="auth-modal-backdrop">
+    <section className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-busy={busy} tabIndex={-1} ref={dialog}>
+      <header className="dialog-header"><h2 id={titleId}>{title}</h2><button className="close-button" type="button" ref={close} aria-label="关闭对话框" disabled={busy} onClick={onClose}>×</button></header>
+      <div className="dialog-body">{children}</div>
+      <footer className="dialog-footer">{footer}</footer>
+    </section>
+  </div>, document.body);
+};
