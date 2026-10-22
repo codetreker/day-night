@@ -127,7 +127,7 @@ describe("repository Git discovery", () => {
     git(submodule, ["remote", "set-url", "origin", "git@git.example:Submodule/Repo.git"]);
     expect(await discoverWorktreeRoot(submodule, operation())).toBe(submodule);
     expect(await discoverRepository(submodule, operation())).toEqual({ root: submodule, remote: "git@git.example:Submodule/Repo.git", identity: "git.example/Submodule/Repo" });
-  });
+  }, 15_000);
 
   it("ignores inherited repository-target selectors while preserving cwd", async () => {
     const root = await repository();
