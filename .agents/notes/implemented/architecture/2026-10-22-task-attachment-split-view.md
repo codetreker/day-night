@@ -13,15 +13,20 @@ preview actions and the dialog close control remain reachable.
 
 ## Decision
 
-`TaskDetailDialog` composes `TaskDetailPanels` beneath the common task heading.
+`TaskDetailDialog` composes `TaskDetailPanels` through `TaskDetailReading` beneath
+the common task heading.
 Every project/task identity starts on Overview. Overview retains descriptions,
 pull requests, relationships and metadata; Attachments owns file management and
 preview. Stable tab/panel relationships, roving tabindex and automatic arrow and
 Home/End activation provide keyboard navigation. Both panels stay mounted and
 the inactive panel is hidden and inert. Tab round trips retain the attachment
 controller, native file input, relative-path draft, directory expansion and
-preview state. A new project/task identity resets them. Future description
-attachment navigation activates this same panel and controller.
+preview state. A new project/task identity resets them. The
+[Markdown description decision](2026-10-22-task-description-markdown.md) adds
+root-based description navigation through this same panel and controller;
+`TaskDetailReading` owns the hook and passes its controller to
+`TaskAttachmentsPanel`. Complete-inventory checks and navigation errors share
+that owner.
 
 The attachment panel is one bounded grid with a vertical divider. Its left
 sidebar contains the file tree, refresh and a single-file upload disclosure and

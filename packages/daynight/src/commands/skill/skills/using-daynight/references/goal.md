@@ -38,9 +38,9 @@ establish stable identity. Preserve confirmed IDs and inspect full content when
 reusing an existing chain.
 
 Set the design task's `dependsOn` to the Goal description task. Each task starts
-in `proposed` with its own self-contained description and primary Markdown containing
-Solution and Acceptance criteria. State unanswered questions honestly. Complete
-requirements, prototypes, architecture, and breakdown are produced by their
+in `proposed` with its own self-contained Markdown description and primary Markdown
+containing Solution and Acceptance criteria. State unanswered questions honestly.
+Complete requirements, prototypes, architecture, and breakdown are produced by their
 respective stages; they are not prerequisites for registering the chain or
 starting the stage that produces them. Confirm both tasks, stage briefs,
 references, and dependency through real reads, then return from `create-task`.
@@ -128,9 +128,10 @@ and its blocking dependency while waiting; it grants no merge authority.
 
 ## Preserve ownership and recover partial registration
 
-Every stage and delivery task needs its own concrete description and detailed
-primary Markdown. Keep shared requirements on the Goal description task and
-shared architecture and breakdown on the design task. Later tasks reference
+Every stage and delivery task needs its own self-contained Markdown description
+and detailed primary Markdown. Follow create-task's Markdown and verified-resource
+rules without claiming unfinished stage outputs are already available. Keep shared
+requirements on the Goal description task and shared architecture and breakdown on the design task. Later tasks reference
 verified source task IDs and attachment paths, read through the installed CLI,
 or verified immutable repository references. Do not distribute a duplicate whole
 packet to all tasks. Only copy a snapshot when the consuming task needs it,

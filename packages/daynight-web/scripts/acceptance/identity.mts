@@ -43,12 +43,16 @@ export const ownedBrowserProcesses = async (directory: string, executables: read
   return result;
 };
 
-export const requireGroupStopped = (pid: number): void => {
+export const isGroupStopped = (pid: number): boolean => {
   if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error('Invalid acceptance process group.');
   try { process.kill(-pid, 0); }
   catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ESRCH') return;
+    if (error instanceof Error && 'code' in error && error.code === 'ESRCH') return true;
     throw error;
   }
-  throw new Error('Original acceptance process group is still running; recovery refused.');
+  return false;
+};
+
+export const requireGroupStopped = (pid: number): void => {
+  if (!isGroupStopped(pid)) throw new Error('Original acceptance process group is still running; recovery refused.');
 };

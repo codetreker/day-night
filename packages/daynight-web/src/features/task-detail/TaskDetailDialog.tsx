@@ -11,9 +11,8 @@ import { dialogFocusables } from './focus';
 import { TaskDetailSessionBoundary } from './TaskDetailSession';
 import { useTaskDetail } from './useTaskDetail';
 import { TaskApproval } from './TaskApproval';
-import { TaskDetailPanels } from './TaskDetailPanels';
+import { TaskDetailReading } from './TaskDetailReading';
 import { TaskPullRequests } from './TaskPullRequests';
-import { TaskAttachments } from './attachments/TaskAttachments';
 import '../../styles/task-detail.css';
 
 export type TaskDetailDialogProps = {
@@ -164,13 +163,13 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                   </div>
                 )}
               </div>
-              <TaskDetailPanels key={`${projectId}/${taskId}`} overview={<>
+              <TaskDetailReading key={`${projectId}/${taskId}`} projectId={projectId} taskId={taskId} description={detail.description} onClose={onClose} overview={(description) => <>
                 <div className="task-detail-approval"><TaskApproval detail={detail} approval={task.approval} canApprove={task.canApprove} onApprove={task.approve} onReconcile={task.reconcile} /></div>
                 <div className="task-detail-columns">
                   <div className="task-detail-main">
                     <section className="task-detail-section" aria-label={m.description}>
                       <h4>{m.description}</h4>
-                      <p className="task-detail-description">{detail.description === '' ? m.noDescription : detail.description}</p>
+                      {description}
                     </section>
                     <TaskPullRequests pullRequests={detail.properties.pullRequests} />
                   </div>
@@ -195,7 +194,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                       <div><dt>{m.taskId}</dt><dd className="task-detail-full-id">{detail.id}</dd></div>
                     </dl>
                   </aside>
-                </div></>} attachments={<TaskAttachments projectId={projectId} taskId={taskId} onClose={onClose} />} />
+                </div></>} />
             </>
           )}
         </div>

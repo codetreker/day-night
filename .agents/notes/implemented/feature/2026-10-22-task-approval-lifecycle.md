@@ -63,7 +63,11 @@ retains that detail and an explicit stale-snapshot refresh action. Conflicts rer
 require another click. Unknown outcomes retain their error and require current
 state reconciliation before another submission. Old reads and late results
 cannot restore proposed or populate another task. Existing language, attachment,
-fullscreen, viewport and focus ownership is retained.
+fullscreen, viewport and focus ownership is retained. The
+[Markdown description reader](../architecture/2026-10-22-task-description-markdown.md)
+shares one TaskDetailReading attachment controller between description navigation
+and the attachment panel. Same-task retained reads keep that composition mounted;
+404 and identity changes remove private content under the same session rules.
 
 Packaged using-daynight creates proposed tasks and verifies current stage-owned
 artifacts and real shared inputs before reporting complete registration. The
@@ -126,8 +130,10 @@ with no legacy branch or compatibility fallback. Stored task identities and
 preexisting values remain unchanged. Web approval requires an exact full-detail
 read and coordinated refresh; graph projections alone cannot authorize writes.
 The three task-approval, task-approval-conflicts and task-approval-recovery
-scenarios extend each production target to sixteen functional scenarios; native
-also retains five capacity/limit scenarios, for twenty-one unique scenarios.
+scenarios add three functional scenarios per production target. The
+[Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
+adds another scenario, making seventeen functional scenarios per target; native
+also retains five capacity/limit scenarios, for twenty-two unique scenarios.
 Only registered project/task POST approve requests and exact expected counts
 are admitted, separately from fixture-scoped attachment writes. Existing browser
 identity, one-worker, no-retry, performance, coverage and cleanup gates remain.

@@ -94,7 +94,7 @@ test('task-approval', scenario('task-approval'), async ({ page, request, allowAp
   await page.goto(`/projects/${project.id}`);
   await openStandalone(page, exact.id);
   await expectStatus(page, '待审批');
-  await expect(detail(page).locator('.task-detail-description').first()).toHaveText(exact.description);
+  await expect(detail(page).locator('.task-description')).toHaveText(exact.description);
   const fetched = deferred();
   const release = deferred();
   const finished = deferred();
@@ -362,7 +362,7 @@ test('task-approval-conflicts', scenario('task-approval-conflicts'), async ({ pa
   await openStandalone(page, changed.id);
   const updated = await updateTask(request, project.id, changed.id, { version: changed.version, description: '需要重新审阅的当前说明' });
   await approval(page).getByRole('button', { name: '批准任务', exact: true }).click();
-  await expect(detail(page).locator('.task-detail-description').first()).toHaveText(updated.description);
+  await expect(detail(page).locator('.task-description')).toHaveText(updated.description);
   await expect(approval(page).getByRole('alert').first()).toContainText('任务已变化');
   await expect(approval(page)).toContainText('任务版本已变化');
   await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();

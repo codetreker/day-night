@@ -5,7 +5,7 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ChildProcess } from 'node:child_process';
 import { commandBytes } from './process.mts';
-import { processIdentity, requireGroupStopped, sameProcess, type ProcessIdentity } from './identity.mts';
+import { isGroupStopped, processIdentity, requireGroupStopped, sameProcess, type ProcessIdentity } from './identity.mts';
 
 export type InstalledCliReceipt = {
   readonly schemaVersion: 1;
@@ -124,10 +124,11 @@ export const recoverCliProcesses = async (directory: string, receiptPath: string
       }
       for (const member of members) if (!sameProcess(member, await processIdentity(member.pid))) throw new Error('Installed CLI process changed before recovery.');
       process.kill(-record.group, 'SIGTERM');
+      // Exited members can leave process discovery before their parents reap them and the group disappears.
       let remaining = members;
       for (let attempt = 0; attempt < 50; attempt++) {
         remaining = (await ownedCliProcesses(directory, receipt, receiptPath)).filter((identity) => identity.group === record.group);
-        if (remaining.length === 0) break;
+        if (remaining.length === 0 && isGroupStopped(record.group)) break;
         await new Promise((done) => setTimeout(done, 100));
       }
       for (const member of remaining) {
@@ -135,7 +136,7 @@ export const recoverCliProcesses = async (directory: string, receiptPath: string
         process.kill(member.pid, 'SIGKILL');
       }
       for (let attempt = 0; attempt < 50; attempt++) {
-        if (!(await ownedCliProcesses(directory, receipt, receiptPath)).some((identity) => identity.group === record.group)) break;
+        if (!(await ownedCliProcesses(directory, receipt, receiptPath)).some((identity) => identity.group === record.group) && isGroupStopped(record.group)) break;
         await new Promise((done) => setTimeout(done, 100));
       }
     }

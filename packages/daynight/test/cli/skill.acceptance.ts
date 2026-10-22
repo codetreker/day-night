@@ -13,7 +13,12 @@ let installed: Awaited<ReturnType<typeof createInstalledCli>>;
 let sequence = 0;
 const scenarios: string[] = [];
 const evidencePath = path.resolve(import.meta.dirname, "../../../../.tmp/skill-install-evidence.json");
-beforeAll(async () => { await rm(evidencePath, { force: true }); installed = await createInstalledCli(); });
+beforeAll(async () => {
+  await rm(evidencePath, { force: true });
+  installed = await createInstalledCli();
+  const source = path.resolve(import.meta.dirname, "../../src/commands/skill/skills/using-daynight");
+  expect(await tree(bundle())).toEqual(await tree(source));
+});
 afterAll(async () => {
   if (installed === undefined) return;
   const failures: unknown[] = [];
@@ -48,7 +53,23 @@ const tree = async (directory: string): Promise<Record<string, Buffer | "directo
   return files;
 };
 const bundle = (): string => path.join(path.dirname(installed.receipt.entryPath), "commands/skill/skills/using-daynight");
-const expectBundle = async (target: string): Promise<void> => { expect(await tree(target)).toEqual(await tree(bundle())); };
+const expectBundle = async (target: string): Promise<void> => {
+  expect(await tree(target)).toEqual(await tree(bundle()));
+  const authoring = await readFile(path.join(target, "references/create-task.md"), "utf8");
+  const example = /```markdown\r?\n([\s\S]*?)\r?\n```/.exec(authoring)?.[1];
+  expect(example).toBeDefined();
+  expect(example).toContain("## 问题与行动");
+  expect(example).toContain("## 范围与交付");
+  expect(example).toContain("## 完成条件");
+  expect(example).toContain("[方案与验收](plan.md)");
+  expect(example).toContain("[交互原型](mockui/index.html)");
+  expect(authoring).toMatch(/Use these paths only when those files actually\s+belong to that task/);
+  expect(authoring).toContain("**Solution** and **Acceptance criteria**");
+  expect(await readFile(path.join(target, "references/handbook.md"), "utf8")).toContain("**Markdown descriptions.**");
+  const goal = await readFile(path.join(target, "references/goal.md"), "utf8");
+  expect(goal).toMatch(/self-contained Markdown\s+description/);
+  expect(goal).toMatch(/Each task starts\s+in `proposed`/);
+};
 const untouched = async (fixture: SkillFixture): Promise<void> => {
   await expect(readFile(fixture.agentLog)).rejects.toMatchObject({ code: "ENOENT" });
   await expect(lstat(path.join(fixture.home, ".daynight"))).rejects.toMatchObject({ code: "ENOENT" });

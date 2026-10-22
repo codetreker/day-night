@@ -65,7 +65,7 @@ const openChild = async () => {
 };
 
 describe('approval in shared production task details', () => {
-  it.each(['approval', 'automatic poll'] as const)('keeps another task attachment draft and upload mounted during a background detail refresh triggered by %s', async (trigger) => {
+  it.each(['approval', 'automatic poll'] as const)('keeps another task Markdown-linked attachment draft and upload mounted during a background detail refresh triggered by %s', async (trigger) => {
     if (trigger === 'automatic poll') vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const mutation = deferred<TaskDetail>();
     const refresh = deferred<TaskDetail>();
@@ -75,6 +75,7 @@ describe('approval in shared production task details', () => {
     vi.mocked(approveTask).mockReturnValueOnce(mutation.promise);
     vi.mocked(putAttachment).mockReturnValueOnce(upload.promise);
     vi.mocked(listAttachments).mockResolvedValue({ items: [kept], nextCursor: null });
+    records.set(standalone, { ...records.get(standalone)!, description: '# Task materials\n\n[Selected attachment](kept.txt)' });
     let otherReads = 0;
     vi.mocked(getTask).mockImplementation(async (_project, taskId) => taskId === standalone && ++otherReads === 2 ? refresh.promise : records.get(taskId)!);
     mount(); let dialog = await openChild();
@@ -85,8 +86,10 @@ describe('approval in shared production task details', () => {
     dialog = screen.getByRole('dialog', { name: 'Task details' });
     await within(dialog).findByRole('heading', { name: 'Task 3' });
     const approvalButton = within(dialog).getByRole('button', { name: 'Approve task' });
-    const tab = within(dialog).getByRole('tab', { name: 'Attachments' }); fireEvent.click(tab);
-    const selection = await within(dialog).findByRole('button', { name: /kept.txt/ }); fireEvent.click(selection);
+    const tab = within(dialog).getByRole('tab', { name: 'Attachments' });
+    fireEvent.click(within(dialog).getByRole('link', { name: 'Selected attachment' }));
+    expect(tab).toHaveAttribute('aria-selected', 'true');
+    const selection = await within(dialog).findByRole('button', { name: /kept.txt/ });
     const preview = await within(dialog).findByText('Selected attachment content', { selector: 'pre' });
     const attachments = dialog.querySelector('.task-attachments');
     const input = within(dialog).getByLabelText('Choose one file') as HTMLInputElement;
@@ -124,6 +127,7 @@ describe('approval in shared production task details', () => {
     expect(dialog.querySelector('.task-attachments')).toBe(attachments); expect(tab).toHaveFocus();
     expect(input.files?.[0]).toBe(file); expect(path).toHaveValue('drafts/new.txt'); expect(signal.aborted).toBe(false);
     expect(approvalButton).toBeEnabled(); expect(selection).toHaveAttribute('aria-pressed', 'true');
+    expect(vi.mocked(listAttachments).mock.calls.filter((call) => call[1] === standalone)).toHaveLength(1);
     expect(within(dialog).getByText('Selected attachment content', { selector: 'pre' })).toBe(preview);
     vi.mocked(listAttachments).mockResolvedValue({ items: [kept, uploaded], nextCursor: null });
     await act(async () => { upload.resolve(uploaded); });

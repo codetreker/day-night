@@ -6,23 +6,32 @@ statistics, task dependency graphs, task details and file attachments from the
 same Go service origin. The read-only graph dashboard is delivered, including
 production-browser acceptance, embedded deployment and the subsequent focus-restoration repair. The
 [dashboard tasks](docs/design/daynight-web-tasks.md) record completion and link
-the corresponding PR and CI evidence. Complete prerequisite data is delivered. Progressive graph overviews are the
-current focused delivery, followed by dependency inspection in
-[PR #121](https://github.com/codetreker/daynight/pull/121).
+the corresponding PR and CI evidence. Complete prerequisite data and the
+[PR #134](https://github.com/codetreker/daynight/pull/134) progressive graph
+overview are delivered. Dependency inspection is being rebuilt in
+[PR #143](https://github.com/codetreker/daynight/pull/143); the closed
+[PR #121](https://github.com/codetreker/daynight/pull/121) is historical and is
+not a completion prerequisite.
 The [task inspection requirements](docs/spec/daynight-task-inspection.md),
 [architecture](docs/design/daynight-task-inspection.md),
 [focused task breakdown](docs/design/daynight-task-inspection-tasks.md) and
 [interactive preview](docs/design/mockups/task-inspection/index.html) cover
 complete prerequisite context, smooth highlighted dependency routes, a centered
 detail dialog and Markdown descriptions with matching public skill guidance.
-Centered task details are implemented with the existing modal, attachment and
-focus lifecycles. Graph inspection, smooth paths and Markdown descriptions remain
-pending. The progressive view starts at fifty tasks/one hundred induced edges, with
-explicit twenty-neighbor expansion and global reset; complete data and progress
-remain intact. Body activation still opens the delivered detail dialog with its
-Overview/Attachments split panels, routes remain polylines, and descriptions
-remain plain text. Both overview and inspection PRs must complete before UX-T2
-is done; production evidence for the current overview remains pending.
+Centered task details retain the existing modal, attachment and focus
+lifecycles. Descriptions render CommonMark/GFM through the shared attachment
+Markdown renderer. Relative description links and images resolve from the task
+attachment root; ordinary relative file links select the existing Attachments
+preview through one controller, while real URLs retain browser navigation.
+The [Markdown reading decision](.agents/notes/implemented/architecture/2026-10-22-task-description-markdown.md)
+owns root resolution, complete-inventory checks and focus integration. UX-T4
+remains in progress until its source-bound acceptance and authorized delivery
+complete. Graph inspection and smooth paths remain with UX-T2. Its delivered
+overview starts at fifty tasks/one hundred induced edges, with explicit
+twenty-neighbor expansion and global reset; complete data and progress remain
+intact. The current mainline card body still opens the detail dialog and routes
+remain polylines. PR #143 requires its own current-source acceptance and merge
+before UX-T2 is done.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
@@ -148,9 +157,14 @@ Existing explicit permission applies within its stated scope without repeated
 confirmation. Goal creation covers its two starting tasks and later in-scope
 breakdown; task approval needs a separate explicit task or Goal-task scope.
 Creation, stage completion, run-task and autopilot do not supply approval. Approved
-ready work is claimed at the reviewed version. Task descriptions are self-contained briefs: concrete actions, scope, deliverables,
-constraints, observable completion summaries and actual input references. Each
-task-specific primary Markdown owns detailed solution, full acceptance and evidence.
+ready work is claimed at the reviewed version. Task descriptions are self-contained
+Markdown briefs: the concrete problem and action, scope, deliverables, constraints,
+observable completion summaries and actual input references. The Web renders that
+Markdown; API storage and CLI/Agent output preserve the original string bytes.
+Each task-specific primary Markdown owns its detailed Solution, full Acceptance
+criteria and evidence. Use relative references such as
+`[Solution and acceptance](plan.md)` only after confirming that the referenced
+file belongs to that task and its uploaded contents are readable.
 Shared Goal and design inputs stay at their source task ID and attachment path,
 or a verified immutable repository URL; attachments follow actual need. Frontend
 implementation tasks read the completed final-style interactive prototype and
@@ -954,7 +968,11 @@ behavior and remaining task-command scope.
 Task commands use the same `serverUrl` configuration as project commands:
 
 ```bash
-daynight task create --title "Implement sign-in" --description "Support OAuth"
+daynight task create --title "Implement sign-in" --description '## Sign-in
+
+Implement OAuth sign-in for the web workspace. Deliver the callback flow and
+visible failure recovery; preserve the existing session and provider rules.
+Complete when a valid login opens the workspace and a rejected login can retry.'
 daynight task create --title "Build the sign-in page" --depends-on <task-id>
 daynight task ready
 daynight task ready --limit 5 --json
@@ -1569,7 +1587,13 @@ Selected jobs keep their complete checks, coverage thresholds, acceptance suites
 timeouts and cleanup requirements. The Go job still builds real web assets and
 exercises the installed CLI; the web job still builds and exercises the Go
 service and production deployment. Selecting one module does not split these
-existing integration suites. Native CLI jobs typecheck and build once before
+existing integration suites. The Ubuntu shell-completion and Web jobs select the
+official HTTPS Ubuntu archive and security services before package preparation.
+Their shared command changes only the runner's referenced mirror list; signed
+source stanzas and package indices remain intact. An unexpected source layout
+fails explicitly. The [mirror decision](.agents/notes/implemented/testing/2026-10-22-ubuntu-package-mirrors.md)
+records the provisioning failure and the retained acceptance limits.
+Native CLI jobs typecheck and build once before
 running ordinary and installed tests against the same output. After deployment
 fixture checks, the web job uses one acceptance pipeline. Pinned Chromium,
 unit/coverage checks, native UI/Go/PostgreSQL preparation and the normal dev-ci

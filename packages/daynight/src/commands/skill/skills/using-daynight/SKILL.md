@@ -53,11 +53,13 @@ and completing `run-task` never activate it.
 - Advance one task at a time, including CI, review, and merge waits. Subagents
   collaborate on the same task. `autopilot` owns selection of subsequent work;
   `run-task` and `create-task` return when their own work ends.
-- Each task description states its concrete work, scope, deliverables,
-  constraints, observable completion summary, and real input references. Its own
-  primary Markdown owns the detailed solution, acceptance criteria, and evidence.
-  Attach resources according to actual task ownership and need; reference shared
-  inputs at their verified source. Express prerequisites only through `dependsOn`.
+- Write each task description in Markdown as a self-contained brief: concrete
+  problem, actions, scope, deliverables, constraints, observable completion summary,
+  and real input references. Its own primary Markdown owns the detailed solution,
+  acceptance criteria, and evidence. Confirm resources before linking them;
+  description-relative links start at this task's attachment root. Attach resources
+  according to actual ownership and need; reference shared inputs at their verified
+  source. Express prerequisites only through `dependsOn`.
 - Preserve the exact version observed when deciding a metadata update or
   approve/claim/complete action. Generic updates cannot change status. Confirm writes,
   reconcile uncertain results before further mutations, and preserve actual

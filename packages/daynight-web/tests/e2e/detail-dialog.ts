@@ -12,7 +12,11 @@ export const expectCenteredTaskDetail = async (page: Page, dialog: Locator): Pro
       && bounds.height <= window.innerHeight - gutter * 2 + 0.5;
   }), { message: 'Task details remain centered within the available viewport and its required gutters' }).toBe(true);
   await expect(dialog.locator('.task-detail-header')).toBeInViewport({ ratio: 1 });
-  await expect(dialog.locator('.task-detail-close')).toBeInViewport({ ratio: 1 });
+  const close = dialog.locator('.task-detail-close');
+  await expect(close).toHaveRole('button');
+  await expect(close).toBeEnabled();
+  await expect(close).toHaveAccessibleName(/\S/);
+  await expect(close).toBeInViewport({ ratio: 1 });
   await expect(dialog.locator('.task-detail-footer')).toBeInViewport({ ratio: 1 });
   expect(await dialog.locator('.task-detail-body').evaluate((body) => body.scrollWidth <= body.clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
