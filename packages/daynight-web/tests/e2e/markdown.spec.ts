@@ -93,7 +93,7 @@ test('task-description-markdown', { annotation: { type: 'scenario', description:
   await page.getByRole('tab', { name: '独立任务', exact: true }).click();
   const trigger = page.locator(`#standalone-task-${task.id}`);
   await trigger.click();
-  const dialog = page.getByRole('dialog', { name: '任务详情', exact: true });
+  const dialog = page.locator('.task-detail-dialog[role="dialog"]');
   const description = overview(dialog).locator('.task-description');
   await expect(description.getByRole('heading', { name: '交付说明 Delivery', exact: true })).toBeVisible();
   await expect(description.getByRole('table')).toHaveCount(1);
@@ -116,6 +116,7 @@ test('task-description-markdown', { annotation: { type: 'scenario', description:
 
   for (const locale of ['en', 'zh-CN']) {
     await dialog.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption(locale);
+    await expect(dialog).toHaveAccessibleName(locale === 'en' ? 'Task details' : '任务详情');
     for (const width of [1440, 320]) {
       await page.setViewportSize({ width, height: 800 });
       await expectCenteredTaskDetail(page, dialog);
