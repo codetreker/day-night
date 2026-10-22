@@ -39,6 +39,14 @@ graph-visibility test timed out. The test failure was reported as the download
 reached 80%; the browser download then completed. These logs show that
 network-heavy browser preparation overlapped the timing-sensitive test; they do
 not isolate whether CPU, I/O or another shared-runner resource caused the timeout.
+The updated pipeline then ran in
+[39801658628](https://github.com/codetreker/daynight/actions/runs/39801658628):
+coverage passed before browser preparation, but the official archive needed 1
+minute 59 seconds to fetch 12.5 MB of package indexes and 2 minutes 43 seconds to
+fetch 25.9 MB of dependencies. The original 180-second deadline expired during
+the second transfer; no Chromium download began. This run confirms that coverage
+must finish first and that the browser-install deadline must accommodate the
+measured Linux dependency transfer even after the archive source changed.
 
 ## Decision
 
@@ -50,10 +58,10 @@ pass explicit cancellation controllers to that runner. CI supplies callbacks for
 pinned Chromium installation and the unchanged `pnpm web:test` command; only the
 coverage child receives `VITEST_MAX_WORKERS=2`, retaining its `forks` pool and
 per-file isolation. Browser installation, including Playwright's Linux dependency
-installation, and coverage each retain a 180-second deadline. Both commands
-remain required: a nonzero exit or timeout fails acceptance. The web job retains
-its 20-minute overall timeout. Controlled deployment fixtures run before the
-unified CI entry. This partially replaces the cache-only preparation and target
+installation, has a 600-second deadline; coverage remains bounded at 180 seconds.
+Both commands remain required: a nonzero exit or timeout fails acceptance. The
+web job retains its 20-minute overall timeout. Controlled deployment fixtures run
+before the unified CI entry. This partially replaces the cache-only preparation and target
 sequencing of the [CI efficiency decision](2026-10-21-ci-validation-efficiency.md)
 and the original schedule of the
 [dashboard acceptance decision](2026-10-20-dashboard-production-acceptance.md).
@@ -172,13 +180,12 @@ while Playwright downloaded Chromium. Waiting for coverage isolates those tests
 from browser downloads and still overlaps browser setup with native and dev-ci
 preparation.
 
-**Raise the browser-install deadline to 600 seconds.** The longer bound was
-introduced for the Azure archive delay, but PR run 39791820767 still exceeded ten
-minutes while that mirror fetched packages. PR #148 selected official Ubuntu
-archives; PR run 39794986474 then passed complete web acceptance with the original
-180-second installation bound. Main run 39798535790 fetched apt package sets in
-8 seconds total, but a timing-sensitive test failed while Chromium downloaded.
-The larger deadline addresses neither the slow mirror nor this test overlap.
+**Keep the 180-second browser-install deadline.** PR run 39794986474 passed with
+the official archives under that bound, but the later main run 39801658628 needed
+4 minutes 42 seconds for apt index and dependency transfers from the same official
+archive. The command timed out at three minutes before Chromium installation
+started. A 600-second command deadline accommodates this measured preparation
+while preserving the web job's 20-minute overall limit.
 
 **Wait for all preparations before starting browser installation.** This would
 also separate browser downloads from coverage, but would serialize independent
@@ -192,7 +199,8 @@ explicit environment requirement.
 
 **Increase the whole job timeout.** That expands the deadline for every CI phase
 and does not remove shared-runner contention during coverage. The existing
-20-minute cap is retained; each preparation command has its own 180-second bound.
+20-minute cap is retained; browser preparation is bounded at 600 seconds and
+coverage at 180 seconds.
 
 **Keep cache-only preparation followed by a later normal build.** This allowed
 preparation overlap without changing deployment ownership, but scheduled a second
@@ -223,12 +231,12 @@ which builds fresh native artifacts and owns their exact identity and lifetime.
 
 Coverage completes before the network-dependent browser preparation begins, while
 both continue to overlap native service and dev-ci preparation. The official
-Ubuntu archive selection addresses the slow package mirror measured in runs
-39785915428 and 39791820767; the coverage gate keeps Chromium downloads away from
-the five-second UI-test timing budget observed in run 39798535790. Coverage and
-browser installation both retain 180-second command limits, and the complete web
-job retains its 20-minute limit. A Chromium transfer that exceeds its command
-bound fails acceptance; it does not lengthen CI without limit.
+Ubuntu archives selected by PR #148 replace the slow Azure mirror, though run
+39801658628 shows that transfers from the official archive can still take several
+minutes. The 600-second browser-install bound accommodates the measured 4-minute-
+42-second apt phase; coverage remains bounded at 180 seconds and the complete web
+job at 20 minutes. A slower install that exceeds its command bound fails
+acceptance rather than extending CI without limit.
 
 The normal dev-ci runner keeps its existing public interface, production image
 checks and targeted cleanup. The native service lives longer because both native
@@ -237,5 +245,7 @@ explicit permission and recovery evidence. A complete result requires every
 phase, strict scenario union, matching browser identities and cleanup, not merely
 successful child exits. Hosted CI remains the authority for full acceptance;
 local validation and historical main runs retain their own source and environment
-limits. A complete hosted acceptance run after this ordering change remains
-necessary to validate the production browser scenarios under the updated pipeline.
+limits. Run 39801658628 proves coverage-before-browser ordering and the install
+deadline failure path, but did not reach browser scenarios. A complete hosted run
+with the 600-second browser bound remains necessary to validate production
+acceptance under the updated pipeline.

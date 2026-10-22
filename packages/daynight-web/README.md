@@ -525,8 +525,9 @@ Chromium downloads do not compete with the 5-second UI-test deadline. The CI
 workflow selects official Ubuntu package archives before this step, as delivered
 in [PR #148](https://github.com/codetreker/daynight/pull/148). Only the coverage child receives
 `VITEST_MAX_WORKERS=2`, retaining its `forks` pool and per-file isolation. Browser
-installation, including Linux dependencies and Chromium, and coverage each retain
-a 180-second command deadline. Both failures remain acceptance failures. Browser
+installation, including Linux dependencies and Chromium, has a 600-second command
+deadline; coverage retains its 180-second deadline. Both failures remain
+acceptance failures. Browser
 installation still overlaps native production assets, Go/PostgreSQL and one normal
 dev-ci source build/start. The dev-ci runner remains the owner of the built/running
 image identity and full cleanup; the job retains its 20-minute overall bound.
