@@ -359,8 +359,12 @@ One packed/installed CLI is shared by the whole web run. On each target,
 the production page, then checks Web mutations through raw CLI reads. It covers
 Markdown relative images, image/text/PDF and interactive HTML resources. PDF
 acceptance polls compositor screenshots for a substantial fixture-only colored
-marker, retaining the successful PNG and marker evidence; HTTP success or an
-iframe load cannot satisfy this check. The
+marker. It measures matching connected components independently and checks the
+largest main-page candidate extending into the frame's right half. This
+fixture/viewer location rule excludes thumbnail-only paint; independent bounds
+also prevent a separate thumbnail from diluting the page marker's density. The
+successful PNG and component metrics remain in the marker evidence; HTTP success
+or an iframe load cannot satisfy this check. The
 [combined acceptance decision](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
 owns the data-sharing and rendering proof.
 The chain fixture creates 1,000 independent tasks, then attaches its 999 edges

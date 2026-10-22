@@ -7,6 +7,7 @@ import { attachmentDownloadUrl, attachmentPreviewUrl } from '../../src/api/clien
 import { createAcceptanceCli } from '../../scripts/acceptance/installed-cli.mts';
 import { createProject, createTask, expect, test, type Task } from './fixtures';
 import { expectCenteredTaskDetail, expectTaskDetailScroll } from './detail-dialog';
+import { hasPaintedPdfMarker, readPdfPixels, type PdfPixels } from './pdf-pixels';
 
 const exact = (value: string): RegExp => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
 const asset = (path: string): string => fileURLToPath(new URL(path, import.meta.url));
@@ -26,44 +27,13 @@ const selectFile = async (region: Locator, path: string): Promise<void> => {
   await expect(region.getByRole('heading', { name: path, exact: true })).toBeVisible();
 };
 
-type PdfPixels = { width: number; height: number; pixels: number; markerWidth: number; markerHeight: number; density: number; bounds: { left: number; top: number; right: number; bottom: number } | null };
 const paintedPdf = async (page: Page, frame: Locator, info: TestInfo, source: Buffer, url: string): Promise<PdfPixels> => {
   let painted: Buffer | undefined;
   let metrics: PdfPixels | undefined;
   await expect.poll(async () => {
     const png = await frame.screenshot({ animations: 'disabled' });
-    const current = await page.evaluate(async (base64): Promise<PdfPixels> => {
-      const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
-      const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-      const context = canvas.getContext('2d');
-      if (context === null) throw new Error('PDF evidence requires a browser 2D canvas.');
-      context.drawImage(bitmap, 0, 0);
-      bitmap.close();
-      const { data, width, height } = context.getImageData(0, 0, canvas.width, canvas.height);
-      let pixels = 0;
-      let left = width;
-      let top = height;
-      let right = -1;
-      let bottom = -1;
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const offset = (y * width + x) * 4;
-          if (Math.abs(data[offset]! - 17) <= 4 && Math.abs(data[offset + 1]! - 203) <= 4
-            && Math.abs(data[offset + 2]! - 149) <= 4 && data[offset + 3]! >= 250) {
-            pixels += 1;
-            left = Math.min(left, x);
-            right = Math.max(right, x);
-            top = Math.min(top, y);
-            bottom = Math.max(bottom, y);
-          }
-        }
-      }
-      const markerWidth = pixels === 0 ? 0 : right - left + 1;
-      const markerHeight = pixels === 0 ? 0 : bottom - top + 1;
-      return { width, height, pixels, markerWidth, markerHeight, density: pixels === 0 ? 0 : pixels / (markerWidth * markerHeight), bounds: pixels === 0 ? null : { left, top, right, bottom } };
-    }, png.toString('base64'));
-    if (current.pixels < 1600 || current.markerWidth < 80 || current.markerHeight < 20 || current.density < 0.95) return false;
+    const current = await page.evaluate(readPdfPixels, png.toString('base64'));
+    if (!hasPaintedPdfMarker(current)) return false;
     painted = png;
     metrics = current;
     return true;
