@@ -18,8 +18,11 @@ work means in progress; otherwise every main task is pending. The main set is
 the root and every reachable successor, with shared descendants counted once.
 Direct external prerequisite context is outside that set.
 
-The row badge, completed-chain count and visibility filter consume the same
-aggregate status. Graph nodes, task details, project counters and the server API
+The row badge, completed-chain count and visibility filter in the task-chain
+tab consume the same aggregate status. The [task view decision](../feature/2026-10-22-project-task-views.md)
+separates zero-incoming/zero-outgoing tasks into direct-detail standalone rows,
+whose badge and completion filter use individual status. The original unified
+list remains the historical context for the incorrect badge. Graph nodes, task details, project counters and the server API
 retain individual task semantics. A new snapshot rebuilds the derived values;
 selection, pan and zoom do not trigger domain recomputation.
 
@@ -51,5 +54,6 @@ A chain can remain in progress after its root finishes and becomes completed
 only when every reachable task finishes. All-pending chains remain pending even
 when an external prerequisite from another chain is active. Aggregate status is
 a frontend snapshot projection, not stored task data or a new API field, so no
-migration is needed. Existing completed-chain visibility behavior is preserved
-while its badge now agrees with that behavior.
+migration is needed. Completed-chain visibility behavior is preserved for non-isolated root chains
+while its badge agrees with that behavior. The task view decision changes
+category presentation without changing the aggregate status computation.

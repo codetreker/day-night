@@ -6,6 +6,7 @@ import '../../styles/graph.css';
 type RootListProps = {
   readonly index: GraphIndex;
   readonly rootIds: readonly string[];
+  readonly allRootIds: readonly string[];
   readonly expandedRootId: string | null;
   readonly onExpand: (id: string | null) => void;
   readonly selectedTaskId: string | null;
@@ -54,25 +55,22 @@ const RootRow = memo(({ index, rootId, expanded, onExpand, selectedTaskId, onSel
   );
 });
 
-export const RootList = ({ index, rootIds, expandedRootId, onExpand, selectedTaskId, onSelectTask, showCompleted, onShowCompletedChange }: RootListProps) => {
+export const RootList = ({ index, rootIds, allRootIds, expandedRootId, onExpand, selectedTaskId, onSelectTask, showCompleted, onShowCompletedChange }: RootListProps) => {
   const checkbox = useRef<HTMLInputElement>(null);
-  const completedCount = useMemo(() => index.roots.filter((id) => {
+  const completedCount = useMemo(() => allRootIds.filter((id) => {
     const progress = index.rootProgress.get(id)!;
     return progress.status === 'done';
-  }).length, [index]);
+  }).length, [index, allRootIds]);
   return (
-  <section aria-labelledby="task-roots-heading">
-    <div className="graph-section-heading">
-      <h2 id="task-roots-heading">任务链 <span className="graph-count-pill" aria-label={`显示 ${rootIds.length} 条，共 ${index.roots.length} 条任务链`}>{rootIds.length} / {index.roots.length}</span></h2>
-      <div className="graph-legend" aria-label="任务链状态图例">
-        <span className="graph-status graph-status-todo"><i aria-hidden="true" />待处理</span>
-        <span className="graph-status graph-status-in_progress"><i aria-hidden="true" />进行中</span>
-        <span className="graph-status graph-status-done"><i aria-hidden="true" />已完成</span>
-      </div>
+  <section aria-label="任务链列表">
+    <div className="task-view-toolbar">
+      {allRootIds.length > 0 && <label className="completed-chain-control"><input ref={checkbox} type="checkbox" checked={showCompleted} onChange={(event) => { onShowCompletedChange(event.currentTarget.checked); }} />显示已完成任务链（{completedCount}）</label>}
+      <span className="task-view-summary">最新创建在前 · <span aria-label={`显示 ${rootIds.length} 条，共 ${allRootIds.length} 条任务链`}>{rootIds.length} / {allRootIds.length}</span> 条任务链</span>
     </div>
-    <label className="completed-chain-control"><input ref={checkbox} type="checkbox" checked={showCompleted} onChange={(event) => { onShowCompletedChange(event.currentTarget.checked); }} />显示已完成任务链（{completedCount}）</label>
     <p className="graph-note">按根任务创建时间倒序排列，从没有前置依赖的任务开始展开。共享任务可能出现在多条任务链中，各链进度不能相加作为项目总数。</p>
-    {rootIds.length === 0 ? (
+    {allRootIds.length === 0 ? (
+      <div className="state-box"><h3>暂无任务链</h3><p>存在依赖关系的任务会显示在这里，独立任务可在另一个页签查看。</p></div>
+    ) : rootIds.length === 0 ? (
       <div className="state-box completed-chains-empty"><h3>所有任务链已完成</h3><p>已隐藏 {completedCount} 条已完成任务链，项目统计仍包含全部任务。</p>
         <button className="button" type="button" onClick={() => { checkbox.current!.focus(); onShowCompletedChange(true); }}>显示已完成任务链</button>
       </div>

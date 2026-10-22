@@ -29,10 +29,12 @@ restore focus to an earlier task.
 
 This follows React's documented unmount ordering: [useLayoutEffect](https://react.dev/reference/react/useLayoutEffect)
 cleanup precedes DOM removal, while [useEffect](https://react.dev/reference/react/useEffect)
-cleanup follows removal. The ProjectPage selection policy remains: use the
-original trigger if connected, otherwise the currently expanded root button,
-otherwise the project H1. Restoration evaluates that policy against the committed
-DOM rather than a node pending deletion.
+cleanup follows removal. The original ProjectPage selection policy used the
+connected original trigger, otherwise the expanded root button, otherwise the
+project H1. The later [task view decision](../feature/2026-10-22-project-task-views.md)
+extends the fallback to controls visible in the active category while retaining
+the empty-project heading. Restoration evaluates the current policy against
+the committed DOM rather than a node pending deletion.
 
 The integration suite renders real ProjectPage, RootList and portal TaskDrawer,
 mocking only the canvas and API transport. It waits for final focus after refresh
@@ -50,7 +52,7 @@ The existing passive drawer mock cannot establish that production ordering.
 ## Consequences
 
 Modal teardown remains synchronous; focus restoration runs after DOM removal.
-No timer, frame delay or fallback-selection policy is added. The three real
+The repair introduced no timer, frame delay or fallback-selection policy. The three real
 integration cases cover the ordering that the isolated mock missed; the
 empty-project case fails against the original source with the normal waitFor
 deadline.
@@ -70,4 +72,5 @@ broader portal and detail lifecycle, and the [design](../../../../docs/design/da
 owns the current mechanism. The later
 [Web attachment decision](../feature/2026-10-21-task-attachment-web.md) adds complete
 tabbable enumeration and same-origin frame keyboard bridges while preserving
-this passive teardown ordering and restoration policy.
+this passive teardown ordering. The task view decision owns the subsequent
+active-category restoration policy.

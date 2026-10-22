@@ -6,7 +6,9 @@
 [需求](../spec/daynight-web.md)拥有 W1–W12 的行为与验收要求，
 [架构设计](daynight-web.md)拥有 API、快照、图投影、请求和部署机制。
 任务完成时记录实际验证结果并同步状态；行为或机制变化先更新对应文档。下列任务与验收条件
-保留其交付时的范围；当前 PR 按[仓库 CI 路由](../../README.md#ci-selection)选择模块，
+保留其交付时的范围；后续的项目内独立任务/任务链页签由[当前设计](daynight-web.md#项目详情-projectsprojectid)
+和[任务视图决策](../../.agents/notes/implemented/feature/2026-10-22-project-task-views.md)拥有，
+使用[任务视图预览](mockups/task-views.html)展示交互，不改写下列历史验收结果；当前 PR 按[仓库 CI 路由](../../README.md#ci-selection)选择模块，
 main push 执行全量检查。
 
 ## 任务顺序与要求归属

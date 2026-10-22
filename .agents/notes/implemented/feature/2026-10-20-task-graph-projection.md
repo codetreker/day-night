@@ -20,7 +20,11 @@ limits. Invalid snapshots fail as a whole. Root order preserves the backend's
 exact response order; JavaScript millisecond dates do not reorder database
 timestamps with finer precision. The
 [presentation decision](2026-10-21-task-chain-presentation.md) owns the separate
-newest-first list; it consumes a reversed copy without changing this index.
+newest-first category lists; they consume reversed copies without changing this
+index. The [task view decision](2026-10-22-project-task-views.md) classifies
+standalone nodes from zero incoming and outgoing edges in this complete index,
+then keeps non-isolated roots in the chain presentation. Status and visibility
+filters do not alter topology or projection.
 
 For one root, the main set is the root and its forward-reachable descendants.
 The boundary set contains the main set's direct predecessors that are outside

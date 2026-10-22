@@ -15,8 +15,11 @@ much work fits in one viewport, especially with long titles.
 
 ## Decision
 
-The project view creates one reversed copy of the complete index's root ID
-sequence for each snapshot. The API supplies exact `(created_at, id)` ascending
+The [task view decision](2026-10-22-project-task-views.md) separates standalone
+tasks from non-isolated root chains. The original shared list remains the
+historical premise of this ordering and density decision. The project view
+creates newest-first category sequences from the complete index for each
+snapshot. The API supplies exact `(created_at, id)` ascending
 order, so the presentation is descending on both fields without decoding dates.
 Updates to an older task do not change its position.
 
@@ -24,19 +27,23 @@ A root row is hidden by default only when its distinct main-set progress has
 `status === "done"`, which is equivalent to every distinct main task being
 complete. Status badges, completed counts and visibility share that model-derived
 status. The [chain status decision](../bug-fix/2026-10-22-task-chain-status.md)
-replaces the original root-status badge with an aggregate chain badge. This
-includes completed standalone tasks. A completed root
-with unfinished descendants stays visible. The native Show completed chains
-checkbox includes the completed-chain count and reveals those rows; the heading
-reports visible and total chains. The all-complete state remains distinct from
-an empty project and offers a reveal action. That action focuses the persistent
+replaces the original root-status badge with an aggregate chain badge.
+Standalone completion belongs to its own tab and individual task status. A
+completed chain root with unfinished descendants stays visible. The native
+Show completed chains
+checkbox includes the completed-chain count and reveals those rows; the compact
+view toolbar reports visible and total chains alongside newest-first ordering. Standalone tasks have their own completed
+visibility choice, count and direct-detail rows. Each category's all-complete
+state remains distinct from an empty category or project and offers a reveal
+action. That action focuses the persistent
 checkbox before the empty-state button disappears.
 
 RootList receives explicit visible presentation IDs alongside the complete
 immutable GraphIndex. List rendering and the
 [preference hook](2026-10-21-task-browsing-preferences.md) consume the same visible
-newest-first sequence. A first visit or missing/hidden saved root opens its first
-root. A valid visible saved root stays open when newer chains appear. With no
+newest-first chain sequence. A first visit or missing/hidden saved root opens
+its first non-isolated root. A valid visible saved root stays open when newer
+chains appear. With no
 visible roots, the stored root or explicit collapse is retained for revealing
 rows again; an explicitly collapsed list stays collapsed.
 
@@ -46,7 +53,8 @@ keeps completed nodes, shared descendants and external prerequisites. Project
 counters and selected details use the full snapshot. Row filtering makes no
 request and does not change dependency direction or layout. A detail remains
 open when its graph disappears but the task still exists; closing restores a
-surviving trigger, current visible expanded root or page heading.
+surviving trigger or a control in the active task view. The task view decision
+owns active-category fallback when a trigger is no longer visible.
 
 Collapsed root buttons use a 62px minimum height, compact padding and 7px list
 gaps. Single-line bordered rows are about 64px; long titles grow naturally.
@@ -86,11 +94,13 @@ floor while allowing content to grow without clipping.
 
 Compact rows expose more work in the same viewport while retaining readable
 content and a full-row click target. Recent unfinished chains appear first while
-historical completed work remains
-one explicit control away. Presentation arrays are bounded by the project node
+historical completed work remains one explicit control away. Presentation arrays are bounded by the project node
 limit; completed-chain classification uses the existing per-root progress and
-never duplicates graph nodes or changes project totals. Visibility and expansion
-are local per-project preferences. Hiding an expanded complete row selects the
+never duplicates graph nodes or changes project totals. Task topology determines
+category before completion filtering. Visibility and expansion are local
+per-project preferences, extended by the task view decision with independent
+standalone visibility, selected tab and page browse positions. Hiding an expanded
+complete row selects the
 newest remaining row; hiding every row preserves its saved expansion intent for
 later reveal. A task actually removed from the snapshot retains the existing
 detail-close notice and focus behavior.

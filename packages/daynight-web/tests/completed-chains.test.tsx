@@ -22,7 +22,7 @@ const time = '2026-10-20T12:00:00Z';
 const task = (id: string, status: GraphTask['status'], dependsOn: string[] = []): GraphTask => ({
   id, titlePreview: `任务 ${id}`, titleTruncated: false, status, dependsOn, blockedBy: [], ready: false, createdAt: time, updatedAt: time,
 });
-const seeds = [task('A', 'done'), task('B', 'todo', ['A']), task('C', 'done'), task('D', 'done', ['C']), task('E', 'done'), task('F', 'todo'), task('G', 'todo', ['B', 'F'])];
+const seeds = [task('A', 'done'), task('B', 'todo', ['A']), task('C', 'done'), task('D', 'done', ['C']), task('E', 'done'), task('F', 'todo'), task('G', 'todo', ['B', 'F']), task('H', 'done', ['E'])];
 const graph = (items = seeds, id = projectId): TaskGraph => {
   const tasks = items.map((item) => {
     const blockedBy = item.dependsOn.filter((dependency) => items.find((candidate) => candidate.id === dependency)!.status !== 'done');
@@ -52,7 +52,7 @@ describe('completed task chain visibility', () => {
     expect(checkbox()).not.toBeChecked();
     expect(roots()).toEqual(['task-root-F', 'task-root-A']);
     expect(screen.getByLabelText('显示 2 条，共 4 条任务链')).toHaveTextContent('2 / 4');
-    expect([count('任务总数'), count('已完成'), count('待处理')]).toEqual(['7', '4', '3']);
+    expect([count('任务总数'), count('已完成'), count('待处理')]).toEqual(['8', '5', '3']);
     fireEvent.click(root('A'));
     expect(within(root('A')).getByText('进行中')).toBeVisible();
     expect(root('A').querySelector('.root-status')).toHaveClass('graph-status-in_progress');
@@ -101,11 +101,11 @@ describe('completed task chain visibility', () => {
 
   it.each(['C', null])('distinguishes all-complete from empty and preserves saved expansion intent (%s)', async (saved) => {
     window.localStorage.setItem(expansionKey, JSON.stringify({ expandedRootId: saved }));
-    request.mockResolvedValue(graph([seeds[2]!, seeds[3]!, seeds[4]!]));
+    request.mockResolvedValue(graph([seeds[2]!, seeds[3]!, seeds[4]!, seeds[7]!]));
     render(<ProjectPage projectId={projectId} />);
     await screen.findByRole('heading', { name: '所有任务链已完成' });
     expect(screen.queryByText('还没有任务')).toBeNull();
-    expect(count('任务总数')).toBe('3'); expect(count('已完成')).toBe('3');
+    expect(count('任务总数')).toBe('4'); expect(count('已完成')).toBe('4');
     expect(screen.getByLabelText('显示 0 条，共 2 条任务链')).toBeVisible();
     expect(expansion()).toEqual({ expandedRootId: saved });
     fireEvent.click(screen.getByRole('button', { name: '显示已完成任务链' }));
@@ -125,7 +125,7 @@ describe('completed task chain visibility', () => {
   });
 
   it('preserves intent through a refresh that completes every chain and falls back after a remembered root disappears', async () => {
-    request.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph(allDone())).mockResolvedValueOnce(graph([task('Z', 'todo')]));
+    request.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph(allDone())).mockResolvedValueOnce(graph([task('Z', 'todo'), task('Z-child', 'todo', ['Z'])]));
     render(<ProjectPage projectId={projectId} />); await screen.findByRole('checkbox');
     fireEvent.click(root('A')); fireEvent.click(screen.getByRole('button', { name: '刷新' }));
     await screen.findByRole('heading', { name: '所有任务链已完成' });
@@ -163,7 +163,7 @@ describe('completed task chain visibility', () => {
     fireEvent.click(checkbox()); fireEvent.click(screen.getByRole('button', { name: '刷新' }));
     await screen.findByRole('alert');
     expect(checkbox()).toBeChecked(); expect(roots()).toHaveLength(4);
-    expect(count('任务总数')).toBe('7');
+    expect(count('任务总数')).toBe('8');
     expect(read.mock.calls.filter(([key]) => key === visibilityKey())).toHaveLength(1);
     expect(window.localStorage.getItem(visibilityKey())).toBe('true');
   });
