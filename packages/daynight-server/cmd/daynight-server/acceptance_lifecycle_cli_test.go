@@ -19,12 +19,12 @@ import (
 )
 
 type acceptanceLifecycleEvidence struct {
-	Scope     string                        `json:"scope"`
-	Platform  string                        `json:"platform"`
-	Migration *acceptanceLifecycleMigration `json:"migration,omitempty"`
-	Actions   []acceptanceLifecycleAction   `json:"actions,omitempty"`
-	Refusals  []acceptanceLifecycleRefusal  `json:"refusals,omitempty"`
-	Race      *acceptanceLifecycleRace      `json:"race,omitempty"`
+	Scope     string                           `json:"scope"`
+	Platform  string                           `json:"platform"`
+	Migration *acceptanceLifecycleMigration    `json:"migration,omitempty"`
+	Actions   []acceptanceLifecycleAction      `json:"actions,omitempty"`
+	Refusals  []acceptanceLifecycleRefusal     `json:"refusals,omitempty"`
+	Race      *acceptanceLifecycleRaceEvidence `json:"race,omitempty"`
 }
 
 type acceptanceMigrationEntry struct {
@@ -60,7 +60,7 @@ type acceptanceLifecycleRefusal struct {
 	Stderr string   `json:"stderr"`
 }
 
-type acceptanceLifecycleRace struct {
+type acceptanceLifecycleRaceEvidence struct {
 	Kind     string                          `json:"kind"`
 	Before   api.Task                        `json:"before"`
 	After    api.Task                        `json:"after"`
@@ -451,7 +451,7 @@ func TestInstalledCLILifecycleRacesAcceptance(t *testing.T) {
 				t.Fatal("installed lifecycle competition mutated its prerequisite")
 			}
 			if err := binaryAcceptance.update(func() {
-				evidence.Race = &acceptanceLifecycleRace{Kind: kind, Before: before, After: after, Requests: requests, Results: captured}
+				evidence.Race = &acceptanceLifecycleRaceEvidence{Kind: kind, Before: before, After: after, Requests: requests, Results: captured}
 				scenario.AttachmentFiles = append(scenario.AttachmentFiles, acceptanceAttachmentEvidence{Path: metadata[0].Path, SizeBytes: len(content), SHA256: fmt.Sprintf("%x", sha256.Sum256(content))})
 			}); err != nil {
 				t.Fatal("cannot persist actual installed lifecycle race outcomes")
