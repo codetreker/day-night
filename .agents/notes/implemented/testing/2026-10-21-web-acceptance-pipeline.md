@@ -8,15 +8,69 @@ Preparing a cache-only production build and later invoking the normal dev-ci
 build repeats work on the web critical path. Waiting for every preparation step
 before browser work also serializes independent native and container setup.
 Increasing overlap must preserve complete production validation and keep
-capacity timing free of competing builds, coverage and container cleanup.
+capacity timing free of competing builds, coverage and container cleanup. Network-
+dependent browser downloads must also stay outside the five-second UI-test
+deadline, while installation and coverage retain bounded command deadlines.
 
 The preceding optimizations and stability work are delivered through
 [PR #70](https://github.com/codetreker/daynight/pull/70) and
 [PR #71](https://github.com/codetreker/daynight/pull/71). The
 [post-PR #71 main run](https://github.com/codetreker/daynight/actions/runs/39545046061)
 at `0a1510aa1af9482c7670a09c67096bbd391041a2` passed its complete workload in
-4 minutes 28 seconds. That source-bound baseline explains the remaining
-scheduling work; it does not validate this pipeline.
+4 minutes 28 seconds. Main run
+[39785915428](https://github.com/codetreker/daynight/actions/runs/39785915428)
+later failed in browser preparation: Playwright's apt phase needed 4 minutes 56
+seconds to download 25.9 MB, while the command had a 180-second deadline. PR run
+[39788510354](https://github.com/codetreker/daynight/actions/runs/39788510354)
+showed the same package set taking 8 minutes 31 seconds. PR run
+[39791820767](https://github.com/codetreker/daynight/actions/runs/39791820767)
+then spent 13 minutes 17 seconds fetching 23.1 MB from the Azure archive and
+exceeded its 600-second install deadline. [PR #148](https://github.com/codetreker/daynight/pull/148)
+selected official Ubuntu archives to remove that slow mirror from hosted
+preparation. PR run
+[39794986474](https://github.com/codetreker/daynight/actions/runs/39794986474)
+then fetched 25.9 MB of apt packages in 7 seconds, downloaded Chromium in about
+10 seconds under the original 180-second bound, and passed the complete web
+acceptance. The first main run after that fix,
+[39798535790](https://github.com/codetreker/daynight/actions/runs/39798535790),
+fetched 5.8 MB and 21.1 MB apt package sets in 5 and 3 seconds. During coverage,
+Playwright downloaded a 191.1 MiB Chromium archive while the 5-second progressive
+graph-visibility test timed out. The test failure was reported as the download
+reached 80%; the browser download then completed. These logs show that
+network-heavy browser preparation overlapped the timing-sensitive test; they do
+not isolate whether CPU, I/O or another shared-runner resource caused the timeout.
+The updated pipeline then ran in
+[39801658628](https://github.com/codetreker/daynight/actions/runs/39801658628):
+coverage passed before browser preparation, but the official archive needed 1
+minute 59 seconds to fetch 12.5 MB of package indexes and 2 minutes 43 seconds to
+fetch 25.9 MB of dependencies. The original 180-second deadline expired during
+the second transfer; no Chromium download began. This run confirms that coverage
+must finish first and that the browser-install deadline must accommodate the
+measured Linux dependency transfer even after the archive source changed.
+The next head,
+[549d55c](https://github.com/codetreker/daynight/commit/549d55ca39e513ea47816d4d79fa260442f77fdb),
+passed in PR run
+[39803676876](https://github.com/codetreker/daynight/actions/runs/39803676876)
+on tested source `f2b4bc82017400fa38687d3c04dbc3191e9e1bee`. Coverage passed
+before browser preparation; browser installation began immediately afterward
+and completed in 26.7 seconds. Native/container functional phases, native
+capacity, the standalone attachment persistence check and cleanup all passed.
+This fast run validates the complete updated pipeline; it does not bound future
+archive or browser download latency below the 600-second command deadline.
+Main run
+[39804920251](https://github.com/codetreker/daynight/actions/runs/39804920251)
+on `f3a836161ad2d28b28642e6916fd2549fa79fb0a`, after
+[PR #153](https://github.com/codetreker/daynight/pull/153), later failed the same
+5-second progressive graph-visibility test while Playwright downloaded its
+191.1 MiB Chromium archive. Apt transfers finished in 7 seconds and 8 seconds
+for 12.5 MB of package indexes and 25.9 MB of dependencies. These repeated
+timeouts support keeping browser downloads outside coverage, though their
+timestamps do not identify the exact shared-runner resource that exceeded the
+test deadline.
+
+PR run 39803676876 used a merge checkout based on main `2ffce48`, before main
+advanced to `f3a8361`; the later main failure keeps the browser/coverage overlap
+relevant after that successful full acceptance.
 
 ## Decision
 
@@ -27,20 +81,33 @@ signal handlers on import. The thin `scripts/acceptance.mts` CLI and `scripts/ci
 pass explicit cancellation controllers to that runner. CI supplies callbacks for
 pinned Chromium installation and the unchanged `pnpm web:test` command; only the
 coverage child receives `VITEST_MAX_WORKERS=2`, retaining its `forks` pool and
-per-file isolation. Controlled deployment fixtures run before the unified CI
-entry. This partially replaces the cache-only preparation and target sequencing
-of the [CI efficiency decision](2026-10-21-ci-validation-efficiency.md) and the
-original schedule of the
+per-file isolation. Browser installation, including Playwright's Linux dependency
+installation, has a 600-second deadline; coverage remains bounded at 180 seconds.
+Both commands remain required: a nonzero exit or timeout fails acceptance. The
+web job retains its 20-minute overall timeout. Controlled deployment fixtures run
+before the unified CI entry. This partially replaces the cache-only preparation and target
+sequencing of the [CI efficiency decision](2026-10-21-ci-validation-efficiency.md)
+and the original schedule of the
 [dashboard acceptance decision](2026-10-20-dashboard-production-acceptance.md).
 Their real targets, complete scenarios, coverage, performance and cleanup
 requirements continue to apply.
 
-The runner starts normal dev-ci source build/start once, concurrently with native
-production UI/Go/PostgreSQL preparation and CI browser/coverage callbacks. The
-existing shell runner remains authoritative for the unique image, running-image
-check and full stack cleanup. Native functional browser work waits only for the
-native process, shared installed CLI and browser preparation. Its fourteen scenarios and immediate
-browser recovery must pass before the runner releases the container browser.
+The runner starts coverage, native production UI/Go/PostgreSQL preparation,
+container callback and normal dev-ci source build/start concurrently. Browser and
+Linux dependency installation starts only after coverage passes, removing apt and
+browser downloads from the 5-second UI-test deadline. Browser installation still
+overlaps native and dev-ci preparation. The existing shell runner remains authoritative for the
+unique image, running-image check and full stack cleanup. Native functional
+browser work waits only for the native process, shared installed CLI and browser
+preparation. Its fourteen scenarios and immediate browser recovery must pass
+before the runner releases the container browser.
+
+If coverage or another active phase fails while browser preparation is waiting,
+the pipeline marks cancellation and the browser callback checks it as soon as
+coverage drains; it never starts the installer. The [pipeline regressions](../../../../packages/daynight-web/scripts/acceptance/pipeline.test.mts)
+verify coverage-before-browser ordering, cancellation while waiting, continued
+native/container overlap, browser-install failure handling, and capacity after
+full container cleanup.
 
 Release is an atomic `container/container-permission.json` receipt with schema 1,
 phase `native-functional-cleaned`, acceptance run ID, dev-ci run ID and source
@@ -65,7 +132,13 @@ The [progressive overview decision](../feature/2026-10-22-progressive-task-graph
 retains those complete API inputs and existing timing thresholds while requiring
 bounded overview DOM, all induced visible edges and explicit expansion/reset.
 Phase ownership remains unchanged. The shared Markdown-description journey adds
-one functional scenario per target, making the inventory 33 scenarios.
+one functional scenario per target, making the inventory 33 scenarios. Capacity
+retains twenty visibility/H records and 160 feedback observations, eight per
+sample, including full upstream/hidden-count checks and independent smooth-route,
+actual paint and native-arrow checks. The 50/100 overview, explicit twenty-neighbor
+expansion, no-autoexpand inspection rule and strict opening/selection/local-feedback
+budgets are unchanged; their detailed requirements belong to the
+[inspection requirements](../../../../docs/spec/daynight-task-inspection.md).
 
 The top-level evidence and recovery receipts use schema 2. Pipeline stages record
 names, results, timestamps, observed managed-command process identities and their
@@ -76,12 +149,12 @@ exit is subsequently read, as described by the
 [pinned proc documentation](https://github.com/torvalds/linux/blob/a804c5742bff224d4cb4d25dd383554d598be32b/Documentation/filesystems/proc.rst#L121-L127).
 Other filesystem errors remain failures. A regression interposes the actual
 open/exit/read sequence rather than relying on scheduling luck; permission
-failures retain their original error object. Target aggregates contain `phases` and `scenarios`;
-each browser phase records its functional/capacity kind, timestamps, actual
-Playwright process/group, browser identity and `browserCleanup`. Raw phase data
-lives under `native/functional`, `container` and `native/capacity`; capacity
-`performance.json` retains schema 1. Top-level schema 1 and unknown versions are
-rejected rather than interpreted through a compatibility fallback.
+failures retain their original error object. Target aggregates contain `phases`
+and `scenarios`; each browser phase records its functional/capacity kind,
+timestamps, actual Playwright process/group, browser identity and `browserCleanup`.
+Raw phase data lives under `native/functional`, `container` and `native/capacity`;
+capacity `performance.json` retains schema 1. Top-level schema 1 and unknown
+versions are rejected rather than interpreted through a compatibility fallback.
 
 Any task failure cancels siblings and drains every started task before final
 cleanup; an unexpected native-server exit follows the same path. Browser phase
@@ -102,11 +175,13 @@ errors propagate. Recovery neither signals an unidentified group nor treats
 process-discovery absence as cleanup success.
 
 A controlled real-kernel reproduction exercises this exit/reap interval through
-`recoverCliProcesses`. The hosted failure that motivated the repair retained no
+`recoverCliProcesses`. The hosted failure that motivated that repair retained no
 child-state observation, so the reproduction establishes the mechanism without
-asserting that the CI child was a zombie. The broader process-discovery and
-privileged-permission questions in [issue #86](https://github.com/codetreker/daynight/issues/86)
-remain outside this bounded recovery correction.
+asserting that the CI child was a zombie. The browser-install timeout and ordering
+decisions do not alter command cancellation or recovery semantics; the broader
+process-discovery and privileged-permission questions in
+[issue #86](https://github.com/codetreker/daynight/issues/86) remain separately
+tracked.
 
 CI recovery and both artifact uploads share the unified acceptance step's
 attempted-execution condition, so partial preparation remains attributable and
@@ -129,6 +204,34 @@ aggregation and all capacity conditions. The
 Measured outcomes remain tied to their source, environment and PR/CI run.
 
 ## Alternatives
+
+**Run browser preparation concurrently with coverage.** This hides some setup
+time, but main run 39798535790 timed out a 5-second progressive visibility test
+while Playwright downloaded Chromium. Waiting for coverage isolates those tests
+from browser downloads and still overlaps browser setup with native and dev-ci
+preparation.
+
+**Keep the 180-second browser-install deadline.** PR run 39794986474 passed with
+the official archives under that bound, but the later main run 39801658628 needed
+4 minutes 42 seconds for apt index and dependency transfers from the same official
+archive. The command timed out at three minutes before Chromium installation
+started. A 600-second command deadline accommodates this measured preparation
+while preserving the web job's 20-minute overall limit.
+
+**Wait for all preparations before starting browser installation.** This would
+also separate browser downloads from coverage, but would serialize independent
+native and dev-ci work. Waiting only for coverage protects the short UI-test
+deadline while retaining the other preparation overlap.
+
+**Remove `--with-deps` in CI.** This avoids apt work but leaves the runner without
+the Linux libraries and fonts that Playwright prepares for Chromium. Browser
+acceptance would depend on incidental runner-image contents rather than an
+explicit environment requirement.
+
+**Increase the whole job timeout.** That expands the deadline for every CI phase
+and does not remove shared-runner contention during coverage. The existing
+20-minute cap is retained; browser preparation is bounded at 600 seconds and
+coverage at 180 seconds.
 
 **Keep cache-only preparation followed by a later normal build.** This allowed
 preparation overlap without changing deployment ownership, but scheduled a second
@@ -157,13 +260,24 @@ which builds fresh native artifacts and owns their exact identity and lifetime.
 
 ## Consequences
 
-Preparation and functional work can overlap while capacity remains isolated.
+Coverage completes before the network-dependent browser preparation begins, while
+both continue to overlap native service and dev-ci preparation. The official
+Ubuntu archives selected by PR #148 replace the slow Azure mirror, though run
+39801658628 shows that transfers from the official archive can still take several
+minutes. The 600-second browser-install bound accommodates the measured 4-minute-
+42-second apt phase; coverage remains bounded at 180 seconds and the complete web
+job at 20 minutes. A slower install that exceeds its command bound fails
+acceptance rather than extending CI without limit.
+
 The normal dev-ci runner keeps its existing public interface, production image
 checks and targeted cleanup. The native service lives longer because both native
-browser phases use the same verified process and database.
-
-Phase separation adds explicit permission and recovery evidence. A complete
-result requires every phase, strict scenario union, matching browser identities
-and cleanup, not merely successful child exits. The timing benefit still requires
-complete hosted CI observation; local validation and historical main runs retain
-their own source and environment limits.
+browser phases use the same verified process and database. Phase separation adds
+explicit permission and recovery evidence. A complete result requires every
+phase, strict scenario union, matching browser identities and cleanup, not merely
+successful child exits. Hosted CI remains the authority for full acceptance;
+local validation and historical main runs retain their own source and environment
+limits. Run 39801658628 proves coverage-before-browser ordering and the install
+deadline failure path, but did not reach browser scenarios. PR run 39803676876
+passed the complete production acceptance and cleanup under the updated ordering
+and 600-second install bound. Archive transfer latency still varies by hosted
+run, and the command and overall job deadlines remain failure bounds.

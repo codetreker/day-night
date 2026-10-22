@@ -196,6 +196,10 @@ PR 预留，但不占审查 Worker 容量。待处理期间的多次更新合并
 保留已等待 PR 的位置；已执行 PR 的新修订排到其他等待工作之后。每轮调度显式让出
 一次事件循环，避免持续到期的快速轮询只在微任务间循环，阻塞定时器和子进程 I/O。
 
+同一 PR 只运行一个 daemon 管理的主审查会话。该主 agent 按内置 skill 在同次 attempt
+内委派多个独立角度，不为 subagents 新建 Worker、PR 会话、worktree 或尝试预算；
+不同 PR 的容量控制与同一 PR 的操作预留保持原有含义。
+
 | review 模块文件（相对于 `src/commands/review/`） | 职责 |
 |---|---|
 | `command.ts` | review 组与操作参数、帮助、操作分发和各操作依赖的按需加载 |
@@ -553,13 +557,22 @@ agent 子进程继承准备结果中的原始 Git 对象环境，同时清除继
 JSONL。Copilot 的上下文压缩由其自身处理。
 
 提示词显式调用 `/daynight-review`，提供当前快照的绝对 `SKILL.md` 路径和 digest，
-要求恢复会话也加载本次内容。skill 负责审查方法、证据标准和 PR 质量判断。提示词
+要求恢复会话也加载本次内容，并显式要求执行该 skill 的原生 subagent 委派与汇总；
+确认合法匹配的已提交结果保留只对账的例外。skill 负责审查方法、多角度委派与汇总、
+证据标准和 PR 质量判断。提示词
 提供仓库与 PR、审查 ID 与修订序号、确切的 head、目标分支、固定的差异上下文、
 上一轮未完成审查的身份、代码缺陷严重程度规则和完成标记。必填的
 `CopilotRunOptions.publicationIdentityFormat` 仅控制迁移轮次的历史结果读取，新的发布
 仍使用严格身份，skill 内容不承担旧格式兼容。提示词要求 agent 读取当前
 PR 标题、description 及其链接的相关范围需求。agent 以原定问题、预期结果和范围
-检查完整捕获 diff，再审查代码及既有问题，并自行使用 `gh` 发布。
+检查完整捕获 diff，再选择至少两个与实际修改、约束和风险互补的角度，实际调用独立
+subagents，宜并行执行。每个委派显式传递固定 head/base/merge-base、PR 范围、适用
+仓库指示、证据与只读资源规则，返回候选引入问题、位置、覆盖、限制和处置建议。
+主 agent 等待所有必要角度，独立验证、处理分歧并按根因去重，区分修复、延后及
+不成立，在 attempt 输出汇总角度依据、覆盖、限制、处置及确认阻断项，再由自己使用
+`gh` 发布。subagents 不修改源码或 Git 状态，不管理 worktree、不发布或修改远端 review
+和 thread，也不输出完成标记。完整委派和资源规则归属[skill 设计](daynight-review-skill.md#多角度审查与汇总)，
+选择依据见[多角度审查决策](../../.agents/notes/implemented/process/2026-10-22-pr-specific-review-perspectives.md)。
 
 批准条件包括独立的 description 与范围两项质量门槛，以及没有 Critical/Major 代码
 问题。一个 PR 必须解决一个明确问题且能够有效审查；扩大 description 不能单独为
@@ -574,6 +587,9 @@ agent 首先按稳定审查身份、捕获 commit 和本轮固定发布者核对
 重试仍须等待其他 open conversation。发布途中已有
 pending review 或 thread 时继续完成它，不能重复创建同一反馈。自己的过时 pending
 草稿可以清理，以免遗留未提交内容；已提交 approval 不撤销。
+确认已有合法匹配的已提交结果不重新进行多角度审查。新审查的工具不可用、必要
+subagent 失败或覆盖未完成属于操作失败，可在当前预算内重试或重新委派；无法完成
+时不发布 review 或完成标记，不能据此批准或伪造 finding。
 
 新发布前立即读取标题和 description，结合需求重新评估质量门槛，并确认 PR Open、
 非 Draft、head 和目标分支未变，没有尚未解决的 conversation。通过两项门槛且没有
@@ -743,8 +759,9 @@ fixtures 验证克隆、私有 refs、detached head、dirty 内容、所有权�
 取消/进程排除、完成标记及异常输出，不调用真实模型或发布 review。质量门槛的提示词
 断言覆盖优先恢复既有发布、保留 approval、新发布前重评当前标题和 description、
 `COMMENT` 必须有原生 thread，以及两项门槛通过且没有 Critical/Major 才能批准。
-初次读取 PR 信息、相关需求和检查
-完整 diff 的指令由加载的 skill 提供；提示词断言不证明模型对这些指令的实际执行。
+初次读取 PR 信息、相关需求、检查完整 diff、按内容独立委派及汇总的指令由加载的
+skill 提供；提示词断言不证明模型对这些指令的实际执行。多角度执行证据需要观察
+实际原生委派、固定目标输入、返回结果及主 agent 汇总，打包或文字匹配检查不能替代。
 skill 资源验证覆盖完整 bundle、内容哈希、原子缓存和已有快照损坏；安装验收验证
 实际发布资源存在。
 执行边界见[Copilot 会话执行决策](../../.agents/notes/implemented/architecture/2026-10-17-copilot-session-execution.md)。
