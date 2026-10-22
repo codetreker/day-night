@@ -124,7 +124,7 @@ approval 后合并；原失败运行未重跑。项目详情与图
 
 ### 实现与验收
 
-- 使用 React、TypeScript、Vite，沿用 Node 24、pnpm 10.34.5；锁定依赖，提供可复现
+- 使用 React、TypeScript、Vite，沿用 Node 24、pnpm 11.28.6；锁定依赖，提供可复现
   的本地 typecheck、build、dev、test 命令和 Vite 到本机 Go 的 `/api` 代理。
 - 实现 fetch 客户端、稳定错误与 requestId 解析、AbortSignal 传递和严格响应边界。
   响应中的 project/task 身份必须匹配规范化后的请求 ID，错误身份按协议错误拒绝显示。
@@ -268,7 +268,7 @@ localhost 的生产 Dockerfile 和 nginx 配置，完成独立资源与生命周
 - 共享 `pnpm web:build` 只构建前端并复制真实产物至 `internal/webui/dist/`，Go
   `go:embed` 内嵌产物；生成目录不提交，缺少产物明确构建失败，不生成占位页面。
 - Go 检查先从仓库根目录调用共享构建，再执行既有 build/vet/race/go-cov。
-  干净 checkout 显式配置 Node 24、pnpm 10.34.5 并 frozen 安装依赖；缺少前置条件
+  干净 checkout 显式配置 Node 24、pnpm 11.28.6 并 frozen 安装依赖；缺少前置条件
   明确失败，不自动下载替代工具链，测试重建进程继续使用真实产物。
 - 精确注册页面 `/{$}`、`/projects/{projectId}` 和静态资源路径；未知 API 仍为
   JSON 404，缺失 asset 不回退 HTML，未知页面为 404，保留方法处理语义。

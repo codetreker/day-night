@@ -5,15 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@dagrejs/dagre@3.1.1':
-    hash: 142fd75deec2b03c9d6839bcdb87804ff902b25f9af621d6f8140b52c765ef7b
-    path: patches/@dagrejs__dagre@3.1.1.patch
-  '@xyflow/system@0.0.83':
-    hash: 5bb2dbf7a659c5abc2776087ca263fb707abfe3da27393fca9bbe56e7429d343
-    path: patches/@xyflow__system@0.0.83.patch
-  node-pty@1.1.0:
-    hash: fafbe015bc6c5527a2279c7ef62bda81d72c7b5cf7514a00acae75a85e647773
-    path: patches/node-pty@1.1.0.patch
+  '@dagrejs/dagre@3.1.1': 142fd75deec2b03c9d6839bcdb87804ff902b25f9af621d6f8140b52c765ef7b
+  '@xyflow/system@0.0.83': 5bb2dbf7a659c5abc2776087ca263fb707abfe3da27393fca9bbe56e7429d343
+  node-pty@1.1.0: fafbe015bc6c5527a2279c7ef62bda81d72c7b5cf7514a00acae75a85e647773
 
 importers:
 

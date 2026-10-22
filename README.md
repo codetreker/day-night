@@ -132,7 +132,9 @@ same production build and gateway with disposable test data.
 
 ## CLI development
 
-Use Node.js 24 LTS and pnpm 10.34.5 for development. Runtime review also requires
+Use Node.js 24 LTS and pnpm 11.28.6 for development. pnpm settings, including
+`engineStrict`, `storeDir` and dependency build permissions, belong in
+`pnpm-workspace.yaml`. Runtime review also requires
 Git, authenticated GitHub CLI and Copilot CLI on PATH. The inspected
 `better-sqlite3` 13.0.3 Linux x64 prebuild requires `GLIBC_2.34` and
 `GLIBCXX_3.4.29`; these observed symbol requirements constrain older distributions
@@ -295,7 +297,7 @@ API examples, logs, updates and volume removal.
 
 ## Server development
 
-Use Go 1.27.2, PostgreSQL 18.6, Node.js 24 LTS and pnpm 10.34.5. Run
+Use Go 1.27.2, PostgreSQL 18.6, Node.js 24 LTS and pnpm 11.28.6. Run
 `pnpm install --frozen-lockfile` from the repository root before source builds. The
 [server module](packages/daynight-server/README.md) owns configuration, startup,
 the isolated database setup and complete validation commands. Its HTTP runtime
@@ -379,7 +381,7 @@ the dashed-paint fix's complete local pass and pending hosted delivery.
 owned PostgreSQL instance and starts the normal dev-ci production build in
 parallel. It runs native functional workflows, then the container workflows and
 complete container cleanup, and finally the fixed native capacity cases. It
-requires Go 1.27.2, Docker, Node 24, pnpm 10.34.5 and Playwright Chromium. The
+requires Go 1.27.2, Docker, Node 24, pnpm 11.28.6 and Playwright Chromium. The
 [web README](packages/daynight-web/README.md#production-browser-acceptance) owns
 browser setup, required gates and receipt interpretation. The
 [dashboard task record](docs/design/daynight-web-tasks.md#w-t6) identifies the
@@ -457,8 +459,15 @@ publishing job is titled `Publish daynight v<version>`, using the version from t
 prepared artifact's release receipt. Every publication attempt repeats preflight
 before downloading the artifact, so versions that appeared during preparation
 or an earlier attempt also skip successfully. That separate GitHub-hosted job
-uses Node.js 24 and pinned npm 12.2.0 to publish the same artifact publicly with
-provenance and the `latest` dist-tag. No npm token is required. Stable releases
+uses Node.js 24 and pinned pnpm 11.28.6 to publish the same artifact publicly with
+provenance and the `latest` dist-tag. Development, CI and the Docker build use
+the same pnpm version. The publishing job installs its own pinned CLI and invokes
+it through Node without installing project dependencies.
+`--pm-on-fail=ignore` prevents the workspace's package-manager pin from selecting
+a different publisher. pnpm uses its own OIDC implementation; npm 12.2.0 remains
+the metadata-query client. Registry configuration comes from `setup-node`, and
+GitHub's OIDC environment reaches the publisher unchanged. No npm token is
+required. Stable releases
 are supported; prerelease versions are rejected, and a new version must advance
 the public registry's current `latest` version.
 
@@ -488,6 +497,8 @@ releases and keeps in-progress releases running. The
 owns lookup, skip and duplicate-publication behavior; the
 [trusted-publishing decision](.agents/notes/implemented/process/2026-10-20-npm-trusted-publishing.md)
 owns new-artifact identity, OIDC and public verification. The
+[pnpm OIDC decision](.agents/notes/implemented/process/2026-10-22-pnpm-oidc-publication.md)
+owns the publishing client and its configuration. The
 [CLI publication-validation decision](.agents/notes/implemented/process/2026-10-22-cli-publication-validation.md)
 owns the release validation scope.
 

@@ -27,7 +27,7 @@ workflow publishes stable releases to `latest`. A previously unpublished version
 must have greater precedence than the registry's current stable `latest` version.
 
 After the [version preflight](2026-10-22-npm-cli-publication-checks.md) admits
-a new release, a read-only preparation job uses Node.js 24 and pnpm 10.34.5 for a
+a new release, a read-only preparation job uses Node.js 24 and pnpm 11.28.6 for a
 frozen install, CLI type checking, tests and installed acceptance at the captured
 commit. The [CLI publication-validation decision](2026-10-22-cli-publication-validation.md)
 replaces the original whole-main-checks prerequisite with this independent CLI
@@ -46,10 +46,12 @@ distinguishes tarball and directory publication.
 
 Every publishing-job attempt, including a retry, repeats existence-only
 preflight before downloading the artifact on a GitHub-hosted Ubuntu runner
-with Node.js 24 and npm 12.2.0. Existing versions or tags succeed as skips. The
-job receives `id-token: write` for npm OIDC and
-`contents: write` for the final tag. It publishes the tarball to the public npm
-registry with `latest`, provenance and lifecycle scripts disabled. No npm token
+with Node.js 24 and npm 12.2.0 for metadata queries. Existing versions or tags
+succeed as skips. The job installs pnpm 11.28.6 separately for upload under the
+[pnpm OIDC decision](2026-10-22-pnpm-oidc-publication.md), which replaces the
+original npm CLI upload path. The job receives `id-token: write` for npm OIDC and
+`contents: write` for the final tag. It publishes the same tarball to the public
+npm registry with `latest` and provenance enabled and lifecycle scripts disabled. No npm token
 is provided. The package repository metadata identifies the GitHub source and
 CLI subdirectory, as required for source attribution.
 

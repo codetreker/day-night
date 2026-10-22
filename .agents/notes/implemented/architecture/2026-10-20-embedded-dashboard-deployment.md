@@ -21,7 +21,7 @@ failed publication stops the build. Generated files are ignored by Git, and a
 clean Go build without them fails at compilation. No placeholder index is
 committed. Go `scripts/check.sh` invokes this shared command before its existing
 build/vet/race/go-cov sequence; source checkouts first install fixed Node 24 and
-pnpm 10.34.5 workspace dependencies with the frozen lockfile. Go CI declares the
+pnpm 11.28.6 workspace dependencies with the frozen lockfile. Go CI declares the
 same prerequisites explicitly.
 
 `internal/server` keeps one ServeMux and the existing single logging wrapper.

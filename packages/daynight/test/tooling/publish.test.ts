@@ -1,12 +1,12 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parse as parseYaml } from "yaml";
-import { preflightRelease, prepareRelease, publishRelease, runNpmPublish, runNpmView } from "../../scripts/publish.js";
+import { preflightRelease, prepareRelease, publishRelease, runPnpmPublish, runNpmView } from "../../scripts/publish.js";
 import type { ReleaseReceipt, ReleaseServices } from "../../scripts/publish.js";
 
 const root = path.resolve(import.meta.dirname, "../../../../.tmp/publish-tests");
@@ -232,8 +232,8 @@ describe("release version preflight", () => {
   });
 
   it.each(["\n", "\r\n"])("rechecks every workflow attempt and gates publication on the skip output (%j line endings)", (newline) => {
-    type Step = { id?: string; run?: string; if?: string; uses?: string; env?: Record<string, string> };
-    type Job = { if?: string; outputs?: Record<string, string>; steps: Step[] };
+    type Step = { id?: string; run?: string; if?: string; uses?: string; env?: Record<string, string>; with?: Record<string, unknown> };
+    type Job = { if?: string; outputs?: Record<string, string>; permissions?: Record<string, string>; environment?: string; steps: Step[] };
     const content = readFileSync(path.resolve(import.meta.dirname, "../../../../.github/workflows/publish.yml"), "utf8");
     const { jobs } = parseYaml(content.replace(/\r?\n/g, newline)) as { jobs: { preflight: Job; prepare: Job; publish: Job } };
     expect(jobs.preflight.if).toBeUndefined();
@@ -243,13 +243,22 @@ describe("release version preflight", () => {
     const recheckIndex = jobs.publish.steps.findIndex((step) => step.id === "preflight");
     const publicationIndex = jobs.publish.steps.findIndex((step) => step.run === 'node packages/daynight/scripts/publish.ts publish "$GITHUB_SHA"');
     const downloadIndex = jobs.publish.steps.findIndex((step) => step.uses?.startsWith("actions/download-artifact@"));
+    const publisherIndex = jobs.publish.steps.findIndex((step) => step.run === "npm install --prefix .tmp/pnpm-publish --no-save --package-lock=false --ignore-scripts --no-audit --no-fund pnpm@11.28.6");
     expect(recheckIndex).toBeGreaterThan(-1);
-    for (const index of [downloadIndex, publicationIndex]) {
+    for (const index of [publisherIndex, downloadIndex, publicationIndex]) {
       expect(index).toBeGreaterThan(recheckIndex);
       expect(jobs.publish.steps[index]!.if).toBe("steps.preflight.outputs.skip != 'true'");
     }
+    expect(publicationIndex).toBeGreaterThan(publisherIndex);
+    expect(jobs.publish.steps.find((step) => step.uses?.startsWith("actions/setup-node@"))?.with).toMatchObject({
+      "node-version": 24, "registry-url": "https://registry.npmjs.org/", "package-manager-cache": false,
+    });
+    expect(jobs.prepare.steps.find((step) => step.uses?.startsWith("pnpm/action-setup@"))?.with?.version).toBe("11.28.6");
+    expect(jobs.publish.permissions?.["id-token"]).toBe("write");
+    expect(jobs.publish.environment).toBeUndefined();
     const npmCli = "${{ github.workspace }}/.tmp/npm-cli/node_modules/npm/bin/npm-cli.js";
     expect(jobs.publish.steps[publicationIndex]!.env?.NPM_CLI_JS).toBe(npmCli);
+    expect(jobs.publish.steps[publicationIndex]!.env?.PNPM_CLI_JS).toBe("${{ github.workspace }}/.tmp/pnpm-publish/node_modules/pnpm/bin/pnpm.cjs");
     for (const [job, lookupId] of [[jobs.preflight, "release"], [jobs.publish, "preflight"]] as const) {
       const lookupIndex = job.steps.findIndex((step) => step.id === lookupId);
       const installIndex = job.steps.findIndex((step) => step.run?.startsWith("npm install --prefix .tmp/npm-cli ") && step.run.endsWith(" npm@12.2.0"));
@@ -525,20 +534,45 @@ describe("release preparation and command wrappers", () => {
     expect(readFileSync(path.join(f.artifact, "release.json"), "utf8")).toBe(`${JSON.stringify(receipt, null, 2)}\n`);
   });
 
-  it("runs an explicit npm CLI through Node, strips token/config fallbacks, and forwards nonzero status", async () => {
+  it.each([0, 17])("runs the pinned pnpm CLI with inherited OIDC and npm configuration (exit %s)", async (status) => {
     const f = fixture();
-    const cli = path.join(f.cwd, "npm-cli.mjs");
+    const cli = path.join(f.cwd, "pnpm cli.mjs");
     const output = path.join(f.cwd, "invocation.json");
-    writeFileSync(cli, `import {writeFileSync} from 'node:fs';\nwriteFileSync(${JSON.stringify(output)}, JSON.stringify({args: process.argv.slice(2), token: process.env.NODE_AUTH_TOKEN, config: process.env.npm_config_registry}));\nprocess.exit(17);\n`);
-    vi.stubEnv("NPM_CLI_JS", cli);
-    vi.stubEnv("NODE_AUTH_TOKEN", "must-not-reach-npm");
-    vi.stubEnv("npm_config_registry", "https://wrong.invalid");
-    await expect(runNpmPublish(path.join(f.artifact, "package.tgz"), f.cwd)).rejects.toThrow("npm publish failed (exit 17)");
-    const invocation = JSON.parse(readFileSync(output, "utf8")) as { args: string[]; token?: string; config?: string };
-    expect(invocation.token).toBeUndefined();
-    expect(invocation.config).toBeUndefined();
-    expect(invocation.args).toEqual(expect.arrayContaining(["publish", path.join(f.artifact, "package.tgz"), "--access=public", "--tag=latest", "--provenance", "--ignore-scripts", "--registry=https://registry.npmjs.org/"]));
-    expect(readFileSync(path.join(f.cwd, "user.npmrc"), "utf8")).toBe("");
+    const inherited = {
+      ACTIONS_ID_TOKEN_REQUEST_URL: "https://oidc.example.invalid/token",
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: "fixture-oidc-request-token",
+      NODE_AUTH_TOKEN: "fixture-node-auth-token",
+      NPM_TOKEN: "fixture-npm-token",
+      NPM_CONFIG_USERCONFIG: path.join(f.cwd, "configured.npmrc"),
+      npm_config_registry: "https://configured.example.invalid/",
+    };
+    writeFileSync(cli, `import {writeFileSync} from 'node:fs';\nwriteFileSync(${JSON.stringify(output)}, JSON.stringify({args: process.argv.slice(2), cwd: process.cwd(), env: Object.fromEntries(${JSON.stringify(Object.keys(inherited))}.map(key => [key, process.env[key]]))}));\nprocess.exit(${status});\n`);
+    vi.stubEnv("PNPM_CLI_JS", cli);
+    vi.stubEnv("NPM_CLI_JS", path.join(f.cwd, "unused-npm-cli.mjs"));
+    for (const [key, value] of Object.entries(inherited)) vi.stubEnv(key, value);
+    const publication = runPnpmPublish(path.join(f.artifact, "package.tgz"), f.cwd);
+    if (status === 0) await expect(publication).resolves.toBeUndefined();
+    else await expect(publication).rejects.toThrow("pnpm publish failed (exit 17)");
+    expect(JSON.parse(readFileSync(output, "utf8"))).toEqual({
+      args: ["publish", path.join(f.artifact, "package.tgz"), "--pm-on-fail=ignore", "--no-git-checks", "--access", "public", "--tag", "latest", "--provenance", "--ignore-scripts", "--registry", "https://registry.npmjs.org/"],
+      cwd: f.cwd, env: inherited,
+    });
+    expect(existsSync(path.join(f.cwd, "user.npmrc"))).toBe(false);
+    expect(existsSync(path.join(f.cwd, "global.npmrc"))).toBe(false);
+  });
+
+  it.each([undefined, ""])("requires an explicit pnpm publication CLI (%j)", async (cli) => {
+    const f = fixture();
+    vi.stubEnv("PNPM_CLI_JS", cli);
+    await expect(runPnpmPublish(path.join(f.artifact, "package.tgz"), f.cwd)).rejects.toThrow("PNPM_CLI_JS must identify the pinned pnpm publication CLI.");
+  });
+
+  it.skipIf(process.platform === "win32")("forwards a POSIX signal terminating the pnpm publication CLI", async () => {
+    const f = fixture();
+    const cli = path.join(f.cwd, "pnpm-cli.mjs");
+    writeFileSync(cli, "process.kill(process.pid, 'SIGTERM');\n");
+    vi.stubEnv("PNPM_CLI_JS", cli);
+    await expect(runPnpmPublish(path.join(f.artifact, "package.tgz"), f.cwd)).rejects.toThrow("pnpm publish failed (signal SIGTERM)");
   });
 
   it("rejects unsupported CLI commands and missing source arguments", () => {

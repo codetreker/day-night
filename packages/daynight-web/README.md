@@ -23,7 +23,7 @@ development mockup below reuses the real components with a frontend-only fixture
 
 ## Development
 
-Use Node.js 24 LTS and pnpm 10.34.5. From the repository root:
+Use Node.js 24 LTS and pnpm 11.28.6. From the repository root:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -282,7 +282,7 @@ pnpm --filter @codetreker/daynight-web exec playwright install chromium
 pnpm web:acceptance
 ```
 
-Use Node 24, pnpm 10.34.5 and a frozen dependency install first. Chromium requires
+Use Node 24, pnpm 11.28.6 and a frozen dependency install first. Chromium requires
 its normal Linux runtime libraries; CI installs them with Playwright's
 `--with-deps` option. Locally, `DAYNIGHT_BROWSER_EXECUTABLE` can select an existing
 Chromium executable. That override is recorded and is forbidden for CI delivery

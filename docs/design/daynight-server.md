@@ -294,7 +294,7 @@ CLI 和内部程序调用，服务只接受 loopback 监听地址。远程认证
 
 [本地 Compose 部署](../../deployment/localhost/README.md)将 PostgreSQL、Go 服务与
 TCP 网关组合启动，Go 服务同时提供内嵌只读看板和 JSON API。生产 Dockerfile 以
-仓库根目录为 context，在 Node 24/pnpm 10.34.5 阶段构建并发布真实 UI，在 Go
+仓库根目录为 context，在 Node 24/pnpm 11.28.6 阶段构建并发布真实 UI，在 Go
 1.27.2 阶段内嵌资源，最终仅复制二进制至非 root Alpine 运行镜像。专属 ignore
 纳入锁文件、workspace manifests、`patches/` 声明补丁和实际源码，排除宿主
 依赖、临时文件及生成资源。网关拥有网络命名空间，Go 服务加入该命名空间并继续监听
@@ -382,7 +382,7 @@ HTTP 测试验证路由、DTO、错误映射、project 范围查找、分页筛�
 Go、web、CLI 和 shell completion 各自的检查内容及门槛保持。
 统一验证入口为模块内的 `bash scripts/check.sh`，要求显式设置
 `DAYNIGHT_TEST_DATABASE_URL`。干净 checkout 先从根目录 frozen 安装 Node 24/pnpm
-10.34.5 依赖，Go 检查在任何 build/vet/race 前调用共享 `pnpm web:build` 发布
+11.28.6 依赖，Go 检查在任何 build/vet/race 前调用共享 `pnpm web:build` 发布
 资源；缺少工具、依赖或真实产物直接失败。命令 package 的 TestMain 每次构建新的 race binary，
 通过真实 HTTP、PostgreSQL、信号和进程重启执行验收，不复用旧的可执行文件。
 

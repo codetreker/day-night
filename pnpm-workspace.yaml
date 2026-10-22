@@ -1,5 +1,7 @@
 packages:
   - packages/*
+engineStrict: true
+storeDir: .tmp/pnpm-store
 allowBuilds:
   better-sqlite3: false
   node-pty@1.1.0: true

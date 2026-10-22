@@ -26,7 +26,7 @@ The [README](README.md) owns repository status, documentation conventions, and
 available validation commands. The client command toolkit belongs in
 `packages/daynight/`, with review behavior owned by its `review` command module;
 the independent Go service belongs in `packages/daynight-server/`. Use Node.js
-24 LTS and pnpm 10.34.5 for the CLI; run `pnpm typecheck`, `pnpm test`, and
+24 LTS and pnpm 11.28.6 for the CLI; run `pnpm typecheck`, `pnpm test`, and
 `pnpm build` as applicable. The server uses Go 1.27.2 and PostgreSQL 18.6. From
 its module, run `bash scripts/check.sh` with `DAYNIGHT_TEST_DATABASE_URL` set to
 an isolated PostgreSQL database. Its required gate includes build, vet, race,

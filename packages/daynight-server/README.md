@@ -55,7 +55,7 @@ Dockerfile and gateway in a unique disposable project for tests.
 ## Build and run
 
 Go **1.27.2** and `pgx/v5` **5.11.0** are pinned. Source builds also require
-Node.js 24 and pnpm 10.34.5 to build the embedded UI. From the repository root:
+Node.js 24 and pnpm 11.28.6 to build the embedded UI. From the repository root:
 
 ```bash
 pnpm install --frozen-lockfile
