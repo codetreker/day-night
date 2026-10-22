@@ -8,6 +8,13 @@ requires Bash, standard shell utilities, Docker Engine 28 or newer, Linux
 containers and Docker Compose 2.20 or newer. Host Node.js, Go, PostgreSQL and jq
 are not required by the runner.
 
+This stack currently uses the unauthenticated loopback service and trusted
+same-origin previews. The planned [authentication architecture](../../docs/design/daynight-auth.md)
+and [task breakdown](../../docs/design/daynight-auth-tasks.md) own future UniAuth
+and project authorization acceptance in this same-origin deployment. Its trusted
+executable HTML preview behavior continues; the existing runner and fixtures do
+not prove the unimplemented authentication capabilities.
+
 ## Run a command against the stack
 
 From the repository root:

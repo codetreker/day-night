@@ -25,6 +25,11 @@ Web 文件管理亦已实现，组合验收由 A-T6 维护。元数据命令输�
 [CLI 决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-cli.md)记录
 流传输及输出辅助进程的选择。
 
+[鉴权架构](daynight-auth.md)定义规划中的个人访问令牌配置和 HTTP 认证集成，
+并要求项目发现只查询当前用户的可访问项目；[需求](../spec/daynight-auth.md)和
+[任务拆分](daynight-auth-tasks.md)拥有行为与实施顺序。该扩展尚未实现，本文的
+HTTP 客户端仍面向本机未认证服务。仓库关联不保存凭据、不授予项目访问权。
+
 ## 现有基础与交付边界
 
 本文已交付的 `project` 和 `task` 命令复用已有 HTTP API，不改服务或数据库。实现入口及字段可以由

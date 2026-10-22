@@ -10,6 +10,11 @@
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-task-attachment-storage-design.md)
 保存选择依据、已接受的限制及重新评估条件。决策采用不表示功能已经交付。
 
+[鉴权架构](daynight-auth.md)规划由项目成员权限保护附件请求；行为见
+[鉴权需求](../spec/daynight-auth.md)，交付条件见[任务拆分](daynight-auth-tasks.md)。
+该扩展尚未实现。本文的可信同源执行、普通 iframe、相对资源、键盘机制和单 gateway
+部署在鉴权接入后继续保留；通用存储、单文件操作和 K1 边界继续有效。
+
 ## 目标与操作单位
 
 Task 可以保存设计文档、架构文档、图片、HTML mockup 等文件。内容由独立存储模块
@@ -337,8 +342,9 @@ HTML/PDF 的 HEAD 可用性检查只判断响应状态和 requestId，不尝试�
 body。成功后 frame 正常 GET 文件和其资源。入口中的 `./assets/style.css`、
 `./assets/app.js` 和相对 fetch URL 按浏览器规则读取同目录结构，不改写文件内容；
 以 `/` 开头的地址仍指向主站根目录。HTML 附件属于可信项目代码，拥有主应用同源
-权限，普通 iframe 不使用 sandbox；不增加 session/token、独立 origin/端口、Service
-Worker 或离线文件系统。
+权限，普通 iframe 不使用 sandbox；不增加专用预览 session/token、独立 origin/
+端口、Service Worker 或离线文件系统。规划中的[鉴权架构](daynight-auth.md)为
+附件请求增加登录态和项目成员检查，继续保留可信 HTML 的同源执行约定。
 
 原侧栏继续拥有 portal、背景 inert、滚动和被动卸载后的焦点恢复。`tabbable` 6.5.0
 的生产默认可见性检查统一枚举侧栏与同源 frame 的可 Tab 元素；frame 的 load

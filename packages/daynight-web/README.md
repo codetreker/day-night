@@ -21,6 +21,14 @@ own single-file management, previews and their independent state. The original
 offline dashboard mockups remain separate from the application; the attachment
 development mockup below reuses the real components with a frontend-only fixture.
 
+The planned [authentication requirements](../../docs/spec/daynight-auth.md),
+[architecture](../../docs/design/daynight-auth.md) and
+[task breakdown](../../docs/design/daynight-auth-tasks.md) define login, private
+projects, member and invitation management, and personal access tokens. These
+capabilities are not implemented. The current browser workspace uses the
+unauthenticated local service. Trusted same-origin previews, relative resources
+and keyboard behavior continue after authentication is delivered.
+
 ## Development
 
 Use Node.js 24 LTS and pnpm 11.28.6. From the repository root:
@@ -153,6 +161,9 @@ HTML loads the fixed same-origin
 images and relative fetches follow normal browser URL rules. HTML is trusted
 project code with main-origin privileges; the ordinary iframe has no sandbox.
 There is no separate preview modal, session token, domain or Service Worker.
+The planned [authentication architecture](../../docs/design/daynight-auth.md)
+adds project-member checks to attachment requests while retaining this trusted
+same-origin execution model, relative resources and keyboard behavior.
 Other formats show metadata and a download link. Files and metadata can diverge
 after a failed write under the accepted K1 limitation; the UI reports errors and
 does not implement reconciliation or rollback.

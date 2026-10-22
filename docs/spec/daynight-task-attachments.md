@@ -10,6 +10,11 @@
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-task-attachment-storage-design.md)
 记录范围和取舍。各组件的实际验证结果归属对应源码、PR 与 CI。
 
+[鉴权需求](daynight-auth.md)规划附件请求继承项目成员权限；
+[架构](../design/daynight-auth.md)和[任务拆分](../design/daynight-auth-tasks.md)拥有
+认证与授权机制及交付条件。该扩展尚未实现。本文的可信同源 HTML、普通 iframe、
+相对资源及键盘交互在鉴权接入后继续保留，单文件操作和 K1 边界继续有效。
+
 ## 目标与范围
 
 Task 可以保存设计文档、架构文档、图片及 HTML mockup 等附件。文件内容由独立
@@ -116,8 +121,10 @@ Task 详情在关联 PR 之后显示文件树。上传操作选择一个文件�
 失败明确展示并可重试，不读取 HEAD 的 JSON body。原生 frame 负责后续正常资源请求。
 
 预览入口为 `/api/v1/projects/{projectId}/tasks/{taskId}/preview/{path...}`，
-不增加 token、会话、子域名、端口或 Service Worker。HTML 被视为可信项目代码，
-运行在主站同源环境；该方案不提供上传脚本与主应用之间的权限隔离。
+不增加专用预览 token、预览会话、子域名、端口或 Service Worker。HTML 被视为
+可信项目代码，运行在主站同源环境；该方案不提供上传脚本与主应用之间的权限隔离。
+规划中的[鉴权需求](daynight-auth.md)在附件请求入口检查登录态和项目成员关系，
+继续保留这一可信代码执行约定。
 
 ## CLI
 

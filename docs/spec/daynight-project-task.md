@@ -24,6 +24,12 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 [任务拆分](../design/daynight-task-attachments-tasks.md)记录扩展范围和 Daynight 任务入口；
 Web 附件管理亦已实现，组合验收由 A-T6 维护。
 
+[鉴权需求](daynight-auth.md)定义规划中的个人访问令牌、按当前成员关系授权和
+私有项目发现；[架构](../design/daynight-auth.md)及
+[任务拆分](../design/daynight-auth-tasks.md)拥有凭据配置、HTTP 集成和交付条件。
+该能力尚未实现，本文描述的当前命令继续使用本机未认证服务。仓库关联只选择项目，
+不授予访问权限，也不保存认证凭据。
+
 ## PT1. 范围与命令边界
 
 交付包含 project 创建、列表和详情，以及 project 内 task 的创建、列表、有界 ready
