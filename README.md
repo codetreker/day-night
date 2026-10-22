@@ -358,7 +358,11 @@ a file stay sequential so environment changes and cleanup have one owner.
 The [Git test decision](.agents/notes/implemented/testing/2026-10-18-parallel-git-validation.md)
 records the isolation rules, and the
 [CI timing report](docs/research/windows-ci-performance.md) records native
-before/after measurements. The installed acceptance suite additionally verifies the package
+before/after measurements. The repository-discovery submodule case prepares its
+real Git fixture in a case-scoped hook before exercising discovery, retaining
+separate setup and behavior limits and the existing private-directory cleanup.
+The [fixture lifecycle decision](.agents/notes/implemented/testing/2026-10-22-submodule-discovery-fixture-lifecycle.md)
+records that separation. The installed acceptance suite additionally verifies the package
 bin, default native command shims, singleton/stale-lock behavior and the complete
 review/re-review/restart/closure lifecycle. Separate npm global-prefix acceptance
 checks self-update and installation ownership. Curated environment and scenario
