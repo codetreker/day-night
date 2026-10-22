@@ -131,6 +131,8 @@ jobs:
           run_install: false
           dest: ${{ github.workspace }}/.tmp/pnpm
       - run: pnpm install --frozen-lockfile --store-dir .tmp/pnpm-store
+      - name: Select official Ubuntu package archives
+        run: sudo bash .github/scripts/use-ubuntu-archives.sh /etc/apt/sources.list.d/ubuntu.sources /etc/apt/apt-mirrors.txt
       - name: Prepare isolated Bash 4.2 and zsh toolchains
         run: bash packages/daynight/scripts/prepare-completion-shells.sh
       - name: Exercise actual Tab completion in Bash 4.2, modern Bash and zsh
@@ -256,6 +258,8 @@ jobs:
           cache-dependency-path: packages/daynight-server/go.sum
       - name: Verify isolated deployment lifecycle
         run: bash deployment/dev-ci/tests/run.sh
+      - name: Select official Ubuntu package archives
+        run: sudo bash .github/scripts/use-ubuntu-archives.sh /etc/apt/sources.list.d/ubuntu.sources /etc/apt/apt-mirrors.txt
       - name: Verify production dashboard, container deployment and capacity budgets
         id: web-acceptance
         run: node packages/daynight-web/scripts/ci.mts
