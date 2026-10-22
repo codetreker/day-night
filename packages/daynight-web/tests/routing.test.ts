@@ -34,12 +34,14 @@ const crosses = (s: Curve, r: RoutingNode): boolean => {
     return p.x > r.left + 1e-7 && p.x < r.right - 1e-7 && p.y > r.top + 1e-7 && p.y < r.bottom - 1e-7;
   });
 };
-const verify = (actual: CanvasLayout) => {
-  const rectangles = actual.nodes.map((node) => ({ id: node.id, left: node.position.x, right: node.position.x + TASK_NODE_WIDTH, top: node.position.y, bottom: node.position.y + TASK_NODE_HEIGHT }));
+const layoutRectangles = (actual: CanvasLayout): readonly RoutingNode[] => actual.nodes.map((node) => ({
+  id: node.id, left: node.position.x, right: node.position.x + TASK_NODE_WIDTH, top: node.position.y, bottom: node.position.y + TASK_NODE_HEIGHT,
+}));
+const verify = (rectangles: readonly RoutingNode[], edges: readonly CanvasEdge[]) => {
   const byId = new Map(rectangles.map((node) => [node.id, node]));
   const failures: string[] = [];
   let curves = 0;
-  for (const dependency of actual.edges) {
+  for (const dependency of edges) {
     const source = byId.get(dependency.source)!;
     const target = byId.get(dependency.target)!;
     const route = parseCurve(compileDependencyRoute(dependency.points, dependency.external).d);
@@ -117,7 +119,7 @@ describe('obstacle-free left-to-right dependency planning', () => {
     expect(crosses(parseCurve('M150,128 L284,900')[0]!, nodes[1]!)).toBe(true);
     const result = planDependencyRoutes(nodes, edges);
     expect(result[0]!.points).toEqual([{ x: 252, y: 80 }, { x: 284, y: 80 }, { x: 284, y: 548 }, { x: 316, y: 548 }]);
-    verify({ nodes: nodes.map((node) => ({ id: node.id, position: { x: node.left, y: node.top }, kind: 'main' })), edges: result, width: 568, height: 628 });
+    verify(nodes, result);
     expect({ nodes, edges }).toEqual(original);
     expect(edges[0]!.points[0]).toEqual({ x: 150, y: 128 });
     expect(nodes[0]).toEqual(rectangle('source', 32, 32));
@@ -129,7 +131,7 @@ describe('obstacle-free left-to-right dependency planning', () => {
     expect(crosses(parseCurve('M426,16 L710,144')[0]!, nodes[3]!)).toBe(true);
     const result = planDependencyRoutes(nodes, [input])[0]!;
     expect(result.points).toContainEqual({ x: 568, y: 16 });
-    verify({ nodes: nodes.map((node) => ({ id: node.id, position: { x: node.left, y: node.top }, kind: 'main' })), edges: [result], width: 1136, height: 428 });
+    verify(nodes, [result]);
   });
 
   it('retains a clear long interior diagonal instead of adding bends at every crossed rank', () => {
@@ -140,7 +142,7 @@ describe('obstacle-free left-to-right dependency planning', () => {
     expect(result.points).toContainEqual({ x: 994, y: 504 });
     expect(result.points).not.toContainEqual({ x: 710, y: 452 });
     expect(result.points.length).toBeLessThan(input.points.length);
-    verify({ nodes: nodes.map((node) => ({ id: node.id, position: { x: node.left, y: node.top }, kind: 'main' })), edges: [result], width: 1420, height: 628 });
+    verify(nodes, [result]);
   });
 
   it('keeps native Dagre node positions, order and bounds unchanged', () => {
@@ -153,13 +155,13 @@ describe('obstacle-free left-to-right dependency planning', () => {
     const result = layoutGraph(input);
     expect(result.width).toBe(graph.graph().width); expect(result.height).toBe(graph.graph().height);
     for (const node of result.nodes) expect(node.position).toEqual({ x: graph.node(node.id).x! - TASK_NODE_WIDTH / 2, y: graph.node(node.id).y! - TASK_NODE_HEIGHT / 2 });
-    verify(result);
+    verify(layoutRectangles(result), result.edges);
   });
 
   it.each(['chain', 'merge', 'shared', 'external'] as const)('proves every rounded route avoids every card in the full %s capacity layout', (kind) => {
     const input = capacity(kind); const actual = layoutGraph(input);
     expect(actual.nodes).toHaveLength(1000); expect(actual.edges).toHaveLength(kind === 'chain' ? 999 : 5000);
-    const result = verify(actual);
+    const result = verify(layoutRectangles(actual), actual.edges);
     expect(result.curves).toBeLessThan(kind === 'chain' ? 1 : 30_000);
   }, 60_000);
 
@@ -169,7 +171,8 @@ describe('obstacle-free left-to-right dependency planning', () => {
     for (let attempt = 0; attempt < 24; attempt++) {
       const edges: [number, number][] = [];
       for (let target = 1; target < 30; target++) for (let source = 0; source < target; source++) if (random() < 0.16) edges.push([source, target]);
-      verify(layoutGraph(projection(30, edges, true)));
+      const actual = layoutGraph(projection(30, edges, true));
+      verify(layoutRectangles(actual), actual.edges);
     }
   }, 60_000);
 
