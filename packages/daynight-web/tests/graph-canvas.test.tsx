@@ -546,7 +546,16 @@ describe('progressive task visibility', () => {
   const rootId = fixture.tasks.find((task) => task.titlePreview === '渐进展开 · 主链交付起点')!.id;
   const joinId = fixture.tasks.find((task) => task.titlePreview === '合流任务 · 40 个外部前置')!.id;
   const visibleIds = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => node.dataset.id!);
-  const expansion = (title: string, direction: string) => nodeShell(title).querySelector<HTMLButtonElement>(`.task-node-expand[data-direction="${direction}"]`)!;
+  const controls = (container: HTMLElement) => {
+    const scope = within(container);
+    const nodeButton = (title: string) => {
+      const titleElement = scope.getByText(title, { selector: '.task-node-title', exact: true });
+      return within(titleElement.closest<HTMLElement>('.task-node')!).getByRole('button', { name: new RegExp(`^${title}，`) });
+    };
+    const nodeShell = (title: string) => nodeButton(title).closest<HTMLElement>('.task-node')!;
+    const expansion = (title: string, direction: string) => nodeShell(title).querySelector<HTMLButtonElement>(`.task-node-expand[data-direction="${direction}"]`)!;
+    return { scope, nodeButton, nodeShell, expansion };
+  };
   const rendered = async (container: HTMLElement, nodes: number, edges: number) => {
     await waitFor(() => { expect(container.querySelectorAll('.react-flow__node')).toHaveLength(nodes); });
     await waitFor(() => { expect(container.querySelectorAll('.react-flow__edge-path')).toHaveLength(edges); });
@@ -556,12 +565,13 @@ describe('progressive task visibility', () => {
     const open = vi.fn();
     const layout = vi.spyOn(layoutModule, 'layoutGraph');
     const view = render(<TaskGraph index={progressiveIndex} rootId={rootId} selectedTaskId={null} onSelectTask={open} />);
+    const { scope, nodeButton, nodeShell } = controls(view.container);
     await rendered(view.container, 50, 49);
     const initialIds = visibleIds(view.container);
     const positions = [...view.container.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => node.style.transform);
     const routes = [...view.container.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'));
     const transform = viewport(view.container).style.transform;
-    expect(screen.getByText('61 个链内任务 · 40 个外部前置 · 100 条依赖')).toBeTruthy();
+    expect(scope.getByText('61 个链内任务 · 40 个外部前置 · 100 条依赖')).toBeTruthy();
     expect(view.container.querySelector('.task-graph')).toHaveAttribute('data-visible-task-count', '50');
     expect(view.container.querySelector('.task-graph')).toHaveAttribute('data-total-task-count', '101');
     const body = nodeButton('合流任务 · 40 个外部前置');
@@ -580,27 +590,33 @@ describe('progressive task visibility', () => {
     expect(layout).toHaveBeenCalledTimes(1);
   });
 
-  it('expands direct neighbors with exact task, induced-edge and remaining counts, retains keyboard anchor focus, and resets deterministically', async () => {
+  it('expands direct neighbors with exact task, induced-edge and remaining counts, retains keyboard anchor focus, and resets deterministically', async ({ signal }) => {
     const user = userEvent.setup();
     const open = vi.fn();
     const view = render(<TaskGraph index={progressiveIndex} rootId={rootId} selectedTaskId={null} onSelectTask={open} />);
+    const { scope, nodeButton, expansion } = controls(view.container);
     await rendered(view.container, 50, 49);
     await waitFor(() => { expect(zoom(view.container)).toBe(0.8); });
     const initialIds = visibleIds(view.container);
     const initialRoutes = [...view.container.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'));
     const initialViewport = viewport(view.container).style.transform;
+    const joinBody = nodeButton('合流任务 · 40 个外部前置');
+    const joinShell = joinBody.closest<HTMLElement>('.task-node')!;
+    const rootBody = nodeButton('渐进展开 · 主链交付起点');
+    const rootShell = rootBody.closest<HTMLElement>('.task-node')!;
     const upstream = expansion('合流任务 · 40 个外部前置', 'prerequisites');
     expect(upstream.closest<HTMLElement>('.react-flow__node')!.style.height).toBe('136px');
-    expect(nodeShell('合流任务 · 40 个外部前置').querySelector('.task-node-expansions')?.children).toHaveLength(2);
-    expect(nodeShell('合流任务 · 40 个外部前置').querySelectorAll('.task-node-expand')).toHaveLength(1);
+    expect(joinShell.querySelector('.task-node-expansions')?.children).toHaveLength(2);
+    expect(joinShell.querySelectorAll('.task-node-expand')).toHaveLength(1);
     expect(upstream).toHaveAttribute('data-added-tasks', '20');
     expect(upstream).toHaveAttribute('data-added-edges', '20');
     expect(upstream).toHaveAttribute('data-remaining', '20');
     expect(upstream).toHaveAccessibleName('展开前置 20 个任务、20 条依赖，剩余 20 个前置未展开');
+    signal.throwIfAborted();
     upstream.focus();
     await user.keyboard('{Enter}');
     await rendered(view.container, 70, 69);
-    await waitFor(() => { expect(nodeButton('合流任务 · 40 个外部前置')).toHaveFocus(); });
+    await waitFor(() => { expect(joinBody).toHaveFocus(); });
     expect(zoom(view.container)).toBe(0.8);
     expect(open).not.toHaveBeenCalled();
     const downstream = expansion('渐进展开 · 主链交付起点', 'successors');
@@ -609,17 +625,18 @@ describe('progressive task visibility', () => {
     expect(downstream).toHaveAttribute('data-remaining', '0');
     fireEvent.click(downstream);
     await rendered(view.container, 81, 80);
-    await waitFor(() => { expect(nodeButton('渐进展开 · 主链交付起点')).toHaveFocus(); });
-    expect(nodeShell('渐进展开 · 主链交付起点').querySelector('.task-node-expansions')).toBeNull();
-    expect(nodeButton('渐进展开 · 主链交付起点').closest<HTMLElement>('.react-flow__node')!.style.height).toBe('96px');
+    await waitFor(() => { expect(rootBody).toHaveFocus(); });
+    expect(rootShell.querySelector('.task-node-expansions')).toBeNull();
+    expect(rootBody.closest<HTMLElement>('.react-flow__node')!.style.height).toBe('96px');
     fireEvent.click(expansion('合流任务 · 40 个外部前置', 'prerequisites'));
     await rendered(view.container, 101, 100);
     expect(view.container.querySelectorAll('.task-node-expand')).toHaveLength(0);
     expect(view.container.querySelectorAll('.task-node-expansions')).toHaveLength(0);
-    await waitFor(() => { expect(nodeButton('合流任务 · 40 个外部前置')).toHaveFocus(); });
+    await waitFor(() => { expect(joinBody).toHaveFocus(); });
     for (const node of view.container.querySelectorAll<HTMLElement>('.react-flow__node')) expect(node.style.height).toBe('96px');
     expect(progressiveIndex.rootProgress.get(rootId)).toEqual({ total: 61, done: 0, status: 'todo' });
-    const reset = screen.getByRole('button', { name: '收起到概览' });
+    signal.throwIfAborted();
+    const reset = scope.getByRole('button', { name: '收起到概览' });
     await user.click(reset);
     await rendered(view.container, 50, 49);
     expect(reset).toHaveFocus();
@@ -632,6 +649,7 @@ describe('progressive task visibility', () => {
 
   it('retains actual visible IDs through refresh without filling a new overview or stealing focus from details', async () => {
     const view = render(<><button type="button">详情关闭控件</button><TaskGraph index={progressiveIndex} rootId={rootId} selectedTaskId={joinId} onSelectTask={noop} /></>);
+    const { scope, nodeButton, nodeShell, expansion } = controls(view.container);
     await rendered(view.container, 50, 49);
     fireEvent.click(expansion('合流任务 · 40 个外部前置', 'prerequisites'));
     await rendered(view.container, 70, 69);
@@ -639,17 +657,17 @@ describe('progressive task visibility', () => {
     const sourcePosition = fixture.tasks.findIndex((task) => task.id === rootId);
     const addition = { ...fixture.tasks[sourcePosition + 2]!, id: 'new-main', titlePreview: '新增直接后续' };
     const refreshed = buildGraphIndex({ ...fixture, tasks: [...fixture.tasks.slice(0, sourcePosition + 1), addition, ...fixture.tasks.slice(sourcePosition + 1)], summary: { ...fixture.summary, total: 102, todo: 62, blocked: 61 } });
-    const outside = screen.getByRole('button', { name: '详情关闭控件' });
+    const outside = scope.getByRole('button', { name: '详情关闭控件' });
     outside.focus();
     const transform = viewport(view.container).style.transform;
     view.rerender(<><button type="button">详情关闭控件</button><TaskGraph index={refreshed} rootId={rootId} selectedTaskId={joinId} onSelectTask={noop} /></>);
     await rendered(view.container, 70, 69);
     expect(visibleIds(view.container)).toEqual(retainedIds);
-    expect(screen.queryByRole('button', { name: /^新增直接后续，/ })).toBeNull();
+    expect(scope.queryByRole('button', { name: /^新增直接后续，/ })).toBeNull();
     expect(outside).toHaveFocus();
     expect(viewport(view.container).style.transform).toBe(transform);
     expect(nodeShell('合流任务 · 40 个外部前置')).toHaveClass('task-node-selected');
-    const reset = screen.getByRole('button', { name: '收起到概览' });
+    const reset = scope.getByRole('button', { name: '收起到概览' });
     fireEvent.click(reset);
     await rendered(view.container, 50, 49);
     expect(nodeButton('新增直接后续')).toBeTruthy();
@@ -658,6 +676,7 @@ describe('progressive task visibility', () => {
 
   it('recovers graph focus when refresh removes a focused visible card', async () => {
     const view = render(<TaskGraph index={progressiveIndex} rootId={rootId} selectedTaskId={null} onSelectTask={noop} />);
+    const { scope, nodeButton, expansion } = controls(view.container);
     await rendered(view.container, 50, 49);
     fireEvent.click(expansion('合流任务 · 40 个外部前置', 'prerequisites'));
     await rendered(view.container, 70, 69);
@@ -667,11 +686,12 @@ describe('progressive task visibility', () => {
     const refreshed = buildGraphIndex({ ...fixture, tasks, summary: { ...fixture.summary, total: 100, done: 39 } });
     view.rerender(<TaskGraph index={refreshed} rootId={rootId} selectedTaskId={null} onSelectTask={noop} />);
     await rendered(view.container, 69, 68);
-    expect(screen.getByRole('button', { name: '全屏查看' })).toHaveFocus();
+    expect(scope.getByRole('button', { name: '全屏查看' })).toHaveFocus();
   });
 
   it('reveals an offscreen expansion control using intended viewport coordinates before native scroll resets', async () => {
     const view = render(<TaskGraph index={progressiveIndex} rootId={rootId} selectedTaskId={null} onSelectTask={noop} />);
+    const { expansion } = controls(view.container);
     await rendered(view.container, 50, 49);
     await waitFor(() => { expect(zoom(view.container)).toBe(0.8); });
     const button = expansion('合流任务 · 40 个外部前置', 'prerequisites');
