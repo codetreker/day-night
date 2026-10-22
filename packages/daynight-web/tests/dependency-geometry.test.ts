@@ -52,6 +52,37 @@ describe('independent production dependency geometry oracle', () => {
     value.edges[0]!.pieces[1]!.phase = 7.2;
     expect(inspectDependencySnapshot(value, expected).some((failure) => failure.includes('dash phase'))).toBe(true);
   });
+  it('resolves the hosted diagonal SVG endpoint using graph distance after native numeric rounding', () => {
+    const value = snapshot();
+    value.nodes = [{ id: 'source', left: 316, top: 32, right: 536, bottom: 128 }, { id: 'target', left: 600, top: 224, right: 820, bottom: 320 }];
+    const edge = value.edges[0]!;
+    edge.d = 'M536,80 L556,80 Q568,80 575.1355182290425,89.64802464771945 L674.5,224';
+    const original = edge.pieces[0]!;
+    edge.pieces = [
+      { ...original, d: 'M536,80 L556,80 Q568,80 575.1355182290425,89.64802464771945 L586.2503311048174,104.67650402904886' },
+      { ...original, d: 'M0,0 L148.41192626953125,0', line: true, phase: 7,
+        matrix: [0.5946265459060669, 0.8040021061897278, -0.8040021061897278, 0.5946265459060669, 586.2503051757812, 104.67650604248047] },
+    ];
+    value.declaredPieces = 2;
+    const routed: GeometryExpectation = { nodes: expected.nodes, edges: [{ ...expected.edges[0]!, points: [{ x: 536, y: 80 }, { x: 568, y: 80 }, { x: 674.5, y: 224 }] }] };
+    expect(inspectDependencySnapshot(value, routed)).toEqual([]);
+    const gap = structuredClone(value); gap.edges[0]!.pieces[1]!.d = 'M0,0 L148.31192626953125,0';
+    expect(inspectDependencySnapshot(gap, routed).some((failure) => failure.includes('incomplete canonical paint coverage'))).toBe(true);
+    const offRoute = structuredClone(value); offRoute.edges[0]!.pieces[1]!.matrix[4]! += 0.05;
+    expect(inspectDependencySnapshot(offRoute, routed).some((failure) => failure.includes('canonical coverage'))).toBe(true);
+    const phase = structuredClone(value); phase.edges[0]!.pieces[1]!.phase = 7.2;
+    expect(inspectDependencySnapshot(phase, routed).some((failure) => failure.includes('dash phase'))).toBe(true);
+  });
+  it('rejects real endpoint gaps on long lines without a length-dependent parameter allowance', () => {
+    const value = snapshot();
+    value.nodes[1] = { id: 'target', left: 68000100, top: 0, right: 68000200, bottom: 100 };
+    value.edges[0]!.d = 'M100,50 L68000100,50';
+    value.edges[0]!.pieces[0] = { ...value.edges[0]!.pieces[0]!, d: 'M0,0 L68000000,0', line: true, matrix: [1, 0, 0, 1, 100, 50] };
+    const routed: GeometryExpectation = { nodes: expected.nodes, edges: [{ ...expected.edges[0]!, points: [{ x: 100, y: 50 }, { x: 68000100, y: 50 }] }] };
+    expect(inspectDependencySnapshot(value, routed)).toEqual([]);
+    value.edges[0]!.pieces[0]!.d = 'M0,0 L67999999.9,0';
+    expect(inspectDependencySnapshot(value, routed).some((failure) => failure.includes('incomplete canonical paint coverage'))).toBe(true);
+  });
   it('bounds a quadratic arc independently and handles enormous straight distances without sampling them', () => {
     const segment = parseCurve('M0,0 Q0,1 1,1')[0]!;
     const exact = 1 + Math.asinh(1) / Math.SQRT2;

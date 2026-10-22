@@ -480,36 +480,39 @@ describe('task dependency canvas', () => {
     expect(container.querySelectorAll('.react-flow__node')).toHaveLength(10);
   });
 
-  it.each(['body', 'details'])('pans an offscreen keyboard-focused %s control into view while preserving zoom', async (control) => {
-    const view = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
-    await ready(view.container);
-    const button = control === 'body' ? nodeButton('最终验收') : detailsButton('最终验收');
-    const originalMatches = button.matches.bind(button);
-    const focused = vi.spyOn(button, 'matches').mockImplementation((selector) => selector === ':focus-visible' || originalMatches(selector));
-    const bounds = vi.fn(() => new DOMRect(2000, 10, 220, 96));
-    Object.defineProperty(button.closest('.task-node')!, 'getBoundingClientRect', { value: bounds, configurable: true });
-    const before = viewport(view.container).style.transform;
-    const beforeZoom = zoom(view.container);
-    fireEvent.focus(button);
-    expect(focused).toHaveBeenCalledWith(':focus-visible');
-    expect(bounds).toHaveBeenCalled();
-    await waitFor(() => { expect(viewport(view.container).style.transform).not.toBe(before); });
-    expect(zoom(view.container)).toBe(beforeZoom);
-  });
-
-  it('leaves visible keyboard focus and pointer focus stable', async () => {
-    const view = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
-    await ready(view.container);
-    const button = nodeButton('基础 API');
-    const originalMatches = button.matches.bind(button);
-    const focused = vi.spyOn(button, 'matches').mockImplementation((selector) => selector === ':focus-visible' || originalMatches(selector));
-    const bounds = vi.fn(() => new DOMRect(20, 20, 220, 96));
-    Object.defineProperty(button.closest('.task-node')!, 'getBoundingClientRect', { value: bounds, configurable: true });
+  it.each(['body', 'details'])('reveals an offscreen keyboard-focused %s control despite temporary native focus scrolling', async (control) => {
+    const tasks = Array.from({ length: 10 }, (_, position) => ({
+      ...graph.tasks[0]!, id: `N${position}`, titlePreview: `任务 ${position}`, status: 'todo' as const,
+      dependsOn: position === 0 ? [] : [`N${position - 1}`],
+      blockedBy: position === 0 ? [] : [`N${position - 1}`], ready: position === 0,
+    }));
+    const longChain = buildGraphIndex({ ...graph, tasks, summary: { total: 10, todo: 10, inProgress: 0, done: 0, ready: 1, blocked: 9 } });
+    const view = render(<TaskGraph index={longChain} rootId="N0" onOpenTask={noop} />);
+    await waitFor(() => { expect(zoom(view.container)).toBe(0.8); });
+    const button = control === 'body' ? nodeButton('任务 9') : detailsButton('任务 9');
+    const focused = vi.spyOn(button, 'matches').mockReturnValue(false);
     const before = viewport(view.container).style.transform;
     fireEvent.focus(button);
     expect(viewport(view.container).style.transform).toBe(before);
-    focused.mockImplementation((selector) => selector !== ':focus-visible' && originalMatches(selector));
-    bounds.mockReturnValue(new DOMRect(2000, 0, 220, 96));
+    const flow = view.container.querySelector<HTMLElement>('.react-flow')!;
+    flow.scrollLeft = 2000;
+    Object.defineProperty(flow, 'scrollTo', { value: (options: ScrollToOptions) => { flow.scrollLeft = options.left!; flow.scrollTop = options.top!; }, configurable: true });
+    Object.defineProperty(button.closest('.task-node')!, 'getBoundingClientRect', { value: () => new DOMRect(20, 20, 220, 96), configurable: true });
+    const beforeZoom = zoom(view.container);
+    focused.mockImplementation((selector) => selector === ':focus-visible');
+    fireEvent.focus(button);
+    fireEvent.scroll(flow);
+    await waitFor(() => { expect(viewport(view.container).style.transform).not.toBe(before); });
+    expect(flow.scrollLeft).toBe(0);
+    expect(zoom(view.container)).toBe(beforeZoom);
+  });
+
+  it.each(['body', 'details'])('keeps the intended viewport stable for an already visible keyboard-focused %s control', async (control) => {
+    const view = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    await ready(view.container);
+    const button = control === 'body' ? nodeButton('基础 API') : detailsButton('基础 API');
+    vi.spyOn(button, 'matches').mockImplementation((selector) => selector === ':focus-visible');
+    const before = viewport(view.container).style.transform;
     fireEvent.focus(button);
     expect(viewport(view.container).style.transform).toBe(before);
   });

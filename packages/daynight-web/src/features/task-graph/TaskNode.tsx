@@ -1,7 +1,7 @@
 import { memo, type FocusEvent } from 'react';
 import { useReactFlow, type Node, type NodeProps } from '@xyflow/react';
 import type { GraphTask } from '../../api/types';
-import type { CanvasPoint } from './layout';
+import { TASK_NODE_HEIGHT, TASK_NODE_WIDTH, type CanvasPoint } from './layout';
 
 export type InspectionState = 'normal' | 'selected' | 'prerequisite' | 'unrelated';
 
@@ -25,11 +25,14 @@ export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
   const title = `${data.task.titlePreview}${data.task.titleTruncated ? '…' : ''}`;
   const revealOnFocus = (event: FocusEvent<HTMLButtonElement>) => {
     if (!event.currentTarget.matches(':focus-visible')) return;
-    const nodeBounds = event.currentTarget.closest('.task-node')!.getBoundingClientRect();
-    const viewportBounds = event.currentTarget.closest('.task-graph-canvas')!.getBoundingClientRect();
-    if (nodeBounds.left < viewportBounds.left || nodeBounds.top < viewportBounds.top ||
-      nodeBounds.right > viewportBounds.right || nodeBounds.bottom > viewportBounds.bottom) {
-      void setCenter(data.center.x, data.center.y, { zoom: getViewport().zoom, duration: 0 });
+    const bounds = event.currentTarget.closest('.task-graph-canvas')!.getBoundingClientRect();
+    const { x, y, zoom } = getViewport();
+    // Native focus can temporarily scroll React Flow's overflow container before
+    // its scroll handler resets it. Layout coordinates retain the intended view.
+    const left = x + (data.center.x - TASK_NODE_WIDTH / 2) * zoom;
+    const top = y + (data.center.y - TASK_NODE_HEIGHT / 2) * zoom;
+    if (left < 0 || top < 0 || left + TASK_NODE_WIDTH * zoom > bounds.width || top + TASK_NODE_HEIGHT * zoom > bounds.height) {
+      void setCenter(data.center.x, data.center.y, { zoom, duration: 0 });
     }
   };
   return (

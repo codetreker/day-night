@@ -215,7 +215,7 @@ declare const layoutGraph: (projection: RootProjection) => CanvasLayout;
 
 依据：[React Flow 布局指南](https://reactflow.dev/learn/layouting/layouting)、[Dagre 示例](https://reactflow.dev/examples/layout/dagre)、[可访问性](https://reactflow.dev/learn/advanced-use/accessibility)、[Vue Flow](https://vueflow.dev/guide/)、[Vite 构建](https://vite.dev/guide/build)。Dagre 对外联子图的限制针对嵌套分组；这里每个根条目是独立平面图，不使用嵌套 subflow。
 
-React Flow 固定为 12.12.0，拥有 220×96 节点、原生测量、视口、背景与控件。关闭 wrapper 焦点与所有编辑入口，控件不提供解锁开关。每张卡片由非交互外壳和两个兄弟原生按钮组成：主体以鼠标、Enter 或空格切换依赖选择，“详情”打开详情侧栏。两个控件的键盘聚焦均可平移到离屏节点，保留缩放。卡片的 `data-inspection` 为 `normal`、`selected`、`prerequisite` 或 `unrelated`，主体通过 `aria-pressed` 表达当前选择，详情通过 `aria-haspopup="dialog"` 表达阅读入口。
+React Flow 固定为 12.12.0，拥有 220×96 节点、原生测量、视口、背景与控件。关闭 wrapper 焦点与所有编辑入口，控件不提供解锁开关。每张卡片由非交互外壳和两个兄弟原生按钮组成：主体以鼠标、Enter 或空格切换依赖选择，“详情”打开详情侧栏。两个控件的键盘聚焦均可平移到离屏节点，保留缩放。可见性由布局中心、固定节点尺寸及当前 viewport 的 x/y/zoom 相对画布尺寸计算；原生 focus 可短暂滚动 hidden-overflow 容器，随后 React Flow 归零该滚动，因此不能用此时任务 DOM 的边界判断可见。布局坐标不受该临时滚动影响；鼠标聚焦和已可见卡片的键盘聚焦保持视口，不通过 timer 或修改原生滚动位置修正。卡片的 `data-inspection` 为 `normal`、`selected`、`prerequisite` 或 `unrelated`，主体通过 `aria-pressed` 表达当前选择，详情通过 `aria-haspopup="dialog"` 表达阅读入口。
 
 `TaskGraph` 保存当前挂载画布的依赖选择；`tracePrerequisites(index, taskId)` 迭代返回所选任务和全部祖先，未知 ID 显式失败。依赖边的终点位于该闭包时高亮，源也必在闭包。选中任务与前置采用不同边框和底色，无关任务适度淡化，保留状态色、阻塞、共享和完成信息。再次选择同一任务或点击空白清除选择。详情资源选择归 `ProjectPage`，`onOpenTask(id, trigger)` 只打开或切换详情；关闭与关系导航不改变依赖选择。
 

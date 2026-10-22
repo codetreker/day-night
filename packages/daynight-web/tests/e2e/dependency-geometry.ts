@@ -72,10 +72,15 @@ const roots = (a: number, b: number, c: number): number[] => {
   return q === 0 ? [-b / (2 * a)] : [q / a, c / q];
 };
 const parameters = (s: Segment, p: Point): number[] => {
+  // SVG numeric DOM values and transformed matrices can round a painted endpoint
+  // to either side of its canonical endpoint. Resolve that boundary in graph
+  // units; a fixed parameter tolerance would vary with the segment's length.
+  if (distance(s.to, p) <= epsilon) return [1];
+  if (distance(s.from, p) <= epsilon) return [0];
   const axis = Math.abs(s.to.x - s.from.x) >= Math.abs(s.to.y - s.from.y) ? 'x' : 'y';
   return (s.kind === 'L' ? [(p[axis] - s.from[axis]) / (s.to[axis] - s.from[axis])]
     : roots(s.from[axis] - 2 * s.control![axis] + s.to[axis], 2 * (s.control![axis] - s.from[axis]), s.from[axis] - p[axis]))
-    .filter((t) => t >= -1e-8 && t <= 1 + 1e-8 && distance(at(s, t), p) <= epsilon).map((t) => Math.max(0, Math.min(1, t))).sort((a, b) => a - b);
+    .filter((t) => t >= 0 && t <= 1 && distance(at(s, t), p) <= epsilon).sort((a, b) => a - b);
 };
 const slice = (s: Segment, from: number, to: number): Segment => {
   const start = at(s, from); const end = at(s, to);
@@ -163,13 +168,13 @@ export const inspectDependencySnapshot = (snapshot: DependencySnapshot, expected
           const actual: Segment = { ...segment, from: transform(segment.from, paint.matrix), to: transform(segment.to, paint.matrix), ...(segment.control === undefined ? {} : { control: transform(segment.control, paint.matrix) }) };
           const canonical = route[index];
           if (canonical === undefined || distance(actual.from, at(canonical, t)) > epsilon || actual.kind !== canonical.kind) throw new Error('paint loses canonical coverage');
-          const end = parameters(canonical, actual.to).find((candidate) => candidate > t + 1e-10);
+          const end = parameters(canonical, actual.to).find((candidate) => candidate > t);
           if (end === undefined) throw new Error('paint leaves canonical route');
           const reference = slice(canonical, t, end);
           if (actual.control !== undefined && distance(actual.control, reference.control!) > epsilon) throw new Error('paint curve differs from canonical curve');
           covered += referenceLength(reference);
           t = end;
-          if (t >= 1 - 1e-8) { index++; t = 0; }
+          if (t === 1) { index++; t = 0; }
         }
       }
       if (expectation.external && (index !== route.length || t !== 0)) fail(edge.id, 'incomplete canonical paint coverage');

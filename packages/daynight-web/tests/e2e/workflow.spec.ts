@@ -362,6 +362,10 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
       await expect(page.locator('.task-node-selected')).toHaveCount(0);
       await page.keyboard.press('Tab');
       for (const task of [ancestor, prerequisite, source, sink]) {
+        await node(page, task.id).focus();
+        await expect.poll(() => visibleInCanvas(task.id)).toBe(true);
+        await page.keyboard.press('Enter');
+        await expect(node(page, task.id)).toHaveAttribute('aria-pressed', 'true');
         await details(page, task.id).focus();
         await expect.poll(() => visibleInCanvas(task.id)).toBe(true);
         await page.keyboard.press('Enter');

@@ -17,8 +17,15 @@ Each graph card has a noninteractive shell with sibling native controls. The
 body toggles graph-local dependency inspection and exposes `aria-pressed`; the
 Details action exposes `aria-haspopup="dialog"` and opens the existing drawer.
 Mouse, Enter and Space activate the focused control. Both controls retain
-keyboard offscreen-node positioning. Standalone rows continue to open details
-directly. The project page owns detail resource selection, while the mounted
+keyboard offscreen-node positioning. Visibility is computed from the task
+layout center, fixed dimensions and current React Flow viewport against the
+canvas size. Native focus can temporarily scroll the hidden-overflow container
+before React Flow resets that scroll; task DOM bounds during focus can therefore
+appear visible and then move offscreen. Layout coordinates retain the intended
+view and let either control pan into view at the current readable zoom without
+timers or native-scroll mutations. Pointer focus and keyboard focus on an already
+visible card leave the viewport unchanged. Standalone rows continue to open
+details directly. The project page owns detail resource selection, while the mounted
 graph owns inspection; detail opening, closing and relation navigation do not
 change inspection, graph coordinates or viewport.
 

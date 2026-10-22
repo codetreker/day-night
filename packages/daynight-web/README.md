@@ -159,8 +159,13 @@ closes details before exiting fullscreen. Both views share a counted body scroll
 lock so either unmount order restores the original scrolling state. Fullscreen
 is local to the mounted graph and is not saved as a browsing preference. The
 [fullscreen decision](../../.agents/notes/implemented/feature/2026-10-22-task-graph-fullscreen.md)
-records the modal and viewport ownership. Each node is one native keyboard button. A long graph starts with its
-root visible at readable zoom; keyboard focus brings offscreen nodes into view.
+records the modal and viewport ownership. Each node has sibling native inspection
+and Details buttons. Initial placement exposes the root or leftmost upstream
+context at readable zoom; keyboard focus on either control brings an offscreen
+card into view without changing zoom. Visibility uses layout coordinates and the
+current viewport, because native focus can temporarily scroll the overflow
+container before React Flow resets its scroll. Pointer focus and keyboard focus
+on an already visible card preserve the viewport.
 The portal drawer locks background focus and scrolling, supports Escape and Tab,
 and restores a surviving original trigger or a visible control in the active task view on close. Focusable
 controls are enumerated with `tabbable` 6.5.0 using its normal browser visibility
