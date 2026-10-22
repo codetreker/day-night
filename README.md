@@ -1007,20 +1007,23 @@ A configuration with an explicit addition root is:
 ```yaml
 repositoryRoot: ~/daynights
 copilotModel: auto
+copilotReasoningEffort: high
 repositories:
   - remote: https://github.com/OWNER/REPO.git
     path: /home/alice/daynights/github.com/owner/repo
 ```
 
-`copilotModel` is optional and applies to all review repositories in the running
-process. When set, it must be a string containing non-whitespace text and no NUL;
-null and other value types are rejected. The original string is preserved, and
-Copilot determines whether the requested model is available. `auto` delegates
-selection to Copilot. Omitting the field sends no `--model` argument and preserves
-Copilot's own model selection. Changes take effect on the next `review run`
-startup; setup and repository registration preserve the field and YAML comments.
-The server configuration projection recognizes this shared key without validating
-its review-owned value.
+`copilotModel` and `copilotReasoningEffort` are independent optional fields for
+all review repositories in the running process. Each configured value must be a
+string containing non-whitespace text and no NUL; null and other value types are
+rejected. Accepted strings are preserved exactly. Copilot owns model availability,
+effort levels and model/effort compatibility; Daynight maintains no static lists.
+`auto` delegates model selection to Copilot. Omitting either field sends no
+corresponding override and preserves Copilot's choice, so neither, either or both
+may be configured. Changes take effect on the next `review run` startup. Setup
+and repository registration preserve both fields and YAML comments. The server
+configuration projection recognizes these shared keys without validating their
+review-owned values.
 
 `repositoryRoot` defaults to `~/daynights`. It is used only when `add-repo` has no
 `--path`: the command derives filesystem-safe components from the normalized
@@ -1236,12 +1239,14 @@ same session thereafter. An interrupted first launch also resumes existing
 history; missing established history is an error. Only opaque session-directory
 presence is inspected. Copilot history and agent JSONL are not parsed.
 
-When `copilotModel` is configured, every review child receives separate `--model`
-and model-value arguments, including new sessions, resumes, retries and later PR
-revisions. Skill discovery receives no model override. The value passes through
-the existing `shell: false` execution path; unsupported or unavailable models
-retain Copilot's normal failure result and the existing attempt/error handling.
-The [model configuration decision](.agents/notes/implemented/feature/2026-10-22-review-copilot-model.md)
+Every review child receives configured `copilotModel` as separate `--model` and
+value arguments, and configured `copilotReasoningEffort` as separate
+`--reasoning-effort` and value arguments. New sessions, resumes, retries and later
+PR revisions use the same construction. Skill discovery receives neither override.
+Values pass through the existing `shell: false` execution path; unsupported or
+unavailable models, effort levels or combinations retain Copilot's normal failure
+result and the existing attempt/error handling. The
+[model options decision](.agents/notes/implemented/feature/2026-10-22-review-copilot-model.md)
 records the validation and default-selection choices.
 
 Prompts travel through stdin in noninteractive mode. `cross-spawn` handles native

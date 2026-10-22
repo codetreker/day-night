@@ -17,6 +17,7 @@ export const supportedConfigurationFields = [
   "maxAttempts",
   "retryDelayMs",
   "copilotModel",
+  "copilotReasoningEffort",
 ] as const;
 
 export const parseConfigurationDocument = (

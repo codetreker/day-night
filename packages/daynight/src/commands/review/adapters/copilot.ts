@@ -42,6 +42,7 @@ export type CopilotRunnerOptions = {
   processOwner: string;
   timeoutMs: number;
   model?: string;
+  reasoningEffort?: string;
   terminationGraceMs?: number;
   maxLineCharacters?: number;
   maxDiscoveryBytes?: number;
@@ -302,7 +303,8 @@ export const createCopilotRunner = (options: CopilotRunnerOptions) => {
       mainStarted = true;
       await runPhase("review", [...prefix, `--${mode === "resume" ? "resume" : "session-id"}=${pr.sessionId}`, "-s", "--output-format", "text", "--stream", "on", "--no-color",
         "--no-ask-user", "--no-auto-update", "--allow-all-tools", "--log-dir", attemptDirectory,
-        ...(options.model === undefined ? [] : ["--model", options.model])], parser, [stdoutFile, stderrFile], reviewPrompt(launched, worktree, coordinate, options.skill, input.publisherId, input.publicationIdentityFormat, input.previousReview));
+        ...(options.model === undefined ? [] : ["--model", options.model]),
+        ...(options.reasoningEffort === undefined ? [] : ["--reasoning-effort", options.reasoningEffort])], parser, [stdoutFile, stderrFile], reviewPrompt(launched, worktree, coordinate, options.skill, input.publisherId, input.publicationIdentityFormat, input.previousReview));
       outcome.lastNonemptyLine = parser.lastNonempty;
       try {
         if (await sessionExists(sessionDirectory)) store.markSessionEstablished(pr);

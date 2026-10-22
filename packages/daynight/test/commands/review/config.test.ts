@@ -41,6 +41,22 @@ describe("YAML configuration", () => {
     expect(() => parse(`copilotModel: ${value}\n${repositoryYaml()}`)).toThrow("copilotModel must be a nonempty string without NUL characters");
   });
 
+  it.each(["none", "xhigh", "future-effort", ' effort $(literal) & | %PATH% "quote" '])("preserves opaque reasoning effort without requiring a model: %j", (effort) => {
+    expect(parse(`copilotReasoningEffort: ${JSON.stringify(effort)}\n${repositoryYaml()}`)).toEqual({
+      ...parse(repositoryYaml()), copilotReasoningEffort: effort,
+    });
+  });
+
+  it("retains both independent Copilot settings", () => {
+    expect(parse(`copilotModel: auto\ncopilotReasoningEffort: high\n${repositoryYaml()}`)).toEqual({
+      ...parse(repositoryYaml()), copilotModel: "auto", copilotReasoningEffort: "high",
+    });
+  });
+
+  it.each(["null", "", '""', '" \\t "', "42", "true", "[]", "{}", '"effort\\u0000name"'])("rejects invalid explicit Copilot reasoning effort values: %s", (value) => {
+    expect(() => parse(`copilotReasoningEffort: ${value}\n${repositoryYaml()}`)).toThrow("copilotReasoningEffort must be a nonempty string without NUL characters");
+  });
+
   it("explains how to configure review when only server access is configured", () => {
     expect(() => parse("serverUrl: http://localhost:8787\n")).toThrow("Review repositories are not configured; use daynight setup --review-repo <remote>");
     expect(() => parse("serverUrl: http://localhost:8787\nmaxConcurrentWorker: 0\n")).toThrow("maxConcurrentWorker must be a positive safe integer");

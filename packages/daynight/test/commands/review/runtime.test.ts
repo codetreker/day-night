@@ -61,14 +61,17 @@ describe("foreground runtime ownership", () => {
     const reopened = openStore(paths.databaseFile); reopened.close();
   });
 
-  it("forwards the configured model when constructing the startup runner", async () => {
-    const { configuration, paths } = input("copilot-model");
-    const model = "future-provider/model-v9";
+  it.each([
+    { name: "model", settings: { copilotModel: "future-provider/model-v9" }, runnerOptions: { model: "future-provider/model-v9" } },
+    { name: "effort", settings: { copilotReasoningEffort: "high" }, runnerOptions: { reasoningEffort: "high" } },
+    { name: "both", settings: { copilotModel: "auto", copilotReasoningEffort: "future-effort" }, runnerOptions: { model: "auto", reasoningEffort: "future-effort" } },
+  ])("forwards independent Copilot settings when constructing the startup runner: $name", async ({ name, settings, runnerOptions }) => {
+    const { configuration, paths } = input(`copilot-${name}`);
     const deps = dependencies(async () => ({ safeToReleaseLock: true }));
     deps.createRunner = vi.fn(createCopilotRunner);
-    await runForegroundReview({ ...configuration, copilotModel: model }, paths, { packageDirectory, dependencies: deps, log: () => {} });
+    await runForegroundReview({ ...configuration, ...settings }, paths, { packageDirectory, dependencies: deps, log: () => {} });
     expect(deps.createRunner).toHaveBeenCalledExactlyOnceWith({
-      paths, skill: expect.objectContaining({ name: "daynight-review" }), processOwner: expect.any(String), timeoutMs: configuration.agentTimeoutMs, model,
+      paths, skill: expect.objectContaining({ name: "daynight-review" }), processOwner: expect.any(String), timeoutMs: configuration.agentTimeoutMs, ...runnerOptions,
     });
     await expect(readFile(paths.lockFile)).rejects.toMatchObject({ code: "ENOENT" });
   });

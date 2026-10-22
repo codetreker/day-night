@@ -39,9 +39,9 @@ line. Copilot home, cache, diagnostics and temporary files use runtime paths;
 existing home, GitHub CLI configuration and authentication environment remain
 available. Copilot's documented authenticated-`gh` fallback avoids copying
 credentials into application state or prompts. The
-[model configuration decision](../feature/2026-10-22-review-copilot-model.md)
-extends only the formal review child with an optional model argument from the
-startup configuration, including when resuming or retrying. Skill discovery,
+[model options decision](../feature/2026-10-22-review-copilot-model.md) extends
+only the formal review child with independent optional model and reasoning-effort
+arguments from startup configuration, including when resuming or retrying. Skill discovery,
 session ownership and process supervision retain their existing behavior.
 
 The adapter reuses the Git manager's environment isolation before applying the

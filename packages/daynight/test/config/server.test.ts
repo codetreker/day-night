@@ -39,6 +39,10 @@ describe("server configuration projection", () => {
     expect(parseServerConfiguration(`serverUrl: http://localhost:8787\ncopilotModel: ${value}\n`, paths)).toEqual({ serverUrl: "http://localhost:8787" });
   });
 
+  it.each(["null", "42", "true", "[]", "{}", '""', '"effort\\u0000name"'])("leaves invalid Copilot reasoning effort values to review: %s", (value) => {
+    expect(parseServerConfiguration(`serverUrl: http://localhost:8787\ncopilotReasoningEffort: ${value}\n`, paths)).toEqual({ serverUrl: "http://localhost:8787" });
+  });
+
   it("reports the configuration filename, server field and original URL parse error", () => {
     try {
       parseServerConfiguration("serverUrl: http://[invalid", paths);

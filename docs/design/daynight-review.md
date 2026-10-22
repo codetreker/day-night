@@ -48,6 +48,7 @@ agentTimeoutMs: 1800000
 maxAttempts: 3
 retryDelayMs: 30000
 copilotModel: auto
+copilotReasoningEffort: high
 repositories:
   - remote: https://github.com/OWNER/REPO.git
     path: /home/alice/daynights/github.com/owner/repo
@@ -62,14 +63,16 @@ repositories:
 仍报错。添加命令及 setup 允许已有文件缺少 `repositories`，校验现有 review 设置后
 建立首个完整列表；显式传入无效 review 值仍须拒绝。
 
-`copilotModel` 是可选的 review 顶层字段，示例中的 `auto` 不是默认值。已有
-`nonEmptyString` 校验拒绝非字符串、null、空串、纯空白和 NUL，保留合法字符串
-原值，不维护型号枚举。省略字段时不添加 `--model`，继续使用 Copilot 自身的模型
-选择；显式 `auto` 由 Copilot 自动选择。模型名称与账户可用性由 Copilot 判断。
-运行时在启动读取的全局配置中固定此值，适用于全部仓库，文件修改在下次启动生效。
-共享 YAML 键清单识别它，server 投影仍只校验自己的字段；setup 和仓库登记通过
-既有文档节点写入机制保留模型字段与注释。验证、默认语义和参数归属由
-[模型配置决策](../../.agents/notes/implemented/feature/2026-10-22-review-copilot-model.md)记录。
+`copilotModel` 和 `copilotReasoningEffort` 是两个独立的可选 review 顶层字符串。
+示例中的 `auto` 和 `high` 均不是默认值。两者都复用 `nonEmptyString` 校验，拒绝
+非字符串、null、空串、纯空白和 NUL，保留合法字符串原值，不维护静态枚举。
+模型名称、账户可用性、推理强度等级及模型兼容性由 Copilot 判断；显式 `auto` 交由
+Copilot 自动选择模型。两个字段均可省略，或只设置一项，或同时设置；省略项不增加
+对应 flag，继续使用 Copilot 自身的选择。运行时在启动读取的全局配置中固定这两个
+值，适用于全部仓库，文件修改在下次启动生效。共享 YAML 键清单识别它们，server
+投影仍只校验自己的字段；setup 和仓库登记通过既有文档节点写入机制保留字段与注释。
+验证、默认语义和参数归属由
+[模型选项决策](../../.agents/notes/implemented/feature/2026-10-22-review-copilot-model.md)记录。
 
 `repositoryRoot` 默认是 `~/daynights`，仅属于添加命令的路径选择。根目录接受本机
 绝对路径、配置目录相对路径，以及 `~` 或 `~/...` 形式的当前用户主目录展开；不支持
@@ -520,13 +523,19 @@ copilot -C WORKTREE --plugin-dir=SNAPSHOT --session-id UUID \
   --no-ask-user --no-auto-update --allow-all-tools --log-dir ATTEMPT_LOG_DIR
 ```
 
-仅当启动配置存在 `copilotModel` 时，adapter 的同一正式审查 argv 构造路径添加两个
-独立参数 `--model`、原始字段值；新会话、`--resume=FULL_UUID`、重试和后续修订
-均使用该值。skill discovery 不接收模型参数。该字段不保存到 SQLite 或会话状态，
-不改变 PR 会话 UUID、修订、重试预算和进程监督。模型不支持或当前账户不可用时，
-Copilot 的退出结果、输出及既有错误流程继续暴露失败。官方
-[固定版本参数文档](https://github.com/github/docs/blob/5815d11586b0796688963a98c889680e60d72dc4/content/copilot/reference/copilot-cli-reference/cli-command-reference.md#L710)
-定义模型覆盖和 `auto`，型号可用性归 Copilot 所有。
+adapter 的同一正式审查 argv 构造路径独立处理两个启动配置字段：存在
+`copilotModel` 时添加 `--model` 和原始值，存在 `copilotReasoningEffort` 时添加
+`--reasoning-effort` 和原始值，各 flag 与值都是独立参数。新会话、
+`--resume=FULL_UUID`、重试和后续修订均使用这一路径，skill discovery 不接收任一
+覆盖参数。两个字段不保存到 SQLite 或会话状态，不改变 PR 会话 UUID、修订、
+重试预算和进程监督。模型或强度不支持、账户不可用或组合不兼容时，Copilot 的退出
+结果、输出及既有错误流程继续暴露失败。官方
+[模型参数文档](https://github.com/github/docs/blob/5815d11586b0796688963a98c889680e60d72dc4/content/copilot/reference/copilot-cli-reference/cli-command-reference.md#L710)
+定义模型覆盖和 `auto`，
+[推理强度参数文档](https://github.com/github/docs/blob/5815d11586b0796688963a98c889680e60d72dc4/content/copilot/reference/copilot-cli-reference/cli-command-reference.md#L694)
+定义强度覆盖及别名；
+[程序调用参考](https://github.com/github/docs/blob/5815d11586b0796688963a98c889680e60d72dc4/content/copilot/reference/copilot-cli-reference/cli-programmatic-reference.md#L178)
+说明仅部分模型支持推理强度。可用等级与兼容性归 Copilot 所有。
 
 提示词通过 stdin 传入并关闭输入。Copilot 将管道输入作为非交互模式处理；不同时提供
 `-p`，避免提示词进入 Windows 命令行并受长度和转义限制。使用 `cross-spawn` 解析
@@ -729,8 +738,8 @@ review 测试覆盖组与操作参数、帮助、编译后的入口、仓库添�
 受控 API 和子进程验证完整分页、失败保留、限流、关闭确认和观测事务回滚。真实 Git
 fixtures 验证克隆、私有 refs、detached head、dirty 内容、所有权、浅克隆、子模块及
 其他 PR 工作区保留。Copilot 测试使用受控可执行文件和真实 SQLite，验证会话选择、
-启动意图、stdin 提示词、模型参数在新建/恢复/重试/修订中的独立传递及省略语义、
-skill 发现不接收模型覆盖、精确路径选择、分流日志、两阶段的预算/截止时间/
+启动意图、stdin 提示词、模型与推理强度在新建/恢复/重试/修订中的独立参数传递、
+均省略/仅模型/仅强度/同时设置四种组合、skill 发现不接收两种覆盖、精确路径选择、分流日志、两阶段的预算/截止时间/
 取消/进程排除、完成标记及异常输出，不调用真实模型或发布 review。质量门槛的提示词
 断言覆盖优先恢复既有发布、保留 approval、新发布前重评当前标题和 description、
 `COMMENT` 必须有原生 thread，以及两项门槛通过且没有 Critical/Major 才能批准。
@@ -792,9 +801,10 @@ Promise，防止重复获得清理预算。120 秒 setup、40 秒 teardown、600
 独立的 `pnpm acceptance` 先打包，再在临时 consumer 中正常安装，驱动实际生成的
 `daynight` bin。真实 SQLite 和本地 Git 配合受控的原生 gh 执行文件及 Copilot 命令
 包装脚本，验证配置登记、根目录变更后保留既有路径、本地审查列表，以及完整的审查、
-重试、重启和关闭清理流程；模型配置从 YAML 经运行时到新建/恢复进程 argv 的
-传递由安装后的原生受控 Copilot 记录验证，测试不替换产品内部依赖。该证据证明参数
-传递与会话编排，不证明真实模型能力或账户可用性。
+重试、重启和关闭清理流程；模型和推理强度从 YAML 经运行时到新建/恢复进程 argv
+的传递，以及 skill 发现不接收任一覆盖，由安装后的原生受控 Copilot 记录验证，
+测试不替换产品内部依赖。该证据证明参数传递与会话编排，不发起真实模型请求，
+不证明模型能力、强度支持或账户可用性。
 该审查生命周期安装步骤需要包注册表访问，使用本地 consumer，也不需要真实 review 凭据。
 客户端的[自更新验收](daynight.md#验证与交付)独立验证真实 npm 全局安装的替换与归属。
 CI 只上传精选的工具版本清单、审查生命周期 receipt 和 `.tmp/update-evidence.json`。
@@ -824,7 +834,7 @@ COMMENT 在丢失 marker 后，按旧 token/head 找到实际 actor，再保留�
 | 审查指令 | 读取当前标题、description 及相关范围需求；检查完整捕获 diff；description 与范围独立阻断批准；发布或确认前重评；只在门槛通过且没有 Critical/Major 时批准 |
 | 审查列表 | `review list` 与 `review ls` 等价、配置仓库顺序和 PR 编号排序、Draft 与仍 Open 的完成或失败记录、永久边界过滤、最新修订和旧活跃审查分别归属、重试及错误、待清理屏障与清理错误、最后完整观测时间、缺失状态不创建数据库、无效数据库报错、运行中只读一致快照 |
 | CLI 生命周期 | 审查期间继续轮询；准备、执行和清理的操作预留；抑制失败修订；`maxConcurrentWorker` 并发上限；Ctrl+C；拒绝第二个实例；异常退出后的失效锁自动接管；锁状态含糊时拒绝；中断审查及待清理资源阻塞与诊断 |
-| 配置与目录 | 固定的 `~/.daynight/config.yml`、严格 YAML、可选 `copilotModel` 的非空字符串原值/省略/无效值及投影隔离、setup/仓库登记保留模型字段与注释、启动时固定模型设置、缺少文件或仓库字段时按需引导及恢复、非交互 setup 指引、无效已有 review 值及共享文档错误报错、添加时创建配置和保留注释、全局根目录仅在添加时生成固定绝对路径、显式路径按当前目录解析、重复添加幂等及冲突、配置写锁和失败保留、不同启动目录复用状态、手写相对路径按配置目录解析、按实际文件系统规则检查重复与重叠路径、探测目录清理和失败报告；用注入的主目录解析结果隔离测试文件 |
+| 配置与目录 | 固定的 `~/.daynight/config.yml`、严格 YAML、独立可选 `copilotModel`/`copilotReasoningEffort` 的非空字符串原值、四种设置组合、无效值及投影隔离、setup/仓库登记保留字段与注释、启动时固定模型选项、缺少文件或仓库字段时按需引导及恢复、非交互 setup 指引、无效已有 review 值及共享文档错误报错、添加时创建配置和保留注释、全局根目录仅在添加时生成固定绝对路径、显式路径按当前目录解析、重复添加幂等及冲突、配置写锁和失败保留、不同启动目录复用状态、手写相对路径按配置目录解析、按实际文件系统规则检查重复与重叠路径、探测目录清理和失败报告；用注入的主目录解析结果隔离测试文件 |
 | 平台 | `daynight review run`、各平台用户主目录和路径分隔符、含空格或 Unicode 的路径、Windows CLI 命令包装脚本、每个受支持系统上的子进程终止和最终输出 |
 
 需要在获得授权的测试仓库中实际运行 Copilot 与 GitHub，才能证明真实的会话续接、
