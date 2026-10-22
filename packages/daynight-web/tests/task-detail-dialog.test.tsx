@@ -10,8 +10,9 @@ import { buildGraphIndex } from '../src/features/task-graph/model';
 const render = createLocaleRender('zh-CN');
 
 vi.mock('../src/features/task-detail/attachments/TaskAttachments', () => ({
-  TaskAttachments: ({ projectId, taskId }: { readonly projectId: string; readonly taskId: string }) => <section aria-label="附件" data-project-id={projectId} data-task-id={taskId}><input aria-label="附件草稿" defaultValue="" /></section>,
+  TaskAttachmentsPanel: ({ projectId, taskId }: { readonly projectId: string; readonly taskId: string }) => <section aria-label="附件" data-project-id={projectId} data-task-id={taskId}><input aria-label="附件草稿" defaultValue="" /></section>,
 }));
+vi.mock('../src/features/task-detail/attachments/useAttachments', () => ({ useAttachments: () => ({ select: vi.fn() }) }));
 
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const projectId = id(100);
@@ -229,7 +230,7 @@ describe('task detail dialog', () => {
     expect(screen.queryByRole('region', { name: '关联 PR' })).toBeNull();
   });
 
-  it('renders full untrusted content as plain text and shows all snapshot relations as buttons', async () => {
+  it('escapes untrusted title and Markdown HTML and shows all snapshot relations as buttons', async () => {
     const title = '<img src=x onerror=alert(1)>'.repeat(10);
     const description = '<script>privateMarkup()</script>\nsecond line';
     const a = detail(1, { title: '前置任务' });
@@ -239,7 +240,7 @@ describe('task detail dialog', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(b)));
     open(props({ taskId: b.id, snapshot: snapshot([a, b, c]), onSelectTask: selected }));
     await screen.findByRole('heading', { name: title });
-    expect(screen.getByRole('region', { name: '描述' }).querySelector('p')?.textContent).toBe(description);
+    expect(screen.getByRole('region', { name: '描述' }).querySelector('.task-description')?.textContent).toBe(description);
     expect(document.querySelector('img')).toBeNull();
     expect(document.querySelector('script')).toBeNull();
     expect(screen.getByText('被阻塞')).toBeVisible();

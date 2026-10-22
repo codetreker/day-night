@@ -23,16 +23,22 @@ upstream-aware initial viewport. The
 implements the reading shell while retaining existing modal and attachment
 ownership. The [attachment split-view decision](2026-10-22-task-attachment-split-view.md)
 extends that shell with Overview/Attachments tabs, retained attachment state and
-a bounded two-pane preview. Graph inspection, smooth paths and Markdown
-descriptions remain pending in their Daynight tasks. Existing paint and detail notes describe their
-current mechanisms.
+a bounded two-pane preview. The
+[Markdown description decision](2026-10-22-task-description-markdown.md) extends
+that reader with shared CommonMark/GFM and root-based attachment navigation.
+Graph inspection and smooth paths remain separate work. Existing paint and
+detail notes describe the mainline mechanisms; each task retains its own
+source-bound acceptance and delivery state.
 
 The [progressive overview decision](../feature/2026-10-22-progressive-task-graph.md)
-partially supersedes all-context-at-once rendering. UX-T2 first delivers bounded
+partially supersedes all-context-at-once rendering. PR #134 delivered bounded
 visible graphs and explicit expansion/reset while body activation still opens
-TaskDetailDialog and paths remain polylines. The following inspection PR owns
-selection/Details separation and smooth highlighting; both PRs must be integrated
-before UX-T2 completion.
+TaskDetailDialog and paths remain polylines. Replacement
+[PR #143](https://github.com/codetreker/daynight/pull/143) owns selection/Details
+separation, routing and smooth highlighting; it remains in progress. Closed
+[PR #121](https://github.com/codetreker/daynight/pull/121) is historical and is
+not a completion prerequisite or evidence for replacement source. UX-T2 completes
+only after the replacement satisfies its own acceptance and integration rule.
 
 The root and its descendants remain the chain's counted membership. Rendering
 adds the complete prerequisite closure without importing unrelated descendants
@@ -41,18 +47,24 @@ selected task, all ancestors and their connecting edges. Detail resource
 selection remains independent, with sibling card controls and one centered
 dialog shared by all detail entry points.
 
-Smooth routes retain Dagre's intermediate points, rounding local bends with
-bounded quadratic curves. Long straight spans retain the local-axis dash
+The original design retained Dagre's intermediate points, rounding local bends
+with bounded quadratic curves. Its routing rationale and alternatives below
+remain the original decision record; the replacement PR owns its routing design
+and source-bound validation. Long straight spans retain the local-axis dash
 painting strategy. One compiled route owns body geometry and marker direction;
 independent acceptance must understand curves and continue checking complete
 coverage, dash continuity and real production timing.
 
-Descriptions use the existing CommonMark/GFM stack. Relative links resolve
-from the task attachment root, while attachment documents retain their own
-directory base. Ordinary relative attachment links select the existing preview
-through one attachment-state owner and activates its attachment tab. The
-published skill teaches Markdown problem statements and verified attachment references without moving solution
-or acceptance ownership out of the primary Markdown attachment.
+Descriptions use the shared CommonMark/GFM view. Explicit root/document bases
+keep description resources relative to the task attachment root and attachment
+resources relative to their real document directory. Ordinary relative file
+links select and focus the existing preview through one attachment-state owner
+and activate its tab; complete-inventory checks and visible errors share that
+owner. The published skill teaches self-contained Markdown briefs with concrete
+actions, scope, deliverables, constraints, brief observable completion and actual
+references. Detailed Solution, full Acceptance criteria and evidence remain in
+the task-specific primary Markdown attachment. The Markdown description decision
+owns this structure without changing Goal stages or authorization rules.
 
 The [breakdown](../../../../docs/design/daynight-task-inspection-tasks.md)
 separates complete context, graph inspection, centered reading and Markdown

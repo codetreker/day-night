@@ -47,12 +47,13 @@ Use the target repository's document and workspace rules.
 | Prerequisite tasks | `dependsOn` only |
 | Delivery PR URLs and titles | `properties.pullRequests` |
 
-Give each task an outcome-focused title and a self-contained description: a
-reader must understand what this specific task will do, deliver, and verify
-without opening attachments. Summarize the approach and observable completion
-conditions, then reference the real detailed sources. A generic problem sentence
-and a link list are insufficient. Keep the summary consistent with its primary
-Markdown without maintaining a second complete plan in the description.
+Give each task an outcome-focused title and a self-contained Markdown
+description: a reader must understand what this specific task will do, deliver,
+and verify without opening attachments. Summarize the approach and observable
+completion conditions, then reference the real detailed sources. A generic
+problem sentence and a link list are insufficient. Keep the summary consistent
+with its primary Markdown without maintaining a second complete plan in the
+description.
 
 The primary Markdown must contain **Solution** and **Acceptance criteria**
 sections; equivalent headings in the task's language are valid. Define the
@@ -85,6 +86,48 @@ Markdown. A top-level task has no dependencies. Repository specifications and
 design documents retain their full contracts; the task's own primary attachment
 must still provide a specific solution and verifiable acceptance criteria.
 
+## Author Markdown
+
+Use headings, paragraphs, lists, quotes, fenced code, tables, links, and images
+when they help readers understand the assignment. The Web renders CommonMark
+and GFM; raw HTML appears as text. API and CLI reads retain the original Markdown
+string, with no separate format field. Preserve its syntax, whitespace, code,
+and valid references when replacing the complete description.
+
+A relative link or image in a description starts at this task's attachment root.
+A link inside a Markdown attachment starts at that file's directory. Keep paths
+inside the task root and preserve the actual case and resource identity. Confirm
+an upload and read back its contents before adding its link. Reference shared
+inputs by their verified source task ID and attachment path or immutable
+repository URL; a relative link cannot identify another task's attachment.
+
+For example, the following brief applies to a task whose confirmed, readable
+attachments include its own `plan.md` and the complete `mockui/index.html`
+prototype with its resources. Use these paths only when those files actually
+belong to that task; adapt the content and references to the actual assignment.
+A Goal stage that produces a prototype links it only after producing and
+confirming it.
+
+```markdown
+## 问题与行动
+登录失败后，用户无法判断是否可以重试。实现明确的失败原因和重试入口，保留当前登录表单输入。
+
+## 范围与交付
+更新登录页的错误提示、重试交互和中英文文案；沿用现有认证接口与会话边界。
+
+## 完成条件
+网络失败和凭据错误均显示对应提示；重试成功后进入工作区。桌面与窄屏、两种语言的交互通过验证，表单输入保持正确。
+
+## 资料
+
+- [方案与验收](plan.md)
+- [交互原型](mockui/index.html)
+```
+
+This remains a concise assignment. Its own primary Markdown still contains the
+specific **Solution** and **Acceptance criteria**, verification methods, and
+evidence. The prototype remains with its actual owner when shared across a Goal.
+
 ## Register and verify
 
 Reuse the established project and suitable tasks. Create new tasks in `todo`,
@@ -95,10 +138,10 @@ the observed task version. Reference already readable shared inputs at their
 source. Do not present planned uploads as existing attachments.
 
 Read back each complete task, its attachment inventory and required contents,
-and its referenced shared inputs. Verify task-specific descriptions, the two
-required Markdown sections, real source identities, intended dependencies, and
-applicable mock UI resources and interaction. For a Goal, verify both starting
-tasks and their stage briefs. Registration is complete only when required
+and its referenced shared inputs. Verify self-contained Markdown descriptions,
+valid links and images, the two required primary-document sections, real source
+identities, intended dependencies, and applicable mock UI resources and
+interaction. For a Goal, verify both starting tasks and their stage briefs. Registration is complete only when required
 artifacts and associations are confirmed readable.
 
 If creation succeeds but a later operation fails, retain the confirmed IDs and

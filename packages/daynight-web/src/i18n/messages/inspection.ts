@@ -55,6 +55,7 @@ export type InspectionMessages = {
     readonly upload: string;
     readonly uploadHint: string;
     readonly invalidPath: string;
+    readonly invalidReference: string;
     readonly writeError: string;
     readonly loading: string;
     readonly listError: string;
