@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Attachment } from '../../../api/types';
-import { drawerFocusables } from '../focus';
+import { dialogFocusables } from '../focus';
 import { attachmentKind, resolveAttachmentUrl } from './model';
 
 export type AttachmentPreviewState = {
@@ -40,12 +40,12 @@ const TrustedFrame = ({ url, title, onClose }: { readonly url: string; readonly 
         event.preventDefault();
         close.current();
       } else if (event.key === 'Tab') {
-        const inner = drawerFocusables(content);
+        const inner = dialogFocusables(content);
         const active = content.activeElement;
         if (inner.length !== 0 && (event.shiftKey ? active !== inner[0] : active !== inner[inner.length - 1])) return;
         const dialog = frame.closest<HTMLElement>('[role="dialog"]');
         if (dialog === null) return;
-        const outer = drawerFocusables(dialog);
+        const outer = dialogFocusables(dialog);
         const index = outer.indexOf(frame);
         const target = outer[(index + (event.shiftKey ? -1 : 1) + outer.length) % outer.length]!;
         event.preventDefault();

@@ -20,8 +20,10 @@ status, dependencies and completion criteria, and the [interactive preview](../.
 demonstrates the original appearance. The later [task view decision](../feature/2026-10-22-project-task-views.md)
 separates standalone task rows from root-chain graphs within project tabs, using
 the [task view mockup](../../../../docs/design/mockups/task-views.html). This note
-records the delivered MVP design;
-the complete graph read and [project browsing foundation](2026-10-20-web-project-browsing.md)
+records the delivered MVP design; the
+[centered detail decision](../feature/2026-10-22-centered-task-detail-dialog.md)
+partially supersedes its right-side reading layout while retaining snapshot and
+modal ownership. The complete graph read and [project browsing foundation](2026-10-20-web-project-browsing.md)
 and the [pure graph model and layout](../feature/2026-10-20-task-graph-projection.md)
 are implemented. The [project task dashboard](../feature/2026-10-20-project-task-dashboard.md)
 implements visualization and detail navigation. The
@@ -67,14 +69,14 @@ replaces that boundary with every required ancestor and dependency, excluding
 unrelated descendants of contextual tasks. Root progress still excludes external
 context; project totals count each task once. Only one root graph is mounted at a
 time. Pure indexing/projection and Dagre layout remain separate from React rendering and API requests. Page hooks own
-request cancellation and snapshot replacement; the drawer never mutates the
+request cancellation and snapshot replacement; the task detail dialog never mutates the
 project snapshot.
 
 The adopted MVP was read-only with manual refresh. Graph projection remained
 separate from API mutations and request triggers so editing and live subscriptions
 could be added independently. The later
 [Web attachment decision](../feature/2026-10-21-task-attachment-web.md) uses that
-separation for file upload, overwrite and deletion in the drawer. Task fields and
+separation for file upload, overwrite and deletion in task details. Task fields and
 dependency editing remain outside the browser's delivered scope. Remote access
 is not an additive configuration change: authentication, authorization, and deployment boundaries require their
 own design. Graph filtering must retain dependency context; large-graph support

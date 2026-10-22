@@ -13,9 +13,10 @@ The [task inspection requirements](docs/spec/daynight-task-inspection.md),
 [interactive preview](docs/design/mockups/task-inspection/index.html) cover
 complete prerequisite context, smooth highlighted dependency routes, a centered
 detail dialog and Markdown descriptions with matching public skill guidance.
-Graph inspection, smooth paths, centered details and Markdown remain pending.
-Card activation still opens the detail drawer, routes remain polylines, and descriptions remain plain text until
-their focused tasks are delivered.
+Centered task details are implemented with the existing modal, attachment and
+focus lifecycles. Graph inspection, smooth paths and Markdown descriptions remain
+pending. Card activation opens the centered dialog, routes remain polylines, and
+descriptions remain plain text.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
@@ -155,7 +156,7 @@ preview](docs/design/mockups/task-views.html) demonstrates those interactions.
 The project list is implemented in the private web workspace, including task
 visualization and details. Its [design decision](.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)
 defines the original read-only MVP. Attachment upload, overwrite and deletion
-extend the task drawer without changing task fields or the graph snapshot. The
+extend the task detail dialog without changing task fields or the graph snapshot. The
 Go binary embeds the production UI and serves it alongside the APIs. The original
 standalone dashboard preview uses fixture data; the attachment development mockup
 uses the actual attachment components and styles with a frontend-only fixture.
@@ -373,9 +374,9 @@ binary identity, scenario results and resource cleanup.
 
 The private [web workspace](packages/daynight-web/README.md) implements the project
 list, cursor paging, safe API decoding, cancellation, project statistics, task
-graphs, detail drawers and single-file attachment management. Its opt-in
-[locale runtime](docs/design/daynight-web-i18n.md) provides typed English and
-Simplified Chinese catalogs, native Intl formatting and an independent saved
+graphs, centered task detail dialogs and single-file attachment management. Its
+opt-in [locale runtime](docs/design/daynight-web-i18n.md) provides typed English
+and Simplified Chinese catalogs, native Intl formatting and an independent saved
 language preference. Production components retain their current Chinese text
 until the tracked [bilingual interface requirements](docs/spec/daynight-web-i18n.md)
 are integrated and verified. With the Go API running on loopback, use:

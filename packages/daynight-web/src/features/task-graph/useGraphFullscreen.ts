@@ -11,7 +11,7 @@ export const useGraphFullscreen = () => {
   useLayoutEffect(() => {
     if (!fullscreen) return;
     const background: { element: Element; inert: string | null }[] = [];
-    // Body portals remain available for the task drawer above the graph.
+    // Body portals remain available for the task detail dialog above the graph.
     let current: Element = containerRef.current!;
     while (current.parentElement !== null && current.parentElement !== document.body) {
       for (const sibling of current.parentElement.children) {

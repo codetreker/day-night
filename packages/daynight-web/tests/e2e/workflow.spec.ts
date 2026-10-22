@@ -5,6 +5,7 @@ import { parseTaskGraph } from '../../src/api/parse';
 import { buildGraphIndex, projectRoot } from '../../src/features/task-graph/model';
 import { layoutGraph, type CanvasLayout } from '../../src/features/task-graph/layout';
 import type { PullRequestProperty } from '../../src/api/types';
+import { expectCenteredTaskDetail, expectTaskDetailScroll } from './detail-dialog';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
 const node = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node`);
@@ -25,10 +26,10 @@ const checkPullRequests = async (dialog: Locator, pullRequests: readonly PullReq
   const region = dialog.getByRole('region', { name: '关联 PR', exact: true });
   await expect(region.getByRole('heading')).toHaveText(`关联 PR · ${pullRequests.length}`);
   const visible = pullRequests.slice(page * 100, (page + 1) * 100);
-  const items = region.locator('.drawer-pr');
+  const items = region.locator('.task-detail-pr');
   await expect(items).toHaveCount(visible.length);
-  expect(await items.locator('.drawer-pr-title').allTextContents()).toEqual(visible.map(({ title }) => title === '' ? '（空字符串）' : title));
-  expect(await items.locator('.drawer-pr-value').allTextContents()).toEqual(visible.map(({ url }) => url === '' ? '（空字符串）' : url));
+  expect(await items.locator('.task-detail-pr-title').allTextContents()).toEqual(visible.map(({ title }) => title === '' ? '（空字符串）' : title));
+  expect(await items.locator('.task-detail-pr-value').allTextContents()).toEqual(visible.map(({ url }) => url === '' ? '（空字符串）' : url));
   if (pullRequests.length > 100) {
     await expect(region.getByRole('status')).toHaveText(`第 ${page * 100 + 1}–${page * 100 + visible.length} 项，共 ${pullRequests.length} 项`);
     await expect(region.getByRole('combobox', { name: '关联 PR 页码' })).toHaveValue(String(page));
@@ -460,8 +461,8 @@ test('project-graph', scenario('project-graph'), async ({ page, request }, info)
         await node(page, task.id).focus();
         await expect.poll(() => visibleInCanvas(task.id)).toBe(true);
         await page.keyboard.press('Enter');
-        const detail = page.locator('.drawer-backdrop').getByRole('dialog');
-        await expect(detail.locator('.drawer-title')).toHaveText(task.title);
+        const detail = page.locator('.task-detail-backdrop').getByRole('dialog');
+        await expect(detail.locator('.task-detail-title')).toHaveText(task.title);
         await page.keyboard.press('Escape');
         await expect(detail).toHaveCount(0);
         await expect(node(page, task.id)).toBeFocused();
@@ -535,7 +536,7 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
   await trigger.focus();
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: '任务详情' });
-  await expect(dialog.locator('.drawer-title')).toHaveText(independent.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(independent.title);
   await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
   await expect(page.locator('#root')).toHaveAttribute('inert', '');
   await page.keyboard.press('Escape');
@@ -580,9 +581,9 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
 
   independent = await updateTask(request, project.id, independent.id, { version: independent.version, dependsOn: [predecessor.id] });
   await standalone(page, independent.id).click();
-  await expect(dialog.locator('.drawer-stale')).toBeVisible();
+  await expect(dialog.locator('.task-detail-stale')).toBeVisible();
   await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(independent.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(independent.title);
   await expect(standalone(page, independent.id)).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(page.locator('.standalone-row').first()).toBeFocused();
@@ -593,9 +594,9 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, request 
   await expect(node(page, independent.id)).toBeVisible();
   independent = await updateTask(request, project.id, independent.id, { version: independent.version, dependsOn: [] });
   await node(page, independent.id).click();
-  await expect(dialog.locator('.drawer-stale')).toBeVisible();
+  await expect(dialog.locator('.task-detail-stale')).toBeVisible();
   await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(independent.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(independent.title);
   await expect(node(page, independent.id)).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(root(page, predecessor.id)).toBeFocused();
@@ -647,9 +648,9 @@ test('detail-navigation', scenario('detail-navigation'), async ({ page, request 
   page.on('request', (request) => { if (new URL(request.url()).pathname === `/api/v1/projects/${project.id}/tasks/${b.id}`) detailReads++; });
   await node(page, b.id).click();
   const dialog = page.getByRole('dialog', { name: '任务详情' });
-  await expect(dialog.locator('.drawer-title')).toHaveText(title);
-  expect(await dialog.getByRole('region', { name: '描述', exact: true }).locator('.drawer-description').textContent()).toBe(description);
-  await expect(dialog.locator('.drawer-full-id')).toHaveText(b.id);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(title);
+  expect(await dialog.getByRole('region', { name: '描述', exact: true }).locator('.task-detail-description').textContent()).toBe(description);
+  await expect(dialog.locator('.task-detail-full-id')).toHaveText(b.id);
   await expect(dialog.locator('time')).toHaveCount(2);
   await expect(dialog.locator('img,script')).toHaveCount(0);
   const properties = await checkPullRequests(dialog, pullRequests);
@@ -697,14 +698,14 @@ test('detail-navigation', scenario('detail-navigation'), async ({ page, request 
   await expect(unknownReference).toBeVisible();
   await expect(dialog.getByRole('region', { name: '任务图快照中的直接后续', exact: true }).getByRole('button', { name: c.title, exact: true })).toBeVisible();
   await dialog.getByRole('region', { name: '任务图快照中的直接后续', exact: true }).getByRole('button', { name: c.title, exact: true }).click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(c.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(c.title);
   await checkPullRequests(dialog, []);
   await expect(dialog.getByText('暂无关联 PR', { exact: true })).toBeVisible();
   await dialog.getByRole('region', { name: '前置依赖', exact: true }).getByRole('button', { name: `${Array.from(title).slice(0, 160).join('')}…`, exact: true }).click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(title);
   await checkPullRequests(dialog, pullRequests);
   await dialog.getByRole('region', { name: '前置依赖', exact: true }).getByRole('button', { name: unknown.id, exact: true }).click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(unknown.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(unknown.title);
   await expect(dialog.getByText('当前任务尚未包含在任务图中，请刷新任务图以查看后续关系。')).toBeVisible();
   await expect(stat(page, '任务总数')).toHaveText('3');
   await screenshot(page, info, 'detail-navigation');
@@ -730,8 +731,8 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   expect(current.blockedBy).toEqual([]);
   await node(page, dependent.id).click();
   const dialog = page.getByRole('dialog', { name: '任务详情' });
-  await expect(dialog.locator('.drawer-title')).toHaveText(dependent.title);
-  await expect(dialog.locator('.drawer-ready')).toHaveText('可开始');
+  await expect(dialog.locator('.task-detail-title')).toHaveText(dependent.title);
+  await expect(dialog.locator('.task-detail-ready')).toHaveText('可开始');
   await expect(dialog.getByText('任务详情与当前任务图不同，刷新后可查看一致的进度和关系。')).toBeVisible();
   await expect(stat(page, '已完成')).toHaveText('0');
   await expect(stat(page, '被阻塞')).toHaveText('1');
@@ -744,8 +745,8 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   await expect(root(page, predecessor.id).locator('.root-status')).toHaveText('进行中');
   await expect(root(page, predecessor.id).locator('.root-progress-label')).toHaveText('1/2 已完成');
   await expect(node(page, predecessor.id).locator('.graph-status')).toHaveText('已完成');
-  await expect(dialog.locator('.drawer-title')).toHaveText(dependent.title);
-  await expect(dialog.locator('.drawer-stale')).toHaveCount(0);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(dependent.title);
+  await expect(dialog.locator('.task-detail-stale')).toHaveCount(0);
   await expect(node(page, dependent.id).locator('.graph-blocked-badge')).toHaveCount(0);
   await page.keyboard.press('Escape');
   const pullRequests = Array.from({ length: 205 }, (_, index) => ({ title: `刷新前关联 ${index + 1}`, url: '  new arbitrary URL\0  ' }));
@@ -753,14 +754,14 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, request 
   expect(changed.properties.pullRequests).toEqual(pullRequests);
   await node(page, dependent.id).click();
   await checkPullRequests(dialog, pullRequests);
-  await expect(dialog.locator('.drawer-stale')).toBeVisible();
+  await expect(dialog.locator('.task-detail-stale')).toBeVisible();
   await dialog.getByRole('combobox', { name: '关联 PR 页码' }).selectOption('2');
   await checkPullRequests(dialog, pullRequests, 2);
   const replacement = Array.from({ length: 101 }, (_, index) => ({ title: `刷新后关联 ${index + 1}`, url: 'arbitrary' }));
   const replaced = await updateTask(request, project.id, dependent.id, { version: changed.version, properties: { pullRequests: replacement } });
   await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
   await checkPullRequests(dialog, replacement);
-  await expect(dialog.locator('.drawer-stale')).toHaveCount(0);
+  await expect(dialog.locator('.task-detail-stale')).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
   await screenshot(page, info, 'refresh-staleness');
   await page.keyboard.press('Escape');
@@ -805,6 +806,7 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, request },
     const response = await failedDetail;
     expect(response.status()).toBe(500);
     await expect(dialog.getByRole('heading', { name: '任务详情加载失败' })).toBeVisible();
+    await expectCenteredTaskDetail(page, dialog);
     await expect(dialog.getByRole('button', { name: '重试详情', exact: true })).toBeVisible();
     await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
     await expect(page.locator('.task-graph-canvas')).toBeVisible();
@@ -816,7 +818,7 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, request },
   const retriedDetail = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/projects/${project.id}/tasks/${task.id}`);
   await dialog.getByRole('button', { name: '重试详情', exact: true }).click();
   expect((await retriedDetail).status()).toBe(200);
-  await expect(dialog.locator('.drawer-title')).toHaveText(task.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(task.title);
   await expect(dialog.getByRole('alert')).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
@@ -946,7 +948,7 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: '任务详情' });
   const close = dialog.getByRole('button', { name: '关闭任务详情', exact: true });
-  await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(b.title);
   expect(detailReads).toBe(1);
   await expect(close).toBeFocused();
   await expect(page.locator('#root')).toHaveAttribute('inert', '');
@@ -967,7 +969,7 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   await expect(fullscreen).toBeVisible();
   await expect(trigger).toBeFocused();
   await page.keyboard.press('Space');
-  await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(b.title);
   expect(detailReads).toBe(2);
   await close.click();
   await expect(trigger).toBeFocused();
@@ -978,7 +980,7 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
   expect(await page.evaluate(() => ({ document: document.documentElement.style.overflow, body: document.body.style.overflow }))).toEqual(originalOverflow);
 
   await trigger.click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(b.title);
   const fetched = deferred<void>();
   const release = deferred<void>();
   const pattern = `**/api/v1/projects/${project.id}/tasks/${a.id}`;
@@ -994,10 +996,11 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
     await dialog.getByRole('region', { name: '前置依赖', exact: true }).getByRole('button', { name: a.title, exact: true }).click();
     await within(fetched.promise, 'real task response fetch');
     await expect(dialog.getByText('正在加载任务详情', { exact: true })).toBeVisible();
+    await expectCenteredTaskDetail(page, dialog);
     await expect(close).toBeFocused();
     expect(await trigger.evaluate((button) => button === document.activeElement)).toBe(false);
     release.resolve();
-    await expect(dialog.locator('.drawer-title')).toHaveText(a.title);
+    await expect(dialog.locator('.task-detail-title')).toHaveText(a.title);
     await page.keyboard.press('Escape');
     await expect(trigger).toBeFocused();
   } finally {
@@ -1005,8 +1008,8 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
     await within(page.unrouteAll({ behavior: 'wait' }), 'delayed task route cleanup');
   }
   await trigger.click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
-  await page.locator('.drawer-backdrop').click({ position: { x: 5, y: 5 } });
+  await expect(dialog.locator('.task-detail-title')).toHaveText(b.title);
+  await page.locator('.task-detail-backdrop').click({ position: { x: 5, y: 5 } });
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
 
@@ -1023,9 +1026,9 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, request }, inf
     }
     currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, dependsOn: [] });
     await trigger.click();
-    await expect(dialog.locator('.drawer-stale')).toBeVisible();
+    await expect(dialog.locator('.task-detail-stale')).toBeVisible();
     await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
-    await expect(dialog.locator('.drawer-title')).toHaveText(b.title);
+    await expect(dialog.locator('.task-detail-title')).toHaveText(b.title);
     await expect(trigger).toHaveCount(0);
     if (fullscreenMode) await expect(page.locator('.task-graph-fullscreen')).toHaveCount(1);
     await page.keyboard.press('Escape');
@@ -1061,7 +1064,7 @@ test('narrow-layout', scenario('narrow-layout'), async ({ page, request }, info)
   await expect(page.locator('.stats .stat')).toHaveCount(6);
   await page.getByRole('button', { name: '全屏查看', exact: true }).click();
   const fullscreen = page.getByRole('dialog', { name: '任务依赖图全屏查看', exact: true });
-  for (const width of [320, 768, 1280, 320]) {
+  for (const width of [320, 768, 1280, 1440, 320]) {
     await page.setViewportSize({ width, height: 800 });
     await expect.poll(async () => {
       const bounds = await fullscreen.boundingBox();
@@ -1075,22 +1078,18 @@ test('narrow-layout', scenario('narrow-layout'), async ({ page, request }, info)
   await node(page, a.id).focus();
   await page.keyboard.press('Enter');
   const dialog = page.getByRole('dialog', { name: '任务详情' });
-  await expect(dialog.locator('.drawer-title')).toHaveText(a.title);
-  await expect(dialog.locator('.drawer-description').first()).toHaveText(a.description);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(a.title);
+  await expect(dialog.locator('.task-detail-description').first()).toHaveText(a.description);
   await checkPullRequests(dialog, pullRequests);
   await dialog.getByRole('combobox', { name: '关联 PR 页码' }).selectOption('1');
   await checkPullRequests(dialog, pullRequests, 1);
   await dialog.getByRole('button', { name: '上一页' }).click();
   await checkPullRequests(dialog, pullRequests);
   await expect(dialog.getByRole('combobox', { name: '关联 PR 页码' })).toBeFocused();
-  for (const width of [320, 768, 1280, 320]) {
+  for (const width of [320, 768, 1280, 1440, 320]) {
     await page.setViewportSize({ width, height: 800 });
-    await expect.poll(async () => {
-      const bounds = await dialog.boundingBox();
-      return bounds !== null && bounds.x >= -0.5 && bounds.x + bounds.width <= width + 0.5 && bounds.y >= -0.5 && bounds.height <= 800.5;
-    }).toBe(true);
-    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    expect(await dialog.locator('.drawer-body').evaluate((body) => body.scrollWidth <= body.clientWidth)).toBe(true);
+    await expectCenteredTaskDetail(page, dialog);
+    await expectTaskDetailScroll(page, dialog);
   }
   await dialog.getByRole('button', { name: '关闭任务详情', exact: true }).focus();
   await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
@@ -1103,7 +1102,8 @@ test('narrow-layout', scenario('narrow-layout'), async ({ page, request }, info)
   await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await standalone(page, independent.id).click();
-  await expect(dialog.locator('.drawer-title')).toHaveText(independent.title);
+  await expect(dialog.locator('.task-detail-title')).toHaveText(independent.title);
+  await expectCenteredTaskDetail(page, dialog);
   await screenshot(page, info, 'narrow-standalone');
   await page.keyboard.press('Escape');
   await expect(standalone(page, independent.id)).toBeFocused();

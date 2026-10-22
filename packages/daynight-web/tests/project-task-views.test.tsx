@@ -152,7 +152,7 @@ describe('project task views', () => {
     expectUnfinishedCounts(3, 0);
   });
 
-  it('opens the real drawer directly and returns focus to its standalone row', async () => {
+  it('opens the real dialog directly and returns focus to its standalone row', async () => {
     mount(); await screen.findByRole('tab', { name: '独立任务' });
     const { trigger, dialog } = await openStandalone('C');
     expect(screen.queryByTestId('graph-node')).toBeNull();

@@ -306,7 +306,7 @@ const measureInteractions = async (page: Page, fixture: CapacityFixture, expansi
     return visible.closest('.react-flow__node')!.getAttribute('data-id')!;
   }) : fixture.root.id;
   const detailTitle = fixture.tasks.find((task) => task.id === detailTask)!.title;
-  const dialog = page.locator('.drawer-backdrop').getByRole('dialog');
+  const dialog = page.locator('.task-detail-backdrop').getByRole('dialog');
   const detailResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/projects/${fixture.project.id}/tasks/${detailTask}`));
   const detail = await measureBrowserFeedback(page, { kind: 'detail', rootId: detailTask }, () =>
     page.locator(`.react-flow__node[data-id="${detailTask}"] .task-node`).click(), dataset, repetition);
@@ -317,8 +317,8 @@ const measureInteractions = async (page: Page, fixture: CapacityFixture, expansi
   await response.finished();
   const timing = response.request().timing();
   const detailNetworkMs = timing.responseEnd - timing.requestStart;
-  await expect(page.locator('.drawer-title')).toHaveText(detailTitle);
-  await dialog.locator('.drawer-header').getByRole('button', { name: '关闭任务详情', exact: true }).click();
+  await expect(page.locator('.task-detail-title')).toHaveText(detailTitle);
+  await dialog.locator('.task-detail-header').getByRole('button', { name: '关闭任务详情', exact: true }).click();
   await expect(dialog).toHaveCount(0);
 
   const beforeZoom = await transform(page);
