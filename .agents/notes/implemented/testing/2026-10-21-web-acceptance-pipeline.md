@@ -47,6 +47,16 @@ fetch 25.9 MB of dependencies. The original 180-second deadline expired during
 the second transfer; no Chromium download began. This run confirms that coverage
 must finish first and that the browser-install deadline must accommodate the
 measured Linux dependency transfer even after the archive source changed.
+The next head,
+[549d55c](https://github.com/codetreker/daynight/commit/549d55ca39e513ea47816d4d79fa260442f77fdb),
+passed in PR run
+[39803676876](https://github.com/codetreker/daynight/actions/runs/39803676876)
+on tested source `f2b4bc82017400fa38687d3c04dbc3191e9e1bee`. Coverage passed
+before browser preparation; browser installation began immediately afterward
+and completed in 26.7 seconds. Native/container functional phases, native
+capacity, the standalone attachment persistence check and cleanup all passed.
+This fast run validates the complete updated pipeline; it does not bound future
+archive or browser download latency below the 600-second command deadline.
 
 ## Decision
 
@@ -246,6 +256,7 @@ phase, strict scenario union, matching browser identities and cleanup, not merel
 successful child exits. Hosted CI remains the authority for full acceptance;
 local validation and historical main runs retain their own source and environment
 limits. Run 39801658628 proves coverage-before-browser ordering and the install
-deadline failure path, but did not reach browser scenarios. A complete hosted run
-with the 600-second browser bound remains necessary to validate production
-acceptance under the updated pipeline.
+deadline failure path, but did not reach browser scenarios. PR run 39803676876
+passed the complete production acceptance and cleanup under the updated ordering
+and 600-second install bound. Archive transfer latency still varies by hosted
+run, and the command and overall job deadlines remain failure bounds.
