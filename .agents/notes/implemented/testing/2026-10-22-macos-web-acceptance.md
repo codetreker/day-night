@@ -13,9 +13,9 @@ survive the platform extension.
 
 ## Decision
 
-Keep one pipeline for Linux and macOS with the same 51 scenarios, combined
-authentication checks, four fixed capacity datasets, five measurements and
-existing latency limits. Linux remains
+Keep one pipeline for Linux and macOS with the same functional and capacity
+inventories, combined authentication checks, four fixed capacity datasets, five
+measurements and existing latency limits. Linux remains
 the full CI platform; macOS local acceptance requires native execution and does
 not imply a macOS CI job.
 The [bounded-line rendering decision](../bug-fix/2026-10-22-bounded-dashed-dependency-lines.md)
@@ -24,9 +24,32 @@ owns the GPU paint correction needed to retain those capacity budgets on macOS.
 Process identity includes the host platform, PID, actual executable, process
 group and exact kernel start identity. Linux retains procfs; macOS compiles a
 small Apple SDK helper into project temporary storage and reads libproc/sysctl.
-Argument matching uses argv entries, preserving spaces. Process discovery filters
-exact run environment markers without exporting unrelated process environments.
-Chromium inventory includes verified macOS bundle helpers and Crashpad.
+Argument matching uses the native argv entries whenever their boundaries remain
+available, preserving spaces. Chromium can replace that argument memory with a
+single process title. Its pinned
+[title builder](https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/base/process/set_process_title.cc#49)
+constructs one space-separated string; the
+[concatenation and publication](https://chromium.googlesource.com/chromium/src/+/f842f52ef39fd97b449eb27cff414bf05a98ddce/base/process/set_process_title.cc#96)
+use `title += " "`, append each argument, then call `setproctitle`. Thus a procfs
+argument read can expose one title even though it remains the source of kernel
+process identity.
+
+Browser profile extraction keeps multi-entry native argv canonical, including
+arguments containing spaces. Every singleton goes through a strict title grammar:
+one unquoted executable token followed by unquoted switch tokens, with exactly
+one complete `--user-data-dir=` value followed by another switch. That profile's
+parent must be the known managed temporary root and its basename must exactly
+match Playwright's generated name with a six-character alphanumeric suffix.
+This does not reconstruct general argument boundaries. Duplicate markers,
+quotes, backslashes, whitespace inside flattened argument values, foreign roots,
+truncated names or any ambiguous match fail explicitly. A discovered
+profile still requires the same owned-directory and marker checks; PID, actual
+executable, exact kernel start identity, process group, repeated `sameProcess`
+verification and companion ownership remain mandatory.
+
+Process discovery filters exact run environment markers without exporting
+unrelated process environments. Chromium inventory includes verified macOS bundle
+helpers and Crashpad.
 The native inspector requests zombie status explicitly: macOS can report an
 exited child as present to signal probes while excluding it from the default
 BSD identity query. It also rechecks that status when executable lookup races
@@ -83,6 +106,20 @@ leave macOS native development and process cleanup unverified.
 **Parsing `ps`.** Its start time would lose subsecond identity, while rendered
 command lines would lose argv boundaries.
 
+**Split every command line on whitespace.** A flattened title cannot preserve
+arguments containing spaces. Generic splitting would turn an ambiguous title
+into apparently canonical arguments and could attribute the wrong profile.
+Bounded profile extraction accepts only the generated, delimiter-safe shape.
+
+**Skip profile ownership checks.** PID or a matching executable alone cannot
+justify deleting a profile or stopping a process after identity changes. The
+existing marker, start, group and directory checks remain required.
+
+**Read launch arguments through CDP with an added automation flag.** That would
+change browser launch and observable automation behavior merely to recover an
+ownership fact; existing CDP process-identity discovery is unaffected. Recognizing the narrow documented title representation preserves the
+existing browser execution path and acceptance meaning.
+
 **Weaker acceptance.** Skipping case-sensitive attachment checks or relaxing
 performance limits would change acceptance meaning between development hosts.
 
@@ -96,6 +133,10 @@ macOS needs the Apple SDK/compiler and permission to attach disk images. Failed
 or interrupted runs can leave attributable resources for explicit recovery;
 ambiguous mounts are not forcibly detached. Native helper and APFS lifecycle
 checks add platform-specific maintenance while the runner remains shared.
+A flattened title outside the recognized generated-profile shape remains an
+explicit preparation or recovery failure because ownership is unproven. That
+failure describes the acceptance guard, not browser support in the application;
+it does not permit cleanup to guess identity or profile boundaries.
 Windows native Web acceptance stays unsupported. A future macOS CI job must
 provision these prerequisites and execute the complete gate before claiming CI
 parity. The [Web README](../../../../packages/daynight-web/README.md#production-browser-acceptance)

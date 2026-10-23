@@ -10,6 +10,52 @@ import type { Browser } from '@playwright/test';
 
 const root = fileURLToPath(new URL('../../.tmp/', import.meta.url));
 
+test('browser profile extraction preserves canonical argument boundaries and space-containing paths', () => {
+  const profile = join(root, 'playwright_chromiumdev_profile-spaces in ABC123');
+  assert.equal(browserModule.browserProfile(['/opt/chromium/chrome', '', 'Unicode \u96ea', '--unrelated=--user-data-dir=foreign', `--user-data-dir=${profile}`]), profile);
+  assert.throws(() => browserModule.browserProfile([`--user-data-dir=${profile}`]), /Chromium profile/);
+  for (const arguments_ of [null, [], ['/opt/chromium/chrome'], ['/opt/chromium/chrome', '--user-data-dir='],
+    ['/opt/chromium/chrome', `--user-data-dir=${profile}`, `--user-data-dir=${profile}`]]) {
+    assert.throws(() => browserModule.browserProfile(arguments_), /Chromium profile/);
+  }
+});
+
+test('browser profile extraction accepts the Chromium singleton process-title switch shape', () => {
+  const title = '/opt/chromium/chrome --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,AvoidCorsURLLoaderRestartOnRedirect,Translate,AutoDeElevate,OptimizationHints,NetworkTimeServiceQuerying,AimEnabled,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=.tmp/playwright_chromiumdev_profile-STfjbB --remote-debugging-pipe --no-startup-window --noerrdialogs --ozone-platform=headless --ozone-override-screen-size=800,600 --use-angle=swiftshader-webgl';
+  const workingDirectory = dirname(root);
+  assert.equal(browserModule.browserProfile([title], workingDirectory), join(root, 'playwright_chromiumdev_profile-STfjbB'));
+  const absolute = join(root, 'playwright_chromiumdev_profile-ABC123');
+  assert.equal(browserModule.browserProfile([`/opt/chromium/chrome --headless --user-data-dir=${absolute} --remote-debugging-pipe`]), absolute);
+  assert.throws(() => browserModule.browserProfile([title, '--headless'], workingDirectory), /Chromium profile/);
+});
+
+test('browser profile extraction rejects ambiguous, truncated and foreign singleton titles', () => {
+  const profile = join(root, 'playwright_chromiumdev_profile-ABC123');
+  const titles = [
+    '/opt/chromium/chrome --headless',
+    '/opt/chromium/chrome --user-data-dir= --headless',
+    '/opt/chromium/chrome --user-data-dir --headless',
+    `/opt/chromium/chrome --user-data-dir=${profile} --user-data-dir=${profile} --headless`,
+    `/opt/chromium/chrome --user-data-dir=${profile} --user-data-dir= --headless`,
+    `/opt/chromium/chrome --user-data-dir=${profile} --user-data-dir --headless`,
+    `/opt/chromium/chrome --user-data-dir="${profile}" --headless`,
+    `/opt/chromium/chrome --user-data-dir='${profile}' --headless`,
+    `/opt/chromium/chrome --user-data-dir=${profile} extra --headless`,
+    `/opt/chromium/chrome --user-data-dir=${profile} spaces --remote-debugging-pipe`,
+    `/opt/chromium/chrome --user-data-dir=${profile}`,
+    `/opt/chromium/chrome --user-data-dir=${profile} --`,
+    `/opt/chromium/chrome --user-data-dir=${join(root, 'playwright_chromiumdev_profile-ABC12')} --headless`,
+    '/opt/chromium/chrome --user-data-dir=/tmp/playwright_chromiumdev_profile-ABC123 --headless',
+    `/opt/chromium/chrome --user-data-dir=${join(root, 'foreign-ABC123')} --headless`,
+    `/opt/chromium/chrome --value=--user-data-dir=${profile} --headless`,
+    `/opt/chromium/chrome --value=--user-data-dir=${profile} --user-data-dir=${profile} --headless`,
+    `/opt/chromium/chrome --value="text --user-data-dir=${profile}" --headless`,
+    `/opt/chromium/chrome --value="text" --user-data-dir=${profile} --headless`,
+    `/opt/chromium/chrome\t--user-data-dir=${profile} --headless`,
+  ];
+  for (const title of titles) assert.throws(() => browserModule.browserProfile([title]), /Chromium profile/, title);
+});
+
 test('browser ownership reads exact argv with a profile containing spaces', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
   await mkdir(root, { recursive: true });
   const profile = await mkdtemp(join(root, 'playwright_chromiumdev_profile-spaces in '));
