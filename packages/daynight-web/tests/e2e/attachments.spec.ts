@@ -505,9 +505,11 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     page.on('request', (request) => { if (request.method() === 'DELETE') deletionRequests.push(request.url()); });
     await selectFile(attachments, 'long/reading.txt');
     const retainedPreview = attachments.locator('.attachment-preview-body');
+    await expect(retainedPreview.locator('pre')).toHaveText(seeds.find(({ path }) => path === 'long/reading.txt')!.bytes.toString('utf8'));
+    await expect.poll(() => retainedPreview.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
     await retainedPreview.evaluate((element) => { element.scrollTop = 220; });
+    await expect.poll(() => retainedPreview.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
     const retainedScroll = await retainedPreview.evaluate((element) => element.scrollTop);
-    expect(retainedScroll).toBeGreaterThan(0);
     const retainedElement = await retainedPreview.elementHandle();
     if (retainedElement === null) throw new Error('The selected attachment preview is absent.');
     const unrelatedPath = 'notes/one/same.txt';
