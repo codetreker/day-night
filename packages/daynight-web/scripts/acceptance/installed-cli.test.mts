@@ -223,9 +223,21 @@ test('recovery waits for the parent to reap a terminated installed CLI child', {
       restoreKill = () => kill.mock.restore();
       let settled = false;
       recovering = recoverCliProcesses(directory, receiptPath, receipt).then(() => { settled = true; return {}; }, (error: unknown) => { settled = true; return { error }; });
-      await within(checked.promise, 'terminated CLI group probe');
-      const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
-      assert.equal(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[0], 'Z');
+      const zombieObservation = new AbortController();
+      try {
+        // A successful group probe does not establish the held child's exit state.
+        await within((async () => {
+          await checked.promise;
+          while (!zombieObservation.signal.aborted) {
+            const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
+            const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+            assert.equal(fields[19], identity!.startTicks, 'The held CLI child retains its original process identity.');
+            assert.equal(Number(fields[2]), identity!.group, 'The held CLI child retains its original process group.');
+            if (fields[0] === 'Z') return;
+            await new Promise<void>((resolve) => setImmediate(resolve));
+          }
+        })(), 'terminated CLI zombie state');
+      } finally { zombieObservation.abort(); }
       assert.equal(await processIdentity(pid), null);
       await new Promise<void>((resolve) => setImmediate(resolve));
       assert.equal(settled, false, 'Recovery must wait until the parent reaps the terminated group member.');
