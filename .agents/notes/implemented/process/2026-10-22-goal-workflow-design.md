@@ -19,9 +19,7 @@ ownership and independent update lifetimes.
 The [Goal requirements](../../../../docs/spec/daynight-goal-workflow.md) and
 [design](../../../../docs/design/daynight-goal-workflow.md) own the staged task-chain
 protocol implemented by the public skill. The architecture was delivered separately
-from its dependent protocol implementation and independent consumer acceptance,
-with the delivery breakdown managed by Daynight tasks and their owned
-attachments.
+from its dependent protocol implementation and independent consumer acceptance.
 The [mode decision](../architecture/2026-10-21-using-daynight-modes.md) continues to
 own the current entrypoint and authorization rules.
 
@@ -44,11 +42,8 @@ together within the owning task.
 
 Attachments follow content ownership. The Goal owns goal.md; architecture owns its
 phase plan, design and registered breakdown; implementation and acceptance own only
-their respective plans and later evidence. The
-[repository task ownership decision](2026-10-23-daynight-task-ownership.md) keeps
-these task-management artifacts in Daynight. Shared inputs are read from the
-confirmed source task ID and attachment path, or a verified immutable repository
-URL. Existing
+their respective plans and later evidence. Shared inputs are read from the confirmed
+source task ID and attachment path, or a verified immutable repository URL. Existing
 CLI reads support those references; no new link scheme or API is introduced. Copying
 an entire common packet to every task is not the registration default. An independently
 required snapshot must name its source version and purpose.
@@ -69,21 +64,6 @@ approval. Task content supplies no additional
 execution, external-action or merge authority. PR-delivered planning work remains
 in progress until all necessary PRs are platform-confirmed merged and acceptance
 is satisfied. Completing Goal description does not complete the whole Goal.
-
-For this Goal, the architecture stage registered two concrete delivery outcomes
-before handing over the design PR. GW-T1 delivers the complete protocol, coupled current-state documents,
-required version changes and every necessary premerge validation in one implementation
-PR. GW-T2 independently accepts the exact merged consumer artifact and reconciles the
-whole Goal against its original acceptance criteria. Its work includes isolated package
-installation, complete bundle comparison, simulated-launcher installation checks and
-independent instruction scenarios. Both tasks have readable plans and acceptance
-criteria during design; neither is a placeholder for later decomposition.
-
-GW-T1 depends on the design task, and GW-T2 depends on GW-T1. Finishing protocol delivery
-therefore does not imply whole-Goal completion. Independent acceptance does not defer
-or reduce GW-T1's own premerge checks. The separate design delivery kept architecture reviewable before protocol
-implementation, and source-bound consumer evidence is assessed after implementation
-is integrated.
 
 ## Alternatives
 

@@ -92,7 +92,5 @@ before lifecycle actions; failures remain failures and cleanup is scoped.
 Current runtime validation is for Linux Docker volumes. A different storage
 driver or deployment model needs its own permission and persistence evidence.
 
-CLI and browser management remain separate Daynight tasks with their own plans
-and acceptance criteria.
-Their delivery and cross-layer acceptance are not established by deployment
-tests.
+Deployment tests do not establish CLI and browser management behavior or
+cross-layer acceptance.

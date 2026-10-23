@@ -6,9 +6,7 @@ and a pure dependency graph model with horizontal layout.
 The project dashboard, task canvas and task detail dialog are embedded into the Go
 server for single-origin delivery. The [localhost deployment](../../deployment/localhost/README.md)
 starts the full UI/API/database stack; [dev-ci](../../deployment/dev-ci/README.md)
-provides an isolated instance of the same production build. Production-browser,
-fixed-capacity and real Docker lifecycle validation and delivery status belong in
-the corresponding Daynight task records and attachments.
+provides an isolated instance of the same production build.
 
 The [requirements](../../docs/spec/daynight-web.md) own visible behavior and the
 [architecture](../../docs/design/daynight-web.md) owns graph projection, request
@@ -102,8 +100,7 @@ native selector under `src/i18n/`. Production `main.tsx` resolves language and
 sets HTML `lang` and the authentication loading title before React renders.
 `AuthenticatedApp` and the workspace update document
 metadata on navigation and language changes. The top bar, centered detail dialog
-and fullscreen graph expose selectors using the same saved language. Combined
-source-bound production verification is separately tracked in Daynight.
+and fullscreen graph expose selectors using the same saved language.
 
 `LocaleProvider` requires an explicit initial locale result. `useI18n()` reads
 `locale`, `messages` and `format`; `useLocaleCommands()` exposes selection and
@@ -131,8 +128,7 @@ shared selectors and retained fixture state with production selector styles
 and no Go API or PostgreSQL. The actual-component
 [browsing](tests/mockups/browsing.html) and
 [attachment](tests/mockups/attachments.html) previews also mount the Provider
-explicitly. The full bilingual mockup remains attached to Daynight task
-`8759f829-dc0c-4aec-9d83-e0fd9e5bd009`. Fixtures verify frontend behavior;
+explicitly. Fixtures verify frontend behavior;
 production claims require real service receipts. Web typecheck, test and build
 include all translated components under the existing coverage gate.
 
@@ -687,8 +683,6 @@ The [pipeline decision](../../.agents/notes/implemented/testing/2026-10-21-web-a
 records the scheduling and ownership constraints. The web job uploads
 `coverage-final.json` and `summary.json`, which records exact counts and the relative product-source
 manifest. Coverage and acceptance artifacts are retained for 30 days. The
-corresponding Daynight task records and attachments retain task validation
-conclusions and link source-specific delivery evidence. The
 [deployment decision](../../.agents/notes/implemented/architecture/2026-10-20-embedded-dashboard-deployment.md)
 records embedded HTTP/container smoke checks and concurrent dev-ci isolation;
 the [production acceptance decision](../../.agents/notes/implemented/testing/2026-10-20-dashboard-production-acceptance.md)
@@ -868,9 +862,7 @@ remains incomplete, preview 404 remains a visible error, and upload failure
 retains the busy/form lifecycle before retry. Missing-file recovery, delayed
 responses and unchanged task/graph state remain explicit checks. Restored faults
 and all owned browser, service, database and storage resources require confirmed
-cleanup. These source-bound probe receipts belong to Daynight task
-`daf08f1c-a822-44b2-bfeb-8dec80896ec3` and the corresponding PR/CI artifacts;
-first-party fixture checks remain distinct. The probe's local browser identity
+cleanup. First-party fixture checks remain distinct from source-bound probes. The probe's local browser identity
 is recorded and is not a hosted-CI browser claim.
 
 The chain fixture creates 1,000 independent tasks, then attaches its 999 edges
@@ -899,8 +891,7 @@ The 53-scenario inventory (29 native, 24 container), current manual/periodic ref
 attachment tabs/standalone reader, bilingual/auth boundaries, zero retries, timeouts,
 coverage, size refusals and cleanup remain. PR #143 delivered dependency inspection;
 its receipts bind results to that exact tested source. The authentication/lifecycle
-merge requires its own complete receipts. Daynight task records and primary plans
-own delivery evidence.
+merge requires its own complete receipts.
 
 The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [attachment journey](tests/e2e/attachments.spec.ts),
@@ -972,8 +963,6 @@ Browser identities must agree across a target's phases; every fixed graph's five
 timing repetitions, independent size refusals and cleanup/recovery must pass.
 Local receipts retain their source and browser identity; they do not establish
 clean hosted delivery results. The
-corresponding Daynight task records and attachments own task validation
-conclusions and source-specific CI and PR links. The
 [paint decision](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
 retains raster evidence and visual tolerances needed to assess that mechanism.
 

@@ -202,8 +202,7 @@ Production-image HTTP/browser acceptance uses this runner with a real Docker
 daemon and UniAuth fixture. Fake-Docker checks verify orchestration and cleanup
 decisions; they do not establish authentication or browser behavior. The
 [authentication architecture](../../docs/design/daynight-auth.md) owns the
-cross-layer validation requirements; the corresponding Daynight tasks and
-attachments own task-specific authentication acceptance criteria and evidence.
+cross-layer validation requirements.
 
 ## Attachment persistence check
 

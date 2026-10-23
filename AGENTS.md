@@ -15,11 +15,12 @@ take precedence.
 - Use the user's confirmed task and existing requirements to establish scope.
   A request to investigate or discuss remains read-only unless edits are
   authorized. Skills describe workflows and grant no additional permission.
-- Use Daynight as the source of truth for task breakdowns, dependencies,
-  execution status, task-specific plans, acceptance criteria and evidence. Store
-  detailed task materials in their owning task's attachments. Do not commit task
-  lists or task plans, including `*-tasks.md`, in `docs/design/` or elsewhere in
-  the repository. Load the `using-daynight` skill before executing any task and
+- Manage this repository's tasks in Daynight, including task breakdowns,
+  dependencies, execution status and task-specific plans and attachments. Do not
+  commit task-management files, including `*-tasks.md`, or add execution
+  bookkeeping and task-tracking pointers to repository documents. Keep durable
+  product requirements, architecture, decisions and validation methods in their
+  document owners. Load the `using-daynight` skill before executing any task and
   follow its applicable workflow.
 - Complete authorized work and its verification. Report observed results and
   material limitations; keep unverified assumptions distinct from evidence.
@@ -47,10 +48,8 @@ tooling only within an authorized task.
 
 Requirements describe required outcomes. Design documents explain mechanisms
 and the rationale needed to understand them. Notes hold detailed alternatives
-and decision history. Daynight task records and attachments own delivery work;
-repository documents may reference those records without duplicating task
-tracking. Create documents when needed and link to their owners without
-duplicating explanations.
+and decision history. Create documents when needed and link to their owners
+without duplicating explanations.
 
 Rewrite edited documents as coherent wholes and synchronize related active
 documents in the same change. Preserve historical statements about a decision's

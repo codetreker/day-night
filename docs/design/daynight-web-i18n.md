@@ -1,6 +1,6 @@
 # Web 语言运行时与界面接入设计
 
-状态：生产 `main.tsx`、`AuthenticatedApp` 与现有全部第一方组件接入 `packages/daynight-web/src/i18n/`，提供英语与简体中文界面，包括居中 `TaskDetailDialog`。语言运行时、功能接入及定向验收场景已实现；I18N-T3 拥有源码绑定的组合验收结论。[语言需求](../spec/daynight-web-i18n.md)拥有完整 L1–L10 条件，[看板架构](daynight-web.md)继续拥有业务数据、图和生命周期。
+状态：生产 `main.tsx`、`AuthenticatedApp` 与现有全部第一方组件接入 `packages/daynight-web/src/i18n/`，提供英语与简体中文界面，包括居中 `TaskDetailDialog`。语言运行时、功能接入及定向验收场景已实现。[语言需求](../spec/daynight-web-i18n.md)拥有完整 L1–L10 条件，[看板架构](daynight-web.md)继续拥有业务数据、图和生命周期。
 
 ## 运行时结构
 
@@ -23,7 +23,7 @@ packages/daynight-web/
   tests/mockups/locale-runtime.html
 ```
 
-隔离的[运行时预览](../../packages/daynight-web/tests/mockups/locale-runtime.html)继续演示多个选择器共享语言与 fixture 状态。实际组件的[任务浏览预览](../../packages/daynight-web/tests/mockups/browsing.html)和[附件预览](../../packages/daynight-web/tests/mockups/attachments.html)均显式挂载 Provider，复用生产组件及样式；完整页面原型由双语界面任务的附件拥有。这些 fixture 的前端交互不替代真实服务验收。
+隔离的[运行时预览](../../packages/daynight-web/tests/mockups/locale-runtime.html)继续演示多个选择器共享语言与 fixture 状态。实际组件的[任务浏览预览](../../packages/daynight-web/tests/mockups/browsing.html)和[附件预览](../../packages/daynight-web/tests/mockups/attachments.html)均显式挂载 Provider，复用生产组件及样式。这些 fixture 的前端交互不替代真实服务验收。
 
 生产[AuthenticatedApp](daynight-auth.md)使用常驻 LocaleProvider；messages.auth
 的完整英语/简体中文契约拥有登录、账户、项目创建、成员、邀请和令牌文案。
@@ -113,4 +113,4 @@ Provider 使用一份当前 issue 状态，初始值来自 `initial.issue`。选
 鉴权增加六个功能场景，审批撤回另有 `task-unapproval`。当前每目标 24 个功能场景，原生保留 5 个容量/超限场景，共 29 个；
 容器 24 个，总计 53 个。容量矩阵、性能预算、覆盖率与清理规则保持原要求。
 
-I18N-T3 核对相同源码的真实嵌入式服务与生产容器组合回执，验证完整 L1–L10，包括首屏、持久保存、键盘操作、两种语言的 1440px/320px 视觉、错误恢复、业务请求数量和资源清理。原型、隔离组件、JSDOM 与本地浏览器各有其证据范围，不能替代真实服务和对应源码的生产验收。
+组合验收核对相同源码的真实嵌入式服务与生产容器回执，验证完整 L1–L10，包括首屏、持久保存、键盘操作、两种语言的 1440px/320px 视觉、错误恢复、业务请求数量和资源清理。原型、隔离组件、JSDOM 与本地浏览器各有其证据范围，不能替代真实服务和对应源码的生产验收。

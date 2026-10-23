@@ -3,7 +3,7 @@
 状态：身份、会话/PAT、项目成员、CLI 和双语 Web 已在正式 composition 统一启用。
 服务配置校验失败会拒绝启动，所有业务请求强制认证。源码绑定的验证结果与真实上游
 人工登录以相应回执为准，本文不把接线完成等同于完整验收通过。
-[需求](../spec/daynight-auth.md)拥有行为，Daynight 任务记录及其附件拥有执行资料；
+[需求](../spec/daynight-auth.md)拥有行为；
 [原始鉴权决策](../../.agents/notes/implemented/architecture/2026-10-22-auth-architecture.md)
 保留架构取舍，[统一启用决策](../../.agents/notes/implemented/architecture/2026-10-22-authentication-activation.md)
 拥有当前配置、组合与验收隐私规则，[交互原型](mockups/auth/index.html)拥有视觉。
@@ -321,8 +321,7 @@ docker compose logs --no-log-prefix server | jq -R 'fromjson? | select(.request_
 ```
 
 验证按 AU-V1–AU-V10 映射，保留真实 PG 并发、实际 SDK/受控 UniAuth、安装 CLI、
-生产浏览器、原生/容器和现有资源/容量预算。[最终验收设计](auth-tasks/AU-T6.md)与
-[组合验收决策](../../.agents/notes/implemented/testing/2026-10-23-authentication-combined-acceptance.md)
+生产浏览器、原生/容器和现有资源/容量预算。[组合验收决策](../../.agents/notes/implemented/testing/2026-10-23-authentication-combined-acceptance.md)
 拥有实际领取结果后 TCP 断连，以及原生/容器各自的浏览器和安装 CLI 同数据、原凭据
 重启、撤销、已准入上传和 socket 中断证明。两目标各有一份额外必需回执，当前
 24+24+5 共 53 项 Playwright inventory 与容量门槛保持。
@@ -335,5 +334,4 @@ docker compose logs --no-log-prefix server | jq -R 'fromjson? | select(.request_
 ## 交付边界
 
 已有项目后续手工添加成员，成本是普通成员记录维护，无兼容分支。可信同源 HTML
-保持原权限模型，不引入预览安全系统。K1 和已准入传输语义保持。各任务分钟估算
-只用于规划，不是已取得的验证证据。
+保持原权限模型，不引入预览安全系统。K1 和已准入传输语义保持。

@@ -5,8 +5,7 @@ for project and task management. Its browser workspace provides project
 statistics, task dependency graphs, task details and file attachments from the
 same Go service origin. The read-only graph dashboard is delivered, including
 production-browser acceptance, embedded deployment and the subsequent focus-restoration repair. The
-corresponding Daynight task records track completion and link
-the corresponding PR and CI evidence. The task graph implements complete
+task graph implements complete
 prerequisite context, progressive overviews and dependency inspection. Its body
 action selects a task and highlights visible upstream cards, routes and arrows;
 a separate Details action opens the centered dialog. Hidden upstream tasks are
@@ -29,21 +28,18 @@ controller, while real hrefs retain native browser navigation. The
 owns root/document resolution, complete-inventory checks and focus integration.
 The published skill preserves self-contained briefs, primary-plan ownership and
 Goal, dependency, PR and separate approval/implementation/merge permissions.
-Daynight task records and
-task-specific primary plans own delivery status and source-bound acceptance.
 
 The adopted [execution timing requirements](docs/spec/daynight-task-timing.md) and
 [architecture](docs/design/daynight-task-timing.md) define task
 start/completion facts, project warning thresholds and live card presentation.
 Task timestamps, the database graph clock and matching CLI/Web reader contracts
-are implemented. Project settings and live card warnings remain subsequent
-deliveries; the corresponding Daynight tasks own acceptance evidence.
+are implemented. Project settings and live card warnings remain unimplemented.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle and interactive Agent installation, shared configuration, server HTTP and repository binding foundations plus project, task and single-file attachment commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md) |
-| `daynight-server` | `packages/daynight-server/` | Project/task/graph APIs, mandatory UniAuth/session/PAT authentication, project memberships, PostgreSQL transactions and embedded browser assets implemented; source-bound activation acceptance tracked separately | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
-| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs with complete prerequisite context and task details, attachment management/preview, embedded delivery, graph production acceptance and strict coverage delivered; English/Simplified Chinese interface and locale persistence implemented, combined bilingual production verification tracked separately | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [language requirements](docs/spec/daynight-web-i18n.md), [language design](docs/design/daynight-web-i18n.md), [preview](docs/design/mockups/task-dashboard.html) |
+| `daynight-server` | `packages/daynight-server/` | Project/task/graph APIs, mandatory UniAuth/session/PAT authentication, project memberships, PostgreSQL transactions and embedded browser assets implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
+| `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs with complete prerequisite context and task details, attachment management/preview, embedded delivery, graph production acceptance and strict coverage delivered; English/Simplified Chinese interface and locale persistence implemented | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [language requirements](docs/spec/daynight-web-i18n.md), [language design](docs/design/daynight-web-i18n.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The adopted [task attachment requirements](docs/spec/daynight-task-attachments.md) and
 [architecture](docs/design/daynight-task-attachments.md) define reusable
@@ -62,8 +58,8 @@ including native PDF reading to the final painted page. Installed CLI/service
 and production-browser attachment journeys share real service data on native
 and container targets; their
 [acceptance decision](.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
-owns byte, rendering, scroll, failure-recovery and cleanup proof. Delivery
-progress remains tracked in Daynight, and successful runs remain tied to their
+owns byte, rendering, scroll, failure-recovery and cleanup proof. Successful
+runs remain tied to their
 tested source, built artifacts and browser environment; local browser overrides
 do not establish hosted-CI browser results. The
 [Web attachment decision](.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)
@@ -102,8 +98,7 @@ continues to bind only numeric loopback addresses.
 
 The approved `daynight worker run` architecture is specified in the
 [worker requirements](docs/spec/daynight-worker.md) and
-[architecture](docs/design/daynight-worker.md). Daynight task records and their
-attachments own delivery scope, dependencies and acceptance. It uses the service's
+[architecture](docs/design/daynight-worker.md). It uses the service's
 exclusive task claims, a foreground multi-repository coordinator, per-task
 worktrees, dedicated Herdr sessions and SQLite recovery. Agents own delivery;
 the worker owns resources, recovery and completion verification from existing
@@ -134,8 +129,7 @@ each Tab.
 The adopted [project/task CLI design](docs/design/daynight-project-task.md) adds
 server-backed commands, automatic Git-origin project discovery and ignored
 repository-local bindings. Its [requirements](docs/spec/daynight-project-task.md)
-describe the confirmed behavior; Daynight task records own delivery status.
-Shared YAML projections, the
+describe the confirmed behavior. Shared YAML projections, the
 `serverUrl` configuration field, bounded HTTP client and repository discovery
 with ignored local bindings are implemented. `project create/list/show` manage
 remote projects through the configured server. Task create/list/ready/show/update/graph
@@ -162,8 +156,6 @@ acceptance, then a dependent architecture task completes design and registers
 all successors before design handover. Applicable UI Goals produce a final-style,
 frontend-only interactive prototype during clarification. Stage briefs are
 inputs; completed requirements, prototypes and architecture are their outputs.
-The corresponding Daynight tasks distinguish protocol delivery from independent
-acceptance of the exact merged consumer artifact.
 
 | Mode | Responsibility |
 |---|---|
@@ -219,10 +211,7 @@ The server design covers repository-linked projects, project-scoped tasks,
 acyclic dependencies and dependency-gated task states through HTTP JSON APIs.
 Its data and runtime are independent of the client review module. The
 [server design decision](.agents/notes/implemented/architecture/2026-10-19-daynight-server-task-design.md)
-records the adopted scope and concurrency choices. The
-corresponding Daynight task records and attachments own implementation scope,
-dependencies, status and task-specific acceptance criteria. The development and
-runtime
+records the adopted scope and concurrency choices. The development and runtime
 CLI commands below apply to the client; server commands have their own module.
 The dashboard architecture presents project statistics and two in-project task
 tabs from one complete server snapshot. Standalone tasks open details directly;
@@ -303,8 +292,7 @@ executables with real Git and SQLite. The self-update suite uses real npm and an
 isolated, task-local global prefix with a controlled HTTP registry. Neither suite
 changes the operator's installed CLI or requires live review credentials.
 Project/task acceptance is a third native installed suite using a reusable
-pack/install fixture, real Git and controlled HTTP. Its actual results
-belong to the corresponding Daynight task and its owned attachments.
+pack/install fixture, real Git and controlled HTTP.
 
 Shell completion has a separate real-shell acceptance command. It requires
 Python 3 on a POSIX host, Bash 4.2, a modern Bash, and zsh. Linux hosts can prepare
@@ -436,9 +424,7 @@ the isolated database setup and complete validation commands. Its HTTP runtime
 binds only numeric loopback addresses and serves authenticated project/task,
 complete graph, membership, invitation and attachment routes with embedded UI.
 The five mandatory authentication settings and independent HTTP test switches
-are described in the server module and deployment guides. Delivery
-status and complete process acceptance are recorded in Daynight task records
-and their owned attachments.
+are described in the server module and deployment guides.
 
 From `packages/daynight-server/`, set `DAYNIGHT_TEST_DATABASE_URL` to an isolated
 PostgreSQL database, then run:
@@ -455,8 +441,8 @@ same raw coverage profile supplies an exact strict comparison; exactly 90%
 fails, independently of display rounding. No product files or functions are
 excluded. When [CI selection](#ci-selection) selects the server, the complete
 Go job contributes its result to the final `checks` job. PostgreSQL absence is a
-failure, not a skipped test. PT-T5 adds an installed-CLI service path and resource-budget
-probes to this same gate. A Node orchestrator shares one real installation across
+failure, not a skipped test. The gate includes an installed-CLI service path and
+resource-budget probes. A Node orchestrator shares one real installation across
 the Go command scenarios and, after the unchanged go-cov/strict-profile checks,
 public-command probes outside Go's default ten-minute timer. Test-only deadline
 mocks use a 1-second request and 3-second operation budget while separately
@@ -487,8 +473,7 @@ Chinese across the shipped interface, native Intl formatting and an independent
 saved language preference. Navigation, the centered detail dialog and fullscreen
 graph share one language choice while preserving browsing and pending attachment
 state. The [bilingual requirements](docs/spec/daynight-web-i18n.md) own the full
-outcome; the separate acceptance task owns source-bound combined production
-verification. With the Go API running on loopback, use:
+outcome. With the Go API running on loopback, use:
 
 ```text
 pnpm web:dev
@@ -519,8 +504,7 @@ For a disposable full-stack HTTP target, run a command through
 `bash deployment/dev-ci/run.sh <command> [args...]`; it receives
 `DAYNIGHT_BASE_URL` and owns only its unique test project. The runner removes its
 containers, volume, network and image tag after completion, failure or cancellation,
-and records cleanup failures. The corresponding Daynight dashboard tasks and
-attachments own production/deployment results and source-specific delivery evidence.
+and records cleanup failures.
 
 `pnpm web:acceptance` builds production UI and a native Go executable, creates an
 owned PostgreSQL instance and starts the normal dev-ci production build in
@@ -528,11 +512,7 @@ parallel. It runs native functional workflows, then the container workflows and
 complete container cleanup, and finally the fixed native capacity cases. It
 requires Go 1.27.2, Docker, Node 24, pnpm 11.28.6 and Playwright Chromium. The
 [web README](packages/daynight-web/README.md#production-browser-acceptance) owns
-browser setup, required gates and receipt interpretation. The
-corresponding Daynight dashboard task and its attachments identify source-bound
-production/performance results and delivery requirements. That inventory covers
-the graph dashboard baseline. The Daynight attachment acceptance task owns
-real-backend attachment browser journeys and combined acceptance.
+browser setup, required gates and receipt interpretation.
 
 ## Package versions
 
@@ -1117,8 +1097,7 @@ selected full tasks as an array, details return one full resource, and graphs
 return the complete API object. An empty human ready result is `No ready tasks.`
 and empty JSON is `[]`. Versions remain JSON numbers with full int64 precision.
 Local preparation fails before any task mutation; a lost write response is
-reported as unconfirmed. The corresponding Daynight task record owns validation
-status. Installed CLI integration uses the real Go/PostgreSQL
+reported as unconfirmed. Installed CLI integration uses the real Go/PostgreSQL
 service; deadline behavior uses short test-only budgets and byte probes retain
 the full production limits. [PR #55](https://github.com/codetreker/daynight/pull/55)
 records the original integration and real-default-budget validation, with its
@@ -1599,14 +1578,8 @@ records owner-liveness checks and the separate process-exclusion requirement.
 ## Working in the repository
 
 Read [AGENTS.md](AGENTS.md) for task scope, shared task worktrees, collaboration,
-verification, and delivery. This repository uses Daynight for task management;
-load the `using-daynight` skill before executing any task. Keep delivery
-boundaries, dependencies, scope and acceptance criteria with their design
-documents. Link Daynight task IDs from the design and query Daynight for live
-status; local execution plans remain temporary checklists. Existing
-document-owned task records retain their ownership until explicitly migrated.
-Use the [repository skills](.agents/skills/) for decision notes, scope choices,
-and prose.
+verification, and delivery. Use the [repository skills](.agents/skills/) for
+decision notes, scope choices, and prose.
 
 [Agent Notes](.agents/notes/README.md) preserve decisions and alternatives. The
 [client composition decision](.agents/notes/implemented/architecture/2026-10-20-client-command-composition.md),
@@ -1626,14 +1599,6 @@ record the relevant rationale. `.agents/skills/` is canonical; `CLAUDE.md`,
 | `docs/research/` | Investigations, evidence, sources, and observation conditions |
 | `.agents/notes/` | Decisions, alternatives, consequences, and reconsideration conditions |
 | `docs/plans/` | Local scratch execution plans, ignored by Git |
-| Daynight task records and attachments | Task breakdowns, dependencies, execution status, task-specific plans, acceptance criteria, and evidence |
-
-Do not commit task lists or task plans, including `*-tasks.md`, in
-`docs/design/` or elsewhere in the repository. Keep persistent task materials in
-their owning Daynight task's attachments; repository documents may reference
-those tasks without maintaining a parallel task tracker. The
-[task ownership decision](.agents/notes/implemented/process/2026-10-23-daynight-task-ownership.md)
-records the rationale and consequences.
 
 Validation commands, required gates and receipt interpretation belong to the
 owning README or design. Keep run-specific counts, hashes, timing tables and

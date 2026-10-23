@@ -4,12 +4,10 @@ The Go service owns PostgreSQL-backed project and task management. Its runtime
 foundation is implemented: explicit database and file-storage configuration,
 loopback-only HTTP binding, connection validation, structured request logs, cancellation, and bounded
 HTTP shutdown. Versioned migrations and transactional storage are implemented;
-project/task APIs and built-process acceptance are implemented; delivery status is
-tracked in Daynight task records and their attachments. The current
+project/task APIs and built-process acceptance are implemented. The current
 executable serves project, task and complete task-graph routes together with the
 embedded task dashboard. Generic bucket/path local storage, task attachment
-metadata and file/preview HTTP endpoints are implemented. Attachment CLI and
-browser management remain tracked by the corresponding Daynight tasks.
+metadata and file/preview HTTP endpoints are implemented.
 
 The [requirements](../../docs/spec/daynight-server.md) own observable behavior and
 the [design](../../docs/design/daynight-server.md) owns architecture and concurrency.
@@ -501,10 +499,7 @@ Graph requests share the existing request ID and safe error handling. Logs add
 project identity and graph counts without recording task content or repository
 addresses. This endpoint supports the implemented
 [task dashboard](../../docs/design/daynight-web.md); the browser application
-and embedded static delivery are implemented. The
-corresponding Daynight dashboard tasks track production-browser, fixed-capacity
-and deployment-lifecycle validation
-and delivery status.
+and embedded static delivery are implemented.
 From the repository root, `pnpm web:acceptance` builds this executable and runs
 production browser workflows against both a native process and the dev-ci
 container gateway. It owns separate PostgreSQL resources; its prerequisites,
@@ -724,6 +719,5 @@ confirmed, including actual removal of each fixture's storage root. Recompute
 the strict coverage comparison from the accompanying raw
 profile rather than its rounded display. A failed job, partial receipt or local
 pass does not establish successful hosted acceptance for another source revision.
-Task validation conclusions and delivery links belong in Daynight task records
-and their attachments; lasting technical findings belong in the relevant
+Lasting technical findings belong in the relevant
 decision or research records.

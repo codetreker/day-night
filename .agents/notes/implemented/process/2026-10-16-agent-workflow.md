@@ -38,11 +38,7 @@ history belongs in notes. Active research stays synchronized with relevant work.
 The [validation evidence decision](2026-10-20-source-bound-validation-evidence.md)
 clarifies this ownership for acceptance: run observations stay with source-bound
 artifacts and their PR or CI run, while durable methods, limitations and decisions
-stay in their existing document owners. The
-[task ownership decision](2026-10-23-daynight-task-ownership.md) places task
-breakdowns, dependencies, status and owned execution material in Daynight;
-repository specifications, designs and notes retain their product and decision
-responsibilities.
+stay in their existing document owners.
 
 `.agents/skills/` is the canonical skill directory. Relative links expose root
 instructions through `CLAUDE.md` and skills and worktrees through `.claude/`.

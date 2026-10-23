@@ -15,9 +15,7 @@ membership while preserving the existing trusted attachment execution model.
 The adopted [requirements](../../../../docs/spec/daynight-auth.md),
 [architecture](../../../../docs/design/daynight-auth.md) and
 [interactive UI](../../../../docs/design/mockups/auth/index.html) define the
-implementation. Daynight tasks and their owned attachments manage delivery
-assignments, dependencies and acceptance criteria. The
-[identity foundation](2026-10-22-identity-credentials.md) and
+implementation. The [identity foundation](2026-10-22-identity-credentials.md) and
 [membership foundation](2026-10-22-project-membership.md) first delivered callable,
 unmounted modules so their transaction and identity behavior could be reviewed
 without partially changing production access. [CLI credentials](2026-10-22-cli-server-credentials.md)

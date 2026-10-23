@@ -27,8 +27,6 @@ budgets while preserving production defaults and full byte-limit probes. The
 [bounded ready selection decision](../feature/2026-10-21-bounded-ready-task-selection.md)
 extends the original complete-list operations with `task ready` single-page
 candidate selection while preserving `task list --ready` traversal.
-Daynight task records and their owned attachments manage implementation status,
-dependencies, file ownership and completion evidence.
 
 The global YAML has an additive `serverUrl` origin and an optional `serverToken`
 under the [credential decision](2026-10-22-cli-server-credentials.md). Shared
@@ -210,9 +208,8 @@ entrypoint, real-shell and native CI checks, with exact-head review. Installed
 service acceptance follows the
 [acceptance decision](../testing/2026-10-20-installed-project-task-acceptance.md);
 its native and Go/budget paths preserve all existing suites and production limits.
-Observed acceptance evidence remains source-bound to its PR and CI run; the
-corresponding Daynight tasks own delivery status and evidence references. Shared
-configuration, HTTP, repository and server-runtime modules support that remaining
+Shared configuration, HTTP, repository and server-runtime modules support that
+remaining
 work. Package versions follow the existing release rules.
 
 Project creation uses `project create <name> [--repo <repo>]` in help, examples and

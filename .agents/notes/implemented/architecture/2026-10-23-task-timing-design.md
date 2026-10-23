@@ -16,8 +16,7 @@ The adopted [requirements](../../../../docs/spec/daynight-task-timing.md) and
 [architecture](../../../../docs/design/daynight-task-timing.md) define one
 execution interval per task, project-owned warning settings and a server-derived
 display clock. Persistent task timing and its reader contracts are implemented;
-project settings, running-task presentation and whole-goal acceptance remain
-owned by the succeeding Daynight implementation tasks and their attachments.
+project settings and running-task presentation remain unimplemented.
 
 Task start and completion timestamps are nullable database facts written with
 status and version under the existing project transaction. The latest genuine
@@ -38,13 +37,13 @@ content equality excludes the graph's sample. This preserves graph and index
 identity on clock-only responses without freezing the sample consumed by future
 clock clients. The existing local-wall-clock `receivedAt` label keeps its role.
 
-The adopted ET-T2 design stores settings in two project columns under the existing
+The adopted project-settings design stores settings in two project columns under the existing
 project lock and a dedicated settings version. It requires member reads,
 administrator writes with authorization rechecked after the lock, and a version
-check before no-op detection. The initial threshold is 60 minutes. ET-T2 also
-owns separation of settings metadata from the task index.
+check before no-op detection. The initial threshold is 60 minutes. Settings
+metadata remains separate from the task index.
 
-ET-T3 uses one project-owned browser ticker to advance the latest server sample
+The adopted card-timing design uses one project-owned browser ticker to advance the latest server sample
 with monotonic elapsed time. Completed durations need no subscription. Strict
 unrounded threshold comparison drives an amber icon/text warning without
 changing task status or graph geometry. These consumers remain later delivery

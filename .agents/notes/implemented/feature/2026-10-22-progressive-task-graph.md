@@ -76,9 +76,8 @@ merged as `53e3a0c0ff4ec821f74a2401a3bfa7de24a3f4ea`, with source-bound producti
 and required CI/approval evidence. The first inspection attempt,
 [PR #121](https://github.com/codetreker/daynight/pull/121), was abandoned without
 integration. A replacement rebuilt from current main owns independent body/
-Details actions, full/hidden ancestor semantics and smooth routes. UX-T2 completes
-when that replacement is verified and integrated; the abandoned PR is not a
-required merge and its runtime results remain historical.
+Details actions, full/hidden ancestor semantics and smooth routes. The abandoned
+PR's runtime results remain historical.
 
 The four complete API capacity inputs retain 1,000 tasks each and their exact
 999/5,000 edges, with five samples. The browser workload now requires bounded
@@ -97,8 +96,7 @@ and Markdown evidence must come from its own source.
 
 The [requirements](../../../../docs/spec/daynight-task-inspection.md) and
 [design](../../../../docs/design/daynight-task-inspection.md) own behavior and
-mechanisms. The UX-T2 Daynight task and its owned attachments manage its
-two-part scope and acceptance criteria.
+mechanisms.
 
 ## Alternatives
 
@@ -130,8 +128,7 @@ browsing intent; reset/remount adopts a new overview deliberately.
 **Combine workload policy and dependency inspection in one PR.** That couples a
 material change in rendered workload with new selection, curve geometry and
 acceptance mechanisms. Separate focused PRs establish progressive behavior and
-its original-primitive budgets before adding inspection; the Daynight task still
-requires both deliveries.
+its original-primitive budgets before adding inspection.
 
 ## Consequences
 

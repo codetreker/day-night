@@ -15,8 +15,7 @@ command able to observe cancellation and its deadline.
 
 The [attachment requirements](../../../../docs/spec/daynight-task-attachments.md)
 and [architecture](../../../../docs/design/daynight-task-attachments.md) own the
-cross-component contract. This note owns the A-T3 CLI implementation; Daynight
-manages the task and its owned plan and acceptance criteria. It extends
+cross-component contract. This note owns the CLI implementation. It extends
 the text-only callback/output part of the
 [project/task CLI design](../architecture/2026-10-20-project-task-cli-design.md)
 and implements the existing

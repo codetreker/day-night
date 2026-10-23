@@ -29,8 +29,6 @@ state and versioned use cases. The
 operations with strict request semantics.
 [Built-process acceptance](../testing/2026-10-19-server-process-acceptance.md)
 verifies restart persistence, HTTP races, cancellation and resource ownership.
-Daynight task records and their owned attachments manage implementation scope,
-dependencies, status and acceptance criteria.
 
 The selected layers are API definitions, HTTP server, application service and
 core models, with concrete PostgreSQL storage inside `core/store`. Application

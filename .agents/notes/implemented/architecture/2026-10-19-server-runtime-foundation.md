@@ -13,8 +13,7 @@ coverage equal to 90%, while preserving the existing review CLI checks.
 
 The independent `packages/daynight-server/` module provides the Go executable,
 strict loopback configuration, PostgreSQL connection ownership and HTTP
-lifecycle. Business models, migrations and project/task routes remain tracked
-by Daynight implementation tasks and their owned attachments.
+lifecycle.
 The [service design baseline](2026-10-19-daynight-server-task-design.md) continues
 to own the overall domain architecture.
 

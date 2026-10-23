@@ -96,5 +96,4 @@ The suite targets the Ubuntu Go CI job for process signals. The
 [module-scoped CI decision](../process/2026-10-21-module-scoped-pr-ci.md) controls
 which PR jobs run; selected jobs retain their full workloads, and main pushes
 retain every native CLI job. The suite creates no production helpers, service
-interfaces or coverage exclusions. Minor test-fixture strengthening remains a
-separate follow-up and does not expand the delivered task-management contract.
+interfaces or coverage exclusions.

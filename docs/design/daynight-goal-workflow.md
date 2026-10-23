@@ -2,7 +2,6 @@
 
 公开 skill 以共享协议实现分阶段 Goal，保留现有四种模式与安装机制。
 [Goal 需求](../spec/daynight-goal-workflow.md)拥有 GW1–GW13，
-Daynight 任务记录及其附件拥有实际交付任务与文件归属，
 [设计决策](../../.agents/notes/implemented/process/2026-10-22-goal-workflow-design.md)
 保存阶段划分与范围的理由。当前发布结构和安装机制继续由
 [Agent skill 设计](daynight-agent-skill.md)拥有。
@@ -94,12 +93,12 @@ Goal description 是阶段职责，不是标题前缀。标题用于说明职责
 由仓库拥有，可以引用已核验的不可变 URL，不按任务重复上传整套文件。需要独立快照
 时，主附件记录复制目的、原始来源和来源版本；复制不是默认登记步骤。
 
-共享来源通过实际 CLI 读取。例如本 Goal 的要求和架构分别使用：
+共享来源通过实际 CLI 读取。例如要求和架构分别使用：
 
 ```bash
-daynight task attachment read 03a3ee58-9d3a-4820-b582-8d4eb281a5ae goal.md
-daynight task attachment read d2a31f2c-d77a-41ca-8170-3e0f0cc2504b design.md
-daynight task attachment read d2a31f2c-d77a-41ca-8170-3e0f0cc2504b tasks.md
+daynight task attachment read <goal-task-id> goal.md
+daynight task attachment read <design-task-id> design.md
+daynight task attachment read <design-task-id> tasks.md
 ```
 
 具体命令参数由已安装 CLI help 拥有。该引用不增加 URL 协议或 API，不假设 `task://`
@@ -193,12 +192,8 @@ autopilot 沿用已有当前任务和有界 ready 选择机制，一次只推进
 
 ## 验证与交付
 
-设计交付检查本文、需求和 note 的链接、语言、状态及结构，实际任务拆分、资料与
-依赖由 Daynight 读回核验。逐项单独阅读正文，确认不打开附件也能理解具体工作与完成
-条件；随后核验专属主附件及共享来源的所有权、可读内容和实际需要，不能只检查统一
-附件包的文件是否存在。独立设计审查确认无阻塞的 Critical/Major。设计交付拥有
-设计资料和已完成登记、附件核验的后续任务，实施由依赖它的交付任务负责。本 Goal 的完整后继为协议交付 GW-T1 和依赖它的独立整体验收 GW-T2；真实 ID、
-范围与验收由 Daynight 任务记录及其专属附件拥有，不能将后继登记推迟到实施阶段。
+检查本文、需求和 note 的链接、语言、状态及结构，核验公开 bundle 的模式引用与
+共享协议一致。
 
 实施交付在同一个目的下更新 bundle 和相关 active 文档，按既有 CLI 包版本规则处理；
 新增版本须高于实施 PR 当时的目标分支版本，不能使用设计时的版本快照作为门槛。
@@ -206,8 +201,7 @@ autopilot 沿用已有当前任务和有界 ready 选择机制，一次只推进
 范围内拆分、各阶段 proposed 等待及明确范围审批、观察版本 claim/complete、
 阶段完成不批准后继、部分成功与不确定写入、版本冲突、设计 PR 等待、单任务返回和整体验收。
 它检验协议的一致含义，不宣称模拟模型运行的确定性，也不创建额外真实任务或启动
-autopilot。GW-T1 在自己的交付 PR 合并前完成全部必需检查和独立指令审查；后继验收
-不承担替它补齐合并前门禁的职责。
+autopilot。
 
 现有 `test/tooling/copy-skills.test.ts` 验证两个 allowlist bundle 的完整字节复制、
 frontmatter 与相对链接。`test/cli/e2e.acceptance.ts` 的已安装公开资源必需清单扩展为
@@ -215,16 +209,11 @@ frontmatter 与相对链接。`test/cli/e2e.acceptance.ts` 的已安装公开资
 既有安装验收继续验证路径、覆盖与 scope，无需真实 Agent、账号、模型或新增 Daynight
 服务。按实际影响运行 typecheck、test、build 与必要 CI。
 
-GW-T2 在 GW-T1 的必要 PR 实际合并后，对准确的已合并干净源码独立验收。记录源码
+安装验收使用准确的干净源码。记录源码
 commit、包名称和版本、实际打包产物及入口 hash、平台、命令和结果，使用 npm pack
 产物在隔离目录安装，比较完整文件的相对路径和字节，确认共享协议及其引用可读。
 复用模拟 launcher 的三个 Agent × 两个 scope 真实安装验收，验证覆盖、迁移、资源保留和完整 bundle；安装过程不执行真实
 Agent、模型，不依赖登录，也不发布 npm 或部署。
 
-该任务另行审查安装 bundle 的完整行为情境，逐项把 GW1–GW13 映射到已取得证据，区分
-指令结论、文件结果和平台合并事实。它不新增任务或修改任务链来演示协议。确认其他
-交付任务已 done、必要 PR 已合并且自身验收满足后，完成 GW-T2；服务确认此任务 done
-后，再核对完整 Goal 的全部任务和原始整体验收并报告目标完成。GW-T1 只完成协议交付。
-若确认存在范围内验收缺陷，保留未通过项，在既有授权内通过修复 PR 交付并验证新的
-准确来源；不能绕过门禁、擅自合并或将失败写成完成。文件证据、行为审查和平台合并
-事实分别报告，任何一类都不能代替其他类别。
+安装 bundle 的独立行为情境审查逐项把 GW1–GW13 映射到证据。文件证据、行为审查
+和平台合并事实各自提供不同证明，不能相互替代。

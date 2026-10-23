@@ -20,7 +20,7 @@ exclusive claims; the worker owns scheduling, resources, recovery and completion
 verification; Herdr owns agent terminals and sessions; the agent owns the task's
 delivery loop. This note records the delivered design decision. The worker
 runtime, role/platform controls and claim integration remain implementation
-work managed by Daynight tasks and their owned attachments.
+work.
 
 Eligibility combines Agent role, ready state, optional platform compatibility
 and the absence of an active claim. The service checks these conditions and the

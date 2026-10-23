@@ -79,6 +79,5 @@ The dialog remains an independent live detail read and never patches the graph
 snapshot. The [Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
 extends Overview with CommonMark/GFM and root-based attachment navigation,
 sharing the existing attachment controller and preserving this modal lifecycle.
-Graph-card inspection and smooth paths remain with UX-T2. Its replacement
-implementation and Markdown reading each require their own source-bound
-acceptance and authorized delivery.
+Graph-card inspection, smooth paths and Markdown reading each require their own
+source-bound acceptance.
