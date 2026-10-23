@@ -16,8 +16,9 @@ are unnecessary for distinguishing these edges.
 The delivered [design](../../../../docs/design/daynight-external-dependencies.md)
 and [requirements](../../../../docs/spec/daynight-external-dependencies.md)
 specify an explicit boolean classification on each existing dependency row.
-This note records the architecture and delivery sequence; runtime implementation
-remains with the [delivery tasks](../../../../docs/design/daynight-external-dependencies-tasks.md).
+This note records the architecture and release guarantees. Daynight owns the
+implementation tasks, their prerequisites, scope and current delivery state.
+Runtime implementation remains pending.
 
 The complete `dependsOn` set continues to own scheduling, blocking, readiness,
 cycle detection and capacity. A required `externalDependsOn` subset communicates
@@ -43,12 +44,12 @@ is published. Ordinary components and their ancestor closure are connected, so
 the existing 50-node/100-edge overview and 20-neighbor expansion remain enough
 to reach every projected task.
 
-Delivery is reader-first: ED1 establishes storage and all required readers;
-ED2 consumes classification in the chain model and presentation; ED3 exposes
-API and CLI classification writes and updates the skill; ED4 independently
-verifies the whole path and audits current data through reads. Each stage owns
-its necessary validation. Public writers must not precede consumers that
-understand the distinction, and readers do not fabricate missing classification.
+Public classification writes require every supported reader to understand the
+distinction, including the Web chain model and presentation. Deployable states
+without those consumers only establish ordinary edges. Readers do not fabricate
+missing classification. These release guarantees and the complete validation
+contracts belong in the architecture; execution planning and progress belong in
+Daynight.
 
 Migration gives existing relationships the explicit ordinary default. Historical
 external classification is not inferred. The original worker regression remains

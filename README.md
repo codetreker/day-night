@@ -34,14 +34,13 @@ Daynight task records and
 task-specific primary plans own delivery status and source-bound acceptance.
 
 The proposed [external dependency requirements](docs/spec/daynight-external-dependencies.md),
-[architecture](docs/design/daynight-external-dependencies.md),
-[delivery breakdown](docs/design/daynight-external-dependencies-tasks.md) and
+[architecture](docs/design/daynight-external-dependencies.md) and
 [interactive prototype](docs/design/mockups/external-dependencies/index.html)
 distinguish chain membership from genuine cross-chain prerequisites. The design
 keeps all dependencies for execution and uses ordinary-edge components for
-chain presentation. Runtime delivery remains pending; storage and readers precede
-classification writes, followed by independent acceptance and a read-only audit
-of current relationships.
+chain presentation. Runtime delivery remains pending. Supported readers must
+understand classification before public classification writes become available;
+Daynight owns the implementation tasks, prerequisites and delivery state.
 
 The adopted [execution timing requirements](docs/spec/daynight-task-timing.md),
 [architecture](docs/design/daynight-task-timing.md) and
