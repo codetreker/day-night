@@ -197,7 +197,7 @@ describe('task dependency canvas', () => {
     const { container } = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
     await waitFor(() => { expect(container.querySelectorAll('.react-flow__edge')).toHaveLength(4); });
     expect(container.querySelectorAll('.react-flow__node')).toHaveLength(5);
-    expect(screen.getByText('3 个链内任务 · 2 个外部前置 · 4 条依赖')).toBeTruthy();
+    expect(screen.getByText('链内 3 · 外部 2 · 任务 5/5 · 依赖 4/4')).toBeTruthy();
     expect(nodeShell('基础 API').classList.contains('task-node-done')).toBe(true);
     expect(nodeShell('合流实现…').classList.contains('task-node-in_progress')).toBe(true);
     fireEvent.click(nodeButton('合流实现…'));
@@ -230,7 +230,7 @@ describe('task dependency canvas', () => {
     const onOpenTask = vi.fn();
     const { container } = render(<TaskGraph index={buildGraphIndex(externalGraph)} rootId="A" onOpenTask={onOpenTask} />);
     await waitFor(() => { expect(container.querySelectorAll('.react-flow__node')).toHaveLength(5); });
-    expect(screen.getByText('3 个链内任务 · 2 个外部前置 · 4 条依赖')).toBeTruthy();
+    expect(screen.getByText('链内 3 · 外部 2 · 任务 5/5 · 依赖 4/4')).toBeTruthy();
     expect(nodeShell('已完成外部祖先')).toHaveClass('task-node-external', 'task-node-done');
     expect(nodeButton('已完成外部前置')).toHaveAccessibleName('已完成外部前置，已完成，外部前置');
     expect(screen.queryByRole('button', { name: /外部前置的无关后续/ })).toBeNull();
@@ -579,7 +579,7 @@ describe('progressive task visibility', () => {
     const positions = [...view.container.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => node.style.transform);
     const routes = [...view.container.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'));
     const transform = viewport(view.container).style.transform;
-    expect(scope.getByText('61 个链内任务 · 40 个外部前置 · 100 条依赖')).toBeTruthy();
+    expect(scope.getByText('链内 61 · 外部 40 · 任务 50/101 · 依赖 49/100')).toBeTruthy();
     expect(view.container.querySelector('.task-graph')).toHaveAttribute('data-visible-task-count', '50');
     expect(view.container.querySelector('.task-graph')).toHaveAttribute('data-total-task-count', '101');
     const body = taskBody('合流任务 · 40 个外部前置');

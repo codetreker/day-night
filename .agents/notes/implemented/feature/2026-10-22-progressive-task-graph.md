@@ -39,7 +39,18 @@ the initial fifty/one-hundred limits. Shared IDs appear once.
 
 `projectVisibleTasks(P, S)` retains membership and every real dependency with
 both endpoints in S. No shortcut edges, aggregate cards or synthetic links are
-introduced. Toolbar counts distinguish visible from full context. The original
+introduced. One compact toolbar row combines main/external membership, visible/
+total tasks and dependencies, hidden-upstream status and fullscreen/reset controls.
+It has no persistent explanatory paragraphs or reserved empty status block.
+The action group stays fully visible at the right edge without shrinking. The
+left text group takes the remaining width and truncates overflow with an ellipsis;
+neither the toolbar nor the page scrolls horizontally. Narrow fullscreen controls
+use compact padding and a visually hidden locale label whose accessible name
+remains available. Locale preference failures appear below the selector without
+widening the action group or clipping the retry control. Native canvas controls
+stay at bottom-left, separate from the top-right locale notice and bottom-right
+attribution, so a persistent storage failure leaves zoom and fit accessible. The underlying counts
+remain complete when only part of the graph is visible. The original
 card decision reserved 220 by 136 pixels for every task: a 94px body, 40px
 two-column footer and two border pixels. Uniform heights kept all controls in
 consistent columns during progressive expansion, but also left an empty ruled
@@ -105,6 +116,18 @@ mechanisms.
 
 ## Alternatives
 
+**Wrap the toolbar on narrow screens.** This keeps all labels visible at once,
+but gives the header variable height and takes space from the graph. A single
+row with truncated text preserves canvas height and keeps actions in place.
+
+**Offset the notice below top-right canvas controls.** This couples the notice
+position to the controls' height and margin. The existing public bottom-left
+control placement separates them without geometry constants or new state.
+
+**Scroll the complete toolbar horizontally.** This preserves visual access to all
+labels, but sends action buttons offscreen. Truncating only the left text keeps
+the buttons immediately available at the right edge.
+
 **Keep the complete projection always visible.** This made every ancestor
 immediately available, but initial density and paint cost scaled with complete
 context. Keeping complete P and explicit S retains data while bounding first
@@ -136,6 +159,10 @@ acceptance mechanisms. Separate focused PRs establish progressive behavior and
 its original-primitive budgets before adding inspection.
 
 ## Consequences
+
+The header trades full visual text on narrow screens for a fixed single row with
+immediately available actions. Truncation affects presentation; the DOM retains
+complete localized statistics and the hidden-upstream live status.
 
 Complete data and visible geometry have separate owners. Only explicit
 expansion/reset, successful snapshot reconciliation and lifecycle changes alter

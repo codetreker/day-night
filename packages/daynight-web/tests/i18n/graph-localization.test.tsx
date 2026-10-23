@@ -72,7 +72,7 @@ describe('localized task graph presentation', () => {
     expect(screen.getByRole('region', { name: 'Task dependency graph for 基础 API' })).toBeTruthy();
     expect(screen.getAllByText('3 tasks · 2 unfinished')).toHaveLength(2);
     expect(screen.getByRole('checkbox', { name: 'Show completed task chains (0)' })).not.toBeChecked();
-    expect(screen.getByText('3 chain tasks · 2 external prerequisites · 4 dependencies')).toBeTruthy();
+    expect(screen.getByText('Chain 3 · External 2 · Tasks 5/5 · Dependencies 4/4')).toBeTruthy();
     const selected = screen.getByRole('button', { name: '合流实现…, In progress, shared task' });
     fireEvent.click(selected);
     expect(selected.closest('.task-node')).toHaveClass('task-node-selected');
@@ -141,14 +141,14 @@ describe('localized task graph presentation', () => {
     const routes = paths.map((path) => path.getAttribute('d'));
     const transform = viewport(view.container).style.transform;
     expect(screen.getByRole('button', { name: 'Reset overview' })).toBeTruthy();
-    expect(screen.getByText('Showing 70/101 tasks · 69/100 dependencies. Use the card controls to expand prerequisites or successors.')).toBeTruthy();
+    expect(screen.getByText('Chain 61 · External 40 · Tasks 70/101 · Dependencies 69/100')).toBeTruthy();
     await user.selectOptions(screen.getByRole('combobox'), 'zh-CN');
     expect(screen.getByRole('button', { name: '合流任务 · 40 个外部前置，待处理，被阻塞，共享任务，已选中' })).toBe(body);
     expect(body.closest('.task-node')).toHaveClass('task-node-selected');
     expect(view.container.querySelector('.graph-hidden-prerequisites')).toHaveTextContent('另有20个上游未展开');
     expect(screen.getByRole('button', { name: '展开前置 20 个任务、20 条依赖' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '收起到概览' })).toBeTruthy();
-    expect(screen.getByText('当前显示 70/101 个任务 · 69/100 条依赖。通过卡片下方按钮展开更多前置或后续。')).toBeTruthy();
+    expect(screen.getByText('链内 61 · 外部 40 · 任务 70/101 · 依赖 69/100')).toBeTruthy();
     expect([...view.container.querySelectorAll('.react-flow__node')]).toEqual(nodes);
     expect(nodes.map((node) => node.style.transform)).toEqual(positions);
     expect([...view.container.querySelectorAll('.react-flow__edge-path')]).toEqual(paths);
@@ -235,9 +235,9 @@ describe('localized task graph presentation', () => {
     const en = messagesByLocale.en.graph;
     const zh = messagesByLocale['zh-CN'].graph;
     const formatted = new Intl.NumberFormat('en').format(value);
-    expect(en.counts({ main: value, external: value, dependencies: value })).toBe(`${formatted} chain ${value === 1 ? 'task' : 'tasks'} · ${formatted} external ${value === 1 ? 'prerequisite' : 'prerequisites'} · ${formatted} ${value === 1 ? 'dependency' : 'dependencies'}`);
+    expect(en.counts({ main: value, external: value, visible: value, total: 1000, edges: value, dependencies: 1000 })).toBe(`Chain ${formatted} · External ${formatted} · Tasks ${formatted}/1,000 · Dependencies ${formatted}/1,000`);
     expect(en.completedDescription({ count: value })).toBe(`${formatted} completed task ${value === 1 ? 'chain is' : 'chains are'} hidden. Project statistics still include all tasks.`);
-    expect(zh.counts({ main: value, external: value, dependencies: value })).toBe(`${formatted} 个链内任务 · ${formatted} 个外部前置 · ${formatted} 条依赖`);
+    expect(zh.counts({ main: value, external: value, visible: value, total: 1000, edges: value, dependencies: 1000 })).toBe(`链内 ${formatted} · 外部 ${formatted} · 任务 ${formatted}/1,000 · 依赖 ${formatted}/1,000`);
     expect(en.progress({ done: value, total: 1000 })).toBe(`${formatted}/1,000 completed`);
   });
 });
