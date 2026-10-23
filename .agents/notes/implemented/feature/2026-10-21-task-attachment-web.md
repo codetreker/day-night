@@ -45,9 +45,14 @@ places one hook in `TaskDetailReading`, shared by description navigation and
 own hook. It follows all pages, validates tree conflicts and repeated cursors,
 and labels continuation failures as an incomplete list while retaining already-read files. Abort and
 request generations prevent old scopes or selections from replacing current
-results. Preview depends on both path and metadata `updatedAt`; manual refresh
-therefore rereads changed text, while successful mutations also advance preview
-revision. Path/timestamp identity remounts native previews after overwrite.
+results. A path selected before its metadata arrives stays in preview loading
+state. An unknown kind does not take the ready path used by known formats that
+need no text read or availability check. Otherwise the arriving HTML/PDF metadata
+could mount a frame using that premature ready state before the preview effect
+starts its HEAD check, then remove it again while the check is pending. Preview
+depends on both path and metadata `updatedAt`; manual refresh therefore rereads
+changed text, while successful mutations also advance preview revision.
+Path/timestamp identity remounts native previews after overwrite.
 
 `MarkdownContent` shares `react-markdown` 10.1.0 and `remark-gfm` 4.0.1 for
 CommonMark and GFM tables. Raw HTML remains escaped. Attachment Markdown images
@@ -107,7 +112,9 @@ still leave files and PG metadata inconsistent. No recovery or coordination is
 introduced here.
 
 Unit tests cover API decoding, scoped state, path trees, rendering and focus
-integration. JSDOM has no layout; its test-only wrapper delegates traversal to
+integration. Deferred inventory and availability responses verify that early
+selection stays loading and no native frame mounts before its availability
+check. JSDOM has no layout; its test-only wrapper delegates traversal to
 upstream `tabbable` with layout checks disabled, so it does not prove browser
 visibility. Source-bound local Chromium probes exercise the real portal,
 inertness, CSS-hidden and contenteditable boundaries, same-origin frame keys,
