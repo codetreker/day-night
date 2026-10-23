@@ -10,6 +10,7 @@ import { resolveInitialLocale } from '../../src/i18n/locale';
 import { createAttachmentFixture, type MockupScenario } from './fixture';
 import '../../src/styles/app.css';
 import '../../src/styles/task-detail.css';
+import '../../src/styles/auth.css';
 
 const query = new URLSearchParams(window.location.search);
 const standalonePath = query.get('file');
