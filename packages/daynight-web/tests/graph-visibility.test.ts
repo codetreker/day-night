@@ -12,13 +12,13 @@ const indexOf = (seeds: readonly Seed[], defaultStatus: TaskStatus = 'todo') => 
   const tasks: GraphTask[] = seeds.map(({ id, dependsOn = [] }) => {
     const status = statuses.get(id)!;
     const blockedBy = dependsOn.filter((source) => statuses.get(source) !== 'done');
-    return {
+    return { startedAt: null, completedAt: null,
       id, dependsOn, blockedBy, ready: status === 'todo' && blockedBy.length === 0, status,
       titlePreview: id, titleTruncated: false, createdAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:00:00Z',
     };
   });
   const count = (status: TaskStatus) => tasks.filter((task) => task.status === status).length;
-  const graph: TaskGraph = {
+  const graph: TaskGraph = { observedAt: "2026-10-20T12:00:00Z",
     project: { id: 'project', name: 'Project', repoUrl: '', createdAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:00:00Z' }, tasks,
     summary: { total: tasks.length, proposed: count('proposed'), todo: count('todo'), inProgress: count('in_progress'), done: count('done'),
       ready: tasks.filter((task) => task.ready).length, blocked: tasks.filter((task) => task.status === 'todo' && task.blockedBy.length > 0).length },

@@ -11,7 +11,7 @@ const projectPage = () => new Response(JSON.stringify({ items: [{
   createdAt: '2026-10-20T09:00:00Z', updatedAt: '2026-10-20T09:00:00Z',
 }], nextCursor: null }), { headers: { 'Content-Type': 'application/json' } });
 
-const taskGraph = () => new Response(JSON.stringify({
+const taskGraph = () => new Response(JSON.stringify({ observedAt: "2026-10-20T12:00:00Z",
   project: { id: projectId, name: '项目任务页面', repoUrl: 'https://github.com/example/repo',
     createdAt: '2026-10-20T09:00:00Z', updatedAt: '2026-10-20T09:00:00Z' },
   tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/codetreker/daynight/packages/daynight-server/api"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
@@ -36,6 +37,7 @@ func taskRoutes(mux *http.ServeMux, tasks *service.Tasks, auth *Authentication, 
 func taskResponse(task core.Task) api.Task {
 	return api.Task{ID: task.ID, ProjectID: task.ProjectID, Title: task.Title, Description: task.Description,
 		Properties: propertiesResponse(task.Properties), Status: string(task.Status), Version: task.Version, CreatedAt: task.CreatedAt.UTC(), UpdatedAt: task.UpdatedAt.UTC(),
+		StartedAt: timestampResponse(task.StartedAt), CompletedAt: timestampResponse(task.CompletedAt),
 		DependsOn: append([]string{}, task.DependsOn...), BlockedBy: append([]string{}, task.BlockedBy...), Ready: task.Ready}
 }
 
@@ -273,4 +275,12 @@ func (h *taskHandler) update(w http.ResponseWriter, request *http.Request, princ
 	}
 	logger.InfoContext(request.Context(), "task updated", "type", "resource", "component", "task", "phase", "update", "request_id", RequestID(request.Context()))
 	writeJSON(w, request, logger, http.StatusOK, taskResponse(task))
+}
+
+func timestampResponse(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	utc := value.UTC()
+	return &utc
 }

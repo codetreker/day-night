@@ -28,6 +28,7 @@ const timestamp = (value: unknown): string => {
   if (!Number.isFinite(milliseconds) || new Date(milliseconds).toISOString().slice(0, 19) !== parsed.slice(0, 19)) return malformed();
   return parsed;
 };
+const nullableTimestamp = (value: unknown): string | null => value === null ? null : timestamp(value);
 const array = <T>(value: unknown, parse: (item: unknown) => T): T[] => Array.isArray(value) ? value.map((item) => parse(item)) : malformed();
 const ids = (value: unknown): string[] => {
   const parsed = array(value, id);
@@ -59,7 +60,7 @@ export const parseProject = (value: unknown, expectedId?: string): Project => {
 };
 
 const dependencyState = (data: Record<string, unknown>) => {
-  const parsed = { id: id(data.id), status: status(data.status), dependsOn: ids(data.dependsOn), blockedBy: ids(data.blockedBy), ready: bool(data.ready), createdAt: timestamp(data.createdAt), updatedAt: timestamp(data.updatedAt) };
+  const parsed = { id: id(data.id), status: status(data.status), startedAt: nullableTimestamp(data.startedAt), completedAt: nullableTimestamp(data.completedAt), dependsOn: ids(data.dependsOn), blockedBy: ids(data.blockedBy), ready: bool(data.ready), createdAt: timestamp(data.createdAt), updatedAt: timestamp(data.updatedAt) };
   if (parsed.dependsOn.includes(parsed.id) || parsed.blockedBy.some((item) => !parsed.dependsOn.includes(item)) || parsed.ready !== (parsed.status === "todo" && parsed.blockedBy.length === 0)) return malformed();
   if ((parsed.status === "in_progress" || parsed.status === "done") && parsed.blockedBy.length > 0) return malformed();
   return parsed;
@@ -109,7 +110,7 @@ const summary = (value: unknown): TaskGraphSummary => {
 
 export const parseTaskGraph = (value: unknown, projectId: string): TaskGraph => {
   const data = record(value);
-  const parsed = { project: parseProject(data.project, projectId), summary: summary(data.summary), tasks: array(data.tasks, graphTask) };
+  const parsed = { observedAt: timestamp(data.observedAt), project: parseProject(data.project, projectId), summary: summary(data.summary), tasks: array(data.tasks, graphTask) };
   const byId = new Map(parsed.tasks.map((task) => [task.id, task]));
   if (parsed.tasks.length > 1000 || byId.size !== parsed.tasks.length || parsed.tasks.reduce((sum, task) => sum + task.dependsOn.length, 0) > 5000) return malformed();
   const expected = { total: parsed.tasks.length, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 };

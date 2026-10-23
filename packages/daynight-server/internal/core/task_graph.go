@@ -12,6 +12,8 @@ type GraphTask struct {
 	Ready          bool
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	StartedAt      *time.Time
+	CompletedAt    *time.Time
 }
 
 type TaskGraphSummary struct {
@@ -25,7 +27,8 @@ type TaskGraphSummary struct {
 }
 
 type TaskGraph struct {
-	Project Project
-	Summary TaskGraphSummary
-	Tasks   []GraphTask
+	Project    Project
+	ObservedAt time.Time
+	Summary    TaskGraphSummary
+	Tasks      []GraphTask
 }

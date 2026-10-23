@@ -50,7 +50,7 @@ func TestTaskGraphHTTPCompleteProjectionAndSafeLogs(t *testing.T) {
 	if response.Header().Get("Cache-Control") != "no-store" || response.Header().Get("X-Request-ID") != "project-test" {
 		t.Fatalf("unsafe caching or missing request identity: %+v", response.Header())
 	}
-	if graph.Project != project || graph.Summary != (api.TaskGraphSummary{Total: 5, Todo: 2, InProgress: 1, Done: 2, Ready: 1, Blocked: 1}) || len(graph.Tasks) != 5 {
+	if graph.ObservedAt.IsZero() || graph.ObservedAt.Location() != time.UTC || graph.ObservedAt.Before(done.UpdatedAt) || graph.Project != project || graph.Summary != (api.TaskGraphSummary{Total: 5, Todo: 2, InProgress: 1, Done: 2, Ready: 1, Blocked: 1}) || len(graph.Tasks) != 5 {
 		t.Fatalf("incorrect complete graph: %+v", graph)
 	}
 	want := []api.Task{root, active, ready, blocked, done}
@@ -59,7 +59,8 @@ func TestTaskGraphHTTPCompleteProjectionAndSafeLogs(t *testing.T) {
 		if task.ID != expected.ID || task.Status != expected.Status || task.Ready != expected.Ready ||
 			!slices.Equal(task.DependsOn, expected.DependsOn) || !slices.Equal(task.BlockedBy, expected.BlockedBy) ||
 			task.DependsOn == nil || task.BlockedBy == nil || task.CreatedAt != expected.CreatedAt || task.UpdatedAt != expected.UpdatedAt ||
-			task.CreatedAt.Location() != time.UTC || task.UpdatedAt.Location() != time.UTC {
+			task.CreatedAt.Location() != time.UTC || task.UpdatedAt.Location() != time.UTC ||
+			!reflect.DeepEqual(task.StartedAt, expected.StartedAt) || !reflect.DeepEqual(task.CompletedAt, expected.CompletedAt) {
 			t.Fatalf("task projection %d differs: %+v want %+v", index, task, expected)
 		}
 		if task.ID == ready.ID {
@@ -77,7 +78,7 @@ func TestTaskGraphHTTPCompleteProjectionAndSafeLogs(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, task := range raw.Tasks {
-		if len(task) != 9 {
+		if len(task) != 11 {
 			t.Fatalf("graph task exposes unexpected fields: %+v", task)
 		}
 		for _, field := range []string{"title", "description", "version", "projectId"} {
@@ -269,10 +270,11 @@ func TestTaskGraphHTTPErrorPrecedenceAndDTOUTC(t *testing.T) {
 		t.Fatalf("operational graph error leaked: %s", &logs)
 	}
 	instant := time.Date(2026, 10, 20, 16, 12, 0, 123456000, time.FixedZone("offset", 8*60*60))
-	result := taskGraphResponse(core.TaskGraph{Project: core.Project{CreatedAt: instant, UpdatedAt: instant},
-		Tasks: []core.GraphTask{{ID: "task", CreatedAt: instant, UpdatedAt: instant}}})
+	result := taskGraphResponse(core.TaskGraph{Project: core.Project{CreatedAt: instant, UpdatedAt: instant}, ObservedAt: instant,
+		Tasks: []core.GraphTask{{ID: "task", CreatedAt: instant, UpdatedAt: instant, StartedAt: &instant, CompletedAt: &instant}}})
 	if result.Project.CreatedAt.Location() != time.UTC || result.Project.UpdatedAt.Location() != time.UTC ||
 		result.Tasks[0].CreatedAt.Location() != time.UTC || result.Tasks[0].UpdatedAt.Location() != time.UTC ||
+		result.ObservedAt.Location() != time.UTC || result.Tasks[0].StartedAt.Location() != time.UTC || result.Tasks[0].CompletedAt.Location() != time.UTC ||
 		!result.Tasks[0].CreatedAt.Equal(instant) || !reflect.DeepEqual(result.Tasks[0].DependsOn, []string{}) || !reflect.DeepEqual(result.Tasks[0].BlockedBy, []string{}) {
 		t.Fatalf("graph DTO UTC and empty-array conversion: %+v", result)
 	}

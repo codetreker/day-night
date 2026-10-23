@@ -92,8 +92,10 @@ func acceptanceCLIAction(t *testing.T, cli *acceptanceCLI, process *acceptancePr
 	if len(requests) != count+1 || requests[count].Status != 200 {
 		t.Fatal("installed lifecycle action did not make exactly one successful mutation")
 	}
-	after := acceptanceCLIJSON[api.Task](t, cli.run(t, cli.caller, "task", "show", before.ID, "--project", before.ProjectID, "--json"))
+	after := acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", before.ID, "--project", before.ProjectID, "--json"))
+	acceptanceTaskTimingTransition(t, before, after, action)
 	preserved := after
+	preserved.StartedAt, preserved.CompletedAt = before.StartedAt, before.CompletedAt
 	preserved.Status, preserved.Ready, preserved.Version, preserved.UpdatedAt = before.Status, before.Ready, before.Version, before.UpdatedAt
 	if after.Status != status || after.Version != before.Version+1 || !after.UpdatedAt.After(before.UpdatedAt) || !reflect.DeepEqual(preserved, before) ||
 		!strings.Contains(output, "Status: "+status+"\n") || !strings.Contains(output, "Version: "+strconv.FormatInt(after.Version, 10)+"\n") ||
@@ -111,7 +113,7 @@ func acceptanceCLIAction(t *testing.T, cli *acceptanceCLI, process *acceptancePr
 func acceptanceCLIRefusal(t *testing.T, cli *acceptanceCLI, process *acceptanceProcess, evidence *acceptanceLifecycleEvidence, before api.Task, code string, arguments ...string) {
 	t.Helper()
 	result := cli.refuse(t, process, code, "", arguments...)
-	after := acceptanceCLIJSON[api.Task](t, cli.run(t, cli.caller, "task", "show", before.ID, "--project", before.ProjectID, "--json"))
+	after := acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", before.ID, "--project", before.ProjectID, "--json"))
 	if !reflect.DeepEqual(after, before) {
 		t.Fatal("installed lifecycle refusal changed task data, version or timestamps")
 	}
@@ -150,7 +152,7 @@ func acceptanceHistoricalRows(t *testing.T, fixture *acceptanceFixture, ids []st
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	rows, err := fixture.admin.Query(ctx, "SELECT id::text, to_jsonb(t)::text FROM tasks t WHERE id = ANY($1::uuid[]) ORDER BY id", ids)
+	rows, err := fixture.admin.Query(ctx, "SELECT id::text, (to_jsonb(t) - 'started_at' - 'completed_at')::text FROM tasks t WHERE id = ANY($1::uuid[]) ORDER BY id", ids)
 	if err != nil {
 		t.Fatal("cannot read preserved historical rows")
 	}
@@ -261,8 +263,8 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		if err := binaryAcceptance.update(func() { migration.AfterLedger, migration.AfterRows = afterLedger, afterRows }); err != nil {
 			t.Fatal("cannot persist migrated ledger and resource snapshots")
 		}
-		if len(migration.AfterLedger) != 8 || !reflect.DeepEqual(migration.AfterLedger[:6], migration.BeforeLedger) ||
-			migration.AfterLedger[6].Version != 7 || migration.AfterLedger[7].Version != 8 || !reflect.DeepEqual(migration.AfterRows, migration.BeforeRows) {
+		if len(migration.AfterLedger) != 9 || !reflect.DeepEqual(migration.AfterLedger[:6], migration.BeforeLedger) ||
+			migration.AfterLedger[6].Version != 7 || migration.AfterLedger[7].Version != 8 || migration.AfterLedger[8].Version != 9 || !reflect.DeepEqual(migration.AfterRows, migration.BeforeRows) {
 			t.Fatal("built startup did not append genuine migrations while preserving old rows and ledger")
 		}
 		acceptanceError(t, process.request(context.Background(), http.MethodGet, "/api/v1/projects/"+projectID, nil, ""), http.StatusNotFound, "not_found")
@@ -277,14 +279,15 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		}
 		old := make([]api.Task, len(ids))
 		for index, id := range ids {
-			old[index] = acceptanceCLIJSON[api.Task](t, cli.run(t, cli.caller, "task", "show", id, "--project", projectID, "--json"))
+			old[index] = acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", id, "--project", projectID, "--json"))
 			if old[index].Status != []string{"todo", "in_progress", "done"}[index] || old[index].Version != []int64{17, 23, 24}[index] ||
-				!old[index].CreatedAt.Equal(stamp) || !old[index].UpdatedAt.Equal(stamp.Add(time.Hour)) || !reflect.DeepEqual(old[index].Properties, properties) {
+				!old[index].CreatedAt.Equal(stamp) || !old[index].UpdatedAt.Equal(stamp.Add(time.Hour)) || !reflect.DeepEqual(old[index].Properties, properties) ||
+				old[index].StartedAt != nil || old[index].CompletedAt != nil {
 				t.Fatal("installed CLI changed a preserved historical resource")
 			}
 		}
 		acceptanceCLITaskListJSON(t, cli.run(t, cli.caller, "task", "list", "--project", projectID, "--all", "--json"), []api.Task{old[1], old[0], old[2]})
-		graph := acceptanceCLIJSON[api.TaskGraph](t, cli.run(t, cli.caller, "task", "graph", "--project", projectID, "--json"))
+		graph := acceptanceCLIGraphResource(t, cli.run(t, cli.caller, "task", "graph", "--project", projectID, "--json"))
 		if graph.Summary != (api.TaskGraphSummary{Total: 3, Todo: 1, InProgress: 1, Done: 1, Ready: 1}) {
 			t.Fatal("installed graph changed the migrated historical states")
 		}
@@ -294,7 +297,7 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 				arguments = append(arguments, "--depends-on", id)
 			}
 			id := acceptanceCLIResourceID(t, cli.run(t, cli.caller, arguments...))
-			task := acceptanceCLIJSON[api.Task](t, cli.run(t, cli.caller, "task", "show", id, "--project", projectID, "--json"))
+			task := acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", id, "--project", projectID, "--json"))
 			if task.Status != "proposed" || task.Version != 1 || task.Ready || !reflect.DeepEqual(task.Properties, properties) {
 				t.Fatal("installed creation after genuine migration did not produce proposed work")
 			}
@@ -309,7 +312,7 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		if !reflect.DeepEqual(readyInventory, []api.Task{old[0]}) {
 			t.Fatal("proposed tasks leaked into the installed ready inventory after migration")
 		}
-		proposedGraph := acceptanceCLIJSON[api.TaskGraph](t, cli.run(t, cli.caller, "task", "graph", "--project", projectID, "--json"))
+		proposedGraph := acceptanceCLIGraphResource(t, cli.run(t, cli.caller, "task", "graph", "--project", projectID, "--json"))
 		if proposedGraph.Summary != (api.TaskGraphSummary{Total: 5, Proposed: 2, Todo: 1, InProgress: 1, Done: 1, Ready: 1}) {
 			t.Fatal("migrated service and installed CLI disagreed on the four-state graph")
 		}
@@ -321,7 +324,7 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 			prerequisite = acceptanceCLIAction(t, cli, process, evidence, prerequisite, step.action, step.status)
 			acceptanceLifecycleAttachmentUnchanged(t, cli, prerequisite, prerequisiteMetadata, prerequisiteContent)
 		}
-		ready := acceptanceCLIJSON[api.Task](t, cli.run(t, cli.caller, "task", "show", dependent.ID, "--project", projectID, "--json"))
+		ready := acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", dependent.ID, "--project", projectID, "--json"))
 		preserved := ready
 		preserved.Ready, preserved.BlockedBy = dependent.Ready, dependent.BlockedBy
 		if !ready.Ready || len(ready.BlockedBy) != 0 || !reflect.DeepEqual(preserved, dependent) {
@@ -334,7 +337,7 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		acceptanceLifecycleAttachmentUnchanged(t, cli, dependent, metadata, content)
 		defaultID := "00000000-0000-4000-8000-000000000014"
 		fixture.exec(t, `INSERT INTO tasks (id, project_id, title) VALUES ($1, $2, 'Post-migration SQL default')`, defaultID, projectID)
-		defaultTask := acceptanceCLIJSON[api.Task](t, cli.run(t, cli.caller, "task", "show", defaultID, "--project", projectID, "--json"))
+		defaultTask := acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", defaultID, "--project", projectID, "--json"))
 		if defaultTask.Status != "proposed" || defaultTask.Version != 1 || defaultTask.Ready {
 			t.Fatal("genuine migration did not change the SQL creation default to proposed")
 		}
@@ -345,7 +348,7 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 			t.Fatal("migration restart did not reuse the released service listener")
 		}
 		for _, before := range append(slices.Clone(old), prerequisite, dependent, defaultTask) {
-			after := acceptanceCLIJSON[api.Task](t, cli.run(t, cli.caller, "task", "show", before.ID, "--project", projectID, "--json"))
+			after := acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", before.ID, "--project", projectID, "--json"))
 			if !reflect.DeepEqual(after, before) {
 				t.Fatal("historical or newly advanced lifecycle state changed across actual restart")
 			}
@@ -364,8 +367,18 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		}); err != nil {
 			t.Fatal("cannot persist migration/restart attachment evidence")
 		}
+		legacyCompleted := acceptanceCLIAction(t, cli, restarted, evidence, old[1], "complete", "done")
+		if legacyCompleted.StartedAt != nil || legacyCompleted.CompletedAt == nil {
+			t.Fatal("completing migrated running work invented a historical start or omitted its real end")
+		}
 		restarted.signal(t)
 		restarted.stopped(t, 0)
+		completedRestart := fixture.launch(t, map[string]string{"DAYNIGHT_LISTEN_ADDR": restarted.address}).started(t)
+		if after := acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", legacyCompleted.ID, "--project", projectID, "--json")); !reflect.DeepEqual(after, legacyCompleted) {
+			t.Fatal("unknown-start completed task changed across actual process restart")
+		}
+		completedRestart.signal(t)
+		completedRestart.stopped(t, 0)
 	})
 }
 
@@ -433,7 +446,13 @@ func TestInstalledCLILifecycleRacesAcceptance(t *testing.T) {
 				t.Fatal("installed lifecycle competition did not expose one winning process and one conflict")
 			}
 			after := cli.task(t, id)
+			if after.Status == "in_progress" {
+				acceptanceTaskTimingTransition(t, before, after, "claim")
+			} else if !reflect.DeepEqual(after.StartedAt, before.StartedAt) || !reflect.DeepEqual(after.CompletedAt, before.CompletedAt) {
+				t.Fatal("dependency-edit winner changed execution timing")
+			}
 			preserved := after
+			preserved.StartedAt, preserved.CompletedAt = before.StartedAt, before.CompletedAt
 			preserved.Status, preserved.Ready, preserved.Version, preserved.UpdatedAt = before.Status, before.Ready, before.Version, before.UpdatedAt
 			preserved.DependsOn, preserved.BlockedBy = before.DependsOn, before.BlockedBy
 			if after.Version != before.Version+1 || !after.UpdatedAt.After(before.UpdatedAt) || !reflect.DeepEqual(preserved, before) || after.Ready {

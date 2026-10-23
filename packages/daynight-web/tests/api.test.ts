@@ -8,16 +8,16 @@ const taskId = "20000000-0000-0000-0000-00000000000b";
 const otherId = "30000000-0000-0000-0000-00000000000c";
 const time = "2026-10-20T12:34:56.123456Z";
 const project = { id: projectId, name: "Core project", repoUrl: "git@github.com:org/repo.git", createdAt: time, updatedAt: time };
-const task = {
+const task = { startedAt: null, completedAt: null,
   id: taskId, projectId, title: "A task", description: "", properties: { pullRequests: [] }, status: "todo", version: 9007199254740993n,
   dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
 };
-const graphTask = {
+const graphTask = { startedAt: null, completedAt: null,
   id: taskId, titlePreview: "A task", titleTruncated: false, status: "todo",
   dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
 };
 const summary = { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 };
-const graph = { project, summary, tasks: [graphTask] };
+const graph = { observedAt: "2026-10-20T12:00:00Z", project, summary, tasks: [graphTask] };
 const signal = (): AbortSignal => new AbortController().signal;
 const response = (value: unknown, status = 200): Response => new Response(stringifyApiJson(value), {
   status, headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -63,6 +63,37 @@ describe("response parsing", () => {
     expect(parseTaskDetail(task, projectId, taskId)).toEqual(task);
     expect(parseTaskDetail({ ...task, status: "done", ready: false, dependsOn: [otherId], blockedBy: [] }, projectId, taskId).status).toBe("done");
     expect(parseTaskDetail({ ...task, status: "in_progress" }, projectId, taskId).status).toBe("in_progress");
+  });
+
+  it.each([
+    { startedAt: null, completedAt: null },
+    { startedAt: "2026-10-20T12:00:00.123456789Z", completedAt: null },
+    { startedAt: "2026-10-20T12:00:00.123456789Z", completedAt: time },
+    { startedAt: null, completedAt: time },
+  ])("preserves known and unknown execution timestamps %#", (timing) => {
+    expect(parseTaskDetail({ ...task, ...timing }, projectId, taskId)).toMatchObject(timing);
+    expect(parseTaskGraph({ ...graph, tasks: [{ ...graphTask, ...timing }] }, projectId).tasks[0]).toMatchObject(timing);
+  });
+
+  it.each(["startedAt", "completedAt"] as const)("requires a valid UTC timestamp or explicit null for %s", (field) => {
+    const { [field]: _taskTiming, ...missingTask } = task;
+    const { [field]: _graphTiming, ...missingNode } = graphTask;
+    expect(() => parseTaskDetail(missingTask, projectId, taskId)).toThrow("invalid response");
+    expect(() => parseTaskGraph({ ...graph, tasks: [missingNode] }, projectId)).toThrow("invalid response");
+    for (const invalid of [undefined, 0, false, {}, "", "invalid", "2026-02-30T00:00:00Z", "2026-10-20T12:00:00+01:00"]) {
+      expect(() => parseTaskDetail({ ...task, [field]: invalid }, projectId, taskId)).toThrow("invalid response");
+      expect(() => parseTaskGraph({ ...graph, tasks: [{ ...graphTask, [field]: invalid }] }, projectId)).toThrow("invalid response");
+    }
+  });
+
+  it("requires and preserves the database graph observation timestamp", () => {
+    const observedAt = "2026-10-20T12:34:56.123456789Z";
+    expect(parseTaskGraph({ ...graph, observedAt }, projectId).observedAt).toBe(observedAt);
+    const { observedAt: _observation, ...missing } = graph;
+    expect(() => parseTaskGraph(missing, projectId)).toThrow("invalid response");
+    for (const invalid of [undefined, null, 0, "", "invalid", "2026-02-30T00:00:00Z", "2026-10-20T12:00:00+01:00"]) {
+      expect(() => parseTaskGraph({ ...graph, observedAt: invalid }, projectId)).toThrow("invalid response");
+    }
   });
 
   it("accepts proposed tasks with unfinished prerequisites without marking them ready", () => {

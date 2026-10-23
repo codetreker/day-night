@@ -296,11 +296,50 @@ func acceptanceCLIJSON[T any](t *testing.T, text string) T {
 	return result
 }
 
+func acceptanceCLITaskResource(t *testing.T, text string) api.Task {
+	t.Helper()
+	fields := acceptanceCLIJSON[map[string]json.RawMessage](t, text)
+	for _, name := range []string{"startedAt", "completedAt"} {
+		if _, exists := fields[name]; !exists {
+			t.Fatalf("installed CLI task omitted required timing field %s", name)
+		}
+	}
+	return acceptanceCLIJSON[api.Task](t, text)
+}
+
+func acceptanceCLIGraphResource(t *testing.T, text string) api.TaskGraph {
+	t.Helper()
+	var fields struct {
+		ObservedAt json.RawMessage              `json:"observedAt"`
+		Tasks      []map[string]json.RawMessage `json:"tasks"`
+	}
+	if err := json.Unmarshal([]byte(text), &fields); err != nil || len(fields.ObservedAt) == 0 || bytes.Equal(fields.ObservedAt, []byte("null")) {
+		t.Fatal("installed CLI graph omitted its observed server time")
+	}
+	for _, task := range fields.Tasks {
+		for _, name := range []string{"startedAt", "completedAt"} {
+			if _, exists := task[name]; !exists {
+				t.Fatalf("installed CLI graph omitted required timing field %s", name)
+			}
+		}
+	}
+	graph := acceptanceCLIJSON[api.TaskGraph](t, text)
+	if graph.ObservedAt.IsZero() || graph.ObservedAt.Location() != time.UTC {
+		t.Fatal("installed CLI graph lost the UTC database clock sample")
+	}
+	return graph
+}
+
 func acceptanceCLITaskListJSON(t *testing.T, text string, expected []api.Task) {
 	t.Helper()
 	for _, task := range acceptanceCLIJSON[[]map[string]json.RawMessage](t, text) {
 		if _, included := task["description"]; included {
 			t.Fatal("installed CLI list JSON included description")
+		}
+		for _, name := range []string{"startedAt", "completedAt"} {
+			if _, exists := task[name]; !exists {
+				t.Fatalf("installed CLI list omitted required timing field %s", name)
+			}
 		}
 	}
 	projected := slices.Clone(expected)
@@ -325,7 +364,7 @@ func acceptanceCLIResourceID(t *testing.T, text string) string {
 
 func (c *acceptanceCLI) task(t *testing.T, id string) api.Task {
 	t.Helper()
-	return acceptanceCLIJSON[api.Task](t, c.run(t, filepath.Join(c.repo, "source"), "task", "show", id, "--json"))
+	return acceptanceCLITaskResource(t, c.run(t, filepath.Join(c.repo, "source"), "task", "show", id, "--json"))
 }
 
 func acceptanceCLIMutations(process *acceptanceProcess) []acceptanceCLIRequest {
@@ -437,15 +476,28 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		}
 		cli.refuse(t, process, "dependency_unsatisfied", first, "task", "claim", target)
 		cli.run(t, cli.repo, "task", "approve", first)
+		beforeFirstClaim := cli.task(t, first)
 		cli.run(t, cli.repo, "task", "claim", first)
+		firstRunning := cli.task(t, first)
+		acceptanceTaskTimingTransition(t, beforeFirstClaim, firstRunning, "claim")
 		cli.run(t, cli.repo, "task", "complete", first)
+		firstCompleted := cli.task(t, first)
+		acceptanceTaskTimingTransition(t, firstRunning, firstCompleted, "complete")
 		cli.run(t, cli.repo, "task", "approve", second)
 		acceptanceCLITaskListJSON(t, cli.run(t, cli.repo, "task", "list", "--status", "todo", "--ready", "--json"), []api.Task{cli.task(t, second), cli.task(t, target)})
 		cli.run(t, cli.repo, "task", "update", target, "--description", "Completed description")
+		beforeTargetClaim := cli.task(t, target)
 		cli.run(t, cli.repo, "task", "claim", target)
+		targetRunning := cli.task(t, target)
+		acceptanceTaskTimingTransition(t, beforeTargetClaim, targetRunning, "claim")
 		cli.refuse(t, process, "invalid_transition", "", "task", "claim", first)
 		cli.run(t, cli.repo, "task", "update", target, "--description", "")
+		targetEdited := cli.task(t, target)
+		if !reflect.DeepEqual(targetEdited.StartedAt, targetRunning.StartedAt) || !reflect.DeepEqual(targetEdited.CompletedAt, targetRunning.CompletedAt) {
+			t.Fatal("installed running-task metadata edit changed execution timing")
+		}
 		cli.run(t, cli.repo, "task", "complete", target)
+		acceptanceTaskTimingTransition(t, targetEdited, cli.task(t, target), "complete")
 		if task := cli.task(t, target); task.Version != 6 || task.Description != "" || task.Status != "done" {
 			t.Fatal("installed update did not clear description or advance the expected version")
 		}
@@ -504,13 +556,13 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		fixture.exec(t, "UPDATE tasks SET version=$1 WHERE id=$2", int64(9_007_199_254_740_993), exact.ID)
 		cli.run(t, cli.caller, "task", "approve", exact.ID, "--project", exactProject.ID, "--if-version", "9007199254740993")
 		cli.run(t, cli.caller, "task", "claim", exact.ID, "--project", exactProject.ID)
-		exact = acceptanceCLIJSON[api.Task](t, cli.run(t, cli.caller, "task", "show", exact.ID, "--project", exactProject.ID, "--json"))
+		exact = acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", exact.ID, "--project", exactProject.ID, "--json"))
 		if exact.Version != 9_007_199_254_740_995 || exact.Status != "in_progress" {
 			t.Fatal("installed lifecycle commands rounded an explicit or read Go int64 version")
 		}
 		fixture.exec(t, "UPDATE tasks SET version=$1 WHERE id=$2", int64(9_223_372_036_854_775_806), exact.ID)
 		cli.run(t, cli.caller, "task", "complete", exact.ID, "--project", exactProject.ID, "--if-version", "9223372036854775806")
-		exact = acceptanceCLIJSON[api.Task](t, cli.run(t, cli.caller, "task", "show", exact.ID, "--project", exactProject.ID, "--json"))
+		exact = acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", exact.ID, "--project", exactProject.ID, "--json"))
 		if exact.Version != 9_223_372_036_854_775_807 || exact.Status != "done" {
 			t.Fatal("installed completion did not retain the exact int64 maximum result")
 		}
@@ -575,6 +627,9 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 			t.Fatal("concurrent installed CLI writers persisted an unexpected version or title")
 		}
 		firstWithPR := cli.task(t, first)
+		if !reflect.DeepEqual(firstWithPR.StartedAt, firstCompleted.StartedAt) || !reflect.DeepEqual(firstWithPR.CompletedAt, firstCompleted.CompletedAt) {
+			t.Fatal("completed execution timing changed while unrelated work continued")
+		}
 		if !reflect.DeepEqual(firstWithPR.Properties, references) {
 			t.Fatal("installed lifecycle actions discarded the created PR list")
 		}
@@ -654,8 +709,12 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 				t.Fatal("installed compact task list emitted raw PR terminal controls")
 			}
 		}
-		graph := acceptanceCLIJSON[api.TaskGraph](t, cli.run(t, cli.repo, "task", "graph", "--json"))
+		graph := acceptanceCLIGraphResource(t, cli.run(t, cli.repo, "task", "graph", "--json"))
 		expectedGraph := acceptanceDecode[api.TaskGraph](t, process.request(context.Background(), http.MethodGet, "/api/v1/projects/"+projectID+"/task-graph", nil, ""), http.StatusOK)
+		if !expectedGraph.ObservedAt.After(graph.ObservedAt) {
+			t.Fatal("separate real graph reads did not advance the database clock sample")
+		}
+		expectedGraph.ObservedAt = graph.ObservedAt
 		if !reflect.DeepEqual(graph, expectedGraph) {
 			t.Fatal("installed CLI graph omitted or changed server response fields")
 		}
@@ -679,7 +738,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		if !reflect.DeepEqual(cli.task(t, proposedID), proposed) || !reflect.DeepEqual(cli.task(t, proposedBlockedID), proposedBlocked) {
 			t.Fatal("installed CLI proposed tasks changed across actual process restart")
 		}
-		if after := acceptanceCLIJSON[api.Task](t, cli.run(t, cli.caller, "task", "show", exact.ID, "--project", exactProject.ID, "--json")); !reflect.DeepEqual(after, exact) {
+		if after := acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", exact.ID, "--project", exactProject.ID, "--json")); !reflect.DeepEqual(after, exact) {
 			t.Fatal("installed exact int64 lifecycle result changed across restart")
 		}
 		if after := cli.task(t, editable); !reflect.DeepEqual(after, before) {
@@ -694,7 +753,12 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		if after := acceptanceCLIJSON[api.Project](t, cli.run(t, cli.caller, "project", "show", projectID, "--json")); !reflect.DeepEqual(after, project) {
 			t.Fatal("installed CLI project did not persist across actual process restart")
 		}
-		if after := acceptanceCLIJSON[api.TaskGraph](t, cli.run(t, cli.repo, "task", "graph", "--json")); !reflect.DeepEqual(after, graph) {
+		afterGraph := acceptanceCLIGraphResource(t, cli.run(t, cli.repo, "task", "graph", "--json"))
+		if !afterGraph.ObservedAt.After(graph.ObservedAt) {
+			t.Fatal("restarted service did not supply a fresh database clock sample")
+		}
+		afterGraph.ObservedAt = graph.ObservedAt
+		if !reflect.DeepEqual(afterGraph, graph) {
 			t.Fatal("installed CLI complete graph changed across actual process restart")
 		}
 		restarted.signal(t)

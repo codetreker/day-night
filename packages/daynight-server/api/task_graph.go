@@ -3,15 +3,17 @@ package api
 import "time"
 
 type GraphTask struct {
-	ID             string    `json:"id"`
-	TitlePreview   string    `json:"titlePreview"`
-	TitleTruncated bool      `json:"titleTruncated"`
-	Status         string    `json:"status"`
-	DependsOn      []string  `json:"dependsOn"`
-	BlockedBy      []string  `json:"blockedBy"`
-	Ready          bool      `json:"ready"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
+	ID             string     `json:"id"`
+	TitlePreview   string     `json:"titlePreview"`
+	TitleTruncated bool       `json:"titleTruncated"`
+	Status         string     `json:"status"`
+	DependsOn      []string   `json:"dependsOn"`
+	BlockedBy      []string   `json:"blockedBy"`
+	Ready          bool       `json:"ready"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
+	StartedAt      *time.Time `json:"startedAt"`
+	CompletedAt    *time.Time `json:"completedAt"`
 }
 
 type TaskGraphSummary struct {
@@ -25,7 +27,8 @@ type TaskGraphSummary struct {
 }
 
 type TaskGraph struct {
-	Project Project          `json:"project"`
-	Summary TaskGraphSummary `json:"summary"`
-	Tasks   []GraphTask      `json:"tasks"`
+	Project    Project          `json:"project"`
+	ObservedAt time.Time        `json:"observedAt"`
+	Summary    TaskGraphSummary `json:"summary"`
+	Tasks      []GraphTask      `json:"tasks"`
 }

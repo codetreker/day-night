@@ -27,7 +27,7 @@ func TestTaskProposedMigrationPreservesExistingResourcesAndDefault(t *testing.T)
 		id := queryID(index + 10)
 		mustQueryExec(t, database, `INSERT INTO tasks (id, project_id, title, description, status, version, created_at, updated_at)
 			VALUES ($1, $2, 'Existing task', 'Existing description', $3, $4, $5, $6)`, id, project.ID, status, index+17, created, updated)
-		before = append(before, snapshotTask(t, database, project.ID, id))
+		before = append(before, snapshotTaskBeforeTiming(t, database, project.ID, id))
 	}
 	_, err := pool.Exec(ctx, `INSERT INTO tasks (id, project_id, title, status) VALUES ($1, $2, 'Proposed', 'proposed')`, queryID(20), project.ID)
 	var constraint *pgconn.PgError
@@ -38,16 +38,18 @@ func TestTaskProposedMigrationPreservesExistingResourcesAndDefault(t *testing.T)
 		t.Fatal(err)
 	}
 	for _, original := range before {
-		if after := snapshotTask(t, database, project.ID, original.ID); !reflect.DeepEqual(after, original) {
+		if after := snapshotTaskBeforeTiming(t, database, project.ID, original.ID); !reflect.DeepEqual(after, original) {
 			t.Fatalf("migration changed existing resource: %#v versus %#v", after, original)
 		}
 	}
-	proposed := queryTask(t, database, project.ID, 20, core.TaskProposed, before[0].ID)
+	mustQueryExec(t, database, `INSERT INTO tasks (id, project_id, title, status) VALUES ($1, $2, 'Proposed', 'proposed')`, queryID(20), project.ID)
+	mustQueryExec(t, database, `INSERT INTO task_dependencies (project_id, task_id, depends_on_task_id) VALUES ($1, $2, $3)`, project.ID, queryID(20), before[0].ID)
+	proposed := snapshotTaskBeforeTiming(t, database, project.ID, queryID(20))
 	if proposed.Status != core.TaskProposed || proposed.Ready || !slices.Equal(proposed.BlockedBy, []string{before[0].ID}) {
 		t.Fatalf("migrated proposed resource: %#v", proposed)
 	}
 	mustQueryExec(t, database, `INSERT INTO tasks (id, project_id, title) VALUES ($1, $2, 'Default')`, queryID(21), project.ID)
-	if task := snapshotTask(t, database, project.ID, queryID(21)); task.Status != core.TaskTodo || !task.Ready {
+	if task := snapshotTaskBeforeTiming(t, database, project.ID, queryID(21)); task.Status != core.TaskTodo || !task.Ready {
 		t.Fatalf("migration changed database creation default: %#v", task)
 	}
 	var applied time.Time
@@ -58,7 +60,7 @@ func TestTaskProposedMigrationPreservesExistingResourcesAndDefault(t *testing.T)
 		t.Fatal(err)
 	}
 	var after time.Time
-	if err := pool.QueryRow(ctx, "SELECT applied_at FROM schema_migrations WHERE version=7").Scan(&after); err != nil || !after.Equal(applied) || !reflect.DeepEqual(snapshotTask(t, database, project.ID, proposed.ID), proposed) {
+	if err := pool.QueryRow(ctx, "SELECT applied_at FROM schema_migrations WHERE version=7").Scan(&after); err != nil || !after.Equal(applied) || !reflect.DeepEqual(snapshotTaskBeforeTiming(t, database, project.ID, proposed.ID), proposed) {
 		t.Fatalf("repeated migration changed ledger/resource: %v, %v", after, err)
 	}
 }
@@ -126,7 +128,7 @@ func TestTaskProposedDefaultMigrationPreservesExistingResources(t *testing.T) {
 		id := queryID(index + 10)
 		mustQueryExec(t, database, `INSERT INTO tasks (id, project_id, title, description, status, version, created_at, updated_at)
 			VALUES ($1, $2, 'Existing task', 'Existing description', $3, $4, $5, $6)`, id, project.ID, status, index+17, stamp, stamp.Add(time.Hour))
-		before = append(before, snapshotTask(t, database, project.ID, id))
+		before = append(before, snapshotTaskBeforeTiming(t, database, project.ID, id))
 	}
 	if err := migrate(ctx, pool, schemaMigrations); err != nil {
 		t.Fatal(err)
@@ -152,4 +154,17 @@ func TestTaskProposedDefaultMigrationPreservesExistingResources(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT applied_at FROM schema_migrations WHERE version=8").Scan(&after); err != nil || !after.Equal(applied) || !reflect.DeepEqual(snapshotTask(t, database, project.ID, created.ID), created) {
 		t.Fatalf("repeated default migration changed ledger/resource: %v, %v", after, err)
 	}
+}
+
+func snapshotTaskBeforeTiming(t *testing.T, database *Store, projectID, id string) core.Task {
+	t.Helper()
+	task, err := scanTask(database.Pool.QueryRow(context.Background(), `SELECT
+		t.id::text, t.project_id::text, t.title, t.description, t.status, t.version,
+		t.created_at, t.updated_at, NULL::timestamptz, NULL::timestamptz, t.properties, `+
+		taskDependsOn+`, `+taskBlockedBy+`, `+taskReady+`
+		FROM tasks t WHERE t.project_id = $1 AND t.id = $2`, projectID, id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return task
 }

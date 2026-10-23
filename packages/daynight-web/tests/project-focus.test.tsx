@@ -33,13 +33,13 @@ const rootId = '20000000-0000-0000-0000-000000000001';
 const selectedId = '20000000-0000-0000-0000-000000000002';
 const remainingId = '20000000-0000-0000-0000-000000000003';
 const timestamp = '2026-10-20T12:00:00.123456Z';
-const task = (id: string, titlePreview: string, dependsOn: readonly string[] = []): GraphTask => ({
+const task = (id: string, titlePreview: string, dependsOn: readonly string[] = []): GraphTask => ({ startedAt: null, completedAt: null,
   id, titlePreview, titleTruncated: false, status: 'todo', dependsOn, blockedBy: dependsOn,
   ready: dependsOn.length === 0, createdAt: timestamp, updatedAt: timestamp,
 });
 const remaining = task(remainingId, '保留任务链');
 const remainingChain = [remaining, task('remaining-child', '保留后续任务', [remainingId])];
-const graph = (tasks = [task(rootId, '原任务链'), task(selectedId, '所选任务', [rootId]), ...remainingChain]): TaskGraph => ({
+const graph = (tasks = [task(rootId, '原任务链'), task(selectedId, '所选任务', [rootId]), ...remainingChain]): TaskGraph => ({ observedAt: "2026-10-20T12:00:00Z",
   project: { id: projectId, name: '核心项目', repoUrl: '', createdAt: timestamp, updatedAt: timestamp },
   tasks,
   summary: {
@@ -60,7 +60,7 @@ beforeEach(() => {
   document.body.style.overflow = 'scroll';
   graphRequest.mockReset();
   detailRequest.mockReset();
-  detailRequest.mockImplementation(async (project, id) => ({
+  detailRequest.mockImplementation(async (project, id) => ({ startedAt: null, completedAt: null,
     id, projectId: project, title: '所选任务详情', description: '', properties: { pullRequests: [] }, status: 'done', version: 1n,
     dependsOn: [rootId], blockedBy: [], ready: false, createdAt: timestamp, updatedAt: timestamp,
   }));

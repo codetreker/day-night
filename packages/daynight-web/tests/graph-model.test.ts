@@ -11,13 +11,13 @@ const graph = (seeds: readonly Seed[]): TaskGraph => {
     const dependsOn = seed.dependsOn ?? [];
     const status = seed.status ?? "todo";
     const blockedBy = dependsOn.filter((predecessor) => seeds.find((item) => item.id === predecessor)?.status !== "done");
-    return {
+    return { startedAt: null, completedAt: null,
       id: seed.id, status, dependsOn, blockedBy, ready: status === "todo" && blockedBy.length === 0,
       titlePreview: "Private task text", titleTruncated: false, createdAt: time, updatedAt: time,
     };
   });
   const todo = tasks.filter((task) => task.status === "todo");
-  return {
+  return { observedAt: "2026-10-20T12:00:00Z",
     project: { id: id("P"), name: "Private project", repoUrl: "git@github.com:owner/repo.git", createdAt: time, updatedAt: time },
     tasks,
     summary: {

@@ -26,6 +26,9 @@
 零成员项目不可访问。[统一启用决策](../../.agents/notes/implemented/architecture/2026-10-22-authentication-activation.md)
 记录运行时接线与验收凭据边界；对应源码的验证结论仍以完整运行回执为准。
 
+[执行计时需求](daynight-task-timing.md)的任务起止事实与数据库图时间样本已实现。
+本文拥有它们的资源、写入和快照约定；项目提醒阈值与实时展示仍由该组后继任务交付。
+
 ## 目标与交付范围
 
 | 编号 | 要求 |
@@ -79,6 +82,7 @@ Task 包含以下持久化字段：
 | `status` | `proposed / todo / in_progress / done`，创建时为 `proposed`，只能通过专用生命周期操作向前转换 |
 | `version` | 从 `1` 开始的正整数，每次实际变更增加一次 |
 | `createdAt`、`updatedAt` | UTC 创建和最后实际变更时间 |
+| `startedAt`、`completedAt` | 只读 UTC 执行起止时间，字段必填但允许 `null`，未知事实不补造 |
 
 Task 响应还包含 `dependsOn`、`blockedBy` 和 `ready`：
 
@@ -117,11 +121,15 @@ Task 响应还包含 `dependsOn`、`blockedBy` 和 `ready`：
 当作成功，也不隐式重试。不存在重开、退回或 todo 直接完成的转换。
 
 普通成员与管理员均可执行三种生命周期操作，权限来自当前项目成员关系；管理员
-额外管理成员与邀请。HTTP 对操作及方法拒绝路由统一验证凭据，Cookie 会话写请求
+额外管理成员与邀请。claim 在数据库项目锁后的实际写入时记录 `startedAt` 并清空 `completedAt`，
+complete 记录真实 `completedAt` 并保留起点。迁移前已在执行的任务完成时可以只有真实终点，
+不能从 `createdAt` 或 `updatedAt` 推算其缺失起点。新建及 approve 不生成执行时间，
+已有历史任务的迁移初值均为 `null`。创建、PATCH 和生命周期输入均不能写入起止字段。
+HTTP 对操作及方法拒绝路由统一验证凭据，Cookie 会话写请求
 要求精确主站 Origin，响应使用 no-store。
 
 版本、前态、依赖及写入必须处于同一 project 锁事务中，先获得项目锁再检查成员关系。成功只增加一次 version 并
-更新一次 updatedAt，保留其余字段、属性和依赖；拒绝保持全部数据不变。同版本并发
+更新一次 updatedAt，并原子维护对应起止时间，保留其余字段、属性和依赖；拒绝保持全部数据不变。同版本并发
 claim 只有一个成功，其余看到版本冲突。审批不领取任务，也不使未完成前置变为完成。
 任务审批是就绪决策，不授予实现、发布、部署、合并或主线 push 的权限。
 
@@ -134,7 +142,8 @@ proposed 和 todo 可以带未完成前置并修改元数据；in-progress 和 d
 
 过期版本即使期望字段恰与当前值相同也冲突。版本匹配的语义空操作保持 version 和
 updatedAt；依赖数组顺序不构成变化，PR 数组顺序、重复项和字符串均参与等值比较。
-真实字段、属性或依赖变更只增加一次版本。附件和 PR 更新不改变生命周期。
+真实字段、属性或依赖变更只增加一次版本。普通编辑及同状态低层写入保持执行起止；
+再次真正进入执行时替换起点而不累加早先尝试，但这不增加公开重开转换。附件和 PR 更新不改变生命周期。
 
 PR 的 url 与 title 只校验字符串类型及必填结构，保留空字符串、控制字符、顺序与
 重复项。服务不检查 URL、PR 存在性或仓库匹配；严格拒绝未知字段、重复 key、null、
@@ -194,7 +203,7 @@ Cursor 必须绑定列表类型、所属 project 和筛选条件，格式错误�
 ### 完整任务图
 
 `GET /api/v1/projects/{projectId}/task-graph` 提供同一只读 `REPEATABLE READ` 快照中的
-project、完整 tasks 及 summary，不使用分页或状态筛选。任何非空 query，包括未知
+project、完整 tasks、summary 及数据库时间样本 `observedAt`，不使用分页或状态筛选。任何非空 query，包括未知
 字段、分页/筛选字段和无效编码，均返回 `400 invalid_input`。成功、拒绝和读取错误
 响应采用 `Cache-Control: no-store`；GET 同时支持 HEAD，其他方法返回 405 与 Allow。
 
@@ -205,7 +214,9 @@ proposed 只计入自身状态和总数；blocked 只计入前置未全部完成
 版本和时间不随此次读取变化。
 
 图节点包含 `id`、`titlePreview`、`titleTruncated`、`status`、`dependsOn`、
-`blockedBy`、`ready`、`createdAt` 和 `updatedAt`。标题预览最多 160 Unicode code
+`blockedBy`、`ready`、`createdAt`、`updatedAt` 以及明确可空的 `startedAt`、`completedAt`。
+顶层 `observedAt` 是图数据与统计读取后的数据库时间样本，使用 UTC RFC 3339；
+它不是事务开始时间或任务更新时间，不修改任务状态或版本。标题预览最多 160 Unicode code
 points，截短时标记 titleTruncated；不返回完整标题、description 或 version。完整
 任务内容继续使用既有详情接口。节点按 `(createdAt,id)` 排序，前置及阻塞 ID 数组
 按 ID 排序；空图和空数组使用 `[]`，时间使用 UTC。边由 dependsOn 表示。

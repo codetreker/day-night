@@ -4,36 +4,52 @@ Status: implemented
 
 ## Problem
 
-Task metadata records creation and edits, but cannot establish when an execution
-started or finished. Running cards cannot distinguish ordinary progress from an
-execution that may need attention. A project-specific warning threshold also
-needs shared persistence, authorization and concurrency semantics.
+Creation and edit timestamps describe metadata events rather than an execution
+interval. Execution duration needs trustworthy start and completion facts, while
+running cards need a way to distinguish ordinary progress from work that may
+need attention. A project-specific warning threshold also needs shared
+persistence, authorization and concurrency semantics.
 
 ## Decision
 
 The adopted [requirements](../../../../docs/spec/daynight-task-timing.md) and
 [architecture](../../../../docs/design/daynight-task-timing.md) define one
 execution interval per task, project-owned warning settings and a server-derived
-display clock. This note records the completed design decision; runtime delivery
-and whole-goal acceptance remain owned by the
+display clock. Persistent task timing and its reader contracts are implemented;
+project settings, running-task presentation and whole-goal acceptance remain
+owned by the succeeding
 [implementation tasks](../../../../docs/design/daynight-task-timing-tasks.md).
 
 Task start and completion timestamps are nullable database facts written with
 status and version under the existing project transaction. The latest genuine
-entry into execution replaces the start. Existing rows retain unknown timing.
-Statement time after acquiring the project lock avoids counting lock waits as
-execution. The existing approval lifecycle stays intact.
+entry into execution replaces the start. Migration leaves existing rows with
+unknown timing. Completing a historical running task records its real end while
+preserving its unknown start. Ordinary edits and same-state writes preserve the
+interval. Statement time after acquiring the project lock avoids counting lock
+waits as execution. The existing approval lifecycle stays intact.
 
-Project settings use two project columns and the existing project lock, with a
-dedicated settings version. Members can read the saved threshold; administrator
-writes recheck authorization after the lock and check version before no-op
-detection. The initial threshold is 60 minutes.
+Full tasks and graph nodes expose required nullable timestamps. CLI and Web
+readers reject missing or malformed known fields without fabricating defaults;
+JSON preserves explicit nulls and original timestamps. Human CLI output retains
+its existing field choices.
 
-Each graph supplies a database clock sample. A project-owned browser clock
-advances that sample using monotonic elapsed time, while task/index/layout
-identity excludes clock-only and settings-only changes. Running consumers share
-one ticker; completed durations need none. Strict unrounded threshold comparison
-drives an amber icon/text warning without changing task status or graph geometry.
+Each graph supplies a database clock sample taken after its data reads. Web
+polling stores the latest sample separately as `GraphSnapshot.observedAt`, while
+content equality excludes the graph's sample. This preserves graph and index
+identity on clock-only responses without freezing the sample consumed by future
+clock clients. The existing local-wall-clock `receivedAt` label keeps its role.
+
+The adopted ET-T2 design stores settings in two project columns under the existing
+project lock and a dedicated settings version. It requires member reads,
+administrator writes with authorization rechecked after the lock, and a version
+check before no-op detection. The initial threshold is 60 minutes. ET-T2 also
+owns separation of settings metadata from the task index.
+
+ET-T3 uses one project-owned browser ticker to advance the latest server sample
+with monotonic elapsed time. Completed durations need no subscription. Strict
+unrounded threshold comparison drives an amber icon/text warning without
+changing task status or graph geometry. These consumers remain later delivery
+work, rather than an existing runtime capability of the timing data contract.
 
 Delivery proceeds through persistent task timing, project threshold settings,
 then running-task presentation and whole-goal acceptance. Each PR preserves a
@@ -65,11 +81,12 @@ change, avoiding incompatible intermediate readers.
 
 ## Consequences
 
-Unknown historical executions remain visibly unknown. The clock is based on a
-received server sample and therefore includes network-sample delay; existing
-polling regularly reanchors it. No new server worker or background scanner is
-required. Timer ticks must remain outside layout dependencies, and future
-changes to the graph cache must preserve that separation.
+Historical starts remain unknown and cannot yield an inferred duration. The
+graph's database sample and its separate Web receipt expose a clock basis without
+adding per-card requests or a server worker. The planned display clock includes
+network-sample delay and reanchors through existing polling. Its timer ticks must
+remain outside layout dependencies; future graph-cache changes must preserve the
+separation between the latest sample and stable graph/index content.
 
 Historical attempt reporting, automatic task recovery and a CLI settings
 mutation command remain outside this delivery. They can be added independently:

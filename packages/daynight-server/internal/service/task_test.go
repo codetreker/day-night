@@ -291,6 +291,22 @@ func TestTaskLifecyclePredecessorsAndVersionOrder(t *testing.T) {
 				expected := task
 				expected.Status, expected.Version, expected.UpdatedAt = action.to, after.Version, after.UpdatedAt
 				expected.Ready = action.to == core.TaskTodo
+				switch action.name {
+				case "approve":
+					if !reflect.DeepEqual(after.StartedAt, task.StartedAt) || !reflect.DeepEqual(after.CompletedAt, task.CompletedAt) {
+						t.Fatal("approval changed execution timing")
+					}
+				case "claim":
+					if after.StartedAt == nil || !after.StartedAt.Equal(after.UpdatedAt) || after.CompletedAt != nil {
+						t.Fatal("claim did not atomically record its start and clear completion")
+					}
+				case "complete":
+					if !reflect.DeepEqual(after.StartedAt, task.StartedAt) || after.CompletedAt == nil || !after.CompletedAt.Equal(after.UpdatedAt) ||
+						after.StartedAt != nil && after.CompletedAt.Before(*after.StartedAt) {
+						t.Fatal("completion did not preserve its start and atomically record its end")
+					}
+				}
+				expected.StartedAt, expected.CompletedAt = after.StartedAt, after.CompletedAt
 				if !reflect.DeepEqual(after, expected) {
 					t.Fatalf("lifecycle changed unrelated fields: before %#v, after %#v", task, after)
 				}

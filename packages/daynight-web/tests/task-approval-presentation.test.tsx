@@ -6,7 +6,7 @@ import { TaskApproval } from '../src/features/task-detail/TaskApproval';
 import type { ApprovalState } from '../src/features/task-detail/TaskDetailSession';
 import { LanguageSelector } from '../src/i18n/LanguageSelector';
 import { renderWithLocale } from './helpers/renderWithLocale';
-const detail: TaskDetail = { id: 'task', projectId: 'project', version: 1n, title: 'Task content', description: '',
+const detail: TaskDetail = { startedAt: null, completedAt: null, id: 'task', projectId: 'project', version: 1n, title: 'Task content', description: '',
   properties: { pullRequests: [] }, status: 'proposed', dependsOn: [], blockedBy: [], ready: false, createdAt: '', updatedAt: '' };
 const idle: ApprovalState = { phase: 'idle', error: null, reconciling: false, reconciliationError: null };
 const mount = (approval = idle, task = detail, enabled = true) => {

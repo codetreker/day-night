@@ -13,6 +13,8 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 列表默认值与文本输出见[列表决策](../../.agents/notes/implemented/feature/2026-10-22-task-list-defaults.md)，
 JSON 列表字段见[描述省略决策](../../.agents/notes/implemented/simplification/2026-10-22-task-list-json-description.md)。
 实现顺序与依赖见[交付任务](daynight-project-task-tasks.md)。
+任务起止字段与图时钟的读取机制由[执行计时架构](daynight-task-timing.md)扩展；
+CLI 同步保留 `startedAt`、`completedAt` 与 `observedAt`，不产生本地推算时间或新增可读字段。
 
 [预定义属性设计](daynight-task-properties.md)的 server 接口、CLI 成对 PR 引用
 参数与完整输出已实现。[需求](../spec/daynight-task-properties.md)和
@@ -178,7 +180,9 @@ JSON 对象在完成有界读取后解析；下一步及最终输出前再次检
 HTTP 层按操作消费 JSON、原始字节或空响应，只接受 API 规定的成功状态；JSON
 响应继续校验结构，删除必须为 204 且响应体为空。缺失字段、错误类型、未知
 状态值、无效分页 cursor 形态及不完整错误 envelope 作为协议错误暴露。验证可消费
-的已知字段，服务将来添加无冲突字段无需猜测其含义。DTO 的时间、版本、UUID 和
+的已知字段，服务将来添加无冲突字段无需猜测其含义。full task 与图节点读取必填、可空的
+`startedAt`、`completedAt`；图另外读取必填 `observedAt`。`null` 表示未知事实，缺失不能兼容为 `null`；
+已知值使用与现有资源相同的合法 UTC `Z` 时间格式验证，秒后允许 1–9 位小数，并保留原始字符串。DTO 的时间、版本、UUID 和
 数组语义与现有服务契约一致。错误保留 cause，并区分网络、期限、主动取消、HTTP
 拒绝和响应结构失败。
 
@@ -464,7 +468,8 @@ PR 字符串只检查类型，保留空、重复、控制字符与原有顺序�
 terminalText。创建和更新分别以 `Task created.`、`Task updated.` 表明服务确认结果。
 Graph 展示完整 project、六个 summary 字段及全部节点；节点的 `titlePreview` 与
 `titleTruncated`
-同时展示，保留状态、ready、依赖、阻塞和时间，不能把预览称为完整标题。所有字段
+同时展示，保留既有状态、ready、依赖、阻塞和创建/更新时间，不能把预览称为完整标题。
+新增起止字段和图时钟由 JSON 保留，不为可读渲染器增加标签。所有字段
 使用终端转义且不补齐等宽列，空间随资源内容总长度线性增长。
 
 查询 `--json` 是脚本和模型调用 CLI 的稳定接口：show 为完整资源对象，project list
@@ -472,7 +477,8 @@ Graph 展示完整 project、六个 summary 字段及全部节点；节点的 `t
 的数组，ready 为所选完整 task 的数组，graph 为服务原始完整响应对象。
 Task 的 `renderTaskListJson` 在命令完成状态选择和稳定分组后建立输出投影，
 每个 task 只移除 `description`；默认及所有合法筛选共享该路径。其余字段保留
-API 名称、类型及原始值，包括 PR 列表、完整 int64 版本及时间戳，并继续使用
+API 名称、类型及原始值，包括 PR 列表、完整 int64 版本、时间戳以及明确的起止 `null`；
+graph JSON 保留顶层数据库 `observedAt`。这些字段不在命令层计算或省略，并继续使用
 `stringifyApiJson` 精确序列化。完整 API DTO、验证、分页、服务响应及其他操作
 不采用该投影，描述仍由 show、ready、create 和 update 返回。
 ready 空结果为 `[]`，不输出分页 envelope 或 cursor。仅序列化 API 字段，不加入

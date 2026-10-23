@@ -20,10 +20,10 @@ const unrelatedId = "a1b2c3d4-1111-4222-8333-123456789abe";
 const taskId = "b1b2c3d4-1111-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project = (projectId = id, repoUrl = "git@git.example:Org/Repo.git"): Project => ({ id: projectId, name: "Project 中文", repoUrl, createdAt: time, updatedAt: time });
-const task = (projectId = id): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true });
+const task = (projectId = id): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true });
 const taskListItem = (value: Task): Omit<Task, "description"> => ({
   id: value.id, projectId: value.projectId, title: value.title, properties: value.properties,
-  status: value.status, version: value.version, createdAt: value.createdAt, updatedAt: value.updatedAt,
+  status: value.status, version: value.version, startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt,
   dependsOn: value.dependsOn, blockedBy: value.blockedBy, ready: value.ready,
 });
 const send = (response: ServerResponse, value: unknown, status = 200): void => { response.writeHead(status, { "Content-Type": "application/json" }); response.end(stringifyApiJson(value)); };
@@ -92,7 +92,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
           if (typeof body === "object" && body !== null && "description" in body && typeof body.description === "string") description = body.description;
           send(response, { ...task(projectId), description, ...(body as object), ...(request.method === "POST" ? { status: "proposed", ready: false } : {}), version: request.method === "PATCH" ? 9_007_199_254_740_994n : 1n }, request.method === "POST" ? 201 : 200); return;
         }
-        if (parts[5] === "task-graph") { send(response, { project: project(projectId), summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 }, tasks: [] }); return; }
+        if (parts[5] === "task-graph") { send(response, { observedAt: time, project: project(projectId), summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 }, tasks: [] }); return; }
         if (parts.length === 7) { send(response, { ...task(projectId), description, properties, version: 9_007_199_254_740_993n }); return; }
         if (readyPage !== undefined && url.searchParams.get("ready") === "true") { send(response, readyPage); return; }
         if (broken === "page" && url.searchParams.has("cursor")) { fault(response, "internal_error", "native-later-page", 500); return; }

@@ -428,6 +428,23 @@ PR order and duplicate entries are retained; changing their order is a real chan
 Predecessor changes derive readiness on read without changing downstream status,
 version or timestamps.
 
+Tasks expose nullable `startedAt` and `completedAt` execution facts. Claim records
+`startedAt` and clears the previous end; complete records `completedAt`. These
+values, status, version and update time commit in the same project transaction.
+SQL uses `statement_timestamp()` after the project lock, so waiting for that lock
+is not counted as execution. Metadata and same-state low-level writes preserve
+existing timing. A genuine new entry into execution replaces the latest start;
+this storage rule does not add a public reopening operation.
+
+Migration `009_task_timing.sql` leaves historical start and end values unknown.
+Creation and approval also leave them `null`. Completing a historical active task
+records its real end while retaining an unknown start. No caller may submit these
+read-only fields, and neither creation/update time nor deployment time is used to
+invent an execution interval. Completed intervals survive later edits and service
+restart. The [timing requirements](../../docs/spec/daynight-task-timing.md) and
+[architecture](../../docs/design/daynight-task-timing.md) own the interval contract;
+project settings and live presentation are later delivery outcomes.
+
 Expected refusals are captured before any write and returned only after the
 outer lock-only transaction succeeds; transaction/cleanup failures remain
 operational errors. Lists and reads check project existence and task state
@@ -438,9 +455,14 @@ status/ready filters, preserving the difference between absent and false.
 
 `GET /api/v1/projects/{projectId}/task-graph` reads the project, exact graph size,
 all graph nodes and their dependency projections in one read-only repeatable-read
-transaction. It returns `{project, summary, tasks}` with no pagination or filters.
+transaction. It returns `{project, summary, tasks, observedAt}` with no pagination or filters.
 Nonempty query strings fail with 400, including unsupported parameters and invalid
 encodings. Responses use `Cache-Control: no-store`.
+
+`observedAt` is a fresh UTC database statement timestamp sampled after graph data
+has been read. It shares the clock authority of task execution timestamps without
+changing stored task metadata. Its changing value is not graph-content identity;
+clients preserve task/index identity on clock-only responses.
 
 The summary requires `total`, `proposed`, `todo`, `inProgress`, `done`, `ready`
 and `blocked` counts, including zero values. Each task counts once, even when
@@ -458,7 +480,8 @@ and timestamps. The [lifecycle decision](../../.agents/notes/implemented/feature
 activates dedicated transitions after the [reader preparation](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md).
 
 Nodes contain `id`, `titlePreview`, `titleTruncated`, `status`, `dependsOn`,
-`blockedBy`, `ready` and UTC timestamps. SQL produces at most 160 Unicode code
+`blockedBy`, `ready`, UTC creation/update timestamps and explicit nullable
+`startedAt`/`completedAt`. SQL produces at most 160 Unicode code
 points of each title without selecting descriptions, properties or full titles. Use the
 existing task detail endpoint for complete content. Node order is `(createdAt,
 id)`; dependency arrays are sorted and empty collections encode as `[]`.
@@ -517,7 +540,8 @@ additional count or string-length limits. The complete API behavior is owned by
 the [task properties requirements](../../docs/spec/daynight-task-properties.md).
 
 Task responses contain identity, project, title, description, status, version,
-UTC timestamps, sorted `dependsOn`/`blockedBy` arrays, `ready` and complete
+UTC creation/update timestamps, explicit nullable execution timestamps
+`startedAt`/`completedAt`, sorted `dependsOn`/`blockedBy` arrays, `ready` and complete
 `properties` with an initialized `pullRequests` array. A missing
 project or a task outside the specified project returns 404. The initialized
 empty project returns `items: []`, `nextCursor: null`.
@@ -645,13 +669,13 @@ The [lifecycle scenarios](cmd/daynight-server/acceptance_lifecycle_cli_test.go)
 reuse this installation and actual-process fixture. The migration journey
 executes checked-in migrations 001 through 006 and records their raw-byte
 checksum ledger and old todo/in-progress/done rows before startup. The current
-built service applies 007/008 through its production migration engine. An
+built service applies 007/008/009 through its production migration engine. An
 unassigned legacy project first returns 404 to the authenticated nonmember. The
 fixture then explicitly provisions admin membership for the actual `/api/v1/me`
 user, verifies membership through the API and compares the original raw task
-rows unchanged. This prepares authorized test access, not automatic ownership
+rows with their original columns unchanged and nullable unknown timing. This prepares authorized test access, not automatic ownership
 adoption or rewritten task/migration history. Packed CLI reads verify old records, new proposed creation, explicit prerequisite/dependent
-progression, blocked/stale refusals and readable plan attachment bytes. Actual
+progression, blocked/stale refusals, lifecycle timing and readable plan attachment bytes. Actual
 restart compares the historical rows and ledger plus new task and attachment
 state. Preparing the current schema and rewriting its history is not this oracle.
 

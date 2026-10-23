@@ -204,6 +204,7 @@ func TestQueriesFailuresPreserveCauses(t *testing.T) {
 	}
 	for _, operation := range []func() error{
 		func() error { _, err := expiredSnapshot.Projects(ctx, Page{Limit: 10}); return err },
+		func() error { _, err := expiredSnapshot.ObservedAt(ctx); return err },
 		func() error {
 			_, err := expiredSnapshot.Tasks(ctx, project.ID, TaskQuery{Page: Page{Limit: 10}})
 			return err
