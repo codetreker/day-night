@@ -147,6 +147,7 @@ func TestConcurrentLifecycleSameVersionOnlyChangesOnce(t *testing.T) {
 		apply func(context.Context, core.Principal, string, string, int64) (core.Task, error)
 	}{
 		{"approve", core.TaskTodo, tasks.Approve},
+		{"unapprove", core.TaskProposed, tasks.Unapprove},
 		{"claim", core.TaskInProgress, tasks.Claim},
 		{"complete", core.TaskDone, tasks.Complete},
 	} {
@@ -185,6 +186,30 @@ func TestConcurrentSameVersionUpdatesOnlyChangeOnce(t *testing.T) {
 	after, err := tasks.Get(context.Background(), principal, project.ID, target.ID)
 	if err != nil || after.Version != target.Version+1 || (after.Title != "First" && after.Title != "Second") {
 		t.Fatalf("version competition: %#v, %v", after, err)
+	}
+}
+
+func TestConcurrentUnapproveAndClaimHaveOneWinner(t *testing.T) {
+	tasks, database, project, _, principal := taskService(t)
+	target := approveTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "Competing admission"))
+	results := competeTaskWrites(t, database, project.ID,
+		func(ctx context.Context) (core.Task, error) {
+			return tasks.Unapprove(ctx, principal, project.ID, target.ID, target.Version)
+		},
+		func(ctx context.Context) (core.Task, error) {
+			return tasks.Claim(ctx, principal, project.ID, target.ID, target.Version)
+		})
+	assertOneTaskWinner(t, results, "version_conflict")
+	after, err := tasks.Get(context.Background(), principal, project.ID, target.ID)
+	if err != nil || after.Version != target.Version+1 || after.Ready ||
+		(after.Status != core.TaskProposed && after.Status != core.TaskInProgress) {
+		t.Fatalf("withdrawal/claim competition: before %#v, after %#v, %v", target, after, err)
+	}
+	if after.Status == core.TaskProposed && (after.StartedAt != nil || after.CompletedAt != nil) {
+		t.Fatal("withdrawal winner recorded execution timing")
+	}
+	if after.Status == core.TaskInProgress && (after.StartedAt == nil || !after.StartedAt.Equal(after.UpdatedAt) || after.CompletedAt != nil) {
+		t.Fatal("claim winner did not record its execution start")
 	}
 }
 

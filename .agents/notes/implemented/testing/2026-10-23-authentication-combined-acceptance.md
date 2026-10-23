@@ -88,8 +88,8 @@ then verifies the same pending input, single submission and same revealed token
 element across English/Simplified Chinese. The response remains the actual
 server result. Screenshots happen only after closing or masking the secret.
 
-The existing 51 Playwright cases remain 23 native functional, 23 container
-functional and 5 native capacity. Native and container each require a separate
+The current 53 Playwright cases comprise 24 native functional, 24 container
+functional and 5 native capacity, including the later task-unapproval scenario. Native and container each require a separate
 combined receipt. These receipts do not renumber the Playwright inventory or
 replace its fixed data, five samples, geometry checks, zero retries, raw report
 validation or time/request/memory budgets. Capacity remains isolated from

@@ -39,7 +39,7 @@ listener 推导。Go listener 保持 loopback；healthz/readyz 公开且无业�
 
 每个 HTTP 请求读取当前凭据取得 Principal。资源读取在 Snapshot 内检查成员，
 任务写入在项目锁内检查成员并执行领域约束；项目创建与首位 admin 原子提交，
-列表在 SQL 分页前筛成员。任务 approve/claim/complete 同样显式传递 Principal，
+列表在 SQL 分页前筛成员。任务 approve/unapprove/claim/complete 同样显式传递 Principal，
 在取得项目锁后检查成员；新任务默认 proposed，元数据 PATCH 不接受 status。
 所有成员均可批准、领取和完成，管理员只额外管理成员/邀请；新 POST 与其 405
 fallback 均经过 Require、Origin 与 no-store。凭据认证与业务事务各有准入时点，

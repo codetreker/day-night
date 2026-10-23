@@ -120,7 +120,7 @@ test('auth-project-isolation', scenario('auth-project-isolation'), async ({ page
     }
     expect((await bob.head(preview)).status()).toBe(404);
     expect((await anonymous.head(preview)).status()).toBe(401);
-    for (const action of ['approve', 'claim', 'complete']) {
+    for (const action of ['approve', 'unapprove', 'claim', 'complete']) {
       const transition = `/api/v1/projects/${own.id}/tasks/${task.id}/${action}`;
       expect((await bob.post(transition, { data: { version: task.version } })).status()).toBe(404);
       expect((await anonymous.post(transition, { data: { version: task.version } })).status()).toBe(401);

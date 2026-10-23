@@ -1,10 +1,10 @@
 import { waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, approveTask, getTask } from '../src/api/client';
+import { ApiError, approveTask, getTask, unapproveTask } from '../src/api/client';
 import type { TaskDetail } from '../src/api/types';
-import { canApprove, TaskDetailSessions } from '../src/features/task-detail/TaskDetailSession';
+import { canApprove, canUnapprove, TaskDetailSessions } from '../src/features/task-detail/TaskDetailSession';
 
-vi.mock('../src/api/client', async (original) => ({ ...await original<typeof import('../src/api/client')>(), approveTask: vi.fn(), getTask: vi.fn() }));
+vi.mock('../src/api/client', async (original) => ({ ...await original<typeof import('../src/api/client')>(), approveTask: vi.fn(), unapproveTask: vi.fn(), getTask: vi.fn() }));
 const project = '10000000-0000-4000-8000-000000000001';
 const otherProject = '10000000-0000-4000-8000-000000000002';
 const task = '20000000-0000-4000-8000-000000000001';
@@ -17,6 +17,7 @@ const proposed: TaskDetail = { startedAt: null, completedAt: null, id: task, pro
 const approved: TaskDetail = { ...proposed, status: 'todo', version: version + 1n, updatedAt: '2026-10-22T00:01:00Z' };
 const reads = vi.mocked(getTask);
 const writes = vi.mocked(approveTask);
+const withdrawals = vi.mocked(unapproveTask);
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   let reject!: (error: unknown) => void;
@@ -27,7 +28,7 @@ const open = async (sessions: TaskDetailSessions, projectId = project, taskId = 
   sessions.load(projectId, taskId, 1);
   await waitFor(() => expect(sessions.snapshot(projectId, taskId).status).toBe('ready'));
 };
-beforeEach(() => { reads.mockReset().mockResolvedValue(proposed); writes.mockReset(); });
+beforeEach(() => { reads.mockReset().mockResolvedValue(proposed); writes.mockReset(); withdrawals.mockReset(); });
 
 describe('task approval session ownership', () => {
   it('submits one explicit exact-version approval with unfinished prerequisites and publishes its confirmed result', async () => {
@@ -205,5 +206,61 @@ describe('task approval session ownership', () => {
     mutation.reject(new ApiError('network'));
     await waitFor(() => expect(sessions.snapshot(project, task).approval.phase).toBe('unknown'));
     expect(reads).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe('two-way approval session ownership', () => {
+  it('uses one operation owner through approval, withdrawal and renewed approval with exact successive versions', async () => {
+    const sessions = new TaskDetailSessions();
+    const withdrawn: TaskDetail = { ...proposed, version: version + 2n, updatedAt: '2026-10-22T00:02:00Z' };
+    const reapproved: TaskDetail = { ...approved, version: version + 3n, updatedAt: '2026-10-22T00:03:00Z' };
+    writes.mockResolvedValueOnce(approved).mockResolvedValueOnce(reapproved);
+    withdrawals.mockResolvedValueOnce(withdrawn);
+    await open(sessions);
+    sessions.performApproval(project, task, 'approve', version);
+    await waitFor(() => expect(canUnapprove(sessions.snapshot(project, task))).toBe(true));
+    sessions.performApproval(project, task, 'unapprove', approved.version);
+    await waitFor(() => expect(sessions.snapshot(project, task).detail).toEqual(withdrawn));
+    expect(sessions.snapshot(project, task).approval.operation).toEqual({ action: 'unapprove', version: approved.version });
+    sessions.performApproval(project, task, 'approve', withdrawn.version);
+    await waitFor(() => expect(sessions.snapshot(project, task).detail).toEqual(reapproved));
+    expect(writes.mock.calls.map((call) => call[2])).toEqual([version, version + 2n]);
+    expect(withdrawals).toHaveBeenCalledExactlyOnceWith(project, task, version + 1n, expect.any(AbortSignal));
+  });
+
+  it('refuses an earlier confirmation version or the opposite source state without issuing a mutation', async () => {
+    const sessions = new TaskDetailSessions();
+    reads.mockResolvedValueOnce(approved);
+    await open(sessions);
+    sessions.performApproval(project, task, 'unapprove', version);
+    sessions.performApproval(project, task, 'approve', approved.version);
+    expect(withdrawals).not.toHaveBeenCalled(); expect(writes).not.toHaveBeenCalled();
+  });
+
+  it('retains a pending withdrawal across reopening and permits only one submission', async () => {
+    const sessions = new TaskDetailSessions(); const mutation = deferred<TaskDetail>();
+    reads.mockResolvedValueOnce(approved); withdrawals.mockReturnValueOnce(mutation.promise);
+    await open(sessions);
+    sessions.unapprove(project, task); sessions.unapprove(project, task);
+    sessions.load(project, task, 2);
+    expect(reads).toHaveBeenCalledTimes(1);
+    expect(canUnapprove(sessions.snapshot(project, task))).toBe(false);
+    expect(withdrawals).toHaveBeenCalledExactlyOnceWith(project, task, approved.version, expect.any(AbortSignal));
+    mutation.resolve({ ...proposed, version: approved.version + 1n });
+    await waitFor(() => expect(sessions.snapshot(project, task).approval.phase).toBe('confirmed'));
+    expect(canApprove(sessions.snapshot(project, task))).toBe(true);
+  });
+
+  it('reconciles an uncertain withdrawal without retrying and retains the action-specific result', async () => {
+    const sessions = new TaskDetailSessions(); const failure = new ApiError('network');
+    const withdrawn = { ...proposed, version: approved.version + 1n };
+    reads.mockResolvedValueOnce(approved).mockResolvedValueOnce(withdrawn);
+    withdrawals.mockRejectedValueOnce(failure);
+    await open(sessions); sessions.unapprove(project, task);
+    await waitFor(() => expect(sessions.snapshot(project, task).approval.phase).toBe('reconciled'));
+    expect(sessions.snapshot(project, task).detail).toEqual(withdrawn);
+    expect(sessions.snapshot(project, task).approval).toMatchObject({ operation: { action: 'unapprove', version: approved.version }, error: failure });
+    expect(withdrawals).toHaveBeenCalledTimes(1); expect(writes).not.toHaveBeenCalled();
   });
 });

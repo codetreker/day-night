@@ -71,8 +71,9 @@ added six functional scenarios per target, and the
 [Markdown description delivery](../architecture/2026-10-22-task-description-markdown.md)
 added one, producing the earlier twenty-five-native/twenty-container inventory.
 The [approval lifecycle](2026-10-22-task-approval-lifecycle.md) adds three approval
-scenarios per target. Current strict inventories are twenty-eight native and
-twenty-three container scenarios, with these same five capacity/limit cases.
+scenarios per target. The later [withdrawal decision](2026-10-23-task-unapprove.md)
+adds one functional scenario per target. Current strict inventories are twenty-nine
+native and twenty-four container scenarios, with these same five capacity/limit cases.
 
 The [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 the [web design](../../../../docs/design/daynight-web.md) owns model and viewport

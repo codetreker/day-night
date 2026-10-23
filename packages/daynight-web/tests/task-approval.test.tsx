@@ -12,6 +12,11 @@ vi.mock('../src/api/client', async (original) => ({ ...await original<typeof imp
   getTask: vi.fn(), getTaskGraph: vi.fn(), approveTask: vi.fn(), listAttachments: vi.fn(), putAttachment: vi.fn(),
   readAttachmentText: vi.fn(), checkAttachmentPreview: vi.fn(),
 }));
+const confirmApproval = (button: HTMLElement) => {
+  fireEvent.click(button);
+  const confirmation = screen.getByRole('alertdialog', { name: 'Approve task' });
+  fireEvent.click(within(confirmation).getByRole('button', { name: 'Confirm approval' }));
+};
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const project = id(100); const parent = id(1); const child = id(2); const standalone = id(3);
 const time = '2026-10-22T00:00:00Z';
@@ -79,7 +84,7 @@ describe('approval in shared production task details', () => {
     let otherReads = 0;
     vi.mocked(getTask).mockImplementation(async (_project, taskId) => taskId === standalone && ++otherReads === 2 ? refresh.promise : records.get(taskId)!);
     mount(); let dialog = await openChild();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve task' }));
+    confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close task details' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Standalone tasks' }));
     fireEvent.click(screen.getByRole('button', { name: /Task 3/ }));
@@ -121,7 +126,7 @@ describe('approval in shared production task details', () => {
     expect(within(dialog).getByRole('heading', { name: 'Task 3' })).toBeVisible();
     expect(approvalButton).toBeDisabled();
     expect(dialog.querySelector('.task-detail-stale')).toBeNull();
-    expect(within(dialog).getByText('Showing previously loaded task details. Approval is unavailable until the current details can be confirmed.')).toBeVisible();
+    expect(within(dialog).getByText('Showing previously loaded task details. Approval actions are unavailable until the current details can be confirmed.')).toBeVisible();
     await act(async () => { refresh.resolve(changed); });
     await within(dialog).findByRole('heading', { name: 'Task 3 revised' });
     expect(dialog.querySelector('.task-attachments')).toBe(attachments); expect(tab).toHaveFocus();
@@ -145,15 +150,15 @@ describe('approval in shared production task details', () => {
     });
     vi.mocked(approveTask).mockRejectedValueOnce(original);
     mount(); const dialog = await openChild();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve task' }));
+    confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' }));
     const failed = await within(dialog).findByRole('heading', { name: 'Task details could not be loaded' });
     const alert = failed.parentElement!;
     expect(alert).toHaveTextContent('This task can no longer be read. Refresh the task graph.');
     expect(alert).toHaveTextContent('lost-detail-reconciliation');
     const operation = within(dialog).getByRole('region', { name: 'Task approval' });
-    expect(operation).toHaveTextContent('The approval outcome is unknown. Check the current task state before another approval.');
-    expect(operation).toHaveTextContent('The approval request could not reach a confirmed response from the service.');
-    expect(operation).toHaveTextContent('The current task state could not be confirmed. Approval remains unavailable until it can be read.');
+    expect(operation).toHaveTextContent('The approval operation outcome is unknown. Check the current task state before another operation.');
+    expect(operation).toHaveTextContent('The approval operation could not reach a confirmed response from the service.');
+    expect(operation).toHaveTextContent('The current task state could not be confirmed. Approval actions remain unavailable until it can be read.');
     expect(operation).toHaveTextContent('The task or project is no longer available.');
     expect(operation).toHaveTextContent('lost-detail-reconciliation');
     expect(within(operation).getByRole('button', { name: 'Check task state' })).toBeEnabled();
@@ -167,7 +172,7 @@ describe('approval in shared production task details', () => {
     expect(reads).toBe(4);
     expect(approveTask).toHaveBeenCalledTimes(1);
     expect(within(dialog).getByRole('button', { name: 'Approve task' })).toBeEnabled();
-    expect(within(dialog).getByText('The approval request could not reach a confirmed response from the service.')).toBeVisible();
+    expect(within(dialog).getByText('The approval operation could not reach a confirmed response from the service.')).toBeVisible();
   });
 
   it('owns pending approval across real App project routes and isolates its late result from the current project', async () => {
@@ -198,7 +203,7 @@ describe('approval in shared production task details', () => {
     const close = (dialog: HTMLElement) => fireEvent.click(within(dialog).getByRole('button', { name: 'Close task details' }));
     await screen.findByRole('heading', { name: 'Approval project' });
     let dialog = await openStandalone('Task 3');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve task' }));
+    confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' }));
     close(dialog);
     await navigateProject(otherProject, 'Other project');
     dialog = await openStandalone('Task 4');
@@ -206,7 +211,7 @@ describe('approval in shared production task details', () => {
     close(dialog);
     await navigateProject(project, 'Approval project');
     dialog = await openStandalone('Task 3');
-    expect(within(dialog).getByRole('button', { name: 'Approving…' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Submitting…' })).toBeDisabled();
     expect(approveTask).toHaveBeenCalledTimes(1);
     expect(vi.mocked(getTask).mock.calls.filter(([projectId, taskId]) => projectId === project && taskId === standalone)).toHaveLength(1);
     close(dialog);
@@ -234,7 +239,7 @@ describe('approval in shared production task details', () => {
     fireEvent.click(screen.getByRole('button', { name: /Task 3/ }));
     let dialog = screen.getByRole('dialog', { name: 'Task details' });
     await within(dialog).findByRole('heading', { name: 'Task 3' });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve task' }));
+    confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' }));
     await within(dialog).findByText('Approval confirmed.');
     const current = records.get(standalone)!;
     records.set(standalone, { ...current, status, ready: false, version: current.version + 1n, updatedAt: '2026-10-22T00:02:00Z' });
@@ -267,12 +272,12 @@ describe('approval in shared production task details', () => {
     let dialog = await openChild();
     expect(within(dialog).getByRole('region', { name: 'Unfinished prerequisites' })).toHaveTextContent('Task 1');
     const action = within(dialog).getByRole('button', { name: 'Approve task' });
-    fireEvent.click(action); fireEvent.click(action);
+    confirmApproval(action); fireEvent.click(action);
     expect(action).toBeDisabled();
     expect(within(dialog).getByRole('region', { name: 'Task approval' })).toHaveAttribute('aria-busy', 'true');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close task details' }));
     dialog = await openChild();
-    expect(within(dialog).getByRole('button', { name: 'Approving…' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Submitting…' })).toBeDisabled();
     expect(approveTask).toHaveBeenCalledExactlyOnceWith(project, child, 9007199254740993n, expect.any(AbortSignal));
     expect(getTask).toHaveBeenCalledTimes(1);
     await act(async () => { mutation.resolve(commit()); });
@@ -295,16 +300,16 @@ describe('approval in shared production task details', () => {
     vi.mocked(approveTask).mockImplementation(async () => commit());
     vi.mocked(getTaskGraph).mockResolvedValueOnce(graph()).mockRejectedValueOnce(new ApiError('network')).mockImplementation(async () => graph());
     mount(); const dialog = await openChild();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve task' }));
+    confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' }));
     await within(dialog).findByText('Approval confirmed.');
     await screen.findByRole('heading', { name: 'Refresh failed' });
-    expect(within(dialog).getByText(/Approval is confirmed and its result is retained/)).toBeVisible();
+    expect(within(dialog).getByText(/The approval operation is confirmed and its result is retained/)).toBeVisible();
     expect(within(dialog).queryByRole('button', { name: 'Approve task' })).toBeNull();
     expect(within(dialog).getByRole('heading', { name: 'Task 2' })).toBeVisible();
     expect(stat('Proposed')).toHaveTextContent('3');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Refresh task graph' }));
     await waitFor(() => expect(stat('Proposed')).toHaveTextContent('2'));
-    expect(within(dialog).queryByText(/Approval is confirmed and its result is retained/)).toBeNull();
+    expect(within(dialog).queryByText(/The approval operation is confirmed and its result is retained/)).toBeNull();
     expect(within(dialog).queryByRole('button', { name: 'Approve task' })).toBeNull();
   });
 
@@ -315,7 +320,7 @@ describe('approval in shared production task details', () => {
     mount(); await screen.findByRole('heading', { name: 'Approval project' });
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
     const oldSignal = vi.mocked(getTaskGraph).mock.calls[1]![1]; const oldGraph = graph();
-    const dialog = await openChild(); fireEvent.click(within(dialog).getByRole('button', { name: 'Approve task' }));
+    const dialog = await openChild(); confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close task details' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Standalone tasks' }));
     fireEvent.click(screen.getByRole('button', { name: /Task 3/ }));

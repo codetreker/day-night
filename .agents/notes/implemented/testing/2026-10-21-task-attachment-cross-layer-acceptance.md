@@ -88,7 +88,8 @@ adds six functional scenarios per target and normal protocol bootstrap. The
 adds one read-only browser journey per target. The later
 [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds three
 approval journeys with separate registered-task POST allowances. Current strict
-inventories require 28 unique native and twenty-three container scenarios. One worker,
+inventories include the later task-unapproval scenario and require 29 unique
+native and twenty-four container scenarios. One worker,
 zero retries, complete reports and cleanup remain mandatory.
 
 All phases use the full bundled Chromium channel `chromium`, retaining the
@@ -201,7 +202,7 @@ private homes after their CLI processes stop. The
 reuses this validated installation through an explicit receipt path for its
 native/container journeys; source, parent receipt and artifact hash checks keep
 their force. It adds original-credential restart and admitted-transfer revocation
-proof without replacing the attachment byte/restore results or the 51-case
+proof without replacing the attachment byte/restore results or the current
 Playwright inventory. The activation decision owns private fixture metadata and
 the disabled credential-bearing browser trace; compositor/PNG and custom CDP
 evidence keep their existing validation rules.

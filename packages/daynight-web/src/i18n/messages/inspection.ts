@@ -3,6 +3,16 @@ export type InspectionMessages = {
     readonly title: string;
     readonly explanation: string;
     readonly approve: string;
+    readonly unapprove: string;
+    readonly unapproveExplanation: string;
+    readonly approveQuestion: string;
+    readonly unapproveQuestion: string;
+    readonly confirmApprove: string;
+    readonly confirmUnapprove: string;
+    readonly cancel: string;
+    readonly closeConfirmation: string;
+    readonly proposedState: string;
+    readonly unapproved: string;
     readonly submitting: string;
     readonly pending: string;
     readonly confirmed: string;

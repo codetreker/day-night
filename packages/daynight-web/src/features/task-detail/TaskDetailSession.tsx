@@ -1,9 +1,11 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { ApiError, approveTask, getTask, isAbortError } from "../../api/client";
+import { ApiError, approveTask, getTask, isAbortError, unapproveTask } from "../../api/client";
 import { isTaskStale, taskDescriptor } from "./freshness";
-import type { GraphTask, TaskDetail } from "../../api/types";
+import type { ApprovalAction, GraphTask, TaskDetail } from "../../api/types";
 
+export type ApprovalOperation = { readonly action: ApprovalAction; readonly version: bigint };
 export type ApprovalState = {
+  readonly operation: ApprovalOperation | null;
   readonly phase: "idle" | "pending" | "confirmed" | "refused" | "conflict" | "unknown" | "reconciled";
   readonly error: unknown;
   readonly reconciling: boolean;
@@ -37,10 +39,14 @@ const preserveCollection = (previous: TaskDetail | null, detail: TaskDetail): Ta
   const unchanged = old.length === fresh.length && old.every((item, index) => item.url === fresh[index]!.url && item.title === fresh[index]!.title);
   return unchanged ? { ...detail, properties: { ...detail.properties, pullRequests: old } } : detail;
 };
-const idleApproval = (): ApprovalState => ({ phase: "idle", error: null, reconciling: false, reconciliationError: null });
+const idleApproval = (): ApprovalState => ({ operation: null, phase: "idle", error: null, reconciling: false, reconciliationError: null });
 const initialState = (): DetailState => ({ revision: 0, loadedRevision: null, detail: null, status: "loading", refreshing: false, requiresFreshRead: true, error: null, approval: idleApproval() });
-export const canApprove = (state: DetailState): boolean => state.detail?.status === "proposed" && state.status === "ready" &&
+export const approvalAction = (detail: TaskDetail | null): ApprovalAction | null =>
+  detail?.status === "proposed" ? "approve" : detail?.status === "todo" ? "unapprove" : null;
+export const canPerformApproval = (state: DetailState, action: ApprovalAction): boolean => approvalAction(state.detail) === action && state.status === "ready" &&
   state.approval.phase !== "pending" && state.approval.phase !== "unknown" && !state.approval.reconciling && state.approval.reconciliationError === null && !state.requiresFreshRead && state.error === null;
+export const canApprove = (state: DetailState): boolean => canPerformApproval(state, "approve");
+export const canUnapprove = (state: DetailState): boolean => canPerformApproval(state, "unapprove");
 
 export class TaskDetailSessions {
   private readonly entries = new Map<string, Entry>();
@@ -160,24 +166,34 @@ export class TaskDetailSessions {
     }
   }
   approve(projectId: string, taskId: string): void {
+    const state = this.entry(projectId, taskId).state;
+    if (canApprove(state)) this.performApproval(projectId, taskId, "approve", state.detail!.version);
+  }
+  unapprove(projectId: string, taskId: string): void {
+    const state = this.entry(projectId, taskId).state;
+    if (canUnapprove(state)) this.performApproval(projectId, taskId, "unapprove", state.detail!.version);
+  }
+  performApproval(projectId: string, taskId: string, action: ApprovalAction, version: bigint): void {
     const entry = this.entry(projectId, taskId);
-    if (!canApprove(entry.state)) return;
-    const version = entry.state.detail!.version;
+    if (!canPerformApproval(entry.state, action) || entry.state.detail!.version !== version) return;
+    const operation: ApprovalOperation = { action, version };
+    const target = action === "approve" ? "todo" : "proposed";
     this.cancelRead(projectId, taskId);
-    this.publish(entry, { ...entry.state, refreshing: false, error: null, approval: { phase: "pending", error: null, reconciling: false, reconciliationError: null } });
+    this.publish(entry, { ...entry.state, refreshing: false, error: null, approval: { operation, phase: "pending", error: null, reconciling: false, reconciliationError: null } });
     // Submitted writes outlive their dialog; closing a view does not undo a server mutation.
     void (async () => {
       try {
-        const detail = await approveTask(projectId, taskId, version, new AbortController().signal);
-        if (detail.projectId !== projectId || detail.id !== taskId || detail.status !== "todo" || detail.version !== version + 1n) throw new ApiError("protocol");
+        const mutate = action === "approve" ? approveTask : unapproveTask;
+        const detail = await mutate(projectId, taskId, version, new AbortController().signal);
+        if (detail.projectId !== projectId || detail.id !== taskId || detail.status !== target || detail.version !== version + 1n) throw new ApiError("protocol");
         entry.committedVersion = detail.version;
         this.publish(entry, { ...entry.state, detail, status: "ready", refreshing: false, requiresFreshRead: false, error: null,
-          approval: { phase: "confirmed", error: null, reconciling: false, reconciliationError: null } });
+          approval: { operation, phase: "confirmed", error: null, reconciling: false, reconciliationError: null } });
         this.refreshProject(projectId);
       } catch (error) {
         const phase = error instanceof ApiError && error.kind === "server" && error.status !== null && error.status >= 400 && error.status < 500
           ? error.code === "version_conflict" ? "conflict" : "refused" : "unknown";
-        this.publish(entry, { ...entry.state, approval: { phase, error, reconciling: false, reconciliationError: null } });
+        this.publish(entry, { ...entry.state, approval: { operation, phase, error, reconciling: false, reconciliationError: null } });
         if (phase === "conflict" || phase === "unknown") {
           if (phase === "conflict") this.refreshProject(projectId);
           if (!this.disposed) await this.read(projectId, taskId, entry.state.revision, true, true);

@@ -74,8 +74,13 @@ A real CLI metadata update makes an already-reviewed Web version stale. A real
 CLI/Web same-version approval competition permits one commit and exposes the
 losing version conflict without another automatic mutation. SPA cross-project
 navigation, task switching, closure/reopening and pending activation retain the
-existing identity and request-count checks. Only registered project/task approve
-writes and exact fixture file writes are admitted.
+existing identity and request-count checks. The later
+[withdrawal decision](../feature/2026-10-23-task-unapprove.md) adds `task-unapproval`
+for ready/blocked withdrawal, preserved metadata/attachment bytes, title-row
+confirmations, cancellation, invalidation, reapproval and committed-response loss.
+Only registered project/task approve or unapprove writes and exact fixture file
+writes are admitted. The original three journeys keep their source-bound receipts;
+the new scenario requires its own current-source run.
 
 The SQL-seeded large-int64 approval is a separate case inside those existing
 annotations: a maximum version cannot support an arbitrary multi-hop sequence.

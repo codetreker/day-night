@@ -28,7 +28,7 @@ CLI 创建私有项目，创建者自动成为管理员；Web 表单复用现有
 | AU2 | 稳定外部身份对应唯一的本地用户，邮箱/姓名/头像为可空资料，不用邮箱匹配身份。 |
 | AU3 | 登录事务绑定发起浏览器，原子校验和消费后才领取一次性身份。重放、过期、错误绑定与领取失败明确拒绝。 |
 | AU4 | Web 使用可注销/到期的主站会话；CLI/Agent 使用关联用户的可命名、到期、撤销的个人访问令牌，明文只展示一次。 |
-| AU5 | 创建项目与添加创建者 admin 在同一事务提交。角色只有 admin/member，两者具有业务读写及任务 approve/claim/complete 能力。 |
+| AU5 | 创建项目与添加创建者 admin 在同一事务提交。角色只有 admin/member，两者具有业务读写及任务 approve/unapprove/claim/complete 能力。 |
 | AU6 | 只有 admin 能管理成员、角色和邀请；每个新项目至少保留一名 admin，并发操作也必须保持。 |
 | AU7 | 项目列表先按成员筛选再分页；详情、任务、图、属性、附件列表、下载及预览逐请求执行项目授权。 |
 | AU8 | 邀请有有效期、可撤销、单次使用；接受者先登录再明确确认，加入角色为 member。 |
@@ -71,10 +71,10 @@ CLI 使用可选 `serverToken`。setup 提供隐藏输入与布尔 `--server-tok
 | 操作 | member | admin |
 |---|---|---|
 | 项目、任务、图、属性和成员名单读取 | 允许 | 允许 |
-| 任务元数据、依赖、属性、approve/claim/complete 和附件管理 | 允许 | 允许 |
+| 任务元数据、依赖、属性、approve/unapprove/claim/complete 和附件管理 | 允许 | 允许 |
 | 邀请、移除成员、调整角色和撤销邀请 | 拒绝 | 允许 |
 
-新任务默认 proposed，元数据 PATCH 不接受 status；approve、claim、complete 使用
+新任务默认 proposed，元数据 PATCH 不接受 status；approve、unapprove、claim、complete 使用
 独立的版本化操作。它们均按当前项目成员关系授权，管理员只额外管理成员与邀请，
 不增加审批专属角色。生命周期状态、版本和依赖条件由服务需求拥有；项目访问权
 不等同于 Agent 执行、审批或交付的会话授权。

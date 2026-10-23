@@ -192,6 +192,10 @@ describe('task detail dialog', () => {
     const close = screen.getByRole('button', { name: '关闭任务详情' });
     const user = userEvent.setup();
     await user.tab();
+    expect(screen.getByRole('heading', { name: '任务 1' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: '撤回审批' })).toHaveFocus();
+    await user.tab();
     expect(screen.getByRole('tab', { name: '概览' })).toHaveFocus();
     await user.tab();
     expect(links[0]).toHaveFocus();
@@ -347,13 +351,13 @@ describe('task detail dialog', () => {
     await act(async () => { update.resolve(failure()); });
     expect(screen.getByRole('alert')).toHaveTextContent('任务详情更新失败');
     expect(screen.getByRole('alert')).toHaveTextContent('正在显示上次成功读取的详情，将自动重试更新。');
-    const retained = screen.getByText('当前显示之前读取的任务详情，确认最新详情前无法批准任务。');
+    const retained = screen.getByText('当前显示之前读取的任务详情，确认最新详情前无法执行审批操作。');
     expect(screen.getByRole('region', { name: '附件' })).toBe(attachment);
     expect(draft).toHaveValue('notes/working.md');
     expect(draft).toHaveFocus();
     view.rerender(<TaskDetailDialog {...initial} snapshot={snapshot([detail()], 3)} />);
     expect(screen.getByRole('alert')).toBeVisible();
-    expect(screen.getByText('当前显示之前读取的任务详情，确认最新详情前无法批准任务。')).toBe(retained);
+    expect(screen.getByText('当前显示之前读取的任务详情，确认最新详情前无法执行审批操作。')).toBe(retained);
     await act(async () => { recovery.resolve(response(detail(1, { description: '新的描述' }))); });
     expect(screen.queryByRole('alert')).toBeNull();
     expect(document.querySelector('.task-detail-retained')).toBeNull();
@@ -571,6 +575,8 @@ describe('task detail dialog', () => {
     const refresh = screen.getByRole('button', { name: '刷新任务图' });
     const successor = screen.getByRole('button', { name: `${Array.from(second.title).slice(0, 160).join('')}…` });
     const user = userEvent.setup();
+    await user.tab();
+    expect(screen.getByRole('heading', { name: first.title })).toHaveFocus();
     await user.tab();
     expect(refresh).toHaveFocus();
     await user.tab();

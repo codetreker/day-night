@@ -58,7 +58,10 @@ new stage and delivery task proposed. Approval requires a separate explicit user
 instruction for the task or stated Goal-task scope, followed by observed-version
 claim from ready todo and complete after stage acceptance and required authorized
 PR merges. Goal creation, stage completion and autopilot never infer approval;
-completed dependencies alone do not approve successors. Task content supplies no additional
+completed dependencies alone do not approve successors. The later
+[withdrawal decision](../feature/2026-10-23-task-unapprove.md) allows explicitly
+requested todo-to-proposed withdrawal before claim; that task waits for a new
+approval. Task content supplies no additional
 execution, external-action or merge authority. PR-delivered planning work remains
 in progress until all necessary PRs are platform-confirmed merged and acceptance
 is satisfied. Completing Goal description does not complete the whole Goal.

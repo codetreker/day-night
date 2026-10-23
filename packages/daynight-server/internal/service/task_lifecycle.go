@@ -12,6 +12,10 @@ func (s *Tasks) Approve(ctx context.Context, principal core.Principal, projectID
 	return s.transition(ctx, principal, projectID, id, version, core.TaskProposed, core.TaskTodo)
 }
 
+func (s *Tasks) Unapprove(ctx context.Context, principal core.Principal, projectID, id string, version int64) (core.Task, error) {
+	return s.transition(ctx, principal, projectID, id, version, core.TaskTodo, core.TaskProposed)
+}
+
 func (s *Tasks) Claim(ctx context.Context, principal core.Principal, projectID, id string, version int64) (core.Task, error) {
 	return s.transition(ctx, principal, projectID, id, version, core.TaskTodo, core.TaskInProgress)
 }

@@ -308,6 +308,7 @@ def scenarios():
         ("root task and local directory collision", "daynight ta\t", ["task"]),
         ("task create", "daynight task cre\t", ["task", "create"]),
         ("task approve", "daynight task ap\t", ["task", "approve"]),
+        ("task unapprove", "daynight task un\t", ["task", "unapprove"]),
         ("task claim", "daynight task cl\t", ["task", "claim"]),
         ("task complete", "daynight task co\t", ["task", "complete"]),
         ("task list", "daynight task li\t", ["task", "list"]),
@@ -451,7 +452,7 @@ def scenarios():
         ("terminal help stops completion", "daynight review --help ru"),
         ("version does not inherit", "daynight review --ver"),
     ]
-    for action, version in [("approve", "9007199254740991"), ("claim", "9007199254740993"), ("complete", "9223372036854775807")]:
+    for action, version in [("approve", "9007199254740991"), ("unapprove", "9007199254740993"), ("claim", "9007199254740993"), ("complete", "9223372036854775807")]:
         cases.extend([
             (f"task {action} version option", f"daynight task {action} task-id --if-ver\t", ["task", action, "task-id", "--if-version"]),
             (f"task {action} explicit project", f"daynight task {action} task-id --pro\t", ["task", action, "task-id", "--project"]),
@@ -469,7 +470,7 @@ def scenarios():
             (f"task {action} status has no candidate", f"daynight task {action} task-id --sta"),
             (f"task {action} terminal help stops completion", f"daynight task {action} --help --pro"),
         ])
-    lifecycle_commands = ("task approve", "task claim", "task complete")
+    lifecycle_commands = ("task approve", "task unapprove", "task claim", "task complete")
     lifecycle_choices = {"task list separate proposed status", "task list inline proposed status"}
     lifecycle_rejections = {
         "removed task update status has no candidate",
@@ -536,13 +537,13 @@ def run_shell(label, binary, kind, script, directory, evidence, zsh_root):
             ("empty review prefix", "daynight review ", ["run", "list", "ls", "add-repo"]),
             ("empty project prefix", "daynight project ", ["create", "list", "show"]),
             ("empty project create prefix", "daynight project create ", ["--repo"]),
-            ("empty task prefix", "daynight task ", ["create", "list", "ready", "show", "update", "approve", "claim", "complete", "graph", "attachment"]),
+            ("empty task prefix", "daynight task ", ["create", "list", "ready", "show", "update", "approve", "unapprove", "claim", "complete", "graph", "attachment"]),
             ("ambiguous task approval prefix", "daynight task a", ["approve", "attachment"]),
             ("ambiguous task creation prefix", "daynight task c", ["claim", "complete", "create"]),
             ("empty task attachment prefix", "daynight task attachment ", ["put", "list", "read", "remove"]),
             ("empty separate task status", "daynight task list --status ", ["proposed", "todo", "in_progress", "done"]),
             ("empty inline task status", "daynight task list --status=", ["proposed", "todo", "in_progress", "done"]),
-            ("short command empty task prefix", "dn task ", ["create", "list", "ready", "show", "update", "approve", "claim", "complete", "graph", "attachment"]),
+            ("short command empty task prefix", "dn task ", ["create", "list", "ready", "show", "update", "approve", "unapprove", "claim", "complete", "graph", "attachment"]),
             ("short command ambiguous task approval prefix", "dn task a", ["approve", "attachment"]),
             ("short command ambiguous task creation prefix", "dn task c", ["claim", "complete", "create"]),
             ("short command empty separate task status", "dn task list --status ", ["proposed", "todo", "in_progress", "done"]),

@@ -13,8 +13,8 @@
 计时不表示 CPU 时间、人工有效工作时间或持续收到进度信号的时间。
 
 当前公开生命周期由 `approve`、`claim`、`complete` 提供
-`proposed → todo → in_progress → done`；普通更新不能修改状态。
-计时功能保留这些限制，不增加重新打开、直接完成或重复 claim 的入口。
+`proposed → todo → in_progress → done`，`unapprove` 仅将尚未开始的 todo 撤回 proposed；普通更新不能修改状态。
+approve 与 unapprove 保留已有执行起止，不产生新的计时事实。计时功能保留这些限制，不增加重新打开、直接完成或重复 claim 的入口。
 若存储中发生新的合法 `in_progress` 进入，起点替换而非累加；当前调用者仍须遵守既有生命周期。
 
 ## TT2：起止时间与一致性

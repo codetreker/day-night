@@ -15,8 +15,8 @@ a mismatched image or cleanup failures unless its receipts are validated.
 `pnpm web:acceptance` uses the shared acceptance runner to build real embedded
 assets and a fresh native Go executable, own an isolated PostgreSQL 18.6
 container/volume and wait for structured service readiness. The normal dev-ci
-source build/start runs concurrently. Browser phases run twenty-three native functional
-scenarios, the same twenty-three functional scenarios through the production image's
+source build/start runs concurrently. Browser phases run twenty-four native functional
+scenarios, the same twenty-four functional scenarios through the production image's
 stream gateway, then five native capacity/limit scenarios. The normal localhost
 stack and its data do not participate. The
 [pipeline decision](2026-10-21-web-acceptance-pipeline.md) partially supersedes the
@@ -48,8 +48,10 @@ normal UniAuth session/PAT bootstrap. The
 [Markdown description delivery](../architecture/2026-10-22-task-description-markdown.md)
 adds `task-description-markdown` to each functional target, producing the earlier
 forty-five-result inventory. Its browser reads remain GET/HEAD-only after
-authenticated fixture setup. The three approval journeys bring the current strict
-aggregate to fifty-one. Fixture data is created through real authenticated APIs;
+authenticated fixture setup. The three original approval journeys brought the
+aggregate to fifty-one. The later
+[withdrawal decision](../feature/2026-10-23-task-unapprove.md) adds `task-unapproval`
+to both functional targets, making the current strict aggregate fifty-three. Fixture data is created through real authenticated APIs;
 the graph scenarios and task-view scenario retain read-only browser request
 checks except for one exact registered fixture-file PUT in `refresh-staleness`.
 The [quiet-detail decision](../bug-fix/2026-10-23-quiet-task-detail-refresh.md)
@@ -58,7 +60,9 @@ retention without admitting other mutations. The attachment and `language-state-
 permit only their exact fixture-scoped file PUT/DELETE requests. The
 [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds task-approval,
 task-approval-conflicts and task-approval-recovery, admitting only registered
-project/task POST approve operations and exact expected counts. The
+project/task POST approve operations and exact expected counts. The withdrawal
+scenario additionally admits its registered unapprove operations under the same
+exact route, method and count checks. The
 [lifecycle cross-layer extension](2026-10-22-task-lifecycle-cross-layer-acceptance.md)
 strengthens those same annotations with a packed-CLI/ordinary-graph journey,
 reviewed-version CLI/Web competition and SPA project isolation. It adds no
@@ -104,8 +108,8 @@ establish inspection or curved-route results for it.
 Playwright runs one worker with zero retries. Report validation rejects global
 errors, skipped/flaky/retried tests, duplicate/missing stable scenarios, missing
 PNG screenshots and inconsistent summary counts. Native functional/capacity
-reports form a strict twenty-eight-scenario union; container functional validation
-requires twenty-three. Missing, extra or duplicate names fail both phase and aggregate
+reports form a strict twenty-nine-scenario union; container functional validation
+requires twenty-four. Missing, extra or duplicate names fail both phase and aggregate
 validation, and browser identity must agree across a target's phases.
 Performance validation requires
 all fixed datasets, exactly five valid measurements per dataset, every budget
