@@ -217,6 +217,20 @@ export const seedTaskVersion = async (projectId: string, taskId: string, version
   expect(result.split('\n')[0], 'Owned task version fixture updates exactly the selected row').toBe(String(version));
 };
 
+export const seedClaimedTaskStart = async (projectId: string, taskId: string, ageMs: number | null): Promise<void> => {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+  if (!uuid.test(projectId) || !uuid.test(taskId)
+    || (ageMs !== null && (!Number.isSafeInteger(ageMs) || ageMs < 0))) throw new Error('Invalid owned claimed-task timing fixture.');
+  const target = await ownedDatabase();
+  const start = ageMs === null ? 'NULL' : `statement_timestamp() - ${ageMs} * interval '1ms'`;
+  const result = await command('docker', ['exec', target.postgresContainer, 'psql', '--no-psqlrc', '--set', 'ON_ERROR_STOP=1',
+    '--username', 'daynight', '--dbname', target.database, '--tuples-only', '--no-align', '--command',
+    `UPDATE tasks SET started_at = ${start} WHERE project_id = '${projectId}' AND id = '${taskId}' AND status = 'in_progress' AND completed_at IS NULL RETURNING id`], {
+    cwd: process.cwd(), timeoutMs: 15_000, quiet: true,
+  });
+  expect(result.split('\n')[0], 'Owned timing fixture updates exactly the selected running task').toBe(taskId);
+};
+
 export const seedProjectSettingsVersion = async (projectId: string, version: bigint): Promise<void> => {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(projectId)
     || version <= 0n || version >= 9223372036854775807n) throw new Error('Invalid exact project settings version fixture.');

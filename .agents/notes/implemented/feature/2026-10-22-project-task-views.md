@@ -20,8 +20,11 @@ snapshot. All remaining roots enter the chain view. Membership ignores task
 status and completed-item filters. A new snapshot reclassifies dependency edits
 as one replacement with the project statistics.
 
-Standalone rows are compact native buttons showing title, status, ID and
-creation time, and open details directly. Chain rows keep root-based progress,
+Standalone rows are compact native buttons showing title, status, ID, creation
+time and known individual execution timing, and open details directly. Their
+possible-stall treatment follows the
+[timing decision](../architecture/2026-10-23-task-timing-design.md) without adding
+an aggregate duration to chain headers. Chain rows keep root-based progress,
 aggregate status, complete DAG projection, external prerequisites, fullscreen and
 details. For `A → C ← B`, A and B remain two chains, each including C once;
 project statistics count C once. The original tab counts represented total

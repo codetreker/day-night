@@ -186,7 +186,7 @@ describe('inspection language changes', () => {
     } }), { status: 404, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetch);
     const view = renderWithLocale(<TaskDetailDialog projectId={projectId} taskId={taskId}
-      snapshot={{ observedAt: graph.observedAt, graph, index: buildGraphIndex(graph), receivedAt: Date.now(), revision: 1 }}
+      snapshot={{ observedAt: graph.observedAt, graph, index: buildGraphIndex(graph), receivedMonotonic: performance.now(), receivedAt: Date.now(), revision: 1 }}
       onSelectTask={vi.fn()} onClose={vi.fn()} onRestoreFocus={vi.fn()} onRefreshGraph={vi.fn()} />, { locale: 'zh-CN' });
     try {
       expect(await screen.findByRole('alert')).toHaveTextContent('这个任务已无法读取，请刷新任务图。');

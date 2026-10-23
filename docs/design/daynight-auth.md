@@ -329,7 +329,7 @@ docker compose logs --no-log-prefix server | jq -R 'fromjson? | select(.request_
 [组合验收决策](../../.agents/notes/implemented/testing/2026-10-23-authentication-combined-acceptance.md)
 拥有实际领取结果后 TCP 断连，以及原生/容器各自的浏览器和安装 CLI 同数据、原凭据
 重启、撤销、已准入上传和 socket 中断证明。两目标各有一份额外必需回执，当前
-25+25+5 共 55 项 Playwright inventory 与容量门槛保持；项目设置旅程单独拥有阈值读写与未知结果核对。
+26+26+5 共 57 项 Playwright inventory 与容量门槛保持；项目设置旅程单独拥有阈值读写与未知结果核对。
 
 统一启用的源码绑定结果保留其原始范围，不作为新增代码的完整门禁证明。每次组合
 结果核对当前源码、安装包、进程/镜像与清理；真实上游人工联调单独留证，缺少时

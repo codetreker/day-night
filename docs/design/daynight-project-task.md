@@ -15,6 +15,7 @@ JSON 列表字段见[描述省略决策](../../.agents/notes/implemented/simplif
 实现顺序与依赖见[交付任务](daynight-project-task-tasks.md)。
 任务起止字段与图时钟的读取机制由[执行计时架构](daynight-task-timing.md)扩展；
 CLI 同步保留 `startedAt`、`completedAt`、`observedAt` 及 Project.settings，不产生本地推算时间或新增可读字段。
+Web 的共享时钟与卡片使用相同资源事实，展示机制归[看板设计](daynight-web.md)，不改变客户端传输或命令职责。
 
 [预定义属性设计](daynight-task-properties.md)的 server 接口、CLI 成对 PR 引用
 参数与完整输出已实现。[需求](../spec/daynight-task-properties.md)和

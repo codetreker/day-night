@@ -34,6 +34,23 @@ const deferred = <T,>() => {
 beforeEach(() => { graphRequest.mockReset(); detailRequest.mockReset(); vi.mocked(approveTask).mockReset(); });
 
 describe("task graph snapshots", () => {
+  it("captures the monotonic receipt before fingerprint and index work while preserving the wall-clock label", async () => {
+    let monotonic = 125;
+    vi.spyOn(performance, "now").mockImplementation(() => monotonic);
+    vi.spyOn(Date, "now").mockReturnValue(123456);
+    const stringify = JSON.stringify;
+    vi.spyOn(JSON, "stringify").mockImplementation((value, replacer, space) => {
+      if (typeof value === "object" && value !== null && ("repoUrl" in value || "tasks" in value && "summary" in value)) monotonic += 500;
+      return stringify(value, replacer, space);
+    });
+    graphRequest.mockResolvedValue(graph());
+    const { result } = renderHook(() => useTaskGraph(projectId));
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.snapshot?.receivedMonotonic).toBe(125);
+    expect(result.current.snapshot?.receivedAt).toBe(123456);
+    expect(monotonic).toBe(1_125);
+  });
+
   it("publishes fresh clock samples without replacing unchanged graph content or announcing background loading", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);

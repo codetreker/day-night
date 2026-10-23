@@ -27,7 +27,7 @@ SDK 提供 App-aware provider discovery；发现失败与用户会话失效分�
 
 [执行计时架构](daynight-task-timing.md)的起止字段与数据库 `observedAt` 已进入严格 API 读取器。
 `useTaskGraph` 将最新服务端样本保存为独立 snapshot 字段，保持仅时钟变化时的图/索引身份。
-项目阈值、精确设置版本及管理员设置页已实现；页面计时器与运行提醒仍属于后续交付。
+项目阈值、精确设置版本、管理员设置页及局部执行计时/提醒共同接入；源码绑定验证与交付状态由所属任务维护。
 
 ## 目标与现有基础
 
@@ -96,7 +96,7 @@ proposed 按当前语言使用“Proposed”或“待审批”及独立的紫色
 
 - 两个页签位于项目统计下方，共用 `/projects/{projectId}`、完整快照、居中详情对话框和项目刷新。页签采用原生按钮、`tablist`/`tab`/`tabpanel` 语义及关联 ID，键盘可切换选择。两个 panel 容器始终保留稳定 ID，非当前容器带 `hidden`；只有当前容器挂载列表内容。首次访问默认选择任务链，之后按项目恢复上次选择；两个页签数字均表示完整快照中的未完成任务数，包含待审批、待处理和进行中；独立任务只计无前置且无后续的任务，任务链只计其余任务。遍历完整索引中的唯一 task，按前置/后续关系归类后仅计入状态非 `done` 的任务，共享后续跨根链只计一次。数字不依赖当前页签、展开根或完成筛选，全部完成显示 0；两者之和等于项目 `proposed + todo + inProgress`。列表工具栏继续以独立任务或根链条目显示可见/全部数量。新快照同时更新分类和数字，刷新失败保留上次成功值；机制与取舍见[页签计数决策](../../.agents/notes/implemented/feature/2026-10-22-unfinished-task-tab-counts.md)。
 - 独立任务在完整图中既无前置也无后续；状态和 `blockedBy` 不参与分类。任务链页签保留有后续的根任务条目及原根投影，多根共享后续仍显示多条根链。依赖增删后的新快照统一重新分类；完成前置仍属于链。分类只派生展示序列，不新增 task 类型、API 或路由。机制与取舍见[任务视图决策](../../.agents/notes/implemented/feature/2026-10-22-project-task-views.md)。
-- 独立任务使用紧凑原生整行按钮，显示标题、自身状态、ID 与创建时间，点击直接打开详情，不挂载单节点画布。任务链条目继续显示整链状态与进度。两类均默认隐藏已完成项，各自的紧凑工具栏左侧为带完成数量的原生复选框，右侧显示最新创建在前及可见/全部数量；任务链按 `rootProgress.status === "done"` 判断完成，独立任务按自身状态判断。完成根仍有未完成后续时继续显示。统计、完整索引、完整投影数据保留、可见集合按渐进规则协调，切换与筛选本身不触发 API 请求；独立的定时刷新按可见性继续运行。
+- 独立任务使用紧凑原生整行按钮，显示标题、自身状态、ID、创建时间及已知执行耗时/提醒，点击直接打开详情，不挂载单节点画布。任务链条目继续显示整链状态与进度。两类均默认隐藏已完成项，各自的紧凑工具栏左侧为带完成数量的原生复选框，右侧显示最新创建在前及可见/全部数量；任务链按 `rootProgress.status === "done"` 判断完成，独立任务按自身状态判断。完成根仍有未完成后续时继续显示。统计、完整索引、完整投影数据保留、可见集合按渐进规则协调，切换与筛选本身不触发 API 请求；独立的定时刷新按可见性继续运行。
 - 两类分别保留页面浏览位置及完成项显示选择，任务链另外保留展开根或明确全部折叠。现有展开 JSON 及完成链 JSON 布尔记录保持原格式；新增选择独立保存。加载、首次读取失败与无可见根不会把自动选择保存为全部折叠。读取、格式或写入失败显示本地偏好提示，并保留本次页面内操作。机制见[浏览偏好决策](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)。浏览位置是页面滚动位置，不是图坐标、缩放或平移；详情选择和全屏也不持久化。非当前页签的内容卸载，返回任务链时保留展开根并重新初始化画布视口。
 - 首次进入任务链页签展开当前首个可见非独立根，之后同时最多展开一条。保存根消失或被隐藏时选择最新可见根；没有可见根时仅派生无展开图，保留此前保存的根或明确全部折叠，重新显示后恢复。切换页签保留展开选择。真正空项目、当前类别为空与当前类别全部完成且隐藏有不同空态；全部完成空态的显示入口先聚焦持续存在的复选框，再显示列表。
 - 完整图索引保留服务端 `(createdAt,id)` 升序。两类展示序列均从完整顺序生成倒序副本，得到创建时间与相同时间 ID 的倒序展示；更新时间不影响位置。任务链列表和偏好 hook 的首次选择、缺失/隐藏根替代共用相同可见序列，仍有效且可见的已保存根继续保留。前端不通过 JavaScript 毫秒时间重新排序，避免丢失数据库时间精度。职责与取舍见[任务链展示决策](../../.agents/notes/implemented/feature/2026-10-21-task-chain-presentation.md)。
@@ -461,7 +461,8 @@ flowchart LR
 专用 TaskDetailSession 只保存项目/任务键对应的详情与审批操作，纯图模型只计算派生内容。
 
 - `useProjects` 拥有当前已加载页、nextCursor 和下一页错误。首次请求、加载更多和刷新有各自状态；刷新使旧游标及旧请求失效。
-- `useTaskGraph(projectId)` 拥有完整 `TaskGraph`、接收时间、独立数据库时间样本、成功读取 revision、请求序号、refresh 动作与可见页面定时器。每次成功读取推进 revision、更新 `GraphSnapshot.receivedAt` 与最新 `GraphSnapshot.observedAt`。缓存分别比较 Project 元数据和 `{tasks, summary}`；内部 Project 指纹将 settings.version 规范成十进制字符串，避免原生 JSON.stringify 遇到 bigint 失败，但 API 数据与输出仍使用精确数字。仅时钟变化时复用整个 graph/index；仅项目设置变化时更新 graph.project，复用原 tasks、summary 与 index，避免重新投影和布局。任务/统计变化时整体替换相关资源和索引，不能混合两次响应的任务字段。复用 graph 自带的 observedAt 可能仍旧，未来计时消费者须使用独立 snapshot.observedAt；receivedAt 继续只是本机成功接收时间标签。
+- `useTaskGraph(projectId)` 拥有完整 TaskGraph、接收时间、独立数据库样本、成功 revision、请求序号、refresh 与可见页面轮询。图解析完成后立即捕获 receivedMonotonic，早于指纹/索引计算；每次成功读取成对更新 observedAt/receivedMonotonic，receivedAt 仅作本机最近刷新标签。缓存比较独立 Project 指纹与 tasks/summary 指纹；仅时钟变化复用 graph/index，仅设置变化替换 graph.project 并复用 tasks、summary 与 index，任务变化整体替换相关资源。Project 指纹中的设置版本仅内部转十进制字符串，API/输出仍是无损数字。稳定 graph.observedAt 可保留旧样本，当前时钟始终使用独立 snapshot 样本。
+- `TaskExecutionClockProvider` 按项目拥有稳定 context/store，将最新服务端时间、单调接收时间和已保存阈值在 layout effect 一起发布。useTaskExecution 仅让已知起点的运行任务订阅一个可见页一秒 ticker；完成任务只订阅设置说明，未知任务无活动订阅。隐藏时暂停，恢复可见立即发布单调差值；正常轮询独立刷新锚点，最后运行订阅与 provider 卸载清理 timer/listener。计时局部更新不进入 GraphIndex、投影、布局或边路由；既有身份 guard 继续约束 API，没有新增失焦监听或网络轮询。
 - `ProjectPage` 管理任务选择、当前页签、独立任务与非独立根的倒序展示序列、各自完成项筛选和浏览位置。任务链列表通过 `rootIds` 使用其可见序列，图投影继续使用完整且未改写的 `GraphIndex`。偏好 hook 负责按项目读取、校验并保存本地选择。图刷新后沿用仍可见的根，根隐藏、消失或变成独立任务后选择最新可见链根；没有可见链根时保留原偏好，明确的全部折叠继续保留。详情选择按完整快照判断存在性，分类和完成项过滤不关闭仍存在的任务。
 - `useTaskDetail(projectId, taskId)` 消费 TaskDetailSession 中该键的详情与审批状态，
   在打开时及成功图读取后请求。相同活动资源保留已加载内容与附件面板；活动 GET 不中断，
@@ -615,10 +616,10 @@ workflow 先选择官方 Ubuntu package archives，再启动统一验收；该�
 仍与原生及 dev-ci 准备并行。dev-ci 继续拥有本次唯一镜像及运行镜像身份校验和完整
 shell 清理。
 
-原生功能阶段只等待原生服务和浏览器就绪；其二十五个场景及浏览器回收成功后，runner
+原生功能阶段只等待原生服务和浏览器就绪；其二十六个场景及浏览器回收成功后，runner
 原子写入绑定 acceptance run ID、dev-ci run ID 和 source SHA 的容器执行许可。
 容器 callback 已登记身份后等待该许可，通过后才记录浏览器 inventory 并执行
-二十五个功能场景。完整 dev-ci 退出清理、容器浏览器回收和全部准备/覆盖率命令结束
+二十六个功能场景。完整 dev-ci 退出清理、容器浏览器回收和全部准备/覆盖率命令结束
 后，才在仍存活的原生 Go/PostgreSQL 上执行五个容量/超限场景。任一失败取消并
 等待已启动的所有任务；原生进程意外退出同样取消其他任务。容量阶段保持单浏览器
 worker，并与构建、单元测试、功能测试及容器清理隔离。
@@ -636,6 +637,19 @@ PR 按[仓库 CI 路由](../../README.md#ci-selection)选择模块，main push �
 为 `skipped`。
 
 看板交付时，根 `package.json`、锁文件、共享构建脚本和 `.github/workflows/checks.yml` 的唯一编辑归属按阶段交接：W-T2 建立并负责 web 命令和 `verify-web`；W-T2 验收后由 W-T5 接手构建/Go 工具配置；W-T5 验收后由 W-T6 接手最终生产验收步骤。接收任务在开始时核对前一阶段已通过的命令与 required job 清单，再接管编辑；其他任务只提出所需命令和依赖，不直接并发修改这些文件。W-T6 在交付时负责最终汇总，验证当时的 `checks.needs` 包含 `verify-server`、`verify-web`、CLI `verify` 与 `verify-completion`，且任何失败或取消都不能被成功汇总。当前汇总规则见[CI 简化决策](../../.agents/notes/implemented/simplification/2026-10-21-ci-gate-simplification.md)。
+
+## 执行耗时与提醒
+
+`features/task-execution/clock.ts` 从成对 observedAt/receivedMonotonic 推进服务端显示时间，补上接收后到渲染提交的单调耗时；不使用 Date.now 推算执行时间，也不补偿服务端采样至接收/解析完成的网络延迟。
+运行耗时减 startedAt；同提交暂态的负差值只在运行显示中限为零，完成耗时始终取持久化端点差。阈值比较使用未格式化毫秒严格大于。
+TaskExecutionPresentation 的 time/title 与独立可访问描述共享格式、真实起止和阈值；完成/未知不参加时钟 tick，RootList 不显示伪造整链耗时。
+TaskNode 保留主体检查与 Details/展开独立控件，底部 42px 预留容纳英文 Details；琥珀提醒不替换蓝色状态、外部虚线、共享与选中/前置样式。
+独立行局部订阅并保持原 row 与焦点，视觉新增元数据不参与按钮名称；没有逐秒 alert/status/live region。
+
+项目页头在成员读取未完成时预留完整授权操作几何，包括本地化链接及较长的管理员徽标宽度；隐藏占位不进入可访问树，确认成员后再替换为真实操作。
+因此异步角色结果不会重新压窄长标题、改变页头高度或移动已恢复的页签滚动位置。
+[页头布局决策](../../.agents/notes/implemented/bug-fix/2026-10-23-project-header-layout-shift.md)拥有该机制，
+[任务视图决策](../../.agents/notes/implemented/feature/2026-10-22-project-task-views.md)继续拥有按项目/页签保存位置；计时订阅与图布局保持独立。
 
 ## 项目执行提醒设置
 
@@ -776,7 +790,7 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 请求序号和资源身份检查阻止晚到结果覆盖当前数据；取消不展示失败通知。
 
 每次成功图读取都推进成功 revision，重读仍存在的当前详情，即使图内容没有变化，
-详情读取失败后也能在后续周期恢复。任务与统计相同的图复用索引与布局，设置变化只替换 Project 元数据，新的成功接收时间和独立数据库时间样本仍更新。
+详情读取失败后也能在后续周期恢复。任务与统计相同的图复用索引与布局，设置变化只替换 Project 元数据，新的成功接收时间、单调接收时间与独立数据库样本仍更新。
 同任务详情在刷新及恢复性失败时保留正文，详情读取期间的多次刷新合并为一次后续
 请求；页面隐藏时自动详情读取与后续队列等待，已有读取可以完成。正文、附件和预览不重新挂载，普通后台读取不增加标题区高度；无变化数据在请求开始、等待和完成时保持标题、页签与当前面板的实际几何稳定。相同有序 PR 值保持引用和分页，内容变化才
 按既有规则回到第一页。task/project 切换立即隔离旧内容并卸载旧附件状态。
@@ -848,8 +862,8 @@ API 数据和固定图集。
 gateway 夹具取得正常浏览器会话和 PAT，数据准备与安装 CLI 使用同一授权通道。
 App 与用户凭据只保存在私有 0600 元数据，公开回执和截图不包含秘密。受控外部
 provider 响应证明 gateway/SDK 协议，不等同于真实上游账号登录。
-原生目标分成二十五个功能场景和五个容量/超限场景，容器目标经实际生产镜像 gateway
-执行同一个二十五场景功能集合。`refresh-staleness` 验证自动读取后图、统计和当前详情
+原生目标分成二十六个功能场景和五个容量/超限场景，容器目标经实际生产镜像 gateway
+执行同一个二十六场景功能集合。`refresh-staleness` 验证自动读取后图、统计和当前详情
 的一致更新，以及保留浏览、焦点和附件状态的故障恢复；定时器、可见性、请求串行与
 资源切换另由 hook/组件测试验证。浏览器顺序和清理屏障由[CI 构建归属](#ci-构建归属)定义。日常 localhost 栈
 不参与测试。`project-view-tabs` 覆盖两类分类及依赖迁移、独立任务直接详情、独立完成筛选、
@@ -857,7 +871,7 @@ provider 响应证明 gateway/SDK 协议，不等同于真实上游账号登录�
 继续只发起 GET/HEAD，但 `refresh-staleness` 仅允许一次已登记 fixture task/file PUT，挂起真实上传响应并跨自动读取检查输入、预览、面板几何及唯一写入。`task-attachments` 与 `language-state-preservation` 仅允许精确 fixture task 内的文件
 PUT/DELETE；`task-approval`、`task-approval-conflicts`、`task-approval-recovery` 和 `task-unapproval`
 单独允许已登记 project/task 的 POST approve 或 unapprove 和精确请求次数；六个鉴权场景仅放行各自
-登记的精确管理请求；`project-settings` 另只放行四次登记设置 PATCH，覆盖成功、409、真实提交后丢失响应及降权 403，重读失败后只重试读取。该场景还检查真实大版本、项目隔离、成员只读及双语 320px/390px 控件与导航边界及文字不截断，其他写请求仍失败。附件场景在两目标上都让安装 CLI 与生产页面操作同一
+登记的精确管理请求；`project-settings` 另只放行四次登记设置 PATCH，覆盖成功、409、真实提交后丢失响应及降权 403，重读失败后只重试读取。该场景还检查真实大版本、项目隔离、成员只读及双语 320px/390px 控件与导航边界及文字不截断。task-execution-time 保持浏览器 GET/HEAD-only，由正常 API/安装 CLI 准备起止、保存阈值和完成任务；挂起图响应与错误本机墙钟隔离本地单调 tick，验证实时/冻结/未知、卡片/独立行、外部虚线及焦点和图几何，其他写请求仍失败。附件场景在两目标上都让安装 CLI 与生产页面操作同一
 组数据，按原始字节交叉验证写入、覆盖、下载与删除；具体机制由
 [附件组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
 拥有。
@@ -868,7 +882,7 @@ PUT/DELETE；`task-approval`、`task-approval-conflicts`、`task-approval-recove
 runner 的服务重启 callback 与显式安装回执路径；目标 probe 在校验 run/source/
 容器标记后读取实际 staging/SQL，客户端发送成功不作为服务端准入证据。详细机制由
 [组合鉴权验收决策](../../.agents/notes/implemented/testing/2026-10-23-authentication-combined-acceptance.md)拥有。
-这两份回执与现有 55 项 Playwright 场景并列，不复制容量矩阵或改变测量、预算和
+这两份回执与现有 57 项 Playwright 场景并列，不复制容量矩阵或改变测量、预算和
 清理屏障；运行结果与真实上游人工登录分别留证。
 
 双语功能的三个稳定场景由[语言设计](daynight-web-i18n.md#验证与证据归属)定义，使用同一受监控页面与场景级 locale；首屏和偏好、图/详情/附件状态、错误及窄屏布局分别提供定向检查。语言不会复制容量矩阵或改变阶段与清理屏障。
@@ -884,7 +898,7 @@ runner 的服务重启 callback 与显式安装回执路径；目标 probe 在�
 Playwright 固定单 worker、零 retry；报告必须包含全部要求的唯一场景、一次成功
 执行、有效 PNG 附件及一致的汇总，跳过、重试、flaky、缺失、多余或重复场景及
 全局错误均失败。原生 functional/capacity 两份报告严格合并为二十八个唯一场景，
-容器目标严格要求二十五个；原生与容器及同目标各阶段浏览器身份必须一致。
+容器目标严格要求二十六个；原生与容器及同目标各阶段浏览器身份必须一致。
 CI 要求当前 Linux 或 macOS 平台与浏览器回执一致、锁定 Playwright 的完整 Chromium channel `chromium`、干净 checkout，且 git SHA 必须
 等于 `GITHUB_SHA`；本机可以显式选择现有 Chromium，回执必须记录这一差异。
 完整 CI 工作流仍在 Linux 上执行；macOS 本机运行相同功能、容量与恢复验收，不放宽预算。
@@ -909,7 +923,7 @@ PDF 预览通过轮询 iframe 的实际 compositor 截图，验证 fixture 专�
 
 性能目标是原生 Go 生产进程。四个完整输入仍为1,000任务，单链999边，merge/shared/external各5,000边，external全数据为2 main/998 external。完整API逐ID/依赖比较；同图五次复用原ID。DOM工作负载改为≤50任务/100诱导边的概览及其全部可见边，并验证显式20直接批次和reset，不要求所有输入同时渲染。
 
-每次从 trusted 输入到完整可见概览、根可操作和两次 animation frame，openMs≤3,000；select/detail/zoom/pan≤300。普通 Details→关闭→立即缩放/平移之后，可信选择可见任务，再执行高亮态同序列；每项取两态较慢值，网络分开计时，关闭与缩放间不插入 reset、fit 或等待。依赖检查验证完整 H、隐藏祖先去重及独立曲线/paint/marker。`visibility[5]` 逐次保留 repetition、overviewNodes/Edges、addedNodes/Edges、expandedNodes/Edges、resetNodes/Edges、selectedId 和 hiddenUpstream，要求顺序、预算、精确增量和 reset 计数正确。布局/渲染诊断与网络独立计量，1,001 节点和 5,001 边仍完整 409 拒绝。55 场景（原生 30、容器 25）、锁定浏览器、coverage、timeout、零 retry 和清理保持。PR #143 的源码绑定运行结果由任务记录与主附件保存；鉴权和生命周期合并后源码仍需完整运行回执。
+每次从 trusted 输入到完整可见概览、根可操作和两次 animation frame，openMs≤3,000；select/detail/zoom/pan≤300。普通 Details→关闭→立即缩放/平移之后，可信选择可见任务，再执行高亮态同序列；每项取两态较慢值，网络分开计时，关闭与缩放间不插入 reset、fit 或等待。依赖检查验证完整 H、隐藏祖先去重及独立曲线/paint/marker。`visibility[5]` 逐次保留 repetition、overviewNodes/Edges、addedNodes/Edges、expandedNodes/Edges、resetNodes/Edges、selectedId 和 hiddenUpstream，要求顺序、预算、精确增量和 reset 计数正确。布局/渲染诊断与网络独立计量，1,001 节点和 5,001 边仍完整 409 拒绝。57 场景（原生 31、容器 26）、锁定浏览器、coverage、timeout、零 retry 和清理保持。PR #143 的源码绑定运行结果由任务记录与主附件保存；鉴权和生命周期合并后源码仍需完整运行回执。
 
 每个容量 dataset 的 `feedbackDiagnostics` 增量保存每次 open/detail/zoom/pan 的
 `kind`、`repetition`、`start`、`capturedAt`、`conditionAt`、`frame1At`、

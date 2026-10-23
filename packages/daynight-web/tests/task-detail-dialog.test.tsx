@@ -37,7 +37,7 @@ const snapshot = (tasks = [detail()], revision = 1): GraphSnapshot => {
       blocked: tasks.filter((task) => task.status === 'todo' && !task.ready).length,
     },
   };
-  return { observedAt: graph.observedAt, graph, index: buildGraphIndex(graph), receivedAt: Date.now(), revision };
+  return { observedAt: graph.observedAt, graph, index: buildGraphIndex(graph), receivedMonotonic: performance.now(), receivedAt: Date.now(), revision };
 };
 const response = (task: TaskDetail) => new Response(stringifyApiJson(task), { headers: { 'Content-Type': 'application/json' } });
 const failure = (code = 'internal_error') => new Response(JSON.stringify({ error: {

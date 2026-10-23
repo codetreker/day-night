@@ -40,8 +40,11 @@ start/completion facts, project warning thresholds and live card presentation.
 Task timestamps, the database graph clock, persistent project thresholds and
 matching CLI/Web reader contracts are implemented. Members can read the threshold
 at `/projects/{projectId}/settings`; administrators can save it with a settings
-version. Live card warnings remain the subsequent delivery; the corresponding
-Daynight tasks own acceptance evidence.
+version. Graph cards and standalone rows display live elapsed time, frozen
+completed duration and an amber possible-stall warning above that saved threshold.
+A shared project clock advances database time with monotonic browser elapsed
+time, keeping ticks outside graph layout. The corresponding Daynight tasks own
+source-bound acceptance and whole-goal completion evidence.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
@@ -1069,8 +1072,8 @@ from creation or edit times; completing a historical running task can record a
 real end without inventing its missing start. The full graph includes a database
 `observedAt` sample taken after its data reads. These fields are read-only and
 retained by JSON output, including list JSON; human output keeps its existing
-field choices. Web polling refreshes its separate clock sample while preserving
-graph/index identity when only `observedAt` changes.
+field choices. Web polling refreshes its separate clock sample and monotonic receipt while
+preserving graph/index identity when only `observedAt` changes.
 
 Every Project resource includes `settings` with an exact positive int64 `version`
 and `executionWarningMinutes` from 1 through 2147483647, initially 60. Project
@@ -1088,7 +1091,12 @@ before another write. Failed reconciliation keeps Save blocked and offers read
 retry; network, protocol, 5xx or navigation cancellation never prove rollback.
 Confirmed refusals and unsaved/canceled drafts do not apply local settings.
 Project-only changes update graph metadata while retaining the task index and
-layout when tasks and summary are unchanged.
+layout when tasks and summary are unchanged. Running known-start tasks subscribe
+to one visible-page ticker; completed duration uses stored endpoints and unknown
+starts show no inferred duration. Warnings use an unrounded strict comparison
+and disappear on completion without changing task status. The server-sample
+clock avoids client wall-clock skew but does not remove network sampling delay.
+
 
 Proposed tasks appear in unfinished inventories and Web statistics. The Web task
 detail dialog places Approve / 批准任务 for proposed and Unapprove / 撤回审批

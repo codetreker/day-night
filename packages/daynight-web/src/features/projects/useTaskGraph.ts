@@ -7,6 +7,7 @@ export type GraphSnapshot = {
   readonly graph: TaskGraph;
   readonly index: GraphIndex;
   readonly observedAt: string;
+  readonly receivedMonotonic: number;
   readonly receivedAt: number;
   readonly revision: number;
 };
@@ -41,6 +42,7 @@ export const useTaskGraph = (projectId: string) => {
     });
     try {
       const graph = await getTaskGraph(projectId, controller.signal);
+      const receivedMonotonic = performance.now();
       if (controller.signal.aborted || revision !== generation.current) return;
       const serializedProject = JSON.stringify({ ...graph.project, settings: {
         ...graph.project.settings, version: graph.project.settings.version.toString(),
@@ -58,6 +60,7 @@ export const useTaskGraph = (projectId: string) => {
         graph: stableGraph,
         index: sameTasks ? previous.snapshot.index : buildGraphIndex(graph),
         observedAt: graph.observedAt,
+        receivedMonotonic,
         receivedAt: Date.now(), revision,
       };
       cached.current = { projectId, serializedProject, serializedTasks, snapshot };

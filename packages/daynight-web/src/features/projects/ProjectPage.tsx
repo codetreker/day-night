@@ -12,6 +12,7 @@ import { ProjectTaskTabs } from "./ProjectTaskTabs";
 import { StandaloneList } from "./StandaloneList";
 import { useCompletedChainVisibility, useProjectViewPreferences, useStandaloneVisibility, useTaskView, useTaskViewScroll, type TaskView } from "./useProjectViewPreferences";
 import { useTaskGraph } from "./useTaskGraph";
+import { TaskExecutionClockProvider } from "../task-execution/TaskExecutionClock";
 import "../../styles/project.css";
 
 const backToProjects = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -193,7 +194,7 @@ const ProjectView = ({ projectId, renderActions }: { readonly projectId: string;
           {summary.total === 0 ? (
             <section className="state-box"><h2>{m.empty}</h2><p>{m.emptyDetail}</p></section>
           ) : (
-            <>
+            <TaskExecutionClockProvider projectId={projectId} snapshot={snapshot}>
               <ProjectTaskTabs activeView={activeView} unfinishedStandaloneTaskCount={categories!.unfinishedStandaloneTaskCount}
                 unfinishedChainTaskCount={categories!.unfinishedChainTaskCount} onViewChange={selectView} />
               <div role="tabpanel" id="project-task-panel-chains" aria-labelledby="project-task-tab-chains" hidden={activeView !== "chains"}>
@@ -206,7 +207,7 @@ const ProjectView = ({ projectId, renderActions }: { readonly projectId: string;
                 {activeView === "standalone" && <StandaloneList index={snapshot.index} taskIds={standaloneIds} allTaskIds={categories!.standalone} onSelectTask={onOpenTask}
                   showCompleted={showCompletedStandalone} onShowCompletedChange={onStandaloneVisibilityChange} />}
               </div>
-            </>
+            </TaskExecutionClockProvider>
           )}
           {detailTaskId !== null && <TaskDetailDialog projectId={projectId} taskId={detailTaskId} snapshot={snapshot} onSelectTask={onSelectRelation}
             onClose={onClose} onRestoreFocus={restoreFocus} onRefreshGraph={graph.refresh} />}
