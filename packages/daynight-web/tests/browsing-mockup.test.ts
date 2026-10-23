@@ -107,7 +107,10 @@ describe('production approval fixture', () => {
     try {
       const project = approvalProject(scenario);
       const graph = await getTaskGraph(project, signal());
-      expect(graph.summary).toEqual({ total: 3, proposed: 3, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 });
+      const expected = scenario === 'unapproval-ready' ? { proposed: 0, todo: 3, ready: 2, blocked: 1 }
+        : scenario === 'unapproval-blocked' ? { proposed: 1, todo: 2, ready: 1, blocked: 1 }
+          : { proposed: 3, todo: 0, ready: 0, blocked: 0 };
+      expect(graph.summary).toEqual({ total: 3, inProgress: 0, done: 0, ...expected });
       expect(graph.tasks.every((task) => !('version' in task))).toBe(true);
       expect((await getTask(project, taskId(1), signal())).version).toBe(version);
     } finally { dispose(); }

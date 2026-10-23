@@ -421,7 +421,7 @@ func acceptanceCLIMutations(process *acceptanceProcess) []acceptanceCLIRequest {
 	var requests []acceptanceCLIRequest
 	for _, event := range process.logs.events {
 		route, _ := event["route"].(string)
-		lifecycle := event["method"] == "POST" && (strings.HasSuffix(route, "/approve") || strings.HasSuffix(route, "/claim") || strings.HasSuffix(route, "/complete"))
+		lifecycle := event["method"] == "POST" && (strings.HasSuffix(route, "/approve") || strings.HasSuffix(route, "/unapprove") || strings.HasSuffix(route, "/claim") || strings.HasSuffix(route, "/complete"))
 		if event["type"] == "http_request" && (event["method"] == "PATCH" || lifecycle) {
 			id, _ := event["request_id"].(string)
 			status, _ := event["status"].(float64)

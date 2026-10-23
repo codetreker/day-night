@@ -12,9 +12,10 @@ hide the cause of a rejected mutation.
 
 ## Decision
 
-The server exposes task create/list/get/update and versioned approve/claim/complete
+The server exposes task create/list/get/update and versioned approve/unapprove/claim/complete
 beneath a project path. The [approval lifecycle](2026-10-22-task-approval-lifecycle.md)
-replaces the original generic-status mutation contract. It
+replaces the original generic-status mutation contract; the later
+[withdrawal decision](2026-10-23-task-unapprove.md) adds only todo to proposed. It
 converts API DTOs into the existing concrete task service without SQL or policy
 duplication in handlers. The runtime factory constructs project and task services
 from one store, with explicit typed handler dependencies and one request-logging

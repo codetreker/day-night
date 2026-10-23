@@ -1,7 +1,7 @@
 import mime from "mime";
 import { isTaskVersion, parseApiJson, stringifyApiJson } from "./json";
 import { canonicalId, isAttachmentPath, parseAttachment, parseAttachmentPage, parseProjectPage, parseServerError, parseTaskDetail, parseTaskGraph } from "./parse";
-import type { Attachment, AttachmentPage, GraphLimitDetails, ProjectPage, TaskDetail, TaskGraph } from "./types";
+import type { ApprovalAction, Attachment, AttachmentPage, GraphLimitDetails, ProjectPage, TaskDetail, TaskGraph } from "./types";
 import { decodeProjectPageJson, decodeTaskGraphJson } from "./project-json";
 
 const serverMessages: Readonly<Record<string, string>> = {
@@ -161,24 +161,31 @@ export const getTask = (projectId: string, taskId: string, signal: AbortSignal):
   return read(`/api/v1/projects/${project}/tasks/${task}`, signal, (data) => parseTaskDetail(data, project, task));
 };
 
-export const approveTask = async (
-  projectId: string, taskId: string, exactVersion: bigint, signal: AbortSignal,
+const taskApproval = async (
+  action: ApprovalAction, projectId: string, taskId: string, exactVersion: bigint, signal: AbortSignal,
 ): Promise<TaskDetail> => {
   const project = requestId(projectId);
   const task = requestId(taskId);
   if (!isTaskVersion(exactVersion)) throw new ApiError("protocol");
-  const response = await request(`/api/v1/projects/${project}/tasks/${task}/approve`, signal, {
+  const response = await request(`/api/v1/projects/${project}/tasks/${task}/${action}`, signal, {
     method: "POST", redirect: "error", headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: stringifyApiJson({ version: exactVersion }),
   });
   return json(response, signal, (data) => {
-    const approved = parseTaskDetail(data, project, task);
-    if (response.status !== 200 || approved.status !== "todo" || approved.version !== exactVersion + 1n) {
+    const result = parseTaskDetail(data, project, task);
+    const target = action === "approve" ? "todo" : "proposed";
+    if (response.status !== 200 || result.status !== target || result.version !== exactVersion + 1n) {
       throw new ApiError("protocol", response.status);
     }
-    return approved;
+    return result;
   });
 };
+
+export const approveTask = (projectId: string, taskId: string, exactVersion: bigint, signal: AbortSignal): Promise<TaskDetail> =>
+  taskApproval("approve", projectId, taskId, exactVersion, signal);
+
+export const unapproveTask = (projectId: string, taskId: string, exactVersion: bigint, signal: AbortSignal): Promise<TaskDetail> =>
+  taskApproval("unapprove", projectId, taskId, exactVersion, signal);
 
 const attachmentTaskUrl = (projectId: string, taskId: string): string =>
   `/api/v1/projects/${requestId(projectId)}/tasks/${requestId(taskId)}`;

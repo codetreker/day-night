@@ -18,6 +18,7 @@ export type AttachmentWriteExpectation = {
   readonly count: number;
 };
 export type ApprovalWriteExpectation = {
+  readonly action: 'approve' | 'unapprove';
   readonly origin: string;
   readonly projectId: string;
   readonly taskId: string;
@@ -86,10 +87,10 @@ export const test = base.extend<{
         const origin = new URL(entry.origin);
         const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
         if (!['http:', 'https:'].includes(origin.protocol) || origin.origin !== entry.origin
-          || !uuid.test(entry.projectId) || !uuid.test(entry.taskId) || !Number.isInteger(entry.count) || entry.count < 1) {
+          || !['approve', 'unapprove'].includes(entry.action) || !uuid.test(entry.projectId) || !uuid.test(entry.taskId) || !Number.isInteger(entry.count) || entry.count < 1) {
           throw new Error('Invalid exact approval write expectation.');
         }
-        const key = `POST ${origin.origin}/api/v1/projects/${entry.projectId}/tasks/${entry.taskId}/approve`;
+        const key = `POST ${origin.origin}/api/v1/projects/${entry.projectId}/tasks/${entry.taskId}/${entry.action}`;
         if (approvals.has(key)) throw new Error('Duplicate exact approval write expectation.');
         approvals.set(key, { count: entry.count, observed: 0 });
       }

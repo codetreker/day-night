@@ -23,7 +23,7 @@ const fixture = (operation = createOperation()) => {
     getProject: vi.fn<ApiClient["getProject"]>().mockResolvedValue(project),
     createTask: vi.fn<ApiClient["createTask"]>().mockResolvedValue(task), getTask: vi.fn<ApiClient["getTask"]>().mockResolvedValue(task),
     listTasks: vi.fn<ApiClient["listTasks"]>().mockResolvedValue([task]), listReadyTasks: vi.fn<ApiClient["listReadyTasks"]>().mockResolvedValue([task]), updateTask: vi.fn<ApiClient["updateTask"]>().mockResolvedValue(task),
-    approveTask: vi.fn<ApiClient["approveTask"]>().mockResolvedValue(task), claimTask: vi.fn<ApiClient["claimTask"]>().mockResolvedValue(task), completeTask: vi.fn<ApiClient["completeTask"]>().mockResolvedValue(task),
+    approveTask: vi.fn<ApiClient["approveTask"]>().mockResolvedValue(task), unapproveTask: vi.fn<ApiClient["unapproveTask"]>().mockResolvedValue(task), claimTask: vi.fn<ApiClient["claimTask"]>().mockResolvedValue(task), completeTask: vi.fn<ApiClient["completeTask"]>().mockResolvedValue(task),
     getTaskGraph: vi.fn<ApiClient["getTaskGraph"]>().mockResolvedValue(graph),
     putTaskAttachment: vi.fn<ApiClient["putTaskAttachment"]>(), listTaskAttachments: vi.fn<ApiClient["listTaskAttachments"]>(),
     readTaskAttachment: vi.fn<ApiClient["readTaskAttachment"]>(), removeTaskAttachment: vi.fn<ApiClient["removeTaskAttachment"]>(),
@@ -43,7 +43,7 @@ const fixture = (operation = createOperation()) => {
 };
 
 describe("task parameter boundaries", () => {
-  it.each([[], ["--help"], ...["create", "list", "ready", "show", "update", "approve", "claim", "complete", "graph"].map((name) => [name, "--help"])].map((args) => ({ args })))("renders help without business dependencies: $args", async ({ args }) => {
+  it.each([[], ["--help"], ...["create", "list", "ready", "show", "update", "approve", "unapprove", "claim", "complete", "graph"].map((name) => [name, "--help"])].map((args) => ({ args })))("renders help without business dependencies: $args", async ({ args }) => {
     const f = fixture();
     await runTaskCommand(args, f.context, f.dependencies);
     expect(f.context.stdout).toHaveBeenCalledOnce();
@@ -78,7 +78,7 @@ describe("task parameter boundaries", () => {
     ["graph", "--ready"], ["create", "--title", "Title", "--json"], ["list", "--ready", "--ready"],
     ...["0", "101", "-1", "+1", "1.5", "1e1", " 1", "1 ", "Infinity", "99999999999999999999999999999", ""].map((value) => ["ready", `--limit=${value}`]),
     ["ready", "--status", "todo"], ["ready", "--cursor", "next"], ["ready", "--limit", "1", "--limit", "2"],
-    ...["approve", "claim", "complete"].flatMap((action) => [
+    ...["approve", "unapprove", "claim", "complete"].flatMap((action) => [
       [action], [action, "invalid"], [action, taskId, "--status", "done"], [action, taskId, "--title", "Title"],
       ...["0", "1.5", "9223372036854775808"].map((version) => [action, taskId, "--if-version", version]),
     ]),
@@ -95,10 +95,10 @@ describe("task parameter boundaries", () => {
     await expect(runTaskCommand(["update", taskId, "--status", "todo"], f.context, f.dependencies)).rejects.toMatchObject({ message: expect.stringContaining('option "--status"'), helpCommand: "daynight task update --help" });
     expect(f.dependencies.runServerCommand).not.toHaveBeenCalled();
     await runTaskCommand(["update", "--help"], f.context, f.dependencies);
-    expect(f.context.stdout.mock.calls[0]![0]).toContain("Use daynight task approve, claim, or complete to change status.");
+    expect(f.context.stdout.mock.calls[0]![0]).toContain("Use daynight task approve, unapprove, claim, or complete to change status.");
   });
 
-  it.each(["approve", "claim", "complete"] as const)("uses the observed version for %s and prints the full confirmed result", async (action) => {
+  it.each(["approve", "unapprove", "claim", "complete"] as const)("uses the observed version for %s and prints the full confirmed result", async (action) => {
     const f = fixture();
     const method = f.api[`${action}Task`];
     const result = { ...task, description: "Full action result", version: task.version + 1n };
@@ -109,10 +109,10 @@ describe("task parameter boundaries", () => {
     expect(method).toHaveBeenCalledExactlyOnceWith(projectId, taskId, { version: task.version });
     expect(f.api.getTask.mock.invocationCallOrder[0]!).toBeLessThan(method.mock.invocationCallOrder[0]!);
     expect(f.api.updateTask).not.toHaveBeenCalled();
-    expect(f.context.stdout.mock.calls[0]![0]).toBe(`Task ${{ approve: "approved", claim: "claimed", complete: "completed" }[action]}.\n${renderTask(result)}`);
+    expect(f.context.stdout.mock.calls[0]![0]).toBe(`Task ${{ approve: "approved", unapprove: "unapproved", claim: "claimed", complete: "completed" }[action]}.\n${renderTask(result)}`);
   });
 
-  it.each(["approve", "claim", "complete"] as const)("submits the explicit full-int64 version for %s without reading or retrying conflicts", async (action) => {
+  it.each(["approve", "unapprove", "claim", "complete"] as const)("submits the explicit full-int64 version for %s without reading or retrying conflicts", async (action) => {
     const f = fixture();
     const failure = new Error("Version conflict");
     const method = f.api[`${action}Task`];
@@ -125,7 +125,7 @@ describe("task parameter boundaries", () => {
     expect(f.context.stdout).not.toHaveBeenCalled();
   });
 
-  it.each(["approve", "claim", "complete"] as const)("stops %s before dispatch when cancelled after reading the version", async (action) => {
+  it.each(["approve", "unapprove", "claim", "complete"] as const)("stops %s before dispatch when cancelled after reading the version", async (action) => {
     const cancellation = new AbortController();
     const f = fixture(createOperation({ signal: cancellation.signal }));
     f.api.getTask.mockImplementation(async () => { cancellation.abort(); return task; });

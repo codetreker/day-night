@@ -73,9 +73,10 @@ func TestTaskReadAndWriteDatabaseFailures(t *testing.T) {
 			_, updateErr := tasks.Update(context.Background(), principal, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Changed")})
 			_, createErr := tasks.Create(context.Background(), principal, project.ID, CreateTask{Title: "New"})
 			_, approveErr := tasks.Approve(context.Background(), principal, project.ID, target.ID, target.Version)
+			_, unapproveErr := tasks.Unapprove(context.Background(), principal, project.ID, target.ID, target.Version)
 			_, claimErr := tasks.Claim(context.Background(), principal, project.ID, target.ID, target.Version)
 			_, completeErr := tasks.Complete(context.Background(), principal, project.ID, target.ID, target.Version)
-			for _, err := range []error{getErr, listErr, updateErr, createErr, approveErr, claimErr, completeErr} {
+			for _, err := range []error{getErr, listErr, updateErr, createErr, approveErr, unapproveErr, claimErr, completeErr} {
 				assertOperational(t, err)
 				var pgError *pgconn.PgError
 				if !errors.As(err, &pgError) || pgError.Code != "42P01" {
@@ -118,7 +119,7 @@ func TestTaskPolicyQueryCancellationPreservesCause(t *testing.T) {
 }
 
 func TestTaskLifecycleQueryCancellationPreservesCauseAndState(t *testing.T) {
-	for _, action := range []string{"approve", "claim", "complete"} {
+	for _, action := range []string{"approve", "unapprove", "claim", "complete"} {
 		for _, query := range []struct {
 			fragment string
 			after    bool
@@ -149,6 +150,8 @@ func TestTaskLifecycleQueryCancellationPreservesCauseAndState(t *testing.T) {
 				switch action {
 				case "approve":
 					_, err = traced.Approve(ctx, principal, project.ID, target.ID, target.Version)
+				case "unapprove":
+					_, err = traced.Unapprove(ctx, principal, project.ID, target.ID, target.Version)
 				case "claim":
 					_, err = traced.Claim(ctx, principal, project.ID, target.ID, target.Version)
 				case "complete":

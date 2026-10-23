@@ -36,7 +36,7 @@ CLI/Web 类型、严格解析、夹具与有关资源文档同步保留必填可
 
 ### 验收
 
-- 新建、approve、claim、complete 及普通编辑遵守 TT1–TT2；拒绝的状态或版本请求不留下时间变化。
+- 新建、approve、unapprove、claim、complete 及普通编辑遵守 TT1–TT2；拒绝的状态或版本请求不留下时间变化。
 - 迁移前已有任务保持未知历史；数据库时间在项目锁获取后的写 statement 产生。
 - 相同低层状态写入保留起止，真实新进入替换起点，不累加；不新增公开重开或直接完成路径。
 - full task 与 graph 字段、数据库 `observedAt` 和实际安装 CLI JSON 读取一致；无客户端补默认值。

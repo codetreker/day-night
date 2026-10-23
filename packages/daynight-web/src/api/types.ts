@@ -1,3 +1,5 @@
+export type ApprovalAction = "approve" | "unapprove";
+
 export type TaskStatus = "proposed" | "todo" | "in_progress" | "done";
 
 export type Project = {

@@ -62,7 +62,7 @@ func acceptanceWorkflow(t *testing.T, scenario *acceptanceScenario) {
 	if !reflect.DeepEqual(noChange, target) {
 		t.Fatal("semantic no-op changed task version or update time")
 	}
-	acceptanceWrongActions(t, process, target, "claim", "complete")
+	acceptanceWrongActions(t, process, target, "unapprove", "claim", "complete")
 	target = process.action(t, target, "approve")
 	acceptanceWrongActions(t, process, target, "approve", "complete")
 	refusal := process.request(context.Background(), http.MethodPost, acceptanceTaskPath(target)+"/claim", map[string]any{"version": target.Version}, "blocked-start")
@@ -72,9 +72,9 @@ func acceptanceWorkflow(t *testing.T, scenario *acceptanceScenario) {
 	}
 	first = process.action(t, first, "approve")
 	first = process.action(t, first, "claim")
-	acceptanceWrongActions(t, process, first, "approve", "claim")
+	acceptanceWrongActions(t, process, first, "approve", "unapprove", "claim")
 	first = process.action(t, first, "complete")
-	acceptanceWrongActions(t, process, first, "approve", "claim", "complete")
+	acceptanceWrongActions(t, process, first, "approve", "unapprove", "claim", "complete")
 	second = process.action(t, second, "approve")
 	second = process.action(t, second, "claim")
 	second = process.action(t, second, "complete")
@@ -87,9 +87,9 @@ func acceptanceWorkflow(t *testing.T, scenario *acceptanceScenario) {
 	if target.Version != 4 || target.Status != "in_progress" || target.Ready {
 		t.Fatal("claim did not advance the approved task once")
 	}
-	acceptanceWrongActions(t, process, target, "approve", "claim")
+	acceptanceWrongActions(t, process, target, "approve", "unapprove", "claim")
 	target = process.action(t, target, "complete")
-	acceptanceWrongActions(t, process, target, "approve", "claim", "complete")
+	acceptanceWrongActions(t, process, target, "approve", "unapprove", "claim", "complete")
 	target = process.update(t, target, map[string]any{"description": ""})
 	if target.Description != "" || target.Version != 6 {
 		t.Fatal("description clear or completion version differs from the contract")
@@ -162,7 +162,7 @@ func acceptanceRefusals(t *testing.T, scenario *acceptanceScenario) {
 		acceptanceError(t, process.request(context.Background(), http.MethodPatch, acceptanceTaskPath(first), map[string]any{"version": first.Version, "status": status, "title": "Must not persist"}, "status-bypass"), http.StatusBadRequest, "invalid_input")
 		acceptanceError(t, process.request(context.Background(), http.MethodPost, acceptanceTasksPath(project.ID), map[string]any{"title": "Must not create", "status": status}, "creation-bypass"), http.StatusBadRequest, "invalid_input")
 	}
-	for _, action := range []string{"approve", "claim", "complete"} {
+	for _, action := range []string{"approve", "unapprove", "claim", "complete"} {
 		path := acceptanceTaskPath(first) + "/" + action
 		for _, version := range []any{nil, 0, -1, 1.5, "1", json.RawMessage("9223372036854775808")} {
 			acceptanceError(t, process.request(context.Background(), http.MethodPost, path, map[string]any{"version": version}, "invalid-action-version"), http.StatusBadRequest, "invalid_input")
@@ -296,22 +296,22 @@ func acceptanceLifecycleRace(t *testing.T, scenario *acceptanceScenario) {
 	process := fixture.launch(t, nil).started(t)
 	project := process.project(t, "Lifecycle race")
 	task := process.task(t, project, "Concurrent work")
-	for index, action := range []string{"approve", "claim", "complete"} {
+	for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"unapprove", "proposed"}, {"approve", "todo"}, {"claim", "in_progress"}, {"complete", "done"}} {
 		responses := acceptanceCompete(t, fixture, process, project,
 			func() acceptanceResponse {
-				return process.request(context.Background(), http.MethodPost, acceptanceTaskPath(task)+"/"+action, map[string]any{"version": task.Version}, action+"-first")
+				return process.request(context.Background(), http.MethodPost, acceptanceTaskPath(task)+"/"+step.action, map[string]any{"version": task.Version}, step.action+"-first")
 			},
 			func() acceptanceResponse {
-				return process.request(context.Background(), http.MethodPost, acceptanceTaskPath(task)+"/"+action, map[string]any{"version": task.Version}, action+"-second")
+				return process.request(context.Background(), http.MethodPost, acceptanceTaskPath(task)+"/"+step.action, map[string]any{"version": task.Version}, step.action+"-second")
 			},
 		)
 		acceptanceOneWinner(t, responses, "version_conflict")
 		after := process.readTask(t, task)
-		acceptanceTaskTimingTransition(t, task, after, action)
+		acceptanceTaskTimingTransition(t, task, after, step.action)
 		preserved := after
 		preserved.StartedAt, preserved.CompletedAt = task.StartedAt, task.CompletedAt
 		preserved.Status, preserved.Ready, preserved.Version, preserved.UpdatedAt = task.Status, task.Ready, task.Version, task.UpdatedAt
-		if expected := []string{"todo", "in_progress", "done"}[index]; after.Status != expected || after.Version != task.Version+1 || !after.UpdatedAt.After(task.UpdatedAt) || !reflect.DeepEqual(preserved, task) {
+		if after.Status != step.status || after.Version != task.Version+1 || !after.UpdatedAt.After(task.UpdatedAt) || !reflect.DeepEqual(preserved, task) {
 			t.Fatal("concurrent lifecycle actions did not persist exactly one transition")
 		}
 		task = after

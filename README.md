@@ -145,7 +145,7 @@ confirmed behavior and implementation status. Shared YAML projections, the
 `serverUrl` configuration field, bounded HTTP client and repository discovery
 with ignored local bindings are implemented. `project create/list/show` manage
 remote projects through the configured server. Task create/list/ready/show/update/graph
-and approve/claim/complete commands use explicit project selection or the current repository binding;
+and approve/unapprove/claim/complete commands use explicit project selection or the current repository binding;
 installed real-service and resource-budget acceptance are implemented.
 [PR #55](https://github.com/codetreker/daynight/pull/55) records the original
 integration and real-default-budget validation. Current deadline tests use short
@@ -1036,6 +1036,7 @@ daynight task complete <task-id> --if-version 3
 daynight task update <task-id> --depends-on <task-a> --depends-on <task-b>
 daynight task update <task-id> --clear-dependencies
 daynight task graph --json
+daynight task unapprove <todo-task-id> --if-version <version>
 ```
 
 Every operation accepts `--project <project-id>`, which selects a project for one
@@ -1048,10 +1049,11 @@ server origin and repository identity, after ensuring `/.daynight/` is effective
 in the root `.gitignore`. A cached binding is verified against the server on each
 use and remains stable if another project later shares that repository.
 
-Tasks follow one forward lifecycle: creation starts in `proposed`; `task approve`
-moves it to `todo`; `task claim` moves ready todo to `in_progress`; `task complete`
-moves in-progress work to `done`. Approval permits unfinished prerequisites;
-claim and completion require every direct prerequisite to be done. Every project
+Creation starts in `proposed`; `task approve` moves it to `todo`; `task unapprove`
+withdraws approval of todo work and returns it to `proposed`; `task claim` moves
+ready todo to `in_progress`; `task complete` moves in-progress work to `done`.
+Approval and withdrawal permit unfinished prerequisites; claim and completion
+require every direct prerequisite to be done. Every project
 member, including administrators, may use these resource operations; the
 administrator role additionally manages members, invitations and project
 execution-warning settings. Each task action
@@ -1089,11 +1091,16 @@ Project-only changes update graph metadata while retaining the task index and
 layout when tasks and summary are unchanged.
 
 Proposed tasks appear in unfinished inventories and Web statistics. The Web task
-detail dialog offers Approve / 批准任务 for proposed tasks, using the reviewed
-full task's exact version; it refreshes the graph after confirmation. Approval
-makes work eligible for later claim and grants no implementation or merge
-permission. The [lifecycle decision](.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
-records the state and approval boundaries.
+detail dialog places Approve / 批准任务 for proposed and Unapprove / 撤回审批
+for todo at the far right of the task-title row, on both detail tabs. Each opens
+an action-specific confirmation using the reviewed task's exact version; Cancel
+or Escape sends no request. Confirmed responses refresh the graph. Withdrawal
+preserves task materials, dependencies, execution timestamps and attachments;
+it makes the task non-ready without changing successor states. Approval makes
+work eligible for later claim and grants no implementation or merge permission.
+The [lifecycle decision](.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
+and [withdrawal decision](.agents/notes/implemented/feature/2026-10-23-task-unapprove.md)
+record the state and approval boundaries.
 
 `task ready` selects up to 10 actionable tasks by
 default; `--limit <N>` accepts decimal integers from 1 through 100. It makes one

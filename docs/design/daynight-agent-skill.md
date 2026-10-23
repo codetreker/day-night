@@ -174,7 +174,7 @@ ready 默认最多 10 项，必要时使用 1..100 的 `--limit`。服务按创�
 无匹配不自动创建项目，配置缺失保留 setup 指引；网络、配置与歧义错误按真实原因处理。
 
 handbook 规定基于已读内容的修改必须携带精确 `--if-version`，包括完整 int64 十进制
-精度。update、approve、claim 和 complete 都绑定该决策版本；默认临时 GET 不能
+精度。update、approve、unapprove、claim 和 complete 都绑定该决策版本；默认临时 GET 不能
 替代读写关联。description、依赖和 PR 列表是完整字段
 替换；冲突后重读并重新决策。未确认写入先核对结果，不自动重复提交；具体选项及
 输出格式通过 CLI help 查询。claim 是版本化状态转换，不是 assignee 锁、可续期租约

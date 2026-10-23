@@ -1,6 +1,6 @@
-import type { GraphTask } from "../../api/types";
+import type { ApprovalAction, GraphTask } from "../../api/types";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
-import { canApprove, useTaskDetailSessions, type TaskDetailSessions } from "./TaskDetailSession";
+import { canApprove, canUnapprove, useTaskDetailSessions, type TaskDetailSessions } from "./TaskDetailSession";
 
 export const useTaskDetail = (projectId: string, taskId: string, revision: number, observedTask: GraphTask | undefined) => {
   const sessions = useTaskDetailSessions();
@@ -26,9 +26,10 @@ export const useTaskDetail = (projectId: string, taskId: string, revision: numbe
     else sessions.load(projectId, taskId, revision, "refresh");
   }, [sessions, projectId, taskId, revision]);
   const approve = useCallback(() => { sessions.approve(projectId, taskId); }, [sessions, projectId, taskId]);
+  const performApproval = useCallback((action: ApprovalAction, version: bigint) => { sessions.performApproval(projectId, taskId, action, version); }, [sessions, projectId, taskId]);
   const reconcile = useCallback(() => { sessions.reconcile(projectId, taskId); }, [sessions, projectId, taskId]);
   const visible = sameIdentity || state.approval.phase !== "idle" ? state
     : { ...state, detail: null, loadedRevision: null, status: "loading" as const, refreshing: false, error: null };
   const requiresFreshRead = sessions.requiresFreshRead(projectId, taskId, observedTask);
-  return { ...visible, requiresFreshRead, retry, approve, reconcile, canApprove: canApprove({ ...visible, requiresFreshRead }) };
+  return { ...visible, requiresFreshRead, retry, approve, performApproval, reconcile, canApprove: canApprove({ ...visible, requiresFreshRead }), canUnapprove: canUnapprove({ ...visible, requiresFreshRead }) };
 };

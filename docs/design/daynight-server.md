@@ -161,10 +161,13 @@ Task 使用 `proposed`、`todo`、`in_progress`、`done`。创建显式写入 pr
 全部已应用迁移保持不可变。迁移不重写既有 task、version 或时间戳，既有 todo 表示
 已经接受的工作。公开列表筛选支持四种状态。
 
-服务提供独立的 approve、claim、complete 用例，唯一转换分别为 proposed→todo、
-todo→in_progress、in_progress→done。审批允许未完成前置；领取及完成要求直接前置
-全部 done。没有通用状态 patch、重开或回退入口，旧下游重开保护随其不可达写路径移除。
-[生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)拥有该写入策略及原始方案的历史。
+服务提供独立的 approve、unapprove、claim、complete 用例，唯一转换分别为 proposed→todo、
+todo→proposed、todo→in_progress、in_progress→done。审批与撤回允许未完成前置；领取及完成要求直接前置
+全部 done。unapprove 复用项目锁、成员复核及先版本后前态的验证，仅修改尚处于 todo 的任务；
+保留资料、依赖、附件及执行时间，不级联修改后继。ready todo 的同版本撤回与领取竞争只有一方提交，
+另一方返回 version_conflict。没有通用状态 patch 或进行中/已完成任务的重开入口；任意下游重开保护仍不需要恢复。
+[生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)保留原写入策略的历史，
+[撤回决策](../../.agents/notes/implemented/feature/2026-10-23-task-unapprove.md)拥有受限退回的理由。
 
 通用 Update 的输入只描述标题、描述、依赖和属性，服务参数及 HTTP DTO 都没有 status。
 所有更新都校验完整候选任务：proposed/todo 允许未完成前置，in_progress/done 只允许
@@ -193,7 +196,7 @@ todo→in_progress、in_progress→done。审批允许未完成前置；领取�
 任务不能合并为一个依赖同一旧快照的 SQL 语句：等待锁结束后，后续查询需要看到刚
 提交的 project 内写入。任务 UPDATE 依据旧/新状态维护时间：真正进入 in_progress 覆盖起点并清空终点，
 真正进入 done 记录终点，普通编辑和同状态低层写入保留两者。离开已完成状态的低层规则清除旧尝试；
-公开 service 仍只允许既有单向转换。时间使用锁后的 `statement_timestamp()`，不使用可能早于锁等待结束的事务时间。该机制依赖 PostgreSQL 在 `READ COMMITTED` 下为每条命令
+公开 service 只允许已列出的前态受限动作；unapprove 仅适用于 todo，不重开进行中或已完成任务。时间使用锁后的 `statement_timestamp()`，不使用可能早于锁等待结束的事务时间。该机制依赖 PostgreSQL 在 `READ COMMITTED` 下为每条命令
 取得新快照的语义，见[事务隔离文档](https://www.postgresql.org/docs/current/transaction-iso.html#XACT-READ-COMMITTED)
 及[行锁文档](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS)。
 
@@ -234,6 +237,7 @@ callback 不执行写入并正常结束；只有外层事务成功后才返回�
 | `GET /api/v1/projects/{projectId}/tasks/{taskId}` | 获取 task |
 | `PATCH /api/v1/projects/{projectId}/tasks/{taskId}` | 原子更新元数据及依赖 |
 | `POST /api/v1/projects/{projectId}/tasks/{taskId}/approve` | versioned proposed→todo |
+| `POST /api/v1/projects/{projectId}/tasks/{taskId}/unapprove` | versioned todo→proposed |
 | `POST /api/v1/projects/{projectId}/tasks/{taskId}/claim` | versioned todo→in_progress |
 | `POST /api/v1/projects/{projectId}/tasks/{taskId}/complete` | versioned in_progress→done |
 

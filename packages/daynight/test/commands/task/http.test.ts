@@ -52,7 +52,7 @@ const fixture = async (handler: (request: Request, response: ServerResponse, raw
 };
 
 describe("task commands over HTTP", () => {
-  it.each(["approve", "claim", "complete"] as const)("sends exactly one %s POST after its version read or with a supplied version", async (action) => {
+  it.each(["approve", "unapprove", "claim", "complete"] as const)("sends exactly one %s POST after its version read or with a supplied version", async (action) => {
     const f = await fixture((request, response) => respond(response, request.method === "GET" ? task : { ...task, version: task.version + 1n }));
     await f.run([action, taskId.toUpperCase()]);
     expect(f.requests.map(({ method, path: pathname }) => `${method} ${pathname}`)).toEqual([`GET /api/v1/projects/${projectId}`, `GET /api/v1/projects/${projectId}/tasks/${taskId}`, `POST /api/v1/projects/${projectId}/tasks/${taskId}/${action}`]);
@@ -63,7 +63,7 @@ describe("task commands over HTTP", () => {
     expect(f.requests.at(-1)!.body).toBe('{"version":9223372036854775807}');
   });
 
-  it.each(["approve", "claim", "complete"] as const)("reports an unconfirmed %s after dispatch without retrying", async (action) => {
+  it.each(["approve", "unapprove", "claim", "complete"] as const)("reports an unconfirmed %s after dispatch without retrying", async (action) => {
     const f = await fixture((_request, _response, raw) => { raw.socket.destroy(); });
     await expect(f.run([action, taskId, "--if-version", "1"])).rejects.toMatchObject({ operation: `task.${action}`, projectId, taskId, outcomeUnconfirmed: true });
     expect(f.requests.map(({ method }) => method)).toEqual(["GET", "POST"]);

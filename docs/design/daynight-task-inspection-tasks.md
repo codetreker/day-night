@@ -33,7 +33,7 @@
 
 ### 渐进浏览
 
-采用50真实任务/100诱导边初始概览、稳定后续优先accepted-only BFS、显式20直接邻居方向批次、准确增量/剩余数、无手动边上限、全局reset和实际S刷新根连通修剪。完整P、M进度/状态和七项统计保持。51真实场景（28原生/23容器）、四个完整输入×五次及原预算继续作为验收要求。
+采用50真实任务/100诱导边初始概览、稳定后续优先accepted-only BFS、显式20直接邻居方向批次、准确增量/剩余数、无手动边上限、全局reset和实际S刷新根连通修剪。完整P、M进度/状态和七项统计保持。53真实场景（29原生/24容器）、四个完整输入×五次及原预算继续作为验收要求。
 
 ### 检查与详情
 
@@ -49,7 +49,7 @@
 - 验证无嵌套兄弟控件、鼠标/键盘/两语言/桌面320px；高亮、Details和关系前后S、节点、路线、pieces与viewport保持。
 - 保留50/100/20、reset/展开焦点、actualS刷新、mandatory visibility；普通失败只在同身份/项目/authscope保留，401/会话/资源转换沿用私有数据失效规则，dialog焦点不被抢。
 - 所有实际路线/端点/相切/避让/CTM/bodycoverage/弧长/phase/箭头由独立判断器验证，无生产planner/curve预期；缺/多边、错误箭头、穿卡片和phase/coverage负例失败。
-- 保留51场景（28原生/23容器）、四个完整1000任务/999或5000边输入×五次、超限/coverage/timeout/零retry/cleanup；新增selectMs≤300及精确hidden上游，保持open≤3000与detail/zoom/pan≤300和普通/高亮close→立即zoom/pan序列，无额外等待/reset/fit。
+- 保留53场景（29原生/24容器）、四个完整1000任务/999或5000边输入×五次、超限/coverage/timeout/零retry/cleanup；新增selectMs≤300及精确hidden上游，保持open≤3000与detail/zoom/pan≤300和普通/高亮close→立即zoom/pan序列，无额外等待/reset/fit。
 - 验收覆盖 build/typecheck/tests/coverage、真实 component/native/container/capacity 和独立审查。实际审批、required checks 和合并结果记录在 Daynight 与任务专属主附件中。
 
 ## UX-T3：居中任务详情

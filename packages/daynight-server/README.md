@@ -431,9 +431,9 @@ a response.
 
 ## Task service
 
-`service.NewTasks` exposes create/read/update and dedicated approve, claim and
-complete operations over the same concrete store. `Approve`, `Claim` and
-`Complete` explicitly receive `(ctx, principal, projectID, taskID, version)`.
+`service.NewTasks` exposes create/read/update and dedicated approve, unapprove,
+claim and complete operations over the same concrete store. `Approve`, `Unapprove`,
+`Claim` and `Complete` explicitly receive `(ctx, principal, projectID, taskID, version)`.
 All project members, including administrators, can perform these resource writes;
 project settings, member management and invitation management require the administrator role. HTTP
 routes use that instance. Lifecycle POST routes and method-refusal handlers
@@ -448,10 +448,12 @@ Dependencies are canonicalized UUIDs, sorted and checked for duplicate identity,
 self-reference, missing/cross-project tasks and cycles. Every update validates
 its complete candidate, including metadata-only updates and semantic no-ops.
 Active/done tasks require done predecessors; proposed and todo may have unfinished
-prerequisites. Lifecycle transitions are forward-only: approve moves proposed to
-todo, claim moves todo to in_progress, and complete moves in_progress to done.
-Approval permits unfinished prerequisites; claim and completion require them done.
-There is no reopening or direct todo-to-done transition. Fault task IDs are sorted and do not
+prerequisites. Approve moves proposed to todo, unapprove returns todo to proposed,
+claim moves todo to in_progress, and complete moves in_progress to done. Approval
+and withdrawal permit unfinished prerequisites; claim and completion require them
+done. Withdrawal preserves materials, dependencies, execution timestamps and
+attachments and makes readiness false. It does not change successor states or
+release active work. There is no reopening or direct todo-to-done transition. Fault task IDs are sorted and do not
 include other projects' task content.
 
 Task writes acquire the project lock, check current membership, then compare
@@ -471,7 +473,8 @@ existing timing. A genuine new entry into execution replaces the latest start;
 this storage rule does not add a public reopening operation.
 
 Migration `009_task_timing.sql` leaves historical start and end values unknown.
-Creation and approval also leave them `null`. Completing a historical active task
+Creation starts both fields at `null`; approve and unapprove preserve existing
+timing without creating execution facts. Completing a historical active task
 records its real end while retaining an unknown start. No caller may submit these
 read-only fields, and neither creation/update time nor deployment time is used to
 invent an execution interval. Completed intervals survive later edits and service
@@ -548,6 +551,7 @@ receipts and fixed-capacity gates are in the
 | `GET` | `/api/v1/projects/{projectId}/tasks/{taskId}` | `200`, task |
 | `PATCH` | `/api/v1/projects/{projectId}/tasks/{taskId}` | `200`, updated metadata/dependencies |
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/approve` | `200`, proposed→todo task |
+| `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/unapprove` | `200`, todo→proposed task |
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/claim` | `200`, todo→in_progress task |
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/complete` | `200`, in_progress→done task |
 
@@ -659,7 +663,7 @@ the [V1–V10 requirements](../../docs/spec/daynight-server.md) as follows:
 | V1: persistent resources | `workflow_restart_persistence`, `graceful_sigterm_drains_committed_request`, `forced_sigterm_cancels_without_late_write`; complete objects survive process restart and listener reuse |
 | V2: dependency refusal and rollback | `refusals_scopes_filters_and_cursors`, `partial_write_http_failure_rolls_back`; rejected writes preserve complete tasks, with a sequence proving metadata and the first edge changed before the injected failure |
 | V3: concurrency and project independence | `concurrent_reverse_dependencies`, `canceled_request_and_independent_project`; owned backend waiters prove competing requests and independent progress |
-| V4: state gates | Workflow/refusal scenarios, `concurrent_lifecycle_same_version` (approve/claim/complete), `concurrent_dependency_update_and_claim`, `installed_cli_same_version_claim` and `installed_cli_same_version_dependency_edit_and_claim`; [service tests](internal/service/task_test.go) and [HTTP transition tests](internal/server/task_transitions_test.go) cover wrong predecessor states, same-version action races and metadata candidates |
+| V4: state gates | Workflow/refusal scenarios, `concurrent_lifecycle_same_version` (approve/unapprove/claim/complete), `concurrent_dependency_update_and_claim`, `installed_cli_same_version_claim`, `installed_cli_same_version_dependency_edit_and_claim`, `installed_cli_same_version_unapprove` and `installed_cli_same_version_unapprove_and_claim`; [service tests](internal/service/task_test.go) and [HTTP transition tests](internal/server/task_transitions_test.go) cover wrong predecessor states, same-version action races and metadata candidates |
 | V5: revisions and no-ops | Workflow/refusal scenarios and `concurrent_same_version`; actual changes compete on one version and matching semantic no-ops retain fields/timestamps |
 | V6: listing and HTTP contract | `refusals_scopes_filters_and_cursors`, [HTTP tests](internal/server/tasks_test.go) and service tests cover tied keysets, scoped filters, initialized empty resources, DTOs and error mapping |
 | V7: transactions and lifecycle | Partial-failure, cancellation, graceful/forced-signal, unsupported/failed-migration-history, concurrent-startup and `installed_cli_pre_lifecycle_migration_restart` scenarios; owning store tests prove finer snapshot and cross-migration interleavings |

@@ -35,6 +35,7 @@ func TestResourceServicesRejectAbsentPrincipals(t *testing.T) {
 			},
 			func() error { _, err := tasks.Graph(ctx, principal, id); return err },
 			func() error { _, err := tasks.Approve(ctx, principal, id, id, 1); return err },
+			func() error { _, err := tasks.Unapprove(ctx, principal, id, id, 1); return err },
 			func() error { _, err := tasks.Claim(ctx, principal, id, id, 1); return err },
 			func() error { _, err := tasks.Complete(ctx, principal, id, id, 1); return err },
 			func() error { _, err := attachments.List(ctx, principal, id, id, PageRequest{Limit: 1}); return err },
@@ -109,6 +110,7 @@ func TestAllResourcesRequireCurrentProjectMembership(t *testing.T) {
 	actions := func(principal core.Principal) []func() error {
 		return []func() error{
 			func() error { _, err := tasks.Approve(ctx, principal, project.ID, task.ID, task.Version); return err },
+			func() error { _, err := tasks.Unapprove(ctx, principal, project.ID, task.ID, task.Version); return err },
 			func() error { _, err := tasks.Claim(ctx, principal, project.ID, task.ID, task.Version); return err },
 			func() error { _, err := tasks.Complete(ctx, principal, project.ID, task.ID, task.Version); return err },
 		}
@@ -261,7 +263,7 @@ func TestRevokedPATCannotAuthenticateForAnotherResourceRequest(t *testing.T) {
 }
 
 func TestTaskWriteChecksMembershipAfterAcquiringProjectLock(t *testing.T) {
-	const writerCount = 5
+	const writerCount = 6
 	f := newMembershipFixture(t)
 	config := f.database.Pool.Config()
 	// The lock holder and observer need connections while every writer is blocked.
@@ -297,7 +299,7 @@ func TestTaskWriteChecksMembershipAfterAcquiringProjectLock(t *testing.T) {
 		for _, action := range []struct {
 			apply func(context.Context, core.Principal, string, string, int64) (core.Task, error)
 			task  core.Task
-		}{{tasks.Approve, task}, {tasks.Claim, todo}, {tasks.Complete, active}} {
+		}{{tasks.Approve, task}, {tasks.Unapprove, todo}, {tasks.Claim, todo}, {tasks.Complete, active}} {
 			go func() {
 				updated, err := action.apply(ctx, member, project.ID, action.task.ID, action.task.Version)
 				results <- taskResult{task: updated, err: err}
@@ -331,9 +333,11 @@ func TestMemberCanPerformTaskLifecycleActions(t *testing.T) {
 		t.Fatalf("new task status: %s", task.Status)
 	}
 	task = approveTask(t, tasks, member, task)
+	task = unapproveTask(t, tasks, member, task)
+	task = approveTask(t, tasks, member, task)
 	task = claimTask(t, tasks, member, task)
 	task = completeTask(t, tasks, member, task)
-	if task.Status != core.TaskDone || task.Version != 4 {
+	if task.Status != core.TaskDone || task.Version != 6 {
 		t.Fatalf("member lifecycle: %#v", task)
 	}
 }

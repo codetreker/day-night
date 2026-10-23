@@ -700,6 +700,7 @@ describe("authenticated application shell", () => {
       let dialog = screen.getByRole("dialog", { name: "任务详情" });
       await within(dialog).findByRole("heading", { name: "Lifecycle task" });
       fireEvent.click(within(dialog).getByRole("button", { name: "批准任务" }));
+      fireEvent.click(within(screen.getByRole("alertdialog", { name: "批准任务" })).getByRole("button", { name: "确认批准" }));
       await waitFor(() => expect(finishApproval).toBeTypeOf("function"));
       const submitted = fetcher.mock.calls.find(([url]) => url === `${taskUrl}/approve`)![1]!;
       expect(submitted).toMatchObject({ method: "POST", body: '{"version":7}', credentials: "same-origin", redirect: "error" });
@@ -711,7 +712,7 @@ describe("authenticated application shell", () => {
       fireEvent.click(screen.getByRole("tab", { name: "独立任务" }));
       fireEvent.click(screen.getByRole("button", { name: /Lifecycle task/ }));
       dialog = screen.getByRole("dialog", { name: "任务详情" });
-      expect(await within(dialog).findByRole("button", { name: "正在批准…" })).toBeDisabled();
+      expect(await within(dialog).findByRole("button", { name: "正在提交…" })).toBeDisabled();
       expect(fetcher.mock.calls.filter(([url]) => url === taskUrl)).toHaveLength(1);
       expect(fetcher.mock.calls.filter(([url]) => url === `${taskUrl}/approve`)).toHaveLength(1);
       approved = true;

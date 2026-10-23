@@ -26,7 +26,7 @@ describe("Bash completion rendering", () => {
   it("offers explicit lifecycle commands and proposed filtering without metadata status updates", () => {
     const script = renderBashCompletion(commandTree);
     expect(script).toContain("complete -F _daynight_completion 'daynight' 'dn'\n");
-    expect(script).toContain("dn_children=('create' 'list' 'ready' 'show' 'update' 'approve' 'claim' 'complete' 'graph' 'attachment')");
+    expect(script).toContain("dn_children=('create' 'list' 'ready' 'show' 'update' 'approve' 'unapprove' 'claim' 'complete' 'graph' 'attachment')");
     expect(script).toContain("dn_value_choices=('proposed' 'todo' 'in_progress' 'done')");
     const update = renderBashCompletion(taskDefinition.commands!.find(({ name }) => name === "update")!);
     expect(update).not.toContain("'--status'");
@@ -34,7 +34,7 @@ describe("Bash completion rendering", () => {
     expect(update).toContain("'--depends-on'");
   });
 
-  it.each(["approve", "claim", "complete"])("completes %s with one task ID and version/project text options", (action) => {
+  it.each(["approve", "unapprove", "claim", "complete"])("completes %s with one task ID and version/project text options", (action) => {
     const script = renderBashCompletion(taskDefinition.commands!.find(({ name }) => name === action)!);
     expect(script).toContain("dn_options=('--if-version' '--project' '-h' '--help')");
     expect(script).toContain("dn_option_values=('text' 'text' '' '')");

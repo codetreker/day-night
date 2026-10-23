@@ -23,7 +23,7 @@ func taskRoutes(mux *http.ServeMux, tasks *service.Tasks, auth *Authentication, 
 	mux.HandleFunc("GET /api/v1/projects/{projectId}/tasks", auth.Require(handler.list))
 	mux.HandleFunc("GET /api/v1/projects/{projectId}/tasks/{taskId}", auth.Require(handler.get))
 	mux.HandleFunc("PATCH /api/v1/projects/{projectId}/tasks/{taskId}", auth.Require(handler.update))
-	for name, action := range map[string]taskAction{"approve": tasks.Approve, "claim": tasks.Claim, "complete": tasks.Complete} {
+	for name, action := range map[string]taskAction{"approve": tasks.Approve, "unapprove": tasks.Unapprove, "claim": tasks.Claim, "complete": tasks.Complete} {
 		path := "/api/v1/projects/{projectId}/tasks/{taskId}/" + name
 		mux.HandleFunc("POST "+path, auth.Require(handler.lifecycle(name, action)))
 		mux.HandleFunc(path, auth.Require(resourceMethodNotAllowed(logger, "POST")))

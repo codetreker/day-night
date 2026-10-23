@@ -8,7 +8,7 @@
 
 ## 现有结构与职责
 
-[生命周期服务](../../packages/daynight-server/internal/service/task_lifecycle.go)只提供 approve、claim、complete，普通任务更新没有状态字段。
+[生命周期服务](../../packages/daynight-server/internal/service/task_lifecycle.go)提供 approve、unapprove、claim、complete，普通任务更新没有状态字段。
 [项目写事务](../../packages/daynight-server/internal/core/store/project_tx.go)通过项目行锁串行化写入，再在同一事务修改任务、版本和依赖；
 `updated_at` 随普通编辑变化，不能作为执行起点。
 [图读取服务](../../packages/daynight-server/internal/service/task_graph.go)在只读快照中读取项目、任务与统计，并在数据读取后采样数据库 `observedAt`。
@@ -47,7 +47,7 @@ core 与 API 使用可空时间字段，JSON 明确输出 `startedAt`、`complet
 | 普通编辑或同状态低层写入 | 保留 | 保留 |
 | 低层离开已完成且目标不是 `in_progress` | 清空旧尝试 | 清空 |
 
-最后一项定义存储数据规则，不新增公开转换。当前 approve、claim、complete 继续拒绝不符合前驱状态的请求。
+最后一项定义存储数据规则，不新增公开转换。当前 approve、unapprove、claim、complete 继续拒绝不符合前驱状态的请求；todo→proposed 的撤回保留已有起止事实。
 旧 `in_progress` 记录没有可恢复起点；之后 complete 记录真实终点，起点与耗时仍未知。
 
 状态、时间、版本与依赖写入共用既有事务。时间表达式使用项目锁获取后的 SQL statement 时间，

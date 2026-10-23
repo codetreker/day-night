@@ -714,9 +714,9 @@ func (p *acceptanceProcess) update(t *testing.T, task api.Task, fields map[strin
 func acceptanceTaskTimingTransition(t *testing.T, before, after api.Task, action string) {
 	t.Helper()
 	switch action {
-	case "approve":
+	case "approve", "unapprove":
 		if !reflect.DeepEqual(after.StartedAt, before.StartedAt) || !reflect.DeepEqual(after.CompletedAt, before.CompletedAt) {
-			t.Fatal("approval changed execution timing before a task started")
+			t.Fatal("approval operation changed execution timing before a task started")
 		}
 	case "claim":
 		if after.StartedAt == nil || !after.StartedAt.Equal(after.UpdatedAt) || after.CompletedAt != nil {
