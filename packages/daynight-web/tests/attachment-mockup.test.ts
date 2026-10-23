@@ -1,9 +1,10 @@
 import { createElement } from 'react';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { createLocaleRender } from './helpers/renderWithLocale';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { TaskAttachments } from '../src/features/task-detail/attachments/TaskAttachments';
+import { longConfirmationPath } from './mockups/attachment-paths';
 import { createAttachmentFixture, mockupLongPath } from './mockups/fixture';
 
 const render = createLocaleRender('zh-CN');
@@ -21,6 +22,10 @@ describe('development attachment fixture', () => {
     expect(fixture.urls.page('docs/guide.md')).toBe('/tests/mockups/attachments.html?file=docs%2Fguide.md&scenario=files');
     expect(await fixture.api.readText('project', 'task', mockupLongPath, signal())).toContain('Long text reading fixture');
     expect(fixture.urls.preview(mockupLongPath)).toBe('/tests/mockups/files/data/tall.txt');
+    expect(new TextEncoder().encode(longConfirmationPath)).toHaveLength(723);
+    expect(longConfirmationPath.split('/').every((part) => new TextEncoder().encode(part).length === 180)).toBe(true);
+    expect(fixture.urls.preview(longConfirmationPath)).toBe('/tests/mockups/files/data/tall.txt');
+    expect(await fixture.api.readText('project', 'task', longConfirmationPath, signal())).toContain('Long text reading fixture');
     expect(fixture.urls.previewRoot).toBe('/tests/mockups/files/');
     fixture.dispose();
   });
@@ -71,7 +76,9 @@ describe('development attachment fixture', () => {
     await upload('First mockup contents');
     await upload('Overwritten mockup contents');
     expect(screen.getByRole('heading', { name: '附件 · 1' })).toBeVisible();
-    await user.click(screen.getByRole('button', { name: '删除' }));
+    await user.click(screen.getByRole('button', { name: '更多操作：notes/new.txt' }));
+    await user.click(screen.getByRole('menuitem', { name: '删除' }));
+    await user.click(within(screen.getByRole('dialog', { name: '删除附件？' })).getByRole('button', { name: '删除附件' }));
     await screen.findByText('暂无附件，上传文件后即可在这里浏览。');
     expect(screen.getByRole('heading', { name: '附件 · 0' })).toBeVisible();
     expect(screen.queryByRole('region', { name: '附件预览' })).toBeNull();
@@ -79,6 +86,27 @@ describe('development attachment fixture', () => {
     expect(revoke).not.toHaveBeenCalled();
     fixture.dispose();
     expect(revoke.mock.calls).toEqual([['blob:mockup-1'], ['blob:mockup-2']]);
+  });
+
+  it('exposes a retryable deletion failure without changing its last-known inventory', async () => {
+    const fixture = createAttachmentFixture('delete-error');
+    const before = await fixture.api.list('p', 't', {}, signal());
+    await expect(fixture.api.remove('p', 't', 'docs/guide.md', signal())).rejects.toMatchObject({ status: 503, requestId: 'mockup-delete-1' });
+    expect(await fixture.api.list('p', 't', {}, signal())).toEqual(before);
+    await fixture.api.remove('p', 't', 'docs/guide.md', signal());
+    expect((await fixture.api.list('p', 't', {}, signal())).items.map(({ path }) => path)).not.toContain('docs/guide.md');
+    expect((await fixture.api.list('p', 't', {}, signal())).items.map(({ path }) => path)).toContain('examples/guide.md');
+    fixture.dispose();
+  });
+
+  it('keeps the pending-deletion fixture unsettled until its owning request is aborted', async () => {
+    const fixture = createAttachmentFixture('delete-pending');
+    const controller = new AbortController();
+    const pending = fixture.api.remove('p', 't', 'docs/guide.md', controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect((await fixture.api.list('p', 't', {}, signal())).items.map(({ path }) => path)).toContain('docs/guide.md');
+    fixture.dispose();
   });
 
   it('keeps uploaded bytes and listing unchanged when its upload-error scenario rejects', async () => {

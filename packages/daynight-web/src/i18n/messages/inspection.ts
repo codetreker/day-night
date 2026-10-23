@@ -108,6 +108,11 @@ export type InspectionMessages = {
     readonly returnToTask: string;
     readonly deleting: string;
     readonly delete: string;
+    readonly fileActions: (args: { path: string }) => string;
+    readonly deleteTitle: string;
+    readonly deleteConfirmation: string;
+    readonly cancelDelete: string;
+    readonly confirmDelete: string;
     readonly previewLoading: string;
     readonly previewLoadError: string;
     readonly previewReadError: string;

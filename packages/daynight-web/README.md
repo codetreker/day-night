@@ -474,7 +474,7 @@ target or edit the relative path, and upload. Activating the disclosure again
 collapses it while retaining the file, path and validation state. Tab round trips
 retain its expansion; a new project/task starts collapsed. MIME is selected
 from the target path with `mime` 4.1.1. Uploading the same path overwrites that file. Each preview offers Download,
-a neighboring Open in new tab link with an external-link icon, and Delete; successful writes refresh only the attachment list and preview.
+a neighboring Open in new tab link with an external-link icon. Each left-side file row has a right-side `…` menu. Choose Delete to open a full-path confirmation, then explicitly confirm to submit the single-file request. Cancel is initially focused; menu and confirmation Escape close only their own layer. Pending confirmation blocks duplicate/conflicting writes, while failures remain visible with deliberate retry or cancellation. The confirmation includes the current language selector. Hidden tabs dismiss unsubmitted deletion UI. Successful writes refresh only attachment data.
 They do not change the task version, timestamp or graph snapshot.
 
 The attachment hook owns list, write, selection and preview state for one
@@ -484,14 +484,14 @@ changes and unmount cancel requests; generations discard late results. List,
 write and preview errors stay local. An overwrite or a refreshed `updatedAt`
 reloads the selected content and remounts native previews; the server's
 `Cache-Control: no-store` keeps mutable paths current. Empty inventory and no
-selection have distinct states; deleting the selected file clears its preview.
+selection have distinct states; deleting the selected file clears its preview, while deleting another file preserves the loaded preview and reading position. A failed delete retains the last-known row and preview without promising server-side rollback under K1.
 
 The right preview has one vertical scroll owner. Markdown, text/JSON/source and
 large images use `attachment-preview-body`; their renderers have no nested
 vertical height limits. Tables and code can scroll horizontally. For ready
 HTML/PDF, the body and fitted frame wrapper hide overflow and the embedded
 document or native reader owns scrolling. The preview header never scrolls
-independently, exposes the complete path and keeps download/delete reachable.
+independently, exposes the complete path and keeps Download and Open in new tab reachable. File-row menus and confirmation controls remain accessible at narrow widths.
 Left-pane scrolling does not move right-side content or its reading position.
 The standalone reader uses this same rendering and sizing. Independent
 real-service runtime acceptance of the attachment-reading group is complete.
@@ -575,7 +575,7 @@ origin. `tests/mockups/main.tsx` renders the production attachment components an
 CSS with `tests/mockups/fixture.ts`; metadata changes remain in memory and native
 previews use local fixture files. Exercise detail tabs, adjacent panes and tall
 content along with loading, empty, failure and busy states, plus upload,
-overwrite, preview, download and deletion without Go,
+overwrite, preview, download and menu/confirmation deletion without Go,
 PostgreSQL or network API calls. Refreshing the page resets fixture state.
 Object URLs stay valid through deletion and are released when the fixture is
 disposed. Open `/tests/mockups/attachments.html?file=docs%2Fguide.md&scenario=files`

@@ -45,8 +45,7 @@ There is one right-side vertical scroll owner. Markdown, text/JSON/source and
 large images use the preview body without child vertical height caps. Tables
 and code retain local horizontal scrolling. Ready HTML/PDF use a fitted iframe;
 the preview body and frame wrapper hide overflow while the embedded document or
-native reader scrolls. The header exposes the full path and keeps download, standalone opening and
-delete reachable. Overview has its own normal content scrollbar.
+native reader scrolls. The header exposes the full path and keeps download and standalone opening reachable. The [deletion confirmation decision](../feature/2026-10-23-attachment-delete-confirmation.md) places deletion in each left-side file row's action menu and requires a separate full-path confirmation. Overview has its own normal content scrollbar.
 
 The [requirements](../../../../docs/spec/daynight-task-attachments.md#web-管理与预览)
 own visible behavior, and the [attachment design](../../../../docs/design/daynight-task-attachments.md#web-文件树与预览)

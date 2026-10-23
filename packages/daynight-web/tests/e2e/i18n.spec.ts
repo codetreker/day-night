@@ -226,12 +226,25 @@ test.describe('Web language journeys', () => {
       const current = { method, started: deferred(), release: deferred() };
       hold = current;
       const response = page.waitForResponse((response) => response.url() === uploadUrl && response.request().method() === method);
-      await attachments.locator(method === 'PUT' ? 'button[type=submit]' : '.attachment-delete').click();
+      const confirmation = dialog.locator('.attachment-delete-dialog');
+      if (method === 'PUT') await attachments.locator('button[type=submit]').click();
+      else {
+        const english = await language(dialog).inputValue() === 'en';
+        await attachments.getByRole('button', { name: `${english ? 'More actions: ' : '更多操作：'}${uploadPath}`, exact: true }).click();
+        await page.getByRole('menuitem', { name: english ? 'Delete' : '删除', exact: true }).click();
+        await expect(confirmation).toContainText(uploadPath);
+        await confirmation.getByRole('button', { name: english ? 'Delete attachment' : '删除附件', exact: true }).click();
+      }
       try {
         await within(current.started.promise, `pending ${method}`);
         const pendingReads = [...reads];
         const selectedPath = await attachments.locator('.attachment-preview h5').textContent();
-        await language(dialog).selectOption(locale);
+        await language(method === 'DELETE' ? confirmation : dialog).selectOption(locale);
+        if (method === 'DELETE') {
+          await expect(confirmation).toHaveAccessibleName(locale === 'en' ? 'Delete attachment?' : '删除附件？');
+          await expect(confirmation).toContainText(uploadPath);
+          await expect(confirmation.getByRole('button', { name: locale === 'en' ? 'Deleting…' : '正在删除…', exact: true })).toBeDisabled();
+        }
         await expect(attachments.locator('button[type=submit]')).toBeDisabled();
         await expect(pathInput).toBeDisabled();
         await expect(attachments.locator('.attachment-preview h5')).toHaveText(selectedPath!);

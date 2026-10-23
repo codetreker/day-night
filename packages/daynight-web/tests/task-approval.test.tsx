@@ -94,7 +94,7 @@ describe('approval in shared production task details', () => {
     const tab = within(dialog).getByRole('tab', { name: 'Attachments' });
     fireEvent.click(within(dialog).getByRole('link', { name: 'Selected attachment' }));
     expect(tab).toHaveAttribute('aria-selected', 'true');
-    const selection = await within(dialog).findByRole('button', { name: /kept.txt/ });
+    const selection = await within(dialog).findByRole('button', { name: /kept.txt/, pressed: true });
     const preview = await within(dialog).findByText('Selected attachment content', { selector: 'pre' });
     const attachments = dialog.querySelector('.task-attachments');
     const input = within(dialog).getByLabelText('Choose one file') as HTMLInputElement;
