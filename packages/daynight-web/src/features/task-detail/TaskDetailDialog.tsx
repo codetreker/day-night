@@ -116,13 +116,16 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
   const retainedDetail = detail !== null && (error !== null || task.requiresFreshRead);
   const stale = detail !== null && !task.refreshing && !retainedDetail && isTaskStale(snapshotNode, detail);
   const successors = snapshot.index.successors.get(taskId);
-  const relation = (id: string) => {
+  const relation = (id: string, external: boolean) => {
     const node = snapshot.index.nodes.get(id);
+    const title = node === undefined ? id : `${node.titlePreview}${node.titleTruncated ? '…' : ''}`;
+    const kind = external ? m.externalDependency : m.ordinaryDependency;
     return (
       <li key={id}>
-        <button className="task-detail-relation" type="button" onClick={() => onSelectTask(id)}>
+        <button className="task-detail-relation" type="button" aria-label={m.relationLabel({ title, kind })} onClick={() => onSelectTask(id)}>
           <span className={`task-detail-relation-dot${node === undefined ? '' : ` task-detail-dot-${node.status}`}`} aria-hidden="true" />
-          <span>{node === undefined ? id : `${node.titlePreview}${node.titleTruncated ? '…' : ''}`}</span>
+          <span>{title}</span>
+          <span className={`task-detail-relation-kind${external ? ' task-detail-relation-external' : ''}`}>{kind}</span>
           <span className="task-detail-relation-arrow" aria-hidden="true">↗</span>
         </button>
       </li>
@@ -199,17 +202,17 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                   <aside className="task-detail-aside" aria-label={m.relationsMetadata}>
                     <section className="task-detail-section" aria-label={m.dependencies}>
                       <h4>{m.countedHeading({ label: m.dependencies, count: format.number(detail.dependsOn.length) })}</h4>
-                      {detail.dependsOn.length === 0 ? <p className="task-detail-description">{m.noDependencies}</p> : <ul className="task-detail-relations">{detail.dependsOn.map(relation)}</ul>}
+                      {detail.dependsOn.length === 0 ? <p className="task-detail-description">{m.noDependencies}</p> : <ul className="task-detail-relations">{detail.dependsOn.map((id) => relation(id, detail.externalDependsOn.includes(id)))}</ul>}
                     </section>
                     <section className="task-detail-section" aria-label={m.blockers}>
                       <h4>{m.countedHeading({ label: m.blockers, count: format.number(detail.blockedBy.length) })}</h4>
-                      {detail.blockedBy.length === 0 ? <p className="task-detail-description">{m.noBlockers}</p> : <ul className="task-detail-relations">{detail.blockedBy.map(relation)}</ul>}
+                      {detail.blockedBy.length === 0 ? <p className="task-detail-description">{m.noBlockers}</p> : <ul className="task-detail-relations">{detail.blockedBy.map((id) => relation(id, detail.externalDependsOn.includes(id)))}</ul>}
                     </section>
                     <section className="task-detail-section" aria-label={m.successors}>
                       <h4>{successors === undefined ? m.successors : m.countedHeading({ label: m.successors, count: format.number(successors.length) })}</h4>
                       {successors === undefined
                         ? <p className="task-detail-description">{m.successorsMissing}</p>
-                        : successors.length === 0 ? <p className="task-detail-description">{m.noSuccessors}</p> : <ul className="task-detail-relations">{successors.map(relation)}</ul>}
+                        : successors.length === 0 ? <p className="task-detail-description">{m.noSuccessors}</p> : <ul className="task-detail-relations">{successors.map((id) => relation(id, snapshot.index.nodes.get(id)!.externalDependsOn.includes(taskId)))}</ul>}
                     </section>
                     <dl className="task-detail-section task-detail-metadata">
                       <div><dt>{m.created}</dt><dd><time dateTime={detail.createdAt}>{format.dateTime(detail.createdAt)}</time></dd></div>

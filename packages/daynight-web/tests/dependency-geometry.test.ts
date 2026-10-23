@@ -42,11 +42,12 @@ describe('independent production dependency geometry oracle', () => {
   });
   it('derives projection identities only from API dependencies, including complete upstream context', () => {
     expect(expectedDependencyTopology([
-      { id: 'A', dependsOn: [] }, { id: 'C', dependsOn: ['A', 'X'] }, { id: 'P', dependsOn: [] },
-      { id: 'X', dependsOn: ['P'] }, { id: 'Y', dependsOn: ['X'] }, { id: 'Z', dependsOn: [] },
+      { id: 'A', dependsOn: [], externalDependsOn: [] }, { id: 'C', dependsOn: ['A', 'X'], externalDependsOn: ['X'] }, { id: 'P', dependsOn: [], externalDependsOn: [] },
+      { id: 'X', dependsOn: ['P'], externalDependsOn: [] }, { id: 'Y', dependsOn: ['X'], externalDependsOn: [] }, { id: 'Z', dependsOn: [], externalDependsOn: [] },
     ], 'A')).toEqual({
+      memberIds: ['A', 'C'],
       nodes: [{ id: 'A' }, { id: 'C' }, { id: 'P' }, { id: 'X' }],
-      edges: [{ id: 'A->C', source: 'A', target: 'C', external: false }, { id: 'X->C', source: 'X', target: 'C', external: true }, { id: 'P->X', source: 'P', target: 'X', external: true }],
+      edges: [{ id: 'A->C', source: 'A', target: 'C', external: false }, { id: 'X->C', source: 'X', target: 'C', external: true }, { id: 'P->X', source: 'P', target: 'X', external: false }],
     });
   });
   it('checks actual quadratic bounds without any declared compiler input', () => {

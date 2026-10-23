@@ -3,7 +3,7 @@ import { useI18n } from '../../i18n/LocaleProvider';
 import { LanguageSelector } from '../../i18n/LanguageSelector';
 import { Background, BackgroundVariant, Controls, getViewportForBounds, ReactFlow, useReactFlow, useStore, type Viewport } from '@xyflow/react';
 import { getTaskNodeHeight, layoutGraph, type CanvasLayout } from './layout';
-import { projectRoot, tracePrerequisites, type GraphIndex, type RootProjection } from './model';
+import { projectChain, tracePrerequisites, type GraphIndex, type ChainProjection } from './model';
 import { TaskNode, type TaskFlowNode } from './TaskNode';
 import { DependencyEdges } from './DependencyEdges';
 import { TaskInspectionContext, useTaskInspection } from './inspection';
@@ -65,20 +65,29 @@ const InitialViewport = ({ geometry, rootId, folded, action, resetButton }: { ge
   return null;
 };
 
-type CanvasProps = TaskGraphProps & { geometry: CanvasLayout; projection: RootProjection; visibleIds: ReadonlySet<string>; expansions: ReadonlyMap<string, TaskExpansions>; action: ViewportAction | null; onExpandTask: (id: string, direction: TaskExpansionDirection) => void; onResetOverview: () => void };
+type FocusedControl = { current: HTMLElement | null };
+type CanvasProps = TaskGraphProps & { focusedControl: FocusedControl; geometry: CanvasLayout; projection: ChainProjection; visibleIds: ReadonlySet<string>; expansions: ReadonlyMap<string, TaskExpansions>; action: ViewportAction | null; onExpandTask: (id: string, direction: TaskExpansionDirection) => void; onResetOverview: () => void };
 
-const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleIds, expansions, action, onExpandTask, onResetOverview }: CanvasProps) => {
+const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleIds, expansions, action, onExpandTask, onResetOverview, focusedControl }: CanvasProps) => {
   const { messages: { graph: m } } = useI18n();
   const { fullscreen, containerRef, toggleRef, onKeyDown, toggle } = useGraphFullscreen();
   const resetButton = useRef<HTMLButtonElement>(null);
-  const focusedControl = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     const focusedNode = document.activeElement?.closest<HTMLElement>('.react-flow__node');
     const removedNode = focusedNode != null && containerRef.current?.contains(focusedNode) &&
       !geometry.nodes.some((node) => node.id === focusedNode.dataset.id);
     const detachedControl = focusedControl.current !== null && !focusedControl.current.isConnected && document.activeElement === document.body;
+    if (detachedControl && focusedControl.current!.classList.contains('task-node-expand')) {
+      const previousId = focusedControl.current!.closest<HTMLElement>('.react-flow__node')?.dataset.id;
+      const retained = [...containerRef.current!.querySelectorAll<HTMLElement>('.react-flow__node')].find((node) => node.dataset.id === previousId);
+      const body = retained?.querySelector<HTMLButtonElement>('.task-node-body');
+      if (body != null) {
+        body.focus({ preventScroll: true });
+        return;
+      }
+    }
     if (removedNode || detachedControl) toggleRef.current?.focus();
-  }, [geometry, containerRef, toggleRef]);
+  }, [geometry, containerRef, toggleRef, focusedControl]);
   const [inspectionId, setInspectionId] = useState<string | null>(null);
   const selectedTaskId = inspectionId !== null && visibleIds.has(inspectionId) ? inspectionId : null;
   const highlightedIds = useMemo(() => selectedTaskId === null ? emptyHighlight : tracePrerequisites(index, selectedTaskId), [index, selectedTaskId]);
@@ -95,7 +104,7 @@ const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleId
     id: node.id, position: node.position, type: 'task', width: node.width, height: node.height,
     style: { width: node.width, height: node.height },
     data: {
-      task: index.nodes.get(node.id)!, kind: node.kind, shared: index.sharedIds.has(node.id),
+      task: index.nodes.get(node.id)!, kind: node.kind,
       center: { x: node.position.x + node.width / 2, y: node.position.y + node.height / 2 },
       size: { width: node.width, height: node.height },
       onInspectTask, onOpenTask, onExpandTask,
@@ -166,7 +175,7 @@ const LayoutError = () => {
   return <div className="graph-error" role="alert"><h3>{m.layoutErrorTitle}</h3><p>{m.layoutErrorDescription}</p></div>;
 };
 
-const VisibleTaskGraph = ({ projection, ...props }: TaskGraphProps & { projection: RootProjection }) => {
+const VisibleTaskGraph = ({ projection, ...props }: TaskGraphProps & { projection: ChainProjection; focusedControl: FocusedControl }) => {
   const [visibility, setVisibility] = useState(() => ({ projection, ids: createGraphOverview(props.index, projection) }));
   const sequence = useRef(0);
   const [action, setAction] = useState<ViewportAction | null>(null);
@@ -202,9 +211,10 @@ const VisibleTaskGraph = ({ projection, ...props }: TaskGraphProps & { projectio
 };
 
 export const TaskGraph = (props: TaskGraphProps) => {
+  const focusedControl = useRef<HTMLElement | null>(null);
   const result = useMemo(() => {
-    try { return { kind: 'ready' as const, projection: projectRoot(props.index, props.rootId) }; }
+    try { return { kind: 'ready' as const, projection: projectChain(props.index, props.rootId) }; }
     catch (error) { return { kind: 'error' as const, error }; }
   }, [props.index, props.rootId]);
-  return result.kind === 'error' ? <LayoutError /> : <VisibleTaskGraph key={props.rootId} {...props} projection={result.projection} />;
+  return result.kind === 'error' ? <LayoutError /> : <VisibleTaskGraph key={`${props.rootId}:${[...result.projection.mainIds].join(',')}`} {...props} projection={result.projection} focusedControl={focusedControl} />;
 };

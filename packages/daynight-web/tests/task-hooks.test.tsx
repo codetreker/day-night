@@ -52,8 +52,10 @@ describe("task graph snapshots", () => {
     expect(changed.graph).not.toBe(first.graph);
     expect(changed.index).not.toBe(first.index);
     expect(changed.index.nodes.get(taskId)).toMatchObject({ externalDependsOn: [otherTask], updatedAt: time, ready: true });
-    expect(changed.index.roots).toEqual(first.index.roots);
-    expect(changed.index.rootProgress).toEqual(first.index.rootProgress);
+    expect(first.index.representativeIds).toEqual([otherTask]);
+    expect(changed.index.representativeIds).toEqual([otherTask, taskId]);
+    expect(first.index.components.get(otherTask)!.memberIds).toEqual(new Set([otherTask, taskId]));
+    expect(changed.index.components.get(taskId)!.memberIds).toEqual(new Set([taskId]));
     await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
     expect(result.current.snapshot!.graph).toBe(changed.graph);
     expect(result.current.snapshot!.index).toBe(changed.index);

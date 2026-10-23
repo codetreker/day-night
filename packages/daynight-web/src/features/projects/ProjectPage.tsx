@@ -6,7 +6,7 @@ import { useI18n } from "../../i18n/LocaleProvider";
 import type { WorkspaceMessages } from "../../i18n/messages/workspace";
 import { TaskDetailSessionBoundary, useTaskDetailSessions } from "../task-detail/TaskDetailSession";
 import { TaskDetailDialog } from "../task-detail/TaskDetailDialog";
-import { RootList } from "../task-graph/RootList";
+import { ChainList } from "../task-graph/ChainList";
 import { GraphDataError } from "../task-graph/model";
 import { ProjectTaskTabs } from "./ProjectTaskTabs";
 import { StandaloneList } from "./StandaloneList";
@@ -72,24 +72,24 @@ const ProjectView = ({ projectId, renderActions }: { readonly projectId: string;
   // Database timestamp precision is retained by reversing the server's exact order.
   const categories = useMemo(() => {
     if (snapshot === null) return null;
-    const chains = snapshot.index.roots.toReversed().filter((id) => snapshot.index.successors.get(id)!.length > 0);
-    const standalone = snapshot.index.roots.toReversed().filter((id) => snapshot.index.successors.get(id)!.length === 0);
+    const chains = snapshot.index.representativeIds.toReversed().filter((id) => snapshot.index.components.get(id)!.memberIds.size > 1);
+    const standalone = snapshot.index.representativeIds.toReversed().filter((id) => snapshot.index.components.get(id)!.memberIds.size === 1);
     let unfinishedChainTaskCount = 0;
     let unfinishedStandaloneTaskCount = 0;
     for (const task of snapshot.index.nodes.values()) {
       if (task.status === "done") continue;
-      if (task.dependsOn.length === 0 && snapshot.index.successors.get(task.id)!.length === 0) unfinishedStandaloneTaskCount++;
+      if (snapshot.index.components.get(snapshot.index.componentByTask.get(task.id)!)!.memberIds.size === 1) unfinishedStandaloneTaskCount++;
       else unfinishedChainTaskCount++;
     }
     return { chains, standalone, unfinishedChainTaskCount, unfinishedStandaloneTaskCount };
   }, [snapshot]);
   const rootIds = useMemo(() => snapshot === null || categories === null ? null : categories.chains.filter((id) => {
-    const progress = snapshot.index.rootProgress.get(id)!;
+    const progress = snapshot.index.components.get(id)!.progress;
     return showCompleted || progress.status !== "done";
   }), [snapshot, categories, showCompleted]);
   const standaloneIds = useMemo(() => snapshot === null || categories === null ? [] : categories.standalone.filter((id) =>
     showCompletedStandalone || snapshot.index.nodes.get(id)!.status !== "done"), [snapshot, categories, showCompletedStandalone]);
-  const { expandedRootId, setExpandedRootId, issue: preferenceIssue } = useProjectViewPreferences(projectId, rootIds);
+  const { expandedRootId, setExpandedRootId, issue: preferenceIssue } = useProjectViewPreferences(projectId, rootIds, snapshot?.index.componentByTask ?? null);
   expandedRoot.current = expandedRootId;
   const detailTaskId = detailSelection !== null && snapshot !== null &&
     (detailSelection.revision === snapshot.revision || snapshot.index.nodes.has(detailSelection.id)) ? detailSelection.id : null;
@@ -199,7 +199,7 @@ const ProjectView = ({ projectId, renderActions }: { readonly projectId: string;
                 unfinishedChainTaskCount={categories!.unfinishedChainTaskCount} onViewChange={selectView} />
               <div role="tabpanel" id="project-task-panel-chains" aria-labelledby="project-task-tab-chains" hidden={activeView !== "chains"}>
                 {activeView === "chains" && <section aria-label={m.chains}>
-                  <RootList index={snapshot.index} rootIds={rootIds!} allRootIds={categories!.chains} expandedRootId={expandedRootId} onExpand={setExpandedRootId} onOpenTask={onOpenTask}
+                  <ChainList index={snapshot.index} representativeIds={rootIds!} allRepresentativeIds={categories!.chains} expandedRootId={expandedRootId} onExpand={setExpandedRootId} onOpenTask={onOpenTask}
                     showCompleted={showCompleted} onShowCompletedChange={onShowCompletedChange} />
                 </section>}
               </div>

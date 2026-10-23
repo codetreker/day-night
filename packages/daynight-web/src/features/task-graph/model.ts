@@ -1,17 +1,22 @@
 import type { GraphTask, TaskGraph, TaskGraphSummary, TaskStatus } from "../../api/types";
 
-export type RootProgress = {
+export type ComponentProgress = {
   readonly total: number;
   readonly done: number;
   readonly status: TaskStatus;
 };
 
+export type TaskComponent = {
+  readonly memberIds: ReadonlySet<string>;
+  readonly progress: ComponentProgress;
+};
+
 export type GraphIndex = {
   readonly nodes: ReadonlyMap<string, GraphTask>;
   readonly successors: ReadonlyMap<string, readonly string[]>;
-  readonly roots: readonly string[];
-  readonly sharedIds: ReadonlySet<string>;
-  readonly rootProgress: ReadonlyMap<string, RootProgress>;
+  readonly representativeIds: readonly string[];
+  readonly components: ReadonlyMap<string, TaskComponent>;
+  readonly componentByTask: ReadonlyMap<string, string>;
 };
 
 export type ProjectionEdge = {
@@ -20,7 +25,7 @@ export type ProjectionEdge = {
   readonly external: boolean;
 };
 
-export type RootProjection = {
+export type ChainProjection = {
   readonly rootId: string;
   readonly mainIds: ReadonlySet<string>;
   readonly externalIds: ReadonlySet<string>;
@@ -39,40 +44,37 @@ const rejectGraph = (): never => {
   throw new GraphDataError();
 };
 
-const reachable = (successors: GraphIndex["successors"], rootId: string): Set<string> => {
-  const result = new Set<string>();
-  const pending = [rootId];
-  while (pending.length > 0) {
-    const id = pending.pop()!;
-    if (result.has(id)) continue;
-    result.add(id);
-    for (const successor of successors.get(id)!) pending.push(successor);
-  }
-  return result;
-};
-
 export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
   if (typeof graph !== "object" || graph === null || !Array.isArray(graph.tasks) ||
     typeof graph.summary !== "object" || graph.summary === null) return rejectGraph();
   if (graph.tasks.length > 1000) throw new GraphDataError("limit");
   const nodes = new Map<string, GraphTask>();
   const successors = new Map<string, string[]>();
-  const roots: string[] = [];
+  const executionRoots: string[] = [];
+  const ordinaryNeighbors = new Map<string, string[]>();
+  const ordinaryIndegrees = new Map<string, number>();
+  const order = new Map<string, number>();
   let edgeCount = 0;
   for (const task of graph.tasks) {
     if (typeof task !== "object" || task === null || typeof task.id !== "string" || task.id === "" || nodes.has(task.id) ||
-      !Array.isArray(task.dependsOn) || !Array.isArray(task.blockedBy) ||
+      !Array.isArray(task.dependsOn) || !Array.isArray(task.externalDependsOn) || !Array.isArray(task.blockedBy) ||
       (task.status !== "proposed" && task.status !== "todo" && task.status !== "in_progress" && task.status !== "done") || typeof task.ready !== "boolean") {
       return rejectGraph();
     }
     edgeCount += task.dependsOn.length;
     if (edgeCount > 5000) throw new GraphDataError("limit");
-    if (new Set(task.dependsOn).size !== task.dependsOn.length || new Set(task.blockedBy).size !== task.blockedBy.length) {
+    const dependencies = new Set<string>(task.dependsOn);
+    const external = new Set<string>(task.externalDependsOn);
+    if (dependencies.size !== task.dependsOn.length || external.size !== task.externalDependsOn.length ||
+      [...external].some((id) => !dependencies.has(id)) || new Set(task.blockedBy).size !== task.blockedBy.length) {
       return rejectGraph();
     }
+    order.set(task.id, nodes.size);
     nodes.set(task.id, task);
+    ordinaryNeighbors.set(task.id, []);
+    ordinaryIndegrees.set(task.id, task.dependsOn.length - task.externalDependsOn.length);
     successors.set(task.id, []);
-    if (task.dependsOn.length === 0) roots.push(task.id);
+    if (task.dependsOn.length === 0) executionRoots.push(task.id);
   }
 
   const actual: { -readonly [Key in keyof TaskGraphSummary]: number } = {
@@ -80,10 +82,15 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
   };
   for (const task of nodes.values()) {
     const blocked = new Set<string>();
+    const external = new Set(task.externalDependsOn);
     for (const predecessorId of task.dependsOn) {
       const predecessor = nodes.get(predecessorId);
       if (predecessor === undefined || predecessorId === task.id) return rejectGraph();
       successors.get(predecessorId)!.push(task.id);
+      if (!external.has(predecessorId)) {
+        ordinaryNeighbors.get(task.id)!.push(predecessorId);
+        ordinaryNeighbors.get(predecessorId)!.push(task.id);
+      }
       if (predecessor.status !== "done") blocked.add(predecessorId);
     }
     if (blocked.size !== task.blockedBy.length || task.blockedBy.some((id) => !blocked.has(id)) ||
@@ -102,7 +109,7 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
   }
 
   const degrees = new Map([...nodes.values()].map((task) => [task.id, task.dependsOn.length]));
-  const pending = [...roots];
+  const pending = [...executionRoots];
   for (let position = 0; position < pending.length; position++) {
     for (const successor of successors.get(pending[position]!)!) {
       const degree = degrees.get(successor)! - 1;
@@ -112,32 +119,43 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
   }
   if (pending.length !== nodes.size) return rejectGraph();
 
-  const rootProgress = new Map<string, RootProgress>();
-  const rootCount = new Map<string, number>();
-  const sharedIds = new Set<string>();
-  for (const root of roots) {
-    const mainIds = reachable(successors, root);
+  const componentByTask = new Map<string, string>();
+  const discovered = new Map<string, TaskComponent>();
+  for (const first of nodes.keys()) {
+    if (componentByTask.has(first)) continue;
+    const memberIds = new Set([first]);
+    const members = [first];
+    let representative: string | undefined;
     let done = 0;
     let inProgress = false;
     let todo = false;
-    for (const id of mainIds) {
+    for (let position = 0; position < members.length; position++) {
+      const id = members[position]!;
+      if (ordinaryIndegrees.get(id) === 0 && (representative === undefined || order.get(id)! < order.get(representative)!)) representative = id;
       const status = nodes.get(id)!.status;
       if (status === "done") done++;
       else if (status === "in_progress") inProgress = true;
       else if (status === "todo") todo = true;
-      const count = (rootCount.get(id) ?? 0) + 1;
-      rootCount.set(id, count);
-      if (count > 1) sharedIds.add(id);
+      for (const neighbor of ordinaryNeighbors.get(id)!) {
+        if (memberIds.has(neighbor)) continue;
+        memberIds.add(neighbor);
+        members.push(neighbor);
+      }
     }
-    const status = done === mainIds.size ? "done" : done > 0 || inProgress ? "in_progress" : todo ? "todo" : "proposed";
-    rootProgress.set(root, { total: mainIds.size, done, status });
+    if (representative === undefined) return rejectGraph();
+    const status = done === members.length ? "done" : done > 0 || inProgress ? "in_progress" : todo ? "todo" : "proposed";
+    for (const id of memberIds) componentByTask.set(id, representative);
+    discovered.set(representative, { memberIds, progress: { total: members.length, done, status } });
   }
-  return { nodes, successors, roots, sharedIds, rootProgress };
+  const representativeIds = [...nodes.keys()].filter((id) => discovered.has(id));
+  const components = new Map(representativeIds.map((id) => [id, discovered.get(id)!]));
+  return { nodes, successors, representativeIds, components, componentByTask };
 };
 
-export const projectRoot = (index: GraphIndex, rootId: string): RootProjection => {
-  if (!index.roots.includes(rootId)) return rejectGraph();
-  const mainIds = reachable(index.successors, rootId);
+export const projectChain = (index: GraphIndex, rootId: string): ChainProjection => {
+  const component = index.components.get(rootId);
+  if (component === undefined) return rejectGraph();
+  const mainIds = new Set([...index.nodes.keys()].filter((id) => component.memberIds.has(id)));
   const visibleIds = new Set(mainIds);
   const pending = [...mainIds];
   while (pending.length > 0) {
@@ -152,11 +170,12 @@ export const projectRoot = (index: GraphIndex, rootId: string): RootProjection =
   for (const task of index.nodes.values()) {
     if (!visibleIds.has(task.id)) continue;
     if (!mainIds.has(task.id)) externalIds.add(task.id);
+    const external = new Set(task.externalDependsOn);
     for (const source of task.dependsOn) {
-      edges.push({ source, target: task.id, external: !mainIds.has(source) });
+      edges.push({ source, target: task.id, external: external.has(source) });
     }
   }
-  return { rootId, mainIds, externalIds, edges, completed: index.rootProgress.get(rootId)!.done };
+  return { rootId, mainIds, externalIds, edges, completed: component.progress.done };
 };
 
 export const tracePrerequisites = (index: GraphIndex, taskId: string): ReadonlySet<string> => {

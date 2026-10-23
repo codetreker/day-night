@@ -29,7 +29,7 @@ export const workspace: WorkspaceMessages = {
     list: "Standalone task list", showCompletedCount: ({ count }) => `Show completed standalone tasks (${number(count)})`,
     summary: ({ visible, total }) => `Newest first · ${number(visible)} / ${number(total)} standalone ${total === 1 ? "task" : "tasks"}`,
     summaryLabel: ({ visible, total }) => `Showing ${number(visible)} of ${number(total)} standalone ${total === 1 ? "task" : "tasks"}`,
-    explanation: "Sorted by creation time, newest first. Standalone tasks have no dependencies or successors. Select a task to view its details.", empty: "No standalone tasks", emptyDetail: "All current tasks have dependencies. View them in the task chains tab.", allCompleted: "All standalone tasks are complete",
+    explanation: "Sorted by creation time, newest first. Standalone tasks have no ordinary dependencies or successors. External prerequisites can still block execution. Select a task to view its details.", empty: "No standalone tasks", emptyDetail: "All current tasks are connected by ordinary dependencies. View them in the task chains tab.", allCompleted: "All standalone tasks are complete",
     hiddenCompleted: ({ count }) => `${number(count)} completed standalone ${count === 1 ? "task is" : "tasks are"} hidden. Project statistics still include all tasks.`, showCompleted: "Show completed standalone tasks", createdOn: ({ date }) => `Created on ${date}`,
   },
   tabs: { label: "Project task views", standalone: "Standalone tasks", chains: "Task chains", unfinishedCount: "Unfinished task count" },

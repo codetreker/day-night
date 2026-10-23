@@ -11,22 +11,23 @@ not communicate how many unfinished tasks remain in each view.
 
 ## Decision
 
-Both tab badges count unfinished tasks from the same complete graph snapshot.
-Proposed, pending and in-progress tasks contribute one; done tasks contribute
-zero. The [four-state reader decision](2026-10-22-proposed-task-readers.md)
-extends the original pending/in-progress inventory without changing its unit.
-A task with no prerequisites and no successors contributes to Standalone tasks;
-every other task contributes to Task chains. Each task ID is visited once, so
-shared successors contribute once across roots. A finished root does not remove
-its unfinished descendants from the chain badge.
+Both tab badges count unfinished tasks from the complete snapshot. Proposed,
+pending and in-progress tasks contribute one; done contributes zero. The
+[four-state reader decision](2026-10-22-proposed-task-readers.md) extends the
+original pending/in-progress inventory without changing its unit. Under the
+[external dependency decision](../architecture/2026-10-23-external-dependency-design.md),
+an ordinary singleton contributes to Standalone tasks and every multi-member
+component task contributes to Task chains. Each ID is counted once; a finished
+representative does not hide unfinished members. External context does not
+change the counted owner.
 
 The counts do not depend on active tabs, expanded roots or completed-item
 filters. Categories with only finished tasks show zero even when completed rows
 are visible. Snapshot replacement recomputes classification and counts together;
 failed refreshes retain the last successful snapshot. There are no new API
 requests or browser preference records. List toolbars still describe visible and
-total standalone items or root-chain entries; per-chain progress keeps its
-root-and-reachable-successor scope.
+total standalone items or ordinary-component entries; per-chain progress uses
+that component's members.
 
 This partially supersedes badge semantics in the [task view decision](2026-10-22-project-task-views.md).
 Required behavior belongs in the [specification](../../../../docs/spec/daynight-web.md),
@@ -38,15 +39,17 @@ and the [design](../../../../docs/design/daynight-web.md) explains the projectio
 remain open, but does not show their unfinished task volume. It retains mixed
 units between the tabs.
 
-**Sum unfinished tasks from each root's progress.** Existing progress values
-already describe each chain, but shared successors would inflate the badge.
-Classifying unique tasks from the complete index makes the badge independent of
-which roots are rendered and avoids repeated reachability traversals.
+**Sum unfinished tasks from each root's progress.** In the original root model,
+shared successors inflated this sum. The complete-index unique-task fold kept
+badge units independent of displayed roots. Ordinary components now remove
+membership overlap, while the existing single fold still derives category and
+unfinished count from one consistent snapshot.
 
 ## Consequences
 
 The two badges use the same unit and sum to the project's proposed plus pending plus
 in-progress total. A dependency edit may move unfinished tasks between the two
 badges on refresh. A chain badge can exceed the number of chain rows because it
-counts their unique tasks. The root-based list, graph contexts, aggregate chain
-status, server ordering and stored preferences retain their existing meanings.
+counts their unique tasks. The ordinary-component list, all-edge graph contexts, aggregate chain status,
+exact server ordering and original member-witness preferences use the same
+snapshot without a persisted group identity.

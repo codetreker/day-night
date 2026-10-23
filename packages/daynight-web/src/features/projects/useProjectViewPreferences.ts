@@ -53,20 +53,22 @@ export const useCompletedChainVisibility = (projectId: string) => {
   return { showCompleted, onShowCompletedChange, issue: writeIssue ?? initial.issue };
 };
 
-export const useProjectViewPreferences = (projectId: string, roots: readonly string[] | null) => {
+export const useProjectViewPreferences = (projectId: string, roots: readonly string[] | null, componentByTask: ReadonlyMap<string, string> | null) => {
   const key = `daynight:project-view:${projectId}`;
   const [initial] = useState(() => readPreference(key, expandedRootPreference));
   const [expanded, setExpandedRootId] = useState(initial.value);
   const [writeIssue, setWriteIssue] = useState<PreferenceIssue | null>(null);
   const saved = useRef(initial.saved);
-  const expandedRootId = roots === null || expanded === null ? null
-    : expanded !== undefined && roots.includes(expanded) ? expanded : roots[0] ?? null;
+  const representative = expanded === undefined || expanded === null || componentByTask === null ? undefined : componentByTask.get(expanded);
+  const available = representative !== undefined && roots !== null && roots.includes(representative);
+  const expandedRootId = roots === null || expanded === null ? null : available ? representative! : roots[0] ?? null;
+  const witness = available ? expanded! : expandedRootId;
 
   // Reconcile and save before the rendered rows can receive navigation or reload actions.
   useLayoutEffect(() => {
     if (roots === null || roots.length === 0) return;
-    setExpandedRootId(expandedRootId);
-    const preferences: Preferences = { expandedRootId };
+    setExpandedRootId(witness);
+    const preferences: Preferences = { expandedRootId: witness };
     const serialized = JSON.stringify(preferences);
     if (serialized === saved.current) return;
     try {
@@ -76,7 +78,7 @@ export const useProjectViewPreferences = (projectId: string, roots: readonly str
     } catch (cause) {
       setWriteIssue({ kind: "write", cause });
     }
-  }, [key, roots, expandedRootId]);
+  }, [key, roots, witness]);
 
   return { expandedRootId, setExpandedRootId, issue: writeIssue ?? initial.issue };
 };

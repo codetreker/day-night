@@ -1,25 +1,52 @@
 import { describe, expect, it } from 'vitest';
-import { expectedBatch, expectedDependencyTopology, expectedNodeHeights, expectedOverview, inducedTopology } from './e2e/visible-topology';
+import { expectedBatch, expectedChainMembers, expectedDependencyTopology, expectedNodeHeights, expectedOverview, inducedTopology } from './e2e/visible-topology';
 import type { DependencyTopology } from './e2e/visible-topology';
 const graph = (count: number): DependencyTopology => ({ nodes: Array.from({ length: count }, (_, index) => ({ id: String(index) })), edges: Array.from({ length: count - 1 }, (_, index) => ({ id: `0->${index + 1}`, source: '0', target: String(index + 1), external: false })) });
 describe('independent visible API topology expectations', () => {
-  it('derives complete root descendants and their ancestors without adding external sibling branches', () => {
+  it('derives ordinary members and complete ancestors without adding external sibling branches', () => {
     const full = expectedDependencyTopology([
-      { id: 'root', dependsOn: [] }, { id: 'child', dependsOn: ['root', 'external'] },
-      { id: 'external', dependsOn: ['ancestor'] }, { id: 'ancestor', dependsOn: [] },
-      { id: 'sibling', dependsOn: ['external'] }, { id: 'unrelated', dependsOn: [] },
+      { id: 'root', dependsOn: [], externalDependsOn: [] }, { id: 'child', dependsOn: ['root', 'external'], externalDependsOn: ['external'] },
+      { id: 'external', dependsOn: ['ancestor'], externalDependsOn: [] }, { id: 'ancestor', dependsOn: [], externalDependsOn: [] },
+      { id: 'sibling', dependsOn: ['external'], externalDependsOn: [] }, { id: 'unrelated', dependsOn: [], externalDependsOn: [] },
     ], 'root');
     expect(full.nodes.map(({ id }) => id)).toEqual(['root', 'child', 'external', 'ancestor']);
     expect(full.edges).toEqual([
       { id: 'root->child', source: 'root', target: 'child', external: false },
       { id: 'external->child', source: 'external', target: 'child', external: true },
-      { id: 'ancestor->external', source: 'ancestor', target: 'external', external: true },
+      { id: 'ancestor->external', source: 'ancestor', target: 'external', external: false },
     ]);
+  });
+  it('merges two ordinary roots exactly once and retains an external shortcut within that component', () => {
+    const tasks = [
+      { id: 'a', dependsOn: [], externalDependsOn: [] },
+      { id: 'b', dependsOn: [], externalDependsOn: [] },
+      { id: 'merge', dependsOn: ['a', 'b'], externalDependsOn: [] },
+      { id: 'sink', dependsOn: ['a', 'merge'], externalDependsOn: ['a'] },
+    ];
+    expect(expectedChainMembers(tasks, 'a')).toEqual(['a', 'b', 'merge', 'sink']);
+    expect(expectedChainMembers(tasks, 'b')).toEqual(expectedChainMembers(tasks, 'a'));
+    expect(expectedDependencyTopology(tasks, 'a').edges).toEqual([
+      { id: 'a->merge', source: 'a', target: 'merge', external: false },
+      { id: 'b->merge', source: 'b', target: 'merge', external: false },
+      { id: 'a->sink', source: 'a', target: 'sink', external: true },
+      { id: 'merge->sink', source: 'merge', target: 'sink', external: false },
+    ]);
+  });
+  it('keeps external-only tasks singleton while still projecting all prerequisites', () => {
+    const tasks = [
+      { id: 'source', dependsOn: [], externalDependsOn: [] },
+      { id: 'consumer', dependsOn: ['source'], externalDependsOn: ['source'] },
+    ];
+    expect(expectedChainMembers(tasks, 'consumer')).toEqual(['consumer']);
+    expect(expectedChainMembers(tasks, 'source')).toEqual(['source']);
+    expect(expectedDependencyTopology(tasks, 'consumer')).toEqual({ memberIds: ['consumer'], nodes: [{ id: 'source' }, { id: 'consumer' }], edges: [
+      { id: 'source->consumer', source: 'source', target: 'consumer', external: true },
+    ] });
   });
   it('derives card heights from hidden direct neighbors within the root projection only', () => {
     const full = expectedDependencyTopology([
-      { id: 'root', dependsOn: [] }, { id: 'child', dependsOn: ['root', 'external'] },
-      { id: 'external', dependsOn: [] }, { id: 'unrelated', dependsOn: ['external'] },
+      { id: 'root', dependsOn: [], externalDependsOn: [] }, { id: 'child', dependsOn: ['root', 'external'], externalDependsOn: ['external'] },
+      { id: 'external', dependsOn: [], externalDependsOn: [] }, { id: 'unrelated', dependsOn: ['external'], externalDependsOn: [] },
     ], 'root');
     expect(expectedNodeHeights(full, ['root', 'child'])).toEqual([{ id: 'root', height: 96 }, { id: 'child', height: 136 }]);
     expect(expectedNodeHeights(full, ['root', 'child', 'external'])).toEqual([

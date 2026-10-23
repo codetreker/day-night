@@ -21,15 +21,16 @@ completion visibility and the two page scroll positions. First visits default
 to chains, both completion filters default to hidden, and page positions default
 to the start. There is no server preference or task-data change.
 
-The [presentation decision](2026-10-21-task-chain-presentation.md) supplies visible
-non-isolated roots in newest-first order. An absent expansion preference selects
-the first visible chain root. A successful nonempty visible sequence validates
-the saved choice and replaces a missing, hidden or newly isolated root with its
-current first root. A successful empty snapshot, zero visible chain roots,
-loading and an initial graph failure do not turn an automatic absence into an
-explicit collapsed preference. Revealing rows after a zero-visible list can
-therefore restore its stored root or explicit null. Switching to standalone
-retains expansion intent without rendering a graph.
+The [presentation decision](2026-10-21-task-chain-presentation.md) supplies
+newest-first ordinary-component representatives. The saved string is an original
+member witness: componentByTask resolves it to its current representative even
+if a merge changes the displayed heading. A still-valid witness is not rewritten
+to that representative, so a later split can return to the portion containing
+the original task. Explicit null remains collapsed, including on reload.
+Absent preferences select the newest visible chain. Missing or hidden witness
+components use the existing visible fallback. Empty/loading/initial-failure
+states do not invent explicit collapse, and zero-visible chains retain intent
+for later reveal. Switching to standalone keeps that intent without a canvas.
 
 Preference errors are displayed separately from graph request errors. Invalid
 stored data and denied storage access leave browsing usable with in-memory
@@ -66,5 +67,5 @@ bounded to small project records. Privacy settings or invalid stored values can
 prevent persistence; visible notices distinguish that condition from a save.
 Preferences are local to one browser origin with no cross-browser synchronization.
 Current tabs keep their own in-memory choices. A nonempty list may replace a
-hidden saved root with its visible fallback; a zero-visible list retains intent
+hidden saved witness with its visible fallback; a zero-visible list retains intent
 until rows are available again.

@@ -513,8 +513,8 @@ changing stored task metadata. Its changing value is not graph-content identity;
 clients preserve task/index identity on clock-only responses.
 
 The summary requires `total`, `proposed`, `todo`, `inProgress`, `done`, `ready`
-and `blocked` counts, including zero values. Each task counts once, even when
-multiple roots share it: `total = proposed + todo + inProgress + done` and
+and `blocked` counts, including zero values. Each project task counts once,
+regardless of how many graph contexts display it: `total = proposed + todo + inProgress + done` and
 `todo = ready + blocked`. Proposed tasks may have unfinished prerequisites; their
 `blockedBy` remains accurate, but they are never ready and do not contribute to
 `todo` or `blocked`. Graph reads do not change stored status, revisions or times.

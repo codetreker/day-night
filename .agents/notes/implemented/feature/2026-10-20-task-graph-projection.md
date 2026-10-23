@@ -13,38 +13,33 @@ long-edge normalization can increase work beyond original node/edge counts.
 
 ## Decision
 
-The [external dependency design](../architecture/2026-10-23-external-dependency-design.md)
-specifies ordinary-component membership and explicit edge classification.
-Classification storage and strict readers are implemented; ordinary-component
-consumption remains the target model. The current root-derived implementation
-and the original layout decisions below remain the implemented baseline.
+The [external dependency decision](../architecture/2026-10-23-external-dependency-design.md)
+implements ordinary-component membership and explicit edge classification.
+It replaces the original per-root member sets while preserving this note's
+complete-snapshot validation, exact ordering and layout choices.
 
 The web graph model validates a complete snapshot before building indexes. It
-checks unique nodes and references, dependency closure, acyclicity, status,
-blocked-by and readiness consistency, summary counts, and the declared size
-limits. Invalid snapshots fail as a whole. Root order preserves the backend's
-exact response order; JavaScript millisecond dates do not reorder database
-timestamps with finer precision. The
-[presentation decision](2026-10-21-task-chain-presentation.md) owns the separate
-newest-first category lists; they consume reversed copies without changing this
-index. The [task view decision](2026-10-22-project-task-views.md) classifies
-standalone nodes from zero incoming and outgoing edges in this complete index,
-then keeps non-isolated roots in the chain presentation. Status and visibility
-filters do not alter topology or projection.
+checks unique nodes and references, external-subset validity, dependency closure,
+acyclicity across all edge kinds, status, blocking/readiness, summary counts and
+size limits. Invalid snapshots fail as a whole. Ordinary-edge weak components
+provide unique members; the earliest ordinary root in exact snapshot order is
+each representative. JavaScript millisecond dates do not reorder finer database
+timestamps. The [presentation decision](2026-10-21-task-chain-presentation.md)
+owns reversed newest-first representative lists, while the
+[task view decision](2026-10-22-project-task-views.md) separates ordinary singleton
+components from multi-member chains. Status and visibility filters do not alter
+topology or projection.
 
-For one root, the main set is the root and its forward-reachable descendants.
-The original projection added only their direct predecessors outside that main
-set, stopping at that explicit boundary. This kept direct blockers visible
-without recursively importing context. The later
+For one representative, the main set is its complete ordinary weak component.
+The original model used each root's forward-reachable successors and initially
+added only direct predecessors. The
 [complete prerequisite context decision](2026-10-22-complete-prerequisite-context.md)
-replaces that boundary with the full ancestor closure and all required edges,
-while retaining main-set membership. Per-root progress counts only distinct main
-nodes; project totals count all tasks once. Root progress also carries the
-aggregate status
-owned by the [chain status decision](../bug-fix/2026-10-22-task-chain-status.md);
-its count and state derive from the same main-set traversal. Shared membership
-and root progress are derived once
-per snapshot without a global mutable cache.
+expanded that boundary to every ancestor, and the external-dependency decision
+replaces overlapping root membership with exclusive components. Per-component
+progress and status count members only; project totals count each task once.
+All-edge ancestor closure supplies context without importing unrelated contextual
+successors. Components and progress are rebuilt once per snapshot, without a
+global mutable cache or shared-member badge.
 
 The separate Dagre adapter uses a new flat directed graph for each calculation,
 sorted node and edge insertion, left-to-right ranks, one global longest-path
@@ -96,7 +91,7 @@ owns browser measurements and source/image receipts. Pure algorithm probes do no
 establish production browser timing.
 
 The [progressive overview decision](2026-10-22-progressive-task-graph.md) derives
-a visible subset after complete root projection; it does not change full main-set
+a visible subset after complete chain projection; it does not change full main-set
 progress, state aggregation or project statistics. The
 [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 and the [architecture](../../../../docs/design/daynight-web.md) owns module
@@ -112,7 +107,7 @@ closure recorded by the replacement decision.
 
 **Compute progress from rendered nodes or sum root counters.** External context
 would inflate one chain and shared descendants would inflate the project. The
-model keeps project, root-main and external-context counts distinct.
+model keeps project, component-member and prerequisite-context counts distinct.
 
 **Let the canvas library own graph grouping and layout state.** This couples
 domain checks to browser state and makes deterministic projection tests harder.
@@ -132,8 +127,9 @@ required graph output after the narrowly specified redundant scans are removed.
 Graph semantics have direct pure-function tests, and layout tests run the real
 pinned dependency across branches, diamonds, shared and external predecessors.
 Model and layout belong to the complete web source manifest and strict coverage
-gate. Indexing and one-root reachability are linear in nodes plus edges; all-root
-progress may require one traversal per root within the declared project limits.
+gate. Indexing and component-progress aggregation are linear in nodes plus edges.
+A selected chain's ancestor closure is another linear traversal within the
+declared project limits; it does not recompute overlapping per-root progress.
 
 The module owns layout data; the implemented task canvas owns rendering, focus
 and viewport behavior. Fixed-topology capacity fixtures retain exact node/edge

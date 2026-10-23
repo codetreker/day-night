@@ -37,16 +37,44 @@ export const expectedBatch = (full: DependencyTopology, visibleIds: readonly str
   return inducedTopology(full, [...visibleIds, ...neighbors]);
 };
 
-export const expectedDependencyTopology = (tasks: readonly { id: string; dependsOn: readonly string[] }[], rootId: string): DependencyTopology => {
+export type ChainTopology = DependencyTopology & { readonly memberIds: readonly string[] };
+
+type DependencyTask = { readonly id: string; readonly dependsOn: readonly string[]; readonly externalDependsOn: readonly string[] };
+
+export const expectedChainMembers = (tasks: readonly DependencyTask[], memberId: string): readonly string[] => {
+  const parents = new Map(tasks.map(({ id }) => [id, id]));
+  const component = (id: string): string => {
+    if (!parents.has(id)) throw new Error('Dependency topology references an unknown task.');
+    let root = id;
+    while (parents.get(root)! !== root) root = parents.get(root)!;
+    let current = id;
+    while (parents.get(current)! !== root) { const next = parents.get(current)!; parents.set(current, root); current = next; }
+    return root;
+  };
+  for (const task of tasks) {
+    if (task.externalDependsOn.some((id) => !task.dependsOn.includes(id))) throw new Error('External dependencies are not a subset of the complete task relations.');
+    for (const predecessor of task.dependsOn) if (!task.externalDependsOn.includes(predecessor)) {
+      const left = component(task.id); const right = component(predecessor);
+      if (left !== right) parents.set(right, left);
+    }
+  }
+  const selected = component(memberId);
+  return tasks.filter(({ id }) => component(id) === selected).map(({ id }) => id);
+};
+
+export const expectedDependencyTopology = (tasks: readonly DependencyTask[], representativeId: string): ChainTopology => {
   const byId = new Map(tasks.map((task) => [task.id, task]));
-  const successors = new Map(tasks.map((task) => [task.id, [] as string[]]));
-  for (const task of tasks) for (const source of task.dependsOn) successors.get(source)!.push(task.id);
-  const main = new Set([rootId]); const descendants = [rootId];
-  for (let i = 0; i < descendants.length; i++) for (const id of successors.get(descendants[i]!)!) if (!main.has(id)) { main.add(id); descendants.push(id); }
-  const visible = new Set(main); const ancestors = [...main];
-  while (ancestors.length > 0) for (const id of byId.get(ancestors.pop()!)!.dependsOn) if (!visible.has(id)) { visible.add(id); ancestors.push(id); }
+  const memberIds = expectedChainMembers(tasks, representativeId);
+  const visible = new Set(memberIds); const ancestors = [...visible];
+  while (ancestors.length > 0) for (const id of byId.get(ancestors.pop()!)!.dependsOn) {
+    if (!byId.has(id)) throw new Error('Dependency topology references an unknown prerequisite.');
+    if (!visible.has(id)) { visible.add(id); ancestors.push(id); }
+  }
   return {
+    memberIds,
     nodes: tasks.filter((task) => visible.has(task.id)).map(({ id }) => ({ id })),
-    edges: tasks.filter((task) => visible.has(task.id)).flatMap((task) => task.dependsOn.map((source) => ({ id: `${source}->${task.id}`, source, target: task.id, external: !main.has(source) }))),
+    edges: tasks.filter((task) => visible.has(task.id)).flatMap((task) => task.dependsOn.map((source) => ({
+      id: `${source}->${task.id}`, source, target: task.id, external: task.externalDependsOn.includes(source),
+    }))),
   };
 };

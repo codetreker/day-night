@@ -12,37 +12,36 @@ prerequisites, so a root-anchored viewport can conceal the new context.
 
 ## Decision
 
-The [external dependency design](../architecture/2026-10-23-external-dependency-design.md)
-retains complete ancestor context while proposing ordinary-component membership
-and explicit edge styling. Persisted classification and its strict read contract
-are implemented; the root-derived membership and contextual edge styling below
-remain current Web behavior.
+The [external dependency decision](../architecture/2026-10-23-external-dependency-design.md)
+retains complete ancestor context and implements ordinary-component membership
+with explicit edge classification. It preserves the original reason for full
+upstream reading while changing which tasks own chain progress and which edges
+are dashed.
 
-For a selected root, `projectRoot` keeps the root and all forward-reachable
-successors in `mainIds`. It iteratively traverses `dependsOn` from that main set
-to include every ancestor; additional tasks are stored in `externalIds`. Their union is complete context P. Every dependency ending in P is retained,
-and ancestor closure guarantees its source is in P. UX1 originally displayed
-all P before inspection. The later
-[progressive overview decision](2026-10-22-progressive-task-graph.md) retains this
-data and adds explicit S for both main and external tasks. An edge is external
-when its source belongs to `externalIds`, including external-to-external edges.
-Stable task and dependency ordering follows the complete graph index.
+For a selected representative, `projectChain` keeps every ordinary-component
+member in `mainIds`, then iteratively traverses all `dependsOn` edges to include
+every ancestor. Additional tasks are stored in `externalIds`; their union is
+complete context P. Every dependency ending in P is retained, and ancestor
+closure guarantees its source belongs to P. UX1 initially displayed all P; the
+[progressive overview decision](2026-10-22-progressive-task-graph.md) adds explicit
+S for members and context. Stable ordering follows the complete snapshot.
 
-External context does not import unrelated successors. For `A → D`, `B → C → D`
-and `C → X`, expanding A displays main tasks A/D and external B/C, with A→D,
-B→C and C→D. X remains outside that projection. Completed tasks are retained,
-each task appears once per canvas, and status, blocking and shared membership
-continue to come from the full snapshot. Root progress and aggregate status count
-only distinct main tasks; project totals count each project task once.
+Context does not import unrelated successors. For ordinary `A → D`, `B → C`
+and `C → X`, with external `C ⇢ D`, expanding A's component displays members A/D
+and context B/C. X remains outside P. B→C is an ordinary solid edge, C⇢D an
+explicit dashed edge. An external shortcut stays dashed even when another
+ordinary path connects both endpoints inside one component. Tasks occur once
+per canvas; component progress counts members only and project totals count
+each project task once. All edge kinds still contribute blocking and execution.
 
-Visible external nodes retain dashed borders and the “外部前置” label. Connections from
-external nodes remain dashed, and full/visible counts distinguish display from data. UX1 initially reported
-complete counts and fit its complete layout at 0.8–1 zoom when possible;
-otherwise it anchors the leftmost rank at 0.8 zoom. A root already in that rank
-keeps the existing vertical centering. If upstream context extends left of the
-root, the topmost task in that upstream rank starts at a 32px canvas inset.
-Pan, zoom, Fit view and keyboard task navigation keep the remaining graph
-accessible. Initialization runs once per layout and does not rerun on selection.
+Context nodes retain dashed borders and the “外部前置” label. Edge dashes encode
+only the persisted external marker, independently of node role; ordinary edges
+between context tasks remain solid. Full/visible counts distinguish data from
+display. The initial viewport fits the visible layout at 0.8–1 zoom when possible;
+otherwise it anchors the leftmost rank at 0.8. A representative already in that
+rank retains vertical centering; when context extends further left, the topmost
+upstream task begins at a 32px inset. Pan, zoom, Fit and keyboard reveal keep
+other cards accessible. Selection never reruns initialization.
 
 This partially supersedes the direct-boundary projection in the
 [projection and layout decision](2026-10-20-task-graph-projection.md). That earlier
@@ -101,7 +100,7 @@ purely presentational.
 **Include all descendants of external tasks.** This would show entire connected
 workflows, including branches such as X that do not contribute a prerequisite to
 the selected chain. Ancestor closure supplies complete required context without
-changing root-chain membership.
+changing ordinary-component membership.
 
 **Continue anchoring every large graph at its root.** This preserves the earlier
 viewport but can put all newly included upstream tasks off the left edge. The
@@ -113,7 +112,7 @@ existing root placement when the root is already leftmost.
 A single expanded chain can approach the complete-project limit of 1,000 tasks
 and 5,000 dependencies. Closure and projection use visited sets and iterative
 traversal, remain linear in project nodes plus edges, and avoid deep recursive
-call stacks. Only the expanded chain's current visible induced graph is laid out; the existing all-root progress
+call stacks. Only the expanded chain's current visible induced graph is laid out; component progress
 calculation remains based on main sets.
 
 Independent counts prevent external ancestors from changing chain completion,

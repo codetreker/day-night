@@ -13,28 +13,25 @@ project snapshot and avoid reclassifying a task when its prerequisites finish.
 ## Decision
 
 The project has Standalone tasks and Task chains tabs within its existing URL.
-Both share project statistics, refresh, the complete graph index and the detail
-dialog. First visits open Task chains; the selected tab is retained per project.
-A standalone task has zero incoming and outgoing dependency edges in the full
-snapshot. All remaining roots enter the chain view. Membership ignores task
-status and completed-item filters. A new snapshot reclassifies dependency edits
-as one replacement with the project statistics.
+Both share statistics, refresh, the full graph and the detail dialog. First
+visits open Task chains and retain the selected tab per project. Under the
+[external dependency decision](../architecture/2026-10-23-external-dependency-design.md),
+chains are ordinary-edge weak components. An ordinary singleton is standalone
+even when external prerequisites block it. Status and completed filters do not
+change membership; a fresh snapshot replaces classification and statistics together.
 
-Standalone rows are compact native buttons showing title, status, ID, creation
-time and known individual execution timing, and open details directly. Their
-possible-stall treatment follows the
-[timing decision](../architecture/2026-10-23-task-timing-design.md) without adding
-an aggregate duration to chain headers. Chain rows keep root-based progress,
-aggregate status, complete DAG projection, external prerequisites, fullscreen and
-details. For `A → C ← B`, A and B remain two chains, each including C once;
-project statistics count C once. The original tab counts represented total
-standalone tasks and non-isolated roots to describe the available entries. The
-[unfinished task count decision](2026-10-22-unfinished-task-tab-counts.md)
-replaces those badge semantics: both count unfinished tasks, with shared chain
-tasks counted once across roots. List toolbars retain visible/total entry counts.
+Standalone native rows show individual facts and open details directly; a real
+unfinished prerequisite has an explicit blocked badge. Known execution timing
+follows the [timing decision](../architecture/2026-10-23-task-timing-design.md).
+Chain rows aggregate component members, retain all upstream context and provide
+fullscreen and Details. Normal `A → C ← B` is one chain with three members.
+The original tab design retained one entry per root, and its original badges
+counted entries. The [unfinished count decision](2026-10-22-unfinished-task-tab-counts.md)
+replaces the badge unit with unfinished tasks. Current components give each task
+one membership; toolbars separately report visible/total entries.
 
 Each tab has its own completed-item filter and page scroll position. The chain
-view retains its expanded-root or explicit-collapse choice when tabs change.
+view retains its original member witness or explicit-collapse choice when tabs change.
 Both lists use the exact newest-first presentation order. Existing expansion
 and completed-chain storage records retain their shapes; tab, standalone
 visibility and scroll positions use independent records. Storage failure leaves
@@ -64,19 +61,18 @@ existing dependency topology and require every dependency write to maintain its
 classification. Complete graph indexes already provide both incoming and
 outgoing relationships, so classification remains a frontend projection.
 
-**Regroup chains by connected component.** This can present shared workflows as
-one entry, but changes the meaning of root-based chain counts, projections and
-progress. That presentation capability is deferred. Its later cost stays
-additive only while category derivation and tab state remain independent of root
-projection; this split preserves those responsibilities. Shared successors
-therefore remain visible in multiple root chains. Reconsider grouping when a
-confirmed workflow needs one entry for a multi-root dependency component.
+**Regroup chains by connected component.** At the original tab decision this
+was deferred because it changed root-based entries, projection and progress.
+Keeping category state separate from domain projection preserved that option.
+The later external-dependency requirement provides the missing boundary:
+ordinary components now form chains, while external prerequisites do not merge
+them. Its decision supersedes the earlier root-based membership choice.
 
 ## Consequences
 
 Standalone tasks reach details in one action. Dependency workflows retain the
 complete graph context and existing progress rules. Completion and readiness do
-not move work between categories. Root-chain entry counts cannot be added as
+not move work between categories. Chain entry counts cannot be added as
 project task totals, because a chain entry can contain many tasks and share
 successors with other chains. The two tab badges instead sum to the project
 unfinished-task total. Filters and tab choices make no API requests or server
@@ -84,8 +80,8 @@ changes.
 
 Per-project browser records preserve browsing intent across visits while the
 server remains authoritative for a freshly read snapshot. New dependency edits
-can move a task between views and invalidate an expanded chain root; existing
-visible-root reconciliation handles that case. Inactive canvases consume no
+can move a task between views or change its representative; original member
+witnesses resolve the surviving component and visible fallback handles absence. Inactive canvases consume no
 mounted graph resources, at the cost of initializing pan and zoom after tab
 return. Keyboard tabs, native row actions and active-view focus restoration are
 part of the delivered interaction, including empty and all-completed views.

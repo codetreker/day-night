@@ -68,7 +68,7 @@ describe("task execution presentation", () => {
     expect(card).toHaveClass("task-node-stuck", "task-node-selected");
     expect(card.querySelector(".task-stuck-label")).toHaveTextContent(locale === "en" ? "Possibly stuck" : "可能卡住了");
     expect(card.querySelector(".task-stuck-label svg")).toHaveAttribute("aria-hidden", "true");
-    expect(card.querySelector(".task-shared-label")).toBeVisible();
+    expect(card.querySelector(".task-shared-label")).toBeNull();
     expect(card.querySelector(".graph-status")).toHaveClass("graph-status-in_progress");
     expect(body.getAttribute("aria-label")).toBe(`${name}${locale === "en" ? ", selected" : "，已选中"}`);
     expect(body).toHaveAccessibleDescription(new RegExp(start.replaceAll(".", "\\.")));

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { AuthenticatedAPI } from './authentication';
-import { createProject, createApprovedTask, updateTask, type Project, type Task } from './fixtures';
+import { createProject, createApprovedTask, updateTask, seedExternalDependencies, type Project, type Task } from './fixtures';
 
 export type CapacityKind = 'chain' | 'merge' | 'shared' | 'external';
 export type CapacityFixture = {
@@ -49,7 +49,9 @@ export const seedCapacity = async (request: AuthenticatedAPI, kind: CapacityKind
     const tails = await boundedMap(Array.from({ length: 8 }, (_, index) => index), (index) =>
       createApprovedTask(request, project.id, { title: `external final prerequisite ${index}`, dependsOn: Array.from({ length: 5 }, (_, offset) => previous[index * 5 + offset]!.id) }));
     tasks.push(...tails);
-    tasks.push(await createApprovedTask(request, project.id, { title: 'external chain sink', dependsOn: [root.id, ...previous.map((task) => task.id), ...tails.map((task) => task.id)] }));
+    const externalIds = [...previous.map((task) => task.id), ...tails.map((task) => task.id)];
+    const sink = await createApprovedTask(request, project.id, { title: 'external chain sink', dependsOn: [root.id, ...externalIds] });
+    tasks.push(await seedExternalDependencies(request, project.id, sink, externalIds));
     return { kind, project, root, tasks, edgeCount: 5000 };
   }
 

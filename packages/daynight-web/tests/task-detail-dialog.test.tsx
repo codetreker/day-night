@@ -88,7 +88,7 @@ describe('task detail dialog', () => {
     expect(dialog).toBe(original);
     expect(within(dialog).getByText('待审批')).toHaveClass('task-detail-status-proposed');
     expect(within(dialog).queryByText('可开始')).toBeNull();
-    const relation = within(screen.getByRole('region', { name: '当前未完成的前置' })).getByRole('button', { name: '任务 2' });
+    const relation = within(screen.getByRole('region', { name: '当前未完成的前置' })).getByRole('button', { name: /^任务 2，普通依赖$/ });
     expect(relation.querySelector('.task-detail-relation-dot')).toHaveClass('task-detail-dot-proposed');
     fireEvent.click(relation);
     expect(options.onSelectTask).toHaveBeenCalledWith(id(2));
@@ -96,6 +96,39 @@ describe('task detail dialog', () => {
     expect(screen.getByRole('button', { name: '关闭任务详情' })).toHaveFocus();
     view.unmount();
     expect(trigger).toHaveFocus();
+  });
+
+  it('classifies predecessors and successors using each dependency edge owner', async () => {
+    const ordinary = detail(1, { status: 'proposed', ready: false });
+    const external = detail(2, { status: 'proposed', ready: false });
+    const selected = detail(3, { status: 'proposed', dependsOn: [ordinary.id, external.id],
+      externalDependsOn: [external.id], blockedBy: [ordinary.id, external.id], ready: false });
+    const nextOrdinary = detail(4, { status: 'proposed', dependsOn: [selected.id], blockedBy: [selected.id], ready: false });
+    const nextExternal = detail(5, { status: 'proposed', dependsOn: [selected.id], externalDependsOn: [selected.id], blockedBy: [selected.id], ready: false });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(selected)));
+    const options = props({ taskId: selected.id, snapshot: snapshot([ordinary, external, selected, nextOrdinary, nextExternal]) });
+    const view = open(options); await screen.findByRole('heading', { name: '任务 3' });
+    const predecessors = screen.getByRole('region', { name: '前置依赖' });
+    const blockers = screen.getByRole('region', { name: '当前未完成的前置' });
+    const successors = screen.getByRole('region', { name: '任务图快照中的直接后续' });
+    for (const region of [predecessors, blockers]) {
+      const normal = within(region).getByRole('button', { name: /任务 1.*普通依赖/ });
+      const marked = within(region).getByRole('button', { name: /任务 2.*外部依赖/ });
+      expect(normal.querySelector('.task-detail-relation-kind')).toHaveTextContent('普通依赖');
+      expect(normal.querySelector('.task-detail-relation-external')).toBeNull();
+      expect(marked.querySelector('.task-detail-relation-external')).toHaveTextContent('外部依赖');
+    }
+    expect(within(successors).getByRole('button', { name: /任务 4.*普通依赖/ }).querySelector('.task-detail-relation-external')).toBeNull();
+    const externalSuccessor = within(successors).getByRole('button', { name: /任务 5.*外部依赖/ });
+    expect(externalSuccessor.querySelector('.task-detail-relation-external')).toHaveTextContent('外部依赖');
+    fireEvent.click(externalSuccessor);
+    expect(options.onSelectTask).toHaveBeenCalledWith(nextExternal.id);
+    const changed = snapshot([ordinary, external, selected,
+      { ...nextOrdinary, externalDependsOn: [selected.id] }, { ...nextExternal, externalDependsOn: [] }], 2);
+    view.rerender(<TaskDetailDialog {...options} snapshot={changed} />);
+    expect(within(successors).getByRole('button', { name: /任务 4.*外部依赖/ })).toBeVisible();
+    expect(within(successors).getByRole('button', { name: /任务 5.*普通依赖/ })).toBeVisible();
+    expect(within(predecessors).getByRole('button', { name: /任务 2.*外部依赖/ })).toBeVisible();
   });
 
   it('opens on overview and keeps task-scoped attachments in their own mounted panel', async () => {
@@ -251,9 +284,9 @@ describe('task detail dialog', () => {
     expect(document.querySelector('img')).toBeNull();
     expect(document.querySelector('script')).toBeNull();
     expect(screen.getByText('被阻塞')).toBeVisible();
-    expect(within(screen.getByRole('region', { name: '前置依赖' })).getByRole('button', { name: '前置任务' })).toBeVisible();
-    expect(within(screen.getByRole('region', { name: '当前未完成的前置' })).getByRole('button', { name: '前置任务' })).toBeVisible();
-    const next = within(screen.getByRole('region', { name: '任务图快照中的直接后续' })).getByRole('button', { name: '后续任务' });
+    expect(within(screen.getByRole('region', { name: '前置依赖' })).getByRole('button', { name: /^前置任务，普通依赖$/ })).toBeVisible();
+    expect(within(screen.getByRole('region', { name: '当前未完成的前置' })).getByRole('button', { name: /^前置任务，普通依赖$/ })).toBeVisible();
+    const next = within(screen.getByRole('region', { name: '任务图快照中的直接后续' })).getByRole('button', { name: /^后续任务，普通依赖$/ });
     fireEvent.click(next);
     expect(selected).toHaveBeenCalledWith(c.id);
     expect(screen.getAllByText(b.id)).toHaveLength(2);
@@ -269,7 +302,7 @@ describe('task detail dialog', () => {
     expect(screen.getByText('暂无描述')).toBeVisible();
     expect(screen.queryByText('无后续任务')).toBeNull();
     expect(screen.getByText('当前任务尚未包含在任务图中，请刷新任务图以查看后续关系。')).toBeVisible();
-    const references = screen.getAllByRole('button', { name: id(9) });
+    const references = screen.getAllByRole('button', { name: `${id(9)}，普通依赖` });
     expect(references).toHaveLength(2);
     fireEvent.click(references[0]!);
     expect(onSelectTask).toHaveBeenCalledWith(id(9));
@@ -525,7 +558,7 @@ describe('task detail dialog', () => {
     vi.stubGlobal('fetch', fetch);
     const options = props({ snapshot: snapshot([first, second]), onSelectTask: selected, onRestoreFocus: restored });
     const view = open(options);
-    const successor = await screen.findByRole('button', { name: '任务 2' });
+    const successor = await screen.findByRole('button', { name: /^任务 2，普通依赖$/ });
     const shell = screen.getByRole('dialog', { name: '任务详情' });
     const close = screen.getByRole('button', { name: '关闭任务详情' });
     const user = userEvent.setup();
@@ -540,7 +573,7 @@ describe('task detail dialog', () => {
     expect(restored).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: '关闭任务详情' })).toHaveFocus();
     await screen.findByRole('heading', { name: '任务 2' });
-    const predecessor = screen.getAllByRole('button', { name: '任务 1' })[0]!;
+    const predecessor = screen.getAllByRole('button', { name: /^任务 1，普通依赖$/ })[0]!;
     predecessor.focus();
     await user.keyboard(' ');
     expect(selected).toHaveBeenLastCalledWith(first.id);
@@ -575,7 +608,7 @@ describe('task detail dialog', () => {
     expect(screen.getByText('已完成')).toBeVisible();
     const close = screen.getByRole('button', { name: '关闭任务详情' });
     const refresh = screen.getByRole('button', { name: '刷新任务图' });
-    const successor = screen.getByRole('button', { name: `${Array.from(second.title).slice(0, 160).join('')}…` });
+    const successor = screen.getByRole('button', { name: `${Array.from(second.title).slice(0, 160).join('')}…，普通依赖` });
     const user = userEvent.setup();
     await user.tab();
     expect(screen.getByRole('heading', { name: first.title })).toHaveFocus();

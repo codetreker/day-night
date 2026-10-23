@@ -34,11 +34,12 @@ The proposed [external dependency requirements](docs/spec/daynight-external-depe
 [interactive prototype](docs/design/mockups/external-dependencies/index.html)
 distinguish chain membership from genuine cross-chain prerequisites. The design
 keeps all dependencies for execution. Edge classification storage, full task/graph
-output and strict CLI/Web readers are implemented. Public inputs still accept
-only the existing dependency IDs; Web membership and dashes remain root/context
-derived. Ordinary-component presentation and explicit classification writes
-remain the target behavior. Supported readers must understand classification
-before public classification writes become available.
+output, strict CLI/Web readers and ordinary-component presentation are implemented.
+Chain members are exclusive; dashed edges encode explicit external dependencies,
+while dashed cards encode prerequisite context outside the chain. Public inputs
+still accept only dependency IDs, so explicit classification editing remains
+unavailable. Supported readers must understand classification before public
+classification writes become available.
 
 The adopted [execution timing requirements](docs/spec/daynight-task-timing.md) and
 [architecture](docs/design/daynight-task-timing.md) define task

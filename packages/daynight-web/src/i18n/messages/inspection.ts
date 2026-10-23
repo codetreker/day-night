@@ -55,6 +55,9 @@ export type InspectionMessages = {
     readonly noDescription: string;
     readonly relationsMetadata: string;
     readonly dependencies: string;
+    readonly relationLabel: (args: { title: string; kind: string }) => string;
+    readonly ordinaryDependency: string;
+    readonly externalDependency: string;
     readonly noDependencies: string;
     readonly blockers: string;
     readonly noBlockers: string;
