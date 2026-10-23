@@ -106,6 +106,21 @@ project checks. Existing projects keep zero memberships until manually assigned;
 there is no automatic owner migration or anonymous business mode. The Go listener
 continues to bind only numeric loopback addresses.
 
+The approved `daynight worker run` architecture is specified in the
+[worker requirements](docs/spec/daynight-worker.md),
+[architecture](docs/design/daynight-worker.md) and
+[task breakdown](docs/design/daynight-worker-tasks.md). It uses the service's
+exclusive task claims, a foreground multi-repository coordinator, per-task
+worktrees, dedicated Herdr sessions and SQLite recovery. Agents own delivery;
+the worker owns resources, recovery and completion verification from existing
+task evidence. The [design decision](.agents/notes/implemented/architecture/2026-10-22-worker-design.md)
+records that responsibility split and the choice to observe current Herdr status
+without another reporting protocol. These documents deliver the architecture;
+the worker runtime, task role/platform controls and claim integration remain
+implementation work. Authentication and the approval-based task lifecycle are
+delivered prerequisites; worker integration preserves the current task execution
+timestamp contract.
+
 The `@codetreker/daynight` package provides the `daynight` client and its `dn`
 short command. Both names use the same entry, commands and configuration. Its
 root entry lists commands and reports the package version; each command owns its business
@@ -235,6 +250,14 @@ uses the actual attachment components and styles with a frontend-only fixture.
 `deployment/localhost/` starts the complete application; the isolated [dev-ci stack](deployment/dev-ci/README.md) uses the
 same production build and gateway with disposable test data.
 
+Native macOS Go and Web development use an ordinary writable storage directory;
+routine CLI tests and Web acceptance do not mount APFS images. Linux CI retains
+case-sensitive storage integration coverage. The explicit `web:acceptance:apfs`,
+`web:test:storage-native`, and `test:apfs` commands provide on-demand Mac
+filesystem diagnostics. See the [Web development guide](packages/daynight-web/README.md#development)
+for daily setup and the [coverage decision](.agents/notes/implemented/testing/2026-10-23-native-development-filesystem-coverage.md)
+for the platform-specific scope.
+
 ## CLI development
 
 Use Node.js 24 LTS and pnpm 11.28.6 for development. pnpm settings, including
@@ -343,8 +366,10 @@ is selected. The
 [cold-start decision](.agents/notes/implemented/bug-fix/2026-10-20-gh-cold-start-preparation.md)
 records the measurements, deadline semantics and remaining limits.
 
-macOS tests mount temporary case-sensitive and case-insensitive APFS images to
-check path identity against both filesystem behaviors. Setup positively verifies
+Explicit `pnpm test:apfs` diagnostics on macOS mount temporary case-sensitive and
+case-insensitive APFS images to check path identity against both behaviors.
+Routine `pnpm test` and the CLI CI matrix leave this image suite unselected;
+non-mounting path and cleanup tests still run. Setup positively verifies
 whole-image ownership before the eight original filesystem cases. One additional
 same-user read-only file-holder case requires actual Busy, known-PID diagnostics,
 acknowledged release after at least six seconds and exact image absence. That

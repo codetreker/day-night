@@ -46,7 +46,7 @@ func Start(ctx context.Context, config Config, logger *slog.Logger, handler func
 	defer cancel()
 	files, err := local.New(config.StorageRoot)
 	if err != nil {
-		return nil, &ConfigurationError{Field: "DAYNIGHT_STORAGE_ROOT", Rule: "must identify a writable, case-sensitive storage directory", cause: err}
+		return nil, &ConfigurationError{Field: "DAYNIGHT_STORAGE_ROOT", Rule: "must identify a writable storage directory with supported filename semantics", cause: err}
 	}
 	database, err := store.Open(startup, config.DatabaseURL)
 	if err != nil {

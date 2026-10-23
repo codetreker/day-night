@@ -115,6 +115,71 @@ test('unsupported storage platforms fail before creating a directory', async (co
   } finally { platform.mock.restore(); await dispose(parent); }
 });
 
+test('Darwin ordinary storage uses its directory without any disk-image command', { skip: process.platform !== 'darwin', timeout: 10_000 }, async (context) => {
+  const parent = await fixture();
+  const calls: string[] = [];
+  const execution = context.mock.method(storagePlatform, 'execute', async (command: string) => {
+    calls.push(command);
+    throw new Error(`Preparation must not issue a platform command: ${command}`);
+  });
+  let receipt: StorageReceipt | undefined;
+  try {
+    receipt = await prepareStorage(join(parent, 'storage'), { persist: async (current) => { owned.set(current.directory, current); } });
+    assert.equal(receipt.mode, 'directory');
+    assert.equal(typeof receipt.caseSensitive, 'boolean');
+    assert.equal(receipt.imageFile, undefined);
+    assert.equal(receipt.mountDirectory, undefined);
+    assert.equal(await exists(join(receipt.directory, 'storage.sparseimage')), false);
+    assert.deepEqual(calls, []);
+    await writeFile(join(receipt.root, 'ordinary.txt'), 'ordinary native data');
+    assert.equal(await readFile(join(receipt.root, 'ordinary.txt'), 'utf8'), 'ordinary native data');
+    const journal = JSON.parse(await readFile(join(receipt.directory, 'storage-receipt.json'), 'utf8')) as StorageReceipt;
+    assert.deepEqual(journal, receipt);
+  } finally {
+    execution.mock.restore();
+    try { if (receipt !== undefined) await verifyStorage(receipt); }
+    finally { await dispose(parent); }
+  }
+});
+
+test('Linux preparation rejects a case-folding filesystem before allocating storage or images', { skip: process.platform !== 'darwin', timeout: 10_000 }, async (context) => {
+  const parent = await fixture();
+  try {
+    await writeFile(join(parent, 'case-probe'), 'probe');
+    if (!await exists(join(parent, 'CASE-PROBE'))) { context.skip('Requires a case-folding filesystem to exercise Linux refusal.'); return; }
+    const platform = context.mock.method(storagePlatform, 'platform', () => 'linux');
+    const execution = context.mock.method(storagePlatform, 'execute', async () => { throw new Error('Linux refusal must not execute a disk command.'); });
+    try {
+      for (const allowApfsImage of [false, true]) {
+        const directory = join(parent, `storage-${allowApfsImage}`);
+        await assert.rejects(prepareStorage(directory, { allowApfsImage }), (error: unknown) => {
+          assert.ok(error instanceof StoragePreparationError);
+          assert.match(error.message, /requires a case-sensitive filesystem/);
+          assert.equal(error.receipt.mode, 'directory');
+          assert.equal(error.receipt.phase, 'planned');
+          return true;
+        });
+        assert.equal(await exists(join(directory, 'data')), false);
+        assert.equal(await exists(join(directory, 'storage.sparseimage')), false);
+      }
+      assert.equal(execution.mock.callCount(), 0);
+    } finally { execution.mock.restore(); platform.mock.restore(); }
+  } finally { await rm(parent, { recursive: true }); }
+});
+
+test('receipt validation rejects invalid filesystem capability claims while preserving old recovery receipts', { timeout: 10_000 }, async () => {
+  const parent = await fixture();
+  try {
+    const receipt = await planned(join(parent, 'storage'));
+    await assert.rejects(cleanupStorage({ ...receipt, caseSensitive: 'yes' } as unknown as StorageReceipt), /Invalid storage receipt/);
+    if (process.platform === 'linux') await assert.rejects(cleanupStorage({ ...receipt, caseSensitive: false }), /Invalid storage receipt/);
+    assert.equal(await exists(receipt.directory), true);
+    assert.equal(receipt.caseSensitive, undefined);
+    await cleanupStorage(receipt);
+    assert.equal(await exists(receipt.directory), false);
+  } finally { await dispose(parent); }
+});
+
 test('APFS attachment avoids help initialization and falls back only for an unsupported image verb', { skip: process.platform !== 'darwin' }, async (context) => {
   const parent = await fixture();
   try {
@@ -150,7 +215,7 @@ test('APFS attachment avoids help initialization and falls back only for an unsu
         throw new Error(`Unexpected storage command: ${command}`);
       });
       try {
-        await assert.rejects(prepareStorage(directory), (error: unknown) => {
+        await assert.rejects(prepareStorage(directory, { allowApfsImage: true }), (error: unknown) => {
           assert.ok(error instanceof StoragePreparationError);
           assert.equal(error.receipt.phase, 'attach-intent');
           if (failure !== undefined && failure !== unsupported) assert.equal(error.cause, failure);
@@ -169,6 +234,7 @@ test('Linux direct storage preserves case-distinct files and removes its owned r
   try {
     const receipt = await prepareStorage(join(parent, 'storage'), { persist: async (current) => { owned.set(current.directory, current); } });
     assert.equal(receipt.mode, 'directory');
+    assert.equal(receipt.caseSensitive, true);
     await writeFile(join(receipt.root, 'File'), 'upper');
     await writeFile(join(receipt.root, 'file'), 'lower');
     assert.equal(await readFile(join(receipt.root, 'File'), 'utf8'), 'upper');

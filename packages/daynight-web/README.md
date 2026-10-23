@@ -191,7 +191,10 @@ pnpm web:dev
 ```
 
 Run the Go API separately on `127.0.0.1:8787`, using its
-[configuration](../daynight-server/README.md). Vite proxies `/api` to that address
+[configuration](../daynight-server/README.md). Native macOS development uses an
+ordinary writable storage directory and does not require an APFS image. Names
+that alias another file or directory on that filesystem are refused; Linux CI
+owns case-coexistence coverage. Vite proxies `/api` to that address
 and listens on loopback. For real login through Vite, set the same
 `DAYNIGHT_UNIAUTH_CALLBACK_URL` in the Vite and Go environments, registered with
 UniAuth for the development browser origin. Vite proxies exactly that callback
@@ -489,7 +492,7 @@ target or edit the relative path, and upload. Activating the disclosure again
 collapses it while retaining the file, path and validation state. Tab round trips
 retain its expansion; a new project/task starts collapsed. MIME is selected
 from the target path with `mime` 4.1.1. Uploading the same path overwrites that file. Each preview offers Download,
-a neighboring Open in new tab link with an external-link icon, and Delete; successful writes refresh only the attachment list and preview.
+a neighboring Open in new tab link with an external-link icon. Each left-side file row has a right-side `…` menu. Choose Delete to open a full-path confirmation, then explicitly confirm to submit the single-file request. Cancel is initially focused; menu and confirmation Escape close only their own layer. Pending confirmation blocks duplicate/conflicting writes, while failures remain visible with deliberate retry or cancellation. The confirmation includes the current language selector. Hidden tabs dismiss unsubmitted deletion UI. Successful writes refresh only attachment data.
 They do not change the task version, timestamp or graph snapshot.
 
 The attachment hook owns list, write, selection and preview state for one
@@ -499,14 +502,14 @@ changes and unmount cancel requests; generations discard late results. List,
 write and preview errors stay local. An overwrite or a refreshed `updatedAt`
 reloads the selected content and remounts native previews; the server's
 `Cache-Control: no-store` keeps mutable paths current. Empty inventory and no
-selection have distinct states; deleting the selected file clears its preview.
+selection have distinct states; deleting the selected file clears its preview, while deleting another file preserves the loaded preview and reading position. A failed delete retains the last-known row and preview without promising server-side rollback under K1.
 
 The right preview has one vertical scroll owner. Markdown, text/JSON/source and
 large images use `attachment-preview-body`; their renderers have no nested
 vertical height limits. Tables and code can scroll horizontally. For ready
 HTML/PDF, the body and fitted frame wrapper hide overflow and the embedded
 document or native reader owns scrolling. The preview header never scrolls
-independently, exposes the complete path and keeps download/delete reachable.
+independently, exposes the complete path and keeps Download and Open in new tab reachable. File-row menus and confirmation controls remain accessible at narrow widths.
 Left-pane scrolling does not move right-side content or its reading position.
 The standalone reader uses this same rendering and sizing. Independent
 real-service runtime acceptance of the attachment-reading group is complete.
@@ -590,7 +593,7 @@ origin. `tests/mockups/main.tsx` renders the production attachment components an
 CSS with `tests/mockups/fixture.ts`; metadata changes remain in memory and native
 previews use local fixture files. Exercise detail tabs, adjacent panes and tall
 content along with loading, empty, failure and busy states, plus upload,
-overwrite, preview, download and deletion without Go,
+overwrite, preview, download and menu/confirmation deletion without Go,
 PostgreSQL or network API calls. Refreshing the page resets fixture state.
 Object URLs stay valid through deletion and are released when the fixture is
 disposed. Open `/tests/mockups/attachments.html?file=docs%2Fguide.md&scenario=files`
@@ -729,29 +732,37 @@ evidence, which must use the full bundled Chromium channel (`chromium`) pinned b
 Playwright 1.64.1. This channel renders PDF pages; MIME-document readiness alone
 is not a painted-content oracle. Native and container phases record and require
 the same browser identity. macOS also requires Xcode Command Line Tools (the Apple
-SDK and `xcrun clang`) and permission to mount disk images. The runner compiles its
-process inspection helper into the project temporary directory. It prepares
-case-sensitive storage automatically: a verified directory on a case-sensitive
-filesystem, or an owned case-sensitive APFS sparse image on macOS. Storage receipts
-are persisted before attaching the image and starting the native server. Cleanup
-confirms the server stopped, validates image/mount ownership, detaches the owned
-image, and only then removes the storage directory. A busy image is retried at
-one-second intervals within one 30-second cleanup deadline, rechecking ownership
-before each detach attempt. Ambiguous ownership fails
-without recursive removal. Windows native Web acceptance is unsupported.
+SDK and `xcrun clang`). The runner compiles its process inspection helper into
+project temporary storage. Default acceptance uses an owned ordinary directory,
+including on a case-insensitive Mac disk, without creating or attaching images.
+Linux still requires a case-sensitive directory. The storage receipt records
+the measured `caseSensitive` capability and each browser phase records
+`caseSensitiveStorage`. Native Mac phases without that capability use a
+non-colliding attachment fixture path; Linux and container phases retain the
+case-sensitive fixture. A normal Mac pass does not claim native case-coexistence
+coverage. Windows native Web acceptance is unsupported.
 
 Routine `pnpm web:test` does not attach disk images on macOS. It checks storage
 receipts and refusal paths without requesting disk authorization. Run the explicit
 `pnpm web:test:storage-native` suite for APFS lifecycle checks; its cases share
 one mounted image, including a real read-only file holder that prevents the first
-detach and releases the file before cleanup retries. Complete `pnpm web:acceptance` also creates only one native
-storage image per run on a case-insensitive filesystem. macOS may request
-administrator authorization for that attachment. Receipt-only tests do not prove
-APFS mounting or complete native acceptance.
+detach and releases the file before cleanup retries. For a complete native Web
+run with case-sensitive storage on a Mac, explicitly run
+`pnpm web:acceptance:apfs`. It uses one owned case-sensitive APFS sparse image
+when the parent filesystem folds case. These diagnostic commands may request
+macOS disk authorization; routine development and validation do not need them.
+Receipts are persisted before attachment and server startup. Cleanup confirms
+the server stopped, validates image/mount ownership, detaches normally, and only
+then removes storage. Busy detach retries share one 30-second deadline with
+ownership revalidation. Uncertain ownership fails without recursive removal.
+Existing recovery commands remain available without opting into new attachment.
 
-The full CI workflow remains on Linux. macOS local acceptance runs the same 53
-scenarios, additional combined authentication checks and fixed performance budgets; a local pass does not establish macOS CI
-coverage. For networks requiring an npm mirror, use
+The full CI workflow remains on Linux and retains case-sensitive storage coverage.
+macOS local acceptance runs the same 53 scenarios, additional combined
+authentication checks and fixed performance budgets, with native filesystem
+coverage qualified by its recorded capability. A local pass does not establish
+macOS CI coverage. The [filesystem coverage decision](../../.agents/notes/implemented/testing/2026-10-23-native-development-filesystem-coverage.md)
+owns this distinction. For networks requiring an npm mirror, use
 `pnpm install --frozen-lockfile --registry=https://mirrors.cloud.tencent.com/npm/`
 for the workspace. Export `pnpm_config_registry=https://mirrors.cloud.tencent.com/npm/` for the
 acceptance CLI installation, and `DAYNIGHT_NPM_REGISTRY` for Docker builds. Both Compose stacks default to the official

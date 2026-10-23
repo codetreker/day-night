@@ -380,7 +380,7 @@ export const runAuthCombined = async (options: AuthCombinedOptions): Promise<Aut
     await bobPage.locator(`#standalone-task-${task.id}`).click();
     const detail = bobPage.getByRole('dialog', { name: '任务详情', exact: true });
     await detail.getByRole('tab', { name: '附件', exact: true }).click();
-    await detail.getByRole('button', { name: /index\.html/ }).click();
+    await detail.locator('button.attachment-file').filter({ hasText: /index\.html/ }).click();
     const frame = detail.frameLocator('iframe');
     await expect(frame.locator('body')).toHaveAttribute('data-value', 'combined-cookie-module');
     await expect(frame.locator('#counter')).toHaveCSS('color', 'rgb(17, 99, 155)');

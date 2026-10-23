@@ -167,7 +167,8 @@ PR 区域在描述之后，标题与 URL 分别使用文本节点，空字符串
 `TaskDetailReading` 将唯一的 `useAttachments` 控制器交给描述导航与附件页签的
 `TaskAttachmentsPanel`。列举、
 写操作及预览不依赖详情请求或图刷新；切换页签保留附件与表单状态，隐藏面板
-不参与焦点循环。上传目标初始为所选文件名，可编辑为多层相对
+不参与焦点循环。文件条目菜单和原生删除确认属于该详情子树，并优先处理自身
+Escape/Tab；隐藏附件页签关闭未提交的删除状态。上传目标初始为所选文件名，可编辑为多层相对
 路径；同路径覆盖，成功后只刷新附件数据。具体分页、错误和内容机制由
 [附件设计](daynight-task-attachments.md#web-文件树与预览)拥有。
 
@@ -867,13 +868,18 @@ CI 要求当前 Linux 或 macOS 平台与浏览器回执一致、锁定 Playwrig
 Linux 进程身份由 procfs 提供；macOS 使用项目临时目录内编译的 Apple SDK helper，
 通过内核读取微秒级启动时间、实际 executable、PGID、argv 和精确环境标记。
 浏览器 profile 按 argv 项匹配，macOS inventory 包含 Chromium bundle 内的 Helper 与 Crashpad。
-原生服务存储使用独占控制目录；大小写敏感文件系统直接使用其 data 子目录，macOS 默认
-大小写不敏感文件系统使用 Case-sensitive APFS sparseimage。准备每个阶段都先写本地与
-主回执，attach 前持久化意图；只有服务停止、目录/image inode 和挂载拓扑一致时才卸载，
+原生服务存储使用独占控制目录；默认直接使用其 data 子目录，包括 macOS 普通大小写
+不敏感目录，不自动挂载镜像。准备时实测并记录 `storage.caseSensitive`，浏览器阶段
+记录 `caseSensitiveStorage`；只有 macOS 原生能力为 false 时，附件夹具采用无目录
+大小写碰撞的路径。Linux 与生产容器保留原大小写夹具。旧回执缺少能力字段仍可恢复，
+但不能据此推断已覆盖大小写共存。显式 `web:acceptance:apfs` 在不敏感父目录上使用
+Case-sensitive APFS sparseimage。准备每个阶段都先写本地与主回执，attach 前持久化
+意图；只有服务停止、目录/image inode 和挂载拓扑一致时才卸载，
 卸载遇到明确的 busy 错误时，在同一 30 秒清理期限内每秒重试，并在每次尝试前重新核验
 归属；确认不存在挂载后才递归删除。未知资源保留并报错。日常 `web:test` 在 macOS 上只运行
-无挂载的存储回执测试；显式 `web:test:storage-native` 共享一个 APFS 卷验证完整存储生命周期，
-完整验收每次也只创建一个原生存储卷，避免按测试用例反复请求管理员授权。构建镜像可显式传入
+无挂载的存储回执测试；显式 `web:test:storage-native` 共享一个 APFS 卷验证完整存储生命周期。
+显式 APFS 完整验收每次最多创建一个原生存储卷；日常验证无需管理员挂载授权。
+Linux gated build 保留完整文件系统覆盖，Mac 普通目录的结果明确限定该覆盖范围。构建镜像可显式传入
 `DAYNIGHT_NPM_REGISTRY`，默认仍为官方 npm registry。
 PDF 预览通过轮询 iframe 的实际 compositor 截图，验证 fixture 专用色块已经绘制，
 保留成功 PNG、色块计数/范围及 PDF 摘要；不能只依赖 MIME、load 或固定等待。

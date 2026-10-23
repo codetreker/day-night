@@ -60,9 +60,13 @@ exact start identity and process group each time. Only confirmed disappearance
 or zombie status counts as absent; an unfinished exit, permission error or
 changed identity still fails.
 
-Storage preparation owns an exclusive control directory. A case-sensitive parent
-uses a direct data directory; macOS case-insensitive parents use an owned
-case-sensitive APFS sparse image. Atomic local receipts and parent persistence
+Storage preparation owns an exclusive control directory. The original policy
+automatically used an APFS image on insensitive Mac filesystems so that every
+native run satisfied the then-required case-sensitive storage contract. The
+[native development coverage decision](2026-10-23-native-development-filesystem-coverage.md)
+replaces that default: normal Mac runs use ordinary directories and record their
+actual capability; `web:acceptance:apfs` explicitly requests an owned
+case-sensitive APFS sparse image when necessary. Atomic local receipts and parent persistence
 precede attachment. Attachment directly invokes the image command; its help
 command also initializes StorageKit authorization and can block before printing
 usage. Only the exact unsupported-image-verb error permits the older hdiutil
@@ -75,9 +79,10 @@ end cleanup after about two seconds even when most of the deadline remained;
 transient volume users can outlast that window. Cleanup never forces detachment.
 Unknown ownership remains an explicit recovery failure. Routine Web tests do not
 attach images on macOS: receipt tests run without authorization, while an explicit
-native storage suite shares one mounted image across cases. Complete acceptance
-owns one native storage image per run. This keeps native coverage available
-without repeated administrator dialogs during ordinary test runs.
+native storage suite shares one mounted image across cases. Explicit APFS
+acceptance owns at most one native storage image per run. Routine development
+and acceptance do not attach images; the diagnostic channel preserves native
+filesystem coverage when it is deliberately requested.
 The native suite verifies busy recovery with a real acknowledged read-only file
 holder. Only a real detach refusal followed by a PID-specific open-file check,
 acknowledged release and successful retry establishes that lifecycle evidence.

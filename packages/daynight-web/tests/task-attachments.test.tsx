@@ -33,6 +33,18 @@ const fixture = (initial: readonly Attachment[] = []) => {
   return api;
 };
 const open = (api: AttachmentApi, taskId = '00000000-0000-4000-8000-000000000001') => render(<TaskAttachments projectId="00000000-0000-4000-8000-000000000100" taskId={taskId} api={api} onClose={vi.fn()} />);
+const fileButton = (name: RegExp): HTMLElement => {
+  const selection = screen.getAllByRole('button', { name }).find((button) => button.hasAttribute('aria-pressed'));
+  if (selection === undefined) throw new Error(`No file selection button matches ${name}`);
+  return selection;
+};
+const findFileButton = (name: RegExp) => waitFor(() => fileButton(name));
+const showDeleteConfirmation = (path: string) => {
+  fireEvent.click(screen.getByRole('button', { name: `更多操作：${path}` }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '删除' }));
+  return screen.getByRole('dialog', { name: '删除附件？' });
+};
+
 
 describe('task attachments', () => {
   it('starts with upload controls collapsed and retains the mounted draft when toggled', async () => {
@@ -73,11 +85,11 @@ describe('task attachments', () => {
     await act(async () => first.resolve({ items: [file('docs/readme.md', 'text/markdown'), file('<img onerror=bad>.txt')], nextCursor: null }));
     expect(screen.getByRole('heading', { name: '附件 · 2' })).toBeVisible();
     expect(screen.getByText('docs').tagName).toBe('SUMMARY');
-    expect(screen.getByRole('button', { name: /<img onerror=bad>.txt/ })).toBeVisible();
+    expect(fileButton(/<img onerror=bad>.txt/)).toBeVisible();
     expect(document.querySelector('img')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /readme.md/ }));
+    fireEvent.click(fileButton(/readme.md/));
     await screen.findByText('Contents of docs/readme.md');
-    expect(screen.getByRole('button', { name: /readme.md/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(fileButton(/readme.md/)).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('link', { name: '下载' })).toHaveAttribute('href', '/api/v1/projects/00000000-0000-4000-8000-000000000100/tasks/00000000-0000-4000-8000-000000000001/attachments/files/docs/readme.md');
     expect(screen.getByRole('link', { name: '下载' })).toHaveAttribute('download');
   });
@@ -87,7 +99,7 @@ describe('task attachments', () => {
     const api = fixture([file('docs/设计 #?%.md', 'text/markdown'), file('next.txt')]);
     const readText = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue('Next content');
     open({ ...api, readText });
-    fireEvent.click(await screen.findByRole('button', { name: /设计/ }));
+    fireEvent.click(await findFileButton(/设计/));
     const link = screen.getByRole('link', { name: '在新标签页打开' });
     expect(link).toHaveAttribute('href', '/projects/00000000-0000-4000-8000-000000000100/tasks/00000000-0000-4000-8000-000000000001/attachments/docs/%E8%AE%BE%E8%AE%A1%20%23%3F%25.md');
     expect(link).toHaveAttribute('target', '_blank');
@@ -95,7 +107,7 @@ describe('task attachments', () => {
     expect(link.previousElementSibling).toBe(screen.getByRole('link', { name: '下载' }));
     expect(link.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
     expect(screen.getByRole('status')).toHaveTextContent('正在加载预览');
-    fireEvent.click(screen.getByRole('button', { name: /next.txt/ }));
+    fireEvent.click(fileButton(/next.txt/));
     expect(link).toHaveAttribute('href', expect.stringContaining('/attachments/next.txt'));
     await screen.findByText('Next content');
     await act(async () => pending.resolve('Stale document'));
@@ -105,7 +117,7 @@ describe('task attachments', () => {
   it('uploads one file, validates the target path, directly overwrites, and deletes with attachment-only reloads', async () => {
     const api = fixture([file('docs/readme.md')]);
     open(api);
-    await screen.findByRole('button', { name: /readme.md/ });
+    await findFileButton(/readme.md/);
     const user = userEvent.setup();
     await user.click(screen.getByText('上传文件', { selector: 'summary' }));
     const source = new File(['new contents'], 'readme.md', { type: 'text/markdown' });
@@ -129,7 +141,8 @@ describe('task attachments', () => {
     expect(input.files).toHaveLength(0);
     expect(screen.getByRole('heading', { name: '附件 · 1' })).toBeVisible();
     expect(api.list).toHaveBeenCalledTimes(2);
-    await user.click(screen.getByRole('button', { name: '删除' }));
+    showDeleteConfirmation('docs/readme.md');
+    await user.click(screen.getByRole('button', { name: '删除附件' }));
     await screen.findByText('暂无附件，上传文件后即可在这里浏览。');
     expect(api.remove).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000100', '00000000-0000-4000-8000-000000000001', 'docs/readme.md', expect.any(AbortSignal));
     expect(api.list).toHaveBeenCalledTimes(3);
@@ -141,8 +154,8 @@ describe('task attachments', () => {
     const put = vi.fn().mockRejectedValueOnce(new ApiError('server', 500, 'internal_error', 'upload-123')).mockImplementation(api.put);
     const remove = vi.fn().mockRejectedValue(new Error('private delete failure'));
     open({ ...api, put, remove });
-    await screen.findByRole('button', { name: /old.txt/ });
-    fireEvent.click(screen.getByRole('button', { name: /old.txt/ }));
+    await findFileButton(/old.txt/);
+    fireEvent.click(fileButton(/old.txt/));
     await screen.findByText('Contents of old.txt');
     const user = userEvent.setup();
     await user.click(screen.getByText('上传文件', { selector: 'summary' }));
@@ -155,9 +168,11 @@ describe('task attachments', () => {
     expect(screen.getByRole('textbox', { name: '目标相对路径' })).toHaveValue('next.txt');
     expect(input.files?.[0]).toBe(source);
     expect(screen.getByText('Contents of old.txt')).toBeVisible();
-    await user.click(screen.getByRole('button', { name: '删除' }));
+    showDeleteConfirmation('old.txt');
+    await user.click(screen.getByRole('button', { name: '删除附件' }));
     expect(await screen.findByRole('alert')).not.toHaveTextContent('private delete failure');
     expect(screen.getByText('Contents of old.txt')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '取消' }));
     await user.click(screen.getByRole('button', { name: '上传文件' }));
     await screen.findByRole('heading', { name: 'next.txt' });
     expect(screen.queryByRole('alert')).toBeNull();
@@ -170,7 +185,7 @@ describe('task attachments', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('附件列表加载失败');
     expect(screen.queryByText('暂无附件，上传文件后即可在这里浏览。')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '重试附件' }));
-    await screen.findByRole('button', { name: /partial.txt/ });
+    await findFileButton(/partial.txt/);
     expect(screen.getByRole('alert')).toHaveTextContent('附件列表尚未完整加载');
     expect(screen.getByRole('heading', { name: '附件' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: '重试附件' }));
@@ -182,11 +197,11 @@ describe('task attachments', () => {
     const api = fixture([file('text.txt'), file('image.svg', 'image/svg+xml')]);
     const readText = vi.fn().mockRejectedValueOnce(new Error('private preview')).mockResolvedValue('Recovered');
     render(<TaskAttachments projectId="00000000-0000-4000-8000-000000000100" taskId="task" api={{ ...api, readText }} onClose={vi.fn()} urls={{ page: (path) => `/reader/${path}`, previewRoot: '/fixtures/', preview: (path) => `/fixtures/${path}`, download: (path) => `/downloads/${path}` }} />);
-    fireEvent.click(await screen.findByRole('button', { name: /text.txt/ }));
+    fireEvent.click(await findFileButton(/text.txt/));
     expect(await screen.findByRole('alert')).not.toHaveTextContent('private preview');
     fireEvent.click(screen.getByRole('button', { name: '重试预览' }));
     await screen.findByText('Recovered');
-    fireEvent.click(screen.getByRole('button', { name: /image.svg/ }));
+    fireEvent.click(fileButton(/image.svg/));
     expect(await screen.findByRole('img')).toHaveAttribute('src', '/fixtures/image.svg');
     expect(screen.getByRole('link', { name: '下载' })).toHaveAttribute('href', '/downloads/image.svg');
   });
@@ -195,7 +210,7 @@ describe('task attachments', () => {
     const api = fixture([file('site/index.html', 'text/html')]);
     const checkPreview = vi.fn().mockRejectedValueOnce(new Error('private native preview')).mockResolvedValue(undefined);
     open({ ...api, checkPreview });
-    fireEvent.click(await screen.findByRole('button', { name: /index.html/ }));
+    fireEvent.click(await findFileButton(/index.html/));
     expect(await screen.findByRole('alert')).toHaveTextContent('无法读取文件预览');
     expect(screen.queryByTitle('HTML 预览：site/index.html')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '重试预览' }));
@@ -214,13 +229,208 @@ describe('task attachments', () => {
     expect(checkPreview).toHaveBeenCalledTimes(3);
   });
 
+  it('requires a full-path menu and confirmation, defaults to Cancel, and sends no mutation on dismissal', async () => {
+    const api = fixture([file('docs/设计 #?.md')]);
+    open(api);
+    await findFileButton(/设计/);
+    const trigger = screen.getByRole('button', { name: '更多操作：docs/设计 #?.md' });
+    expect(screen.queryByRole('button', { name: '删除' })).toBeNull();
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    const item = screen.getByRole('menuitem', { name: '删除' });
+    expect(item).toHaveFocus();
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(api.remove).not.toHaveBeenCalled();
+    for (const key of ['ArrowUp', 'Home', 'End']) {
+      fireEvent.keyDown(item, { key });
+      expect(item).toHaveFocus();
+    }
+    fireEvent.keyDown(item, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(trigger).toHaveFocus();
+    const dialog = showDeleteConfirmation('docs/设计 #?.md');
+    expect(within(dialog).getByText('docs/设计 #?.md')).toBeVisible();
+    expect(within(dialog).getByRole('button', { name: '取消' })).toHaveFocus();
+    expect(api.remove).not.toHaveBeenCalled();
+    await userEvent.setup().keyboard('{Enter}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(trigger).toHaveFocus();
+    const escaped = showDeleteConfirmation('docs/设计 #?.md');
+    fireEvent(escaped, new Event('cancel', { bubbles: false, cancelable: true }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const backdrop = showDeleteConfirmation('docs/设计 #?.md');
+    fireEvent.click(backdrop, { clientX: -1, clientY: -1 });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(api.remove).not.toHaveBeenCalled();
+    expect(api.list).toHaveBeenCalledTimes(1);
+  });
+
+  it('wraps confirmation Tab boundaries and keeps pending focus within its enabled controls', async () => {
+    const api = fixture([file('target.txt')]);
+    const pending = deferred<void>();
+    const remove = vi.fn<AttachmentApi['remove']>().mockReturnValue(pending.promise);
+    open({ ...api, remove });
+    await findFileButton(/target.txt/);
+    const dialog = showDeleteConfirmation('target.txt');
+    const language = within(dialog).getByRole('combobox', { name: '语言 / Language' });
+    const body = within(dialog).getByRole('group', { name: '删除附件？' });
+    const cancel = within(dialog).getByRole('button', { name: '取消' });
+    const confirm = within(dialog).getByRole('button', { name: '删除附件' });
+    const onOuterKey = vi.fn();
+    document.addEventListener('keydown', onOuterKey);
+    const user = userEvent.setup();
+    expect(cancel).toHaveFocus();
+    await user.tab();
+    expect(confirm).toHaveFocus();
+    await user.tab();
+    expect(language).toHaveFocus();
+    await user.tab();
+    expect(body).toHaveFocus();
+    await user.tab();
+    expect(cancel).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(body).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(language).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(confirm).toHaveFocus();
+    expect(onOuterKey).not.toHaveBeenCalled();
+    fireEvent.click(confirm);
+    expect(dialog).toHaveFocus();
+    await user.tab();
+    expect(language).toHaveFocus();
+    await user.tab();
+    expect(body).toHaveFocus();
+    await user.tab();
+    expect(language).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(body).toHaveFocus();
+    expect(remove).toHaveBeenCalledTimes(1);
+    document.removeEventListener('keydown', onOuterKey);
+    await act(async () => pending.resolve());
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('reacts to native outside dismissal and keeps menu keyboard events inside their layer', async () => {
+    const api = fixture([file('first.txt'), file('last.txt')]);
+    open(api);
+    await findFileButton(/first.txt/);
+    const first = screen.getByRole('button', { name: '更多操作：first.txt' });
+    fireEvent.click(first);
+    const menu = screen.getByRole('menu');
+    fireEvent(menu, Object.assign(new Event('toggle'), { newState: 'closed' }));
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(first).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(first);
+    const onOuterKey = vi.fn();
+    document.addEventListener('keydown', onOuterKey);
+    fireEvent.keyDown(screen.getByRole('menuitem'), { key: 'Tab' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(first).toHaveFocus();
+    expect(onOuterKey).not.toHaveBeenCalled();
+    document.removeEventListener('keydown', onOuterKey);
+    expect(api.remove).not.toHaveBeenCalled();
+  });
+
+  it('confirms the exact unselected path while preserving preview DOM and reading position', async () => {
+    const api = fixture([file('docs/readme.md'), file('other/readme.md')]);
+    open(api);
+    const selections = await screen.findAllByRole('button', { name: /readme.md/ });
+    fireEvent.click(selections.find((button) => button.hasAttribute('aria-pressed'))!);
+    const content = await screen.findByText('Contents of docs/readme.md');
+    const preview = content.closest('.attachment-preview-body')!;
+    preview.scrollTop = 240;
+    const dialog = showDeleteConfirmation('other/readme.md');
+    expect(within(dialog).getByText('other/readme.md')).toBeVisible();
+    expect(screen.getByText('Contents of docs/readme.md')).toBe(content);
+    fireEvent.click(within(dialog).getByRole('button', { name: '删除附件' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: '更多操作：other/readme.md' })).toBeNull());
+    expect(api.remove).toHaveBeenCalledExactlyOnceWith('00000000-0000-4000-8000-000000000100', '00000000-0000-4000-8000-000000000001', 'other/readme.md', expect.any(AbortSignal));
+    expect(screen.getByText('Contents of docs/readme.md')).toBe(content);
+    expect(content.closest('.attachment-preview-body')).toBe(preview);
+    expect(preview.scrollTop).toBe(240);
+    expect(api.readText).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores focus to the surviving preview pane while a successful deletion reload is pending', async () => {
+    const api = fixture([file('target.txt')]);
+    const pending = deferred<AttachmentPage>();
+    const list = vi.fn<AttachmentApi['list']>().mockImplementationOnce(api.list).mockReturnValueOnce(pending.promise);
+    open({ ...api, list });
+    await findFileButton(/target.txt/);
+    const dialog = showDeleteConfirmation('target.txt');
+    fireEvent.click(within(dialog).getByRole('button', { name: '删除附件' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.queryByRole('button', { name: '更多操作：target.txt' })).toBeNull();
+    expect(screen.getByRole('button', { name: '刷新附件' })).toBeDisabled();
+    expect(screen.getByRole('group', { name: '附件预览' })).toHaveFocus();
+    await act(async () => pending.resolve({ items: [], nextCursor: null }));
+    expect(screen.getByRole('group', { name: '附件预览' })).toHaveFocus();
+  });
+
+  it('blocks repeated confirmation and conflicting writes while the captured deletion is pending', async () => {
+    const api = fixture([file('selected.txt'), file('target.txt')]);
+    const pending = deferred<void>();
+    const remove = vi.fn<AttachmentApi['remove']>().mockReturnValue(pending.promise);
+    open({ ...api, remove });
+    fireEvent.click(await findFileButton(/selected.txt/));
+    await screen.findByText('Contents of selected.txt');
+    const dialog = showDeleteConfirmation('target.txt');
+    const confirm = within(dialog).getByRole('button', { name: '删除附件' });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    fireEvent.keyDown(confirm, { key: 'Enter' });
+    expect(within(dialog).getByRole('button', { name: '正在删除…' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: '取消' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '刷新附件' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '更多操作：selected.txt' })).toBeDisabled();
+    fireEvent(dialog, new Event('cancel', { bubbles: false, cancelable: true }));
+    fireEvent.click(dialog, { clientX: -1, clientY: -1 });
+    expect(dialog).toHaveAttribute('open');
+    expect(remove).toHaveBeenCalledTimes(1);
+    await act(async () => pending.resolve());
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByText('Contents of selected.txt')).toBeVisible();
+  });
+
+  it('shows a deletion request ID with last-known content and retries only after another confirmation', async () => {
+    const api = fixture([file('selected.txt')]);
+    const remove = vi.fn<AttachmentApi['remove']>().mockRejectedValueOnce(new ApiError('server', 500, 'internal_error', 'delete-456')).mockImplementation(api.remove);
+    open({ ...api, remove });
+    fireEvent.click(await findFileButton(/selected.txt/));
+    const content = await screen.findByText('Contents of selected.txt');
+    const dialog = showDeleteConfirmation('selected.txt');
+    fireEvent.click(within(dialog).getByRole('button', { name: '删除附件' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('delete-456');
+    expect(screen.getByText('Contents of selected.txt')).toBe(content);
+    expect(screen.getByRole('button', { name: '更多操作：selected.txt' })).toBeVisible();
+    expect(remove).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(dialog).getByRole('button', { name: '删除附件' }));
+    await screen.findByText('暂无附件，上传文件后即可在这里浏览。');
+    expect(remove).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByText('Contents of selected.txt')).toBeNull();
+  });
+
+  it('releases an unsubmitted confirmation when task identity changes', async () => {
+    const api = fixture([file('old.txt')]);
+    const view = open(api);
+    await findFileButton(/old.txt/);
+    const dialog = showDeleteConfirmation('old.txt');
+    view.rerender(<TaskAttachments projectId="00000000-0000-4000-8000-000000000100" taskId="00000000-0000-4000-8000-000000000002" api={api} onClose={vi.fn()} />);
+    expect(dialog).not.toHaveAttribute('open');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(api.remove).not.toHaveBeenCalled();
+    await findFileButton(/old.txt/);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
   it('clears previous task preview and form synchronously and aborts old work', async () => {
     const next = deferred<AttachmentPage>();
     const api = fixture([file('old.txt')]);
     const list = vi.fn().mockImplementationOnce(api.list).mockReturnValue(next.promise);
     const injected = { ...api, list };
     const view = open(injected);
-    fireEvent.click(await screen.findByRole('button', { name: /old.txt/ }));
+    fireEvent.click(await findFileButton(/old.txt/));
     await screen.findByText('Contents of old.txt');
     const user = userEvent.setup();
     await user.click(screen.getByText('上传文件', { selector: 'summary' }));

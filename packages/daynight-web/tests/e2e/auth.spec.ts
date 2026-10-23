@@ -152,7 +152,7 @@ test('auth-project-isolation', scenario('auth-project-isolation'), async ({ page
     const detail = page.getByRole('dialog', { name: '任务详情', exact: true });
     await expect(detail.locator('.task-detail-title')).toHaveText(task.title);
     await detail.getByRole('tab', { name: '附件', exact: true }).click();
-    await detail.getByRole('button', { name: /index\.html/ }).click();
+    await detail.locator('button.attachment-file').filter({ hasText: /index\.html/ }).click();
     await expect(detail.frameLocator('iframe').getByRole('button', { name: 'Private file' })).toBeVisible();
     await detail.locator('.attachment-upload-disclosure>summary').click();
     const fileInput = detail.getByLabel('选择一个文件', { exact: true });
@@ -429,6 +429,8 @@ test('auth-invitations', scenario('auth-invitations'), async ({ page, context, a
   const inspectionOnly = await request.get(`/api/v1/projects/${project.id}/invitations`);
   expect((await inspectionOnly.json() as { items: { id: string }[] }).items.map((item) => item.id)).toContain(metadata.id);
   await page.getByRole('button', { name: '接受邀请并加入', exact: true }).click();
+  // The invitation page already displays the project name before acceptance completes.
+  await expect(page).toHaveURL(`${baseURL}/projects/${project.id}`);
   await expect(page.getByRole('heading', { name: project.name, exact: true })).toBeVisible();
   const bob = await bearerContext(playwright.request, baseURL, 'bob');
   try {
@@ -438,7 +440,7 @@ test('auth-invitations', scenario('auth-invitations'), async ({ page, context, a
     const revoked = await invitation(request, project.id);
     expect((await request.delete(`/api/v1/projects/${project.id}/invitations/${revoked.id}`)).status()).toBe(204);
     expect((await bob.post('/api/v1/invitations/accept', { data: { token: revoked.token } })).status()).toBe(410);
-    expect(await page.evaluate(() => sessionStorage.getItem('daynight.pendingInvitation'))).toBeNull();
+    expect(await page.evaluate(() => sessionStorage.getItem('daynight.pendingInvitation') === null), 'Accepted invitation clears pending session storage').toBe(true);
     await picture(page, info, 'auth-invitations');
   } finally { await bob.dispose(); }
 });
@@ -469,7 +471,7 @@ test('auth-resource-session', scenario('auth-resource-session'), async ({ page, 
   await uploadDisclosure.locator('summary').click();
   await expect(uploadDisclosure).toHaveAttribute('open', '');
   await expect(attachments.locator('input[type=text]')).toBeVisible();
-  await attachments.getByRole('button', { name: /index\.html/ }).click();
+  await attachments.locator('button.attachment-file').filter({ hasText: /index\.html/ }).click();
   const frame = detail.frameLocator('iframe');
   await expect(frame.locator('body')).toHaveAttribute('data-value', 'relative-authenticated');
   await expect(frame.locator('#counter')).toHaveCSS('color', 'rgb(17, 99, 155)');
@@ -480,10 +482,10 @@ test('auth-resource-session', scenario('auth-resource-session'), async ({ page, 
   await pathInput.fill('uploads/retained-after-frame.txt');
   await expect(pathInput).toHaveValue('uploads/retained-after-frame.txt');
   await frame.locator('#counter').click();
-  await attachments.getByRole('button', { name: /app\.js/ }).click();
+  await attachments.locator('button.attachment-file').filter({ hasText: /app\.js/ }).click();
   await expect(attachments.getByRole('heading', { name: 'site/app.js', exact: true })).toBeVisible();
   expect(identityRequests).toHaveLength(checksBeforeGesture);
-  await attachments.getByRole('button', { name: /index\.html/ }).click();
+  await attachments.locator('button.attachment-file').filter({ hasText: /index\.html/ }).click();
   await expect(frame.locator('body')).toHaveAttribute('data-value', 'relative-authenticated');
   expect((await authenticatedAPI(context.request).head(preview)).status()).toBe(200);
   expect((await authenticatedAPI(context.request).post('/api/v1/me/tokens', { headers: { Origin: 'https://wrong-origin.example' }, data: { name: 'Rejected browser origin', days: 1 } })).status()).toBe(403);
