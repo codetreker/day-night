@@ -41,6 +41,13 @@ const AccessUnavailable = () => {
   return <section className="state-box" role="alert"><h1>{m.accessUnavailable}</h1><p>{m.accessUnavailableDetail}</p><a className="button primary" href="/" onClick={followLink}>{app.returnToProjects}</a></section>;
 };
 
+const ProjectRoleBadge = ({ role, labels }: { readonly role: ProjectRole | null; readonly labels: Readonly<Record<ProjectRole, string>> }) => (
+  <span className="project-title-role">
+    {role !== null && <span className={`badge ${role}`}>{labels[role]}</span>}
+    {role !== "admin" && <span className="project-title-role-measure" aria-hidden="true">{labels.admin}</span>}
+  </span>
+);
+
 const AuthorizedProject = ({ projectId, user, onOpenMembers }: { readonly projectId: string; readonly user: CurrentUser; readonly onOpenMembers: (project: Project) => void }) => {
   const { messages: { auth: { shell: m, roles } } } = useI18n();
   const [membership, setMembership] = useState<{ status: "loading" | "ready" | "error" | "unavailable"; role: ProjectRole | null }>({ status: "loading", role: null });
@@ -58,7 +65,7 @@ const AuthorizedProject = ({ projectId, user, onOpenMembers }: { readonly projec
     return () => controller.abort();
   }, [projectId, user.id, attempt]);
   if (membership.status === "unavailable") return <AccessUnavailable />;
-  return <>{membership.status === "error" && <div className="notice error" role="alert"><p>{m.permissionsError}</p><button className="button" type="button" onClick={() => setAttempt((value) => value + 1)}>{m.retryPermissions}</button></div>}<ProjectPage projectId={projectId} renderActions={(project) => membership.status === "ready" ? <><span className={`badge ${membership.role}`}>{roles[membership.role!]}</span><a className="button" href={`/projects/${projectId}/members`} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onOpenMembers(project); }}>{m.members}</a><a className="button" href={`/projects/${projectId}/settings`} onClick={followLink}>{m.projectSettings}</a></> : null} /></>;
+  return <>{membership.status === "error" && <div className="notice error" role="alert"><p>{m.permissionsError}</p><button className="button" type="button" onClick={() => setAttempt((value) => value + 1)}>{m.retryPermissions}</button></div>}<ProjectPage projectId={projectId} renderActions={(project) => membership.status === "ready" ? <><ProjectRoleBadge role={membership.role!} labels={roles} /><a className="button" href={`/projects/${projectId}/members`} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onOpenMembers(project); }}>{m.members}</a><a className="button" href={`/projects/${projectId}/settings`} onClick={followLink}>{m.projectSettings}</a></> : <span className="project-title-actions-placeholder" aria-hidden="true"><ProjectRoleBadge role={null} labels={roles} /><span className="button">{m.members}</span><span className="button">{m.projectSettings}</span></span>} /></>;
 };
 
 const ProjectManagementNav = ({ projectId, current }: { readonly projectId: string; readonly current: "settings" | "members" }) => {
