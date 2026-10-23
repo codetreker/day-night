@@ -972,9 +972,13 @@ resources immediately. After the native functional phase, an atomically written
 `container/container-permission.json` binds its completed cleanup to the exact
 acceptance run ID, dev-ci run ID and source SHA. The container callback records
 its identity before waiting, and inventories browsers only after permission;
-its `ready.json` is diagnostic timing, not browser permission. Any stage failure
-or unexpected native-server exit cancels sibling work, drains started tasks and
-preserves failures before final cleanup.
+its `ready.json` is diagnostic timing, not browser permission. The callback
+protocol fixture observes that receipt within its existing five-second owned-child
+lifetime, sharing the same exit/timeout owner rather than imposing a shorter
+module-startup deadline; the [budget decision](../../.agents/notes/implemented/testing/2026-10-23-callback-readiness-budget.md)
+explains the scheduling failure this prevents. Any stage failure or unexpected
+native-server exit cancels sibling work, drains started tasks and preserves
+failures before final cleanup.
 
 After the original runner, callback/Playwright processes and their owned groups
 have stopped, run

@@ -76,7 +76,7 @@ const start = (args: readonly string[], value: Fixture, ipc = false) => {
 };
 
 const readyReceipt = async (path: string, running: ReturnType<typeof start>): Promise<Record<string, unknown>> => {
-  const deadline = performance.now() + 3_000;
+  // Readiness shares the child's existing startup and protocol lifetime.
   for (;;) {
     if (running.child.exitCode !== null || running.child.signalCode !== null) {
       assert.fail(`Container callback exited before readiness: ${JSON.stringify(await running.done)}`);
@@ -85,7 +85,6 @@ const readyReceipt = async (path: string, running: ReturnType<typeof start>): Pr
     catch (error) {
       if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
     }
-    if (performance.now() >= deadline) throw new Error('Container callback did not persist readiness.');
     await delay(10);
   }
 };
@@ -220,6 +219,38 @@ test('recovery refuses a storage path outside its run and preserves storage whil
         assert.equal(await readFile(join(storageRoot, 'owned-file'), 'utf8'), 'owned');
         assert.equal(await readFile(value.commands, 'utf8'), '');
       } finally { await rm(directory, { recursive: true, force: true }); }
+    }
+  });
+});
+
+test('an absent readiness receipt is bounded by the owned child lifecycle', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
+  await fixture(async (value) => {
+    const path = join(value.directory, 'ready.json');
+    const running = start(['--input-type=module', '--eval', "process.on('message', () => {});"], value, true);
+    const observed = readyReceipt(path, running).then(
+      (receipt) => ({ kind: 'ready' as const, receipt }),
+      (error: unknown) => ({ kind: 'exited' as const, error, exitObserved: running.child.exitCode !== null || running.child.signalCode !== null }),
+    );
+    try {
+      const result = await running.done;
+      const readiness = await observed;
+      assert.equal(result.error, undefined);
+      assert.equal(result.timedOut, true);
+      assert.equal(result.code, null);
+      assert.equal(result.signal, 'SIGKILL');
+      assert.equal(result.stdout, '');
+      assert.equal(result.stderr, '');
+      assert.equal(readiness.kind, 'exited');
+      if (readiness.kind !== 'exited') assert.fail('Readiness was published without a receipt.');
+      assert.equal(readiness.exitObserved, true);
+      assert.ok(readiness.error instanceof Error);
+      assert.match(readiness.error.message, /Container callback exited before readiness: .*"timedOut":true/);
+      await assert.rejects(readFile(path), { code: 'ENOENT' });
+      assert.equal(await processIdentity(running.child.pid!), null);
+    } finally {
+      if (running.child.exitCode === null && running.child.signalCode === null) running.child.kill('SIGKILL');
+      await running.done;
+      await observed;
     }
   });
 });

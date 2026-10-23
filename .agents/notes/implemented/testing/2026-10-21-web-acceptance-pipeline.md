@@ -119,7 +119,10 @@ Release is an atomic `container/container-permission.json` receipt with schema 1
 phase `native-functional-cleaned`, acceptance run ID, dev-ci run ID and source
 SHA. The container callback records its process identity before waiting and
 inventories browsers only after validating that exact permission. Its
-`ready.json` records diagnostic timing and grants no permission. The callback
+`ready.json` records diagnostic timing and grants no permission. The
+[callback fixture budget decision](2026-10-23-callback-readiness-budget.md) keeps
+its readiness observation within the existing owned-child lifetime, independently
+of these production phase limits. The callback
 runs the twenty-three container functional scenarios, confirms browser cleanup and
 returns to the normal shell exit path. The outer stage waits for full dev-ci
 cleanup and browser recovery before completing.
