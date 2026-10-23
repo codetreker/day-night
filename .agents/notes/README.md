@@ -14,7 +14,10 @@ history, alternatives, consequences, and conditions for reconsideration. Runtime
 acceptance observations belong to source-bound artifacts and their corresponding
 PR or CI run; the [validation evidence decision](implemented/process/2026-10-20-source-bound-validation-evidence.md)
 explains their retention limits and the durable knowledge that remains tracked.
-Link to the owning document instead of duplicating its explanation.
+Daynight owns task breakdowns, dependencies, status, task plans and task-specific
+acceptance material under the
+[task ownership decision](implemented/process/2026-10-23-daynight-task-ownership.md).
+Link to the owning document or task instead of duplicating its explanation.
 
 These are conventions for documents created when work needs them, not a request
 to create a documentation tree in advance.

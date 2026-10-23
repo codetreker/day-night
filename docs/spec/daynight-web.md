@@ -1,22 +1,21 @@
 # 项目与任务看板
 
-状态：完整图 API、项目任务看板、localhost/dev-ci 单服务交付及任务详情中的附件管理与预览已实现。任务链完整上游数据、渐进概览与显式展开已由 PR #134 交付，主体依赖检查、独立 Details 与平滑路线已由 PR #143 交付；Markdown 描述与附件导航的当前源码验收和交付由 UX-T4 负责。任务元数据和图保持读取，详情提供 proposed 审批，附件提供独立文件写操作。验证命令、要求与场景映射和回执解释见[web 验证说明](../../packages/daynight-web/README.md#production-browser-acceptance)，运行结果随对应 PR 与 CI 保存。本文拥有看板基线及其集成要求；[设计](../design/daynight-web.md)说明机制，[任务视图交互预览](../design/mockups/task-views.html)保留项目内页签的中文视觉基线，[原始看板预览](../design/mockups/task-dashboard.html)保留初始基线，[任务清单](../design/daynight-web-tasks.md)保留该基线的实施范围与完成证据。
+状态：完整图 API、项目任务看板、localhost/dev-ci 单服务交付及任务详情中的附件管理与预览已实现。任务链完整上游数据、渐进概览与显式展开已由 PR #134 交付，主体依赖检查、独立 Details 与平滑路线已由 PR #143 交付；Markdown 描述与附件导航的当前源码验收和交付由 UX-T4 负责。任务元数据和图保持读取，详情提供 proposed 审批，附件提供独立文件写操作。验证命令、要求与场景映射和回执解释见[web 验证说明](../../packages/daynight-web/README.md#production-browser-acceptance)，运行结果随对应 PR 与 CI 保存。本文拥有看板基线及其集成要求；[设计](../design/daynight-web.md)说明机制，[任务视图交互预览](../design/mockups/task-views.html)保留项目内页签的中文视觉基线，[原始看板预览](../design/mockups/task-dashboard.html)保留初始基线，Daynight 任务记录及其专属附件保留该基线的实施范围与完成证据。
 
 [预定义属性需求](daynight-task-properties.md)的 server 接口、CLI 和任务详情中的
-只读 PR 引用区域已实现。[架构](../design/daynight-task-properties.md)、
-[交互预览](../design/mockups/task-properties.html)与
-[实施任务](../design/daynight-task-properties-tasks.md)拥有该扩展的机制、样式和状态。
+只读 PR 引用区域已实现。[架构](../design/daynight-task-properties.md)与
+[交互预览](../design/mockups/task-properties.html)分别拥有该扩展的机制和样式，
+实施状态由 Daynight 任务记录维护。
 
 [附件需求](daynight-task-attachments.md)拥有已实现的文件树、单文件上传、覆盖、
 删除、下载及预览行为，机制见[附件架构](../design/daynight-task-attachments.md)。
-附件任务和组合验收进度由 Daynight 维护，
-[附件任务拆分](../design/daynight-task-attachments-tasks.md)拥有范围与完成条件。
+附件任务、组合验收进度、范围与完成条件由 Daynight 任务记录及其专属附件维护。
 原只读 MVP 的图与统计约定继续有效；任务字段写入仅增加下述审批操作。项目任务页在可见时每 5 秒自动读取完整快照与当前详情，刷新保留浏览、焦点和附件操作状态；具体时序与错误语义见下文。
 
 [鉴权需求](daynight-auth.md)拥有登录、私有项目、成员管理、邀请和访问令牌界面。
 `AuthenticatedApp` 及其 API 客户端已接入生产入口，`main.tsx` 在常驻
-LocaleProvider 下渲染登录和认证后的工作空间；[架构](../design/daynight-auth.md)和
-[任务拆分](../design/daynight-auth-tasks.md)拥有机制与交付条件。登录方式来自后端
+LocaleProvider 下渲染登录和认证后的工作空间；[架构](../design/daynight-auth.md)拥有机制，
+交付条件由 Daynight 任务记录及其专属附件拥有。登录方式来自后端
 真实 UniAuth App discovery，项目列表仅包含当前用户加入的项目。登录、账户、
 成员、邀请、令牌与原有看板共用英语/简体中文目录及状态保持规则。
 可信同源 frame、相对资源和键盘交互继续保留，附件请求按当前身份执行成员检查。
@@ -238,6 +237,6 @@ CI 回执必须来自干净测试源码且等于对应 `GITHUB_SHA`，保留生�
 
 现有生产浏览器 inventory 验证看板基线。附件前端 mockup 使用实际组件、CSS 和内存
 fixture，不依赖 Go/PG，其外观、状态和焦点探针不能证明真实后端旅程。
-[A-T6](../design/daynight-task-attachments-tasks.md#a-t6)拥有新增附件生产浏览器场景、
+Daynight 中的 A-T6 任务及其专属附件拥有新增附件生产浏览器场景、
 安装 CLI 与服务的组合验收及对应 CI inventory；保留现有看板性能与覆盖率门槛，
 不为附件增加新的性能门槛。

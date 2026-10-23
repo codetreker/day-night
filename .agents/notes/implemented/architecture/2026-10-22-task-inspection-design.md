@@ -63,10 +63,9 @@ references. Detailed Solution, full Acceptance criteria and evidence remain in
 the task-specific primary Markdown attachment. The Markdown description decision
 owns this structure without changing Goal stages or authorization rules.
 
-The [breakdown](../../../../docs/design/daynight-task-inspection-tasks.md)
-separates complete context, graph inspection, centered reading and Markdown
-authoring/reading. Each task includes its relevant production checks and
-documentation; validation is not deferred to a final catch-all task. Functional
+The Daynight delivery tasks separate complete context, graph inspection,
+centered reading and Markdown authoring/reading. Each task includes its relevant
+production checks and documentation; validation is not deferred to a final catch-all task. Functional
 prerequisites belong only in Daynight `dependsOn`. Existing standalone-tab work
 is an integration consideration rather than a fabricated prerequisite.
 

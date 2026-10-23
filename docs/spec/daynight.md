@@ -4,7 +4,7 @@
 task 命令、安装产物、真实服务及默认预算验收已完成并通过托管验证；
 集成状态见[PR #55](https://github.com/codetreker/daynight/pull/55)。
 可用命令和验证入口见[仓库 README](../../README.md)，完整交付范围见
-[project/task 需求](daynight-project-task.md)及[任务清单](../design/daynight-project-task-tasks.md)。
+[project/task 需求](daynight-project-task.md)，具体任务范围与状态由 Daynight 任务记录及其专属附件拥有。
 
 Daynight 是一个组合命令的客户端工具包。npm 包提供统一的 `daynight` 入口及短命令 `dn`，命令模块
 拥有各自的业务行为、依赖和生命周期。`review` 是 GitHub PR 审查模块；`update` 管理

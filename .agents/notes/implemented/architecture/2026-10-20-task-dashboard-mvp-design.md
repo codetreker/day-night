@@ -15,9 +15,10 @@ The adopted MVP design defines project browsing, project-level statistics,
 expandable source-root graphs, and a task detail drawer. The
 [requirements](../../../../docs/spec/daynight-web.md) own visible behavior, the
 [design](../../../../docs/design/daynight-web.md) owns implementation contracts,
-the [task breakdown](../../../../docs/design/daynight-web-tasks.md) owns execution
-status, dependencies and completion criteria, and the [interactive preview](../../../../docs/design/mockups/task-dashboard.html)
-demonstrates the original appearance. The later [task view decision](../feature/2026-10-22-project-task-views.md)
+and the [interactive preview](../../../../docs/design/mockups/task-dashboard.html)
+demonstrates the original appearance. Daynight task records and their owned
+attachments manage execution status, dependencies and completion criteria. The
+later [task view decision](../feature/2026-10-22-project-task-views.md)
 separates standalone task rows from root-chain graphs within project tabs, using
 the [task view mockup](../../../../docs/design/mockups/task-views.html). This note
 records the delivered MVP design; the

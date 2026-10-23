@@ -58,5 +58,5 @@ Graph consumers get one project-scoped state without changing mutation policy,
 database layout or transaction ownership. Raw-profile coverage gates and real
 PostgreSQL tests apply to the owning packages. Tests must prove snapshot
 interleavings, exact limits, bounded Unicode projections, failures and HTTP
-error semantics; browser delivery remains tracked in the
-[dashboard task document](../../../../docs/design/daynight-web-tasks.md).
+error semantics; Daynight tasks and their owned attachments manage browser
+delivery and acceptance.

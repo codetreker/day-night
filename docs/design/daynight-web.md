@@ -1,22 +1,20 @@
 # 项目与任务看板设计
 
-状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 已定位长斜线 SVG 虚线绘制造成的 raster/commit 阻塞，采用局部水平线与短原生转角路径分解；完整生产验收已交付，完成状态与对应源码的 PR/CI 链接由任务清单记录。运行结果随对应 PR 与 CI 保存；本地回执不能代替干净 hosted 验证。原始看板基线为[只读 MVP](../spec/daynight-web.md)，当前项目内任务页签见[任务视图交互预览](mockups/task-views.html)；[原始看板预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)保留初始视觉基线。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；[任务清单](daynight-web-tasks.md)拥有任务状态、前置与完成条件。
+状态：完整图 API、项目任务看板、Go 内嵌交付及 localhost/dev-ci 部署已实现；W-T6 已定位长斜线 SVG 虚线绘制造成的 raster/commit 阻塞，采用局部水平线与短原生转角路径分解；完整生产验收已交付，完成状态与对应源码的 PR/CI 链接由 Daynight 任务记录。运行结果随对应 PR 与 CI 保存；本地回执不能代替干净 hosted 验证。原始看板基线为[只读 MVP](../spec/daynight-web.md)，当前项目内任务页签见[任务视图交互预览](mockups/task-views.html)；[原始看板预览](mockups/task-dashboard.html)和[项目详情截图](mockups/task-dashboard-project.png)保留初始视觉基线。[决策记录](../../.agents/notes/implemented/architecture/2026-10-20-task-dashboard-mvp-design.md)保存选型与范围取舍；Daynight 任务记录及其专属附件拥有任务状态、前置与完成条件。
 
 [预定义属性设计](daynight-task-properties.md)的 server 接口、CLI 和任务详情中的
-只读 PR 区域已实现。[需求](../spec/daynight-task-properties.md)、
-[交互预览](mockups/task-properties.html)及[实施任务](daynight-task-properties-tasks.md)
-分别拥有行为、样式和实施状态。
+只读 PR 区域已实现。[需求](../spec/daynight-task-properties.md)与
+[交互预览](mockups/task-properties.html)分别拥有行为和样式，实施状态由 Daynight 任务记录维护。
 
 已实现的[附件架构](daynight-task-attachments.md)扩展 task 详情，提供文件树、
 单文件上传/覆盖/删除、下载及同源预览。[附件需求](../spec/daynight-task-attachments.md)
 拥有文件行为，[Web 决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)
-记录状态、渲染和焦点机制；[附件任务拆分](daynight-task-attachments-tasks.md)拥有
-实施与组合验收范围，进度由 Daynight 维护。图、统计与 task 元数据保留读取约定；proposed 的批准与 todo 的审批撤回均为独立版本化操作。
+记录状态、渲染和焦点机制；实施与组合验收范围由 Daynight 任务记录及其专属附件拥有，
+进度由 Daynight 维护。图、统计与 task 元数据保留读取约定；proposed 的批准与 todo 的审批撤回均为独立版本化操作。
 
 [鉴权架构](daynight-auth.md)拥有 UniAuth 登录、项目权限、成员与邀请及个人访问
 令牌；`AuthenticatedApp` 和 API 客户端已接入生产入口。
-[需求](../spec/daynight-auth.md)与[任务拆分](daynight-auth-tasks.md)拥有完整行为和
-交付条件。生产 `main.tsx` 在常驻 LocaleProvider 中渲染 `AuthenticatedApp`，复用
+[需求](../spec/daynight-auth.md)拥有完整行为，交付条件由 Daynight 任务记录及其专属附件拥有。生产 `main.tsx` 在常驻 LocaleProvider 中渲染 `AuthenticatedApp`，复用
 messages.auth 的英语/简体中文目录及同一语言偏好。后端使用升级后的公开 UniAuth
 SDK 提供 App-aware provider discovery；发现失败与用户会话失效分开呈现。新壳
 复用现有任务页签、渐进图和居中 `TaskDetailDialog`，保留可信同源 frame、相对资源及键盘机制。
@@ -967,7 +965,7 @@ CI 无论验收成功、失败或取消都执行恢复与归档；恢复成功�
 
 ## 实施与验收边界
 
-[任务清单](daynight-web-tasks.md)定义六个实现任务：图读取 API、项目浏览基础、纯图模型、项目任务看板、localhost 与 dev-ci 交付、完整验收。任务状态、依赖和文件归属只在该文档维护。图 API 与项目浏览基础可以并行，后续按清单依赖推进。
+实现涵盖图读取 API、项目浏览基础、纯图模型、项目任务看板、localhost 与 dev-ci 交付及完整验收。任务拆分、状态、依赖和文件归属由 Daynight 任务记录及其专属附件维护，执行按实际 `dependsOn` 关系推进。
 
 所有任务交付自身的有效测试与覆盖率；最终验收任务验证组合后的真实进程，不替前面的任务补写缺失测试。设计预览不是实际 API、覆盖率、Docker 或集成完成证据。
 
@@ -986,7 +984,7 @@ CI 无论验收成功、失败或取消都执行恢复与归档；恢复成功�
 探针验证 CSS 隐藏、contenteditable、frame Tab/Esc、portal/inert 和被动焦点恢复。
 JSDOM 使用上游 `tabbable` 测试包装，不能提供可见性证据。本机 Chromium override
 的回执只证明该环境的前端行为，不等同锁定 CI 浏览器或真实后端验收。
-[A-T6](daynight-task-attachments-tasks.md#a-t6)拥有新增附件后端旅程和组合 CI inventory，
+Daynight 中的 A-T6 任务及其专属附件拥有新增附件后端旅程和组合 CI inventory，
 既有看板的原生/容器/容量场景及其门槛继续有效。
 
 ## 风险与重审条件

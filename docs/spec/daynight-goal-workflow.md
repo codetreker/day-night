@@ -3,7 +3,7 @@
 公开 `using-daynight` skill 使用本文的分阶段 Goal 协议。
 [Agent skill 需求](daynight-agent-skill.md)拥有整体使用与安装要求；本文拥有 Goal 行为，
 [架构设计](../design/daynight-goal-workflow.md)拥有机制，
-[任务拆分](../design/daynight-goal-workflow-tasks.md)拥有交付范围与任务身份。
+Daynight 任务记录及其专属附件拥有交付范围与任务身份。
 
 ## 目的与范围
 

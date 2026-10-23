@@ -12,9 +12,10 @@ agreed purpose, making validation and presentation harder to maintain.
 ## Decision
 
 The delivered artifacts are the [requirements](../../../../docs/spec/daynight-task-properties.md),
-[design](../../../../docs/design/daynight-task-properties.md),
-[implementation breakdown](../../../../docs/design/daynight-task-properties-tasks.md)
+[design](../../../../docs/design/daynight-task-properties.md)
 and [interactive preview](../../../../docs/design/mockups/task-properties.html).
+Daynight tasks and their owned attachments manage the implementation breakdown
+and acceptance criteria.
 Server persistence, migration, HTTP operations, CLI property input/output and
 read-only web presentation are implemented. The existing
 [server task design](2026-10-19-daynight-server-task-design.md) owns the delivered

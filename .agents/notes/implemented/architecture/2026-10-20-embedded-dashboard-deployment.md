@@ -108,8 +108,8 @@ passed with another run retaining its HTTP/data sentinel throughout; that matrix
 predates the SVG change and tests unchanged deployment lifecycle code, not the
 new UI image identity. Production-browser and image verification is delivered
 through [PR #52](https://github.com/codetreker/daynight/pull/52), with source-bound
-results retained by its PR and CI. W-T6 in the
-[task document](../../../../docs/design/daynight-web-tasks.md) owns delivery status.
+results retained by its PR and CI. The corresponding Daynight task owns
+delivery status and links its source-bound evidence.
 The committed [lifecycle evidence](../../../../docs/research/evidence/daynight-web-lifecycle.json)
 retains the original first report with its failed auxiliary cleanup
 classification, the corrected probe's passed matrix and the independent final

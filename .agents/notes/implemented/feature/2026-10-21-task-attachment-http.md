@@ -13,8 +13,8 @@ and relative preview resources through the application origin.
 
 The [requirements](../../../../docs/spec/daynight-task-attachments.md) and
 [architecture](../../../../docs/design/daynight-task-attachments.md) own the
-cross-component contract. This delivery implements A-T2 from the
-[breakdown](../../../../docs/design/daynight-task-attachments-tasks.md) on the
+cross-component contract. This delivery implements the A-T2 attachment HTTP
+assignment, managed in Daynight, on the
 [local storage foundation](../architecture/2026-10-21-bucket-file-storage.md).
 CLI commands and browser management remain separate tasks. The
 [persistence delivery](../architecture/2026-10-21-task-attachment-persistence.md)

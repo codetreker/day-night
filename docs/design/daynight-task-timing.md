@@ -1,7 +1,7 @@
 # 任务执行耗时与卡住提醒架构
 
 本设计落实[需求 TT1–TT6](../spec/daynight-task-timing.md)，
-[任务拆分](daynight-task-timing-tasks.md)定义独立交付成果，
+独立交付成果由 Daynight 任务记录及其专属附件定义，
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-23-task-timing-design.md)保存采用理由。
 任务起止持久化、图数据库时间及严格客户端读取机制已实现。项目阈值、实时卡片和整体验收仍由 ET-T2/ET-T3 交付；
 本页明确区分当前机制与后继采用的目标机制，不以设计或单个任务完成代表整个目标完成。

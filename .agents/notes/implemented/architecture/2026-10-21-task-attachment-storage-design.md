@@ -12,9 +12,10 @@ also make another file use case repeat the same disk and transport concerns.
 
 ## Decision
 
-The delivered artifacts are the adopted [requirements](../../../../docs/spec/daynight-task-attachments.md),
-[architecture](../../../../docs/design/daynight-task-attachments.md) and
-[implementation breakdown](../../../../docs/design/daynight-task-attachments-tasks.md).
+The adopted [requirements](../../../../docs/spec/daynight-task-attachments.md)
+and [architecture](../../../../docs/design/daynight-task-attachments.md) own the
+delivered contracts. Daynight tasks and their owned attachments manage the
+implementation breakdown, dependencies and acceptance criteria.
 The [file-storage foundation](2026-10-21-bucket-file-storage.md) implements the
 generic local adapter and startup integration. The
 [attachment HTTP delivery](../feature/2026-10-21-task-attachment-http.md) implements

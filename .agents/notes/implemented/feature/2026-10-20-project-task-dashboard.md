@@ -161,11 +161,11 @@ declaration patch and negative type assertions keep those checks meaningful.
 
 Project browsing now reaches real statistics, dependency diagrams and task
 details. Controlled component tests cover state/focus transitions, while a local
-production-bundle browser check also uses the real Go API and PostgreSQL. The
-[task record](../../../../docs/design/daynight-web-tasks.md) distinguishes earlier
-preview and pre-static-SVG local results from the current renderer's complete
-local production pass. PR #52's earlier hosted shared-graph zoom failure
-is retained. A later hosted run also exceeded the shared-graph zoom budget;
+production-bundle browser check also uses the real Go API and PostgreSQL.
+Source-bound PR and CI evidence distinguishes earlier preview and pre-static-SVG
+local results from the current renderer's complete local production pass.
+Daynight tasks own delivery status and references to that evidence. PR #52's
+earlier hosted shared-graph zoom failure is retained. A later hosted run also exceeded the shared-graph zoom budget;
 diagnostics identify prior drawer-close raster/commit backpressure from long
 native dashed routes. A controlled local-coordinate decomposition prototype
 reduces that raster work. The committed helper passes complete local production,

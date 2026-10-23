@@ -3,7 +3,7 @@
 状态：身份、会话/PAT、项目成员、CLI 和双语 Web 已在正式 composition 统一启用。
 服务配置校验失败会拒绝启动，所有业务请求强制认证。源码绑定的验证结果与真实上游
 人工登录以相应回执为准，本文不把接线完成等同于完整验收通过。
-[需求](../spec/daynight-auth.md)拥有行为，[任务入口](daynight-auth-tasks.md)连接资料；
+[需求](../spec/daynight-auth.md)拥有行为，Daynight 任务记录及其附件拥有执行资料；
 [原始鉴权决策](../../.agents/notes/implemented/architecture/2026-10-22-auth-architecture.md)
 保留架构取舍，[统一启用决策](../../.agents/notes/implemented/architecture/2026-10-22-authentication-activation.md)
 拥有当前配置、组合与验收隐私规则，[交互原型](mockups/auth/index.html)拥有视觉。

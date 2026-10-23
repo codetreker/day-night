@@ -1,6 +1,6 @@
 # Worker 需求
 
-本文定义 `daynight worker run` 的目标行为与可观察验收条件。运行时尚未实现；[架构](../design/daynight-worker.md)说明机制，[交付任务](../design/daynight-worker-tasks.md)拥有拆分及 Daynight task 引用。
+本文定义 `daynight worker run` 的目标行为与可观察验收条件。运行时尚未实现；[架构](../design/daynight-worker.md)说明机制，任务拆分、依赖与验收分工由 Daynight 任务记录及其专属附件拥有。
 
 ## 目标与范围
 

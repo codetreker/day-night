@@ -56,7 +56,8 @@ dashes in their values; directories, switches and help retain their rejection of
 inline values. Scalar options disappear after use; dependencies remain available
 after each occurrence. Status candidates work in separated and inline forms,
 while free text and identifiers have no file fallback. Integration and native
-evidence follow the [task record](../../../../docs/design/daynight-project-task-tasks.md).
+evidence remain with the corresponding PR and CI run, referenced by the
+owning Daynight task.
 
 Loaded scripts use shell-native completion and local directory enumeration. They
 do not start Node or another daynight process on Tab, read review data or make

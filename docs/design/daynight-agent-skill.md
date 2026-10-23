@@ -7,7 +7,7 @@
 [附件设计](daynight-task-attachments.md)继续拥有服务访问、版本、依赖和文件操作。
 
 [Goal 流程设计](daynight-goal-workflow.md)拥有描述、架构与实际拆分、实施和整体验收的
-阶段协议，[任务拆分](daynight-goal-workflow-tasks.md)关联其真实交付任务。普通任务与
+阶段协议，真实交付任务、依赖及专属资料由 Daynight 管理。普通任务与
 Goal 阶段使用同一自足正文与资料所有权规则，共享输入通过已核验源 task ID 和附件路径
 读取，阶段结果不能成为开始其生产阶段的前提。
 

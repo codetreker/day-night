@@ -1,6 +1,6 @@
 # Worker 架构设计
 
-状态：架构方案已确认，运行时尚未实现。本文拥有机制；[需求](../spec/daynight-worker.md)拥有产品行为，[任务拆分](daynight-worker-tasks.md)拥有交付顺序、身份及验收分工。[设计决策](../../.agents/notes/implemented/architecture/2026-10-22-worker-design.md)保留真实备选方案。
+状态：架构方案已确认，运行时尚未实现。本文拥有机制；[需求](../spec/daynight-worker.md)拥有产品行为，Daynight 任务记录及其专属附件拥有交付顺序、身份及验收分工。[设计决策](../../.agents/notes/implemented/architecture/2026-10-22-worker-design.md)保留真实备选方案。
 
 ## 目标与当前基础
 
@@ -252,7 +252,7 @@ Linux 本地 Herdr 0.8.2 的隔离无原生 agent 冒烟已验证：原始 JSON 
 | Herdr 原生 | 支持基线、两 agent、三平台 API/输入/blocked、停止、无客户端 native restore 及真实历史保留。 |
 | 端到端 | 安装 CLI、两 worker 竞争、多仓库轮转、PR/CI/review/合并/验收、人工介入/移交、各崩溃窗口与重启。 |
 
-不得以模拟 lifecycle 或文档说明替代原生证据。实现按[任务拆分](daynight-worker-tasks.md)交付，每个 task 执行其适用 CLI/Go/Web 门禁，保留严格覆盖率、原生平台和实际服务证据。
+不得以模拟 lifecycle 或文档说明替代原生证据。实现按 Daynight 中的实际任务及依赖交付，每个 task 执行其适用 CLI/Go/Web 门禁，保留严格覆盖率、原生平台和实际服务证据。
 
 ## 模型入口大小
 

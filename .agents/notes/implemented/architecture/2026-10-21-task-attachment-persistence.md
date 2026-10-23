@@ -92,7 +92,7 @@ before lifecycle actions; failures remain failures and cleanup is scoped.
 Current runtime validation is for Linux Docker volumes. A different storage
 driver or deployment model needs its own permission and persistence evidence.
 
-CLI and browser management remain tracked separately in the
-[implementation breakdown](../../../../docs/design/daynight-task-attachments-tasks.md).
+CLI and browser management remain separate Daynight tasks with their own plans
+and acceptance criteria.
 Their delivery and cross-layer acceptance are not established by deployment
 tests.

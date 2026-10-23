@@ -7,21 +7,20 @@
 本文定义 `daynight-server` 面向本机 CLI 和内部程序的任务管理行为。
 [技术设计](../design/daynight-server.md)拥有分层、存储和并发机制；
 [设计决策](../../.agents/notes/implemented/architecture/2026-10-19-daynight-server-task-design.md)
-记录取舍和范围。[任务拆分](../design/daynight-server-tasks.md)记录实现任务、依赖、
-状态与验收条件。
+记录取舍和范围。实现任务、依赖、状态与验收条件由 Daynight 任务记录及其专属附件拥有。
 
 [预定义属性需求](daynight-task-properties.md)扩展本文的 task 资源，PR 引用的
-服务端存储、更新与迁移已实现；[架构](../design/daynight-task-properties.md)和
-[实施任务](../design/daynight-task-properties-tasks.md)拥有机制及各组件的交付记录。
+服务端存储、更新与迁移已实现；[架构](../design/daynight-task-properties.md)拥有机制，
+各组件的交付记录由 Daynight 任务及其专属附件维护。
 
 [附件需求](daynight-task-attachments.md)扩展本文的服务基线：本地内容、PG 元数据、
 单文件 API 和固定预览路径已实现，CLI 与 Web 管理界面按其任务继续交付。其
-[架构](../design/daynight-task-attachments.md)与
-[任务拆分](../design/daynight-task-attachments-tasks.md)单独拥有附件机制及实施状态。
+[架构](../design/daynight-task-attachments.md)拥有附件机制，
+实施状态由 Daynight 任务记录维护。
 
 [鉴权需求](daynight-auth.md)定义已接入主站的 UniAuth 登录、Daynight 会话、个人
-访问令牌和项目成员授权；[架构](../design/daynight-auth.md)与
-[任务拆分](../design/daynight-auth-tasks.md)拥有机制和交付条件。全部 project、task、
+访问令牌和项目成员授权；[架构](../design/daynight-auth.md)拥有机制，
+交付条件由 Daynight 任务记录及其专属附件拥有。全部 project、task、
 图和附件业务请求必须通过认证，并按项目成员关系授权。已有项目后续手工补齐成员，
 零成员项目不可访问。[统一启用决策](../../.agents/notes/implemented/architecture/2026-10-22-authentication-activation.md)
 记录运行时接线与验收凭据边界；对应源码的验证结论仍以完整运行回执为准。

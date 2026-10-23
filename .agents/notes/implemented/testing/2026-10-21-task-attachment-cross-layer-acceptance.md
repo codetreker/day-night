@@ -18,8 +18,7 @@ service failures and resource cleanup tied to the tested artifacts.
 The [attachment requirements](../../../../docs/spec/daynight-task-attachments.md)
 and [architecture](../../../../docs/design/daynight-task-attachments.md) own the
 feature and accepted K1 limitation. This note owns combined attachment proof,
-originating with A-T6 in the
-[breakdown](../../../../docs/design/daynight-task-attachments-tasks.md) and extending
+originating with the A-T6 Daynight assignment and extending
 the [production browser acceptance](2026-10-20-dashboard-production-acceptance.md)
 with an attachment journey. Independent runtime acceptance now also establishes
 the integrated [split view](../architecture/2026-10-22-task-attachment-split-view.md)

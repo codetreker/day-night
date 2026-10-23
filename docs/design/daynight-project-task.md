@@ -3,7 +3,7 @@
 状态：共享配置、HTTP、仓库关联基础及 `project create/list/show` 已实现；
 Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已完成，并通过三原生
 平台及 Go 托管验证；集成状态见[PR #55](https://github.com/codetreker/daynight/pull/55)。
-本文描述采用的结构和交付机制，各项状态由任务清单拥有，当前可用命令见
+本文描述采用的结构和交付机制，各项状态由 Daynight 任务记录拥有，当前可用命令见
 [仓库 README](../../README.md)。必需行为与编号验收由
 [客户端需求](../spec/daynight-project-task.md)拥有，服务行为由
 [服务需求](../spec/daynight-server.md)拥有。结构决策与真实备选方案见
@@ -12,17 +12,17 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 有界 ready 选择见[选择决策](../../.agents/notes/implemented/feature/2026-10-21-bounded-ready-task-selection.md)，
 列表默认值与文本输出见[列表决策](../../.agents/notes/implemented/feature/2026-10-22-task-list-defaults.md)，
 JSON 列表字段见[描述省略决策](../../.agents/notes/implemented/simplification/2026-10-22-task-list-json-description.md)。
-实现顺序与依赖见[交付任务](daynight-project-task-tasks.md)。
+实现顺序与依赖由 Daynight 任务及其 `dependsOn` 管理。
 任务起止字段与图时钟的读取机制由[执行计时架构](daynight-task-timing.md)扩展；
 CLI 同步保留 `startedAt`、`completedAt` 与 `observedAt`，不产生本地推算时间或新增可读字段。
 
 [预定义属性设计](daynight-task-properties.md)的 server 接口、CLI 成对 PR 引用
-参数与完整输出已实现。[需求](../spec/daynight-task-properties.md)和
-[实施任务](daynight-task-properties-tasks.md)拥有扩展约定及实施状态。
+参数与完整输出已实现。[需求](../spec/daynight-task-properties.md)拥有扩展约定，
+实施状态由 Daynight 任务记录维护。
 
 [附件架构](daynight-task-attachments.md)中的 `task attachment put/list/read/remove`
 及二进制传输通道已实现，行为见[附件需求](../spec/daynight-task-attachments.md)，
-范围与 Daynight 任务入口见[附件任务拆分](daynight-task-attachments-tasks.md)。
+实施范围与完成条件由 Daynight 任务记录及其专属附件拥有。
 Web 文件管理亦已实现，组合验收由 A-T6 维护。元数据查询按操作输出 JSON；
 task list 的 JSON 仅省略 `description`，其他元数据查询保留各自完整资源。
 文本输出选择列表摘要或完整资源，创建和更新输出完整文本资源；原始内容逐段写入
@@ -32,8 +32,8 @@ task list 的 JSON 仅省略 `description`，其他元数据查询保留各自�
 
 个人访问令牌配置和共享 HTTP Bearer 传输已实现，机制由
 [凭据决策](../../.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)拥有。
-[鉴权架构](daynight-auth.md)、[需求](../spec/daynight-auth.md)和
-[任务拆分](daynight-auth-tasks.md)拥有完整项目授权与交付条件；生产服务对全部
+[鉴权架构](daynight-auth.md)和[需求](../spec/daynight-auth.md)拥有完整项目授权机制与行为，
+交付条件由 Daynight 任务记录及其专属附件拥有；生产服务对全部
 项目、任务、图和附件业务请求强制鉴权。安装 CLI 的真实服务及预算验收通过 UniAuth
 夹具取得用户 PAT，并复用正常配置与 Bearer 请求通道。仓库关联不保存凭据、
 不授予项目访问权；旧项目由部署者手工补齐成员关系。专用 approve、claim、
@@ -529,7 +529,7 @@ Project 命令的实际编译入口已在受控 HTTP 条件下验证创建、完
 取消、信号清理、callback 失败后的空 stdout、渲染后的最终期限检查及多请求累计
 预算。Task 的命令、API/仓库组合及完整渲染已通过本地专项和编译入口验证；静态
 补全在三种真实 shell 中通过新增 Task 场景。PT-T5 的真实 Go/PostgreSQL CLI
-全流程联调及默认预算的历史验证结果见[任务清单](daynight-project-task-tasks.md)。安装验证的
+全流程联调及默认预算的历史验证结果由 Daynight 任务记录及其专属附件保存。安装验证的
 分层与隔离由
 [安装联调决策](../../.agents/notes/implemented/testing/2026-10-20-installed-project-task-acceptance.md)
 拥有；当前期限 mock 和验证成本取舍由
@@ -590,7 +590,7 @@ project，各页均满足列表协议，失败 stdout 必须为空。
 [PR #55](https://github.com/codetreker/daynight/pull/55) 的干净托管 receipt 保留真实
 30 秒/5 分钟预算的历史证据；它们不代表当前源码的运行结果。逐次结果随对应 PR 与 CI 保存；
 [仓库验证说明](../../README.md#validation)拥有 receipt 解释，
-[任务清单](daynight-project-task-tasks.md#pt-t5)拥有完成条件。review 与合并状态由 PR #55 拥有。
+Daynight 中的 PT-T5 任务及其专属附件拥有完成条件。review 与合并状态由 PR #55 拥有。
 
 源码、包元数据或构建输入交付时按既有版本策略提升 CLI 包版本，运行
 `pnpm typecheck`、`pnpm test`、`pnpm build` 及相关安装验收。文档变更校验链接、

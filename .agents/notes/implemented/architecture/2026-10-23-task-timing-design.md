@@ -17,8 +17,7 @@ The adopted [requirements](../../../../docs/spec/daynight-task-timing.md) and
 execution interval per task, project-owned warning settings and a server-derived
 display clock. Persistent task timing and its reader contracts are implemented;
 project settings, running-task presentation and whole-goal acceptance remain
-owned by the succeeding
-[implementation tasks](../../../../docs/design/daynight-task-timing-tasks.md).
+owned by the succeeding Daynight implementation tasks and their attachments.
 
 Task start and completion timestamps are nullable database facts written with
 status and version under the existing project transaction. The latest genuine

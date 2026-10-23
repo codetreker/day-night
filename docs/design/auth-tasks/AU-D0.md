@@ -3,7 +3,7 @@
 ## 方案
 
 交付[需求](../../spec/daynight-auth.md)、[架构](../daynight-auth.md)、
-[任务入口](../daynight-auth-tasks.md)、英文架构决策和
+Daynight 中的实际任务及其附件、英文架构决策和
 [最终样式交互原型](../mockups/auth/index.html)。设计覆盖 UniAuth 一次性身份、
 本地用户、项目 admin/member、邀请、会话/PAT、可信同源附件预览和统一启用。
 

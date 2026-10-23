@@ -7,8 +7,8 @@ The project dashboard, task canvas and task detail dialog are embedded into the 
 server for single-origin delivery. The [localhost deployment](../../deployment/localhost/README.md)
 starts the full UI/API/database stack; [dev-ci](../../deployment/dev-ci/README.md)
 provides an isolated instance of the same production build. Production-browser,
-fixed-capacity and real Docker lifecycle validation and delivery status belong in the
-[implementation tasks](../../docs/design/daynight-web-tasks.md).
+fixed-capacity and real Docker lifecycle validation and delivery status belong in
+the corresponding Daynight task records and attachments.
 
 The [requirements](../../docs/spec/daynight-web.md) own visible behavior and the
 [architecture](../../docs/design/daynight-web.md) owns graph projection, request
@@ -21,9 +21,8 @@ own single-file management, previews and their independent state. The original
 offline dashboard mockups remain separate from the application; the attachment
 development mockup below reuses the real components with a frontend-only fixture.
 
-The [authentication requirements](../../docs/spec/daynight-auth.md),
-[architecture](../../docs/design/daynight-auth.md) and
-[task breakdown](../../docs/design/daynight-auth-tasks.md) define login, private
+The [authentication requirements](../../docs/spec/daynight-auth.md) and
+[architecture](../../docs/design/daynight-auth.md) define login, private
 projects, member and invitation management, and personal access tokens. The
 `AuthenticatedApp` implements their browser components and API client. Production
 `main.tsx` renders it under the persistent `LocaleProvider`; every business API
@@ -688,7 +687,7 @@ The [pipeline decision](../../.agents/notes/implemented/testing/2026-10-21-web-a
 records the scheduling and ownership constraints. The web job uploads
 `coverage-final.json` and `summary.json`, which records exact counts and the relative product-source
 manifest. Coverage and acceptance artifacts are retained for 30 days. The
-[implementation tasks](../../docs/design/daynight-web-tasks.md) retain validation
+corresponding Daynight task records and attachments retain task validation
 conclusions and link source-specific delivery evidence. The
 [deployment decision](../../.agents/notes/implemented/architecture/2026-10-20-embedded-dashboard-deployment.md)
 records embedded HTTP/container smoke checks and concurrent dev-ci isolation;
@@ -973,8 +972,8 @@ Browser identities must agree across a target's phases; every fixed graph's five
 timing repetitions, independent size refusals and cleanup/recovery must pass.
 Local receipts retain their source and browser identity; they do not establish
 clean hosted delivery results. The
-[implementation tasks](../../docs/design/daynight-web-tasks.md#w-t6) own durable
-validation conclusions and source-specific CI and PR links. The
+corresponding Daynight task records and attachments own task validation
+conclusions and source-specific CI and PR links. The
 [paint decision](../../.agents/notes/implemented/bug-fix/2026-10-20-long-dashed-dependency-paint.md)
 retains raster evidence and visual tolerances needed to assess that mechanism.
 

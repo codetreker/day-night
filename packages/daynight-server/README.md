@@ -4,22 +4,20 @@ The Go service owns PostgreSQL-backed project and task management. Its runtime
 foundation is implemented: explicit database and file-storage configuration,
 loopback-only HTTP binding, connection validation, structured request logs, cancellation, and bounded
 HTTP shutdown. Versioned migrations and transactional storage are implemented;
-project/task APIs and built-process acceptance are implemented; delivery status is in the
-[implementation tasks](../../docs/design/daynight-server-tasks.md); the current
+project/task APIs and built-process acceptance are implemented; delivery status is
+tracked in Daynight task records and their attachments. The current
 executable serves project, task and complete task-graph routes together with the
 embedded task dashboard. Generic bucket/path local storage, task attachment
 metadata and file/preview HTTP endpoints are implemented. Attachment CLI and
-browser management remain tracked by the
-[attachment tasks](../../docs/design/daynight-task-attachments-tasks.md).
+browser management remain tracked by the corresponding Daynight tasks.
 
 The [requirements](../../docs/spec/daynight-server.md) own observable behavior and
 the [design](../../docs/design/daynight-server.md) owns architecture and concurrency.
 The TypeScript review command retains its separate configuration, storage and
 lifecycle. The client HTTP foundation targets this service's API.
 
-The [authentication requirements](../../docs/spec/daynight-auth.md),
-[architecture](../../docs/design/daynight-auth.md) and
-[task breakdown](../../docs/design/daynight-auth-tasks.md) define UniAuth identity
+The [authentication requirements](../../docs/spec/daynight-auth.md) and
+[architecture](../../docs/design/daynight-auth.md) define UniAuth identity
 handoff, local users, browser sessions, personal access tokens and project
 membership. The [identity foundation](../../.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
 implements persistent users, browser-bound login transactions, sessions, PATs and
@@ -504,8 +502,8 @@ project identity and graph counts without recording task content or repository
 addresses. This endpoint supports the implemented
 [task dashboard](../../docs/design/daynight-web.md); the browser application
 and embedded static delivery are implemented. The
-[dashboard implementation tasks](../../docs/design/daynight-web-tasks.md)
-track production-browser, fixed-capacity and deployment-lifecycle validation
+corresponding Daynight dashboard tasks track production-browser, fixed-capacity
+and deployment-lifecycle validation
 and delivery status.
 From the repository root, `pnpm web:acceptance` builds this executable and runs
 production browser workflows against both a native process and the dev-ci
@@ -726,6 +724,6 @@ confirmed, including actual removal of each fixture's storage root. Recompute
 the strict coverage comparison from the accompanying raw
 profile rather than its rounded display. A failed job, partial receipt or local
 pass does not establish successful hosted acceptance for another source revision.
-Durable validation conclusions and delivery links belong in the
-[implementation tasks](../../docs/design/daynight-server-tasks.md) and relevant
+Task validation conclusions and delivery links belong in Daynight task records
+and their attachments; lasting technical findings belong in the relevant
 decision or research records.

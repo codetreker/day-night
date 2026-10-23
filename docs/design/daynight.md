@@ -6,7 +6,7 @@
 的原生补全脚本并安装启动配置；`skill` 提供公开 `using-daynight` skill 的交互安装。project/task
 CLI 的共享配置、HTTP、仓库关联基础及 project/task 命令已完成，安装产物、真实服务
 与默认预算验收已通过托管验证；集成状态见[PR #55](https://github.com/codetreker/daynight/pull/55)。
-[专属设计](daynight-project-task.md)拥有机制，[实现任务](daynight-project-task-tasks.md)
+[专属设计](daynight-project-task.md)拥有机制，Daynight 任务记录
 拥有交付状态。行为归属见[客户端需求](../spec/daynight.md)及
 [review 需求](../spec/daynight-review.md)，结构选择见
 [命令组合决策](../../.agents/notes/implemented/architecture/2026-10-20-client-command-composition.md)。
@@ -483,7 +483,7 @@ project/task 安装 suite，以受控 HTTP 和真实 Git 证明三个原生平�
 计时器之外运行期限与真实解码字节预算探针。期限场景通过测试侧 preload 使用
 1 秒单次、3 秒总期限，生产默认 30 秒/5 分钟单独断言；字节场景保留真实
 128/256 MiB 边界和 +1 字节拒绝。职责与证据见
-[project/task 设计](daynight-project-task.md#验证与交付证据)，当前状态仍由任务清单拥有。
+[project/task 设计](daynight-project-task.md#验证与交付证据)，当前状态仍由 Daynight 任务记录拥有。
 [仓库验证说明](../../README.md#validation)定义本地及原生 receipt 的源码身份、
 受控 GitHub/Copilot 行为与真实服务验收的证据边界。运行结果随对应 PR 与 CI 保存；
 历史通过记录不能代替当前源码的验证结果。

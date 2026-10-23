@@ -2,7 +2,7 @@
 
 本文定义任务执行耗时、项目提醒阈值与 Task 卡片的可观察行为。
 [架构](../design/daynight-task-timing.md)拥有存储、时钟与界面机制，
-[任务拆分](../design/daynight-task-timing-tasks.md)拥有交付边界。
+交付边界由 Daynight 任务记录及其专属附件拥有。
 任务起止事实、数据库图时钟与 CLI/Web 严格读取模型已实现。TT3 的项目设置及 TT4–TT5 的实时展示仍是后继交付要求；
 本页同时保留整体目标，实际合并与整体验收由对应 Daynight 任务拥有。
 

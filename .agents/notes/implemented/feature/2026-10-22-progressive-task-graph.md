@@ -95,10 +95,10 @@ cover every edge; inspection additionally verifies selection timing and curves.
 PR134 evidence remains bound to its delivered overview source; combined inspection
 and Markdown evidence must come from its own source.
 
-The [requirements](../../../../docs/spec/daynight-task-inspection.md),
-[design](../../../../docs/design/daynight-task-inspection.md) and
-[breakdown](../../../../docs/design/daynight-task-inspection-tasks.md) own behavior,
-mechanisms and the two-part UX-T2 scope.
+The [requirements](../../../../docs/spec/daynight-task-inspection.md) and
+[design](../../../../docs/design/daynight-task-inspection.md) own behavior and
+mechanisms. The UX-T2 Daynight task and its owned attachments manage its
+two-part scope and acceptance criteria.
 
 ## Alternatives
 

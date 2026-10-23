@@ -94,8 +94,8 @@ a visible subset after complete root projection; it does not change full main-se
 progress, state aggregation or project statistics. The
 [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 the [architecture](../../../../docs/design/daynight-web.md) owns module contracts,
-and the [task document](../../../../docs/design/daynight-web-tasks.md) tracks UI
-integration and browser performance acceptance separately.
+and Daynight tasks track UI integration and browser performance acceptance
+separately.
 
 ## Alternatives
 
