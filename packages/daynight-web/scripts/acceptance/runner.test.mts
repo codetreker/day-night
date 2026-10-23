@@ -116,7 +116,7 @@ test('the thin CLI rejects unknown arguments before starting acceptance', { skip
     const result = await start([cli, '--unknown'], value).done;
     assert.equal(result.timedOut, false);
     assert.equal(result.code, 1);
-    assert.match(result.stderr, /Usage: node scripts\/acceptance\.mts \[--cleanup \[run-id\]\]/);
+    assert.match(result.stderr, /Usage: node scripts\/acceptance\.mts \[--apfs \| --cleanup \[run-id\]\]/);
     assert.equal(await readFile(value.commands, 'utf8'), '');
   });
 });
@@ -132,13 +132,16 @@ case "$*" in
   *) exit 91 ;;
 esac
 `);
-    const result = await start([cli], value).done;
-    assert.equal(result.timedOut, false);
-    assert.equal(result.code, 1);
-    assert.match(result.stderr, /Invalid source revision or tree/);
-    assert.deepEqual((await readFile(value.commands, 'utf8')).trim().split('\n'), [
-      'rev-parse HEAD', 'rev-parse HEAD^{tree}', 'status --porcelain --untracked-files=normal',
-    ]);
+    for (const args of [[], ['--apfs']]) {
+      await writeFile(value.commands, '');
+      const result = await start([cli, ...args], value).done;
+      assert.equal(result.timedOut, false);
+      assert.equal(result.code, 1);
+      assert.match(result.stderr, /Invalid source revision or tree/);
+      assert.deepEqual((await readFile(value.commands, 'utf8')).trim().split('\n'), [
+        'rev-parse HEAD', 'rev-parse HEAD^{tree}', 'status --porcelain --untracked-files=normal',
+      ]);
+    }
   });
 });
 

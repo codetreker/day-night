@@ -100,7 +100,12 @@ export DAYNIGHT_ALLOW_HTTP_TEST_ORIGIN=1
 publishes it to `internal/webui/dist/`. Generated files are ignored by Git; a
 clean Go build without them fails at `go:embed`. No placeholder index or frontend
 runtime is used. Once built, the binary requires PostgreSQL and a writable,
-case-sensitive local storage directory and valid UniAuth App settings at runtime.
+local storage directory and valid UniAuth App settings at runtime. Linux requires
+case-sensitive storage. Native macOS development also accepts an ordinary
+case-insensitive directory, without mounting an image. Names that alias existing
+directory entries are refused rather than overwriting another attachment;
+coexistence of differently cased names is covered by Linux tests and the optional
+APFS acceptance channel.
 The example explicitly enables a controlled local HTTP origin. Production uses
 HTTPS and leaves that exception disabled. Register the exact callback URL with
 UniAuth and supply real credentials through private environment configuration;
@@ -116,7 +121,7 @@ diagnostics and cause categories.
 | Environment variable | Meaning | Default |
 |---|---|---|
 | `DAYNIGHT_DATABASE_URL` | Explicit PostgreSQL connection string | Required |
-| `DAYNIGHT_STORAGE_ROOT` | Writable, case-sensitive local file-storage directory | Required |
+| `DAYNIGHT_STORAGE_ROOT` | Writable local storage directory; case-sensitive on Linux, ordinary directories supported for native macOS development | Required |
 | `DAYNIGHT_PUBLIC_ORIGIN` | Exact main-site origin, HTTPS in production | Required |
 | `DAYNIGHT_UNIAUTH_URL` | UniAuth gateway origin | Required |
 | `DAYNIGHT_UNIAUTH_APP_ID` | Registered UniAuth backend App ID | Required |

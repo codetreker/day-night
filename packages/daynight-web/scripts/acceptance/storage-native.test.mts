@@ -126,7 +126,7 @@ test('native APFS storage uses one shared mount for ownership and recovery scena
     finally { await rm(probe); }
     if (parentSensitive) { context.skip('The task filesystem is already case-sensitive; APFS fallback was not exercised.'); return; }
 
-    await assert.rejects(prepareStorage(join(parent, 'storage'), { persist: async (current) => {
+    await assert.rejects(prepareStorage(join(parent, 'storage'), { allowApfsImage: true, persist: async (current) => {
       if (current.phase === 'attach-intent') {
         intent = structuredClone(current);
         assert.ok(current.imageIdentity);
