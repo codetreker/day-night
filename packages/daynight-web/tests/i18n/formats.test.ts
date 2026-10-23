@@ -41,3 +41,18 @@ describe("language formats and messages", () => {
     expect(getFormats("en")).not.toBe(getFormats("zh-CN"));
   });
 });
+
+describe("execution duration formats", () => {
+  it.each([
+    [0, "< 1 min", "不足 1 分钟"],
+    [59_999, "< 1 min", "不足 1 分钟"],
+    [60_000, "1min", "1 分钟"],
+    [3_599_000, "59min", "59 分钟"],
+    [3_600_000, "1h", "1 小时"],
+    [3_601_000, "1h", "1 小时"],
+    [183_840_000, "2d 3h 4min", "2 天 3 小时 4 分钟"],
+  ])("formats %i milliseconds without rounding the warning boundary", (milliseconds, en, zh) => {
+    expect(getFormats("en").duration(milliseconds as number)).toBe(en);
+    expect(getFormats("zh-CN").duration(milliseconds as number)).toBe(zh);
+  });
+});

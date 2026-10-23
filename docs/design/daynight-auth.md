@@ -70,7 +70,7 @@ Principal 形状为 `{UserID, CredentialID, Kind}`，Kind 只有 session/PAT。�
 成员/角色/观察版本与领域约束。列表以 membership JOIN 在原 SQL cursor/LIMIT 前
 筛选。Tasks.Approve/Unapprove/Claim/Complete(ctx, principal, projectID, taskID, version)
 沿用同一项目锁，并在取锁后检查当前成员，再校验观察版本、前态与依赖。admin 和
-member 都可执行这些资源操作；管理员角色只增加成员与邀请管理能力。创建默认
+member 都可执行这些资源操作；管理员角色额外管理成员、邀请与项目提醒设置。创建默认
 proposed，通用元数据更新不接收 status，没有旧状态写入旁路。任务版本、int64、
 图容量和现有分页合同保持。
 
@@ -172,6 +172,7 @@ HTTP 认证逐请求读取当前会话/PAT 并产生 Principal。资源服务在
 | 现有 project/task/graph/property/attachment API | session 或 PAT；业务 service 检查当前项目成员。 |
 | POST .../tasks/{taskId}/approve、.../unapprove、.../claim、.../complete | session/PAT；成员写权限，正 int64 version；POST 和 405 路径均经过 Require、Cookie Origin 规则及 no-store。 |
 | GET .../projects/{id}/members | 任一成员读取最小资料和角色/version。 |
+| PATCH .../projects/{id}/settings | admin，锁后复核角色与精确设置 version，返回完整 Project。 |
 | PATCH/DELETE .../members/{userId} | admin，携带观察到的成员 version。 |
 | GET/POST .../projects/{id}/invitations、DELETE .../{inviteId} | admin，创建一次显示链接，删除撤销。 |
 | POST /api/v1/invitations/inspect、POST .../accept | 已登录用户，body 携带秘密；明确 accept 才入会。 |
@@ -187,7 +188,10 @@ TaskDetailSessionProvider 位于当前 user/generation 的身份域内，跨详�
 结果遵守[生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)。
 它通过 /me 取得身份，401 显示 UniAuth 入口；资源 404 不退出全局会话。
 项目列表增加名称/仓库地址创建表单，复用原 API，成功进入空项目且创建者为 admin。
-账户页管理 PAT，项目页管理成员。角色确认后展示管理操作，服务端独立检查；冲突
+账户页管理 PAT，项目管理导航连接成员与 `/projects/:id/settings`。设置页成员可读，角色确认是 admin 后可编辑；
+服务端在项目锁后独立复核角色与设置版本。设置按 user/project 键隔离，草稿不写入权威 Project；
+不确定 PATCH 先重读 Project/成员，核对失败阻止新写入并允许读重试，不把取消或导航视为远端回滚。
+具体数据和读取机制由[计时架构](daynight-task-timing.md)拥有。成员冲突
 重取权威数据。401/换账号使共享请求 generation 失效并卸载旧项目和附件内容，
 失败不伪装成空列表。成员 version 以 bigint 解码及序列化，保留完整正 int64。
 顶层曾离开后重新可见且聚焦时，在后台重新读取 /me。正常等待状态与失败后的
@@ -325,7 +329,7 @@ docker compose logs --no-log-prefix server | jq -R 'fromjson? | select(.request_
 [组合验收决策](../../.agents/notes/implemented/testing/2026-10-23-authentication-combined-acceptance.md)
 拥有实际领取结果后 TCP 断连，以及原生/容器各自的浏览器和安装 CLI 同数据、原凭据
 重启、撤销、已准入上传和 socket 中断证明。两目标各有一份额外必需回执，当前
-24+24+5 共 53 项 Playwright inventory 与容量门槛保持。
+26+26+5 共 57 项 Playwright inventory 与容量门槛保持；项目设置旅程单独拥有阈值读写与未知结果核对。
 
 统一启用的源码绑定结果保留其原始范围，不作为新增代码的完整门禁证明。每次组合
 结果核对当前源码、安装包、进程/镜像与清理；真实上游人工联调单独留证，缺少时

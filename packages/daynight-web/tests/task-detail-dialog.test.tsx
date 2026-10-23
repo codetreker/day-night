@@ -18,7 +18,7 @@ vi.mock('../src/features/task-detail/attachments/useAttachments', () => ({ useAt
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const projectId = id(100);
 const timestamp = '2026-10-20T09:00:00.123456789Z';
-const project: Project = { id: projectId, name: '测试项目', repoUrl: 'https://github.com/example/project', createdAt: timestamp, updatedAt: timestamp };
+const project: Project = { settings: { version: 1n, executionWarningMinutes: 60 }, id: projectId, name: '测试项目', repoUrl: 'https://github.com/example/project', createdAt: timestamp, updatedAt: timestamp };
 const detail = (value = 1, changes: Partial<TaskDetail> = {}): TaskDetail => ({ startedAt: null, completedAt: null,
   id: id(value), projectId, title: `任务 ${value}`, description: `任务 ${value} 的完整描述`, status: 'todo', version: 1n,
   properties: { pullRequests: [] }, dependsOn: [], blockedBy: [], ready: true, createdAt: timestamp, updatedAt: timestamp, ...changes,
@@ -37,7 +37,7 @@ const snapshot = (tasks = [detail()], revision = 1): GraphSnapshot => {
       blocked: tasks.filter((task) => task.status === 'todo' && !task.ready).length,
     },
   };
-  return { observedAt: graph.observedAt, graph, index: buildGraphIndex(graph), receivedAt: Date.now(), revision };
+  return { observedAt: graph.observedAt, graph, index: buildGraphIndex(graph), receivedMonotonic: performance.now(), receivedAt: Date.now(), revision };
 };
 const response = (task: TaskDetail) => new Response(stringifyApiJson(task), { headers: { 'Content-Type': 'application/json' } });
 const failure = (code = 'internal_error') => new Response(JSON.stringify({ error: {

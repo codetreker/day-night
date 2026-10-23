@@ -1,5 +1,6 @@
 import { array, boolean, id, malformed, nonemptyString, record, string, timestamp } from "./parse";
 import { parseApiJson } from "./json";
+import { jsonContainerSources, jsonObjectSources } from "./json-source";
 import type { AuthConfig, AuthProvider, CreatedPersonalAccessToken, CreatedProjectInvitation, PersonalAccessToken, ProjectInvitation, ProjectInvitationInspection, ProjectMember, ProjectRole, User } from "./auth-types";
 
 const nullable = <T>(value: unknown, parse: (value: unknown) => T): T | null => value === null ? null : parse(value);
@@ -22,44 +23,14 @@ export const parseAuthConfig = (value: unknown): AuthConfig => {
   return { providers: unique(providers, (provider) => provider) };
 };
 
-const stringEnd = (text: string, start: number): number => {
-  let offset = start + 1;
-  while (text[offset] !== '"') offset += text[offset] === '\\' ? 2 : 1;
-  return offset + 1;
-};
-
-// Native parsing validates the envelope before we split its direct values into source spans.
-const containerSources = (text: string): string[] => {
-  const source = text.trim();
-  const values: string[] = [];
-  let start = 1;
-  let depth = 0;
-  for (let offset = 1; offset < source.length; offset++) {
-    const token = source[offset];
-    if (token === '"') { offset = stringEnd(source, offset) - 1; continue; }
-    if (token === '{' || token === '[') { depth++; continue; }
-    if (token === '}' || token === ']') {
-      if (depth > 0) { depth--; continue; }
-      const value = source.slice(start, offset).trim();
-      if (value !== '') values.push(value);
-      return values;
-    }
-    if (token === ',' && depth === 0) { values.push(source.slice(start, offset).trim()); start = offset + 1; }
-  }
-  return values;
-};
-
 export const decodeAuthJson = async (response: Response): Promise<unknown> => {
   const text = await response.text();
   const parsed = parseApiJson(text);
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return parsed;
   const data = parsed as Record<string, unknown>;
-  const fields = new Map(containerSources(text).map((field) => {
-    const end = stringEnd(field, 0);
-    return [JSON.parse(field.slice(0, end)) as string, field.slice(end).trimStart().slice(1)];
-  }));
+  const fields = jsonObjectSources(text);
   // Only membership pages and invitation inspections embed versioned member DTOs.
-  if (Object.hasOwn(data, 'items') && Array.isArray(data.items)) data.items = containerSources(fields.get('items')!).map(parseApiJson);
+  if (Object.hasOwn(data, 'items') && Array.isArray(data.items)) data.items = jsonContainerSources(fields.get('items')!).map(parseApiJson);
   if (Object.hasOwn(data, 'member')) data.member = parseApiJson(fields.get('member')!);
   return parsed;
 };

@@ -19,7 +19,7 @@ const alternateId = "a1b2c3d4-1111-4222-8333-123456789abd";
 const unrelatedId = "a1b2c3d4-1111-4222-8333-123456789abe";
 const taskId = "b1b2c3d4-1111-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
-const project = (projectId = id, repoUrl = "git@git.example:Org/Repo.git"): Project => ({ id: projectId, name: "Project 中文", repoUrl, createdAt: time, updatedAt: time });
+const project = (projectId = id, repoUrl = "git@git.example:Org/Repo.git"): Project => ({ id: projectId, name: "Project 中文", repoUrl, settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time });
 const task = (projectId = id): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true });
 const taskListItem = (value: Task): Omit<Task, "description"> => ({
   id: value.id, projectId: value.projectId, title: value.title, properties: value.properties,
@@ -162,13 +162,13 @@ it("runs the actual installed launcher through native project/task discovery, pe
     const firstUrl = await listen(); const secondUrl = await listen(); await configure(firstUrl);
     const explicit = ["--project", id];
     const listed = await invoke(["project", "list", "--json"], outside, 0, true);
-    expect(JSON.parse(listed.stdout)).toEqual(projects);
+    expect(parseApiJson(listed.stdout)).toEqual(projects);
     const existingProject = await invoke(["project", "create", "Different name", "--repo", project().repoUrl], outside, 0, true);
     expect(existingProject.stdout).toContain("Project already exists.");
     const createdProject = await invoke(["project", "create", "Native 名称", "--repo", "https://git.example/Native/New.git"], outside, 0, true);
     expect(createdProject.stdout).toContain("Project created.");
     expect(requests.at(-1)!.body).toEqual({ name: "Native 名称", repoUrl: "https://git.example/Native/New.git" });
-    expect(JSON.parse((await invoke(["project", "show", id, "--json"], outside, 0, true)).stdout)).toEqual(project());
+    expect(parseApiJson((await invoke(["project", "show", id, "--json"], outside, 0, true)).stdout)).toEqual(project());
     expect(parseApiJson((await invoke(["task", "show", taskId, "--json", ...explicit], outside, 0, true)).stdout)).toEqual({ ...task(), version: 9_007_199_254_740_993n });
     const createdTask = await invoke(["task", "create", "--title", "Native task", ...explicit], outside, 0, true);
     expect(createdTask.stdout).toContain("Status: proposed");

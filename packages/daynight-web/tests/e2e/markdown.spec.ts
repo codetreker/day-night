@@ -1,3 +1,4 @@
+import { decodeTaskGraphJson } from '../../src/api/project-json';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -219,7 +220,7 @@ test('task-description-markdown', { annotation: { type: 'scenario', description:
       await createTask(request, project.id, { title: 'Markdown graph sibling', dependsOn: [ancestor.id] });
       const graphResponse = await request.get(`/api/v1/projects/${project.id}/task-graph`);
       expect(graphResponse.status()).toBe(200);
-      const snapshot = parseTaskGraph(await graphResponse.json(), project.id);
+      const snapshot = parseTaskGraph(await decodeTaskGraphJson(new Response(await graphResponse.text())), project.id);
       const expected = expectedDependencyTopology(snapshot.tasks, ancestor.id);
       const byId = new Map(snapshot.tasks.map((entry) => [entry.id, entry]));
       const upstream = new Set<string>(); const pending = [task.id];

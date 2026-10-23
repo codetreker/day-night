@@ -178,7 +178,7 @@ describe('inspection language changes', () => {
     root.id = 'root';
     document.body.append(root);
     const graph: TaskGraph = { observedAt: "2026-10-20T12:00:00Z",
-      project: { id: projectId, name: '项目 raw', repoUrl: '', createdAt: timestamp, updatedAt: timestamp },
+      project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: projectId, name: '项目 raw', repoUrl: '', createdAt: timestamp, updatedAt: timestamp },
       tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
     };
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: {
@@ -186,7 +186,7 @@ describe('inspection language changes', () => {
     } }), { status: 404, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetch);
     const view = renderWithLocale(<TaskDetailDialog projectId={projectId} taskId={taskId}
-      snapshot={{ observedAt: graph.observedAt, graph, index: buildGraphIndex(graph), receivedAt: Date.now(), revision: 1 }}
+      snapshot={{ observedAt: graph.observedAt, graph, index: buildGraphIndex(graph), receivedMonotonic: performance.now(), receivedAt: Date.now(), revision: 1 }}
       onSelectTask={vi.fn()} onClose={vi.fn()} onRestoreFocus={vi.fn()} onRefreshGraph={vi.fn()} />, { locale: 'zh-CN' });
     try {
       expect(await screen.findByRole('alert')).toHaveTextContent('这个任务已无法读取，请刷新任务图。');

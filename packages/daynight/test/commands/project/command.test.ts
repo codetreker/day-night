@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiError, createOperation } from "../../../src/api/index.js";
+import { ApiError, createOperation, parseApiJson } from "../../../src/api/index.js";
 import type { ApiClient, Project } from "../../../src/api/index.js";
 import { UsageError } from "../../../src/cli/context.js";
 import { runProjectCommand } from "../../../src/commands/project/command.js";
@@ -7,7 +7,7 @@ import type { ProjectCommandDependencies } from "../../../src/commands/project/c
 import { renderProjectList } from "../../../src/commands/project/rendering.js";
 
 const id = "abcdefab-1234-5678-90ab-abcdefabcdef";
-const project: Project = { id, name: "Project 名称", repoUrl: "git@Git.Example:Org/Repo.git", createdAt: "2026-10-20T01:02:03.123456789Z", updatedAt: "2026-10-20T02:03:04.987654321Z" };
+const project: Project = { id, name: "Project 名称", repoUrl: "git@Git.Example:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: "2026-10-20T01:02:03.123456789Z", updatedAt: "2026-10-20T02:03:04.987654321Z" };
 const context = () => ({
   version: "0.0.0", packageDirectory: "unused", homeDirectory: vi.fn<() => string>(() => { throw new Error("Home directory must not be read by project dispatch"); }),
   workingDirectory: vi.fn<() => string>(() => { throw new Error("Working directory must not be read by project commands"); }),
@@ -173,7 +173,7 @@ describe("project command output", () => {
     await runProjectCommand(command === "list" ? ["list", "--json"] : ["show", id, "--json"], context, dependencies);
     const output = context.stdout.mock.calls[0]![0];
     expect(output.endsWith("\n")).toBe(true);
-    expect(JSON.parse(output)).toEqual(command === "list" ? [raw] : raw);
+    expect(parseApiJson(output)).toEqual(command === "list" ? [raw] : raw);
   });
 
   it.each(["create", "list", "show"])("escapes server-controlled terminal characters in %s human output", async (command) => {

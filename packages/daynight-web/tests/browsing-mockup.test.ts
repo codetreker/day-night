@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { approveTask, getTask, getTaskGraph } from '../src/api/client';
 import { parseApiJson } from '../src/api/json';
 import { parseTaskGraph } from '../src/api/parse';
+import { decodeTaskGraphJson } from '../src/api/project-json';
 import { buildGraphIndex, projectRoot } from '../src/features/task-graph/model';
 import { browsingProjects, installBrowsingFixture, isApprovalScenario, type BrowsingScenario } from './mockups/browsing-fixture';
 
@@ -62,10 +63,10 @@ describe('production task browsing fixture', () => {
         return fetch(`/api/v1/projects/${graph.project.id}/task-graph`);
       };
       expect((await load('error')).status).toBe(500);
-      expect(await (await load('error')).json()).toEqual(browsingProjects.error);
+      expect(await decodeTaskGraphJson(await load('error'))).toEqual(browsingProjects.error);
       expect((await load('refresh-error')).status).toBe(200);
       expect((await load('refresh-error')).status).toBe(500);
-      expect(await (await load('refresh-error')).json()).toEqual(browsingProjects['refresh-error']);
+      expect(await decodeTaskGraphJson(await load('refresh-error'))).toEqual(browsingProjects['refresh-error']);
     } finally {
       dispose();
     }

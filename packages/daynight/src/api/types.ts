@@ -15,10 +15,16 @@ export type PutTaskAttachmentInput = {
 
 export type AttachmentConsumer = (chunk: Uint8Array, signal: AbortSignal) => Promise<void>;
 
+export type ProjectSettings = {
+  readonly version: bigint;
+  readonly executionWarningMinutes: number;
+};
+
 export type Project = {
   readonly id: string;
   readonly name: string;
   readonly repoUrl: string;
+  readonly settings: ProjectSettings;
   readonly createdAt: string;
   readonly updatedAt: string;
 };

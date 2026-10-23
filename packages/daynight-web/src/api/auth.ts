@@ -3,6 +3,7 @@ import { decodeAuthJson, parseAuthConfig, parseCreatedInvitation, parseCreatedTo
 import { project } from "./parse";
 import type { AuthConfig, CreatedPersonalAccessToken, CreatedProjectInvitation, PersonalAccessToken, ProjectInvitation, ProjectInvitationInspection, ProjectMember, ProjectRole, User } from "./auth-types";
 import type { Project } from "./types";
+import { decodeProjectJson } from "./project-json";
 export type * from "./auth-types";
 
 const authOperation = async <T>(signal: AbortSignal, operation: () => Promise<T>): Promise<T> => {
@@ -18,12 +19,12 @@ const authOperation = async <T>(signal: AbortSignal, operation: () => Promise<T>
 const authRead = <T>(url: string, signal: AbortSignal, parse: (data: unknown) => T, decode?: (response: Response) => Promise<unknown>): Promise<T> =>
   authOperation(signal, () => read(url, signal, parse, decode));
 
-const send = <T>(url: string, method: "POST" | "PATCH", status: number, body: string, signal: AbortSignal, parse: (data: unknown) => T): Promise<T> => authOperation(signal, async () => {
+const send = <T>(url: string, method: "POST" | "PATCH", status: number, body: string, signal: AbortSignal, parse: (data: unknown) => T, decode: (response: Response) => Promise<unknown> = decodeAuthJson): Promise<T> => authOperation(signal, async () => {
   const response = await request(url, signal, { method, body, headers: { Accept: "application/json", "Content-Type": "application/json" } });
   return json(response, signal, (data) => {
     if (response.status !== status) throw new ApiError("protocol", response.status);
     return parse(data);
-  }, decodeAuthJson);
+  }, decode);
 });
 
 const empty = (url: string, method: "POST" | "DELETE", signal: AbortSignal, body?: string): Promise<void> => authOperation(signal, async () => {
@@ -49,7 +50,7 @@ export const revokeToken = (tokenId: string, signal: AbortSignal): Promise<void>
 
 export const createProject = (input: { readonly name: string; readonly repoUrl: string }, signal: AbortSignal): Promise<Project> => {
   if (input.name.trim() === "" || input.repoUrl.trim() === "" || input.name.includes("\0") || input.repoUrl.includes("\0")) throw new ApiError("protocol");
-  return send("/api/v1/projects", "POST", 201, JSON.stringify(input), signal, project);
+  return send("/api/v1/projects", "POST", 201, JSON.stringify(input), signal, project, decodeProjectJson);
 };
 export const listMembers = (projectId: string, signal: AbortSignal): Promise<readonly ProjectMember[]> => {
   const project = requestId(projectId);

@@ -83,12 +83,21 @@ const status = (value: unknown): TaskStatus => {
   return value;
 };
 
+const projectSettings = (value: unknown): Project["settings"] => {
+  const data = record(value);
+  const version = data.version;
+  const executionWarningMinutes = data.executionWarningMinutes;
+  if (!isTaskVersion(version) || typeof executionWarningMinutes !== "number" || !Number.isInteger(executionWarningMinutes) || executionWarningMinutes < 1 || executionWarningMinutes > 2_147_483_647) return malformed();
+  return { version, executionWarningMinutes };
+};
+
 export const project = (value: unknown): Project => {
   const data = record(value);
   return {
     id: id(data.id),
     name: nonemptyString(data.name),
     repoUrl: nonemptyString(data.repoUrl),
+    settings: projectSettings(data.settings),
     createdAt: timestamp(data.createdAt),
     updatedAt: timestamp(data.updatedAt),
   };

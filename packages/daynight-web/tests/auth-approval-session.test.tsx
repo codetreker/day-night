@@ -34,7 +34,7 @@ const proposed = (projectId = project): TaskDetail => ({ startedAt: null, comple
   properties: { pullRequests: [] }, status: 'proposed', dependsOn: [], blockedBy: [], ready: false, createdAt: stamp, updatedAt: stamp });
 const graph = (projectId: string): TaskGraph => {
   const detail = proposed(projectId);
-  return { observedAt: "2026-10-20T12:00:00Z", project: { id: projectId, name: `${currentUser.name} project ${projectId === project ? 'P' : 'Q'}`, repoUrl: 'https://example.com/repo', createdAt: stamp, updatedAt: stamp },
+  return { observedAt: "2026-10-20T12:00:00Z", project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: projectId, name: `${currentUser.name} project ${projectId === project ? 'P' : 'Q'}`, repoUrl: 'https://example.com/repo', createdAt: stamp, updatedAt: stamp },
     tasks: [{ startedAt: null, completedAt: null, id: detail.id, titlePreview: detail.title, titleTruncated: false, status: detail.status, dependsOn: [], blockedBy: [], ready: false, createdAt: stamp, updatedAt: stamp }],
     summary: { total: 1, proposed: 1, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } };
 };

@@ -1,3 +1,4 @@
+import { decodeTaskGraphJson } from '../../src/api/project-json';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import type { APIResponse, Locator, Page, Route, TestInfo } from '@playwright/test';
@@ -506,7 +507,7 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
         const { description: _description, version: _version, ...fields } = task;
         expect(inventory.find((item) => item.id === task.id)).toEqual({ ...fields, version: 1 });
       }
-      const createdGraph = parseTaskGraph(JSON.parse(await lifecycle.success(['task', 'graph', '--project', sharedProjectId, '--json'])), sharedProjectId);
+      const createdGraph = parseTaskGraph(await decodeTaskGraphJson(new Response(await lifecycle.success(['task', 'graph', '--project', sharedProjectId, '--json']))), sharedProjectId);
       expect(createdGraph.summary).toEqual({ total: 2, proposed: 2, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 });
       expect(createdGraph.tasks.find((task) => task.id === sharedDependentId)).toMatchObject({ status: 'proposed', dependsOn: [sharedPrerequisiteId], blockedBy: [sharedPrerequisiteId], ready: false });
       await page.goto(`/projects/${sharedProjectId}`);
@@ -566,7 +567,7 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
         expect(JSON.parse(await lifecycle.success(['task', 'list', '--project', sharedProjectId, '--json']))).toEqual([]);
         const all = JSON.parse(await lifecycle.success(['task', 'list', '--project', sharedProjectId, '--all', '--json'])) as Record<string, unknown>[];
         expect(all).toHaveLength(2); expect(all.every((item) => item.status === 'done' && item.version === 4 && !Object.hasOwn(item, 'description'))).toBe(true);
-        const completedGraph = parseTaskGraph(JSON.parse(await lifecycle.success(['task', 'graph', '--project', sharedProjectId, '--json'])), sharedProjectId);
+        const completedGraph = parseTaskGraph(await decodeTaskGraphJson(new Response(await lifecycle.success(['task', 'graph', '--project', sharedProjectId, '--json']))), sharedProjectId);
         expect(completedGraph.summary).toEqual({ total: 2, proposed: 0, todo: 0, inProgress: 0, done: 2, ready: 0, blocked: 0 });
         for (const [path, content] of [['plan.md', plan], ['payload.bin', binary]] as const) expect(await lifecycle.bytes(sharedProjectId, sharedDependentId, path, `completed-${path}`)).toEqual(content);
         await page.getByRole('button', { name: '刷新', exact: true }).click();

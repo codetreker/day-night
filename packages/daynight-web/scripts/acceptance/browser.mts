@@ -12,6 +12,28 @@ const temporaryRoot = resolve(fileURLToPath(new URL('../../', import.meta.url)),
 const profiles = async (): Promise<string[]> => (await readdir(temporaryRoot))
   .filter((entry) => entry.startsWith('playwright_chromiumdev_profile-')).map((entry) => join(temporaryRoot, entry));
 
+export const browserProfile = (arguments_: readonly string[] | null, workingDirectory = process.cwd()): string => {
+  let values = arguments_?.length === 1 ? [] : arguments_?.filter((argument) => argument.startsWith('--user-data-dir='))
+    .map((argument) => argument.slice('--user-data-dir='.length)) ?? [];
+  if (arguments_?.length === 1) {
+    const title = arguments_[0]!;
+    // Chromium can replace its argv with a process title. Its lost argument boundaries
+    // are safe to read only for an unquoted Playwright-generated profile name.
+    const markers = [...title.matchAll(/--user-data-dir(?==| |$)/g)];
+    const switchesOnly = /^[^\s"'`\\]+(?: --[a-zA-Z0-9][a-zA-Z0-9-]*(?:=[^\s"'`\\]+)?)+$/.test(title);
+    const match = / --user-data-dir=([^ ]+) (?=--)/.exec(title);
+    if (!switchesOnly || markers.length !== 1 || match === null
+      || !/^playwright_chromiumdev_profile-[a-zA-Z0-9]{6}$/.test(basename(match[1]!))) {
+      throw new Error('Chromium profile identity is missing or ambiguous.');
+    }
+    values = [match[1]!];
+  }
+  if (values.length !== 1) throw new Error('Chromium profile identity is missing or ambiguous.');
+  const profile = resolve(workingDirectory, values[0]!);
+  if (dirname(profile) !== temporaryRoot || !profile.startsWith(join(temporaryRoot, 'playwright_chromiumdev_profile-'))) throw new Error('Chromium profile is outside the owned temporary directory.');
+  return profile;
+};
+
 export const recordBrowserOwnership = async (browser: Browser, directory: string): Promise<BrowserOwnership> => {
   const session = await browser.newBrowserCDPSession();
   const processes = await session.send('SystemInfo.getProcessInfo');
@@ -20,11 +42,7 @@ export const recordBrowserOwnership = async (browser: Browser, directory: string
   if (browserPid === undefined) throw new Error('Chromium did not expose its operating-system process identity.');
   const identity = await processIdentity(browserPid);
   if (identity === null || identity.group !== identity.pid) throw new Error('Chromium browser group identity is not isolated.');
-  const arguments_ = await processArguments(identity.pid);
-  const profiles = arguments_?.filter((argument) => argument.startsWith('--user-data-dir=')) ?? [];
-  if (profiles.length !== 1) throw new Error('Chromium profile identity is missing or ambiguous.');
-  const profile = resolve(profiles[0]!.slice('--user-data-dir='.length));
-  if (dirname(profile) !== temporaryRoot || !profile.startsWith(join(temporaryRoot, 'playwright_chromiumdev_profile-'))) throw new Error('Chromium profile is outside the owned temporary directory.');
+  const profile = browserProfile(await processArguments(identity.pid));
   if (!sameProcess(identity, await processIdentity(identity.pid))) throw new Error('Chromium identity changed before ownership recording.');
   const executables = await browserExecutables(identity.executable);
   const companions = (await ownedBrowserProcesses(directory, executables)).filter((process) => process.group !== identity.group);

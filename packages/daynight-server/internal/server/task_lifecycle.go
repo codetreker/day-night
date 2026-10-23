@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 
 	"github.com/codetreker/daynight/packages/daynight-server/api"
@@ -10,14 +9,6 @@ import (
 )
 
 type taskAction func(context.Context, core.Principal, string, string, int64) (core.Task, error)
-
-func taskVersionInput(fields map[string]json.RawMessage) (int64, error) {
-	var version int64
-	if err := json.Unmarshal(fields["version"], &version); err != nil || version < 1 {
-		return 0, invalidInput("version is required and must be a positive 64-bit integer")
-	}
-	return version, nil
-}
 
 func (h *taskHandler) lifecycle(name string, action taskAction) AuthenticatedHandler {
 	return func(w http.ResponseWriter, request *http.Request, principal core.Principal) {
@@ -37,7 +28,7 @@ func (h *taskHandler) lifecycle(name string, action taskAction) AuthenticatedHan
 			return
 		}
 		input := api.TaskTransitionRequest{}
-		input.Version, err = taskVersionInput(fields)
+		input.Version, err = versionInput(fields)
 		if err != nil {
 			writeError(w, request, logger, "task", name, err)
 			return

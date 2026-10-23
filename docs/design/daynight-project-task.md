@@ -14,7 +14,8 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 JSON 列表字段见[描述省略决策](../../.agents/notes/implemented/simplification/2026-10-22-task-list-json-description.md)。
 实现顺序与依赖见[交付任务](daynight-project-task-tasks.md)。
 任务起止字段与图时钟的读取机制由[执行计时架构](daynight-task-timing.md)扩展；
-CLI 同步保留 `startedAt`、`completedAt` 与 `observedAt`，不产生本地推算时间或新增可读字段。
+CLI 同步保留 `startedAt`、`completedAt`、`observedAt` 及 Project.settings，不产生本地推算时间或新增可读字段。
+Web 的共享时钟与卡片使用相同资源事实，展示机制归[看板设计](daynight-web.md)，不改变客户端传输或命令职责。
 
 [预定义属性设计](daynight-task-properties.md)的 server 接口、CLI 成对 PR 引用
 参数与完整输出已实现。[需求](../spec/daynight-task-properties.md)和
@@ -37,7 +38,7 @@ task list 的 JSON 仅省略 `description`，其他元数据查询保留各自�
 项目、任务、图和附件业务请求强制鉴权。安装 CLI 的真实服务及预算验收通过 UniAuth
 夹具取得用户 PAT，并复用正常配置与 Bearer 请求通道。仓库关联不保存凭据、
 不授予项目访问权；旧项目由部署者手工补齐成员关系。专用 approve、claim、
-complete 与现有资源读写共用当前成员权限；管理员额外管理成员和邀请，不另设
+complete 与现有资源读写共用当前成员权限；管理员额外管理成员、邀请和项目提醒设置，不另设
 审批角色。
 
 ## 现有基础与交付边界
@@ -426,8 +427,10 @@ repo 许可、API、schema 和事务政策保持原样。原子唯一性需要�
 
 `Task.version` 与 PATCH 版本覆盖完整正 `int64` 范围，内部使用 `bigint`；JSON 读取
 从数字原文保留精度，写入及 `--json` 使用 JSON 数字，不能转换为字符串或不精确的
-JavaScript `number`。未知响应字段继续由 DTO 投影忽略，不能因其同名 version
-字段触发已知 task 字段的校验。
+JavaScript `number`。Project、分页项目及 graph.project 的必填 settings 使用同一精确版本规则，
+`executionWarningMinutes` 为正 int32。CLI 既有嵌套数字原文读取保留 settings.version 的完整十进制值，
+JSON 输出不转为字符串，Project 可读输出保持既有标签。未知响应字段继续由 DTO 投影忽略，
+不能因未知对象中的同名 version 字段触发已知 task 或 settings 的校验。
 
 ## 附件命令组合
 
