@@ -7,8 +7,88 @@ import (
 	"testing"
 	"time"
 
+	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
 	"github.com/jackc/pgx/v5/pgconn"
 )
+
+func TestTaskGroupMemberLookupIsProjectScopedAndExcludesAnchor(t *testing.T) {
+	database := isolatedStore(t)
+	ctx := context.Background()
+	project, foreign := queryProject(t, database, 1), queryProject(t, database, 2)
+	anchor := queryTask(t, database, project.ID, 10, core.TaskProposed)
+	other := queryTask(t, database, project.ID, 11, core.TaskProposed)
+	foreignAnchor := queryTask(t, database, foreign.ID, 20, core.TaskProposed)
+	if err := database.WriteProject(ctx, foreign.ID, func(tx *ProjectTx) error {
+		_, err := tx.CreateTask(ctx, queryID(21), TaskWrite{GroupID: foreignAnchor.ID, Title: "Foreign member", Status: core.TaskProposed})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.WriteProject(ctx, project.ID, func(tx *ProjectTx) error {
+		for _, group := range []string{anchor.ID, other.ID, foreignAnchor.ID, queryID(999)} {
+			exists, err := tx.HasOtherGroupMembers(ctx, group)
+			if err != nil || exists {
+				t.Fatalf("anchor-only, unrelated or foreign group counted as a member: %s %v, %v", group, exists, err)
+			}
+		}
+		if _, err := tx.CreateTask(ctx, queryID(12), TaskWrite{GroupID: anchor.ID, Title: "Disconnected member", Status: core.TaskProposed}); err != nil {
+			return err
+		}
+		exists, err := tx.HasOtherGroupMembers(ctx, anchor.ID)
+		if err != nil || !exists {
+			t.Fatalf("explicit disconnected member was not counted: %v, %v", exists, err)
+		}
+		exists, err = tx.HasOtherGroupMembers(ctx, other.ID)
+		if err != nil || exists {
+			t.Fatalf("another group's member affected the anchor: %v, %v", exists, err)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTaskGroupMemberLookupPreservesOperationalCauses(t *testing.T) {
+	for _, canceled := range []bool{true, false} {
+		name := "database failure"
+		if canceled {
+			name = "cancellation"
+		}
+		t.Run(name, func(t *testing.T) {
+			database := isolatedStore(t)
+			ctx := context.Background()
+			project := queryProject(t, database, 1)
+			anchor := queryTask(t, database, project.ID, 10, core.TaskProposed)
+			if !canceled {
+				mustQueryExec(t, database, "DROP TABLE tasks")
+			}
+			var lookupError error
+			err := database.WriteProject(ctx, project.ID, func(tx *ProjectTx) error {
+				queryContext, cancel := context.WithCancel(ctx)
+				defer cancel()
+				if canceled {
+					cancel()
+				}
+				_, lookupError = tx.HasOtherGroupMembers(queryContext, anchor.ID)
+				return lookupError
+			})
+			var failure *Error
+			if !errors.As(lookupError, &failure) || failure.Phase != "read group members" || !errors.Is(err, lookupError) {
+				t.Fatalf("lookup or transaction lost its original operational error: lookup=%v transaction=%v", lookupError, err)
+			}
+			if canceled {
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("member lookup lost cancellation: %v", err)
+				}
+			} else {
+				var cause *pgconn.PgError
+				if !errors.As(err, &cause) || cause.Code != "42P01" {
+					t.Fatalf("member lookup lost the driver failure: %v", err)
+				}
+			}
+		})
+	}
+}
 
 func TestTaskGroupMigrationAssignsNewestAncestorAndPreservesResources(t *testing.T) {
 	ctx := context.Background()
