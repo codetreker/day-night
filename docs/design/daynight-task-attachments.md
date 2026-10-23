@@ -573,7 +573,7 @@ Web 新增 `task-attachments` 功能场景，在原生和实际生产容器上�
 容器 23 个，共 51 个场景结果。审批场景单独允许已登记 project/task 的 POST approve 与
 精确请求次数，鉴权场景仅允许各自登记的精确管理请求。附件场景和
 `language-state-preservation` 仅允许精确 fixture task/file 的 PUT/DELETE，后者验证切换期间
-待完成操作只执行一次；描述阅读、图、任务视图及其他语言场景继续 GET/HEAD。
+待完成操作只执行一次；`refresh-staleness` 仅允许一次已登记 fixture task/file PUT，将真实上传响应挂起并跨自动读取验证状态与几何保留。描述阅读、其他图场景、任务视图及其他语言场景继续 GET/HEAD。
 完整 Chromium channel `chromium` 对 PDF 的证明来自 iframe 实际
 compositor 像素中的 fixture 专用色块。判断器将匹配像素按连通区域分组，独立计算
 各个实心色块的像素数、边界和密度，并在延伸到 frame 右半区的页面候选中检查

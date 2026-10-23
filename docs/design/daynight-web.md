@@ -154,7 +154,11 @@ PR 区域在描述之后，标题与 URL 分别使用文本节点，空字符串
 “任务图快照中的后续”。详情是否需要重新核对由当前 task 描述符和读取观察决定，
 不能只比较图 receipt 序号。已知任务信息改变且尚待必需读取时显示旧详情反馈；完整
 详情已经完成所需读取、与图字段仍不符时提示刷新全图，不能把旧详情误称为旧图。
-详情读取成功不会单独修改画布或统计。
+普通后台读取只保留现有正文，不在标题区增删网络进度段落；读取错误或 `requiresFreshRead`
+才显示旧详情说明。网络 `refreshing` 继续控制读取中的陈旧比较，独立于该可见提示。
+因此未变化响应在等待前后不会挤动页签或缩小正文与附件区域。
+[详情刷新呈现决策](../../.agents/notes/implemented/bug-fix/2026-10-23-quiet-task-detail-refresh.md)
+记录原因与取舍。详情读取成功不会单独修改画布或统计。
 
 `TaskDetailReading` 将唯一的 `useAttachments` 控制器交给描述导航与附件页签的
 `TaskAttachmentsPanel`。列举、
@@ -715,7 +719,7 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 每次成功图读取都推进成功 revision，重读仍存在的当前详情，即使图内容没有变化，
 详情读取失败后也能在后续周期恢复。相同图复用索引与布局，新的成功接收时间仍更新。
 同任务详情在刷新及恢复性失败时保留正文，详情读取期间的多次刷新合并为一次后续
-请求；页面隐藏时自动详情读取与后续队列等待，已有读取可以完成。正文、附件和预览不重新挂载。相同有序 PR 值保持引用和分页，内容变化才
+请求；页面隐藏时自动详情读取与后续队列等待，已有读取可以完成。正文、附件和预览不重新挂载，普通后台读取不增加标题区高度；无变化数据在请求开始、等待和完成时保持标题、页签与当前面板的实际几何稳定。相同有序 PR 值保持引用和分页，内容变化才
 按既有规则回到第一页。task/project 切换立即隔离旧内容并卸载旧附件状态。
 
 首次加载显示 skeleton。手动刷新仅由刷新按钮显示忙碌文字并禁用，不插入刷新提示条，
@@ -790,8 +794,8 @@ provider 响应证明 gateway/SDK 协议，不等同于真实上游账号登录�
 的一致更新，以及保留浏览、焦点和附件状态的故障恢复；定时器、可见性、请求串行与
 资源切换另由 hook/组件测试验证。浏览器顺序和清理屏障由[CI 构建归属](#ci-构建归属)定义。日常 localhost 栈
 不参与测试。`project-view-tabs` 覆盖两类分类及依赖迁移、独立任务直接详情、独立完成筛选、
-页签/滚动/展开的跨刷新与项目隔离。功能数据和容量数据均通过真实写 API 建立；原有八个图场景及新增 `project-view-tabs` 的浏览器
-继续只发起 GET/HEAD。`task-attachments` 与 `language-state-preservation` 仅允许精确 fixture task 内的文件
+页签/滚动/展开的跨刷新与项目隔离。功能数据和容量数据均通过真实写 API 建立；图场景及 `project-view-tabs` 的浏览器
+继续只发起 GET/HEAD，但 `refresh-staleness` 仅允许一次已登记 fixture task/file PUT，挂起真实上传响应并跨自动读取检查输入、预览、面板几何及唯一写入。`task-attachments` 与 `language-state-preservation` 仅允许精确 fixture task 内的文件
 PUT/DELETE；`task-approval`、`task-approval-conflicts`、`task-approval-recovery`
 单独允许已登记 project/task 的 POST approve 和精确请求次数；六个鉴权场景仅放行各自
 登记的精确管理请求，其他写请求仍失败。附件场景在两目标上都让安装 CLI 与生产页面操作同一

@@ -98,8 +98,8 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
   }, [taskId, status, error, snapshot.revision]);
 
   const snapshotNode = snapshot.index.nodes.get(taskId);
-  const retainedDetail = detail !== null && (task.refreshing || error !== null || task.requiresFreshRead);
-  const stale = detail !== null && !retainedDetail && isTaskStale(snapshotNode, detail);
+  const retainedDetail = detail !== null && (error !== null || task.requiresFreshRead);
+  const stale = detail !== null && !task.refreshing && !retainedDetail && isTaskStale(snapshotNode, detail);
   const successors = snapshot.index.successors.get(taskId);
   const relation = (id: string) => {
     const node = snapshot.index.nodes.get(id);
@@ -155,7 +155,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                   <StatusBadge status={detail.status} />
                   {detail.status === 'todo' && <span className={detail.ready ? 'task-detail-ready' : 'task-detail-blocked'}>{detail.ready ? m.ready : m.blocked}</span>}
                 </div>
-                {retainedDetail && <p className="task-detail-refresh" role="status">{task.refreshing ? m.refreshingDetail : m.retainedDetail}</p>}
+                {retainedDetail && <p className="task-detail-retained" role="status">{m.retainedDetail}</p>}
                 {stale && (
                   <div className="task-detail-stale" role="status">
                     <p>{task.approval.phase === 'confirmed' ? messages.inspection.approval.confirmedSnapshot : m.stale}</p>

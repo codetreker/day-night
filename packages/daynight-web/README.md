@@ -329,8 +329,13 @@ requests already in flight may finish. A 404 clears unavailable graph or detail 
 change clears previous-resource content immediately. Same-task refresh keeps the
 detail body mounted, preserving the active tab, PR page when its ordered values
 are unchanged, focus, attachment selection, upload inputs, pending writes and
-preview frame. Project and task changes release the old resource state. Project
-listing and attachment metadata/content keep their independent refresh actions.
+preview frame. Ordinary background reads add no heading progress paragraph,
+so unchanged responses keep the heading, tabs and active reading panel bounds
+stable before, during and after the request. Read errors, required freshness
+and stale-snapshot feedback remain explicit. The
+[detail refresh decision](../../.agents/notes/implemented/bug-fix/2026-10-23-quiet-task-detail-refresh.md)
+owns that presentation. Project and task changes release the old resource state.
+Project listing and attachment metadata/content keep their independent refresh actions.
 Live detail never changes graph counters;
 a changed prerequisite can alter readiness without revising the task itself.
 The dialog offers a full graph refresh when that difference is observed.
@@ -710,8 +715,10 @@ The shared gateway fixture is pinned to
 `0978963813fcefd9d553f6cb9bcc319084c764b3`; App credentials, browser session and PAT
 metadata remain in private 0600 files outside public artifact trees. External
 provider HTTP responses are controlled, so this proves the real gateway/SDK
-protocol and differs from a real upstream-provider login. The original eight graph scenarios and `project-view-tabs` retain
-their GET/HEAD-only browser checks. `task-attachments` and
+protocol and differs from a real upstream-provider login. The graph scenarios and `project-view-tabs` retain GET/HEAD-only browser checks
+except for one exact registered fixture-file PUT in `refresh-staleness`, which
+holds its upload response across automatic reads to verify retained pending work.
+`task-attachments` and
 `language-state-preservation` allow exact fixture-scoped PUT/DELETE file routes;
 the latter holds each upload, overwrite and deletion while changing language to
 verify one write and retained state. `task-description-markdown` and the other

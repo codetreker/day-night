@@ -4,9 +4,11 @@ import { test, expect, createProject, createApprovedTask, updateTask, claimTask,
 import { authenticatedAPI } from './authentication';
 import { parseTaskGraph } from '../../src/api/parse';
 import type { PullRequestProperty } from '../../src/api/types';
+import { attachmentDownloadUrl, attachmentPreviewUrl } from '../../src/api/client';
 import { captureStableDependencyGeometry, checkDependencyGeometry, expectedDependencyTopology } from './dependency-geometry';
 import { expectedNodeHeights } from './visible-topology';
 import { expectCenteredTaskDetail, expectTaskDetailScroll } from './detail-dialog';
+import { expectStableAutomaticDetailRefresh } from './detail-refresh';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
 const card = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] .task-node`);
@@ -643,11 +645,14 @@ test('detail-navigation', scenario('detail-navigation'), async ({ page, api: req
   await screenshot(page, info, 'detail-navigation');
 });
 
-test('refresh-staleness', scenario('refresh-staleness'), async ({ page, api: request }, info) => {
+test('refresh-staleness', scenario('refresh-staleness'), async ({ page, api: request, baseURL, allowAttachmentWrites }, info) => {
   await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   const project = await createProject(request, { name: `Freshness ${randomUUID()}` });
   const predecessor = await createApprovedTask(request, project.id, { title: '完成后解除阻塞的前置' });
-  const dependent = await createApprovedTask(request, project.id, { title: '版本和时间保持不变的后续', dependsOn: [predecessor.id] });
+  const dependent = await createApprovedTask(request, project.id, {
+    title: '版本和时间保持不变的后续', dependsOn: [predecessor.id],
+    description: Array.from({ length: 24 }, (_, index) => `阅读记录 ${index + 1}：后台读取期间持续保留正文滚动位置、当前页签、键盘焦点和附件工作区。`).join('\n\n'),
+  });
   await openProject(page, project.id, project.name);
   await expect(stat(page, '已完成')).toHaveText('0');
   await expect(stat(page, '被阻塞')).toHaveText('1');
@@ -709,9 +714,51 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, api: req
   await expect(page.locator('.react-flow__viewport')).toHaveAttribute('style', graphTransform!);
   expect(await page.evaluate(() => window.scrollY)).toBe(pagePosition);
 
+  const originalViewport = page.viewportSize();
+  if (originalViewport === null) throw new Error('Refresh acceptance requires a controlled viewport.');
+  const viewports = [{ width: 1440, height: 900 }, { width: 320, height: 800 }, { width: 844, height: 390 }];
+  const geometryEvidence: { panel: string; cycle: number; reading: Awaited<ReturnType<typeof expectStableAutomaticDetailRefresh>> }[] = [];
+  const repeatedRefresh = async (panel: string, retained: () => Promise<void>): Promise<void> => {
+    for (let cycle = 1; cycle <= 3; cycle++) {
+      const reading = await expectStableAutomaticDetailRefresh(page, project.id, dependent.id, async () => {
+        expect(await nextAutomaticRefresh(page, project.id)).toBe(200);
+      }, retained);
+      geometryEvidence.push({ panel, cycle, reading });
+    }
+  };
+  const overview = dialog.locator('.task-detail-panel-overview');
+  const pagination = dialog.getByRole('combobox', { name: '关联 PR 页码' });
+  try {
+    for (const viewport of viewports) {
+      await page.setViewportSize(viewport);
+      await page.clock.runFor(250);
+      const scrollTop = await overview.evaluate((element) => { element.scrollTop = 140; return element.scrollTop; });
+      expect(scrollTop).toBeGreaterThan(0);
+      await pagination.evaluate((element: HTMLElement) => element.focus({ preventScroll: true }));
+      await repeatedRefresh('overview', async () => {
+        await expect(pagination).toHaveValue('2');
+        await expect(pagination).toBeFocused();
+        expect(await overview.evaluate((element) => element.scrollTop)).toBe(scrollTop);
+      });
+    }
+  } finally { await page.setViewportSize(originalViewport); }
+
+  const previewPath = 'stable-preview.html';
+  const previewResponse = await request.put(attachmentDownloadUrl(project.id, dependent.id, previewPath), {
+    headers: { 'content-type': 'text/html' },
+    data: '<!doctype html><html><body><button id="counter">0</button><script>document.querySelector("#counter").onclick = (event) => { event.target.textContent = String(Number(event.target.textContent) + 1); };</script></body></html>',
+  });
+  expect(previewResponse.status()).toBe(201);
   const attachmentTab = dialog.getByRole('tab', { name: '附件', exact: true });
   const attachmentPath = dialog.getByRole('textbox', { name: '目标相对路径', exact: true });
   await attachmentTab.click();
+  await dialog.locator('.attachment-file').filter({ hasText: previewPath }).click();
+  const frame = dialog.locator('.task-attachments iframe');
+  await expect(frame).toHaveAttribute('src', attachmentPreviewUrl(project.id, dependent.id, previewPath));
+  await frame.contentFrame().locator('#counter').click();
+  await expect(frame.contentFrame().locator('#counter')).toHaveText('1');
+  const frameElement = await frame.elementHandle();
+  if (frameElement === null) throw new Error('The active attachment preview is absent.');
   await dialog.locator('.attachment-upload-disclosure>summary').click();
   const fileInput = dialog.getByLabel('选择一个文件', { exact: true });
   await fileInput.setInputFiles({ name: 'retained.txt', mimeType: 'text/plain', buffer: Buffer.from('Unsubmitted attachment draft') });
@@ -723,6 +770,71 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, api: req
   await expect(attachmentPath).toHaveValue('draft/retained.txt');
   await expect(attachmentPath).toBeFocused();
   expect(await fileInput.evaluate((input: HTMLInputElement) => input.files?.[0]?.name)).toBe('retained.txt');
+  const expectAttachmentRetained = async (uploadPending = false): Promise<void> => {
+    await expect(attachmentTab).toHaveAttribute('aria-selected', 'true');
+    await expect(uploadPending ? attachmentTab : attachmentPath).toBeFocused();
+    await expect(attachmentPath).toHaveValue('draft/retained.txt');
+    expect(await fileInput.evaluate((input: HTMLInputElement) => input.files?.[0]?.name)).toBe('retained.txt');
+    await expect(frame.contentFrame().locator('#counter')).toHaveText('1');
+    expect(await frameElement.evaluate((element) => element.isConnected && element === document.querySelector('.task-attachments iframe'))).toBe(true);
+    if (uploadPending) {
+      await expect(fileInput).toBeDisabled();
+      await expect(attachmentPath).toBeDisabled();
+      await expect(dialog.getByRole('button', { name: '正在上传…', exact: true })).toBeDisabled();
+    } else {
+      expect(await attachmentPath.evaluate((input: HTMLInputElement) => [input.selectionStart, input.selectionEnd])).toEqual([2, 7]);
+    }
+  };
+  try {
+    for (const viewport of viewports) {
+      await page.setViewportSize(viewport);
+      await page.clock.runFor(250);
+      await attachmentPath.evaluate((input: HTMLInputElement) => { input.focus({ preventScroll: true }); input.setSelectionRange(2, 7); });
+      await repeatedRefresh('attachments', expectAttachmentRetained);
+    }
+  } finally { await page.setViewportSize(originalViewport); }
+
+  if (baseURL === undefined) throw new Error('Pending upload acceptance requires the exact product origin.');
+  const uploadPath = 'draft/retained.txt';
+  const uploadUrl = new URL(attachmentDownloadUrl(project.id, dependent.id, uploadPath), baseURL).href;
+  allowAttachmentWrites([{ origin: new URL(baseURL).origin, method: 'PUT', projectId: project.id, taskId: dependent.id, path: uploadPath, count: 1 }]);
+  const uploadFetched = deferred<void>();
+  const uploadRelease = deferred<void>();
+  const uploadFinished = deferred<void>();
+  const uploadFailures: string[] = [];
+  let uploadRequests = 0;
+  page.on('requestfailed', (request) => { if (request.url() === uploadUrl) uploadFailures.push(request.failure()!.errorText); });
+  const holdUpload: Parameters<Page['route']>[1] = async (route) => {
+    if (route.request().method() !== 'PUT') { await route.fallback(); return; }
+    uploadRequests++;
+    try {
+      const response = await authenticatedAPI(page.context().request).fetch(route.request(), { timeout: 15_000, maxRetries: 0 });
+      expect(response.status()).toBe(201);
+      uploadFetched.resolve();
+      await within(uploadRelease.promise, 'pending upload during automatic refresh', 60_000);
+      await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
+    } finally { uploadFinished.resolve(); }
+  };
+  await page.route(uploadUrl, holdUpload);
+  try {
+    const response = page.waitForResponse((response) => response.url() === uploadUrl && response.request().method() === 'PUT');
+    await dialog.getByRole('button', { name: '上传文件', exact: true }).click();
+    await within(uploadFetched.promise, 'real upload commit before retained pending response');
+    await attachmentTab.focus();
+    await repeatedRefresh('attachments-pending-upload', () => expectAttachmentRetained(true));
+    expect(uploadRequests).toBe(1);
+    expect(uploadFailures).toEqual([]);
+    uploadRelease.resolve();
+    expect((await response).status()).toBe(201);
+    await expect(dialog.getByRole('button', { name: '上传文件', exact: true })).toBeEnabled();
+    await expect(dialog.getByRole('heading', { name: uploadPath, exact: true })).toBeVisible();
+  } finally {
+    uploadRelease.resolve();
+    if (uploadRequests > 0) await within(uploadFinished.promise, 'pending upload route cleanup');
+    await page.unroute(uploadUrl, holdUpload);
+    await frameElement.dispose();
+  }
+  await info.attach('automatic-detail-refresh-geometry', { body: Buffer.from(JSON.stringify(geometryEvidence)), contentType: 'application/json' });
   await dialog.getByRole('tab', { name: '概览', exact: true }).click();
   await checkPullRequests(dialog, pullRequests, 2);
 

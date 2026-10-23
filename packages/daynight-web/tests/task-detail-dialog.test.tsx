@@ -282,11 +282,45 @@ describe('task detail dialog', () => {
     expect(screen.getByText('可开始')).toBeVisible();
     const refreshed = snapshot([detail(1, { status: 'done', ready: false }), fresh], 2);
     view.rerender(<TaskDetailDialog {...first} snapshot={refreshed} />);
-    expect(screen.getByRole('status')).toHaveTextContent('正在刷新任务详情');
+    expect(document.querySelector('.task-detail-retained')).toBeNull();
     expect(screen.getByRole('heading', { name: fresh.title })).toBeVisible();
     await screen.findByRole('heading', { name: fresh.title });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole('button', { name: '刷新任务图' })).toBeNull();
+  });
+
+  it.each([
+    { locale: 'en', overview: 'Overview', approve: 'Approve task' },
+    { locale: 'zh-CN', overview: '概览', approve: '批准任务' },
+  ] as const)('keeps unchanged automatic reads quiet and approval available in $locale', async ({ locale, overview, approve }) => {
+    const proposed = detail(1, { status: 'proposed', ready: false });
+    const updates = [deferred<Response>(), deferred<Response>(), deferred<Response>()];
+    const fetch = vi.fn().mockResolvedValueOnce(response(proposed));
+    for (const update of updates) fetch.mockReturnValueOnce(update.promise);
+    vi.stubGlobal('fetch', fetch);
+    const initial = props({ snapshot: snapshot([proposed]) });
+    const view = renderWithLocale(<TaskDetailDialog {...initial} />, { locale, container: host });
+    await screen.findByRole('heading', { name: proposed.title });
+    const heading = document.querySelector<HTMLElement>('.task-detail-heading')!;
+    const panel = screen.getByRole('tabpanel', { name: overview });
+    const approval = screen.getByRole('button', { name: approve });
+    panel.scrollTop = 140;
+    approval.focus();
+
+    for (const [index, update] of updates.entries()) {
+      view.rerender(<TaskDetailDialog {...initial} snapshot={snapshot([proposed], index + 2)} />);
+      expect(fetch).toHaveBeenCalledTimes(index + 2);
+      expect(within(heading).queryByRole('status')).toBeNull();
+      expect(approval).toBeEnabled();
+      expect(approval).toHaveFocus();
+      expect(screen.getByRole('tabpanel', { name: overview })).toBe(panel);
+      expect(panel.scrollTop).toBe(140);
+      await act(async () => { update.resolve(response(proposed)); });
+      expect(within(heading).queryByRole('status')).toBeNull();
+      expect(approval).toBeEnabled();
+      expect(approval).toHaveFocus();
+      expect(panel.scrollTop).toBe(140);
+    }
   });
 
   it('preserves the selected attachment panel, draft, focus and scroll through refresh errors and recovery', async () => {
@@ -313,13 +347,16 @@ describe('task detail dialog', () => {
     await act(async () => { update.resolve(failure()); });
     expect(screen.getByRole('alert')).toHaveTextContent('任务详情更新失败');
     expect(screen.getByRole('alert')).toHaveTextContent('正在显示上次成功读取的详情，将自动重试更新。');
+    const retained = screen.getByText('当前显示之前读取的任务详情，确认最新详情前无法批准任务。');
     expect(screen.getByRole('region', { name: '附件' })).toBe(attachment);
     expect(draft).toHaveValue('notes/working.md');
     expect(draft).toHaveFocus();
     view.rerender(<TaskDetailDialog {...initial} snapshot={snapshot([detail()], 3)} />);
     expect(screen.getByRole('alert')).toBeVisible();
+    expect(screen.getByText('当前显示之前读取的任务详情，确认最新详情前无法批准任务。')).toBe(retained);
     await act(async () => { recovery.resolve(response(detail(1, { description: '新的描述' }))); });
     expect(screen.queryByRole('alert')).toBeNull();
+    expect(document.querySelector('.task-detail-retained')).toBeNull();
     expect(screen.getByRole('tabpanel', { name: '附件' })).toBe(panel);
     expect(screen.getByRole('region', { name: '附件' })).toBe(attachment);
     expect(draft).toHaveValue('notes/working.md');
