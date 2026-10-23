@@ -169,7 +169,7 @@ describe("authenticated application shell", () => {
       if (url === "/api/v1/me") return ++meCalls === 1 ? Promise.resolve(json(user())) : new Promise<Response>((done) => { finishCheck = done; });
       if (url.endsWith("/task-graph")) {
         dispatchedGraphs.push({ cookie: cookieAccount, label: document.querySelector(".account-name")?.textContent ?? null });
-        return Promise.resolve(json({ project: project(`${cookieAccount} 的项目`), tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } }));
+        return Promise.resolve(json({ observedAt: now, project: project(`${cookieAccount} 的项目`), tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } }));
       }
       if (url.endsWith("/members")) return Promise.resolve(json({ items: [member(cookieAccount === "Alice" ? userId : otherId)] }));
       return Promise.resolve(defaults(url));
