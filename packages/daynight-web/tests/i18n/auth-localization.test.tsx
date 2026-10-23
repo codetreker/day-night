@@ -43,6 +43,7 @@ const language = (scope: typeof screen | ReturnType<typeof within> = screen) => 
 
 beforeEach(() => {
   window.sessionStorage.clear();
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
     configurable: true,
     value: function (this: HTMLDialogElement) { this.open = true; },
@@ -264,13 +265,14 @@ describe("authentication language changes", () => {
     expect(fetcher.mock.calls.filter(([url]) => url === "/api/v1/invitations/accept")).toHaveLength(0);
   });
 
-  it("retranslates the account revalidation modal without restarting it or removing a revealed token", async () => {
+  it("retranslates a failed account revalidation without restarting it or removing a revealed token", async () => {
     const focused = vi.spyOn(document, "hasFocus").mockReturnValue(true);
     window.history.replaceState(null, "", "/account");
     const pending = deferred<Response>();
+    const retry = deferred<Response>();
     let checks = 0;
     const fetcher = install((url, init) => {
-      if (url === "/api/v1/me" && ++checks > 1) return pending.promise;
+      if (url === "/api/v1/me" && ++checks > 1) return checks === 2 ? pending.promise : retry.promise;
       if (url === "/api/v1/me/tokens" && init?.method === "POST") return json({ id: tokenId, name: "Raw device", createdAt: timestamp, expiresAt: "2099-10-22T12:34:56Z", token: "kept-raw-secret" }, 201);
       return defaults(url);
     });
@@ -287,6 +289,10 @@ describe("authentication language changes", () => {
     fireEvent(window, new Event("blur"));
     focused.mockReturnValue(true);
     fireEvent(window, new Event("focus"));
+    await waitFor(() => expect(checks).toBe(2));
+    expect(screen.queryByRole("dialog", { name: en.auth.shell.revalidationLabel })).toBeNull();
+    expect(screen.getByRole("dialog", { name: en.auth.management.secret.tokenTitle })).toBe(reveal);
+    await act(async () => pending.resolve(failure(503, "internal")));
     const overlay = await screen.findByRole("dialog", { name: en.auth.shell.revalidationLabel });
     const requests = fetcher.mock.calls.length;
     await interaction.selectOptions(language(within(overlay)), "zh-CN");
@@ -295,7 +301,11 @@ describe("authentication language changes", () => {
     expect(secret.closest("[role=dialog]")).toBe(reveal);
     expect(fetcher).toHaveBeenCalledTimes(requests);
     expect(checks).toBe(2);
-    await act(async () => pending.resolve(json(user)));
+    await interaction.click(within(overlay).getByRole("button", { name: zhCN.auth.shell.revalidationRetry }));
+    expect(screen.getByRole("dialog", { name: zhCN.auth.shell.revalidationLabel })).toBe(overlay);
+    expect(document.body).toHaveClass("auth-session-checking");
+    expect(document.querySelector(".auth-shell")).toHaveAttribute("inert");
+    await act(async () => retry.resolve(json(user)));
     expect(screen.queryByRole("dialog", { name: zhCN.auth.shell.revalidationLabel })).toBeNull();
     expect(screen.getByRole("dialog", { name: zhCN.auth.management.secret.tokenTitle })).toBe(reveal);
     expect(screen.getByLabelText(zhCN.auth.management.secret.tokenLabel)).toBe(secret);

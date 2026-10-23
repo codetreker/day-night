@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { acceptInvitation, createInvitation, createProject, createToken, getAuthConfig, inspectInvitation, listInvitations, listMembers, listTokens, logout, me, removeMember, revokeInvitation, revokeToken, setMemberRole } from "../src/api/auth";
-import { ApiError, checkAttachmentPreview, invalidateAuthRequests, listProjects, subscribeUnauthorized } from "../src/api/client";
+import { ApiError, checkAttachmentPreview, invalidateAuthRequests, listProjects, pauseAuthRequests, request, subscribeUnauthorized } from "../src/api/client";
 
 const projectId = "10000000-0000-0000-0000-00000000000a";
 const userId = "20000000-0000-0000-0000-00000000000b";
@@ -23,6 +23,106 @@ const mock = (value: Response) => {
   return fetcher;
 };
 afterEach(() => { vi.unstubAllGlobals(); invalidateAuthRequests(); });
+
+describe("identity revalidation request pause", () => {
+  it("dispatches ordinary requests synchronously when identity is already confirmed", async () => {
+    const fetcher = mock(response(user));
+    const pending = request("/api/v1/me/tokens", signal());
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await pending;
+  });
+
+  it.each([
+    ["GET", "/api/v1/me/tokens"],
+    ["POST", "/api/v1/invitations/accept"],
+    ["PUT", `/api/v1/projects/${projectId}/tasks/${tokenId}/attachments/files/guide.md`],
+    ["PATCH", `/api/v1/projects/${projectId}/members/${userId}`],
+    ["DELETE", `/api/v1/me/tokens/${tokenId}`],
+  ])("holds %s %s until the current identity is confirmed", async (method, url) => {
+    const fetcher = mock(response(user));
+    const resume = pauseAuthRequests();
+    const pending = request(url, signal(), { method });
+    expect(fetcher).not.toHaveBeenCalled();
+    await expect(me(signal())).resolves.toEqual(user);
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith("/api/v1/me", expect.anything());
+    resume();
+    await pending;
+    expect(fetcher.mock.calls[1]?.[0]).toBe(url);
+    expect(fetcher.mock.calls[1]?.[1].method).toBe(method);
+  });
+
+  it("allows logout while normal requests are paused and cancels the queued requests on session invalidation", async () => {
+    const fetcher = mock(new Response(null, { status: 204 }));
+    pauseAuthRequests();
+    const pending = request("/api/v1/invitations/accept", signal(), { method: "POST" });
+    const cancelled = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await logout(signal());
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith("/api/v1/auth/logout", expect.anything());
+    invalidateAuthRequests();
+    await cancelled;
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves a queued request's abort reason and removes its listener before later release", async () => {
+    const fetcher = mock(response(user));
+    const resume = pauseAuthRequests();
+    const controller = new AbortController();
+    const remove = vi.spyOn(controller.signal, "removeEventListener");
+    const pending = request("/api/v1/me/tokens", controller.signal);
+    const reason = new Error("Closed account view");
+    controller.abort(reason);
+    await expect(pending).rejects.toBe(reason);
+    expect(remove).toHaveBeenCalledWith("abort", expect.any(Function));
+    resume();
+    await Promise.resolve();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("keeps queued requests paused when a superseded check tries to release them", async () => {
+    const fetcher = mock(response(user));
+    const staleResume = pauseAuthRequests();
+    const controller = new AbortController();
+    const remove = vi.spyOn(controller.signal, "removeEventListener");
+    const pending = request("/api/v1/me/tokens", controller.signal);
+    const currentResume = pauseAuthRequests();
+    staleResume();
+    await Promise.resolve();
+    expect(fetcher).not.toHaveBeenCalled();
+    currentResume();
+    await pending;
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledWith("abort", expect.any(Function));
+  });
+
+  it("discards an old identity's queued request without releasing a later identity check", async () => {
+    const fetcher = mock(response(user));
+    const staleResume = pauseAuthRequests();
+    const previous = request("/api/v1/invitations/accept", signal(), { method: "POST" });
+    const cancelled = expect(previous).rejects.toMatchObject({ name: "AbortError" });
+    invalidateAuthRequests();
+    const currentResume = pauseAuthRequests();
+    const current = request("/api/v1/me/tokens", signal());
+    staleResume();
+    await cancelled;
+    expect(fetcher).not.toHaveBeenCalled();
+    currentResume();
+    await current;
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith("/api/v1/me/tokens", expect.anything());
+  });
+
+  it("waits for another identity check started before a released request resumes", async () => {
+    const fetcher = mock(response(user));
+    const resume = pauseAuthRequests();
+    const pending = request("/api/v1/me/tokens", signal());
+    resume();
+    const resumeLatest = pauseAuthRequests();
+    await Promise.resolve();
+    expect(fetcher).not.toHaveBeenCalled();
+    resumeLatest();
+    await pending;
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("session and personal credentials API", () => {
   it("loads the current nullable profile and the configured provider list from relative endpoints", async () => {
