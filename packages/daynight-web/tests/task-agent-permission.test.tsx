@@ -92,6 +92,8 @@ describe('confirmed automatic execution header control', () => {
     await waitFor(() => expect(screen.getByRole('switch')).toBeChecked());
     expect(draft).toHaveValue('Retained'); expect(screen.getByRole('tab', { name: 'Attachments' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText('Automatic execution updated.')).toBeVisible();
+    expect(screen.getByText('Task details differ from the current task graph. Refresh to see consistent progress and relationships.')).toBeVisible();
+    expect(screen.queryByText(/The approval operation is confirmed/)).toBeNull();
     expect(screen.queryByRole('region', { name: 'Task approval' })).toBeNull();
   });
   it('closes a captured confirmation when an authoritative refresh changes the task version', async () => {

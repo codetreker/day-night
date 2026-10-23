@@ -181,7 +181,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                 {retainedDetail && <p className="task-detail-retained" role="status">{m.retainedDetail}</p>}
                 {stale && (
                   <div className="task-detail-stale" role="status">
-                    <p>{task.mutation.phase === 'confirmed' ? messages.inspection.approval.confirmedSnapshot : m.stale}</p>
+                    <p>{task.mutation.phase === 'confirmed' && task.mutation.operation?.action !== 'allowAgents' ? messages.inspection.approval.confirmedSnapshot : m.stale}</p>
                     <button className="button" type="button" onClick={onRefreshGraph}>{m.refreshGraph}</button>
                   </div>
                 )}
