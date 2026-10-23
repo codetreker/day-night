@@ -11,6 +11,11 @@ and accurate progress while letting the reader control visible detail.
 
 ## Decision
 
+The pending [external dependency design](../architecture/2026-10-23-external-dependency-design.md)
+replaces the main-set input with an ordinary-edge component and retains the
+connected ancestor projection and progressive controls. This note continues to
+describe the implemented root-based input until that consuming task is delivered.
+
 `projectRoot` retains complete context P: root plus every reachable successor
 form main M, every ancestor of M is included, and P−M is external context.
 Unrelated successors of external tasks stay outside P. Only visible task IDs S
