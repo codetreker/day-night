@@ -16,9 +16,7 @@ The adopted [requirements](../../../../docs/spec/daynight-task-timing.md) and
 [architecture](../../../../docs/design/daynight-task-timing.md) define one
 execution interval per task, project-owned warning settings and a server-derived
 display clock. Persistent task timing, project settings, their reader contracts
-and task presentation form the implemented mechanism. Source-bound validation,
-required merges and whole-goal acceptance remain owned by the
-[implementation tasks](../../../../docs/design/daynight-task-timing-tasks.md).
+and task presentation form the implemented mechanism.
 
 Task start and completion timestamps are nullable database facts written with
 status and version under the existing project transaction. The latest genuine
@@ -78,10 +76,6 @@ updates stay local to consumers; the graph index and layout retain their identit
 Standalone visual timing does not become part of its button name, and tick
 updates do not use live regions. Root-chain progress never claims an individual
 execution interval as aggregate duration.
-
-Delivery proceeds through persistent task timing, project threshold settings,
-then running-task presentation and whole-goal acceptance. Each PR preserves a
-buildable resource contract and includes its own necessary validation.
 
 ## Alternatives
 

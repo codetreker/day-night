@@ -12,9 +12,9 @@ also make another file use case repeat the same disk and transport concerns.
 
 ## Decision
 
-The delivered artifacts are the adopted [requirements](../../../../docs/spec/daynight-task-attachments.md),
-[architecture](../../../../docs/design/daynight-task-attachments.md) and
-[implementation breakdown](../../../../docs/design/daynight-task-attachments-tasks.md).
+The delivered artifacts are the adopted
+[requirements](../../../../docs/spec/daynight-task-attachments.md) and
+[architecture](../../../../docs/design/daynight-task-attachments.md).
 The [file-storage foundation](2026-10-21-bucket-file-storage.md) implements the
 generic local adapter and startup integration. The
 [attachment HTTP delivery](../feature/2026-10-21-task-attachment-http.md) implements
@@ -26,7 +26,7 @@ deployment volumes, isolation and paired backup/restore validation. The
 [Web attachment delivery](../feature/2026-10-21-task-attachment-web.md) implements
 file management, typed previews and task-detail focus integration. This note owns the
 adopted cross-component design; the CLI and Web notes own their transport,
-rendering and output choices. Combined acceptance remains tracked in Daynight.
+rendering and output choices.
 
 Generic file storage uses bucket and real relative path addressing through
 Put/Open/Delete. The initial adapter is local disk. Task attachment consumers use
@@ -60,8 +60,7 @@ and explicit partial-failure semantics. The
 [server baseline](2026-10-19-daynight-server-task-design.md),
 [CLI baseline](2026-10-20-project-task-cli-design.md) and
 [read-only dashboard baseline](2026-10-20-task-dashboard-mvp-design.md) retain
-ownership of their delivered behavior. Attachments extend those baselines and
-are tracked separately until their implementation is delivered.
+ownership of their delivered behavior. Attachments extend those baselines.
 
 Filesystem mutations and PostgreSQL metadata changes are not atomic. K1 in the
 requirements and architecture records the accepted failure and concurrency
@@ -107,7 +106,7 @@ and preview URLs remain independent of disk roots and future backend choices.
 PG metadata can differ from actual file contents after failures or concurrent
 mutations. File response length comes from the object actually opened. Errors
 must not be converted into an empty list, missing file or confirmed rollback.
-The task breakdown does not include a consistency remediation task or gate.
+Consistency remediation is outside this design.
 
 Trusted same-origin HTML has the privileges of that browser origin. Supporting
 untrusted HTML would require revisiting the preview boundary rather than
@@ -118,8 +117,7 @@ management and persistent deployment volumes are implemented. The Web delivery
 note owns its state, rendering and focus choices; this note retains the
 cross-component addressing and accepted K1 decision. The
 [cross-layer acceptance decision](../testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
-owns installed CLI/service and same-data production-browser proof. A-T6 progress
-is maintained in Daynight; the breakdown owns scope and acceptance.
+owns installed CLI/service and same-data production-browser proof.
 Existing server, CLI and Web contracts remain true for delivered features.
 Module-specific validation and source-bound evidence remain required; native CLI
 outcomes cannot be inferred from source inspection or another platform's run.

@@ -2,27 +2,23 @@
 
 状态：共享配置、HTTP、仓库关联基础及 `project create/list/show` 已实现；
 Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已完成，并通过三原生
-平台及 Go 托管验证；集成状态见[PR #55](https://github.com/codetreker/daynight/pull/55)。本文保留完整交付要求，具体任务状态与
-验证证据由[任务清单](../design/daynight-project-task-tasks.md)拥有；当前可用命令见
+平台及 Go 托管验证；集成状态见[PR #55](https://github.com/codetreker/daynight/pull/55)。本文保留完整交付要求，当前可用命令见
 [仓库 README](../../README.md)。
 
 `daynight project` 和 `daynight task` 是 `daynight-server` 的客户端入口，供开发者
 在终端管理项目及任务，也为脚本提供 JSON 查询结果。它们与 `review`、`update`
 并列，使用现有 HTTP API。本文拥有命令、配置、仓库关联和输出要求；服务的数据、
 状态约束及错误语义由[服务需求](daynight-server.md)拥有，机制见
-[客户端设计](../design/daynight-project-task.md)，实现分解见
-[交付任务](../design/daynight-project-task-tasks.md)，决策见
+[客户端设计](../design/daynight-project-task.md)，决策见
 [方案决策](../../.agents/notes/implemented/architecture/2026-10-20-project-task-cli-design.md)。
 
 [预定义属性需求](daynight-task-properties.md)的 server 接口、CLI PR 引用参数和
-完整资源输出已实现。[架构](../design/daynight-task-properties.md)与
-[实施任务](../design/daynight-task-properties-tasks.md)拥有属性机制及各组件的交付记录。
+完整资源输出已实现。[架构](../design/daynight-task-properties.md)拥有属性机制。
 
 [附件需求](daynight-task-attachments.md)定义的 `task attachment put/list/read/remove`
 及原始字节读取已实现，复用本文的服务配置和 project 选择。
-[架构](../design/daynight-task-attachments.md)拥有文件与流传输机制，
-[任务拆分](../design/daynight-task-attachments-tasks.md)记录扩展范围和 Daynight 任务入口；
-Web 附件管理亦已实现，组合验收由 A-T6 维护。
+[架构](../design/daynight-task-attachments.md)拥有文件与流传输机制；
+Web 附件管理亦已实现。
 
 [执行计时需求](daynight-task-timing.md)的任务起止字段与数据库图时钟已有严格 CLI 读取契约。
 JSON 保留真实时间或明确的 `null`；Project JSON 同步保留项目阈值及其精确嵌套版本。
@@ -30,8 +26,7 @@ JSON 保留真实时间或明确的 `null`；Project JSON 同步保留项目阈�
 
 [鉴权需求](daynight-auth.md)定义完整的个人访问令牌、项目成员授权和私有项目发现。
 CLI 的令牌配置与 HTTP 传输已实现；[凭据决策](../../.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
-记录其机制。[架构](../design/daynight-auth.md)与[任务拆分](../design/daynight-auth-tasks.md)
-拥有服务组合与交付条件；生产服务对全部项目、任务、图和附件请求强制鉴权。
+记录其机制。[架构](../design/daynight-auth.md)拥有服务组合；生产服务对全部项目、任务、图和附件请求强制鉴权。
 使用当前服务前，通过 Web 登录并创建 PAT，再运行 setup 保存令牌。仓库关联只选择
 项目，不授予访问权限，也不保存认证凭据。
 
@@ -357,7 +352,7 @@ API 字段的名称、类型和原始字符串，不应用终端显示转义或�
 入口已在受控 HTTP 条件下验证创建、完整分页、详情、参数错误、服务拒绝、
 取消、原始 JSON 与依赖隔离。Task 已通过参数、操作、渲染、仓库选择及实际编译
 入口的受控 HTTP 验证；共享补全保留既有场景，并在真实 Bash/zsh 验证 Task 语法。
-V1–V12 继续约束完整 CLI 交付。PT-T5 必须通过三原生平台的安装 CLI 受控 HTTP/Git
+V1–V12 继续约束完整 CLI 交付。CLI 必须通过三原生平台的安装 CLI 受控 HTTP/Git
 验收，以及实际安装 CLI 与真实 Go 1.27.2/PostgreSQL 18.6 的完整流程、重启和版本
 竞争。生产默认值必须保持单次请求 30 秒、总操作 5 分钟、单响应 128 MiB 和
 累计响应 256 MiB，并由测试单独断言。期限行为通过公开安装命令与流式 HTTP
@@ -371,7 +366,6 @@ V1–V12 继续约束完整 CLI 交付。PT-T5 必须通过三原生平台的安
 原生安装结果写入仓库根 `.tmp/project-task-evidence.json`，服务及预算结果写入
 `.tmp/project-task-service-evidence.json`；每份证据标识源码、pack/安装身份、场景
 和清理。Go 原有 receipt 及 raw coverage 保留其归属，CLI 要求编号使用 `PT.V*` 命名
-空间。PT-T5 的真实 Go/PostgreSQL 联调及真实默认预算历史验证结果与 tested source
-见任务清单和 PR #55；当前期限 mock 及验证成本取舍由
+空间。[PR #55](https://github.com/codetreker/daynight/pull/55) 保留真实 Go/PostgreSQL 联调及真实默认预算的历史源码验证结果；当前期限 mock 及验证成本取舍由
 [CI 验证效率决策](../../.agents/notes/implemented/testing/2026-10-21-ci-validation-efficiency.md)
 拥有，逐次结果随对应 PR 与 CI 保存。受控 HTTP、真实服务与原生平台证据分别证明其对应要求，不能互相替代。

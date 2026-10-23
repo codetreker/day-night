@@ -2,8 +2,7 @@
 
 公开 `using-daynight` skill 使用本文的分阶段 Goal 协议。
 [Agent skill 需求](daynight-agent-skill.md)拥有整体使用与安装要求；本文拥有 Goal 行为，
-[架构设计](../design/daynight-goal-workflow.md)拥有机制，
-[任务拆分](../design/daynight-goal-workflow-tasks.md)拥有交付范围与任务身份。
+[架构设计](../design/daynight-goal-workflow.md)拥有机制。
 
 ## 目的与范围
 
@@ -56,12 +55,6 @@ task `description` 是当前任务的自足简介，说明具体问题、要做�
 不可变仓库 URL。引用必须能用真实 CLI 读取，不能假设 `task://`、跨任务相对链接或新
 API 存在，也不能硬编码服务主机。默认向每个任务上传相同整套资料不满足要求。独立
 快照仅在当前任务确实需要时复制，记录原始来源、版本和复制目的。
-
-本 Goal 在设计交接时的计划与设计附件共六份：描述任务保留 `goal.md`；设计任务保留
-`architecture-plan.md`、`design.md`、`tasks.md`；GW-T1 与 GW-T2 在交接时各自保留专属 `plan.md`。
-工作流规范与决策保留在仓库，由真实引用定位，不作为共享包重复上传到每个任务。
-后续执行中确需增加的资源或验收证据由产出任务拥有；六份是当前交接清单，不是通用附件配额。
-设计交接时核验这些来源与引用，后继无需持有全部资料的本地附件副本。
 
 UI 原型在描述阶段完成后供设计与相关交付任务复用，引用必须指向实际可读资源。验收
 结果与必要交付证据写入相应主附件的验收项；需要 PR 时保留 merge commit 引用。

@@ -15,8 +15,7 @@ The adopted MVP design defines project browsing, project-level statistics,
 expandable source-root graphs, and a task detail drawer. The
 [requirements](../../../../docs/spec/daynight-web.md) own visible behavior, the
 [design](../../../../docs/design/daynight-web.md) owns implementation contracts,
-the [task breakdown](../../../../docs/design/daynight-web-tasks.md) owns execution
-status, dependencies and completion criteria, and the [interactive preview](../../../../docs/design/mockups/task-dashboard.html)
+and the [interactive preview](../../../../docs/design/mockups/task-dashboard.html)
 demonstrates the original appearance. The later [task view decision](../feature/2026-10-22-project-task-views.md)
 separates standalone task rows from root-chain graphs within project tabs, using
 the [task view mockup](../../../../docs/design/mockups/task-views.html). This note
@@ -35,7 +34,8 @@ The earlier renderer passed local targets but failed the hosted zoom budget. The
 static SVG edge layer needed a further
 [long-dashed paint fix](../bug-fix/2026-10-20-long-dashed-dependency-paint.md), which
 passes complete local targets and the fixed capacity matrix. Actual local deployment-fault evidence remains separate and predates the
-SVG update. W-T6 is delivered through [PR #52](https://github.com/codetreker/daynight/pull/52);
+SVG update. Production acceptance is delivered through
+[PR #52](https://github.com/codetreker/daynight/pull/52);
 its corresponding PR and CI own source-specific verification.
 
 Use a separate React/TypeScript/Vite package with React Flow and Dagre. Serve

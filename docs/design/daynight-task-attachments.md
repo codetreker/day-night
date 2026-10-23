@@ -2,17 +2,15 @@
 
 状态：通用存储、附件元数据、文件 HTTP/预览入口、CLI 附件命令、Web 管理界面和
 部署持久卷及独立附件完整阅读页已实现，停止写入后的配套备份恢复已有真实容器验证。跨层组合验收复用
-真实服务、安装 CLI 和生产浏览器，实施与交付进度在 Daynight 中维护。
+真实服务、安装 CLI 和生产浏览器。
 
 行为要求由[附件需求](../spec/daynight-task-attachments.md)拥有；本文解释通用存储接口、
 附件元数据及各端集成机制。
-[任务拆分](daynight-task-attachments-tasks.md)拥有实现顺序、依赖、文件归属和完成条件；
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-task-attachment-storage-design.md)
 保存选择依据、已接受的限制及重新评估条件。决策采用不表示功能已经交付。
 
 [鉴权架构](daynight-auth.md)通过当前会话或 PAT 与项目成员权限保护所有附件
-请求；行为见[鉴权需求](../spec/daynight-auth.md)，交付条件见
-[任务拆分](daynight-auth-tasks.md)。`Attachments` 方法显式接收 principal，在
+请求；行为见[鉴权需求](../spec/daynight-auth.md)。`Attachments` 方法显式接收 principal，在
 文件 I/O 前的 `ReadSnapshot` 中检查成员、task 和附件归属；快照完成后执行存储
 及元数据操作，允许已准入操作完成，I/O 后不重新检查成员。凭据在 HTTP 准入
 时验证，不与后续文件/PG 操作组成原子事务。本文的可信同源执行、普通 iframe、
@@ -50,8 +48,7 @@ mockup/
 
 ## 现有结构与集成位置
 
-以下是当前集成位置。存储、HTTP、CLI、Web 管理界面和部署持久卷已有实现；
-各层交付及 A-T6 组合验收状态分别维护。
+以下是当前集成位置。存储、HTTP、CLI、Web 管理界面和部署持久卷已有实现。
 
 | 当前结构 | 集成方式 |
 |---|---|

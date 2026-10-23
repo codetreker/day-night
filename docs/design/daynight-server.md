@@ -7,19 +7,16 @@
 及任务依赖管理。行为要求由[需求文档](../spec/daynight-server.md)拥有；架构选择及
 重新评估条件由[决策记录](../../.agents/notes/implemented/architecture/2026-10-19-daynight-server-task-design.md)
 拥有。决策记录标记的是已采用的设计，不表示服务已经交付。
-[任务拆分](daynight-server-tasks.md)记录执行任务的范围、依赖、状态和验收条件。
 [看板设计](daynight-web.md)定义完整图快照接口、浏览器页面和内嵌静态资源
 交付；图 API 保留本文的领域与事务结构，不改变现有分页读取的一致性承诺。
 
 已采用的[附件架构](daynight-task-attachments.md)提供独立的 bucket/path 文件存储；
 通用本地存储、元数据及单文件附件接口已实现；[附件需求](../spec/daynight-task-attachments.md)
-拥有行为与已知问题，[附件任务拆分](daynight-task-attachments-tasks.md)提供实施范围
-及 Daynight 进度入口。
+拥有行为与已知问题。
 现有 PostgreSQL task 事务规则不扩展为文件与元数据的原子提交保证。
 
 [鉴权架构](daynight-auth.md)定义已接入运行时的 UniAuth 身份交接、本地用户、会话、
-访问令牌及项目成员授权，行为由[鉴权需求](../spec/daynight-auth.md)拥有，
-交付条件由[任务拆分](daynight-auth-tasks.md)拥有。
+访问令牌及项目成员授权，行为由[鉴权需求](../spec/daynight-auth.md)拥有。
 [身份基础模块](../../.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
 提供独立的用户/凭据存储和 handler；[项目成员模块](../../.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
 提供事务内授权、私有创建和邀请。`server.New(Dependencies, Config, logger)`
@@ -33,8 +30,7 @@
 
 [预定义属性设计](daynight-task-properties.md)为完整 task 提供固定结构的 PR
 引用，服务端已沿用本文的事务与版本机制实现存储、迁移和 HTTP 操作。其
-[需求](../spec/daynight-task-properties.md)及[实施任务](daynight-task-properties-tasks.md)
-拥有扩展行为与各组件的交付记录。
+[需求](../spec/daynight-task-properties.md)拥有扩展行为。
 
 [执行计时架构](daynight-task-timing.md)的起止事实与图数据库时间样本已接入相同事务和读取模型。
 项目阈值通过项目同行设置、管理员 PATCH 与完整 Project 投影交付；实时卡片消费这些事实，当前显示机制由[看板设计](daynight-web.md)拥有。
@@ -459,7 +455,7 @@ Go、web、CLI 和 shell completion 各自的检查内容及门槛保持。
 资源；缺少工具、依赖或真实产物直接失败。命令 package 的 TestMain 每次构建新的 race binary，
 通过真实 HTTP、PostgreSQL、信号和进程重启执行验收，不复用旧的可执行文件。
 
-PT-T5 的安装 CLI 验收复用此 command-package fixture，新增
+安装 CLI 验收复用此 command-package fixture，新增
 `installed_cli_project_task_workflow` 场景，通过 `PT.V*` 要求编号对应 CLI 的真实
 project/task 操作、依赖推进、重启持久化及版本竞争。Node 编排入口在 Go
 覆盖率 gate 前准备一次安装，将同一产物用于 Go 场景及随后预算探针；原有 go-cov
@@ -471,8 +467,7 @@ project/task 操作、依赖推进、重启持久化及版本竞争。Node 编�
 屏障及清理；顶层测试间的全局环境修改仍串行。原始服务场景不被 CLI 场景替换，细节见
 [安装联调决策](../../.agents/notes/implemented/testing/2026-10-20-installed-project-task-acceptance.md)及
 [CLI 设计](daynight-project-task.md#验证与交付证据)。根目录
-`.tmp/project-task-service-evidence.json` 记录安装身份、Go/预算结果与清理，实际状态
-仍由 CLI 任务清单拥有。CI
+`.tmp/project-task-service-evidence.json` 记录安装身份、Go/预算结果与清理。CI
 发布 `.tmp/acceptance-evidence.json` 和同次 `.tmp/coverage.out`；前者记录源版本、
 binary hash、场景及资源清理，CI 要求 checkout 干净且 Git revision 与 `GITHUB_SHA`
 一致。V1–V10 的证据归属与 receipt 解释见

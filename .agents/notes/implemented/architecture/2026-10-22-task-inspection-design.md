@@ -32,8 +32,7 @@ The [progressive overview decision](../feature/2026-10-22-progressive-task-graph
 partially supersedes all-context-at-once rendering. PR134 delivered bounded visible graphs and explicit expansion/reset, retaining
 body-open-details and polylines. The first inspection PR #121 was abandoned; a
 clean current-main replacement owns independent selection/Details and smooth
-highlighting. Its fresh source-bound acceptance and integration complete UX-T2,
-without requiring the abandoned PR or reusing its runtime results.
+highlighting. The abandoned PR's runtime results remain historical.
 
 The root and its descendants remain the chain's counted membership. Rendering
 adds the complete prerequisite closure without importing unrelated descendants
@@ -62,13 +61,6 @@ actions, scope, deliverables, constraints, brief observable completion and actua
 references. Detailed Solution, full Acceptance criteria and evidence remain in
 the task-specific primary Markdown attachment. The Markdown description decision
 owns this structure without changing Goal stages or authorization rules.
-
-The [breakdown](../../../../docs/design/daynight-task-inspection-tasks.md)
-separates complete context, graph inspection, centered reading and Markdown
-authoring/reading. Each task includes its relevant production checks and
-documentation; validation is not deferred to a final catch-all task. Functional
-prerequisites belong only in Daynight `dependsOn`. Existing standalone-tab work
-is an integration consideration rather than a fabricated prerequisite.
 
 ## Alternatives
 

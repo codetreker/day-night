@@ -1,12 +1,12 @@
 # Worker 架构设计
 
-状态：架构方案已确认，运行时尚未实现。本文拥有机制；[需求](../spec/daynight-worker.md)拥有产品行为，[任务拆分](daynight-worker-tasks.md)拥有交付顺序、身份及验收分工。[设计决策](../../.agents/notes/implemented/architecture/2026-10-22-worker-design.md)保留真实备选方案。
+状态：架构方案已确认，运行时尚未实现。本文拥有机制；[需求](../spec/daynight-worker.md)拥有产品行为，[设计决策](../../.agents/notes/implemented/architecture/2026-10-22-worker-design.md)保留真实备选方案。
 
 ## 目标与当前基础
 
 `daynight worker run` 是一个前台常驻 CLI：通过 REST 领取多仓库中允许 Agent 执行的任务，使用系统管理的稳定 worktree 与专用 Herdr 执行，持久化状态并完成恢复和清理。Agent 负责完整交付循环，worker 负责归属、资源和完成核验。
 
-设计初始源码基线为 `e533b8610ec38522fd5387e4715b573734bd16c2`。交付核对基线为 `2d7fdd1e4e178db17e46da5d3b6c0e4050edf730`：主线具有命令组合、严格 YAML、REST client、任务/属性、项目写事务和 review 的 Git/SQLite 基础；AU-T5 鉴权与 ST-T2 显式 approve/claim/complete 生命周期已交付，worker 仍待实现。任务的服务端起止时间及图时钟遵循已交付的[执行时间契约](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/docs/spec/daynight-task-timing.md)，worker DTO 与生命周期扩展须保留该契约。
+设计初始源码基线为 `e533b8610ec38522fd5387e4715b573734bd16c2`。交付核对基线为 `2d7fdd1e4e178db17e46da5d3b6c0e4050edf730`：主线具有命令组合、严格 YAML、REST client、任务/属性、项目写事务和 review 的 Git/SQLite 基础；鉴权与显式 approve/claim/complete 生命周期已交付，worker 仍待实现。任务的服务端起止时间及图时钟遵循已交付的[执行时间契约](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/docs/spec/daynight-task-timing.md)，worker DTO 与生命周期扩展须保留该契约。
 
 | 当前基础 | 复用点 |
 |---|---|
@@ -243,7 +243,7 @@ Transfer 后，目标 worker 还要查询归属于自己的 in_progress 执行�
 
 Linux 本地 Herdr 0.8.2 的隔离无原生 agent 冒烟已验证：原始 JSON API、headless workspace 创建、人工模拟 working/idle、普通 shell/子进程关闭和 shell 工作区重启恢复。发现 134 字节 client socket 路径启动失败，缩短后 API/client 路径分别 100/107 字节成功。这些是该平台和版本的观察，107 不是三平台通用限制。
 
-它没有运行 Copilot/Codex、没有验证原生检测、native history 恢复、原生 agent 脱离子进程或 macOS/Windows。原始 receipt 保留为本设计 task 附件；运行时交付必须通过下面的独立门禁。
+它没有运行 Copilot/Codex、没有验证原生检测、native history 恢复、原生 agent 脱离子进程或 macOS/Windows。运行时交付必须通过下面的独立门禁。
 
 | 门禁 | 必须证明 |
 |---|---|
@@ -252,7 +252,7 @@ Linux 本地 Herdr 0.8.2 的隔离无原生 agent 冒烟已验证：原始 JSON 
 | Herdr 原生 | 支持基线、两 agent、三平台 API/输入/blocked、停止、无客户端 native restore 及真实历史保留。 |
 | 端到端 | 安装 CLI、两 worker 竞争、多仓库轮转、PR/CI/review/合并/验收、人工介入/移交、各崩溃窗口与重启。 |
 
-不得以模拟 lifecycle 或文档说明替代原生证据。实现按[任务拆分](daynight-worker-tasks.md)交付，每个 task 执行其适用 CLI/Go/Web 门禁，保留严格覆盖率、原生平台和实际服务证据。
+不得以模拟 lifecycle 或文档说明替代原生证据。实现通过适用 CLI/Go/Web 门禁，保留严格覆盖率、原生平台和实际服务证据。
 
 ## 模型入口大小
 

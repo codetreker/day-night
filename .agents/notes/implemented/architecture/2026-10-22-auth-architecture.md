@@ -13,9 +13,8 @@ membership while preserving the existing trusted attachment execution model.
 ## Decision
 
 The adopted [requirements](../../../../docs/spec/daynight-auth.md),
-[architecture](../../../../docs/design/daynight-auth.md),
-[interactive UI](../../../../docs/design/mockups/auth/index.html) and
-[task entry point](../../../../docs/design/daynight-auth-tasks.md) define the
+[architecture](../../../../docs/design/daynight-auth.md) and
+[interactive UI](../../../../docs/design/mockups/auth/index.html) define the
 implementation. The [identity foundation](2026-10-22-identity-credentials.md) and
 [membership foundation](2026-10-22-project-membership.md) first delivered callable,
 unmounted modules so their transaction and identity behavior could be reviewed

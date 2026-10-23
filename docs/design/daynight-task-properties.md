@@ -2,7 +2,6 @@
 
 状态：服务端存储、迁移、HTTP 读写、CLI 属性操作与只读网页展示已实现。行为与验收编号由
 [属性需求](../spec/daynight-task-properties.md)拥有；
-[任务拆分](daynight-task-properties-tasks.md)记录后续实施；
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-task-properties-design.md)
 保存备选方案与长期代价。[交互预览](mockups/task-properties.html)展示详情区域及边界数据。
 
@@ -258,8 +257,7 @@ summary 独立避免图容量契约随 PR 内容增长。存储文本缺少数�
 转义往返、事务失败及并发；Go HTTP 覆盖严格嵌套结构；CLI 覆盖配对与真实服务输出；
 生产浏览器覆盖展示、导航执行策略和既有焦点。沿用 README 中适用的 Go build/vet/
 race/go-cov、CLI typecheck/test/build、web 覆盖率和生产浏览器门禁。Go 和 web 总
-语句覆盖率均须严格大于 90%；完成标准与任务归属见[任务拆分](daynight-task-properties-tasks.md)。
+语句覆盖率均须严格大于 90%。
 
 设计交付的验证包括 Markdown 本地链接、文档状态与路径、示例 JSON/SQL/命令
-审查及预览脚本检查。服务端及后续客户端的运行结果随对应源码和 CI 保存；
-[实施任务](daynight-task-properties-tasks.md)拥有任务状态与证据归属。
+审查及预览脚本检查。服务端及后续客户端的运行结果随对应源码和 CI 保存。
