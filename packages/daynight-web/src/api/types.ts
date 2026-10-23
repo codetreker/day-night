@@ -21,6 +21,8 @@ export type GraphTask = {
   readonly dependsOn: readonly string[];
   readonly blockedBy: readonly string[];
   readonly ready: boolean;
+  readonly startedAt: string | null;
+  readonly completedAt: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 };
@@ -36,6 +38,7 @@ export type TaskGraphSummary = {
 };
 
 export type TaskGraph = {
+  readonly observedAt: string;
   readonly project: Project;
   readonly summary: TaskGraphSummary;
   readonly tasks: readonly GraphTask[];
@@ -61,6 +64,8 @@ export type TaskDetail = {
   readonly dependsOn: readonly string[];
   readonly blockedBy: readonly string[];
   readonly ready: boolean;
+  readonly startedAt: string | null;
+  readonly completedAt: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 };

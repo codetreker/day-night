@@ -25,6 +25,10 @@ SDK 提供 App-aware provider discovery；发现失败与用户会话失效分�
 
 [语言设计](daynight-web-i18n.md)拥有已实现的类型化目录、Intl 格式化器、首屏解析、常驻 Provider、共享选择器和全部现有第一方组件的双语呈现；[双语需求](../spec/daynight-web-i18n.md)拥有完整覆盖与验收。源码绑定的组合生产验收由独立任务核对。语言偏好使用独立的 origin-local 键，不改变本文的项目浏览记录、API、图或附件生命周期。
 
+[执行计时架构](daynight-task-timing.md)的起止字段与数据库 `observedAt` 已进入严格 API 读取器。
+`useTaskGraph` 将最新服务端样本保存为独立 snapshot 字段，保持仅时钟变化时的图/索引身份。
+项目阈值、页面计时器与运行提醒仍属于后续交付。
+
 ## 目标与现有基础
 
 浏览器完成“项目列表 → 项目统计 → 独立任务列表或根任务链 → 任务详情”的完整读取路径。数据继续归属 `daynight-server`，不接入 客户端的 review 命令，不新增父子任务。任务生命周期为 proposed→todo→in_progress→done；创建默认 proposed，详情提供
@@ -429,7 +433,7 @@ flowchart LR
 专用 TaskDetailSession 只保存项目/任务键对应的详情与审批操作，纯图模型只计算派生内容。
 
 - `useProjects` 拥有当前已加载页、nextCursor 和下一页错误。首次请求、加载更多和刷新有各自状态；刷新使旧游标及旧请求失效。
-- `useTaskGraph(projectId)` 拥有完整 `TaskGraph`、接收时间、成功读取 revision、请求序号、refresh 动作与可见页面定时器。每次成功读取都推进 revision；图内容相同则复用原快照与索引，避免重新投影和布局，内容变化时一次替换完整快照与索引，不能逐节点补丁式混合两次响应。
+- `useTaskGraph(projectId)` 拥有完整 `TaskGraph`、接收时间、独立数据库时间样本、成功读取 revision、请求序号、refresh 动作与可见页面定时器。每次成功读取都推进 revision、更新 `GraphSnapshot.receivedAt` 与 `GraphSnapshot.observedAt`；前者是最近成功读取的本机墙钟标签，后者是该响应最新服务端时间。内容等价比较排除顶层 `observedAt`，因此仅时间样本变化时复用 `graph` 与索引，避免重新投影和布局。复用的 `graph.observedAt` 可能仍是先前样本，计时消费者必须读取独立的最新 `snapshot.observedAt`。其他图内容变化时一次替换完整图与索引，不能逐节点补丁式混合两次响应。
 - `ProjectPage` 管理任务选择、当前页签、独立任务与非独立根的倒序展示序列、各自完成项筛选和浏览位置。任务链列表通过 `rootIds` 使用其可见序列，图投影继续使用完整且未改写的 `GraphIndex`。偏好 hook 负责按项目读取、校验并保存本地选择。图刷新后沿用仍可见的根，根隐藏、消失或变成独立任务后选择最新可见链根；没有可见链根时保留原偏好，明确的全部折叠继续保留。详情选择按完整快照判断存在性，分类和完成项过滤不关闭仍存在的任务。
 - `useTaskDetail(projectId, taskId)` 消费 TaskDetailSession 中该键的详情与审批状态，
   在打开时及成功图读取后请求。相同活动资源保留已加载内容与附件面板；活动 GET 不中断，
@@ -615,6 +619,7 @@ GET /api/v1/projects/{projectId}/task-graph
 
 ```ts
 type TaskGraph = {
+  observedAt: string;
   project: Project;
   summary: {
     total: number;
@@ -635,6 +640,8 @@ type TaskGraph = {
     ready: boolean;
     createdAt: string;
     updatedAt: string;
+    startedAt: string | null;
+    completedAt: string | null;
   }>;
 };
 ```
@@ -654,6 +661,8 @@ type GraphTask struct {
     Ready          bool
     CreatedAt      time.Time
     UpdatedAt      time.Time
+    StartedAt      *time.Time
+    CompletedAt    *time.Time
 }
 
 type TaskGraphSummary struct {
@@ -661,6 +670,7 @@ type TaskGraphSummary struct {
 }
 
 type TaskGraph struct {
+    ObservedAt time.Time
     Project Project
     Summary TaskGraphSummary
     Tasks   []GraphTask
@@ -676,11 +686,12 @@ func (s *Tasks) Graph(ctx context.Context, projectID string) (core.TaskGraph, er
 // internal/core/store/task_graph.go
 func (s *Snapshot) TaskGraphSize(ctx context.Context, projectID string) (TaskGraphSize, error)
 func (s *Snapshot) TaskGraphTasks(ctx context.Context, projectID string, previewCharacters int) ([]core.GraphTask, error)
+func (s *Snapshot) ObservedAt(ctx context.Context) (time.Time, error)
 ```
 
 `store.TaskGraphSize` 包含 int64 的 NodeCount 和 EdgeCount；它只描述查询结果。`Tasks.Graph` 使用现有具体 store，拥有 1,000/5,000/160 的策略常量，不新增可配置项、连接池或存储接口。
 
-事务顺序固定为：规范化 projectId → `ReadSnapshot` → 同快照内检查成员关系并读取 `Project` → 精确节点/边计数 → 检查上限 → 查询轻量完整节点及前置 → 从节点折叠 summary → 完成事务 → 返回资源或待返回的领域错误。
+事务顺序固定为：规范化 projectId → `ReadSnapshot` → 同快照内检查成员关系并读取 `Project` → 精确节点/边计数 → 检查上限 → 查询轻量完整节点及前置 → 从节点折叠 summary → 查询数据库 `statement_timestamp()` 作为 `observedAt` → 完成事务 → 返回资源或待返回的领域错误。
 
 store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(title) > previewCharacters`，不先读取完整 title 或 description。复用现有 project 范围的有序 dependsOn/blockedBy 与 ready SQL 语义，避免另写一套阻塞规则。查询使用现有 project 前缀索引和 `(created_at,id)` 排序；空数组和空节点列表保持 `[]`。计数与长文本扫描仍有数据库成本，上限保证的是返回与渲染规模，不是数据库查询已经有常数耗时。
 
@@ -692,7 +703,7 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 
 同步 `server` 的状态映射、details 转换和 `knownFault` 白名单，保持 `409 graph_limit_exceeded` 可识别且有 requestId。缺失项目或超限 Fault 在 snapshot callback 内暂存并正常完成回调；只有外层事务完成成功后才返回。数据库、取消、提交和清理失败优先，不能因保留了 Fault 就降格为 404/409。
 
-不改变已有列表、详情和写入接口的请求或响应语义，也不进行数据库迁移。
+图读取继续保持既有列表、详情和写入的一致性边界；执行计时迁移与这些资源的新增可空时间字段由[计时架构](daynight-task-timing.md)拥有，创建和修改输入仍不接受这些只读字段。
 
 ### 图 API 行为
 
@@ -702,7 +713,7 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 - 标题预览限制为 160 Unicode code points，并返回 `titleTruncated`；查询直接投影预览，避免先加载所有完整标题。GraphTask 不含 description；完整文本在点击详情时读取。
 - 查询 `dependsOn` 与 `blockedBy` 只覆盖该项目。数组排序、任务排序与既有 API 规则保持稳定。HTTP 400/404/500 沿用现有 typed Fault 和错误脱敏。
 - 增加图规模错误时，同步维护 `service.Fault`、HTTP 错误 DTO、状态映射与日志白名单。错误响应沿用 requestId；不返回 SQL、驱动错误或仓库凭据。
-- 不改数据库 schema，不加存储接口，不复用 CLI 的 YAML 或 SQLite。
+- 执行计时通过任务同行迁移持久化，图查询只投影这些字段；不加存储接口，不复用 CLI 的 YAML 或 SQLite。
 
 ## 请求、刷新与故障
 
@@ -713,7 +724,7 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 请求序号和资源身份检查阻止晚到结果覆盖当前数据；取消不展示失败通知。
 
 每次成功图读取都推进成功 revision，重读仍存在的当前详情，即使图内容没有变化，
-详情读取失败后也能在后续周期恢复。相同图复用索引与布局，新的成功接收时间仍更新。
+详情读取失败后也能在后续周期恢复。忽略 `observedAt` 后内容相同的图复用索引与布局，新的成功接收时间和独立数据库时间样本仍更新。
 同任务详情在刷新及恢复性失败时保留正文，详情读取期间的多次刷新合并为一次后续
 请求；页面隐藏时自动详情读取与后续队列等待，已有读取可以完成。正文、附件和预览不重新挂载。相同有序 PR 值保持引用和分页，内容变化才
 按既有规则回到第一页。task/project 切换立即隔离旧内容并卸载旧附件状态。

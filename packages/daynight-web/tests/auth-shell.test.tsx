@@ -25,7 +25,7 @@ const project = (name = "私有项目") => ({ id: projectId, name, repoUrl: "htt
 const member = (id = userId, role = "admin") => ({ projectId, userId: id, name: "Alice", email: "alice@example.com", avatarUrl: null, role, version: 12, createdAt: now, updatedAt: now });
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 const fail = (status: number, code: string) => json({ error: { code, message: "hidden server details", requestId: "rq-safe" } }, status);
-const graph = () => json({ project: project(), tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } });
+const graph = () => json({ observedAt: "2026-10-20T12:00:00Z", project: project(), tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } });
 const defaults = (url: string): Response => {
   if (url === "/api/v1/me") return json(user());
   if (url === "/api/v1/auth/providers") return json({ providers: ["github"] });
@@ -406,9 +406,9 @@ describe("authenticated application shell", () => {
     const taskUrl = `/api/v1/projects/${projectId}/tasks/${taskId}`;
     let approved = false;
     let finishApproval!: (response: Response) => void;
-    const detail = () => ({ id: taskId, projectId, title: "Lifecycle task", description: "Reviewed lifecycle content", properties: { pullRequests: [] },
+    const detail = () => ({ startedAt: null, completedAt: null, id: taskId, projectId, title: "Lifecycle task", description: "Reviewed lifecycle content", properties: { pullRequests: [] },
       status: approved ? "todo" : "proposed", version: approved ? 8 : 7, dependsOn: [], blockedBy: [], ready: approved, createdAt: now, updatedAt: now });
-    const taskGraph = () => json({ project: project(), tasks: [{ id: taskId, titlePreview: "Lifecycle task", titleTruncated: false,
+    const taskGraph = () => json({ observedAt: "2026-10-20T12:00:00Z", project: project(), tasks: [{ startedAt: null, completedAt: null, id: taskId, titlePreview: "Lifecycle task", titleTruncated: false,
       status: approved ? "todo" : "proposed", dependsOn: [], blockedBy: [], ready: approved, createdAt: now, updatedAt: now }],
       summary: { total: 1, proposed: approved ? 0 : 1, todo: approved ? 1 : 0, inProgress: 0, done: 0, ready: approved ? 1 : 0, blocked: 0 } });
     const fetcher = vi.fn((url: string, options?: RequestInit) => {

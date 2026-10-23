@@ -36,6 +36,8 @@ export type Task = {
   readonly title: string;
   readonly description: string;
   readonly status: TaskStatus;
+  readonly startedAt: string | null;
+  readonly completedAt: string | null;
   readonly version: bigint;
   readonly properties: TaskProperties;
   readonly createdAt: string;
@@ -61,6 +63,7 @@ export type TaskGraphSummary = {
 };
 
 export type TaskGraph = {
+  readonly observedAt: string;
   readonly project: Project;
   readonly summary: TaskGraphSummary;
   readonly tasks: readonly GraphTask[];

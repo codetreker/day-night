@@ -21,6 +21,8 @@ type Task struct {
 	Version     int64
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	StartedAt   *time.Time
+	CompletedAt *time.Time
 	DependsOn   []string
 	BlockedBy   []string
 	Ready       bool

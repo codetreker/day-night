@@ -164,7 +164,7 @@ export const installAuthFixture = (initial: AuthScenario) => {
         const data = await body();
         if (typeof data.name !== 'string' || data.name.trim() === '' || typeof data.repoUrl !== 'string' || data.repoUrl.trim() === '') return error(400, 'invalid_input');
         const project: Project = { id: uuid(++sequence), name: data.name, repoUrl: data.repoUrl, createdAt: stamp, updatedAt: stamp };
-        projects.set(project.id, { project, graph: { project, summary: emptySummary, tasks: [] }, members: [member(authUserId, currentUser.name!, currentUser.email!, 'admin', project.id)], invitations: [] });
+        projects.set(project.id, { project, graph: { observedAt: "2026-10-20T12:00:00Z", project, summary: emptySummary, tasks: [] }, members: [member(authUserId, currentUser.name!, currentUser.email!, 'admin', project.id)], invitations: [] });
         return Response.json(project, { status: 201 });
       }
     }
@@ -230,7 +230,7 @@ export const installAuthFixture = (initial: AuthScenario) => {
         if (task === undefined) return error(404, 'not_found');
         const taskSuffix = taskMatch[2] ?? '';
         if (taskSuffix === '' && method === 'GET') {
-          const detail: TaskDetail = { id: task.id, projectId: entry.project.id, title: task.titlePreview, description: '完成项目范围内的实现与验证，确认成员权限、任务状态与实际交付结果一致。', properties: { pullRequests: [] }, status: task.status, version: 1n, dependsOn: task.dependsOn, blockedBy: task.blockedBy, ready: task.ready, createdAt: task.createdAt, updatedAt: task.updatedAt };
+          const detail: TaskDetail = { startedAt: task.startedAt, completedAt: task.completedAt, id: task.id, projectId: entry.project.id, title: task.titlePreview, description: '完成项目范围内的实现与验证，确认成员权限、任务状态与实际交付结果一致。', properties: { pullRequests: [] }, status: task.status, version: 1n, dependsOn: task.dependsOn, blockedBy: task.blockedBy, ready: task.ready, createdAt: task.createdAt, updatedAt: task.updatedAt };
           return new Response(stringifyApiJson(detail), { headers: { 'Content-Type': 'application/json' } });
         }
         if (taskSuffix === 'attachments' && method === 'GET') return Response.json({ items: attachments, nextCursor: null });

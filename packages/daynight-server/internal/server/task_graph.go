@@ -10,7 +10,8 @@ import (
 
 func taskGraphResponse(graph core.TaskGraph) api.TaskGraph {
 	response := api.TaskGraph{
-		Project: projectResponse(graph.Project),
+		Project:    projectResponse(graph.Project),
+		ObservedAt: graph.ObservedAt.UTC(),
 		Summary: api.TaskGraphSummary{
 			Total: graph.Summary.Total, Proposed: graph.Summary.Proposed, Todo: graph.Summary.Todo, InProgress: graph.Summary.InProgress,
 			Done: graph.Summary.Done, Ready: graph.Summary.Ready, Blocked: graph.Summary.Blocked,
@@ -22,6 +23,7 @@ func taskGraphResponse(graph core.TaskGraph) api.TaskGraph {
 			ID: task.ID, TitlePreview: task.TitlePreview, TitleTruncated: task.TitleTruncated, Status: string(task.Status),
 			DependsOn: append([]string{}, task.DependsOn...), BlockedBy: append([]string{}, task.BlockedBy...), Ready: task.Ready,
 			CreatedAt: task.CreatedAt.UTC(), UpdatedAt: task.UpdatedAt.UTC(),
+			StartedAt: timestampResponse(task.StartedAt), CompletedAt: timestampResponse(task.CompletedAt),
 		})
 	}
 	return response

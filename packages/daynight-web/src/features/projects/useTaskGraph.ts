@@ -6,6 +6,7 @@ import { buildGraphIndex, type GraphIndex } from "../task-graph/model";
 export type GraphSnapshot = {
   readonly graph: TaskGraph;
   readonly index: GraphIndex;
+  readonly observedAt: string;
   readonly receivedAt: number;
   readonly revision: number;
 };
@@ -41,13 +42,14 @@ export const useTaskGraph = (projectId: string) => {
     try {
       const graph = await getTaskGraph(projectId, controller.signal);
       if (controller.signal.aborted || revision !== generation.current) return;
-      // API parsing constructs a fixed DTO shape, so serialization covers every field.
-      const serialized = JSON.stringify(graph);
+      // Clock samples change on every poll without changing graph content or layout.
+      const serialized = JSON.stringify({ project: graph.project, summary: graph.summary, tasks: graph.tasks });
       const previous = cached.current;
       const unchanged = previous?.projectId === projectId && previous.serialized === serialized;
       const snapshot = {
         graph: unchanged ? previous.snapshot.graph : graph,
         index: unchanged ? previous.snapshot.index : buildGraphIndex(graph),
+        observedAt: graph.observedAt,
         receivedAt: Date.now(), revision,
       };
       cached.current = { projectId, serialized, snapshot };

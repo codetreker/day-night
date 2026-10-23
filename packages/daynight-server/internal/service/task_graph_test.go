@@ -158,6 +158,8 @@ func TestTaskGraphOperationalFailuresAndCompletionPrecedence(t *testing.T) {
 		{name: "project query", fragment: "FROM projects WHERE id ="},
 		{name: "count query", fragment: "SELECT count(*) FROM tasks"},
 		{name: "projection query", fragment: "left(t.title, $2)"},
+		{name: "clock query", fragment: "SELECT statement_timestamp()"},
+		{name: "clock completion", fragment: "SELECT statement_timestamp()", cancelAfter: true},
 		{name: "missing project completion", fragment: "FROM project_members m", missing: true, cancelAfter: true},
 		{name: "limit refusal completion", fragment: "SELECT count(*) FROM tasks", overLimit: true, cancelAfter: true},
 		{name: "success completion", fragment: "left(t.title, $2)", cancelAfter: true},

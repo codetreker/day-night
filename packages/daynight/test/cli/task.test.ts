@@ -17,16 +17,17 @@ const secondId = "b1b2c3d4-1111-4222-8333-123456789abd";
 const thirdId = "b1b2c3d4-1111-4222-8333-123456789abe";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project: Project = { id: projectId, name: "Project 中文", repoUrl: "git@git.example:Org/Repo.git", createdAt: time, updatedAt: time };
-const task = (partial: Partial<Task> = {}): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true, ...partial });
+const task = (partial: Partial<Task> = {}): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true, ...partial });
 const taskListItem = (value: Task): Omit<Task, "description"> => ({
   id: value.id, projectId: value.projectId, title: value.title, properties: value.properties,
-  status: value.status, version: value.version, createdAt: value.createdAt, updatedAt: value.updatedAt,
+  status: value.status, version: value.version, startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt,
   dependsOn: value.dependsOn, blockedBy: value.blockedBy, ready: value.ready,
 });
 const graph = (): TaskGraph => ({
+  observedAt: time,
   project,
   summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
-  tasks: [{ id: taskId, titlePreview: "Task 中文", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time }],
+  tasks: [{ id: taskId, titlePreview: "Task 中文", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, startedAt: null, completedAt: null, createdAt: time, updatedAt: time }],
 });
 const taskPath = `/api/v1/projects/${projectId}/tasks`;
 const projectPath = `/api/v1/projects/${projectId}`;
@@ -381,11 +382,38 @@ describe("compiled task commands", () => {
     } finally { await f.close(); }
   }, 60_000);
 
+  it("preserves execution timestamps and graph observation time in JSON without expanding human output", async () => {
+    const f = await fixture();
+    try {
+      const completed = task({ status: "done", ready: false, startedAt: "2026-10-19T23:00:00Z", completedAt: time });
+      const value: TaskGraph = {
+        observedAt: time, project,
+        summary: { total: 1, proposed: 0, todo: 0, inProgress: 0, done: 1, ready: 0, blocked: 0 },
+        tasks: [{ ...graph().tasks[0]!, status: "done", ready: false, startedAt: completed.startedAt, completedAt: completed.completedAt }],
+      };
+      await f.serve((request, response) => respond(response, request.pathname.endsWith("/task-graph") ? value
+        : request.pathname === taskPath ? { items: [completed], nextCursor: null } : completed));
+      const shown = await f.invoke(["show", taskId, "--json", ...explicit]);
+      expect(shown.code, shown.stderr).toBe(0);
+      expect(parseApiJson(shown.stdout)).toEqual(completed);
+      const listed = await f.invoke(["list", "--all", "--json", ...explicit]);
+      expect(listed.code, listed.stderr).toBe(0);
+      expect(parseApiJson(listed.stdout)).toEqual([taskListItem(completed)]);
+      const graphed = await f.invoke(["graph", "--json", ...explicit]);
+      expect(graphed.code, graphed.stderr).toBe(0);
+      expect(parseApiJson(graphed.stdout)).toEqual(value);
+      const text = await f.invoke(["list", "--all", ...explicit]);
+      expect(text.code, text.stderr).toBe(0);
+      expect(text.stdout).not.toMatch(/Started:|Completed:|Observed:/);
+    } finally { await f.close(); }
+  }, 60_000);
+
   it("shows complete proposed tasks and includes their distinct counter in human and JSON graph output", async () => {
     const f = await fixture();
     try {
       const proposed = task({ status: "proposed", ready: false, description: "Complete proposed description\nsecond line", version: 9_223_372_036_854_775_807n, dependsOn: [secondId], blockedBy: [secondId] });
       const value: TaskGraph = {
+        observedAt: time,
         project,
         summary: { total: 2, proposed: 2, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
         tasks: [

@@ -20,7 +20,7 @@ vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, ro
 const project = 'project-one';
 const otherProject = 'project-two';
 const timestamp = '2026-10-20T12:00:00.123456Z';
-const seed = (id: string, status: GraphTask['status'] = 'todo', dependsOn: string[] = []): GraphTask => ({
+const seed = (id: string, status: GraphTask['status'] = 'todo', dependsOn: string[] = []): GraphTask => ({ startedAt: null, completedAt: null,
   id, titlePreview: `任务 ${id}`, titleTruncated: false, status, dependsOn, blockedBy: [], ready: false,
   createdAt: timestamp, updatedAt: timestamp,
 });
@@ -30,7 +30,7 @@ const snapshot = (items = seeds, id = project): TaskGraph => {
     const blockedBy = item.dependsOn.filter((dependency) => items.find((candidate) => candidate.id === dependency)!.status !== 'done');
     return { ...item, blockedBy, ready: item.status === 'todo' && blockedBy.length === 0 };
   });
-  return { project: { id, name: id, repoUrl: '', createdAt: timestamp, updatedAt: timestamp }, tasks,
+  return { observedAt: "2026-10-20T12:00:00Z", project: { id, name: id, repoUrl: '', createdAt: timestamp, updatedAt: timestamp }, tasks,
     summary: { total: tasks.length, proposed: tasks.filter((task) => task.status === "proposed").length, todo: tasks.filter((item) => item.status === 'todo').length,
       done: tasks.filter((item) => item.status === 'done').length, inProgress: tasks.filter((item) => item.status === 'in_progress').length,
       ready: tasks.filter((item) => item.ready).length, blocked: tasks.filter((item) => item.status === 'todo' && !item.ready).length } };
@@ -49,7 +49,7 @@ beforeEach(() => {
   root = document.createElement('div'); root.id = 'root'; document.body.append(root);
   graphRequest.mockReset(); graphRequest.mockImplementation(async (id) => snapshot(seeds, id));
   vi.mocked(getTask).mockReset();
-  vi.mocked(getTask).mockImplementation(async (projectId, id) => ({
+  vi.mocked(getTask).mockImplementation(async (projectId, id) => ({ startedAt: null, completedAt: null,
     id, projectId, title: `详情 ${id}`, description: '', properties: { pullRequests: [] }, status: 'todo', version: 1n, dependsOn: [], blockedBy: [], ready: true,
     createdAt: timestamp, updatedAt: timestamp,
   }));

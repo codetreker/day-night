@@ -96,6 +96,14 @@ func (tx *ProjectTx) CreateTask(ctx context.Context, id string, values TaskWrite
 
 func (tx *ProjectTx) UpdateTask(ctx context.Context, id string, values TaskWrite) (core.Task, error) {
 	result, err := tx.tx.Exec(ctx, `UPDATE tasks SET title = $3, description = $4, status = $5, properties = $6,
+		started_at = CASE
+			WHEN status <> $5 AND $5 = 'in_progress' THEN statement_timestamp()
+			WHEN status = 'done' AND $5 <> 'done' THEN NULL
+			ELSE started_at END,
+		completed_at = CASE
+			WHEN status <> $5 AND $5 = 'done' THEN statement_timestamp()
+			WHEN status <> $5 AND ($5 = 'in_progress' OR status = 'done') THEN NULL
+			ELSE completed_at END,
 		version = version + 1, updated_at = statement_timestamp() WHERE project_id = $1 AND id = $2`,
 		tx.projectID, id, values.Title, values.Description, values.Status, taskproperties.Encode(values.Properties))
 	if err != nil {

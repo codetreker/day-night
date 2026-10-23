@@ -56,7 +56,8 @@ func (s *Tasks) Graph(ctx context.Context, principal core.Principal, projectID s
 			return err
 		}
 		graph.Summary = summarizeGraph(graph.Tasks)
-		return nil
+		graph.ObservedAt, err = snapshot.ObservedAt(ctx)
+		return err
 	})
 	if err != nil {
 		return core.TaskGraph{}, fmt.Errorf("read task graph: %w", err)

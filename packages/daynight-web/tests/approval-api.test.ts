@@ -7,7 +7,7 @@ const projectId = "10000000-0000-0000-0000-00000000000a";
 const taskId = "20000000-0000-0000-0000-00000000000b";
 const otherId = "30000000-0000-0000-0000-00000000000c";
 const time = "2026-10-22T12:34:56.123456Z";
-const task = {
+const task = { startedAt: null, completedAt: null,
   id: taskId, projectId, title: "A task", description: "", properties: { pullRequests: [] }, status: "proposed",
   version: 1n, dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time,
 };

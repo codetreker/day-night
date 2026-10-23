@@ -4,7 +4,8 @@
 [架构](daynight-task-timing.md)拥有机制，
 [设计决策](../../.agents/notes/implemented/architecture/2026-10-23-task-timing-design.md)拥有顺序与取舍。
 本文拥有每个交付成果的边界和合并顺序。Daynight 实际资源拥有当前状态、版本、PR 与验收证据。
-设计交付不代表运行时或整个目标完成。
+任务起止持久化、数据库图样本与客户端读取属于 ET-T1 的现有实现；项目设置和实时呈现仍由后继承担。
+本页保留各项完成条件而不复制运行状态，设计或 ET-T1 完成均不代表整个目标完成。
 
 ## 队列与真实任务
 
@@ -28,8 +29,9 @@ ET-T1 依赖设计任务，ET-T2 依赖 ET-T1，ET-T3 依赖 ET-T2，使用实�
 ### 单一目的与归属
 
 让任务执行时间成为跨服务端、CLI 和 Web 读取器一致的事实，为实时展示提供同源时钟。
-交付任务时间迁移、core/store/service/API 投影、现有生命周期写入，以及图 `observedAt`。
-同步 CLI/Web 类型、解析、夹具和有关资源文档，并让现有图缓存等价判断排除 `observedAt`，保证该 PR 单独构建、读取、运行且不破坏既有图身份保证。
+实现由 `009_task_timing.sql`、core/store/service/API 起止投影、现有生命周期写入和图数据库 `observedAt` 构成。
+CLI/Web 类型、严格解析、夹具与有关资源文档同步保留必填可空起止值；图缓存比较排除顶层 `observedAt`，
+独立 `GraphSnapshot.observedAt` 仍保留每次响应的最新样本，保证图/索引复用不会冻结后续计时来源。
 不加入项目设置或产品计时界面。
 
 ### 验收

@@ -36,7 +36,7 @@ const graph = (): TaskGraph => {
     const blockedBy = task.dependsOn.filter((id) => statuses.get(id) !== 'done');
     return { ...task, blockedBy, ready: task.status === 'todo' && blockedBy.length === 0 };
   });
-  return {
+  return { observedAt: "2026-10-20T12:00:00Z",
     project: { ...base.project, name: 'Daynight · 自动更新任务状态', updatedAt: updatedAt() },
     tasks,
     summary: {

@@ -130,7 +130,7 @@ const createGraph = (scenario: BrowsingScenario, number: number): TaskGraph => {
     const createdAt = new Date(Date.UTC(2026, 9, 21, 9, task.number * 10)).toISOString();
     const title = Array.from(task.title);
     titles.set(`${id(number)}:${id(task.number)}`, task.title);
-    return {
+    return { startedAt: null, completedAt: null,
       id: id(task.number), titlePreview: title.slice(0, 160).join(''), titleTruncated: title.length > 160, status: task.status,
       dependsOn: task.dependencies.map(id), blockedBy,
       ready: task.status === 'todo' && blockedBy.length === 0, createdAt, updatedAt: createdAt,
@@ -145,7 +145,7 @@ const createGraph = (scenario: BrowsingScenario, number: number): TaskGraph => {
     ready: tasks.filter((task) => task.ready).length,
     blocked: tasks.filter((task) => task.status === 'todo' && !task.ready).length,
   };
-  return {
+  return { observedAt: "2026-10-20T12:00:00Z",
     project: {
       id: id(number), name: `Daynight · ${browsingScenarioLabels[scenario]}`, repoUrl: 'https://github.com/example/task-browser',
       createdAt: '2026-10-21T09:00:00Z', updatedAt: '2026-10-22T09:00:00Z',
@@ -158,7 +158,7 @@ export const browsingProjects = Object.fromEntries(
   (Object.keys(browsingScenarioLabels) as BrowsingScenario[]).map((scenario, index) => [scenario, createGraph(scenario, 101 + index)]),
 ) as Readonly<Record<BrowsingScenario, TaskGraph>>;
 
-const detail = (graph: TaskGraph, task: GraphTask | TaskDetail, scenario: BrowsingDetailScenario, version = 1n): TaskDetail => ({
+const detail = (graph: TaskGraph, task: GraphTask | TaskDetail, scenario: BrowsingDetailScenario, version = 1n): TaskDetail => ({ startedAt: task.startedAt, completedAt: task.completedAt,
   id: task.id, projectId: graph.project.id, title: titles.get(`${graph.project.id}:${task.id}`)!, version,
   status: task.status, dependsOn: task.dependsOn, blockedBy: task.blockedBy, ready: task.ready,
   createdAt: task.createdAt, updatedAt: task.updatedAt,
@@ -199,12 +199,12 @@ const fault = (code: string, status: number): Response => jsonResponse({
 }, status);
 
 const graphSnapshot = (state: SceneState): TaskGraph => {
-  const tasks: GraphTask[] = [...state.tasks.values()].map((task) => ({
+  const tasks: GraphTask[] = [...state.tasks.values()].map((task) => ({ startedAt: task.startedAt, completedAt: task.completedAt,
     id: task.id, titlePreview: Array.from(task.title).slice(0, 160).join(''), titleTruncated: Array.from(task.title).length > 160,
     status: task.status, dependsOn: task.dependsOn, blockedBy: task.blockedBy, ready: task.ready,
     createdAt: task.createdAt, updatedAt: task.updatedAt,
   }));
-  return { project: state.initial.project, tasks, summary: {
+  return { observedAt: "2026-10-20T12:00:00Z", project: state.initial.project, tasks, summary: {
     total: tasks.length, proposed: tasks.filter((task) => task.status === 'proposed').length,
     todo: tasks.filter((task) => task.status === 'todo').length, inProgress: tasks.filter((task) => task.status === 'in_progress').length,
     done: tasks.filter((task) => task.status === 'done').length, ready: tasks.filter((task) => task.ready).length,

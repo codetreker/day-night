@@ -204,7 +204,9 @@ func TestInstalledCLIAttachmentAcceptance(t *testing.T) {
 		for index, action := range []string{"approve", "claim", "complete"} {
 			cli.run(t, cli.repo, "task", action, task.ID)
 			after := cli.task(t, task.ID)
+			acceptanceTaskTimingTransition(t, before, after, action)
 			preserved := after
+			preserved.StartedAt, preserved.CompletedAt = before.StartedAt, before.CompletedAt
 			preserved.Status, preserved.Ready, preserved.Version, preserved.UpdatedAt = before.Status, before.Ready, before.Version, before.UpdatedAt
 			if expected := []string{"todo", "in_progress", "done"}[index]; after.Status != expected || after.Version != before.Version+1 || !after.UpdatedAt.After(before.UpdatedAt) || !reflect.DeepEqual(preserved, before) {
 				t.Fatal("installed lifecycle action did not preserve the attachment task metadata")

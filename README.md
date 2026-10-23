@@ -37,8 +37,9 @@ The adopted [execution timing requirements](docs/spec/daynight-task-timing.md),
 [architecture](docs/design/daynight-task-timing.md) and
 [delivery breakdown](docs/design/daynight-task-timing-tasks.md) define task
 start/completion facts, project warning thresholds and live card presentation.
-This design is tracked separately from runtime implementation and whole-goal
-acceptance; the corresponding Daynight tasks own delivery evidence.
+Task timestamps, the database graph clock and matching CLI/Web reader contracts
+are implemented. Project settings and live card warnings remain subsequent
+deliveries; the corresponding Daynight tasks own acceptance evidence.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
@@ -1030,7 +1031,16 @@ uses an expected version and increments it once. `--if-version` submits the exac
 observed int64 value; without it, the CLI reads once immediately before submitting.
 Conflicts and wrong states fail without retry. Generic updates cannot write
 status, and there is no reopen or direct todo-to-done operation. Existing todo,
-in-progress and done records keep their states, versions and timestamps.
+in-progress and done records keep their states, versions and existing timestamps.
+Task resources also expose required nullable `startedAt` and `completedAt`. Claim
+records the database start time, completion records the end, and ordinary edits
+preserve both. Migration leaves historical timing unknown instead of deriving it
+from creation or edit times; completing a historical running task can record a
+real end without inventing its missing start. The full graph includes a database
+`observedAt` sample taken after its data reads. These fields are read-only and
+retained by JSON output, including list JSON; human output keeps its existing
+field choices. Web polling refreshes its separate clock sample while preserving
+graph/index identity when only `observedAt` changes.
 
 Proposed tasks appear in unfinished inventories and Web statistics. The Web task
 detail dialog offers Approve / 批准任务 for proposed tasks, using the reviewed

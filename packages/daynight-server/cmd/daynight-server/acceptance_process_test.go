@@ -711,10 +711,33 @@ func (p *acceptanceProcess) update(t *testing.T, task api.Task, fields map[strin
 	return acceptanceDecode[api.Task](t, p.request(context.Background(), http.MethodPatch, acceptanceTaskPath(task), fields, ""), http.StatusOK)
 }
 
+func acceptanceTaskTimingTransition(t *testing.T, before, after api.Task, action string) {
+	t.Helper()
+	switch action {
+	case "approve":
+		if !reflect.DeepEqual(after.StartedAt, before.StartedAt) || !reflect.DeepEqual(after.CompletedAt, before.CompletedAt) {
+			t.Fatal("approval changed execution timing before a task started")
+		}
+	case "claim":
+		if after.StartedAt == nil || !after.StartedAt.Equal(after.UpdatedAt) || after.CompletedAt != nil {
+			t.Fatal("claim did not atomically record its real start with no completion")
+		}
+	case "complete":
+		if !reflect.DeepEqual(after.StartedAt, before.StartedAt) || after.CompletedAt == nil || !after.CompletedAt.Equal(after.UpdatedAt) ||
+			after.StartedAt != nil && after.CompletedAt.Before(*after.StartedAt) {
+			t.Fatal("completion did not preserve its start and atomically record its real end")
+		}
+	default:
+		t.Fatalf("unexpected lifecycle action %q", action)
+	}
+}
+
 func (p *acceptanceProcess) action(t *testing.T, task api.Task, action string) api.Task {
 	t.Helper()
 	updated := acceptanceDecode[api.Task](t, p.request(context.Background(), http.MethodPost, acceptanceTaskPath(task)+"/"+action, map[string]any{"version": task.Version}, ""), http.StatusOK)
+	acceptanceTaskTimingTransition(t, task, updated, action)
 	preserved := updated
+	preserved.StartedAt, preserved.CompletedAt = task.StartedAt, task.CompletedAt
 	preserved.Status, preserved.Ready, preserved.Version, preserved.UpdatedAt = task.Status, task.Ready, task.Version, task.UpdatedAt
 	if updated.Version != task.Version+1 || !updated.UpdatedAt.After(task.UpdatedAt) || !reflect.DeepEqual(preserved, task) {
 		t.Fatal("lifecycle action did not preserve metadata or advance version and timestamp exactly once")

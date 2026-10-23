@@ -23,15 +23,15 @@ vi.mock('@xyflow/react', async (original) => {
 
 const render = createLocaleRender('zh-CN');
 const time = '2026-10-22T00:00:00Z';
-const graph: GraphData = {
+const graph: GraphData = { observedAt: "2026-10-20T12:00:00Z",
   project: { id: 'project', name: 'Project', repoUrl: '', createdAt: time, updatedAt: time },
   summary: { total: 5, proposed: 1, todo: 1, inProgress: 0, done: 3, ready: 1, blocked: 0 },
   tasks: [
-    { id: 'A', titlePreview: 'A', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { id: 'B', titlePreview: 'B', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { id: 'C', titlePreview: 'C', titleTruncated: false, status: 'done', dependsOn: ['B'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { id: 'D', titlePreview: 'D', titleTruncated: false, status: 'proposed', dependsOn: ['A', 'C'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { id: 'X', titlePreview: 'X', titleTruncated: false, status: 'todo', dependsOn: ['C'], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
+    { startedAt: null, completedAt: null, id: 'A', titlePreview: 'A', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { startedAt: null, completedAt: null, id: 'B', titlePreview: 'B', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { startedAt: null, completedAt: null, id: 'C', titlePreview: 'C', titleTruncated: false, status: 'done', dependsOn: ['B'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { startedAt: null, completedAt: null, id: 'D', titlePreview: 'D', titleTruncated: false, status: 'proposed', dependsOn: ['A', 'C'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { startedAt: null, completedAt: null, id: 'X', titlePreview: 'X', titleTruncated: false, status: 'todo', dependsOn: ['C'], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
   ],
 };
 const index = buildGraphIndex(graph);

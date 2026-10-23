@@ -44,6 +44,8 @@ type Task struct {
 	Version     int64          `json:"version"`
 	CreatedAt   time.Time      `json:"createdAt"`
 	UpdatedAt   time.Time      `json:"updatedAt"`
+	StartedAt   *time.Time     `json:"startedAt"`
+	CompletedAt *time.Time     `json:"completedAt"`
 	DependsOn   []string       `json:"dependsOn"`
 	BlockedBy   []string       `json:"blockedBy"`
 	Ready       bool           `json:"ready"`

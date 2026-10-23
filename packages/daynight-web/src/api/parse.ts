@@ -65,6 +65,8 @@ export const timestamp = (value: unknown): string => {
   return parsed;
 };
 
+const nullableTimestamp = (value: unknown): string | null => value === null ? null : timestamp(value);
+
 export const array = <T>(value: unknown, parse: (item: unknown) => T): T[] => {
   if (!Array.isArray(value)) return malformed();
   return value.map(parse);
@@ -109,6 +111,8 @@ const graphTask = (value: unknown): GraphTask => {
     dependsOn: ids(data.dependsOn),
     blockedBy: ids(data.blockedBy),
     ready: boolean(data.ready),
+    startedAt: nullableTimestamp(data.startedAt),
+    completedAt: nullableTimestamp(data.completedAt),
     createdAt: timestamp(data.createdAt),
     updatedAt: timestamp(data.updatedAt),
   };
@@ -131,7 +135,7 @@ const summary = (value: unknown): TaskGraphSummary => {
 
 export const parseTaskGraph = (value: unknown, projectId: string): TaskGraph => {
   const data = record(value);
-  const parsed = { project: project(data.project), summary: summary(data.summary), tasks: array(data.tasks, graphTask) };
+  const parsed = { observedAt: timestamp(data.observedAt), project: project(data.project), summary: summary(data.summary), tasks: array(data.tasks, graphTask) };
   if (parsed.project.id !== projectId || new Set(parsed.tasks.map((task) => task.id)).size !== parsed.tasks.length) {
     return malformed();
   }
@@ -163,6 +167,8 @@ export const parseTaskDetail = (value: unknown, projectId: string, taskId: strin
     dependsOn: ids(data.dependsOn),
     blockedBy: ids(data.blockedBy),
     ready: boolean(data.ready),
+    startedAt: nullableTimestamp(data.startedAt),
+    completedAt: nullableTimestamp(data.completedAt),
     createdAt: timestamp(data.createdAt),
     updatedAt: timestamp(data.updatedAt),
   };

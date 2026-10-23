@@ -58,7 +58,7 @@ func scanProject(row pgx.Row) (core.Project, error) {
 }
 
 const taskProjection = `t.id::text, t.project_id::text, t.title, t.description,
-	t.status, t.version, t.created_at, t.updated_at, t.properties, ` + taskDependsOn + `, ` + taskBlockedBy + `, ` + taskReady
+	t.status, t.version, t.created_at, t.updated_at, t.started_at, t.completed_at, t.properties, ` + taskDependsOn + `, ` + taskBlockedBy + `, ` + taskReady
 
 const taskDependsOn = `ARRAY(SELECT d.depends_on_task_id::text FROM task_dependencies d
 		WHERE d.project_id = t.project_id AND d.task_id = t.id ORDER BY d.depends_on_task_id)`
@@ -77,7 +77,7 @@ func scanTask(row pgx.Row) (core.Task, error) {
 	var task core.Task
 	var properties string
 	err := row.Scan(&task.ID, &task.ProjectID, &task.Title, &task.Description, &task.Status,
-		&task.Version, &task.CreatedAt, &task.UpdatedAt, &properties, &task.DependsOn, &task.BlockedBy, &task.Ready)
+		&task.Version, &task.CreatedAt, &task.UpdatedAt, &task.StartedAt, &task.CompletedAt, &properties, &task.DependsOn, &task.BlockedBy, &task.Ready)
 	if err != nil {
 		return core.Task{}, err
 	}
@@ -87,6 +87,8 @@ func scanTask(row pgx.Row) (core.Task, error) {
 	}
 	task.CreatedAt = task.CreatedAt.UTC()
 	task.UpdatedAt = task.UpdatedAt.UTC()
+	task.StartedAt = utcTime(task.StartedAt)
+	task.CompletedAt = utcTime(task.CompletedAt)
 	return task, err
 }
 
@@ -101,4 +103,12 @@ func collectTasks(rows pgx.Rows) ([]core.Task, error) {
 		tasks = append(tasks, task)
 	}
 	return tasks, rows.Err()
+}
+
+func utcTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	utc := value.UTC()
+	return &utc
 }

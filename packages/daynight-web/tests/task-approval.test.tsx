@@ -15,17 +15,17 @@ vi.mock('../src/api/client', async (original) => ({ ...await original<typeof imp
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const project = id(100); const parent = id(1); const child = id(2); const standalone = id(3);
 const time = '2026-10-22T00:00:00Z';
-const seed = (number: number, dependsOn: readonly string[] = []): TaskDetail => ({ id: id(number), projectId: project,
+const seed = (number: number, dependsOn: readonly string[] = []): TaskDetail => ({ startedAt: null, completedAt: null, id: id(number), projectId: project,
   version: 9007199254740993n, title: `Task ${number}`, description: `Complete description ${number}`, properties: { pullRequests: [] },
   status: 'proposed', dependsOn, blockedBy: dependsOn, ready: false, createdAt: time, updatedAt: time });
 let records: Map<string, TaskDetail>;
 const graph = (): TaskGraph => {
   const tasks = [...records.values()].map((task) => {
     const blockedBy = task.dependsOn.filter((dependency) => records.get(dependency)!.status !== 'done');
-    return { id: task.id, titlePreview: task.title, titleTruncated: false, status: task.status, dependsOn: task.dependsOn,
+    return { startedAt: null, completedAt: null, id: task.id, titlePreview: task.title, titleTruncated: false, status: task.status, dependsOn: task.dependsOn,
       blockedBy, ready: task.status === 'todo' && blockedBy.length === 0, createdAt: time, updatedAt: task.updatedAt };
   });
-  return { project: { id: project, name: 'Approval project', repoUrl: 'https://example.com/repo', createdAt: time, updatedAt: time }, tasks,
+  return { observedAt: "2026-10-20T12:00:00Z", project: { id: project, name: 'Approval project', repoUrl: 'https://example.com/repo', createdAt: time, updatedAt: time }, tasks,
     summary: { total: tasks.length, proposed: tasks.filter((task) => task.status === 'proposed').length,
       todo: tasks.filter((task) => task.status === 'todo').length, inProgress: tasks.filter((task) => task.status === 'in_progress').length, done: tasks.filter((task) => task.status === 'done').length,
       ready: tasks.filter((task) => task.ready).length, blocked: tasks.filter((task) => task.status === 'todo' && !task.ready).length } };
@@ -173,9 +173,9 @@ describe('approval in shared production task details', () => {
   it('owns pending approval across real App project routes and isolates its late result from the current project', async () => {
     const otherProject = id(200); const otherTask = id(4);
     const other = { ...seed(4), projectId: otherProject };
-    const otherGraph: TaskGraph = {
+    const otherGraph: TaskGraph = { observedAt: "2026-10-20T12:00:00Z",
       project: { ...graph().project, id: otherProject, name: 'Other project' },
-      tasks: [{ id: otherTask, titlePreview: other.title, titleTruncated: false, status: 'proposed',
+      tasks: [{ startedAt: null, completedAt: null, id: otherTask, titlePreview: other.title, titleTruncated: false, status: 'proposed',
         dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time }],
       summary: { total: 1, proposed: 1, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
     };

@@ -3,16 +3,18 @@
 本设计落实[需求 TT1–TT6](../spec/daynight-task-timing.md)，
 [任务拆分](daynight-task-timing-tasks.md)定义独立交付成果，
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-23-task-timing-design.md)保存采用理由。
-这些是实施所遵循的目标机制；设计 PR 本身不宣称运行时功能已交付。
+任务起止持久化、图数据库时间及严格客户端读取机制已实现。项目阈值、实时卡片和整体验收仍由 ET-T2/ET-T3 交付；
+本页明确区分当前机制与后继采用的目标机制，不以设计或单个任务完成代表整个目标完成。
 
 ## 现有结构与职责
 
 [生命周期服务](../../packages/daynight-server/internal/service/task_lifecycle.go)只提供 approve、claim、complete，普通任务更新没有状态字段。
 [项目写事务](../../packages/daynight-server/internal/core/store/project_tx.go)通过项目行锁串行化写入，再在同一事务修改任务、版本和依赖；
 `updated_at` 随普通编辑变化，不能作为执行起点。
-[图读取服务](../../packages/daynight-server/internal/service/task_graph.go)在只读快照中读取项目、任务与统计，现有资源没有独立服务端时钟。
+[图读取服务](../../packages/daynight-server/internal/service/task_graph.go)在只读快照中读取项目、任务与统计，并在数据读取后采样数据库 `observedAt`。
 
-Web 的 [useTaskGraph](../../packages/daynight-web/src/features/projects/useTaskGraph.ts) 每五秒读取图，并通过内容相等判断复用图索引。
+Web 的 [useTaskGraph](../../packages/daynight-web/src/features/projects/useTaskGraph.ts) 每五秒读取图，内容比较排除 `observedAt`；
+最新服务端样本由独立 `GraphSnapshot.observedAt` 保存，因此仅时钟变化时复用图与索引仍能取得新样本。
 [TaskNode](../../packages/daynight-web/src/features/task-graph/TaskNode.tsx) 已将检查任务的主体按钮和打开详情的 Details 按钮分开。
 `GraphIndex` 拥有任务与统计，布局来自投影和展开状态；项目设置与每秒计时不应成为这些计算的输入。
 现有项目成员页已有管理员判断、请求取消和面板样式，但还没有通用项目设置路由。
@@ -33,7 +35,7 @@ flowchart LR
 
 ## 存储与生命周期
 
-ET-T1 的 `009_task_timing.sql` 迁移给 `tasks` 增加可空 `started_at`、`completed_at timestamptz`，已有记录保持 `NULL`。
+`009_task_timing.sql` 给 `tasks` 增加可空 `started_at`、`completed_at timestamptz`，已有记录保持 `NULL`。
 core 与 API 使用可空时间字段，JSON 明确输出 `startedAt`、`completedAt`，不省略未知值。
 
 任务写入根据数据库旧状态与目标状态维护计时，而非依赖调用者传入时间：
@@ -43,16 +45,18 @@ core 与 API 使用可空时间字段，JSON 明确输出 `startedAt`、`complet
 | 真正进入 `in_progress` | `statement_timestamp()` | 清空 |
 | 真正进入 `done` | 保留 | `statement_timestamp()` |
 | 普通编辑或同状态低层写入 | 保留 | 保留 |
-| 未来合法离开已完成状态 | 清空旧尝试 | 清空 |
+| 低层离开已完成且目标不是 `in_progress` | 清空旧尝试 | 清空 |
 
 最后一项定义存储数据规则，不新增公开转换。当前 approve、claim、complete 继续拒绝不符合前驱状态的请求。
-旧 `in_progress` 记录没有可恢复起点；之后 complete 可记录真实终点，耗时仍未知。
+旧 `in_progress` 记录没有可恢复起点；之后 complete 记录真实终点，起点与耗时仍未知。
 
 状态、时间、版本与依赖写入共用既有事务。时间表达式使用项目锁获取后的 SQL statement 时间，
 不能使用事务开始时间：事务可能等待项目锁，过早时间会把等待阶段错误计入执行。
-完整任务、列表、ready、图投影与 CLI/Web 类型、读取器和夹具随同资源变化一起交付，避免发布不能构建或丢失字段的中间状态。ET-T1 同步让现有图缓存等价判断排除 `observedAt`，防止仅时钟变化破坏已建立的图/索引身份；ET-T2 在引入设置版本时交付完整设置元数据与任务索引分离，ET-T3 再接入页面时钟消费者。
+完整任务、列表、ready、图投影与 CLI/Web 类型、读取器和夹具共同保留这些时间字段。
+严格解析要求字段存在，已知值为合法 UTC `Z` 时间，秒后允许 1–9 位小数并保留原始字符串；未知事实必须明确为 `null`，不用缺省值兼容旧响应。
+当前图缓存等价判断排除 `observedAt`，防止仅时钟变化破坏已建立的图/索引身份；ET-T2 在引入设置版本时交付完整设置元数据与任务索引分离，ET-T3 再接入页面时钟消费者。
 
-## 项目设置资源
+## 项目设置资源（ET-T2 目标）
 
 ET-T2 的 `010_project_settings.sql` 迁移给 `projects` 增加 `execution_warning_minutes integer NOT NULL DEFAULT 60` 和
 `settings_version bigint NOT NULL DEFAULT 1`，约束分别为正值。
@@ -89,10 +93,12 @@ ET-T2 同步扩展 CLI/Web 的原始 JSON 版本读取，覆盖 Project、项目
 
 ## 时钟与图快照
 
-ET-T1 给图资源增加顶层 `observedAt`，由同一只读事务中的数据库时钟采样，采样安排在图数据读取之后。
+图资源的顶层 `observedAt` 来自同一只读事务中的数据库时钟查询，采样安排在图数据和统计读取之后。
 它与任务起止时间共享时钟来源；不使用 Go HTTP Date 的秒精度时间或客户端墙钟推算执行耗时。
 
-Web 接收响应时保存独立锚点：
+当前 Web 每次成功读取将该响应的最新字符串保存为独立 `GraphSnapshot.observedAt`，并更新表示本机成功接收时间的 `receivedAt`。
+缓存 `graph`/`index` 仅在忽略顶层 `observedAt` 后的资源内容变化时替换，因而缓存图自身的 `graph.observedAt` 可能仍是旧样本。
+ET-T3 的时钟消费者使用最新 `snapshot.observedAt`，接入如下独立单调时钟锚点：
 
 ```ts
 type ClockAnchor = {
@@ -106,8 +112,8 @@ const currentServerTime = (anchor: ClockAnchor) =>
 
 这是接收时基于服务端样本推进的显示时钟，不保证消除网络传输延迟；每次既有图轮询会重新对齐。
 `GraphSnapshot.receivedAt` 仍用于“最近刷新”墙钟标签，不复用为计时锚点。
-缓存分开维护资源内容、任务索引和时钟：`observedAt` 变化不改变图内容身份，
-仅项目设置变化时不重建由 `{tasks, summary}` 决定的 `GraphIndex`。
+当前缓存已将独立时间样本与图内容身份分开；ET-T2 再将项目设置元数据与 `{tasks, summary}` 索引身份分离，
+使仅设置变化也不重建 `GraphIndex`。
 时钟与阈值不得进入投影、节点位置或边路由的 memo 依赖。
 
 ET-T3 提供每个项目页面一个稳定时钟 store/context，以一个一秒定时器发布时间。
@@ -115,7 +121,7 @@ ET-T3 提供每个项目页面一个稳定时钟 store/context，以一个一秒
 隐藏页面暂停定时器，恢复可见时读取新图时间锚点并发布当前显示；项目切换、登出和卸载清理订阅、定时器及请求。
 沿用现有 AbortController 与 generation 保护，旧项目响应不能更新新项目时钟或阈值。
 
-## 项目设置与卡片
+## 项目设置与卡片（ET-T2/ET-T3 目标）
 
 ET-T2 增加 `/projects/:id/settings`，与成员页为同级路由，复用项目导航、面板、表单、错误和权限展示模式。
 成员可以查看权威值，管理员可编辑分钟、保存或取消。保存期间禁用相应写操作。

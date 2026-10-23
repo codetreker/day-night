@@ -36,12 +36,17 @@
 [需求](../spec/daynight-task-properties.md)及[实施任务](daynight-task-properties-tasks.md)
 拥有扩展行为与各组件的交付记录。
 
+[执行计时架构](daynight-task-timing.md)的起止事实与图数据库时间样本已接入相同事务和读取模型。
+项目阈值和实时卡片仍由其后继任务交付，不进入当前服务资源。
+
 ## 完整图读取
 
 `Tasks.Graph` 复用既有具体 store 与只读 `ReadSnapshot`：先在同一快照检查项目成员
 关系并读取 project，随后获取精确节点和边数量，检查 1,000/5,000 上限，再读取轻量图节点并折叠统计。core 的
 `GraphTask`、`TaskGraphSummary`、`TaskGraph` 与 HTTP DTO 分离；store 的 SQL
-直接截取 160 code points 的标题预览，不加载 description 或完整标题。
+直接截取 160 code points 的标题预览，不加载 description 或完整标题，并投影可空执行起止。
+图节点与统计读取完毕后，通过同一 snapshot 的 `ObservedAt` 查询取得数据库 `statement_timestamp()`，
+作为顶层 `observedAt` 返回；不使用事务开始时刻或 HTTP Date 代替。
 
 Project、计数、依赖及 ready 都来自同一次 `REPEATABLE READ`。服务层的缺失和
 超限 Fault 等事务成功收尾后才返回，操作或清理失败仍优先。HTTP 拒绝全部非空
@@ -102,7 +107,7 @@ index 后由前端显示未找到页面。独立附件命名空间复用原始�
 | 对象 | 字段与含义 |
 |---|---|
 | Project | `id`、非空 `name`、`repoUrl`、`createdAt`、`updatedAt` |
-| Task | `id`、`projectId`、非空 `title`、`description`、`status`、具体 `properties`、`version`、`createdAt`、`updatedAt` |
+| Task | `id`、`projectId`、非空 `title`、`description`、`status`、具体 `properties`、`version`、`createdAt`、`updatedAt`，以及可空 `startedAt`、`completedAt` |
 | TaskDependency | `projectId`、`taskId`、`dependsOnTaskId` |
 
 `TaskDependency` 的方向是“`taskId` 依赖 `dependsOnTaskId`”。project 拥有任务及依赖
@@ -119,6 +124,10 @@ index 后由前端显示未找到页面。独立附件命名空间复用原始�
 - task 按 `(project_id, created_at, id)` 列表及按状态筛选；
 - 依赖按 `(project_id, task_id)` 查询前置任务；
 - 依赖按 `(project_id, depends_on_task_id)` 查询直接下游任务。
+
+`009_task_timing.sql` 给 task 同行增加可空 `started_at`、`completed_at timestamptz`；
+既有记录保持 `NULL`，core 和 API 用可空时间表示，JSON 字段明确输出 `null`。
+不回填创建/编辑时间，也不在读路径判断旧格式。
 
 表不建立 foreign key。引用存在性、同 project 限制和图规则由获得 project 写锁后的
 service 写入路径校验；所有写入都必须经过该路径。没有删除 API，使引用不会因资源
@@ -174,12 +183,14 @@ todo→in_progress、in_progress→done。审批允许未完成前置；领取�
    请求中的 `version`，与当前任务版本不一致则返回 `version_conflict`。
 3. 元数据更新构造完整候选依赖与字段；生命周期操作先验证当前版本，再验证前态和
    前置状态。前态错误使用 invalid_transition，前置错误使用 dependency_unsatisfied。
-4. 原子写入任务和依赖集合；存在真实变更时，将版本加 1，并更新 `updatedAt`。
+4. 原子写入任务、依赖集合与执行起止；存在真实变更时，将版本加 1，并更新 `updatedAt`。
 5. 提交后返回资源；失败回滚，原始错误链保留至顶层错误处理。
 
 同 project 的 task 写入由 project 行锁串行化，不同 project 可以并行。获得锁与读取
 任务不能合并为一个依赖同一旧快照的 SQL 语句：等待锁结束后，后续查询需要看到刚
-提交的 project 内写入。该机制依赖 PostgreSQL 在 `READ COMMITTED` 下为每条命令
+提交的 project 内写入。任务 UPDATE 依据旧/新状态维护时间：真正进入 in_progress 覆盖起点并清空终点，
+真正进入 done 记录终点，普通编辑和同状态低层写入保留两者。离开已完成状态的低层规则清除旧尝试；
+公开 service 仍只允许既有单向转换。时间使用锁后的 `statement_timestamp()`，不使用可能早于锁等待结束的事务时间。该机制依赖 PostgreSQL 在 `READ COMMITTED` 下为每条命令
 取得新快照的语义，见[事务隔离文档](https://www.postgresql.org/docs/current/transaction-iso.html#XACT-READ-COMMITTED)
 及[行锁文档](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS)。
 
@@ -357,7 +368,7 @@ Compose 网络访问，PostgreSQL 18 数据卷挂到 `/var/lib/postgresql`。
 进程启动时创建 `pgxpool` 并验证数据库连接，然后从 pool 获取并固定一条专用
 `pgxpool.Conn`。该连接取得 PostgreSQL session-level advisory migration lock，
 并在同一物理连接上完成版本读取、校验和全部内嵌 SQL 迁移。当前迁移依次建立 project、
-task/依赖、预定义属性及独立附件表；应用记录必须是内嵌迁移的有序前缀。锁必须跨越整个迁移
+task/依赖、属性、附件与身份/成员机制，并为任务增加可空执行起止；应用记录必须是内嵌迁移的有序前缀。锁必须跨越整个迁移
 序列，不能使用会在单个迁移提交时释放的 transaction-level advisory lock，也不能
 通过 pool 的任意连接分别取得和释放锁。
 
@@ -386,7 +397,7 @@ PostgreSQL 实例及隔离数据库或 schema，验证 SQL、锁和事务行为�
 
 覆盖范围包括正常资源操作、非法字段和地址、同 project 限制、自身及重复依赖、环、
 完整依赖替换、四状态转换、错误前态、PATCH status 拒绝、版本冲突、语义空更新、
-失败回滚，以及一致的
+原子起止时间、未知历史、锁等待后的实际开始、普通编辑保持计时、数据库图时间样本、失败回滚，以及一致的
 `dependsOn`/`blockedBy`/`ready`。并发测试使用协调屏障观察真实锁等待，证明并发
 反向依赖、同版本领取及依赖更新/领取竞争最终仍保持不变量，同时证明不同 project 可以并行。
 
