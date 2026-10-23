@@ -4,6 +4,7 @@ import { createLocaleRender } from './helpers/renderWithLocale';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { TaskAttachments } from '../src/features/task-detail/attachments/TaskAttachments';
+import { longConfirmationPath } from './mockups/attachment-paths';
 import { createAttachmentFixture, mockupLongPath } from './mockups/fixture';
 
 const render = createLocaleRender('zh-CN');
@@ -21,6 +22,10 @@ describe('development attachment fixture', () => {
     expect(fixture.urls.page('docs/guide.md')).toBe('/tests/mockups/attachments.html?file=docs%2Fguide.md&scenario=files');
     expect(await fixture.api.readText('project', 'task', mockupLongPath, signal())).toContain('Long text reading fixture');
     expect(fixture.urls.preview(mockupLongPath)).toBe('/tests/mockups/files/data/tall.txt');
+    expect(new TextEncoder().encode(longConfirmationPath)).toHaveLength(723);
+    expect(longConfirmationPath.split('/').every((part) => new TextEncoder().encode(part).length === 180)).toBe(true);
+    expect(fixture.urls.preview(longConfirmationPath)).toBe('/tests/mockups/files/data/tall.txt');
+    expect(await fixture.api.readText('project', 'task', longConfirmationPath, signal())).toContain('Long text reading fixture');
     expect(fixture.urls.previewRoot).toBe('/tests/mockups/files/');
     fixture.dispose();
   });

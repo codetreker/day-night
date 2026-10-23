@@ -3,6 +3,7 @@ import { ApiError } from '../../../api/client';
 import { LanguageSelector } from '../../../i18n/LanguageSelector';
 import { useI18n } from '../../../i18n/LocaleProvider';
 import { dialogFocusables } from '../focus';
+import '../../../styles/auth.css';
 
 export type AttachmentActionTarget = { readonly path: string; readonly trigger: HTMLButtonElement };
 
@@ -109,13 +110,13 @@ export const AttachmentDeleteDialog = ({ target, busy, error, fallback, onConfir
     const box = event.currentTarget.getBoundingClientRect();
     if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) onDismiss();
   }}>
-    <header><h2 id={`${id}-title`}>{m.deleteTitle}</h2><LanguageSelector /></header>
-    <div className="attachment-delete-body">
+    <header className="dialog-header"><h2 id={`${id}-title`}>{m.deleteTitle}</h2><LanguageSelector /></header>
+    <div className="dialog-body attachment-delete-body" tabIndex={0} role="group" aria-labelledby={`${id}-title`}>
       <p id={`${id}-copy`}>{m.deleteConfirmation}</p>
       <p id={`${id}-path`} className="attachment-delete-path">{target.path}</p>
       {busy && <p role="status">{m.deleting}</p>}
       {attempted && !busy && error !== null && <div className="attachment-error" role="alert"><p>{m.writeError}</p>{error instanceof ApiError && error.requestId !== null && <p className="request-id">{messages.common.requestId}{' '}<code>{error.requestId}</code></p>}</div>}
     </div>
-    <footer><button className="button" ref={cancel} type="button" disabled={busy} onClick={onDismiss}>{m.cancelDelete}</button><button className="button danger" type="button" disabled={busy} onClick={() => { setAttempted(true); onConfirm(); }}>{busy ? m.deleting : m.confirmDelete}</button></footer>
+    <footer className="dialog-footer"><button className="button" ref={cancel} type="button" disabled={busy} onClick={onDismiss}>{m.cancelDelete}</button><button className="button danger" type="button" disabled={busy} onClick={() => { setAttempted(true); onConfirm(); }}>{busy ? m.deleting : m.confirmDelete}</button></footer>
   </dialog>;
 };

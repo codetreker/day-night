@@ -272,6 +272,7 @@ describe('task attachments', () => {
     await findFileButton(/target.txt/);
     const dialog = showDeleteConfirmation('target.txt');
     const language = within(dialog).getByRole('combobox', { name: '语言 / Language' });
+    const body = within(dialog).getByRole('group', { name: '删除附件？' });
     const cancel = within(dialog).getByRole('button', { name: '取消' });
     const confirm = within(dialog).getByRole('button', { name: '删除附件' });
     const onOuterKey = vi.fn();
@@ -283,7 +284,11 @@ describe('task attachments', () => {
     await user.tab();
     expect(language).toHaveFocus();
     await user.tab();
+    expect(body).toHaveFocus();
+    await user.tab();
     expect(cancel).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(body).toHaveFocus();
     await user.tab({ shift: true });
     expect(language).toHaveFocus();
     await user.tab({ shift: true });
@@ -294,9 +299,11 @@ describe('task attachments', () => {
     await user.tab();
     expect(language).toHaveFocus();
     await user.tab();
+    expect(body).toHaveFocus();
+    await user.tab();
     expect(language).toHaveFocus();
     await user.tab({ shift: true });
-    expect(language).toHaveFocus();
+    expect(body).toHaveFocus();
     expect(remove).toHaveBeenCalledTimes(1);
     document.removeEventListener('keydown', onOuterKey);
     await act(async () => pending.resolve());

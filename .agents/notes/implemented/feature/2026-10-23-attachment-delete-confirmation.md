@@ -21,8 +21,16 @@ file paths.
 
 The menu uses the browser top layer and viewport-aware positioning to escape the
 scrolling sidebar's clipping. Native modal confirmation remains a descendant of
-the task detail DOM, uses established dialog styling, and owns keyboard events
-before the outer detail listener. This preserves background inertness and task
+the task detail DOM and imports the established auth dialog stylesheet. Shared
+`dialog-header`, `dialog-body` and `dialog-footer` classes own its bounded flex
+layout: the header/footer do not shrink, and the body is the single shrinkable
+vertical scroll owner. Complete paths remain inspectable even when their text
+exceeds the viewport; loading order cannot switch ownership between competing
+modal-shell rules. Its scrolling body is an explicitly focusable, labelled group.
+That permits keyboard scrolling and includes the scroll owner in the shared
+focus enumeration; relying on browser-implicit scroll-region focus can otherwise
+enter a target absent from that enumeration and prevent reaching the footer.
+The confirmation owns keyboard events before the outer detail listener. This preserves background inertness and task
 focus ownership without a second global overlay coordinator. The confirmation reuses
 `dialogFocusables` to wrap boundary Tab/Shift+Tab explicitly, including pending
 focus on the dialog root; native modal behavior alone can move focus to browser
@@ -67,6 +75,11 @@ ownership.
 inside a split frame that hides overflow. Menus near its boundary would be clipped,
 particularly in narrow layouts. Top-layer placement preserves the split's scroll
 rules while keeping menu actions reachable.
+
+**Increase the attachment shell selector's specificity.** That would preserve a
+second modal geometry competing with the auth dialog rules. Reusing the existing
+header/body/footer ownership keeps one height constraint and a defined scrolling
+body rather than relying on stylesheet order.
 
 ## Consequences
 

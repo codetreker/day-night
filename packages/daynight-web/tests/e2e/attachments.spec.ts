@@ -8,6 +8,7 @@ import { attachmentDownloadUrl, attachmentPageUrl, attachmentPreviewUrl } from '
 import { createAcceptanceCli } from '../../scripts/acceptance/installed-cli.mts';
 import { createProject, createApprovedTask, expect, test, type Task } from './fixtures';
 import { expectCenteredTaskDetail } from './detail-dialog';
+import { longConfirmationPath } from '../mockups/attachment-paths';
 import { hasPaintedPdfMarker, readPdfPixels, type PdfPixels } from './pdf-pixels';
 
 const exact = (value: string): RegExp => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
@@ -40,6 +41,23 @@ const confirmDeletion = async (page: Page, region: Locator, path: string): Promi
   await expect(confirmation).toContainText(path);
   return confirmation;
 };
+
+const pathEdges = async (confirmation: Locator): Promise<{ prefix: boolean; tail: boolean }> =>
+  await confirmation.locator('.attachment-delete-path').evaluate((element) => {
+    const text = element.firstChild;
+    if (!(text instanceof Text)) throw new Error('The confirmation path has no readable text node.');
+    const body = element.closest('.attachment-delete-body');
+    if (body === null) throw new Error('The confirmation path has no scrolling body.');
+    const bounds = body.getBoundingClientRect();
+    const visible = (start: number, end: number) => {
+      const range = document.createRange();
+      range.setStart(text, start);
+      range.setEnd(text, end);
+      const rect = range.getBoundingClientRect();
+      return rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1 && rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1;
+    };
+    return { prefix: visible(0, Math.min(24, text.length)), tail: visible(Math.max(0, text.length - 24), text.length) };
+  });
 
 const settleScroll = async (owner: Locator): Promise<void> => {
   // Native scrolling continues while task-polling timers are paused in the page.
@@ -117,6 +135,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
       { path: 'site/style.css', bytes: await readFile(asset('../mockups/files/site/style.css')) },
       { path: 'site/app.js', bytes: await readFile(asset('./attachment-files/site/app.js')) },
       { path: longPath, bytes: Buffer.from('Long path attachment content\n'.repeat(200)) },
+      { path: longConfirmationPath, bytes: Buffer.from('Portable long-path confirmation fixture\n') },
       { path: 'long/reading.md', bytes: await readFile(asset('../mockups/files/docs/tall.md')) },
       { path: 'long/reading.txt', bytes: await readFile(asset('../mockups/files/data/tall.txt')) },
       { path: 'long/reading.svg', bytes: await readFile(asset('../mockups/files/images/tall.svg')) },
@@ -528,6 +547,8 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     await page.keyboard.press('Tab');
     await expect(cancelled.getByRole('combobox', { name: '语言 / Language', exact: true })).toBeFocused();
     await page.keyboard.press('Tab');
+    await expect(cancelled.locator('.attachment-delete-body')).toBeFocused();
+    await page.keyboard.press('Tab');
     await expect(cancelled.getByRole('button', { name: '取消', exact: true })).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(cancelled).toBeHidden();
@@ -555,6 +576,68 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
         menuLayouts.push({ locale, ...viewport, menu: menuBounds, confirmation: await confirmation.boundingBox() });
         await page.keyboard.press('Escape');
+        await expect(dialog).toBeVisible();
+      }
+    }
+    const longPathLayouts: unknown[] = [];
+    for (const locale of ['zh-CN', 'en']) {
+      await language.selectOption(locale);
+      for (const viewport of [{ width: 320, height: 780 }, { width: 320, height: 568 }, { width: 844, height: 390 }]) {
+        await page.setViewportSize(viewport);
+        const confirmation = await confirmDeletion(page, attachments, longConfirmationPath);
+        const body = confirmation.locator('.attachment-delete-body');
+        const cancel = confirmation.getByRole('button', { name: locale === 'en' ? 'Cancel' : '取消', exact: true });
+        const submit = confirmation.getByRole('button', { name: locale === 'en' ? 'Delete attachment' : '删除附件', exact: true });
+        await expect(confirmation).toBeInViewport({ ratio: 1 });
+        await expect(cancel).toBeFocused();
+        await expect(confirmation.locator('header,footer')).toHaveCount(2);
+        for (const fixed of [confirmation.locator('header'), confirmation.locator('footer'), cancel, submit]) await expect(fixed).toBeInViewport({ ratio: 1 });
+        const metrics = await confirmation.evaluate((element) => {
+          const body = element.querySelector<HTMLElement>('.attachment-delete-body')!;
+          return { dialogClientHeight: element.clientHeight, dialogScrollHeight: element.scrollHeight, bodyClientHeight: body.clientHeight, bodyScrollHeight: body.scrollHeight, bodyOverflow: getComputedStyle(body).overflowY };
+        });
+        expect(metrics.dialogScrollHeight).toBeLessThanOrEqual(metrics.dialogClientHeight + 1);
+        expect(metrics.bodyOverflow).toMatch(/^(auto|scroll)$/);
+        if (viewport.height <= 568) expect(metrics.bodyScrollHeight).toBeGreaterThan(metrics.bodyClientHeight + 1);
+        await expect.poll(() => pathEdges(confirmation)).toMatchObject({ prefix: true });
+        let wheelTop = 0;
+        let keyboardTop = 0;
+        if (metrics.bodyScrollHeight > metrics.bodyClientHeight + 1) {
+          const bounds = await body.boundingBox();
+          if (bounds === null) throw new Error('The confirmation scroll owner has no bounds.');
+          await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+          await page.mouse.wheel(0, metrics.bodyScrollHeight);
+          await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+          await expect.poll(() => pathEdges(confirmation)).toMatchObject({ tail: true });
+          wheelTop = await body.evaluate((element) => element.scrollTop);
+          await page.keyboard.press('Shift+Tab');
+          await expect(body).toBeFocused();
+          await page.keyboard.press('Home');
+          await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBe(0);
+          await expect.poll(() => pathEdges(confirmation)).toMatchObject({ prefix: true });
+          await page.keyboard.press('End');
+          await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+          await expect.poll(() => pathEdges(confirmation)).toMatchObject({ tail: true });
+          keyboardTop = await body.evaluate((element) => element.scrollTop);
+        } else {
+          await expect.poll(() => pathEdges(confirmation)).toEqual({ prefix: true, tail: true });
+          await page.keyboard.press('Shift+Tab');
+          await expect(body).toBeFocused();
+        }
+        await page.keyboard.press('Tab');
+        await expect(cancel).toBeFocused();
+        await page.keyboard.press('Shift+Tab');
+        await expect(body).toBeFocused();
+        await page.keyboard.press('Shift+Tab');
+        await expect(confirmation.getByRole('combobox', { name: '语言 / Language', exact: true })).toBeFocused();
+        for (const fixed of [confirmation.locator('header'), confirmation.locator('footer'), cancel, submit]) await expect(fixed).toBeInViewport({ ratio: 1 });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        const screenshot = info.outputPath(`attachment-delete-long-path-${locale}-${viewport.width}x${viewport.height}.png`);
+        await page.screenshot({ path: screenshot, fullPage: false });
+        await info.attach(`attachment-delete-long-path-${locale}-${viewport.width}x${viewport.height}`, { path: screenshot, contentType: 'image/png' });
+        longPathLayouts.push({ locale, ...viewport, pathBytes: Buffer.byteLength(longConfirmationPath), ...metrics, wheelTop, keyboardTop });
+        await cancel.click();
+        await expect(confirmation).toBeHidden();
         await expect(dialog).toBeVisible();
       }
     }
@@ -637,7 +720,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     expect((await deletion).status()).toBe(204);
     await expect(attachments.getByRole('heading', { name: `附件 · ${seeds.length - 2}`, exact: true })).toBeVisible();
     expect(deletionRequests).toHaveLength(4);
-    await info.attach('attachment-delete-confirmation', { body: Buffer.from(JSON.stringify({ zeroRequestsBeforeConfirmation: true, requests: deletionRequests, failureStatus: failure.status(), failureRequestId: failureBody.error.requestId, menuLayouts }, null, 2)), contentType: 'application/json' });
+    await info.attach('attachment-delete-confirmation', { body: Buffer.from(JSON.stringify({ zeroRequestsBeforeConfirmation: true, requests: deletionRequests, failureStatus: failure.status(), failureRequestId: failureBody.error.requestId, menuLayouts, longPathLayouts }, null, 2)), contentType: 'application/json' });
     await expect(attachments.getByRole('region', { name: '附件预览', exact: true })).toHaveCount(0);
     const finalList = JSON.parse(await command(args('list', ['--json']))) as { path: string }[];
     expect(finalList.map(({ path }) => path)).toEqual(seeds.filter(({ path }) => !['notes/one/same.txt', 'notes/two/same.txt'].includes(path)).map(({ path }) => path).toSorted());

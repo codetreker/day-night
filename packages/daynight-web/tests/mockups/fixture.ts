@@ -8,6 +8,7 @@ import style from './files/site/style.css?raw';
 import script from './files/site/app.js?raw';
 import tallMarkdown from './files/docs/tall.md?raw';
 import tallText from './files/data/tall.txt?raw';
+import { longConfirmationPath } from './attachment-paths';
 
 export type MockupScenario = 'files' | 'empty' | 'upload-error' | 'loading' | 'list-error' | 'preview-error' | 'busy' | 'delete-error' | 'delete-pending';
 const base = '/tests/mockups/files/';
@@ -28,6 +29,7 @@ const sources = [
   ['site/tall.html', 'text/html', ''],
   ['tall.pdf', 'application/pdf', ''],
   [mockupLongPath, 'text/plain', tallText],
+  [longConfirmationPath, 'text/plain', tallText],
   ['archive.bin', 'application/octet-stream', 'Binary attachment'],
 ] as const;
 
@@ -44,7 +46,7 @@ export const createAttachmentFixture = (scenario: MockupScenario) => {
     attachment: { path, contentType, sizeBytes: text === '' ? 640 : new TextEncoder().encode(text).length, createdAt: timestamp, updatedAt: timestamp },
     text,
   }]));
-  const pathUrls = new Map([...files.keys()].map((path) => [path, `${base}${path === mockupLongPath ? 'data/tall.txt' : path === 'examples/guide.md' ? 'docs/guide.md' : path}`]));
+  const pathUrls = new Map([...files.keys()].map((path) => [path, `${base}${path === mockupLongPath || path === longConfirmationPath ? 'data/tall.txt' : path === 'examples/guide.md' ? 'docs/guide.md' : path}`]));
   const ownedUrls = new Set<string>();
   let revision = 0;
   let deleteAttempts = 0;
