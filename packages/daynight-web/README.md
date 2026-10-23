@@ -45,8 +45,8 @@ and management dialogs expose the shared language selector; native formatters
 render dates and counts. Language changes retain form inputs, dialog and
 one-time secrets, identity and pending requests without restarting operations.
 It composes the existing project list, graph and centered `TaskDetailDialog` with
-private project creation, account/token pages, member/invitation management and
-explicit invitation acceptance. `TaskDetailSessionProvider` owns detail and approval
+private project creation, account/token pages, member/invitation management,
+project execution-warning settings and explicit invitation acceptance. `TaskDetailSessionProvider` owns detail and approval
 state within the authenticated branch, keyed by user identity/session generation.
 Same-user verification and project navigation retain it; identity replacement,
 logout and anonymous state dispose it so old results cannot reach a new identity. Identity changes invalidate outstanding requests
@@ -68,8 +68,9 @@ A failed check keeps requests waiting through recovery. The [foreground verifica
 records this presentation policy. Ordinary same-origin
 iframe focus changes do not count as top-level returns. Requests
 use same-origin browser credentials and preserve request IDs, cancellation and
-explicit failures. Member versions remain `bigint` from JSON decoding through
-mutation encoding, including values above the safe JavaScript integer range.
+explicit failures. Member and project-settings versions remain `bigint` from
+JSON decoding through mutation encoding, including values above the safe
+JavaScript integer range.
 
 PAT values and invitation links are displayed only after creation. Copy failure
 keeps a recoverable action; closing the secret dialog requires confirmation. The
@@ -92,6 +93,49 @@ With `pnpm web:dev`, open `/tests/mockups/auth.html` for actual components with
 controlled fetch responses, the same locale Provider and final styles. This fixture validates frontend
 interaction separately from real UniAuth service and upstream-provider login. The [static design prototype](../../docs/design/mockups/auth/index.html)
 retains the broader scenario reference.
+
+## Project execution-warning settings
+
+`/projects/{projectId}/settings` is a sibling of the members page, linked from
+the project and shared project-management navigation. Direct GET/HEAD entry and
+reload use the embedded application. Every member can read the saved threshold;
+only an explicitly resolved administrator can edit and submit it. The form uses
+integer minutes from 1 through 2147483647, initially 60, with save, cancel,
+pending, validation and localized error/recovery states that remain usable on
+narrow screens. Live elapsed-time and possible-stall cards remain a subsequent
+[delivery](../../docs/design/daynight-task-timing-tasks.md).
+
+`ProjectSettingsPanel` is keyed by user/project and delegates saved Project,
+draft, role and operation state to `useProjectSettings`. It loads Project and
+membership together, retains the exact observed settings version and submits
+`PATCH /api/v1/projects/{projectId}/settings`. A successful response is the full
+Project; a current equal-value save preserves version and updatedAt, while a
+real update advances both. A draft or confirmed refusal never becomes the saved
+value. Conflict or permission refusal rereads Project and membership without
+replaying PATCH; missing access clears private Project data and the draft.
+
+Network, protocol or 5xx failure after PATCH leaves the write unconfirmed. The
+form reconciles Project and membership before enabling another mutation. Failed
+reconciliation leaves Save blocked and exposes a read retry. Navigation aborts
+obsolete client work without claiming that a committed write was rolled back;
+returning to the page loads authoritative state before editing. The existing
+foreground identity guard preserves same-user drafts and focus, while identity
+or project replacement invalidates old requests and results.
+
+Project resources include required `settings.version` and
+`settings.executionWarningMinutes`. `project-json.ts` uses shared raw JSON
+source spans to decode only root Project settings, each project-page item, or
+the graph Project envelope. The existing generic root-version decoder and
+unknown nested-field semantics remain intact; no browser reviver source-context
+feature is required. Versions above 2^53 remain exact bigint values and mutation
+encoding sends JSON numbers. Missing contract fields do not acquire defaults.
+
+Graph polling keeps independent fingerprints for Project metadata and
+`{tasks, summary}`. Only the internal Project fingerprint uses the version
+decimal string for bigint-safe comparison. Settings-only responses update the
+Project while retaining task/summary references and GraphIndex; clock-only
+responses retain the graph and index while refreshing the separate latest
+`GraphSnapshot.observedAt`. No settings edit changes task time or graph geometry.
 
 ## Languages
 
@@ -355,8 +399,9 @@ to a visible document requests immediately unless a graph read is already active
 Automatic ticks skip active graph requests. Manual refresh cancels an active graph
 request and starts immediately. Every successful response updates the last received
 time and rereads the selected task even when graph data is unchanged. Equivalent
-graph data retains its index and layout; changed graph data replaces statistics
-and both task-category lists together. The
+task data retains its index and layout; settings-only changes update Project
+metadata without rebuilding task projections, and changed task/summary data
+replaces statistics and both task-category lists together. The
 [automatic refresh decision](../../.agents/notes/implemented/feature/2026-10-22-project-task-auto-refresh.md)
 owns the scheduling and scope. With `pnpm web:dev`,
 `/tests/mockups/auto-refresh.html` uses the real project page, styles and controlled
@@ -674,7 +719,7 @@ image identity and full cleanup; the job retains its 20-minute overall bound.
 
 Native functional checks start after the native process and browser are ready.
 Their browser cleanup must pass before an atomic, run/source-bound permission
-releases the container's twenty-four functional checks. Capacity runs last, after all
+releases the container's twenty-five functional checks. Capacity runs last, after all
 preparation and coverage commands, container checks, full dev-ci cleanup and
 container browser recovery have finished. Every browser phase retains one
 worker and zero retries. CI runs controlled deployment fixtures before the
@@ -743,7 +788,7 @@ ownership revalidation. Uncertain ownership fails without recursive removal.
 Existing recovery commands remain available without opting into new attachment.
 
 The full CI workflow remains on Linux and retains case-sensitive storage coverage.
-macOS local acceptance runs the same 53 scenarios, additional combined
+macOS local acceptance runs the same 55 scenarios, additional combined
 authentication checks and fixed performance budgets, with native filesystem
 coverage qualified by its recorded capability. A local pass does not establish
 macOS CI coverage. The [filesystem coverage decision](../../.agents/notes/implemented/testing/2026-10-23-native-development-filesystem-coverage.md)
@@ -756,7 +801,7 @@ npm registry unless the build variable is explicitly supplied.
 The command builds real embedded assets and a new Go executable and owns a
 separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
 the normal dev-ci runner builds and starts the actual production image. Browser
-execution proceeds through twenty-four native functional scenarios, the same twenty-four
+execution proceeds through twenty-five native functional scenarios, the same twenty-five
 functional scenarios through the production image's stream gateway, then five
 native capacity/limit scenarios. The native process and PostgreSQL remain alive
 through the capacity phase; other preparation commands and the complete
@@ -775,9 +820,14 @@ the latter holds each upload, overwrite and deletion while changing language to
 verify one write and retained state. `task-description-markdown` and the other
 language scenarios remain GET/HEAD-only in the browser; fixture writes use the
 installed CLI or authenticated API request context. The three task-approval scenarios
-and `task-unapproval` separately admit only registered project/task POST approve or
-unapprove requests with exact expected counts. Six authentication scenarios declare only their exact expected management writes;
-unrelated browser mutations remain failures.
+and `task-unapproval` separately admit only registered project/task POST approve or unapprove requests with exact expected
+counts. Six authentication scenarios declare only their exact expected management writes;
+unrelated browser mutations remain failures. The `project-settings` journey
+admits exactly four registered project-settings PATCHes: successful save, stale
+conflict, committed response loss and demoted-member refusal. Other users and
+administrative preparation use authenticated request contexts; a failed read
+reconciliation can be recovered only by an explicit read retry, without a fifth
+browser PATCH.
 
 The [approval and withdrawal journeys](tests/e2e/approval.spec.ts) reuse the packed
 CLI against each target's actual authenticated service. The existing normal
@@ -839,7 +889,7 @@ or an iframe load cannot satisfy this check. The
 owns data-sharing, rendering and independent reading proof.
 
 The additional [combined authentication journey](scripts/acceptance/auth-combined.mts)
-requires a separate receipt on each runtime target, alongside the 53
+requires a separate receipt on each runtime target, alongside the 55
 Playwright cases. It reuses the same installed package and normal Alice/Bob
 identities, records their initial project sets, and crosses browser and CLI data
 through shared/private projects, original-credential service restart, logout/PAT
@@ -896,7 +946,7 @@ Actual DOM fixed ports, Q≤12/tangency, card avoidance,
 body/marker coverage and analytic curved dash phase cover every visible edge.
 Stable owner transforms are graph-relative real root/owner CTMs; raw screen,
 page-scroll and canvas diagnostics stay separate from reset equality.
-The 53-scenario inventory (29 native, 24 container), current manual/periodic refresh,
+The 55-scenario inventory (30 native, 25 container), current manual/periodic refresh,
 attachment tabs/standalone reader, bilingual/auth boundaries, zero retries, timeouts,
 coverage, size refusals and cleanup remain. PR #143 delivered dependency inspection;
 its receipts bind results to that exact tested source. The authentication/lifecycle
@@ -909,10 +959,12 @@ The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [language journeys](tests/e2e/i18n.spec.ts),
 [authentication journeys](tests/e2e/auth.spec.ts),
 [approval journeys](tests/e2e/approval.spec.ts),
+[project-settings journey](tests/e2e/project-settings.spec.ts),
 [capacity scenarios](tests/e2e/capacity.spec.ts) and
 [acceptance runner](scripts/acceptance.mts) map to the
 [W1–W13 requirements](../../docs/spec/daynight-web.md) and
-[language requirements](../../docs/spec/daynight-web-i18n.md) as follows. Names are stable
+[language requirements](../../docs/spec/daynight-web-i18n.md) and
+[execution-timing requirements](../../docs/spec/daynight-task-timing.md) as follows. Names are stable
 scenario annotations validated in each target's report.
 
 | Requirement | Production checks |
@@ -927,6 +979,7 @@ scenario annotations validated in each target's report.
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
 | W13 | `task-approval`, `task-approval-conflicts`, `task-approval-recovery`, `task-unapproval`: same-data packed-CLI/ordinary-graph lifecycle, ready/blocked withdrawal, metadata/attachment preservation, both title-row confirmations and tabs, cancel/Escape/focus, invalidation, stale CLI metadata, CLI/Web same-version competition, pending protection, exact int64 digits, real-commit response loss, real graph failure and task/SPA-project identity/focus/browsing preservation |
+| TT3 | `project-settings`: real-service direct entry/reload, administrator save and independent member read, project isolation, exact settings versions above 2^53, stale conflict and demotion, read-only member recovery, actual commit with lost response and failed-read retry without PATCH replay, bilingual 320px/390px form/control/navigation containment and unclipped text |
 | FA1–FA12 | `task-attachments`: installed CLI and production UI share real task/files on native and container targets; exact bytes, file mutations, detail tabs, adjacent panes, unique preview scroll owners, rendered formats and reloadable standalone reading. Independent real-service probes add end-of-document wheel/keyboard, native PDF final-page paint, fault/retry and unchanged task/graph proof |
 | TI8–TI9 | `task-description-markdown`: installed CLI and real API preserve Unicode/CRLF Markdown bytes and versioned full replacement; bilingual 1440px/320px rich rendering, escaped HTML, URL policy, task-root images/encoded references, paginated loading/list failure/retry, invalid/missing/preview failure states, one-controller navigation/focus, overwrite refresh, modified native href and HTML frame interaction; inspection→Details→relative attachment→close preserves graph selection/geometry/view |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
@@ -953,14 +1006,14 @@ combined receipts are `native/auth-combined/target.json` and
 They require all eleven named checks, source/browser/installed-package identity,
 old/new restart process identity and passed browser/resource cleanup. They retain
 safe observations and hashes, not credential/configuration bodies or raw logs.
-The existing 53-case report validator remains independent. `CI` requires a clean checkout matching
+The 55-case report validator remains independent. `CI` requires a clean checkout matching
 `GITHUB_SHA` and the pinned browser for the current Linux or macOS host. Playwright uses one worker and no
 retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validation.
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
 tested checkout identity, which is normally a merge revision for PR runs. A pass
-requires the strict union of twenty-four native functional and five native capacity/limit
-scenarios (29 native total), plus the twenty-four container functional scenarios. Every
+requires the strict union of twenty-five native functional and five native capacity/limit
+scenarios (30 native total), plus the twenty-five container functional scenarios. Every
 phase and target rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
 Installed-CLI handoff, container callbacks and recovery require matching source
 commit/tree/dirty state as well as existing package/artifact ownership. A missing

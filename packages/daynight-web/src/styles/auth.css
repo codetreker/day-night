@@ -104,6 +104,15 @@
 .settings-nav :is(button, a):hover { background: #f0f0fa; }
 .settings-nav :is(.active, [aria-current="page"]) { color: #5c5ce0; background: #ededfb; }
 .settings-main { min-width: 0; }
+.project-management-nav { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 24px; }
+.project-management-nav [aria-current="page"] { color: #5c5ce0; background: #ededfb; border-color: #d9d9f4; }
+.project-settings-panel .field { margin-bottom: 20px; }
+.project-settings-panel .number-unit { display: flex; gap: 9px; align-items: center; font-size: 12px; }
+.project-settings-panel .number-unit input { width: 140px; }
+.project-settings-panel .number-unit span { flex: none; }
+.settings-actions { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
+.settings-state { font-size: 11px; color: #758196; margin-top: 12px; overflow-wrap: anywhere; }
+.settings-state.success { color: #398567; }
 .profile-info { display: flex; align-items: center; gap: 16px; min-width: 0; }
 .profile-info > div { min-width: 0; }
 .profile-info .avatar { width: 49px; height: 49px; font-size: 16px; }

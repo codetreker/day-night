@@ -31,7 +31,7 @@ const graph = (items = seeds, id = projectId): TaskGraph => {
     const blockedBy = item.dependsOn.filter((dependency) => items.find((candidate) => candidate.id === dependency)!.status !== 'done');
     return { ...item, blockedBy, ready: item.status === 'todo' && blockedBy.length === 0 };
   });
-  return { observedAt: "2026-10-20T12:00:00Z", project: { id, name: `项目 ${id}`, repoUrl: '', createdAt: time, updatedAt: time }, tasks,
+  return { observedAt: "2026-10-20T12:00:00Z", project: { settings: { version: 1n, executionWarningMinutes: 60 }, id, name: `项目 ${id}`, repoUrl: '', createdAt: time, updatedAt: time }, tasks,
     summary: { total: tasks.length, proposed: tasks.filter((task) => task.status === "proposed").length, todo: tasks.filter((item) => item.status === 'todo').length, done: tasks.filter((item) => item.status === 'done').length,
       inProgress: tasks.filter((item) => item.status === 'in_progress').length, ready: tasks.filter((item) => item.ready).length,
       blocked: tasks.filter((item) => item.status === 'todo' && !item.ready).length } };

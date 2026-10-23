@@ -19,6 +19,8 @@ func projectRoutes(mux *http.ServeMux, projects *service.Projects, auth *Authent
 	mux.HandleFunc("POST /api/v1/projects", auth.Require(handler.create))
 	mux.HandleFunc("GET /api/v1/projects", auth.Require(handler.list))
 	mux.HandleFunc("GET /api/v1/projects/{projectId}", auth.Require(handler.get))
+	mux.HandleFunc("PATCH /api/v1/projects/{projectId}/settings", auth.Require(handler.settings))
+	mux.HandleFunc("/api/v1/projects/{projectId}/settings", auth.Require(resourceMethodNotAllowed(logger, "PATCH")))
 	mux.HandleFunc("/api/v1/projects", auth.Require(resourceMethodNotAllowed(logger, "GET, HEAD, POST")))
 	mux.HandleFunc("/api/v1/projects/{projectId}", auth.Require(resourceMethodNotAllowed(logger, "GET, HEAD")))
 }
@@ -32,7 +34,8 @@ func resourceMethodNotAllowed(logger *slog.Logger, allowed string) Authenticated
 
 func projectResponse(project core.Project) api.Project {
 	return api.Project{ID: project.ID, Name: project.Name, RepoURL: project.RepoURL,
-		CreatedAt: project.CreatedAt.UTC(), UpdatedAt: project.UpdatedAt.UTC()}
+		CreatedAt: project.CreatedAt.UTC(), UpdatedAt: project.UpdatedAt.UTC(),
+		Settings: api.ProjectSettings{Version: project.Settings.Version, ExecutionWarningMinutes: project.Settings.ExecutionWarningMinutes}}
 }
 
 func (h *projectHandler) create(w http.ResponseWriter, request *http.Request, principal core.Principal) {

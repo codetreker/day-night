@@ -46,7 +46,7 @@ func TestUIExactRoutesAssetsAndSingleRequestLog(t *testing.T) {
 		t.Fatalf("UI must reuse exactly one request logger: %+v", entries)
 	}
 	for _, projectID := range []string{"00000000-0000-4000-8000-000000000099", "invalid-private-project"} {
-		for _, suffix := range []string{"", "/members"} {
+		for _, suffix := range []string{"", "/members", "/settings"} {
 			response := projectRequest(handler, http.MethodGet, "/projects/"+projectID+suffix, "")
 			if response.Code != http.StatusOK || !bytes.Equal(response.Body.Bytes(), root.Body.Bytes()) || response.Header().Get("Cache-Control") != "no-store" {
 				t.Fatalf("project deep link did not return actual index: %d", response.Code)
@@ -64,7 +64,7 @@ func TestUIExactRoutesAssetsAndSingleRequestLog(t *testing.T) {
 		}
 	}
 	for _, target := range []string{
-		"/unknown-private-page", "/projects", "/projects/id/extra", "/projects/id/members/extra",
+		"/unknown-private-page", "/projects", "/projects/id/extra", "/projects/id/members/extra", "/projects/id/settings/extra",
 		"/projects/id/tasks", "/projects/id/tasks/task/unknown/file", "/projects/id/tasks/task/attachment/file",
 		"/api/unknown-private-route", "/api/v1/projects/id/unknown", "/assets/", "/assets/missing-private.js",
 		"/assets/%2e%2e/index.html", "/assets/%2findex.html",
@@ -119,6 +119,7 @@ func TestUIHeadAndKnownMethodBoundaries(t *testing.T) {
 	for _, target := range []string{
 		"/", "/projects/00000000-0000-4000-8000-000000000099",
 		"/projects/00000000-0000-4000-8000-000000000099/members",
+		"/projects/00000000-0000-4000-8000-000000000099/settings",
 		"/projects/00000000-0000-4000-8000-000000000099/tasks/00000000-0000-4000-8000-000000000001/attachments/nested/plan.md",
 		asset[1],
 	} {

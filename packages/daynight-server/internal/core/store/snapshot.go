@@ -23,17 +23,12 @@ func (s *Store) ReadSnapshot(ctx context.Context, operation func(*Snapshot) erro
 }
 
 func (s *Snapshot) Project(ctx context.Context, id string) (core.Project, error) {
-	project, err := scanProject(s.tx.QueryRow(ctx,
-		`SELECT id::text, name, repo_url, created_at, updated_at FROM projects WHERE id = $1`, id))
-	if err != nil {
-		return core.Project{}, queryError("read project", err)
-	}
-	return project, nil
+	return readProject(ctx, s.tx, id)
 }
 
 func (s *Snapshot) Projects(ctx context.Context, page Page) (ProjectPage, error) {
 	afterTime, afterID := pageValues(page)
-	rows, err := s.tx.Query(ctx, `SELECT id::text, name, repo_url, created_at, updated_at FROM projects
+	rows, err := s.tx.Query(ctx, `SELECT `+projectProjection+` FROM projects
 		WHERE ($1::timestamptz IS NULL OR (created_at, id) > ($1, $2::uuid))
 		ORDER BY created_at, id LIMIT $3`, afterTime, afterID, page.Limit+1)
 	if err != nil {

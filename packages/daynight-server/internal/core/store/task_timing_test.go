@@ -17,7 +17,7 @@ func TestTaskTimingMigrationPreservesUnknownHistoricalIntervals(t *testing.T) {
 		t.Fatal(err)
 	}
 	database := &Store{Pool: pool}
-	project := queryProject(t, database, 1)
+	project := projectBeforeSettings(t, database, 1)
 	stamp := time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC)
 	var historical []core.Task
 	for index, status := range []core.TaskStatus{core.TaskProposed, core.TaskTodo, core.TaskInProgress, core.TaskDone} {

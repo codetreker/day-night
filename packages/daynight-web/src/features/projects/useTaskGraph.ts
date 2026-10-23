@@ -27,7 +27,7 @@ export const useTaskGraph = (projectId: string) => {
   const [state, setState] = useState<GraphState>(() => initialState(projectId));
   const generation = useRef(0);
   const active = useRef<AbortController | null>(null);
-  const cached = useRef<{ projectId: string; serialized: string; snapshot: GraphSnapshot } | null>(null);
+  const cached = useRef<{ projectId: string; serializedProject: string; serializedTasks: string; snapshot: GraphSnapshot } | null>(null);
   const request = useCallback(async (automatic = false) => {
     if (automatic && active.current !== null) return;
     active.current?.abort();
@@ -42,17 +42,25 @@ export const useTaskGraph = (projectId: string) => {
     try {
       const graph = await getTaskGraph(projectId, controller.signal);
       if (controller.signal.aborted || revision !== generation.current) return;
-      // Clock samples change on every poll without changing graph content or layout.
-      const serialized = JSON.stringify({ project: graph.project, summary: graph.summary, tasks: graph.tasks });
+      const serializedProject = JSON.stringify({ ...graph.project, settings: {
+        ...graph.project.settings, version: graph.project.settings.version.toString(),
+      } });
+      // Project settings and clock samples do not change task projections or geometry.
+      const serializedTasks = JSON.stringify({ summary: graph.summary, tasks: graph.tasks });
       const previous = cached.current;
-      const unchanged = previous?.projectId === projectId && previous.serialized === serialized;
+      const sameProject = previous?.projectId === projectId;
+      const sameTasks = sameProject && previous.serializedTasks === serializedTasks;
+      const sameContent = sameTasks && previous.serializedProject === serializedProject;
+      const stableGraph = sameContent ? previous.snapshot.graph : sameTasks ? {
+        ...graph, tasks: previous.snapshot.graph.tasks, summary: previous.snapshot.graph.summary,
+      } : graph;
       const snapshot = {
-        graph: unchanged ? previous.snapshot.graph : graph,
-        index: unchanged ? previous.snapshot.index : buildGraphIndex(graph),
+        graph: stableGraph,
+        index: sameTasks ? previous.snapshot.index : buildGraphIndex(graph),
         observedAt: graph.observedAt,
         receivedAt: Date.now(), revision,
       };
-      cached.current = { projectId, serialized, snapshot };
+      cached.current = { projectId, serializedProject, serializedTasks, snapshot };
       setState({ projectId, snapshot, status: "ready", refreshing: false, error: null });
     } catch (error) {
       if (controller.signal.aborted || revision !== generation.current || isAbortError(error)) return;

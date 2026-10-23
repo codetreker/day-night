@@ -7,12 +7,23 @@ type CreateProjectRequest struct {
 	RepoURL string `json:"repoUrl"`
 }
 
+type ProjectSettings struct {
+	Version                 int64 `json:"version"`
+	ExecutionWarningMinutes int32 `json:"executionWarningMinutes"`
+}
+
+type UpdateProjectSettingsRequest struct {
+	Version                 int64 `json:"version"`
+	ExecutionWarningMinutes int32 `json:"executionWarningMinutes"`
+}
+
 type Project struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	RepoURL   string    `json:"repoUrl"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	RepoURL   string          `json:"repoUrl"`
+	CreatedAt time.Time       `json:"createdAt"`
+	UpdatedAt time.Time       `json:"updatedAt"`
+	Settings  ProjectSettings `json:"settings"`
 }
 
 type ProjectPage struct {

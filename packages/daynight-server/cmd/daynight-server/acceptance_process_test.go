@@ -675,7 +675,7 @@ func (p *acceptanceProcess) project(t *testing.T, name string) api.Project {
 	t.Helper()
 	response := p.request(context.Background(), http.MethodPost, "/api/v1/projects", api.CreateProjectRequest{Name: name, RepoURL: "https://github.com/example/acceptance-repo"}, "")
 	project := acceptanceDecode[api.Project](t, response, http.StatusCreated)
-	if response.header.Get("Location") != "/api/v1/projects/"+project.ID || project.ID == "" {
+	if response.header.Get("Location") != "/api/v1/projects/"+project.ID || project.ID == "" || project.Settings != (api.ProjectSettings{Version: 1, ExecutionWarningMinutes: 60}) {
 		t.Fatal("project identity or Location is invalid")
 	}
 	return project

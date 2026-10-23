@@ -331,7 +331,7 @@ func TestQueriesReadFailuresAreNeverEmptyResults(t *testing.T) {
 		s := isolatedStore(t)
 		queryProject(t, s, 1)
 		mustQueryExec(t, s, `ALTER TABLE projects RENAME TO project_source;
-			CREATE VIEW projects AS SELECT id, name, repo_url, created_at, 1::bigint AS updated_at FROM project_source`)
+			CREATE VIEW projects AS SELECT id, name, repo_url, created_at, 1::bigint AS updated_at, settings_version, execution_warning_minutes FROM project_source`)
 		err := s.ReadSnapshot(context.Background(), func(snapshot *Snapshot) error {
 			_, err := snapshot.Projects(context.Background(), Page{Limit: 10})
 			return err
@@ -346,7 +346,7 @@ func TestQueriesReadFailuresAreNeverEmptyResults(t *testing.T) {
 		mustQueryExec(t, s, `CREATE FUNCTION fail_read() RETURNS text LANGUAGE plpgsql AS $$
 			BEGIN RAISE EXCEPTION USING ERRCODE = 'P1002', MESSAGE = 'private read failure'; END $$;
 			ALTER TABLE projects RENAME TO project_source;
-			CREATE VIEW projects AS SELECT id, fail_read() AS name, repo_url, created_at, updated_at FROM project_source`)
+			CREATE VIEW projects AS SELECT id, fail_read() AS name, repo_url, created_at, updated_at, settings_version, execution_warning_minutes FROM project_source`)
 		err := s.ReadSnapshot(context.Background(), func(snapshot *Snapshot) error {
 			_, err := snapshot.Projects(context.Background(), Page{Limit: 10})
 			return err
@@ -376,4 +376,15 @@ func TestQueriesReadFailuresAreNeverEmptyResults(t *testing.T) {
 			t.Fatalf("prerequisite decode failure became an empty result: %v", err)
 		}
 	})
+}
+
+func projectBeforeSettings(t *testing.T, database *Store, number int) core.Project {
+	t.Helper()
+	project := core.Project{ID: queryID(number), Name: "Project", RepoURL: "https://example.com/owner/repo.git"}
+	if err := database.Pool.QueryRow(context.Background(), `INSERT INTO projects (id, name, repo_url)
+		VALUES ($1, $2, $3) RETURNING created_at, updated_at`, project.ID, project.Name, project.RepoURL).
+		Scan(&project.CreatedAt, &project.UpdatedAt); err != nil {
+		t.Fatal(err)
+	}
+	return project
 }

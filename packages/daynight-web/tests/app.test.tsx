@@ -1,3 +1,4 @@
+import { stringifyWireJson } from "./helpers/wireJson";
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { createLocaleRender } from './helpers/renderWithLocale';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,13 +7,13 @@ import { App } from '../src/app/App';
 const render = createLocaleRender('zh-CN');
 
 const projectId = '00000000-0000-4000-8000-000000000001';
-const projectPage = () => new Response(JSON.stringify({ items: [{
+const projectPage = () => new Response(stringifyWireJson({ items: [{ settings: { version: 1n, executionWarningMinutes: 60 },
   id: projectId, name: '真实项目', repoUrl: 'https://github.com/example/repo',
   createdAt: '2026-10-20T09:00:00Z', updatedAt: '2026-10-20T09:00:00Z',
 }], nextCursor: null }), { headers: { 'Content-Type': 'application/json' } });
 
-const taskGraph = () => new Response(JSON.stringify({ observedAt: "2026-10-20T12:00:00Z",
-  project: { id: projectId, name: '项目任务页面', repoUrl: 'https://github.com/example/repo',
+const taskGraph = () => new Response(stringifyWireJson({ observedAt: "2026-10-20T12:00:00Z",
+  project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: projectId, name: '项目任务页面', repoUrl: 'https://github.com/example/repo',
     createdAt: '2026-10-20T09:00:00Z', updatedAt: '2026-10-20T09:00:00Z' },
   tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
 }), { headers: { 'Content-Type': 'application/json' } });

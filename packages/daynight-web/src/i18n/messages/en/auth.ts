@@ -5,6 +5,7 @@ export const auth: AuthMessages = {
   shell: {
     myProjects: "My projects",
     accountSettings: "Account settings",
+    projectSettings: "Project settings",
     members: "Project members",
     teamWorkspace: "Team workspace",
     accountLink: ({ name }) => `Account settings: ${name}`,
@@ -35,7 +36,7 @@ export const auth: AuthMessages = {
     documentTitle: {
       loading: "Checking sign-in · Daynight", error: "Sign-in unavailable · Daynight", login: "Sign in · Daynight",
       invitations: "Project invitation · Daynight", projects: "My projects · Daynight", project: "Project tasks · Daynight",
-      members: "Project members · Daynight", account: "Account settings · Daynight", notFound: "Page not found · Daynight",
+      settings: "Project settings · Daynight", members: "Project members · Daynight", account: "Account settings · Daynight", notFound: "Page not found · Daynight",
     },
   },
   login: {
@@ -118,6 +119,26 @@ export const auth: AuthMessages = {
         conflictReloaded: "Member details have changed. The latest permissions have been loaded. Review them before trying again.",
         permissionChecked: "Project permissions have changed. Your access has been checked again.",
       },
+    },
+    settings: {
+      eyebrow: "PROJECT SETTINGS",
+      title: "Project settings",
+      scopeHint: "Settings apply to the current project only.",
+      alertTitle: "Task execution alerts",
+      description: "Show “Possibly stuck” on tasks that remain in progress beyond the threshold.",
+      scope: "Project setting",
+      label: "Alert threshold",
+      unit: "minutes",
+      hint: "Default: 60 minutes. No warning at exactly the threshold; warn only after it is exceeded. Saving applies the threshold to this project’s running tasks.",
+      invalid: "Enter a whole number of minutes from 1 to 2147483647.",
+      save: "Save settings",
+      busy: "Saving…",
+      unsaved: "Unsaved changes; tasks still use the saved threshold.",
+      memberNotice: "You can view these settings. Only project administrators can change them.",
+      loading: "Loading project settings…",
+      uncertain: "The save outcome could not be confirmed. Loading the current settings is required before saving again.",
+      retryRead: "Load current settings",
+      notice: { saved: "Settings saved.", cancelled: "Changes cancelled.", conflict: "Settings changed elsewhere. The current saved value is shown. Review it before saving again.", permission: "Project permissions changed. Your current access and saved settings have been reloaded.", reconciled: "The current saved settings have been loaded. Review them before making another change." },
     },
     secret: {
       tokenTitle: "Access token created", invitationTitle: "Invitation link created", tokenBody: "Save the token securely, then configure your CLI or agent.",

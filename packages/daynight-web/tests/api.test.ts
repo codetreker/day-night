@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, getTask, getTaskGraph, isAbortError, listProjects } from "../src/api/client";
 import { canonicalId, parseProjectPage, parseServerError, parseTaskDetail, parseTaskGraph } from "../src/api/parse";
-import { stringifyApiJson } from "../src/api/json";
+import { stringifyWireJson } from "./helpers/wireJson";
+import { createProject } from "../src/api/auth";
+import { decodeProjectJson, decodeProjectPageJson, decodeTaskGraphJson } from "../src/api/project-json";
+import { project as parseProject } from "../src/api/parse";
 
 const projectId = "10000000-0000-0000-0000-00000000000a";
 const taskId = "20000000-0000-0000-0000-00000000000b";
 const otherId = "30000000-0000-0000-0000-00000000000c";
 const time = "2026-10-20T12:34:56.123456Z";
-const project = { id: projectId, name: "Core project", repoUrl: "git@github.com:org/repo.git", createdAt: time, updatedAt: time };
+const project = { settings: { version: 1n, executionWarningMinutes: 60 }, id: projectId, name: "Core project", repoUrl: "git@github.com:org/repo.git", createdAt: time, updatedAt: time };
 const task = { startedAt: null, completedAt: null,
   id: taskId, projectId, title: "A task", description: "", properties: { pullRequests: [] }, status: "todo", version: 9007199254740993n,
   dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
@@ -18,8 +21,10 @@ const graphTask = { startedAt: null, completedAt: null,
 };
 const summary = { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 };
 const graph = { observedAt: "2026-10-20T12:00:00Z", project, summary, tasks: [graphTask] };
+const rawProject = (version: string): string => `${JSON.stringify({ ...project, settings: undefined }).slice(0, -1)},"settings":{"version":${version},"executionWarningMinutes":60}}`;
+const rawGraph = (projectSource: string): string => `${JSON.stringify({ ...graph, project: undefined }).slice(0, -1)},"project":${projectSource}}`;
 const signal = (): AbortSignal => new AbortController().signal;
-const response = (value: unknown, status = 200): Response => new Response(stringifyApiJson(value), {
+const response = (value: unknown, status = 200): Response => new Response(stringifyWireJson(value), {
   status, headers: { "Content-Type": "application/json; charset=utf-8" },
 });
 const mockResponse = (value: unknown, status = 200) => {
@@ -31,6 +36,23 @@ const mockResponse = (value: unknown, status = 200) => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("response parsing", () => {
+  it("requires complete positive project settings without inventing defaults", () => {
+    const { settings: _settings, ...missing } = project;
+    expect(() => parseProject(missing)).toThrow("invalid response");
+    for (const settings of [null, undefined, [], {}, { version: 1n }, { executionWarningMinutes: 60 }]) {
+      expect(() => parseProject({ ...project, settings })).toThrow("invalid response");
+    }
+    for (const version of [undefined, null, 1, "1", 0n, -1n, 9_223_372_036_854_775_808n]) {
+      expect(() => parseProject({ ...project, settings: { ...project.settings, version } })).toThrow("invalid response");
+    }
+    for (const executionWarningMinutes of [undefined, null, "60", 0, -1, 0.5, 2_147_483_648, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => parseProject({ ...project, settings: { ...project.settings, executionWarningMinutes } })).toThrow("invalid response");
+    }
+    for (const executionWarningMinutes of [1, 2_147_483_647]) {
+      expect(parseProject({ ...project, settings: { ...project.settings, executionWarningMinutes } }).settings.executionWarningMinutes).toBe(executionWarningMinutes);
+    }
+  });
+
   it("accepts page data, canonicalizes identities, and keeps opaque cursors", () => {
     expect(parseProjectPage({ items: [{ ...project, id: projectId.toUpperCase() }], nextCursor: "opaque+/= token" }))
       .toEqual({ items: [project], nextCursor: "opaque+/= token" });
@@ -176,7 +198,74 @@ describe("response parsing", () => {
   });
 });
 
+describe("targeted project JSON decoding", () => {
+  it.each([1n, 9_007_199_254_740_993n, 9_223_372_036_854_775_807n])("retains nested numeric settings version %s in Project, page and graph envelopes", async (version) => {
+    const source = rawProject(version.toString());
+    const value = { ...project, settings: { ...project.settings, version } };
+    expect(parseProject(await decodeProjectJson(new Response(source)))).toEqual(value);
+    expect(parseProjectPage(await decodeProjectPageJson(new Response(`{"items":[${source}],"nextCursor":null}`))).items).toEqual([value]);
+    expect(parseTaskGraph(await decodeTaskGraphJson(new Response(rawGraph(source))), projectId).project).toEqual(value);
+  });
+
+  it.each(["null", "0", "-1", "1.0", "1e0", "9223372036854775808", '"1"'])("rejects invalid numeric version source %s across project envelopes", async (source) => {
+    const value = rawProject(source);
+    const single = await decodeProjectJson(new Response(value));
+    const page = await decodeProjectPageJson(new Response(`{"items":[${value}],"nextCursor":null}`));
+    const taskGraph = await decodeTaskGraphJson(new Response(rawGraph(value)));
+    expect(() => parseProject(single)).toThrow("invalid response");
+    expect(() => parseProjectPage(page)).toThrow("invalid response");
+    expect(() => parseTaskGraph(taskGraph, projectId)).toThrow("invalid response");
+  });
+
+  it("preserves whitespace, escaped keys, duplicate-key replacement and unknown nested values", async () => {
+    const fields = JSON.stringify({ ...project, settings: undefined }).slice(0, -1);
+    const source = String.raw`${fields},"settings":null,"\u0073ettings":{"version":1e0,"ver\u0073ion": 9223372036854775807 ,"executionWarningMinutes":60,"unknown":{"version":9007199254740993}},"unknown":{"settings":{"version":9007199254740993}}}`;
+    const decoded = await decodeProjectJson(new Response(source)) as Record<string, unknown>;
+    const native = JSON.parse(source) as Record<string, unknown>;
+    expect(parseProject(decoded).settings.version).toBe(9_223_372_036_854_775_807n);
+    expect((decoded.settings as Record<string, unknown>).unknown).toEqual((native.settings as Record<string, unknown>).unknown);
+    expect(decoded.unknown).toEqual(native.unknown);
+    const replaced = `${fields},"settings":{"version":9223372036854775807,"executionWarningMinutes":60},"settings":null}`;
+    expect(await decodeProjectJson(new Response(replaced))).toEqual(JSON.parse(replaced));
+    const lastPage = String.raw`{"items":null,"it\u0065ms":[${rawProject('9007199254740993')}],"nextCursor":null}`;
+    expect(parseProjectPage(await decodeProjectPageJson(new Response(lastPage))).items[0]?.settings.version).toBe(9_007_199_254_740_993n);
+    const lastGraph = `${rawGraph(rawProject('9007199254740993')).slice(0, -1)},"project":null}`;
+    expect(await decodeTaskGraphJson(new Response(lastGraph))).toEqual(JSON.parse(lastGraph));
+  });
+
+  it("leaves unrelated roots under native JSON semantics and preserves syntax errors", async () => {
+    for (const decode of [decodeProjectJson, decodeProjectPageJson, decodeTaskGraphJson]) {
+      for (const source of ['null', 'true', '1', '[]', '{"unknown":{"version":9007199254740993}}']) {
+        expect(await decode(new Response(source))).toEqual(JSON.parse(source));
+      }
+      for (const source of ['{"settings":', '{"project":null,}', '{"items":[]} trailing']) {
+        await expect(decode(new Response(source))).rejects.toBeInstanceOf(SyntaxError);
+      }
+    }
+  });
+
+  it("reads high settings versions without a native JSON reviver context", async () => {
+    const nativeParse = JSON.parse;
+    const spy = vi.spyOn(JSON, "parse").mockImplementation((text, reviver) => nativeParse(text, reviver === undefined
+      ? undefined : function (key, value) { return reviver.call(this, key, value); }));
+    try {
+      expect(parseProject(await decodeProjectJson(new Response(rawProject('9223372036854775807')))).settings.version).toBe(9_223_372_036_854_775_807n);
+    } finally { spy.mockRestore(); }
+  });
+});
+
 describe("API requests", () => {
+  it("uses targeted decoders for project creation, project pages and task graphs", async () => {
+    const version = 9_007_199_254_740_993n;
+    const source = rawProject(version.toString());
+    const fetcher = vi.fn().mockResolvedValue(new Response(source, { status: 201, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetcher);
+    expect((await createProject({ name: project.name, repoUrl: project.repoUrl }, signal())).settings.version).toBe(version);
+    fetcher.mockResolvedValue(new Response(`{"items":[${source}],"nextCursor":null}`, { headers: { "Content-Type": "application/json" } }));
+    expect((await listProjects({}, signal())).items[0]?.settings.version).toBe(version);
+    fetcher.mockResolvedValue(new Response(rawGraph(source), { headers: { "Content-Type": "application/json" } }));
+    expect((await getTaskGraph(projectId, signal())).project.settings.version).toBe(version);
+  });
   it("uses relative URLs, explicit signal, no-store, and safely encoded opaque cursor", async () => {
     const fetchMock = mockResponse({ items: [project], nextCursor: "next" });
     const abortSignal = signal();

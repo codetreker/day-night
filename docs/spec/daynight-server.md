@@ -27,7 +27,7 @@
 记录运行时接线与验收凭据边界；对应源码的验证结论仍以完整运行回执为准。
 
 [执行计时需求](daynight-task-timing.md)的任务起止事实与数据库图时间样本已实现。
-本文拥有它们的资源、写入和快照约定；项目提醒阈值与实时展示仍由该组后继任务交付。
+本文拥有它们的资源、写入和快照约定；项目提醒阈值及管理员设置接口已实现，实时卡片仍由该组后继任务交付。
 
 ## 目标与交付范围
 
@@ -57,6 +57,7 @@ Project 包含以下字段：
 | `id` | 服务生成的 UUID，不随名称或 repo 改变 |
 | `name` | 必填的非空名称 |
 | `repoUrl` | 必填的远程 Git repo 地址 |
+| `settings` | 必填对象；`version` 为初始 `1` 的正 int64，`executionWarningMinutes` 为初始 `60` 的正 int32 分钟数 |
 | `createdAt`、`updatedAt` | UTC 时间，HTTP 使用 RFC 3339 格式 |
 
 一个 project 关联一个 repo，多个 project 可以关联同一 repo。支持 HTTPS URL、
@@ -65,8 +66,16 @@ SSH URL 和 SCP 风格 SSH 地址，地址必须包含主机和仓库路径；�
 但不得包含密码；查询参数和 fragment
 不属于仓库地址。无效地址作为输入错误拒绝，地址中 SSH 用户名不作为业务身份。
 
-当前接口只提供创建、列表查询和单项读取；创建者在同一事务中成为项目管理员，
-列表在数据库中先按当前成员关系过滤，再进行分页。创建后 `repoUrl` 不可通过 task 更新改变。
+接口提供创建、列表、单项读取及专用设置修改；创建者在同一事务中成为项目管理员，
+列表在数据库中先按当前成员关系过滤，再进行分页。创建后 `repoUrl` 不可通过 task 或设置更新改变。
+创建、详情、列表、图内 Project 及成功设置修改均返回完整 settings。已有项目通过迁移获得 `60` 分钟、
+版本 `1`，迁移保持原 createdAt/updatedAt。
+
+设置修改只接受观察到的 `version` 和 `executionWarningMinutes`，范围分别为
+`1..9223372036854775807`、`1..2147483647`。项目成员可读，只有管理员可写；
+取得项目锁后重新检查当前成员和管理员身份，再检查版本，最后才判断同值空操作。
+过期同值请求仍冲突，当前版本同值保存返回未改变 Project；实际数值变化只递增一次设置版本并更新 project.updatedAt，
+不改 createdAt 或任务时间。降权/移除、版本冲突或存储失败不能留下部分设置更新。
 
 ## Task 与依赖
 
@@ -159,6 +168,7 @@ PR 的 url 与 title 只校验字符串类型及必填结构，保留空字符�
 | `POST` | `/api/v1/projects` | 创建 project，返回 `201` 和资源 |
 | `GET` | `/api/v1/projects` | 返回 project 分页列表 |
 | `GET` | `/api/v1/projects/{projectId}` | 返回 project，缺失时 `404` |
+| `PATCH` | `/api/v1/projects/{projectId}/settings` | 管理员按精确设置 version 修改阈值，返回 `200` 和完整 Project |
 | `POST` | `/api/v1/projects/{projectId}/tasks` | 创建 task，返回 `201` 和资源 |
 | `GET` | `/api/v1/projects/{projectId}/tasks` | 返回 task 分页列表 |
 | `GET` | `/api/v1/projects/{projectId}/tasks/{taskId}` | 返回 task，缺失或不属于该 project 时 `404` |
@@ -175,6 +185,10 @@ HTTP 创建请求使用 `Content-Type: application/json`，可附带 UTF-8 chars
 
 所有成功读取返回 `200`。Project 不存在时，其 task 子路径必须返回 `404`，
 不能将空 task 列表作为不存在 project 的结果。
+
+设置 PATCH 必须同时提供 `version` 与 `executionWarningMinutes`，不接受 query 参数。
+缺失、重复、未知、只读、`null`、非整数、非正或超界字段按既有严格 JSON 规则拒绝；
+认证、Cookie 写 Origin 和 no-store 同样适用。成员写设置为 `403 forbidden`，非成员或缺失项目为 `404 not_found`。
 
 Task 创建示例：
 
@@ -239,7 +253,7 @@ points，截短时标记 titleTruncated；不返回完整标题、description �
 | `403` | `forbidden` | 普通成员执行管理员操作，或 Cookie 会话写请求来源不符合要求 |
 | `404` | `not_found` | 路径资源缺失、当前用户不是项目成员或 task 不属于指定 project |
 | `405` | `method_not_allowed` | 已知路径使用不支持的方法，并返回 `Allow` |
-| `409` | `version_conflict` | 元数据更新或生命周期操作的期望版本过期 |
+| `409` | `version_conflict` | 任务元数据、生命周期或项目设置的期望版本过期 |
 | `409` | `invalid_transition` | 生命周期操作的当前状态不符合要求 |
 | `409` | `dependency_cycle` | 候选依赖图成环 |
 | `409` | `dependency_unsatisfied` | 领取、完成或元数据候选违反前置完成规则 |
@@ -280,7 +294,7 @@ points，截短时标记 titleTruncated；不返回完整标题、description �
 | V1 | Project 和 task 的 HTTP 创建、列表、读取、更新可跨服务重启持久化 |
 | V2 | 无效引用、跨 project、自身、重复和间接环被拒绝且无部分写入 |
 | V3 | 同 project 并发反向依赖最多一个成功，不同 project 的写入可独立推进 |
-| V4 | 四状态单向生命周期、全部错误前态、PATCH status 拒绝、同版本领取竞争和依赖更新与领取竞争保持状态约束 |
+| V4 | 四状态及前态受限生命周期、全部错误前态、PATCH status 拒绝、同版本领取/撤回竞争和依赖更新与领取竞争保持状态约束 |
 | V5 | 并发相同版本更新最多一个实际变更成功；过期版本冲突；无变化更新保持版本 |
 | V6 | 分页、筛选、派生字段和错误映射与本文一致，空列表不掩盖读取失败 |
 | V7 | 真实 PostgreSQL 测试覆盖事务回滚、迁移失败、并发写入和一致读取；取消和关闭有明确结果 |
