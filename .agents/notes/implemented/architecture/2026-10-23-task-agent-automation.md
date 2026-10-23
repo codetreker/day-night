@@ -31,13 +31,23 @@ Approval and withdrawal preserve the flag. Explicit manual claim remains
 available regardless of it; automatic worker claim requires it together with
 ready state, platform compatibility and unique ownership.
 
-The Web labels the switch “Automatic execution” / “自动执行”. Both enabling and
-disabling open a confirmation dialog, and its confirm action submits the
-captured target value and exact version directly. Cancel, Escape and closing
-the dialog submit nothing. The switch reflects confirmed server state until a
-successful response replaces it. The task owns an in-flight write after the
-dialog closes; unknown results block new writes while actual state is read,
-without automatic resubmission.
+The task detail places one combined “Automatic execution” / “自动执行” label
+and switch at the right of the status row below the title. Status, readiness
+and optional platform information occupy the left group. The combination
+provides both the confirmed state and its operation; the detail has no separate
+automation badge or lower Overview switch. List status badges retain their
+own purpose. Long titles remain above this row, and narrow layouts may wrap
+platform information only within the left group. The control stays right
+aligned with the first status line at its top. Error, unknown-result, locked
+and human-waiting feedback stays near the control without overlapping content
+or causing horizontal overflow.
+
+Both enabling and disabling open a confirmation dialog, and its confirm action
+submits the captured target value and exact version directly. Cancel, Escape
+and closing the dialog submit nothing. The switch reflects confirmed server
+state until a successful response replaces it. The task owns an in-flight write
+after the dialog closes; unknown results block new writes while actual state
+is read, without automatic resubmission.
 
 Permission changes use the existing member authorization and project
 transaction lock. Exact-version same-value PATCH preserves version and time;
