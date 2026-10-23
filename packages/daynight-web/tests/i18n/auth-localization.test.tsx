@@ -43,6 +43,7 @@ const language = (scope: typeof screen | ReturnType<typeof within> = screen) => 
 
 beforeEach(() => {
   window.sessionStorage.clear();
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
     configurable: true,
     value: function (this: HTMLDialogElement) { this.open = true; },

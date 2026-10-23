@@ -179,21 +179,31 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
       if (mounted.current && !isAbortError(error) && !(error instanceof ApiError && error.status === 401)) { setLogoutFailed(true); setSession({ status: "anonymous", notice: "logoutFailed" }); }
     });
   }, [clearSession]);
-  const recheckIdentity = useCallback(() => {
+  const pauseIdentity = useCallback(() => {
     active.current?.abort(); active.current = null; ++generation.current;
     resumeAuthRequests.current = pauseAuthRequests();
+  }, []);
+  const recheckIdentity = useCallback(() => {
+    pauseIdentity();
     setRevalidation((previous) => previous === "error" || previous === "retrying" ? "retrying" : "checking");
     setAttempt((value) => value + 1);
-  }, []);
+  }, [pauseIdentity]);
   const blocked = revalidation === "error" || revalidation === "retrying";
   useLayoutEffect(() => {
     document.body.classList.toggle("auth-session-checking", blocked);
     return () => document.body.classList.remove("auth-session-checking");
   }, [blocked]);
-  useEffect(() => {
+  // Departure gates foreground reads regardless of visibility/focus listener order.
+  // Layout setup also guards child request effects when the workspace mounts away.
+  useLayoutEffect(() => {
     if (session.status !== "authenticated") return;
-    let topLevelAway = document.visibilityState === "hidden" || !document.hasFocus();
-    const lostFocus = () => { if (!document.hasFocus()) topLevelAway = true; };
+    let topLevelAway = false;
+    const departed = () => {
+      if (topLevelAway) return;
+      topLevelAway = true;
+      pauseIdentity();
+    };
+    const lostFocus = () => { if (!document.hasFocus()) departed(); };
     const returned = () => {
       // Iframe-to-parent focus changes keep the top-level document focused.
       if (!topLevelAway || document.visibilityState === "hidden" || !document.hasFocus()) return;
@@ -201,18 +211,19 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
       recheckIdentity();
     };
     const visibilityChanged = () => {
-      if (document.visibilityState === "hidden") topLevelAway = true;
+      if (document.visibilityState === "hidden") departed();
       else returned();
     };
     window.addEventListener("blur", lostFocus);
     window.addEventListener("focus", returned);
     document.addEventListener("visibilitychange", visibilityChanged);
+    if (document.visibilityState === "hidden" || !document.hasFocus()) departed();
     return () => {
       window.removeEventListener("blur", lostFocus);
       window.removeEventListener("focus", returned);
       document.removeEventListener("visibilitychange", visibilityChanged);
     };
-  }, [session.status, recheckIdentity]);
+  }, [session.status, pauseIdentity, recheckIdentity]);
   const startLogin = (provider: AuthProvider) => {
     const returnPath = route.kind === "invitations" ? "/invitations" : pathname;
     const parameters = new URLSearchParams({ provider, returnPath });

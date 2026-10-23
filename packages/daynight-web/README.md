@@ -59,9 +59,11 @@ the latest identity decision. A failed check retains state behind the blocking
 retry overlay until a successful check; the same user keeps their forms and view,
 while a changed user remounts user-owned content. Previously loaded content stays
 visible until identity loss, a different identity or a verification error is
-confirmed. New API reads and writes wait for identity verification; same-user
-success resumes them, while identity replacement or session loss cancels queued
-requests from the previous session. Identity checks and logout bypass this wait.
+confirmed. Leaving the top-level page pauses new API reads and writes before
+any visibility-triggered refresh can dispatch. An authenticated mount that is
+already away applies the pause before child request effects. Returning confirms
+identity: same-user success resumes requests, while identity replacement or
+session loss cancels queued requests from the previous session. Identity checks and logout bypass this wait.
 A failed check keeps requests waiting through recovery. The [foreground verification decision](../../.agents/notes/implemented/bug-fix/2026-10-23-silent-foreground-identity-checks.md)
 records this presentation policy. Ordinary same-origin
 iframe focus changes do not count as top-level returns. Requests

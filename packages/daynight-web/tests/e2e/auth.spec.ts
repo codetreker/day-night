@@ -166,7 +166,36 @@ test('auth-project-isolation', scenario('auth-project-isolation'), async ({ page
     expect(originalDetail).not.toBeNull();
     expect(originalFrame).not.toBeNull();
     const identityRequests: string[] = [];
-    page.on('request', (request) => { if (new URL(request.url()).pathname === '/api/v1/me') identityRequests.push(request.method()); });
+    const graphRequests: string[] = [];
+    const requestOrder: string[] = [];
+    const identityRequestNumbers = new WeakMap<object, number>();
+    const graphRequestNumbers = new WeakMap<object, number>();
+    const pendingGraphWindows: { readonly identity: 'same-user' | 'changed-user'; readonly baseline: number; readonly beforeRelease: number }[] = [];
+    page.on('request', (request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (pathname === '/api/v1/me') {
+        identityRequests.push(request.method());
+        identityRequestNumbers.set(request, identityRequests.length);
+        requestOrder.push(`identity-request:${identityRequests.length}`);
+      } else if (pathname === `/api/v1/projects/${own.id}/task-graph`) {
+        graphRequests.push(request.method());
+        graphRequestNumbers.set(request, graphRequests.length);
+        requestOrder.push(`graph-request:${graphRequests.length}`);
+      }
+    });
+    page.on('response', (response) => {
+      if (new URL(response.url()).pathname === '/api/v1/me') requestOrder.push(`identity-response:${identityRequestNumbers.get(response.request())!}`);
+    });
+    const queueGraphWhileAway = async (): Promise<void> => {
+      expect(await page.evaluate(() => document.hasFocus())).toBe(false);
+      const refresh = page.locator('.project-title-actions>button');
+      // Invoke the existing refresh handler without bringing the document back into focus.
+      await refresh.evaluate((button: HTMLButtonElement) => {
+        button.click();
+        return new Promise<void>((resolve) => setTimeout(resolve, 0));
+      });
+      await expect(refresh).toBeDisabled();
+    };
     await page.evaluate(() => {
       const state = window as unknown as { authContinuity: boolean[]; stopAuthContinuity: () => void };
       const shell = document.querySelector('.auth-shell')!;
@@ -192,6 +221,10 @@ test('auth-project-isolation', scenario('auth-project-isolation'), async ({ page
     await secondaryFocus.detach();
     await otherTab.bringToFront();
     await expect.poll(() => page.evaluate(() => document.hasFocus())).toBe(false);
+    const sameUserGraphBaseline = graphRequests.length;
+    requestOrder.push('external-departure:1');
+    await queueGraphWhileAway();
+    expect(graphRequests).toHaveLength(sameUserGraphBaseline);
     await page.route(`${baseURL}/api/v1/me`, async (route) => {
       const response = await authenticatedAPI(context.request).get('/api/v1/me');
       expect(response.status()).toBe(200);
@@ -214,10 +247,18 @@ test('auth-project-isolation', scenario('auth-project-isolation'), async ({ page
     await attachmentPath.press('End');
     await attachmentPath.pressSequentially('.pending');
     await expect(attachmentPath).toHaveValue('draft/retained.txt.pending');
+    expect(graphRequests).toHaveLength(sameUserGraphBaseline);
+    pendingGraphWindows.push({ identity: 'same-user', baseline: sameUserGraphBaseline, beforeRelease: graphRequests.length });
     const sameUserResponse = page.waitForResponse(`${baseURL}/api/v1/me`);
+    const sameUserGraph = page.waitForResponse((response) => response.url() === `${baseURL}/api/v1/projects/${own.id}/task-graph`
+      && graphRequestNumbers.get(response.request())! > sameUserGraphBaseline);
     heldChecks[0]!.release();
     await heldChecks[0]!.completed;
     await (await sameUserResponse).finished();
+    expect((await sameUserGraph).status()).toBe(200);
+    expect(graphRequests.length).toBeGreaterThan(sameUserGraphBaseline);
+    expect(requestOrder).toContain('identity-response:1');
+    expect(requestOrder.indexOf(`graph-request:${sameUserGraphBaseline + 1}`)).toBeGreaterThan(requestOrder.indexOf('identity-response:1'));
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     expect(await originalShell!.evaluate((element) => element === document.querySelector('.auth-shell'))).toBe(true);
     expect(await originalDetail!.evaluate((element) => element === document.querySelector('.task-detail-dialog'))).toBe(true);
@@ -236,26 +277,37 @@ test('auth-project-isolation', scenario('auth-project-isolation'), async ({ page
     await expect(detail).toHaveCount(0);
     await otherTab.bringToFront();
     await expect.poll(() => page.evaluate(() => document.hasFocus())).toBe(false);
+    const changedUserGraphBaseline = graphRequests.length;
+    requestOrder.push('external-departure:2');
+    await queueGraphWhileAway();
+    expect(graphRequests).toHaveLength(changedUserGraphBaseline);
     await page.bringToFront();
     await expect.poll(() => heldChecks.length).toBe(2);
     expect(heldChecks[1]!.identity).toBe(aliceUser.id);
+    expect(graphRequests).toHaveLength(changedUserGraphBaseline);
     await otherTab.bringToFront();
     await expect.poll(() => page.evaluate(() => document.hasFocus())).toBe(false);
     await browserAuthentication(context, baseURL, 'bob');
     await page.bringToFront();
     await expect.poll(() => heldChecks.length).toBe(3);
     expect(heldChecks[2]!.identity).toBe(bobUser.id);
+    expect(graphRequests).toHaveLength(changedUserGraphBaseline);
     heldChecks[1]!.release();
     await heldChecks[1]!.completed;
     await expect(page.locator('body')).not.toHaveClass(/auth-session-checking/);
     await expect(page.getByRole('link', { name: '账户设置：Alice', exact: true })).toBeVisible();
+    expect(graphRequests).toHaveLength(changedUserGraphBaseline);
+    pendingGraphWindows.push({ identity: 'changed-user', baseline: changedUserGraphBaseline, beforeRelease: graphRequests.length });
     heldChecks[2]!.release();
     await heldChecks[2]!.completed;
     await expect(page.getByRole('link', { name: '账户设置：Bob', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: own.name, exact: true })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: '项目不存在或你没有访问权限' })).toBeVisible();
     expect(identityRequests).toEqual(['GET', 'GET', 'GET']);
-    await info.attach('auth-real-tab-return', { body: Buffer.from(JSON.stringify({ identityRequests, continuity })), contentType: 'application/json' });
+    await expect.poll(() => graphRequests.length).toBeGreaterThan(changedUserGraphBaseline);
+    expect(requestOrder).toContain('identity-response:3');
+    expect(requestOrder.indexOf(`graph-request:${changedUserGraphBaseline + 1}`)).toBeGreaterThan(requestOrder.indexOf('identity-response:3'));
+    await info.attach('auth-real-tab-return', { body: Buffer.from(JSON.stringify({ identityRequests, graphRequests, pendingGraphWindows, requestOrder, continuity })), contentType: 'application/json' });
     await picture(page, info, 'auth-account-return');
   } finally {
     for (const check of heldChecks) check.release();

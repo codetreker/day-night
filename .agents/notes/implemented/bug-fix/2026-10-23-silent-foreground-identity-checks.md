@@ -21,8 +21,13 @@ responses from older checks cannot decide the current identity. A confirmed
 account change invalidates owned requests and remounts the identity domain; a
 current 401 clears it.
 
-The shared API request boundary waits for identity verification before dispatching
-new resource reads and writes. Each waiting request retains its original auth
+The authentication shell pauses the shared API request boundary on top-level
+departure, before any returning child's visibility listener can dispatch a
+resource read. Its layout effect also pauses an already-away authenticated mount
+before child passive request effects. Paired hidden/blur events coalesce; leaving
+during a pending check aborts and supersedes it immediately. Returning visible
+and focused starts the latest identity check, independent of which return event
+arrives first. New resource reads and writes wait until identity is verified. Each waiting request retains its original auth
 generation and supports cancellation. Same-user success resumes requests; an
 identity change or session clear invalidates the generation before releasing the
 wait, cancelling old-identity requests before fetch. Identity checks and logout

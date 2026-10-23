@@ -156,6 +156,128 @@ describe("authenticated application shell", () => {
     expect(screen.queryByRole("link", { name: "账户设置：Alice" })).toBeNull();
   });
 
+  it.each([
+    { order: "focus-first", changed: false }, { order: "visibility-first", changed: false },
+    { order: "focus-first", changed: true }, { order: "visibility-first", changed: true },
+  ])("holds direct-project foreground reads until identity is confirmed ($order, changed=$changed)", async ({ order, changed }) => {
+    window.history.replaceState(null, "", `/projects/${projectId}`);
+    let meCalls = 0;
+    let finishCheck!: (response: Response) => void;
+    let cookieAccount = "Alice";
+    const dispatchedGraphs: Array<{ cookie: string; label: string | null }> = [];
+    const fetcher = vi.fn((url: string) => {
+      if (url === "/api/v1/me") return ++meCalls === 1 ? Promise.resolve(json(user())) : new Promise<Response>((done) => { finishCheck = done; });
+      if (url.endsWith("/task-graph")) {
+        dispatchedGraphs.push({ cookie: cookieAccount, label: document.querySelector(".account-name")?.textContent ?? null });
+        return Promise.resolve(json({ project: project(`${cookieAccount} 的项目`), tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } }));
+      }
+      if (url.endsWith("/members")) return Promise.resolve(json({ items: [member(cookieAccount === "Alice" ? userId : otherId)] }));
+      return Promise.resolve(defaults(url));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(<AuthenticatedApp />);
+    const oldHeading = await screen.findByRole("heading", { name: "Alice 的项目" });
+    topLevelFocused = false; visibility = "hidden";
+    fireEvent(document, new Event("visibilitychange"));
+    fireEvent(window, new Event("blur"));
+    cookieAccount = changed ? "Bob" : "Alice";
+    if (order === "focus-first") {
+      topLevelFocused = true;
+      fireEvent(window, new Event("focus"));
+      expect(meCalls).toBe(1);
+      visibility = "visible";
+      fireEvent(document, new Event("visibilitychange"));
+    } else {
+      visibility = "visible";
+      fireEvent(document, new Event("visibilitychange"));
+      await act(async () => {});
+      expect(meCalls).toBe(1);
+      expect(dispatchedGraphs).toEqual([{ cookie: "Alice", label: "Alice" }]);
+      topLevelFocused = true;
+      fireEvent(window, new Event("focus"));
+    }
+    await waitFor(() => expect(meCalls).toBe(2));
+    expect(dispatchedGraphs).toEqual([{ cookie: "Alice", label: "Alice" }]);
+    expect(screen.getByRole("heading", { name: "Alice 的项目" })).toBe(oldHeading);
+    expect(screen.getByRole("link", { name: "账户设置：Alice" })).toBeInTheDocument();
+    expect(document.body).not.toHaveClass("auth-session-checking");
+    fireEvent(window, new Event("focus"));
+    fireEvent(document, new Event("visibilitychange"));
+    await act(async () => finishCheck(json(changed ? user(otherId, "Bob") : user())));
+    const name = changed ? "Bob" : "Alice";
+    await screen.findByRole("heading", { name: `${name} 的项目` });
+    expect(dispatchedGraphs).toEqual([{ cookie: "Alice", label: "Alice" }, { cookie: name, label: name }]);
+    expect(meCalls).toBe(2);
+    if (changed) {
+      expect(oldHeading.isConnected).toBe(false);
+      expect(screen.queryByRole("link", { name: "账户设置：Alice" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "Alice 的项目" })).toBeNull();
+    } else expect(screen.getByRole("heading", { name: "Alice 的项目" })).toBe(oldHeading);
+  });
+
+  it.each(["hidden", "unfocused"])("pauses direct-project reads when the authenticated workspace first mounts %s", async (away) => {
+    window.history.replaceState(null, "", `/projects/${projectId}`);
+    visibility = away === "hidden" ? "hidden" : "visible";
+    topLevelFocused = false;
+    let meCalls = 0;
+    let finishCheck!: (response: Response) => void;
+    const fetcher = vi.fn((url: string) => url === "/api/v1/me" && ++meCalls > 1
+      ? new Promise<Response>((done) => { finishCheck = done; }) : Promise.resolve(defaults(url)));
+    vi.stubGlobal("fetch", fetcher);
+    render(<AuthenticatedApp />);
+    await screen.findByRole("link", { name: "账户设置：Alice" });
+    await act(async () => {});
+    expect(fetcher.mock.calls.filter(([url]) => url.startsWith("/api/v1/projects"))).toHaveLength(0);
+    expect(meCalls).toBe(1);
+    visibility = "visible";
+    fireEvent(document, new Event("visibilitychange"));
+    await act(async () => {});
+    expect(fetcher.mock.calls.filter(([url]) => url.startsWith("/api/v1/projects"))).toHaveLength(0);
+    topLevelFocused = true;
+    fireEvent(window, new Event("focus"));
+    await waitFor(() => expect(meCalls).toBe(2));
+    expect(fetcher.mock.calls.filter(([url]) => url.startsWith("/api/v1/projects"))).toHaveLength(0);
+    await act(async () => finishCheck(json(user())));
+    await screen.findByRole("heading", { name: "私有项目" });
+    expect(fetcher.mock.calls.filter(([url]) => url.endsWith("/task-graph"))).toHaveLength(1);
+  });
+
+  it("supersedes an identity check on departure before its response can release queued project reads", async () => {
+    window.history.replaceState(null, "", `/projects/${projectId}`);
+    const checks: Array<{ signal: AbortSignal; resolve: (value: ReturnType<typeof user>) => void }> = [];
+    let meCalls = 0;
+    vi.spyOn(auth, "me").mockImplementation((signal) => ++meCalls === 1 ? Promise.resolve(user())
+      : new Promise((resolve) => { checks.push({ signal, resolve }); }));
+    const fetcher = install();
+    render(<AuthenticatedApp />);
+    const heading = await screen.findByRole("heading", { name: "私有项目" });
+    topLevelFocused = false; visibility = "hidden";
+    fireEvent(document, new Event("visibilitychange"));
+    fireEvent(window, new Event("blur"));
+    topLevelFocused = true; visibility = "visible";
+    fireEvent(document, new Event("visibilitychange"));
+    fireEvent(window, new Event("focus"));
+    await waitFor(() => expect(checks).toHaveLength(1));
+    topLevelFocused = false; visibility = "hidden";
+    fireEvent(document, new Event("visibilitychange"));
+    expect(checks[0]!.signal.aborted).toBe(true);
+    fireEvent(window, new Event("blur"));
+    await act(async () => checks[0]!.resolve(user()));
+    expect(fetcher.mock.calls.filter(([url]) => url.endsWith("/task-graph"))).toHaveLength(1);
+    expect(meCalls).toBe(2);
+    expect(screen.getByRole("heading", { name: "私有项目" })).toBe(heading);
+    visibility = "visible";
+    fireEvent(document, new Event("visibilitychange"));
+    await act(async () => {});
+    expect(fetcher.mock.calls.filter(([url]) => url.endsWith("/task-graph"))).toHaveLength(1);
+    topLevelFocused = true;
+    fireEvent(window, new Event("focus"));
+    await waitFor(() => expect(checks).toHaveLength(2));
+    await act(async () => checks[1]!.resolve(user()));
+    await waitFor(() => expect(fetcher.mock.calls.filter(([url]) => url.endsWith("/task-graph"))).toHaveLength(2));
+    expect(screen.getByRole("heading", { name: "私有项目" })).toBe(heading);
+  });
+
   it("preserves the active project draft and focus throughout a delayed same-user identity check", async () => {
     let meCalls = 0;
     let finishCheck!: (response: Response) => void;
