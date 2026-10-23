@@ -111,7 +111,7 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     const crossing = await claimTask(api, project.id, await createApprovedTask(api, project.id, { title: 'Current attempt crosses the saved threshold', dependsOn: roots.map(({ id }) => id) }));
     await createApprovedTask(api, project.id, { title: 'Keeps completed timing visible in the active chain', dependsOn: [crossing.id] });
     const shared = await claimTask(api, project.id, await createApprovedTask(api, project.id, { title: 'Long shared multi-day execution title '.repeat(7), dependsOn: roots.map(({ id }) => id) }));
-    const brief = await createApprovedTask(api, project.id, { title: 'Known sub-minute completed task', dependsOn: [roots[0]!.id] });
+    const brief = await createApprovedTask(api, project.id, { title: 'Known sub-minute completed task', dependsOn: [roots[1]!.id] });
     await completeApprovedTask(api, project.id, brief);
     const standalone = await claimTask(api, project.id, await createApprovedTask(api, project.id, { title: 'Long standalone multi-day execution '.repeat(6) }));
     const legacy = await claimTask(api, project.id, await createApprovedTask(api, project.id, { title: 'Historical unknown execution start' }));
@@ -136,13 +136,15 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     const graphPath = `/api/v1/projects/${project.id}/task-graph`;
     page.on('response', (response) => { if (new URL(response.url()).pathname === graphPath) delivered += 1; });
     await page.goto(`/projects/${project.id}`);
-    for (const root of roots) {
-      const toggle = page.locator(`#task-root-${root.id}`);
+    const openTimingChain = async () => {
+      const toggle = page.locator(`#task-root-${roots[1]!.id}`);
       await expect(toggle).toBeVisible();
       if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
-    }
-    const externalRoot = page.locator(`#task-root-${external.id}`);
-    if (await externalRoot.getAttribute('aria-expanded') === 'true') await externalRoot.click();
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.locator('.task-graph-canvas')).toHaveCount(1);
+      await expect(page.locator(`#task-graph-${roots[1]!.id}`)).toBeVisible();
+    };
+    await openTimingChain();
     const claimed = await record(project.id, crossing.id, 'crossing-before-seed');
     await seedClaimedTaskStart(project.id, crossing.id, 3_585_000);
     await page.reload();
@@ -204,14 +206,12 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     const completedLegacy = await record(project.id, legacy.id, 'completed-legacy-remains-unknown');
     expect(completedLegacy.startedAt).toBeNull(); expect(completedLegacy.completedAt).not.toBeNull();
     await retained.dispose();
-    for (const root of roots) {
-      const toggle = page.locator(`#task-root-${root.id}`);
-      if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
-    }
+    await openTimingChain();
 
     for (const locale of ['zh-CN', 'en'] as const) {
       await page.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption(locale);
       await page.getByRole('tab', { name: locale === 'en' ? 'Task chains' : '任务链', exact: true }).click();
+      await openTimingChain();
       await expect(card(page, shared.id).locator('.task-shared-label')).toBeVisible();
       await expect(card(page, shared.id).locator('.task-stuck-label')).toHaveText(locale === 'en' ? 'Possibly stuck' : '可能卡住了');
       await expect(duration(card(page, brief.id))).toContainText(locale === 'en' ? '< 1 min' : '不足 1 分钟');
