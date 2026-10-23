@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -19,8 +20,9 @@ import (
 var ErrCaseInsensitive = errors.New("file storage root must distinguish uppercase and lowercase names")
 
 type Storage struct {
-	root      *os.Root
-	namespace sync.Mutex
+	root          *os.Root
+	exactSpelling bool
+	namespace     sync.Mutex
 }
 
 var _ filestorage.Storage = (*Storage)(nil)
@@ -33,10 +35,14 @@ func New(root string) (*Storage, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := checkCaseSensitive(directory); err != nil {
+	sensitive, err := checkCaseSensitive(directory)
+	if err != nil {
 		return nil, errors.Join(err, directory.Close())
 	}
-	return &Storage{root: directory}, nil
+	if !sensitive && runtime.GOOS != "darwin" {
+		return nil, errors.Join(ErrCaseInsensitive, directory.Close())
+	}
+	return &Storage{root: directory, exactSpelling: !sensitive}, nil
 }
 
 func (s *Storage) Close() error {
@@ -74,6 +80,13 @@ func (s *Storage) Open(ctx context.Context, bucket, name string) (filestorage.Ob
 	if err != nil {
 		return filestorage.Object{}, err
 	}
+	if s.exactSpelling {
+		s.namespace.Lock()
+		defer s.namespace.Unlock()
+	}
+	if err := s.checkSpelling(address); err != nil {
+		return filestorage.Object{}, err
+	}
 	if err := s.regular(address); err != nil {
 		return filestorage.Object{}, err
 	}
@@ -101,6 +114,9 @@ func (s *Storage) Delete(ctx context.Context, bucket, name string) error {
 	}
 	s.namespace.Lock()
 	defer s.namespace.Unlock()
+	if err := s.checkSpelling(address); err != nil {
+		return err
+	}
 	if err := s.regular(address); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil
@@ -126,6 +142,9 @@ func checkedAddress(ctx context.Context, bucket, name string) (string, error) {
 func (s *Storage) beginPut(address string) (file *os.File, temporary string, result error) {
 	s.namespace.Lock()
 	defer s.namespace.Unlock()
+	if err := s.checkSpelling(address); err != nil {
+		return nil, "", err
+	}
 	defer func() {
 		if result != nil {
 			result = errors.Join(result, s.pruneParents(address))
@@ -145,6 +164,9 @@ func (s *Storage) beginPut(address string) (file *os.File, temporary string, res
 func (s *Storage) publish(temporary, address string) error {
 	s.namespace.Lock()
 	defer s.namespace.Unlock()
+	if err := s.checkSpelling(address); err != nil {
+		return err
+	}
 	if err := s.fileTarget(address, true); err != nil {
 		return err
 	}
@@ -262,20 +284,20 @@ func (f *contextFile) Close() error {
 	return errors.Join(f.ctx.Err(), f.file.Close())
 }
 
-func checkCaseSensitive(root *os.Root) (result error) {
+func checkCaseSensitive(root *os.Root) (sensitive bool, result error) {
 	name := ".daynight-case-" + rand.Text()
 	if err := root.Mkdir(name, 0o700); err != nil {
-		return err
+		return false, err
 	}
 	defer func() { result = errors.Join(result, root.RemoveAll(name)) }()
 	if err := createProbeFile(root, name+"/A"); err != nil {
-		return err
+		return false, err
 	}
 	err := createProbeFile(root, name+"/a")
 	if errors.Is(err, fs.ErrExist) {
-		return ErrCaseInsensitive
+		return false, nil
 	}
-	return err
+	return err == nil, err
 }
 
 func createProbeFile(root *os.Root, name string) error {

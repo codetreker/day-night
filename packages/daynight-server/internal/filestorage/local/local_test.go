@@ -66,12 +66,7 @@ func TestFilesRetainAddressesAndBytes(t *testing.T) {
 		t.Fatalf("physical real path content: %v", err)
 	}
 	put(t, storage, "other", "Task/docs/Design 文档.md", []byte("other bucket"))
-	put(t, storage, "attachments", "Task/docs/design 文档.md", []byte("lowercase"))
-	put(t, storage, "attachments", "task/docs/Design 文档.md", []byte("other task"))
 	if got := string(read(t, storage, "other", "Task/docs/Design 文档.md")); got != "other bucket" {
-		t.Fatal(got)
-	}
-	if got := string(read(t, storage, "attachments", "Task/docs/design 文档.md")); got != "lowercase" {
 		t.Fatal(got)
 	}
 	if got := read(t, storage, "attachments", "Task/docs/Design 文档.md"); !bytes.Equal(got, content) {
@@ -321,7 +316,7 @@ func TestNewAndClosedRootErrors(t *testing.T) {
 	if err := storage.Delete(t.Context(), "bucket", "file"); err == nil {
 		t.Fatal("Delete on closed root succeeded")
 	}
-	if err := checkCaseSensitive(storage.root); err == nil {
+	if _, err := checkCaseSensitive(storage.root); err == nil {
 		t.Fatal("case probe on closed root succeeded")
 	}
 }
@@ -374,6 +369,9 @@ func TestPermissionFailuresRemainIdentifiable(t *testing.T) {
 	})
 	if _, err := storage.Put(t.Context(), "bucket", "file", strings.NewReader("bad")); !errors.Is(err, fs.ErrPermission) {
 		t.Fatalf("Put permission: %v", err)
+	}
+	if _, err := storage.Put(t.Context(), "bucket", "new/file", strings.NewReader("bad")); !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("new directory permission: %v", err)
 	}
 	if err := storage.Delete(t.Context(), "bucket", "file"); !errors.Is(err, fs.ErrPermission) {
 		t.Fatalf("Delete permission: %v", err)

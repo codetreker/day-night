@@ -147,7 +147,10 @@ pnpm web:dev
 ```
 
 Run the Go API separately on `127.0.0.1:8787`, using its
-[configuration](../daynight-server/README.md). Vite proxies `/api` to that address
+[configuration](../daynight-server/README.md). Native macOS development uses an
+ordinary writable storage directory and does not require an APFS image. Names
+that alias another file or directory on that filesystem are refused; Linux CI
+owns case-coexistence coverage. Vite proxies `/api` to that address
 and listens on loopback. For real login through Vite, set the same
 `DAYNIGHT_UNIAUTH_CALLBACK_URL` in the Vite and Go environments, registered with
 UniAuth for the development browser origin. Vite proxies exactly that callback
@@ -684,29 +687,37 @@ evidence, which must use the full bundled Chromium channel (`chromium`) pinned b
 Playwright 1.64.1. This channel renders PDF pages; MIME-document readiness alone
 is not a painted-content oracle. Native and container phases record and require
 the same browser identity. macOS also requires Xcode Command Line Tools (the Apple
-SDK and `xcrun clang`) and permission to mount disk images. The runner compiles its
-process inspection helper into the project temporary directory. It prepares
-case-sensitive storage automatically: a verified directory on a case-sensitive
-filesystem, or an owned case-sensitive APFS sparse image on macOS. Storage receipts
-are persisted before attaching the image and starting the native server. Cleanup
-confirms the server stopped, validates image/mount ownership, detaches the owned
-image, and only then removes the storage directory. A busy image is retried at
-one-second intervals within one 30-second cleanup deadline, rechecking ownership
-before each detach attempt. Ambiguous ownership fails
-without recursive removal. Windows native Web acceptance is unsupported.
+SDK and `xcrun clang`). The runner compiles its process inspection helper into
+project temporary storage. Default acceptance uses an owned ordinary directory,
+including on a case-insensitive Mac disk, without creating or attaching images.
+Linux still requires a case-sensitive directory. The storage receipt records
+the measured `caseSensitive` capability and each browser phase records
+`caseSensitiveStorage`. Native Mac phases without that capability use a
+non-colliding attachment fixture path; Linux and container phases retain the
+case-sensitive fixture. A normal Mac pass does not claim native case-coexistence
+coverage. Windows native Web acceptance is unsupported.
 
 Routine `pnpm web:test` does not attach disk images on macOS. It checks storage
 receipts and refusal paths without requesting disk authorization. Run the explicit
 `pnpm web:test:storage-native` suite for APFS lifecycle checks; its cases share
 one mounted image, including a real read-only file holder that prevents the first
-detach and releases the file before cleanup retries. Complete `pnpm web:acceptance` also creates only one native
-storage image per run on a case-insensitive filesystem. macOS may request
-administrator authorization for that attachment. Receipt-only tests do not prove
-APFS mounting or complete native acceptance.
+detach and releases the file before cleanup retries. For a complete native Web
+run with case-sensitive storage on a Mac, explicitly run
+`pnpm web:acceptance:apfs`. It uses one owned case-sensitive APFS sparse image
+when the parent filesystem folds case. These diagnostic commands may request
+macOS disk authorization; routine development and validation do not need them.
+Receipts are persisted before attachment and server startup. Cleanup confirms
+the server stopped, validates image/mount ownership, detaches normally, and only
+then removes storage. Busy detach retries share one 30-second deadline with
+ownership revalidation. Uncertain ownership fails without recursive removal.
+Existing recovery commands remain available without opting into new attachment.
 
-The full CI workflow remains on Linux. macOS local acceptance runs the same 51
-scenarios, additional combined authentication checks and fixed performance budgets; a local pass does not establish macOS CI
-coverage. For networks requiring an npm mirror, use
+The full CI workflow remains on Linux and retains case-sensitive storage coverage.
+macOS local acceptance runs the same 51 scenarios, additional combined
+authentication checks and fixed performance budgets, with native filesystem
+coverage qualified by its recorded capability. A local pass does not establish
+macOS CI coverage. The [filesystem coverage decision](../../.agents/notes/implemented/testing/2026-10-23-native-development-filesystem-coverage.md)
+owns this distinction. For networks requiring an npm mirror, use
 `pnpm install --frozen-lockfile --registry=https://mirrors.cloud.tencent.com/npm/`
 for the workspace. Export `pnpm_config_registry=https://mirrors.cloud.tencent.com/npm/` for the
 acceptance CLI installation, and `DAYNIGHT_NPM_REGISTRY` for Docker builds. Both Compose stacks default to the official
