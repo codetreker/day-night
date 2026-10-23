@@ -115,8 +115,10 @@ worktrees, dedicated Herdr sessions and SQLite recovery. Agents own delivery;
 the worker owns resources, recovery and completion verification from existing
 task evidence. The [design decision](.agents/notes/implemented/architecture/2026-10-22-worker-design.md)
 records that responsibility split and the choice to observe current Herdr status
-without another reporting protocol. These documents deliver the architecture;
-the worker runtime, task role/platform controls and claim integration remain
+without another reporting protocol. The [automatic-execution decision](.agents/notes/implemented/architecture/2026-10-23-task-agent-automation.md)
+defines the boolean `allowAgents` permission and confirmation for both directions
+of the Web switch. These documents deliver the design; the worker runtime, task
+automatic-execution permission/platform controls and claim integration remain
 implementation work. Authentication and the approval-based task lifecycle are
 delivered prerequisites; worker integration preserves the current task execution
 timestamp contract.

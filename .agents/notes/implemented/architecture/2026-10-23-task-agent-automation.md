@@ -1,0 +1,85 @@
+# Agent Note: Task Agent Automation Permission
+
+Status: implemented
+
+## Problem
+
+Ready tasks may require a person to arrange their execution, while a foreground
+worker needs a stable rule for selecting work without a new conversation. A
+task can also wait for human input during agent execution without changing who
+owns its resources. The task model must express permission for automatic
+selection independently of approval, dependency readiness and actual executor
+identity.
+
+## Decision
+
+The adopted [requirements](../../../../docs/spec/daynight-worker.md),
+[architecture](../../../../docs/design/daynight-worker.md) and
+[delivery breakdown](../../../../docs/design/daynight-worker-tasks.md) use a
+top-level boolean `allowAgents`. This decision supersedes the Human/Agent role
+portion of the [worker design](2026-10-22-worker-design.md); its service/worker/
+Herdr/agent responsibilities and recovery rules remain unchanged. This note
+records the adopted design. Production permission controls and worker claim
+integration remain implementation work owned by WR-T1 and WR-T3 respectively.
+
+New tasks always start with `allowAgents=false`; a database migration gives
+existing tasks `true` while preserving their other fields, versions and business
+timestamps. Creation rejects a supplied permission. An authenticated project
+member changes the flag through ordinary versioned task PATCH: omission keeps
+the value, explicit false disables it, and null or nonboolean values fail.
+Approval and withdrawal preserve the flag. Explicit manual claim remains
+available regardless of it; automatic worker claim requires it together with
+ready state, platform compatibility and unique ownership.
+
+The Web labels the switch “Automatic execution” / “自动执行”. Both enabling and
+disabling open a confirmation dialog, and its confirm action submits the
+captured target value and exact version directly. Cancel, Escape and closing
+the dialog submit nothing. The switch reflects confirmed server state until a
+successful response replaces it. The task owns an in-flight write after the
+dialog closes; unknown results block new writes while actual state is read,
+without automatic resubmission.
+
+Permission changes use the existing member authorization and project
+transaction lock. Exact-version same-value PATCH preserves version and time;
+stale versions still fail. Actual changes during `in_progress` fail, including
+human-input waits. Disabling permission does not stop or transfer execution.
+Worker and bundled agent workflows may not enable permission themselves.
+Confirmation records deliberate operation intent; session and PAT credentials
+identify a principal without proving a physical human is operating the client.
+
+## Alternatives
+
+**A Human/Agent processing role.** The original worker design used two role
+values to distinguish tasks eligible for automatic selection from manually
+arranged tasks. That kept readiness independent, but the product decision being
+expressed is whether automatic agent handling is allowed. A boolean directly
+states that permission while leaving actual user, machine and agent identity
+with the execution record.
+
+**A dedicated permission action and an additional confirmation field.** The
+role design used a separate endpoint and `confirmAgent` field. A named switch
+with confirmation in both directions already captures the target permission
+and deliberate action. Existing task PATCH supplies authorization, version
+checking, serialization and error propagation; another endpoint or duplicate
+field would not establish that the caller is physically human.
+
+## Consequences
+
+Task resources, graph projections, strict readers, filters and update writers
+must all carry the boolean explicitly. The database migration owns old data;
+runtime readers do not invent a default for missing fields. The flag is applied
+before candidate pagination and included in cursor scope, then rechecked inside
+the worker-claim transaction. A local filter on a bounded page cannot establish
+that no eligible work exists.
+
+Switch changes share the task write gate with approval and withdrawal. Version
+conflicts require a fresh decision, confirmed failures retain the prior value,
+and uncertain writes remain unresolved until actual state is observed. Those
+guarantees, existing task/attachment state retention, bilingual labels,
+keyboard operation and fixed graph geometry belong to the permission delivery;
+they are not deferred to worker integration.
+
+WR-T1 verifies the permission and existing manual lifecycle without depending
+on later worker endpoints. WR-T3 owns automatic claim transaction integration,
+WR-T6 controlled coordinator behavior, and WR-T8 independent live acceptance.
+Design delivery does not establish those runtime capabilities.

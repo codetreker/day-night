@@ -13,7 +13,7 @@
 | [命令组合](../../packages/daynight/src/commands/review/command.ts) | definition → command → runtime，业务按命令懒加载。 |
 | [项目写锁](https://github.com/codetreker/daynight/blob/e533b8610ec38522fd5387e4715b573734bd16c2/packages/daynight-server/internal/core/store/project_tx.go#L29-L39)、[版本检查](https://github.com/codetreker/daynight/blob/e533b8610ec38522fd5387e4715b573734bd16c2/packages/daynight-server/internal/service/task.go#L100-L120) | 同一事务中检查资格、权限、版本和归属。 |
 | [属性 codec](../../packages/daynight-server/internal/taskproperties/codec.go) | 新增预定义属性，保留已有 PR 属性；读与写权限分开。 |
-| [REST client](../../packages/daynight/src/api/client.ts)、[分页范围](../../packages/daynight-server/internal/service/page.go) | 复用认证、int64、游标和不确定写入分类；扩展角色/平台/worker 筛选。 |
+| [REST client](../../packages/daynight/src/api/client.ts)、[分页范围](../../packages/daynight-server/internal/service/page.go) | 复用认证、int64、游标和不确定写入分类；扩展自动执行许可/平台/worker 筛选。 |
 | [review store](../../packages/daynight/src/commands/review/store.ts)、[worktrees](../../packages/daynight/src/commands/review/adapters/worktrees.ts) | 复用必要的持久性、Git/路径原语；worker 自己拥有状态和可提交分支。 |
 
 ## 总体结构
@@ -32,7 +32,7 @@ flowchart TB
 
 | 组件 | 唯一职责 |
 |---|---|
-| 服务端 | 任务角色/平台、ready、认证权限、原子 claim、归属更新、完成与移交。 |
+| 服务端 | 任务自动执行许可/平台、ready、认证权限、原子 claim、归属更新、完成与移交。 |
 | Worker | 轮转与名额、worktree、Herdr 启停、状态观察、恢复、证据核验及清理。 |
 | Agent | 实现、测试、提交、PR、CI/review 修复、合并和任务验收；维护正常 task 资料。 |
 | Herdr | PTY、agent 启动/输入/状态及原生会话引用。 |
@@ -86,19 +86,25 @@ Agent 类型不变时仓库字段覆盖全局字段；切换类型时按新类�
 任务顶层字段：
 
 ```text
-processingRole: Human | Agent
+allowAgents: boolean
 requiredPlatform: null | windows | linux | macos
 ```
 
-旧任务迁移为 Agent 且平台为 null，保留其他数据/版本/时间；新任务为 Human、平台 null。创建不能直接绕过人工确认设置 Agent。角色确认使用明确操作及认证用户，不从 session/PAT 类型推断物理人工。CLI/skill 禁止自动 worker 自行确认角色；Web 使用角色原型的确认与保存交互。
+旧任务迁移为 `allowAgents=true` 且平台为 null，保留其他数据、版本和时间；新任务始终为 `allowAgents=false`、平台 null。创建输入拒绝 `allowAgents`，后续通过普通 task PATCH 显式设置布尔值；未提供字段保持原值，显式 false 关闭，null 和其他类型拒绝。迁移与严格 DTO 读取拥有默认值，不增加运行时缺字段 fallback。
+
+Web 在任务详情 Overview 提供“自动执行” / “Automatic execution”开关。每次开启或关闭都打开对应确认框；确认按钮直接提交目标值及打开确认框时观察到的精确 version。取消、Escape 或关闭不提交，开关保持服务端已确认值；请求成功后安装完整返回 task 并刷新图。修改与 approve/unapprove 共用单 task 写入控制，提交或结果不确定期间阻止重复写入；确认拒绝保留原值，版本冲突读取最新状态并要求重新决定，断连/5xx/协议错误先核对实际结果，不自动重发。任务切换、关闭详情和后台刷新保持请求归属，已提交操作不依赖弹框仍然挂载。
+
+开启框说明 worker 可在任务获批、依赖完成并符合运行条件时自动领取；关闭框说明 worker 将不再自动领取。自动执行许可、审批和 ready 分别保有原义：`approve`、`unapprove`、手工 claim/complete 与普通元数据修改均保留许可。实际切换在 `in_progress` 拒绝；权限和版本检查先于同值判定，精确版本同值 PATCH 返回原 task，不增加版本或更新时间。关闭许可不隐式停止执行或移交资源。
+
+确认表示明确操作意图，不能从 session/PAT 类型推断物理人工。CLI/skill 禁止自动 worker 自行启用许可，操作沿用现有项目成员写权限。Web 的双向确认与状态交互由自动执行许可 task 的原型拥有。
 
 候选查询扩展现有列表：
 
 ```http
-GET /api/v1/projects/{project}/tasks?ready=true&processingRole=Agent&compatiblePlatform=linux&limit=10
+GET /api/v1/projects/{project}/tasks?ready=true&allowAgents=true&compatiblePlatform=linux&limit=10
 ```
 
-`compatiblePlatform` 包含 null 与相同平台，在排序/limit 前过滤，并加入游标范围。沿用服务端创建时间/UUID 顺序。Worker 按空闲名额读取候选，合法冲突后考虑下一个；空页/无兼容候选不占名额。已有未完成 worktree 的候选还需确认本机持有原执行资料，否则跳过并显示需要人工移交，不能在另一机器新建空 worktree。
+查询可按 `allowAgents=true|false` 筛选，缺省保留现有全量任务语义。`allowAgents=true` 与 ready、`compatiblePlatform` 在排序/limit 前组合过滤，并加入游标范围。`compatiblePlatform` 包含 null 与相同平台。沿用服务端创建时间/UUID 顺序。Worker 按空闲名额读取候选，合法冲突后考虑下一个；空页/无兼容候选不占名额。已有未完成 worktree 的候选还需确认本机持有原执行资料，否则跳过并显示需要人工移交，不能在另一机器新建空 worktree。
 
 ### 受保护的执行属性
 
@@ -129,17 +135,16 @@ GET /api/v1/projects/{project}/tasks?ready=true&processingRole=Agent&compatibleP
 
 | 操作 | 必要输入与行为 |
 |---|---|
-| `POST .../processing-role` | version、目标角色；转 Agent 需明确 `confirmAgent=true`。|
-| 普通 task PATCH | 可设置/清除 requiredPlatform；已 claim 时角色与平台更改拒绝。|
+| 普通 task PATCH | version 与可选 allowAgents/requiredPlatform；许可为布尔值，平台可设置/清除。`in_progress` 拒绝实际切换；精确版本同值更新不改版本或时间。|
 | `POST .../worker-claim` | version、预先落库的 claimId、worker/机器/平台/agent、worktreeId；成功原子写 in_progress 与唯一 active claim。|
-| `PATCH .../worker-claim` | version、claimId 及会话/阶段摘要；仅当前 owner 可更新，不能更换身份、角色、平台或 status。|
+| `PATCH .../worker-claim` | version、claimId 及会话/阶段摘要；仅当前 owner 可更新，不能更换身份、自动执行许可、平台或 status。|
 | `POST .../complete` | 现有生命周期完成接口；active worker claim 必须另提供匹配 claimId 并满足 owner 校验。普通人工任务保留原行为。|
-| `POST .../worker-claim/release` | version、claimId、明确停止确认；仅当前执行用户或项目管理员，可将已停止执行释放回 todo，保留角色/平台和原 worktree 关联。|
+| `POST .../worker-claim/release` | version、claimId、明确停止确认；仅当前执行用户或项目管理员，可将已停止执行释放回 todo，保留自动执行许可/平台和原 worktree 关联。|
 | `POST .../worker-claim/transfer` | version、旧 claimId、新 claim/目标用户与 worker/机器/平台、原 worktreeId、停止及连续性确认；原子切换归属，保持 in_progress。|
 
-Claim 在项目写锁内依次检查成员权限、version、todo/依赖、Agent/平台、无其他 active claim；成功只增加一次版本。会话更新、完成、release/transfer 同时检查当前 claim。一般 metadata 更新不能绕过这些入口。
+Claim 在项目写锁内依次检查成员权限、version、todo/依赖、allowAgents/平台、无其他 active claim；成功只增加一次版本。会话更新、完成、release/transfer 同时检查当前 claim。一般 metadata 更新不能绕过这些入口。
 
-Release 是 worker 专用的受控重入例外，不恢复通用 status PATCH。释放后 ready Agent 可以再次竞争；原工作区绑定仍保留，其他机器没有延续资料时不得重新开始。角色/平台编辑与新 claim 的竞争仍受 version/锁定规则约束。
+Release 是 worker 专用的受控重入例外，不恢复通用 status PATCH。释放后 ready 且 allowAgents=true 的任务可以再次竞争；原工作区绑定仍保留，其他机器没有延续资料时不得重新开始。自动执行许可/平台编辑与新 claim 的竞争仍受 version/锁定规则约束。
 
 沿用现有错误 envelope：输入或只读字段为 `400 invalid_input`，认证/所有者权限为既有 401/403，非成员/不存在为 404；旧版本为 `409 version_conflict`，资格或生命周期不符为 `409 invalid_transition`，旧 claim 为 `409 claim_conflict`。错误不转成空候选或成功。
 
@@ -247,7 +252,7 @@ Linux 本地 Herdr 0.8.2 的隔离无原生 agent 冒烟已验证：原始 JSON 
 
 | 门禁 | 必须证明 |
 |---|---|
-| 服务端与迁移 | 角色默认/确认、平台清除/分页、属性写保护、同版本单赢家、旧 claim、权限、release/transfer 及手工路径。 |
+| 服务端与迁移 | 许可默认/双向确认/取消/核对、平台清除/分页、属性写保护、同版本单赢家、旧 claim、权限、release/transfer 及手工路径。 |
 | 本地状态与 Git | WAL/事务、动作结果不确定、稳定 worktree、所有权核对、冻结配置、恢复计数、结束记录和清理。 |
 | Herdr 原生 | 支持基线、两 agent、三平台 API/输入/blocked、停止、无客户端 native restore 及真实历史保留。 |
 | 端到端 | 安装 CLI、两 worker 竞争、多仓库轮转、PR/CI/review/合并/验收、人工介入/移交、各崩溃窗口与重启。 |
@@ -256,7 +261,7 @@ Linux 本地 Herdr 0.8.2 的隔离无原生 agent 冒烟已验证：原始 JSON 
 
 ## 模型入口大小
 
-模型入口只使用随包 `using-daynight` 与既有 task CLI。启动上下文传 task/claim/session/worktree 标识及技能路径，不复制完整 Goal 或全部交互资源。对实际登记资料测得：
+模型入口只使用随包 `using-daynight` 与既有 task CLI。启动上下文传 task/claim/session/worktree 标识及技能路径，不复制完整 Goal 或全部交互资源。原始架构阶段对当时登记资料测得下表；数值是该阶段的输入快照，不代表后续修改后的附件大小：
 
 | 来源 | task 简介 UTF-8 字节 | 主 Markdown 字节 |
 |---|---:|---:|
@@ -275,4 +280,4 @@ Linux 本地 Herdr 0.8.2 的隔离无原生 agent 冒烟已验证：原始 JSON 
 | report CLI/SQLite inbox 或结果文件 | 需要新消息、去重和恢复协议；现有状态与 task 资料足以承载观察，未采用。 |
 | 共用 review coordinator/store | PR revision/发布与长任务的名额和恢复语义不同，采用窄基础原语复用。 |
 
-包含角色/平台、唯一归属、前台执行、原生 agent、恢复、人工管理与完整验收。通用插件引擎、报告系统、自动跨机器文件搬运、基于失联超时抢占及通用自然语言验收引擎不在交付内。相应情况保留明确错误/暂停及人工入口；唯一归属、状态隔离、原成果连续性和错误传播是本次必须成立的保证，不作为后续补丁。
+包含自动执行许可/平台、唯一归属、前台执行、原生 agent、恢复、人工管理与完整验收。通用插件引擎、报告系统、自动跨机器文件搬运、基于失联超时抢占及通用自然语言验收引擎不在交付内。相应情况保留明确错误/暂停及人工入口；唯一归属、状态隔离、原成果连续性和错误传播是本次必须成立的保证，不作为后续补丁。

@@ -4,11 +4,11 @@
 
 ## 设计交接与任务身份
 
-Goal 描述 `555a7772-ad35-40f5-b9d6-ff7dd4e08165` 拥有已完成的问题定义。架构设计与拆分 task 为 `2b4093dc-7b44-4ec1-a28e-59de68a0d800`，交付 PR 为 [#154](https://github.com/codetreker/daynight/pull/154)；实际集成并满足阶段验收后完成。下列八项是独立实施任务，现有角色/平台任务复用其原身份；实时状态以 Daynight 为准。
+Goal 描述 `555a7772-ad35-40f5-b9d6-ff7dd4e08165` 拥有已完成的问题定义。架构设计与拆分 task 为 `2b4093dc-7b44-4ec1-a28e-59de68a0d800`，交付 PR 为 [#154](https://github.com/codetreker/daynight/pull/154)；实际集成并满足阶段验收后完成。下列八项是独立实施任务，现有自动执行许可/平台任务复用其原身份；实时状态以 Daynight 为准。
 
 | 编号 | 具体结果 | Daynight task ID | 估算（分钟） |
 |---|---|---|---:|
-| WR-T1 | 为任务增加 Human / Agent 处理角色 | `82bafb30-5c47-4b42-8e78-bb5b524c2ba4` | 180–300 |
+| WR-T1 | 为任务增加 Agent 自动执行许可 | `82bafb30-5c47-4b42-8e78-bb5b524c2ba4` | 180–300 |
 | WR-T2 | 为任务增加执行平台要求 | `4dbd624e-5b16-494b-b12d-8ae7db069ca1` | 120–180 |
 | WR-T3 | 建立唯一的任务执行认领 | `f41f3052-96ad-4fe0-b969-e03ef789422a` | 240–360 |
 | WR-T4 | 通过 Herdr 管理任务 agent | `2a253388-aa58-4c98-912a-7f4eb2e078ac` | 240–360 |
@@ -24,7 +24,7 @@ Goal 描述 `555a7772-ad35-40f5-b9d6-ff7dd4e08165` 拥有已完成的问题定�
 ```mermaid
 flowchart LR
   G[Goal 描述完成] --> D[架构与完整拆分]
-  D --> T1[WR-T1 角色]
+  D --> T1[WR-T1 自动执行许可]
   T1 --> T2[WR-T2 平台]
   T2 --> T3[WR-T3 唯一 claim]
   D --> T4[WR-T4 Herdr agent]
@@ -36,27 +36,29 @@ flowchart LR
   T7 --> T8[WR-T8 独立整体验收]
 ```
 
-依赖由真实 task 的 `dependsOn` 表达；图是登记结果的投影，执行前读取实际资源。AU-T5 为 `ce2f8cd5-daab-40f2-8637-c1a8ae17e445`，ST-T2 为 `6db17ca5-5090-4ba0-8531-e1715b4e1c97`；两项前置契约均已交付，其已完成依赖已从角色任务中移除。实施须遵循当前主线的鉴权、生命周期与任务执行时间契约。
+依赖由真实 task 的 `dependsOn` 表达；图是登记结果的投影，执行前读取实际资源。AU-T5 为 `ce2f8cd5-daab-40f2-8637-c1a8ae17e445`，ST-T2 为 `6db17ca5-5090-4ba0-8531-e1715b4e1c97`；两项前置契约均已交付，其已完成依赖已从自动执行许可任务中移除。实施须遵循当前主线的鉴权、生命周期与任务执行时间契约。
 
-所有本 Goal 交付根经设计 task 把关；Herdr 适配与本地状态不依赖角色/平台实现，可并行交付；最终 coordinator 同时消费三条已完成能力。每个 task 一个明确结果，内部 CI、review 和修复属于原 task，不另建步骤型 task。
+所有本 Goal 交付根经设计 task 把关；Herdr 适配与本地状态不依赖自动执行许可/平台实现，可并行交付；最终 coordinator 同时消费三条已完成能力。每个 task 一个明确结果，内部 CI、review 和修复属于原 task，不另建步骤型 task。
 
 ## 每项交付的范围与验收
 
-### WR-T1：为任务增加 Human / Agent 处理角色
+### WR-T1：为任务增加 Agent 自动执行许可
 
-覆盖需求：W-02。数据库迁移、明确人工确认、服务端/CLI/Web 一致角色和 claim 锁定。
+覆盖需求：W-02。交付顶层 `allowAgents` 布尔许可、数据库迁移、普通 PATCH、候选过滤及 CLI/Web 一致契约。
 
-保留已确认旧任务 Agent、新任务 Human、人工确认和已 claim 锁定；Web 使用该 task 已上传的角色原型，不增加通用任务编辑表单。人工 Human 生命周期仍有效，角色不与凭据类型或具体 agent 混淆。
+旧任务迁移为 true，新任务创建为 false；未提供 PATCH 字段保留，显式 false 关闭，null/非布尔拒绝。许可与 approve/unapprove、ready 和依赖独立，普通人工 claim 仍有效。`in_progress` 拒绝实际切换；精确版本同值请求保留版本与时间，旧版本仍冲突。使用现有项目成员写权限，自动 worker 和随包 Agent 工作流不得自行启用。
 
-验收以该 task 主附件 `plan.md` 为准，包含迁移、确认、与既有手工 claim 的版本竞争、权限、角色筛选、CLI/Web 交互及适用门禁。自动领取的角色资格提供可复用领域校验；真正 worker-claim 的事务集成与启动门禁由 WR-T3/WR-T6 验证，不反向依赖后继接口。
+Web 使用该 task 的“自动执行”开关原型，开启/关闭均先确认，确认按钮直接提交目标值与捕获的版本。取消、Escape、关闭均无请求；成功后才更新开关。覆盖重复提交控制、错误、版本冲突、未知结果读取核对及详情关闭/切换后的请求归属，保持双语、键盘、焦点、响应式和现有阅读/附件状态。
+
+验收以该 task 主附件 `plan.md` 为准，包含迁移、默认值、双向确认、与既有手工 claim 的版本竞争、权限、许可筛选/分页、严格 DTO 和 CLI/Web 交互及适用门禁。自动执行许可资格提供可复用领域校验；真正 worker-claim 的事务集成与启动门禁由 WR-T3/WR-T6 验证，不反向依赖后继接口。
 
 ### WR-T2：为任务增加执行平台要求
 
-覆盖需求：W-03。未限制/三平台、设置清除、筛选分页、匹配 claim 与角色/平台锁定。
+覆盖需求：W-03。未限制/三平台、设置清除、筛选分页、匹配 claim 与自动执行许可/平台锁定。
 
-复用角色任务；原型是该 task 的 `mockui/index.html`。公开枚举为 windows/linux/macos，null 不限制；实际 worker 环境识别，WSL Linux 按 linux。
+复用自动执行许可任务；原型是该 task 的 `mockui/index.html`。公开枚举为 windows/linux/macos，null 不限制；实际 worker 环境识别，WSL Linux 按 linux。
 
-验收以该 task 主附件 `plan.md` 为准，覆盖平台领域规则、清除/未提供语义、分页/游标、与既有手工 claim 的版本竞争、已 claim 锁定及三端一致。自动 worker-claim 的平台事务校验由 WR-T3 集成，真实资源启动由 WR-T6/WR-T8 验证。
+验收以该 task 主附件 `plan.md` 为准，覆盖平台领域规则、清除/未提供语义、分页/游标、与既有手工 claim 的版本竞争、已 claim 许可/平台锁定及三端一致。自动 worker-claim 的平台事务校验由 WR-T3 集成，真实资源启动由 WR-T6/WR-T8 验证。
 
 ### WR-T3：建立唯一的任务执行认领
 
@@ -65,14 +67,14 @@ flowchart LR
 主要动作：
 
 - 扩展预定义 worker 属性，服务端派生用户/时间，普通 create/PATCH 拒绝所有 worker 字段，PR 等属性更新保持 worker。
-- 自动 worker-claim 在项目写锁内核验成员、版本、ready/依赖、角色、平台和现有归属，与状态一次提交。保留手工 claim；active worker 的完成须匹配 claim 身份。
+- 自动 worker-claim 在项目写锁内核验成员、版本、ready/依赖、allowAgents、平台和现有归属，与状态一次提交。保留手工 claim；active worker 的完成须匹配 claim 身份。
 - 提供受控会话/阶段更新、release 与原子 transfer，确认停止及成果连续性，原 owner 或项目 admin 才可操作；旧 claim 失效。released 任务保留原工作区绑定，不能由无资料的机器重新开始。
 - 补足候选资格/当前 worker 已认领查询、DTO 与错误分类，精确 int64 不丢失，未知写入结果通过读取实际归属核对。
 
 完成条件：
 
-- 两用户/两机器同版本竞争只有一个成功，失败不启动资源；覆盖权限、版本、角色/平台变化、未知响应与旧 claim。
-- ordinary properties/status 路径不能改写归属或旁路完成；手工 Human 执行仍有效。
+- 两用户/两机器同版本竞争只有一个成功，失败不启动资源；覆盖权限、版本、自动执行许可/平台变化、未知响应与旧 claim。
+- ordinary properties/status 路径不能改写归属或旁路完成；未开启许可任务的手工执行仍有效。
 - release/transfer 后原工作区关联保留，目标身份及平台受校验，旧执行方不能更新/完成。
 - Go 隔离 PostgreSQL 全 gate 和适用 CLI/Web 类型/读取检查通过，迁移和关联文档、note 同步。
 
@@ -157,7 +159,7 @@ flowchart LR
 主要动作：
 
 - 固定被测 commit、构建/安装产物、OS、Herdr 与原生 agent 版本，以原需求和各任务验收做完整映射。
-- 使用隔离 PostgreSQL/认证项目与真实安装 CLI，运行多仓库、多 worker 竞争、角色/平台矩阵、正常交付与清理。
+- 使用隔离 PostgreSQL/认证项目与真实安装 CLI，运行多仓库、多 worker 竞争、自动执行许可/平台矩阵、正常交付与清理。
 - 运行真实两 agent 的无客户端恢复、进程停止、人工介入/移交、配置冻结、未知结果和崩溃注入，保留 native 与模拟边界。
 - 读回所有 task/附件、实际 PR merge/CI 与最终运行结果，核对整体 Goal；发现范围内 Critical/Major 按原交付任务修复并重新验证受影响项。
 
@@ -172,7 +174,7 @@ flowchart LR
 
 每个 task 的 `description` 是自足简介，专属 `plan.md` 拥有详细方案和验收；共享需求/架构/拆分留在设计 task 的 `requirements.md`、`design.md`、`tasks.md`，上传副本将仓库相对链接固定到实际设计 commit。执行者按 task ID 和附件路径读取，不假设 task:// URI。
 
-角色和平台 task 的专属原型及资源保留在其来源，不向其他 task 复制整套前端包。独立整体验收消费精确源码、已集成 PR 和原生运行产物，不用设计文档或模拟 smoke 代替真实能力证明。
+自动执行许可和平台 task 的专属原型及资源保留在其来源，不向其他 task 复制整套前端包。独立整体验收消费精确源码、已集成 PR 和原生运行产物，不用设计文档或模拟 smoke 代替真实能力证明。
 
 登记完成需逐项读回全部任务、主附件、共享来源、原型资源和依赖，确认无环且均经过设计完成。PR review 调整机制时，同步本表、所属 task 简介和方案及相应依赖，再重新读回。
 
