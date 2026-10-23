@@ -26,9 +26,7 @@ subsequently replaces real wall-clock deadline waits with short test-only
 budgets while preserving production defaults and full byte-limit probes. The
 [bounded ready selection decision](../feature/2026-10-21-bounded-ready-task-selection.md)
 extends the original complete-list operations with `task ready` single-page
-candidate selection while preserving `task list --ready` traversal. The
-[task breakdown](../../../../docs/design/daynight-project-task-tasks.md) owns
-implementation status, dependencies, file ownership and completion evidence.
+candidate selection while preserving `task list --ready` traversal.
 
 The global YAML has an additive `serverUrl` origin and an optional `serverToken`
 under the [credential decision](2026-10-22-cli-server-credentials.md). Shared
@@ -95,7 +93,9 @@ The adopted task composition uses the shared command schema and server runtime.
 Description values declare `allowEmpty`, list status values declare four fixed
 `choices`, and dependency options declare `repeatable`. Generic update no longer
 declares status. The [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md)
-owns dedicated approve, claim and complete commands and proposed creation. Repeatable values form an ordered
+owns proposed creation and dedicated approve, claim and complete commands;
+the [withdrawal decision](../feature/2026-10-23-task-unapprove.md) adds unapprove
+under the same command schema and exact-version rules. Repeatable values form an ordered
 array from the first occurrence, retaining duplicate IDs for server validation.
 Text options accept inline assignment split at the first equals sign, preserving
 leading dashes and later equals signs. Separated dash-prefixed values remain
@@ -208,9 +208,8 @@ entrypoint, real-shell and native CI checks, with exact-head review. Installed
 service acceptance follows the
 [acceptance decision](../testing/2026-10-20-installed-project-task-acceptance.md);
 its native and Go/budget paths preserve all existing suites and production limits.
-Observed acceptance evidence remains owned by the
-[task breakdown](../../../../docs/design/daynight-project-task-tasks.md). Shared
-configuration, HTTP, repository and server-runtime modules support that remaining
+Shared configuration, HTTP, repository and server-runtime modules support that
+remaining
 work. Package versions follow the existing release rules.
 
 Project creation uses `project create <name> [--repo <repo>]` in help, examples and

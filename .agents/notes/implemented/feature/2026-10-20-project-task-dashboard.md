@@ -57,7 +57,7 @@ same complete paths without per-edge store subscriptions or endpoint-admission
 work. Selection keeps the edge layer stable. Edges do not intercept pointer
 input, so task buttons and the canvas remain the interaction targets.
 
-The original W-T4 custom-edge integration used invisible framework ports for
+The original custom-edge integration used invisible framework ports for
 edge admission. That choice preserved Dagre's noncentral rectangle intersections:
 framework port centers never defined the visible line endpoints. The static SVG
 retains that geometry rationale while giving immutable dependency routes their
@@ -161,10 +161,7 @@ declaration patch and negative type assertions keep those checks meaningful.
 
 Project browsing now reaches real statistics, dependency diagrams and task
 details. Controlled component tests cover state/focus transitions, while a local
-production-bundle browser check also uses the real Go API and PostgreSQL. The
-[task record](../../../../docs/design/daynight-web-tasks.md) distinguishes earlier
-preview and pre-static-SVG local results from the current renderer's complete
-local production pass. PR #52's earlier hosted shared-graph zoom failure
+production-bundle browser check also uses the real Go API and PostgreSQL. PR #52's earlier hosted shared-graph zoom failure
 is retained. A later hosted run also exceeded the shared-graph zoom budget;
 diagnostics identify prior drawer-close raster/commit backpressure from long
 native dashed routes. A controlled local-coordinate decomposition prototype
@@ -175,7 +172,7 @@ the reduced raster. Production acceptance is delivered through
 checks verify SVG/node alignment and exact route endpoints after zoom, pan and
 root changes. Dependency upgrades must revisit the declaration patch and type tests.
 
-The historical W-T4 [project screenshot](../../../../docs/research/assets/daynight-web-project.png)
+The historical [project screenshot](../../../../docs/research/assets/daynight-web-project.png)
 and [detail screenshot](../../../../docs/research/assets/daynight-web-detail.png)
 use generated fixture data from the earlier production-browser functional check.
 They illustrate that workflow, before the current renderer and capacity

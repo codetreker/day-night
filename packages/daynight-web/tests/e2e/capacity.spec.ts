@@ -1,3 +1,4 @@
+import { decodeTaskGraphJson } from '../../src/api/project-json';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Page, TestInfo } from '@playwright/test';
@@ -538,7 +539,7 @@ test.describe('fixed capacity and performance @capacity', () => {
           const snapshotStart = performance.now();
           const snapshot = await request.get(`/api/v1/projects/${fixture.project.id}/task-graph`);
           expect(snapshot.status()).toBe(200);
-          const graph = parseTaskGraph(await snapshot.json(), fixture.project.id);
+          const graph = parseTaskGraph(await decodeTaskGraphJson(new Response(await snapshot.text())), fixture.project.id);
           expect(graph.summary.total).toBe(1000);
           expect(graph.summary.proposed).toBe(0);
           expect(graph.summary.todo).toBe(1000);

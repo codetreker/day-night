@@ -112,7 +112,7 @@ describe("packaged skill resource copy", () => {
     const documents = files(destination).filter((name) => name.endsWith(".md"))
       .map((name) => readFileSync(path.join(destination, name), "utf8"));
     const guidance = documents.join("\n");
-    for (const command of ["task approve", "task claim", "task complete"]) expect(guidance).toContain(command);
+    for (const command of ["task approve", "task unapprove", "task claim", "task complete"]) expect(guidance).toContain(command);
     expect(guidance).toContain("--if-version");
     expect(guidance).not.toMatch(/task update[^\n]*--status/);
     expect(guidance).not.toMatch(/(?:create|register)[^\n]*in `todo`/i);

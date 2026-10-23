@@ -15,9 +15,7 @@ actual third-party human login.
 ## Decision
 
 The [authentication requirements](../../../../docs/spec/daynight-auth.md) retain
-AU-V1–AU-V10. The [final acceptance design](../../../../docs/design/auth-tasks/AU-T6.md)
-owns their combined completion conditions. The
-[activation decision](../architecture/2026-10-22-authentication-activation.md)
+AU-V1–AU-V10. The [activation decision](../architecture/2026-10-22-authentication-activation.md)
 continues to own mandatory composition, normal-protocol credential bootstrap and
 private fixture state. The [attachment acceptance decision](2026-10-21-task-attachment-cross-layer-acceptance.md)
 continues to own shared installed-package identity, original bytes and paired
@@ -88,8 +86,8 @@ then verifies the same pending input, single submission and same revealed token
 element across English/Simplified Chinese. The response remains the actual
 server result. Screenshots happen only after closing or masking the secret.
 
-The existing 51 Playwright cases remain 23 native functional, 23 container
-functional and 5 native capacity. Native and container each require a separate
+The current 53 Playwright cases comprise 24 native functional, 24 container
+functional and 5 native capacity, including the later task-unapproval scenario. Native and container each require a separate
 combined receipt. These receipts do not renumber the Playwright inventory or
 replace its fixed data, five samples, geometry checks, zero retries, raw report
 validation or time/request/memory budgets. Capacity remains isolated from

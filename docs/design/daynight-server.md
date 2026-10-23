@@ -7,19 +7,16 @@
 及任务依赖管理。行为要求由[需求文档](../spec/daynight-server.md)拥有；架构选择及
 重新评估条件由[决策记录](../../.agents/notes/implemented/architecture/2026-10-19-daynight-server-task-design.md)
 拥有。决策记录标记的是已采用的设计，不表示服务已经交付。
-[任务拆分](daynight-server-tasks.md)记录执行任务的范围、依赖、状态和验收条件。
 [看板设计](daynight-web.md)定义完整图快照接口、浏览器页面和内嵌静态资源
 交付；图 API 保留本文的领域与事务结构，不改变现有分页读取的一致性承诺。
 
 已采用的[附件架构](daynight-task-attachments.md)提供独立的 bucket/path 文件存储；
 通用本地存储、元数据及单文件附件接口已实现；[附件需求](../spec/daynight-task-attachments.md)
-拥有行为与已知问题，[附件任务拆分](daynight-task-attachments-tasks.md)提供实施范围
-及 Daynight 进度入口。
+拥有行为与已知问题。
 现有 PostgreSQL task 事务规则不扩展为文件与元数据的原子提交保证。
 
 [鉴权架构](daynight-auth.md)定义已接入运行时的 UniAuth 身份交接、本地用户、会话、
-访问令牌及项目成员授权，行为由[鉴权需求](../spec/daynight-auth.md)拥有，
-交付条件由[任务拆分](daynight-auth-tasks.md)拥有。
+访问令牌及项目成员授权，行为由[鉴权需求](../spec/daynight-auth.md)拥有。
 [身份基础模块](../../.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
 提供独立的用户/凭据存储和 handler；[项目成员模块](../../.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
 提供事务内授权、私有创建和邀请。`server.New(Dependencies, Config, logger)`
@@ -33,11 +30,10 @@
 
 [预定义属性设计](daynight-task-properties.md)为完整 task 提供固定结构的 PR
 引用，服务端已沿用本文的事务与版本机制实现存储、迁移和 HTTP 操作。其
-[需求](../spec/daynight-task-properties.md)及[实施任务](daynight-task-properties-tasks.md)
-拥有扩展行为与各组件的交付记录。
+[需求](../spec/daynight-task-properties.md)拥有扩展行为。
 
 [执行计时架构](daynight-task-timing.md)的起止事实与图数据库时间样本已接入相同事务和读取模型。
-项目阈值和实时卡片仍由其后继任务交付，不进入当前服务资源。
+项目阈值通过项目同行设置、管理员 PATCH 与完整 Project 投影交付；实时卡片消费这些事实，当前显示机制由[看板设计](daynight-web.md)拥有。
 
 ## 完整图读取
 
@@ -106,7 +102,7 @@ index 后由前端显示未找到页面。独立附件命名空间复用原始�
 
 | 对象 | 字段与含义 |
 |---|---|
-| Project | `id`、非空 `name`、`repoUrl`、`createdAt`、`updatedAt` |
+| Project | `id`、非空 `name`、`repoUrl`、`createdAt`、`updatedAt`，以及具体 `settings`（正 int64 version、正 int32 executionWarningMinutes） |
 | Task | `id`、`projectId`、非空 `title`、`description`、`status`、具体 `properties`、`version`、`createdAt`、`updatedAt`，以及可空 `startedAt`、`completedAt` |
 | TaskDependency | `projectId`、`taskId`、`dependsOnTaskId` |
 
@@ -128,6 +124,9 @@ index 后由前端显示未找到页面。独立附件命名空间复用原始�
 `009_task_timing.sql` 给 task 同行增加可空 `started_at`、`completed_at timestamptz`；
 既有记录保持 `NULL`，core 和 API 用可空时间表示，JSON 字段明确输出 `null`。
 不回填创建/编辑时间，也不在读路径判断旧格式。
+`010_project_settings.sql` 给项目同行增加正值 `execution_warning_minutes integer DEFAULT 60` 与
+`settings_version bigint DEFAULT 1`，两列均非空；既有项目的创建/更新时间保持不变。
+项目创建、成员可见列表、单项读取和完整图投影共用同一 settings 扫描与 HTTP DTO。
 
 表不建立 foreign key。引用存在性、同 project 限制和图规则由获得 project 写锁后的
 service 写入路径校验；所有写入都必须经过该路径。没有删除 API，使引用不会因资源
@@ -158,10 +157,13 @@ Task 使用 `proposed`、`todo`、`in_progress`、`done`。创建显式写入 pr
 全部已应用迁移保持不可变。迁移不重写既有 task、version 或时间戳，既有 todo 表示
 已经接受的工作。公开列表筛选支持四种状态。
 
-服务提供独立的 approve、claim、complete 用例，唯一转换分别为 proposed→todo、
-todo→in_progress、in_progress→done。审批允许未完成前置；领取及完成要求直接前置
-全部 done。没有通用状态 patch、重开或回退入口，旧下游重开保护随其不可达写路径移除。
-[生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)拥有该写入策略及原始方案的历史。
+服务提供独立的 approve、unapprove、claim、complete 用例，唯一转换分别为 proposed→todo、
+todo→proposed、todo→in_progress、in_progress→done。审批与撤回允许未完成前置；领取及完成要求直接前置
+全部 done。unapprove 复用项目锁、成员复核及先版本后前态的验证，仅修改尚处于 todo 的任务；
+保留资料、依赖、附件及执行时间，不级联修改后继。ready todo 的同版本撤回与领取竞争只有一方提交，
+另一方返回 version_conflict。没有通用状态 patch 或进行中/已完成任务的重开入口；任意下游重开保护仍不需要恢复。
+[生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)保留原写入策略的历史，
+[撤回决策](../../.agents/notes/implemented/feature/2026-10-23-task-unapprove.md)拥有受限退回的理由。
 
 通用 Update 的输入只描述标题、描述、依赖和属性，服务参数及 HTTP DTO 都没有 status。
 所有更新都校验完整候选任务：proposed/todo 允许未完成前置，in_progress/done 只允许
@@ -190,7 +192,7 @@ todo→in_progress、in_progress→done。审批允许未完成前置；领取�
 任务不能合并为一个依赖同一旧快照的 SQL 语句：等待锁结束后，后续查询需要看到刚
 提交的 project 内写入。任务 UPDATE 依据旧/新状态维护时间：真正进入 in_progress 覆盖起点并清空终点，
 真正进入 done 记录终点，普通编辑和同状态低层写入保留两者。离开已完成状态的低层规则清除旧尝试；
-公开 service 仍只允许既有单向转换。时间使用锁后的 `statement_timestamp()`，不使用可能早于锁等待结束的事务时间。该机制依赖 PostgreSQL 在 `READ COMMITTED` 下为每条命令
+公开 service 只允许已列出的前态受限动作；unapprove 仅适用于 todo，不重开进行中或已完成任务。时间使用锁后的 `statement_timestamp()`，不使用可能早于锁等待结束的事务时间。该机制依赖 PostgreSQL 在 `READ COMMITTED` 下为每条命令
 取得新快照的语义，见[事务隔离文档](https://www.postgresql.org/docs/current/transaction-iso.html#XACT-READ-COMMITTED)
 及[行锁文档](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS)。
 
@@ -225,11 +227,13 @@ callback 不执行写入并正常结束；只有外层事务成功后才返回�
 | `POST /api/v1/projects` | 创建 project |
 | `GET /api/v1/projects` | 分页列出 project |
 | `GET /api/v1/projects/{projectId}` | 获取 project |
+| `PATCH /api/v1/projects/{projectId}/settings` | 管理员按观察设置版本保存分钟阈值，返回完整 Project |
 | `POST /api/v1/projects/{projectId}/tasks` | 创建 `proposed` task |
 | `GET /api/v1/projects/{projectId}/tasks` | 分页列出 task |
 | `GET /api/v1/projects/{projectId}/tasks/{taskId}` | 获取 task |
 | `PATCH /api/v1/projects/{projectId}/tasks/{taskId}` | 原子更新元数据及依赖 |
 | `POST /api/v1/projects/{projectId}/tasks/{taskId}/approve` | versioned proposed→todo |
+| `POST /api/v1/projects/{projectId}/tasks/{taskId}/unapprove` | versioned todo→proposed |
 | `POST /api/v1/projects/{projectId}/tasks/{taskId}/claim` | versioned todo→in_progress |
 | `POST /api/v1/projects/{projectId}/tasks/{taskId}/complete` | versioned in_progress→done |
 
@@ -238,7 +242,13 @@ callback 不执行写入并正常结束；只有外层事务成功后才返回�
 PR 引用表示空数组。创建成功
 返回 `201`、资源体和对应资源的 `Location`；读取及更新成功返回 `200`。
 
-PATCH 必须提交期望的 `version`，并至少提供 `title`、`description`、
+项目设置 PATCH 独立接受必填正 int64 `version` 和 `1..2147483647` 的 `executionWarningMinutes`，
+拒绝 query、缺失/未知/重复字段及非法类型，不接受 Project 其他字段。
+`Projects.UpdateSettings` 复用 `WriteProject`：锁后复核成员、admin，再核对 settings.version，
+最后处理同值空操作或更新。空操作不改版本和 updatedAt；实际更新在同一 SQL 中增加 settings_version，
+并用锁后的 statement 时间更新 project.updatedAt。响应在该事务内构造完整 Project，沿用已有提交/清理错误优先规则。
+
+Task PATCH 必须提交期望的 `version`，并至少提供 `title`、`description`、
 `dependsOn` 或一个已定义属性。只有 `version` 或空 `properties` 的请求返回
 `invalid_input`；
 提供字段但值未变的请求采用前述语义空操作规则。例如：
@@ -338,7 +348,9 @@ callback 必须同 origin；callback 无 query/fragment，使用规范的非根�
 测试策略，`DAYNIGHT_ALLOW_LOOPBACK_HTTP` 单独传给 UniAuth SDK，允许字面量
 loopback gateway HTTP，两者不能互相替代。
 
-HTTP 默认监听 `127.0.0.1`。LocalStorage 在打开数据库和监听前准备根目录，要求可写且区分大小写。
+HTTP 默认监听 `127.0.0.1`。LocalStorage 在打开数据库和监听前准备可写根目录并
+探测大小写能力。Linux 要求区分大小写；macOS 原生开发允许普通目录，同时拒绝
+与真实目录项拼写不一致的路径别名，不静默覆盖另一附件。
 运行时以 `Dependencies` 向装配层提供数据库与文件存储，并在启动失败或 HTTP
 排空结束后关闭已取得的文件根句柄。服务继续只接受 loopback 监听地址，公开
 origin 不改变绑定策略。项目 ID 只标识资源，不能代替身份或成员权限。具体配置
@@ -368,7 +380,7 @@ Compose 网络访问，PostgreSQL 18 数据卷挂到 `/var/lib/postgresql`。
 进程启动时创建 `pgxpool` 并验证数据库连接，然后从 pool 获取并固定一条专用
 `pgxpool.Conn`。该连接取得 PostgreSQL session-level advisory migration lock，
 并在同一物理连接上完成版本读取、校验和全部内嵌 SQL 迁移。当前迁移依次建立 project、
-task/依赖、属性、附件与身份/成员机制，并为任务增加可空执行起止；应用记录必须是内嵌迁移的有序前缀。锁必须跨越整个迁移
+task/依赖、属性、附件与身份/成员机制，并持久化任务起止和项目设置；应用记录必须是内嵌迁移的有序前缀。锁必须跨越整个迁移
 序列，不能使用会在单个迁移提交时释放的 transaction-level advisory lock，也不能
 通过 pool 的任意连接分别取得和释放锁。
 
@@ -443,7 +455,7 @@ Go、web、CLI 和 shell completion 各自的检查内容及门槛保持。
 资源；缺少工具、依赖或真实产物直接失败。命令 package 的 TestMain 每次构建新的 race binary，
 通过真实 HTTP、PostgreSQL、信号和进程重启执行验收，不复用旧的可执行文件。
 
-PT-T5 的安装 CLI 验收复用此 command-package fixture，新增
+安装 CLI 验收复用此 command-package fixture，新增
 `installed_cli_project_task_workflow` 场景，通过 `PT.V*` 要求编号对应 CLI 的真实
 project/task 操作、依赖推进、重启持久化及版本竞争。Node 编排入口在 Go
 覆盖率 gate 前准备一次安装，将同一产物用于 Go 场景及随后预算探针；原有 go-cov
@@ -455,8 +467,7 @@ project/task 操作、依赖推进、重启持久化及版本竞争。Node 编�
 屏障及清理；顶层测试间的全局环境修改仍串行。原始服务场景不被 CLI 场景替换，细节见
 [安装联调决策](../../.agents/notes/implemented/testing/2026-10-20-installed-project-task-acceptance.md)及
 [CLI 设计](daynight-project-task.md#验证与交付证据)。根目录
-`.tmp/project-task-service-evidence.json` 记录安装身份、Go/预算结果与清理，实际状态
-仍由 CLI 任务清单拥有。CI
+`.tmp/project-task-service-evidence.json` 记录安装身份、Go/预算结果与清理。CI
 发布 `.tmp/acceptance-evidence.json` 和同次 `.tmp/coverage.out`；前者记录源版本、
 binary hash、场景及资源清理，CI 要求 checkout 干净且 Git revision 与 `GITHUB_SHA`
 一致。V1–V10 的证据归属与 receipt 解释见

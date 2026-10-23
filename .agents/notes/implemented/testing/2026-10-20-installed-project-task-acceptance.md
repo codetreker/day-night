@@ -16,8 +16,7 @@ injected short budgets could not establish those exact elapsed deadlines.
 The adopted acceptance design adds two required paths while preserving existing
 review, self-update, completion, Go and web validation. Implementation and both
 local and hosted validation are complete. [PR #55](https://github.com/codetreker/daynight/pull/55)
-owns review and integration status. The [task record](../../../../docs/design/daynight-project-task-tasks.md)
-owns observed results and delivery status. This decision adds no production API,
+owns review and integration status. This decision adds no production API,
 database schema or test-only CLI flag. The
 [CI efficiency decision](2026-10-21-ci-validation-efficiency.md) partially
 supersedes its original requirement for real wall-clock deadline waits, retaining
@@ -153,6 +152,5 @@ from the dirty `c19b064` development source. Hosted receipts separately identify
 `e9a634aca23710ffe46723fcdb2cf8e7a75d56bf` and clean build revision
 `2e7b8da99cf4b5de6da9c8083446f84fd19f1daf`; the required native matrix and Go
 workload passed in [run 39428165296](https://github.com/codetreker/daynight/actions/runs/39428165296).
-The [task record](../../../../docs/design/daynight-project-task-tasks.md) owns
-delivery status; PR #55 and its source-bound CI artifacts retain detailed
+PR #55 and its source-bound CI artifacts retain detailed
 observations and review history.

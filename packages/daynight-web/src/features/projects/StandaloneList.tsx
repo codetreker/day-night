@@ -1,5 +1,8 @@
-import { useRef } from "react";
+import { memo, useId, useRef } from "react";
 import { useI18n } from "../../i18n/LocaleProvider";
+import type { GraphTask } from "../../api/types";
+import { useTaskExecution } from "../task-execution/TaskExecutionClock";
+import { TaskExecutionDescription, TaskExecutionDuration, TaskExecutionWarning } from "../task-execution/TaskExecutionPresentation";
 import type { GraphIndex } from "../task-graph/model";
 import "../../styles/graph.css";
 
@@ -12,8 +15,22 @@ type StandaloneListProps = {
   readonly onShowCompletedChange: (show: boolean) => void;
 };
 
-export const StandaloneList = ({ index, taskIds, allTaskIds, onSelectTask, showCompleted, onShowCompletedChange }: StandaloneListProps) => {
+const StandaloneRow = memo(({ task, onSelectTask }: { readonly task: GraphTask; readonly onSelectTask: StandaloneListProps["onSelectTask"] }) => {
   const { messages: { workspace: { standalone: m, project }, common }, format } = useI18n();
+  const execution = useTaskExecution(task);
+  const descriptionId = useId();
+  return <li><button className={`standalone-row${execution?.overdue ? " standalone-row-stuck" : ""}`} id={`standalone-task-${task.id}`} type="button"
+    aria-describedby={execution === null ? undefined : descriptionId} onClick={(event) => { onSelectTask(task.id, event.currentTarget); }}>
+    <span className="root-heading"><span className="root-title">{task.titlePreview}{task.titleTruncated ? "…" : ""}</span>
+      <span className="root-meta"><span className="standalone-task-id">{task.id}</span> · <time dateTime={task.createdAt}>{m.createdOn({ date: format.date(task.createdAt) })}</time></span>
+      {execution !== null && <span className="standalone-execution" aria-hidden="true"><TaskExecutionDuration execution={execution} />{execution.overdue && <TaskExecutionWarning />}</span>}</span>
+    <span className="task-row-status"><span className={`root-status graph-status-${task.status}`}>{common.status[task.status]}</span>{task.ready && <span className="task-ready">{project.ready}</span>}</span>
+    <svg className="standalone-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
+  </button>{execution !== null && <TaskExecutionDescription execution={execution} id={descriptionId} />}</li>;
+});
+
+export const StandaloneList = ({ index, taskIds, allTaskIds, onSelectTask, showCompleted, onShowCompletedChange }: StandaloneListProps) => {
+  const { messages: { workspace: { standalone: m } } } = useI18n();
   const checkbox = useRef<HTMLInputElement>(null);
   const completedCount = allTaskIds.filter((id) => index.nodes.get(id)!.status === "done").length;
   return (
@@ -30,15 +47,7 @@ export const StandaloneList = ({ index, taskIds, allTaskIds, onSelectTask, showC
           <button className="button" type="button" onClick={() => { checkbox.current!.focus(); onShowCompletedChange(true); }}>{m.showCompleted}</button>
         </div>
       ) : (
-        <ul className="standalone-list">{taskIds.map((id) => {
-          const task = index.nodes.get(id)!;
-          return <li key={id}><button className="standalone-row" id={`standalone-task-${id}`} type="button" onClick={(event) => { onSelectTask(id, event.currentTarget); }}>
-            <span className="root-heading"><span className="root-title">{task.titlePreview}{task.titleTruncated ? "…" : ""}</span>
-              <span className="root-meta"><span className="standalone-task-id">{id}</span> · <time dateTime={task.createdAt}>{m.createdOn({ date: format.date(task.createdAt) })}</time></span></span>
-            <span className="task-row-status"><span className={`root-status graph-status-${task.status}`}>{common.status[task.status]}</span>{task.ready && <span className="task-ready">{project.ready}</span>}</span>
-            <svg className="standalone-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
-          </button></li>;
-        })}</ul>
+        <ul className="standalone-list">{taskIds.map((id) => <StandaloneRow key={id} task={index.nodes.get(id)!} onSelectTask={onSelectTask} />)}</ul>
       )}
     </section>
   );

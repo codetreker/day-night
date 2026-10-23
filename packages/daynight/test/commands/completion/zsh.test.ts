@@ -24,6 +24,7 @@ describe("native zsh completion", () => {
     const script = renderZshCompletion(commandTree);
     expect(script).toContain("compdef _daynight 'daynight' 'dn'\n");
     expect(script).toContain("'approve:Approve a proposed task, moving it to todo'");
+    expect(script).toContain("'unapprove:Withdraw approval from a todo task, moving it to proposed'");
     expect(script).toContain("'claim:Claim an approved todo task, moving it to in_progress'");
     expect(script).toContain("'complete:Complete an in_progress task, moving it to done'");
     expect(script).toContain("(--status)--status=[Task status]:status:('\\''proposed'\\'' '\\''todo'\\'' '\\''in_progress'\\'' '\\''done'\\'')");
@@ -33,7 +34,7 @@ describe("native zsh completion", () => {
     expect(update).toContain("--depends-on");
   });
 
-  it.each(["approve", "claim", "complete"])("completes %s with one task ID and version/project text options", (action) => {
+  it.each(["approve", "unapprove", "claim", "complete"])("completes %s with one task ID and version/project text options", (action) => {
     const script = renderZshCompletion(taskDefinition.commands!.find(({ name }) => name === action)!);
     expect(script).toContain("(--if-version)--if-version=[Use this expected task version without reading a newer version]:version:->text_value");
     expect(script).toContain("(--project)--project=[Use this project UUID for this invocation]:project-id:->text_value");

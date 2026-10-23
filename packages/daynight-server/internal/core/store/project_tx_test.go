@@ -210,6 +210,8 @@ func TestQueriesFailuresPreserveCauses(t *testing.T) {
 			return err
 		},
 		func() error { _, err := expiredProject.TasksByID(ctx, []string{task.ID}); return err },
+		func() error { _, err := expiredProject.Project(ctx); return err },
+		func() error { _, err := expiredProject.UpdateProjectSettings(ctx, 90); return err },
 		func() error {
 			_, err := expiredProject.Reachable(ctx, task.ID, queryID(99), DependencyReplacement{task.ID, nil})
 			return err

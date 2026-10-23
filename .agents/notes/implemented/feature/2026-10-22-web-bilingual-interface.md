@@ -59,8 +59,9 @@ functional scenarios and native retained five capacity/limit scenarios.
 Authentication and the [Markdown description delivery](../architecture/2026-10-22-task-description-markdown.md)
 later produced twenty functional scenarios per target and twenty-five unique
 native scenarios. The [approval lifecycle](2026-10-22-task-approval-lifecycle.md)
-adds three approval scenarios per target. The current inventory is twenty-three
-functional per target and twenty-eight native, fifty-one across both targets,
+adds three approval scenarios per target; the later
+[withdrawal decision](2026-10-23-task-unapprove.md) adds one more. The current inventory
+is twenty-four functional per target and twenty-nine native, fifty-three across both targets,
 retaining all five capacity/limit cases. The existing single project, one worker, zero retries,
 capacity matrix, strict coverage and cleanup gates remain required. The
 [pipeline decision](../testing/2026-10-21-web-acceptance-pipeline.md) owns phase
@@ -69,9 +70,8 @@ owns the requirement mapping and receipt interpretation.
 
 The [requirements](../../../../docs/spec/daynight-web-i18n.md) own complete
 L1–L10 behavior, and the [design](../../../../docs/design/daynight-web-i18n.md)
-owns the current mechanism. Source-bound combined production verification
-remains owned by the separate I18N-T3 task. Component fixtures and an updated
-interactive task attachment provide their own narrower visual evidence.
+owns the current mechanism. Component fixtures and the interactive preview
+provide narrower visual evidence.
 
 ## Alternatives
 

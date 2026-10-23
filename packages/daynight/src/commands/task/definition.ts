@@ -53,10 +53,11 @@ export const taskDefinition: CommandDefinition = {
         { names: ["--clear-pull-requests"], description: "Clear the complete PR reference list" },
         versionOption,
         projectOption, helpOption],
-      details: "Provide at least one changed field. Use daynight task approve, claim, or complete to change status.\n--depends-on replaces all dependencies; it conflicts with --clear-dependencies.\nPR URL and title counts must match; the nth URL pairs with the nth title. Pairs replace the complete list; empty values are accepted. --clear-pull-requests conflicts with either PR option. Omitted PR options preserve the current list.\nWithout --if-version, read the current version before submitting the update. Conflicts are not retried.",
+      details: "Provide at least one changed field. Use daynight task approve, unapprove, claim, or complete to change status.\n--depends-on replaces all dependencies; it conflicts with --clear-dependencies.\nPR URL and title counts must match; the nth URL pairs with the nth title. Pairs replace the complete list; empty values are accepted. --clear-pull-requests conflicts with either PR option. Omitted PR options preserve the current list.\nWithout --if-version, read the current version before submitting the update. Conflicts are not retried.",
     },
     ...([
       { name: "approve", description: "Approve a proposed task, moving it to todo", rule: "Unfinished prerequisites are allowed." },
+      { name: "unapprove", description: "Withdraw approval from a todo task, moving it to proposed", rule: "Only todo tasks can return to proposed; unfinished prerequisites are allowed." },
       { name: "claim", description: "Claim an approved todo task, moving it to in_progress", rule: "Every direct prerequisite must be done." },
       { name: "complete", description: "Complete an in_progress task, moving it to done", rule: "Every direct prerequisite must be done." },
     ] as const).map(({ name, description, rule }): CommandDefinition => ({

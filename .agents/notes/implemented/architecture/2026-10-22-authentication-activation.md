@@ -24,7 +24,7 @@ adds its first administrator and ordinary project lists filter membership before
 pagination. The staging aliases `CreatePrivate` and `ListAccessible` are removed.
 There is no anonymous business mode, fixed user or trusted-principal adapter.
 The later [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md)
-uses the same Principal for Approve/Claim/Complete and checks membership after
+uses the same Principal for Approve/Unapprove/Claim/Complete and checks membership after
 acquiring the project lock. All project members may perform those resource
 operations; the admin role adds only membership and invitation management.
 Create defaults to proposed, metadata PATCH rejects status, and the new action

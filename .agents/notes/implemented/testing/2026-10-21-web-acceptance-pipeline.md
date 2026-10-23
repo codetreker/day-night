@@ -102,7 +102,7 @@ browser downloads from the 5-second UI-test deadline. Browser installation still
 overlaps native and dev-ci preparation. The existing shell runner remains
 authoritative for the unique image, running-image check and full stack cleanup.
 Native functional browser work waits only for the native process, shared installed
-CLI and browser preparation. Its twenty-three scenarios and immediate browser
+CLI and browser preparation. Its twenty-four scenarios and immediate browser
 recovery must pass before the runner releases the container browser.
 
 If coverage or another active phase fails while browser preparation is waiting,
@@ -120,7 +120,7 @@ phase `native-functional-cleaned`, acceptance run ID, dev-ci run ID and source
 SHA. The container callback records its process identity before waiting and
 inventories browsers only after validating that exact permission. Its
 `ready.json` records diagnostic timing and grants no permission. The callback
-runs the twenty-three container functional scenarios, confirms browser cleanup and
+runs the twenty-four container functional scenarios, confirms browser cleanup and
 returns to the normal shell exit path. The outer stage waits for full dev-ci
 cleanup and browser recovery before completing.
 
@@ -130,7 +130,7 @@ Go process and PostgreSQL remain alive for this final phase. One browser worker,
 zero retries, all four fixed graphs with five repetitions, both independent
 limits, complete visible induced geometry, twenty CDP traces and all original
 timing gates remain required. Native functional and capacity phases strictly
-aggregate to twenty-eight unique scenarios; the container target requires twenty-three.
+aggregate to twenty-nine unique scenarios; the container target requires twenty-four.
 Per-phase and aggregate validation reject missing, extra or duplicate scenarios
 and retries, and require matching browser identity within a target.
 
@@ -142,9 +142,11 @@ by progressive graph delivery. Authentication added six functional scenarios per
 target and [Markdown description](../architecture/2026-10-22-task-description-markdown.md)
 added one, producing the earlier forty-five-result inventory. The
 [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds three
-approval scenarios per target. Current inventory is twenty-three functional per
-target and five native capacity/limit scenarios: twenty-eight native and
-twenty-three container, fifty-one in total. Normal UniAuth session/PAT bootstrap
+approval scenarios per target. The later
+[withdrawal decision](../feature/2026-10-23-task-unapprove.md) adds one functional
+scenario per target. Current inventory is twenty-four functional per target and
+five native capacity/limit scenarios: twenty-nine native and twenty-four container,
+fifty-three in total. Normal UniAuth session/PAT bootstrap
 uses private run-owned credentials; graph/read-only policies apply after bootstrap,
 and approval journeys admit only their registered task POST operations.
 Capacity retains twenty visibility/H records and 160 feedback observations, eight

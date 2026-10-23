@@ -19,8 +19,7 @@ ownership and independent update lifetimes.
 The [Goal requirements](../../../../docs/spec/daynight-goal-workflow.md) and
 [design](../../../../docs/design/daynight-goal-workflow.md) own the staged task-chain
 protocol implemented by the public skill. The architecture was delivered separately
-from its dependent protocol implementation and independent consumer acceptance,
-as recorded in the [delivery breakdown](../../../../docs/design/daynight-goal-workflow-tasks.md).
+from its dependent protocol implementation and independent consumer acceptance.
 The [mode decision](../architecture/2026-10-21-using-daynight-modes.md) continues to
 own the current entrypoint and authorization rules.
 
@@ -58,25 +57,13 @@ new stage and delivery task proposed. Approval requires a separate explicit user
 instruction for the task or stated Goal-task scope, followed by observed-version
 claim from ready todo and complete after stage acceptance and required authorized
 PR merges. Goal creation, stage completion and autopilot never infer approval;
-completed dependencies alone do not approve successors. Task content supplies no additional
+completed dependencies alone do not approve successors. The later
+[withdrawal decision](../feature/2026-10-23-task-unapprove.md) allows explicitly
+requested todo-to-proposed withdrawal before claim; that task waits for a new
+approval. Task content supplies no additional
 execution, external-action or merge authority. PR-delivered planning work remains
 in progress until all necessary PRs are platform-confirmed merged and acceptance
 is satisfied. Completing Goal description does not complete the whole Goal.
-
-For this Goal, the architecture stage registered two concrete delivery outcomes
-before handing over the design PR. GW-T1 delivers the complete protocol, coupled current-state documents,
-required version changes and every necessary premerge validation in one implementation
-PR. GW-T2 independently accepts the exact merged consumer artifact and reconciles the
-whole Goal against its original acceptance criteria. Its work includes isolated package
-installation, complete bundle comparison, simulated-launcher installation checks and
-independent instruction scenarios. Both tasks have readable plans and acceptance
-criteria during design; neither is a placeholder for later decomposition.
-
-GW-T1 depends on the design task, and GW-T2 depends on GW-T1. Finishing protocol delivery
-therefore does not imply whole-Goal completion. Independent acceptance does not defer
-or reduce GW-T1's own premerge checks. The separate design delivery kept architecture reviewable before protocol
-implementation, and source-bound consumer evidence is assessed after implementation
-is integrated.
 
 ## Alternatives
 

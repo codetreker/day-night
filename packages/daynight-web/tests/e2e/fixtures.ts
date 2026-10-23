@@ -18,6 +18,7 @@ export type AttachmentWriteExpectation = {
   readonly count: number;
 };
 export type ApprovalWriteExpectation = {
+  readonly action: 'approve' | 'unapprove';
   readonly origin: string;
   readonly projectId: string;
   readonly taskId: string;
@@ -86,10 +87,10 @@ export const test = base.extend<{
         const origin = new URL(entry.origin);
         const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
         if (!['http:', 'https:'].includes(origin.protocol) || origin.origin !== entry.origin
-          || !uuid.test(entry.projectId) || !uuid.test(entry.taskId) || !Number.isInteger(entry.count) || entry.count < 1) {
+          || !['approve', 'unapprove'].includes(entry.action) || !uuid.test(entry.projectId) || !uuid.test(entry.taskId) || !Number.isInteger(entry.count) || entry.count < 1) {
           throw new Error('Invalid exact approval write expectation.');
         }
-        const key = `POST ${origin.origin}/api/v1/projects/${entry.projectId}/tasks/${entry.taskId}/approve`;
+        const key = `POST ${origin.origin}/api/v1/projects/${entry.projectId}/tasks/${entry.taskId}/${entry.action}`;
         if (approvals.has(key)) throw new Error('Duplicate exact approval write expectation.');
         approvals.set(key, { count: entry.count, observed: 0 });
       }
@@ -214,6 +215,32 @@ export const seedTaskVersion = async (projectId: string, taskId: string, version
     cwd: process.cwd(), timeoutMs: 15_000, quiet: true,
   });
   expect(result.split('\n')[0], 'Owned task version fixture updates exactly the selected row').toBe(String(version));
+};
+
+export const seedClaimedTaskStart = async (projectId: string, taskId: string, ageMs: number | null): Promise<void> => {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+  if (!uuid.test(projectId) || !uuid.test(taskId)
+    || (ageMs !== null && (!Number.isSafeInteger(ageMs) || ageMs < 0))) throw new Error('Invalid owned claimed-task timing fixture.');
+  const target = await ownedDatabase();
+  const start = ageMs === null ? 'NULL' : `statement_timestamp() - ${ageMs} * interval '1ms'`;
+  const result = await command('docker', ['exec', target.postgresContainer, 'psql', '--no-psqlrc', '--set', 'ON_ERROR_STOP=1',
+    '--username', 'daynight', '--dbname', target.database, '--tuples-only', '--no-align', '--command',
+    `UPDATE tasks SET started_at = ${start} WHERE project_id = '${projectId}' AND id = '${taskId}' AND status = 'in_progress' AND completed_at IS NULL RETURNING id`], {
+    cwd: process.cwd(), timeoutMs: 15_000, quiet: true,
+  });
+  expect(result.split('\n')[0], 'Owned timing fixture updates exactly the selected running task').toBe(taskId);
+};
+
+export const seedProjectSettingsVersion = async (projectId: string, version: bigint): Promise<void> => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(projectId)
+    || version <= 0n || version >= 9223372036854775807n) throw new Error('Invalid exact project settings version fixture.');
+  const target = await ownedDatabase();
+  const result = await command('docker', ['exec', target.postgresContainer, 'psql', '--no-psqlrc', '--set', 'ON_ERROR_STOP=1',
+    '--username', 'daynight', '--dbname', target.database, '--tuples-only', '--no-align', '--command',
+    `UPDATE projects SET settings_version = ${version} WHERE id = '${projectId}' RETURNING settings_version`], {
+    cwd: process.cwd(), timeoutMs: 15_000, quiet: true,
+  });
+  expect(result.split('\n')[0], 'Owned settings version fixture updates exactly the selected project').toBe(String(version));
 };
 
 const withTableFailure = async <T>(table: 'task_dependencies' | 'projects', callback: () => Promise<T>): Promise<T> => {

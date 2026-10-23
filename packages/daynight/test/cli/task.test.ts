@@ -16,7 +16,7 @@ const taskId = "b1b2c3d4-1111-4222-8333-123456789abc";
 const secondId = "b1b2c3d4-1111-4222-8333-123456789abd";
 const thirdId = "b1b2c3d4-1111-4222-8333-123456789abe";
 const time = "2026-10-20T00:00:00.123456789Z";
-const project: Project = { id: projectId, name: "Project 中文", repoUrl: "git@git.example:Org/Repo.git", createdAt: time, updatedAt: time };
+const project: Project = { id: projectId, name: "Project 中文", repoUrl: "git@git.example:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
 const task = (partial: Partial<Task> = {}): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true, ...partial });
 const taskListItem = (value: Task): Omit<Task, "description"> => ({
   id: value.id, projectId: value.projectId, title: value.title, properties: value.properties,
@@ -269,7 +269,7 @@ describe("compiled task commands", () => {
     const f = await fixture();
     try {
       const helpBlocked = ["/api/", "/config/", "/repository/", "/commands/server/", "/commands/task/rendering.js", "better-sqlite3"];
-      for (const args of [[], ["--help"], ...["create", "list", "ready", "show", "update", "approve", "claim", "complete", "graph"].map((name) => [name, "--help"]), ["attachment"], ["attachment", "--help"], ...["put", "list", "read", "remove"].map((name) => ["attachment", name, "--help"])]) {
+      for (const args of [[], ["--help"], ...["create", "list", "ready", "show", "update", "approve", "unapprove", "claim", "complete", "graph"].map((name) => [name, "--help"]), ["attachment"], ["attachment", "--help"], ...["put", "list", "read", "remove"].map((name) => ["attachment", name, "--help"])]) {
         const result = await f.invoke(args, { blocked: helpBlocked });
         expect(result.code, result.stderr).toBe(0);
         expect(result.stdout).toContain("Usage: daynight task");
@@ -293,7 +293,7 @@ describe("compiled task commands", () => {
         ["update", taskId, "--status", "done", "--if-version", "9223372036854775808"],
         ["show", "invalid"], ["list", "--project", "invalid"], ["list", "--ready", "false"], ["list", "--all", "--status", "todo"], ["list", "--status", "done", "--all"], ["graph", "--unknown"],
         ["ready", "--limit", "0"], ["ready", "--limit", "101"], ["ready", "--limit=1e1"], ["ready", "--limit=1.5"], ["ready", "--limit=+1"], ["ready", "--status", "todo"],
-        ...["approve", "claim", "complete"].flatMap((action) => [[action], [action, "invalid"], [action, taskId, "--if-version=0"], [action, taskId, "--if-version=9223372036854775808"], [action, taskId, "--status=todo"]]),
+        ...["approve", "unapprove", "claim", "complete"].flatMap((action) => [[action], [action, "invalid"], [action, taskId, "--if-version=0"], [action, taskId, "--if-version=9223372036854775808"], [action, taskId, "--status=todo"]]),
         ["attachment", "list", "invalid"], ["attachment", "list", taskId, "--tree", "--json"],
         ["attachment", "put", taskId, "missing.txt", "--path", "../escape"],
         ["attachment", "read", taskId, "/absolute"], ["attachment", "remove", taskId, "a//b"],
@@ -309,14 +309,14 @@ describe("compiled task commands", () => {
     } finally { await f.close(); }
   }, 60_000);
 
-  it("executes the proposed approval, claim and completion lifecycle with precise observed or supplied versions", async () => {
+  it("executes approval, withdrawal, claim and completion with precise observed or supplied versions", async () => {
     const f = await fixture();
     try {
       let current = task({ status: "proposed", ready: false, description: "Lifecycle details", version: 9_007_199_254_740_993n });
       const { requests } = await f.serve((request, response) => {
         if (request.method === "POST" && request.pathname !== taskPath) {
           const action = request.pathname.split("/").at(-1)!;
-          const status = action === "approve" ? "todo" : action === "claim" ? "in_progress" : "done";
+          const status = action === "approve" ? "todo" : action === "unapprove" ? "proposed" : action === "claim" ? "in_progress" : "done";
           current = { ...current, status, ready: status === "todo", version: current.version + 1n };
         }
         respond(response, current, request.pathname === taskPath ? 201 : 200);
@@ -324,7 +324,7 @@ describe("compiled task commands", () => {
       const created = await f.invoke(["create", "--title", "Lifecycle", ...explicit]);
       expect(created.code, created.stderr).toBe(0);
       expect(created.stdout).toContain("Status: proposed");
-      for (const [action, status] of [["approve", "todo"], ["claim", "in_progress"], ["complete", "done"]] as const) {
+      for (const [action, status] of [["approve", "todo"], ["unapprove", "proposed"], ["approve", "todo"], ["claim", "in_progress"], ["complete", "done"]] as const) {
         const version = current.version;
         const before = requests.length;
         const explicitVersion = action === "claim";
@@ -606,7 +606,7 @@ describe("compiled task commands", () => {
       ]);
       const graphed = await f.invoke(["graph", "--json", ...explicit]);
       expect(graphed.code, graphed.stderr).toBe(0);
-      expect(JSON.parse(graphed.stdout)).toEqual(graph());
+      expect(parseApiJson(graphed.stdout)).toEqual(graph());
       expect([created, shown, listed, graphed].every(({ stderr }) => stderr === "")).toBe(true);
       expect(requests.filter(({ pathname }) => pathname === projectPath)).toHaveLength(4);
       expect(await readdir(f.caller)).toEqual([]);

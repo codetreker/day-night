@@ -1,3 +1,4 @@
+import { wireResponse } from "../helpers/wireJson";
 import { useEffect, useState, type MouseEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { stringifyApiJson } from '../../src/api/json';
@@ -93,7 +94,7 @@ const installFixture = () => {
       while (fixture.response === 'loading') await delay(100, signal);
       if (fixture.response === 'error') return Response.json({ error: { code: 'internal_error', message: 'Preview service is temporarily unavailable.', requestId: 'preview-auto-refresh' } }, { status: 500 });
       const snapshot = graph();
-      if (graphRequest) return Response.json(snapshot);
+      if (graphRequest) return wireResponse(snapshot);
       const task = snapshot.tasks.find((candidate) => candidate.id === taskRequest![1]);
       return task === undefined ? Response.json({ error: { code: 'not_found', message: 'Task no longer exists.', requestId: 'preview-task-missing' } }, { status: 404 }) : new Response(stringifyApiJson(detail(task)), { headers: { 'Content-Type': 'application/json' } });
     }

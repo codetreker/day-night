@@ -4,7 +4,7 @@
 task 命令、安装产物、真实服务及默认预算验收已完成并通过托管验证；
 集成状态见[PR #55](https://github.com/codetreker/daynight/pull/55)。
 可用命令和验证入口见[仓库 README](../../README.md)，完整交付范围见
-[project/task 需求](daynight-project-task.md)及[任务清单](../design/daynight-project-task-tasks.md)。
+[project/task 需求](daynight-project-task.md)。
 
 Daynight 是一个组合命令的客户端工具包。npm 包提供统一的 `daynight` 入口及短命令 `dn`，命令模块
 拥有各自的业务行为、依赖和生命周期。`review` 是 GitHub PR 审查模块；`update` 管理
@@ -179,7 +179,7 @@ npm 替换失败；该失败必须明确报告。
 提供，已消耗的位置参数不重复提供候选，remote 不提供远端候选或无关文件候选。
 目录建议不约束运行时合法值，操作者仍能输入尚未创建的目标目录。状态的静态
 列表状态候选为 `proposed`、`todo`、`in_progress`、`done`，分离及内联形式使用同一候选；
-update 不再声明 status，approve/claim/complete 使用 task ID 和可选精确版本。重复依赖选项
+update 不再声明 status，approve/unapprove/claim/complete 使用 task ID 和可选精确版本。重复依赖选项
 使用后仍可继续补全；自由文本、project/task ID 和依赖 ID 不回落文件候选。空描述
 和已完成内联值之后，后续选项按共享语法继续补全。
 

@@ -15,6 +15,17 @@ vi.mock("tabbable", async (original) => {
   return { ...actual, tabbable: (container: Element, options?: Parameters<typeof actual.tabbable>[1]) => actual.tabbable(container, { ...options, displayCheck: "none", getShadowRoot: true }) };
 });
 
+// JSDOM does not implement the native top layer. These shims expose open state;
+// browser acceptance owns modal focus, inertness, positioning and light dismissal.
+Object.defineProperties(HTMLDialogElement.prototype, {
+  showModal: { configurable: true, value: function (this: HTMLDialogElement) { this.open = true; } },
+  close: { configurable: true, value: function (this: HTMLDialogElement) { this.open = false; } },
+});
+Object.defineProperties(HTMLElement.prototype, {
+  showPopover: { configurable: true, value: function (this: HTMLElement) { this.hidden = false; this.style.display = "block"; } },
+  hidePopover: { configurable: true, value: function (this: HTMLElement) { this.hidden = true; this.style.display = "none"; } },
+});
+
 expect.extend(matchers);
 
 beforeEach(() => { vi.spyOn(window, "scrollTo").mockImplementation(() => {}); });

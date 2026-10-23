@@ -4,28 +4,26 @@ The Go service owns PostgreSQL-backed project and task management. Its runtime
 foundation is implemented: explicit database and file-storage configuration,
 loopback-only HTTP binding, connection validation, structured request logs, cancellation, and bounded
 HTTP shutdown. Versioned migrations and transactional storage are implemented;
-project/task APIs and built-process acceptance are implemented; delivery status is in the
-[implementation tasks](../../docs/design/daynight-server-tasks.md); the current
+project/task APIs and built-process acceptance are implemented. The current
 executable serves project, task and complete task-graph routes together with the
 embedded task dashboard. Generic bucket/path local storage, task attachment
-metadata and file/preview HTTP endpoints are implemented. Attachment CLI and
-browser management remain tracked by the
-[attachment tasks](../../docs/design/daynight-task-attachments-tasks.md).
+metadata and file/preview HTTP endpoints are implemented.
 
 The [requirements](../../docs/spec/daynight-server.md) own observable behavior and
 the [design](../../docs/design/daynight-server.md) owns architecture and concurrency.
 The TypeScript review command retains its separate configuration, storage and
 lifecycle. The client HTTP foundation targets this service's API.
 
-The [authentication requirements](../../docs/spec/daynight-auth.md),
-[architecture](../../docs/design/daynight-auth.md) and
-[task breakdown](../../docs/design/daynight-auth-tasks.md) define UniAuth identity
+The [authentication requirements](../../docs/spec/daynight-auth.md) and
+[architecture](../../docs/design/daynight-auth.md) define UniAuth identity
 handoff, local users, browser sessions, personal access tokens and project
 membership. The [identity foundation](../../.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
 implements persistent users, browser-bound login transactions, sessions, PATs and
 callable HTTP handlers. NewIdentity/NewAuthentication/RegisterRoutes are composed by the runtime. The [membership foundation](../../.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
 adds NewMemberships/NewMembershipRoutes, transaction-scoped access checks, private
 project creation, filtered project lists, administrator changes and invitations.
+The project settings API provides a versioned execution-warning threshold that
+administrators save and members read.
 The application mux mounts all of these modules and requires authentication for
 every project, task, graph and attachment route. The production dashboard mounts
 `AuthenticatedApp`; the CLI uses user PATs. Existing projects are assigned members
@@ -100,7 +98,12 @@ export DAYNIGHT_ALLOW_HTTP_TEST_ORIGIN=1
 publishes it to `internal/webui/dist/`. Generated files are ignored by Git; a
 clean Go build without them fails at `go:embed`. No placeholder index or frontend
 runtime is used. Once built, the binary requires PostgreSQL and a writable,
-case-sensitive local storage directory and valid UniAuth App settings at runtime.
+local storage directory and valid UniAuth App settings at runtime. Linux requires
+case-sensitive storage. Native macOS development also accepts an ordinary
+case-insensitive directory, without mounting an image. Names that alias existing
+directory entries are refused rather than overwriting another attachment;
+coexistence of differently cased names is covered by Linux tests and the optional
+APFS acceptance channel.
 The example explicitly enables a controlled local HTTP origin. Production uses
 HTTPS and leaves that exception disabled. Register the exact callback URL with
 UniAuth and supply real credentials through private environment configuration;
@@ -116,7 +119,7 @@ diagnostics and cause categories.
 | Environment variable | Meaning | Default |
 |---|---|---|
 | `DAYNIGHT_DATABASE_URL` | Explicit PostgreSQL connection string | Required |
-| `DAYNIGHT_STORAGE_ROOT` | Writable, case-sensitive local file-storage directory | Required |
+| `DAYNIGHT_STORAGE_ROOT` | Writable local storage directory; case-sensitive on Linux, ordinary directories supported for native macOS development | Required |
 | `DAYNIGHT_PUBLIC_ORIGIN` | Exact main-site origin, HTTPS in production | Required |
 | `DAYNIGHT_UNIAUTH_URL` | UniAuth gateway origin | Required |
 | `DAYNIGHT_UNIAUTH_APP_ID` | Registered UniAuth backend App ID | Required |
@@ -153,7 +156,8 @@ records include method, route template, status, and duration. A supplied
 `-` after the first character; invalid or absent values receive a generated ID.
 The response returns `X-Request-ID`. An unmatched route has an empty route template.
 UI and API requests use the same logging wrapper. Exact `/`,
-`/projects/{projectId}` and
+`/projects/{projectId}`, `/projects/{projectId}/members`,
+`/projects/{projectId}/settings` and
 `/projects/{projectId}/tasks/{taskId}/attachments/{path...}` page shapes return
 the index; the last route opens the standalone attachment reader. Invalid page
 IDs retain the existing index response and frontend not-found behavior. The
@@ -363,6 +367,7 @@ advisory unlock use independent bounded contexts and preserve original causes.
 | `POST` | `/api/v1/projects` | `201`, project and `Location` |
 | `GET` | `/api/v1/projects` | `200`, project page |
 | `GET` | `/api/v1/projects/{projectId}` | `200`, project |
+| `PATCH` | `/api/v1/projects/{projectId}/settings` | `200`, full project with saved settings |
 
 Creation accepts `name` and `repoUrl` and atomically makes its caller the first
 project administrator. Lists contain only the caller's member projects.
@@ -373,6 +378,31 @@ ambiguous SCP forms are rejected; use explicit SSH URL syntax when needed.
 Registration performs no network, Git, clone or CLI-configuration operations.
 Different projects can reference the same repository. UUID IDs are canonicalized
 to hyphenated lowercase; project repository metadata has no update/delete API.
+
+Every Project resource, including list items and the project embedded in task
+graphs, includes `settings: {version, executionWarningMinutes}`. Migration
+`010_project_settings.sql` gives new and historical projects an explicit settings
+version of `1` and warning threshold of `60` minutes, preserving historical
+creation/update timestamps and task timing. Settings live on the project row;
+no read-time default or separate settings table is involved.
+
+Members can read the saved settings. Only a current project administrator can
+PATCH them, using exactly `version` (a positive int64 JSON integer) and
+`executionWarningMinutes` (an integer from `1` through `2147483647`). Query
+parameters and the bare query marker are rejected. Strict body parsing rejects
+missing, duplicate, unknown, null, fractional, exponent and out-of-range fields.
+The existing Cookie Origin and PAT authentication rules apply. Successful
+responses return the complete saved Project and `Cache-Control: no-store`.
+
+The settings service acquires the project lock, rechecks current membership and
+administrator role, compares the exact settings version, then handles a same-value
+no-op or change. A stale same-value request returns `version_conflict`; a current
+same-value request preserves the complete resource. A real change increments
+only the settings version and records the project update time using the post-lock
+SQL statement timestamp. It leaves task timestamps and other projects unchanged.
+Permission changes during a lock wait take effect before saving. Cancellation,
+rollback and transaction-completion errors cannot be reported as a saved value
+or hidden behind a pending domain refusal.
 
 Creation requires `application/json` (optionally UTF-8 charset), one object within
 1 MiB, exact field names and unique keys. Unknown/read-only fields, null required
@@ -388,7 +418,7 @@ a cross-request snapshot.
 Errors use `{"error":{"code":"not_found","message":"...","requestId":"..."}}`:
 input 400, missing/invalid credentials 401, insufficient administrator role or
 invalid Cookie-write Origin 403, missing or inaccessible resource 404,
-unsupported method 405 with `Allow`, and internal failure 500.
+unsupported method 405 with `Allow`, stale settings version 409, and internal failure 500.
 Responses and logs do not echo submitted URLs, bodies, SQL or driver messages.
 The request ID matches `X-Request-ID`; parsed resource operations log the
 canonical project ID. Database/transaction completion failures take precedence
@@ -397,11 +427,11 @@ a response.
 
 ## Task service
 
-`service.NewTasks` exposes create/read/update and dedicated approve, claim and
-complete operations over the same concrete store. `Approve`, `Claim` and
-`Complete` explicitly receive `(ctx, principal, projectID, taskID, version)`.
+`service.NewTasks` exposes create/read/update and dedicated approve, unapprove,
+claim and complete operations over the same concrete store. `Approve`, `Unapprove`,
+`Claim` and `Complete` explicitly receive `(ctx, principal, projectID, taskID, version)`.
 All project members, including administrators, can perform these resource writes;
-only member and invitation management requires the administrator role. HTTP
+project settings, member management and invitation management require the administrator role. HTTP
 routes use that instance. Lifecycle POST routes and method-refusal handlers
 require authentication, enforce exact Origin for Cookie writes and return no-store.
 Creation uses `proposed`;
@@ -414,10 +444,12 @@ Dependencies are canonicalized UUIDs, sorted and checked for duplicate identity,
 self-reference, missing/cross-project tasks and cycles. Every update validates
 its complete candidate, including metadata-only updates and semantic no-ops.
 Active/done tasks require done predecessors; proposed and todo may have unfinished
-prerequisites. Lifecycle transitions are forward-only: approve moves proposed to
-todo, claim moves todo to in_progress, and complete moves in_progress to done.
-Approval permits unfinished prerequisites; claim and completion require them done.
-There is no reopening or direct todo-to-done transition. Fault task IDs are sorted and do not
+prerequisites. Approve moves proposed to todo, unapprove returns todo to proposed,
+claim moves todo to in_progress, and complete moves in_progress to done. Approval
+and withdrawal permit unfinished prerequisites; claim and completion require them
+done. Withdrawal preserves materials, dependencies, execution timestamps and
+attachments and makes readiness false. It does not change successor states or
+release active work. There is no reopening or direct todo-to-done transition. Fault task IDs are sorted and do not
 include other projects' task content.
 
 Task writes acquire the project lock, check current membership, then compare
@@ -437,13 +469,14 @@ existing timing. A genuine new entry into execution replaces the latest start;
 this storage rule does not add a public reopening operation.
 
 Migration `009_task_timing.sql` leaves historical start and end values unknown.
-Creation and approval also leave them `null`. Completing a historical active task
+Creation starts both fields at `null`; approve and unapprove preserve existing
+timing without creating execution facts. Completing a historical active task
 records its real end while retaining an unknown start. No caller may submit these
 read-only fields, and neither creation/update time nor deployment time is used to
 invent an execution interval. Completed intervals survive later edits and service
 restart. The [timing requirements](../../docs/spec/daynight-task-timing.md) and
 [architecture](../../docs/design/daynight-task-timing.md) own the interval contract;
-project settings and live presentation are later delivery outcomes.
+the project settings API supplies the shared warning threshold for live presentation.
 
 Expected refusals are captured before any write and returned only after the
 outer lock-only transaction succeeds; transaction/cleanup failures remain
@@ -495,10 +528,7 @@ Graph requests share the existing request ID and safe error handling. Logs add
 project identity and graph counts without recording task content or repository
 addresses. This endpoint supports the implemented
 [task dashboard](../../docs/design/daynight-web.md); the browser application
-and embedded static delivery are implemented. The
-[dashboard implementation tasks](../../docs/design/daynight-web-tasks.md)
-track production-browser, fixed-capacity and deployment-lifecycle validation
-and delivery status.
+and embedded static delivery are implemented.
 From the repository root, `pnpm web:acceptance` builds this executable and runs
 production browser workflows against both a native process and the dev-ci
 container gateway. It owns separate PostgreSQL resources; its prerequisites,
@@ -514,6 +544,7 @@ receipts and fixed-capacity gates are in the
 | `GET` | `/api/v1/projects/{projectId}/tasks/{taskId}` | `200`, task |
 | `PATCH` | `/api/v1/projects/{projectId}/tasks/{taskId}` | `200`, updated metadata/dependencies |
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/approve` | `200`, proposed→todo task |
+| `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/unapprove` | `200`, todo→proposed task |
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/claim` | `200`, todo→in_progress task |
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/complete` | `200`, in_progress→done task |
 
@@ -625,7 +656,7 @@ the [V1–V10 requirements](../../docs/spec/daynight-server.md) as follows:
 | V1: persistent resources | `workflow_restart_persistence`, `graceful_sigterm_drains_committed_request`, `forced_sigterm_cancels_without_late_write`; complete objects survive process restart and listener reuse |
 | V2: dependency refusal and rollback | `refusals_scopes_filters_and_cursors`, `partial_write_http_failure_rolls_back`; rejected writes preserve complete tasks, with a sequence proving metadata and the first edge changed before the injected failure |
 | V3: concurrency and project independence | `concurrent_reverse_dependencies`, `canceled_request_and_independent_project`; owned backend waiters prove competing requests and independent progress |
-| V4: state gates | Workflow/refusal scenarios, `concurrent_lifecycle_same_version` (approve/claim/complete), `concurrent_dependency_update_and_claim`, `installed_cli_same_version_claim` and `installed_cli_same_version_dependency_edit_and_claim`; [service tests](internal/service/task_test.go) and [HTTP transition tests](internal/server/task_transitions_test.go) cover wrong predecessor states, same-version action races and metadata candidates |
+| V4: state gates | Workflow/refusal scenarios, `concurrent_lifecycle_same_version` (approve/unapprove/claim/complete), `concurrent_dependency_update_and_claim`, `installed_cli_same_version_claim`, `installed_cli_same_version_dependency_edit_and_claim`, `installed_cli_same_version_unapprove` and `installed_cli_same_version_unapprove_and_claim`; [service tests](internal/service/task_test.go) and [HTTP transition tests](internal/server/task_transitions_test.go) cover wrong predecessor states, same-version action races and metadata candidates |
 | V5: revisions and no-ops | Workflow/refusal scenarios and `concurrent_same_version`; actual changes compete on one version and matching semantic no-ops retain fields/timestamps |
 | V6: listing and HTTP contract | `refusals_scopes_filters_and_cursors`, [HTTP tests](internal/server/tasks_test.go) and service tests cover tied keysets, scoped filters, initialized empty resources, DTOs and error mapping |
 | V7: transactions and lifecycle | Partial-failure, cancellation, graceful/forced-signal, unsupported/failed-migration-history, concurrent-startup and `installed_cli_pre_lifecycle_migration_restart` scenarios; owning store tests prove finer snapshot and cross-migration interleavings |
@@ -669,15 +700,19 @@ The [lifecycle scenarios](cmd/daynight-server/acceptance_lifecycle_cli_test.go)
 reuse this installation and actual-process fixture. The migration journey
 executes checked-in migrations 001 through 006 and records their raw-byte
 checksum ledger and old todo/in-progress/done rows before startup. The current
-built service applies 007/008/009 through its production migration engine. An
+built service applies 007/008/009/010 through its production migration engine. An
 unassigned legacy project first returns 404 to the authenticated nonmember. The
 fixture then explicitly provisions admin membership for the actual `/api/v1/me`
 user, verifies membership through the API and compares the original raw task
 rows with their original columns unchanged and nullable unknown timing. This prepares authorized test access, not automatic ownership
 adoption or rewritten task/migration history. Packed CLI reads verify old records, new proposed creation, explicit prerequisite/dependent
-progression, blocked/stale refusals, lifecycle timing and readable plan attachment bytes. Actual
+progression, blocked/stale refusals, lifecycle timing, project setting defaults and readable plan attachment bytes. Actual
 restart compares the historical rows and ledger plus new task and attachment
-state. Preparing the current schema and rewriting its history is not this oracle.
+state. Settings acceptance also performs real HTTP saves, same-value no-ops,
+stale conflicts and cross-project isolation, then uses the packed CLI to read
+exact nested int64 settings versions above JavaScript's safe integer range through
+project show/list and graph output across restart. Preparing the current schema
+and rewriting its history is not this oracle.
 
 The claim and dependency-edit/claim competitions launch two real installed CLI
 processes with one observed version. An actual project-row lock and observed
@@ -717,6 +752,5 @@ confirmed, including actual removal of each fixture's storage root. Recompute
 the strict coverage comparison from the accompanying raw
 profile rather than its rounded display. A failed job, partial receipt or local
 pass does not establish successful hosted acceptance for another source revision.
-Durable validation conclusions and delivery links belong in the
-[implementation tasks](../../docs/design/daynight-server-tasks.md) and relevant
+Lasting technical findings belong in the relevant
 decision or research records.

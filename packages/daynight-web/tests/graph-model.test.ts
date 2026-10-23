@@ -18,7 +18,7 @@ const graph = (seeds: readonly Seed[]): TaskGraph => {
   });
   const todo = tasks.filter((task) => task.status === "todo");
   return { observedAt: "2026-10-20T12:00:00Z",
-    project: { id: id("P"), name: "Private project", repoUrl: "git@github.com:owner/repo.git", createdAt: time, updatedAt: time },
+    project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: id("P"), name: "Private project", repoUrl: "git@github.com:owner/repo.git", createdAt: time, updatedAt: time },
     tasks,
     summary: {
       total: tasks.length, proposed: tasks.filter((task) => task.status === "proposed").length, todo: todo.length, inProgress: tasks.filter((task) => task.status === "in_progress").length,

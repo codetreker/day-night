@@ -49,6 +49,14 @@ func containsField(allowed []string, key string) bool {
 	return false
 }
 
+func versionInput(fields map[string]json.RawMessage) (int64, error) {
+	var version int64
+	if err := json.Unmarshal(fields["version"], &version); err != nil || version < 1 {
+		return 0, invalidInput("version is required and must be a positive 64-bit integer")
+	}
+	return version, nil
+}
+
 func requiredString(fields map[string]json.RawMessage, key string) (string, error) {
 	value, err := optionalString(fields, key)
 	if err != nil {

@@ -19,6 +19,7 @@ needed to use them correctly.
 | `task show` | Read one task's complete details and exact version. |
 | `task update` | Change metadata, dependencies, or PR references; status is not writable. |
 | `task approve` | Change proposed to todo using an observed version and explicit approval authorization. |
+| `task unapprove` | Withdraw approval of todo work, returning it to proposed using an observed version. |
 | `task claim` | Change ready todo to in_progress using an observed version. |
 | `task complete` | Change in_progress to done after acceptance and required authorized delivery. |
 | `task graph` | Inspect the project's dependency graph and summary. |
@@ -61,18 +62,23 @@ before acting. A graph-limit error still permits bounded candidate and
 individual task reads.
 
 **Lifecycle and approval.** Creation starts in `proposed`. Explicit approval
-moves proposed to todo; claim moves todo to in_progress; complete moves
-in_progress to done. Approval allows unfinished prerequisites. Claim and
-completion require every direct prerequisite to be done. Proposed is never
-ready, even with no prerequisites. Repeated actions and wrong predecessor states
-fail; there is no reset, reopen, release, or direct todo-to-done transition.
-Metadata, attachments and PR references cannot approve or claim work. Approve
-only when the user explicitly authorizes approval of the task or stated scope;
-creation, execution requests, `run-task` and autopilot grant none. A deliberate
-Web approval click is the user's approval instruction. Task approval itself
-grants no implementation, publication, deployment or merge permission.
+moves proposed to todo; unapprove returns only unstarted todo work to proposed;
+claim moves ready todo to in_progress; complete moves in_progress to done.
+Approval and withdrawal allow unfinished prerequisites. Claim and completion
+require every direct prerequisite to be done. Proposed is never ready, even
+with no prerequisites. Withdrawal preserves task materials, dependencies,
+execution timestamps and attachments; it does not change successor states.
+Repeated actions and wrong predecessor states fail. There is no reopening of
+in-progress or done work, execution release, or direct todo-to-done transition.
+Metadata, attachments and PR references cannot approve, withdraw approval or
+claim work. Approve or unapprove only when the user explicitly authorizes that
+action for the task or stated scope; creation, execution requests, `run-task`
+and autopilot grant none. In the Web, the title-row entry opens a confirmation;
+only deliberate confirmation is the user's approval or withdrawal instruction.
+Cancel and Escape submit no action. Task approval itself grants no implementation,
+publication, deployment or merge permission.
 
-**Task concurrency.** Bind each metadata update, approve, claim and complete to
+**Task concurrency.** Bind each metadata update, approve, unapprove, claim and complete to
 the exact version read for that decision using `--if-version`; the CLI's default
 pre-submit read cannot protect an earlier decision. Preserve full int64 decimal
 digits without numeric rounding. A claim is a versioned transition, not an
@@ -113,4 +119,4 @@ Task registration, execution, and selection follow [create-task](create-task.md)
 [run-task](run-task.md), and [autopilot](autopilot.md), respectively. For a chain
 of independently tracked delivery stages, use [the Goal protocol](goal.md).
 Goal scope grants no implicit approval: every stage and delivery task follows the
-same proposed/approve/claim/complete lifecycle.
+same proposed/approve/unapprove/claim/complete lifecycle.

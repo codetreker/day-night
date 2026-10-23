@@ -1,11 +1,19 @@
+export type ApprovalAction = "approve" | "unapprove";
+
 export type TaskStatus = "proposed" | "todo" | "in_progress" | "done";
 
 export type Project = {
   readonly id: string;
   readonly name: string;
   readonly repoUrl: string;
+  readonly settings: ProjectSettings;
   readonly createdAt: string;
   readonly updatedAt: string;
+};
+
+export type ProjectSettings = {
+  readonly version: bigint;
+  readonly executionWarningMinutes: number;
 };
 
 export type ProjectPage = {

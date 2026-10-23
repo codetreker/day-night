@@ -1,6 +1,7 @@
-import { useId, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { ApiError, attachmentPageUrl, attachmentDownloadUrl, attachmentPreviewRoot, attachmentPreviewUrl } from '../../../api/client';
 import { useI18n } from '../../../i18n/LocaleProvider';
+import { AttachmentActionMenu, AttachmentDeleteDialog, type AttachmentActionTarget } from './AttachmentActions';
 import { AttachmentPreview } from './AttachmentPreview';
 import { attachmentTree, isAttachmentPath, type AttachmentNode } from './model';
 import { useAttachments, type AttachmentApi, type AttachmentController } from './useAttachments';
@@ -26,6 +27,7 @@ type TaskAttachmentsPanelProps = Omit<TaskAttachmentsProps, 'api'> & {
   readonly attachments: AttachmentController;
   readonly navigation?: AttachmentNavigation | null;
   readonly onInteract?: () => void;
+  readonly active?: boolean;
 };
 
 const ErrorMessage = ({ error, message }: { readonly error: unknown; readonly message: string }) => {
@@ -36,29 +38,34 @@ const ErrorMessage = ({ error, message }: { readonly error: unknown; readonly me
   </>;
 };
 
-const FileTree = ({ nodes, selectedPath, onSelect }: {
+const FileTree = ({ nodes, selectedPath, onSelect, onActions, actionPath, busy }: {
   readonly nodes: readonly AttachmentNode[];
   readonly selectedPath: string | null;
   readonly onSelect: (path: string) => void;
+  readonly onActions: (target: AttachmentActionTarget) => void;
+  readonly actionPath: string | null;
+  readonly busy: boolean;
 }) => {
-  const { format } = useI18n();
+  const { format, messages } = useI18n();
   return <ul className="attachment-tree">
     {nodes.map((node) => <li key={node.path}>{node.kind === 'directory' ? (
       <details open>
         <summary><span aria-hidden="true">▱</span> {node.name}</summary>
-        <FileTree nodes={node.children} selectedPath={selectedPath} onSelect={onSelect} />
+        <FileTree nodes={node.children} selectedPath={selectedPath} onSelect={onSelect} onActions={onActions} actionPath={actionPath} busy={busy} />
       </details>
     ) : (
-      <button className={`attachment-file${selectedPath === node.path ? ' attachment-file-selected' : ''}`} type="button" aria-pressed={selectedPath === node.path} onClick={() => onSelect(node.path)}>
+      <div className={`attachment-file-row${selectedPath === node.path ? ' attachment-file-selected' : ''}`}><button className="attachment-file" type="button" aria-pressed={selectedPath === node.path} onClick={() => onSelect(node.path)}>
         <span className="attachment-file-icon" aria-hidden="true">▤</span>
         <span className="attachment-file-name">{node.name}</span>
         <span className="attachment-file-size">{format.bytes(node.attachment.sizeBytes)}</span>
-      </button>
+      </button><button className="attachment-actions-trigger" type="button" aria-label={messages.inspection.attachments.fileActions({ path: node.path })} aria-haspopup="menu" aria-expanded={actionPath === node.path} disabled={busy} onClick={(event) => onActions({ path: node.path, trigger: event.currentTarget })} onKeyDown={(event) => {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); onActions({ path: node.path, trigger: event.currentTarget }); }
+      }}>…</button></div>
     )}</li>)}
   </ul>;
 };
 
-export const TaskAttachmentsPanel = ({ projectId, taskId, attachments, urls, navigation, onInteract, onClose }: TaskAttachmentsPanelProps) => {
+export const TaskAttachmentsPanel = ({ projectId, taskId, attachments, urls, navigation, onInteract, onClose, active = true }: TaskAttachmentsPanelProps) => {
   const { messages, format } = useI18n();
   const m = messages.inspection.attachments;
   const headingId = useId();
@@ -66,11 +73,28 @@ export const TaskAttachmentsPanel = ({ projectId, taskId, attachments, urls, nav
   const pathId = useId();
   const fileInput = useRef<HTMLInputElement>(null);
   const previewPane = useRef<HTMLDivElement>(null);
+  const submitting = useRef(false);
+  const [action, setAction] = useState<(AttachmentActionTarget & { readonly kind: 'menu' | 'confirm'; readonly scope: string }) | null>(null);
+  const scope = `${projectId}/${taskId}`;
   const [file, setFile] = useState<File | null>(null);
   const [path, setPath] = useState('');
   const [pathError, setPathError] = useState(false);
-  const selected = attachments.items.find((item) => item.path === attachments.selectedPath);
+  const selected = attachments.selected;
   const busy = attachments.write.status !== 'idle';
+  useEffect(() => {
+    if (action !== null && (action.scope !== scope || !active && !busy || busy && action.kind === 'menu')) setAction(null);
+  }, [active, busy, scope, action]);
+  const dismissMenu = (restoreFocus: boolean) => {
+    if (restoreFocus) action!.trigger.focus();
+    setAction(null);
+  };
+  const confirmDelete = async () => {
+    if (action === null || action.scope !== scope || submitting.current) return;
+    submitting.current = true;
+    onInteract?.();
+    if (await attachments.remove(action.path)) setAction(null);
+    submitting.current = false;
+  };
   useLayoutEffect(() => {
     if (navigation !== undefined && navigation !== null) previewPane.current!.focus();
   }, [navigation]);
@@ -101,7 +125,7 @@ export const TaskAttachmentsPanel = ({ projectId, taskId, attachments, urls, nav
             <h4 id={headingId}>{attachments.complete ? m.heading({ count: format.number(attachments.items.length) }) : m.title}</h4>
             <button className="button" type="button" disabled={attachments.loading || busy} onClick={attachments.reload}>{m.refresh}</button>
           </div>
-          {attachments.write.error !== null && <div className="attachment-error attachment-state" role="alert"><ErrorMessage error={attachments.write.error} message={m.writeError} /></div>}
+          {attachments.write.error !== null && action?.kind !== 'confirm' && <div className="attachment-error attachment-state" role="alert"><ErrorMessage error={attachments.write.error} message={m.writeError} /></div>}
           {attachments.loading && <p className="attachment-state" role="status">{m.loading}</p>}
           {attachments.error !== null && (
             <div className="attachment-state attachment-error" role="alert">
@@ -110,7 +134,7 @@ export const TaskAttachmentsPanel = ({ projectId, taskId, attachments, urls, nav
             </div>
           )}
           {attachments.complete && attachments.items.length === 0 && <p className="attachment-state">{m.empty}</p>}
-          {attachments.items.length > 0 && <nav className="attachment-files" aria-label={m.files}><FileTree nodes={attachmentTree(attachments.items)} selectedPath={attachments.selectedPath} onSelect={select} /></nav>}
+          {attachments.items.length > 0 && <nav className="attachment-files" aria-label={m.files}><FileTree nodes={attachmentTree(attachments.items)} selectedPath={attachments.selectedPath} onSelect={select} busy={busy} actionPath={action?.kind === 'menu' ? action.path : null} onActions={(target) => { onInteract?.(); setAction(action?.kind === 'menu' && action.path === target.path ? null : { ...target, kind: 'menu', scope }); }} /></nav>}
           <details className="attachment-upload-disclosure">
             <summary>{m.upload}</summary>
             <form className="attachment-upload" onSubmit={(event) => { void upload(event); }}>
@@ -144,7 +168,6 @@ export const TaskAttachmentsPanel = ({ projectId, taskId, attachments, urls, nav
                 <div className="attachment-preview-actions">
                   <a className="button" href={urls === undefined ? attachmentDownloadUrl(projectId, taskId, selected.path) : urls.download(selected.path)} download>{m.download}</a>
                   <a className="button" href={urls === undefined ? attachmentPageUrl(projectId, taskId, selected.path) : urls.page(selected.path)} target="_blank" rel="noopener noreferrer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M14 3h7v7M21 3 10 14M10 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-6" /></svg>{m.openInNewTab}</a>
-                  <button className="button attachment-delete" type="button" disabled={busy} onClick={() => { onInteract?.(); void attachments.remove(selected.path); }}>{attachments.write.status === 'deleting' ? m.deleting : m.delete}</button>
                 </div>
               </header>
               <AttachmentPreview key={`${selected.path}/${selected.updatedAt}`} attachment={selected} preview={attachments.preview} url={urls === undefined ? attachmentPreviewUrl(projectId, taskId, selected.path) : urls.preview(selected.path)} previewRoot={urls === undefined ? attachmentPreviewRoot(projectId, taskId) : urls.previewRoot} onRetry={attachments.retryPreview} onClose={onClose} />
@@ -152,6 +175,8 @@ export const TaskAttachmentsPanel = ({ projectId, taskId, attachments, urls, nav
           )}
         </div>
       </div>
+      {active && action?.scope === scope && action.kind === 'menu' && !busy && <AttachmentActionMenu target={action} onDismiss={dismissMenu} onDelete={() => setAction({ ...action, kind: 'confirm' })} />}
+      {action?.scope === scope && action.kind === 'confirm' && <AttachmentDeleteDialog target={action} busy={busy} error={attachments.write.error} fallback={previewPane} onConfirm={() => { void confirmDelete(); }} onDismiss={() => setAction(null)} />}
     </section>
   );
 };

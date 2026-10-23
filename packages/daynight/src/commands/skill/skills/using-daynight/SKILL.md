@@ -61,7 +61,7 @@ and completing `run-task` never activate it.
   according to actual ownership and need; reference shared inputs at their verified
   source. Express prerequisites only through `dependsOn`.
 - Preserve the exact version observed when deciding a metadata update or
-  approve/claim/complete action. Generic updates cannot change status. Confirm writes,
+  approve/unapprove/claim/complete action. Generic updates cannot change status. Confirm writes,
   reconcile uncertain results before further mutations, and preserve actual
   failures. The handbook explains operational context; installed CLI help owns
   command usage.

@@ -40,7 +40,7 @@ const task = (id: string, titlePreview: string, dependsOn: readonly string[] = [
 const remaining = task(remainingId, '保留任务链');
 const remainingChain = [remaining, task('remaining-child', '保留后续任务', [remainingId])];
 const graph = (tasks = [task(rootId, '原任务链'), task(selectedId, '所选任务', [rootId]), ...remainingChain]): TaskGraph => ({ observedAt: "2026-10-20T12:00:00Z",
-  project: { id: projectId, name: '核心项目', repoUrl: '', createdAt: timestamp, updatedAt: timestamp },
+  project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: projectId, name: '核心项目', repoUrl: '', createdAt: timestamp, updatedAt: timestamp },
   tasks,
   summary: {
     total: tasks.length, proposed: tasks.filter((task) => task.status === "proposed").length, todo: tasks.filter((item) => item.status === 'todo').length, done: tasks.filter((item) => item.status === 'done').length, inProgress: tasks.filter((item) => item.status === 'in_progress').length,

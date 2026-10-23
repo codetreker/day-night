@@ -42,6 +42,10 @@ approval of this task or stated scope, review its current content and use
 state. The user can also approve directly through the CLI or Web. Approval does
 not expand implementation or delivery authorization.
 
+If approval is withdrawn before claim, the task is proposed again and waits for
+new explicit approval. Do not infer approval from its earlier todo state or
+retry a failed claim with a newer version.
+
 For ready `todo`, begin only when dependencies are done, required stage inputs are complete
 and the work is authorized. Use `task claim` with the exact version observed for
 that decision and confirm in_progress before starting. A stale version or

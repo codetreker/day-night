@@ -82,6 +82,7 @@ const repository = (t: TestContext) => {
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   const git = (...args: string[]): string => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   git("init", "--initial-branch=main");
+  git("config", "maintenance.auto", "false");
   git("config", "user.name", "CI routing tests");
   git("config", "user.email", "ci-routing@example.invalid");
   const write = (path: string, content = path): void => {

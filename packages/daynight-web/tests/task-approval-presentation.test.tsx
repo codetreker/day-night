@@ -8,62 +8,56 @@ import { LanguageSelector } from '../src/i18n/LanguageSelector';
 import { renderWithLocale } from './helpers/renderWithLocale';
 const detail: TaskDetail = { startedAt: null, completedAt: null, id: 'task', projectId: 'project', version: 1n, title: 'Task content', description: '',
   properties: { pullRequests: [] }, status: 'proposed', dependsOn: [], blockedBy: [], ready: false, createdAt: '', updatedAt: '' };
-const idle: ApprovalState = { phase: 'idle', error: null, reconciling: false, reconciliationError: null };
-const mount = (approval = idle, task = detail, enabled = true) => {
-  const onApprove = vi.fn(); const onReconcile = vi.fn();
-  const view = renderWithLocale(<><LanguageSelector /><TaskApproval detail={task} approval={approval} canApprove={enabled} onApprove={onApprove} onReconcile={onReconcile} /></>, { locale: 'en' });
-  return { ...view, onApprove, onReconcile };
+const idle: ApprovalState = { operation: null, phase: 'idle', error: null, reconciling: false, reconciliationError: null };
+const mount = (approval = idle, task = detail) => {
+  const onReconcile = vi.fn();
+  const view = renderWithLocale(<><LanguageSelector /><TaskApproval detail={task} approval={approval} onReconcile={onReconcile} /></>, { locale: 'en' });
+  return { ...view, onReconcile };
 };
 
-describe('task approval presentation', () => {
-  it.each(['todo', 'in_progress', 'done'] as const)('offers no approval on an ordinary %s detail', (status) => {
-    mount(idle, { ...detail, status }, false);
+describe('task approval feedback', () => {
+  it.each(['proposed', 'todo', 'in_progress', 'done'] as const)('keeps an ordinary %s overview free of duplicate title actions', (status) => {
+    mount(idle, { ...detail, status });
     expect(screen.queryByRole('region', { name: 'Task approval' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Approve|Unapprove/ })).toBeNull();
   });
-  it('requires an explicit action and explains unfinished prerequisites in both languages', () => {
-    const { onApprove } = mount();
-    expect(screen.getByText('Approval moves this task to To do. Unfinished prerequisites will continue to block it.')).toBeVisible();
-    expect(onApprove).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'zh-CN' } });
-    expect(screen.getByText('批准后进入待处理；前置未完成时，任务仍会被阻塞。')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: '批准任务' }));
-    expect(onApprove).toHaveBeenCalledTimes(1);
-  });
-  it('announces pending state and disables activation while retaining the reviewed content', () => {
-    const { onApprove } = mount({ ...idle, phase: 'pending' }, detail, false);
+  it('announces pending state while retaining reviewed content without another mutation entry', () => {
+    mount({ ...idle, operation: { action: 'approve', version: 1n }, phase: 'pending' });
     const section = screen.getByRole('region', { name: 'Task approval' });
     expect(section).toHaveAttribute('aria-busy', 'true');
-    expect(within(section).getByRole('status')).toHaveTextContent('Submitting approval.');
-    fireEvent.click(screen.getByRole('button', { name: 'Approving…' }));
-    expect(onApprove).not.toHaveBeenCalled();
+    expect(within(section).getByRole('status')).toHaveTextContent('Submitting the approval operation.');
+    expect(within(section).queryByRole('button')).toBeNull();
+  });
+  it.each(['approve', 'unapprove'] as const)('describes the confirmed %s operation in both languages', (action) => {
+    mount({ ...idle, phase: 'confirmed', operation: { action, version: 1n } }, { ...detail, status: action === 'approve' ? 'todo' : 'proposed' });
+    expect(screen.getByRole('status')).toHaveTextContent(action === 'approve' ? 'Approval confirmed.' : 'Approval withdrawn. The task is proposed again.');
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'zh-CN' } });
+    expect(screen.getByRole('status')).toHaveTextContent(action === 'approve' ? '批准成功。' : '已撤回审批，任务回到待审批状态。');
   });
   it('keeps mutation and reconciliation failures visible and offers only explicit state checking while unknown', () => {
     const writeError = new ApiError('protocol', 200, 'protocol', 'write-request');
     const readError = new ApiError('network', null, 'network', 'read-request');
-    const { onApprove, onReconcile } = mount({ ...idle, phase: 'unknown', error: writeError, reconciliationError: readError }, detail, false);
+    const { onReconcile } = mount({ ...idle, phase: 'unknown', operation: { action: 'unapprove', version: 1n }, error: writeError, reconciliationError: readError });
     expect(screen.getByText('write-request')).toBeVisible(); expect(screen.getByText('read-request')).toBeVisible();
-    expect(screen.getByText(/The approval outcome is unknown/)).toHaveAttribute('role', 'alert');
-    expect(screen.getByRole('button', { name: 'Approve task' })).toBeDisabled();
+    expect(screen.getByText(/The approval operation outcome is unknown/)).toHaveAttribute('role', 'alert');
+    expect(screen.queryByRole('button', { name: 'Approve task' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Check task state' }));
-    expect(onReconcile).toHaveBeenCalledTimes(1); expect(onApprove).not.toHaveBeenCalled();
+    expect(onReconcile).toHaveBeenCalledTimes(1);
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'zh-CN' } });
     expect(screen.getByRole('button', { name: '检查任务状态' })).toBeEnabled();
-    expect(screen.getByText('write-request')).toBeVisible(); expect(screen.getByText('read-request')).toBeVisible();
   });
   it.each([
-    [new ApiError('server', 409, 'version_conflict', 'version-request'), 'The task version changed before this approval could be applied.'],
-    [new ApiError('server', 409, 'invalid_transition', 'transition-request'), 'Only a proposed task can be approved.'],
+    [new ApiError('server', 409, 'version_conflict', 'version-request'), 'The task version changed before this approval operation could be applied.'],
+    [new ApiError('server', 409, 'invalid_transition', 'transition-request'), 'Only proposed tasks can be approved, and only to-do tasks can have approval withdrawn.'],
     [new ApiError('server', 404, 'not_found', 'notfound-request'), 'The task or project is no longer available.'],
-    [new ApiError('server', 400, 'validation_failed', 'validation-request'), 'The service refused the approval request.'],
-    [new Error('transport failure'), 'The approval request failed.'],
-  ])('shows the approval refusal with accessible error feedback %#', (error, text) => {
+    [new ApiError('server', 400, 'validation_failed', 'validation-request'), 'The service refused the approval operation.'],
+    [new Error('transport failure'), 'The approval operation failed.'],
+  ])('shows refusal with accessible error feedback %#', (error, text) => {
     mount({ ...idle, phase: 'refused', error });
     expect(screen.getByRole('alert')).toHaveTextContent(text);
-    expect(screen.getByRole('button', { name: 'Approve task' })).toBeEnabled();
   });
   it.each(['in_progress', 'done'] as const)('reports a reconciled %s task without falsely claiming unfinished prerequisites', (status) => {
-    mount({ ...idle, phase: 'reconciled', error: new ApiError('network') }, { ...detail, status }, false);
-    expect(screen.queryByRole('button', { name: 'Approve task' })).toBeNull();
+    mount({ ...idle, phase: 'reconciled', error: new ApiError('network') }, { ...detail, status });
     expect(screen.getByText('The current task state has been loaded.')).toBeVisible();
     expect(screen.queryByText('The task is approved. Unfinished prerequisites still block it.')).toBeNull();
   });

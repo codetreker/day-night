@@ -49,11 +49,10 @@ decision kept direct blockers visible without recursively expanding ancestry;
 it remains the owner of complete-snapshot validation, main-set counting and the
 pinned Dagre layout choices. The
 [inspection design](../architecture/2026-10-22-task-inspection-design.md) owns the
-task-card selection and smooth-route mechanisms, plus the pending Markdown goals. The
+task-card selection and smooth-route mechanisms. The
 [centered detail decision](2026-10-22-centered-task-detail-dialog.md) implements
 the reading shell. The [inspection decision](2026-10-22-task-dependency-inspection.md)
-owns sibling selection/Details actions and smooth routes on the progressive graph;
-source-bound runtime and delivery evidence belongs to the task records.
+owns sibling selection/Details actions and smooth routes on the progressive graph.
 The [Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
 owns shared CommonMark/GFM and root-based attachment navigation.
 
@@ -76,8 +75,9 @@ added six functional scenarios per target, and the
 [Markdown description delivery](../architecture/2026-10-22-task-description-markdown.md)
 added one, producing the earlier twenty-five-native/twenty-container inventory.
 The [approval lifecycle](2026-10-22-task-approval-lifecycle.md) adds three approval
-scenarios per target. Current strict inventories are twenty-eight native and
-twenty-three container scenarios, with these same five capacity/limit cases.
+scenarios per target. The later [withdrawal decision](2026-10-23-task-unapprove.md)
+adds one functional scenario per target. Current strict inventories are twenty-nine
+native and twenty-four container scenarios, with these same five capacity/limit cases.
 
 The [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 the [web design](../../../../docs/design/daynight-web.md) owns model and viewport

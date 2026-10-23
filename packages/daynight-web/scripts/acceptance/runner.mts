@@ -27,9 +27,9 @@ const labelKey = 'io.daynight.acceptance.run';
 const functionalScenarios = ['project-list', 'project-graph', 'detail-navigation', 'refresh-staleness',
   'failure-recovery', 'deep-links', 'keyboard-focus', 'narrow-layout', 'task-attachments', 'project-view-tabs',
   'language-startup-preferences', 'language-state-preservation', 'language-errors-and-narrow',
-  'task-description-markdown', 'task-approval', 'task-approval-conflicts', 'task-approval-recovery',
+  'task-description-markdown', 'task-approval', 'task-approval-conflicts', 'task-approval-recovery', 'task-unapproval',
   'auth-login-session', 'auth-project-isolation', 'auth-project-members', 'auth-personal-tokens',
-  'auth-invitations', 'auth-resource-session'] as const;
+  'auth-invitations', 'auth-resource-session', 'project-settings', 'task-execution-time'] as const;
 const capacityScenarios = ['capacity-chain', 'capacity-merge', 'capacity-shared', 'capacity-external', 'capacity-limits'] as const;
 
 const json = async (path: string, value: unknown): Promise<void> => {
@@ -39,6 +39,7 @@ const json = async (path: string, value: unknown): Promise<void> => {
 };
 const readJson = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, 'utf8'));
 export type AcceptanceCommand = (file: string, args: readonly string[], options?: Omit<CommandOptions, 'cwd'> & { cwd?: string }) => Promise<string>;
+export type AcceptanceOptions = { allowApfsImage?: boolean };
 export type AcceptancePreparations = { browser: (run: AcceptanceCommand) => Promise<void>; coverage: (run: AcceptanceCommand) => Promise<void> };
 
 type InstalledPreparation = { receipt: InstalledCliReceipt; receiptPath: string; cleanup(): Promise<void> };
@@ -166,7 +167,7 @@ export const launchNativeServer = async (options: NativeLaunchOptions): Promise<
   });
 };
 
-const createRunner = (cancellation: AbortController) => {
+const createRunner = (cancellation: AbortController, options: AcceptanceOptions = {}) => {
   const expectedServerShutdowns = new WeakSet<ChildProcess>();
   const run = (file: string, args: readonly string[], options: Omit<CommandOptions, 'cwd'> & { cwd?: string } = {}): Promise<string> =>
     command(file, args, { cwd: repositoryRoot, signal: cancellation.signal, ...options });
@@ -177,6 +178,7 @@ const createRunner = (cancellation: AbortController) => {
     projectLabel: { key: string; value: string }; database: 'daynight';
   };
   type BrowserPhase = TargetIdentity & {
+    caseSensitiveStorage: boolean;
     phase: 'functional' | 'capacity'; result: 'running' | 'passed' | 'failed'; startedAt: string; finishedAt?: string;
     browserCleanup: 'not-started' | 'pending' | 'passed' | 'failed'; scenarios?: Scenario[]; browser?: unknown; error?: string;
     playwrightProcess?: ProcessIdentity; playwrightGroup?: number; browserInventory?: BrowserInventory;
@@ -221,6 +223,10 @@ const createRunner = (cancellation: AbortController) => {
     let identitySaved: Promise<void> = Promise.resolve();
     let failure: unknown;
     try {
+      if (typeof target.caseSensitiveStorage !== 'boolean'
+        || (!target.caseSensitiveStorage && (target.target !== 'native' || process.platform !== 'darwin'))) {
+        throw new Error('Browser phase has invalid filesystem case-sensitivity coverage.');
+      }
       target.browserInventory = await browserInventory();
       target.browserCleanup = 'pending';
       await json(join(directory, 'target.json'), target);
@@ -319,7 +325,7 @@ const createRunner = (cancellation: AbortController) => {
     const installation = readyInstallation(prepared.installedCli);
     await validateInstalledCli(installation.receiptPath, acceptanceDirectory);
     const phase = await playwright({ target: 'container', phase: 'functional', result: 'running', startedAt: new Date().toISOString(),
-      browserCleanup: 'not-started', baseUrl, postgresContainer,
+      browserCleanup: 'not-started', caseSensitiveStorage: true, baseUrl, postgresContainer,
       projectLabel: { key: 'com.docker.compose.project', value: project }, database: 'daynight' }, directory, installation);
     const serverId = await run('docker', ['ps', '--quiet', '--no-trunc', '--filter', `label=com.docker.compose.project=${project}`,
       '--filter', 'label=com.docker.compose.service=server'], { quiet: true, timeoutMs: 10_000 });
@@ -365,7 +371,7 @@ const createRunner = (cancellation: AbortController) => {
   const startServer = async (binary: string, databaseUrl: string, evidence: NativeEvidence, register: (child: ChildProcess) => void,
     persist: () => Promise<void>, fixtureBinary: string, fixtureBinarySha256: string): Promise<{ child: ChildProcess; baseUrl: string; fixture: AuthFixture }> => {
     cancellation.signal.throwIfAborted();
-    evidence.storage = await prepareStorage(evidence.storageRoot, { persist: async (receipt) => {
+    evidence.storage = await prepareStorage(evidence.storageRoot, { allowApfsImage: options.allowApfsImage === true, persist: async (receipt) => {
       evidence.storage = receipt;
       await persist();
     } });
@@ -750,8 +756,10 @@ const createRunner = (cancellation: AbortController) => {
     };
     const nativePhase = (phase: 'functional' | 'capacity'): BrowserPhase => {
       const target = native();
+      const caseSensitiveStorage = evidence.native.storage?.caseSensitive;
+      if (typeof caseSensitiveStorage !== 'boolean') throw new Error('Native storage capability was not recorded.');
       const result: BrowserPhase = { target: 'native', baseUrl: target.baseUrl, postgresContainer: target.postgresContainer,
-        projectLabel: target.projectLabel, database: target.database, phase, result: 'running',
+        projectLabel: target.projectLabel, database: target.database, phase, caseSensitiveStorage, result: 'running',
         startedAt: new Date().toISOString(), browserCleanup: 'not-started' };
       target.phases.push(result);
       return result;
@@ -901,6 +909,7 @@ const createRunner = (cancellation: AbortController) => {
           } finally { await runnerIdentitySaved; }
           const phase = await readJson(join(containerDirectory, 'target.json')) as BrowserPhase;
           if (phase.browserInventory === undefined) throw new Error('Container browser inventory is missing.');
+          if (phase.caseSensitiveStorage !== true) throw new Error('Container case-sensitive storage coverage is missing.');
           await recoverBrowsers(containerDirectory, phase.browserInventory);
           const receiptIdentity = await readJson(join(containerDirectory, 'dev-ci-run.json')) as { runId: string };
           if (receiptIdentity.runId !== devCiRunId) throw new Error('Container receipt differs from the announced dev-ci run.');
@@ -993,7 +1002,7 @@ const createRunner = (cancellation: AbortController) => {
   return { main, containerCallback, recover };
 };
 
-export const runAcceptance = async (cancellation: AbortController, preparations?: AcceptancePreparations): Promise<void> =>
-  createRunner(cancellation).main(preparations);
+export const runAcceptance = async (cancellation: AbortController, preparations?: AcceptancePreparations, options?: AcceptanceOptions): Promise<void> =>
+  createRunner(cancellation, options).main(preparations);
 export const runContainerCallback = async (cancellation: AbortController): Promise<void> => createRunner(cancellation).containerCallback();
 export const recoverAcceptance = async (cancellation: AbortController, runId?: string): Promise<void> => createRunner(cancellation).recover(runId);

@@ -1,3 +1,4 @@
+import { decodeTaskGraphJson } from '../../src/api/project-json';
 import { randomUUID } from 'node:crypto';
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { test, expect, createProject, createApprovedTask, updateTask, claimTask, completeTask, completeApprovedTask, withDependencyFailure, withProjectsFailure } from './fixtures';
@@ -214,7 +215,7 @@ test('project-graph', scenario('project-graph'), async ({ page, api: request }, 
   await expect(page.locator('.react-flow__edge')).toHaveCount(7);
   const graphResponse = await request.get(`/api/v1/projects/${project.id}/task-graph`);
   expect(graphResponse.status()).toBe(200);
-  const graphSnapshot = parseTaskGraph(await graphResponse.json(), project.id);
+  const graphSnapshot = parseTaskGraph(await decodeTaskGraphJson(new Response(await graphResponse.text())), project.id);
   const checkEdges = async (rootId: string): Promise<void> => {
     const expected = expectedDependencyTopology(graphSnapshot.tasks, rootId);
     const heights = expectedNodeHeights(expected, expected.nodes.map(({ id }) => id)).map(({ id, height }) => ({ id, height: `${height}px` })).sort((a, b) => a.id.localeCompare(b.id));
@@ -496,10 +497,33 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, api: req
   await activateViewWithoutScrolling(page, '独立任务');
   await expect(standaloneCompleted).not.toBeChecked();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(320);
-  await page.reload();
-  await expect(viewTab(page, '独立任务')).toHaveAttribute('aria-selected', 'true');
-  await expect(standaloneCompleted).not.toBeChecked();
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(320);
+  const membersUrl = `**/api/v1/projects/${project.id}/members`;
+  let releaseMembers!: () => void;
+  let markMembersRequestStarted!: () => void;
+  const membersResponseGate = new Promise<void>((resolve) => { releaseMembers = resolve; });
+  const membersRequestStarted = new Promise<void>((resolve) => { markMembersRequestStarted = resolve; });
+  await page.route(membersUrl, async (route) => {
+    markMembersRequestStarted();
+    await membersResponseGate;
+    await route.continue();
+  });
+  try {
+    await page.reload();
+    await membersRequestStarted;
+    await expect(viewTab(page, '独立任务')).toHaveAttribute('aria-selected', 'true');
+    await expect(standaloneCompleted).not.toBeChecked();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(320);
+    const projectHeading = page.locator('.project-heading');
+    const headingBeforeMembership = await projectHeading.boundingBox();
+    expect(headingBeforeMembership).not.toBeNull();
+    releaseMembers();
+    await expect(page.getByRole('link', { name: '项目设置', exact: true })).toBeVisible();
+    expect(await projectHeading.boundingBox()).toEqual(headingBeforeMembership);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(320);
+  } finally {
+    releaseMembers();
+    await page.unroute(membersUrl);
+  }
 
   const other = await createProject(request, { name: `Other task views ${randomUUID()}` });
   await createApprovedTask(request, other.id, { title: '另一项目的独立任务' });
@@ -1055,13 +1079,23 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, api: request }
   expect(detailReads).toBe(1);
   await expect(close).toBeFocused();
   await expect(page.locator('#root')).toHaveAttribute('inert', '');
+  const taskTitle = dialog.locator('.task-detail-title');
+  const approvalAction = dialog.getByRole('button', { name: '撤回审批', exact: true });
   const overviewTab = dialog.getByRole('tab', { name: '概览', exact: true });
+  await page.keyboard.press('Tab');
+  await expect(taskTitle).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(approvalAction).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(overviewTab).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(dialog.getByRole('link', { name: b.properties.pullRequests[0]!.url, exact: true })).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(overviewTab).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(approvalAction).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(taskTitle).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(close).toBeFocused();
   await page.keyboard.press('Shift+Tab');

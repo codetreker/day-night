@@ -15,10 +15,8 @@ persistence, authorization and concurrency semantics.
 The adopted [requirements](../../../../docs/spec/daynight-task-timing.md) and
 [architecture](../../../../docs/design/daynight-task-timing.md) define one
 execution interval per task, project-owned warning settings and a server-derived
-display clock. Persistent task timing and its reader contracts are implemented;
-project settings, running-task presentation and whole-goal acceptance remain
-owned by the succeeding
-[implementation tasks](../../../../docs/design/daynight-task-timing-tasks.md).
+display clock. Persistent task timing, project settings, their reader contracts
+and task presentation form the implemented mechanism.
 
 Task start and completion timestamps are nullable database facts written with
 status and version under the existing project transaction. The latest genuine
@@ -39,21 +37,45 @@ content equality excludes the graph's sample. This preserves graph and index
 identity on clock-only responses without freezing the sample consumed by future
 clock clients. The existing local-wall-clock `receivedAt` label keeps its role.
 
-The adopted ET-T2 design stores settings in two project columns under the existing
-project lock and a dedicated settings version. It requires member reads,
-administrator writes with authorization rechecked after the lock, and a version
-check before no-op detection. The initial threshold is 60 minutes. ET-T2 also
-owns separation of settings metadata from the task index.
+Project settings occupy two project columns under the existing project lock
+and a dedicated settings version. Migration gives existing projects the initial
+60-minute threshold and version 1 without changing their historical timestamps.
+Members read the saved setting; administrator writes recheck authorization after
+the lock and compare version before no-op detection. Equal saves preserve version
+and updatedAt; actual changes advance both. Create, read, list, graph and settings
+PATCH responses expose the same complete Project resource.
 
-ET-T3 uses one project-owned browser ticker to advance the latest server sample
-with monotonic elapsed time. Completed durations need no subscription. Strict
-unrounded threshold comparison drives an amber icon/text warning without
-changing task status or graph geometry. These consumers remain later delivery
-work, rather than an existing runtime capability of the timing data contract.
+CLI preserves nested settings versions through its existing raw-number decoding.
+Web targets known Project envelopes using shared JSON source spans, preserving
+versions above 2^53 without changing generic unknown-nested-field semantics or
+requiring browser reviver source context. Graph caching uses a bigint-safe
+Project metadata fingerprint independently from task/summary identity, so a
+settings-only change retains task references and GraphIndex.
 
-Delivery proceeds through persistent task timing, project threshold settings,
-then running-task presentation and whole-goal acceptance. Each PR preserves a
-buildable resource contract and includes its own necessary validation.
+The member-readable settings route exposes administrator save/cancel actions
+with user/project-owned state and the shared foreground identity guard. Drafts
+and confirmed refusals do not replace the saved Project. Unconfirmed PATCH
+responses are reconciled by rereading Project and membership before another
+mutation. Failed reconciliation keeps Save blocked and offers a read retry;
+neither abort nor navigation proves rollback, and PATCH is never replayed
+automatically. Role or resource loss clears private project state.
+
+Each successful graph read records observedAt and a monotonic receipt captured
+before fingerprint/index work. The project-owned clock advances that sample
+through render commit delay with one visible-page ticker only while mounted
+known-start running tasks subscribe. Completed durations use persisted endpoints
+and subscribe only to settings metadata; unknown timing has no active subscription.
+Hiding, the final running unsubscribe and unmount release timer/listener work.
+Visibility return publishes the elapsed monotonic difference immediately, while
+the existing guarded graph hook separately obtains a fresh database sample.
+
+Strict unrounded threshold comparison drives amber icon/text warnings on graph
+cards and standalone rows. It preserves running status, exact endpoint descriptions,
+existing accessible names, selection, external dashes and card geometry. Time
+updates stay local to consumers; the graph index and layout retain their identity.
+Standalone visual timing does not become part of its button name, and tick
+updates do not use live regions. Root-chain progress never claims an individual
+execution interval as aggregate duration.
 
 ## Alternatives
 
@@ -82,9 +104,10 @@ change, avoiding incompatible intermediate readers.
 ## Consequences
 
 Historical starts remain unknown and cannot yield an inferred duration. The
-graph's database sample and its separate Web receipt expose a clock basis without
-adding per-card requests or a server worker. The planned display clock includes
-network-sample delay and reanchors through existing polling. Its timer ticks must
+graph's database sample and its paired monotonic Web receipt expose a clock
+basis without per-card requests or a server worker. The display clock accounts
+for post-receipt commit delay, retains network/parse sampling delay and reanchors
+through existing polling; it does not claim network-latency compensation. Its timer ticks must
 remain outside layout dependencies; future graph-cache changes must preserve the
 separation between the latest sample and stable graph/index content.
 

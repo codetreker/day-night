@@ -7,27 +7,23 @@
 本文定义 `daynight-server` 面向本机 CLI 和内部程序的任务管理行为。
 [技术设计](../design/daynight-server.md)拥有分层、存储和并发机制；
 [设计决策](../../.agents/notes/implemented/architecture/2026-10-19-daynight-server-task-design.md)
-记录取舍和范围。[任务拆分](../design/daynight-server-tasks.md)记录实现任务、依赖、
-状态与验收条件。
+记录取舍和范围。
 
 [预定义属性需求](daynight-task-properties.md)扩展本文的 task 资源，PR 引用的
-服务端存储、更新与迁移已实现；[架构](../design/daynight-task-properties.md)和
-[实施任务](../design/daynight-task-properties-tasks.md)拥有机制及各组件的交付记录。
+服务端存储、更新与迁移已实现；[架构](../design/daynight-task-properties.md)拥有机制。
 
 [附件需求](daynight-task-attachments.md)扩展本文的服务基线：本地内容、PG 元数据、
 单文件 API 和固定预览路径已实现，CLI 与 Web 管理界面按其任务继续交付。其
-[架构](../design/daynight-task-attachments.md)与
-[任务拆分](../design/daynight-task-attachments-tasks.md)单独拥有附件机制及实施状态。
+[架构](../design/daynight-task-attachments.md)拥有附件机制。
 
 [鉴权需求](daynight-auth.md)定义已接入主站的 UniAuth 登录、Daynight 会话、个人
-访问令牌和项目成员授权；[架构](../design/daynight-auth.md)与
-[任务拆分](../design/daynight-auth-tasks.md)拥有机制和交付条件。全部 project、task、
+访问令牌和项目成员授权；[架构](../design/daynight-auth.md)拥有机制。全部 project、task、
 图和附件业务请求必须通过认证，并按项目成员关系授权。已有项目后续手工补齐成员，
 零成员项目不可访问。[统一启用决策](../../.agents/notes/implemented/architecture/2026-10-22-authentication-activation.md)
 记录运行时接线与验收凭据边界；对应源码的验证结论仍以完整运行回执为准。
 
 [执行计时需求](daynight-task-timing.md)的任务起止事实与数据库图时间样本已实现。
-本文拥有它们的资源、写入和快照约定；项目提醒阈值与实时展示仍由该组后继任务交付。
+本文拥有它们的资源、写入和快照约定；项目提醒阈值及管理员设置接口已实现，实时卡片使用同一资源事实，当前展示由[看板需求](daynight-web.md)拥有。
 
 ## 目标与交付范围
 
@@ -37,7 +33,7 @@
 | R2 | 支持创建、列表查询和读取关联一个 repo 地址的 project |
 | R3 | 在 project 内支持创建、列表查询、读取和更新 task |
 | R4 | task 支持同 project 内的依赖关系，任何成功提交都必须保持无环 |
-| R5 | task 从 `proposed` 经 approve、claim、complete 单向进入 `todo`、`in_progress`、`done`；开始或完成要求全部直接前置已完成，通用更新不可写 status |
+| R5 | task 创建为 `proposed`，经 approve、claim、complete 进入 `todo`、`in_progress`、`done`；unapprove 仅允许 todo→proposed；开始或完成要求全部直接前置已完成，通用更新不可写 status |
 | R6 | task 更新必须支持版本冲突检测，字段和依赖必须原子提交 |
 | R7 | 通过 HTTP JSON API 提供上述行为，错误和分页具有明确语义 |
 | R8 | 采用 `api / service / server / core` 分层，store 位于 `core` 内 |
@@ -57,6 +53,7 @@ Project 包含以下字段：
 | `id` | 服务生成的 UUID，不随名称或 repo 改变 |
 | `name` | 必填的非空名称 |
 | `repoUrl` | 必填的远程 Git repo 地址 |
+| `settings` | 必填对象；`version` 为初始 `1` 的正 int64，`executionWarningMinutes` 为初始 `60` 的正 int32 分钟数 |
 | `createdAt`、`updatedAt` | UTC 时间，HTTP 使用 RFC 3339 格式 |
 
 一个 project 关联一个 repo，多个 project 可以关联同一 repo。支持 HTTPS URL、
@@ -65,8 +62,16 @@ SSH URL 和 SCP 风格 SSH 地址，地址必须包含主机和仓库路径；�
 但不得包含密码；查询参数和 fragment
 不属于仓库地址。无效地址作为输入错误拒绝，地址中 SSH 用户名不作为业务身份。
 
-当前接口只提供创建、列表查询和单项读取；创建者在同一事务中成为项目管理员，
-列表在数据库中先按当前成员关系过滤，再进行分页。创建后 `repoUrl` 不可通过 task 更新改变。
+接口提供创建、列表、单项读取及专用设置修改；创建者在同一事务中成为项目管理员，
+列表在数据库中先按当前成员关系过滤，再进行分页。创建后 `repoUrl` 不可通过 task 或设置更新改变。
+创建、详情、列表、图内 Project 及成功设置修改均返回完整 settings。已有项目通过迁移获得 `60` 分钟、
+版本 `1`，迁移保持原 createdAt/updatedAt。
+
+设置修改只接受观察到的 `version` 和 `executionWarningMinutes`，范围分别为
+`1..9223372036854775807`、`1..2147483647`。项目成员可读，只有管理员可写；
+取得项目锁后重新检查当前成员和管理员身份，再检查版本，最后才判断同值空操作。
+过期同值请求仍冲突，当前版本同值保存返回未改变 Project；实际数值变化只递增一次设置版本并更新 project.updatedAt，
+不改 createdAt 或任务时间。降权/移除、版本冲突或存储失败不能留下部分设置更新。
 
 ## Task 与依赖
 
@@ -79,7 +84,7 @@ Task 包含以下持久化字段：
 | `title` | 必填的非空 UTF-8 标题，不含 NUL |
 | `description` | 不含 NUL 的 UTF-8 描述，省略时为空字符串，允许更新为空字符串 |
 | `properties` | server 预定义属性；当前 `pullRequests` 为有序的 `{url, title}` 字符串记录数组，默认空数组 |
-| `status` | `proposed / todo / in_progress / done`，创建时为 `proposed`，只能通过专用生命周期操作向前转换 |
+| `status` | `proposed / todo / in_progress / done`，创建时为 `proposed`，只能通过专用生命周期操作转换 |
 | `version` | 从 `1` 开始的正整数，每次实际变更增加一次 |
 | `createdAt`、`updatedAt` | UTC 创建和最后实际变更时间 |
 | `startedAt`、`completedAt` | 只读 UTC 执行起止时间，字段必填但允许 `null`，未知事实不补造 |
@@ -110,27 +115,28 @@ Task 响应还包含 `dependsOn`、`blockedBy` 和 `ready`：
 | 操作 | 唯一允许前态 | 结果 | 前置要求 |
 |---|---|---|---|
 | approve | `proposed` | `todo` | 可含未完成前置 |
+| unapprove | `todo` | `proposed` | 可含未完成前置 |
 | claim | `todo` | `in_progress` | 全部直接前置已完成 |
 | complete | `in_progress` | `done` | 全部直接前置已完成 |
 
-三种操作均要求正 int64 期望 `version`，JSON 使用数字，范围为
+四种操作均要求正 int64 期望 `version`，JSON 使用数字，范围为
 `1..9223372036854775807`；缺失、null、字符串、非整数、非正或越界值拒绝。请求体只
 包含 version，沿用严格字段、重复 key、UTF-8、大小和类型检查。当前版本不符先返回
 `409 version_conflict`；版本一致但前态错误返回 `409 invalid_transition`；前置未完成
 返回 `409 dependency_unsatisfied` 及有关 task ID。重复动作同样失败，不把已转换状态
-当作成功，也不隐式重试。不存在重开、退回或 todo 直接完成的转换。
+当作成功，也不隐式重试。unapprove 之外不存在退回，不能重开进行中或已完成任务，也不能 todo 直接完成。
 
-普通成员与管理员均可执行三种生命周期操作，权限来自当前项目成员关系；管理员
+普通成员与管理员均可执行四种生命周期操作，权限来自当前项目成员关系；管理员
 额外管理成员与邀请。claim 在数据库项目锁后的实际写入时记录 `startedAt` 并清空 `completedAt`，
 complete 记录真实 `completedAt` 并保留起点。迁移前已在执行的任务完成时可以只有真实终点，
-不能从 `createdAt` 或 `updatedAt` 推算其缺失起点。新建及 approve 不生成执行时间，
+不能从 `createdAt` 或 `updatedAt` 推算其缺失起点。新建不生成执行时间；approve 与 unapprove 保留已有起止事实，
 已有历史任务的迁移初值均为 `null`。创建、PATCH 和生命周期输入均不能写入起止字段。
 HTTP 对操作及方法拒绝路由统一验证凭据，Cookie 会话写请求
 要求精确主站 Origin，响应使用 no-store。
 
 版本、前态、依赖及写入必须处于同一 project 锁事务中，先获得项目锁再检查成员关系。成功只增加一次 version 并
 更新一次 updatedAt，并原子维护对应起止时间，保留其余字段、属性和依赖；拒绝保持全部数据不变。同版本并发
-claim 只有一个成功，其余看到版本冲突。审批不领取任务，也不使未完成前置变为完成。
+claim 只有一个成功，其余看到版本冲突。对同一个 ready todo 和同版本，unapprove 与 claim 只有一方成功，另一方返回版本冲突；同版本重复 unapprove 同样只有一个提交。被依赖阻塞的 todo 仍可撤回，claim 的前置拒绝不阻止该动作。撤回保留正文、属性、依赖、附件与起止时间，ready 派生为 false；后继状态及依赖边保持，未完成前置仍未满足。审批不领取任务，也不使未完成前置变为完成。
 任务审批是就绪决策，不授予实现、发布、部署、合并或主线 push 的权限。
 
 PATCH 可修改 `title`、`description`、`dependsOn` 和预定义属性，必须带读取到的
@@ -149,7 +155,7 @@ PR 的 url 与 title 只校验字符串类型及必填结构，保留空字符�
 重复项。服务不检查 URL、PR 存在性或仓库匹配；严格拒绝未知字段、重复 key、null、
 缺失项和错误类型。[属性需求](daynight-task-properties.md)拥有详细行为与验收。
 [生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)保留原三状态任意更新
-及读取准备阶段的历史取舍。
+及读取准备阶段的历史取舍；[撤回决策](../../.agents/notes/implemented/feature/2026-10-23-task-unapprove.md)拥有 todo 专用撤回及保持既有执行边界的理由。
 
 ## HTTP API
 
@@ -158,12 +164,14 @@ PR 的 url 与 title 只校验字符串类型及必填结构，保留空字符�
 | `POST` | `/api/v1/projects` | 创建 project，返回 `201` 和资源 |
 | `GET` | `/api/v1/projects` | 返回 project 分页列表 |
 | `GET` | `/api/v1/projects/{projectId}` | 返回 project，缺失时 `404` |
+| `PATCH` | `/api/v1/projects/{projectId}/settings` | 管理员按精确设置 version 修改阈值，返回 `200` 和完整 Project |
 | `POST` | `/api/v1/projects/{projectId}/tasks` | 创建 task，返回 `201` 和资源 |
 | `GET` | `/api/v1/projects/{projectId}/tasks` | 返回 task 分页列表 |
 | `GET` | `/api/v1/projects/{projectId}/tasks/{taskId}` | 返回 task，缺失或不属于该 project 时 `404` |
 | `GET` | `/api/v1/projects/{projectId}/task-graph` | 返回同一完整快照的 project、任务图和统计 |
 | `PATCH` | `/api/v1/projects/{projectId}/tasks/{taskId}` | 原子更新元数据和依赖，返回 `200` 和资源 |
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/approve` | `proposed → todo`，返回 `200` 和完整资源 |
+| `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/unapprove` | `todo → proposed`，返回 `200` 和完整资源 |
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/claim` | `todo → in_progress`，返回 `200` 和完整资源 |
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/complete` | `in_progress → done`，返回 `200` 和完整资源 |
 
@@ -173,6 +181,10 @@ HTTP 创建请求使用 `Content-Type: application/json`，可附带 UTF-8 chars
 
 所有成功读取返回 `200`。Project 不存在时，其 task 子路径必须返回 `404`，
 不能将空 task 列表作为不存在 project 的结果。
+
+设置 PATCH 必须同时提供 `version` 与 `executionWarningMinutes`，不接受 query 参数。
+缺失、重复、未知、只读、`null`、非整数、非正或超界字段按既有严格 JSON 规则拒绝；
+认证、Cookie 写 Origin 和 no-store 同样适用。成员写设置为 `403 forbidden`，非成员或缺失项目为 `404 not_found`。
 
 Task 创建示例：
 
@@ -237,7 +249,7 @@ points，截短时标记 titleTruncated；不返回完整标题、description �
 | `403` | `forbidden` | 普通成员执行管理员操作，或 Cookie 会话写请求来源不符合要求 |
 | `404` | `not_found` | 路径资源缺失、当前用户不是项目成员或 task 不属于指定 project |
 | `405` | `method_not_allowed` | 已知路径使用不支持的方法，并返回 `Allow` |
-| `409` | `version_conflict` | 元数据更新或生命周期操作的期望版本过期 |
+| `409` | `version_conflict` | 任务元数据、生命周期或项目设置的期望版本过期 |
 | `409` | `invalid_transition` | 生命周期操作的当前状态不符合要求 |
 | `409` | `dependency_cycle` | 候选依赖图成环 |
 | `409` | `dependency_unsatisfied` | 领取、完成或元数据候选违反前置完成规则 |
@@ -278,7 +290,7 @@ points，截短时标记 titleTruncated；不返回完整标题、description �
 | V1 | Project 和 task 的 HTTP 创建、列表、读取、更新可跨服务重启持久化 |
 | V2 | 无效引用、跨 project、自身、重复和间接环被拒绝且无部分写入 |
 | V3 | 同 project 并发反向依赖最多一个成功，不同 project 的写入可独立推进 |
-| V4 | 四状态单向生命周期、全部错误前态、PATCH status 拒绝、同版本领取竞争和依赖更新与领取竞争保持状态约束 |
+| V4 | 四状态及前态受限生命周期、全部错误前态、PATCH status 拒绝、同版本领取/撤回竞争和依赖更新与领取竞争保持状态约束 |
 | V5 | 并发相同版本更新最多一个实际变更成功；过期版本冲突；无变化更新保持版本 |
 | V6 | 分页、筛选、派生字段和错误映射与本文一致，空列表不掩盖读取失败 |
 | V7 | 真实 PostgreSQL 测试覆盖事务回滚、迁移失败、并发写入和一致读取；取消和关闭有明确结果 |

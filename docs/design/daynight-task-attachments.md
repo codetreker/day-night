@@ -2,17 +2,15 @@
 
 状态：通用存储、附件元数据、文件 HTTP/预览入口、CLI 附件命令、Web 管理界面和
 部署持久卷及独立附件完整阅读页已实现，停止写入后的配套备份恢复已有真实容器验证。跨层组合验收复用
-真实服务、安装 CLI 和生产浏览器，实施与交付进度在 Daynight 中维护。
+真实服务、安装 CLI 和生产浏览器。
 
 行为要求由[附件需求](../spec/daynight-task-attachments.md)拥有；本文解释通用存储接口、
 附件元数据及各端集成机制。
-[任务拆分](daynight-task-attachments-tasks.md)拥有实现顺序、依赖、文件归属和完成条件；
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-task-attachment-storage-design.md)
 保存选择依据、已接受的限制及重新评估条件。决策采用不表示功能已经交付。
 
 [鉴权架构](daynight-auth.md)通过当前会话或 PAT 与项目成员权限保护所有附件
-请求；行为见[鉴权需求](../spec/daynight-auth.md)，交付条件见
-[任务拆分](daynight-auth-tasks.md)。`Attachments` 方法显式接收 principal，在
+请求；行为见[鉴权需求](../spec/daynight-auth.md)。`Attachments` 方法显式接收 principal，在
 文件 I/O 前的 `ReadSnapshot` 中检查成员、task 和附件归属；快照完成后执行存储
 及元数据操作，允许已准入操作完成，I/O 后不重新检查成员。凭据在 HTTP 准入
 时验证，不与后续文件/PG 操作组成原子事务。本文的可信同源执行、普通 iframe、
@@ -50,8 +48,7 @@ mockup/
 
 ## 现有结构与集成位置
 
-以下是当前集成位置。存储、HTTP、CLI、Web 管理界面和部署持久卷已有实现；
-各层交付及 A-T6 组合验收状态分别维护。
+以下是当前集成位置。存储、HTTP、CLI、Web 管理界面和部署持久卷已有实现。
 
 | 当前结构 | 集成方式 |
 |---|---|
@@ -112,9 +109,16 @@ Task ID 使用服务已有的规范 UUID 写法。用户文件名与路径保留
 已有文件 `docs` 时不能创建 `docs/design.md`；已有 `docs/design.md` 时不能创建
 文件 `docs`。附件服务检查该业务冲突，LocalStorage 也明确暴露实际文件系统冲突。
 路径处理必须限制在配置的存储根目录内，符号链接不能使访问越过根目录。
-LocalStorage 要求实际根目录支持区分大小写；准备目录时验证该能力，不支持时以配置
-错误拒绝启动，不能把两个逻辑路径静默映射到同一文件。当前部署在 Linux 容器中
-验证该契约，不增加大小写编码或兼容层。
+LocalStorage 准备根目录时探测实际大小写能力；Linux 不支持时以配置错误拒绝
+启动。macOS 原生开发允许使用普通大小写不敏感目录，并逐段核对真实目录项拼写。
+只有文件系统能解析但目录项没有精确拼写的路径才判为别名冲突，不用 Unicode
+case folding 模拟文件系统规则。创建父目录前、发布临时文件、打开和删除时均受
+该检查保护；命名空间修改由同一实例的锁串行化。别名写入返回已有路径冲突响应，
+不写入元数据；原文件内容和目录保持不变。这不提供不同大小写名称共存能力，
+也不增加物理路径编码、布局迁移或跨进程协调。Linux gate 保留真实共存测试，
+macOS APFS 专项仍可显式运行，日常开发无需镜像。
+[开发文件系统覆盖决策](../../.agents/notes/implemented/testing/2026-10-23-native-development-filesystem-coverage.md)
+记录这项平台覆盖取舍。
 
 本地物理布局直接采用：
 
@@ -325,7 +329,7 @@ Enter/空格继续有效。`TaskAttachmentsPanel`、表单及目录控件保留�
 其元数据侧栏继续沿用看板响应式布局。
 
 左栏可独立纵向滚动，右侧以非滚动预览标题和可伸缩正文组成。完整路径通过可访问
-名称与 title 保留，显示路径允许换行或受控截断；路径不能挤掉下载和删除操作。
+名称与 title 保留，显示路径允许换行或受控截断；路径不能挤掉下载和新标签页打开操作。
 `attachment-preview-body` 是 Markdown、文本/JSON/源码及大图的唯一纵向滚动
 所有者，渲染器内不再设置高度上限或嵌套纵向滚动。表格、代码只保留局部横向
 滚动。HTML/PDF 就绪时切换为隐藏外溢的 `attachment-preview-body-native`，
@@ -334,7 +338,7 @@ Enter/空格继续有效。`TaskAttachmentsPanel`、表单及目录控件保留�
 
 短视口压缩公共标题行、标题、页签、预览标题及底部间距，844×390 仍保留正文、
 关闭按钮和所有操作。隐藏标题仍可取得完整内容；布局不通过恢复对话框纵向滚动
-容纳右侧预览。内嵌预览标题在下载后紧邻提供新标签页打开链接，再提供删除；链接
+容纳右侧预览。内嵌预览标题在下载后紧邻提供新标签页打开链接；删除由左侧文件条目菜单提供。链接
 使用当前选择的元数据路径，即使正文请求仍未完成也保持正确地址。
 `attachmentPageUrl` 沿用 ID 与路径校验，生成逐段编码的独立页面 URL。选择与
 滚动所有权的理由见[分屏决策](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-split-view.md)。
@@ -349,13 +353,33 @@ Enter/空格继续有效。`TaskAttachmentsPanel`、表单及目录控件保留�
 直接覆盖，单文件提供下载和删除，成功后刷新附件区域，不修改详情、task 版本或图。
 页面沿用看板样式。
 
+文件条目以并列的选择按钮和右侧“…”按钮组成，菜单绑定条目的完整路径，
+不借用预览选择。菜单进入浏览器 top layer 并按可用视口定位，保持任务详情的 DOM
+归属，避开分屏隐藏溢出和左栏滚动裁剪。选择删除只打开原生 modal 确认框，显示
+完整路径、不可撤销提示、取消和明确删除按钮；初始聚焦取消。确认组件显式导入
+既有 `auth.css`，复用 `auth-dialog` 和 `dialog-header`/`dialog-body`/`dialog-footer`，
+由同一组规则约束高度与 flex 列布局。标题和操作栏不收缩，正文设置 `min-height: 0`、
+`flex: 1 1 auto` 与 `overflow: auto`，成为超长路径的唯一纵向滚动所有者，避免
+重复外壳样式受加载顺序影响而裁剪目标。正文使用带名称的 `group` 与显式
+`tabIndex=0`，使键盘滚动区域与焦点枚举一致。原生 modal 隔离底层交互，确认层复用 `dialogFocusables` 枚举可用控件，显式循环边界 Tab/Shift+Tab，
+包括提交中焦点位于对话框自身的情形；当前层停止键盘事件冒泡，保留外层详情的键盘所有权。
+未提交状态可用 Escape、取消及遮罩关闭并恢复操作入口；提交中保持目标和确认框，
+禁用重复确认及冲突写入。错误在确认层明确展示，保留重试与取消入口。语言选择
+位于可操作的确认层，重译不会重新提交。页签激活状态显式传给附件组件，用于关闭
+隐藏面板中未提交的菜单和确认；task/project 变化释放原组件。
+[删除确认决策](../../.agents/notes/implemented/feature/2026-10-23-attachment-delete-confirmation.md)
+记录层级与交互取舍。
+
 `useAttachments` 分开持有列表、写操作、选中路径和预览。列表逐页读取，并检查路径
 树冲突与重复游标；续页失败保留已经读取的文件并标明不完整，提供重试。描述
 导航也等待这份完整清单后才判定缺失，列表加载、列表错误、非法路径、确认缺失与
-预览失败各自可见，不将错误转换成空列表。结果绑定 project/task，内容状态同时绑定 path；切换身份、选择或卸载通过 AbortController 和
+预览失败各自可见，不将错误转换成空列表。分页刷新尚未完整时，保留同一身份和
+选中路径最近已知的元数据，避免后续页暂未返回导致已加载预览重挂载；完整清单
+确认该路径缺失后释放它。结果绑定 project/task，内容状态同时绑定 path；切换身份、选择或卸载通过 AbortController 和
 请求 generation 排除旧结果。写操作不自动重试，普通错误在附件区域明确展示。
 
-覆盖成功增加预览 revision。手动刷新发现所选文件的 `updatedAt` 改变时重新请求正文；
+覆盖成功增加预览 revision；删除成功仅在目标为当前选择时清空预览，删除其他路径
+保留当前预览内容及组件身份，刷新清单不会额外增加其 revision。手动刷新发现所选文件的 `updatedAt` 改变时重新请求正文；
 `path/updatedAt` 作为预览组件身份，使同路径的图片和 frame 重新挂载。HTTP 的
 `Cache-Control: no-store` 保持可覆盖路径的当前读取语义。
 
@@ -569,8 +593,8 @@ Web 新增 `task-attachments` 功能场景，在原生和实际生产容器上�
 由[看板设计](daynight-web.md#验证与-ci)拥有。
 另有 `project-view-tabs` 验证项目内任务视图；[双语界面](daynight-web-i18n.md)增加三个功能场景，
 [审批生命周期](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)另加三个审批场景，
-描述阅读另有 `task-description-markdown`，鉴权增加六个功能场景。当前严格 inventory 为原生 28 个、
-容器 23 个，共 51 个场景结果。审批场景单独允许已登记 project/task 的 POST approve 与
+描述阅读另有 `task-description-markdown`，鉴权增加六个功能场景，审批撤回另有 `task-unapproval`。当前严格 inventory 为原生 29 个、
+容器 24 个，共 53 个场景结果。审批场景单独允许已登记 project/task 的 POST approve 或 unapprove 与
 精确请求次数，鉴权场景仅允许各自登记的精确管理请求。附件场景和
 `language-state-preservation` 仅允许精确 fixture task/file 的 PUT/DELETE，后者验证切换期间
 待完成操作只执行一次；`refresh-staleness` 仅允许一次已登记 fixture task/file PUT，将真实上传响应挂起并跨自动读取验证状态与几何保留。描述阅读、其他图场景、任务视图及其他语言场景继续 GET/HEAD。

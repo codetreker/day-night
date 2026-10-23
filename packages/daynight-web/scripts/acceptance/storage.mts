@@ -13,12 +13,13 @@ export type StorageReceipt = {
   root: string;
   mode: 'directory' | 'apfs-image';
   phase: 'planned' | 'image-created' | 'attach-intent' | 'ready';
+  caseSensitive?: boolean;
   imageFile?: string;
   imageIdentity?: FileIdentity;
   mountDirectory?: string;
   rootDevice?: string;
 };
-export type StorageOptions = { persist?: (receipt: StorageReceipt) => Promise<void> };
+export type StorageOptions = { allowApfsImage?: boolean; persist?: (receipt: StorageReceipt) => Promise<void> };
 type Entity = { device: string; mountPoint?: string };
 type Image = { rootDevice: string; entities: Entity[] };
 type Mount = { source: string; directory: string };
@@ -52,6 +53,8 @@ const validateReceipt = (receipt: StorageReceipt): void => {
   if (receipt.schemaVersion !== 1 || !['linux', 'darwin'].includes(receipt.platform) || receipt.platform !== storagePlatform.platform()
     || typeof receipt.directory !== 'string' || !isAbsolute(receipt.directory) || resolve(receipt.directory) !== receipt.directory
     || receipt.directory === sep || !validIdentity(receipt.directoryIdentity)
+    || (receipt.caseSensitive !== undefined && typeof receipt.caseSensitive !== 'boolean')
+    || (receipt.caseSensitive === false && (receipt.platform !== 'darwin' || receipt.mode !== 'directory'))
     || !['planned', 'image-created', 'attach-intent', 'ready'].includes(receipt.phase)) throw new Error('Invalid storage receipt identity or platform.');
   if (receipt.mode === 'directory') {
     if (receipt.root !== join(receipt.directory, 'data') || !['planned', 'ready'].includes(receipt.phase)
@@ -167,7 +170,8 @@ const caseSensitive = async (directory: string): Promise<boolean> => {
 };
 
 /**
- * Own a new directory, using an APFS image only when its filesystem folds case.
+ * Own a new directory, using an APFS image only when explicitly requested and needed.
+ * Native Darwin directories may fold case; Linux requires case-sensitive storage.
  * Each transition is atomically journaled and passed to persist before attachment.
  * On failure the journal and StoragePreparationError.receipt permit explicit recovery.
  */
@@ -189,12 +193,13 @@ export async function prepareStorage(directory: string, options: StorageOptions 
   };
   try {
     await persist();
-    if (!await caseSensitive(canonical)) {
-      if (platform !== 'darwin') throw new Error('Acceptance storage requires a case-sensitive filesystem.');
+    const sensitive = await caseSensitive(canonical);
+    if (!sensitive && platform !== 'darwin') throw new Error('Acceptance storage requires a case-sensitive filesystem.');
+    if (!sensitive && options.allowApfsImage === true) {
       receipt = { ...receipt, mode: 'apfs-image', mountDirectory: join(canonical, 'mount'),
         imageFile: join(canonical, 'storage.sparseimage'), root: join(canonical, 'mount', 'data') };
-      await persist();
-    }
+    } else receipt = { ...receipt, caseSensitive: sensitive };
+    await persist();
     if (receipt.mode === 'apfs-image') {
       await mkdir(receipt.mountDirectory!);
       await execute('/usr/bin/hdiutil', ['create', '-size', '2g', '-type', 'SPARSE', '-layout', 'GPTSPUD', '-fs', 'Case-sensitive APFS',
@@ -213,6 +218,7 @@ export async function prepareStorage(directory: string, options: StorageOptions 
       await verifyMounts(receipt, current);
       receipt = { ...receipt, rootDevice: current.rootDevice };
       if (!await caseSensitive(receipt.mountDirectory!)) throw new Error('APFS storage image is not case-sensitive.');
+      receipt = { ...receipt, caseSensitive: true };
     }
     await mkdir(receipt.root);
     receipt = { ...receipt, phase: 'ready' };

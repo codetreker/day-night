@@ -13,7 +13,7 @@ const projectId = "abcdefab-1111-4222-8333-123456789abc";
 const taskId = "abcdefab-2222-4222-8333-123456789abc";
 const otherId = "abcdefab-3333-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
-const project = { id: projectId, name: "Project", repoUrl: "git@git.example:Org/Repo.git", createdAt: time, updatedAt: time };
+const project = { id: projectId, name: "Project", repoUrl: "git@git.example:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
 const task: Task = { id: taskId, projectId, title: "Task title", description: "Description", properties: { pullRequests: [] }, status: "todo", version: 9_007_199_254_740_993n, ready: true, dependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
 type Request = { readonly method: string; readonly path: string; readonly query: URLSearchParams; readonly body: string };
 const cleanups: (() => void | Promise<void>)[] = [];
@@ -52,7 +52,7 @@ const fixture = async (handler: (request: Request, response: ServerResponse, raw
 };
 
 describe("task commands over HTTP", () => {
-  it.each(["approve", "claim", "complete"] as const)("sends exactly one %s POST after its version read or with a supplied version", async (action) => {
+  it.each(["approve", "unapprove", "claim", "complete"] as const)("sends exactly one %s POST after its version read or with a supplied version", async (action) => {
     const f = await fixture((request, response) => respond(response, request.method === "GET" ? task : { ...task, version: task.version + 1n }));
     await f.run([action, taskId.toUpperCase()]);
     expect(f.requests.map(({ method, path: pathname }) => `${method} ${pathname}`)).toEqual([`GET /api/v1/projects/${projectId}`, `GET /api/v1/projects/${projectId}/tasks/${taskId}`, `POST /api/v1/projects/${projectId}/tasks/${taskId}/${action}`]);
@@ -63,7 +63,7 @@ describe("task commands over HTTP", () => {
     expect(f.requests.at(-1)!.body).toBe('{"version":9223372036854775807}');
   });
 
-  it.each(["approve", "claim", "complete"] as const)("reports an unconfirmed %s after dispatch without retrying", async (action) => {
+  it.each(["approve", "unapprove", "claim", "complete"] as const)("reports an unconfirmed %s after dispatch without retrying", async (action) => {
     const f = await fixture((_request, _response, raw) => { raw.socket.destroy(); });
     await expect(f.run([action, taskId, "--if-version", "1"])).rejects.toMatchObject({ operation: `task.${action}`, projectId, taskId, outcomeUnconfirmed: true });
     expect(f.requests.map(({ method }) => method)).toEqual(["GET", "POST"]);

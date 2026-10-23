@@ -1,3 +1,4 @@
+import { stringifyWireJson } from "./helpers/wireJson";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as auth from "../src/api/auth";
@@ -21,9 +22,9 @@ const otherId = "00000000-0000-4000-8000-000000000002";
 const projectId = "00000000-0000-4000-8000-000000000003";
 const now = "2026-10-22T10:00:00Z";
 const user = (id = userId, name = "Alice") => ({ id, name, email: `${name}@example.com`, emailVerified: true, avatarUrl: null });
-const project = (name = "私有项目") => ({ id: projectId, name, repoUrl: "https://github.com/example/repo", createdAt: now, updatedAt: now });
+const project = (name = "私有项目") => ({ settings: { version: 1n, executionWarningMinutes: 60 }, id: projectId, name, repoUrl: "https://github.com/example/repo", createdAt: now, updatedAt: now });
 const member = (id = userId, role = "admin") => ({ projectId, userId: id, name: "Alice", email: "alice@example.com", avatarUrl: null, role, version: 12, createdAt: now, updatedAt: now });
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+const json = (body: unknown, status = 200) => new Response(stringifyWireJson(body), { status, headers: { "Content-Type": "application/json" } });
 const fail = (status: number, code: string) => json({ error: { code, message: "hidden server details", requestId: "rq-safe" } }, status);
 const graph = () => json({ observedAt: "2026-10-20T12:00:00Z", project: project(), tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } });
 const defaults = (url: string): Response => {
@@ -699,6 +700,7 @@ describe("authenticated application shell", () => {
       let dialog = screen.getByRole("dialog", { name: "任务详情" });
       await within(dialog).findByRole("heading", { name: "Lifecycle task" });
       fireEvent.click(within(dialog).getByRole("button", { name: "批准任务" }));
+      fireEvent.click(within(screen.getByRole("alertdialog", { name: "批准任务" })).getByRole("button", { name: "确认批准" }));
       await waitFor(() => expect(finishApproval).toBeTypeOf("function"));
       const submitted = fetcher.mock.calls.find(([url]) => url === `${taskUrl}/approve`)![1]!;
       expect(submitted).toMatchObject({ method: "POST", body: '{"version":7}', credentials: "same-origin", redirect: "error" });
@@ -710,7 +712,7 @@ describe("authenticated application shell", () => {
       fireEvent.click(screen.getByRole("tab", { name: "独立任务" }));
       fireEvent.click(screen.getByRole("button", { name: /Lifecycle task/ }));
       dialog = screen.getByRole("dialog", { name: "任务详情" });
-      expect(await within(dialog).findByRole("button", { name: "正在批准…" })).toBeDisabled();
+      expect(await within(dialog).findByRole("button", { name: "正在提交…" })).toBeDisabled();
       expect(fetcher.mock.calls.filter(([url]) => url === taskUrl)).toHaveLength(1);
       expect(fetcher.mock.calls.filter(([url]) => url === `${taskUrl}/approve`)).toHaveLength(1);
       approved = true;

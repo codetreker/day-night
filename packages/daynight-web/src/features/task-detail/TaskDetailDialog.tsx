@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ApiError } from '../../api/client';
 import { LanguageSelector } from '../../i18n/LanguageSelector';
@@ -8,9 +8,10 @@ import type { TaskStatus } from '../../api/types';
 import type { GraphSnapshot } from '../projects/useTaskGraph';
 import { isTaskStale } from './freshness';
 import { dialogFocusables } from './focus';
-import { TaskDetailSessionBoundary } from './TaskDetailSession';
+import { approvalAction, TaskDetailSessionBoundary } from './TaskDetailSession';
 import { useTaskDetail } from './useTaskDetail';
 import { TaskApproval } from './TaskApproval';
+import { matchesApprovalReview, TaskApprovalConfirmation, type ApprovalConfirmation } from './TaskApprovalConfirmation';
 import { TaskDetailReading } from './TaskDetailReading';
 import { TaskPullRequests } from './TaskPullRequests';
 import '../../styles/task-detail.css';
@@ -48,11 +49,19 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
   const m = messages.inspection.detail;
   const task = useTaskDetail(projectId, taskId, snapshot.revision, snapshot.index.nodes.get(taskId));
   const { detail, status, error, retry } = task;
+  const [confirmation, setConfirmation] = useState<ApprovalConfirmation | null>(null);
+  const action = approvalAction(detail);
+  const canAct = action === 'approve' ? task.canApprove : action === 'unapprove' ? task.canUnapprove : false;
+  const confirmationValid = confirmation !== null && matchesApprovalReview(confirmation, detail) &&
+    confirmation.action === action && canAct;
+  const confirmationOpen = confirmation !== null && confirmationValid;
+  useLayoutEffect(() => { if (confirmation !== null && !confirmationValid) setConfirmation(null); }, [confirmation, confirmationValid]);
   const headingId = useId();
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const callbacks = useRef({ onClose, onRestoreFocus });
-  callbacks.current = { onClose, onRestoreFocus };
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const callbacks = useRef({ onClose, onRestoreFocus, confirmationOpen });
+  callbacks.current = { onClose, onRestoreFocus, confirmationOpen };
   useBodyScrollLock(true);
 
   useLayoutEffect(() => {
@@ -63,6 +72,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
     closeRef.current!.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (callbacks.current.confirmationOpen || event.defaultPrevented) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         callbacks.current.onClose();
@@ -94,8 +104,8 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
   }, []);
 
   useLayoutEffect(() => {
-    if (!dialogRef.current!.contains(document.activeElement)) closeRef.current!.focus();
-  }, [taskId, status, error, snapshot.revision]);
+    if (!confirmationOpen && !dialogRef.current!.contains(document.activeElement)) closeRef.current!.focus();
+  }, [taskId, status, error, snapshot.revision, confirmationOpen]);
 
   const snapshotNode = snapshot.index.nodes.get(taskId);
   const retainedDetail = detail !== null && (error !== null || task.requiresFreshRead);
@@ -115,7 +125,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
   };
 
   return createPortal(
-    <div className="task-detail-backdrop" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="task-detail-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !confirmationOpen) onClose(); }}>
       <section className="task-detail-dialog" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={headingId}>
         <header className="task-detail-header">
           <h2 id={headingId}>{m.title}</h2>
@@ -136,7 +146,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
             </div>
           )}
           {detail !== null && error !== null && (
-            <div className="task-detail-read-error" role="alert">
+            <div className="task-detail-read-error" role="alert" tabIndex={0}>
               <h3>{m.refreshFailed}</h3>
               <DetailError error={error} />
               <p>{m.retainedData}</p>
@@ -144,13 +154,16 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
             </div>
           )}
           {detail === null && task.approval.phase !== 'idle' && <div className="task-detail-approval">
-            <TaskApproval detail={null} approval={task.approval} canApprove={false} onApprove={task.approve} onReconcile={task.reconcile} />
+            <TaskApproval detail={null} approval={task.approval} onReconcile={task.reconcile} />
           </div>}
           {detail !== null && (
             <>
               <div className="task-detail-heading">
                 <p className="task-detail-id">{detail.id}</p>
-                <h3 className="task-detail-title" title={detail.title}>{detail.title}</h3>
+                <div className="task-detail-title-row">
+                  <h3 className="task-detail-title" ref={titleRef} tabIndex={0} title={detail.title}>{detail.title}</h3>
+                  {action !== null && <button className={`button task-detail-title-action${action === 'approve' ? ' primary' : ''}`} type="button" disabled={!canAct} onClick={() => setConfirmation({ action, detail })}>{task.approval.phase === 'pending' ? messages.inspection.approval.submitting : action === 'approve' ? messages.inspection.approval.approve : messages.inspection.approval.unapprove}</button>}
+                </div>
                 <div className="task-detail-badges">
                   <StatusBadge status={detail.status} />
                   {detail.status === 'todo' && <span className={detail.ready ? 'task-detail-ready' : 'task-detail-blocked'}>{detail.ready ? m.ready : m.blocked}</span>}
@@ -164,7 +177,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                 )}
               </div>
               <TaskDetailReading key={`${projectId}/${taskId}`} projectId={projectId} taskId={taskId} description={detail.description} onClose={onClose} overview={(description) => <>
-                <div className="task-detail-approval"><TaskApproval detail={detail} approval={task.approval} canApprove={task.canApprove} onApprove={task.approve} onReconcile={task.reconcile} /></div>
+                <div className="task-detail-approval"><TaskApproval detail={detail} approval={task.approval} onReconcile={task.reconcile} /></div>
                 <div className="task-detail-columns">
                   <div className="task-detail-main">
                     <section className="task-detail-section" aria-label={m.description}>
@@ -200,6 +213,12 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
         </div>
         <footer className="task-detail-footer">{m.footer}</footer>
       </section>
+      {confirmationOpen && <TaskApprovalConfirmation confirmation={confirmation} owner={dialogRef} fallbackFocus={titleRef}
+        onCancel={() => setConfirmation(null)} onConfirm={() => {
+          if (!confirmationValid) return;
+          setConfirmation(null);
+          task.performApproval(confirmation.action, confirmation.detail.version);
+        }} />}
     </div>,
     document.body,
   );

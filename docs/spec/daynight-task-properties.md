@@ -2,8 +2,7 @@
 
 状态：服务端存储、迁移、HTTP 读写、CLI 属性操作与只读网页展示已实现。本文定义 task
 预定义属性的行为；
-[架构设计](../design/daynight-task-properties.md)拥有机制与取舍，
-[任务拆分](../design/daynight-task-properties-tasks.md)拥有实施顺序与验收状态。
+[架构设计](../design/daynight-task-properties.md)拥有机制与取舍。
 现有 [server](daynight-server.md)、[CLI](daynight-project-task.md) 和
 [看板](daynight-web.md)需求继续拥有各自的已交付基线。
 

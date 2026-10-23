@@ -1,6 +1,6 @@
 {
   "name": "@codetreker/daynight",
-  "version": "0.9.2",
+  "version": "0.10.1",
   "description": "A client command toolkit for development workflows",
   "repository": {
     "type": "git",
@@ -22,6 +22,7 @@
     "build": "node scripts/clean-dist.ts && tsc -p tsconfig.build.json && node scripts/copy-skills.ts",
     "typecheck": "tsc --noEmit",
     "test": "pnpm run build && vitest run",
+    "test:apfs": "DAYNIGHT_TEST_APFS=1 vitest run test/commands/review/apfs.test.ts",
     "acceptance": "pnpm run build && vitest run --config vitest.acceptance.config.ts",
     "completion:acceptance": "pnpm run build && python3 -u test/acceptance/shell-completion.py"
   },

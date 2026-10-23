@@ -1,8 +1,7 @@
 # Daynight Shell 补全设计
 
 状态：共享命令语法、Bash/zsh 生成器及启动配置安装已实现，包含 `review`、`update`、
-`setup`、`completion`、`project` 和 `task`；Task 扩展已随 PT-T4 通过原生 CI 与远端 review 并交付，
-对应来源和结果见[任务清单](daynight-project-task-tasks.md#pt-t4)。
+`setup`、`completion`、`project` 和 `task`。
 脚本行为由[客户端 C5](../spec/daynight.md#c5-bash-与-zsh-补全)拥有，启动配置安装由
 [客户端 C7](../spec/daynight.md#c7-补全启动配置安装)拥有，project 行为由
 [Project 与 Task 客户端需求](../spec/daynight-project-task.md)拥有。本文负责命令描述、
@@ -63,7 +62,7 @@ Git、GitHub CLI、Copilot、npm 或网络请求，不修改 shell 启动文件�
 repeatable 选项为只读字符串数组。未声明 repeatable 的选项只能指定一次；依赖
 值按出现顺序追加，不去重、不拆分 CSV。Task 的 `--description` 声明 `allowEmpty`，
 list 的 `--status` 声明 `proposed`、`todo`、`in_progress`、`done` 四个 choices，
-update 不声明状态选项；approve、claim、complete 各声明 task ID、project 和 if-version。
+update 不声明状态选项；approve、unapprove、claim、complete 各声明 task ID、project 和 if-version。
 `--depends-on` 声明
 repeatable。`project create` 的名称是一个必填位置参数，`--repo` 是可选 text 选项，
 查询 `--json` 为开关。位置参数在语法层拒绝缺失和空字符串，业务文本规则由命令

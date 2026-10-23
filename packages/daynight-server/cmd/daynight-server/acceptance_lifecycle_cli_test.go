@@ -237,6 +237,13 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		ids := []string{"00000000-0000-4000-8000-000000000011", "00000000-0000-4000-8000-000000000012", "00000000-0000-4000-8000-000000000013"}
 		stamp := time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC)
 		fixture.exec(t, "INSERT INTO projects (id, name, repo_url) VALUES ($1, 'Pre-lifecycle preserved', 'git@git.example:Org/Repo.git')", projectID)
+		var historicalProject api.Project
+		if err := fixture.admin.QueryRow(context.Background(), "SELECT id::text, name, repo_url, created_at, updated_at FROM projects WHERE id=$1", projectID).
+			Scan(&historicalProject.ID, &historicalProject.Name, &historicalProject.RepoURL, &historicalProject.CreatedAt, &historicalProject.UpdatedAt); err != nil {
+			t.Fatal("cannot preserve the genuine historical project's metadata")
+		}
+		historicalProject.CreatedAt, historicalProject.UpdatedAt = historicalProject.CreatedAt.UTC(), historicalProject.UpdatedAt.UTC()
+		historicalProject.Settings = api.ProjectSettings{Version: 1, ExecutionWarningMinutes: 60}
 		properties := api.TaskProperties{PullRequests: []api.PullRequestProperty{{URL: "https://github.com/example/migration/pull/1", Title: "Historical reference"}}}
 		encoded, err := json.Marshal(properties)
 		if err != nil {
@@ -263,8 +270,8 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		if err := binaryAcceptance.update(func() { migration.AfterLedger, migration.AfterRows = afterLedger, afterRows }); err != nil {
 			t.Fatal("cannot persist migrated ledger and resource snapshots")
 		}
-		if len(migration.AfterLedger) != 9 || !reflect.DeepEqual(migration.AfterLedger[:6], migration.BeforeLedger) ||
-			migration.AfterLedger[6].Version != 7 || migration.AfterLedger[7].Version != 8 || migration.AfterLedger[8].Version != 9 || !reflect.DeepEqual(migration.AfterRows, migration.BeforeRows) {
+		if len(migration.AfterLedger) != 10 || !reflect.DeepEqual(migration.AfterLedger[:6], migration.BeforeLedger) ||
+			migration.AfterLedger[6].Version != 7 || migration.AfterLedger[7].Version != 8 || migration.AfterLedger[8].Version != 9 || migration.AfterLedger[9].Version != 10 || !reflect.DeepEqual(migration.AfterRows, migration.BeforeRows) {
 			t.Fatal("built startup did not append genuine migrations while preserving old rows and ledger")
 		}
 		acceptanceError(t, process.request(context.Background(), http.MethodGet, "/api/v1/projects/"+projectID, nil, ""), http.StatusNotFound, "not_found")
@@ -276,6 +283,9 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		members := acceptanceDecode[api.ProjectMemberList](t, process.request(context.Background(), http.MethodGet, "/api/v1/projects/"+projectID+"/members", nil, ""), http.StatusOK)
 		if len(members.Items) != 1 || members.Items[0].UserID != user.ID || members.Items[0].Role != "admin" || !reflect.DeepEqual(acceptanceHistoricalRows(t, fixture, ids), migration.BeforeRows) {
 			t.Fatal("historical fixture access did not preserve the authenticated project membership and original task rows")
+		}
+		if migratedProject := acceptanceCLIProjectResource(t, cli.run(t, cli.caller, "project", "show", projectID, "--json")); !reflect.DeepEqual(migratedProject, historicalProject) {
+			t.Fatal("project settings migration changed historical metadata or omitted the saved default")
 		}
 		old := make([]api.Task, len(ids))
 		for index, id := range ids {
@@ -320,6 +330,9 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		acceptanceLifecycleAttachmentUnchanged(t, cli, dependent, metadata, content)
 		acceptanceCLIRefusal(t, cli, process, evidence, dependent, "dependency_unsatisfied", "task", "claim", dependent.ID, "--project", projectID, "--if-version", "2")
 		acceptanceCLIRefusal(t, cli, process, evidence, dependent, "version_conflict", "task", "claim", dependent.ID, "--project", projectID, "--if-version", "1")
+		dependent = acceptanceCLIAction(t, cli, process, evidence, dependent, "unapprove", "proposed")
+		acceptanceLifecycleAttachmentUnchanged(t, cli, dependent, metadata, content)
+		dependent = acceptanceCLIAction(t, cli, process, evidence, dependent, "approve", "todo")
 		for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"claim", "in_progress"}, {"complete", "done"}} {
 			prerequisite = acceptanceCLIAction(t, cli, process, evidence, prerequisite, step.action, step.status)
 			acceptanceLifecycleAttachmentUnchanged(t, cli, prerequisite, prerequisiteMetadata, prerequisiteContent)
@@ -330,7 +343,10 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		if !ready.Ready || len(ready.BlockedBy) != 0 || !reflect.DeepEqual(preserved, dependent) {
 			t.Fatal("prerequisite completion changed dependent metadata or failed to unblock approved work")
 		}
-		dependent = acceptanceCLIAction(t, cli, process, evidence, ready, "claim", "in_progress")
+		dependent = acceptanceCLIAction(t, cli, process, evidence, ready, "unapprove", "proposed")
+		acceptanceLifecycleAttachmentUnchanged(t, cli, dependent, metadata, content)
+		dependent = acceptanceCLIAction(t, cli, process, evidence, dependent, "approve", "todo")
+		dependent = acceptanceCLIAction(t, cli, process, evidence, dependent, "claim", "in_progress")
 		acceptanceLifecycleAttachmentUnchanged(t, cli, dependent, metadata, content)
 		dependent = acceptanceCLIAction(t, cli, process, evidence, dependent, "complete", "done")
 		acceptanceLifecycleAttachmentUnchanged(t, cli, prerequisite, prerequisiteMetadata, prerequisiteContent)
@@ -341,13 +357,26 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		if defaultTask.Status != "proposed" || defaultTask.Version != 1 || defaultTask.Ready {
 			t.Fatal("genuine migration did not change the SQL creation default to proposed")
 		}
+		withdrawn := acceptanceCLIAction(t, cli, process, evidence, create("Withdrawn before restart"), "approve", "todo")
+		const exactVersion int64 = 9007199254740993
+		fixture.exec(t, "UPDATE tasks SET version = $1 WHERE project_id = $2 AND id = $3", exactVersion, projectID, withdrawn.ID)
+		withdrawn = cli.task(t, withdrawn.ID)
+		if withdrawn.Version != exactVersion {
+			t.Fatal("installed task read lost the exact withdrawal version")
+		}
+		withdrawn = acceptanceCLIAction(t, cli, process, evidence, withdrawn, "unapprove", "proposed")
+		acceptanceCLIRefusal(t, cli, process, evidence, withdrawn, "version_conflict", "task", "unapprove", withdrawn.ID, "--project", projectID, "--if-version", strconv.FormatInt(exactVersion, 10))
+		acceptanceCLIRefusal(t, cli, process, evidence, withdrawn, "invalid_transition", "task", "unapprove", withdrawn.ID, "--project", projectID, "--if-version", strconv.FormatInt(withdrawn.Version, 10))
 		process.signal(t)
 		process.stopped(t, 0)
 		restarted := fixture.launch(t, map[string]string{"DAYNIGHT_LISTEN_ADDR": process.address}).started(t)
 		if restarted.address != process.address {
 			t.Fatal("migration restart did not reuse the released service listener")
 		}
-		for _, before := range append(slices.Clone(old), prerequisite, dependent, defaultTask) {
+		if after := acceptanceCLIProjectResource(t, cli.run(t, cli.caller, "project", "show", projectID, "--json")); !reflect.DeepEqual(after, historicalProject) {
+			t.Fatal("historical project's settings default changed across actual process restart")
+		}
+		for _, before := range append(slices.Clone(old), prerequisite, dependent, defaultTask, withdrawn) {
 			after := acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", before.ID, "--project", projectID, "--json"))
 			if !reflect.DeepEqual(after, before) {
 				t.Fatal("historical or newly advanced lifecycle state changed across actual restart")
@@ -384,7 +413,7 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 
 func TestInstalledCLILifecycleRacesAcceptance(t *testing.T) {
 	receipt := readAcceptanceCLI(t)
-	for _, kind := range []string{"claim", "dependency_edit_and_claim"} {
+	for _, kind := range []string{"claim", "dependency_edit_and_claim", "unapprove", "unapprove_and_claim"} {
 		acceptanceCase(t, "installed_cli_same_version_"+kind, []string{"ST-T3.AC1", "ST-T3.AC3", "ST-T3.AC6"}, func(t *testing.T, scenario *acceptanceScenario) {
 			fixture := newAcceptanceFixture(t, scenario)
 			cli := newAcceptanceCLI(t, receipt, scenario)
@@ -400,11 +429,18 @@ func TestInstalledCLILifecycleRacesAcceptance(t *testing.T) {
 			version := strconv.FormatInt(before.Version, 10)
 			count := len(acceptanceCLIMutations(process))
 			barrier := fixture.projectLock(t, projectID)
-			left := cli.start(t, cli.caller, "task", "claim", id, "--project", projectID, "--if-version", version)
+			leftAction := "claim"
+			if kind == "unapprove" || kind == "unapprove_and_claim" {
+				leftAction = "unapprove"
+			}
+			left := cli.start(t, cli.caller, "task", leftAction, id, "--project", projectID, "--if-version", version)
 			var right <-chan acceptanceCLIResult
-			if kind == "claim" {
+			switch kind {
+			case "claim", "unapprove_and_claim":
 				right = cli.start(t, cli.caller, "task", "claim", id, "--project", projectID, "--if-version", version)
-			} else {
+			case "unapprove":
+				right = cli.start(t, cli.caller, "task", "unapprove", id, "--project", projectID, "--if-version", version)
+			case "dependency_edit_and_claim":
 				right = cli.start(t, cli.caller, "task", "update", id, "--project", projectID, "--if-version", version, "--depends-on", prerequisiteID)
 			}
 			fixture.waitWriters(t, process, 2)
@@ -449,7 +485,7 @@ func TestInstalledCLILifecycleRacesAcceptance(t *testing.T) {
 			if after.Status == "in_progress" {
 				acceptanceTaskTimingTransition(t, before, after, "claim")
 			} else if !reflect.DeepEqual(after.StartedAt, before.StartedAt) || !reflect.DeepEqual(after.CompletedAt, before.CompletedAt) {
-				t.Fatal("dependency-edit winner changed execution timing")
+				t.Fatal("non-claim winner changed execution timing")
 			}
 			preserved := after
 			preserved.StartedAt, preserved.CompletedAt = before.StartedAt, before.CompletedAt
@@ -458,16 +494,27 @@ func TestInstalledCLILifecycleRacesAcceptance(t *testing.T) {
 			if after.Version != before.Version+1 || !after.UpdatedAt.After(before.UpdatedAt) || !reflect.DeepEqual(preserved, before) || after.Ready {
 				t.Fatal("installed lifecycle competition changed unrelated metadata or committed more than once")
 			}
-			if kind == "claim" {
+			switch kind {
+			case "claim":
 				if after.Status != "in_progress" || len(after.DependsOn) != 0 || len(after.BlockedBy) != 0 {
 					t.Fatal("same-version installed claims did not commit exactly one valid claim")
 				}
-			} else if after.Status == "todo" {
-				if !slices.Equal(after.DependsOn, []string{prerequisiteID}) || !slices.Equal(after.BlockedBy, []string{prerequisiteID}) {
-					t.Fatal("dependency winner did not leave approved work blocked by its unfinished prerequisite")
+			case "unapprove":
+				if after.Status != "proposed" || len(after.DependsOn) != 0 || len(after.BlockedBy) != 0 {
+					t.Fatal("same-version installed withdrawals did not commit exactly one valid withdrawal")
 				}
-			} else if after.Status != "in_progress" || len(after.DependsOn) != 0 || len(after.BlockedBy) != 0 {
-				t.Fatal("dependency-edit/claim competition gave active work an unfinished prerequisite")
+			case "unapprove_and_claim":
+				if (after.Status != "proposed" && after.Status != "in_progress") || len(after.DependsOn) != 0 || len(after.BlockedBy) != 0 {
+					t.Fatal("installed withdrawal/claim competition did not retain exactly one valid outcome")
+				}
+			case "dependency_edit_and_claim":
+				if after.Status == "todo" {
+					if !slices.Equal(after.DependsOn, []string{prerequisiteID}) || !slices.Equal(after.BlockedBy, []string{prerequisiteID}) {
+						t.Fatal("dependency winner did not leave approved work blocked by its unfinished prerequisite")
+					}
+				} else if after.Status != "in_progress" || len(after.DependsOn) != 0 || len(after.BlockedBy) != 0 {
+					t.Fatal("dependency-edit/claim competition gave active work an unfinished prerequisite")
+				}
 			}
 			acceptanceLifecycleAttachmentUnchanged(t, cli, after, metadata, content)
 			if prerequisite := cli.task(t, prerequisiteID); prerequisite.Status != "proposed" || prerequisite.Version != 1 || prerequisite.Ready {

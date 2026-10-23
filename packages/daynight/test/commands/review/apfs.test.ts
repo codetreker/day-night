@@ -111,7 +111,7 @@ const modes = [
   { format: "Case-sensitive APFS", caseSensitive: true },
 ] as const;
 
-describe.skipIf(process.platform !== "darwin").each(modes)(
+describe.skipIf(process.platform !== "darwin" || process.env.DAYNIGHT_TEST_APFS !== "1").each(modes)(
   "$format configuration paths",
   ({ format, caseSensitive }) => {
     let directory: string | undefined;

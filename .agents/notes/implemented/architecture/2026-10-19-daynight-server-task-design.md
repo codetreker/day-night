@@ -28,9 +28,7 @@ state and versioned use cases. The
 [task HTTP boundary](../feature/2026-10-19-task-management-http.md) exposes these
 operations with strict request semantics.
 [Built-process acceptance](../testing/2026-10-19-server-process-acceptance.md)
-verifies restart persistence, HTTP races, cancellation and resource ownership. The
-[task breakdown](../../../../docs/design/daynight-server-tasks.md) owns their
-implementation scope, dependencies, status and acceptance criteria.
+verifies restart persistence, HTTP races, cancellation and resource ownership.
 
 The selected layers are API definitions, HTTP server, application service and
 core models, with concrete PostgreSQL storage inside `core/store`. Application
@@ -47,14 +45,17 @@ The original service exposed three states and created todo tasks through the
 generic write API. The [four-state reader decision](../feature/2026-10-22-proposed-task-readers.md)
 prepared storage and readers with proposed before public creation changed. The
 [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) now creates proposed
-and exposes only versioned approve, claim and complete transitions. This retains
+and exposes versioned approve, claim and complete transitions; the later
+[withdrawal decision](../feature/2026-10-23-task-unapprove.md) adds only todo to
+proposed through unapprove. This retains
 the project transaction and dependency policy while replacing arbitrary status
 updates and reopening.
 
 Task dependencies stay inside a project. Every `in_progress` or `done` task
 requires completed direct predecessors. The original three-state policy allowed
-backward writes only when direct dependents stayed valid; the forward-only
-lifecycle removes that reopening path. Each task write
+backward writes only when direct dependents stayed valid; the initial approval
+lifecycle removed that reopening path. Todo-only withdrawal does not reopen
+active or completed work and therefore does not restore it. Each task write
 locks its project row before fresh `READ COMMITTED` queries, validates the
 candidate graph and status, and commits fields and edges together. Task versions
 add client conflict detection without replacing cross-task exclusion.

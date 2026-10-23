@@ -106,6 +106,9 @@ func (s *Attachments) Put(ctx context.Context, principal core.Principal, project
 	}
 	info, err := s.files.Put(ctx, attachmentBucket, taskID+"/"+path, content)
 	if err != nil {
+		if errors.Is(err, filestorage.ErrPathConflict) {
+			return core.Attachment{}, false, &Fault{Code: "path_conflict", Message: "Attachment path conflicts with an existing filesystem name.", Cause: err}
+		}
 		return core.Attachment{}, false, fmt.Errorf("write attachment content: %w", err)
 	}
 	attachment, created, err := s.store.PutAttachment(ctx, core.Attachment{ProjectID: projectID, TaskID: taskID,

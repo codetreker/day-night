@@ -296,6 +296,52 @@ func acceptanceCLIJSON[T any](t *testing.T, text string) T {
 	return result
 }
 
+func acceptanceCLIProjectResource(t *testing.T, text string) api.Project {
+	t.Helper()
+	fields := acceptanceCLIJSON[map[string]json.RawMessage](t, text)
+	raw, exists := fields["settings"]
+	if !exists || bytes.Equal(raw, []byte("null")) {
+		t.Fatal("installed CLI project omitted its saved settings")
+	}
+	settings := acceptanceCLIJSON[map[string]json.RawMessage](t, string(raw))
+	for _, name := range []string{"version", "executionWarningMinutes"} {
+		if value, exists := settings[name]; !exists || bytes.Equal(value, []byte("null")) {
+			t.Fatalf("installed CLI project omitted required settings field %s", name)
+		}
+	}
+	project := acceptanceCLIJSON[api.Project](t, text)
+	if project.Settings.Version < 1 || project.Settings.ExecutionWarningMinutes < 1 {
+		t.Fatal("installed CLI project lost its saved settings values")
+	}
+	return project
+}
+
+func acceptanceCLIProjectsResource(t *testing.T, text string) []api.Project {
+	t.Helper()
+	items := acceptanceCLIJSON[[]json.RawMessage](t, text)
+	if items == nil {
+		t.Fatal("installed CLI project inventory is not a concrete array")
+	}
+	projects := make([]api.Project, 0, len(items))
+	for _, item := range items {
+		projects = append(projects, acceptanceCLIProjectResource(t, string(item)))
+	}
+	return projects
+}
+
+func acceptanceSettingsSave(t *testing.T, process *acceptanceProcess, before api.Project, minutes int32) api.Project {
+	t.Helper()
+	after := acceptanceDecode[api.Project](t, process.request(context.Background(), http.MethodPatch,
+		"/api/v1/projects/"+before.ID+"/settings", map[string]any{"version": before.Settings.Version, "executionWarningMinutes": minutes}, "settings-save"), http.StatusOK)
+	preserved := after
+	preserved.Settings, preserved.UpdatedAt = before.Settings, before.UpdatedAt
+	if after.Settings.Version != before.Settings.Version+1 || after.Settings.ExecutionWarningMinutes != minutes ||
+		!after.UpdatedAt.After(before.UpdatedAt) || !reflect.DeepEqual(preserved, before) {
+		t.Fatal("settings save did not preserve project metadata or advance the saved settings exactly once")
+	}
+	return after
+}
+
 func acceptanceCLITaskResource(t *testing.T, text string) api.Task {
 	t.Helper()
 	fields := acceptanceCLIJSON[map[string]json.RawMessage](t, text)
@@ -310,12 +356,14 @@ func acceptanceCLITaskResource(t *testing.T, text string) api.Task {
 func acceptanceCLIGraphResource(t *testing.T, text string) api.TaskGraph {
 	t.Helper()
 	var fields struct {
+		Project    json.RawMessage              `json:"project"`
 		ObservedAt json.RawMessage              `json:"observedAt"`
 		Tasks      []map[string]json.RawMessage `json:"tasks"`
 	}
 	if err := json.Unmarshal([]byte(text), &fields); err != nil || len(fields.ObservedAt) == 0 || bytes.Equal(fields.ObservedAt, []byte("null")) {
 		t.Fatal("installed CLI graph omitted its observed server time")
 	}
+	acceptanceCLIProjectResource(t, string(fields.Project))
 	for _, task := range fields.Tasks {
 		for _, name := range []string{"startedAt", "completedAt"} {
 			if _, exists := task[name]; !exists {
@@ -373,7 +421,7 @@ func acceptanceCLIMutations(process *acceptanceProcess) []acceptanceCLIRequest {
 	var requests []acceptanceCLIRequest
 	for _, event := range process.logs.events {
 		route, _ := event["route"].(string)
-		lifecycle := event["method"] == "POST" && (strings.HasSuffix(route, "/approve") || strings.HasSuffix(route, "/claim") || strings.HasSuffix(route, "/complete"))
+		lifecycle := event["method"] == "POST" && (strings.HasSuffix(route, "/approve") || strings.HasSuffix(route, "/unapprove") || strings.HasSuffix(route, "/claim") || strings.HasSuffix(route, "/complete"))
 		if event["type"] == "http_request" && (event["method"] == "PATCH" || lifecycle) {
 			id, _ := event["request_id"].(string)
 			status, _ := event["status"].(float64)
@@ -432,10 +480,30 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 				t.Fatal("installed project creation did not return the existing repository project")
 			}
 		}
-		project := acceptanceCLIJSON[api.Project](t, cli.run(t, cli.caller, "project", "show", projectID, "--json"))
-		projects := acceptanceCLIJSON[[]api.Project](t, cli.run(t, cli.caller, "project", "list", "--json"))
+		project := acceptanceCLIProjectResource(t, cli.run(t, cli.caller, "project", "show", projectID, "--json"))
+		projects := acceptanceCLIProjectsResource(t, cli.run(t, cli.caller, "project", "list", "--json"))
 		if len(projects) != 1 || !reflect.DeepEqual(projects[0], project) || project.Name != "Installed CLI 项目" || project.RepoURL != "git@git.example:Org/Repo.git" {
 			t.Fatal("installed project commands disagree with the created resource")
+		}
+		if project.Settings != (api.ProjectSettings{Version: 1, ExecutionWarningMinutes: 60}) {
+			t.Fatal("new project did not expose the persistent default warning threshold")
+		}
+		isolatedProject := process.project(t, "Independent warning settings")
+		originalProject := project
+		project = acceptanceSettingsSave(t, process, project, 90)
+		settingsPath := "/api/v1/projects/" + project.ID + "/settings"
+		unchanged := acceptanceDecode[api.Project](t, process.request(context.Background(), http.MethodPatch, settingsPath,
+			map[string]any{"version": project.Settings.Version, "executionWarningMinutes": project.Settings.ExecutionWarningMinutes}, "settings-current-noop"), http.StatusOK)
+		if !reflect.DeepEqual(unchanged, project) {
+			t.Fatal("current same-value settings save changed the settings version or project timestamp")
+		}
+		acceptanceError(t, process.request(context.Background(), http.MethodPatch, settingsPath,
+			map[string]any{"version": originalProject.Settings.Version, "executionWarningMinutes": project.Settings.ExecutionWarningMinutes}, "settings-stale-noop"), http.StatusConflict, "version_conflict")
+		if after := acceptanceCLIProjectResource(t, cli.run(t, cli.caller, "project", "show", project.ID, "--json")); !reflect.DeepEqual(after, project) {
+			t.Fatal("packed installed CLI did not read the settings saved through the real API")
+		}
+		if after := acceptanceDecode[api.Project](t, process.request(context.Background(), http.MethodGet, "/api/v1/projects/"+isolatedProject.ID, nil, "settings-isolation"), http.StatusOK); !reflect.DeepEqual(after, isolatedProject) {
+			t.Fatal("saving one project's warning threshold changed another project")
 		}
 		if _, err := os.Stat(filepath.Join(cli.repo, ".daynight")); !errors.Is(err, os.ErrNotExist) {
 			t.Fatal("installed project creation wrote repository binding metadata")
@@ -552,6 +620,31 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 			t.Fatal("installed CLI rounded an explicit or read Go int64 version")
 		}
 		exactProject := process.project(t, "Exact lifecycle versions")
+		fixture.exec(t, "UPDATE projects SET settings_version=$1 WHERE id=$2", int64(9_007_199_254_740_992), exactProject.ID)
+		exactProject.Settings.Version = 9_007_199_254_740_992
+		exactProject = acceptanceSettingsSave(t, process, exactProject, 135)
+		if exactProject.Settings.Version != 9_007_199_254_740_993 {
+			t.Fatal("real settings save did not retain its exact int64 result")
+		}
+		if read := acceptanceCLIProjectResource(t, cli.run(t, cli.caller, "project", "show", exactProject.ID, "--json")); !reflect.DeepEqual(read, exactProject) {
+			t.Fatal("installed project show rounded the nested settings version above the safe integer range")
+		}
+		foundExactSettings := false
+		for _, read := range acceptanceCLIProjectsResource(t, cli.run(t, cli.caller, "project", "list", "--json")) {
+			if read.ID == exactProject.ID {
+				foundExactSettings = true
+				if !reflect.DeepEqual(read, exactProject) {
+					t.Fatal("installed project list rounded or changed the nested settings version")
+				}
+			}
+		}
+		if !foundExactSettings {
+			t.Fatal("installed project list omitted the project with an exact nested settings version")
+		}
+		exactGraph := acceptanceCLIGraphResource(t, cli.run(t, cli.caller, "task", "graph", "--project", exactProject.ID, "--json"))
+		if !reflect.DeepEqual(exactGraph.Project, exactProject) {
+			t.Fatal("installed graph rounded the nested project settings version")
+		}
 		exact := process.task(t, exactProject, "Exact lifecycle")
 		fixture.exec(t, "UPDATE tasks SET version=$1 WHERE id=$2", int64(9_007_199_254_740_993), exact.ID)
 		cli.run(t, cli.caller, "task", "approve", exact.ID, "--project", exactProject.ID, "--if-version", "9007199254740993")
@@ -750,8 +843,14 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		if after := cli.task(t, target); !reflect.DeepEqual(after, targetBefore) || !slices.Equal(after.DependsOn, []string{first}) {
 			t.Fatal("installed CLI completed dependency did not persist across restart")
 		}
-		if after := acceptanceCLIJSON[api.Project](t, cli.run(t, cli.caller, "project", "show", projectID, "--json")); !reflect.DeepEqual(after, project) {
+		if after := acceptanceCLIProjectResource(t, cli.run(t, cli.caller, "project", "show", projectID, "--json")); !reflect.DeepEqual(after, project) {
 			t.Fatal("installed CLI project did not persist across actual process restart")
+		}
+		if after := acceptanceCLIProjectResource(t, cli.run(t, cli.caller, "project", "show", exactProject.ID, "--json")); !reflect.DeepEqual(after, exactProject) {
+			t.Fatal("exact nested project settings did not persist across actual process restart")
+		}
+		if after := acceptanceCLIGraphResource(t, cli.run(t, cli.caller, "task", "graph", "--project", exactProject.ID, "--json")); !reflect.DeepEqual(after.Project, exactProject) {
+			t.Fatal("restarted installed graph lost exact nested project settings")
 		}
 		afterGraph := acceptanceCLIGraphResource(t, cli.run(t, cli.repo, "task", "graph", "--json"))
 		if !afterGraph.ObservedAt.After(graph.ObservedAt) {

@@ -2,10 +2,13 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -19,12 +22,12 @@ func TestTaskHTTPTransitionsRejectWrongPredecessorsAndStaleVersions(t *testing.T
 	states := []struct {
 		name    string
 		actions []string
-		next    string
+		next    []string
 	}{
-		{"proposed", nil, "approve"},
-		{"todo", []string{"approve"}, "claim"},
-		{"in_progress", []string{"approve", "claim"}, "complete"},
-		{"done", []string{"approve", "claim", "complete"}, ""},
+		{"proposed", nil, []string{"approve"}},
+		{"todo", []string{"approve"}, []string{"unapprove", "claim"}},
+		{"in_progress", []string{"approve", "claim"}, []string{"complete"}},
+		{"done", []string{"approve", "claim", "complete"}, nil},
 	}
 	for _, state := range states {
 		t.Run(state.name, func(t *testing.T) {
@@ -35,11 +38,11 @@ func TestTaskHTTPTransitionsRejectWrongPredecessorsAndStaleVersions(t *testing.T
 			if task.Status != state.name {
 				t.Fatalf("fixture state: %+v", task)
 			}
-			for _, action := range []string{"approve", "claim", "complete"} {
+			for _, action := range []string{"approve", "unapprove", "claim", "complete"} {
 				path := taskPath(task) + "/" + action
 				assertProjectError(t, projectRequest(handler, http.MethodPost, path,
 					jsonBody(t, api.TaskTransitionRequest{Version: task.Version + 1})), http.StatusConflict, "version_conflict")
-				if action != state.next {
+				if !slices.Contains(state.next, action) {
 					response := projectRequest(handler, http.MethodPost, path, jsonBody(t, api.TaskTransitionRequest{Version: task.Version}))
 					assertProjectError(t, response, http.StatusConflict, "invalid_transition")
 					if strings.Contains(response.Body.String(), "secret") {
@@ -52,7 +55,7 @@ func TestTaskHTTPTransitionsRejectWrongPredecessorsAndStaleVersions(t *testing.T
 			}
 		})
 	}
-	for _, fragment := range []string{`"cause":"invalid_transition"`, `"error_code":"invalid_transition"`, `"route":"POST /api/v1/projects/{projectId}/tasks/{taskId}/approve"`, `"phase":"claim"`, `"phase":"complete"`} {
+	for _, fragment := range []string{`"cause":"invalid_transition"`, `"error_code":"invalid_transition"`, `"route":"POST /api/v1/projects/{projectId}/tasks/{taskId}/approve"`, `"phase":"unapprove"`, `"phase":"claim"`, `"phase":"complete"`} {
 		if !strings.Contains(logs.String(), fragment) {
 			t.Fatalf("missing lifecycle diagnostic %s: %s", fragment, &logs)
 		}
@@ -66,7 +69,7 @@ func TestTaskHTTPTransitionStrictBodiesQueriesAndMethods(t *testing.T) {
 	handler := projectTestHandler(t, projectTestStore(t), io.Discard)
 	project := taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "Original")
-	for _, action := range []string{"approve", "claim", "complete"} {
+	for _, action := range []string{"approve", "unapprove", "claim", "complete"} {
 		t.Run(action, func(t *testing.T) {
 			path := taskPath(task) + "/" + action
 			for _, body := range []string{
@@ -113,7 +116,7 @@ func TestTaskHTTPTransitionResourceScopeAndCanonicalIDs(t *testing.T) {
 	project, other := taskProject(t, handler), taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "private-title-secret")
 	missing := "00000000-0000-4000-8000-000000000099"
-	for _, action := range []string{"approve", "claim", "complete"} {
+	for _, action := range []string{"approve", "unapprove", "claim", "complete"} {
 		for _, projectID := range []string{other.ID, missing} {
 			assertProjectError(t, projectRequest(handler, http.MethodPost, taskCollection(projectID)+"/"+task.ID+"/"+action, `{"version":1}`), http.StatusNotFound, "not_found")
 		}
@@ -136,7 +139,7 @@ func TestTaskHTTPTransitionRacesHaveOneWinner(t *testing.T) {
 	handler := projectTestHandler(t, projectTestStore(t), io.Discard)
 	project := taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "Concurrent lifecycle")
-	for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"claim", "in_progress"}, {"complete", "done"}} {
+	for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"unapprove", "proposed"}, {"approve", "todo"}, {"claim", "in_progress"}, {"complete", "done"}} {
 		t.Run(step.action, func(t *testing.T) {
 			body := jsonBody(t, api.TaskTransitionRequest{Version: task.Version})
 			start := make(chan struct{})
@@ -168,5 +171,24 @@ func TestTaskHTTPTransitionRacesHaveOneWinner(t *testing.T) {
 			}
 			task = winner
 		})
+	}
+}
+
+func TestTaskHTTPUnapprovePreservesExactInt64Version(t *testing.T) {
+	database := projectTestStore(t)
+	handler := projectTestHandler(t, database, io.Discard)
+	project := taskProject(t, handler)
+	task := transitionHTTPTask(t, handler, createHTTPTask(t, handler, project.ID, "Exact withdrawal version"), "approve")
+	const version int64 = 9007199254740993
+	if _, err := database.Pool.Exec(context.Background(), "UPDATE tasks SET version = $1 WHERE project_id = $2 AND id = $3", version, project.ID, task.ID); err != nil {
+		t.Fatal(err)
+	}
+	task = readHTTPTask(t, handler, task)
+	response := projectRequest(handler, http.MethodPost, taskPath(task)+"/unapprove", `{"version":`+strconv.FormatInt(version, 10)+`}`)
+	after := decodeResponse[api.Task](t, response, http.StatusOK)
+	expected := task
+	expected.Status, expected.Ready, expected.Version, expected.UpdatedAt = "proposed", false, version+1, after.UpdatedAt
+	if !reflect.DeepEqual(after, expected) || !strings.Contains(response.Body.String(), `"version":9007199254740994`) || !reflect.DeepEqual(readHTTPTask(t, handler, task), after) {
+		t.Fatal("withdrawal lost exact numeric version or changed unrelated task data")
 	}
 }

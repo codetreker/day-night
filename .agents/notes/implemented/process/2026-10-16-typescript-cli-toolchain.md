@@ -50,9 +50,12 @@ Configuration failures report their filename and preserve the original cause.
 
 When the CLI is selected by the [module-scoped CI decision](2026-10-21-module-scoped-pr-ci.md),
 GitHub Actions runs type checking, build, and tests on native Linux, macOS, and
-Windows. macOS tests mount temporary case-sensitive and case-insensitive APFS
-images and verify their actual lookup behavior before exercising configuration
-validation. The final `checks` job accepts only success or skipped from every
+Windows. Explicit `pnpm test:apfs` diagnostics on macOS mount temporary
+case-sensitive and case-insensitive APFS images and verify their actual lookup
+behavior before exercising configuration validation. Routine tests and the CLI
+matrix leave image diagnostics unselected, following the
+[native development coverage decision](../testing/2026-10-23-native-development-filesystem-coverage.md);
+non-mounting path and cleanup tests remain. The final `checks` job accepts only success or skipped from every
 preceding job, including the CLI matrix and dedicated shell completion job.
 Main pushes select all modules. The [CI simplification decision](../simplification/2026-10-21-ci-gate-simplification.md)
 owns the final job-result gate and PR-only version enforcement.

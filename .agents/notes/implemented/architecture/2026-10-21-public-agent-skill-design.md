@@ -121,10 +121,6 @@ cleanup failure preserves the newly published bundle and reports migration as
 incomplete. Re-running restores current packaged content. This deliberately avoids cross-target
 transactions, rollback, automatic npm-to-skill synchronization and edit merging.
 
-Daynight stores the design task and dependent implementation tasks. Repository
-documents own requirements, mechanism and rationale; they do not mirror live task
-status. The original task exercise proved creation and dependency gating for its
-then-current service contract; lifecycle acceptance owns the new explicit actions.
 An open delivery PR keeps its task in progress and its implementation successors
 blocked. Installer acceptance does not require real Agent installation, account
 configuration, models, or a Daynight service/database; existing task tests own

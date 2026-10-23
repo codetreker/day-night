@@ -1,5 +1,7 @@
-import { memo, useCallback, useLayoutEffect, useRef, type FocusEvent, type MouseEvent } from 'react';
+import { memo, useCallback, useId, useLayoutEffect, useRef, type FocusEvent, type MouseEvent } from 'react';
 import { useReactFlow, type Node, type NodeProps } from '@xyflow/react';
+import { useTaskExecution } from '../task-execution/TaskExecutionClock';
+import { TaskExecutionDescription, TaskExecutionDuration, TaskExecutionWarning, type TaskExecution } from '../task-execution/TaskExecutionPresentation';
 import { useI18n } from '../../i18n/LocaleProvider';
 import { useTaskInspectionState } from './inspection';
 import type { GraphTask } from '../../api/types';
@@ -21,18 +23,18 @@ export type TaskNodeData = {
 
 export type TaskFlowNode = Node<TaskNodeData, 'task'>;
 
-const TaskNodeContent = memo(({ task, kind, shared }: Pick<TaskNodeData, 'task' | 'kind' | 'shared'>) => {
+const TaskNodeContent = memo(({ task, kind, shared, execution }: Pick<TaskNodeData, 'task' | 'kind' | 'shared'> & { readonly execution: TaskExecution | null }) => {
   const { messages: { graph: m, common } } = useI18n();
   const title = `${task.titlePreview}${task.titleTruncated ? '…' : ''}`;
   return <>
     <span className="task-node-meta">
       <span className="task-node-id">{task.id.slice(0, 8)}</span>
-      {shared && <span className="task-shared-label">{m.shared}</span>}
+      <span className="task-node-meta-labels">{shared && <span className="task-shared-label">{m.shared}</span>}{execution?.overdue && <TaskExecutionWarning />}</span>
     </span>
     <span className="task-node-title">{title}</span>
     <span className="task-node-bottom">
       <span className={`graph-status graph-status-${task.status}`}><i aria-hidden="true" />{common.status[task.status]}</span>
-      {task.blockedBy.length > 0 && <span className="graph-blocked-badge">{m.blocked}</span>}
+      {execution !== null ? <TaskExecutionDuration execution={execution} /> : task.blockedBy.length > 0 && <span className="graph-blocked-badge">{m.blocked}</span>}
     </span>
     {kind === 'external' && <span className="task-external-label">{m.external}</span>}
   </>;
@@ -54,6 +56,8 @@ export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
   const { messages: { graph: m, common } } = useI18n();
   const { setCenter, getViewport } = useReactFlow();
   const inspection = useTaskInspectionState(data.task.id);
+  const execution = useTaskExecution(data.task);
+  const descriptionId = useId();
   const focusedControl = useRef<HTMLButtonElement | null>(null);
   const recoveringFocus = useRef(false);
   const body = useRef<HTMLButtonElement>(null);
@@ -91,12 +95,14 @@ export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
   const inspect = useCallback(() => { data.onInspectTask(data.task.id); }, [data.onInspectTask, data.task.id]);
   const expandable = data.expansions.prerequisites.ids.length > 0 || data.expansions.successors.ids.length > 0;
   return (
-    <div className={`task-node task-node-${data.task.status} task-node-${inspection}${data.kind === 'external' ? ' task-node-external' : ''} nodrag nopan`} data-inspection={inspection} style={{ pointerEvents: 'auto' }}>
+    <div className={`task-node task-node-${data.task.status} task-node-${inspection}${data.kind === 'external' ? ' task-node-external' : ''}${execution?.overdue ? ' task-node-stuck' : ''} nodrag nopan`} data-inspection={inspection} style={{ pointerEvents: 'auto' }}>
       <button type="button" ref={body} className="task-node-body nodrag nopan"
         aria-label={`${m.nodeLabel({ title, status: common.status[data.task.status], blocked: data.task.blockedBy.length > 0, external: data.kind === 'external', shared: data.shared })}${m.inspectionSuffix[inspection]}`}
+        aria-describedby={execution === null ? undefined : descriptionId}
         aria-pressed={inspection === 'selected'} onClick={inspect} onFocus={revealOnFocus}>
-        <TaskNodeContent task={data.task} kind={data.kind} shared={data.shared} />
+        <TaskNodeContent task={data.task} kind={data.kind} shared={data.shared} execution={execution} />
       </button>
+      {execution !== null && <TaskExecutionDescription execution={execution} id={descriptionId} />}
       <button type="button" className="task-node-details nodrag nopan" aria-haspopup="dialog" aria-label={m.detailsLabel({ title })} onClick={open} onFocus={revealOnFocus}>{m.details}</button>
       {expandable && <div className="task-node-expansions">
         <ExpansionControl direction="prerequisites" expansion={data.expansions.prerequisites} onFocus={revealOnFocus} onExpand={() => { data.onExpandTask(data.task.id, 'prerequisites'); }} />

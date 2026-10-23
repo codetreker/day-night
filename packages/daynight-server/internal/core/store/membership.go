@@ -33,7 +33,7 @@ func (tx *ProjectTx) ProjectMember(ctx context.Context, principal core.Principal
 
 func (s *Snapshot) AccessibleProjects(ctx context.Context, principal core.Principal, page Page) (ProjectPage, error) {
 	afterTime, afterID := pageValues(page)
-	rows, err := s.tx.Query(ctx, `SELECT p.id::text,p.name,p.repo_url,p.created_at,p.updated_at FROM projects p
+	rows, err := s.tx.Query(ctx, `SELECT `+projectProjection+` FROM projects p
         WHERE EXISTS (SELECT 1 FROM project_members m WHERE m.project_id=p.id AND m.user_id=$1)
         AND ($2::timestamptz IS NULL OR (p.created_at,p.id)>($2,$3::uuid))
         ORDER BY p.created_at,p.id LIMIT $4`, principal.UserID, afterTime, afterID, page.Limit+1)
@@ -72,7 +72,7 @@ func (s *Store) CreatePrivateProject(ctx context.Context, principal core.Princip
 			return err
 		}
 		project, err = scanProject(tx.QueryRow(ctx, `INSERT INTO projects (id,name,repo_url) VALUES ($1,$2,$3)
-            RETURNING id::text,name,repo_url,created_at,updated_at`, id, name, repoURL))
+            RETURNING `+projectProjection, id, name, repoURL))
 		if err != nil {
 			return err
 		}

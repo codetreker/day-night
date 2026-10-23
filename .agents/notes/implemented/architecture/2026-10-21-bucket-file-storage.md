@@ -76,8 +76,8 @@ bounded ancestor cleanup are necessary normal operations.
 
 **Delay caller wiring until persistent-volume deployment.** A new required
 environment field would make existing process tests, browser acceptance and
-Compose fail before A-T5. Mandatory startup wiring is part of this foundation;
-durable attachment mounts remain a separate delivery purpose.
+Compose fail until persistent-volume deployment. Mandatory startup wiring is
+part of this foundation; durable attachment mounts have a separate responsibility.
 
 ## Consequences
 

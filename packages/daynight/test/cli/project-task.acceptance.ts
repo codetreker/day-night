@@ -19,7 +19,7 @@ const alternateId = "a1b2c3d4-1111-4222-8333-123456789abd";
 const unrelatedId = "a1b2c3d4-1111-4222-8333-123456789abe";
 const taskId = "b1b2c3d4-1111-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
-const project = (projectId = id, repoUrl = "git@git.example:Org/Repo.git"): Project => ({ id: projectId, name: "Project 中文", repoUrl, createdAt: time, updatedAt: time });
+const project = (projectId = id, repoUrl = "git@git.example:Org/Repo.git"): Project => ({ id: projectId, name: "Project 中文", repoUrl, settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time });
 const task = (projectId = id): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true });
 const taskListItem = (value: Task): Omit<Task, "description"> => ({
   id: value.id, projectId: value.projectId, title: value.title, properties: value.properties,
@@ -86,7 +86,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
           if (broken === "dependency") { fault(response, "dependency_unsatisfied", "native-dependency-refusal", 409, { taskIds: [taskId] }); return; }
           if (parts.length === 8) {
             const action = parts[7]!;
-            const status = action === "approve" ? "todo" : action === "claim" ? "in_progress" : "done";
+            const status = action === "approve" ? "todo" : action === "unapprove" ? "proposed" : action === "claim" ? "in_progress" : "done";
             send(response, { ...task(projectId), description, properties, status, ready: status === "todo", version: (body as { version: bigint }).version + 1n }); return;
           }
           if (typeof body === "object" && body !== null && "description" in body && typeof body.description === "string") description = body.description;
@@ -154,7 +154,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
       ["update", taskId, "--pull-request-url=", "--clear-pull-requests"],
       ["update", taskId, "--pull-request-title=", "--clear-pull-requests"],
       ["update", taskId, "--status", "done"],
-      ...["approve", "claim", "complete"].flatMap((action) => [[action, "invalid"], [action, taskId, "--if-version=0"], [action, taskId, "--status=todo"]]),
+      ...["approve", "unapprove", "claim", "complete"].flatMap((action) => [[action, "invalid"], [action, taskId, "--if-version=0"], [action, taskId, "--status=todo"]]),
     ]) await invoke(["task", ...args], outside, 2, true);
 
     await invoke(["task", "ready", "--limit", "101"], outside, 2, true);
@@ -162,17 +162,17 @@ it("runs the actual installed launcher through native project/task discovery, pe
     const firstUrl = await listen(); const secondUrl = await listen(); await configure(firstUrl);
     const explicit = ["--project", id];
     const listed = await invoke(["project", "list", "--json"], outside, 0, true);
-    expect(JSON.parse(listed.stdout)).toEqual(projects);
+    expect(parseApiJson(listed.stdout)).toEqual(projects);
     const existingProject = await invoke(["project", "create", "Different name", "--repo", project().repoUrl], outside, 0, true);
     expect(existingProject.stdout).toContain("Project already exists.");
     const createdProject = await invoke(["project", "create", "Native 名称", "--repo", "https://git.example/Native/New.git"], outside, 0, true);
     expect(createdProject.stdout).toContain("Project created.");
     expect(requests.at(-1)!.body).toEqual({ name: "Native 名称", repoUrl: "https://git.example/Native/New.git" });
-    expect(JSON.parse((await invoke(["project", "show", id, "--json"], outside, 0, true)).stdout)).toEqual(project());
+    expect(parseApiJson((await invoke(["project", "show", id, "--json"], outside, 0, true)).stdout)).toEqual(project());
     expect(parseApiJson((await invoke(["task", "show", taskId, "--json", ...explicit], outside, 0, true)).stdout)).toEqual({ ...task(), version: 9_007_199_254_740_993n });
     const createdTask = await invoke(["task", "create", "--title", "Native task", ...explicit], outside, 0, true);
     expect(createdTask.stdout).toContain("Status: proposed");
-    for (const [action, status] of [["approve", "todo"], ["claim", "in_progress"], ["complete", "done"]] as const) {
+    for (const [action, status] of [["approve", "todo"], ["unapprove", "proposed"], ["approve", "todo"], ["claim", "in_progress"], ["complete", "done"]] as const) {
       for (const explicitVersion of [false, true]) {
         const before = requests.length;
         const result = await invoke(["task", action, taskId.toUpperCase(), ...(explicitVersion ? ["--if-version", "9007199254740993"] : []), ...explicit], outside, 0, true);
@@ -282,7 +282,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
     expect((await invoke(["task", "create", "--title", "Packaged Markdown brief", "--description", brief, ...explicit], outside, 0, true, "node-entry")).stdout).toContain("Status: proposed");
     expect(requests.slice(briefCreateAt).map(({ method }) => method)).toEqual(["GET", "POST"]);
     expect(requests.at(-1)!.body).toEqual({ title: "Packaged Markdown brief", description: brief });
-    for (const action of ["approve", "claim", "complete"] as const) {
+    for (const action of ["approve", "unapprove", "claim", "complete"] as const) {
       const actionAt = requests.length;
       await invoke(["task", action, taskId, "--if-version", "9007199254740993", ...explicit], outside, 0, true, "node-entry");
       expect(requests.slice(actionAt).map(({ method }) => method)).toEqual(["GET", "POST"]);

@@ -6,6 +6,7 @@ export type AuthMessages = {
     readonly myProjects: string;
     readonly accountSettings: string;
     readonly members: string;
+    readonly projectSettings: string;
     readonly teamWorkspace: string;
     readonly accountLink: (args: { readonly name: string }) => string;
     readonly currentAccount: string;
@@ -27,7 +28,7 @@ export type AuthMessages = {
     readonly revalidationRetained: string;
     readonly revalidationRetry: string;
     readonly notice: Readonly<Record<"expired" | "signedOut" | "logoutFailed" | "loginFailed", string>>;
-    readonly documentTitle: Readonly<Record<"loading" | "error" | "login" | "invitations" | "projects" | "project" | "members" | "account" | "notFound", string>>;
+    readonly documentTitle: Readonly<Record<"loading" | "error" | "login" | "invitations" | "projects" | "project" | "members" | "settings" | "account" | "notFound", string>>;
   };
   readonly login: {
     readonly heroTitleFirst: string;
@@ -178,6 +179,26 @@ export type AuthMessages = {
       readonly inviteTerms: string;
       readonly revokeBody: string;
       readonly notice: Readonly<Record<"permissionReloaded" | "conflictReloaded" | "permissionChecked", string>>;
+    };
+    readonly settings: {
+      readonly eyebrow: string;
+      readonly title: string;
+      readonly scopeHint: string;
+      readonly alertTitle: string;
+      readonly description: string;
+      readonly scope: string;
+      readonly label: string;
+      readonly unit: string;
+      readonly hint: string;
+      readonly invalid: string;
+      readonly save: string;
+      readonly busy: string;
+      readonly unsaved: string;
+      readonly memberNotice: string;
+      readonly loading: string;
+      readonly uncertain: string;
+      readonly retryRead: string;
+      readonly notice: Readonly<Record<"saved" | "cancelled" | "conflict" | "permission" | "reconciled", string>>;
     };
     readonly secret: {
       readonly tokenTitle: string;

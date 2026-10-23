@@ -112,8 +112,6 @@ func TestAttachmentScopeAndPathConflicts(t *testing.T) {
 	putAttachment(t, attachments, principal, task, "docs", "file")
 	putAttachment(t, attachments, principal, task, "literal%_/child", "nested")
 	putAttachment(t, attachments, principal, task, "literalXX/child", "different")
-	putAttachment(t, attachments, principal, task, "Case", "upper")
-	putAttachment(t, attachments, principal, task, "case", "lower")
 	for _, path := range []string{"docs/child", "literal%_"} {
 		_, _, err := attachments.Put(ctx, principal, task.ProjectID, task.ID, path, "text/plain", strings.NewReader("conflict"))
 		requireFault(t, err, "path_conflict")
@@ -160,11 +158,16 @@ func TestAttachmentValidation(t *testing.T) {
 }
 
 func TestAttachmentPaginationAndCursorScope(t *testing.T) {
-	attachments, tasks, _, _, task, principal := attachmentService(t)
+	attachments, tasks, database, _, task, principal := attachmentService(t)
 	ctx := context.Background()
 	want := []string{"a/file", "A/file", "中 文", "emoji-😀", "%literal", "_literal"}
+	// Pagination orders logical metadata paths independently of the host's file
+	// naming capabilities; physical case-distinct writes have separate coverage.
 	for _, path := range want {
-		putAttachment(t, attachments, principal, task, path, path)
+		if _, _, err := database.PutAttachment(ctx, core.Attachment{ProjectID: task.ProjectID, TaskID: task.ID,
+			Path: path, ContentType: "text/plain", SizeBytes: int64(len(path))}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	slices.Sort(want)
 	request := PageRequest{Limit: 2}

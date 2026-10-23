@@ -1,3 +1,4 @@
+import { decodeTaskGraphJson } from '../../src/api/project-json';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import type { APIResponse, Locator, Page, Route, TestInfo } from '@playwright/test';
@@ -19,6 +20,17 @@ const node = (page: Page, id: string): Locator => page.locator(`.react-flow__nod
 const details = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] button.task-node-details`);
 const detail = (page: Page): Locator => page.locator('.task-detail-dialog');
 const approval = (page: Page): Locator => detail(page).locator('.task-approval');
+const confirmation = (page: Page, action: 'approve' | 'unapprove' = 'approve', language: 'zh-CN' | 'en' = 'zh-CN'): Locator =>
+  page.getByRole('alertdialog', { name: language === 'en' ? action === 'approve' ? 'Approve task' : 'Unapprove task' : action === 'approve' ? '批准任务' : '撤回审批', exact: true });
+const confirmAction = async (page: Page, action: 'approve' | 'unapprove' = 'approve', language: 'zh-CN' | 'en' = 'zh-CN'): Promise<void> => {
+  const dialog = confirmation(page, action, language);
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: language === 'en' ? action === 'approve' ? 'Confirm approval' : 'Confirm withdrawal' : action === 'approve' ? '确认批准' : '确认撤回', exact: true }).click();
+};
+const submitApproval = async (page: Page, language: 'zh-CN' | 'en' = 'zh-CN'): Promise<void> => {
+  await detail(page).getByRole('button', { name: language === 'en' ? 'Approve task' : '批准任务', exact: true }).click();
+  await confirmAction(page, 'approve', language);
+};
 const taskPath = (projectId: string, taskId: string): string => `/api/v1/projects/${projectId}/tasks/${taskId}`;
 const graphPath = (projectId: string): string => `/api/v1/projects/${projectId}/task-graph`;
 const origin = (info: TestInfo): string => {
@@ -50,7 +62,7 @@ const expectStatus = async (page: Page, value: '待审批' | '待处理' | 'Prop
 const openStandalone = async (page: Page, id: string): Promise<void> => {
   await page.getByRole('tab', { name: '独立任务', exact: true }).click();
   await standalone(page, id).click();
-  await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
+  await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
 };
 const pauseAutomaticRefresh = async (page: Page): Promise<void> => {
   const time = new Date('2030-01-01T00:00:00Z');
@@ -67,6 +79,7 @@ type LifecycleCommand = {
   readonly requestIds: readonly string[];
 };
 type LifecycleWebWrite = {
+  readonly action: 'approve' | 'unapprove';
   readonly taskId: string;
   readonly expectedBody: string;
   readonly status: number;
@@ -116,10 +129,12 @@ const lifecycleActor = async (page: Page, info: TestInfo, name: string) => {
     return content;
   };
   const capture = async (route: Route, taskId: string): Promise<APIResponse> => {
+    const action = new URL(route.request().url()).pathname.split('/').at(-1);
+    if (action !== 'approve' && action !== 'unapprove') throw new Error('Approval evidence requires a named approval operation.');
     const response = await authenticatedAPI(page.context().request).fetch(route.request(), { timeout: 15_000, maxRetries: 0 });
     const responseBody = await response.text();
     const error = response.status() === 409 ? JSON.parse(responseBody) as { error: { code: string; requestId: string } } : null;
-    evidence.webWrites.push({ taskId, expectedBody: route.request().postData()!, status: response.status(), responseBody,
+    evidence.webWrites.push({ action, taskId, expectedBody: route.request().postData()!, status: response.status(), responseBody,
       requestId: error === null ? response.headers()['x-request-id'] ?? null : error.error.requestId });
     return response;
   };
@@ -133,6 +148,21 @@ const invariantFields = (task: TaskDetail) => ({
   id: task.id, projectId: task.projectId, title: task.title, description: task.description,
   properties: task.properties, dependsOn: task.dependsOn, createdAt: task.createdAt,
 });
+const approvalInvariantFields = (task: TaskDetail) => ({ ...invariantFields(task), startedAt: task.startedAt, completedAt: task.completedAt });
+const expectTitleAction = async (page: Page, label: string): Promise<Locator> => {
+  const row = detail(page).locator('.task-detail-title-row');
+  const button = row.getByRole('button', { name: label, exact: true });
+  await expect(button).toBeEnabled();
+  await expect.poll(() => row.evaluate((element) => {
+    const title = element.querySelector('.task-detail-title')!.getBoundingClientRect();
+    const action = element.querySelector('.task-detail-title-action')!.getBoundingClientRect();
+    const bounds = element.getBoundingClientRect();
+    return action.x >= title.right && Math.abs(action.right - bounds.right) <= 1
+      && action.width > 0 && action.height > 0 && element.scrollWidth <= element.clientWidth;
+  }), { message: 'The approval entry occupies the title row far right without overlapping the title' }).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  return button;
+};
 const navigateProject = async (page: Page, projectId: string): Promise<void> => {
   await page.getByRole('link', { name: '← 项目', exact: true }).click();
   await expect(page.getByRole('list', { name: '项目列表', exact: true })).toBeVisible();
@@ -174,8 +204,8 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
     const exactRaw = await exactResponse.text();
     lifecycle.evidence.rawReads.push({ label: 'real-SQL-seeded-task-GET', path: taskPath(project.id, exact.id), body: exactRaw });
     expect(exactRaw).toMatch(new RegExp(`"version"\\s*:\\s*${exactVersion}(?:,|})`));
-    allowApprovalWrites([...[exact, blocked].map(({ id }) => ({ origin: origin(info), projectId: project.id, taskId: id, count: 1 })),
-      { origin: origin(info), projectId: sharedProjectId, taskId: sharedDependentId, count: 1 }]);
+    allowApprovalWrites([...[exact, blocked].map(({ id }) => ({ action: 'approve' as const, origin: origin(info), projectId: project.id, taskId: id, count: 1 })),
+      { action: 'approve', origin: origin(info), projectId: sharedProjectId, taskId: sharedDependentId, count: 1 }]);
     const previewPath = 'preview.txt';
     const previewText = 'Attachment preview retained through another task approval.\n';
     const seededPreview = await request.put(attachmentDownloadUrl(project.id, other.id, previewPath), {
@@ -252,19 +282,22 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
       finished.resolve();
     });
     try {
-      const button = approval(page).getByRole('button', { name: '批准任务', exact: true });
+      const button = detail(page).getByRole('button', { name: '批准任务', exact: true });
       await button.focus();
       await page.keyboard.press('Enter');
+      await expect(confirmation(page).getByRole('button', { name: '取消', exact: true })).toBeFocused();
+      expect(submitted).toEqual([]);
+      await confirmAction(page);
       await within(fetched.promise, 'real exact-version approval commit');
       await expect(approval(page)).toHaveAttribute('aria-busy', 'true');
-      await expect(approval(page).getByRole('button', { name: '正在批准…', exact: true })).toBeDisabled();
-      await approval(page).getByRole('button').evaluate((element: HTMLButtonElement) => element.click());
+      await expect(detail(page).getByRole('button', { name: '正在提交…', exact: true })).toBeDisabled();
+      await detail(page).locator('.task-detail-title-action').evaluate((element: HTMLButtonElement) => element.click());
       await page.keyboard.press('Escape');
       await expect(standalone(page, exact.id)).toBeFocused();
       await standalone(page, exact.id).click();
       await expect(approval(page)).toHaveAttribute('aria-busy', 'true');
-      await expect(approval(page).getByRole('status')).toContainText('正在提交批准请求');
-      await expect(approval(page).getByRole('button')).toBeDisabled();
+      await expect(approval(page).getByRole('status')).toContainText('正在提交审批操作');
+      await expect(detail(page).locator('.task-detail-title-action')).toBeDisabled();
       expect(submitted).toEqual([`{"version":${exactVersion}}`]);
       await page.keyboard.press('Escape');
       await standalone(page, other.id).click();
@@ -330,12 +363,12 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
       await expect(standalone(page, other.id).locator('.root-title')).toHaveText(updatedOther.title);
       await expect(detail(page).locator('.task-detail-title')).toHaveText(other.title);
       await expectStatus(page, '待审批');
-      await expect(approval(page).getByRole('button', { name: '批准任务', exact: true, includeHidden: true })).toBeDisabled();
+      await expect(detail(page).getByRole('button', { name: '批准任务', exact: true, includeHidden: true })).toBeDisabled();
       await assertUploadRetained();
       otherRelease.resolve();
       await within(otherFinished.promise, 'fresh background task detail response');
       await expect(detail(page).locator('.task-detail-title')).toHaveText(updatedOther.title);
-      await expect(approval(page).getByRole('button', { name: '批准任务', exact: true, includeHidden: true })).toBeEnabled();
+      await expect(detail(page).getByRole('button', { name: '批准任务', exact: true, includeHidden: true })).toBeEnabled();
       await assertUploadRetained();
       await screenshot(page, info, 'task-approval-preserves-active-upload');
       uploadRelease.resolve();
@@ -357,7 +390,7 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
       await page.keyboard.press('Escape');
       await standalone(page, exact.id).click();
       await expectStatus(page, '待处理');
-      await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
+      await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
       expect(submitted).toEqual([`{"version":${exactVersion}}`]);
     } finally {
       release.resolve();
@@ -392,14 +425,13 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
     await details(page, blocked.id).focus();
     await page.keyboard.press('Enter');
     await expectStatus(page, '待审批');
-    await expect(approval(page)).toContainText('前置未完成时，任务仍会被阻塞');
     await expect(detail(page).getByRole('region', { name: '当前未完成的前置', exact: true })).toContainText(prerequisite.title);
     await page.setViewportSize({ width: 320, height: 740 });
     await detail(page).getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('en');
     await expectStatus(page, 'Proposed');
     await expectCenteredTaskDetail(page, detail(page));
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    const approve = approval(page).getByRole('button', { name: 'Approve task', exact: true });
+    const approve = detail(page).getByRole('button', { name: 'Approve task', exact: true });
     await approve.focus();
     const beforeApproval = await page.locator('.react-flow__viewport').getAttribute('style');
     const zoom = await page.locator('.react-flow__viewport').evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).a);
@@ -417,6 +449,7 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
     });
     try {
       await page.keyboard.press('Enter');
+      await confirmAction(page, 'approve', 'en');
       await within(graphSubmitted.promise, 'real graph approval commit');
       const attachmentsTab = detail(page).getByRole('tab', { name: 'Attachments', exact: true });
       await attachmentsTab.click();
@@ -435,7 +468,7 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
     await expect(approval(page).getByRole('status')).toContainText('Approval confirmed');
     await expect(approval(page)).toContainText('Unfinished prerequisites still block it');
     await expect(detail(page).locator('.task-detail-blocked')).toHaveText('Blocked');
-    await expect(approval(page).getByRole('button', { name: 'Approve task', exact: true })).toHaveCount(0);
+    await expect(detail(page).getByRole('button', { name: 'Approve task', exact: true })).toHaveCount(0);
     await expect(fullscreen).toBeVisible();
     expect(await visibleGraph()).toEqual(expandedGraph);
     await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '70');
@@ -474,7 +507,7 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
         const { description: _description, version: _version, ...fields } = task;
         expect(inventory.find((item) => item.id === task.id)).toEqual({ ...fields, version: 1 });
       }
-      const createdGraph = parseTaskGraph(JSON.parse(await lifecycle.success(['task', 'graph', '--project', sharedProjectId, '--json'])), sharedProjectId);
+      const createdGraph = parseTaskGraph(await decodeTaskGraphJson(new Response(await lifecycle.success(['task', 'graph', '--project', sharedProjectId, '--json']))), sharedProjectId);
       expect(createdGraph.summary).toEqual({ total: 2, proposed: 2, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 });
       expect(createdGraph.tasks.find((task) => task.id === sharedDependentId)).toMatchObject({ status: 'proposed', dependsOn: [sharedPrerequisiteId], blockedBy: [sharedPrerequisiteId], ready: false });
       await page.goto(`/projects/${sharedProjectId}`);
@@ -491,7 +524,7 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
         await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
       });
       try {
-        await approval(page).getByRole('button', { name: '批准任务', exact: true }).click();
+        await submitApproval(page);
         await expectStatus(page, '待处理');
         await expect(detail(page).locator('.task-detail-blocked')).toHaveText('被阻塞');
         const approved = await lifecycle.show(sharedProjectId, sharedDependentId, 'web-approved-blocked');
@@ -534,7 +567,7 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
         expect(JSON.parse(await lifecycle.success(['task', 'list', '--project', sharedProjectId, '--json']))).toEqual([]);
         const all = JSON.parse(await lifecycle.success(['task', 'list', '--project', sharedProjectId, '--all', '--json'])) as Record<string, unknown>[];
         expect(all).toHaveLength(2); expect(all.every((item) => item.status === 'done' && item.version === 4 && !Object.hasOwn(item, 'description'))).toBe(true);
-        const completedGraph = parseTaskGraph(JSON.parse(await lifecycle.success(['task', 'graph', '--project', sharedProjectId, '--json'])), sharedProjectId);
+        const completedGraph = parseTaskGraph(await decodeTaskGraphJson(new Response(await lifecycle.success(['task', 'graph', '--project', sharedProjectId, '--json']))), sharedProjectId);
         expect(completedGraph.summary).toEqual({ total: 2, proposed: 0, todo: 0, inProgress: 0, done: 2, ready: 0, blocked: 0 });
         for (const [path, content] of [['plan.md', plan], ['payload.bin', binary]] as const) expect(await lifecycle.bytes(sharedProjectId, sharedDependentId, path, `completed-${path}`)).toEqual(content);
         await page.getByRole('button', { name: '刷新', exact: true }).click();
@@ -545,7 +578,7 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
         await page.clock.runFor(100);
         await details(page, sharedDependentId).click();
         await expect(detail(page).locator('.task-detail-status')).toHaveText('已完成');
-        await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
+        await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
         await screenshot(page, info, 'task-approval-installed-lifecycle');
       } finally { await page.unroute(ordinaryPattern); }
     });
@@ -564,9 +597,9 @@ test('task-approval-conflicts', scenario('task-approval-conflicts'), async ({ pa
     const raceId = resourceId(await lifecycle.success(['task', 'create', '--project', project.id, '--title', 'CLI/Web same observed version', '--description', 'Two actual clients approve one observed proposal.']));
     const raceBefore = await lifecycle.show(project.id, raceId, 'race-created-and-observed');
     allowApprovalWrites([
-      { origin: origin(info), projectId: project.id, taskId: changed.id, count: 2 },
-      { origin: origin(info), projectId: project.id, taskId: external.id, count: 1 },
-      { origin: origin(info), projectId: project.id, taskId: raceId, count: 1 },
+      { action: 'approve', origin: origin(info), projectId: project.id, taskId: changed.id, count: 2 },
+      { action: 'approve', origin: origin(info), projectId: project.id, taskId: external.id, count: 1 },
+      { action: 'approve', origin: origin(info), projectId: project.id, taskId: raceId, count: 1 },
     ]);
     const posts: string[] = [];
     page.on('request', (value) => { if (value.method() === 'POST') posts.push(value.url()); });
@@ -581,25 +614,25 @@ test('task-approval-conflicts', scenario('task-approval-conflicts'), async ({ pa
       const response = await lifecycle.capture(route, changed.id);
       await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
     });
-    await approval(page).getByRole('button', { name: '批准任务', exact: true }).click();
+    await submitApproval(page);
     await expect(detail(page).locator('.task-description')).toHaveText(updated.description);
     await expect(approval(page).getByRole('alert').first()).toContainText('任务已变化');
     await expect(approval(page)).toContainText('任务版本已变化');
-    await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
+    await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
     expect(posts).toHaveLength(1);
     expect(lifecycle.evidence.webWrites[0]).toMatchObject({ taskId: changed.id, expectedBody: `{"version":${changedBefore.version}}`, status: 409 });
     expect(JSON.parse(lifecycle.evidence.webWrites[0]!.responseBody).error.code).toBe('version_conflict');
     const current = await request.get(taskPath(project.id, changed.id));
     expect((await current.json() as { status: string }).status).toBe('proposed');
     await screenshot(page, info, 'task-approval-version-conflict');
-    await approval(page).getByRole('button', { name: '批准任务', exact: true }).click();
+    await submitApproval(page);
     await expectStatus(page, '待处理');
     expect(posts).toHaveLength(2);
     expect(lifecycle.evidence.webWrites[1]).toMatchObject({ expectedBody: `{"version":${updated.version}}`, status: 200 });
     await page.unroute(stalePattern);
     await page.keyboard.press('Escape');
     await standalone(page, external.id).click();
-    await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
+    await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
     const externalPattern = `**${taskPath(project.id, external.id)}/approve`;
     await page.route(externalPattern, async (route) => {
       const response = await lifecycle.capture(route, external.id);
@@ -608,16 +641,16 @@ test('task-approval-conflicts', scenario('task-approval-conflicts'), async ({ pa
     });
     await lifecycle.success(['task', 'approve', external.id, '--project', project.id, '--if-version', String(external.version)]);
     expect(await lifecycle.show(project.id, external.id, 'CLI-approved-other-caller')).toMatchObject({ status: 'todo', version: 2n });
-    await approval(page).getByRole('button', { name: '批准任务', exact: true }).click();
+    await submitApproval(page);
     await expectStatus(page, '待处理');
-    await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
+    await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
     expect(posts).toHaveLength(3);
     await page.unroute(externalPattern);
     await screenshot(page, info, 'task-approval-conflicts');
     await test.step('CLI and Web approve one observed version without automatic retry', async () => {
       await page.keyboard.press('Escape');
       await standalone(page, raceId).click();
-      await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
+      await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
       const browserStarted = deferred(); const release = deferred(); const finished = deferred();
       const racePattern = `**${taskPath(project.id, raceId)}/approve`;
       lifecycle.evidence.controlledFaults.push('The browser request is held before forwarding only as a dispatch barrier; the CLI and Web submit the same observed version to the real service, which chooses the winner.');
@@ -630,10 +663,10 @@ test('task-approval-conflicts', scenario('task-approval-conflicts'), async ({ pa
         await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() }); finished.resolve();
       });
       try {
-        await approval(page).getByRole('button', { name: '批准任务', exact: true }).click();
+        await submitApproval(page);
         await within(browserStarted.promise, 'browser observed-version submission');
-        await expect(approval(page).getByRole('button', { name: '正在批准…', exact: true })).toBeDisabled();
-        await approval(page).getByRole('button', { name: '正在批准…', exact: true }).evaluate((button: HTMLButtonElement) => button.click());
+        await expect(detail(page).getByRole('button', { name: '正在提交…', exact: true })).toBeDisabled();
+        await detail(page).getByRole('button', { name: '正在提交…', exact: true }).evaluate((button: HTMLButtonElement) => button.click());
         await page.keyboard.press('Enter');
         const cliAttempt = lifecycle.run(['task', 'approve', raceId, '--project', project.id, '--if-version', String(raceBefore.version)]);
         release.resolve();
@@ -653,7 +686,7 @@ test('task-approval-conflicts', scenario('task-approval-conflicts'), async ({ pa
           await expect(approval(page)).toContainText('任务版本已变化');
         }
         await expectStatus(page, '待处理');
-        await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
+        await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
         const persisted = await lifecycle.show(project.id, raceId, 'one-authoritative-approval-winner');
         expect(persisted).toMatchObject({ status: 'todo', version: raceBefore.version + 1n });
         expect(invariantFields(persisted)).toEqual(invariantFields(raceBefore));
@@ -679,8 +712,8 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
     const otherProject = await createProject(request, { name: `Isolated approval project ${randomUUID()}` });
     const otherId = resourceId(await lifecycle.success(['task', 'create', '--project', otherProject.id, '--title', 'Other project stays proposed']));
     const otherBefore = await lifecycle.show(otherProject.id, otherId, 'other-project-before-pending-navigation');
-    allowApprovalWrites([...[unknown, graphFailure].map(({ id }) => ({ origin: origin(info), projectId: project.id, taskId: id, count: 1 })),
-      { origin: origin(info), projectId: project.id, taskId: pendingId, count: 1 }]);
+    allowApprovalWrites([...[unknown, graphFailure].map(({ id }) => ({ action: 'approve' as const, origin: origin(info), projectId: project.id, taskId: id, count: 1 })),
+      { action: 'approve', origin: origin(info), projectId: project.id, taskId: pendingId, count: 1 }]);
     lifecycle.evidence.controlledFaults.push('Actual approval POST is forwarded through the authenticated browser request context and commits before its response is aborted; reconciliation GET is temporarily aborted separately.');
     lifecycle.evidence.controlledFaults.push('The existing owned dependency table is temporarily renamed only around the real graph GET; its real500 response is forwarded, then the table is restored before CLI readback.');
     await page.goto(`/projects/${project.id}`);
@@ -698,11 +731,11 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
       await route.abort('connectionfailed');
     });
     try {
-      await approval(page).getByRole('button', { name: '批准任务', exact: true }).click();
-      await expect(approval(page)).toContainText('批准结果尚未确认');
+      await submitApproval(page);
+      await expect(approval(page)).toContainText('审批操作结果尚未确认');
       await expect(approval(page)).toContainText('暂时无法确认当前任务状态');
-      await expect(approval(page)).toContainText('批准请求未能从服务取得可确认的响应');
-      await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toBeDisabled();
+      await expect(approval(page)).toContainText('审批操作未能从服务取得可确认的响应');
+      await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toBeDisabled();
       const persisted = await request.get(taskPath(project.id, unknown.id));
       expect((await persisted.json() as { status: string }).status).toBe('todo');
       expect(await lifecycle.show(project.id, unknown.id, 'committed-before-lost-browser-response')).toMatchObject({ status: 'todo', version: 2n });
@@ -711,14 +744,14 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
       await approval(page).getByRole('button', { name: '检查任务状态', exact: true }).click();
       await expectStatus(page, '待处理');
       await expect(approval(page)).toContainText('已确认当前任务状态');
-      await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
+      await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
     } finally {
       await page.unroute(unknownReadPattern);
       await page.unroute(unknownPostPattern);
     }
     await page.keyboard.press('Escape');
     await standalone(page, graphFailure.id).click();
-    await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
+    await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
     let failGraph = true;
     const graphPattern = `**${graphPath(project.id)}`;
     const graphPostPattern = `**${taskPath(project.id, graphFailure.id)}/approve`;
@@ -734,12 +767,12 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
       await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
     });
     try {
-      await approval(page).getByRole('button', { name: '批准任务', exact: true }).click();
+      await submitApproval(page);
       await expectStatus(page, '待处理');
       await expect(approval(page).getByRole('status')).toContainText('批准成功');
-      await expect(detail(page).locator('.task-detail-stale')).toContainText('批准结果已保留');
+      await expect(detail(page).locator('.task-detail-stale')).toContainText('结果已保留');
       await expect(page.locator('.snapshot-error')).toBeVisible();
-      await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
+      await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
       await screenshot(page, info, 'task-approval-confirmed-graph-failure');
       expect(await lifecycle.show(project.id, graphFailure.id, 'confirmed-todo-despite-graph-failure')).toMatchObject({ status: 'todo', version: 2n });
       failGraph = false;
@@ -772,7 +805,7 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
       await within(finished.promise, 'stale task response disposal');
       await expect(detail(page).locator('.task-detail-title')).toHaveText(graphFailure.title);
       await expectStatus(page, '待处理');
-      await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
+      await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
       await screenshot(page, info, 'task-approval-recovery');
     } finally {
       release.resolve();
@@ -781,7 +814,7 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
     await test.step('pending approval survives SPA project changes and never paints another project', async () => {
       await page.keyboard.press('Escape');
       await standalone(page, pendingId).click();
-      await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
+      await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toBeEnabled();
       const fetched = deferred(); const release = deferred(); const finished = deferred();
       const pattern = `**${taskPath(project.id, pendingId)}/approve`;
       const documentId = randomUUID();
@@ -800,7 +833,7 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
         await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() }); finished.resolve();
       });
       try {
-        await approval(page).getByRole('button', { name: '批准任务', exact: true }).click();
+        await submitApproval(page);
         await within(fetched.promise, 'real pending project approval commit');
         await expect(approval(page)).toHaveAttribute('aria-busy', 'true');
         await page.keyboard.press('Escape');
@@ -813,8 +846,8 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
         await page.getByRole('tab', { name: '独立任务', exact: true }).click();
         await standalone(page, pendingId).click();
         await expect(approval(page)).toHaveAttribute('aria-busy', 'true');
-        await expect(approval(page).getByRole('button', { name: '正在批准…', exact: true })).toBeDisabled();
-        await approval(page).getByRole('button', { name: '正在批准…', exact: true }).evaluate((button: HTMLButtonElement) => button.click());
+        await expect(detail(page).getByRole('button', { name: '正在提交…', exact: true })).toBeDisabled();
+        await detail(page).getByRole('button', { name: '正在提交…', exact: true }).evaluate((button: HTMLButtonElement) => button.click());
         expect(lifecycle.evidence.webWrites.filter((row) => row.taskId === pendingId)).toHaveLength(1);
         await page.keyboard.press('Escape');
         await navigateProject(page, otherProject.id);
@@ -833,11 +866,293 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
         await page.getByRole('tab', { name: '独立任务', exact: true }).click();
         await standalone(page, pendingId).click();
         await expectStatus(page, '待处理');
-        await expect(approval(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
+        await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toHaveCount(0);
         expect(lifecycle.evidence.webWrites.filter((row) => row.taskId === pendingId)).toHaveLength(1);
         await screenshot(page, info, 'task-approval-real-project-navigation');
       } finally { release.resolve(); await page.unroute(pattern); }
     });
+  } finally {
+    try { await lifecycle.attach(); } finally { await lifecycle.close(); }
+  }
+});
+
+test('task-unapproval', scenario('task-unapproval'), async ({ page, allowApprovalWrites }, info) => {
+  await pauseAutomaticRefresh(page);
+  const lifecycle = await lifecycleActor(page, info, 'task-unapproval');
+  try {
+    const projectId = resourceId(await lifecycle.success(['project', 'create', `Withdraw approval ${randomUUID()}`, '--repo', `https://example.com/withdrawal/${randomUUID()}`]));
+    const create = async (title: string, extra: readonly string[] = []): Promise<string> => resourceId(await lifecycle.success([
+      'task', 'create', '--project', projectId, '--title', title, '--description', '# Withdrawal acceptance\n\nPreserve the reviewed task and its original materials.',
+      '--pull-request-url', 'https://example.com/pull/withdrawal', '--pull-request-title', 'Preserved approval evidence', ...extra,
+    ]));
+    const longTitle = 'Long task title '.repeat(100);
+    const readyId = await create(longTitle);
+    const prerequisiteId = await create('仍未完成的撤回验收前置');
+    const blockedId = await create('撤回仍被前置阻塞的任务', ['--depends-on', prerequisiteId]);
+    const unknownId = await create('撤回已提交但浏览器响应丢失');
+    for (const id of [readyId, blockedId, unknownId]) await lifecycle.success(['task', 'approve', id, '--project', projectId, '--if-version', '1']);
+    const exactVersion = 9_007_199_254_740_993n;
+    await seedTaskVersion(projectId, readyId, exactVersion);
+    const before = await lifecycle.show(projectId, readyId, 'ready-todo-before-withdrawal');
+    const blockedBefore = await lifecycle.show(projectId, blockedId, 'blocked-todo-before-withdrawal');
+    const unknownBefore = await lifecycle.show(projectId, unknownId, 'unknown-todo-before-withdrawal');
+    expect(before).toMatchObject({ status: 'todo', ready: true, version: exactVersion });
+    expect(blockedBefore).toMatchObject({ status: 'todo', ready: false, blockedBy: [prerequisiteId] });
+    const materials = [['plan.md', Buffer.from('# Solution\n\nRetain approval materials.\n\n## Acceptance criteria\n\nTask identity and bytes remain unchanged.\n')],
+      ['evidence.bin', Buffer.from([0, 255, 13, 10, 128, 1, 0, 254])]] as const;
+    for (const [path, bytes] of materials) {
+      const local = info.outputPath(`withdrawal-${path}`);
+      await writeFile(local, bytes);
+      await lifecycle.success(['task', 'attachment', 'put', readyId, local, '--path', path, '--project', projectId]);
+      expect(await lifecycle.bytes(projectId, readyId, path, `before-${path}`)).toEqual(bytes);
+    }
+    allowApprovalWrites([
+      { action: 'unapprove', origin: origin(info), projectId, taskId: readyId, count: 1 },
+      { action: 'approve', origin: origin(info), projectId, taskId: readyId, count: 1 },
+      { action: 'unapprove', origin: origin(info), projectId, taskId: blockedId, count: 1 },
+      { action: 'unapprove', origin: origin(info), projectId, taskId: unknownId, count: 1 },
+    ]);
+    await page.goto(`/projects/${projectId}`);
+    await page.getByRole('tab', { name: '独立任务', exact: true }).click();
+    await standalone(page, readyId).click();
+    await expectStatus(page, '待处理');
+    const withdraw = await expectTitleAction(page, '撤回审批');
+    const expectLongTitleReading = async (phase: string): Promise<void> => {
+      for (const height of [812, 400]) {
+        await page.setViewportSize({ width: 375, height });
+        const heading = detail(page).locator('.task-detail-heading');
+        const title = heading.locator('.task-detail-title');
+        expect(await title.textContent()).toBe(longTitle);
+        await heading.evaluate((element) => { element.scrollTop = 0; });
+        await expect.poll(() => detail(page).evaluate((element) => {
+          const body = element.querySelector('.task-detail-body')!.getBoundingClientRect();
+          const tabs = element.querySelector('.task-detail-tabs')!.getBoundingClientRect();
+          const panel = element.querySelector('.task-detail-panel:not([hidden])')!.getBoundingClientRect();
+          const title = element.querySelector('.task-detail-title')!.getBoundingClientRect();
+          const action = element.querySelector('.task-detail-title-action')!.getBoundingClientRect();
+          return tabs.y >= body.y && tabs.bottom <= body.bottom && panel.y >= tabs.bottom - 1
+            && panel.bottom <= body.bottom + 1 && panel.height >= 40 && action.x >= title.right
+            && element.scrollWidth <= element.clientWidth;
+        }), { message: `${phase}: long title leaves visible tabs and a usable reading panel at 375x${height}` }).toBe(true);
+        await title.focus();
+        await page.keyboard.press('End');
+        await page.clock.runFor(300);
+        await expect.poll(() => heading.evaluate((element) => element.scrollTop + element.clientHeight >= element.scrollHeight - 1),
+          { message: `${phase}: native keyboard scrolling reaches the complete title` }).toBe(true);
+        const readError = detail(page).locator('.task-detail-read-error');
+        if (await readError.count() !== 0) {
+          await readError.focus();
+          await page.keyboard.press('End');
+          await page.clock.runFor(300);
+          await expect.poll(() => readError.evaluate((element) => element.scrollTop + element.clientHeight >= element.scrollHeight - 1)).toBe(true);
+        }
+        await detail(page).locator('.task-detail-title-action').scrollIntoViewIfNeeded();
+        await expect(detail(page).locator('.task-detail-title-action')).toBeInViewport({ ratio: 1 });
+        await detail(page).locator('.task-detail-tabs').getByRole('tab').nth(1).click();
+        await expect(detail(page).locator('.task-attachments .attachment-file').filter({ hasText: 'plan.md' })).toBeVisible();
+        await detail(page).locator('.task-detail-tabs').getByRole('tab').nth(0).click();
+        await screenshot(page, info, `task-unapproval-long-title-${phase}-${height}`);
+      }
+    };
+    await expectLongTitleReading('normal');
+    const longReadPattern = `**${taskPath(projectId, readyId)}`;
+    lifecycle.evidence.controlledFaults.push('A real detail GET is forwarded while the owned dependency table is temporarily unavailable; the real500 response produces retained-read-error beside the persisted1600-character title, then the table is restored.');
+    await page.route(longReadPattern, async (route) => {
+      const response = await withDependencyFailure(async () => authenticatedAPI(page.context().request).fetch(route.request(), { timeout: 15_000, maxRetries: 0 }));
+      expect(response.status()).toBe(500);
+      await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
+    });
+    try {
+      await page.clock.runFor(5_000);
+      await expect(detail(page).locator('.task-detail-read-error')).toBeVisible();
+      await expectLongTitleReading('retained-read-error');
+    } finally { await page.unroute(longReadPattern); }
+    await detail(page).locator('.task-detail-read-error').getByRole('button', { name: '重试详情', exact: true }).click();
+    await expect(detail(page).locator('.task-detail-read-error')).toHaveCount(0);
+    await page.setViewportSize({ width: 1600, height: 1100 });
+    await expect(withdraw).toBeEnabled();
+    const readyPattern = `**${taskPath(projectId, readyId)}/unapprove`;
+    const fetched = deferred(); const release = deferred(); const finished = deferred();
+    await page.route(readyPattern, async (route) => {
+      expect(route.request().postData()).toBe(`{"version":${exactVersion}}`);
+      const response = await lifecycle.capture(route, readyId);
+      expect(response.status()).toBe(200);
+      expect(await response.text()).toMatch(new RegExp(`"version"\\s*:\\s*${exactVersion + 1n}(?:,|})`));
+      fetched.resolve();
+      await within(release.promise, 'committed withdrawal response release');
+      await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
+      finished.resolve();
+    });
+    try {
+      await withdraw.click();
+      const dialog = confirmation(page, 'unapprove');
+      await expect(dialog).toContainText(before.title);
+      await expect(dialog).toContainText('待审批');
+      await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeFocused();
+      expect(lifecycle.evidence.webWrites).toEqual([]);
+      expect(await withdraw.evaluate((button) => button.closest('[inert]') !== null)).toBe(true);
+      for (let index = 0; index < 4; index++) {
+        await page.keyboard.press('Tab');
+        expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+      }
+      await dialog.getByRole('button', { name: '取消', exact: true }).click();
+      await expect(withdraw).toBeFocused();
+      await expectStatus(page, '待处理');
+      expect(lifecycle.evidence.webWrites).toEqual([]);
+      await withdraw.click();
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+      await expect(withdraw).toBeFocused();
+      await expect(detail(page)).toBeVisible();
+      expect(lifecycle.evidence.webWrites).toEqual([]);
+      await withdraw.click();
+      await screenshot(page, info, 'task-unapproval-confirmation');
+      await confirmAction(page, 'unapprove');
+      await within(fetched.promise, 'real exact-version withdrawal commit');
+      await expect(detail(page).locator('.task-detail-title-action')).toBeDisabled();
+      await detail(page).locator('.task-detail-title-action').evaluate((button: HTMLButtonElement) => button.click());
+      await page.keyboard.press('Escape');
+      await standalone(page, readyId).click();
+      await expect(detail(page).locator('.task-detail-title-action')).toBeDisabled();
+      expect(lifecycle.evidence.webWrites.filter((row) => row.taskId === readyId)).toHaveLength(1);
+      const staleGraphPattern = `**${graphPath(projectId)}`;
+      await page.route(staleGraphPattern, async (route) => {
+        const response = await withDependencyFailure(async () => authenticatedAPI(page.context().request).fetch(route.request(), { timeout: 15_000, maxRetries: 0 }));
+        expect(response.status()).toBe(500);
+        await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
+      });
+      try {
+        release.resolve();
+        await within(finished.promise, 'withdrawal result displayed after reopening');
+        await expectStatus(page, '待审批');
+        await expect(detail(page).locator('.task-detail-stale')).toBeVisible();
+        await expectLongTitleReading('stale-graph');
+      } finally { await page.unroute(staleGraphPattern); }
+      await detail(page).locator('.task-detail-stale').getByRole('button', { name: '刷新任务图', exact: true }).click();
+      await expect(detail(page).locator('.task-detail-stale')).toHaveCount(0);
+      await page.setViewportSize({ width: 1600, height: 1100 });
+    } finally { release.resolve(); await page.unroute(readyPattern); }
+    const withdrawn = await lifecycle.show(projectId, readyId, 'ready-withdrawal-persisted');
+    expect(withdrawn).toMatchObject({ status: 'proposed', ready: false, version: exactVersion + 1n });
+    expect(approvalInvariantFields(withdrawn)).toEqual(approvalInvariantFields(before));
+    for (const [path, bytes] of materials) expect(await lifecycle.bytes(projectId, readyId, path, `withdrawn-${path}`)).toEqual(bytes);
+    const candidates = JSON.parse(await lifecycle.success(['task', 'ready', '--project', projectId, '--json'])) as { id: string }[];
+    expect(candidates.some((task) => task.id === readyId)).toBe(false);
+    const attachmentsTab = detail(page).locator('.task-detail-tabs').getByRole('tab').nth(1);
+    await attachmentsTab.click();
+    const attachments = detail(page).locator('.task-attachments');
+    await attachments.locator('.attachment-file').filter({ hasText: 'plan.md' }).click();
+    await expect(attachments.locator('.markdown-content')).toContainText('Retain approval materials');
+    await attachments.locator('.attachment-upload-disclosure summary').click();
+    const pathDraft = attachments.locator('input[type=text]');
+    await pathDraft.fill('retained-confirmation-draft.txt');
+    const originalInput = await pathDraft.elementHandle();
+    if (originalInput === null) throw new Error('The attachment draft input is missing.');
+    await page.setViewportSize({ width: 320, height: 740 });
+    await detail(page).getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('en');
+    const approve = await expectTitleAction(page, 'Approve task');
+    await approve.click();
+    const approveDialog = confirmation(page, 'approve', 'en');
+    await expect(approveDialog).toContainText(before.title);
+    await expect(approveDialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+    const confirmationBody = approveDialog.locator('.dialog-body');
+    await confirmationBody.focus();
+    await page.keyboard.press('End');
+    await page.clock.runFor(300);
+    await expect.poll(() => confirmationBody.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.y >= 0 && bounds.bottom <= innerHeight && bounds.height >= 40
+        && element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+    }), { message: 'The full persisted long title remains keyboard-readable inside the bounded confirmation body' }).toBe(true);
+    expect(lifecycle.evidence.webWrites.filter((row) => row.taskId === readyId)).toHaveLength(1);
+    await lifecycle.success(['task', 'update', readyId, '--project', projectId, '--if-version', String(withdrawn.version), '--description', 'The confirmation must be reviewed again after a metadata change.']);
+    const changed = await lifecycle.show(projectId, readyId, 'proposal-changed-while-confirmation-open');
+    const refreshed = page.waitForResponse((response) => new URL(response.url()).pathname === graphPath(projectId));
+    await page.clock.runFor(5_000);
+    expect((await refreshed).status()).toBe(200);
+    await expect(approveDialog).toHaveCount(0);
+    await expect(approve).toBeEnabled();
+    expect(lifecycle.evidence.webWrites.filter((row) => row.taskId === readyId)).toHaveLength(1);
+    await expect(attachmentsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(pathDraft).toHaveValue('retained-confirmation-draft.txt');
+    expect(await originalInput.evaluate((element) => element.isConnected && element === document.querySelector('.task-attachments input[type=text]'))).toBe(true);
+    const approvePattern = `**${taskPath(projectId, readyId)}/approve`;
+    await page.route(approvePattern, async (route) => {
+      expect(route.request().postData()).toBe(`{"version":${changed.version}}`);
+      const response = await lifecycle.capture(route, readyId);
+      expect(response.status()).toBe(200);
+      await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
+    });
+    try {
+      await approve.click();
+      await screenshot(page, info, 'task-approval-title-confirmation-narrow');
+      await confirmAction(page, 'approve', 'en');
+      await expectStatus(page, 'To do');
+      await expectTitleAction(page, 'Unapprove task');
+      await expect(attachmentsTab).toHaveAttribute('aria-selected', 'true');
+      await expect(pathDraft).toHaveValue('retained-confirmation-draft.txt');
+      expect(await originalInput.evaluate((element) => element.isConnected)).toBe(true);
+    } finally { await page.unroute(approvePattern); await originalInput.dispose(); }
+    const reapproved = await lifecycle.show(projectId, readyId, 'reapproved-after-fresh-confirmation');
+    expect(reapproved).toMatchObject({ status: 'todo', ready: true, version: changed.version + 1n });
+    expect(approvalInvariantFields(reapproved)).toEqual(approvalInvariantFields(changed));
+    for (const [path, bytes] of materials) expect(await lifecycle.bytes(projectId, readyId, path, `reapproved-${path}`)).toEqual(bytes);
+    await page.keyboard.press('Escape');
+    await page.setViewportSize({ width: 1600, height: 1100 });
+    await page.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('zh-CN');
+    await page.getByRole('tab', { name: '任务链', exact: true }).click();
+    const root = page.locator(`#task-root-${prerequisiteId}`);
+    if (await root.getAttribute('aria-expanded') !== 'true') await root.click();
+    await page.clock.runFor(100);
+    await details(page, blockedId).click();
+    await expectTitleAction(page, '撤回审批');
+    await expect(detail(page).locator('.task-detail-blocked')).toHaveText('被阻塞');
+    const blockedPattern = `**${taskPath(projectId, blockedId)}/unapprove`;
+    await page.route(blockedPattern, async (route) => {
+      const response = await lifecycle.capture(route, blockedId);
+      expect(response.status()).toBe(200);
+      await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
+    });
+    try {
+      await detail(page).getByRole('button', { name: '撤回审批', exact: true }).click();
+      await confirmAction(page, 'unapprove');
+      await expectStatus(page, '待审批');
+    } finally { await page.unroute(blockedPattern); }
+    const blockedAfter = await lifecycle.show(projectId, blockedId, 'blocked-withdrawal-persisted');
+    expect(blockedAfter).toMatchObject({ status: 'proposed', ready: false, version: blockedBefore.version + 1n, blockedBy: [prerequisiteId] });
+    expect(approvalInvariantFields(blockedAfter)).toEqual(approvalInvariantFields(blockedBefore));
+    await page.keyboard.press('Escape');
+    await page.getByRole('tab', { name: '独立任务', exact: true }).click();
+    await standalone(page, unknownId).click();
+    await expectTitleAction(page, '撤回审批');
+    let rejectReconciliation = true;
+    const unknownReadPattern = `**${taskPath(projectId, unknownId)}`;
+    const unknownPostPattern = `${unknownReadPattern}/unapprove`;
+    lifecycle.evidence.controlledFaults.push('The real unapprove POST commits before the browser response is aborted; reconciliation GET fails until an explicit recovery, with no repeated POST.');
+    await page.route(unknownReadPattern, async (route) => {
+      if (rejectReconciliation) await route.abort('connectionfailed'); else await route.continue();
+    });
+    await page.route(unknownPostPattern, async (route) => {
+      const response = await lifecycle.capture(route, unknownId);
+      expect(response.status()).toBe(200);
+      await route.abort('connectionfailed');
+    });
+    try {
+      await detail(page).getByRole('button', { name: '撤回审批', exact: true }).click();
+      await confirmAction(page, 'unapprove');
+      await expect(approval(page).getByRole('alert').first()).toBeVisible();
+      await expect(detail(page).getByRole('button', { name: '撤回审批', exact: true })).toBeDisabled();
+      const persisted = await lifecycle.show(projectId, unknownId, 'withdrawal-committed-before-lost-response');
+      expect(persisted).toMatchObject({ status: 'proposed', ready: false, version: unknownBefore.version + 1n });
+      expect(approvalInvariantFields(persisted)).toEqual(approvalInvariantFields(unknownBefore));
+      await screenshot(page, info, 'task-unapproval-unknown');
+      rejectReconciliation = false;
+      await approval(page).getByRole('button', { name: '检查任务状态', exact: true }).click();
+      await expectStatus(page, '待审批');
+      await expectTitleAction(page, '批准任务');
+      expect(lifecycle.evidence.webWrites.filter((row) => row.taskId === unknownId)).toHaveLength(1);
+      await screenshot(page, info, 'task-unapproval');
+    } finally { await page.unroute(unknownReadPattern); await page.unroute(unknownPostPattern); }
   } finally {
     try { await lifecycle.attach(); } finally { await lifecycle.close(); }
   }

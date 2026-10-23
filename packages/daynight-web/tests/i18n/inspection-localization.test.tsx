@@ -39,7 +39,7 @@ const openAttachments = (api: AttachmentApi) => renderWithLocale(<>
   <LanguageSelector />
   <TaskAttachments projectId={projectId} taskId={taskId} api={api} onClose={vi.fn()} />
 </>, { locale: 'zh-CN' });
-const switchTo = (locale: 'en' | 'zh-CN') => fireEvent.change(screen.getByRole('combobox', { name: '语言 / Language' }), { target: { value: locale } });
+const switchTo = (locale: 'en' | 'zh-CN') => fireEvent.change((document.querySelector('dialog[open]') === null ? screen : within(document.querySelector('dialog[open]')!)).getByRole('combobox', { name: '语言 / Language' }), { target: { value: locale } });
 
 describe('inspection language changes', () => {
   it('keeps the PR collection, page, selector focus and raw fields while translating pagination', async () => {
@@ -72,7 +72,7 @@ describe('inspection language changes', () => {
       return updated;
     });
     openAttachments({ ...data.api, put });
-    fireEvent.click(await screen.findByRole('button', { name: /index.html/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /index.html/, pressed: false }));
     const frame = await screen.findByTitle('HTML 预览：site/index.html');
     fireEvent.load(frame);
     const src = frame.getAttribute('src');
@@ -133,9 +133,11 @@ describe('inspection language changes', () => {
       data.setItems([]);
     });
     openAttachments({ ...data.api, remove });
-    fireEvent.click(await screen.findByRole('button', { name: /index.html/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /index.html/, pressed: false }));
     const frame = await screen.findByTitle('HTML 预览：site/index.html');
-    await userEvent.setup().click(screen.getByRole('button', { name: '删除' }));
+    await userEvent.setup().click(screen.getByRole('button', { name: '更多操作：site/index.html' }));
+    await userEvent.setup().click(screen.getByRole('menuitem', { name: '删除' }));
+    await userEvent.setup().click(screen.getByRole('button', { name: '删除附件' }));
     const signal = remove.mock.calls[0]![3];
     switchTo('en');
     expect(screen.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
@@ -148,7 +150,7 @@ describe('inspection language changes', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('附件操作失败，请检查后重试。');
     expect(screen.getByRole('alert')).toHaveTextContent('delete-request-raw');
     expect(screen.getByTitle('HTML 预览：site/index.html')).toBe(frame);
-    await userEvent.setup().click(screen.getByRole('button', { name: '删除' }));
+    await userEvent.setup().click(screen.getByRole('button', { name: '删除附件' }));
     switchTo('en');
     await act(async () => second.resolve());
     await screen.findByText('No attachments. Upload a file to browse it here.');
@@ -176,7 +178,7 @@ describe('inspection language changes', () => {
     root.id = 'root';
     document.body.append(root);
     const graph: TaskGraph = { observedAt: "2026-10-20T12:00:00Z",
-      project: { id: projectId, name: '项目 raw', repoUrl: '', createdAt: timestamp, updatedAt: timestamp },
+      project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: projectId, name: '项目 raw', repoUrl: '', createdAt: timestamp, updatedAt: timestamp },
       tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
     };
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: {
@@ -184,7 +186,7 @@ describe('inspection language changes', () => {
     } }), { status: 404, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetch);
     const view = renderWithLocale(<TaskDetailDialog projectId={projectId} taskId={taskId}
-      snapshot={{ observedAt: graph.observedAt, graph, index: buildGraphIndex(graph), receivedAt: Date.now(), revision: 1 }}
+      snapshot={{ observedAt: graph.observedAt, graph, index: buildGraphIndex(graph), receivedMonotonic: performance.now(), receivedAt: Date.now(), revision: 1 }}
       onSelectTask={vi.fn()} onClose={vi.fn()} onRestoreFocus={vi.fn()} onRefreshGraph={vi.fn()} />, { locale: 'zh-CN' });
     try {
       expect(await screen.findByRole('alert')).toHaveTextContent('这个任务已无法读取，请刷新任务图。');

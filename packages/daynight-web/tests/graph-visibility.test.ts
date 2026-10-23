@@ -19,7 +19,7 @@ const indexOf = (seeds: readonly Seed[], defaultStatus: TaskStatus = 'todo') => 
   });
   const count = (status: TaskStatus) => tasks.filter((task) => task.status === status).length;
   const graph: TaskGraph = { observedAt: "2026-10-20T12:00:00Z",
-    project: { id: 'project', name: 'Project', repoUrl: '', createdAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:00:00Z' }, tasks,
+    project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: 'project', name: 'Project', repoUrl: '', createdAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:00:00Z' }, tasks,
     summary: { total: tasks.length, proposed: count('proposed'), todo: count('todo'), inProgress: count('in_progress'), done: count('done'),
       ready: tasks.filter((task) => task.ready).length, blocked: tasks.filter((task) => task.status === 'todo' && task.blockedBy.length > 0).length },
   };

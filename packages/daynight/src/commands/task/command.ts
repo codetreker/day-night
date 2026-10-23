@@ -36,7 +36,7 @@ export const runTaskCommand = async (
   }
   const help = `${command.path.join(" ")} --help`;
   const name = command.command.name;
-  const action = name === "approve" || name === "claim" || name === "complete" ? name : undefined;
+  const action = name === "approve" || name === "unapprove" || name === "claim" || name === "complete" ? name : undefined;
   const title = command.options.get("--title") as string | undefined;
   const description = command.options.get("--description") as string | undefined;
   const status = command.options.get("--status") as TaskFilters["status"];
@@ -128,10 +128,10 @@ export const runTaskCommand = async (
     const version = expectedVersion === undefined ? (await api.getTask(project.id, taskId!)).version : expectedVersion;
     operation.check();
     if (action !== undefined) {
-      const mutate = action === "approve" ? api.approveTask : action === "claim" ? api.claimTask : api.completeTask;
+      const mutate = { approve: api.approveTask, unapprove: api.unapproveTask, claim: api.claimTask, complete: api.completeTask }[action];
       const task = await mutate(project.id, taskId!, { version });
       operation.check();
-      const result = { approve: "approved", claim: "claimed", complete: "completed" }[action];
+      const result = { approve: "approved", unapprove: "unapproved", claim: "claimed", complete: "completed" }[action];
       return `Task ${result}.\n${renderTask(task)}`;
     }
     const task = await api.updateTask(project.id, taskId!, { ...changes, version });
