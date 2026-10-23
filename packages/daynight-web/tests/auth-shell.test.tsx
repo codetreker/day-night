@@ -118,7 +118,7 @@ describe("authenticated application shell", () => {
     } finally { frame.remove(); }
   });
 
-  it.each(["focus-first", "visibility-first"])("conceals a changed account on an external tab return (%s) and checks once", async (order) => {
+  it.each(["focus-first", "visibility-first"])("checks once without interrupting the workspace on an external tab return (%s)", async (order) => {
     let meCalls = 0;
     let finishCheck!: (response: Response) => void;
     const fetcher = vi.fn((url: string) => {
@@ -144,8 +144,9 @@ describe("authenticated application shell", () => {
       topLevelFocused = true;
       fireEvent(window, new Event("focus"));
     }
-    expect(document.body).toHaveClass("auth-session-checking");
-    expect(screen.queryByRole("link", { name: "账户设置：Alice" })).toBeNull();
+    expect(document.body).not.toHaveClass("auth-session-checking");
+    expect(screen.getByRole("link", { name: "账户设置：Alice" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "重新确认当前账户" })).toBeNull();
     await waitFor(() => expect(meCalls).toBe(2));
     fireEvent(window, new Event("focus"));
     fireEvent(document, new Event("visibilitychange"));
@@ -155,7 +156,121 @@ describe("authenticated application shell", () => {
     expect(screen.queryByRole("link", { name: "账户设置：Alice" })).toBeNull();
   });
 
-  it("synchronously supersedes a pending identity check on a second external return before stale Alice data can reveal her PAT", async () => {
+  it("preserves the active project draft and focus throughout a delayed same-user identity check", async () => {
+    let meCalls = 0;
+    let finishCheck!: (response: Response) => void;
+    const fetcher = vi.fn((url: string) => url === "/api/v1/me" && ++meCalls > 1
+      ? new Promise<Response>((done) => { finishCheck = done; })
+      : Promise.resolve(defaults(url)));
+    vi.stubGlobal("fetch", fetcher);
+    render(<AuthenticatedApp />);
+    fireEvent.click(await screen.findByRole("button", { name: "＋ 创建项目" }));
+    const dialog = screen.getByRole("dialog", { name: "创建私有项目" });
+    const name = screen.getByLabelText(/项目名称/);
+    fireEvent.change(name, { target: { value: "Unsubmitted project" } });
+    name.focus();
+    const shell = document.querySelector(".auth-shell")!;
+    returnFromAnotherWindow();
+    await waitFor(() => expect(meCalls).toBe(2));
+    expect(document.body).not.toHaveClass("auth-session-checking");
+    expect(shell).toHaveAttribute("aria-hidden", "false");
+    expect(shell).not.toHaveAttribute("inert");
+    expect(screen.queryByRole("dialog", { name: "重新确认当前账户" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "创建私有项目" })).toBe(dialog);
+    expect(document.activeElement).toBe(name);
+    fireEvent.change(name, { target: { value: "Continued while checking" } });
+    await act(async () => finishCheck(json(user())));
+    expect(document.querySelector(".auth-shell")).toBe(shell);
+    expect(screen.getByRole("dialog", { name: "创建私有项目" })).toBe(dialog);
+    expect(screen.getByLabelText(/项目名称/)).toBe(name);
+    expect(name).toHaveValue("Continued while checking");
+    expect(document.activeElement).toBe(name);
+    expect(fetcher.mock.calls.filter(([url]) => url.startsWith("/api/v1/projects"))).toHaveLength(1);
+  });
+
+  it.each(["same", "changed", "expired"])("holds token metadata reads until revalidation confirms the %s session", async (outcome) => {
+    window.history.replaceState(null, "", "/account");
+    let meCalls = 0;
+    let finishCheck!: (response: Response) => void;
+    const fetcher = vi.fn((url: string) => {
+      if (url === "/api/v1/me") return ++meCalls === 1 ? Promise.resolve(json(user())) : new Promise<Response>((done) => { finishCheck = done; });
+      if (url === "/api/v1/me/tokens") return Promise.resolve(json({ items: [{ id: otherId, name: "Confirmed account token", createdAt: now, expiresAt: "2099-10-22T10:00:00Z" }] }));
+      return Promise.resolve(defaults(url));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(<AuthenticatedApp />);
+    await screen.findByRole("link", { name: "账户设置：Alice" });
+    returnFromAnotherWindow();
+    await waitFor(() => expect(meCalls).toBe(2));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "访问令牌" })); });
+    expect(screen.getByRole("status")).toHaveTextContent("正在加载访问令牌…");
+    expect(document.body).not.toHaveClass("auth-session-checking");
+    expect(fetcher.mock.calls.filter(([url]) => url === "/api/v1/me/tokens")).toHaveLength(0);
+    await act(async () => finishCheck(outcome === "same" ? json(user()) : outcome === "changed" ? json(user(otherId, "Bob")) : fail(401, "unauthenticated")));
+    if (outcome === "same") {
+      await screen.findByText("Confirmed account token");
+      expect(fetcher.mock.calls.filter(([url]) => url === "/api/v1/me/tokens")).toHaveLength(1);
+      expect(screen.getByRole("link", { name: "账户设置：Alice" })).toBeInTheDocument();
+    } else {
+      if (outcome === "changed") await screen.findByRole("link", { name: "账户设置：Bob" });
+      else await screen.findByRole("heading", { name: "登录你的工作空间" });
+      expect(fetcher.mock.calls.filter(([url]) => url === "/api/v1/me/tokens")).toHaveLength(0);
+      expect(screen.queryByText("Confirmed account token")).toBeNull();
+    }
+  });
+
+  it("holds queued reads through a failed check, retry and superseded response until the latest identity succeeds", async () => {
+    window.history.replaceState(null, "", "/account");
+    let meCalls = 0;
+    const checks: Array<(response: Response) => void> = [];
+    const fetcher = vi.fn((url: string) => {
+      if (url === "/api/v1/me") return ++meCalls === 1 ? Promise.resolve(json(user())) : new Promise<Response>((done) => { checks.push(done); });
+      if (url === "/api/v1/me/tokens") return Promise.resolve(json({ items: [] }));
+      return Promise.resolve(defaults(url));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(<AuthenticatedApp />);
+    await screen.findByRole("link", { name: "账户设置：Alice" });
+    returnFromAnotherWindow();
+    await waitFor(() => expect(checks).toHaveLength(1));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "访问令牌" })); });
+    await act(async () => checks[0]!(fail(503, "internal")));
+    await screen.findByRole("heading", { name: "暂时无法重新确认当前账户" });
+    expect(fetcher.mock.calls.filter(([url]) => url === "/api/v1/me/tokens")).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "重新确认账户" }));
+    await waitFor(() => expect(checks).toHaveLength(2));
+    returnFromAnotherWindow();
+    await waitFor(() => expect(checks).toHaveLength(3));
+    await act(async () => checks[1]!(json(user())));
+    expect(document.body).toHaveClass("auth-session-checking");
+    expect(fetcher.mock.calls.filter(([url]) => url === "/api/v1/me/tokens")).toHaveLength(0);
+    await act(async () => checks[2]!(json(user())));
+    await screen.findByText("还没有访问令牌。创建后可用于 CLI 或 Agent。");
+    expect(document.body).not.toHaveClass("auth-session-checking");
+    expect(fetcher.mock.calls.filter(([url]) => url === "/api/v1/me/tokens")).toHaveLength(1);
+  });
+
+  it("logs out during a pending identity check without dispatching queued old-account reads", async () => {
+    window.history.replaceState(null, "", "/account");
+    let meCalls = 0;
+    const fetcher = vi.fn((url: string) => {
+      if (url === "/api/v1/me") return ++meCalls === 1 ? Promise.resolve(json(user())) : new Promise<Response>(() => {});
+      if (url === "/api/v1/auth/logout") return Promise.resolve(new Response(null, { status: 204 }));
+      return Promise.resolve(defaults(url));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(<AuthenticatedApp />);
+    await screen.findByRole("link", { name: "账户设置：Alice" });
+    returnFromAnotherWindow();
+    await waitFor(() => expect(meCalls).toBe(2));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "访问令牌" })); });
+    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    await screen.findByRole("heading", { name: "登录你的工作空间" });
+    expect(fetcher.mock.calls.filter(([url]) => url === "/api/v1/auth/logout")).toHaveLength(1);
+    expect(fetcher.mock.calls.filter(([url]) => url === "/api/v1/me/tokens")).toHaveLength(0);
+  });
+
+  it("synchronously supersedes a pending identity check on a second external return and discards the old account when the latest check confirms Bob", async () => {
     window.history.replaceState(null, "", "/account");
     const checks: Array<{ readonly signal: AbortSignal; readonly resolve: (value: ReturnType<typeof user>) => void }> = [];
     let identityCalls = 0;
@@ -187,9 +302,10 @@ describe("authenticated application shell", () => {
     finally { window.removeEventListener("focus", finishStaleDuringReturn); }
     expect(abortedDuringReturn).toBe(true);
     await waitFor(() => expect(checks).toHaveLength(2));
-    expect(document.body).toHaveClass("auth-session-checking");
-    expect(screen.queryByRole("link", { name: "账户设置：Alice" })).toBeNull();
-    expect(screen.getByRole("dialog", { name: "重新确认当前账户" })).toBeInTheDocument();
+    expect(document.body).not.toHaveClass("auth-session-checking");
+    expect(screen.getByRole("link", { name: "账户设置：Alice" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "重新确认当前账户" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "访问令牌已创建" })).toBe(reveal);
     expect(reveal.isConnected).toBe(true);
     await act(async () => checks[1]!.resolve(user(otherId, "Bob")));
     await screen.findByRole("link", { name: "账户设置：Bob" });
@@ -201,15 +317,21 @@ describe("authenticated application shell", () => {
 
   it("starts a fresh identity check on a qualified external return after revalidation failed", async () => {
     let identityCalls = 0;
-    install((url) => url === "/api/v1/me"
-      ? ++identityCalls === 1 ? json(user()) : identityCalls === 2 ? fail(503, "internal") : json(user(otherId, "Bob"))
-      : defaults(url));
+    let finishRetry!: (response: Response) => void;
+    vi.stubGlobal("fetch", vi.fn((url: string) => url === "/api/v1/me" && ++identityCalls > 1
+      ? identityCalls === 2 ? Promise.resolve(fail(503, "internal")) : new Promise<Response>((done) => { finishRetry = done; })
+      : Promise.resolve(defaults(url))));
     render(<AuthenticatedApp />);
     await screen.findByRole("heading", { name: "私有项目" });
     returnFromAnotherWindow();
     await screen.findByRole("heading", { name: "暂时无法重新确认当前账户" });
     expect(document.body).toHaveClass("auth-session-checking");
     returnFromAnotherWindow();
+    await waitFor(() => expect(identityCalls).toBe(3));
+    expect(document.body).toHaveClass("auth-session-checking");
+    expect(screen.queryByRole("heading", { name: "私有项目" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "重新确认当前账户" })).toBeInTheDocument();
+    await act(async () => finishRetry(json(user(otherId, "Bob"))));
     await screen.findByRole("link", { name: "账户设置：Bob" });
     expect(document.body).not.toHaveClass("auth-session-checking");
     expect(identityCalls).toBe(3);
@@ -241,8 +363,8 @@ describe("authenticated application shell", () => {
 
     currentUser = user(otherId, "Bob");
     returnFromAnotherWindow();
-    expect(screen.queryByRole("link", { name: "账户设置：Alice" })).toBeNull();
-    expect(document.body).toHaveClass("auth-session-checking");
+    expect(screen.getByRole("link", { name: "账户设置：Alice" })).toBeInTheDocument();
+    expect(document.body).not.toHaveClass("auth-session-checking");
     await waitFor(() => expect(fetcher.mock.calls.filter(([url]) => url === "/api/v1/me")).toHaveLength(2));
     expect(pendingMe).toBeTypeOf("function");
     await act(async () => pendingMe(json(currentUser)));
@@ -251,6 +373,25 @@ describe("authenticated application shell", () => {
     expect(screen.queryByRole("heading", { name: "Alice 的旧项目" })).toBeNull();
     expect(screen.getByRole("link", { name: "账户设置：Bob" })).toBeInTheDocument();
     expect(oldSignal.aborted).toBe(true);
+  });
+
+  it("clears the workspace when a background identity check confirms an expired session", async () => {
+    let meCalls = 0;
+    let finishCheck!: (response: Response) => void;
+    vi.stubGlobal("fetch", vi.fn((url: string) => url === "/api/v1/me" && ++meCalls > 1
+      ? new Promise<Response>((done) => { finishCheck = done; })
+      : Promise.resolve(defaults(url))));
+    render(<AuthenticatedApp />);
+    const project = await screen.findByRole("heading", { name: "私有项目" });
+    returnFromAnotherWindow();
+    await waitFor(() => expect(meCalls).toBe(2));
+    expect(screen.getByRole("heading", { name: "私有项目" })).toBe(project);
+    await act(async () => finishCheck(fail(401, "unauthenticated")));
+    await screen.findByRole("heading", { name: "登录你的工作空间" });
+    expect(screen.getByText("登录状态已过期。重新登录后可继续访问项目。")).toBeInTheDocument();
+    expect(project.isConnected).toBe(false);
+    expect(screen.queryByRole("link", { name: "账户设置：Alice" })).toBeNull();
+    expect(document.body).not.toHaveClass("auth-session-checking");
   });
 
   it("keeps a one-time PAT reveal mounted through same-user focus revalidation", async () => {
@@ -274,7 +415,10 @@ describe("authenticated application shell", () => {
     const reveal = await screen.findByRole("dialog", { name: "访问令牌已创建" });
     returnFromAnotherWindow();
     await waitFor(() => expect(meCalls).toBe(2));
-    expect(document.body).toHaveClass("auth-session-checking");
+    expect(document.body).not.toHaveClass("auth-session-checking");
+    expect(screen.queryByRole("dialog", { name: "重新确认当前账户" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "访问令牌已创建" })).toBe(reveal);
+    expect(document.activeElement).toBe(screen.getByLabelText("一次性访问令牌"));
     expect(reveal.isConnected).toBe(true);
     await act(async () => finishCheck(fail(503, "internal")));
     expect(document.body).toHaveClass("auth-session-checking");
@@ -287,6 +431,10 @@ describe("authenticated application shell", () => {
     expect(reveal.isConnected).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "重新确认账户" }));
     await waitFor(() => expect(meCalls).toBe(3));
+    expect(document.body).toHaveClass("auth-session-checking");
+    expect(document.querySelector(".auth-shell")).toHaveAttribute("aria-hidden", "true");
+    expect(document.querySelector(".auth-shell")).toHaveAttribute("inert");
+    expect(screen.getByRole("dialog", { name: "重新确认当前账户" })).toBe(overlay);
     await act(async () => finishCheck(json(user())));
     expect(document.body).not.toHaveClass("auth-session-checking");
     expect(screen.getByRole("dialog", { name: "访问令牌已创建" })).toBe(reveal);
@@ -513,8 +661,8 @@ describe("authenticated standalone attachment reader", () => {
     const frame = await screen.findByTitle("HTML 预览：site/index.html");
     expect(frame).toHaveAttribute("src", `/api/v1/projects/${projectId}/tasks/${taskId}/preview/site/index.html`);
     returnFromAnotherWindow();
-    expect(document.body).toHaveClass("auth-session-checking");
-    expect(screen.queryByRole("main")).toBeNull();
+    expect(document.body).not.toHaveClass("auth-session-checking");
+    expect(screen.getByRole("main")).toBeInTheDocument();
     expect(frame.isConnected).toBe(true);
     await waitFor(() => expect(meCalls).toBe(2));
     await act(async () => identify(json(user())));
@@ -548,6 +696,40 @@ describe("authenticated standalone attachment reader", () => {
 });
 
 describe("invitation handoff", () => {
+  it.each(["same", "changed", "expired"])("holds invitation acceptance until revalidation confirms the %s session", async (outcome) => {
+    window.history.replaceState(null, "", "/invitations#pending-account-secret");
+    let meCalls = 0;
+    let finishCheck!: (response: Response) => void;
+    const fetcher = vi.fn((url: string) => {
+      if (url === "/api/v1/me") return ++meCalls === 1 ? Promise.resolve(json(user())) : new Promise<Response>((done) => { finishCheck = done; });
+      if (url === "/api/v1/invitations/inspect") return Promise.resolve(json({ projectId, projectName: "受邀项目" }));
+      if (url === "/api/v1/invitations/accept") return Promise.resolve(json(member()));
+      return Promise.resolve(defaults(url));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(<AuthenticatedApp />);
+    await screen.findByRole("heading", { name: "受邀项目" });
+    returnFromAnotherWindow();
+    await waitFor(() => expect(meCalls).toBe(2));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "接受邀请并加入" })); });
+    expect(screen.getByRole("button", { name: "正在加入…" })).toBeDisabled();
+    expect(fetcher.mock.calls.filter(([url]) => url.endsWith("/accept"))).toHaveLength(0);
+    expect(document.body).not.toHaveClass("auth-session-checking");
+    await act(async () => finishCheck(outcome === "same" ? json(user()) : outcome === "changed" ? json(user(otherId, "Bob")) : fail(401, "unauthenticated")));
+    if (outcome === "same") {
+      await screen.findByRole("heading", { name: "私有项目" });
+      expect(fetcher.mock.calls.filter(([url]) => url.endsWith("/accept"))).toHaveLength(1);
+    } else {
+      if (outcome === "changed") {
+        await screen.findByText("Bob", { selector: ".person-name" });
+        expect(screen.getByRole("button", { name: "接受邀请并加入" })).not.toBeDisabled();
+      } else await screen.findByRole("heading", { name: "登录你的工作空间" });
+      expect(window.location.pathname).toBe("/invitations");
+      expect(fetcher.mock.calls.filter(([url]) => url.endsWith("/accept"))).toHaveLength(0);
+      expect(window.sessionStorage.getItem(invitationStorageKey)).toBe("pending-account-secret");
+    }
+  });
+
   it("clears the fragment before any fetch and only accepts after explicit confirmation", async () => {
     window.history.replaceState(null, "", "/invitations#secret-one");
     const fetcher = vi.fn((url: string, options?: RequestInit) => {

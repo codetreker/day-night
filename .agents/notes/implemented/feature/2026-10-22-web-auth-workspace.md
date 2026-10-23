@@ -34,7 +34,15 @@ login evidence retain their separate scopes.
 The shared request boundary uses same-origin browser credentials, cancellation
 and request IDs. A current-generation 401 notifies the shell; identity transitions
 invalidate outstanding requests and unmount user-owned content. A project 404
-stays a resource error. TaskDetailSessionProvider lives in that identity domain
+stays a resource error. The original foreground identity check concealed loaded
+content until verification completed to avoid displaying a prior account during
+a cross-tab switch. The [foreground verification decision](../bug-fix/2026-10-23-silent-foreground-identity-checks.md)
+replaces that presentation policy: ordinary checks keep loaded content visible
+and interactive until a changed identity, session loss or verification failure is
+confirmed. New API reads and writes wait for identity confirmation, resuming for
+the same account and cancelling on an account change. Failed checks retain the
+blocking recovery overlay and request wait through recovery.
+TaskDetailSessionProvider lives in that identity domain
 and retains each project/task approval operation across dialog close/reopen;
 identity changes discard its pending and unknown-outcome state. The existing
 [approval lifecycle](2026-10-22-task-approval-lifecycle.md) uses the same member

@@ -51,11 +51,19 @@ state within the authenticated branch, keyed by user identity/session generation
 Same-user verification and project navigation retain it; identity replacement,
 logout and anonymous state dispose it so old results cannot reach a new identity. Identity changes invalidate outstanding requests
 and unmount user-owned content; a project 404 stays a resource error. Returning
-from a hidden or unfocused top-level page conceals the workspace until `/me`
-confirms identity. Each new qualifying return aborts and replaces pending
-verification, so an earlier response cannot uncover the latest return. Failure
-retains state behind the retry overlay; the same user keeps their forms and
-view, while a changed user remounts user-owned content. Ordinary same-origin
+from a hidden or unfocused top-level page checks `/me` in the background while
+keeping the workspace visible and interactive. Pending verification preserves
+focus, dialogs, drafts, scroll and embedded documents. Each new qualifying return
+aborts and replaces pending verification, so earlier responses cannot overwrite
+the latest identity decision. A failed check retains state behind the blocking
+retry overlay until a successful check; the same user keeps their forms and view,
+while a changed user remounts user-owned content. Previously loaded content stays
+visible until identity loss, a different identity or a verification error is
+confirmed. New API reads and writes wait for identity verification; same-user
+success resumes them, while identity replacement or session loss cancels queued
+requests from the previous session. Identity checks and logout bypass this wait.
+A failed check keeps requests waiting through recovery. The [foreground verification decision](../../.agents/notes/implemented/bug-fix/2026-10-23-silent-foreground-identity-checks.md)
+records this presentation policy. Ordinary same-origin
 iframe focus changes do not count as top-level returns. Requests
 use same-origin browser credentials and preserve request IDs, cancellation and
 explicit failures. Member versions remain `bigint` from JSON decoding through
