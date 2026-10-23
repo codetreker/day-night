@@ -326,6 +326,8 @@ test('auth-invitations', scenario('auth-invitations'), async ({ page, context, a
   const inspectionOnly = await request.get(`/api/v1/projects/${project.id}/invitations`);
   expect((await inspectionOnly.json() as { items: { id: string }[] }).items.map((item) => item.id)).toContain(metadata.id);
   await page.getByRole('button', { name: '接受邀请并加入', exact: true }).click();
+  // The invitation page already displays the project name before acceptance completes.
+  await expect(page).toHaveURL(`${baseURL}/projects/${project.id}`);
   await expect(page.getByRole('heading', { name: project.name, exact: true })).toBeVisible();
   const bob = await bearerContext(playwright.request, baseURL, 'bob');
   try {
@@ -335,7 +337,7 @@ test('auth-invitations', scenario('auth-invitations'), async ({ page, context, a
     const revoked = await invitation(request, project.id);
     expect((await request.delete(`/api/v1/projects/${project.id}/invitations/${revoked.id}`)).status()).toBe(204);
     expect((await bob.post('/api/v1/invitations/accept', { data: { token: revoked.token } })).status()).toBe(410);
-    expect(await page.evaluate(() => sessionStorage.getItem('daynight.pendingInvitation'))).toBeNull();
+    expect(await page.evaluate(() => sessionStorage.getItem('daynight.pendingInvitation') === null), 'Accepted invitation clears pending session storage').toBe(true);
     await picture(page, info, 'auth-invitations');
   } finally { await bob.dispose(); }
 });
