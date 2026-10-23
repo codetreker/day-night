@@ -147,6 +147,7 @@ test('auth-project-isolation', scenario('auth-project-isolation'), async ({ page
     await picture(page, info, 'auth-project-isolation');
     await page.goto(`/projects/${own.id}`);
     await expect(page.getByRole('heading', { name: own.name, exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: '独立任务', exact: true }).click();
     await page.locator(`#standalone-task-${task.id}`).click();
     const detail = page.getByRole('dialog', { name: '任务详情', exact: true });
     await expect(detail.locator('.task-detail-title')).toHaveText(task.title);
