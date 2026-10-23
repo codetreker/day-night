@@ -1,10 +1,10 @@
 # Worker 交付任务拆分
 
-状态：设计待 review；已登记全部八项交付 task，运行时尚未实现。本文拥有交付范围和真实身份，[架构](daynight-worker.md)拥有机制，[需求](../spec/daynight-worker.md)拥有 W-01～W-11。
+状态：架构方案已确认；已登记全部八项交付 task，运行时尚未实现。本文拥有交付范围和真实身份，[架构](daynight-worker.md)拥有机制，[需求](../spec/daynight-worker.md)拥有 W-01～W-11。
 
 ## 设计交接与任务身份
 
-Goal 描述 `555a7772-ad35-40f5-b9d6-ff7dd4e08165` 已完成问题定义。架构设计与拆分 task 为 `2b4093dc-7b44-4ec1-a28e-59de68a0d800`，保持 in_progress 供用户 review；设计 PR 实际集成和阶段验收成立后才完成。下列任务均保持 todo，现有角色/平台任务复用其原身份。
+Goal 描述 `555a7772-ad35-40f5-b9d6-ff7dd4e08165` 拥有已完成的问题定义。架构设计与拆分 task 为 `2b4093dc-7b44-4ec1-a28e-59de68a0d800`，交付 PR 为 [#154](https://github.com/codetreker/daynight/pull/154)；实际集成并满足阶段验收后完成。下列八项是独立实施任务，现有角色/平台任务复用其原身份；实时状态以 Daynight 为准。
 
 | 编号 | 具体结果 | Daynight task ID | 估算（分钟） |
 |---|---|---|---:|
@@ -38,7 +38,7 @@ flowchart LR
   T7 --> T8[WR-T8 独立整体验收]
 ```
 
-依赖由真实 task 的 `dependsOn` 表达；图是登记结果的投影，执行前读取实际资源。AU-T5 为 `ce2f8cd5-daab-40f2-8637-c1a8ae17e445`，ST-T2 为 `6db17ca5-5090-4ba0-8531-e1715b4e1c97`；当前基线主线尚未交付两者的激活契约。
+依赖由真实 task 的 `dependsOn` 表达；图是登记结果的投影，执行前读取实际资源。AU-T5 为 `ce2f8cd5-daab-40f2-8637-c1a8ae17e445`，ST-T2 为 `6db17ca5-5090-4ba0-8531-e1715b4e1c97`；两项前置契约均已交付。实施须遵循当前主线的鉴权、生命周期与任务执行时间契约。
 
 所有本 Goal 交付根经设计 task 把关；Herdr 适配与本地状态不依赖角色/平台实现，可并行交付；最终 coordinator 同时消费三条已完成能力。每个 task 一个明确结果，内部 CI、review 和修复属于原 task，不另建步骤型 task。
 
@@ -180,4 +180,4 @@ flowchart LR
 
 ## 整体完成条件
 
-全部八项 task 的实际交付与验收成立、必要 PR 真实集成，并由 WR-T8 按原 W-01～W-11 验证后，才能报告整个 Goal 完成。设计 PR 保留供用户 review 时，架构 task 保持 in_progress，所有后继保持依赖阻塞。
+架构 task 在设计 PR 实际集成、阶段资料一致且验收成立后完成，届时解除相应依赖阻塞。全部八项 task 的实际交付与验收成立、必要 PR 真实集成，并由 WR-T8 按原 W-01～W-11 验证后，才能报告整个 Goal 完成。任务就绪和设计完成本身不授予后继执行权限。

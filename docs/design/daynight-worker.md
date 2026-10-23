@@ -1,12 +1,12 @@
 # Worker 架构设计
 
-状态：设计待 review，运行时尚未实现。本文拥有机制；[需求](../spec/daynight-worker.md)拥有产品行为，[任务拆分](daynight-worker-tasks.md)拥有交付顺序、身份及验收分工。[设计决策](../../.agents/notes/implemented/architecture/2026-10-22-worker-design.md)保留真实备选方案。
+状态：架构方案已确认，运行时尚未实现。本文拥有机制；[需求](../spec/daynight-worker.md)拥有产品行为，[任务拆分](daynight-worker-tasks.md)拥有交付顺序、身份及验收分工。[设计决策](../../.agents/notes/implemented/architecture/2026-10-22-worker-design.md)保留真实备选方案。
 
 ## 目标与当前基础
 
 `daynight worker run` 是一个前台常驻 CLI：通过 REST 领取多仓库中允许 Agent 执行的任务，使用系统管理的稳定 worktree 与专用 Herdr 执行，持久化状态并完成恢复和清理。Agent 负责完整交付循环，worker 负责归属、资源和完成核验。
 
-源码基线为 `e533b8610ec38522fd5387e4715b573734bd16c2`。当前主线有命令组合、严格 YAML、REST client、任务/属性、项目写事务和 review 的 Git/SQLite 基础；尚无 worker。鉴权启用与显式 approve/claim/complete 生命周期仍分别由 AU-T5、ST-T2 前置任务交付，不能将其分支行为描述为当前主线功能。
+设计初始源码基线为 `e533b8610ec38522fd5387e4715b573734bd16c2`。交付核对基线为 `2d7fdd1e4e178db17e46da5d3b6c0e4050edf730`：主线具有命令组合、严格 YAML、REST client、任务/属性、项目写事务和 review 的 Git/SQLite 基础；AU-T5 鉴权与 ST-T2 显式 approve/claim/complete 生命周期已交付，worker 仍待实现。任务的服务端起止时间及图时钟遵循已交付的[执行时间契约](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/docs/spec/daynight-task-timing.md)，worker DTO 与生命周期扩展须保留该契约。
 
 | 当前基础 | 复用点 |
 |---|---|

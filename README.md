@@ -92,7 +92,7 @@ same-origin executable HTML previews retain their existing execution model after
 authentication is delivered; attachment requests gain project-member checks.
 Existing projects will receive membership data manually outside that work.
 
-The proposed `daynight worker run` is specified in the
+The approved `daynight worker run` architecture is specified in the
 [worker requirements](docs/spec/daynight-worker.md),
 [architecture](docs/design/daynight-worker.md) and
 [task breakdown](docs/design/daynight-worker-tasks.md). It uses the service's
@@ -103,8 +103,9 @@ task evidence. The [design decision](.agents/notes/implemented/architecture/2026
 records that responsibility split and the choice to observe current Herdr status
 without another reporting protocol. These documents deliver the architecture;
 the worker runtime, task role/platform controls and claim integration remain
-implementation work, with authentication and lifecycle activation as existing
-prerequisites.
+implementation work. Authentication and the approval-based task lifecycle are
+delivered prerequisites; worker integration preserves the current task execution
+timestamp contract.
 
 The `@codetreker/daynight` package provides the `daynight` client and its `dn`
 short command. Both names use the same entry, commands and configuration. Its
