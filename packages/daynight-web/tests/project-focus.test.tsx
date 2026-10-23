@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTask, getTaskGraph } from '../src/api/client';
 import type { GraphTask, TaskGraph } from '../src/api/types';
 import { ProjectPage } from '../src/features/projects/ProjectPage';
-import { projectRoot, type GraphIndex } from '../src/features/task-graph/model';
+import { projectChain, type GraphIndex } from '../src/features/task-graph/model';
 
 const render = createLocaleRender('zh-CN');
 
@@ -20,7 +20,7 @@ vi.mock('../src/features/task-graph/TaskGraph', async () => {
     const { fullscreen, containerRef, toggleRef, onKeyDown, toggle } = useGraphFullscreen();
     return <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} ref={containerRef} onKeyDown={onKeyDown} role={fullscreen ? 'dialog' : undefined} aria-label={fullscreen ? '任务依赖图全屏查看' : undefined}>
       <button type="button" className="graph-fullscreen-toggle" ref={toggleRef} onClick={toggle}>{fullscreen ? '退出全屏' : '全屏查看'}</button>
-      {[...projectRoot(index, rootId).mainIds].map((id) => (
+      {[...projectChain(index, rootId).mainIds].map((id) => (
     <button key={id} type="button" onClick={(event) => onOpenTask(id, event.currentTarget)}>
       节点 {index.nodes.get(id)!.titlePreview}
     </button>
@@ -95,6 +95,26 @@ const expectModalReleased = () => {
 };
 
 describe('project dialog focus restoration', () => {
+  it('keeps active details focused when a merge replaces their expanded representative row', async () => {
+    window.localStorage.setItem(`daynight:project-view:${projectId}`, JSON.stringify({ expandedRootId: remainingId }));
+    const before = [...remainingChain, task(rootId, '原任务链'), task(selectedId, '所选任务', [rootId])];
+    const after = before.map((item) => item.id === selectedId ? { ...item, dependsOn: [rootId, remainingId], blockedBy: [rootId, remainingId] } : item);
+    graphRequest.mockResolvedValueOnce(graph(before)).mockResolvedValueOnce(graph(after));
+    const { trigger, dialog } = await openDialog();
+    const close = within(dialog).getByRole('button', { name: '关闭任务详情' });
+    expect(close).toHaveFocus();
+    fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
+    await waitFor(() => expect(document.getElementById(`task-root-${rootId}`)).toBeNull());
+    expect(trigger.isConnected).toBe(false);
+    expect(dialog).toBeVisible();
+    expect(close).toHaveFocus();
+    expect(root).toHaveAttribute('inert');
+    expect(document.body.style.overflow).toBe('hidden');
+    fireEvent.click(close);
+    await waitFor(() => expect(document.getElementById(`task-root-${remainingId}`)).toHaveFocus());
+    expectModalReleased();
+  });
+
   it('returns focus to fullscreen exit when refresh removes the selected node but retains its graph', async () => {
     graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([task(rootId, '原任务链'), task('surviving-child', '保留图节点', [rootId]), ...remainingChain]));
     const { trigger, dialog } = await openDialog(true);

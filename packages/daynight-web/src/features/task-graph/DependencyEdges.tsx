@@ -53,7 +53,7 @@ export const DependencyEdges = memo(({ geometry, inspection }: { geometry: Canva
         const state = inspection.selectedTaskId === null ? 'normal'
           : inspection.highlightedIds.has(edge.source) && inspection.highlightedIds.has(edge.target) ? 'highlighted' : 'unrelated';
         return <DependencyEdge key={edge.id} edge={edge} route={route} state={state} marker={`${markerId}-${state}`}
-          label={`${m.dependencyLabel({ source: edge.source, target: edge.target })}${state === 'highlighted' ? m.dependencyHighlightedSuffix : ''}`} />;
+          label={`${m.dependencyLabel({ source: edge.source, target: edge.target, external: edge.external })}${state === 'highlighted' ? m.dependencyHighlightedSuffix : ''}`} />;
       })}
     </svg>
   </ViewportPortal>;

@@ -3,7 +3,7 @@ import { approveTask, getTask, getTaskGraph } from '../src/api/client';
 import { parseApiJson } from '../src/api/json';
 import { parseTaskGraph } from '../src/api/parse';
 import { decodeTaskGraphJson } from '../src/api/project-json';
-import { buildGraphIndex, projectRoot } from '../src/features/task-graph/model';
+import { buildGraphIndex, projectChain } from '../src/features/task-graph/model';
 import { browsingProjects, installBrowsingFixture, isApprovalScenario, type BrowsingScenario } from './mockups/browsing-fixture';
 
 const signal = () => new AbortController().signal;
@@ -19,31 +19,108 @@ describe('production task browsing fixture', () => {
     expect(graph.tasks.filter((task) => task.status === 'proposed').every((task) => !task.ready)).toBe(true);
   });
 
-  it('matches the mixed prototype counts and all four chain aggregates', () => {
+  it('matches mixed prototype counts with unique ordinary components and explicit external context', () => {
     const graph = browsingProjects.mixed;
     expect(graph.summary).toEqual({ total: 16, proposed: 6, todo: 4, inProgress: 2, done: 4, ready: 3, blocked: 1 });
     const index = buildGraphIndex(graph);
-    const chains = index.roots.filter((id) => index.successors.get(id)!.length > 0);
-    expect(chains.map((id) => index.rootProgress.get(id)!.status)).toEqual(['proposed', 'todo', 'todo', 'in_progress', 'done']);
-    const first = projectRoot(index, chains[0]!);
+    const chains = index.representativeIds.filter((id) => index.components.get(id)!.memberIds.size > 1);
+    expect(chains).toEqual([1, 3, 5, 7, 10].map(taskId));
+    expect(chains.map((id) => index.components.get(id)!.progress.status)).toEqual(['proposed', 'todo', 'todo', 'in_progress', 'done']);
+    const members = chains.flatMap((id) => [...index.components.get(id)!.memberIds]);
+    expect(members).toHaveLength(11);
+    expect(new Set(members).size).toBe(members.length);
+    const first = projectChain(index, chains[0]!);
     expect(first.mainIds.size).toBe(2);
     expect(first.externalIds.size).toBe(1);
     expect(first.completed).toBe(0);
+    expect(first.mainIds).toEqual(new Set([taskId(1), taskId(2)]));
+    expect(first.externalIds).toEqual(new Set([taskId(3)]));
+    expect(first.edges).toEqual([
+      { source: taskId(1), target: taskId(2), external: false },
+      { source: taskId(3), target: taskId(2), external: true },
+    ]);
+    expect(index.componentByTask.get(taskId(3))).toBe(taskId(3));
+  });
+
+  it('combines two ordinary roots into one component without duplicate member progress', () => {
+    const graph = browsingProjects['ordinary-merge'];
+    const index = buildGraphIndex(graph);
+    expect(graph.summary).toEqual({ total: 3, proposed: 0, todo: 2, inProgress: 0, done: 1, ready: 1, blocked: 1 });
+    expect(index.representativeIds).toEqual([taskId(50)]);
+    expect(index.componentByTask.get(taskId(51))).toBe(taskId(50));
+    expect(index.components.get(taskId(50))).toEqual({
+      memberIds: new Set([taskId(50), taskId(51), taskId(52)]),
+      progress: { total: 3, done: 1, status: 'in_progress' },
+    });
+    const projection = projectChain(index, taskId(50));
+    expect(projection.mainIds).toEqual(new Set([taskId(50), taskId(51), taskId(52)]));
+    expect(projection.externalIds.size).toBe(0);
+    expect(projection.edges).toEqual([
+      { source: taskId(50), target: taskId(52), external: false },
+      { source: taskId(51), target: taskId(52), external: false },
+    ]);
+  });
+
+  it('keeps external-only tasks as singleton components without removing their execution blockers', () => {
+    const graph = browsingProjects['external-only'];
+    const index = buildGraphIndex(graph);
+    expect(graph.summary).toEqual({ total: 2, proposed: 0, todo: 2, inProgress: 0, done: 0, ready: 1, blocked: 1 });
+    expect(index.representativeIds).toEqual([taskId(70), taskId(71)]);
+    expect([...index.components.values()].map((component) => component.memberIds.size)).toEqual([1, 1]);
+    expect(graph.tasks.find((task) => task.id === taskId(71))).toMatchObject({
+      dependsOn: [taskId(70)], externalDependsOn: [taskId(70)], blockedBy: [taskId(70)], ready: false,
+    });
+    const projection = projectChain(index, taskId(71));
+    expect(projection.mainIds).toEqual(new Set([taskId(71)]));
+    expect(projection.externalIds).toEqual(new Set([taskId(70)]));
+    expect(projection.edges).toEqual([{ source: taskId(70), target: taskId(71), external: true }]);
+  });
+
+  it('keeps complete external ancestry ordinary except the explicitly classified boundary', () => {
+    const graph = browsingProjects['complete-context'];
+    const index = buildGraphIndex(graph);
+    const projection = projectChain(index, taskId(30));
+    expect(index.representativeIds).toEqual([taskId(14), taskId(30)]);
+    expect(projection.mainIds).toEqual(new Set([taskId(30), taskId(31)]));
+    expect(projection.externalIds).toEqual(new Set([14, 15, 16, 17].map(taskId)));
+    expect(projection.mainIds.has(taskId(32))).toBe(false);
+    expect(projection.externalIds.has(taskId(32))).toBe(false);
+    expect(projection.edges.filter((edge) => edge.external)).toEqual([{ source: taskId(17), target: taskId(31), external: true }]);
+    expect(projection.edges).toContainEqual({ source: taskId(14), target: taskId(15), external: false });
+    expect(index.components.get(taskId(30))!.progress).toEqual({ total: 2, done: 0, status: 'todo' });
   });
 
   it('keeps a complete progressive fixture with main and external work beyond the initial overview', () => {
     const graph = browsingProjects.progressive;
     const index = buildGraphIndex(graph);
     const root = graph.tasks.find((task) => task.titlePreview === '渐进展开 · 主链交付起点')!;
-    const projection = projectRoot(index, root.id);
+    const projection = projectChain(index, root.id);
     expect(graph.summary).toEqual({ total: 101, proposed: 0, todo: 61, inProgress: 0, done: 40, ready: 1, blocked: 60 });
     expect(projection.mainIds.size).toBe(61);
     expect(projection.externalIds.size).toBe(40);
     expect(projection.edges).toHaveLength(100);
-    expect(index.rootProgress.get(root.id)).toEqual({ total: 61, done: 0, status: 'todo' });
+    expect(projection.edges.filter((edge) => edge.external)).toHaveLength(40);
+    expect(projection.edges.filter((edge) => !edge.external)).toHaveLength(60);
+    expect(index.components.get(root.id)!.progress).toEqual({ total: 61, done: 0, status: 'todo' });
   });
 
-  it.each(['progressive', 'complete-context'] as const)('serves the complete %s graph and exact detail versions through production APIs', async (scenario) => {
+  it('preserves the same explicit external classification in graph and full task responses', async () => {
+    const dispose = installBrowsingFixture();
+    try {
+      const projectId = browsingProjects.external.project.id;
+      const graph = await getTaskGraph(projectId, signal());
+      const task = await getTask(projectId, taskId(2), signal());
+      expect(task).toMatchObject({
+        dependsOn: [taskId(1), taskId(3)], externalDependsOn: [taskId(3)],
+        blockedBy: [taskId(1), taskId(3)], ready: false, version: 1n,
+      });
+      expect(graph.tasks.find((node) => node.id === task.id)).toMatchObject({
+        dependsOn: task.dependsOn, externalDependsOn: task.externalDependsOn, blockedBy: task.blockedBy, ready: task.ready,
+      });
+    } finally { dispose(); }
+  });
+
+  it.each(['progressive', 'complete-context', 'ordinary-merge'] as const)('serves the complete %s graph and exact detail versions through production APIs', async (scenario) => {
     const dispose = installBrowsingFixture();
     try {
       const source = browsingProjects[scenario];

@@ -5,9 +5,9 @@ Status: implemented
 ## Problem
 
 A dependency can express a genuine prerequisite without making its two tasks
-members of the same delivery chain. Root reachability currently gives both
-relationships the same meaning: shared descendants enter several chains and
-make completed prerequisite work appear unfinished. Persisting a separate group
+members of the same delivery chain. The original root-reachability model gave
+both relationships the same meaning: shared descendants entered several chains
+and made completed prerequisite work appear unfinished. Persisting a separate group
 identity would also require creation, reassignment and representative rules that
 are unnecessary for distinguishing these edges.
 
@@ -17,8 +17,8 @@ The delivered [design](../../../../docs/design/daynight-external-dependencies.md
 and [requirements](../../../../docs/spec/daynight-external-dependencies.md)
 specify an explicit boolean classification on each existing dependency row.
 Classification storage and the service, CLI and Web read contract are
-implemented. Public classification inputs and the ordinary-component Web model
-remain target behavior.
+implemented. Web consumes ordinary-edge components and explicit relationship
+labels and edge styling. Public classification inputs remain target behavior.
 
 The complete `dependsOn` set continues to own scheduling, blocking, readiness,
 cycle detection and capacity. A required `externalDependsOn` subset communicates
@@ -30,22 +30,30 @@ are ordinary. Current public inputs still reject `externalDependsOn`; the design
 for an explicitly supplied subset remains the later classification-write
 contract.
 
-The target ordinary-edge weak components define exclusive chain membership. The complete
-all-edge ancestor closure supplies reading context. A dashed edge means an
-explicit external prerequisite; a dashed card means a task outside the selected
-ordinary component. These are independent properties. The current root-derived
-projection and context rules remain current Web behavior:
-the [projection decision](../feature/2026-10-20-task-graph-projection.md),
+Ordinary-edge weak components define exclusive chain membership. Complete
+all-edge ancestor closure supplies context. Dashed edges encode explicit
+external prerequisites; dashed cards encode tasks outside the selected
+component. Earlier [projection](../feature/2026-10-20-task-graph-projection.md),
 [complete context](../feature/2026-10-22-complete-prerequisite-context.md) and
-[progressive overview](../feature/2026-10-22-progressive-task-graph.md) retain
-their original rationale and existing guarantees.
+[progressive overview](../feature/2026-10-22-progressive-task-graph.md) decisions
+retain their original rationale. The current model preserves snapshot, layout,
+closure and progressive guarantees while replacing per-root membership and
+context-derived edge dashes.
 
 The representative is the earliest ordinary root in exact service order.
 Saved expansion records retain a task witness, resolving it to the current
 component after an ordinary-edge merge or split. No persistent group identity
 is published. Ordinary components and their ancestor closure are connected, so
 the existing 50-node/100-edge overview and 20-neighbor expansion remain enough
-to reach every projected task.
+to reach every projected task. Same-representative member changes reset only
+topology state and InitialViewport framing; the fullscreen canvas and active
+Details remain mounted with their inert/scroll locks. A changed representative
+replaces the row and graph as a chain switch. ChainList holds focus continuity outside keyed
+representative rows: only a recorded detached control with focus on BODY causes
+restoration to the expanded/first surviving heading, existing filter control,
+or finally the labeled focusable list section when no chain remains.
+Same-row graph restoration takes precedence; active Details and outside controls
+retain focus.
 
 Public classification writes require every supported reader to understand the
 distinction, including the Web chain model and presentation. Deployable states
@@ -54,8 +62,10 @@ missing classification.
 
 CLI output preserves the required external subset and labels it in its shared
 dependency block. Web retains the subset in graph/detail resources and includes
-it in graph equality and detail freshness. Root-based membership and contextual
-dashes are unchanged until ordinary-component consumption is implemented.
+it in graph equality and detail freshness. Components provide exclusive members;
+full prerequisite closure supplies context. External edges stay dashed even when
+an alternate ordinary path connects their endpoints, and ordinary context edges
+stay solid. The former shared-membership badge is removed.
 
 Migration `012_external_dependencies.sql` adds the non-null boolean with the
 ordinary default after agent-permission migration 011, preserving prior schema

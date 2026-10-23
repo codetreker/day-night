@@ -88,7 +88,7 @@ Provider 使用一份当前 issue 状态，初始值来自 `initial.issue`。选
 
 项目、图、详情与附件请求仍由资源 ID、revision 和原有操作触发。locale 不进入业务 hook 的请求、取消或订阅依赖；上传、覆盖、删除和刷新期间切换只更新展示。附件预览继续使用原来的 key、URL、DOM 和 iframe 身份，输入与已选文件保持不变。
 
-图结构与几何继续只依赖 `index/rootId` 和原有布局输入。memoized 的 `TaskNode`、`RootRow` 和 `DependencyEdges` 在内部订阅展示 Context，更新文案与 ARIA，同时保留节点数据、边路径、视口和初始定位机制。依赖边的昂贵绘制分解以 geometry 为 memo 依赖，语言变化更新可访问文本，同时保留 canonical 路线坐标与绘制片段。React Flow 的无障碍配置由当前消息生成；英文文案必须适配现有节点尺寸。
+图结构与几何继续只依赖 `index/rootId` 和原有布局输入。memoized 的 `TaskNode`、`ChainRow` 和 `DependencyEdges` 在内部订阅展示 Context，更新文案与 ARIA，同时保留节点数据、边路径、视口和初始定位机制。依赖边的昂贵绘制分解以 geometry 为 memo 依赖，语言变化更新可访问文本，同时保留 canonical 路线坐标与绘制片段。React Flow 的无障碍配置由当前消息生成；英文文案必须适配现有节点尺寸。
 
 错误与通知状态保存语义，渲染时翻译。API client 继续返回结构化 `ApiError`、图规模详情和 request ID；服务原始正文不进入安全提示。项目刷新后所选任务被移除的通知保存为 `{ kind: 'selected-task-removed' }`，渲染时读取当前目录。附件异步结果沿用语义状态，完成时以当前语言呈现。既有每项目浏览偏好错误沿用自身的状态与存储格式，由展示层映射当前语言。
 

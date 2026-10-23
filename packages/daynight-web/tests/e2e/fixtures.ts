@@ -217,6 +217,58 @@ export const seedTaskVersion = async (projectId: string, taskId: string, version
   expect(result.split('\n')[0], 'Owned task version fixture updates exactly the selected row').toBe(String(version));
 };
 
+// Classification reads are exercised independently of public write support by
+// seeding the exact owned PostgreSQL task under its existing project lock.
+export const seedExternalDependencies = async (request: AuthenticatedAPI, projectId: string, task: TaskVersion, externalIds: readonly string[]): Promise<Task> => {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+  if (!uuid.test(projectId) || !uuid.test(task.id) || !Number.isSafeInteger(task.version) || task.version < 1
+    || externalIds.some((id) => !uuid.test(id)) || new Set(externalIds).size !== externalIds.length) throw new Error('Invalid owned dependency classification fixture.');
+  const beforeResponse = await request.get(`/api/v1/projects/${projectId}/tasks/${task.id}`);
+  expect(beforeResponse.status(), 'Classification fixture reads the exact current task').toBe(200);
+  const before = await beforeResponse.json() as Task;
+  expect(before.version, 'Classification fixture uses the observed task version').toBe(task.version);
+  const target = await ownedDatabase();
+  const externalArray = `ARRAY[${externalIds.map((id) => `'${id}'`).join(',')}]::uuid[]`;
+  const result = await command('docker', ['exec', target.postgresContainer, 'psql', '--no-psqlrc', '--set', 'ON_ERROR_STOP=1',
+    '--username', 'daynight', '--dbname', target.database, '--tuples-only', '--no-align', '--command', `BEGIN;
+      DO $fixture$
+      DECLARE saved_version bigint; classification_changed boolean;
+      BEGIN
+        PERFORM id FROM projects WHERE id = '${projectId}' FOR UPDATE;
+        IF NOT FOUND THEN RAISE EXCEPTION 'Owned classification project is missing'; END IF;
+        SELECT version INTO saved_version FROM tasks WHERE project_id = '${projectId}' AND id = '${task.id}';
+        IF saved_version IS DISTINCT FROM ${task.version} THEN RAISE EXCEPTION 'Owned classification task version changed'; END IF;
+        IF EXISTS(SELECT unnest(${externalArray}) EXCEPT SELECT depends_on_task_id FROM task_dependencies
+          WHERE project_id = '${projectId}' AND task_id = '${task.id}') THEN RAISE EXCEPTION 'Owned external subset is not a dependency'; END IF;
+        SELECT coalesce(bool_or(external IS DISTINCT FROM (depends_on_task_id = ANY(${externalArray}))), false) INTO classification_changed
+          FROM task_dependencies WHERE project_id = '${projectId}' AND task_id = '${task.id}';
+        IF classification_changed THEN
+          UPDATE task_dependencies SET external = depends_on_task_id = ANY(${externalArray})
+            WHERE project_id = '${projectId}' AND task_id = '${task.id}';
+          UPDATE tasks SET version = version + 1, updated_at = statement_timestamp()
+            WHERE project_id = '${projectId}' AND id = '${task.id}';
+        END IF;
+      END $fixture$;
+      SELECT json_build_object('version', version::text) FROM tasks WHERE project_id = '${projectId}' AND id = '${task.id}';
+      COMMIT;`], { cwd: process.cwd(), timeoutMs: 15_000, quiet: true });
+  const versionRow = result.split('\n').find((line) => line.startsWith('{'));
+  if (versionRow === undefined) throw new Error('Owned classification fixture returned no task version.');
+  const saved = JSON.parse(versionRow) as { version: string };
+  const response = await request.get(`/api/v1/projects/${projectId}/tasks/${task.id}`);
+  expect(response.status(), 'Classification fixture reads back the real persisted resource').toBe(200);
+  const after = await response.json() as Task;
+  const expected = [...externalIds].sort();
+  const changed = JSON.stringify(before.externalDependsOn) !== JSON.stringify(expected);
+  expect(String(after.version), 'Database and API return the same exact committed version').toBe(saved.version);
+  expect(after.version, 'Classification change increments the task version exactly once').toBe(before.version + Number(changed));
+  expect(after, 'Classification preserves every other task field and dependency').toEqual({
+    ...before, externalDependsOn: expected, version: after.version, updatedAt: after.updatedAt,
+  });
+  if (changed) expect(after.updatedAt).not.toBe(before.updatedAt);
+  else expect(after.updatedAt).toBe(before.updatedAt);
+  return after;
+};
+
 export const seedClaimedTaskStart = async (projectId: string, taskId: string, ageMs: number | null): Promise<void> => {
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
   if (!uuid.test(projectId) || !uuid.test(taskId)

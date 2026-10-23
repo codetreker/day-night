@@ -12,7 +12,7 @@ import { renderWithLocale } from "../helpers/renderWithLocale";
 vi.mock("../../src/api/client", async (original) => ({
   ...await original<typeof import("../../src/api/client")>(), getTaskGraph: vi.fn(), listProjects: vi.fn(),
 }));
-vi.mock("../../src/features/task-graph/RootList", () => ({ RootList: () => null }));
+vi.mock("../../src/features/task-graph/ChainList", () => ({ ChainList: () => null }));
 vi.mock("../../src/features/task-detail/TaskDetailDialog", () => ({ TaskDetailDialog: ({ taskId, onRefreshGraph }: {
   taskId: string; onRefreshGraph: () => void;
 }) => <aside aria-label="Task test shell"><p>{taskId}</p><button onClick={onRefreshGraph}>Refresh test graph</button></aside> }));

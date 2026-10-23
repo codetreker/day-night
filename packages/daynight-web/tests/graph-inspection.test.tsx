@@ -30,7 +30,7 @@ const graph: GraphData = { observedAt: "2026-10-20T12:00:00Z",
     { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'A', titlePreview: 'A', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
     { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'B', titlePreview: 'B', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
     { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'C', titlePreview: 'C', titleTruncated: false, status: 'done', dependsOn: ['B'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'D', titlePreview: 'D', titleTruncated: false, status: 'proposed', dependsOn: ['A', 'C'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { allowAgents: false, externalDependsOn: ['C'], startedAt: null, completedAt: null, id: 'D', titlePreview: 'D', titleTruncated: false, status: 'proposed', dependsOn: ['A', 'C'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
     { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'X', titlePreview: 'X', titleTruncated: false, status: 'todo', dependsOn: ['C'], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
   ],
 };
@@ -139,7 +139,7 @@ describe('graph-local prerequisite inspection', () => {
     const view = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
     await ready(view.container);
     fireEvent.click(body(view.container, 'D'));
-    const changed = buildGraphIndex({ ...graph, tasks: graph.tasks.map((task) => task.id === 'D' ? { ...task, dependsOn: ['A'] } : task) });
+    const changed = buildGraphIndex({ ...graph, tasks: graph.tasks.map((task) => task.id === 'D' ? { ...task, dependsOn: ['A'], externalDependsOn: [] } : task) });
     view.rerender(<TaskGraph index={changed} rootId="A" onOpenTask={noop} />);
     await ready(view.container, 2);
     expect(body(view.container, 'D')).toHaveAttribute('aria-pressed', 'true');
@@ -150,7 +150,7 @@ describe('graph-local prerequisite inspection', () => {
     await ready(view.container, 1);
     expect(screen.getByRole('button', { name: '全屏查看' })).toHaveFocus();
     view.rerender(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
-    await ready(view.container, 1);
+    await ready(view.container);
     expect(body(view.container, 'A')).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(screen.getByRole('button', { name: '收起到概览' }));
     await ready(view.container);
@@ -207,9 +207,10 @@ describe('graph-local prerequisite inspection', () => {
     await ready(view.container);
     fireEvent.click(body(view.container, 'D'));
     view.rerender(<TaskGraph index={index} rootId="B" onOpenTask={noop} />);
-    await ready(view.container, 5);
-    expect(body(view.container, 'D')).toHaveAttribute('aria-pressed', 'false');
-    fireEvent.click(body(view.container, 'D'));
+    await ready(view.container, 3);
+    expect(card(view.container, 'D')).toBeNull();
+    expect(body(view.container, 'C')).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(body(view.container, 'C'));
     view.rerender(<div />);
     view.rerender(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
     await ready(view.container);

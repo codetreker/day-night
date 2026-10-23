@@ -1,5 +1,5 @@
 import { Graph, layout, type EdgeLabel, type GraphLabel, type NodeLabel } from '@dagrejs/dagre';
-import type { RootProjection } from './model';
+import type { ChainProjection } from './model';
 import { planDependencyRoutes } from './routing';
 import type { TaskExpansions } from './visibility';
 
@@ -45,7 +45,7 @@ const finite = (value: number | undefined): number => {
   return value;
 };
 
-export const layoutGraph = (projection: RootProjection, nodeHeights: ReadonlyMap<string, number> = new Map(
+export const layoutGraph = (projection: ChainProjection, nodeHeights: ReadonlyMap<string, number> = new Map(
   [...projection.mainIds, ...projection.externalIds].map((id) => [id, TASK_NODE_COMPACT_HEIGHT]),
 )): CanvasLayout => {
   const ids = [...projection.mainIds, ...projection.externalIds].sort(compare);

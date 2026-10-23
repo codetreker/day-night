@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, getTaskGraph } from '../src/api/client';
 import type { GraphTask, TaskGraph } from '../src/api/types';
 import { ProjectPage } from '../src/features/projects/ProjectPage';
-import { projectRoot, type GraphIndex } from '../src/features/task-graph/model';
+import { projectChain, type GraphIndex } from '../src/features/task-graph/model';
 
 const render = createLocaleRender('zh-CN');
 
@@ -12,7 +12,7 @@ vi.mock('../src/api/client', async (original) => ({ ...await original<typeof imp
 vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, rootId, onOpenTask }: {
   index: GraphIndex; rootId: string; onOpenTask: (id: string, trigger: HTMLElement) => void;
 }) => {
-  const projection = projectRoot(index, rootId);
+  const projection = projectChain(index, rootId);
   return <div data-testid="projection" data-root-id={rootId}>
     {[...projection.mainIds, ...projection.externalIds].map((id) => <button key={id} data-node-id={id} onClick={(event) => { onOpenTask(id, event.currentTarget); }}>{index.nodes.get(id)!.titlePreview}</button>)}
     {projection.edges.map(({ source, target }) => <span key={`${source}->${target}`} data-edge={`${source}->${target}`} />)}
@@ -22,10 +22,10 @@ vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, ro
 const projectId = '10000000-0000-0000-0000-000000000001';
 const otherProject = '10000000-0000-0000-0000-000000000002';
 const time = '2026-10-20T12:00:00Z';
-const task = (id: string, status: GraphTask['status'], dependsOn: string[] = []): GraphTask => ({ allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null,
+const task = (id: string, status: GraphTask['status'], dependsOn: string[] = [], externalDependsOn: string[] = []): GraphTask => ({ allowAgents: false, externalDependsOn, startedAt: null, completedAt: null,
   id, titlePreview: `任务 ${id}`, titleTruncated: false, status, dependsOn, blockedBy: [], ready: false, createdAt: time, updatedAt: time,
 });
-const seeds = [task('A', 'done'), task('B', 'todo', ['A']), task('C', 'done'), task('D', 'done', ['C']), task('E', 'done'), task('F', 'todo'), task('G', 'todo', ['B', 'F']), task('H', 'done', ['E'])];
+const seeds = [task('A', 'done'), task('B', 'todo', ['A']), task('C', 'done'), task('D', 'done', ['C']), task('E', 'done'), task('F', 'todo'), task('G', 'todo', ['B', 'F'], ['B']), task('H', 'done', ['E'])];
 const graph = (items = seeds, id = projectId): TaskGraph => {
   const tasks = items.map((item) => {
     const blockedBy = item.dependsOn.filter((dependency) => items.find((candidate) => candidate.id === dependency)!.status !== 'done');
@@ -49,7 +49,7 @@ const expansion = () => JSON.parse(window.localStorage.getItem(expansionKey)!);
 beforeEach(() => { request.mockReset(); request.mockResolvedValue(graph()); });
 
 describe('completed task chain visibility', () => {
-  it('hides only complete chains while keeping done roots, shared dependencies and full project counts', async () => {
+  it('hides only complete chains while keeping done roots, explicit external dependencies and full project counts', async () => {
     render(<ProjectPage projectId={projectId} />);
     await screen.findByRole('checkbox', { name: '显示已完成任务链（2）' });
     expect(checkbox()).not.toBeChecked();
@@ -60,8 +60,8 @@ describe('completed task chain visibility', () => {
     expect(within(root('A')).getByText('进行中')).toBeVisible();
     expect(root('A').querySelector('.root-status')).toHaveClass('graph-status-in_progress');
     const projection = screen.getByTestId('projection');
-    expect([...projection.querySelectorAll('[data-node-id]')].map((item) => item.getAttribute('data-node-id'))).toEqual(['A', 'B', 'G', 'F']);
-    expect([...projection.querySelectorAll('[data-edge]')].map((item) => item.getAttribute('data-edge'))).toEqual(['A->B', 'B->G', 'F->G']);
+    expect([...projection.querySelectorAll('[data-node-id]')].map((item) => item.getAttribute('data-node-id'))).toEqual(['A', 'B']);
+    expect([...projection.querySelectorAll('[data-edge]')].map((item) => item.getAttribute('data-edge'))).toEqual(['A->B']);
     checkbox().focus();
     fireEvent.click(checkbox());
     expect(checkbox()).toHaveFocus();

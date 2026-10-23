@@ -11,20 +11,21 @@ and accurate progress while letting the reader control visible detail.
 
 ## Decision
 
-The pending [external dependency design](../architecture/2026-10-23-external-dependency-design.md)
-replaces the main-set input with an ordinary-edge component and retains the
-connected ancestor projection and progressive controls. This note continues to
-describe the implemented root-based input until that consuming task is delivered.
+The [external dependency decision](../architecture/2026-10-23-external-dependency-design.md)
+uses an ordinary-edge component for the main set while retaining connected
+ancestor context and these progressive controls. The original root-based input
+explains this decision's initial circumstances; current membership is exclusive.
 
-`projectRoot` retains complete context P: root plus every reachable successor
-form main M, every ancestor of M is included, and P−M is external context.
-Unrelated successors of external tasks stay outside P. Only visible task IDs S
-are progressive, for both main and external tasks. Full M still owns chain
-progress/status; complete snapshots own seven project counters and unfinished
-tab counts. Proposed/todo/in_progress/done keep their existing read meanings.
+`projectChain` retains complete context P: an ordinary weak component forms main
+M, every ancestor through all edge kinds is included, and P−M is context.
+Unrelated successors of context tasks stay outside P. Only actual visible IDs S
+are progressive. Full M owns chain progress and status; complete snapshots own
+project and unfinished-tab counts. Proposed/todo/in_progress/done retain their
+existing meanings. Ordinary components and ancestor closure are connected, so
+direct-neighbor expansion can reach every task without a member-only control.
 
 If P has at most fifty tasks and one hundred dependencies, initial S contains
-all P. Otherwise `createGraphOverview(index, P)` starts at root and performs
+all P. Otherwise `createGraphOverview(index, P)` starts at the representative and performs
 stable undirected BFS, considering direct successors before prerequisites, each
 direction in snapshot insertion order. Consider a candidate once, accept it only
 if resulting S has at most fifty tasks and its complete induced edge set at most
@@ -35,7 +36,7 @@ the initial overview of P, not the whole project or manual expansion.
 direct neighbors within P in stable snapshot order, without recursion. Controls
 report exact new tasks, new induced edges and remaining neighbors. Edge deltas
 include links among added tasks. Manual expansion has no edge cap and may exceed
-the initial fifty/one-hundred limits. Shared IDs appear once.
+the initial fifty/one-hundred limits. Each task ID appears once.
 
 `projectVisibleTasks(P, S)` retains membership and every real dependency with
 both endpoints in S. No shortcut edges, aggregate cards or synthetic links are
@@ -58,8 +59,9 @@ footer when both directions had no hidden neighbors. The
 [conditional footer decision](../bug-fix/2026-10-22-task-card-expansion-footer.md)
 partially supersedes that geometry: cards without controls are 220 by 96 and
 omit the footer; cards with controls remain 220 by 136, retaining the empty
-column when only one direction is available. The body remains the native
-TaskDetailDialog trigger, and direction controls are siblings. The existing
+column when only one direction is available. At introduction the body was the native TaskDetailDialog trigger. The later
+[inspection decision](2026-10-22-task-dependency-inspection.md) separates body
+inspection, Details and direction controls into sibling buttons. The existing
 Dagre polyline/native-arrow/local-dash renderer consumes only the visible graph.
 
 Explicit expansion may relayout S, centers its anchor at current zoom and
@@ -67,12 +69,18 @@ focuses the anchor body. One “收起到概览” control recomputes the curren
 frames it and retains reset-button focus. There is no branch ownership or
 per-branch collapse.
 
-Successful refresh intersects actual old visible IDs with new P, adds root and
-keeps only the root-connected component of the induced undirected graph.
-Disconnected nodes leave S permanently; refresh does not union a new baseline
-or add newly arrived tasks. It preserves viewport. Reset or remount computes a
-new baseline. Failure keeps old data, S and view. Project/root/tab changes and
-unmount discard local visibility state.
+Within the same representative/member scope, successful refresh intersects
+actual old visible IDs with new P, adds the representative and keeps its
+connected visible subset without adding a baseline or newly arrived tasks.
+GraphVisibility owns projection, the ordered-member topology key, visible IDs,
+inspection and viewport action. Membership changes with the same representative
+reset that topology state and reinitialize InitialViewport, while TaskCanvas,
+ReactFlow and the fullscreen owner remain mounted. Fullscreen, active Details
+and their inert/scroll locks therefore survive the topology reset. Only a
+representative change replaces the row/graph as a chain switch. Explicit reset
+also computes a new baseline. Failure preserves old data only within the current
+identity/project/auth scope. Refresh does not steal dialog focus; locale only
+translates controls and counts without changing S or adding requests.
 
 The delivered TaskDetailDialog, Overview/Attachments panels, adjacent attachment
 panes, one right-side scroll owner, request state and modal focus ownership
@@ -149,9 +157,11 @@ and no persistent ownership model.
 impossible to expand. A twenty-task batch bounds added cards while retaining all
 resulting real dependencies.
 
-**Refill the baseline on refresh.** This can replace the reader's chosen region
-or introduce tasks without explicit action. Actual-visible reconciliation keeps
-browsing intent; reset/remount adopts a new overview deliberately.
+**Refill the baseline on unchanged-topology refresh.** This can replace the
+reader's chosen region without a membership reason. Actual-visible reconciliation
+keeps browsing intent for the same scope. Explicit reset and genuine member-set
+changes select a new bounded overview; the latter does not require a fullscreen
+presentation remount.
 
 **Combine workload policy and dependency inspection in one PR.** That couples a
 material change in rendered workload with new selection, curve geometry and

@@ -46,6 +46,8 @@ export const inspection: InspectionMessages = {
     stale: "任务详情与当前任务图不同，刷新后可查看一致的进度和关系。", refreshGraph: "刷新任务图",
     retainedDetail: "当前显示之前读取的任务详情，确认最新详情前无法执行审批操作。",
     description: "描述", noDescription: "暂无描述", relationsMetadata: "任务关系与元数据", dependencies: "前置依赖", noDependencies: "无前置依赖",
+    relationLabel: ({ title, kind }) => `${title}，${kind}`,
+    ordinaryDependency: "普通依赖", externalDependency: "外部依赖",
     blockers: "当前未完成的前置", noBlockers: "所有前置已完成", successors: "任务图快照中的直接后续",
     successorsMissing: "当前任务尚未包含在任务图中，请刷新任务图以查看后续关系。", noSuccessors: "无后续任务",
     created: "创建时间", updated: "更新时间", taskId: "任务 ID",

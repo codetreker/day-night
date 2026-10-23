@@ -1,4 +1,4 @@
-import { GraphDataError, type GraphIndex, type RootProjection } from './model';
+import { GraphDataError, type GraphIndex, type ChainProjection } from './model';
 
 export const GRAPH_OVERVIEW_TASK_LIMIT = 50;
 export const GRAPH_OVERVIEW_EDGE_LIMIT = 100;
@@ -11,7 +11,7 @@ export type TaskExpansion = {
 };
 export type TaskExpansions = Readonly<Record<TaskExpansionDirection, TaskExpansion>>;
 
-const projectionIds = (projection: RootProjection): Set<string> => new Set([...projection.mainIds, ...projection.externalIds]);
+const projectionIds = (projection: ChainProjection): Set<string> => new Set([...projection.mainIds, ...projection.externalIds]);
 const snapshotOrder = (index: GraphIndex): ReadonlyMap<string, number> => new Map([...index.nodes.keys()].map((id, position) => [id, position]));
 const neighbors = (index: GraphIndex, allowed: ReadonlySet<string>, order: ReadonlyMap<string, number>, id: string, direction: TaskExpansionDirection): readonly string[] => {
   const candidates = direction === 'successors' ? index.successors.get(id)! : index.nodes.get(id)!.dependsOn;
@@ -21,7 +21,7 @@ const incidentEdges = (index: GraphIndex, visible: ReadonlySet<string>, id: stri
   index.nodes.get(id)!.dependsOn.filter((source) => visible.has(source)).length
   + index.successors.get(id)!.filter((target) => visible.has(target)).length;
 
-export const createGraphOverview = (index: GraphIndex, projection: RootProjection): Set<string> => {
+export const createGraphOverview = (index: GraphIndex, projection: ChainProjection): Set<string> => {
   const allowed = projectionIds(projection);
   if (allowed.size <= GRAPH_OVERVIEW_TASK_LIMIT && projection.edges.length <= GRAPH_OVERVIEW_EDGE_LIMIT) {
     return new Set([projection.rootId, ...[...index.nodes.keys()].filter((id) => allowed.has(id))]);
@@ -48,7 +48,7 @@ export const createGraphOverview = (index: GraphIndex, projection: RootProjectio
   return visible;
 };
 
-export const projectVisibleTasks = (projection: RootProjection, visibleIds: ReadonlySet<string>): RootProjection => ({
+export const projectVisibleTasks = (projection: ChainProjection, visibleIds: ReadonlySet<string>): ChainProjection => ({
   rootId: projection.rootId,
   mainIds: new Set([...projection.mainIds].filter((id) => visibleIds.has(id))),
   externalIds: new Set([...projection.externalIds].filter((id) => visibleIds.has(id))),
@@ -58,7 +58,7 @@ export const projectVisibleTasks = (projection: RootProjection, visibleIds: Read
 
 export const getTaskExpansion = (
   index: GraphIndex,
-  projection: RootProjection,
+  projection: ChainProjection,
   visibleIds: ReadonlySet<string>,
   taskId: string,
   direction: TaskExpansionDirection = 'prerequisites',
@@ -73,7 +73,7 @@ export const getTaskExpansion = (
   return { ids, totalHidden: hidden.length, addedEdges };
 };
 
-export const reconcileVisibleTasks = (projection: RootProjection, visibleIds: ReadonlySet<string>): Set<string> => {
+export const reconcileVisibleTasks = (projection: ChainProjection, visibleIds: ReadonlySet<string>): Set<string> => {
   const allowed = projectionIds(projection);
   const retained = new Set([...visibleIds].filter((id) => allowed.has(id)));
   retained.add(projection.rootId);

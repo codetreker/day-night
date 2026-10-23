@@ -17,7 +17,7 @@ expandable source-root graphs, and a task detail drawer. The
 [design](../../../../docs/design/daynight-web.md) owns implementation contracts,
 and the [interactive preview](../../../../docs/design/mockups/task-dashboard.html)
 demonstrates the original appearance. The later [task view decision](../feature/2026-10-22-project-task-views.md)
-separates standalone task rows from root-chain graphs within project tabs, using
+separates standalone task rows from chain graphs within project tabs, using
 the [task view mockup](../../../../docs/design/mockups/task-views.html). This note
 records the delivered MVP design; the
 [centered detail decision](../feature/2026-10-22-centered-task-detail-dialog.md)
@@ -68,9 +68,11 @@ adding explicit direct-boundary prerequisite nodes without expanding their
 ancestors. The later
 [complete context decision](../feature/2026-10-22-complete-prerequisite-context.md)
 replaces that boundary with every required ancestor and dependency, excluding
-unrelated descendants of contextual tasks. Root progress still excludes external
-context; project totals count each task once. Only one root graph is mounted at a
-time. Pure indexing/projection and Dagre layout remain separate from React rendering and API requests. Page hooks own
+unrelated descendants of contextual tasks. The later
+[external dependency decision](2026-10-23-external-dependency-design.md) replaces
+per-root membership with ordinary-edge weak components while keeping that full
+ancestor context. Progress counts component members only; project totals count
+each task once. Only one chain graph is mounted at a time. Pure indexing/projection and Dagre layout remain separate from React rendering and API requests. Page hooks own
 request cancellation and snapshot replacement; the task detail dialog never mutates the
 project snapshot.
 

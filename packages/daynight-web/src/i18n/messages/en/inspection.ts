@@ -48,6 +48,8 @@ export const inspection: InspectionMessages = {
     retainedDetail: "Showing previously loaded task details. Approval actions are unavailable until the current details can be confirmed.",
     refreshGraph: "Refresh task graph", description: "Description", noDescription: "No description",
     relationsMetadata: "Task relationships and metadata", dependencies: "Prerequisites", noDependencies: "No prerequisites",
+    relationLabel: ({ title, kind }) => `${title}, ${kind}`,
+    ordinaryDependency: "Ordinary dependency", externalDependency: "External dependency",
     blockers: "Unfinished prerequisites", noBlockers: "All prerequisites are complete", successors: "Direct successors in the graph snapshot",
     successorsMissing: "This task is not in the current graph. Refresh the task graph to see its successors.", noSuccessors: "No successor tasks",
     created: "Created", updated: "Updated", taskId: "Task ID",

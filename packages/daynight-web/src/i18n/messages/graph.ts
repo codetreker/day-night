@@ -15,10 +15,9 @@ export type GraphMessages = {
   readonly completedTitle: string;
   readonly completedDescription: (args: { count: number }) => string;
   readonly showCompleted: string;
-  readonly shared: string;
   readonly blocked: string;
   readonly external: string;
-  readonly nodeLabel: (args: { title: string; status: string; blocked: boolean; external: boolean; shared: boolean }) => string;
+  readonly nodeLabel: (args: { title: string; status: string; blocked: boolean; external: boolean }) => string;
   readonly details: string;
   readonly detailsLabel: (args: { title: string }) => string;
   readonly inspectionSuffix: Readonly<Record<'normal' | 'selected' | 'prerequisite' | 'unrelated', string>>;
@@ -29,7 +28,7 @@ export type GraphMessages = {
   readonly expandLabel: (args: { direction: 'prerequisites' | 'successors'; tasks: number; edges: number; remaining: number }) => string;
   readonly resetOverview: string;
   readonly dependencyGroup: string;
-  readonly dependencyLabel: (args: { source: string; target: string }) => string;
+  readonly dependencyLabel: (args: { source: string; target: string; external: boolean }) => string;
   readonly fullscreenTitle: string;
   readonly title: string;
   readonly counts: (args: { main: number; external: number; visible: number; total: number; edges: number; dependencies: number }) => string;

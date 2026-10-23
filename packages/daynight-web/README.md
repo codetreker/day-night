@@ -174,7 +174,7 @@ provide exact endpoints, elapsed duration and saved threshold. Button names stay
 stable across ticks, and no live region announces every update.
 
 The renderer preserves 220×96/136 cards, independent Details/inspection/expansion
-controls, shared markers, external dashed borders and selected/prerequisite
+controls, external context borders and selected/prerequisite
 outlines. A 42px bottom reserve keeps English Details clear of elapsed text.
 Standalone visual timing is excluded from button-name calculation while its
 accessible description retains the warning meaning. Chain headers never claim
@@ -262,32 +262,47 @@ The application implements `/`, `/projects/{projectId}`, `/account`,
 `/invitations` and the standalone
 `/projects/{projectId}/tasks/{taskId}/attachments/{path...}` reader, direct URL
 reload, browser back/forward and a generic not-found page. All resource reads use
-the current authenticated identity. A project shows seven statistics
-from one complete graph snapshot and two in-project tabs: Standalone tasks and
-Task chains. The first visit opens Task chains; subsequent visits restore the
-project's last tab. Both tab badges count unfinished tasks (proposed, pending and in
-progress) from the complete snapshot. Standalone tasks count individually;
-Task chains counts every non-standalone task once across all roots, including
-shared successors. Counts ignore completed-item visibility, the active tab and
-the expanded chain; all-completed categories display zero. Their sum equals the
-project's proposed plus pending plus in-progress total. List toolbars retain visible/total
-standalone-item or root-chain counts. A standalone task has no prerequisites
-and no successors in the complete graph. Every other root remains a root-based
-chain entry, including multiple roots with shared successors. Task status never
-changes this classification. The [task view decision](../../.agents/notes/implemented/feature/2026-10-22-project-task-views.md)
-records the presentation boundary.
+the current authenticated identity. A project shows seven statistics from one
+complete graph snapshot and two in-project tabs: Standalone tasks and Task chains.
+The first visit opens Task chains; subsequent visits restore the project's last
+tab. Both tab badges count unfinished tasks (proposed, pending and in progress)
+from the complete snapshot, independently of completed-item visibility, active
+category and expanded chain. Their sum equals the project's unfinished total;
+toolbars separately report visible/total entries.
 
-Standalone rows display the title, individual status, ID and creation time and
-open the existing task detail dialog directly. Chain rows display aggregate progress
-and status: done only when every distinct root and reachable successor task is
-done; in progress when any is done or in progress and the chain is unfinished;
-otherwise pending when any main task is todo; otherwise every main task is
-proposed. A completed root with unfinished descendants stays visible.
-External prerequisite context does not contribute to chain status. Node and
-detail status continue to describe individual tasks. Chain badges, completed
-counts and filtering share the same model-derived status, rebuilt with each
-snapshot; the [chain status decision](../../.agents/notes/implemented/bug-fix/2026-10-22-task-chain-status.md)
-records its rationale.
+Chain membership is an ordinary-edge weak component: `dependsOn` contains all
+prerequisites, while `externalDependsOn` marks edges that do not join components.
+A normal `A → C ← B` creates one chain with two starting tasks and one member set. A chain's representative is its earliest ordinary-root
+member in exact service order; its title and creation ordering supply the row.
+Singletons with no ordinary incoming or outgoing edge are standalone tasks,
+even when external prerequisites block execution. Status and completion filters
+do not change membership. All edges still participate in execution consistency
+and full prerequisite inspection.
+
+Standalone rows are compact native detail triggers with title, individual
+status, ID, creation time, automation permission and known execution timing.
+An unfinished prerequisite produces an explicit Blocked / 被阻塞 badge. Chain
+rows aggregate only component members: all done means done; otherwise any done
+or in-progress member means in progress; otherwise any todo member means pending;
+otherwise all members are proposed. A completed representative with unfinished
+members stays visible. External prerequisite context does not contribute to
+chain progress or status. The former shared-membership badge is removed: a task
+can recur as context while its actual component membership remains unique.
+
+Each category retains its own completed visibility and scroll position. Chain
+ordering uses its representative's exact `(created_at,id)` service order,
+reversed for newest first without lossy JavaScript timestamp conversion. Expanded
+preferences retain the original task witness in `{expandedRootId}` and resolve
+its current component after merges or splits, rather than overwriting it with a
+new representative. Explicit null stays collapsed on reload. Existing missing or
+hidden-entry fallback and storage-error notices remain. Membership changes
+initialize a new bounded overview and framing without remounting a same-representative
+fullscreen canvas or active Details. A representative change is a chain switch.
+Ordinary status and clock refreshes retain visible S, viewport and inspection
+under normal reconciliation.
+The [task view decision](../../.agents/notes/implemented/feature/2026-10-22-project-task-views.md)
+and [chain status decision](../../.agents/notes/implemented/bug-fix/2026-10-22-task-chain-status.md)
+record their current rules and original rationale.
 
 Proposed tasks use the current catalog label, Proposed or 待审批, and a distinct
 purple status color in statistics, standalone rows, chain badges, graph nodes and
@@ -364,13 +379,18 @@ minimum height and 7px row gaps; a single-line bordered row is about 64px.
 Desktop titles stay 13px and narrow-screen titles 12px, with readable
 metadata/status sizes of 11px/10px.
 
-Rows open one horizontal graph at a time. Complete P retains the root,
-reachable successors and every required ancestor, without unrelated successors
-of external context. Main progress and seven project counters still use full
-data. Actual visible S is progressive for main and external tasks alike.
+Rows open one horizontal graph at a time. Complete P contains every ordinary
+component member and every required ancestor through all dependency kinds,
+without unrelated successors of context tasks. Main progress counts component
+members only, and project counters count each project task once. Actual visible
+S is progressive for members and context alike. Dashed edges encode explicit
+external dependencies, including a shortcut inside one ordinary component;
+dashed cards encode context outside that component. Ordinary context edges stay
+solid. Details labels prerequisites, blockers and successors using each edge's
+own marker; no dependency editor is added.
 
 P with at most fifty tasks and one hundred dependencies is fully visible.
-Larger P starts at root with stable undirected BFS, successors before prerequisites
+Larger P starts at the representative with stable undirected BFS, successors before prerequisites
 in snapshot order; accept a task only when the complete induced graph remains
 within fifty/one hundred, and traverse only accepted tasks. Cards expose direction
 controls adding at most twenty hidden direct neighbors in P, with exact new-task,
@@ -390,52 +410,37 @@ the current dialog and relation navigation preserves graph selection.
 Expansion centers its anchor at current zoom and focuses its body. Global reset
 “收起到概览” recomputes/frames overview and retains reset focus.
 
-Successful refresh keeps actual visible IDs still in new P plus root, prunes to
-the induced undirected root component and preserves viewport. It does not add a
-new baseline or newly arrived tasks. Reset/remount computes a new baseline;
-ordinary failure keeps old data/S/view only in the same identity/project/auth
-scope; inherited current401 and session/resource invalidation still unmount
-private content. Project/root/tab/unmount releases local S and inspection.
-An open dialog retains focus and existing close-time fallback. Locale translates
-new controls/counts without changing S or business requests. The
+Within the same topology scope, successful status/content refresh keeps actual
+visible IDs still in new P plus the representative, prunes to its connected
+visible subset and preserves the viewport. It does not add a new baseline or
+newly arrived tasks. With the same representative, changed membership resets
+only visible S, inspection and pending viewport actions; a topology-keyed
+InitialViewport frames the new overview. TaskCanvas, ReactFlow and the fullscreen
+owner stay mounted, preserving fullscreen, active Details and their inert/scroll
+locks. A changed representative is an ordinary chain switch and replaces its
+row and graph. Reset computes a new baseline. Ordinary failure retains old
+content only in the same identity/project/auth scope; current401 and resource
+invalidation still unmount private content. Local S and inspection do not
+persist. Locale translates controls without adding business reads. The
 [progressive decision](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)
-partially supersedes UX1's full-render policy while retaining its complete data.
+separates topology state from presentation lifetime.
 
-Per-project browser preferences retain the selected tab,
-each tab's page scroll position and completed-item choice, and the chain's
-expanded root or explicit collapse across reloads and navigation. First visits
-to chains open the newest visible chain root; a missing or hidden saved root
-selects the current newest visible root. With no visible chain roots, the saved
-ID or explicit collapse is retained for later reveal. Loading, failed initial
-reads and empty graphs do not record an inferred collapsed preference. The
-existing `{ expandedRootId: string | null }` record and completed-chain boolean
-keep their formats; new choices use separate records. Storage failures display a
-notice while the current page remains usable. Both tabpanel wrappers keep stable
-IDs and use `hidden` for the inactive category; only the active contents mount.
-Page scroll restoration does not
-persist detail selection, graph coordinates, zoom or pan. Inactive panel contents unmount,
-so returning to a chain retains its root choice and initializes its canvas
-viewport again. The [preference decision](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)
-records storage ownership. Tab switching, filtering and scroll restoration make
-no API requests themselves and do not change the full project counters, graph
-index or API ordering. Independent periodic refresh continues while the page is
-visible. The node's explicit Details action opens a task detail dialog with
-dependency navigation, PR associations, stale-data detection and attachment
-management; node-body activation selects prerequisite inspection. Task metadata and graph interactions remain read-only; the detail dialog offers
-the dedicated proposed approval action. The PR section follows the description and
-displays every ordered title/URL pair, including duplicates. Lists longer than 100 entries use local
-100-row pages with a range/total announcement, Previous/Next controls and direct
-page selection. The complete ordered list stays in memory; changing pages makes
-no requests and imposes no storage or content limit. Replacing the task or changing the
-ordered property values returns to the first page; equivalent refresh results
-preserve the current page. Focus stays on current pagination
-controls or moves to the section heading when those controls disappear.
-Empty strings have a display-only marker;
-whitespace and long content remain selectable text and wrap within the dialog.
-Only absolute HTTP(S) addresses recognized by the browser URL parser become
-links, with a new tab and `noopener noreferrer`. Other strings remain plain
-text; values are never interpreted as HTML or fetched for metadata. Property
-changes are managed through the CLI or API.
+Per-project browser preferences retain the selected tab, each tab's page scroll
+position and completed-item choice, and the chain's original task witness or
+explicit collapse across reloads and navigation. The existing
+`{ expandedRootId: string | null }` shape remains: resolve a valid witness to its
+current ordinary component, then display that component's representative.
+A representative change must not overwrite a still-valid original witness.
+First visits open the newest visible chain; missing/hidden witnesses use the
+existing visible fallback. No visible chains, loading, failed initial reads or
+empty graphs do not invent explicit collapse. Null remains collapsed on reload.
+Storage failures leave the current page usable with a visible notice. Both
+stable tabpanel wrappers retain their IDs and hide inactive content; returning
+to a chain retains the witness while its canvas initializes again. Page scroll
+restoration does not persist details, coordinates, zoom or pan. Tab switching,
+filtering and scroll restoration make no API requests and do not alter the full
+project counters or prerequisite data. The [preference decision](../../.agents/notes/implemented/feature/2026-10-21-task-browsing-preferences.md)
+records the persistence rules.
 
 The detail decoder requires `properties.pullRequests` with string `url` and
 `title` fields. Missing or malformed structure produces the existing detail
@@ -448,9 +453,10 @@ Graph and detail reads require `externalDependsOn` alongside the complete
 requires the external set to be a subset; missing or null fields are protocol
 errors. Graph equality and detail freshness include classification, so a
 marker-only change invalidates the corresponding content without inventing a
-new timestamp. Clock-only samples still retain graph/index identity. Current
-chain membership, relationship labels and dashes continue to use the existing
-root/context model; the ordinary-component consumer is specified in the
+new timestamp. Clock-only samples still retain graph/index identity. Chain
+membership uses ordinary-edge weak components; relationship labels and dashed
+edges use the persisted marker independently of outside-component card context.
+The complete model is specified in the
 [external dependency design](../../docs/design/daynight-external-dependencies.md).
 
 An open project automatically requests its complete graph every five seconds
@@ -708,7 +714,7 @@ Run `pnpm web:dev` and open `/tests/mockups/browsing.html` on Vite's printed
 origin. The fixture mounts the production project page and CSS with mixed,
 fully completed and empty project graphs. It demonstrates the exact
 two project tabs, newest-first category lists, topology-based standalone classification,
-shared dependencies, direct standalone details and per-project tab, scroll,
+cross-chain prerequisites, direct standalone details and per-project tab, scroll,
 expanded/collapsed and independent completed-item preferences across reloads.
 It uses the final compact row CSS directly, including naturally growing long
 titles and complete status/progress fields. Each expanded graph provides the
@@ -1036,7 +1042,7 @@ scenario annotations validated in each target's report.
 |---|---|
 | W1 | `project-list`: more than 50 projects, cursor requests, unique cards and navigation to a later-page project |
 | W2 | `project-graph`, `deep-links`, `task-attachments`: project entry, direct HTML reload, browser history and standalone attachment opening/reload without source-tab state |
-| W3–W4 | `project-graph`, `project-view-tabs`, `refresh-staleness`, `failure-recovery`: exact statistics, topology-based tabs, distinct root progress, direct standalone details, independent completion filters, per-project tab/scroll/expansion restoration, dependency reclassification and consistent full refresh |
+| W3–W4 | `project-graph`, `project-view-tabs`, `refresh-staleness`, `failure-recovery`: exact statistics, ordinary-component tabs and member progress, direct standalone details, independent completion filters, per-project tab/scroll/expansion restoration, dependency reclassification and consistent full refresh |
 | W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`, `capacity-external`: complete projection data, bounded overview/induced edges, explicit expansion/reset, state markers and existing detail/viewport actions |
 | W8 | `detail-navigation`, `refresh-staleness`: complete centered-dialog content, ordered PR associations, relation navigation, automatic detail refresh with retained dialog/attachment state, property refresh and readiness differences without revising a dependent task |
 | W9 | `refresh-staleness`, `failure-recovery`, `deep-links`, `capacity-limits`: periodic status updates and automatic recovery, owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |

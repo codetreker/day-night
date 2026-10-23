@@ -1,13 +1,13 @@
-import { memo, useMemo, useRef } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import { useI18n } from '../../i18n/LocaleProvider';
 import type { GraphIndex } from './model';
 import { TaskGraph } from './TaskGraph';
 import '../../styles/graph.css';
 
-type RootListProps = {
+type ChainListProps = {
   readonly index: GraphIndex;
-  readonly rootIds: readonly string[];
-  readonly allRootIds: readonly string[];
+  readonly representativeIds: readonly string[];
+  readonly allRepresentativeIds: readonly string[];
   readonly expandedRootId: string | null;
   readonly onExpand: (id: string | null) => void;
   readonly onOpenTask: (id: string, trigger: HTMLElement) => void;
@@ -15,15 +15,15 @@ type RootListProps = {
   readonly onShowCompletedChange: (show: boolean) => void;
 };
 
-type RootRowProps = Pick<RootListProps, 'index' | 'onExpand' | 'onOpenTask'> & {
+type ChainRowProps = Pick<ChainListProps, 'index' | 'onExpand' | 'onOpenTask'> & {
   readonly rootId: string;
   readonly expanded: boolean;
 };
 
-const RootRow = memo(({ index, rootId, expanded, onExpand, onOpenTask }: RootRowProps) => {
+const ChainRow = memo(({ index, rootId, expanded, onExpand, onOpenTask }: ChainRowProps) => {
   const { messages: { graph: m, common } } = useI18n();
   const task = index.nodes.get(rootId)!;
-  const progress = index.rootProgress.get(rootId)!;
+  const progress = index.components.get(rootId)!.progress;
   return (
     <li className={`root-row${expanded ? ' expanded' : ''}`}>
       <button
@@ -54,29 +54,39 @@ const RootRow = memo(({ index, rootId, expanded, onExpand, onOpenTask }: RootRow
   );
 });
 
-export const RootList = ({ index, rootIds, allRootIds, expandedRootId, onExpand, onOpenTask, showCompleted, onShowCompletedChange }: RootListProps) => {
+export const ChainList = ({ index, representativeIds, allRepresentativeIds, expandedRootId, onExpand, onOpenTask, showCompleted, onShowCompletedChange }: ChainListProps) => {
   const { messages: { graph: m } } = useI18n();
   const checkbox = useRef<HTMLInputElement>(null);
-  const completedCount = useMemo(() => allRootIds.filter((id) => {
-    const progress = index.rootProgress.get(id)!;
+  const container = useRef<HTMLElement>(null);
+  const focusedControl = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (focusedControl.current === null || focusedControl.current.isConnected || document.activeElement !== document.body) return;
+    const representative = expandedRootId ?? representativeIds[0];
+    const heading = representative === undefined ? null : container.current!.querySelector<HTMLButtonElement>(`#task-root-${representative}`);
+    (heading ?? checkbox.current ?? container.current)!.focus({ preventScroll: true });
+  }, [index, expandedRootId, representativeIds]);
+  const completedCount = useMemo(() => allRepresentativeIds.filter((id) => {
+    const progress = index.components.get(id)!.progress;
     return progress.status === 'done';
-  }).length, [index, allRootIds]);
+  }).length, [index, allRepresentativeIds]);
   return (
-  <section aria-label={m.chainList}>
+  <section aria-label={m.chainList} ref={container} tabIndex={-1} onFocusCapture={(event) => {
+    if (event.currentTarget.contains(event.target)) focusedControl.current = event.target;
+  }}>
     <div className="task-view-toolbar">
-      {allRootIds.length > 0 && <label className="completed-chain-control"><input ref={checkbox} type="checkbox" checked={showCompleted} onChange={(event) => { onShowCompletedChange(event.currentTarget.checked); }} />{m.showCompletedCount({ count: completedCount })}</label>}
-      <span className="task-view-summary" aria-label={m.chainSummaryLabel({ shown: rootIds.length, total: allRootIds.length })}>{m.chainSummary({ shown: rootIds.length, total: allRootIds.length })}</span>
+      {allRepresentativeIds.length > 0 && <label className="completed-chain-control"><input ref={checkbox} type="checkbox" checked={showCompleted} onChange={(event) => { onShowCompletedChange(event.currentTarget.checked); }} />{m.showCompletedCount({ count: completedCount })}</label>}
+      <span className="task-view-summary" aria-label={m.chainSummaryLabel({ shown: representativeIds.length, total: allRepresentativeIds.length })}>{m.chainSummary({ shown: representativeIds.length, total: allRepresentativeIds.length })}</span>
     </div>
     <p className="graph-note">{m.chainNote}</p>
-    {allRootIds.length === 0 ? (
+    {allRepresentativeIds.length === 0 ? (
       <div className="state-box"><h3>{m.emptyTitle}</h3><p>{m.emptyDescription}</p></div>
-    ) : rootIds.length === 0 ? (
+    ) : representativeIds.length === 0 ? (
       <div className="state-box completed-chains-empty"><h3>{m.completedTitle}</h3><p>{m.completedDescription({ count: completedCount })}</p>
         <button className="button" type="button" onClick={() => { checkbox.current!.focus(); onShowCompletedChange(true); }}>{m.showCompleted}</button>
       </div>
     ) : <ul className="root-list">
-      {rootIds.map((rootId) => (
-        <RootRow
+      {representativeIds.map((rootId) => (
+        <ChainRow
           key={rootId}
           index={index}
           rootId={rootId}

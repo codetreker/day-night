@@ -6,8 +6,9 @@ import { parseApiJson, stringifyApiJson } from '../../src/api/json';
 import { parseTaskDetail, parseTaskGraph, project as parseProject } from '../../src/api/parse';
 import { decodeProjectJson, decodeTaskGraphJson } from '../../src/api/project-json';
 import type { TaskDetail } from '../../src/api/types';
-import { createProject, createApprovedTask, claimTask, completeApprovedTask, completeTask, expect, seedClaimedTaskStart, test } from './fixtures';
+import { createProject, createApprovedTask, claimTask, completeApprovedTask, completeTask, expect, seedClaimedTaskStart, seedExternalDependencies, test } from './fixtures';
 import type { AuthenticatedAPI } from './authentication';
+import { expectedChainMembers } from './visible-topology';
 
 const card = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] .task-node`);
 const duration = (scope: Locator): Locator => scope.locator('time.task-duration');
@@ -39,12 +40,12 @@ const cardLayout = async (scope: Locator): Promise<void> => {
     const bounds = outer.getBoundingClientRect();
     const timing = element.querySelector('time.task-duration')!.getBoundingClientRect();
     const details = element.querySelector('.task-node-details')!.getBoundingClientRect();
-    const decorations = [...element.querySelectorAll('.task-stuck-label, .task-shared-label')];
+    const decorations = [...element.querySelectorAll('.task-stuck-label, .task-agent-permission')];
     return outer.offsetWidth === 220 && [96, 136].includes(outer.offsetHeight)
       && timing.left >= bounds.left && timing.right <= bounds.right && timing.top >= bounds.top && timing.bottom <= bounds.bottom
       && (timing.right <= details.left || timing.bottom <= details.top || timing.top >= details.bottom)
       && decorations.every((item) => { const rect = item.getBoundingClientRect(); return rect.left >= bounds.left && rect.right <= bounds.right && item.scrollWidth <= item.clientWidth; });
-  }), 'Timing, shared/warning labels and Details preserve fixed card geometry without overlap').toBe(true);
+  }), 'Timing, warning/automation labels and Details preserve fixed card geometry without overlap').toBe(true);
 };
 const rowLayout = async (scope: Locator): Promise<void> => {
   expect(await scope.evaluate((element) => {
@@ -67,7 +68,7 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     tasks: [] as { label: string; value: TaskDetail }[], graphReads: [] as string[],
     progress: [] as string[], failures: [] as { phase: string; name: string; message: string }[],
     timing: {} as Record<string, unknown>, layouts: [] as { locale: string; width: number; kind: string }[],
-    controlledConditions: ['Browser Date.now is fixed in 2055 while timers/performance.now and PostgreSQL time advance normally.', 'Only the owned claimed task started_at is seeded; subsequent graph GET deliveries are held during the actual one-second clock threshold crossing.'],
+    controlledConditions: ['Browser Date.now is fixed in 2055 while timers/performance.now and PostgreSQL time advance normally.', 'Only owned claimed-task start timestamps are seeded; subsequent graph GET deliveries are held during the actual one-second clock threshold crossing.', 'The blocked merge edge to the running prerequisite is explicitly external in the owned database; all dependencies and task timing remain intact.'],
   };
   const success = async (argv: readonly string[]): Promise<string> => {
     const result = await cli.run(argv); evidence.commands.push({ argv, ...result }); expect(result.exitCode).toBe(0); expect(result.stderr).toBe(''); return result.stdout;
@@ -104,13 +105,19 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
   let delivered = 0;
   try {
     const project = await createProject(api, { name: `Execution time ${randomUUID()}` }); evidence.projectId = project.id;
-    const roots = await Promise.all(['A', 'B'].map((title) => createApprovedTask(api, project.id, { title: `Completed prerequisite ${title}` })));
+    const roots = [
+      await createApprovedTask(api, project.id, { title: 'Completed prerequisite A' }),
+      await createApprovedTask(api, project.id, { title: 'Completed prerequisite B' }),
+    ];
     for (const root of roots) await completeApprovedTask(api, project.id, root);
     const external = await claimTask(api, project.id, await createApprovedTask(api, project.id, { title: 'Overdue external prerequisite' }));
-    await createApprovedTask(api, project.id, { title: 'Blocked merge exposes the external running prerequisite', dependsOn: [roots[1]!.id, external.id] });
+    const blockedMerge = await createApprovedTask(api, project.id, { title: 'Blocked merge exposes the external running prerequisite', dependsOn: [roots[1]!.id, external.id] });
+    await seedExternalDependencies(api, project.id, blockedMerge, [external.id]);
+    const classifiedMerge = await record(project.id, blockedMerge.id, 'blocked-merge-external-classification');
+    expect(classifiedMerge.externalDependsOn).toEqual([external.id]);
     const crossing = await claimTask(api, project.id, await createApprovedTask(api, project.id, { title: 'Current attempt crosses the saved threshold', dependsOn: roots.map(({ id }) => id) }));
     await createApprovedTask(api, project.id, { title: 'Keeps completed timing visible in the active chain', dependsOn: [crossing.id] });
-    const shared = await claimTask(api, project.id, await createApprovedTask(api, project.id, { title: 'Long shared multi-day execution title '.repeat(7), dependsOn: roots.map(({ id }) => id) }));
+    const multiParent = await claimTask(api, project.id, await createApprovedTask(api, project.id, { title: 'Long multi-parent multi-day execution title '.repeat(7), dependsOn: roots.map(({ id }) => id) }));
     const brief = await createApprovedTask(api, project.id, { title: 'Known sub-minute completed task', dependsOn: [roots[1]!.id] });
     await completeApprovedTask(api, project.id, brief);
     const standalone = await claimTask(api, project.id, await createApprovedTask(api, project.id, { title: 'Long standalone multi-day execution '.repeat(6) }));
@@ -118,7 +125,7 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     const briefRow = await createApprovedTask(api, project.id, { title: 'Known sub-minute standalone completion' });
     await completeApprovedTask(api, project.id, briefRow);
     await seedClaimedTaskStart(project.id, external.id, 2 * 86_400_000);
-    await seedClaimedTaskStart(project.id, shared.id, 3 * 86_400_000 + 17 * 60_000);
+    await seedClaimedTaskStart(project.id, multiParent.id, 3 * 86_400_000 + 17 * 60_000);
     await seedClaimedTaskStart(project.id, standalone.id, 4 * 86_400_000 + 25 * 60_000);
     const legacyBefore = await record(project.id, legacy.id, 'legacy-before-seed');
     await seedClaimedTaskStart(project.id, legacy.id, null);
@@ -137,12 +144,12 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     page.on('response', (response) => { if (new URL(response.url()).pathname === graphPath) delivered += 1; });
     await page.goto(`/projects/${project.id}`);
     const openTimingChain = async () => {
-      const toggle = page.locator(`#task-root-${roots[1]!.id}`);
+      const toggle = page.locator(`#task-root-${roots[0]!.id}`);
       await expect(toggle).toBeVisible();
       if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
       await expect(toggle).toHaveAttribute('aria-expanded', 'true');
       await expect(page.locator('.task-graph-canvas')).toHaveCount(1);
-      await expect(page.locator(`#task-graph-${roots[1]!.id}`)).toBeVisible();
+      await expect(page.locator(`#task-graph-${roots[0]!.id}`)).toBeVisible();
     };
     await openTimingChain();
     const claimed = await record(project.id, crossing.id, 'crossing-before-seed');
@@ -179,6 +186,12 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     expect(cliTask).toEqual(running);
     const rawGraph = await success(['task', 'graph', '--project', project.id, '--json']); evidence.graphReads.push(rawGraph);
     const graph = parseTaskGraph(await decodeTaskGraphJson(new Response(rawGraph)), project.id);
+    const members = expectedChainMembers(graph.tasks, roots[0]!.id);
+    expect(members).toHaveLength(7);
+    expect(members).toEqual(expect.arrayContaining([roots[0]!.id, roots[1]!.id, crossing.id, multiParent.id, blockedMerge.id, brief.id]));
+    expect(members).not.toContain(external.id);
+    evidence.timing.ordinaryComponentMembers = members;
+    evidence.timing.externalContextTask = external.id;
     expect(graph.tasks.find(({ id }) => id === crossing.id)!.startedAt).toBe(running.startedAt);
     expect(Date.parse(graph.observedAt)).toBeLessThan(new Date('2055-01-01T00:00:00Z').getTime());
 
@@ -212,13 +225,17 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
       await page.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption(locale);
       await page.getByRole('tab', { name: locale === 'en' ? 'Task chains' : '任务链', exact: true }).click();
       await openTimingChain();
-      await expect(card(page, shared.id).locator('.task-shared-label')).toBeVisible();
-      await expect(card(page, shared.id).locator('.task-stuck-label')).toHaveText(locale === 'en' ? 'Possibly stuck' : '可能卡住了');
+      await expect(page.locator('.root-toggle')).toHaveCount(1);
+      await expect(card(page, multiParent.id)).toHaveCount(1);
+      await expect(card(page, roots[0]!.id)).toHaveCount(1);
+      await expect(card(page, roots[1]!.id)).toHaveCount(1);
+      await expect(page.locator('.task-node-external')).toHaveCount(1);
+      await expect(card(page, multiParent.id).locator('.task-stuck-label')).toHaveText(locale === 'en' ? 'Possibly stuck' : '可能卡住了');
       await expect(duration(card(page, brief.id))).toContainText(locale === 'en' ? '< 1 min' : '不足 1 分钟');
       expect(await page.locator('.root-toggle time.task-duration').count(), 'Chain summaries have no individual task duration').toBe(0);
       for (const width of [390, 320]) {
         await page.setViewportSize({ width, height: 1000 });
-        await cardLayout(card(page, shared.id)); await cardLayout(ticking); await cardLayout(card(page, brief.id)); await cardLayout(card(page, external.id));
+        await cardLayout(card(page, multiParent.id)); await cardLayout(ticking); await cardLayout(card(page, brief.id)); await cardLayout(card(page, external.id));
         await expect(card(page, external.id)).toHaveClass(/task-node-external/);
         await expect(card(page, external.id)).toHaveClass(/task-node-stuck/);
         expect(await card(page, external.id).evaluate((element) => getComputedStyle(element).borderTopStyle)).toBe('dashed');

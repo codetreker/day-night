@@ -1,20 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import type { RootProjection } from '../src/features/task-graph/model';
+import type { ChainProjection } from '../src/features/task-graph/model';
 import { layoutGraph, TASK_NODE_COMPACT_HEIGHT, TASK_NODE_EXPANDABLE_HEIGHT, TASK_NODE_WIDTH, type CanvasLayout } from '../src/features/task-graph/layout';
 
 const projection = (
   mainIds: readonly string[],
   edges: readonly (readonly [string, string])[],
   externalIds: readonly string[] = [],
-): RootProjection => ({
+  externalEdges: readonly (readonly [string, string])[] = [],
+): ChainProjection => ({
   rootId: mainIds[0] ?? '',
   mainIds: new Set(mainIds),
   externalIds: new Set(externalIds),
-  edges: edges.map(([source, target]) => ({ source, target, external: externalIds.includes(source) })),
+  edges: edges.map(([source, target]) => ({ source, target, external: externalEdges.some(([from, to]) => from === source && to === target) })),
   completed: 0,
 });
 
-const verifyGeometry = (actual: CanvasLayout, expected: RootProjection) => {
+const verifyGeometry = (actual: CanvasLayout, expected: ChainProjection) => {
   const expectedIds = [...expected.mainIds, ...expected.externalIds].sort();
   expect(actual.nodes.map((node) => node.id)).toEqual(expectedIds);
   expect(new Set(actual.nodes.map((node) => node.id)).size).toBe(expectedIds.length);
@@ -112,9 +113,9 @@ describe('horizontal task graph layout', () => {
     verifyGeometry(layoutGraph(input), input);
   });
 
-  it('retains shared downstream identities and external context in independently expanded roots', () => {
-    const first = projection(['A', 'C', 'D'], [['A', 'C'], ['B', 'C'], ['C', 'D']], ['B']);
-    const second = projection(['B', 'C', 'D'], [['A', 'C'], ['B', 'C'], ['C', 'D']], ['A']);
+  it('retains node identities and context roles independently from explicit edge styles', () => {
+    const first = projection(['A', 'C', 'D'], [['A', 'C'], ['B', 'C'], ['C', 'D']], ['B'], [['B', 'C']]);
+    const second = projection(['B', 'C', 'D'], [['A', 'C'], ['B', 'C'], ['C', 'D']], ['A'], [['A', 'C']]);
     const a = layoutGraph(first);
     const b = layoutGraph(second);
     verifyGeometry(a, first);

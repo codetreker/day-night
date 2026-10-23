@@ -20,7 +20,7 @@ vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, ro
 const project = 'project-one';
 const otherProject = 'project-two';
 const timestamp = '2026-10-20T12:00:00.123456Z';
-const seed = (id: string, status: GraphTask['status'] = 'todo', dependsOn: string[] = []): GraphTask => ({ allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null,
+const seed = (id: string, status: GraphTask['status'] = 'todo', dependsOn: string[] = [], externalDependsOn: string[] = []): GraphTask => ({ allowAgents: false, externalDependsOn, startedAt: null, completedAt: null,
   id, titlePreview: `任务 ${id}`, titleTruncated: false, status, dependsOn, blockedBy: [], ready: false,
   createdAt: timestamp, updatedAt: timestamp,
 });
@@ -79,9 +79,9 @@ describe('project task views', () => {
     const stats = screen.getByRole('region', { name: '项目任务统计' });
     expect(stats.querySelectorAll('.stat')).toHaveLength(7);
     expect(stats.querySelector('.stat.proposed')).toHaveTextContent('待审批4等待批准');
-    expect(document.getElementById('task-root-A')?.querySelector('.root-status')).toHaveTextContent('待审批');
-    expect(document.getElementById('task-root-A')?.querySelector('.root-progress-label')).toHaveTextContent('0/2 已完成');
-    expect(document.getElementById('task-root-C')?.querySelector('.root-status')).toHaveTextContent('待处理');
+    expect(document.getElementById('task-root-A')?.querySelector('.root-status')).toHaveTextContent('待处理');
+    expect(document.getElementById('task-root-A')?.querySelector('.root-progress-label')).toHaveTextContent('0/3 已完成');
+    expect(document.getElementById('task-root-C')).toBeNull();
     expect(document.getElementById('task-root-E')?.querySelector('.root-status')).toHaveTextContent('进行中');
     fireEvent.click(tab('standalone'));
     expect(row('D')).toHaveTextContent('待审批');
@@ -112,7 +112,22 @@ describe('project task views', () => {
     expect(graphRequest).toHaveBeenCalledTimes(1);
   });
 
-  it('counts unfinished tasks once across shared chains and keeps both counts independent of visible rows', async () => {
+  it('keeps an externally blocked singleton outside ordinary chains', async () => {
+    graphRequest.mockResolvedValue(snapshot([
+      seed('A'), seed('B', 'todo', ['A'], ['A']),
+    ]));
+    mount(); await screen.findByRole('tab', { name: '任务链' });
+    expect(screen.getByRole('heading', { name: '暂无任务链' })).toBeVisible();
+    expectUnfinishedCounts(0, 2);
+    fireEvent.click(tab('standalone'));
+    expect(row('A')).toBeVisible(); expect(row('B')).toBeVisible();
+    expect(row('A').querySelector('.task-ready')).toHaveTextContent('可开始');
+    expect(row('B').querySelector('.graph-blocked-badge')).toHaveTextContent('被阻塞');
+    expect(row('B').querySelector('.task-ready')).toBeNull();
+    expect(row('B').querySelector('.root-status')).toHaveTextContent('待处理');
+  });
+
+  it('counts unfinished tasks once across ordinary components and keeps both counts independent of visible rows', async () => {
     graphRequest.mockResolvedValue(snapshot([
       seed('A', 'done'), seed('B', 'done'), seed('C', 'in_progress', ['A', 'B']), seed('D', 'todo', ['C']),
       seed('E'), seed('F', 'todo', ['E']), seed('G'), seed('H', 'in_progress'), seed('I', 'done'),
@@ -121,12 +136,12 @@ describe('project task views', () => {
     mount(); await screen.findByRole('tab', { name: '任务链' });
     expectUnfinishedCounts(4, 2);
     expect(tab('chains').querySelector('.graph-count-pill')).toHaveAttribute('title', '未完成任务数');
-    expect(document.querySelectorAll('.root-toggle')).toHaveLength(3);
+    expect(document.querySelectorAll('.root-toggle')).toHaveLength(2);
     expect(document.getElementById('task-root-A')).toBeVisible();
-    expect(document.getElementById('task-root-B')).toBeVisible();
+    expect(document.getElementById('task-root-B')).toBeNull();
     expect(document.getElementById('task-root-J')).toBeNull();
     fireEvent.click(screen.getByRole('checkbox', { name: '显示已完成任务链（1）' }));
-    expect(document.querySelectorAll('.root-toggle')).toHaveLength(4);
+    expect(document.querySelectorAll('.root-toggle')).toHaveLength(3);
     expectUnfinishedCounts(4, 2);
     fireEvent.click(tab('standalone'));
     expect([...document.querySelectorAll('.standalone-row')].map((item) => item.id)).toEqual(['standalone-task-H', 'standalone-task-G']);

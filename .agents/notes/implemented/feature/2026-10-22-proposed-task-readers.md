@@ -40,11 +40,11 @@ Web statistics, standalone rows, root badges, graph nodes and details use the
 purple status presentation with the current catalog label, Proposed or 待审批.
 Both catalogs use the [bilingual interface mechanism](2026-10-22-web-bilingual-interface.md);
 changing language preserves the existing task, graph and detail identities.
-Chain state derives from distinct root/main tasks:
+Chain state derives from distinct ordinary-component members:
 all done means done; otherwise any done or in-progress means in-progress;
 otherwise any todo means todo; otherwise all are proposed. External prerequisite
 context never changes chain counts or state. Proposed tasks contribute to the
-unfinished tab counts once, including shared successors, and completion filters
+unfinished tab counts once, with unique component membership, and completion filters
 hide only completed items. The [chain-status decision](../bug-fix/2026-10-22-task-chain-status.md)
 and [tab-count decision](2026-10-22-unfinished-task-tab-counts.md) retain their
 membership and counting rationale.
