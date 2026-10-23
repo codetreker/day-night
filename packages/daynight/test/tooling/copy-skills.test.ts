@@ -104,6 +104,38 @@ describe("packaged skill resource copy", () => {
     for (const bundle of bundles) expect(existsSync(f.destination(bundle))).toBe(false);
   });
 
+  it("publishes dedicated lifecycle guidance without obsolete generic status writes", () => {
+    const f = fixture();
+    const copied = f.run();
+    expect(copied.status, copied.stderr).toBe(0);
+    const destination = f.destination(bundles[1]);
+    const documents = files(destination).filter((name) => name.endsWith(".md"))
+      .map((name) => readFileSync(path.join(destination, name), "utf8"));
+    const guidance = documents.join("\n");
+    for (const command of ["task approve", "task claim", "task complete"]) expect(guidance).toContain(command);
+    expect(guidance).toContain("--if-version");
+    expect(guidance).not.toMatch(/task update[^\n]*--status/);
+    expect(guidance).not.toMatch(/(?:create|register)[^\n]*in `todo`/i);
+    expect(guidance).not.toContain("then set `in_progress`");
+    expect(guidance).not.toContain("set `done`");
+    const create = readFileSync(path.join(destination, "references/create-task.md"), "utf8");
+    const run = readFileSync(path.join(destination, "references/run-task.md"), "utf8");
+    const autopilot = readFileSync(path.join(destination, "references/autopilot.md"), "utf8");
+    expect(create).toContain("Create new tasks in `proposed`");
+    expect(create).toMatch(/approval\s+is pending/);
+    expect(run).toContain("keep execution pending approval");
+    expect(run).toContain("every necessary delivery PR");
+    expect(run).toContain("is merged");
+    expect(autopilot).toContain("never auto-approves proposed");
+    const goal = readFileSync(path.join(destination, "references/goal.md"), "utf8");
+    expect(goal).toContain("two starting tasks");
+    expect(goal).toMatch(/Each task starts\s+in `proposed`/);
+    expect(goal).toContain("stage briefs");
+    expect(goal).toContain("Completion satisfies dependencies but never approves the next stage");
+    expect(goal).toContain("actual registered delivery tasks");
+    expect(goal).not.toMatch(/starts\s+in `todo`/);
+  });
+
   it("ships valid skill metadata and resolves every local resource link inside each copied bundle", () => {
     const f = fixture();
     const copied = f.run();
@@ -120,7 +152,17 @@ describe("packaged skill resource copy", () => {
       for (const relative of files(destination).filter((name) => name.endsWith(".md"))) {
         const document = path.join(destination, relative);
         const content = readFileSync(document, "utf8");
-        for (const match of content.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
+        let fence: { marker: string; length: number } | undefined;
+        const prose = content.split(/\r?\n/).filter((line) => {
+          const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+          if (marker !== undefined) {
+            if (fence === undefined) fence = { marker: marker[0]!, length: marker.length };
+            else if (marker[0] === fence.marker && marker.length >= fence.length && line.trim() === marker) fence = undefined;
+            return false;
+          }
+          return fence === undefined;
+        }).join("\n");
+        for (const match of prose.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
           const target = match[1]!;
           if (target.startsWith("#") || /^[a-z][a-z0-9+.-]*:/i.test(target)) continue;
           const resource = path.resolve(path.dirname(document), target.split("#")[0]!);

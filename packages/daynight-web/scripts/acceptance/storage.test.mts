@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { beforeEach, test, type TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { storagePlatform } from './storage-platform.mts';
-import { cleanupStorage, prepareStorage, StoragePreparationError, type StorageReceipt } from './storage.mts';
+import { cleanupStorage, prepareStorage, verifyStorage, StoragePreparationError, type StorageReceipt } from './storage.mts';
 
 const temporaryRoot = fileURLToPath(new URL('../../../../.tmp/', import.meta.url));
 const owned = new Map<string, StorageReceipt>();
@@ -264,5 +264,35 @@ test('APFS cleanup spends its bounded busy retry budget while retaining recovery
     assert.ok(imageState!.timeouts.every((timeout, index, all) => timeout > 0 && timeout <= 30_000
       && (index === 0 || timeout < all[index - 1]!)));
     assert.equal(await exists(receipt.imageFile!), true);
+  } finally { context.mock.restoreAll(); await dispose(parent); }
+});
+
+test('ready APFS verification requires the recorded mounted image without changing resources', async (context) => {
+  const parent = await fixture();
+  try {
+    const receipt = await simulatedImage(context, parent, () => { throw new Error('Read verification must not detach storage.'); });
+    await mkdir(receipt.root, { recursive: true });
+    await writeFile(join(receipt.directory, 'storage-receipt.json'), JSON.stringify(receipt));
+    const original = storagePlatform.execute;
+    let attached = true;
+    let mounted = true;
+    let changedDevice = false;
+    context.mock.method(storagePlatform, 'execute', async (command: string, args: string[], timeout: number, input?: string) => {
+      if (command === '/usr/bin/hdiutil' && args[0] === 'info') return attached ? 'attached' : 'absent';
+      if (command === '/sbin/mount') return mounted ? `/dev/disk404s1 on ${receipt.mountDirectory} (apfs, local)` : '/dev/disk0s1 on / (apfs, local)';
+      if (command === '/usr/bin/plutil' && args[1] === 'images.0.system-entities') return JSON.stringify([
+        { 'content-hint': 'GUID_partition_scheme', 'dev-entry': changedDevice ? '/dev/disk405' : '/dev/disk404' },
+        { 'content-hint': '7C3457EF-0000-11AA-AA11-00306543ECAC', 'dev-entry': '/dev/disk404s1', 'mount-point': receipt.mountDirectory },
+      ]);
+      return await original(command, args, timeout, input);
+    });
+    await verifyStorage(receipt);
+    attached = false;
+    await assert.rejects(verifyStorage(receipt), /not attached/);
+    attached = true; mounted = false;
+    await assert.rejects(verifyStorage(receipt), /mount ownership/);
+    mounted = true; changedDevice = true;
+    await assert.rejects(verifyStorage(receipt), /not attached/);
+    assert.equal(await exists(receipt.root), true);
   } finally { context.mock.restoreAll(); await dispose(parent); }
 });

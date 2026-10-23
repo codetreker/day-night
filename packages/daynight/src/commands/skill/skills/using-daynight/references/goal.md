@@ -19,6 +19,11 @@ breakdown within that Goal. It covers no unrelated tasks and grants no execution
 publication, deployment, external communication, merge, or mainline push
 permission. Existing explicit authorization continues to apply within its scope.
 Implementation or autopilot permission alone does not grant creation permission.
+Goal-creation permission does not authorize approval. Approve only tasks or a
+Goal-task scope explicitly approved by the user, using each reviewed task's exact
+version; CLI and Web approval are available. Goal creation, requirements/prototype
+completion, design completion and autopilot never imply that instruction. Approval
+itself grants no execution or delivery permission.
 
 During registration, create or reuse both starting tasks:
 
@@ -33,14 +38,25 @@ establish stable identity. Preserve confirmed IDs and inspect full content when
 reusing an existing chain.
 
 Set the design task's `dependsOn` to the Goal description task. Each task starts
-in `todo` with its own self-contained description and primary Markdown containing
-Solution and Acceptance criteria. State unanswered questions honestly. Complete
-requirements, prototypes, architecture, and breakdown are produced by their
+in `proposed` with its own self-contained Markdown description and primary Markdown
+containing Solution and Acceptance criteria. State unanswered questions honestly.
+Complete requirements, prototypes, architecture, and breakdown are produced by their
 respective stages; they are not prerequisites for registering the chain or
 starting the stage that produces them. Confirm both tasks, stage briefs,
 references, and dependency through real reads, then return from `create-task`.
+Registration completeness leaves approval pending unless the user separately
+authorized approval for those tasks. Metadata and attachment writes do not approve.
 
 ## Execute the appropriate stage
+
+Every stage uses the same explicit task lifecycle. Proposed work waits for the
+user's scoped approval; an authorized `task approve` moves it to todo even with
+unfinished prerequisites. Begin only from approved ready todo with complete
+stage inputs and execution authorization: use `task claim` with the exact version
+observed for that decision and confirm in_progress. Resume existing in-progress
+work after checking its actual checkpoint. After the stage acceptance and every
+required authorized PR merge, reread and use `task complete` with the observed
+version. Completion satisfies dependencies but never approves the next stage.
 
 | Stage | Required inputs to start | Outputs and completion |
 |---|---|---|
@@ -69,8 +85,10 @@ exercise the result when verifying this stage.
 Confirm the full requirements are clear, the applicable prototype is usable,
 and this stage's acceptance and repository delivery rules are satisfied. If
 repository rules require a PR for these artifacts, use the existing PR completion
-rules. Otherwise use the stated stage acceptance. Set only this task to `done`
-after verification; this unlocks design and does not establish whole-Goal delivery.
+rules. Otherwise use the stated stage acceptance. Complete only this in-progress
+task through `task complete` with its observed version after verification. This
+satisfies design's dependency; design still needs its own approval and claim, and
+whole-Goal delivery remains unverified.
 
 ### Architecture design and actual task breakdown
 
@@ -89,7 +107,9 @@ Use `dependsOn` for actual prerequisites. Every delivery root with no other
 implementation prerequisite depends directly on the design task; all delivery
 paths must therefore pass through design completion. Keep delivery tasks blocked
 while design is unfinished. This stage registers and verifies them; it does not
-execute them.
+execute them. New successors are proposed; approval requires a separate explicit
+user instruction covering them, even when Goal creation already permits their
+registration. Approved successors still wait for completed design prerequisites.
 
 Upload each successor's own primary Markdown and needed resources, referencing
 shared Goal and design inputs at their verified source. The design task owns its
@@ -108,9 +128,10 @@ and its blocking dependency while waiting; it grants no merge authority.
 
 ## Preserve ownership and recover partial registration
 
-Every stage and delivery task needs its own concrete description and detailed
-primary Markdown. Keep shared requirements on the Goal description task and
-shared architecture and breakdown on the design task. Later tasks reference
+Every stage and delivery task needs its own self-contained Markdown description
+and detailed primary Markdown. Follow create-task's Markdown and verified-resource
+rules without claiming unfinished stage outputs are already available. Keep shared
+requirements on the Goal description task and shared architecture and breakdown on the design task. Later tasks reference
 verified source task IDs and attachment paths, read through the installed CLI,
 or verified immutable repository references. Do not distribute a duplicate whole
 packet to all tasks. Only copy a snapshot when the consuming task needs it,
@@ -125,11 +146,12 @@ does not prove failure. If identity cannot be established uniquely, preserve the
 specific error and request the information needed to reconcile it; do not create
 another chain.
 
-Apply the handbook's exact-version and complete-field replacement rules to task
-updates. Attachments are independent of task versions, status, and timestamps;
+Apply the handbook's exact-version rules to metadata updates, approval, claim
+and completion, and preserve complete-field replacement semantics for updates. Attachments are independent of task versions, status, and timestamps;
 verify actual file contents and metadata separately. Do not unlock delivery by
 marking incomplete registration or unfinished design complete. Readiness and
-`in_progress` provide no ownership lock.
+`in_progress` provide no ownership lock; claim is a versioned transition, not an
+assignee lease. Generic updates cannot write status or bypass stages.
 
 ## Advance and accept the whole Goal
 

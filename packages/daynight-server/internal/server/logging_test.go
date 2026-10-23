@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
@@ -152,6 +153,7 @@ func TestErrorKind(t *testing.T) {
 		{context.DeadlineExceeded, "deadline"},
 		{&pgconn.PgError{Message: "secret", Code: "42501"}, "database"},
 		{&net.OpError{Op: "dial", Net: "tcp", Err: errors.New("secret")}, "network"},
+		{fmt.Errorf("wrapped private address: %w", &net.OpError{Op: "listen", Net: "tcp", Err: fmt.Errorf("bind private address: %w", syscall.EADDRINUSE)}), "address_in_use"},
 		{errors.New("secret"), "internal"},
 	} {
 		if kind := ErrorKind(item.err); kind != item.kind {
@@ -174,5 +176,19 @@ func TestSafeFailureDiagnostics(t *testing.T) {
 		if !strings.Contains(output.String(), item.diagnostic) || strings.Contains(output.String(), "password-secret") {
 			t.Fatalf("unsafe or opaque diagnostic: %s", &output)
 		}
+	}
+}
+
+func TestListenerConflictDiagnosticsPreserveCategoryAndHideAddress(t *testing.T) {
+	cause := &net.OpError{Op: "listen", Net: "tcp", Err: fmt.Errorf("private-address-secret: %w", syscall.EADDRINUSE)}
+	failure := &runtimeError{phase: "listen", cause: cause}
+	var output bytes.Buffer
+	LogFailure(slog.New(slog.NewJSONHandler(&output, nil)), context.Background(), "server", "startup", failure)
+	var entry map[string]any
+	if err := json.Unmarshal(output.Bytes(), &entry); err != nil {
+		t.Fatal(err)
+	}
+	if entry["cause"] != "address_in_use" || entry["phase"] != "startup" || entry["diagnostic"] != "HTTP listen failed" || strings.Contains(output.String(), "private-address-secret") || strings.Contains(output.String(), syscall.EADDRINUSE.Error()) {
+		t.Fatalf("listener conflict lost phase/category or exposed raw error: %s", &output)
 	}
 }

@@ -21,6 +21,7 @@ cleanup() {
     project="$(< "$identity")"
     [[ $project =~ ^daynight-dev-ci-[0-9]{14}-[0-9]+-[0-9]{5}$ ]] || continue
     rm -rf -- "$repository_dir/.tmp/dev-ci/${project#daynight-dev-ci-}"
+    rm -rf -- "$repository_dir/.tmp/dev-ci-private/${project#daynight-dev-ci-}"
   done
   rm -rf -- "$fixture_root"
 }
@@ -29,6 +30,34 @@ export PATH="$test_dir:$PATH"
 export COMPOSE_PROJECT_NAME=daynight-localhost
 export COMPOSE_FILE=/not/the/dev-ci/file
 export DAYNIGHT_PORT=8787
+export DAYNIGHT_UNIAUTH_CALLBACK_URL=https://unrelated.example/auth/callback
+export DAYNIGHT_DEV_CI_FIXTURE_PORT=1
+export DAYNIGHT_UNIAUTH_FIXTURE_BINARY="$fixture_root/uniauth-fixture-linux-amd64"
+export DEV_CI_TEST_NODE="$(command -v node)"
+node() {
+  if [[ ${1:-} == */packages/daynight-server/scripts/prepare-uniauth-fixture.mts ]]; then
+    [[ $# -eq 2 && $2 =~ ^--target=linux/(amd64|arm64)$ ]] || return 83
+    local architecture=${BASH_REMATCH[1]} binary
+    binary="$FAKE_DOCKER_STATE/fixture-linux-$architecture"
+    printf 'prepare-target %s\n' "$architecture" >> "$FAKE_DOCKER_STATE/calls"
+    "$DEV_CI_TEST_NODE" - "$binary" "$architecture" <<'JS'
+const fs = require('node:fs');
+const header = Buffer.alloc(20);
+header.set([0x7f, 0x45, 0x4c, 0x46, 2, 1]);
+header.writeUInt16LE(process.argv[3] === 'amd64' ? 62 : 183, 18);
+fs.writeFileSync(process.argv[2], header, { mode: 0o700 });
+JS
+    printf '%s\n' "$binary"
+  else "$DEV_CI_TEST_NODE" "$@"; fi
+}
+export -f node
+node - "$DAYNIGHT_UNIAUTH_FIXTURE_BINARY" <<'JS'
+const fs = require('node:fs');
+const header = Buffer.alloc(20);
+header.set([0x7f, 0x45, 0x4c, 0x46, 2, 1]);
+header.writeUInt16LE(62, 18);
+fs.writeFileSync(process.argv[2], header, { mode: 0o700 });
+JS
 
 assert_contains() {
   local path=$1 expected=$2 contents
@@ -62,6 +91,7 @@ run_case() {
   manifest="$(manifest_for "$FAKE_DOCKER_STATE")"
   assert_contains "$manifest" '"schemaVersion":1'
   assert_contains "$manifest" '"phase":"finished"'
+  [[ ! -e ${manifest%manifest.json}.bootstrap.pipe ]]
   if [[ $scenario == attachment-volume-left ]]; then
     assert_contains "$manifest" '"cleanupResult":"failed"'
     [[ -f $FAKE_DOCKER_STATE/attachment-volume && -f $FAKE_DOCKER_STATE/image ]]
@@ -73,6 +103,16 @@ run_case() {
     [[ ! -f $FAKE_DOCKER_STATE/resources && ! -f $FAKE_DOCKER_STATE/image ]]
   fi
   [[ $(< "$FAKE_DOCKER_STATE/calls") != *daynight-localhost* ]]
+  [[ $(< "$FAKE_DOCKER_STATE/output") != *private-fixture-secret* ]]
+  [[ $(< "$manifest") != *private-fixture-secret* ]]
+  local private_dir="$repository_dir/.tmp/dev-ci-private/$(< "$FAKE_DOCKER_STATE/project")"
+  private_dir=${private_dir/daynight-dev-ci-/}
+  if [[ $scenario != cleanup-failure* && $scenario != attachment-volume-left ]]; then
+    [[ ! -d $private_dir ]]
+  else
+    [[ $(< "$private_dir/auth.env") != *private-fixture-secret* ]]
+    [[ $(< "$private_dir/auth-state.json") != *private-fixture-secret* ]]
+  fi
   printf 'PASS %s\n' "$scenario"
 }
 
@@ -95,7 +135,24 @@ assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"containerIds":["aaaaaaa
 project="$(< "$FAKE_DOCKER_STATE/project")"
 assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" "\"volumeNames\":[\"${project}_postgres-data\",\"${project}_attachment-data\"]"
 run_case build-failure 30 true
+run_case fixture-architecture 1 true
+fixture_override=$DAYNIGHT_UNIAUTH_FIXTURE_BINARY
+unset DAYNIGHT_UNIAUTH_FIXTURE_BINARY
+run_case builder-platform 0 true
+assert_contains "$FAKE_DOCKER_STATE/calls" 'prepare-target arm64'
+assert_contains "$FAKE_DOCKER_STATE/calls" 'prepare-target amd64'
+export DAYNIGHT_UNIAUTH_FIXTURE_BINARY=$fixture_override
 run_case partial-startup 31 true
+run_case fixture-invalid 1 true
+run_case port-conflict 0 true
+assert_contains "$FAKE_DOCKER_STATE/calls" 'rm --stop --force gateway'
+run_case reconfigure 0 bash -c '
+  [[ -s $DAYNIGHT_DEV_CI_AUTH_ENV_FILE && -s $DAYNIGHT_AUTH_FIXTURE_DESCRIPTOR ]]
+  bash "$1" --reconfigure "$DAYNIGHT_DEV_CI_RUN_ID" --bootstrap
+  bash "$1" --reconfigure "$DAYNIGHT_DEV_CI_RUN_ID"
+  [[ $(< "$DAYNIGHT_AUTH_FIXTURE_DESCRIPTOR") == *"http://127.0.0.1:32779/auth/callback"* ]]
+' bash "$runner"
+assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"baseUrl":"http://127.0.0.1:32779"'
 run_case image-mismatch 1 true
 run_case child-failure 47 bash -c 'exit 47'
 assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"result":"failed"'
@@ -133,23 +190,30 @@ for callback_status in 0 49; do
 done
 printf '%s\n' 'PASS callback descendants stop after success and failure'
 
-export FAKE_DOCKER_SCENARIO=cancelled
-export FAKE_DOCKER_STATE="$fixture_root/cancelled"
-mkdir "$FAKE_DOCKER_STATE"
-bash "$runner" bash -c 'printf ready > "$FAKE_DOCKER_STATE/child-ready"; sleep 60' > "$FAKE_DOCKER_STATE/output" 2>&1 &
-fixture_pid=$!
-for ((attempt=0; attempt<100; attempt++)); do
-  [[ ! -f $FAKE_DOCKER_STATE/child-ready ]] || break
-  sleep 0.05
+for cancellation_phase in callback bootstrap; do
+  export FAKE_DOCKER_SCENARIO="cancelled-$cancellation_phase"
+  export FAKE_DOCKER_STATE="$fixture_root/$FAKE_DOCKER_SCENARIO"
+  mkdir "$FAKE_DOCKER_STATE"
+  bash "$runner" bash -c 'printf ready > "$FAKE_DOCKER_STATE/child-ready"; sleep 60' > "$FAKE_DOCKER_STATE/output" 2>&1 &
+  fixture_pid=$!
+  for ((attempt=0; attempt<100; attempt++)); do
+    [[ ! -f $FAKE_DOCKER_STATE/child-ready ]] || break
+    sleep 0.05
+  done
+  [[ -f $FAKE_DOCKER_STATE/child-ready ]]
+  kill -TERM "$fixture_pid"
+  status=0
+  wait "$fixture_pid" || status=$?
+  fixture_pid=''
+  [[ $status -eq 143 ]]
+  assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"result":"cancelled"'
+  assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"cleanupResult":"passed"'
+  [[ ! -f $FAKE_DOCKER_STATE/resources && ! -f $FAKE_DOCKER_STATE/image ]]
+  cancelled_manifest="$(manifest_for "$FAKE_DOCKER_STATE")"
+  [[ ! -e ${cancelled_manifest%manifest.json}.bootstrap.pipe ]]
+  while read -r process_pid process_command; do
+    [[ $process_command != "tee ${cancelled_manifest%manifest.json}bootstrap.log" ]]
+  done < <(ps -axo pid=,command=)
+  printf 'PASS %s signal cancellation\n' "$cancellation_phase"
 done
-[[ -f $FAKE_DOCKER_STATE/child-ready ]]
-kill -TERM "$fixture_pid"
-status=0
-wait "$fixture_pid" || status=$?
-fixture_pid=''
-[[ $status -eq 143 ]]
-assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"result":"cancelled"'
-assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"cleanupResult":"passed"'
-[[ ! -f $FAKE_DOCKER_STATE/resources && ! -f $FAKE_DOCKER_STATE/image ]]
-printf '%s\n' 'PASS signal cancellation'
 printf '%s\n' 'All dev-ci runner tests passed.'

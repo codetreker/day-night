@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-The read-only dashboard needs an ordinary local startup path and a reproducible
+The original read-only dashboard needed an ordinary local startup path and a reproducible
 production build. A source build that silently embeds stale or placeholder files
 can pass API tests while shipping no usable page. Tests also need the complete
 HTTP/database topology without sharing the daily stack's fixed names, port or
@@ -41,13 +41,21 @@ A Go stage embeds the published
 assets; the final nonroot runtime contains only the server executable. Host Node
 or Go is unnecessary. The existing startup command launches UI/API, PostgreSQL
 and the stream gateway together, preserving loopback publication, shared network
-namespace, readiness and the normal persistent volume. The
+namespace, readiness and the normal persistent volumes. Mandatory
+[authentication activation](2026-10-22-authentication-activation.md) adds explicit
+private App/origin/callback configuration and public database readiness while
+preserving the production runtime image and single application origin. The
 [localhost topology decision](2026-10-20-localhost-compose.md) owns those rules.
 
 The independent [dev-ci stack](../../../../deployment/dev-ci/README.md) reuses that
 exact Dockerfile and nginx file. A unique explicit Compose project and image tag,
 random host-loopback port and project-owned database volume/network permit
-concurrent runs. The runner registers cleanup before creating resources, checks
+concurrent runs. Mandatory auth now stages gateway/PostgreSQL and port discovery
+before starting a pinned real UniAuth fixture sidecar, private configuration and
+Daynight readiness. Dev-ci fixture preparation requires host Node 24 and Go or
+an architecture-matching Linux binary; this does not change the normal Docker-only
+production build. Fixture App/SQLite/credentials remain private run-owned data,
+not another persistent Daynight backup volume. The runner registers cleanup before creating resources, checks
 the built/running image identity, then passes the discovered `DAYNIGHT_BASE_URL`
 to an argument-preserving callback. Lifecycle commands are bounded. Callback
 process-group ownership survives its leader's exit; cleanup terminates remaining
@@ -110,4 +118,6 @@ explicit: it is manual real-Docker acceptance against unchanged deployment code,
 not clean CI evidence or a claim that CI repeats the fault matrix. Historical
 loopback origins, run IDs and relative source paths are observed evidence, not
 operator configuration. The [MVP design decision](2026-10-20-task-dashboard-mvp-design.md)
-continues to own read-only scope, graph semantics and deferred capabilities.
+continues to own the read-only baseline, graph semantics and deferred capabilities.
+The [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds a dedicated
+task-detail write while keeping the same embedded origin and deployment model.

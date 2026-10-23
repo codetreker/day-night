@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"mime"
@@ -174,7 +175,7 @@ func writeError(w http.ResponseWriter, request *http.Request, logger *slog.Logge
 			status = http.StatusGone
 		case "not_found":
 			status = http.StatusNotFound
-		case "path_conflict", "version_conflict", "last_admin", "dependency_cycle", "dependency_unsatisfied", "graph_limit_exceeded":
+		case "path_conflict", "version_conflict", "invalid_transition", "last_admin", "dependency_cycle", "dependency_unsatisfied", "graph_limit_exceeded":
 			status = http.StatusConflict
 		}
 		if status != http.StatusInternalServerError {
@@ -188,6 +189,18 @@ func writeError(w http.ResponseWriter, request *http.Request, logger *slog.Logge
 					MaxNodes: &limits.MaxNodes, MaxEdges: &limits.MaxEdges}
 			}
 		}
+	}
+	var identityError *service.IdentityProviderError
+	if errors.As(err, &identityError) {
+		switch identityError.Code {
+		case "identity_configuration":
+			status = http.StatusServiceUnavailable
+		case "identity_timeout":
+			status = http.StatusGatewayTimeout
+		default:
+			status = http.StatusBadGateway
+		}
+		response.Code, response.Message = identityError.Code, identityError.Error()
 	}
 	writeJSON(w, request, logger, status, api.ErrorResponse{Error: response})
 }

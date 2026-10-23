@@ -11,10 +11,11 @@ const render = createLocaleRender('zh-CN');
 vi.mock('../src/api/client', async (original) => ({
   ...await original<typeof import('../src/api/client')>(), getTask: vi.fn(), getTaskGraph: vi.fn(),
   listAttachments: vi.fn(async () => ({ items: [], nextCursor: null })),
+  attachmentPreviewRoot: (projectId: string, taskId: string) => `/fixtures/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/preview/`,
 }));
-vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, rootId, onSelectTask }: {
-  index: GraphIndex; rootId: string; onSelectTask: (id: string, trigger: HTMLElement) => void;
-}) => <button data-testid="graph-node" onClick={(event) => { onSelectTask(rootId, event.currentTarget); }}>图节点 {index.nodes.get(rootId)!.titlePreview}</button> }));
+vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, rootId, onOpenTask }: {
+  index: GraphIndex; rootId: string; onOpenTask: (id: string, trigger: HTMLElement) => void;
+}) => <button data-testid="graph-node" onClick={(event) => { onOpenTask(rootId, event.currentTarget); }}>图节点 {index.nodes.get(rootId)!.titlePreview}</button> }));
 
 const project = 'project-one';
 const otherProject = 'project-two';
@@ -49,7 +50,7 @@ beforeEach(() => {
   graphRequest.mockReset(); graphRequest.mockImplementation(async (id) => snapshot(seeds, id));
   vi.mocked(getTask).mockReset();
   vi.mocked(getTask).mockImplementation(async (projectId, id) => ({
-    id, projectId, title: `详情 ${id}`, description: '', properties: { pullRequests: [] }, status: 'todo', dependsOn: [], blockedBy: [], ready: true,
+    id, projectId, title: `详情 ${id}`, description: '', properties: { pullRequests: [] }, status: 'todo', version: 1n, dependsOn: [], blockedBy: [], ready: true,
     createdAt: timestamp, updatedAt: timestamp,
   }));
 });

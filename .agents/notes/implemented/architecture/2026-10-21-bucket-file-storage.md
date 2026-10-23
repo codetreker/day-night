@@ -44,7 +44,10 @@ their chains. Delete addresses one file and treats absence as completed deletion
 The server requires `DAYNIGHT_STORAGE_ROOT`. Config validation checks the value;
 runtime initialization performs actual directory preparation before opening PG
 and listening. The composition callback receives `Dependencies{Store, Files}`.
-The runtime closes the local root on later startup failure and after HTTP drain.
+The [authentication activation](2026-10-22-authentication-activation.md) now supplies
+required Config to the handler factory and propagates its error; the runtime
+closes the local root on composition or other later startup failure and after
+HTTP drain. The dependency owner still opens one store and one file root.
 
 Existing Go process fixtures, the native browser runner and both Compose
 configurations provide explicit roots in the same delivery. Each acceptance

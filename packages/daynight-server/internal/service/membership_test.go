@@ -23,7 +23,7 @@ type membershipFixture struct {
 
 func newMembershipFixture(t *testing.T) *membershipFixture {
 	t.Helper()
-	projects, database, _ := projectService(t)
+	projects, database, _, _ := projectService(t)
 	f := &membershipFixture{database: database, projects: projects, memberships: NewMemberships(database), now: time.Now().UTC().Truncate(time.Microsecond)}
 	f.memberships.now = func() time.Time { return f.now }
 	return f
@@ -47,7 +47,7 @@ func (f *membershipFixture) user(t *testing.T) core.Principal {
 
 func (f *membershipFixture) project(t *testing.T, p core.Principal, name string) core.Project {
 	t.Helper()
-	project, err := f.projects.CreatePrivate(context.Background(), p, CreateProject{Name: name, RepoURL: "https://example.com/team/repo.git"})
+	project, err := f.projects.Create(context.Background(), p, CreateProject{Name: name, RepoURL: "https://example.com/team/repo.git"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestPrivateProjectsAtomicCreationAndMemberFilteredPagination(t *testing.T) 
 	var names []string
 	request := PageRequest{Limit: 1}
 	for i := 0; i < 3; i++ {
-		page, err := f.projects.ListAccessible(ctx, alice, request)
+		page, err := f.projects.List(ctx, alice, request)
 		if err != nil || len(page.Items) != 1 {
 			t.Fatalf("page: %#v, %v", page, err)
 		}
@@ -118,14 +118,14 @@ func TestPrivateProjectsAtomicCreationAndMemberFilteredPagination(t *testing.T) 
 		t.Fatal(names)
 	}
 	stranger := f.user(t)
-	empty, err := f.projects.ListAccessible(ctx, stranger, PageRequest{Limit: 1})
+	empty, err := f.projects.List(ctx, stranger, PageRequest{Limit: 1})
 	if err != nil || empty.Items == nil || len(empty.Items) != 0 || empty.NextCursor != nil {
 		t.Fatalf("empty access: %#v %v", empty, err)
 	}
 	if _, err := f.database.Pool.Exec(ctx, `CREATE FUNCTION reject_initial_admin() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected admin insertion failure'; END $$; CREATE TRIGGER reject_initial_admin BEFORE INSERT ON project_members FOR EACH ROW EXECUTE FUNCTION reject_initial_admin()`); err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.projects.CreatePrivate(ctx, alice, CreateProject{Name: "Must roll back", RepoURL: "host:repo"})
+	_, err = f.projects.Create(ctx, alice, CreateProject{Name: "Must roll back", RepoURL: "host:repo"})
 	requireIdentityOperationalError(t, err)
 	var residual int
 	if err := f.database.Pool.QueryRow(ctx, `SELECT count(*) FROM projects WHERE name='Must roll back'`).Scan(&residual); err != nil || residual != 0 {
@@ -189,7 +189,7 @@ func TestMembershipRoleAuthorizationAndObservedVersions(t *testing.T) {
 	requireFault(t, f.memberships.Remove(ctx, owner, p.ID, member.UserID, rejoined.Version), "not_found")
 	_, err = f.memberships.List(ctx, owner, uuid.NewString())
 	requireFault(t, err, "not_found")
-	legacy, err := f.projects.Create(ctx, CreateProject{Name: "Legacy", RepoURL: "host:repo"})
+	legacy, err := f.database.CreateProject(ctx, uuid.NewString(), "Legacy", "host:repo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,9 +383,9 @@ func TestMembershipRejectsMissingPrincipalsAndInvalidInputs(t *testing.T) {
 		requireFault(t, err, "unauthenticated")
 		_, err = memberships.AcceptInvitation(ctx, p, "invalid")
 		requireFault(t, err, "unauthenticated")
-		_, err = projects.CreatePrivate(ctx, p, CreateProject{})
+		_, err = projects.Create(ctx, p, CreateProject{})
 		requireFault(t, err, "unauthenticated")
-		_, err = projects.ListAccessible(ctx, p, PageRequest{})
+		_, err = projects.List(ctx, p, PageRequest{})
 		requireFault(t, err, "unauthenticated")
 	}
 	p := core.Principal{UserID: id, CredentialID: uuid.NewString(), Kind: core.SessionCredential}
@@ -399,10 +399,10 @@ func TestMembershipRejectsMissingPrincipalsAndInvalidInputs(t *testing.T) {
 		func() error { return memberships.Remove(ctx, p, id, id, 0) },
 		func() error { return memberships.RevokeInvitation(ctx, p, id, "bad") },
 		func() error {
-			_, err := projects.CreatePrivate(ctx, p, CreateProject{Name: "", RepoURL: "host:repo"})
+			_, err := projects.Create(ctx, p, CreateProject{Name: "", RepoURL: "host:repo"})
 			return err
 		},
-		func() error { _, err := projects.ListAccessible(ctx, p, PageRequest{Limit: 0}); return err },
+		func() error { _, err := projects.List(ctx, p, PageRequest{Limit: 0}); return err },
 	} {
 		requireFault(t, call(), "invalid_input")
 	}
@@ -429,7 +429,7 @@ func TestMembershipPATAndOperationalFailurePropagation(t *testing.T) {
 	if _, err := f.memberships.CreateInvitation(ctx, pat, p.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.projects.CreatePrivate(ctx, pat, CreateProject{Name: "PAT project", RepoURL: "host:repo"}); err != nil {
+	if _, err := f.projects.Create(ctx, pat, CreateProject{Name: "PAT project", RepoURL: "host:repo"}); err != nil {
 		t.Fatal(err)
 	}
 	canceled, cancel := context.WithCancel(ctx)
@@ -445,10 +445,10 @@ func TestMembershipPATAndOperationalFailurePropagation(t *testing.T) {
 		func() error { _, err := f.memberships.CreateInvitation(ctx, admin, p.ID); return err },
 		func() error { _, err := f.memberships.InspectInvitation(ctx, admin, invitation.Secret); return err },
 		func() error {
-			_, err := f.projects.CreatePrivate(ctx, admin, CreateProject{Name: "Failure", RepoURL: "host:repo"})
+			_, err := f.projects.Create(ctx, admin, CreateProject{Name: "Failure", RepoURL: "host:repo"})
 			return err
 		},
-		func() error { _, err := f.projects.ListAccessible(ctx, admin, PageRequest{Limit: 1}); return err },
+		func() error { _, err := f.projects.List(ctx, admin, PageRequest{Limit: 1}); return err },
 	}
 	for _, call := range calls {
 		requireIdentityOperationalError(t, call())

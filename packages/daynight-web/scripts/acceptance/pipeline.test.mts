@@ -28,12 +28,12 @@ const observe = (promise: Promise<void>) => {
   const result = promise.then(() => ({ error: undefined }), (error: unknown) => ({ error })).finally(() => { settled = true; });
   return { result, settled: () => settled };
 };
-const initial = ['browser', 'coverage', 'nativePreparation', 'container'] as const;
+const initial = ['coverage', 'nativePreparation', 'container'] as const;
 const startedInitial = async (run: ReturnType<typeof harness>): Promise<void> => {
   await Promise.all(initial.map((name) => run.began[name].promise));
 };
 
-test('overlaps preparation, releases a late container callback, and runs capacity after container cleanup', async () => {
+test('waits for coverage before browser preparation, releases a late container callback, and runs capacity after cleanup', async () => {
   const run = harness();
   const callbackReady = deferred();
   const callbackWaiting = deferred();
@@ -86,6 +86,12 @@ test('overlaps preparation, releases a late container callback, and runs capacit
   const completion = observe(runPipeline(controller, run.phases));
   await startedInitial(run);
   assert.deepEqual(run.events, initial.map((name) => `${name}:start`));
+  assert.equal(run.events.includes('browser:start'), false);
+  run.gates.coverage.resolve();
+  await run.began.browser.promise;
+  assert.ok(run.events.indexOf('coverage:end') < run.events.indexOf('browser:start'));
+  assert.equal(run.events.includes('nativePreparation:end'), false);
+  assert.equal(run.events.includes('container:end'), false);
   run.gates.browser.resolve();
   run.gates.nativePreparation.resolve();
   await run.began.nativeFunctional.promise;
@@ -100,7 +106,6 @@ test('overlaps preparation, releases a late container callback, and runs capacit
   callbackReady.resolve();
   await callbackWaiting.promise;
   run.gates.container.resolve();
-  run.gates.coverage.resolve();
   await run.ended.coverage.promise;
   assert.equal(run.events.includes('capacity:start'), false);
   assert.equal(completion.settled(), false);
@@ -143,12 +148,13 @@ test('an early container callback waits for native browser recovery before using
   const completion = observe(runPipeline(new AbortController(), run.phases));
   await startedInitial(run);
   await waiting.promise;
+  run.gates.coverage.resolve();
+  await run.began.browser.promise;
   run.gates.browser.resolve();
   run.gates.nativePreparation.resolve();
   await run.began.nativeFunctional.promise;
   assert.equal(run.events.includes('container:browser'), false);
   nativeRecovery.resolve();
-  run.gates.coverage.resolve();
   run.gates.container.resolve();
   await run.began.capacity.promise;
   assert.ok(run.events.indexOf('native:recovered') < run.events.indexOf('releaseContainer:start'));
@@ -165,15 +171,41 @@ for (const failed of initial) test(`${failed} failure aborts immediately and dra
   const failure = new Error(`${failed} failed`);
   const completion = observe(runPipeline(controller, run.phases));
   await startedInitial(run);
+  assert.equal(run.events.includes('browser:start'), false);
   run.gates[failed].reject(failure);
   await aborted.promise;
   assert.equal(controller.signal.reason, failure);
+  assert.equal(run.events.includes('browser:start'), false);
   for (const name of initial) if (name !== failed && name !== 'container') run.gates[name].resolve();
   await Promise.all(initial.filter((name) => name !== 'container').map((name) => run.ended[name].promise));
   if (failed !== 'container') {
     assert.equal(completion.settled(), false);
     run.gates.container.resolve();
   }
+  assert.equal((await completion.result).error, failure);
+  assert.equal(run.events.includes('nativeFunctional:start'), false);
+  assert.equal(run.events.includes('releaseContainer:start'), false);
+  assert.equal(run.events.includes('capacity:start'), false);
+  assert.equal(run.events.includes('browser:start'), false);
+});
+
+test('browser failure after coverage aborts and drains remaining preparations', async () => {
+  const run = harness();
+  const controller = new AbortController();
+  const aborted = deferred();
+  controller.signal.addEventListener('abort', () => aborted.resolve(), { once: true });
+  const failure = new Error('Browser preparation failed.');
+  const completion = observe(runPipeline(controller, run.phases));
+  await startedInitial(run);
+  run.gates.coverage.resolve();
+  await run.began.browser.promise;
+  run.gates.browser.reject(failure);
+  await aborted.promise;
+  assert.equal(controller.signal.reason, failure);
+  run.gates.nativePreparation.resolve();
+  await Promise.all([run.ended.coverage.promise, run.ended.nativePreparation.promise]);
+  assert.equal(completion.settled(), false);
+  run.gates.container.resolve();
   assert.equal((await completion.result).error, failure);
   assert.equal(run.events.includes('nativeFunctional:start'), false);
   assert.equal(run.events.includes('releaseContainer:start'), false);
@@ -189,13 +221,14 @@ test('retains native functional and container cleanup failures without repeating
   const cleanupFailure = new Error('Container cleanup failed.');
   const completion = observe(runPipeline(controller, run.phases));
   await startedInitial(run);
+  run.gates.coverage.resolve();
+  await run.began.browser.promise;
   run.gates.browser.resolve();
   run.gates.nativePreparation.resolve();
   await run.began.nativeFunctional.promise;
   run.gates.nativeFunctional.reject(failure);
   await aborted.promise;
   assert.equal(controller.signal.reason, failure);
-  run.gates.coverage.reject(failure);
   run.gates.container.reject(cleanupFailure);
   const { error } = await completion.result;
   assert.ok(error instanceof AggregateError);
@@ -210,9 +243,10 @@ test('a container release failure prevents capacity and waits for container shut
   const failure = new Error('Container permission failed.');
   const completion = observe(runPipeline(controller, run.phases));
   await startedInitial(run);
+  run.gates.coverage.resolve();
+  await run.began.browser.promise;
   run.gates.browser.resolve();
   run.gates.nativePreparation.resolve();
-  run.gates.coverage.resolve();
   await run.began.nativeFunctional.promise;
   run.gates.nativeFunctional.resolve();
   await run.began.releaseContainer.promise;
@@ -230,7 +264,11 @@ test('capacity failure aborts after every earlier operation has finished', async
   const controller = new AbortController();
   const completion = observe(runPipeline(controller, run.phases));
   await startedInitial(run);
-  for (const name of initial) run.gates[name].resolve();
+  run.gates.coverage.resolve();
+  await run.began.browser.promise;
+  run.gates.browser.resolve();
+  run.gates.nativePreparation.resolve();
+  run.gates.container.resolve();
   await run.began.nativeFunctional.promise;
   run.gates.nativeFunctional.resolve();
   await run.began.releaseContainer.promise;
@@ -264,10 +302,9 @@ test('external abort rejects a blocked container callback and waits for task cle
   const reason = new Error('SIGTERM');
   controller.abort(reason);
   await callbackAborted.promise;
-  run.gates.browser.resolve();
   run.gates.nativePreparation.resolve();
   run.gates.coverage.resolve();
-  await Promise.all(['browser', 'nativePreparation', 'coverage'].map((name) => run.ended[name as Phase].promise));
+  await Promise.all(['nativePreparation', 'coverage'].map((name) => run.ended[name as Phase].promise));
   assert.equal(completion.settled(), false);
   cleanup.resolve();
   assert.equal((await completion.result).error, reason);
@@ -281,12 +318,13 @@ test('external abort during native functional recovery prevents container permis
   const controller = new AbortController();
   const completion = observe(runPipeline(controller, run.phases));
   await startedInitial(run);
+  run.gates.coverage.resolve();
+  await run.began.browser.promise;
   run.gates.browser.resolve();
   run.gates.nativePreparation.resolve();
   await run.began.nativeFunctional.promise;
   const reason = new Error('SIGTERM during native recovery');
   controller.abort(reason);
-  run.gates.coverage.resolve();
   run.gates.container.resolve();
   await Promise.all([run.ended.coverage.promise, run.ended.container.promise]);
   assert.equal(completion.settled(), false);

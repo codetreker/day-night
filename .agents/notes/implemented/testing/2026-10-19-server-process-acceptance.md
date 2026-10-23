@@ -51,9 +51,15 @@ released before cleanup waits; child sessions must disappear before isolated
 schemas are dropped. Build directories are removed after execution. Cleanup is
 part of each scenario's pass/fail result, not an assumed final action.
 
-The incremental JSON receipt records Git/GitHub revision, dirty state, compiler
-and database versions, tested binary hash, named results and cleanup counts.
-CI requires a clean checkout matching its supplied GitHub SHA. The Go job
+The incremental JSON receipt records Git/GitHub revision, required gitTreeSha
+from actual `git rev-parse HEAD^{tree}`, dirty state, compiler and database
+versions, tested binary hash, named results and cleanup counts. The packed CLI's
+source tree must match the service receipt alongside existing artifact checks.
+The [lifecycle cross-layer extension](2026-10-22-task-lifecycle-cross-layer-acceptance.md)
+adds genuine historical-SQL startup/restart and competing installed-process
+proof using these same fixture and cleanup owners; deterministic package-level
+interleavings remain separate. CI requires a clean checkout matching its supplied
+GitHub SHA. The Go job
 uploads that receipt and the exact raw profile after validation, including on
 failure. The [server README](../../../../packages/daynight-server/README.md)
 owns requirement mapping and receipt interpretation. Observed results belong to

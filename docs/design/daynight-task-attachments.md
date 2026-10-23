@@ -10,10 +10,13 @@
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-task-attachment-storage-design.md)
 保存选择依据、已接受的限制及重新评估条件。决策采用不表示功能已经交付。
 
-[鉴权架构](daynight-auth.md)规划由项目成员权限保护附件请求；行为见
-[鉴权需求](../spec/daynight-auth.md)，交付条件见[任务拆分](daynight-auth-tasks.md)。
-该扩展尚未实现。本文的可信同源执行、普通 iframe、相对资源、键盘机制和单 gateway
-部署在鉴权接入后继续保留；通用存储、单文件操作和 K1 边界继续有效。
+[鉴权架构](daynight-auth.md)通过当前会话或 PAT 与项目成员权限保护所有附件
+请求；行为见[鉴权需求](../spec/daynight-auth.md)，交付条件见
+[任务拆分](daynight-auth-tasks.md)。`Attachments` 方法显式接收 principal，在
+文件 I/O 前的 `ReadSnapshot` 中检查成员、task 和附件归属；快照完成后执行存储
+及元数据操作，允许已准入操作完成，I/O 后不重新检查成员。凭据在 HTTP 准入
+时验证，不与后续文件/PG 操作组成原子事务。本文的可信同源执行、普通 iframe、
+相对资源、键盘机制和单 gateway 部署继续保留；单文件操作和 K1 边界继续有效。
 
 ## 目标与操作单位
 
@@ -304,13 +307,15 @@ docker compose -f deployment/localhost/compose.yaml logs server | rg '"request_i
 
 ## Web 文件树与预览
 
-`TaskDetailDialog` 在公共标题下组合 `TaskDetailPanels`，以概览和附件两个稳定面板
-分开任务阅读与文件浏览。详情与面板以 `(projectId, taskId)` 为身份，每个新身份默认
+`TaskDetailDialog` 通过 `TaskDetailReading` 在公共标题下组合 `TaskDetailPanels`，
+以概览和附件两个稳定面板分开任务阅读与文件浏览。详情与面板以 `(projectId, taskId)` 为身份，每个新身份默认
 概览；两个面板保持挂载，非当前面板同时使用 `hidden` 与 `inert`。页签按钮关联
 `tabpanel`，使用 roving tabindex，方向键和 Home/End 自动激活并聚焦目标页签，原生
-Enter/空格继续有效。`TaskAttachments`、表单及目录控件保留组件身份，因此往返页签
-保留选中路径、目录展开、列表/预览状态和未提交上传。未来描述附件导航复用同一
-控制器并激活附件页签，不建立第二份清单状态。
+Enter/空格继续有效。`TaskAttachmentsPanel`、表单及目录控件保留组件身份，因此往返页签
+保留选中路径、目录展开、列表/预览状态和未提交上传。`TaskDetailReading` 持有唯一的
+`useAttachments` 控制器，并将同一实例交给描述导航与 `TaskAttachmentsPanel`。描述的
+普通主键无 query/hash 相对文件链接选择该控制器中的路径、激活附件面板并聚焦
+预览区域，不建立第二份清单、选择或请求状态。
 
 附件面板使用占满可用正文的 `attachment-split` grid：左侧
 `attachment-sidebar` 放置文件树、刷新和上传；右侧 `attachment-preview-pane`
@@ -345,8 +350,9 @@ Enter/空格继续有效。`TaskAttachments`、表单及目录控件保留组件
 页面沿用看板样式。
 
 `useAttachments` 分开持有列表、写操作、选中路径和预览。列表逐页读取，并检查路径
-树冲突与重复游标；续页失败保留已经读取的文件并标明不完整，提供重试。结果绑定
-project/task，内容状态同时绑定 path；切换身份、选择或卸载通过 AbortController 和
+树冲突与重复游标；续页失败保留已经读取的文件并标明不完整，提供重试。描述
+导航也等待这份完整清单后才判定缺失，列表加载、列表错误、非法路径、确认缺失与
+预览失败各自可见，不将错误转换成空列表。结果绑定 project/task，内容状态同时绑定 path；切换身份、选择或卸载通过 AbortController 和
 请求 generation 排除旧结果。写操作不自动重试，普通错误在附件区域明确展示。
 
 覆盖成功增加预览 revision。手动刷新发现所选文件的 `updatedAt` 改变时重新请求正文；
@@ -362,10 +368,14 @@ project/task，内容状态同时绑定 path；切换身份、选择或卸载通
 | HTML | HEAD 检查后在普通同源 iframe 中加载执行 |
 | 其他格式 | 元数据及下载链接 |
 
-Markdown 的相对图片和链接从当前文件所在目录解析到 task 预览路径；逐段处理 URL
-编码和 parent 段，拒绝越过 task 根目录，保留 query/hash。独立 `#fragment` 保持原值，
-不改成文件请求。绝对 URL 和根相对 URL 继续遵循正常 URL 语义，并通过渲染库的
-默认 URL 安全规则；不把原始 HTML 作为可执行节点插入 Markdown。
+`MarkdownContent` 只负责 CommonMark/GFM 渲染及样式，URL 转换与链接激活由
+调用方提供。`MarkdownAttachmentBase` 区分 `document` 与 `root`：附件调用方使用
+当前文件的目录作为资源基准，描述调用方使用任务附件根；不虚构描述文件名。路径解析逐段处理 URL 编码和 parent 段，拒绝
+越过任务根，保留 query/hash。独立 `#fragment` 保持原值，不改成文件请求。绝对、
+协议和根相对 URL 保持正常 URL 语义，并经过渲染库的默认安全规则；原始 HTML
+不作为可执行节点插入 Markdown。描述的内嵌导航和原生点击规则见
+[阅读设计](daynight-task-inspection.md#markdown-与附件链接)，决策见
+[Markdown 描述决策](../../.agents/notes/implemented/architecture/2026-10-22-task-description-markdown.md)。
 
 HTML 入口是固定同源 URL，例如：
 
@@ -379,8 +389,8 @@ body。成功后 frame 正常 GET 文件和其资源；HEAD 仅证明入口可�
 `./assets/app.js` 和相对 fetch URL 按浏览器规则读取同目录结构，不改写文件内容；
 以 `/` 开头的地址仍指向主站根目录。HTML 附件属于可信项目代码，拥有主应用同源
 权限，普通 iframe 不使用 sandbox；不增加专用预览 session/token、独立 origin/
-端口、Service Worker 或离线文件系统。规划中的[鉴权架构](daynight-auth.md)为
-附件请求增加登录态和项目成员检查，继续保留可信 HTML 的同源执行约定。
+端口、Service Worker 或离线文件系统。[鉴权架构](daynight-auth.md)在附件请求
+准入时验证登录态，并在文件 I/O 前检查项目成员，保留可信 HTML 的同源执行约定。
 
 居中详情对话框拥有 body portal、背景 inert、共享滚动锁和被动卸载后的焦点恢复；其居中尺寸、概览滚动与详情页签由[看板设计](daynight-web.md#居中任务详情)说明，附件页签的分屏和右侧滚动由本节拥有。`dialogFocusables` 使用 `tabbable` 6.5.0 的生产默认可见性检查，统一枚举对话框与同源 frame 的可 Tab 元素；frame 的 load 监听桥接 Esc 与首末 Tab/Shift+Tab 到对话框，并在替换或卸载时释放。该桥仍属于预览组件，不因外壳居中另建键盘所有者。详细历史与取舍见 [Web 附件决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)。
 
@@ -557,8 +567,14 @@ Web 新增 `task-attachments` 功能场景，在原生和实际生产容器上�
 与页面操作同一批数据；原有八个图功能场景及四个原生容量/超限场景保持完整。
 完整上下文交付另加入 `capacity-external`，原生容量/超限共五个场景；机制与统计
 由[看板设计](daynight-web.md#验证与-ci)拥有。
-另有 `project-view-tabs` 验证项目内任务视图；[双语界面](daynight-web-i18n.md)增加三个功能场景，当前严格 inventory 为原生 18 个、
-容器 13 个。附件场景和 `language-state-preservation` 仅允许精确 fixture task/file 的 PUT/DELETE，后者验证切换期间待完成操作只执行一次；图、任务视图及其他语言场景继续 GET/HEAD。完整 Chromium channel `chromium` 对 PDF 的证明来自 iframe 实际
+另有 `project-view-tabs` 验证项目内任务视图；[双语界面](daynight-web-i18n.md)增加三个功能场景，
+[审批生命周期](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)另加三个审批场景，
+描述阅读另有 `task-description-markdown`，鉴权增加六个功能场景。当前严格 inventory 为原生 28 个、
+容器 23 个，共 51 个场景结果。审批场景单独允许已登记 project/task 的 POST approve 与
+精确请求次数，鉴权场景仅允许各自登记的精确管理请求。附件场景和
+`language-state-preservation` 仅允许精确 fixture task/file 的 PUT/DELETE，后者验证切换期间
+待完成操作只执行一次；描述阅读、图、任务视图及其他语言场景继续 GET/HEAD。
+完整 Chromium channel `chromium` 对 PDF 的证明来自 iframe 实际
 compositor 像素中的 fixture 专用色块。判断器将匹配像素按连通区域分组，独立计算
 各个实心色块的像素数、边界和密度，并在延伸到 frame 右半区的页面候选中检查
 最大的色块。此位置规则基于 fixture 与固定查看器布局，排除仅缩略图已绘制的情形；

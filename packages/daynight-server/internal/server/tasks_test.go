@@ -52,6 +52,12 @@ func updateHTTPTask(t *testing.T, handler http.Handler, task api.Task, values ma
 	return decodeResponse[api.Task](t, projectRequest(handler, http.MethodPatch, taskPath(task), jsonBody(t, values)), http.StatusOK)
 }
 
+func transitionHTTPTask(t *testing.T, handler http.Handler, task api.Task, action string) api.Task {
+	t.Helper()
+	return decodeResponse[api.Task](t, projectRequest(handler, http.MethodPost, taskPath(task)+"/"+action,
+		jsonBody(t, api.TaskTransitionRequest{Version: task.Version})), http.StatusOK)
+}
+
 func readHTTPTask(t *testing.T, handler http.Handler, task api.Task) api.Task {
 	t.Helper()
 	return decodeResponse[api.Task](t, projectRequest(handler, http.MethodGet, taskPath(task), ""), http.StatusOK)
@@ -60,7 +66,7 @@ func readHTTPTask(t *testing.T, handler http.Handler, task api.Task) api.Task {
 func TestTaskHTTPLifecycleDefaultsAndUpdateSemantics(t *testing.T) {
 	database := projectTestStore(t)
 	var logs bytes.Buffer
-	handler := projectTestHandler(database, &logs)
+	handler := projectTestHandler(t, database, &logs)
 	project := taskProject(t, handler)
 	collection := taskCollection(project.ID)
 	empty := projectRequest(handler, http.MethodGet, collection, "")
@@ -70,7 +76,7 @@ func TestTaskHTTPLifecycleDefaultsAndUpdateSemantics(t *testing.T) {
 	}
 	response := projectRequest(handler, http.MethodPost, collection, `{"title":"Default values"}`)
 	task := decodeResponse[api.Task](t, response, http.StatusCreated)
-	if task.ID == "" || task.ProjectID != project.ID || task.Title != "Default values" || task.Description != "" || task.Status != "todo" || task.Version != 1 || !task.Ready || task.DependsOn == nil || task.BlockedBy == nil || len(task.DependsOn) != 0 || len(task.BlockedBy) != 0 || task.CreatedAt.IsZero() || task.CreatedAt.Location() != time.UTC || task.CreatedAt != task.UpdatedAt {
+	if task.ID == "" || task.ProjectID != project.ID || task.Title != "Default values" || task.Description != "" || task.Status != "proposed" || task.Version != 1 || task.Ready || task.DependsOn == nil || task.BlockedBy == nil || len(task.DependsOn) != 0 || len(task.BlockedBy) != 0 || task.CreatedAt.IsZero() || task.CreatedAt.Location() != time.UTC || task.CreatedAt != task.UpdatedAt {
 		t.Fatalf("created task DTO: %+v", task)
 	}
 	if response.Header().Get("Location") != taskPath(task) {
@@ -90,7 +96,7 @@ func TestTaskHTTPLifecycleDefaultsAndUpdateSemantics(t *testing.T) {
 		t.Fatalf("persisted task differs: %+v %+v", task, read)
 	}
 	changed := updateHTTPTask(t, handler, task, map[string]any{"title": "Renamed", "description": "Filled"})
-	if changed.Title != "Renamed" || changed.Description != "Filled" || changed.Status != "todo" || changed.Version != task.Version+1 || changed.CreatedAt != task.CreatedAt || !changed.UpdatedAt.After(task.UpdatedAt) {
+	if changed.Title != "Renamed" || changed.Description != "Filled" || changed.Status != "proposed" || changed.Version != task.Version+1 || changed.CreatedAt != task.CreatedAt || !changed.UpdatedAt.After(task.UpdatedAt) {
 		t.Fatalf("field update: %+v", changed)
 	}
 	noop := updateHTTPTask(t, handler, changed, map[string]any{"title": changed.Title, "description": changed.Description})
@@ -101,8 +107,19 @@ func TestTaskHTTPLifecycleDefaultsAndUpdateSemantics(t *testing.T) {
 	if cleared.Description != "" || cleared.Title != noop.Title || len(cleared.DependsOn) != 0 || cleared.DependsOn == nil || cleared.Version != noop.Version+1 {
 		t.Fatalf("clear and omission semantics: %+v", cleared)
 	}
-	started := updateHTTPTask(t, handler, cleared, map[string]any{"status": "in_progress"})
-	done := updateHTTPTask(t, handler, started, map[string]any{"status": "done"})
+	approved := transitionHTTPTask(t, handler, cleared, "approve")
+	started := transitionHTTPTask(t, handler, approved, "claim")
+	done := transitionHTTPTask(t, handler, started, "complete")
+	for _, pair := range [][2]api.Task{{cleared, approved}, {approved, started}, {started, done}} {
+		before, after := pair[0], pair[1]
+		if after.Version != before.Version+1 || !after.UpdatedAt.After(before.UpdatedAt) {
+			t.Fatalf("lifecycle action did not advance metadata once: %+v %+v", before, after)
+		}
+		after.Status, after.Version, after.UpdatedAt, after.Ready = before.Status, before.Version, before.UpdatedAt, before.Ready
+		if !reflect.DeepEqual(after, before) {
+			t.Fatalf("lifecycle action changed unrelated content: %+v %+v", before, after)
+		}
+	}
 	if done.Status != "done" || done.Ready || done.Version != started.Version+1 {
 		t.Fatalf("status update: %+v", done)
 	}
@@ -116,7 +133,7 @@ func TestTaskHTTPLifecycleDefaultsAndUpdateSemantics(t *testing.T) {
 }
 
 func TestTaskHTTPStrictInputsDoNotMutate(t *testing.T) {
-	handler := projectTestHandler(projectTestStore(t), io.Discard)
+	handler := projectTestHandler(t, projectTestStore(t), io.Discard)
 	project := taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "Original")
 	for _, body := range []string{
@@ -143,6 +160,7 @@ func TestTaskHTTPStrictInputsDoNotMutate(t *testing.T) {
 		`{"version":1,"title": null }`, `{"version":1,"title":1}`, `{"version":1,"title":" "}`,
 		`{"version":1,"description": null }`, `{"version":1,"description":false}`, `{"version":1,"description":"\u0000"}`,
 		`{"version":1,"status": null }`, `{"version":1,"status":[]}`, `{"version":1,"status":"blocked"}`,
+		`{"version":1,"status":"todo"}`, `{"version":1,"status":"done","title":"Changed"}`,
 		`{"version":1,"dependsOn": null }`, `{"version":1,"dependsOn":true}`, `{"version":1,"dependsOn":[null]}`,
 		`{"version":1,"dependsOn":["invalid"]}`, `{"version":1,"unknown":"private-body-secret"}`,
 	} {
@@ -162,7 +180,7 @@ func TestTaskHTTPStrictInputsDoNotMutate(t *testing.T) {
 
 func TestTaskHTTPDependencyErrorsAndDerivedFields(t *testing.T) {
 	var logs bytes.Buffer
-	handler := projectTestHandler(projectTestStore(t), &logs)
+	handler := projectTestHandler(t, projectTestStore(t), &logs)
 	project := taskProject(t, handler)
 	first := createHTTPTask(t, handler, project.ID, "First")
 	second := createHTTPTask(t, handler, project.ID, "Second")
@@ -186,21 +204,36 @@ func TestTaskHTTPDependencyErrorsAndDerivedFields(t *testing.T) {
 			t.Fatal("refused mutation changed task fields, edges, version or time")
 		}
 	}
-	refuse(target, map[string]any{"status": "in_progress"}, "dependency_unsatisfied", sorted)
-	refuse(target, map[string]any{"status": "done"}, "dependency_unsatisfied", sorted)
+	target = updateHTTPTask(t, handler, target, map[string]any{"description": "Proposed work can be revised while blocked", "properties": api.TaskProperties{PullRequests: []api.PullRequestProperty{{URL: "https://example.com/pr", Title: "Draft"}}}})
+	if target.Status != "proposed" || !slices.Equal(target.BlockedBy, sorted) {
+		t.Fatalf("blocked proposed metadata update: %+v", target)
+	}
+	target = transitionHTTPTask(t, handler, target, "approve")
+	if target.Status != "todo" || target.Ready || !slices.Equal(target.BlockedBy, sorted) {
+		t.Fatalf("approval changed prerequisites or readiness: %+v", target)
+	}
+	response := projectRequest(handler, http.MethodPost, taskPath(target)+"/claim", jsonBody(t, api.TaskTransitionRequest{Version: target.Version}))
+	assertProjectError(t, response, http.StatusConflict, "dependency_unsatisfied")
+	fault := decodeResponse[api.ErrorResponse](t, response, http.StatusConflict)
+	if fault.Error.Details == nil || !slices.Equal(fault.Error.Details.TaskIDs, sorted) || !reflect.DeepEqual(readHTTPTask(t, handler, target), target) {
+		t.Fatalf("refused claim lost blockers or mutated task: %+v", fault)
+	}
 	refuse(first, map[string]any{"dependsOn": []string{target.ID}}, "dependency_cycle", []string{target.ID})
 	noop := updateHTTPTask(t, handler, target, map[string]any{"dependsOn": sorted})
 	if !reflect.DeepEqual(noop, target) {
 		t.Fatal("dependency order changed a semantic no-op")
 	}
-	first = updateHTTPTask(t, handler, first, map[string]any{"status": "done"})
-	second = updateHTTPTask(t, handler, second, map[string]any{"status": "done"})
+	first = transitionHTTPTask(t, handler, first, "approve")
+	first = transitionHTTPTask(t, handler, first, "claim")
+	first = transitionHTTPTask(t, handler, first, "complete")
+	second = transitionHTTPTask(t, handler, second, "approve")
+	second = transitionHTTPTask(t, handler, second, "claim")
+	second = transitionHTTPTask(t, handler, second, "complete")
 	ready := readHTTPTask(t, handler, target)
 	if !ready.Ready || len(ready.BlockedBy) != 0 || ready.Version != target.Version || ready.UpdatedAt != target.UpdatedAt {
 		t.Fatalf("prerequisite changes altered downstream metadata: %+v", ready)
 	}
-	started := updateHTTPTask(t, handler, ready, map[string]any{"status": "in_progress"})
-	refuse(first, map[string]any{"status": "todo"}, "dependency_unsatisfied", []string{started.ID})
+	started := transitionHTTPTask(t, handler, ready, "claim")
 	assertProjectError(t, projectRequest(handler, http.MethodPatch, taskPath(started), jsonBody(t, map[string]any{"version": target.Version, "title": started.Title})), http.StatusConflict, "version_conflict")
 	cleared := updateHTTPTask(t, handler, started, map[string]any{"dependsOn": []string{}})
 	if cleared.DependsOn == nil || len(cleared.DependsOn) != 0 || len(cleared.BlockedBy) != 0 || cleared.Status != "in_progress" {
@@ -215,7 +248,7 @@ func TestTaskHTTPDependencyErrorsAndDerivedFields(t *testing.T) {
 
 func TestTaskHTTPScopesIDsAndMethods(t *testing.T) {
 	var logs bytes.Buffer
-	handler := projectTestHandler(projectTestStore(t), &logs)
+	handler := projectTestHandler(t, projectTestStore(t), &logs)
 	project, other := taskProject(t, handler), taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "private-title-secret")
 	foreign := createHTTPTask(t, handler, other.ID, "foreign-title-secret")
@@ -262,20 +295,30 @@ func TestTaskHTTPScopesIDsAndMethods(t *testing.T) {
 
 func TestTaskHTTPListFiltersKeysetsAndCursorScopes(t *testing.T) {
 	database := projectTestStore(t)
-	handler := projectTestHandler(database, io.Discard)
+	handler := projectTestHandler(t, database, io.Discard)
 	project, other := taskProject(t, handler), taskProject(t, handler)
 	first := createHTTPTask(t, handler, project.ID, "Ready one")
+	first = transitionHTTPTask(t, handler, first, "approve")
 	second := createHTTPTask(t, handler, project.ID, "Ready two")
+	second = transitionHTTPTask(t, handler, second, "approve")
 	blocked := createHTTPTask(t, handler, project.ID, "Blocked", first.ID)
+	blocked = transitionHTTPTask(t, handler, blocked, "approve")
+	proposed := createHTTPTask(t, handler, project.ID, "Proposed")
+	proposedBlocked := createHTTPTask(t, handler, project.ID, "Proposed blocked", first.ID)
 	active := createHTTPTask(t, handler, project.ID, "Active")
-	active = updateHTTPTask(t, handler, active, map[string]any{"status": "in_progress"})
+	active = transitionHTTPTask(t, handler, active, "approve")
+	active = transitionHTTPTask(t, handler, active, "claim")
 	done := createHTTPTask(t, handler, project.ID, "Done")
-	done = updateHTTPTask(t, handler, done, map[string]any{"status": "done"})
+	done = transitionHTTPTask(t, handler, done, "approve")
+	done = transitionHTTPTask(t, handler, done, "claim")
+	done = transitionHTTPTask(t, handler, done, "complete")
 	if _, err := database.Pool.Exec(context.Background(), "UPDATE tasks SET created_at='2026-01-01T00:00:00Z', updated_at='2026-01-01T00:00:00Z'"); err != nil {
 		t.Fatal(err)
 	}
 	for query, ids := range map[string][]string{
-		"status=todo&ready=true": {first.ID, second.ID}, "status=todo&ready=false": {blocked.ID},
+		"status=proposed": {proposed.ID, proposedBlocked.ID}, "status=proposed&ready=true": {},
+		"status=proposed&ready=false": {proposed.ID, proposedBlocked.ID},
+		"status=todo&ready=true":      {first.ID, second.ID}, "status=todo&ready=false": {blocked.ID},
 		"status=in_progress&ready=false": {active.ID}, "status=done": {done.ID}, "status=done&ready=true": {},
 	} {
 		slices.Sort(ids)
@@ -322,7 +365,7 @@ func TestTaskHTTPListFiltersKeysetsAndCursorScopes(t *testing.T) {
 func TestTaskHTTPDatabaseFailuresAndCancellation(t *testing.T) {
 	database := projectTestStore(t)
 	var logs bytes.Buffer
-	handler := projectTestHandler(database, &logs)
+	handler := projectTestHandler(t, database, &logs)
 	project := taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "private-task-secret")
 	if _, err := database.Pool.Exec(context.Background(), "ALTER TABLE tasks RENAME TO private_table_secret"); err != nil {
@@ -332,6 +375,9 @@ func TestTaskHTTPDatabaseFailuresAndCancellation(t *testing.T) {
 		{http.MethodGet, taskCollection(project.ID), ""}, {http.MethodGet, taskPath(task), ""},
 		{http.MethodPost, taskCollection(project.ID), `{"title":"private-body-secret"}`},
 		{http.MethodPatch, taskPath(task), `{"version":1,"title":"private-body-secret"}`},
+		{http.MethodPost, taskPath(task) + "/approve", `{"version":1}`},
+		{http.MethodPost, taskPath(task) + "/claim", `{"version":1}`},
+		{http.MethodPost, taskPath(task) + "/complete", `{"version":1}`},
 	} {
 		response := projectRequest(handler, request.method, request.path, request.body)
 		assertProjectError(t, response, http.StatusInternalServerError, "internal_error")
@@ -356,6 +402,7 @@ func TestTaskHTTPDatabaseFailuresAndCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	request := httptest.NewRequest(http.MethodPatch, taskPath(task), strings.NewReader(`{"version":1,"title":"canceled-update"}`)).WithContext(ctx)
+	authorizeResourceRequest(handler, request)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-Request-ID", "project-test")
 	response, finished := httptest.NewRecorder(), make(chan struct{})

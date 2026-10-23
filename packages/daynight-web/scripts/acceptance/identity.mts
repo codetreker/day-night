@@ -84,12 +84,16 @@ export const requireStopped = async (identity: ProcessIdentity): Promise<void> =
 };
 export const ownedBrowserProcesses = async (directory: string, executables: readonly string[]): Promise<ProcessIdentity[]> =>
   (await findProcesses({ DAYNIGHT_ACCEPTANCE_DIRECTORY: directory })).filter((identity) => executables.includes(identity.executable));
-export const requireGroupStopped = (pid: number): void => {
+export const isGroupStopped = (pid: number): boolean => {
   validatePid(pid); requirePlatform();
   try { process.kill(-pid, 0); }
   catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ESRCH') return;
+    if (error instanceof Error && 'code' in error && error.code === 'ESRCH') return true;
     throw error;
   }
-  throw new Error('Original acceptance process group is still running; recovery refused.');
+  return false;
+};
+
+export const requireGroupStopped = (pid: number): void => {
+  if (!isGroupStopped(pid)) throw new Error('Original acceptance process group is still running; recovery refused.');
 };

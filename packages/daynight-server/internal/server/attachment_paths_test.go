@@ -9,7 +9,7 @@ import (
 
 func TestStandaloneAttachmentPathsRejectNormalizationBeforeRedirect(t *testing.T) {
 	var logs bytes.Buffer
-	handler := uiTestHandler(&logs)
+	handler := uiTestHandler(t, &logs)
 	base := "/projects/project/tasks/task/attachments/"
 	for _, suffix := range []string{"", ".", "..", "nested/../private-file", "./private-file", "nested//private-file", "nested/", "%2e%2e/private-file", "nested%2fprivate-file", "nested%2Fprivate-file", "%5cprivate-file", "private%00file", "%ff", "C:/private-file", "../../../../../"} {
 		assertStandaloneAttachmentInvalidPath(t, handler, base+suffix)

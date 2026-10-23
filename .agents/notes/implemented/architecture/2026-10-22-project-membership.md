@@ -39,11 +39,13 @@ atomically. Existing members neither upgrade nor consume an available invite.
 Expired, consumed and revoked invitations share one unavailable response.
 
 `RequireProjectRead` and `RequireProjectWrite` compose inside the caller's snapshot
-or project write transaction. `Projects.CreatePrivate` and `ListAccessible` share
-existing validation/cursors while preserving current entry points before
-activation. `NewMembershipRoutes(...).RegisterRoutes` is explicit and remains
-unmounted. The [identity foundation](2026-10-22-identity-credentials.md) supplies
-session/PAT principals. Existing projects receive no automatic membership.
+or project write transaction. The initial `Projects.CreatePrivate` and
+`ListAccessible` staging aliases preserved existing entry points while the module
+was reviewed separately. The [activation decision](2026-10-22-authentication-activation.md)
+now makes ordinary Create/List principal-aware, removes those aliases and mounts
+`NewMembershipRoutes(...).RegisterRoutes` in the mandatory composition. The
+[identity foundation](2026-10-22-identity-credentials.md) supplies session/PAT
+principals. Existing projects receive no automatic membership.
 
 ## Alternatives
 
@@ -70,8 +72,9 @@ keys. Explicit service transactions own association and policy checks. Empty
 membership on existing projects naturally denies access through authorized
 queries; manual assignment remains separate.
 
-The module can be verified against real PostgreSQL and authenticated handlers
-before it is mounted. Production activation, CLI and Web remain separately
-tracked. Trusted same-origin HTML retains the
+Independent PostgreSQL and authenticated-handler validation preceded mounting,
+preserving that original sequencing rationale. Production composition, CLI and
+Web are now connected by the activation decision; actual integrated results
+remain source-bound evidence. Trusted same-origin HTML retains the
 [adopted attachment boundary](2026-10-21-task-attachment-storage-design.md), and
 file IO admission retains K1 and the existing short-transaction lifetime.

@@ -12,7 +12,9 @@ hide the cause of a rejected mutation.
 
 ## Decision
 
-The server exposes task create/list/get/update beneath a project path. It
+The server exposes task create/list/get/update and versioned approve/claim/complete
+beneath a project path. The [approval lifecycle](2026-10-22-task-approval-lifecycle.md)
+replaces the original generic-status mutation contract. It
 converts API DTOs into the existing concrete task service without SQL or policy
 duplication in handlers. The runtime factory constructs project and task services
 from one store, with explicit typed handler dependencies and one request-logging
@@ -20,7 +22,9 @@ middleware.
 
 JSON parsing distinguishes omission from null before unmarshalling strings or
 arrays. Creation assigns its documented empty optional values; updates require
-a positive int64 version and at least one mutable field. Null array elements,
+a positive int64 version and at least one mutable metadata field. Status is not
+a metadata input. Lifecycle POST requests accept only the positive int64 version;
+wrong predecessor states map to invalid_transition without mutation. Null array elements,
 unknown/read-only fields, duplicate keys, malformed UTF-8 and noninteger versions
 are input errors. Supplied empty description or dependency list has explicit
 clear semantics rather than acting as a default for invalid data.

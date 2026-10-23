@@ -33,8 +33,9 @@ type acceptanceCLIReceipt struct {
 	EntrySHA256    string `json:"entrySha256"`
 	LauncherPath   string `json:"launcherPath"`
 	Source         struct {
-		GitSHA string `json:"gitSha"`
-		Dirty  bool   `json:"dirty"`
+		GitSHA     string `json:"gitSha"`
+		GitTreeSHA string `json:"gitTreeSha"`
+		Dirty      bool   `json:"dirty"`
 	} `json:"source"`
 }
 
@@ -54,7 +55,7 @@ func readAcceptanceCLI(t *testing.T) acceptanceCLIReceipt {
 		t.Fatal("cannot read installed CLI receipt")
 	}
 	var receipt acceptanceCLIReceipt
-	if err := json.Unmarshal(data, &receipt); err != nil || receipt.SchemaVersion != 1 || receipt.PackageVersion == "" || receipt.Source.GitSHA != binaryAcceptance.GitSHA || receipt.Source.Dirty != binaryAcceptance.Dirty {
+	if err := json.Unmarshal(data, &receipt); err != nil || receipt.SchemaVersion != 1 || receipt.PackageVersion == "" || receipt.Source.GitSHA != binaryAcceptance.GitSHA || receipt.Source.GitTreeSHA != binaryAcceptance.GitTreeSHA || receipt.Source.Dirty != binaryAcceptance.Dirty {
 		t.Fatal("installed CLI receipt does not match this source revision")
 	}
 	root, err := filepath.EvalSymlinks(receipt.Root)
@@ -153,6 +154,16 @@ func newAcceptanceCLI(t *testing.T, receipt acceptanceCLIReceipt, scenario *acce
 	fixture.git(t, "init", "--quiet", fixture.repo)
 	fixture.git(t, "-C", fixture.repo, "remote", "add", "origin", "git@git.example:Org/Repo.git")
 	return fixture
+}
+
+func (c *acceptanceCLI) configure(t *testing.T, process *acceptanceProcess) {
+	t.Helper()
+	if process.origin == "" || process.token == "" {
+		t.Fatal("installed CLI requires an authenticated acceptance process")
+	}
+	if err := os.WriteFile(filepath.Join(c.home, ".daynight", "config.yml"), []byte("serverUrl: "+process.origin+"\nserverToken: "+process.token+"\n"), 0o600); err != nil {
+		t.Fatal("cannot configure isolated authenticated CLI")
+	}
 }
 
 func (c *acceptanceCLI) environment() []string {
@@ -317,12 +328,14 @@ func (c *acceptanceCLI) task(t *testing.T, id string) api.Task {
 	return acceptanceCLIJSON[api.Task](t, c.run(t, filepath.Join(c.repo, "source"), "task", "show", id, "--json"))
 }
 
-func acceptanceCLIPatches(process *acceptanceProcess) []acceptanceCLIRequest {
+func acceptanceCLIMutations(process *acceptanceProcess) []acceptanceCLIRequest {
 	process.logs.mu.Lock()
 	defer process.logs.mu.Unlock()
 	var requests []acceptanceCLIRequest
 	for _, event := range process.logs.events {
-		if event["type"] == "http_request" && event["method"] == "PATCH" {
+		route, _ := event["route"].(string)
+		lifecycle := event["method"] == "POST" && (strings.HasSuffix(route, "/approve") || strings.HasSuffix(route, "/claim") || strings.HasSuffix(route, "/complete"))
+		if event["type"] == "http_request" && (event["method"] == "PATCH" || lifecycle) {
 			id, _ := event["request_id"].(string)
 			status, _ := event["status"].(float64)
 			requests = append(requests, acceptanceCLIRequest{RequestID: id, Status: int(status)})
@@ -331,24 +344,24 @@ func acceptanceCLIPatches(process *acceptanceProcess) []acceptanceCLIRequest {
 	return requests
 }
 
-func acceptanceCLIWaitPatches(t *testing.T, process *acceptanceProcess, count int) []acceptanceCLIRequest {
+func acceptanceCLIWaitMutations(t *testing.T, process *acceptanceProcess, count int) []acceptanceCLIRequest {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	if err := acceptanceEventually(ctx, func() (bool, error) { return len(acceptanceCLIPatches(process)) >= count, nil }); err != nil {
+	if err := acceptanceEventually(ctx, func() (bool, error) { return len(acceptanceCLIMutations(process)) >= count, nil }); err != nil {
 		t.Fatal("installed CLI mutations did not complete their server request logs")
 	}
-	return acceptanceCLIPatches(process)
+	return acceptanceCLIMutations(process)
 }
 
-func (c *acceptanceCLI) refuse(t *testing.T, process *acceptanceProcess, code, taskID string, arguments ...string) {
+func (c *acceptanceCLI) refuse(t *testing.T, process *acceptanceProcess, code, taskID string, arguments ...string) acceptanceCLIResult {
 	t.Helper()
-	before := len(acceptanceCLIPatches(process))
+	before := len(acceptanceCLIMutations(process))
 	result := acceptanceCLIReceive(t, c.start(t, c.repo, arguments...))
-	if result.status != 1 || result.stdout != "" || !strings.Contains(result.stderr, code) || !strings.Contains(result.stderr, taskID) {
+	if result.status != 1 || result.stdout != "" || !strings.Contains(result.stderr, code) || taskID != "" && !strings.Contains(result.stderr, taskID) {
 		t.Fatalf("installed CLI refusal lost its code, task ID or exit behavior: %+v", result)
 	}
-	requests := acceptanceCLIWaitPatches(t, process, before+1)
+	requests := acceptanceCLIWaitMutations(t, process, before+1)
 	if len(requests) != before+1 || requests[before].Status != 409 || requests[before].RequestID == "" || !strings.Contains(result.stderr, "requestId="+requests[before].RequestID) {
 		t.Fatal("installed CLI refusal retried or lost the actual server request identity")
 	}
@@ -357,6 +370,7 @@ func (c *acceptanceCLI) refuse(t *testing.T, process *acceptanceProcess, code, t
 	}); err != nil {
 		t.Fatal("cannot persist installed CLI refusal identity")
 	}
+	return result
 }
 
 func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
@@ -368,9 +382,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 			t.Fatal("fresh installed CLI version differs from its validated manifest")
 		}
 		process := fixture.launch(t, nil).started(t)
-		if err := os.WriteFile(filepath.Join(cli.home, ".daynight", "config.yml"), []byte("serverUrl: http://"+process.address+"\n"), 0o600); err != nil {
-			t.Fatal("cannot configure isolated installed CLI")
-		}
+		cli.configure(t, process)
 		projectID := acceptanceCLIResourceID(t, cli.run(t, filepath.Join(cli.repo, "source"), "project", "create", "Installed CLI 项目"))
 		for _, arguments := range [][]string{
 			{"project", "create", "Preserve existing name"},
@@ -397,12 +409,12 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		pairs := []string{"--pull-request-url=", "--pull-request-title=", "--pull-request-title", references.PullRequests[1].Title, "--pull-request-url=" + references.PullRequests[1].URL, "--pull-request-url=" + references.PullRequests[2].URL, "--pull-request-title", references.PullRequests[2].Title}
 		created := cli.run(t, filepath.Join(cli.repo, "source"), append([]string{"task", "create", "--title", "前置 Task", "--description", "Persistent description"}, pairs...)...)
 		first := acceptanceCLIResourceID(t, created)
-		if !strings.Contains(created, "Pull requests: 3\n  1. Title: \n     URL: \n") || !strings.Contains(created, "3. Title:   标题\\n\\u001b[2J  \n     URL: -arbitrary=地址, text") || !reflect.DeepEqual(cli.task(t, first).Properties, references) {
+		if !strings.Contains(created, "Pull requests: 3\n  1. Title: \n     URL: \n") || !strings.Contains(created, "3. Title:   标题\\n\\u001b[2J  \n     URL: -arbitrary=地址, text") || !reflect.DeepEqual(cli.task(t, first).Properties, references) || cli.task(t, first).Status != "proposed" || cli.task(t, first).Ready {
 			t.Fatal("installed CLI create changed raw PR strings, order, duplicates or text output")
 		}
 		bindingPath := filepath.Join(cli.repo, ".daynight", "project.yml")
 		binding, err := os.ReadFile(bindingPath)
-		if err != nil || !bytes.Contains(binding, []byte("repoIdentity: git.example/Org/Repo\n")) || !bytes.Contains(binding, []byte("projectId: "+projectID+"\n")) || !bytes.Contains(binding, []byte("serverUrl: http://"+process.address+"\n")) {
+		if err != nil || !bytes.Contains(binding, []byte("repoIdentity: git.example/Org/Repo\n")) || !bytes.Contains(binding, []byte("projectId: "+projectID+"\n")) || !bytes.Contains(binding, []byte("serverUrl: "+process.origin+"\n")) || bytes.Contains(binding, []byte(process.token)) {
 			t.Fatal("installed CLI did not persist its discovered repository association")
 		}
 		cli.git(t, "-C", cli.repo, "check-ignore", "--quiet", ".daynight/project.yml")
@@ -415,16 +427,26 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		}
 		target := acceptanceCLIResourceID(t, cli.run(t, cli.repo, "task", "create", "--title", "Dependent", "--depends-on", first))
 		blocked := cli.task(t, target)
-		if blocked.Version != 1 || blocked.Status != "todo" || blocked.Ready || !slices.Equal(blocked.DependsOn, []string{first}) || !slices.Equal(blocked.BlockedBy, []string{first}) {
+		if blocked.Version != 1 || blocked.Status != "proposed" || blocked.Ready || !slices.Equal(blocked.DependsOn, []string{first}) || !slices.Equal(blocked.BlockedBy, []string{first}) {
 			t.Fatal("installed task creation lost its server dependency projection")
 		}
-		cli.refuse(t, process, "dependency_unsatisfied", first, "task", "update", target, "--status", "in_progress")
-		cli.run(t, cli.repo, "task", "update", first, "--status", "done")
+		cli.refuse(t, process, "invalid_transition", "", "task", "claim", target)
+		cli.run(t, cli.repo, "task", "approve", target, "--if-version", "1")
+		if approved := cli.task(t, target); approved.Status != "todo" || approved.Ready || approved.Version != 2 || !slices.Equal(approved.BlockedBy, []string{first}) {
+			t.Fatal("installed approval did not preserve unfinished prerequisites")
+		}
+		cli.refuse(t, process, "dependency_unsatisfied", first, "task", "claim", target)
+		cli.run(t, cli.repo, "task", "approve", first)
+		cli.run(t, cli.repo, "task", "claim", first)
+		cli.run(t, cli.repo, "task", "complete", first)
+		cli.run(t, cli.repo, "task", "approve", second)
 		acceptanceCLITaskListJSON(t, cli.run(t, cli.repo, "task", "list", "--status", "todo", "--ready", "--json"), []api.Task{cli.task(t, second), cli.task(t, target)})
-		cli.run(t, cli.repo, "task", "update", target, "--status", "in_progress", "--description", "Completed description")
-		cli.refuse(t, process, "dependency_unsatisfied", target, "task", "update", first, "--status", "todo")
-		cli.run(t, cli.repo, "task", "update", target, "--status", "done", "--description", "")
-		if task := cli.task(t, target); task.Version != 3 || task.Description != "" || task.Status != "done" {
+		cli.run(t, cli.repo, "task", "update", target, "--description", "Completed description")
+		cli.run(t, cli.repo, "task", "claim", target)
+		cli.refuse(t, process, "invalid_transition", "", "task", "claim", first)
+		cli.run(t, cli.repo, "task", "update", target, "--description", "")
+		cli.run(t, cli.repo, "task", "complete", target)
+		if task := cli.task(t, target); task.Version != 6 || task.Description != "" || task.Status != "done" {
 			t.Fatal("installed update did not clear description or advance the expected version")
 		}
 		editable := acceptanceCLIResourceID(t, cli.run(t, cli.repo, "task", "create", "--title", "Editable", "--depends-on", first))
@@ -434,8 +456,14 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		}
 		cli.refuse(t, process, "dependency_cycle", editable, "task", "update", second, "--depends-on", editable)
 		cli.run(t, cli.repo, "task", "update", editable, "--clear-dependencies")
-		if task := cli.task(t, editable); len(task.DependsOn) != 0 || !task.Ready {
-			t.Fatal("installed dependency clear left a dependency or blocked state")
+		if task := cli.task(t, editable); len(task.DependsOn) != 0 || task.Ready || task.Status != "proposed" {
+			t.Fatal("installed dependency clear changed proposed readiness or left a dependency")
+		}
+		cli.run(t, cli.repo, "task", "approve", editable)
+		beforeLegacy := len(acceptanceCLIMutations(process))
+		legacy := acceptanceCLIReceive(t, cli.start(t, cli.repo, "task", "update", editable, "--status", "done"))
+		if legacy.status != 2 || legacy.stdout != "" || !strings.Contains(legacy.stderr, "--status") || len(acceptanceCLIMutations(process)) != beforeLegacy {
+			t.Fatal("installed legacy status option was not rejected before a mutation")
 		}
 		beforeProperties := cli.task(t, editable)
 		cli.run(t, cli.repo, append([]string{"task", "update", editable}, pairs...)...)
@@ -471,6 +499,21 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		if task := cli.task(t, editable); task.Version != 9_007_199_254_740_995 {
 			t.Fatal("installed CLI rounded an explicit or read Go int64 version")
 		}
+		exactProject := process.project(t, "Exact lifecycle versions")
+		exact := process.task(t, exactProject, "Exact lifecycle")
+		fixture.exec(t, "UPDATE tasks SET version=$1 WHERE id=$2", int64(9_007_199_254_740_993), exact.ID)
+		cli.run(t, cli.caller, "task", "approve", exact.ID, "--project", exactProject.ID, "--if-version", "9007199254740993")
+		cli.run(t, cli.caller, "task", "claim", exact.ID, "--project", exactProject.ID)
+		exact = acceptanceCLIJSON[api.Task](t, cli.run(t, cli.caller, "task", "show", exact.ID, "--project", exactProject.ID, "--json"))
+		if exact.Version != 9_007_199_254_740_995 || exact.Status != "in_progress" {
+			t.Fatal("installed lifecycle commands rounded an explicit or read Go int64 version")
+		}
+		fixture.exec(t, "UPDATE tasks SET version=$1 WHERE id=$2", int64(9_223_372_036_854_775_806), exact.ID)
+		cli.run(t, cli.caller, "task", "complete", exact.ID, "--project", exactProject.ID, "--if-version", "9223372036854775806")
+		exact = acceptanceCLIJSON[api.Task](t, cli.run(t, cli.caller, "task", "show", exact.ID, "--project", exactProject.ID, "--json"))
+		if exact.Version != 9_223_372_036_854_775_807 || exact.Status != "done" {
+			t.Fatal("installed completion did not retain the exact int64 maximum result")
+		}
 		cli.git(t, "-C", cli.repo, "remote", "set-url", "origin", "ssh://git@GIT.EXAMPLE:22/Org/Repo.git")
 		duplicate := acceptanceDecode[api.Project](t, process.request(context.Background(), http.MethodPost, "/api/v1/projects", api.CreateProjectRequest{Name: "Later duplicate", RepoURL: "https://git.example/Org/Repo"}, ""), http.StatusCreated)
 		if duplicate.ID == projectID {
@@ -482,7 +525,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		if after, err := os.ReadFile(bindingPath); err != nil || !bytes.Equal(after, binding) {
 			t.Fatal("explicit project or equivalent origin rewrote the repository association")
 		}
-		beforePatches := len(acceptanceCLIPatches(process))
+		beforeMutations := len(acceptanceCLIMutations(process))
 		version := strconv.FormatInt(cli.task(t, editable).Version, 10)
 		barrier := fixture.projectLock(t, projectID)
 		left := cli.start(t, cli.caller, "task", "update", editable, "--project", projectID, "--if-version", version, "--title", "Concurrent left")
@@ -490,11 +533,11 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		fixture.waitWriters(t, process, 2)
 		acceptanceRelease(t, barrier)
 		results := []acceptanceCLIResult{acceptanceCLIReceive(t, left), acceptanceCLIReceive(t, right)}
-		requests := acceptanceCLIWaitPatches(t, process, beforePatches+2)
-		if len(requests) != beforePatches+2 {
+		requests := acceptanceCLIWaitMutations(t, process, beforeMutations+2)
+		if len(requests) != beforeMutations+2 {
 			t.Fatal("installed concurrent writers retried a mutation")
 		}
-		requests = requests[beforePatches:]
+		requests = requests[beforeMutations:]
 		winners, conflicts := 0, 0
 		for _, result := range results {
 			if result.status == 0 && result.stderr == "" {
@@ -533,7 +576,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		}
 		firstWithPR := cli.task(t, first)
 		if !reflect.DeepEqual(firstWithPR.Properties, references) {
-			t.Fatal("installed ordinary status updates discarded the created PR list")
+			t.Fatal("installed lifecycle actions discarded the created PR list")
 		}
 		references.PullRequests = append(references.PullRequests, api.PullRequestProperty{URL: "\x00 arbitrary\tURL", Title: "标题\x00\n"})
 		firstWithPR = acceptanceDecode[api.Task](t, process.request(context.Background(), http.MethodPatch, acceptanceTaskPath(firstWithPR), map[string]any{"version": firstWithPR.Version, "properties": references}, "installed-raw-pr-readback"), http.StatusOK)
@@ -562,6 +605,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 			!slices.Equal(proposedBlocked.BlockedBy, []string{second}) {
 			t.Fatal("installed CLI show lost proposed detail or prerequisite projection")
 		}
+		acceptanceCLITaskListJSON(t, cli.run(t, cli.repo, "task", "list", "--status", "proposed", "--json"), []api.Task{proposed, proposedBlocked})
 		proposedDetail := cli.run(t, cli.repo, "task", "show", proposedID)
 		for _, field := range []string{"Status: proposed\n", "Ready: false\n", "Description: " + proposed.Description + "\n", "Version: 17\n"} {
 			if !strings.Contains(proposedDetail, field) {
@@ -634,6 +678,9 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		}
 		if !reflect.DeepEqual(cli.task(t, proposedID), proposed) || !reflect.DeepEqual(cli.task(t, proposedBlockedID), proposedBlocked) {
 			t.Fatal("installed CLI proposed tasks changed across actual process restart")
+		}
+		if after := acceptanceCLIJSON[api.Task](t, cli.run(t, cli.caller, "task", "show", exact.ID, "--project", exactProject.ID, "--json")); !reflect.DeepEqual(after, exact) {
+			t.Fatal("installed exact int64 lifecycle result changed across restart")
 		}
 		if after := cli.task(t, editable); !reflect.DeepEqual(after, before) {
 			t.Fatal("installed CLI task data did not persist across actual process restart")

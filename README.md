@@ -6,28 +6,37 @@ statistics, task dependency graphs, task details and file attachments from the
 same Go service origin. The read-only graph dashboard is delivered, including
 production-browser acceptance, embedded deployment and the subsequent focus-restoration repair. The
 [dashboard tasks](docs/design/daynight-web-tasks.md) record completion and link
-the corresponding PR and CI evidence. Complete prerequisite data is delivered. Progressive graph overviews are the
-current focused delivery, followed by dependency inspection in
-[PR #121](https://github.com/codetreker/daynight/pull/121).
+the corresponding PR and CI evidence. The task graph implements complete
+prerequisite context, progressive overviews and dependency inspection. Its body
+action selects a task and highlights visible upstream cards, routes and arrows;
+a separate Details action opens the centered dialog. Hidden upstream tasks are
+counted without expanding or moving the graph.
+
 The [task inspection requirements](docs/spec/daynight-task-inspection.md),
 [architecture](docs/design/daynight-task-inspection.md),
 [focused task breakdown](docs/design/daynight-task-inspection-tasks.md) and
-[interactive preview](docs/design/mockups/task-inspection/index.html) cover
-complete prerequisite context, smooth highlighted dependency routes, a centered
-detail dialog and Markdown descriptions with matching public skill guidance.
-Centered task details are implemented with the existing modal, attachment and
-focus lifecycles. Graph inspection, smooth paths and Markdown descriptions remain
-pending. The progressive view starts at fifty tasks/one hundred induced edges, with
-explicit twenty-neighbor expansion and global reset; complete data and progress
-remain intact. Body activation still opens the delivered detail dialog with its
-Overview/Attachments split panels, routes remain polylines, and descriptions
-remain plain text. Both overview and inspection PRs must complete before UX-T2
-is done; production evidence for the current overview remains pending.
+[interactive preview](docs/design/mockups/task-inspection/index.html) cover these
+interactions and Markdown description/skill behavior. The progressive
+view starts at fifty tasks/one hundred induced edges, with explicit twenty-neighbor
+expansion and global reset; complete data, statistics and progress remain intact.
+Smooth routes retain direction, card clearance and external dashes. Cards use
+220×96 compact or 220×136 expandable geometry. The centered dialog preserves
+Overview/Attachments split panels, the standalone reader and existing modal,
+attachment and focus lifecycles. Descriptions render CommonMark/GFM through the
+shared renderer. Relative links/images resolve from the task attachment root;
+ordinary relative file links select the existing Attachments preview through one
+controller, while real hrefs retain native browser navigation. The
+[Markdown reading decision](.agents/notes/implemented/architecture/2026-10-22-task-description-markdown.md)
+owns root/document resolution, complete-inventory checks and focus integration.
+The published skill preserves self-contained briefs, primary-plan ownership and
+Goal, dependency, PR and separate approval/implementation/merge permissions.
+Daynight task records and
+task-specific primary plans own delivery status and source-bound acceptance.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle and interactive Agent installation, shared configuration, server HTTP and repository binding foundations plus project, task and single-file attachment commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
-| `daynight-server` | `packages/daynight-server/` | Project/task and complete graph HTTP APIs, PostgreSQL transactions, embedded browser assets, strict coverage gates and built-process acceptance implemented | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
+| `daynight-server` | `packages/daynight-server/` | Project/task/graph APIs, mandatory UniAuth/session/PAT authentication, project memberships, PostgreSQL transactions and embedded browser assets implemented; source-bound activation acceptance tracked separately | [Requirements](docs/spec/daynight-server.md), [design](docs/design/daynight-server.md) |
 | `daynight-web` | `packages/daynight-web/` | Project browsing, statistics, read-only task graphs with complete prerequisite context and task details, attachment management/preview, embedded delivery, graph production acceptance and strict coverage delivered; English/Simplified Chinese interface and locale persistence implemented, combined bilingual production verification tracked separately | [Requirements](docs/spec/daynight-web.md), [architecture](docs/design/daynight-web.md), [language requirements](docs/spec/daynight-web-i18n.md), [language design](docs/design/daynight-web-i18n.md), [task breakdown](docs/design/daynight-web-tasks.md), [preview](docs/design/mockups/task-dashboard.html) |
 
 The adopted [task attachment requirements](docs/spec/daynight-task-attachments.md),
@@ -66,22 +75,26 @@ The [authentication requirements](docs/spec/daynight-auth.md),
 [architecture](docs/design/daynight-auth.md) and
 [task breakdown](docs/design/daynight-auth-tasks.md) define UniAuth login, Daynight
 sessions and personal access tokens, private projects and membership. The
-[identity foundation](.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md)
-provides persistent users, credentials and callable authentication handlers. The
-[project membership module](.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
-adds private creation, filtered access, roles and invitations. Both modules remain
-unmounted. [CLI server credentials](.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
-are implemented. The opt-in [authenticated Web workspace](.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
-provides login, private project creation, account/token management, project
-members and invitation acceptance in English and Simplified Chinese through the
-existing locale runtime. Production `main.tsx` keeps `LocaleProvider` and `App`;
-the opt-in shell uses the same Provider. Coordinated activation switches the
-application entry and integrates provider discovery after upgrading the pinned
-UniAuth SDK to the delivered upstream capability. The current application is
-unauthenticated and loopback-only. Trusted
-same-origin executable HTML previews retain their existing execution model after
-authentication is delivered; attachment requests gain project-member checks.
-Existing projects will receive membership data manually outside that work.
+[identity foundation](.agents/notes/implemented/architecture/2026-10-22-identity-credentials.md),
+[project membership module](.agents/notes/implemented/architecture/2026-10-22-project-membership.md),
+[CLI credentials](.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
+and [bilingual Web workspace](.agents/notes/implemented/feature/2026-10-22-web-auth-workspace.md)
+are connected by the mandatory
+[authentication composition](.agents/notes/implemented/architecture/2026-10-22-authentication-activation.md).
+Production `main.tsx` mounts `AuthenticatedApp` under the persistent locale
+Provider; all business APIs authenticate their caller and check current project
+membership. The pinned UniAuth SDK supplies authoritative App-aware provider
+discovery. Five server-side authentication settings are required; configured
+callback routing and the two independent HTTP test allowances are documented in
+the architecture and deployment guide. Source-bound acceptance results remain
+with the corresponding PR and CI; implementation status does not claim every
+combined or real-provider login check has passed.
+
+Trusted same-origin executable HTML retains its existing authority, relative
+resources and keyboard behavior; attachment requests use normal session and
+project checks. Existing projects keep zero memberships until manually assigned;
+there is no automatic owner migration or anonymous business mode. The Go listener
+continues to bind only numeric loopback addresses.
 
 The `@codetreker/daynight` package provides the `daynight` client and its `dn`
 short command. Both names use the same entry, commands and configuration. Its
@@ -107,7 +120,7 @@ confirmed behavior and implementation status. Shared YAML projections, the
 `serverUrl` configuration field, bounded HTTP client and repository discovery
 with ignored local bindings are implemented. `project create/list/show` manage
 remote projects through the configured server. Task create/list/ready/show/update/graph
-commands use explicit project selection or the current repository binding;
+and approve/claim/complete commands use explicit project selection or the current repository binding;
 installed real-service and resource-budget acceptance are implemented.
 [PR #55](https://github.com/codetreker/daynight/pull/55) records the original
 integration and real-default-budget validation. Current deadline tests use short
@@ -136,18 +149,26 @@ protocol delivery from independent acceptance of the exact merged consumer artif
 | Mode | Responsibility |
 |---|---|
 | `handbook` | Command purposes and operational context; use CLI help for command usage |
-| `create-task` | With explicit user permission, skip one-off/trivial work and reuse or register an ordinary task or the two Goal seeds with verified stage inputs |
+| `create-task` | With explicit creation permission, register proposed ordinary work or two Goal seeds with verified stage inputs; approval is separate |
 | `run-task <task-id>` | Execute the designated task through validation and authorized delivery, then return |
-| `autopilot <goal or scope>` | Restore the current task or select one most relevant ready todo, and continue only after confirmed completion |
+| `autopilot <goal or scope>` | Restore the current task or select one most relevant approved ready todo, and continue only after confirmed completion |
 
 Calling `using-daynight` without input uses the actual context; unclear intent is
 resolved with the user. Autopilot requires an explicit request for continuous
 execution. Creating tasks requires explicit user permission to create them;
 implementation requests and autopilot activation do not supply that permission.
 Existing explicit permission applies within its stated scope without repeated
-confirmation. Task descriptions are self-contained briefs: concrete actions, scope, deliverables,
-constraints, observable completion summaries and actual input references. Each
-task-specific primary Markdown owns detailed solution, full acceptance and evidence.
+confirmation. Goal creation covers its two starting tasks and later in-scope
+breakdown; task approval needs a separate explicit task or Goal-task scope.
+Creation, stage completion, run-task and autopilot do not supply approval. Approved
+ready work is claimed at the reviewed version. Task descriptions are self-contained
+Markdown briefs: the concrete problem and action, scope, deliverables, constraints,
+observable completion summaries and actual input references. The Web renders that
+Markdown; API storage and CLI/Agent output preserve the original string bytes.
+Each task-specific primary Markdown owns its detailed Solution, full Acceptance
+criteria and evidence. Use relative references such as
+`[Solution and acceptance](plan.md)` only after confirming that the referenced
+file belongs to that task and its uploaded contents are readable.
 Shared Goal and design inputs stay at their source task ID and attachment path,
 or a verified immutable repository URL; attachments follow actual need. Frontend
 implementation tasks read the completed final-style interactive prototype and
@@ -344,7 +365,11 @@ a file stay sequential so environment changes and cleanup have one owner.
 The [Git test decision](.agents/notes/implemented/testing/2026-10-18-parallel-git-validation.md)
 records the isolation rules, and the
 [CI timing report](docs/research/windows-ci-performance.md) records native
-before/after measurements. The installed acceptance suite additionally verifies the package
+before/after measurements. The repository-discovery submodule case prepares its
+real Git fixture in a case-scoped hook before exercising discovery, retaining
+separate setup and behavior limits and the existing private-directory cleanup.
+The [fixture lifecycle decision](.agents/notes/implemented/testing/2026-10-22-submodule-discovery-fixture-lifecycle.md)
+records that separation. The installed acceptance suite additionally verifies the package
 bin, default native command shims, singleton/stale-lock behavior and the complete
 review/re-review/restart/closure lifecycle. Separate npm global-prefix acceptance
 checks self-update and installation ownership. Curated environment and scenario
@@ -359,12 +384,16 @@ Run the dashboard, project/task API and PostgreSQL with Docker Engine 28+ and Do
 Compose 2.20+ using Linux containers on Linux or macOS (Docker Desktop):
 
 ```bash
+cp deployment/localhost/.env.example deployment/localhost/.env
+# Configure the private .env using the deployment guide before starting.
 bash deployment/localhost/up.sh
 ```
 
-The command builds the UI and server inside Docker, applies embedded migrations
-and waits for healthy services. Open `http://127.0.0.1:8787/` for the dashboard;
-the API is available at `http://127.0.0.1:8787/api/v1` on that same origin.
+The command requires the five authentication settings in that private file,
+builds the UI and server inside Docker, applies embedded migrations and waits for
+`/readyz`. Open the configured public origin and log in through UniAuth. APIs and
+trusted attachment previews share that origin; CLI access uses a Web-created
+personal access token configured through hidden or stdin setup.
 PostgreSQL data persists across container recreation. The
 [localhost deployment guide](deployment/localhost/README.md) owns port and npm build-registry selection,
 API examples, logs, updates and volume removal.
@@ -375,8 +404,10 @@ Use Go 1.27.2, PostgreSQL 18.6, Node.js 24 LTS and pnpm 11.28.6. Run
 `pnpm install --frozen-lockfile` from the repository root before source builds. The
 [server module](packages/daynight-server/README.md) owns configuration, startup,
 the isolated database setup and complete validation commands. Its HTTP runtime
-binds only loopback addresses and serves project creation/list/get, task
-create/list/get/update, complete task-graph routes and embedded UI assets. Delivery
+binds only numeric loopback addresses and serves authenticated project/task,
+complete graph, membership, invitation and attachment routes with embedded UI.
+The five mandatory authentication settings and independent HTTP test switches
+are described in the server module and deployment guides. Delivery
 status and complete process acceptance
 are recorded in the
 [task breakdown](docs/design/daynight-server-tasks.md).
@@ -663,6 +694,9 @@ daynight task list [--all | --status <status>] [--ready] [--json] [--project <pr
 daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
+daynight task approve <task-id> [--if-version <version>] [--project <project-id>]
+daynight task claim <task-id> [--if-version <version>] [--project <project-id>]
+daynight task complete <task-id> [--if-version <version>] [--project <project-id>]
 daynight task graph [--json] [--project <project-id>]
 daynight task attachment
 daynight task attachment put <task-id> <file> [--path <relative-path>] [--project <project-id>]
@@ -948,7 +982,11 @@ behavior and remaining task-command scope.
 Task commands use the same `serverUrl` configuration as project commands:
 
 ```bash
-daynight task create --title "Implement sign-in" --description "Support OAuth"
+daynight task create --title "Implement sign-in" --description '## Sign-in
+
+Implement OAuth sign-in for the web workspace. Deliver the callback flow and
+visible failure recovery; preserve the existing session and provider rules.
+Complete when a valid login opens the workspace and a rejected login can retry.'
 daynight task create --title "Build the sign-in page" --depends-on <task-id>
 daynight task ready
 daynight task ready --limit 5 --json
@@ -957,7 +995,9 @@ daynight task list --all --json
 daynight task list --status in_progress --json
 daynight task show <task-id> --json
 daynight task update <task-id> --description=
-daynight task update <task-id> --status done
+daynight task approve <task-id> --if-version 1
+daynight task claim <task-id> --if-version 2
+daynight task complete <task-id> --if-version 3
 daynight task update <task-id> --depends-on <task-a> --depends-on <task-b>
 daynight task update <task-id> --clear-dependencies
 daynight task graph --json
@@ -973,15 +1013,24 @@ server origin and repository identity, after ensuring `/.daynight/` is effective
 in the root `.gitignore`. A cached binding is verified against the server on each
 use and remains stable if another project later shares that repository.
 
-Tasks can be stored and read with `proposed`, `todo`, `in_progress` or `done`
-status. Proposed tasks appear in unfinished inventories, graph summaries and the
-Web workspace as Proposed or 待审批 in the selected language. The stored/read
-contract is prepared for approval; public
-creation and the database default still use `todo`, and public status filters
-and updates still accept `todo`, `in_progress` and `done`. Approval, claim and
-completion commands are not available. The
-[four-state reader decision](.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
-records this preparation boundary.
+Tasks follow one forward lifecycle: creation starts in `proposed`; `task approve`
+moves it to `todo`; `task claim` moves ready todo to `in_progress`; `task complete`
+moves in-progress work to `done`. Approval permits unfinished prerequisites;
+claim and completion require every direct prerequisite to be done. Every project
+member, including administrators, may use these resource operations; the
+administrator role additionally manages members and invitations. Each action
+uses an expected version and increments it once. `--if-version` submits the exact
+observed int64 value; without it, the CLI reads once immediately before submitting.
+Conflicts and wrong states fail without retry. Generic updates cannot write
+status, and there is no reopen or direct todo-to-done operation. Existing todo,
+in-progress and done records keep their states, versions and timestamps.
+
+Proposed tasks appear in unfinished inventories and Web statistics. The Web task
+detail dialog offers Approve / 批准任务 for proposed tasks, using the reviewed
+full task's exact version; it refreshes the graph after confirmation. Approval
+makes work eligible for later claim and grants no implementation or merge
+permission. The [lifecycle decision](.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
+records the state and approval boundaries.
 
 `task ready` selects up to 10 actionable tasks by
 default; `--limit <N>` accepts decimal integers from 1 through 100. It makes one
@@ -1332,7 +1381,10 @@ a disabled skill, project override or malformed response fails the attempt.
 The review prompt explicitly invokes the skill and identifies its current
 absolute entrypoint and digest on both new sessions and resume. The bundled
 skill owns review methodology; the prompt owns the immutable target, publication
-eligibility, retry reconciliation and completion protocol.
+eligibility, retry reconciliation and completion protocol. The prompt also
+explicitly requests the skill's native subagent delegation and synthesis when
+fresh review is required; confirming a valid matching submitted result retains
+its reconciliation exception.
 
 The Copilot adapter then launches the review child in that same worktree and
 environment. It selects the persisted per-PR UUID on first launch and explicitly resumes that
@@ -1369,6 +1421,27 @@ changes block approval even without a Critical/Major code defect. Necessary
 implementation, structural changes, tests and documentation for the same outcome
 remain in scope; fixed line or file counts do not decide reviewability. Expanding
 the description alone cannot justify unrelated work.
+
+For every fresh review, the main agent first inspects that complete fixed diff,
+then chooses at least two complementary perspectives based on the PR's actual
+changes, contracts and risks. It invokes independent subagents, preferably in
+parallel, with exact head/base/merge-base context, scope, applicable repository
+instructions, evidence standards and shared worktree, temporary-file and process
+rules. Source and Git state remain read-only; subagents return findings and
+coverage limits to the main agent without publishing or emitting completion
+markers. The main agent waits for all required perspectives, verifies candidates,
+resolves disagreements and deduplicates root causes. It records the perspective
+rationale, completed coverage, limits, fix/defer/reject dispositions and confirmed
+blockers in attempt output, while GitHub comments contain concise findings only.
+An unavailable tool, failed child or incomplete required perspective is an
+operational failure; retries or reassignment stay within the attempt's existing
+budget. An incomplete review publishes neither a result nor a completion marker.
+
+These subagents belong to one attempt within the daemon-managed main review
+session; they do not create more review Workers, PR sessions or worktrees.
+Reconciliation of a valid matching submitted result confirms that result without
+repeating delegation. The selected questions must fit each PR, including
+documentation-only changes.
 
 Before new publication, the agent rereads the current PR information and
 reevaluates those gates. A successful review either approves or publishes
@@ -1410,7 +1483,9 @@ contract.
 The [execution decision](.agents/notes/implemented/architecture/2026-10-17-copilot-session-execution.md)
 records process and publication boundaries; the
 [PR-quality decision](.agents/notes/implemented/process/2026-10-21-review-pr-quality-gates.md)
-records the approval policy. The
+records the approval policy, and the
+[multi-perspective decision](.agents/notes/implemented/process/2026-10-22-pr-specific-review-perspectives.md)
+records delegation and synthesis. The
 [conversation-cycle decision](.agents/notes/implemented/architecture/2026-10-21-review-conversation-cycle.md)
 records durable follow-ups and publication verification. The
 [skill design](docs/design/daynight-review-skill.md) owns packaging, snapshots and
@@ -1554,11 +1629,21 @@ Selected jobs keep their complete checks, coverage thresholds, acceptance suites
 timeouts and cleanup requirements. The Go job still builds real web assets and
 exercises the installed CLI; the web job still builds and exercises the Go
 service and production deployment. Selecting one module does not split these
-existing integration suites. Native CLI jobs typecheck and build once before
+existing integration suites. The Ubuntu shell-completion and Web jobs select the
+official HTTPS Ubuntu archive and security services before package preparation.
+Their shared command changes only the runner's referenced mirror list; signed
+source stanzas and package indices remain intact. An unexpected source layout
+fails explicitly. The [mirror decision](.agents/notes/implemented/testing/2026-10-22-ubuntu-package-mirrors.md)
+records the provisioning failure and the retained acceptance limits.
+Native CLI jobs typecheck and build once before
 running ordinary and installed tests against the same output. After deployment
-fixture checks, the web job uses one acceptance pipeline. Pinned Chromium,
-unit/coverage checks, native UI/Go/PostgreSQL preparation and the normal dev-ci
-source build can overlap. Only the coverage subprocess uses two Vitest workers,
+fixture checks, the web job uses one acceptance pipeline. Unit/coverage checks,
+native UI/Go/PostgreSQL preparation and the normal dev-ci source build start
+concurrently. Installation of pinned Chromium and Linux dependencies starts only
+after coverage passes, then overlaps the remaining native/dev-ci preparation.
+Browser installation has a 600-second deadline, coverage 180 seconds, and the web
+job 20 minutes; a nonzero exit or timeout fails acceptance. Only the coverage
+subprocess uses two Vitest workers through its copied child environment,
 retaining its `forks` pool and file isolation. Native functional checks and their
 browser cleanup precede the container browser checks; full container cleanup
 and all preparation/check commands finish before the native capacity phase.
@@ -1604,8 +1689,26 @@ job uploads `.tmp/validation-environment.json`, `.tmp/e2e-evidence.json`,
 tested source and platform, scenario outcomes and owned-resource cleanup. Shell
 completion has a separate `.tmp/completion-evidence.json` receipt. Match each
 receipt to its tested revision and execution scope; local or controlled receipts
-do not establish a successful current-source hosted run. A failed scenario or
-cleanup remains a failure even when other results pass.
+do not establish a successful current-source hosted run. Shared packed-CLI and
+Web source records require `source.gitTreeSha` from actual
+`git rev-parse HEAD^{tree}`; Go acceptance records the same tree as root
+`gitTreeSha` and verifies it against the installed CLI. Commit, tree, dirty state,
+package and artifact identities must agree at handoff and recovery. Missing or
+mismatched tree data fails validation. Tree equality identifies committed content;
+it does not fingerprint dirty changes or prove an executed gate, platform result
+or reviewer decision. A failed scenario or cleanup remains a failure even when
+other results pass.
+
+The [lifecycle cross-layer acceptance decision](.agents/notes/implemented/testing/2026-10-22-task-lifecycle-cross-layer-acceptance.md)
+owns the same-data packed-CLI/production-Web journey, real installed-process
+competition and genuine historical-SQL startup/restart proof. These extend the
+existing service and browser fixtures, with their normal source, fault and cleanup
+ownership. Native project/task HTTP fixtures remain controlled client evidence;
+actual Go/PostgreSQL and native/container browser receipts remain separate.
+Installed skill checks validate the six shipped resources, metadata, contained
+references and bounded cross-resource instruction contracts on actual package and
+target copies. Simulated launchers and instruction artifacts do not establish
+live Agent behavior or waive the existing native terminal checks.
 
 The review lifecycle uses controlled GitHub and Copilot processes. Native Copilot
 loading probes establish skill activation under their recorded conditions.
@@ -1620,8 +1723,9 @@ owns the lifecycle rationale; the [bundled-skill decision](.agents/notes/impleme
 owns native loading evidence.
 
 The [dev-ci attachment check](deployment/dev-ci/README.md#attachment-persistence-check)
-runs with `node deployment/dev-ci/tests/attachments.mts` using Node.js 24 and
-Docker. Two isolated production builds verify attachment-volume permissions,
+runs with `node deployment/dev-ci/tests/attachments.mts` using Node.js 24,
+Go 1.27.2 and a supported Linux-container Docker engine. An architecture-matching
+prebuilt fixture can replace host preparation as documented by dev-ci. Two isolated production builds verify attachment-volume permissions,
 restart/recreation persistence, project isolation, paired PostgreSQL/file restore
 and targeted cleanup. The Bash runner fixture remains a separate orchestration
 check; real-container evidence is required for persistence claims.

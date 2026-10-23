@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Attachment } from "../src/api/types";
-import { attachmentKind, attachmentTree, resolveAttachmentUrl } from "../src/features/task-detail/attachments/model";
+import { attachmentKind, attachmentTree, resolveAttachmentReference, resolveAttachmentUrl, resolveMarkdownAttachmentUrl } from "../src/features/task-detail/attachments/model";
 const time = "2026-10-21T00:00:00Z";
 const file = (path: string, contentType = "application/octet-stream"): Attachment => ({ path, contentType, sizeBytes: 1, createdAt: time, updatedAt: time });
 
@@ -44,4 +44,25 @@ describe("Markdown attachment URLs", () => {
     expect(resolve(value)).toBeNull();
   });
   it("rejects an invalid current attachment path", () => expect(resolveAttachmentUrl("image.png", "../bad", root)).toBeNull());
+});
+
+describe("description attachment roots", () => {
+  const root = "/task/preview/";
+  const base = { kind: "root" } as const;
+  it.each([
+    ["plan.md", "/task/preview/plan.md"], ["./mockui/index.html", "/task/preview/mockui/index.html"],
+    ["docs/../方案%20%25%3F%23.md", "/task/preview/%E6%96%B9%E6%A1%88%20%25%3F%23.md"],
+    ["%252F.md", "/task/preview/%252F.md"], ["guide.md?raw=1#part", "/task/preview/guide.md?raw=1#part"],
+    ["?raw=1", "/task/preview/?raw=1"], ["#part", "#part"], ["", "/task/preview/"],
+    ["/absolute.md", "/absolute.md"], ["https://example.com/a", "https://example.com/a"],
+  ])("resolves %j without inventing a document", (value, expected) => {
+    expect(resolveMarkdownAttachmentUrl(value, base, root)).toBe(expected);
+  });
+  it.each(["../plan.md", "%2e%2e/plan.md", "docs/../../escape.md", "a//b.md", "%2Fplan.md", "%5Cplan.md", "%FF", "%", ".", "docs/.."])("rejects invalid root reference %j", (value) => {
+    expect(resolveAttachmentReference(value, base)).toEqual({ kind: "invalid" });
+    expect(resolveMarkdownAttachmentUrl(value, base, root)).toBeNull();
+  });
+  it("retains decoded path identity separately from URL suffixes", () => {
+    expect(resolveAttachmentReference("docs/方案%20%25%3F%23.md?raw=1#part", base)).toEqual({ kind: "relative", path: "docs/方案 %?#.md", suffix: "?raw=1#part" });
+  });
 });

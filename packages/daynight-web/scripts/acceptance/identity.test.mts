@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import test from 'node:test';
-import { processIdentity, requireGroupStopped, requireStopped, sameProcess } from './identity.mts';
+import { isGroupStopped, processIdentity, requireGroupStopped, requireStopped, sameProcess } from './identity.mts';
 
 test('native identity records executable and start time and rejects an active owner', async () => {
   const identity = await processIdentity(process.pid);
@@ -20,15 +20,18 @@ test('process group recovery refuses an active owned group and accepts its compl
     await new Promise<void>((resolve, reject) => { child.once('spawn', () => resolve()); child.once('error', reject); });
     const identity = await processIdentity(child.pid!);
     assert.notEqual(identity, null);
+    assert.equal(isGroupStopped(child.pid!), false);
     assert.throws(() => requireGroupStopped(child.pid!), /still running/);
     child.kill('SIGTERM'); await exited;
     await requireStopped(identity!);
+    assert.equal(isGroupStopped(child.pid!), true);
     requireGroupStopped(child.pid!);
   } finally { if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exited; } }
 });
 test('invalid process identities fail before process operations', async () => {
   for (const pid of [0, 1, -1, 1.5, NaN]) {
     await assert.rejects(processIdentity(pid));
+    assert.throws(() => isGroupStopped(pid));
     assert.throws(() => requireGroupStopped(pid));
   }
 });
@@ -68,4 +71,18 @@ test('Linux identity preserves filesystem failures other than process absence', 
   syncBuiltinESMExports();
   try { await assert.rejects(processIdentity(process.pid), (error) => error === failure); }
   finally { read.mock.restore(); syncBuiltinESMExports(); }
+});
+
+test('process-group absence requires ESRCH and preserves other probe failures', (context) => {
+  const gone = Object.assign(new Error('Group is absent.'), { code: 'ESRCH' });
+  const denied = Object.assign(new Error('Group is inaccessible.'), { code: 'EPERM' });
+  let failure: Error | undefined;
+  const kill = context.mock.method(process, 'kill', () => { if (failure !== undefined) throw failure; return true; });
+  assert.equal(isGroupStopped(42), false);
+  failure = gone;
+  assert.equal(isGroupStopped(42), true);
+  failure = denied;
+  assert.throws(() => isGroupStopped(42), (error) => error === denied);
+  assert.throws(() => requireGroupStopped(42), (error) => error === denied);
+  assert.deepEqual(kill.mock.calls.map(({ arguments: args }) => args), [[-42, 0], [-42, 0], [-42, 0], [-42, 0]]);
 });

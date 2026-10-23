@@ -12,16 +12,16 @@ import { projectRoot, type GraphIndex } from "../src/features/task-graph/model";
 const render = createLocaleRender("zh-CN");
 
 vi.mock("../src/api/client", async (original) => ({ ...await original<typeof import("../src/api/client")>(), getTask: vi.fn(), getTaskGraph: vi.fn() }));
-vi.mock("../src/features/task-graph/RootList", () => ({ RootList: ({ index, rootIds, expandedRootId, onExpand, onSelectTask }: {
-  index: GraphIndex; rootIds: readonly string[]; expandedRootId: string | null; onExpand: (id: string | null) => void; onSelectTask: (id: string, trigger: HTMLElement) => void;
+vi.mock("../src/features/task-graph/RootList", () => ({ RootList: ({ index, rootIds, expandedRootId, onExpand, onOpenTask }: {
+  index: GraphIndex; rootIds: readonly string[]; expandedRootId: string | null; onExpand: (id: string | null) => void; onOpenTask: (id: string, trigger: HTMLElement) => void;
 }) => <div data-testid="root-list" data-index-roots={index.roots.join(",")}>{rootIds.map((root) => <div key={root}>
   <button id={`task-root-${root}`} onClick={() => onExpand(expandedRootId === root ? null : root)}>{index.nodes.get(root)!.titlePreview}</button>
-  {expandedRootId === root && <div data-testid={`chain-${root}`}>{[...projectRoot(index, root).mainIds].map((id) => <button key={id} onClick={(event) => onSelectTask(id, event.currentTarget)}>节点 {index.nodes.get(id)!.titlePreview}</button>)}</div>}
+  {expandedRootId === root && <div data-testid={`chain-${root}`}>{[...projectRoot(index, root).mainIds].map((id) => <button key={id} onClick={(event) => onOpenTask(id, event.currentTarget)}>节点 {index.nodes.get(id)!.titlePreview}</button>)}</div>}
 </div>)}</div> }));
 vi.mock("../src/features/task-detail/TaskDetailDialog", () => ({ TaskDetailDialog: ({ projectId, taskId, snapshot, onSelectTask, onClose, onRestoreFocus, onRefreshGraph }: {
   projectId: string; taskId: string; snapshot: GraphSnapshot; onSelectTask: (id: string) => void; onClose: () => void; onRestoreFocus: () => void; onRefreshGraph: () => void;
 }) => {
-  const state = useTaskDetail(projectId, taskId, snapshot.revision);
+  const state = useTaskDetail(projectId, taskId, snapshot.revision, snapshot.index.nodes.get(taskId));
   useEffect(() => () => onRestoreFocus(), [onRestoreFocus]);
   return <aside aria-label="详情测试外壳"><p data-testid="selected-task">{taskId}</p><p data-testid="detail-state">{state.status}</p><p>{state.detail?.title}</p><p data-testid="detail-business-status">{state.detail?.status}</p>
     <button onClick={() => onSelectTask(C)}>关系跳转</button><button onClick={() => onSelectTask(X)}>未知关系</button>
@@ -71,7 +71,7 @@ const rememberRoot = (root: string | null, id = projectId) => window.localStorag
 beforeEach(() => {
   graphRequest.mockReset(); detailRequest.mockReset();
   detailRequest.mockImplementation(async (project, id): Promise<TaskDetail> => ({
-    id, projectId: project, title: `详情 ${id}`, description: "文本", properties: { pullRequests: [] }, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
+    id, projectId: project, title: `详情 ${id}`, description: "文本", properties: { pullRequests: [] }, status: "todo", version: 1n, dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
   }));
 });
 
@@ -139,7 +139,7 @@ describe("project dashboard", () => {
 
   it("re-reads a retained detail after a new graph revision without using detail responses to patch graph statistics", async () => {
     graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph());
-    detailRequest.mockResolvedValue({ id: B, projectId, title: `详情 ${B}`, description: "更新后的详情", properties: { pullRequests: [] }, status: "done", dependsOn: [A], blockedBy: [], ready: false, createdAt: time, updatedAt: time });
+    detailRequest.mockResolvedValue({ id: B, projectId, title: `详情 ${B}`, description: "更新后的详情", properties: { pullRequests: [] }, status: "done", version: 1n, dependsOn: [A], blockedBy: [], ready: false, createdAt: time, updatedAt: time });
     render(<ProjectPage projectId={projectId} />);
     fireEvent.click(await screen.findByRole("button", { name: "节点 后续任务" }));
     await screen.findByText(`详情 ${B}`);

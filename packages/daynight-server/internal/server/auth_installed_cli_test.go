@@ -17,9 +17,7 @@ import (
 	"time"
 
 	"github.com/codetreker/daynight/packages/daynight-server/api"
-	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
-	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
-	"github.com/codetreker/daynight/packages/daynight-server/internal/service"
+	"github.com/codetreker/daynight/packages/daynight-server/testdata/testauth"
 )
 
 type identityCLIReceipt struct {
@@ -111,7 +109,7 @@ type identityInstalledCLI struct {
 
 func newIdentityInstalledCLI(t *testing.T, receipt identityCLIReceipt, secret string) *identityInstalledCLI {
 	t.Helper()
-	root := t.TempDir()
+	root := testauth.Directory(t)
 	home := filepath.Join(root, "home")
 	if err := os.Mkdir(home, 0o700); err != nil {
 		t.Fatal("create isolated installed CLI home failed")
@@ -171,79 +169,34 @@ type identityCLIRequests struct {
 	all, bearer, anonymous, authenticatedPAT, unauthorized atomic.Int64
 }
 
-func identityCLIProjectRoutes(mux *http.ServeMux, authentication *Authentication, database *store.Store, requests *identityCLIRequests) {
-	projects := service.NewProjects(database)
-	register := func(pattern string, next AuthenticatedHandler) {
-		protected := authentication.Require(next)
-		mux.HandleFunc(pattern, func(w http.ResponseWriter, request *http.Request) {
-			requests.all.Add(1)
-			if strings.HasPrefix(request.Header.Get("Authorization"), "Bearer ") {
-				requests.bearer.Add(1)
-			} else if request.Header.Get("Authorization") == "" {
-				requests.anonymous.Add(1)
-			}
-			response := &responseRecorder{ResponseWriter: w}
-			protected(response, request)
-			if response.status == http.StatusUnauthorized {
-				requests.unauthorized.Add(1)
-			}
-		})
+func publishIdentityBudgetPAT(t *testing.T, receipt identityCLIReceipt, token string) {
+	t.Helper()
+	path := os.Getenv("DAYNIGHT_TEST_CLI_BUDGET_TOKEN_FILE")
+	if path == "" {
+		return
 	}
-	countPAT := func(principal core.Principal) {
-		if principal.Kind == core.PATCredential {
-			requests.authenticatedPAT.Add(1)
-		}
+	if !filepath.IsAbs(path) || !identityPathWithin(receipt.Root, path) {
+		t.Fatal("budget token handoff must belong to its installed fixture")
 	}
-	register("GET /api/v1/projects", func(w http.ResponseWriter, request *http.Request, principal core.Principal) {
-		countPAT(principal)
-		page, err := pageRequest(request)
-		if err != nil {
-			writeError(w, request, authentication.logger, "project", "list", err)
-			return
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		t.Fatal("create private budget token handoff failed")
+	}
+	err = json.NewEncoder(file).Encode(struct {
+		ServerToken string `json:"serverToken"`
+	}{ServerToken: token})
+	if err = errors.Join(err, file.Close()); err != nil {
+		if removeErr := os.Remove(path); removeErr != nil {
+			t.Error("remove incomplete budget token handoff failed")
 		}
-		result, err := projects.ListAccessible(request.Context(), principal, page)
-		if err != nil {
-			writeError(w, request, authentication.logger, "project", "list", err)
-			return
-		}
-		response := api.ProjectPage{Items: make([]api.Project, 0, len(result.Items)), NextCursor: result.NextCursor}
-		for _, project := range result.Items {
-			response.Items = append(response.Items, projectResponse(project))
-		}
-		writeJSON(w, request, authentication.logger, http.StatusOK, response)
-	})
-	register("POST /api/v1/projects", func(w http.ResponseWriter, request *http.Request, principal core.Principal) {
-		countPAT(principal)
-		fields, err := decodeObject(w, request, "name", "repoUrl")
-		if err != nil {
-			writeError(w, request, authentication.logger, "project", "create", err)
-			return
-		}
-		name, err := requiredString(fields, "name")
-		if err != nil {
-			writeError(w, request, authentication.logger, "project", "create", err)
-			return
-		}
-		repoURL, err := requiredString(fields, "repoUrl")
-		if err != nil {
-			writeError(w, request, authentication.logger, "project", "create", err)
-			return
-		}
-		project, err := projects.CreatePrivate(request.Context(), principal, service.CreateProject{Name: name, RepoURL: repoURL})
-		if err != nil {
-			writeError(w, request, authentication.logger, "project", "create", err)
-			return
-		}
-		writeCreated(w, request, authentication.logger, "/api/v1/projects/"+project.ID, projectResponse(project))
-	})
+		t.Fatal("persist private budget token handoff failed")
+	}
 }
 
 func TestAuthenticationInstalledCLIUsesPersonalAccessToken(t *testing.T) {
 	receipt := identityInstalledReceipt(t)
-	requests := &identityCLIRequests{}
-	integration := newIdentityIntegration(t, func(mux *http.ServeMux, authentication *Authentication, database *store.Store) {
-		identityCLIProjectRoutes(mux, authentication, database, requests)
-	})
+	integration := newIdentityIntegration(t)
+	requests := integration.requests
 	aliceBrowser, bobBrowser := identityBrowser(t), identityBrowser(t)
 	integration.login(t, aliceBrowser, "alice")
 	integration.login(t, bobBrowser, "bob")
@@ -256,6 +209,7 @@ func TestAuthenticationInstalledCLIUsesPersonalAccessToken(t *testing.T) {
 	if token.ID == "" || !strings.HasPrefix(token.Token, "dnpat_") {
 		t.Fatal("real browser session did not mint a personal access token")
 	}
+	publishIdentityBudgetPAT(t, receipt, token.Token)
 	integration.secrets = append(integration.secrets, token.Token)
 	cli := newIdentityInstalledCLI(t, receipt, token.Token)
 	stdout, _ := cli.run(t, token.Token+"\n", true, "setup", "--server-url", integration.server.URL, "--server-token-stdin")

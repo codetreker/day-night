@@ -10,20 +10,14 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
-	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/codetreker/daynight/packages/daynight-server/api"
-	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
-	"github.com/codetreker/daynight/packages/daynight-server/internal/service"
+	"github.com/codetreker/daynight/packages/daynight-server/testdata/testauth"
 	uniauth "github.com/codetreker/uniauth/sdk/go"
 )
 
@@ -38,141 +32,81 @@ func (logs *identityIntegrationLogs) Write(value []byte) (int, error) {
 	return logs.buffer.Write(value)
 }
 
+func (logs *identityIntegrationLogs) count(value string) int {
+	logs.mu.Lock()
+	defer logs.mu.Unlock()
+	return strings.Count(logs.buffer.String(), value)
+}
+
 func (logs *identityIntegrationLogs) contains(value string) bool {
 	logs.mu.Lock()
 	defer logs.mu.Unlock()
 	return strings.Contains(logs.buffer.String(), value)
 }
 
-type identityGatewayTransport struct {
-	origin     string
-	base       *http.Transport
-	retrievals atomic.Int64
-}
-
-func (transport *identityGatewayTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	if request.URL.Scheme+"://"+request.URL.Host != transport.origin {
-		return nil, errors.New("integration SDK attempted a request outside its gateway")
-	}
-	if request.URL.Path == "/auth/result" {
-		transport.retrievals.Add(1)
-	}
-	return transport.base.RoundTrip(request)
-}
-
 type identityIntegration struct {
 	server        *httptest.Server
 	gateway       string
 	client        *uniauth.Client
-	transport     *identityGatewayTransport
+	requests      *identityCLIRequests
 	logs          *identityIntegrationLogs
 	sessionCookie string
+	callbackPath  string
 	secrets       []string
 }
 
-func newIdentityIntegration(t *testing.T, register ...func(*http.ServeMux, *Authentication, *store.Store)) *identityIntegration {
+func newIdentityIntegration(t *testing.T) *identityIntegration {
 	t.Helper()
-	binary := os.Getenv("DAYNIGHT_TEST_UNIAUTH_FIXTURE")
-	if binary == "" {
-		t.Fatal("DAYNIGHT_TEST_UNIAUTH_FIXTURE is required; prepare the pinned real UniAuth fixture before testing")
-	}
+	return newIdentityIntegrationCallback(t, "/api/v1/auth/callback")
+}
+
+func newIdentityIntegrationCallback(t *testing.T, callbackPath string) *identityIntegration {
+	t.Helper()
 	database := projectTestStore(t)
 	server := httptest.NewUnstartedServer(nil)
 	t.Cleanup(server.Close)
 	origin := "http://" + server.Listener.Addr().String()
-	callback := origin + "/api/v1/auth/callback"
-	directory := t.TempDir()
-	readyFile := filepath.Join(directory, "ready.json")
+	callback := origin + callbackPath
 	logs := &identityIntegrationLogs{}
-	command := exec.Command(binary)
-	command.Env = append(os.Environ(), "DAYNIGHT_FIXTURE_CALLBACK_URL="+callback, "DAYNIGHT_FIXTURE_DATABASE_PATH="+filepath.Join(directory, "apps.db"), "DAYNIGHT_FIXTURE_READY_FILE="+readyFile, "DAYNIGHT_FIXTURE_LISTEN_ADDRESS=127.0.0.1:0")
-	command.Stdout, command.Stderr = logs, logs
-	if err := command.Start(); err != nil {
-		t.Fatalf("start real UniAuth fixture: %v", err)
-	}
-	exited := make(chan struct{})
-	var waitError error
-	go func() { waitError = command.Wait(); close(exited) }()
-	t.Cleanup(func() {
-		select {
-		case <-exited:
-		default:
-			if err := command.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
-				t.Error("signal real UniAuth fixture shutdown failed")
-			}
-			select {
-			case <-exited:
-			case <-time.After(5 * time.Second):
-				if err := command.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
-					t.Error("kill real UniAuth fixture failed")
-				}
-				<-exited
-				t.Error("real UniAuth fixture exceeded graceful shutdown deadline")
-			}
-		}
-		if waitError != nil {
-			t.Error("real UniAuth fixture did not exit successfully")
-		}
-	})
-	var ready struct {
-		Origin    string `json:"origin"`
-		AppID     string `json:"appId"`
-		AppSecret string `json:"appSecret"`
-	}
-	deadline := time.NewTimer(10 * time.Second)
-	defer deadline.Stop()
-	poll := time.NewTicker(10 * time.Millisecond)
-	defer poll.Stop()
-readiness:
-	for {
-		data, err := os.ReadFile(readyFile)
-		if err == nil {
-			info, err := os.Stat(readyFile)
-			if err != nil {
-				t.Fatal("stat fixture readiness failed")
-			}
-			if info.Mode().Perm() != 0o600 {
-				t.Fatal("fixture readiness must be private")
-			}
-			if err := json.Unmarshal(data, &ready); err != nil {
-				t.Fatal("decode fixture readiness failed")
-			}
-			if err := os.Remove(readyFile); err != nil {
-				t.Fatal("remove private fixture readiness failed")
-			}
-			break readiness
-		}
-		if !errors.Is(err, os.ErrNotExist) {
-			t.Fatal("read fixture readiness failed")
-		}
-		select {
-		case <-poll.C:
-		case <-deadline.C:
-			t.Fatal("real UniAuth fixture readiness deadline exceeded")
-		case <-exited:
-			t.Fatal("real UniAuth fixture exited before readiness")
-		}
-	}
+	ready := testauth.StartGatewayWithOutput(t, callback, logs)
 	base := http.DefaultTransport.(*http.Transport).Clone()
 	t.Cleanup(base.CloseIdleConnections)
-	transport := &identityGatewayTransport{origin: ready.Origin, base: base}
-	client, err := uniauth.New(uniauth.Config{BaseURL: ready.Origin, AppID: ready.AppID, AppSecret: ready.AppSecret, AllowLoopbackHTTP: true, HTTPClient: &http.Client{Timeout: 5 * time.Second, Transport: transport}})
+	client, err := uniauth.New(uniauth.Config{BaseURL: ready.Origin, AppID: ready.AppID, AppSecret: ready.AppSecret, AllowLoopbackHTTP: true, HTTPClient: &http.Client{Timeout: 5 * time.Second, Transport: base}})
 	if err != nil {
 		t.Fatal("construct real UniAuth SDK client failed")
 	}
 	logger := slog.New(slog.NewJSONHandler(logs, nil))
-	authentication, err := NewAuthentication(service.NewIdentity(database, client, callback), AuthConfig{PublicOrigin: origin, AllowLoopbackHTTP: true}, logger)
+	config := configuredTestConfig()
+	config.PublicOrigin, config.UniAuthURL = origin, ready.Origin
+	config.UniAuthAppID, config.UniAuthAppSecret, config.UniAuthCallbackURL = ready.AppID, ready.AppSecret, callback
+	config.AllowHTTPTestOrigin, config.AllowLoopbackHTTP = true, true
+	handler, err := New(Dependencies{Store: database, Files: attachmentTestFiles(t)}, config, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
-	mux := http.NewServeMux()
-	authentication.RegisterRoutes(mux)
-	for _, routes := range register {
-		routes(mux, authentication, database)
-	}
-	server.Config.Handler = RequestLogging(logger, mux)
+	requests := &identityCLIRequests{}
+	server.Config.Handler = RequestLogging(logger, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		observed := request.URL.Path == "/api/v1/projects"
+		bearer := strings.HasPrefix(request.Header.Get("Authorization"), "Bearer ")
+		if observed {
+			requests.all.Add(1)
+			if bearer {
+				requests.bearer.Add(1)
+			} else if request.Header.Get("Authorization") == "" {
+				requests.anonymous.Add(1)
+			}
+		}
+		response := &responseRecorder{ResponseWriter: w}
+		handler.ServeHTTP(response, request)
+		if observed && response.status == http.StatusUnauthorized {
+			requests.unauthorized.Add(1)
+		}
+		if observed && bearer && response.status >= 200 && response.status < 300 {
+			requests.authenticatedPAT.Add(1)
+		}
+	}))
 	server.Start()
-	return &identityIntegration{server: server, gateway: ready.Origin, client: client, transport: transport, logs: logs, sessionCookie: authentication.SessionCookieName(), secrets: []string{ready.AppSecret}}
+	return &identityIntegration{server: server, gateway: ready.Origin, client: client, requests: requests, logs: logs, sessionCookie: "daynight_session", callbackPath: callbackPath, secrets: []string{ready.AppSecret}}
 }
 
 func identityBrowser(t *testing.T) *http.Client {
@@ -252,7 +186,7 @@ func (integration *identityIntegration) providerCallback(t *testing.T, browser *
 	}
 	response, _ := identityRequest(t, browser, http.MethodGet, integration.gateway+"/auth/callback/github?"+values.Encode(), "", nil, http.StatusFound)
 	callback, err := response.Location()
-	if err != nil || callback.Scheme+"://"+callback.Host != integration.server.URL || callback.Path != "/api/v1/auth/callback" {
+	if err != nil || callback.Scheme+"://"+callback.Host != integration.server.URL || callback.Path != integration.callbackPath {
 		t.Fatal("UniAuth changed the registered Daynight callback")
 	}
 	if code := callback.Query().Get("code"); code != "" {
@@ -340,22 +274,38 @@ func TestAuthenticationUniAuthIdentityAndCredentials(t *testing.T) {
 	}
 }
 
+func TestAuthenticationProvidersAndConfiguredCallbackUseProductionMux(t *testing.T) {
+	integration := newIdentityIntegrationCallback(t, "/auth/callback")
+	browser := identityBrowser(t)
+	_, data := identityRequest(t, browser, http.MethodGet, integration.server.URL+"/api/v1/auth/providers", "", nil, http.StatusOK)
+	providers := identityDecode[struct {
+		Providers []string `json:"providers"`
+	}](t, data)
+	if !reflect.DeepEqual(providers.Providers, []string{"github"}) {
+		t.Fatal("production provider discovery must return the actual App/provider intersection")
+	}
+	integration.login(t, browser, "alice")
+	identityRequest(t, browser, http.MethodGet, integration.server.URL+"/api/v1/auth/callback", "", nil, http.StatusNotFound)
+	identityRequest(t, browser, http.MethodGet, integration.server.URL+"/api/v1/auth/login?provider=github&returnPath=%2Fauth%2Fcallback", "", nil, http.StatusBadRequest)
+	identityRequest(t, browser, http.MethodHead, integration.server.URL+"/auth/callback", "", nil, http.StatusMethodNotAllowed)
+}
+
 func TestAuthenticationUniAuthBrowserBindingAndConsumption(t *testing.T) {
 	integration := newIdentityIntegration(t)
 	browser, stranger := identityBrowser(t), identityBrowser(t)
 	callback := integration.providerCallback(t, browser, integration.start(t, browser), "alice")
-	before := integration.transport.retrievals.Load()
+	before := integration.logs.count("type=fixture_result_request")
 	identityRequest(t, stranger, http.MethodGet, callback.String(), "", nil, http.StatusUnauthorized)
 	identityRequest(t, stranger, http.MethodGet, integration.server.URL+"/api/v1/me", "", nil, http.StatusUnauthorized)
-	if integration.transport.retrievals.Load() != before {
+	if integration.logs.count("type=fixture_result_request") != before {
 		t.Fatal("an unbound callback retrieved the gateway result")
 	}
 	integration.complete(t, browser, callback)
-	if integration.transport.retrievals.Load() != before+1 {
+	if integration.logs.count("type=fixture_result_request") != before+1 {
 		t.Fatal("a bound login must retrieve its one-time gateway result exactly once")
 	}
 	identityRequest(t, browser, http.MethodGet, callback.String(), "", nil, http.StatusUnauthorized)
-	if integration.transport.retrievals.Load() != before+1 {
+	if integration.logs.count("type=fixture_result_request") != before+1 {
 		t.Fatal("a repeated Daynight callback retrieved the result again")
 	}
 	_, err := integration.client.Retrieve(t.Context(), callback.Query().Get("code"))
@@ -373,7 +323,7 @@ func TestAuthenticationUniAuthBrowserBindingAndConsumption(t *testing.T) {
 		t.Fatal(err)
 	}
 	bindings := deniedBrowser.Jar.Cookies(mainURL)
-	before = integration.transport.retrievals.Load()
+	before = integration.logs.count("type=fixture_result_request")
 	response, _ := identityRequest(t, deniedBrowser, http.MethodGet, denied.String(), "", nil, http.StatusSeeOther)
 	if response.Header.Get("Location") != "/?authError=login_failed" {
 		t.Fatal("provider denial did not produce the generic login failure")
@@ -381,7 +331,7 @@ func TestAuthenticationUniAuthBrowserBindingAndConsumption(t *testing.T) {
 	identityRequest(t, deniedBrowser, http.MethodGet, integration.server.URL+"/api/v1/me", "", nil, http.StatusUnauthorized)
 	deniedBrowser.Jar.SetCookies(mainURL, bindings)
 	identityRequest(t, deniedBrowser, http.MethodGet, denied.String(), "", nil, http.StatusUnauthorized)
-	if integration.transport.retrievals.Load() != before {
+	if integration.logs.count("type=fixture_result_request") != before {
 		t.Fatal("provider denial or its replay retrieved an identity result")
 	}
 	for _, secret := range integration.secrets {

@@ -175,7 +175,7 @@ func TestIdentityStartLoginValidation(t *testing.T) {
 			t.Fatalf("valid return path %q: %v", path, err)
 		}
 	}
-	fixture.identity.callbackURL = "http://not-loopback.example/callback"
+	fixture.identity.callbackURL = "ftp://not-http.example/callback"
 	if _, err := fixture.identity.StartLogin(context.Background(), "microsoft", "/"); err == nil {
 		t.Fatal("SDK callback configuration failure was hidden")
 	}
@@ -624,5 +624,124 @@ func TestIdentityCancellationIsPreserved(t *testing.T) {
 	requireFault(t, err, "unauthenticated")
 	if fixture.calls.Load() != 2 {
 		t.Fatalf("cancelled result retrieval was retried: %d", fixture.calls.Load())
+	}
+}
+
+func TestIdentityConfiguredCallbackReturnPath(t *testing.T) {
+	fixture := newIdentityFixture(t)
+	fixture.identity.callbackURL = "http://daynight.test:8787/auth/callback"
+	for _, returnPath := range []string{"/auth/callback", "/auth/callback?code=value", "/auth/callback/child", "/other/../auth/callback", "/auth/%63allback", "/api/v1/auth/login"} {
+		_, err := fixture.identity.StartLogin(context.Background(), "microsoft", returnPath)
+		requireFault(t, err, "invalid_input")
+	}
+	start := startIdentityLogin(t, fixture, "/account")
+	authorization, err := url.Parse(start.AuthorizationURL)
+	if err != nil || authorization.Query().Get("redirect_uri") != fixture.identity.callbackURL {
+		t.Fatalf("configured callback changed: %v %v", authorization, err)
+	}
+	var count int
+	if err := fixture.database.Pool.QueryRow(context.Background(), "SELECT count(*) FROM login_transactions").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("rejected loop paths created pending state: %d %v", count, err)
+	}
+	fixture.identity.callbackURL = "https://%zz"
+	if fixture.identity.validReturnPath("/") {
+		t.Fatal("invalid configured callback accepted")
+	}
+}
+
+type identityProviderTransport func(*http.Request) (*http.Response, error)
+
+func (transport identityProviderTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	return transport(request)
+}
+
+func TestIdentityProviderDiscovery(t *testing.T) {
+	var response atomic.Value
+	response.Store(identityReply{status: 200, body: map[string]any{"providers": []string{"google", "github"}}})
+	const callback = "http://daynight.test:8787/auth/callback"
+	var calls atomic.Int32
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		calls.Add(1)
+		app, secret, ok := request.BasicAuth()
+		if request.Method != "POST" || request.URL.Path != "/auth/providers" || !ok || app != "provider-app" || secret != "provider-secret" {
+			t.Error("incorrect App-aware discovery request")
+		}
+		var input struct {
+			RedirectURI string `json:"redirect_uri"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&input); err != nil || input.RedirectURI != callback {
+			t.Error("callback projection changed")
+		}
+		reply := response.Load().(identityReply)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Request-ID", "provider-request")
+		w.WriteHeader(reply.status)
+		_ = json.NewEncoder(w).Encode(reply.body)
+	}))
+	defer gateway.Close()
+	client, err := uniauth.New(uniauth.Config{BaseURL: gateway.URL, AppID: "provider-app", AppSecret: "provider-secret", AllowLoopbackHTTP: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := NewIdentity(nil, client, callback)
+	providers, err := identity.Providers(context.Background())
+	if err != nil || !reflect.DeepEqual(providers, []string{"google", "github"}) {
+		t.Fatalf("provider intersection: %v %v", providers, err)
+	}
+	response.Store(identityReply{status: 200, body: map[string]any{"providers": []string{}}})
+	providers, err = identity.Providers(context.Background())
+	if err != nil || providers == nil || len(providers) != 0 {
+		t.Fatalf("empty provider intersection: %v %v", providers, err)
+	}
+	for _, status := range []int{400, 401, 500, 503} {
+		response.Store(identityReply{status: status, body: map[string]any{"error": map[string]string{"code": "upstream_code", "message": "private-upstream-message"}}})
+		_, err := identity.Providers(context.Background())
+		var failure *IdentityProviderError
+		var upstream *uniauth.APIError
+		expected := "identity_unavailable"
+		if status == 400 || status == 401 {
+			expected = "identity_configuration"
+		}
+		if !errors.As(err, &failure) || failure.Code != expected || !errors.As(err, &upstream) || upstream.StatusCode != status || strings.Contains(err.Error(), "private") {
+			t.Fatalf("provider error classification: %v", err)
+		}
+	}
+	response.Store(identityReply{status: 200, body: map[string]any{"providers": nil}})
+	_, err = identity.Providers(context.Background())
+	var failure *IdentityProviderError
+	var protocol *uniauth.ProtocolError
+	if !errors.As(err, &failure) || failure.Code != "identity_unavailable" || !errors.As(err, &protocol) {
+		t.Fatalf("invalid provider response hidden: %v", err)
+	}
+	if calls.Load() != 7 {
+		t.Fatalf("discovery was retried: %d", calls.Load())
+	}
+}
+
+func TestIdentityProviderTransportCancellation(t *testing.T) {
+	cause := errors.New("private transport cause")
+	client, err := uniauth.New(uniauth.Config{BaseURL: "https://uniauth.example", AppID: "provider-app", AppSecret: "provider-secret", HTTPClient: &http.Client{Transport: identityProviderTransport(func(request *http.Request) (*http.Response, error) { return nil, cause })}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := NewIdentity(nil, client, "https://daynight.example/auth/callback")
+	_, err = identity.Providers(context.Background())
+	var failure *IdentityProviderError
+	if !errors.Is(err, cause) || !errors.As(err, &failure) || failure.Code != "identity_unavailable" || strings.Contains(err.Error(), "private") {
+		t.Fatalf("transport chain: %v", err)
+	}
+	client, err = uniauth.New(uniauth.Config{BaseURL: "https://uniauth.example", AppID: "provider-app", AppSecret: "provider-secret", HTTPClient: &http.Client{Transport: identityProviderTransport(func(request *http.Request) (*http.Response, error) {
+		<-request.Context().Done()
+		return nil, request.Context().Err()
+	})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity = NewIdentity(nil, client, "https://daynight.example/auth/callback")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	_, err = identity.Providers(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &failure) || failure.Code != "identity_timeout" || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("deadline chain: %v", err)
 	}
 }

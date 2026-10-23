@@ -8,10 +8,11 @@ import type { TaskStatus } from '../../api/types';
 import type { GraphSnapshot } from '../projects/useTaskGraph';
 import { isTaskStale } from './freshness';
 import { dialogFocusables } from './focus';
+import { TaskDetailSessionBoundary } from './TaskDetailSession';
 import { useTaskDetail } from './useTaskDetail';
-import { TaskDetailPanels } from './TaskDetailPanels';
+import { TaskApproval } from './TaskApproval';
+import { TaskDetailReading } from './TaskDetailReading';
 import { TaskPullRequests } from './TaskPullRequests';
-import { TaskAttachments } from './attachments/TaskAttachments';
 import '../../styles/task-detail.css';
 
 export type TaskDetailDialogProps = {
@@ -42,10 +43,11 @@ const DetailError = ({ error }: { readonly error: unknown }) => {
   </>;
 };
 
-export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, onClose, onRestoreFocus, onRefreshGraph }: TaskDetailDialogProps) => {
+const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, onRestoreFocus, onRefreshGraph }: TaskDetailDialogProps) => {
   const { messages, format } = useI18n();
   const m = messages.inspection.detail;
-  const { detail, status, error, retry } = useTaskDetail(projectId, taskId, snapshot.revision);
+  const task = useTaskDetail(projectId, taskId, snapshot.revision, snapshot.index.nodes.get(taskId));
+  const { detail, status, error, retry } = task;
   const headingId = useId();
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -96,7 +98,8 @@ export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, on
   }, [taskId, status, error, snapshot.revision]);
 
   const snapshotNode = snapshot.index.nodes.get(taskId);
-  const stale = detail !== null && isTaskStale(snapshotNode, detail);
+  const retainedDetail = detail !== null && (task.refreshing || error !== null || task.requiresFreshRead);
+  const stale = detail !== null && !retainedDetail && isTaskStale(snapshotNode, detail);
   const successors = snapshot.index.successors.get(taskId);
   const relation = (id: string) => {
     const node = snapshot.index.nodes.get(id);
@@ -133,13 +136,16 @@ export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, on
             </div>
           )}
           {detail !== null && error !== null && (
-            <div className="task-detail-state task-detail-error" role="alert">
+            <div className="task-detail-read-error" role="alert">
               <h3>{m.refreshFailed}</h3>
               <DetailError error={error} />
               <p>{m.retainedData}</p>
               <button className="button" type="button" onClick={retry}>{m.retry}</button>
             </div>
           )}
+          {detail === null && task.approval.phase !== 'idle' && <div className="task-detail-approval">
+            <TaskApproval detail={null} approval={task.approval} canApprove={false} onApprove={task.approve} onReconcile={task.reconcile} />
+          </div>}
           {detail !== null && (
             <>
               <div className="task-detail-heading">
@@ -149,43 +155,46 @@ export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, on
                   <StatusBadge status={detail.status} />
                   {detail.status === 'todo' && <span className={detail.ready ? 'task-detail-ready' : 'task-detail-blocked'}>{detail.ready ? m.ready : m.blocked}</span>}
                 </div>
+                {retainedDetail && <p className="task-detail-refresh" role="status">{task.refreshing ? m.refreshingDetail : m.retainedDetail}</p>}
                 {stale && (
                   <div className="task-detail-stale" role="status">
-                    <p>{m.stale}</p>
+                    <p>{task.approval.phase === 'confirmed' ? messages.inspection.approval.confirmedSnapshot : m.stale}</p>
                     <button className="button" type="button" onClick={onRefreshGraph}>{m.refreshGraph}</button>
                   </div>
                 )}
               </div>
-              <TaskDetailPanels key={`${projectId}/${taskId}`} overview={<div className="task-detail-columns">
-                <div className="task-detail-main">
-                  <section className="task-detail-section" aria-label={m.description}>
-                    <h4>{m.description}</h4>
-                    <p className="task-detail-description">{detail.description === '' ? m.noDescription : detail.description}</p>
-                  </section>
-                  <TaskPullRequests pullRequests={detail.properties.pullRequests} />
-                </div>
-                <aside className="task-detail-aside" aria-label={m.relationsMetadata}>
-                  <section className="task-detail-section" aria-label={m.dependencies}>
-                    <h4>{m.countedHeading({ label: m.dependencies, count: format.number(detail.dependsOn.length) })}</h4>
-                    {detail.dependsOn.length === 0 ? <p className="task-detail-description">{m.noDependencies}</p> : <ul className="task-detail-relations">{detail.dependsOn.map(relation)}</ul>}
-                  </section>
-                  <section className="task-detail-section" aria-label={m.blockers}>
-                    <h4>{m.countedHeading({ label: m.blockers, count: format.number(detail.blockedBy.length) })}</h4>
-                    {detail.blockedBy.length === 0 ? <p className="task-detail-description">{m.noBlockers}</p> : <ul className="task-detail-relations">{detail.blockedBy.map(relation)}</ul>}
-                  </section>
-                  <section className="task-detail-section" aria-label={m.successors}>
-                    <h4>{successors === undefined ? m.successors : m.countedHeading({ label: m.successors, count: format.number(successors.length) })}</h4>
-                    {successors === undefined
-                      ? <p className="task-detail-description">{m.successorsMissing}</p>
-                      : successors.length === 0 ? <p className="task-detail-description">{m.noSuccessors}</p> : <ul className="task-detail-relations">{successors.map(relation)}</ul>}
-                  </section>
-                  <dl className="task-detail-section task-detail-metadata">
-                    <div><dt>{m.created}</dt><dd><time dateTime={detail.createdAt}>{format.dateTime(detail.createdAt)}</time></dd></div>
-                    <div><dt>{m.updated}</dt><dd><time dateTime={detail.updatedAt}>{format.dateTime(detail.updatedAt)}</time></dd></div>
-                    <div><dt>{m.taskId}</dt><dd className="task-detail-full-id">{detail.id}</dd></div>
-                  </dl>
-                </aside>
-              </div>} attachments={<TaskAttachments projectId={projectId} taskId={taskId} onClose={onClose} />} />
+              <TaskDetailReading key={`${projectId}/${taskId}`} projectId={projectId} taskId={taskId} description={detail.description} onClose={onClose} overview={(description) => <>
+                <div className="task-detail-approval"><TaskApproval detail={detail} approval={task.approval} canApprove={task.canApprove} onApprove={task.approve} onReconcile={task.reconcile} /></div>
+                <div className="task-detail-columns">
+                  <div className="task-detail-main">
+                    <section className="task-detail-section" aria-label={m.description}>
+                      <h4>{m.description}</h4>
+                      {description}
+                    </section>
+                    <TaskPullRequests pullRequests={detail.properties.pullRequests} />
+                  </div>
+                  <aside className="task-detail-aside" aria-label={m.relationsMetadata}>
+                    <section className="task-detail-section" aria-label={m.dependencies}>
+                      <h4>{m.countedHeading({ label: m.dependencies, count: format.number(detail.dependsOn.length) })}</h4>
+                      {detail.dependsOn.length === 0 ? <p className="task-detail-description">{m.noDependencies}</p> : <ul className="task-detail-relations">{detail.dependsOn.map(relation)}</ul>}
+                    </section>
+                    <section className="task-detail-section" aria-label={m.blockers}>
+                      <h4>{m.countedHeading({ label: m.blockers, count: format.number(detail.blockedBy.length) })}</h4>
+                      {detail.blockedBy.length === 0 ? <p className="task-detail-description">{m.noBlockers}</p> : <ul className="task-detail-relations">{detail.blockedBy.map(relation)}</ul>}
+                    </section>
+                    <section className="task-detail-section" aria-label={m.successors}>
+                      <h4>{successors === undefined ? m.successors : m.countedHeading({ label: m.successors, count: format.number(successors.length) })}</h4>
+                      {successors === undefined
+                        ? <p className="task-detail-description">{m.successorsMissing}</p>
+                        : successors.length === 0 ? <p className="task-detail-description">{m.noSuccessors}</p> : <ul className="task-detail-relations">{successors.map(relation)}</ul>}
+                    </section>
+                    <dl className="task-detail-section task-detail-metadata">
+                      <div><dt>{m.created}</dt><dd><time dateTime={detail.createdAt}>{format.dateTime(detail.createdAt)}</time></dd></div>
+                      <div><dt>{m.updated}</dt><dd><time dateTime={detail.updatedAt}>{format.dateTime(detail.updatedAt)}</time></dd></div>
+                      <div><dt>{m.taskId}</dt><dd className="task-detail-full-id">{detail.id}</dd></div>
+                    </dl>
+                  </aside>
+                </div></>} />
             </>
           )}
         </div>
@@ -195,3 +204,5 @@ export const TaskDetailDialog = ({ projectId, taskId, snapshot, onSelectTask, on
     document.body,
   );
 };
+
+export const TaskDetailDialog = (props: TaskDetailDialogProps) => <TaskDetailSessionBoundary><TaskDetailView {...props} /></TaskDetailSessionBoundary>;

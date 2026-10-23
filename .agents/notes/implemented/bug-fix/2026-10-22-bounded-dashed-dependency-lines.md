@@ -19,7 +19,9 @@ and short native bend paths. Split each extracted straight line into pieces no
 longer than 8,192 graph units. Additional cuts use the same global phase-seven
 gap midpoint as the original decomposition. Each piece retains its cumulative
 arc distance and positive dash offset; the last piece may be shorter than the
-128-unit threshold used to extract a straight region around bends.
+128-unit threshold used to extract a straight region around bends. The route
+compiler validates the full cumulative arc length before expanding paint pieces,
+so overflowing geometry fails before allocating bounded segments.
 
 The bound limits work for an individual GPU stroke without depending on viewport
 state or CPU-specific dash clipping. It applies on both Linux and macOS. Every

@@ -21,8 +21,12 @@ to own the overall domain architecture.
 Startup opens and verifies one concrete store and binds the loopback listener.
 It constructs the handler from that same store before accepting requests.
 A handler factory permits the composition
-root to assemble future service-backed routes without another connection pool
-or mutating a running server. There is no substitute database implementation.
+root to assemble service-backed routes without another connection pool or
+mutating a running server. The
+[authentication activation](2026-10-22-authentication-activation.md) extends that
+factory with required Config and an error result; failed composition closes the
+already acquired listener, database and file root before accepting requests.
+There is no substitute database implementation.
 
 Shutdown signals trigger HTTP draining. Request contexts have a separate owner,
 so the signal does not cancel every request before the grace period begins.

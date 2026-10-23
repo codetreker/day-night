@@ -38,7 +38,9 @@ func (h *MembershipRoutes) RegisterRoutes(mux *http.ServeMux) {
 		"/api/v1/invitations/inspect":                         "POST",
 		"/api/v1/invitations/accept":                          "POST",
 	} {
-		mux.HandleFunc(path, methodNotAllowed(h.logger, methods))
+		mux.HandleFunc(path, h.auth.Require(func(w http.ResponseWriter, request *http.Request, _ core.Principal) {
+			methodNotAllowed(h.logger, methods)(w, request)
+		}))
 	}
 }
 

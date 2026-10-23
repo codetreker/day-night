@@ -4,6 +4,7 @@ import { ApiError } from "../../api/client";
 import { navigate } from "../../app/router";
 import { useI18n } from "../../i18n/LocaleProvider";
 import type { WorkspaceMessages } from "../../i18n/messages/workspace";
+import { TaskDetailSessionBoundary, useTaskDetailSessions } from "../task-detail/TaskDetailSession";
 import { TaskDetailDialog } from "../task-detail/TaskDetailDialog";
 import { RootList } from "../task-graph/RootList";
 import { GraphDataError } from "../task-graph/model";
@@ -52,8 +53,10 @@ type ProjectNotice = { readonly kind: "selected-task-removed" };
 
 const ProjectView = ({ projectId, renderActions }: { readonly projectId: string; readonly renderActions?: (project: Project) => ReactNode }) => {
   const graph = useTaskGraph(projectId);
+  const sessions = useTaskDetailSessions();
+  useEffect(() => sessions.subscribeProject(projectId, graph.refresh), [sessions, projectId, graph.refresh]);
   const { messages: { workspace: { project: m, projects, app, preferences }, common }, format } = useI18n();
-  const [selection, setSelection] = useState<{ readonly id: string; readonly revision: number } | null>(null);
+  const [detailSelection, setDetailSelection] = useState<{ readonly id: string; readonly revision: number } | null>(null);
   const [notice, setNotice] = useState<ProjectNotice | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const originalTrigger = useRef<HTMLElement | null>(null);
@@ -87,26 +90,26 @@ const ProjectView = ({ projectId, renderActions }: { readonly projectId: string;
     showCompletedStandalone || snapshot.index.nodes.get(id)!.status !== "done"), [snapshot, categories, showCompletedStandalone]);
   const { expandedRootId, setExpandedRootId, issue: preferenceIssue } = useProjectViewPreferences(projectId, rootIds);
   expandedRoot.current = expandedRootId;
-  const selectedTaskId = selection !== null && snapshot !== null &&
-    (selection.revision === snapshot.revision || snapshot.index.nodes.has(selection.id)) ? selection.id : null;
+  const detailTaskId = detailSelection !== null && snapshot !== null &&
+    (detailSelection.revision === snapshot.revision || snapshot.index.nodes.has(detailSelection.id)) ? detailSelection.id : null;
 
   useEffect(() => {
     if (snapshot === null) return;
-    if (selection !== null && selection.revision !== snapshot.revision && !snapshot.index.nodes.has(selection.id)) {
-      setSelection(null);
+    if (detailSelection !== null && detailSelection.revision !== snapshot.revision && !snapshot.index.nodes.has(detailSelection.id)) {
+      setDetailSelection(null);
       setNotice({ kind: "selected-task-removed" });
     }
-  }, [snapshot, selection]);
+  }, [snapshot, detailSelection]);
 
-  const onSelectTask = useCallback((id: string, trigger: HTMLElement) => {
+  const onOpenTask = useCallback((id: string, trigger: HTMLElement) => {
     originalTrigger.current = trigger;
     setNotice(null);
-    setSelection({ id, revision: snapshot!.revision });
+    setDetailSelection({ id, revision: snapshot!.revision });
   }, [snapshot]);
   const onSelectRelation = useCallback((id: string) => {
-    setSelection({ id, revision: snapshot!.revision });
+    setDetailSelection({ id, revision: snapshot!.revision });
   }, [snapshot]);
-  const onClose = useCallback(() => { setSelection(null); }, []);
+  const onClose = useCallback(() => { setDetailSelection(null); }, []);
   const restoreFocus = useCallback(() => {
     if (originalTrigger.current?.isConnected) {
       originalTrigger.current.focus();
@@ -195,17 +198,17 @@ const ProjectView = ({ projectId, renderActions }: { readonly projectId: string;
                 unfinishedChainTaskCount={categories!.unfinishedChainTaskCount} onViewChange={selectView} />
               <div role="tabpanel" id="project-task-panel-chains" aria-labelledby="project-task-tab-chains" hidden={activeView !== "chains"}>
                 {activeView === "chains" && <section aria-label={m.chains}>
-                  <RootList index={snapshot.index} rootIds={rootIds!} allRootIds={categories!.chains} expandedRootId={expandedRootId} onExpand={setExpandedRootId} selectedTaskId={selectedTaskId} onSelectTask={onSelectTask}
+                  <RootList index={snapshot.index} rootIds={rootIds!} allRootIds={categories!.chains} expandedRootId={expandedRootId} onExpand={setExpandedRootId} onOpenTask={onOpenTask}
                     showCompleted={showCompleted} onShowCompletedChange={onShowCompletedChange} />
                 </section>}
               </div>
               <div role="tabpanel" id="project-task-panel-standalone" aria-labelledby="project-task-tab-standalone" hidden={activeView !== "standalone"}>
-                {activeView === "standalone" && <StandaloneList index={snapshot.index} taskIds={standaloneIds} allTaskIds={categories!.standalone} onSelectTask={onSelectTask}
+                {activeView === "standalone" && <StandaloneList index={snapshot.index} taskIds={standaloneIds} allTaskIds={categories!.standalone} onSelectTask={onOpenTask}
                   showCompleted={showCompletedStandalone} onShowCompletedChange={onStandaloneVisibilityChange} />}
               </div>
             </>
           )}
-          {selectedTaskId !== null && <TaskDetailDialog projectId={projectId} taskId={selectedTaskId} snapshot={snapshot} onSelectTask={onSelectRelation}
+          {detailTaskId !== null && <TaskDetailDialog projectId={projectId} taskId={detailTaskId} snapshot={snapshot} onSelectTask={onSelectRelation}
             onClose={onClose} onRestoreFocus={restoreFocus} onRefreshGraph={graph.refresh} />}
         </>
       )}
@@ -213,4 +216,4 @@ const ProjectView = ({ projectId, renderActions }: { readonly projectId: string;
   );
 };
 
-export const ProjectPage = ({ projectId, renderActions }: { readonly projectId: string; readonly renderActions?: (project: Project) => ReactNode }) => <ProjectView key={projectId} projectId={projectId} {...(renderActions === undefined ? {} : { renderActions })} />;
+export const ProjectPage = ({ projectId, renderActions }: { readonly projectId: string; readonly renderActions?: (project: Project) => ReactNode }) => <TaskDetailSessionBoundary><ProjectView key={projectId} projectId={projectId} {...(renderActions === undefined ? {} : { renderActions })} /></TaskDetailSessionBoundary>;

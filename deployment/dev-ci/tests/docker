@@ -23,7 +23,8 @@ if [[ $command == compose ]]; then
     esac
   done
   [[ $project =~ ^daynight-dev-ci-[0-9]{14}-[0-9]+-[0-9]{5}$ ]] || exit 98
-  [[ $directory == */deployment/dev-ci && $file == "$directory/compose.yaml" && $env_file == /dev/null ]] || exit 97
+  [[ $directory == */deployment/dev-ci && $file == "$directory/compose.yaml" && $env_file == */.tmp/dev-ci-private/*/auth.env && -f $env_file ]] || exit 97
+  node -e 'if ((require("node:fs").statSync(process.argv[1]).mode & 0o777) !== 0o600) process.exit(97)' "$env_file"
   printf '%s\n' "$project" > "$FAKE_DOCKER_STATE/project"
   operation=$1
   shift
@@ -34,14 +35,52 @@ if [[ $command == compose ]]; then
       touch "$FAKE_DOCKER_STATE/image"
       ;;
     up)
-      [[ $* == '--no-build --detach --wait --wait-timeout 120' ]] || exit 95
       touch "$FAKE_DOCKER_STATE/resources"
       [[ $scenario != partial-startup ]] || exit 31
+      case $* in
+        '--no-build --detach postgres gateway')
+          if [[ $scenario == cancelled-bootstrap ]]; then
+            printf ready > "$FAKE_DOCKER_STATE/child-ready"
+            sleep 60
+          fi
+          if [[ $scenario == reconfigure ]]; then
+            count=0
+            [[ ! -f $FAKE_DOCKER_STATE/bootstrap-count ]] || count="$(< "$FAKE_DOCKER_STATE/bootstrap-count")"
+            printf '%s\n' "$((count + 1))" > "$FAKE_DOCKER_STATE/bootstrap-count"
+          fi
+          if [[ $scenario == port-conflict && ! -f $FAKE_DOCKER_STATE/conflicted ]]; then
+            touch "$FAKE_DOCKER_STATE/conflicted"
+            printf '%s\n' 'fixture bind: address already in use' >&2
+            exit 33
+          fi
+          ;;
+        '--no-build --detach --force-recreate uniauth')
+          node - "$env_file" "$scenario" <<'JS'
+const fs = require('node:fs');
+const path = require('node:path');
+const state = JSON.parse(fs.readFileSync(path.join(path.dirname(process.argv[2]), 'auth-state.json'), 'utf8'));
+if (!state.callbackURL || state.callbackURL !== `${state.publicOrigin}/auth/callback`) process.exit(88);
+const ready = { origin: `http://127.0.0.1:${state.port}`, appId: 'private-fixture-app', appSecret: 'private-fixture-secret' };
+if (process.argv[3] === 'fixture-invalid') delete ready.appId;
+fs.writeFileSync(path.join(state.directory, 'ready.json'), JSON.stringify(ready), { mode: 0o600 });
+JS
+          ;;
+        '--no-build --detach --wait --wait-timeout 120 server')
+          [[ $(< "$env_file") == *"DAYNIGHT_UNIAUTH_APP_ID='private-fixture-app'"* && $(< "$env_file") == *"DAYNIGHT_UNIAUTH_APP_SECRET='private-fixture-secret'"* ]] || exit 87
+          ;;
+        *) exit 95 ;;
+      esac
       ;;
+    stop) [[ $* == '--timeout 10 server uniauth' ]] || exit 86 ;;
+    rm) [[ $* == '--stop --force gateway' ]] || exit 85 ;;
     ps)
       if [[ ${1:-} == --quiet ]]; then printf '%s\n' "$container_id"; fi
       ;;
-    port) printf '%s\n' '127.0.0.1:32777' ;;
+    port)
+      if [[ $scenario == reconfigure ]]; then
+        printf '127.0.0.1:%s\n' "$((32776 + $(< "$FAKE_DOCKER_STATE/bootstrap-count")))"
+      else printf '%s\n' '127.0.0.1:32777'; fi
+      ;;
     logs) printf '%s\n' 'owned fixture diagnostic' ;;
     down)
       [[ $* == '--volumes --remove-orphans --timeout 20' ]] || exit 94
@@ -51,11 +90,18 @@ if [[ $command == compose ]]; then
       ;;
     *) exit 93 ;;
   esac
+elif [[ $command == info ]]; then
+  [[ $* == '--format {{.Architecture}}' ]] || exit 84
+  if [[ $scenario == builder-platform ]]; then printf '%s\n' aarch64; else printf '%s\n' x86_64; fi
 elif [[ $command == image ]]; then
   operation=$1
   shift
   case $operation in
-    inspect) printf '%s\n' "$image_id" ;;
+    inspect)
+      if [[ $* == *'{{.Architecture}}'* ]]; then
+        if [[ $scenario == fixture-architecture ]]; then printf '%s\n' 'arm64'; else printf '%s\n' 'amd64'; fi
+      else printf '%s\n' "$image_id"; fi
+      ;;
     ls) if [[ -f $FAKE_DOCKER_STATE/image ]]; then printf '%s\n' "$image_id"; fi ;;
     rm)
       [[ $1 =~ ^daynight-dev-ci:[0-9]{14}-[0-9]+-[0-9]{5}$ ]] || exit 92

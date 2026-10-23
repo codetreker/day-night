@@ -41,6 +41,7 @@ func (p *acceptanceProcess) attachmentRequest(method, target, contentType string
 	if err != nil {
 		return acceptanceResponse{err: err}
 	}
+	request.Header.Set("Authorization", "Bearer "+p.token)
 	if contentType != "" {
 		request.Header.Set("Content-Type", contentType)
 	}
@@ -129,9 +130,7 @@ func TestInstalledCLIAttachmentAcceptance(t *testing.T) {
 		fixture := newAcceptanceFixture(t, scenario)
 		cli := newAcceptanceCLI(t, receipt, scenario)
 		process := fixture.launch(t, nil).started(t)
-		if err := os.WriteFile(filepath.Join(cli.home, ".daynight", "config.yml"), []byte("serverUrl: http://"+process.address+"\n"), 0o600); err != nil {
-			t.Fatal("cannot configure isolated attachment CLI")
-		}
+		cli.configure(t, process)
 		project := acceptanceDecode[api.Project](t, process.request(context.Background(), http.MethodPost, "/api/v1/projects", api.CreateProjectRequest{Name: "Attachment CLI", RepoURL: "git@git.example:Org/Repo.git"}, ""), http.StatusCreated)
 		task := process.task(t, project, "Attachment target")
 		other := process.project(t, "Other attachment project")
@@ -202,6 +201,20 @@ func TestInstalledCLIAttachmentAcceptance(t *testing.T) {
 			t.Fatal("attachment operations changed the full task resource")
 		}
 		metadata := acceptanceCLIJSON[[]api.Attachment](t, cli.run(t, cli.repo, "task", "attachment", "list", task.ID, "--json"))
+		for index, action := range []string{"approve", "claim", "complete"} {
+			cli.run(t, cli.repo, "task", action, task.ID)
+			after := cli.task(t, task.ID)
+			preserved := after
+			preserved.Status, preserved.Ready, preserved.Version, preserved.UpdatedAt = before.Status, before.Ready, before.Version, before.UpdatedAt
+			if expected := []string{"todo", "in_progress", "done"}[index]; after.Status != expected || after.Version != before.Version+1 || !after.UpdatedAt.After(before.UpdatedAt) || !reflect.DeepEqual(preserved, before) {
+				t.Fatal("installed lifecycle action did not preserve the attachment task metadata")
+			}
+			if actual := acceptanceCLIJSON[[]api.Attachment](t, cli.run(t, cli.repo, "task", "attachment", "list", task.ID, "--json")); !reflect.DeepEqual(actual, metadata) {
+				t.Fatal("installed lifecycle action changed attachment metadata")
+			}
+			before = after
+		}
+
 		process.signal(t)
 		process.stopped(t, 0)
 		restarted := fixture.launch(t, map[string]string{"DAYNIGHT_LISTEN_ADDR": process.address}).started(t)

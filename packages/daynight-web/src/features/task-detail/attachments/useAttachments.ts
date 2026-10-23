@@ -148,3 +148,5 @@ export const useAttachments = (projectId: string, taskId: string, api: Attachmen
   const visibleWrite = write.scope === scope ? write : { scope, status: "idle" as const, error: null };
   return { ...visibleList, selectedPath, select, preview: visiblePreview, retryPreview, write: visibleWrite, put, remove, reload };
 };
+
+export type AttachmentController = ReturnType<typeof useAttachments>;

@@ -4,6 +4,7 @@ import { ProjectsPage } from '../features/projects/ProjectsPage';
 import { ProjectPage } from '../features/projects/ProjectPage';
 import { navigate, parseRoute } from './router';
 import { useI18n } from '../i18n/LocaleProvider';
+import { TaskDetailSessionBoundary } from '../features/task-detail/TaskDetailSession';
 import { LanguageSelector } from '../i18n/LanguageSelector';
 
 const goToProjects = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -12,7 +13,7 @@ const goToProjects = (event: MouseEvent<HTMLAnchorElement>) => {
   navigate('/');
 };
 
-export const App = () => {
+const AppView = () => {
   const { locale, messages: { workspace: { app: m } } } = useI18n();
   const [pathname, setPathname] = useState(window.location.pathname);
   const content = useRef<HTMLElement>(null);
@@ -77,3 +78,5 @@ export const App = () => {
     </div>
   );
 };
+
+export const App = () => <TaskDetailSessionBoundary><AppView /></TaskDetailSessionBoundary>;

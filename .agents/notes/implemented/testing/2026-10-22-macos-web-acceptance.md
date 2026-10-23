@@ -13,8 +13,9 @@ survive the platform extension.
 
 ## Decision
 
-Keep one pipeline for Linux and macOS with the same 31 scenarios, four fixed
-capacity datasets, five measurements and existing latency limits. Linux remains
+Keep one pipeline for Linux and macOS with the same 51 scenarios, combined
+authentication checks, four fixed capacity datasets, five measurements and
+existing latency limits. Linux remains
 the full CI platform; macOS local acceptance requires native execution and does
 not imply a macOS CI job.
 The [bounded-line rendering decision](../bug-fix/2026-10-22-bounded-dashed-dependency-lines.md)
@@ -58,6 +59,13 @@ Top-level evidence and recovery use schema 3. Older schemas and cross-platform
 process identities are rejected; receipt interpretation never guesses identity
 units or silently drops ownership checks. Capacity and container-permission
 receipt formats remain unchanged.
+
+The shared dev-ci runner supports macOS system Bash 3.2. Bootstrap logging uses
+an owned FIFO and an explicit background logger: dynamically allocated file
+descriptors and waiting for process-substitution children are not portable to
+that shell. The parent retains command-group cancellation and joins or stops
+the logger before removing its pipe, including interrupted reconfiguration.
+Directory permission setup uses syntax supported by both BSD and GNU chmod.
 
 Both Compose stacks expose `DAYNIGHT_NPM_REGISTRY` as an opt-in build argument.
 The official registry remains the default; host npm configuration does not

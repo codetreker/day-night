@@ -63,16 +63,19 @@ func assertOperational(t *testing.T, err error) {
 func TestTaskReadAndWriteDatabaseFailures(t *testing.T) {
 	for _, table := range []string{"tasks", "projects"} {
 		t.Run(table, func(t *testing.T) {
-			tasks, database, project, _ := taskService(t)
-			target := createTask(t, tasks, project.ID, "Target")
+			tasks, database, project, _, principal := taskService(t)
+			target := createTask(t, tasks, principal, project.ID, "Target")
 			if _, err := database.Pool.Exec(context.Background(), "DROP TABLE "+table); err != nil {
 				t.Fatal(err)
 			}
-			_, getErr := tasks.Get(context.Background(), project.ID, target.ID)
-			_, listErr := tasks.List(context.Background(), project.ID, TaskListRequest{PageRequest: PageRequest{Limit: 10}})
-			_, updateErr := tasks.Update(context.Background(), project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Changed")})
-			_, createErr := tasks.Create(context.Background(), project.ID, CreateTask{Title: "New"})
-			for _, err := range []error{getErr, listErr, updateErr, createErr} {
+			_, getErr := tasks.Get(context.Background(), principal, project.ID, target.ID)
+			_, listErr := tasks.List(context.Background(), principal, project.ID, TaskListRequest{PageRequest: PageRequest{Limit: 10}})
+			_, updateErr := tasks.Update(context.Background(), principal, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Changed")})
+			_, createErr := tasks.Create(context.Background(), principal, project.ID, CreateTask{Title: "New"})
+			_, approveErr := tasks.Approve(context.Background(), principal, project.ID, target.ID, target.Version)
+			_, claimErr := tasks.Claim(context.Background(), principal, project.ID, target.ID, target.Version)
+			_, completeErr := tasks.Complete(context.Background(), principal, project.ID, target.ID, target.Version)
+			for _, err := range []error{getErr, listErr, updateErr, createErr, approveErr, claimErr, completeErr} {
 				assertOperational(t, err)
 				var pgError *pgconn.PgError
 				if !errors.As(err, &pgError) || pgError.Code != "42P01" {
@@ -81,65 +84,130 @@ func TestTaskReadAndWriteDatabaseFailures(t *testing.T) {
 			}
 		})
 	}
-	tasks, database, project, _ := taskService(t)
+	tasks, database, project, _, principal := taskService(t)
 	database.Close()
-	_, err := tasks.List(context.Background(), project.ID, TaskListRequest{PageRequest: PageRequest{Limit: 10}})
+	_, err := tasks.List(context.Background(), principal, project.ID, TaskListRequest{PageRequest: PageRequest{Limit: 10}})
 	assertOperational(t, err)
 }
 
 func TestTaskPolicyQueryCancellationPreservesCause(t *testing.T) {
-	tasks, _, project, databaseURL := taskService(t)
-	predecessor := createTask(t, tasks, project.ID, "Predecessor")
-	predecessor = updateTask(t, tasks, predecessor, UpdateTask{Status: pointer(core.TaskDone)})
-	target := createTask(t, tasks, project.ID, "Target", predecessor.ID)
-	target = updateTask(t, tasks, target, UpdateTask{Status: pointer(core.TaskDone)})
-	for _, fragment := range []string{"t.id = ANY($2::uuid[])", "WITH RECURSIVE edges", "d.depends_on_task_id = $2)"} {
+	tasks, _, project, databaseURL, principal := taskService(t)
+	predecessor := createTask(t, tasks, principal, project.ID, "Predecessor")
+	predecessor = approveTask(t, tasks, principal, predecessor)
+	predecessor = claimTask(t, tasks, principal, predecessor)
+	predecessor = completeTask(t, tasks, principal, predecessor)
+	target := createTask(t, tasks, principal, project.ID, "Target", predecessor.ID)
+	target = approveTask(t, tasks, principal, target)
+	target = claimTask(t, tasks, principal, target)
+	target = completeTask(t, tasks, principal, target)
+	for _, fragment := range []string{"t.id = ANY($2::uuid[])", "WITH RECURSIVE edges"} {
 		t.Run(fragment, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			traced := tracedTasks(t, databaseURL, taskQueryAction{match: func(sql string) bool { return strings.Contains(sql, fragment) }, start: cancel})
 			input := UpdateTask{Version: target.Version, Title: pointer("Rejected")}
-			id := target.ID
-			if strings.HasPrefix(fragment, "d.") {
-				id = predecessor.ID
-				input = UpdateTask{Version: predecessor.Version, Status: pointer(core.TaskTodo)}
-			}
-			_, err := traced.Update(ctx, project.ID, id, input)
+			_, err := traced.Update(ctx, principal, project.ID, target.ID, input)
 			assertOperational(t, err)
 			if !errors.Is(err, context.Canceled) {
 				t.Fatalf("query cancellation cause: %v", err)
 			}
-			assertTaskUnchanged(t, tasks, target)
-			assertTaskUnchanged(t, tasks, predecessor)
+			assertTaskUnchanged(t, tasks, principal, target)
+			assertTaskUnchanged(t, tasks, principal, predecessor)
 		})
 	}
 }
 
+func TestTaskLifecycleQueryCancellationPreservesCauseAndState(t *testing.T) {
+	for _, action := range []string{"approve", "claim", "complete"} {
+		for _, query := range []struct {
+			fragment string
+			after    bool
+		}{{"FROM tasks t", false}, {"UPDATE tasks SET", false}, {"UPDATE tasks SET", true}} {
+			t.Run(fmt.Sprintf("%s %s after=%t", action, query.fragment, query.after), func(t *testing.T) {
+				tasks, _, project, databaseURL, principal := taskService(t)
+				predecessor := createTask(t, tasks, principal, project.ID, "Predecessor")
+				predecessor = approveTask(t, tasks, principal, predecessor)
+				predecessor = claimTask(t, tasks, principal, predecessor)
+				predecessor = completeTask(t, tasks, principal, predecessor)
+				target := createTask(t, tasks, principal, project.ID, "Target", predecessor.ID)
+				if action != "approve" {
+					target = approveTask(t, tasks, principal, target)
+				}
+				if action == "complete" {
+					target = claimTask(t, tasks, principal, target)
+				}
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				trace := taskQueryAction{match: func(sql string) bool { return strings.Contains(sql, query.fragment) }}
+				if query.after {
+					trace.end = cancel
+				} else {
+					trace.start = cancel
+				}
+				traced := tracedTasks(t, databaseURL, trace)
+				var err error
+				switch action {
+				case "approve":
+					_, err = traced.Approve(ctx, principal, project.ID, target.ID, target.Version)
+				case "claim":
+					_, err = traced.Claim(ctx, principal, project.ID, target.ID, target.Version)
+				case "complete":
+					_, err = traced.Complete(ctx, principal, project.ID, target.ID, target.Version)
+				}
+				assertOperational(t, err)
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("lifecycle cancellation lost cause: %v", err)
+				}
+				assertTaskUnchanged(t, tasks, principal, target)
+				assertTaskUnchanged(t, tasks, principal, predecessor)
+			})
+		}
+	}
+}
+
 func TestTaskTransactionCompletionFailureDominatesDomainFault(t *testing.T) {
-	tasks, _, project, databaseURL := taskService(t)
-	target := createTask(t, tasks, project.ID, "Target")
+	tasks, _, project, databaseURL, principal := taskService(t)
+	target := createTask(t, tasks, principal, project.ID, "Target")
 	missing := "00000000-0000-0000-0000-000000000000"
 	for _, test := range []struct {
 		name      string
 		fragment  string
 		operation func(context.Context, *Tasks) error
 	}{
-		{"missing task read", "FROM tasks t", func(ctx context.Context, s *Tasks) error { _, err := s.Get(ctx, project.ID, missing); return err }},
+		{"missing task read", "FROM tasks t", func(ctx context.Context, s *Tasks) error {
+			_, err := s.Get(ctx, principal, project.ID, missing)
+			return err
+		}},
 		{"missing task update", "FROM tasks t", func(ctx context.Context, s *Tasks) error {
-			_, err := s.Update(ctx, project.ID, missing, UpdateTask{Version: 1, Title: pointer("Rejected")})
+			_, err := s.Update(ctx, principal, project.ID, missing, UpdateTask{Version: 1, Title: pointer("Rejected")})
 			return err
 		}},
 		{"stale version update", "FROM tasks t", func(ctx context.Context, s *Tasks) error {
-			_, err := s.Update(ctx, project.ID, target.ID, UpdateTask{Version: 2, Title: pointer("Rejected")})
+			_, err := s.Update(ctx, principal, project.ID, target.ID, UpdateTask{Version: 2, Title: pointer("Rejected")})
+			return err
+		}},
+		{"missing task approval", "FROM tasks t", func(ctx context.Context, s *Tasks) error {
+			_, err := s.Approve(ctx, principal, project.ID, missing, 1)
+			return err
+		}},
+		{"stale version approval", "FROM tasks t", func(ctx context.Context, s *Tasks) error {
+			_, err := s.Approve(ctx, principal, project.ID, target.ID, target.Version+1)
+			return err
+		}},
+		{"invalid transition claim", "FROM tasks t", func(ctx context.Context, s *Tasks) error {
+			_, err := s.Claim(ctx, principal, project.ID, target.ID, target.Version)
 			return err
 		}},
 		{"invalid dependency create", "t.id = ANY($2::uuid[])", func(ctx context.Context, s *Tasks) error {
-			_, err := s.Create(ctx, project.ID, CreateTask{Title: "Rejected", DependsOn: []string{missing}})
+			_, err := s.Create(ctx, principal, project.ID, CreateTask{Title: "Rejected", DependsOn: []string{missing}})
 			return err
 		}},
-		{"missing project read", "FROM projects WHERE id =", func(ctx context.Context, s *Tasks) error { _, err := s.Get(ctx, missing, target.ID); return err }},
-		{"missing project list", "FROM projects WHERE id =", func(ctx context.Context, s *Tasks) error {
-			_, err := s.List(ctx, missing, TaskListRequest{PageRequest: PageRequest{Limit: 10}})
+		{"missing project read", "FROM project_members m", func(ctx context.Context, s *Tasks) error {
+			_, err := s.Get(ctx, principal, missing, target.ID)
+			return err
+		}},
+		{"missing project list", "FROM project_members m", func(ctx context.Context, s *Tasks) error {
+			_, err := s.List(ctx, principal, missing, TaskListRequest{PageRequest: PageRequest{Limit: 10}})
 			return err
 		}},
 	} {
@@ -152,18 +220,18 @@ func TestTaskTransactionCompletionFailureDominatesDomainFault(t *testing.T) {
 			if !errors.Is(err, context.Canceled) {
 				t.Fatalf("completion failure lost cause: %v", err)
 			}
-			assertTaskUnchanged(t, tasks, target)
+			assertTaskUnchanged(t, tasks, principal, target)
 		})
 	}
 }
 
 func TestTaskPartialWriteFailureRollsBackMetadataAndAllEdges(t *testing.T) {
-	tasks, database, project, _ := taskService(t)
+	tasks, database, project, _, principal := taskService(t)
 	ctx := context.Background()
-	a := createTask(t, tasks, project.ID, "A")
-	b := createTask(t, tasks, project.ID, "B")
-	old := createTask(t, tasks, project.ID, "Old")
-	target := createTask(t, tasks, project.ID, "Target", old.ID)
+	a := createTask(t, tasks, principal, project.ID, "A")
+	b := createTask(t, tasks, principal, project.ID, "B")
+	old := createTask(t, tasks, principal, project.ID, "Old")
+	target := createTask(t, tasks, principal, project.ID, "Target", old.ID)
 	dependencies := []string{a.ID, b.ID}
 	slices.Sort(dependencies)
 	statement := fmt.Sprintf(`CREATE FUNCTION reject_second_edge() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -172,8 +240,8 @@ func TestTaskPartialWriteFailureRollsBackMetadataAndAllEdges(t *testing.T) {
 	if _, err := database.Pool.Exec(ctx, statement); err != nil {
 		t.Fatal(err)
 	}
-	_, updateErr := tasks.Update(ctx, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Changed"), Description: pointer("Changed"), DependsOn: &dependencies})
-	_, createErr := tasks.Create(ctx, project.ID, CreateTask{Title: "Rejected create", DependsOn: dependencies})
+	_, updateErr := tasks.Update(ctx, principal, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Changed"), Description: pointer("Changed"), DependsOn: &dependencies})
+	_, createErr := tasks.Create(ctx, principal, project.ID, CreateTask{Title: "Rejected create", DependsOn: dependencies})
 	for _, err := range []error{updateErr, createErr} {
 		assertOperational(t, err)
 		var pgError *pgconn.PgError
@@ -181,19 +249,20 @@ func TestTaskPartialWriteFailureRollsBackMetadataAndAllEdges(t *testing.T) {
 			t.Fatalf("partial failure cause/redaction: %v", err)
 		}
 	}
-	assertTaskUnchanged(t, tasks, target)
-	page, err := tasks.List(ctx, project.ID, TaskListRequest{PageRequest: PageRequest{Limit: 100}})
+	assertTaskUnchanged(t, tasks, principal, target)
+	page, err := tasks.List(ctx, principal, project.ID, TaskListRequest{PageRequest: PageRequest{Limit: 100}})
 	if err != nil || len(page.Items) != 4 {
 		t.Fatalf("failed creation left rows: %#v, %v", page, err)
 	}
 }
 
 func TestTaskSnapshotKeepsProjectAndDerivedTaskStateConsistent(t *testing.T) {
-	tasks, database, project, databaseURL := taskService(t)
-	predecessor := createTask(t, tasks, project.ID, "Predecessor")
-	target := createTask(t, tasks, project.ID, "Target", predecessor.ID)
+	tasks, database, project, databaseURL, principal := taskService(t)
+	predecessor := createTask(t, tasks, principal, project.ID, "Predecessor")
+	target := createTask(t, tasks, principal, project.ID, "Target", predecessor.ID)
+	target = approveTask(t, tasks, principal, target)
 	traced := tracedTasks(t, databaseURL, taskQueryAction{
-		match: func(sql string) bool { return strings.Contains(sql, "FROM projects WHERE id =") },
+		match: func(sql string) bool { return strings.Contains(sql, "FROM project_members m") },
 		end: func() {
 			if err := database.WriteProject(context.Background(), project.ID, func(tx *store.ProjectTx) error {
 				_, err := tx.UpdateTask(context.Background(), predecessor.ID, store.TaskWrite{Title: predecessor.Title, Status: core.TaskDone})
@@ -203,11 +272,11 @@ func TestTaskSnapshotKeepsProjectAndDerivedTaskStateConsistent(t *testing.T) {
 			}
 		},
 	})
-	read, err := traced.Get(context.Background(), project.ID, target.ID)
+	read, err := traced.Get(context.Background(), principal, project.ID, target.ID)
 	if err != nil || read.Ready || !slices.Equal(read.BlockedBy, []string{predecessor.ID}) {
 		t.Fatalf("RR task read mixed snapshots: %#v, %v", read, err)
 	}
-	fresh, err := tasks.Get(context.Background(), project.ID, target.ID)
+	fresh, err := tasks.Get(context.Background(), principal, project.ID, target.ID)
 	if err != nil || !fresh.Ready || len(fresh.BlockedBy) != 0 || fresh.Version != target.Version || !fresh.UpdatedAt.Equal(target.UpdatedAt) {
 		t.Fatalf("fresh read/metadata: %#v, %v", fresh, err)
 	}

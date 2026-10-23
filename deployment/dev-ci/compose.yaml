@@ -18,10 +18,11 @@ services:
     image: nginx:1.30.6-alpine3.24
     ports:
       - "127.0.0.1::80"
+      - "127.0.0.1:${DAYNIGHT_DEV_CI_FIXTURE_PORT}:${DAYNIGHT_DEV_CI_FIXTURE_PORT}"
     volumes:
       - ../localhost/nginx.conf:/etc/nginx/nginx.conf:ro
     healthcheck:
-      test: [CMD, wget, -q, -T, "3", -O, /dev/null, "http://127.0.0.1:80/api/v1/projects?limit=1"]
+      test: [CMD, wget, -q, -T, "3", -O, /dev/null, "http://127.0.0.1:80/readyz"]
       interval: 2s
       timeout: 5s
       retries: 60
@@ -35,6 +36,8 @@ services:
       args:
         DAYNIGHT_NPM_REGISTRY: ${DAYNIGHT_NPM_REGISTRY:-https://registry.npmjs.org/}
     network_mode: service:gateway
+    env_file:
+      - ${DAYNIGHT_DEV_CI_AUTH_ENV_FILE:?Use deployment/dev-ci/run.sh}
     environment:
       DAYNIGHT_DATABASE_URL: postgres://daynight:daynight-dev-ci@postgres:5432/daynight?sslmode=disable
       DAYNIGHT_LISTEN_ADDR: 127.0.0.1:8787
@@ -47,12 +50,31 @@ services:
       gateway:
         condition: service_started
     healthcheck:
-      test: [CMD, wget, -q, -T, "3", -O, /dev/null, "http://127.0.0.1:8787/api/v1/projects?limit=1"]
+      test: [CMD, wget, -q, -T, "3", -O, /dev/null, "http://127.0.0.1:8787/readyz"]
       interval: 2s
       timeout: 5s
       retries: 30
       start_period: 5s
     stop_grace_period: 20s
+
+  uniauth:
+    image: ${DAYNIGHT_DEV_CI_IMAGE:?Use deployment/dev-ci/run.sh}
+    network_mode: service:gateway
+    user: "${DAYNIGHT_DEV_CI_FIXTURE_UID}:${DAYNIGHT_DEV_CI_FIXTURE_GID}"
+    entrypoint: [/auth-fixture]
+    environment:
+      DAYNIGHT_FIXTURE_CALLBACK_URL: ${DAYNIGHT_UNIAUTH_CALLBACK_URL:-}
+      DAYNIGHT_FIXTURE_DATABASE_PATH: /fixture/apps.db
+      DAYNIGHT_FIXTURE_READY_FILE: /fixture/ready.json
+      DAYNIGHT_FIXTURE_LISTEN_ADDRESS: "0.0.0.0:${DAYNIGHT_DEV_CI_FIXTURE_PORT}"
+      DAYNIGHT_FIXTURE_PUBLIC_URL: "http://127.0.0.1:${DAYNIGHT_DEV_CI_FIXTURE_PORT}"
+    volumes:
+      - ${DAYNIGHT_DEV_CI_FIXTURE_BINARY}:/auth-fixture:ro
+      - ${DAYNIGHT_DEV_CI_FIXTURE_DIRECTORY}:/fixture
+    depends_on:
+      gateway:
+        condition: service_started
+    stop_grace_period: 10s
 
 volumes:
   postgres-data:

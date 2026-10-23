@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
-import { mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, realpath, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ChildProcess } from 'node:child_process';
 import { commandBytes } from './process.mts';
-import { findProcesses, processIdentity, requireGroupStopped, sameProcess, type ProcessIdentity } from './identity.mts';
+import { findProcesses, isGroupStopped, processIdentity, requireGroupStopped, sameProcess, type ProcessIdentity } from './identity.mts';
 
 export type InstalledCliReceipt = {
   readonly schemaVersion: 1;
@@ -17,15 +17,26 @@ export type InstalledCliReceipt = {
   readonly entryPath: string;
   readonly entrySha256: string;
   readonly launcherPath: string;
-  readonly source: { readonly gitSha: string; readonly dirty: boolean };
+  readonly source: { readonly gitSha: string; readonly gitTreeSha: string; readonly dirty: boolean };
 };
 
 const repositoryRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 const acceptanceRoot = join(repositoryRoot, 'packages/daynight-web/.tmp/acceptance');
+const privateCliRoot = (directory: string): string => join(repositoryRoot, 'packages/daynight-web/.tmp/acceptance-private', basename(directory), 'cli');
+const prunePrivateParents = async (paths: readonly string[]): Promise<void> => {
+  for (const path of paths) {
+    try { await rmdir(path); }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOTEMPTY') return;
+      if (code !== 'ENOENT') throw error;
+    }
+  }
+};
 const digest = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
 const contained = (parent: string, child: string): boolean => child.startsWith(`${parent}${sep}`);
 const readJson = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, 'utf8'));
-type Source = { gitSha: string; dirty: boolean; githubSha?: string | null };
+type Source = { gitSha: string; gitTreeSha: string; dirty: boolean; githubSha?: string | null };
 type ParentEvidence = { runId: string; source: Source; installedCli?: { root: string; receiptPath?: string; receipt?: InstalledCliReceipt } };
 type CliProcess = { directory: string; receiptPath: string; group: number; identity?: ProcessIdentity };
 
@@ -39,12 +50,13 @@ export const validateInstalledCli = async (receiptPath: string, directory: strin
   const recordedReceipt = recorded?.receipt;
   const fields = ['schemaVersion', 'root', 'packageVersion', 'tarballPath', 'tarballSha256', 'nodePath', 'entryPath', 'entrySha256', 'launcherPath'] as const;
   if (recorded === undefined || recordedReceipt === undefined || recorded.root !== receipt.root || recorded.receiptPath !== receiptPath || fields.some((field) => recordedReceipt[field] !== receipt[field])
-    || recordedReceipt.source.gitSha !== receipt.source.gitSha || recordedReceipt.source.dirty !== receipt.source.dirty) throw new Error('Installed CLI receipt differs from its parent artifact evidence.');
+    || recordedReceipt.source.gitSha !== receipt.source.gitSha || recordedReceipt.source.gitTreeSha !== receipt.source.gitTreeSha
+    || recordedReceipt.source.dirty !== receipt.source.dirty) throw new Error('Installed CLI receipt differs from its parent artifact evidence.');
   if (receipt.schemaVersion !== 1 || typeof receipt.root !== 'string' || !isAbsolute(receipt.root)
     || receipt.root !== join(expectedDirectory, 'installed-cli') || receiptPath !== join(receipt.root, 'installed-cli.json')
-    || evidence.runId !== basename(expectedDirectory) || !/^[a-f0-9]{40}$/.test(evidence.source.gitSha)
+    || evidence.runId !== basename(expectedDirectory) || !/^[a-f0-9]{40}$/.test(evidence.source.gitSha) || !/^[a-f0-9]{40}$/.test(evidence.source.gitTreeSha)
     || typeof evidence.source.dirty !== 'boolean' || receipt.source.gitSha !== evidence.source.gitSha
-    || receipt.source.dirty !== evidence.source.dirty) throw new Error('Installed CLI source or ownership differs from its acceptance run.');
+    || receipt.source.gitTreeSha !== evidence.source.gitTreeSha || receipt.source.dirty !== evidence.source.dirty) throw new Error('Installed CLI source or ownership differs from its acceptance run.');
   if (process.env.CI && (receipt.source.dirty || evidence.source.githubSha !== receipt.source.gitSha || process.env.GITHUB_SHA !== receipt.source.gitSha)) throw new Error('CI installed CLI evidence must match the clean GITHUB_SHA checkout.');
   const root = await realpath(receipt.root);
   if (root !== receipt.root || !contained(await realpath(expectedDirectory), root)) throw new Error('Installed CLI root resolves outside the acceptance run.');
@@ -112,10 +124,11 @@ export const recoverCliProcesses = async (directory: string, receiptPath: string
       }
       for (const member of members) if (!sameProcess(member, await processIdentity(member.pid))) throw new Error('Installed CLI process changed before recovery.');
       process.kill(-record.group, 'SIGTERM');
+      // Exited members can leave process discovery before their parents reap them and the group disappears.
       let remaining = members;
       for (let attempt = 0; attempt < 50; attempt++) {
         remaining = (await ownedCliProcesses(directory, receipt, receiptPath)).filter((identity) => identity.group === record.group);
-        if (remaining.length === 0) break;
+        if (remaining.length === 0 && isGroupStopped(record.group)) break;
         await new Promise((done) => setTimeout(done, 100));
       }
       for (const member of remaining) {
@@ -123,17 +136,19 @@ export const recoverCliProcesses = async (directory: string, receiptPath: string
         process.kill(member.pid, 'SIGKILL');
       }
       for (let attempt = 0; attempt < 50; attempt++) {
-        if (!(await ownedCliProcesses(directory, receipt, receiptPath)).some((identity) => identity.group === record.group)) break;
+        if (!(await ownedCliProcesses(directory, receipt, receiptPath)).some((identity) => identity.group === record.group) && isGroupStopped(record.group)) break;
         await new Promise((done) => setTimeout(done, 100));
       }
     }
     requireGroupStopped(record.group);
   }
   if ((await ownedCliProcesses(directory, receipt, receiptPath)).length > 0) throw new Error('Installed CLI processes remain after recovery.');
+  await rm(privateCliRoot(directory), { recursive: true, force: true });
+  await prunePrivateParents([dirname(privateCliRoot(directory))]);
 };
 
-export const createAcceptanceCli = async (baseURL: string, directory: string) => {
-  const receiptPath = process.env.DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT;
+export const createAcceptanceCli = async (baseURL: string, directory: string, serverToken?: string,
+  receiptPath = process.env.DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT) => {
   if (receiptPath === undefined || !isAbsolute(receiptPath)) throw new Error('Acceptance requires an absolute installed CLI receipt path.');
   const raw = await readJson(receiptPath) as InstalledCliReceipt;
   if (typeof raw.root !== 'string' || !isAbsolute(raw.root)) throw new Error('Invalid installed CLI root.');
@@ -144,23 +159,41 @@ export const createAcceptanceCli = async (baseURL: string, directory: string) =>
   await mkdir(directory, { recursive: true });
   const working = await realpath(directory);
   if (!contained(runDirectory, working) || contained(receipt.root, working)) throw new Error('CLI workspace is outside its acceptance target.');
-  const home = join(working, 'home');
+  const privateDirectory = join(privateCliRoot(runDirectory), randomUUID());
+  const home = join(privateDirectory, 'home');
   const cwd = join(working, 'workspace');
-  await mkdir(join(home, '.daynight'), { recursive: true });
+  const token = serverToken ?? await (async () => {
+    const { login } = await import('./auth-fixture.mts');
+    return await (await login({ origin: baseURL, persona: 'alice' })).createPAT('Web installed CLI acceptance');
+  })();
+  if (!/^[\x21-\x7e]+$/.test(token)) throw new Error('Acceptance CLI requires a header-safe server token.');
+  await mkdir(join(home, '.daynight'), { recursive: true, mode: 0o700 });
   await mkdir(cwd, { recursive: true });
-  await writeFile(join(home, '.daynight/config.yml'), `serverUrl: ${JSON.stringify(baseURL)}\n`);
+  const configuration = join(home, '.daynight/config.yml');
+  const preparedConfiguration = `${configuration}.${randomUUID()}`;
+  await writeFile(preparedConfiguration, `serverUrl: ${JSON.stringify(baseURL)}\nserverToken: ${JSON.stringify(token)}\n`, { mode: 0o600, flag: 'wx' });
+  await rename(preparedConfiguration, configuration);
+  let closing: Promise<void> | undefined;
+  const close = (): Promise<void> => closing ??= (async () => {
+    await rm(privateDirectory, { recursive: true, force: true });
+    await prunePrivateParents([dirname(privateDirectory), dirname(dirname(privateDirectory))]);
+  })();
   const execute = async (args: readonly string[]) => {
+    if (closing !== undefined) throw new Error('Acceptance CLI has already closed.');
     let group: number | undefined;
     let original: unknown;
     const env: NodeJS.ProcessEnv = { ...process.env, NO_COLOR: '1', HOME: home, USERPROFILE: home,
       DAYNIGHT_ACCEPTANCE_RUN_DIRECTORY: runDirectory, DAYNIGHT_TEST_INSTALLED_CLI_RECEIPT: receiptPath };
     delete env.FORCE_COLOR;
     try {
-      return await commandBytes(receipt.nodePath, [receipt.entryPath, ...args], {
+      const result = await commandBytes(receipt.nodePath, [receipt.entryPath, ...args], {
         cwd, timeoutMs: 60_000,
         env,
         onSpawn: (child) => { group = child.pid; return recordCliProcess(runDirectory, receiptPath, child); },
       });
+      const credential = Buffer.from(token);
+      if (result.stdout.includes(credential) || result.stderr.includes(credential)) throw new Error('Installed CLI exposed its private acceptance credential.');
+      return result;
     } catch (cause) { original = cause; throw cause; }
     finally {
       if (group !== undefined) {
@@ -170,6 +203,7 @@ export const createAcceptanceCli = async (baseURL: string, directory: string) =>
     }
   };
   return {
+    close,
     run: async (args: readonly string[]) => {
       const result = await execute(args);
       return { exitCode: result.exitCode, stdout: result.stdout.toString('utf8'), stderr: result.stderr.toString('utf8') };

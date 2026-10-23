@@ -14,12 +14,11 @@ import (
 )
 
 type Tasks struct {
-	store    *store.Store
-	projects *Projects
+	store *store.Store
 }
 
 func NewTasks(database *store.Store) *Tasks {
-	return &Tasks{store: database, projects: NewProjects(database)}
+	return &Tasks{store: database}
 }
 
 type CreateTask struct {
@@ -33,7 +32,6 @@ type UpdateTask struct {
 	Version     int64
 	Title       *string
 	Description *string
-	Status      *core.TaskStatus
 	DependsOn   *[]string
 	Properties  core.TaskPropertiesPatch
 }
@@ -57,7 +55,10 @@ type taskMutation struct {
 	changed bool
 }
 
-func (s *Tasks) Create(ctx context.Context, projectID string, input CreateTask) (core.Task, error) {
+func (s *Tasks) Create(ctx context.Context, principal core.Principal, projectID string, input CreateTask) (core.Task, error) {
+	if err := requirePrincipal(principal); err != nil {
+		return core.Task{}, err
+	}
 	projectID, err := CanonicalID(projectID)
 	if err != nil {
 		return core.Task{}, err
@@ -66,7 +67,7 @@ func (s *Tasks) Create(ctx context.Context, projectID string, input CreateTask) 
 	if err != nil {
 		return core.Task{}, fmt.Errorf("generate task ID: %w", err)
 	}
-	values := store.TaskWrite{Title: input.Title, Description: input.Description, Status: core.TaskTodo, Properties: core.TaskProperties{PullRequests: append([]core.PullRequestProperty{}, input.Properties.PullRequests...)}}
+	values := store.TaskWrite{Title: input.Title, Description: input.Description, Status: core.TaskProposed, Properties: core.TaskProperties{PullRequests: append([]core.PullRequestProperty{}, input.Properties.PullRequests...)}}
 	values.DependsOn, err = canonicalDependencies(input.DependsOn, id.String())
 	if err != nil {
 		return core.Task{}, err
@@ -74,15 +75,18 @@ func (s *Tasks) Create(ctx context.Context, projectID string, input CreateTask) 
 	if err := validateTaskText(values); err != nil {
 		return core.Task{}, err
 	}
-	return s.write(ctx, projectID, func(tx *store.ProjectTx) (taskMutation, error) {
-		if err := validateCandidate(ctx, tx, id.String(), values, nil); err != nil {
+	return s.write(ctx, principal, projectID, func(tx *store.ProjectTx) (taskMutation, error) {
+		if err := validateCandidate(ctx, tx, id.String(), values); err != nil {
 			return taskMutation{}, err
 		}
 		return taskMutation{id: id.String(), values: values, create: true, changed: true}, nil
 	})
 }
 
-func (s *Tasks) Update(ctx context.Context, projectID, id string, input UpdateTask) (core.Task, error) {
+func (s *Tasks) Update(ctx context.Context, principal core.Principal, projectID, id string, input UpdateTask) (core.Task, error) {
+	if err := requirePrincipal(principal); err != nil {
+		return core.Task{}, err
+	}
 	projectID, err := CanonicalID(projectID)
 	if err != nil {
 		return core.Task{}, err
@@ -94,10 +98,10 @@ func (s *Tasks) Update(ctx context.Context, projectID, id string, input UpdateTa
 	if input.Version < 1 {
 		return core.Task{}, invalidInput("Version must be a positive integer.")
 	}
-	if input.Title == nil && input.Description == nil && input.Status == nil && input.DependsOn == nil && input.Properties.PullRequests == nil {
+	if input.Title == nil && input.Description == nil && input.DependsOn == nil && input.Properties.PullRequests == nil {
 		return core.Task{}, invalidInput("At least one task field must be provided.")
 	}
-	return s.write(ctx, projectID, func(tx *store.ProjectTx) (taskMutation, error) {
+	return s.write(ctx, principal, projectID, func(tx *store.ProjectTx) (taskMutation, error) {
 		current, err := tx.Task(ctx, id)
 		if errors.Is(err, core.ErrNotFound) {
 			return taskMutation{}, taskNotFound(err)
@@ -112,22 +116,25 @@ func (s *Tasks) Update(ctx context.Context, projectID, id string, input UpdateTa
 		if err != nil {
 			return taskMutation{}, err
 		}
-		if err := validateCandidate(ctx, tx, id, values, &current); err != nil {
+		if err := validateCandidate(ctx, tx, id, values); err != nil {
 			return taskMutation{}, err
 		}
 		changed := current.Title != values.Title || current.Description != values.Description ||
-			current.Status != values.Status || !slices.Equal(current.DependsOn, values.DependsOn) || !slices.Equal(current.Properties.PullRequests, values.Properties.PullRequests)
+			!slices.Equal(current.DependsOn, values.DependsOn) || !slices.Equal(current.Properties.PullRequests, values.Properties.PullRequests)
 		return taskMutation{id: id, current: current, values: values, changed: changed}, nil
 	})
 }
 
-func (s *Tasks) write(ctx context.Context, projectID string, prepare func(*store.ProjectTx) (taskMutation, error)) (core.Task, error) {
-	if _, err := s.projects.Get(ctx, projectID); err != nil {
-		return core.Task{}, err
-	}
+func (s *Tasks) write(ctx context.Context, principal core.Principal, projectID string, prepare func(*store.ProjectTx) (taskMutation, error)) (core.Task, error) {
 	var result core.Task
 	var refusal *Fault
 	err := s.store.WriteProject(ctx, projectID, func(tx *store.ProjectTx) error {
+		if _, err := RequireProjectWrite(ctx, tx, principal); err != nil {
+			if errors.As(err, &refusal) {
+				return nil
+			}
+			return err
+		}
 		mutation, err := prepare(tx)
 		if errors.As(err, &refusal) {
 			return nil
@@ -146,6 +153,9 @@ func (s *Tasks) write(ctx context.Context, projectID string, prepare func(*store
 		}
 		return err
 	})
+	if errors.Is(err, core.ErrNotFound) {
+		return core.Task{}, projectNotFound(err)
+	}
 	if err != nil {
 		return core.Task{}, fmt.Errorf("write task: %w", err)
 	}
@@ -163,9 +173,6 @@ func taskCandidate(current core.Task, input UpdateTask) (store.TaskWrite, error)
 	if input.Description != nil {
 		values.Description = *input.Description
 	}
-	if input.Status != nil {
-		values.Status = *input.Status
-	}
 	if input.DependsOn != nil {
 		var err error
 		values.DependsOn, err = canonicalDependencies(*input.DependsOn, current.ID)
@@ -178,9 +185,6 @@ func taskCandidate(current core.Task, input UpdateTask) (store.TaskWrite, error)
 	}
 	if err := validateTaskText(values); err != nil {
 		return store.TaskWrite{}, err
-	}
-	if !validTaskStatus(values.Status) {
-		return store.TaskWrite{}, invalidInput("Task status is invalid.")
 	}
 	return values, nil
 }
@@ -196,7 +200,7 @@ func validateTaskText(values store.TaskWrite) error {
 }
 
 func validTaskStatus(status core.TaskStatus) bool {
-	return status == core.TaskTodo || status == core.TaskInProgress || status == core.TaskDone
+	return status == core.TaskProposed || status == core.TaskTodo || status == core.TaskInProgress || status == core.TaskDone
 }
 
 func canonicalDependencies(ids []string, self string) ([]string, error) {

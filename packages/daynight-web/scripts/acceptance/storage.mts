@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { lstat, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { storagePlatform } from './storage-platform.mts';
 
 export type FileIdentity = { device: string; inode: string };
@@ -217,6 +218,27 @@ export async function prepareStorage(directory: string, options: StorageOptions 
     await persist();
     return receipt;
   } catch (cause) { throw new StoragePreparationError(receipt, cause); }
+}
+
+/** Verify a prepared root and its journal without creating, mounting, or removing resources. */
+export async function verifyStorage(receipt: StorageReceipt): Promise<void> {
+  validateReceipt(receipt);
+  if (receipt.phase !== 'ready') throw new Error('Acceptance storage is not ready.');
+  await verifyIdentity(receipt.directory, receipt.directoryIdentity, true, 'directory');
+  const persisted: unknown = JSON.parse(await readFile(join(receipt.directory, 'storage-receipt.json'), 'utf8'));
+  if (!isDeepStrictEqual(persisted, receipt)) throw new Error('Storage journal differs from its acceptance evidence.');
+  if (receipt.mode === 'apfs-image') {
+    await verifyIdentity(receipt.imageFile!, receipt.imageIdentity!, false, 'image');
+    const image = await imageInventory(receipt.imageFile!);
+    if (image === undefined || image.rootDevice !== receipt.rootDevice
+      || image.entities.filter((entity) => entity.mountPoint !== undefined).length !== 1
+      || !image.entities.some((entity) => entity.mountPoint === receipt.mountDirectory)) {
+      throw new Error('Prepared APFS storage is not attached at its recorded mount point.');
+    }
+    await verifyMounts(receipt, image);
+  } else await verifyMounts(receipt);
+  if (await realpath(receipt.root) !== receipt.root) throw new Error('Storage root resolves outside its recorded path.');
+  await identity(receipt.root, true);
 }
 
 /** Call only after all server and browser processes using storage have stopped. */

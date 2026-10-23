@@ -44,7 +44,15 @@ real process restart. Database locks and observed waiters order competing
 updates. The `installed_cli_project_task_workflow` scenario uses `PT.V*`
 requirement identifiers in the existing Go acceptance receipt. Its `installedCli`
 identity and CLI process/workspace/request results supplement the original service
-scenarios and package-owned coverage.
+scenarios and package-owned coverage. The
+[lifecycle cross-layer extension](2026-10-22-task-lifecycle-cross-layer-acceptance.md)
+reuses the shared packed-installation fixture for genuine pre-lifecycle
+migration/startup, CLI-process lifecycle races and the production-browser
+same-data journey. The Go invocation and Web invocation prepare their own
+artifacts; each full Web run shares its installation across browser targets.
+This preserves the distinction between native controlled HTTP and actual
+Go/PostgreSQL observations and adds required committed-tree identity to the
+existing handoff.
 
 The mixed unfinished/completed fixture checks the list selection and rendering
 owned by the [task-list decision](../feature/2026-10-22-task-list-defaults.md).

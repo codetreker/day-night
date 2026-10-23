@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"syscall"
 	"time"
 
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
@@ -56,6 +57,8 @@ func ErrorKind(err error) string {
 		return "protocol"
 	case errors.As(err, &requestError):
 		return "network"
+	case errors.Is(err, syscall.EADDRINUSE):
+		return "address_in_use"
 	case errors.As(err, &networkError):
 		return "network"
 	default:
@@ -73,7 +76,7 @@ func knownFault(err error) (*service.Fault, bool) {
 	var fault *service.Fault
 	if errors.As(err, &fault) {
 		switch fault.Code {
-		case "unauthenticated", "forbidden", "last_admin", "invitation_unavailable", "invalid_input", "not_found", "path_conflict", "version_conflict", "dependency_cycle", "dependency_unsatisfied", "graph_limit_exceeded":
+		case "unauthenticated", "forbidden", "last_admin", "invitation_unavailable", "invalid_input", "not_found", "path_conflict", "version_conflict", "invalid_transition", "dependency_cycle", "dependency_unsatisfied", "graph_limit_exceeded":
 			return fault, true
 		}
 	}
@@ -86,8 +89,11 @@ func LogFailure(logger *slog.Logger, ctx context.Context, component, phase strin
 	var configurationError *ConfigurationError
 	var databaseError *store.Error
 	var runtimeFailure *runtimeError
+	var identityFailure *service.IdentityProviderError
 	fault, domainFailure := knownFault(err)
 	switch {
+	case errors.As(err, &identityFailure):
+		diagnostic, code = identityFailure.Error(), identityFailure.Code
 	case domainFailure && kind == fault.Code:
 		diagnostic, code = fault.Message, fault.Code
 	case errors.As(err, &configurationError):
