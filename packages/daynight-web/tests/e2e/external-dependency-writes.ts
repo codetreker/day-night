@@ -11,6 +11,7 @@ import { checkDependencyGeometry, expectedDependencyTopology } from './dependenc
 
 const taskPath = (project: string, task: string): string => `/api/v1/projects/${project}/tasks/${task}`;
 const detail = (page: Page) => page.locator('.task-detail-dialog');
+const requestIdPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const resourceId = (output: string): string => {
   const matches = [...output.matchAll(/^ID: ([0-9a-f-]{36})$/gm)];
   expect(matches, 'Installed creation identifies exactly one task').toHaveLength(1);
@@ -71,9 +72,11 @@ export const verifyPublicExternalDependencyWrites = async (page: Page, api: Auth
       const response = await api.patch(path, { headers: { 'Content-Type': 'application/json' }, data: body });
       const raw = await response.text(); const requestId = response.headers()['x-request-id'] ?? null;
       evidence.mutations.push({ path, body, status: response.status(), response: raw, requestId });
-      expect(response.status()).toBe(status); expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(response.status()).toBe(status); expect(requestId).toMatch(requestIdPattern);
       if (status !== 200) {
-        expect((JSON.parse(raw) as { error: { code: string } }).error.code).toBe(status === 409 ? 'version_conflict' : 'invalid_input');
+        const refusal = JSON.parse(raw) as { error: { code: string; requestId: string } };
+        expect(refusal.error.code).toBe(status === 409 ? 'version_conflict' : 'invalid_input');
+        expect(refusal.error.requestId, 'Public refusal body and response header share the same opaque correlation ID').toBe(requestId);
         expect(await read(task.id, 'refused-public-patch')).toEqual(task); return task;
       }
       const after = parseTaskDetail(parseApiJson(raw), project.id, task.id);
@@ -129,7 +132,10 @@ export const verifyPublicExternalDependencyWrites = async (page: Page, api: Auth
     consumer = await action(consumer, 'approve');
     const blocked = await run(['task', 'claim', consumer.id, '--project', project.id, '--if-version', String(consumer.version)]);
     expect(blocked.exitCode).toBe(1); expect(blocked.stderr).toContain('dependency_unsatisfied'); expect(blocked.stderr).toContain(external.id);
-    expect(blocked.stderr).toMatch(/requestId=[0-9a-f-]{36}/); expect(await read(consumer.id, 'external-claim-refusal')).toEqual(consumer);
+    const claimRequestIds = [...blocked.stderr.matchAll(/\(requestId=([^)]*)\)/g)];
+    expect(claimRequestIds, 'Installed refusal retains one complete server correlation ID').toHaveLength(1);
+    expect(claimRequestIds[0]![1]).toMatch(requestIdPattern);
+    expect(await read(consumer.id, 'external-claim-refusal')).toEqual(consumer);
     const ready = JSON.parse(await success(['task', 'ready', '--project', project.id, '--json'])) as { id: string; externalDependsOn: string[] }[];
     expect(ready.some(({ id }) => id === consumer.id)).toBe(false); expect(ready.find(({ id }) => id === external.id)!.externalDependsOn).toEqual([]);
     await success(['task', 'update', consumer.id, '--project', project.id, '--if-version', String(consumer.version), '--description', '仅修改描述，完整依赖及外部标识保持。']);
