@@ -14,6 +14,7 @@ type ProjectTx struct {
 }
 
 type TaskWrite struct {
+	GroupID     string
 	Title       string
 	Description string
 	Properties  core.TaskProperties
@@ -52,6 +53,16 @@ func (tx *ProjectTx) TasksByID(ctx context.Context, ids []string) ([]core.Task, 
 	return tx.tasks(ctx, `t.id = ANY($2::uuid[])`, ids, "read prerequisites")
 }
 
+func (tx *ProjectTx) HasOtherGroupMembers(ctx context.Context, groupID string) (bool, error) {
+	var exists bool
+	err := tx.tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM tasks
+		WHERE project_id = $1 AND group_id = $2 AND id <> $2::uuid)`, tx.projectID, groupID).Scan(&exists)
+	if err != nil {
+		return false, queryError("read group members", err)
+	}
+	return exists, nil
+}
+
 func (tx *ProjectTx) tasks(ctx context.Context, condition string, value any, phase string) ([]core.Task, error) {
 	rows, err := tx.tx.Query(ctx, `SELECT `+taskProjection+` FROM tasks t
 		WHERE t.project_id = $1 AND `+condition+` ORDER BY t.id`, tx.projectID, value)
@@ -83,8 +94,8 @@ func (tx *ProjectTx) Reachable(ctx context.Context, from, to string, replacement
 }
 
 func (tx *ProjectTx) CreateTask(ctx context.Context, id string, values TaskWrite) (core.Task, error) {
-	_, err := tx.tx.Exec(ctx, `INSERT INTO tasks (id, project_id, title, description, status, properties)
-		VALUES ($1, $2, $3, $4, $5, $6)`, id, tx.projectID, values.Title, values.Description, values.Status, taskproperties.Encode(values.Properties))
+	_, err := tx.tx.Exec(ctx, `INSERT INTO tasks (id, project_id, title, description, status, properties, group_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`, id, tx.projectID, values.Title, values.Description, values.Status, taskproperties.Encode(values.Properties), values.GroupID)
 	if err != nil {
 		return core.Task{}, queryError("create task", err)
 	}
@@ -95,9 +106,9 @@ func (tx *ProjectTx) CreateTask(ctx context.Context, id string, values TaskWrite
 }
 
 func (tx *ProjectTx) UpdateTask(ctx context.Context, id string, values TaskWrite) (core.Task, error) {
-	result, err := tx.tx.Exec(ctx, `UPDATE tasks SET title = $3, description = $4, status = $5, properties = $6,
+	result, err := tx.tx.Exec(ctx, `UPDATE tasks SET title = $3, description = $4, status = $5, properties = $6, group_id = $7,
 		version = version + 1, updated_at = statement_timestamp() WHERE project_id = $1 AND id = $2`,
-		tx.projectID, id, values.Title, values.Description, values.Status, taskproperties.Encode(values.Properties))
+		tx.projectID, id, values.Title, values.Description, values.Status, taskproperties.Encode(values.Properties), values.GroupID)
 	if err != nil {
 		return core.Task{}, queryError("update task", err)
 	}

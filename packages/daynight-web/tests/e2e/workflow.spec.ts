@@ -150,12 +150,12 @@ test('project-graph', scenario('project-graph'), async ({ page, api: request }, 
   await completeApprovedTask(request, project.id, a);
   await claimTask(request, project.id, b);
   await completeApprovedTask(request, project.id, c);
-  const d = await createApprovedTask(request, project.id, { title: 'D 菱形分支', dependsOn: [a.id] });
-  const e = await createApprovedTask(request, project.id, { title: 'E 菱形分支', dependsOn: [a.id] });
+  const d = await createApprovedTask(request, project.id, { groupId: a.groupId, title: 'D 菱形分支', dependsOn: [a.id] });
+  const e = await createApprovedTask(request, project.id, { groupId: a.groupId, title: 'E 菱形分支', dependsOn: [a.id] });
   await completeApprovedTask(request, project.id, d);
   await completeApprovedTask(request, project.id, e);
-  const f = await createApprovedTask(request, project.id, { title: 'F 三根共享合流', dependsOn: [d.id, e.id, b.id, c.id] });
-  const g = await createApprovedTask(request, project.id, { title: 'G 共享后续', dependsOn: [f.id] });
+  const f = await createApprovedTask(request, project.id, { title: 'F 三组依赖合流', groupId: a.groupId, dependsOn: [d.id, e.id, b.id, c.id] });
+  const g = await createApprovedTask(request, project.id, { title: 'G 组内后续', groupId: a.groupId, dependsOn: [f.id] });
   const completed = await createApprovedTask(request, project.id, { title: '已完成独立任务' });
   await completeApprovedTask(request, project.id, completed);
   const independent = await createApprovedTask(request, project.id, { title: '独立待处理任务' });
@@ -165,44 +165,40 @@ test('project-graph', scenario('project-graph'), async ({ page, api: request }, 
   }
   await expect(page.getByText('完成比例 56%')).toBeVisible();
   await expect(viewTab(page, '任务链')).toHaveAttribute('aria-selected', 'true');
-  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('3');
-  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('1');
+  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('2');
+  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('2');
   expect(await page.locator('.root-toggle').evaluateAll((items) => items.map((item) => item.id))).toEqual(
-    [c, b, a].map(({ id }) => `task-root-${id}`),
+    [a].map(({ id }) => `task-root-${id}`),
   );
-  await expect(root(page, c.id)).toHaveAttribute('aria-expanded', 'true');
-  await expect(root(page, b.id).locator('.root-status')).toHaveText('进行中');
-  await expect(root(page, b.id).locator('.root-progress-label')).toHaveText('0/3 已完成');
+  await expect(root(page, a.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(page.locator('.react-flow__node')).toHaveCount(7);
   const completedVisibility = page.getByRole('checkbox', { name: '显示已完成任务链（0）' });
   await expect(completedVisibility).not.toBeChecked();
   await expect(root(page, completed.id)).toHaveCount(0);
   await expect(root(page, independent.id)).toHaveCount(0);
-  await expect(page.getByLabel('显示 3 条，共 3 条任务链')).toBeVisible();
+  await expect(page.getByLabel('显示 1 条，共 1 条任务链')).toBeVisible();
   await viewTab(page, '独立任务').click();
   await expect(standalone(page, independent.id)).toBeVisible();
   await expect(standalone(page, independent.id)).toContainText('待处理');
-  const completedStandaloneVisibility = page.getByRole('checkbox', { name: '显示已完成独立任务（1）' });
+  const completedStandaloneVisibility = page.getByRole('checkbox', { name: '显示已完成独立任务（2）' });
   await expect(completedStandaloneVisibility).not.toBeChecked();
   await expect(standalone(page, completed.id)).toHaveCount(0);
   await completedStandaloneVisibility.check();
   await expect(standalone(page, completed.id)).toBeVisible();
-  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('3');
-  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('1');
+  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('2');
+  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('2');
   await expect(standalone(page, completed.id)).toContainText('已完成');
   await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
   await page.reload();
   await expect(viewTab(page, '独立任务')).toHaveAttribute('aria-selected', 'true');
   await expect(completedStandaloneVisibility).toBeChecked();
   expect(await page.locator('.standalone-row').evaluateAll((items) => items.map((item) => item.id))).toEqual(
-    [independent, completed].map(({ id }) => `standalone-task-${id}`),
+    [independent, completed, c, b].map(({ id }) => `standalone-task-${id}`),
   );
   await completedStandaloneVisibility.uncheck();
   await expect(standalone(page, completed.id)).toHaveCount(0);
   await viewTab(page, '任务链').click();
   await expect(completedVisibility).not.toBeChecked();
-  await expect(root(page, c.id)).toHaveAttribute('aria-expanded', 'true');
-  await root(page, a.id).click();
   await expect(root(page, a.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(root(page, a.id).locator('.root-status')).toHaveText('进行中');
   await expect(root(page, a.id).locator('.root-progress-label')).toHaveText('3/5 已完成');
@@ -269,8 +265,7 @@ test('project-graph', scenario('project-graph'), async ({ page, api: request }, 
   });
   await expect(page.locator('.task-node-external')).toHaveCount(2);
   await expect(page.locator('.task-external-label')).toHaveText(['外部前置', '外部前置']);
-  await expect(inspectTask(page, f.id).locator('.task-shared-label')).toHaveText('共享');
-  await expect(inspectTask(page, g.id).locator('.task-shared-label')).toHaveText('共享');
+  await expect(page.locator('.task-shared-label')).toHaveCount(0);
   await expect(inspectTask(page, f.id).locator('.graph-blocked-badge')).toHaveText('被阻塞');
   const colors = await Promise.all([a.id, b.id, f.id].map((id) => card(page, id).evaluate((shell) => getComputedStyle(shell).borderLeftColor)));
   expect(new Set(colors).size).toBe(3);
@@ -283,21 +278,14 @@ test('project-graph', scenario('project-graph'), async ({ page, api: request }, 
   const paths = page.locator('.task-dependency-edges path.react-flow__edge-path');
   expect(await paths.evaluateAll((items) => items.every((path) => (path.getAttribute('marker-end') ?? '').startsWith('url(')))).toBe(true);
   expect(await paths.evaluateAll((items) => items.filter((path) => path.getAttribute('data-external') === 'true').length)).toBe(2);
-  await root(page, b.id).click();
-  await expect(root(page, a.id)).toHaveAttribute('aria-expanded', 'false');
-  await expect(root(page, b.id)).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.locator('.task-graph-canvas')).toHaveCount(1);
-  await checkEdges(b.id);
   await page.reload();
-  await expect(root(page, b.id)).toHaveAttribute('aria-expanded', 'true');
-  await expect(root(page, a.id)).toHaveAttribute('aria-expanded', 'false');
+  await expect(root(page, a.id)).toHaveAttribute('aria-expanded', 'true');
   await expect(page.locator('.task-graph-canvas')).toHaveCount(1);
-  await checkEdges(b.id);
-  await root(page, b.id).click();
+  await checkEdges(a.id);
+  await root(page, a.id).click();
   await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
   await page.reload();
   await expect(root(page, a.id)).toHaveAttribute('aria-expanded', 'false');
-  await expect(root(page, b.id)).toHaveAttribute('aria-expanded', 'false');
   await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
   await root(page, a.id).click();
   await expect(page.locator('.react-flow__node')).toHaveCount(7);
@@ -311,7 +299,7 @@ test('project-graph', scenario('project-graph'), async ({ page, api: request }, 
     await completeApprovedTask(request, contextProject.id, prerequisite);
     const unrelated = await createApprovedTask(request, contextProject.id, { title: 'X unrelated successor', dependsOn: [prerequisite.id] });
     const source = await createApprovedTask(request, contextProject.id, { title: 'A chain source' });
-    const sink = await createApprovedTask(request, contextProject.id, { title: 'D chain sink', dependsOn: [source.id, prerequisite.id] });
+    const sink = await createApprovedTask(request, contextProject.id, { title: 'D chain sink', groupId: source.groupId, dependsOn: [source.id, prerequisite.id] });
     for (const width of [1440, 320]) {
       await page.setViewportSize({ width, height: 900 });
       await openProject(page, contextProject.id, contextProject.name);
@@ -400,6 +388,68 @@ test('project-graph', scenario('project-graph'), async ({ page, api: request }, 
       await expect(page.locator('.task-node-selected')).toHaveCount(0);
     }
   });
+  await test.step('keeps explicit groups stable across disconnected members and cross-group dependency edits', async () => {
+    const grouped = await createProject(request, { name: `Explicit groups ${randomUUID()}` });
+    const ancestor = await createApprovedTask(request, grouped.id, { title: 'External ancestor' });
+    await completeApprovedTask(request, grouped.id, ancestor);
+    const external = await createApprovedTask(request, grouped.id, { title: 'External prerequisite', dependsOn: [ancestor.id] });
+    await completeApprovedTask(request, grouped.id, external);
+    const unrelated = await createApprovedTask(request, grouped.id, { title: 'Unrelated external successor', dependsOn: [external.id] });
+    let leader = await createApprovedTask(request, grouped.id, { title: 'Persistent group leader', dependsOn: [external.id] });
+    const members = [];
+    for (let index = 0; index < 59; index++) {
+      members.push(await createApprovedTask(request, grouped.id, { title: `Independent group member ${index}`, groupId: leader.groupId }));
+    }
+    const other = await createApprovedTask(request, grouped.id, { title: 'Other group successor', dependsOn: [leader.id] });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openProject(page, grouped.id, grouped.name);
+    await expect(root(page, leader.id)).toHaveAttribute('aria-expanded', 'true');
+    await expect(root(page, leader.id).locator('.root-progress-label')).toHaveText('0/60 已完成');
+    await expect(page.locator('.root-toggle')).toHaveCount(1);
+    await expect(page.locator('.react-flow__node')).toHaveCount(50);
+    await expect(card(page, unrelated.id)).toHaveCount(0);
+    await expect(card(page, other.id)).toHaveCount(0);
+    const expand = page.locator('.graph-expand-members');
+    const viewport = page.locator('.react-flow__viewport');
+    const beforeExpansion = await viewport.getAttribute('style');
+    await expect(expand).not.toHaveAttribute('aria-disabled', 'true');
+    await expand.click();
+    await expect(page.locator('.react-flow__node')).toHaveCount(62);
+    await expect(expand).toHaveAttribute('aria-disabled', 'true');
+    await expect(viewport).toHaveAttribute('style', beforeExpansion!);
+    await expect(page.locator('.task-node-external')).toHaveCount(2);
+    const response = await request.get(`/api/v1/projects/${grouped.id}/task-graph`);
+    const snapshot = parseTaskGraph(await response.json(), grouped.id);
+    const expected = expectedDependencyTopology(snapshot.tasks, leader.groupId);
+    expect(expected.nodes).toHaveLength(62);
+    expect(expected.edges).toHaveLength(2);
+    expect(await checkDependencyGeometry(page, expected, info)).toEqual({ total: 0, examples: [] });
+    await inspectTask(page, members[0]!.id).focus();
+    const beforeSelection = (await page.evaluate(captureStableDependencyGeometry)).geometry;
+    await page.keyboard.press('Enter');
+    await expect(inspectTask(page, members[0]!.id)).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.task-node-prerequisite')).toHaveCount(0);
+    expect((await page.evaluate(captureStableDependencyGeometry)).geometry).toEqual(beforeSelection);
+    leader = await updateTask(request, grouped.id, leader.id, { version: leader.version, dependsOn: [] });
+    expect(leader.groupId).toBe(leader.id);
+    await page.getByRole('button', { name: '刷新', exact: true }).click();
+    await expect(root(page, leader.id)).toHaveAttribute('aria-expanded', 'true');
+    await expect(root(page, leader.id).locator('.root-progress-label')).toHaveText('0/60 已完成');
+    await expect(page.locator('.react-flow__node')).toHaveCount(60);
+    await expect(page.locator('.task-node-external')).toHaveCount(0);
+    await expect(inspectTask(page, members[0]!.id)).toHaveAttribute('aria-pressed', 'true');
+    await viewTab(page, '独立任务').click();
+    await expect(standalone(page, other.id)).toBeVisible();
+    await expect(standalone(page, unrelated.id)).toBeVisible();
+    await expect(standalone(page, members[0]!.id)).toHaveCount(0);
+    await viewTab(page, '任务链').click();
+    await expect(root(page, leader.id)).toHaveAttribute('aria-expanded', 'true');
+    await page.reload();
+    await expect(root(page, leader.id)).toHaveAttribute('aria-expanded', 'true');
+    await expect(root(page, leader.id).locator('.root-progress-label')).toHaveText('0/60 已完成');
+    await screenshot(page, info, 'explicit-group-membership');
+  });
+
 });
 
 test('project-view-tabs', scenario('project-view-tabs'), async ({ page, api: request }, info) => {
@@ -408,10 +458,10 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, api: req
   const project = await createProject(request, { name: `Task views ${randomUUID()}` });
   const predecessor = await createApprovedTask(request, project.id, { title: '已经完成但仍属于任务链的前置' });
   await completeApprovedTask(request, project.id, predecessor);
-  const dependent = await createApprovedTask(request, project.id, { title: '前置完成后的待处理链任务', dependsOn: [predecessor.id] });
+  const dependent = await createApprovedTask(request, project.id, { groupId: predecessor.groupId, title: '前置完成后的待处理链任务', dependsOn: [predecessor.id] });
   const completedRoot = await createApprovedTask(request, project.id, { title: '全部完成的链根' });
   await completeApprovedTask(request, project.id, completedRoot);
-  const completedChild = await createApprovedTask(request, project.id, { title: '全部完成的链后续', dependsOn: [completedRoot.id] });
+  const completedChild = await createApprovedTask(request, project.id, { groupId: completedRoot.groupId, title: '全部完成的链后续', dependsOn: [completedRoot.id] });
   await completeApprovedTask(request, project.id, completedChild);
   let independent = await createApprovedTask(request, project.id, { title: '直接查看详情的独立任务', description: '独立任务无需展开单节点图。' });
   const completedIndependent = await createApprovedTask(request, project.id, { title: '已经完成的独立任务' });
@@ -419,7 +469,7 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, api: req
   for (let index = 0; index < 20; index++) await createApprovedTask(request, project.id, { title: `独立浏览位置 ${index}` });
   for (let index = 0; index < 12; index++) {
     const source = await createApprovedTask(request, project.id, { title: `链浏览位置 ${index}` });
-    await createApprovedTask(request, project.id, { title: `链后续 ${index}`, dependsOn: [source.id] });
+    await createApprovedTask(request, project.id, { groupId: source.groupId, title: `链后续 ${index}`, dependsOn: [source.id] });
   }
   await openProject(page, project.id, project.name);
   await expect(viewTab(page, '任务链')).toHaveAttribute('aria-selected', 'true');
@@ -514,27 +564,25 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, api: req
   await expect(dialog.locator('.task-detail-stale')).toBeVisible();
   await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
   await expect(dialog.locator('.task-detail-title')).toHaveText(independent.title);
-  await expect(standalone(page, independent.id)).toHaveCount(0);
+  await expect(standalone(page, independent.id)).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.locator('.standalone-row').first()).toBeFocused();
-  await expect(page.locator('#root')).not.toHaveAttribute('inert', '');
-  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('26');
-  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('20');
-  await viewTab(page, '任务链').click();
-  await expect(inspectTask(page, independent.id)).toBeVisible();
-  independent = await updateTask(request, project.id, independent.id, { version: independent.version, dependsOn: [] });
-  await details(page, independent.id).click();
-  await expect(dialog.locator('.task-detail-stale')).toBeVisible();
-  await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
-  await expect(dialog.locator('.task-detail-title')).toHaveText(independent.title);
-  await expect(inspectTask(page, independent.id)).toHaveCount(0);
-  await page.keyboard.press('Escape');
-  await expect(root(page, predecessor.id)).toBeFocused();
+  await expect(standalone(page, independent.id)).toBeFocused();
   await expect(page.locator('#root')).not.toHaveAttribute('inert', '');
   await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('25');
   await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('21');
+  await viewTab(page, '任务链').click();
+  await expect(inspectTask(page, independent.id)).toHaveCount(0);
+  await expect(root(page, predecessor.id).locator('.root-progress-label')).toHaveText('1/2 已完成');
   await viewTab(page, '独立任务').click();
-  await expect(standalone(page, independent.id)).toBeVisible();
+  independent = await updateTask(request, project.id, independent.id, { version: independent.version, dependsOn: [] });
+  await standalone(page, independent.id).click();
+  await expect(dialog.locator('.task-detail-stale')).toBeVisible();
+  await dialog.getByRole('button', { name: '刷新任务图', exact: true }).click();
+  await expect(dialog.locator('.task-detail-title')).toHaveText(independent.title);
+  await page.keyboard.press('Escape');
+  await expect(standalone(page, independent.id)).toBeFocused();
+  await expect(viewTab(page, '任务链').locator('.graph-count-pill')).toHaveText('25');
+  await expect(viewTab(page, '独立任务').locator('.graph-count-pill')).toHaveText('21');
   await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
   await screenshot(page, info, 'project-view-tabs');
 });
@@ -565,9 +613,9 @@ test('detail-navigation', scenario('detail-navigation'), async ({ page, api: req
     { title: '后页重复关联', url: ownURL },
     { title: '<img src=x onerror=window.leaked=true>', url: 'javascript:window.leaked=true' },
   ];
-  const b = await createApprovedTask(request, project.id, { title, description, dependsOn: [a.id], properties: { pullRequests } });
+  const b = await createApprovedTask(request, project.id, { groupId: a.groupId, title, description, dependsOn: [a.id], properties: { pullRequests } });
   expect(b.properties.pullRequests).toEqual(pullRequests);
-  const c = await createApprovedTask(request, project.id, { title: '快照中的后续', description: '后续描述', dependsOn: [b.id] });
+  const c = await createApprovedTask(request, project.id, { groupId: a.groupId, title: '快照中的后续', description: '后续描述', dependsOn: [b.id] });
   await openProject(page, project.id, project.name);
   await pauseRefreshClock(page);
   const graphResponse = await request.get(`/api/v1/projects/${project.id}/task-graph`);
@@ -647,7 +695,7 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, api: req
   await page.clock.install({ time: new Date('2029-01-01T00:00:00Z') });
   const project = await createProject(request, { name: `Freshness ${randomUUID()}` });
   const predecessor = await createApprovedTask(request, project.id, { title: '完成后解除阻塞的前置' });
-  const dependent = await createApprovedTask(request, project.id, { title: '版本和时间保持不变的后续', dependsOn: [predecessor.id] });
+  const dependent = await createApprovedTask(request, project.id, { groupId: predecessor.groupId, title: '版本和时间保持不变的后续', dependsOn: [predecessor.id] });
   await openProject(page, project.id, project.name);
   await expect(stat(page, '已完成')).toHaveText('0');
   await expect(stat(page, '被阻塞')).toHaveText('1');
@@ -769,7 +817,7 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, api: reque
   await expect(stat(page, '任务总数')).toHaveText('0');
   const task = await createApprovedTask(request, project.id, { title: '已经全部完成' });
   await completeApprovedTask(request, project.id, task);
-  const successor = await createApprovedTask(request, project.id, { title: '已经完成的后续', dependsOn: [task.id] });
+  const successor = await createApprovedTask(request, project.id, { groupId: task.groupId, title: '已经完成的后续', dependsOn: [task.id] });
   await completeApprovedTask(request, project.id, successor);
   await page.getByRole('button', { name: '刷新', exact: true }).click();
   await expect(stat(page, '任务总数')).toHaveText('2');
@@ -902,11 +950,11 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, api: request }
   const project = await createProject(request, { name: `Keyboard ${randomUUID()}` });
   const a = await createApprovedTask(request, project.id, { title: '键盘前置任务' });
   await completeApprovedTask(request, project.id, a);
-  const b = await createApprovedTask(request, project.id, { title: '键盘选择任务', dependsOn: [a.id], properties: {
+  const b = await createApprovedTask(request, project.id, { groupId: a.groupId, title: '键盘选择任务', dependsOn: [a.id], properties: {
     pullRequests: [{ title: '键盘可访问的 PR', url: 'https://example.com/pull/123' }],
   } });
-  const c = await createApprovedTask(request, project.id, { title: '键盘后续任务', dependsOn: [b.id] });
-  await createApprovedTask(request, project.id, { title: '保留原链根的另一分支', dependsOn: [a.id] });
+  const c = await createApprovedTask(request, project.id, { groupId: a.groupId, title: '键盘后续任务', dependsOn: [b.id] });
+  await createApprovedTask(request, project.id, { groupId: a.groupId, title: '保留原链根的另一分支', dependsOn: [a.id] });
   await openProject(page, project.id, project.name);
   await pauseRefreshClock(page);
   const trigger = details(page, b.id);
@@ -1013,9 +1061,11 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, api: request }
   await completedVisibility.check();
   await expect(completedVisibility).toBeChecked();
   let currentTask = b;
+  let currentChild = c;
   for (const fullscreenMode of [false, true]) {
     if (fullscreenMode) {
-      currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, dependsOn: [a.id] });
+      currentChild = await updateTask(request, project.id, c.id, { version: currentChild.version, groupId: a.groupId });
+      currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, groupId: a.groupId, dependsOn: [a.id] });
       await page.getByRole('button', { name: '刷新', exact: true }).click();
       await expect(trigger).toHaveCount(0);
       await expect(inspectTask(page, c.id)).toHaveCount(0);
@@ -1031,7 +1081,8 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, api: request }
       await expect(inspectTask(page, c.id)).toHaveCount(0);
       await enterFullscreen.click();
     }
-    currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, dependsOn: [] });
+    currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, groupId: b.id, dependsOn: [] });
+    currentChild = await updateTask(request, project.id, c.id, { version: currentChild.version, groupId: b.id });
     await inspectTask(page, b.id).click();
     await expect(inspectTask(page, b.id)).toHaveAttribute('aria-pressed', 'true');
     await trigger.click();
@@ -1065,7 +1116,7 @@ test('narrow-layout', scenario('narrow-layout'), async ({ page, api: request }, 
     ...Array.from({ length: 98 }, (_, index) => ({ title: `窄屏关联 ${index + 4}`, url: `reference ${index + 4}` })),
   ];
   const a = await createApprovedTask(request, project.id, { title: `窄屏根 ${'很长的任务标题😀'.repeat(30)}`, description: '长描述 <img src=x>\n'.repeat(40), properties: { pullRequests } });
-  await createApprovedTask(request, project.id, { title: '后续任务', dependsOn: [a.id] });
+  await createApprovedTask(request, project.id, { groupId: a.groupId, title: '后续任务', dependsOn: [a.id] });
   const independent = await createApprovedTask(request, project.id, { title: `窄屏独立任务 ${'很长的独立任务标题😀'.repeat(30)}` });
   await page.setViewportSize({ width: 320, height: 800 });
   await openProject(page, project.id, project.name);

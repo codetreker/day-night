@@ -1,19 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { GraphTask, TaskGraph, TaskStatus } from '../src/api/types';
-import { buildGraphIndex, GraphDataError, projectRoot, type RootProjection } from '../src/features/task-graph/model';
+import { buildGroupIndex, GraphDataError, projectGroup, type GroupProjection } from '../src/features/task-graph/model';
 import {
-  createGraphOverview, getTaskExpansion, projectVisibleTasks, reconcileVisibleTasks,
+  createGraphOverview, getMemberExpansion, getTaskExpansion, projectVisibleTasks, reconcileVisibleTasks,
   GRAPH_EXPANSION_BATCH_SIZE, GRAPH_OVERVIEW_EDGE_LIMIT, GRAPH_OVERVIEW_TASK_LIMIT,
 } from '../src/features/task-graph/visibility';
 
-type Seed = { id: string; dependsOn?: readonly string[]; status?: TaskStatus };
+type Seed = { id: string; groupId?: string; dependsOn?: readonly string[]; status?: TaskStatus };
 const indexOf = (seeds: readonly Seed[], defaultStatus: TaskStatus = 'todo') => {
   const statuses = new Map(seeds.map((seed) => [seed.id, seed.status ?? defaultStatus]));
-  const tasks: GraphTask[] = seeds.map(({ id, dependsOn = [] }) => {
+  const tasks: GraphTask[] = seeds.map(({ id, groupId = id, dependsOn = [] }) => {
     const status = statuses.get(id)!;
     const blockedBy = dependsOn.filter((source) => statuses.get(source) !== 'done');
     return {
-      id, dependsOn, blockedBy, ready: status === 'todo' && blockedBy.length === 0, status,
+      id, groupId, dependsOn, blockedBy, ready: status === 'todo' && blockedBy.length === 0, status,
       titlePreview: id, titleTruncated: false, createdAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:00:00Z',
     };
   });
@@ -23,12 +23,12 @@ const indexOf = (seeds: readonly Seed[], defaultStatus: TaskStatus = 'todo') => 
     summary: { total: tasks.length, proposed: count('proposed'), todo: count('todo'), inProgress: count('in_progress'), done: count('done'),
       ready: tasks.filter((task) => task.ready).length, blocked: tasks.filter((task) => task.status === 'todo' && task.blockedBy.length > 0).length },
   };
-  return buildGraphIndex(graph);
+  return buildGroupIndex(graph);
 };
-const chain = (count: number): Seed[] => Array.from({ length: count }, (_, index) => ({ id: `n${index}`, dependsOn: index === 0 ? [] : [`n${index - 1}`] }));
-const induced = (projection: RootProjection, ids: ReadonlySet<string>) => projection.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target));
+const chain = (count: number): Seed[] => Array.from({ length: count }, (_, index) => ({ id: `n${index}`, groupId: 'n0', dependsOn: index === 0 ? [] : [`n${index - 1}`] }));
+const induced = (projection: GroupProjection, ids: ReadonlySet<string>) => projection.edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target));
 const addExpansion = (visible: ReadonlySet<string>, ids: readonly string[]) => new Set([...visible, ...ids]);
-const allIds = (projection: RootProjection) => new Set([...projection.mainIds, ...projection.externalIds]);
+const allIds = (projection: GroupProjection) => new Set([...projection.mainIds, ...projection.externalIds]);
 const edgeBoundary = (extra: boolean) => chain(50).map((seed, index) => ({
   ...seed,
   dependsOn: [...new Set([...(seed.dependsOn ?? []), ...(index >= 2 ? ['n0'] : []), ...([3, 4, 5].includes(index) ? ['n1'] : []), ...(extra && index === 4 ? ['n2'] : [])])],
@@ -41,7 +41,7 @@ describe('progressive task graph visibility', () => {
 
   it('shows the complete 50-task projection and folds a 51-task chain at the exact node boundary', () => {
     for (const count of [50, 51]) {
-      const index = indexOf(chain(count)); const projection = projectRoot(index, 'n0'); const visible = createGraphOverview(index, projection);
+      const index = indexOf(chain(count)); const projection = projectGroup(index, 'n0'); const visible = createGraphOverview(index, projection);
       expect(visible).toEqual(new Set(Array.from({ length: 50 }, (_, position) => `n${position}`)));
       expect(projectVisibleTasks(projection, visible).edges).toHaveLength(49);
       expect(visible.size === allIds(projection).size).toBe(count === 50);
@@ -49,8 +49,8 @@ describe('progressive task graph visibility', () => {
   });
 
   it('shows all 100 induced edges but folds a 101-edge projection even when it has only 50 tasks', () => {
-    const index100 = indexOf(edgeBoundary(false)); const p100 = projectRoot(index100, 'n0');
-    const index101 = indexOf(edgeBoundary(true)); const p101 = projectRoot(index101, 'n0');
+    const index100 = indexOf(edgeBoundary(false)); const p100 = projectGroup(index100, 'n0');
+    const index101 = indexOf(edgeBoundary(true)); const p101 = projectGroup(index101, 'n0');
     expect(p100.edges).toHaveLength(100); expect(p101.edges).toHaveLength(101);
     expect(createGraphOverview(index100, p100)).toEqual(allIds(p100));
     const visible = createGraphOverview(index101, p101);
@@ -58,7 +58,7 @@ describe('progressive task graph visibility', () => {
   });
 
   it('traverses a deep chain through accepted nodes only and offers only the next direct successor', () => {
-    const index = indexOf(chain(1000)); const projection = projectRoot(index, 'n0'); const visible = createGraphOverview(index, projection);
+    const index = indexOf(chain(1000)); const projection = projectGroup(index, 'n0'); const visible = createGraphOverview(index, projection);
     expect([...visible]).toEqual(Array.from({ length: 50 }, (_, position) => `n${position}`));
     expect(getTaskExpansion(index, projection, visible, 'n49', 'successors')).toEqual({ ids: ['n50'], totalHidden: 1, addedEdges: 1 });
     expect(getTaskExpansion(index, projection, visible, 'n0', 'successors')).toEqual({ ids: [], totalHidden: 0, addedEdges: 0 });
@@ -66,9 +66,9 @@ describe('progressive task graph visibility', () => {
 
   it('admits all induced edges with a node and never traverses descendants of a rejected candidate', () => {
     const seeds: Seed[] = [{ id: 'root' }, ...Array.from({ length: 14 }, (_, index) => ({
-      id: `dense${index}`, dependsOn: ['root', ...Array.from({ length: index }, (_, before) => `dense${before}`)],
-    })), { id: 'behind-rejected', dependsOn: ['dense13'] }];
-    const index = indexOf(seeds); const projection = projectRoot(index, 'root'); const visible = createGraphOverview(index, projection);
+      id: `dense${index}`, groupId: 'root', dependsOn: ['root', ...Array.from({ length: index }, (_, before) => `dense${before}`)],
+    })), { id: 'behind-rejected', groupId: 'root', dependsOn: ['dense13'] }];
+    const index = indexOf(seeds); const projection = projectGroup(index, 'root'); const visible = createGraphOverview(index, projection);
     expect(induced(projection, visible).length).toBeLessThanOrEqual(100);
     expect(visible.has('dense13')).toBe(false); expect(visible.has('behind-rejected')).toBe(false);
     expect(projectVisibleTasks(projection, visible).edges).toEqual(induced(projection, visible));
@@ -76,8 +76,8 @@ describe('progressive task graph visibility', () => {
 
   it('uses one FIFO traversal with successors before prerequisites at each accepted node', () => {
     const external = Array.from({ length: 5 }, (_, index) => ({ id: `e${index}`, dependsOn: index === 0 ? [] : [`e${index - 1}`] }));
-    const main = Array.from({ length: 60 }, (_, index) => ({ id: `m${index}`, dependsOn: index === 0 ? ['root', 'e4'] : [`m${index - 1}`] }));
-    const index = indexOf([...external, { id: 'root' }, ...main]); const projection = projectRoot(index, 'root');
+    const main = Array.from({ length: 60 }, (_, index) => ({ id: `m${index}`, groupId: 'root', dependsOn: index === 0 ? ['root', 'e4'] : [`m${index - 1}`] }));
+    const index = indexOf([...external, { id: 'root' }, ...main]); const projection = projectGroup(index, 'root');
     const visible = createGraphOverview(index, projection);
     expect([...visible].slice(0, 6)).toEqual(['root', 'm0', 'm1', 'e4', 'm2', 'e3']);
     expect(visible.size).toBe(50); expect([...projection.externalIds].every((id) => visible.has(id))).toBe(true);
@@ -85,18 +85,18 @@ describe('progressive task graph visibility', () => {
 
   it('keeps directional order in the snapshot rather than sorting task IDs or dependency arrays', () => {
     const names = Array.from({ length: 70 }, (_, index) => `task-${70 - index}`);
-    const index = indexOf([{ id: 'root' }, ...names.map((id) => ({ id, dependsOn: ['root'] }))]); const projection = projectRoot(index, 'root');
+    const index = indexOf([{ id: 'root' }, ...names.map((id) => ({ id, groupId: 'root', dependsOn: ['root'] }))]); const projection = projectGroup(index, 'root');
     const visible = createGraphOverview(index, projection);
     expect([...visible]).toEqual(['root', ...names.slice(0, 49)]);
     expect(getTaskExpansion(index, projection, visible, 'root', 'successors').ids).toEqual(names.slice(49, 69));
-    const shuffled: RootProjection = { ...projection, mainIds: new Set([...projection.mainIds].reverse()), edges: [...projection.edges].reverse() };
+    const shuffled: GroupProjection = { ...projection, mainIds: new Set([...projection.mainIds].reverse()), edges: [...projection.edges].reverse() };
     expect(createGraphOverview(index, shuffled)).toEqual(visible);
     expect([...createGraphOverview(index, shuffled)]).toEqual([...visible]);
   });
 
   it('expands a large fanout in exact direct-neighbor batches beyond the initial task budget', () => {
-    const index = indexOf([{ id: 'root' }, ...Array.from({ length: 100 }, (_, position) => ({ id: `child${position}`, dependsOn: ['root'] }))]);
-    const projection = projectRoot(index, 'root'); const visible = createGraphOverview(index, projection);
+    const index = indexOf([{ id: 'root' }, ...Array.from({ length: 100 }, (_, position) => ({ id: `child${position}`, groupId: 'root', dependsOn: ['root'] }))]);
+    const projection = projectGroup(index, 'root'); const visible = createGraphOverview(index, projection);
     const first = getTaskExpansion(index, projection, visible, 'root', 'successors');
     expect(first).toEqual({ ids: Array.from({ length: 20 }, (_, position) => `child${position + 49}`), totalHidden: 51, addedEdges: 20 });
     const expanded = addExpansion(visible, first.ids); expect(expanded.size).toBe(70);
@@ -105,10 +105,10 @@ describe('progressive task graph visibility', () => {
   });
 
   it('counts new induced edges between new neighbors and existing tasks without a manual edge cap', () => {
-    const index = indexOf([{ id: 'root' }, { id: 'existing', dependsOn: ['root'] }, ...Array.from({ length: 25 }, (_, position) => ({
-      id: `child${position}`, dependsOn: ['root', 'existing', ...Array.from({ length: position }, (_, before) => `child${before}`)],
+    const index = indexOf([{ id: 'root' }, { id: 'existing', groupId: 'root', dependsOn: ['root'] }, ...Array.from({ length: 25 }, (_, position) => ({
+      id: `child${position}`, groupId: 'root', dependsOn: ['root', 'existing', ...Array.from({ length: position }, (_, before) => `child${before}`)],
     }))]);
-    const projection = projectRoot(index, 'root'); const visible = new Set(['root', 'existing']);
+    const projection = projectGroup(index, 'root'); const visible = new Set(['root', 'existing']);
     const first = getTaskExpansion(index, projection, visible, 'root', 'successors');
     expect(first.ids).toHaveLength(20); expect(first.totalHidden).toBe(25); expect(first.addedEdges).toBe(230);
     const expanded = addExpansion(visible, first.ids);
@@ -119,16 +119,16 @@ describe('progressive task graph visibility', () => {
   it('reveals prerequisites directly, leaves their ancestors folded and reports exact counts', () => {
     const seeds: Seed[] = [{ id: 'root' }];
     for (let index = 0; index < 25; index++) seeds.push({ id: `ancestor${index}` }, { id: `external${index}`, dependsOn: [`ancestor${index}`] });
-    seeds.push({ id: 'target', dependsOn: ['root', ...Array.from({ length: 25 }, (_, index) => `external${index}`).reverse()] });
-    const index = indexOf(seeds); const projection = projectRoot(index, 'root'); const visible = new Set(['root', 'target']);
+    seeds.push({ id: 'target', groupId: 'root', dependsOn: ['root', ...Array.from({ length: 25 }, (_, index) => `external${index}`).reverse()] });
+    const index = indexOf(seeds); const projection = projectGroup(index, 'root'); const visible = new Set(['root', 'target']);
     expect(getTaskExpansion(index, projection, visible, 'target')).toEqual({ ids: Array.from({ length: 20 }, (_, position) => `external${position}`), totalHidden: 25, addedEdges: 20 });
     expect(getTaskExpansion(index, projection, visible, 'target').ids.some((id) => id.startsWith('ancestor'))).toBe(false);
   });
 
   it('folds main and external tasks, deduplicates shared context and never expands outside the full projection', () => {
     const index = indexOf([{ id: 'external' }, { id: 'outside', dependsOn: ['external'] }, { id: 'root' },
-      ...Array.from({ length: 60 }, (_, position) => ({ id: `main${position}`, dependsOn: ['root'] })), { id: 'join', dependsOn: ['root', 'external'] }]);
-    const projection = projectRoot(index, 'root'); const overview = createGraphOverview(index, projection);
+      ...Array.from({ length: 60 }, (_, position) => ({ id: `main${position}`, groupId: 'root', dependsOn: ['root'] })), { id: 'join', groupId: 'root', dependsOn: ['root', 'external'] }]);
+    const projection = projectGroup(index, 'root'); const overview = createGraphOverview(index, projection);
     expect(overview.has('join')).toBe(false); expect(overview.has('external')).toBe(false); expect(allIds(projection).has('outside')).toBe(false);
     const expanded = addExpansion(overview, getTaskExpansion(index, projection, overview, 'root', 'successors').ids);
     expect(getTaskExpansion(index, projection, expanded, 'join')).toEqual({ ids: ['external'], totalHidden: 1, addedEdges: 1 });
@@ -140,48 +140,75 @@ describe('progressive task graph visibility', () => {
   });
 
   it('keeps complete-chain completion and progress independent from rendered membership', () => {
-    const index = indexOf(chain(80), 'done'); const projection = projectRoot(index, 'n0'); const visible = createGraphOverview(index, projection);
+    const index = indexOf(chain(80), 'done'); const projection = projectGroup(index, 'n0'); const visible = createGraphOverview(index, projection);
     const view = projectVisibleTasks(projection, visible);
     expect(projection.mainIds.size).toBe(80); expect(view.mainIds.size).toBe(50);
-    expect(view.completed).toBe(80); expect(index.rootProgress.get('n0')).toEqual({ total: 80, done: 80, status: 'done' });
+    expect(view.completed).toBe(80); expect(index.groupProgress.get('n0')).toEqual({ total: 80, done: 80, status: 'done' });
   });
 
   it('retains proposed ancestors and hidden todo members in the full-chain progress', () => {
     const seeds: Seed[] = [{ id: 'external', status: 'proposed' }, ...chain(80).map((seed, index): Seed => ({
       ...seed, status: index === 79 ? 'todo' : 'proposed', dependsOn: index === 79 ? ['n78', 'external'] : seed.dependsOn!,
     }))];
-    const index = indexOf(seeds); const projection = projectRoot(index, 'n0'); const visible = createGraphOverview(index, projection);
+    const index = indexOf(seeds); const projection = projectGroup(index, 'n0'); const visible = createGraphOverview(index, projection);
     expect([...visible].every((id) => index.nodes.get(id)!.status === 'proposed')).toBe(true);
     expect(visible.has('external')).toBe(false); expect(visible.has('n79')).toBe(false);
     expect(projection.externalIds).toEqual(new Set(['external'])); expect(projection.mainIds.size).toBe(80);
     expect(getTaskExpansion(index, projection, visible, 'n49', 'successors')).toEqual({ ids: ['n50'], totalHidden: 1, addedEdges: 1 });
     expect(projectVisibleTasks(projection, visible).completed).toBe(0);
-    expect(index.rootProgress.get('n0')).toEqual({ total: 80, done: 0, status: 'todo' });
+    expect(index.groupProgress.get('n0')).toEqual({ total: 80, done: 0, status: 'todo' });
   });
 
-  it('prunes disconnected retained nodes after refresh without adding a new connecting path or new neighbors', () => {
-    const beforeIndex = indexOf([{ id: 'root' }, { id: 'a', dependsOn: ['root'] }, { id: 'b', dependsOn: ['a'] }, { id: 'c', dependsOn: ['root'] }]);
-    const before = projectRoot(beforeIndex, 'root'); const visible = createGraphOverview(beforeIndex, before);
-    const afterIndex = indexOf([{ id: 'root' }, { id: 'new-path', dependsOn: ['root'] }, { id: 'b', dependsOn: ['new-path'] }, { id: 'c', dependsOn: ['root'] }, { id: 'new-leaf', dependsOn: ['root'] }]);
-    const after = projectRoot(afterIndex, 'root'); const reconciled = reconcileVisibleTasks(after, visible);
-    expect(reconciled).toEqual(new Set(['root', 'c']));
+  it('retains disconnected group members after refresh without adding new members or paths', () => {
+    const beforeIndex = indexOf([{ id: 'root' }, { id: 'a', groupId: 'root', dependsOn: ['root'] }, { id: 'b', groupId: 'root', dependsOn: ['a'] }, { id: 'c', groupId: 'root', dependsOn: ['root'] }]);
+    const before = projectGroup(beforeIndex, 'root'); const visible = createGraphOverview(beforeIndex, before);
+    const afterIndex = indexOf([{ id: 'root' }, { id: 'new-path', groupId: 'root', dependsOn: ['root'] }, { id: 'b', groupId: 'root', dependsOn: ['new-path'] }, { id: 'c', groupId: 'root', dependsOn: ['root'] }, { id: 'new-leaf', groupId: 'root', dependsOn: ['root'] }]);
+    const after = projectGroup(afterIndex, 'root'); const reconciled = reconcileVisibleTasks(after, visible);
+    expect(reconciled).toEqual(new Set(['root', 'b', 'c']));
     expect(reconciled.has('new-path')).toBe(false); expect(reconciled.has('new-leaf')).toBe(false);
     expect(createGraphOverview(afterIndex, after)).toEqual(allIds(after));
     expect(reconcileVisibleTasks(after, new Set(['missing']))).toEqual(new Set(['root']));
   });
 
   it('retains external connections through the induced visible graph and requires explicit global reset', () => {
-    const index = indexOf([{ id: 'external' }, { id: 'root' }, { id: 'join', dependsOn: ['root', 'external'] }]); const projection = projectRoot(index, 'root');
+    const index = indexOf([{ id: 'external' }, { id: 'root' }, { id: 'join', groupId: 'root', dependsOn: ['root', 'external'] }]); const projection = projectGroup(index, 'root');
     expect(reconcileVisibleTasks(projection, new Set(['root', 'join', 'external']))).toEqual(new Set(['root', 'join', 'external']));
-    expect(reconcileVisibleTasks(projection, new Set(['root', 'external']))).toEqual(new Set(['root']));
-    const largeIndex = indexOf(chain(100)); const largeProjection = projectRoot(largeIndex, 'n0'); const overview = createGraphOverview(largeIndex, largeProjection);
+    expect(reconcileVisibleTasks(projection, new Set(['root', 'external']))).toEqual(new Set(['root', 'external']));
+    const largeIndex = indexOf(chain(100)); const largeProjection = projectGroup(largeIndex, 'n0'); const overview = createGraphOverview(largeIndex, largeProjection);
     const expanded = addExpansion(overview, getTaskExpansion(largeIndex, largeProjection, overview, 'n49', 'successors').ids);
     expect(reconcileVisibleTasks(largeProjection, expanded)).toEqual(expanded);
     expect(createGraphOverview(largeIndex, largeProjection)).toEqual(overview);
   });
 
+  it('reveals disconnected group members through bounded member batches without synthetic edges', () => {
+    const seeds = Array.from({ length: 91 }, (_, position) => ({ id: `member-${position}`, groupId: 'member-0' }));
+    const index = indexOf(seeds); const projection = projectGroup(index, 'member-0');
+    const overview = createGraphOverview(index, projection);
+    expect([...overview]).toEqual(seeds.slice(0, 50).map((seed) => seed.id));
+    expect(projectVisibleTasks(projection, overview).edges).toEqual([]);
+    expect([...createGraphOverview(index, { ...projection, mainIds: new Set([...projection.mainIds].reverse()) })]).toEqual([...overview]);
+    expect(getTaskExpansion(index, projection, overview, 'member-0', 'successors').ids).toEqual([]);
+    const first = getMemberExpansion(index, projection, overview);
+    expect(first).toEqual({ ids: seeds.slice(50, 70).map((seed) => seed.id), totalHidden: 41, addedEdges: 0 });
+    const visible = addExpansion(overview, first.ids);
+    const second = getMemberExpansion(index, projection, visible);
+    expect(second.ids).toEqual(seeds.slice(70, 90).map((seed) => seed.id));
+    const afterSecond = addExpansion(visible, second.ids);
+    expect(getMemberExpansion(index, projection, afterSecond)).toEqual({ ids: ['member-90'], totalHidden: 1, addedEdges: 0 });
+    expect(reconcileVisibleTasks(projection, visible)).toEqual(visible);
+    expect(index.groupProgress.get('member-0')!.total).toBe(91);
+    expect(getMemberExpansion(index, projection, allIds(projection))).toEqual({ ids: [], totalHidden: 0, addedEdges: 0 });
+  });
+
+  it('counts real induced edges when adding a hidden group member', () => {
+    const index = indexOf([{ id: 'root' }, { id: 'member', groupId: 'root', dependsOn: ['external'] }, { id: 'external' }, { id: 'outside', dependsOn: ['root'] }]);
+    const projection = projectGroup(index, 'root');
+    expect(getMemberExpansion(index, projection, new Set(['root', 'external']))).toEqual({ ids: ['member'], totalHidden: 1, addedEdges: 1 });
+    expect(getMemberExpansion(index, projection, new Set(['root'])).ids).not.toContain('outside');
+  });
+
   it('preserves inputs and rejects expansion of an unavailable control', () => {
-    const index = indexOf(chain(60)); const projection = projectRoot(index, 'n0'); const visible = createGraphOverview(index, projection);
+    const index = indexOf(chain(60)); const projection = projectGroup(index, 'n0'); const visible = createGraphOverview(index, projection);
     const snapshot = { projection: structuredClone(projection), visible: [...visible], successors: [...index.successors].map(([id, ids]) => [id, [...ids]]), nodes: [...index.nodes] };
     createGraphOverview(index, projection); projectVisibleTasks(projection, visible); getTaskExpansion(index, projection, visible, 'n49', 'successors'); reconcileVisibleTasks(projection, visible);
     expect(projection).toEqual(snapshot.projection); expect([...visible]).toEqual(snapshot.visible); expect([...index.successors]).toEqual(snapshot.successors); expect([...index.nodes]).toEqual(snapshot.nodes);

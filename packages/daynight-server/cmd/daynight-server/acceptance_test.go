@@ -602,7 +602,7 @@ func acceptanceConcurrentStartup(t *testing.T, scenario *acceptanceScenario) {
 	first = first.started(t)
 	second = second.started(t)
 	var versions []int64
-	if err := fixture.admin.QueryRow(ctx, "SELECT array_agg(version ORDER BY version) FROM schema_migrations").Scan(&versions); err != nil || !slices.Equal(versions, []int64{1, 2, 3, 4, 5, 6, 7, 8}) {
+	if err := fixture.admin.QueryRow(ctx, "SELECT array_agg(version ORDER BY version) FROM schema_migrations").Scan(&versions); err != nil || !slices.Equal(versions, []int64{1, 2, 3, 4, 5, 6, 7, 8, 9}) {
 		t.Fatal("concurrent processes did not share exactly one migration ledger")
 	}
 	project := first.project(t, "Shared process state")
@@ -628,9 +628,9 @@ func acceptanceProposedReads(t *testing.T, scenario *acceptanceScenario) {
 	done = process.action(t, done, "complete")
 	proposed := api.Task{ID: "00000000-0000-4000-8000-000000000001", ProjectID: project.ID}
 	proposedBlocked := api.Task{ID: "00000000-0000-4000-8000-000000000002", ProjectID: project.ID}
-	fixture.exec(t, `INSERT INTO tasks (id, project_id, title, description, status, version)
-		VALUES ($1, $3, 'Proposed', 'Complete proposed description', 'proposed', 17),
-		($2, $3, 'Proposed with prerequisite', '', 'proposed', 19)`, proposed.ID, proposedBlocked.ID, project.ID)
+	fixture.exec(t, `INSERT INTO tasks (id, project_id, title, description, status, version, group_id)
+		VALUES ($1, $3, 'Proposed', 'Complete proposed description', 'proposed', 17, $1),
+		($2, $3, 'Proposed with prerequisite', '', 'proposed', 19, $2)`, proposed.ID, proposedBlocked.ID, project.ID)
 	fixture.exec(t, `INSERT INTO task_dependencies (project_id, task_id, depends_on_task_id)
 		VALUES ($1, $2, $4), ($1, $3, $5)`, project.ID, proposed.ID, proposedBlocked.ID, done.ID, pending.ID)
 	proposed = process.readTask(t, proposed)

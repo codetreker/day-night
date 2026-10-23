@@ -24,7 +24,11 @@ as recorded in the [delivery breakdown](../../../../docs/design/daynight-goal-wo
 The [mode decision](../architecture/2026-10-21-using-daynight-modes.md) continues to
 own the current entrypoint and authorization rules.
 
-A Goal uses existing tasks, attachments and dependsOn. Registration establishes a
+A Goal uses existing tasks, attachments, persisted groupId and dependsOn. The
+[persistent group decision](../feature/2026-10-23-persistent-task-groups.md) adds
+stable membership to the original dependency-only protocol. The first task
+anchors the group; design and every delivery task explicitly pass its groupId.
+Dependencies retain only execution-prerequisite meaning. Registration establishes a
 Goal description task titled `[Goal]<outcome>` and a dependent architecture-and-breakdown
 placeholder. Stage briefs define the work and stage acceptance; final requirements, UI prototypes
 and architecture are outputs of their producing stages. Goal description fixes the
@@ -120,7 +124,9 @@ completion, description-only assignment comprehension, and attachment ownership;
 recursive copy and installer checks establish artifact integrity
 separately from instruction behavior.
 
-The protocol adds no server-side enforcement, lock, state, telemetry or migration.
+The stage protocol adds no Goal-specific enforcement, lock, state or telemetry.
+Persisted groupId and its migration belong to the persistent group decision;
+all stages explicitly reuse that identity without changing approval authority.
 Existing version and attachment concurrency rules still apply. The current task
 chain provides a concrete registration exercise, not proof that every model
 will follow the skill. Publishing, deployment and PR merging remain subject to

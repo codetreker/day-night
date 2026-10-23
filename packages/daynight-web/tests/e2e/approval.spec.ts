@@ -131,7 +131,7 @@ const lifecycleActor = async (page: Page, info: TestInfo, name: string) => {
 };
 const invariantFields = (task: TaskDetail) => ({
   id: task.id, projectId: task.projectId, title: task.title, description: task.description,
-  properties: task.properties, dependsOn: task.dependsOn, createdAt: task.createdAt,
+  groupId: task.groupId, properties: task.properties, dependsOn: task.dependsOn, createdAt: task.createdAt,
 });
 const navigateProject = async (page: Page, projectId: string): Promise<void> => {
   await page.getByRole('link', { name: '← 项目', exact: true }).click();
@@ -155,7 +155,7 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
     const sharedDescription = '# Lifecycle delivery\n\nGoal: verify the same task through the installed CLI, production Web and PostgreSQL.\n\nAcceptance: blocked approval, refused premature claim, completed prerequisite and named claim/complete.\n\nMaterials: [Plan](plan.md) and binary evidence payload.bin.';
     const sharedPrerequisiteId = resourceId(await lifecycle.success(['task', 'create', '--project', sharedProjectId, '--title', 'CLI prerequisite 中文', '--description', prerequisiteDescription]));
     const sharedDependentId = resourceId(await lifecycle.success(['task', 'create', '--project', sharedProjectId, '--title', 'CLI dependent 中文', '--description', sharedDescription,
-      '--depends-on', sharedPrerequisiteId, '--pull-request-url', 'https://example.com/pull/17', '--pull-request-title', 'Preserved lifecycle reference']));
+      '--group-id', sharedPrerequisiteId, '--depends-on', sharedPrerequisiteId, '--pull-request-url', 'https://example.com/pull/17', '--pull-request-title', 'Preserved lifecycle reference']));
     const sharedPrerequisite = await lifecycle.show(sharedProjectId, sharedPrerequisiteId, 'prerequisite-created-proposed');
     const sharedDependent = await lifecycle.show(sharedProjectId, sharedDependentId, 'dependent-created-proposed');
     expect(sharedPrerequisite).toMatchObject({ status: 'proposed', version: 1n, ready: false, blockedBy: [] });
@@ -164,9 +164,9 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
     const exact = await createProposedTask(request, project.id, { title: '精确版本审批', description: '保留完整说明与任务内容。' });
     const other = await createProposedTask(request, project.id, { title: '审批期间查看的另一任务', description: '刷新前审阅的完整详情' });
     const prerequisite = await createProposedTask(request, project.id, { title: '仍未完成的前置任务' });
-    const blocked = await createProposedTask(request, project.id, { title: '有未完成前置的待审批任务', dependsOn: [prerequisite.id] });
+    const blocked = await createProposedTask(request, project.id, { title: '有未完成前置的待审批任务', groupId: prerequisite.groupId, dependsOn: [prerequisite.id] });
     for (let index = 0; index < 79; index++) {
-      await createProposedTask(request, project.id, { title: `审批图后续 ${index}`, dependsOn: [prerequisite.id] });
+      await createProposedTask(request, project.id, { title: `审批图后续 ${index}`, groupId: prerequisite.groupId, dependsOn: [prerequisite.id] });
     }
     const exactVersion = 9223372036854775806n;
     await seedTaskVersion(project.id, exact.id, exactVersion);

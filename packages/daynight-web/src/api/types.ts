@@ -15,6 +15,7 @@ export type ProjectPage = {
 
 export type GraphTask = {
   readonly id: string;
+  readonly groupId: string;
   readonly titlePreview: string;
   readonly titleTruncated: boolean;
   readonly status: TaskStatus;
@@ -52,6 +53,7 @@ export type TaskProperties = {
 
 export type TaskDetail = {
   readonly id: string;
+  readonly groupId: string;
   readonly projectId: string;
   readonly title: string;
   readonly description: string;

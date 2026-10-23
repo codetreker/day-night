@@ -31,8 +31,11 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 	if joined := identityDecode[api.ProjectMember](t, data); joined.UserID != memberUser.ID || joined.Role != "member" {
 		t.Fatalf("invitation did not grant the ordinary member role: %+v", joined)
 	}
+	_, data = identityRequest(t, admin, http.MethodPost, integration.server.URL+taskCollection(project.ID),
+		`{"title":"Shared group anchor"}`, origin, http.StatusCreated)
+	anchor := identityDecode[api.Task](t, data)
 	_, data = identityRequest(t, member, http.MethodPost, integration.server.URL+taskCollection(project.ID),
-		`{"title":"Member workflow","description":"Original"}`, origin, http.StatusCreated)
+		jsonBody(t, map[string]any{"title": "Member workflow", "description": "Original", "groupId": anchor.ID}), origin, http.StatusCreated)
 	task := identityDecode[api.Task](t, data)
 	_, data = identityRequest(t, member, http.MethodPatch, integration.server.URL+taskPath(task),
 		jsonBody(t, map[string]any{"version": task.Version, "description": "Revised by a member"}), origin, http.StatusOK)
@@ -53,6 +56,19 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 		}
 		return data
 	}
+	groupCreate := jsonBody(t, map[string]any{"title": "Unauthorized group member", "groupId": anchor.ID})
+	groupPatch := jsonBody(t, map[string]any{"version": task.Version, "groupId": task.ID})
+	request(t, anonymous, http.MethodPost, taskCollection(project.ID), groupCreate, nil, http.StatusUnauthorized, "unauthenticated")
+	request(t, outsider, http.MethodPost, taskCollection(project.ID), groupCreate, origin, http.StatusNotFound, "not_found")
+	request(t, anonymous, http.MethodPatch, taskPath(task), groupPatch, nil, http.StatusUnauthorized, "unauthenticated")
+	request(t, outsider, http.MethodPatch, taskPath(task), groupPatch, origin, http.StatusNotFound, "not_found")
+	data = request(t, member, http.MethodPatch, taskPath(task), groupPatch, origin, http.StatusOK, "")
+	task = identityDecode[api.Task](t, data)
+	if task.GroupID != task.ID {
+		t.Fatal("ordinary member could not explicitly split a group")
+	}
+	data = request(t, member, http.MethodPatch, taskPath(task), jsonBody(t, map[string]any{"version": task.Version, "groupId": anchor.ID}), origin, http.StatusOK, "")
+	task = identityDecode[api.Task](t, data)
 	for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"claim", "in_progress"}, {"complete", "done"}} {
 		t.Run(step.action, func(t *testing.T) {
 			path := taskPath(task) + "/" + step.action
@@ -72,7 +88,7 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 			headers["X-Request-ID"] = "lifecycle-member-" + step.action
 			data = request(t, browser, http.MethodPost, path, body, headers, http.StatusOK, "")
 			changed := identityDecode[api.Task](t, data)
-			if changed.Status != step.status || changed.Version != task.Version+1 {
+			if changed.Status != step.status || changed.Version != task.Version+1 || changed.GroupID != anchor.ID {
 				t.Fatalf("ordinary member could not perform %s: %+v", step.action, changed)
 			}
 			task = changed

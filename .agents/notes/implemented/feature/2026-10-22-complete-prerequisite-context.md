@@ -12,21 +12,24 @@ prerequisites, so a root-anchored viewport can conceal the new context.
 
 ## Decision
 
-For a selected root, `projectRoot` keeps the root and all forward-reachable
-successors in `mainIds`. It iteratively traverses `dependsOn` from that main set
+For a selected group, `projectGroup` uses every persisted same-group task in
+`mainIds`, as owned by the [persistent group decision](2026-10-23-persistent-task-groups.md). The original
+reader selected forward-reachable descendants of a dependency root; that
+assumption no longer defines membership. It iteratively traverses `dependsOn` from that main set
 to include every ancestor; additional tasks are stored in `externalIds`. Their union is complete context P. Every dependency ending in P is retained,
 and ancestor closure guarantees its source is in P. UX1 originally displayed
 all P before inspection. The later
 [progressive overview decision](2026-10-22-progressive-task-graph.md) retains this
 data and adds explicit S for both main and external tasks. An edge is external
-when its source belongs to `externalIds`, including external-to-external edges.
+when either endpoint belongs to `externalIds`, including member-to-external and
+external-to-external edges made possible by explicit grouping.
 Stable task and dependency ordering follows the complete graph index.
 
 External context does not import unrelated successors. For `A → D`, `B → C → D`
 and `C → X`, expanding A displays main tasks A/D and external B/C, with A→D,
 B→C and C→D. X remains outside that projection. Completed tasks are retained,
-each task appears once per canvas, and status, blocking and shared membership
-continue to come from the full snapshot. Root progress and aggregate status count
+each task appears once per canvas, and status, blocking and explicit membership
+continue to come from the full snapshot. Group progress and aggregate status count
 only distinct main tasks; project totals count each project task once.
 
 Visible external nodes retain dashed borders and the “外部前置” label. Connections from
@@ -107,12 +110,13 @@ existing root placement when the root is already leftmost.
 A single expanded chain can approach the complete-project limit of 1,000 tasks
 and 5,000 dependencies. Closure and projection use visited sets and iterative
 traversal, remain linear in project nodes plus edges, and avoid deep recursive
-call stacks. Only the expanded chain's current visible induced graph is laid out; the existing all-root progress
-calculation remains based on main sets.
+call stacks. Only the expanded chain's current visible induced graph is laid out; group progress
+uses explicit main sets.
 
 Independent counts prevent external ancestors from changing chain completion,
 filtering or status. Existing per-project browsing preferences and standalone
-classification retain their formats and topology rules. Readable initial
+classification use the persistent group decision; browser preference record
+formats remain intact. Readable initial
 placement can leave later tasks outside the viewport, with navigation controls
 and keyboard focus providing access; Fit view remains explicit.
 

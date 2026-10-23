@@ -11,20 +11,22 @@ so that badge misrepresents completion of the chain being browsed.
 
 ## Decision
 
-`RootProgress` contains a required aggregate status alongside its total and done
-counts. The existing distinct root-main traversal derives all three values:
+`GroupProgress` contains a required aggregate status alongside its total and done
+counts. The distinct explicit-member traversal derives all three values:
 all main tasks done means done; any done or in-progress main task with unfinished
 work means in progress; otherwise any todo main task means pending; otherwise
 every main task is proposed. The [four-state reader decision](../feature/2026-10-22-proposed-task-readers.md)
 extends the original three-state aggregation with the proposed-only case. The
-main set is the root and every reachable successor, with shared descendants
-counted once.
+main set follows the
+[persistent group decision](../feature/2026-10-23-persistent-task-groups.md):
+all tasks with the same groupId. The original root-reachability membership is
+retained as historical rationale for the initial fix.
 External prerequisite context, including its complete ancestor closure, is
 outside that set.
 
 The row badge, completed-chain count and visibility filter in the task-chain
 tab consume the same aggregate status. The [task view decision](../feature/2026-10-22-project-task-views.md)
-separates zero-incoming/zero-outgoing tasks into direct-detail standalone rows,
+separates singleton groups into direct-detail standalone rows,
 whose badge and completion filter use individual status. The original unified
 list remains the historical context for the incorrect badge. Graph nodes, task details, project counters and the server API
 retain individual task semantics. A new snapshot rebuilds the derived values;
@@ -33,7 +35,7 @@ selection, pan and zoom do not trigger domain recomputation.
 This replaces the original badge semantics described by the
 [presentation decision](../feature/2026-10-21-task-chain-presentation.md).
 The [projection decision](../feature/2026-10-20-task-graph-projection.md) retains
-ownership of reachability and distinct counts; the
+ownership of complete graph validation and distinct counts; the
 [complete context decision](../feature/2026-10-22-complete-prerequisite-context.md)
 expands displayed ancestors without changing that counted membership.
 Requirements and current structure belong in the [specification](../../../../docs/spec/daynight-web.md)
@@ -57,12 +59,12 @@ another graph traversal during rendering.
 ## Consequences
 
 A chain can remain in progress after its root finishes and becomes completed
-only when every reachable task finishes. Chains containing pending tasks remain
+only when every explicit group member finishes. Chains containing pending tasks remain
 pending, and proposed-only chains remain proposed, even when an external
 prerequisite from another chain is active. Aggregate status is a frontend snapshot
 projection, not stored task data or a new API field, so the original aggregation
 fix required no migration. Stored proposed task support has its own migration
 under the four-state reader decision. Completed-chain visibility behavior is
-preserved for non-isolated root chains while its badge agrees with that behavior.
+preserved for multi-member groups while its badge agrees with that behavior.
 The task view decision changes category presentation without changing the
 aggregate status computation.

@@ -108,9 +108,9 @@ func acceptanceCLIAction(t *testing.T, cli *acceptanceCLI, process *acceptancePr
 	return after
 }
 
-func acceptanceCLIRefusal(t *testing.T, cli *acceptanceCLI, process *acceptanceProcess, evidence *acceptanceLifecycleEvidence, before api.Task, code string, arguments ...string) {
+func acceptanceCLIRefusal(t *testing.T, cli *acceptanceCLI, process *acceptanceProcess, evidence *acceptanceLifecycleEvidence, before api.Task, expectedStatus int, code string, arguments ...string) {
 	t.Helper()
-	result := cli.refuse(t, process, code, "", arguments...)
+	result := cli.refuse(t, process, expectedStatus, code, "", arguments...)
 	after := acceptanceCLIJSON[api.Task](t, cli.run(t, cli.caller, "task", "show", before.ID, "--project", before.ProjectID, "--json"))
 	if !reflect.DeepEqual(after, before) {
 		t.Fatal("installed lifecycle refusal changed task data, version or timestamps")
@@ -150,7 +150,7 @@ func acceptanceHistoricalRows(t *testing.T, fixture *acceptanceFixture, ids []st
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	rows, err := fixture.admin.Query(ctx, "SELECT id::text, to_jsonb(t)::text FROM tasks t WHERE id = ANY($1::uuid[]) ORDER BY id", ids)
+	rows, err := fixture.admin.Query(ctx, "SELECT id::text, (to_jsonb(t) - 'group_id')::text FROM tasks t WHERE id = ANY($1::uuid[]) ORDER BY id", ids)
 	if err != nil {
 		t.Fatal("cannot read preserved historical rows")
 	}
@@ -261,8 +261,8 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		if err := binaryAcceptance.update(func() { migration.AfterLedger, migration.AfterRows = afterLedger, afterRows }); err != nil {
 			t.Fatal("cannot persist migrated ledger and resource snapshots")
 		}
-		if len(migration.AfterLedger) != 8 || !reflect.DeepEqual(migration.AfterLedger[:6], migration.BeforeLedger) ||
-			migration.AfterLedger[6].Version != 7 || migration.AfterLedger[7].Version != 8 || !reflect.DeepEqual(migration.AfterRows, migration.BeforeRows) {
+		if len(migration.AfterLedger) != 9 || !reflect.DeepEqual(migration.AfterLedger[:6], migration.BeforeLedger) ||
+			migration.AfterLedger[6].Version != 7 || migration.AfterLedger[7].Version != 8 || migration.AfterLedger[8].Version != 9 || !reflect.DeepEqual(migration.AfterRows, migration.BeforeRows) {
 			t.Fatal("built startup did not append genuine migrations while preserving old rows and ledger")
 		}
 		acceptanceError(t, process.request(context.Background(), http.MethodGet, "/api/v1/projects/"+projectID, nil, ""), http.StatusNotFound, "not_found")
@@ -278,7 +278,7 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		old := make([]api.Task, len(ids))
 		for index, id := range ids {
 			old[index] = acceptanceCLIJSON[api.Task](t, cli.run(t, cli.caller, "task", "show", id, "--project", projectID, "--json"))
-			if old[index].Status != []string{"todo", "in_progress", "done"}[index] || old[index].Version != []int64{17, 23, 24}[index] ||
+			if old[index].GroupID != ids[2] || old[index].Status != []string{"todo", "in_progress", "done"}[index] || old[index].Version != []int64{17, 23, 24}[index] ||
 				!old[index].CreatedAt.Equal(stamp) || !old[index].UpdatedAt.Equal(stamp.Add(time.Hour)) || !reflect.DeepEqual(old[index].Properties, properties) {
 				t.Fatal("installed CLI changed a preserved historical resource")
 			}
@@ -315,8 +315,8 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		}
 		dependent = acceptanceCLIAction(t, cli, process, evidence, dependent, "approve", "todo")
 		acceptanceLifecycleAttachmentUnchanged(t, cli, dependent, metadata, content)
-		acceptanceCLIRefusal(t, cli, process, evidence, dependent, "dependency_unsatisfied", "task", "claim", dependent.ID, "--project", projectID, "--if-version", "2")
-		acceptanceCLIRefusal(t, cli, process, evidence, dependent, "version_conflict", "task", "claim", dependent.ID, "--project", projectID, "--if-version", "1")
+		acceptanceCLIRefusal(t, cli, process, evidence, dependent, http.StatusConflict, "dependency_unsatisfied", "task", "claim", dependent.ID, "--project", projectID, "--if-version", "2")
+		acceptanceCLIRefusal(t, cli, process, evidence, dependent, http.StatusConflict, "version_conflict", "task", "claim", dependent.ID, "--project", projectID, "--if-version", "1")
 		for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"claim", "in_progress"}, {"complete", "done"}} {
 			prerequisite = acceptanceCLIAction(t, cli, process, evidence, prerequisite, step.action, step.status)
 			acceptanceLifecycleAttachmentUnchanged(t, cli, prerequisite, prerequisiteMetadata, prerequisiteContent)
@@ -333,7 +333,7 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		acceptanceLifecycleAttachmentUnchanged(t, cli, prerequisite, prerequisiteMetadata, prerequisiteContent)
 		acceptanceLifecycleAttachmentUnchanged(t, cli, dependent, metadata, content)
 		defaultID := "00000000-0000-4000-8000-000000000014"
-		fixture.exec(t, `INSERT INTO tasks (id, project_id, title) VALUES ($1, $2, 'Post-migration SQL default')`, defaultID, projectID)
+		fixture.exec(t, `INSERT INTO tasks (id, project_id, title, group_id) VALUES ($1, $2, 'Post-migration SQL default', $1)`, defaultID, projectID)
 		defaultTask := acceptanceCLIJSON[api.Task](t, cli.run(t, cli.caller, "task", "show", defaultID, "--project", projectID, "--json"))
 		if defaultTask.Status != "proposed" || defaultTask.Version != 1 || defaultTask.Ready {
 			t.Fatal("genuine migration did not change the SQL creation default to proposed")

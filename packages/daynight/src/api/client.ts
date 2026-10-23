@@ -323,6 +323,7 @@ export const createApiClient = (options: {
       const project = resourceId(projectId);
       return request({ operation: "task.create", projectId: project }, `/projects/${encodeURIComponent(project)}/tasks`, "POST", (value) => parseTask(value, project), {
         title: input.title,
+        ...(input.groupId === undefined ? {} : { groupId: input.groupId }),
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.dependsOn === undefined ? {} : { dependsOn: input.dependsOn }),
         ...(input.properties === undefined ? {} : { properties: input.properties }),
@@ -359,6 +360,7 @@ export const createApiClient = (options: {
       const project = resourceId(projectId), task = resourceId(taskId);
       return request({ operation: "task.update", projectId: project, taskId: task }, `/projects/${encodeURIComponent(project)}/tasks/${encodeURIComponent(task)}`, "PATCH", (value) => parseTask(value, project, task), {
         version: input.version,
+        ...(input.groupId === undefined ? {} : { groupId: input.groupId }),
         ...(input.title === undefined ? {} : { title: input.title }),
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.dependsOn === undefined ? {} : { dependsOn: input.dependsOn }),

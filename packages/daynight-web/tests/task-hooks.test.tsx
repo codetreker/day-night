@@ -19,8 +19,8 @@ const otherProject = "10000000-0000-0000-0000-000000000002";
 const taskId = "20000000-0000-0000-0000-000000000001";
 const otherTask = "20000000-0000-0000-0000-000000000002";
 const time = "2026-10-20T12:00:00.123456Z";
-const node: GraphTask = { id: taskId, titlePreview: "任务一", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
-const detail: TaskDetail = { id: taskId, projectId, title: "任务一", description: "完整描述", properties: { pullRequests: [] }, status: "todo", version: 1n, dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
+const node: GraphTask = { id: taskId, groupId: taskId, titlePreview: "任务一", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
+const detail: TaskDetail = { id: taskId, groupId: taskId, projectId, title: "任务一", description: "完整描述", properties: { pullRequests: [] }, status: "todo", version: 1n, dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
 const graph = (id = projectId): TaskGraph => ({
   project: { id, name: `项目 ${id}`, repoUrl: "https://github.com/example/repo", createdAt: time, updatedAt: time },
   tasks: [node], summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
@@ -280,7 +280,7 @@ describe("task details", () => {
     const proposedNode = { ...node, status: "proposed" as const, ready: false, dependsOn: [otherTask], blockedBy: [otherTask] };
     let observed: GraphTask = proposedNode;
     let served: TaskDetail = proposed;
-    let predecessor: GraphTask = { ...node, id: otherTask, titlePreview: "Prerequisite" };
+    let predecessor: GraphTask = { ...node, id: otherTask, groupId: otherTask, titlePreview: "Prerequisite" };
     graphRequest.mockImplementation(async () => ({ ...graph(), tasks: [observed, predecessor], summary: {
       total: 2, proposed: 1, todo: predecessor.status === "todo" ? 1 : 0, inProgress: 0,
       done: predecessor.status === "done" ? 1 : 0, ready: predecessor.ready ? 1 : 0, blocked: 0,

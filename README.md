@@ -207,12 +207,14 @@ scope, dependencies, status and acceptance criteria. The development and runtime
 CLI commands below apply to the client; server commands have their own module.
 The dashboard architecture presents project statistics and two in-project task
 tabs from one complete server snapshot. Standalone tasks open details directly;
-root-based task chains retain dependency graphs, shared successors and aggregate
-progress. Both tab badges count unfinished tasks from the complete snapshot;
-shared chain tasks count once across all roots, and completed-item visibility
-does not affect the badges. Expanding a chain includes all upstream prerequisites of its root and
-reachable successors, without adding unrelated successors of contextual tasks.
-Only the root and its reachable successors contribute to chain progress and status. The first visit opens task chains, and each project retains its last
+task chains use persisted `groupId`, the first task ID, independently of
+dependencies. Singleton groups open details directly; larger groups retain
+dependency graphs and aggregate member progress. Both tab badges count unfinished
+tasks from the complete snapshot once, regardless of completed-item visibility.
+Expanding a group includes every member and all its upstream prerequisites,
+without unrelated external successors. External context contributes no group
+progress. The [group requirements](docs/spec/daynight-task-groups.md) and
+[design](docs/design/daynight-task-groups.md) own membership and migration. The first visit opens task chains, and each project retains its last
 tab, independent completed-item filters and browse positions. The [task view
 preview](docs/design/mockups/task-views.html) demonstrates those interactions.
 The project list is implemented in the private web workspace, including task
@@ -987,7 +989,7 @@ daynight task create --title "Implement sign-in" --description '## Sign-in
 Implement OAuth sign-in for the web workspace. Deliver the callback flow and
 visible failure recovery; preserve the existing session and provider rules.
 Complete when a valid login opens the workspace and a rejected login can retry.'
-daynight task create --title "Build the sign-in page" --depends-on <task-id>
+daynight task create --title "Build the sign-in page" --group-id <first-task-id> --depends-on <task-id>
 daynight task ready
 daynight task ready --limit 5 --json
 daynight task list --ready
@@ -995,6 +997,7 @@ daynight task list --all --json
 daynight task list --status in_progress --json
 daynight task show <task-id> --json
 daynight task update <task-id> --description=
+daynight task update <task-id> --group-id <first-task-id> --if-version <observed-version>
 daynight task approve <task-id> --if-version 1
 daynight task claim <task-id> --if-version 2
 daynight task complete <task-id> --if-version 3
@@ -1047,7 +1050,13 @@ first, then ready tasks, other `todo` tasks, `proposed`, and `done`; each group 
 service order across all pages. This order applies to human and JSON results.
 `task ready` accepts neither `--status` nor `--cursor`.
 
-Updates preserve omitted fields; an empty description clears it. Repeated
+Every task stores a required `groupId`. Creation without `--group-id` starts a
+new group using the new task ID. Supplying the confirmed first-task ID joins an
+existing same-project group; `--depends-on` alone never joins it. A versioned
+`task update --group-id` moves a member, or establishes its own group when given
+its own task ID. An anchor with other members cannot move. Dependencies and
+lifecycle actions preserve membership. Updates preserve omitted fields; an empty
+description clears it. Repeated
 `--depends-on` values replace the complete dependency set and retain input order
 and duplicates for server validation. `--clear-dependencies` clears that set and
 cannot be combined with `--depends-on`. An update needs at least one mutable
@@ -1063,10 +1072,10 @@ inline assignment. Attachment `put` declares its `--path` as text, accepting
 `--path=value`; attachment `put/read/remove` also accept `--` before positional
 paths starting with a dash. Other task operations retain their declared syntax.
 
-Human task lists use labeled blocks containing ID, project, title, PR references,
+Human task lists use labeled blocks containing ID, group ID, project, title, PR references,
 status, readiness, dependencies and blocking. Description, version and timestamps
 remain available in show, ready, create and update output. Graph nodes include
-state, dependencies, blocking and title-preview truncation flags. Queries support
+group ID, state, dependencies, blocking and title-preview truncation flags. Queries support
 `--json`: task `list` returns every matching task in one array, omitting only
 `description` while retaining every other API field, including raw PR strings,
 version and timestamps. This applies to the default list and every filter,

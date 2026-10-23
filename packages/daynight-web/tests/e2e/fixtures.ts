@@ -126,7 +126,7 @@ export const test = base.extend<{
 });
 export type Project = { id: string; name: string; repoUrl: string; createdAt: string; updatedAt: string };
 export type Task = {
-  id: string; projectId: string; title: string; description: string; status: 'proposed' | 'todo' | 'in_progress' | 'done';
+  id: string; groupId: string; projectId: string; title: string; description: string; status: 'proposed' | 'todo' | 'in_progress' | 'done';
   version: number; dependsOn: string[]; blockedBy: string[]; ready: boolean; createdAt: string; updatedAt: string;
   properties: TaskProperties;
 };
@@ -140,10 +140,10 @@ export const createProject = async (request: AuthenticatedAPI, input: { name?: s
 };
 
 export const createTask = async (request: AuthenticatedAPI, projectId: string, input: {
-  title: string; description?: string; dependsOn?: string[]; properties?: TaskProperties;
+  title: string; description?: string; groupId?: string; dependsOn?: string[]; properties?: TaskProperties;
 }): Promise<Task> => {
   const response = await request.post(`/api/v1/projects/${projectId}/tasks`, {
-    data: { title: input.title, description: input.description ?? '', dependsOn: input.dependsOn ?? [], properties: input.properties },
+    data: { title: input.title, groupId: input.groupId, description: input.description ?? '', dependsOn: input.dependsOn ?? [], properties: input.properties },
   });
   expect(response.status(), 'Task fixture creation succeeds').toBe(201);
   const task = await response.json() as Task;
@@ -172,7 +172,7 @@ export const completeApprovedTask = async (request: AuthenticatedAPI, projectId:
   completeTask(request, projectId, await claimTask(request, projectId, task));
 
 export const updateTask = async (request: AuthenticatedAPI, projectId: string, taskId: string, input: {
-  version: number; title?: string; description?: string; dependsOn?: string[]; properties?: TaskProperties;
+  version: number; groupId?: string; title?: string; description?: string; dependsOn?: string[]; properties?: TaskProperties;
 }): Promise<Task> => {
   const response = await request.patch(`/api/v1/projects/${projectId}/tasks/${taskId}`, { data: input });
   expect(response.status(), 'Task fixture update succeeds').toBe(200);

@@ -12,8 +12,8 @@ const taskId = "abcdefab-2222-4222-8333-123456789abc";
 const dependencyId = "abcdefab-3333-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project: Project = { id: projectId, name: "Project", repoUrl: "git@git.example:Org/Repo.git", createdAt: time, updatedAt: time };
-const task: Task = { id: taskId, projectId, title: "Task title", description: "Description", properties: { pullRequests: [] }, status: "todo", version: 9_007_199_254_740_993n, ready: true, dependsOn: [], blockedBy: [], createdAt: time, updatedAt: time };
-const graph: TaskGraph = { project, summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 }, tasks: [{ id: taskId, titlePreview: `Task title${"T".repeat(150)}`, titleTruncated: true, status: "todo", ready: true, dependsOn: [], blockedBy: [], createdAt: time, updatedAt: time }] };
+const task: Task = { id: taskId, groupId: taskId, projectId, title: "Task title", description: "Description", properties: { pullRequests: [] }, status: "todo", version: 9_007_199_254_740_993n, ready: true, dependsOn: [], blockedBy: [], createdAt: time, updatedAt: time };
+const graph: TaskGraph = { project, summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 }, tasks: [{ id: taskId, groupId: taskId, titlePreview: `Task title${"T".repeat(150)}`, titleTruncated: true, status: "todo", ready: true, dependsOn: [], blockedBy: [], createdAt: time, updatedAt: time }] };
 const operations: Operation[] = [];
 afterEach(() => { operations.splice(0).forEach((operation) => operation.dispose()); });
 const fixture = (operation = createOperation()) => {
@@ -64,6 +64,7 @@ describe("task parameter boundaries", () => {
   it.each([
     ["create"], ["create", "--title", "\u0085"], ["create", "--title", "\0"], ["create", "--title", "\ud800"],
     ["create", "--title", "Title", "--description", "\ud800"], ["create", "--title", "Title", "--description", "\0"],
+    ["create", "--title", "Title", "--group-id", "invalid"], ["update", taskId, "--group-id="], ["update", taskId, "--group-id", "invalid"],
     ["list", "--status", "blocked"], ["update", taskId, "--status", "proposed"], ["list", "--project", "invalid"], ["show", "invalid"], ["show", taskId, "--project", "invalid"],
     ["update", taskId], ["update", taskId, "--if-version", "1"], ["update", taskId, "--status", "done", "--if-version", "0"],
     ["update", taskId, "--title", "\u2003"], ["update", taskId, "--status", "done", "--if-version", "9223372036854775808"],
@@ -152,6 +153,20 @@ describe("task parameter boundaries", () => {
 });
 
 describe("task request contracts", () => {
+  it("creates explicit group members without inferring dependency edges", async () => {
+    const f = fixture();
+    await runTaskCommand(["create", "--title", "Member", "--group-id", dependencyId.toUpperCase(), "--project", projectId], f.context, f.dependencies);
+    expect(f.api.createTask).toHaveBeenCalledExactlyOnceWith(projectId, { title: "Member", groupId: dependencyId });
+    expect(f.context.stdout.mock.calls[0]![0]).toContain(`Group ID: ${task.groupId}`);
+  });
+
+  it.each([false, true])("updates only group membership with the observed or explicit version (explicit: %s)", async (explicitVersion) => {
+    const f = fixture();
+    await runTaskCommand(["update", taskId, "--group-id", dependencyId, ...(explicitVersion ? ["--if-version", "9223372036854775807"] : []), "--project", projectId], f.context, f.dependencies);
+    expect(f.api.updateTask).toHaveBeenCalledExactlyOnceWith(projectId, taskId, { groupId: dependencyId, version: explicitVersion ? 9_223_372_036_854_775_807n : task.version });
+    expect(f.api.getTask).toHaveBeenCalledTimes(explicitVersion ? 0 : 1);
+  });
+
   it("omits optional creation fields and preserves a FEFF-only title", async () => {
     const f = fixture();
     await runTaskCommand(["create", "--title", "\ufeff", "--project", projectId], f.context, f.dependencies);
@@ -328,9 +343,9 @@ describe("task output contracts", () => {
     const output = renderTaskList(tasks);
     let contentLength = 0;
     for (const current of tasks) {
-      expect(output).toContain(`ID: ${current.id}\nProject: ${projectId}\nTitle: ${current.title}\n`);
-      contentLength += current.id.length + current.projectId.length + current.title.length + current.description.length + current.status.length + current.version.toString().length + current.createdAt.length + current.updatedAt.length;
+      expect(output).toContain(`ID: ${current.id}\nProject: ${projectId}\nGroup ID: ${current.groupId}\nTitle: ${current.title}\n`);
+      contentLength += current.id.length + current.projectId.length + current.groupId.length + current.title.length + current.description.length + current.status.length + current.version.toString().length + current.createdAt.length + current.updatedAt.length;
     }
-    expect(output.length).toBeLessThanOrEqual(contentLength + 150 * tasks.length);
+    expect(output.length).toBeLessThanOrEqual(contentLength + 170 * tasks.length);
   });
 });

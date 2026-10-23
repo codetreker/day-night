@@ -39,6 +39,13 @@ export const runTaskCommand = async (
   const action = name === "approve" || name === "claim" || name === "complete" ? name : undefined;
   const title = command.options.get("--title") as string | undefined;
   const description = command.options.get("--description") as string | undefined;
+  const groupArgument = command.options.get("--group-id") as string | undefined;
+  let groupId: string | undefined;
+  if (groupArgument !== undefined) {
+    const { canonicalId } = await import("../../api/parse.js");
+    groupId = canonicalId(groupArgument) ?? undefined;
+    if (groupId === undefined) throw new UsageError("group-id must be a hyphenated UUID.", help);
+  }
   const status = command.options.get("--status") as TaskFilters["status"];
   const all = command.options.has("--all");
   if (all && status !== undefined) throw new UsageError("--all conflicts with --status.", help);
@@ -59,11 +66,12 @@ export const runTaskCommand = async (
   const changes: Omit<UpdateTaskInput, "version"> = {
     ...(title === undefined ? {} : { title }),
     ...(description === undefined ? {} : { description }),
+    ...(groupId === undefined ? {} : { groupId }),
     ...(dependsOn === undefined ? {} : { dependsOn }),
     ...(clearDependencies ? { dependsOn: [] } : {}),
     ...(properties === undefined ? {} : { properties }),
   };
-  if (name === "update" && Object.keys(changes).length === 0) throw new UsageError("Task update requires a title, description, dependency, or PR reference change.", help);
+  if (name === "update" && Object.keys(changes).length === 0) throw new UsageError("Task update requires a title, description, group, dependency, or PR reference change.", help);
   const rawProjectId = command.options.get("--project") as string | undefined;
   let projectId: string | undefined;
   let taskId: string | undefined;
@@ -97,7 +105,7 @@ export const runTaskCommand = async (
     const { renderTask, renderTaskGraph, renderTaskJson, renderTaskList, renderTaskListJson, renderTaskSummaryList } = await import("./rendering.js");
     operation.check();
     if (command.command.name === "create") {
-      const input: CreateTaskInput = { title: title!, ...(description === undefined ? {} : { description }), ...(dependsOn === undefined ? {} : { dependsOn }), ...(properties === undefined ? {} : { properties }) };
+      const input: CreateTaskInput = { title: title!, ...(description === undefined ? {} : { description }), ...(groupId === undefined ? {} : { groupId }), ...(dependsOn === undefined ? {} : { dependsOn }), ...(properties === undefined ? {} : { properties }) };
       const task = await api.createTask(project.id, input);
       operation.check();
       return `Task created.\n${renderTask(task)}`;

@@ -9,11 +9,11 @@ const otherId = "30000000-0000-0000-0000-00000000000c";
 const time = "2026-10-20T12:34:56.123456Z";
 const project = { id: projectId, name: "Core project", repoUrl: "git@github.com:org/repo.git", createdAt: time, updatedAt: time };
 const task = {
-  id: taskId, projectId, title: "A task", description: "", properties: { pullRequests: [] }, status: "todo", version: 9007199254740993n,
+  id: taskId, groupId: taskId, projectId, title: "A task", description: "", properties: { pullRequests: [] }, status: "todo", version: 9007199254740993n,
   dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
 };
 const graphTask = {
-  id: taskId, titlePreview: "A task", titleTruncated: false, status: "todo",
+  id: taskId, groupId: taskId, titlePreview: "A task", titleTruncated: false, status: "todo",
   dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
 };
 const summary = { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 };
@@ -31,6 +31,11 @@ const mockResponse = (value: unknown, status = 200) => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("response parsing", () => {
+  it.each([undefined, null, "", "invalid"])("rejects missing or invalid group identity %s", (groupId) => {
+    expect(() => parseTaskDetail({ ...task, groupId }, projectId, taskId)).toThrow("invalid response");
+    expect(() => parseTaskGraph({ ...graph, tasks: [{ ...graphTask, groupId }] }, projectId)).toThrow("invalid response");
+  });
+
   it("accepts page data, canonicalizes identities, and keeps opaque cursors", () => {
     expect(parseProjectPage({ items: [{ ...project, id: projectId.toUpperCase() }], nextCursor: "opaque+/= token" }))
       .toEqual({ items: [project], nextCursor: "opaque+/= token" });

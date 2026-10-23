@@ -558,7 +558,8 @@ test.describe('fixed capacity and performance @capacity', () => {
           const graphResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/projects/${fixture.project.id}/task-graph`));
           const coldStart = performance.now();
           await page.goto(`/projects/${fixture.project.id}`, { waitUntil: 'domcontentloaded' });
-          if (kind === 'shared' || kind === 'external') await page.locator(`#task-root-${fixture.root.id}`).click();
+          const group = page.locator(`#task-root-${fixture.root.id}`);
+          if (await group.getAttribute('aria-expanded') !== 'true') await group.click();
           await visibleGraph(page, fixture.root.id, overview);
           await assertVisibleTopology(page, overview, full);
           const total = page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^任务总数$/ }) }).locator('.stat-number');

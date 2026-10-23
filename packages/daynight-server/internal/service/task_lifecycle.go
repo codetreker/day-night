@@ -52,7 +52,7 @@ func (s *Tasks) transition(ctx context.Context, principal core.Principal, projec
 		if (to == core.TaskInProgress || to == core.TaskDone) && len(current.BlockedBy) > 0 {
 			return taskMutation{}, &Fault{Code: "dependency_unsatisfied", Message: "Task prerequisites must be done.", TaskIDs: current.BlockedBy}
 		}
-		values := store.TaskWrite{Title: current.Title, Description: current.Description, Properties: current.Properties, Status: to, DependsOn: current.DependsOn}
+		values := store.TaskWrite{GroupID: current.GroupID, Title: current.Title, Description: current.Description, Properties: current.Properties, Status: to, DependsOn: current.DependsOn}
 		return taskMutation{id: id, current: current, values: values, changed: true}, nil
 	})
 }

@@ -102,6 +102,7 @@ Web 复用附件的 CommonMark/GFM 阅读能力；API、CLI 和 Agent 仍读写�
 [任务阅读设计](daynight-task-inspection.md#markdown-与附件链接)及
 [附件设计](daynight-task-attachments.md)拥有。
 
+分组由持久 `groupId` 维护，Goal 首任务自建组，设计和全部后继显式传入同组 ID；
 依赖由 `dependsOn` 维护，PR URL/title 由 `properties.pullRequests` 维护；执行位置、
 阻塞、等待和下一步属于既有检查点。
 

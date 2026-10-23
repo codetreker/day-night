@@ -34,7 +34,7 @@ func taskRoutes(mux *http.ServeMux, tasks *service.Tasks, auth *Authentication, 
 }
 
 func taskResponse(task core.Task) api.Task {
-	return api.Task{ID: task.ID, ProjectID: task.ProjectID, Title: task.Title, Description: task.Description,
+	return api.Task{ID: task.ID, ProjectID: task.ProjectID, GroupID: task.GroupID, Title: task.Title, Description: task.Description,
 		Properties: propertiesResponse(task.Properties), Status: string(task.Status), Version: task.Version, CreatedAt: task.CreatedAt.UTC(), UpdatedAt: task.UpdatedAt.UTC(),
 		DependsOn: append([]string{}, task.DependsOn...), BlockedBy: append([]string{}, task.BlockedBy...), Ready: task.Ready}
 }
@@ -97,6 +97,10 @@ func createTaskInput(fields map[string]json.RawMessage) (api.CreateTaskRequest, 
 	if err != nil {
 		return api.CreateTaskRequest{}, err
 	}
+	input.GroupID, err = optionalString(fields, "groupId")
+	if err != nil {
+		return api.CreateTaskRequest{}, err
+	}
 	description, err := optionalString(fields, "description")
 	if err != nil {
 		return api.CreateTaskRequest{}, err
@@ -128,6 +132,10 @@ func updateTaskInput(fields map[string]json.RawMessage) (api.UpdateTaskRequest, 
 	if err != nil {
 		return api.UpdateTaskRequest{}, err
 	}
+	input.GroupID, err = optionalString(fields, "groupId")
+	if err != nil {
+		return api.UpdateTaskRequest{}, err
+	}
 	input.Title, err = optionalString(fields, "title")
 	if err != nil {
 		return api.UpdateTaskRequest{}, err
@@ -144,7 +152,7 @@ func updateTaskInput(fields map[string]json.RawMessage) (api.UpdateTaskRequest, 
 	if err != nil {
 		return api.UpdateTaskRequest{}, err
 	}
-	if input.Title == nil && input.Description == nil && input.DependsOn == nil &&
+	if input.GroupID == nil && input.Title == nil && input.Description == nil && input.DependsOn == nil &&
 		(input.Properties == nil || input.Properties.PullRequests == nil) {
 		return api.UpdateTaskRequest{}, invalidInput("at least one task field must be provided")
 	}
@@ -182,7 +190,7 @@ func (h *taskHandler) create(w http.ResponseWriter, request *http.Request, princ
 		writeError(w, request, logger, "task", "create", err)
 		return
 	}
-	fields, err := decodeObject(w, request, "title", "description", "dependsOn", "properties")
+	fields, err := decodeObject(w, request, "title", "description", "dependsOn", "properties", "groupId")
 	if err != nil {
 		writeError(w, request, logger, "task", "create", err)
 		return
@@ -193,7 +201,7 @@ func (h *taskHandler) create(w http.ResponseWriter, request *http.Request, princ
 		return
 	}
 	task, err := h.tasks.Create(request.Context(), principal, projectID, service.CreateTask{
-		Title: input.Title, Description: input.Description, DependsOn: input.DependsOn, Properties: propertyValues(input.Properties),
+		GroupID: input.GroupID, Title: input.Title, Description: input.Description, DependsOn: input.DependsOn, Properties: propertyValues(input.Properties),
 	})
 	if err != nil {
 		writeError(w, request, logger, "task", "create", err)
@@ -251,7 +259,7 @@ func (h *taskHandler) update(w http.ResponseWriter, request *http.Request, princ
 		writeError(w, request, logger, "task", "update", err)
 		return
 	}
-	fields, err := decodeObject(w, request, "version", "title", "description", "dependsOn", "properties")
+	fields, err := decodeObject(w, request, "version", "title", "description", "dependsOn", "properties", "groupId")
 	if err != nil {
 		writeError(w, request, logger, "task", "update", err)
 		return
@@ -261,7 +269,7 @@ func (h *taskHandler) update(w http.ResponseWriter, request *http.Request, princ
 		writeError(w, request, logger, "task", "update", err)
 		return
 	}
-	values := service.UpdateTask{Version: input.Version, Title: input.Title, Description: input.Description, DependsOn: input.DependsOn}
+	values := service.UpdateTask{GroupID: input.GroupID, Version: input.Version, Title: input.Title, Description: input.Description, DependsOn: input.DependsOn}
 	if input.Properties != nil && input.Properties.PullRequests != nil {
 		properties := propertyValues(api.TaskProperties{PullRequests: *input.Properties.PullRequests})
 		values.Properties.PullRequests = &properties.PullRequests

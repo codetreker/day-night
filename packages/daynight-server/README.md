@@ -404,8 +404,14 @@ All project members, including administrators, can perform these resource writes
 only member and invitation management requires the administrator role. HTTP
 routes use that instance. Lifecycle POST routes and method-refusal handlers
 require authentication, enforce exact Origin for Cookie writes and return no-store.
-Creation uses `proposed`;
-its predefined `properties.pullRequests` list defaults to empty. Updates require
+Creation uses `proposed`. Every task stores `groupId`; omitted creation input
+uses the new task ID, while explicit input joins an existing same-project anchor
+whose own ID equals its group ID. A versioned update can move members or use
+the task's own ID to start a group. An anchor cannot move while other members
+reference it. Dependencies and lifecycle writes preserve group membership. The
+[group requirements](../../docs/spec/daynight-task-groups.md) and
+[design](../../docs/design/daynight-task-groups.md) own migration and validation.
+Its predefined `properties.pullRequests` list defaults to empty. Updates require
 a positive expected version and at least one mutable pointer field. Nil means omitted, while an empty description or supplied empty dependency
 or PR list clears that value. The task HTTP boundary rejects explicit JSON null
 before constructing these Go parameters.
@@ -457,7 +463,7 @@ creation default to proposed, preserving all existing task fields, states, versi
 and timestamps. The [lifecycle decision](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
 activates dedicated transitions after the [reader preparation](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md).
 
-Nodes contain `id`, `titlePreview`, `titleTruncated`, `status`, `dependsOn`,
+Nodes contain `id`, `groupId`, `titlePreview`, `titleTruncated`, `status`, `dependsOn`,
 `blockedBy`, `ready` and UTC timestamps. SQL produces at most 160 Unicode code
 points of each title without selecting descriptions, properties or full titles. Use the
 existing task detail endpoint for complete content. Node order is `(createdAt,
@@ -494,11 +500,11 @@ receipts and fixed-capacity gates are in the
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/claim` | `200`, todo→in_progress task |
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/complete` | `200`, in_progress→done task |
 
-Creation accepts required `title`, optional `description`, `dependsOn` and
+Creation accepts required `title`, optional `groupId`, `description`, `dependsOn` and
 `properties`; omitted optional values mean empty text, an empty dependency set
 and an empty PR list. Status, version and identity are server-owned on creation.
 PATCH accepts a positive integer `version` and at least one mutation of `title`,
-`description`, `dependsOn` or `properties.pullRequests`; a status field is rejected
+`groupId`, `description`, `dependsOn` or `properties.pullRequests`; a status field is rejected
 even alongside otherwise valid metadata. Omitted fields
 stay unchanged; explicit null (including null dependency or PR elements) fails.
 Empty description, `dependsOn: []` or `properties: {"pullRequests": []}` clears

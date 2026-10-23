@@ -1,7 +1,7 @@
 import { Graph, layout } from '@dagrejs/dagre';
 import { describe, expect, it } from 'vitest';
 import { layoutGraph, TASK_NODE_COMPACT_HEIGHT, TASK_NODE_EXPANDABLE_HEIGHT, TASK_NODE_WIDTH, type CanvasEdge, type CanvasLayout } from '../src/features/task-graph/layout';
-import type { RootProjection } from '../src/features/task-graph/model';
+import type { GroupProjection } from '../src/features/task-graph/model';
 import { planDependencyRoutes, type RoutingNode } from '../src/features/task-graph/routing';
 import { compileDependencyRoute } from '../src/features/task-graph/routes';
 import { entersRectangle, parseRoute } from './route-geometry';
@@ -44,11 +44,11 @@ const verify = (nodes: readonly RoutingNode[], edges: readonly CanvasEdge[]) => 
   expect(failures.slice(0, 10)).toEqual([]);
   return { curves, pieces };
 };
-const projection = (size: number, edges: readonly (readonly [number, number])[], external = false): RootProjection => ({
-  rootId: 'n0000', mainIds: new Set(Array.from({ length: size }, (_, index) => `n${String(index).padStart(4, '0')}`)), externalIds: new Set(), completed: 0,
+const projection = (size: number, edges: readonly (readonly [number, number])[], external = false): GroupProjection => ({
+  groupId: 'n0000', mainIds: new Set(Array.from({ length: size }, (_, index) => `n${String(index).padStart(4, '0')}`)), externalIds: new Set(), completed: 0,
   edges: edges.map(([source, target]) => ({ source: `n${String(source).padStart(4, '0')}`, target: `n${String(target).padStart(4, '0')}`, external })),
 });
-const capacity = (kind: 'chain' | 'merge' | 'shared' | 'external'): RootProjection => {
+const capacity = (kind: 'chain' | 'merge' | 'shared' | 'external'): GroupProjection => {
   const edges: [number, number][] = [];
   if (kind === 'chain') for (let index = 1; index < 1000; index++) edges.push([index - 1, index]);
   if (kind === 'merge') {

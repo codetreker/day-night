@@ -24,7 +24,7 @@ func (s *Snapshot) TaskGraphSize(ctx context.Context, projectID string) (TaskGra
 }
 
 func (s *Snapshot) TaskGraphTasks(ctx context.Context, projectID string, previewCharacters int) ([]core.GraphTask, error) {
-	rows, err := s.tx.Query(ctx, `SELECT t.id::text, left(t.title, $2), char_length(t.title) > $2,
+	rows, err := s.tx.Query(ctx, `SELECT t.id::text, t.group_id::text, left(t.title, $2), char_length(t.title) > $2,
 		t.status, t.created_at, t.updated_at, `+taskDependsOn+`, `+taskBlockedBy+`, `+taskReady+`
 		FROM tasks t WHERE t.project_id = $1 ORDER BY t.created_at, t.id`, projectID, previewCharacters)
 	if err != nil {
@@ -34,7 +34,7 @@ func (s *Snapshot) TaskGraphTasks(ctx context.Context, projectID string, preview
 	tasks := make([]core.GraphTask, 0)
 	for rows.Next() {
 		var task core.GraphTask
-		if err := rows.Scan(&task.ID, &task.TitlePreview, &task.TitleTruncated, &task.Status,
+		if err := rows.Scan(&task.ID, &task.GroupID, &task.TitlePreview, &task.TitleTruncated, &task.Status,
 			&task.CreatedAt, &task.UpdatedAt, &task.DependsOn, &task.BlockedBy, &task.Ready); err != nil {
 			return nil, queryError("read task graph", err)
 		}

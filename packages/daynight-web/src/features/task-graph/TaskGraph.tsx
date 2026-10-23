@@ -3,17 +3,17 @@ import { useI18n } from '../../i18n/LocaleProvider';
 import { LanguageSelector } from '../../i18n/LanguageSelector';
 import { Background, BackgroundVariant, Controls, getViewportForBounds, ReactFlow, useReactFlow, useStore, type Viewport } from '@xyflow/react';
 import { getTaskNodeHeight, layoutGraph, type CanvasLayout } from './layout';
-import { projectRoot, tracePrerequisites, type GraphIndex, type RootProjection } from './model';
+import { projectGroup, tracePrerequisites, type GroupIndex, type GroupProjection } from './model';
 import { TaskNode, type TaskFlowNode } from './TaskNode';
 import { DependencyEdges } from './DependencyEdges';
 import { TaskInspectionContext, useTaskInspection } from './inspection';
-import { createGraphOverview, getTaskExpansion, projectVisibleTasks, reconcileVisibleTasks, type TaskExpansionDirection, type TaskExpansions } from './visibility';
+import { createGraphOverview, getMemberExpansion, getTaskExpansion, projectVisibleTasks, reconcileVisibleTasks, type TaskExpansionDirection, type TaskExpansions } from './visibility';
 import { useGraphFullscreen } from './useGraphFullscreen';
 import '@xyflow/react/dist/style.css';
 
 type TaskGraphProps = {
-  index: GraphIndex;
-  rootId: string;
+  index: GroupIndex;
+  groupId: string;
   onOpenTask: (id: string, trigger: HTMLElement) => void;
 };
 
@@ -25,7 +25,7 @@ const InspectedEdges = memo(({ geometry }: { geometry: CanvasLayout }) => {
 
 const nodeTypes = { task: TaskNode };
 const viewportFitOptions = { minZoom: 0.2, maxZoom: 1, padding: 0.15 };
-export const getInitialTaskViewport = (geometry: CanvasLayout, rootId: string, width: number, height: number, anchorRoot = false): Viewport => {
+export const getInitialTaskViewport = (geometry: CanvasLayout, groupId: string, width: number, height: number, anchorRoot = false): Viewport => {
   const left = Math.min(...geometry.nodes.map((node) => node.position.x));
   const top = Math.min(...geometry.nodes.map((node) => node.position.y));
   const right = Math.max(...geometry.nodes.map((node) => node.position.x + node.width));
@@ -33,7 +33,7 @@ export const getInitialTaskViewport = (geometry: CanvasLayout, rootId: string, w
   const bounds = { x: left, y: top, width: right - left, height: bottom - top };
   const fitted = getViewportForBounds(bounds, width, height, 0.8, 1, 0.15);
   if (bounds.width * fitted.zoom <= width && bounds.height * fitted.zoom <= height) return fitted;
-  const root = geometry.nodes.find((node) => node.id === rootId)!;
+  const root = geometry.nodes.find((node) => node.id === groupId)!;
   const upstreamTop = Math.min(...geometry.nodes.filter((node) => node.position.x === left).map((node) => node.position.y));
   if (anchorRoot) return { x: 32 - root.position.x * fitted.zoom, y: height / 2 - (root.position.y + root.height / 2) * fitted.zoom, zoom: fitted.zoom };
   return {
@@ -45,9 +45,9 @@ export const getInitialTaskViewport = (geometry: CanvasLayout, rootId: string, w
   };
 };
 
-type ViewportAction = { readonly kind: 'expand'; readonly sequence: number; readonly anchorId: string } | { readonly kind: 'reset'; readonly sequence: number };
+type ViewportAction = { readonly kind: 'expand'; readonly sequence: number; readonly anchorId: string } | { readonly kind: 'reset' | 'members'; readonly sequence: number };
 
-const InitialViewport = ({ geometry, rootId, folded, action, resetButton }: { geometry: CanvasLayout; rootId: string; folded: boolean; action: ViewportAction | null; resetButton: { current: HTMLButtonElement | null } }) => {
+const InitialViewport = ({ geometry, groupId, folded, action, resetButton }: { geometry: CanvasLayout; groupId: string; folded: boolean; action: ViewportAction | null; resetButton: { current: HTMLButtonElement | null } }) => {
   const { setViewport, viewportInitialized } = useReactFlow();
   const width = useStore((state) => state.width);
   const height = useStore((state) => state.height);
@@ -59,15 +59,15 @@ const InitialViewport = ({ geometry, rootId, folded, action, resetButton }: { ge
     if (applied.current && !reset) return;
     applied.current = true;
     if (reset) resetSequence.current = action.sequence;
-    void setViewport(getInitialTaskViewport(geometry, rootId, width, height, folded), { duration: 0 });
+    void setViewport(getInitialTaskViewport(geometry, groupId, width, height, folded), { duration: 0 });
     if (reset) resetButton.current?.focus({ preventScroll: true });
-  }, [geometry, rootId, folded, action, resetButton, viewportInitialized, width, height, setViewport]);
+  }, [geometry, groupId, folded, action, resetButton, viewportInitialized, width, height, setViewport]);
   return null;
 };
 
-type CanvasProps = TaskGraphProps & { geometry: CanvasLayout; projection: RootProjection; visibleIds: ReadonlySet<string>; expansions: ReadonlyMap<string, TaskExpansions>; action: ViewportAction | null; onExpandTask: (id: string, direction: TaskExpansionDirection) => void; onResetOverview: () => void };
+type CanvasProps = TaskGraphProps & { geometry: CanvasLayout; projection: GroupProjection; visibleIds: ReadonlySet<string>; expansions: ReadonlyMap<string, TaskExpansions>; action: ViewportAction | null; onExpandTask: (id: string, direction: TaskExpansionDirection) => void; onResetOverview: () => void; onExpandMembers: () => void; showMemberExpansion: boolean };
 
-const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleIds, expansions, action, onExpandTask, onResetOverview }: CanvasProps) => {
+const TaskCanvas = ({ index, groupId, onOpenTask, geometry, projection, visibleIds, expansions, action, onExpandTask, onResetOverview, onExpandMembers, showMemberExpansion }: CanvasProps) => {
   const { messages: { graph: m } } = useI18n();
   const { fullscreen, containerRef, toggleRef, onKeyDown, toggle } = useGraphFullscreen();
   const resetButton = useRef<HTMLButtonElement>(null);
@@ -89,13 +89,14 @@ const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleId
   }, [visibleIds]);
   const onInspectTask = useCallback((id: string) => { setInspectionId((current) => current === id ? null : id); }, []);
   const clearInspection = useCallback(() => { setInspectionId(null); }, []);
+  const memberExpansion = getMemberExpansion(index, projection, visibleIds);
   const totalTasks = projection.mainIds.size + projection.externalIds.size;
   const folded = visibleIds.size < totalTasks;
   const nodes = useMemo<TaskFlowNode[]>(() => geometry.nodes.map((node) => ({
     id: node.id, position: node.position, type: 'task', width: node.width, height: node.height,
     style: { width: node.width, height: node.height },
     data: {
-      task: index.nodes.get(node.id)!, kind: node.kind, shared: index.sharedIds.has(node.id),
+      task: index.nodes.get(node.id)!, kind: node.kind,
       center: { x: node.position.x + node.width / 2, y: node.position.y + node.height / 2 },
       size: { width: node.width, height: node.height },
       onInspectTask, onOpenTask, onExpandTask,
@@ -105,9 +106,9 @@ const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleId
   })), [geometry, index, expansions, action, onInspectTask, onOpenTask, onExpandTask]);
   const canvas = useMemo(() => (
     <ReactFlow<TaskFlowNode>
-      id={`flow-${rootId}`}
+      id={`flow-${groupId}`}
       aria-label={m.canvas}
-      aria-describedby={`graph-instructions-${rootId}`}
+      aria-describedby={`graph-instructions-${groupId}`}
       nodes={nodes}
       nodeTypes={nodeTypes}
       minZoom={0.2}
@@ -129,12 +130,12 @@ const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleId
       ariaLabelConfig={m.flowAriaLabels}
       attributionPosition="bottom-right"
     >
-      <InitialViewport geometry={geometry} rootId={rootId} folded={folded} action={action} resetButton={resetButton} />
+      <InitialViewport geometry={geometry} groupId={groupId} folded={folded} action={action} resetButton={resetButton} />
       <InspectedEdges geometry={geometry} />
       <Background variant={BackgroundVariant.Dots} gap={18} size={0.8} color="#d9dee9" bgColor="#fafbfe" />
       <Controls position="top-right" orientation="horizontal" showInteractive={false} fitViewOptions={viewportFitOptions} />
     </ReactFlow>
-  ), [nodes, rootId, geometry, folded, action, clearInspection, m]);
+  ), [nodes, groupId, geometry, folded, action, clearInspection, m]);
   return (
     <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} data-hidden-upstream-count={hiddenUpstreamCount} data-visible-task-count={visibleIds.size} data-total-task-count={totalTasks} ref={containerRef} role={fullscreen ? 'dialog' : undefined} aria-modal={fullscreen ? true : undefined} aria-label={fullscreen ? m.fullscreenTitle : undefined} onKeyDown={onKeyDown} onFocusCapture={(event) => { focusedControl.current = event.target as HTMLElement; }}>
       <div className="graph-toolbar">
@@ -148,12 +149,14 @@ const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleId
             {fullscreen ? m.exitFullscreen : m.enterFullscreen}
           </button>
           {fullscreen && <LanguageSelector />}
+          {showMemberExpansion && <button className="button graph-expand-members" type="button" aria-disabled={memberExpansion.ids.length === 0}
+            data-added-tasks={memberExpansion.ids.length} data-added-edges={memberExpansion.addedEdges} onClick={onExpandMembers}>{m.expandMembers({ count: memberExpansion.totalHidden })}</button>}
           <button className="button graph-reset-overview" type="button" ref={resetButton} onClick={onResetOverview}>{m.resetOverview}</button>
         </div>
       </div>
       <p className="graph-visibility-summary">{m.visibilitySummary({ visible: visibleIds.size, total: totalTasks, edges: geometry.edges.length, totalEdges: projection.edges.length })}</p>
       <p className="graph-hidden-prerequisites" role="status">{hiddenUpstreamCount === 0 ? '' : m.hiddenPrerequisites({ count: hiddenUpstreamCount })}</p>
-      <p className="graph-instructions" id={`graph-instructions-${rootId}`}>{m.instructions}</p>
+      <p className="graph-instructions" id={`graph-instructions-${groupId}`}>{m.instructions}</p>
       <div className="task-graph-canvas">
         <TaskInspectionContext value={inspection}>{canvas}</TaskInspectionContext>
       </div>
@@ -167,7 +170,7 @@ const LayoutError = () => {
   return <div className="graph-error" role="alert"><h3>{m.layoutErrorTitle}</h3><p>{m.layoutErrorDescription}</p></div>;
 };
 
-const VisibleTaskGraph = ({ projection, ...props }: TaskGraphProps & { projection: RootProjection }) => {
+const VisibleTaskGraph = ({ projection, ...props }: TaskGraphProps & { projection: GroupProjection }) => {
   const [visibility, setVisibility] = useState(() => ({ projection, ids: createGraphOverview(props.index, projection) }));
   const sequence = useRef(0);
   const [action, setAction] = useState<ViewportAction | null>(null);
@@ -185,27 +188,33 @@ const VisibleTaskGraph = ({ projection, ...props }: TaskGraphProps & { projectio
       performance.clearMeasures('daynight:task-layout');
       const started = performance.now();
       const geometry = layoutGraph(visibleProjection, new Map([...expansions].map(([id, directions]) => [id, getTaskNodeHeight(directions)])));
-      performance.measure('daynight:task-layout', { start: started, end: performance.now(), detail: { rootId: props.rootId } });
+      performance.measure('daynight:task-layout', { start: started, end: performance.now(), detail: { groupId: props.groupId } });
       return { kind: 'ready' as const, geometry };
     } catch (error) { return { kind: 'error' as const, error }; }
-  }, [visibleProjection, expansions, props.rootId]);
+  }, [visibleProjection, expansions, props.groupId]);
   const onExpandTask = useCallback((id: string, direction: TaskExpansionDirection) => {
     const expansion = expansions.get(id)![direction];
     if (expansion.ids.length === 0) return;
     setVisibility({ projection, ids: new Set([...visibleIds, ...expansion.ids]) });
     setAction({ kind: 'expand', sequence: ++sequence.current, anchorId: id });
   }, [expansions, projection, visibleIds]);
+  const memberExpansion = useMemo(() => getMemberExpansion(props.index, projection, visibleIds), [props.index, projection, visibleIds]);
+  const onExpandMembers = useCallback(() => {
+    if (memberExpansion.ids.length === 0) return;
+    setVisibility({ projection, ids: new Set([...visibleIds, ...memberExpansion.ids]) });
+    setAction({ kind: 'members', sequence: ++sequence.current });
+  }, [memberExpansion, projection, visibleIds]);
   const onResetOverview = useCallback(() => {
     setVisibility({ projection, ids: createGraphOverview(props.index, projection) });
     setAction({ kind: 'reset', sequence: ++sequence.current });
   }, [props.index, projection]);
-  return result.kind === 'error' ? <LayoutError /> : <TaskCanvas {...props} geometry={result.geometry} projection={projection} visibleIds={visibleIds} expansions={expansions} action={action} onExpandTask={onExpandTask} onResetOverview={onResetOverview} />;
+  return result.kind === 'error' ? <LayoutError /> : <TaskCanvas {...props} geometry={result.geometry} projection={projection} visibleIds={visibleIds} expansions={expansions} action={action} onExpandTask={onExpandTask} onResetOverview={onResetOverview} onExpandMembers={onExpandMembers} showMemberExpansion={memberExpansion.totalHidden > 0 || action?.kind === 'members'} />;
 };
 
 export const TaskGraph = (props: TaskGraphProps) => {
   const result = useMemo(() => {
-    try { return { kind: 'ready' as const, projection: projectRoot(props.index, props.rootId) }; }
+    try { return { kind: 'ready' as const, projection: projectGroup(props.index, props.groupId) }; }
     catch (error) { return { kind: 'error' as const, error }; }
-  }, [props.index, props.rootId]);
-  return result.kind === 'error' ? <LayoutError /> : <VisibleTaskGraph key={props.rootId} {...props} projection={result.projection} />;
+  }, [props.index, props.groupId]);
+  return result.kind === 'error' ? <LayoutError /> : <VisibleTaskGraph key={props.groupId} {...props} projection={result.projection} />;
 };

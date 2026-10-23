@@ -160,22 +160,22 @@ from one complete graph snapshot and two in-project tabs: Standalone tasks and
 Task chains. The first visit opens Task chains; subsequent visits restore the
 project's last tab. Both tab badges count unfinished tasks (proposed, pending and in
 progress) from the complete snapshot. Standalone tasks count individually;
-Task chains counts every non-standalone task once across all roots, including
-shared successors. Counts ignore completed-item visibility, the active tab and
+Task chains counts every member of a multi-member group once, using persisted
+`groupId`. Counts ignore completed-item visibility, the active tab and
 the expanded chain; all-completed categories display zero. Their sum equals the
 project's proposed plus pending plus in-progress total. List toolbars retain visible/total
-standalone-item or root-chain counts. A standalone task has no prerequisites
-and no successors in the complete graph. Every other root remains a root-based
-chain entry, including multiple roots with shared successors. Task status never
-changes this classification. The [task view decision](../../.agents/notes/implemented/feature/2026-10-22-project-task-views.md)
+standalone-item or group-entry counts. A singleton group is a standalone task;
+a larger group is a chain even when its members are dependency-disconnected.
+The group anchor may itself have prerequisites. Task status and dependency edits
+never change this classification; explicit member reassignment can. The [task view decision](../../.agents/notes/implemented/feature/2026-10-22-project-task-views.md)
 records the presentation boundary.
 
 Standalone rows display the title, individual status, ID and creation time and
 open the existing task detail dialog directly. Chain rows display aggregate progress
-and status: done only when every distinct root and reachable successor task is
+and status: done only when every explicit group member is
 done; in progress when any is done or in progress and the chain is unfinished;
 otherwise pending when any main task is todo; otherwise every main task is
-proposed. A completed root with unfinished descendants stays visible.
+proposed. A completed anchor with unfinished members stays visible.
 External prerequisite context does not contribute to chain status. Node and
 detail status continue to describe individual tasks. Chain badges, completed
 counts and filtering share the same model-derived status, rebuilt with each
@@ -227,17 +227,20 @@ minimum height and 7px row gaps; a single-line bordered row is about 64px.
 Desktop titles stay 13px and narrow-screen titles 12px, with readable
 metadata/status sizes of 11px/10px.
 
-Rows open one horizontal graph at a time. Complete P retains the root,
-reachable successors and every required ancestor, without unrelated successors
+Rows open one horizontal graph at a time. Complete P retains every explicit
+group member and every required ancestor, without unrelated successors
 of external context. Main progress and seven project counters still use full
 data. Actual visible S is progressive for main and external tasks alike.
 
 P with at most fifty tasks and one hundred dependencies is fully visible.
-Larger P starts at root with stable undirected BFS, successors before prerequisites
-in snapshot order; accept a task only when the complete induced graph remains
+Larger P starts at the group anchor with stable undirected BFS, successors before
+prerequisites in snapshot order, then seeds other group components; accept a task only when the complete induced graph remains
 within fifty/one hundred, and traverse only accepted tasks. Cards expose direction
 controls adding at most twenty hidden direct neighbors in P, with exact new-task,
-new-induced-edge and remaining counts. Manual expansion has no edge cap. Every
+new-induced-edge and remaining counts. A group toolbar action adds up to twenty
+hidden members, including disconnected members, without synthetic edges. It
+retains focus and viewport, with an aria-disabled no-op control after the last
+batch. Manual expansion has no edge cap. Every
 real edge with both endpoints in S appears, without shortcuts or aggregate cards.
 
 Cards are 220 by 96 pixels without hidden direct neighbors, using a 94px body
@@ -253,12 +256,12 @@ the current dialog and relation navigation preserves graph selection.
 Expansion centers its anchor at current zoom and focuses its body. Global reset
 “收起到概览” recomputes/frames overview and retains reset focus.
 
-Successful refresh keeps actual visible IDs still in new P plus root, prunes to
-the induced undirected root component and preserves viewport. It does not add a
+Successful refresh keeps actual visible IDs still in new P plus the group
+anchor, including valid disconnected members, and preserves viewport. It does not add a
 new baseline or newly arrived tasks. Reset/remount computes a new baseline;
 ordinary failure keeps old data/S/view only in the same identity/project/auth
 scope; inherited current401 and session/resource invalidation still unmount
-private content. Project/root/tab/unmount releases local S and inspection.
+private content. Project/group/tab/unmount releases local S and inspection.
 An open dialog retains focus and existing close-time fallback. Locale translates
 new controls/counts without changing S or business requests. The
 [progressive decision](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)
@@ -816,7 +819,7 @@ cleanup. These source-bound probe receipts belong to Daynight task
 first-party fixture checks remain distinct. The probe's local browser identity
 is recorded and is not a hosted-CI browser claim.
 
-The chain fixture creates 1,000 independent tasks, then attaches its 999 edges
+The chain fixture creates 1,000 tasks with one explicit group ID, then attaches its 999 edges
 with versioned PATCH requests from sink to root, avoiding repeated traversal of
 a growing ancestor chain during setup. Complete snapshots compare every node's
 dependencies with the fixture, including the chain's exact predecessor sequence.
@@ -861,7 +864,7 @@ scenario annotations validated in each target's report.
 |---|---|
 | W1 | `project-list`: more than 50 projects, cursor requests, unique cards and navigation to a later-page project |
 | W2 | `project-graph`, `deep-links`, `task-attachments`: project entry, direct HTML reload, browser history and standalone attachment opening/reload without source-tab state |
-| W3–W4 | `project-graph`, `project-view-tabs`, `refresh-staleness`, `failure-recovery`: exact statistics, topology-based tabs, distinct root progress, direct standalone details, independent completion filters, per-project tab/scroll/expansion restoration, dependency reclassification and consistent full refresh |
+| W3–W4 | `project-graph`, `project-view-tabs`, `refresh-staleness`, `failure-recovery`: exact statistics, groupId-based tabs, explicit member progress, direct standalone details, independent completion filters, per-project tab/scroll/expansion restoration, membership reassignment with dependency-stable groups and consistent full refresh |
 | W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`, `capacity-external`: complete projection data, bounded overview/induced edges, explicit expansion/reset, state markers and existing detail/viewport actions |
 | W8 | `detail-navigation`, `refresh-staleness`: complete centered-dialog content, ordered PR associations, relation navigation, automatic detail refresh with retained dialog/attachment state, property refresh and readiness differences without revising a dependent task |
 | W9 | `refresh-staleness`, `failure-recovery`, `deep-links`, `capacity-limits`: periodic status updates and automatic recovery, owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |
@@ -1036,12 +1039,17 @@ API errors expose fixed safe text and a validated request ID; raw response bodie
 and server diagnostics do not reach the page. Project names and addresses render
 as text. The API parser verifies DTO shape and resource identity. The implemented graph
 model separately verifies dependency closure, acyclicity, status/readiness and
-summary consistency. It projects root descendants plus their complete ancestor
-closure, excluding unrelated descendants of contextual tasks. `mainIds` retains
-chain membership; `externalIds` identifies additional ancestors. Complete projection P retains every required dependency. Visibility selects
+summary consistency, and valid same-project group anchors. It projects all tasks
+with the selected persisted `groupId` plus their complete ancestor closure,
+excluding unrelated external successors. `mainIds` retains explicit group
+membership; `externalIds` identifies additional ancestors. Complete projection P retains every required dependency. Visibility selects
 S and all real edges with both endpoints in S; external classification still
-depends on source membership in P−M. It derives distinct root progress and aggregate chain status from main
-tasks in the same traversal, and marks shared tasks. The Dagre
+depends on either endpoint belonging to P−M. It derives group progress and aggregate chain status from explicit
+members only. Singleton groups appear as standalone tasks regardless of their
+dependencies. Dependency edits preserve membership. Disconnected members remain
+accessible through the bounded overview and twenty-member toolbar batches;
+refresh preserves valid disconnected visible tasks. The
+[group design](../../docs/design/daynight-task-groups.md) owns these rules. The Dagre
 adapter returns finite left-to-right node positions and routed edge points for
 220px-wide visible cards with 96px compact or 136px expandable heights. The
 read-only React Flow canvas consumes these results without changing domain
@@ -1068,7 +1076,7 @@ leftmost; otherwise the topmost upstream node starts at a 32px canvas inset.
 Dependency geometry does not require connection-port DOM or per-edge endpoint readiness.
 Graph-local inspection Context supplies presentation roles while controlled node
 geometry/data and memoized content retain stable references. Memoized collapsed
-root rows keep their existing detail-selection behavior until expanded. Changed snapshot indexes
+group rows keep their existing detail-selection behavior until expanded. Changed snapshot indexes
 refresh all rows; equivalent graph responses retain the existing index. The one-time initial viewport policy is separate
 from explicit fit controls and does not run again on selection or pan.
 

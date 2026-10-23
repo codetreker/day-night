@@ -86,7 +86,7 @@ func TestTaskPropertiesConcurrentVersionAndSnapshot(t *testing.T) {
 		match: func(sql string) bool { return strings.Contains(sql, "FROM project_members m") },
 		end: func() {
 			if err := database.WriteProject(context.Background(), project.ID, func(tx *store.ProjectTx) error {
-				_, err := tx.UpdateTask(context.Background(), before.ID, store.TaskWrite{Title: "New snapshot", Status: before.Status, Properties: core.TaskProperties{PullRequests: []core.PullRequestProperty{{URL: "new", Title: "New"}}}})
+				_, err := tx.UpdateTask(context.Background(), before.ID, store.TaskWrite{GroupID: before.GroupID, Title: "New snapshot", Status: before.Status, Properties: core.TaskProperties{PullRequests: []core.PullRequestProperty{{URL: "new", Title: "New"}}}})
 				return err
 			}); err != nil {
 				t.Fatal(err)

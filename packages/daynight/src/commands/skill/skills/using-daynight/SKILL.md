@@ -47,9 +47,10 @@ and completing `run-task` never activate it.
   tasks; use each reviewed task's exact version. The user can approve through CLI
   or Web. Approval grants no execution or delivery permission.
 - Use a normal task for one independently tracked outcome. Work requiring
-  multiple independently tracked delivery stages is a Goal, expressed through
-  existing tasks and `dependsOn`. Read [the Goal protocol](references/goal.md)
-  when creating, executing, or advancing such a chain.
+  multiple independently tracked delivery stages is a Goal. Its tasks share the
+  first task's persisted `groupId`; `dependsOn` expresses actual prerequisites
+  independently of membership. Read [the Goal protocol](references/goal.md) when
+  creating, executing, or advancing such a chain.
 - Advance one task at a time, including CI, review, and merge waits. Subagents
   collaborate on the same task. `autopilot` owns selection of subsequent work;
   `run-task` and `create-task` return when their own work ends.

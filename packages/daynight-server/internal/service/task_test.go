@@ -395,7 +395,7 @@ func TestTaskCandidateDependencyRules(t *testing.T) {
 		assertTaskUnchanged(t, tasks, principal, active)
 		// Store fixtures bypass policy to verify full candidate checks on metadata-only updates.
 		if err := database.WriteProject(context.Background(), project.ID, func(tx *store.ProjectTx) error {
-			_, err := tx.UpdateTask(context.Background(), active.ID, store.TaskWrite{Title: active.Title, Status: status, DependsOn: []string{undone.ID}})
+			_, err := tx.UpdateTask(context.Background(), active.ID, store.TaskWrite{GroupID: active.GroupID, Title: active.Title, Status: status, DependsOn: []string{undone.ID}})
 			return err
 		}); err != nil {
 			t.Fatal(err)

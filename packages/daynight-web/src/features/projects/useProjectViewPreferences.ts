@@ -23,7 +23,7 @@ const readPreference = <Value,>(key: string, decode: (value: unknown) => Value):
   }
 };
 
-const expandedRootPreference = (value: unknown): string | null => {
+const expandedGroupPreference = (value: unknown): string | null => {
   if (typeof value !== "object" || value === null || Array.isArray(value) || Object.keys(value).length !== 1 || !("expandedRootId" in value) ||
     (value.expandedRootId !== null && (typeof value.expandedRootId !== "string" || value.expandedRootId.trim() === ""))) {
     throw new Error("Invalid project view preferences.");
@@ -53,20 +53,20 @@ export const useCompletedChainVisibility = (projectId: string) => {
   return { showCompleted, onShowCompletedChange, issue: writeIssue ?? initial.issue };
 };
 
-export const useProjectViewPreferences = (projectId: string, roots: readonly string[] | null) => {
+export const useProjectViewPreferences = (projectId: string, groupIds: readonly string[] | null) => {
   const key = `daynight:project-view:${projectId}`;
-  const [initial] = useState(() => readPreference(key, expandedRootPreference));
-  const [expanded, setExpandedRootId] = useState(initial.value);
+  const [initial] = useState(() => readPreference(key, expandedGroupPreference));
+  const [expanded, setExpandedGroupId] = useState(initial.value);
   const [writeIssue, setWriteIssue] = useState<PreferenceIssue | null>(null);
   const saved = useRef(initial.saved);
-  const expandedRootId = roots === null || expanded === null ? null
-    : expanded !== undefined && roots.includes(expanded) ? expanded : roots[0] ?? null;
+  const expandedGroupId = groupIds === null || expanded === null ? null
+    : expanded !== undefined && groupIds.includes(expanded) ? expanded : groupIds[0] ?? null;
 
   // Reconcile and save before the rendered rows can receive navigation or reload actions.
   useLayoutEffect(() => {
-    if (roots === null || roots.length === 0) return;
-    setExpandedRootId(expandedRootId);
-    const preferences: Preferences = { expandedRootId };
+    if (groupIds === null || groupIds.length === 0) return;
+    setExpandedGroupId(expandedGroupId);
+    const preferences: Preferences = { expandedRootId: expandedGroupId };
     const serialized = JSON.stringify(preferences);
     if (serialized === saved.current) return;
     try {
@@ -76,9 +76,9 @@ export const useProjectViewPreferences = (projectId: string, roots: readonly str
     } catch (cause) {
       setWriteIssue({ kind: "write", cause });
     }
-  }, [key, roots, expandedRootId]);
+  }, [key, groupIds, expandedGroupId]);
 
-  return { expandedRootId, setExpandedRootId, issue: writeIssue ?? initial.issue };
+  return { expandedGroupId, setExpandedGroupId, issue: writeIssue ?? initial.issue };
 };
 
 export type TaskView = "standalone" | "chains";

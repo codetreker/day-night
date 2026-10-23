@@ -40,10 +40,10 @@ describe('independent production dependency geometry oracle', () => {
     value.nodes[0]!.bottom = 96;
     expect(inspectDependencySnapshot(value, expected)).toContain('source->target: wrong fixed left-to-right ports');
   });
-  it('derives projection identities only from API dependencies, including complete upstream context', () => {
+  it('derives projection identities from explicit groups and API dependencies, including complete upstream context', () => {
     expect(expectedDependencyTopology([
-      { id: 'A', dependsOn: [] }, { id: 'C', dependsOn: ['A', 'X'] }, { id: 'P', dependsOn: [] },
-      { id: 'X', dependsOn: ['P'] }, { id: 'Y', dependsOn: ['X'] }, { id: 'Z', dependsOn: [] },
+      { id: 'A', groupId: 'A', dependsOn: [] }, { id: 'C', groupId: 'A', dependsOn: ['A', 'X'] }, { id: 'P', groupId: 'P', dependsOn: [] },
+      { id: 'X', groupId: 'P', dependsOn: ['P'] }, { id: 'Y', groupId: 'P', dependsOn: ['X'] }, { id: 'Z', groupId: 'Z', dependsOn: [] },
     ], 'A')).toEqual({
       nodes: [{ id: 'A' }, { id: 'C' }, { id: 'P' }, { id: 'X' }],
       edges: [{ id: 'A->C', source: 'A', target: 'C', external: false }, { id: 'X->C', source: 'X', target: 'C', external: true }, { id: 'P->X', source: 'P', target: 'X', external: true }],

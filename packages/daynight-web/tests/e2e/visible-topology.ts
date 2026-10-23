@@ -37,16 +37,13 @@ export const expectedBatch = (full: DependencyTopology, visibleIds: readonly str
   return inducedTopology(full, [...visibleIds, ...neighbors]);
 };
 
-export const expectedDependencyTopology = (tasks: readonly { id: string; dependsOn: readonly string[] }[], rootId: string): DependencyTopology => {
+export const expectedDependencyTopology = (tasks: readonly { id: string; groupId: string; dependsOn: readonly string[] }[], groupId: string): DependencyTopology => {
   const byId = new Map(tasks.map((task) => [task.id, task]));
-  const successors = new Map(tasks.map((task) => [task.id, [] as string[]]));
-  for (const task of tasks) for (const source of task.dependsOn) successors.get(source)!.push(task.id);
-  const main = new Set([rootId]); const descendants = [rootId];
-  for (let i = 0; i < descendants.length; i++) for (const id of successors.get(descendants[i]!)!) if (!main.has(id)) { main.add(id); descendants.push(id); }
+  const main = new Set(tasks.filter((task) => task.groupId === groupId).map((task) => task.id));
   const visible = new Set(main); const ancestors = [...main];
   while (ancestors.length > 0) for (const id of byId.get(ancestors.pop()!)!.dependsOn) if (!visible.has(id)) { visible.add(id); ancestors.push(id); }
   return {
     nodes: tasks.filter((task) => visible.has(task.id)).map(({ id }) => ({ id })),
-    edges: tasks.filter((task) => visible.has(task.id)).flatMap((task) => task.dependsOn.map((source) => ({ id: `${source}->${task.id}`, source, target: task.id, external: !main.has(source) }))),
+    edges: tasks.filter((task) => visible.has(task.id)).flatMap((task) => task.dependsOn.map((source) => ({ id: `${source}->${task.id}`, source, target: task.id, external: !main.has(source) || !main.has(task.id) }))),
   };
 };

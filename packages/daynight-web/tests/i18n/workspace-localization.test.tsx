@@ -12,7 +12,7 @@ import { renderWithLocale } from "../helpers/renderWithLocale";
 vi.mock("../../src/api/client", async (original) => ({
   ...await original<typeof import("../../src/api/client")>(), getTaskGraph: vi.fn(), listProjects: vi.fn(),
 }));
-vi.mock("../../src/features/task-graph/RootList", () => ({ RootList: () => null }));
+vi.mock("../../src/features/task-graph/GroupList", () => ({ GroupList: () => null }));
 vi.mock("../../src/features/task-detail/TaskDetailDialog", () => ({ TaskDetailDialog: ({ taskId, onRefreshGraph }: {
   taskId: string; onRefreshGraph: () => void;
 }) => <aside aria-label="Task test shell"><p>{taskId}</p><button onClick={onRefreshGraph}>Refresh test graph</button></aside> }));
@@ -21,7 +21,7 @@ const projectId = "10000000-0000-4000-8000-000000000001";
 const taskId = "20000000-0000-4000-8000-000000000001";
 const date = "2026-10-20T12:34:56Z";
 const project = { id: projectId, name: "Project 用户数据", repoUrl: "https://example.com/repo", createdAt: date, updatedAt: date };
-const tasks: readonly GraphTask[] = [{ id: taskId, titlePreview: "Task 用户数据", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: date, updatedAt: date }];
+const tasks: readonly GraphTask[] = [{ id: taskId, groupId: taskId, titlePreview: "Task 用户数据", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: date, updatedAt: date }];
 const graph = (items = tasks): TaskGraph => ({
   project, tasks: items,
   summary: { total: items.length, proposed: items.filter((task) => task.status === "proposed").length,

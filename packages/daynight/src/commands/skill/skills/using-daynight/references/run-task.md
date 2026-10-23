@@ -19,7 +19,9 @@ immutable repository reference. Read required contents rather than assuming a
 task read loads attachment inventory or bytes.
 
 For a Goal stage or delivery task, read [the Goal protocol](goal.md) and identify
-its role from the actual task content and context. Apply that stage's input and
+its role from the actual task content and context. Confirm its stored `groupId`
+against the established Goal anchor; dependencies alone do not establish
+membership. Apply that stage's input and
 output requirements. Goal description and design start from their stage briefs;
 the completed requirements, applicable UI prototype, and architecture are outputs
 of the stages that produce them. Delivery tasks require the delivered design and

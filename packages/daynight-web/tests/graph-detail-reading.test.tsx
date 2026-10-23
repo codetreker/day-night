@@ -15,7 +15,7 @@ vi.mock('../src/api/client', async (original) => ({
 
 const render = createLocaleRender('zh-CN');
 const graph = browsingProjects['complete-context'];
-const rootId = graph.tasks.find((task) => task.titlePreview === '外部上下文 · 链内交付起点')!.id;
+const groupId = graph.tasks.find((task) => task.titlePreview === '外部上下文 · 链内交付起点')!.id;
 const selectedId = graph.tasks.find((task) => task.titlePreview === '外部前置 · 菱形合流')!.id;
 const detailNode = graph.tasks.find((task) => task.titlePreview === '链内最终交付')!;
 const detail: TaskDetail = {
@@ -34,7 +34,7 @@ beforeEach(() => {
   root = document.createElement('div');
   root.id = 'root';
   document.body.append(root);
-  window.localStorage.setItem(`daynight:project-view:${graph.project.id}`, JSON.stringify({ expandedRootId: rootId }));
+  window.localStorage.setItem(`daynight:project-view:${graph.project.id}`, JSON.stringify({ expandedRootId: groupId }));
   vi.mocked(getTaskGraph).mockReset().mockResolvedValue(graph);
   vi.mocked(getTask).mockReset().mockResolvedValue(detail);
   vi.mocked(listAttachments).mockReset().mockResolvedValue({ items: [attachment], nextCursor: null });
@@ -77,7 +77,7 @@ describe('graph inspection and detail reading integration', () => {
     expect(state.nodes.filter((node) => node.inspection === 'prerequisite').map((node) => node.id)).toEqual(
       [14, 15, 16].map((number) => `00000000-0000-4000-8000-${String(number).padStart(12, '0')}`),
     );
-    expect(state.nodes.filter((node) => node.inspection === 'unrelated').map((node) => node.id)).toEqual([rootId, detailNode.id]);
+    expect(state.nodes.filter((node) => node.inspection === 'unrelated').map((node) => node.id)).toEqual([groupId, detailNode.id]);
     expect(state.edges.filter((edge) => edge.inspection === 'highlighted')).toHaveLength(4);
     const trigger = within(root.querySelector<HTMLElement>(`.react-flow__node[data-id="${detailNode.id}"]`)!).getByRole('button', { name: `${detail.title}，详情` });
     await user.click(trigger);

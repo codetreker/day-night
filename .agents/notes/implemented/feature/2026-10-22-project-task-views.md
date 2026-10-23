@@ -15,20 +15,19 @@ project snapshot and avoid reclassifying a task when its prerequisites finish.
 The project has Standalone tasks and Task chains tabs within its existing URL.
 Both share project statistics, refresh, the complete graph index and the detail
 dialog. First visits open Task chains; the selected tab is retained per project.
-A standalone task has zero incoming and outgoing dependency edges in the full
-snapshot. All remaining roots enter the chain view. Membership ignores task
-status and completed-item filters. A new snapshot reclassifies dependency edits
-as one replacement with the project statistics.
+The original classification used dependency isolation. The
+[persistent group decision](2026-10-23-persistent-task-groups.md) replaces it with explicit groupId members:
+singleton groups are standalone tasks, larger groups are chains. Membership
+ignores task status, dependency edits and completed-item filters. An explicit
+membership change is reflected with the next complete snapshot.
 
 Standalone rows are compact native buttons showing title, status, ID and
-creation time, and open details directly. Chain rows keep root-based progress,
-aggregate status, complete DAG projection, external prerequisites, fullscreen and
-details. For `A → C ← B`, A and B remain two chains, each including C once;
-project statistics count C once. The original tab counts represented total
-standalone tasks and non-isolated roots to describe the available entries. The
-[unfinished task count decision](2026-10-22-unfinished-task-tab-counts.md)
-replaces those badge semantics: both count unfinished tasks, with shared chain
-tasks counted once across roots. List toolbars retain visible/total entry counts.
+creation time, and open details directly. Chain rows use the group anchor's
+title, explicit-member progress, aggregate status, complete prerequisite context,
+fullscreen and details. Group members have unique ownership; prerequisites may
+appear as external context in other groups. The original tab counts represented
+entry totals; the [unfinished task count decision](2026-10-22-unfinished-task-tab-counts.md)
+uses unfinished tasks as the common badge unit. Toolbars retain entry counts.
 
 Each tab has its own completed-item filter and page scroll position. The chain
 view retains its expanded-root or explicit-collapse choice when tabs change.
@@ -65,24 +64,24 @@ outgoing relationships, so classification remains a frontend projection.
 one entry, but changes the meaning of root-based chain counts, projections and
 progress. That presentation capability is deferred. Its later cost stays
 additive only while category derivation and tab state remain independent of root
-projection; this split preserves those responsibilities. Shared successors
-therefore remain visible in multiple root chains. Reconsider grouping when a
-confirmed workflow needs one entry for a multi-root dependency component.
+projection; this split preserves those responsibilities. This original deferral retained shared successors in multiple root chains. The
+[persistent group decision](2026-10-23-persistent-task-groups.md) resolves the
+subsequently confirmed need with explicit membership, independent of connected
+components or execution prerequisites.
 
 ## Consequences
 
 Standalone tasks reach details in one action. Dependency workflows retain the
 complete graph context and existing progress rules. Completion and readiness do
-not move work between categories. Root-chain entry counts cannot be added as
-project task totals, because a chain entry can contain many tasks and share
-successors with other chains. The two tab badges instead sum to the project
+not move work between categories. Group entry counts cannot be added as
+project task totals because one group can contain many tasks. The two tab badges instead sum to the project
 unfinished-task total. Filters and tab choices make no API requests or server
 changes.
 
 Per-project browser records preserve browsing intent across visits while the
-server remains authoritative for a freshly read snapshot. New dependency edits
-can move a task between views and invalidate an expanded chain root; existing
-visible-root reconciliation handles that case. Inactive canvases consume no
+server remains authoritative for a freshly read snapshot. Explicit group reassignment
+can move a task between views; dependency edits retain membership and expanded
+group identity. Visible-group reconciliation handles membership changes. Inactive canvases consume no
 mounted graph resources, at the cost of initializing pan and zoom after tab
 return. Keyboard tabs, native row actions and active-view focus restoration are
 part of the delivered interaction, including empty and all-completed views.

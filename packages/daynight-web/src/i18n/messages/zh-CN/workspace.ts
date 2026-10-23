@@ -17,7 +17,7 @@ export const workspace: WorkspaceMessages = {
     refreshFailed: "刷新失败", showingSnapshot: "仍显示上次成功读取的数据。", retryRefresh: "重试刷新", selectedTaskRemoved: "所选任务已不在新的任务图中，详情已关闭。", statistics: "项目任务统计", totalTasks: "任务总数", uniqueTasks: "按任务 ID 去重", completion: ({ percent }) => `完成比例 ${number(percent)}%`, awaitingApproval: "等待批准", waiting: "等待开始", advancing: "正在推进", ready: "可开始", blocked: "被阻塞", todoSubset: "待处理的子集", empty: "还没有任务", emptyDetail: "项目中的任务会显示在这里。创建任务后，点击刷新查看。", chains: "任务依赖链",
   },
   standalone: {
-    list: "独立任务列表", showCompletedCount: ({ count }) => `显示已完成独立任务（${number(count)}）`, summary: ({ visible, total }) => `最新创建在前 · ${number(visible)} / ${number(total)} 个独立任务`, summaryLabel: ({ visible, total }) => `显示 ${number(visible)} 个，共 ${number(total)} 个独立任务`, explanation: "按创建时间倒序排列。独立任务没有前置或后续依赖，点击任务直接查看详情。", empty: "暂无独立任务", emptyDetail: "当前任务均有依赖关系，可在任务链页签查看。", allCompleted: "所有独立任务已完成", hiddenCompleted: ({ count }) => `已隐藏 ${number(count)} 个已完成独立任务，项目统计仍包含全部任务。`, showCompleted: "显示已完成独立任务", createdOn: ({ date }) => `创建于 ${date}`,
+    list: "独立任务列表", showCompletedCount: ({ count }) => `显示已完成独立任务（${number(count)}）`, summary: ({ visible, total }) => `最新创建在前 · ${number(visible)} / ${number(total)} 个独立任务`, summaryLabel: ({ visible, total }) => `显示 ${number(visible)} 个，共 ${number(total)} 个独立任务`, explanation: "按创建时间倒序排列。独立任务是所在组的唯一成员，点击任务直接查看详情。", empty: "暂无独立任务", emptyDetail: "当前任务均属于包含多个成员的组，可在任务链页签查看。", allCompleted: "所有独立任务已完成", hiddenCompleted: ({ count }) => `已隐藏 ${number(count)} 个已完成独立任务，项目统计仍包含全部任务。`, showCompleted: "显示已完成独立任务", createdOn: ({ date }) => `创建于 ${date}`,
   },
   tabs: { label: "项目任务视图", standalone: "独立任务", chains: "任务链", unfinishedCount: "未完成任务数" },
   preferences: {

@@ -354,7 +354,7 @@ func acceptanceCLIWaitMutations(t *testing.T, process *acceptanceProcess, count 
 	return acceptanceCLIMutations(process)
 }
 
-func (c *acceptanceCLI) refuse(t *testing.T, process *acceptanceProcess, code, taskID string, arguments ...string) acceptanceCLIResult {
+func (c *acceptanceCLI) refuse(t *testing.T, process *acceptanceProcess, expectedStatus int, code, taskID string, arguments ...string) acceptanceCLIResult {
 	t.Helper()
 	before := len(acceptanceCLIMutations(process))
 	result := acceptanceCLIReceive(t, c.start(t, c.repo, arguments...))
@@ -362,8 +362,8 @@ func (c *acceptanceCLI) refuse(t *testing.T, process *acceptanceProcess, code, t
 		t.Fatalf("installed CLI refusal lost its code, task ID or exit behavior: %+v", result)
 	}
 	requests := acceptanceCLIWaitMutations(t, process, before+1)
-	if len(requests) != before+1 || requests[before].Status != 409 || requests[before].RequestID == "" || !strings.Contains(result.stderr, "requestId="+requests[before].RequestID) {
-		t.Fatal("installed CLI refusal retried or lost the actual server request identity")
+	if len(requests) != before+1 || requests[before].Status != expectedStatus || requests[before].RequestID == "" || !strings.Contains(result.stderr, "requestId="+requests[before].RequestID) {
+		t.Fatalf("installed CLI refusal did not preserve one HTTP %d response and its request identity: before=%d, requests=%+v", expectedStatus, before, requests)
 	}
 	if err := binaryAcceptance.update(func() {
 		c.scenario.CLIRefusalRequestIDs = append(c.scenario.CLIRefusalRequestIDs, requests[before].RequestID)
@@ -430,12 +430,12 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		if blocked.Version != 1 || blocked.Status != "proposed" || blocked.Ready || !slices.Equal(blocked.DependsOn, []string{first}) || !slices.Equal(blocked.BlockedBy, []string{first}) {
 			t.Fatal("installed task creation lost its server dependency projection")
 		}
-		cli.refuse(t, process, "invalid_transition", "", "task", "claim", target)
+		cli.refuse(t, process, http.StatusConflict, "invalid_transition", "", "task", "claim", target)
 		cli.run(t, cli.repo, "task", "approve", target, "--if-version", "1")
 		if approved := cli.task(t, target); approved.Status != "todo" || approved.Ready || approved.Version != 2 || !slices.Equal(approved.BlockedBy, []string{first}) {
 			t.Fatal("installed approval did not preserve unfinished prerequisites")
 		}
-		cli.refuse(t, process, "dependency_unsatisfied", first, "task", "claim", target)
+		cli.refuse(t, process, http.StatusConflict, "dependency_unsatisfied", first, "task", "claim", target)
 		cli.run(t, cli.repo, "task", "approve", first)
 		cli.run(t, cli.repo, "task", "claim", first)
 		cli.run(t, cli.repo, "task", "complete", first)
@@ -443,7 +443,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		acceptanceCLITaskListJSON(t, cli.run(t, cli.repo, "task", "list", "--status", "todo", "--ready", "--json"), []api.Task{cli.task(t, second), cli.task(t, target)})
 		cli.run(t, cli.repo, "task", "update", target, "--description", "Completed description")
 		cli.run(t, cli.repo, "task", "claim", target)
-		cli.refuse(t, process, "invalid_transition", "", "task", "claim", first)
+		cli.refuse(t, process, http.StatusConflict, "invalid_transition", "", "task", "claim", first)
 		cli.run(t, cli.repo, "task", "update", target, "--description", "")
 		cli.run(t, cli.repo, "task", "complete", target)
 		if task := cli.task(t, target); task.Version != 6 || task.Description != "" || task.Status != "done" {
@@ -454,7 +454,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		if task := cli.task(t, editable); !slices.Equal(task.DependsOn, []string{second}) || task.Ready {
 			t.Fatal("installed dependency update did not replace the full set")
 		}
-		cli.refuse(t, process, "dependency_cycle", editable, "task", "update", second, "--depends-on", editable)
+		cli.refuse(t, process, http.StatusConflict, "dependency_cycle", editable, "task", "update", second, "--depends-on", editable)
 		cli.run(t, cli.repo, "task", "update", editable, "--clear-dependencies")
 		if task := cli.task(t, editable); len(task.DependsOn) != 0 || task.Ready || task.Status != "proposed" {
 			t.Fatal("installed dependency clear changed proposed readiness or left a dependency")
@@ -475,7 +475,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 		if task := cli.task(t, editable); !reflect.DeepEqual(task, replaced) {
 			t.Fatal("installed identical PR update changed the task version, time or data")
 		}
-		cli.refuse(t, process, "version_conflict", editable, "task", "update", editable, "--clear-pull-requests", "--if-version", strconv.FormatInt(beforeProperties.Version, 10))
+		cli.refuse(t, process, http.StatusConflict, "version_conflict", editable, "task", "update", editable, "--clear-pull-requests", "--if-version", strconv.FormatInt(beforeProperties.Version, 10))
 		if task := cli.task(t, editable); !reflect.DeepEqual(task, replaced) {
 			t.Fatal("installed stale PR clear changed the persisted task")
 		}
@@ -594,9 +594,9 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 			t.Fatal("installed full-resource text output emitted raw PR terminal controls")
 		}
 		proposedID, proposedBlockedID := "00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"
-		fixture.exec(t, `INSERT INTO tasks (id, project_id, title, description, status, version)
-			VALUES ($1, $3, 'Proposed task', 'Persistent proposed description', 'proposed', 17),
-			($2, $3, 'Blocked proposal', '', 'proposed', 19)`, proposedID, proposedBlockedID, projectID)
+		fixture.exec(t, `INSERT INTO tasks (id, project_id, title, description, status, version, group_id)
+			VALUES ($1, $3, 'Proposed task', 'Persistent proposed description', 'proposed', 17, $1),
+			($2, $3, 'Blocked proposal', '', 'proposed', 19, $2)`, proposedID, proposedBlockedID, projectID)
 		fixture.exec(t, `INSERT INTO task_dependencies (project_id, task_id, depends_on_task_id)
 			VALUES ($1, $2, $3)`, projectID, proposedBlockedID, second)
 		proposed, proposedBlocked := cli.task(t, proposedID), cli.task(t, proposedBlockedID)
@@ -630,7 +630,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 			}
 			for _, task := range listing.expected {
 				expectedIDs = append(expectedIDs, task.ID)
-				if !strings.Contains(output, "ID: "+task.ID+"\nProject: "+task.ProjectID+"\nTitle: "+task.Title+"\n") {
+				if !strings.Contains(output, "ID: "+task.ID+"\nProject: "+task.ProjectID+"\nGroup ID: "+task.GroupID+"\nTitle: "+task.Title+"\n") {
 					t.Fatal("installed compact task list lost task identity fields")
 				}
 			}

@@ -227,6 +227,12 @@ project 和 task ID 查询。显式 project ID、show/update 的 task ID、标�
 `ready=true` 和所选 `limit`；响应中的合法 `nextCursor` 不触发续页，也不提供
 `--status`、`--cursor` 或其他筛选。`task list --ready` 保持遍历全部匹配页的行为。
 
+所有完整 task 和 graph task 都包含必填 UUID `groupId`。create/update 提供
+`--group-id <first-task-id>`；省略创建字段以新 task ID 建组，显式值加入同 project
+锚点组。更新用已观察精确版本调整成员；省略保留，指定自身 ID 可建新组，有其他
+成员的锚点不能移动。dependsOn 不推断组，详情、列表和图文本/JSON 保留真实组 ID。
+[分组要求](daynight-task-groups.md)拥有完整拒绝与迁移行为。
+
 ready 沿用服务定义：task 为 `todo`，且每个直接依赖均为 `done`。服务按
 `createdAt ASC, id ASC` 排序；CLI 保留该顺序，不重新排序。返回项数不得超过所选
 limit，每项必须为 ready，且 task ID 不得重复；响应违反任一条件时作为协议错误

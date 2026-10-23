@@ -9,7 +9,6 @@ import type { CanvasNode, CanvasPoint } from './layout';
 export type TaskNodeData = {
   task: GraphTask;
   kind: 'main' | 'external';
-  shared: boolean;
   center: CanvasPoint;
   size: Pick<CanvasNode, 'width' | 'height'>;
   onInspectTask: (id: string) => void;
@@ -21,13 +20,12 @@ export type TaskNodeData = {
 
 export type TaskFlowNode = Node<TaskNodeData, 'task'>;
 
-const TaskNodeContent = memo(({ task, kind, shared }: Pick<TaskNodeData, 'task' | 'kind' | 'shared'>) => {
+const TaskNodeContent = memo(({ task, kind }: Pick<TaskNodeData, 'task' | 'kind'>) => {
   const { messages: { graph: m, common } } = useI18n();
   const title = `${task.titlePreview}${task.titleTruncated ? '…' : ''}`;
   return <>
     <span className="task-node-meta">
       <span className="task-node-id">{task.id.slice(0, 8)}</span>
-      {shared && <span className="task-shared-label">{m.shared}</span>}
     </span>
     <span className="task-node-title">{title}</span>
     <span className="task-node-bottom">
@@ -93,9 +91,9 @@ export const TaskNode = memo(({ data }: NodeProps<TaskFlowNode>) => {
   return (
     <div className={`task-node task-node-${data.task.status} task-node-${inspection}${data.kind === 'external' ? ' task-node-external' : ''} nodrag nopan`} data-inspection={inspection} style={{ pointerEvents: 'auto' }}>
       <button type="button" ref={body} className="task-node-body nodrag nopan"
-        aria-label={`${m.nodeLabel({ title, status: common.status[data.task.status], blocked: data.task.blockedBy.length > 0, external: data.kind === 'external', shared: data.shared })}${m.inspectionSuffix[inspection]}`}
+        aria-label={`${m.nodeLabel({ title, status: common.status[data.task.status], blocked: data.task.blockedBy.length > 0, external: data.kind === 'external' })}${m.inspectionSuffix[inspection]}`}
         aria-pressed={inspection === 'selected'} onClick={inspect} onFocus={revealOnFocus}>
-        <TaskNodeContent task={data.task} kind={data.kind} shared={data.shared} />
+        <TaskNodeContent task={data.task} kind={data.kind} />
       </button>
       <button type="button" className="task-node-details nodrag nopan" aria-haspopup="dialog" aria-label={m.detailsLabel({ title })} onClick={open} onFocus={revealOnFocus}>{m.details}</button>
       {expandable && <div className="task-node-expansions">

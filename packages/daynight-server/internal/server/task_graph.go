@@ -19,7 +19,7 @@ func taskGraphResponse(graph core.TaskGraph) api.TaskGraph {
 	}
 	for _, task := range graph.Tasks {
 		response.Tasks = append(response.Tasks, api.GraphTask{
-			ID: task.ID, TitlePreview: task.TitlePreview, TitleTruncated: task.TitleTruncated, Status: string(task.Status),
+			ID: task.ID, GroupID: task.GroupID, TitlePreview: task.TitlePreview, TitleTruncated: task.TitleTruncated, Status: string(task.Status),
 			DependsOn: append([]string{}, task.DependsOn...), BlockedBy: append([]string{}, task.BlockedBy...), Ready: task.Ready,
 			CreatedAt: task.CreatedAt.UTC(), UpdatedAt: task.UpdatedAt.UTC(),
 		})

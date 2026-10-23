@@ -4,8 +4,9 @@ Read this reference when creating a multi-stage Goal, running one of its tasks,
 or advancing its authorized scope. Use [create-task](create-task.md) for content
 and registration rules, [run-task](run-task.md) for one task's lifecycle, and
 [the handbook](handbook.md) for CLI semantics. A Goal uses existing tasks,
-attachments, `dependsOn`, and PR properties; it adds no CLI command, task type,
-status, or execution authority.
+attachments, persisted `groupId`, `dependsOn`, and PR properties; it adds no Goal
+command, task type, status, or execution authority. Shared group membership never
+substitutes for actual prerequisite relationships.
 
 ## Identify and register a Goal
 
@@ -37,7 +38,12 @@ the stage; it is not the title prefix. Titles communicate purpose but do not
 establish stable identity. Preserve confirmed IDs and inspect full content when
 reusing an existing chain.
 
-Set the design task's `dependsOn` to the Goal description task. Each task starts
+Create the Goal description without a group ID and retain its confirmed task ID
+and `groupId`, which are equal. Pass that `groupId` explicitly through
+`task create --group-id` when creating the design task and every later Goal
+member. Reuse an existing chain only after confirming its stored group IDs;
+titles and dependency paths do not establish membership. Set the design task's
+`dependsOn` to the Goal description task. Each task starts
 in `proposed` with its own self-contained Markdown description and primary Markdown
 containing Solution and Acceptance criteria. State unanswered questions honestly.
 Complete requirements, prototypes, architecture, and breakdown are produced by their
@@ -97,7 +103,8 @@ data and control flow, contracts, error behavior, key decisions, and validation
 approach required by the target repository and Goal.
 
 During this task, register the complete set of persistent delivery tasks needed
-to satisfy the Goal. Each represents a concrete outcome with its own actions,
+to satisfy the Goal. Explicitly pass the confirmed Goal `groupId` for every
+member, including tasks without a dependency path to another delivery task. Each represents a concrete outcome with its own actions,
 scope, deliverables, constraints, solution, acceptance criteria, verification
 methods, and real input references. Their combined scope must cover the complete
 Goal. A future registration list or a vague implementation placeholder does not
@@ -138,7 +145,7 @@ packet to all tasks. Only copy a snapshot when the consuming task needs it,
 recording the purpose, original source, and source revision or content identity.
 
 Registration comprises independent writes, not a transaction. Reuse confirmed
-IDs if creating the second starting task, uploading an artifact, updating a
+IDs and the confirmed group ID if creating the second starting task, uploading an artifact, updating a
 reference, or registering part of the breakdown fails. Before retrying an
 uncertain write, read the complete actual resource and operation context as the
 handbook requires. A similar title does not prove success, and a lost response
@@ -162,7 +169,7 @@ after confirming the current task `done`, within the user's authorized scope.
 CI, review, and merge waits remain with the current task.
 
 To report the whole Goal complete, inspect the full registered delivery scope,
-confirm every delivery task completed and every necessary PR actually merged,
+confirm their stored `groupId`, every delivery task completed and every necessary PR actually merged,
 and verify the original Goal's overall acceptance criteria with recorded
 evidence. Description completion, design completion, one delivery PR, or an empty
 ready page is insufficient. Distinguish verified partial results and remaining

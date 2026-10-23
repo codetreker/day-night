@@ -32,6 +32,7 @@ export type TaskProperties = { readonly pullRequests: readonly PullRequestProper
 
 export type Task = {
   readonly id: string;
+  readonly groupId: string;
   readonly projectId: string;
   readonly title: string;
   readonly description: string;
@@ -70,12 +71,14 @@ export type Page<T> = { readonly items: readonly T[]; readonly nextCursor: strin
 export type CreateProjectInput = { readonly name: string; readonly repoUrl: string };
 export type CreateTaskInput = {
   readonly title: string;
+  readonly groupId?: string;
   readonly description?: string;
   readonly properties?: TaskProperties;
   readonly dependsOn?: readonly string[];
 };
 export type UpdateTaskInput = {
   readonly version: bigint;
+  readonly groupId?: string;
   readonly title?: string;
   readonly description?: string;
   readonly properties?: TaskProperties;

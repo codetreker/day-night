@@ -10,7 +10,7 @@ const taskId = "22222222-2222-2222-2222-222222222222";
 const otherId = "33333333-3333-3333-3333-333333333333";
 const time = "2026-10-20T01:02:03.123456789Z";
 const project = { id: projectId, name: "Project", repoUrl: "git@github.com:Org/Repo.git", createdAt: time, updatedAt: time };
-const task = { id: taskId, projectId, title: "Task", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true };
+const task = { id: taskId, groupId: taskId, projectId, title: "Task", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true };
 const refusal = (code = "not_found", details?: unknown) => ({ error: { code, message: "Actual server explanation.", requestId: "req-1", ...(details === undefined ? {} : { details }) } });
 const jsonResponse = (value: unknown, status = 200) => new Response(stringifyApiJson(value), { status, headers: { "Content-Type": "application/json" } });
 const cleanups: (() => void | Promise<void>)[] = [];
@@ -140,6 +140,20 @@ describe("operation-scoped API access", () => {
       { title: "Task", properties },
       { version: 9_223_372_036_854_775_807n, properties },
       { version: 1n, properties: { pullRequests: [] } },
+    ]);
+  });
+
+  it("preserves explicit group membership independently of dependency fields in create and versioned update requests", async () => {
+    const grouped = { ...task, groupId: otherId };
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(grouped, 201))
+      .mockResolvedValueOnce(jsonResponse(grouped));
+    const api = client(fetch);
+    await expect(api.createTask(projectId, { title: "Member", groupId: otherId })).resolves.toEqual(grouped);
+    await expect(api.updateTask(projectId, taskId, { version: 9_223_372_036_854_775_807n, groupId: otherId })).resolves.toEqual(grouped);
+    expect(fetch.mock.calls.map((call) => parseApiJson(String(call[1]!.body)))).toEqual([
+      { title: "Member", groupId: otherId },
+      { version: 9_223_372_036_854_775_807n, groupId: otherId },
     ]);
   });
 
@@ -364,8 +378,8 @@ const graph = (): TaskGraph => ({
   project,
   summary: { total: 2, proposed: 0, todo: 1, inProgress: 0, done: 1, ready: 1, blocked: 0 },
   tasks: [
-    { id: taskId, titlePreview: "Task", titleTruncated: false, status: "todo", dependsOn: [otherId], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
-    { id: otherId, titlePreview: "Done", titleTruncated: false, status: "done", dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { id: taskId, groupId: taskId, titlePreview: "Task", titleTruncated: false, status: "todo", dependsOn: [otherId], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
+    { id: otherId, groupId: otherId, titlePreview: "Done", titleTruncated: false, status: "done", dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
   ],
 });
 
@@ -481,7 +495,19 @@ describe("response DTO contract", () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({ ...value, futureField: 42 }));
     expect(await client(fetch).getTaskGraph(projectId)).toEqual(value);
   });
+  it("reads groups independently of dependency roots and rejects dangling or indirect group anchors", async () => {
+    const value = graph();
+    const tasks = value.tasks.map((item) => ({ ...item, groupId: taskId }));
+    await expect(client(vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({ ...value, tasks }))).getTaskGraph(projectId)).resolves.toMatchObject({ tasks });
+    for (const changes of [
+      [{ ...tasks[0]!, groupId: "44444444-4444-4444-4444-444444444444" }, tasks[1]!],
+      [{ ...tasks[0]!, groupId: otherId }, tasks[1]!],
+    ]) {
+      await expect(client(vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({ ...value, tasks: changes }))).getTaskGraph(projectId)).rejects.toMatchObject({ phase: "protocol" });
+    }
+  });
   it.each([
+    { ...task, groupId: undefined }, { ...task, groupId: null }, { ...task, groupId: "invalid" }, { ...task, groupId: otherId.toUpperCase().replace("3", "A") },
     { ...task, version: "1" }, { ...task, version: 0 }, { ...task, version: 1.5 }, { ...task, status: "invalid" },
     { ...task, status: "proposed" },
     { ...task, status: "in_progress", ready: false, dependsOn: [otherId], blockedBy: [otherId] },

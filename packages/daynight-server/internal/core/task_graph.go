@@ -4,6 +4,7 @@ import "time"
 
 type GraphTask struct {
 	ID             string
+	GroupID        string
 	TitlePreview   string
 	TitleTruncated bool
 	Status         TaskStatus

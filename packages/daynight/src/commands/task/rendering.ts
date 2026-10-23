@@ -7,6 +7,7 @@ const identifiers = (values: readonly string[]): string => values.length === 0 ?
 const taskIdentity = (task: Task): readonly string[] => [
   `ID: ${terminalText(task.id)}`,
   `Project: ${terminalText(task.projectId)}`,
+  `Group ID: ${terminalText(task.groupId)}`,
   `Title: ${terminalText(task.title)}`,
 ];
 
@@ -48,6 +49,7 @@ export const renderTaskSummaryList = (tasks: readonly Task[]): string => tasks.l
 
 const renderGraphTask = (task: GraphTask): string => [
   `ID: ${terminalText(task.id)}`,
+  `Group ID: ${terminalText(task.groupId)}`,
   `Title preview: ${terminalText(task.titlePreview)}`,
   `Title truncated: ${task.titleTruncated}`,
   `Status: ${terminalText(task.status)}`,

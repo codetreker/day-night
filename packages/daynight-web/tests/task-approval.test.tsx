@@ -15,14 +15,14 @@ vi.mock('../src/api/client', async (original) => ({ ...await original<typeof imp
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const project = id(100); const parent = id(1); const child = id(2); const standalone = id(3);
 const time = '2026-10-22T00:00:00Z';
-const seed = (number: number, dependsOn: readonly string[] = []): TaskDetail => ({ id: id(number), projectId: project,
+const seed = (number: number, dependsOn: readonly string[] = []): TaskDetail => ({ id: id(number), groupId: number === 2 ? parent : id(number), projectId: project,
   version: 9007199254740993n, title: `Task ${number}`, description: `Complete description ${number}`, properties: { pullRequests: [] },
   status: 'proposed', dependsOn, blockedBy: dependsOn, ready: false, createdAt: time, updatedAt: time });
 let records: Map<string, TaskDetail>;
 const graph = (): TaskGraph => {
   const tasks = [...records.values()].map((task) => {
     const blockedBy = task.dependsOn.filter((dependency) => records.get(dependency)!.status !== 'done');
-    return { id: task.id, titlePreview: task.title, titleTruncated: false, status: task.status, dependsOn: task.dependsOn,
+    return { id: task.id, groupId: task.groupId, titlePreview: task.title, titleTruncated: false, status: task.status, dependsOn: task.dependsOn,
       blockedBy, ready: task.status === 'todo' && blockedBy.length === 0, createdAt: time, updatedAt: task.updatedAt };
   });
   return { project: { id: project, name: 'Approval project', repoUrl: 'https://example.com/repo', createdAt: time, updatedAt: time }, tasks,
@@ -175,7 +175,7 @@ describe('approval in shared production task details', () => {
     const other = { ...seed(4), projectId: otherProject };
     const otherGraph: TaskGraph = {
       project: { ...graph().project, id: otherProject, name: 'Other project' },
-      tasks: [{ id: otherTask, titlePreview: other.title, titleTruncated: false, status: 'proposed',
+      tasks: [{ id: otherTask, groupId: otherTask, titlePreview: other.title, titleTruncated: false, status: 'proposed',
         dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time }],
       summary: { total: 1, proposed: 1, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
     };

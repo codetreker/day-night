@@ -49,13 +49,13 @@ export const seedCapacity = async (request: AuthenticatedAPI, kind: CapacityKind
     const tails = await boundedMap(Array.from({ length: 8 }, (_, index) => index), (index) =>
       createApprovedTask(request, project.id, { title: `external final prerequisite ${index}`, dependsOn: Array.from({ length: 5 }, (_, offset) => previous[index * 5 + offset]!.id) }));
     tasks.push(...tails);
-    tasks.push(await createApprovedTask(request, project.id, { title: 'external chain sink', dependsOn: [root.id, ...previous.map((task) => task.id), ...tails.map((task) => task.id)] }));
+    tasks.push(await createApprovedTask(request, project.id, { title: 'external chain sink', groupId: root.groupId, dependsOn: [root.id, ...previous.map((task) => task.id), ...tails.map((task) => task.id)] }));
     return { kind, project, root, tasks, edgeCount: 5000 };
   }
 
   if (kind === 'chain') {
     tasks.push(...await boundedMap(Array.from({ length: 999 }, (_, index) => index + 1), (index) =>
-      createApprovedTask(request, project.id, { title: `chain task ${index}` })));
+      createApprovedTask(request, project.id, { groupId: root.groupId, title: `chain task ${index}` })));
     // We attach the chain from its sink so each existing predecessor is still
     // independent when cycle validation traverses it. The final graph is built
     // entirely through the same public write API as the other capacity graphs.
@@ -68,7 +68,7 @@ export const seedCapacity = async (request: AuthenticatedAPI, kind: CapacityKind
 
   if (kind === 'merge') {
     let previous = await boundedMap(Array.from({ length: 99 }, (_, index) => index), (index) =>
-      createApprovedTask(request, project.id, { title: `merge layer 1 task ${index}`, dependsOn: [root.id] }));
+      createApprovedTask(request, project.id, { groupId: root.groupId, title: `merge layer 1 task ${index}`, dependsOn: [root.id] }));
     tasks.push(...previous);
     let additional = 401;
     let extraEdge: CapacityFixture['additionalEdge'];
@@ -79,7 +79,7 @@ export const seedCapacity = async (request: AuthenticatedAPI, kind: CapacityKind
         return { index, dependsOn: Array.from({ length: count }, (_, offset) => previous[(index * 5 + offset) % previous.length]!.id) };
       });
       const current = await boundedMap(layerInputs, ({ index, dependsOn }) =>
-        createApprovedTask(request, project.id, { title: `merge layer ${layer} task ${index}`, dependsOn }));
+        createApprovedTask(request, project.id, { groupId: root.groupId, title: `merge layer ${layer} task ${index}`, dependsOn }));
       if (layer === 10) {
         const task = current[current.length - 1]!;
         const predecessorId = previous.find((candidate) => !task.dependsOn.includes(candidate.id))!.id;
@@ -97,10 +97,10 @@ export const seedCapacity = async (request: AuthenticatedAPI, kind: CapacityKind
   const middle = await boundedMap(Array.from({ length: 499 }, (_, index) => index), (index) => {
     const otherCount = index < 10 ? 9 : 8;
     const dependsOn = [root.id, ...Array.from({ length: otherCount }, (_, offset) => roots[1 + (index * 8 + offset) % 499]!.id)];
-    return createApprovedTask(request, project.id, { title: `shared middle ${index}`, dependsOn });
+    return createApprovedTask(request, project.id, { groupId: root.groupId, title: `shared middle ${index}`, dependsOn });
   });
   tasks.push(...middle);
-  tasks.push(await createApprovedTask(request, project.id, { title: 'shared sink', dependsOn: middle.map((task) => task.id) }));
+  tasks.push(await createApprovedTask(request, project.id, { title: 'shared sink', groupId: root.groupId, dependsOn: middle.map((task) => task.id) }));
   return { kind, project, root, tasks, edgeCount: 5000 };
 };
 

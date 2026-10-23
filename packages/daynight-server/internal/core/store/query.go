@@ -57,7 +57,7 @@ func scanProject(row pgx.Row) (core.Project, error) {
 	return project, err
 }
 
-const taskProjection = `t.id::text, t.project_id::text, t.title, t.description,
+const taskProjection = `t.id::text, t.project_id::text, t.group_id::text, t.title, t.description,
 	t.status, t.version, t.created_at, t.updated_at, t.properties, ` + taskDependsOn + `, ` + taskBlockedBy + `, ` + taskReady
 
 const taskDependsOn = `ARRAY(SELECT d.depends_on_task_id::text FROM task_dependencies d
@@ -76,7 +76,7 @@ const taskReady = `(t.status = 'todo' AND NOT EXISTS (
 func scanTask(row pgx.Row) (core.Task, error) {
 	var task core.Task
 	var properties string
-	err := row.Scan(&task.ID, &task.ProjectID, &task.Title, &task.Description, &task.Status,
+	err := row.Scan(&task.ID, &task.ProjectID, &task.GroupID, &task.Title, &task.Description, &task.Status,
 		&task.Version, &task.CreatedAt, &task.UpdatedAt, &properties, &task.DependsOn, &task.BlockedBy, &task.Ready)
 	if err != nil {
 		return core.Task{}, err

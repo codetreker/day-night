@@ -14,31 +14,24 @@ long-edge normalization can increase work beyond original node/edge counts.
 ## Decision
 
 The web graph model validates a complete snapshot before building indexes. It
-checks unique nodes and references, dependency closure, acyclicity, status,
-blocked-by and readiness consistency, summary counts, and the declared size
-limits. Invalid snapshots fail as a whole. Root order preserves the backend's
-exact response order; JavaScript millisecond dates do not reorder database
-timestamps with finer precision. The
-[presentation decision](2026-10-21-task-chain-presentation.md) owns the separate
-newest-first category lists; they consume reversed copies without changing this
-index. The [task view decision](2026-10-22-project-task-views.md) classifies
-standalone nodes from zero incoming and outgoing edges in this complete index,
-then keeps non-isolated roots in the chain presentation. Status and visibility
-filters do not alter topology or projection.
+checks unique nodes, valid group anchors, dependency closure, acyclicity, status,
+blocked-by/readiness consistency, summary counts and size limits. Invalid
+snapshots fail as a whole. The backend's exact response order is preserved;
+JavaScript millisecond dates never reorder finer database timestamps. The
+[presentation decision](2026-10-21-task-chain-presentation.md) owns newest-first
+reversed presentation copies. The [task view decision](2026-10-22-project-task-views.md)
+separates singleton groups and multi-member chains. Its original dependency
+isolation was appropriate to the first reader; the
+[persistent group decision](2026-10-23-persistent-task-groups.md) now owns stable
+membership. Status and visibility filters alter neither membership nor topology.
 
-For one root, the main set is the root and its forward-reachable descendants.
-The original projection added only their direct predecessors outside that main
-set, stopping at that explicit boundary. This kept direct blockers visible
-without recursively importing context. The later
-[complete prerequisite context decision](2026-10-22-complete-prerequisite-context.md)
-replaces that boundary with the full ancestor closure and all required edges,
-while retaining main-set membership. Per-root progress counts only distinct main
-nodes; project totals count all tasks once. Root progress also carries the
-aggregate status
-owned by the [chain status decision](../bug-fix/2026-10-22-task-chain-status.md);
-its count and state derive from the same main-set traversal. Shared membership
-and root progress are derived once
-per snapshot without a global mutable cache.
+The original reader used a root and its forward-reachable descendants as its
+main set. The [persistent group decision](2026-10-23-persistent-task-groups.md) replaces that assumption with
+all tasks sharing the selected groupId. The original direct-external boundary
+was replaced by the [complete prerequisite context decision](2026-10-22-complete-prerequisite-context.md),
+which adds every member's full ancestor closure. Group progress counts members
+only; project totals count every task once. Aggregate status remains owned by
+the [chain status decision](../bug-fix/2026-10-22-task-chain-status.md).
 
 The separate Dagre adapter uses a new flat directed graph for each calculation,
 sorted node and edge insertion, left-to-right ranks, one global longest-path
@@ -90,7 +83,7 @@ owns browser measurements and source/image receipts. Pure algorithm probes do no
 establish production browser timing.
 
 The [progressive overview decision](2026-10-22-progressive-task-graph.md) derives
-a visible subset after complete root projection; it does not change full main-set
+a visible subset after complete group projection; it does not change full main-set
 progress, state aggregation or project statistics. The
 [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,
 the [architecture](../../../../docs/design/daynight-web.md) owns module contracts,
@@ -127,8 +120,8 @@ required graph output after the narrowly specified redundant scans are removed.
 Graph semantics have direct pure-function tests, and layout tests run the real
 pinned dependency across branches, diamonds, shared and external predecessors.
 Model and layout belong to the complete web source manifest and strict coverage
-gate. Indexing and one-root reachability are linear in nodes plus edges; all-root
-progress may require one traversal per root within the declared project limits.
+gate. Group indexing and a selected group's ancestor closure are linear in nodes plus
+edges. Group progress traverses explicit members without per-root reachability.
 
 The module owns layout data; the implemented task canvas owns rendering, focus
 and viewport behavior. Fixed-topology capacity fixtures retain exact node/edge

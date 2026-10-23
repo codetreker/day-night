@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTask, getTaskGraph } from '../src/api/client';
 import type { GraphTask, TaskGraph } from '../src/api/types';
 import { ProjectPage } from '../src/features/projects/ProjectPage';
-import { projectRoot, type GraphIndex } from '../src/features/task-graph/model';
+import { projectGroup, type GroupIndex } from '../src/features/task-graph/model';
 
 const render = createLocaleRender('zh-CN');
 
@@ -14,13 +14,13 @@ vi.mock('../src/api/client', async (original) => ({
 }));
 vi.mock('../src/features/task-graph/TaskGraph', async () => {
   const { useGraphFullscreen } = await import('../src/features/task-graph/useGraphFullscreen');
-  return { TaskGraph: ({ index, rootId, onOpenTask }: {
-    index: GraphIndex; rootId: string; onOpenTask: (id: string, trigger: HTMLElement) => void;
+  return { TaskGraph: ({ index, groupId, onOpenTask }: {
+    index: GroupIndex; groupId: string; onOpenTask: (id: string, trigger: HTMLElement) => void;
   }) => {
     const { fullscreen, containerRef, toggleRef, onKeyDown, toggle } = useGraphFullscreen();
     return <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} ref={containerRef} onKeyDown={onKeyDown} role={fullscreen ? 'dialog' : undefined} aria-label={fullscreen ? '任务依赖图全屏查看' : undefined}>
       <button type="button" className="graph-fullscreen-toggle" ref={toggleRef} onClick={toggle}>{fullscreen ? '退出全屏' : '全屏查看'}</button>
-      {[...projectRoot(index, rootId).mainIds].map((id) => (
+      {[...projectGroup(index, groupId).mainIds].map((id) => (
     <button key={id} type="button" onClick={(event) => onOpenTask(id, event.currentTarget)}>
       节点 {index.nodes.get(id)!.titlePreview}
     </button>
@@ -29,17 +29,17 @@ vi.mock('../src/features/task-graph/TaskGraph', async () => {
 });
 
 const projectId = '10000000-0000-0000-0000-000000000001';
-const rootId = '20000000-0000-0000-0000-000000000001';
+const groupId = '20000000-0000-0000-0000-000000000001';
 const selectedId = '20000000-0000-0000-0000-000000000002';
 const remainingId = '20000000-0000-0000-0000-000000000003';
 const timestamp = '2026-10-20T12:00:00.123456Z';
-const task = (id: string, titlePreview: string, dependsOn: readonly string[] = []): GraphTask => ({
-  id, titlePreview, titleTruncated: false, status: 'todo', dependsOn, blockedBy: dependsOn,
+const task = (id: string, titlePreview: string, dependsOn: readonly string[] = [], group = id): GraphTask => ({
+  id, groupId: group, titlePreview, titleTruncated: false, status: 'todo', dependsOn, blockedBy: dependsOn,
   ready: dependsOn.length === 0, createdAt: timestamp, updatedAt: timestamp,
 });
 const remaining = task(remainingId, '保留任务链');
-const remainingChain = [remaining, task('remaining-child', '保留后续任务', [remainingId])];
-const graph = (tasks = [task(rootId, '原任务链'), task(selectedId, '所选任务', [rootId]), ...remainingChain]): TaskGraph => ({
+const remainingChain = [remaining, task('remaining-child', '保留后续任务', [remainingId], remainingId)];
+const graph = (tasks = [task(groupId, '原任务链'), task(selectedId, '所选任务', [groupId], groupId), ...remainingChain]): TaskGraph => ({
   project: { id: projectId, name: '核心项目', repoUrl: '', createdAt: timestamp, updatedAt: timestamp },
   tasks,
   summary: {
@@ -61,8 +61,8 @@ beforeEach(() => {
   graphRequest.mockReset();
   detailRequest.mockReset();
   detailRequest.mockImplementation(async (project, id) => ({
-    id, projectId: project, title: '所选任务详情', description: '', properties: { pullRequests: [] }, status: 'done', version: 1n,
-    dependsOn: [rootId], blockedBy: [], ready: false, createdAt: timestamp, updatedAt: timestamp,
+    id, groupId: id, projectId: project, title: '所选任务详情', description: '', properties: { pullRequests: [] }, status: 'done', version: 1n,
+    dependsOn: [groupId], blockedBy: [], ready: false, createdAt: timestamp, updatedAt: timestamp,
   }));
 });
 
@@ -96,7 +96,7 @@ const expectModalReleased = () => {
 
 describe('project dialog focus restoration', () => {
   it('returns focus to fullscreen exit when refresh removes the selected node but retains its graph', async () => {
-    graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([task(rootId, '原任务链'), task('surviving-child', '保留图节点', [rootId]), ...remainingChain]));
+    graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([task(groupId, '原任务链'), task('surviving-child', '保留图节点', [groupId], groupId), ...remainingChain]));
     const { trigger, dialog } = await openDialog(true);
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     const fullscreen = await screen.findByRole('dialog', { name: '任务依赖图全屏查看' });
@@ -110,7 +110,7 @@ describe('project dialog focus restoration', () => {
   });
 
   it('keeps scrolling locked when refresh unmounts fullscreen while the dialog stays open', async () => {
-    const completed = [task(rootId, '原任务链'), task(selectedId, '所选任务', [rootId])].map((item) => ({
+    const completed = [task(groupId, '原任务链'), task(selectedId, '所选任务', [groupId], groupId)].map((item) => ({
       ...item, status: 'done' as const, ready: false, blockedBy: [],
     }));
     graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph([...completed, ...remainingChain]));
@@ -127,7 +127,7 @@ describe('project dialog focus restoration', () => {
   });
 
   it.each([true, false])('retains details when completion hides their chain and restores visible focus (remaining=%s)', async (keepRemaining) => {
-    const completed = [task(rootId, '原任务链'), task(selectedId, '所选任务', [rootId])].map((item) => ({
+    const completed = [task(groupId, '原任务链'), task(selectedId, '所选任务', [groupId], groupId)].map((item) => ({
       ...item, status: 'done' as const, ready: false, blockedBy: [],
     }));
     graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph(keepRemaining ? [...completed, ...remainingChain] : completed));
@@ -135,7 +135,7 @@ describe('project dialog focus restoration', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     await waitFor(() => expect(trigger.isConnected).toBe(false));
     expect(dialog).toBeVisible();
-    expect(document.getElementById(`task-root-${rootId}`)).toBeNull();
+    expect(document.getElementById(`task-root-${groupId}`)).toBeNull();
     fireEvent.click(within(dialog).getByRole('button', { name: '关闭任务详情' }));
     await waitFor(() => expect(keepRemaining ? screen.getByRole('button', { name: /^保留任务链/ }) : screen.getByRole('tab', { name: '任务链' })).toHaveFocus());
     expectModalReleased();

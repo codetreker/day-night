@@ -406,9 +406,9 @@ describe("authenticated application shell", () => {
     const taskUrl = `/api/v1/projects/${projectId}/tasks/${taskId}`;
     let approved = false;
     let finishApproval!: (response: Response) => void;
-    const detail = () => ({ id: taskId, projectId, title: "Lifecycle task", description: "Reviewed lifecycle content", properties: { pullRequests: [] },
+    const detail = () => ({ id: taskId, groupId: taskId, projectId, title: "Lifecycle task", description: "Reviewed lifecycle content", properties: { pullRequests: [] },
       status: approved ? "todo" : "proposed", version: approved ? 8 : 7, dependsOn: [], blockedBy: [], ready: approved, createdAt: now, updatedAt: now });
-    const taskGraph = () => json({ project: project(), tasks: [{ id: taskId, titlePreview: "Lifecycle task", titleTruncated: false,
+    const taskGraph = () => json({ project: project(), tasks: [{ id: taskId, groupId: taskId, titlePreview: "Lifecycle task", titleTruncated: false,
       status: approved ? "todo" : "proposed", dependsOn: [], blockedBy: [], ready: approved, createdAt: now, updatedAt: now }],
       summary: { total: 1, proposed: approved ? 0 : 1, todo: approved ? 1 : 0, inProgress: 0, done: 0, ready: approved ? 1 : 0, blocked: 0 } });
     const fetcher = vi.fn((url: string, options?: RequestInit) => {

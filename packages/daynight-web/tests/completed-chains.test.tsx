@@ -4,16 +4,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, getTaskGraph } from '../src/api/client';
 import type { GraphTask, TaskGraph } from '../src/api/types';
 import { ProjectPage } from '../src/features/projects/ProjectPage';
-import { projectRoot, type GraphIndex } from '../src/features/task-graph/model';
+import { projectGroup, type GroupIndex } from '../src/features/task-graph/model';
 
 const render = createLocaleRender('zh-CN');
 
 vi.mock('../src/api/client', async (original) => ({ ...await original<typeof import('../src/api/client')>(), getTaskGraph: vi.fn() }));
-vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, rootId, onOpenTask }: {
-  index: GraphIndex; rootId: string; onOpenTask: (id: string, trigger: HTMLElement) => void;
+vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, groupId, onOpenTask }: {
+  index: GroupIndex; groupId: string; onOpenTask: (id: string, trigger: HTMLElement) => void;
 }) => {
-  const projection = projectRoot(index, rootId);
-  return <div data-testid="projection" data-root-id={rootId}>
+  const projection = projectGroup(index, groupId);
+  return <div data-testid="projection" data-root-id={groupId}>
     {[...projection.mainIds, ...projection.externalIds].map((id) => <button key={id} data-node-id={id} onClick={(event) => { onOpenTask(id, event.currentTarget); }}>{index.nodes.get(id)!.titlePreview}</button>)}
     {projection.edges.map(({ source, target }) => <span key={`${source}->${target}`} data-edge={`${source}->${target}`} />)}
   </div>;
@@ -22,10 +22,10 @@ vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, ro
 const projectId = '10000000-0000-0000-0000-000000000001';
 const otherProject = '10000000-0000-0000-0000-000000000002';
 const time = '2026-10-20T12:00:00Z';
-const task = (id: string, status: GraphTask['status'], dependsOn: string[] = []): GraphTask => ({
-  id, titlePreview: `任务 ${id}`, titleTruncated: false, status, dependsOn, blockedBy: [], ready: false, createdAt: time, updatedAt: time,
+const task = (id: string, status: GraphTask['status'], dependsOn: string[] = [], groupId = id): GraphTask => ({
+  id, groupId, titlePreview: `任务 ${id}`, titleTruncated: false, status, dependsOn, blockedBy: [], ready: false, createdAt: time, updatedAt: time,
 });
-const seeds = [task('A', 'done'), task('B', 'todo', ['A']), task('C', 'done'), task('D', 'done', ['C']), task('E', 'done'), task('F', 'todo'), task('G', 'todo', ['B', 'F']), task('H', 'done', ['E'])];
+const seeds = [task('A', 'done'), task('B', 'todo', ['A'], 'A'), task('C', 'done'), task('D', 'done', ['C'], 'C'), task('E', 'done'), task('F', 'todo'), task('G', 'todo', ['B', 'F'], 'F'), task('H', 'done', ['E'], 'E')];
 const graph = (items = seeds, id = projectId): TaskGraph => {
   const tasks = items.map((item) => {
     const blockedBy = item.dependsOn.filter((dependency) => items.find((candidate) => candidate.id === dependency)!.status !== 'done');
@@ -60,8 +60,8 @@ describe('completed task chain visibility', () => {
     expect(within(root('A')).getByText('进行中')).toBeVisible();
     expect(root('A').querySelector('.root-status')).toHaveClass('graph-status-in_progress');
     const projection = screen.getByTestId('projection');
-    expect([...projection.querySelectorAll('[data-node-id]')].map((item) => item.getAttribute('data-node-id'))).toEqual(['A', 'B', 'G', 'F']);
-    expect([...projection.querySelectorAll('[data-edge]')].map((item) => item.getAttribute('data-edge'))).toEqual(['A->B', 'B->G', 'F->G']);
+    expect([...projection.querySelectorAll('[data-node-id]')].map((item) => item.getAttribute('data-node-id'))).toEqual(['A', 'B']);
+    expect([...projection.querySelectorAll('[data-edge]')].map((item) => item.getAttribute('data-edge'))).toEqual(['A->B']);
     checkbox().focus();
     fireEvent.click(checkbox());
     expect(checkbox()).toHaveFocus();
@@ -128,7 +128,7 @@ describe('completed task chain visibility', () => {
   });
 
   it('preserves intent through a refresh that completes every chain and falls back after a remembered root disappears', async () => {
-    request.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph(allDone())).mockResolvedValueOnce(graph([task('Z', 'todo'), task('Z-child', 'todo', ['Z'])]));
+    request.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph(allDone())).mockResolvedValueOnce(graph([task('Z', 'todo'), task('Z-child', 'todo', ['Z'], 'Z')]));
     render(<ProjectPage projectId={projectId} />); await screen.findByRole('checkbox');
     fireEvent.click(root('A')); fireEvent.click(screen.getByRole('button', { name: '刷新' }));
     await screen.findByRole('heading', { name: '所有任务链已完成' });

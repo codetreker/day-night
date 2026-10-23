@@ -28,14 +28,16 @@ extends request scheduling with visible-page periodic reads, retains equivalent
 graph/index references and preserves the same-task detail body during refresh.
 
 The [task view decision](2026-10-22-project-task-views.md) separates standalone
-rows, which open details directly, from non-isolated root chains. Only one root
+rows, which open details directly, from multi-member task groups. The
+[persistent group decision](2026-10-23-persistent-task-groups.md) replaces the
+original dependency-based classification. Only one group
 canvas is mounted in the active chain view; inactive panel contents unmount
 while their hidden wrappers retain stable tabpanel IDs. The project
 restores the expanded root or
 an explicitly collapsed list from per-project browser storage; the
 [browsing preference decision](2026-10-21-task-browsing-preferences.md) owns its
 persistence, reconciliation and failure behavior. The project view shares one
-newest-first visible root sequence between list rendering and default-root selection;
+newest-first visible group-anchor sequence between list rendering and default-root selection;
 the [presentation decision](2026-10-21-task-chain-presentation.md) owns that order
 while the complete graph index retains its API order. React Flow owns 220px-wide
 task cards, 96px high without expansion controls and 136px with them, following

@@ -2,9 +2,9 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaskGraph as GraphData } from '../../src/api/types';
-import { RootList } from '../../src/features/task-graph/RootList';
+import { GroupList } from '../../src/features/task-graph/GroupList';
 import { TaskGraph } from '../../src/features/task-graph/TaskGraph';
-import { buildGraphIndex } from '../../src/features/task-graph/model';
+import { buildGroupIndex } from '../../src/features/task-graph/model';
 import * as layoutModule from '../../src/features/task-graph/layout';
 import { LanguageSelector } from '../../src/i18n/LanguageSelector';
 import { messagesByLocale } from '../../src/i18n/messages';
@@ -17,15 +17,15 @@ const graph: GraphData = {
   project: { id: 'project', name: '项目', repoUrl: 'https://github.com/example/repo', createdAt: time, updatedAt: time },
   summary: { total: 5, proposed: 0, todo: 2, inProgress: 1, done: 2, ready: 1, blocked: 1 },
   tasks: [
-    { id: 'A', titlePreview: '基础 API', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { id: 'B', titlePreview: '设计方案', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { id: 'C', titlePreview: '合流实现', titleTruncated: true, status: 'in_progress', dependsOn: ['A', 'B'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { id: 'D', titlePreview: '最终验收', titleTruncated: false, status: 'todo', dependsOn: ['C', 'F'], blockedBy: ['C', 'F'], ready: false, createdAt: time, updatedAt: time },
-    { id: 'F', titlePreview: '发布检查', titleTruncated: false, status: 'todo', dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
+    { id: 'A', groupId: 'A', titlePreview: '基础 API', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { id: 'B', groupId: 'B', titlePreview: '设计方案', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { id: 'C', groupId: 'A', titlePreview: '合流实现', titleTruncated: true, status: 'in_progress', dependsOn: ['A', 'B'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { id: 'D', groupId: 'A', titlePreview: '最终验收', titleTruncated: false, status: 'todo', dependsOn: ['C', 'F'], blockedBy: ['C', 'F'], ready: false, createdAt: time, updatedAt: time },
+    { id: 'F', groupId: 'F', titlePreview: '发布检查', titleTruncated: false, status: 'todo', dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
   ],
 };
-const index = buildGraphIndex(graph);
-const rootIds = ['A', 'B', 'F'];
+const index = buildGroupIndex(graph);
+const groupIds = ['A', 'B', 'F'];
 const noop = () => {};
 const viewport = (container: HTMLElement) => container.querySelector<HTMLElement>('.react-flow__viewport')!;
 const ready = async (container: HTMLElement) => {
@@ -48,16 +48,16 @@ describe('localized task graph presentation', () => {
         graph.tasks[4]!,
       ],
     };
-    const proposedIndex = buildGraphIndex(proposedGraph);
-    const view = renderWithLocale(<><LanguageSelector /><RootList index={proposedIndex} rootIds={['A', 'F']} allRootIds={['A', 'F']}
-      expandedRootId="A" onExpand={noop} onOpenTask={noop} showCompleted={false} onShowCompletedChange={noop} /></>, { locale: 'en' });
-    const selected = await screen.findByRole('button', { name: '最终验收, Proposed, blocked, shared task' });
+    const proposedIndex = buildGroupIndex(proposedGraph);
+    const view = renderWithLocale(<><LanguageSelector /><GroupList index={proposedIndex} groupIds={['A', 'F']} allGroupIds={['A', 'F']}
+      expandedGroupId="A" onExpand={noop} onOpenTask={noop} showCompleted={false} onShowCompletedChange={noop} /></>, { locale: 'en' });
+    const selected = await screen.findByRole('button', { name: '最终验收, Proposed, blocked' });
     expect(view.container.querySelector('#task-root-A .root-status')).toHaveTextContent('Proposed');
     expect(view.container.querySelector('#task-root-A .root-progress-label')).toHaveTextContent('0/2 completed');
     expect(screen.getByRole('button', { name: '发布检查, To do, external prerequisite' })).toBeVisible();
     await user.selectOptions(screen.getByRole('combobox'), 'zh-CN');
     expect(view.container.querySelector('#task-root-A .root-status')).toHaveTextContent('待审批');
-    expect(screen.getByRole('button', { name: '最终验收，待审批，被阻塞，共享任务' })).toBe(selected);
+    expect(screen.getByRole('button', { name: '最终验收，待审批，被阻塞' })).toBe(selected);
     expect(screen.getByRole('button', { name: '发布检查，待处理，外部前置' })).toBeVisible();
     expect(layout).toHaveBeenCalledTimes(1);
   });
@@ -66,17 +66,17 @@ describe('localized task graph presentation', () => {
     const user = userEvent.setup();
     const layout = vi.spyOn(layoutModule, 'layoutGraph');
     const select = vi.fn();
-    const view = renderWithLocale(<><LanguageSelector /><RootList index={index} rootIds={rootIds} allRootIds={rootIds}
-      expandedRootId="A" onExpand={noop} onOpenTask={select} showCompleted={false} onShowCompletedChange={noop} /></>, { locale: 'en' });
+    const view = renderWithLocale(<><LanguageSelector /><GroupList index={index} groupIds={groupIds} allGroupIds={groupIds}
+      expandedGroupId="A" onExpand={noop} onOpenTask={select} showCompleted={false} onShowCompletedChange={noop} /></>, { locale: 'en' });
     await ready(view.container);
     expect(screen.getByRole('region', { name: 'Task dependency graph for 基础 API' })).toBeTruthy();
-    expect(screen.getAllByText('3 tasks · 2 unfinished')).toHaveLength(2);
-    expect(screen.getByRole('checkbox', { name: 'Show completed task chains (0)' })).not.toBeChecked();
+    expect(screen.getAllByText('3 tasks · 2 unfinished')).toHaveLength(1);
+    expect(screen.getByRole('checkbox', { name: 'Show completed task chains (1)' })).not.toBeChecked();
     expect(screen.getByText('3 chain tasks · 2 external prerequisites · 4 dependencies')).toBeTruthy();
-    const selected = screen.getByRole('button', { name: '合流实现…, In progress, shared task' });
+    const selected = screen.getByRole('button', { name: '合流实现…, In progress' });
     fireEvent.click(selected);
     expect(selected.closest('.task-node')).toHaveClass('task-node-selected');
-    expect(screen.getByRole('button', { name: '最终验收, To do, blocked, shared task, outside the selected dependency path' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '最终验收, To do, blocked, outside the selected dependency path' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '设计方案, Done, external prerequisite, prerequisite of the selected task' })).toBeTruthy();
     const initialTransform = viewport(view.container).style.transform;
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
@@ -92,11 +92,11 @@ describe('localized task graph presentation', () => {
     await user.selectOptions(screen.getByRole('combobox'), 'zh-CN');
     expect(screen.getByRole('combobox')).toHaveFocus();
     expect(screen.getByRole('region', { name: '基础 API 的任务依赖图' })).toBeTruthy();
-    expect(screen.getAllByText('3 个任务 · 2 个未完成')).toHaveLength(2);
-    expect(screen.getByRole('checkbox', { name: '显示已完成任务链（0）' })).not.toBeChecked();
-    expect(screen.getByRole('button', { name: '合流实现…，进行中，共享任务，已选中' })).toBe(selected);
+    expect(screen.getAllByText('3 个任务 · 2 个未完成')).toHaveLength(1);
+    expect(screen.getByRole('checkbox', { name: '显示已完成任务链（1）' })).not.toBeChecked();
+    expect(screen.getByRole('button', { name: '合流实现…，进行中，已选中' })).toBe(selected);
     expect(selected.closest('.task-node')).toHaveClass('task-node-selected');
-    expect(screen.getByRole('button', { name: '最终验收，待处理，被阻塞，共享任务，不在所选依赖路径中' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '最终验收，待处理，被阻塞，不在所选依赖路径中' })).toBeTruthy();
     expect(screen.getByRole('img', { name: '前置任务 A → 后续任务 C，所选依赖路径' })).toBe(relation);
     expect(screen.getByRole('group', { name: '任务依赖关系' })).toBeTruthy();
     await waitFor(() => expect(screen.getByRole('button', { name: '放大' })).toHaveAttribute('title', '放大'));
@@ -120,14 +120,14 @@ describe('localized task graph presentation', () => {
   it('retranslates expanded visibility controls without changing the actual visible graph, detail selection or viewport', async () => {
     const user = userEvent.setup();
     const fixture = browsingProjects.progressive;
-    const index = buildGraphIndex(fixture);
-    const rootId = fixture.tasks.find((task) => task.titlePreview === '渐进展开 · 主链交付起点')!.id;
+    const index = buildGroupIndex(fixture);
+    const groupId = fixture.tasks.find((task) => task.titlePreview === '渐进展开 · 主链交付起点')!.id;
     const joinId = fixture.tasks.find((task) => task.titlePreview === '合流任务 · 40 个外部前置')!.id;
     const open = vi.fn();
     const layout = vi.spyOn(layoutModule, 'layoutGraph');
-    const view = renderWithLocale(<><LanguageSelector /><TaskGraph index={index} rootId={rootId} onOpenTask={open} /></>, { locale: 'en' });
+    const view = renderWithLocale(<><LanguageSelector /><TaskGraph index={index} groupId={groupId} onOpenTask={open} /></>, { locale: 'en' });
     await waitFor(() => { expect(view.container.querySelectorAll('.react-flow__node')).toHaveLength(50); });
-    const body = screen.getByRole('button', { name: '合流任务 · 40 个外部前置, To do, blocked, shared task' });
+    const body = screen.getByRole('button', { name: '合流任务 · 40 个外部前置, To do, blocked' });
     fireEvent.click(body);
     expect(view.container.querySelector('.graph-hidden-prerequisites')).toHaveTextContent('40 additional upstream tasks are hidden');
     const expand = screen.getByRole('button', { name: 'Expand 20 prerequisite tasks and 20 dependencies, 20 prerequisites still hidden' });
@@ -143,7 +143,7 @@ describe('localized task graph presentation', () => {
     expect(screen.getByRole('button', { name: 'Reset overview' })).toBeTruthy();
     expect(screen.getByText('Showing 70/101 tasks · 69/100 dependencies. Use the card controls to expand prerequisites or successors.')).toBeTruthy();
     await user.selectOptions(screen.getByRole('combobox'), 'zh-CN');
-    expect(screen.getByRole('button', { name: '合流任务 · 40 个外部前置，待处理，被阻塞，共享任务，已选中' })).toBe(body);
+    expect(screen.getByRole('button', { name: '合流任务 · 40 个外部前置，待处理，被阻塞，已选中' })).toBe(body);
     expect(body.closest('.task-node')).toHaveClass('task-node-selected');
     expect(view.container.querySelector('.graph-hidden-prerequisites')).toHaveTextContent('另有20个上游未展开');
     expect(screen.getByRole('button', { name: '展开前置 20 个任务、20 条依赖' })).toBeTruthy();
@@ -168,7 +168,7 @@ describe('localized task graph presentation', () => {
   it('switches within fullscreen and preserves keyboard trapping, background inertness, canvas identity and restored focus', async () => {
     const user = userEvent.setup();
     const layout = vi.spyOn(layoutModule, 'layoutGraph');
-    const view = renderWithLocale(<><button type="button">Background</button><TaskGraph index={index} rootId="A" onOpenTask={noop} /></>, { locale: 'en' });
+    const view = renderWithLocale(<><button type="button">Background</button><TaskGraph index={index} groupId="A" onOpenTask={noop} /></>, { locale: 'en' });
     await ready(view.container);
     expect(screen.queryByRole('combobox')).toBeNull();
     const toggle = screen.getByRole('button', { name: 'View fullscreen' });
@@ -208,7 +208,7 @@ describe('localized task graph presentation', () => {
   it('retranslates an existing layout failure without repeating the failed layout', async () => {
     const user = userEvent.setup();
     const layout = vi.spyOn(layoutModule, 'layoutGraph').mockImplementation(() => { throw new Error('layout failed'); });
-    renderWithLocale(<><LanguageSelector /><TaskGraph index={index} rootId="A" onOpenTask={noop} /></>, { locale: 'en' });
+    renderWithLocale(<><LanguageSelector /><TaskGraph index={index} groupId="A" onOpenTask={noop} /></>, { locale: 'en' });
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent('Task graph layout failed');
     await user.selectOptions(screen.getByRole('combobox'), 'zh-CN');
@@ -219,13 +219,13 @@ describe('localized task graph presentation', () => {
   });
 
   it('renders empty and hidden-completed chain states in the chosen language', () => {
-    const props = { index, allRootIds: [], rootIds: [], expandedRootId: null,
+    const props = { index, allGroupIds: [], groupIds: [], expandedGroupId: null,
       onExpand: noop, onOpenTask: noop, showCompleted: false, onShowCompletedChange: noop };
-    const view = renderWithLocale(<RootList {...props} />, { locale: 'en' });
+    const view = renderWithLocale(<GroupList {...props} />, { locale: 'en' });
     expect(screen.getByRole('heading', { name: 'No task chains' })).toBeTruthy();
     expect(screen.getByLabelText('Showing 0 of 0 task chains')).toHaveTextContent('Newest first · 0 / 0 task chains');
-    const completeIndex = buildGraphIndex({ ...graph, summary: { total: 5, proposed: 0, todo: 0, inProgress: 0, done: 5, ready: 0, blocked: 0 }, tasks: graph.tasks.map((task) => ({ ...task, status: 'done', blockedBy: [], ready: false })) });
-    view.rerender(<RootList {...props} index={completeIndex} allRootIds={rootIds} />);
+    const completeIndex = buildGroupIndex({ ...graph, summary: { total: 5, proposed: 0, todo: 0, inProgress: 0, done: 5, ready: 0, blocked: 0 }, tasks: graph.tasks.map((task) => ({ ...task, status: 'done', blockedBy: [], ready: false })) });
+    view.rerender(<GroupList {...props} index={completeIndex} allGroupIds={groupIds} />);
     expect(screen.getByRole('heading', { name: 'All task chains are complete' })).toBeTruthy();
     expect(screen.getByText('3 completed task chains are hidden. Project statistics still include all tasks.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Show completed task chains' })).toBeTruthy();

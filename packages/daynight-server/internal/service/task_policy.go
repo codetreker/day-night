@@ -2,11 +2,29 @@ package service
 
 import (
 	"context"
+	"errors"
 	"slices"
 
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
 )
+
+func validateTaskGroup(ctx context.Context, tx *store.ProjectTx, id, groupID string) error {
+	if id == groupID {
+		return nil
+	}
+	anchor, err := tx.Task(ctx, groupID)
+	if errors.Is(err, core.ErrNotFound) {
+		return &Fault{Code: "invalid_input", Message: "Group must identify an anchor task in this project.", TaskIDs: []string{groupID}}
+	}
+	if err != nil {
+		return err
+	}
+	if anchor.GroupID != anchor.ID {
+		return &Fault{Code: "invalid_input", Message: "Group must identify an anchor task in this project.", TaskIDs: []string{groupID}}
+	}
+	return nil
+}
 
 func validateCandidate(ctx context.Context, tx *store.ProjectTx, id string, values store.TaskWrite) error {
 	prerequisites, err := tx.TasksByID(ctx, values.DependsOn)

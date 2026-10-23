@@ -8,7 +8,7 @@ import { TaskPullRequests } from '../../src/features/task-detail/TaskPullRequest
 import { AttachmentPreview } from '../../src/features/task-detail/attachments/AttachmentPreview';
 import { TaskAttachments } from '../../src/features/task-detail/attachments/TaskAttachments';
 import type { AttachmentApi } from '../../src/features/task-detail/attachments/useAttachments';
-import { buildGraphIndex } from '../../src/features/task-graph/model';
+import { buildGroupIndex } from '../../src/features/task-graph/model';
 import { LanguageSelector } from '../../src/i18n/LanguageSelector';
 import { renderWithLocale } from '../helpers/renderWithLocale';
 
@@ -184,7 +184,7 @@ describe('inspection language changes', () => {
     } }), { status: 404, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetch);
     const view = renderWithLocale(<TaskDetailDialog projectId={projectId} taskId={taskId}
-      snapshot={{ graph, index: buildGraphIndex(graph), receivedAt: Date.now(), revision: 1 }}
+      snapshot={{ graph, index: buildGroupIndex(graph), receivedAt: Date.now(), revision: 1 }}
       onSelectTask={vi.fn()} onClose={vi.fn()} onRestoreFocus={vi.fn()} onRefreshGraph={vi.fn()} />, { locale: 'zh-CN' });
     try {
       expect(await screen.findByRole('alert')).toHaveTextContent('这个任务已无法读取，请刷新任务图。');

@@ -68,7 +68,7 @@ func TestProjectTransactionsSerializeAndReadFreshAfterLock(t *testing.T) {
 				if fresh.Status != core.TaskDone || fresh.Version != 2 {
 					return errors.New("lock waiter read a snapshot predating the preceding commit")
 				}
-				secondUpdate, err = waiter.UpdateTask(ctx, task.ID, TaskWrite{Title: "Second", Status: core.TaskDone})
+				secondUpdate, err = waiter.UpdateTask(ctx, task.ID, TaskWrite{GroupID: task.GroupID, Title: "Second", Status: core.TaskDone})
 				return err
 			})
 		}()
@@ -76,13 +76,13 @@ func TestProjectTransactionsSerializeAndReadFreshAfterLock(t *testing.T) {
 		independent, finish := context.WithTimeout(ctx, 2*time.Second)
 		defer finish()
 		if err := s.WriteProject(independent, second.ID, func(other *ProjectTx) error {
-			_, err := other.CreateTask(independent, queryID(12), TaskWrite{Title: "Independent", Status: core.TaskTodo})
+			_, err := other.CreateTask(independent, queryID(12), TaskWrite{GroupID: queryID(12), Title: "Independent", Status: core.TaskTodo})
 			return err
 		}); err != nil {
 			t.Fatalf("unrelated project was blocked: %v", err)
 		}
 		var err error
-		firstUpdate, err = tx.UpdateTask(ctx, task.ID, TaskWrite{Title: "First", Status: core.TaskDone})
+		firstUpdate, err = tx.UpdateTask(ctx, task.ID, TaskWrite{GroupID: task.GroupID, Title: "First", Status: core.TaskDone})
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -109,7 +109,7 @@ func TestProjectTransactionsCancelActualRowLockWithoutLateWrite(t *testing.T) {
 		go func() {
 			result <- s.WriteProject(waiting, project.ID, func(tx *ProjectTx) error {
 				invoked.Store(true)
-				_, err := tx.UpdateTask(waiting, before.ID, TaskWrite{Title: "Late", Status: core.TaskDone})
+				_, err := tx.UpdateTask(waiting, before.ID, TaskWrite{GroupID: before.GroupID, Title: "Late", Status: core.TaskDone})
 				return err
 			})
 		}()
@@ -223,15 +223,15 @@ func TestQueriesFailuresPreserveCauses(t *testing.T) {
 		call func(*ProjectTx) error
 	}{
 		{"invalid task metadata", func(tx *ProjectTx) error {
-			_, err := tx.CreateTask(ctx, queryID(12), TaskWrite{Title: "", Status: core.TaskTodo})
+			_, err := tx.CreateTask(ctx, queryID(12), TaskWrite{GroupID: queryID(12), Title: "", Status: core.TaskTodo})
 			return err
 		}},
 		{"invalid update", func(tx *ProjectTx) error {
-			_, err := tx.UpdateTask(ctx, task.ID, TaskWrite{Title: "Changed", Status: "unknown"})
+			_, err := tx.UpdateTask(ctx, task.ID, TaskWrite{GroupID: task.GroupID, Title: "Changed", Status: "unknown"})
 			return err
 		}},
 		{"invalid edge rolls back creation", func(tx *ProjectTx) error {
-			_, err := tx.CreateTask(ctx, queryID(12), TaskWrite{Title: "New", Status: core.TaskTodo, DependsOn: []string{queryID(12)}})
+			_, err := tx.CreateTask(ctx, queryID(12), TaskWrite{GroupID: queryID(12), Title: "New", Status: core.TaskTodo, DependsOn: []string{queryID(12)}})
 			return err
 		}},
 	} {
@@ -257,7 +257,7 @@ func TestQueriesFailuresPreserveCauses(t *testing.T) {
 		BEGIN RAISE EXCEPTION 'private SQL diagnostic'; END $$;
 		CREATE TRIGGER reject_edge_delete BEFORE DELETE ON task_dependencies FOR EACH ROW EXECUTE FUNCTION reject_edge_delete()`)
 	err := s.WriteProject(ctx, project.ID, func(tx *ProjectTx) error {
-		_, err := tx.UpdateTask(ctx, queryID(14), TaskWrite{Title: "Changed", Status: core.TaskTodo})
+		_, err := tx.UpdateTask(ctx, queryID(14), TaskWrite{GroupID: queryID(14), Title: "Changed", Status: core.TaskTodo})
 		return err
 	})
 	if err == nil || strings.Contains(err.Error(), "private SQL") {

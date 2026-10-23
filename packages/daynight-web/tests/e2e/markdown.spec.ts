@@ -213,10 +213,10 @@ test('task-description-markdown', { annotation: { type: 'scenario', description:
     await page.keyboard.press('Escape');
     await test.step('preserves graph inspection while description links open the shared attachment reader', async () => {
       const ancestor = await createTask(request, project.id, { title: 'Markdown graph ancestor' });
-      const prerequisite = await createTask(request, project.id, { title: 'Markdown graph prerequisite', dependsOn: [ancestor.id] });
-      await updateTask(request, project.id, task.id, { version: after.version, dependsOn: [prerequisite.id] });
-      await createTask(request, project.id, { title: 'Markdown graph successor', dependsOn: [task.id] });
-      await createTask(request, project.id, { title: 'Markdown graph sibling', dependsOn: [ancestor.id] });
+      const prerequisite = await createTask(request, project.id, { title: 'Markdown graph prerequisite', groupId: ancestor.groupId, dependsOn: [ancestor.id] });
+      await updateTask(request, project.id, task.id, { version: after.version, groupId: ancestor.groupId, dependsOn: [prerequisite.id] });
+      await createTask(request, project.id, { title: 'Markdown graph successor', groupId: ancestor.groupId, dependsOn: [task.id] });
+      await createTask(request, project.id, { title: 'Markdown graph sibling', groupId: ancestor.groupId, dependsOn: [ancestor.id] });
       const graphResponse = await request.get(`/api/v1/projects/${project.id}/task-graph`);
       expect(graphResponse.status()).toBe(200);
       const snapshot = parseTaskGraph(await graphResponse.json(), project.id);

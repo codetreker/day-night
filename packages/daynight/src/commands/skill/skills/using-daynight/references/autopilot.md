@@ -33,7 +33,9 @@ daynight task ready --json
 ```
 
 Pick exactly one approved ready `todo` task most relevant to the confirmed Goal and
-authorized work. Compare concrete actions, scope, deliverables, solution,
+authorized work. For a confirmed Goal, first check the candidate's stored
+`groupId` against that Goal's confirmed first-task ID; dependency reachability
+and titles alone do not establish membership. Compare concrete actions, scope, deliverables, solution,
 acceptance criteria, and actual dependencies; creation order does not establish
 relevance. Read full details and actual task-specific and shared inputs for
 plausible candidates before choosing. Readiness checks prerequisites, not stage

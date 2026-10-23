@@ -14,6 +14,7 @@ const (
 type Task struct {
 	ID          string
 	ProjectID   string
+	GroupID     string
 	Title       string
 	Description string
 	Properties  TaskProperties

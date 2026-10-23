@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { approveTask, getTask, getTaskGraph } from '../src/api/client';
 import { parseApiJson } from '../src/api/json';
 import { parseTaskGraph } from '../src/api/parse';
-import { buildGraphIndex, projectRoot } from '../src/features/task-graph/model';
+import { buildGroupIndex, projectGroup } from '../src/features/task-graph/model';
 import { browsingProjects, installBrowsingFixture, isApprovalScenario, type BrowsingScenario } from './mockups/browsing-fixture';
 
 const signal = () => new AbortController().signal;
@@ -13,7 +13,7 @@ const approvalProject = (scenario: BrowsingScenario) => browsingProjects[scenari
 describe('production task browsing fixture', () => {
   it.each(Object.entries(browsingProjects))('provides a valid four-state snapshot for %s', (_scenario, graph) => {
     const parsed = parseTaskGraph(graph, graph.project.id);
-    const index = buildGraphIndex(parsed);
+    const index = buildGroupIndex(parsed);
     expect(index.nodes.size).toBe(graph.summary.total);
     expect(graph.tasks.filter((task) => task.status === 'proposed').every((task) => !task.ready)).toBe(true);
   });
@@ -21,10 +21,10 @@ describe('production task browsing fixture', () => {
   it('matches the mixed prototype counts and all four chain aggregates', () => {
     const graph = browsingProjects.mixed;
     expect(graph.summary).toEqual({ total: 16, proposed: 6, todo: 4, inProgress: 2, done: 4, ready: 3, blocked: 1 });
-    const index = buildGraphIndex(graph);
-    const chains = index.roots.filter((id) => index.successors.get(id)!.length > 0);
-    expect(chains.map((id) => index.rootProgress.get(id)!.status)).toEqual(['proposed', 'todo', 'todo', 'in_progress', 'done']);
-    const first = projectRoot(index, chains[0]!);
+    const index = buildGroupIndex(graph);
+    const chains = index.groupIds.filter((id) => index.successors.get(id)!.length > 0);
+    expect(chains.map((id) => index.groupProgress.get(id)!.status)).toEqual(['proposed', 'todo', 'todo', 'in_progress', 'done']);
+    const first = projectGroup(index, chains[0]!);
     expect(first.mainIds.size).toBe(2);
     expect(first.externalIds.size).toBe(1);
     expect(first.completed).toBe(0);
@@ -32,14 +32,14 @@ describe('production task browsing fixture', () => {
 
   it('keeps a complete progressive fixture with main and external work beyond the initial overview', () => {
     const graph = browsingProjects.progressive;
-    const index = buildGraphIndex(graph);
+    const index = buildGroupIndex(graph);
     const root = graph.tasks.find((task) => task.titlePreview === '渐进展开 · 主链交付起点')!;
-    const projection = projectRoot(index, root.id);
+    const projection = projectGroup(index, root.id);
     expect(graph.summary).toEqual({ total: 101, proposed: 0, todo: 61, inProgress: 0, done: 40, ready: 1, blocked: 60 });
     expect(projection.mainIds.size).toBe(61);
     expect(projection.externalIds.size).toBe(40);
     expect(projection.edges).toHaveLength(100);
-    expect(index.rootProgress.get(root.id)).toEqual({ total: 61, done: 0, status: 'todo' });
+    expect(index.groupProgress.get(root.id)).toEqual({ total: 61, done: 0, status: 'todo' });
   });
 
   it.each(['progressive', 'complete-context'] as const)('serves the complete %s graph and exact detail versions through production APIs', async (scenario) => {

@@ -3,11 +3,11 @@ import { expectedBatch, expectedDependencyTopology, expectedNodeHeights, expecte
 import type { DependencyTopology } from './e2e/visible-topology';
 const graph = (count: number): DependencyTopology => ({ nodes: Array.from({ length: count }, (_, index) => ({ id: String(index) })), edges: Array.from({ length: count - 1 }, (_, index) => ({ id: `0->${index + 1}`, source: '0', target: String(index + 1), external: false })) });
 describe('independent visible API topology expectations', () => {
-  it('derives complete root descendants and their ancestors without adding external sibling branches', () => {
+  it('derives explicit group members and their ancestors without adding external sibling branches', () => {
     const full = expectedDependencyTopology([
-      { id: 'root', dependsOn: [] }, { id: 'child', dependsOn: ['root', 'external'] },
-      { id: 'external', dependsOn: ['ancestor'] }, { id: 'ancestor', dependsOn: [] },
-      { id: 'sibling', dependsOn: ['external'] }, { id: 'unrelated', dependsOn: [] },
+      { id: 'root', groupId: 'root', dependsOn: [] }, { id: 'child', groupId: 'root', dependsOn: ['root', 'external'] },
+      { id: 'external', groupId: 'ancestor', dependsOn: ['ancestor'] }, { id: 'ancestor', groupId: 'ancestor', dependsOn: [] },
+      { id: 'sibling', groupId: 'ancestor', dependsOn: ['external'] }, { id: 'unrelated', groupId: 'unrelated', dependsOn: [] },
     ], 'root');
     expect(full.nodes.map(({ id }) => id)).toEqual(['root', 'child', 'external', 'ancestor']);
     expect(full.edges).toEqual([
@@ -18,8 +18,8 @@ describe('independent visible API topology expectations', () => {
   });
   it('derives card heights from hidden direct neighbors within the root projection only', () => {
     const full = expectedDependencyTopology([
-      { id: 'root', dependsOn: [] }, { id: 'child', dependsOn: ['root', 'external'] },
-      { id: 'external', dependsOn: [] }, { id: 'unrelated', dependsOn: ['external'] },
+      { id: 'root', groupId: 'root', dependsOn: [] }, { id: 'child', groupId: 'root', dependsOn: ['root', 'external'] },
+      { id: 'external', groupId: 'ancestor', dependsOn: [] }, { id: 'unrelated', groupId: 'unrelated', dependsOn: ['external'] },
     ], 'root');
     expect(expectedNodeHeights(full, ['root', 'child'])).toEqual([{ id: 'root', height: 96 }, { id: 'child', height: 136 }]);
     expect(expectedNodeHeights(full, ['root', 'child', 'external'])).toEqual([

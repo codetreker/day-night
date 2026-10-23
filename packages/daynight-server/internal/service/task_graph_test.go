@@ -16,8 +16,8 @@ import (
 func seedGraph(t *testing.T, database *store.Store, projectID string, nodes, edges int) {
 	t.Helper()
 	ctx := context.Background()
-	if _, err := database.Pool.Exec(ctx, `INSERT INTO tasks (id, project_id, title, description, status, version, created_at, updated_at)
-		SELECT md5($1::text || ':' || n)::uuid, $1::uuid, 'Task ' || n, '', 'todo', 1,
+	if _, err := database.Pool.Exec(ctx, `INSERT INTO tasks (id, project_id, group_id, title, description, status, version, created_at, updated_at)
+		SELECT md5($1::text || ':' || n)::uuid, $1::uuid, md5($1::text || ':' || n)::uuid, 'Task ' || n, '', 'todo', 1,
 		statement_timestamp() + n * interval '1 microsecond', statement_timestamp()
 		FROM generate_series(1, $2::int) n`, projectID, nodes); err != nil {
 		t.Fatal(err)
@@ -128,10 +128,10 @@ func TestTaskGraphInterleavedWriteKeepsOneSnapshot(t *testing.T) {
 		end: func() {
 			writes++
 			if err := database.WriteProject(ctx, project.ID, func(tx *store.ProjectTx) error {
-				if _, err := tx.UpdateTask(ctx, predecessor.ID, store.TaskWrite{Title: "Completed", Status: core.TaskDone}); err != nil {
+				if _, err := tx.UpdateTask(ctx, predecessor.ID, store.TaskWrite{GroupID: predecessor.GroupID, Title: "Completed", Status: core.TaskDone}); err != nil {
 					return err
 				}
-				_, err := tx.CreateTask(ctx, "00000000-0000-4000-8000-000000000001", store.TaskWrite{Title: "New", Status: core.TaskTodo, DependsOn: []string{dependent.ID}})
+				_, err := tx.CreateTask(ctx, "00000000-0000-4000-8000-000000000001", store.TaskWrite{GroupID: "00000000-0000-4000-8000-000000000001", Title: "New", Status: core.TaskTodo, DependsOn: []string{dependent.ID}})
 				return err
 			}); err != nil {
 				t.Fatal(err)

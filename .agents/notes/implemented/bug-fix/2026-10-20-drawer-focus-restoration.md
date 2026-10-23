@@ -36,7 +36,7 @@ extends the fallback to controls visible in the active category while retaining
 the empty-project heading. Restoration evaluates the current policy against
 the committed DOM rather than a node pending deletion.
 
-The integration suite renders real ProjectPage, RootList and portal TaskDetailDialog,
+The integration suite renders real ProjectPage, GroupList and portal TaskDetailDialog,
 mocking only the canvas and API transport. It waits for final focus after refresh
 to no tasks, refresh to a remaining root, and ordinary close. It also verifies
 that the deleted trigger is disconnected, the dialog is gone, background

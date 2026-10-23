@@ -1,17 +1,17 @@
 import type { GraphTask, TaskGraph, TaskGraphSummary, TaskStatus } from "../../api/types";
 
-export type RootProgress = {
+export type GroupProgress = {
   readonly total: number;
   readonly done: number;
   readonly status: TaskStatus;
 };
 
-export type GraphIndex = {
+export type GroupIndex = {
   readonly nodes: ReadonlyMap<string, GraphTask>;
   readonly successors: ReadonlyMap<string, readonly string[]>;
-  readonly roots: readonly string[];
-  readonly sharedIds: ReadonlySet<string>;
-  readonly rootProgress: ReadonlyMap<string, RootProgress>;
+  readonly groupIds: readonly string[];
+  readonly groupMembers: ReadonlyMap<string, readonly string[]>;
+  readonly groupProgress: ReadonlyMap<string, GroupProgress>;
 };
 
 export type ProjectionEdge = {
@@ -20,8 +20,8 @@ export type ProjectionEdge = {
   readonly external: boolean;
 };
 
-export type RootProjection = {
-  readonly rootId: string;
+export type GroupProjection = {
+  readonly groupId: string;
   readonly mainIds: ReadonlySet<string>;
   readonly externalIds: ReadonlySet<string>;
   readonly edges: readonly ProjectionEdge[];
@@ -39,28 +39,19 @@ const rejectGraph = (): never => {
   throw new GraphDataError();
 };
 
-const reachable = (successors: GraphIndex["successors"], rootId: string): Set<string> => {
-  const result = new Set<string>();
-  const pending = [rootId];
-  while (pending.length > 0) {
-    const id = pending.pop()!;
-    if (result.has(id)) continue;
-    result.add(id);
-    for (const successor of successors.get(id)!) pending.push(successor);
-  }
-  return result;
-};
-
-export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
+export const buildGroupIndex = (graph: TaskGraph): GroupIndex => {
   if (typeof graph !== "object" || graph === null || !Array.isArray(graph.tasks) ||
     typeof graph.summary !== "object" || graph.summary === null) return rejectGraph();
   if (graph.tasks.length > 1000) throw new GraphDataError("limit");
   const nodes = new Map<string, GraphTask>();
   const successors = new Map<string, string[]>();
-  const roots: string[] = [];
+  const dependencyRoots: string[] = [];
+  const groupIds: string[] = [];
+  const groupMembers = new Map<string, string[]>();
   let edgeCount = 0;
   for (const task of graph.tasks) {
     if (typeof task !== "object" || task === null || typeof task.id !== "string" || task.id === "" || nodes.has(task.id) ||
+      typeof task.groupId !== "string" || task.groupId === "" ||
       !Array.isArray(task.dependsOn) || !Array.isArray(task.blockedBy) ||
       (task.status !== "proposed" && task.status !== "todo" && task.status !== "in_progress" && task.status !== "done") || typeof task.ready !== "boolean") {
       return rejectGraph();
@@ -72,13 +63,19 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
     }
     nodes.set(task.id, task);
     successors.set(task.id, []);
-    if (task.dependsOn.length === 0) roots.push(task.id);
+    if (task.dependsOn.length === 0) dependencyRoots.push(task.id);
+    if (task.id === task.groupId) groupIds.push(task.id);
+    const members = groupMembers.get(task.groupId);
+    if (members === undefined) groupMembers.set(task.groupId, [task.id]);
+    else members.push(task.id);
   }
 
   const actual: { -readonly [Key in keyof TaskGraphSummary]: number } = {
     total: nodes.size, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0,
   };
   for (const task of nodes.values()) {
+    const leader = nodes.get(task.groupId);
+    if (leader === undefined || leader.id !== leader.groupId) return rejectGraph();
     const blocked = new Set<string>();
     for (const predecessorId of task.dependsOn) {
       const predecessor = nodes.get(predecessorId);
@@ -102,7 +99,7 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
   }
 
   const degrees = new Map([...nodes.values()].map((task) => [task.id, task.dependsOn.length]));
-  const pending = [...roots];
+  const pending = [...dependencyRoots];
   for (let position = 0; position < pending.length; position++) {
     for (const successor of successors.get(pending[position]!)!) {
       const degree = degrees.get(successor)! - 1;
@@ -112,32 +109,27 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
   }
   if (pending.length !== nodes.size) return rejectGraph();
 
-  const rootProgress = new Map<string, RootProgress>();
-  const rootCount = new Map<string, number>();
-  const sharedIds = new Set<string>();
-  for (const root of roots) {
-    const mainIds = reachable(successors, root);
+  const groupProgress = new Map<string, GroupProgress>();
+  for (const groupId of groupIds) {
+    const members = groupMembers.get(groupId)!;
     let done = 0;
     let inProgress = false;
     let todo = false;
-    for (const id of mainIds) {
+    for (const id of members) {
       const status = nodes.get(id)!.status;
       if (status === "done") done++;
       else if (status === "in_progress") inProgress = true;
       else if (status === "todo") todo = true;
-      const count = (rootCount.get(id) ?? 0) + 1;
-      rootCount.set(id, count);
-      if (count > 1) sharedIds.add(id);
     }
-    const status = done === mainIds.size ? "done" : done > 0 || inProgress ? "in_progress" : todo ? "todo" : "proposed";
-    rootProgress.set(root, { total: mainIds.size, done, status });
+    const status = done === members.length ? "done" : done > 0 || inProgress ? "in_progress" : todo ? "todo" : "proposed";
+    groupProgress.set(groupId, { total: members.length, done, status });
   }
-  return { nodes, successors, roots, sharedIds, rootProgress };
+  return { nodes, successors, groupIds, groupMembers, groupProgress };
 };
 
-export const projectRoot = (index: GraphIndex, rootId: string): RootProjection => {
-  if (!index.roots.includes(rootId)) return rejectGraph();
-  const mainIds = reachable(index.successors, rootId);
+export const projectGroup = (index: GroupIndex, groupId: string): GroupProjection => {
+  if (!index.groupIds.includes(groupId)) return rejectGraph();
+  const mainIds = new Set(index.groupMembers.get(groupId)!);
   const visibleIds = new Set(mainIds);
   const pending = [...mainIds];
   while (pending.length > 0) {
@@ -153,13 +145,13 @@ export const projectRoot = (index: GraphIndex, rootId: string): RootProjection =
     if (!visibleIds.has(task.id)) continue;
     if (!mainIds.has(task.id)) externalIds.add(task.id);
     for (const source of task.dependsOn) {
-      edges.push({ source, target: task.id, external: !mainIds.has(source) });
+      edges.push({ source, target: task.id, external: !mainIds.has(source) || !mainIds.has(task.id) });
     }
   }
-  return { rootId, mainIds, externalIds, edges, completed: index.rootProgress.get(rootId)!.done };
+  return { groupId, mainIds, externalIds, edges, completed: index.groupProgress.get(groupId)!.done };
 };
 
-export const tracePrerequisites = (index: GraphIndex, taskId: string): ReadonlySet<string> => {
+export const tracePrerequisites = (index: GroupIndex, taskId: string): ReadonlySet<string> => {
   if (!index.nodes.has(taskId)) return rejectGraph();
   const result = new Set<string>();
   const pending = [taskId];

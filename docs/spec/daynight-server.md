@@ -99,7 +99,9 @@ Task 响应还包含 `dependsOn`、`blockedBy` 和 `ready`：
 ## 状态与更新规则
 
 创建 task 总是产生 `proposed`，数据库默认值相同。创建输入只接受 `title`、可选
-`description`、`dependsOn` 与 `properties`；不能指定初始 status。省略描述为空字符串，
+`groupId`、`description`、`dependsOn` 与 `properties`；不能指定初始 status。
+每个 task 返回持久 groupId，省略创建字段时使用新 task ID，显式字段加入同 project
+锚点组。成员移动与锚点保护遵守[分组要求](daynight-task-groups.md)，与依赖关系独立。省略描述为空字符串，
 依赖和 PR 数组省略时为空。既有 todo、in-progress、done 数据视为其实际状态，不重置
 审批，不修改版本或时间戳。
 
@@ -125,7 +127,7 @@ Task 响应还包含 `dependsOn`、`blockedBy` 和 `ready`：
 claim 只有一个成功，其余看到版本冲突。审批不领取任务，也不使未完成前置变为完成。
 任务审批是就绪决策，不授予实现、发布、部署、合并或主线 push 的权限。
 
-PATCH 可修改 `title`、`description`、`dependsOn` 和预定义属性，必须带读取到的
+PATCH 可修改 `title`、`groupId`、`description`、`dependsOn` 和预定义属性，必须带读取到的
 version，至少提供一个可修改字段。status 不属于 PATCH 输入；即使同时提交其他
 合法字段也必须整体拒绝。省略字段保持原值，null 拒绝，`dependsOn: []` 清空依赖，
 `properties.pullRequests: []` 清空 PR 引用；空 properties 本身不算修改字段。
@@ -204,7 +206,7 @@ summary 必须包含 `total`、`proposed`、`todo`、`inProgress`、`done`、`re
 proposed 只计入自身状态和总数；blocked 只计入前置未全部完成的 todo。任务的状态、
 版本和时间不随此次读取变化。
 
-图节点包含 `id`、`titlePreview`、`titleTruncated`、`status`、`dependsOn`、
+图节点包含 `id`、`groupId`、`titlePreview`、`titleTruncated`、`status`、`dependsOn`、
 `blockedBy`、`ready`、`createdAt` 和 `updatedAt`。标题预览最多 160 Unicode code
 points，截短时标记 titleTruncated；不返回完整标题、description 或 version。完整
 任务内容继续使用既有详情接口。节点按 `(createdAt,id)` 排序，前置及阻塞 ID 数组

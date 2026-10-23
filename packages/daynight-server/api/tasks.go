@@ -16,6 +16,7 @@ type TaskPropertiesPatch struct {
 }
 
 type CreateTaskRequest struct {
+	GroupID     *string        `json:"groupId,omitempty"`
 	Properties  TaskProperties `json:"properties"`
 	Title       string         `json:"title"`
 	Description string         `json:"description"`
@@ -23,6 +24,7 @@ type CreateTaskRequest struct {
 }
 
 type UpdateTaskRequest struct {
+	GroupID     *string              `json:"groupId,omitempty"`
 	Properties  *TaskPropertiesPatch `json:"properties,omitempty"`
 	Version     int64                `json:"version"`
 	Title       *string              `json:"title,omitempty"`
@@ -38,6 +40,7 @@ type Task struct {
 	Properties  TaskProperties `json:"properties"`
 	ID          string         `json:"id"`
 	ProjectID   string         `json:"projectId"`
+	GroupID     string         `json:"groupId"`
 	Title       string         `json:"title"`
 	Description string         `json:"description"`
 	Status      string         `json:"status"`

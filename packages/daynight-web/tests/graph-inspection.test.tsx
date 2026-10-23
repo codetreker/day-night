@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaskGraph as GraphData } from '../src/api/types';
 import { TaskGraph } from '../src/features/task-graph/TaskGraph';
-import { buildGraphIndex } from '../src/features/task-graph/model';
+import { buildGroupIndex } from '../src/features/task-graph/model';
 import * as layoutModule from '../src/features/task-graph/layout';
 import * as routes from '../src/features/task-graph/routes';
 import { useTaskInspection } from '../src/features/task-graph/inspection';
@@ -27,14 +27,14 @@ const graph: GraphData = {
   project: { id: 'project', name: 'Project', repoUrl: '', createdAt: time, updatedAt: time },
   summary: { total: 5, proposed: 1, todo: 1, inProgress: 0, done: 3, ready: 1, blocked: 0 },
   tasks: [
-    { id: 'A', titlePreview: 'A', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { id: 'B', titlePreview: 'B', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { id: 'C', titlePreview: 'C', titleTruncated: false, status: 'done', dependsOn: ['B'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { id: 'D', titlePreview: 'D', titleTruncated: false, status: 'proposed', dependsOn: ['A', 'C'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { id: 'X', titlePreview: 'X', titleTruncated: false, status: 'todo', dependsOn: ['C'], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
+    { id: 'A', groupId: 'A', titlePreview: 'A', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { id: 'B', groupId: 'B', titlePreview: 'B', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { id: 'C', groupId: 'B', titlePreview: 'C', titleTruncated: false, status: 'done', dependsOn: ['B'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { id: 'D', groupId: 'A', titlePreview: 'D', titleTruncated: false, status: 'proposed', dependsOn: ['A', 'C'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { id: 'X', groupId: 'B', titlePreview: 'X', titleTruncated: false, status: 'todo', dependsOn: ['C'], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
   ],
 };
-const index = buildGraphIndex(graph);
+const index = buildGroupIndex(graph);
 const noop = () => {};
 const card = (container: HTMLElement, id: string) => container.querySelector<HTMLElement>(`.react-flow__node[data-id="${id}"] .task-node`)!;
 const body = (container: HTMLElement, id: string) => card(container, id).querySelector<HTMLButtonElement>('.task-node-body')!;
@@ -54,7 +54,7 @@ beforeEach(installGraphMeasurements);
 
 describe('graph-local prerequisite inspection', () => {
   it('highlights the exact complete path including external-to-external edges and preserves task statuses', async () => {
-    const view = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    const view = render(<TaskGraph index={index} groupId="A" onOpenTask={noop} />);
     await ready(view.container);
     expect(card(view.container, 'X')).toBeNull();
     fireEvent.click(body(view.container, 'D'));
@@ -83,7 +83,7 @@ describe('graph-local prerequisite inspection', () => {
   it('keeps body and Details as independent native keyboard actions and preserves inspection while opening details', async () => {
     const user = userEvent.setup();
     const open = vi.fn();
-    const view = render(<TaskGraph index={index} rootId="A" onOpenTask={open} />);
+    const view = render(<TaskGraph index={index} groupId="A" onOpenTask={open} />);
     await ready(view.container);
     const inspect = body(view.container, 'D');
     const read = details(view.container, 'D');
@@ -112,7 +112,7 @@ describe('graph-local prerequisite inspection', () => {
     const layout = vi.spyOn(layoutModule, 'layoutGraph');
     const compile = vi.spyOn(routes, 'compileDependencyRoute');
     const open = vi.fn();
-    const view = render(<TaskGraph index={index} rootId="A" onOpenTask={open} />);
+    const view = render(<TaskGraph index={index} groupId="A" onOpenTask={open} />);
     await ready(view.container);
     const before = geometry(view.container);
     const nodes = flowNodes.mock.calls.at(-1)![0];
@@ -120,7 +120,7 @@ describe('graph-local prerequisite inspection', () => {
     flowNodes.mockClear();
     fireEvent.click(body(view.container, 'D'));
     fireEvent.click(details(view.container, 'D'));
-    view.rerender(<TaskGraph index={index} rootId="A" onOpenTask={open} />);
+    view.rerender(<TaskGraph index={index} groupId="A" onOpenTask={open} />);
     expect(flowNodes).not.toHaveBeenCalled();
     expect(nodes).toHaveLength(4);
     expect(layout).toHaveBeenCalledTimes(1);
@@ -136,20 +136,20 @@ describe('graph-local prerequisite inspection', () => {
   });
 
   it('recomputes a retained inspection from a new snapshot and clears a removed task before it can reappear', async () => {
-    const view = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    const view = render(<TaskGraph index={index} groupId="A" onOpenTask={noop} />);
     await ready(view.container);
     fireEvent.click(body(view.container, 'D'));
-    const changed = buildGraphIndex({ ...graph, tasks: graph.tasks.map((task) => task.id === 'D' ? { ...task, dependsOn: ['A'] } : task) });
-    view.rerender(<TaskGraph index={changed} rootId="A" onOpenTask={noop} />);
+    const changed = buildGroupIndex({ ...graph, tasks: graph.tasks.map((task) => task.id === 'D' ? { ...task, dependsOn: ['A'] } : task) });
+    view.rerender(<TaskGraph index={changed} groupId="A" onOpenTask={noop} />);
     await ready(view.container, 2);
     expect(body(view.container, 'D')).toHaveAttribute('aria-pressed', 'true');
     expect(card(view.container, 'A')).toHaveAttribute('data-inspection', 'prerequisite');
     body(view.container, 'D').focus();
-    const removed = buildGraphIndex({ ...graph, tasks: graph.tasks.filter((task) => task.id !== 'D'), summary: { ...graph.summary, total: 4, proposed: 0 } });
-    view.rerender(<TaskGraph index={removed} rootId="A" onOpenTask={noop} />);
+    const removed = buildGroupIndex({ ...graph, tasks: graph.tasks.filter((task) => task.id !== 'D'), summary: { ...graph.summary, total: 4, proposed: 0 } });
+    view.rerender(<TaskGraph index={removed} groupId="A" onOpenTask={noop} />);
     await ready(view.container, 1);
     expect(screen.getByRole('button', { name: '全屏查看' })).toHaveFocus();
-    view.rerender(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    view.rerender(<TaskGraph index={index} groupId="A" onOpenTask={noop} />);
     await ready(view.container, 1);
     expect(body(view.container, 'A')).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(screen.getByRole('button', { name: '收起到概览' }));
@@ -159,10 +159,10 @@ describe('graph-local prerequisite inspection', () => {
 
   it('counts hidden ancestors once, keeps inspection through expansion, and clears a selected task hidden by reset', async () => {
     const fixture = browsingProjects.progressive;
-    const index = buildGraphIndex(fixture);
+    const index = buildGroupIndex(fixture);
     const root = fixture.tasks.find((task) => task.titlePreview === '渐进展开 · 主链交付起点')!.id;
     const join = fixture.tasks.find((task) => task.titlePreview === '合流任务 · 40 个外部前置')!.id;
-    const view = render(<TaskGraph index={index} rootId={root} onOpenTask={noop} />);
+    const view = render(<TaskGraph index={index} groupId={root} onOpenTask={noop} />);
     await ready(view.container, 50);
     const before = geometry(view.container);
     const status = view.container.querySelector('.graph-hidden-prerequisites')!;
@@ -185,7 +185,7 @@ describe('graph-local prerequisite inspection', () => {
   it.each([false, true])('recovers a removed footer at the task DOM commit without stealing dialog focus (dialog=%s)', async (dialogFocused) => {
     const fixture = browsingProjects.progressive;
     const root = fixture.tasks.find((task) => task.titlePreview === '渐进展开 · 主链交付起点')!.id;
-    const ui = (data: GraphData) => <><div role="dialog" aria-label="详情测试窗口"><button type="button">详情关闭控件</button></div><TaskGraph index={buildGraphIndex(data)} rootId={root} onOpenTask={noop} /></>;
+    const ui = (data: GraphData) => <><div role="dialog" aria-label="详情测试窗口"><button type="button">详情关闭控件</button></div><TaskGraph index={buildGroupIndex(data)} groupId={root} onOpenTask={noop} /></>;
     const view = render(ui(fixture));
     await ready(view.container, 50);
     const footer = card(view.container, root).querySelector<HTMLButtonElement>('.task-node-expand[data-direction="successors"]')!;
@@ -203,15 +203,16 @@ describe('graph-local prerequisite inspection', () => {
   });
 
   it('releases inspection on root changes and unmount without persisting it', async () => {
-    const view = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    const view = render(<TaskGraph index={index} groupId="A" onOpenTask={noop} />);
     await ready(view.container);
     fireEvent.click(body(view.container, 'D'));
-    view.rerender(<TaskGraph index={index} rootId="B" onOpenTask={noop} />);
-    await ready(view.container, 5);
-    expect(body(view.container, 'D')).toHaveAttribute('aria-pressed', 'false');
-    fireEvent.click(body(view.container, 'D'));
+    view.rerender(<TaskGraph index={index} groupId="B" onOpenTask={noop} />);
+    await ready(view.container, 3);
+    expect(body(view.container, 'C')).toHaveAttribute('aria-pressed', 'false');
+    expect(card(view.container, 'D')).toBeNull();
+    fireEvent.click(body(view.container, 'C'));
     view.rerender(<div />);
-    view.rerender(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    view.rerender(<TaskGraph index={index} groupId="A" onOpenTask={noop} />);
     await ready(view.container);
     expect(body(view.container, 'D')).toHaveAttribute('aria-pressed', 'false');
   });

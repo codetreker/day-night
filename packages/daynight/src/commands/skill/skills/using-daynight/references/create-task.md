@@ -44,6 +44,7 @@ Use the target repository's document and workspace rules.
 | Concrete problem, current actions and scope, deliverables, constraints, completion summary, and real input references | Task `description` |
 | Detailed solution, full acceptance criteria, verification methods, and completion evidence | This task's primary Markdown attachment |
 | Applicable visual and interaction design | Owning task's interactive mock UI and resources, referenced by consumers |
+| Group membership | Persisted `groupId`; the first task anchors the group |
 | Prerequisite tasks | `dependsOn` only |
 | Delivery PR URLs and titles | `properties.pullRequests` |
 
@@ -82,7 +83,10 @@ produced by the Goal description stage and referenced by later tasks.
 
 Use established task IDs in `dependsOn` for real prerequisites. Do not add a
 Dependencies section or duplicate the dependency list in the description or
-Markdown. A top-level task has no dependencies. Repository specifications and
+Markdown. A task without prerequisites has no dependencies. Group membership is separate:
+omitting `--group-id` creates a new group, while joining an existing Goal requires
+its confirmed first-task ID. A group anchor can itself have prerequisites.
+Repository specifications and
 design documents retain their full contracts; the task's own primary attachment
 must still provide a specific solution and verifiable acceptance criteria.
 
@@ -131,8 +135,10 @@ evidence. The prototype remains with its actual owner when shared across a Goal.
 ## Register and verify
 
 Reuse the established project and suitable tasks. Create new tasks in `proposed`,
-retaining each confirmed ID. Set their concrete descriptions and actual
-`dependsOn` prerequisites. Upload each task's own primary Markdown and required
+retaining each confirmed ID and returned `groupId`. A new independent outcome
+starts its own group. For every member of an existing Goal, explicitly pass its
+confirmed group ID with `--group-id`; dependency edges never join groups. Set
+their concrete descriptions and actual `dependsOn` prerequisites. Upload each task's own primary Markdown and required
 resources; add actual attachment references to the complete description using
 the observed task version. Reference already readable shared inputs at their
 source. Do not present planned uploads as existing attachments.
@@ -140,7 +146,7 @@ source. Do not present planned uploads as existing attachments.
 Read back each complete task, its attachment inventory and required contents,
 and its referenced shared inputs. Verify self-contained Markdown descriptions,
 valid links and images, the two required primary-document sections, real source
-identities, intended dependencies, and applicable mock UI resources and
+identities, intended `groupId` membership and dependencies, and applicable mock UI resources and
 interaction. For a Goal, verify both starting tasks and their stage briefs.
 Registration is complete only when required artifacts and associations are
 confirmed readable. Without separate explicit approval authorization, leave

@@ -11,7 +11,7 @@ const task = '20000000-0000-4000-8000-000000000001';
 const otherTask = '20000000-0000-4000-8000-000000000002';
 const dependency = '20000000-0000-4000-8000-000000000003';
 const version = 9007199254740993n;
-const proposed: TaskDetail = { id: task, projectId: project, version, title: 'Reviewed task', description: 'Complete original description',
+const proposed: TaskDetail = { id: task, groupId: task, projectId: project, version, title: 'Reviewed task', description: 'Complete original description',
   properties: { pullRequests: [] }, status: 'proposed', dependsOn: [dependency], blockedBy: [dependency], ready: false,
   createdAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:00:00Z' };
 const approved: TaskDetail = { ...proposed, status: 'todo', version: version + 1n, updatedAt: '2026-10-22T00:01:00Z' };

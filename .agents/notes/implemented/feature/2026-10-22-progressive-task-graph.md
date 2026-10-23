@@ -11,20 +11,26 @@ and accurate progress while letting the reader control visible detail.
 
 ## Decision
 
-`projectRoot` retains complete context P: root plus every reachable successor
-form main M, every ancestor of M is included, and P−M is external context.
+`projectGroup` retains complete context P: all same-group members form main M,
+every ancestor of M is included, and P−M is external context. The
+[persistent group decision](2026-10-23-persistent-task-groups.md) replaces root-derived membership while
+retaining these complete-context guarantees.
 Unrelated successors of external tasks stay outside P. Only visible task IDs S
 are progressive, for both main and external tasks. Full M still owns chain
 progress/status; complete snapshots own seven project counters and unfinished
 tab counts. Proposed/todo/in_progress/done keep their existing read meanings.
 
 If P has at most fifty tasks and one hundred dependencies, initial S contains
-all P. Otherwise `createGraphOverview(index, P)` starts at root and performs
+all P. Otherwise `createGraphOverview(index, P)` starts at the group anchor and performs
 stable undirected BFS, considering direct successors before prerequisites, each
 direction in snapshot insertion order. Consider a candidate once, accept it only
 if resulting S has at most fifty tasks and its complete induced edge set at most
 one hundred dependencies, and queue only accepted tasks. These limits apply to
-the initial overview of P, not the whole project or manual expansion.
+the initial overview of P, not the whole project or manual expansion. When a
+component is exhausted, other explicit members seed additional components.
+A toolbar action adds up to twenty hidden members in snapshot order, preserving
+focus and viewport; its aria-disabled final state retains focus and ignores activation. No synthetic edges
+connect independent members.
 
 `getTaskExpansion(index, P, S, taskId, direction)` chooses at most twenty hidden
 direct neighbors within P in stable snapshot order, without recursion. Controls
@@ -51,11 +57,12 @@ focuses the anchor body. One “收起到概览” control recomputes the curren
 frames it and retains reset-button focus. There is no branch ownership or
 per-branch collapse.
 
-Successful refresh intersects actual old visible IDs with new P, adds root and
-keeps only the root-connected component of the induced undirected graph.
-Disconnected nodes leave S permanently; refresh does not union a new baseline
+Successful refresh intersects actual old visible IDs with new P and adds the
+group anchor. Valid disconnected members remain in S; dependency connectivity
+is not group membership. The original root-component pruning is superseded by
+the persistent group decision. Refresh does not union a new baseline
 or add newly arrived tasks. It preserves viewport. Reset or remount computes a
-new baseline. Failure keeps old data, S and view. Project/root/tab changes and
+new baseline. Failure keeps old data, S and view. Project/group/tab changes and
 unmount discard local visibility state.
 
 The delivered TaskDetailDialog, Overview/Attachments panels, adjacent attachment
@@ -146,7 +153,7 @@ and group-edge semantics. Keeping real IDs, complete P and induced S separate
 preserves their extension points without implying those capabilities.
 
 Acceptance independently derives initial membership, induced edges, batch deltas
-and root-connected refresh retention. It covers 50/100 boundaries, stable order,
+and disconnected-member refresh retention. It covers 50/100 boundaries, stable order,
 shared neighbors, proposed/completed states, dense manual expansion, unrelated
 external successors, failure retention and dialog focus. PR134 retained body-open
 details and polylines as its delivered baseline. The later

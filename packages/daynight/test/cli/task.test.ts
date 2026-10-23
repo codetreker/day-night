@@ -17,16 +17,16 @@ const secondId = "b1b2c3d4-1111-4222-8333-123456789abd";
 const thirdId = "b1b2c3d4-1111-4222-8333-123456789abe";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project: Project = { id: projectId, name: "Project 中文", repoUrl: "git@git.example:Org/Repo.git", createdAt: time, updatedAt: time };
-const task = (partial: Partial<Task> = {}): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true, ...partial });
+const task = (partial: Partial<Task> = {}): Task => ({ id: taskId, groupId: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true, ...partial });
 const taskListItem = (value: Task): Omit<Task, "description"> => ({
-  id: value.id, projectId: value.projectId, title: value.title, properties: value.properties,
+  id: value.id, groupId: value.groupId, projectId: value.projectId, title: value.title, properties: value.properties,
   status: value.status, version: value.version, createdAt: value.createdAt, updatedAt: value.updatedAt,
   dependsOn: value.dependsOn, blockedBy: value.blockedBy, ready: value.ready,
 });
 const graph = (): TaskGraph => ({
   project,
   summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
-  tasks: [{ id: taskId, titlePreview: "Task 中文", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time }],
+  tasks: [{ id: taskId, groupId: taskId, titlePreview: "Task 中文", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time }],
 });
 const taskPath = `/api/v1/projects/${projectId}/tasks`;
 const projectPath = `/api/v1/projects/${projectId}`;
@@ -283,6 +283,7 @@ describe("compiled task commands", () => {
       const validationBlocked = ["/api/client.js", "/api/operation.js", "/config/", "/repository/", "/commands/server/", "/commands/task/rendering.js", "better-sqlite3"];
       for (const args of [
         ["create"], ["create", "--title", "\u0085"], ["update", taskId],
+        ["create", "--title", "Member", "--group-id", "invalid"], ["update", taskId, "--group-id", "invalid"],
         ["update", taskId, "--description", "", "--depends-on", secondId, "--clear-dependencies"],
         ["create", "--title", "Title", "--pull-request-url="],
         ["update", taskId, "--pull-request-title="],
@@ -390,7 +391,7 @@ describe("compiled task commands", () => {
         summary: { total: 2, proposed: 2, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
         tasks: [
           { ...graph().tasks[0]!, status: "proposed", ready: false, dependsOn: [secondId], blockedBy: [secondId] },
-          { ...graph().tasks[0]!, id: secondId, titlePreview: "Proposed prerequisite", status: "proposed", ready: false },
+          { ...graph().tasks[0]!, id: secondId, groupId: secondId, titlePreview: "Proposed prerequisite", status: "proposed", ready: false },
         ],
       };
       await f.serve((request, response) => respond(response, request.pathname.endsWith("/task-graph") ? value : proposed));

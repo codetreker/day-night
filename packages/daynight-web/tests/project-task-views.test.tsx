@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTask, getTaskGraph } from '../src/api/client';
 import type { GraphTask, TaskGraph } from '../src/api/types';
 import { ProjectPage } from '../src/features/projects/ProjectPage';
-import type { GraphIndex } from '../src/features/task-graph/model';
+import type { GroupIndex } from '../src/features/task-graph/model';
 
 const render = createLocaleRender('zh-CN');
 
@@ -13,18 +13,18 @@ vi.mock('../src/api/client', async (original) => ({
   listAttachments: vi.fn(async () => ({ items: [], nextCursor: null })),
   attachmentPreviewRoot: (projectId: string, taskId: string) => `/fixtures/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/preview/`,
 }));
-vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, rootId, onOpenTask }: {
-  index: GraphIndex; rootId: string; onOpenTask: (id: string, trigger: HTMLElement) => void;
-}) => <button data-testid="graph-node" onClick={(event) => { onOpenTask(rootId, event.currentTarget); }}>图节点 {index.nodes.get(rootId)!.titlePreview}</button> }));
+vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, groupId, onOpenTask }: {
+  index: GroupIndex; groupId: string; onOpenTask: (id: string, trigger: HTMLElement) => void;
+}) => <button data-testid="graph-node" onClick={(event) => { onOpenTask(groupId, event.currentTarget); }}>图节点 {index.nodes.get(groupId)!.titlePreview}</button> }));
 
 const project = 'project-one';
 const otherProject = 'project-two';
 const timestamp = '2026-10-20T12:00:00.123456Z';
-const seed = (id: string, status: GraphTask['status'] = 'todo', dependsOn: string[] = []): GraphTask => ({
-  id, titlePreview: `任务 ${id}`, titleTruncated: false, status, dependsOn, blockedBy: [], ready: false,
+const seed = (id: string, status: GraphTask['status'] = 'todo', dependsOn: string[] = [], groupId = id): GraphTask => ({
+  id, groupId, titlePreview: `任务 ${id}`, titleTruncated: false, status, dependsOn, blockedBy: [], ready: false,
   createdAt: timestamp, updatedAt: timestamp,
 });
-const seeds = [seed('A', 'done'), seed('B', 'todo', ['A']), seed('C'), seed('D', 'done'), seed('E', 'in_progress')];
+const seeds = [seed('A', 'done'), seed('B', 'todo', ['A'], 'A'), seed('C'), seed('D', 'done'), seed('E', 'in_progress')];
 const snapshot = (items = seeds, id = project): TaskGraph => {
   const tasks = items.map((item) => {
     const blockedBy = item.dependsOn.filter((dependency) => items.find((candidate) => candidate.id === dependency)!.status !== 'done');
@@ -50,7 +50,7 @@ beforeEach(() => {
   graphRequest.mockReset(); graphRequest.mockImplementation(async (id) => snapshot(seeds, id));
   vi.mocked(getTask).mockReset();
   vi.mocked(getTask).mockImplementation(async (projectId, id) => ({
-    id, projectId, title: `详情 ${id}`, description: '', properties: { pullRequests: [] }, status: 'todo', version: 1n, dependsOn: [], blockedBy: [], ready: true,
+    id, groupId: id, projectId, title: `详情 ${id}`, description: '', properties: { pullRequests: [] }, status: 'todo', version: 1n, dependsOn: [], blockedBy: [], ready: true,
     createdAt: timestamp, updatedAt: timestamp,
   }));
 });
@@ -71,26 +71,27 @@ const openStandalone = async (id: string) => {
 describe('project task views', () => {
   it('shows proposed tasks in unfinished counts, chain summaries, statistics and standalone rows', async () => {
     graphRequest.mockResolvedValue(snapshot([
-      seed('A', 'proposed'), seed('B', 'proposed', ['A', 'C']), seed('C'), seed('D', 'proposed'),
-      seed('E', 'done'), seed('F', 'proposed', ['E']), seed('G', 'done'),
+      seed('A', 'proposed'), seed('B', 'proposed', ['A', 'C'], 'A'), seed('C'), seed('D', 'proposed'),
+      seed('E', 'done'), seed('F', 'proposed', ['E'], 'E'), seed('G', 'done'),
     ]));
     mount(); await screen.findByRole('tab', { name: '任务链' });
-    expectUnfinishedCounts(4, 1);
+    expectUnfinishedCounts(3, 2);
     const stats = screen.getByRole('region', { name: '项目任务统计' });
     expect(stats.querySelectorAll('.stat')).toHaveLength(7);
     expect(stats.querySelector('.stat.proposed')).toHaveTextContent('待审批4等待批准');
     expect(document.getElementById('task-root-A')?.querySelector('.root-status')).toHaveTextContent('待审批');
     expect(document.getElementById('task-root-A')?.querySelector('.root-progress-label')).toHaveTextContent('0/2 已完成');
-    expect(document.getElementById('task-root-C')?.querySelector('.root-status')).toHaveTextContent('待处理');
+    expect(document.getElementById('task-root-C')).toBeNull();
     expect(document.getElementById('task-root-E')?.querySelector('.root-status')).toHaveTextContent('进行中');
     fireEvent.click(tab('standalone'));
+    expect(row('C')).toHaveTextContent('待处理');
     expect(row('D')).toHaveTextContent('待审批');
     expect(row('D').querySelector('.root-status')).toHaveClass('graph-status-proposed');
     expect(row('D')).not.toHaveTextContent('可开始');
     expect(document.getElementById('standalone-task-G')).toBeNull();
     fireEvent.click(screen.getByRole('checkbox', { name: '显示已完成独立任务（1）' }));
     expect(row('G')).toBeVisible();
-    expectUnfinishedCounts(4, 1);
+    expectUnfinishedCounts(3, 2);
   });
 
   it('classifies complete dependencies independently from status and keeps summary and API order intact', async () => {
@@ -112,27 +113,42 @@ describe('project task views', () => {
     expect(graphRequest).toHaveBeenCalledTimes(1);
   });
 
-  it('counts unfinished tasks once across shared chains and keeps both counts independent of visible rows', async () => {
+  it('keeps singleton groups separate when dependencies change', async () => {
+    graphRequest.mockResolvedValueOnce(snapshot([seed('A'), seed('B')]))
+      .mockResolvedValueOnce(snapshot([seed('A'), seed('B', 'todo', ['A'])]));
+    mount(); await screen.findByRole('tab', { name: '独立任务' });
+    fireEvent.click(tab('standalone'));
+    expectUnfinishedCounts(0, 2);
+    expect(row('A')).toBeVisible(); expect(row('B')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '刷新' }));
+    await waitFor(() => expect(row('B').querySelector('.task-ready')).toBeNull());
+    expect(row('A')).toBeVisible(); expect(row('B')).toBeVisible();
+    expectUnfinishedCounts(0, 2);
+    fireEvent.click(tab('chains'));
+    expect(screen.getByRole('heading', { name: '暂无任务链' })).toBeVisible();
+  });
+
+  it('counts unfinished tasks once across explicit groups with cross-group dependencies and keeps both counts independent of visible rows', async () => {
     graphRequest.mockResolvedValue(snapshot([
-      seed('A', 'done'), seed('B', 'done'), seed('C', 'in_progress', ['A', 'B']), seed('D', 'todo', ['C']),
-      seed('E'), seed('F', 'todo', ['E']), seed('G'), seed('H', 'in_progress'), seed('I', 'done'),
-      seed('J', 'done'), seed('K', 'done', ['J']),
+      seed('A', 'done'), seed('B', 'done'), seed('C', 'in_progress', ['A', 'B'], 'A'), seed('D', 'todo', ['C'], 'A'),
+      seed('E'), seed('F', 'todo', ['E'], 'E'), seed('G'), seed('H', 'in_progress'), seed('I', 'done'),
+      seed('J', 'done'), seed('K', 'done', ['J'], 'J'),
     ]));
     mount(); await screen.findByRole('tab', { name: '任务链' });
     expectUnfinishedCounts(4, 2);
     expect(tab('chains').querySelector('.graph-count-pill')).toHaveAttribute('title', '未完成任务数');
-    expect(document.querySelectorAll('.root-toggle')).toHaveLength(3);
+    expect(document.querySelectorAll('.root-toggle')).toHaveLength(2);
     expect(document.getElementById('task-root-A')).toBeVisible();
-    expect(document.getElementById('task-root-B')).toBeVisible();
+    expect(document.getElementById('task-root-B')).toBeNull();
     expect(document.getElementById('task-root-J')).toBeNull();
     fireEvent.click(screen.getByRole('checkbox', { name: '显示已完成任务链（1）' }));
-    expect(document.querySelectorAll('.root-toggle')).toHaveLength(4);
+    expect(document.querySelectorAll('.root-toggle')).toHaveLength(3);
     expectUnfinishedCounts(4, 2);
     fireEvent.click(tab('standalone'));
     expect([...document.querySelectorAll('.standalone-row')].map((item) => item.id)).toEqual(['standalone-task-H', 'standalone-task-G']);
     expect(tab('standalone').querySelector('.graph-count-pill')).toHaveAttribute('title', '未完成任务数');
-    fireEvent.click(screen.getByRole('checkbox', { name: '显示已完成独立任务（1）' }));
-    expect(row('I')).toBeVisible();
+    fireEvent.click(screen.getByRole('checkbox', { name: '显示已完成独立任务（2）' }));
+    expect(row('I')).toBeVisible(); expect(row('B')).toBeVisible();
     expectUnfinishedCounts(4, 2);
     fireEvent.click(tab('chains'));
     expectUnfinishedCounts(4, 2);
@@ -140,7 +156,7 @@ describe('project task views', () => {
   });
 
   it('shows zero unfinished tasks for completed chains and standalone tasks with either filter setting', async () => {
-    graphRequest.mockResolvedValue(snapshot([seed('A', 'done'), seed('B', 'done', ['A']), seed('D', 'done')]));
+    graphRequest.mockResolvedValue(snapshot([seed('A', 'done'), seed('B', 'done', ['A'], 'A'), seed('D', 'done')]));
     mount(); await screen.findByRole('heading', { name: '所有任务链已完成' });
     expectUnfinishedCounts(0, 0);
     fireEvent.click(screen.getByRole('button', { name: '显示已完成任务链' }));
@@ -165,7 +181,7 @@ describe('project task views', () => {
     expect(row('C')).toBeVisible(); expect(row('E')).toBeVisible();
     expectUnfinishedCounts(1, 2);
     await act(async () => { resolve(snapshot([
-      seed('A', 'done'), seed('B', 'todo', ['A']), seed('C', 'todo', ['A']), seed('D', 'done'), seed('E', 'in_progress', ['A']),
+      seed('A', 'done'), seed('B', 'todo', ['A'], 'A'), seed('C', 'todo', ['A'], 'A'), seed('D', 'done'), seed('E', 'in_progress', ['A'], 'A'),
     ])); });
     expect(screen.getByRole('heading', { name: '所有独立任务已完成' })).toBeVisible();
     expect(document.getElementById('standalone-task-C')).toBeNull();
@@ -253,8 +269,8 @@ describe('project task views', () => {
     expect(screen.queryByRole('tab')).toBeNull(); expect(screen.queryByRole('checkbox')).toBeNull();
   });
 
-  it('keeps details when refresh adds an edge and returns focus to the active category tab when its row vanishes', async () => {
-    graphRequest.mockResolvedValueOnce(snapshot([seed('C')])).mockResolvedValueOnce(snapshot([seed('C'), seed('child', 'todo', ['C'])]));
+  it('keeps details when refresh adds a group member and returns focus to the active category tab when its row vanishes', async () => {
+    graphRequest.mockResolvedValueOnce(snapshot([seed('C')])).mockResolvedValueOnce(snapshot([seed('C'), seed('child', 'todo', ['C'], 'C')]));
     mount(); await screen.findByRole('tab', { name: '独立任务' }); const { trigger, dialog } = await openStandalone('C');
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     await screen.findByRole('heading', { name: '暂无独立任务' });
@@ -266,8 +282,8 @@ describe('project task views', () => {
     fireEvent.click(tab('chains')); expect(document.getElementById('task-root-C')).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('keeps details while refresh removes an edge and falls back to the still-active chain tab', async () => {
-    graphRequest.mockResolvedValueOnce(snapshot([seed('A'), seed('B', 'todo', ['A'])])).mockResolvedValueOnce(snapshot([seed('A'), seed('B')]));
+  it('keeps details while refresh moves a member to its own group and falls back to the still-active chain tab', async () => {
+    graphRequest.mockResolvedValueOnce(snapshot([seed('A'), seed('B', 'todo', ['A'], 'A')])).mockResolvedValueOnce(snapshot([seed('A'), seed('B')]));
     mount(); fireEvent.click(await screen.findByTestId('graph-node'));
     const dialog = await screen.findByRole('dialog', { name: '任务详情' }); await within(dialog).findByRole('heading', { name: '详情 A' });
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));

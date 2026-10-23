@@ -72,6 +72,19 @@ creation, execution requests, `run-task` and autopilot grant none. A deliberate
 Web approval click is the user's approval instruction. Task approval itself
 grants no implementation, publication, deployment or merge permission.
 
+**Task groups.** Every full task and graph task contains a persisted `groupId`.
+Creating without `--group-id` starts a new group with the new task ID. To join
+an existing group, pass its confirmed first-task ID with `--group-id`; the
+anchor must belong to the same project and have `id === groupId`. Dependencies
+do not choose or change membership. A versioned `task update --group-id` can
+move a member to another anchor or make it a new anchor using its own task ID.
+An anchor cannot leave while other members still reference it. Omission preserves
+membership; supplied empty/null values, nonexistent IDs, foreign-project IDs and non-anchor
+references fail.
+Web chains contain all same-group tasks, including independent members. A
+single-member group appears as a standalone task. External prerequisite context
+does not contribute to that group's progress.
+
 **Task concurrency.** Bind each metadata update, approve, claim and complete to
 the exact version read for that decision using `--if-version`; the CLI's default
 pre-submit read cannot protect an earlier decision. Preserve full int64 decimal

@@ -102,7 +102,7 @@ index 后由前端显示未找到页面。独立附件命名空间复用原始�
 | 对象 | 字段与含义 |
 |---|---|
 | Project | `id`、非空 `name`、`repoUrl`、`createdAt`、`updatedAt` |
-| Task | `id`、`projectId`、非空 `title`、`description`、`status`、具体 `properties`、`version`、`createdAt`、`updatedAt` |
+| Task | `id`、`projectId`、持久 `groupId`、非空 `title`、`description`、`status`、具体 `properties`、`version`、`createdAt`、`updatedAt` |
 | TaskDependency | `projectId`、`taskId`、`dependsOnTaskId` |
 
 `TaskDependency` 的方向是“`taskId` 依赖 `dependsOnTaskId`”。project 拥有任务及依赖
@@ -223,12 +223,14 @@ callback 不执行写入并正常结束；只有外层事务成功后才返回�
 | `POST /api/v1/projects/{projectId}/tasks/{taskId}/complete` | versioned in_progress→done |
 
 创建 project 的输入为 `name` 和 `repoUrl`。创建 task 的输入为 `title`、可省略的
-`description`、`dependsOn` 与 `properties`；省略描述表示空字符串，省略依赖和
+`groupId`、`description`、`dependsOn` 与 `properties`；省略 groupId 以新 task ID 建组，
+显式值必须引用同项目锚点。存储、迁移与锚点保护由[分组设计](daynight-task-groups.md)拥有。
+省略描述表示空字符串，省略依赖和
 PR 引用表示空数组。创建成功
 返回 `201`、资源体和对应资源的 `Location`；读取及更新成功返回 `200`。
 
 PATCH 必须提交期望的 `version`，并至少提供 `title`、`description`、
-`dependsOn` 或一个已定义属性。只有 `version` 或空 `properties` 的请求返回
+`groupId`、`dependsOn` 或一个已定义属性。只有 `version` 或空 `properties` 的请求返回
 `invalid_input`；
 提供字段但值未变的请求采用前述语义空操作规则。例如：
 

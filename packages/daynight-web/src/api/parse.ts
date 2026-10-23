@@ -103,6 +103,7 @@ const graphTask = (value: unknown): GraphTask => {
   const data = record(value);
   return {
     id: id(data.id),
+    groupId: id(data.groupId),
     titlePreview: string(data.titlePreview),
     titleTruncated: boolean(data.titleTruncated),
     status: status(data.status),
@@ -154,6 +155,7 @@ export const parseTaskDetail = (value: unknown, projectId: string, taskId: strin
   if (!isTaskVersion(version)) return malformed();
   const parsed = {
     id: id(data.id),
+    groupId: id(data.groupId),
     projectId: id(data.projectId),
     title: nonemptyString(data.title),
     description: string(data.description),

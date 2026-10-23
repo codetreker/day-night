@@ -40,7 +40,8 @@ complete 与现有资源读写共用当前成员权限；管理员额外管理�
 
 ## 现有基础与交付边界
 
-本文已交付的 `project` 和 `task` 命令复用已有 HTTP API，不改服务或数据库。实现入口及字段可以由
+`project` 和 `task` 命令复用共享 HTTP 客户端；持久 groupId 的服务端字段和迁移由
+[分组设计](daynight-task-groups.md)拥有。实现入口及字段可以由
 以下现有文件核对：
 
 | 现有归属 | 可复用事实 |
@@ -397,6 +398,10 @@ Git、完整分页、身份比较和后续 POST 共用同一 `Operation`；每�
 完整扫描不是服务端事务，扫描完成与 POST 之间仍可能有并发创建；服务的重复
 repo 许可、API、schema 和事务政策保持原样。原子唯一性需要独立的服务契约决策。
 
+create/update 的 `--group-id` 只在提供时投影为 groupId 请求字段；响应中的完整任务
+和图任务都严格读取该 UUID。服务决定新组默认值、同项目锚点引用和占用锚点拒绝。
+分组更新复用现有精确版本 PATCH，不从依赖推断组。
+
 更新参数先转换为字段存在性明确的 patch：未出现标志时不写 key；空描述写 `""`；
 重复 `--depends-on` 从首次出现起形成有序替换数组，保留重复 ID，不进行 CSV
 拆分；`--clear-dependencies` 写 `[]`。`--description ""` 与 `--description=`
@@ -455,7 +460,7 @@ Project 渲染由 `commands/project/rendering.ts` 拥有，与 API 数据分离�
 显示为 `\uXXXX`。普通 Unicode、emoji 和原有反斜线保持原样；该转换只属于终端
 显示，不改变提交给服务或 JSON 输出的数据。
 
-Task 的 `rendering.ts` 提供列表标签块与完整资源标签块。列表包含 `ID`、
+Task 的 `rendering.ts` 提供列表标签块与完整资源标签块。列表包含 `ID`、`Group ID`、
 `Project`、`Title`、`Status`、`Ready`、`Depends on`、`Blocked by`，以及关联 PR
 数量、按顺序编号的 title/url；完整资源另外包含 `Description`、完整十进制
 `Version`、`Created` 和 `Updated`，供 show、ready、create 和 update 使用。

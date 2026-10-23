@@ -35,7 +35,7 @@ func TestTaskGraphProjectionAndUnicodeBounds(t *testing.T) {
 	mustQueryExec(t, s, `CREATE FUNCTION reject_description() RETURNS text LANGUAGE plpgsql STABLE AS $$
 		BEGIN RAISE EXCEPTION 'description must not be selected'; END $$;
 		ALTER TABLE tasks RENAME TO task_source;
-		CREATE VIEW tasks AS SELECT id, project_id, title, reject_description() AS description,
+		CREATE VIEW tasks AS SELECT id, project_id, group_id, title, reject_description() AS description,
 		status, version, created_at, updated_at FROM task_source`)
 	if err := s.ReadSnapshot(ctx, func(snapshot *Snapshot) error {
 		size, err := snapshot.TaskGraphSize(ctx, project.ID)
@@ -89,10 +89,10 @@ func TestTaskGraphCountAndProjectionShareSnapshot(t *testing.T) {
 			return err
 		}
 		if err := s.WriteProject(ctx, project.ID, func(tx *ProjectTx) error {
-			if _, err := tx.UpdateTask(ctx, a.ID, TaskWrite{Title: "Changed", Status: core.TaskDone}); err != nil {
+			if _, err := tx.UpdateTask(ctx, a.ID, TaskWrite{GroupID: a.GroupID, Title: "Changed", Status: core.TaskDone}); err != nil {
 				return err
 			}
-			_, err := tx.CreateTask(ctx, queryID(13), TaskWrite{Title: "New", Status: core.TaskTodo, DependsOn: []string{b.ID}})
+			_, err := tx.CreateTask(ctx, queryID(13), TaskWrite{GroupID: queryID(13), Title: "New", Status: core.TaskTodo, DependsOn: []string{b.ID}})
 			return err
 		}); err != nil {
 			return err
@@ -121,11 +121,11 @@ func TestTaskGraphStoreFailuresPreserveCauses(t *testing.T) {
 		{"count", "DROP TABLE task_dependencies", true},
 		{"query", "DROP TABLE tasks", false},
 		{"decode", `ALTER TABLE tasks RENAME TO task_source;
-			CREATE VIEW tasks AS SELECT id, project_id, title, status, 1::bigint AS created_at, updated_at FROM task_source`, false},
+			CREATE VIEW tasks AS SELECT id, project_id, group_id, title, status, 1::bigint AS created_at, updated_at FROM task_source`, false},
 		{"iteration", `CREATE FUNCTION fail_graph_stamp() RETURNS timestamptz LANGUAGE plpgsql AS $$
 			BEGIN RAISE EXCEPTION USING ERRCODE = 'P1003', MESSAGE = 'private graph failure'; END $$;
 			ALTER TABLE tasks RENAME TO task_source;
-			CREATE VIEW tasks AS SELECT id, project_id, title, status, created_at, fail_graph_stamp() AS updated_at FROM task_source`, false},
+			CREATE VIEW tasks AS SELECT id, project_id, group_id, title, status, created_at, fail_graph_stamp() AS updated_at FROM task_source`, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			s := isolatedStore(t)

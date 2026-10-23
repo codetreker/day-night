@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, getTaskGraph, isAbortError } from "../../api/client";
 import type { TaskGraph } from "../../api/types";
-import { buildGraphIndex, type GraphIndex } from "../task-graph/model";
+import { buildGroupIndex, type GroupIndex } from "../task-graph/model";
 
 export type GraphSnapshot = {
   readonly graph: TaskGraph;
-  readonly index: GraphIndex;
+  readonly index: GroupIndex;
   readonly receivedAt: number;
   readonly revision: number;
 };
@@ -47,7 +47,7 @@ export const useTaskGraph = (projectId: string) => {
       const unchanged = previous?.projectId === projectId && previous.serialized === serialized;
       const snapshot = {
         graph: unchanged ? previous.snapshot.graph : graph,
-        index: unchanged ? previous.snapshot.index : buildGraphIndex(graph),
+        index: unchanged ? previous.snapshot.index : buildGroupIndex(graph),
         receivedAt: Date.now(), revision,
       };
       cached.current = { projectId, serialized, snapshot };

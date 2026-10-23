@@ -6,7 +6,7 @@ import type { GraphTask, Project, TaskDetail, TaskGraph } from '../src/api/types
 import { stringifyApiJson } from '../src/api/json';
 import type { GraphSnapshot } from '../src/features/projects/useTaskGraph';
 import { TaskDetailDialog, type TaskDetailDialogProps } from '../src/features/task-detail/TaskDetailDialog';
-import { buildGraphIndex } from '../src/features/task-graph/model';
+import { buildGroupIndex } from '../src/features/task-graph/model';
 
 const render = createLocaleRender('zh-CN');
 
@@ -20,11 +20,11 @@ const projectId = id(100);
 const timestamp = '2026-10-20T09:00:00.123456789Z';
 const project: Project = { id: projectId, name: '测试项目', repoUrl: 'https://github.com/example/project', createdAt: timestamp, updatedAt: timestamp };
 const detail = (value = 1, changes: Partial<TaskDetail> = {}): TaskDetail => ({
-  id: id(value), projectId, title: `任务 ${value}`, description: `任务 ${value} 的完整描述`, status: 'todo', version: 1n,
+  id: id(value), groupId: id(value), projectId, title: `任务 ${value}`, description: `任务 ${value} 的完整描述`, status: 'todo', version: 1n,
   properties: { pullRequests: [] }, dependsOn: [], blockedBy: [], ready: true, createdAt: timestamp, updatedAt: timestamp, ...changes,
 });
 const node = (task: TaskDetail): GraphTask => ({
-  id: task.id, titlePreview: Array.from(task.title).slice(0, 160).join(''), titleTruncated: Array.from(task.title).length > 160,
+  id: task.id, groupId: task.groupId, titlePreview: Array.from(task.title).slice(0, 160).join(''), titleTruncated: Array.from(task.title).length > 160,
   status: task.status, dependsOn: task.dependsOn, blockedBy: task.blockedBy, ready: task.ready, createdAt: task.createdAt, updatedAt: task.updatedAt,
 });
 const snapshot = (tasks = [detail()], revision = 1): GraphSnapshot => {
@@ -37,7 +37,7 @@ const snapshot = (tasks = [detail()], revision = 1): GraphSnapshot => {
       blocked: tasks.filter((task) => task.status === 'todo' && !task.ready).length,
     },
   };
-  return { graph, index: buildGraphIndex(graph), receivedAt: Date.now(), revision };
+  return { graph, index: buildGroupIndex(graph), receivedAt: Date.now(), revision };
 };
 const response = (task: TaskDetail) => new Response(stringifyApiJson(task), { headers: { 'Content-Type': 'application/json' } });
 const failure = (code = 'internal_error') => new Response(JSON.stringify({ error: {

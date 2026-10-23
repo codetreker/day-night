@@ -35,7 +35,9 @@ clean current-main replacement owns independent selection/Details and smooth
 highlighting. Its fresh source-bound acceptance and integration complete UX-T2,
 without requiring the abandoned PR or reusing its runtime results.
 
-The root and its descendants remain the chain's counted membership. Rendering
+The [persistent group decision](../feature/2026-10-23-persistent-task-groups.md)
+replaces the original root-descendant membership with tasks sharing groupId.
+Complete prerequisite context remains outside counted group membership. Rendering
 adds the complete prerequisite closure without importing unrelated descendants
 of contextual tasks. Selection belongs to the mounted graph and highlights the
 selected task's visible ancestors and all their real visible routes/arrows,

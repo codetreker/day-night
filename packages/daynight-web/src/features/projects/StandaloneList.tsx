@@ -1,10 +1,10 @@
 import { useRef } from "react";
 import { useI18n } from "../../i18n/LocaleProvider";
-import type { GraphIndex } from "../task-graph/model";
+import type { GroupIndex } from "../task-graph/model";
 import "../../styles/graph.css";
 
 type StandaloneListProps = {
-  readonly index: GraphIndex;
+  readonly index: GroupIndex;
   readonly taskIds: readonly string[];
   readonly allTaskIds: readonly string[];
   readonly onSelectTask: (id: string, trigger: HTMLElement) => void;

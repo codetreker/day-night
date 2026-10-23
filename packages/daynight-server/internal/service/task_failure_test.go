@@ -265,7 +265,7 @@ func TestTaskSnapshotKeepsProjectAndDerivedTaskStateConsistent(t *testing.T) {
 		match: func(sql string) bool { return strings.Contains(sql, "FROM project_members m") },
 		end: func() {
 			if err := database.WriteProject(context.Background(), project.ID, func(tx *store.ProjectTx) error {
-				_, err := tx.UpdateTask(context.Background(), predecessor.ID, store.TaskWrite{Title: predecessor.Title, Status: core.TaskDone})
+				_, err := tx.UpdateTask(context.Background(), predecessor.ID, store.TaskWrite{GroupID: predecessor.GroupID, Title: predecessor.Title, Status: core.TaskDone})
 				return err
 			}); err != nil {
 				t.Fatal(err)

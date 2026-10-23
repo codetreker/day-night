@@ -31,7 +31,7 @@ func queryTask(t *testing.T, s *Store, projectID string, number int, status core
 	err := s.WriteProject(context.Background(), projectID, func(tx *ProjectTx) error {
 		var err error
 		task, err = tx.CreateTask(context.Background(), queryID(number), TaskWrite{
-			Title: "Task", Description: "Description", Status: status, DependsOn: dependencies,
+			GroupID: queryID(number), Title: "Task", Description: "Description", Status: status, DependsOn: dependencies,
 		})
 		return err
 	})
@@ -122,11 +122,11 @@ func TestQueriesScopedResourcesAndUpdates(t *testing.T) {
 		if !errors.Is(err, core.ErrNotFound) {
 			t.Fatalf("cross-project task: %v", err)
 		}
-		_, err = tx.UpdateTask(ctx, other.ID, TaskWrite{Title: "Forbidden", Status: core.TaskTodo})
+		_, err = tx.UpdateTask(ctx, other.ID, TaskWrite{GroupID: other.GroupID, Title: "Forbidden", Status: core.TaskTodo})
 		if !errors.Is(err, core.ErrNotFound) {
 			t.Fatalf("cross-project update: %v", err)
 		}
-		updated, err := tx.UpdateTask(ctx, dependent.ID, TaskWrite{Title: "Updated", Status: core.TaskInProgress, DependsOn: []string{done.ID}})
+		updated, err := tx.UpdateTask(ctx, dependent.ID, TaskWrite{GroupID: dependent.GroupID, Title: "Updated", Status: core.TaskInProgress, DependsOn: []string{done.ID}})
 		if err != nil {
 			return err
 		}
@@ -263,7 +263,7 @@ func TestQueriesPartialWriteRollbackRestoresResource(t *testing.T) {
 		END $$;
 		CREATE TRIGGER reject_second_edge BEFORE INSERT ON task_dependencies FOR EACH ROW EXECUTE FUNCTION reject_second_edge()`)
 	err := s.WriteProject(ctx, project.ID, func(tx *ProjectTx) error {
-		_, err := tx.UpdateTask(ctx, before.ID, TaskWrite{Title: "Changed", Description: "Changed", Status: core.TaskDone, DependsOn: []string{first.ID, second.ID}})
+		_, err := tx.UpdateTask(ctx, before.ID, TaskWrite{GroupID: before.GroupID, Title: "Changed", Description: "Changed", Status: core.TaskDone, DependsOn: []string{first.ID, second.ID}})
 		return err
 	})
 	var cause *pgconn.PgError
@@ -292,10 +292,10 @@ func TestQueriesSnapshotRetainsCompleteOldGraph(t *testing.T) {
 			t.Fatalf("snapshot transaction modes: %s %s, %v", isolation, readOnly, err)
 		}
 		if err := s.WriteProject(ctx, project.ID, func(tx *ProjectTx) error {
-			if _, err := tx.UpdateTask(ctx, a.ID, TaskWrite{Title: "Done", Status: core.TaskDone}); err != nil {
+			if _, err := tx.UpdateTask(ctx, a.ID, TaskWrite{GroupID: a.GroupID, Title: "Done", Status: core.TaskDone}); err != nil {
 				return err
 			}
-			_, err := tx.UpdateTask(ctx, b.ID, TaskWrite{Title: "Changed", Status: core.TaskTodo, DependsOn: []string{c.ID}})
+			_, err := tx.UpdateTask(ctx, b.ID, TaskWrite{GroupID: b.GroupID, Title: "Changed", Status: core.TaskTodo, DependsOn: []string{c.ID}})
 			return err
 		}); err != nil {
 			return err
@@ -361,7 +361,7 @@ func TestQueriesReadFailuresAreNeverEmptyResults(t *testing.T) {
 		project := queryProject(t, s, 1)
 		task := queryTask(t, s, project.ID, 11, core.TaskTodo)
 		mustQueryExec(t, s, `ALTER TABLE tasks RENAME TO task_source;
-			CREATE VIEW tasks AS SELECT id, project_id, title, description, status, 'invalid version'::text AS version,
+			CREATE VIEW tasks AS SELECT id, project_id, group_id, title, description, status, 'invalid version'::text AS version,
 			created_at, updated_at FROM task_source`)
 		if err := s.ReadSnapshot(context.Background(), func(snapshot *Snapshot) error {
 			_, err := snapshot.Tasks(context.Background(), project.ID, TaskQuery{Page: Page{Limit: 10}})

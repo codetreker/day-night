@@ -1,20 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import type { RootProjection } from '../src/features/task-graph/model';
+import type { GroupProjection } from '../src/features/task-graph/model';
 import { layoutGraph, TASK_NODE_COMPACT_HEIGHT, TASK_NODE_EXPANDABLE_HEIGHT, TASK_NODE_WIDTH, type CanvasLayout } from '../src/features/task-graph/layout';
 
 const projection = (
   mainIds: readonly string[],
   edges: readonly (readonly [string, string])[],
   externalIds: readonly string[] = [],
-): RootProjection => ({
-  rootId: mainIds[0] ?? '',
+): GroupProjection => ({
+  groupId: mainIds[0] ?? '',
   mainIds: new Set(mainIds),
   externalIds: new Set(externalIds),
   edges: edges.map(([source, target]) => ({ source, target, external: externalIds.includes(source) })),
   completed: 0,
 });
 
-const verifyGeometry = (actual: CanvasLayout, expected: RootProjection) => {
+const verifyGeometry = (actual: CanvasLayout, expected: GroupProjection) => {
   const expectedIds = [...expected.mainIds, ...expected.externalIds].sort();
   expect(actual.nodes.map((node) => node.id)).toEqual(expectedIds);
   expect(new Set(actual.nodes.map((node) => node.id)).size).toBe(expectedIds.length);

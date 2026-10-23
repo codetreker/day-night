@@ -4,9 +4,9 @@ import { createLocaleRender } from './helpers/renderWithLocale';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaskGraph as TaskGraphData } from '../src/api/types';
-import { RootList } from '../src/features/task-graph/RootList';
+import { GroupList } from '../src/features/task-graph/GroupList';
 import { getInitialTaskViewport, TaskGraph } from '../src/features/task-graph/TaskGraph';
-import { buildGraphIndex, projectRoot } from '../src/features/task-graph/model';
+import { buildGroupIndex, projectGroup } from '../src/features/task-graph/model';
 import * as layoutModule from '../src/features/task-graph/layout';
 import { browsingProjects } from './mockups/browsing-fixture';
 import { compileDependencyRoute } from '../src/features/task-graph/routes';
@@ -32,15 +32,15 @@ const graph: TaskGraphData = {
   project: { id: 'project', name: '项目', repoUrl: 'https://github.com/example/repo', createdAt: time, updatedAt: time },
   summary: { total: 6, proposed: 0, todo: 3, inProgress: 1, done: 2, ready: 2, blocked: 1 },
   tasks: [
-    { id: 'A', titlePreview: '基础 API', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { id: 'B', titlePreview: '设计方案', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { id: 'C', titlePreview: '合流实现', titleTruncated: true, status: 'in_progress', dependsOn: ['A', 'B'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { id: 'D', titlePreview: '最终验收', titleTruncated: false, status: 'todo', dependsOn: ['C', 'F'], blockedBy: ['C', 'F'], ready: false, createdAt: time, updatedAt: time },
-    { id: 'E', titlePreview: '独立任务', titleTruncated: false, status: 'todo', dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
-    { id: 'F', titlePreview: '发布检查', titleTruncated: false, status: 'todo', dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
+    { id: 'A', groupId: 'A', titlePreview: '基础 API', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { id: 'B', groupId: 'B', titlePreview: '设计方案', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { id: 'C', groupId: 'A', titlePreview: '合流实现', titleTruncated: true, status: 'in_progress', dependsOn: ['A', 'B'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { id: 'D', groupId: 'A', titlePreview: '最终验收', titleTruncated: false, status: 'todo', dependsOn: ['C', 'F'], blockedBy: ['C', 'F'], ready: false, createdAt: time, updatedAt: time },
+    { id: 'E', groupId: 'E', titlePreview: '独立任务', titleTruncated: false, status: 'todo', dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
+    { id: 'F', groupId: 'F', titlePreview: '发布检查', titleTruncated: false, status: 'todo', dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
   ],
 };
-const index = buildGraphIndex(graph);
+const index = buildGroupIndex(graph);
 const noop = () => {};
 const nodeButton = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}，(?!详情$)`) });
 const detailsButton = (name: string) => screen.getByRole('button', { name: `${name}，详情` });
@@ -56,7 +56,7 @@ beforeEach(installGraphMeasurements);
 
 describe('task dependency canvas', () => {
   it('omits the entire expansion footer for fully visible tasks and sizes every card to its body', async () => {
-    const view = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    const view = render(<TaskGraph index={index} groupId="A" onOpenTask={noop} />);
     await ready(view.container);
     expect(view.container.querySelector('.task-node-expansions')).toBeNull();
     for (const node of view.container.querySelectorAll<HTMLElement>('.react-flow__node')) {
@@ -72,9 +72,9 @@ describe('task dependency canvas', () => {
       tasks: graph.tasks.map((task) => task.id === 'D' || task.id === 'F'
         ? { ...task, status: 'proposed' as const, ready: false } : task),
     };
-    const view = render(<TaskGraph index={buildGraphIndex(proposed)} rootId="A" onOpenTask={noop} />);
+    const view = render(<TaskGraph index={buildGroupIndex(proposed)} groupId="A" onOpenTask={noop} />);
     await ready(view.container);
-    const main = screen.getByRole('button', { name: '最终验收，待审批，被阻塞，共享任务' });
+    const main = screen.getByRole('button', { name: '最终验收，待审批，被阻塞' });
     expect(main.closest('.task-node')).toHaveClass('task-node-proposed');
     expect(within(main).getByText('待审批')).toHaveClass('graph-status-proposed');
     const external = screen.getByRole('button', { name: '发布检查，待审批，外部前置' });
@@ -84,7 +84,7 @@ describe('task dependency canvas', () => {
 
   it('expands the existing canvas and restores its toolbar focus without changing the user viewport or layout', async () => {
     const layout = vi.spyOn(layoutModule, 'layoutGraph');
-    const view = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    const view = render(<TaskGraph index={index} groupId="A" onOpenTask={noop} />);
     await ready(view.container);
     const initialZoom = zoom(view.container);
     fireEvent.click(screen.getByRole('button', { name: '放大' }));
@@ -122,7 +122,7 @@ describe('task dependency canvas', () => {
 
   it('wraps keyboard focus inside fullscreen and leaves Escape outside the graph alone', async () => {
     const user = userEvent.setup();
-    const view = render(<><button type="button">图外按钮</button><TaskGraph index={index} rootId="A" onOpenTask={noop} /></>);
+    const view = render(<><button type="button">图外按钮</button><TaskGraph index={index} groupId="A" onOpenTask={noop} /></>);
     await ready(view.container);
     fireEvent.click(screen.getByRole('button', { name: '全屏查看' }));
     const exit = screen.getByRole('button', { name: '退出全屏' });
@@ -152,7 +152,7 @@ describe('task dependency canvas', () => {
     const portal = document.createElement('div');
     portal.textContent = 'body portal';
     document.body.append(portal);
-    const view = render(<><button type="button" data-testid="outer-background">项目导航</button><section><div data-testid="preexisting-inert" inert={true} /><TaskGraph index={index} rootId="A" onOpenTask={noop} /><button type="button" data-testid="inner-background">任务链</button></section></>);
+    const view = render(<><button type="button" data-testid="outer-background">项目导航</button><section><div data-testid="preexisting-inert" inert={true} /><TaskGraph index={index} groupId="A" onOpenTask={noop} /><button type="button" data-testid="inner-background">任务链</button></section></>);
     await ready(view.container);
     const background = [screen.getByTestId('outer-background'), screen.getByTestId('inner-background')];
     const existing = screen.getByTestId('preexisting-inert');
@@ -182,7 +182,7 @@ describe('task dependency canvas', () => {
       unobserve(target: Element) { observed.delete(target); }
       disconnect() {}
     });
-    const { container } = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    const { container } = render(<TaskGraph index={index} groupId="A" onOpenTask={noop} />);
     const nodes = [...container.querySelectorAll('.react-flow__node')];
     const edges = [...container.querySelectorAll('.react-flow__edge-path')];
     expect(nodes).toHaveLength(5);
@@ -194,7 +194,7 @@ describe('task dependency canvas', () => {
   });
 
   it('renders complete projected nodes and arrows, preserving status, shared nodes, and external predecessors', async () => {
-    const { container } = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    const { container } = render(<TaskGraph index={index} groupId="A" onOpenTask={noop} />);
     await waitFor(() => { expect(container.querySelectorAll('.react-flow__edge')).toHaveLength(4); });
     expect(container.querySelectorAll('.react-flow__node')).toHaveLength(5);
     expect(screen.getByText('3 个链内任务 · 2 个外部前置 · 4 条依赖')).toBeTruthy();
@@ -204,7 +204,7 @@ describe('task dependency canvas', () => {
     expect(nodeShell('合流实现…').classList.contains('task-node-selected')).toBe(true);
     expect(nodeShell('最终验收').classList.contains('task-node-todo')).toBe(true);
     expect(within(nodeButton('最终验收')).getByText('被阻塞')).toBeTruthy();
-    expect(within(nodeButton('合流实现…')).getByText('共享')).toBeTruthy();
+    expect(within(nodeButton('合流实现…')).queryByText('共享')).toBeNull();
     expect(within(nodeButton('设计方案')).getByText('外部前置')).toBeTruthy();
     expect(nodeShell('设计方案').classList.contains('task-node-done')).toBe(true);
     expect(nodeShell('发布检查').classList.contains('task-node-external')).toBe(true);
@@ -220,15 +220,15 @@ describe('task dependency canvas', () => {
       ...graph, summary: { total: 6, proposed: 0, todo: 3, inProgress: 0, done: 3, ready: 2, blocked: 1 },
       tasks: [
         graph.tasks[0]!,
-        { ...completed, id: 'P', titlePreview: '已完成外部祖先', dependsOn: [] },
-        { ...completed, id: 'B', titlePreview: '已完成外部前置', dependsOn: ['P'] },
+        { ...completed, id: 'P', groupId: 'P', titlePreview: '已完成外部祖先', dependsOn: [] },
+        { ...completed, id: 'B', groupId: 'P', titlePreview: '已完成外部前置', dependsOn: ['P'] },
         { ...graph.tasks[3]!, dependsOn: ['A', 'B'], blockedBy: [], ready: true },
-        { ...graph.tasks[4]!, id: 'X', titlePreview: '外部前置的无关后续', dependsOn: ['B'], blockedBy: [], ready: true },
-        { ...graph.tasks[5]!, id: 'Y', dependsOn: ['D'], blockedBy: ['D'], ready: false },
+        { ...graph.tasks[4]!, id: 'X', groupId: 'P', titlePreview: '外部前置的无关后续', dependsOn: ['B'], blockedBy: [], ready: true },
+        { ...graph.tasks[5]!, id: 'Y', groupId: 'A', dependsOn: ['D'], blockedBy: ['D'], ready: false },
       ],
     };
     const onOpenTask = vi.fn();
-    const { container } = render(<TaskGraph index={buildGraphIndex(externalGraph)} rootId="A" onOpenTask={onOpenTask} />);
+    const { container } = render(<TaskGraph index={buildGroupIndex(externalGraph)} groupId="A" onOpenTask={onOpenTask} />);
     await waitFor(() => { expect(container.querySelectorAll('.react-flow__node')).toHaveLength(5); });
     expect(screen.getByText('3 个链内任务 · 2 个外部前置 · 4 条依赖')).toBeTruthy();
     expect(nodeShell('已完成外部祖先')).toHaveClass('task-node-external', 'task-node-done');
@@ -243,11 +243,11 @@ describe('task dependency canvas', () => {
   });
 
   it('compiles every routed edge in an accessible noninteractive dependency layer', async () => {
-    const expected = layoutModule.layoutGraph({ rootId: 'A', mainIds: new Set(['A', 'C', 'D']), externalIds: new Set(['B', 'F']), edges: [
+    const expected = layoutModule.layoutGraph({ groupId: 'A', mainIds: new Set(['A', 'C', 'D']), externalIds: new Set(['B', 'F']), edges: [
       { source: 'A', target: 'C', external: false }, { source: 'B', target: 'C', external: true },
       { source: 'C', target: 'D', external: false }, { source: 'F', target: 'D', external: true },
     ], completed: 1 });
-    const { container } = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    const { container } = render(<TaskGraph index={index} groupId="A" onOpenTask={noop} />);
     await waitFor(() => { expect(container.querySelectorAll('.react-flow__edge-path')).toHaveLength(expected.edges.length); });
     const actualPaths = [...container.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'));
     expect(actualPaths).toEqual(expected.edges.map((edge) => compileDependencyRoute(edge.points, edge.external).d));
@@ -286,12 +286,12 @@ describe('task dependency canvas', () => {
   });
 
   it('paints complete dashed bodies before their canonical native arrow paths without changing solid edges', () => {
-    const geometry = layoutModule.layoutGraph(projectRoot(index, 'A'));
+    const geometry = layoutModule.layoutGraph(projectGroup(index, 'A'));
     const original = geometry.edges.map((edge) => ({
       ...edge, points: [{ x: 10, y: 20 }, { x: 1010, y: 20 }, { x: 1010, y: 1020 }, { x: 2010, y: 1020 }],
     }));
     vi.spyOn(layoutModule, 'layoutGraph').mockReturnValue({ ...geometry, edges: original });
-    const view = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    const view = render(<TaskGraph index={index} groupId="A" onOpenTask={noop} />);
     const svg = view.container.querySelector('svg.task-dependency-edges')!;
     const allPieces = [...svg.querySelectorAll<SVGElement>('.task-dependency-paint-piece')];
     expect(Number(svg.getAttribute('data-paint-piece-count'))).toBe(allPieces.length);
@@ -344,7 +344,7 @@ describe('task dependency canvas', () => {
   });
 
   it('keeps dependency paths in the node viewport during zoom and updates them from new snapshots', async () => {
-    const view = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    const view = render(<TaskGraph index={index} groupId="A" onOpenTask={noop} />);
     await ready(view.container);
     const svg = view.container.querySelector('svg.task-dependency-edges')!;
     const paths = [...svg.querySelectorAll('path.react-flow__edge-path')];
@@ -358,13 +358,13 @@ describe('task dependency canvas', () => {
     expect(svg.closest('.react-flow__viewport')).toBe(viewport(view.container));
     expect(view.container.querySelector('.react-flow__nodes')!.parentElement).toBe(viewport(view.container));
 
-    const updated = buildGraphIndex({
+    const updated = buildGroupIndex({
       ...graph,
       tasks: graph.tasks.map((task) => task.id === 'D' ? { ...task, dependsOn: ['C'], blockedBy: ['C'] } : task),
     });
-    const expected = layoutModule.layoutGraph(projectRoot(updated, 'A'));
+    const expected = layoutModule.layoutGraph(projectGroup(updated, 'A'));
     const retainedPath = svg.querySelector('[data-id="A->C"] path');
-    view.rerender(<TaskGraph index={updated} rootId="A" onOpenTask={noop} />);
+    view.rerender(<TaskGraph index={updated} groupId="A" onOpenTask={noop} />);
     await waitFor(() => { expect(svg.querySelectorAll('.react-flow__edge-path')).toHaveLength(3); });
     expect(view.container.querySelector('svg.task-dependency-edges')).toBe(svg);
     expect(svg.querySelector('[data-id="A->C"] path')).toBe(retainedPath);
@@ -379,7 +379,7 @@ describe('task dependency canvas', () => {
   it('opens independent Details once using mouse, Enter, or Space and returns the actual native trigger', async () => {
     const user = userEvent.setup();
     const onOpenTask = vi.fn();
-    render(<TaskGraph index={index} rootId="A" onOpenTask={onOpenTask} />);
+    render(<TaskGraph index={index} groupId="A" onOpenTask={onOpenTask} />);
     const button = detailsButton('合流实现…');
     await user.click(button);
     expect(onOpenTask).toHaveBeenCalledExactlyOnceWith('C', button);
@@ -394,7 +394,7 @@ describe('task dependency canvas', () => {
   });
 
   it('keeps wrapper nodes and edges out of the tab order and exposes only read-only viewport controls', async () => {
-    const { container } = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    const { container } = render(<TaskGraph index={index} groupId="A" onOpenTask={noop} />);
     await waitFor(() => { expect(container.querySelectorAll('.react-flow__edge')).toHaveLength(4); });
     for (const node of container.querySelectorAll('.react-flow__node')) {
       expect(node.getAttribute('tabindex')).toBeNull();
@@ -416,11 +416,11 @@ describe('task dependency canvas', () => {
 
   it('zooms and fits without recomputing layout, and applies selected styling without moving nodes', async () => {
     const spy = vi.spyOn(layoutModule, 'layoutGraph');
-    const view = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    const view = render(<TaskGraph index={index} groupId="A" onOpenTask={noop} />);
     await ready(view.container);
     const timings = performance.getEntriesByName('daynight:task-layout') as PerformanceMeasure[];
     expect(timings).toHaveLength(1);
-    expect(timings[0]!.detail).toEqual({ rootId: 'A' });
+    expect(timings[0]!.detail).toEqual({ groupId: 'A' });
     expect(timings[0]!.duration).toBeGreaterThanOrEqual(0);
     const initialZoom = zoom(view.container);
     const positions = [...view.container.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => node.style.transform);
@@ -441,7 +441,7 @@ describe('task dependency canvas', () => {
   });
 
   it('updates inspection through context while retaining controlled nodes and geometry', async () => {
-    const view = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    const view = render(<TaskGraph index={index} groupId="A" onOpenTask={noop} />);
     await ready(view.container);
     const originalButtons = [...view.container.querySelectorAll('.task-node')];
     const originalPaths = [...view.container.querySelectorAll('.react-flow__edge-path')].map((path) => path.getAttribute('d'));
@@ -472,14 +472,59 @@ describe('task dependency canvas', () => {
     expectStableTasks();
   });
 
+  it('expands disconnected group members in bounded batches and preserves inspection, focus and viewport', async () => {
+    const tasks = Array.from({ length: 75 }, (_, position) => ({
+      ...graph.tasks[0]!, id: `M${position}`, groupId: 'M0', titlePreview: `独立组成员 ${position}`,
+      status: 'todo' as const, dependsOn: [], blockedBy: [], ready: true,
+    }));
+    const snapshot = { ...graph, tasks, summary: { total: 75, proposed: 0, todo: 75, inProgress: 0, done: 0, ready: 75, blocked: 0 } };
+    const layout = vi.spyOn(layoutModule, 'layoutGraph');
+    const view = render(<TaskGraph index={buildGroupIndex(snapshot)} groupId="M0" onOpenTask={noop} />);
+    await waitFor(() => expect(view.container.querySelectorAll('.react-flow__node')).toHaveLength(50));
+    await waitFor(() => expect(viewport(view.container).style.transform).not.toBe('translate(0px,0px) scale(1)'));
+    const transform = viewport(view.container).style.transform;
+    const selected = nodeButton('独立组成员 1');
+    const layouts = layout.mock.calls.length;
+    fireEvent.click(selected);
+    expect(selected).toHaveAttribute('aria-pressed', 'true');
+    expect(layout).toHaveBeenCalledTimes(layouts);
+    expect(viewport(view.container).style.transform).toBe(transform);
+    const more = screen.getByRole('button', { name: '显示更多组内任务（25）' });
+    expect(more).toHaveAttribute('data-added-tasks', '20');
+    expect(more).toHaveAttribute('data-added-edges', '0');
+    more.focus(); fireEvent.click(more);
+    await waitFor(() => expect(view.container.querySelectorAll('.react-flow__node')).toHaveLength(70));
+    expect(more).toHaveFocus();
+    expect(more).toHaveAccessibleName('显示更多组内任务（5）');
+    expect(more).toHaveAttribute('data-added-tasks', '5');
+    expect(selected).toHaveAttribute('aria-pressed', 'true');
+    expect(viewport(view.container).style.transform).toBe(transform);
+    fireEvent.click(more);
+    await waitFor(() => expect(view.container.querySelectorAll('.react-flow__node')).toHaveLength(75));
+    expect(more).toHaveFocus();
+    expect(more).toHaveAttribute('aria-disabled', 'true');
+    expect(more).toHaveAccessibleName('显示更多组内任务（0）');
+    expect(view.container.querySelectorAll('.react-flow__edge')).toHaveLength(0);
+    expect(viewport(view.container).style.transform).toBe(transform);
+    fireEvent.click(more);
+    expect(view.container.querySelectorAll('.react-flow__node')).toHaveLength(75);
+    view.rerender(<TaskGraph index={buildGroupIndex({ ...snapshot, tasks: [...tasks] })} groupId="M0" onOpenTask={noop} />);
+    expect(view.container.querySelectorAll('.react-flow__node')).toHaveLength(75);
+    expect(selected).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '收起到概览' }));
+    await waitFor(() => expect(view.container.querySelectorAll('.react-flow__node')).toHaveLength(50));
+    expect(screen.getByRole('button', { name: '收起到概览' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: '显示更多组内任务（25）' })).toHaveAttribute('aria-disabled', 'false');
+  });
+
   it('starts a long chain at readable zoom and lets the fit control reveal more of it', async () => {
     const tasks = Array.from({ length: 10 }, (_, position) => ({
-      ...graph.tasks[0]!, id: `N${position}`, titlePreview: `任务 ${position}`, status: 'todo' as const,
+      ...graph.tasks[0]!, id: `N${position}`, groupId: 'N0', titlePreview: `任务 ${position}`, status: 'todo' as const,
       dependsOn: position === 0 ? [] : [`N${position - 1}`],
       blockedBy: position === 0 ? [] : [`N${position - 1}`], ready: position === 0,
     }));
-    const longChain = buildGraphIndex({ ...graph, tasks, summary: { total: 10, proposed: 0, todo: 10, inProgress: 0, done: 0, ready: 1, blocked: 9 } });
-    const { container } = render(<TaskGraph index={longChain} rootId="N0" onOpenTask={noop} />);
+    const longChain = buildGroupIndex({ ...graph, tasks, summary: { total: 10, proposed: 0, todo: 10, inProgress: 0, done: 0, ready: 1, blocked: 9 } });
+    const { container } = render(<TaskGraph index={longChain} groupId="N0" onOpenTask={noop} />);
     await waitFor(() => { expect(container.querySelectorAll('.react-flow__edge')).toHaveLength(9); });
     await waitFor(() => { expect(zoom(container)).toBe(0.8); });
     const transform = /translate\(([^,]+)px,\s*([^)]+)px\)/.exec(viewport(container).style.transform)!;
@@ -499,12 +544,12 @@ describe('task dependency canvas', () => {
 
   it.each(['body', 'details'])('reveals an offscreen keyboard-focused %s despite temporary native focus scrolling', async (control) => {
     const tasks = Array.from({ length: 10 }, (_, position) => ({
-      ...graph.tasks[0]!, id: `N${position}`, titlePreview: `任务 ${position}`, status: 'todo' as const,
+      ...graph.tasks[0]!, id: `N${position}`, groupId: 'N0', titlePreview: `任务 ${position}`, status: 'todo' as const,
       dependsOn: position === 0 ? [] : [`N${position - 1}`],
       blockedBy: position === 0 ? [] : [`N${position - 1}`], ready: position === 0,
     }));
-    const longChain = buildGraphIndex({ ...graph, tasks, summary: { total: 10, proposed: 0, todo: 10, inProgress: 0, done: 0, ready: 1, blocked: 9 } });
-    const view = render(<TaskGraph index={longChain} rootId="N0" onOpenTask={noop} />);
+    const longChain = buildGroupIndex({ ...graph, tasks, summary: { total: 10, proposed: 0, todo: 10, inProgress: 0, done: 0, ready: 1, blocked: 9 } });
+    const view = render(<TaskGraph index={longChain} groupId="N0" onOpenTask={noop} />);
     await waitFor(() => { expect(zoom(view.container)).toBe(0.8); });
     const button = control === 'body' ? nodeButton('任务 9') : detailsButton('任务 9');
     const focused = vi.spyOn(button, 'matches').mockReturnValue(false);
@@ -529,7 +574,7 @@ describe('task dependency canvas', () => {
   });
 
   it.each(['body', 'details'])('keeps the intended viewport stable for an already visible keyboard-focused %s', async (control) => {
-    const view = render(<TaskGraph index={index} rootId="A" onOpenTask={noop} />);
+    const view = render(<TaskGraph index={index} groupId="A" onOpenTask={noop} />);
     await ready(view.container);
     const button = control === 'body' ? nodeButton('基础 API') : detailsButton('基础 API');
     vi.spyOn(button, 'matches').mockImplementation((selector) => selector === ':focus-visible');
@@ -539,7 +584,7 @@ describe('task dependency canvas', () => {
   });
 
   it('shows layout failures explicitly without pretending there are zero tasks', () => {
-    render(<TaskGraph index={index} rootId="missing-root" onOpenTask={noop} />);
+    render(<TaskGraph index={index} groupId="missing-root" onOpenTask={noop} />);
     expect(screen.getByRole('alert').textContent).toContain('任务图布局失败');
     expect(screen.queryByRole('application')).toBeNull();
     expect(screen.queryByText(/0 个节点/)).toBeNull();
@@ -548,8 +593,8 @@ describe('task dependency canvas', () => {
 
 describe('progressive task visibility', () => {
   const fixture = browsingProjects.progressive;
-  const progressiveIndex = buildGraphIndex(fixture);
-  const rootId = fixture.tasks.find((task) => task.titlePreview === '渐进展开 · 主链交付起点')!.id;
+  const progressiveIndex = buildGroupIndex(fixture);
+  const groupId = fixture.tasks.find((task) => task.titlePreview === '渐进展开 · 主链交付起点')!.id;
   const joinId = fixture.tasks.find((task) => task.titlePreview === '合流任务 · 40 个外部前置')!.id;
   const visibleIds = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>('.react-flow__node')].map((node) => node.dataset.id!);
   const taskIds = new Map(fixture.tasks.map((task) => [task.titlePreview, task.id]));
@@ -572,7 +617,7 @@ describe('progressive task visibility', () => {
   it('shows a bounded root overview with full counts and independent inspection and Details without changing visibility', async () => {
     const open = vi.fn();
     const layout = vi.spyOn(layoutModule, 'layoutGraph');
-    const view = render(<TaskGraph index={progressiveIndex} rootId={rootId} onOpenTask={open} />);
+    const view = render(<TaskGraph index={progressiveIndex} groupId={groupId} onOpenTask={open} />);
     const { scope, taskShell, taskBody, taskDetails } = controls(view.container);
     await rendered(view.container, 50, 49);
     const initialIds = visibleIds(view.container);
@@ -602,7 +647,7 @@ describe('progressive task visibility', () => {
   it('expands direct neighbors with exact task, induced-edge and remaining counts, retains keyboard anchor focus, and resets deterministically', async ({ signal }) => {
     const user = userEvent.setup();
     const open = vi.fn();
-    const view = render(<TaskGraph index={progressiveIndex} rootId={rootId} onOpenTask={open} />);
+    const view = render(<TaskGraph index={progressiveIndex} groupId={groupId} onOpenTask={open} />);
     const { taskShell, taskBody, expansion, resetControl } = controls(view.container);
     await rendered(view.container, 50, 49);
     await waitFor(() => { expect(zoom(view.container)).toBe(0.8); });
@@ -644,7 +689,7 @@ describe('progressive task visibility', () => {
     expect(view.container.querySelectorAll('.task-node-expansions')).toHaveLength(0);
     await waitFor(() => { expect(joinBody).toHaveFocus(); });
     for (const node of view.container.querySelectorAll<HTMLElement>('.react-flow__node')) expect(node.style.height).toBe('96px');
-    expect(progressiveIndex.rootProgress.get(rootId)).toEqual({ total: 61, done: 0, status: 'todo' });
+    expect(progressiveIndex.groupProgress.get(groupId)).toEqual({ total: 61, done: 0, status: 'todo' });
     signal.throwIfAborted();
     await user.click(reset);
     await rendered(view.container, 50, 49);
@@ -657,20 +702,20 @@ describe('progressive task visibility', () => {
   });
 
   it('retains actual visible IDs through refresh without filling a new overview or stealing focus from details', async () => {
-    const view = render(<><button type="button">详情关闭控件</button><TaskGraph index={progressiveIndex} rootId={rootId} onOpenTask={noop} /></>);
+    const view = render(<><button type="button">详情关闭控件</button><TaskGraph index={progressiveIndex} groupId={groupId} onOpenTask={noop} /></>);
     const { scope, taskShell, taskBody, expansion, resetControl } = controls(view.container);
     await rendered(view.container, 50, 49);
     fireEvent.click(taskBody('合流任务 · 40 个外部前置'));
     fireEvent.click(expansion('合流任务 · 40 个外部前置', 'prerequisites'));
     await rendered(view.container, 70, 69);
     const retainedIds = visibleIds(view.container);
-    const sourcePosition = fixture.tasks.findIndex((task) => task.id === rootId);
+    const sourcePosition = fixture.tasks.findIndex((task) => task.id === groupId);
     const addition = { ...fixture.tasks[sourcePosition + 2]!, id: 'new-main', titlePreview: '新增直接后续' };
-    const refreshed = buildGraphIndex({ ...fixture, tasks: [...fixture.tasks.slice(0, sourcePosition + 1), addition, ...fixture.tasks.slice(sourcePosition + 1)], summary: { ...fixture.summary, total: 102, todo: 62, blocked: 61 } });
+    const refreshed = buildGroupIndex({ ...fixture, tasks: [...fixture.tasks.slice(0, sourcePosition + 1), addition, ...fixture.tasks.slice(sourcePosition + 1)], summary: { ...fixture.summary, total: 102, todo: 62, blocked: 61 } });
     const outside = scope.getByRole('button', { name: '详情关闭控件' });
     outside.focus();
     const transform = viewport(view.container).style.transform;
-    view.rerender(<><button type="button">详情关闭控件</button><TaskGraph index={refreshed} rootId={rootId} onOpenTask={noop} /></>);
+    view.rerender(<><button type="button">详情关闭控件</button><TaskGraph index={refreshed} groupId={groupId} onOpenTask={noop} /></>);
     await rendered(view.container, 70, 69);
     expect(visibleIds(view.container)).toEqual(retainedIds);
     expect(scope.queryByRole('button', { name: /^新增直接后续，/ })).toBeNull();
@@ -685,7 +730,7 @@ describe('progressive task visibility', () => {
   });
 
   it('recovers graph focus when refresh removes a focused visible card', async () => {
-    const view = render(<TaskGraph index={progressiveIndex} rootId={rootId} onOpenTask={noop} />);
+    const view = render(<TaskGraph index={progressiveIndex} groupId={groupId} onOpenTask={noop} />);
     const { scope, taskBody, expansion } = controls(view.container);
     await rendered(view.container, 50, 49);
     fireEvent.click(expansion('合流任务 · 40 个外部前置', 'prerequisites'));
@@ -693,14 +738,14 @@ describe('progressive task visibility', () => {
     const removedId = fixture.tasks.find((task) => task.titlePreview === '外部前置 1 · 已完成共享协议')!.id;
     taskBody('外部前置 1 · 已完成共享协议').focus();
     const tasks = fixture.tasks.filter((task) => task.id !== removedId).map((task) => ({ ...task, dependsOn: task.dependsOn.filter((id) => id !== removedId) }));
-    const refreshed = buildGraphIndex({ ...fixture, tasks, summary: { ...fixture.summary, total: 100, done: 39 } });
-    view.rerender(<TaskGraph index={refreshed} rootId={rootId} onOpenTask={noop} />);
+    const refreshed = buildGroupIndex({ ...fixture, tasks, summary: { ...fixture.summary, total: 100, done: 39 } });
+    view.rerender(<TaskGraph index={refreshed} groupId={groupId} onOpenTask={noop} />);
     await rendered(view.container, 69, 68);
     expect(scope.getByRole('button', { name: '全屏查看' })).toHaveFocus();
   });
 
   it('reveals an offscreen expansion control using intended viewport coordinates before native scroll resets', async () => {
-    const view = render(<TaskGraph index={progressiveIndex} rootId={rootId} onOpenTask={noop} />);
+    const view = render(<TaskGraph index={progressiveIndex} groupId={groupId} onOpenTask={noop} />);
     const { expansion } = controls(view.container);
     await rendered(view.container, 50, 49);
     await waitFor(() => { expect(zoom(view.container)).toBe(0.8); });
@@ -736,7 +781,7 @@ describe('initial task viewport policy', () => {
   });
 
   it('centers a fitting graph normally rather than anchoring every root to the left', () => {
-    const geometry = layoutModule.layoutGraph({ rootId: 'root', mainIds: new Set(['root']), externalIds: new Set(), edges: [], completed: 0 });
+    const geometry = layoutModule.layoutGraph({ groupId: 'root', mainIds: new Set(['root']), externalIds: new Set(), edges: [], completed: 0 });
     const actual = getInitialTaskViewport(geometry, 'root', 800, 445);
     const root = geometry.nodes[0]!;
     expect(actual.zoom).toBeGreaterThanOrEqual(0.8);
@@ -798,18 +843,18 @@ describe('initial task viewport policy', () => {
 
 describe('root task accordion', () => {
   it('renders the presented root order without changing the complete graph index', () => {
-    const rootIds = index.roots.toReversed();
-    const view = render(<RootList showCompleted={true} onShowCompletedChange={noop} index={index} allRootIds={index.roots} rootIds={rootIds} expandedRootId={null} onExpand={noop} onOpenTask={noop} />);
+    const groupIds = index.groupIds.toReversed();
+    const view = render(<GroupList showCompleted={true} onShowCompletedChange={noop} index={index} allGroupIds={index.groupIds} groupIds={groupIds} expandedGroupId={null} onExpand={noop} onOpenTask={noop} />);
     expect([...view.container.querySelectorAll('.root-toggle')].map((root) => root.id)).toEqual(['task-root-F', 'task-root-E', 'task-root-B', 'task-root-A']);
-    expect(index.roots).toEqual(['A', 'B', 'E', 'F']);
+    expect(index.groupIds).toEqual(['A', 'B', 'E', 'F']);
     expect(index.successors.get('A')).toEqual(['C']);
-    expect(index.rootProgress.get('A')).toEqual({ total: 3, done: 1, status: 'in_progress' });
+    expect(index.groupProgress.get('A')).toEqual({ total: 3, done: 1, status: 'in_progress' });
     expect(screen.getByLabelText('显示 4 条，共 4 条任务链')).toHaveTextContent('4 / 4');
   });
 
   it('retains collapsed root renders during selection and still applies their new snapshot progress', async () => {
-    const progressReads = vi.spyOn(index.rootProgress, 'get');
-    const view = render(<RootList showCompleted={true} onShowCompletedChange={noop} index={index} allRootIds={index.roots} rootIds={index.roots} expandedRootId="A" onExpand={noop} onOpenTask={noop} />);
+    const progressReads = vi.spyOn(index.groupProgress, 'get');
+    const view = render(<GroupList showCompleted={true} onShowCompletedChange={noop} index={index} allGroupIds={index.groupIds} groupIds={index.groupIds} expandedGroupId="A" onExpand={noop} onOpenTask={noop} />);
     await ready(view.container);
     const originalRoots = [...view.container.querySelectorAll('.root-toggle')];
     const originalCanvas = view.container.querySelector('.task-graph-canvas');
@@ -833,12 +878,12 @@ describe('root task accordion', () => {
       expect(view.container.querySelector('.task-graph-canvas')).toBe(originalCanvas);
     }
 
-    const refreshed = buildGraphIndex({
+    const refreshed = buildGroupIndex({
       ...graph,
       tasks: graph.tasks.map((task) => ({ ...task, status: 'done', blockedBy: [], ready: false })),
       summary: { total: 6, proposed: 0, todo: 0, inProgress: 0, done: 6, ready: 0, blocked: 0 },
     });
-    view.rerender(<RootList showCompleted={true} onShowCompletedChange={noop} index={refreshed} allRootIds={refreshed.roots} rootIds={refreshed.roots} expandedRootId="A" onExpand={noop} onOpenTask={noop} />);
+    view.rerender(<GroupList showCompleted={true} onShowCompletedChange={noop} index={refreshed} allGroupIds={refreshed.groupIds} groupIds={refreshed.groupIds} expandedGroupId="A" onExpand={noop} onOpenTask={noop} />);
     expect(originalRoots[2]!.querySelector('.root-progress-label')).toHaveTextContent('1/1 已完成');
     expect(originalRoots[2]!.querySelector('.root-status')).toHaveTextContent('已完成');
     expect(originalRoots[0]!.querySelector('.root-progress-label')).toHaveTextContent('3/3 已完成');
@@ -850,8 +895,8 @@ describe('root task accordion', () => {
 
   it('shows aggregate chain status and unmounts all but the expanded graph', async () => {
     const Wrapper = () => {
-      const [expandedRootId, onExpand] = useState<string | null>('A');
-      return <RootList showCompleted={true} onShowCompletedChange={noop} index={index} allRootIds={index.roots} rootIds={index.roots} expandedRootId={expandedRootId} onExpand={onExpand} onOpenTask={noop} />;
+      const [expandedGroupId, onExpand] = useState<string | null>('A');
+      return <GroupList showCompleted={true} onShowCompletedChange={noop} index={index} allGroupIds={index.groupIds} groupIds={index.groupIds} expandedGroupId={expandedGroupId} onExpand={onExpand} onOpenTask={noop} />;
     };
     const { container } = render(<Wrapper />);
     const roots = container.querySelectorAll<HTMLButtonElement>('.root-toggle');
@@ -864,7 +909,7 @@ describe('root task accordion', () => {
     expect(container.querySelectorAll('.task-graph-canvas')).toHaveLength(1);
     const firstCanvas = container.querySelector('.task-graph-canvas');
     fireEvent.click(roots[1]!);
-    expect((performance.getEntriesByName('daynight:task-layout') as PerformanceMeasure[]).map((entry) => entry.detail)).toEqual([{ rootId: 'B' }]);
+    expect((performance.getEntriesByName('daynight:task-layout') as PerformanceMeasure[]).map((entry) => entry.detail)).toEqual([{ groupId: 'B' }]);
     expect(roots[0]!.getAttribute('aria-expanded')).toBe('false');
     expect(roots[1]!.getAttribute('aria-expanded')).toBe('true');
     expect(firstCanvas?.isConnected).toBe(false);
@@ -880,7 +925,7 @@ describe('root task accordion', () => {
   it('renders task previews as plain text in both the accordion and nodes', () => {
     const untrusted = '<img src=x onerror=alert(1)>'.repeat(6);
     const snapshot = { ...graph, tasks: graph.tasks.map((task) => task.id === 'A' ? { ...task, titlePreview: untrusted, titleTruncated: true } : task) };
-    const { container } = render(<RootList showCompleted={true} onShowCompletedChange={noop} index={buildGraphIndex(snapshot)} allRootIds={index.roots} rootIds={index.roots} expandedRootId="A" onExpand={noop} onOpenTask={noop} />);
+    const { container } = render(<GroupList showCompleted={true} onShowCompletedChange={noop} index={buildGroupIndex(snapshot)} allGroupIds={index.groupIds} groupIds={index.groupIds} expandedGroupId="A" onExpand={noop} onOpenTask={noop} />);
     expect(screen.getAllByText(`${untrusted}…`)).toHaveLength(2);
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('script')).toBeNull();

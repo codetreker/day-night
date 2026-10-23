@@ -2,7 +2,7 @@ import type { GraphTask, TaskDetail, TaskGraph, TaskGraphSummary, TaskStatus } f
 import { isTaskVersion, parseApiJson, stringifyApiJson } from '../../src/api/json';
 
 export const browsingScenarioLabels = {
-  mixed: '四种状态与共享后续',
+  mixed: '四种状态与跨组依赖',
   'all-proposed': '全部待审批 · 含未完成前置',
   'approved-mixed': '待审批与待处理混合链',
   active: '进行中 · 含待审批后续',
@@ -43,6 +43,7 @@ export const readBrowsingDetailScenario = (): BrowsingDetailScenario => {
 };
 type TaskSeed = {
   readonly number: number;
+  readonly groupNumber: number;
   readonly title: string;
   readonly status: TaskStatus;
   readonly dependencies: readonly number[];
@@ -57,39 +58,39 @@ export const isApprovalScenario = (scenario: BrowsingScenario): boolean => appro
 const id = (number: number): string => `00000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
 const titles = new Map<string, string>();
 const mixed: readonly TaskSeed[] = [
-  { number: 1, title: '讨论任务状态管理方案', status: 'proposed', dependencies: [] },
-  { number: 2, title: '明确待审批任务的最终交付范围', status: 'proposed', dependencies: [1, 3] },
-  { number: 3, title: '确认共享服务接口', status: 'todo', dependencies: [] },
-  { number: 4, title: '验证外部接口的独立使用场景', status: 'todo', dependencies: [3] },
-  { number: 5, title: '整理已批准任务的执行计划', status: 'todo', dependencies: [] },
-  { number: 6, title: '补齐计划中的验收材料', status: 'proposed', dependencies: [5] },
-  { number: 7, title: '完成数据模型设计', status: 'done', dependencies: [] },
-  { number: 8, title: '实现任务生命周期约束', status: 'in_progress', dependencies: [7] },
-  { number: 9, title: '提交客户端完整验收方案', status: 'proposed', dependencies: [8] },
-  { number: 10, title: '完成配置引导', status: 'done', dependencies: [] },
-  { number: 11, title: '完成配置引导验收', status: 'done', dependencies: [10] },
-  { number: 12, title: '评估任务审查提醒', status: 'proposed', dependencies: [] },
-  { number: 13, title: '整理发布说明', status: 'todo', dependencies: [] },
-  { number: 14, title: '核对 CLI 的使用说明', status: 'in_progress', dependencies: [] },
-  { number: 15, title: '归档已交付材料', status: 'done', dependencies: [] },
-  { number: 16, title: '讨论跨团队审批流程与任务描述：覆盖中文、English identifiers、长标题自然换行和窄屏下的完整访问能力', status: 'proposed', dependencies: [] },
+  { number: 1, groupNumber: 1, title: '讨论任务状态管理方案', status: 'proposed', dependencies: [] },
+  { number: 2, groupNumber: 1, title: '明确待审批任务的最终交付范围', status: 'proposed', dependencies: [1, 3] },
+  { number: 3, groupNumber: 3, title: '确认共享服务接口', status: 'todo', dependencies: [] },
+  { number: 4, groupNumber: 3, title: '验证外部接口的独立使用场景', status: 'todo', dependencies: [3] },
+  { number: 5, groupNumber: 5, title: '整理已批准任务的执行计划', status: 'todo', dependencies: [] },
+  { number: 6, groupNumber: 5, title: '补齐计划中的验收材料', status: 'proposed', dependencies: [5] },
+  { number: 7, groupNumber: 7, title: '完成数据模型设计', status: 'done', dependencies: [] },
+  { number: 8, groupNumber: 7, title: '实现任务生命周期约束', status: 'in_progress', dependencies: [7] },
+  { number: 9, groupNumber: 7, title: '提交客户端完整验收方案', status: 'proposed', dependencies: [8] },
+  { number: 10, groupNumber: 10, title: '完成配置引导', status: 'done', dependencies: [] },
+  { number: 11, groupNumber: 10, title: '完成配置引导验收', status: 'done', dependencies: [10] },
+  { number: 12, groupNumber: 12, title: '评估任务审查提醒', status: 'proposed', dependencies: [] },
+  { number: 13, groupNumber: 13, title: '整理发布说明', status: 'todo', dependencies: [] },
+  { number: 14, groupNumber: 14, title: '核对 CLI 的使用说明', status: 'in_progress', dependencies: [] },
+  { number: 15, groupNumber: 15, title: '归档已交付材料', status: 'done', dependencies: [] },
+  { number: 16, groupNumber: 16, title: '讨论跨团队审批流程与任务描述：覆盖中文、English identifiers、长标题自然换行和窄屏下的完整访问能力', status: 'proposed', dependencies: [] },
 ];
 
 const completeContext: readonly TaskSeed[] = [
-  { number: 30, title: '外部上下文 · 链内交付起点', status: 'todo', dependencies: [] },
-  { number: 14, title: '外部祖先 · 已完成基础协议', status: 'done', dependencies: [] },
-  { number: 15, title: '外部前置 · 实现共享接口', status: 'done', dependencies: [14] },
-  { number: 16, title: '外部前置 · 验证共享接口', status: 'done', dependencies: [14] },
-  { number: 17, title: '外部前置 · 菱形合流', status: 'done', dependencies: [15, 16] },
-  { number: 31, title: '链内最终交付', status: 'todo', dependencies: [30, 17] },
-  { number: 32, title: '外部前置的无关后续 · 当前链不显示', status: 'todo', dependencies: [17] },
+  { number: 30, groupNumber: 30, title: '外部上下文 · 链内交付起点', status: 'todo', dependencies: [] },
+  { number: 14, groupNumber: 14, title: '外部祖先 · 已完成基础协议', status: 'done', dependencies: [] },
+  { number: 15, groupNumber: 15, title: '外部前置 · 实现共享接口', status: 'done', dependencies: [14] },
+  { number: 16, groupNumber: 16, title: '外部前置 · 验证共享接口', status: 'done', dependencies: [14] },
+  { number: 17, groupNumber: 17, title: '外部前置 · 菱形合流', status: 'done', dependencies: [15, 16] },
+  { number: 31, groupNumber: 30, title: '链内最终交付', status: 'todo', dependencies: [30, 17] },
+  { number: 32, groupNumber: 32, title: '外部前置的无关后续 · 当前链不显示', status: 'todo', dependencies: [17] },
 ];
 
 const progressive: readonly TaskSeed[] = [
-  ...Array.from({ length: 40 }, (_, position) => ({ number: 2000 + position, title: `外部前置 ${position + 1} · 已完成共享协议`, status: 'done' as const, dependencies: [] })),
-  { number: 3000, title: '渐进展开 · 主链交付起点', status: 'todo', dependencies: [] },
+  ...Array.from({ length: 40 }, (_, position) => ({ number: 2000 + position, groupNumber: 2000 + position, title: `外部前置 ${position + 1} · 已完成共享协议`, status: 'done' as const, dependencies: [] })),
+  { number: 3000, groupNumber: 3000, title: '渐进展开 · 主链交付起点', status: 'todo', dependencies: [] },
   ...Array.from({ length: 60 }, (_, position) => ({
-    number: 3001 + position, title: position === 0 ? '合流任务 · 40 个外部前置' : `主链后续 ${position + 1}`,
+    number: 3001 + position, groupNumber: 3000, title: position === 0 ? '合流任务 · 40 个外部前置' : `主链后续 ${position + 1}`,
     status: 'todo' as const, dependencies: position === 0 ? [3000, ...Array.from({ length: 40 }, (_, index) => 2000 + index)] : [3000],
   })),
 ];
@@ -98,9 +99,9 @@ const scenarioSeeds = (scenario: BrowsingScenario): readonly TaskSeed[] => {
   const selected = (numbers: readonly number[]) => mixed.filter((task) => numbers.includes(task.number));
   if (isApprovalScenario(scenario)) {
     const seeds: readonly TaskSeed[] = [
-      { number: 1, title: '审阅并批准任务范围', status: 'proposed', dependencies: [] },
-      { number: 2, title: '批准有未完成前置的后续任务', status: 'proposed', dependencies: [1] },
-      { number: 12, title: '切换查看的独立待审批任务', status: 'proposed', dependencies: [] },
+      { number: 1, groupNumber: 1, title: '审阅并批准任务范围', status: 'proposed', dependencies: [] },
+      { number: 2, groupNumber: 1, title: '批准有未完成前置的后续任务', status: 'proposed', dependencies: [1] },
+      { number: 12, groupNumber: 12, title: '切换查看的独立待审批任务', status: 'proposed', dependencies: [] },
     ];
     return scenario === 'long320'
       ? seeds.map((task) => ({ ...task, title: `${task.title}：中文、English identifiers、Keyboard navigation 与完整审批内容的自然换行。`.repeat(4) }))
@@ -131,7 +132,7 @@ const createGraph = (scenario: BrowsingScenario, number: number): TaskGraph => {
     const title = Array.from(task.title);
     titles.set(`${id(number)}:${id(task.number)}`, task.title);
     return {
-      id: id(task.number), titlePreview: title.slice(0, 160).join(''), titleTruncated: title.length > 160, status: task.status,
+      id: id(task.number), groupId: id(task.groupNumber), titlePreview: title.slice(0, 160).join(''), titleTruncated: title.length > 160, status: task.status,
       dependsOn: task.dependencies.map(id), blockedBy,
       ready: task.status === 'todo' && blockedBy.length === 0, createdAt, updatedAt: createdAt,
     };
@@ -159,12 +160,12 @@ export const browsingProjects = Object.fromEntries(
 ) as Readonly<Record<BrowsingScenario, TaskGraph>>;
 
 const detail = (graph: TaskGraph, task: GraphTask | TaskDetail, scenario: BrowsingDetailScenario, version = 1n): TaskDetail => ({
-  id: task.id, projectId: graph.project.id, title: titles.get(`${graph.project.id}:${task.id}`)!, version,
+  id: task.id, groupId: task.groupId, projectId: graph.project.id, title: titles.get(`${graph.project.id}:${task.id}`)!, version,
   status: task.status, dependsOn: task.dependsOn, blockedBy: task.blockedBy, ready: task.ready,
   createdAt: task.createdAt, updatedAt: task.updatedAt,
   description: scenario === 'empty' ? '' : scenario === 'long'
-    ? Array.from({ length: 24 }, (_, index) => `验收记录 ${index + 1}：完成任务范围内的实现与验证，确认依赖关系、任务状态与实际交付结果一致。共享任务可出现在多条任务链中；已完成的前置任务保留在依赖图中。完整内容在详情窗口内滚动，标题栏、关闭按钮和底部说明持续可见。`).join('\n\n')
-    : '完成任务范围内的实现与验证，确认依赖关系、任务状态与实际交付结果一致。\n\n共享任务可出现在多条任务链中；已完成的前置任务保留在依赖图中。',
+    ? Array.from({ length: 24 }, (_, index) => `验收记录 ${index + 1}：完成任务范围内的实现与验证，确认依赖关系、任务状态与实际交付结果一致。任务按 groupId 归组；其他组的前置任务保留为外部上下文。完整内容在详情窗口内滚动，标题栏、关闭按钮和底部说明持续可见。`).join('\n\n')
+    : '完成任务范围内的实现与验证，确认依赖关系、任务状态与实际交付结果一致。\n\n任务按 groupId 归组；其他组的前置任务保留为外部上下文。',
   properties: { pullRequests: [] },
 });
 
@@ -200,7 +201,7 @@ const fault = (code: string, status: number): Response => jsonResponse({
 
 const graphSnapshot = (state: SceneState): TaskGraph => {
   const tasks: GraphTask[] = [...state.tasks.values()].map((task) => ({
-    id: task.id, titlePreview: Array.from(task.title).slice(0, 160).join(''), titleTruncated: Array.from(task.title).length > 160,
+    id: task.id, groupId: task.groupId, titlePreview: Array.from(task.title).slice(0, 160).join(''), titleTruncated: Array.from(task.title).length > 160,
     status: task.status, dependsOn: task.dependsOn, blockedBy: task.blockedBy, ready: task.ready,
     createdAt: task.createdAt, updatedAt: task.updatedAt,
   }));

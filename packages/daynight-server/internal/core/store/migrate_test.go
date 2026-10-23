@@ -31,9 +31,9 @@ func TestMigrationsEmptyRepeatAndConstraints(t *testing.T) {
 	for _, sql := range []string{
 		`INSERT INTO projects (id, name, repo_url) VALUES ('00000000-0000-0000-0000-000000000001', '  ', 'https://example.com/repo')`,
 		`INSERT INTO projects (id, name, repo_url) VALUES ('00000000-0000-0000-0000-000000000001', 'project', '  ')`,
-		`INSERT INTO tasks (id, project_id, title) VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', ' ')`,
-		`INSERT INTO tasks (id, project_id, title, status) VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 'task', 'unknown')`,
-		`INSERT INTO tasks (id, project_id, title, version) VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 'task', 0)`,
+		`INSERT INTO tasks (id, project_id, group_id, title) VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', ' ')`,
+		`INSERT INTO tasks (id, project_id, group_id, title, status) VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'task', 'unknown')`,
+		`INSERT INTO tasks (id, project_id, group_id, title, version) VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'task', 0)`,
 		`INSERT INTO task_dependencies VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000002')`,
 	} {
 		_, err := database.Pool.Exec(ctx, sql)

@@ -20,9 +20,9 @@ const unrelatedId = "a1b2c3d4-1111-4222-8333-123456789abe";
 const taskId = "b1b2c3d4-1111-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project = (projectId = id, repoUrl = "git@git.example:Org/Repo.git"): Project => ({ id: projectId, name: "Project 中文", repoUrl, createdAt: time, updatedAt: time });
-const task = (projectId = id): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true });
+const task = (projectId = id): Task => ({ id: taskId, groupId: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true });
 const taskListItem = (value: Task): Omit<Task, "description"> => ({
-  id: value.id, projectId: value.projectId, title: value.title, properties: value.properties,
+  id: value.id, groupId: value.groupId, projectId: value.projectId, title: value.title, properties: value.properties,
   status: value.status, version: value.version, createdAt: value.createdAt, updatedAt: value.updatedAt,
   dependsOn: value.dependsOn, blockedBy: value.blockedBy, ready: value.ready,
 });
@@ -52,6 +52,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
   let projects = [project(unrelatedId, "https://other.example/Unrelated/Repo"), project()];
   let properties: Task["properties"] = { pullRequests: [] };
   let description = "";
+  let groupId = taskId;
   let broken: "none" | "page" | "json" | "dependency" | "write" | "hold" | "conflict" = "none";
   let readyPage: { items: readonly Task[]; nextCursor: string | null } | undefined;
   let listResponseTask: Task | undefined;
@@ -87,16 +88,17 @@ it("runs the actual installed launcher through native project/task discovery, pe
           if (parts.length === 8) {
             const action = parts[7]!;
             const status = action === "approve" ? "todo" : action === "claim" ? "in_progress" : "done";
-            send(response, { ...task(projectId), description, properties, status, ready: status === "todo", version: (body as { version: bigint }).version + 1n }); return;
+            send(response, { ...task(projectId), groupId, description, properties, status, ready: status === "todo", version: (body as { version: bigint }).version + 1n }); return;
           }
           if (typeof body === "object" && body !== null && "description" in body && typeof body.description === "string") description = body.description;
-          send(response, { ...task(projectId), description, ...(body as object), ...(request.method === "POST" ? { status: "proposed", ready: false } : {}), version: request.method === "PATCH" ? 9_007_199_254_740_994n : 1n }, request.method === "POST" ? 201 : 200); return;
+          if (typeof body === "object" && body !== null && "groupId" in body && typeof body.groupId === "string") groupId = body.groupId;
+          send(response, { ...task(projectId), groupId, description, ...(body as object), ...(request.method === "POST" ? { status: "proposed", ready: false } : {}), version: request.method === "PATCH" ? 9_007_199_254_740_994n : 1n }, request.method === "POST" ? 201 : 200); return;
         }
         if (parts[5] === "task-graph") { send(response, { project: project(projectId), summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 }, tasks: [] }); return; }
-        if (parts.length === 7) { send(response, { ...task(projectId), description, properties, version: 9_007_199_254_740_993n }); return; }
+        if (parts.length === 7) { send(response, { ...task(projectId), groupId, description, properties, version: 9_007_199_254_740_993n }); return; }
         if (readyPage !== undefined && url.searchParams.get("ready") === "true") { send(response, readyPage); return; }
         if (broken === "page" && url.searchParams.has("cursor")) { fault(response, "internal_error", "native-later-page", 500); return; }
-        send(response, { items: [listResponseTask ?? { ...task(projectId), properties }], nextCursor: broken === "page" ? "native later page" : null });
+        send(response, { items: [listResponseTask ?? { ...task(projectId), groupId, properties }], nextCursor: broken === "page" ? "native later page" : null });
       });
     });
     servers.push(server);
@@ -193,6 +195,20 @@ it("runs the actual installed launcher through native project/task discovery, pe
     expect(emptyDescriptionList[0]).not.toHaveProperty("description");
     expect(JSON.parse((await invoke(["task", "graph", "--json", ...explicit], outside, 0, true)).stdout).tasks).toEqual([]);
     scenarios.push("installed-project-task-operations-server-only-config-explicit-isolation");
+
+    const groupedCreateAt = requests.length;
+    const groupedCreate = await invoke(["task", "create", "--title", "Grouped task", "--group-id", unrelatedId.toUpperCase(), ...explicit], outside, 0, true);
+    expect(requests.slice(groupedCreateAt).map(({ method }) => method)).toEqual(["GET", "POST"]);
+    expect(requests.at(-1)!.body).toEqual({ title: "Grouped task", groupId: unrelatedId });
+    expect(groupedCreate.stdout).toContain(`Group ID: ${unrelatedId}`);
+    expect(parseApiJson((await invoke(["task", "show", taskId, "--json", ...explicit], outside, 0, true)).stdout)).toMatchObject({ groupId: unrelatedId, dependsOn: [] });
+    const groupUpdateAt = requests.length;
+    const regrouped = await invoke(["task", "update", taskId, "--group-id", taskId, "--if-version", "9223372036854775807", ...explicit], outside, 0, true);
+    expect(requests.slice(groupUpdateAt).map(({ method }) => method)).toEqual(["GET", "PATCH"]);
+    expect(requests.at(-1)!.body).toEqual({ version: 9_223_372_036_854_775_807n, groupId: taskId });
+    expect(regrouped.stdout).toContain(`Group ID: ${taskId}`);
+    expect(parseApiJson((await invoke(["task", "list", "--json", ...explicit], outside, 0, true)).stdout)).toEqual([taskListItem(task())]);
+    scenarios.push("installed-explicit-group-membership-independent-of-dependencies");
 
     // The Windows .cmd launcher passes command text through cmd.exe. Line breaks
     // are exercised through this same installation's Node entry below.
