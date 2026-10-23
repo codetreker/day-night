@@ -29,6 +29,14 @@ owns root/document resolution, complete-inventory checks and focus integration.
 The published skill preserves self-contained briefs, primary-plan ownership and
 Goal, dependency, PR and separate approval/implementation/merge permissions.
 
+The proposed [external dependency requirements](docs/spec/daynight-external-dependencies.md),
+[architecture](docs/design/daynight-external-dependencies.md) and
+[interactive prototype](docs/design/mockups/external-dependencies/index.html)
+distinguish chain membership from genuine cross-chain prerequisites. The design
+keeps all dependencies for execution and uses ordinary-edge components for
+chain presentation. Runtime delivery remains pending. Supported readers must
+understand classification before public classification writes become available.
+
 The adopted [execution timing requirements](docs/spec/daynight-task-timing.md) and
 [architecture](docs/design/daynight-task-timing.md) define task
 start/completion facts, project warning thresholds and live card presentation.

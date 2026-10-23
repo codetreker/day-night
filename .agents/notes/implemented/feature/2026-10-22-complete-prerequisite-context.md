@@ -12,6 +12,11 @@ prerequisites, so a root-anchored viewport can conceal the new context.
 
 ## Decision
 
+The [external dependency design](../architecture/2026-10-23-external-dependency-design.md)
+retains complete ancestor context while proposing ordinary-component membership
+and explicit edge classification. That runtime delivery is pending; the
+root-derived membership and contextual edge styling below remain current facts.
+
 For a selected root, `projectRoot` keeps the root and all forward-reachable
 successors in `mainIds`. It iteratively traverses `dependsOn` from that main set
 to include every ancestor; additional tasks are stored in `externalIds`. Their union is complete context P. Every dependency ending in P is retained,
