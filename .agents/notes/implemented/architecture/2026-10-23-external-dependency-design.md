@@ -57,10 +57,10 @@ dependency block. Web retains the subset in graph/detail resources and includes
 it in graph equality and detail freshness. Root-based membership and contextual
 dashes are unchanged until ordinary-component consumption is implemented.
 
-Migration `011_external_dependencies.sql` adds the non-null boolean with the
-ordinary default after project-settings migration 010, preserving prior schema
-checksums and other task data. Historical
-external classification is not inferred. The original worker regression remains
+Migration `012_external_dependencies.sql` adds the non-null boolean with the
+ordinary default after agent-permission migration 011, preserving prior schema
+checksums, automation permission and other task data. Historical external
+classification is not inferred. The original worker regression remains
 useful even though a later read found its two cross-chain edges already removed.
 Current-data audits may identify existing edges for review, but neither the
 schema migration nor acceptance recreates deleted prerequisites.

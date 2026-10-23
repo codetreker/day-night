@@ -1070,8 +1070,8 @@ preserving graph/index identity when only `observedAt` changes.
 Task and graph resources also require `externalDependsOn`, a sorted,
 duplicate-free subset of all `dependsOn` IDs. CLI JSON preserves it and the
 shared human dependency block shows `External dependencies (N): ...`. Current
-POST/PATCH inputs and CLI dependency options still use the existing ordinary-ID
-contract; classification input is rejected. Surviving relationship classifications
+POST/PATCH dependency inputs and CLI options still use the existing ID
+contract; explicit classification input is rejected. Surviving relationship classifications
 are preserved by dependency replacement, metadata edits and every lifecycle
 action. External markers do not remove an edge from blocking or cycle checks.
 

@@ -69,7 +69,7 @@ PATCH 继续使用观察到的精确任务版本。两个字段独立可选：
 `startedAt`、`completedAt` 与状态保持不变。
 正规化后的完整集合及外部子集都相同时为语义无变化，版本和更新时间不变；过期版本仍须先冲突。
 
-修改标题、描述、PR 属性及 approve、unapprove、claim、complete 都必须保留关系性质。
+修改标题、描述、PR 属性、allowAgents 及 approve、unapprove、claim、complete 都必须保留关系性质。
 附件操作继续独立于任务版本，不影响依赖。
 
 ## ED-R3：执行、权限与容量
@@ -163,7 +163,7 @@ Goal 内部阶段和交付前置使用普通边，只有明确属于其他任务
 
 ## ED-R8：历史数据与交付验收
 
-`011_external_dependencies.sql` 已为依赖行增加非空 `external`，全部旧边取得普通性质，
+`012_external_dependencies.sql` 已为依赖行增加非空 `external`，全部旧边取得普通性质，
 保留任务、依赖端点、版本、状态、时间、PR 属性和附件。
 不按旧根、时间、标题或历史 groupId 草案推断外部性质。
 普通连通分量会将以前重叠的多根投影合为一链，这是计算规则变化，不是数据恢复。
