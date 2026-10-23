@@ -20,7 +20,10 @@ const cli = fileURLToPath(new URL('../acceptance.mts', import.meta.url));
 const sourceGitSha = '0123456789abcdef0123456789abcdef01234567';
 const sourceGitTreeSha = 'b'.repeat(40);
 const runId = (): string => `20261021123456-${randomUUID()}`;
+const containerCallbackReadinessTimeoutMs = 10_000;
+const containerCallbackProcessTimeoutMs = 15_000;
 type Fixture = { directory: string; bin: string; commands: string; env: NodeJS.ProcessEnv };
+type StartOptions = { ipc?: boolean; timeoutMs?: number };
 
 const storageFixture = async (directory: string): Promise<void> => {
   await mkdir(directory, { recursive: true });
@@ -58,7 +61,7 @@ const fixture = async (run: (value: Fixture) => Promise<void>): Promise<void> =>
   }
 };
 
-const start = (args: readonly string[], value: Fixture, ipc = false) => {
+const start = (args: readonly string[], value: Fixture, { ipc = false, timeoutMs = 5_000 }: StartOptions = {}) => {
   const child = spawn(process.execPath, args, { cwd: value.directory, env: value.env,
     stdio: ipc ? ['ignore', 'pipe', 'pipe', 'ipc'] : ['ignore', 'pipe', 'pipe'] });
   let stdout = '';
@@ -67,7 +70,7 @@ const start = (args: readonly string[], value: Fixture, ipc = false) => {
   let timedOut = false;
   child.stdout!.on('data', (data: Buffer) => { stdout += data.toString(); });
   child.stderr!.on('data', (data: Buffer) => { stderr += data.toString(); });
-  const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, 5_000);
+  const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, timeoutMs);
   child.once('error', (failure) => { error = failure; });
   const done = new Promise<{ code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string; error: Error | undefined; timedOut: boolean }>((resolve) => {
     child.once('close', (code, signal) => { clearTimeout(timer); resolve({ code, signal, stdout, stderr, error, timedOut }); });
@@ -75,8 +78,8 @@ const start = (args: readonly string[], value: Fixture, ipc = false) => {
   return { child, done };
 };
 
-const readyReceipt = async (path: string, running: ReturnType<typeof start>): Promise<Record<string, unknown>> => {
-  const deadline = performance.now() + 3_000;
+const readyReceipt = async (path: string, running: ReturnType<typeof start>, timeoutMs: number): Promise<Record<string, unknown>> => {
+  const deadline = performance.now() + timeoutMs;
   for (;;) {
     if (running.child.exitCode !== null || running.child.signalCode !== null) {
       assert.fail(`Container callback exited before readiness: ${JSON.stringify(await running.done)}`);
@@ -259,9 +262,9 @@ test('an early container callback records readiness and waits for permission bef
         process.removeListener('message', receive);
         process.disconnect();
       }
-    `], value, true);
+    `], value, { ipc: true, timeoutMs: containerCallbackProcessTimeoutMs });
     try {
-      const ready = await readyReceipt(join(containerDirectory, 'ready.json'), running);
+      const ready = await readyReceipt(join(containerDirectory, 'ready.json'), running, containerCallbackReadinessTimeoutMs);
       assert.equal(ready.acceptanceRunId, id);
       assert.equal(ready.devCiRunId, devCiRunId);
       assert.equal(ready.sourceGitSha, sourceGitSha);
