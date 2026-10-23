@@ -146,7 +146,7 @@ const lifecycleActor = async (page: Page, info: TestInfo, name: string) => {
 };
 const invariantFields = (task: TaskDetail) => ({
   id: task.id, projectId: task.projectId, title: task.title, description: task.description,
-  properties: task.properties, dependsOn: task.dependsOn, createdAt: task.createdAt,
+  properties: task.properties, dependsOn: task.dependsOn, externalDependsOn: task.externalDependsOn, createdAt: task.createdAt,
 });
 const approvalInvariantFields = (task: TaskDetail) => ({ ...invariantFields(task), startedAt: task.startedAt, completedAt: task.completedAt });
 const expectTitleAction = async (page: Page, label: string): Promise<Locator> => {

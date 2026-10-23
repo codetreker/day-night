@@ -16,20 +16,25 @@ are unnecessary for distinguishing these edges.
 The delivered [design](../../../../docs/design/daynight-external-dependencies.md)
 and [requirements](../../../../docs/spec/daynight-external-dependencies.md)
 specify an explicit boolean classification on each existing dependency row.
-Runtime implementation remains pending.
+Classification storage and the service, CLI and Web read contract are
+implemented. Public classification inputs and the ordinary-component Web model
+remain target behavior.
 
 The complete `dependsOn` set continues to own scheduling, blocking, readiness,
 cycle detection and capacity. A required `externalDependsOn` subset communicates
 the classification in full task and graph resources. Partial API updates retain
-the nature of surviving edges when only references change; an explicit external
-subset replaces classification. All candidates, lifecycle transitions and store
-replacement writes carry both sets under the existing project transaction.
+the nature of surviving edges when only references change. All candidates,
+metadata writes, approve, unapprove, claim, complete and store replacement writes
+carry both sets under the existing project transaction. New unspecified edges
+are ordinary. Current public inputs still reject `externalDependsOn`; the design
+for an explicitly supplied subset remains the later classification-write
+contract.
 
-Ordinary-edge weak components define exclusive chain membership. The complete
+The target ordinary-edge weak components define exclusive chain membership. The complete
 all-edge ancestor closure supplies reading context. A dashed edge means an
 explicit external prerequisite; a dashed card means a task outside the selected
 ordinary component. These are independent properties. The current root-derived
-projection and context rules remain implemented until the consuming task lands:
+projection and context rules remain current Web behavior:
 the [projection decision](../feature/2026-10-20-task-graph-projection.md),
 [complete context](../feature/2026-10-22-complete-prerequisite-context.md) and
 [progressive overview](../feature/2026-10-22-progressive-task-graph.md) retain
@@ -47,7 +52,14 @@ distinction, including the Web chain model and presentation. Deployable states
 without those consumers only establish ordinary edges. Readers do not fabricate
 missing classification.
 
-Migration gives existing relationships the explicit ordinary default. Historical
+CLI output preserves the required external subset and labels it in its shared
+dependency block. Web retains the subset in graph/detail resources and includes
+it in graph equality and detail freshness. Root-based membership and contextual
+dashes are unchanged until ordinary-component consumption is implemented.
+
+Migration `011_external_dependencies.sql` adds the non-null boolean with the
+ordinary default after project-settings migration 010, preserving prior schema
+checksums and other task data. Historical
 external classification is not inferred. The original worker regression remains
 useful even though a later read found its two cross-chain edges already removed.
 Current-data audits may identify existing edges for review, but neither the

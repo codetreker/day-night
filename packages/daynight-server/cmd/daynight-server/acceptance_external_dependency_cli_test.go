@@ -1,0 +1,95 @@
+package main
+
+import (
+	"context"
+	"net/http"
+	"reflect"
+	"slices"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/codetreker/daynight/packages/daynight-server/api"
+)
+
+func TestInstalledCLIExternalDependencyReadAcceptance(t *testing.T) {
+	receipt := readAcceptanceCLI(t)
+	acceptanceCase(t, "installed_cli_external_dependency_reads_restart", []string{"ED-R1", "ED-R3", "ED-R8"}, func(t *testing.T, scenario *acceptanceScenario) {
+		fixture := newAcceptanceFixture(t, scenario)
+		cli := newAcceptanceCLI(t, receipt, scenario)
+		evidence := newLifecycleEvidence(t, scenario)
+		process := fixture.launch(t, nil).started(t)
+		cli.configure(t, process)
+		projectID := acceptanceCLIResourceID(t, cli.run(t, cli.repo, "project", "create", "External dependency read contract"))
+		prerequisiteID := acceptanceCLIResourceID(t, cli.run(t, cli.repo, "task", "create", "--title", "External prerequisite"))
+		targetID := acceptanceCLIResourceID(t, cli.run(t, cli.repo, "task", "create", "--title", "Classified dependent", "--description", "Preserve stored edge metadata.", "--depends-on", prerequisiteID))
+		prerequisite, target := cli.task(t, prerequisiteID), cli.task(t, targetID)
+		if target.ExternalDependsOn == nil || len(target.ExternalDependsOn) != 0 {
+			t.Fatal("installed CLI did not read normal edge default")
+		}
+		fixture.exec(t, `UPDATE task_dependencies SET external=true WHERE project_id=$1 AND task_id=$2 AND depends_on_task_id=$3`, projectID, targetID, prerequisiteID)
+		target = cli.task(t, target.ID)
+		if !slices.Equal(target.ExternalDependsOn, []string{prerequisiteID}) || !slices.Equal(target.BlockedBy, []string{prerequisiteID}) {
+			t.Fatal("installed CLI full task read lost seeded classification or blocking")
+		}
+		for _, output := range []string{cli.run(t, cli.repo, "task", "show", target.ID), cli.run(t, cli.repo, "task", "list"), cli.run(t, cli.repo, "task", "graph")} {
+			if !strings.Contains(output, "External dependencies (1): "+prerequisiteID+"\n") {
+				t.Fatal("installed CLI text output lost external classification")
+			}
+		}
+		acceptanceCLITaskListJSON(t, cli.run(t, cli.repo, "task", "list", "--json"), []api.Task{prerequisite, target})
+		graph := acceptanceCLIGraphResource(t, cli.run(t, cli.repo, "task", "graph", "--json"))
+		if len(graph.Tasks) != 2 || !slices.Equal(graph.Tasks[1].ExternalDependsOn, target.ExternalDependsOn) {
+			t.Fatal("installed CLI graph omitted seeded classification")
+		}
+		acceptanceError(t, process.request(context.Background(), http.MethodPatch, "/api/v1/projects/"+projectID+"/tasks/"+target.ID, map[string]any{"version": target.Version, "externalDependsOn": []string{}}, "unsupported-external-write"), http.StatusBadRequest, "invalid_input")
+		if after := cli.task(t, target.ID); !reflect.DeepEqual(after, target) {
+			t.Fatal("unsupported external write changed the classified task")
+		}
+		for _, arguments := range [][]string{{"--title", "Renamed classified dependent"}, {"--description", "Metadata retains edge classification."}, {"--pull-request-url", "https://example.com/pr/1", "--pull-request-title", "Preserved reference"}} {
+			cli.run(t, cli.repo, append([]string{"task", "update", target.ID, "--if-version", strconv.FormatInt(target.Version, 10)}, arguments...)...)
+			target = cli.task(t, target.ID)
+			if !slices.Equal(target.ExternalDependsOn, []string{prerequisiteID}) {
+				t.Fatal("installed ordinary update lost external classification")
+			}
+		}
+		for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"unapprove", "proposed"}, {"approve", "todo"}} {
+			target = acceptanceCLIAction(t, cli, process, evidence, target, step.action, step.status)
+		}
+		acceptanceCLIRefusal(t, cli, process, evidence, target, "dependency_unsatisfied", "task", "claim", target.ID, "--project", projectID, "--if-version", strconv.FormatInt(target.Version, 10))
+		for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"claim", "in_progress"}, {"complete", "done"}} {
+			prerequisite = acceptanceCLIAction(t, cli, process, evidence, prerequisite, step.action, step.status)
+		}
+		target = cli.task(t, target.ID)
+		ready := acceptanceCLIJSON[[]api.Task](t, cli.run(t, cli.repo, "task", "ready", "--json"))
+		if len(ready) != 1 || !reflect.DeepEqual(ready[0], target) || !target.Ready || !slices.Equal(target.ExternalDependsOn, []string{prerequisiteID}) {
+			t.Fatal("installed ready read lost classification after prerequisite completion")
+		}
+		if output := cli.run(t, cli.repo, "task", "ready"); !strings.Contains(output, "External dependencies (1): "+prerequisiteID+"\n") {
+			t.Fatal("installed ready text omitted classification")
+		}
+		target = acceptanceCLIAction(t, cli, process, evidence, target, "claim", "in_progress")
+		target = acceptanceCLIAction(t, cli, process, evidence, target, "complete", "done")
+		if !slices.Equal(target.ExternalDependsOn, []string{prerequisiteID}) {
+			t.Fatal("installed execution actions lost classification")
+		}
+		acceptanceCLITaskListJSON(t, cli.run(t, cli.repo, "task", "list", "--all", "--json"), []api.Task{prerequisite, target})
+		graph = acceptanceCLIGraphResource(t, cli.run(t, cli.repo, "task", "graph", "--json"))
+		process.signal(t)
+		process.stopped(t, 0)
+		restarted := fixture.launch(t, map[string]string{"DAYNIGHT_LISTEN_ADDR": process.address}).started(t)
+		if after := cli.task(t, target.ID); !reflect.DeepEqual(after, target) {
+			t.Fatal("classified task changed across service restart")
+		}
+		if after := cli.task(t, prerequisite.ID); !reflect.DeepEqual(after, prerequisite) {
+			t.Fatal("prerequisite changed across service restart")
+		}
+		afterGraph := acceptanceCLIGraphResource(t, cli.run(t, cli.repo, "task", "graph", "--json"))
+		afterGraph.ObservedAt = graph.ObservedAt
+		if !reflect.DeepEqual(afterGraph, graph) {
+			t.Fatal("classified graph changed across service restart")
+		}
+		restarted.signal(t)
+		restarted.stopped(t, 0)
+	})
+}

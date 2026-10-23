@@ -110,6 +110,14 @@ export const parseProjectPage = (value: unknown): ProjectPage => {
   return { items, nextCursor: data.nextCursor === null ? null : nonemptyString(data.nextCursor) };
 };
 
+const taskDependencies = (data: Record<string, unknown>): Pick<GraphTask, "dependsOn" | "externalDependsOn"> => {
+  const dependsOn = ids(data.dependsOn);
+  const externalDependsOn = ids(data.externalDependsOn);
+  const dependencies = new Set(dependsOn);
+  if (externalDependsOn.some((taskId) => !dependencies.has(taskId))) return malformed();
+  return { dependsOn, externalDependsOn };
+};
+
 const graphTask = (value: unknown): GraphTask => {
   const data = record(value);
   return {
@@ -117,7 +125,7 @@ const graphTask = (value: unknown): GraphTask => {
     titlePreview: string(data.titlePreview),
     titleTruncated: boolean(data.titleTruncated),
     status: status(data.status),
-    dependsOn: ids(data.dependsOn),
+    ...taskDependencies(data),
     blockedBy: ids(data.blockedBy),
     ready: boolean(data.ready),
     startedAt: nullableTimestamp(data.startedAt),
@@ -173,7 +181,7 @@ export const parseTaskDetail = (value: unknown, projectId: string, taskId: strin
     properties: properties(data.properties),
     status: status(data.status),
     version,
-    dependsOn: ids(data.dependsOn),
+    ...taskDependencies(data),
     blockedBy: ids(data.blockedBy),
     ready: boolean(data.ready),
     startedAt: nullableTimestamp(data.startedAt),

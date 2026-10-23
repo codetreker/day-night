@@ -13,7 +13,7 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 列表默认值与文本输出见[列表决策](../../.agents/notes/implemented/feature/2026-10-22-task-list-defaults.md)，
 JSON 列表字段见[描述省略决策](../../.agents/notes/implemented/simplification/2026-10-22-task-list-json-description.md)。
 任务起止字段与图时钟的读取机制由[执行计时架构](daynight-task-timing.md)扩展；
-CLI 同步保留 `startedAt`、`completedAt`、`observedAt` 及 Project.settings，不产生本地推算时间或新增可读字段。
+CLI 同步保留 `startedAt`、`completedAt`、`observedAt` 及 Project.settings，不产生本地推算时间；计时读取不新增人类可读字段。
 Web 的共享时钟与卡片使用相同资源事实，展示机制归[看板设计](daynight-web.md)，不改变客户端传输或命令职责。
 
 [预定义属性设计](daynight-task-properties.md)的 server 接口、CLI 成对 PR 引用
@@ -427,6 +427,12 @@ JavaScript `number`。Project、分页项目及 graph.project 的必填 settings
 `executionWarningMinutes` 为正 int32。CLI 既有嵌套数字原文读取保留 settings.version 的完整十进制值，
 JSON 输出不转为字符串，Project 可读输出保持既有标签。未知响应字段继续由 DTO 投影忽略，
 不能因未知对象中的同名 version 字段触发已知 task 或 settings 的校验。
+
+任务及图的已知读取字段还包括必填 `externalDependsOn`。CLI 依赖解码要求正规化、升序、
+不重复的 D/E，并验证 E 属于完整 D；缺字段不使用兼容默认值。JSON 保留该数组，
+列表只省略 description 的规则不变。人类 task、list、ready、操作结果和 graph 复用依赖区，
+输出 `External dependencies (N): <ID 列表或 none>`。现有请求投影不提交该只读字段；
+分类写入及声明选项见[外部依赖架构](daynight-external-dependencies.md)的目标部分，当前未开放。
 
 ## 附件命令组合
 

@@ -38,7 +38,7 @@ func taskResponse(task core.Task) api.Task {
 	return api.Task{ID: task.ID, ProjectID: task.ProjectID, Title: task.Title, Description: task.Description,
 		Properties: propertiesResponse(task.Properties), Status: string(task.Status), Version: task.Version, CreatedAt: task.CreatedAt.UTC(), UpdatedAt: task.UpdatedAt.UTC(),
 		StartedAt: timestampResponse(task.StartedAt), CompletedAt: timestampResponse(task.CompletedAt),
-		DependsOn: append([]string{}, task.DependsOn...), BlockedBy: append([]string{}, task.BlockedBy...), Ready: task.Ready}
+		DependsOn: append([]string{}, task.DependsOn...), ExternalDependsOn: append([]string{}, task.ExternalDependsOn...), BlockedBy: append([]string{}, task.BlockedBy...), Ready: task.Ready}
 }
 
 func propertiesResponse(properties core.TaskProperties) api.TaskProperties {

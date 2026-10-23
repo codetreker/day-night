@@ -17,17 +17,17 @@ const secondId = "b1b2c3d4-1111-4222-8333-123456789abd";
 const thirdId = "b1b2c3d4-1111-4222-8333-123456789abe";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project: Project = { id: projectId, name: "Project 中文", repoUrl: "git@git.example:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
-const task = (partial: Partial<Task> = {}): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true, ...partial });
+const task = (partial: Partial<Task> = {}): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, ...partial });
 const taskListItem = (value: Task): Omit<Task, "description"> => ({
   id: value.id, projectId: value.projectId, title: value.title, properties: value.properties,
   status: value.status, version: value.version, startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt,
-  dependsOn: value.dependsOn, blockedBy: value.blockedBy, ready: value.ready,
+  dependsOn: value.dependsOn, externalDependsOn: value.externalDependsOn, blockedBy: value.blockedBy, ready: value.ready,
 });
 const graph = (): TaskGraph => ({
   observedAt: time,
   project,
   summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
-  tasks: [{ id: taskId, titlePreview: "Task 中文", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, startedAt: null, completedAt: null, createdAt: time, updatedAt: time }],
+  tasks: [{ id: taskId, titlePreview: "Task 中文", titleTruncated: false, status: "todo", dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, startedAt: null, completedAt: null, createdAt: time, updatedAt: time }],
 });
 const taskPath = `/api/v1/projects/${projectId}/tasks`;
 const projectPath = `/api/v1/projects/${projectId}`;
@@ -284,6 +284,7 @@ describe("compiled task commands", () => {
       const validationBlocked = ["/api/client.js", "/api/operation.js", "/config/", "/repository/", "/commands/server/", "/commands/task/rendering.js", "better-sqlite3"];
       for (const args of [
         ["create"], ["create", "--title", "\u0085"], ["update", taskId],
+        ["create", "--title", "Title", "--external-depends-on", secondId], ["update", taskId, "--external-depends-on", secondId],
         ["update", taskId, "--description", "", "--depends-on", secondId, "--clear-dependencies"],
         ["create", "--title", "Title", "--pull-request-url="],
         ["update", taskId, "--pull-request-title="],
@@ -306,6 +307,40 @@ describe("compiled task commands", () => {
       }
       await expect(readdir(f.home)).rejects.toMatchObject({ code: "ENOENT" });
       expect(await readdir(f.caller)).toEqual([]);
+    } finally { await f.close(); }
+  }, 60_000);
+
+  it("retains external dependency classifications in every compiled read shape and reports their count separately", async () => {
+    const f = await fixture();
+    try {
+      const current = task({ description: "Complete Markdown\n\n```text\nexternal dependency\n```", version: 9_223_372_036_854_775_807n, dependsOn: [secondId, thirdId], externalDependsOn: [thirdId] });
+      const graphValue: TaskGraph = {
+        ...graph(),
+        summary: { total: 3, proposed: 0, todo: 1, inProgress: 0, done: 2, ready: 1, blocked: 0 },
+        tasks: [
+          { ...graph().tasks[0]!, dependsOn: current.dependsOn, externalDependsOn: current.externalDependsOn },
+          { ...graph().tasks[0]!, id: secondId, status: "done", ready: false },
+          { ...graph().tasks[0]!, id: thirdId, status: "done", ready: false },
+        ],
+      };
+      await f.serve((request, response) => {
+        if (request.pathname.endsWith("/task-graph")) respond(response, graphValue);
+        else if (request.pathname === taskPath) respond(response, { items: [current], nextCursor: null });
+        else respond(response, current);
+      });
+      for (const command of ["show", "list", "ready", "graph"]) {
+        const args = command === "show" ? [command, taskId] : [command];
+        const human = await f.invoke([...args, ...explicit]);
+        expect(human.code, human.stderr).toBe(0);
+        expect(human.stdout).toContain(`Depends on: ${secondId}, ${thirdId}`);
+        expect(human.stdout).toContain(`External dependencies (1): ${thirdId}`);
+        const json = await f.invoke([...args, "--json", ...explicit]);
+        expect(json.code, json.stderr).toBe(0);
+        const resource = parseApiJson(json.stdout);
+        expect(resource).toEqual(command === "list" ? [taskListItem(current)] : command === "ready" ? [current] : command === "graph" ? graphValue : current);
+        if (command === "list") expect(resource).not.toHaveProperty("0.description");
+        if (command !== "graph") expect(json.stdout).toContain('"version":9223372036854775807');
+      }
     } finally { await f.close(); }
   }, 60_000);
 

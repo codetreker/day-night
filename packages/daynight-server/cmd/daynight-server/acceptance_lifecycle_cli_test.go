@@ -270,8 +270,8 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		if err := binaryAcceptance.update(func() { migration.AfterLedger, migration.AfterRows = afterLedger, afterRows }); err != nil {
 			t.Fatal("cannot persist migrated ledger and resource snapshots")
 		}
-		if len(migration.AfterLedger) != 10 || !reflect.DeepEqual(migration.AfterLedger[:6], migration.BeforeLedger) ||
-			migration.AfterLedger[6].Version != 7 || migration.AfterLedger[7].Version != 8 || migration.AfterLedger[8].Version != 9 || migration.AfterLedger[9].Version != 10 || !reflect.DeepEqual(migration.AfterRows, migration.BeforeRows) {
+		if len(migration.AfterLedger) != 11 || !reflect.DeepEqual(migration.AfterLedger[:6], migration.BeforeLedger) ||
+			migration.AfterLedger[6].Version != 7 || migration.AfterLedger[7].Version != 8 || migration.AfterLedger[8].Version != 9 || migration.AfterLedger[9].Version != 10 || migration.AfterLedger[10].Version != 11 || !reflect.DeepEqual(migration.AfterRows, migration.BeforeRows) {
 			t.Fatal("built startup did not append genuine migrations while preserving old rows and ledger")
 		}
 		acceptanceError(t, process.request(context.Background(), http.MethodGet, "/api/v1/projects/"+projectID, nil, ""), http.StatusNotFound, "not_found")

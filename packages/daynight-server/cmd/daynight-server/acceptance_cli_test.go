@@ -345,9 +345,9 @@ func acceptanceSettingsSave(t *testing.T, process *acceptanceProcess, before api
 func acceptanceCLITaskResource(t *testing.T, text string) api.Task {
 	t.Helper()
 	fields := acceptanceCLIJSON[map[string]json.RawMessage](t, text)
-	for _, name := range []string{"startedAt", "completedAt"} {
+	for _, name := range []string{"startedAt", "completedAt", "externalDependsOn"} {
 		if _, exists := fields[name]; !exists {
-			t.Fatalf("installed CLI task omitted required timing field %s", name)
+			t.Fatalf("installed CLI task omitted required field %s", name)
 		}
 	}
 	return acceptanceCLIJSON[api.Task](t, text)
@@ -365,9 +365,9 @@ func acceptanceCLIGraphResource(t *testing.T, text string) api.TaskGraph {
 	}
 	acceptanceCLIProjectResource(t, string(fields.Project))
 	for _, task := range fields.Tasks {
-		for _, name := range []string{"startedAt", "completedAt"} {
+		for _, name := range []string{"startedAt", "completedAt", "externalDependsOn"} {
 			if _, exists := task[name]; !exists {
-				t.Fatalf("installed CLI graph omitted required timing field %s", name)
+				t.Fatalf("installed CLI graph omitted required field %s", name)
 			}
 		}
 	}
@@ -384,9 +384,9 @@ func acceptanceCLITaskListJSON(t *testing.T, text string, expected []api.Task) {
 		if _, included := task["description"]; included {
 			t.Fatal("installed CLI list JSON included description")
 		}
-		for _, name := range []string{"startedAt", "completedAt"} {
+		for _, name := range []string{"startedAt", "completedAt", "externalDependsOn"} {
 			if _, exists := task[name]; !exists {
-				t.Fatalf("installed CLI list omitted required timing field %s", name)
+				t.Fatalf("installed CLI list omitted required field %s", name)
 			}
 		}
 	}
@@ -790,7 +790,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 					t.Fatal("installed compact task list included full-resource detail fields")
 				}
 			}
-			for _, field := range []string{"Pull requests: 0\n", "Status: todo\n", "Ready: true\nDepends on: none\nBlocked by: none\n"} {
+			for _, field := range []string{"Pull requests: 0\n", "Status: todo\n", "Ready: true\nDepends on: none\nExternal dependencies (0): none\nBlocked by: none\n"} {
 				if !strings.Contains(output, field) {
 					t.Fatal("installed compact task list lost task status, PR or dependency fields")
 				}

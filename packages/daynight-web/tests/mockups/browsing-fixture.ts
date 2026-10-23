@@ -136,7 +136,7 @@ const createGraph = (scenario: BrowsingScenario, number: number): TaskGraph => {
     titles.set(`${id(number)}:${id(task.number)}`, task.title);
     return { startedAt: null, completedAt: null,
       id: id(task.number), titlePreview: title.slice(0, 160).join(''), titleTruncated: title.length > 160, status: task.status,
-      dependsOn: task.dependencies.map(id), blockedBy,
+      dependsOn: task.dependencies.map(id), externalDependsOn: [], blockedBy,
       ready: task.status === 'todo' && blockedBy.length === 0, createdAt, updatedAt: createdAt,
     };
   });
@@ -164,7 +164,7 @@ export const browsingProjects = Object.fromEntries(
 
 const detail = (graph: TaskGraph, task: GraphTask | TaskDetail, scenario: BrowsingDetailScenario, version = 1n): TaskDetail => ({ startedAt: task.startedAt, completedAt: task.completedAt,
   id: task.id, projectId: graph.project.id, title: titles.get(`${graph.project.id}:${task.id}`)!, version,
-  status: task.status, dependsOn: task.dependsOn, blockedBy: task.blockedBy, ready: task.ready,
+  status: task.status, dependsOn: task.dependsOn, externalDependsOn: task.externalDependsOn, blockedBy: task.blockedBy, ready: task.ready,
   createdAt: task.createdAt, updatedAt: task.updatedAt,
   description: scenario === 'empty' ? '' : scenario === 'long'
     ? Array.from({ length: 24 }, (_, index) => `验收记录 ${index + 1}：完成任务范围内的实现与验证，确认依赖关系、任务状态与实际交付结果一致。共享任务可出现在多条任务链中；已完成的前置任务保留在依赖图中。完整内容在详情窗口内滚动，标题栏、关闭按钮和底部说明持续可见。`).join('\n\n')
@@ -205,7 +205,7 @@ const fault = (code: string, status: number): Response => jsonResponse({
 const graphSnapshot = (state: SceneState): TaskGraph => {
   const tasks: GraphTask[] = [...state.tasks.values()].map((task) => ({ startedAt: task.startedAt, completedAt: task.completedAt,
     id: task.id, titlePreview: Array.from(task.title).slice(0, 160).join(''), titleTruncated: Array.from(task.title).length > 160,
-    status: task.status, dependsOn: task.dependsOn, blockedBy: task.blockedBy, ready: task.ready,
+    status: task.status, dependsOn: task.dependsOn, externalDependsOn: task.externalDependsOn, blockedBy: task.blockedBy, ready: task.ready,
     createdAt: task.createdAt, updatedAt: task.updatedAt,
   }));
   return { observedAt: "2026-10-20T12:00:00Z", project: state.initial.project, tasks, summary: {

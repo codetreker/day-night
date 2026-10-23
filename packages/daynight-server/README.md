@@ -7,7 +7,10 @@ HTTP shutdown. Versioned migrations and transactional storage are implemented;
 project/task APIs and built-process acceptance are implemented. The current
 executable serves project, task and complete task-graph routes together with the
 embedded task dashboard. Generic bucket/path local storage, task attachment
-metadata and file/preview HTTP endpoints are implemented.
+metadata and file/preview HTTP endpoints are implemented. Dependency rows also
+persist an ordinary/external classification and task/graph reads expose the
+required external subset. Public task inputs still use their existing
+dependency-ID contract; classification writes remain unavailable.
 
 The [requirements](../../docs/spec/daynight-server.md) own observable behavior and
 the [design](../../docs/design/daynight-server.md) owns architecture and concurrency.
@@ -513,11 +516,15 @@ and timestamps. The [lifecycle decision](../../.agents/notes/implemented/feature
 activates dedicated transitions after the [reader preparation](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md).
 
 Nodes contain `id`, `titlePreview`, `titleTruncated`, `status`, `dependsOn`,
-`blockedBy`, `ready`, UTC creation/update timestamps and explicit nullable
+`externalDependsOn`, `blockedBy`, `ready`, UTC creation/update timestamps and explicit nullable
 `startedAt`/`completedAt`. SQL produces at most 160 Unicode code
 points of each title without selecting descriptions, properties or full titles. Use the
 existing task detail endpoint for complete content. Node order is `(createdAt,
 id)`; dependency arrays are sorted and empty collections encode as `[]`.
+`externalDependsOn` is a duplicate-free subset of the complete `dependsOn` set.
+Blocking, readiness, cycle validation and graph-size limits use every edge.
+Migration `011_external_dependencies.sql` initializes existing edges to ordinary
+without rewriting endpoints or task metadata.
 
 Projects above 1,000 nodes or 5,000 edges return 409 `graph_limit_exceeded` with
 exact `nodeCount`, `edgeCount`, `maxNodes` and `maxEdges` in `error.details`.
@@ -551,6 +558,12 @@ receipts and fixed-capacity gates are in the
 Creation accepts required `title`, optional `description`, `dependsOn` and
 `properties`; omitted optional values mean empty text, an empty dependency set
 and an empty PR list. Status, version and identity are server-owned on creation.
+`externalDependsOn` is currently a read field: POST and PATCH reject it as an
+unknown input. Replacing dependency IDs preserves classification on surviving
+relationships and makes new relationships ordinary. Metadata edits and
+approve/unapprove/claim/complete preserve classifications; removing an edge also
+removes its classification. The later write contract is defined in the
+[external dependency design](../../docs/design/daynight-external-dependencies.md).
 PATCH accepts a positive integer `version` and at least one mutation of `title`,
 `description`, `dependsOn` or `properties.pullRequests`; a status field is rejected
 even alongside otherwise valid metadata. Omitted fields
@@ -572,7 +585,7 @@ the [task properties requirements](../../docs/spec/daynight-task-properties.md).
 
 Task responses contain identity, project, title, description, status, version,
 UTC creation/update timestamps, explicit nullable execution timestamps
-`startedAt`/`completedAt`, sorted `dependsOn`/`blockedBy` arrays, `ready` and complete
+`startedAt`/`completedAt`, sorted `dependsOn`/`externalDependsOn`/`blockedBy` arrays, `ready` and complete
 `properties` with an initialized `pullRequests` array. A missing
 project or a task outside the specified project returns 404. The initialized
 empty project returns `items: []`, `nextCursor: null`.

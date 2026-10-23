@@ -3,17 +3,18 @@ package core
 import "time"
 
 type GraphTask struct {
-	ID             string
-	TitlePreview   string
-	TitleTruncated bool
-	Status         TaskStatus
-	DependsOn      []string
-	BlockedBy      []string
-	Ready          bool
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	StartedAt      *time.Time
-	CompletedAt    *time.Time
+	ID                string
+	TitlePreview      string
+	TitleTruncated    bool
+	Status            TaskStatus
+	DependsOn         []string
+	ExternalDependsOn []string
+	BlockedBy         []string
+	Ready             bool
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
 }
 
 type TaskGraphSummary struct {

@@ -24,6 +24,10 @@ SDK 提供 App-aware provider discovery；发现失败与用户会话失效分�
 
 [执行计时架构](daynight-task-timing.md)的起止字段与数据库 `observedAt` 已进入严格 API 读取器。
 `useTaskGraph` 将最新服务端样本保存为独立 snapshot 字段，保持仅时钟变化时的图/索引身份。
+[外部依赖架构](daynight-external-dependencies.md)的存储及严格读取准备也已实现：
+GraphTask/详情保留必填 externalDependsOn，API 层校验正规化 ID、去重及完整依赖的子集，
+图内容指纹和详情描述符纳入该集合。当前 buildGraphIndex、根投影、关系标签及上下文虚线
+保持既有算法；普通分量和显式边样式仍是目标消费机制。
 项目阈值、精确设置版本、管理员设置页及局部执行计时/提醒共同接入。
 
 ## 目标与现有基础
@@ -35,7 +39,7 @@ SDK 提供 App-aware provider discovery；发现失败与用户会话失效分�
 
 | 事实 | 证据与影响 |
 |---|---|
-| Go 服务已有项目与任务 JSON API | `packages/daynight-server/api/projects.go` 的 `ProjectPage` 返回项目及 `nextCursor`；`api/tasks.go` 的 `Task` 包含 `dependsOn`、`blockedBy`、`ready`。 |
+| Go 服务已有项目与任务 JSON API | `packages/daynight-server/api/projects.go` 的 `ProjectPage` 返回项目及 `nextCursor`；`api/tasks.go` 的 `Task` 包含 `dependsOn`、`externalDependsOn`、`blockedBy`、`ready`。 |
 | 页面与 API 同源 | `internal/server` 在同一 mux 注册精确页面、静态资源及 API 路由；`internal/webui` 内嵌真实构建产物，未知 API 保留 JSON 404。 |
 | 已有一致读取机制 | `packages/daynight-server/internal/core/store/snapshot.go` 的 `ReadSnapshot` 使用只读 `REPEATABLE READ`。 |
 | 分页之间没有共同快照 | [服务端分页约定](../spec/daynight-server.md)明确这一边界；不能用多次 task list 拼成准确的项目全图。 |
@@ -228,7 +232,7 @@ claim；ready 与 blocked todo 均可撤回。普通成员和管理员均可执�
 `DetailState.revision` 表示请求的图 receipt 上下文，`loadedRevision` 只记录最近一次成功
 详情 GET 开始时的 receipt，不在 GET 完成后追写最新 receipt，也不因生命周期 POST 推进。
 receipt 不是任务元数据的版本，网络 refreshing 与 requiresFreshRead 分开。会话观察活动
-GraphTask 的描述符，包括状态、更新时间、readiness、标题与前置/阻塞集合；前置变化即使
+GraphTask 的描述符，包括状态、更新时间、readiness、标题与前置/外部前置/阻塞集合；前置变化即使
 不改自身 version/updatedAt，也能形成已知差异。与当前详情不符的新描述符要求读取；
 当前读取错误、显式重试与未完成的结果核对同样阻止操作。在该观察之后启动的 GET 提供
 新的完整观察；若描述符在 GET 进行中又改变，响应必须与该新描述符相符，否则继续等待
@@ -697,6 +701,7 @@ type TaskGraph = {
     titleTruncated: boolean;
     status: "proposed" | "todo" | "in_progress" | "done";
     dependsOn: string[];
+    externalDependsOn: string[];
     blockedBy: string[];
     ready: boolean;
     createdAt: string;
@@ -713,17 +718,18 @@ type TaskGraph = {
 
 ```go
 type GraphTask struct {
-    ID             string
-    TitlePreview   string
-    TitleTruncated bool
-    Status         TaskStatus
-    DependsOn      []string
-    BlockedBy      []string
-    Ready          bool
-    CreatedAt      time.Time
-    UpdatedAt      time.Time
-    StartedAt      *time.Time
-    CompletedAt    *time.Time
+    ID                string
+    TitlePreview      string
+    TitleTruncated    bool
+    Status            TaskStatus
+    DependsOn         []string
+    ExternalDependsOn []string
+    BlockedBy         []string
+    Ready             bool
+    CreatedAt         time.Time
+    UpdatedAt         time.Time
+    StartedAt         *time.Time
+    CompletedAt       *time.Time
 }
 
 type TaskGraphSummary struct {
@@ -754,7 +760,7 @@ func (s *Snapshot) ObservedAt(ctx context.Context) (time.Time, error)
 
 事务顺序固定为：规范化 projectId → `ReadSnapshot` → 同快照内检查成员关系并读取 `Project` → 精确节点/边计数 → 检查上限 → 查询轻量完整节点及前置 → 从节点折叠 summary → 查询数据库 `statement_timestamp()` 作为 `observedAt` → 完成事务 → 返回资源或待返回的领域错误。
 
-store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(title) > previewCharacters`，不先读取完整 title 或 description。复用现有 project 范围的有序 dependsOn/blockedBy 与 ready SQL 语义，避免另写一套阻塞规则。查询使用现有 project 前缀索引和 `(created_at,id)` 排序；空数组和空节点列表保持 `[]`。计数与长文本扫描仍有数据库成本，上限保证的是返回与渲染规模，不是数据库查询已经有常数耗时。
+store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(title) > previewCharacters`，不先读取完整 title 或 description。复用现有 project 范围的有序 dependsOn/blockedBy 与 ready SQL 语义，并从同一关系集投影 externalDependsOn 子集，避免另写一套阻塞规则。查询使用现有 project 前缀索引和 `(created_at,id)` 排序；空数组和空节点列表保持 `[]`。计数与长文本扫描仍有数据库成本，上限保证的是返回与渲染规模，不是数据库查询已经有常数耗时。
 
 `api/task_graph.go` 独立定义 JSON DTO，server 将 core 结果转换为 DTO 和 UTC 时间。HTTP handler 拒绝全部 query 参数，不接受分页或筛选；沿用请求 context 与正常的 GET/HEAD、405 方法边界。
 
@@ -772,7 +778,7 @@ store 的 SQL 直接读取 `left(title, previewCharacters)` 与 `char_length(tit
 - 在一个 `ReadSnapshot` 中检查成员关系并读取项目、节点数、边数、节点与依赖，最终推导统计。回调内领域拒绝仍沿用服务现有事务收尾约定，数据库及清理错误不被领域错误覆盖。
 - 快照内先查询数量；超过 1,000 节点或 5,000 边时返回 `409 graph_limit_exceeded`，details 包含 `nodeCount/edgeCount/maxNodes/maxEdges`。不返回部分成功数据，不改变既有写入规则。
 - 标题预览限制为 160 Unicode code points，并返回 `titleTruncated`；查询直接投影预览，避免先加载所有完整标题。GraphTask 不含 description；完整文本在点击详情时读取。
-- 查询 `dependsOn` 与 `blockedBy` 只覆盖该项目。数组排序、任务排序与既有 API 规则保持稳定。HTTP 400/404/500 沿用现有 typed Fault 和错误脱敏。
+- 查询 `dependsOn`、`externalDependsOn` 与 `blockedBy` 只覆盖该项目。外部子集为必填字段，完整依赖仍包含所有关系；输入尚不接受分类。数组排序、任务排序与既有 API 规则保持稳定。HTTP 400/404/500 沿用现有 typed Fault 和错误脱敏。
 - 增加图规模错误时，同步维护 `service.Fault`、HTTP 错误 DTO、状态映射与日志白名单。错误响应沿用 requestId；不返回 SQL、驱动错误或仓库凭据。
 - 执行计时通过任务同行迁移持久化，图查询只投影这些字段；不加存储接口，不复用 CLI 的 YAML 或 SQLite。
 

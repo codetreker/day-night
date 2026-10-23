@@ -60,10 +60,13 @@ func scanProject(row pgx.Row) (core.Project, error) {
 }
 
 const taskProjection = `t.id::text, t.project_id::text, t.title, t.description,
-	t.status, t.version, t.created_at, t.updated_at, t.started_at, t.completed_at, t.properties, ` + taskDependsOn + `, ` + taskBlockedBy + `, ` + taskReady
+	t.status, t.version, t.created_at, t.updated_at, t.started_at, t.completed_at, t.properties, ` + taskDependsOn + `, ` + taskExternalDependsOn + `, ` + taskBlockedBy + `, ` + taskReady
 
 const taskDependsOn = `ARRAY(SELECT d.depends_on_task_id::text FROM task_dependencies d
 		WHERE d.project_id = t.project_id AND d.task_id = t.id ORDER BY d.depends_on_task_id)`
+
+const taskExternalDependsOn = `ARRAY(SELECT d.depends_on_task_id::text FROM task_dependencies d
+		WHERE d.project_id = t.project_id AND d.task_id = t.id AND d.external ORDER BY d.depends_on_task_id)`
 
 const taskBlockedBy = `ARRAY(SELECT d.depends_on_task_id::text FROM task_dependencies d
 		WHERE d.project_id = t.project_id AND d.task_id = t.id
@@ -79,7 +82,7 @@ func scanTask(row pgx.Row) (core.Task, error) {
 	var task core.Task
 	var properties string
 	err := row.Scan(&task.ID, &task.ProjectID, &task.Title, &task.Description, &task.Status,
-		&task.Version, &task.CreatedAt, &task.UpdatedAt, &task.StartedAt, &task.CompletedAt, &properties, &task.DependsOn, &task.BlockedBy, &task.Ready)
+		&task.Version, &task.CreatedAt, &task.UpdatedAt, &task.StartedAt, &task.CompletedAt, &properties, &task.DependsOn, &task.ExternalDependsOn, &task.BlockedBy, &task.Ready)
 	if err != nil {
 		return core.Task{}, err
 	}

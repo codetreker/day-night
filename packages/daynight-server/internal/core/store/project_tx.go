@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"slices"
 
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/taskproperties"
@@ -14,11 +15,12 @@ type ProjectTx struct {
 }
 
 type TaskWrite struct {
-	Title       string
-	Description string
-	Properties  core.TaskProperties
-	Status      core.TaskStatus
-	DependsOn   []string
+	Title             string
+	Description       string
+	Properties        core.TaskProperties
+	Status            core.TaskStatus
+	DependsOn         []string
+	ExternalDependsOn []string
 }
 
 type DependencyReplacement struct {
@@ -88,7 +90,7 @@ func (tx *ProjectTx) CreateTask(ctx context.Context, id string, values TaskWrite
 	if err != nil {
 		return core.Task{}, queryError("create task", err)
 	}
-	if err := tx.insertDependencies(ctx, id, values.DependsOn); err != nil {
+	if err := tx.insertDependencies(ctx, id, values.DependsOn, values.ExternalDependsOn); err != nil {
 		return core.Task{}, err
 	}
 	return tx.Task(ctx, id)
@@ -115,16 +117,16 @@ func (tx *ProjectTx) UpdateTask(ctx context.Context, id string, values TaskWrite
 	if _, err := tx.tx.Exec(ctx, `DELETE FROM task_dependencies WHERE project_id = $1 AND task_id = $2`, tx.projectID, id); err != nil {
 		return core.Task{}, queryError("replace dependencies", err)
 	}
-	if err := tx.insertDependencies(ctx, id, values.DependsOn); err != nil {
+	if err := tx.insertDependencies(ctx, id, values.DependsOn, values.ExternalDependsOn); err != nil {
 		return core.Task{}, err
 	}
 	return tx.Task(ctx, id)
 }
 
-func (tx *ProjectTx) insertDependencies(ctx context.Context, id string, dependencies []string) error {
+func (tx *ProjectTx) insertDependencies(ctx context.Context, id string, dependencies, externalDependencies []string) error {
 	for _, dependency := range dependencies {
-		if _, err := tx.tx.Exec(ctx, `INSERT INTO task_dependencies (project_id, task_id, depends_on_task_id)
-			VALUES ($1, $2, $3)`, tx.projectID, id, dependency); err != nil {
+		if _, err := tx.tx.Exec(ctx, `INSERT INTO task_dependencies (project_id, task_id, depends_on_task_id, external)
+			VALUES ($1, $2, $3, $4)`, tx.projectID, id, dependency, slices.Contains(externalDependencies, dependency)); err != nil {
 			return queryError("insert dependency", err)
 		}
 	}

@@ -3,7 +3,8 @@
 本设计落实[外部依赖需求 ED-R1–ED-R8](../spec/daynight-external-dependencies.md)。
 [原型](mockups/external-dependencies/index.html)展示目标视觉和交互，
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-23-external-dependency-design.md)保存方案取舍。
-本页描述待审阅的目标机制，运行时尚未实现该分类。
+依赖性质存储和服务端、CLI、Web 的读取契约已实现。公开写入仍只接受原有依赖 ID，
+Web 仍按全部依赖的根投影计算与绘制。本页同时说明已实现的读取机制和后续采用的分类写入、普通分量与显式样式目标。
 
 ## 现状与设计依据
 
@@ -52,15 +53,14 @@ flowchart LR
 
 ## 存储、迁移与候选写入
 
-采用下一个可用迁移版本，为 `task_dependencies` 增加：
+`011_external_dependencies.sql` 为 `task_dependencies` 增加：
 
 ```sql
 ALTER TABLE task_dependencies
     ADD COLUMN external boolean NOT NULL DEFAULT false;
 ```
 
-源码基线的最新已实现迁移是 `009_task_timing.sql`。
-其他设计也可能预留后续版本，实施时必须刷新主线再分配文件名及版本，保留既有内容和校验和。
+该迁移位于 `009_task_timing.sql` 和 `010_project_settings.sql` 之后，既有内容和校验和保持。
 继续使用现有迁移事务和 `schema_migrations`，不增加另一份迁移账本、外键或临时业务表。
 
 旧行在迁移中取得 `false`，其端点及任务字段保持原样。
@@ -84,6 +84,8 @@ core、`TaskWrite`、完整任务与图任务增加 `ExternalDependsOn`。
 
 ## API 契约
 
+### 已实现的读取与现有写入边界
+
 完整任务、列表项、ready 项、变更响应和图节点都保留原 `dependsOn: string[]`，
 并返回必填 `externalDependsOn: string[]`。示例中的字母代表实际 UUID：
 
@@ -99,6 +101,12 @@ core、`TaskWrite`、完整任务与图任务增加 `ExternalDependsOn`。
 两个数组正规化为无重复、UUID 排序集合，外部集合必须属于完整集合。
 客户端严格读取两个数组并校验子集；没有“缺字段即旧版本”的运行时分支。
 原始精确版本、Markdown、PR 属性、时间戳与图顶层 `observedAt` 的契约不变。
+
+当前创建和 PATCH 的输入白名单保持原样，不接受 `externalDependsOn`；该字段仍是未知输入并返回 400。
+普通依赖替换保留仍存在关系的外部性质，新关系为普通；移除关系同时移除其性质。
+标题、描述、PR 修改及 approve、unapprove、claim、complete 继续携带已存储的外部子集。
+
+### 目标分类写入
 
 创建时省略任一数组分别表示空集合；外部非空而完整依赖为空是无效输入。
 更新字段独立可选，且与其他任务字段共同提交：
@@ -122,7 +130,10 @@ HTTP 严格对象解析在写入阶段加入字段白名单及类型验证。
 
 ## CLI 与工作流
 
-CLI 用两种选项表达最终关系集：
+当前 CLI 读取和 JSON 已保留必填外部子集，任务与图的人类依赖区输出
+`External dependencies (N): <ID 列表或 none>`，列表、ready 和操作结果复用同一表达。
+读取器拒绝缺失、非法或不属于完整依赖集的外部 ID，不在旧服务响应中补空数组。
+当前命令仍只编辑普通依赖，以下两种声明选项及相关 skill 更新是后续写入目标：
 
 ```sh
 daynight task create --title "worker 阶段" \
@@ -150,6 +161,11 @@ Goal 的问题定义、架构、内部交付阶段之间为普通前置；
 不能按状态、标题、根节点或共享主题猜测性质，也不能为显示同组而虚构依赖。
 
 ## Web 索引与分量
+
+当前 GraphTask 和完整详情已经保留必填 `externalDependsOn`，共享 API 解码器校验 UUID、去重和子集。
+详情新鲜度与描述符纳入该集合；图内容等价比较保留它，性质单独变化也会替换对应图内容和索引，
+随后仅时钟样本变化仍复用身份。`buildGraphIndex` 当前继续使用全部 `dependsOn`，
+不按外部性质改变成员、关系标签或虚线。以下普通分量模型及后续呈现尚待实现。
 
 先验证完整资源的唯一任务、全部引用、外部子集、状态、阻塞、就绪、全边无环和图上限。
 构造全边有向邻接供执行一致性、前置检查和方向展开使用；
@@ -275,7 +291,7 @@ jq -c --arg rid "$REQUEST_ID" \
 ```
 
 应能关联任务操作错误与 HTTP 完成记录，分类为 `invalid_input`，阶段为实际任务写入阶段。
-这是一项未来验收步骤；当前设计阶段没有执行部署或线上写入。
+该验收步骤使用获授权的测试资源，并同时核对拒绝前后的版本、关系与错误身份。
 
 ## 验证与验收责任
 

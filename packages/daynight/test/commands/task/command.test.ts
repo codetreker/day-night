@@ -12,8 +12,8 @@ const taskId = "abcdefab-2222-4222-8333-123456789abc";
 const dependencyId = "abcdefab-3333-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project: Project = { id: projectId, name: "Project", repoUrl: "git@git.example:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
-const task: Task = { id: taskId, projectId, title: "Task title", description: "Description", properties: { pullRequests: [] }, status: "todo", version: 9_007_199_254_740_993n, ready: true, dependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
-const graph: TaskGraph = { observedAt: time, project, summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 }, tasks: [{ id: taskId, titlePreview: `Task title${"T".repeat(150)}`, titleTruncated: true, status: "todo", ready: true, dependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time }] };
+const task: Task = { id: taskId, projectId, title: "Task title", description: "Description", properties: { pullRequests: [] }, status: "todo", version: 9_007_199_254_740_993n, ready: true, dependsOn: [], externalDependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
+const graph: TaskGraph = { observedAt: time, project, summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 }, tasks: [{ id: taskId, titlePreview: `Task title${"T".repeat(150)}`, titleTruncated: true, status: "todo", ready: true, dependsOn: [], externalDependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time }] };
 const operations: Operation[] = [];
 afterEach(() => { operations.splice(0).forEach((operation) => operation.dispose()); });
 const fixture = (operation = createOperation()) => {
@@ -64,6 +64,7 @@ describe("task parameter boundaries", () => {
   it.each([
     ["create"], ["create", "--title", "\u0085"], ["create", "--title", "\0"], ["create", "--title", "\ud800"],
     ["create", "--title", "Title", "--description", "\ud800"], ["create", "--title", "Title", "--description", "\0"],
+    ["create", "--title", "Title", "--external-depends-on", dependencyId], ["update", taskId, "--external-depends-on", dependencyId],
     ["list", "--status", "blocked"], ["update", taskId, "--status", "proposed"], ["list", "--project", "invalid"], ["show", "invalid"], ["show", taskId, "--project", "invalid"],
     ["update", taskId], ["update", taskId, "--if-version", "1"], ["update", taskId, "--status", "done", "--if-version", "0"],
     ["update", taskId, "--title", "\u2003"], ["update", taskId, "--status", "done", "--if-version", "9223372036854775808"],
@@ -264,12 +265,12 @@ describe("task request contracts", () => {
 describe("task output contracts", () => {
   it.each(["create", "show", "update"])("renders every task field in %s human output", async (command) => {
     const f = fixture();
-    const current = { ...task, properties: { pullRequests: [{ title: "First", url: "arbitrary text" }, { title: "First", url: "arbitrary text" }, { title: "", url: "" }] }, dependsOn: [dependencyId], blockedBy: [dependencyId], ready: false };
+    const current = { ...task, properties: { pullRequests: [{ title: "First", url: "arbitrary text" }, { title: "First", url: "arbitrary text" }, { title: "", url: "" }] }, dependsOn: [dependencyId], externalDependsOn: [dependencyId], blockedBy: [dependencyId], ready: false };
     f.api.createTask.mockResolvedValue(current); f.api.getTask.mockResolvedValue(current); f.api.updateTask.mockResolvedValue(current);
     const base = command === "create" ? [command, "--title", "Title"] : command === "update" ? [command, taskId, "--description="] : [command, taskId];
     await runTaskCommand([...base, "--project", projectId], f.context, f.dependencies);
     const output = f.context.stdout.mock.calls[0]![0];
-    for (const field of [`ID: ${taskId}`, `Project: ${projectId}`, `Title: ${task.title}`, `Description: ${task.description}`, `Status: ${task.status}`, `Version: ${task.version}`, "Ready: false", `Depends on: ${dependencyId}`, `Blocked by: ${dependencyId}`, `Created: ${time}`, `Updated: ${time}`]) expect(output).toContain(field);
+    for (const field of [`ID: ${taskId}`, `Project: ${projectId}`, `Title: ${task.title}`, `Description: ${task.description}`, `Status: ${task.status}`, `Version: ${task.version}`, "Ready: false", `Depends on: ${dependencyId}`, `External dependencies (1): ${dependencyId}`, `Blocked by: ${dependencyId}`, `Created: ${time}`, `Updated: ${time}`]) expect(output).toContain(field);
     expect(output).toContain("Pull requests: 3\n  1. Title: First\n     URL: arbitrary text\n  2. Title: First\n     URL: arbitrary text\n  3. Title: \n     URL: \n");
   });
 
@@ -291,7 +292,7 @@ describe("task output contracts", () => {
     const f = fixture();
     await runTaskCommand(["graph", "--project", projectId], f.context, f.dependencies);
     const output = f.context.stdout.mock.calls[0]![0];
-    for (const field of [`Project: ${projectId}`, "Name: Project", `Repository: ${project.repoUrl}`, "Summary:", "Total: 1", "Proposed: 0", "Todo: 1", "In progress: 0", "Done: 0", "Ready: 1", "Blocked: 0", `ID: ${taskId}`, "Title preview: Task title", "Title truncated: true", "Depends on: none", "Blocked by: none"]) expect(output).toContain(field);
+    for (const field of [`Project: ${projectId}`, "Name: Project", `Repository: ${project.repoUrl}`, "Summary:", "Total: 1", "Proposed: 0", "Todo: 1", "In progress: 0", "Done: 0", "Ready: 1", "Blocked: 0", `ID: ${taskId}`, "Title preview: Task title", "Title truncated: true", "Depends on: none", "External dependencies (0): none", "Blocked by: none"]) expect(output).toContain(field);
   });
 
   it("keeps terminal control characters visible and preserves raw JSON strings", async () => {
@@ -331,6 +332,6 @@ describe("task output contracts", () => {
       expect(output).toContain(`ID: ${current.id}\nProject: ${projectId}\nTitle: ${current.title}\n`);
       contentLength += current.id.length + current.projectId.length + current.title.length + current.description.length + current.status.length + current.version.toString().length + current.createdAt.length + current.updatedAt.length;
     }
-    expect(output.length).toBeLessThanOrEqual(contentLength + 150 * tasks.length);
+    expect(output.length).toBeLessThanOrEqual(contentLength + 190 * tasks.length);
   });
 });

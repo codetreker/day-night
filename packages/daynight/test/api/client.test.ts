@@ -8,9 +8,10 @@ import type { Operation, TaskGraph } from "../../src/api/index.js";
 const projectId = "11111111-1111-1111-1111-111111111111";
 const taskId = "22222222-2222-2222-2222-222222222222";
 const otherId = "33333333-3333-3333-3333-333333333333";
+const normalId = "44444444-4444-4444-4444-444444444444";
 const time = "2026-10-20T01:02:03.123456789Z";
 const project = { id: projectId, name: "Project", repoUrl: "git@github.com:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
-const task = { id: taskId, projectId, title: "Task", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true };
+const task = { id: taskId, projectId, title: "Task", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true };
 const refusal = (code = "not_found", details?: unknown) => ({ error: { code, message: "Actual server explanation.", requestId: "req-1", ...(details === undefined ? {} : { details }) } });
 const jsonResponse = (value: unknown, status = 200) => new Response(stringifyApiJson(value), { status, headers: { "Content-Type": "application/json" } });
 const cleanups: (() => void | Promise<void>)[] = [];
@@ -366,15 +367,26 @@ const graph = (): TaskGraph => ({
   project,
   summary: { total: 2, proposed: 0, todo: 1, inProgress: 0, done: 1, ready: 1, blocked: 0 },
   tasks: [
-    { id: taskId, titlePreview: "Task", titleTruncated: false, status: "todo", dependsOn: [otherId], blockedBy: [], ready: true, startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
-    { id: otherId, titlePreview: "Done", titleTruncated: false, status: "done", dependsOn: [], blockedBy: [], ready: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
+    { id: taskId, titlePreview: "Task", titleTruncated: false, status: "todo", dependsOn: [otherId], externalDependsOn: [], blockedBy: [], ready: true, startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
+    { id: otherId, titlePreview: "Done", titleTruncated: false, status: "done", dependsOn: [], externalDependsOn: [], blockedBy: [], ready: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
+  ],
+});
+
+const mixedDependencyGraph = (): TaskGraph => ({
+  observedAt: time,
+  project,
+  summary: { total: 3, proposed: 0, todo: 2, inProgress: 0, done: 1, ready: 1, blocked: 1 },
+  tasks: [
+    { ...graph().tasks[0]!, dependsOn: [otherId, normalId], externalDependsOn: [otherId], blockedBy: [otherId], ready: false },
+    { ...graph().tasks[1]!, status: "todo", ready: true },
+    { ...graph().tasks[1]!, id: normalId },
   ],
 });
 
 const fourStateGraph = (): TaskGraph => {
   const ready = graph().tasks[0]!;
   const done = graph().tasks[1]!;
-  const proposed = { ...ready, id: "44444444-4444-4444-4444-444444444444", status: "proposed" as const, ready: false, dependsOn: [], blockedBy: [] };
+  const proposed = { ...ready, id: "44444444-4444-4444-4444-444444444444", status: "proposed" as const, ready: false, dependsOn: [], externalDependsOn: [], blockedBy: [] };
   const proposedWithDoneDependency = { ...proposed, id: "55555555-5555-5555-5555-555555555555", dependsOn: [done.id] };
   const proposedWithPendingDependency = { ...proposed, id: "66666666-6666-6666-6666-666666666666", dependsOn: [proposed.id], blockedBy: [proposed.id] };
   const blocked = { ...ready, id: "77777777-7777-7777-7777-777777777777", ready: false, dependsOn: [proposed.id], blockedBy: [proposed.id] };
@@ -388,6 +400,66 @@ const fourStateGraph = (): TaskGraph => {
 };
 
 describe("response DTO contract", () => {
+  it("preserves mixed external subsets, blocking, precise versions and timestamps across task reads and metadata results", async () => {
+    const value = { ...task, description: "Complete Markdown\n\n```text\nexternal\n```", version: 9_223_372_036_854_775_807n, dependsOn: [otherId, normalId], externalDependsOn: [otherId], blockedBy: [otherId], ready: false };
+    const graphValue = mixedDependencyGraph();
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(value))
+      .mockResolvedValueOnce(jsonResponse({ items: [value], nextCursor: null }))
+      .mockResolvedValueOnce(jsonResponse(value))
+      .mockResolvedValueOnce(jsonResponse(graphValue));
+    const api = client(fetch);
+    await expect(api.getTask(projectId, taskId)).resolves.toEqual(value);
+    await expect(api.listTasks(projectId)).resolves.toEqual([value]);
+    await expect(api.updateTask(projectId, taskId, { version: 9_007_199_254_740_993n, title: "Metadata edit" })).resolves.toEqual(value);
+    expect(parseApiJson(String(fetch.mock.calls[2]![1]!.body))).toEqual({ version: 9_007_199_254_740_993n, title: "Metadata edit" });
+    await expect(api.getTaskGraph(projectId)).resolves.toEqual(graphValue);
+  });
+
+  it("retains completed external prerequisites on ready task resources", async () => {
+    const value = { ...task, dependsOn: [otherId], externalDependsOn: [otherId] };
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse({ items: [value], nextCursor: null }));
+    await expect(client(fetch).listReadyTasks(projectId, 1)).resolves.toEqual([value]);
+  });
+
+  it.each([
+    { name: "missing", changes: { externalDependsOn: undefined } },
+    { name: "null", changes: { externalDependsOn: null } },
+    { name: "non-array", changes: { externalDependsOn: {} } },
+    { name: "malformed UUID", changes: { externalDependsOn: ["not-a-uuid"] } },
+    { name: "noncanonical UUID", changes: { externalDependsOn: ["ABCDEFAB-1111-4222-8333-123456789ABC"] } },
+    { name: "duplicate", changes: { externalDependsOn: [otherId, otherId] } },
+    { name: "outside dependency set", changes: { externalDependsOn: [projectId] } },
+    { name: "unordered external set", changes: { externalDependsOn: [normalId, otherId] } },
+    { name: "unordered complete set", changes: { dependsOn: [normalId, otherId] } },
+  ])("rejects $name dependency classification in full and graph task resources", async ({ changes }) => {
+    const value = { ...task, dependsOn: [otherId, normalId], externalDependsOn: [otherId], blockedBy: [otherId], ready: false, ...changes };
+    const graphValue = mixedDependencyGraph();
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(value))
+      .mockResolvedValueOnce(jsonResponse({ ...graphValue, tasks: [{ ...graphValue.tasks[0]!, ...changes }, ...graphValue.tasks.slice(1)] }));
+    const api = client(fetch);
+    await expect(api.getTask(projectId, taskId)).rejects.toMatchObject({ phase: "protocol" });
+    await expect(api.getTaskGraph(projectId)).rejects.toMatchObject({ phase: "protocol" });
+  });
+
+  it("rejects an all-external cycle and a graph that hides unfinished external blockers", async () => {
+    const value = graph();
+    const cyclic = {
+      ...value,
+      summary: { total: 2, proposed: 0, todo: 2, inProgress: 0, done: 0, ready: 0, blocked: 2 },
+      tasks: [
+        { ...value.tasks[0]!, externalDependsOn: [otherId], blockedBy: [otherId], ready: false },
+        { ...value.tasks[1]!, status: "todo", dependsOn: [taskId], externalDependsOn: [taskId], blockedBy: [taskId] },
+      ],
+    };
+    const mixed = mixedDependencyGraph();
+    const hiddenBlocker = { ...mixed, summary: { ...mixed.summary, ready: 2, blocked: 0 }, tasks: [{ ...mixed.tasks[0]!, blockedBy: [], ready: true }, ...mixed.tasks.slice(1)] };
+    for (const response of [cyclic, hiddenBlocker]) {
+      await expect(client(vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse(response))).getTaskGraph(projectId)).rejects.toMatchObject({ phase: "protocol" });
+    }
+  });
+
   it.each([1n, 9_007_199_254_740_993n, 9_223_372_036_854_775_807n])("preserves nested settings version %s through create, project, list and graph resources", async (version) => {
     const value = { ...project, settings: { version, executionWarningMinutes: 2_147_483_647 } };
     const graphValue = { ...graph(), project: value };
@@ -478,7 +550,7 @@ describe("response DTO contract", () => {
   });
 
   it("retains unfinished prerequisites on proposed tasks while keeping them unready", async () => {
-    const value = { ...task, status: "proposed", ready: false, dependsOn: [otherId], blockedBy: [otherId] };
+    const value = { ...task, status: "proposed", ready: false, dependsOn: [otherId], externalDependsOn: [], blockedBy: [otherId] };
     await expect(client(vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse(value))).getTask(projectId, taskId)).resolves.toEqual(value);
   });
 
@@ -565,8 +637,8 @@ describe("response DTO contract", () => {
   it.each([
     { ...task, version: "1" }, { ...task, version: 0 }, { ...task, version: 1.5 }, { ...task, status: "invalid" },
     { ...task, status: "proposed" },
-    { ...task, status: "in_progress", ready: false, dependsOn: [otherId], blockedBy: [otherId] },
-    { ...task, status: "done", ready: false, dependsOn: [otherId], blockedBy: [otherId] },
+    { ...task, status: "in_progress", ready: false, dependsOn: [otherId], externalDependsOn: [], blockedBy: [otherId] },
+    { ...task, status: "done", ready: false, dependsOn: [otherId], externalDependsOn: [], blockedBy: [otherId] },
     { ...task, description: "bad\0text" }, { ...task, ready: false },
     { ...task, dependsOn: [otherId, otherId] }, { ...task, blockedBy: [otherId] },
     { ...task, createdAt: "2026-02-30T01:02:03Z" }, { ...task, updatedAt: "2026-10-20T01:02:03+00:00" },

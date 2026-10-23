@@ -120,7 +120,7 @@ func (s *Tasks) Update(ctx context.Context, principal core.Principal, projectID,
 			return taskMutation{}, err
 		}
 		changed := current.Title != values.Title || current.Description != values.Description ||
-			!slices.Equal(current.DependsOn, values.DependsOn) || !slices.Equal(current.Properties.PullRequests, values.Properties.PullRequests)
+			!slices.Equal(current.DependsOn, values.DependsOn) || !slices.Equal(current.ExternalDependsOn, values.ExternalDependsOn) || !slices.Equal(current.Properties.PullRequests, values.Properties.PullRequests)
 		return taskMutation{id: id, current: current, values: values, changed: changed}, nil
 	})
 }
@@ -166,7 +166,7 @@ func (s *Tasks) write(ctx context.Context, principal core.Principal, projectID s
 }
 
 func taskCandidate(current core.Task, input UpdateTask) (store.TaskWrite, error) {
-	values := store.TaskWrite{Title: current.Title, Description: current.Description, Status: current.Status, DependsOn: current.DependsOn, Properties: current.Properties}
+	values := store.TaskWrite{Title: current.Title, Description: current.Description, Status: current.Status, DependsOn: current.DependsOn, ExternalDependsOn: current.ExternalDependsOn, Properties: current.Properties}
 	if input.Title != nil {
 		values.Title = *input.Title
 	}
@@ -179,6 +179,9 @@ func taskCandidate(current core.Task, input UpdateTask) (store.TaskWrite, error)
 		if err != nil {
 			return store.TaskWrite{}, err
 		}
+		values.ExternalDependsOn = slices.DeleteFunc(slices.Clone(current.ExternalDependsOn), func(id string) bool {
+			return !slices.Contains(values.DependsOn, id)
+		})
 	}
 	if input.Properties.PullRequests != nil {
 		values.Properties.PullRequests = append([]core.PullRequestProperty{}, (*input.Properties.PullRequests)...)

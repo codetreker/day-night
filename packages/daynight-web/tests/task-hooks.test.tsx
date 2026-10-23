@@ -19,8 +19,8 @@ const otherProject = "10000000-0000-0000-0000-000000000002";
 const taskId = "20000000-0000-0000-0000-000000000001";
 const otherTask = "20000000-0000-0000-0000-000000000002";
 const time = "2026-10-20T12:00:00.123456Z";
-const node: GraphTask = { startedAt: null, completedAt: null, id: taskId, titlePreview: "任务一", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
-const detail: TaskDetail = { startedAt: null, completedAt: null, id: taskId, projectId, title: "任务一", description: "完整描述", properties: { pullRequests: [] }, status: "todo", version: 1n, dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
+const node: GraphTask = { startedAt: null, completedAt: null, id: taskId, titlePreview: "任务一", titleTruncated: false, status: "todo", dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
+const detail: TaskDetail = { startedAt: null, completedAt: null, id: taskId, projectId, title: "任务一", description: "完整描述", properties: { pullRequests: [] }, status: "todo", version: 1n, dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
 const graph = (id = projectId): TaskGraph => ({ observedAt: "2026-10-20T12:00:00Z",
   project: { settings: { version: 1n, executionWarningMinutes: 60 }, id, name: `项目 ${id}`, repoUrl: "https://github.com/example/repo", createdAt: time, updatedAt: time },
   tasks: [node], summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
@@ -34,6 +34,32 @@ const deferred = <T,>() => {
 beforeEach(() => { graphRequest.mockReset(); detailRequest.mockReset(); vi.mocked(approveTask).mockReset(); });
 
 describe("task graph snapshots", () => {
+  it("publishes marker-only changes as task data while clock-only samples preserve the new graph and index", async () => {
+    vi.useFakeTimers();
+    const initial: TaskGraph = { ...graph(), tasks: [
+      { ...node, id: otherTask, titlePreview: "Prerequisite", status: "done", ready: false, startedAt: time, completedAt: time },
+      { ...node, dependsOn: [otherTask] },
+    ], summary: { total: 2, proposed: 0, todo: 1, inProgress: 0, done: 1, ready: 1, blocked: 0 } };
+    const classified: TaskGraph = { ...initial, tasks: initial.tasks.map((task) => task.id === taskId
+      ? { ...task, externalDependsOn: [otherTask] } : task) };
+    const later = { ...classified, observedAt: "2026-10-20T12:00:10.123456Z" };
+    graphRequest.mockResolvedValueOnce(initial).mockResolvedValueOnce(classified).mockResolvedValueOnce(later);
+    const { result } = renderHook(() => useTaskGraph(projectId));
+    await act(async () => { await Promise.resolve(); });
+    const first = result.current.snapshot!;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    const changed = result.current.snapshot!;
+    expect(changed.graph).not.toBe(first.graph);
+    expect(changed.index).not.toBe(first.index);
+    expect(changed.index.nodes.get(taskId)).toMatchObject({ externalDependsOn: [otherTask], updatedAt: time, ready: true });
+    expect(changed.index.roots).toEqual(first.index.roots);
+    expect(changed.index.rootProgress).toEqual(first.index.rootProgress);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(result.current.snapshot!.graph).toBe(changed.graph);
+    expect(result.current.snapshot!.index).toBe(changed.index);
+    expect(result.current.snapshot!.observedAt).toBe(later.observedAt);
+  });
+
   it("captures the monotonic receipt before fingerprint and index work while preserving the wall-clock label", async () => {
     let monotonic = 125;
     vi.spyOn(performance, "now").mockImplementation(() => monotonic);
@@ -319,6 +345,27 @@ describe("task graph snapshots", () => {
 });
 
 describe("task details", () => {
+  it("invalidates a cached proposed detail when only its external subset changes", async () => {
+    const proposed = { ...detail, status: "proposed" as const, ready: false, dependsOn: [otherTask], blockedBy: [otherTask] };
+    const observed = { ...node, status: "proposed" as const, ready: false, dependsOn: [otherTask], blockedBy: [otherTask] };
+    const changed = { ...proposed, externalDependsOn: [otherTask] };
+    const pending = deferred<TaskDetail>();
+    detailRequest.mockResolvedValueOnce(proposed).mockReturnValueOnce(pending.promise);
+    const { result, rerender } = renderHook(({ revision, snapshot }) => useTaskDetail(projectId, taskId, revision, snapshot), {
+      initialProps: { revision: 1, snapshot: observed },
+    });
+    await waitFor(() => expect(result.current.canApprove).toBe(true));
+    rerender({ revision: 2, snapshot: { ...observed, externalDependsOn: [otherTask] } });
+    expect(result.current.detail).toBe(proposed);
+    expect(result.current.requiresFreshRead).toBe(true);
+    expect(result.current.canApprove).toBe(false);
+    await act(async () => { pending.resolve(changed); });
+    expect(result.current.detail).toBe(changed);
+    expect(result.current.requiresFreshRead).toBe(false);
+    expect(result.current.canApprove).toBe(true);
+    expect(detailRequest).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps an observed proposed version usable through repeated six-second reads and five-second unchanged graph receipts", async () => {
     vi.useFakeTimers();
     const proposed = { ...detail, status: "proposed" as const, ready: false, dependsOn: [otherTask], blockedBy: [otherTask] };
@@ -562,6 +609,17 @@ describe("task details", () => {
 });
 
 describe("detail freshness", () => {
+  it("compares external subsets as sets and detects classification changes independently of task timestamps", () => {
+    const dependencies = { dependsOn: [taskId, otherTask], blockedBy: [taskId, otherTask], ready: false };
+    const classified = { ...node, ...dependencies, externalDependsOn: [taskId, otherTask] };
+    const reordered = { ...detail, ...dependencies, externalDependsOn: [otherTask, taskId] };
+    expect(isTaskStale(classified, reordered)).toBe(false);
+    expect(taskDescriptor(classified)).toBe(taskDescriptor({ ...classified, externalDependsOn: [otherTask, taskId] }));
+    expect(isTaskStale({ ...classified, externalDependsOn: [otherTask] }, reordered)).toBe(true);
+    expect(taskDescriptor(classified)).not.toBe(taskDescriptor({ ...classified, externalDependsOn: [otherTask] }));
+    expect(classified.updatedAt).toBe(reordered.updatedAt);
+  });
+
   it("accepts the same fields and order-independent dependency sets", () => {
     expect(isTaskStale(node, detail)).toBe(false);
     expect(taskDescriptor({ ...node, dependsOn: [taskId, otherTask], blockedBy: [taskId, otherTask] })).toBe(

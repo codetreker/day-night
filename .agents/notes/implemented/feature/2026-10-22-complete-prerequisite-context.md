@@ -14,8 +14,9 @@ prerequisites, so a root-anchored viewport can conceal the new context.
 
 The [external dependency design](../architecture/2026-10-23-external-dependency-design.md)
 retains complete ancestor context while proposing ordinary-component membership
-and explicit edge classification. That runtime delivery is pending; the
-root-derived membership and contextual edge styling below remain current facts.
+and explicit edge styling. Persisted classification and its strict read contract
+are implemented; the root-derived membership and contextual edge styling below
+remain current Web behavior.
 
 For a selected root, `projectRoot` keeps the root and all forward-reachable
 successors in `mainIds`. It iteratively traverses `dependsOn` from that main set

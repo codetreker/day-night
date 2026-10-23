@@ -13,11 +13,11 @@ const time = "2026-10-20T12:34:56.123456Z";
 const project = { settings: { version: 1n, executionWarningMinutes: 60 }, id: projectId, name: "Core project", repoUrl: "git@github.com:org/repo.git", createdAt: time, updatedAt: time };
 const task = { startedAt: null, completedAt: null,
   id: taskId, projectId, title: "A task", description: "", properties: { pullRequests: [] }, status: "todo", version: 9007199254740993n,
-  dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
+  dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
 };
 const graphTask = { startedAt: null, completedAt: null,
   id: taskId, titlePreview: "A task", titleTruncated: false, status: "todo",
-  dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
+  dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
 };
 const summary = { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 };
 const graph = { observedAt: "2026-10-20T12:00:00Z", project, summary, tasks: [graphTask] };
@@ -36,6 +36,43 @@ const mockResponse = (value: unknown, status = 200) => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("response parsing", () => {
+  it("requires the external subset on both full tasks and graph nodes", () => {
+    const { externalDependsOn: _fullSubset, ...missingTask } = task;
+    const { externalDependsOn: _graphSubset, ...missingNode } = graphTask;
+    expect(() => parseTaskDetail(missingTask, projectId, taskId)).toThrow("invalid response");
+    expect(() => parseTaskGraph({ ...graph, tasks: [missingNode] }, projectId)).toThrow("invalid response");
+    expect(parseTaskDetail(task, projectId, taskId).externalDependsOn).toEqual([]);
+    expect(parseTaskGraph(graph, projectId).tasks[0]!.externalDependsOn).toEqual([]);
+  });
+
+  it.each([
+    undefined, null, "", otherId, false, 1, {}, [null], [1], [""], ["invalid"],
+    [otherId, otherId], [otherId, otherId.toUpperCase()], [projectId],
+  ])("rejects malformed or out-of-set external subsets %#", (externalDependsOn) => {
+    const dependencies = { dependsOn: [otherId], externalDependsOn, blockedBy: [otherId], ready: false };
+    expect(() => parseTaskDetail({ ...task, ...dependencies }, projectId, taskId)).toThrow("invalid response");
+    expect(() => parseTaskGraph({ ...graph, tasks: [{ ...graphTask, ...dependencies }] }, projectId)).toThrow("invalid response");
+  });
+
+  it("preserves canonical mixed dependency data, exact versions, timing and project settings", () => {
+    const dependencies = { dependsOn: [projectId, otherId.toUpperCase()], externalDependsOn: [otherId.toUpperCase()], blockedBy: [otherId], ready: false };
+    const expected = { ...dependencies, dependsOn: [projectId, otherId], externalDependsOn: [otherId] };
+    const parsed = parseTaskDetail({ ...task, ...dependencies, startedAt: time }, projectId, taskId);
+    expect(parsed).toMatchObject({ ...expected, version: 9_007_199_254_740_993n, startedAt: time, completedAt: null });
+    const input = { ...graph, project: { ...project, settings: { ...project.settings, version: 9_223_372_036_854_775_807n } },
+      tasks: [{ ...graphTask, ...dependencies, startedAt: time }] };
+    const parsedGraph = parseTaskGraph(input, projectId);
+    expect(parsedGraph.tasks[0]).toMatchObject({ ...expected, startedAt: time, completedAt: null });
+    expect(parsedGraph.observedAt).toBe(graph.observedAt);
+    expect(parsedGraph.project.settings.version).toBe(9_223_372_036_854_775_807n);
+  });
+
+  it("accepts an all-external prerequisite set without changing its blocked state", () => {
+    const dependencies = { dependsOn: [otherId], externalDependsOn: [otherId], blockedBy: [otherId], ready: false };
+    expect(parseTaskDetail({ ...task, ...dependencies }, projectId, taskId)).toMatchObject(dependencies);
+    expect(parseTaskGraph({ ...graph, tasks: [{ ...graphTask, ...dependencies }] }, projectId).tasks[0]).toMatchObject(dependencies);
+  });
+
   it("requires complete positive project settings without inventing defaults", () => {
     const { settings: _settings, ...missing } = project;
     expect(() => parseProject(missing)).toThrow("invalid response");

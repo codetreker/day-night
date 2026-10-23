@@ -18,9 +18,10 @@ const taskPullRequests = (task: Task): readonly string[] => [
   ]),
 ];
 
-const taskDependencies = (task: Task): readonly string[] => [
+const taskDependencies = (task: Pick<Task, "ready" | "dependsOn" | "externalDependsOn" | "blockedBy">): readonly string[] => [
   `Ready: ${task.ready}`,
   `Depends on: ${identifiers(task.dependsOn)}`,
+  `External dependencies (${task.externalDependsOn.length}): ${identifiers(task.externalDependsOn)}`,
   `Blocked by: ${identifiers(task.blockedBy)}`,
 ];
 
@@ -51,9 +52,7 @@ const renderGraphTask = (task: GraphTask): string => [
   `Title preview: ${terminalText(task.titlePreview)}`,
   `Title truncated: ${task.titleTruncated}`,
   `Status: ${terminalText(task.status)}`,
-  `Ready: ${task.ready}`,
-  `Depends on: ${identifiers(task.dependsOn)}`,
-  `Blocked by: ${identifiers(task.blockedBy)}`,
+  ...taskDependencies(task),
   `Created: ${terminalText(task.createdAt)}`,
   `Updated: ${terminalText(task.updatedAt)}`,
   "",

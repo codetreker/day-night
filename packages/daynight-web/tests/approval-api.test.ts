@@ -9,7 +9,7 @@ const otherId = "30000000-0000-0000-0000-00000000000c";
 const time = "2026-10-22T12:34:56.123456Z";
 const task = { startedAt: null, completedAt: null,
   id: taskId, projectId, title: "A task", description: "", properties: { pullRequests: [] }, status: "proposed",
-  version: 1n, dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time,
+  version: 1n, dependsOn: [], externalDependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time,
 };
 const signal = () => new AbortController().signal;
 const response = (value: unknown, status = 200) => new Response(stringifyApiJson(value), {

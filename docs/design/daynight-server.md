@@ -104,7 +104,7 @@ index 后由前端显示未找到页面。独立附件命名空间复用原始�
 |---|---|
 | Project | `id`、非空 `name`、`repoUrl`、`createdAt`、`updatedAt`，以及具体 `settings`（正 int64 version、正 int32 executionWarningMinutes） |
 | Task | `id`、`projectId`、非空 `title`、`description`、`status`、具体 `properties`、`version`、`createdAt`、`updatedAt`，以及可空 `startedAt`、`completedAt` |
-| TaskDependency | `projectId`、`taskId`、`dependsOnTaskId` |
+| TaskDependency | `projectId`、`taskId`、`dependsOnTaskId`、非空布尔 `external`（默认 false） |
 
 `TaskDependency` 的方向是“`taskId` 依赖 `dependsOnTaskId`”。project 拥有任务及依赖
 图；不同 project 可以关联相同仓库地址，`repoUrl` 不作为 project 唯一键。当前 API
@@ -127,6 +127,8 @@ index 后由前端显示未找到页面。独立附件命名空间复用原始�
 `010_project_settings.sql` 给项目同行增加正值 `execution_warning_minutes integer DEFAULT 60` 与
 `settings_version bigint DEFAULT 1`，两列均非空；既有项目的创建/更新时间保持不变。
 项目创建、成员可见列表、单项读取和完整图投影共用同一 settings 扫描与 HTTP DTO。
+`011_external_dependencies.sql` 给依赖行增加 `external boolean NOT NULL DEFAULT false`，
+旧边保持原端点并取得普通性质，其他任务、设置、计时和迁移校验和不变。
 
 表不建立 foreign key。引用存在性、同 project 限制和图规则由获得 project 写锁后的
 service 写入路径校验；所有写入都必须经过该路径。没有删除 API，使引用不会因资源
@@ -170,9 +172,14 @@ todo→proposed、todo→in_progress、in_progress→done。审批与撤回允�
 已完成前置。引用必须同 project 且已存在；自身引用、重复 ID、缺失、跨 project 和环
 均拒绝。元数据或附件写入不能暗中审批或领取。
 
-读取时 blockedBy 是按 ID 排序的未完成直接前置，dependsOn 是全部直接前置；ready
+读取时 blockedBy 是按 ID 排序的未完成直接前置，dependsOn 是全部直接前置，
+externalDependsOn 是同项目关系中 external=true 的排序子集；三个数组均明确返回空集合。ready
 当且仅当状态为 todo 且 blockedBy 为空。proposed 永不 ready，也不计入 todo 的 blocked
-统计。派生数据不持久化，不因前置变化而修改本 task 的状态、版本或更新时间。
+统计。派生数组不单独持久化，不因前置变化而修改本 task 的状态、版本或更新时间。
+当前 POST/PATCH 不接收 externalDependsOn；更新完整依赖 ID 时保留存续关系的 external，
+新关系取 false。候选和 delete/reinsert 路径都携带性质，标题、PR 及 approve、unapprove、
+claim、complete 不丢失已存储值。执行验证继续遍历全部关系。目标分类写入见
+[外部依赖架构](daynight-external-dependencies.md)，尚未开放。
 
 ## 写事务与并发
 
@@ -270,7 +277,7 @@ status 是输入错误，含其他合法字段也不写入；HTTP 与日志保�
 具体记录只有字符串 `url` 和 `title`；内容不做业务校验。显式 `null`、嵌套未知或
 重复字段、不合理的类型及非法枚举均为输入错误。`id`、
 `projectId`、创建时间及更新时间不可由调用者写入。任务返回结构包含模型字段及
-`dependsOn`、`blockedBy`、`ready`。
+`dependsOn`、`externalDependsOn`、`blockedBy`、`ready`；外部子集是必填读取字段，当前输入仍拒绝它。
 
 Task 路径先确认指定 project 存在，再在其范围内查找资源。Project 不存在时，
 包括 task 列表在内的所有子路径均返回 `not_found`，不能返回成功的空列表。其他
