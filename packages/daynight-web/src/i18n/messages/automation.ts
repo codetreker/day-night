@@ -1,5 +1,7 @@
 export type AutomationMessages = {
   readonly label: string;
+  readonly cancel: string;
+  readonly closeConfirmation: string;
   readonly enabled: string;
   readonly disabled: string;
   readonly compactEnabled: string;

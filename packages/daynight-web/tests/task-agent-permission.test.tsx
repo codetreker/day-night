@@ -121,6 +121,15 @@ describe('confirmed automatic execution header control', () => {
     expect(screen.getByText('关闭后，worker 将不再自动领取此任务。')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: '取消' })); expect(writes).not.toHaveBeenCalled();
   });
+  it.each([false, true])('provides the permission-specific Chinese accessible close action for saved flag %s', async (allowAgents) => {
+    await open({ ...detail, allowAgents }, 'zh-CN');
+    const control = screen.getByRole('switch', { name: '自动执行' }); control.focus(); fireEvent.click(control);
+    const confirmation = screen.getByRole('alertdialog', { name: allowAgents ? '关闭自动执行' : '开启自动执行' });
+    expect(within(confirmation).queryByRole('button', { name: '关闭确认窗' })).toBeNull();
+    fireEvent.click(within(confirmation).getByRole('button', { name: '关闭确认框' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull(); expect(control).toHaveFocus();
+    expect(control).toHaveAttribute('aria-checked', String(allowAgents)); expect(writes).not.toHaveBeenCalled();
+  });
   it('retains the original setting after a refusal and offers a fresh confirmation', async () => {
     await open(); writes.mockRejectedValueOnce(new ApiError('server', 403, 'forbidden', 'permission-refusal'));
     fireEvent.click(screen.getByRole('switch')); fireEvent.click(screen.getByRole('button', { name: 'Enable automatic execution' }));

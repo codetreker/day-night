@@ -1,6 +1,8 @@
 import type { AutomationMessages } from "../automation";
 
 export const automation: AutomationMessages = {
+  cancel: "Cancel",
+  closeConfirmation: "Close confirmation",
   label: "Automatic execution",
   enabled: "Automatic execution on",
   disabled: "Automatic execution off",

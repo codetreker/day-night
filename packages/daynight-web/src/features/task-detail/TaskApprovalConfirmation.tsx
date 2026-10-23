@@ -20,5 +20,5 @@ export const TaskApprovalConfirmation = ({ confirmation, ...props }: {
   const approving = confirmation.action === 'approve';
   return <TaskConfirmation {...props} title={approving ? m.approve : m.unapprove} question={approving ? m.approveQuestion : m.unapproveQuestion}
     explanation={approving ? m.explanation : m.unapproveExplanation} taskTitle={confirmation.detail.title}
-    confirmLabel={approving ? m.confirmApprove : m.confirmUnapprove} />;
+    confirmLabel={approving ? m.confirmApprove : m.confirmUnapprove} cancelLabel={m.cancel} closeLabel={m.closeConfirmation} />;
 };

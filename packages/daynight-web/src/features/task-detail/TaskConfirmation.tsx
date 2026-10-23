@@ -1,21 +1,21 @@
 import { useId, useLayoutEffect, useRef, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { useI18n } from '../../i18n/LocaleProvider';
 import { dialogFocusables } from './focus';
 import '../../styles/auth.css';
 
-export const TaskConfirmation = ({ title, question, explanation, taskTitle, confirmLabel, owner, fallbackFocus, onCancel, onConfirm }: {
+export const TaskConfirmation = ({ title, question, explanation, taskTitle, confirmLabel, cancelLabel, closeLabel, owner, fallbackFocus, onCancel, onConfirm }: {
   readonly title: string;
   readonly question: string;
   readonly explanation: string;
   readonly taskTitle: string;
   readonly confirmLabel: string;
+  readonly cancelLabel: string;
+  readonly closeLabel: string;
   readonly owner: RefObject<HTMLElement | null>;
   readonly fallbackFocus: RefObject<HTMLElement | null>;
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
 }) => {
-  const { messages: { inspection: { approval: m } } } = useI18n();
   const titleId = useId();
   const descriptionId = useId();
   const dialog = useRef<HTMLElement>(null);
@@ -52,9 +52,9 @@ export const TaskConfirmation = ({ title, question, explanation, taskTitle, conf
   }, [owner, fallbackFocus]);
   return createPortal(<div className="auth-modal-backdrop task-approval-confirmation-backdrop" onClick={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
     <section className="auth-dialog task-approval-confirmation" ref={dialog} role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId}>
-      <header className="dialog-header"><h2 id={titleId}>{title}</h2><button className="close-button" type="button" aria-label={m.closeConfirmation} onClick={onCancel}>×</button></header>
+      <header className="dialog-header"><h2 id={titleId}>{title}</h2><button className="close-button" type="button" aria-label={closeLabel} onClick={onCancel}>×</button></header>
       <div className="dialog-body" id={descriptionId} tabIndex={0}><p>{question}</p><p className="task-approval-confirmation-task">{taskTitle}</p><p>{explanation}</p></div>
-      <footer className="dialog-footer"><button className="button" type="button" ref={cancel} onClick={onCancel}>{m.cancel}</button><button className="button primary" type="button" onClick={() => { restoreOpener.current = false; onConfirm(); }}>{confirmLabel}</button></footer>
+      <footer className="dialog-footer"><button className="button" type="button" ref={cancel} onClick={onCancel}>{cancelLabel}</button><button className="button primary" type="button" onClick={() => { restoreOpener.current = false; onConfirm(); }}>{confirmLabel}</button></footer>
     </section>
   </div>, document.body);
 };

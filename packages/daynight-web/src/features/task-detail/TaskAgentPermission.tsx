@@ -21,7 +21,7 @@ export const TaskAgentPermissionConfirmation = ({ confirmation, ...props }: {
   return <TaskConfirmation {...props} title={confirmation.allowAgents ? m.enableTitle : m.disableTitle}
     question={confirmation.allowAgents ? m.enableQuestion : m.disableQuestion}
     explanation={confirmation.allowAgents ? m.enableExplanation : m.disableExplanation}
-    taskTitle={confirmation.detail.title} confirmLabel={confirmation.allowAgents ? m.enableAction : m.disableAction} />;
+    taskTitle={confirmation.detail.title} confirmLabel={confirmation.allowAgents ? m.enableAction : m.disableAction} cancelLabel={m.cancel} closeLabel={m.closeConfirmation} />;
 };
 
 export const TaskAgentPermissionSwitch = ({ detail, disabled, onClick, describedBy }: {
