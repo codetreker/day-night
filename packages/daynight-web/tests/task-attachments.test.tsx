@@ -264,6 +264,45 @@ describe('task attachments', () => {
     expect(api.list).toHaveBeenCalledTimes(1);
   });
 
+  it('wraps confirmation Tab boundaries and keeps pending focus within its enabled controls', async () => {
+    const api = fixture([file('target.txt')]);
+    const pending = deferred<void>();
+    const remove = vi.fn<AttachmentApi['remove']>().mockReturnValue(pending.promise);
+    open({ ...api, remove });
+    await findFileButton(/target.txt/);
+    const dialog = showDeleteConfirmation('target.txt');
+    const language = within(dialog).getByRole('combobox', { name: '语言 / Language' });
+    const cancel = within(dialog).getByRole('button', { name: '取消' });
+    const confirm = within(dialog).getByRole('button', { name: '删除附件' });
+    const onOuterKey = vi.fn();
+    document.addEventListener('keydown', onOuterKey);
+    const user = userEvent.setup();
+    expect(cancel).toHaveFocus();
+    await user.tab();
+    expect(confirm).toHaveFocus();
+    await user.tab();
+    expect(language).toHaveFocus();
+    await user.tab();
+    expect(cancel).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(language).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(confirm).toHaveFocus();
+    expect(onOuterKey).not.toHaveBeenCalled();
+    fireEvent.click(confirm);
+    expect(dialog).toHaveFocus();
+    await user.tab();
+    expect(language).toHaveFocus();
+    await user.tab();
+    expect(language).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(language).toHaveFocus();
+    expect(remove).toHaveBeenCalledTimes(1);
+    document.removeEventListener('keydown', onOuterKey);
+    await act(async () => pending.resolve());
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
   it('reacts to native outside dismissal and keeps menu keyboard events inside their layer', async () => {
     const api = fixture([file('first.txt'), file('last.txt')]);
     open(api);

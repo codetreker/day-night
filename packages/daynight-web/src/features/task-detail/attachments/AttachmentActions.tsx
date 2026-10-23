@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } f
 import { ApiError } from '../../../api/client';
 import { LanguageSelector } from '../../../i18n/LanguageSelector';
 import { useI18n } from '../../../i18n/LocaleProvider';
+import { dialogFocusables } from '../focus';
 
 export type AttachmentActionTarget = { readonly path: string; readonly trigger: HTMLButtonElement };
 
@@ -84,7 +85,23 @@ export const AttachmentDeleteDialog = ({ target, busy, error, fallback, onConfir
     const opener = target.trigger.isConnected ? target.trigger : fallback.current;
     if (opener !== null && opener.closest('[hidden], [inert]') === null) opener.focus();
   }, [target, fallback]);
-  return <dialog ref={dialog} className="auth-dialog attachment-delete-dialog" aria-labelledby={`${id}-title`} aria-describedby={`${id}-copy ${id}-path`} aria-busy={busy} tabIndex={-1} onKeyDown={(event) => event.stopPropagation()} onCancel={(event) => {
+  return <dialog ref={dialog} className="auth-dialog attachment-delete-dialog" aria-labelledby={`${id}-title`} aria-describedby={`${id}-copy ${id}-path`} aria-busy={busy} tabIndex={-1} onKeyDown={(event) => {
+    event.stopPropagation();
+    if (event.key !== 'Tab') return;
+    const items = dialogFocusables(event.currentTarget);
+    if (items.length === 0) {
+      event.preventDefault();
+      event.currentTarget.focus();
+      return;
+    }
+    const first = items[0]!;
+    const last = items[items.length - 1]!;
+    const active = document.activeElement;
+    if (!items.some((item) => item === active) || active === (event.shiftKey ? first : last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  }} onCancel={(event) => {
     event.preventDefault();
     if (!busy) onDismiss();
   }} onClick={(event) => {

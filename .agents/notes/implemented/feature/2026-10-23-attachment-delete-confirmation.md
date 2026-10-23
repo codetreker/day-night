@@ -23,8 +23,10 @@ The menu uses the browser top layer and viewport-aware positioning to escape the
 scrolling sidebar's clipping. Native modal confirmation remains a descendant of
 the task detail DOM, uses established dialog styling, and owns keyboard events
 before the outer detail listener. This preserves background inertness and task
-focus ownership without a second global overlay coordinator. Current-layer
-Escape closes only that layer. Confirmation provides its own language selector
+focus ownership without a second global overlay coordinator. The confirmation reuses
+`dialogFocusables` to wrap boundary Tab/Shift+Tab explicitly, including pending
+focus on the dialog root; native modal behavior alone can move focus to browser
+UI between the last and first page controls. Current-layer Escape closes only that layer. Confirmation provides its own language selector
 so a pending operation stays accessible while its labels change.
 
 Pending confirmation keeps its captured target, shows progress, and blocks
