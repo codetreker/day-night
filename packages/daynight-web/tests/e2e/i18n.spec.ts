@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { attachmentDownloadUrl, attachmentPreviewUrl } from '../../src/api/client';
 import { createProject, createApprovedTask, expect, test, withDependencyFailure } from './fixtures';
+import { panPoint } from './graph-pan';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
 const language = (scope: Page | Locator): Locator => scope.getByRole('combobox', { name: '语言 / Language', exact: true });
@@ -141,14 +142,15 @@ test.describe('Web language journeys', () => {
     await expect(page.locator('.graph-reset-overview')).toHaveText('Reset overview');
     await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
     await page.clock.runFor(500);
-    const paneBounds = await page.locator('.react-flow__pane').boundingBox();
-    if (paneBounds === null) throw new Error('Graph pane is absent.');
-    await page.mouse.move(paneBounds.x + 15, paneBounds.y + paneBounds.height - 15);
+    const point = await panPoint(page);
+    const viewport = page.locator('.react-flow__viewport');
+    const beforePan = await viewport.getAttribute('style');
+    await page.mouse.move(point.x, point.y);
     await page.mouse.down();
-    await page.mouse.move(paneBounds.x + 75, paneBounds.y + paneBounds.height - 50, { steps: 4 });
+    await page.mouse.move(point.x + 60, point.y + 35, { steps: 4 });
     await page.mouse.up();
     await page.clock.runFor(100);
-    const viewport = page.locator('.react-flow__viewport');
+    await expect.poll(() => viewport.getAttribute('style')).not.toBe(beforePan);
     const viewportElement = await viewport.elementHandle();
     const taskElement = await inspectTask(page, task.id).elementHandle();
     if (viewportElement === null || taskElement === null) throw new Error('Graph elements are absent.');
@@ -403,6 +405,8 @@ test.describe('Web language journeys', () => {
         await retrySave.click();
         await expect(notice).toHaveCount(0);
         expect(await page.evaluate(() => localStorage.getItem('daynight.web.locale'))).toBe(locale);
+        await fullscreenToggle.focus();
+        await expect(fullscreenToggle).toBeFocused();
         await page.keyboard.press('Escape');
         await expect(fullscreen).toHaveCount(0);
         await expect(fullscreenToggle).toBeFocused();

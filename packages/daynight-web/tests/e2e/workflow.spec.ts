@@ -10,6 +10,7 @@ import { captureStableDependencyGeometry, checkDependencyGeometry, expectedDepen
 import { expectedNodeHeights } from './visible-topology';
 import { expectCenteredTaskDetail, expectTaskDetailScroll } from './detail-dialog';
 import { expectStableAutomaticDetailRefresh } from './detail-refresh';
+import { panPoint } from './graph-pan';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
 const card = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] .task-node`);
@@ -229,13 +230,11 @@ test('project-graph', scenario('project-graph'), async ({ page, api: request }, 
     await page.getByRole('button', { name: '放大', exact: true }).click();
     await expect.poll(() => viewport.getAttribute('style')).not.toBe(beforeZoom);
     await checkEdges(a.id);
-    const pane = page.locator('.react-flow__pane');
-    const bounds = await pane.boundingBox();
-    expect(bounds).not.toBeNull();
+    const point = await panPoint(page);
     const beforePan = await viewport.getAttribute('style');
-    await page.mouse.move(bounds!.x + 15, bounds!.y + bounds!.height - 15);
+    await page.mouse.move(point.x, point.y);
     await page.mouse.down();
-    await page.mouse.move(bounds!.x + 75, bounds!.y + bounds!.height - 50, { steps: 4 });
+    await page.mouse.move(point.x + 60, point.y + 35, { steps: 4 });
     await page.mouse.up();
     await expect.poll(() => viewport.getAttribute('style')).not.toBe(beforePan);
     await checkEdges(a.id);

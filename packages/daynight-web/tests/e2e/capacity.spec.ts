@@ -5,6 +5,7 @@ import type { Page, TestInfo } from '@playwright/test';
 import { evidenceDirectory, expect, test, updateTask } from './fixtures';
 import { seedCapacity, seedNodeLimit, type CapacityFixture, type CapacityKind } from './capacity-data';
 import { withCapacityTrace } from './capacity-trace';
+import { panPoint } from './graph-pan';
 import { captureStableDependencyGeometry, checkDependencyGeometry, type GeometryExpectation } from './dependency-geometry';
 import { expectedBatch, expectedDependencyTopology, expectedNodeHeights, expectedOverview } from './visible-topology';
 import { parseTaskGraph } from '../../src/api/parse';
@@ -323,18 +324,6 @@ const ancestorClosure = (fixture: CapacityFixture, selectedId: string): Set<stri
   while (pending.length > 0) for (const id of tasks.get(pending.pop()!)!.dependsOn) if (!closure.has(id)) { closure.add(id); pending.push(id); }
   return closure;
 };
-
-const panPoint = (page: Page) => page.evaluate(() => {
-  const canvas = document.querySelector('.task-graph-canvas')!;
-  const bounds = canvas.getBoundingClientRect();
-  for (let y = bounds.top + 16; y < bounds.bottom - 50; y += 24) {
-    for (let x = bounds.left + 16; x < bounds.right - 70; x += 24) {
-      const target = document.elementFromPoint(x, y);
-      if (target?.closest('.react-flow__pane') !== null && target?.closest('.task-node,.react-flow__controls,.react-flow__attribution') === null) return { x, y };
-    }
-  }
-  throw new Error('No accessible blank canvas position is available for the pan interaction.');
-});
 
 const expectedCapacityGeometry = (fixture: CapacityFixture): GeometryExpectation => expectedDependencyTopology(fixture.tasks, fixture.root.id);
 const stableGeometry = (page: Page) => page.evaluate(captureStableDependencyGeometry);
