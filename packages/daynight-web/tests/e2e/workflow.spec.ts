@@ -1,3 +1,4 @@
+import { decodeTaskGraphJson } from '../../src/api/project-json';
 import { randomUUID } from 'node:crypto';
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { test, expect, createProject, createApprovedTask, updateTask, claimTask, completeTask, completeApprovedTask, withDependencyFailure, withProjectsFailure } from './fixtures';
@@ -214,7 +215,7 @@ test('project-graph', scenario('project-graph'), async ({ page, api: request }, 
   await expect(page.locator('.react-flow__edge')).toHaveCount(7);
   const graphResponse = await request.get(`/api/v1/projects/${project.id}/task-graph`);
   expect(graphResponse.status()).toBe(200);
-  const graphSnapshot = parseTaskGraph(await graphResponse.json(), project.id);
+  const graphSnapshot = parseTaskGraph(await decodeTaskGraphJson(new Response(await graphResponse.text())), project.id);
   const checkEdges = async (rootId: string): Promise<void> => {
     const expected = expectedDependencyTopology(graphSnapshot.tasks, rootId);
     const heights = expectedNodeHeights(expected, expected.nodes.map(({ id }) => id)).map(({ id, height }) => ({ id, height: `${height}px` })).sort((a, b) => a.id.localeCompare(b.id));
