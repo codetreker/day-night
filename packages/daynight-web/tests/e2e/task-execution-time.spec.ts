@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
-import type { Locator, Page, TestInfo } from '@playwright/test';
+import type { Locator, Page, Route, TestInfo } from '@playwright/test';
 import { createAcceptanceCli } from '../../scripts/acceptance/installed-cli.mts';
 import { parseApiJson, stringifyApiJson } from '../../src/api/json';
 import { parseTaskDetail, parseTaskGraph, project as parseProject } from '../../src/api/parse';
@@ -65,6 +65,7 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     scenario: 'task-execution-time', source: 'tests/e2e/task-execution-time.spec.ts', topology: process.env.DAYNIGHT_ACCEPTANCE_TARGET,
     projectId: '', commands: [] as { argv: readonly string[]; exitCode: number; stdout: string; stderr: string }[],
     tasks: [] as { label: string; value: TaskDetail }[], graphReads: [] as string[],
+    progress: [] as string[], failures: [] as { phase: string; name: string; message: string }[],
     timing: {} as Record<string, unknown>, layouts: [] as { locale: string; width: number; kind: string }[],
     controlledConditions: ['Browser Date.now is fixed in 2055 while timers/performance.now and PostgreSQL time advance normally.', 'Only the owned claimed task started_at is seeded; subsequent graph GET deliveries are held during the actual one-second clock threshold crossing.'],
   };
@@ -74,9 +75,32 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
   const record = async (projectId: string, taskId: string, label: string) => {
     const value = await task(api, projectId, taskId); evidence.tasks.push({ label, value }); return value;
   };
-  let hold = false;
   let release!: () => void;
   const released = new Promise<void>((resolve) => { release = resolve; });
+  const activeRoutes = new Set<Promise<void>>();
+  const failures: unknown[] = [];
+  let routeRegistered = false;
+  const retainFailure = (phase: string, failure: unknown) => {
+    if (failures.includes(failure)) return;
+    failures.push(failure);
+    evidence.failures.push({ phase, name: failure instanceof Error ? failure.name : typeof failure,
+      message: failure instanceof Error ? failure.message : String(failure) });
+  };
+  const holdGraph = (route: Route): Promise<void> => {
+    const pending = (async () => { await released; await route.continue(); })();
+    activeRoutes.add(pending);
+    return pending.catch((failure: unknown) => { retainFailure('held-graph-route', failure); throw failure; })
+      .finally(() => { activeRoutes.delete(pending); });
+  };
+  const drainGraph = async (): Promise<void> => {
+    release();
+    // Routing remains enabled until every held request has completed its continuation.
+    await Promise.all([...activeRoutes]);
+    if (routeRegistered) {
+      if (!page.isClosed()) await page.unrouteAll({ behavior: 'wait' });
+      routeRegistered = false;
+    }
+  };
   let delivered = 0;
   try {
     const project = await createProject(api, { name: `Execution time ${randomUUID()}` }); evidence.projectId = project.id;
@@ -111,7 +135,6 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     await page.clock.setFixedTime(new Date('2055-01-01T00:00:00Z'));
     const graphPath = `/api/v1/projects/${project.id}/task-graph`;
     page.on('response', (response) => { if (new URL(response.url()).pathname === graphPath) delivered += 1; });
-    await page.route(`**${graphPath}`, async (route) => { if (hold) await released; await route.continue(); });
     await page.goto(`/projects/${project.id}`);
     for (const root of roots) {
       const toggle = page.locator(`#task-root-${root.id}`);
@@ -128,7 +151,8 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     await expect(ticking.locator('.task-stuck-label')).toHaveCount(0);
     const initial = await elapsed(ticking); expect(initial).toBeLessThan(3_600_000); expect(initial).toBeGreaterThan(3_580_000);
     expect(await page.evaluate(() => Date.now())).toBe(new Date('2055-01-01T00:00:00Z').getTime());
-    hold = true;
+    evidence.progress.push('fresh-below-threshold-snapshot');
+    await page.route(`**${graphPath}`, holdGraph); routeRegistered = true;
     const deliveredBefore = delivered;
     const inspection = ticking.locator('.task-node-body'); const details = ticking.locator('.task-node-details');
     await inspection.click(); await details.focus();
@@ -144,7 +168,8 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     expect(await duration(ticking).evaluate((element) => element.closest('[aria-live]'))).toBeNull();
     evidence.timing = { initial, crossed, realCrossingWaitMs: performance.now() - began, deliveredBefore, deliveredAtCrossing: delivered, wrongClientWallTime: '2055-01-01T00:00:00Z', geometryPreserved: true, focusedDetailsPreserved: true };
     await screenshot(page, info, 'execution-real-threshold-crossing');
-    hold = false; release(); await page.unroute(`**${graphPath}`);
+    evidence.progress.push('real-threshold-crossing-with-stable-focus-and-geometry');
+    await drainGraph(); evidence.progress.push('held-graph-routes-drained');
     await expect.poll(() => delivered, { timeout: 10_000 }).toBeGreaterThan(deliveredBefore);
     const running = await record(project.id, crossing.id, 'running-after-crossing');
     expect(running.version).toBe(claimed.version); expect(running.updatedAt).toBe(claimed.updatedAt); expect(running.completedAt).toBeNull();
@@ -174,7 +199,7 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     expect(await elapsed(ticking)).toBe(Date.parse(completed.completedAt!) - Date.parse(completed.startedAt!));
     const freezeResponse = page.waitForResponse((response) => new URL(response.url()).pathname === graphPath);
     await freezeResponse; expect(await duration(ticking).getAttribute('datetime')).toBe(frozen);
-    evidence.timing.completedDuration = frozen;
+    evidence.timing.completedDuration = frozen; evidence.progress.push('completed-duration-frozen-across-poll');
     await completeTask(api, project.id, legacy);
     const completedLegacy = await record(project.id, legacy.id, 'completed-legacy-remains-unknown');
     expect(completedLegacy.startedAt).toBeNull(); expect(completedLegacy.completedAt).not.toBeNull();
@@ -215,11 +240,17 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     await page.reload(); await expect(page.locator(`#standalone-task-${legacy.id}`)).toBeVisible(); await expect(duration(page.locator(`#standalone-task-${legacy.id}`))).toHaveCount(0);
     const final = parseTaskDetail(parseApiJson(await success(['task', 'show', crossing.id, '--project', project.id, '--json'])), project.id, crossing.id);
     expect(final.startedAt).toBe(completed.startedAt); expect(final.completedAt).toBe(completed.completedAt);
-  } finally {
-    hold = false; release(); await page.unrouteAll({ behavior: 'wait' });
-    await cli.close();
-    const path = info.outputPath('task-execution-time-receipt.json');
-    await writeFile(path, `${JSON.stringify(evidence, (_, value: unknown) => typeof value === 'bigint' ? value.toString() : value, 2)}\n`);
-    await info.attach('task-execution-time-receipt', { path, contentType: 'application/json' });
+    evidence.progress.push('bilingual-narrow-presentation-and-reload-verified');
+  } catch (failure) { retainFailure('scenario', failure); }
+  finally {
+    try { await drainGraph(); } catch (failure) { retainFailure('graph-route-cleanup', failure); }
+    try { await cli.close(); } catch (failure) { retainFailure('installed-cli-cleanup', failure); }
+    try {
+      const path = info.outputPath('task-execution-time-receipt.json');
+      await writeFile(path, `${JSON.stringify(evidence, (_, value: unknown) => typeof value === 'bigint' ? value.toString() : value, 2)}\n`);
+      await info.attach('task-execution-time-receipt', { path, contentType: 'application/json' });
+    } catch (failure) { retainFailure('receipt', failure); }
   }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, 'Execution-time scenario and cleanup failed.');
 });
