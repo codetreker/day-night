@@ -22,6 +22,8 @@ implements persistent users, browser-bound login transactions, sessions, PATs an
 callable HTTP handlers. NewIdentity/NewAuthentication/RegisterRoutes are composed by the runtime. The [membership foundation](../../.agents/notes/implemented/architecture/2026-10-22-project-membership.md)
 adds NewMemberships/NewMembershipRoutes, transaction-scoped access checks, private
 project creation, filtered project lists, administrator changes and invitations.
+The project settings API provides a versioned execution-warning threshold that
+administrators save and members read.
 The application mux mounts all of these modules and requires authentication for
 every project, task, graph and attachment route. The production dashboard mounts
 `AuthenticatedApp`; the CLI uses user PATs. Existing projects are assigned members
@@ -154,7 +156,8 @@ records include method, route template, status, and duration. A supplied
 `-` after the first character; invalid or absent values receive a generated ID.
 The response returns `X-Request-ID`. An unmatched route has an empty route template.
 UI and API requests use the same logging wrapper. Exact `/`,
-`/projects/{projectId}` and
+`/projects/{projectId}`, `/projects/{projectId}/members`,
+`/projects/{projectId}/settings` and
 `/projects/{projectId}/tasks/{taskId}/attachments/{path...}` page shapes return
 the index; the last route opens the standalone attachment reader. Invalid page
 IDs retain the existing index response and frontend not-found behavior. The
@@ -364,6 +367,7 @@ advisory unlock use independent bounded contexts and preserve original causes.
 | `POST` | `/api/v1/projects` | `201`, project and `Location` |
 | `GET` | `/api/v1/projects` | `200`, project page |
 | `GET` | `/api/v1/projects/{projectId}` | `200`, project |
+| `PATCH` | `/api/v1/projects/{projectId}/settings` | `200`, full project with saved settings |
 
 Creation accepts `name` and `repoUrl` and atomically makes its caller the first
 project administrator. Lists contain only the caller's member projects.
@@ -374,6 +378,31 @@ ambiguous SCP forms are rejected; use explicit SSH URL syntax when needed.
 Registration performs no network, Git, clone or CLI-configuration operations.
 Different projects can reference the same repository. UUID IDs are canonicalized
 to hyphenated lowercase; project repository metadata has no update/delete API.
+
+Every Project resource, including list items and the project embedded in task
+graphs, includes `settings: {version, executionWarningMinutes}`. Migration
+`010_project_settings.sql` gives new and historical projects an explicit settings
+version of `1` and warning threshold of `60` minutes, preserving historical
+creation/update timestamps and task timing. Settings live on the project row;
+no read-time default or separate settings table is involved.
+
+Members can read the saved settings. Only a current project administrator can
+PATCH them, using exactly `version` (a positive int64 JSON integer) and
+`executionWarningMinutes` (an integer from `1` through `2147483647`). Query
+parameters and the bare query marker are rejected. Strict body parsing rejects
+missing, duplicate, unknown, null, fractional, exponent and out-of-range fields.
+The existing Cookie Origin and PAT authentication rules apply. Successful
+responses return the complete saved Project and `Cache-Control: no-store`.
+
+The settings service acquires the project lock, rechecks current membership and
+administrator role, compares the exact settings version, then handles a same-value
+no-op or change. A stale same-value request returns `version_conflict`; a current
+same-value request preserves the complete resource. A real change increments
+only the settings version and records the project update time using the post-lock
+SQL statement timestamp. It leaves task timestamps and other projects unchanged.
+Permission changes during a lock wait take effect before saving. Cancellation,
+rollback and transaction-completion errors cannot be reported as a saved value
+or hidden behind a pending domain refusal.
 
 Creation requires `application/json` (optionally UTF-8 charset), one object within
 1 MiB, exact field names and unique keys. Unknown/read-only fields, null required
@@ -389,7 +418,7 @@ a cross-request snapshot.
 Errors use `{"error":{"code":"not_found","message":"...","requestId":"..."}}`:
 input 400, missing/invalid credentials 401, insufficient administrator role or
 invalid Cookie-write Origin 403, missing or inaccessible resource 404,
-unsupported method 405 with `Allow`, and internal failure 500.
+unsupported method 405 with `Allow`, stale settings version 409, and internal failure 500.
 Responses and logs do not echo submitted URLs, bodies, SQL or driver messages.
 The request ID matches `X-Request-ID`; parsed resource operations log the
 canonical project ID. Database/transaction completion failures take precedence
@@ -402,7 +431,7 @@ a response.
 claim and complete operations over the same concrete store. `Approve`, `Unapprove`,
 `Claim` and `Complete` explicitly receive `(ctx, principal, projectID, taskID, version)`.
 All project members, including administrators, can perform these resource writes;
-only member and invitation management requires the administrator role. HTTP
+project settings, member management and invitation management require the administrator role. HTTP
 routes use that instance. Lifecycle POST routes and method-refusal handlers
 require authentication, enforce exact Origin for Cookie writes and return no-store.
 Creation uses `proposed`;
@@ -447,7 +476,7 @@ read-only fields, and neither creation/update time nor deployment time is used t
 invent an execution interval. Completed intervals survive later edits and service
 restart. The [timing requirements](../../docs/spec/daynight-task-timing.md) and
 [architecture](../../docs/design/daynight-task-timing.md) own the interval contract;
-project settings and live presentation are later delivery outcomes.
+the project settings API supplies the shared warning threshold for live presentation.
 
 Expected refusals are captured before any write and returned only after the
 outer lock-only transaction succeeds; transaction/cleanup failures remain
@@ -671,15 +700,19 @@ The [lifecycle scenarios](cmd/daynight-server/acceptance_lifecycle_cli_test.go)
 reuse this installation and actual-process fixture. The migration journey
 executes checked-in migrations 001 through 006 and records their raw-byte
 checksum ledger and old todo/in-progress/done rows before startup. The current
-built service applies 007/008/009 through its production migration engine. An
+built service applies 007/008/009/010 through its production migration engine. An
 unassigned legacy project first returns 404 to the authenticated nonmember. The
 fixture then explicitly provisions admin membership for the actual `/api/v1/me`
 user, verifies membership through the API and compares the original raw task
 rows with their original columns unchanged and nullable unknown timing. This prepares authorized test access, not automatic ownership
 adoption or rewritten task/migration history. Packed CLI reads verify old records, new proposed creation, explicit prerequisite/dependent
-progression, blocked/stale refusals, lifecycle timing and readable plan attachment bytes. Actual
+progression, blocked/stale refusals, lifecycle timing, project setting defaults and readable plan attachment bytes. Actual
 restart compares the historical rows and ledger plus new task and attachment
-state. Preparing the current schema and rewriting its history is not this oracle.
+state. Settings acceptance also performs real HTTP saves, same-value no-ops,
+stale conflicts and cross-project isolation, then uses the packed CLI to read
+exact nested int64 settings versions above JavaScript's safe integer range through
+project show/list and graph output across restart. Preparing the current schema
+and rewriting its history is not this oracle.
 
 The claim and dependency-edit/claim competitions launch two real installed CLI
 processes with one observed version. An actual project-row lock and observed

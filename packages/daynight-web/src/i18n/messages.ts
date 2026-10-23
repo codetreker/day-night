@@ -2,6 +2,7 @@ import type { TaskStatus } from "../api/types";
 import type { WorkspaceMessages } from "./messages/workspace";
 import type { GraphMessages } from "./messages/graph";
 import type { InspectionMessages } from "./messages/inspection";
+import type { ExecutionMessages } from "./messages/execution";
 import type { AuthMessages } from "./messages/auth";
 import type { Locale, LocaleIssue } from "./locale";
 import { en } from "./messages/en";
@@ -17,6 +18,7 @@ export type Messages = {
   readonly graph: GraphMessages;
   readonly inspection: InspectionMessages;
   readonly auth: AuthMessages;
+  readonly execution: ExecutionMessages;
   readonly language: {
     readonly label: string;
     readonly options: Readonly<Record<Locale, string>>;

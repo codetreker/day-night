@@ -243,7 +243,7 @@ Transfer 后，目标 worker 还要查询归属于自己的 in_progress 执行�
 
 Linux 本地 Herdr 0.8.2 的隔离无原生 agent 冒烟已验证：原始 JSON API、headless workspace 创建、人工模拟 working/idle、普通 shell/子进程关闭和 shell 工作区重启恢复。发现 134 字节 client socket 路径启动失败，缩短后 API/client 路径分别 100/107 字节成功。这些是该平台和版本的观察，107 不是三平台通用限制。
 
-它没有运行 Copilot/Codex、没有验证原生检测、native history 恢复、原生 agent 脱离子进程或 macOS/Windows。原始 receipt 保留为本设计 task 附件；运行时交付必须通过下面的独立门禁。
+它没有运行 Copilot/Codex、没有验证原生检测、native history 恢复、原生 agent 脱离子进程或 macOS/Windows。运行时交付必须通过下面的独立门禁。
 
 | 门禁 | 必须证明 |
 |---|---|

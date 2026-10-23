@@ -32,8 +32,13 @@ Goal, dependency, PR and separate approval/implementation/merge permissions.
 The adopted [execution timing requirements](docs/spec/daynight-task-timing.md) and
 [architecture](docs/design/daynight-task-timing.md) define task
 start/completion facts, project warning thresholds and live card presentation.
-Task timestamps, the database graph clock and matching CLI/Web reader contracts
-are implemented. Project settings and live card warnings remain unimplemented.
+Task timestamps, the database graph clock, persistent project thresholds and
+matching CLI/Web reader contracts are implemented. Members can read the threshold
+at `/projects/{projectId}/settings`; administrators can save it with a settings
+version. Graph cards and standalone rows display live elapsed time, frozen
+completed duration and an amber possible-stall warning above that saved threshold.
+A shared project clock advances database time with monotonic browser elapsed
+time, keeping ticks outside graph layout.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
@@ -1026,7 +1031,8 @@ ready todo to `in_progress`; `task complete` moves in-progress work to `done`.
 Approval and withdrawal permit unfinished prerequisites; claim and completion
 require every direct prerequisite to be done. Every project
 member, including administrators, may use these resource operations; the
-administrator role additionally manages members and invitations. Each action
+administrator role additionally manages members, invitations and project
+execution-warning settings. Each task action
 uses an expected version and increments it once. `--if-version` submits the exact
 observed int64 value; without it, the CLI reads once immediately before submitting.
 Conflicts and wrong states fail without retry. Generic updates cannot write
@@ -1039,8 +1045,31 @@ from creation or edit times; completing a historical running task can record a
 real end without inventing its missing start. The full graph includes a database
 `observedAt` sample taken after its data reads. These fields are read-only and
 retained by JSON output, including list JSON; human output keeps its existing
-field choices. Web polling refreshes its separate clock sample while preserving
-graph/index identity when only `observedAt` changes.
+field choices. Web polling refreshes its separate clock sample and monotonic receipt while
+preserving graph/index identity when only `observedAt` changes.
+
+Every Project resource includes `settings` with an exact positive int64 `version`
+and `executionWarningMinutes` from 1 through 2147483647, initially 60. Project
+create/read/list, the project in graph responses, and a successful settings PATCH
+return this same shape. The member-readable settings page lets administrators
+save or cancel a draft; ordinary members see the saved value without editing.
+The server checks current administrator authority after the project lock, then
+the observed settings version. An equal-value save preserves version and
+`updatedAt`; a real change increments version and updates `updatedAt`. Migration
+preserves historical project timestamps. CLI JSON preserves settings and nested
+versions without rounding; human output keeps its established fields.
+
+An unconfirmed settings PATCH response requires a Project and membership reread
+before another write. Failed reconciliation keeps Save blocked and offers read
+retry; network, protocol, 5xx or navigation cancellation never prove rollback.
+Confirmed refusals and unsaved/canceled drafts do not apply local settings.
+Project-only changes update graph metadata while retaining the task index and
+layout when tasks and summary are unchanged. Running known-start tasks subscribe
+to one visible-page ticker; completed duration uses stored endpoints and unknown
+starts show no inferred duration. Warnings use an unrounded strict comparison
+and disappear on completion without changing task status. The server-sample
+clock avoids client wall-clock skew but does not remove network sampling delay.
+
 
 Proposed tasks appear in unfinished inventories and Web statistics. The Web task
 detail dialog places Approve / 批准任务 for proposed and Unapprove / 撤回审批

@@ -9,7 +9,7 @@ const projectId = "11111111-1111-1111-1111-111111111111";
 const taskId = "22222222-2222-2222-2222-222222222222";
 const otherId = "33333333-3333-3333-3333-333333333333";
 const time = "2026-10-20T01:02:03.123456789Z";
-const project = { id: projectId, name: "Project", repoUrl: "git@github.com:Org/Repo.git", createdAt: time, updatedAt: time };
+const project = { id: projectId, name: "Project", repoUrl: "git@github.com:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
 const task = { id: taskId, projectId, title: "Task", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true };
 const refusal = (code = "not_found", details?: unknown) => ({ error: { code, message: "Actual server explanation.", requestId: "req-1", ...(details === undefined ? {} : { details }) } });
 const jsonResponse = (value: unknown, status = 200) => new Response(stringifyApiJson(value), { status, headers: { "Content-Type": "application/json" } });
@@ -388,6 +388,46 @@ const fourStateGraph = (): TaskGraph => {
 };
 
 describe("response DTO contract", () => {
+  it.each([1n, 9_007_199_254_740_993n, 9_223_372_036_854_775_807n])("preserves nested settings version %s through create, project, list and graph resources", async (version) => {
+    const value = { ...project, settings: { version, executionWarningMinutes: 2_147_483_647 } };
+    const graphValue = { ...graph(), project: value };
+    const wire = stringifyApiJson(value);
+    expect(wire).toContain(`"settings":{"version":${version},"executionWarningMinutes":2147483647}`);
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(value, 201))
+      .mockResolvedValueOnce(jsonResponse(value))
+      .mockResolvedValueOnce(jsonResponse({ items: [value], nextCursor: null }))
+      .mockResolvedValueOnce(jsonResponse(graphValue));
+    const api = client(fetch);
+    await expect(api.createProject({ name: value.name, repoUrl: value.repoUrl })).resolves.toEqual(value);
+    await expect(api.getProject(projectId)).resolves.toEqual(value);
+    await expect(api.listProjects()).resolves.toEqual([value]);
+    await expect(api.getTaskGraph(projectId)).resolves.toEqual(graphValue);
+  });
+
+  it.each([
+    undefined, null, [], {},
+    { version: 1n }, { executionWarningMinutes: 60 },
+    ...[null, "1", 0, -1, 1.5].map((version) => ({ version, executionWarningMinutes: 60 })),
+    ...[undefined, null, "60", true, 0, -1, 1.5, 2_147_483_648].map((executionWarningMinutes) => ({ version: 1n, executionWarningMinutes })),
+  ])("rejects absent or malformed project settings across project, list and graph responses %#", async (settings) => {
+    const value = { ...project, settings };
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(value))
+      .mockResolvedValueOnce(jsonResponse({ items: [value], nextCursor: null }))
+      .mockResolvedValueOnce(jsonResponse({ ...graph(), project: value }));
+    const api = client(fetch);
+    await expect(api.getProject(projectId)).rejects.toMatchObject({ phase: "protocol" });
+    await expect(api.listProjects()).rejects.toMatchObject({ phase: "protocol" });
+    await expect(api.getTaskGraph(projectId)).rejects.toMatchObject({ phase: "protocol" });
+  });
+
+  it.each(["1.0", "1e3", "9223372036854775808"])("rejects non-int64 settings version lexeme %s before rounding can be accepted", async (version) => {
+    const wire = stringifyApiJson(project).replace('"version":1', `"version":${version}`);
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(wire, { headers: { "Content-Type": "application/json" } }));
+    await expect(client(fetch).getProject(projectId)).rejects.toMatchObject({ phase: "protocol" });
+  });
+
   it.each([
     { startedAt: null, completedAt: null },
     { startedAt: time, completedAt: null },

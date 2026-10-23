@@ -30,7 +30,7 @@ const graph = (): TaskGraph => {
     return { startedAt: null, completedAt: null, id: task.id, titlePreview: task.title, titleTruncated: false, status: task.status, dependsOn: task.dependsOn,
       blockedBy, ready: task.status === 'todo' && blockedBy.length === 0, createdAt: time, updatedAt: task.updatedAt };
   });
-  return { observedAt: "2026-10-20T12:00:00Z", project: { id: project, name: 'Approval project', repoUrl: 'https://example.com/repo', createdAt: time, updatedAt: time }, tasks,
+  return { observedAt: "2026-10-20T12:00:00Z", project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: project, name: 'Approval project', repoUrl: 'https://example.com/repo', createdAt: time, updatedAt: time }, tasks,
     summary: { total: tasks.length, proposed: tasks.filter((task) => task.status === 'proposed').length,
       todo: tasks.filter((task) => task.status === 'todo').length, inProgress: tasks.filter((task) => task.status === 'in_progress').length, done: tasks.filter((task) => task.status === 'done').length,
       ready: tasks.filter((task) => task.ready).length, blocked: tasks.filter((task) => task.status === 'todo' && !task.ready).length } };

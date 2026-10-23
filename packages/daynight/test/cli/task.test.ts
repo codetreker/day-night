@@ -16,7 +16,7 @@ const taskId = "b1b2c3d4-1111-4222-8333-123456789abc";
 const secondId = "b1b2c3d4-1111-4222-8333-123456789abd";
 const thirdId = "b1b2c3d4-1111-4222-8333-123456789abe";
 const time = "2026-10-20T00:00:00.123456789Z";
-const project: Project = { id: projectId, name: "Project 中文", repoUrl: "git@git.example:Org/Repo.git", createdAt: time, updatedAt: time };
+const project: Project = { id: projectId, name: "Project 中文", repoUrl: "git@git.example:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
 const task = (partial: Partial<Task> = {}): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true, ...partial });
 const taskListItem = (value: Task): Omit<Task, "description"> => ({
   id: value.id, projectId: value.projectId, title: value.title, properties: value.properties,
@@ -606,7 +606,7 @@ describe("compiled task commands", () => {
       ]);
       const graphed = await f.invoke(["graph", "--json", ...explicit]);
       expect(graphed.code, graphed.stderr).toBe(0);
-      expect(JSON.parse(graphed.stdout)).toEqual(graph());
+      expect(parseApiJson(graphed.stdout)).toEqual(graph());
       expect([created, shown, listed, graphed].every(({ stderr }) => stderr === "")).toBe(true);
       expect(requests.filter(({ pathname }) => pathname === projectPath)).toHaveLength(4);
       expect(await readdir(f.caller)).toEqual([]);

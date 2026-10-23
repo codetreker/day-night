@@ -21,7 +21,8 @@ Task 命令、安装产物、真实 Go/PostgreSQL 联调及默认预算验收已
 Web 附件管理亦已实现。
 
 [执行计时需求](daynight-task-timing.md)的任务起止字段与数据库图时钟已有严格 CLI 读取契约。
-JSON 保留真实时间或明确的 `null`，可读输出继续使用既有字段选择；项目阈值和实时卡片由其后继任务交付。
+JSON 保留真实时间或明确的 `null`；Project JSON 同步保留项目阈值及其精确嵌套版本。
+可读输出继续使用既有字段选择。Web 实时卡片消费同一计时与项目阈值事实，不增加 CLI 命令或输出字段。
 
 [鉴权需求](daynight-auth.md)定义完整的个人访问令牌、项目成员授权和私有项目发现。
 CLI 的令牌配置与 HTTP 传输已实现；[凭据决策](../../.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
@@ -169,6 +170,11 @@ Git、取消或期限错误均按实际原因失败，不得把查询失败视�
 显式的连字符 UUID，接受大小写输入并使用规范 ID 查询。列表及详情可在 Git 仓库之外
 执行，不查询当前工作目录；命令组及操作帮助遵守 PT1 的依赖隔离。
 
+Project 创建、详情、分页条目及图中的 Project 必须包含 `settings.version` 与 `settings.executionWarningMinutes`。
+前者为完整正 int64，后者为 `1..2147483647` 的整数分钟，初始分别为 `1` 和 `60`。
+缺失或不合法字段是协议错误，不能由 CLI 补默认值；JSON 必须无损保留超过 `2^53` 的嵌套版本。
+可读 Project 输出保留既有字段，当前没有新增设置修改命令，设置通过 Web 或既有服务 API 修改。
+
 ## PT7. Task 命令与更新语义
 
 ```bash
@@ -235,8 +241,8 @@ limit，每项必须为 ready，且 task ID 不得重复；响应违反任一条
 approve、unapprove、claim、complete 接受明确 task ID、可选 project 和 `--if-version`。其唯一转换
 分别为 proposed→todo、todo→proposed、todo→in_progress、in_progress→done；审批与撤回允许未完成前置，
 领取及完成要求前置全部 done。撤回仅接受 todo，保留正文、属性、依赖、附件和执行时间，
-返回 proposed、ready=false；不修改后继或释放执行中任务。四种操作均向当前项目成员开放，管理员角色只
-额外管理成员与邀请。动作输出完整 task，重复或错误前态返回可辨识的
+返回 proposed、ready=false；不修改后继或释放执行中任务。四种操作均向当前项目成员开放，管理员角色
+额外管理成员、邀请与项目提醒设置。动作输出完整 task，重复或错误前态返回可辨识的
 invalid_transition。显式版本不预读；省略时在提交前读取一次。基于已审阅内容的决策
 必须显式携带其读取版本，不能靠临时 GET 替代。冲突不重试；不确定结果先读取核对，
 不将取消解释为回滚。四状态、事务和错误规则由[服务规范](daynight-server.md)拥有。

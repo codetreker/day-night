@@ -50,7 +50,7 @@ const graph = (items = seeds, id = projectId): TaskGraph => {
       ready: seed.status === "todo" && blockedBy.length === 0, createdAt: time, updatedAt: time };
   });
   return { observedAt: "2026-10-20T12:00:00Z",
-    project: { id, name: id === projectId ? "核心项目" : "另一个项目", repoUrl: "git@github.com:example/project.git", createdAt: time, updatedAt: time }, tasks,
+    project: { settings: { version: 1n, executionWarningMinutes: 60 }, id, name: id === projectId ? "核心项目" : "另一个项目", repoUrl: "git@github.com:example/project.git", createdAt: time, updatedAt: time }, tasks,
     summary: { total: tasks.length, proposed: tasks.filter((task) => task.status === "proposed").length, todo: tasks.filter((task) => task.status === "todo").length,
       done: tasks.filter((task) => task.status === "done").length, inProgress: tasks.filter((task) => task.status === "in_progress").length,
       ready: tasks.filter((task) => task.ready).length, blocked: tasks.filter((task) => task.status === "todo" && !task.ready).length },

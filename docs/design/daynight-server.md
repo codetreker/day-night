@@ -33,7 +33,7 @@
 [需求](../spec/daynight-task-properties.md)拥有扩展行为。
 
 [执行计时架构](daynight-task-timing.md)的起止事实与图数据库时间样本已接入相同事务和读取模型。
-项目阈值和实时卡片仍由其后继任务交付，不进入当前服务资源。
+项目阈值通过项目同行设置、管理员 PATCH 与完整 Project 投影交付；实时卡片消费这些事实，当前显示机制由[看板设计](daynight-web.md)拥有。
 
 ## 完整图读取
 
@@ -102,7 +102,7 @@ index 后由前端显示未找到页面。独立附件命名空间复用原始�
 
 | 对象 | 字段与含义 |
 |---|---|
-| Project | `id`、非空 `name`、`repoUrl`、`createdAt`、`updatedAt` |
+| Project | `id`、非空 `name`、`repoUrl`、`createdAt`、`updatedAt`，以及具体 `settings`（正 int64 version、正 int32 executionWarningMinutes） |
 | Task | `id`、`projectId`、非空 `title`、`description`、`status`、具体 `properties`、`version`、`createdAt`、`updatedAt`，以及可空 `startedAt`、`completedAt` |
 | TaskDependency | `projectId`、`taskId`、`dependsOnTaskId` |
 
@@ -124,6 +124,9 @@ index 后由前端显示未找到页面。独立附件命名空间复用原始�
 `009_task_timing.sql` 给 task 同行增加可空 `started_at`、`completed_at timestamptz`；
 既有记录保持 `NULL`，core 和 API 用可空时间表示，JSON 字段明确输出 `null`。
 不回填创建/编辑时间，也不在读路径判断旧格式。
+`010_project_settings.sql` 给项目同行增加正值 `execution_warning_minutes integer DEFAULT 60` 与
+`settings_version bigint DEFAULT 1`，两列均非空；既有项目的创建/更新时间保持不变。
+项目创建、成员可见列表、单项读取和完整图投影共用同一 settings 扫描与 HTTP DTO。
 
 表不建立 foreign key。引用存在性、同 project 限制和图规则由获得 project 写锁后的
 service 写入路径校验；所有写入都必须经过该路径。没有删除 API，使引用不会因资源
@@ -189,7 +192,7 @@ todo→proposed、todo→in_progress、in_progress→done。审批与撤回允�
 任务不能合并为一个依赖同一旧快照的 SQL 语句：等待锁结束后，后续查询需要看到刚
 提交的 project 内写入。任务 UPDATE 依据旧/新状态维护时间：真正进入 in_progress 覆盖起点并清空终点，
 真正进入 done 记录终点，普通编辑和同状态低层写入保留两者。离开已完成状态的低层规则清除旧尝试；
-公开 service 仍只允许既有单向转换。时间使用锁后的 `statement_timestamp()`，不使用可能早于锁等待结束的事务时间。该机制依赖 PostgreSQL 在 `READ COMMITTED` 下为每条命令
+公开 service 只允许已列出的前态受限动作；unapprove 仅适用于 todo，不重开进行中或已完成任务。时间使用锁后的 `statement_timestamp()`，不使用可能早于锁等待结束的事务时间。该机制依赖 PostgreSQL 在 `READ COMMITTED` 下为每条命令
 取得新快照的语义，见[事务隔离文档](https://www.postgresql.org/docs/current/transaction-iso.html#XACT-READ-COMMITTED)
 及[行锁文档](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS)。
 
@@ -224,6 +227,7 @@ callback 不执行写入并正常结束；只有外层事务成功后才返回�
 | `POST /api/v1/projects` | 创建 project |
 | `GET /api/v1/projects` | 分页列出 project |
 | `GET /api/v1/projects/{projectId}` | 获取 project |
+| `PATCH /api/v1/projects/{projectId}/settings` | 管理员按观察设置版本保存分钟阈值，返回完整 Project |
 | `POST /api/v1/projects/{projectId}/tasks` | 创建 `proposed` task |
 | `GET /api/v1/projects/{projectId}/tasks` | 分页列出 task |
 | `GET /api/v1/projects/{projectId}/tasks/{taskId}` | 获取 task |
@@ -238,7 +242,13 @@ callback 不执行写入并正常结束；只有外层事务成功后才返回�
 PR 引用表示空数组。创建成功
 返回 `201`、资源体和对应资源的 `Location`；读取及更新成功返回 `200`。
 
-PATCH 必须提交期望的 `version`，并至少提供 `title`、`description`、
+项目设置 PATCH 独立接受必填正 int64 `version` 和 `1..2147483647` 的 `executionWarningMinutes`，
+拒绝 query、缺失/未知/重复字段及非法类型，不接受 Project 其他字段。
+`Projects.UpdateSettings` 复用 `WriteProject`：锁后复核成员、admin，再核对 settings.version，
+最后处理同值空操作或更新。空操作不改版本和 updatedAt；实际更新在同一 SQL 中增加 settings_version，
+并用锁后的 statement 时间更新 project.updatedAt。响应在该事务内构造完整 Project，沿用已有提交/清理错误优先规则。
+
+Task PATCH 必须提交期望的 `version`，并至少提供 `title`、`description`、
 `dependsOn` 或一个已定义属性。只有 `version` 或空 `properties` 的请求返回
 `invalid_input`；
 提供字段但值未变的请求采用前述语义空操作规则。例如：
@@ -370,7 +380,7 @@ Compose 网络访问，PostgreSQL 18 数据卷挂到 `/var/lib/postgresql`。
 进程启动时创建 `pgxpool` 并验证数据库连接，然后从 pool 获取并固定一条专用
 `pgxpool.Conn`。该连接取得 PostgreSQL session-level advisory migration lock，
 并在同一物理连接上完成版本读取、校验和全部内嵌 SQL 迁移。当前迁移依次建立 project、
-task/依赖、属性、附件与身份/成员机制，并为任务增加可空执行起止；应用记录必须是内嵌迁移的有序前缀。锁必须跨越整个迁移
+task/依赖、属性、附件与身份/成员机制，并持久化任务起止和项目设置；应用记录必须是内嵌迁移的有序前缀。锁必须跨越整个迁移
 序列，不能使用会在单个迁移提交时释放的 transaction-level advisory lock，也不能
 通过 pool 的任意连接分别取得和释放锁。
 

@@ -17,7 +17,7 @@ const projectId = '10000000-0000-4000-8000-000000000001';
 const taskId = '20000000-0000-4000-8000-000000000001';
 const dependencyId = '20000000-0000-4000-8000-000000000002';
 const time = '2026-10-22T00:00:00Z';
-const project: Project = { id: projectId, name: 'Approval project', repoUrl: 'https://example.com/repo', createdAt: time, updatedAt: time };
+const project: Project = { id: projectId, name: 'Approval project', repoUrl: 'https://example.com/repo', settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
 const source = (action: ApprovalAction): TaskDetail => ({ startedAt: null, completedAt: null, id: taskId, projectId, title: 'Reviewed task', description: 'Reviewed content',
   status: action === 'approve' ? 'proposed' : 'todo', version: 9007199254740993n, properties: { pullRequests: [] },
   dependsOn: [dependencyId], blockedBy: [dependencyId], ready: false, createdAt: time, updatedAt: time });
@@ -26,7 +26,7 @@ const snapshot = (detail: TaskDetail, revision = 1): GraphSnapshot => {
   const tasks = [detail, { ...detail, id: dependencyId, title: 'Prerequisite', dependsOn: [], blockedBy: [], status: 'proposed' as const }];
   const graph: TaskGraph = { observedAt: time, project, tasks: tasks.map(({ version: _version, projectId: _project, title, description: _description, properties: _properties, ...task }) => ({ ...task, titlePreview: title, titleTruncated: false })),
     summary: { total: 2, proposed: tasks.filter((task) => task.status === 'proposed').length, todo: tasks.filter((task) => task.status === 'todo').length, inProgress: 0, done: 0, ready: 0, blocked: tasks.filter((task) => task.status === 'todo').length } };
-  return { observedAt: time, graph, index: buildGraphIndex(graph), receivedAt: 1, revision };
+  return { observedAt: time, graph, index: buildGraphIndex(graph), receivedMonotonic: performance.now(), receivedAt: 1, revision };
 };
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; };
 const names = { approve: { action: 'Approve task', confirm: 'Confirm approval' }, unapprove: { action: 'Unapprove task', confirm: 'Confirm withdrawal' } };
