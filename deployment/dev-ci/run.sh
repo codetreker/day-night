@@ -254,7 +254,9 @@ bootstrap() {
     mkfifo -m 600 "$receipt_dir/.bootstrap.pipe"
     tee "$receipt_dir/bootstrap.log" < "$receipt_dir/.bootstrap.pipe" &
     bootstrap_logger_pid=$!
-    bounded 150 "${compose[@]}" up --no-build --detach postgres gateway > "$receipt_dir/.bootstrap.pipe" 2>&1 || start_status=$?
+    # Redirect only the child so signal traps cannot inherit a closing FIFO.
+    bounded 150 bash -c 'output=$1; shift; exec "$@" > "$output" 2>&1' bash \
+      "$receipt_dir/.bootstrap.pipe" "${compose[@]}" up --no-build --detach postgres gateway || start_status=$?
     wait "$bootstrap_logger_pid"
     bootstrap_logger_pid=''
     rm -f -- "$receipt_dir/.bootstrap.pipe"
