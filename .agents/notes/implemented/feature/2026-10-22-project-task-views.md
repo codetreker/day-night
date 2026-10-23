@@ -40,14 +40,6 @@ and completed-chain storage records retain their shapes; tab, standalone
 visibility and scroll positions use independent records. Storage failure leaves
 in-memory interaction available with a visible persistence notice. Page scroll
 positions do not persist graph geometry, pan, zoom, details or fullscreen.
-While a loaded project owns explicit page-scroll restoration, its layout effect
-leases `overflow-anchor: none` on the document root before restoring position.
-Late member controls can wrap a long heading and change header height; native
-scroll anchoring must not compete with the saved position or persist that
-adjustment as new browsing intent. Root leases are reference-counted. The last
-owner restores the prior inline value and priority only if the current pair
-still matches its applied lease, preserving intervening owners' writes.
-
 Both tabpanel wrappers keep stable IDs and hide the inactive category. Only
 active contents mount, so a returning chain initializes its canvas viewport.
 
@@ -61,12 +53,6 @@ belong in the [specification](../../../../docs/spec/daynight-web.md) and
 provides final visual styling without a backend.
 
 ## Alternatives
-
-**Leave native page anchoring active.** It can move an explicitly restored page
-when asynchronously loaded header actions change a long title's wrapping. The
-scroll listener then saves the browser's adjustment as if it were the chosen
-position. A scoped root lease keeps one owner for restoration without changing
-the saved record or graph viewport.
 
 **Separate navigation pages.** Independent routes would give each category a
 navigation destination but repeat project context and separate two views of the
@@ -97,10 +83,7 @@ unfinished-task total. Filters and tab choices make no API requests or server
 changes.
 
 Per-project browser records preserve browsing intent across visits while the
-server remains authoritative for a freshly read snapshot. The scoped anchoring
-lease affects only the loaded project's restoration lifetime; unmount releases
-it without overwriting unrelated root-style changes. Delayed membership and
-heading layout remain asynchronous without altering the chosen scroll position. New dependency edits
+server remains authoritative for a freshly read snapshot. New dependency edits
 can move a task between views and invalidate an expanded chain root; existing
 visible-root reconciliation handles that case. Inactive canvases consume no
 mounted graph resources, at the cost of initializing pan and zoom after tab

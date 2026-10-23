@@ -638,7 +638,7 @@ PR 按[仓库 CI 路由](../../README.md#ci-selection)选择模块，main push �
 
 看板交付时，根 `package.json`、锁文件、共享构建脚本和 `.github/workflows/checks.yml` 的唯一编辑归属按阶段交接：W-T2 建立并负责 web 命令和 `verify-web`；W-T2 验收后由 W-T5 接手构建/Go 工具配置；W-T5 验收后由 W-T6 接手最终生产验收步骤。接收任务在开始时核对前一阶段已通过的命令与 required job 清单，再接管编辑；其他任务只提出所需命令和依赖，不直接并发修改这些文件。W-T6 在交付时负责最终汇总，验证当时的 `checks.needs` 包含 `verify-server`、`verify-web`、CLI `verify` 与 `verify-completion`，且任何失败或取消都不能被成功汇总。当前汇总规则见[CI 简化决策](../../.agents/notes/implemented/simplification/2026-10-21-ci-gate-simplification.md)。
 
-## 执行耗时、提醒与滚动稳定性
+## 执行耗时与提醒
 
 `features/task-execution/clock.ts` 从成对 observedAt/receivedMonotonic 推进服务端显示时间，补上接收后到渲染提交的单调耗时；不使用 Date.now 推算执行时间，也不补偿服务端采样至接收/解析完成的网络延迟。
 运行耗时减 startedAt；同提交暂态的负差值只在运行显示中限为零，完成耗时始终取持久化端点差。阈值比较使用未格式化毫秒严格大于。
@@ -646,9 +646,10 @@ TaskExecutionPresentation 的 time/title 与独立可访问描述共享格式、
 TaskNode 保留主体检查与 Details/展开独立控件，底部 42px 预留容纳英文 Details；琥珀提醒不替换蓝色状态、外部虚线、共享与选中/前置样式。
 独立行局部订阅并保持原 row 与焦点，视觉新增元数据不参与按钮名称；没有逐秒 alert/status/live region。
 
-项目视图的显式页签滚动恢复拥有页面 ready 期间的根 overflow-anchor 租约。异步成员操作或长标题改变页头高度时，浏览器不能另行调整并把位置写回持久记录。
-租约按根元素计数，layout effect 在恢复滚动前关闭原生锚定；最后释放仅在当前值和 priority 仍属于本租约时恢复此前 inline 配置。
-它不更改偏好格式、图视口或其他页面的默认滚动策略；[任务视图决策](../../.agents/notes/implemented/feature/2026-10-22-project-task-views.md)拥有采用理由与清理边界。
+项目页头在成员读取未完成时预留完整授权操作几何，包括本地化链接及较长的管理员徽标宽度；隐藏占位不进入可访问树，确认成员后再替换为真实操作。
+因此异步角色结果不会重新压窄长标题、改变页头高度或移动已恢复的页签滚动位置。
+[页头布局决策](../../.agents/notes/implemented/bug-fix/2026-10-23-project-header-layout-shift.md)拥有该机制，
+[任务视图决策](../../.agents/notes/implemented/feature/2026-10-22-project-task-views.md)继续拥有按项目/页签保存位置；计时订阅与图布局保持独立。
 
 ## 项目执行提醒设置
 

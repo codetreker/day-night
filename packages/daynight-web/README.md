@@ -176,13 +176,14 @@ Standalone visual timing is excluded from button-name calculation while its
 accessible description retains the warning meaning. Chain headers never claim
 an individual task's duration as aggregate execution time.
 
-Explicit per-tab page-scroll restoration leases root `overflow-anchor: none`
-while the loaded project owns that position. Late member actions or a wrapping
-heading cannot let native anchoring move and persist the restored position.
-Leases are reference-counted; the final owner restores the former inline value
-and priority only if its own applied pair still matches. The existing
+While membership loads, the project heading reserves complete action geometry,
+including localized links and the wider administrator badge. Its inaccessible
+placeholder is replaced by authorized actions without narrowing the title or
+moving the restored page position. The
+[header-layout decision](../../.agents/notes/implemented/bug-fix/2026-10-23-project-header-layout-shift.md)
+owns that geometry; the existing
 [task-view decision](../../.agents/notes/implemented/feature/2026-10-22-project-task-views.md)
-owns this lifetime and its independence from graph viewport preferences.
+owns per-project/tab scroll preferences independently from graph viewports.
 
 ## Languages
 

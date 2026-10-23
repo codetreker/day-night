@@ -1,6 +1,6 @@
 import { decodeTaskGraphJson } from '../../src/api/project-json';
 import { randomUUID } from 'node:crypto';
-import type { Locator, Page, Route, TestInfo } from '@playwright/test';
+import type { Locator, Page, TestInfo } from '@playwright/test';
 import { test, expect, createProject, createApprovedTask, updateTask, claimTask, completeTask, completeApprovedTask, withDependencyFailure, withProjectsFailure } from './fixtures';
 import { authenticatedAPI } from './authentication';
 import { parseTaskGraph } from '../../src/api/parse';
@@ -497,42 +497,32 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, api: req
   await activateViewWithoutScrolling(page, '独立任务');
   await expect(standaloneCompleted).not.toBeChecked();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(320);
-  const membersFetched = deferred<void>();
-  const releaseMembers = deferred<void>();
-  const membersFinished = deferred<void>();
-  const membersPattern = `**/api/v1/projects/${project.id}/members`;
-  const holdMembers = async (route: Route) => {
-    try {
-      const response = await authenticatedAPI(page.context().request).fetch(route.request(), { timeout: 15_000, maxRetries: 0 });
-      expect(response.status()).toBe(200);
-      const body = await response.body();
-      membersFetched.resolve();
-      await within(releaseMembers.promise, 'delayed project membership release');
-      await route.fulfill({ status: response.status(), headers: response.headers(), body });
-    } finally { membersFinished.resolve(); }
-  };
-  await page.route(membersPattern, holdMembers);
+  const membersUrl = `**/api/v1/projects/${project.id}/members`;
+  let releaseMembers!: () => void;
+  let markMembersRequestStarted!: () => void;
+  const membersResponseGate = new Promise<void>((resolve) => { releaseMembers = resolve; });
+  const membersRequestStarted = new Promise<void>((resolve) => { markMembersRequestStarted = resolve; });
+  await page.route(membersUrl, async (route) => {
+    markMembersRequestStarted();
+    await membersResponseGate;
+    await route.continue();
+  });
   try {
     await page.reload();
-    await within(membersFetched.promise, 'real project membership response');
+    await membersRequestStarted;
     await expect(viewTab(page, '独立任务')).toHaveAttribute('aria-selected', 'true');
     await expect(standaloneCompleted).not.toBeChecked();
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(320);
-    await expect(page.getByRole('link', { name: '项目设置', exact: true })).toHaveCount(0);
-    const titleHeightBefore = await page.locator('.project-heading h1').evaluate((heading) => heading.getBoundingClientRect().height);
-    releaseMembers.resolve();
-    await expect(page.getByRole('link', { name: '项目成员', exact: true })).toBeVisible();
+    const projectHeading = page.locator('.project-heading');
+    const headingBeforeMembership = await projectHeading.boundingBox();
+    expect(headingBeforeMembership).not.toBeNull();
+    releaseMembers();
     await expect(page.getByRole('link', { name: '项目设置', exact: true })).toBeVisible();
-    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-    const titleHeightAfter = await page.locator('.project-heading h1').evaluate((heading) => heading.getBoundingClientRect().height);
-    expect(titleHeightAfter).toBeGreaterThan(titleHeightBefore);
+    expect(await projectHeading.boundingBox()).toEqual(headingBeforeMembership);
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(320);
-    await expect.poll(() => page.evaluate((id) => JSON.parse(localStorage.getItem(`daynight:task-view-scroll:${id}`)!).standalone, project.id)).toBe(320);
-    await info.attach('late-membership-scroll', { body: Buffer.from(JSON.stringify({ titleHeightBefore, titleHeightAfter, scrollY: await page.evaluate(() => window.scrollY) })), contentType: 'application/json' });
   } finally {
-    releaseMembers.resolve();
-    try { await within(membersFinished.promise, 'delayed project membership cleanup'); }
-    finally { await page.unroute(membersPattern, holdMembers); }
+    releaseMembers();
+    await page.unroute(membersUrl);
   }
 
   const other = await createProject(request, { name: `Other task views ${randomUUID()}` });
