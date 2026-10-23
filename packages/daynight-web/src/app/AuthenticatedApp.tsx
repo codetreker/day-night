@@ -4,6 +4,7 @@ import type { AuthProvider, CurrentUser, ProjectRole } from "../api/auth-types";
 import { ApiError, invalidateAuthRequests, isAbortError, pauseAuthRequests, subscribeUnauthorized } from "../api/client";
 import type { Project } from "../api/types";
 import { AccountPage } from "../features/management/AccountPage";
+import { ProjectSettingsPanel } from "../features/management/ProjectSettingsPanel";
 import { MembersPanel } from "../features/management/MembersPanel";
 import { CreateProjectDialog } from "../features/auth/CreateProjectDialog";
 import { InvitationPage } from "../features/auth/InvitationPage";
@@ -18,14 +19,14 @@ import { useI18n } from "../i18n/LocaleProvider";
 import { LanguageSelector } from "../i18n/LanguageSelector";
 import "../styles/auth.css";
 
-type AuthRoute = Route | { readonly kind: "account" | "invitations" } | { readonly kind: "members"; readonly projectId: string };
+type AuthRoute = Route | { readonly kind: "account" | "invitations" } | { readonly kind: "members" | "settings"; readonly projectId: string };
 export const parseAuthRoute = (pathname: string): AuthRoute => {
   if (pathname === "/account") return { kind: "account" };
   if (pathname === "/invitations") return { kind: "invitations" };
-  const members = /^(\/projects\/[^/]+)\/members$/.exec(pathname);
+  const members = /^(\/projects\/[^/]+)\/(members|settings)$/.exec(pathname);
   if (members !== null) {
     const project = parseRoute(members[1]!);
-    return project.kind === "project" ? { kind: "members", projectId: project.projectId } : { kind: "notFound" };
+    return project.kind === "project" ? { kind: members[2] as "members" | "settings", projectId: project.projectId } : { kind: "notFound" };
   }
   return parseRoute(pathname);
 };
@@ -57,15 +58,20 @@ const AuthorizedProject = ({ projectId, user, onOpenMembers }: { readonly projec
     return () => controller.abort();
   }, [projectId, user.id, attempt]);
   if (membership.status === "unavailable") return <AccessUnavailable />;
-  return <>{membership.status === "error" && <div className="notice error" role="alert"><p>{m.permissionsError}</p><button className="button" type="button" onClick={() => setAttempt((value) => value + 1)}>{m.retryPermissions}</button></div>}<ProjectPage projectId={projectId} renderActions={(project) => membership.status === "ready" ? <><span className={`badge ${membership.role}`}>{roles[membership.role!]}</span><a className="button" href={`/projects/${projectId}/members`} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onOpenMembers(project); }}>{m.members}</a></> : null} /></>;
+  return <>{membership.status === "error" && <div className="notice error" role="alert"><p>{m.permissionsError}</p><button className="button" type="button" onClick={() => setAttempt((value) => value + 1)}>{m.retryPermissions}</button></div>}<ProjectPage projectId={projectId} renderActions={(project) => membership.status === "ready" ? <><span className={`badge ${membership.role}`}>{roles[membership.role!]}</span><a className="button" href={`/projects/${projectId}/members`} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onOpenMembers(project); }}>{m.members}</a><a className="button" href={`/projects/${projectId}/settings`} onClick={followLink}>{m.projectSettings}</a></> : null} /></>;
+};
+
+const ProjectManagementNav = ({ projectId, current }: { readonly projectId: string; readonly current: "settings" | "members" }) => {
+  const { messages: { auth: { shell: m }, workspace: { app } } } = useI18n();
+  return <nav className="project-management-nav" aria-label={m.projectSettings}><a className="button" href={`/projects/${projectId}`} onClick={followLink}>{app.projectTasks}</a><a className="button" href={`/projects/${projectId}/members`} onClick={followLink} aria-current={current === "members" ? "page" : undefined}>{m.members}</a><a className="button" href={`/projects/${projectId}/settings`} onClick={followLink} aria-current={current === "settings" ? "page" : undefined}>{m.projectSettings}</a></nav>;
 };
 
 const Workspace = ({ user, children, route, onSignOut, blocked }: { readonly user: CurrentUser; readonly children: ReactNode; readonly route: AuthRoute; readonly onSignOut: () => void; readonly blocked: boolean }) => {
   const { messages: { auth: { shell: m }, workspace: { app } } } = useI18n();
   const content = useRef<HTMLElement>(null);
-  const label = route.kind === "projects" ? m.myProjects : route.kind === "account" ? m.accountSettings : route.kind === "members" ? m.members : route.kind === "project" ? app.projectTasks : app.notFound;
+  const label = route.kind === "projects" ? m.myProjects : route.kind === "account" ? m.accountSettings : route.kind === "members" ? m.members : route.kind === "settings" ? m.projectSettings : route.kind === "project" ? app.projectTasks : app.notFound;
   useLayoutEffect(() => { content.current?.focus(); }, [route.kind, "projectId" in route ? route.projectId : null]);
-  return <div className="shell auth-shell" aria-hidden={blocked} inert={blocked}><a className="skip-link" href="#main-content">{app.skipToContent}</a><aside className="sidebar" aria-label={app.workspaceNavigation}><a className="brand" href="/" onClick={followLink} aria-label={app.projectHome}><span className="brand-mark" aria-hidden="true" />daynight</a><nav aria-label={app.mainNavigation}><p className="nav-label">{app.workspace}</p><a className="nav-button" href="/" onClick={followLink} aria-current={route.kind === "projects" || route.kind === "project" || route.kind === "members" ? "page" : undefined}>▦　{m.myProjects}</a><a className="nav-button account-nav" href="/account" onClick={followLink} aria-current={route.kind === "account" ? "page" : undefined}>◎　{m.accountSettings}</a></nav><div className="sidebar-bottom">{m.teamWorkspace}<small>{app.localWorkspaceDetail}</small></div></aside><div className="workspace"><header className="topbar"><nav className="crumb" aria-label={app.breadcrumb}><a href="/" onClick={followLink}>{app.workspace}</a><span aria-hidden="true">/</span><span className="crumb-current" aria-current="page">{label}</span></nav><div className="account-actions"><LanguageSelector /><a className="account-button" href="/account" onClick={followLink} aria-label={m.accountLink({ name: accountLabel(user, m.currentAccount) })}><span className="avatar" aria-hidden="true">{accountLabel(user, m.currentAccount).slice(0, 1).toUpperCase()}</span><span className="account-name">{accountLabel(user, m.currentAccount)}</span></a><button className="inline-link" type="button" onClick={onSignOut}>{m.signOut}</button></div></header><main className="content" id="main-content" ref={content} tabIndex={-1}>{children}</main></div></div>;
+  return <div className="shell auth-shell" aria-hidden={blocked} inert={blocked}><a className="skip-link" href="#main-content">{app.skipToContent}</a><aside className="sidebar" aria-label={app.workspaceNavigation}><a className="brand" href="/" onClick={followLink} aria-label={app.projectHome}><span className="brand-mark" aria-hidden="true" />daynight</a><nav aria-label={app.mainNavigation}><p className="nav-label">{app.workspace}</p><a className="nav-button" href="/" onClick={followLink} aria-current={route.kind === "projects" || route.kind === "project" || route.kind === "members" || route.kind === "settings" ? "page" : undefined}>▦　{m.myProjects}</a><a className="nav-button account-nav" href="/account" onClick={followLink} aria-current={route.kind === "account" ? "page" : undefined}>◎　{m.accountSettings}</a></nav><div className="sidebar-bottom">{m.teamWorkspace}<small>{app.localWorkspaceDetail}</small></div></aside><div className="workspace"><header className="topbar"><nav className="crumb" aria-label={app.breadcrumb}><a href="/" onClick={followLink}>{app.workspace}</a><span aria-hidden="true">/</span><span className="crumb-current" aria-current="page">{label}</span></nav><div className="account-actions"><LanguageSelector /><a className="account-button" href="/account" onClick={followLink} aria-label={m.accountLink({ name: accountLabel(user, m.currentAccount) })}><span className="avatar" aria-hidden="true">{accountLabel(user, m.currentAccount).slice(0, 1).toUpperCase()}</span><span className="account-name">{accountLabel(user, m.currentAccount)}</span></a><button className="inline-link" type="button" onClick={onSignOut}>{m.signOut}</button></div></header><main className="content" id="main-content" ref={content} tabIndex={-1}>{children}</main></div></div>;
 };
 
 const RevalidationOverlay = ({ failed, onRetry }: { readonly failed: boolean; readonly onRetry: () => void }) => {
@@ -240,7 +246,7 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
   </div></TaskDetailSessionProvider>;
   if (route.kind === "invitations") return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}{cleanupWarning}<div aria-hidden={blocked} inert={blocked}><InvitationPage key={`${identity}:${invitationRevision}`} lifetime={invitationLifetime.current.signal} invitation={invitation} user={session.user} onComplete={completeInvitation} onCancel={cancelInvitation} onSwitchAccount={signOut} onUnavailable={unavailableInvitation} /></div></TaskDetailSessionProvider>;
   return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}<Workspace key={identity} user={session.user} route={route} onSignOut={signOut} blocked={blocked}>
-    {cleanupWarning}{route.kind === "projects" ? <ProjectsPage onCreate={() => setCreating(true)} /> : route.kind === "project" ? <AuthorizedProject key={route.projectId} projectId={route.projectId} user={session.user} onOpenMembers={(project) => { setProjectName(project.name); navigate(`/projects/${project.id}/members`); }} /> : route.kind === "members" ? <MembersPanel key={route.projectId} projectId={route.projectId} projectName={projectName ?? m.genericProject} user={session.user} onRemoved={() => navigate("/")} /> : route.kind === "account" ? <AccountPage user={session.user} onSignOut={signOut} /> : <section className="state-box"><h1>{app.notFound}</h1><a className="button primary" href="/" onClick={followLink}>{app.returnToProjects}</a></section>}
+    {cleanupWarning}{route.kind === "projects" ? <ProjectsPage onCreate={() => setCreating(true)} /> : route.kind === "project" ? <AuthorizedProject key={route.projectId} projectId={route.projectId} user={session.user} onOpenMembers={(project) => { setProjectName(project.name); navigate(`/projects/${project.id}/members`); }} /> : route.kind === "settings" ? <><ProjectManagementNav projectId={route.projectId} current="settings" /><ProjectSettingsPanel key={route.projectId} projectId={route.projectId} user={session.user} /></> : route.kind === "members" ? <><ProjectManagementNav projectId={route.projectId} current="members" /><MembersPanel key={route.projectId} projectId={route.projectId} projectName={projectName ?? m.genericProject} user={session.user} onRemoved={() => navigate("/")} /></> : route.kind === "account" ? <AccountPage user={session.user} onSignOut={signOut} /> : <section className="state-box"><h1>{app.notFound}</h1><a className="button primary" href="/" onClick={followLink}>{app.returnToProjects}</a></section>}
     {creating && <CreateProjectDialog onClose={() => setCreating(false)} onCreated={(project) => { setCreating(false); navigate(`/projects/${project.id}`); }} />}
   </Workspace></TaskDetailSessionProvider>;
 };

@@ -15,9 +15,9 @@ persistence, authorization and concurrency semantics.
 The adopted [requirements](../../../../docs/spec/daynight-task-timing.md) and
 [architecture](../../../../docs/design/daynight-task-timing.md) define one
 execution interval per task, project-owned warning settings and a server-derived
-display clock. Persistent task timing and its reader contracts are implemented;
-project settings, running-task presentation and whole-goal acceptance remain
-owned by the succeeding
+display clock. Persistent task timing, project settings and their reader contracts are
+implemented; running-task presentation and whole-goal acceptance remain owned by
+the succeeding
 [implementation tasks](../../../../docs/design/daynight-task-timing-tasks.md).
 
 Task start and completion timestamps are nullable database facts written with
@@ -39,11 +39,28 @@ content equality excludes the graph's sample. This preserves graph and index
 identity on clock-only responses without freezing the sample consumed by future
 clock clients. The existing local-wall-clock `receivedAt` label keeps its role.
 
-The adopted ET-T2 design stores settings in two project columns under the existing
-project lock and a dedicated settings version. It requires member reads,
-administrator writes with authorization rechecked after the lock, and a version
-check before no-op detection. The initial threshold is 60 minutes. ET-T2 also
-owns separation of settings metadata from the task index.
+Project settings occupy two project columns under the existing project lock
+and a dedicated settings version. Migration gives existing projects the initial
+60-minute threshold and version 1 without changing their historical timestamps.
+Members read the saved setting; administrator writes recheck authorization after
+the lock and compare version before no-op detection. Equal saves preserve version
+and updatedAt; actual changes advance both. Create, read, list, graph and settings
+PATCH responses expose the same complete Project resource.
+
+CLI preserves nested settings versions through its existing raw-number decoding.
+Web targets known Project envelopes using shared JSON source spans, preserving
+versions above 2^53 without changing generic unknown-nested-field semantics or
+requiring browser reviver source context. Graph caching uses a bigint-safe
+Project metadata fingerprint independently from task/summary identity, so a
+settings-only change retains task references and GraphIndex.
+
+The member-readable settings route exposes administrator save/cancel actions
+with user/project-owned state and the shared foreground identity guard. Drafts
+and confirmed refusals do not replace the saved Project. Unconfirmed PATCH
+responses are reconciled by rereading Project and membership before another
+mutation. Failed reconciliation keeps Save blocked and offers a read retry;
+neither abort nor navigation proves rollback, and PATCH is never replayed
+automatically. Role or resource loss clears private project state.
 
 ET-T3 uses one project-owned browser ticker to advance the latest server sample
 with monotonic elapsed time. Completed durations need no subscription. Strict

@@ -1,5 +1,6 @@
+import { stringifyWireJson } from "../helpers/wireJson";
 import type { GraphTask, TaskDetail, TaskGraph, TaskGraphSummary, TaskStatus } from '../../src/api/types';
-import { isTaskVersion, parseApiJson, stringifyApiJson } from '../../src/api/json';
+import { isTaskVersion, parseApiJson } from '../../src/api/json';
 
 export const browsingScenarioLabels = {
   mixed: '四种状态与共享后续',
@@ -146,7 +147,7 @@ const createGraph = (scenario: BrowsingScenario, number: number): TaskGraph => {
     blocked: tasks.filter((task) => task.status === 'todo' && !task.ready).length,
   };
   return { observedAt: "2026-10-20T12:00:00Z",
-    project: {
+    project: { settings: { version: 1n, executionWarningMinutes: 60 },
       id: id(number), name: `Daynight · ${browsingScenarioLabels[scenario]}`, repoUrl: 'https://github.com/example/task-browser',
       createdAt: '2026-10-21T09:00:00Z', updatedAt: '2026-10-22T09:00:00Z',
     },
@@ -191,7 +192,7 @@ export type BrowsingFixture = (() => void) & {
   readonly recoverReads: (scenario: BrowsingScenario) => void;
 };
 
-const jsonResponse = (value: unknown, status = 200): Response => new Response(stringifyApiJson(value), {
+const jsonResponse = (value: unknown, status = 200): Response => new Response(stringifyWireJson(value), {
   status, headers: { 'Content-Type': 'application/json' },
 });
 const fault = (code: string, status: number): Response => jsonResponse({

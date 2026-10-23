@@ -10,7 +10,7 @@ import { runProjectCommand } from "../../../src/commands/project/command.js";
 import { runServerCommand } from "../../../src/commands/server/runtime.js";
 
 const id = "abcdefab-1234-5678-90ab-abcdefabcdef";
-const project: Project = { id, name: "Project 名称", repoUrl: "git@Git.Example:Org/Repo.git", createdAt: "2026-10-20T01:02:03.123456789Z", updatedAt: "2026-10-20T02:03:04.987654321Z" };
+const project: Project = { id, name: "Project 名称", repoUrl: "git@Git.Example:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: "2026-10-20T01:02:03.123456789Z", updatedAt: "2026-10-20T02:03:04.987654321Z" };
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
@@ -152,13 +152,15 @@ describe("project command over HTTP", () => {
     expect(signals.listenerCount("SIGINT")).toBe(0);
   });
 
-  it("queries an explicit canonical project ID and preserves full timestamps in JSON", async () => {
+  it("queries an explicit canonical project ID and preserves timestamps and exact nested settings versions in JSON", async () => {
     const requests: string[] = [];
-    const url = await server((request, response) => { requests.push(request.url!); respond(response, project); });
+    const precise = { ...project, settings: { version: 9_007_199_254_740_993n, executionWarningMinutes: 90 } };
+    const url = await server((request, response) => { requests.push(request.url!); respond(response, precise); });
     const { context, dependencies } = await fixture(url);
     await runProjectCommand(["show", id.toUpperCase(), "--json"], context, dependencies);
     expect(requests).toEqual([`/api/v1/projects/${id}`]);
-    expect(context.stdout).toHaveBeenCalledExactlyOnceWith(`${stringifyApiJson(project)}\n`);
+    expect(context.stdout).toHaveBeenCalledExactlyOnceWith(`${stringifyApiJson(precise)}\n`);
+    expect(context.stdout.mock.calls[0]![0]).toContain('"settings":{"version":9007199254740993,"executionWarningMinutes":90}');
     expect(context.workingDirectory).not.toHaveBeenCalled();
   });
 });

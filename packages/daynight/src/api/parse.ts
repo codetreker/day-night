@@ -15,6 +15,7 @@ const text = (value: unknown, nonempty = false): string => {
 };
 const bool = (value: unknown): boolean => typeof value === "boolean" ? value : malformed();
 const count = (value: unknown): number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : malformed();
+const resourceVersion = (value: unknown): bigint => typeof value === "bigint" && value >= 1n && value <= 9_223_372_036_854_775_807n ? value : malformed();
 export const canonicalId = (value: string): string | null => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) ? value.toLowerCase() : null;
 const id = (value: unknown): string => {
   const parsed = text(value);
@@ -52,9 +53,16 @@ export const parseTaskAttachment = (value: unknown, expectedPath?: string): Task
   return parsed;
 };
 
+const projectSettings = (value: unknown): Project["settings"] => {
+  const data = record(value);
+  const executionWarningMinutes = count(data.executionWarningMinutes);
+  if (executionWarningMinutes < 1 || executionWarningMinutes > 2_147_483_647) return malformed();
+  return { version: resourceVersion(data.version), executionWarningMinutes };
+};
+
 export const parseProject = (value: unknown, expectedId?: string): Project => {
   const data = record(value);
-  const parsed = { id: id(data.id), name: text(data.name, true), repoUrl: text(data.repoUrl, true), createdAt: timestamp(data.createdAt), updatedAt: timestamp(data.updatedAt) };
+  const parsed = { id: id(data.id), name: text(data.name, true), repoUrl: text(data.repoUrl, true), settings: projectSettings(data.settings), createdAt: timestamp(data.createdAt), updatedAt: timestamp(data.updatedAt) };
   if (expectedId !== undefined && parsed.id !== expectedId) return malformed();
   return parsed;
 };
@@ -77,8 +85,7 @@ const properties = (value: unknown): TaskProperties => {
 
 export const parseTask = (value: unknown, projectId: string, taskId?: string): Task => {
   const data = record(value);
-  const version = data.version;
-  if (typeof version !== "bigint" || version < 1n || version > 9_223_372_036_854_775_807n) return malformed();
+  const version = resourceVersion(data.version);
   const parsed = { ...dependencyState(data), projectId: id(data.projectId), title: text(data.title, true), description: text(data.description), properties: properties(data.properties), version };
   if (parsed.projectId !== projectId || (taskId !== undefined && parsed.id !== taskId)) return malformed();
   return parsed;

@@ -22,7 +22,7 @@ const time = "2026-10-20T12:00:00.123456Z";
 const node: GraphTask = { startedAt: null, completedAt: null, id: taskId, titlePreview: "任务一", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
 const detail: TaskDetail = { startedAt: null, completedAt: null, id: taskId, projectId, title: "任务一", description: "完整描述", properties: { pullRequests: [] }, status: "todo", version: 1n, dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
 const graph = (id = projectId): TaskGraph => ({ observedAt: "2026-10-20T12:00:00Z",
-  project: { id, name: `项目 ${id}`, repoUrl: "https://github.com/example/repo", createdAt: time, updatedAt: time },
+  project: { settings: { version: 1n, executionWarningMinutes: 60 }, id, name: `项目 ${id}`, repoUrl: "https://github.com/example/repo", createdAt: time, updatedAt: time },
   tasks: [node], summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
 });
 const deferred = <T,>() => {
@@ -56,6 +56,30 @@ describe("task graph snapshots", () => {
     expect(first.observedAt).toBe(graph().observedAt);
     expect(result.current.snapshot!.receivedAt).toBe(6_000);
     expect(result.current.snapshot!.revision).toBeGreaterThan(first.revision);
+  });
+
+  it("publishes bigint project settings while preserving task projections and graph identity on later clock-only samples", async () => {
+    vi.useFakeTimers();
+    const initial = graph();
+    const changed: TaskGraph = { ...initial, project: { ...initial.project, settings: {
+      version: 9_007_199_254_740_993n, executionWarningMinutes: 90,
+    } }, observedAt: "2026-10-20T12:00:05Z" };
+    graphRequest.mockResolvedValueOnce(initial).mockResolvedValueOnce(changed).mockResolvedValueOnce({ ...changed, observedAt: "2026-10-20T12:00:10Z" });
+    const { result } = renderHook(() => useTaskGraph(projectId));
+    await act(async () => { await Promise.resolve(); });
+    const first = result.current.snapshot!;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    const second = result.current.snapshot!;
+    expect(result.current.error).toBeNull();
+    expect(second.graph).not.toBe(first.graph);
+    expect(second.graph.project.settings).toEqual(changed.project.settings);
+    expect(second.index).toBe(first.index);
+    expect(second.graph.tasks).toBe(first.graph.tasks);
+    expect(second.graph.summary).toBe(first.graph.summary);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(result.current.snapshot!.graph).toBe(second.graph);
+    expect(result.current.snapshot!.index).toBe(first.index);
+    expect(result.current.snapshot!.observedAt).toBe("2026-10-20T12:00:10Z");
   });
 
   it("lets slow automatic requests finish and gives manual refresh priority", async () => {

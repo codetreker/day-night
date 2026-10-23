@@ -12,7 +12,7 @@ const user = { id: userId, email: null, emailVerified: false, name: "Member", av
 const pat = { id: tokenId, name: "Developer machine", createdAt: time, expiresAt: time };
 const member = { projectId, userId, email: null, name: "Member", avatarUrl: null, role: "admin", version: 9_007_199_254_740_993n, createdAt: time, updatedAt: time };
 const invitation = { id: inviteId, projectId, createdBy: userId, createdAt: time, expiresAt: time, consumedBy: null, consumedAt: null, revokedAt: null };
-const project = { id: projectId, name: "New project", repoUrl: "git@github.com:org/repo.git", createdAt: time, updatedAt: time };
+const project = { settings: { version: 1n, executionWarningMinutes: 60 }, id: projectId, name: "New project", repoUrl: "git@github.com:org/repo.git", createdAt: time, updatedAt: time };
 const signal = () => new AbortController().signal;
 const rawJson = JSON as unknown as { rawJSON: (text: string) => unknown };
 const response = (value: unknown, status = 200): Response => new Response(JSON.stringify(value, (_key, item: unknown) => typeof item === "bigint" ? rawJson.rawJSON(item.toString()) : item), { status, headers: { "Content-Type": "application/json" } });

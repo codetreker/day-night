@@ -49,9 +49,11 @@ func queryError(phase string, err error) error {
 	return &Error{Phase: phase, Cause: err}
 }
 
+const projectProjection = `id::text, name, repo_url, created_at, updated_at, settings_version, execution_warning_minutes`
+
 func scanProject(row pgx.Row) (core.Project, error) {
 	var project core.Project
-	err := row.Scan(&project.ID, &project.Name, &project.RepoURL, &project.CreatedAt, &project.UpdatedAt)
+	err := row.Scan(&project.ID, &project.Name, &project.RepoURL, &project.CreatedAt, &project.UpdatedAt, &project.Settings.Version, &project.Settings.ExecutionWarningMinutes)
 	project.CreatedAt = project.CreatedAt.UTC()
 	project.UpdatedAt = project.UpdatedAt.UTC()
 	return project, err

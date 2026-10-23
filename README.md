@@ -37,9 +37,11 @@ The adopted [execution timing requirements](docs/spec/daynight-task-timing.md),
 [architecture](docs/design/daynight-task-timing.md) and
 [delivery breakdown](docs/design/daynight-task-timing-tasks.md) define task
 start/completion facts, project warning thresholds and live card presentation.
-Task timestamps, the database graph clock and matching CLI/Web reader contracts
-are implemented. Project settings and live card warnings remain subsequent
-deliveries; the corresponding Daynight tasks own acceptance evidence.
+Task timestamps, the database graph clock, persistent project thresholds and
+matching CLI/Web reader contracts are implemented. Members can read the threshold
+at `/projects/{projectId}/settings`; administrators can save it with a settings
+version. Live card warnings remain the subsequent delivery; the corresponding
+Daynight tasks own acceptance evidence.
 
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
@@ -1026,7 +1028,8 @@ moves it to `todo`; `task claim` moves ready todo to `in_progress`; `task comple
 moves in-progress work to `done`. Approval permits unfinished prerequisites;
 claim and completion require every direct prerequisite to be done. Every project
 member, including administrators, may use these resource operations; the
-administrator role additionally manages members and invitations. Each action
+administrator role additionally manages members, invitations and project
+execution-warning settings. Each task action
 uses an expected version and increments it once. `--if-version` submits the exact
 observed int64 value; without it, the CLI reads once immediately before submitting.
 Conflicts and wrong states fail without retry. Generic updates cannot write
@@ -1041,6 +1044,24 @@ real end without inventing its missing start. The full graph includes a database
 retained by JSON output, including list JSON; human output keeps its existing
 field choices. Web polling refreshes its separate clock sample while preserving
 graph/index identity when only `observedAt` changes.
+
+Every Project resource includes `settings` with an exact positive int64 `version`
+and `executionWarningMinutes` from 1 through 2147483647, initially 60. Project
+create/read/list, the project in graph responses, and a successful settings PATCH
+return this same shape. The member-readable settings page lets administrators
+save or cancel a draft; ordinary members see the saved value without editing.
+The server checks current administrator authority after the project lock, then
+the observed settings version. An equal-value save preserves version and
+`updatedAt`; a real change increments version and updates `updatedAt`. Migration
+preserves historical project timestamps. CLI JSON preserves settings and nested
+versions without rounding; human output keeps its established fields.
+
+An unconfirmed settings PATCH response requires a Project and membership reread
+before another write. Failed reconciliation keeps Save blocked and offers read
+retry; network, protocol, 5xx or navigation cancellation never prove rollback.
+Confirmed refusals and unsaved/canceled drafts do not apply local settings.
+Project-only changes update graph metadata while retaining the task index and
+layout when tasks and summary are unchanged.
 
 Proposed tasks appear in unfinished inventories and Web statistics. The Web task
 detail dialog offers Approve / 批准任务 for proposed tasks, using the reviewed

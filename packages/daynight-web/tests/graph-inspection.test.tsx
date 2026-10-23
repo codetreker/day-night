@@ -24,7 +24,7 @@ vi.mock('@xyflow/react', async (original) => {
 const render = createLocaleRender('zh-CN');
 const time = '2026-10-22T00:00:00Z';
 const graph: GraphData = { observedAt: "2026-10-20T12:00:00Z",
-  project: { id: 'project', name: 'Project', repoUrl: '', createdAt: time, updatedAt: time },
+  project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: 'project', name: 'Project', repoUrl: '', createdAt: time, updatedAt: time },
   summary: { total: 5, proposed: 1, todo: 1, inProgress: 0, done: 3, ready: 1, blocked: 0 },
   tasks: [
     { startedAt: null, completedAt: null, id: 'A', titlePreview: 'A', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },

@@ -3,6 +3,7 @@ import type { AuthMessages } from "../auth";
 export const auth: AuthMessages = {
   roles: { admin: "管理员", member: "成员" },
   shell: {
+    projectSettings: "项目设置",
     myProjects: "我的项目", accountSettings: "账户设置", members: "项目成员", teamWorkspace: "团队工作空间",
     accountLink: ({ name }) => `账户设置：${name}`, currentAccount: "当前账户", genericProject: "项目",
     accessUnavailable: "项目不存在或你没有访问权限", accessUnavailableDetail: "如果你认为应该可以访问，请联系项目管理员获取邀请。",
@@ -18,7 +19,7 @@ export const auth: AuthMessages = {
     },
     documentTitle: {
       loading: "正在确认登录 · Daynight", error: "登录暂不可用 · Daynight", login: "登录 · Daynight", invitations: "项目邀请 · Daynight",
-      projects: "我的项目 · Daynight", project: "项目任务 · Daynight", members: "项目成员 · Daynight", account: "账户设置 · Daynight", notFound: "页面不存在 · Daynight",
+      projects: "我的项目 · Daynight", project: "项目任务 · Daynight", settings: "项目设置 · Daynight", members: "项目成员 · Daynight", account: "账户设置 · Daynight", notFound: "页面不存在 · Daynight",
     },
   },
   login: {
@@ -71,6 +72,26 @@ export const auth: AuthMessages = {
       selfRemovalBody: "移除后，你将无法继续访问这个项目。重新加入需要管理员邀请。", otherRemovalBody: "移除后，对方的浏览器和访问令牌将无法继续访问这个项目。",
       inviteBody: "创建一个单次使用的邀请链接，分享给你希望加入项目的人。对方登录并确认后，以成员身份加入。", inviteTerms: "7 天后到期 · 单次使用 · 加入角色：成员", revokeBody: "撤销后，这个邀请链接将立即失效。",
       notice: { permissionReloaded: "项目权限已变化，已重新加载最新权限。", conflictReloaded: "成员状态已变化，已重新加载最新权限。请检查后再操作。", permissionChecked: "项目权限已变化，已重新检查你的访问权限。" },
+    },
+    settings: {
+      eyebrow: "项目设置",
+      title: "项目设置",
+      scopeHint: "设置仅适用于当前项目。",
+      alertTitle: "任务执行提醒",
+      description: "为执行时间过长的进行中任务显示「可能卡住了」。",
+      scope: "项目级设置",
+      label: "提醒阈值",
+      unit: "分钟",
+      hint: "默认 60 分钟。任务耗时等于阈值时不提醒；超过阈值后提醒。保存后应用到当前项目的进行中任务。",
+      invalid: "请输入 1–2147483647 之间的整数分钟数。",
+      save: "保存设置",
+      busy: "正在保存…",
+      unsaved: "存在未保存的修改；任务仍使用已保存的阈值。",
+      memberNotice: "你可以查看此设置，只有项目管理员可以修改。",
+      loading: "正在加载项目设置…",
+      uncertain: "暂时无法确认保存结果。再次保存前，需要先读取当前设置。",
+      retryRead: "读取当前设置",
+      notice: { saved: "设置已保存。", cancelled: "修改已取消。", conflict: "设置已被其他人修改，当前显示最新保存值。请检查后再保存。", permission: "项目权限已变化，已重新加载你的访问权限和已保存设置。", reconciled: "已读取当前保存设置。请检查后再进行修改。" },
     },
     secret: {
       tokenTitle: "访问令牌已创建", invitationTitle: "邀请链接已创建", tokenBody: "把令牌保存在安全的位置，然后配置到 CLI 或 Agent。", invitationBody: "将链接分享给一位协作者。对方需要登录并确认加入。",

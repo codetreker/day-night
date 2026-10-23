@@ -1,3 +1,4 @@
+import { wireResponse } from "../helpers/wireJson";
 import type { PersonalAccessToken, ProjectInvitation, ProjectMember, User } from '../../src/api/auth-types';
 import type { Attachment, Project, TaskDetail, TaskGraph } from '../../src/api/types';
 import { stringifyApiJson } from '../../src/api/json';
@@ -157,15 +158,15 @@ export const installAuthFixture = (initial: AuthScenario) => {
         if (scenario === 'session-expired' && !loginCompleted) { authenticated = false; return error(401, 'unauthenticated'); }
         if (scenario === 'projects-loading') return wait(signal);
         if (scenario === 'projects-error') return error(500, 'internal_error');
-        return Response.json({ items: [...projects.values()].map((entry) => entry.project), nextCursor: null });
+        return wireResponse({ items: [...projects.values()].map((entry) => entry.project), nextCursor: null });
       }
       if (method === 'POST') {
         if (scenario === 'project-create-loading') return wait(signal);
         const data = await body();
         if (typeof data.name !== 'string' || data.name.trim() === '' || typeof data.repoUrl !== 'string' || data.repoUrl.trim() === '') return error(400, 'invalid_input');
-        const project: Project = { id: uuid(++sequence), name: data.name, repoUrl: data.repoUrl, createdAt: stamp, updatedAt: stamp };
+        const project: Project = { settings: { version: 1n, executionWarningMinutes: 60 }, id: uuid(++sequence), name: data.name, repoUrl: data.repoUrl, createdAt: stamp, updatedAt: stamp };
         projects.set(project.id, { project, graph: { observedAt: "2026-10-20T12:00:00Z", project, summary: emptySummary, tasks: [] }, members: [member(authUserId, currentUser.name!, currentUser.email!, 'admin', project.id)], invitations: [] });
-        return Response.json(project, { status: 201 });
+        return wireResponse(project, { status: 201 });
       }
     }
     if (url.pathname === '/api/v1/invitations/inspect' || url.pathname === '/api/v1/invitations/accept') {
@@ -188,8 +189,8 @@ export const installAuthFixture = (initial: AuthScenario) => {
       if (scenario === 'access-unavailable') return error(404, 'not_found');
       const current = entry.members.find((item) => item.userId === activeUser.id);
       if (current === undefined) return error(404, 'not_found');
-      if (suffix === '' && method === 'GET') return Response.json(entry.project);
-      if (suffix === 'task-graph' && method === 'GET') return Response.json(entry.graph);
+      if (suffix === '' && method === 'GET') return wireResponse(entry.project);
+      if (suffix === 'task-graph' && method === 'GET') return wireResponse(entry.graph);
       if (suffix === 'members' && method === 'GET') {
         if (scenario === 'members-error') return error(500, 'internal_error');
         return Response.json({ items: entry.members });

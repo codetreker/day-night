@@ -126,7 +126,7 @@ func createTaskInput(fields map[string]json.RawMessage) (api.CreateTaskRequest, 
 func updateTaskInput(fields map[string]json.RawMessage) (api.UpdateTaskRequest, error) {
 	var input api.UpdateTaskRequest
 	var err error
-	input.Version, err = taskVersionInput(fields)
+	input.Version, err = versionInput(fields)
 	if err != nil {
 		return api.UpdateTaskRequest{}, err
 	}

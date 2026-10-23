@@ -1,3 +1,4 @@
+import { stringifyWireJson } from "./helpers/wireJson";
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { createLocaleRender } from './helpers/renderWithLocale';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,7 +7,7 @@ import { ProjectsPage } from '../src/features/projects/ProjectsPage';
 
 const render = createLocaleRender('zh-CN');
 
-const project = (index: number, overrides: Partial<Project> = {}): Project => ({
+const project = (index: number, overrides: Partial<Project> = {}): Project => ({ settings: { version: 1n, executionWarningMinutes: 60 },
   id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
   name: `项目 ${index}`,
   repoUrl: `https://github.com/example/project-${index}`,
@@ -16,7 +17,7 @@ const project = (index: number, overrides: Partial<Project> = {}): Project => ({
 });
 
 const response = (items: readonly Project[], nextCursor: string | null = null) =>
-  new Response(JSON.stringify({ items, nextCursor }), { headers: { 'Content-Type': 'application/json' } });
+  new Response(stringifyWireJson({ items, nextCursor }), { headers: { 'Content-Type': 'application/json' } });
 
 const failure = (requestId = 'request-123') => new Response(JSON.stringify({
   error: { code: 'internal_error', message: 'private database connection string', requestId },

@@ -4,8 +4,14 @@ export type Project = {
   readonly id: string;
   readonly name: string;
   readonly repoUrl: string;
+  readonly settings: ProjectSettings;
   readonly createdAt: string;
   readonly updatedAt: string;
+};
+
+export type ProjectSettings = {
+  readonly version: bigint;
+  readonly executionWarningMinutes: number;
 };
 
 export type ProjectPage = {

@@ -2,6 +2,7 @@ import mime from "mime";
 import { isTaskVersion, parseApiJson, stringifyApiJson } from "./json";
 import { canonicalId, isAttachmentPath, parseAttachment, parseAttachmentPage, parseProjectPage, parseServerError, parseTaskDetail, parseTaskGraph } from "./parse";
 import type { Attachment, AttachmentPage, GraphLimitDetails, ProjectPage, TaskDetail, TaskGraph } from "./types";
+import { decodeProjectPageJson, decodeTaskGraphJson } from "./project-json";
 
 const serverMessages: Readonly<Record<string, string>> = {
   not_found: "The requested resource was not found.",
@@ -146,12 +147,12 @@ export const listProjects = (query: { readonly limit?: number; readonly cursor?:
     parameters.set("cursor", query.cursor);
   }
   const suffix = parameters.size === 0 ? "" : `?${parameters.toString()}`;
-  return read(`/api/v1/projects${suffix}`, signal, parseProjectPage);
+  return read(`/api/v1/projects${suffix}`, signal, parseProjectPage, decodeProjectPageJson);
 };
 
 export const getTaskGraph = (projectId: string, signal: AbortSignal): Promise<TaskGraph> => {
   const project = requestId(projectId);
-  return read(`/api/v1/projects/${project}/task-graph`, signal, (data) => parseTaskGraph(data, project));
+  return read(`/api/v1/projects/${project}/task-graph`, signal, (data) => parseTaskGraph(data, project), decodeTaskGraphJson);
 };
 
 export const getTask = (projectId: string, taskId: string, signal: AbortSignal): Promise<TaskDetail> => {

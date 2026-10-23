@@ -216,6 +216,18 @@ export const seedTaskVersion = async (projectId: string, taskId: string, version
   expect(result.split('\n')[0], 'Owned task version fixture updates exactly the selected row').toBe(String(version));
 };
 
+export const seedProjectSettingsVersion = async (projectId: string, version: bigint): Promise<void> => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(projectId)
+    || version <= 0n || version >= 9223372036854775807n) throw new Error('Invalid exact project settings version fixture.');
+  const target = await ownedDatabase();
+  const result = await command('docker', ['exec', target.postgresContainer, 'psql', '--no-psqlrc', '--set', 'ON_ERROR_STOP=1',
+    '--username', 'daynight', '--dbname', target.database, '--tuples-only', '--no-align', '--command',
+    `UPDATE projects SET settings_version = ${version} WHERE id = '${projectId}' RETURNING settings_version`], {
+    cwd: process.cwd(), timeoutMs: 15_000, quiet: true,
+  });
+  expect(result.split('\n')[0], 'Owned settings version fixture updates exactly the selected project').toBe(String(version));
+};
+
 const withTableFailure = async <T>(table: 'task_dependencies' | 'projects', callback: () => Promise<T>): Promise<T> => {
   const target = await ownedDatabase();
   const sql = async (value: string): Promise<void> => {

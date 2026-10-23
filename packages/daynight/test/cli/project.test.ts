@@ -4,12 +4,14 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
+import { parseApiJson, stringifyApiJson } from "../../src/api/json.js";
 
 const executable = fileURLToPath(new URL("../../dist/main.js", import.meta.url));
 const projectId = "a1b2c3d4-1111-4222-8333-123456789abc";
 const secondId = "a1b2c3d4-1111-4222-8333-123456789abd";
 const project = (id = projectId, name = "Project 中文") => ({
   id, name, repoUrl: "git@git.example:Org/Repo.git",
+  settings: { version: 1n, executionWarningMinutes: 60 },
   createdAt: "2026-10-20T00:00:00.123456789Z", updatedAt: "2026-10-20T00:00:00.123456789Z",
 });
 
@@ -70,8 +72,8 @@ describe("compiled project commands", () => {
         if (input !== null) {
           const created = { ...project(), ...input };
           projects.push(created);
-          response.writeHead(201).end(JSON.stringify(created));
-        } else response.end(JSON.stringify({ items: cursor === null ? projects.slice(0, 1) : projects.slice(1), nextCursor: cursor === null && projects.length > 1 ? "later page" : null }));
+          response.writeHead(201).end(stringifyApiJson(created));
+        } else response.end(stringifyApiJson({ items: cursor === null ? projects.slice(0, 1) : projects.slice(1), nextCursor: cursor === null && projects.length > 1 ? "later page" : null }));
       });
     });
     const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith("GIT_")));
@@ -174,14 +176,14 @@ describe("compiled project commands", () => {
         response.setHeader("Content-Type", "application/json");
         if (request.method === "POST") {
           const input = body as { name: string; repoUrl: string };
-          response.writeHead(201).end(JSON.stringify({ ...project(), ...input }));
+          response.writeHead(201).end(stringifyApiJson({ ...project(), ...input }));
         } else if (url.pathname === `/api/v1/projects/${projectId}`) {
-          response.end(JSON.stringify(project()));
+          response.end(stringifyApiJson(project()));
         } else if (url.searchParams.has("cursor")) {
           if (failSecondPage) response.writeHead(500).end(JSON.stringify({ error: { code: "internal_error", message: "Controlled page failure", requestId: "project-page-failure" } }));
-          else response.end(JSON.stringify({ items: [project(secondId, "\uFEFF")], nextCursor: null }));
+          else response.end(stringifyApiJson({ items: [project(secondId, "\uFEFF")], nextCursor: null }));
         } else {
-          response.end(JSON.stringify({ items: [project()], nextCursor: "next page+/=?" }));
+          response.end(stringifyApiJson({ items: [project()], nextCursor: "next page+/=?" }));
         }
       });
     });
@@ -198,12 +200,12 @@ describe("compiled project commands", () => {
       const list = await f.invoke(["project", "list", "--json"], blocked);
       expect(list.code, list.stderr).toBe(0);
       expect(list.stderr).toBe("");
-      expect(JSON.parse(list.stdout)).toEqual([project(), project(secondId, "\uFEFF")]);
+      expect(parseApiJson(list.stdout)).toEqual([project(), project(secondId, "\uFEFF")]);
       expect(requests[1]!.cursor).toBe("next page+/=?");
 
       const show = await f.invoke(["project", "show", projectId.toUpperCase(), "--json"], blocked);
       expect(show.code, show.stderr).toBe(0);
-      expect(JSON.parse(show.stdout)).toEqual(project());
+      expect(parseApiJson(show.stdout)).toEqual(project());
       expect(requests[2]!.pathname).toBe(`/api/v1/projects/${projectId}`);
 
       const name = "名字\n\u001b[31m";
