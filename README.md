@@ -381,7 +381,7 @@ checks require no live model invocation or GitHub publication.
 ## Local server deployment
 
 Run the dashboard, project/task API and PostgreSQL with Docker Engine 28+ and Docker
-Compose 2.20+ using Linux containers:
+Compose 2.20+ using Linux containers on Linux or macOS (Docker Desktop):
 
 ```bash
 cp deployment/localhost/.env.example deployment/localhost/.env
@@ -395,7 +395,7 @@ builds the UI and server inside Docker, applies embedded migrations and waits fo
 trusted attachment previews share that origin; CLI access uses a Web-created
 personal access token configured through hidden or stdin setup.
 PostgreSQL data persists across container recreation. The
-[localhost deployment guide](deployment/localhost/README.md) owns port selection,
+[localhost deployment guide](deployment/localhost/README.md) owns port and npm build-registry selection,
 API examples, logs, updates and volume removal.
 
 ## Server development

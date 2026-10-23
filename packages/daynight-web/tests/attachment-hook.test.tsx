@@ -278,6 +278,25 @@ describe("attachment writes and identity", () => {
 });
 
 describe("native preview checks", () => {
+  it.each(["html", "pdf"] as const)("waits for inventory and availability before marking a pending %s selection ready", async (extension) => {
+    const transport = api();
+    const item = file(`preview.${extension}`, extension === "html" ? "text/html" : "application/pdf");
+    const inventory = deferred<AttachmentPage>();
+    const availability = deferred<void>();
+    transport.list.mockReturnValueOnce(inventory.promise);
+    transport.checkPreview.mockReturnValueOnce(availability.promise);
+    const { result } = renderHook(() => useAttachments(project, task, transport));
+    act(() => result.current.select(item.path));
+    expect(result.current.preview).toMatchObject({ path: item.path, status: "loading", text: null, error: null });
+    expect(transport.checkPreview).not.toHaveBeenCalled();
+    await act(async () => { inventory.resolve(page([item])); });
+    expect(result.current.preview.status).toBe("loading");
+    expect(transport.checkPreview).toHaveBeenCalledOnce();
+    await act(async () => { availability.resolve(); });
+    expect(result.current.preview).toMatchObject({ path: item.path, status: "ready", text: null, error: null });
+    expect(transport.list).toHaveBeenCalledOnce();
+    expect(transport.readText).not.toHaveBeenCalled();
+  });
   it.each(["html", "pdf"] as const)("checks %s availability before preview, exposes failure, and retries locally", async (extension) => {
     const transport = api();
     const item = file(`preview.${extension}`, extension === "html" ? "text/html" : "application/pdf");

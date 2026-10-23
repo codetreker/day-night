@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +11,7 @@ import { processIdentity, requireGroupStopped, requireStopped, sameProcess, type
 import { browserInventory, recoverBrowsers, type BrowserInventory } from './browser.mts';
 import { waitForContainerPermission, writeContainerPermission } from './permission.mts';
 import { runPipeline } from './pipeline.mts';
+import { prepareStorage, cleanupStorage, type StorageReceipt } from './storage.mts';
 import { recoverCliProcesses, validateInstalledCli, type InstalledCliReceipt } from './installed-cli.mts';
 import { reserveLoopbackPort, startAuthFixture, type AuthFixture } from './auth-fixture.mts';
 import { runAuthCombined, validateAuthCombinedReceipt, type AuthCombinedReceipt, type RestartReceipt } from './auth-combined.mts';
@@ -188,7 +189,7 @@ const createRunner = (cancellation: AbortController) => {
   type NativeEvidence = {
     owner: string; postgresContainer: string; postgresVolume: string; binary: string; storageRoot: string; binarySha256?: string;
     processPid?: number; postgresImage: string; postgresImageId?: string; postgresVersion?: string; cleanup: 'pending' | 'passed' | 'failed';
-    processIdentity?: ProcessIdentity; authFixtures?: AuthFixtureEvidence[]; processHistory?: ProcessIdentity[]; restarts?: RestartReceipt[];
+    processIdentity?: ProcessIdentity; storage?: StorageReceipt; authFixtures?: AuthFixtureEvidence[]; processHistory?: ProcessIdentity[]; restarts?: RestartReceipt[];
   };
   type AuthFixtureEvidence = { directory: string; binary: string; binarySha256: string; processPid?: number; processIdentity?: ProcessIdentity; cleanup: 'pending' | 'passed' | 'failed' };
   type InstalledEvidence = { root: string; receiptPath?: string; receipt?: InstalledCliReceipt; cleanup: 'pending' | 'passed' | 'failed' };
@@ -198,7 +199,7 @@ const createRunner = (cancellation: AbortController) => {
     return { ...installed, receiptPath: installed.receiptPath, receipt: installed.receipt };
   };
   type Evidence = {
-    schemaVersion: 2; runId: string; source: Source; startedAt: string; result: 'running' | 'passed' | 'failed';
+    schemaVersion: 3; runId: string; source: Source; startedAt: string; result: 'running' | 'passed' | 'failed';
     native: NativeEvidence; targets: Target[]; stages: Stage[]; container?: unknown; performance?: unknown;
     cleanup: 'pending' | 'passed' | 'failed'; finishedAt?: string; error?: string; cleanupErrors?: string[];
     installedCli?: InstalledEvidence;
@@ -251,7 +252,8 @@ const createRunner = (cancellation: AbortController) => {
       }
       const browser = await readJson(join(directory, 'browser.json')) as Record<string, unknown>;
       if (browser.name !== 'chromium' || typeof browser.version !== 'string' || !/^\d+\.\d+\.\d+\.\d+$/.test(browser.version)
-        || (process.env.CI && (browser.platform !== 'linux' || browser.executableOverride !== false))) {
+        || browser.platform !== process.platform || !['linux', 'darwin'].includes(String(browser.platform))
+        || (process.env.CI && browser.executableOverride !== false)) {
         throw new Error('Invalid browser identity for production acceptance.');
       }
       if (process.env.CI) {
@@ -295,7 +297,7 @@ const createRunner = (cancellation: AbortController) => {
     }
     const acceptanceDirectory = dirname(directory);
     const evidence = await readJson(join(acceptanceDirectory, 'evidence.json')) as Evidence;
-    if (evidence.schemaVersion !== 2 || directory !== join(evidenceRoot, evidence.runId, 'container')
+    if (evidence.schemaVersion !== 3 || directory !== join(evidenceRoot, evidence.runId, 'container')
       || !/^\d{14}-[a-f0-9-]{36}$/.test(evidence.runId) || !/^[a-f0-9]{40}$/.test(evidence.source.gitSha)
       || !/^[a-f0-9]{40}$/.test(evidence.source.gitTreeSha)) {
       throw new Error('Container callback does not belong to this acceptance source and run.');
@@ -362,6 +364,11 @@ const createRunner = (cancellation: AbortController) => {
   };
   const startServer = async (binary: string, databaseUrl: string, evidence: NativeEvidence, register: (child: ChildProcess) => void,
     persist: () => Promise<void>, fixtureBinary: string, fixtureBinarySha256: string): Promise<{ child: ChildProcess; baseUrl: string; fixture: AuthFixture }> => {
+    cancellation.signal.throwIfAborted();
+    evidence.storage = await prepareStorage(evidence.storageRoot, { persist: async (receipt) => {
+      evidence.storage = receipt;
+      await persist();
+    } });
     for (let attempt = 0; attempt < 3; attempt++) {
       cancellation.signal.throwIfAborted();
       const baseUrl = `http://127.0.0.1:${await reserveLoopbackPort()}`;
@@ -385,7 +392,7 @@ const createRunner = (cancellation: AbortController) => {
             await persist();
           },
         });
-        const child = await launchNativeServer({ binary, databaseUrl, storageRoot: evidence.storageRoot, baseUrl, auth: fixture,
+        const child = await launchNativeServer({ binary, databaseUrl, storageRoot: evidence.storage.root, baseUrl, auth: fixture,
           signal: cancellation.signal,
           onSpawn: async (nativeChild) => trackNativeChild(nativeChild, binary, evidence, register, persist),
           onUnexpectedExit: (nativeChild, code, signal) => {
@@ -455,7 +462,16 @@ const createRunner = (cancellation: AbortController) => {
     else if (native.processPid !== undefined && await processIdentity(native.processPid) !== null) {
       throw new Error('Native process lacks enough identity evidence for storage cleanup.');
     }
-    await rm(storageRoot, { recursive: true, force: true });
+    const stored = native.storage ?? await optionalJson(join(storageRoot, 'storage-receipt.json')) as StorageReceipt | undefined;
+    if (stored !== undefined) {
+      if (stored.directory !== storageRoot) throw new Error('Native storage receipt belongs to a different directory.');
+      await cleanupStorage(stored);
+    } else {
+      // A directory without its write-ahead receipt cannot be safely attributed to this run.
+      try { await lstat(storageRoot); }
+      catch (error) { if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return; throw error; }
+      throw new Error('Native storage is missing its ownership receipt.');
+    }
   };
 
   const validateAuthFixtureOwnership = (fixture: AuthFixtureEvidence, directory: string): void => {
@@ -485,7 +501,7 @@ const createRunner = (cancellation: AbortController) => {
   const validIdentity = (value: unknown): ProcessIdentity => {
     if (value === null || typeof value !== 'object') throw new Error('Missing recorded process identity.');
     const identity = value as ProcessIdentity;
-    if (!Number.isSafeInteger(identity.pid) || identity.pid <= 1 || typeof identity.executable !== 'string'
+    if (identity.platform !== process.platform || !['linux', 'darwin'].includes(identity.platform) || !Number.isSafeInteger(identity.pid) || identity.pid <= 1 || typeof identity.executable !== 'string'
       || !identity.executable.startsWith('/') || typeof identity.startTicks !== 'string' || !/^\d+$/.test(identity.startTicks)
       || !Number.isSafeInteger(identity.group) || identity.group <= 0) {
       throw new Error('Invalid recorded process identity.');
@@ -573,7 +589,7 @@ const createRunner = (cancellation: AbortController) => {
     const original = await optionalJson(requestedRunId === undefined ? join(evidenceRoot, 'evidence.json') : join(evidenceRoot, requestedRunId, 'evidence.json'));
     if (original === undefined) { console.log('Web acceptance recovery: no run receipt; no resources were changed.'); return; }
     const evidence = original as Evidence;
-    if (evidence.schemaVersion !== 2 || !/^\d{14}-[a-f0-9-]{36}$/.test(evidence.runId)
+    if (evidence.schemaVersion !== 3 || !/^\d{14}-[a-f0-9-]{36}$/.test(evidence.runId)
       || (requestedRunId !== undefined && evidence.runId !== requestedRunId)) throw new Error('Invalid acceptance recovery receipt.');
     const directory = join(evidenceRoot, evidence.runId);
     const owner = `daynight-web-${evidence.runId}`;
@@ -584,7 +600,7 @@ const createRunner = (cancellation: AbortController) => {
       || (process.env.GITHUB_SHA !== undefined && evidence.source.githubSha !== process.env.GITHUB_SHA)) {
       throw new Error('Recovery receipt does not identify this run resources and source.');
     }
-    const receipt: Record<string, unknown> = { schemaVersion: 2, runId: evidence.runId, result: 'running', startedAt: new Date().toISOString() };
+    const receipt: Record<string, unknown> = { schemaVersion: 3, runId: evidence.runId, result: 'running', startedAt: new Date().toISOString() };
     const save = async (): Promise<void> => {
       await json(join(directory, 'recovery.json'), receipt);
       await json(join(evidenceRoot, 'recovery.json'), receipt);
@@ -669,7 +685,7 @@ const createRunner = (cancellation: AbortController) => {
     const owner = `daynight-web-${runId}`;
     const runner = await processIdentity(process.pid);
     if (runner === null) throw new Error('Acceptance runner process identity disappeared.');
-    const evidence: Evidence = { schemaVersion: 2, runId, source: await sourceIdentity(), startedAt: new Date().toISOString(),
+    const evidence: Evidence = { schemaVersion: 3, runId, source: await sourceIdentity(), startedAt: new Date().toISOString(),
       result: 'running', native: { owner, postgresContainer: `${owner}-postgres`, postgresVolume: `${owner}-data`,
         binary: join(directory, 'daynight-server'), storageRoot: join(directory, 'native-storage'),
         postgresImage, cleanup: 'pending' }, targets: [], stages: [], cleanup: 'pending', runner, authCombined: [] };
@@ -813,7 +829,7 @@ const createRunner = (cancellation: AbortController) => {
           await playwright(phase, join(directory, 'native/functional'), installedEvidence());
           await save();
           const target: CombinedTarget = { target: 'native', baseUrl: phase.baseUrl, sourceGitSha: evidence.source.gitSha, acceptanceDirectory: directory,
-            postgresContainer: phase.postgresContainer, projectLabel: phase.projectLabel, database: 'daynight', storage: { kind: 'native', root: evidence.native.storageRoot } };
+            postgresContainer: phase.postgresContainer, projectLabel: phase.projectLabel, database: 'daynight', storage: { kind: 'native', root: evidence.native.storage!.root } };
           const combinedDirectory = join(directory, 'native/auth-combined');
           const logs: Buffer[] = []; let logBytes = 0; let logFailure = false;
           nativeLogSink = (data) => { logBytes += data.length; if (logBytes > 8 * 1024 * 1024) logFailure = true; else logs.push(data); };
@@ -828,7 +844,7 @@ const createRunner = (cancellation: AbortController) => {
                 const startedAt = new Date().toISOString();
                 await json(join(combinedDirectory, 'restart.json'), { target: 'native', origin: phase.baseUrl, before, startedAt });
                 await stopServer(child);
-                await launchNativeServer({ binary: evidence.native.binary, databaseUrl: nativeDatabaseUrl, storageRoot: evidence.native.storageRoot,
+                await launchNativeServer({ binary: evidence.native.binary, databaseUrl: nativeDatabaseUrl, storageRoot: evidence.native.storage!.root,
                   baseUrl: phase.baseUrl, auth: authFixture, signal: restartSignal,
                   onSpawn: async (replacement) => trackNativeChild(replacement, evidence.native.binary, evidence.native,
                     (ownedChild) => { child = ownedChild; }, save),

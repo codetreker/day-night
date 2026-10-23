@@ -97,7 +97,7 @@ export const useAttachments = (projectId: string, taskId: string, api: Attachmen
     const controller = new AbortController();
     const path = selectedPath;
     setPreview(initialPreview(scope, path));
-    if (path === null) return () => controller.abort();
+    if (path === null || selectedKind === undefined) return () => controller.abort();
     const usesText = selectedKind === "text" || selectedKind === "markdown";
     if (!usesText && selectedKind !== "html" && selectedKind !== "pdf") {
       setPreview({ scope, path, status: "ready", text: null, error: null });

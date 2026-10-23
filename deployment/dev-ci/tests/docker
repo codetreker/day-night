@@ -39,6 +39,10 @@ if [[ $command == compose ]]; then
       [[ $scenario != partial-startup ]] || exit 31
       case $* in
         '--no-build --detach postgres gateway')
+          if [[ $scenario == cancelled-bootstrap ]]; then
+            printf ready > "$FAKE_DOCKER_STATE/child-ready"
+            sleep 60
+          fi
           if [[ $scenario == reconfigure ]]; then
             count=0
             [[ ! -f $FAKE_DOCKER_STATE/bootstrap-count ]] || count="$(< "$FAKE_DOCKER_STATE/bootstrap-count")"

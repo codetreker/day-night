@@ -333,6 +333,13 @@ React Flow 12.12.0保留220px宽、96px或136px高的可见卡片、原生测量
 路由由[统一通道决策](../../.agents/notes/implemented/architecture/2026-10-22-uniform-task-dependency-routing.md)拥有：按实际节点宽高一次建立列与16单位扩张占用行，按中间列意图选最近自由行，仅gap中点HV转接，保留节点布局，固定源右中心/目标左中心，≤12单位Q圆角。routes编译M/L/Q及真实弧长分片，5/4相位保持，最大1.8缩放累计误差≤0.025CSSpx。DependencyEdges声明式渲染三个恒定RGB原生marker和body组局部stroke继承，保留全部可见真实边及实际paint pieces；检查不重算几何。
 
 普通键盘reveal用布局/卡片/viewport坐标，避免原生focus临时overflow滚动误判；footer消失但卡片仍在时，最终DOM commit恢复主体并抑制reveal，整卡片消失用既有回退，不抢dialog焦点。普通失败保留只限同身份/项目/authscope；current401/会话/资源转换保留私有数据失效规则。当前手动/定时刷新和locale触发保持。机制详见[检查决策](../../.agents/notes/implemented/feature/2026-10-22-task-dependency-inspection.md)。源码绑定验收和交付记录归Daynight与任务专属主附件。
+`routes.ts` 将提取后的长直线拆成不超过 8,192 图坐标单位的片段，新增切点位于
+5/4 虚线周期内相位 7 的 gap 中点，保持连续弧长相位、完整路线和原生 marker。
+直线在局部坐标绘制并旋转回世界坐标，长度上限约束 macOS Metal 后端的 dash 工作；
+曲线与短转角仍由原生路径绘制。分片成本计入 renderMs/openMs，选择、平移和缩放复用
+已编译几何。[线段长度上限决策](../../.agents/notes/implemented/bug-fix/2026-10-22-bounded-dashed-dependency-lines.md)
+记录 GPU 约束与额外 DOM 成本。
+
 
 初始视口根据已知 Dagre 几何计算，等待 React Flow viewport 初始化且实际测得的
 画布宽高为正后一次应用。完整图可在 0.8–1 倍显示时整体适应；否则使用 0.8 倍锚定最左 rank，根已在该 rank 时保持垂直居中；外部上游位于根左侧时，将该 rank 的最上方节点放在画布 32px 内边距处。不能将根固定在左侧而把新增祖先放到不可见区域；平移、缩放、适应画布和键盘节点聚焦可访问其余内容。该策略只在初始化运行，选择和详情不重新适应。节点保留 React Flow 的原生 ResizeObserver；96/136px 实际尺寸与 DOM 通过浏览器边界回归。路由端点固定为实际源矩形右中心与目标左中心；该只读结构不需要编辑端口或逐边端点就绪登记。布局、检查呈现、静态边、视口和请求分别归所属模块。
@@ -815,8 +822,20 @@ Playwright 固定单 worker、零 retry；报告必须包含全部要求的唯�
 执行、有效 PNG 附件及一致的汇总，跳过、重试、flaky、缺失、多余或重复场景及
 全局错误均失败。原生 functional/capacity 两份报告严格合并为二十八个唯一场景，
 容器目标严格要求二十三个；原生与容器及同目标各阶段浏览器身份必须一致。
-CI 只接受 Linux、锁定 Playwright 的完整 Chromium channel `chromium`、干净 checkout，且 git SHA 必须
+CI 要求当前 Linux 或 macOS 平台与浏览器回执一致、锁定 Playwright 的完整 Chromium channel `chromium`、干净 checkout，且 git SHA 必须
 等于 `GITHUB_SHA`；本机可以显式选择现有 Chromium，回执必须记录这一差异。
+完整 CI 工作流仍在 Linux 上执行；macOS 本机运行相同功能、容量与恢复验收，不放宽预算。
+Linux 进程身份由 procfs 提供；macOS 使用项目临时目录内编译的 Apple SDK helper，
+通过内核读取微秒级启动时间、实际 executable、PGID、argv 和精确环境标记。
+浏览器 profile 按 argv 项匹配，macOS inventory 包含 Chromium bundle 内的 Helper 与 Crashpad。
+原生服务存储使用独占控制目录；大小写敏感文件系统直接使用其 data 子目录，macOS 默认
+大小写不敏感文件系统使用 Case-sensitive APFS sparseimage。准备每个阶段都先写本地与
+主回执，attach 前持久化意图；只有服务停止、目录/image inode 和挂载拓扑一致时才卸载，
+卸载遇到明确的 busy 错误时，在同一 30 秒清理期限内每秒重试，并在每次尝试前重新核验
+归属；确认不存在挂载后才递归删除。未知资源保留并报错。日常 `web:test` 在 macOS 上只运行
+无挂载的存储回执测试；显式 `web:test:storage-native` 共享一个 APFS 卷验证完整存储生命周期，
+完整验收每次也只创建一个原生存储卷，避免按测试用例反复请求管理员授权。构建镜像可显式传入
+`DAYNIGHT_NPM_REGISTRY`，默认仍为官方 npm registry。
 PDF 预览通过轮询 iframe 的实际 compositor 截图，验证 fixture 专用色块已经绘制，
 保留成功 PNG、色块计数/范围及 PDF 摘要；不能只依赖 MIME、load 或固定等待。
 
@@ -854,7 +873,7 @@ CDP timeline、User Timing、frame 与 GC 事件关联浏览器内的输入/条�
 等待；正常 ready/count 判定与全部预算保持原义。
 
 回执增量写入 `packages/daynight-web/.tmp/acceptance/<run-id>/`，顶层
-`evidence.json` 指向最近一次结果，顶层 `schemaVersion: 2` 包含源码、二进制、
+`evidence.json` 指向最近一次结果，顶层 `schemaVersion: 3` 包含源码、二进制、
 数据库/浏览器版本、两目标结果、生产镜像与清理状态。已安装 CLI 回执核对 Git SHA、
 dirty 标记、tarball 和 entry 摘要，并重算实际产物摘要；dirty 标记不代表工作区文件
 内容指纹，CI 的干净源码与 `GITHUB_SHA` 检查继续承担源码归属。`stages` 逐阶段记录名称、
@@ -873,12 +892,12 @@ dirty 标记、tarball 和 entry 摘要，并重算实际产物摘要；dirty �
 清单。web job 被选中后，任何执行或清理失败必须让该 job 失败。
 
 恢复命令为 `node packages/daynight-web/scripts/acceptance.mts --cleanup [run-id]`，
-默认读取最近一次回执，缺失回执不操作资源。恢复只接受顶层 schema 2，schema 1
+默认读取最近一次回执，缺失回执不操作资源。恢复只接受顶层 schema 3，schema 1、schema 2
 及未知版本明确失败。恢复先确认原 runner、阶段命令身份和全部登记进程组均停止；
 浏览器按 `native/capacity`、`container`、`native/functional` 的逆序检查和回收。
 两个 `auth-combined/` 目录同样加入已有浏览器与命令进程恢复扫描。callback 和
-Playwright 的进程及其组必须已停止，再依据记录的 Linux PID、
-executable、start ticks 与源码身份处理资源。仍存活的原生服务必须额外匹配二进制摘要，Docker 只按本次精确标记
+Playwright 的进程及其组必须已停止，再依据记录的平台、PID、
+executable、内核启动身份与源码身份处理资源。仍存活的原生服务必须额外匹配二进制摘要，Docker 只按本次精确标记
 和名称清理。Chromium 单独记录隔离进程组、已验证 executable 和项目内 profile
 所有权 marker；只对已确认的组和 profile 恢复。启动窗口出现未登记进程、无有效
 leader 的孤立组或未知新增 profile 时明确失败，保留现场，不能猜测归属后删除。

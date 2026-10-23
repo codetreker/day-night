@@ -65,6 +65,7 @@ volume_names=''
 network_ids=''
 active_pid=''
 watcher_pid=''
+bootstrap_logger_pid=''
 callback_group=''
 cleanup_started=false
 
@@ -149,6 +150,15 @@ collect_resources() {
   else return 1; fi
 }
 
+stop_bootstrap_logger() {
+  if [[ -n $bootstrap_logger_pid ]]; then
+    stop_group "$bootstrap_logger_pid" TERM
+    wait "$bootstrap_logger_pid" 2>/dev/null || true
+    bootstrap_logger_pid=''
+  fi
+  rm -f -- "$receipt_dir/.bootstrap.pipe"
+}
+
 cleanup() {
   local status=$? cleanup_status=0 observed='' interrupted_pid=$active_pid interrupted_watcher=$watcher_pid
   $cleanup_started && return
@@ -167,6 +177,7 @@ cleanup() {
     stop_group "$interrupted_pid" KILL
     wait "$interrupted_pid" 2>/dev/null
   fi
+  stop_bootstrap_logger || cleanup_status=1
   if [[ $result == running ]]; then
     if [[ $status -eq 0 ]]; then result=passed; else result=failed; fi
   fi
@@ -219,7 +230,7 @@ on_signal() {
 }
 
 mkdir -p -- "$receipt_dir"
-chmod 700 -- "$receipt_dir"
+chmod 700 "$receipt_dir"
 if $cleanup_only || $reconfigure_only; then
   [[ -f $receipt_dir/image-id ]] && image_id="$(< "$receipt_dir/image-id")"
   [[ -f $receipt_dir/base-url ]] && base_url="$(< "$receipt_dir/base-url")"
@@ -234,16 +245,21 @@ if $cleanup_only || $reconfigure_only; then
 fi
 
 bootstrap() {
-  local start_status attempt endpoint output_fd logger_pid output
+  local start_status attempt endpoint output
   # The gateway's HTTP health depends on the configured product, so this stage
   # deliberately starts these dependencies before waiting for product health.
   for ((attempt=0; attempt<5; attempt++)); do
     start_status=0
-    exec {output_fd}> >(tee "$receipt_dir/bootstrap.log")
-    logger_pid=$!
-    bounded 150 "${compose[@]}" up --no-build --detach postgres gateway >&"$output_fd" 2>&1 || start_status=$?
-    exec {output_fd}>&-
-    wait "$logger_pid"
+    # An explicit child and FIFO preserve streaming and waitable ownership on Bash 3.2.
+    mkfifo -m 600 "$receipt_dir/.bootstrap.pipe"
+    tee "$receipt_dir/bootstrap.log" < "$receipt_dir/.bootstrap.pipe" &
+    bootstrap_logger_pid=$!
+    # Redirect only the child so signal traps cannot inherit a closing FIFO.
+    bounded 150 bash -c 'output=$1; shift; exec "$@" > "$output" 2>&1' bash \
+      "$receipt_dir/.bootstrap.pipe" "${compose[@]}" up --no-build --detach postgres gateway || start_status=$?
+    wait "$bootstrap_logger_pid"
+    bootstrap_logger_pid=''
+    rm -f -- "$receipt_dir/.bootstrap.pipe"
     if [[ $start_status -eq 0 ]]; then break; fi
     output="$(< "$receipt_dir/bootstrap.log")"
     if [[ $attempt -eq 4 || $output != *'address already in use'* && $output != *'port is already allocated'* ]]; then return "$start_status"; fi
@@ -278,6 +294,7 @@ finish_reconfigure() {
     stop_group "$watcher_pid" TERM
     wait "$watcher_pid" 2>/dev/null || true
   fi
+  stop_bootstrap_logger || { if [[ $status -eq 0 ]]; then status=1; fi; }
   exit "$status"
 }
 

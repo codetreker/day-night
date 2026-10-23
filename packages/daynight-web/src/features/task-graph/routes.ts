@@ -10,6 +10,8 @@ export const DEPENDENCY_CORNER_RADIUS = 12;
 const gapMiddle = 7;
 const joinRoom = 12;
 const minimumLine = 128;
+// Bound GPU dash work even when a backend does not cull a rotated long stroke.
+const maximumLine = 8192;
 const arcError = 0.025 / 1.8;
 const distance = (from: CanvasPoint, to: CanvasPoint): number => Math.hypot(to.x - from.x, to.y - from.y);
 const samePoint = (first: CanvasPoint, second: CanvasPoint): boolean => first.x === second.x && first.y === second.y;
@@ -98,6 +100,12 @@ const onLine = ({ from, to }: Line, length: number, value: number): CanvasPoint 
 // https://github.com/google/skia/blob/95ee33d7ec7791ab9c071675710a14fe6408ae4f/src/utils/SkDashPath.cpp#L117
 const dashedPieces = (segments: readonly Segment[]): readonly DashPiece[] => {
   const curves = segments.filter((segment) => segment.kind === 'quadratic').length;
+  const lengths = segments.map((segment) => segment.kind === 'line'
+    ? distance(segment.from, segment.to) : quadraticLength(segment, arcError / curves));
+  // Validate the complete route before expanding any long body into paint pieces.
+  if (!Number.isFinite(lengths.reduce((total, length) => total + length, 0))) {
+    throw new Error('Task dependency route has non-finite arc length.');
+  }
   const pieces: DashPiece[] = [];
   let cumulative = 0;
   let pending = [`M${coordinates(segments[0]!.from)}`];
@@ -106,9 +114,8 @@ const dashedPieces = (segments: readonly Segment[]): readonly DashPiece[] => {
     if (pending.length > 1) pieces.push({ kind: 'path', d: pending.join(' '), startDistance: pendingStart });
   };
   for (const [index, segment] of segments.entries()) {
-    const length = segment.kind === 'line' ? distance(segment.from, segment.to) : quadraticLength(segment, arcError / curves);
+    const length = lengths[index]!;
     const endDistance = cumulative + length;
-    if (!Number.isFinite(endDistance)) throw new Error('Task dependency route has non-finite arc length.');
     if (segment.kind === 'line') {
       const start = index === 0 ? cumulative : nextGap(cumulative + joinRoom);
       const end = index === segments.length - 1 ? endDistance : previousGap(endDistance - joinRoom);
@@ -117,7 +124,15 @@ const dashedPieces = (segments: readonly Segment[]): readonly DashPiece[] => {
         const to = onLine(segment, length, end - cumulative);
         if (start > cumulative) pending.push(`L${coordinates(from)}`);
         flush();
-        pieces.push({ kind: 'line', from, length: end - start, cosine: (segment.to.x - segment.from.x) / length, sine: (segment.to.y - segment.from.y) / length, startDistance: start });
+        for (let position = start; position < end;) {
+          const limit = end - position <= maximumLine ? end : previousGap(position + maximumLine);
+          pieces.push({
+            kind: 'line', from: onLine(segment, length, position - cumulative), length: limit - position,
+            cosine: (segment.to.x - segment.from.x) / length, sine: (segment.to.y - segment.from.y) / length,
+            startDistance: position,
+          });
+          position = limit;
+        }
         pending = [`M${coordinates(to)}`]; pendingStart = end;
         if (end < endDistance) pending.push(command(segment));
         cumulative = endDistance;

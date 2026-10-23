@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import { lstat, open, readFile, readdir, realpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verifyStorage, type StorageReceipt } from './storage.mts';
 import type { CommandOptions } from './process.mts';
 
 export type CombinedCommand = (file: string, args: readonly string[], options?: Omit<CommandOptions, 'cwd'> & { cwd?: string }) => Promise<string>;
@@ -59,7 +60,7 @@ const validateTarget = (target: CombinedTarget): void => {
     const owner = `daynight-web-${basename(target.acceptanceDirectory)}`;
     requireValue(target.projectLabel.key === 'io.daynight.acceptance.run' && target.projectLabel.value === owner
       && target.postgresContainer === `${owner}-postgres` && target.storage.kind === 'native'
-      && target.storage.root === join(target.acceptanceDirectory, 'native-storage'));
+      && [join(target.acceptanceDirectory, 'native-storage/data'), join(target.acceptanceDirectory, 'native-storage/mount/data')].includes(target.storage.root));
   } else {
     requireValue(target.target === 'container' && target.projectLabel.key === 'com.docker.compose.project'
       && /^daynight-dev-ci-\d{14}-[1-9]\d*-\d{5}$/.test(target.projectLabel.value)
@@ -170,9 +171,16 @@ export const createAuthCombinedTarget = (target: CombinedTarget, run: CombinedCo
   const verifyDatabase = async (): Promise<void> => {
     const evidence = JSON.parse(await readFile(join(target.acceptanceDirectory, 'evidence.json'), 'utf8')) as {
       schemaVersion: unknown; runId: unknown; source?: { gitSha?: unknown };
+      native?: { storageRoot?: string; storage?: StorageReceipt };
     };
-    requireValue(evidence.schemaVersion === 2 && evidence.runId === basename(target.acceptanceDirectory)
+    requireValue(evidence.schemaVersion === 3 && evidence.runId === basename(target.acceptanceDirectory)
       && evidence.source?.gitSha === target.sourceGitSha);
+    if (target.storage.kind === 'native') {
+      const storage = evidence.native?.storage;
+      requireValue(storage !== undefined && evidence.native?.storageRoot === join(target.acceptanceDirectory, 'native-storage')
+        && storage.directory === evidence.native.storageRoot && storage.root === target.storage.root);
+      await verifyStorage(storage!);
+    }
     const label = await command(['inspect', '--format', `{{index .Config.Labels "${target.projectLabel.key}"}}`, target.postgresContainer]);
     requireValue(label === target.projectLabel.value);
     if (target.target === 'container') requireValue(await command(['inspect', '--format', '{{index .Config.Labels "com.docker.compose.service"}}', target.postgresContainer]) === 'postgres');

@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { getEventListeners } from 'node:events';
-import { mkdir, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { Socket } from 'node:net';
 import { basename, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import type { StorageReceipt } from './storage.mts';
 import { createAuthCombinedTarget, type CombinedCommand, type CombinedTarget } from './auth-combined-target.mts';
 import { AuthCombinedTransportError, startAuthCombinedUpload, type AuthCombinedTransportCategory, type AuthCombinedUploadOptions, type PausedUpload } from './auth-combined-transport.mts';
 import { launchAuthCombinedBrowser, validateAuthCombinedReceipt, type AuthCombinedReceipt, type RestartReceipt } from './auth-combined.mts';
@@ -60,11 +61,21 @@ const withTarget = async (kind: CombinedTarget['target'], action: (fixture: Targ
   const target: CombinedTarget = { target: kind, baseUrl: 'http://127.0.0.1:12345', sourceGitSha, acceptanceDirectory,
     postgresContainer: kind === 'native' ? `${owner}-postgres` : 'a'.repeat(64),
     projectLabel: kind === 'native' ? { key: 'io.daynight.acceptance.run', value: owner } : { key: 'com.docker.compose.project', value: composeProject },
-    database: 'daynight', storage: kind === 'native' ? { kind: 'native', root: join(acceptanceDirectory, 'native-storage') }
+    database: 'daynight', storage: kind === 'native' ? { kind: 'native', root: join(acceptanceDirectory, 'native-storage/data') }
       : { kind: 'container', root: '/var/lib/daynight/storage', containerId: 'b'.repeat(64), imageId: `sha256:${'c'.repeat(64)}` } };
   await mkdir(acceptanceDirectory, { recursive: true });
-  if (target.storage.kind === 'native') await mkdir(target.storage.root);
-  await writeFile(join(acceptanceDirectory, 'evidence.json'), JSON.stringify({ schemaVersion: 2, runId: basename(acceptanceDirectory), source: { gitSha: sourceGitSha } }));
+  let storage: StorageReceipt | undefined;
+  if (target.storage.kind === 'native') {
+    await mkdir(target.storage.root, { recursive: true });
+    const directory = join(acceptanceDirectory, 'native-storage');
+    const identity = await lstat(directory, { bigint: true });
+    storage = { schemaVersion: 1, platform: process.platform as 'linux' | 'darwin', directory,
+      directoryIdentity: { device: String(identity.dev), inode: String(identity.ino) },
+      root: target.storage.root, mode: 'directory', phase: 'ready' };
+    await writeFile(join(directory, 'storage-receipt.json'), JSON.stringify(storage));
+  }
+  await writeFile(join(acceptanceDirectory, 'evidence.json'), JSON.stringify({ schemaVersion: 3, runId: basename(acceptanceDirectory), source: { gitSha: sourceGitSha },
+    ...(storage === undefined ? {} : { native: { storageRoot: storage.directory, storage } }) }));
   const calls: RecordedCommand[] = [];
   const state = { postgresLabel: target.projectLabel.value, service: 'postgres', serverIdentity: `${composeProject}|server|sha256:${'c'.repeat(64)}`,
     files: '0\t0\t-\t0', database: { metadataRows: 0, memberRows: 1, memberVersion: '9223372036854775807' } as unknown,
@@ -137,16 +148,42 @@ test('target controls reject invalid paths, source receipts and changed PostgreS
     const controls = createAuthCombinedTarget(target, run);
     for (const path of ['../escape', '/absolute', 'nested//file', 'nested/./file', 'nested\\file', 'nested/\0file']) await safeFailure(controls.observeUpload({ ...upload, path }));
     assert.equal(calls.length, 0);
-    await writeFile(join(target.acceptanceDirectory, 'evidence.json'), JSON.stringify({ schemaVersion: 2, runId: basename(target.acceptanceDirectory), source: { gitSha: 'f'.repeat(40) } }));
+    const originalEvidence = JSON.parse(await readFile(join(target.acceptanceDirectory, 'evidence.json'), 'utf8'));
+    await writeFile(join(target.acceptanceDirectory, 'evidence.json'), JSON.stringify({ ...originalEvidence, source: { gitSha: 'f'.repeat(40) } }));
     await safeFailure(controls.observeUpload(upload));
     assert.equal(calls.length, 0);
-    await writeFile(join(target.acceptanceDirectory, 'evidence.json'), JSON.stringify({ schemaVersion: 2, runId: basename(target.acceptanceDirectory), source: { gitSha: sourceGitSha } }));
+    await writeFile(join(target.acceptanceDirectory, 'evidence.json'), JSON.stringify(originalEvidence));
     state.postgresLabel = 'another-run';
     await safeFailure(controls.observeUpload(upload));
     assert.equal(calls.some(({ args }) => args[0] === 'exec'), false);
     state.postgresLabel = target.projectLabel.value;
     state.failure = new Error(`${cookieMarker}; Authorization: Bearer ${marker}`);
     await safeFailure(controls.expirePAT({ id: patId, userId }));
+  });
+});
+
+test('native target observation binds the ready storage journal before database commands', async () => {
+  await withTarget('native', async ({ target, run, calls }) => {
+    const path = join(target.acceptanceDirectory, 'evidence.json');
+    const evidence = JSON.parse(await readFile(path, 'utf8'));
+    const controls = createAuthCombinedTarget(target, run);
+    for (const changed of [
+      { ...evidence, schemaVersion: 2 },
+      { ...evidence, native: { ...evidence.native, storage: undefined } },
+      { ...evidence, native: { ...evidence.native, storage: { ...evidence.native.storage, phase: 'planned' } } },
+      { ...evidence, native: { ...evidence.native, storage: { ...evidence.native.storage, directoryIdentity: { device: '0', inode: '0' } } } },
+      { ...evidence, native: { ...evidence.native, storage: { ...evidence.native.storage, root: join(target.acceptanceDirectory, 'native-storage/mount/data') } } },
+    ]) {
+      await writeFile(path, JSON.stringify(changed));
+      await safeFailure(controls.observeUpload(upload));
+      assert.equal(calls.length, 0);
+    }
+    await writeFile(path, JSON.stringify(evidence));
+    await writeFile(join(evidence.native.storageRoot, 'storage-receipt.json'), JSON.stringify({ ...evidence.native.storage, phase: 'planned' }));
+    await safeFailure(controls.observeUpload(upload));
+    assert.equal(calls.length, 0);
+    await writeFile(join(evidence.native.storageRoot, 'storage-receipt.json'), JSON.stringify(evidence.native.storage));
+    assert.deepEqual(await controls.observeUpload(upload), emptyObservation);
   });
 });
 
@@ -382,7 +419,7 @@ const combinedReceipt = (target: CombinedTarget): AuthCombinedReceipt => {
     ...(target.storage.kind === 'container' ? { containerId: target.storage.containerId } : {}) };
   return { schemaVersion: 1, kind: 'auth-combined', target: target.target, sourceGitSha: target.sourceGitSha,
     origin: target.baseUrl, result: 'passed', startedAt: '2026-10-23T00:00:00Z', finishedAt: '2026-10-23T00:00:02Z',
-    cleanup: 'passed', browserCleanup: 'passed', browser: { name: 'chromium', version: '151.0.7922.34', platform: 'linux', executableOverride: false },
+    cleanup: 'passed', browserCleanup: 'passed', browser: { name: 'chromium', version: '151.0.7922.34', platform: process.platform, executableOverride: false },
     installedCli: { version: '0.9.0', sourceGitSha: target.sourceGitSha, entrySha256: '1'.repeat(64), tarballSha256: '2'.repeat(64) },
     checks: receiptChecks.map((name) => ({ name, result: 'passed', details: {} })),
     screenshots: [join(target.acceptanceDirectory, 'auth-combined/sharing.png'), join(target.acceptanceDirectory, 'auth-combined/persistence.png')],
@@ -460,7 +497,7 @@ test('combined browser proof requires Chromium version identity and the native C
     const originalCI = process.env.CI;
     process.env.CI = '1';
     try {
-      for (const browser of [{ ...receipt.browser!, platform: 'darwin' }, { ...receipt.browser!, executableOverride: true }]) {
+      for (const browser of [{ ...receipt.browser!, platform: process.platform === 'darwin' ? 'linux' : 'darwin' }, { ...receipt.browser!, executableOverride: true }]) {
         assert.throws(() => validateAuthCombinedReceipt({ ...receipt, browser }, target), /browser identity is invalid/);
       }
       assert.equal(validateAuthCombinedReceipt(receipt, target), receipt);

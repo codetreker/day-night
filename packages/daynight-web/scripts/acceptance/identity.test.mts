@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import test from 'node:test';
 import { isGroupStopped, processIdentity, requireGroupStopped, requireStopped, sameProcess } from './identity.mts';
 
-test('Linux identity records executable and start time and rejects an active owner', async () => {
+test('native identity records executable and start time and rejects an active owner', async () => {
   const identity = await processIdentity(process.pid);
   assert.notEqual(identity, null);
   assert.ok(sameProcess(identity!, identity));
@@ -65,7 +65,7 @@ test('a process disappearing after its stat file opens is absent', { skip: proce
   }
 });
 
-test('process identity preserves filesystem failures other than process absence', async (context) => {
+test('Linux identity preserves filesystem failures other than process absence', { skip: process.platform !== 'linux' }, async (context) => {
   const failure = Object.assign(new Error('Cannot read process identity.'), { code: 'EACCES' });
   const read = context.mock.method(fs, 'readFile', async () => { throw failure; });
   syncBuiltinESMExports();

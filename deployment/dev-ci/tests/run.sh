@@ -91,6 +91,7 @@ run_case() {
   manifest="$(manifest_for "$FAKE_DOCKER_STATE")"
   assert_contains "$manifest" '"schemaVersion":1'
   assert_contains "$manifest" '"phase":"finished"'
+  [[ ! -e ${manifest%manifest.json}.bootstrap.pipe ]]
   if [[ $scenario == attachment-volume-left ]]; then
     assert_contains "$manifest" '"cleanupResult":"failed"'
     [[ -f $FAKE_DOCKER_STATE/attachment-volume && -f $FAKE_DOCKER_STATE/image ]]
@@ -189,23 +190,30 @@ for callback_status in 0 49; do
 done
 printf '%s\n' 'PASS callback descendants stop after success and failure'
 
-export FAKE_DOCKER_SCENARIO=cancelled
-export FAKE_DOCKER_STATE="$fixture_root/cancelled"
-mkdir "$FAKE_DOCKER_STATE"
-bash "$runner" bash -c 'printf ready > "$FAKE_DOCKER_STATE/child-ready"; sleep 60' > "$FAKE_DOCKER_STATE/output" 2>&1 &
-fixture_pid=$!
-for ((attempt=0; attempt<100; attempt++)); do
-  [[ ! -f $FAKE_DOCKER_STATE/child-ready ]] || break
-  sleep 0.05
+for cancellation_phase in callback bootstrap; do
+  export FAKE_DOCKER_SCENARIO="cancelled-$cancellation_phase"
+  export FAKE_DOCKER_STATE="$fixture_root/$FAKE_DOCKER_SCENARIO"
+  mkdir "$FAKE_DOCKER_STATE"
+  bash "$runner" bash -c 'printf ready > "$FAKE_DOCKER_STATE/child-ready"; sleep 60' > "$FAKE_DOCKER_STATE/output" 2>&1 &
+  fixture_pid=$!
+  for ((attempt=0; attempt<100; attempt++)); do
+    [[ ! -f $FAKE_DOCKER_STATE/child-ready ]] || break
+    sleep 0.05
+  done
+  [[ -f $FAKE_DOCKER_STATE/child-ready ]]
+  kill -TERM "$fixture_pid"
+  status=0
+  wait "$fixture_pid" || status=$?
+  fixture_pid=''
+  [[ $status -eq 143 ]]
+  assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"result":"cancelled"'
+  assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"cleanupResult":"passed"'
+  [[ ! -f $FAKE_DOCKER_STATE/resources && ! -f $FAKE_DOCKER_STATE/image ]]
+  cancelled_manifest="$(manifest_for "$FAKE_DOCKER_STATE")"
+  [[ ! -e ${cancelled_manifest%manifest.json}.bootstrap.pipe ]]
+  while read -r process_pid process_command; do
+    [[ $process_command != "tee ${cancelled_manifest%manifest.json}bootstrap.log" ]]
+  done < <(ps -axo pid=,command=)
+  printf 'PASS %s signal cancellation\n' "$cancellation_phase"
 done
-[[ -f $FAKE_DOCKER_STATE/child-ready ]]
-kill -TERM "$fixture_pid"
-status=0
-wait "$fixture_pid" || status=$?
-fixture_pid=''
-[[ $status -eq 143 ]]
-assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"result":"cancelled"'
-assert_contains "$(manifest_for "$FAKE_DOCKER_STATE")" '"cleanupResult":"passed"'
-[[ ! -f $FAKE_DOCKER_STATE/resources && ! -f $FAKE_DOCKER_STATE/image ]]
-printf '%s\n' 'PASS signal cancellation'
 printf '%s\n' 'All dev-ci runner tests passed.'

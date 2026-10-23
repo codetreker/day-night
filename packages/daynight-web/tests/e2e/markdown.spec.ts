@@ -154,7 +154,7 @@ test('task-description-markdown', { annotation: { type: 'scenario', description:
     const planLink = description.getByRole('link', { name: '方案与验收', exact: true });
     await expect(planLink).toHaveAttribute('href', attachmentPreviewUrl(project.id, task.id, 'plan.md'));
     const readerPromise = page.context().waitForEvent('page');
-    await description.getByRole('link', { name: '交互原型', exact: true }).click({ modifiers: ['Control'] });
+    await description.getByRole('link', { name: '交互原型', exact: true }).click({ modifiers: ['ControlOrMeta'] });
     const reader = await readerPromise;
     try {
       await reader.waitForURL(`**${attachmentPreviewUrl(project.id, task.id, 'site/index.html')}`);

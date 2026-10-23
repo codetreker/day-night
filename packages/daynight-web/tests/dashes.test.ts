@@ -86,6 +86,34 @@ describe('canonical rounded dependency routes and native dashes', () => {
       covered += length;
     }
   });
+  it.each([
+    [{ x: 0, y: 0 }, { x: 100000, y: 0 }],
+    [{ x: 12000, y: 90000 }, { x: -48000, y: 10000 }],
+  ])('bounds long straight paint pieces without omitting route geometry (%j → %j)', (from, to) => {
+    const pieces = verify([from, to]);
+    expect(pieces.length).toBeGreaterThan(1);
+    for (const piece of pieces) {
+      expect(piece.kind).toBe('line');
+      if (piece.kind === 'line') expect(piece.length).toBeLessThanOrEqual(8192);
+    }
+  });
+  it('preserves canonical rounded bends and a short final line across bounded gap seams', () => {
+    const points = [
+      { x: 0, y: 0 }, { x: 8192.01, y: 0 },
+      { x: 8192.01, y: 20000 }, { x: -10000, y: 20000 },
+    ];
+    const pieces = verify(points);
+    expect(pieces.some((piece) => piece.kind === 'path')).toBe(true);
+    for (const piece of pieces) {
+      if (piece.kind === 'line') expect(piece.length).toBeLessThanOrEqual(8192);
+    }
+    const straight = verify(points.slice(0, 2));
+    expect(straight).toHaveLength(2);
+    expect(straight[1]!.startDistance).toBe(8188);
+    expect(straight[1]!.kind).toBe('line');
+    if (straight[1]!.kind === 'line') expect(straight[1]!.length).toBeCloseTo(4.01);
+    expect(verify([{ x: 0, y: 0 }, { x: 8192, y: 0 }])).toHaveLength(1);
+  });
   it('retains 68 million units of diagonal geometry without a long native dashed path', () => {
     const pieces = verify([{ x: 0, y: 0 }, { x: 40_800_000, y: 54_400_000 }, { x: 40_800_100, y: 54_400_000 }]);
     expect(pieces[0]!.kind).toBe('line');

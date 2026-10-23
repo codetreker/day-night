@@ -140,7 +140,8 @@ export const validateAuthCombinedReceipt = (value: unknown, target: CombinedTarg
   check(receipt.restart?.origin === target.baseUrl && receipt.restart.before.pid !== receipt.restart.after.pid
     && receipt.restart.before.start !== receipt.restart.after.start, 'Combined restart did not replace the owned process.');
   check(receipt.browser?.name === 'chromium' && /^\d+\.\d+\.\d+\.\d+$/.test(receipt.browser.version)
-    && (!process.env.CI || (receipt.browser.platform === 'linux' && receipt.browser.executableOverride === false)), 'Combined browser identity is invalid.');
+    && receipt.browser.platform === process.platform && ['linux', 'darwin'].includes(receipt.browser.platform)
+    && (!process.env.CI || receipt.browser.executableOverride === false), 'Combined browser identity is invalid.');
   check(receipt.installedCli.sourceGitSha === target.sourceGitSha && receipt.screenshots.length >= 2, 'Combined CLI source or screenshot evidence is missing.');
   return receipt;
 };
@@ -297,7 +298,7 @@ export const runAuthCombined = async (options: AuthCombinedOptions): Promise<Aut
     // configures only Chromium. The preceding browser/CLI phase has drained;
     // concurrent container preparation already runs in a separate process.
     browser = await launchAuthCombinedBrowser(join(options.target.acceptanceDirectory, '../..'), async () => chromium.launch({
-      headless: true, channel: 'chromium', env: { ...process.env, TMPDIR: '.tmp' },
+      headless: true, channel: 'chromium', env: { ...process.env, TMPDIR: '.tmp', DAYNIGHT_ACCEPTANCE_DIRECTORY: options.directory },
       ...(process.env.DAYNIGHT_BROWSER_EXECUTABLE === undefined ? {} : { executablePath: process.env.DAYNIGHT_BROWSER_EXECUTABLE }) }));
     await recordBrowserOwnership(browser, options.directory);
     receipt.browser = { name: browser.browserType().name(), version: browser.version(), platform: process.platform, executableOverride: process.env.DAYNIGHT_BROWSER_EXECUTABLE !== undefined }; await save();

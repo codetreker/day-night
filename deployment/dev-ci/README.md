@@ -8,6 +8,10 @@ build, embedded Go assets, strict loopback server listener and nonroot runtime
 as the normal deployment. Trusted same-origin executable HTML previews retain
 their existing iframe, relative-resource and keyboard behavior.
 
+For an npm mirror, export `DAYNIGHT_NPM_REGISTRY` before invoking the runner;
+its build argument and default are shared with the
+[localhost deployment](../localhost/README.md#configure-and-start).
+
 The runner requires Bash, standard shell utilities, Node.js 24, Docker Engine 28
 or newer, Linux containers and Docker Compose 2.20 or newer. Linux Docker engines
 on `amd64` and `arm64`, including Docker Desktop Linux containers on macOS, are
