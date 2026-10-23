@@ -29,6 +29,7 @@ export type GraphTask = {
   readonly dependsOn: readonly string[];
   readonly blockedBy: readonly string[];
   readonly ready: boolean;
+  readonly allowAgents: boolean;
   readonly startedAt: string | null;
   readonly completedAt: string | null;
   readonly createdAt: string;
@@ -72,6 +73,7 @@ export type TaskDetail = {
   readonly dependsOn: readonly string[];
   readonly blockedBy: readonly string[];
   readonly ready: boolean;
+  readonly allowAgents: boolean;
   readonly startedAt: string | null;
   readonly completedAt: string | null;
   readonly createdAt: string;

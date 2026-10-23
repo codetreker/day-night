@@ -42,6 +42,7 @@ export type Task = {
   readonly title: string;
   readonly description: string;
   readonly status: TaskStatus;
+  readonly allowAgents: boolean;
   readonly startedAt: string | null;
   readonly completedAt: string | null;
   readonly version: bigint;
@@ -85,13 +86,14 @@ export type CreateTaskInput = {
 };
 export type UpdateTaskInput = {
   readonly version: bigint;
+  readonly allowAgents?: boolean;
   readonly title?: string;
   readonly description?: string;
   readonly properties?: TaskProperties;
   readonly dependsOn?: readonly string[];
 };
 export type TaskActionInput = { readonly version: bigint };
-export type TaskFilters = { readonly status?: TaskStatus; readonly ready?: boolean };
+export type TaskFilters = { readonly status?: TaskStatus; readonly ready?: boolean; readonly allowAgents?: boolean };
 export type ErrorDetails = {
   readonly taskIds?: readonly string[];
   readonly nodeCount?: number;

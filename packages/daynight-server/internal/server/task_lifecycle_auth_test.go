@@ -35,8 +35,11 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 		`{"title":"Member workflow","description":"Original"}`, origin, http.StatusCreated)
 	task := identityDecode[api.Task](t, data)
 	_, data = identityRequest(t, member, http.MethodPatch, integration.server.URL+taskPath(task),
-		jsonBody(t, map[string]any{"version": task.Version, "description": "Revised by a member"}), origin, http.StatusOK)
+		jsonBody(t, map[string]any{"version": task.Version, "description": "Revised by a member", "allowAgents": true}), origin, http.StatusOK)
 	task = identityDecode[api.Task](t, data)
+	if !task.AllowAgents {
+		t.Fatal("ordinary member could not enable automatic execution")
+	}
 	_, data = identityRequest(t, member, http.MethodPost, integration.server.URL+"/api/v1/me/tokens", `{"name":"Member lifecycle","days":1}`, origin, http.StatusCreated)
 	token := identityDecode[api.CreatedPersonalAccessToken](t, data)
 	bearer := map[string]string{"Authorization": "Bearer " + token.Token}
@@ -52,6 +55,15 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 			t.Fatalf("lifecycle refusal changed error code: %s", data)
 		}
 		return data
+	}
+	body := jsonBody(t, map[string]any{"version": task.Version, "allowAgents": false})
+	request(t, anonymous, http.MethodPatch, taskPath(task), body, nil, http.StatusUnauthorized, "unauthenticated")
+	request(t, outsider, http.MethodPatch, taskPath(task), body, origin, http.StatusNotFound, "not_found")
+	request(t, member, http.MethodPatch, taskPath(task), body, map[string]string{"Origin": "https://foreign.example"}, http.StatusForbidden, "forbidden")
+	data = request(t, anonymous, http.MethodPatch, taskPath(task), body, bearer, http.StatusOK, "")
+	task = identityDecode[api.Task](t, data)
+	if task.AllowAgents {
+		t.Fatal("member PAT could not disable permission")
 	}
 	for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"unapprove", "proposed"}, {"approve", "todo"}, {"claim", "in_progress"}, {"complete", "done"}} {
 		t.Run(step.action, func(t *testing.T) {
@@ -72,7 +84,7 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 			headers["X-Request-ID"] = "lifecycle-member-" + step.action
 			data = request(t, browser, http.MethodPost, path, body, headers, http.StatusOK, "")
 			changed := identityDecode[api.Task](t, data)
-			if changed.Status != step.status || changed.Version != task.Version+1 {
+			if changed.Status != step.status || changed.Version != task.Version+1 || changed.AllowAgents != task.AllowAgents {
 				t.Fatalf("ordinary member could not perform %s: %+v", step.action, changed)
 			}
 			task = changed

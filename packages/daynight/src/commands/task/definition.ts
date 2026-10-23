@@ -8,6 +8,7 @@ const titleOption: CommandOption = { names: ["--title"], description: "Task titl
 const descriptionOption: CommandOption = { names: ["--description"], description: "Task description; an empty value clears it", value: { name: "description", kind: "text", allowEmpty: true } };
 const dependencyOption: CommandOption = { names: ["--depends-on"], description: "Direct dependency task UUID; repeat to supply the full set", value: { name: "task-id", kind: "text" }, repeatable: true };
 const statusOption: CommandOption = { names: ["--status"], description: "Task status", value: { name: "status", kind: "text", choices: ["proposed", "todo", "in_progress", "done"] } };
+const allowAgentsOption: CommandOption = { names: ["--allow-agents"], description: "Automatic-execution permission", value: { name: "true|false", kind: "text", choices: ["true", "false"] } };
 const versionOption: CommandOption = { names: ["--if-version"], description: "Use this expected task version without reading a newer version", value: { name: "version", kind: "text" } };
 const pullRequestOptions: readonly CommandOption[] = [
   { names: ["--pull-request-url"], description: "PR URL text; repeat for the complete list", value: { name: "text", kind: "text", allowEmpty: true }, repeatable: true },
@@ -23,19 +24,19 @@ export const taskDefinition: CommandDefinition = {
       name: "create",
       description: "Create a proposed task with optional dependencies and PR references",
       options: [{ ...titleOption, required: true }, descriptionOption, dependencyOption, ...pullRequestOptions, projectOption, helpOption],
-      details: "New tasks start in proposed and require approval before they can be claimed. Repeated --depends-on values preserve the supplied dependency set.\nPR URL and title counts must match; the nth URL pairs with the nth title. Empty values are accepted, and all text is stored as supplied.",
+      details: "New tasks start in proposed with automatic execution disabled and require approval before they can be claimed. Repeated --depends-on values preserve the supplied dependency set.\nPR URL and title counts must match; the nth URL pairs with the nth title. Empty values are accepted, and all text is stored as supplied.",
     },
     {
       name: "list",
       description: "List unfinished tasks, with in-progress and ready tasks first",
-      options: [{ names: ["--all"], description: "Include completed tasks; conflicts with --status" }, statusOption, { names: ["--ready"], description: "Include only tasks ready to start" }, projectOption, listJsonOption, helpOption],
-      details: "By default, exclude done tasks. Use --all for every status or --status for a specific status.\nCombine --ready with the selected statuses using AND. Read every page before printing.\nOrder in_progress first, then ready todo, blocked todo, proposed, and done tasks; preserve server order within each group.\nText lists omit description, version, and timestamps. --json omits description and preserves every other task field with the same filtering and ordering.",
+      options: [{ names: ["--all"], description: "Include completed tasks; conflicts with --status" }, statusOption, { names: ["--ready"], description: "Include only tasks ready to start" }, allowAgentsOption, projectOption, listJsonOption, helpOption],
+      details: "By default, exclude done tasks. Use --all for every status or --status for a specific status.\nCombine --ready and --allow-agents with the selected statuses using AND. Read every page before printing.\nOrder in_progress first, then ready todo, blocked todo, proposed, and done tasks; preserve server order within each group.\nText lists omit description, version, and timestamps. --json omits description and preserves every other task field with the same filtering and ordering.",
     },
     {
       name: "ready",
       description: "Show the first ready tasks in the project",
-      options: [{ names: ["--limit"], description: "Maximum number of tasks to return, from 1 to 100 (default: 10)", value: { name: "count", kind: "text" } }, projectOption, jsonOption, helpOption],
-      details: "Read one bounded page ordered by creation time, then task UUID, ascending. A task is ready when it is todo and every dependency is done.",
+      options: [{ names: ["--limit"], description: "Maximum number of tasks to return, from 1 to 100 (default: 10)", value: { name: "count", kind: "text" } }, allowAgentsOption, projectOption, jsonOption, helpOption],
+      details: "Read one bounded page ordered by creation time, then task UUID, ascending. A task is ready when it is todo and every dependency is done. --allow-agents filters before the page limit and does not change readiness.",
     },
     {
       name: "show",
@@ -47,13 +48,13 @@ export const taskDefinition: CommandDefinition = {
       name: "update",
       description: "Atomically update task fields, dependencies, and PR references",
       arguments: [taskArgument],
-      options: [titleOption, descriptionOption, dependencyOption,
+      options: [titleOption, descriptionOption, allowAgentsOption, dependencyOption,
         { names: ["--clear-dependencies"], description: "Clear the complete dependency set" },
         ...pullRequestOptions,
         { names: ["--clear-pull-requests"], description: "Clear the complete PR reference list" },
         versionOption,
         projectOption, helpOption],
-      details: "Provide at least one changed field. Use daynight task approve, unapprove, claim, or complete to change status.\n--depends-on replaces all dependencies; it conflicts with --clear-dependencies.\nPR URL and title counts must match; the nth URL pairs with the nth title. Pairs replace the complete list; empty values are accepted. --clear-pull-requests conflicts with either PR option. Omitted PR options preserve the current list.\nWithout --if-version, read the current version before submitting the update. Conflicts are not retried.",
+      details: "Provide at least one changed field. --allow-agents changes the automatic-execution permission independently of approval; actual changes are locked during in_progress. Use daynight task approve, unapprove, claim, or complete to change status.\n--depends-on replaces all dependencies; it conflicts with --clear-dependencies.\nPR URL and title counts must match; the nth URL pairs with the nth title. Pairs replace the complete list; empty values are accepted. --clear-pull-requests conflicts with either PR option. Omitted PR options preserve the current list.\nWithout --if-version, read the current version before submitting the update. Conflicts are not retried.",
     },
     ...([
       { name: "approve", description: "Approve a proposed task, moving it to todo", rule: "Unfinished prerequisites are allowed." },

@@ -9,6 +9,7 @@ type GraphTask struct {
 	Status         TaskStatus
 	DependsOn      []string
 	BlockedBy      []string
+	AllowAgents    bool
 	Ready          bool
 	CreatedAt      time.Time
 	UpdatedAt      time.Time

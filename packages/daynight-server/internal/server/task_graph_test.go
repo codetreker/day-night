@@ -56,7 +56,7 @@ func TestTaskGraphHTTPCompleteProjectionAndSafeLogs(t *testing.T) {
 	want := []api.Task{root, active, ready, blocked, done}
 	for index, task := range graph.Tasks {
 		expected := want[index]
-		if task.ID != expected.ID || task.Status != expected.Status || task.Ready != expected.Ready ||
+		if task.ID != expected.ID || task.Status != expected.Status || task.Ready != expected.Ready || task.AllowAgents != expected.AllowAgents ||
 			!slices.Equal(task.DependsOn, expected.DependsOn) || !slices.Equal(task.BlockedBy, expected.BlockedBy) ||
 			task.DependsOn == nil || task.BlockedBy == nil || task.CreatedAt != expected.CreatedAt || task.UpdatedAt != expected.UpdatedAt ||
 			task.CreatedAt.Location() != time.UTC || task.UpdatedAt.Location() != time.UTC ||
@@ -78,7 +78,7 @@ func TestTaskGraphHTTPCompleteProjectionAndSafeLogs(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, task := range raw.Tasks {
-		if len(task) != 11 {
+		if len(task) != 12 {
 			t.Fatalf("graph task exposes unexpected fields: %+v", task)
 		}
 		for _, field := range []string{"title", "description", "version", "projectId"} {

@@ -29,6 +29,7 @@ type CreateTask struct {
 }
 
 type UpdateTask struct {
+	AllowAgents *bool
 	Version     int64
 	Title       *string
 	Description *string
@@ -38,8 +39,9 @@ type UpdateTask struct {
 
 type TaskListRequest struct {
 	PageRequest
-	Status *core.TaskStatus
-	Ready  *bool
+	Status      *core.TaskStatus
+	Ready       *bool
+	AllowAgents *bool
 }
 
 type TaskPage struct {
@@ -67,7 +69,7 @@ func (s *Tasks) Create(ctx context.Context, principal core.Principal, projectID 
 	if err != nil {
 		return core.Task{}, fmt.Errorf("generate task ID: %w", err)
 	}
-	values := store.TaskWrite{Title: input.Title, Description: input.Description, Status: core.TaskProposed, Properties: core.TaskProperties{PullRequests: append([]core.PullRequestProperty{}, input.Properties.PullRequests...)}}
+	values := store.TaskWrite{AllowAgents: false, Title: input.Title, Description: input.Description, Status: core.TaskProposed, Properties: core.TaskProperties{PullRequests: append([]core.PullRequestProperty{}, input.Properties.PullRequests...)}}
 	values.DependsOn, err = canonicalDependencies(input.DependsOn, id.String())
 	if err != nil {
 		return core.Task{}, err
@@ -98,7 +100,7 @@ func (s *Tasks) Update(ctx context.Context, principal core.Principal, projectID,
 	if input.Version < 1 {
 		return core.Task{}, invalidInput("Version must be a positive integer.")
 	}
-	if input.Title == nil && input.Description == nil && input.DependsOn == nil && input.Properties.PullRequests == nil {
+	if input.Title == nil && input.Description == nil && input.DependsOn == nil && input.Properties.PullRequests == nil && input.AllowAgents == nil {
 		return core.Task{}, invalidInput("At least one task field must be provided.")
 	}
 	return s.write(ctx, principal, projectID, func(tx *store.ProjectTx) (taskMutation, error) {
@@ -116,10 +118,13 @@ func (s *Tasks) Update(ctx context.Context, principal core.Principal, projectID,
 		if err != nil {
 			return taskMutation{}, err
 		}
+		if current.AllowAgents != values.AllowAgents && current.Status == core.TaskInProgress {
+			return taskMutation{}, &Fault{Code: "invalid_transition", Message: "Automatic execution permission cannot change while the task is in progress."}
+		}
 		if err := validateCandidate(ctx, tx, id, values); err != nil {
 			return taskMutation{}, err
 		}
-		changed := current.Title != values.Title || current.Description != values.Description ||
+		changed := current.AllowAgents != values.AllowAgents || current.Title != values.Title || current.Description != values.Description ||
 			!slices.Equal(current.DependsOn, values.DependsOn) || !slices.Equal(current.Properties.PullRequests, values.Properties.PullRequests)
 		return taskMutation{id: id, current: current, values: values, changed: changed}, nil
 	})
@@ -166,7 +171,10 @@ func (s *Tasks) write(ctx context.Context, principal core.Principal, projectID s
 }
 
 func taskCandidate(current core.Task, input UpdateTask) (store.TaskWrite, error) {
-	values := store.TaskWrite{Title: current.Title, Description: current.Description, Status: current.Status, DependsOn: current.DependsOn, Properties: current.Properties}
+	values := store.TaskWrite{AllowAgents: current.AllowAgents, Title: current.Title, Description: current.Description, Status: current.Status, DependsOn: current.DependsOn, Properties: current.Properties}
+	if input.AllowAgents != nil {
+		values.AllowAgents = *input.AllowAgents
+	}
 	if input.Title != nil {
 		values.Title = *input.Title
 	}

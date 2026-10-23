@@ -19,11 +19,12 @@ func TestProjectSettingsMigrationPreservesHistoricalMetadataAndTiming(t *testing
 	}
 	database := &Store{Pool: pool}
 	project := projectBeforeSettings(t, database, 1)
-	task := queryTask(t, database, project.ID, 11, core.TaskDone)
+	mustQueryExec(t, database, `INSERT INTO tasks (id,project_id,title,status) VALUES ($1,$2,'Historical task','done')`, queryID(11), project.ID)
+	task := snapshotTaskBeforePermission(t, database, project.ID, queryID(11))
 	stamp := time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC)
 	mustQueryExec(t, database, `UPDATE projects SET created_at=$2,updated_at=$3 WHERE id=$1`, project.ID, stamp, stamp.Add(time.Hour))
 	mustQueryExec(t, database, `UPDATE tasks SET started_at=$2,completed_at=$3 WHERE id=$1`, task.ID, stamp, stamp.Add(time.Minute))
-	task = snapshotTask(t, database, project.ID, task.ID)
+	task = snapshotTaskBeforePermission(t, database, project.ID, task.ID)
 	if err := migrate(ctx, pool, schemaMigrations); err != nil {
 		t.Fatal(err)
 	}

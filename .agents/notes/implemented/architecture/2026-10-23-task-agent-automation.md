@@ -17,9 +17,10 @@ The adopted [requirements](../../../../docs/spec/daynight-worker.md) and
 [architecture](../../../../docs/design/daynight-worker.md) use a top-level
 boolean `allowAgents`. This decision supersedes the Human/Agent role
 portion of the [worker design](2026-10-22-worker-design.md); its service/worker/
-Herdr/agent responsibilities and recovery rules remain unchanged. This note
-records the adopted design. Production permission controls and worker claim
-integration remain implementation work.
+Herdr/agent responsibilities and recovery rules remain unchanged. The service
+persists and exposes the permission, the CLI updates and filters it, and the Web
+implements the confirmed switch. Platform restrictions, worker-specific claim
+and foreground runtime integration remain separate implementation work.
 
 New tasks always start with `allowAgents=false`; a database migration gives
 existing tasks `true` while preserving their other fields, versions and business
@@ -75,21 +76,29 @@ field would not establish that the caller is physically human.
 ## Consequences
 
 Task resources, graph projections, strict readers, filters and update writers
-must all carry the boolean explicitly. The database migration owns old data;
+carry the boolean explicitly. The database migration owns old data;
 runtime readers do not invent a default for missing fields. The flag is applied
-before candidate pagination and included in cursor scope, then rechecked inside
-the worker-claim transaction. A local filter on a bounded page cannot establish
-that no eligible work exists.
+before candidate pagination and included in cursor scope. Future worker claim
+must recheck it inside the claim transaction. A local filter on a bounded page
+cannot establish that no eligible work exists.
 
 Switch changes share the task write gate with approval and withdrawal. Version
 conflicts require a fresh decision, confirmed failures retain the prior value,
 and uncertain writes remain unresolved until actual state is observed. Those
-guarantees, existing task/attachment state retention, bilingual labels,
-keyboard operation and fixed graph geometry belong to the permission delivery;
-they are not deferred to worker integration.
+guarantees accompany the implemented permission controls, existing task/attachment
+state retention, bilingual labels, keyboard operation and fixed graph geometry.
 
-Permission acceptance covers the field, migration, queries, confirmed controls
-and existing manual lifecycle independently of worker-specific endpoints.
-Automatic claim transaction checks, controlled coordinator integration and
-independent live cross-platform execution require their own runtime evidence.
-Design delivery does not establish those capabilities.
+The CLI exposes `--allow-agents true|false` on update, list and bounded ready
+queries. New automatic candidate selection uses true, including fallback
+inventories; workflows may not enable the flag themselves. Explicit single-task
+execution remains available regardless of it. Human output displays the
+permission and JSON retains the required boolean.
+
+Permission acceptance covers migration/defaults, strict resources, both filter
+values and cursor scopes, full-precision versions, no-op/in-progress rules,
+claim races, confirmed controls and existing manual lifecycle independently of
+worker-specific endpoints. Browser acceptance exercises the same permission
+PATCH through a real service, including lost responses and cross-close request
+ownership. Automatic claim transaction checks, controlled coordinator
+integration and independent live cross-platform execution still require their
+own runtime evidence.

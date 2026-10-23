@@ -19,8 +19,9 @@ worker with four responsibilities: the service owns eligibility and
 exclusive claims; the worker owns scheduling, resources, recovery and completion
 verification; Herdr owns agent terminals and sessions; the agent owns the task's
 delivery loop. This note records the delivered design decision. The worker
-runtime, automatic-execution permission/platform controls and claim integration
-remain implementation work.
+runtime, platform controls and unique worker-claim integration remain
+implementation work. Automatic-execution permission persistence, filtering and
+service/CLI/Web controls are implemented under the permission decision below.
 
 Eligibility combines `allowAgents=true`, ready state, optional platform
 compatibility and the absence of an active claim. The service checks these

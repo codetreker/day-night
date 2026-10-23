@@ -1,6 +1,6 @@
 import type { ApprovalAction, GraphTask } from "../../api/types";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
-import { canApprove, canUnapprove, useTaskDetailSessions, type TaskDetailSessions } from "./TaskDetailSession";
+import { canApprove, canSetAgentPermission, canUnapprove, useTaskDetailSessions, type TaskDetailSessions } from "./TaskDetailSession";
 
 export const useTaskDetail = (projectId: string, taskId: string, revision: number, observedTask: GraphTask | undefined) => {
   const sessions = useTaskDetailSessions();
@@ -9,7 +9,7 @@ export const useTaskDetail = (projectId: string, taskId: string, revision: numbe
   const subscribe = useCallback((listener: () => void) => sessions.subscribe(projectId, taskId, listener), [sessions, projectId, taskId]);
   const snapshot = useCallback(() => sessions.snapshot(projectId, taskId), [sessions, projectId, taskId]);
   const state = useSyncExternalStore(subscribe, snapshot);
-  const blockedRead = state.approval.phase === "pending" || state.approval.phase === "unknown" || state.approval.reconciling;
+  const blockedRead = state.mutation.phase === "pending" || state.mutation.phase === "unknown" || state.mutation.reconciling;
   useEffect(() => {
     sessions.observe(projectId, taskId, observedTask);
     const refresh = opened.current?.sessions === sessions && opened.current.projectId === projectId && opened.current.taskId === taskId;
@@ -21,15 +21,16 @@ export const useTaskDetail = (projectId: string, taskId: string, revision: numbe
   }, [sessions, projectId, taskId, revision, observedTask, blockedRead]);
   useEffect(() => () => { sessions.releaseRead(projectId, taskId); }, [sessions, projectId, taskId]);
   const retry = useCallback(() => {
-    const approval = sessions.snapshot(projectId, taskId).approval;
-    if (approval.phase === "unknown" || approval.reconciliationError !== null) sessions.reconcile(projectId, taskId);
+    const mutation = sessions.snapshot(projectId, taskId).mutation;
+    if (mutation.phase === "unknown" || mutation.reconciliationError !== null) sessions.reconcile(projectId, taskId);
     else sessions.load(projectId, taskId, revision, "refresh");
   }, [sessions, projectId, taskId, revision]);
   const approve = useCallback(() => { sessions.approve(projectId, taskId); }, [sessions, projectId, taskId]);
   const performApproval = useCallback((action: ApprovalAction, version: bigint) => { sessions.performApproval(projectId, taskId, action, version); }, [sessions, projectId, taskId]);
+  const setAgentPermission = useCallback((allowAgents: boolean, version: bigint) => { sessions.setAgentPermission(projectId, taskId, allowAgents, version); }, [sessions, projectId, taskId]);
   const reconcile = useCallback(() => { sessions.reconcile(projectId, taskId); }, [sessions, projectId, taskId]);
-  const visible = sameIdentity || state.approval.phase !== "idle" ? state
+  const visible = sameIdentity || state.mutation.phase !== "idle" ? state
     : { ...state, detail: null, loadedRevision: null, status: "loading" as const, refreshing: false, error: null };
   const requiresFreshRead = sessions.requiresFreshRead(projectId, taskId, observedTask);
-  return { ...visible, requiresFreshRead, retry, approve, performApproval, reconcile, canApprove: canApprove({ ...visible, requiresFreshRead }), canUnapprove: canUnapprove({ ...visible, requiresFreshRead }) };
+  return { ...visible, requiresFreshRead, retry, approve, performApproval, setAgentPermission, reconcile, canSetAgentPermission: canSetAgentPermission({ ...visible, requiresFreshRead }), canApprove: canApprove({ ...visible, requiresFreshRead }), canUnapprove: canUnapprove({ ...visible, requiresFreshRead }) };
 };

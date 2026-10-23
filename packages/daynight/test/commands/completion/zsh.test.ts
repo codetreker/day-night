@@ -5,6 +5,14 @@ import { renderZshCompletion } from "../../../src/commands/completion/zsh.js";
 import { taskDefinition } from "../../../src/commands/task/definition.js";
 
 describe("native zsh completion", () => {
+  it.each(["update", "list", "ready"])("completes explicit automatic-execution booleans for %s", (name) => {
+    const script = renderZshCompletion(taskDefinition.commands!.find((command) => command.name === name)!);
+    expect(script).toContain("--allow-agents");
+    expect(script).toContain("('\\''true'\\'' '\\''false'\\'')");
+    const create = renderZshCompletion(taskDefinition.commands!.find((command) => command.name === "create")!);
+    expect(create).not.toContain("--allow-agents");
+  });
+
   it("offers the server token stdin option without a token value completion", () => {
     const script = renderZshCompletion(commandTree);
     expect(script).toContain("(--server-token-stdin)--server-token-stdin[Read one personal access token from piped stdin]");

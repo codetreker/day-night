@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef } from 'react';
 import { ApiError } from '../../api/client';
 import type { TaskDetail } from '../../api/types';
 import { useI18n } from '../../i18n/LocaleProvider';
-import type { ApprovalState } from './TaskDetailSession';
+import type { TaskMutationState } from './TaskDetailSession';
 
 const ApprovalError = ({ error }: { readonly error: unknown }) => {
   const { messages: { inspection: { approval: m }, common } } = useI18n();
@@ -16,7 +16,7 @@ const ApprovalError = ({ error }: { readonly error: unknown }) => {
 
 export const TaskApproval = ({ detail, approval, onReconcile }: {
   readonly detail: TaskDetail | null;
-  readonly approval: ApprovalState;
+  readonly approval: TaskMutationState;
   readonly onReconcile: () => void;
 }) => {
   const { messages: { inspection: { approval: m } } } = useI18n();
@@ -24,7 +24,7 @@ export const TaskApproval = ({ detail, approval, onReconcile }: {
   useLayoutEffect(() => {
     if (approval.phase !== 'idle' && document.activeElement === document.body) message.current?.focus();
   }, [approval.phase, detail?.status]);
-  if (approval.phase === 'idle') return null;
+  if (approval.phase === 'idle' || approval.operation?.action === 'allowAgents') return null;
   const busy = approval.phase === 'pending' || approval.reconciling;
   const unresolved = approval.phase === 'unknown' || approval.reconciliationError !== null;
   const summary = approval.reconciling ? m.checking : approval.phase === 'pending' ? m.pending

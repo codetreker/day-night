@@ -23,6 +23,7 @@ type CreateTaskRequest struct {
 }
 
 type UpdateTaskRequest struct {
+	AllowAgents *bool                `json:"allowAgents,omitempty"`
 	Properties  *TaskPropertiesPatch `json:"properties,omitempty"`
 	Version     int64                `json:"version"`
 	Title       *string              `json:"title,omitempty"`
@@ -48,6 +49,7 @@ type Task struct {
 	CompletedAt *time.Time     `json:"completedAt"`
 	DependsOn   []string       `json:"dependsOn"`
 	BlockedBy   []string       `json:"blockedBy"`
+	AllowAgents bool           `json:"allowAgents"`
 	Ready       bool           `json:"ready"`
 }
 

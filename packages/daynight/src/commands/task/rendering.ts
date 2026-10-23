@@ -29,6 +29,7 @@ export const renderTask = (task: Task): string => [
   `Description: ${terminalText(task.description)}`,
   ...taskPullRequests(task),
   `Status: ${terminalText(task.status)}`,
+  `Automatic execution: ${task.allowAgents}`,
   `Version: ${task.version}`,
   ...taskDependencies(task),
   `Created: ${terminalText(task.createdAt)}`,
@@ -42,6 +43,7 @@ export const renderTaskSummaryList = (tasks: readonly Task[]): string => tasks.l
   ...taskIdentity(task),
   ...taskPullRequests(task),
   `Status: ${terminalText(task.status)}`,
+  `Automatic execution: ${task.allowAgents}`,
   ...taskDependencies(task),
   "",
 ].join("\n")).join("\n");
@@ -51,6 +53,7 @@ const renderGraphTask = (task: GraphTask): string => [
   `Title preview: ${terminalText(task.titlePreview)}`,
   `Title truncated: ${task.titleTruncated}`,
   `Status: ${terminalText(task.status)}`,
+  `Automatic execution: ${task.allowAgents}`,
   `Ready: ${task.ready}`,
   `Depends on: ${identifiers(task.dependsOn)}`,
   `Blocked by: ${identifiers(task.blockedBy)}`,

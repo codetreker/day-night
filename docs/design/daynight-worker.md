@@ -1,6 +1,6 @@
 # Worker 架构设计
 
-状态：架构方案已确认，运行时尚未实现。本文拥有机制；[需求](../spec/daynight-worker.md)拥有产品行为，[设计决策](../../.agents/notes/implemented/architecture/2026-10-22-worker-design.md)保留真实备选方案。
+状态：自动执行许可的持久化、普通 PATCH、CLI 筛选/更新与 Web 确认开关已实现；worker 运行时、平台要求与唯一 worker claim 尚未实现。本文拥有机制；[需求](../spec/daynight-worker.md)拥有产品行为，[设计决策](../../.agents/notes/implemented/architecture/2026-10-22-worker-design.md)保留真实备选方案。
 
 ## 目标与当前基础
 
@@ -83,6 +83,8 @@ Agent 类型不变时仓库字段覆盖全局字段；切换类型时按新类�
 
 ## 服务端模型与资格查询
 
+`allowAgents` 已在完整 task、图投影、普通 PATCH 与列表筛选中实现；持久化和版本事务见[服务架构](daynight-server.md)。以下 `requiredPlatform`、worker claim 与执行归属描述后续 worker 集成所需契约，不表示当前服务已开放这些字段或 endpoint。
+
 任务顶层字段：
 
 ```text
@@ -98,7 +100,7 @@ Web 在任务详情标题下的同一状态行中，左侧显示状态、ready �
 
 开启框说明 worker 可在任务获批、依赖完成并符合运行条件时自动领取；关闭框说明 worker 将不再自动领取。自动执行许可、审批和 ready 分别保有原义：`approve`、`unapprove`、手工 claim/complete 与普通元数据修改均保留许可。实际切换在 `in_progress` 拒绝；权限和版本检查先于同值判定，精确版本同值 PATCH 返回原 task，不增加版本或更新时间。关闭许可不隐式停止执行或移交资源。
 
-确认表示明确操作意图，不能从 session/PAT 类型推断物理人工。CLI/skill 禁止自动 worker 自行启用许可，操作沿用现有项目成员写权限。Web 的双向确认、状态展示和失败交互遵循本节的布局与操作规则。
+确认表示明确操作意图，不能从 session/PAT 类型推断物理人工。CLI/skill 禁止自动 worker 自行启用许可，操作沿用现有项目成员写权限。Web 的双向确认、状态展示和失败交互遵循本节的布局与操作规则，具体组件与工作空间请求归属由[看板设计](daynight-web.md#自动执行许可与确认)拥有。CLI update/list/ready 的 `--allow-agents true|false` 映射到该普通更新或查询字段；自动候选使用 true 筛选，明确指定的单任务执行仍可普通 claim。
 
 候选查询扩展现有列表：
 

@@ -11,7 +11,7 @@ const task = '20000000-0000-4000-8000-000000000001';
 const otherTask = '20000000-0000-4000-8000-000000000002';
 const dependency = '20000000-0000-4000-8000-000000000003';
 const version = 9007199254740993n;
-const proposed: TaskDetail = { startedAt: null, completedAt: null, id: task, projectId: project, version, title: 'Reviewed task', description: 'Complete original description',
+const proposed: TaskDetail = { allowAgents: false, startedAt: null, completedAt: null, id: task, projectId: project, version, title: 'Reviewed task', description: 'Complete original description',
   properties: { pullRequests: [] }, status: 'proposed', dependsOn: [dependency], blockedBy: [dependency], ready: false,
   createdAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:00:00Z' };
 const approved: TaskDetail = { ...proposed, status: 'todo', version: version + 1n, updatedAt: '2026-10-22T00:01:00Z' };
@@ -41,10 +41,10 @@ describe('task approval session ownership', () => {
     expect(writes).not.toHaveBeenCalled();
     sessions.approve(project, task); sessions.approve(project, task);
     expect(writes).toHaveBeenCalledExactlyOnceWith(project, task, version, expect.any(AbortSignal));
-    expect(sessions.snapshot(project, task).approval.phase).toBe('pending');
+    expect(sessions.snapshot(project, task).mutation.phase).toBe('pending');
     expect(canApprove(sessions.snapshot(project, task))).toBe(false);
     mutation.resolve(approved);
-    await waitFor(() => expect(sessions.snapshot(project, task).approval.phase).toBe('confirmed'));
+    await waitFor(() => expect(sessions.snapshot(project, task).mutation.phase).toBe('confirmed'));
     expect(sessions.snapshot(project, task).detail).toEqual(approved);
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(canApprove(sessions.snapshot(project, task))).toBe(false);
@@ -75,8 +75,8 @@ describe('task approval session ownership', () => {
     const error = new ApiError('server', 409, 'invalid_transition', 'refusal-id');
     writes.mockRejectedValueOnce(error);
     await open(sessions); sessions.approve(project, task);
-    await waitFor(() => expect(sessions.snapshot(project, task).approval.phase).toBe('refused'));
-    expect(sessions.snapshot(project, task).approval.error).toBe(error);
+    await waitFor(() => expect(sessions.snapshot(project, task).mutation.phase).toBe('refused'));
+    expect(sessions.snapshot(project, task).mutation.error).toBe(error);
     expect(sessions.snapshot(project, task).detail).toBe(proposed);
     expect(canApprove(sessions.snapshot(project, task))).toBe(true);
     expect(writes).toHaveBeenCalledTimes(1);
@@ -91,11 +91,11 @@ describe('task approval session ownership', () => {
     writes.mockRejectedValueOnce(error).mockResolvedValueOnce({ ...approved, version: version + 2n });
     await open(sessions); sessions.approve(project, task);
     await waitFor(() => expect(sessions.snapshot(project, task).detail).toBe(updated));
-    expect(sessions.snapshot(project, task).approval).toMatchObject({ phase: 'conflict', error, reconciling: false });
+    expect(sessions.snapshot(project, task).mutation).toMatchObject({ phase: 'conflict', error, reconciling: false });
     expect(canApprove(sessions.snapshot(project, task))).toBe(true);
     expect(writes).toHaveBeenCalledTimes(1);
     sessions.approve(project, task);
-    await waitFor(() => expect(sessions.snapshot(project, task).approval.phase).toBe('confirmed'));
+    await waitFor(() => expect(sessions.snapshot(project, task).mutation.phase).toBe('confirmed'));
     expect(writes.mock.calls[1]?.[2]).toBe(updated.version);
   });
 
@@ -115,8 +115,8 @@ describe('task approval session ownership', () => {
     reads.mockResolvedValueOnce(proposed).mockResolvedValueOnce(applied ? approved : proposed);
     writes.mockRejectedValueOnce(error);
     await open(sessions); sessions.approve(project, task);
-    await waitFor(() => expect(sessions.snapshot(project, task).approval.phase).toBe('reconciled'));
-    expect(sessions.snapshot(project, task).approval.error).toBe(error);
+    await waitFor(() => expect(sessions.snapshot(project, task).mutation.phase).toBe('reconciled'));
+    expect(sessions.snapshot(project, task).mutation.error).toBe(error);
     expect(sessions.snapshot(project, task).detail).toBe(applied ? approved : proposed);
     expect(canApprove(sessions.snapshot(project, task))).toBe(!applied);
     expect(writes).toHaveBeenCalledTimes(1);
@@ -129,14 +129,14 @@ describe('task approval session ownership', () => {
     reads.mockResolvedValueOnce(proposed).mockRejectedValueOnce(readError).mockResolvedValueOnce(approved);
     writes.mockRejectedValueOnce(writeError);
     await open(sessions); sessions.approve(project, task);
-    await waitFor(() => expect(sessions.snapshot(project, task).approval.reconciliationError).toBe(readError));
-    expect(sessions.snapshot(project, task).approval.error).toBe(writeError);
+    await waitFor(() => expect(sessions.snapshot(project, task).mutation.reconciliationError).toBe(readError));
+    expect(sessions.snapshot(project, task).mutation.error).toBe(writeError);
     expect(canApprove(sessions.snapshot(project, task))).toBe(false);
     sessions.load(project, task, 2); sessions.approve(project, task);
     expect(reads).toHaveBeenCalledTimes(2); expect(writes).toHaveBeenCalledTimes(1);
     sessions.reconcile(project, task);
     await waitFor(() => expect(sessions.snapshot(project, task).detail).toBe(approved));
-    expect(sessions.snapshot(project, task).approval).toMatchObject({ phase: 'reconciled', error: writeError, reconciliationError: null });
+    expect(sessions.snapshot(project, task).mutation).toMatchObject({ phase: 'reconciled', error: writeError, reconciliationError: null });
   });
 
   it('reconciles a server failure that cannot prove rollback instead of treating it as a refusal', async () => {
@@ -145,9 +145,9 @@ describe('task approval session ownership', () => {
     reads.mockResolvedValueOnce(proposed).mockResolvedValueOnce(approved);
     writes.mockRejectedValueOnce(error);
     await open(sessions); sessions.approve(project, task);
-    await waitFor(() => expect(sessions.snapshot(project, task).approval.phase).toBe('reconciled'));
+    await waitFor(() => expect(sessions.snapshot(project, task).mutation.phase).toBe('reconciled'));
     expect(sessions.snapshot(project, task).detail).toBe(approved);
-    expect(sessions.snapshot(project, task).approval.error).toBe(error);
+    expect(sessions.snapshot(project, task).mutation.error).toBe(error);
     expect(writes).toHaveBeenCalledTimes(1);
   });
 
@@ -157,8 +157,8 @@ describe('task approval session ownership', () => {
     reads.mockResolvedValueOnce(proposed).mockRejectedValueOnce(cancelled).mockResolvedValueOnce(approved);
     writes.mockRejectedValueOnce(new ApiError('network'));
     await open(sessions); sessions.approve(project, task);
-    await waitFor(() => expect(sessions.snapshot(project, task).approval.reconciliationError).toBe(cancelled));
-    expect(sessions.snapshot(project, task).approval.reconciling).toBe(false);
+    await waitFor(() => expect(sessions.snapshot(project, task).mutation.reconciliationError).toBe(cancelled));
+    expect(sessions.snapshot(project, task).mutation.reconciling).toBe(false);
     expect(canApprove(sessions.snapshot(project, task))).toBe(false);
     sessions.reconcile(project, task);
     await waitFor(() => expect(sessions.snapshot(project, task).detail).toBe(approved));
@@ -171,11 +171,11 @@ describe('task approval session ownership', () => {
     writes.mockRejectedValueOnce(new ApiError('network'));
     const release = sessions.subscribe(project, task, vi.fn());
     await open(sessions); sessions.approve(project, task);
-    await waitFor(() => expect(sessions.snapshot(project, task).approval.reconciling).toBe(true));
+    await waitFor(() => expect(sessions.snapshot(project, task).mutation.reconciling).toBe(true));
     const signal = reads.mock.calls[1]![2]; release(); sessions.releaseRead(project, task);
     expect(signal.aborted).toBe(false);
     reconciliation.resolve(approved);
-    await waitFor(() => expect(sessions.snapshot(project, task).approval.phase).toBe('reconciled'));
+    await waitFor(() => expect(sessions.snapshot(project, task).mutation.phase).toBe('reconciled'));
     expect(sessions.snapshot(project, task).detail).toBe(approved);
   });
 
@@ -185,7 +185,7 @@ describe('task approval session ownership', () => {
     writes.mockResolvedValueOnce(approved);
     reads.mockResolvedValueOnce(proposed).mockRejectedValueOnce(error).mockResolvedValueOnce(proposed).mockResolvedValueOnce(approved);
     await open(sessions); sessions.approve(project, task);
-    await waitFor(() => expect(sessions.snapshot(project, task).approval.phase).toBe('confirmed'));
+    await waitFor(() => expect(sessions.snapshot(project, task).mutation.phase).toBe('confirmed'));
     sessions.load(project, task, 2);
     await waitFor(() => expect(sessions.snapshot(project, task).error).toBe(error));
     expect(sessions.snapshot(project, task).detail).toBe(approved);
@@ -204,7 +204,7 @@ describe('task approval session ownership', () => {
     await open(sessions); sessions.approve(project, task); sessions.dispose();
     expect(writes.mock.calls[0]![3].aborted).toBe(false);
     mutation.reject(new ApiError('network'));
-    await waitFor(() => expect(sessions.snapshot(project, task).approval.phase).toBe('unknown'));
+    await waitFor(() => expect(sessions.snapshot(project, task).mutation.phase).toBe('unknown'));
     expect(reads).toHaveBeenCalledTimes(1);
   });
 });
@@ -222,7 +222,7 @@ describe('two-way approval session ownership', () => {
     await waitFor(() => expect(canUnapprove(sessions.snapshot(project, task))).toBe(true));
     sessions.performApproval(project, task, 'unapprove', approved.version);
     await waitFor(() => expect(sessions.snapshot(project, task).detail).toEqual(withdrawn));
-    expect(sessions.snapshot(project, task).approval.operation).toEqual({ action: 'unapprove', version: approved.version });
+    expect(sessions.snapshot(project, task).mutation.operation).toEqual({ action: 'unapprove', version: approved.version });
     sessions.performApproval(project, task, 'approve', withdrawn.version);
     await waitFor(() => expect(sessions.snapshot(project, task).detail).toEqual(reapproved));
     expect(writes.mock.calls.map((call) => call[2])).toEqual([version, version + 2n]);
@@ -248,7 +248,7 @@ describe('two-way approval session ownership', () => {
     expect(canUnapprove(sessions.snapshot(project, task))).toBe(false);
     expect(withdrawals).toHaveBeenCalledExactlyOnceWith(project, task, approved.version, expect.any(AbortSignal));
     mutation.resolve({ ...proposed, version: approved.version + 1n });
-    await waitFor(() => expect(sessions.snapshot(project, task).approval.phase).toBe('confirmed'));
+    await waitFor(() => expect(sessions.snapshot(project, task).mutation.phase).toBe('confirmed'));
     expect(canApprove(sessions.snapshot(project, task))).toBe(true);
   });
 
@@ -258,9 +258,9 @@ describe('two-way approval session ownership', () => {
     reads.mockResolvedValueOnce(approved).mockResolvedValueOnce(withdrawn);
     withdrawals.mockRejectedValueOnce(failure);
     await open(sessions); sessions.unapprove(project, task);
-    await waitFor(() => expect(sessions.snapshot(project, task).approval.phase).toBe('reconciled'));
+    await waitFor(() => expect(sessions.snapshot(project, task).mutation.phase).toBe('reconciled'));
     expect(sessions.snapshot(project, task).detail).toEqual(withdrawn);
-    expect(sessions.snapshot(project, task).approval).toMatchObject({ operation: { action: 'unapprove', version: approved.version }, error: failure });
+    expect(sessions.snapshot(project, task).mutation).toMatchObject({ operation: { action: 'unapprove', version: approved.version }, error: failure });
     expect(withdrawals).toHaveBeenCalledTimes(1); expect(writes).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,6 @@
 # Worker 需求
 
-本文定义 `daynight worker run` 的目标行为与可观察验收条件。运行时尚未实现；[架构](../design/daynight-worker.md)说明机制。
+本文定义 `daynight worker run` 的目标行为与可观察验收条件。自动执行许可、服务端/CLI/Web 控制与筛选已实现；worker 运行时、平台要求和唯一 worker claim 仍是后续能力。[架构](../design/daynight-worker.md)说明机制。
 
 ## 目标与范围
 
@@ -22,7 +22,7 @@ Worker 作为前台常驻进程，通过 Daynight HTTP REST API 领取配置仓�
 
 - Task 具有独立的布尔字段 `allowAgents`，表示是否允许 worker 自动领取并交给 Agent 处理。它与用户身份、项目权限、实际执行者及 agent 类型独立。
 - 旧任务通过数据库迁移设为 `true`，保留其余业务数据、版本与时间；新任务始终默认为 `false`，创建输入不能直接启用。普通字段更新未提供此字段时保留原值，显式 `false` 表示关闭。
-- 服务端、CLI 和 Web 一致支持许可的查询、展示与明确操作。自动 worker 和随包 Agent 工作流不得自行启用许可。
+- 服务端、CLI 和 Web 一致支持许可的查询、展示与明确操作。完整 task 与图节点必填布尔 allowAgents，严格拒绝缺失、null 或非布尔响应。CLI 的 update/list/ready 使用 `--allow-agents true|false`，自动候选选择使用 true 筛选并在补充候选清单中保留；自动 worker 和随包 Agent 工作流不得自行启用许可。
 - Web 在任务详情标题下的状态行右侧提供单一“自动执行” / “Automatic execution”标签与开关组合，左侧保留状态、ready 与可选平台信息。详情不重复展示独立自动执行状态 badge 或下方 Overview 开关；列表中的状态标记可保留。长标题与窄屏不得重叠或横向溢出；平台等左侧信息可在左组内换行，右侧组合控件保持右对齐并与第一行状态顶部对齐。错误、未知结果、锁定和等待人工输入的说明在该控件附近呈现。
 - 开启和关闭都先弹确认框，确认按钮直接提交修改；取消、Escape 或关闭弹框均不提交。提交期间阻止重复操作，服务端确认成功后才更新开关；明确失败保留原值，未知结果先读取核对，不自动重发。
 - 修改沿用已认证用户的项目成员写权限、精确版本与普通 task PATCH。确认表达明确操作意图，session 或 PAT 不能证明操作者是物理人工；不另设处理角色操作或重复确认字段。

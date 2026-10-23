@@ -20,10 +20,10 @@ const unrelatedId = "a1b2c3d4-1111-4222-8333-123456789abe";
 const taskId = "b1b2c3d4-1111-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project = (projectId = id, repoUrl = "git@git.example:Org/Repo.git"): Project => ({ id: projectId, name: "Project 中文", repoUrl, settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time });
-const task = (projectId = id): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true });
+const task = (projectId = id): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, allowAgents: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true });
 const taskListItem = (value: Task): Omit<Task, "description"> => ({
   id: value.id, projectId: value.projectId, title: value.title, properties: value.properties,
-  status: value.status, version: value.version, startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt,
+  status: value.status, allowAgents: value.allowAgents, version: value.version, startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt,
   dependsOn: value.dependsOn, blockedBy: value.blockedBy, ready: value.ready,
 });
 const send = (response: ServerResponse, value: unknown, status = 200): void => { response.writeHead(status, { "Content-Type": "application/json" }); response.end(stringifyApiJson(value)); };
@@ -52,6 +52,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
   let projects = [project(unrelatedId, "https://other.example/Unrelated/Repo"), project()];
   let properties: Task["properties"] = { pullRequests: [] };
   let description = "";
+  let allowAgents = false;
   let broken: "none" | "page" | "json" | "dependency" | "write" | "hold" | "conflict" = "none";
   let readyPage: { items: readonly Task[]; nextCursor: string | null } | undefined;
   let listResponseTask: Task | undefined;
@@ -87,16 +88,17 @@ it("runs the actual installed launcher through native project/task discovery, pe
           if (parts.length === 8) {
             const action = parts[7]!;
             const status = action === "approve" ? "todo" : action === "unapprove" ? "proposed" : action === "claim" ? "in_progress" : "done";
-            send(response, { ...task(projectId), description, properties, status, ready: status === "todo", version: (body as { version: bigint }).version + 1n }); return;
+            send(response, { ...task(projectId), description, properties, allowAgents, status, ready: status === "todo", version: (body as { version: bigint }).version + 1n }); return;
           }
+          if (request.method === "PATCH" && typeof body === "object" && body !== null && "allowAgents" in body && typeof body.allowAgents === "boolean") allowAgents = body.allowAgents;
           if (typeof body === "object" && body !== null && "description" in body && typeof body.description === "string") description = body.description;
-          send(response, { ...task(projectId), description, ...(body as object), ...(request.method === "POST" ? { status: "proposed", ready: false } : {}), version: request.method === "PATCH" ? 9_007_199_254_740_994n : 1n }, request.method === "POST" ? 201 : 200); return;
+          send(response, { ...task(projectId), description, ...(request.method === "PATCH" ? { allowAgents } : {}), ...(body as object), ...(request.method === "POST" ? { status: "proposed", ready: false } : {}), version: request.method === "PATCH" ? 9_007_199_254_740_994n : 1n }, request.method === "POST" ? 201 : 200); return;
         }
         if (parts[5] === "task-graph") { send(response, { observedAt: time, project: project(projectId), summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 }, tasks: [] }); return; }
-        if (parts.length === 7) { send(response, { ...task(projectId), description, properties, version: 9_007_199_254_740_993n }); return; }
+        if (parts.length === 7) { send(response, { ...task(projectId), description, properties, allowAgents, version: 9_007_199_254_740_993n }); return; }
         if (readyPage !== undefined && url.searchParams.get("ready") === "true") { send(response, readyPage); return; }
         if (broken === "page" && url.searchParams.has("cursor")) { fault(response, "internal_error", "native-later-page", 500); return; }
-        send(response, { items: [listResponseTask ?? { ...task(projectId), properties }], nextCursor: broken === "page" ? "native later page" : null });
+        send(response, { items: [listResponseTask ?? { ...task(projectId), properties, allowAgents }], nextCursor: broken === "page" ? "native later page" : null });
       });
     });
     servers.push(server);
@@ -154,6 +156,9 @@ it("runs the actual installed launcher through native project/task discovery, pe
       ["update", taskId, "--pull-request-url=", "--clear-pull-requests"],
       ["update", taskId, "--pull-request-title=", "--clear-pull-requests"],
       ["update", taskId, "--status", "done"],
+      ["create", "--title", "Title", "--allow-agents", "true"],
+      ["update", taskId, "--allow-agents", "yes"],
+      ["ready", "--allow-agents=TRUE"],
       ...["approve", "unapprove", "claim", "complete"].flatMap((action) => [[action, "invalid"], [action, taskId, "--if-version=0"], [action, taskId, "--status=todo"]]),
     ]) await invoke(["task", ...args], outside, 2, true);
 
@@ -172,6 +177,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
     expect(parseApiJson((await invoke(["task", "show", taskId, "--json", ...explicit], outside, 0, true)).stdout)).toEqual({ ...task(), version: 9_007_199_254_740_993n });
     const createdTask = await invoke(["task", "create", "--title", "Native task", ...explicit], outside, 0, true);
     expect(createdTask.stdout).toContain("Status: proposed");
+    expect(createdTask.stdout).toContain("Automatic execution: false");
     for (const [action, status] of [["approve", "todo"], ["unapprove", "proposed"], ["approve", "todo"], ["claim", "in_progress"], ["complete", "done"]] as const) {
       for (const explicitVersion of [false, true]) {
         const before = requests.length;
@@ -183,6 +189,22 @@ it("runs the actual installed launcher through native project/task discovery, pe
       }
     }
     scenarios.push("installed-lifecycle-actions-observed-and-explicit-lossless-versions");
+    for (const permission of [true, false]) {
+      const before = requests.length;
+      const changed = await invoke(["task", "update", taskId, "--allow-agents", String(permission), "--if-version", "9223372036854775807", ...explicit], outside, 0, true);
+      expect(changed.stdout).toContain(`Automatic execution: ${permission}`);
+      expect(requests.slice(before).map(({ method }) => method)).toEqual(["GET", "PATCH"]);
+      expect(requests.at(-1)!.body).toEqual({ version: 9_223_372_036_854_775_807n, allowAgents: permission });
+      expect(parseApiJson((await invoke(["task", "list", "--allow-agents", String(permission), "--ready", "--json", ...explicit], outside, 0, true)).stdout)).toEqual([taskListItem({ ...task(), allowAgents: permission })]);
+      expect(new URL(requests.at(-1)!.path, firstUrl).searchParams.get("allowAgents")).toBe(String(permission));
+      readyPage = { items: [{ ...task(), allowAgents: permission }], nextCursor: "unfollowed permission page" };
+      const readyBefore = requests.length;
+      expect(parseApiJson((await invoke(["task", "ready", "--allow-agents", String(permission), "--limit", "1", "--json", ...explicit], outside, 0, true)).stdout)).toEqual(readyPage.items);
+      expect(requests.slice(readyBefore).length).toBe(2);
+      expect(new URL(requests.at(-1)!.path, firstUrl).searchParams.get("allowAgents")).toBe(String(permission));
+      readyPage = undefined;
+    }
+    scenarios.push("installed-automatic-permission-true-false-exact-version-filtered-list-and-bounded-ready");
     listResponseTask = { ...task(), status: "proposed", ready: false, description: "Proposed description omitted from inventory" };
     expect(parseApiJson((await invoke(["task", "list", "--status", "proposed", "--json", ...explicit], outside, 0, true)).stdout)).toEqual([taskListItem(listResponseTask)]);
     expect(requests.at(-1)!.path).toContain("status=proposed");

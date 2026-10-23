@@ -64,7 +64,8 @@ func (s *Snapshot) Tasks(ctx context.Context, projectID string, query TaskQuery)
 		AND ($2::timestamptz IS NULL OR (t.created_at, t.id) > ($2, $3::uuid))
 		AND ($4::text IS NULL OR t.status = $4)
 		AND ($5::boolean IS NULL OR `+taskReady+` = $5)
-		ORDER BY t.created_at, t.id LIMIT $6`, projectID, afterTime, afterID, query.Status, query.Ready, query.Page.Limit+1)
+		AND ($6::boolean IS NULL OR t.allow_agents = $6)
+		ORDER BY t.created_at, t.id LIMIT $7`, projectID, afterTime, afterID, query.Status, query.Ready, query.AllowAgents, query.Page.Limit+1)
 	if err != nil {
 		return TaskPage{}, queryError("list tasks", err)
 	}
