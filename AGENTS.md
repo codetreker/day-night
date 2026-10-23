@@ -15,6 +15,8 @@ take precedence.
 - Use the user's confirmed task and existing requirements to establish scope.
   A request to investigate or discuss remains read-only unless edits are
   authorized. Skills describe workflows and grant no additional permission.
+- Use Daynight to manage this repository's tasks. Load the `using-daynight`
+  skill before executing any task and follow its applicable workflow.
 - Complete authorized work and its verification. Report observed results and
   material limitations; keep unverified assumptions distinct from evidence.
 - Mainline pushes and PR merges require explicit user authorization. Follow the

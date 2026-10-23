@@ -1564,12 +1564,14 @@ records owner-liveness checks and the separate process-exclusion requirement.
 ## Working in the repository
 
 Read [AGENTS.md](AGENTS.md) for task scope, shared task worktrees, collaboration,
-verification, and delivery. Keep delivery boundaries, dependencies, scope and
-acceptance criteria with their design documents. When tasks are managed in
-Daynight, link their IDs from the design and query Daynight for live status;
-local execution plans remain temporary checklists. Existing document-owned task
-records retain their ownership until explicitly migrated. Use the
-[repository skills](.agents/skills/) for decision notes, scope choices, and prose.
+verification, and delivery. This repository uses Daynight for task management;
+load the `using-daynight` skill before executing any task. Keep delivery
+boundaries, dependencies, scope and acceptance criteria with their design
+documents. Link Daynight task IDs from the design and query Daynight for live
+status; local execution plans remain temporary checklists. Existing
+document-owned task records retain their ownership until explicitly migrated.
+Use the [repository skills](.agents/skills/) for decision notes, scope choices,
+and prose.
 
 [Agent Notes](.agents/notes/README.md) preserve decisions and alternatives. The
 [client composition decision](.agents/notes/implemented/architecture/2026-10-20-client-command-composition.md),
