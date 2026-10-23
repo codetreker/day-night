@@ -113,6 +113,13 @@ func createTaskInput(fields map[string]json.RawMessage) (api.CreateTaskRequest, 
 	if dependencies != nil {
 		input.DependsOn = *dependencies
 	}
+	externalDependencies, err := optionalStrings(fields, "externalDependsOn")
+	if err != nil {
+		return api.CreateTaskRequest{}, err
+	}
+	if externalDependencies != nil {
+		input.ExternalDependsOn = *externalDependencies
+	}
 	properties, err := optionalProperties(fields)
 	if err != nil {
 		return api.CreateTaskRequest{}, err
@@ -142,6 +149,10 @@ func updateTaskInput(fields map[string]json.RawMessage) (api.UpdateTaskRequest, 
 	if err != nil {
 		return api.UpdateTaskRequest{}, err
 	}
+	input.ExternalDependsOn, err = optionalStrings(fields, "externalDependsOn")
+	if err != nil {
+		return api.UpdateTaskRequest{}, err
+	}
 	input.Properties, err = optionalProperties(fields)
 	if err != nil {
 		return api.UpdateTaskRequest{}, err
@@ -150,7 +161,7 @@ func updateTaskInput(fields map[string]json.RawMessage) (api.UpdateTaskRequest, 
 	if err != nil {
 		return api.UpdateTaskRequest{}, err
 	}
-	if input.Title == nil && input.Description == nil && input.DependsOn == nil && input.AllowAgents == nil &&
+	if input.Title == nil && input.Description == nil && input.DependsOn == nil && input.ExternalDependsOn == nil && input.AllowAgents == nil &&
 		(input.Properties == nil || input.Properties.PullRequests == nil) {
 		return api.UpdateTaskRequest{}, invalidInput("at least one task field must be provided")
 	}
@@ -195,7 +206,7 @@ func (h *taskHandler) create(w http.ResponseWriter, request *http.Request, princ
 		writeError(w, request, logger, "task", "create", err)
 		return
 	}
-	fields, err := decodeObject(w, request, "title", "description", "dependsOn", "properties")
+	fields, err := decodeObject(w, request, "title", "description", "dependsOn", "externalDependsOn", "properties")
 	if err != nil {
 		writeError(w, request, logger, "task", "create", err)
 		return
@@ -206,7 +217,7 @@ func (h *taskHandler) create(w http.ResponseWriter, request *http.Request, princ
 		return
 	}
 	task, err := h.tasks.Create(request.Context(), principal, projectID, service.CreateTask{
-		Title: input.Title, Description: input.Description, DependsOn: input.DependsOn, Properties: propertyValues(input.Properties),
+		Title: input.Title, Description: input.Description, DependsOn: input.DependsOn, ExternalDependsOn: input.ExternalDependsOn, Properties: propertyValues(input.Properties),
 	})
 	if err != nil {
 		writeError(w, request, logger, "task", "create", err)
@@ -264,7 +275,7 @@ func (h *taskHandler) update(w http.ResponseWriter, request *http.Request, princ
 		writeError(w, request, logger, "task", "update", err)
 		return
 	}
-	fields, err := decodeObject(w, request, "version", "title", "description", "dependsOn", "properties", "allowAgents")
+	fields, err := decodeObject(w, request, "version", "title", "description", "dependsOn", "externalDependsOn", "properties", "allowAgents")
 	if err != nil {
 		writeError(w, request, logger, "task", "update", err)
 		return
@@ -274,7 +285,7 @@ func (h *taskHandler) update(w http.ResponseWriter, request *http.Request, princ
 		writeError(w, request, logger, "task", "update", err)
 		return
 	}
-	values := service.UpdateTask{AllowAgents: input.AllowAgents, Version: input.Version, Title: input.Title, Description: input.Description, DependsOn: input.DependsOn}
+	values := service.UpdateTask{AllowAgents: input.AllowAgents, Version: input.Version, Title: input.Title, Description: input.Description, DependsOn: input.DependsOn, ExternalDependsOn: input.ExternalDependsOn}
 	if input.Properties != nil && input.Properties.PullRequests != nil {
 		properties := propertyValues(api.TaskProperties{PullRequests: *input.Properties.PullRequests})
 		values.Properties.PullRequests = &properties.PullRequests

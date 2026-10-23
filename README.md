@@ -29,17 +29,17 @@ owns root/document resolution, complete-inventory checks and focus integration.
 The published skill preserves self-contained briefs, primary-plan ownership and
 Goal, dependency, PR and separate approval/implementation/merge permissions.
 
-The proposed [external dependency requirements](docs/spec/daynight-external-dependencies.md),
+The [external dependency requirements](docs/spec/daynight-external-dependencies.md),
 [architecture](docs/design/daynight-external-dependencies.md) and
 [interactive prototype](docs/design/mockups/external-dependencies/index.html)
 distinguish chain membership from genuine cross-chain prerequisites. The design
 keeps all dependencies for execution. Edge classification storage, full task/graph
 output, strict CLI/Web readers and ordinary-component presentation are implemented.
 Chain members are exclusive; dashed edges encode explicit external dependencies,
-while dashed cards encode prerequisite context outside the chain. Public inputs
-still accept only dependency IDs, so explicit classification editing remains
-unavailable. Supported readers must understand classification before public
-classification writes become available.
+while dashed cards encode prerequisite context outside the chain. Public API
+create/PATCH accepts the explicit external subset, and CLI ordinary/external
+options compile the complete relationship set. All edge kinds remain execution
+prerequisites; the Web displays classification without a dependency editor.
 
 The adopted [execution timing requirements](docs/spec/daynight-task-timing.md) and
 [architecture](docs/design/daynight-task-timing.md) define task
@@ -1015,7 +1015,7 @@ daynight task create --title "Implement sign-in" --description '## Sign-in
 Implement OAuth sign-in for the web workspace. Deliver the callback flow and
 visible failure recovery; preserve the existing session and provider rules.
 Complete when a valid login opens the workspace and a rejected login can retry.'
-daynight task create --title "Build the sign-in page" --depends-on <task-id>
+daynight task create --title "Build the sign-in page" --depends-on <design-task-id> --external-depends-on <authentication-task-id>
 daynight task ready
 daynight task ready --limit 5 --json
 daynight task ready --allow-agents true --json
@@ -1071,10 +1071,13 @@ preserving graph/index identity when only `observedAt` changes.
 Task and graph resources also require `externalDependsOn`, a sorted,
 duplicate-free subset of all `dependsOn` IDs. CLI JSON preserves it and the
 shared human dependency block shows `External dependencies (N): ...`. Current
-POST/PATCH dependency inputs and CLI options still use the existing ID
-contract; explicit classification input is rejected. Surviving relationship classifications
-are preserved by dependency replacement, metadata edits and every lifecycle
-action. External markers do not remove an edge from blocking or cycle checks.
+API dependency fields are independently optional: a dependsOn-only PATCH
+retains classification on surviving edges, while an externalDependsOn-only PATCH
+replaces the exact external subset. CLI --depends-on and --external-depends-on
+compile both complete sets whenever either option is supplied; ordinary-only
+clears the external subset and external-only replaces all relationships. Omit
+both CLI options to preserve them. Metadata and lifecycle actions retain
+unmodified classification. Every edge still participates in blocking and cycles.
 
 Every Project resource includes `settings` with an exact positive int64 `version`
 and `executionWarningMinutes` from 1 through 2147483647, initially 60. Project
@@ -1138,9 +1141,13 @@ same optional permission filter across every matching page. The flag is
 independent of readiness and approval; manual claim accepts either value.
 
 Updates preserve omitted fields; an empty description clears it. Repeated
-`--depends-on` values replace the complete dependency set and retain input order
-and duplicates for server validation. `--clear-dependencies` clears that set and
-cannot be combined with `--depends-on`. An update needs at least one mutable
+`--depends-on` and `--external-depends-on` declare the complete ordinary and
+external sets. Either option replaces all relationships and classifications;
+ordinary-only makes every supplied edge ordinary, while external-only leaves
+only those external edges. IDs are canonicalized and sorted; malformed and
+case-equivalent duplicate/cross-declared UUIDs fail before configuration or
+network access. `--clear-dependencies` sends two empty sets and conflicts with
+either dependency option. An update needs at least one mutable
 field. `--allow-agents true|false` explicitly changes automatic-execution
 permission; omitted preserves it. Creation rejects the option. Existing tasks
 receive true through migration without changing versions or business timestamps.

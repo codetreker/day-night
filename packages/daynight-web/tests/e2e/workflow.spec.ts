@@ -11,6 +11,7 @@ import { expectedNodeHeights } from './visible-topology';
 import { expectCenteredTaskDetail, expectTaskDetailScroll } from './detail-dialog';
 import { expectStableAutomaticDetailRefresh } from './detail-refresh';
 import { panPoint } from './graph-pan';
+import { verifyPublicExternalDependencyWrites } from './external-dependency-writes';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
 const card = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] .task-node`);
@@ -146,7 +147,7 @@ test('project-list', scenario('project-list'), async ({ page, api: request }, in
   await expect(page.getByRole('heading', { name: '还没有任务' })).toBeVisible();
 });
 
-test('project-graph', scenario('project-graph'), async ({ page, api: request }, info) => {
+test('project-graph', scenario('project-graph'), async ({ page, api: request, baseURL }, info) => {
   const project = await createProject(request, { name: `Shared graph ${randomUUID()}` });
   const a = await createApprovedTask(request, project.id, { title: 'A 已完成根' });
   const b = await createApprovedTask(request, project.id, { title: 'B 进行中根' });
@@ -581,6 +582,11 @@ test('project-graph', scenario('project-graph'), async ({ page, api: request }, 
     await expect(standalone(page, consumer.id)).toBeFocused();
     await screenshot(page, info, 'external-only-blocked-task');
     await page.clock.resume();
+  });
+
+  await test.step('writes external classifications through the installed CLI and public API into the same production Web', async () => {
+    if (baseURL === undefined) throw new Error('Public dependency acceptance requires the actual service origin.');
+    await verifyPublicExternalDependencyWrites(page, request, baseURL, info);
   });
 
 });

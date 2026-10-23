@@ -118,8 +118,8 @@ export const instructionScenarios: readonly InstructionScenario[] = [
     input: "An approved ready todo has complete prerequisites and stage inputs, with execution authorized.",
     obligation: "Claim its decision version and confirm in_progress before work begins.",
     propositions: [
-      { resource: "references/run-task.md", section: "## Establish the task and stage", requires: [/For ready `todo`, begin only when dependencies are done, required stage inputs are complete and the work is authorized/, /Use `task claim` with the exact version observed for that decision and confirm in_progress before starting/] },
-      { resource: "references/autopilot.md", section: "## Select one related task", requires: [/Readiness checks prerequisites, not stage artifact completeness or execution authorization/, /claims the version observed for that decision before starting/] },
+      { resource: "references/run-task.md", section: "## Establish the task and stage", requires: [/For ready `todo`, begin only when dependencies are done, required stage inputs are complete and the work is authorized/, /Both kinds must be done for claim and completion/, /Use `task claim` with the exact version observed for that decision and confirm in_progress before starting/] },
+      { resource: "references/autopilot.md", section: "## Select one related task", requires: [/Readiness checks all prerequisites, not stage artifact completeness or execution authorization/, /External prerequisites still block readiness/, /cross-chain classification does not authorize executing them or expand the confirmed scope/, /claims the version observed for that decision before starting/] },
     ],
   },
   {

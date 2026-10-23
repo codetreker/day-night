@@ -47,9 +47,9 @@ func TestInstalledCLIExternalDependencyReadAcceptance(t *testing.T) {
 		if len(graph.Tasks) != 2 || !slices.Equal(graph.Tasks[1].ExternalDependsOn, target.ExternalDependsOn) {
 			t.Fatal("installed CLI graph omitted seeded classification")
 		}
-		acceptanceError(t, process.request(context.Background(), http.MethodPatch, "/api/v1/projects/"+projectID+"/tasks/"+target.ID, map[string]any{"version": target.Version, "externalDependsOn": []string{}}, "unsupported-external-write"), http.StatusBadRequest, "invalid_input")
+		acceptanceError(t, process.request(context.Background(), http.MethodPatch, "/api/v1/projects/"+projectID+"/tasks/"+target.ID, map[string]any{"version": target.Version, "externalDependsOn": []string{target.ID}}, "invalid-external-subset"), http.StatusBadRequest, "invalid_input")
 		if after := cli.task(t, target.ID); !reflect.DeepEqual(after, target) {
-			t.Fatal("unsupported external write changed the classified task")
+			t.Fatal("invalid external subset changed the classified task")
 		}
 		for _, arguments := range [][]string{{"--title", "Renamed classified dependent"}, {"--description", "Metadata retains edge classification."}, {"--pull-request-url", "https://example.com/pr/1", "--pull-request-title", "Preserved reference"}} {
 			cli.run(t, cli.repo, append([]string{"task", "update", target.ID, "--if-version", strconv.FormatInt(target.Version, 10)}, arguments...)...)

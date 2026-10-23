@@ -84,6 +84,7 @@ export type CreateTaskInput = {
   readonly description?: string;
   readonly properties?: TaskProperties;
   readonly dependsOn?: readonly string[];
+  readonly externalDependsOn?: readonly string[];
 };
 export type UpdateTaskInput = {
   readonly version: bigint;
@@ -92,6 +93,7 @@ export type UpdateTaskInput = {
   readonly description?: string;
   readonly properties?: TaskProperties;
   readonly dependsOn?: readonly string[];
+  readonly externalDependsOn?: readonly string[];
 };
 export type TaskActionInput = { readonly version: bigint };
 export type TaskFilters = { readonly status?: TaskStatus; readonly ready?: boolean; readonly allowAgents?: boolean };

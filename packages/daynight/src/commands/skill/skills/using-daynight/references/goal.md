@@ -4,7 +4,8 @@ Read this reference when creating a multi-stage Goal, running one of its tasks,
 or advancing its authorized scope. Use [create-task](create-task.md) for content
 and registration rules, [run-task](run-task.md) for one task's lifecycle, and
 [the handbook](handbook.md) for CLI semantics. A Goal uses existing tasks,
-attachments, `dependsOn`, and PR properties; it adds no CLI command, task type,
+attachments, complete `dependsOn` relationships, their `externalDependsOn`
+classification and PR properties; it adds no Goal-specific command, task type,
 status, or execution authority.
 
 ## Identify and register a Goal
@@ -37,7 +38,13 @@ the stage; it is not the title prefix. Titles communicate purpose but do not
 establish stable identity. Preserve confirmed IDs and inspect full content when
 reusing an existing chain.
 
-Set the design task's `dependsOn` to the Goal description task. Each task starts
+Set the design task's ordinary `--depends-on` to the Goal description task.
+Confirmed within-Goal stages and delivery prerequisites stay ordinary. Verified
+prerequisites owned by other same-project chains use `--external-depends-on`; even a Goal's
+top-level task may have such external predecessors. They remain real blockers.
+Preserve both kinds through the handbook's complete CLI replacement semantics,
+not by inferring classification from done status or the current rendered graph.
+Each task starts
 in `proposed` with its own self-contained Markdown description and primary Markdown
 containing Solution and Acceptance criteria. State unanswered questions honestly.
 Complete requirements, prototypes, architecture, and breakdown are produced by their
@@ -110,9 +117,11 @@ methods, and real input references. Their combined scope must cover the complete
 Goal. A future registration list or a vague implementation placeholder does not
 satisfy task breakdown.
 
-Use `dependsOn` for actual prerequisites. Every delivery root with no other
-implementation prerequisite depends directly on the design task; all delivery
-paths must therefore pass through design completion. Keep delivery tasks blocked
+Use ordinary edges for actual within-Goal prerequisites. Every delivery root
+with no other ordinary implementation prerequisite depends directly on the
+design task, so every within-Goal delivery path passes through design completion.
+External prerequisites keep their verified source ownership and do not replace
+that ordinary design gate; they also must be done before execution. Keep delivery tasks blocked
 while design is unfinished. This stage registers and verifies them; it does not
 execute them. New successors are proposed; approval requires a separate explicit
 user instruction covering them, even when Goal creation already permits their

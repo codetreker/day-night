@@ -22,19 +22,21 @@ func NewTasks(database *store.Store) *Tasks {
 }
 
 type CreateTask struct {
-	Title       string
-	Description string
-	Properties  core.TaskProperties
-	DependsOn   []string
+	ExternalDependsOn []string
+	Title             string
+	Description       string
+	Properties        core.TaskProperties
+	DependsOn         []string
 }
 
 type UpdateTask struct {
-	AllowAgents *bool
-	Version     int64
-	Title       *string
-	Description *string
-	DependsOn   *[]string
-	Properties  core.TaskPropertiesPatch
+	ExternalDependsOn *[]string
+	AllowAgents       *bool
+	Version           int64
+	Title             *string
+	Description       *string
+	DependsOn         *[]string
+	Properties        core.TaskPropertiesPatch
 }
 
 type TaskListRequest struct {
@@ -74,6 +76,10 @@ func (s *Tasks) Create(ctx context.Context, principal core.Principal, projectID 
 	if err != nil {
 		return core.Task{}, err
 	}
+	values.ExternalDependsOn, err = canonicalExternalDependencies(input.ExternalDependsOn, id.String(), values.DependsOn)
+	if err != nil {
+		return core.Task{}, err
+	}
 	if err := validateTaskText(values); err != nil {
 		return core.Task{}, err
 	}
@@ -100,7 +106,7 @@ func (s *Tasks) Update(ctx context.Context, principal core.Principal, projectID,
 	if input.Version < 1 {
 		return core.Task{}, invalidInput("Version must be a positive integer.")
 	}
-	if input.Title == nil && input.Description == nil && input.DependsOn == nil && input.Properties.PullRequests == nil && input.AllowAgents == nil {
+	if input.Title == nil && input.Description == nil && input.DependsOn == nil && input.ExternalDependsOn == nil && input.Properties.PullRequests == nil && input.AllowAgents == nil {
 		return core.Task{}, invalidInput("At least one task field must be provided.")
 	}
 	return s.write(ctx, principal, projectID, func(tx *store.ProjectTx) (taskMutation, error) {
@@ -191,6 +197,13 @@ func taskCandidate(current core.Task, input UpdateTask) (store.TaskWrite, error)
 			return !slices.Contains(values.DependsOn, id)
 		})
 	}
+	if input.ExternalDependsOn != nil {
+		var err error
+		values.ExternalDependsOn, err = canonicalExternalDependencies(*input.ExternalDependsOn, current.ID, values.DependsOn)
+		if err != nil {
+			return store.TaskWrite{}, err
+		}
+	}
 	if input.Properties.PullRequests != nil {
 		values.Properties.PullRequests = append([]core.PullRequestProperty{}, (*input.Properties.PullRequests)...)
 	}
@@ -237,4 +250,21 @@ func canonicalDependencies(ids []string, self string) ([]string, error) {
 
 func taskNotFound(cause error) *Fault {
 	return &Fault{Code: "not_found", Message: "Task was not found.", Cause: cause}
+}
+
+func canonicalExternalDependencies(ids []string, self string, dependencies []string) ([]string, error) {
+	canonical, err := canonicalDependencies(ids, self)
+	if err != nil {
+		return nil, err
+	}
+	outside := make([]string, 0)
+	for _, id := range canonical {
+		if !slices.Contains(dependencies, id) {
+			outside = append(outside, id)
+		}
+	}
+	if len(outside) > 0 {
+		return nil, &Fault{Code: "invalid_input", Message: "External dependencies must belong to the complete dependency set.", TaskIDs: outside}
+	}
+	return canonical, nil
 }

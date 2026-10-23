@@ -326,6 +326,7 @@ export const createApiClient = (options: {
         title: input.title,
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.dependsOn === undefined ? {} : { dependsOn: input.dependsOn }),
+        ...(input.externalDependsOn === undefined ? {} : { externalDependsOn: input.externalDependsOn }),
         ...(input.properties === undefined ? {} : { properties: input.properties }),
       });
     },
@@ -364,6 +365,7 @@ export const createApiClient = (options: {
         ...(input.title === undefined ? {} : { title: input.title }),
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.dependsOn === undefined ? {} : { dependsOn: input.dependsOn }),
+        ...(input.externalDependsOn === undefined ? {} : { externalDependsOn: input.externalDependsOn }),
         ...(input.properties === undefined ? {} : { properties: input.properties }),
       });
     },

@@ -16,19 +16,21 @@ type TaskPropertiesPatch struct {
 }
 
 type CreateTaskRequest struct {
-	Properties  TaskProperties `json:"properties"`
-	Title       string         `json:"title"`
-	Description string         `json:"description"`
-	DependsOn   []string       `json:"dependsOn"`
+	ExternalDependsOn []string       `json:"externalDependsOn,omitempty"`
+	Properties        TaskProperties `json:"properties"`
+	Title             string         `json:"title"`
+	Description       string         `json:"description"`
+	DependsOn         []string       `json:"dependsOn"`
 }
 
 type UpdateTaskRequest struct {
-	AllowAgents *bool                `json:"allowAgents,omitempty"`
-	Properties  *TaskPropertiesPatch `json:"properties,omitempty"`
-	Version     int64                `json:"version"`
-	Title       *string              `json:"title,omitempty"`
-	Description *string              `json:"description,omitempty"`
-	DependsOn   *[]string            `json:"dependsOn,omitempty"`
+	ExternalDependsOn *[]string            `json:"externalDependsOn,omitempty"`
+	AllowAgents       *bool                `json:"allowAgents,omitempty"`
+	Properties        *TaskPropertiesPatch `json:"properties,omitempty"`
+	Version           int64                `json:"version"`
+	Title             *string              `json:"title,omitempty"`
+	Description       *string              `json:"description,omitempty"`
+	DependsOn         *[]string            `json:"dependsOn,omitempty"`
 }
 
 type TaskTransitionRequest struct {

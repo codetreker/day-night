@@ -17,8 +17,9 @@ The delivered [design](../../../../docs/design/daynight-external-dependencies.md
 and [requirements](../../../../docs/spec/daynight-external-dependencies.md)
 specify an explicit boolean classification on each existing dependency row.
 Classification storage and the service, CLI and Web read contract are
-implemented. Web consumes ordinary-edge components and explicit relationship
-labels and edge styling. Public classification inputs remain target behavior.
+implemented. Web consumes ordinary-edge components, relationship labels and
+explicit edge styling. Public create/PATCH inputs and CLI declarations also
+accept classification.
 
 The complete `dependsOn` set continues to own scheduling, blocking, readiness,
 cycle detection and capacity. A required `externalDependsOn` subset communicates
@@ -26,9 +27,11 @@ the classification in full task and graph resources. Partial API updates retain
 the nature of surviving edges when only references change. All candidates,
 metadata writes, approve, unapprove, claim, complete and store replacement writes
 carry both sets under the existing project transaction. New unspecified edges
-are ordinary. Current public inputs still reject `externalDependsOn`; the design
-for an explicitly supplied subset remains the later classification-write
-contract.
+are ordinary. An explicitly supplied external subset replaces classification
+without changing omitted references; both fields together replace both sets.
+CLI dependency declarations always send both full sets, so ordinary-only
+options explicitly clear external classification and external-only options
+replace the entire set with external relationships.
 
 Ordinary-edge weak components define exclusive chain membership. Complete
 all-edge ancestor closure supplies context. Dashed edges encode explicit

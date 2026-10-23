@@ -177,10 +177,12 @@ todo→proposed、todo→in_progress、in_progress→done。审批与撤回允�
 externalDependsOn 是同项目关系中 external=true 的排序子集；三个数组均明确返回空集合。ready
 当且仅当状态为 todo 且 blockedBy 为空。proposed 永不 ready，也不计入 todo 的 blocked
 统计。派生数组不单独持久化，不因前置变化而修改本 task 的状态、版本或更新时间。
-当前 POST/PATCH 不接收 externalDependsOn；更新完整依赖 ID 时保留存续关系的 external，
-新关系取 false。候选和 delete/reinsert 路径都携带性质，标题、PR 及 approve、unapprove、
-claim、complete 不丢失已存储值。执行验证继续遍历全部关系。目标分类写入见
-[外部依赖架构](daynight-external-dependencies.md)，尚未开放。
+POST/PATCH 接收 externalDependsOn，按最终完整依赖集合验证其子集。创建省略集合为空；
+更新字段独立可选：仅给完整 ID 时保留存续边性质、新边 false，仅给外部子集时保留端点，
+同时给两者时精确替换。候选及 delete/reinsert 携带完整分类，标题、PR、allowAgents 及
+approve、unapprove、claim、complete 保留无关值。分类变化增加一次版本及 updatedAt，
+状态、执行起止保持；过期同值先冲突，正规化同值不写。执行验证继续遍历全部关系。
+完整写入组合见[外部依赖架构](daynight-external-dependencies.md)。
 
 ## 写事务与并发
 
@@ -246,7 +248,7 @@ callback 不执行写入并正常结束；只有外层事务成功后才返回�
 | `POST /api/v1/projects/{projectId}/tasks/{taskId}/complete` | versioned in_progress→done |
 
 创建 project 的输入为 `name` 和 `repoUrl`。创建 task 的输入为 `title`、可省略的
-`description`、`dependsOn` 与 `properties`；省略描述表示空字符串，省略依赖和
+`description`、`dependsOn`、`externalDependsOn` 与 `properties`；省略描述表示空字符串，省略依赖和
 PR 引用表示空数组。创建成功
 返回 `201`、资源体和对应资源的 `Location`；读取及更新成功返回 `200`。
 
@@ -257,7 +259,7 @@ PR 引用表示空数组。创建成功
 并用锁后的 statement 时间更新 project.updatedAt。响应在该事务内构造完整 Project，沿用已有提交/清理错误优先规则。
 
 Task PATCH 必须提交期望的 `version`，并至少提供 `title`、`description`、
-`dependsOn`、`allowAgents` 或一个已定义属性。只有 `version` 或空 `properties` 的请求返回
+`dependsOn`、`externalDependsOn`、`allowAgents` 或一个已定义属性。只有 `version` 或空 `properties` 的请求返回
 `invalid_input`；
 提供字段但值未变的请求采用前述语义空操作规则。例如：
 
@@ -278,7 +280,7 @@ status 是输入错误，含其他合法字段也不写入；HTTP 与日志保�
 具体记录只有字符串 `url` 和 `title`；内容不做业务校验。显式 `null`、嵌套未知或
 重复字段、不合理的类型及非法枚举均为输入错误。`id`、
 `projectId`、创建时间及更新时间不可由调用者写入。任务返回结构包含模型字段及
-`dependsOn`、`externalDependsOn`、`blockedBy`、`ready`；外部子集是必填读取字段，当前输入仍拒绝它。
+`dependsOn`、`externalDependsOn`、`blockedBy`、`ready`；外部子集是必填读取字段，也是创建/PATCH 的可选分类输入。
 
 Task 路径先确认指定 project 存在，再在其范围内查找资源。Project 不存在时，
 包括 task 列表在内的所有子路径均返回 `not_found`，不能返回成功的空列表。其他

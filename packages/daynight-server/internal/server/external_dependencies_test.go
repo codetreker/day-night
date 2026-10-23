@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/codetreker/daynight/packages/daynight-server/api"
@@ -32,14 +33,14 @@ func TestExternalDependencyHTTPReadsAndWritePreservation(t *testing.T) {
 	if !slices.Equal(target.ExternalDependsOn, expected) || !slices.Equal(target.BlockedBy, []string{pending.ID}) || target.Ready {
 		t.Fatalf("HTTP full read lost external scheduling semantics: %#v", target)
 	}
-	for _, value := range []any{[]string{}, []string{done.ID}, nil, false} {
-		assertProjectError(t, projectRequest(handler, http.MethodPost, taskCollection(project.ID), jsonBody(t, map[string]any{"title": "Unsupported external write", "dependsOn": []string{done.ID}, "externalDependsOn": value})), http.StatusBadRequest, "invalid_input")
+	for _, value := range []any{nil, false, []string{target.ID}, []string{done.ID, strings.ToUpper(done.ID)}} {
+		assertProjectError(t, projectRequest(handler, http.MethodPost, taskCollection(project.ID), jsonBody(t, map[string]any{"title": "Invalid external subset", "dependsOn": []string{done.ID}, "externalDependsOn": value})), http.StatusBadRequest, "invalid_input")
 		assertProjectError(t, projectRequest(handler, http.MethodPatch, taskPath(target), jsonBody(t, map[string]any{"version": target.Version, "externalDependsOn": value})), http.StatusBadRequest, "invalid_input")
 	}
 	if after := readHTTPTask(t, handler, target); !reflect.DeepEqual(after, target) {
-		t.Fatal("unsupported external write changed task or classification")
+		t.Fatal("invalid external subset changed task or classification")
 	}
-	target = updateHTTPTask(t, handler, target, map[string]any{"title": "Read-only classification"})
+	target = updateHTTPTask(t, handler, target, map[string]any{"title": "Preserved classification"})
 	if !slices.Equal(target.ExternalDependsOn, expected) {
 		t.Fatal("HTTP mutation response lost stored classification")
 	}

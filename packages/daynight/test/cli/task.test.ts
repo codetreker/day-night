@@ -318,7 +318,10 @@ describe("compiled task commands", () => {
       const validationBlocked = ["/api/client.js", "/api/operation.js", "/config/", "/repository/", "/commands/server/", "/commands/task/rendering.js", "better-sqlite3"];
       for (const args of [
         ["create"], ["create", "--title", "\u0085"], ["update", taskId],
-        ["create", "--title", "Title", "--external-depends-on", secondId], ["update", taskId, "--external-depends-on", secondId],
+        ["create", "--title", "Title", "--external-depends-on", "invalid"], ["update", taskId, "--external-depends-on", "invalid"],
+        ["update", taskId, "--depends-on", secondId, "--external-depends-on", secondId.toUpperCase()],
+        ["create", "--title", "Title", "--external-depends-on", secondId, "--external-depends-on", secondId],
+        ["update", taskId, "--external-depends-on", secondId, "--clear-dependencies"],
         ["update", taskId, "--description", "", "--depends-on", secondId, "--clear-dependencies"],
         ["create", "--title", "Title", "--pull-request-url="],
         ["update", taskId, "--pull-request-title="],
@@ -661,7 +664,7 @@ describe("compiled task commands", () => {
       expect(created.stdout).toContain("Task created.");
       expect(created.stdout).toContain(taskId);
       expect(created.stdout).toContain("Task 中文\\n\\u001b[31m");
-      expect(requests.find(({ method }) => method === "POST")!.body).toEqual({ title, description: "", dependsOn: [secondId] });
+      expect(requests.find(({ method }) => method === "POST")!.body).toEqual({ title, description: "", dependsOn: [secondId], externalDependsOn: [] });
 
       const shown = await f.invoke(["show", taskId.toUpperCase(), "--project", projectId.toUpperCase(), "--json"]);
       expect(shown.code, shown.stderr).toBe(0);
@@ -684,7 +687,30 @@ describe("compiled task commands", () => {
     } finally { await f.close(); }
   }, 60_000);
 
-  it("submits one precise PATCH using the read version or an explicit full-int64 version and preserves dependency input", async () => {
+  it("sends complete dependency classifications while preserving omitted fields through the compiled entrypoint", async () => {
+    const f = await fixture();
+    try {
+      const current = task({ version: 9_007_199_254_740_993n, dependsOn: [secondId], externalDependsOn: [secondId] });
+      const { requests } = await f.serve((request, response) => respond(response, request.method === "GET" ? current : { ...current, ...(request.body as object), version: current.version + 1n }, request.method === "POST" ? 201 : 200));
+      const cases = [
+        { args: ["create", "--title", "Mixed", "--depends-on", thirdId.toUpperCase(), "--external-depends-on", secondId], body: { title: "Mixed", dependsOn: [secondId, thirdId], externalDependsOn: [secondId] } },
+        { args: ["update", taskId, "--external-depends-on", thirdId], body: { dependsOn: [thirdId], externalDependsOn: [thirdId] } },
+        { args: ["update", taskId, "--depends-on", secondId], body: { dependsOn: [secondId], externalDependsOn: [] } },
+        { args: ["update", taskId, "--clear-dependencies"], body: { dependsOn: [], externalDependsOn: [] } },
+        { args: ["update", taskId, "--description", "Preserve classifications"], body: { description: "Preserve classifications" } },
+      ];
+      for (const { args, body } of cases) {
+        requests.length = 0;
+        const update = args[0] === "update";
+        const result = await f.invoke([...args, ...(update ? ["--if-version", "9223372036854775807"] : []), ...explicit]);
+        expect(result.code, result.stderr).toBe(0);
+        expect(requests.map(({ method }) => method)).toEqual(["GET", update ? "PATCH" : "POST"]);
+        expect(requests[1]!.body).toEqual({ ...(update ? { version: 9_223_372_036_854_775_807n } : {}), ...body });
+      }
+    } finally { await f.close(); }
+  }, 60_000);
+
+  it("submits one precise PATCH using the read version or an explicit full-int64 version and compiles dependency input", async () => {
     const f = await fixture();
     try {
       let refusal: "none" | "version" | "dependencies" = "none";
@@ -699,7 +725,7 @@ describe("compiled task commands", () => {
       expect(updated.code, updated.stderr).toBe(0);
       expect(updated.stdout).toContain("Task updated.");
       expect(requests.map(({ method, pathname }) => `${method} ${pathname}`)).toEqual([`GET ${projectPath}`, `GET ${taskPath}/${taskId}`, `PATCH ${taskPath}/${taskId}`]);
-      expect(requests[2]!.body).toEqual({ description: "", dependsOn: [], version: current.version });
+      expect(requests[2]!.body).toEqual({ description: "", dependsOn: [], externalDependsOn: [], version: current.version });
       expect(requests[2]!.bodyText).toContain('"version":9007199254740993');
 
       requests.length = 0; refusal = "version";
@@ -711,11 +737,11 @@ describe("compiled task commands", () => {
       expect(requests[1]!.body).toEqual({ version: 9_223_372_036_854_775_807n });
 
       requests.length = 0; refusal = "dependencies";
-      const rejected = await f.invoke(["update", taskId, "--if-version", "2", "--depends-on", thirdId, "--depends-on", secondId, "--depends-on", thirdId, ...explicit]);
+      const rejected = await f.invoke(["update", taskId, "--if-version", "2", "--depends-on", thirdId, "--depends-on", secondId, ...explicit]);
       expect(rejected.code).toBe(1); expect(rejected.stdout).toBe("");
       expect(rejected.stderr).toContain("task-dependency-input");
       expect(requests.map(({ method, pathname }) => `${method} ${pathname}`)).toEqual([`GET ${projectPath}`, `PATCH ${taskPath}/${taskId}`]);
-      expect(requests[1]!.body).toEqual({ dependsOn: [thirdId, secondId, thirdId], version: 2n });
+      expect(requests[1]!.body).toEqual({ dependsOn: [secondId, thirdId], externalDependsOn: [], version: 2n });
     } finally { await f.close(); }
   }, 60_000);
 

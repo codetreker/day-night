@@ -18,6 +18,8 @@ const id = "a1b2c3d4-1111-4222-8333-123456789abc";
 const alternateId = "a1b2c3d4-1111-4222-8333-123456789abd";
 const unrelatedId = "a1b2c3d4-1111-4222-8333-123456789abe";
 const taskId = "b1b2c3d4-1111-4222-8333-123456789abc";
+const ordinaryId = "c1b2c3d4-1111-4222-8333-123456789abc";
+const externalId = "d1b2c3d4-1111-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project = (projectId = id, repoUrl = "git@git.example:Org/Repo.git"): Project => ({ id: projectId, name: "Project 中文", repoUrl, settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time });
 const task = (projectId = id): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", allowAgents: false, version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true });
@@ -53,6 +55,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
   let properties: Task["properties"] = { pullRequests: [] };
   let description = "";
   let allowAgents = false;
+  let dependencies: Pick<Task, "dependsOn" | "externalDependsOn"> = { dependsOn: [], externalDependsOn: [] };
   let broken: "none" | "page" | "json" | "dependency" | "write" | "hold" | "conflict" = "none";
   let readyPage: { items: readonly Task[]; nextCursor: string | null } | undefined;
   let listResponseTask: Task | undefined;
@@ -88,17 +91,20 @@ it("runs the actual installed launcher through native project/task discovery, pe
           if (parts.length === 8) {
             const action = parts[7]!;
             const status = action === "approve" ? "todo" : action === "unapprove" ? "proposed" : action === "claim" ? "in_progress" : "done";
-            send(response, { ...task(projectId), description, properties, allowAgents, status, ready: status === "todo", version: (body as { version: bigint }).version + 1n }); return;
+            send(response, { ...task(projectId), ...dependencies, description, properties, allowAgents, status, ready: status === "todo", version: (body as { version: bigint }).version + 1n }); return;
           }
           if (request.method === "PATCH" && typeof body === "object" && body !== null && "allowAgents" in body && typeof body.allowAgents === "boolean") allowAgents = body.allowAgents;
           if (typeof body === "object" && body !== null && "description" in body && typeof body.description === "string") description = body.description;
-          send(response, { ...task(projectId), description, ...(request.method === "PATCH" ? { allowAgents } : {}), ...(body as object), ...(request.method === "POST" ? { status: "proposed", ready: false } : {}), version: request.method === "PATCH" ? 9_007_199_254_740_994n : 1n }, request.method === "POST" ? 201 : 200); return;
+          if (request.method === "POST") dependencies = { dependsOn: [], externalDependsOn: [] };
+          const dependencyFields = body as Partial<Pick<Task, "dependsOn" | "externalDependsOn">>;
+          dependencies = { ...dependencies, ...(dependencyFields.dependsOn === undefined ? {} : { dependsOn: dependencyFields.dependsOn }), ...(dependencyFields.externalDependsOn === undefined ? {} : { externalDependsOn: dependencyFields.externalDependsOn }) };
+          send(response, { ...task(projectId), ...dependencies, description, ...(request.method === "PATCH" ? { allowAgents } : {}), ...(body as object), ...(request.method === "POST" ? { status: "proposed", ready: false } : {}), version: request.method === "PATCH" ? 9_007_199_254_740_994n : 1n }, request.method === "POST" ? 201 : 200); return;
         }
         if (parts[5] === "task-graph") { send(response, { observedAt: time, project: project(projectId), summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 }, tasks: [] }); return; }
-        if (parts.length === 7) { send(response, { ...task(projectId), description, properties, allowAgents, version: 9_007_199_254_740_993n }); return; }
+        if (parts.length === 7) { send(response, { ...task(projectId), ...dependencies, description, properties, allowAgents, version: 9_007_199_254_740_993n }); return; }
         if (readyPage !== undefined && url.searchParams.get("ready") === "true") { send(response, readyPage); return; }
         if (broken === "page" && url.searchParams.has("cursor")) { fault(response, "internal_error", "native-later-page", 500); return; }
-        send(response, { items: [listResponseTask ?? { ...task(projectId), properties, allowAgents }], nextCursor: broken === "page" ? "native later page" : null });
+        send(response, { items: [listResponseTask ?? { ...task(projectId), ...dependencies, properties, allowAgents }], nextCursor: broken === "page" ? "native later page" : null });
       });
     });
     servers.push(server);
@@ -215,6 +221,29 @@ it("runs the actual installed launcher through native project/task discovery, pe
     expect(emptyDescriptionList[0]).not.toHaveProperty("description");
     expect(JSON.parse((await invoke(["task", "graph", "--json", ...explicit], outside, 0, true)).stdout).tasks).toEqual([]);
     scenarios.push("installed-project-task-operations-server-only-config-explicit-isolation");
+
+    const dependencyCreateAt = requests.length;
+    await invoke(["task", "create", "--title", "Mixed prerequisites", "--depends-on", ordinaryId.toUpperCase(), "--external-depends-on", externalId, ...explicit], outside, 0, true);
+    expect(requests.slice(dependencyCreateAt).map(({ method }) => method)).toEqual(["GET", "POST"]);
+    expect(requests.at(-1)!.body).toEqual({ title: "Mixed prerequisites", dependsOn: [ordinaryId, externalId], externalDependsOn: [externalId] });
+    expect(parseApiJson((await invoke(["task", "show", taskId, "--json", ...explicit], outside, 0, true)).stdout)).toMatchObject({ dependsOn: [ordinaryId, externalId], externalDependsOn: [externalId] });
+    const dependencyCases = [
+      { fields: ["--title", "Preserve prerequisites"], body: { title: "Preserve prerequisites" }, dependsOn: [ordinaryId, externalId], externalDependsOn: [externalId] },
+      { fields: ["--external-depends-on", externalId], body: { dependsOn: [externalId], externalDependsOn: [externalId] }, dependsOn: [externalId], externalDependsOn: [externalId] },
+      { fields: ["--depends-on", ordinaryId], body: { dependsOn: [ordinaryId], externalDependsOn: [] }, dependsOn: [ordinaryId], externalDependsOn: [] },
+      { fields: ["--clear-dependencies"], body: { dependsOn: [], externalDependsOn: [] }, dependsOn: [], externalDependsOn: [] },
+    ];
+    for (const item of dependencyCases) {
+      const before = requests.length;
+      await invoke(["task", "update", taskId, ...item.fields, "--if-version", "9223372036854775807", ...explicit], outside, 0, true);
+      expect(requests.slice(before).map(({ method }) => method)).toEqual(["GET", "PATCH"]);
+      expect(requests.at(-1)!.body).toEqual({ version: 9_223_372_036_854_775_807n, ...item.body });
+      expect(parseApiJson((await invoke(["task", "show", taskId, "--json", ...explicit], outside, 0, true)).stdout)).toMatchObject({ dependsOn: item.dependsOn, externalDependsOn: item.externalDependsOn });
+    }
+    const duplicateAt = requests.length;
+    await invoke(["task", "create", "--title", "Duplicate prerequisite", "--external-depends-on", externalId, "--depends-on", externalId.toUpperCase(), ...explicit], outside, 2, true);
+    expect(requests).toHaveLength(duplicateAt);
+    scenarios.push("installed-ordinary-and-external-complete-replacement-omission-clearing-and-pre-io-duplicate-rejection");
 
     // The Windows .cmd launcher passes command text through cmd.exe. Line breaks
     // are exercised through this same installation's Node entry below.
@@ -431,7 +460,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
     projects = [project()];
     const updateAt = requests.length; await invoke(["task", "update", taskId, "--description=", "--clear-dependencies", ...explicit]);
     const defaultUpdate = requests.slice(updateAt); expect(defaultUpdate.map(({ method }) => method)).toEqual(["GET", "GET", "PATCH"]);
-    expect(defaultUpdate[2]!.body).toEqual({ description: "", dependsOn: [], version: 9_007_199_254_740_993n });
+    expect(defaultUpdate[2]!.body).toEqual({ description: "", dependsOn: [], externalDependsOn: [], version: 9_007_199_254_740_993n });
     broken = "conflict"; const conflictAt = requests.length;
     expect((await invoke(["task", "complete", taskId, "--if-version", "9223372036854775807", ...explicit], outside, 1)).stderr).toContain("native-version-conflict");
     expect(requests.slice(conflictAt).map(({ method }) => method)).toEqual(["GET", "POST"]);

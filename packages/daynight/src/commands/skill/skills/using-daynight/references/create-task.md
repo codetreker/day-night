@@ -44,7 +44,7 @@ Use the target repository's document and workspace rules.
 | Concrete problem, current actions and scope, deliverables, constraints, completion summary, and real input references | Task `description` |
 | Detailed solution, full acceptance criteria, verification methods, and completion evidence | This task's primary Markdown attachment |
 | Applicable visual and interaction design | Owning task's interactive mock UI and resources, referenced by consumers |
-| Prerequisite tasks | `dependsOn` only |
+| Prerequisite tasks and edge classification | Complete `dependsOn` plus its `externalDependsOn` subset |
 | Delivery PR URLs and titles | `properties.pullRequests` |
 
 Give each task an outcome-focused title and a self-contained Markdown
@@ -80,11 +80,17 @@ other resources with working relative references. A static sketch or simplified
 styling does not satisfy this requirement. For a UI Goal, this prototype is
 produced by the Goal description stage and referenced by later tasks.
 
-Use established task IDs in `dependsOn` for real prerequisites. Do not add a
-Dependencies section or duplicate the dependency list in the description or
-Markdown. A top-level task has no dependencies. Repository specifications and
-design documents retain their full contracts; the task's own primary attachment
-must still provide a specific solution and verifiable acceptance criteria.
+Use established task IDs for real prerequisites. Confirmed same-chain stages
+use `--depends-on`; a verified prerequisite owned by another same-project chain uses
+`--external-depends-on`. The CLI sends their complete union and explicit external
+subset. Do not infer ownership from status, title, graph roots or array order,
+and do not add a dependency only to make tasks appear together. Resolve unclear
+ownership before registering the relationship. A top-level task has no ordinary
+prerequisites; it may still have real external prerequisites that block execution.
+Do not add a Dependencies section or duplicate the relationship lists in task
+prose. Repository specifications and design documents retain their full contracts;
+the task's own primary attachment still provides its specific solution and
+verifiable acceptance criteria.
 
 ## Author Markdown
 
@@ -135,8 +141,8 @@ Automatic workers and agent workflows must not turn it on themselves. Approval
 and automatic-execution permission remain separate explicit decisions.
 
 Reuse the established project and suitable tasks. Create new tasks in `proposed`,
-retaining each confirmed ID. Set their concrete descriptions and actual
-`dependsOn` prerequisites. Upload each task's own primary Markdown and required
+retaining each confirmed ID. Set concrete descriptions and actual ordinary and
+external prerequisites using the handbook's full CLI replacement rule. Upload each task's own primary Markdown and required
 resources; add actual attachment references to the complete description using
 the observed task version. Reference already readable shared inputs at their
 source. Do not present planned uploads as existing attachments.
@@ -144,7 +150,7 @@ source. Do not present planned uploads as existing attachments.
 Read back each complete task, its attachment inventory and required contents,
 and its referenced shared inputs. Verify self-contained Markdown descriptions,
 valid links and images, the two required primary-document sections, real source
-identities, intended dependencies, and applicable mock UI resources and
+identities, complete prerequisites and their intended external subset, and applicable mock UI resources and
 interaction. For a Goal, verify both starting tasks and their stage briefs.
 Registration is complete only when required artifacts and associations are
 confirmed readable. Without separate explicit approval authorization, leave

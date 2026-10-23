@@ -9,8 +9,8 @@ executable serves project, task and complete task-graph routes together with the
 embedded task dashboard. Generic bucket/path local storage, task attachment
 metadata and file/preview HTTP endpoints are implemented. Dependency rows also
 persist an ordinary/external classification and task/graph reads expose the
-required external subset. Public task inputs still use their existing
-dependency-ID contract; classification writes remain unavailable.
+required external subset. Public create and versioned PATCH accept explicit
+classification while preserving all-edge execution and project authorization.
 
 The [requirements](../../docs/spec/daynight-server.md) own observable behavior and
 the [design](../../docs/design/daynight-server.md) owns architecture and concurrency.
@@ -567,17 +567,19 @@ receipts and fixed-capacity gates are in the
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/claim` | `200`, todo→in_progress task |
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/complete` | `200`, in_progress→done task |
 
-Creation accepts required `title`, optional `description`, `dependsOn` and
-`properties`; omitted optional values mean empty text, an empty dependency set
+Creation accepts required `title`, optional `description`, `dependsOn`,
+`externalDependsOn` and `properties`; omitted optional values mean empty text,
+empty complete/external dependency sets
 and an empty PR list. Status, version and identity are server-owned on creation.
-`externalDependsOn` is currently a read field: POST and PATCH reject it as an
-unknown input. Replacing dependency IDs preserves classification on surviving
-relationships and makes new relationships ordinary. Metadata edits and
-approve/unapprove/claim/complete preserve classifications; removing an edge also
-removes its classification. The later write contract is defined in the
-[external dependency design](../../docs/design/daynight-external-dependencies.md).
+The external subset must belong to the final complete dependency set. On PATCH,
+omitting both fields preserves relationships; dependsOn-only replaces IDs and
+keeps surviving classifications with new edges ordinary; externalDependsOn-only
+keeps IDs and replaces the exact external subset; both supplied replace both.
+Removing an edge removes its marker. Metadata and approve/unapprove/claim/complete
+preserve unrelated classification and execution timing. Exact write examples
+belong to the [external dependency design](../../docs/design/daynight-external-dependencies.md).
 PATCH accepts a positive integer `version` and at least one mutation of `title`,
-`description`, `dependsOn`, `allowAgents` or `properties.pullRequests`; a status field is rejected
+`description`, `dependsOn`, `externalDependsOn`, `allowAgents` or `properties.pullRequests`; a status field is rejected
 even alongside otherwise valid metadata. Omitted fields
 stay unchanged; explicit null (including null dependency or PR elements) fails.
 Empty description, `dependsOn: []` or `properties: {"pullRequests": []}` clears

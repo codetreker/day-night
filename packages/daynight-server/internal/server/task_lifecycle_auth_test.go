@@ -21,6 +21,12 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 	_, data := identityRequest(t, admin, http.MethodPost, integration.server.URL+"/api/v1/projects",
 		`{"name":"Lifecycle authorization","repoUrl":"https://example.com/lifecycle"}`, origin, http.StatusCreated)
 	project := identityDecode[api.Project](t, data)
+	_, data = identityRequest(t, admin, http.MethodPost, integration.server.URL+taskCollection(project.ID), `{"title":"Completed external prerequisite"}`, origin, http.StatusCreated)
+	prerequisite := identityDecode[api.Task](t, data)
+	for _, action := range []string{"approve", "claim", "complete"} {
+		_, data = identityRequest(t, admin, http.MethodPost, integration.server.URL+taskPath(prerequisite)+"/"+action, jsonBody(t, api.TaskTransitionRequest{Version: prerequisite.Version}), origin, http.StatusOK)
+		prerequisite = identityDecode[api.Task](t, data)
+	}
 	_, data = identityRequest(t, admin, http.MethodPost, integration.server.URL+"/api/v1/projects/"+project.ID+"/invitations", `{}`, origin, http.StatusCreated)
 	invitation := identityDecode[api.CreatedProjectInvitation](t, data)
 	link, err := url.Parse(invitation.Link)
@@ -32,7 +38,7 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 		t.Fatalf("invitation did not grant the ordinary member role: %+v", joined)
 	}
 	_, data = identityRequest(t, member, http.MethodPost, integration.server.URL+taskCollection(project.ID),
-		`{"title":"Member workflow","description":"Original"}`, origin, http.StatusCreated)
+		jsonBody(t, map[string]any{"title": "Member workflow", "description": "Original", "dependsOn": []string{prerequisite.ID}, "externalDependsOn": []string{prerequisite.ID}}), origin, http.StatusCreated)
 	task := identityDecode[api.Task](t, data)
 	_, data = identityRequest(t, member, http.MethodPatch, integration.server.URL+taskPath(task),
 		jsonBody(t, map[string]any{"version": task.Version, "description": "Revised by a member", "allowAgents": true}), origin, http.StatusOK)
@@ -65,6 +71,17 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 	if task.AllowAgents {
 		t.Fatal("member PAT could not disable permission")
 	}
+	classification := jsonBody(t, map[string]any{"version": task.Version, "externalDependsOn": []string{}})
+	request(t, anonymous, http.MethodPatch, taskPath(task), classification, nil, http.StatusUnauthorized, "unauthenticated")
+	request(t, outsider, http.MethodPatch, taskPath(task), classification, origin, http.StatusNotFound, "not_found")
+	request(t, member, http.MethodPatch, taskPath(task), classification, map[string]string{"Origin": "https://foreign.example"}, http.StatusForbidden, "forbidden")
+	data = request(t, anonymous, http.MethodPatch, taskPath(task), classification, bearer, http.StatusOK, "")
+	task = identityDecode[api.Task](t, data)
+	if len(task.ExternalDependsOn) != 0 || len(task.DependsOn) != 1 {
+		t.Fatal("member PAT could not change classification independently of prerequisites")
+	}
+	data = request(t, member, http.MethodPatch, taskPath(task), jsonBody(t, map[string]any{"version": task.Version, "externalDependsOn": []string{prerequisite.ID}}), origin, http.StatusOK, "")
+	task = identityDecode[api.Task](t, data)
 	for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"unapprove", "proposed"}, {"approve", "todo"}, {"claim", "in_progress"}, {"complete", "done"}} {
 		t.Run(step.action, func(t *testing.T) {
 			path := taskPath(task) + "/" + step.action
@@ -84,7 +101,7 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 			headers["X-Request-ID"] = "lifecycle-member-" + step.action
 			data = request(t, browser, http.MethodPost, path, body, headers, http.StatusOK, "")
 			changed := identityDecode[api.Task](t, data)
-			if changed.Status != step.status || changed.Version != task.Version+1 || changed.AllowAgents != task.AllowAgents {
+			if changed.Status != step.status || changed.Version != task.Version+1 || changed.AllowAgents != task.AllowAgents || len(changed.ExternalDependsOn) != 1 || changed.ExternalDependsOn[0] != prerequisite.ID {
 				t.Fatalf("ordinary member could not perform %s: %+v", step.action, changed)
 			}
 			task = changed

@@ -4,13 +4,13 @@
 [原型](mockups/external-dependencies/index.html)展示目标视觉和交互，
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-23-external-dependency-design.md)保存方案取舍。
 依赖性质存储、完整读取和 Web 普通分量消费已实现。图的虚线箭头来自显式外部性质，
-链外卡片由上下文角色决定；详情按关系方向显示性质。公开写入仍只接受原有依赖 ID，
-本页的显式分类写入与 CLI 声明选项仍是后续目标。
+链外卡片由上下文角色决定；详情按关系方向显示性质。公开 API 接受显式分类创建及部分 PATCH，CLI 声明普通/外部完整集合；
+Web 读取和呈现这些性质，不提供依赖编辑器。
 
 ## 设计基线与依据
 
 以下源码证据记录 `2d7fdd1e4e178db17e46da5d3b6c0e4050edf730` 的设计前基线，
-说明为何需要保存关系性质并替换根可达性归组。本页后续章节描述当前机制与尚未开放的分类写入。
+说明为何需要保存关系性质并替换根可达性归组。本页后续章节定义当前分类读写与呈现机制。
 
 | 已有机制与内容 | 对本设计的含义 |
 |---|---|
@@ -86,7 +86,7 @@ core、`TaskWrite`、完整任务与图任务增加 `ExternalDependsOn`。
 
 ## API 契约
 
-### 已实现的读取与现有写入边界
+### 读取契约
 
 完整任务、列表项、ready 项、变更响应和图节点都保留原 `dependsOn: string[]`，
 并返回必填 `externalDependsOn: string[]`。示例中的字母代表实际 UUID：
@@ -104,12 +104,11 @@ core、`TaskWrite`、完整任务与图任务增加 `ExternalDependsOn`。
 客户端严格读取两个数组并校验子集；没有“缺字段即旧版本”的运行时分支。
 原始精确版本、Markdown、PR 属性、时间戳与图顶层 `observedAt` 的契约不变。
 
-当前创建和 PATCH 保留各自的可写字段（PATCH 包括 `allowAgents`），
-不接受 `externalDependsOn`；该字段仍是未知输入并返回 400。
-普通依赖替换保留仍存在关系的外部性质，新关系为普通；移除关系同时移除其性质。
+创建和 PATCH 接受 externalDependsOn，独立于完整依赖字段合成最终候选；
+具体组合见下表。移除关系同时移除其性质。
 标题、描述、PR、allowAgents 修改及 approve、unapprove、claim、complete 继续携带已存储的外部子集。
 
-### 目标分类写入
+### 分类写入
 
 创建时省略任一数组分别表示空集合；外部非空而完整依赖为空是无效输入。
 更新字段独立可选，且与其他任务字段共同提交：
@@ -125,7 +124,7 @@ core、`TaskWrite`、完整任务与图任务增加 `ExternalDependsOn`。
 单独替换 `E={A}` 保持原 D；提交 `D={A}, E={B}` 整体拒绝。
 删除关系同时删除其性质，是关系生命周期的一部分，不是对外部数组的独立默认修补。
 
-HTTP 严格对象解析在写入阶段加入字段白名单及类型验证。
+HTTP 严格对象解析在创建和 PATCH 白名单中接受 externalDependsOn，并校验数组类型及内容。
 未知或重复字段、显式 `null`、非法或重复 ID、自引用、外部子集越界、缺失或跨项目前置返回 `invalid_input` / 400。
 任意普通、外部或混合环返回 `dependency_cycle` / 409；未完成真实前置返回 `dependency_unsatisfied` / 409；
 过期版本返回 `version_conflict` / 409。现有身份、成员隐藏与权限结果保持原样。
@@ -136,8 +135,7 @@ HTTP 严格对象解析在写入阶段加入字段白名单及类型验证。
 当前 CLI 读取和 JSON 已保留必填外部子集，任务与图的人类依赖区输出
 `External dependencies (N): <ID 列表或 none>`，列表、ready 和操作结果复用同一表达。
 读取器拒绝缺失、非法或不属于完整依赖集的外部 ID，不在旧服务响应中补空数组。
-当前命令可替换完整依赖 ID 集合并保留存续边性质，但没有显式分类声明选项；
-以下两种声明选项及相关 skill 更新是后续写入目标：
+命令以两种声明选项编译完整关系及精确外部子集；任一依赖选项出现就同时提交 D/E：
 
 ```sh
 daynight task create --title "worker 阶段" \

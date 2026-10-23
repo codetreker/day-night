@@ -6,7 +6,9 @@ const jsonOption: CommandOption = { names: ["--json"], description: "Print the c
 const listJsonOption: CommandOption = { names: ["--json"], description: "Print task fields except description as JSON" };
 const titleOption: CommandOption = { names: ["--title"], description: "Task title", value: { name: "title", kind: "text" } };
 const descriptionOption: CommandOption = { names: ["--description"], description: "Task description; an empty value clears it", value: { name: "description", kind: "text", allowEmpty: true } };
-const dependencyOption: CommandOption = { names: ["--depends-on"], description: "Direct dependency task UUID; repeat to supply the full set", value: { name: "task-id", kind: "text" }, repeatable: true };
+const dependencyOption: CommandOption = { names: ["--depends-on"], description: "Ordinary prerequisite UUID; repeat for the complete ordinary set", value: { name: "task-id", kind: "text" }, repeatable: true };
+const externalDependencyOption: CommandOption = { names: ["--external-depends-on"], description: "External prerequisite UUID; repeat for the complete external set", value: { name: "task-id", kind: "text" }, repeatable: true };
+const dependencyDetails = "Supplying either dependency option replaces every dependency and its classification. --depends-on supplies ordinary prerequisites; --external-depends-on supplies external prerequisites. External-only input keeps only those external prerequisites; ordinary-only input makes every supplied prerequisite ordinary. IDs must be valid UUIDs and occur once across both options. Both kinds block execution until completed.";
 const statusOption: CommandOption = { names: ["--status"], description: "Task status", value: { name: "status", kind: "text", choices: ["proposed", "todo", "in_progress", "done"] } };
 const allowAgentsOption: CommandOption = { names: ["--allow-agents"], description: "Automatic-execution permission", value: { name: "true|false", kind: "text", choices: ["true", "false"] } };
 const versionOption: CommandOption = { names: ["--if-version"], description: "Use this expected task version without reading a newer version", value: { name: "version", kind: "text" } };
@@ -23,8 +25,8 @@ export const taskDefinition: CommandDefinition = {
     {
       name: "create",
       description: "Create a proposed task with optional dependencies and PR references",
-      options: [{ ...titleOption, required: true }, descriptionOption, dependencyOption, ...pullRequestOptions, projectOption, helpOption],
-      details: "New tasks start in proposed with automatic execution disabled and require approval before they can be claimed. Repeated --depends-on values preserve the supplied dependency set.\nPR URL and title counts must match; the nth URL pairs with the nth title. Empty values are accepted, and all text is stored as supplied.",
+      options: [{ ...titleOption, required: true }, descriptionOption, dependencyOption, externalDependencyOption, ...pullRequestOptions, projectOption, helpOption],
+      details: `New tasks start in proposed with automatic execution disabled and require approval before they can be claimed. Omitting both dependency options creates a task with no prerequisites.\n${dependencyDetails}\nPR URL and title counts must match; the nth URL pairs with the nth title. Empty values are accepted, and all text is stored as supplied.`,
     },
     {
       name: "list",
@@ -48,13 +50,13 @@ export const taskDefinition: CommandDefinition = {
       name: "update",
       description: "Atomically update task fields, dependencies, and PR references",
       arguments: [taskArgument],
-      options: [titleOption, descriptionOption, allowAgentsOption, dependencyOption,
+      options: [titleOption, descriptionOption, allowAgentsOption, dependencyOption, externalDependencyOption,
         { names: ["--clear-dependencies"], description: "Clear the complete dependency set" },
         ...pullRequestOptions,
         { names: ["--clear-pull-requests"], description: "Clear the complete PR reference list" },
         versionOption,
         projectOption, helpOption],
-      details: "Provide at least one changed field. --allow-agents changes the automatic-execution permission independently of approval; actual changes are locked during in_progress. Use daynight task approve, unapprove, claim, or complete to change status.\n--depends-on replaces all dependencies; it conflicts with --clear-dependencies.\nPR URL and title counts must match; the nth URL pairs with the nth title. Pairs replace the complete list; empty values are accepted. --clear-pull-requests conflicts with either PR option. Omitted PR options preserve the current list.\nWithout --if-version, read the current version before submitting the update. Conflicts are not retried.",
+      details: `Provide at least one changed field. --allow-agents changes the automatic-execution permission independently of approval; actual changes are locked during in_progress. Use daynight task approve, unapprove, claim, or complete to change status.\n${dependencyDetails}\nOmitting both dependency options preserves all dependencies and classifications. --clear-dependencies clears both sets and conflicts with either dependency option.\nPR URL and title counts must match; the nth URL pairs with the nth title. Pairs replace the complete list; empty values are accepted. --clear-pull-requests conflicts with either PR option. Omitted PR options preserve the current list.\nWithout --if-version, read the current version before submitting the update. Conflicts are not retried.`,
     },
     ...([
       { name: "approve", description: "Approve a proposed task, moving it to todo", rule: "Unfinished prerequisites are allowed." },
