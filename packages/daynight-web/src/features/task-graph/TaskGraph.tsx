@@ -131,7 +131,7 @@ const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleId
       <InitialViewport geometry={geometry} rootId={rootId} folded={folded} action={action} resetButton={resetButton} />
       <InspectedEdges geometry={geometry} />
       <Background variant={BackgroundVariant.Dots} gap={18} size={0.8} color="#d9dee9" bgColor="#fafbfe" />
-      <Controls position="top-right" orientation="horizontal" showInteractive={false} fitViewOptions={viewportFitOptions} />
+      <Controls position="bottom-left" orientation="horizontal" showInteractive={false} fitViewOptions={viewportFitOptions} />
     </ReactFlow>
   ), [nodes, rootId, geometry, folded, action, clearInspection, m]);
   return (

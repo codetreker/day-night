@@ -362,7 +362,52 @@ test.describe('Web language journeys', () => {
       for (const width of [1440, 320]) {
         await page.setViewportSize({ width, height: 800 });
         await expectPageWidth(page);
-        await expect(page.locator('.graph-fullscreen-toggle')).toBeVisible();
+        const fullscreenToggle = page.locator('.graph-fullscreen-toggle');
+        await expect(fullscreenToggle).toBeVisible();
+        const selected = await inspectTask(page, task.id).getAttribute('aria-pressed');
+        await fullscreenToggle.click();
+        const fullscreen = page.locator('.task-graph-fullscreen');
+        await page.evaluate(() => {
+          (window as unknown as { localeStorageFault: { value: string | null } }).localeStorageFault.value = 'write';
+        });
+        await language(fullscreen).selectOption(locale);
+        const notice = fullscreen.locator('.locale-notice');
+        await expect(notice).toContainText(locale === 'en' ? 'The language could not be saved.' : '语言无法保存到浏览器');
+        const controls = fullscreen.locator('.react-flow__controls');
+        const noticeBounds = await notice.boundingBox();
+        const controlsBounds = await controls.boundingBox();
+        if (noticeBounds === null || controlsBounds === null) throw new Error('Fullscreen language notice or viewport controls are absent.');
+        expect(noticeBounds.x + noticeBounds.width <= controlsBounds.x
+          || controlsBounds.x + controlsBounds.width <= noticeBounds.x
+          || noticeBounds.y + noticeBounds.height <= controlsBounds.y
+          || controlsBounds.y + controlsBounds.height <= noticeBounds.y).toBe(true);
+        const viewport = fullscreen.locator('.react-flow__viewport');
+        const zoom = () => viewport.evaluate((element) => new DOMMatrixReadOnly(getComputedStyle(element).transform).a);
+        const initialZoom = await zoom();
+        await fullscreen.getByRole('button', { name: locale === 'en' ? 'Zoom in' : '放大', exact: true }).click();
+        await expect.poll(zoom).toBeGreaterThan(initialZoom);
+        for (let step = 0; step < 2; step++) {
+          const previousZoom = await zoom();
+          await fullscreen.getByRole('button', { name: locale === 'en' ? 'Zoom out' : '缩小', exact: true }).click();
+          await expect.poll(zoom).toBeLessThan(previousZoom);
+        }
+        const beforeFit = await viewport.getAttribute('style');
+        await fullscreen.getByRole('button', { name: locale === 'en' ? 'Fit to canvas' : '适应画布', exact: true }).click();
+        await expect(viewport).not.toHaveAttribute('style', beforeFit!);
+        const fitted = await viewport.getAttribute('style');
+        await expect(notice).toBeVisible();
+        const retrySave = notice.getByRole('button', { name: locale === 'en' ? 'Retry saving language' : '重试保存语言', exact: true });
+        await retrySave.click();
+        await expect(notice).toBeVisible();
+        await clearFault();
+        await retrySave.click();
+        await expect(notice).toHaveCount(0);
+        expect(await page.evaluate(() => localStorage.getItem('daynight.web.locale'))).toBe(locale);
+        await page.keyboard.press('Escape');
+        await expect(fullscreen).toHaveCount(0);
+        await expect(fullscreenToggle).toBeFocused();
+        await expect(page.locator('.react-flow__viewport')).toHaveAttribute('style', fitted!);
+        await expect(inspectTask(page, task.id)).toHaveAttribute('aria-pressed', selected!);
         await details(page, task.id).click();
         const dialog = page.locator('.task-detail-dialog');
         await expect(dialog.locator('.task-detail-title')).toHaveText(task.title);

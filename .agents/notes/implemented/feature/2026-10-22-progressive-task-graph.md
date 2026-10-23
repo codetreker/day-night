@@ -42,7 +42,9 @@ left text group takes the remaining width and truncates overflow with an ellipsi
 neither the toolbar nor the page scrolls horizontally. Narrow fullscreen controls
 use compact padding and a visually hidden locale label whose accessible name
 remains available. Locale preference failures appear below the selector without
-widening the action group or clipping the retry control. The underlying counts
+widening the action group or clipping the retry control. Native canvas controls
+stay at bottom-left, separate from the top-right locale notice and bottom-right
+attribution, so a persistent storage failure leaves zoom and fit accessible. The underlying counts
 remain complete when only part of the graph is visible. The original
 card decision reserved 220 by 136 pixels for every task: a 94px body, 40px
 two-column footer and two border pixels. Uniform heights kept all controls in
@@ -114,6 +116,10 @@ mechanisms and the two-part UX-T2 scope.
 **Wrap the toolbar on narrow screens.** This keeps all labels visible at once,
 but gives the header variable height and takes space from the graph. A single
 row with truncated text preserves canvas height and keeps actions in place.
+
+**Offset the notice below top-right canvas controls.** This couples the notice
+position to the controls' height and margin. The existing public bottom-left
+control placement separates them without geometry constants or new state.
 
 **Scroll the complete toolbar horizontally.** This preserves visual access to all
 labels, but sends action buttons offscreen. Truncating only the left text keeps
