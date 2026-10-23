@@ -217,6 +217,26 @@ describe("attachment writes and identity", () => {
     expect(result.current).toMatchObject({ selectedPath: null, write: { status: "idle", error: null } });
     expect(result.current.preview.status).toBe("idle");
   });
+  it("retains a later-page preview while refreshing after another file is deleted", async () => {
+    const transport = api();
+    const later = deferred<AttachmentPage>();
+    const { result } = renderHook(() => useAttachments(project, task, transport));
+    await waitFor(() => expect(result.current.complete).toBe(true));
+    act(() => result.current.select(b.path));
+    await waitFor(() => expect(result.current.preview.status).toBe("ready"));
+    const preview = result.current.preview;
+    transport.list.mockResolvedValueOnce(page([file("first.txt")], "later")).mockReturnValueOnce(later.promise);
+    await act(async () => { expect(await result.current.remove(a.path)).toBe(true); });
+    await waitFor(() => expect(result.current.items).toEqual([file("first.txt")]));
+    expect(result.current.complete).toBe(false);
+    expect(result.current.selected).toBe(b);
+    expect(result.current.preview).toBe(preview);
+    expect(transport.readText).toHaveBeenCalledTimes(1);
+    await act(async () => later.resolve(page([b])));
+    expect(result.current.complete).toBe(true);
+    expect(result.current.preview).toBe(preview);
+    expect(transport.readText).toHaveBeenCalledTimes(1);
+  });
   it("hides all old scope state during the first identity render, aborting list, preview and write ownership", async () => {
     const transport = api();
     const write = deferred<Attachment>();

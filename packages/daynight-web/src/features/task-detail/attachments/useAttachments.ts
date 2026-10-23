@@ -90,7 +90,13 @@ export const useAttachments = (projectId: string, taskId: string, api: Attachmen
 
   const selectedPath = selection.scope === scope ? selection.path : null;
   const visibleList = list.scope === scope ? list : initialList(scope);
-  const selected = visibleList.items.find((item) => item.path === selectedPath);
+  // An incomplete refresh cannot prove that a selected file disappeared from a later page.
+  const selectedMetadata = useRef<{ scope: string; path: string | null; attachment: Attachment | undefined }>({ scope, path: null, attachment: undefined });
+  const listedSelection = visibleList.items.find((item) => item.path === selectedPath);
+  if (listedSelection !== undefined || visibleList.complete || selectedMetadata.current.scope !== scope || selectedMetadata.current.path !== selectedPath) {
+    selectedMetadata.current = { scope, path: selectedPath, attachment: listedSelection };
+  }
+  const selected = selectedMetadata.current.attachment;
   const selectedKind = selected === undefined ? undefined : attachmentKind(selected);
   const selectedUpdatedAt = selected?.updatedAt;
   useEffect(() => {
@@ -130,7 +136,8 @@ export const useAttachments = (projectId: string, taskId: string, api: Attachmen
       if (!owns()) return false;
       if (file !== null) setSelection({ scope, path });
       else setSelection((prior) => prior.scope === scope && prior.path === path ? { scope, path: null } : prior);
-      setPreviewRevision((value) => value + 1);
+      if (file !== null) setPreviewRevision((value) => value + 1);
+      else setList((prior) => ({ ...prior, items: prior.items.filter((item) => item.path !== path) }));
       setWrite({ scope, status: "idle", error: null });
       reload();
       return true;
@@ -146,7 +153,7 @@ export const useAttachments = (projectId: string, taskId: string, api: Attachmen
   const remove = useCallback((path: string) => mutate(path, null), [mutate]);
   const visiblePreview = preview.scope === scope && preview.path === selectedPath ? preview : initialPreview(scope, selectedPath);
   const visibleWrite = write.scope === scope ? write : { scope, status: "idle" as const, error: null };
-  return { ...visibleList, selectedPath, select, preview: visiblePreview, retryPreview, write: visibleWrite, put, remove, reload };
+  return { ...visibleList, selected, selectedPath, select, preview: visiblePreview, retryPreview, write: visibleWrite, put, remove, reload };
 };
 
 export type AttachmentController = ReturnType<typeof useAttachments>;

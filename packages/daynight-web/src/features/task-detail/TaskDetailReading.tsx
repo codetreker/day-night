@@ -34,5 +34,5 @@ export const TaskDetailReading = ({ projectId, taskId, description, overview, on
       attachments.select(reference.kind === 'relative' ? reference.path : null);
       setNavigation({ invalid: reference.kind !== 'relative' });
       showAttachments();
-    }} />)} attachments={<TaskAttachmentsPanel projectId={projectId} taskId={taskId} attachments={attachments} navigation={navigation} onInteract={() => setNavigation(null)} onClose={onClose} {...(urls === undefined ? {} : { urls })} />} />;
+    }} />)} attachments={(active) => <TaskAttachmentsPanel active={active} projectId={projectId} taskId={taskId} attachments={attachments} navigation={navigation} onInteract={() => setNavigation(null)} onClose={onClose} {...(urls === undefined ? {} : { urls })} />} />;
 };

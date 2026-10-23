@@ -1,5 +1,5 @@
 import type { Attachment } from '../../src/api/types';
-import { attachmentContentType } from '../../src/api/client';
+import { ApiError, attachmentContentType } from '../../src/api/client';
 import type { AttachmentUrls } from '../../src/features/task-detail/attachments/TaskAttachments';
 import type { AttachmentApi } from '../../src/features/task-detail/attachments/useAttachments';
 import guide from './files/docs/guide.md?raw';
@@ -9,12 +9,13 @@ import script from './files/site/app.js?raw';
 import tallMarkdown from './files/docs/tall.md?raw';
 import tallText from './files/data/tall.txt?raw';
 
-export type MockupScenario = 'files' | 'empty' | 'upload-error' | 'loading' | 'list-error' | 'preview-error' | 'busy';
+export type MockupScenario = 'files' | 'empty' | 'upload-error' | 'loading' | 'list-error' | 'preview-error' | 'busy' | 'delete-error' | 'delete-pending';
 const base = '/tests/mockups/files/';
 export const mockupLongPath = `docs/${'long-file-name-'.repeat(12)}.txt`;
 const timestamp = '2026-10-21T10:00:00Z';
 const sources = [
   ['docs/guide.md', 'text/markdown', guide],
+  ['examples/guide.md', 'text/markdown', guide],
   ['images/workflow.svg', 'image/svg+xml', ''],
   ['site/index.html', 'text/html', ''],
   ['site/style.css', 'text/css', style],
@@ -43,9 +44,10 @@ export const createAttachmentFixture = (scenario: MockupScenario) => {
     attachment: { path, contentType, sizeBytes: text === '' ? 640 : new TextEncoder().encode(text).length, createdAt: timestamp, updatedAt: timestamp },
     text,
   }]));
-  const pathUrls = new Map([...files.keys()].map((path) => [path, `${base}${path === mockupLongPath ? 'data/tall.txt' : path}`]));
+  const pathUrls = new Map([...files.keys()].map((path) => [path, `${base}${path === mockupLongPath ? 'data/tall.txt' : path === 'examples/guide.md' ? 'docs/guide.md' : path}`]));
   const ownedUrls = new Set<string>();
   let revision = 0;
+  let deleteAttempts = 0;
   const required = (path: string) => {
     const file = files.get(path);
     if (file === undefined) throw new Error('Fixture attachment does not exist.');
@@ -76,7 +78,15 @@ export const createAttachmentFixture = (scenario: MockupScenario) => {
       pathUrls.set(path, url);
       return attachment;
     },
-    remove: async (_project, _task, path) => { required(path); files.delete(path); },
+    remove: async (_project, _task, path, signal) => {
+      required(path);
+      if (scenario === 'delete-error' && ++deleteAttempts === 1) throw new ApiError('server', 503, 'unavailable', 'mockup-delete-1');
+      if (scenario === 'delete-pending') return new Promise((_resolve, reject) => {
+        signal.throwIfAborted();
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+      files.delete(path);
+    },
   };
   const fileUrl = (path: string): string => {
     const url = pathUrls.get(path);
