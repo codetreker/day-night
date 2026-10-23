@@ -26,7 +26,7 @@ func (s *Snapshot) TaskGraphSize(ctx context.Context, projectID string) (TaskGra
 
 func (s *Snapshot) TaskGraphTasks(ctx context.Context, projectID string, previewCharacters int) ([]core.GraphTask, error) {
 	rows, err := s.tx.Query(ctx, `SELECT t.id::text, left(t.title, $2), char_length(t.title) > $2,
-		t.status, t.created_at, t.updated_at, t.started_at, t.completed_at, t.allow_agents, `+taskDependsOn+`, `+taskBlockedBy+`, `+taskReady+`
+		t.status, t.created_at, t.updated_at, t.started_at, t.completed_at, t.allow_agents, `+taskDependsOn+`, `+taskExternalDependsOn+`, `+taskBlockedBy+`, `+taskReady+`
 		FROM tasks t WHERE t.project_id = $1 ORDER BY t.created_at, t.id`, projectID, previewCharacters)
 	if err != nil {
 		return nil, queryError("read task graph", err)
@@ -36,7 +36,7 @@ func (s *Snapshot) TaskGraphTasks(ctx context.Context, projectID string, preview
 	for rows.Next() {
 		var task core.GraphTask
 		if err := rows.Scan(&task.ID, &task.TitlePreview, &task.TitleTruncated, &task.Status,
-			&task.CreatedAt, &task.UpdatedAt, &task.StartedAt, &task.CompletedAt, &task.AllowAgents, &task.DependsOn, &task.BlockedBy, &task.Ready); err != nil {
+			&task.CreatedAt, &task.UpdatedAt, &task.StartedAt, &task.CompletedAt, &task.AllowAgents, &task.DependsOn, &task.ExternalDependsOn, &task.BlockedBy, &task.Ready); err != nil {
 			return nil, queryError("read task graph", err)
 		}
 		task.CreatedAt = task.CreatedAt.UTC()

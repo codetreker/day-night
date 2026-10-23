@@ -36,21 +36,22 @@ type TaskTransitionRequest struct {
 }
 
 type Task struct {
-	Properties  TaskProperties `json:"properties"`
-	ID          string         `json:"id"`
-	ProjectID   string         `json:"projectId"`
-	Title       string         `json:"title"`
-	Description string         `json:"description"`
-	Status      string         `json:"status"`
-	Version     int64          `json:"version"`
-	CreatedAt   time.Time      `json:"createdAt"`
-	UpdatedAt   time.Time      `json:"updatedAt"`
-	StartedAt   *time.Time     `json:"startedAt"`
-	CompletedAt *time.Time     `json:"completedAt"`
-	DependsOn   []string       `json:"dependsOn"`
-	BlockedBy   []string       `json:"blockedBy"`
-	AllowAgents bool           `json:"allowAgents"`
-	Ready       bool           `json:"ready"`
+	Properties        TaskProperties `json:"properties"`
+	ID                string         `json:"id"`
+	ProjectID         string         `json:"projectId"`
+	Title             string         `json:"title"`
+	Description       string         `json:"description"`
+	Status            string         `json:"status"`
+	Version           int64          `json:"version"`
+	CreatedAt         time.Time      `json:"createdAt"`
+	UpdatedAt         time.Time      `json:"updatedAt"`
+	StartedAt         *time.Time     `json:"startedAt"`
+	CompletedAt       *time.Time     `json:"completedAt"`
+	DependsOn         []string       `json:"dependsOn"`
+	ExternalDependsOn []string       `json:"externalDependsOn"`
+	BlockedBy         []string       `json:"blockedBy"`
+	AllowAgents       bool           `json:"allowAgents"`
+	Ready             bool           `json:"ready"`
 }
 
 type TaskPage struct {

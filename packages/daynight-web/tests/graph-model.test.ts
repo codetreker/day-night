@@ -11,7 +11,7 @@ const graph = (seeds: readonly Seed[]): TaskGraph => {
     const dependsOn = seed.dependsOn ?? [];
     const status = seed.status ?? "todo";
     const blockedBy = dependsOn.filter((predecessor) => seeds.find((item) => item.id === predecessor)?.status !== "done");
-    return { allowAgents: false, startedAt: null, completedAt: null,
+    return { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null,
       id: seed.id, status, dependsOn, blockedBy, ready: status === "todo" && blockedBy.length === 0,
       titlePreview: "Private task text", titleTruncated: false, createdAt: time, updatedAt: time,
     };
@@ -299,6 +299,32 @@ describe("complete prerequisite inspection", () => {
     const first = tracePrerequisites(index, B);
     expect(tracePrerequisites(index, B)).not.toBe(first);
     expect(() => tracePrerequisites(index, C)).toThrow(GraphDataError);
+  });
+});
+
+describe("external dependency read metadata", () => {
+  it("preserves readiness and cycle validation across every dependency edge", () => {
+    const blocked = changedTask(graph([
+      { id: A }, { id: C, status: "done" }, { id: B, dependsOn: [A, C] },
+    ]), B, { externalDependsOn: [A, C] });
+    expect(buildGraphIndex(blocked).nodes.get(B)).toMatchObject({
+      dependsOn: [A, C], externalDependsOn: [A, C], blockedBy: [A], ready: false,
+    });
+    expectRejected(changedTask(blocked, B, { blockedBy: [] }));
+    expectRejected(changedTask(blocked, B, { ready: true }));
+
+    const ready = changedTask(graph([
+      { id: A, status: "done" }, { id: C, status: "done" }, { id: B, dependsOn: [A, C] },
+    ]), B, { externalDependsOn: [A, C] });
+    expect(buildGraphIndex(ready).nodes.get(B)).toMatchObject({
+      externalDependsOn: [A, C], blockedBy: [], ready: true,
+    });
+
+    const mixedCycle = changedTask(graph([
+      { id: A, dependsOn: [B] }, { id: B, dependsOn: [A] },
+    ]), B, { externalDependsOn: [A] });
+    expectRejected(mixedCycle);
+    expectRejected(changedTask(mixedCycle, A, { externalDependsOn: [B] }));
   });
 });
 

@@ -90,9 +90,10 @@ Task 包含以下持久化字段：
 | `createdAt`、`updatedAt` | UTC 创建和最后实际变更时间 |
 | `startedAt`、`completedAt` | 只读 UTC 执行起止时间，字段必填但允许 `null`，未知事实不补造 |
 
-Task 响应还包含 `dependsOn`、`blockedBy` 和 `ready`：
+Task 响应还包含 `dependsOn`、`externalDependsOn`、`blockedBy` 和 `ready`：
 
 - `dependsOn` 是全部直接前置 task ID，按 ID 升序返回。
+- `externalDependsOn` 是其中标记为外部的 ID 子集，必填、无重复且按 ID 升序；空子集为 `[]`。
 - `blockedBy` 是其中尚未处于 `done` 的 task ID，按 ID 升序返回。
 - `ready` 当且仅当本 task 为 `todo` 且 `blockedBy` 为空时为 `true`。
 
@@ -112,6 +113,10 @@ Task 响应还包含 `dependsOn`、`blockedBy` 和 `ready`：
 `description`、`dependsOn` 与 `properties`；不能指定初始 status。省略描述为空字符串，
 依赖和 PR 数组省略时为空。既有 todo、in-progress、done 数据视为其实际状态，不重置
 审批，不修改版本或时间戳。`allowAgents` 由服务在创建时设为 false，创建输入即使传 false 也拒绝该字段。自动执行许可迁移将既有任务设为 true，保留其余业务字段、version 和时间。
+依赖行的 `external` 已持久化，旧边通过迁移取得 `false`。
+当前创建和 PATCH 不接受 `externalDependsOn` 输入；完整依赖集替换时保留存续边的性质，
+新边为普通，删除边同时删除性质。普通编辑（包括 allowAgents）及 approve、unapprove、claim、complete 都保留其余性质。
+外部分类写入的目标契约由[外部依赖需求](daynight-external-dependencies.md)定义，尚未公开。
 
 | 操作 | 唯一允许前态 | 结果 | 前置要求 |
 |---|---|---|---|
@@ -229,12 +234,13 @@ proposed 只计入自身状态和总数；blocked 只计入前置未全部完成
 版本和时间不随此次读取变化。
 
 图节点包含 `id`、`titlePreview`、`titleTruncated`、`status`、`dependsOn`、
-`blockedBy`、`ready`、必填布尔 `allowAgents`、`createdAt`、`updatedAt` 以及明确可空的 `startedAt`、`completedAt`。
+`externalDependsOn`、`blockedBy`、`ready`、必填布尔 `allowAgents`、`createdAt`、`updatedAt` 以及明确可空的 `startedAt`、`completedAt`。
 顶层 `observedAt` 是图数据与统计读取后的数据库时间样本，使用 UTC RFC 3339；
 它不是事务开始时间或任务更新时间，不修改任务状态或版本。标题预览最多 160 Unicode code
 points，截短时标记 titleTruncated；不返回完整标题、description 或 version。完整
 任务内容继续使用既有详情接口。节点按 `(createdAt,id)` 排序，前置及阻塞 ID 数组
-按 ID 排序；空图和空数组使用 `[]`，时间使用 UTC。边由 dependsOn 表示。
+按 ID 排序；空图和空数组使用 `[]`，时间使用 UTC。真实边由全部 `dependsOn` 表示，
+`externalDependsOn` 仅保留其中的性质，不减免阻塞、环检测或图边数。
 
 一个成功图最多包含 1,000 节点、5,000 边。快照内先获取精确数量；超过任一上限
 返回 `409 graph_limit_exceeded`，error.details 包含 `nodeCount`、`edgeCount`、

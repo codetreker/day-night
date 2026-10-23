@@ -12,7 +12,7 @@ const indexOf = (seeds: readonly Seed[], defaultStatus: TaskStatus = 'todo') => 
   const tasks: GraphTask[] = seeds.map(({ id, dependsOn = [] }) => {
     const status = statuses.get(id)!;
     const blockedBy = dependsOn.filter((source) => statuses.get(source) !== 'done');
-    return { allowAgents: false, startedAt: null, completedAt: null,
+    return { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null,
       id, dependsOn, blockedBy, ready: status === 'todo' && blockedBy.length === 0, status,
       titlePreview: id, titleTruncated: false, createdAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:00:00Z',
     };

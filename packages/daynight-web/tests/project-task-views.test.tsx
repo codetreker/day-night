@@ -20,7 +20,7 @@ vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, ro
 const project = 'project-one';
 const otherProject = 'project-two';
 const timestamp = '2026-10-20T12:00:00.123456Z';
-const seed = (id: string, status: GraphTask['status'] = 'todo', dependsOn: string[] = []): GraphTask => ({ allowAgents: false, startedAt: null, completedAt: null,
+const seed = (id: string, status: GraphTask['status'] = 'todo', dependsOn: string[] = []): GraphTask => ({ allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null,
   id, titlePreview: `任务 ${id}`, titleTruncated: false, status, dependsOn, blockedBy: [], ready: false,
   createdAt: timestamp, updatedAt: timestamp,
 });
@@ -49,7 +49,7 @@ beforeEach(() => {
   root = document.createElement('div'); root.id = 'root'; document.body.append(root);
   graphRequest.mockReset(); graphRequest.mockImplementation(async (id) => snapshot(seeds, id));
   vi.mocked(getTask).mockReset();
-  vi.mocked(getTask).mockImplementation(async (projectId, id) => ({ allowAgents: false, startedAt: null, completedAt: null,
+  vi.mocked(getTask).mockImplementation(async (projectId, id) => ({ allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null,
     id, projectId, title: `详情 ${id}`, description: '', properties: { pullRequests: [] }, status: 'todo', version: 1n, dependsOn: [], blockedBy: [], ready: true,
     createdAt: timestamp, updatedAt: timestamp,
   }));

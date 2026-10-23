@@ -19,13 +19,13 @@ const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(
 const projectId = id(100);
 const timestamp = '2026-10-20T09:00:00.123456789Z';
 const project: Project = { settings: { version: 1n, executionWarningMinutes: 60 }, id: projectId, name: '测试项目', repoUrl: 'https://github.com/example/project', createdAt: timestamp, updatedAt: timestamp };
-const detail = (value = 1, changes: Partial<TaskDetail> = {}): TaskDetail => ({ allowAgents: false, startedAt: null, completedAt: null,
+const detail = (value = 1, changes: Partial<TaskDetail> = {}): TaskDetail => ({ allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null,
   id: id(value), projectId, title: `任务 ${value}`, description: `任务 ${value} 的完整描述`, status: 'todo', version: 1n,
   properties: { pullRequests: [] }, dependsOn: [], blockedBy: [], ready: true, createdAt: timestamp, updatedAt: timestamp, ...changes,
 });
 const node = (task: TaskDetail): GraphTask => ({ allowAgents: task.allowAgents, startedAt: task.startedAt, completedAt: task.completedAt,
   id: task.id, titlePreview: Array.from(task.title).slice(0, 160).join(''), titleTruncated: Array.from(task.title).length > 160,
-  status: task.status, dependsOn: task.dependsOn, blockedBy: task.blockedBy, ready: task.ready, createdAt: task.createdAt, updatedAt: task.updatedAt,
+  status: task.status, dependsOn: task.dependsOn, externalDependsOn: task.externalDependsOn, blockedBy: task.blockedBy, ready: task.ready, createdAt: task.createdAt, updatedAt: task.updatedAt,
 });
 const snapshot = (tasks = [detail()], revision = 1): GraphSnapshot => {
   const graph: TaskGraph = { observedAt: "2026-10-20T12:00:00Z",

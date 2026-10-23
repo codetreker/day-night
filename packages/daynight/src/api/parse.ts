@@ -36,6 +36,11 @@ const ids = (value: unknown): string[] => {
   if (new Set(parsed).size !== parsed.length) return malformed();
   return parsed;
 };
+const dependencyIds = (value: unknown): string[] => {
+  const parsed = ids(value);
+  if (parsed.some((value, index) => index > 0 && parsed[index - 1]! > value)) return malformed();
+  return parsed;
+};
 const status = (value: unknown): TaskStatus => value === "proposed" || value === "todo" || value === "in_progress" || value === "done" ? value : malformed();
 
 const validAttachmentPath = (value: string): boolean => isText(value) && !/^[A-Za-z]:\//.test(value) && !/[\\\p{Cc}]/u.test(value) && value.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..");
@@ -68,8 +73,9 @@ export const parseProject = (value: unknown, expectedId?: string): Project => {
 };
 
 const dependencyState = (data: Record<string, unknown>) => {
-  const parsed = { id: id(data.id), status: status(data.status), allowAgents: bool(data.allowAgents), startedAt: nullableTimestamp(data.startedAt), completedAt: nullableTimestamp(data.completedAt), dependsOn: ids(data.dependsOn), blockedBy: ids(data.blockedBy), ready: bool(data.ready), createdAt: timestamp(data.createdAt), updatedAt: timestamp(data.updatedAt) };
-  if (parsed.dependsOn.includes(parsed.id) || parsed.blockedBy.some((item) => !parsed.dependsOn.includes(item)) || parsed.ready !== (parsed.status === "todo" && parsed.blockedBy.length === 0)) return malformed();
+  const parsed = { id: id(data.id), status: status(data.status), allowAgents: bool(data.allowAgents), startedAt: nullableTimestamp(data.startedAt), completedAt: nullableTimestamp(data.completedAt), dependsOn: dependencyIds(data.dependsOn), externalDependsOn: dependencyIds(data.externalDependsOn), blockedBy: ids(data.blockedBy), ready: bool(data.ready), createdAt: timestamp(data.createdAt), updatedAt: timestamp(data.updatedAt) };
+  const dependencies = new Set(parsed.dependsOn);
+  if (dependencies.has(parsed.id) || parsed.externalDependsOn.some((item) => !dependencies.has(item)) || parsed.blockedBy.some((item) => !dependencies.has(item)) || parsed.ready !== (parsed.status === "todo" && parsed.blockedBy.length === 0)) return malformed();
   if ((parsed.status === "in_progress" || parsed.status === "done") && parsed.blockedBy.length > 0) return malformed();
   return parsed;
 };

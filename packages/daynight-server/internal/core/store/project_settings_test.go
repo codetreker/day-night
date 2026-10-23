@@ -19,12 +19,19 @@ func TestProjectSettingsMigrationPreservesHistoricalMetadataAndTiming(t *testing
 	}
 	database := &Store{Pool: pool}
 	project := projectBeforeSettings(t, database, 1)
-	mustQueryExec(t, database, `INSERT INTO tasks (id,project_id,title,status) VALUES ($1,$2,'Historical task','done')`, queryID(11), project.ID)
-	task := snapshotTaskBeforePermission(t, database, project.ID, queryID(11))
+	taskID := queryID(11)
 	stamp := time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC)
 	mustQueryExec(t, database, `UPDATE projects SET created_at=$2,updated_at=$3 WHERE id=$1`, project.ID, stamp, stamp.Add(time.Hour))
-	mustQueryExec(t, database, `UPDATE tasks SET started_at=$2,completed_at=$3 WHERE id=$1`, task.ID, stamp, stamp.Add(time.Minute))
-	task = snapshotTaskBeforePermission(t, database, project.ID, task.ID)
+	mustQueryExec(t, database, `INSERT INTO tasks(id,project_id,title,description,status,version,created_at,updated_at,started_at,completed_at)
+		VALUES ($1,$2,'Historical completed task','Preserved metadata','done',17,$3,$4,$3,$5)`, taskID, project.ID, stamp, stamp.Add(time.Hour), stamp.Add(time.Minute))
+	taskMetadata := func() string {
+		var value string
+		if err := pool.QueryRow(ctx, `SELECT (to_jsonb(t)-'allow_agents')::text FROM tasks t WHERE id=$1`, taskID).Scan(&value); err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	beforeTask := taskMetadata()
 	if err := migrate(ctx, pool, schemaMigrations); err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +43,7 @@ func TestProjectSettingsMigrationPreservesHistoricalMetadataAndTiming(t *testing
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if migrated.ID != project.ID || migrated.Name != project.Name || migrated.RepoURL != project.RepoURL || !migrated.CreatedAt.Equal(stamp) || !migrated.UpdatedAt.Equal(stamp.Add(time.Hour)) || migrated.Settings != (core.ProjectSettings{Version: 1, ExecutionWarningMinutes: 60}) || !reflect.DeepEqual(snapshotTask(t, database, project.ID, task.ID), task) {
+	if migrated.ID != project.ID || migrated.Name != project.Name || migrated.RepoURL != project.RepoURL || !migrated.CreatedAt.Equal(stamp) || !migrated.UpdatedAt.Equal(stamp.Add(time.Hour)) || migrated.Settings != (core.ProjectSettings{Version: 1, ExecutionWarningMinutes: 60}) || taskMetadata() != beforeTask {
 		t.Fatalf("settings migration changed history or omitted defaults: %#v", migrated)
 	}
 	for _, field := range []string{"execution_warning_minutes", "settings_version"} {

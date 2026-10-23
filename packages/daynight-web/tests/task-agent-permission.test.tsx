@@ -15,9 +15,9 @@ const taskId = '20000000-0000-4000-8000-000000000001';
 const time = '2026-10-24T00:00:00Z';
 const project: Project = { id: projectId, name: 'Automatic tasks', repoUrl: 'https://example.com/repo', settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
 const detail: TaskDetail = { id: taskId, projectId, title: 'Reviewed task', description: 'Keep this content', allowAgents: false, status: 'proposed', version: 9007199254740993n,
-  dependsOn: [], blockedBy: [], ready: false, properties: { pullRequests: [] }, startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
+  dependsOn: [], externalDependsOn: [], blockedBy: [], ready: false, properties: { pullRequests: [] }, startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
 const graphTask = (value: TaskDetail): GraphTask => ({ id: value.id, titlePreview: value.title, titleTruncated: false, status: value.status,
-  allowAgents: value.allowAgents, dependsOn: value.dependsOn, blockedBy: value.blockedBy, ready: value.ready,
+  allowAgents: value.allowAgents, dependsOn: value.dependsOn, externalDependsOn: value.externalDependsOn, blockedBy: value.blockedBy, ready: value.ready,
   startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt });
 const snapshot = (value: TaskDetail, revision = 1) => {
   const graph: TaskGraph = { observedAt: time, project, tasks: [graphTask(value)], summary: { total: 1, proposed: value.status === 'proposed' ? 1 : 0,

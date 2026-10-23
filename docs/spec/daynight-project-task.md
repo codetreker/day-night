@@ -22,7 +22,11 @@ Web 附件管理亦已实现。
 
 [执行计时需求](daynight-task-timing.md)的任务起止字段与数据库图时钟已有严格 CLI 读取契约。
 JSON 保留真实时间或明确的 `null`；Project JSON 同步保留项目阈值及其精确嵌套版本。
-可读输出继续使用既有字段选择。Web 实时卡片消费同一计时与项目阈值事实，不增加 CLI 命令或输出字段。
+这些计时事实不增加可读输出字段。Web 实时卡片消费同一计时与项目阈值事实，不增加 CLI 命令。
+
+[外部依赖需求](daynight-external-dependencies.md)的存储及读取准备已实现。完整 task 和图节点
+都保留必填 `externalDependsOn`，它是全部 `dependsOn` 的无重复排序子集；CLI 严格读取并输出，
+缺失、null、非法 ID 或越界子集作为协议错误拒绝，不补空数组。当前外部分类编辑选项尚未开放。
 
 [鉴权需求](daynight-auth.md)定义完整的个人访问令牌、项目成员授权和私有项目发现。
 CLI 的令牌配置与 HTTP 传输已实现；[凭据决策](../../.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
@@ -286,12 +290,13 @@ ready，默认清单、show 和 graph 保留其状态。公开列表 `--status p
 最终期限检查成功后输出结果。Project 列表逐个输出完整的带标签资源块，包含 ID、名称、
 原始 repo 地址及创建、更新时间；空列表明确说明没有 project。详情和创建结果使用
 相同字段，创建结果另表明服务已确认创建。Task 列表逐个输出带标签的资源块，包括
-ID、所属 project、标题、状态、ready、依赖、阻塞及全部 PR 标题与 URL；列表文本
+ID、所属 project、标题、状态、ready、依赖、外部依赖、阻塞及全部 PR 标题与 URL；列表文本
 不显示描述、版本及创建、更新时间，空 task list 明确说明没有 task。详情、ready、
 创建和更新结果显示完整 task 资源，包含上述字段、描述、完整版本及创建、更新时间。
 ready 空结果输出 `No ready tasks.`，创建和更新结果另表明服务已确认操作。
 图显示 project、全部 summary 字段及每个节点的状态、标题预览、截短标记、ready、
-依赖、阻塞和时间。所有文本完整显示，资源边界保持清楚，输出空间随字段内容总量
+依赖、外部依赖、阻塞和时间。依赖区统一输出 `External dependencies (N): ...`，
+计数与列表只包含显式外部子集，空值显示 none。所有文本完整显示，资源边界保持清楚，输出空间随字段内容总量
 线性增长。
 
 可读资源字段中的 C0/C1 控制字符及 Unicode 行、段分隔符必须转义为可见文本，
@@ -301,7 +306,8 @@ ready 空结果输出 `No ready tasks.`，创建和更新结果另表明服务�
 并以换行结束。Task list 的默认、`--all`、`--status`、`--ready` 及其合法组合
 均使用同一 JSON 字段规则；其余 API 字段全部保留，包括原始 PR 字符串、完整 int64
 版本、创建/更新时间和明确可空的 `startedAt`、`completedAt`；图 JSON 另外保留顶层 `observedAt`。
-这些计时字段不增加命令参数或改变可读输出的字段选择。ready 不添加分页 envelope，空列表为 `[]`。JSON 保留所输出
+这些计时字段不增加命令参数或改变可读输出的字段选择；外部依赖数组作为已知字段保留。
+ready 不添加分页 envelope，空列表为 `[]`。JSON 保留所输出
 API 字段的名称、类型和原始字符串，不应用终端显示转义或插入诊断文字。写操作
 成功后输出服务确认的资源 ID 及结果；服务未确认成功时不得输出成功结果。
 

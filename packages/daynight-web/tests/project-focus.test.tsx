@@ -33,7 +33,7 @@ const rootId = '20000000-0000-0000-0000-000000000001';
 const selectedId = '20000000-0000-0000-0000-000000000002';
 const remainingId = '20000000-0000-0000-0000-000000000003';
 const timestamp = '2026-10-20T12:00:00.123456Z';
-const task = (id: string, titlePreview: string, dependsOn: readonly string[] = []): GraphTask => ({ allowAgents: false, startedAt: null, completedAt: null,
+const task = (id: string, titlePreview: string, dependsOn: readonly string[] = []): GraphTask => ({ allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null,
   id, titlePreview, titleTruncated: false, status: 'todo', dependsOn, blockedBy: dependsOn,
   ready: dependsOn.length === 0, createdAt: timestamp, updatedAt: timestamp,
 });
@@ -60,7 +60,7 @@ beforeEach(() => {
   document.body.style.overflow = 'scroll';
   graphRequest.mockReset();
   detailRequest.mockReset();
-  detailRequest.mockImplementation(async (project, id) => ({ allowAgents: false, startedAt: null, completedAt: null,
+  detailRequest.mockImplementation(async (project, id) => ({ allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null,
     id, projectId: project, title: '所选任务详情', description: '', properties: { pullRequests: [] }, status: 'done', version: 1n,
     dependsOn: [rootId], blockedBy: [], ready: false, createdAt: timestamp, updatedAt: timestamp,
   }));

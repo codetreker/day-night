@@ -27,6 +27,7 @@ export type GraphTask = {
   readonly titleTruncated: boolean;
   readonly status: TaskStatus;
   readonly dependsOn: readonly string[];
+  readonly externalDependsOn: readonly string[];
   readonly blockedBy: readonly string[];
   readonly ready: boolean;
   readonly allowAgents: boolean;
@@ -71,6 +72,7 @@ export type TaskDetail = {
   readonly status: TaskStatus;
   readonly version: bigint;
   readonly dependsOn: readonly string[];
+  readonly externalDependsOn: readonly string[];
   readonly blockedBy: readonly string[];
   readonly ready: boolean;
   readonly allowAgents: boolean;

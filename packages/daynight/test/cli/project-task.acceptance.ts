@@ -20,11 +20,11 @@ const unrelatedId = "a1b2c3d4-1111-4222-8333-123456789abe";
 const taskId = "b1b2c3d4-1111-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project = (projectId = id, repoUrl = "git@git.example:Org/Repo.git"): Project => ({ id: projectId, name: "Project 中文", repoUrl, settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time });
-const task = (projectId = id): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, allowAgents: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true });
+const task = (projectId = id): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", allowAgents: false, version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true });
 const taskListItem = (value: Task): Omit<Task, "description"> => ({
   id: value.id, projectId: value.projectId, title: value.title, properties: value.properties,
   status: value.status, allowAgents: value.allowAgents, version: value.version, startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt,
-  dependsOn: value.dependsOn, blockedBy: value.blockedBy, ready: value.ready,
+  dependsOn: value.dependsOn, externalDependsOn: value.externalDependsOn, blockedBy: value.blockedBy, ready: value.ready,
 });
 const send = (response: ServerResponse, value: unknown, status = 200): void => { response.writeHead(status, { "Content-Type": "application/json" }); response.end(stringifyApiJson(value)); };
 const fault = (response: ServerResponse, code: string, requestId: string, status: number, details?: unknown): void => send(response, { error: { code, message: "Native acceptance refusal.", requestId, ...(details === undefined ? {} : { details }) } }, status);

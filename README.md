@@ -33,9 +33,12 @@ The proposed [external dependency requirements](docs/spec/daynight-external-depe
 [architecture](docs/design/daynight-external-dependencies.md) and
 [interactive prototype](docs/design/mockups/external-dependencies/index.html)
 distinguish chain membership from genuine cross-chain prerequisites. The design
-keeps all dependencies for execution and uses ordinary-edge components for
-chain presentation. Runtime delivery remains pending. Supported readers must
-understand classification before public classification writes become available.
+keeps all dependencies for execution. Edge classification storage, full task/graph
+output and strict CLI/Web readers are implemented. Public inputs still accept
+only the existing dependency IDs; Web membership and dashes remain root/context
+derived. Ordinary-component presentation and explicit classification writes
+remain the target behavior. Supported readers must understand classification
+before public classification writes become available.
 
 The adopted [execution timing requirements](docs/spec/daynight-task-timing.md) and
 [architecture](docs/design/daynight-task-timing.md) define task
@@ -1063,6 +1066,14 @@ real end without inventing its missing start. The full graph includes a database
 retained by JSON output, including list JSON; human output keeps its existing
 field choices. Web polling refreshes its separate clock sample and monotonic receipt while
 preserving graph/index identity when only `observedAt` changes.
+
+Task and graph resources also require `externalDependsOn`, a sorted,
+duplicate-free subset of all `dependsOn` IDs. CLI JSON preserves it and the
+shared human dependency block shows `External dependencies (N): ...`. Current
+POST/PATCH dependency inputs and CLI options still use the existing ID
+contract; explicit classification input is rejected. Surviving relationship classifications
+are preserved by dependency replacement, metadata edits and every lifecycle
+action. External markers do not remove an edge from blocking or cycle checks.
 
 Every Project resource includes `settings` with an exact positive int64 `version`
 and `executionWarningMinutes` from 1 through 2147483647, initially 60. Project

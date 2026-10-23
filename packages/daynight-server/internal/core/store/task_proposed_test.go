@@ -162,7 +162,7 @@ func snapshotTaskBeforeTiming(t *testing.T, database *Store, projectID, id strin
 	task, err := scanTask(database.Pool.QueryRow(context.Background(), `SELECT
 		t.id::text, t.project_id::text, t.title, t.description, t.status, t.version,
 		t.created_at, t.updated_at, NULL::timestamptz, NULL::timestamptz, true, t.properties, `+
-		taskDependsOn+`, `+taskBlockedBy+`, `+taskReady+`
+		taskDependsOn+`, ARRAY[]::text[], `+taskBlockedBy+`, `+taskReady+`
 		FROM tasks t WHERE t.project_id = $1 AND t.id = $2`, projectID, id))
 	if err != nil {
 		t.Fatal(err)

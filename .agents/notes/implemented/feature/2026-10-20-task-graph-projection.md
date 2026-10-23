@@ -14,8 +14,9 @@ long-edge normalization can increase work beyond original node/edge counts.
 ## Decision
 
 The [external dependency design](../architecture/2026-10-23-external-dependency-design.md)
-specifies a future ordinary-component membership model and persisted edge
-classification. Its delivery is pending. The current root-derived implementation
+specifies ordinary-component membership and explicit edge classification.
+Classification storage and strict readers are implemented; ordinary-component
+consumption remains the target model. The current root-derived implementation
 and the original layout decisions below remain the implemented baseline.
 
 The web graph model validates a complete snapshot before building indexes. It

@@ -50,6 +50,7 @@ export type Task = {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly dependsOn: readonly string[];
+  readonly externalDependsOn: readonly string[];
   readonly blockedBy: readonly string[];
   readonly ready: boolean;
 };

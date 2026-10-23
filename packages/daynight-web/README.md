@@ -443,6 +443,16 @@ error and retry state. It preserves string content, including NUL and arbitrary
 address text, without defaults or content validation. The graph decoder retains
 its compact projection and never copies properties into graph nodes.
 
+Graph and detail reads require `externalDependsOn` alongside the complete
+`dependsOn` set. The shared decoder canonicalizes UUIDs, rejects duplicates and
+requires the external set to be a subset; missing or null fields are protocol
+errors. Graph equality and detail freshness include classification, so a
+marker-only change invalidates the corresponding content without inventing a
+new timestamp. Clock-only samples still retain graph/index identity. Current
+chain membership, relationship labels and dashes continue to use the existing
+root/context model; the ordinary-component consumer is specified in the
+[external dependency design](../../docs/design/daynight-external-dependencies.md).
+
 An open project automatically requests its complete graph every five seconds
 while the document is visible. Hidden documents start no periodic reads; returning
 to a visible document requests immediately unless a graph read is already active.
