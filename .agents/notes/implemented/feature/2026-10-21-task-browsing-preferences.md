@@ -31,6 +31,10 @@ Absent preferences select the newest visible chain. Missing or hidden witness
 components use the existing visible fallback. Empty/loading/initial-failure
 states do not invent explicit collapse, and zero-visible chains retain intent
 for later reveal. Switching to standalone keeps that intent without a canvas.
+Topology reset is separate from presentation lifetime: with an unchanged
+representative, changed members reset the overview/inspection and framing but
+keep the fullscreen canvas and active Details mounted. Replacing the
+representative is a chain switch; neither case rewrites a valid witness.
 
 Preference errors are displayed separately from graph request errors. Invalid
 stored data and denied storage access leave browsing usable with in-memory

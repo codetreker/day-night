@@ -45,7 +45,10 @@ Saved expansion records retain a task witness, resolving it to the current
 component after an ordinary-edge merge or split. No persistent group identity
 is published. Ordinary components and their ancestor closure are connected, so
 the existing 50-node/100-edge overview and 20-neighbor expansion remain enough
-to reach every projected task. ChainList holds focus continuity outside keyed
+to reach every projected task. Same-representative member changes reset only
+topology state and InitialViewport framing; the fullscreen canvas and active
+Details remain mounted with their inert/scroll locks. A changed representative
+replaces the row and graph as a chain switch. ChainList holds focus continuity outside keyed
 representative rows: only a recorded detached control with focus on BODY causes
 restoration to the expanded/first surviving heading, existing filter control,
 or finally the labeled focusable list section when no chain remains.

@@ -1226,7 +1226,7 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, api: request }
     pullRequests: [{ title: '键盘可访问的 PR', url: 'https://example.com/pull/123' }],
   } });
   const c = await createApprovedTask(request, project.id, { title: '键盘后续任务', dependsOn: [b.id] });
-  await createApprovedTask(request, project.id, { title: '保留原链根的另一分支', dependsOn: [a.id] });
+  const branch = await createApprovedTask(request, project.id, { title: '保留原链根的另一分支', dependsOn: [a.id] });
   await openProject(page, project.id, project.name);
   await pauseRefreshClock(page);
   const trigger = details(page, b.id);
@@ -1351,19 +1351,20 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, api: request }
   for (const fullscreenMode of [false, true]) {
     if (fullscreenMode) {
       currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, dependsOn: [a.id] });
-      await page.getByRole('button', { name: '刷新', exact: true }).click();
-      await expect(trigger).toHaveCount(0);
-      await expect(inspectTask(page, c.id)).toHaveCount(0);
-      await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '2');
+      const refresh = page.getByRole('button', { name: '刷新', exact: true });
+      await refresh.click();
+      // Changing ordinary membership rebuilds the bounded overview; this complete
+      // four-task component has no hidden neighbor that needs an expansion footer.
+      await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '4');
       await expect(page.locator('.task-graph')).toHaveAttribute('data-total-task-count', '4');
-      const expandSuccessors = card(page, a.id).getByRole('button', { name: '展开后续 1 个任务、1 条依赖', exact: true });
-      await expect(expandSuccessors).toHaveAttribute('data-added-tasks', '1');
-      await expect(expandSuccessors).toHaveAttribute('data-added-edges', '1');
-      await expandSuccessors.click();
+      await expect(page.locator('.react-flow__node')).toHaveCount(4);
+      expect(await page.locator('.react-flow__node').evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).dataset.id!).sort()))
+        .toEqual([a.id, b.id, c.id, branch.id].sort());
+      await expect(page.locator('.task-dependency-edge')).toHaveCount(3);
+      await expect(page.locator('.task-node-expand')).toHaveCount(0);
       await expect(trigger).toBeVisible();
-      await expect(inspectTask(page, a.id)).toBeFocused();
-      await expect(page.locator('.task-graph')).toHaveAttribute('data-visible-task-count', '3');
-      await expect(inspectTask(page, c.id)).toHaveCount(0);
+      await expect(inspectTask(page, c.id)).toBeVisible();
+      await expect(refresh).toBeFocused();
       await enterFullscreen.click();
     }
     currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, dependsOn: [] });

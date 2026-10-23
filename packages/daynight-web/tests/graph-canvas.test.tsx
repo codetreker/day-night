@@ -739,7 +739,7 @@ describe('progressive task visibility', () => {
     outside.focus();
     view.rerender(<><button type="button">详情关闭控件</button><TaskGraph index={refreshed} rootId={rootId} onOpenTask={noop} /></>);
     await rendered(view.container, 50, 49);
-    expect(view.container.querySelector('.task-graph-canvas')).not.toBe(previousCanvas);
+    expect(view.container.querySelector('.task-graph-canvas')).toBe(previousCanvas);
     expect(view.container.querySelectorAll('.task-node-selected')).toHaveLength(0);
     expect(within(view.container.querySelector<HTMLElement>('.react-flow__node[data-id="new-main"]')!).getByRole('button', { name: '新增直接后续，待处理，被阻塞' })).toBeTruthy();
     expect(outside).toHaveFocus();

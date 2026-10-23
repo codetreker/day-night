@@ -295,9 +295,11 @@ reversed for newest first without lossy JavaScript timestamp conversion. Expande
 preferences retain the original task witness in `{expandedRootId}` and resolve
 its current component after merges or splits, rather than overwriting it with a
 new representative. Explicit null stays collapsed on reload. Existing missing or
-hidden-entry fallback and storage-error notices remain. Component or representative
-changes initialize a new bounded overview; ordinary status and clock refreshes
-retain the existing visible set, viewport and inspection under normal reconciliation.
+hidden-entry fallback and storage-error notices remain. Membership changes
+initialize a new bounded overview and framing without remounting a same-representative
+fullscreen canvas or active Details. A representative change is a chain switch.
+Ordinary status and clock refreshes retain visible S, viewport and inspection
+under normal reconciliation.
 The [task view decision](../../.agents/notes/implemented/feature/2026-10-22-project-task-views.md)
 and [chain status decision](../../.agents/notes/implemented/bug-fix/2026-10-22-task-chain-status.md)
 record their current rules and original rationale.
@@ -408,18 +410,20 @@ the current dialog and relation navigation preserves graph selection.
 Expansion centers its anchor at current zoom and focuses its body. Global reset
 “收起到概览” recomputes/frames overview and retains reset focus.
 
-Within the same component scope, successful status/content refresh keeps actual
+Within the same topology scope, successful status/content refresh keeps actual
 visible IDs still in new P plus the representative, prunes to its connected
 visible subset and preserves the viewport. It does not add a new baseline or
-newly arrived tasks. Component merges, splits or representative changes may
-initialize a new bounded overview, as an existing chain switch does. Reset or
-remount computes a new baseline. Ordinary failure keeps old data/S/view only in
-the same identity/project/auth scope; current401 and session/resource
-invalidation still unmount private content. Project/chain/tab/unmount releases
-local S and inspection. An open dialog retains focus and existing close-time
-fallback. Locale translates controls/counts without changing S or business
-requests. The [progressive decision](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)
-retains complete data while bounding the visible view.
+newly arrived tasks. With the same representative, changed membership resets
+only visible S, inspection and pending viewport actions; a topology-keyed
+InitialViewport frames the new overview. TaskCanvas, ReactFlow and the fullscreen
+owner stay mounted, preserving fullscreen, active Details and their inert/scroll
+locks. A changed representative is an ordinary chain switch and replaces its
+row and graph. Reset computes a new baseline. Ordinary failure retains old
+content only in the same identity/project/auth scope; current401 and resource
+invalidation still unmount private content. Local S and inspection do not
+persist. Locale translates controls without adding business reads. The
+[progressive decision](../../.agents/notes/implemented/feature/2026-10-22-progressive-task-graph.md)
+separates topology state from presentation lifetime.
 
 Per-project browser preferences retain the selected tab, each tab's page scroll
 position and completed-item choice, and the chain's original task witness or

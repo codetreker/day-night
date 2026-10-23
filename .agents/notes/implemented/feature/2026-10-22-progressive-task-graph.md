@@ -71,13 +71,16 @@ per-branch collapse.
 
 Within the same representative/member scope, successful refresh intersects
 actual old visible IDs with new P, adds the representative and keeps its
-connected visible subset. It does not insert a new baseline or newly arrived
-tasks. A changed representative or member set remounts the bounded overview;
-reset also computes a new baseline. Failure preserves old data/S/view only
-within the existing identity/project/auth scope. Project/chain/tab changes and
-unmount release local S and inspection. Refresh does not steal focus from an open dialog; locale only translates
-controls and counts without changing S or adding business requests. Details
-and locale retain their independent lifecycle.
+connected visible subset without adding a baseline or newly arrived tasks.
+GraphVisibility owns projection, the ordered-member topology key, visible IDs,
+inspection and viewport action. Membership changes with the same representative
+reset that topology state and reinitialize InitialViewport, while TaskCanvas,
+ReactFlow and the fullscreen owner remain mounted. Fullscreen, active Details
+and their inert/scroll locks therefore survive the topology reset. Only a
+representative change replaces the row/graph as a chain switch. Explicit reset
+also computes a new baseline. Failure preserves old data only within the current
+identity/project/auth scope. Refresh does not steal dialog focus; locale only
+translates controls and counts without changing S or adding requests.
 
 The delivered TaskDetailDialog, Overview/Attachments panels, adjacent attachment
 panes, one right-side scroll owner, request state and modal focus ownership
@@ -154,9 +157,11 @@ and no persistent ownership model.
 impossible to expand. A twenty-task batch bounds added cards while retaining all
 resulting real dependencies.
 
-**Refill the baseline on refresh.** This can replace the reader's chosen region
-or introduce tasks without explicit action. Actual-visible reconciliation keeps
-browsing intent; reset/remount adopts a new overview deliberately.
+**Refill the baseline on unchanged-topology refresh.** This can replace the
+reader's chosen region without a membership reason. Actual-visible reconciliation
+keeps browsing intent for the same scope. Explicit reset and genuine member-set
+changes select a new bounded overview; the latter does not require a fullscreen
+presentation remount.
 
 **Combine workload policy and dependency inspection in one PR.** That couples a
 material change in rendered workload with new selection, curve geometry and
