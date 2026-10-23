@@ -342,7 +342,9 @@ callback 必须同 origin；callback 无 query/fragment，使用规范的非根�
 测试策略，`DAYNIGHT_ALLOW_LOOPBACK_HTTP` 单独传给 UniAuth SDK，允许字面量
 loopback gateway HTTP，两者不能互相替代。
 
-HTTP 默认监听 `127.0.0.1`。LocalStorage 在打开数据库和监听前准备根目录，要求可写且区分大小写。
+HTTP 默认监听 `127.0.0.1`。LocalStorage 在打开数据库和监听前准备可写根目录并
+探测大小写能力。Linux 要求区分大小写；macOS 原生开发允许普通目录，同时拒绝
+与真实目录项拼写不一致的路径别名，不静默覆盖另一附件。
 运行时以 `Dependencies` 向装配层提供数据库与文件存储，并在启动失败或 HTTP
 排空结束后关闭已取得的文件根句柄。服务继续只接受 loopback 监听地址，公开
 origin 不改变绑定策略。项目 ID 只标识资源，不能代替身份或成员权限。具体配置

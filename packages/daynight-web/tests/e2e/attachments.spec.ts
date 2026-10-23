@@ -100,6 +100,15 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
   const task = await createApprovedTask(request, project.id, { title: 'CLI 与 Web 共享同一任务附件', description: '验证文件内容、预览和单文件操作。' });
   const baseURL = info.project.use.baseURL;
   if (typeof baseURL !== 'string') throw new Error('Attachment acceptance requires the actual service base URL.');
+  const acceptanceDirectory = process.env.DAYNIGHT_ACCEPTANCE_DIRECTORY;
+  if (acceptanceDirectory === undefined) throw new Error('Attachment acceptance requires its target receipt.');
+  const target = JSON.parse(await readFile(join(acceptanceDirectory, 'target.json'), 'utf8')) as { target?: unknown; caseSensitiveStorage?: unknown };
+  if (typeof target.caseSensitiveStorage !== 'boolean' || !['native', 'container'].includes(String(target.target))
+    || (!target.caseSensitiveStorage && (target.target !== 'native' || process.platform !== 'darwin'))) {
+    throw new Error('Attachment acceptance has invalid filesystem case-sensitivity coverage.');
+  }
+  info.annotations.push({ type: 'storage-case-sensitivity', description: target.caseSensitiveStorage ? 'case-sensitive' : 'native-filesystem-only' });
+  const encodedPath = `${target.caseSensitiveStorage ? 'Docs' : 'references'}/设计 #?%.json`;
   const directory = info.outputPath('attachment-files');
   await mkdir(directory, { recursive: true });
   const cli = await createAcceptanceCli(baseURL, info.outputPath('installed-cli'));
@@ -127,7 +136,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
       { path: 'notes/one/same.txt', bytes: Buffer.from('First nested text\nSecond line\n') },
       { path: 'notes/two/same.txt', bytes: Buffer.from('Second same-name text\n') },
       { path: 'empty.txt', bytes: Buffer.alloc(0) },
-      { path: 'Docs/设计 #?%.json', bytes: Buffer.from('{\n  \"sameFile\": true\n}\n') },
+      { path: encodedPath, bytes: Buffer.from('{\n  \"sameFile\": true\n}\n') },
       { path: 'binary/bytes.bin', bytes: binary },
       { path: 'images/workflow.svg', bytes: await readFile(asset('../mockups/files/images/workflow.svg')) },
       { path: 'reports/brief.pdf', bytes: pdf },
@@ -299,7 +308,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     await expect(readerHtml.contentFrame().locator('#result')).toHaveText('已完成 3 个任务');
     await reader.goto(attachmentPageUrl(project.id, task.id, 'notes/one/same.txt'));
     await expect(reader.locator('pre')).toHaveText('First nested text\nSecond line\n');
-    await reader.goto(attachmentPageUrl(project.id, task.id, 'Docs/设计 #?%.json'));
+    await reader.goto(attachmentPageUrl(project.id, task.id, encodedPath));
     await expect(reader.locator('pre')).toHaveText('{\n  \"sameFile\": true\n}\n');
     await reader.reload();
     await expect(reader.locator('pre')).toHaveText('{\n  \"sameFile\": true\n}\n');

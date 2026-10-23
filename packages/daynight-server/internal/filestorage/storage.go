@@ -13,6 +13,7 @@ import (
 var (
 	ErrInvalidAddress = errors.New("invalid file storage address")
 	ErrNotRegular     = errors.New("file storage object is not a regular file")
+	ErrPathConflict   = errors.New("file storage path aliases another directory entry")
 )
 
 type FileInfo struct {

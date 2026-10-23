@@ -781,7 +781,9 @@ open thread 时等待，以及 actor 切换后已提交结果的核对与草稿�
 仍在等待的轮询，再等待所有已启动操作结束。
 [协调决策](../../.agents/notes/implemented/architecture/2026-10-17-foreground-review-coordination.md)
 记录这些责任和异常恢复前提。
-macOS 检查挂载临时的大小写敏感和不敏感 APFS 镜像，验证缺失路径的大小写冲突、
+显式 `pnpm test:apfs` 在 macOS 挂载临时的大小写敏感和不敏感 APFS 镜像，
+日常 `pnpm test` 和 CLI CI 不选择该镜像专项；其余路径与清理测试继续运行。
+专项验证缺失路径的大小写冲突、
 Unicode 编码别名、状态目录别名及探测目录清理。fixture 创建单分区 GPT 镜像，固定
 其 `realpath`，保存 `attach -plist` 返回的 GPT 根设备，并在断言前从同用户镜像清单
 正向确认精确路径和根设备，才授予清理所有权。`plutil` 只定向提取带类型要求的身份
