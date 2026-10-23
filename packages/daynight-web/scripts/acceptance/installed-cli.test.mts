@@ -59,6 +59,15 @@ const within = async <T,>(promise: Promise<T>, label: string): Promise<T> => {
   finally { clearTimeout(timer); }
 };
 
+const waitForLinuxZombie = async (pid: number): Promise<void> => {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
+    if (stat.slice(stat.lastIndexOf(')') + 2).split(' ')[0] === 'Z') return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Process ${pid} did not become a zombie within 5 seconds.`);
+};
+
 test('installed bridge validates parent artifact evidence and preserves installed CLI output', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
   await fixture(async ({ directory, receiptPath, receipt }) => {
     assert.deepEqual(await validateInstalledCli(receiptPath, directory), receipt);
@@ -224,8 +233,8 @@ test('recovery waits for the parent to reap a terminated installed CLI child', {
       let settled = false;
       recovering = recoverCliProcesses(directory, receiptPath, receipt).then(() => { settled = true; return {}; }, (error: unknown) => { settled = true; return { error }; });
       await within(checked.promise, 'terminated CLI group probe');
-      const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
-      assert.equal(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[0], 'Z');
+      // We wait for the kernel exit state because a signal-0 probe only proves that the group still exists.
+      await waitForLinuxZombie(pid);
       assert.equal(await processIdentity(pid), null);
       await new Promise<void>((resolve) => setImmediate(resolve));
       assert.equal(settled, false, 'Recovery must wait until the parent reaps the terminated group member.');
