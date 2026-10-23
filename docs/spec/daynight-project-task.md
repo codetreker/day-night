@@ -26,7 +26,7 @@ Web 附件管理亦已实现，组合验收由 A-T6 维护。
 
 [执行计时需求](daynight-task-timing.md)的任务起止字段与数据库图时钟已有严格 CLI 读取契约。
 JSON 保留真实时间或明确的 `null`；Project JSON 同步保留项目阈值及其精确嵌套版本。
-可读输出继续使用既有字段选择，实时卡片仍由后继任务交付。
+可读输出继续使用既有字段选择。Web 实时卡片消费同一计时与项目阈值事实，不增加 CLI 命令或输出字段。
 
 [鉴权需求](daynight-auth.md)定义完整的个人访问令牌、项目成员授权和私有项目发现。
 CLI 的令牌配置与 HTTP 传输已实现；[凭据决策](../../.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)

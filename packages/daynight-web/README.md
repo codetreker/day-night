@@ -102,8 +102,10 @@ reload use the embedded application. Every member can read the saved threshold;
 only an explicitly resolved administrator can edit and submit it. The form uses
 integer minutes from 1 through 2147483647, initially 60, with save, cancel,
 pending, validation and localized error/recovery states that remain usable on
-narrow screens. Live elapsed-time and possible-stall cards remain a subsequent
-[delivery](../../docs/design/daynight-task-timing-tasks.md).
+narrow screens. Graph cards and standalone rows consume the saved value through
+the shared execution-time presentation described below; the
+[delivery tasks](../../docs/design/daynight-task-timing-tasks.md) own source-bound
+acceptance and merge evidence.
 
 `ProjectSettingsPanel` is keyed by user/project and delegates saved Project,
 draft, role and operation state to `useProjectSettings`. It loads Project and
@@ -135,7 +137,52 @@ Graph polling keeps independent fingerprints for Project metadata and
 decimal string for bigint-safe comparison. Settings-only responses update the
 Project while retaining task/summary references and GraphIndex; clock-only
 responses retain the graph and index while refreshing the separate latest
-`GraphSnapshot.observedAt`. No settings edit changes task time or graph geometry.
+`GraphSnapshot.observedAt` and its paired `receivedMonotonic`. No settings edit
+changes task time or graph geometry.
+
+## Task execution time and possible stalls
+
+`useTaskGraph` captures `receivedMonotonic` immediately after decoding a graph,
+before fingerprint/index work, and pairs it with that response's database
+`observedAt`. `receivedAt` remains the local-wall-clock refreshed label. A stable
+`TaskExecutionClockProvider` per loaded project advances the server sample with
+`performance.now()` elapsed time and publishes saved threshold changes in the
+same layout effect. Its estimate includes post-receipt render/commit delay but
+does not compensate for network or parsing delay before that receipt; client
+`Date.now()` does not determine duration or warnings.
+
+Only mounted running tasks with a known start subscribe to one visible-page
+one-second ticker. Completed tasks subscribe only to threshold metadata and use
+their persisted endpoint difference; unknown timing has no active subscription.
+Hiding pauses ticks, visibility return publishes monotonic elapsed immediately,
+and ordinary guarded polling separately reanchors time. The last running
+unsubscribe and provider unmount release timer/listener work. There is no new
+blur listener, per-card request or server worker. Clock samples and settings stay
+outside graph-index, projection and layout dependencies.
+
+Task cards and standalone rows show live elapsed or frozen completed duration.
+Unknown starts show no inferred duration. An exact millisecond comparison strictly
+above saved minutes adds amber treatment, icon and Possibly stuck / 可能卡住了
+while retaining the running status; completion removes that warning. Localized
+text distinguishes less than one minute and uses floored day/hour/minute units
+without changing comparison. Semantic `time`, its title and `aria-describedby`
+provide exact endpoints, elapsed duration and saved threshold. Button names stay
+stable across ticks, and no live region announces every update.
+
+The renderer preserves 220×96/136 cards, independent Details/inspection/expansion
+controls, shared markers, external dashed borders and selected/prerequisite
+outlines. A 42px bottom reserve keeps English Details clear of elapsed text.
+Standalone visual timing is excluded from button-name calculation while its
+accessible description retains the warning meaning. Chain headers never claim
+an individual task's duration as aggregate execution time.
+
+Explicit per-tab page-scroll restoration leases root `overflow-anchor: none`
+while the loaded project owns that position. Late member actions or a wrapping
+heading cannot let native anchoring move and persist the restored position.
+Leases are reference-counted; the final owner restores the former inline value
+and priority only if its own applied pair still matches. The existing
+[task-view decision](../../.agents/notes/implemented/feature/2026-10-22-project-task-views.md)
+owns this lifetime and its independence from graph viewport preferences.
 
 ## Languages
 
@@ -719,7 +766,7 @@ image identity and full cleanup; the job retains its 20-minute overall bound.
 
 Native functional checks start after the native process and browser are ready.
 Their browser cleanup must pass before an atomic, run/source-bound permission
-releases the container's twenty-five functional checks. Capacity runs last, after all
+releases the container's twenty-six functional checks. Capacity runs last, after all
 preparation and coverage commands, container checks, full dev-ci cleanup and
 container browser recovery have finished. Every browser phase retains one
 worker and zero retries. CI runs controlled deployment fixtures before the
@@ -788,7 +835,7 @@ ownership revalidation. Uncertain ownership fails without recursive removal.
 Existing recovery commands remain available without opting into new attachment.
 
 The full CI workflow remains on Linux and retains case-sensitive storage coverage.
-macOS local acceptance runs the same 55 scenarios, additional combined
+macOS local acceptance runs the same 57 scenarios, additional combined
 authentication checks and fixed performance budgets, with native filesystem
 coverage qualified by its recorded capability. A local pass does not establish
 macOS CI coverage. The [filesystem coverage decision](../../.agents/notes/implemented/testing/2026-10-23-native-development-filesystem-coverage.md)
@@ -801,7 +848,7 @@ npm registry unless the build variable is explicitly supplied.
 The command builds real embedded assets and a new Go executable and owns a
 separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
 the normal dev-ci runner builds and starts the actual production image. Browser
-execution proceeds through twenty-five native functional scenarios, the same twenty-five
+execution proceeds through twenty-six native functional scenarios, the same twenty-six
 functional scenarios through the production image's stream gateway, then five
 native capacity/limit scenarios. The native process and PostgreSQL remain alive
 through the capacity phase; other preparation commands and the complete
@@ -827,7 +874,9 @@ admits exactly four registered project-settings PATCHes: successful save, stale
 conflict, committed response loss and demoted-member refusal. Other users and
 administrative preparation use authenticated request contexts; a failed read
 reconciliation can be recovered only by an explicit read retry, without a fifth
-browser PATCH.
+browser PATCH. The `task-execution-time` journey keeps the browser GET/HEAD-only;
+real service/API and installed CLI prepare timing, save thresholds and complete
+work while controlled browser receipt delivery isolates the local ticker.
 
 The [approval and withdrawal journeys](tests/e2e/approval.spec.ts) reuse the packed
 CLI against each target's actual authenticated service. The existing normal
@@ -889,7 +938,7 @@ or an iframe load cannot satisfy this check. The
 owns data-sharing, rendering and independent reading proof.
 
 The additional [combined authentication journey](scripts/acceptance/auth-combined.mts)
-requires a separate receipt on each runtime target, alongside the 55
+requires a separate receipt on each runtime target, alongside the 57
 Playwright cases. It reuses the same installed package and normal Alice/Bob
 identities, records their initial project sets, and crosses browser and CLI data
 through shared/private projects, original-credential service restart, logout/PAT
@@ -946,7 +995,7 @@ Actual DOM fixed ports, Q≤12/tangency, card avoidance,
 body/marker coverage and analytic curved dash phase cover every visible edge.
 Stable owner transforms are graph-relative real root/owner CTMs; raw screen,
 page-scroll and canvas diagnostics stay separate from reset equality.
-The 55-scenario inventory (30 native, 25 container), current manual/periodic refresh,
+The 57-scenario inventory (31 native, 26 container), current manual/periodic refresh,
 attachment tabs/standalone reader, bilingual/auth boundaries, zero retries, timeouts,
 coverage, size refusals and cleanup remain. PR #143 delivered dependency inspection;
 its receipts bind results to that exact tested source. The authentication/lifecycle
@@ -960,6 +1009,7 @@ The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [authentication journeys](tests/e2e/auth.spec.ts),
 [approval journeys](tests/e2e/approval.spec.ts),
 [project-settings journey](tests/e2e/project-settings.spec.ts),
+[execution-time journey](tests/e2e/task-execution-time.spec.ts),
 [capacity scenarios](tests/e2e/capacity.spec.ts) and
 [acceptance runner](scripts/acceptance.mts) map to the
 [W1–W13 requirements](../../docs/spec/daynight-web.md) and
@@ -980,6 +1030,7 @@ scenario annotations validated in each target's report.
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
 | W13 | `task-approval`, `task-approval-conflicts`, `task-approval-recovery`, `task-unapproval`: same-data packed-CLI/ordinary-graph lifecycle, ready/blocked withdrawal, metadata/attachment preservation, both title-row confirmations and tabs, cancel/Escape/focus, invalidation, stale CLI metadata, CLI/Web same-version competition, pending protection, exact int64 digits, real-commit response loss, real graph failure and task/SPA-project identity/focus/browsing preservation |
 | TT3 | `project-settings`: real-service direct entry/reload, administrator save and independent member read, project isolation, exact settings versions above 2^53, stale conflict and demotion, read-only member recovery, actual commit with lost response and failed-read retry without PATCH replay, bilingual 320px/390px form/control/navigation containment and unclipped text |
+| TT1–TT2, TT4–TT6 | `task-execution-time`: real PostgreSQL crossing with graph deliveries held and an incorrect client wall clock, one-second local progress, stable focus/DOM/geometry/edges/viewport, real saved-threshold changes, installed-CLI completion and frozen polling, unknown legacy starts, sub-minute/multi-day/shared/external cards and standalone rows, bilingual 320px/390px layout; browser GET/HEAD only, with fixture mutations through authenticated API or installed CLI |
 | FA1–FA12 | `task-attachments`: installed CLI and production UI share real task/files on native and container targets; exact bytes, file mutations, detail tabs, adjacent panes, unique preview scroll owners, rendered formats and reloadable standalone reading. Independent real-service probes add end-of-document wheel/keyboard, native PDF final-page paint, fault/retry and unchanged task/graph proof |
 | TI8–TI9 | `task-description-markdown`: installed CLI and real API preserve Unicode/CRLF Markdown bytes and versioned full replacement; bilingual 1440px/320px rich rendering, escaped HTML, URL policy, task-root images/encoded references, paginated loading/list failure/retry, invalid/missing/preview failure states, one-controller navigation/focus, overwrite refresh, modified native href and HTML frame interaction; inspection→Details→relative attachment→close preserves graph selection/geometry/view |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
@@ -1006,14 +1057,14 @@ combined receipts are `native/auth-combined/target.json` and
 They require all eleven named checks, source/browser/installed-package identity,
 old/new restart process identity and passed browser/resource cleanup. They retain
 safe observations and hashes, not credential/configuration bodies or raw logs.
-The 55-case report validator remains independent. `CI` requires a clean checkout matching
+The 57-case report validator remains independent. `CI` requires a clean checkout matching
 `GITHUB_SHA` and the pinned browser for the current Linux or macOS host. Playwright uses one worker and no
 retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validation.
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
 tested checkout identity, which is normally a merge revision for PR runs. A pass
-requires the strict union of twenty-five native functional and five native capacity/limit
-scenarios (30 native total), plus the twenty-five container functional scenarios. Every
+requires the strict union of twenty-six native functional and five native capacity/limit
+scenarios (31 native total), plus the twenty-six container functional scenarios. Every
 phase and target rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
 Installed-CLI handoff, container callbacks and recovery require matching source
 commit/tree/dirty state as well as existing package/artifact ownership. A missing

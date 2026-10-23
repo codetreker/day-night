@@ -9,6 +9,7 @@ export type Formats = {
   readonly number: (value: number | bigint) => string;
   readonly bytes: (value: number | bigint) => string;
   readonly plural: (value: number) => Intl.LDMLPluralRule;
+  readonly duration: (milliseconds: number) => string;
 };
 
 const createFormats = (locale: Locale): Formats => {
@@ -26,6 +27,13 @@ const createFormats = (locale: Locale): Formats => {
     number: (value) => number.format(value),
     bytes: (value) => `${number.format(value)} B`,
     plural: (value) => plural.select(value),
+    duration: (milliseconds) => {
+      if (milliseconds < 60_000) return locale === "en" ? "< 1 min" : "不足 1 分钟";
+      const minutes = Math.floor(milliseconds / 60_000);
+      const parts = [Math.floor(minutes / 1440), Math.floor(minutes % 1440 / 60), minutes % 60];
+      const units = locale === "en" ? ["d", "h", "min"] : [" 天", " 小时", " 分钟"];
+      return parts.flatMap((value, index) => value === 0 ? [] : [`${number.format(value)}${units[index]}`]).join(" ");
+    },
   };
 };
 

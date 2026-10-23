@@ -26,7 +26,7 @@ const snapshot = (detail: TaskDetail, revision = 1): GraphSnapshot => {
   const tasks = [detail, { ...detail, id: dependencyId, title: 'Prerequisite', dependsOn: [], blockedBy: [], status: 'proposed' as const }];
   const graph: TaskGraph = { observedAt: time, project, tasks: tasks.map(({ version: _version, projectId: _project, title, description: _description, properties: _properties, ...task }) => ({ ...task, titlePreview: title, titleTruncated: false })),
     summary: { total: 2, proposed: tasks.filter((task) => task.status === 'proposed').length, todo: tasks.filter((task) => task.status === 'todo').length, inProgress: 0, done: 0, ready: 0, blocked: tasks.filter((task) => task.status === 'todo').length } };
-  return { observedAt: time, graph, index: buildGraphIndex(graph), receivedAt: 1, revision };
+  return { observedAt: time, graph, index: buildGraphIndex(graph), receivedMonotonic: performance.now(), receivedAt: 1, revision };
 };
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; };
 const names = { approve: { action: 'Approve task', confirm: 'Confirm approval' }, unapprove: { action: 'Unapprove task', confirm: 'Confirm withdrawal' } };

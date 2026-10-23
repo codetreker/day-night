@@ -83,6 +83,32 @@ export const useProjectViewPreferences = (projectId: string, roots: readonly str
 
 export type TaskView = "standalone" | "chains";
 type ScrollPositions = Readonly<Record<TaskView, number>>;
+type ScrollAnchorLease = { count: number; readonly value: string; readonly priority: string };
+const scrollAnchorLeases = new WeakMap<HTMLElement, ScrollAnchorLease>();
+
+const useTaskViewScrollAnchoring = (active: boolean) => {
+  useLayoutEffect(() => {
+    if (!active) return;
+    const root = document.documentElement;
+    let lease = scrollAnchorLeases.get(root);
+    if (lease === undefined) {
+      lease = { count: 0, value: root.style.getPropertyValue("overflow-anchor"), priority: root.style.getPropertyPriority("overflow-anchor") };
+      scrollAnchorLeases.set(root, lease);
+      // Saved absolute positions must survive content growing above the viewport.
+      root.style.setProperty("overflow-anchor", "none", lease.priority);
+    }
+    lease.count += 1;
+    return () => {
+      lease.count -= 1;
+      if (lease.count !== 0) return;
+      if (root.style.getPropertyValue("overflow-anchor") === "none" && root.style.getPropertyPriority("overflow-anchor") === lease.priority) {
+        if (lease.value === "") root.style.removeProperty("overflow-anchor");
+        else root.style.setProperty("overflow-anchor", lease.value, lease.priority);
+      }
+      scrollAnchorLeases.delete(root);
+    };
+  }, [active]);
+};
 
 const taskViewPreference = (value: unknown): TaskView => {
   if (value !== "standalone" && value !== "chains") throw new Error("Invalid project task view preference.");
@@ -129,6 +155,7 @@ export const useTaskViewScroll = (projectId: string, activeView: TaskView, ready
   const [initial] = useState(() => readPreference(key, scrollPreference));
   const positions = useRef<ScrollPositions>(initial.value === undefined ? { chains: 0, standalone: 0 } : initial.value);
   const [writeIssue, setWriteIssue] = useState<PreferenceIssue | null>(null);
+  useTaskViewScrollAnchoring(ready);
   const savePosition = useCallback(() => {
     const next = { ...positions.current, [activeView]: window.scrollY };
     if (next[activeView] === positions.current[activeView]) return;

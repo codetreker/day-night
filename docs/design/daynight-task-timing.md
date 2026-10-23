@@ -3,8 +3,8 @@
 本设计落实[需求 TT1–TT6](../spec/daynight-task-timing.md)，
 [任务拆分](daynight-task-timing-tasks.md)定义独立交付成果，
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-23-task-timing-design.md)保存采用理由。
-任务起止持久化、图数据库时间、项目阈值、设置页及严格客户端读取机制已实现。实时卡片和整体验收仍由 ET-T3 交付；
-本页明确区分当前机制与后继采用的目标机制，不以设计或单个任务完成代表整个目标完成。
+任务起止持久化、图数据库时间、项目阈值、设置页、共享时钟和实时展示构成当前机制。
+各任务和 PR 的源码绑定验证拥有实际交付证据；设计、实现代码或单个任务完成都不替代整体验收。
 
 ## 现有结构与职责
 
@@ -54,7 +54,7 @@ core 与 API 使用可空时间字段，JSON 明确输出 `startedAt`、`complet
 不能使用事务开始时间：事务可能等待项目锁，过早时间会把等待阶段错误计入执行。
 完整任务、列表、ready、图投影与 CLI/Web 类型、读取器和夹具共同保留这些时间字段。
 严格解析要求字段存在，已知值为合法 UTC `Z` 时间，秒后允许 1–9 位小数并保留原始字符串；未知事实必须明确为 `null`，不用缺省值兼容旧响应。
-图缓存分别维护 Project 和 `{tasks, summary}` 指纹，排除 `observedAt` 并分离设置元数据与任务索引身份；ET-T3 再接入页面时钟消费者。
+图缓存分别维护 Project 和 `{tasks, summary}` 指纹，排除 `observedAt` 并分离设置元数据与任务索引身份；页面时钟消费独立的最新样本和单调接收时间。
 
 ## 项目设置资源
 
@@ -101,10 +101,11 @@ Project、items[] 和 graph.project.settings.version 均保持 bigint，覆盖�
 图资源的顶层 `observedAt` 来自同一只读事务中的数据库时钟查询，采样安排在图数据和统计读取之后。
 它与任务起止时间共享时钟来源；不使用 Go HTTP Date 的秒精度时间或客户端墙钟推算执行耗时。
 
-当前 Web 每次成功读取将该响应的最新字符串保存为独立 `GraphSnapshot.observedAt`，并更新表示本机成功接收时间的 `receivedAt`。
+Web 在图响应解析完成后立即捕获 `performance.now()`，在指纹和索引计算之前保存 `GraphSnapshot.receivedMonotonic`。
+同一 snapshot 保存该响应最新 `observedAt` 和仅用于本机最近刷新标签的 `receivedAt`；服务端样本和单调接收时间必须成对更新。
 缓存使用独立 Project 与任务/统计指纹；仅时钟变化时复用整个 graph/index，仅设置变化时替换 Project 元数据并复用任务索引。
 因此缓存图自身的 `graph.observedAt` 可能仍是旧样本。
-ET-T3 的时钟消费者使用最新 `snapshot.observedAt`，接入如下独立单调时钟锚点：
+页面时钟消费最新 `snapshot.observedAt` 与 `snapshot.receivedMonotonic`，使用如下独立锚点：
 
 ```ts
 type ClockAnchor = {
@@ -122,12 +123,15 @@ const currentServerTime = (anchor: ClockAnchor) =>
 仅时钟或设置变化都不重建 `GraphIndex`。
 时钟与阈值不得进入投影、节点位置或边路由的 memo 依赖。
 
-ET-T3 提供每个项目页面一个稳定时钟 store/context，以一个一秒定时器发布时间。
-仅挂载且需要进行中计时的展示订阅；完成和未知起点任务不需要时钟订阅。
-隐藏页面暂停定时器，恢复可见时读取新图时间锚点并发布当前显示；项目切换、登出和卸载清理订阅、定时器及请求。
-沿用现有 AbortController 与 generation 保护，旧项目响应不能更新新项目时钟或阈值。
+`TaskExecutionClockProvider` 按 projectId 组织稳定 store/context，`useTaskExecution` 用 useSyncExternalStore 订阅。
+仅已挂载的已知起点进行中任务订阅时钟；存在这类订阅且页面可见时才有一个一秒定时器。
+完成任务只订阅设置变化以更新说明，不订阅时钟；未知计时无活动订阅。隐藏页暂停 ticker，恢复可见时立即发布单调差值结果，
+既有图轮询随后重建锚点。无运行订阅或卸载时清理 timer/visibility listener；项目和身份切换释放旧页面的 store。
+API 读取沿既有前台身份 guard、AbortController 和 generation，旧响应不能更新新项目时钟或阈值。
+单调差值包含接收到提交的 UI 延迟；服务端采样至接收/解析完成的网络与解析延迟仍是估计精度边界，不通过客户端 Date.now 补偿。
+运行同提交暂态的负估计只在显示层限为零，完成态始终使用持久化起止差。
 
-## 项目设置与后继卡片消费者
+## 项目设置与卡片消费者
 
 `/projects/:id/settings` 与成员页为同级路由，支持 GET/HEAD 深链接，复用项目导航、面板、表单、错误和权限展示模式。
 ProjectSettingsPanel 按 user/project 键隔离，成员查看权威值，管理员可编辑分钟、保存或取消。保存期间禁用相应写操作。
@@ -137,13 +141,16 @@ ProjectSettingsPanel 按 user/project 键隔离，成员查看权威值，管理
 失败保留明确错误、阻止 Save 并提供只读重试。路由离开或 abort 仅取消旧客户端工作，不能证明远端未提交。
 共享 foreground request guard 保留同用户表单与焦点，换号 generation 使旧读写失效。
 
-ET-T3 在图卡片与独立任务行复用同一耗时格式和判断。
+`TaskExecutionPresentation` 在图卡片与独立任务行复用耗时、提醒和可访问说明。
 进行中为当前服务端显示时间减起点，完成为终点减起点，未知起点不显示耗时。
 严格比较原始毫秒值 `elapsed > executionWarningMinutes * 60_000`，格式化仅影响文字。
 使用琥珀色强调、图标和双语文本表示“可能卡住了”，保留进行中蓝色状态、耗时、共享标记及既有选择强调。
 提醒放在现有元数据区域，不覆盖 Details、检查主体或展开控件，不改变 `220×96` / `220×136` 几何。
 底部为较宽的英文 Details 标签与耗时留出 42px 预留区，避免沿用原有 28px 后两者重叠；以真实浏览器边界验证长耗时和两种语言。
-链汇总没有单任务耗时；显示组件不逐秒使用 live region，以免持续打断辅助技术。
+time 使用 `PT<秒数>S` 语义时长；可见文字对小于一分钟及 d/h/min 或天/小时/分钟做本地化向下取整。
+节点和独立行保留原可访问名称，精确原始起止、耗时和阈值经 aria-describedby/time title 提供。
+独立行的可见新元数据对名称计算隐藏，计时 tick 不改变按钮名称；没有 alert/status/live-region 逐秒广播。
+完成、未知与进行中都保留现有焦点和控制；外部虚线样式、共享标记及选中/前置强调不被琥珀提醒覆盖。链汇总没有单任务耗时。
 
 设计任务的纯前端交互 mock 拥有最终视觉和状态示例；共享要求与原型从设计任务实际附件读取。
 实施者更新旧原型时保留当前独立 Details 交互，而非恢复已经移除的整卡详情按钮语义。
