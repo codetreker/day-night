@@ -107,9 +107,11 @@ test('native APFS storage uses one shared mount for ownership and recovery scena
   context.mock.method(storagePlatform, 'execute', async (command: string, args: string[], timeout: number, input?: string) => {
     if (command === '/usr/bin/hdiutil' && args[0] === 'create' && ++creations > 1) throw new Error('Native storage scenarios must share one image.');
     const attaching = (command === '/usr/bin/hdiutil' && args[0] === 'attach')
-      || (command === '/usr/sbin/diskutil' && args[0] === 'image' && args[1] === 'attach' && !args.includes('--help'));
-    if (attaching && ++attachments > 1) throw new Error('Native storage scenarios must share one attachment.');
-    return await execute(command, args, timeout, input);
+      || (command === '/usr/sbin/diskutil' && args[0] === 'image' && args[1] === 'attach');
+    if (attaching && attachments >= 1) throw new Error('Native storage scenarios must share one attachment.');
+    const result = await execute(command, args, timeout, input);
+    if (attaching) attachments++;
+    return result;
   });
   await mkdir(temporaryRoot, { recursive: true });
   const parent = await mkdtemp(join(temporaryRoot, 'acceptance-storage-native-'));

@@ -115,6 +115,55 @@ test('unsupported storage platforms fail before creating a directory', async (co
   } finally { platform.mock.restore(); await dispose(parent); }
 });
 
+test('APFS attachment avoids help initialization and falls back only for an unsupported image verb', { skip: process.platform !== 'darwin' }, async (context) => {
+  const parent = await fixture();
+  try {
+    await writeFile(join(parent, 'case-probe'), 'probe');
+    if (!await exists(join(parent, 'CASE-PROBE'))) { context.skip('APFS fallback requires a case-insensitive task filesystem.'); return; }
+    const unsupported = Object.assign(new Error('Unsupported image verb'), {
+      code: 1, stderr: 'diskutil: did not recognize verb "image"; type "diskutil" for a list\n',
+    });
+    const failures = [
+      Object.assign(new Error('Authorization denied'), { code: 1, stderr: 'Authorization denied' }),
+      Object.assign(new Error('Attachment timed out'), { code: null, killed: true, stderr: '' }),
+      Object.assign(new Error('Unknown image error'), { code: 1, stderr: 'did not recognize verb while opening image' }),
+    ];
+    for (const [index, failure] of [undefined, unsupported, ...failures].entries()) {
+      const calls: { command: string; args: string[]; timeout: number }[] = [];
+      const directory = join(parent, `storage-${index}`);
+      const execution = context.mock.method(storagePlatform, 'execute', async (command: string, args: string[], timeout: number) => {
+        calls.push({ command, args, timeout });
+        if (command === '/usr/bin/hdiutil' && args[0] === 'create') { await writeFile(args.at(-1)!, 'fake image'); return ''; }
+        if (command === '/usr/sbin/diskutil') {
+          assert.deepEqual(args, ['image', 'attach', '--plist', '--mountOptions', 'nobrowse', '--mountPoint', join(directory, 'mount'), join(directory, 'storage.sparseimage')]);
+          assert.equal(timeout, 30_000);
+          if (failure !== undefined) throw failure;
+          return 'fake attachment';
+        }
+        if (command === '/usr/bin/hdiutil' && args[0] === 'attach') {
+          assert.equal(failure, unsupported);
+          assert.deepEqual(args, ['attach', '-plist', '-nobrowse', '-noautoopen', '-mountpoint', join(directory, 'mount'), join(directory, 'storage.sparseimage')]);
+          assert.equal(timeout, 30_000);
+          return 'fake attachment';
+        }
+        if (command === '/usr/bin/plutil') throw new Error('Stop after simulated attachment');
+        throw new Error(`Unexpected storage command: ${command}`);
+      });
+      try {
+        await assert.rejects(prepareStorage(directory), (error: unknown) => {
+          assert.ok(error instanceof StoragePreparationError);
+          assert.equal(error.receipt.phase, 'attach-intent');
+          if (failure !== undefined && failure !== unsupported) assert.equal(error.cause, failure);
+          else assert.match(error.message, /Stop after simulated attachment/);
+          return true;
+        });
+        assert.equal(calls.filter(({ command }) => command === '/usr/sbin/diskutil').length, 1);
+        assert.equal(calls.filter(({ command, args }) => command === '/usr/bin/hdiutil' && args[0] === 'attach').length, failure === unsupported ? 1 : 0);
+      } finally { execution.mock.restore(); }
+    }
+  } finally { await rm(parent, { recursive: true }); }
+});
+
 test('Linux direct storage preserves case-distinct files and removes its owned root', { skip: process.platform !== 'linux' }, async () => {
   const parent = await fixture();
   try {

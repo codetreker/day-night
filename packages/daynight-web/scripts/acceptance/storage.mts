@@ -75,14 +75,15 @@ const execute = async (command: string, args: string[], timeout: number, input?:
 const extract = async (plist: string, key: string, format: 'raw' | 'json', type: 'array' | 'string', deadline?: number): Promise<string> =>
   await execute('/usr/bin/plutil', ['-extract', key, format, '-expect', type, ...(format === 'raw' ? ['-n'] : []), '-o', '-', '-'], 2_000, plist, deadline);
 const attachImage = async (imageFile: string, mountDirectory: string): Promise<string> => {
-  try { await execute('/usr/sbin/diskutil', ['image', 'attach', '--help'], 5_000); }
+  // Image help also initializes StorageKit authorization; attempt the journaled attachment directly.
+  try {
+    return await execute('/usr/sbin/diskutil', ['image', 'attach', '--plist', '--mountOptions', 'nobrowse', '--mountPoint', mountDirectory, imageFile], 30_000);
+  }
   catch (error) {
-    const stderr = (error as { stderr?: unknown }).stderr;
-    if (typeof stderr !== 'string' || !/did not recognize verb.*image/i.test(stderr)) throw error;
+    const { code, stderr } = error as { code?: unknown; stderr?: unknown };
+    if (code !== 1 || typeof stderr !== 'string' || !/^diskutil: did not recognize verb "image"; type "diskutil" for a list\s*$/.test(stderr)) throw error;
     return await execute('/usr/bin/hdiutil', ['attach', '-plist', '-nobrowse', '-noautoopen', '-mountpoint', mountDirectory, imageFile], 30_000);
   }
-  // Current macOS directs custom mount points through diskutil's image API.
-  return await execute('/usr/sbin/diskutil', ['image', 'attach', '--plist', '--mountOptions', 'nobrowse', '--mountPoint', mountDirectory, imageFile], 30_000);
 };
 const canonicalDevice = (value: unknown): string => {
   if (typeof value !== 'string') throw new Error('Invalid APFS image device.');

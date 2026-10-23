@@ -40,7 +40,11 @@ changed identity still fails.
 Storage preparation owns an exclusive control directory. A case-sensitive parent
 uses a direct data directory; macOS case-insensitive parents use an owned
 case-sensitive APFS sparse image. Atomic local receipts and parent persistence
-precede attachment. Cleanup verifies directory/image identity and mount topology,
+precede attachment. Attachment directly invokes the image command; its help
+command also initializes StorageKit authorization and can block before printing
+usage. Only the exact unsupported-image-verb error permits the older hdiutil
+fallback; permission failures and timeouts do not trigger another attachment.
+Cleanup verifies directory/image identity and mount topology,
 requires the native service to stop, and detaches before recursive removal.
 Explicit busy failures retry at one-second intervals within a shared 30-second
 deadline, revalidating ownership each time. A separate three-attempt limit would
