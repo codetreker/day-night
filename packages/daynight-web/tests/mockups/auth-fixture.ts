@@ -267,6 +267,7 @@ export const installAuthFixture = (initial: AuthScenario) => {
     pauseIdentityChecks: () => { identityPaused = true; },
     resumeIdentityChecks: () => { identityPaused = false; for (const pending of identityWaiters) pending.release(); },
     failIdentityChecks: () => { identityPaused = false; for (const pending of identityWaiters) pending.release(error(503, 'internal_error')); },
+    expireIdentityChecks: () => { authenticated = false; identityPaused = false; for (const pending of identityWaiters) pending.release(error(401, 'unauthenticated')); },
     switchToAlice: () => { activeUser = { ...currentUser, id: uuid(202), name: 'Alice Chen', email: 'alice.chen@example.com' }; tokens = []; },
     completeLogin: (url: string) => {
       const login = new URL(url, location.origin);

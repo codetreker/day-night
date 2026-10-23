@@ -48,8 +48,32 @@ export const isAbortError = (error: unknown): boolean =>
 
 let authGeneration = 0;
 const unauthorizedListeners = new Set<() => void>();
+type AuthPause = { readonly waiters: Set<() => void>; owner: symbol };
+let authPause: AuthPause | null = null;
 
-export const invalidateAuthRequests = (): void => { authGeneration += 1; };
+const releaseAuthRequests = (): void => {
+  const pause = authPause;
+  authPause = null;
+  if (pause !== null) for (const resume of pause.waiters) resume();
+};
+
+export const invalidateAuthRequests = (): void => { authGeneration += 1; releaseAuthRequests(); };
+export const pauseAuthRequests = (): (() => void) => {
+  const owner = Symbol();
+  if (authPause === null) authPause = { waiters: new Set(), owner };
+  else authPause.owner = owner;
+  const pause = authPause;
+  return () => { if (authPause === pause && pause.owner === owner) releaseAuthRequests(); };
+};
+
+const waitForIdentity = (pause: AuthPause, signal: AbortSignal): Promise<void> => new Promise((resolve, reject) => {
+  const cleanup = () => { pause.waiters.delete(resume); signal.removeEventListener("abort", abort); };
+  const resume = () => { cleanup(); resolve(); };
+  const abort = () => { cleanup(); reject(signal.reason); };
+  pause.waiters.add(resume);
+  signal.addEventListener("abort", abort, { once: true });
+});
+
 export const subscribeUnauthorized = (listener: () => void): (() => void) => {
   unauthorizedListeners.add(listener);
   return () => { unauthorizedListeners.delete(listener); };
@@ -58,6 +82,13 @@ export const subscribeUnauthorized = (listener: () => void): (() => void) => {
 export const request = async (url: string, signal: AbortSignal, init: RequestInit = {}): Promise<Response> => {
   signal.throwIfAborted();
   const generation = authGeneration;
+  if (url !== "/api/v1/me" && url !== "/api/v1/auth/logout") {
+    while (authPause !== null) {
+      await waitForIdentity(authPause, signal);
+      signal.throwIfAborted();
+      if (generation !== authGeneration) throw new DOMException("The authenticated account changed.", "AbortError");
+    }
+  }
   let response: Response;
   try {
     response = await fetch(url, { ...init, signal, cache: "no-store", credentials: "same-origin", redirect: "error" });

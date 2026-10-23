@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { listMembers, logout, me } from "../api/auth";
 import type { AuthProvider, CurrentUser, ProjectRole } from "../api/auth-types";
-import { ApiError, invalidateAuthRequests, isAbortError, subscribeUnauthorized } from "../api/client";
+import { ApiError, invalidateAuthRequests, isAbortError, pauseAuthRequests, subscribeUnauthorized } from "../api/client";
 import type { Project } from "../api/types";
 import { AccountPage } from "../features/management/AccountPage";
 import { MembersPanel } from "../features/management/MembersPanel";
@@ -60,12 +60,12 @@ const AuthorizedProject = ({ projectId, user, onOpenMembers }: { readonly projec
   return <>{membership.status === "error" && <div className="notice error" role="alert"><p>{m.permissionsError}</p><button className="button" type="button" onClick={() => setAttempt((value) => value + 1)}>{m.retryPermissions}</button></div>}<ProjectPage projectId={projectId} renderActions={(project) => membership.status === "ready" ? <><span className={`badge ${membership.role}`}>{roles[membership.role!]}</span><a className="button" href={`/projects/${projectId}/members`} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onOpenMembers(project); }}>{m.members}</a></> : null} /></>;
 };
 
-const Workspace = ({ user, children, route, onSignOut, checking }: { readonly user: CurrentUser; readonly children: ReactNode; readonly route: AuthRoute; readonly onSignOut: () => void; readonly checking: boolean }) => {
+const Workspace = ({ user, children, route, onSignOut, blocked }: { readonly user: CurrentUser; readonly children: ReactNode; readonly route: AuthRoute; readonly onSignOut: () => void; readonly blocked: boolean }) => {
   const { messages: { auth: { shell: m }, workspace: { app } } } = useI18n();
   const content = useRef<HTMLElement>(null);
   const label = route.kind === "projects" ? m.myProjects : route.kind === "account" ? m.accountSettings : route.kind === "members" ? m.members : route.kind === "project" ? app.projectTasks : app.notFound;
   useLayoutEffect(() => { content.current?.focus(); }, [route.kind, "projectId" in route ? route.projectId : null]);
-  return <div className="shell auth-shell" aria-hidden={checking} inert={checking}><a className="skip-link" href="#main-content">{app.skipToContent}</a><aside className="sidebar" aria-label={app.workspaceNavigation}><a className="brand" href="/" onClick={followLink} aria-label={app.projectHome}><span className="brand-mark" aria-hidden="true" />daynight</a><nav aria-label={app.mainNavigation}><p className="nav-label">{app.workspace}</p><a className="nav-button" href="/" onClick={followLink} aria-current={route.kind === "projects" || route.kind === "project" || route.kind === "members" ? "page" : undefined}>▦　{m.myProjects}</a><a className="nav-button account-nav" href="/account" onClick={followLink} aria-current={route.kind === "account" ? "page" : undefined}>◎　{m.accountSettings}</a></nav><div className="sidebar-bottom">{m.teamWorkspace}<small>{app.localWorkspaceDetail}</small></div></aside><div className="workspace"><header className="topbar"><nav className="crumb" aria-label={app.breadcrumb}><a href="/" onClick={followLink}>{app.workspace}</a><span aria-hidden="true">/</span><span className="crumb-current" aria-current="page">{label}</span></nav><div className="account-actions"><LanguageSelector /><a className="account-button" href="/account" onClick={followLink} aria-label={m.accountLink({ name: accountLabel(user, m.currentAccount) })}><span className="avatar" aria-hidden="true">{accountLabel(user, m.currentAccount).slice(0, 1).toUpperCase()}</span><span className="account-name">{accountLabel(user, m.currentAccount)}</span></a><button className="inline-link" type="button" onClick={onSignOut}>{m.signOut}</button></div></header><main className="content" id="main-content" ref={content} tabIndex={-1}>{children}</main></div></div>;
+  return <div className="shell auth-shell" aria-hidden={blocked} inert={blocked}><a className="skip-link" href="#main-content">{app.skipToContent}</a><aside className="sidebar" aria-label={app.workspaceNavigation}><a className="brand" href="/" onClick={followLink} aria-label={app.projectHome}><span className="brand-mark" aria-hidden="true" />daynight</a><nav aria-label={app.mainNavigation}><p className="nav-label">{app.workspace}</p><a className="nav-button" href="/" onClick={followLink} aria-current={route.kind === "projects" || route.kind === "project" || route.kind === "members" ? "page" : undefined}>▦　{m.myProjects}</a><a className="nav-button account-nav" href="/account" onClick={followLink} aria-current={route.kind === "account" ? "page" : undefined}>◎　{m.accountSettings}</a></nav><div className="sidebar-bottom">{m.teamWorkspace}<small>{app.localWorkspaceDetail}</small></div></aside><div className="workspace"><header className="topbar"><nav className="crumb" aria-label={app.breadcrumb}><a href="/" onClick={followLink}>{app.workspace}</a><span aria-hidden="true">/</span><span className="crumb-current" aria-current="page">{label}</span></nav><div className="account-actions"><LanguageSelector /><a className="account-button" href="/account" onClick={followLink} aria-label={m.accountLink({ name: accountLabel(user, m.currentAccount) })}><span className="avatar" aria-hidden="true">{accountLabel(user, m.currentAccount).slice(0, 1).toUpperCase()}</span><span className="account-name">{accountLabel(user, m.currentAccount)}</span></a><button className="inline-link" type="button" onClick={onSignOut}>{m.signOut}</button></div></header><main className="content" id="main-content" ref={content} tabIndex={-1}>{children}</main></div></div>;
 };
 
 const RevalidationOverlay = ({ failed, onRetry }: { readonly failed: boolean; readonly onRetry: () => void }) => {
@@ -84,6 +84,7 @@ const RevalidationOverlay = ({ failed, onRetry }: { readonly failed: boolean; re
 
 type SessionNotice = "expired" | "signedOut" | "logoutFailed";
 type Session = { readonly status: "loading" } | { readonly status: "error" } | { readonly status: "anonymous"; readonly notice?: SessionNotice } | { readonly status: "authenticated"; readonly user: CurrentUser; readonly generation: number };
+type Revalidation = "idle" | "checking" | "error" | "retrying";
 const assignLogin = (url: string) => window.location.assign(url);
 
 export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly navigateToLogin?: (url: string) => void }) => {
@@ -94,7 +95,7 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
   const invitationLifetime = useRef(new AbortController());
   const [session, setSession] = useState<Session>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
-  const [revalidation, setRevalidation] = useState<"idle" | "loading" | "error">("idle");
+  const [revalidation, setRevalidation] = useState<Revalidation>("idle");
   const sessionRef = useRef(session);
   sessionRef.current = session;
   const [creating, setCreating] = useState(false);
@@ -103,6 +104,7 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
   const [projectName, setProjectName] = useState<string | null>(null);
   const generation = useRef(0);
   const active = useRef<AbortController | null>(null);
+  const resumeAuthRequests = useRef<(() => void) | null>(null);
   const mounted = useRef(true);
   const route = parseAuthRoute(pathname);
   useLayoutEffect(() => {
@@ -142,8 +144,8 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
   useEffect(() => {
     const controller = new AbortController(); active.current = controller;
     const current = ++generation.current;
-    if (sessionRef.current.status === "authenticated") setRevalidation("loading");
-    else setSession({ status: "loading" });
+    const resume = resumeAuthRequests.current;
+    if (sessionRef.current.status !== "authenticated") setSession({ status: "loading" });
     void me(controller.signal).then((user) => {
       if (controller.signal.aborted || current !== generation.current) return;
       const previous = sessionRef.current;
@@ -154,6 +156,7 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
         setSession({ status: "authenticated", user, generation: current });
       }
       setRevalidation("idle");
+      resume?.(); resumeAuthRequests.current = null;
     }).catch((error: unknown) => {
       if (controller.signal.aborted || current !== generation.current || isAbortError(error)) return;
       if (error instanceof ApiError && error.status === 401) clearSession(sessionRef.current.status === "authenticated" ? "expired" : undefined);
@@ -176,18 +179,31 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
       if (mounted.current && !isAbortError(error) && !(error instanceof ApiError && error.status === 401)) { setLogoutFailed(true); setSession({ status: "anonymous", notice: "logoutFailed" }); }
     });
   }, [clearSession]);
-  const recheckIdentity = useCallback(() => {
+  const pauseIdentity = useCallback(() => {
     active.current?.abort(); active.current = null; ++generation.current;
-    setRevalidation("loading"); setAttempt((value) => value + 1);
+    resumeAuthRequests.current = pauseAuthRequests();
   }, []);
+  const recheckIdentity = useCallback(() => {
+    pauseIdentity();
+    setRevalidation((previous) => previous === "error" || previous === "retrying" ? "retrying" : "checking");
+    setAttempt((value) => value + 1);
+  }, [pauseIdentity]);
+  const blocked = revalidation === "error" || revalidation === "retrying";
   useLayoutEffect(() => {
-    document.body.classList.toggle("auth-session-checking", revalidation !== "idle");
+    document.body.classList.toggle("auth-session-checking", blocked);
     return () => document.body.classList.remove("auth-session-checking");
-  }, [revalidation]);
-  useEffect(() => {
+  }, [blocked]);
+  // Departure gates foreground reads regardless of visibility/focus listener order.
+  // Layout setup also guards child request effects when the workspace mounts away.
+  useLayoutEffect(() => {
     if (session.status !== "authenticated") return;
-    let topLevelAway = document.visibilityState === "hidden" || !document.hasFocus();
-    const lostFocus = () => { if (!document.hasFocus()) topLevelAway = true; };
+    let topLevelAway = false;
+    const departed = () => {
+      if (topLevelAway) return;
+      topLevelAway = true;
+      pauseIdentity();
+    };
+    const lostFocus = () => { if (!document.hasFocus()) departed(); };
     const returned = () => {
       // Iframe-to-parent focus changes keep the top-level document focused.
       if (!topLevelAway || document.visibilityState === "hidden" || !document.hasFocus()) return;
@@ -195,18 +211,19 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
       recheckIdentity();
     };
     const visibilityChanged = () => {
-      if (document.visibilityState === "hidden") topLevelAway = true;
+      if (document.visibilityState === "hidden") departed();
       else returned();
     };
     window.addEventListener("blur", lostFocus);
     window.addEventListener("focus", returned);
     document.addEventListener("visibilitychange", visibilityChanged);
+    if (document.visibilityState === "hidden" || !document.hasFocus()) departed();
     return () => {
       window.removeEventListener("blur", lostFocus);
       window.removeEventListener("focus", returned);
       document.removeEventListener("visibilitychange", visibilityChanged);
     };
-  }, [session.status, recheckIdentity]);
+  }, [session.status, pauseIdentity, recheckIdentity]);
   const startLogin = (provider: AuthProvider) => {
     const returnPath = route.kind === "invitations" ? "/invitations" : pathname;
     const parameters = new URLSearchParams({ provider, returnPath });
@@ -217,13 +234,12 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
   if (session.status === "error") return <main className="auth-main"><section className="state-box" role="alert"><h1>{m.identityError}</h1><p>{m.networkRetry}</p><LanguageSelector /><button className="button primary" type="button" onClick={() => setAttempt((value) => value + 1)}>{projects.retry}</button></section></main>;
   if (session.status === "anonymous") return <>{cleanupWarning}{route.kind === "invitations" && invitation.storageUnavailable && <div className="notice warning" role="alert">{m.invitationStorageError}</div>}<LoginPage invitation={route.kind === "invitations"} {...(session.notice !== undefined ? { notice: m.notice[session.notice] } : loginError ? { notice: m.notice.loginFailed } : {})} onLogin={startLogin} />{logoutFailed && <button className="button" type="button" onClick={signOut}>{m.retryLogout}</button>}</>;
   const identity = `${session.user.id}:${session.generation}`;
-  const checking = revalidation !== "idle";
-  const revalidationOverlay = checking ? <RevalidationOverlay failed={revalidation === "error"} onRetry={recheckIdentity} /> : null;
-  if (route.kind === "attachment") return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}{cleanupWarning}<div className="auth-shell" key={identity} aria-hidden={checking} inert={checking}>
+  const revalidationOverlay = blocked ? <RevalidationOverlay failed={revalidation === "error"} onRetry={recheckIdentity} /> : null;
+  if (route.kind === "attachment") return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}{cleanupWarning}<div className="auth-shell" key={identity} aria-hidden={blocked} inert={blocked}>
     <AttachmentPage key={`${route.projectId}/${route.taskId}/${route.path}`} projectId={route.projectId} taskId={route.taskId} path={route.path} />
   </div></TaskDetailSessionProvider>;
-  if (route.kind === "invitations") return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}{cleanupWarning}<div aria-hidden={checking} inert={checking}><InvitationPage key={`${identity}:${invitationRevision}`} lifetime={invitationLifetime.current.signal} invitation={invitation} user={session.user} onComplete={completeInvitation} onCancel={cancelInvitation} onSwitchAccount={signOut} onUnavailable={unavailableInvitation} /></div></TaskDetailSessionProvider>;
-  return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}<Workspace key={identity} user={session.user} route={route} onSignOut={signOut} checking={checking}>
+  if (route.kind === "invitations") return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}{cleanupWarning}<div aria-hidden={blocked} inert={blocked}><InvitationPage key={`${identity}:${invitationRevision}`} lifetime={invitationLifetime.current.signal} invitation={invitation} user={session.user} onComplete={completeInvitation} onCancel={cancelInvitation} onSwitchAccount={signOut} onUnavailable={unavailableInvitation} /></div></TaskDetailSessionProvider>;
+  return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}<Workspace key={identity} user={session.user} route={route} onSignOut={signOut} blocked={blocked}>
     {cleanupWarning}{route.kind === "projects" ? <ProjectsPage onCreate={() => setCreating(true)} /> : route.kind === "project" ? <AuthorizedProject key={route.projectId} projectId={route.projectId} user={session.user} onOpenMembers={(project) => { setProjectName(project.name); navigate(`/projects/${project.id}/members`); }} /> : route.kind === "members" ? <MembersPanel key={route.projectId} projectId={route.projectId} projectName={projectName ?? m.genericProject} user={session.user} onRemoved={() => navigate("/")} /> : route.kind === "account" ? <AccountPage user={session.user} onSignOut={signOut} /> : <section className="state-box"><h1>{app.notFound}</h1><a className="button primary" href="/" onClick={followLink}>{app.returnToProjects}</a></section>}
     {creating && <CreateProjectDialog onClose={() => setCreating(false)} onCreated={(project) => { setCreating(false); navigate(`/projects/${project.id}`); }} />}
   </Workspace></TaskDetailSessionProvider>;

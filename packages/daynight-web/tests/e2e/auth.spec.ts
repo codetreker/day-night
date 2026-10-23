@@ -147,16 +147,69 @@ test('auth-project-isolation', scenario('auth-project-isolation'), async ({ page
     await picture(page, info, 'auth-project-isolation');
     await page.goto(`/projects/${own.id}`);
     await expect(page.getByRole('heading', { name: own.name, exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: '独立任务', exact: true }).click();
+    await page.locator(`#standalone-task-${task.id}`).click();
+    const detail = page.getByRole('dialog', { name: '任务详情', exact: true });
+    await expect(detail.locator('.task-detail-title')).toHaveText(task.title);
+    await detail.getByRole('tab', { name: '附件', exact: true }).click();
+    await detail.getByRole('button', { name: /index\.html/ }).click();
+    await expect(detail.frameLocator('iframe').getByRole('button', { name: 'Private file' })).toBeVisible();
+    await detail.locator('.attachment-upload-disclosure>summary').click();
+    const fileInput = detail.getByLabel('选择一个文件', { exact: true });
+    await fileInput.setInputFiles({ name: 'retained.txt', mimeType: 'text/plain', buffer: Buffer.from('Unsubmitted foreground draft') });
+    const attachmentPath = detail.getByRole('textbox', { name: '目标相对路径', exact: true });
+    await attachmentPath.fill('draft/retained.txt');
+    const originalShell = await page.locator('.auth-shell').elementHandle();
+    const originalDetail = await detail.elementHandle();
+    const originalFrame = await detail.locator('iframe').elementHandle();
+    expect(originalShell).not.toBeNull();
+    expect(originalDetail).not.toBeNull();
+    expect(originalFrame).not.toBeNull();
     const identityRequests: string[] = [];
-    page.on('request', (request) => { if (new URL(request.url()).pathname === '/api/v1/me') identityRequests.push(request.method()); });
+    const graphRequests: string[] = [];
+    const requestOrder: string[] = [];
+    const identityRequestNumbers = new WeakMap<object, number>();
+    const graphRequestNumbers = new WeakMap<object, number>();
+    const pendingGraphWindows: { readonly identity: 'same-user' | 'changed-user'; readonly baseline: number; readonly beforeRelease: number }[] = [];
+    page.on('request', (request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (pathname === '/api/v1/me') {
+        identityRequests.push(request.method());
+        identityRequestNumbers.set(request, identityRequests.length);
+        requestOrder.push(`identity-request:${identityRequests.length}`);
+      } else if (pathname === `/api/v1/projects/${own.id}/task-graph`) {
+        graphRequests.push(request.method());
+        graphRequestNumbers.set(request, graphRequests.length);
+        requestOrder.push(`graph-request:${graphRequests.length}`);
+      }
+    });
+    page.on('response', (response) => {
+      if (new URL(response.url()).pathname === '/api/v1/me') requestOrder.push(`identity-response:${identityRequestNumbers.get(response.request())!}`);
+    });
+    const queueGraphWhileAway = async (): Promise<void> => {
+      expect(await page.evaluate(() => document.hasFocus())).toBe(false);
+      const refresh = page.locator('.project-title-actions>button');
+      // Invoke the existing refresh handler without bringing the document back into focus.
+      await refresh.evaluate((button: HTMLButtonElement) => {
+        button.click();
+        return new Promise<void>((resolve) => setTimeout(resolve, 0));
+      });
+      await expect(refresh).toBeDisabled();
+    };
     await page.evaluate(() => {
-      const state = window as unknown as { authConcealment: boolean[] };
-      state.authConcealment = [];
-      new MutationObserver(() => {
-        if (document.body.classList.contains('auth-session-checking')) {
-          state.authConcealment.push([...document.querySelectorAll('.auth-shell')].every((element) => getComputedStyle(element).visibility === 'hidden'));
-        }
-      }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+      const state = window as unknown as { authContinuity: boolean[]; stopAuthContinuity: () => void };
+      const shell = document.querySelector('.auth-shell')!;
+      const detail = document.querySelector('.task-detail-dialog')!;
+      const frame = detail.querySelector('iframe')!;
+      const sample = () => state.authContinuity.push(shell.isConnected && detail.isConnected && frame.isConnected
+        && getComputedStyle(shell).visibility === 'visible' && getComputedStyle(detail).visibility === 'visible'
+        && !shell.hasAttribute('inert') && shell.getAttribute('aria-hidden') !== 'true'
+        && !document.body.classList.contains('auth-session-checking') && document.querySelector('.auth-revalidation-overlay') === null);
+      state.authContinuity = [];
+      const observer = new MutationObserver(sample);
+      observer.observe(document.body, { attributes: true, childList: true, subtree: true, attributeFilter: ['class', 'aria-hidden', 'inert'] });
+      state.stopAuthContinuity = () => { sample(); observer.disconnect(); };
+      sample();
     });
     const primaryFocus = await context.newCDPSession(page);
     await primaryFocus.send('Emulation.setFocusEmulationEnabled', { enabled: false });
@@ -168,6 +221,10 @@ test('auth-project-isolation', scenario('auth-project-isolation'), async ({ page
     await secondaryFocus.detach();
     await otherTab.bringToFront();
     await expect.poll(() => page.evaluate(() => document.hasFocus())).toBe(false);
+    const sameUserGraphBaseline = graphRequests.length;
+    requestOrder.push('external-departure:1');
+    await queueGraphWhileAway();
+    expect(graphRequests).toHaveLength(sameUserGraphBaseline);
     await page.route(`${baseURL}/api/v1/me`, async (route) => {
       const response = await authenticatedAPI(context.request).get('/api/v1/me');
       expect(response.status()).toBe(200);
@@ -183,28 +240,74 @@ test('auth-project-isolation', scenario('auth-project-isolation'), async ({ page
     await page.bringToFront();
     await expect.poll(() => heldChecks.length).toBe(1);
     expect(heldChecks[0]!.identity).toBe(aliceUser.id);
-    await expect(page.locator('body')).toHaveClass(/auth-session-checking/);
-    await expect(page.getByRole('heading', { name: own.name, exact: true })).toBeHidden();
+    await expect(page.locator('body')).not.toHaveClass(/auth-session-checking/);
+    await expect(page.locator('.auth-revalidation-overlay')).toHaveCount(0);
+    await expect(detail).toBeVisible();
+    await expect(attachmentPath).toBeFocused();
+    await attachmentPath.press('End');
+    await attachmentPath.pressSequentially('.pending');
+    await expect(attachmentPath).toHaveValue('draft/retained.txt.pending');
+    expect(graphRequests).toHaveLength(sameUserGraphBaseline);
+    pendingGraphWindows.push({ identity: 'same-user', baseline: sameUserGraphBaseline, beforeRelease: graphRequests.length });
+    const sameUserResponse = page.waitForResponse(`${baseURL}/api/v1/me`);
+    const sameUserGraph = page.waitForResponse((response) => response.url() === `${baseURL}/api/v1/projects/${own.id}/task-graph`
+      && graphRequestNumbers.get(response.request())! > sameUserGraphBaseline);
+    heldChecks[0]!.release();
+    await heldChecks[0]!.completed;
+    await (await sameUserResponse).finished();
+    expect((await sameUserGraph).status()).toBe(200);
+    expect(graphRequests.length).toBeGreaterThan(sameUserGraphBaseline);
+    expect(requestOrder).toContain('identity-response:1');
+    expect(requestOrder.indexOf(`graph-request:${sameUserGraphBaseline + 1}`)).toBeGreaterThan(requestOrder.indexOf('identity-response:1'));
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    expect(await originalShell!.evaluate((element) => element === document.querySelector('.auth-shell'))).toBe(true);
+    expect(await originalDetail!.evaluate((element) => element === document.querySelector('.task-detail-dialog'))).toBe(true);
+    expect(await originalFrame!.evaluate((element) => element === document.querySelector('.task-detail-dialog iframe'))).toBe(true);
+    await expect(attachmentPath).toBeFocused();
+    await expect(attachmentPath).toHaveValue('draft/retained.txt.pending');
+    expect(await fileInput.evaluate((input: HTMLInputElement) => input.files?.[0]?.name)).toBe('retained.txt');
+    const continuity = await page.evaluate(() => {
+      const state = window as unknown as { authContinuity: boolean[]; stopAuthContinuity: () => void };
+      state.stopAuthContinuity();
+      return state.authContinuity;
+    });
+    expect(continuity.length).toBeGreaterThan(0);
+    expect(continuity.every(Boolean)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(detail).toHaveCount(0);
+    await otherTab.bringToFront();
+    await expect.poll(() => page.evaluate(() => document.hasFocus())).toBe(false);
+    const changedUserGraphBaseline = graphRequests.length;
+    requestOrder.push('external-departure:2');
+    await queueGraphWhileAway();
+    expect(graphRequests).toHaveLength(changedUserGraphBaseline);
+    await page.bringToFront();
+    await expect.poll(() => heldChecks.length).toBe(2);
+    expect(heldChecks[1]!.identity).toBe(aliceUser.id);
+    expect(graphRequests).toHaveLength(changedUserGraphBaseline);
     await otherTab.bringToFront();
     await expect.poll(() => page.evaluate(() => document.hasFocus())).toBe(false);
     await browserAuthentication(context, baseURL, 'bob');
     await page.bringToFront();
-    await expect.poll(() => heldChecks.length).toBe(2);
-    expect(heldChecks[1]!.identity).toBe(bobUser.id);
-    heldChecks[0]!.release();
-    await heldChecks[0]!.completed;
-    await expect(page.locator('body')).toHaveClass(/auth-session-checking/);
-    await expect(page.getByRole('heading', { name: own.name, exact: true })).toBeHidden();
+    await expect.poll(() => heldChecks.length).toBe(3);
+    expect(heldChecks[2]!.identity).toBe(bobUser.id);
+    expect(graphRequests).toHaveLength(changedUserGraphBaseline);
     heldChecks[1]!.release();
     await heldChecks[1]!.completed;
+    await expect(page.locator('body')).not.toHaveClass(/auth-session-checking/);
+    await expect(page.getByRole('link', { name: '账户设置：Alice', exact: true })).toBeVisible();
+    expect(graphRequests).toHaveLength(changedUserGraphBaseline);
+    pendingGraphWindows.push({ identity: 'changed-user', baseline: changedUserGraphBaseline, beforeRelease: graphRequests.length });
+    heldChecks[2]!.release();
+    await heldChecks[2]!.completed;
     await expect(page.getByRole('link', { name: '账户设置：Bob', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: own.name, exact: true })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: '项目不存在或你没有访问权限' })).toBeVisible();
-    expect(identityRequests).toEqual(['GET', 'GET']);
-    const concealment = await page.evaluate(() => (window as unknown as { authConcealment: boolean[] }).authConcealment);
-    expect(concealment.length).toBeGreaterThan(0);
-    expect(concealment.every(Boolean)).toBe(true);
-    await info.attach('auth-real-tab-return', { body: Buffer.from(JSON.stringify({ identityRequests, concealment })), contentType: 'application/json' });
+    expect(identityRequests).toEqual(['GET', 'GET', 'GET']);
+    await expect.poll(() => graphRequests.length).toBeGreaterThan(changedUserGraphBaseline);
+    expect(requestOrder).toContain('identity-response:3');
+    expect(requestOrder.indexOf(`graph-request:${changedUserGraphBaseline + 1}`)).toBeGreaterThan(requestOrder.indexOf('identity-response:3'));
+    await info.attach('auth-real-tab-return', { body: Buffer.from(JSON.stringify({ identityRequests, graphRequests, pendingGraphWindows, requestOrder, continuity })), contentType: 'application/json' });
     await picture(page, info, 'auth-account-return');
   } finally {
     for (const check of heldChecks) check.release();
