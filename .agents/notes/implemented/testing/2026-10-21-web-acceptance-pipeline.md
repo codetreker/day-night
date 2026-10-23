@@ -192,9 +192,17 @@ with no verified owned members still fails immediately; EPERM and other probe
 errors propagate. Recovery neither signals an unidentified group nor treats
 process-discovery absence as cleanup success.
 
-A controlled real-kernel reproduction exercises this exit/reap interval through
-`recoverCliProcesses`. The hosted failure that motivated that repair retained no
-child-state observation, so the reproduction establishes the mechanism without
+A controlled real-kernel [reproduction](../../../../packages/daynight-web/scripts/acceptance/installed-cli.test.mts)
+exercises this exit/reap interval through `recoverCliProcesses`. Its supervisor
+holds the parent event loop before reaping. A successful group-existence probe
+does not order the child's exit, so the fixture observes `/proc/<PID>/stat`
+until the same start identity and process group report state `Z`, within its
+existing five-second observation deadline. It then proves recovery remains
+unsettled until the supervisor can reap the child and the original group is
+absent. Identity mismatches and observation errors fail the test; the fixture
+does not replace this kernel-state observation with a delay or extend recovery's
+polling budget. The hosted failure that motivated the original repair retained
+no child-state observation, so the reproduction establishes the mechanism without
 asserting that the CI child was a zombie. The browser-install timeout and ordering
 decisions do not alter command cancellation or recovery semantics; the broader
 process-discovery and privileged-permission questions in
