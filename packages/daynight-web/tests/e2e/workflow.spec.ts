@@ -827,7 +827,10 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, api: req
     expect(uploadFailures).toEqual([]);
     uploadRelease.resolve();
     expect((await response).status()).toBe(201);
-    await expect(dialog.getByRole('button', { name: '上传文件', exact: true })).toBeEnabled();
+    await expect(fileInput).toBeEnabled();
+    await expect(fileInput).toHaveValue('');
+    await expect(attachmentPath).toHaveValue('');
+    await expect(dialog.getByRole('button', { name: '上传文件', exact: true })).toBeDisabled();
     await expect(dialog.getByRole('heading', { name: uploadPath, exact: true })).toBeVisible();
   } finally {
     uploadRelease.resolve();
