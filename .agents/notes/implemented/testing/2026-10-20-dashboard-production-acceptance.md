@@ -206,8 +206,7 @@ latency; the full production gate still owns its fixed capacity verdict.
 The [embedded deployment decision](../architecture/2026-10-20-embedded-dashboard-deployment.md)
 owns production build and dev-ci resource topology. The
 [architecture](../../../../docs/design/daynight-web.md) owns harness structure and
-execution requirements, and the [task document](../../../../docs/design/daynight-web-tasks.md)
-owns delivery status. Source-bound browser artifacts and the corresponding PR
+execution requirements. Source-bound browser artifacts and the corresponding PR
 and CI run retain measured outcomes under the
 [validation evidence decision](../process/2026-10-20-source-bound-validation-evidence.md).
 
@@ -244,9 +243,7 @@ HTTP/data sentinel. It predates the SVG change and tests unchanged deployment
 lifecycle code, not the new UI image identity. Its final audit confirms no owned
 resources or processes remain. That local manual matrix is distinct from CI's
 controlled lifecycle and
-production-browser suites. W-T6 is complete; the
-[task document](../../../../docs/design/daynight-web-tasks.md#w-t6) links its
-delivery PRs and source-bound CI verification. Historical preview and HTTP
+production-browser suites. Historical preview and HTTP
 smoke evidence remains labeled by its actual scope, and fixed-topology results
 do not
 establish arbitrary-DAG latency.

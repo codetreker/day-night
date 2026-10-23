@@ -36,7 +36,7 @@ all nonempty query strings, returns no-store, and preserves existing request IDs
 sanitized errors and structured resource logging.
 
 The [dashboard design](../../../../docs/design/daynight-web.md) owns browser
-projection and rendering, which remain separate tasks. This endpoint does not
+projection and rendering. This endpoint does not
 introduce a parent-child task model or change existing paging guarantees.
 
 ## Alternatives
@@ -58,5 +58,4 @@ Graph consumers get one project-scoped state without changing mutation policy,
 database layout or transaction ownership. Raw-profile coverage gates and real
 PostgreSQL tests apply to the owning packages. Tests must prove snapshot
 interleavings, exact limits, bounded Unicode projections, failures and HTTP
-error semantics; browser delivery remains tracked in the
-[dashboard task document](../../../../docs/design/daynight-web-tasks.md).
+error semantics.

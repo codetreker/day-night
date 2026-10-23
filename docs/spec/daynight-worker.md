@@ -1,14 +1,12 @@
 # Worker 需求
 
-本文定义 `daynight worker run` 的目标行为与可观察验收条件。运行时尚未实现；[架构](../design/daynight-worker.md)说明机制，[交付任务](../design/daynight-worker-tasks.md)拥有拆分及 Daynight task 引用。
+本文定义 `daynight worker run` 的目标行为与可观察验收条件。运行时尚未实现；[架构](../design/daynight-worker.md)说明机制。
 
 ## 目标与范围
 
 Worker 作为前台常驻进程，通过 Daynight HTTP REST API 领取配置仓库中可由 Agent 执行的 ready task，使用专用 Herdr 服务运行 Copilot 或 Codex，持续完成任务交付。每个未完成 task 保留自己的 worktree，进程或机器重启后继续原工作。
 
 服务端拥有任务资格、身份权限及唯一 claim；worker 拥有调度、执行资源、恢复与最终完成核验；agent 完成任务要求的交付循环；Herdr 拥有 agent 终端和会话。认证与审批式生命周期是独立前置，不由 worker 再实现一套。
-
-本需求来源于 Goal `555a7772-ad35-40f5-b9d6-ff7dd4e08165`。自动执行许可 task 为 `82bafb30-5c47-4b42-8e78-bb5b524c2ba4`，执行平台 task 为 `4dbd624e-5b16-494b-b12d-8ae7db069ca1`；其附件拥有对应交互原型。实时状态以 Daynight 为准。
 
 ## 必须满足的行为
 
@@ -117,4 +115,4 @@ AND no active claim
 | W-10 | 已核验的开发任务合并并完成合并后验收，task 完成后删除 worktree且历史仍在；交付证据不足时不完成；清理失败跨重启只重试清理。 |
 | W-11 | 前台和自动执行许可/平台 UI 展示与真实状态一致；错误、未知结果和人工处理入口可观察；各验收结果能关联到实际源代码、平台与运行环境。 |
 
-完整 Goal 完成还要求必要实现 PR 经授权集成、实际门禁及端到端验收通过，并在对应 Daynight task 中保留交付引用。文档及 task breakdown 完成仅表示设计阶段交付。
+完整运行时验收要求实际门禁及端到端验收通过，文档不能替代运行时证据。

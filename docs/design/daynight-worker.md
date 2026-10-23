@@ -1,12 +1,12 @@
 # Worker 架构设计
 
-状态：架构方案已确认，运行时尚未实现。本文拥有机制；[需求](../spec/daynight-worker.md)拥有产品行为，[任务拆分](daynight-worker-tasks.md)拥有交付顺序、身份及验收分工。[设计决策](../../.agents/notes/implemented/architecture/2026-10-22-worker-design.md)保留真实备选方案。
+状态：架构方案已确认，运行时尚未实现。本文拥有机制；[需求](../spec/daynight-worker.md)拥有产品行为，[设计决策](../../.agents/notes/implemented/architecture/2026-10-22-worker-design.md)保留真实备选方案。
 
 ## 目标与当前基础
 
 `daynight worker run` 是一个前台常驻 CLI：通过 REST 领取多仓库中允许 Agent 执行的任务，使用系统管理的稳定 worktree 与专用 Herdr 执行，持久化状态并完成恢复和清理。Agent 负责完整交付循环，worker 负责归属、资源和完成核验。
 
-设计初始源码基线为 `e533b8610ec38522fd5387e4715b573734bd16c2`。交付核对基线为 `2d7fdd1e4e178db17e46da5d3b6c0e4050edf730`：主线具有命令组合、严格 YAML、REST client、任务/属性、项目写事务和 review 的 Git/SQLite 基础；AU-T5 鉴权与 ST-T2 显式 approve/claim/complete 生命周期已交付，worker 仍待实现。任务的服务端起止时间及图时钟遵循已交付的[执行时间契约](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/docs/spec/daynight-task-timing.md)，worker DTO 与生命周期扩展须保留该契约。
+设计初始源码基线为 `e533b8610ec38522fd5387e4715b573734bd16c2`。交付核对基线为 `2d7fdd1e4e178db17e46da5d3b6c0e4050edf730`：主线具有命令组合、严格 YAML、REST client、任务/属性、项目写事务和 review 的 Git/SQLite 基础；鉴权与显式 approve/claim/complete 生命周期已交付，worker 仍待实现。任务的服务端起止时间及图时钟遵循已交付的[执行时间契约](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/docs/spec/daynight-task-timing.md)，worker DTO 与生命周期扩展须保留该契约。
 
 | 当前基础 | 复用点 |
 |---|---|
@@ -98,7 +98,7 @@ Web 在任务详情标题下的同一状态行中，左侧显示状态、ready �
 
 开启框说明 worker 可在任务获批、依赖完成并符合运行条件时自动领取；关闭框说明 worker 将不再自动领取。自动执行许可、审批和 ready 分别保有原义：`approve`、`unapprove`、手工 claim/complete 与普通元数据修改均保留许可。实际切换在 `in_progress` 拒绝；权限和版本检查先于同值判定，精确版本同值 PATCH 返回原 task，不增加版本或更新时间。关闭许可不隐式停止执行或移交资源。
 
-确认表示明确操作意图，不能从 session/PAT 类型推断物理人工。CLI/skill 禁止自动 worker 自行启用许可，操作沿用现有项目成员写权限。Web 的双向确认与状态交互由自动执行许可 task 的原型拥有。
+确认表示明确操作意图，不能从 session/PAT 类型推断物理人工。CLI/skill 禁止自动 worker 自行启用许可，操作沿用现有项目成员写权限。Web 的双向确认、状态展示和失败交互遵循本节的布局与操作规则。
 
 候选查询扩展现有列表：
 
@@ -250,7 +250,7 @@ Transfer 后，目标 worker 还要查询归属于自己的 in_progress 执行�
 
 Linux 本地 Herdr 0.8.2 的隔离无原生 agent 冒烟已验证：原始 JSON API、headless workspace 创建、人工模拟 working/idle、普通 shell/子进程关闭和 shell 工作区重启恢复。发现 134 字节 client socket 路径启动失败，缩短后 API/client 路径分别 100/107 字节成功。这些是该平台和版本的观察，107 不是三平台通用限制。
 
-它没有运行 Copilot/Codex、没有验证原生检测、native history 恢复、原生 agent 脱离子进程或 macOS/Windows。原始 receipt 保留为本设计 task 附件；运行时交付必须通过下面的独立门禁。
+它没有运行 Copilot/Codex、没有验证原生检测、native history 恢复、原生 agent 脱离子进程或 macOS/Windows。运行时交付必须通过下面的独立门禁。
 
 | 门禁 | 必须证明 |
 |---|---|
@@ -259,17 +259,11 @@ Linux 本地 Herdr 0.8.2 的隔离无原生 agent 冒烟已验证：原始 JSON 
 | Herdr 原生 | 支持基线、两 agent、三平台 API/输入/blocked、停止、无客户端 native restore 及真实历史保留。 |
 | 端到端 | 安装 CLI、两 worker 竞争、多仓库轮转、PR/CI/review/合并/验收、人工介入/移交、各崩溃窗口与重启。 |
 
-不得以模拟 lifecycle 或文档说明替代原生证据。实现按[任务拆分](daynight-worker-tasks.md)交付，每个 task 执行其适用 CLI/Go/Web 门禁，保留严格覆盖率、原生平台和实际服务证据。
+不得以模拟 lifecycle 或文档说明替代原生证据。实现通过适用 CLI/Go/Web 门禁，保留严格覆盖率、原生平台和实际服务证据。
 
 ## 模型入口大小
 
-模型入口只使用随包 `using-daynight` 与既有 task CLI。启动上下文传 task/claim/session/worktree 标识及技能路径，不复制完整 Goal 或全部交互资源。原始架构阶段对当时登记资料测得下表；数值是该阶段的输入快照，不代表后续修改后的附件大小：
-
-| 来源 | task 简介 UTF-8 字节 | 主 Markdown 字节 |
-|---|---:|---:|
-| 555a7772-ad35-40f5-b9d6-ff7dd4e08165 | 3067 | 15259 |
-| 82bafb30-5c47-4b42-8e78-bb5b524c2ba4 | 2105 | 8841 |
-| 4dbd624e-5b16-494b-b12d-8ae7db069ca1 | 1708 | 7588 |
+模型入口只使用随包 `using-daynight` 与既有 task CLI。启动上下文传 task/claim/session/worktree 标识及技能路径，不复制完整 Goal 或全部交互资源。初始设计对三个代表性输入的测量中，简介为 1708～3067 个 UTF-8 字节，主 Markdown 为 7588～15259 个字节；这些是当时输入的测量范围，后续资料修改不受该大小约束。
 
 读取一个普通任务至少需要详情、附件清单、主 Markdown 三次现有 CLI 操作，额外 UI/证据按需读取。保留完整要求，不截断来制造固定 token 上限；具体 token 随 agent/model、仓库指示变化，原生验收记录实际模型使用量。未增加 report tool、模型 RPC 或通用 MCP 服务。
 

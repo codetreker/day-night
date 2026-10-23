@@ -28,9 +28,7 @@ state and versioned use cases. The
 [task HTTP boundary](../feature/2026-10-19-task-management-http.md) exposes these
 operations with strict request semantics.
 [Built-process acceptance](../testing/2026-10-19-server-process-acceptance.md)
-verifies restart persistence, HTTP races, cancellation and resource ownership. The
-[task breakdown](../../../../docs/design/daynight-server-tasks.md) owns their
-implementation scope, dependencies, status and acceptance criteria.
+verifies restart persistence, HTTP races, cancellation and resource ownership.
 
 The selected layers are API definitions, HTTP server, application service and
 core models, with concrete PostgreSQL storage inside `core/store`. Application

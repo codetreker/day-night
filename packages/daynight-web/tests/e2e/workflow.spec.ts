@@ -497,10 +497,33 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, api: req
   await activateViewWithoutScrolling(page, '独立任务');
   await expect(standaloneCompleted).not.toBeChecked();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(320);
-  await page.reload();
-  await expect(viewTab(page, '独立任务')).toHaveAttribute('aria-selected', 'true');
-  await expect(standaloneCompleted).not.toBeChecked();
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(320);
+  const membersUrl = `**/api/v1/projects/${project.id}/members`;
+  let releaseMembers!: () => void;
+  let markMembersRequestStarted!: () => void;
+  const membersResponseGate = new Promise<void>((resolve) => { releaseMembers = resolve; });
+  const membersRequestStarted = new Promise<void>((resolve) => { markMembersRequestStarted = resolve; });
+  await page.route(membersUrl, async (route) => {
+    markMembersRequestStarted();
+    await membersResponseGate;
+    await route.continue();
+  });
+  try {
+    await page.reload();
+    await membersRequestStarted;
+    await expect(viewTab(page, '独立任务')).toHaveAttribute('aria-selected', 'true');
+    await expect(standaloneCompleted).not.toBeChecked();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(320);
+    const projectHeading = page.locator('.project-heading');
+    const headingBeforeMembership = await projectHeading.boundingBox();
+    expect(headingBeforeMembership).not.toBeNull();
+    releaseMembers();
+    await expect(page.getByRole('link', { name: '项目设置', exact: true })).toBeVisible();
+    expect(await projectHeading.boundingBox()).toEqual(headingBeforeMembership);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(320);
+  } finally {
+    releaseMembers();
+    await page.unroute(membersUrl);
+  }
 
   const other = await createProject(request, { name: `Other task views ${randomUUID()}` });
   await createApprovedTask(request, other.id, { title: '另一项目的独立任务' });

@@ -13,14 +13,13 @@ identity.
 
 ## Decision
 
-The adopted [requirements](../../../../docs/spec/daynight-worker.md),
-[architecture](../../../../docs/design/daynight-worker.md) and
-[delivery breakdown](../../../../docs/design/daynight-worker-tasks.md) use a
-top-level boolean `allowAgents`. This decision supersedes the Human/Agent role
+The adopted [requirements](../../../../docs/spec/daynight-worker.md) and
+[architecture](../../../../docs/design/daynight-worker.md) use a top-level
+boolean `allowAgents`. This decision supersedes the Human/Agent role
 portion of the [worker design](2026-10-22-worker-design.md); its service/worker/
 Herdr/agent responsibilities and recovery rules remain unchanged. This note
 records the adopted design. Production permission controls and worker claim
-integration remain implementation work owned by WR-T1 and WR-T3 respectively.
+integration remain implementation work.
 
 New tasks always start with `allowAgents=false`; a database migration gives
 existing tasks `true` while preserving their other fields, versions and business
@@ -89,7 +88,8 @@ guarantees, existing task/attachment state retention, bilingual labels,
 keyboard operation and fixed graph geometry belong to the permission delivery;
 they are not deferred to worker integration.
 
-WR-T1 verifies the permission and existing manual lifecycle without depending
-on later worker endpoints. WR-T3 owns automatic claim transaction integration,
-WR-T6 controlled coordinator behavior, and WR-T8 independent live acceptance.
-Design delivery does not establish those runtime capabilities.
+Permission acceptance covers the field, migration, queries, confirmed controls
+and existing manual lifecycle independently of worker-specific endpoints.
+Automatic claim transaction checks, controlled coordinator integration and
+independent live cross-platform execution require their own runtime evidence.
+Design delivery does not establish those capabilities.

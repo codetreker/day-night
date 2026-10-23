@@ -15,9 +15,7 @@ actual third-party human login.
 ## Decision
 
 The [authentication requirements](../../../../docs/spec/daynight-auth.md) retain
-AU-V1–AU-V10. The [final acceptance design](../../../../docs/design/auth-tasks/AU-T6.md)
-owns their combined completion conditions. The
-[activation decision](../architecture/2026-10-22-authentication-activation.md)
+AU-V1–AU-V10. The [activation decision](../architecture/2026-10-22-authentication-activation.md)
 continues to own mandatory composition, normal-protocol credential bootstrap and
 private fixture state. The [attachment acceptance decision](2026-10-21-task-attachment-cross-layer-acceptance.md)
 continues to own shared installed-package identity, original bytes and paired

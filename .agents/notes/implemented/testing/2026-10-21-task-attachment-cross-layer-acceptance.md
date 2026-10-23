@@ -18,9 +18,7 @@ service failures and resource cleanup tied to the tested artifacts.
 The [attachment requirements](../../../../docs/spec/daynight-task-attachments.md)
 and [architecture](../../../../docs/design/daynight-task-attachments.md) own the
 feature and accepted K1 limitation. This note owns combined attachment proof,
-originating with A-T6 in the
-[breakdown](../../../../docs/design/daynight-task-attachments-tasks.md) and extending
-the [production browser acceptance](2026-10-20-dashboard-production-acceptance.md)
+extending the [production browser acceptance](2026-10-20-dashboard-production-acceptance.md)
 with an attachment journey. Independent runtime acceptance now also establishes
 the integrated [split view](../architecture/2026-10-22-task-attachment-split-view.md)
 and [standalone reader](../architecture/2026-10-22-task-attachment-full-reader.md). The existing
@@ -150,22 +148,19 @@ delayed responses and unchanged task version/graph remain observable checks.
 Fault restoration and confirmed removal of all owned browser, service, database
 and storage resources are required.
 
-Daynight task `daf08f1c-a822-44b2-bfeb-8dec80896ec3` owns the independent
-criterion verdict and source/build/browser/cleanup receipts alongside its
-associated PR/CI artifacts. Runtime measurements, hashes and probe histories
-remain source-bound artifacts under the
+Runtime measurements, hashes and probe histories remain source-bound artifacts
+under the
 [validation evidence decision](../process/2026-10-20-source-bound-validation-evidence.md),
 not rolling Markdown snapshots. Independent runtime acceptance is complete
-within that recorded environment; a local browser override establishes no
-hosted-CI browser result. Formal task delivery still follows its required PR
-integration and evidence retention conditions. An immutable
+within its observed environment; a local browser override establishes no
+hosted-CI browser result. An immutable
 [source-qualified evidence selection](../../../../docs/research/evidence/daynight-attachment-reading-ad16d6f.json)
 retains the [narrow split view](../../../../docs/research/assets/daynight-attachment-reading-ad16d6f-320.png),
 [short-viewport split view](../../../../docs/research/assets/daynight-attachment-reading-ad16d6f-844.png)
 and [native final-page footer](../../../../docs/research/assets/daynight-attachment-reading-ad16d6f-pdf-end.png)
 from the [accepted production source](https://github.com/codetreker/daynight/tree/ad16d6f9e5c4c081b038d18fa243e77683bf6bc3).
 These unedited captures and their original probe qualifications preserve the
-lasting scroll/native-reader evidence; the task bundle retains the full ledger.
+lasting scroll/native-reader evidence.
 
 Installed-package handoff validates the receipt's Git SHA, required
 source.gitTreeSha and dirty state, and recomputes tarball/entry hashes. The

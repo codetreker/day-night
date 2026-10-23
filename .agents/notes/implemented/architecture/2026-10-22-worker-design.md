@@ -13,15 +13,14 @@ recovery dependent on unrelated execution behavior.
 
 ## Decision
 
-The adopted [requirements](../../../../docs/spec/daynight-worker.md),
-[architecture](../../../../docs/design/daynight-worker.md) and
-[task breakdown](../../../../docs/design/daynight-worker-tasks.md) define a
-foreground worker with four responsibilities: the service owns eligibility and
+The adopted [requirements](../../../../docs/spec/daynight-worker.md) and
+[architecture](../../../../docs/design/daynight-worker.md) define a foreground
+worker with four responsibilities: the service owns eligibility and
 exclusive claims; the worker owns scheduling, resources, recovery and completion
 verification; Herdr owns agent terminals and sessions; the agent owns the task's
 delivery loop. This note records the delivered design decision. The worker
-runtime, automatic-execution permission/platform controls and claim integration remain implementation
-work tracked by the breakdown.
+runtime, automatic-execution permission/platform controls and claim integration
+remain implementation work.
 
 Eligibility combines `allowAgents=true`, ready state, optional platform
 compatibility and the absence of an active claim. The service checks these

@@ -45,9 +45,8 @@ standard standalone entry avoids loading that declaration without disabling
 library typechecks or adding Jest globals. Dependencies remain pinned and the
 existing Node 24 support range is preserved.
 
-The [architecture](../../../../docs/design/daynight-web.md) owns integration and
-the [task document](../../../../docs/design/daynight-web-tasks.md) owns delivery
-status. The browsing foundation was delivered as a read-only consumer.
+The [architecture](../../../../docs/design/daynight-web.md) owns integration.
+The browsing foundation was delivered as a read-only consumer.
 Production embedding and dev-ci deployment are implemented through the
 [deployment decision](2026-10-20-embedded-dashboard-deployment.md). The later
 [Web attachment decision](../feature/2026-10-21-task-attachment-web.md) adds

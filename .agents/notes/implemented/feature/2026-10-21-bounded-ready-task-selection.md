@@ -49,8 +49,7 @@ workflow, not service creation-order sorting or a new priority field.
 
 The [requirements](../../../../docs/spec/daynight-project-task.md) own observable
 command behavior; the [design](../../../../docs/design/daynight-project-task.md)
-owns transport and rendering. The real Daynight task is
-`ada23216-a6e6-45de-89f4-67f1f71fbbfc`. Existing command and service suites own its
+owns transport and rendering. Existing command and service suites own its
 query behavior. The
 [installation acceptance decision](../testing/2026-10-21-simulated-agent-installation-acceptance.md)
 checks the packaged skill and mode references statically and validates the

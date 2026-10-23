@@ -5,18 +5,14 @@
 配套备份恢复验证。独立标签页完整阅读已实现，附件阅读任务组已通过独立真实服务
 运行时验收，覆盖分屏滚动、完整阅读、真实失败恢复与资源清理。结论绑定被测源码、
 构建产物和浏览器环境；本机浏览器覆盖不代表托管 CI 浏览器结论。跨层验收采用
-真实服务上的安装 CLI 与生产浏览器组合，交付进度由 Daynight 维护。
+真实服务上的安装 CLI 与生产浏览器组合。
 本文拥有附件的产品行为与 FA1–FA12 要求；
-[架构](../design/daynight-task-attachments.md)拥有模块、接口和运行机制，
-[任务拆分](../design/daynight-task-attachments-tasks.md)拥有实施范围、依赖与完成条件，
-并提供 Daynight 进度入口。
+[架构](../design/daynight-task-attachments.md)拥有模块、接口和运行机制。
 [决策记录](../../.agents/notes/implemented/architecture/2026-10-21-task-attachment-storage-design.md)
 记录范围和取舍。各组件的实际验证结果归属对应源码、PR 与 CI。
 
 [鉴权需求](daynight-auth.md)要求附件请求继承项目成员权限，已在全部附件和预览
-入口强制启用；[架构](../design/daynight-auth.md)和
-[任务拆分](../design/daynight-auth-tasks.md)拥有认证、授权机制与交付条件。HTTP
-入口每次验证会话或 PAT；文件 I/O 前在同一快照确认成员及 task 归属，已准入的
+入口强制启用；[架构](../design/daynight-auth.md)拥有认证与授权机制。HTTP 入口每次验证会话或 PAT；文件 I/O 前在同一快照确认成员及 task 归属，已准入的
 单文件操作允许完成，I/O 后不再重新检查成员关系。本文的可信同源 HTML、普通
 iframe、相对资源及键盘交互继续保留，单文件操作和 K1 边界继续有效。
 
@@ -257,7 +253,7 @@ K1 只记录，不作为当前实施任务。当前不增加跨存储锁协议�
 
 ## 验收归属
 
-任务拆分将 FA1–FA12 映射到存储、HTTP、CLI、Web、部署和跨层验收。各组件测试
+FA1–FA12 的验收覆盖存储、HTTP、CLI、Web、部署和跨层集成。各组件测试
 验证正常行为、路径拒绝、普通 IO 失败及错误传播。真实进程与 PostgreSQL 验证
 持久性，实际安装 CLI 验证二进制字节，生产浏览器验证相对资源和可信 HTML 交互。
 Go 和 Web 既有覆盖率、race 及原生 CLI 检查持续有效。

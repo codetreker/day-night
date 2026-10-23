@@ -94,7 +94,7 @@ shared Dockerfile, proxy configuration and build command avoid two application
 implementations. Each test invocation owns its callback group and resources and
 retains a recovery receipt when cleanup cannot be confirmed.
 
-The W-T5 validation establishes embedded HTTP behavior, production image
+The deployment validation establishes embedded HTTP behavior, production image
 identity, whole-stack recreation with persistent data, concurrent dev-ci
 isolation and controlled runner failure/cleanup decisions. Its scope does not
 establish the complete production-browser workflow or fixed five-run performance
@@ -108,8 +108,7 @@ passed with another run retaining its HTTP/data sentinel throughout; that matrix
 predates the SVG change and tests unchanged deployment lifecycle code, not the
 new UI image identity. Production-browser and image verification is delivered
 through [PR #52](https://github.com/codetreker/daynight/pull/52), with source-bound
-results retained by its PR and CI. W-T6 in the
-[task document](../../../../docs/design/daynight-web-tasks.md) owns delivery status.
+results retained by its PR and CI.
 The committed [lifecycle evidence](../../../../docs/research/evidence/daynight-web-lifecycle.json)
 retains the original first report with its failed auxiliary cleanup
 classification, the corrected probe's passed matrix and the independent final
