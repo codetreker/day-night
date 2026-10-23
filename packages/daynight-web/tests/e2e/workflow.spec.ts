@@ -752,6 +752,7 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, api: req
   const attachmentTab = dialog.getByRole('tab', { name: '附件', exact: true });
   const attachmentPath = dialog.getByRole('textbox', { name: '目标相对路径', exact: true });
   await attachmentTab.click();
+  await dialog.getByRole('button', { name: '刷新附件', exact: true }).click();
   await dialog.locator('.attachment-file').filter({ hasText: previewPath }).click();
   const frame = dialog.locator('.task-attachments iframe');
   await expect(frame).toHaveAttribute('src', attachmentPreviewUrl(project.id, dependent.id, previewPath));
