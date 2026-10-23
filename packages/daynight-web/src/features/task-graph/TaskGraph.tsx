@@ -107,7 +107,6 @@ const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleId
     <ReactFlow<TaskFlowNode>
       id={`flow-${rootId}`}
       aria-label={m.canvas}
-      aria-describedby={`graph-instructions-${rootId}`}
       nodes={nodes}
       nodeTypes={nodeTypes}
       minZoom={0.2}
@@ -139,8 +138,9 @@ const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleId
     <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} data-hidden-upstream-count={hiddenUpstreamCount} data-visible-task-count={visibleIds.size} data-total-task-count={totalTasks} ref={containerRef} role={fullscreen ? 'dialog' : undefined} aria-modal={fullscreen ? true : undefined} aria-label={fullscreen ? m.fullscreenTitle : undefined} onKeyDown={onKeyDown} onFocusCapture={(event) => { focusedControl.current = event.target as HTMLElement; }}>
       <div className="graph-toolbar">
         <span>{m.title}</span>
+        <span className="graph-counts">{m.counts({ main: projection.mainIds.size, external: projection.externalIds.size, visible: visibleIds.size, total: totalTasks, edges: geometry.edges.length, dependencies: projection.edges.length })}</span>
+        <span className="graph-hidden-prerequisites" role="status">{hiddenUpstreamCount === 0 ? '' : m.hiddenPrerequisites({ count: hiddenUpstreamCount })}</span>
         <div className="graph-toolbar-actions">
-          <span>{m.counts({ main: projection.mainIds.size, external: projection.externalIds.size, dependencies: projection.edges.length })}</span>
           <button className="button graph-fullscreen-toggle" type="button" ref={toggleRef} onClick={toggle}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
               <path d={fullscreen ? 'M4 9h5V4m6 0v5h5M4 15h5v5m6 0v-5h5' : 'M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5'} />
@@ -151,9 +151,6 @@ const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleId
           <button className="button graph-reset-overview" type="button" ref={resetButton} onClick={onResetOverview}>{m.resetOverview}</button>
         </div>
       </div>
-      <p className="graph-visibility-summary">{m.visibilitySummary({ visible: visibleIds.size, total: totalTasks, edges: geometry.edges.length, totalEdges: projection.edges.length })}</p>
-      <p className="graph-hidden-prerequisites" role="status">{hiddenUpstreamCount === 0 ? '' : m.hiddenPrerequisites({ count: hiddenUpstreamCount })}</p>
-      <p className="graph-instructions" id={`graph-instructions-${rootId}`}>{m.instructions}</p>
       <div className="task-graph-canvas">
         <TaskInspectionContext value={inspection}>{canvas}</TaskInspectionContext>
       </div>

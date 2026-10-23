@@ -324,7 +324,7 @@ test('project-graph', scenario('project-graph'), async ({ page, api: request }, 
       await expect(page.locator('.task-node-external')).toHaveCount(2);
       expect(await page.locator('.react-flow__node').evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).style.height))).toEqual(['96px', '96px', '96px', '96px']);
       await expect(card(page, prerequisite.id).locator('.task-node-expansions')).toHaveCount(0);
-      await expect(page.getByText('2 个链内任务 · 2 个外部前置 · 3 条依赖')).toBeVisible();
+      await expect(page.getByText('链内 2 · 外部 2 · 任务 4/4 · 依赖 3/3')).toBeVisible();
       await expect(card(page, unrelated.id)).toHaveCount(0);
       await expect(inspectTask(page, ancestor.id)).toHaveAccessibleName('B completed external ancestor，已完成，外部前置');
       await expect(inspectTask(page, prerequisite.id)).toHaveAccessibleName('C completed external prerequisite，已完成，外部前置');
