@@ -54,7 +54,11 @@ retry, current read errors and unresolved outcomes also block approval. This
 separates network activity from required freshness without starving the action
 when reads take longer than the polling interval. Automatic reads coalesce the
 newest receipt behind an active GET; explicit retries keep priority. Read failures
-remain visible outside the panels. A 404 clears task content, panels and the
+remain visible outside the panels. The
+[quiet-detail decision](../bug-fix/2026-10-23-quiet-task-detail-refresh.md)
+separates the visible retained-data explanation from ordinary network progress,
+keeping unchanged background reads geometrically stable without changing required
+freshness or approval eligibility. A 404 clears task content, panels and the
 approval action; unknown-outcome feedback retains the original write error and
 GET failure, with GET-only state checks and retry. Cold, different-task
 and identity opens retain their loading/isolation boundaries. Confirmed todo

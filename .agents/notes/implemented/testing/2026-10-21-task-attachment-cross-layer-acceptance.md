@@ -64,8 +64,11 @@ relative images, image/text/PDF and HTML relative styles/scripts/data behavior.
 The same journey covers detail tabs and retained file state, adjacent pane
 geometry, preview scroll owners and real new-tab opening/direct reload without
 originating-dialog state.
-The original eight graph scenarios and the later `project-view-tabs` scenario
-keep GET/HEAD-only browser checks. Exact
+The graph scenarios and the later `project-view-tabs` scenario keep GET/HEAD-only
+browser checks except for one exact registered fixture-file PUT in
+`refresh-staleness`. The
+[quiet-detail decision](../bug-fix/2026-10-23-quiet-task-detail-refresh.md)
+holds its real response across automatic reads to check retained pending work. Exact
 fixture-scoped file PUT/DELETE requests are admitted by the attachment scenario
 and the later `language-state-preservation` scenario, which verifies pending
 writes across language changes. Every unrelated mutation remains a failure.

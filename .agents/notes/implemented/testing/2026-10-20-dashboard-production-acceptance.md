@@ -50,8 +50,11 @@ adds `task-description-markdown` to each functional target, producing the earlie
 forty-five-result inventory. Its browser reads remain GET/HEAD-only after
 authenticated fixture setup. The three approval journeys bring the current strict
 aggregate to fifty-one. Fixture data is created through real authenticated APIs;
-the original graph scenarios and task-view scenario retain read-only browser
-request checks. The attachment and `language-state-preservation` scenarios
+the graph scenarios and task-view scenario retain read-only browser request
+checks except for one exact registered fixture-file PUT in `refresh-staleness`.
+The [quiet-detail decision](../bug-fix/2026-10-23-quiet-task-detail-refresh.md)
+holds that upload response across automatic reads to verify pending-work
+retention without admitting other mutations. The attachment and `language-state-preservation` scenarios
 permit only their exact fixture-scoped file PUT/DELETE requests. The
 [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds task-approval,
 task-approval-conflicts and task-approval-recovery, admitting only registered

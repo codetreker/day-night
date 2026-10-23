@@ -121,7 +121,7 @@ describe('approval in shared production task details', () => {
     expect(within(dialog).getByRole('heading', { name: 'Task 3' })).toBeVisible();
     expect(approvalButton).toBeDisabled();
     expect(dialog.querySelector('.task-detail-stale')).toBeNull();
-    expect(within(dialog).getByText('Refreshing task details. Previously loaded content remains available.')).toBeVisible();
+    expect(within(dialog).getByText('Showing previously loaded task details. Approval is unavailable until the current details can be confirmed.')).toBeVisible();
     await act(async () => { refresh.resolve(changed); });
     await within(dialog).findByRole('heading', { name: 'Task 3 revised' });
     expect(dialog.querySelector('.task-attachments')).toBe(attachments); expect(tab).toHaveFocus();

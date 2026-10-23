@@ -35,7 +35,6 @@ export const inspection: InspectionMessages = {
     notFoundError: "This task can no longer be read. Refresh the task graph.",
     loadError: "Unable to read task details. Please try again.", retry: "Retry details", ready: "Ready", blocked: "Blocked",
     stale: "Task details differ from the current task graph. Refresh to see consistent progress and relationships.",
-    refreshingDetail: "Refreshing task details. Previously loaded content remains available.",
     retainedDetail: "Showing previously loaded task details. Approval is unavailable until the current details can be confirmed.",
     refreshGraph: "Refresh task graph", description: "Description", noDescription: "No description",
     relationsMetadata: "Task relationships and metadata", dependencies: "Prerequisites", noDependencies: "No prerequisites",

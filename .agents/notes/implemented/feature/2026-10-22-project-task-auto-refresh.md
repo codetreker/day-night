@@ -36,7 +36,11 @@ follow-up. Automatic detail starts and queued follow-ups wait while hidden;
 in-flight reads may finish. Refresh and recoverable failure retain the successful
 detail body;
 background reads leave its tabs, focus, attachment selection, file/path inputs,
-pending writes and preview frame mounted. Equivalent ordered PR values retain
+pending writes and preview frame mounted. Ordinary reads add no heading
+progress paragraph; unchanged responses keep the heading, tabs and active panel
+bounds stable even while the request is pending. The
+[quiet-detail decision](../bug-fix/2026-10-23-quiet-task-detail-refresh.md)
+owns this presentation and its in-flight geometry checks. Equivalent ordered PR values retain
 their array reference and local page; a changed collection uses the existing
 page-reset behavior. Task and project changes immediately isolate the new
 resource and release old task state.
