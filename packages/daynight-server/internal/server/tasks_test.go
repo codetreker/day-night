@@ -115,6 +115,22 @@ func TestTaskHTTPLifecycleDefaultsAndUpdateSemantics(t *testing.T) {
 		if after.Version != before.Version+1 || !after.UpdatedAt.After(before.UpdatedAt) {
 			t.Fatalf("lifecycle action did not advance metadata once: %+v %+v", before, after)
 		}
+		switch after.Status {
+		case "todo":
+			if !reflect.DeepEqual(after.StartedAt, before.StartedAt) || !reflect.DeepEqual(after.CompletedAt, before.CompletedAt) {
+				t.Fatal("approval changed execution timing")
+			}
+		case "in_progress":
+			if after.StartedAt == nil || !after.StartedAt.Equal(after.UpdatedAt) || after.CompletedAt != nil {
+				t.Fatal("claim did not atomically record its start and clear completion")
+			}
+		case "done":
+			if !reflect.DeepEqual(after.StartedAt, before.StartedAt) || after.CompletedAt == nil || !after.CompletedAt.Equal(after.UpdatedAt) ||
+				after.StartedAt != nil && after.CompletedAt.Before(*after.StartedAt) {
+				t.Fatal("completion did not preserve its start and atomically record its end")
+			}
+		}
+		after.StartedAt, after.CompletedAt = before.StartedAt, before.CompletedAt
 		after.Status, after.Version, after.UpdatedAt, after.Ready = before.Status, before.Version, before.UpdatedAt, before.Ready
 		if !reflect.DeepEqual(after, before) {
 			t.Fatalf("lifecycle action changed unrelated content: %+v %+v", before, after)
