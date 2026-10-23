@@ -1364,8 +1364,9 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, api: request }
       await expect(page.locator('.task-node-expand')).toHaveCount(0);
       await expect(trigger).toBeVisible();
       await expect(inspectTask(page, c.id)).toBeVisible();
-      await expect(refresh).toBeFocused();
-      await enterFullscreen.click();
+      await enterFullscreen.focus();
+      await expect(enterFullscreen).toBeFocused();
+      await page.keyboard.press('Enter');
     }
     currentTask = await updateTask(request, project.id, b.id, { version: currentTask.version, dependsOn: [] });
     await inspectTask(page, b.id).click();
