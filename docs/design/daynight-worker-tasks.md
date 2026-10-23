@@ -24,9 +24,7 @@ Goal 描述 `555a7772-ad35-40f5-b9d6-ff7dd4e08165` 拥有已完成的问题定�
 ```mermaid
 flowchart LR
   G[Goal 描述完成] --> D[架构与完整拆分]
-  A[AU-T5 鉴权] --> T1[WR-T1 角色]
-  S[ST-T2 生命周期] --> T1
-  D --> T1
+  D --> T1[WR-T1 角色]
   T1 --> T2[WR-T2 平台]
   T2 --> T3[WR-T3 唯一 claim]
   D --> T4[WR-T4 Herdr agent]
@@ -38,7 +36,7 @@ flowchart LR
   T7 --> T8[WR-T8 独立整体验收]
 ```
 
-依赖由真实 task 的 `dependsOn` 表达；图是登记结果的投影，执行前读取实际资源。AU-T5 为 `ce2f8cd5-daab-40f2-8637-c1a8ae17e445`，ST-T2 为 `6db17ca5-5090-4ba0-8531-e1715b4e1c97`；两项前置契约均已交付。实施须遵循当前主线的鉴权、生命周期与任务执行时间契约。
+依赖由真实 task 的 `dependsOn` 表达；图是登记结果的投影，执行前读取实际资源。AU-T5 为 `ce2f8cd5-daab-40f2-8637-c1a8ae17e445`，ST-T2 为 `6db17ca5-5090-4ba0-8531-e1715b4e1c97`；两项前置契约均已交付，其已完成依赖已从角色任务中移除。实施须遵循当前主线的鉴权、生命周期与任务执行时间契约。
 
 所有本 Goal 交付根经设计 task 把关；Herdr 适配与本地状态不依赖角色/平台实现，可并行交付；最终 coordinator 同时消费三条已完成能力。每个 task 一个明确结果，内部 CI、review 和修复属于原 task，不另建步骤型 task。
 
