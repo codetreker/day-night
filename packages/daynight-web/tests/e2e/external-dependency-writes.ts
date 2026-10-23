@@ -1,5 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import type { Page, TestInfo } from '@playwright/test';
+import type { Page, Request, TestInfo } from '@playwright/test';
 import { createAcceptanceCli } from '../../scripts/acceptance/installed-cli.mts';
 import { parseApiJson, stringifyApiJson } from '../../src/api/json';
 import { parseTaskDetail, parseTaskGraph } from '../../src/api/parse';
@@ -81,12 +81,18 @@ export const verifyPublicExternalDependencyWrites = async (page: Page, api: Auth
     };
     const graphURL = new URL(`/api/v1/projects/${project.id}/task-graph`, baseURL).href;
     const readWeb = async (navigate = false) => {
-      const received = page.waitForResponse((response) => response.url() === graphURL && response.request().method() === 'GET');
-      if (navigate) await page.goto(`/projects/${project.id}`); else await page.getByRole('button', { name: '刷新', exact: true }).click();
-      const response = await received;
-      expect(response.status()).toBe(200); expect(new URL(response.url()).origin).toBe(baseURL);
-      const body = await response.text(); evidence.webGraphs.push({ origin: new URL(response.url()).origin, body });
-      return parseTaskGraph(await decodeTaskGraphJson(new Response(body)), project.id);
+      const requests = new Set<Request>();
+      const capture = (request: Request) => { if (request.url() === graphURL && request.method() === 'GET') requests.add(request); };
+      page.on('request', capture);
+      try {
+        const [response] = await Promise.all([
+          page.waitForResponse((response) => requests.has(response.request())),
+          navigate ? page.goto(`/projects/${project.id}`) : page.getByRole('button', { name: '刷新', exact: true }).click(),
+        ]);
+        expect(response.status()).toBe(200); expect(new URL(response.url()).origin).toBe(baseURL);
+        const body = await response.text(); evidence.webGraphs.push({ origin: new URL(response.url()).origin, body });
+        return parseTaskGraph(await decodeTaskGraphJson(new Response(body)), project.id);
+      } finally { page.off('request', capture); }
     };
     const openChain = async (representative: string) => {
       await page.getByRole('tab', { name: '任务链', exact: true }).click();
