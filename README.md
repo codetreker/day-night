@@ -39,8 +39,7 @@ The proposed [external dependency requirements](docs/spec/daynight-external-depe
 distinguish chain membership from genuine cross-chain prerequisites. The design
 keeps all dependencies for execution and uses ordinary-edge components for
 chain presentation. Runtime delivery remains pending. Supported readers must
-understand classification before public classification writes become available;
-Daynight owns the implementation tasks, prerequisites and delivery state.
+understand classification before public classification writes become available.
 
 The adopted [execution timing requirements](docs/spec/daynight-task-timing.md),
 [architecture](docs/design/daynight-task-timing.md) and
