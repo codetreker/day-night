@@ -77,7 +77,8 @@ core、`TaskWrite`、完整任务与图任务增加 `ExternalDependsOn`。
 更新顺序继续为项目锁、锁后写权限、当前任务读取、精确版本、候选合成、验证、无变化判定和持久化。
 候选从当前 `D/E` 构造，字段组合规则见下一节。
 `UpdateTask` 删除旧行后，同时从完整候选重建端点和性质。
-`taskCandidate`、普通编辑及 `task_lifecycle.go` 的 `TaskWrite` 重建都必须携带 `E`。
+`taskCandidate`、普通编辑及 `task_lifecycle.go` 的 `TaskWrite` 重建都必须携带 `E`，
+包括 approve、unapprove、claim、complete 的全部生命周期写入。
 分类变化参与语义比较；仅排序变化不增加版本，过期同值仍先冲突。
 状态不变时沿现有 SQL 保持 `startedAt`、`completedAt`；分类写入不成为新的执行起点。
 
@@ -280,14 +281,16 @@ jq -c --arg rid "$REQUEST_ID" \
 
 ### 固定验收基线
 
-下表固定采用源码 `2d7fdd1e4e178db17e46da5d3b6c0e4050edf730` 已执行的验证规则，
-供 Web 实现和独立整体验收共同引用。实现需要按新普通分量和显式性质更新预期值，
+下表的容量、几何和性能规则固定于源码 `2d7fdd1e4e178db17e46da5d3b6c0e4050edf730`；
+功能场景清单采用包含撤销批准、项目设置和执行耗时场景的源码
+`237ce8cfec7b1cba22fad3438c744bba1c35e6ce`。Web 实现和独立整体验收共同引用这些基线。
+实现需要按新普通分量和显式性质更新预期值，
 但不能通过减少场景、样本、输入规模、可见边断言或放宽阈值完成本目标。
 
 | 基线 | 必须满足的具体条件与固定来源 |
 |---|---|
-| 浏览器场景清单 | 保留 23 个 native 功能场景加 5 个 native 容量/超限场景，共 28 个 native；另有同一组 23 个 container 功能场景，总计 51 个。场景名由 [`functionalScenarios` / `capacityScenarios`](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/packages/daynight-web/scripts/acceptance/runner.mts#L27-L33)拥有；[报告验证器](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/packages/daynight-web/scripts/acceptance/report.mts#L13-L64)拒绝缺失、额外、重复、skipped、flaky 或重试结果，每个场景需要真实截图。 |
-| 独立认证组合回执 | 在 51 个场景之外，native 和 container 各有一个 `auth-combined` 回执；每份包含[既有 11 个检查](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/packages/daynight-web/scripts/acceptance/auth-combined.mts#L36-L38)，并通过[源码、目标、浏览器、安装 CLI、重启及清理身份验证](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/packages/daynight-web/scripts/acceptance/auth-combined.mts#L133-L146)。[聚合器](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/packages/daynight-web/scripts/acceptance/runner.mts#L925-L936)要求两个目标均通过，不能以其中一个替代另一份。 |
+| 浏览器场景清单 | 保留 26 个 native 功能场景加 5 个 native 容量/超限场景，共 31 个 native；另有同一组 26 个 container 功能场景，总计 57 个。功能清单包含 `task-unapproval`、`project-settings` 和 `task-execution-time`。场景名由 [`functionalScenarios` / `capacityScenarios`](https://github.com/codetreker/daynight/blob/237ce8cfec7b1cba22fad3438c744bba1c35e6ce/packages/daynight-web/scripts/acceptance/runner.mts#L27-L33)拥有；[报告验证器](https://github.com/codetreker/daynight/blob/237ce8cfec7b1cba22fad3438c744bba1c35e6ce/packages/daynight-web/scripts/acceptance/report.mts#L13-L64)拒绝缺失、额外、重复、skipped、flaky 或重试结果，每个场景需要真实截图。 |
+| 独立认证组合回执 | 在 57 个场景之外，native 和 container 各有一个 `auth-combined` 回执；每份包含[既有 11 个检查](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/packages/daynight-web/scripts/acceptance/auth-combined.mts#L36-L38)，并通过[源码、目标、浏览器、安装 CLI、重启及清理身份验证](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/packages/daynight-web/scripts/acceptance/auth-combined.mts#L133-L146)。[聚合器](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/packages/daynight-web/scripts/acceptance/runner.mts#L925-L936)要求两个目标均通过，不能以其中一个替代另一份。 |
 | 固定完整输入 | [`validatePerformance`](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/packages/daynight-web/scripts/acceptance/performance.mts#L37-L72)要求四个图各有 1,000 个任务：`capacity-chain` 为 999 条边，`capacity-merge`、`capacity-shared`、`capacity-external` 各为 5,000 条边。`capacity-limits` 另验证 1,001 节点/0 边和 1,000 节点/5,001 边均返回 409，回执准确报告 1,000/5,000 上限。性质不增加或减免真实边数。 |
 | 五次容量样本与可见集合 | 每个固定图恰好 5 次时间测量和 5 条[可见性记录](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/packages/daynight-web/scripts/acceptance/performance.mts#L19-L34)。每条含非空 `selectedId`、准确 `hiddenUpstream`、`1..50` 个概览节点、至多 100 条概览边、`1..20` 个新增直接邻居及至少一条新增边；展开节点/边数必须等于概览加实际增量，reset 节点/边数必须完全恢复概览。不能只保留时间值而省略这些记录。 |
 | 局部反馈时延 | 每个样本的 `openMs ≤ 3000`，`selectMs`、`detailMs`、`zoomMs`、`panMs` 各 `≤ 300`；[执行断言](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/packages/daynight-web/tests/e2e/capacity.spec.ts#L494-L503)和[回执校验](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/packages/daynight-web/scripts/acceptance/performance.mts#L53-L63)均须满足。保留普通与高亮状态中的较差值，分别记录网络、布局、渲染时间；[Details 关闭后立即缩放和平移，再选择检查](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/packages/daynight-web/README.md#L847-L857)不能插入 reset、fit 或额外等待来改变测量。 |

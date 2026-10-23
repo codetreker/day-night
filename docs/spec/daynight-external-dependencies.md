@@ -63,7 +63,7 @@ PATCH 继续使用观察到的精确任务版本。两个字段独立可选：
 `startedAt`、`completedAt` 与状态保持不变。
 正规化后的完整集合及外部子集都相同时为语义无变化，版本和更新时间不变；过期版本仍须先冲突。
 
-修改标题、描述、PR 属性及 approve、claim、complete 都必须保留关系性质。
+修改标题、描述、PR 属性及 approve、unapprove、claim、complete 都必须保留关系性质。
 附件操作继续独立于任务版本，不影响依赖。
 
 ## ED-R3：执行、权限与容量
