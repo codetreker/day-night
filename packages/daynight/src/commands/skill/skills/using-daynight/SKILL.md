@@ -60,6 +60,10 @@ and completing `run-task` never activate it.
   description-relative links start at this task's attachment root. Attach resources
   according to actual ownership and need; reference shared inputs at their verified
   source. Express prerequisites only through `dependsOn`.
+- Automatic task selection requires `allowAgents=true` as well as readiness.
+  Automated workers and agent workflows must not enable this permission themselves.
+  An explicitly user-selected task may follow the manual claim path regardless
+  of the flag; approval, dependency and execution authorization still apply.
 - Preserve the exact version observed when deciding a metadata update or
   approve/unapprove/claim/complete action. Generic updates cannot change status. Confirm writes,
   reconcile uncertain results before further mutations, and preserve actual

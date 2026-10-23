@@ -32,6 +32,11 @@ func TestInstalledCLIExternalDependencyReadAcceptance(t *testing.T) {
 		if !slices.Equal(target.ExternalDependsOn, []string{prerequisiteID}) || !slices.Equal(target.BlockedBy, []string{prerequisiteID}) {
 			t.Fatal("installed CLI full task read lost seeded classification or blocking")
 		}
+		cli.run(t, cli.repo, "task", "update", target.ID, "--allow-agents", "true", "--if-version", strconv.FormatInt(target.Version, 10))
+		target = cli.task(t, target.ID)
+		if !target.AllowAgents || !slices.Equal(target.ExternalDependsOn, []string{prerequisiteID}) {
+			t.Fatal("installed permission update lost stored edge classification")
+		}
 		for _, output := range []string{cli.run(t, cli.repo, "task", "show", target.ID), cli.run(t, cli.repo, "task", "list"), cli.run(t, cli.repo, "task", "graph")} {
 			if !strings.Contains(output, "External dependencies (1): "+prerequisiteID+"\n") {
 				t.Fatal("installed CLI text output lost external classification")
@@ -70,7 +75,7 @@ func TestInstalledCLIExternalDependencyReadAcceptance(t *testing.T) {
 		}
 		target = acceptanceCLIAction(t, cli, process, evidence, target, "claim", "in_progress")
 		target = acceptanceCLIAction(t, cli, process, evidence, target, "complete", "done")
-		if !slices.Equal(target.ExternalDependsOn, []string{prerequisiteID}) {
+		if !target.AllowAgents || !slices.Equal(target.ExternalDependsOn, []string{prerequisiteID}) {
 			t.Fatal("installed execution actions lost classification")
 		}
 		acceptanceCLITaskListJSON(t, cli.run(t, cli.repo, "task", "list", "--all", "--json"), []api.Task{prerequisite, target})

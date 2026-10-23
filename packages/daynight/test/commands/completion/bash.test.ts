@@ -5,6 +5,14 @@ import type { CommandDefinition } from "../../../src/cli/schema.js";
 import { taskDefinition } from "../../../src/commands/task/definition.js";
 
 describe("Bash completion rendering", () => {
+  it.each(["update", "list", "ready"])("completes explicit automatic-execution booleans for %s", (name) => {
+    const script = renderBashCompletion(taskDefinition.commands!.find((command) => command.name === name)!);
+    expect(script).toContain("'--allow-agents'");
+    expect(script).toContain("dn_value_choices=('true' 'false')");
+    const create = renderBashCompletion(taskDefinition.commands!.find((command) => command.name === "create")!);
+    expect(create).not.toContain("'--allow-agents'");
+  });
+
   it("registers both installed command names with the same completion function", () => {
     expect(renderBashCompletion(commandTree)).toContain("complete -F _daynight_completion 'daynight' 'dn'\n");
   });

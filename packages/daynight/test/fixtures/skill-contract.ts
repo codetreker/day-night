@@ -77,6 +77,16 @@ type InstructionScenario = {
 
 export const instructionScenarios: readonly InstructionScenario[] = [
   {
+    id: "automatic-selection-permission",
+    input: "Automatic selection is active; a user may also explicitly select a task without automatic permission.",
+    obligation: "Filter automatic candidates before pagination, never self-enable permission, and preserve explicit manual execution.",
+    propositions: [
+      { resource: "references/autopilot.md", section: "## Select one related task", requires: [/daynight task ready --allow-agents true --json/, /task with `allowAgents=true`/, /daynight task list --allow-agents true --json/, /Automatic selection never enables `allowAgents`/, /manual claim path remains available regardless of the flag/] },
+      { resource: "references/run-task.md", section: "## Establish the task and stage", requires: [/explicitly user-selected task may use the manual claim path regardless of `allowAgents`/, /Automated task selection requires true and must not enable the flag itself/] },
+      { resource: "references/handbook.md", section: "**Automatic execution permission.**", requires: [/New tasks start false/, /Actual changes are locked during in_progress/, /server combines that condition with other filters before pagination and the ready limit/, /Automated workflows must not enable it themselves/i] },
+    ],
+  },
+  {
     id: "registration-without-approval",
     input: "Creation is authorized and all task artifacts are readable; approval was not authorized.",
     obligation: "Register proposed work, verify owned resources, and return with approval pending.",

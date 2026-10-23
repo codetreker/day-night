@@ -2,6 +2,7 @@ import { memo, useCallback, useId, useLayoutEffect, useRef, type FocusEvent, typ
 import { useReactFlow, type Node, type NodeProps } from '@xyflow/react';
 import { useTaskExecution } from '../task-execution/TaskExecutionClock';
 import { TaskExecutionDescription, TaskExecutionDuration, TaskExecutionWarning, type TaskExecution } from '../task-execution/TaskExecutionPresentation';
+import { TaskAgentPermissionBadge } from '../task-detail/TaskAgentPermissionBadge';
 import { useI18n } from '../../i18n/LocaleProvider';
 import { useTaskInspectionState } from './inspection';
 import type { GraphTask } from '../../api/types';
@@ -29,7 +30,7 @@ const TaskNodeContent = memo(({ task, kind, shared, execution }: Pick<TaskNodeDa
   return <>
     <span className="task-node-meta">
       <span className="task-node-id">{task.id.slice(0, 8)}</span>
-      <span className="task-node-meta-labels">{shared && <span className="task-shared-label">{m.shared}</span>}{execution?.overdue && <TaskExecutionWarning />}</span>
+      <span className="task-node-meta-labels"><TaskAgentPermissionBadge allowAgents={task.allowAgents} compact />{shared && <span className="task-shared-label">{m.shared}</span>}{execution?.overdue && <TaskExecutionWarning />}</span>
     </span>
     <span className="task-node-title">{title}</span>
     <span className="task-node-bottom">

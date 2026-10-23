@@ -26,7 +26,7 @@ func TestProjectSettingsMigrationPreservesHistoricalMetadataAndTiming(t *testing
 		VALUES ($1,$2,'Historical completed task','Preserved metadata','done',17,$3,$4,$3,$5)`, taskID, project.ID, stamp, stamp.Add(time.Hour), stamp.Add(time.Minute))
 	taskMetadata := func() string {
 		var value string
-		if err := pool.QueryRow(ctx, `SELECT to_jsonb(t)::text FROM tasks t WHERE id=$1`, taskID).Scan(&value); err != nil {
+		if err := pool.QueryRow(ctx, `SELECT (to_jsonb(t)-'allow_agents')::text FROM tasks t WHERE id=$1`, taskID).Scan(&value); err != nil {
 			t.Fatal(err)
 		}
 		return value

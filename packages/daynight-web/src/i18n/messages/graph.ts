@@ -28,15 +28,13 @@ export type GraphMessages = {
   readonly expandSummary: (args: { edges: number; remaining: number }) => string;
   readonly expandLabel: (args: { direction: 'prerequisites' | 'successors'; tasks: number; edges: number; remaining: number }) => string;
   readonly resetOverview: string;
-  readonly visibilitySummary: (args: { visible: number; total: number; edges: number; totalEdges: number }) => string;
   readonly dependencyGroup: string;
   readonly dependencyLabel: (args: { source: string; target: string }) => string;
   readonly fullscreenTitle: string;
   readonly title: string;
-  readonly counts: (args: { main: number; external: number; dependencies: number }) => string;
+  readonly counts: (args: { main: number; external: number; visible: number; total: number; edges: number; dependencies: number }) => string;
   readonly enterFullscreen: string;
   readonly exitFullscreen: string;
-  readonly instructions: string;
   readonly canvas: string;
   readonly directionLegend: string;
   readonly externalLegend: string;

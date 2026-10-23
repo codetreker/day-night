@@ -17,6 +17,7 @@ func TestExternalDependenciesSurviveMetadataAndLifecycle(t *testing.T) {
 	prerequisite := createTask(t, tasks, principal, project.ID, "Prerequisite")
 	prerequisite = completeTask(t, tasks, principal, claimTask(t, tasks, principal, approveTask(t, tasks, principal, prerequisite)))
 	target := createTask(t, tasks, principal, project.ID, "Target", prerequisite.ID)
+	target = updateTask(t, tasks, principal, target, UpdateTask{AllowAgents: pointer(true)})
 	if _, err := database.Pool.Exec(ctx, `UPDATE task_dependencies SET external=true WHERE project_id=$1 AND task_id=$2`, project.ID, target.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +28,7 @@ func TestExternalDependenciesSurviveMetadataAndLifecycle(t *testing.T) {
 	for _, input := range []UpdateTask{{Title: pointer("Renamed")}, {Description: pointer("Preserved classification")}, {Properties: propertyPatch(core.PullRequestProperty{URL: "https://example.com/pr/1", Title: "Preserved"})}} {
 		before := target
 		target = updateTask(t, tasks, principal, target, input)
-		if !slices.Equal(target.ExternalDependsOn, before.ExternalDependsOn) || target.Version != before.Version+1 || !reflect.DeepEqual(target.StartedAt, before.StartedAt) || !reflect.DeepEqual(target.CompletedAt, before.CompletedAt) {
+		if !target.AllowAgents || !slices.Equal(target.ExternalDependsOn, before.ExternalDependsOn) || target.Version != before.Version+1 || !reflect.DeepEqual(target.StartedAt, before.StartedAt) || !reflect.DeepEqual(target.CompletedAt, before.CompletedAt) {
 			t.Fatalf("ordinary edit lost classification or timing: %#v", target)
 		}
 	}
@@ -39,7 +40,7 @@ func TestExternalDependenciesSurviveMetadataAndLifecycle(t *testing.T) {
 	requireFault(t, err, "version_conflict")
 	for _, action := range []func(*testing.T, *Tasks, core.Principal, core.Task) core.Task{approveTask, unapproveTask, approveTask, claimTask} {
 		target = action(t, tasks, principal, target)
-		if !slices.Equal(target.ExternalDependsOn, []string{prerequisite.ID}) {
+		if !target.AllowAgents || !slices.Equal(target.ExternalDependsOn, []string{prerequisite.ID}) {
 			t.Fatalf("lifecycle lost classification: %#v", target)
 		}
 	}
@@ -49,7 +50,7 @@ func TestExternalDependenciesSurviveMetadataAndLifecycle(t *testing.T) {
 		t.Fatal("active metadata edit changed the execution interval")
 	}
 	target = completeTask(t, tasks, principal, target)
-	if !slices.Equal(target.ExternalDependsOn, []string{prerequisite.ID}) || !reflect.DeepEqual(target.StartedAt, started) || target.CompletedAt == nil {
+	if !target.AllowAgents || !slices.Equal(target.ExternalDependsOn, []string{prerequisite.ID}) || !reflect.DeepEqual(target.StartedAt, started) || target.CompletedAt == nil {
 		t.Fatalf("completion lost classification or timing: %#v", target)
 	}
 	page, err := tasks.List(ctx, principal, project.ID, TaskListRequest{PageRequest: PageRequest{Limit: 10}})

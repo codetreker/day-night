@@ -27,11 +27,11 @@ const graph: GraphData = { observedAt: "2026-10-20T12:00:00Z",
   project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: 'project', name: 'Project', repoUrl: '', createdAt: time, updatedAt: time },
   summary: { total: 5, proposed: 1, todo: 1, inProgress: 0, done: 3, ready: 1, blocked: 0 },
   tasks: [
-    { externalDependsOn: [], startedAt: null, completedAt: null, id: 'A', titlePreview: 'A', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { externalDependsOn: [], startedAt: null, completedAt: null, id: 'B', titlePreview: 'B', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { externalDependsOn: [], startedAt: null, completedAt: null, id: 'C', titlePreview: 'C', titleTruncated: false, status: 'done', dependsOn: ['B'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { externalDependsOn: [], startedAt: null, completedAt: null, id: 'D', titlePreview: 'D', titleTruncated: false, status: 'proposed', dependsOn: ['A', 'C'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { externalDependsOn: [], startedAt: null, completedAt: null, id: 'X', titlePreview: 'X', titleTruncated: false, status: 'todo', dependsOn: ['C'], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
+    { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'A', titlePreview: 'A', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'B', titlePreview: 'B', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'C', titlePreview: 'C', titleTruncated: false, status: 'done', dependsOn: ['B'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'D', titlePreview: 'D', titleTruncated: false, status: 'proposed', dependsOn: ['A', 'C'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'X', titlePreview: 'X', titleTruncated: false, status: 'todo', dependsOn: ['C'], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
   ],
 };
 const index = buildGraphIndex(graph);

@@ -120,8 +120,10 @@ worktrees, dedicated Herdr sessions and SQLite recovery. Agents own delivery;
 the worker owns resources, recovery and completion verification from existing
 task evidence. The [design decision](.agents/notes/implemented/architecture/2026-10-22-worker-design.md)
 records that responsibility split and the choice to observe current Herdr status
-without another reporting protocol. These documents deliver the architecture;
-the worker runtime, task role/platform controls and claim integration remain
+without another reporting protocol. The [automatic-execution decision](.agents/notes/implemented/architecture/2026-10-23-task-agent-automation.md)
+defines the boolean `allowAgents` permission and confirmation for both directions
+of the Web switch. The service, CLI and Web implement this permission; the
+worker runtime, platform controls and unique worker-claim integration remain
 implementation work. Authentication and the approval-based task lifecycle are
 delivered prerequisites; worker integration preserves the current task execution
 timestamp contract.
@@ -188,7 +190,10 @@ Existing explicit permission applies within its stated scope without repeated
 confirmation. Goal creation covers its two starting tasks and later in-scope
 breakdown; task approval needs a separate explicit task or Goal-task scope.
 Creation, stage completion, run-task and autopilot do not supply approval. Approved
-ready work is claimed at the reviewed version. Task descriptions are self-contained
+ready work is claimed at the reviewed version. Automatic selection uses
+`task ready --allow-agents true --json` and preserves that filter on fallback
+inventories; workflows never enable the flag themselves. Explicitly designated
+manual work can be claimed with either value. Task descriptions are self-contained
 Markdown briefs: the concrete problem and action, scope, deliverables, constraints,
 observable completion summaries and actual input references. The Web renders that
 Markdown; API storage and CLI/Agent output preserve the original string bytes.
@@ -1012,11 +1017,14 @@ Complete when a valid login opens the workspace and a rejected login can retry.'
 daynight task create --title "Build the sign-in page" --depends-on <task-id>
 daynight task ready
 daynight task ready --limit 5 --json
+daynight task ready --allow-agents true --json
+daynight task list --allow-agents false --ready
 daynight task list --ready
 daynight task list --all --json
 daynight task list --status in_progress --json
 daynight task show <task-id> --json
 daynight task update <task-id> --description=
+daynight task update <task-id> --allow-agents true --if-version <version>
 daynight task approve <task-id> --if-version 1
 daynight task claim <task-id> --if-version 2
 daynight task complete <task-id> --if-version 3
@@ -1036,7 +1044,7 @@ server origin and repository identity, after ensuring `/.daynight/` is effective
 in the root `.gitignore`. A cached binding is verified against the server on each
 use and remains stable if another project later shares that repository.
 
-Creation starts in `proposed`; `task approve` moves it to `todo`; `task unapprove`
+Creation starts in `proposed` with `allowAgents=false`; `task approve` moves it to `todo`; `task unapprove`
 withdraws approval of todo work and returns it to `proposed`; `task claim` moves
 ready todo to `in_progress`; `task complete` moves in-progress work to `done`.
 Approval and withdrawal permit unfinished prerequisites; claim and completion
@@ -1098,14 +1106,23 @@ or Escape sends no request. Confirmed responses refresh the graph. Withdrawal
 preserves task materials, dependencies, execution timestamps and attachments;
 it makes the task non-ready without changing successor states. Approval makes
 work eligible for later claim and grants no implementation or merge permission.
+Task details place one **Automatic execution / 自动执行** label and switch on
+the right of the status row below the title. Both directions open confirmation;
+Cancel, close and Escape submit nothing. The switch updates only after a
+confirmed successful response. Permission and approval share the same per-task
+write gate, retaining pending/unknown results across detail close/reopen.
+Actual permission changes are locked during `in_progress`; permission changes
+do not approve, withdraw, stop or transfer work. Independent task rows and graph
+nodes show each task's permission without treating a root flag as chain-wide.
 The [lifecycle decision](.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
 and [withdrawal decision](.agents/notes/implemented/feature/2026-10-23-task-unapprove.md)
 record the state and approval boundaries.
 
 `task ready` selects up to 10 actionable tasks by
 default; `--limit <N>` accepts decimal integers from 1 through 100. It makes one
-task-list request with `ready=true` and the chosen limit, without fetching later
-pages. The service orders results by creation time and then task ID, both
+task-list request with `ready=true`, the chosen limit and optional
+`--allow-agents true|false` filter, without fetching later pages. The service
+applies permission filtering before pagination and binds it to the cursor. The service orders results by creation time and then task ID, both
 ascending. A ready task is `todo` with all direct dependencies `done`. This
 bounded selection supports choosing the next work without retrieving the whole
 project; `task graph` provides a dependency overview when needed. `task list`
@@ -1115,13 +1132,20 @@ including `done`. These two options conflict. `--ready` intersects the selected
 statuses and can be combined with `--all`. List results place `in_progress`
 first, then ready tasks, other `todo` tasks, `proposed`, and `done`; each group retains
 service order across all pages. This order applies to human and JSON results.
-`task ready` accepts neither `--status` nor `--cursor`.
+`task ready` accepts neither `--status` nor `--cursor`. `task list` supports the
+same optional permission filter across every matching page. The flag is
+independent of readiness and approval; manual claim accepts either value.
 
 Updates preserve omitted fields; an empty description clears it. Repeated
 `--depends-on` values replace the complete dependency set and retain input order
 and duplicates for server validation. `--clear-dependencies` clears that set and
 cannot be combined with `--depends-on`. An update needs at least one mutable
-field. By default the CLI reads the task version before PATCH; `--if-version <n>`
+field. `--allow-agents true|false` explicitly changes automatic-execution
+permission; omitted preserves it. Creation rejects the option. Existing tasks
+receive true through migration without changing versions or business timestamps.
+A matching same-value permission PATCH retains version and time, while a stale
+version still conflicts and an actual in-progress toggle fails atomically.
+By default the CLI reads the task version before PATCH; `--if-version <n>`
 uses that exact positive int64 version. Conflicts and failed writes are reported
 without automatic retries.
 
@@ -1134,9 +1158,12 @@ inline assignment. Attachment `put` declares its `--path` as text, accepting
 paths starting with a dash. Other task operations retain their declared syntax.
 
 Human task lists use labeled blocks containing ID, project, title, PR references,
-status, readiness, dependencies and blocking. Description, version and timestamps
+status, readiness, automatic-execution permission, dependencies and blocking.
+Description, version and timestamps
 remain available in show, ready, create and update output. Graph nodes include
-state, dependencies, blocking and title-preview truncation flags. Queries support
+state, permission, dependencies, blocking and title-preview truncation flags.
+Task and graph decoders require a boolean `allowAgents`; missing, null or
+nonboolean values are protocol errors. Queries support
 `--json`: task `list` returns every matching task in one array, omitting only
 `description` while retaining every other API field, including raw PR strings,
 version and timestamps. This applies to the default list and every filter,

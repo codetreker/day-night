@@ -10,6 +10,7 @@ type GraphTask struct {
 	DependsOn         []string
 	ExternalDependsOn []string
 	BlockedBy         []string
+	AllowAgents       bool
 	Ready             bool
 	CreatedAt         time.Time
 	UpdatedAt         time.Time

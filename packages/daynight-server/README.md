@@ -437,8 +437,12 @@ All project members, including administrators, can perform these resource writes
 project settings, member management and invitation management require the administrator role. HTTP
 routes use that instance. Lifecycle POST routes and method-refusal handlers
 require authentication, enforce exact Origin for Cookie writes and return no-store.
-Creation uses `proposed`;
-its predefined `properties.pullRequests` list defaults to empty. Updates require
+Creation uses `proposed` and `allowAgents=false`;
+its predefined `properties.pullRequests` list defaults to empty. The permission
+is a required boolean in full tasks and graph nodes. Migration
+`011_task_agent_permission.sql` sets existing records to true and changes the
+database default for future inserts to false, preserving versions and business
+timestamps. Public creation rejects the field, including an explicit false. Updates require
 a positive expected version and at least one mutable pointer field. Nil means omitted, while an empty description or supplied empty dependency
 or PR list clears that value. The task HTTP boundary rejects explicit JSON null
 before constructing these Go parameters.
@@ -459,6 +463,13 @@ Task writes acquire the project lock, check current membership, then compare
 versions and validate the graph. A stale version conflicts even when values match. A matching semantic
 no-op preserves version and update time; any actual change increments once.
 Dependency order/case spelling does not create a change after canonicalization.
+Permission PATCH preserves omission versus false, rejects null/nonboolean input,
+and checks the exact version before same-value handling. A same-value update
+retains version and time; an actual change during `in_progress` is refused as
+`invalid_transition`, atomically with any other requested changes. Manual claim
+accepts either value. Approval, withdrawal, readiness and execution timing keep
+their independent meanings. Worker-specific claim enforcement remains part of
+the [worker design](../../docs/design/daynight-worker.md).
 PR order and duplicate entries are retained; changing their order is a real change.
 Predecessor changes derive readiness on read without changing downstream status,
 version or timestamps.
@@ -485,7 +496,8 @@ Expected refusals are captured before any write and returned only after the
 outer lock-only transaction succeeds; transaction/cleanup failures remain
 operational errors. Lists and reads check project existence and task state
 inside one RR snapshot. Task cursors bind the canonical project and optional
-status/ready filters, preserving the difference between absent and false.
+status/ready/allowAgents filters, preserving the difference between absent and
+false. Permission filtering runs in SQL before ordering, limit and lookahead.
 
 ## Complete task graph
 
@@ -516,14 +528,14 @@ and timestamps. The [lifecycle decision](../../.agents/notes/implemented/feature
 activates dedicated transitions after the [reader preparation](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md).
 
 Nodes contain `id`, `titlePreview`, `titleTruncated`, `status`, `dependsOn`,
-`externalDependsOn`, `blockedBy`, `ready`, UTC creation/update timestamps and explicit nullable
+`externalDependsOn`, `blockedBy`, `ready`, required boolean `allowAgents`, UTC creation/update timestamps and explicit nullable
 `startedAt`/`completedAt`. SQL produces at most 160 Unicode code
 points of each title without selecting descriptions, properties or full titles. Use the
 existing task detail endpoint for complete content. Node order is `(createdAt,
 id)`; dependency arrays are sorted and empty collections encode as `[]`.
 `externalDependsOn` is a duplicate-free subset of the complete `dependsOn` set.
 Blocking, readiness, cycle validation and graph-size limits use every edge.
-Migration `011_external_dependencies.sql` initializes existing edges to ordinary
+Migration `012_external_dependencies.sql` initializes existing edges to ordinary
 without rewriting endpoints or task metadata.
 
 Projects above 1,000 nodes or 5,000 edges return 409 `graph_limit_exceeded` with
@@ -565,7 +577,7 @@ approve/unapprove/claim/complete preserve classifications; removing an edge also
 removes its classification. The later write contract is defined in the
 [external dependency design](../../docs/design/daynight-external-dependencies.md).
 PATCH accepts a positive integer `version` and at least one mutation of `title`,
-`description`, `dependsOn` or `properties.pullRequests`; a status field is rejected
+`description`, `dependsOn`, `allowAgents` or `properties.pullRequests`; a status field is rejected
 even alongside otherwise valid metadata. Omitted fields
 stay unchanged; explicit null (including null dependency or PR elements) fails.
 Empty description, `dependsOn: []` or `properties: {"pullRequests": []}` clears
@@ -583,15 +595,17 @@ The existing UTF-8, single JSON object and 1 MiB request limit apply, with no
 additional count or string-length limits. The complete API behavior is owned by
 the [task properties requirements](../../docs/spec/daynight-task-properties.md).
 
-Task responses contain identity, project, title, description, status, version,
+Task responses contain identity, project, title, description, status, required
+boolean `allowAgents`, version,
 UTC creation/update timestamps, explicit nullable execution timestamps
 `startedAt`/`completedAt`, sorted `dependsOn`/`externalDependsOn`/`blockedBy` arrays, `ready` and complete
 `properties` with an initialized `pullRequests` array. A missing
 project or a task outside the specified project returns 404. The initialized
 empty project returns `items: []`, `nextCursor: null`.
 
-Lists support `limit`, `cursor`, `status` and `ready`, once each. `ready` accepts
-literal `true` or `false`; filters combine with AND and remain bound to the
+Lists support `limit`, `cursor`, `status`, `ready` and `allowAgents`, once each.
+Both boolean filters accept literal `true` or `false`; filters combine with AND
+before pagination and remain bound to the
 cursor's canonical project scope. HTTP input uses the same strict JSON and
 query rules as project operations.
 

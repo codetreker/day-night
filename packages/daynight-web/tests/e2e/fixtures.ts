@@ -128,7 +128,7 @@ export const test = base.extend<{
 export type Project = { id: string; name: string; repoUrl: string; createdAt: string; updatedAt: string };
 export type Task = {
   id: string; projectId: string; title: string; description: string; status: 'proposed' | 'todo' | 'in_progress' | 'done';
-  version: number; dependsOn: string[]; externalDependsOn: readonly string[]; blockedBy: string[]; ready: boolean; createdAt: string; updatedAt: string;
+  version: number; dependsOn: string[]; externalDependsOn: readonly string[]; blockedBy: string[]; ready: boolean; allowAgents: boolean; createdAt: string; updatedAt: string;
   properties: TaskProperties;
 };
 

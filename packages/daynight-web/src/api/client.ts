@@ -187,6 +187,25 @@ export const approveTask = (projectId: string, taskId: string, exactVersion: big
 export const unapproveTask = (projectId: string, taskId: string, exactVersion: bigint, signal: AbortSignal): Promise<TaskDetail> =>
   taskApproval("unapprove", projectId, taskId, exactVersion, signal);
 
+export const setTaskAgentPermission = async (
+  projectId: string, taskId: string, allowAgents: boolean, exactVersion: bigint, signal: AbortSignal,
+): Promise<TaskDetail> => {
+  const project = requestId(projectId);
+  const task = requestId(taskId);
+  if (typeof allowAgents !== "boolean" || !isTaskVersion(exactVersion)) throw new ApiError("protocol");
+  const response = await request(`/api/v1/projects/${project}/tasks/${task}`, signal, {
+    method: "PATCH", redirect: "error", headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: stringifyApiJson({ version: exactVersion, allowAgents }),
+  });
+  return json(response, signal, (data) => {
+    const result = parseTaskDetail(data, project, task);
+    if (response.status !== 200 || result.allowAgents !== allowAgents || result.version !== exactVersion && result.version !== exactVersion + 1n) {
+      throw new ApiError("protocol", response.status);
+    }
+    return result;
+  });
+};
+
 const attachmentTaskUrl = (projectId: string, taskId: string): string =>
   `/api/v1/projects/${requestId(projectId)}/tasks/${requestId(taskId)}`;
 

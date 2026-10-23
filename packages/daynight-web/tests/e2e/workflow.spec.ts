@@ -10,6 +10,7 @@ import { captureStableDependencyGeometry, checkDependencyGeometry, expectedDepen
 import { expectedNodeHeights } from './visible-topology';
 import { expectCenteredTaskDetail, expectTaskDetailScroll } from './detail-dialog';
 import { expectStableAutomaticDetailRefresh } from './detail-refresh';
+import { panPoint } from './graph-pan';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
 const card = (page: Page, id: string): Locator => page.locator(`.react-flow__node[data-id="${id}"] .task-node`);
@@ -229,13 +230,11 @@ test('project-graph', scenario('project-graph'), async ({ page, api: request }, 
     await page.getByRole('button', { name: '放大', exact: true }).click();
     await expect.poll(() => viewport.getAttribute('style')).not.toBe(beforeZoom);
     await checkEdges(a.id);
-    const pane = page.locator('.react-flow__pane');
-    const bounds = await pane.boundingBox();
-    expect(bounds).not.toBeNull();
+    const point = await panPoint(page);
     const beforePan = await viewport.getAttribute('style');
-    await page.mouse.move(bounds!.x + 15, bounds!.y + bounds!.height - 15);
+    await page.mouse.move(point.x, point.y);
     await page.mouse.down();
-    await page.mouse.move(bounds!.x + 75, bounds!.y + bounds!.height - 50, { steps: 4 });
+    await page.mouse.move(point.x + 60, point.y + 35, { steps: 4 });
     await page.mouse.up();
     await expect.poll(() => viewport.getAttribute('style')).not.toBe(beforePan);
     await checkEdges(a.id);
@@ -325,7 +324,7 @@ test('project-graph', scenario('project-graph'), async ({ page, api: request }, 
       await expect(page.locator('.task-node-external')).toHaveCount(2);
       expect(await page.locator('.react-flow__node').evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).style.height))).toEqual(['96px', '96px', '96px', '96px']);
       await expect(card(page, prerequisite.id).locator('.task-node-expansions')).toHaveCount(0);
-      await expect(page.getByText('2 个链内任务 · 2 个外部前置 · 3 条依赖')).toBeVisible();
+      await expect(page.getByText('链内 2 · 外部 2 · 任务 4/4 · 依赖 3/3')).toBeVisible();
       await expect(card(page, unrelated.id)).toHaveCount(0);
       await expect(inspectTask(page, ancestor.id)).toHaveAccessibleName('B completed external ancestor，已完成，外部前置');
       await expect(inspectTask(page, prerequisite.id)).toHaveAccessibleName('C completed external prerequisite，已完成，外部前置');
@@ -1081,17 +1080,22 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, api: request }
   await expect(page.locator('#root')).toHaveAttribute('inert', '');
   const taskTitle = dialog.locator('.task-detail-title');
   const approvalAction = dialog.getByRole('button', { name: '撤回审批', exact: true });
+  const automation = dialog.getByRole('switch', { name: '自动执行', exact: true });
   const overviewTab = dialog.getByRole('tab', { name: '概览', exact: true });
   await page.keyboard.press('Tab');
   await expect(taskTitle).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(approvalAction).toBeFocused();
   await page.keyboard.press('Tab');
+  await expect(automation).toBeFocused();
+  await page.keyboard.press('Tab');
   await expect(overviewTab).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(dialog.getByRole('link', { name: b.properties.pullRequests[0]!.url, exact: true })).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(overviewTab).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(automation).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(approvalAction).toBeFocused();
   await page.keyboard.press('Shift+Tab');

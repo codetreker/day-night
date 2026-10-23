@@ -38,7 +38,7 @@ func taskResponse(task core.Task) api.Task {
 	return api.Task{ID: task.ID, ProjectID: task.ProjectID, Title: task.Title, Description: task.Description,
 		Properties: propertiesResponse(task.Properties), Status: string(task.Status), Version: task.Version, CreatedAt: task.CreatedAt.UTC(), UpdatedAt: task.UpdatedAt.UTC(),
 		StartedAt: timestampResponse(task.StartedAt), CompletedAt: timestampResponse(task.CompletedAt),
-		DependsOn: append([]string{}, task.DependsOn...), ExternalDependsOn: append([]string{}, task.ExternalDependsOn...), BlockedBy: append([]string{}, task.BlockedBy...), Ready: task.Ready}
+		DependsOn: append([]string{}, task.DependsOn...), ExternalDependsOn: append([]string{}, task.ExternalDependsOn...), BlockedBy: append([]string{}, task.BlockedBy...), Ready: task.Ready, AllowAgents: task.AllowAgents}
 }
 
 func propertiesResponse(properties core.TaskProperties) api.TaskProperties {
@@ -146,7 +146,11 @@ func updateTaskInput(fields map[string]json.RawMessage) (api.UpdateTaskRequest, 
 	if err != nil {
 		return api.UpdateTaskRequest{}, err
 	}
-	if input.Title == nil && input.Description == nil && input.DependsOn == nil &&
+	input.AllowAgents, err = optionalBool(fields, "allowAgents")
+	if err != nil {
+		return api.UpdateTaskRequest{}, err
+	}
+	if input.Title == nil && input.Description == nil && input.DependsOn == nil && input.AllowAgents == nil &&
 		(input.Properties == nil || input.Properties.PullRequests == nil) {
 		return api.UpdateTaskRequest{}, invalidInput("at least one task field must be provided")
 	}
@@ -154,7 +158,7 @@ func updateTaskInput(fields map[string]json.RawMessage) (api.UpdateTaskRequest, 
 }
 
 func taskListRequest(request *http.Request) (service.TaskListRequest, error) {
-	values, err := queryValues(request, "limit", "cursor", "status", "ready")
+	values, err := queryValues(request, "limit", "cursor", "status", "ready", "allowAgents")
 	if err != nil {
 		return service.TaskListRequest{}, err
 	}
@@ -173,6 +177,13 @@ func taskListRequest(request *http.Request) (service.TaskListRequest, error) {
 		}
 		ready := value[0] == "true"
 		result.Ready = &ready
+	}
+	if value, exists := values["allowAgents"]; exists {
+		if value[0] != "true" && value[0] != "false" {
+			return service.TaskListRequest{}, invalidInput("allowAgents must be true or false")
+		}
+		allowAgents := value[0] == "true"
+		result.AllowAgents = &allowAgents
 	}
 	return result, nil
 }
@@ -253,7 +264,7 @@ func (h *taskHandler) update(w http.ResponseWriter, request *http.Request, princ
 		writeError(w, request, logger, "task", "update", err)
 		return
 	}
-	fields, err := decodeObject(w, request, "version", "title", "description", "dependsOn", "properties")
+	fields, err := decodeObject(w, request, "version", "title", "description", "dependsOn", "properties", "allowAgents")
 	if err != nil {
 		writeError(w, request, logger, "task", "update", err)
 		return
@@ -263,7 +274,7 @@ func (h *taskHandler) update(w http.ResponseWriter, request *http.Request, princ
 		writeError(w, request, logger, "task", "update", err)
 		return
 	}
-	values := service.UpdateTask{Version: input.Version, Title: input.Title, Description: input.Description, DependsOn: input.DependsOn}
+	values := service.UpdateTask{AllowAgents: input.AllowAgents, Version: input.Version, Title: input.Title, Description: input.Description, DependsOn: input.DependsOn}
 	if input.Properties != nil && input.Properties.PullRequests != nil {
 		properties := propertyValues(api.TaskProperties{PullRequests: *input.Properties.PullRequests})
 		values.Properties.PullRequests = &properties.PullRequests

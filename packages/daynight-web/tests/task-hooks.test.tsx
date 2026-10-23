@@ -5,7 +5,7 @@ import { ApiError, approveTask, getTask, getTaskGraph } from "../src/api/client"
 import { useTaskGraph } from "../src/features/projects/useTaskGraph";
 import { useTaskDetail } from "../src/features/task-detail/useTaskDetail";
 import { TaskDetailSessionBoundary } from "../src/features/task-detail/TaskDetailSession";
-import { isTaskStale, taskDescriptor } from "../src/features/task-detail/freshness";
+import { isTaskStale, taskDescriptor, taskReviewKey } from "../src/features/task-detail/freshness";
 import { GraphDataError } from "../src/features/task-graph/model";
 
 const renderHook = <Result, Props,>(render: (props: Props) => Result, options?: RenderHookOptions<Props>) =>
@@ -19,8 +19,8 @@ const otherProject = "10000000-0000-0000-0000-000000000002";
 const taskId = "20000000-0000-0000-0000-000000000001";
 const otherTask = "20000000-0000-0000-0000-000000000002";
 const time = "2026-10-20T12:00:00.123456Z";
-const node: GraphTask = { startedAt: null, completedAt: null, id: taskId, titlePreview: "任务一", titleTruncated: false, status: "todo", dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
-const detail: TaskDetail = { startedAt: null, completedAt: null, id: taskId, projectId, title: "任务一", description: "完整描述", properties: { pullRequests: [] }, status: "todo", version: 1n, dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
+const node: GraphTask = { allowAgents: false, startedAt: null, completedAt: null, id: taskId, titlePreview: "任务一", titleTruncated: false, status: "todo", dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
+const detail: TaskDetail = { allowAgents: false, startedAt: null, completedAt: null, id: taskId, projectId, title: "任务一", description: "完整描述", properties: { pullRequests: [] }, status: "todo", version: 1n, dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
 const graph = (id = projectId): TaskGraph => ({ observedAt: "2026-10-20T12:00:00Z",
   project: { settings: { version: 1n, executionWarningMinutes: 60 }, id, name: `项目 ${id}`, repoUrl: "https://github.com/example/repo", createdAt: time, updatedAt: time },
   tasks: [node], summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
@@ -492,7 +492,7 @@ describe("task details", () => {
     rerender({ revision: 2 });
     rerender({ revision: 3 });
     expect(detailRequest).toHaveBeenCalledTimes(1);
-    expect(result.current.approval.phase).toBe("pending");
+    expect(result.current.mutation.phase).toBe("pending");
     await act(async () => { mutation.resolve(approved); });
     await waitFor(() => expect(detailRequest).toHaveBeenCalledTimes(2));
     expect(result.current).toMatchObject({ detail: approved, refreshing: true, loadedRevision: 1 });
@@ -609,6 +609,15 @@ describe("task details", () => {
 });
 
 describe("detail freshness", () => {
+  it("includes automation permission and external subsets in reviewed task identity", () => {
+    const classified = { ...detail, dependsOn: [taskId, otherTask], externalDependsOn: [taskId, otherTask] };
+    expect(taskReviewKey(classified)).toBe(taskReviewKey({ ...classified, externalDependsOn: [otherTask, taskId] }));
+    expect(taskReviewKey(classified)).not.toBe(taskReviewKey({ ...classified, externalDependsOn: [otherTask] }));
+    expect(taskReviewKey(classified)).not.toBe(taskReviewKey({ ...classified, allowAgents: true }));
+    expect(isTaskStale({ ...node, allowAgents: true }, detail)).toBe(true);
+    expect(taskDescriptor({ ...node, allowAgents: true })).not.toBe(taskDescriptor(node));
+  });
+
   it("compares external subsets as sets and detects classification changes independently of task timestamps", () => {
     const dependencies = { dependsOn: [taskId, otherTask], blockedBy: [taskId, otherTask], ready: false };
     const classified = { ...node, ...dependencies, externalDependsOn: [taskId, otherTask] };

@@ -61,6 +61,22 @@
 .task-detail-title:focus-visible, .task-detail-read-error:focus-visible, .task-approval-confirmation .dialog-body:focus-visible { outline: 3px solid #8c8cf0; outline-offset: -3px; }
 .task-detail-badges { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .task-detail-status, .task-detail-ready, .task-detail-blocked { display: inline-flex; align-items: center; gap: 5px; border-radius: 4px; font-size: 10px; font-weight: 500; padding: 4px 8px; }
+.task-detail-status-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; min-width: 0; }
+.task-detail-status-row .task-detail-badges { min-width: 0; flex: 1; }
+.task-automation-control { display: flex; align-items: center; justify-content: flex-end; gap: 9px; margin-left: auto; min-height: 24px; flex: none; white-space: nowrap; }
+.task-automation-control > span { color: #637087; font-size: 11px; font-weight: 500; }
+.task-automation-switch { width: 42px; height: 24px; border: 1px solid #d6dae5; border-radius: 15px; background: #e4e7ef; position: relative; padding: 2px; flex: none; }
+.task-automation-switch > span { display: block; width: 18px; height: 18px; background: #fff; border-radius: 50%; box-shadow: 0 1px 3px #35405630; }
+.task-automation-switch[aria-checked=true] { background: #5c5ce0; border-color: #5c5ce0; }
+.task-automation-switch[aria-checked=true] > span { transform: translateX(17px); }
+.task-automation-switch:disabled { opacity: .55; cursor: not-allowed; }
+.task-automation-switch:focus-visible { outline: 3px solid #8c8cf0; outline-offset: 3px; }
+.task-automation-feedback { color: #737d8e; font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; }
+.task-automation-feedback:empty { display: none; }
+.task-automation-feedback > p, .task-automation-feedback .button { margin-top: 8px; }
+.task-automation-feedback .button { font-size: 11px; padding: 7px 11px; }
+.task-automation-error { color: #a05252; margin-top: 8px; }
+
 .task-detail-status-todo { background: #edf0f4; color: #667387; }
 .task-detail-status-proposed { background: #f1ebf8; color: #8262a5; }
 .task-detail-status-in_progress { background: #edf2ff; color: #4e74bd; }
@@ -147,6 +163,10 @@
   .task-detail-approval { padding: 0 19px; }
   .task-detail-read-error { padding: 15px 19px 0; }
   .task-detail-title { font-size: 21px; }
+  .task-detail-status-row { gap: 8px; }
+  .task-detail-status-row .task-detail-badges { gap: 4px; }
+  .task-automation-control { gap: 7px; }
+  .task-automation-control > span { font-size: 10px; }
   .task-detail-title-row { gap: 12px; }
   .task-detail-title-action { font-size: 10px; padding: 7px 9px; margin-top: 3px; }
   .task-detail-columns { display: block; padding: 20px 19px 24px; }

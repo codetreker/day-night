@@ -26,5 +26,6 @@ type Task struct {
 	DependsOn         []string
 	ExternalDependsOn []string
 	BlockedBy         []string
+	AllowAgents       bool
 	Ready             bool
 }

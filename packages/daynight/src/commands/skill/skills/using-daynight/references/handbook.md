@@ -17,7 +17,7 @@ needed to use them correctly.
 | `task ready` | Read a bounded candidate page of approved todo tasks with completed prerequisites. |
 | `task list` | Read every matching page; defaults to unfinished tasks. |
 | `task show` | Read one task's complete details and exact version. |
-| `task update` | Change metadata, dependencies, or PR references; status is not writable. |
+| `task update` | Change metadata, automatic-execution permission, dependencies, or PR references; status is not writable. |
 | `task approve` | Change proposed to todo using an observed version and explicit approval authorization. |
 | `task unapprove` | Withdraw approval of todo work, returning it to proposed using an observed version. |
 | `task claim` | Change ready todo to in_progress using an observed version. |
@@ -77,6 +77,25 @@ and autopilot grant none. In the Web, the title-row entry opens a confirmation;
 only deliberate confirmation is the user's approval or withdrawal instruction.
 Cancel and Escape submit no action. Task approval itself grants no implementation,
 publication, deployment or merge permission.
+
+**Automatic execution permission.** Tasks expose the required boolean
+`allowAgents`, independent of status approval and dependency readiness. New tasks
+start false; public creation cannot set it. Existing tasks receive true through
+the database migration. Use `task update <task-id> --allow-agents true|false --if-version <version>` only
+for an explicitly authorized permission change.
+Omission preserves the current value, including explicit false. Actual changes
+are locked during in_progress; exact-version same-value requests keep the
+version and timestamps, while stale versions still conflict. Approve, unapprove,
+claim, complete and other metadata updates preserve the flag.
+
+`task list` and `task ready` accept `--allow-agents true|false`. The server
+combines that condition with other filters before pagination and the ready limit;
+an unfiltered ready page may contain tasks without automatic-execution permission.
+Automatic selection requires true and automated workflows must not enable it
+themselves. An explicitly user-selected task may still use manual claim regardless
+of the flag. Permission does not grant execution, publication or merge authority.
+A lost permission PATCH response is an unconfirmed write: read actual task state
+before reconsidering the operation, without resubmitting automatically.
 
 **Task concurrency.** Bind each metadata update, approve, unapprove, claim and complete to
 the exact version read for that decision using `--if-version`; the CLI's default

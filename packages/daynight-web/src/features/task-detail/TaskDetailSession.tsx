@@ -1,11 +1,12 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { ApiError, approveTask, getTask, isAbortError, unapproveTask } from "../../api/client";
+import { ApiError, approveTask, getTask, isAbortError, setTaskAgentPermission, unapproveTask } from "../../api/client";
 import { isTaskStale, taskDescriptor } from "./freshness";
 import type { ApprovalAction, GraphTask, TaskDetail } from "../../api/types";
 
 export type ApprovalOperation = { readonly action: ApprovalAction; readonly version: bigint };
-export type ApprovalState = {
-  readonly operation: ApprovalOperation | null;
+export type TaskMutationOperation = ApprovalOperation | { readonly action: "allowAgents"; readonly allowAgents: boolean; readonly version: bigint };
+export type TaskMutationState = {
+  readonly operation: TaskMutationOperation | null;
   readonly phase: "idle" | "pending" | "confirmed" | "refused" | "conflict" | "unknown" | "reconciled";
   readonly error: unknown;
   readonly reconciling: boolean;
@@ -19,7 +20,7 @@ export type DetailState = {
   readonly refreshing: boolean;
   readonly requiresFreshRead: boolean;
   readonly error: unknown;
-  readonly approval: ApprovalState;
+  readonly mutation: TaskMutationState;
 };
 type Entry = {
   state: DetailState;
@@ -39,12 +40,14 @@ const preserveCollection = (previous: TaskDetail | null, detail: TaskDetail): Ta
   const unchanged = old.length === fresh.length && old.every((item, index) => item.url === fresh[index]!.url && item.title === fresh[index]!.title);
   return unchanged ? { ...detail, properties: { ...detail.properties, pullRequests: old } } : detail;
 };
-const idleApproval = (): ApprovalState => ({ operation: null, phase: "idle", error: null, reconciling: false, reconciliationError: null });
-const initialState = (): DetailState => ({ revision: 0, loadedRevision: null, detail: null, status: "loading", refreshing: false, requiresFreshRead: true, error: null, approval: idleApproval() });
+const idleMutation = (): TaskMutationState => ({ operation: null, phase: "idle", error: null, reconciling: false, reconciliationError: null });
+const initialState = (): DetailState => ({ revision: 0, loadedRevision: null, detail: null, status: "loading", refreshing: false, requiresFreshRead: true, error: null, mutation: idleMutation() });
 export const approvalAction = (detail: TaskDetail | null): ApprovalAction | null =>
   detail?.status === "proposed" ? "approve" : detail?.status === "todo" ? "unapprove" : null;
-export const canPerformApproval = (state: DetailState, action: ApprovalAction): boolean => approvalAction(state.detail) === action && state.status === "ready" &&
-  state.approval.phase !== "pending" && state.approval.phase !== "unknown" && !state.approval.reconciling && state.approval.reconciliationError === null && !state.requiresFreshRead && state.error === null;
+const canMutate = (state: DetailState): boolean => state.detail !== null && state.status === "ready" &&
+  state.mutation.phase !== "pending" && state.mutation.phase !== "unknown" && !state.mutation.reconciling && state.mutation.reconciliationError === null && !state.requiresFreshRead && state.error === null;
+export const canPerformApproval = (state: DetailState, action: ApprovalAction): boolean => approvalAction(state.detail) === action && canMutate(state);
+export const canSetAgentPermission = (state: DetailState): boolean => state.detail !== null && state.detail.status !== "in_progress" && canMutate(state);
 export const canApprove = (state: DetailState): boolean => canPerformApproval(state, "approve");
 export const canUnapprove = (state: DetailState): boolean => canPerformApproval(state, "unapprove");
 
@@ -109,11 +112,11 @@ export class TaskDetailSessions {
     entry.read = null;
   }
   releaseRead(projectId: string, taskId: string): void {
-    if (!this.entry(projectId, taskId).state.approval.reconciling) this.cancelRead(projectId, taskId);
+    if (!this.entry(projectId, taskId).state.mutation.reconciling) this.cancelRead(projectId, taskId);
   }
   load(projectId: string, taskId: string, revision: number, mode: "open" | "refresh" | "automatic" = "refresh"): void {
     const entry = this.entry(projectId, taskId);
-    if (entry.state.approval.phase === "pending" || entry.state.approval.phase === "unknown" || entry.state.approval.reconciling) return;
+    if (entry.state.mutation.phase === "pending" || entry.state.mutation.phase === "unknown" || entry.state.mutation.reconciling) return;
     if (mode === "automatic") {
       if (document.visibilityState === "hidden") return;
       if (entry.read !== null) { entry.queuedRevision = revision; return; }
@@ -122,7 +125,7 @@ export class TaskDetailSessions {
   }
   reconcile(projectId: string, taskId: string): void {
     const entry = this.entry(projectId, taskId);
-    if (entry.state.approval.phase === "pending" || entry.state.approval.reconciling) return;
+    if (entry.state.mutation.phase === "pending" || entry.state.mutation.reconciling) return;
     void this.read(projectId, taskId, entry.state.revision, true, true);
   }
   private async read(projectId: string, taskId: string, revision: number, reconciliation: boolean, retainLoaded: boolean, automatic = false): Promise<void> {
@@ -133,21 +136,21 @@ export class TaskDetailSessions {
     entry.read = controller;
     const generation = entry.generation;
     const observedDescriptor = entry.observedDescriptor;
-    const retain = entry.state.detail !== null && (retainLoaded || entry.state.approval.phase !== "idle");
+    const retain = entry.state.detail !== null && (retainLoaded || entry.state.mutation.phase !== "idle");
     this.publish(entry, { ...entry.state, revision, loadedRevision: retain ? entry.state.loadedRevision : null, detail: retain ? entry.state.detail : null,
       requiresFreshRead: !automatic || entry.state.requiresFreshRead,
       status: retain ? "ready" : automatic && entry.state.error !== null ? "error" : "loading", refreshing: retain, error: automatic ? entry.state.error : null,
-      approval: reconciliation ? { ...entry.state.approval, reconciling: true, reconciliationError: null } : entry.state.approval });
+      mutation: reconciliation ? { ...entry.state.mutation, reconciling: true, reconciliationError: null } : entry.state.mutation });
     try {
       const detail = await getTask(projectId, taskId, controller.signal);
       if (controller.signal.aborted || generation !== entry.generation || this.disposed) return;
       if (detail.projectId !== projectId || detail.id !== taskId || entry.committedVersion !== null && detail.version < entry.committedVersion) throw new ApiError("protocol");
-      const approval = reconciliation
-        ? { ...entry.state.approval, phase: entry.state.approval.phase === "unknown" ? "reconciled" as const : entry.state.approval.phase, reconciling: false, reconciliationError: null }
-        : entry.state.approval;
-      // A descriptor changed during this read must match its response before approval can use that version.
+      const mutation = reconciliation
+        ? { ...entry.state.mutation, phase: entry.state.mutation.phase === "unknown" ? "reconciled" as const : entry.state.mutation.phase, reconciling: false, reconciliationError: null }
+        : entry.state.mutation;
+      // A descriptor changed during this read must match its response before a mutation can use that version.
       const requiresFreshRead = entry.observedDescriptor !== observedDescriptor && entry.observedTask !== undefined && isTaskStale(entry.observedTask, detail);
-      this.publish(entry, { revision, loadedRevision: revision, detail: preserveCollection(entry.state.detail, detail), status: "ready", refreshing: false, requiresFreshRead, error: null, approval });
+      this.publish(entry, { revision, loadedRevision: revision, detail: preserveCollection(entry.state.detail, detail), status: "ready", refreshing: false, requiresFreshRead, error: null, mutation });
       if (reconciliation) this.refreshProject(projectId);
     } catch (error) {
       if (controller.signal.aborted || generation !== entry.generation || this.disposed || !retain && !reconciliation && isAbortError(error)) return;
@@ -155,7 +158,7 @@ export class TaskDetailSessions {
       const detail = missing ? null : entry.state.detail;
       this.publish(entry, { ...entry.state, detail, loadedRevision: missing ? null : entry.state.loadedRevision, status: detail !== null ? "ready" : "error", refreshing: false,
         error: reconciliation && detail !== null ? null : error,
-        approval: reconciliation ? { ...entry.state.approval, reconciling: false, reconciliationError: error } : entry.state.approval });
+        mutation: reconciliation ? { ...entry.state.mutation, reconciling: false, reconciliationError: error } : entry.state.mutation });
     } finally {
       if (generation === entry.generation) {
         entry.read = null;
@@ -176,24 +179,37 @@ export class TaskDetailSessions {
   performApproval(projectId: string, taskId: string, action: ApprovalAction, version: bigint): void {
     const entry = this.entry(projectId, taskId);
     if (!canPerformApproval(entry.state, action) || entry.state.detail!.version !== version) return;
-    const operation: ApprovalOperation = { action, version };
-    const target = action === "approve" ? "todo" : "proposed";
+    this.performMutation(projectId, taskId, { action, version });
+  }
+  setAgentPermission(projectId: string, taskId: string, allowAgents: boolean, version: bigint): void {
+    const state = this.entry(projectId, taskId).state;
+    if (!canSetAgentPermission(state) || state.detail!.version !== version || state.detail!.allowAgents === allowAgents) return;
+    this.performMutation(projectId, taskId, { action: "allowAgents", allowAgents, version });
+  }
+  private performMutation(projectId: string, taskId: string, operation: TaskMutationOperation): void {
+    const entry = this.entry(projectId, taskId);
+    const previous = entry.state.detail!;
     this.cancelRead(projectId, taskId);
-    this.publish(entry, { ...entry.state, refreshing: false, error: null, approval: { operation, phase: "pending", error: null, reconciling: false, reconciliationError: null } });
+    this.publish(entry, { ...entry.state, refreshing: false, error: null, mutation: { operation, phase: "pending", error: null, reconciling: false, reconciliationError: null } });
     // Submitted writes outlive their dialog; closing a view does not undo a server mutation.
     void (async () => {
       try {
-        const mutate = action === "approve" ? approveTask : unapproveTask;
-        const detail = await mutate(projectId, taskId, version, new AbortController().signal);
-        if (detail.projectId !== projectId || detail.id !== taskId || detail.status !== target || detail.version !== version + 1n) throw new ApiError("protocol");
+        const signal = new AbortController().signal;
+        const detail = operation.action === "allowAgents"
+          ? await setTaskAgentPermission(projectId, taskId, operation.allowAgents, operation.version, signal)
+          : await (operation.action === "approve" ? approveTask : unapproveTask)(projectId, taskId, operation.version, signal);
+        const validResult = operation.action === "allowAgents"
+          ? detail.status === previous.status && detail.allowAgents === operation.allowAgents
+          : detail.status === (operation.action === "approve" ? "todo" : "proposed") && detail.allowAgents === previous.allowAgents;
+        if (detail.projectId !== projectId || detail.id !== taskId || !validResult || detail.version !== operation.version + 1n) throw new ApiError("protocol");
         entry.committedVersion = detail.version;
-        this.publish(entry, { ...entry.state, detail, status: "ready", refreshing: false, requiresFreshRead: false, error: null,
-          approval: { operation, phase: "confirmed", error: null, reconciling: false, reconciliationError: null } });
+        this.publish(entry, { ...entry.state, detail: preserveCollection(entry.state.detail, detail), status: "ready", refreshing: false, requiresFreshRead: false, error: null,
+          mutation: { operation, phase: "confirmed", error: null, reconciling: false, reconciliationError: null } });
         this.refreshProject(projectId);
       } catch (error) {
         const phase = error instanceof ApiError && error.kind === "server" && error.status !== null && error.status >= 400 && error.status < 500
           ? error.code === "version_conflict" ? "conflict" : "refused" : "unknown";
-        this.publish(entry, { ...entry.state, approval: { operation, phase, error, reconciling: false, reconciliationError: null } });
+        this.publish(entry, { ...entry.state, mutation: { operation, phase, error, reconciling: false, reconciliationError: null } });
         if (phase === "conflict" || phase === "unknown") {
           if (phase === "conflict") this.refreshProject(projectId);
           if (!this.disposed) await this.read(projectId, taskId, entry.state.revision, true, true);

@@ -19,6 +19,7 @@ func TestExternalDependencyHTTPReadsAndWritePreservation(t *testing.T) {
 	done = transitionHTTPTask(t, handler, transitionHTTPTask(t, handler, transitionHTTPTask(t, handler, done, "approve"), "claim"), "complete")
 	pending := createHTTPTask(t, handler, project.ID, "Unfinished prerequisite")
 	target := createHTTPTask(t, handler, project.ID, "External dependencies", pending.ID, done.ID)
+	target = updateHTTPTask(t, handler, target, map[string]any{"allowAgents": true})
 	if target.ExternalDependsOn == nil || len(target.ExternalDependsOn) != 0 {
 		t.Fatalf("new HTTP dependency is not normal: %#v", target)
 	}
@@ -44,7 +45,7 @@ func TestExternalDependencyHTTPReadsAndWritePreservation(t *testing.T) {
 	}
 	for _, action := range []string{"approve", "unapprove", "approve"} {
 		target = transitionHTTPTask(t, handler, target, action)
-		if !slices.Equal(target.ExternalDependsOn, expected) {
+		if !target.AllowAgents || !slices.Equal(target.ExternalDependsOn, expected) {
 			t.Fatalf("%s response lost stored classification", action)
 		}
 	}
@@ -61,7 +62,7 @@ func TestExternalDependencyHTTPReadsAndWritePreservation(t *testing.T) {
 	}
 	target = transitionHTTPTask(t, handler, ready.Items[0], "claim")
 	target = transitionHTTPTask(t, handler, target, "complete")
-	if !slices.Equal(target.ExternalDependsOn, expected) || target.StartedAt == nil || target.CompletedAt == nil {
+	if !target.AllowAgents || !slices.Equal(target.ExternalDependsOn, expected) || target.StartedAt == nil || target.CompletedAt == nil {
 		t.Fatalf("HTTP execution response lost classification or timing: %#v", target)
 	}
 }

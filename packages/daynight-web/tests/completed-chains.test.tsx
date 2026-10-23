@@ -22,7 +22,7 @@ vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, ro
 const projectId = '10000000-0000-0000-0000-000000000001';
 const otherProject = '10000000-0000-0000-0000-000000000002';
 const time = '2026-10-20T12:00:00Z';
-const task = (id: string, status: GraphTask['status'], dependsOn: string[] = []): GraphTask => ({ externalDependsOn: [], startedAt: null, completedAt: null,
+const task = (id: string, status: GraphTask['status'], dependsOn: string[] = []): GraphTask => ({ allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null,
   id, titlePreview: `任务 ${id}`, titleTruncated: false, status, dependsOn, blockedBy: [], ready: false, createdAt: time, updatedAt: time,
 });
 const seeds = [task('A', 'done'), task('B', 'todo', ['A']), task('C', 'done'), task('D', 'done', ['C']), task('E', 'done'), task('F', 'todo'), task('G', 'todo', ['B', 'F']), task('H', 'done', ['E'])];

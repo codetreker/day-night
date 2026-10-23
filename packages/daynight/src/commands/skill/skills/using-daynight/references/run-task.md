@@ -27,6 +27,10 @@ applicable prototype. When a prototype is a required input, view and exercise it
 with its resources. An unfinished output of the current stage is not a missing
 input.
 
+An explicitly user-selected task may use the manual claim path regardless of
+`allowAgents`; this flag gates automatic selection, not explicit task assignment.
+Automated task selection requires true and must not enable the flag itself.
+
 Check state, direct prerequisites, authorized scope, and required stage inputs.
 A missing or unreadable primary Markdown, missing Solution or Acceptance criteria,
 or absent required input leaves execution unready. Resolve it within the

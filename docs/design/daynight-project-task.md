@@ -338,7 +338,7 @@ flowchart TD
 | `project show <id>` | `GET /api/v1/projects/{id}` |
 | `task create` | `POST /api/v1/projects/{projectId}/tasks` |
 | `task list` | `GET /api/v1/projects/{projectId}/tasks`，保留相同筛选遍历 cursor |
-| `task ready [--limit <N>]` | 单次 `GET /api/v1/projects/{projectId}/tasks?ready=true&limit=N`，不提交 cursor |
+| `task ready [--limit <N>] [--allow-agents true\|false]` | 单次 `GET /api/v1/projects/{projectId}/tasks?ready=true&limit=N`，可带 allowAgents，不提交 cursor |
 | `task show <id>` | `GET /api/v1/projects/{projectId}/tasks/{id}` |
 | `task update <id>` | 可选先 GET task，再 PATCH 同一路径，只写元数据 |
 | `task approve/unapprove/claim/complete <id>` | 可选先 GET task，再 POST 同一 task 的 `/approve`、`/unapprove`、`/claim` 或 `/complete`，body 只含 version |
@@ -356,7 +356,7 @@ flowchart TD
 
 `task list` 的状态选择和展示顺序属于命令层。默认从完整结果中排除 `done`；
 `--all` 保留所有状态，`--status` 使用既有单状态查询，两者互斥并在任何 I/O 前
-拒绝。`--ready` 沿用服务筛选，与所选状态取交集，包含 `--all --ready`。
+拒绝。`--ready` 沿用服务筛选，与所选状态取交集，包含 `--all --ready`。`list`、`ready` 的 `--allow-agents true|false` 直接投影到服务查询；未提供、true、false 各自保留。完整分页保持该筛选，返回项不匹配时拒绝，不在客户端过滤掉一页中的任务。
 命令在全部分页成功后按 `in_progress`、ready、其余 `todo`、`proposed`、`done` 稳定分组，
 同一组保留服务按 `createdAt ASC, id ASC` 返回的跨页顺序。文本和 JSON 消费
 同一选择结果，因此分页边界不会改变组间优先顺序。此机制复用既有 API 筛选和分页，
@@ -374,12 +374,12 @@ API 的响应状态解码与命令输入 choices 分别拥有不同契约：task
 选择都读取完整 ready 集合。命令校验 `--limit` 为十进制整数 `1..100`，省略时
 为 `10`；无效值在配置读取、Git 与网络访问之前拒绝。它不接受 `--status` 或
 `--cursor`。`api/client.ts` 的 `listReadyTasks` 独立拥有有界操作，使用既有 task
-列表接口发送一次 `ready=true` 和 `limit=N` 请求。DTO 继续验证完整分页 envelope；
+列表接口发送一次 `ready=true`、`limit=N` 和可选 `allowAgents` 请求。DTO 继续验证完整分页 envelope；
 合法 `nextCursor` 表示尚有候选，调用方不跟随。无论当前响应是否达到 N 项，都不
 补发请求。`task list --ready` 仍执行完整分页。
 
 服务既有查询按 `createdAt ASC, id ASC` 排序，ready 表示 `todo` 且直接依赖全部
-为 `done`，因此无需服务或 schema 变更。有界 ready 保留服务顺序，在返回前验证项数
+为 `done`，许可独立于这个 ready 定义。有界 ready 保留服务顺序，在返回前验证项数
 不超过 N、每项为 ready、task ID 不重复。超量、非 ready 或重复资源都报协议错误，
 不截取、丢弃或修复响应。`listReadyTasks` 与完整列表复用 DTO、精确 JSON 和
 同一 `Operation` 的取消、期限、字节预算及最终输出检查。完整依赖图仍供按需查看
@@ -420,6 +420,8 @@ repo 许可、API、schema 和事务政策保持原样。原子唯一性需要�
 加载仓库模块；自动分支将 `serverUrl`、同一 `Operation`、API 和工作目录交给
 `resolveProject`。解析返回后才发送 task 请求，因此本地准备失败没有 task mutation。
 服务负责事务内的状态、依赖及时间戳不变量。
+
+`Task` 和 graph-task 解码要求 `allowAgents` 为明确布尔值；不从缺失、null 或字符串补默认值。`update --allow-agents` 把实际布尔放入普通 PATCH，省略时不产生该字段；create 不接受该选项。同值与 in_progress 锁定由服务判定，命令不自动重试。参数定义同时提供 true/false 的静态补全。
 
 `Task.version` 与 PATCH 版本覆盖完整正 `int64` 范围，内部使用 `bigint`；JSON 读取
 从数字原文保留精度，写入及 `--json` 使用 JSON 数字，不能转换为字符串或不精确的
@@ -464,7 +466,7 @@ Project 渲染由 `commands/project/rendering.ts` 拥有，与 API 数据分离�
 显示为 `\uXXXX`。普通 Unicode、emoji 和原有反斜线保持原样；该转换只属于终端
 显示，不改变提交给服务或 JSON 输出的数据。
 
-Task 的 `rendering.ts` 提供列表标签块与完整资源标签块。列表包含 `ID`、
+Task 的 `rendering.ts` 提供列表标签块与完整资源标签块，均显示 `Automatic execution` 的真实布尔值，graph 的可读节点同样保留该许可。列表包含 `ID`、
 `Project`、`Title`、`Status`、`Ready`、`Depends on`、`Blocked by`，以及关联 PR
 数量、按顺序编号的 title/url；完整资源另外包含 `Description`、完整十进制
 `Version`、`Created` 和 `Updated`，供 show、ready、create 和 update 使用。

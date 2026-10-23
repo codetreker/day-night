@@ -33,7 +33,7 @@ func externalDependencyFacts(t *testing.T, database *Store) map[string]string {
 func TestExternalDependencyMigrationPreservesExistingFactsAndDefaults(t *testing.T) {
 	ctx := context.Background()
 	pool := emptyPool(t)
-	if err := migrate(ctx, pool, schemaMigrations[:10]); err != nil {
+	if err := migrate(ctx, pool, schemaMigrations[:11]); err != nil {
 		t.Fatal(err)
 	}
 	database := &Store{Pool: pool}
@@ -58,7 +58,7 @@ func TestExternalDependencyMigrationPreservesExistingFactsAndDefaults(t *testing
 		t.Fatalf("external dependency migration changed existing facts: before=%v after=%v", before, after)
 	}
 	var preserved string
-	if err := pool.QueryRow(ctx, `SELECT jsonb_agg(to_jsonb(t) ORDER BY version)::text FROM schema_migrations t WHERE version<=10`).Scan(&preserved); err != nil || preserved != ledger {
+	if err := pool.QueryRow(ctx, `SELECT jsonb_agg(to_jsonb(t) ORDER BY version)::text FROM schema_migrations t WHERE version<=11`).Scan(&preserved); err != nil || preserved != ledger {
 		t.Fatalf("migration changed the existing ledger: %v", err)
 	}
 	for _, number := range []int{11, 12} {
@@ -78,14 +78,14 @@ func TestExternalDependencyMigrationPreservesExistingFactsAndDefaults(t *testing
 		t.Fatalf("external marker accepted NULL: %v", err)
 	}
 	var applied time.Time
-	if err := pool.QueryRow(ctx, "SELECT applied_at FROM schema_migrations WHERE version=11").Scan(&applied); err != nil {
+	if err := pool.QueryRow(ctx, "SELECT applied_at FROM schema_migrations WHERE version=12").Scan(&applied); err != nil {
 		t.Fatal(err)
 	}
 	if err := migrate(ctx, pool, schemaMigrations); err != nil {
 		t.Fatal(err)
 	}
 	var repeated time.Time
-	if err := pool.QueryRow(ctx, "SELECT applied_at FROM schema_migrations WHERE version=11").Scan(&repeated); err != nil || !repeated.Equal(applied) {
+	if err := pool.QueryRow(ctx, "SELECT applied_at FROM schema_migrations WHERE version=12").Scan(&repeated); err != nil || !repeated.Equal(applied) {
 		t.Fatalf("repeated migration changed ledger: %v, %v", repeated, err)
 	}
 }
@@ -99,6 +99,7 @@ func TestExternalDependencyStoreReadsWritesAndRollback(t *testing.T) {
 	target := queryTask(t, database, project.ID, 12, core.TaskTodo, pending.ID, done.ID)
 	foreignDone := queryTask(t, database, foreign.ID, 20, core.TaskDone)
 	foreignTarget := queryTask(t, database, foreign.ID, 21, core.TaskTodo, foreignDone.ID)
+	mustQueryExec(t, database, `UPDATE tasks SET allow_agents=true WHERE id=$1`, target.ID)
 	mustQueryExec(t, database, `UPDATE task_dependencies SET external=true WHERE task_id=ANY($1::uuid[])`, []string{target.ID, foreignTarget.ID})
 	target = snapshotTask(t, database, project.ID, target.ID)
 	if !slices.Equal(target.ExternalDependsOn, []string{done.ID, pending.ID}) || !slices.Equal(target.BlockedBy, []string{pending.ID}) || target.Ready {
@@ -117,8 +118,8 @@ func TestExternalDependencyStoreReadsWritesAndRollback(t *testing.T) {
 		if err != nil || !reachable {
 			t.Fatalf("external edge disappeared from reachability: %v, %v", reachable, err)
 		}
-		updated, err := tx.UpdateTask(ctx, target.ID, TaskWrite{Title: "Preserved external edges", Status: target.Status, DependsOn: target.DependsOn, ExternalDependsOn: target.ExternalDependsOn})
-		if err != nil || !slices.Equal(updated.ExternalDependsOn, target.ExternalDependsOn) {
+		updated, err := tx.UpdateTask(ctx, target.ID, TaskWrite{AllowAgents: target.AllowAgents, Title: "Preserved external edges", Status: target.Status, DependsOn: target.DependsOn, ExternalDependsOn: target.ExternalDependsOn})
+		if err != nil || !updated.AllowAgents || !slices.Equal(updated.ExternalDependsOn, target.ExternalDependsOn) {
 			t.Fatalf("store replacement lost external classification: %#v, %v", updated, err)
 		}
 		target = updated
@@ -144,7 +145,7 @@ func TestExternalDependencyStoreReadsWritesAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	err := database.WriteProject(ctx, project.ID, func(tx *ProjectTx) error {
-		_, err := tx.UpdateTask(ctx, target.ID, TaskWrite{Title: "Rolled back", Status: target.Status, DependsOn: []string{done.ID, target.ID}, ExternalDependsOn: []string{done.ID}})
+		_, err := tx.UpdateTask(ctx, target.ID, TaskWrite{AllowAgents: target.AllowAgents, Title: "Rolled back", Status: target.Status, DependsOn: []string{done.ID, target.ID}, ExternalDependsOn: []string{done.ID}})
 		return err
 	})
 	var constraint *pgconn.PgError

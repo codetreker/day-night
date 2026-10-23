@@ -83,6 +83,21 @@ func optionalString(fields map[string]json.RawMessage, key string) (*string, err
 	return &value, nil
 }
 
+func optionalBool(fields map[string]json.RawMessage, key string) (*bool, error) {
+	raw, exists := fields[key]
+	if !exists {
+		return nil, nil
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, invalidInput(key + " must be a boolean")
+	}
+	var value bool
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, invalidInput(key + " must be a boolean")
+	}
+	return &value, nil
+}
+
 func optionalStrings(fields map[string]json.RawMessage, key string) (*[]string, error) {
 	raw, exists := fields[key]
 	if !exists {

@@ -1,5 +1,6 @@
 import { workspace } from "./en/workspace";
 import { graph } from "./en/graph";
+import { automation } from "./en/automation";
 import { inspection } from "./en/inspection";
 import { execution } from "./en/execution";
 import { auth } from "./en/auth";
@@ -9,6 +10,7 @@ export const en: Messages = {
   workspace,
   graph,
   inspection,
+  automation,
   auth,
   execution,
   common: {

@@ -15,6 +15,7 @@ type ProjectTx struct {
 }
 
 type TaskWrite struct {
+	AllowAgents       bool
 	Title             string
 	Description       string
 	Properties        core.TaskProperties
@@ -85,8 +86,8 @@ func (tx *ProjectTx) Reachable(ctx context.Context, from, to string, replacement
 }
 
 func (tx *ProjectTx) CreateTask(ctx context.Context, id string, values TaskWrite) (core.Task, error) {
-	_, err := tx.tx.Exec(ctx, `INSERT INTO tasks (id, project_id, title, description, status, properties)
-		VALUES ($1, $2, $3, $4, $5, $6)`, id, tx.projectID, values.Title, values.Description, values.Status, taskproperties.Encode(values.Properties))
+	_, err := tx.tx.Exec(ctx, `INSERT INTO tasks (id, project_id, title, description, status, properties, allow_agents)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`, id, tx.projectID, values.Title, values.Description, values.Status, taskproperties.Encode(values.Properties), values.AllowAgents)
 	if err != nil {
 		return core.Task{}, queryError("create task", err)
 	}
@@ -97,7 +98,7 @@ func (tx *ProjectTx) CreateTask(ctx context.Context, id string, values TaskWrite
 }
 
 func (tx *ProjectTx) UpdateTask(ctx context.Context, id string, values TaskWrite) (core.Task, error) {
-	result, err := tx.tx.Exec(ctx, `UPDATE tasks SET title = $3, description = $4, status = $5, properties = $6,
+	result, err := tx.tx.Exec(ctx, `UPDATE tasks SET title = $3, description = $4, status = $5, properties = $6, allow_agents = $7,
 		started_at = CASE
 			WHEN status <> $5 AND $5 = 'in_progress' THEN statement_timestamp()
 			WHEN status = 'done' AND $5 <> 'done' THEN NULL
@@ -107,7 +108,7 @@ func (tx *ProjectTx) UpdateTask(ctx context.Context, id string, values TaskWrite
 			WHEN status <> $5 AND ($5 = 'in_progress' OR status = 'done') THEN NULL
 			ELSE completed_at END,
 		version = version + 1, updated_at = statement_timestamp() WHERE project_id = $1 AND id = $2`,
-		tx.projectID, id, values.Title, values.Description, values.Status, taskproperties.Encode(values.Properties))
+		tx.projectID, id, values.Title, values.Description, values.Status, taskproperties.Encode(values.Properties), values.AllowAgents)
 	if err != nil {
 		return core.Task{}, queryError("update task", err)
 	}

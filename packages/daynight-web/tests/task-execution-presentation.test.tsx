@@ -13,8 +13,8 @@ import { installGraphMeasurements } from "./graph-measurements";
 import { renderWithLocale } from "./helpers/renderWithLocale";
 
 const start = "2026-10-20T00:00:00.123456789Z";
-const task = (id: string, changes: Partial<GraphTask> = {}): GraphTask => ({
-  id, titlePreview: id, titleTruncated: false, status: "done", dependsOn: [], externalDependsOn: [], blockedBy: [], ready: false,
+const task = (id: string, changes: Partial<GraphTask> = {}): GraphTask => ({ allowAgents: false, externalDependsOn: [],
+  id, titlePreview: id, titleTruncated: false, status: "done", dependsOn: [], blockedBy: [], ready: false,
   startedAt: null, completedAt: null, createdAt: start, updatedAt: start, ...changes,
 });
 const graph: TaskGraphData = {

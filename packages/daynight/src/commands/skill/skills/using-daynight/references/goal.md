@@ -49,6 +49,11 @@ authorized approval for those tasks. Metadata and attachment writes do not appro
 
 ## Execute the appropriate stage
 
+New Goal stages and delivery tasks start with `allowAgents=false`. Creation and
+approval do not enable automatic execution. Automated workflows must not enable
+the flag themselves; explicit user-selected execution may use manual claim
+regardless of it while retaining all authorization and prerequisite checks.
+
 Every stage uses the same explicit task lifecycle. Proposed work waits for the
 user's scoped approval; an authorized `task approve` moves it to todo even with
 unfinished prerequisites. Begin only from approved ready todo with complete
