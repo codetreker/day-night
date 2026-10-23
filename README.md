@@ -33,6 +33,13 @@ Goal, dependency, PR and separate approval/implementation/merge permissions.
 Daynight task records and
 task-specific primary plans own delivery status and source-bound acceptance.
 
+The adopted [execution timing requirements](docs/spec/daynight-task-timing.md),
+[architecture](docs/design/daynight-task-timing.md) and
+[delivery breakdown](docs/design/daynight-task-timing-tasks.md) define task
+start/completion facts, project warning thresholds and live card presentation.
+This design is tracked separately from runtime implementation and whole-goal
+acceptance; the corresponding Daynight tasks own delivery evidence.
+
 | Component | Location | Implementation status | Requirements and design |
 |---|---|---|---|
 | `daynight` | `packages/daynight/` | Implemented `review`, npm global `update`, guided `setup`, Bash/zsh `completion` generation and setup, the public task-management skill bundle and interactive Agent installation, shared configuration, server HTTP and repository binding foundations plus project, task and single-file attachment commands; native installed service and resource-budget acceptance implemented | [Client requirements](docs/spec/daynight.md), [client design](docs/design/daynight.md), [completion design](docs/design/daynight-completion.md), [review requirements](docs/spec/daynight-review.md), [review design](docs/design/daynight-review.md), [project/task requirements](docs/spec/daynight-project-task.md), [design](docs/design/daynight-project-task.md), [tasks](docs/design/daynight-project-task-tasks.md) |
