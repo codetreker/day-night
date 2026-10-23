@@ -1,4 +1,4 @@
-import { jsonObjectSources } from "./json-source";
+import { jsonObjectSources } from "./json-source.ts";
 
 export const isTaskVersion = (value: unknown): value is bigint =>
   typeof value === "bigint" && value > 0n && value <= 9_223_372_036_854_775_807n;
