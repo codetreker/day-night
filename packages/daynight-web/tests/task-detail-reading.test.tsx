@@ -60,7 +60,7 @@ describe('task description reading', () => {
     expect(pane()).toHaveFocus();
     await screen.findByRole('heading', { name: `Preview ${item.path}` });
     expect(api.readText).toHaveBeenCalledWith(projectId, taskId, item.path, expect.any(AbortSignal));
-    expect(screen.getByRole('button', { name: /方案/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /方案/, pressed: true })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('link', { name: '在新标签页打开' })).toHaveAttribute('href', `/projects/${projectId}/tasks/${taskId}/attachments/docs/%E6%96%B9%E6%A1%88%20%25%3F%23.md`);
     showOverview();
     fireEvent.click(link);
@@ -179,12 +179,30 @@ describe('task description reading', () => {
     expect(api.list).toHaveBeenCalledTimes(2);
   });
 
+  it('dismisses unsubmitted file menus and confirmation when the attachment panel is hidden', async () => {
+    const api = fixture();
+    render(reading(api));
+    fireEvent.click(screen.getByRole('tab', { name: '附件' }));
+    const actions = await screen.findByRole('button', { name: '更多操作：plan.md' });
+    fireEvent.click(actions);
+    expect(screen.getByRole('menu')).toBeVisible();
+    showOverview();
+    expect(screen.queryByRole('menu')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: '附件' }));
+    fireEvent.click(actions);
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除' }));
+    expect(screen.getByRole('dialog', { name: '删除附件？' })).toBeVisible();
+    showOverview();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(api.remove).not.toHaveBeenCalled();
+  });
+
   it('lets manual selection supersede a pending description request without later selection or focus changes', async () => {
     const page = deferred<AttachmentPage>();
     const api = { ...fixture(), list: vi.fn().mockResolvedValueOnce({ items: [file('other.md')], nextCursor: 'second' }).mockReturnValueOnce(page.promise) };
     render(reading(api));
     fireEvent.click(screen.getByRole('link', { name: '方案' }));
-    const other = await screen.findByRole('button', { name: /other.md/ });
+    const other = await screen.findByRole('button', { name: /other.md/, pressed: false });
     other.focus();
     fireEvent.click(other);
     await screen.findByRole('heading', { name: 'Preview other.md' });

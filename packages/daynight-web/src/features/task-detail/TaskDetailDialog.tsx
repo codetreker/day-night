@@ -63,6 +63,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
     closeRef.current!.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         callbacks.current.onClose();

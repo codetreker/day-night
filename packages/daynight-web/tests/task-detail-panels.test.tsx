@@ -47,7 +47,7 @@ describe('task detail panels', () => {
     const api = fixture();
     const view = render(panels(api));
     fireEvent.click(screen.getByRole('tab', { name: '附件' }));
-    fireEvent.click(await screen.findByRole('button', { name: /index.html/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /index.html/, pressed: false }));
     const frame = await screen.findByTitle('HTML 预览：site/index.html') as HTMLIFrameElement;
     fireEvent.load(frame);
     const content = frame.contentDocument!;

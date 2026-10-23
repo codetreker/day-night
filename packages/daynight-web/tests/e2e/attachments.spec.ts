@@ -8,12 +8,13 @@ import { attachmentDownloadUrl, attachmentPageUrl, attachmentPreviewUrl } from '
 import { createAcceptanceCli } from '../../scripts/acceptance/installed-cli.mts';
 import { createProject, createApprovedTask, expect, test, type Task } from './fixtures';
 import { expectCenteredTaskDetail } from './detail-dialog';
+import { longConfirmationPath } from '../mockups/attachment-paths';
 import { hasPaintedPdfMarker, readPdfPixels, type PdfPixels } from './pdf-pixels';
 
 const exact = (value: string): RegExp => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
 const asset = (path: string): string => fileURLToPath(new URL(path, import.meta.url));
-const selectFile = async (region: Locator, path: string): Promise<void> => {
-  let branch = region.getByRole('navigation', { name: '附件文件' }).locator(':scope > ul');
+const fileButton = async (region: Locator, path: string): Promise<Locator> => {
+  let branch = region.getByRole('navigation', { name: /^(附件文件|Attachment files)$/ }).locator(':scope > ul');
   const parts = path.split('/');
   for (const name of parts.slice(0, -1)) {
     const summary = branch.locator(':scope > li > details > summary').filter({ hasText: exact(`▱ ${name}`) });
@@ -22,11 +23,41 @@ const selectFile = async (region: Locator, path: string): Promise<void> => {
     if (await directory.getAttribute('open') === null) await summary.click();
     branch = directory.locator(':scope > ul');
   }
-  const name = branch.locator(':scope > li > button > .attachment-file-name').filter({ hasText: exact(parts.at(-1)!) });
+  const name = branch.locator(':scope > li > .attachment-file-row > .attachment-file > .attachment-file-name').filter({ hasText: exact(parts.at(-1)!) });
   await expect(name).toHaveCount(1);
-  await name.locator('..').click();
+  return name.locator('..');
+};
+const selectFile = async (region: Locator, path: string): Promise<void> => {
+  await (await fileButton(region, path)).click();
   await expect(region.getByRole('heading', { name: path, exact: true })).toBeVisible();
 };
+const fileActions = async (region: Locator, path: string): Promise<Locator> =>
+  (await fileButton(region, path)).locator('..').locator('.attachment-actions-trigger');
+const confirmDeletion = async (page: Page, region: Locator, path: string): Promise<Locator> => {
+  await (await fileActions(region, path)).click();
+  await page.getByRole('menuitem', { name: /^(删除|Delete)$/ }).click();
+  const confirmation = page.locator('.attachment-delete-dialog');
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation).toContainText(path);
+  return confirmation;
+};
+
+const pathEdges = async (confirmation: Locator): Promise<{ prefix: boolean; tail: boolean }> =>
+  await confirmation.locator('.attachment-delete-path').evaluate((element) => {
+    const text = element.firstChild;
+    if (!(text instanceof Text)) throw new Error('The confirmation path has no readable text node.');
+    const body = element.closest('.attachment-delete-body');
+    if (body === null) throw new Error('The confirmation path has no scrolling body.');
+    const bounds = body.getBoundingClientRect();
+    const visible = (start: number, end: number) => {
+      const range = document.createRange();
+      range.setStart(text, start);
+      range.setEnd(text, end);
+      const rect = range.getBoundingClientRect();
+      return rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1 && rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1;
+    };
+    return { prefix: visible(0, Math.min(24, text.length)), tail: visible(Math.max(0, text.length - 24), text.length) };
+  });
 
 const settleScroll = async (owner: Locator): Promise<void> => {
   // Native scrolling continues while task-polling timers are paused in the page.
@@ -104,6 +135,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
       { path: 'site/style.css', bytes: await readFile(asset('../mockups/files/site/style.css')) },
       { path: 'site/app.js', bytes: await readFile(asset('./attachment-files/site/app.js')) },
       { path: longPath, bytes: Buffer.from('Long path attachment content\n'.repeat(200)) },
+      { path: longConfirmationPath, bytes: Buffer.from('Portable long-path confirmation fixture\n') },
       { path: 'long/reading.md', bytes: await readFile(asset('../mockups/files/docs/tall.md')) },
       { path: 'long/reading.txt', bytes: await readFile(asset('../mockups/files/data/tall.txt')) },
       { path: 'long/reading.svg', bytes: await readFile(asset('../mockups/files/images/tall.svg')) },
@@ -124,6 +156,8 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     allowAttachmentWrites([
       { origin, method: 'PUT', projectId: project.id, taskId: task.id, path: uploadedPath, count: 2 },
       { origin, method: 'DELETE', projectId: project.id, taskId: task.id, path: uploadedPath, count: 1 },
+      { origin, method: 'DELETE', projectId: project.id, taskId: task.id, path: 'notes/one/same.txt', count: 2 },
+      { origin, method: 'DELETE', projectId: project.id, taskId: task.id, path: 'notes/two/same.txt', count: 1 },
     ]);
     let graphReads = 0;
     let detailReads = 0;
@@ -143,7 +177,8 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     await expect(page.locator('.task-graph-canvas')).toHaveCount(0);
     const originalOverflow = await page.evaluate(() => ({ document: document.documentElement.style.overflow, body: document.body.style.overflow }));
     await trigger.click();
-    const dialog = page.getByRole('dialog', { name: '任务详情' });
+    const dialog = page.locator('.task-detail-dialog');
+    await expect(dialog).toHaveAccessibleName('任务详情');
     const attachments = dialog.locator('.task-attachments');
     await expect(dialog.getByRole('tab', { name: '概览', exact: true })).toHaveAttribute('aria-selected', 'true');
     await dialog.getByRole('tab', { name: '附件', exact: true }).click();
@@ -302,7 +337,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
         expect(panes[0]!.right).toBeLessThanOrEqual(panes[1]!.left + 1);
         expect(panes[0]!.top).toBe(panes[1]!.top);
         expect(panes[1]!.height).toBeGreaterThan(80);
-        for (const action of ['下载', '删除']) await expect(attachments.getByRole(action === '下载' ? 'link' : 'button', { name: action, exact: true })).toBeInViewport({ ratio: 1 });
+        for (const action of ['下载', '在新标签页打开']) await expect(attachments.getByRole('link', { name: action, exact: true })).toBeInViewport({ ratio: 1 });
         const outer = await body.evaluate((element) => {
           const chain = [];
           for (let node: Element | null = element; node !== null && !node.classList.contains('task-detail-backdrop'); node = node.parentElement) chain.push({ className: node.className, height: node.clientHeight, scrollHeight: node.scrollHeight, overflow: getComputedStyle(node).overflowY });
@@ -365,7 +400,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     await page.setViewportSize({ width: 320, height: 800 });
     await selectFile(attachments, longPath);
     await expect(attachments.getByRole('heading', { name: longPath, exact: true })).toHaveAttribute('title', longPath);
-    for (const action of ['下载', '删除']) await expect(attachments.getByRole(action === '下载' ? 'link' : 'button', { name: action, exact: true })).toBeInViewport({ ratio: 1 });
+    for (const action of ['下载', '在新标签页打开']) await expect(attachments.getByRole('link', { name: action, exact: true })).toBeInViewport({ ratio: 1 });
     await info.attach('attachment-scroll-owners', { body: Buffer.from(JSON.stringify(scrollEvidence, null, 2)), contentType: 'application/json' });
     await page.setViewportSize({ width: 320, height: 800 });
     await selectFile(attachments, 'docs/design.md');
@@ -432,7 +467,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
     await innerButton.focus();
     await page.keyboard.press('Shift+Tab');
-    await expect(attachments.getByRole('button', { name: '删除', exact: true })).toBeFocused();
+    await expect(attachments.getByRole('link', { name: '在新标签页打开', exact: true })).toBeFocused();
     await innerButton.focus();
     await page.keyboard.press('Escape');
     await expectReleased();
@@ -485,13 +520,210 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     const downloadPath = await downloaded.path();
     if (downloadPath === null) throw new Error('The UI attachment download did not produce an owned file.');
     expect(await readFile(downloadPath)).toEqual(overwritten);
-    const deletion = page.waitForResponse((response) => response.url() === uploadUrl && response.request().method() === 'DELETE');
-    await attachments.getByRole('button', { name: '删除', exact: true }).click();
-    expect((await deletion).status()).toBe(204);
+    const deletionRequests: string[] = [];
+    page.on('request', (request) => { if (request.method() === 'DELETE') deletionRequests.push(request.url()); });
+    await selectFile(attachments, 'long/reading.txt');
+    const retainedPreview = attachments.locator('.attachment-preview-body');
+    await expect(retainedPreview.locator('pre')).toHaveText(seeds.find(({ path }) => path === 'long/reading.txt')!.bytes.toString('utf8'));
+    await expect.poll(() => retainedPreview.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+    await retainedPreview.evaluate((element) => { element.scrollTop = 220; });
+    await expect.poll(() => retainedPreview.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    const retainedScroll = await retainedPreview.evaluate((element) => element.scrollTop);
+    const retainedElement = await retainedPreview.elementHandle();
+    if (retainedElement === null) throw new Error('The selected attachment preview is absent.');
+    const unrelatedPath = 'notes/one/same.txt';
+    const unrelatedUrl = new URL(attachmentDownloadUrl(project.id, task.id, unrelatedPath), origin).href;
+    const more = await fileActions(attachments, unrelatedPath);
+    await more.focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByRole('menuitem', { name: '删除', exact: true })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(more).toBeFocused();
+    await expect(dialog).toBeVisible();
+    const cancelled = await confirmDeletion(page, attachments, unrelatedPath);
+    await expect(cancelled.getByRole('button', { name: '取消', exact: true })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(cancelled.getByRole('button', { name: '删除附件', exact: true })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(cancelled.getByRole('combobox', { name: '语言 / Language', exact: true })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(cancelled.locator('.attachment-delete-body')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(cancelled.getByRole('button', { name: '取消', exact: true })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(cancelled).toBeHidden();
+    await expect(more).toBeFocused();
+    await confirmDeletion(page, attachments, unrelatedPath);
+    await page.keyboard.press('Escape');
+    await expect(cancelled).toBeHidden();
+    await expect(dialog).toBeVisible();
+    expect(deletionRequests).toEqual([]);
+
+    const menuLayouts: unknown[] = [];
+    for (const locale of ['zh-CN', 'en']) {
+      await language.selectOption(locale);
+      for (const viewport of [{ width: 1440, height: 800 }, { width: 768, height: 800 }, { width: 320, height: 800 }, { width: 844, height: 390 }]) {
+        await page.setViewportSize(viewport);
+        await (await fileActions(attachments, longPath)).click();
+        const menu = page.getByRole('menu');
+        await expect(menu).toBeInViewport({ ratio: 1 });
+        const menuBounds = await menu.boundingBox();
+        await page.getByRole('menuitem', { name: locale === 'en' ? 'Delete' : '删除', exact: true }).click();
+        const confirmation = page.locator('.attachment-delete-dialog');
+        await expect(confirmation).toContainText(longPath);
+        await expect(confirmation).toBeInViewport({ ratio: 1 });
+        await expect(confirmation.getByRole('button', { name: locale === 'en' ? 'Cancel' : '取消', exact: true })).toBeFocused();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        menuLayouts.push({ locale, ...viewport, menu: menuBounds, confirmation: await confirmation.boundingBox() });
+        await page.keyboard.press('Escape');
+        await expect(dialog).toBeVisible();
+      }
+    }
+    const longPathLayouts: unknown[] = [];
+    for (const locale of ['zh-CN', 'en']) {
+      await language.selectOption(locale);
+      for (const viewport of [{ width: 320, height: 780 }, { width: 320, height: 568 }, { width: 844, height: 390 }]) {
+        await page.setViewportSize(viewport);
+        const confirmation = await confirmDeletion(page, attachments, longConfirmationPath);
+        const body = confirmation.locator('.attachment-delete-body');
+        const cancel = confirmation.getByRole('button', { name: locale === 'en' ? 'Cancel' : '取消', exact: true });
+        const submit = confirmation.getByRole('button', { name: locale === 'en' ? 'Delete attachment' : '删除附件', exact: true });
+        await expect(confirmation).toBeInViewport({ ratio: 1 });
+        await expect(cancel).toBeFocused();
+        await expect(confirmation.locator('header,footer')).toHaveCount(2);
+        for (const fixed of [confirmation.locator('header'), confirmation.locator('footer'), cancel, submit]) await expect(fixed).toBeInViewport({ ratio: 1 });
+        const metrics = await confirmation.evaluate((element) => {
+          const body = element.querySelector<HTMLElement>('.attachment-delete-body')!;
+          return { dialogClientHeight: element.clientHeight, dialogScrollHeight: element.scrollHeight, bodyClientHeight: body.clientHeight, bodyScrollHeight: body.scrollHeight, bodyOverflow: getComputedStyle(body).overflowY };
+        });
+        expect(metrics.dialogScrollHeight).toBeLessThanOrEqual(metrics.dialogClientHeight + 1);
+        expect(metrics.bodyOverflow).toMatch(/^(auto|scroll)$/);
+        if (viewport.height <= 568) expect(metrics.bodyScrollHeight).toBeGreaterThan(metrics.bodyClientHeight + 1);
+        await expect.poll(() => pathEdges(confirmation)).toMatchObject({ prefix: true });
+        let wheelTop = 0;
+        let keyboardTop = 0;
+        if (metrics.bodyScrollHeight > metrics.bodyClientHeight + 1) {
+          const bounds = await body.boundingBox();
+          if (bounds === null) throw new Error('The confirmation scroll owner has no bounds.');
+          await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+          await page.mouse.wheel(0, metrics.bodyScrollHeight);
+          await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+          await expect.poll(() => pathEdges(confirmation)).toMatchObject({ tail: true });
+          wheelTop = await body.evaluate((element) => element.scrollTop);
+          await page.keyboard.press('Shift+Tab');
+          await expect(body).toBeFocused();
+          await page.keyboard.press('Home');
+          await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBe(0);
+          await expect.poll(() => pathEdges(confirmation)).toMatchObject({ prefix: true });
+          await page.keyboard.press('End');
+          await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+          await expect.poll(() => pathEdges(confirmation)).toMatchObject({ tail: true });
+          keyboardTop = await body.evaluate((element) => element.scrollTop);
+        } else {
+          await expect.poll(() => pathEdges(confirmation)).toEqual({ prefix: true, tail: true });
+          await page.keyboard.press('Shift+Tab');
+          await expect(body).toBeFocused();
+        }
+        await page.keyboard.press('Tab');
+        await expect(cancel).toBeFocused();
+        await page.keyboard.press('Shift+Tab');
+        await expect(body).toBeFocused();
+        await page.keyboard.press('Shift+Tab');
+        await expect(confirmation.getByRole('combobox', { name: '语言 / Language', exact: true })).toBeFocused();
+        for (const fixed of [confirmation.locator('header'), confirmation.locator('footer'), cancel, submit]) await expect(fixed).toBeInViewport({ ratio: 1 });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        const screenshot = info.outputPath(`attachment-delete-long-path-${locale}-${viewport.width}x${viewport.height}.png`);
+        await page.screenshot({ path: screenshot, fullPage: false });
+        await info.attach(`attachment-delete-long-path-${locale}-${viewport.width}x${viewport.height}`, { path: screenshot, contentType: 'image/png' });
+        longPathLayouts.push({ locale, ...viewport, pathBytes: Buffer.byteLength(longConfirmationPath), ...metrics, wheelTop, keyboardTop });
+        await cancel.click();
+        await expect(confirmation).toBeHidden();
+        await expect(dialog).toBeVisible();
+      }
+    }
+    await language.selectOption('zh-CN');
+    await page.setViewportSize({ width: 1600, height: 1100 });
+    expect(deletionRequests).toEqual([]);
+    expect(await retainedElement.evaluate((element) => element === document.querySelector('.attachment-preview-body'))).toBe(true);
+    expect(await retainedPreview.evaluate((element) => element.scrollTop)).toBe(retainedScroll);
+
+    // The server's real 404 verifies that a stale row stays visible without claiming rollback.
+    await command(args('remove', [unrelatedPath]));
+    const failedResponse = page.waitForResponse((response) => response.url() === unrelatedUrl && response.request().method() === 'DELETE');
+    const failedConfirmation = await confirmDeletion(page, attachments, unrelatedPath);
+    await failedConfirmation.getByRole('button', { name: '删除附件', exact: true }).click();
+    const failure = await failedResponse;
+    expect(failure.status()).toBe(404);
+    const failureBody = await failure.json() as { error: { requestId: string } };
+    await expect(failedConfirmation.getByRole('alert')).toContainText(failureBody.error.requestId);
+    await expect(more).toBeVisible();
+    expect(await retainedElement.evaluate((element) => element === document.querySelector('.attachment-preview-body'))).toBe(true);
+    expect(await retainedPreview.evaluate((element) => element.scrollTop)).toBe(retainedScroll);
+    await put(unrelatedPath, refreshedText, 'restore-delete-retry');
+    let releaseDelete!: () => void;
+    const heldDelete = new Promise<void>((resolve) => { releaseDelete = resolve; });
+    await page.route(unrelatedUrl, async (route) => {
+      if (route.request().method() === 'DELETE') await heldDelete;
+      await route.continue();
+    });
+    const inventoryPath = `/api/v1/projects/${project.id}/tasks/${task.id}/attachments`;
+    let releaseInventory!: () => void;
+    const heldInventory = new Promise<void>((resolve) => { releaseInventory = resolve; });
+    const inventoryMatcher = (url: URL): boolean => url.pathname === inventoryPath;
+    await page.route(inventoryMatcher, async (route) => { await heldInventory; await route.continue(); });
+    const inventoryRequest = page.waitForRequest((request) => new URL(request.url()).pathname === inventoryPath && request.method() === 'GET');
+    const retryRequest = page.waitForRequest((request) => request.url() === unrelatedUrl && request.method() === 'DELETE');
+    const retryResponse = page.waitForResponse((response) => response.url() === unrelatedUrl && response.request().method() === 'DELETE');
+    await failedConfirmation.getByRole('button', { name: '删除附件', exact: true }).click();
+    try {
+      await retryRequest;
+      await expect(failedConfirmation.getByRole('button', { name: '正在删除…', exact: true })).toBeDisabled();
+      await expect(failedConfirmation.getByRole('button', { name: '取消', exact: true })).toBeDisabled();
+      await failedConfirmation.getByRole('button', { name: '正在删除…', exact: true }).evaluate((button) => (button as HTMLButtonElement).click());
+      await page.keyboard.press('Enter');
+      await page.keyboard.press('Escape');
+      await expect(failedConfirmation).toBeVisible();
+      expect(deletionRequests).toEqual([unrelatedUrl, unrelatedUrl]);
+    } finally { releaseDelete(); }
+    try {
+      expect((await retryResponse).status()).toBe(204);
+      await inventoryRequest;
+      await expect(failedConfirmation).toBeHidden();
+      await expect.poll(() => page.evaluate(() => {
+        const active = document.activeElement;
+        return active instanceof HTMLElement && active !== document.body && active.closest('.task-attachments') !== null && !active.matches(':disabled');
+      }), { message: 'Successful deletion restores focus while inventory reload is still pending' }).toBe(true);
+    } finally { releaseInventory(); await page.unroute(inventoryMatcher); await page.unroute(unrelatedUrl); }
     await expect(attachments.getByRole('heading', { name: `附件 · ${seeds.length}`, exact: true })).toBeVisible();
+    expect(await retainedElement.evaluate((element) => element === document.querySelector('.attachment-preview-body'))).toBe(true);
+    expect(await retainedPreview.evaluate((element) => element.scrollTop)).toBe(retainedScroll);
+    await retainedElement.dispose();
+    expect(await cli.read(args('read', ['notes/two/same.txt']))).toEqual(Buffer.from('Second same-name text\n'));
+
+    await selectFile(attachments, 'site/index.html');
+    const retainedFrame = attachments.locator('iframe');
+    await retainedFrame.contentFrame().getByRole('button', { name: '完成一个任务' }).click();
+    const retainedFrameElement = await retainedFrame.elementHandle();
+    const nativeDelete = await confirmDeletion(page, attachments, 'notes/two/same.txt');
+    const nativeResponse = page.waitForResponse((response) => response.url() === new URL(attachmentDownloadUrl(project.id, task.id, 'notes/two/same.txt'), origin).href && response.request().method() === 'DELETE');
+    await nativeDelete.getByRole('button', { name: '删除附件', exact: true }).click();
+    expect((await nativeResponse).status()).toBe(204);
+    await expect(nativeDelete).toBeHidden();
+    expect(await retainedFrameElement!.evaluate((element) => element === document.querySelector('.task-attachments iframe'))).toBe(true);
+    await expect(retainedFrame.contentFrame().locator('#result')).toHaveText('已完成 3 个任务');
+    await retainedFrameElement!.dispose();
+
+    await selectFile(attachments, uploadedPath);
+    const deletion = page.waitForResponse((response) => response.url() === uploadUrl && response.request().method() === 'DELETE');
+    const selectedDelete = await confirmDeletion(page, attachments, uploadedPath);
+    await selectedDelete.getByRole('button', { name: '删除附件', exact: true }).click();
+    expect((await deletion).status()).toBe(204);
+    await expect(attachments.getByRole('heading', { name: `附件 · ${seeds.length - 2}`, exact: true })).toBeVisible();
+    expect(deletionRequests).toHaveLength(4);
+    await info.attach('attachment-delete-confirmation', { body: Buffer.from(JSON.stringify({ zeroRequestsBeforeConfirmation: true, requests: deletionRequests, failureStatus: failure.status(), failureRequestId: failureBody.error.requestId, menuLayouts, longPathLayouts }, null, 2)), contentType: 'application/json' });
     await expect(attachments.getByRole('region', { name: '附件预览', exact: true })).toHaveCount(0);
     const finalList = JSON.parse(await command(args('list', ['--json']))) as { path: string }[];
-    expect(finalList.map(({ path }) => path)).toEqual(seeds.map(({ path }) => path).toSorted());
+    expect(finalList.map(({ path }) => path)).toEqual(seeds.filter(({ path }) => !['notes/one/same.txt', 'notes/two/same.txt'].includes(path)).map(({ path }) => path).toSorted());
     const absent = await cli.run(args('read', [uploadedPath]));
     expect(absent.exitCode).not.toBe(0);
     expect(absent.stdout).toBe('');

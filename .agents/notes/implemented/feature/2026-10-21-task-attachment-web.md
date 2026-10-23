@@ -36,7 +36,7 @@ frame keyboard bridge to actual dialog use. One file input
 initializes a target path from the filename; users may edit it to a nested path.
 `mime` 4.1.1 derives Content-Type from that target, so changing a source filename
 does not silently determine the saved path's type. Same-path upload overwrites;
-files provide download and deletion. Success refreshes only attachment data.
+files provide download and deletion. The [deletion confirmation decision](2026-10-23-attachment-delete-confirmation.md) places deletion in each file row's action menu and requires explicit full-path confirmation. Success refreshes only attachment data.
 
 The hook keeps scoped list, write, selection and preview state. The
 [Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
@@ -51,7 +51,7 @@ need no text read or availability check. Otherwise the arriving HTML/PDF metadat
 could mount a frame using that premature ready state before the preview effect
 starts its HEAD check, then remove it again while the check is pending. Preview
 depends on both path and metadata `updatedAt`; manual refresh therefore rereads
-changed text, while successful mutations also advance preview revision.
+changed text, while successful overwrites also advance preview revision. Deleting an unselected path preserves the current preview identity and reading position; selected deletion clears its preview.
 Path/timestamp identity remounts native previews after overwrite.
 
 `MarkdownContent` shares `react-markdown` 10.1.0 and `remark-gfm` 4.0.1 for
