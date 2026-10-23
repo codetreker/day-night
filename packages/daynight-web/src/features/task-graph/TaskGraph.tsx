@@ -137,9 +137,11 @@ const TaskCanvas = ({ index, rootId, onOpenTask, geometry, projection, visibleId
   return (
     <div className={`task-graph${fullscreen ? ' task-graph-fullscreen' : ''}`} data-hidden-upstream-count={hiddenUpstreamCount} data-visible-task-count={visibleIds.size} data-total-task-count={totalTasks} ref={containerRef} role={fullscreen ? 'dialog' : undefined} aria-modal={fullscreen ? true : undefined} aria-label={fullscreen ? m.fullscreenTitle : undefined} onKeyDown={onKeyDown} onFocusCapture={(event) => { focusedControl.current = event.target as HTMLElement; }}>
       <div className="graph-toolbar">
-        <span>{m.title}</span>
-        <span className="graph-counts">{m.counts({ main: projection.mainIds.size, external: projection.externalIds.size, visible: visibleIds.size, total: totalTasks, edges: geometry.edges.length, dependencies: projection.edges.length })}</span>
-        <span className="graph-hidden-prerequisites" role="status">{hiddenUpstreamCount === 0 ? '' : m.hiddenPrerequisites({ count: hiddenUpstreamCount })}</span>
+        <div className="graph-toolbar-summary">
+          <span>{m.title}</span>
+          <span className="graph-counts">{m.counts({ main: projection.mainIds.size, external: projection.externalIds.size, visible: visibleIds.size, total: totalTasks, edges: geometry.edges.length, dependencies: projection.edges.length })}</span>
+          <span className="graph-hidden-prerequisites" role="status">{hiddenUpstreamCount === 0 ? '' : m.hiddenPrerequisites({ count: hiddenUpstreamCount })}</span>
+        </div>
         <div className="graph-toolbar-actions">
           <button className="button graph-fullscreen-toggle" type="button" ref={toggleRef} onClick={toggle}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
