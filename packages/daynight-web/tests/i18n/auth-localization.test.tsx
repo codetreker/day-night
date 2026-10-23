@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthenticatedApp } from "../../src/app/AuthenticatedApp";
@@ -250,6 +250,7 @@ describe("authentication language changes", () => {
     const interaction = userEvent.setup();
     renderWithLocale(<AuthenticatedApp />, { locale: "en" });
     const heading = await screen.findByRole("heading", { name: en.auth.invitation.loading });
+    await waitFor(() => expect(fetcher.mock.calls.filter(([url]) => url === "/api/v1/invitations/inspect")).toHaveLength(1));
     const requests = fetcher.mock.calls.length;
     await interaction.selectOptions(language(), "zh-CN");
     expect(screen.getByRole("heading", { name: zhCN.auth.invitation.loading })).toBe(heading);
