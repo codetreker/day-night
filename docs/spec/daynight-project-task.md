@@ -26,7 +26,8 @@ JSON 保留真实时间或明确的 `null`；Project JSON 同步保留项目阈�
 
 [外部依赖需求](daynight-external-dependencies.md)的存储及读取准备已实现。完整 task 和图节点
 都保留必填 `externalDependsOn`，它是全部 `dependsOn` 的无重复排序子集；CLI 严格读取并输出，
-缺失、null、非法 ID 或越界子集作为协议错误拒绝，不补空数组。当前外部分类编辑选项尚未开放。
+缺失、null、非法 ID 或越界子集作为协议错误拒绝，不补空数组。
+--depends-on 与 --external-depends-on 分别声明普通、外部前置，任一出现就完整替换关系及分类。
 
 [鉴权需求](daynight-auth.md)定义完整的个人访问令牌、项目成员授权和私有项目发现。
 CLI 的令牌配置与 HTTP 传输已实现；[凭据决策](../../.agents/notes/implemented/architecture/2026-10-22-cli-server-credentials.md)
@@ -218,7 +219,7 @@ daynight task graph
 `project create` 与附件 `put/read/remove` 接受独立 `--` 结束选项解析；该终止符
 用于保留前导连字符的位置参数，其他操作继续使用其声明的语法。
 
-创建必需符合 PT6 文本规则的非空 task 标题，可选描述、重复的 `--depends-on` 和
+创建必需符合 PT6 文本规则的非空 task 标题，可选描述、重复的 `--depends-on`、`--external-depends-on` 和
 PR URL/title 配对；省略描述、依赖和 PR 引用分别使用服务规定的空字符串、空集合
 和空数组，新 task 总为 `proposed` 且 `allowAgents=false`，create 不提供许可选项。PR 标题只要求字符串类型，不使用 task 标题的内容
 校验。任务响应解码接受 `proposed`、`todo`、`in_progress`、`done`，列表默认选择
@@ -229,8 +230,8 @@ PR URL/title 配对；省略描述、依赖和 PR 引用分别使用服务规定
 `--all --ready`。`list` 与 `ready` 均接受 `--allow-agents true|false`，严格拒绝其他值，未提供时不按许可筛选；所有过滤由服务在分页前执行。列表读完全部匹配分页后，按 `in_progress`、ready、其余 `todo`、
 `proposed`、`done` 分组排序；组内保留跨页的服务顺序，文本和 JSON 使用同一顺序。详情按选定
 project 和 task ID 查询。显式 project ID、show/update 的 task ID、标题、描述、状态、
-版本及修改字段组合的参数错误必须先于配置读取、Git 和网络访问拒绝；依赖 ID 原样传给服务，
-其语法、引用是否存在及合法性由服务验证。
+版本及修改字段组合的参数错误必须先于配置读取、Git 和网络访问拒绝；两类依赖 ID 在本地正规化并排序，
+非法 UUID、列表内及跨列表重复（包括大小写等价）先拒绝，服务继续验证引用、项目、环及状态条件。
 
 `ready` 供日常选择下一项工作，返回当前 project 按服务顺序排列的前 N 个 ready task；
 默认 `N=10`，可通过 `--limit <N>` 指定。limit 仅接受十进制整数字符串且数值为
@@ -253,13 +254,14 @@ invalid_transition。显式版本不预读；省略时在提交前读取一次�
 必须显式携带其读取版本，不能靠临时 GET 替代。冲突不重试；不确定结果先读取核对，
 不将取消解释为回滚。四状态、事务和错误规则由[服务规范](daynight-server.md)拥有。
 
-更新至少提供标题、描述、依赖、自动执行许可或预定义属性中的一个字段。`update --allow-agents true|false` 显式设置许可，省略保留，false 关闭；服务在 in_progress 拒绝实际切换，同值精确版本不改版本或时间。该选项不批准任务，不改变 ready；普通 claim 仍可显式执行未启用许可的任务。`task update --status`
+更新至少提供标题、描述、普通/外部依赖、自动执行许可或预定义属性中的一个字段。`update --allow-agents true|false` 显式设置许可，省略保留，false 关闭；服务在 in_progress 拒绝实际切换，同值精确版本不改版本或时间。该选项不批准任务，不改变 ready；普通 claim 仍可显式执行未启用许可的任务。`task update --status`
 作为不支持的选项拒绝，帮助引导使用 approve、unapprove、claim 和 complete。省略字段表示保持，空描述表示
-清空描述。出现 `--depends-on` 时替换完整前置集合；`--clear-dependencies` 清空
-集合，两者不能同时出现。依赖选项按输入顺序保留每一次出现，单次及重复的
-`--depends-on` 都形成数组，包括重复 ID，不执行 CSV 拆分。PR URL/title 配对选项
-同样可以重复；其他选项只允许出现一次。CLI 不合并旧依赖、不去重或修正无效引用；服务负责验证
-依赖、状态约束、环和跨 project 引用。拒绝结果必须保留服务错误码与相关 task ID。
+清空描述。两类依赖选项分别形成普通 N 和外部 E，任一出现就提交完整 D=N∪E 及精确 E。
+只给普通选项会显式清空外部子集，只给外部选项会把完整关系替换为这些外部边，不是追加或仅标记。
+--clear-dependencies 提交两个空数组，与任一依赖声明互斥；两类声明可共同使用。
+ID 逐项提供、不执行 CSV 拆分，正规化及排序后拒绝列表内/跨列表重复，不静默去重或合并旧关系。
+PR URL/title 配对选项仍按输入顺序保留重复记录，其他选项只允许一次。服务继续验证引用、状态、环和项目范围，
+所有普通与外部前置仍参与执行，拒绝保留原错误码与相关 task ID。
 
 PR 的 `--pull-request-url` 和 `--pull-request-title` 在 create/update 中分别按
 出现顺序配对，两类选项次数必须相等且至少一对；它们无需在命令行相邻。提供配对

@@ -102,7 +102,9 @@ Web 复用附件的 CommonMark/GFM 阅读能力；API、CLI 和 Agent 仍读写�
 [任务阅读设计](daynight-task-inspection.md#markdown-与附件链接)及
 [附件设计](daynight-task-attachments.md)拥有。
 
-依赖由 `dependsOn` 维护，PR URL/title 由 `properties.pullRequests` 维护；执行位置、
+完整依赖由 dependsOn、明确外部子集由 externalDependsOn 维护；同链普通，核验过的其他同项目链前置为外部。
+CLI 的普通/外部声明编译完整并集和精确外部子集，更新先读取并保留仍需关系。外部不免除阻塞，
+不按状态、标题或当前投影猜测分类，也不扩大执行范围。PR URL/title 由 `properties.pullRequests` 维护；执行位置、
 阻塞、等待和下一步属于既有检查点。
 
 主附件包含任务语言的“方案”和“验收标准”，文件名由真实引用决定。共享 Goal 要求

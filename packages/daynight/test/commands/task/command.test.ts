@@ -10,6 +10,7 @@ import { renderTask, renderTaskList } from "../../../src/commands/task/rendering
 const projectId = "abcdefab-1111-4222-8333-123456789abc";
 const taskId = "abcdefab-2222-4222-8333-123456789abc";
 const dependencyId = "abcdefab-3333-4222-8333-123456789abc";
+const otherDependencyId = "abcdefab-4444-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project: Project = { id: projectId, name: "Project", repoUrl: "git@git.example:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
 const task: Task = { id: taskId, projectId, title: "Task title", description: "Description", properties: { pullRequests: [] }, status: "todo", allowAgents: false, version: 9_007_199_254_740_993n, ready: true, dependsOn: [], externalDependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
@@ -64,7 +65,12 @@ describe("task parameter boundaries", () => {
   it.each([
     ["create"], ["create", "--title", "\u0085"], ["create", "--title", "\0"], ["create", "--title", "\ud800"],
     ["create", "--title", "Title", "--description", "\ud800"], ["create", "--title", "Title", "--description", "\0"],
-    ["create", "--title", "Title", "--external-depends-on", dependencyId], ["update", taskId, "--external-depends-on", dependencyId],
+    ["create", "--title", "Title", "--external-depends-on", "invalid"], ["update", taskId, "--external-depends-on", "invalid"],
+    ["create", "--title", "Title", "--depends-on", "invalid"],
+    ["create", "--title", "Title", "--depends-on", dependencyId, "--depends-on", dependencyId.toUpperCase()],
+    ["create", "--title", "Title", "--external-depends-on", dependencyId, "--external-depends-on", dependencyId.toUpperCase()],
+    ["update", taskId, "--depends-on", dependencyId, "--external-depends-on", dependencyId.toUpperCase()],
+    ["update", taskId, "--external-depends-on", dependencyId, "--clear-dependencies"],
     ["list", "--status", "blocked"], ["update", taskId, "--status", "proposed"], ["list", "--project", "invalid"], ["show", "invalid"], ["show", taskId, "--project", "invalid"],
     ["update", taskId], ["update", taskId, "--if-version", "1"], ["update", taskId, "--status", "done", "--if-version", "0"],
     ["update", taskId, "--title", "\u2003"], ["update", taskId, "--status", "done", "--if-version", "9223372036854775808"],
@@ -187,10 +193,22 @@ describe("task request contracts", () => {
     expect(f.api.createTask).toHaveBeenCalledExactlyOnceWith(projectId, { title: "\ufeff" });
   });
 
-  it("preserves empty descriptions and ordered duplicate or invalid dependency references", async () => {
+  it("normalizes mixed dependency declarations while preserving empty descriptions", async () => {
     const f = fixture();
-    await runTaskCommand(["create", "--title=-Title=original", "--description=", "--depends-on", dependencyId, "--depends-on=invalid-reference", "--depends-on", dependencyId, "--project", projectId], f.context, f.dependencies);
-    expect(f.api.createTask).toHaveBeenCalledExactlyOnceWith(projectId, { title: "-Title=original", description: "", dependsOn: [dependencyId, "invalid-reference", dependencyId] });
+    await runTaskCommand(["create", "--title=-Title=original", "--description=", "--depends-on", otherDependencyId.toUpperCase(), "--external-depends-on", dependencyId, "--project", projectId], f.context, f.dependencies);
+    expect(f.api.createTask).toHaveBeenCalledExactlyOnceWith(projectId, { title: "-Title=original", description: "", dependsOn: [dependencyId, otherDependencyId], externalDependsOn: [dependencyId] });
+  });
+
+  it.each([
+    { name: "ordinary-only", fields: ["--depends-on", dependencyId.toUpperCase()], externalDependsOn: [] },
+    { name: "external-only", fields: ["--external-depends-on", dependencyId.toUpperCase()], externalDependsOn: [dependencyId] },
+  ])("replaces both dependency sets for $name creation and updates", async ({ fields, externalDependsOn }) => {
+    const f = fixture();
+    await runTaskCommand(["create", "--title", "Title", ...fields, "--project", projectId], f.context, f.dependencies);
+    expect(f.api.createTask).toHaveBeenCalledExactlyOnceWith(projectId, { title: "Title", dependsOn: [dependencyId], externalDependsOn });
+    await runTaskCommand(["update", taskId, ...fields, "--if-version", "9223372036854775807", "--project", projectId], f.context, f.dependencies);
+    expect(f.api.updateTask).toHaveBeenCalledExactlyOnceWith(projectId, taskId, { version: 9_223_372_036_854_775_807n, dependsOn: [dependencyId], externalDependsOn });
+    expect(f.api.getTask).not.toHaveBeenCalled();
   });
 
   it("combines status and ready filters without inventing absent fields", async () => {
@@ -251,9 +269,9 @@ describe("task request contracts", () => {
 
   it.each([false, true])("replaces dependencies using a complete set, clear=%s", async (clear) => {
     const f = fixture();
-    const fields = clear ? ["--clear-dependencies"] : ["--depends-on", dependencyId, "--depends-on", dependencyId, "--depends-on", "invalid"];
+    const fields = clear ? ["--clear-dependencies"] : ["--depends-on", dependencyId];
     await runTaskCommand(["update", taskId, ...fields, "--project", projectId], f.context, f.dependencies);
-    expect(f.api.updateTask).toHaveBeenCalledExactlyOnceWith(projectId, taskId, { dependsOn: clear ? [] : [dependencyId, dependencyId, "invalid"], version: task.version });
+    expect(f.api.updateTask).toHaveBeenCalledExactlyOnceWith(projectId, taskId, { dependsOn: clear ? [] : [dependencyId], externalDependsOn: [], version: task.version });
   });
 
   it("finishes repository preparation before task mutation and propagates local failures", async () => {

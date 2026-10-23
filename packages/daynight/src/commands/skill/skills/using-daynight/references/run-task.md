@@ -31,7 +31,12 @@ An explicitly user-selected task may use the manual claim path regardless of
 `allowAgents`; this flag gates automatic selection, not explicit task assignment.
 Automated task selection requires true and must not enable the flag itself.
 
-Check state, direct prerequisites, authorized scope, and required stage inputs.
+Check state, every direct prerequisite, authorized scope, and required stage
+inputs. Read `dependsOn` and its `externalDependsOn` subset: ordinary edges
+express same-chain prerequisites, external marks distinguish verified cross-chain
+ownership. Both kinds must be done for claim and completion. Classification
+never grants permission to execute a prerequisite, approve it, enable automatic
+execution, or remove a blocker.
 A missing or unreadable primary Markdown, missing Solution or Acceptance criteria,
 or absent required input leaves execution unready. Resolve it within the
 existing authorization or return the concrete issue. Do not infer requirements
@@ -74,7 +79,11 @@ authorization. Rewrite the owning artifact and affected task summaries and input
 references coherently. Preserve requirements; do not silently weaken acceptance.
 Descriptions remain self-contained Markdown task summaries. Preserve valid
 syntax, original content, and actual resource references during full-field
-updates; confirm new or replaced resources before linking them. Each primary
+updates; confirm new or replaced resources before linking them. Dependency edits
+must follow the handbook's CLI replacement contract: read full D/E, retain needed
+ordinary D−E and external E declarations, submit their intended complete sets
+with the observed version, and read back both. Omit all dependency options for
+unrelated metadata updates. Each primary
 Markdown owns its detailed plan and evidence; shared inputs remain at their
 verified source.
 

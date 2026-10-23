@@ -80,7 +80,7 @@ describe("task commands over HTTP", () => {
     const writes = f.requests.filter(({ method }) => method === "POST");
     expect(writes).toHaveLength(1);
     expect(writes[0]!.path).toBe(`/api/v1/projects/${projectId}/tasks`);
-    expect(parseApiJson(writes[0]!.body)).toEqual({ title, description: "", dependsOn: [otherId] });
+    expect(parseApiJson(writes[0]!.body)).toEqual({ title, description: "", dependsOn: [otherId], externalDependsOn: [] });
     expect(f.context.stdout).toHaveBeenCalledOnce();
     expect(f.context.stdout.mock.calls[0]![0]).toContain("Task created.");
     expect(f.context.stdout.mock.calls[0]![0]).toContain("-Original=title\\n\\u001b[2J");
@@ -100,7 +100,7 @@ describe("task commands over HTTP", () => {
     const f = await fixture((_request, response) => respond(response, task));
     await f.run(["update", taskId, "--clear-dependencies", "--if-version", "9223372036854775807"]);
     expect(f.requests.map(({ method }) => method)).toEqual(["GET", "PATCH"]);
-    expect(f.requests.at(-1)!.body).toBe('{"version":9223372036854775807,"dependsOn":[]}');
+    expect(f.requests.at(-1)!.body).toBe('{"version":9223372036854775807,"dependsOn":[],"externalDependsOn":[]}');
   });
 
   it("keeps filters and cursor across all pages and publishes one complete JSON array", async () => {

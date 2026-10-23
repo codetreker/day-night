@@ -110,13 +110,15 @@ Task 响应还包含 `dependsOn`、`externalDependsOn`、`blockedBy` 和 `ready`
 ## 状态与更新规则
 
 创建 task 总是产生 `proposed`，数据库默认值相同。创建输入只接受 `title`、可选
-`description`、`dependsOn` 与 `properties`；不能指定初始 status。省略描述为空字符串，
+`description`、`dependsOn`、`externalDependsOn` 与 `properties`；不能指定初始 status。省略描述为空字符串，
 依赖和 PR 数组省略时为空。既有 todo、in-progress、done 数据视为其实际状态，不重置
 审批，不修改版本或时间戳。`allowAgents` 由服务在创建时设为 false，创建输入即使传 false 也拒绝该字段。自动执行许可迁移将既有任务设为 true，保留其余业务字段、version 和时间。
 依赖行的 `external` 已持久化，旧边通过迁移取得 `false`。
-当前创建和 PATCH 不接受 `externalDependsOn` 输入；完整依赖集替换时保留存续边的性质，
-新边为普通，删除边同时删除性质。普通编辑（包括 allowAgents）及 approve、unapprove、claim、complete 都保留其余性质。
-外部分类写入的目标契约由[外部依赖需求](daynight-external-dependencies.md)定义，尚未公开。
+创建和 PATCH 接受 externalDependsOn。创建省略依赖字段时为空集合，外部子集须属于最终完整依赖集。
+PATCH 省略两字段保持原关系；仅给 dependsOn 时替换端点并保留存续边的性质，新边普通；
+仅给 externalDependsOn 时保留端点并替换全部外部子集；两字段都给时精确替换。删除边同时删除性质。
+普通编辑（包括 allowAgents）及 approve、unapprove、claim、complete 保留其余性质。
+完整组合和错误规则由[外部依赖需求](daynight-external-dependencies.md)定义。
 
 | 操作 | 唯一允许前态 | 结果 | 前置要求 |
 |---|---|---|---|
@@ -145,7 +147,7 @@ HTTP 对操作及方法拒绝路由统一验证凭据，Cookie 会话写请求
 claim 只有一个成功，其余看到版本冲突。对同一个 ready todo 和同版本，unapprove 与 claim 只有一方成功，另一方返回版本冲突；同版本重复 unapprove 同样只有一个提交。被依赖阻塞的 todo 仍可撤回，claim 的前置拒绝不阻止该动作。撤回保留正文、属性、依赖、附件与起止时间，ready 派生为 false；后继状态及依赖边保持，未完成前置仍未满足。审批不领取任务，也不使未完成前置变为完成。
 任务审批是就绪决策，不授予实现、发布、部署、合并或主线 push 的权限。
 
-PATCH 可修改 `title`、`description`、`dependsOn`、`allowAgents` 和预定义属性，必须带读取到的
+PATCH 可修改 `title`、`description`、`dependsOn`、`externalDependsOn`、`allowAgents` 和预定义属性，必须带读取到的
 version，至少提供一个可修改字段。status 不属于 PATCH 输入；即使同时提交其他
 合法字段也必须整体拒绝。省略字段保持原值，null 拒绝，`dependsOn: []` 清空依赖，
 `properties.pullRequests: []` 清空 PR 引用；空 properties 本身不算修改字段。

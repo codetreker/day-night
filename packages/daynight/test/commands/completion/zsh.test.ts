@@ -40,6 +40,7 @@ describe("native zsh completion", () => {
     expect(update).not.toContain("--status");
     expect(update).toContain("--if-version");
     expect(update).toContain("--depends-on");
+    expect(update).toContain("*--external-depends-on=[External prerequisite UUID; repeat for the complete external set]:task-id:->text_value");
   });
 
   it.each(["approve", "unapprove", "claim", "complete"])("completes %s with one task ID and version/project text options", (action) => {

@@ -19,6 +19,29 @@ const defaultDependencies: TaskCommandDependencies = {
 
 const taskPriority = (task: Task): number => task.status === "in_progress" ? 0 : task.ready ? 1 : task.status === "todo" ? 2 : task.status === "proposed" ? 3 : 4;
 
+const compileDependencies = async (
+  ordinary: readonly string[] | undefined,
+  external: readonly string[] | undefined,
+  clear: boolean,
+  help: string,
+): Promise<Pick<UpdateTaskInput, "dependsOn" | "externalDependsOn">> => {
+  if (clear && (ordinary !== undefined || external !== undefined)) throw new UsageError("--clear-dependencies conflicts with --depends-on and --external-depends-on.", help);
+  if (clear) return { dependsOn: [], externalDependsOn: [] };
+  if (ordinary === undefined && external === undefined) return {};
+  const { canonicalId } = await import("../../api/parse.js");
+  const seen = new Set<string>();
+  const parse = (values: readonly string[] | undefined): string[] => values === undefined ? [] : values.map((value) => {
+    const id = canonicalId(value);
+    if (id === null) throw new UsageError("Dependency task IDs must be hyphenated UUIDs.", help);
+    if (seen.has(id)) throw new UsageError(`Dependency task ${id} is declared more than once.`, help);
+    seen.add(id);
+    return id;
+  });
+  const ordinaryIds = parse(ordinary);
+  const externalIds = parse(external);
+  return { dependsOn: [...ordinaryIds, ...externalIds].toSorted(), externalDependsOn: externalIds.toSorted() };
+};
+
 export const runTaskCommand = async (
   args: readonly string[],
   context: CliContext,
@@ -45,6 +68,7 @@ export const runTaskCommand = async (
   const all = command.options.has("--all");
   if (all && status !== undefined) throw new UsageError("--all conflicts with --status.", help);
   const dependsOn = command.options.get("--depends-on") as readonly string[] | undefined;
+  const externalDependsOn = command.options.get("--external-depends-on") as readonly string[] | undefined;
   const clearDependencies = command.options.has("--clear-dependencies");
   const pullRequestUrls = command.options.get("--pull-request-url") as readonly string[] | undefined;
   const pullRequestTitles = command.options.get("--pull-request-title") as readonly string[] | undefined;
@@ -57,13 +81,12 @@ export const runTaskCommand = async (
   if (limitArgument !== undefined && (!/^[0-9]+$/.test(limitArgument) || !Number.isInteger(readyLimit) || readyLimit < 1 || readyLimit > 100)) throw new UsageError("Ready task limit must be a decimal integer from 1 to 100.", help);
   if (title !== undefined && !isNonemptyText(title)) throw new UsageError("Task title must be nonempty UTF-8 text without NUL characters.", help);
   if (description !== undefined && !isText(description)) throw new UsageError("Task description must be UTF-8 text without NUL characters.", help);
-  if (dependsOn !== undefined && clearDependencies) throw new UsageError("Specify --depends-on or --clear-dependencies, not both.", help);
+  const dependencyFields = await compileDependencies(dependsOn, externalDependsOn, clearDependencies, help);
   const changes: Omit<UpdateTaskInput, "version"> = {
     ...(allowAgents === undefined ? {} : { allowAgents }),
     ...(title === undefined ? {} : { title }),
     ...(description === undefined ? {} : { description }),
-    ...(dependsOn === undefined ? {} : { dependsOn }),
-    ...(clearDependencies ? { dependsOn: [] } : {}),
+    ...dependencyFields,
     ...(properties === undefined ? {} : { properties }),
   };
   if (name === "update" && Object.keys(changes).length === 0) throw new UsageError("Task update requires a title, description, automatic-execution permission, dependency, or PR reference change.", help);
@@ -100,7 +123,7 @@ export const runTaskCommand = async (
     const { renderTask, renderTaskGraph, renderTaskJson, renderTaskList, renderTaskListJson, renderTaskSummaryList } = await import("./rendering.js");
     operation.check();
     if (command.command.name === "create") {
-      const input: CreateTaskInput = { title: title!, ...(description === undefined ? {} : { description }), ...(dependsOn === undefined ? {} : { dependsOn }), ...(properties === undefined ? {} : { properties }) };
+      const input: CreateTaskInput = { title: title!, ...(description === undefined ? {} : { description }), ...dependencyFields, ...(properties === undefined ? {} : { properties }) };
       const task = await api.createTask(project.id, input);
       operation.check();
       return `Task created.\n${renderTask(task)}`;

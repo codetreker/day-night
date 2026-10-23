@@ -398,11 +398,12 @@ Git、完整分页、身份比较和后续 POST 共用同一 `Operation`；每�
 完整扫描不是服务端事务，扫描完成与 POST 之间仍可能有并发创建；服务的重复
 repo 许可、API、schema 和事务政策保持原样。原子唯一性需要独立的服务契约决策。
 
-更新参数先转换为字段存在性明确的 patch：未出现标志时不写 key；空描述写 `""`；
-重复 `--depends-on` 从首次出现起形成有序替换数组，保留重复 ID，不进行 CSV
-拆分；`--clear-dependencies` 写 `[]`。`--description ""` 与 `--description=`
-都写入空字符串；未出现描述选项仍省略字段。两种依赖
-标志同时出现、无修改字段、已移除的 status 选项或无效版本属于参数错误，在任何 I/O 之前拒绝。
+更新参数先转换为字段存在性明确的 patch：空描述写 `""`，未出现描述选项不写 key。
+compileDependencies 只在关系选项出现时加载 UUID 校验；普通 N 与外部 E 均正规化、去重并排序，
+重复选项逐项提供 ID，不做 CSV 拆分。任一声明选项出现就发送 D=N∪E 和精确 E，
+普通单独声明 E=[]，外部单独声明 D=E。都省略不写关系字段；clear 发送 D/E 两个空数组并与任一声明互斥。
+列表内或跨列表重复、非法 ID、无修改字段、已移除 status 或非法版本在配置、Git、网络前拒绝。
+`--description ""` 与 `--description=` 均为明确的空字符串。
 
 可重复的 `--pull-request-url` 与 `--pull-request-title` 使用 `allowEmpty`，各自
 保留出现顺序，第 n 个 URL 对应第 n 个标题；次数必须相等，字符串不作内容校验。
@@ -416,7 +417,7 @@ repo 许可、API、schema 和事务政策保持原样。原子唯一性需要�
 按服务返回渲染。生命周期操作复用相同 project 解析、Operation、int64 序列化和
 完整 mutation 渲染器；显式版本直接 POST，省略时仅 GET 一次，无冲突重试。
 显式 project UUID、show/update/approve/unapprove/claim/complete 的 task UUID、标题、描述、
-版本及修改字段组合在配置、Git 和网络前验证；依赖 ID 原样保留给服务校验。显式 `--project` 直接 GET project，不读取工作目录或
+版本及修改字段组合在配置、Git 和网络前验证；依赖选项存在时才懒加载 canonicalId，并在本地正规化、排序及拒绝非法/重复 UUID。显式 `--project` 直接 GET project，不读取工作目录或
 加载仓库模块；自动分支将 `serverUrl`、同一 `Operation`、API 和工作目录交给
 `resolveProject`。解析返回后才发送 task 请求，因此本地准备失败没有 task mutation。
 服务负责事务内的状态、依赖及时间戳不变量。
@@ -433,8 +434,9 @@ JSON 输出不转为字符串，Project 可读输出保持既有标签。未知�
 任务及图的已知读取字段还包括必填 `externalDependsOn`。CLI 依赖解码要求正规化、升序、
 不重复的 D/E，并验证 E 属于完整 D；缺字段不使用兼容默认值。JSON 保留该数组，
 列表只省略 description 的规则不变。人类 task、list、ready、操作结果和 graph 复用依赖区，
-输出 `External dependencies (N): <ID 列表或 none>`。现有请求投影不提交该只读字段；
-分类写入及声明选项见[外部依赖架构](daynight-external-dependencies.md)的目标部分，当前未开放。
+输出 `External dependencies (N): <ID 列表或 none>`。HTTP 客户端保留独立可选 D/E，服务负责部分 PATCH；
+命令层依赖声明则总是提交完整 D/E，与 API 单独给 D 保留存续性质的语义不同。
+完整示例见[外部依赖架构](daynight-external-dependencies.md)。
 
 ## 附件命令组合
 

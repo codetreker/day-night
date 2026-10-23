@@ -105,9 +105,43 @@ assignee lock, renewable lease or proof that existing work belongs to this
 session. On a conflict, reread and reconsider; a new action needs a fresh
 decision, not merely a newer version. Never retry a mutation automatically.
 
-**Replacement fields.** Descriptions, dependency sets, and PR reference lists
-replace the whole supplied field. Preserve every still-needed value. Omitted
-fields stay unchanged; clearing and option-pairing syntax is in command help.
+**Dependency classification.** `dependsOn` contains every direct prerequisite;
+`externalDependsOn` is its explicit external subset. Ordinary prerequisites are
+`dependsOn` minus that subset. Both are canonical, duplicate-free UUID sets,
+not insertion order. Every prerequisite must be done before claim or completion,
+including external ones; cycle checks and project access rules use all edges.
+External means cross-chain within the same project, not a cross-project
+reference. It separates chain ownership, not blocking or authorization. Use
+ordinary relationships for confirmed same-chain work and external relationships
+for verified prerequisites owned by another chain. Confirm task content and
+ownership; done status, a similar title, current graph roots or the displayed
+component do not establish the classification.
+
+**CLI relationship replacement.** `--depends-on` declares ordinary prerequisites;
+`--external-depends-on` declares external ones. Supplying either option compiles
+their full union as `dependsOn` and the exact external set as `externalDependsOn`.
+This replaces every relationship and its classification. An external-only option
+replaces the set with only those external edges; it does not append or merely
+mark an existing edge. An ordinary-only option makes every supplied edge ordinary
+by explicitly sending an empty external subset. Repeat options for the complete
+intended sets. Duplicate or cross-declared IDs fail, including case-equivalent
+UUIDs. Omit both options to preserve relationships; `--clear-dependencies` sends
+both empty sets and conflicts with either option. Before a dependency edit, read
+all D/E values and derive the ordinary set D−E, then preserve every still-needed
+relationship under its intended declaration. Read back the full sets afterward.
+Installed command help owns exact syntax.
+
+**Direct API patches.** API fields are independently optional. Omitting both
+preserves relationships. Supplying only `dependsOn` replaces IDs, preserves
+classification on surviving edges and makes new edges ordinary. Supplying only
+`externalDependsOn` preserves IDs and replaces the complete external subset;
+supplying both replaces both sets exactly. The external set must belong to the
+final complete set. This API partial-patch rule differs from the CLI compiler's
+explicit full relationship replacement; do not infer CLI append semantics from it.
+
+**Other replacement fields.** Descriptions and PR reference lists replace the
+whole supplied field. Preserve every still-needed value. Omitted fields stay
+unchanged; clearing and option-pairing syntax is in command help.
 
 **Markdown descriptions.** Write self-contained task briefs in Markdown following
 [create-task](create-task.md). The Web displays CommonMark/GFM, while API and CLI

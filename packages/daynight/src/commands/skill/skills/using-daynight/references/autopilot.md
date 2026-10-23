@@ -36,8 +36,11 @@ Pick exactly one approved ready `todo` task with `allowAgents=true` most relevan
 authorized work. Compare concrete actions, scope, deliverables, solution,
 acceptance criteria, and actual dependencies; creation order does not establish
 relevance. Read full details and actual task-specific and shared inputs for
-plausible candidates before choosing. Readiness checks prerequisites, not stage
-artifact completeness or execution authorization. Pass the selected ID to
+plausible candidates before choosing. Inspect complete `dependsOn` and the
+`externalDependsOn` subset. External prerequisites still block readiness, and
+cross-chain classification does not authorize executing them or expand the
+confirmed scope. Readiness checks all prerequisites, not stage artifact
+completeness or execution authorization. Pass the selected ID to
 `run-task`, which claims the version observed for that decision before starting.
 Autopilot never auto-approves proposed work. Goal creation, completed description
 or design, and permission to execute do not authorize task approval.
@@ -80,7 +83,9 @@ tasks, but the Goal-creation permission itself does not.
 If `run-task` returns a wait requiring external intervention, preserve its
 current-task checkpoint and report the blocker and required next action. An
 explicit no-merge or user-review requirement is such a wait; it never permits
-auto-merge or marking the task done. Return without replacing the target.
+auto-merge or marking the task done. An unfinished external prerequisite outside
+the authorized scope is also an external blocker: preserve its ID and reason,
+without dropping or reclassifying it to manufacture readiness. Return without replacing the target.
 
 Before reporting a Goal complete, apply the Goal protocol's whole-Goal acceptance:
 verify the full registered scope, every delivery task's completion, all necessary

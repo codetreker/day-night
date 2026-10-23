@@ -59,7 +59,11 @@ and completing `run-task` never activate it.
   acceptance criteria, and evidence. Confirm resources before linking them;
   description-relative links start at this task's attachment root. Attach resources
   according to actual ownership and need; reference shared inputs at their verified
-  source. Express prerequisites only through `dependsOn`.
+  source. Express all prerequisites through `dependsOn` and their explicit external
+  subset through `externalDependsOn`. Ordinary edges connect confirmed work in
+  the same chain; mark a verified prerequisite from another chain as external.
+  Both kinds block execution. CLI dependency options replace the full relationship
+  set; preserve needed ordinary and external edges as the handbook requires.
 - Automatic task selection requires `allowAgents=true` as well as readiness.
   Automated workers and agent workflows must not enable this permission themselves.
   An explicitly user-selected task may follow the manual claim path regardless

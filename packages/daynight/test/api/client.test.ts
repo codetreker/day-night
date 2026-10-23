@@ -195,6 +195,26 @@ describe("operation-scoped API access", () => {
     ]);
   });
 
+  it("preserves independent external dependency fields for create and partial API updates", async () => {
+    const value = { ...task, dependsOn: [otherId], externalDependsOn: [otherId] };
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(value, 201))
+      .mockResolvedValueOnce(jsonResponse(value))
+      .mockResolvedValueOnce(jsonResponse({ ...value, externalDependsOn: [] }))
+      .mockResolvedValueOnce(jsonResponse(value));
+    const api = client(fetch);
+    await expect(api.createTask(projectId, { title: "Task", dependsOn: [otherId], externalDependsOn: [otherId] })).resolves.toEqual(value);
+    await api.updateTask(projectId, taskId, { version: 9_223_372_036_854_775_807n, externalDependsOn: [otherId] });
+    await api.updateTask(projectId, taskId, { version: 1n, externalDependsOn: [] });
+    await api.updateTask(projectId, taskId, { version: 1n, dependsOn: [otherId] });
+    expect(fetch.mock.calls.map((call) => parseApiJson(String(call[1]!.body)))).toEqual([
+      { title: "Task", dependsOn: [otherId], externalDependsOn: [otherId] },
+      { version: 9_223_372_036_854_775_807n, externalDependsOn: [otherId] },
+      { version: 1n, externalDependsOn: [] },
+      { version: 1n, dependsOn: [otherId] },
+    ]);
+  });
+
   it("lists complete pages with stable filters and encoded opaque cursors", async () => {
     const cursor = "next page+/=?";
     const fetch = vi.fn<typeof globalThis.fetch>()

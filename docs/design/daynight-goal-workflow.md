@@ -71,8 +71,11 @@ approve 允许未完成前置；claim 要求获批 ready todo、当前阶段必�
 `Architecture design and task breakdown: <outcome>`。Goal 标题使用 `[Goal]` 标记后直接写目标；
 Goal description 是阶段职责，不是标题前缀。标题用于说明职责，不能作为
 稳定身份；已确认的 ID、完整任务字段、主附件内容和实际上下文共同识别已有登记。
-创建时保留 Goal description ID，随后建立设计任务及其 `dependsOn`。后续任务以真实
-任务或附件引用追溯 Goal 与设计，依赖只写入 `dependsOn`，不另写依赖 section。
+创建时保留 Goal description ID，设计以普通 --depends-on 连接该任务；Goal 内阶段和交付关系均为普通。
+核对内容与归属后，其他同项目任务链的真实成果用 --external-depends-on；顶层 Goal 可有外部前置。
+全部前置进入 dependsOn，外部子集进入 externalDependsOn，两类均阻塞执行且不扩大任务授权。
+CLI 任一关系选项提交完整并集和精确外部子集，外部单独选项不是追加，更新先读取并保留仍需的 D/E。
+后续通过真实来源任务或附件追溯 Goal 和设计，正文不重复依赖 section。
 
 | 资料 | 唯一职责 |
 |---|---|
@@ -162,8 +165,10 @@ Goal 创建包含多个独立操作，不是事务。执行顺序为查找与核
 标题认定写入成功，也不能凭失败响应假定服务未写入。若无法确认唯一身份，保留具体
 错误并等待必要的外部信息，不创建第二条链。
 
-更新使用作出判断时读取的精确 int64 版本。description、dependsOn 与 PR 列表按完整
-字段替换，保留仍有效的数据；版本冲突后重新读取并决策。附件独立于 task 版本、状态
+更新使用作出判断时读取的精确 int64 版本。description 与 PR 列表整体替换；CLI 关系声明
+整体编译 D/E，先从当前完整依赖和外部子集得到普通 D−E，再保留需要的两类关系。
+API 的独立字段部分 PATCH 与 CLI 完整编译分别遵守[客户端架构](daynight-project-task.md)。
+版本冲突后重新读取并决策。附件独立于 task 版本、状态
 和更新时间，文件内容与元数据可能部分改变，必须分别核验。设计拆分的部分成功使用
 同样规则逐项恢复，交付任务不能因为登记不完整而错误解锁。
 
