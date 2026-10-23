@@ -1,5 +1,6 @@
 import { workspace } from "./zh-CN/workspace";
 import { graph } from "./zh-CN/graph";
+import { automation } from "./zh-CN/automation";
 import { inspection } from "./zh-CN/inspection";
 import { execution } from "./zh-CN/execution";
 import { auth } from "./zh-CN/auth";
@@ -9,6 +10,7 @@ export const zhCN: Messages = {
   workspace,
   graph,
   inspection,
+  automation,
   auth,
   execution,
   common: {

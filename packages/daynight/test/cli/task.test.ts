@@ -17,17 +17,17 @@ const secondId = "b1b2c3d4-1111-4222-8333-123456789abd";
 const thirdId = "b1b2c3d4-1111-4222-8333-123456789abe";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project: Project = { id: projectId, name: "Project 中文", repoUrl: "git@git.example:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
-const task = (partial: Partial<Task> = {}): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true, ...partial });
+const task = (partial: Partial<Task> = {}): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, allowAgents: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true, ...partial });
 const taskListItem = (value: Task): Omit<Task, "description"> => ({
   id: value.id, projectId: value.projectId, title: value.title, properties: value.properties,
-  status: value.status, version: value.version, startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt,
+  status: value.status, allowAgents: value.allowAgents, version: value.version, startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt,
   dependsOn: value.dependsOn, blockedBy: value.blockedBy, ready: value.ready,
 });
 const graph = (): TaskGraph => ({
   observedAt: time,
   project,
   summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
-  tasks: [{ id: taskId, titlePreview: "Task 中文", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, startedAt: null, completedAt: null, createdAt: time, updatedAt: time }],
+  tasks: [{ id: taskId, titlePreview: "Task 中文", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, allowAgents: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time }],
 });
 const taskPath = `/api/v1/projects/${projectId}/tasks`;
 const projectPath = `/api/v1/projects/${projectId}`;
@@ -265,6 +265,40 @@ describe("compiled task attachment commands", () => {
 });
 
 describe("compiled task commands", () => {
+  it("updates explicit permission values and filters list/ready before printing with the compiled CLI", async () => {
+    const f = await fixture();
+    let current = task({ version: 9_007_199_254_740_993n });
+    try {
+      const { requests } = await f.serve((request, response) => {
+        if (request.method === "PATCH") {
+          const input = request.body as { version: bigint; allowAgents: boolean };
+          current = { ...current, allowAgents: input.allowAgents, version: input.version + 1n };
+          respond(response, current);
+        } else if (request.pathname === `${taskPath}/${taskId}`) respond(response, current);
+        else respond(response, { items: [current], nextCursor: request.query.get("limit") === "1" ? "not-followed" : null });
+      });
+      for (const allowAgents of [true, false]) {
+        const version = current.version;
+        const before = requests.length;
+        const result = await f.invoke(["update", taskId, "--allow-agents", String(allowAgents), "--if-version", version.toString(), ...explicit]);
+        expect(result.code, result.stderr).toBe(0);
+        expect(result.stdout).toContain(`Automatic execution: ${allowAgents}`);
+        expect(requests.slice(before).map(({ method }) => method)).toEqual(["GET", "PATCH"]);
+        expect(requests.at(-1)!.body).toEqual({ version, allowAgents });
+        const listed = await f.invoke(["list", "--allow-agents", String(allowAgents), "--ready", "--json", ...explicit]);
+        expect(listed.code, listed.stderr).toBe(0);
+        expect(parseApiJson(listed.stdout)).toEqual([taskListItem(current)]);
+        expect(Object.fromEntries(requests.at(-1)!.query)).toEqual({ ready: "true", allowAgents: String(allowAgents), limit: "100" });
+        const readyBefore = requests.length;
+        const ready = await f.invoke(["ready", "--allow-agents", String(allowAgents), "--limit", "1", "--json", ...explicit]);
+        expect(ready.code, ready.stderr).toBe(0);
+        expect(parseApiJson(ready.stdout)).toEqual([current]);
+        expect(requests.slice(readyBefore).length).toBe(2);
+        expect(Object.fromEntries(requests.at(-1)!.query)).toEqual({ ready: "true", limit: "1", allowAgents: String(allowAgents) });
+      }
+    } finally { await f.close(); }
+  }, 60_000);
+
   it("keeps all operation help and malformed arguments independent of configuration and business imports", async () => {
     const f = await fixture();
     try {

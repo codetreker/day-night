@@ -19,8 +19,8 @@ const otherProject = "10000000-0000-0000-0000-000000000002";
 const taskId = "20000000-0000-0000-0000-000000000001";
 const otherTask = "20000000-0000-0000-0000-000000000002";
 const time = "2026-10-20T12:00:00.123456Z";
-const node: GraphTask = { startedAt: null, completedAt: null, id: taskId, titlePreview: "任务一", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
-const detail: TaskDetail = { startedAt: null, completedAt: null, id: taskId, projectId, title: "任务一", description: "完整描述", properties: { pullRequests: [] }, status: "todo", version: 1n, dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
+const node: GraphTask = { allowAgents: false, startedAt: null, completedAt: null, id: taskId, titlePreview: "任务一", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
+const detail: TaskDetail = { allowAgents: false, startedAt: null, completedAt: null, id: taskId, projectId, title: "任务一", description: "完整描述", properties: { pullRequests: [] }, status: "todo", version: 1n, dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time };
 const graph = (id = projectId): TaskGraph => ({ observedAt: "2026-10-20T12:00:00Z",
   project: { settings: { version: 1n, executionWarningMinutes: 60 }, id, name: `项目 ${id}`, repoUrl: "https://github.com/example/repo", createdAt: time, updatedAt: time },
   tasks: [node], summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
@@ -445,7 +445,7 @@ describe("task details", () => {
     rerender({ revision: 2 });
     rerender({ revision: 3 });
     expect(detailRequest).toHaveBeenCalledTimes(1);
-    expect(result.current.approval.phase).toBe("pending");
+    expect(result.current.mutation.phase).toBe("pending");
     await act(async () => { mutation.resolve(approved); });
     await waitFor(() => expect(detailRequest).toHaveBeenCalledTimes(2));
     expect(result.current).toMatchObject({ detail: approved, refreshing: true, loadedRevision: 1 });

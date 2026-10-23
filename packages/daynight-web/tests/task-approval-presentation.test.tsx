@@ -3,12 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../src/api/client';
 import type { TaskDetail } from '../src/api/types';
 import { TaskApproval } from '../src/features/task-detail/TaskApproval';
-import type { ApprovalState } from '../src/features/task-detail/TaskDetailSession';
+import type { TaskMutationState } from '../src/features/task-detail/TaskDetailSession';
 import { LanguageSelector } from '../src/i18n/LanguageSelector';
 import { renderWithLocale } from './helpers/renderWithLocale';
-const detail: TaskDetail = { startedAt: null, completedAt: null, id: 'task', projectId: 'project', version: 1n, title: 'Task content', description: '',
+const detail: TaskDetail = { allowAgents: false, startedAt: null, completedAt: null, id: 'task', projectId: 'project', version: 1n, title: 'Task content', description: '',
   properties: { pullRequests: [] }, status: 'proposed', dependsOn: [], blockedBy: [], ready: false, createdAt: '', updatedAt: '' };
-const idle: ApprovalState = { operation: null, phase: 'idle', error: null, reconciling: false, reconciliationError: null };
+const idle: TaskMutationState = { operation: null, phase: 'idle', error: null, reconciling: false, reconciliationError: null };
 const mount = (approval = idle, task = detail) => {
   const onReconcile = vi.fn();
   const view = renderWithLocale(<><LanguageSelector /><TaskApproval detail={task} approval={approval} onReconcile={onReconcile} /></>, { locale: 'en' });

@@ -46,7 +46,7 @@ const seeds: readonly Seed[] = [
 const graph = (items = seeds, id = projectId): TaskGraph => {
   const tasks: GraphTask[] = items.map((seed) => {
     const blockedBy = seed.dependsOn.filter((id) => items.find((item) => item.id === id)?.status !== "done");
-    return { startedAt: null, completedAt: null, id: seed.id, titlePreview: seed.title, titleTruncated: false, status: seed.status, dependsOn: seed.dependsOn, blockedBy,
+    return { allowAgents: false, startedAt: null, completedAt: null, id: seed.id, titlePreview: seed.title, titleTruncated: false, status: seed.status, dependsOn: seed.dependsOn, blockedBy,
       ready: seed.status === "todo" && blockedBy.length === 0, createdAt: time, updatedAt: time };
   });
   return { observedAt: "2026-10-20T12:00:00Z",
@@ -70,7 +70,7 @@ const rememberRoot = (root: string | null, id = projectId) => window.localStorag
 
 beforeEach(() => {
   graphRequest.mockReset(); detailRequest.mockReset();
-  detailRequest.mockImplementation(async (project, id): Promise<TaskDetail> => ({ startedAt: null, completedAt: null,
+  detailRequest.mockImplementation(async (project, id): Promise<TaskDetail> => ({ allowAgents: false, startedAt: null, completedAt: null,
     id, projectId: project, title: `详情 ${id}`, description: "文本", properties: { pullRequests: [] }, status: "todo", version: 1n, dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
   }));
 });
@@ -139,7 +139,7 @@ describe("project dashboard", () => {
 
   it("re-reads a retained detail after a new graph revision without using detail responses to patch graph statistics", async () => {
     graphRequest.mockResolvedValueOnce(graph()).mockResolvedValueOnce(graph());
-    detailRequest.mockResolvedValue({ startedAt: null, completedAt: null, id: B, projectId, title: `详情 ${B}`, description: "更新后的详情", properties: { pullRequests: [] }, status: "done", version: 1n, dependsOn: [A], blockedBy: [], ready: false, createdAt: time, updatedAt: time });
+    detailRequest.mockResolvedValue({ allowAgents: false, startedAt: null, completedAt: null, id: B, projectId, title: `详情 ${B}`, description: "更新后的详情", properties: { pullRequests: [] }, status: "done", version: 1n, dependsOn: [A], blockedBy: [], ready: false, createdAt: time, updatedAt: time });
     render(<ProjectPage projectId={projectId} />);
     fireEvent.click(await screen.findByRole("button", { name: "节点 后续任务" }));
     await screen.findByText(`详情 ${B}`);

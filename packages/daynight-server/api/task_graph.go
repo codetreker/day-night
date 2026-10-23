@@ -9,6 +9,7 @@ type GraphTask struct {
 	Status         string     `json:"status"`
 	DependsOn      []string   `json:"dependsOn"`
 	BlockedBy      []string   `json:"blockedBy"`
+	AllowAgents    bool       `json:"allowAgents"`
 	Ready          bool       `json:"ready"`
 	CreatedAt      time.Time  `json:"createdAt"`
 	UpdatedAt      time.Time  `json:"updatedAt"`

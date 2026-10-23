@@ -152,7 +152,7 @@ func acceptanceHistoricalRows(t *testing.T, fixture *acceptanceFixture, ids []st
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	rows, err := fixture.admin.Query(ctx, "SELECT id::text, (to_jsonb(t) - 'started_at' - 'completed_at')::text FROM tasks t WHERE id = ANY($1::uuid[]) ORDER BY id", ids)
+	rows, err := fixture.admin.Query(ctx, "SELECT id::text, (to_jsonb(t) - 'started_at' - 'completed_at' - 'allow_agents')::text FROM tasks t WHERE id = ANY($1::uuid[]) ORDER BY id", ids)
 	if err != nil {
 		t.Fatal("cannot read preserved historical rows")
 	}
@@ -270,8 +270,8 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		if err := binaryAcceptance.update(func() { migration.AfterLedger, migration.AfterRows = afterLedger, afterRows }); err != nil {
 			t.Fatal("cannot persist migrated ledger and resource snapshots")
 		}
-		if len(migration.AfterLedger) != 10 || !reflect.DeepEqual(migration.AfterLedger[:6], migration.BeforeLedger) ||
-			migration.AfterLedger[6].Version != 7 || migration.AfterLedger[7].Version != 8 || migration.AfterLedger[8].Version != 9 || migration.AfterLedger[9].Version != 10 || !reflect.DeepEqual(migration.AfterRows, migration.BeforeRows) {
+		if len(migration.AfterLedger) != 11 || !reflect.DeepEqual(migration.AfterLedger[:6], migration.BeforeLedger) ||
+			migration.AfterLedger[6].Version != 7 || migration.AfterLedger[7].Version != 8 || migration.AfterLedger[8].Version != 9 || migration.AfterLedger[9].Version != 10 || migration.AfterLedger[10].Version != 11 || !reflect.DeepEqual(migration.AfterRows, migration.BeforeRows) {
 			t.Fatal("built startup did not append genuine migrations while preserving old rows and ledger")
 		}
 		acceptanceError(t, process.request(context.Background(), http.MethodGet, "/api/v1/projects/"+projectID, nil, ""), http.StatusNotFound, "not_found")
@@ -292,7 +292,7 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 			old[index] = acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", id, "--project", projectID, "--json"))
 			if old[index].Status != []string{"todo", "in_progress", "done"}[index] || old[index].Version != []int64{17, 23, 24}[index] ||
 				!old[index].CreatedAt.Equal(stamp) || !old[index].UpdatedAt.Equal(stamp.Add(time.Hour)) || !reflect.DeepEqual(old[index].Properties, properties) ||
-				old[index].StartedAt != nil || old[index].CompletedAt != nil {
+				old[index].StartedAt != nil || old[index].CompletedAt != nil || !old[index].AllowAgents {
 				t.Fatal("installed CLI changed a preserved historical resource")
 			}
 		}
@@ -308,7 +308,7 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 			}
 			id := acceptanceCLIResourceID(t, cli.run(t, cli.caller, arguments...))
 			task := acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", id, "--project", projectID, "--json"))
-			if task.Status != "proposed" || task.Version != 1 || task.Ready || !reflect.DeepEqual(task.Properties, properties) {
+			if task.Status != "proposed" || task.Version != 1 || task.Ready || task.AllowAgents || !reflect.DeepEqual(task.Properties, properties) {
 				t.Fatal("installed creation after genuine migration did not produce proposed work")
 			}
 			return task
@@ -354,7 +354,7 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		defaultID := "00000000-0000-4000-8000-000000000014"
 		fixture.exec(t, `INSERT INTO tasks (id, project_id, title) VALUES ($1, $2, 'Post-migration SQL default')`, defaultID, projectID)
 		defaultTask := acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", defaultID, "--project", projectID, "--json"))
-		if defaultTask.Status != "proposed" || defaultTask.Version != 1 || defaultTask.Ready {
+		if defaultTask.Status != "proposed" || defaultTask.Version != 1 || defaultTask.Ready || defaultTask.AllowAgents {
 			t.Fatal("genuine migration did not change the SQL creation default to proposed")
 		}
 		withdrawn := acceptanceCLIAction(t, cli, process, evidence, create("Withdrawn before restart"), "approve", "todo")

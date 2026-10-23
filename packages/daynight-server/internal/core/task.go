@@ -25,5 +25,6 @@ type Task struct {
 	CompletedAt *time.Time
 	DependsOn   []string
 	BlockedBy   []string
+	AllowAgents bool
 	Ready       bool
 }

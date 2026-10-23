@@ -12,8 +12,8 @@ const taskId = "abcdefab-2222-4222-8333-123456789abc";
 const dependencyId = "abcdefab-3333-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project: Project = { id: projectId, name: "Project", repoUrl: "git@git.example:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
-const task: Task = { id: taskId, projectId, title: "Task title", description: "Description", properties: { pullRequests: [] }, status: "todo", version: 9_007_199_254_740_993n, ready: true, dependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
-const graph: TaskGraph = { observedAt: time, project, summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 }, tasks: [{ id: taskId, titlePreview: `Task title${"T".repeat(150)}`, titleTruncated: true, status: "todo", ready: true, dependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time }] };
+const task: Task = { id: taskId, projectId, title: "Task title", description: "Description", properties: { pullRequests: [] }, status: "todo", version: 9_007_199_254_740_993n, ready: true, dependsOn: [], blockedBy: [], allowAgents: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
+const graph: TaskGraph = { observedAt: time, project, summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 }, tasks: [{ id: taskId, titlePreview: `Task title${"T".repeat(150)}`, titleTruncated: true, status: "todo", ready: true, dependsOn: [], blockedBy: [], allowAgents: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time }] };
 const operations: Operation[] = [];
 afterEach(() => { operations.splice(0).forEach((operation) => operation.dispose()); });
 const fixture = (operation = createOperation()) => {
@@ -152,6 +152,34 @@ describe("task parameter boundaries", () => {
 });
 
 describe("task request contracts", () => {
+  it.each([true, false])("updates only automatic execution to %s using the explicit exact version", async (allowAgents) => {
+    const f = fixture();
+    await runTaskCommand(["update", taskId, "--allow-agents", String(allowAgents), "--if-version", "9223372036854775807", "--project", projectId], f.context, f.dependencies);
+    expect(f.api.getTask).not.toHaveBeenCalled();
+    expect(f.api.updateTask).toHaveBeenCalledExactlyOnceWith(projectId, taskId, { allowAgents, version: 9_223_372_036_854_775_807n });
+  });
+
+  it.each([true, false])("forwards automatic-execution filter %s before list and ready pagination", async (allowAgents) => {
+    const f = fixture();
+    await runTaskCommand(["list", "--allow-agents", String(allowAgents), "--ready", "--project", projectId], f.context, f.dependencies);
+    await runTaskCommand(["ready", "--allow-agents", String(allowAgents), "--limit", "1", "--project", projectId], f.context, f.dependencies);
+    expect(f.api.listTasks).toHaveBeenCalledExactlyOnceWith(projectId, { ready: true, allowAgents });
+    expect(f.api.listReadyTasks).toHaveBeenCalledExactlyOnceWith(projectId, 1, allowAgents);
+  });
+
+  it.each(["yes", "TRUE", "0", "", "null"])("rejects invalid permission %s before loading runtime", async (value) => {
+    const f = fixture();
+    await expect(runTaskCommand(["update", taskId, `--allow-agents=${value}`, "--project", projectId], f.context, f.dependencies)).rejects.toThrow();
+    expect(f.dependencies.runServerCommand).not.toHaveBeenCalled();
+    expect(f.api.updateTask).not.toHaveBeenCalled();
+  });
+
+  it("does not provide automatic-execution permission during creation", async () => {
+    const f = fixture();
+    await expect(runTaskCommand(["create", "--title", "Title", "--allow-agents", "true", "--project", projectId], f.context, f.dependencies)).rejects.toThrow('Unknown daynight task create option "--allow-agents".');
+    expect(f.dependencies.runServerCommand).not.toHaveBeenCalled();
+  });
+
   it("omits optional creation fields and preserves a FEFF-only title", async () => {
     const f = fixture();
     await runTaskCommand(["create", "--title", "\ufeff", "--project", projectId], f.context, f.dependencies);
@@ -269,7 +297,7 @@ describe("task output contracts", () => {
     const base = command === "create" ? [command, "--title", "Title"] : command === "update" ? [command, taskId, "--description="] : [command, taskId];
     await runTaskCommand([...base, "--project", projectId], f.context, f.dependencies);
     const output = f.context.stdout.mock.calls[0]![0];
-    for (const field of [`ID: ${taskId}`, `Project: ${projectId}`, `Title: ${task.title}`, `Description: ${task.description}`, `Status: ${task.status}`, `Version: ${task.version}`, "Ready: false", `Depends on: ${dependencyId}`, `Blocked by: ${dependencyId}`, `Created: ${time}`, `Updated: ${time}`]) expect(output).toContain(field);
+    for (const field of [`ID: ${taskId}`, `Project: ${projectId}`, `Title: ${task.title}`, `Description: ${task.description}`, `Status: ${task.status}`, "Automatic execution: false", `Version: ${task.version}`, "Ready: false", `Depends on: ${dependencyId}`, `Blocked by: ${dependencyId}`, `Created: ${time}`, `Updated: ${time}`]) expect(output).toContain(field);
     expect(output).toContain("Pull requests: 3\n  1. Title: First\n     URL: arbitrary text\n  2. Title: First\n     URL: arbitrary text\n  3. Title: \n     URL: \n");
   });
 
@@ -329,7 +357,7 @@ describe("task output contracts", () => {
     let contentLength = 0;
     for (const current of tasks) {
       expect(output).toContain(`ID: ${current.id}\nProject: ${projectId}\nTitle: ${current.title}\n`);
-      contentLength += current.id.length + current.projectId.length + current.title.length + current.description.length + current.status.length + current.version.toString().length + current.createdAt.length + current.updatedAt.length;
+      contentLength += current.id.length + current.projectId.length + current.title.length + current.description.length + current.status.length + current.version.toString().length + current.createdAt.length + current.updatedAt.length + `Automatic execution: ${current.allowAgents}\n`.length;
     }
     expect(output.length).toBeLessThanOrEqual(contentLength + 150 * tasks.length);
   });

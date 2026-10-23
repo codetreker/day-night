@@ -10,7 +10,7 @@ const taskId = "22222222-2222-2222-2222-222222222222";
 const otherId = "33333333-3333-3333-3333-333333333333";
 const time = "2026-10-20T01:02:03.123456789Z";
 const project = { id: projectId, name: "Project", repoUrl: "git@github.com:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
-const task = { id: taskId, projectId, title: "Task", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true };
+const task = { id: taskId, projectId, title: "Task", description: "", properties: { pullRequests: [] }, status: "todo", version: 1n, allowAgents: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], blockedBy: [], ready: true };
 const refusal = (code = "not_found", details?: unknown) => ({ error: { code, message: "Actual server explanation.", requestId: "req-1", ...(details === undefined ? {} : { details }) } });
 const jsonResponse = (value: unknown, status = 200) => new Response(stringifyApiJson(value), { status, headers: { "Content-Type": "application/json" } });
 const cleanups: (() => void | Promise<void>)[] = [];
@@ -38,6 +38,56 @@ afterEach(async () => {
 });
 
 describe("operation-scoped API access", () => {
+  it.each([true, false])("preserves explicit allowAgents=%s while keeping permission independent of ready", async (allowAgents) => {
+    const value = { ...task, allowAgents };
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse(value));
+    const result = await client(fetch).updateTask(projectId, taskId, { version: 9_223_372_036_854_775_807n, allowAgents });
+    expect(result).toEqual(value);
+    expect(result.ready).toBe(true);
+    expect(parseApiJson(String(fetch.mock.calls[0]![1]!.body))).toEqual({ version: 9_223_372_036_854_775_807n, allowAgents });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it.each([true, false])("binds allowAgents=%s to every list page and bounded ready request", async (allowAgents) => {
+    const first = { ...task, allowAgents };
+    const second = { ...first, id: otherId };
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ items: [first], nextCursor: "cursor" }))
+      .mockResolvedValueOnce(jsonResponse({ items: [second], nextCursor: null }))
+      .mockResolvedValueOnce(jsonResponse({ items: [first], nextCursor: "not followed" }));
+    const api = client(fetch);
+    await expect(api.listTasks(projectId, { ready: true, allowAgents })).resolves.toEqual([first, second]);
+    await expect(api.listReadyTasks(projectId, 1, allowAgents)).resolves.toEqual([first]);
+    expect(fetch.mock.calls.map(([url]) => Object.fromEntries(new URL(String(url)).searchParams))).toEqual([
+      { ready: "true", allowAgents: String(allowAgents), limit: "100" },
+      { ready: "true", allowAgents: String(allowAgents), limit: "100", cursor: "cursor" },
+      { ready: "true", limit: "1", allowAgents: String(allowAgents) },
+    ]);
+  });
+
+  it.each([true, false])("rejects responses outside the requested allowAgents=%s scope", async (allowAgents) => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async () => jsonResponse({ items: [{ ...task, allowAgents: !allowAgents }], nextCursor: null }));
+    const api = client(fetch);
+    await expect(api.listTasks(projectId, { allowAgents })).rejects.toMatchObject({ operation: "task.list", phase: "protocol" });
+    await expect(api.listReadyTasks(projectId, 1, allowAgents)).rejects.toMatchObject({ operation: "task.ready", phase: "protocol" });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([undefined, null, "true", 1, {}, []])("requires an actual boolean permission in task and graph resources: %s", async (allowAgents) => {
+    const value = { ...task, allowAgents };
+    const taskGraph = graph();
+    const invalidGraph = { ...taskGraph, tasks: taskGraph.tasks.map((item, index) => index === 0 ? { ...item, allowAgents } : item) };
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(value))
+      .mockResolvedValueOnce(jsonResponse({ items: [value], nextCursor: null }))
+      .mockResolvedValueOnce(jsonResponse(invalidGraph));
+    const api = client(fetch);
+    await expect(api.getTask(projectId, taskId)).rejects.toMatchObject({ phase: "protocol" });
+    await expect(api.listReadyTasks(projectId, 1)).rejects.toMatchObject({ phase: "protocol" });
+    await expect(api.getTaskGraph(projectId)).rejects.toMatchObject({ phase: "protocol" });
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
   it.each([
     { action: "approve", status: "todo", ready: true },
     { action: "unapprove", status: "proposed", ready: false },
@@ -366,8 +416,8 @@ const graph = (): TaskGraph => ({
   project,
   summary: { total: 2, proposed: 0, todo: 1, inProgress: 0, done: 1, ready: 1, blocked: 0 },
   tasks: [
-    { id: taskId, titlePreview: "Task", titleTruncated: false, status: "todo", dependsOn: [otherId], blockedBy: [], ready: true, startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
-    { id: otherId, titlePreview: "Done", titleTruncated: false, status: "done", dependsOn: [], blockedBy: [], ready: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
+    { id: taskId, titlePreview: "Task", titleTruncated: false, status: "todo", dependsOn: [otherId], blockedBy: [], ready: true, allowAgents: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
+    { id: otherId, titlePreview: "Done", titleTruncated: false, status: "done", dependsOn: [], blockedBy: [], ready: false, allowAgents: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
   ],
 });
 

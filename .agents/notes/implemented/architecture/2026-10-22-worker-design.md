@@ -19,12 +19,19 @@ worker with four responsibilities: the service owns eligibility and
 exclusive claims; the worker owns scheduling, resources, recovery and completion
 verification; Herdr owns agent terminals and sessions; the agent owns the task's
 delivery loop. This note records the delivered design decision. The worker
-runtime, role/platform controls and claim integration remain implementation
-work.
+runtime, platform controls and unique worker-claim integration remain
+implementation work. Automatic-execution permission persistence, filtering and
+service/CLI/Web controls are implemented under the permission decision below.
 
-Eligibility combines Agent role, ready state, optional platform compatibility
-and the absence of an active claim. The service checks these conditions and the
-exact task version atomically. Protected task properties expose execution
+Eligibility combines `allowAgents=true`, ready state, optional platform
+compatibility and the absence of an active claim. The service checks these
+conditions and the exact task version atomically. The
+[automatic-execution permission decision](2026-10-23-task-agent-automation.md)
+owns that field, its defaults and confirmed Web changes. The original design
+expressed this distinction as a Human/Agent processing role so manual tasks
+could remain ready without being selected automatically. That role decision is
+superseded by the boolean permission; the responsibility and recovery decisions
+in this note remain in force. Protected task properties expose execution
 ownership without allowing ordinary property updates to replace it. The
 existing authentication and approval lifecycle remain prerequisites rather than
 new worker-specific identity or task-state systems.

@@ -29,10 +29,10 @@ possible. Do not select another task because CI, review, or merge is pending.
 When there is no current task, query:
 
 ```bash
-daynight task ready --json
+daynight task ready --allow-agents true --json
 ```
 
-Pick exactly one approved ready `todo` task most relevant to the confirmed Goal and
+Pick exactly one approved ready `todo` task with `allowAgents=true` most relevant to the confirmed Goal and
 authorized work. Compare concrete actions, scope, deliverables, solution,
 acceptance criteria, and actual dependencies; creation order does not establish
 relevance. Read full details and actual task-specific and shared inputs for
@@ -45,7 +45,7 @@ or design, and permission to execute do not authorize task approval.
 Ready returns at most 10 candidates by default, or the requested bounded
 `--limit`; it is not a complete backlog. If this page is empty or no candidate
 matches, obtain the additional context actually needed through selected reads,
-the graph, or a complete filtered list as described in the handbook. Distinguish
+the graph, or `daynight task list --allow-agents true --json` as described in the handbook. Distinguish
 completed scope, work awaiting explicit approval, prerequisite-blocked work, other
 ongoing work, and insufficient
 candidates. Do not take unrelated work to stay busy or report completion from an
@@ -60,6 +60,10 @@ Creation leaves proposed tasks pending separate explicit approval and returns
 to this mode without starting execution. The design stage must
 actually register and verify the complete delivery breakdown before handing over
 its required PR; successor execution waits for design completion.
+
+Automatic selection never enables `allowAgents` on a task. If the user explicitly
+selects a task for execution, its manual claim path remains available regardless
+of the flag; preserve all approval, prerequisite and authorization checks.
 
 ## Advance serially and accept the scope
 

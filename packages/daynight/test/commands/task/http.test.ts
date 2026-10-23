@@ -14,7 +14,7 @@ const taskId = "abcdefab-2222-4222-8333-123456789abc";
 const otherId = "abcdefab-3333-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project = { id: projectId, name: "Project", repoUrl: "git@git.example:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
-const task: Task = { id: taskId, projectId, title: "Task title", description: "Description", properties: { pullRequests: [] }, status: "todo", version: 9_007_199_254_740_993n, ready: true, dependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
+const task: Task = { id: taskId, projectId, title: "Task title", description: "Description", properties: { pullRequests: [] }, status: "todo", version: 9_007_199_254_740_993n, ready: true, dependsOn: [], blockedBy: [], allowAgents: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
 type Request = { readonly method: string; readonly path: string; readonly query: URLSearchParams; readonly body: string };
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); vi.restoreAllMocks(); });
@@ -161,8 +161,8 @@ describe("task commands over HTTP", () => {
   it("renders complete graph data and exposes graph limit refusal details", async () => {
     let limit = false;
     const graph: TaskGraph = { observedAt: time, project, summary: { total: 2, proposed: 0, todo: 2, inProgress: 0, done: 0, ready: 1, blocked: 1 }, tasks: [
-      { id: taskId, titlePreview: "T".repeat(160), titleTruncated: true, status: "todo", ready: false, dependsOn: [otherId], blockedBy: [otherId], startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
-      { id: otherId, titlePreview: "Dependency", titleTruncated: false, status: "todo", ready: true, dependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
+      { id: taskId, titlePreview: "T".repeat(160), titleTruncated: true, status: "todo", ready: false, dependsOn: [otherId], blockedBy: [otherId], allowAgents: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
+      { id: otherId, titlePreview: "Dependency", titleTruncated: false, status: "todo", ready: true, dependsOn: [], blockedBy: [], allowAgents: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
     ] };
     const f = await fixture((_request, response) => {
       if (limit) respond(response, { error: { code: "graph_limit_exceeded", message: "Graph is too large", requestId: "graph-limit", details: { nodeCount: 1001, edgeCount: 1, maxNodes: 1000, maxEdges: 5000 } } }, 422);
