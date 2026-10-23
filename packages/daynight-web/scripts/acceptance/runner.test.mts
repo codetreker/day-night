@@ -244,12 +244,17 @@ test('an early container callback records readiness and waits for permission bef
       import { runContainerCallback } from ${JSON.stringify(runner)};
       const cancellation = new AbortController();
       const reason = new Error('callback-test-abort');
+      let begin;
+      const started = new Promise((resolve) => { begin = resolve; });
       const receive = (message) => {
-        if (message === 'status') process.send('waiting-for-permission');
+        if (message === 'run') begin();
+        else if (message === 'status') process.send('waiting-for-permission');
         else if (message === 'abort') cancellation.abort(reason);
       };
       process.on('message', receive);
+      process.send('initialized');
       try {
+        await started;
         await runContainerCallback(cancellation);
         throw new Error('Container callback completed without permission.');
       } catch (error) {
@@ -263,7 +268,23 @@ test('an early container callback records readiness and waits for permission bef
         process.disconnect();
       }
     `], value, true);
+    let stage = 'module initialization';
     try {
+      // Readiness measures the callback after imports; the child still has one five-second watchdog.
+      await new Promise<void>((resolve, reject) => {
+        const receive = (message: unknown): void => {
+          running.child.removeListener('message', receive);
+          if (message === 'initialized') resolve();
+          else reject(new Error('Container callback sent an unexpected initialization message.'));
+        };
+        running.child.once('message', receive);
+        void running.done.then((result) => {
+          running.child.removeListener('message', receive);
+          reject(new Error(`Container callback exited before initialization (exit=${result.code}, signal=${result.signal}, watchdog=${result.timedOut}).`));
+        });
+      });
+      stage = 'readiness publication';
+      running.child.send('run');
       const ready = await readyReceipt(join(containerDirectory, 'ready.json'), running);
       assert.equal(ready.acceptanceRunId, id);
       assert.equal(ready.devCiRunId, devCiRunId);
@@ -271,6 +292,7 @@ test('an early container callback records readiness and waits for permission bef
       assert.equal((ready.callback as { pid: number }).pid, running.child.pid);
       assert.deepEqual(JSON.parse(await readFile(join(containerDirectory, 'dev-ci-run.json'), 'utf8')), { runId: devCiRunId });
       assert.deepEqual(JSON.parse(await readFile(join(containerDirectory, 'callback.json'), 'utf8')), ready.callback);
+      stage = 'permission gating';
       const status = new Promise<unknown>((resolve, reject) => {
         const timer = setTimeout(() => { running.child.removeListener('message', receive); reject(new Error('Container callback stopped responding while gated.')); }, 1_000);
         const receive = (message: unknown): void => { clearTimeout(timer); running.child.removeListener('message', receive); resolve(message); };
@@ -282,6 +304,7 @@ test('an early container callback records readiness and waits for permission bef
       const commands = (await readFile(value.commands, 'utf8')).trim().split('\n');
       assert.equal(commands.length, 1);
       assert.match(commands[0]!, /docker ps --quiet --no-trunc --filter label=com\.docker\.compose\.project=daynight-dev-ci-/);
+      stage = 'cancellation cleanup';
       running.child.send('abort');
       const result = await running.done;
       assert.equal(result.error, undefined);
@@ -291,6 +314,8 @@ test('an early container callback records readiness and waits for permission bef
       assert.equal(result.stderr, '');
       assert.deepEqual((await readdir(containerDirectory)).sort(), ['callback.json', 'dev-ci-run.json', 'ready.json']);
       assert.equal(await processIdentity(running.child.pid!), null);
+    } catch (cause) {
+      throw new Error(`Container callback test failed during ${stage}.`, { cause });
     } finally {
       if (running.child.exitCode === null && running.child.signalCode === null) running.child.kill('SIGKILL');
       await running.done;
