@@ -32,7 +32,7 @@
 全部业务身份和成员检查、CLI 与双语 Web、必需配置、公开健康检查及正常 UniAuth
 协议 fixture。启用任务拥有集成正反例及其源码绑定 gate；[最终验收](auth-tasks/AU-T6.md)
 复用这些已验事实，补充真实领取后的 TCP 断连，以及原生/容器各自的同数据、重启、
-撤销与已准入传输组合回执。两份必需组合回执与现有 51 项 Playwright 清单并列，
+撤销与已准入传输组合回执。两份必需组合回执与现有 53 项 Playwright 清单并列，
 不改变容量或请求门槛。[组合验收决策](../../.agents/notes/implemented/testing/2026-10-23-authentication-combined-acceptance.md)
 拥有机制和证据边界；新代码的 gate 与真实上游人工登录各自留证。
 

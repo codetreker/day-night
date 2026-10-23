@@ -53,7 +53,7 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 		}
 		return data
 	}
-	for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"claim", "in_progress"}, {"complete", "done"}} {
+	for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"unapprove", "proposed"}, {"approve", "todo"}, {"claim", "in_progress"}, {"complete", "done"}} {
 		t.Run(step.action, func(t *testing.T) {
 			path := taskPath(task) + "/" + step.action
 			body := jsonBody(t, api.TaskTransitionRequest{Version: task.Version})
@@ -66,7 +66,7 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 				t.Fatal("rejected lifecycle request changed the member's task")
 			}
 			browser, headers := member, map[string]string{"Origin": integration.server.URL}
-			if step.action == "claim" {
+			if step.action == "claim" || step.action == "unapprove" {
 				browser, headers = anonymous, map[string]string{"Authorization": bearer["Authorization"]}
 			}
 			headers["X-Request-ID"] = "lifecycle-member-" + step.action
@@ -94,7 +94,7 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 	}
 	identityRequest(t, member, http.MethodDelete, integration.server.URL+"/api/v1/me/tokens/"+token.ID, "", origin, http.StatusNoContent)
 	identityRequest(t, member, http.MethodPost, integration.server.URL+"/api/v1/auth/logout", "", origin, http.StatusNoContent)
-	for _, action := range []string{"approve", "claim", "complete"} {
+	for _, action := range []string{"approve", "unapprove", "claim", "complete"} {
 		path := taskPath(task) + "/" + action
 		body := jsonBody(t, api.TaskTransitionRequest{Version: task.Version})
 		request(t, anonymous, http.MethodPost, path, body, bearer, http.StatusUnauthorized, "unauthenticated")
@@ -107,7 +107,7 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 	integration.logs.mu.Lock()
 	logs := integration.logs.buffer.String()
 	integration.logs.mu.Unlock()
-	for _, action := range []string{"approve", "claim", "complete"} {
+	for _, action := range []string{"approve", "unapprove", "claim", "complete"} {
 		found := false
 		for line := range strings.SplitSeq(logs, "\n") {
 			var entry map[string]any

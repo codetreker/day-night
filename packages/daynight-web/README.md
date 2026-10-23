@@ -196,37 +196,67 @@ snapshot; the [chain status decision](../../.agents/notes/implemented/bug-fix/20
 records its rationale.
 
 Proposed tasks use the current catalog label, Proposed or 待审批, and a distinct
-purple status color in
-statistics, standalone rows, chain badges, graph nodes and task details. The
-required graph summary includes `proposed`; totals satisfy
+purple status color in statistics, standalone rows, chain badges, graph nodes and
+task details. The required graph summary includes `proposed`; totals satisfy
 `total = proposed + todo + inProgress + done`. Only todo tasks contribute to ready
 or blocked counts. Proposed tasks remain unfinished even when all prerequisites
-are complete. Creation starts in proposed. Full task details offer Approve /
-批准任务 to every project member, including administrators, even for proposed
-tasks with unfinished prerequisites; success
-changes only the lifecycle to todo. The [lifecycle decision](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
-extends the original [reader preparation](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md).
+are complete. Creation starts in proposed.
 
-Approval uses the full reviewed task's positive int64 version, represented as
-bigint without passing through a rounded JavaScript Number. Lossless JSON reads
-and numeric request serialization retain exact digits above the safe-integer
+Every project member, including administrators, can approve proposed tasks and
+withdraw approval of todo tasks. Both actions sit at the far right of the actual
+task-title row on the overview and attachment tabs. The body's flex layout
+reserves a reading area while the heading context can shrink and scroll its full
+title, status and retained/stale notices. Focusing the title provides keyboard
+access to that native scrolling context. Retained read errors have their own
+bounded, keyboard-focusable scrolling area, so errors and long titles together
+cannot consume the space needed to reach tabs, materials or actions. Narrow
+screens retain the separate right action without horizontal page overflow.
+In-progress and done tasks have no approval action. The
+[lifecycle decision](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
+extends the original [reader preparation](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md);
+the [withdrawal decision](../../.agents/notes/implemented/feature/2026-10-23-task-unapprove.md)
+adds only todo to proposed while retaining execution and permission boundaries.
+
+Clicking either title action opens an action-specific confirmation and sends no
+request. It names the task and explains the result: approval produces todo,
+claimable only after prerequisites complete; withdrawal returns to proposed and
+retains content, dependencies and attachments. The bounded confirmation keeps
+its full task name in a keyboard-scrollable body while its header and action
+footer remain accessible. Cancel and Escape send no mutation.
+The confirmation initially focuses Cancel, owns the topmost focus trap, makes
+the underlying details inert and restores its title entry on cancellation. Only
+Confirm approval / 确认批准 or Confirm withdrawal / 确认撤回 submits. Confirmation
+retains the reviewed action, resource identity, source status and exact version;
+an observed change invalidates it and requires fresh review rather than a silent
+version or action replacement.
+
+Both operations use the full reviewed task's positive int64 version, represented
+as bigint without passing through a rounded JavaScript Number. Lossless JSON
+reads and numeric request serialization retain exact digits above the safe-integer
 range through int64 maximum. `TaskDetailSession` owns project/task-keyed detail
-and approval state for the workspace lifetime: closing or reopening details does
-not permit a second pending submission. The production authenticated workspace
-owns a provider keyed by user ID and session generation, shared across
-workspace/invitation navigation; replacing identity, logout or anonymous state
-disposes it. Late responses cannot populate another identity. Confirmed responses must match identity,
-todo and the expected next version. Success retains that detail and refreshes
-the matching project's graph; a graph refresh failure keeps confirmed todo and
-an explicit stale-snapshot refresh action. Pre-approval reads cannot restore
-proposed. Version conflicts reload current details and graph; approving a newer
-version needs a fresh click. Unknown outcomes retain the actual failure and
-require current-state reconciliation before another submission. Request
-cancellation does not establish rollback. Late results remain with their original
-project/task identity. There are no Web claim, complete or metadata-edit controls.
+and operation state for the workspace lifetime: closing or reopening details does
+not permit a second pending submission. Pending, unknown or reconciling operations
+disable the title entry; the overview retains feedback and state-check controls
+without duplicate action buttons. The production authenticated workspace owns a
+provider keyed by user ID and session generation, shared across workspace/invitation
+navigation; replacing identity, logout or anonymous state disposes it. Late responses
+cannot populate another identity.
+
+Confirmed responses must match HTTP 200, identity, the selected action's target
+status and the expected next version. Success retains that detail and refreshes
+the matching project's graph; a graph-refresh failure keeps the confirmed result
+and an explicit stale-snapshot refresh action. Earlier reads cannot restore the
+old source state. Version conflicts reload current details and graph; another
+operation requires fresh review and confirmation. Unknown outcomes retain the
+actual failure and require GET-only current-state reconciliation before another
+submission. Request cancellation does not establish rollback. Late results remain
+with their original project/task identity. Withdrawal preserves execution
+timestamps and materials, does not cascade successor states, release execution
+or reopen done work. There are no Web claim, complete or metadata-edit controls.
 The [actual-component browsing fixture](tests/mockups/browsing.html) is the
-frontend-only visual and interaction owner for approval, including blocked,
-pending, conflict, unknown-outcome and refresh-failure cases in both languages.
+frontend-only visual and interaction owner for both actions and confirmations,
+including blocked, pending, conflict, unknown-outcome and refresh-failure cases
+in both languages.
 
 Both lists use newest creation first, with descending IDs breaking equal-time
 ties. Presentation reverses the exact API sequence without reducing timestamp
@@ -644,7 +674,7 @@ image identity and full cleanup; the job retains its 20-minute overall bound.
 
 Native functional checks start after the native process and browser are ready.
 Their browser cleanup must pass before an atomic, run/source-bound permission
-releases the container's twenty-three functional checks. Capacity runs last, after all
+releases the container's twenty-four functional checks. Capacity runs last, after all
 preparation and coverage commands, container checks, full dev-ci cleanup and
 container browser recovery have finished. Every browser phase retains one
 worker and zero retries. CI runs controlled deployment fixtures before the
@@ -713,7 +743,7 @@ ownership revalidation. Uncertain ownership fails without recursive removal.
 Existing recovery commands remain available without opting into new attachment.
 
 The full CI workflow remains on Linux and retains case-sensitive storage coverage.
-macOS local acceptance runs the same 51 scenarios, additional combined
+macOS local acceptance runs the same 53 scenarios, additional combined
 authentication checks and fixed performance budgets, with native filesystem
 coverage qualified by its recorded capability. A local pass does not establish
 macOS CI coverage. The [filesystem coverage decision](../../.agents/notes/implemented/testing/2026-10-23-native-development-filesystem-coverage.md)
@@ -726,7 +756,7 @@ npm registry unless the build variable is explicitly supplied.
 The command builds real embedded assets and a new Go executable and owns a
 separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
 the normal dev-ci runner builds and starts the actual production image. Browser
-execution proceeds through twenty-three native functional scenarios, the same twenty-three
+execution proceeds through twenty-four native functional scenarios, the same twenty-four
 functional scenarios through the production image's stream gateway, then five
 native capacity/limit scenarios. The native process and PostgreSQL remain alive
 through the capacity phase; other preparation commands and the complete
@@ -745,11 +775,11 @@ the latter holds each upload, overwrite and deletion while changing language to
 verify one write and retained state. `task-description-markdown` and the other
 language scenarios remain GET/HEAD-only in the browser; fixture writes use the
 installed CLI or authenticated API request context. The three task-approval scenarios
-separately admit only registered project/task POST approve requests with exact expected
-counts. Six authentication scenarios declare only their exact expected management writes;
+and `task-unapproval` separately admit only registered project/task POST approve or
+unapprove requests with exact expected counts. Six authentication scenarios declare only their exact expected management writes;
 unrelated browser mutations remain failures.
 
-The same three [approval journeys](tests/e2e/approval.spec.ts) reuse the packed
+The [approval and withdrawal journeys](tests/e2e/approval.spec.ts) reuse the packed
 CLI against each target's actual authenticated service. The existing normal
 factory gives browser and installed CLI the same Alice identity through UniAuth
 session/PAT flows. CLI credentials remain in private origin-matched configuration
@@ -809,7 +839,7 @@ or an iframe load cannot satisfy this check. The
 owns data-sharing, rendering and independent reading proof.
 
 The additional [combined authentication journey](scripts/acceptance/auth-combined.mts)
-requires a separate receipt on each runtime target, alongside the unchanged 51
+requires a separate receipt on each runtime target, alongside the 53
 Playwright cases. It reuses the same installed package and normal Alice/Bob
 identities, records their initial project sets, and crosses browser and CLI data
 through shared/private projects, original-credential service restart, logout/PAT
@@ -866,7 +896,7 @@ Actual DOM fixed ports, Q≤12/tangency, card avoidance,
 body/marker coverage and analytic curved dash phase cover every visible edge.
 Stable owner transforms are graph-relative real root/owner CTMs; raw screen,
 page-scroll and canvas diagnostics stay separate from reset equality.
-The 51-scenario inventory (28 native, 23 container), current manual/periodic refresh,
+The 53-scenario inventory (29 native, 24 container), current manual/periodic refresh,
 attachment tabs/standalone reader, bilingual/auth boundaries, zero retries, timeouts,
 coverage, size refusals and cleanup remain. PR #143 delivered dependency inspection;
 its receipts bind results to that exact tested source. The authentication/lifecycle
@@ -896,7 +926,7 @@ scenario annotations validated in each target's report.
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
-| W13 | `task-approval`, `task-approval-conflicts`, `task-approval-recovery`: same-data packed-CLI/ordinary-graph lifecycle, blocked prerequisites, stale CLI metadata, CLI/Web same-version competition, pending protection, exact int64 digits, real-commit response loss, real graph failure and task/SPA-project identity/focus/browsing preservation |
+| W13 | `task-approval`, `task-approval-conflicts`, `task-approval-recovery`, `task-unapproval`: same-data packed-CLI/ordinary-graph lifecycle, ready/blocked withdrawal, metadata/attachment preservation, both title-row confirmations and tabs, cancel/Escape/focus, invalidation, stale CLI metadata, CLI/Web same-version competition, pending protection, exact int64 digits, real-commit response loss, real graph failure and task/SPA-project identity/focus/browsing preservation |
 | FA1–FA12 | `task-attachments`: installed CLI and production UI share real task/files on native and container targets; exact bytes, file mutations, detail tabs, adjacent panes, unique preview scroll owners, rendered formats and reloadable standalone reading. Independent real-service probes add end-of-document wheel/keyboard, native PDF final-page paint, fault/retry and unchanged task/graph proof |
 | TI8–TI9 | `task-description-markdown`: installed CLI and real API preserve Unicode/CRLF Markdown bytes and versioned full replacement; bilingual 1440px/320px rich rendering, escaped HTML, URL policy, task-root images/encoded references, paginated loading/list failure/retry, invalid/missing/preview failure states, one-controller navigation/focus, overwrite refresh, modified native href and HTML frame interaction; inspection→Details→relative attachment→close preserves graph selection/geometry/view |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
@@ -923,14 +953,14 @@ combined receipts are `native/auth-combined/target.json` and
 They require all eleven named checks, source/browser/installed-package identity,
 old/new restart process identity and passed browser/resource cleanup. They retain
 safe observations and hashes, not credential/configuration bodies or raw logs.
-The existing 51-case report validator remains independent. `CI` requires a clean checkout matching
+The existing 53-case report validator remains independent. `CI` requires a clean checkout matching
 `GITHUB_SHA` and the pinned browser for the current Linux or macOS host. Playwright uses one worker and no
 retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validation.
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
 tested checkout identity, which is normally a merge revision for PR runs. A pass
-requires the strict union of twenty-three native functional and five native capacity/limit
-scenarios (28 native total), plus the twenty-three container functional scenarios. Every
+requires the strict union of twenty-four native functional and five native capacity/limit
+scenarios (29 native total), plus the twenty-four container functional scenarios. Every
 phase and target rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
 Installed-CLI handoff, container callbacks and recovery require matching source
 commit/tree/dirty state as well as existing package/artifact ownership. A missing

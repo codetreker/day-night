@@ -68,7 +68,7 @@ Principal 形状为 `{UserID, CredentialID, Kind}`，Kind 只有 session/PAT。�
 
 读取在原 repeatable-read 快照中检查成员再读取资源；写入取得现有项目行锁后重查
 成员/角色/观察版本与领域约束。列表以 membership JOIN 在原 SQL cursor/LIMIT 前
-筛选。Tasks.Approve/Claim/Complete(ctx, principal, projectID, taskID, version)
+筛选。Tasks.Approve/Unapprove/Claim/Complete(ctx, principal, projectID, taskID, version)
 沿用同一项目锁，并在取锁后检查当前成员，再校验观察版本、前态与依赖。admin 和
 member 都可执行这些资源操作；管理员角色只增加成员与邀请管理能力。创建默认
 proposed，通用元数据更新不接收 status，没有旧状态写入旁路。任务版本、int64、
@@ -170,7 +170,7 @@ HTTP 认证逐请求读取当前会话/PAT 并产生 Principal。资源服务在
 | POST /api/v1/auth/logout | 主站会话注销，验证 Origin。 |
 | GET/POST /api/v1/me/tokens、DELETE .../{tokenId} | 主站会话管理自己的 PAT。 |
 | 现有 project/task/graph/property/attachment API | session 或 PAT；业务 service 检查当前项目成员。 |
-| POST .../tasks/{taskId}/approve、.../claim、.../complete | session/PAT；成员写权限，正 int64 version；POST 和 405 路径均经过 Require、Cookie Origin 规则及 no-store。 |
+| POST .../tasks/{taskId}/approve、.../unapprove、.../claim、.../complete | session/PAT；成员写权限，正 int64 version；POST 和 405 路径均经过 Require、Cookie Origin 规则及 no-store。 |
 | GET .../projects/{id}/members | 任一成员读取最小资料和角色/version。 |
 | PATCH/DELETE .../members/{userId} | admin，携带观察到的成员 version。 |
 | GET/POST .../projects/{id}/invitations、DELETE .../{inviteId} | admin，创建一次显示链接，删除撤销。 |
@@ -324,8 +324,8 @@ docker compose logs --no-log-prefix server | jq -R 'fromjson? | select(.request_
 生产浏览器、原生/容器和现有资源/容量预算。[最终验收设计](auth-tasks/AU-T6.md)与
 [组合验收决策](../../.agents/notes/implemented/testing/2026-10-23-authentication-combined-acceptance.md)
 拥有实际领取结果后 TCP 断连，以及原生/容器各自的浏览器和安装 CLI 同数据、原凭据
-重启、撤销、已准入上传和 socket 中断证明。两目标各有一份额外必需回执，原有
-23+23+5 共 51 项 Playwright inventory 与容量门槛保持。
+重启、撤销、已准入上传和 socket 中断证明。两目标各有一份额外必需回执，当前
+24+24+5 共 53 项 Playwright inventory 与容量门槛保持。
 
 统一启用的源码绑定结果保留其原始范围，不作为新增代码的完整门禁证明。每次组合
 结果核对当前源码、安装包、进程/镜像与清理；真实上游人工联调单独留证，缺少时

@@ -59,6 +59,7 @@ export type ApiClient = {
   listReadyTasks(projectId: string, limit: number): Promise<readonly Task[]>;
   updateTask(projectId: string, taskId: string, input: UpdateTaskInput): Promise<Task>;
   approveTask(projectId: string, taskId: string, input: TaskActionInput): Promise<Task>;
+  unapproveTask(projectId: string, taskId: string, input: TaskActionInput): Promise<Task>;
   claimTask(projectId: string, taskId: string, input: TaskActionInput): Promise<Task>;
   completeTask(projectId: string, taskId: string, input: TaskActionInput): Promise<Task>;
   getTaskGraph(projectId: string): Promise<TaskGraph>;
@@ -307,7 +308,7 @@ export const createApiClient = (options: {
     }
   };
 
-  const taskAction = (action: "approve" | "claim" | "complete", projectId: string, taskId: string, input: TaskActionInput): Promise<Task> => {
+  const taskAction = (action: "approve" | "unapprove" | "claim" | "complete", projectId: string, taskId: string, input: TaskActionInput): Promise<Task> => {
     const project = resourceId(projectId), task = resourceId(taskId);
     return exchange({ operation: `task.${action}`, projectId: project, taskId: task }, `/projects/${encodeURIComponent(project)}/tasks/${encodeURIComponent(task)}/${action}`, "POST", { kind: "json", parse: (value) => parseTask(value, project, task) }, [200], { kind: "json", value: { version: input.version } });
   };
@@ -366,6 +367,7 @@ export const createApiClient = (options: {
       });
     },
     approveTask: (projectId, taskId, input) => taskAction("approve", projectId, taskId, input),
+    unapproveTask: (projectId, taskId, input) => taskAction("unapprove", projectId, taskId, input),
     claimTask: (projectId, taskId, input) => taskAction("claim", projectId, taskId, input),
     completeTask: (projectId, taskId, input) => taskAction("complete", projectId, taskId, input),
     putTaskAttachment: (projectId, taskId, path, input) => {

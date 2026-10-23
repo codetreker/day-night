@@ -57,6 +57,8 @@ observed for that decision and confirm in_progress. Resume existing in-progress
 work after checking its actual checkpoint. After the stage acceptance and every
 required authorized PR merge, reread and use `task complete` with the observed
 version. Completion satisfies dependencies but never approves the next stage.
+Unstarted todo work can return to proposed through explicitly authorized
+unapprove; it then waits for a new approval before claim.
 
 | Stage | Required inputs to start | Outputs and completion |
 |---|---|---|
@@ -146,8 +148,8 @@ does not prove failure. If identity cannot be established uniquely, preserve the
 specific error and request the information needed to reconcile it; do not create
 another chain.
 
-Apply the handbook's exact-version rules to metadata updates, approval, claim
-and completion, and preserve complete-field replacement semantics for updates. Attachments are independent of task versions, status, and timestamps;
+Apply the handbook's exact-version rules to metadata updates, approval,
+withdrawal, claim and completion, and preserve complete-field replacement semantics for updates. Attachments are independent of task versions, status, and timestamps;
 verify actual file contents and metadata separately. Do not unlock delivery by
 marking incomplete registration or unfinished design complete. Readiness and
 `in_progress` provide no ownership lock; claim is a versioned transition, not an

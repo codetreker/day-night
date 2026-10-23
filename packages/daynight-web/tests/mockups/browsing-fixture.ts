@@ -18,6 +18,8 @@ export const browsingScenarioLabels = {
   empty: '空项目',
   'approval-ready': '批准可开始的任务 · 精确大版本号',
   'approval-blocked': '批准仍有未完成前置的任务',
+  'unapproval-ready': '撤回可开始任务的审批 · 含重新批准',
+  'unapproval-blocked': '撤回仍有未完成前置的任务审批',
   pending: '批准处理中 · 可关闭重开详情',
   failure: '服务拒绝批准 · 显示错误后显式重试',
   conflict: '版本冲突 · 重读修改后的任务',
@@ -49,7 +51,7 @@ type TaskSeed = {
 };
 
 const approvalScenarios = new Set<BrowsingScenario>([
-  'approval-ready', 'approval-blocked', 'pending', 'failure', 'conflict', 'approved-by-other',
+  'approval-ready', 'approval-blocked', 'unapproval-ready', 'unapproval-blocked', 'pending', 'failure', 'conflict', 'approved-by-other',
   'unknown-applied', 'unknown-unapplied', 'unknown-reconcile-error', 'graph-refresh-error', 'task-switch', 'long320',
 ]);
 export const isApprovalScenario = (scenario: BrowsingScenario): boolean => approvalScenarios.has(scenario);
@@ -97,10 +99,11 @@ const progressive: readonly TaskSeed[] = [
 const scenarioSeeds = (scenario: BrowsingScenario): readonly TaskSeed[] => {
   const selected = (numbers: readonly number[]) => mixed.filter((task) => numbers.includes(task.number));
   if (isApprovalScenario(scenario)) {
+    const withdrawing = scenario === 'unapproval-ready' || scenario === 'unapproval-blocked';
     const seeds: readonly TaskSeed[] = [
-      { number: 1, title: '审阅并批准任务范围', status: 'proposed', dependencies: [] },
-      { number: 2, title: '批准有未完成前置的后续任务', status: 'proposed', dependencies: [1] },
-      { number: 12, title: '切换查看的独立待审批任务', status: 'proposed', dependencies: [] },
+      { number: 1, title: '审阅任务范围并明确审批决定', status: scenario === 'unapproval-ready' ? 'todo' : 'proposed', dependencies: [] },
+      { number: 2, title: '有未完成前置的后续任务', status: withdrawing ? 'todo' : 'proposed', dependencies: [1] },
+      { number: 12, title: '切换查看的独立任务', status: withdrawing ? 'todo' : 'proposed', dependencies: [] },
     ];
     return scenario === 'long320'
       ? seeds.map((task) => ({ ...task, title: `${task.title}：中文、English identifiers、Keyboard navigation 与完整审批内容的自然换行。`.repeat(4) }))
@@ -226,16 +229,16 @@ export const installBrowsingFixture = (): BrowsingFixture => {
     return [initial.project.id, state];
   }));
   const stateForScenario = (scenario: BrowsingScenario) => states.get(browsingProjects[scenario].project.id)!;
-  const approve = (state: SceneState, taskId: string, version: bigint): Response => {
+  const applyApproval = (state: SceneState, taskId: string, version: bigint, action: 'approve' | 'unapprove'): Response => {
     const current = state.tasks.get(taskId)!;
     if (current.version !== version) return fault('version_conflict', 409);
-    if (current.status !== 'proposed') return fault('invalid_transition', 409);
-    const approved = { ...current, status: 'todo' as const, version: current.version + 1n,
-      ready: current.blockedBy.length === 0, updatedAt: '2026-10-22T10:00:00Z' };
-    state.tasks.set(taskId, approved);
+    if (current.status !== (action === 'approve' ? 'proposed' : 'todo')) return fault('invalid_transition', 409);
+    const updated: TaskDetail = { ...current, status: action === 'approve' ? 'todo' : 'proposed', version: current.version + 1n,
+      ready: action === 'approve' && current.blockedBy.length === 0, updatedAt: new Date(Date.parse(current.updatedAt) + 1_000).toISOString() };
+    state.tasks.set(taskId, updated);
     if (state.scenario === 'graph-refresh-error') state.failedGraphReads = true;
     emit();
-    return jsonResponse(approved);
+    return jsonResponse(updated);
   };
   const fixtureFetch: typeof fetch = async (input, init) => {
     const request = input instanceof Request ? input : null;
@@ -245,7 +248,7 @@ export const installBrowsingFixture = (): BrowsingFixture => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.origin);
     if (url.origin !== location.origin) throw new Error(`Unknown browsing preview origin: ${url.origin}`);
     const graphMatch = /^\/api\/v1\/projects\/([^/]+)\/task-graph$/.exec(url.pathname);
-    const taskMatch = /^\/api\/v1\/projects\/([^/]+)\/tasks\/([^/]+)(\/(?:attachments|approve))?$/.exec(url.pathname);
+    const taskMatch = /^\/api\/v1\/projects\/([^/]+)\/tasks\/([^/]+)(\/(?:attachments|approve|unapprove))?$/.exec(url.pathname);
     const projectId = graphMatch?.[1] ?? taskMatch?.[1];
     const state = projectId === undefined ? undefined : states.get(projectId);
     if (state !== undefined && graphMatch !== null) {
@@ -259,7 +262,8 @@ export const installBrowsingFixture = (): BrowsingFixture => {
     }
     const task = state?.tasks.get(taskMatch?.[2] ?? '');
     if (state !== undefined && task !== undefined && taskMatch !== null) {
-      if (taskMatch[3] === '/approve') {
+      if (taskMatch[3] === '/approve' || taskMatch[3] === '/unapprove') {
+        const action = taskMatch[3] === '/approve' ? 'approve' : 'unapprove';
         if (method !== 'POST') return fault('method_not_allowed', 405);
         const body = typeof init?.body === 'string' ? init.body : request === null ? '' : await request.text();
         let data: unknown;
@@ -267,13 +271,14 @@ export const installBrowsingFixture = (): BrowsingFixture => {
         if (typeof data !== 'object' || data === null || Array.isArray(data) || Object.keys(data).length !== 1 || !('version' in data) || !isTaskVersion(data.version)) return fault('validation_failed', 400);
         const version = data.version;
         if (version !== task.version) return fault('version_conflict', 409);
-        if (task.status !== 'proposed') return fault('invalid_transition', 409);
-        const attempt = state.attempts.get(task.id) ?? 0;
-        state.attempts.set(task.id, attempt + 1);
+        if (task.status !== (action === 'approve' ? 'proposed' : 'todo')) return fault('invalid_transition', 409);
+        const attemptKey = `${task.id}:${action}`;
+        const attempt = state.attempts.get(attemptKey) ?? 0;
+        state.attempts.set(attemptKey, attempt + 1);
         if (state.scenario === 'pending' || state.scenario === 'task-switch') {
           const key = ++pendingId;
           return new Promise<Response>((resolve, reject) => {
-            state.pending.set(key, { settle: () => resolve(approve(state, task.id, version)), reject });
+            state.pending.set(key, { settle: () => resolve(applyApproval(state, task.id, version, action)), reject });
             emit();
           });
         }
@@ -284,14 +289,14 @@ export const installBrowsingFixture = (): BrowsingFixture => {
             return fault('version_conflict', 409);
           }
           if (state.scenario === 'approved-by-other') {
-            approve(state, task.id, version);
+            applyApproval(state, task.id, version, action);
             return fault('version_conflict', 409);
           }
-          if (state.scenario === 'unknown-applied' || state.scenario === 'unknown-reconcile-error') approve(state, task.id, version);
+          if (state.scenario === 'unknown-applied' || state.scenario === 'unknown-reconcile-error') applyApproval(state, task.id, version, action);
           if (state.scenario === 'unknown-reconcile-error') { state.failedTaskReads.add(task.id); emit(); }
-          if (state.scenario === 'unknown-applied' || state.scenario === 'unknown-unapplied' || state.scenario === 'unknown-reconcile-error') throw new TypeError('The preview approval response was lost.');
+          if (state.scenario === 'unknown-applied' || state.scenario === 'unknown-unapplied' || state.scenario === 'unknown-reconcile-error') throw new TypeError('The preview approval operation response was lost.');
         }
-        return approve(state, task.id, version);
+        return applyApproval(state, task.id, version, action);
       }
       if (method !== 'GET') return fault('method_not_allowed', 405);
       if (taskMatch[3] === '/attachments') return jsonResponse({ items: [], nextCursor: null });

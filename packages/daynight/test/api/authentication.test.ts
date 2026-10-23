@@ -112,7 +112,7 @@ describe("API bearer authentication", () => {
     ]);
   });
 
-  it.each(["approve", "claim", "complete"] as const)("authenticates the %s lifecycle request with exact int64 JSON", async (action) => {
+  it.each(["approve", "unapprove", "claim", "complete"] as const)("authenticates the %s lifecycle request with exact int64 JSON", async (action) => {
     const received: { authorization: string | undefined; method: string | undefined; path: string | undefined; body: string }[] = [];
     const url = await server((request, response) => {
       let body = "";

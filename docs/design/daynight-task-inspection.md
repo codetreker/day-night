@@ -51,7 +51,7 @@ ProjectPage保持详情资源和入口/关闭恢复所有权。当前画布拥�
 
 ## 审批与详情会话
 
-创建默认为 proposed，显式 approve 转为 todo，claim 与 complete 继续按前态、精确版本和前置条件推进生命周期。图节点不携带 task version，也不因检查而发起写请求。详情的 TaskDetailSession 与版本化审批、同任务保留读取、冲突/结果未知核对及资源隔离由[审批设计](daynight-web.md#版本化审批与任务会话)与[生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)拥有。审批刷新继续保留图选择、S、视口、详情页签和附件控制器；404、身份或资源变化按原会话规则卸载私有内容。图检查与 Details 入口保持独立。
+创建默认为 proposed，显式 approve 转为 todo，unapprove 仅把 todo 撤回 proposed，claim 与 complete 继续按前态、精确版本和前置条件推进生命周期。图节点不携带 task version，也不因检查而发起写请求。详情的 TaskDetailSession 与版本化审批、同任务保留读取、冲突/结果未知核对及资源隔离由[审批设计](daynight-web.md#版本化审批与任务会话)与[生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)拥有。审批刷新继续保留图选择、S、视口、详情页签和附件控制器；404、身份或资源变化按原会话规则卸载私有内容。图检查与 Details 入口保持独立。
 
 ## Markdown 与附件链接
 
@@ -97,6 +97,6 @@ Goal 阶段、创建/实现/合并权限继续独立。创建默认 proposed；�
 
 独立地从完整 API 投影 P 和实际 S 推导每个卡片是否存在隐藏直接邻居，验证 96/136px 高度；P 外无关后续不产生 footer。实际DOM路线的端点/方向、平滑相切、全部可见卡片避让、真实CTM、完整body coverage、参考弧长/phase及原生箭头独立判断，不能由生产规划器输出充当有效预期。可选输入只做编译忠实度，负例覆盖缺/多边、错误箭头、穿卡片和相位/覆盖失败。稳定性比较使用图坐标/相对变换，页面滚动诊断单独保留，不能把一致的文档平移误判为图变化。
 
-51场景（28原生/23容器）、四个完整1000任务输入及999/5000边、每图五次、mandatory visibility、超限、coverage、零retry、timeout和cleanup保持。验收验证selected/hidden上游及selectMs≤300，保留open≤3000及detail/zoom/pan≤300。普通Details→close→立即zoom/pan、可信可见任务选择、高亮态同序列，每项取较慢state、网络单独计量；close与zoom间不加等待/reset/fit。
+53场景（29原生/24容器）、四个完整1000任务输入及999/5000边、每图五次、mandatory visibility、超限、coverage、零retry、timeout和cleanup保持。验收验证selected/hidden上游及selectMs≤300，保留open≤3000及detail/zoom/pan≤300。普通Details→close→立即zoom/pan、可信可见任务选择、高亮态同序列，每项取较慢state、网络单独计量；close与zoom间不加等待/reset/fit。
 
 `task-description-markdown` 在原生/容器目标保留独立描述阅读旅程，并验证图内检查→Details→相对附件导航→关闭后 S、选择、几何和视口保持。API 不引入格式标记或旧数据特判，现有字符串直接按 Markdown 展示，不批量改写已有任务描述。原型不替代生产验收。生产验证覆盖 typecheck、测试/coverage、build、真实 component/native/container/capacity 和独立审查。结果必须绑定确切源码，任务状态、PR、审批、required checks 与合并证据归 Daynight 和任务专属主附件。任务说明保持自足，专属主附件拥有 Solution/Acceptance criteria。

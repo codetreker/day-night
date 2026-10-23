@@ -344,7 +344,7 @@ flowchart TD
 | `task ready [--limit <N>]` | 单次 `GET /api/v1/projects/{projectId}/tasks?ready=true&limit=N`，不提交 cursor |
 | `task show <id>` | `GET /api/v1/projects/{projectId}/tasks/{id}` |
 | `task update <id>` | 可选先 GET task，再 PATCH 同一路径，只写元数据 |
-| `task approve/claim/complete <id>` | 可选先 GET task，再 POST 同一 task 的 `/approve`、`/claim` 或 `/complete`，body 只含 version |
+| `task approve/unapprove/claim/complete <id>` | 可选先 GET task，再 POST 同一 task 的 `/approve`、`/unapprove`、`/claim` 或 `/complete`，body 只含 version |
 | `task graph` | `GET /api/v1/projects/{projectId}/task-graph`，不附加 query |
 | `task attachment put <id> <file>` | `PUT /api/v1/projects/{projectId}/tasks/{id}/attachments/files/{path...}`，流式请求体，接受 200/201 元数据 |
 | `task attachment list <id>` | `GET /api/v1/projects/{projectId}/tasks/{id}/attachments`，按路径身份读完分页 |
@@ -418,7 +418,7 @@ repo 许可、API、schema 和事务政策保持原样。原子唯一性需要�
 最新值替代。CLI 不重放 PATCH，不将旧版本冲突改成成功；语义无变化的响应也直接
 按服务返回渲染。生命周期操作复用相同 project 解析、Operation、int64 序列化和
 完整 mutation 渲染器；显式版本直接 POST，省略时仅 GET 一次，无冲突重试。
-显式 project UUID、show/update/approve/claim/complete 的 task UUID、标题、描述、
+显式 project UUID、show/update/approve/unapprove/claim/complete 的 task UUID、标题、描述、
 版本及修改字段组合在配置、Git 和网络前验证；依赖 ID 原样保留给服务校验。显式 `--project` 直接 GET project，不读取工作目录或
 加载仓库模块；自动分支将 `serverUrl`、同一 `Operation`、API 和工作目录交给
 `resolveProject`。解析返回后才发送 task 请求，因此本地准备失败没有 task mutation。

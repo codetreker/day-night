@@ -58,7 +58,8 @@ critical-block 及所有原生 CLI 门槛；新增检查不能替换现有检查
 
 原只读看板交付时沿用现有 project/task 写接口、schema、状态和依赖规则。当前
 [生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)增加 proposed 详情审批，
-[看板规范](../spec/daynight-web.md)拥有该操作的版本、防重、核对与刷新要求；原基线
+[撤回决策](../../.agents/notes/implemented/feature/2026-10-23-task-unapprove.md)增加 todo 受限撤回和两种标题确认。
+[看板规范](../spec/daynight-web.md)拥有这些操作的版本、防重、核对与刷新要求；原基线
 完成证据不代表后续审批验收。本机监听、同源读取和完整快照保证贯穿全部任务。
 标题与仓库地址使用文本节点；描述按[任务阅读要求](../spec/daynight-task-inspection.md)
 TI8–TI10 使用保留原始 HTML 文本的 CommonMark/GFM。

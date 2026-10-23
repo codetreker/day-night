@@ -46,7 +46,7 @@ skill 提供工作规则，不增加实现、发布、合并、主线 push、部
 
 审批是另一项明确授权：创建产生 proposed，只有用户批准该 task 或指定范围才可
 approve。创建许可、实现许可、run-task 和 autopilot 都不隐含批准；用户也可直接
-使用 CLI 或 Web 完成该决定。批准不扩大实现和交付权限。
+使用 CLI 或在 Web 确认窗中完成该决定。todo 的审批撤回同样需要明确的指定任务或范围指令，使用观察版本 unapprove 后回到 proposed，重新批准前不可 claim。创建、执行请求和 autopilot 不隐含撤回授权。批准不扩大实现和交付权限。
 
 Agent 通过实际 CLI 确定项目和任务，不凭会话旧值判断实时状态。在仓库内可省略
 `--project`，由 CLI 根据 Git origin URL 匹配服务中的项目；显式指定的项目优先。
@@ -73,7 +73,7 @@ handbook 保持为命令用途索引与操作背景说明。索引只列命令�
 依赖视图，不能替代包含描述、属性和版本的任务详情；图超限后仍可使用有界查询与
 指定任务读取。
 
-元数据更新及 approve/claim/complete 必须携带决策时实际读取的精确版本，不能依赖临提交前的默认读取来保护旧判断，
+元数据更新及 approve/unapprove/claim/complete 必须携带决策时实际读取的精确版本，不能依赖临提交前的默认读取来保护旧判断，
 也不能截断或舍入 int64。描述、依赖和 PR 列表按整个字段替换，保留仍需的数据；冲突
 后重新读取并判断变更，而非仅更换版本重放。状态与 readiness 不提供所有权或锁。
 
@@ -239,7 +239,7 @@ Claude Code personal 优先于 project，选择 Project 不修改 User。目录�
 | AS.V5 | 六种组合比较全部文件与字节；重装移除修改和旧文件，保留 sibling、另一 scope、parent 链接及 leaf 原指向对象。 |
 | AS.V6 | 同物理目标只写一次；安装与迁移路径嵌套写入前拒绝；部分失败停止后续目标并准确报告已有结果。 |
 | AS.V7 | 静态检查固定名称、非空 description、英文指引及所有实际本地资源引用；围栏代码中的任务示例保留有效 Markdown，不误认为 bundle 资源。实际打包与安装内容含 Markdown 写法、真实附件引用规则及完整入口、四份模式资料和共享 Goal 协议，无仓库工作流依赖。 |
-| AS.V8 | 静态审查四模式路由、创建/审批/执行授权、显式 autopilot、单任务、精确版本、专用 approve/claim/complete、不确定写入、Markdown 自足正文、资料所有权、Goal 阶段和完成要求；资料不得指示 status patch 或 todo 创建。CLI 的创建、完整替换和读取验证含中英文、换行、代码、GFM 与链接的原始描述字符串及精确版本。 |
+| AS.V8 | 静态审查四模式路由、创建/审批/执行授权、显式 autopilot、单任务、精确版本、专用 approve/unapprove/claim/complete、不确定写入、Markdown 自足正文、资料所有权、Goal 阶段和完成要求；资料不得指示 status patch 或 todo 创建。CLI 的创建、完整替换和读取验证含中英文、换行、代码、GFM 与链接的原始描述字符串及精确版本。 |
 | AS.V9 | 独立情境演练覆盖裸调用有/无上下文、创建许可、Goal 范围内双起始任务及后续拆分、autopilot 不隐含创建或审批许可、trivial、proposed 各阶段登记、无审批授权的 run、显式 Goal-task 范围审批、精确版本 claim/complete、in-progress 恢复、冲突与不确定写入、阶段输入/产出、真实拆分、部分登记恢复、Markdown 更新保留有效引用、资料所有权、前端 mock UI、开放 PR 等待、单任务返回、autopilot 阻塞与有界候选及整体验收。 |
 | AS.V10 | 新名称发布后才清理所选根旧入口，覆盖旧叶节点链接、清理失败保留新 bundle、准确部分结果及重载提示。 |
 | AS.V11 | CLI typecheck、test、build、安装验收通过；Linux/macOS/Windows 分别提供适用检测、定位、取消、覆盖和链接的原生证据。 |

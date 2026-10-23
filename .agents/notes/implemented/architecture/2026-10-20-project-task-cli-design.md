@@ -95,7 +95,9 @@ The adopted task composition uses the shared command schema and server runtime.
 Description values declare `allowEmpty`, list status values declare four fixed
 `choices`, and dependency options declare `repeatable`. Generic update no longer
 declares status. The [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md)
-owns dedicated approve, claim and complete commands and proposed creation. Repeatable values form an ordered
+owns proposed creation and dedicated approve, claim and complete commands;
+the [withdrawal decision](../feature/2026-10-23-task-unapprove.md) adds unapprove
+under the same command schema and exact-version rules. Repeatable values form an ordered
 array from the first occurrence, retaining duplicate IDs for server validation.
 Text options accept inline assignment split at the first equals sign, preserving
 leading dashes and later equals signs. Separated dash-prefixed values remain

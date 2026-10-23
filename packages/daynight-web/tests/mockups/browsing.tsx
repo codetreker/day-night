@@ -87,9 +87,9 @@ const BrowsingMockup = ({ fixture }: { readonly fixture: BrowsingFixture }) => {
               <option value="error">详情加载失败</option>
             </select>
             <p>两个页签旁的数字均表示未完成任务数，任务链中的共享任务跨链只计一次，显示已完成项不改变数字。任务链状态汇总根及全部后续任务：全部完成才显示已完成，有任务开始或完成后显示进行中，有待处理任务时显示待处理，其余全部待审批时显示待审批。待审批任务始终不可开始，未完成前置仍完整显示。图的完整投影包含全部上游前置，外部前置保留自身状态，不计入链内进度，也不引入其无关后续。超过 50 个任务或 100 条依赖时先显示根锚定概览，卡片底部控件每次最多展开 20 个直接前置或后续并显示新增任务、依赖和剩余数量；收起到概览恢复初始范围。卡片主体追踪全部前置，隐藏上游去重计数；独立详情入口阅读任务，展开控件分开操作，刷新保留当前实际可见任务。依赖选择及详情不会展开或移动画布。任务链按创建时间倒序排列，浏览设置按项目保存；展开图后可全屏查看、缩放和打开详情，Esc 先关闭详情，再退出全屏。</p>
-            {isApprovalScenario(scenario) && <p>在真实任务详情中点击“批准任务”。根任务没有前置，后续任务包含未完成前置，独立任务用于切换查看。批准后进入待处理；未完成前置继续阻止开始。当前场景使用超过 JavaScript 安全整数范围的精确版本号。切换场景不会改变其他项目的任务；重新加载页面可重置全部场景。</p>}
+            {isApprovalScenario(scenario) && <p>真实任务详情的标题行右侧显示当前可用的“批准任务”或“撤回审批”，概览和附件页均可操作。点击后先审阅确认窗口，取消或 Escape 不提交；明确确认后才发送对应操作。批准后进入待处理，未完成前置继续阻止开始；撤回后回到待审批，资料和附件保留。两种操作可重复切换，故障场景分别作用于每个动作的首次提交。当前场景使用超过 JavaScript 安全整数范围的精确版本号。切换场景不会改变其他项目的任务；重新加载页面可重置全部场景。</p>}
             {(scenario === 'pending' || scenario === 'task-switch') && <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
-              <button className="button" type="button" disabled={controls.pending === 0} onClick={() => fixture.settlePending(scenario)}>完成待处理批准响应</button>
+              <button className="button" type="button" disabled={controls.pending === 0} onClick={() => fixture.settlePending(scenario)}>完成待处理审批响应</button>
               <span>待处理响应：{controls.pending}。可关闭并重开详情检查提交防重；关闭详情后使用此预览控件完成响应。</span>
             </div>}
             {scenario === 'unknown-reconcile-error' && <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
@@ -98,7 +98,7 @@ const BrowsingMockup = ({ fixture }: { readonly fixture: BrowsingFixture }) => {
             </div>}
             {scenario === 'graph-refresh-error' && <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
               <button className="button" type="button" disabled={!controls.graphReadFailure} onClick={() => fixture.recoverReads(scenario)}>恢复任务图读取</button>
-              <span>批准结果保持为待处理；关闭详情并恢复读取后，使用项目或详情中的刷新按钮更新任务图。</span>
+              <span>已确认的审批操作结果保持；关闭详情并恢复读取后，使用项目或详情中的刷新按钮更新任务图。</span>
             </div>}
           </section>
           <ProjectPage key={scenario} projectId={browsingProjects[scenario].project.id} />

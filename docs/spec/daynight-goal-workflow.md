@@ -44,7 +44,7 @@ create-task 与 run-task 共用这些要求。本文没有产品 UI 变更；对
 用观察版本 claim→in_progress；阶段验收及所有必要授权 PR 合并后用观察版本 complete→done。
 用户可直接在 CLI/Web 批准，也可明确授权 Agent 批准所述范围。Goal 创建、完整要求、
 原型或设计完成、run-task 和 autopilot 不推导批准。上游 done 只满足依赖，不批准后继。
-通用 metadata 更新与附件写入不改变状态；冲突重读并重新决定，不自动换版本重发。
+尚未开始的 todo 可按明确撤回指令和观察版本 unapprove 回到 proposed；重新批准前不可 claim，也不重开已经开始或完成的阶段。通用 metadata 更新与附件写入不改变状态；冲突重读并重新决定，不自动换版本重发。
 
 task `description` 是当前任务的自足简介，说明具体问题、要做的动作与范围、交付物、
 约束、简明完成条件和真实输入引用。正文可以概括方案与验收；任务专属主 Markdown

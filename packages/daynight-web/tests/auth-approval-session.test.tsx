@@ -13,6 +13,11 @@ vi.mock('../src/api/auth', async (original) => ({ ...await original<typeof impor
 vi.mock('../src/api/client', async (original) => ({ ...await original<typeof import('../src/api/client')>(),
   getTask: vi.fn(), getTaskGraph: vi.fn(), approveTask: vi.fn(), listAttachments: vi.fn(async () => ({ items: [], nextCursor: null })),
 }));
+const confirmApproval = (button: HTMLElement) => {
+  fireEvent.click(button);
+  const confirmation = screen.getByRole('alertdialog', { name: 'Approve task' });
+  fireEvent.click(within(confirmation).getByRole('button', { name: 'Confirm approval' }));
+};
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const project = id(100); const otherProject = id(200); const task = id(1); const otherTask = id(2);
 const stamp = '2026-10-22T00:00:00Z';
@@ -76,7 +81,7 @@ describe('authenticated approval ownership', () => {
     vi.mocked(approveTask).mockReturnValueOnce(mutation.promise);
     mount(); await screen.findByRole('heading', { name: 'Alice project P' });
     let dialog = await open('Alice task P');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve task' }));
+    confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' }));
     const attachmentTab = within(dialog).getByRole('tab', { name: 'Attachments' });
     fireEvent.click(attachmentTab);
     returnFromAnotherWindow();
@@ -91,7 +96,7 @@ describe('authenticated approval ownership', () => {
     dialog = await open('Alice task Q'); close(dialog);
     await navigate(project, 'Alice project P');
     dialog = await open('Alice task P');
-    expect(within(dialog).getByRole('button', { name: 'Approving…' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Submitting…' })).toBeDisabled();
     expect(approveTask).toHaveBeenCalledTimes(1);
     expect(vi.mocked(getTask).mock.calls.filter(([projectId]) => projectId === project)).toHaveLength(1);
     await act(async () => { mutation.resolve({ ...original, status: 'todo', ready: true, version: original.version + 1n, updatedAt: '2026-10-22T00:01:00Z' }); });
@@ -104,7 +109,7 @@ describe('authenticated approval ownership', () => {
     vi.mocked(approveTask).mockReturnValueOnce(mutation.promise);
     mount(); await screen.findByRole('heading', { name: 'Alice project P' });
     let dialog = await open('Alice task P');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve task' })); close(dialog);
+    confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' })); close(dialog);
     currentUser = bob; returnFromAnotherWindow();
     await screen.findByRole('heading', { name: 'Bob project P' });
     dialog = await open('Bob task P');
@@ -123,7 +128,7 @@ describe('authenticated approval ownership', () => {
     const mutation = deferred<TaskDetail>(); vi.mocked(approveTask).mockReturnValueOnce(mutation.promise);
     mount(); await screen.findByRole('heading', { name: 'Alice project P' });
     const dialog = await open('Alice task P');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve task' })); close(dialog);
+    confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' })); close(dialog);
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     await screen.findByRole('heading', { name: 'Sign in to your workspace' });
     const reads = vi.mocked(getTask).mock.calls.length;

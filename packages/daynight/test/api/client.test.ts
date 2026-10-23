@@ -40,6 +40,7 @@ afterEach(async () => {
 describe("operation-scoped API access", () => {
   it.each([
     { action: "approve", status: "todo", ready: true },
+    { action: "unapprove", status: "proposed", ready: false },
     { action: "claim", status: "in_progress", ready: false },
     { action: "complete", status: "done", ready: false },
   ] as const)("submits one precise $action POST and reads the full resulting task", async ({ action, status, ready }) => {
@@ -52,7 +53,7 @@ describe("operation-scoped API access", () => {
     expect(options).toMatchObject({ method: "POST", body: '{"version":9007199254740993}', redirect: "manual" });
   });
 
-  it.each(["approve", "claim", "complete"] as const)("retains %s conflicts and unknown outcomes without retrying", async (action) => {
+  it.each(["approve", "unapprove", "claim", "complete"] as const)("retains %s conflicts and unknown outcomes without retrying", async (action) => {
     const fetch = vi.fn<typeof globalThis.fetch>()
       .mockResolvedValueOnce(jsonResponse(refusal("invalid_transition"), 409))
       .mockResolvedValueOnce(jsonResponse({ ...task, id: otherId }));

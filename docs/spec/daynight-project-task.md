@@ -189,6 +189,7 @@ daynight task show <task-id>
 daynight task update <task-id> --title "新的标题"
 daynight task update <task-id> --description ""
 daynight task approve <task-id>
+daynight task unapprove <todo-task-id>
 daynight task claim <task-id>
 daynight task complete <task-id>
 daynight task update <task-id> --depends-on <task-a> --depends-on <task-b>
@@ -236,16 +237,17 @@ limit，每项必须为 ready，且 task ID 不得重复；响应违反任一条
 拒绝，stdout 保持为空。正常的候选选择使用此有界操作，完整依赖关系可按需使用
 `graph` 查看。
 
-approve、claim、complete 接受明确 task ID、可选 project 和 `--if-version`。其唯一转换
-分别为 proposed→todo、todo→in_progress、in_progress→done；审批允许未完成前置，
-领取及完成要求前置全部 done。三种操作均向当前项目成员开放，管理员角色只
+approve、unapprove、claim、complete 接受明确 task ID、可选 project 和 `--if-version`。其唯一转换
+分别为 proposed→todo、todo→proposed、todo→in_progress、in_progress→done；审批与撤回允许未完成前置，
+领取及完成要求前置全部 done。撤回仅接受 todo，保留正文、属性、依赖、附件和执行时间，
+返回 proposed、ready=false；不修改后继或释放执行中任务。四种操作均向当前项目成员开放，管理员角色只
 额外管理成员与邀请。动作输出完整 task，重复或错误前态返回可辨识的
 invalid_transition。显式版本不预读；省略时在提交前读取一次。基于已审阅内容的决策
 必须显式携带其读取版本，不能靠临时 GET 替代。冲突不重试；不确定结果先读取核对，
 不将取消解释为回滚。四状态、事务和错误规则由[服务规范](daynight-server.md)拥有。
 
 更新至少提供标题、描述、依赖或预定义属性中的一个字段。`task update --status`
-作为不支持的选项拒绝，帮助引导使用 approve、claim 和 complete。省略字段表示保持，空描述表示
+作为不支持的选项拒绝，帮助引导使用 approve、unapprove、claim 和 complete。省略字段表示保持，空描述表示
 清空描述。出现 `--depends-on` 时替换完整前置集合；`--clear-dependencies` 清空
 集合，两者不能同时出现。依赖选项按输入顺序保留每一次出现，单次及重复的
 `--depends-on` 都形成数组，包括重复 ID，不执行 CSV 拆分。PR URL/title 配对选项
@@ -267,7 +269,7 @@ PR 的 `--pull-request-url` 和 `--pull-request-title` 在 create/update 中分�
 包含 Proposed，JSON summary 必须包含 `proposed`，总数满足
 `total = proposed + todo + inProgress + done`。proposed 任务无论前置是否完成均不可
 ready，默认清单、show 和 graph 保留其状态。公开列表 `--status proposed` 可筛选待审批
-任务；状态写入只通过 approve、claim、complete。标题预览、快照边界、
+任务；状态写入只通过 approve、unapprove、claim、complete。标题预览、快照边界、
 节点和边上限均继承服务要求。图响应还必须包含数据库时间样本 `observedAt`；full task 和图节点均有必填可空的 `startedAt`、`completedAt`。缺失或错误类型作为协议错误拒绝，不从创建、编辑或客户端时间补值。超限时报告数量及上限，不返回部分图。
 
 附件 `put/list/read/remove` 继承相同的 project 选择，逐文件处理完整相对路径。

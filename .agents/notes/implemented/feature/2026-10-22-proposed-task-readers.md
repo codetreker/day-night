@@ -18,8 +18,9 @@ default or public three-state validator. Proposed fixtures entered through the
 concrete store, keeping all public lifecycle writes closed until every reader
 could consume them. The later [approval lifecycle](2026-10-22-task-approval-lifecycle.md)
 sets creation/default to proposed, enables four-state list filtering and exposes
-versioned approve, claim and complete. Generic metadata updates no longer accept
-status. Applied migration files and preexisting task rows remain unchanged.
+versioned approve, claim and complete. The later
+[withdrawal decision](2026-10-23-task-unapprove.md) also exposes todo-only unapprove.
+Generic metadata updates no longer accept status. Applied migration files and preexisting task rows remain unchanged.
 
 The graph summary requires a `proposed` integer even when zero. Its equations are
 `total = proposed + todo + inProgress + done` and `todo = ready + blocked`.
@@ -87,4 +88,5 @@ proposed staying non-ready. The later approval lifecycle reuses those guarantees
 project locks and version checks while activating creation and dedicated writes
 together. Web approval now uses reviewed full-detail versions; general metadata
 and dependency editing remain outside the browser UI. Ownership fields and
-backward-state commands remain outside that lifecycle.
+general backward-state commands remain separate. The todo-only withdrawal reuses
+these readers without changing their stored representation or non-ready rule.

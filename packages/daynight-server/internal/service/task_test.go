@@ -54,6 +54,15 @@ func approveTask(t *testing.T, tasks *Tasks, principal core.Principal, task core
 	return approved
 }
 
+func unapproveTask(t *testing.T, tasks *Tasks, principal core.Principal, task core.Task) core.Task {
+	t.Helper()
+	proposed, err := tasks.Unapprove(context.Background(), principal, task.ProjectID, task.ID, task.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return proposed
+}
+
 func claimTask(t *testing.T, tasks *Tasks, principal core.Principal, task core.Task) core.Task {
 	t.Helper()
 	claimed, err := tasks.Claim(context.Background(), principal, task.ProjectID, task.ID, task.Version)
@@ -261,6 +270,7 @@ func TestTaskLifecyclePredecessorsAndVersionOrder(t *testing.T) {
 			apply    func(context.Context, core.Principal, string, string, int64) (core.Task, error)
 		}{
 			{"approve", core.TaskProposed, core.TaskTodo, tasks.Approve},
+			{"unapprove", core.TaskTodo, core.TaskProposed, tasks.Unapprove},
 			{"claim", core.TaskTodo, core.TaskInProgress, tasks.Claim},
 			{"complete", core.TaskInProgress, core.TaskDone, tasks.Complete},
 		} {
@@ -292,9 +302,9 @@ func TestTaskLifecyclePredecessorsAndVersionOrder(t *testing.T) {
 				expected.Status, expected.Version, expected.UpdatedAt = action.to, after.Version, after.UpdatedAt
 				expected.Ready = action.to == core.TaskTodo
 				switch action.name {
-				case "approve":
+				case "approve", "unapprove":
 					if !reflect.DeepEqual(after.StartedAt, task.StartedAt) || !reflect.DeepEqual(after.CompletedAt, task.CompletedAt) {
-						t.Fatal("approval changed execution timing")
+						t.Fatal("approval operation changed execution timing")
 					}
 				case "claim":
 					if after.StartedAt == nil || !after.StartedAt.Equal(after.UpdatedAt) || after.CompletedAt != nil {
@@ -330,7 +340,7 @@ func TestTaskLifecycleValidationAndScope(t *testing.T) {
 	for _, action := range []struct {
 		name  string
 		apply func(context.Context, core.Principal, string, string, int64) (core.Task, error)
-	}{{"approve", tasks.Approve}, {"claim", tasks.Claim}, {"complete", tasks.Complete}} {
+	}{{"approve", tasks.Approve}, {"unapprove", tasks.Unapprove}, {"claim", tasks.Claim}, {"complete", tasks.Complete}} {
 		t.Run(action.name, func(t *testing.T) {
 			for _, version := range []int64{0, -1} {
 				_, err := action.apply(context.Background(), principal, project.ID, target.ID, version)
@@ -349,6 +359,49 @@ func TestTaskLifecycleValidationAndScope(t *testing.T) {
 			}
 			assertTaskUnchanged(t, tasks, principal, target)
 			assertTaskUnchanged(t, tasks, principal, other)
+		})
+	}
+}
+
+func TestTaskUnapprovePreservesReadyAndBlockedWork(t *testing.T) {
+	for _, blocked := range []bool{false, true} {
+		t.Run(fmt.Sprintf("blocked=%t", blocked), func(t *testing.T) {
+			tasks, _, project, _, principal := taskService(t)
+			prerequisite := createTask(t, tasks, principal, project.ID, "Prerequisite")
+			if !blocked {
+				prerequisite = completeTask(t, tasks, principal, claimTask(t, tasks, principal, approveTask(t, tasks, principal, prerequisite)))
+			}
+			target := createTask(t, tasks, principal, project.ID, "Reviewed work", prerequisite.ID)
+			target = updateTask(t, tasks, principal, target, UpdateTask{
+				Description: pointer("Preserve the complete description."),
+				Properties:  propertyPatch(core.PullRequestProperty{URL: "https://github.com/example/repo/pull/1", Title: "Preserved evidence"}),
+			})
+			target = approveTask(t, tasks, principal, target)
+			successor := approveTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "Successor", target.ID))
+			if target.Ready == blocked {
+				t.Fatalf("fixture readiness: %#v", target)
+			}
+			if blocked {
+				_, err := tasks.Claim(context.Background(), principal, project.ID, target.ID, target.Version)
+				requireFault(t, err, "dependency_unsatisfied")
+				assertTaskUnchanged(t, tasks, principal, target)
+			}
+			after := unapproveTask(t, tasks, principal, target)
+			expected := target
+			expected.Status, expected.Ready, expected.Version, expected.UpdatedAt = core.TaskProposed, false, target.Version+1, after.UpdatedAt
+			if !after.UpdatedAt.After(target.UpdatedAt) || !reflect.DeepEqual(after, expected) {
+				t.Fatalf("withdrawal changed task data: before %#v, after %#v", target, after)
+			}
+			assertTaskUnchanged(t, tasks, principal, prerequisite)
+			assertTaskUnchanged(t, tasks, principal, successor)
+			ready, err := tasks.List(context.Background(), principal, project.ID, TaskListRequest{PageRequest: PageRequest{Limit: 100}, Ready: pointer(true)})
+			if err != nil || len(ready.Items) != 0 {
+				t.Fatalf("withdrawn task or its successor became ready: %#v, %v", ready, err)
+			}
+			reapproved := approveTask(t, tasks, principal, after)
+			if reapproved.Ready == blocked || reapproved.Version != after.Version+1 || !reflect.DeepEqual(reapproved.DependsOn, target.DependsOn) {
+				t.Fatalf("renewed approval lost its prerequisite rules: %#v", reapproved)
+			}
 		})
 	}
 }

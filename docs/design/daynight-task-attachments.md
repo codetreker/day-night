@@ -596,8 +596,8 @@ Web 新增 `task-attachments` 功能场景，在原生和实际生产容器上�
 由[看板设计](daynight-web.md#验证与-ci)拥有。
 另有 `project-view-tabs` 验证项目内任务视图；[双语界面](daynight-web-i18n.md)增加三个功能场景，
 [审批生命周期](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)另加三个审批场景，
-描述阅读另有 `task-description-markdown`，鉴权增加六个功能场景。当前严格 inventory 为原生 28 个、
-容器 23 个，共 51 个场景结果。审批场景单独允许已登记 project/task 的 POST approve 与
+描述阅读另有 `task-description-markdown`，鉴权增加六个功能场景，审批撤回另有 `task-unapproval`。当前严格 inventory 为原生 29 个、
+容器 24 个，共 53 个场景结果。审批场景单独允许已登记 project/task 的 POST approve 或 unapprove 与
 精确请求次数，鉴权场景仅允许各自登记的精确管理请求。附件场景和
 `language-state-preservation` 仅允许精确 fixture task/file 的 PUT/DELETE，后者验证切换期间
 待完成操作只执行一次；`refresh-staleness` 仅允许一次已登记 fixture task/file PUT，将真实上传响应挂起并跨自动读取验证状态与几何保留。描述阅读、其他图场景、任务视图及其他语言场景继续 GET/HEAD。

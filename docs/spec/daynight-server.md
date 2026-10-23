@@ -37,7 +37,7 @@
 | R2 | 支持创建、列表查询和读取关联一个 repo 地址的 project |
 | R3 | 在 project 内支持创建、列表查询、读取和更新 task |
 | R4 | task 支持同 project 内的依赖关系，任何成功提交都必须保持无环 |
-| R5 | task 从 `proposed` 经 approve、claim、complete 单向进入 `todo`、`in_progress`、`done`；开始或完成要求全部直接前置已完成，通用更新不可写 status |
+| R5 | task 创建为 `proposed`，经 approve、claim、complete 进入 `todo`、`in_progress`、`done`；unapprove 仅允许 todo→proposed；开始或完成要求全部直接前置已完成，通用更新不可写 status |
 | R6 | task 更新必须支持版本冲突检测，字段和依赖必须原子提交 |
 | R7 | 通过 HTTP JSON API 提供上述行为，错误和分页具有明确语义 |
 | R8 | 采用 `api / service / server / core` 分层，store 位于 `core` 内 |
@@ -79,7 +79,7 @@ Task 包含以下持久化字段：
 | `title` | 必填的非空 UTF-8 标题，不含 NUL |
 | `description` | 不含 NUL 的 UTF-8 描述，省略时为空字符串，允许更新为空字符串 |
 | `properties` | server 预定义属性；当前 `pullRequests` 为有序的 `{url, title}` 字符串记录数组，默认空数组 |
-| `status` | `proposed / todo / in_progress / done`，创建时为 `proposed`，只能通过专用生命周期操作向前转换 |
+| `status` | `proposed / todo / in_progress / done`，创建时为 `proposed`，只能通过专用生命周期操作转换 |
 | `version` | 从 `1` 开始的正整数，每次实际变更增加一次 |
 | `createdAt`、`updatedAt` | UTC 创建和最后实际变更时间 |
 | `startedAt`、`completedAt` | 只读 UTC 执行起止时间，字段必填但允许 `null`，未知事实不补造 |
@@ -110,27 +110,28 @@ Task 响应还包含 `dependsOn`、`blockedBy` 和 `ready`：
 | 操作 | 唯一允许前态 | 结果 | 前置要求 |
 |---|---|---|---|
 | approve | `proposed` | `todo` | 可含未完成前置 |
+| unapprove | `todo` | `proposed` | 可含未完成前置 |
 | claim | `todo` | `in_progress` | 全部直接前置已完成 |
 | complete | `in_progress` | `done` | 全部直接前置已完成 |
 
-三种操作均要求正 int64 期望 `version`，JSON 使用数字，范围为
+四种操作均要求正 int64 期望 `version`，JSON 使用数字，范围为
 `1..9223372036854775807`；缺失、null、字符串、非整数、非正或越界值拒绝。请求体只
 包含 version，沿用严格字段、重复 key、UTF-8、大小和类型检查。当前版本不符先返回
 `409 version_conflict`；版本一致但前态错误返回 `409 invalid_transition`；前置未完成
 返回 `409 dependency_unsatisfied` 及有关 task ID。重复动作同样失败，不把已转换状态
-当作成功，也不隐式重试。不存在重开、退回或 todo 直接完成的转换。
+当作成功，也不隐式重试。unapprove 之外不存在退回，不能重开进行中或已完成任务，也不能 todo 直接完成。
 
-普通成员与管理员均可执行三种生命周期操作，权限来自当前项目成员关系；管理员
+普通成员与管理员均可执行四种生命周期操作，权限来自当前项目成员关系；管理员
 额外管理成员与邀请。claim 在数据库项目锁后的实际写入时记录 `startedAt` 并清空 `completedAt`，
 complete 记录真实 `completedAt` 并保留起点。迁移前已在执行的任务完成时可以只有真实终点，
-不能从 `createdAt` 或 `updatedAt` 推算其缺失起点。新建及 approve 不生成执行时间，
+不能从 `createdAt` 或 `updatedAt` 推算其缺失起点。新建不生成执行时间；approve 与 unapprove 保留已有起止事实，
 已有历史任务的迁移初值均为 `null`。创建、PATCH 和生命周期输入均不能写入起止字段。
 HTTP 对操作及方法拒绝路由统一验证凭据，Cookie 会话写请求
 要求精确主站 Origin，响应使用 no-store。
 
 版本、前态、依赖及写入必须处于同一 project 锁事务中，先获得项目锁再检查成员关系。成功只增加一次 version 并
 更新一次 updatedAt，并原子维护对应起止时间，保留其余字段、属性和依赖；拒绝保持全部数据不变。同版本并发
-claim 只有一个成功，其余看到版本冲突。审批不领取任务，也不使未完成前置变为完成。
+claim 只有一个成功，其余看到版本冲突。对同一个 ready todo 和同版本，unapprove 与 claim 只有一方成功，另一方返回版本冲突；同版本重复 unapprove 同样只有一个提交。被依赖阻塞的 todo 仍可撤回，claim 的前置拒绝不阻止该动作。撤回保留正文、属性、依赖、附件与起止时间，ready 派生为 false；后继状态及依赖边保持，未完成前置仍未满足。审批不领取任务，也不使未完成前置变为完成。
 任务审批是就绪决策，不授予实现、发布、部署、合并或主线 push 的权限。
 
 PATCH 可修改 `title`、`description`、`dependsOn` 和预定义属性，必须带读取到的
@@ -149,7 +150,7 @@ PR 的 url 与 title 只校验字符串类型及必填结构，保留空字符�
 重复项。服务不检查 URL、PR 存在性或仓库匹配；严格拒绝未知字段、重复 key、null、
 缺失项和错误类型。[属性需求](daynight-task-properties.md)拥有详细行为与验收。
 [生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)保留原三状态任意更新
-及读取准备阶段的历史取舍。
+及读取准备阶段的历史取舍；[撤回决策](../../.agents/notes/implemented/feature/2026-10-23-task-unapprove.md)拥有 todo 专用撤回及保持既有执行边界的理由。
 
 ## HTTP API
 
@@ -164,6 +165,7 @@ PR 的 url 与 title 只校验字符串类型及必填结构，保留空字符�
 | `GET` | `/api/v1/projects/{projectId}/task-graph` | 返回同一完整快照的 project、任务图和统计 |
 | `PATCH` | `/api/v1/projects/{projectId}/tasks/{taskId}` | 原子更新元数据和依赖，返回 `200` 和资源 |
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/approve` | `proposed → todo`，返回 `200` 和完整资源 |
+| `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/unapprove` | `todo → proposed`，返回 `200` 和完整资源 |
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/claim` | `todo → in_progress`，返回 `200` 和完整资源 |
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/complete` | `in_progress → done`，返回 `200` 和完整资源 |
 
