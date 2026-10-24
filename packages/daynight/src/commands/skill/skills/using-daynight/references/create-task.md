@@ -2,7 +2,9 @@
 
 Use this mode to prepare and register work that needs persistent tracking. Read
 [the handbook](handbook.md) before discovery, queries, or writes. Return after
-registration; creating work does not authorize approval, execution or autopilot.
+registration; registration alone does not authorize approval, execution or
+autopilot. An explicit request to start a Goal discussion routes the registered
+current stage to run-task under the Goal protocol.
 
 Create tasks only with the user's explicit permission for the relevant scope.
 An explicit user or applicable repository instruction requiring Daynight tracking
@@ -29,13 +31,16 @@ running a check while delivering an existing task is an execution step. If the
 request contains only execution steps for existing work, keep them with that
 work and return without registering additional tasks.
 
-For multiple independently tracked delivery stages, follow
-[the Goal protocol](goal.md). Register its Goal description task and dependent
-architecture-and-breakdown placeholder together. Their own stage briefs are
-required at registration; the finished Goal, UI prototype, architecture, and
-breakdown are outputs of the stages that produce them. Creating a Goal covers
-both starting tasks and its later in-scope breakdown within the granted creation
-permission. Do not execute a stage in this mode.
+For a multi-stage Goal, follow [the Goal protocol](goal.md). Register only the
+current requirements discussion task; do not create an architecture placeholder
+or delivery tasks upfront. Its stage brief describes the discussion and its
+user-confirmation gate; finished requirements and applicable prototypes are
+outputs. User-confirmed requirements permit creation and start of solution
+discussion. Only user-confirmed solution permits actual delivery registration.
+A registration-only request leaves the current stage proposed and returns; an
+explicit discussion-start request authorizes its approval and claim through
+run-task. Creating a Goal covers the later in-scope stages and breakdown only
+at those confirmation gates.
 
 For a single tracked outcome, prepare its solution, acceptance criteria, and
 applicable mock UI before registration, following the artifact rules below.
@@ -163,13 +168,17 @@ Read back each complete task, its attachment inventory and required contents,
 and its referenced shared inputs. Verify self-contained Markdown descriptions,
 valid links and images, the two required primary-document sections, real source
 identities, complete prerequisites and their intended external subset, and applicable mock UI resources and
-interaction. For a Goal, verify both starting tasks and their stage briefs.
+interaction. For a Goal, verify only the current discussion stage and its brief;
+verify later stages and delivery tasks when their confirmation gate permits
+registration.
 Registration is complete only when required artifacts and associations are
 confirmed readable. Without separate explicit approval authorization, leave
-registered work proposed and report that approval is pending. Goal-creation
-permission covers the two starting tasks and later in-scope breakdown, but never
-their approval. A user can explicitly approve a stated task or Goal-task scope,
-or approve directly through CLI/Web; an authorized Agent uses each reviewed
+registered work proposed and report that approval is pending. A Goal
+discussion-start request is scoped approval and claim authorization for that
+discussion, as the Goal protocol specifies; registration alone grants none.
+User solution confirmation permits registration of proposed delivery tasks,
+without granting their approval or execution. A user can explicitly approve a
+stated task or Goal-task scope, or approve directly through CLI/Web; an authorized Agent uses each reviewed
 task's exact version through `task approve`.
 
 If creation succeeds but a later operation fails, retain the confirmed IDs and
@@ -177,4 +186,6 @@ resume missing operations there. Tasks remain `proposed`. Reconcile uncertain re
 mutation. Report incomplete registration with the exact missing operation or
 artifact and next step. Do not move detailed plans into descriptions to bypass
 an attachment failure. Return after verified registration without selecting or
-executing a task.
+executing a task for registration-only requests. If the user explicitly requested
+the current Goal discussion to start, pass its confirmed ID to run-task under
+the Goal protocol.

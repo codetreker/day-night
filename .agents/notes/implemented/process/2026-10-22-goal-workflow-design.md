@@ -17,20 +17,24 @@ ownership and independent update lifetimes.
 ## Decision
 
 The [Goal requirements](../../../../docs/spec/daynight-goal-workflow.md) and
-[design](../../../../docs/design/daynight-goal-workflow.md) own the staged task-chain
-protocol implemented by the public skill. The architecture was delivered separately
+[design](../../../../docs/design/daynight-goal-workflow.md) own the current protocol.
+The [user-confirmed discussion decision](2026-10-24-user-confirmed-goal-discussions.md)
+replaces this decision's initial-pair registration, pre-confirmation delivery
+breakdown and discussion completion rules. The original architecture was delivered separately
 from its dependent protocol implementation and independent consumer acceptance.
 The [mode decision](../architecture/2026-10-21-using-daynight-modes.md) continues to
 own the current entrypoint and authorization rules.
 
-A Goal uses existing tasks, attachments and dependsOn. Registration establishes a
-Goal description task titled `[Goal]<outcome>` and a dependent architecture-and-breakdown
-placeholder. Stage briefs define the work and stage acceptance; final requirements, UI prototypes
-and architecture are outputs of their producing stages. Goal description fixes the
-problem, outcomes, scope, exclusions and verification without production implementation
-or architecture work. Applicable UI requirements include a final-style interactive
-frontend-only prototype. Architecture then fixes mechanisms and registers the actual
-delivery breakdown before implementation can become ready.
+A Goal uses existing tasks, attachments and dependsOn. The original registration
+created a Goal description task titled `[Goal]<outcome>` and a dependent
+architecture-and-breakdown placeholder together. Stage briefs allowed unresolved
+requirements and design to remain outputs of their producing stages. Goal
+description fixed the problem, outcomes, scope, exclusions and verification without
+production implementation or architecture work. Applicable UI requirements included
+a final-style interactive frontend-only prototype. Architecture fixed mechanisms
+and registered the actual delivery breakdown before implementation became ready.
+Sequential user-confirmed discussions now govern when those tasks are created
+and completed; the stage-produced-output rule still applies.
 
 Every task description is a self-contained brief for that task: its problem, concrete
 scope and actions, deliverables, constraints, and observable completion summary must
@@ -48,22 +52,18 @@ CLI reads support those references; no new link scheme or API is introduced. Cop
 an entire common packet to every task is not the registration default. An independently
 required snapshot must name its source version and purpose.
 
-Four skill modes remain. A shared Goal reference supplies stage-specific guidance;
-create-task registers and returns, run-task executes one task, and explicitly
-activated autopilot owns subsequent selection. Scoped Goal-creation permission
-covers the initial pair and its agreed breakdown. The
-[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) makes every
-new stage and delivery task proposed. Approval requires a separate explicit user
-instruction for the task or stated Goal-task scope, followed by observed-version
-claim from ready todo and complete after stage acceptance and required authorized
-PR merges. Goal creation, stage completion and autopilot never infer approval;
-completed dependencies alone do not approve successors. The later
-[withdrawal decision](../feature/2026-10-23-task-unapprove.md) allows explicitly
-requested todo-to-proposed withdrawal before claim; that task waits for a new
-approval. Task content supplies no additional
-execution, external-action or merge authority. PR-delivered planning work remains
-in progress until all necessary PRs are platform-confirmed merged and acceptance
-is satisfied. Completing Goal description does not complete the whole Goal.
+Four skill modes remain. The initial protocol made create-task register the pair
+and return, run-task execute one stage, and explicitly activated autopilot select
+successors. Scoped Goal-creation permission covered the pair and its agreed
+breakdown, while the [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md)
+created each task proposed and required explicit approval before claim. Planning
+stages originally shared the PR-delivery completion rule. The successor decision
+now treats an explicit discussion-start or transition request as authorization
+for that discussion's approval and claim, and uses user-confirmed material for
+discussion completion. Actual delivery retains its approval, execution and merge
+gates. The later [withdrawal decision](../feature/2026-10-23-task-unapprove.md)
+continues to own explicitly requested todo-to-proposed withdrawal. Completing
+requirements discussion does not complete the whole Goal.
 
 ## Alternatives
 
@@ -95,11 +95,14 @@ one source for common inputs.
 
 ## Consequences
 
-Multi-task registration needs two initial tasks and recoverable attachment writes.
-Architecture must complete the real successor registration and artifact verification
-before design handover; a future task list or one vague implementation placeholder
-cannot satisfy that obligation. Protocol delivery and independent consumer acceptance
-have different completion evidence and both remain in the same Goal scope.
+The original protocol required two initial tasks and recoverable attachment writes,
+with real successor registration before design handover. The successor decision
+delays architecture-task creation until accepted requirements and a user-requested
+transition, and delays delivery-task registration until the user accepts the
+solution. Actual registered outcomes and verified artifacts remain necessary;
+a future task list or one vague implementation placeholder is insufficient.
+Protocol delivery and independent consumer acceptance have different completion
+evidence and both remain in the same Goal scope.
 Definition and design can start with honest stage briefs, while implementation
 retains completed requirements and design as inputs. Instruction review must cover
 stage transitions, permission boundaries, partial registration and whole-Goal

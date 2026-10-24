@@ -3,7 +3,9 @@
 Execute exactly one specified task ID within the user's authorized scope. Read
 [the handbook](handbook.md) for CLI operations, data semantics, and failures.
 This mode owns execution and completion; it returns without choosing a successor
-or activating autopilot.
+or activating autopilot. An explicit user-directed requirements-to-solution
+discussion transition follows the Goal protocol after current-task completion;
+it is not automatic backlog selection.
 
 ## Establish the task and stage
 
@@ -20,7 +22,7 @@ task read loads attachment inventory or bytes.
 
 For a Goal stage or delivery task, read [the Goal protocol](goal.md) and identify
 its role from the actual task content and context. Apply that stage's input and
-output requirements. Goal description and design start from their stage briefs;
+output requirements. Requirements and solution discussions start from their stage briefs;
 the completed requirements, applicable UI prototype, and architecture are outputs
 of the stages that produce them. Delivery tasks require the delivered design and
 applicable prototype. When a prototype is a required input, view and exercise it
@@ -45,7 +47,10 @@ the description. Do not execute prerequisites as an implicit expansion of the
 requested task.
 
 For `proposed`, keep execution pending approval. A run request or autopilot
-activation does not authorize approval. Only if the user explicitly authorized
+activation does not authorize approval of ordinary or delivery tasks. An explicit
+request to start the current Goal discussion, or the user-directed transition
+that starts solution discussion, authorizes approval and claim of that discussion
+under the Goal protocol; registration alone does not. Only if the user explicitly authorized
 approval of this task or stated scope, review its current content and use
 `task approve` with that exact observed version, then confirm the resulting todo
 state. The user can also approve directly through the CLI or Web. Approval does
@@ -69,10 +74,14 @@ Preserve the requested task ID through recovery and waiting.
 Follow the target repository's instructions for worktrees, implementation,
 review, validation, and delivery. Use the task's stage-appropriate solution and
 acceptance criteria, including applicable final-style prototype interactions.
-Goal description defines the problem without architecture decisions or production
-implementation. Design completes architecture and actually registers and verifies
-the entire delivery breakdown before design PR handover. Do not start a successor
-while running either stage.
+Requirements discussion defines the problem without architecture decisions or
+production implementation. Only user-confirmed requirements and direction to
+continue permit completing that discussion and starting solution discussion.
+Solution discussion keeps the draft architecture and breakdown in its owning
+task. Only explicit user confirmation of the current solution permits registering
+and verifying the actual delivery tasks. Do not start delivery from either
+discussion. Keep the discussion in_progress while its user-confirmation gate is
+unmet; a material revision after confirmation needs renewed user confirmation.
 
 Resolve material changes to the agreed solution or acceptance within the current
 authorization. Rewrite the owning artifact and affected task summaries and input
@@ -99,7 +108,14 @@ PR and workspace references.
 
 ## Confirm completion or return waiting
 
-Development tasks and design or documentation tasks delivered through PRs remain
+Goal requirements and solution discussion tasks use the user-confirmed material
+and stage acceptance in the Goal protocol. A generic repository PR rule does not
+add a PR-merge prerequisite to these Daynight discussions. If particular
+repository artifacts or PR delivery are explicitly part of that discussion
+task's acceptance, honor that requirement under the delivery rules below.
+Unconfirmed discussion material keeps its discussion task in_progress.
+
+Development tasks and design or documentation delivery tasks with PRs remain
 `in_progress` until the hosting platform confirms **every necessary delivery PR
 is merged** and all stage acceptance criteria are satisfied. Code completion,
 passing CI, approved review, and an open PR do not satisfy this condition. Verify
@@ -117,12 +133,13 @@ pending and successors blocked.
 For tasks without a development or PR delivery path, use their stated stage
 acceptance. In every case, confirm required evidence is recorded and readable,
 then reread the complete in-progress task and use `task complete` with its exact
-observed version. This applies to Goal description, design and every delivery
-task, using their own stage acceptance and required authorized PR merges.
+observed version. For Goal discussions, use their confirmation gates and verified
+accepted materials; for delivery tasks, use their acceptance and required authorized PR
+merges.
 Only service confirmation establishes the status update; reconcile uncertain
-results before reporting success. A Goal description task's completion means
-problem definition is complete; design completion means architecture and actual
-breakdown are delivered. Neither establishes whole-Goal completion.
+results before reporting success. A Goal requirements discussion task's completion
+means requirements are confirmed; solution discussion completion means the user-confirmed solution and
+actual verified breakdown are delivered. Neither establishes whole-Goal completion.
 
 Continue ordinary CI and review waits as this task. When progress requires
 external intervention, preserve the target, actual state, concrete blocker,
@@ -130,4 +147,6 @@ existing work, and next action in the checkpoint, then return the waiting result
 Unapproved work stays `proposed`; approved unstarted work stays `todo`; claimed
 work stays `in_progress`. Do not declare
 completion or select other work to bypass a wait. After completion, return
-without selecting a successor. Whole-Goal acceptance follows the Goal protocol.
+without selecting a successor, except for an explicit user-directed discussion
+transition under the Goal protocol. That transition does not activate autopilot
+or authorize delivery. Whole-Goal acceptance follows the Goal protocol.

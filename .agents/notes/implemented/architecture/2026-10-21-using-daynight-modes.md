@@ -17,6 +17,9 @@ partially supersedes the original registration and task-content rules. It owns
 stage-specific inputs, self-contained task briefs, shared-input ownership and
 whole-Goal completion. Mode routing, command ownership, authorization and the
 installer decisions remain here.
+The later [user-confirmed Goal discussion decision](../process/2026-10-24-user-confirmed-goal-discussions.md)
+owns sequential discussion creation, explicit user transition gates, and scoped
+discussion approval and claim.
 
 The public bundle is named `using-daynight`. Its entrypoint routes from the actual
 request and context to handbook, create-task, run-task or autopilot, with one
@@ -74,17 +77,22 @@ required snapshots retain source version and purpose.
 The original mode decision required complete solution and applicable frontend
 prototype before registration. That rule made ordinary implementation inputs
 explicit, but cannot apply to stages producing those artifacts. The Goal
-protocol now registers `[Goal]<outcome>` and its dependent architecture placeholder
-with stage briefs. Clarification produces complete requirements and applicable
-final-style interactive frontend-only UI; architecture completes design and
-registers all successors before handover. Implementation roots depend on design.
-Scoped Goal creation permission covers the initial pair and its in-scope breakdown.
+protocol originally registered `[Goal]<outcome>` and its dependent architecture
+placeholder with stage briefs. Its successor creates only requirements discussion
+first, starts solution discussion after user-confirmed requirements and an explicit
+transition request, and registers delivery tasks only after user-confirmed design.
+Clarification still produces complete requirements and applicable final-style
+interactive frontend-only UI. Implementation roots depend on design.
+Scoped Goal creation permission covers necessary stages and the confirmed breakdown
+at those respective gates.
 The Goal protocol adds no service resource, CLI command or ownership mechanism.
 The [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) applies
 to every stage: registration produces proposed, approval requires an explicit
 user instruction for the task or stated Goal-task scope, and ready todo is claimed
-with its reviewed version. Goal creation, stage completion, run-task and autopilot
-never imply approval permission.
+with its reviewed version. Goal creation, stage completion, ordinary run-task and
+autopilot alone never imply approval permission. An explicit request to start or
+advance a Goal discussion supplies approval and claim authorization for that
+discussion only.
 
 Dependencies remain in dependsOn; PR URLs and titles remain in
 properties.pullRequests. Results and merge references belong with the primary
@@ -96,8 +104,11 @@ proposed work awaiting approval unless separately authorized. Run-task reads the
 brief, detailed plan and stage inputs, executes its designated task and returns
 after completion or an external blocker. Development and PR-delivered documentation
 require every necessary PR platform-confirmed merged and acceptance satisfied
-before versioned task complete. Retaining a PR keeps the task in progress; completion grants no merge
-authority. A stage done does not establish whole-Goal completion.
+before versioned task complete. Retaining a delivery PR keeps its task in progress;
+completion grants no merge authority. Goal discussions instead follow user-confirmed
+material and their phase acceptance. An explicitly requested discussion transition
+can start the next discussion without continuous queue selection. A stage done
+does not establish whole-Goal completion.
 
 Autopilot restores the checkpoint's current task, otherwise picks exactly one
 approved ready todo most related to the authorized goal, without auto-approving

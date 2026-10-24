@@ -40,6 +40,15 @@ take precedence.
   product requirements, architecture, decisions and validation methods in their
   document owners. Load the `using-daynight` skill before executing any task and
   follow its applicable workflow.
+- For a Goal, first create or reuse only its requirements-discussion task and
+  enter `in_progress` when the user requests that discussion. After the user
+  confirms the requirements and asks to proceed, complete that task, then create
+  and start the solution or architecture discussion task. Create the actual
+  delivery subtasks and their dependencies only after the user confirms the
+  solution. A request to start or advance a discussion authorizes approval and
+  claim of that discussion task; it grants no delivery-task approval or execution
+  permission. Discussion completion follows the confirmed Daynight material and
+  phase acceptance. Repository delivery retains its own PR and merge requirements.
 - Complete authorized work and its verification. Report observed results and
   material limitations; keep unverified assumptions distinct from evidence.
 - Mainline pushes and PR merges require explicit user authorization. Follow the
