@@ -42,7 +42,11 @@ and do not establish readable review material.
 
 Updates to `using-daynight` are made only in
 `packages/daynight/src/commands/skill/skills/using-daynight/`. Installed copies
-receive the changes automatically with the next Daynight update. The
+are refreshed by rerunning `daynight skill install` after upgrading Daynight,
+selecting the relevant Agents and scopes and following its reload instructions.
+The package updater replaces the npm package; the installer owns the independent
+Agent copies, as established by the
+[distribution decision](../architecture/2026-10-21-public-agent-skill-design.md). The
 [skill requirements](../../../../docs/spec/daynight-agent-skill.md) and
 [design](../../../../docs/design/daynight-agent-skill.md) own the public workflow;
 the [Goal protocol](../../../../docs/design/daynight-goal-workflow.md) retains
@@ -62,7 +66,8 @@ review. Supplementary links remain useful after the content is saved and verifie
 **Edit installed `using-daynight` copies alongside their source.** This immediately
 changes one environment but bypasses source delivery and can mix instructions from
 different package versions. Updating only the repository source keeps this skill
-versioned and lets the next Daynight update refresh installed copies automatically.
+versioned. Refreshing Agent copies through the installer after a package upgrade
+keeps their contents aligned with that package without manual installed-file edits.
 
 ## Consequences
 

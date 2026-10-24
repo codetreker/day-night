@@ -780,6 +780,8 @@ starting them or checking login. Select one or more detected Agents with Space,
 then Enter; the initial selection is empty. Next select User or Project,
 with User initially selected. Installation starts after the scope is submitted.
 Repeating the command refreshes the full bundle from the running package.
+After upgrading Daynight, rerun it for the relevant Agents and scopes and follow
+the reload instructions; `daynight update` replaces only the npm package.
 
 | Agent | User destination | Project destination |
 |---|---|---|
