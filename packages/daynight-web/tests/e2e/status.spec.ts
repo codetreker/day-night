@@ -10,7 +10,7 @@ import type { TaskDetail, TaskStatus } from '../../src/api/types';
 import { attachmentDownloadUrl } from '../../src/api/client';
 import { createProject, createTask, expect, seedTaskVersion, seedExternalDependencies, setTaskStatus, test } from './fixtures';
 import { expectCenteredTaskDetail } from './detail-dialog';
-import { authenticatedAPI, type AuthenticatedAPI } from './authentication';
+import { authenticatedAPI, fulfillAuthenticatedResponse, type AuthenticatedAPI } from './authentication';
 
 const states: readonly TaskStatus[] = ['todo', 'in_progress', 'done'];
 const labels = { 'zh-CN': { todo: '待处理', in_progress: '进行中', done: '已完成' }, en: { todo: 'To do', in_progress: 'In progress', done: 'Done' } };
@@ -61,6 +61,10 @@ const select = async (page: Page, status: TaskStatus, locale: keyof typeof label
 const confirm = async (page: Page): Promise<void> => {
   await confirmation(page).getByRole('button', { name: /^(确认设置|Confirm status)$/, exact: true }).click();
 };
+const expectConfirmed = async (page: Page): Promise<void> => {
+  await expect(detail(page).locator('.task-status-feedback [role="status"]')).toHaveText(/^(任务状态已确认。|Task status confirmed\.)$/);
+  await expect(detail(page).locator('.task-status-error')).toHaveCount(0);
+};
 const invariant = (task: TaskDetail) => ({ id: task.id, projectId: task.projectId, title: task.title, description: task.description,
   properties: task.properties, allowAgents: task.allowAgents, dependsOn: task.dependsOn, externalDependsOn: task.externalDependsOn, createdAt: task.createdAt });
 const read = async (api: AuthenticatedAPI, project: string, task: string): Promise<TaskDetail> => {
@@ -109,7 +113,7 @@ test('task-status', { annotation: { type: 'scenario', description: 'task-status'
     const exactVersion = 9007199254740993n; await seedTaskVersion(project, id, exactVersion);
     allowStatusWrites([{ origin: origin(info), projectId: project, taskId: id, status: 'todo', count: 1 }, { origin: origin(info), projectId: project, taskId: id, status: 'in_progress', count: 1 }]);
     const endpoint = new URL(`${taskPath(project, id)}/status`, origin(info)).href;
-    await page.route(endpoint, async (route) => { const response = await lifecycle.capture(route, id); await route.fulfill({ response }); });
+    await page.route(endpoint, async (route) => { const response = await lifecycle.capture(route, id); await fulfillAuthenticatedResponse(route, response); });
     await open(page, project, id); await expectCenteredTaskDetail(page, detail(page));
     await expect(detail(page).locator('.task-detail-title')).toHaveText(created.title);
     await expect(detail(page).locator('.task-detail-header').getByRole('combobox')).toHaveCount(0);
@@ -127,14 +131,14 @@ test('task-status', { annotation: { type: 'scenario', description: 'task-status'
       await expect(trigger(page)).toBeFocused(); expect(lifecycle.evidence.writes).toHaveLength(0);
     }
     const beforeNoop = await lifecycle.show(project, id, 'reviewed-same-state');
-    await select(page, 'todo'); await confirm(page); await expect(trigger(page)).toBeEnabled();
+    await select(page, 'todo'); await confirm(page); await expect(trigger(page)).toBeEnabled(); await expectConfirmed(page);
     expect(await lifecycle.show(project, id, 'same-state-confirmed')).toEqual(beforeNoop);
     expect(lifecycle.evidence.writes[0]!.body).toBe(stringifyApiJson({ version: exactVersion, status: 'todo' }));
     await detail(page).getByRole('tab', { name: '附件', exact: true }).click();
     await detail(page).locator('button.attachment-file').filter({ hasText: 'plan.md' }).click();
     await expect(detail(page)).toContainText(content.toString().trim());
     const attachmentsPanel = detail(page).getByRole('tabpanel'); const panelIdentity = await attachmentsPanel.getAttribute('id');
-    await select(page, 'in_progress'); await confirm(page); await expect(trigger(page)).toHaveText(/进行中/);
+    await select(page, 'in_progress'); await confirm(page); await expect(trigger(page)).toHaveText(/进行中/); await expectConfirmed(page);
     await expect(detail(page).getByRole('tab', { name: '附件', exact: true })).toHaveAttribute('aria-selected', 'true');
     expect(await detail(page).getByRole('tabpanel').getAttribute('id')).toBe(panelIdentity);
     await expect(detail(page)).toContainText(content.toString().trim());
@@ -173,7 +177,7 @@ test('task-status-conflicts', { annotation: { type: 'scenario', description: 'ta
       injectConflict = false;
       await lifecycle.success(['task', 'update', task.id, '--project', project.id, '--if-version', String(task.version), '--description', 'CLI 在确认后修改了正文。']);
     }
-    const response = await lifecycle.capture(route, task.id); await route.fulfill({ response });
+    const response = await lifecycle.capture(route, task.id); await fulfillAuthenticatedResponse(route, response);
   });
   try {
     await open(page, project.id, task.id); await select(page, 'in_progress'); await confirm(page);
@@ -185,14 +189,18 @@ test('task-status-conflicts', { annotation: { type: 'scenario', description: 'ta
     expect(conflict.requestId).toBe(refusal.requestId);
     await expect(detail(page)).toContainText(refusal.requestId);
     const changed = await lifecycle.show(project.id, task.id, 'conflict-readback'); expect(changed.status).toBe('todo');
-    await select(page, 'in_progress'); await confirm(page); await expect(trigger(page)).toHaveText(/进行中/);
+    await select(page, 'in_progress'); await confirm(page); await expect(trigger(page)).toHaveText(/进行中/); await expectConfirmed(page);
     const running = await lifecycle.show(project.id, task.id, 'new-reviewed-submission'); expect(running.version).toBe(changed.version + 1n);
     expect(lifecycle.evidence.writes[1]!.body).toBe(stringifyApiJson({ version: changed.version, status: 'in_progress' }));
     const blockedEndpoint = new URL(`${taskPath(project.id, blocked.id)}/status`, origin(info)).href;
-    await page.route(blockedEndpoint, async (route) => { const response = await lifecycle.capture(route, blocked.id); await route.fulfill({ response }); });
+    await page.route(blockedEndpoint, async (route) => { const response = await lifecycle.capture(route, blocked.id); await fulfillAuthenticatedResponse(route, response); });
     await open(page, project.id, blocked.id); await select(page, 'done'); await confirm(page);
     await expect(trigger(page)).toBeEnabled(); expect(lifecycle.evidence.writes[2]!.status).toBe(409);
-    expect(lifecycle.evidence.writes[2]!.responseBody).toContain('dependency_unsatisfied'); expect(lifecycle.evidence.writes[2]!.responseBody).toContain(prerequisite.id);
+    const dependencyRefusal = parseServerError(parseApiJson(lifecycle.evidence.writes[2]!.responseBody));
+    expect(dependencyRefusal.code).toBe('dependency_unsatisfied');
+    expect(lifecycle.evidence.writes[2]!.requestId).toBe(dependencyRefusal.requestId);
+    expect(lifecycle.evidence.writes[2]!.responseBody).toContain(prerequisite.id);
+    await expect(detail(page)).toContainText(dependencyRefusal.requestId);
     expect(await read(api, project.id, blocked.id)).toMatchObject({ status: 'todo', version: 1n });
     await page.unroute(blockedEndpoint);
     // A changed edge classification is a new review, even when its endpoints remain equal.
@@ -224,7 +232,7 @@ test('task-status-recovery', { annotation: { type: 'scenario', description: 'tas
     const response = await lifecycle.capture(route, task.id);
     if (mode === 'unknown') { mode = 'ordinary'; rejectReadback = true; lifecycle.evidence.controlledFaults.push('Real status commit succeeded; its response and following task GET were lost.'); await route.abort('connectionfailed'); return; }
     if (mode === 'pending') { mode = 'ordinary'; pending.resolve(); await release.promise; }
-    await route.fulfill({ response });
+    await fulfillAuthenticatedResponse(route, response);
   });
   try {
     await open(page, project.id, task.id); await select(page, 'in_progress'); await confirm(page);
@@ -241,8 +249,8 @@ test('task-status-recovery', { annotation: { type: 'scenario', description: 'tas
     await open(page, project.id, other.id); await expect(trigger(page)).toHaveText(/待处理/);
     release.resolve(); await expect.poll(() => lifecycle.show(project.id, task.id, 'pending-original-task')).toMatchObject({ status: 'done' });
     await expect(trigger(page)).toHaveText(/待处理/);
-    await open(page, project.id, task.id); await expect(trigger(page)).toHaveText(/已完成/);
-    await select(page, 'todo'); await confirm(page); await expect(trigger(page)).toHaveText(/待处理/);
+    await open(page, project.id, task.id); await expect(trigger(page)).toHaveText(/已完成/); await expectConfirmed(page);
+    await select(page, 'todo'); await confirm(page); await expect(trigger(page)).toHaveText(/待处理/); await expectConfirmed(page);
     const reopened = await lifecycle.show(project.id, task.id, 'reopened-after-pending'); expect(reopened).toMatchObject({ status: 'todo', startedAt: null, completedAt: null });
     expect(lifecycle.evidence.writes).toHaveLength(3);
     await screenshot(page, info, 'status-recovered');
@@ -263,9 +271,9 @@ test('task-status-transitions', { annotation: { type: 'scenario', description: '
   try {
     for (const { current, target, task } of cases) {
       const endpoint = new URL(`${taskPath(project.id, task.id)}/status`, origin(info)).href;
-      await page.route(endpoint, async (route) => { const response = await lifecycle.capture(route, task.id); await route.fulfill({ response }); });
+      await page.route(endpoint, async (route) => { const response = await lifecycle.capture(route, task.id); await fulfillAuthenticatedResponse(route, response); });
       await open(page, project.id, task.id); await select(page, target); await confirm(page);
-      await expect(trigger(page)).toBeEnabled(); await expect(trigger(page)).toHaveText(new RegExp(labels['zh-CN'][target]));
+      await expect(trigger(page)).toBeEnabled(); await expect(trigger(page)).toHaveText(new RegExp(labels['zh-CN'][target])); await expectConfirmed(page);
       const actual = await lifecycle.show(project.id, task.id, `${current}-to-${target}`);
       expect(actual.version).toBe(task.version + (current === target ? 0n : 1n)); expect(invariant(actual)).toEqual(invariant(task));
       if (current === target) expect(actual).toEqual(task);

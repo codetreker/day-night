@@ -4,12 +4,13 @@ import type { Socket } from 'node:net';
 import test from 'node:test';
 import { inspect } from 'node:util';
 import { request } from '@playwright/test';
-import { authenticatedAPI, browserFetch } from '../../tests/e2e/authentication.ts';
+import { authenticatedAPI, browserFetch, fulfillAuthenticatedResponse } from '../../tests/e2e/authentication.ts';
 
 const cookie = 'daynight_session=dnst_controlled_cookie_marker';
 const token = 'dnpat_controlled_bearer_marker';
 const fragment = 'dninvite_controlled_fragment_marker';
 const requestId = 'f7175b89-52aa-4adb-950e-533597c32517';
+const wireBytes = Buffer.from(' { "version": 9007199254740993, "title": "文档" }\n');
 const fixture = async (run: (origin: string, observed: { path: string; cookie: string | undefined; authorization: string | undefined }[]) => Promise<void>): Promise<void> => {
   const observed: { path: string; cookie: string | undefined; authorization: string | undefined }[] = [];
   const sockets = new Set<Socket>();
@@ -23,7 +24,7 @@ const fixture = async (run: (origin: string, observed: { path: string; cookie: s
     outgoing.setHeader('Content-Type', 'application/json');
     if (path === '/malformed') { outgoing.end(`${token} ${cookie} ${fragment}`); return; }
     outgoing.writeHead(path === '/refusal' ? 409 : 200);
-    outgoing.end(JSON.stringify({ value: 'unchanged' }));
+    outgoing.end(path === '/wire' ? wireBytes : JSON.stringify({ value: 'unchanged' }));
   });
   server.on('connection', (socket) => { sockets.add(socket); socket.once('close', () => sockets.delete(socket)); });
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
@@ -73,6 +74,32 @@ test('browser fetch keeps the real cookie jar while replacing credential-bearing
       const aborted = await rejection(() => fetch(`${origin}/reset`, { signal: AbortSignal.abort(new Error(token)) }));
       credentialFree(aborted);
     } finally { await raw.dispose(); }
+  });
+});
+
+test('authenticated route forwarding preserves a wrapped response status, headers and exact bytes', async () => {
+  await fixture(async (origin) => {
+    const raw = await request.newContext({ baseURL: origin });
+    const api = authenticatedAPI(raw);
+    try {
+      const cases = [
+        { path: '/wire', status: 200, bytes: wireBytes },
+        { path: '/refusal', status: 409, bytes: Buffer.from('{"value":"unchanged"}') },
+      ] as const;
+      for (const { path, status, bytes } of cases) {
+        const response = await api.get(path);
+        let forwarded: Parameters<Parameters<typeof fulfillAuthenticatedResponse>[0]['fulfill']>[0] | undefined;
+        await fulfillAuthenticatedResponse({ fulfill: async (options) => { forwarded = options; } }, response);
+        assert.ok(forwarded !== undefined);
+        assert.equal(forwarded.status, status);
+        assert.deepEqual(forwarded.headers, response.headers());
+        assert.equal(forwarded.headers?.['x-request-id'], requestId);
+        assert.equal(forwarded.headers?.['content-type'], 'application/json');
+        assert.ok(Buffer.isBuffer(forwarded.body));
+        assert.deepEqual(forwarded.body, await response.body());
+        assert.deepEqual(forwarded.body, bytes);
+      }
+    } finally { await api.dispose(); }
   });
 });
 
