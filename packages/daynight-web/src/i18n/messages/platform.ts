@@ -4,7 +4,13 @@ export type PlatformMessages = {
   readonly title: string;
   readonly any: string;
   readonly names: Readonly<Record<ExecutionPlatform, string>>;
-  readonly save: string;
+  readonly confirmTitle: string;
+  readonly confirmQuestion: string;
+  readonly transition: (values: { readonly from: string; readonly to: string }) => string;
+  readonly explanation: string;
+  readonly confirm: string;
+  readonly cancel: string;
+  readonly closeConfirmation: string;
   readonly help: string;
   readonly locked: string;
   readonly pending: string;

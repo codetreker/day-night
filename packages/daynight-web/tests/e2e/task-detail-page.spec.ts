@@ -44,6 +44,17 @@ const setStatus = async (page: Page, status: TaskStatus): Promise<void> => {
   await expect(statusTrigger(page)).toHaveText(new RegExp(statusLabels[status]));
   await expect(statusTrigger(page)).toBeEnabled();
 };
+const platformSelect = (page: Page): Locator => surface(page).getByRole('combobox', { name: '执行平台', exact: true });
+const platformConfirmation = (page: Page): Locator => page.getByRole('alertdialog', { name: '修改执行平台？', exact: true });
+const reviewPlatform = async (page: Page, target: string): Promise<void> => {
+  const saved = await platformSelect(page).inputValue();
+  await platformSelect(page).focus(); await platformSelect(page).selectOption(target);
+  await expect(platformConfirmation(page)).toBeVisible();
+  await expect(platformSelect(page)).toHaveValue(saved);
+};
+const confirmPlatform = async (page: Page): Promise<void> => {
+  await platformConfirmation(page).getByRole('button', { name: '修改平台', exact: true }).click();
+};
 const picture = async (page: Page, info: TestInfo, name: string): Promise<void> => {
   const path = info.outputPath(`${name}.png`);
   await page.screenshot({ path, animations: 'disabled' });
@@ -159,6 +170,7 @@ test('task-detail-page', { annotation: { type: 'scenario', description: 'task-de
     await expectAddress(reader, project.id, task.id, 'attachments', 'docs/guide.md');
     await expect(surface(reader).locator('.task-detail-title')).toHaveText(title);
     await expect(statusTrigger(reader)).toBeVisible();
+    await expect(surface(reader).locator('.task-detail-status-row .task-platform-select')).toBeVisible();
     expect(page.url()).toBe(originalAddress); expect(await page.evaluate(() => history.length)).toBe(originalHistory);
     await expect(modal.getByRole('tab', { name: '附件', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(embeddedAttachments.getByLabel('目标相对路径', { exact: true })).toHaveValue('drafts/source.txt');
@@ -225,9 +237,15 @@ test('task-detail-page', { annotation: { type: 'scenario', description: 'task-de
       if (mode === 'unknown') { mode = 'ordinary'; blockReconciliation = true; await route.abort('connectionfailed'); return; }
       await fulfillAuthenticatedResponse(route, response);
     });
-    const platform = surface(reader).getByRole('combobox', { name: '执行平台', exact: true });
-    const save = surface(reader).getByRole('button', { name: '保存平台', exact: true });
-    await platform.selectOption('linux'); await save.click(); await expect(platform).toHaveValue('linux'); await expect(save).toBeDisabled();
+    const platform = platformSelect(reader);
+    await expect(surface(reader).getByRole('button', { name: '保存平台', exact: true })).toHaveCount(0);
+    await expect(surface(reader).locator('.task-detail-panel-overview .task-platform-select')).toHaveCount(0);
+    await reviewPlatform(reader, 'linux');
+    await platformConfirmation(reader).getByRole('button', { name: '取消', exact: true }).click();
+    await expect(platform).toHaveValue(''); await expect(platform).toBeFocused();
+    expect(writes.filter(value => value === `PATCH ${endpoint}`)).toHaveLength(0);
+    await reviewPlatform(reader, 'linux'); await confirmPlatform(reader);
+    await expect(platform).toHaveValue('linux'); await expect(platform).toBeEnabled();
     const automatic = surface(reader).getByRole('switch');
     await automatic.click();
     const permission = reader.getByRole('alertdialog', { name: '开启自动执行', exact: true });
@@ -235,11 +253,13 @@ test('task-detail-page', { annotation: { type: 'scenario', description: 'task-de
     await expect(permission).toHaveCount(0); await expect(automatic).not.toBeChecked(); await expect(automatic).toBeFocused();
     await automatic.click(); await permission.getByRole('button', { name: '开启自动执行', exact: true }).click();
     await expect(automatic).toBeChecked();
-    mode = 'conflict'; await platform.selectOption('windows'); await save.click();
-    await expect(surface(reader).getByText('任务已发生变化，请检查当前平台后重新保存修改。')).toBeVisible();
+    mode = 'conflict'; await reviewPlatform(reader, 'windows'); await confirmPlatform(reader);
+    await expect(surface(reader).getByText('任务已发生变化，请检查当前平台后重新确认修改。')).toBeVisible();
     await expect(platform).toHaveValue('linux');
-    await platform.selectOption('windows'); await save.click(); await expect(platform).toHaveValue('windows'); await expect(save).toBeDisabled();
-    mode = 'unknown'; await platform.selectOption('macos'); await save.click();
+    await expect(platformConfirmation(reader)).toHaveCount(0);
+    await reviewPlatform(reader, 'windows'); await confirmPlatform(reader);
+    await expect(platform).toHaveValue('windows'); await expect(platform).toBeEnabled();
+    mode = 'unknown'; await reviewPlatform(reader, 'macos'); await confirmPlatform(reader);
     const reconcile = surface(reader).getByRole('button', { name: '核对实际任务', exact: true });
     await expect(reconcile).toBeEnabled(); await expect(platform).toBeDisabled(); await expect(automatic).toBeDisabled();
     expect((await (await api.get(taskPath(project.id, task.id))).json() as Task).requiredPlatform).toBe('macos');

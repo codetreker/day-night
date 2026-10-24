@@ -191,6 +191,38 @@ describe('standalone full task details', () => {
     expect(document.body.style.overflow).toBe('');
   });
 
+  it('reviews status-row platform changes on the attachment tab and submits only the confirmed exact version', async () => {
+    const { fetcher } = installed();
+    window.history.replaceState(null, '', address('attachments', 'docs/guide.md'));
+    render(<App />);
+    await screen.findByText('方案正文');
+    const platform = screen.getByRole('combobox', { name: '执行平台' });
+    expect(platform.closest('.task-detail-status-row')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: '保存平台' })).toBeNull();
+    const panel = document.querySelector('.task-attachments');
+    platform.focus();
+    fireEvent.change(platform, { target: { value: 'linux' } });
+    expect(platform).toHaveValue('');
+    let confirmation = screen.getByRole('alertdialog', { name: '修改执行平台？' });
+    expect(within(confirmation).getByText('当前平台：不限平台。目标平台：Linux。')).toBeVisible();
+    fireEvent.click(within(confirmation).getByRole('button', { name: '取消' }));
+    expect(platform).toHaveFocus();
+    expect(platform).toHaveValue('');
+    expect(fetcher.mock.calls.filter(([, options]) => options?.method === 'PATCH')).toHaveLength(0);
+    fireEvent.change(platform, { target: { value: 'linux' } });
+    confirmation = screen.getByRole('alertdialog', { name: '修改执行平台？' });
+    fireEvent.click(within(confirmation).getByRole('button', { name: '修改平台' }));
+    await screen.findByText('执行平台已更新。');
+    expect(platform).toHaveValue('linux');
+    expect(fetcher.mock.calls.find(([, options]) => options?.method === 'PATCH')?.[1]?.body).toBe('{"version":1,"requiredPlatform":"linux"}');
+    expect(document.querySelector('.task-attachments')).toBe(panel);
+    expect(screen.getByText('方案正文')).toBeVisible();
+    expect(window.location.pathname).toBe(address('attachments', 'docs/guide.md'));
+    fireEvent.change(platform, { target: { value: 'linux' } });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(fetcher.mock.calls.filter(([, options]) => options?.method === 'PATCH')).toHaveLength(1);
+  });
+
   it.each(['conflict', 'unknown'] as const)('reconciles a standalone status %s without resubmitting the write', async (failure) => {
     const fixture = installed();
     fixture.fetcher.mockImplementation(async (url, options) => {

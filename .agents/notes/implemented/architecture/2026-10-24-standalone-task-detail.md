@@ -25,9 +25,12 @@ at that file.
 The dialog wrapper retains portal, background inertness, counted scroll lock,
 focus containment, Escape close and focus restoration. The standalone page uses
 ordinary browser focus and keys, with its own return and language controls. It
-does not install the outer modal iframe bridge. Existing status, permission
-and file-deletion confirmations retain their own modal lifetimes in either
-container; their version and request rules do not move into the shell.
+does not install the outer modal iframe bridge. Platform selection belongs in
+the status row, with live feedback below it and no separate Overview form.
+Status, permission and platform requests share the existing confirmation union,
+review key and exact-version mutation owner; platform selection retains the
+confirmed value until success. File deletion keeps its own confirmation layer.
+These request, review and modal rules apply in either container, not the shell.
 
 `TaskDetailNavigation` records tab and nullable attachment path.
 `taskDetailUrl` uses the base `/projects/{projectId}/tasks/{taskId}` for Overview

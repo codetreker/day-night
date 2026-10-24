@@ -1167,18 +1167,25 @@ clock avoids client wall-clock skew but does not remove network sampling delay.
 The Web detail header places a three-item status menu beside the actual task
 title on both tabs. The current item remains selectable. Confirmation names the
 task, current/target states and timing effects; Cancel and Escape send no write.
-Status, **Automatic execution / 自动执行** and platform saves share one per-task mutation owner.
-Pending, stale or unknown results block both. Current-version same-state responses
+Status, **Automatic execution / 自动执行** and platform confirmation share one per-task mutation owner.
+Pending, stale or unknown results block conflicting writes. Current-version same-state responses
 confirm no stored change; actual changes refresh the graph. Unknown outcomes use
 GET-only reconciliation, preserving errors and never attributing the observed
 state to the uncertain request. Closing details does not roll back a submission.
 
-Task details also have an Any platform / Windows / Linux / macOS select and
-explicit Save platform action. Selection alone sends no request; Any platform
-clears requiredPlatform. Actual platform changes are locked during in_progress,
-bind the reviewed version and retain shared pending/unknown reconciliation across
-navigation. Rows and graph nodes show each task's own requirement; root values
-do not define chain-wide platform requirements.
+Task details use one platform select in the left status group to display the
+confirmed requirement and offer Any platform, Windows, Linux and macOS. Choosing
+a different value opens confirmation showing the current and target platforms;
+only confirmation submits the reviewed exact task version. Choosing the saved
+value, Cancel, close, backdrop dismissal and Escape send no request. Cancellation
+returns focus to the select. The confirmed value remains displayed until success,
+and Any platform clears requiredPlatform. Overview has no separate platform
+editor or Save action. The control stays available on either detail tab, is
+locked during in_progress, and retains shared pending/unknown reconciliation
+across navigation. Rows and graph nodes remain read-only and show each task's
+own requirement; root values do not define chain-wide platform requirements.
+The [confirmed platform control decision](.agents/notes/implemented/simplification/2026-10-24-task-platform-confirmation-control.md)
+records its allocation and focus behavior.
 
 The permission switch has confirmation in both directions, remains false by
 default and is locked against actual changes while in_progress. It governs
